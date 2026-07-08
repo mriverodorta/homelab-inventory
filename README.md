@@ -34,7 +34,7 @@ Create a Compose file:
 ```yaml
 services:
   homelab-inventory:
-    image: mriverodorta/homelab-inventory:latest
+    image: mriverodorta/homelab-inventory:stable
     container_name: homelab-inventory
     restart: unless-stopped
     ports:
@@ -108,17 +108,34 @@ Only one app container should write to a mounted data directory.
 
 More data details: [docs/DATA.md](docs/DATA.md)
 
-## Docker Tags
+## Docker Tags And Release Channels
 
-- `mriverodorta/homelab-inventory:latest` tracks the newest published image and is suitable for Watchtower.
-- `mriverodorta/homelab-inventory:<semver>` pins a specific release.
+- `mriverodorta/homelab-inventory:stable` is built from the `stable` branch. Use this for regular homelab deployments and Watchtower.
+- `mriverodorta/homelab-inventory:latest` is built from the `main` branch. It is the newest development image and can be unstable.
+- `mriverodorta/homelab-inventory:<semver>` is built from Git tags such as `v0.2.0` and pins a specific release.
+- `mriverodorta/homelab-inventory:sha-<commit>` points at an exact commit image.
 
-The local `build.sh` helper publishes both tags.
+Recommended Compose image:
+
+```yaml
+image: mriverodorta/homelab-inventory:stable
+```
+
+The local `build.sh` helper is still available for manual publishing, but GitHub Actions is the preferred CI/CD path.
 
 ```bash
 ./build.sh
 ./build.sh --ver 0.2.0
 ```
+
+CI/CD uses GitHub as the source of truth:
+
+- Pull requests validate lint, tests, and production build.
+- Merges to `main` publish the `latest` Docker image.
+- Merges to `stable` publish the `stable` Docker image.
+- Tags like `v0.2.0` publish immutable semver Docker images and create a GitHub Release.
+
+Release process details: [docs/RELEASES.md](docs/RELEASES.md)
 
 ## Agent
 

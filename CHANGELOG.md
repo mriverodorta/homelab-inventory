@@ -2,10 +2,12 @@
 
 All notable changes to Homelab Inventory should be documented here.
 
-This project follows semver-style Docker tags. The `latest` image points at the newest published release, while numbered tags are intended to remain stable.
+This project follows semver-style Docker tags. The `stable` image points at the stable branch, `latest` points at main, and numbered tags are intended to remain immutable.
 
 ## Unreleased
 
+- Added GitHub Actions Docker publishing for `latest`, `stable`, semver, and commit SHA image tags.
+- Documented `main` as the fast-moving channel and `stable` as the recommended deployment channel.
 - Prepared the project for public GitHub publishing.
 - Added repository documentation, issue templates, CI, and security guidance.
 - Clarified Docker deployment, data persistence, and development setup.

@@ -49,7 +49,7 @@ The container serves the web app and writes changes asynchronously to the mounte
 ```yaml
 services:
   homelab-inventory:
-    image: mriverodorta/homelab-inventory:latest
+    image: mriverodorta/homelab-inventory:stable
     container_name: homelab-inventory
     ports:
       - "8798:8798"
@@ -107,7 +107,8 @@ Only one app container should write to the same mounted `/data` directory.
 
 The image is intended to work well with Watchtower:
 
-- Use `mriverodorta/homelab-inventory:latest` for automatic updates.
+- Use `mriverodorta/homelab-inventory:stable` for regular automatic updates from the stable branch.
+- Use `mriverodorta/homelab-inventory:latest` for the newest image from `main`. This channel can be unstable.
 - Use a semver tag such as `mriverodorta/homelab-inventory:0.1.8` to pin a specific version.
 
 The app tracks a database schema version in `/data/meta.json`. When schema changes are introduced, migrations run on startup and create backups before modifying data.

@@ -1,6 +1,6 @@
 services:
   homelab-inventory:
-    image: mriverodorta/homelab-inventory:latest
+    image: mriverodorta/homelab-inventory:stable
     container_name: homelab-inventory
     restart: unless-stopped
     ports:
