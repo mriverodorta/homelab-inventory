@@ -1,0 +1,1253 @@
+import {
+  DndContext,
+  DragOverlay,
+  MouseSensor,
+  TouchSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+  type DragStartEvent,
+} from '@dnd-kit/core'
+import { useMutation, useQuery } from '@tanstack/react-query'
+import type { XYPosition } from '@xyflow/react'
+import { AlertTriangle, Menu } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { AuditDrawer } from '@/components/audit-drawer'
+import { GlobalItemSearch } from '@/components/global-item-search'
+import { InspectorPanel } from '@/components/inspector-panel'
+import { InventorySidebar } from '@/components/inventory-sidebar'
+import {
+  snapToGrid,
+  WorkbenchCanvas,
+  type CanvasController,
+  type CanvasFocusOptions,
+} from '@/components/workbench-canvas'
+import { Button } from '@/components/ui/button'
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from '@/components/ui/sheet'
+import { TooltipProvider } from '@/components/ui/tooltip'
+import type { CanvasPortDragPoint } from '@/types/canvas'
+import { assignComponent, swapAssignedComponent, validateAssignment } from '@/lib/constraints'
+import { loadAgentStatus } from '@/lib/agent-api'
+import { createInventoryItem, loadProject, saveProject, type InventoryItemInput } from '@/lib/db'
+import { runtimeItemKey } from '@/lib/item-keys'
+import {
+  createEmptyHistory,
+  pushHistory,
+  redoHistory,
+  undoHistory,
+  type HistoryState,
+} from '@/lib/history'
+import {
+  getNetworkTraceConnectionIds,
+  getNetworkTraceItemIds,
+  traceNetworkPath,
+} from '@/lib/network-trace'
+import {
+  getCanvasItemHeight,
+  getCanvasItemWidth,
+  autoArrangeCanvasItems,
+  createConnection,
+  endpointKey,
+  getNonCollidingPlacement,
+  isCanvasItem,
+  placementCollides,
+  placementsCollide,
+  removeConnection,
+  removeAssignment,
+  updateItemIdentity,
+  updateItemManufacturer,
+  updateItemPorts,
+  updateItemProperties,
+  updateItemSpecs,
+  updateConnectionLabel,
+  updateConnectionRoute,
+  upsertPlacements,
+  upsertPlacement,
+} from '@/lib/project'
+import { formatCapacity, formatPortSummary } from '@/lib/format'
+import type {
+  ConnectionEndpoint,
+  ConnectionRoutePreferences,
+  InventoryItem,
+  ProjectState,
+} from '@/types/inventory'
+
+type DragData =
+  | {
+      kind: 'inventory'
+      itemId: string
+    }
+  | {
+      kind: 'assigned-component'
+      assignmentId: string | number
+      itemId: string
+      sourceServerId: string
+    }
+
+type PortConnectionPreview = {
+  from: ConnectionEndpoint
+  origin: CanvasPortDragPoint
+  pointer: CanvasPortDragPoint
+  mode: 'click' | 'drag'
+}
+
+const MIN_INVENTORY_WIDTH = 390
+const MAX_INVENTORY_WIDTH = 460
+const DEFAULT_INVENTORY_WIDTH = 390
+const SAVE_DEBOUNCE_MS = 500
+const AUTO_CENTER_STORAGE_KEY = 'homelab-inventory:auto-center-on-select'
+
+type SaveStatus = 'saved' | 'saving' | 'error'
+
+function getStoredAutoCenterPreference(): boolean {
+  if (typeof window === 'undefined') {
+    return true
+  }
+
+  return window.localStorage.getItem(AUTO_CENTER_STORAGE_KEY) !== 'false'
+}
+
+function getServerIdFromOver(overId: string | null): string | null {
+  if (!overId?.startsWith('server:')) {
+    return null
+  }
+
+  return overId.replace('server:', '')
+}
+
+function getCanvasDropPoint(event: DragEndEvent, canvasController: CanvasController | null) {
+  const translated = event.active.rect.current.translated
+
+  if (!translated || !canvasController) {
+    return { x: 48, y: 48 }
+  }
+
+  const flowPoint = canvasController.screenToFlowPosition({
+    x: translated.left,
+    y: translated.top,
+  })
+
+  return {
+    x: snapToGrid(flowPoint.x),
+    y: snapToGrid(flowPoint.y),
+  }
+}
+
+function dragPreviewTone(item: InventoryItem): string {
+  if (item.type === 'server') {
+    return 'border-[#adc19b] bg-[#20242c] text-[#f8f1e8]'
+  }
+
+  if (item.type === 'nas') {
+    return 'border-[#9eb6c8] bg-[#20242c] text-[#f8f1e8]'
+  }
+
+  if (item.type === 'switch') {
+    return 'border-[#81a6a0] bg-[#1f3536] text-[#f3fbf9]'
+  }
+
+  if (item.type === 'patchPanel') {
+    return 'border-[#a995c8] bg-[#322b45] text-[#faf7ff]'
+  }
+
+  if (item.type === 'cpu') {
+    return 'border-[#8bb3bd] bg-[#8bb3bd] text-[#132126]'
+  }
+
+  if (item.type === 'ram') {
+    return 'border-[#ddb668] bg-[#ddb668] text-[#2b2010]'
+  }
+
+  if (item.type === 'storage') {
+    return 'border-[#b5a58f] bg-[#ded2be] text-[#3d3429]'
+  }
+
+  if (item.type === 'gpu') {
+    return 'border-[#d57b69] bg-[#d57b69] text-[#2f1813]'
+  }
+
+  return 'border-[#86a989] bg-[#86a989] text-[#132117]'
+}
+
+function getDragPreviewSubtitle(item: InventoryItem): string {
+  if (item.type === 'server') {
+    return String(item.specs?.formFactor ?? 'Server')
+  }
+
+  if (item.type === 'nas') {
+    return `${item.specs?.driveBays ?? '?'} bays / ${item.specs?.m2Slots ?? 0} M.2`
+  }
+
+  if (item.type === 'switch' || item.type === 'patchPanel') {
+    return formatPortSummary(item)
+  }
+
+  if (item.type === 'cpu') {
+    return `${item.specs?.cores ?? '?'}C/${item.specs?.threads ?? '?'}T`
+  }
+
+  if (item.type === 'ram') {
+    return `${item.specs?.capacityGb ?? '?'}GB / ${item.specs?.generation ?? 'RAM'}`
+  }
+
+  if (item.type === 'storage') {
+    return `${formatCapacity(item.specs)} / ${item.specs?.interface ?? 'storage'}`
+  }
+
+  if (item.type === 'network') {
+    return `${item.specs?.ports ?? item.ports?.length ?? 1} ports / ${item.specs?.speedMbps ?? '?'}Mbps`
+  }
+
+  return item.type
+}
+
+function InventoryDragPreview({
+  item,
+  project,
+}: {
+  item: InventoryItem | null
+  project: ProjectState
+}) {
+  if (!item) {
+    return null
+  }
+
+  const canvasItem = isCanvasItem(item)
+  const itemRuntimeKey = runtimeItemKey(item)
+  const width = canvasItem ? getCanvasItemWidth(project, itemRuntimeKey) : 220
+  const height = canvasItem ? getCanvasItemHeight(project, itemRuntimeKey) : 68
+
+  return (
+    <div
+      className={`pointer-events-none rounded-lg border-2 p-2 opacity-95 shadow-[0_20px_48px_rgba(32,36,44,0.32)] ${dragPreviewTone(item)}`}
+      style={{ width, minHeight: height }}
+    >
+      <div className="rounded-md bg-black/10 px-3 py-2">
+        <div className="truncate text-sm font-black">{item.name}</div>
+        <div className="mt-0.5 truncate text-xs opacity-80">{getDragPreviewSubtitle(item)}</div>
+      </div>
+      {canvasItem ? (
+        <div className="mt-2 rounded-md border border-dashed border-current/35 px-3 py-2 text-xs font-bold opacity-75">
+          Drop footprint
+        </div>
+      ) : (
+        <div className="mt-2 text-[10px] font-black uppercase tracking-[0.12em] opacity-70">
+          Drop on server / NAS
+        </div>
+      )}
+    </div>
+  )
+}
+
+function LoadingScreen() {
+  return (
+    <div className="flex min-h-screen items-center justify-center bg-[#e8e2d8] text-[#20242c]">
+      <div className="rounded-lg border border-[#d6ccbd] bg-[#fffdf8] px-5 py-4 shadow-sm">
+        Loading inventory...
+      </div>
+    </div>
+  )
+}
+
+function ErrorScreen({ message, onRetry }: { message: string; onRetry: () => void }) {
+  return (
+    <div className="flex min-h-screen items-center justify-center bg-[#e8e2d8] p-6 text-[#20242c]">
+      <div className="max-w-md rounded-lg border border-[#dfb3a5] bg-[#fffdf8] p-5 shadow-sm">
+        <div className="flex items-start gap-3">
+          <AlertTriangle className="mt-0.5 size-5 shrink-0 text-[#a84834]" />
+          <div>
+            <h1 className="font-bold">Inventory could not load</h1>
+            <p className="mt-2 text-sm text-[#75695d]">{message}</p>
+            <Button type="button" className="mt-4" onClick={onRetry}>
+              Retry
+            </Button>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function PortConnectionPreviewOverlay({ preview }: { preview: PortConnectionPreview }) {
+  const lineRef = useRef<SVGLineElement | null>(null)
+  const pointerRef = useRef<SVGCircleElement | null>(null)
+
+  useEffect(() => {
+    let animationFrame = 0
+
+    const setPointerPosition = (x: number, y: number) => {
+      lineRef.current?.setAttribute('x2', String(x))
+      lineRef.current?.setAttribute('y2', String(y))
+      pointerRef.current?.setAttribute('cx', String(x))
+      pointerRef.current?.setAttribute('cy', String(y))
+    }
+
+    const handlePointerMove = (event: PointerEvent) => {
+      if (animationFrame) {
+        window.cancelAnimationFrame(animationFrame)
+      }
+
+      animationFrame = window.requestAnimationFrame(() => {
+        setPointerPosition(event.clientX, event.clientY)
+      })
+    }
+
+    window.addEventListener('pointermove', handlePointerMove)
+
+    return () => {
+      if (animationFrame) {
+        window.cancelAnimationFrame(animationFrame)
+      }
+
+      window.removeEventListener('pointermove', handlePointerMove)
+    }
+  }, [])
+
+  return (
+    <svg className="pointer-events-none fixed inset-0 z-30 h-screen w-screen">
+      <line
+        ref={lineRef}
+        x1={preview.origin.x}
+        y1={preview.origin.y}
+        x2={preview.pointer.x}
+        y2={preview.pointer.y}
+        stroke="#ddb668"
+        strokeWidth="4"
+        strokeLinecap="round"
+        strokeDasharray="10 8"
+      />
+      <circle
+        cx={preview.origin.x}
+        cy={preview.origin.y}
+        r="5"
+        fill="#ddb668"
+      />
+      <circle
+        ref={pointerRef}
+        cx={preview.pointer.x}
+        cy={preview.pointer.y}
+        r="5"
+        fill="#fff2c7"
+        stroke="#ddb668"
+        strokeWidth="3"
+      />
+    </svg>
+  )
+}
+
+function App() {
+  const [project, setProject] = useState<ProjectState | null>(null)
+  const [selectedItemId, setSelectedItemId] = useState<string | null>(null)
+  const [selectedConnectionId, setSelectedConnectionId] = useState<string | number | null>(null)
+  const [pendingConnectionEndpoint, setPendingConnectionEndpoint] = useState<ConnectionEndpoint | null>(null)
+  const [validationMessage, setValidationMessage] = useState<string | null>(null)
+  const [persistenceWarning, setPersistenceWarning] = useState<string | null>(null)
+  const [auditOpen, setAuditOpen] = useState(false)
+  const [searchOpen, setSearchOpen] = useState(false)
+  const [spotlightItemId, setSpotlightItemId] = useState<string | null>(null)
+  const [portConnectionPreview, setPortConnectionPreview] = useState<PortConnectionPreview | null>(null)
+  const [activeNetworkTraceEndpoint, setActiveNetworkTraceEndpoint] = useState<ConnectionEndpoint | null>(null)
+  const [saveStatus, setSaveStatus] = useState<SaveStatus>('saved')
+  const [history, setHistory] = useState<HistoryState<ProjectState>>(() => createEmptyHistory())
+  const [inventoryWidth, setInventoryWidth] = useState(DEFAULT_INVENTORY_WIDTH)
+  const [mobileInventoryOpen, setMobileInventoryOpen] = useState(false)
+  const [draggingItemId, setDraggingItemId] = useState<string | null>(null)
+  const [autoCenterOnSelect, setAutoCenterOnSelect] = useState(getStoredAutoCenterPreference)
+  const canvasControllerRef = useRef<CanvasController | null>(null)
+  const projectRef = useRef<ProjectState | null>(null)
+  const skipNextSaveRef = useRef(false)
+  const hasHydratedProjectRef = useRef(false)
+  const resizeStateRef = useRef<{
+    startX: number
+    startWidth: number
+  } | null>(null)
+  const projectQuery = useQuery({
+    queryKey: ['project'],
+    queryFn: loadProject,
+  })
+  const agentStatusQuery = useQuery({
+    queryKey: ['agent-status'],
+    queryFn: loadAgentStatus,
+    refetchInterval: 30_000,
+  })
+  const { mutate: mutateSaveProject } = useMutation({
+    mutationFn: saveProject,
+  })
+  const sensors = useSensors(
+    useSensor(MouseSensor, {
+      activationConstraint: {
+        distance: 6,
+      },
+    }),
+    useSensor(TouchSensor, {
+      activationConstraint: {
+        delay: 350,
+        tolerance: 8,
+      },
+    }),
+  )
+
+  useEffect(() => {
+    if (!projectQuery.data || hasHydratedProjectRef.current) {
+      return
+    }
+
+    const loadedProject = projectQuery.data
+
+    skipNextSaveRef.current = true
+    hasHydratedProjectRef.current = true
+    setProject(loadedProject)
+    setHistory(createEmptyHistory())
+    setSelectedItemId((current) => (current && loadedProject.items[current] ? current : null))
+    setSelectedConnectionId((current) =>
+      current && loadedProject.connections.some((connection) => connection.id === current)
+        ? current
+        : null,
+    )
+    setPendingConnectionEndpoint(null)
+    setActiveNetworkTraceEndpoint(null)
+    setPersistenceWarning(null)
+    setSaveStatus('saved')
+  }, [projectQuery.data])
+
+  useEffect(() => {
+    projectRef.current = project
+  }, [project])
+
+  useEffect(() => {
+    window.localStorage.setItem(AUTO_CENTER_STORAGE_KEY, String(autoCenterOnSelect))
+  }, [autoCenterOnSelect])
+
+  useEffect(() => {
+    if (!spotlightItemId) {
+      return
+    }
+
+    const spotlightTimer = window.setTimeout(() => {
+      setSpotlightItemId(null)
+    }, 1500)
+
+    return () => {
+      window.clearTimeout(spotlightTimer)
+    }
+  }, [spotlightItemId])
+
+  useEffect(() => {
+    if (!portConnectionPreview) {
+      return
+    }
+
+    const handlePointerUp = () => {
+      setPortConnectionPreview((current) => {
+        if (current?.mode === 'drag') {
+          setPendingConnectionEndpoint(null)
+          return null
+        }
+
+        return current
+      })
+    }
+
+    window.addEventListener('pointerup', handlePointerUp)
+
+    return () => {
+      window.removeEventListener('pointerup', handlePointerUp)
+    }
+  }, [portConnectionPreview])
+
+  useEffect(() => {
+    if (!project || !hasHydratedProjectRef.current) {
+      return
+    }
+
+    if (skipNextSaveRef.current) {
+      skipNextSaveRef.current = false
+      return
+    }
+
+    setSaveStatus('saving')
+
+    const saveTimer = window.setTimeout(() => {
+      mutateSaveProject(project, {
+        onSuccess: () => {
+          setPersistenceWarning(null)
+          setSaveStatus('saved')
+        },
+        onError: (error) => {
+          setSaveStatus('error')
+          setPersistenceWarning(
+            error instanceof Error ? error.message : 'Project could not be saved to the JSON database.',
+          )
+        },
+      })
+    }, SAVE_DEBOUNCE_MS)
+
+    return () => {
+      window.clearTimeout(saveTimer)
+    }
+  }, [mutateSaveProject, project])
+
+  const selectedItem = useMemo(
+    () => (project && selectedItemId ? project.items[selectedItemId] ?? null : null),
+    [project, selectedItemId],
+  )
+  const selectedConnection = useMemo(
+    () =>
+      project && selectedConnectionId
+        ? project.connections.find((connection) => String(connection.id) === String(selectedConnectionId)) ?? null
+        : null,
+    [project, selectedConnectionId],
+  )
+  const activeNetworkTrace = useMemo(
+    () => (project && activeNetworkTraceEndpoint ? traceNetworkPath(project, activeNetworkTraceEndpoint) : null),
+    [activeNetworkTraceEndpoint, project],
+  )
+  const activeNetworkTraceConnectionIds = useMemo(
+    () => (activeNetworkTrace ? getNetworkTraceConnectionIds(activeNetworkTrace) : []),
+    [activeNetworkTrace],
+  )
+  const activeNetworkTraceItemIds = useMemo(
+    () => (activeNetworkTrace ? getNetworkTraceItemIds(activeNetworkTrace) : []),
+    [activeNetworkTrace],
+  )
+
+  function updateProject(nextProject: ProjectState, options: { recordHistory?: boolean } = {}) {
+    const shouldRecordHistory = options.recordHistory ?? true
+    const currentProject = projectRef.current
+
+    if (shouldRecordHistory && currentProject) {
+      setHistory((currentHistory) => pushHistory(currentHistory, currentProject))
+    }
+
+    projectRef.current = nextProject
+    setProject(nextProject)
+  }
+
+  function showMessage(message: string) {
+    setValidationMessage(message)
+  }
+
+  function createConnectionBetween(from: ConnectionEndpoint, to: ConnectionEndpoint) {
+    const currentProject = projectRef.current
+
+    if (!currentProject) {
+      return
+    }
+
+    const result = createConnection(currentProject, from, to)
+
+    if (!result.ok) {
+      setValidationMessage(result.message)
+      return
+    }
+
+    updateProject(result.project)
+    setSelectedConnectionId(result.connection.id)
+    setSelectedItemId(null)
+    setPendingConnectionEndpoint(null)
+    setPortConnectionPreview(null)
+    setValidationMessage(null)
+  }
+
+  function handleCanvasEndpointClick(endpoint: ConnectionEndpoint, point: CanvasPortDragPoint) {
+    void point
+
+    if (pendingConnectionEndpoint && endpointKey(pendingConnectionEndpoint) === endpointKey(endpoint)) {
+      setPendingConnectionEndpoint(null)
+      setPortConnectionPreview(null)
+      setValidationMessage(null)
+      return
+    }
+
+    setPendingConnectionEndpoint(endpoint)
+    setPortConnectionPreview(null)
+    setSelectedConnectionId(null)
+    setValidationMessage(null)
+  }
+
+  function handleCanvasEndpointDragStart(endpoint: ConnectionEndpoint, point: CanvasPortDragPoint) {
+    setPendingConnectionEndpoint(endpoint)
+    setPortConnectionPreview({
+      from: endpoint,
+      origin: point,
+      pointer: point,
+      mode: 'drag',
+    })
+    setSelectedConnectionId(null)
+    setValidationMessage(null)
+  }
+
+  function handleCanvasEndpointDrop(endpoint: ConnectionEndpoint) {
+    const sourceEndpoint = portConnectionPreview?.from ?? pendingConnectionEndpoint
+
+    if (!sourceEndpoint) {
+      return
+    }
+
+    createConnectionBetween(sourceEndpoint, endpoint)
+  }
+
+  function getCanvasFocusItemId(itemId: string): string {
+    const currentProject = projectRef.current
+
+    if (!currentProject) {
+      return itemId
+    }
+
+    if (currentProject.placements.some((placement) => placement.serverId === itemId)) {
+      return itemId
+    }
+
+    return currentProject.assignments.find((assignment) => assignment.itemId === itemId)?.serverId ?? itemId
+  }
+
+  function focusCanvasItem(itemId: string, options: CanvasFocusOptions = {}) {
+    const focusItemId = getCanvasFocusItemId(itemId)
+
+    if (autoCenterOnSelect) {
+      window.requestAnimationFrame(() => {
+        window.requestAnimationFrame(() => {
+          canvasControllerRef.current?.focusItem(focusItemId, options)
+        })
+      })
+    }
+    setSpotlightItemId(focusItemId)
+  }
+
+  function handleEndpointConnectionClick(endpoint: ConnectionEndpoint) {
+    if (!project) {
+      return
+    }
+
+    if (!pendingConnectionEndpoint) {
+      setPendingConnectionEndpoint(endpoint)
+      setSelectedConnectionId(null)
+      setValidationMessage(null)
+      return
+    }
+
+    if (endpointKey(pendingConnectionEndpoint) === endpointKey(endpoint)) {
+      setPendingConnectionEndpoint(null)
+      setValidationMessage(null)
+      return
+    }
+
+    const result = createConnection(project, pendingConnectionEndpoint, endpoint)
+
+    if (!result.ok) {
+      setValidationMessage(result.message)
+      return
+    }
+
+    updateProject(result.project)
+    setSelectedConnectionId(result.connection.id)
+    setSelectedItemId(null)
+    setPendingConnectionEndpoint(null)
+    setValidationMessage(null)
+  }
+
+  function handleInventorySelect(itemId: string) {
+    setSelectedItemId(itemId)
+    setSelectedConnectionId(null)
+    setActiveNetworkTraceEndpoint(null)
+    setMobileInventoryOpen(false)
+  }
+
+  async function handleCreateInventoryItem(item: InventoryItemInput) {
+    const currentProject = projectRef.current
+    const nextProject = await createInventoryItem(item)
+    const previousItemIds = new Set(Object.keys(currentProject?.items ?? {}))
+    const createdItemId = Object.keys(nextProject.items).find((itemId) => !previousItemIds.has(itemId))
+
+    skipNextSaveRef.current = true
+    projectRef.current = nextProject
+    setProject(nextProject)
+    setHistory(createEmptyHistory())
+    setSelectedConnectionId(null)
+    setActiveNetworkTraceEndpoint(null)
+    setValidationMessage(null)
+    setPersistenceWarning(null)
+    setSaveStatus('saved')
+
+    if (createdItemId) {
+      setSelectedItemId(createdItemId)
+    }
+  }
+
+  const stopInventoryResize = useCallback(() => {
+    resizeStateRef.current = null
+    document.body.style.cursor = ''
+    document.body.style.userSelect = ''
+    window.removeEventListener('pointermove', handleInventoryResize)
+    window.removeEventListener('pointerup', stopInventoryResize)
+  }, [])
+
+  const handleInventoryResize = useCallback((event: PointerEvent) => {
+    const resizeState = resizeStateRef.current
+
+    if (!resizeState) {
+      return
+    }
+
+    const nextWidth = Math.min(
+      MAX_INVENTORY_WIDTH,
+      Math.max(MIN_INVENTORY_WIDTH, resizeState.startWidth + event.clientX - resizeState.startX),
+    )
+
+    setInventoryWidth(nextWidth)
+  }, [])
+
+  function startInventoryResize(event: React.PointerEvent<HTMLButtonElement>) {
+    resizeStateRef.current = {
+      startX: event.clientX,
+      startWidth: inventoryWidth,
+    }
+    document.body.style.cursor = 'col-resize'
+    document.body.style.userSelect = 'none'
+    window.addEventListener('pointermove', handleInventoryResize)
+    window.addEventListener('pointerup', stopInventoryResize)
+  }
+
+  function handleDragEnd(event: DragEndEvent) {
+    setDraggingItemId(null)
+
+    if (!project) {
+      return
+    }
+
+    const data = event.active.data.current as DragData | undefined
+    const overId = event.over?.id ? String(event.over.id) : null
+
+    if (!data) {
+      return
+    }
+
+    const item = project.items[data.itemId]
+
+    if (!item) {
+      showMessage('That inventory item no longer exists.')
+      return
+    }
+
+    if (data.kind === 'inventory' && isCanvasItem(item)) {
+      if (overId !== 'canvas') {
+        showMessage('Drop canvas equipment onto the canvas.')
+        return
+      }
+
+      const point = getCanvasDropPoint(event, canvasControllerRef.current)
+      const itemRuntimeKey = runtimeItemKey(item)
+      const placement = getNonCollidingPlacement(project, { serverId: itemRuntimeKey, ...point })
+
+      if (!placement) {
+        showMessage('Servers cannot overlap. Drop this server in an open space.')
+        return
+      }
+
+      updateProject(upsertPlacement(project, placement))
+      setSelectedItemId(itemRuntimeKey)
+      setSelectedConnectionId(null)
+      setValidationMessage(null)
+      return
+    }
+
+    const serverId = getServerIdFromOver(overId)
+
+    if (!serverId) {
+      showMessage('Drop components onto a server.')
+      return
+    }
+
+    if (data.kind === 'assigned-component') {
+      if (serverId === data.sourceServerId) {
+        setSelectedItemId(data.itemId)
+        setSelectedConnectionId(null)
+        setValidationMessage(null)
+        focusCanvasItem(data.itemId)
+        return
+      }
+
+      const assignment = project.assignments.find((candidate) => candidate.id === data.assignmentId)
+
+      if (!assignment) {
+        showMessage('That assigned component is no longer attached.')
+        return
+      }
+
+      if (assignment.type === 'cpu' || assignment.type === 'ram') {
+        const result = swapAssignedComponent(project, data.assignmentId, serverId)
+
+        if (!result.ok) {
+          showMessage(result.message)
+          return
+        }
+
+        const targetPlacement = result.project.placements.find((placement) => placement.serverId === serverId)
+        const sourcePlacement = result.project.placements.find((placement) => placement.serverId === data.sourceServerId)
+
+        if (
+          (targetPlacement && placementCollides(result.project, targetPlacement)) ||
+          (sourcePlacement && placementCollides(result.project, sourcePlacement))
+        ) {
+          showMessage('This swap needs more open space before moving that component.')
+          return
+        }
+
+        updateProject(result.project)
+        setSelectedItemId(data.itemId)
+        setSelectedConnectionId(null)
+        setValidationMessage(null)
+        focusCanvasItem(serverId)
+        return
+      }
+
+      const projectWithoutAssignment = {
+        ...project,
+        assignments: project.assignments.filter((candidate) => candidate.id !== data.assignmentId),
+      }
+      const validation = validateAssignment(projectWithoutAssignment, serverId, data.itemId)
+
+      if (!validation.ok) {
+        showMessage(validation.message)
+        return
+      }
+
+      const nextProject = assignComponent(projectWithoutAssignment, serverId, data.itemId)
+      const targetPlacement = nextProject.placements.find((placement) => placement.serverId === serverId)
+
+      if (targetPlacement && placementCollides(nextProject, targetPlacement)) {
+        showMessage('This server needs more open space before moving that component.')
+        return
+      }
+
+      updateProject(nextProject)
+      setSelectedItemId(data.itemId)
+      setSelectedConnectionId(null)
+      setValidationMessage(null)
+      focusCanvasItem(data.itemId)
+      return
+    }
+
+    if (isCanvasItem(item)) {
+      showMessage('Canvas equipment belongs on the canvas.')
+      return
+    }
+
+    const validation = validateAssignment(project, serverId, data.itemId)
+
+    if (!validation.ok) {
+      showMessage(validation.message)
+      return
+    }
+
+    const nextProject = assignComponent(project, serverId, data.itemId)
+    const serverPlacement = nextProject.placements.find((placement) => placement.serverId === serverId)
+
+    if (serverPlacement && placementCollides(nextProject, serverPlacement)) {
+      showMessage('This server needs more open space before adding that component.')
+      return
+    }
+
+    updateProject(nextProject)
+    setSelectedItemId(data.itemId)
+    setSelectedConnectionId(null)
+    setValidationMessage(null)
+    focusCanvasItem(data.itemId)
+  }
+
+  function handleDragStart(event: DragStartEvent) {
+    const data = event.active.data.current as DragData | undefined
+
+    if (data?.kind === 'inventory' || data?.kind === 'assigned-component') {
+      setDraggingItemId(data.itemId)
+      setMobileInventoryOpen(false)
+      setValidationMessage(null)
+    }
+  }
+
+  function undoProjectChange() {
+    setHistory((currentHistory) => {
+      const currentProject = projectRef.current
+
+      if (!currentProject) {
+        return currentHistory
+      }
+
+      const result = undoHistory(currentHistory, currentProject)
+
+      if (!result) {
+        return currentHistory
+      }
+
+      setProject(result.project)
+      setSelectedItemId((current) => (current && result.project.items[current] ? current : null))
+      setSelectedConnectionId((current) =>
+        current && result.project.connections.some((connection) => connection.id === current)
+          ? current
+          : null,
+      )
+      setValidationMessage(null)
+
+      return result.history
+    })
+  }
+
+  function redoProjectChange() {
+    setHistory((currentHistory) => {
+      const currentProject = projectRef.current
+
+      if (!currentProject) {
+        return currentHistory
+      }
+
+      const result = redoHistory(currentHistory, currentProject)
+
+      if (!result) {
+        return currentHistory
+      }
+
+      setProject(result.project)
+      setSelectedItemId((current) => (current && result.project.items[current] ? current : null))
+      setSelectedConnectionId((current) =>
+        current && result.project.connections.some((connection) => connection.id === current)
+          ? current
+          : null,
+      )
+      setValidationMessage(null)
+
+      return result.history
+    })
+  }
+
+  if (projectQuery.isError) {
+    const error = projectQuery.error
+
+    return (
+      <ErrorScreen
+        message={error instanceof Error ? error.message : 'Unknown startup error.'}
+        onRetry={() => {
+          hasHydratedProjectRef.current = false
+          void projectQuery.refetch()
+        }}
+      />
+    )
+  }
+
+  if (projectQuery.isLoading || !project) {
+    return <LoadingScreen />
+  }
+
+  return (
+    <TooltipProvider>
+      <DndContext
+        sensors={sensors}
+        onDragStart={handleDragStart}
+        onDragCancel={() => setDraggingItemId(null)}
+        onDragEnd={handleDragEnd}
+      >
+        <div className="relative flex h-dvh w-screen overflow-hidden bg-[#e8e2d8] lg:min-w-[1080px]">
+          <div className="relative hidden min-h-0 shrink-0 lg:flex" style={{ width: inventoryWidth }}>
+            <InventorySidebar
+              project={project}
+              onSelect={handleInventorySelect}
+              onCreateItem={handleCreateInventoryItem}
+              width={inventoryWidth}
+            />
+            <button
+              type="button"
+              aria-label="Resize inventory sidebar"
+              className="absolute right-0 top-0 z-30 h-full w-2 translate-x-1 cursor-col-resize border-r border-transparent transition hover:border-[#ddb668] focus-visible:border-[#ddb668] focus-visible:outline-none"
+              onPointerDown={startInventoryResize}
+            />
+          </div>
+          <Button
+            type="button"
+            className="fixed z-30 h-11 gap-2 rounded-lg bg-[#20242c] px-3 text-sm font-bold text-[#fffdf8] shadow-[0_12px_28px_rgba(32,36,44,0.28)] hover:bg-[#2f3642] lg:hidden"
+            style={{
+              left: 'max(1rem, env(safe-area-inset-left))',
+              top: 'max(1rem, env(safe-area-inset-top))',
+            }}
+            onClick={() => setMobileInventoryOpen(true)}
+            aria-label="Open inventory"
+          >
+            <Menu className="size-4" />
+            Inventory
+          </Button>
+          <Sheet open={mobileInventoryOpen} onOpenChange={setMobileInventoryOpen}>
+            <SheetContent
+              side="left"
+              className="!w-[min(94vw,430px)] max-w-none gap-0 border-r-0 bg-[#20242c] p-0 text-[#f7f1e8] sm:max-w-none"
+              onOpenAutoFocus={(event) => event.preventDefault()}
+            >
+              <SheetHeader className="sr-only">
+                <SheetTitle>Inventory</SheetTitle>
+                <SheetDescription>Browse and drag inventory items onto the canvas.</SheetDescription>
+              </SheetHeader>
+              <InventorySidebar
+                project={project}
+                onSelect={handleInventorySelect}
+                onCreateItem={handleCreateInventoryItem}
+                className="h-full w-full"
+              />
+            </SheetContent>
+          </Sheet>
+          <WorkbenchCanvas
+            project={project}
+            agentStatus={agentStatusQuery.data ?? null}
+            selectedItemId={selectedItem ? runtimeItemKey(selectedItem) : null}
+            selectedConnectionId={selectedConnection?.id ?? null}
+            spotlightItemId={spotlightItemId}
+            activeNetworkTraceConnectionIds={activeNetworkTraceConnectionIds}
+            activeNetworkTraceItemIds={activeNetworkTraceItemIds}
+            pendingEndpoint={pendingConnectionEndpoint}
+            draggingEndpoint={portConnectionPreview?.mode === 'drag' ? portConnectionPreview.from : null}
+            validationMessage={validationMessage}
+            canUndo={history.past.length > 0}
+            canRedo={history.future.length > 0}
+            saveStatus={saveStatus}
+            autoCenterOnSelect={autoCenterOnSelect}
+            onSelect={(itemId) => {
+              setSelectedItemId(itemId)
+              setSelectedConnectionId(null)
+              setActiveNetworkTraceEndpoint(null)
+              focusCanvasItem(itemId)
+            }}
+            onSelectConnection={(connectionId) => {
+              setSelectedConnectionId(connectionId)
+              setSelectedItemId(null)
+              setActiveNetworkTraceEndpoint(null)
+            }}
+            onRemoveAssignment={(assignmentId) => updateProject(removeAssignment(project, assignmentId))}
+            onMoveItem={(itemId: string, position: XYPosition) => {
+              const placement = getNonCollidingPlacement(project, {
+                serverId: itemId,
+                x: snapToGrid(position.x),
+                y: snapToGrid(position.y),
+              })
+
+              if (!placement) {
+                showMessage('Canvas equipment cannot overlap. Move this item to an open space.')
+                return false
+              }
+
+              updateProject(upsertPlacement(project, placement))
+              setValidationMessage(null)
+              return true
+            }}
+            onMoveItems={(placements) => {
+              const nextPlacements = placements.map((placement) => ({
+                serverId: placement.serverId,
+                x: snapToGrid(placement.x),
+                y: snapToGrid(placement.y),
+              }))
+
+              if (placementsCollide(project, nextPlacements)) {
+                showMessage('Canvas equipment cannot overlap. Move this group to an open space.')
+                return false
+              }
+
+              updateProject(upsertPlacements(project, nextPlacements))
+              setValidationMessage(null)
+              return true
+            }}
+            onEndpointClick={handleCanvasEndpointClick}
+            onEndpointDragStart={handleCanvasEndpointDragStart}
+            onEndpointDrop={handleCanvasEndpointDrop}
+            onUpdateConnectionRoute={(connectionId: string | number, route: ConnectionRoutePreferences) => {
+              updateProject(updateConnectionRoute(project, connectionId, route), {
+                recordHistory: false,
+              })
+              setValidationMessage(null)
+            }}
+            onViewportReady={(canvasController) => {
+              canvasControllerRef.current = canvasController
+            }}
+            onCanvasClick={() => {
+              setSelectedItemId(null)
+              setSelectedConnectionId(null)
+              setPendingConnectionEndpoint(null)
+              setPortConnectionPreview(null)
+              setActiveNetworkTraceEndpoint(null)
+            }}
+            onUndo={undoProjectChange}
+            onRedo={redoProjectChange}
+            onToggleAutoCenterOnSelect={() => setAutoCenterOnSelect((current) => !current)}
+            onAutoArrange={() => {
+              if (project.placements.length === 0) {
+                showMessage('Drag equipment onto the canvas before arranging.')
+                return
+              }
+
+              updateProject(autoArrangeCanvasItems(project))
+              setValidationMessage(null)
+            }}
+            onOpenAudit={() => setAuditOpen(true)}
+          />
+          {portConnectionPreview ? (
+            <PortConnectionPreviewOverlay preview={portConnectionPreview} />
+          ) : null}
+          <InspectorPanel
+            project={project}
+            agentStatus={agentStatusQuery.data ?? null}
+            selectedItemId={selectedItem ? runtimeItemKey(selectedItem) : null}
+            selectedConnectionId={selectedConnection?.id ?? null}
+            activeNetworkTraceKey={activeNetworkTraceEndpoint ? endpointKey(activeNetworkTraceEndpoint) : null}
+            pendingConnectionEndpoint={pendingConnectionEndpoint}
+            validationMessage={validationMessage}
+            persistenceWarning={persistenceWarning}
+            open={selectedItem !== null || selectedConnection !== null}
+            onClose={() => {
+              setSelectedItemId(null)
+              setSelectedConnectionId(null)
+              setPendingConnectionEndpoint(null)
+            }}
+            onUpdateServerIdentity={(serverId, identity) => {
+              updateProject(updateItemIdentity(project, serverId, identity), {
+                recordHistory: false,
+              })
+              setValidationMessage(null)
+            }}
+            onUpdateServerSpecs={(serverId, specs) => {
+              updateProject(updateItemSpecs(project, serverId, specs), {
+                recordHistory: false,
+              })
+              setValidationMessage(null)
+            }}
+            onUpdateServerProperties={(serverId, properties) => {
+              updateProject(updateItemProperties(project, serverId, properties), {
+                recordHistory: false,
+              })
+              setValidationMessage(null)
+            }}
+            onUpdateRamManufacturer={(ramId, manufacturer, key) => {
+              updateProject(updateItemManufacturer(project, ramId, manufacturer, key), {
+                recordHistory: false,
+              })
+              setValidationMessage(null)
+            }}
+            onUpdateRamSpecs={(ramId, specs) => {
+              updateProject(updateItemSpecs(project, ramId, specs), {
+                recordHistory: false,
+              })
+              setValidationMessage(null)
+            }}
+            onUpdateStorageManufacturer={(storageId, manufacturer) => {
+              updateProject(updateItemManufacturer(project, storageId, manufacturer), {
+                recordHistory: false,
+              })
+              setValidationMessage(null)
+            }}
+            onUpdateStorageSpecs={(storageId, specs) => {
+              updateProject(updateItemSpecs(project, storageId, specs), {
+                recordHistory: false,
+              })
+              setValidationMessage(null)
+            }}
+            onUpdateGpuIdentity={(gpuId, identity) => {
+              updateProject(updateItemIdentity(project, gpuId, identity), {
+                recordHistory: false,
+              })
+              setValidationMessage(null)
+            }}
+            onUpdateGpuSpecs={(gpuId, specs) => {
+              updateProject(updateItemSpecs(project, gpuId, specs), {
+                recordHistory: false,
+              })
+              setValidationMessage(null)
+            }}
+            onUpdateItemPorts={(itemId, ports) => {
+              updateProject(updateItemPorts(project, itemId, ports), {
+                recordHistory: false,
+              })
+              setValidationMessage(null)
+            }}
+            onCreateConnection={(from: ConnectionEndpoint, to: ConnectionEndpoint) => {
+              const result = createConnection(project, from, to)
+
+              if (!result.ok) {
+                setValidationMessage(result.message)
+                return
+              }
+
+              updateProject(result.project)
+              setSelectedConnectionId(result.connection.id)
+              setSelectedItemId(null)
+              setActiveNetworkTraceEndpoint(null)
+              setPendingConnectionEndpoint(null)
+              setValidationMessage(null)
+            }}
+            onSelectNetworkTrace={(endpoint) => {
+              setActiveNetworkTraceEndpoint(endpoint)
+              setSelectedConnectionId(null)
+              setPendingConnectionEndpoint(null)
+              setPortConnectionPreview(null)
+            }}
+            onEndpointConnectionClick={handleEndpointConnectionClick}
+            onCancelPendingConnection={() => {
+              setPendingConnectionEndpoint(null)
+              setValidationMessage(null)
+            }}
+            onUpdateConnectionLabel={(connectionId, label) => {
+              updateProject(updateConnectionLabel(project, connectionId, label), {
+                recordHistory: false,
+              })
+              setValidationMessage(null)
+            }}
+            onUpdateConnectionRoute={(connectionId, route) => {
+              updateProject(updateConnectionRoute(project, connectionId, route), {
+                recordHistory: false,
+              })
+              setValidationMessage(null)
+            }}
+            onRemoveConnection={(connectionId) => {
+              updateProject(removeConnection(project, connectionId))
+              if (String(selectedConnectionId) === String(connectionId)) {
+                setSelectedConnectionId(null)
+              }
+              setValidationMessage(null)
+            }}
+          />
+          <AuditDrawer
+            project={project}
+            open={auditOpen}
+            onClose={() => setAuditOpen(false)}
+            onSelectItem={(itemId) => {
+              setSelectedItemId(itemId)
+              setSelectedConnectionId(null)
+              setPendingConnectionEndpoint(null)
+              setAuditOpen(false)
+              setActiveNetworkTraceEndpoint(null)
+              focusCanvasItem(itemId)
+            }}
+          />
+          <GlobalItemSearch
+            project={project}
+            open={searchOpen}
+            onOpenChange={setSearchOpen}
+            onSelectItem={(itemId) => {
+              setSelectedItemId(itemId)
+              setSelectedConnectionId(null)
+              setPendingConnectionEndpoint(null)
+              setActiveNetworkTraceEndpoint(null)
+              focusCanvasItem(itemId)
+            }}
+          />
+        </div>
+        <DragOverlay dropAnimation={null} zIndex={80}>
+          <InventoryDragPreview
+            item={draggingItemId ? project.items[draggingItemId] ?? null : null}
+            project={project}
+          />
+        </DragOverlay>
+      </DndContext>
+    </TooltipProvider>
+  )
+}
+
+export default App

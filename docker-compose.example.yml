@@ -1,0 +1,16 @@
+services:
+  homelab-inventory:
+    image: mriverodorta/homelab-inventory:latest
+    container_name: homelab-inventory
+    restart: unless-stopped
+    ports:
+      - "8798:8798"
+    volumes:
+      - ./data:/data
+
+    # Defaults are already set in the image:
+    # environment:
+    #   NODE_ENV: production
+    #   PORT: 8798
+    #   DATA_DIR: /data
+    #   SAVE_DEBOUNCE_MS: 500

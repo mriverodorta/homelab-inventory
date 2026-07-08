@@ -1,0 +1,47 @@
+name: Bug report
+description: Report something that is broken or confusing.
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please sanitize private IPs, serial numbers, tokens, and real inventory data before posting.
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: Docker tag, git commit, or app version.
+      placeholder: "0.1.9"
+  - type: textarea
+    id: summary
+    attributes:
+      label: What happened?
+      description: Describe the issue.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Open ...
+        2. Drag ...
+        3. See ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      placeholder: |
+        Browser:
+        OS:
+        Docker or bare-metal:
+        Reverse proxy:
