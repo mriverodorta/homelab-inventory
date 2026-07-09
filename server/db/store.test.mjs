@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { HomelabInventoryStore } from './store.mjs'
 
 const tempDirs = []
+const activeStores = []
 
 async function makeTempDir() {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'ssi-lowdb-'))
@@ -18,7 +19,15 @@ async function writeJson(filePath, payload) {
   await fs.writeFile(filePath, `${JSON.stringify(payload, null, 2)}\n`)
 }
 
+function createStore(options) {
+  const store = new HomelabInventoryStore(options)
+  activeStores.push(store)
+
+  return store
+}
+
 afterEach(async () => {
+  await Promise.all(activeStores.splice(0).map((store) => store.flush().catch(() => {})))
   await Promise.all(tempDirs.splice(0).map((dir) => fs.rm(dir, { recursive: true, force: true })))
 })
 
@@ -60,7 +69,7 @@ describe('HomelabInventoryStore', () => {
       connections: [],
     })
 
-    const store = new HomelabInventoryStore({
+    const store = createStore({
       appVersion: '1.0.0',
       dataDir,
       legacyProjectPath: path.join(dataDir, 'homelab-inventory-project.json'),
@@ -94,7 +103,7 @@ describe('HomelabInventoryStore', () => {
   it('creates empty stores when seed data is disabled', async () => {
     const dataDir = await makeTempDir()
 
-    const store = new HomelabInventoryStore({
+    const store = createStore({
       appVersion: '1.0.0',
       dataDir,
       legacyProjectPath: path.join(dataDir, 'homelab-inventory-project.json'),
@@ -155,7 +164,7 @@ describe('HomelabInventoryStore', () => {
       connections: [],
     })
 
-    const store = new HomelabInventoryStore({
+    const store = createStore({
       appVersion: '1.0.0',
       dataDir,
       legacyProjectPath: legacyPath,
@@ -203,7 +212,7 @@ describe('HomelabInventoryStore', () => {
       connections: [],
     })
 
-    const store = new HomelabInventoryStore({
+    const store = createStore({
       appVersion: '1.0.0',
       dataDir,
       legacyProjectPath: path.join(dataDir, 'homelab-inventory-project.json'),
@@ -235,7 +244,7 @@ describe('HomelabInventoryStore', () => {
   it('initializes release-note acknowledgement to the current version on fresh empty data', async () => {
     const dataDir = await makeTempDir()
 
-    const store = new HomelabInventoryStore({
+    const store = createStore({
       appVersion: '0.1.10',
       dataDir,
       legacyProjectPath: path.join(dataDir, 'homelab-inventory-project.json'),
@@ -296,7 +305,7 @@ describe('HomelabInventoryStore', () => {
       connections: [],
     })
 
-    const store = new HomelabInventoryStore({
+    const store = createStore({
       appVersion: '0.1.10',
       dataDir,
       legacyProjectPath: path.join(dataDir, 'homelab-inventory-project.json'),
@@ -365,7 +374,7 @@ describe('HomelabInventoryStore', () => {
       connections: [],
     })
 
-    const store = new HomelabInventoryStore({
+    const store = createStore({
       appVersion: '0.1.10',
       dataDir,
       legacyProjectPath: path.join(dataDir, 'homelab-inventory-project.json'),
@@ -421,7 +430,7 @@ describe('HomelabInventoryStore', () => {
       connections: [],
     })
 
-    const store = new HomelabInventoryStore({
+    const store = createStore({
       appVersion: '0.1.10',
       dataDir,
       legacyProjectPath: path.join(dataDir, 'homelab-inventory-project.json'),
