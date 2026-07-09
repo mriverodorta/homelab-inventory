@@ -1557,117 +1557,121 @@ function ConnectionDetails({
   }
 
   return (
-    <Card className={cn(inspectorSurfaceClass, 'overflow-visible rounded-lg py-3')}>
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <div className="flex items-center gap-2 font-black text-[#20242c]">
-            <Cable className="size-4 text-[#75695d]" />
-            {connection.label?.trim() || 'Cable'}
-          </div>
+    <Card className={cn(inspectorSurfaceClass, 'overflow-visible rounded-lg')} size="sm">
+      <CardHeader className="grid-cols-[1fr_auto] items-start gap-3">
+        <div className="min-w-0">
+          <CardTitle className="flex min-w-0 items-center gap-2 text-base font-black text-[#20242c]">
+            <Cable className="size-4 shrink-0 text-[#75695d]" />
+            <span className="truncate">{connection.label?.trim() || 'Cable'}</span>
+          </CardTitle>
           <div className="mt-1 text-xs font-semibold uppercase tracking-[0.08em] text-[#75695d]">
             {connection.type}
           </div>
         </div>
-        <span
-          className="rounded-md border px-2 py-1 text-xs font-black leading-none"
-          style={{
-            borderColor: appearance.color,
-            color: appearance.color,
-          }}
-        >
-          {appearance.label}
-        </span>
-      </div>
+        <CardAction>
+          <span
+            className="inline-flex rounded-md border px-2 py-1 text-xs font-black leading-none"
+            style={{
+              borderColor: appearance.color,
+              color: appearance.color,
+            }}
+          >
+            {appearance.label}
+          </span>
+        </CardAction>
+      </CardHeader>
 
-      <label className={cn(formLabelClass, 'mt-4')}>
-        Label
-        <Input
-          value={connection.label ?? ''}
-          placeholder="Cable label"
-          onChange={(event) => onUpdateLabel(connection.id, event.target.value)}
-        />
-      </label>
+      <CardContent className="space-y-4">
+        <label className={formLabelClass}>
+          Label
+          <Input
+            value={connection.label ?? ''}
+            placeholder="Cable label"
+            onChange={(event) => onUpdateLabel(connection.id, event.target.value)}
+          />
+        </label>
 
-      <div className="mt-4 space-y-3">
-        <div className="rounded-md bg-[#f8f3eb] p-2">
-          <div className="text-[10px] font-bold uppercase tracking-[0.1em] text-[#75695d]">
-            From
+        <div className="space-y-3">
+          <div className="rounded-md bg-[#f8f3eb] p-3">
+            <div className="text-[10px] font-bold uppercase tracking-[0.1em] text-[#75695d]">
+              From
+            </div>
+            <div className="mt-1 text-sm font-semibold leading-snug text-[#20242c]">
+              {describeConnectionEndpoint(project, connection.from)}
+            </div>
           </div>
-          <div className="mt-1 text-sm font-semibold leading-snug text-[#20242c]">
-            {describeConnectionEndpoint(project, connection.from)}
+          <div className="rounded-md bg-[#f8f3eb] p-3">
+            <div className="text-[10px] font-bold uppercase tracking-[0.1em] text-[#75695d]">
+              To
+            </div>
+            <div className="mt-1 text-sm font-semibold leading-snug text-[#20242c]">
+              {describeConnectionEndpoint(project, connection.to)}
+            </div>
           </div>
         </div>
-        <div className="rounded-md bg-[#f8f3eb] p-2">
-          <div className="text-[10px] font-bold uppercase tracking-[0.1em] text-[#75695d]">
-            To
-          </div>
-          <div className="mt-1 text-sm font-semibold leading-snug text-[#20242c]">
-            {describeConnectionEndpoint(project, connection.to)}
-          </div>
-        </div>
-      </div>
 
-      <div className="mt-4 rounded-md border border-[#e5dccf] bg-[#fffdf8] p-3">
-        <div className={labelClass}>
-          Route
+        <div className="rounded-md border border-[#e5dccf] bg-[#fffdf8] p-3">
+          <div className={labelClass}>
+            Route
+          </div>
+          <div className="mt-3 grid gap-3 sm:grid-cols-2">
+            <label className={formLabelClass}>
+              From side
+              <Select
+                value={route.sourceSide ?? 'auto'}
+                onValueChange={(value) => updateRouteSide('sourceSide', value as ConnectionRouteSide)}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {CONNECTION_ROUTE_SIDE_OPTIONS.map((side) => (
+                    <SelectItem key={side} value={side}>
+                      {side === 'auto' ? 'Auto' : side[0].toUpperCase() + side.slice(1)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </label>
+            <label className={formLabelClass}>
+              To side
+              <Select
+                value={route.targetSide ?? 'auto'}
+                onValueChange={(value) => updateRouteSide('targetSide', value as ConnectionRouteSide)}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {CONNECTION_ROUTE_SIDE_OPTIONS.map((side) => (
+                    <SelectItem key={side} value={side}>
+                      {side === 'auto' ? 'Auto' : side[0].toUpperCase() + side.slice(1)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </label>
+          </div>
+          <Button
+            type="button"
+            variant="outline"
+            className="mt-3 h-8 w-full text-xs"
+            disabled={!route.bendPoints?.length}
+            onClick={clearBendPoints}
+          >
+            Reset Bend Points
+          </Button>
         </div>
-        <div className="mt-3 grid gap-3 sm:grid-cols-2">
-          <label className={formLabelClass}>
-            From side
-            <Select
-              value={route.sourceSide ?? 'auto'}
-              onValueChange={(value) => updateRouteSide('sourceSide', value as ConnectionRouteSide)}
-            >
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {CONNECTION_ROUTE_SIDE_OPTIONS.map((side) => (
-                  <SelectItem key={side} value={side}>
-                    {side === 'auto' ? 'Auto' : side[0].toUpperCase() + side.slice(1)}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </label>
-          <label className={formLabelClass}>
-            To side
-            <Select
-              value={route.targetSide ?? 'auto'}
-              onValueChange={(value) => updateRouteSide('targetSide', value as ConnectionRouteSide)}
-            >
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {CONNECTION_ROUTE_SIDE_OPTIONS.map((side) => (
-                  <SelectItem key={side} value={side}>
-                    {side === 'auto' ? 'Auto' : side[0].toUpperCase() + side.slice(1)}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </label>
-        </div>
+
         <Button
           type="button"
           variant="outline"
-          className="mt-3 h-8 w-full text-xs"
-          disabled={!route.bendPoints?.length}
-          onClick={clearBendPoints}
+          className="h-9 w-full"
+          onClick={() => onRemove(connection.id)}
         >
-          Reset Bend Points
+          Remove Cable
         </Button>
-      </div>
-
-      <Button
-        type="button"
-        variant="outline"
-        className="mt-4 h-9 w-full"
-        onClick={() => onRemove(connection.id)}
-      >
-        Remove Cable
-      </Button>
+      </CardContent>
     </Card>
   )
 }

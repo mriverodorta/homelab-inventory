@@ -6,6 +6,7 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 
 ## Unreleased
 
+- Fixed connection inspector drawer spacing after the server inspector redesign.
 - Documented normal production deployment and persistent data setup.
 - Added GitHub Actions Docker publishing for `latest`, `stable`, and semver image tags.
 - Documented `main` as the fast-moving channel and `stable` as the recommended deployment channel.

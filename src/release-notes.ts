@@ -25,6 +25,7 @@ export const RELEASE_NOTES: ReleaseNoteEntry[] = [
       'Agent enrollment and telemetry endpoints return 403 in public demo mode.',
       'The demo extension prompt waits for the active sandbox to actually expire before opening.',
       'Demo-mode runtime files are included in the Docker image and session cookies are handled defensively.',
+      'Connection inspector cards now keep consistent drawer padding after the server inspector redesign.',
     ],
     notes: [
       'Adds a public demo mode with sanitized per-browser sandboxes, a visible session timer, and disabled agent enrollment.',
