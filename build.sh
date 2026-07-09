@@ -101,6 +101,13 @@ else
 fi
 
 validate_semver "$NEXT_VERSION"
+
+if ! grep -Eq "version:[[:space:]]*['\"]${NEXT_VERSION//./\\.}['\"]" src/release-notes.ts; then
+  echo "Missing release-note entry for ${NEXT_VERSION} in src/release-notes.ts." >&2
+  echo "Add the entry before publishing, or use a version that already has release notes." >&2
+  exit 1
+fi
+
 write_package_version "$NEXT_VERSION"
 
 echo "Building ${IMAGE_NAME}:${NEXT_VERSION} and ${IMAGE_NAME}:latest"

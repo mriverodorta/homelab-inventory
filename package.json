@@ -22,6 +22,7 @@
     "build": "tsc -b && vite build",
     "lint": "oxlint",
     "preview": "vite preview",
+    "release-notes:check": "bun scripts/check-release-notes.mjs",
     "start": "NODE_ENV=production bun server/index.mjs",
     "test": "vitest run",
     "test:watch": "vitest"
