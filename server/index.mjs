@@ -3,6 +3,7 @@ import fs from 'node:fs/promises'
 import helmet from 'helmet'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { RELEASE_NOTES } from '../src/release-notes.ts'
 import { registerAgentRoutes } from './agent-routes.mjs'
 import { HomelabInventoryStore } from './db/store.mjs'
 
@@ -71,6 +72,26 @@ app.get('/api/project', (_request, response) => {
     response.json(store.getProject())
   } catch (error) {
     response.status(500).json({ message: error instanceof Error ? error.message : 'Unable to load project.' })
+  }
+})
+
+app.get('/api/release-notes/status', (_request, response) => {
+  try {
+    response.json(store.getReleaseNotesStatus(RELEASE_NOTES))
+  } catch (error) {
+    response.status(500).json({
+      message: error instanceof Error ? error.message : 'Unable to load release notes status.',
+    })
+  }
+})
+
+app.post('/api/release-notes/acknowledge', async (_request, response) => {
+  try {
+    response.json(await store.acknowledgeReleaseNotes())
+  } catch (error) {
+    response.status(500).json({
+      message: error instanceof Error ? error.message : 'Unable to acknowledge release notes.',
+    })
   }
 })
 
