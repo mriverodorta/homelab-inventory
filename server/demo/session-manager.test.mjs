@@ -2,9 +2,12 @@ import fs from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
+import { HomelabInventoryStore } from '../db/store.mjs'
+import { DemoSessionManager, DEMO_COOKIE_NAME } from './session-manager.mjs'
 import { sanitizeDemoStores } from './sanitizer.mjs'
 
 const tempDirs = []
+const activeManagers = []
 
 async function makeTempDir() {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'homelab-demo-'))
@@ -22,7 +25,45 @@ async function readJson(filePath) {
   return JSON.parse(await fs.readFile(filePath, 'utf8'))
 }
 
+async function createSourceData() {
+  const sourceDir = await makeTempDir()
+
+  await writeJson(path.join(sourceDir, 'meta.json'), {
+    schemaVersion: 3,
+    appLastOpenedWith: '0.1.10',
+    updatedAt: '2026-07-09T00:00:00.000Z',
+  })
+  await writeJson(path.join(sourceDir, 'stores', 'inventory.json'), {
+    servers: [{ id: 1, name: 'Private Server', type: 'server', properties: { lanIp: '10.0.0.2' } }],
+    cpus: [],
+    ram: [],
+    storage: [],
+    networkCards: [],
+    gpus: [],
+    nas: [],
+    switches: [],
+    patchPanels: [],
+  })
+  await writeJson(path.join(sourceDir, 'stores', 'project.json'), {
+    id: 'default',
+    metadata: { name: 'Private', version: 1, updatedAt: '2026-07-09T00:00:00.000Z' },
+    placements: [{ itemType: 'server', itemId: 1, x: 24, y: 48 }],
+    assignments: [],
+    connections: [],
+  })
+
+  return sourceDir
+}
+
+function createManager(options) {
+  const manager = new DemoSessionManager(options)
+  activeManagers.push(manager)
+
+  return manager
+}
+
 afterEach(async () => {
+  await Promise.all(activeManagers.splice(0).map((manager) => manager.flushAll().catch(() => {})))
   await Promise.all(tempDirs.splice(0).map((dir) => fs.rm(dir, { recursive: true, force: true })))
 })
 
@@ -101,5 +142,111 @@ describe('demo data sanitizer', () => {
     expect(agents).toEqual({ enrollments: {}, devices: {} })
     expect(agentStatus).toEqual({ servers: {} })
     await expect(fs.access(path.join(targetDir, 'backups'))).rejects.toThrow()
+  })
+})
+
+describe('DemoSessionManager', () => {
+  it('creates and reuses a cookie-backed sandbox without mutating source data', async () => {
+    const sourceDir = await createSourceData()
+    const dataDir = await makeTempDir()
+    const manager = createManager({
+      appVersion: '0.1.11',
+      dataDir,
+      sourceDir,
+      sessionMinutes: 30,
+      maxSessions: 100,
+      saveDebounceMs: 1,
+    })
+
+    await manager.init()
+
+    const first = await manager.getOrCreateSessionStore(null)
+    const firstProject = first.store.getProject()
+
+    expect(first.sessionId).toBeTruthy()
+    expect(first.session.dataDir).toBe(path.join(dataDir, 'demo-sessions', first.sessionId))
+    expect(first.store).toBeInstanceOf(HomelabInventoryStore)
+    expect(firstProject.items['server:1'].name).toBe('Demo Server 1')
+
+    first.store.setProject({
+      ...firstProject,
+      metadata: { ...firstProject.metadata, name: 'Changed Demo' },
+    })
+    await first.store.flush()
+
+    const second = await manager.getOrCreateSessionStore(first.sessionId)
+
+    expect(second.sessionId).toBe(first.sessionId)
+    expect(second.store.getProject().metadata.name).toBe('Changed Demo')
+
+    const sourceProject = await readJson(path.join(sourceDir, 'stores', 'project.json'))
+    expect(sourceProject.metadata.name).toBe('Private')
+  })
+
+  it('extends and expires sessions', async () => {
+    const sourceDir = await createSourceData()
+    const dataDir = await makeTempDir()
+    const manager = createManager({
+      appVersion: '0.1.11',
+      dataDir,
+      sourceDir,
+      sessionMinutes: 30,
+      maxSessions: 100,
+      saveDebounceMs: 1,
+    })
+
+    await manager.init()
+    const created = await manager.getOrCreateSessionStore(null)
+    const before = Date.parse(created.session.expiresAt)
+    const extended = await manager.extendSession(created.sessionId)
+
+    expect(extended.mode).toBe('demo')
+    expect(extended.remainingSeconds).toBeGreaterThan(0)
+    expect(Date.parse(extended.expiresAt)).toBeGreaterThan(before)
+
+    await manager.expireSession(created.sessionId)
+
+    expect(await manager.getSession(created.sessionId)).toBeNull()
+    await expect(fs.access(created.session.dataDir)).rejects.toThrow()
+  })
+
+  it('enforces the active session cap after expired cleanup', async () => {
+    const sourceDir = await createSourceData()
+    const dataDir = await makeTempDir()
+    const manager = createManager({
+      appVersion: '0.1.11',
+      dataDir,
+      sourceDir,
+      sessionMinutes: 30,
+      maxSessions: 1,
+      saveDebounceMs: 1,
+    })
+
+    await manager.init()
+    await manager.getOrCreateSessionStore(null)
+
+    await expect(manager.getOrCreateSessionStore(null)).rejects.toThrow('The public demo is temporarily busy.')
+  })
+
+  it('validates source data and exposes cookie options', async () => {
+    const sourceDir = await makeTempDir()
+    const dataDir = await makeTempDir()
+    const manager = createManager({
+      appVersion: '0.1.11',
+      dataDir,
+      sourceDir,
+      sessionMinutes: 30,
+      maxSessions: 100,
+      saveDebounceMs: 1,
+    })
+
+    expect(DEMO_COOKIE_NAME).toBe('homelab_inventory_demo_session')
+    expect(manager.cookieOptions()).toMatchObject({
+      httpOnly: true,
+      sameSite: 'lax',
+      secure: false,
+      path: '/',
+    })
+    await expect(manager.init()).rejects.toThrow('Demo source data is missing required file:')
   })
 })
