@@ -476,7 +476,23 @@ echo "Homelab Inventory agent installed for $SERVER_ID."
 `
 }
 
-export function registerAgentRoutes(app, store) {
+const AGENT_DISABLED_MESSAGE = 'Agent features are disabled in public demo mode.'
+
+function disabledAgentRoute(_request, response) {
+  response.status(403).json({ message: AGENT_DISABLED_MESSAGE })
+}
+
+export function registerAgentRoutes(app, store, { disabled = false } = {}) {
+  if (disabled) {
+    app.get('/api/agent/install.sh', disabledAgentRoute)
+    app.get('/api/agent/status', disabledAgentRoute)
+    app.post('/api/agent/enrollments', disabledAgentRoute)
+    app.post('/api/agent/servers/:serverId/register', disabledAgentRoute)
+    app.post('/api/agent/servers/:serverId/heartbeat', disabledAgentRoute)
+
+    return
+  }
+
   app.get('/api/agent/install.sh', (_request, response) => {
     response.type('text/x-shellscript').send(installScript())
   })

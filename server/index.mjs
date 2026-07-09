@@ -83,7 +83,7 @@ app.use(helmet({
 
 app.use(express.json({ limit: '10mb' }))
 
-registerAgentRoutes(app, store)
+registerAgentRoutes(app, store, { disabled: isDemoMode })
 
 function parseCookie(header, name) {
   return (header ?? '')

@@ -76,11 +76,11 @@ async function createTestStore() {
   return store
 }
 
-function createApp(store) {
+function createApp(store, options) {
   const app = express()
 
   app.use(express.json({ limit: '10mb' }))
-  registerAgentRoutes(app, store)
+  registerAgentRoutes(app, store, options)
 
   return app
 }
@@ -104,6 +104,37 @@ afterEach(async () => {
 })
 
 describe('agent routes', () => {
+  it('returns 403 for disabled enrollment and install script routes without touching the store', async () => {
+    const disabledStore = new Proxy({}, {
+      get() {
+        throw new Error('Disabled agent routes must not touch the store.')
+      },
+    })
+    const app = createApp(disabledStore, { disabled: true })
+    const { server, url } = await listen(app)
+    const disabledMessage = 'Agent features are disabled in public demo mode.'
+
+    try {
+      const enrollmentResponse = await fetch(`${url}/api/agent/enrollments`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ serverId: 1 }),
+      })
+      const enrollmentBody = await enrollmentResponse.json()
+
+      expect(enrollmentResponse.status).toBe(403)
+      expect(enrollmentBody).toEqual({ message: disabledMessage })
+
+      const installResponse = await fetch(`${url}/api/agent/install.sh`)
+      const installBody = await installResponse.json()
+
+      expect(installResponse.status).toBe(403)
+      expect(installBody).toEqual({ message: disabledMessage })
+    } finally {
+      server.close()
+    }
+  })
+
   it('enrolls, registers, and accepts heartbeat for only the scoped server', async () => {
     const store = await createTestStore()
     const app = createApp(store)
