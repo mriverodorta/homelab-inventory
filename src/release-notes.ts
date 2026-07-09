@@ -12,6 +12,23 @@ export type ReleaseNoteEntry = {
 
 export const RELEASE_NOTES: ReleaseNoteEntry[] = [
   {
+    version: '0.1.11',
+    date: '2026-07-09',
+    channel: 'latest',
+    title: 'Public demo sandboxes',
+    highlights: [
+      'A new APP_MODE=demo runtime creates isolated writable demo sessions from a read-only source data mount.',
+      'Demo visitors get their own cookie-based sandbox with a countdown and an extension prompt before expiration.',
+    ],
+    fixes: [
+      'Demo copies exclude backups, agent stores, private IPs, serial numbers, tokens, and secret-like notes.',
+      'Agent enrollment and telemetry endpoints return 403 in public demo mode.',
+    ],
+    notes: [
+      'Adds a public demo mode with sanitized per-browser sandboxes, a visible session timer, and disabled agent enrollment.',
+    ],
+  },
+  {
     version: '0.1.10',
     date: '2026-07-09',
     channel: 'stable',
