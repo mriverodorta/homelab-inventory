@@ -1,3 +1,4 @@
+import express from 'express'
 import fs from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
@@ -23,6 +24,25 @@ async function writeJson(filePath, payload) {
 
 async function readJson(filePath) {
   return JSON.parse(await fs.readFile(filePath, 'utf8'))
+}
+
+function demoCookieFrom(response) {
+  const cookie = response.headers.get('set-cookie') ?? ''
+
+  return cookie.split(';')[0]
+}
+
+function closeServer(server) {
+  return new Promise((resolve, reject) => {
+    server.close((error) => {
+      if (error) {
+        reject(error)
+        return
+      }
+
+      resolve()
+    })
+  })
 }
 
 async function createSourceData() {
@@ -142,6 +162,78 @@ describe('demo data sanitizer', () => {
     expect(agents).toEqual({ enrollments: {}, devices: {} })
     expect(agentStatus).toEqual({ servers: {} })
     await expect(fs.access(path.join(targetDir, 'backups'))).rejects.toThrow()
+  })
+})
+
+describe('demo API routing contract', () => {
+  it('routes project reads and writes to the same cookie session', async () => {
+    const sourceDir = await createSourceData()
+    const dataDir = await makeTempDir()
+    const manager = createManager({
+      appVersion: '0.1.11',
+      dataDir,
+      sourceDir,
+      sessionMinutes: 30,
+      maxSessions: 100,
+      saveDebounceMs: 1,
+    })
+    await manager.init()
+
+    const app = express()
+    app.use(express.json({ limit: '10mb' }))
+    app.use(async (request, response, next) => {
+      const cookieHeader = request.get('cookie') ?? ''
+      const sessionCookie = cookieHeader
+        .split(';')
+        .map((value) => value.trim())
+        .find((value) => value.startsWith(`${DEMO_COOKIE_NAME}=`))
+        ?.split('=')
+        .at(1)
+      const demo = await manager.getOrCreateSessionStore(sessionCookie)
+
+      response.cookie(DEMO_COOKIE_NAME, demo.sessionId, manager.cookieOptions())
+      request.demoStore = demo.store
+      request.demoSession = demo.session
+      next()
+    })
+    app.get('/api/project', (request, response) => response.json(request.demoStore.getProject()))
+    app.put('/api/project', (request, response) => response.json(request.demoStore.setProject(request.body)))
+
+    const server = app.listen(0)
+    const url = await new Promise((resolve) => {
+      server.once('listening', () => resolve(`http://127.0.0.1:${server.address().port}`))
+    })
+
+    try {
+      const firstResponse = await fetch(`${url}/api/project`)
+      const cookie = demoCookieFrom(firstResponse)
+      const firstProject = await firstResponse.json()
+
+      expect(cookie).toContain(`${DEMO_COOKIE_NAME}=`)
+
+      const saveResponse = await fetch(`${url}/api/project`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Cookie: cookie,
+        },
+        body: JSON.stringify({
+          ...firstProject,
+          metadata: { ...firstProject.metadata, name: 'Visitor Demo' },
+        }),
+      })
+
+      expect(saveResponse.status).toBe(200)
+
+      const secondResponse = await fetch(`${url}/api/project`, {
+        headers: { Cookie: cookie },
+      })
+      const secondProject = await secondResponse.json()
+
+      expect(secondProject.metadata.name).toBe('Visitor Demo')
+    } finally {
+      await closeServer(server)
+    }
   })
 })
 
