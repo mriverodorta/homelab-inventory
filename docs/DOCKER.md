@@ -2,7 +2,7 @@
 
 Homelab Inventory is designed to run as a single container with a persistent data volume.
 
-## Compose
+## Normal Production Compose
 
 ```yaml
 services:
@@ -23,9 +23,46 @@ NODE_ENV=production
 PORT=8798
 DATA_DIR=/data
 SAVE_DEBOUNCE_MS=500
+APP_MODE=production
 ```
 
 You only need environment variables when overriding defaults.
+
+## Public Demo Sandbox Mode
+
+Public demo mode is intended for a disposable internet-facing sandbox, not for your real homelab data. Do not expose regular production directly to the internet; keep it behind a trusted LAN, VPN, or reverse proxy with authentication and TLS. Built-in authentication is planned and coming soon.
+
+Run the demo as a separate stack from production:
+
+```yaml
+services:
+  homelab-inventory-demo:
+    image: mriverodorta/homelab-inventory:latest
+    container_name: homelab-inventory-demo
+    restart: unless-stopped
+    ports:
+      - "8799:8798"
+    volumes:
+      - /data/stack/homelab-inventory-demo/data:/data
+      - /data/stack/homelab-inventory-demo/source:/read-only-data:ro
+    environment:
+      - APP_MODE=demo
+      - NODE_ENV=production
+```
+
+The host port is `8799`; the app still listens on container port `8798`.
+
+The writable `/data` mount stores per-browser demo sandboxes under the demo container. The `/read-only-data` mount must exist before startup and must contain:
+
+```txt
+/read-only-data
+  meta.json
+  stores/
+    inventory.json
+    project.json
+```
+
+Demo mode copies and sanitizes only the inventory, project, and metadata stores into each sandbox. It does not copy source agent enrollment data, agent status, or backups. Demo visitors are tracked with browser cookie sessions, and each writable sandbox expires after 30 minutes.
 
 ## Data Directory Permissions
 
@@ -35,6 +72,8 @@ The container runs as uid/gid `10001`.
 sudo mkdir -p /data/stack/homelab-inventory/data
 sudo chown -R 10001:10001 /data/stack/homelab-inventory/data
 ```
+
+For demo mode, make the writable data directory writable by uid/gid `10001`. The source directory can be read-only, but the container must be able to read it.
 
 ## First Start
 

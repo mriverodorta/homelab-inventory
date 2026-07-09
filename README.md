@@ -29,6 +29,8 @@ This project is being actively built with AI-assisted development. It is usable,
 
 ## Quick Start With Docker
 
+### Normal Production
+
 Create a Compose file:
 
 ```yaml
@@ -62,9 +64,36 @@ NODE_ENV=production
 PORT=8798
 DATA_DIR=/data
 SAVE_DEBOUNCE_MS=500
+APP_MODE=production
 ```
 
 Production starts empty. Create inventory items from the web interface, or copy an existing `/data` directory into the mounted volume.
+
+### Public Demo Sandbox Mode
+
+Use demo mode only for a public, disposable sandbox. Keep your regular production deployment private; do not expose it directly to the internet. Built-in authentication is planned and coming soon.
+
+Run the demo as a separate stack with its own writable `/data` directory and a read-only source data directory:
+
+```yaml
+services:
+  homelab-inventory-demo:
+    image: mriverodorta/homelab-inventory:latest
+    container_name: homelab-inventory-demo
+    restart: unless-stopped
+    ports:
+      - "8799:8798"
+    volumes:
+      - ./demo-data:/data
+      - ./demo-source:/read-only-data:ro
+    environment:
+      - APP_MODE=demo
+      - NODE_ENV=production
+```
+
+Open the demo at `http://<server-ip>:8799`. The host port is `8799`; the app still listens on container port `8798`.
+
+Demo mode requires `/read-only-data` to exist and contain `meta.json`, `stores/inventory.json`, and `stores/project.json`. Each visitor gets a browser cookie session with a private writable sandbox that expires after 30 minutes. The sandbox copies and sanitizes only the inventory, project, and metadata stores; source agent enrollment, agent status, and backups are not copied.
 
 More deployment details: [docs/DOCKER.md](docs/DOCKER.md)
 

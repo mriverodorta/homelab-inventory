@@ -6,6 +6,7 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 
 ## Unreleased
 
+- Documented normal production deployment and public demo sandbox mode, including the separate demo stack and source data requirements.
 - Added GitHub Actions Docker publishing for `latest`, `stable`, and semver image tags.
 - Documented `main` as the fast-moving channel and `stable` as the recommended deployment channel.
 - Prepared the project for public GitHub publishing.
