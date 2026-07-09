@@ -8,7 +8,7 @@ import {
   type DragEndEvent,
   type DragStartEvent,
 } from '@dnd-kit/core'
-import { useMutation, useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { XYPosition } from '@xyflow/react'
 import { AlertTriangle, Menu } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
@@ -16,6 +16,7 @@ import { AuditDrawer } from '@/components/audit-drawer'
 import { GlobalItemSearch } from '@/components/global-item-search'
 import { InspectorPanel } from '@/components/inspector-panel'
 import { InventorySidebar } from '@/components/inventory-sidebar'
+import { WhatsNewDialog } from '@/components/whats-new-dialog'
 import {
   snapToGrid,
   WorkbenchCanvas,
@@ -36,6 +37,11 @@ import { assignComponent, swapAssignedComponent, validateAssignment } from '@/li
 import { loadAgentStatus } from '@/lib/agent-api'
 import { createInventoryItem, loadProject, saveProject, type InventoryItemInput } from '@/lib/db'
 import { runtimeItemKey } from '@/lib/item-keys'
+import {
+  acknowledgeReleaseNotes,
+  loadReleaseNotesStatus,
+  type ReleaseNotesStatus,
+} from '@/lib/release-notes-api'
 import {
   createEmptyHistory,
   pushHistory,
@@ -102,6 +108,7 @@ const MAX_INVENTORY_WIDTH = 460
 const DEFAULT_INVENTORY_WIDTH = 390
 const SAVE_DEBOUNCE_MS = 500
 const AUTO_CENTER_STORAGE_KEY = 'homelab-inventory:auto-center-on-select'
+const RELEASE_NOTES_STATUS_QUERY_KEY = ['release-notes-status'] as const
 
 type SaveStatus = 'saved' | 'saving' | 'error'
 
@@ -342,6 +349,7 @@ function PortConnectionPreviewOverlay({ preview }: { preview: PortConnectionPrev
 }
 
 function App() {
+  const queryClient = useQueryClient()
   const [project, setProject] = useState<ProjectState | null>(null)
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null)
   const [selectedConnectionId, setSelectedConnectionId] = useState<string | number | null>(null)
@@ -359,6 +367,7 @@ function App() {
   const [mobileInventoryOpen, setMobileInventoryOpen] = useState(false)
   const [draggingItemId, setDraggingItemId] = useState<string | null>(null)
   const [autoCenterOnSelect, setAutoCenterOnSelect] = useState(getStoredAutoCenterPreference)
+  const [releaseNotesDismissedForSession, setReleaseNotesDismissedForSession] = useState(false)
   const canvasControllerRef = useRef<CanvasController | null>(null)
   const projectRef = useRef<ProjectState | null>(null)
   const skipNextSaveRef = useRef(false)
@@ -376,8 +385,19 @@ function App() {
     queryFn: loadAgentStatus,
     refetchInterval: 30_000,
   })
+  const releaseNotesQuery = useQuery({
+    queryKey: RELEASE_NOTES_STATUS_QUERY_KEY,
+    queryFn: loadReleaseNotesStatus,
+  })
   const { mutate: mutateSaveProject } = useMutation({
     mutationFn: saveProject,
+  })
+  const acknowledgeReleaseNotesMutation = useMutation({
+    mutationFn: acknowledgeReleaseNotes,
+    onSuccess: (status) => {
+      queryClient.setQueryData<ReleaseNotesStatus>(RELEASE_NOTES_STATUS_QUERY_KEY, status)
+      setReleaseNotesDismissedForSession(true)
+    },
   })
   const sensors = useSensors(
     useSensor(MouseSensor, {
@@ -516,6 +536,10 @@ function App() {
     () => (activeNetworkTrace ? getNetworkTraceItemIds(activeNetworkTrace) : []),
     [activeNetworkTrace],
   )
+  const shouldShowWhatsNewDialog =
+    !releaseNotesDismissedForSession &&
+    releaseNotesQuery.data?.hasUnseen === true &&
+    releaseNotesQuery.data.entries.length > 0
 
   function updateProject(nextProject: ProjectState, options: { recordHistory?: boolean } = {}) {
     const shouldRecordHistory = options.recordHistory ?? true
@@ -531,6 +555,12 @@ function App() {
 
   function showMessage(message: string) {
     setValidationMessage(message)
+  }
+
+  function handleWhatsNewOpenChange(open: boolean) {
+    if (!open) {
+      setReleaseNotesDismissedForSession(true)
+    }
   }
 
   function createConnectionBetween(from: ConnectionEndpoint, to: ConnectionEndpoint) {
@@ -1238,6 +1268,16 @@ function App() {
               focusCanvasItem(itemId)
             }}
           />
+          {releaseNotesQuery.data ? (
+            <WhatsNewDialog
+              open={shouldShowWhatsNewDialog}
+              currentVersion={releaseNotesQuery.data.currentVersion}
+              entries={releaseNotesQuery.data.entries}
+              acknowledging={acknowledgeReleaseNotesMutation.isPending}
+              onAcknowledge={() => acknowledgeReleaseNotesMutation.mutate()}
+              onOpenChange={handleWhatsNewOpenChange}
+            />
+          ) : null}
         </div>
         <DragOverlay dropAnimation={null} zIndex={80}>
           <InventoryDragPreview
