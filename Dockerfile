@@ -24,8 +24,10 @@ ENV SAVE_DEBOUNCE_MS=500
 COPY --chown=10001:10001 package.json bun.lock ./
 COPY --from=prod-deps --chown=10001:10001 /app/node_modules ./node_modules
 COPY --from=build --chown=10001:10001 /app/dist ./dist
+COPY --chown=10001:10001 src/release-notes.ts ./src/
 COPY --chown=10001:10001 server/index.mjs server/agent-routes.mjs ./server/
 COPY --chown=10001:10001 server/db/agent-auth.mjs server/db/store.mjs server/db/validation.mjs ./server/db/
+COPY --chown=10001:10001 server/demo/session-manager.mjs server/demo/sanitizer.mjs ./server/demo/
 COPY --from=build --chown=10001:10001 /tmp/runtime-data /data
 
 VOLUME ["/data"]

@@ -302,6 +302,57 @@ describe('DemoSessionManager', () => {
     await expect(fs.access(created.session.dataDir)).rejects.toThrow()
   })
 
+  it('allows extension during the grace prompt without allowing normal expired access', async () => {
+    const sourceDir = await createSourceData()
+    const dataDir = await makeTempDir()
+    const manager = createManager({
+      appVersion: '0.1.11',
+      dataDir,
+      sourceDir,
+      sessionMinutes: 30,
+      maxSessions: 100,
+      saveDebounceMs: 1,
+    })
+
+    await manager.init()
+    const created = await manager.getOrCreateSessionStore(null)
+
+    manager.sessions[created.sessionId].expiresAt = new Date(Date.now() - 1000).toISOString()
+
+    expect(await manager.getSession(created.sessionId)).toBeNull()
+
+    const extended = await manager.extendSession(created.sessionId)
+
+    expect(extended.remainingSeconds).toBeGreaterThan(0)
+
+    manager.sessions[created.sessionId].expiresAt = new Date(Date.now() - 31_000).toISOString()
+
+    await expect(manager.extendSession(created.sessionId)).rejects.toThrow('Demo session is expired.')
+  })
+
+  it('ignores prototype-like cookie values when looking up sessions', async () => {
+    const sourceDir = await createSourceData()
+    const dataDir = await makeTempDir()
+    const manager = createManager({
+      appVersion: '0.1.11',
+      dataDir,
+      sourceDir,
+      sessionMinutes: 30,
+      maxSessions: 100,
+      saveDebounceMs: 1,
+    })
+
+    await manager.init()
+
+    expect(await manager.getSession('__proto__')).toBeNull()
+    await expect(manager.extendSession('__proto__')).rejects.toThrow('Demo session is expired.')
+
+    const created = await manager.getOrCreateSessionStore('__proto__')
+
+    expect(created.sessionId).not.toBe('__proto__')
+    expect(Object.hasOwn(manager.sessions, created.sessionId)).toBe(true)
+  })
+
   it('enforces the active session cap after expired cleanup', async () => {
     const sourceDir = await createSourceData()
     const dataDir = await makeTempDir()

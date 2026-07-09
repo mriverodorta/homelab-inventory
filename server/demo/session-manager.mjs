@@ -7,6 +7,7 @@ import { sanitizeDemoStores } from './sanitizer.mjs'
 
 const INDEX_FILE = 'index.json'
 const COOKIE_MAX_AGE_SECONDS = 60 * 60 * 24 * 30
+const EXTENSION_GRACE_SECONDS = 30
 
 async function pathExists(filePath) {
   try {
@@ -39,8 +40,16 @@ function addMinutes(minutes) {
   return new Date(Date.now() + minutes * 60 * 1000).toISOString()
 }
 
-function expired(session) {
-  return Date.parse(session.expiresAt) <= Date.now()
+function sessionIndex(payload = {}) {
+  return Object.assign(Object.create(null), payload)
+}
+
+function hasSession(sessions, sessionId) {
+  return typeof sessionId === 'string' && Object.hasOwn(sessions, sessionId)
+}
+
+function expired(session, graceSeconds = 0) {
+  return Date.parse(session.expiresAt) + graceSeconds * 1000 <= Date.now()
 }
 
 function createSessionId() {
@@ -66,14 +75,14 @@ export class DemoSessionManager {
     this.saveDebounceMs = saveDebounceMs
     this.sessionsDir = path.join(dataDir, 'demo-sessions')
     this.indexPath = path.join(this.sessionsDir, INDEX_FILE)
-    this.sessions = {}
+    this.sessions = sessionIndex()
     this.stores = new Map()
   }
 
   async init() {
     await this.validateSource()
     await fs.mkdir(this.sessionsDir, { recursive: true })
-    this.sessions = await readJson(this.indexPath, {})
+    this.sessions = sessionIndex(await readJson(this.indexPath, {}))
     await this.cleanupExpiredSessions()
   }
 
@@ -106,7 +115,7 @@ export class DemoSessionManager {
   }
 
   async getSession(sessionId) {
-    if (!sessionId || !this.sessions[sessionId] || expired(this.sessions[sessionId])) {
+    if (!hasSession(this.sessions, sessionId) || expired(this.sessions[sessionId])) {
       return null
     }
 
@@ -179,12 +188,11 @@ export class DemoSessionManager {
   }
 
   async extendSession(sessionId) {
-    const session = await this.getSession(sessionId)
-
-    if (!session) {
+    if (!hasSession(this.sessions, sessionId) || expired(this.sessions[sessionId], EXTENSION_GRACE_SECONDS)) {
       throw new Error('Demo session is expired.')
     }
 
+    const session = this.sessions[sessionId]
     session.expiresAt = addMinutes(this.sessionMinutes)
     session.lastSeenAt = nowIso()
     await this.saveIndex()
@@ -193,12 +201,11 @@ export class DemoSessionManager {
   }
 
   async expireSession(sessionId) {
-    const session = this.sessions[sessionId]
-
-    if (!session) {
+    if (!hasSession(this.sessions, sessionId)) {
       return
     }
 
+    const session = this.sessions[sessionId]
     const store = this.stores.get(sessionId)
     if (store) {
       await store.flush().catch(() => {})
@@ -212,7 +219,7 @@ export class DemoSessionManager {
 
   async cleanupExpiredSessions() {
     const expiredIds = Object.values(this.sessions)
-      .filter((session) => expired(session))
+      .filter((session) => expired(session, EXTENSION_GRACE_SECONDS))
       .map((session) => session.id)
 
     for (const sessionId of expiredIds) {
