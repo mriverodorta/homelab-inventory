@@ -249,4 +249,36 @@ describe('DemoSessionManager', () => {
     })
     await expect(manager.init()).rejects.toThrow('Demo source data is missing required file:')
   })
+
+  it('rejects invalid source store shapes', async () => {
+    const sourceDir = await makeTempDir()
+    const dataDir = await makeTempDir()
+
+    await writeJson(path.join(sourceDir, 'meta.json'), {
+      schemaVersion: 3,
+      appLastOpenedWith: '0.1.10',
+      updatedAt: '2026-07-09T00:00:00.000Z',
+    })
+    await writeJson(path.join(sourceDir, 'stores', 'inventory.json'), {
+      servers: [{ id: 1, name: 'Server', type: 'server' }],
+    })
+    await writeJson(path.join(sourceDir, 'stores', 'project.json'), {
+      id: 'default',
+      metadata: { name: 'Private', version: 1, updatedAt: '2026-07-09T00:00:00.000Z' },
+      placements: [],
+      assignments: [],
+      connections: [],
+    })
+
+    const manager = createManager({
+      appVersion: '0.1.11',
+      dataDir,
+      sourceDir,
+      sessionMinutes: 30,
+      maxSessions: 100,
+      saveDebounceMs: 1,
+    })
+
+    await expect(manager.init()).rejects.toThrow('Inventory store is missing a cpus array.')
+  })
 })

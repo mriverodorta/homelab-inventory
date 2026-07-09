@@ -2,6 +2,7 @@ import crypto from 'node:crypto'
 import fs from 'node:fs/promises'
 import path from 'node:path'
 import { HomelabInventoryStore } from '../db/store.mjs'
+import { assertInventoryStoreShape, assertProjectStoreShape } from '../db/validation.mjs'
 import { sanitizeDemoStores } from './sanitizer.mjs'
 
 const INDEX_FILE = 'index.json'
@@ -77,17 +78,27 @@ export class DemoSessionManager {
   }
 
   async validateSource() {
-    const required = [
-      path.join(this.sourceDir, 'meta.json'),
-      path.join(this.sourceDir, 'stores', 'inventory.json'),
-      path.join(this.sourceDir, 'stores', 'project.json'),
-    ]
+    const metaPath = path.join(this.sourceDir, 'meta.json')
+    const inventoryPath = path.join(this.sourceDir, 'stores', 'inventory.json')
+    const projectPath = path.join(this.sourceDir, 'stores', 'project.json')
+    const required = [metaPath, inventoryPath, projectPath]
 
     for (const filePath of required) {
       if (!(await pathExists(filePath))) {
         throw new Error(`Demo source data is missing required file: ${filePath}`)
       }
     }
+
+    const meta = await readJson(metaPath, null)
+    const inventory = await readJson(inventoryPath, null)
+    const project = await readJson(projectPath, null)
+
+    if (!meta || typeof meta !== 'object' || Array.isArray(meta)) {
+      throw new Error('Demo source metadata must be an object.')
+    }
+
+    assertInventoryStoreShape(inventory)
+    assertProjectStoreShape(project)
   }
 
   async saveIndex() {
