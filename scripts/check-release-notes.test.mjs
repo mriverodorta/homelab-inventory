@@ -1,4 +1,5 @@
 import { execFile } from 'node:child_process'
+import fsSync from 'node:fs'
 import fs from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
@@ -8,6 +9,15 @@ import { afterEach, describe, expect, it } from 'vitest'
 const execFileAsync = promisify(execFile)
 const tempDirs = []
 const scriptPath = path.resolve('scripts/check-release-notes.mjs')
+const bunCandidates = [
+  process.versions.bun ? process.execPath : undefined,
+  process.env.npm_execpath?.includes('bun') ? process.env.npm_execpath : undefined,
+  path.join(os.homedir(), '.bun/bin/bun'),
+  'bun',
+].filter(Boolean)
+const bunExecutable =
+  bunCandidates.find((candidate) => path.isAbsolute(candidate) && fsSync.existsSync(candidate)) ??
+  'bun'
 
 async function run(command, args, options) {
   try {
@@ -25,7 +35,7 @@ async function run(command, args, options) {
 }
 
 async function runCheck(repo, args = []) {
-  return run('bun', [scriptPath, '--base', 'HEAD', ...args], { cwd: repo })
+  return run(bunExecutable, [scriptPath, '--base', 'HEAD', ...args], { cwd: repo })
 }
 
 async function makeRepo() {
