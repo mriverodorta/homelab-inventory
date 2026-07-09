@@ -36,6 +36,7 @@ import { getProjectAuditWarnings } from '@/lib/audit'
 import { connectionMatchesSelectedItem, getFocusedCableItemIds } from '@/lib/cable-focus'
 import { getConnectionRoute } from '@/lib/cable-routing'
 import { CABLE_COLORS, describeConnection, getCableAppearance } from '@/lib/cables'
+import { formatRemainingSeconds } from '@/lib/demo-api'
 import { runtimeItemKey } from '@/lib/item-keys'
 import { getCanvasItemHeight, getCanvasItemWidth } from '@/lib/project'
 import type { AgentStatusSummary } from '@/types/agent'
@@ -141,6 +142,7 @@ function CanvasViewport({
   pendingEndpoint,
   draggingEndpoint,
   validationMessage,
+  demoRemainingSeconds,
   onSelect,
   onSelectConnection,
   onRemoveAssignment,
@@ -172,6 +174,7 @@ function CanvasViewport({
   pendingEndpoint: ConnectionEndpoint | null
   draggingEndpoint: ConnectionEndpoint | null
   validationMessage: string | null
+  demoRemainingSeconds?: number | null
   canUndo: boolean
   canRedo: boolean
   saveStatus: 'saved' | 'saving' | 'error'
@@ -839,6 +842,11 @@ function CanvasViewport({
             Drag equipment from the inventory to start a layout.
           </div>
         ) : null}
+        {typeof demoRemainingSeconds === 'number' ? (
+          <div className="pointer-events-auto absolute left-4 top-4 z-20 rounded-lg border border-[#d6ccbd] bg-[#fffdf8]/95 px-3 py-2 text-xs font-black uppercase tracking-[0.08em] text-[#5d554c] shadow-sm">
+            Demo session {formatRemainingSeconds(demoRemainingSeconds)}
+          </div>
+        ) : null}
         <div className="absolute right-4 top-4 z-20 flex items-center overflow-hidden rounded-md border border-[#d6ccbd] bg-[#fffdf8] shadow-sm">
           <div
             className={`border-r border-[#e5dccf] px-2.5 py-2 text-[11px] font-semibold uppercase tracking-[0.08em] ${
@@ -1001,6 +1009,7 @@ export function WorkbenchCanvas(props: {
   pendingEndpoint: ConnectionEndpoint | null
   draggingEndpoint: ConnectionEndpoint | null
   validationMessage: string | null
+  demoRemainingSeconds?: number | null
   canUndo: boolean
   canRedo: boolean
   saveStatus: 'saved' | 'saving' | 'error'
