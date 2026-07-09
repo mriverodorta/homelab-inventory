@@ -28,6 +28,7 @@ export const RELEASE_NOTES: ReleaseNoteEntry[] = [
     ],
     notes: [
       'Adds a public demo mode with sanitized per-browser sandboxes, a visible session timer, and disabled agent enrollment.',
+      'GitHub Actions now uses checkout v7 for CI and Docker publishing workflows.',
     ],
   },
   {
