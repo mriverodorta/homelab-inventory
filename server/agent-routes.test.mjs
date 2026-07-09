@@ -7,6 +7,7 @@ import { registerAgentRoutes } from './agent-routes.mjs'
 import { HomelabInventoryStore } from './db/store.mjs'
 
 const tempDirs = []
+const activeStores = []
 
 async function makeTempDir() {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'ssi-agent-api-'))
@@ -70,6 +71,7 @@ async function createTestStore() {
   })
 
   await store.init()
+  activeStores.push(store)
 
   return store
 }
@@ -97,6 +99,7 @@ function listen(app) {
 }
 
 afterEach(async () => {
+  await Promise.all(activeStores.splice(0).map((store) => store.flush()))
   await Promise.all(tempDirs.splice(0).map((dir) => fs.rm(dir, { recursive: true, force: true })))
 })
 
