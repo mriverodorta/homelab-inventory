@@ -3,7 +3,7 @@ import type { InventoryItem, ProjectState } from '@/types/inventory'
 
 export type InventoryItemInput = Omit<InventoryItem, 'id' | 'key'>
 
-async function projectRequest<T>(url: string, init?: RequestInit): Promise<T> {
+export async function apiRequest<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, {
     ...init,
     headers: {
@@ -21,11 +21,11 @@ async function projectRequest<T>(url: string, init?: RequestInit): Promise<T> {
 }
 
 export async function loadProject(): Promise<ProjectState> {
-  return projectRequest<ProjectState>('/api/project')
+  return apiRequest<ProjectState>('/api/project')
 }
 
 export async function saveProject(project: ProjectState): Promise<ProjectState> {
-  return projectRequest<ProjectState>('/api/project', {
+  return apiRequest<ProjectState>('/api/project', {
     method: 'PUT',
     body: JSON.stringify({
       ...project,
@@ -35,7 +35,7 @@ export async function saveProject(project: ProjectState): Promise<ProjectState> 
 }
 
 export async function createInventoryItem(item: InventoryItemInput): Promise<ProjectState> {
-  return projectRequest<ProjectState>('/api/inventory/items', {
+  return apiRequest<ProjectState>('/api/inventory/items', {
     method: 'POST',
     body: JSON.stringify(item),
   })
