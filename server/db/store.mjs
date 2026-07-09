@@ -1,6 +1,7 @@
 import fs from 'node:fs/promises'
 import path from 'node:path'
 import { Low } from 'lowdb'
+import { getReleaseNotesBetween } from '../../src/release-notes.ts'
 import { assertInventoryStoreShape, assertProjectShape, assertProjectStoreShape } from './validation.mjs'
 
 export const CURRENT_SCHEMA_VERSION = 3
@@ -655,6 +656,7 @@ export class HomelabInventoryStore {
     this.dirtyStores = new Set()
     this.flushTimer = null
     this.flushPromise = null
+    this.createdStores = false
   }
 
   async init() {
@@ -664,6 +666,7 @@ export class HomelabInventoryStore {
     await this.openStores()
     await this.runMigrations()
     await this.validateStores()
+    this.initializeReleaseNotesMetadata()
     await this.markAppOpened()
   }
 
@@ -677,6 +680,8 @@ export class HomelabInventoryStore {
       return
     }
 
+    this.createdStores = true
+
     if (this.legacyProjectPath && await pathExists(this.legacyProjectPath)) {
       const legacyProject = await readJson(this.legacyProjectPath)
       const split = splitProject(legacyProject)
@@ -684,6 +689,7 @@ export class HomelabInventoryStore {
       await writeJson(this.paths.meta, {
         schemaVersion: CURRENT_SCHEMA_VERSION,
         appLastOpenedWith: this.appVersion,
+        lastSeenReleaseNotesVersion: this.appVersion,
         updatedAt: new Date().toISOString(),
       })
       await writeJson(this.paths.inventory, split.inventory)
@@ -710,6 +716,7 @@ export class HomelabInventoryStore {
     await writeJson(this.paths.meta, {
       schemaVersion: CURRENT_SCHEMA_VERSION,
       appLastOpenedWith: this.appVersion,
+      lastSeenReleaseNotesVersion: this.appVersion,
       updatedAt: now,
     })
     await writeJson(this.paths.inventory, Object.fromEntries(INVENTORY_TABLES.map((table) => [table, []])))
@@ -745,6 +752,7 @@ export class HomelabInventoryStore {
     this.databases.meta = new Low(new JsonFileAdapter(this.paths.meta), {
       schemaVersion: CURRENT_SCHEMA_VERSION,
       appLastOpenedWith: this.appVersion,
+      lastSeenReleaseNotesVersion: this.appVersion,
       updatedAt: new Date().toISOString(),
     })
     this.databases.inventory = new Low(
@@ -843,10 +851,50 @@ export class HomelabInventoryStore {
     this.databases.agentStatus.data.servers ??= {}
   }
 
+  initializeReleaseNotesMetadata() {
+    if (this.createdStores) {
+      this.databases.meta.data.lastSeenReleaseNotesVersion = this.appVersion
+      this.scheduleFlush('meta')
+      return
+    }
+
+    if (this.databases.meta.data.lastSeenReleaseNotesVersion) {
+      return
+    }
+
+    this.databases.meta.data.lastSeenReleaseNotesVersion = this.databases.meta.data.appLastOpenedWith ?? this.appVersion
+    this.scheduleFlush('meta')
+  }
+
   async markAppOpened() {
     this.databases.meta.data.appLastOpenedWith = this.appVersion
     this.databases.meta.data.updatedAt = new Date().toISOString()
     this.scheduleFlush('meta')
+  }
+
+  getReleaseNotesStatus(releaseNotes) {
+    const lastSeenVersion = this.databases.meta.data.lastSeenReleaseNotesVersion ?? this.appVersion
+    const entries = getReleaseNotesBetween(releaseNotes, lastSeenVersion, this.appVersion)
+
+    return {
+      currentVersion: this.appVersion,
+      lastSeenVersion,
+      hasUnseen: entries.length > 0,
+      entries,
+    }
+  }
+
+  async acknowledgeReleaseNotes() {
+    this.databases.meta.data.lastSeenReleaseNotesVersion = this.appVersion
+    this.databases.meta.data.updatedAt = new Date().toISOString()
+    await this.flush(['meta'])
+
+    return {
+      currentVersion: this.appVersion,
+      lastSeenVersion: this.appVersion,
+      hasUnseen: false,
+      entries: [],
+    }
   }
 
   getProject() {
