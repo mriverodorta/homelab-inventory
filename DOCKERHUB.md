@@ -4,6 +4,14 @@ Homelab Inventory is a self-hosted visual workbench for documenting homelab hard
 
 You can model servers, NAS devices, CPUs, RAM kits, storage, GPUs, network cards, switches, patch panels, physical ports, and cables on an infinite canvas.
 
+## Source Code
+
+The public source repository is available on GitHub:
+
+https://github.com/mriverodorta/homelab-inventory
+
+GitHub is the source of truth for CI/CD. Docker Hub images are built and published by GitHub Actions from the `main`, `stable`, and semver tag release channels.
+
 ## Security Notice
 
 Do not expose Homelab Inventory directly to the public internet.
