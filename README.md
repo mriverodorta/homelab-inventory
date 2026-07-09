@@ -8,6 +8,8 @@ Homelab Inventory is a self-hosted visual workbench for documenting homelab hard
 
 It is built for people who want a practical map of what they own, what is installed where, and how network or display ports are connected.
 
+Live demo: [lab.hkloud.org](https://lab.hkloud.org/)
+
 > [!WARNING]
 > Do not expose Homelab Inventory directly to the public internet. It is currently intended for a trusted LAN, VPN, or reverse proxy that provides authentication and TLS. Built-in authentication is planned and coming soon.
 
