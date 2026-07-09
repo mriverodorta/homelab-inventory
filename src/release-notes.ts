@@ -23,6 +23,7 @@ export const RELEASE_NOTES: ReleaseNoteEntry[] = [
     fixes: [
       'Demo copies exclude backups, agent stores, private IPs, serial numbers, tokens, and secret-like notes.',
       'Agent enrollment and telemetry endpoints return 403 in public demo mode.',
+      'The demo extension prompt waits for the active sandbox to actually expire before opening.',
     ],
     notes: [
       'Adds a public demo mode with sanitized per-browser sandboxes, a visible session timer, and disabled agent enrollment.',
