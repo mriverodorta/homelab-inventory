@@ -66,8 +66,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          short_sha="${GITHUB_SHA::12}"
-          tags=("${IMAGE_NAME}:sha-${short_sha}")
+          tags=()
 
           if [[ "${GITHUB_REF_TYPE}" == "branch" && "${GITHUB_REF_NAME}" == "main" ]]; then
             tags+=("${IMAGE_NAME}:latest")

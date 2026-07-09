@@ -83,7 +83,6 @@ GitHub is the source of truth for builds:
 - Pushes to `main` publish `mriverodorta/homelab-inventory:latest`.
 - Pushes to `stable` publish `mriverodorta/homelab-inventory:stable`.
 - Tags like `v0.2.0` publish `mriverodorta/homelab-inventory:0.2.0` and `mriverodorta/homelab-inventory:0.2`.
-- Every Docker publish also creates a `sha-<commit>` tag for exact rollback.
 
 The Docker publish workflow requires this GitHub repository secret:
 

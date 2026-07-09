@@ -113,7 +113,6 @@ More data details: [docs/DATA.md](docs/DATA.md)
 - `mriverodorta/homelab-inventory:stable` is built from the `stable` branch. Use this for regular homelab deployments and Watchtower.
 - `mriverodorta/homelab-inventory:latest` is built from the `main` branch. It is the newest development image and can be unstable.
 - `mriverodorta/homelab-inventory:<semver>` is built from Git tags such as `v0.2.0` and pins a specific release.
-- `mriverodorta/homelab-inventory:sha-<commit>` points at an exact commit image.
 
 Recommended Compose image:
 

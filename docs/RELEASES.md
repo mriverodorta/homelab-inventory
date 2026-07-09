@@ -9,7 +9,6 @@ GitHub is the source of truth for CI/CD. Docker Hub receives images from GitHub 
 | `main` branch | `latest` | Fast-moving development image. Can be unstable. |
 | `stable` branch | `stable` | Recommended image for normal deployments and Watchtower. |
 | `vX.Y.Z` tag | `X.Y.Z`, `X.Y` | Immutable release images for pinned deployments. |
-| any published commit | `sha-<commit>` | Exact rollback or debug image. |
 
 ## Normal Flow
 
