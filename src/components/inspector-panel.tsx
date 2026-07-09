@@ -1970,9 +1970,11 @@ function AgentTelemetrySection({
 function AgentSetupPanel({
   server,
   status,
+  demoMode,
 }: {
   server: InventoryItem
   status: AgentServerStatus
+  demoMode: boolean
 }) {
   const [endpoint, setEndpoint] = useState(() => window.location.origin)
   const [copied, setCopied] = useState(false)
@@ -2117,47 +2119,53 @@ function AgentSetupPanel({
         </div>
       ) : null}
 
-      <div className="mt-3 grid gap-2">
-        <label className={formLabelClass}>
-          Agent endpoint
-          <Input
-            value={endpoint}
-            placeholder="http://192.168.1.10:8798"
-            onChange={(event) => setEndpoint(event.target.value)}
-          />
-        </label>
-        <Button
-          type="button"
-          variant="outline"
-          className="justify-start gap-2"
-          disabled={enrollmentMutation.isPending || endpoint.trim() === ''}
-          onClick={() => enrollmentMutation.mutate()}
-        >
-          <Terminal data-icon="inline-start" />
-          {enrollmentMutation.isPending ? 'Generating...' : 'Setup Agent'}
-        </Button>
-        {enrollmentMutation.isError ? (
-          <div className="rounded-md border border-[#dfb3a5] bg-[#fff4ee] p-2 text-xs font-semibold text-[#7a2c1d]">
-            {enrollmentMutation.error instanceof Error
-              ? enrollmentMutation.error.message
-              : 'Agent setup command could not be generated.'}
-          </div>
-        ) : null}
-        {command ? (
-          <div className="grid gap-2">
-            <textarea
-              readOnly
-              value={command}
-              className="min-h-28 resize-y rounded-md border border-[#d6ccbd] bg-[#20242c] p-2 font-mono text-xs leading-relaxed text-[#fffdf8]"
-              aria-label="Agent install command"
+      {demoMode ? (
+        <div className="mt-3 rounded-md border border-[#dfc483] bg-[#fff8df] p-3 text-sm font-semibold text-[#5d4814]">
+          Agent setup is disabled in public demo mode.
+        </div>
+      ) : (
+        <div className="mt-3 grid gap-2">
+          <label className={formLabelClass}>
+            Agent endpoint
+            <Input
+              value={endpoint}
+              placeholder="http://192.168.1.10:8798"
+              onChange={(event) => setEndpoint(event.target.value)}
             />
-            <Button type="button" className="gap-2" onClick={() => void copyCommand()}>
-              <Copy data-icon="inline-start" />
-              {copied ? 'Copied' : 'Copy Command'}
-            </Button>
-          </div>
-        ) : null}
-      </div>
+          </label>
+          <Button
+            type="button"
+            variant="outline"
+            className="justify-start gap-2"
+            disabled={enrollmentMutation.isPending || endpoint.trim() === ''}
+            onClick={() => enrollmentMutation.mutate()}
+          >
+            <Terminal data-icon="inline-start" />
+            {enrollmentMutation.isPending ? 'Generating...' : 'Setup Agent'}
+          </Button>
+          {enrollmentMutation.isError ? (
+            <div className="rounded-md border border-[#dfb3a5] bg-[#fff4ee] p-2 text-xs font-semibold text-[#7a2c1d]">
+              {enrollmentMutation.error instanceof Error
+                ? enrollmentMutation.error.message
+                : 'Agent setup command could not be generated.'}
+            </div>
+          ) : null}
+          {command ? (
+            <div className="grid gap-2">
+              <textarea
+                readOnly
+                value={command}
+                className="min-h-28 resize-y rounded-md border border-[#d6ccbd] bg-[#20242c] p-2 font-mono text-xs leading-relaxed text-[#fffdf8]"
+                aria-label="Agent install command"
+              />
+              <Button type="button" className="gap-2" onClick={() => void copyCommand()}>
+                <Copy data-icon="inline-start" />
+                {copied ? 'Copied' : 'Copy Command'}
+              </Button>
+            </div>
+          ) : null}
+        </div>
+      )}
     </InspectorSection>
   )
 }
@@ -2570,6 +2578,7 @@ function ServerInspectorTabs({
   project,
   server,
   agentStatus,
+  demoMode,
   activeNetworkTraceKey,
   pendingEndpoint,
   auditWarnings,
@@ -2583,6 +2592,7 @@ function ServerInspectorTabs({
   project: ProjectState
   server: InventoryItem
   agentStatus: AgentStatusSummary | null
+  demoMode: boolean
   activeNetworkTraceKey: string | null
   pendingEndpoint: ConnectionEndpoint | null
   auditWarnings: AuditWarning[]
@@ -2666,7 +2676,7 @@ function ServerInspectorTabs({
         {
           value: 'agent',
           label: 'Agent',
-          content: <AgentSetupPanel server={server} status={status} />,
+          content: <AgentSetupPanel server={server} status={status} demoMode={demoMode} />,
         },
       ]}
     />
@@ -2881,6 +2891,7 @@ function RamPropertiesForm({
 export function InspectorPanel({
   project,
   agentStatus,
+  demoMode = false,
   selectedItemId,
   selectedConnectionId,
   activeNetworkTraceKey,
@@ -2909,6 +2920,7 @@ export function InspectorPanel({
 }: {
   project: ProjectState
   agentStatus: AgentStatusSummary | null
+  demoMode?: boolean
   selectedItemId: string | null
   selectedConnectionId: string | number | null
   activeNetworkTraceKey: string | null
@@ -3050,6 +3062,7 @@ export function InspectorPanel({
                   project={project}
                   server={selectedItem}
                   agentStatus={agentStatus}
+                  demoMode={demoMode}
                   activeNetworkTraceKey={activeNetworkTraceKey}
                   pendingEndpoint={pendingConnectionEndpoint}
                   auditWarnings={auditWarnings}

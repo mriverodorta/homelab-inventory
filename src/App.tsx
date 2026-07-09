@@ -13,6 +13,7 @@ import type { XYPosition } from '@xyflow/react'
 import { AlertTriangle, Menu } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { AuditDrawer } from '@/components/audit-drawer'
+import { DemoSessionDialog, type DemoSessionDialogState } from '@/components/demo-session-dialog'
 import { GlobalItemSearch } from '@/components/global-item-search'
 import { InspectorPanel } from '@/components/inspector-panel'
 import { InventorySidebar } from '@/components/inventory-sidebar'
@@ -36,6 +37,7 @@ import type { CanvasPortDragPoint } from '@/types/canvas'
 import { assignComponent, swapAssignedComponent, validateAssignment } from '@/lib/constraints'
 import { loadAgentStatus } from '@/lib/agent-api'
 import { createInventoryItem, loadProject, saveProject, type InventoryItemInput } from '@/lib/db'
+import { expireDemoSession, extendDemoSession, loadDemoSession, type DemoSessionStatus } from '@/lib/demo-api'
 import { runtimeItemKey } from '@/lib/item-keys'
 import {
   acknowledgeReleaseNotes,
@@ -107,8 +109,10 @@ const MIN_INVENTORY_WIDTH = 390
 const MAX_INVENTORY_WIDTH = 460
 const DEFAULT_INVENTORY_WIDTH = 390
 const SAVE_DEBOUNCE_MS = 500
+const DEMO_EXTENSION_GRACE_SECONDS = 30
 const AUTO_CENTER_STORAGE_KEY = 'homelab-inventory:auto-center-on-select'
 const RELEASE_NOTES_STATUS_QUERY_KEY = ['release-notes-status'] as const
+const DEMO_SESSION_QUERY_KEY = ['demo-session'] as const
 
 type SaveStatus = 'saved' | 'saving' | 'error'
 
@@ -368,10 +372,14 @@ function App() {
   const [draggingItemId, setDraggingItemId] = useState<string | null>(null)
   const [autoCenterOnSelect, setAutoCenterOnSelect] = useState(getStoredAutoCenterPreference)
   const [releaseNotesDismissedForSession, setReleaseNotesDismissedForSession] = useState(false)
+  const [demoRemainingSeconds, setDemoRemainingSeconds] = useState<number | null>(null)
+  const [demoDialogState, setDemoDialogState] = useState<DemoSessionDialogState>('closed')
+  const [demoExtensionSeconds, setDemoExtensionSeconds] = useState(DEMO_EXTENSION_GRACE_SECONDS)
   const canvasControllerRef = useRef<CanvasController | null>(null)
   const projectRef = useRef<ProjectState | null>(null)
   const skipNextSaveRef = useRef(false)
   const hasHydratedProjectRef = useRef(false)
+  const demoExpirationFinalizedRef = useRef(false)
   const resizeStateRef = useRef<{
     startX: number
     startWidth: number
@@ -385,6 +393,11 @@ function App() {
     queryFn: loadAgentStatus,
     refetchInterval: 30_000,
   })
+  const demoSessionQuery = useQuery({
+    queryKey: DEMO_SESSION_QUERY_KEY,
+    queryFn: loadDemoSession,
+    refetchInterval: (query) => (query.state.data?.mode === 'demo' ? 60_000 : false),
+  })
   const releaseNotesQuery = useQuery({
     queryKey: RELEASE_NOTES_STATUS_QUERY_KEY,
     queryFn: loadReleaseNotesStatus,
@@ -397,6 +410,24 @@ function App() {
     onSuccess: (status) => {
       queryClient.setQueryData<ReleaseNotesStatus>(RELEASE_NOTES_STATUS_QUERY_KEY, status)
       setReleaseNotesDismissedForSession(true)
+    },
+  })
+  const extendDemoSessionMutation = useMutation({
+    mutationFn: extendDemoSession,
+    onSuccess: (status) => {
+      demoExpirationFinalizedRef.current = false
+      queryClient.setQueryData<DemoSessionStatus>(DEMO_SESSION_QUERY_KEY, status)
+      setDemoDialogState('closed')
+      setDemoExtensionSeconds(DEMO_EXTENSION_GRACE_SECONDS)
+    },
+  })
+  const expireDemoSessionMutation = useMutation({
+    mutationFn: expireDemoSession,
+    onSettled: () => {
+      queryClient.clear()
+      setDemoRemainingSeconds(0)
+      setDemoExtensionSeconds(0)
+      setDemoDialogState('expired')
     },
   })
   const sensors = useSensors(
@@ -443,6 +474,70 @@ function App() {
   useEffect(() => {
     window.localStorage.setItem(AUTO_CENTER_STORAGE_KEY, String(autoCenterOnSelect))
   }, [autoCenterOnSelect])
+
+  useEffect(() => {
+    const status = demoSessionQuery.data
+
+    if (!status || status.mode !== 'demo') {
+      setDemoRemainingSeconds(null)
+      return
+    }
+
+    const expiresAt = new Date(status.expiresAt).getTime()
+
+    function updateDemoCountdown() {
+      setDemoRemainingSeconds(Math.max(0, Math.ceil((expiresAt - Date.now()) / 1000)))
+    }
+
+    updateDemoCountdown()
+    const countdownTimer = window.setInterval(updateDemoCountdown, 1000)
+
+    return () => {
+      window.clearInterval(countdownTimer)
+    }
+  }, [demoSessionQuery.data])
+
+  useEffect(() => {
+    if (
+      demoSessionQuery.data?.mode !== 'demo' ||
+      demoRemainingSeconds !== 0 ||
+      demoDialogState !== 'closed' ||
+      demoExpirationFinalizedRef.current
+    ) {
+      return
+    }
+
+    setDemoExtensionSeconds(DEMO_EXTENSION_GRACE_SECONDS)
+    setDemoDialogState('extend')
+  }, [demoDialogState, demoRemainingSeconds, demoSessionQuery.data])
+
+  const finalizeDemoExpiration = useCallback(() => {
+    if (demoExpirationFinalizedRef.current) {
+      return
+    }
+
+    demoExpirationFinalizedRef.current = true
+    expireDemoSessionMutation.mutate()
+  }, [expireDemoSessionMutation])
+
+  useEffect(() => {
+    if (demoDialogState !== 'extend' || demoExpirationFinalizedRef.current) {
+      return
+    }
+
+    if (demoExtensionSeconds <= 0) {
+      finalizeDemoExpiration()
+      return
+    }
+
+    const graceTimer = window.setTimeout(() => {
+      setDemoExtensionSeconds((current) => Math.max(0, current - 1))
+    }, 1000)
+
+    return () => {
+      window.clearTimeout(graceTimer)
+    }
+  }, [demoDialogState, demoExtensionSeconds, finalizeDemoExpiration])
 
   useEffect(() => {
     if (!spotlightItemId) {
@@ -540,6 +635,7 @@ function App() {
     !releaseNotesDismissedForSession &&
     releaseNotesQuery.data?.hasUnseen === true &&
     releaseNotesQuery.data.entries.length > 0
+  const isDemoMode = demoSessionQuery.data?.mode === 'demo'
 
   function updateProject(nextProject: ProjectState, options: { recordHistory?: boolean } = {}) {
     const shouldRecordHistory = options.recordHistory ?? true
@@ -1030,6 +1126,7 @@ function App() {
           <WorkbenchCanvas
             project={project}
             agentStatus={agentStatusQuery.data ?? null}
+            demoRemainingSeconds={demoRemainingSeconds}
             selectedItemId={selectedItem ? runtimeItemKey(selectedItem) : null}
             selectedConnectionId={selectedConnection?.id ?? null}
             spotlightItemId={spotlightItemId}
@@ -1125,6 +1222,7 @@ function App() {
           <InspectorPanel
             project={project}
             agentStatus={agentStatusQuery.data ?? null}
+            demoMode={isDemoMode}
             selectedItemId={selectedItem ? runtimeItemKey(selectedItem) : null}
             selectedConnectionId={selectedConnection?.id ?? null}
             activeNetworkTraceKey={activeNetworkTraceEndpoint ? endpointKey(activeNetworkTraceEndpoint) : null}
@@ -1278,6 +1376,12 @@ function App() {
               onOpenChange={handleWhatsNewOpenChange}
             />
           ) : null}
+          <DemoSessionDialog
+            state={demoDialogState}
+            secondsRemaining={demoExtensionSeconds}
+            onExtend={() => extendDemoSessionMutation.mutate()}
+            onExpire={finalizeDemoExpiration}
+          />
         </div>
         <DragOverlay dropAnimation={null} zIndex={80}>
           <InventoryDragPreview

@@ -575,6 +575,52 @@ describe('InspectorPanel', () => {
     expect(screen.getByText('docker.service')).toBeInTheDocument()
   })
 
+  it('explains that agent setup is unavailable in demo mode', () => {
+    const queryClient = new QueryClient({
+      defaultOptions: {
+        queries: { retry: false },
+        mutations: { retry: false },
+      },
+    })
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <InspectorPanel
+          project={project}
+          agentStatus={{ servers: {}, registeredServerIds: [] }}
+          demoMode
+          selectedItemId="server"
+          selectedConnectionId={null}
+          activeNetworkTraceKey={null}
+          pendingConnectionEndpoint={null}
+          validationMessage={null}
+          persistenceWarning={null}
+          open
+          onClose={() => {}}
+          onUpdateServerIdentity={vi.fn()}
+          onUpdateServerSpecs={vi.fn()}
+          onUpdateServerProperties={vi.fn()}
+          onUpdateRamManufacturer={vi.fn()}
+          onUpdateRamSpecs={vi.fn()}
+          onUpdateStorageManufacturer={vi.fn()}
+          onUpdateStorageSpecs={vi.fn()}
+          onUpdateGpuIdentity={vi.fn()}
+          onUpdateGpuSpecs={vi.fn()}
+          onUpdateItemPorts={vi.fn()}
+          onCreateConnection={vi.fn()}
+          onSelectNetworkTrace={vi.fn()}
+          onEndpointConnectionClick={vi.fn()}
+          onCancelPendingConnection={vi.fn()}
+          onUpdateConnectionLabel={vi.fn()}
+          onUpdateConnectionRoute={vi.fn()}
+          onRemoveConnection={vi.fn()}
+        />
+      </QueryClientProvider>,
+    )
+
+    expect(screen.getByText('Agent setup is disabled in public demo mode.')).toBeInTheDocument()
+  })
+
   it('does not render server audit warnings for unplanned open LAN ports', () => {
     renderInspector('server')
 
