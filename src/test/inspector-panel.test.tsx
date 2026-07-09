@@ -619,6 +619,8 @@ describe('InspectorPanel', () => {
     )
 
     expect(screen.getByText('Agent setup is disabled in public demo mode.')).toBeInTheDocument()
+    expect(screen.queryByLabelText('Agent endpoint')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Setup Agent' })).not.toBeInTheDocument()
   })
 
   it('does not render server audit warnings for unplanned open LAN ports', () => {

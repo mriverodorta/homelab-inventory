@@ -498,11 +498,14 @@ function App() {
   }, [demoSessionQuery.data])
 
   useEffect(() => {
+    const status = demoSessionQuery.data
+
     if (
-      demoSessionQuery.data?.mode !== 'demo' ||
+      status?.mode !== 'demo' ||
       demoRemainingSeconds !== 0 ||
       demoDialogState !== 'closed' ||
-      demoExpirationFinalizedRef.current
+      demoExpirationFinalizedRef.current ||
+      new Date(status.expiresAt).getTime() > Date.now()
     ) {
       return
     }
