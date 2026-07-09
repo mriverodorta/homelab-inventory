@@ -22,7 +22,7 @@ export const RELEASE_NOTES: ReleaseNoteEntry[] = [
       'Added CI and Docker publishing checks so meaningful releases include app-readable notes.',
     ],
     fixes: [
-      'Prevents Docker image publishing when the package version has no matching release-note entry.',
+      'Prevents GitHub Actions Docker publishing when the package version has no matching release-note entry.',
     ],
     notes: [
       'The dialog appears after upgrades until the deployment acknowledges it with Got it.',

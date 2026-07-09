@@ -22,7 +22,7 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 
 ### Changed
 
-- Docker/manual build publishing now refuses versions that do not have a matching structured release-note entry.
+- GitHub Actions Docker publishing now refuses versions that do not have a matching structured release-note entry.
 
 ## 0.1.9
 

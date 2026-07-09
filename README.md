@@ -120,13 +120,6 @@ Recommended Compose image:
 image: mriverodorta/homelab-inventory:stable
 ```
 
-The local `build.sh` helper is still available for manual publishing, but GitHub Actions is the preferred CI/CD path.
-
-```bash
-./build.sh
-./build.sh --ver 0.2.0
-```
-
 CI/CD uses GitHub as the source of truth:
 
 - Pull requests validate lint, tests, and production build.
