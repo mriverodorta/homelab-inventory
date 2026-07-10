@@ -1292,6 +1292,12 @@ function App() {
               })
               setValidationMessage(null)
             }}
+            onUpdateItemProperties={(itemId, properties) => {
+              updateProject(updateItemProperties(project, itemId, properties), {
+                recordHistory: false,
+              })
+              setValidationMessage(null)
+            }}
             onUpdateItemPorts={(itemId, ports) => {
               updateProject(updateItemPorts(project, itemId, ports), {
                 recordHistory: false,

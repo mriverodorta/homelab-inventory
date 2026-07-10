@@ -12,6 +12,19 @@ export type ReleaseNoteEntry = {
 
 export const RELEASE_NOTES: ReleaseNoteEntry[] = [
   {
+    version: '0.1.12',
+    date: '2026-07-10',
+    channel: 'latest',
+    title: 'Patch panel row controls',
+    highlights: [
+      'Patch panel inspectors can now swap the front and back row display order on the canvas.',
+    ],
+    fixes: [],
+    notes: [
+      'The row order is stored as a patch panel display preference, so existing labels, ports, and cable endpoints stay intact.',
+    ],
+  },
+  {
     version: '0.1.11',
     date: '2026-07-09',
     channel: 'latest',

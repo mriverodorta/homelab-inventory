@@ -1,6 +1,7 @@
 import {
   Activity,
   AlertTriangle,
+  ArrowUpDown,
   Cable,
   Copy,
   HardDrive,
@@ -58,6 +59,11 @@ import {
   getConnectionPort,
   portsCompatible,
 } from '@/lib/project'
+import {
+  PATCH_PANEL_ROW_ORDER_PROPERTY,
+  getPatchPanelRowOrderValue,
+  getSwappedPatchPanelRowOrderValue,
+} from '@/lib/patch-panel'
 import {
   getItemNetworkTraces,
   getPatchPanelNetworkTraces,
@@ -1240,6 +1246,51 @@ function PatchPanelLabelGrid({
               />
             </label>
           ))}
+      </div>
+    </InspectorSection>
+  )
+}
+
+function PatchPanelRowDisplayControls({
+  item,
+  onUpdateProperties,
+}: {
+  item: InventoryItem
+  onUpdateProperties: (properties: InventoryProperties) => void
+}) {
+  if (item.type !== 'patchPanel') {
+    return null
+  }
+
+  const rowOrder = getPatchPanelRowOrderValue(item)
+  const currentOrder = rowOrder === 'front-back'
+    ? 'Front row on top, back row on bottom'
+    : 'Back row on top, front row on bottom'
+
+  return (
+    <InspectorSection
+      title="Row Display"
+      icon={ArrowUpDown}
+      badge={<StatusBadge>{rowOrder === 'front-back' ? 'Front top' : 'Back top'}</StatusBadge>}
+    >
+      <div className="grid gap-3">
+        <div className="rounded-md border border-[#eee6db] bg-[#f8f3eb] p-3">
+          <div className={cn(labelClass, 'text-[9px]')}>Current layout</div>
+          <div className="mt-1 text-sm font-black text-[#20242c]">{currentOrder}</div>
+        </div>
+        <Button
+          type="button"
+          variant="outline"
+          className="h-10 justify-center gap-2"
+          onClick={() => {
+            onUpdateProperties({
+              [PATCH_PANEL_ROW_ORDER_PROPERTY]: getSwappedPatchPanelRowOrderValue(item),
+            })
+          }}
+        >
+          <ArrowUpDown className="size-4" />
+          Swap Rows
+        </Button>
       </div>
     </InspectorSection>
   )
@@ -2913,6 +2964,7 @@ export function InspectorPanel({
   onUpdateStorageSpecs,
   onUpdateGpuIdentity,
   onUpdateGpuSpecs,
+  onUpdateItemProperties,
   onUpdateItemPorts,
   onCreateConnection,
   onSelectNetworkTrace,
@@ -2964,6 +3016,7 @@ export function InspectorPanel({
     gpuId: string,
     specs: Record<string, InventorySpecs[string] | undefined>,
   ) => void
+  onUpdateItemProperties: (itemId: string, properties: InventoryProperties) => void
   onUpdateItemPorts: (itemId: string, ports: InventoryPort[]) => void
   onCreateConnection: (from: ConnectionEndpoint, to: ConnectionEndpoint) => void
   onSelectNetworkTrace: (endpoint: ConnectionEndpoint) => void
@@ -3116,10 +3169,18 @@ export function InspectorPanel({
                   selectedItem.type === 'patchPanel' ? (
                     <>
                       {selectedItem.type === 'patchPanel' ? (
-                        <PatchPanelLabelGrid
-                          item={selectedItem}
-                          onUpdate={(ports) => onUpdateItemPorts(runtimeItemKey(selectedItem), ports)}
-                        />
+                        <>
+                          <PatchPanelRowDisplayControls
+                            item={selectedItem}
+                            onUpdateProperties={(properties) =>
+                              onUpdateItemProperties(runtimeItemKey(selectedItem), properties)
+                            }
+                          />
+                          <PatchPanelLabelGrid
+                            item={selectedItem}
+                            onUpdate={(ports) => onUpdateItemPorts(runtimeItemKey(selectedItem), ports)}
+                          />
+                        </>
                       ) : null}
                       <PortEditor
                         project={project}

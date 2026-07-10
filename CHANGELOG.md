@@ -14,6 +14,12 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 - Added repository documentation, issue templates, CI, and security guidance.
 - Clarified Docker deployment, data persistence, and development setup.
 
+## [0.1.12] - 2026-07-10
+
+### Added
+
+- Added a patch panel inspector action to swap the visual front/back row order on the canvas.
+
 ## [0.1.10] - 2026-07-09
 
 ### Added

@@ -15,6 +15,7 @@ import {
   getEquipmentCardWidth,
   portsCompatible,
 } from '@/lib/project'
+import { getPatchPanelRowSides } from '@/lib/patch-panel'
 import { startSelectedPortDrag } from '@/lib/port-interactions'
 import type {
   ConnectionEndpoint,
@@ -467,26 +468,19 @@ function EquipmentPortRows({
   if (item.type === 'patchPanel') {
     return (
       <>
-        <PatchPanelPortRow
-          draggingEndpoint={draggingEndpoint}
-          item={item}
-          onEndpointClick={onEndpointClick}
-          onEndpointDragStart={onEndpointDragStart}
-          onEndpointDrop={onEndpointDrop}
-          pendingEndpoint={pendingEndpoint}
-          project={project}
-          side="back"
-        />
-        <PatchPanelPortRow
-          draggingEndpoint={draggingEndpoint}
-          item={item}
-          onEndpointClick={onEndpointClick}
-          onEndpointDragStart={onEndpointDragStart}
-          onEndpointDrop={onEndpointDrop}
-          pendingEndpoint={pendingEndpoint}
-          project={project}
-          side="front"
-        />
+        {getPatchPanelRowSides(item).map((side) => (
+          <PatchPanelPortRow
+            key={side}
+            draggingEndpoint={draggingEndpoint}
+            item={item}
+            onEndpointClick={onEndpointClick}
+            onEndpointDragStart={onEndpointDragStart}
+            onEndpointDrop={onEndpointDrop}
+            pendingEndpoint={pendingEndpoint}
+            project={project}
+            side={side}
+          />
+        ))}
       </>
     )
   }

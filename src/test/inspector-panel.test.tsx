@@ -154,6 +154,7 @@ function renderInspector(
   onUpdateStorageSpecs = vi.fn(),
   onUpdateGpuIdentity = vi.fn(),
   onUpdateGpuSpecs = vi.fn(),
+  onUpdateItemProperties = vi.fn(),
   onUpdateItemPorts = vi.fn(),
   onCreateConnection = vi.fn(),
   onSelectNetworkTrace = vi.fn(),
@@ -196,6 +197,7 @@ function renderInspector(
         onUpdateStorageSpecs={onUpdateStorageSpecs}
         onUpdateGpuIdentity={onUpdateGpuIdentity}
         onUpdateGpuSpecs={onUpdateGpuSpecs}
+        onUpdateItemProperties={onUpdateItemProperties}
         onUpdateItemPorts={onUpdateItemPorts}
         onCreateConnection={onCreateConnection}
         onSelectNetworkTrace={onSelectNetworkTrace}
@@ -218,6 +220,7 @@ function renderInspector(
     onUpdateStorageSpecs,
     onUpdateGpuIdentity,
     onUpdateGpuSpecs,
+    onUpdateItemProperties,
     onUpdateItemPorts,
     onCreateConnection,
     onSelectNetworkTrace,
@@ -516,6 +519,7 @@ describe('InspectorPanel', () => {
       vi.fn(),
       vi.fn(),
       vi.fn(),
+      vi.fn(),
       null,
       {
         registeredServerIds: ['server'],
@@ -560,6 +564,8 @@ describe('InspectorPanel', () => {
         },
       },
     )
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Services' }))
 
     expect(screen.getByText('online')).toBeInTheDocument()
     expect(screen.getByText('lab-node')).toBeInTheDocument()
@@ -606,6 +612,7 @@ describe('InspectorPanel', () => {
           onUpdateStorageSpecs={vi.fn()}
           onUpdateGpuIdentity={vi.fn()}
           onUpdateGpuSpecs={vi.fn()}
+          onUpdateItemProperties={vi.fn()}
           onUpdateItemPorts={vi.fn()}
           onCreateConnection={vi.fn()}
           onSelectNetworkTrace={vi.fn()}
@@ -673,6 +680,7 @@ describe('InspectorPanel', () => {
           onUpdateStorageSpecs={vi.fn()}
           onUpdateGpuIdentity={vi.fn()}
           onUpdateGpuSpecs={vi.fn()}
+          onUpdateItemProperties={vi.fn()}
           onUpdateItemPorts={vi.fn()}
           onCreateConnection={vi.fn()}
           onSelectNetworkTrace={vi.fn()}
