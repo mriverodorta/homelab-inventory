@@ -14,6 +14,18 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 - Added repository documentation, issue templates, CI, and security guidance.
 - Clarified Docker deployment, data persistence, and development setup.
 
+## [0.1.13] - 2026-07-10
+
+### Added
+
+- Added a tabbed switch inspector with editable switch identity, management, capacity, cooling, ports, and connections.
+- Added grouped switch port controls for count, type, speed, and role.
+
+### Fixed
+
+- Switch port count corrections now preserve retained port IDs and existing cable assignments.
+- Port group reductions now stop before deleting connected ports or ports with saved labels, notes, or IP details.
+
 ## [0.1.12] - 2026-07-10
 
 ### Added

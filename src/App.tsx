@@ -1292,6 +1292,18 @@ function App() {
               })
               setValidationMessage(null)
             }}
+            onUpdateItemIdentity={(itemId, identity) => {
+              updateProject(updateItemIdentity(project, itemId, identity), {
+                recordHistory: false,
+              })
+              setValidationMessage(null)
+            }}
+            onUpdateItemSpecs={(itemId, specs) => {
+              updateProject(updateItemSpecs(project, itemId, specs), {
+                recordHistory: false,
+              })
+              setValidationMessage(null)
+            }}
             onUpdateItemProperties={(itemId, properties) => {
               updateProject(updateItemProperties(project, itemId, properties), {
                 recordHistory: false,

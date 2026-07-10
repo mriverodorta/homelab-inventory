@@ -7,9 +7,11 @@ import {
   HardDrive,
   Info,
   Layers3,
+  Plus,
   Network,
   PlugZap,
   Terminal,
+  Trash2,
   X,
   type LucideIcon,
 } from 'lucide-react'
@@ -53,6 +55,13 @@ import {
   PORT_ROLE_LABELS,
 } from '@/lib/format'
 import { runtimeItemKey } from '@/lib/item-keys'
+import {
+  addSwitchPortGroup,
+  groupSwitchPorts,
+  resizeSwitchPortGroup,
+  updateSwitchPortGroupDefinition,
+  type SwitchPortGroup,
+} from '@/lib/switch-ports'
 import {
   connectionEndpointAvailable,
   endpointKey,
@@ -122,6 +131,7 @@ const SWITCH_PORT_ROLE_OPTIONS: InventoryPortRole[] = [
   'disabled',
 ]
 const CONNECTION_ROUTE_SIDE_OPTIONS: ConnectionRouteSide[] = ['auto', 'top', 'right', 'bottom', 'left']
+const SWITCH_PORT_SPEED_OPTIONS = ['', '1G', '2.5G', '5G', '10G']
 
 const inspectorSurfaceClass = 'border-[#e3d7c8] bg-[#fffdf8] shadow-[0_16px_34px_rgba(60,52,43,0.08)]'
 const inspectorPanelClass = 'border-[#e5dccf] bg-white/88 shadow-[0_10px_28px_rgba(60,52,43,0.06)]'
@@ -1960,6 +1970,316 @@ function ServerSpecsForm({
   )
 }
 
+function SwitchSpecsForm({
+  item,
+  onUpdateIdentity,
+  onUpdateSpecs,
+}: {
+  item: InventoryItem
+  onUpdateIdentity: (identity: Partial<Pick<InventoryItem, 'name' | 'manufacturer' | 'model'>>) => void
+  onUpdateSpecs: (specs: Record<string, InventorySpecs[string] | undefined>) => void
+}) {
+  const management = typeof item.specs?.management === 'string' ? item.specs.management : ''
+  const switchingCapacity = typeof item.specs?.switchingCapacityGbps === 'number'
+    ? item.specs.switchingCapacityGbps
+    : ''
+  const fanless = item.specs?.fanless === true ? 'yes' : 'no'
+
+  return (
+    <InspectorSection title="Switch Details" icon={Info}>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <label className={formLabelClass}>
+          Name
+          <Input
+            value={item.name}
+            placeholder="Switch name"
+            onChange={(event) => onUpdateIdentity({ name: event.target.value })}
+          />
+        </label>
+        <label className={formLabelClass}>
+          Manufacturer
+          <Input
+            value={item.manufacturer ?? ''}
+            placeholder="Manufacturer"
+            onChange={(event) => onUpdateIdentity({ manufacturer: event.target.value })}
+          />
+        </label>
+        <label className={formLabelClass}>
+          Model
+          <Input
+            value={item.model ?? ''}
+            placeholder="Model"
+            onChange={(event) => onUpdateIdentity({ model: event.target.value })}
+          />
+        </label>
+        <label className={formLabelClass}>
+          Management
+          <Input
+            value={management}
+            placeholder="Managed or unmanaged"
+            onChange={(event) => onUpdateSpecs({ management: event.target.value || undefined })}
+          />
+        </label>
+        <label className={formLabelClass}>
+          Switching capacity (Gbps)
+          <Input
+            type="number"
+            min={0}
+            value={switchingCapacity}
+            placeholder="60"
+            onChange={(event) => {
+              const value = event.target.value
+              onUpdateSpecs({ switchingCapacityGbps: value === '' ? undefined : Number(value) })
+            }}
+          />
+        </label>
+        <label className={formLabelClass}>
+          Cooling
+          <Select
+            value={fanless}
+            onValueChange={(value) => onUpdateSpecs({ fanless: value === 'yes' })}
+          >
+            <SelectTrigger className="w-full" aria-label="Switch cooling">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="yes">Fanless</SelectItem>
+              <SelectItem value="no">Active cooling</SelectItem>
+            </SelectContent>
+          </Select>
+        </label>
+      </div>
+    </InspectorSection>
+  )
+}
+
+function SwitchPortGroupRow({
+  project,
+  item,
+  group,
+  onUpdate,
+  onError,
+}: {
+  project: ProjectState
+  item: InventoryItem
+  group: SwitchPortGroup
+  onUpdate: (ports: InventoryPort[]) => void
+  onError: (message: string | null) => void
+}) {
+  const [count, setCount] = useState(String(group.ports.length))
+
+  useEffect(() => {
+    setCount(String(group.ports.length))
+  }, [group.ports.length])
+
+  function commitCount() {
+    const parsedCount = Number(count)
+
+    if (!Number.isInteger(parsedCount) || parsedCount < 0 || parsedCount > 128) {
+      onError('Port counts must be whole numbers between 0 and 128.')
+      setCount(String(group.ports.length))
+      return
+    }
+
+    if (parsedCount === group.ports.length) {
+      onError(null)
+      return
+    }
+
+    const result = resizeSwitchPortGroup({
+      ports: item.ports ?? [],
+      connections: project.connections,
+      itemId: runtimeItemKey(item),
+      groupKey: group.key,
+      count: parsedCount,
+    })
+
+    if (!result.ok) {
+      onError(result.message)
+      setCount(String(group.ports.length))
+      return
+    }
+
+    onError(null)
+    onUpdate(result.ports)
+  }
+
+  function updateDefinition(
+    definition: Partial<Pick<SwitchPortGroup, 'type' | 'speed'>> & { role?: InventoryPortRole | null },
+  ) {
+    const updatesRole = Object.prototype.hasOwnProperty.call(definition, 'role')
+    onError(null)
+    onUpdate(updateSwitchPortGroupDefinition({
+      ports: item.ports ?? [],
+      groupKey: group.key,
+      definition: {
+        type: definition.type ?? group.type,
+        speed: definition.speed === undefined ? group.speed : definition.speed,
+        role: updatesRole ? definition.role ?? undefined : group.role,
+      },
+    }))
+  }
+
+  return (
+    <div className="grid gap-2 rounded-lg border border-[#e5dccf] bg-[#fffdf8] p-3 sm:grid-cols-[76px_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_44px] sm:items-end">
+      <label className={cn(formLabelClass, 'text-xs')}>
+        Count
+        <Input
+          type="number"
+          min={0}
+          max={128}
+          value={count}
+          aria-label={`${formatPortTypeLabel(group.type)} ${group.speed ?? ''} port count`.trim()}
+          onChange={(event) => setCount(event.target.value)}
+          onBlur={commitCount}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter') {
+              event.preventDefault()
+              commitCount()
+            }
+          }}
+        />
+      </label>
+      <label className={cn(formLabelClass, 'text-xs')}>
+        Type
+        <Select value={group.type} onValueChange={(value) => updateDefinition({ type: value as InventoryPortType })}>
+          <SelectTrigger className="w-full" aria-label={`${formatPortTypeLabel(group.type)} port group type`}>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {PORT_TYPE_OPTIONS.map((type) => (
+              <SelectItem key={type} value={type}>{formatPortTypeLabel(type)}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </label>
+      <label className={cn(formLabelClass, 'text-xs')}>
+        Speed
+        <Select
+          value={group.speed ?? EMPTY_SELECT_VALUE}
+          onValueChange={(value) => updateDefinition({ speed: value === EMPTY_SELECT_VALUE ? '' : value })}
+        >
+          <SelectTrigger className="w-full" aria-label={`${formatPortTypeLabel(group.type)} port group speed`}>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {SWITCH_PORT_SPEED_OPTIONS.map((speed) => (
+              <SelectItem key={speed || EMPTY_SELECT_VALUE} value={speed || EMPTY_SELECT_VALUE}>
+                {speed || 'No speed'}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </label>
+      <label className={cn(formLabelClass, 'text-xs')}>
+        Role
+        <Select
+          value={group.role ?? PORT_ROLE_NONE_VALUE}
+          onValueChange={(value) => updateDefinition({
+            role: value === PORT_ROLE_NONE_VALUE ? null : value as InventoryPortRole,
+          })}
+        >
+          <SelectTrigger className="w-full" aria-label={`${formatPortTypeLabel(group.type)} port group role`}>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value={PORT_ROLE_NONE_VALUE}>No role</SelectItem>
+            {SWITCH_PORT_ROLE_OPTIONS.map((role) => (
+              <SelectItem key={role} value={role}>{PORT_ROLE_LABELS[role]}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </label>
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon"
+        className="size-11"
+        aria-label={`Remove ${formatPortTypeLabel(group.type)} ${group.speed ?? ''} port group`.trim()}
+        onClick={() => {
+          setCount('0')
+          const result = resizeSwitchPortGroup({
+            ports: item.ports ?? [],
+            connections: project.connections,
+            itemId: runtimeItemKey(item),
+            groupKey: group.key,
+            count: 0,
+          })
+
+          if (!result.ok) {
+            onError(result.message)
+            setCount(String(group.ports.length))
+            return
+          }
+
+          onError(null)
+          onUpdate(result.ports)
+        }}
+      >
+        <Trash2 data-icon="inline-start" />
+      </Button>
+    </div>
+  )
+}
+
+function SwitchPortGroupsEditor({
+  project,
+  item,
+  onUpdate,
+}: {
+  project: ProjectState
+  item: InventoryItem
+  onUpdate: (ports: InventoryPort[]) => void
+}) {
+  const groups = useMemo(() => groupSwitchPorts(item.ports ?? []), [item.ports])
+  const [error, setError] = useState<string | null>(null)
+
+  return (
+    <InspectorSection
+      title="Port Groups"
+      icon={Layers3}
+      badge={<StatusBadge>{item.ports?.length ?? 0} total</StatusBadge>}
+    >
+      <div className="grid gap-3">
+        {groups.length > 0 ? groups.map((group) => (
+          <SwitchPortGroupRow
+            key={group.key}
+            project={project}
+            item={item}
+            group={group}
+            onUpdate={onUpdate}
+            onError={setError}
+          />
+        )) : (
+          <div className="rounded-md border border-dashed border-[#d6ccbd] bg-[#f8f3eb] p-3 text-sm font-medium text-[#75695d]">
+            No port groups recorded.
+          </div>
+        )}
+
+        {error ? (
+          <div role="alert" className="flex gap-2 rounded-md border border-[#dfb3a5] bg-[#fff4ee] p-3 text-sm font-semibold text-[#7a2c1d]">
+            <AlertTriangle className="mt-0.5 size-4 shrink-0" />
+            <span>{error}</span>
+          </div>
+        ) : null}
+
+        <Button
+          type="button"
+          variant="outline"
+          className="h-10 justify-center gap-2"
+          onClick={() => {
+            setError(null)
+            onUpdate(addSwitchPortGroup(item.ports ?? []))
+          }}
+        >
+          <Plus data-icon="inline-start" />
+          Add Port Group
+        </Button>
+      </div>
+    </InspectorSection>
+  )
+}
+
 function getAgentString(record: Record<string, unknown> | null | undefined, key: string): string | null {
   const value = record?.[key]
 
@@ -2738,6 +3058,100 @@ function ServerInspectorTabs({
   )
 }
 
+function SwitchInspectorTabs({
+  project,
+  item,
+  pendingEndpoint,
+  auditWarnings,
+  onUpdateIdentity,
+  onUpdateSpecs,
+  onUpdatePorts,
+  onCreateConnection,
+  onEndpointConnectionClick,
+  onUpdateConnectionLabel,
+  onRemoveConnection,
+}: {
+  project: ProjectState
+  item: InventoryItem
+  pendingEndpoint: ConnectionEndpoint | null
+  auditWarnings: AuditWarning[]
+  onUpdateIdentity: (
+    itemId: string,
+    identity: Partial<Pick<InventoryItem, 'name' | 'manufacturer' | 'model'>>,
+  ) => void
+  onUpdateSpecs: (
+    itemId: string,
+    specs: Record<string, InventorySpecs[string] | undefined>,
+  ) => void
+  onUpdatePorts: (itemId: string, ports: InventoryPort[]) => void
+  onCreateConnection: (from: ConnectionEndpoint, to: ConnectionEndpoint) => void
+  onEndpointConnectionClick: (endpoint: ConnectionEndpoint) => void
+  onUpdateConnectionLabel: (connectionId: string | number, label: string) => void
+  onRemoveConnection: (connectionId: string | number) => void
+}) {
+  const itemRuntimeKey = runtimeItemKey(item)
+
+  return (
+    <InspectorTabs
+      defaultValue="specs"
+      tabs={[
+        {
+          value: 'specs',
+          label: 'Specs',
+          content: (
+            <>
+              <SwitchSpecsForm
+                item={item}
+                onUpdateIdentity={(identity) => onUpdateIdentity(itemRuntimeKey, identity)}
+                onUpdateSpecs={(specs) => onUpdateSpecs(itemRuntimeKey, specs)}
+              />
+              <AuditSection warnings={auditWarnings} />
+              {item.notes ? (
+                <p className="rounded-md border border-[#e5dccf] bg-[#f3f0ea] p-3 text-sm font-medium text-[#5f554b]">
+                  {item.notes}
+                </p>
+              ) : null}
+            </>
+          ),
+        },
+        {
+          value: 'ports',
+          label: 'Ports',
+          content: (
+            <>
+              <SwitchPortGroupsEditor
+                project={project}
+                item={item}
+                onUpdate={(ports) => onUpdatePorts(itemRuntimeKey, ports)}
+              />
+              <PortTabsEditor
+                project={project}
+                item={item}
+                pendingEndpoint={pendingEndpoint}
+                onUpdate={(ports) => onUpdatePorts(itemRuntimeKey, ports)}
+                onEndpointConnect={onEndpointConnectionClick}
+              />
+            </>
+          ),
+        },
+        {
+          value: 'connections',
+          label: 'Connections',
+          content: (
+            <ConnectionEditor
+              project={project}
+              item={item}
+              onCreate={onCreateConnection}
+              onUpdateLabel={onUpdateConnectionLabel}
+              onRemove={onRemoveConnection}
+            />
+          ),
+        },
+      ]}
+    />
+  )
+}
+
 function StoragePropertiesForm({
   storage,
   onUpdateManufacturer,
@@ -2964,6 +3378,8 @@ export function InspectorPanel({
   onUpdateStorageSpecs,
   onUpdateGpuIdentity,
   onUpdateGpuSpecs,
+  onUpdateItemIdentity,
+  onUpdateItemSpecs,
   onUpdateItemProperties,
   onUpdateItemPorts,
   onCreateConnection,
@@ -3014,6 +3430,14 @@ export function InspectorPanel({
   ) => void
   onUpdateGpuSpecs: (
     gpuId: string,
+    specs: Record<string, InventorySpecs[string] | undefined>,
+  ) => void
+  onUpdateItemIdentity: (
+    itemId: string,
+    identity: Partial<Pick<InventoryItem, 'name' | 'manufacturer' | 'model'>>,
+  ) => void
+  onUpdateItemSpecs: (
+    itemId: string,
     specs: Record<string, InventorySpecs[string] | undefined>,
   ) => void
   onUpdateItemProperties: (itemId: string, properties: InventoryProperties) => void
@@ -3130,6 +3554,20 @@ export function InspectorPanel({
                   onSelectNetworkTrace={onSelectNetworkTrace}
                   onEndpointConnectionClick={onEndpointConnectionClick}
                 />
+              ) : selectedItem.type === 'switch' ? (
+                <SwitchInspectorTabs
+                  project={project}
+                  item={selectedItem}
+                  pendingEndpoint={pendingConnectionEndpoint}
+                  auditWarnings={auditWarnings}
+                  onUpdateIdentity={onUpdateItemIdentity}
+                  onUpdateSpecs={onUpdateItemSpecs}
+                  onUpdatePorts={onUpdateItemPorts}
+                  onCreateConnection={onCreateConnection}
+                  onEndpointConnectionClick={onEndpointConnectionClick}
+                  onUpdateConnectionLabel={onUpdateConnectionLabel}
+                  onRemoveConnection={onRemoveConnection}
+                />
               ) : (
                 <>
                   <InspectorSection title="Specifications" icon={Info}>
@@ -3165,7 +3603,6 @@ export function InspectorPanel({
                     />
                   ) : null}
                   {selectedItem.type === 'nas' ||
-                  selectedItem.type === 'switch' ||
                   selectedItem.type === 'patchPanel' ? (
                     <>
                       {selectedItem.type === 'patchPanel' ? (

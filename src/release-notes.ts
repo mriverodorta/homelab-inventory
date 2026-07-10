@@ -12,6 +12,23 @@ export type ReleaseNoteEntry = {
 
 export const RELEASE_NOTES: ReleaseNoteEntry[] = [
   {
+    version: '0.1.13',
+    date: '2026-07-10',
+    channel: 'latest',
+    title: 'Editable switch inspectors',
+    highlights: [
+      'Switch inspectors now use focused Specs, Ports, and Connections tabs that match the server inspector workflow.',
+      'Switch names, manufacturers, models, management details, switching capacity, cooling, and grouped port definitions can now be edited directly.',
+      'Port groups can be resized while preserving the IDs and cable assignments of retained ports.',
+    ],
+    fixes: [
+      'Port reductions are blocked when they would remove a connected port or discard saved labels, notes, or IP details.',
+    ],
+    notes: [
+      'Correcting an accidental port count now updates both the switch canvas card and its detailed port editor.',
+    ],
+  },
+  {
     version: '0.1.12',
     date: '2026-07-10',
     channel: 'latest',

@@ -100,17 +100,18 @@ const project: ProjectState = {
       model: 'ES210X-M2',
       specs: {
         management: 'Omada managed',
+        switchingCapacityGbps: 80,
+        fanless: true,
       },
-      ports: [
-        {
-          id: 'rj45-01',
-          kind: 'switch-port',
-          type: 'rj45',
-          slotNumber: 1,
-          label: '',
-          speed: '2.5G',
-        },
-      ],
+      ports: Array.from({ length: 5 }, (_, index) => ({
+        id: `rj45-${String(index + 1).padStart(2, '0')}`,
+        kind: 'switch-port',
+        type: 'rj45',
+        slotNumber: index + 1,
+        label: '',
+        speed: '2.5G',
+        role: 'access',
+      })),
     },
     patch: {
       id: 'patch',
@@ -167,6 +168,8 @@ function renderInspector(
   onUpdateConnectionRoute = vi.fn(),
   onUpdateServerIdentity = vi.fn(),
   onUpdateServerSpecs = vi.fn(),
+  onUpdateItemIdentity = vi.fn(),
+  onUpdateItemSpecs = vi.fn(),
 ) {
   const queryClient = new QueryClient({
     defaultOptions: {
@@ -197,6 +200,8 @@ function renderInspector(
         onUpdateStorageSpecs={onUpdateStorageSpecs}
         onUpdateGpuIdentity={onUpdateGpuIdentity}
         onUpdateGpuSpecs={onUpdateGpuSpecs}
+        onUpdateItemIdentity={onUpdateItemIdentity}
+        onUpdateItemSpecs={onUpdateItemSpecs}
         onUpdateItemProperties={onUpdateItemProperties}
         onUpdateItemPorts={onUpdateItemPorts}
         onCreateConnection={onCreateConnection}
@@ -220,6 +225,8 @@ function renderInspector(
     onUpdateStorageSpecs,
     onUpdateGpuIdentity,
     onUpdateGpuSpecs,
+    onUpdateItemIdentity,
+    onUpdateItemSpecs,
     onUpdateItemProperties,
     onUpdateItemPorts,
     onCreateConnection,
@@ -291,15 +298,52 @@ describe('InspectorPanel', () => {
     })
   })
 
-  it('renders switch ports and emits label and role updates', async () => {
+  it('renders editable switch details and emits identity and spec updates', async () => {
+    const user = userEvent.setup()
+    const { onUpdateItemIdentity, onUpdateItemSpecs } = renderInspector('switch')
+
+    expect(screen.getByRole('tab', { name: 'Specs' })).toHaveAttribute('aria-selected', 'true')
+    expect(screen.getByLabelText('Switching capacity (Gbps)')).toHaveValue(80)
+    expect(screen.getByRole('combobox', { name: 'Switch cooling' })).toHaveTextContent('Fanless')
+
+    fireEvent.change(screen.getByLabelText('Name'), {
+      target: { value: 'Core switch' },
+    })
+    fireEvent.change(screen.getByLabelText('Switching capacity (Gbps)'), {
+      target: { value: '60' },
+    })
+    await user.click(screen.getByRole('combobox', { name: 'Switch cooling' }))
+    await user.click(screen.getByRole('option', { name: 'Active cooling' }))
+
+    expect(onUpdateItemIdentity).toHaveBeenCalledWith('switch', { name: 'Core switch' })
+    expect(onUpdateItemSpecs).toHaveBeenCalledWith('switch', { switchingCapacityGbps: 60 })
+    expect(onUpdateItemSpecs).toHaveBeenCalledWith('switch', { fanless: false })
+  })
+
+  it('edits switch port groups and individual port details', async () => {
     const user = userEvent.setup()
     const { onUpdateItemPorts, onEndpointConnectionClick } = renderInspector('switch')
 
+    await user.click(screen.getByRole('tab', { name: 'Ports' }))
+
+    expect(screen.getByText('Port Groups')).toBeInTheDocument()
     expect(screen.getByText('Port occupancy')).toBeInTheDocument()
-    expect(screen.getByText('Ports')).toBeInTheDocument()
-    expect(screen.getByText('1x 2.5G RJ45')).toBeInTheDocument()
     expect(screen.getByText('RJ45 2.5G')).toBeInTheDocument()
     expect(screen.getAllByText('Open').length).toBeGreaterThan(0)
+
+    fireEvent.change(screen.getByLabelText('RJ45 2.5G port count'), {
+      target: { value: '4' },
+    })
+    fireEvent.blur(screen.getByLabelText('RJ45 2.5G port count'))
+
+    expect(onUpdateItemPorts).toHaveBeenCalledWith(
+      'switch',
+      expect.arrayContaining([
+        expect.objectContaining({ id: 'rj45-01' }),
+        expect.objectContaining({ id: 'rj45-04' }),
+      ]),
+    )
+    expect(onUpdateItemPorts.mock.calls[0][1]).toHaveLength(4)
 
     fireEvent.click(screen.getByRole('button', { name: 'Connect Port 1' }))
 
@@ -314,26 +358,18 @@ describe('InspectorPanel', () => {
     await user.click(screen.getByRole('combobox', { name: 'Port 1 role' }))
     await user.click(screen.getByRole('option', { name: 'Uplink' }))
 
-    expect(onUpdateItemPorts).toHaveBeenCalledWith('switch', [
-      {
-        id: 'rj45-01',
-        kind: 'switch-port',
-        type: 'rj45',
-        slotNumber: 1,
-        label: 'Office uplink',
-        speed: '2.5G',
-      },
-    ])
-    expect(onUpdateItemPorts).toHaveBeenCalledWith('switch', [
-      {
-        id: 'rj45-01',
-        kind: 'switch-port',
-        type: 'rj45',
-        slotNumber: 1,
-        speed: '2.5G',
-        role: 'uplink',
-      },
-    ])
+    expect(onUpdateItemPorts).toHaveBeenCalledWith(
+      'switch',
+      expect.arrayContaining([
+        expect.objectContaining({ id: 'rj45-01', label: 'Office uplink' }),
+      ]),
+    )
+    expect(onUpdateItemPorts).toHaveBeenCalledWith(
+      'switch',
+      expect.arrayContaining([
+        expect.objectContaining({ id: 'rj45-01', role: 'uplink' }),
+      ]),
+    )
   })
 
   it('renders patch panel ports and emits type updates', async () => {
@@ -612,6 +648,8 @@ describe('InspectorPanel', () => {
           onUpdateStorageSpecs={vi.fn()}
           onUpdateGpuIdentity={vi.fn()}
           onUpdateGpuSpecs={vi.fn()}
+          onUpdateItemIdentity={vi.fn()}
+          onUpdateItemSpecs={vi.fn()}
           onUpdateItemProperties={vi.fn()}
           onUpdateItemPorts={vi.fn()}
           onCreateConnection={vi.fn()}
@@ -680,6 +718,8 @@ describe('InspectorPanel', () => {
           onUpdateStorageSpecs={vi.fn()}
           onUpdateGpuIdentity={vi.fn()}
           onUpdateGpuSpecs={vi.fn()}
+          onUpdateItemIdentity={vi.fn()}
+          onUpdateItemSpecs={vi.fn()}
           onUpdateItemProperties={vi.fn()}
           onUpdateItemPorts={vi.fn()}
           onCreateConnection={vi.fn()}
