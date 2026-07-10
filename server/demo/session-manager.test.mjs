@@ -49,7 +49,7 @@ async function createSourceData() {
   const sourceDir = await makeTempDir()
 
   await writeJson(path.join(sourceDir, 'meta.json'), {
-    schemaVersion: 3,
+    schemaVersion: 5,
     appLastOpenedWith: '0.1.10',
     updatedAt: '2026-07-09T00:00:00.000Z',
   })
@@ -93,7 +93,7 @@ describe('demo data sanitizer', () => {
     const targetDir = await makeTempDir()
 
     await writeJson(path.join(sourceDir, 'meta.json'), {
-      schemaVersion: 3,
+      schemaVersion: 5,
       appLastOpenedWith: '0.1.10',
       lastSeenReleaseNotesVersion: '0.1.10',
       updatedAt: '2026-07-09T00:00:00.000Z',
@@ -398,7 +398,7 @@ describe('DemoSessionManager', () => {
     const dataDir = await makeTempDir()
 
     await writeJson(path.join(sourceDir, 'meta.json'), {
-      schemaVersion: 3,
+      schemaVersion: 5,
       appLastOpenedWith: '0.1.10',
       updatedAt: '2026-07-09T00:00:00.000Z',
     })

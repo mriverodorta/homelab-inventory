@@ -14,6 +14,24 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 - Added repository documentation, issue templates, CI, and security guidance.
 - Clarified Docker deployment, data persistence, and development setup.
 
+## [0.1.14] - 2026-07-10
+
+### Added
+
+- Added persisted negotiated network speeds for cable connections.
+- Added a light-purple cable color for negotiated 5G links.
+- Added required advertised speeds and practical defaults for switch RJ45, SFP, and SFP+ port groups.
+
+### Changed
+
+- Cable speed now uses the lowest advertised speed across switches, servers, NAS devices, hosted NICs, and transparent patch-panel paths.
+- Legacy network-capable connections are normalized as network cables during schema migration and project writes.
+
+### Fixed
+
+- Slower endpoints now update every cable color across both sides of a patch-panel keystone.
+- Existing 10G switch-to-switch SFP+ links now render blue instead of neutral.
+
 ## [0.1.13] - 2026-07-10
 
 ### Added

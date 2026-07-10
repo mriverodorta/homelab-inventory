@@ -4,6 +4,11 @@ import type {
   InventoryPortRole,
   InventoryPortType,
 } from '@/types/inventory'
+import {
+  defaultSwitchPortSpeed as getDefaultSwitchPortSpeed,
+  SUPPORTED_SWITCH_PORT_SPEEDS,
+  SWITCH_NETWORK_PORT_TYPES,
+} from '@/lib/negotiated-speed'
 
 export type SwitchPortGroup = {
   key: string
@@ -16,6 +21,35 @@ export type SwitchPortGroup = {
 export type SwitchPortGroupUpdate =
   | { ok: true; ports: InventoryPort[] }
   | { ok: false; message: string }
+
+export const SWITCH_NETWORK_PORT_SPEEDS = SUPPORTED_SWITCH_PORT_SPEEDS
+
+export function isSwitchNetworkPortType(type: InventoryPortType): boolean {
+  return SWITCH_NETWORK_PORT_TYPES.has(type)
+}
+
+export function isSupportedSwitchPortSpeed(
+  speed: string | undefined,
+): speed is (typeof SWITCH_NETWORK_PORT_SPEEDS)[number] {
+  return SWITCH_NETWORK_PORT_SPEEDS.includes(
+    speed as (typeof SWITCH_NETWORK_PORT_SPEEDS)[number],
+  )
+}
+
+export function defaultSwitchPortSpeed(type: InventoryPortType): string | undefined {
+  return getDefaultSwitchPortSpeed(type) ?? undefined
+}
+
+export function getSwitchPortSpeedForType(
+  type: InventoryPortType,
+  speed: string | undefined,
+): string | undefined {
+  if (!isSwitchNetworkPortType(type)) {
+    return speed
+  }
+
+  return isSupportedSwitchPortSpeed(speed) ? speed : defaultSwitchPortSpeed(type)
+}
 
 function groupKey(
   type: InventoryPortType,
@@ -95,6 +129,20 @@ function flattenAndRenumber(groups: SwitchPortGroup[]): InventoryPort[] {
   }))
 }
 
+function normalizeSwitchPortGroupSpeed(group: SwitchPortGroup): void {
+  const speed = getSwitchPortSpeedForType(group.type, group.speed)
+
+  if (speed === group.speed) {
+    return
+  }
+
+  group.speed = speed
+  group.ports = group.ports.map((port) => ({
+    ...port,
+    speed,
+  }))
+}
+
 export function resizeSwitchPortGroup({
   ports,
   connections,
@@ -144,6 +192,8 @@ export function resizeSwitchPortGroup({
     }
   }
 
+  normalizeSwitchPortGroupSpeed(group)
+
   return {
     ok: true,
     ports: flattenAndRenumber(groups.filter((candidate) => candidate.ports.length > 0)),
@@ -171,7 +221,10 @@ export function updateSwitchPortGroupDefinition({
   }
 
   group.type = definition.type ?? group.type
-  group.speed = definition.speed
+  group.speed = getSwitchPortSpeedForType(
+    group.type,
+    definition.speed === undefined ? group.speed : definition.speed,
+  )
   group.role = definition.role
   group.ports = group.ports.map((port) => ({
     ...port,
@@ -199,7 +252,7 @@ export function addSwitchPortGroup(ports: InventoryPort[]): InventoryPort[] {
   ]
   const definition = templates.find(
     (template) => !existingKeys.has(groupKey(template.type, template.speed, template.role)),
-  ) ?? { type: 'rj45' as const, role: 'access' as const }
+  ) ?? { type: 'rj45' as const, speed: '1G', role: 'access' as const }
   const nextPort: InventoryPort = {
     id: createPortId(ports),
     kind: 'switch-port',

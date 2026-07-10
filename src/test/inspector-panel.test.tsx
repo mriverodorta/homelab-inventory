@@ -372,6 +372,35 @@ describe('InspectorPanel', () => {
     )
   })
 
+  it('requires a supported speed for malformed imported switch network groups', async () => {
+    const user = userEvent.setup()
+    const originalPorts = project.items.switch.ports
+    project.items.switch.ports = originalPorts?.map((port) => ({ ...port, speed: undefined }))
+
+    try {
+      const { onUpdateItemPorts } = renderInspector('switch')
+
+      await user.click(screen.getByRole('tab', { name: 'Ports' }))
+
+      expect(screen.getByRole('alert')).toHaveTextContent(
+        'Select a supported speed for this RJ45 switch port group.',
+      )
+
+      await user.click(screen.getByRole('combobox', { name: 'RJ45 port group speed' }))
+      expect(screen.queryByRole('option', { name: 'No speed' })).not.toBeInTheDocument()
+      await user.click(screen.getByRole('option', { name: '10G' }))
+
+      expect(onUpdateItemPorts).toHaveBeenCalledWith(
+        'switch',
+        expect.arrayContaining([
+          expect.objectContaining({ speed: '10G' }),
+        ]),
+      )
+    } finally {
+      project.items.switch.ports = originalPorts
+    }
+  })
+
   it('renders patch panel ports and emits type updates', async () => {
     const user = userEvent.setup()
     const { onUpdateItemPorts, onEndpointConnectionClick } = renderInspector('patch')
@@ -689,6 +718,7 @@ describe('InspectorPanel', () => {
         {
           id: 'conn-1',
           type: 'network',
+          negotiatedSpeedMbps: 1000,
           createdAt: '2026-06-26T00:00:00.000Z',
           from: { itemId: 'server', portId: 'lan-01' },
           to: { itemId: 'patch', portId: 'keystone-01', endpointId: 'keystone-01-back' },

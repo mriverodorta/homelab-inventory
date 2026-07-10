@@ -72,6 +72,7 @@ type WorkbenchFlowNode = ServerFlowNode | EquipmentFlowNode | NasFlowNode
 const CABLE_LEGEND = [
   { label: '1G', color: CABLE_COLORS.oneGig },
   { label: '2.5G', color: CABLE_COLORS.twoPointFiveGig },
+  { label: '5G', color: CABLE_COLORS.fiveGig },
   { label: '10G', color: CABLE_COLORS.tenGig },
   { label: 'Display', color: CABLE_COLORS.display },
 ]

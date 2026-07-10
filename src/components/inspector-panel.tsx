@@ -57,8 +57,12 @@ import {
 import { runtimeItemKey } from '@/lib/item-keys'
 import {
   addSwitchPortGroup,
+  getSwitchPortSpeedForType,
   groupSwitchPorts,
+  isSupportedSwitchPortSpeed,
+  isSwitchNetworkPortType,
   resizeSwitchPortGroup,
+  SWITCH_NETWORK_PORT_SPEEDS,
   updateSwitchPortGroupDefinition,
   type SwitchPortGroup,
 } from '@/lib/switch-ports'
@@ -131,7 +135,7 @@ const SWITCH_PORT_ROLE_OPTIONS: InventoryPortRole[] = [
   'disabled',
 ]
 const CONNECTION_ROUTE_SIDE_OPTIONS: ConnectionRouteSide[] = ['auto', 'top', 'right', 'bottom', 'left']
-const SWITCH_PORT_SPEED_OPTIONS = ['', '1G', '2.5G', '5G', '10G']
+const SWITCH_PORT_SPEED_OPTIONS = ['', ...SWITCH_NETWORK_PORT_SPEEDS]
 
 const inspectorSurfaceClass = 'border-[#e3d7c8] bg-[#fffdf8] shadow-[0_16px_34px_rgba(60,52,43,0.08)]'
 const inspectorPanelClass = 'border-[#e5dccf] bg-white/88 shadow-[0_10px_28px_rgba(60,52,43,0.06)]'
@@ -2067,6 +2071,9 @@ function SwitchPortGroupRow({
   onError: (message: string | null) => void
 }) {
   const [count, setCount] = useState(String(group.ports.length))
+  const requiresSpeed = isSwitchNetworkPortType(group.type)
+  const hasValidSpeed = isSupportedSwitchPortSpeed(group.speed)
+  const selectedSpeed = requiresSpeed && !hasValidSpeed ? EMPTY_SELECT_VALUE : group.speed ?? EMPTY_SELECT_VALUE
 
   useEffect(() => {
     setCount(String(group.ports.length))
@@ -2109,12 +2116,14 @@ function SwitchPortGroupRow({
   ) {
     const updatesRole = Object.prototype.hasOwnProperty.call(definition, 'role')
     onError(null)
+    const nextType = definition.type ?? group.type
+    const requestedSpeed = definition.speed === undefined ? group.speed : definition.speed
     onUpdate(updateSwitchPortGroupDefinition({
       ports: item.ports ?? [],
       groupKey: group.key,
       definition: {
-        type: definition.type ?? group.type,
-        speed: definition.speed === undefined ? group.speed : definition.speed,
+        type: nextType,
+        speed: getSwitchPortSpeedForType(nextType, requestedSpeed),
         role: updatesRole ? definition.role ?? undefined : group.role,
       },
     }))
@@ -2156,14 +2165,17 @@ function SwitchPortGroupRow({
       <label className={cn(formLabelClass, 'text-xs')}>
         Speed
         <Select
-          value={group.speed ?? EMPTY_SELECT_VALUE}
+          value={selectedSpeed}
           onValueChange={(value) => updateDefinition({ speed: value === EMPTY_SELECT_VALUE ? '' : value })}
         >
           <SelectTrigger className="w-full" aria-label={`${formatPortTypeLabel(group.type)} port group speed`}>
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            {SWITCH_PORT_SPEED_OPTIONS.map((speed) => (
+            {requiresSpeed && !hasValidSpeed ? (
+              <SelectItem value={EMPTY_SELECT_VALUE} disabled>Select speed</SelectItem>
+            ) : null}
+            {(requiresSpeed ? SWITCH_NETWORK_PORT_SPEEDS : SWITCH_PORT_SPEED_OPTIONS).map((speed) => (
               <SelectItem key={speed || EMPTY_SELECT_VALUE} value={speed || EMPTY_SELECT_VALUE}>
                 {speed || 'No speed'}
               </SelectItem>
@@ -2218,6 +2230,12 @@ function SwitchPortGroupRow({
       >
         <Trash2 data-icon="inline-start" />
       </Button>
+      {requiresSpeed && !hasValidSpeed ? (
+        <div role="alert" className="flex gap-2 text-xs font-semibold text-[#8b3322] sm:col-span-5">
+          <AlertTriangle className="size-4 shrink-0" />
+          <span>Select a supported speed for this {formatPortTypeLabel(group.type)} switch port group.</span>
+        </div>
+      ) : null}
     </div>
   )
 }

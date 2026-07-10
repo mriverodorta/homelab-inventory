@@ -69,6 +69,7 @@ export type InventoryConnection = {
   from: ConnectionEndpoint
   to: ConnectionEndpoint
   type: InventoryConnectionType
+  negotiatedSpeedMbps?: number
   label?: string
   route?: ConnectionRoutePreferences
   createdAt: string

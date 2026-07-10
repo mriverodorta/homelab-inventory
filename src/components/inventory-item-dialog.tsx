@@ -18,6 +18,12 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import type { InventoryItemInput } from '@/lib/db'
+import {
+  getSwitchPortSpeedForType,
+  isSupportedSwitchPortSpeed,
+  isSwitchNetworkPortType,
+  SWITCH_NETWORK_PORT_SPEEDS,
+} from '@/lib/switch-ports'
 import type {
   InventoryPort,
   InventoryPortRole,
@@ -60,7 +66,7 @@ const PORT_TYPES: InventoryPortType[] = [
 ]
 
 const PORT_ROLES: InventoryPortRole[] = ['access', 'trunk', 'uplink', 'management', 'disabled']
-const SPEEDS = ['', '1G', '2.5G', '5G', '10G']
+const SPEEDS = ['', ...SWITCH_NETWORK_PORT_SPEEDS]
 const RAM_SPEEDS = ['', '1600', '1866', '2133', '2400', '2666', '2933', '3200', '3600', '4800', '5600']
 const STORAGE_FORM_FACTORS = ['', '2230', '2242', '2260', '2280', '2.5"', '3.5"', 'eMMC']
 const SERVER_FORM_FACTORS = ['Tiny', 'Mini', 'Micro', 'Small', 'SFF', 'Tower', 'Mini-ITX', 'Micro-ATX', 'ATX', 'E-ATX']
@@ -117,6 +123,22 @@ function defaultPortGroups(type: InventoryType): PortGroup[] {
 
 function fieldClassName() {
   return 'w-full border-[#ded8ce] bg-[#fffdf8] text-[#20242c] placeholder:text-[#8d857b]'
+}
+
+function formatPortTypeLabel(type: InventoryPortType): string {
+  if (type === 'sfp-plus') {
+    return 'SFP+'
+  }
+
+  if (type === 'displayport') {
+    return 'DisplayPort'
+  }
+
+  if (type === 'mini-displayport') {
+    return 'Mini DisplayPort'
+  }
+
+  return type.toUpperCase()
 }
 
 function Label({
@@ -373,7 +395,19 @@ function PortGroupsEditor({
   }
 
   function updateGroup(id: number, update: Partial<PortGroup>) {
-    onChange(groups.map((group) => (group.id === id ? { ...group, ...update } : group)))
+    onChange(groups.map((group) => {
+      if (group.id !== id) {
+        return group
+      }
+
+      const nextGroup = { ...group, ...update }
+
+      if (type === 'switch' && Object.prototype.hasOwnProperty.call(update, 'type')) {
+        nextGroup.speed = getSwitchPortSpeedForType(nextGroup.type, nextGroup.speed) ?? ''
+      }
+
+      return nextGroup
+    }))
   }
 
   return (
@@ -407,75 +441,89 @@ function PortGroupsEditor({
         </Button>
       </div>
       <div className="mt-3 space-y-2">
-        {groups.map((group) => (
-          <div key={group.id} className="grid grid-cols-2 gap-2 sm:grid-cols-[72px_1fr_1fr_1fr_auto]">
-            <Input
-              type="number"
-              min={0}
-              value={group.count}
-              className={fieldClassName()}
-              onChange={(event) => updateGroup(group.id, { count: Number(event.target.value) })}
-              aria-label="Port count"
-            />
-            <Select
-              value={group.type}
-              onValueChange={(value) => updateGroup(group.id, { type: value as InventoryPortType })}
-              onOpenChange={onSelectOpenChange}
-            >
-              <SelectTrigger className={fieldClassName()}>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {PORT_TYPES.map((portType) => (
-                  <SelectItem key={portType} value={portType}>
-                    {portType}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Select
-              value={group.speed || 'none'}
-              onValueChange={(value) => updateGroup(group.id, { speed: value === 'none' ? '' : value })}
-              onOpenChange={onSelectOpenChange}
-            >
-              <SelectTrigger className={fieldClassName()}>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {SPEEDS.map((speed) => (
-                  <SelectItem key={speed || 'none'} value={speed || 'none'}>
-                    {speed || 'No speed'}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Select
-              value={group.role}
-              onValueChange={(value) => updateGroup(group.id, { role: value as InventoryPortRole })}
-              onOpenChange={onSelectOpenChange}
-            >
-              <SelectTrigger className={fieldClassName()}>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {PORT_ROLES.map((role) => (
-                  <SelectItem key={role} value={role}>
-                    {role}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              onClick={() => onChange(groups.filter((candidate) => candidate.id !== group.id))}
-              aria-label="Remove port group"
-            >
-              <Trash2 className="size-4" />
-            </Button>
-          </div>
-        ))}
+        {groups.map((group, index) => {
+          const requiresSpeed = type === 'switch' && isSwitchNetworkPortType(group.type)
+          const hasValidSpeed = isSupportedSwitchPortSpeed(group.speed)
+          const speedOptions = requiresSpeed ? SWITCH_NETWORK_PORT_SPEEDS : SPEEDS
+
+          return (
+            <div key={group.id} className="grid grid-cols-2 gap-2 sm:grid-cols-[72px_1fr_1fr_1fr_auto]">
+              <Input
+                type="number"
+                min={0}
+                value={group.count}
+                className={fieldClassName()}
+                onChange={(event) => updateGroup(group.id, { count: Number(event.target.value) })}
+                aria-label="Port count"
+              />
+              <Select
+                value={group.type}
+                onValueChange={(value) => updateGroup(group.id, { type: value as InventoryPortType })}
+                onOpenChange={onSelectOpenChange}
+              >
+                <SelectTrigger className={fieldClassName()} aria-label={`Port group ${index + 1} type`}>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {PORT_TYPES.map((portType) => (
+                    <SelectItem key={portType} value={portType}>
+                      {formatPortTypeLabel(portType)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Select
+                value={requiresSpeed && !hasValidSpeed ? 'required' : group.speed || 'none'}
+                onValueChange={(value) => updateGroup(group.id, { speed: value === 'none' ? '' : value })}
+                onOpenChange={onSelectOpenChange}
+              >
+                <SelectTrigger className={fieldClassName()} aria-label={`Port group ${index + 1} speed`}>
+                  <SelectValue placeholder="Select speed" />
+                </SelectTrigger>
+                <SelectContent>
+                  {requiresSpeed && !hasValidSpeed ? (
+                    <SelectItem value="required" disabled>Select speed</SelectItem>
+                  ) : null}
+                  {speedOptions.map((speed) => (
+                    <SelectItem key={speed || 'none'} value={speed || 'none'}>
+                      {speed || 'No speed'}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Select
+                value={group.role}
+                onValueChange={(value) => updateGroup(group.id, { role: value as InventoryPortRole })}
+                onOpenChange={onSelectOpenChange}
+              >
+                <SelectTrigger className={fieldClassName()}>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {PORT_ROLES.map((role) => (
+                    <SelectItem key={role} value={role}>
+                      {role}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                onClick={() => onChange(groups.filter((candidate) => candidate.id !== group.id))}
+                aria-label="Remove port group"
+              >
+                <Trash2 className="size-4" />
+              </Button>
+              {requiresSpeed && !hasValidSpeed ? (
+                <div role="alert" className="col-span-2 text-xs font-semibold text-[#8b3322] sm:col-span-5">
+                  Select a supported speed for this {formatPortTypeLabel(group.type)} switch port group.
+                </div>
+              ) : null}
+            </div>
+          )
+        })}
       </div>
     </section>
   )
@@ -578,6 +626,19 @@ export function InventoryItemDialog({
       return
     }
 
+    const invalidSwitchGroup = type === 'switch'
+      ? portGroups.find(
+          (group) => isSwitchNetworkPortType(group.type) && !isSupportedSwitchPortSpeed(group.speed),
+        )
+      : undefined
+
+    if (invalidSwitchGroup) {
+      setError(
+        `Select a supported speed for the ${formatPortTypeLabel(invalidSwitchGroup.type)} switch port group.`,
+      )
+      return
+    }
+
     setPending(true)
     setError(null)
 
@@ -614,7 +675,7 @@ export function InventoryItemDialog({
                   onValueChange={(value) => changeType(value as InventoryType)}
                   onOpenChange={handleSelectOpenChange}
                 >
-                  <SelectTrigger className={fieldClassName()}>
+                  <SelectTrigger className={fieldClassName()} aria-label="Inventory type">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>

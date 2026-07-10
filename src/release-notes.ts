@@ -12,6 +12,25 @@ export type ReleaseNoteEntry = {
 
 export const RELEASE_NOTES: ReleaseNoteEntry[] = [
   {
+    version: '0.1.14',
+    date: '2026-07-10',
+    channel: 'latest',
+    title: 'Negotiated network cable speeds',
+    highlights: [
+      'Network connections now persist their negotiated speed and use the lowest advertised speed across the full connected path.',
+      'Patch panels now behave as passive links, so attaching a slower server or NAS updates every cable on both sides of the keystone.',
+      'Added a light-purple 5G cable color alongside the existing 1G, 2.5G, and 10G palette.',
+      'Switch RJ45, SFP, and SFP+ receptacles now require an advertised speed, with practical defaults for newly added port groups.',
+    ],
+    fixes: [
+      'A 1G server connected to a 2.5G switch now renders the complete path as 1G instead of incorrectly using the faster endpoint.',
+      'Legacy switch-to-switch uplinks are repaired as network connections so 10G SFP+ links render blue instead of neutral.',
+    ],
+    notes: [
+      'Schema migrations 4 and 5 backfill negotiated speeds and switch port defaults without changing cable IDs, labels, or routes.',
+    ],
+  },
+  {
     version: '0.1.13',
     date: '2026-07-10',
     channel: 'latest',

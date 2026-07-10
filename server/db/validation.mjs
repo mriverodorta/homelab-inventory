@@ -15,6 +15,8 @@ const portKinds = new Set(['switch-port', 'keystone', 'server-port'])
 const portTypes = new Set(['rj45', 'sfp', 'sfp-plus', 'hdmi', 'displayport', 'mini-displayport', 'barrel'])
 const portRoles = new Set(['access', 'trunk', 'uplink', 'management', 'disabled'])
 const portSides = new Set(['front', 'back'])
+const switchNetworkPortTypes = new Set(['rj45', 'sfp', 'sfp-plus'])
+const switchNetworkPortSpeeds = new Set(['1G', '2.5G', '5G', '10G'])
 
 export function assertInventoryStoreShape(store) {
   if (!store || typeof store !== 'object' || Array.isArray(store)) {
@@ -84,6 +86,14 @@ function assertInventoryItem(itemId, item, expectedType) {
 
     if (port.role !== undefined && !portRoles.has(port.role)) {
       throw new Error(`Inventory item ${itemId} port ${port.id} has an unsupported role.`)
+    }
+
+    if (
+      type === 'switch' &&
+      switchNetworkPortTypes.has(port.type) &&
+      !switchNetworkPortSpeeds.has(port.speed)
+    ) {
+      throw new Error(`Switch network port ${port.id} must advertise 1G, 2.5G, 5G, or 10G.`)
     }
 
     if (port.endpoints === undefined) {
@@ -167,6 +177,13 @@ export function assertProjectStoreShape(store) {
       !isValidEndpoint(connection.to)
     ) {
       throw new Error('Each connection must include id, from, to, type, and createdAt.')
+    }
+
+    if (
+      connection.negotiatedSpeedMbps !== undefined &&
+      ![1000, 2500, 5000, 10000].includes(connection.negotiatedSpeedMbps)
+    ) {
+      throw new Error('Connection negotiated speed must be 1000, 2500, 5000, or 10000 Mbps.')
     }
   }
 }

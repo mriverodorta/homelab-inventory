@@ -1,10 +1,11 @@
 import fs from 'node:fs/promises'
 import path from 'node:path'
 import { Low } from 'lowdb'
+import { normalizeNetworkProject, recalculateNegotiatedSpeeds } from '../../src/lib/negotiated-speed.ts'
 import { getReleaseNotesBetween } from '../../src/release-notes.ts'
 import { assertInventoryStoreShape, assertProjectShape, assertProjectStoreShape } from './validation.mjs'
 
-export const CURRENT_SCHEMA_VERSION = 3
+export const CURRENT_SCHEMA_VERSION = 5
 
 const DEFAULT_SAVE_DEBOUNCE_MS = 500
 const BACKUP_LIMIT = 10
@@ -684,7 +685,7 @@ export class HomelabInventoryStore {
 
     if (this.legacyProjectPath && await pathExists(this.legacyProjectPath)) {
       const legacyProject = await readJson(this.legacyProjectPath)
-      const split = splitProject(legacyProject)
+      const split = splitProject(normalizeNetworkProject(legacyProject))
 
       await writeJson(this.paths.meta, {
         schemaVersion: CURRENT_SCHEMA_VERSION,
@@ -835,6 +836,36 @@ export class HomelabInventoryStore {
         continue
       }
 
+      if (currentVersion === 3) {
+        const composedProject = composeProject(
+          this.databases.meta.data,
+          this.databases.inventory.data,
+          this.databases.project.data,
+        )
+        const split = splitProject(recalculateNegotiatedSpeeds(composedProject))
+
+        this.databases.inventory.data = split.inventory
+        this.databases.project.data = split.project
+        this.databases.meta.data.schemaVersion = 4
+        currentVersion = 4
+        continue
+      }
+
+      if (currentVersion === 4) {
+        const composedProject = composeProject(
+          this.databases.meta.data,
+          this.databases.inventory.data,
+          this.databases.project.data,
+        )
+        const split = splitProject(normalizeNetworkProject(composedProject))
+
+        this.databases.inventory.data = split.inventory
+        this.databases.project.data = split.project
+        this.databases.meta.data.schemaVersion = 5
+        currentVersion = 5
+        continue
+      }
+
       throw new Error(`No migration registered for schema version ${currentVersion}.`)
     }
 
@@ -906,13 +937,15 @@ export class HomelabInventoryStore {
   }
 
   setProject(project) {
-    assertProjectShape(project)
-
-    const split = splitProject({
+    const submittedProject = {
       ...project,
       id: 'default',
       connections: project.connections ?? [],
-    })
+    }
+
+    assertProjectShape(submittedProject)
+    const normalizedProject = normalizeNetworkProject(submittedProject)
+    const split = splitProject(normalizedProject)
     const updatedAt = new Date().toISOString()
 
     this.databases.inventory.data = split.inventory
@@ -949,11 +982,16 @@ export class HomelabInventoryStore {
     const { item } = normalizeInventoryItemInput(input, id)
     const record = cleanItemForStore(item)
 
-    this.databases.inventory.data[table] = [...records, record]
-      .sort((first, second) => Number(first.id) - Number(second.id))
-    this.databases.meta.data.updatedAt = new Date().toISOString()
+    const nextInventory = {
+      ...this.databases.inventory.data,
+      [table]: [...records, record]
+        .sort((first, second) => Number(first.id) - Number(second.id)),
+    }
 
-    assertInventoryStoreShape(this.databases.inventory.data)
+    assertInventoryStoreShape(nextInventory)
+
+    this.databases.inventory.data = nextInventory
+    this.databases.meta.data.updatedAt = new Date().toISOString()
     assertProjectShape(this.getProject())
 
     this.scheduleFlush('meta')

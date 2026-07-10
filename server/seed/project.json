@@ -141,6 +141,7 @@
         "endpointId": 2
       },
       "type": "network",
+      "negotiatedSpeedMbps": 1000,
       "createdAt": "2026-07-07T00:00:00.000Z",
       "route": {
         "sourceSide": "top",
@@ -171,6 +172,7 @@
         "portId": 1
       },
       "type": "network",
+      "negotiatedSpeedMbps": 1000,
       "createdAt": "2026-07-07T00:00:00.000Z",
       "route": {
         "sourceSide": "bottom",
@@ -200,6 +202,7 @@
         "portId": 2
       },
       "type": "network",
+      "negotiatedSpeedMbps": 2500,
       "createdAt": "2026-07-07T00:00:00.000Z",
       "route": {
         "sourceSide": "top",
@@ -231,6 +234,7 @@
         "portId": 3
       },
       "type": "network",
+      "negotiatedSpeedMbps": 2500,
       "createdAt": "2026-07-07T00:00:00.000Z",
       "route": {
         "sourceSide": "top",

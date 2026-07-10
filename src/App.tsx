@@ -56,6 +56,7 @@ import {
   getNetworkTraceItemIds,
   traceNetworkPath,
 } from '@/lib/network-trace'
+import { normalizeNetworkProject } from '@/lib/negotiated-speed'
 import {
   getCanvasItemHeight,
   getCanvasItemWidth,
@@ -641,6 +642,7 @@ function App() {
   const isDemoMode = demoSessionQuery.data?.mode === 'demo'
 
   function updateProject(nextProject: ProjectState, options: { recordHistory?: boolean } = {}) {
+    const negotiatedProject = normalizeNetworkProject(nextProject)
     const shouldRecordHistory = options.recordHistory ?? true
     const currentProject = projectRef.current
 
@@ -648,8 +650,8 @@ function App() {
       setHistory((currentHistory) => pushHistory(currentHistory, currentProject))
     }
 
-    projectRef.current = nextProject
-    setProject(nextProject)
+    projectRef.current = negotiatedProject
+    setProject(negotiatedProject)
   }
 
   function showMessage(message: string) {

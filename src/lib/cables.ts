@@ -11,6 +11,7 @@ import type {
 export const CABLE_COLORS = {
   oneGig: '#c96f2d',
   twoPointFiveGig: '#4d9a61',
+  fiveGig: '#9b7bd4',
   tenGig: '#2f6fbd',
   display: '#171717',
   other: '#75695d',
@@ -19,6 +20,13 @@ export const CABLE_COLORS = {
 export type CableAppearance = {
   color: string
   label: string
+}
+
+const NEGOTIATED_SPEED_APPEARANCES: Partial<Record<number, CableAppearance>> = {
+  1000: { color: CABLE_COLORS.oneGig, label: '1G' },
+  2500: { color: CABLE_COLORS.twoPointFiveGig, label: '2.5G' },
+  5000: { color: CABLE_COLORS.fiveGig, label: '5G' },
+  10000: { color: CABLE_COLORS.tenGig, label: '10G' },
 }
 
 function formatPortTypeLabel(type: InventoryPort['type']): string {
@@ -48,18 +56,10 @@ function endpointSide(item: InventoryItem, endpoint: ConnectionEndpoint): string
   return portEndpoint?.side ?? null
 }
 
-function speedText(port: InventoryPort | null): string {
-  return `${port?.speed ?? ''} ${port?.type ?? ''}`.toLowerCase()
-}
-
 export function getCableAppearance(
-  project: ProjectState,
+  _project: ProjectState,
   connection: InventoryConnection,
 ): CableAppearance {
-  const fromPort = getConnectionPort(project, connection.from)
-  const toPort = getConnectionPort(project, connection.to)
-  const joinedSpeed = `${speedText(fromPort)} ${speedText(toPort)}`
-
   if (connection.type === 'display') {
     return {
       color: CABLE_COLORS.display,
@@ -67,25 +67,13 @@ export function getCableAppearance(
     }
   }
 
-  if (joinedSpeed.includes('sfp-plus') || joinedSpeed.includes('10g')) {
-    return {
-      color: CABLE_COLORS.tenGig,
-      label: '10G',
-    }
-  }
+  const negotiatedSpeedMbps = connection.negotiatedSpeedMbps
+  const negotiatedAppearance = negotiatedSpeedMbps
+    ? NEGOTIATED_SPEED_APPEARANCES[negotiatedSpeedMbps]
+    : undefined
 
-  if (joinedSpeed.includes('2.5g')) {
-    return {
-      color: CABLE_COLORS.twoPointFiveGig,
-      label: '2.5G',
-    }
-  }
-
-  if (joinedSpeed.includes('1g') || fromPort?.type === 'rj45' || toPort?.type === 'rj45') {
-    return {
-      color: CABLE_COLORS.oneGig,
-      label: '1G',
-    }
+  if (negotiatedAppearance) {
+    return negotiatedAppearance
   }
 
   return {
