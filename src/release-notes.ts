@@ -12,6 +12,20 @@ export type ReleaseNoteEntry = {
 
 export const RELEASE_NOTES: ReleaseNoteEntry[] = [
   {
+    version: '0.1.16',
+    date: '2026-07-12',
+    channel: 'latest',
+    title: 'Docker update notifications',
+    highlights: [
+      'Homelab Inventory now checks the configured stable or latest Docker Hub channel and shows when a newer image is available.',
+      'The update dialog includes release highlights, a manual check, copyable Docker Compose commands, and an exact-version skip action.',
+    ],
+    fixes: [],
+    notes: [
+      'Automatic checks are anonymous, run at startup and every six hours, and can be disabled with UPDATE_CHECK_ENABLED=false.',
+    ],
+  },
+  {
     version: '0.1.15',
     date: '2026-07-12',
     channel: 'latest',

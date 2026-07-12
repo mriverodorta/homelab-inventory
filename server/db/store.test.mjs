@@ -185,6 +185,10 @@ describe('HomelabInventoryStore', () => {
 
     expect(store.getProject().items['server:1'].name).toBe('Server')
     expect(store.databases.meta.data.lastSeenReleaseNotesVersion).toBe('1.0.0')
+    expect(store.getUpdateMetadata()).toEqual({
+      skippedUpdateVersion: null,
+      lastUpdateCheck: null,
+    })
     expect(JSON.parse(await fs.readFile(path.join(dataDir, 'stores', 'inventory.json'), 'utf8'))).toEqual({
       servers: [
         {
@@ -240,6 +244,59 @@ describe('HomelabInventoryStore', () => {
       assignments: [],
       connections: [],
     })
+    expect(store.getUpdateMetadata()).toEqual({
+      skippedUpdateVersion: null,
+      lastUpdateCheck: null,
+    })
+  })
+
+  it('persists update state and skips only the selected version', async () => {
+    const dataDir = await makeTempDir()
+    const store = createStore({
+      appVersion: '0.1.15',
+      dataDir,
+      legacyProjectPath: path.join(dataDir, 'homelab-inventory-project.json'),
+      saveDebounceMs: 1,
+      seedEmptyData: false,
+      seedDir: path.join(dataDir, 'missing-seed'),
+    })
+    const result = {
+      state: 'available',
+      channel: 'stable',
+      runningVersion: '0.1.15',
+      runningRevision: 'running',
+      availableVersion: '0.1.16',
+      availableRevision: 'published',
+      updateAvailable: true,
+      checkedAt: '2026-07-12T12:00:00.000Z',
+      errorCode: null,
+    }
+
+    await store.init()
+    await store.saveUpdateCheck(result)
+    await store.skipUpdateVersion('0.1.16')
+
+    expect(store.getUpdateMetadata()).toEqual({
+      skippedUpdateVersion: '0.1.16',
+      lastUpdateCheck: result,
+    })
+    expect(store.isUpdateVersionSkipped('0.1.16')).toBe(true)
+    expect(store.isUpdateVersionSkipped('0.1.17')).toBe(false)
+
+    result.availableVersion = 'modified-after-save'
+    expect(store.getUpdateMetadata().lastUpdateCheck.availableVersion).toBe('0.1.16')
+
+    const meta = JSON.parse(await fs.readFile(path.join(dataDir, 'meta.json'), 'utf8'))
+    expect(meta).toMatchObject({
+      skippedUpdateVersion: '0.1.16',
+      lastUpdateCheck: { availableVersion: '0.1.16' },
+    })
+
+    await store.clearSkippedUpdateVersion()
+
+    expect(store.isUpdateVersionSkipped('0.1.16')).toBe(false)
+    expect(store.getUpdateMetadata().skippedUpdateVersion).toBeNull()
+    expect(JSON.parse(await fs.readFile(path.join(dataDir, 'meta.json'), 'utf8')).skippedUpdateVersion).toBeNull()
   })
 
   it('loads the bundled sample seed with persisted negotiated cable speeds', async () => {

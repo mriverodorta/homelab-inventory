@@ -17,6 +17,7 @@ import { DemoSessionDialog, type DemoSessionDialogState } from '@/components/dem
 import { GlobalItemSearch } from '@/components/global-item-search'
 import { InspectorPanel } from '@/components/inspector-panel'
 import { InventorySidebar } from '@/components/inventory-sidebar'
+import { UpdateDialog } from '@/components/update-dialog'
 import { WhatsNewDialog } from '@/components/whats-new-dialog'
 import {
   snapToGrid,
@@ -44,6 +45,16 @@ import {
   loadReleaseNotesStatus,
   type ReleaseNotesStatus,
 } from '@/lib/release-notes-api'
+import {
+  checkForUpdates,
+  clearSkippedUpdate,
+  getUpdateStatusRefetchInterval,
+  loadUpdateStatus,
+  shouldHighlightUpdate,
+  skipAvailableUpdate,
+  UPDATE_STATUS_QUERY_KEY,
+  type UpdateStatus,
+} from '@/lib/update-api'
 import {
   createEmptyHistory,
   pushHistory,
@@ -373,6 +384,7 @@ function App() {
   const [draggingItemId, setDraggingItemId] = useState<string | null>(null)
   const [autoCenterOnSelect, setAutoCenterOnSelect] = useState(getStoredAutoCenterPreference)
   const [releaseNotesDismissedForSession, setReleaseNotesDismissedForSession] = useState(false)
+  const [updateDialogOpen, setUpdateDialogOpen] = useState(false)
   const [demoRemainingSeconds, setDemoRemainingSeconds] = useState<number | null>(null)
   const [demoDialogState, setDemoDialogState] = useState<DemoSessionDialogState>('closed')
   const [demoExtensionSeconds, setDemoExtensionSeconds] = useState(DEMO_EXTENSION_GRACE_SECONDS)
@@ -403,6 +415,13 @@ function App() {
     queryKey: RELEASE_NOTES_STATUS_QUERY_KEY,
     queryFn: loadReleaseNotesStatus,
   })
+  const updateStatusQuery = useQuery({
+    queryKey: UPDATE_STATUS_QUERY_KEY,
+    queryFn: loadUpdateStatus,
+    staleTime: 6 * 60 * 60 * 1000,
+    refetchInterval: (query) => getUpdateStatusRefetchInterval(query.state.data),
+    retry: false,
+  })
   const { mutate: mutateSaveProject } = useMutation({
     mutationFn: saveProject,
   })
@@ -411,6 +430,25 @@ function App() {
     onSuccess: (status) => {
       queryClient.setQueryData<ReleaseNotesStatus>(RELEASE_NOTES_STATUS_QUERY_KEY, status)
       setReleaseNotesDismissedForSession(true)
+    },
+  })
+  const checkForUpdatesMutation = useMutation({
+    mutationFn: checkForUpdates,
+    onSuccess: (status) => {
+      queryClient.setQueryData<UpdateStatus>(UPDATE_STATUS_QUERY_KEY, status)
+    },
+  })
+  const skipUpdateMutation = useMutation({
+    mutationFn: skipAvailableUpdate,
+    onSuccess: (status) => {
+      queryClient.setQueryData<UpdateStatus>(UPDATE_STATUS_QUERY_KEY, status)
+      setUpdateDialogOpen(false)
+    },
+  })
+  const clearSkippedUpdateMutation = useMutation({
+    mutationFn: clearSkippedUpdate,
+    onSuccess: (status) => {
+      queryClient.setQueryData<UpdateStatus>(UPDATE_STATUS_QUERY_KEY, status)
     },
   })
   const extendDemoSessionMutation = useMutation({
@@ -1144,6 +1182,8 @@ function App() {
             canRedo={history.future.length > 0}
             saveStatus={saveStatus}
             autoCenterOnSelect={autoCenterOnSelect}
+            updateAvailable={shouldHighlightUpdate(updateStatusQuery.data)}
+            updateStatusLoading={updateStatusQuery.isFetching && !updateStatusQuery.data}
             onSelect={(itemId) => {
               setSelectedItemId(itemId)
               setSelectedConnectionId(null)
@@ -1220,6 +1260,16 @@ function App() {
               setValidationMessage(null)
             }}
             onOpenAudit={() => setAuditOpen(true)}
+            onOpenUpdate={() => {
+              if (updateStatusQuery.data) {
+                setUpdateDialogOpen(true)
+                return
+              }
+
+              void updateStatusQuery.refetch().then((result) => {
+                if (result.data) setUpdateDialogOpen(true)
+              })
+            }}
           />
           {portConnectionPreview ? (
             <PortConnectionPreviewOverlay preview={portConnectionPreview} />
@@ -1397,6 +1447,19 @@ function App() {
               acknowledging={acknowledgeReleaseNotesMutation.isPending}
               onAcknowledge={() => acknowledgeReleaseNotesMutation.mutate()}
               onOpenChange={handleWhatsNewOpenChange}
+            />
+          ) : null}
+          {updateStatusQuery.data ? (
+            <UpdateDialog
+              open={updateDialogOpen}
+              status={updateStatusQuery.data}
+              checking={checkForUpdatesMutation.isPending}
+              skipping={skipUpdateMutation.isPending}
+              clearingSkip={clearSkippedUpdateMutation.isPending}
+              onOpenChange={setUpdateDialogOpen}
+              onCheck={() => checkForUpdatesMutation.mutate()}
+              onSkip={() => skipUpdateMutation.mutate()}
+              onClearSkip={() => clearSkippedUpdateMutation.mutate()}
             />
           ) : null}
           <DemoSessionDialog

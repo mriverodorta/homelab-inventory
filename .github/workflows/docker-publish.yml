@@ -91,23 +91,38 @@ jobs:
           set -euo pipefail
 
           tags=()
+          version="$(bun -p "require('./package.json').version")"
+          channel="release"
+          verification_tag=""
 
           if [[ "${GITHUB_REF_TYPE}" == "branch" && "${GITHUB_REF_NAME}" == "main" ]]; then
             tags+=("${IMAGE_NAME}:latest")
+            channel="latest"
+            verification_tag="latest"
           elif [[ "${GITHUB_REF_TYPE}" == "branch" && "${GITHUB_REF_NAME}" == "stable" ]]; then
             tags+=("${IMAGE_NAME}:stable")
+            channel="stable"
+            verification_tag="stable"
           elif [[ "${GITHUB_REF_TYPE}" == "tag" && "${GITHUB_REF_NAME}" =~ ^v([0-9]+)\.([0-9]+)\.([0-9]+)$ ]]; then
-            version="${GITHUB_REF_NAME#v}"
+            tag_version="${GITHUB_REF_NAME#v}"
+            if [[ "${tag_version}" != "${version}" ]]; then
+              echo "::error title=Version mismatch::Git tag ${tag_version} does not match package version ${version}."
+              exit 1
+            fi
             major="${BASH_REMATCH[1]}"
             minor="${BASH_REMATCH[2]}"
-            tags+=("${IMAGE_NAME}:${version}")
+            tags+=("${IMAGE_NAME}:${tag_version}")
             tags+=("${IMAGE_NAME}:${major}.${minor}")
+            verification_tag="${tag_version}"
           fi
 
           {
             echo "tags<<EOF"
             printf '%s\n' "${tags[@]}"
             echo "EOF"
+            echo "version=${version}"
+            echo "channel=${channel}"
+            echo "verification_tag=${verification_tag}"
           } >> "$GITHUB_OUTPUT"
 
       - name: Build and push Docker image
@@ -117,8 +132,26 @@ jobs:
           platforms: ${{ env.PLATFORMS }}
           push: true
           tags: ${{ steps.docker_tags.outputs.tags }}
+          build-args: |
+            APP_VERSION=${{ steps.docker_tags.outputs.version }}
+            APP_REVISION=${{ github.sha }}
+            APP_CHANNEL=${{ steps.docker_tags.outputs.channel }}
+          labels: |
+            org.opencontainers.image.version=${{ steps.docker_tags.outputs.version }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.source=https://github.com/mriverodorta/homelab-inventory
+            io.homelab-inventory.channel=${{ steps.docker_tags.outputs.channel }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      - name: Verify published image metadata
+        if: steps.docker_tags.outputs.verification_tag != ''
+        run: >-
+          bun scripts/verify-published-image.mjs
+          --tag "${{ steps.docker_tags.outputs.verification_tag }}"
+          --version "${{ steps.docker_tags.outputs.version }}"
+          --revision "${{ github.sha }}"
+          --channel "${{ steps.docker_tags.outputs.channel }}"
 
       - name: Create GitHub release
         if: startsWith(github.ref, 'refs/tags/v')

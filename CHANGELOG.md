@@ -14,6 +14,20 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 - Added repository documentation, issue templates, CI, and security guidance.
 - Clarified Docker deployment, data persistence, and development setup.
 
+## [0.1.16] - 2026-07-12
+
+### Added
+
+- Added anonymous Docker Hub update checks for the configurable `stable` and `latest` channels.
+- Added a canvas update notification with release highlights, manual refresh, copyable Docker Compose commands, and exact-version skipping.
+- Added persisted successful-check metadata and skipped-version state without exposing inventory data.
+- Added OCI version, revision, source, and channel metadata to published images with CI verification.
+
+### Security
+
+- Update checks use fixed read-only Docker Hub endpoints, strict response limits, and no Docker socket or registry credentials.
+- Offline installations can disable outbound update checks with `UPDATE_CHECK_ENABLED=false`.
+
 ## [0.1.15] - 2026-07-12
 
 ### Fixed

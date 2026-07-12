@@ -6,6 +6,9 @@ import { fileURLToPath } from 'node:url'
 import { RELEASE_NOTES } from '../src/release-notes.ts'
 import { registerAgentRoutes } from './agent-routes.mjs'
 import { HomelabInventoryStore } from './db/store.mjs'
+import { DockerHubUpdateChecker } from './update-checker.mjs'
+import { registerUpdateRoutes } from './update-routes.mjs'
+import { startUpdateCheckSchedule } from './update-scheduler.mjs'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const root = path.resolve(__dirname, '..')
@@ -24,6 +27,23 @@ const seedEmptyData = process.env.SEED_EMPTY_DATA === undefined
   : process.env.SEED_EMPTY_DATA === 'true'
 const seedDir = path.join(root, 'server', 'seed')
 const packageJson = JSON.parse(await fs.readFile(path.join(root, 'package.json'), 'utf8'))
+const configuredUpdateChannel = process.env.UPDATE_CHANNEL ?? (isDemoMode ? 'latest' : 'stable')
+const updateChannel = ['stable', 'latest'].includes(configuredUpdateChannel)
+  ? configuredUpdateChannel
+  : 'stable'
+const updateCheckEnabled = process.env.UPDATE_CHECK_ENABLED !== 'false'
+const runningRevision = process.env.APP_REVISION ?? 'unknown'
+
+if (configuredUpdateChannel !== updateChannel) {
+  console.warn(`Unsupported UPDATE_CHANNEL "${configuredUpdateChannel}"; using stable.`)
+}
+
+const updateChecker = new DockerHubUpdateChecker({
+  enabled: updateCheckEnabled,
+  channel: updateChannel,
+  runningVersion: packageJson.version,
+  runningRevision,
+})
 
 const app = express()
 
@@ -125,6 +145,17 @@ async function withStore(request, response, handler, options = {}) {
     })
   }
 }
+
+registerUpdateRoutes(app, {
+  withStore,
+  checker: updateChecker,
+  releaseNotes: RELEASE_NOTES,
+})
+
+startUpdateCheckSchedule({
+  checker: updateChecker,
+  store,
+})
 
 app.get('/api/health', (_request, response) => {
   response.json({

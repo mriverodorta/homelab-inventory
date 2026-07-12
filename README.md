@@ -67,6 +67,8 @@ PORT=8798
 DATA_DIR=/data
 SAVE_DEBOUNCE_MS=500
 APP_MODE=production
+UPDATE_CHANNEL=stable
+UPDATE_CHECK_ENABLED=true
 ```
 
 Production starts empty. Create inventory items from the web interface, or copy an existing `/data` directory into the mounted volume.
@@ -133,6 +135,14 @@ CI/CD uses GitHub as the source of truth:
 - Tags like `v0.2.0` publish immutable semver Docker images and create a GitHub Release.
 
 Release process details: [docs/RELEASES.md](docs/RELEASES.md)
+
+## Update Notifications
+
+Homelab Inventory checks Docker Hub at startup and every six hours for a newer image on `UPDATE_CHANNEL`. The default is `stable`; use `latest` only when you intentionally follow the fast-moving main channel.
+
+The backend makes an anonymous, read-only request for `mriverodorta/homelab-inventory` metadata. It does not send inventory data, IP addresses, credentials, or an installation identifier. Set `UPDATE_CHECK_ENABLED=false` for an offline installation.
+
+When an update is available, the canvas toolbar shows an update notice with release highlights, a manual **Check now** action, copyable `docker compose pull` / `docker compose up -d` commands, and **Skip this version**. Skipping suppresses only that exact version; a later version is shown automatically. Watchtower users can continue using their existing automatic-update workflow.
 
 ## Agent
 

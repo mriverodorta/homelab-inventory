@@ -31,6 +31,7 @@ import { CableEdge, type CableFlowEdge } from '@/components/cable-edge'
 import { EquipmentNode, type EquipmentFlowNode } from '@/components/equipment-card'
 import { NasNode, type NasFlowNode } from '@/components/nas-card'
 import { ServerNode, type ServerFlowNode } from '@/components/server-card'
+import { UpdateAvailableButton } from '@/components/update-dialog'
 import { Button } from '@/components/ui/button'
 import { getProjectAuditWarnings } from '@/lib/audit'
 import { connectionMatchesSelectedItem, getFocusedCableItemIds } from '@/lib/cable-focus'
@@ -159,11 +160,14 @@ function CanvasViewport({
   canRedo,
   saveStatus,
   autoCenterOnSelect,
+  updateAvailable,
+  updateStatusLoading,
   onUndo,
   onRedo,
   onToggleAutoCenterOnSelect,
   onAutoArrange,
   onOpenAudit,
+  onOpenUpdate,
 }: {
   project: ProjectState
   agentStatus: AgentStatusSummary | null
@@ -180,6 +184,8 @@ function CanvasViewport({
   canRedo: boolean
   saveStatus: 'saved' | 'saving' | 'error'
   autoCenterOnSelect: boolean
+  updateAvailable: boolean
+  updateStatusLoading: boolean
   onSelect: (itemId: string) => void
   onSelectConnection: (connectionId: string | number) => void
   onRemoveAssignment: (assignmentId: string | number) => void
@@ -196,6 +202,7 @@ function CanvasViewport({
   onToggleAutoCenterOnSelect: () => void
   onAutoArrange: () => void
   onOpenAudit: () => void
+  onOpenUpdate: () => void
 }) {
   const { setNodeRef, isOver } = useDroppable({
     id: 'canvas',
@@ -879,19 +886,26 @@ function CanvasViewport({
             <Redo2 className="size-4" />
           </Button>
         </div>
-        <Button
-          type="button"
-          variant="outline"
-          className="absolute right-4 top-[58px] z-20 h-9 gap-2 border-[#d6ccbd] bg-[#fffdf8] px-3 text-xs font-bold shadow-sm"
-          onClick={onOpenAudit}
-          aria-label="Open audit"
-        >
-          <AlertTriangle className="size-4 text-[#a66f1f]" />
-          Audit
-          <span className="rounded bg-[#fff2c7] px-1.5 py-0.5 text-[11px] font-black text-[#3d2a08]">
-            {auditWarningCount}
-          </span>
-        </Button>
+        <div className="absolute right-4 top-[58px] z-20 flex items-center gap-2">
+          <UpdateAvailableButton
+            updateAvailable={updateAvailable}
+            checking={updateStatusLoading}
+            onClick={onOpenUpdate}
+          />
+          <Button
+            type="button"
+            variant="outline"
+            className="h-9 gap-2 border-[#d6ccbd] bg-[#fffdf8] px-3 text-xs font-bold shadow-sm"
+            onClick={onOpenAudit}
+            aria-label="Open audit"
+          >
+            <AlertTriangle className="size-4 text-[#a66f1f]" />
+            Audit
+            <span className="rounded bg-[#fff2c7] px-1.5 py-0.5 text-[11px] font-black text-[#3d2a08]">
+              {auditWarningCount}
+            </span>
+          </Button>
+        </div>
         <div className="absolute right-4 top-[104px] z-20 flex items-center gap-2">
           <Button
             type="button"
@@ -1015,6 +1029,8 @@ export function WorkbenchCanvas(props: {
   canRedo: boolean
   saveStatus: 'saved' | 'saving' | 'error'
   autoCenterOnSelect: boolean
+  updateAvailable: boolean
+  updateStatusLoading: boolean
   onSelect: (itemId: string) => void
   onSelectConnection: (connectionId: string | number) => void
   onRemoveAssignment: (assignmentId: string | number) => void
@@ -1031,6 +1047,7 @@ export function WorkbenchCanvas(props: {
   onToggleAutoCenterOnSelect: () => void
   onAutoArrange: () => void
   onOpenAudit: () => void
+  onOpenUpdate: () => void
 }) {
   return (
     <ReactFlowProvider>

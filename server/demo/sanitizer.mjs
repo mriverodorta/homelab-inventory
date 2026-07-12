@@ -148,8 +148,14 @@ export async function sanitizeDemoStores({ sourceDir, targetDir, appVersion }) {
   await fs.rm(targetDir, { recursive: true, force: true })
   await fs.mkdir(path.join(targetDir, 'stores'), { recursive: true })
 
+  const sanitizedMeta = sanitizeObject(meta)
+  delete sanitizedMeta.skippedUpdateVersion
+  delete sanitizedMeta.lastUpdateCheck
+
   await writeJson(path.join(targetDir, 'meta.json'), {
-    ...sanitizeObject(meta),
+    ...sanitizedMeta,
+    skippedUpdateVersion: null,
+    lastUpdateCheck: null,
     appLastOpenedWith: appVersion,
     lastSeenReleaseNotesVersion: appVersion,
     updatedAt: now,

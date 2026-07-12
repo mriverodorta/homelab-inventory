@@ -90,6 +90,6 @@ describe('release notes helpers', () => {
   })
 
   it('has a structured entry for the package version under development', () => {
-    expect(hasReleaseNoteForVersion(RELEASE_NOTES, '0.1.15')).toBe(true)
+    expect(hasReleaseNoteForVersion(RELEASE_NOTES, '0.1.16')).toBe(true)
   })
 })

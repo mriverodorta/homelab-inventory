@@ -96,6 +96,13 @@ describe('demo data sanitizer', () => {
       schemaVersion: 5,
       appLastOpenedWith: '0.1.10',
       lastSeenReleaseNotesVersion: '0.1.10',
+      skippedUpdateVersion: '0.1.16',
+      lastUpdateCheck: {
+        state: 'available',
+        channel: 'stable',
+        availableVersion: '0.1.16',
+        checkedAt: '2026-07-12T12:00:00.000Z',
+      },
       updatedAt: '2026-07-09T00:00:00.000Z',
     })
     await writeJson(path.join(sourceDir, 'stores', 'inventory.json'), {
@@ -150,6 +157,7 @@ describe('demo data sanitizer', () => {
 
     const inventory = await readJson(path.join(targetDir, 'stores', 'inventory.json'))
     const project = await readJson(path.join(targetDir, 'stores', 'project.json'))
+    const meta = await readJson(path.join(targetDir, 'meta.json'))
     const agents = await readJson(path.join(targetDir, 'stores', 'agents.json'))
     const agentStatus = await readJson(path.join(targetDir, 'stores', 'agent-status.json'))
 
@@ -159,6 +167,8 @@ describe('demo data sanitizer', () => {
     expect(inventory.servers[0].properties.tailscaleIp).toBe('')
     expect(inventory.servers[0].properties.notes).toBe('')
     expect(project.metadata.name).toBe('Homelab Inventory Demo')
+    expect(meta.skippedUpdateVersion).toBeNull()
+    expect(meta.lastUpdateCheck).toBeNull()
     expect(agents).toEqual({ enrollments: {}, devices: {} })
     expect(agentStatus).toEqual({ servers: {} })
     await expect(fs.access(path.join(targetDir, 'backups'))).rejects.toThrow()

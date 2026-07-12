@@ -691,6 +691,8 @@ export class HomelabInventoryStore {
         schemaVersion: CURRENT_SCHEMA_VERSION,
         appLastOpenedWith: this.appVersion,
         lastSeenReleaseNotesVersion: this.appVersion,
+        skippedUpdateVersion: null,
+        lastUpdateCheck: null,
         updatedAt: new Date().toISOString(),
       })
       await writeJson(this.paths.inventory, split.inventory)
@@ -718,6 +720,8 @@ export class HomelabInventoryStore {
       schemaVersion: CURRENT_SCHEMA_VERSION,
       appLastOpenedWith: this.appVersion,
       lastSeenReleaseNotesVersion: this.appVersion,
+      skippedUpdateVersion: null,
+      lastUpdateCheck: null,
       updatedAt: now,
     })
     await writeJson(this.paths.inventory, Object.fromEntries(INVENTORY_TABLES.map((table) => [table, []])))
@@ -754,6 +758,8 @@ export class HomelabInventoryStore {
       schemaVersion: CURRENT_SCHEMA_VERSION,
       appLastOpenedWith: this.appVersion,
       lastSeenReleaseNotesVersion: this.appVersion,
+      skippedUpdateVersion: null,
+      lastUpdateCheck: null,
       updatedAt: new Date().toISOString(),
     })
     this.databases.inventory = new Low(
@@ -877,6 +883,8 @@ export class HomelabInventoryStore {
     assertInventoryStoreShape(this.databases.inventory.data)
     assertProjectStoreShape(this.databases.project.data)
     assertProjectShape(this.getProject())
+    this.databases.meta.data.skippedUpdateVersion ??= null
+    this.databases.meta.data.lastUpdateCheck ??= null
     this.databases.agents.data.enrollments ??= {}
     this.databases.agents.data.devices ??= {}
     this.databases.agentStatus.data.servers ??= {}
@@ -926,6 +934,37 @@ export class HomelabInventoryStore {
       hasUnseen: false,
       entries: [],
     }
+  }
+
+  getUpdateMetadata() {
+    return {
+      skippedUpdateVersion: this.databases.meta.data.skippedUpdateVersion ?? null,
+      lastUpdateCheck: this.databases.meta.data.lastUpdateCheck
+        ? structuredClone(this.databases.meta.data.lastUpdateCheck)
+        : null,
+    }
+  }
+
+  isUpdateVersionSkipped(version) {
+    return this.databases.meta.data.skippedUpdateVersion === version
+  }
+
+  async saveUpdateCheck(result) {
+    this.databases.meta.data.lastUpdateCheck = structuredClone(result)
+    this.databases.meta.data.updatedAt = new Date().toISOString()
+    await this.flush(['meta'])
+  }
+
+  async skipUpdateVersion(version) {
+    this.databases.meta.data.skippedUpdateVersion = version
+    this.databases.meta.data.updatedAt = new Date().toISOString()
+    await this.flush(['meta'])
+  }
+
+  async clearSkippedUpdateVersion() {
+    this.databases.meta.data.skippedUpdateVersion = null
+    this.databases.meta.data.updatedAt = new Date().toISOString()
+    await this.flush(['meta'])
   }
 
   getProject() {

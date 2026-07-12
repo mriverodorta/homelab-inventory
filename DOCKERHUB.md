@@ -95,6 +95,8 @@ PORT=8798
 DATA_DIR=/data
 SAVE_DEBOUNCE_MS=500
 APP_MODE=production
+UPDATE_CHANNEL=stable
+UPDATE_CHECK_ENABLED=true
 ```
 
 You normally do not need to set those environment variables in Compose.
@@ -127,6 +129,14 @@ The image is intended to work well with Watchtower:
 - Use a semver tag such as `mriverodorta/homelab-inventory:0.1.8` to pin a specific version.
 
 The app tracks a database schema version in `/data/meta.json`. When schema changes are introduced, migrations run on startup and create backups before modifying data.
+
+### Update notifications
+
+Homelab Inventory checks Docker Hub at startup and every six hours for a newer image on `UPDATE_CHANNEL`. The default is `stable`; set it to `latest` only when you intentionally follow the newest main-channel image.
+
+The backend sends an anonymous, read-only metadata request only for `mriverodorta/homelab-inventory`. It does not send inventory data, IP addresses, credentials, or an installation identifier. Set `UPDATE_CHECK_ENABLED=false` for an offline installation.
+
+When an update exists, the app provides **Check now**, **Skip this version**, and copyable Docker Compose update commands. Skipping applies only to the displayed version. Watchtower remains supported for automatic updates.
 
 ## Agent
 
