@@ -12,6 +12,20 @@ export type ReleaseNoteEntry = {
 
 export const RELEASE_NOTES: ReleaseNoteEntry[] = [
   {
+    version: '0.1.15',
+    date: '2026-07-12',
+    channel: 'latest',
+    title: "What's New ordering",
+    highlights: [],
+    fixes: [
+      'The What\'s New dialog now lists included releases from newest to oldest.',
+      'Only the highest displayed version receives the LATEST badge; historical release channels are no longer presented as recency labels.',
+    ],
+    notes: [
+      'Release-channel metadata remains available internally and is not modified by this presentation fix.',
+    ],
+  },
+  {
     version: '0.1.14',
     date: '2026-07-10',
     channel: 'latest',
@@ -159,5 +173,5 @@ export function getReleaseNotesBetween(
   return entries
     .filter((entry) => compareVersions(entry.version, lastSeenVersion) > 0)
     .filter((entry) => compareVersions(entry.version, currentVersion) <= 0)
-    .sort((left, right) => compareVersions(left.version, right.version))
+    .sort((left, right) => compareVersions(right.version, left.version))
 }

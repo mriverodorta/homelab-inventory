@@ -9,7 +9,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-import type { ReleaseNoteEntry } from '@/release-notes'
+import { compareVersions, type ReleaseNoteEntry } from '@/release-notes'
 
 type WhatsNewDialogProps = {
   open: boolean
@@ -48,6 +48,10 @@ export function WhatsNewDialog({
   onAcknowledge,
   onOpenChange,
 }: WhatsNewDialogProps) {
+  const sortedEntries = [...entries].sort((left, right) =>
+    compareVersions(right.version, left.version),
+  )
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[calc(100dvh-2rem)] gap-0 overflow-hidden bg-[#fffdf8] p-0 text-[#20242c] sm:max-w-2xl">
@@ -66,18 +70,20 @@ export function WhatsNewDialog({
         </DialogHeader>
 
         <div className="grid max-h-[min(66dvh,680px)] gap-4 overflow-y-auto px-5 py-5">
-          {entries.map((entry) => (
+          {sortedEntries.map((entry, index) => (
             <article key={entry.version} className="grid gap-4 rounded-xl border border-[#ded8ce] bg-white p-4 shadow-sm">
               <div className="flex flex-wrap items-center gap-2">
                 <Badge className="h-6 rounded-lg bg-[#1f2430] px-2.5 text-sm font-black text-white">
                   {entry.version}
                 </Badge>
-                <Badge
-                  variant="secondary"
-                  className="h-6 rounded-lg bg-[#eef0f4] px-2.5 text-xs font-black uppercase tracking-[0.12em] text-[#4b5563]"
-                >
-                  {entry.channel}
-                </Badge>
+                {index === 0 ? (
+                  <Badge
+                    variant="secondary"
+                    className="h-6 rounded-lg bg-[#eef0f4] px-2.5 text-xs font-black uppercase tracking-[0.12em] text-[#4b5563]"
+                  >
+                    LATEST
+                  </Badge>
+                ) : null}
                 <span className="text-sm font-bold text-[#756d62]">{entry.date}</span>
               </div>
 

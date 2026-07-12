@@ -14,6 +14,13 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 - Added repository documentation, issue templates, CI, and security guidance.
 - Clarified Docker deployment, data persistence, and development setup.
 
+## [0.1.15] - 2026-07-12
+
+### Fixed
+
+- The What's New dialog now lists releases from newest to oldest.
+- Only the most recent displayed release receives the `LATEST` badge.
+
 ## [0.1.14] - 2026-07-10
 
 ### Added

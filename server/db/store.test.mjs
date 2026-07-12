@@ -541,7 +541,7 @@ describe('HomelabInventoryStore', () => {
       lastSeenVersion: '0.1.8',
       hasUnseen: true,
     })
-    expect(status.entries.map((entry) => entry.version)).toEqual(['0.1.9', '0.1.10'])
+    expect(status.entries.map((entry) => entry.version)).toEqual(['0.1.10', '0.1.9'])
   })
 
   it('falls back to the current version when existing data has no previous app version', async () => {
