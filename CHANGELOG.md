@@ -14,6 +14,20 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 - Added repository documentation, issue templates, CI, and security guidance.
 - Clarified Docker deployment, data persistence, and development setup.
 
+## [0.1.17] - 2026-07-13
+
+### Changed
+
+- Connection destination lists now include only compatible, unoccupied ports on hosts placed on the canvas.
+- Assigned NIC and GPU ports are grouped beneath their server or NAS host.
+- Server and NAS board ports, hosted expansion ports, switch ports, and patch-panel front/back endpoints now use explicit labels.
+
+### Fixed
+
+- Unassigned expansion cards no longer appear as standalone connection targets.
+- Hosts without an actionable compatible port no longer appear in the destination selector.
+- Connection selectors preserve valid choices and reset stale choices after the source endpoint changes.
+
 ## [0.1.16] - 2026-07-12
 
 ### Added

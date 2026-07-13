@@ -12,6 +12,21 @@ export type ReleaseNoteEntry = {
 
 export const RELEASE_NOTES: ReleaseNoteEntry[] = [
   {
+    version: '0.1.17',
+    date: '2026-07-13',
+    channel: 'latest',
+    title: 'Connection endpoint filtering',
+    highlights: [
+      'Manual connection editors now list only compatible, available ports on equipment placed on the canvas.',
+      'Assigned NIC and GPU ports are grouped beneath their server or NAS instead of appearing as independent inventory devices.',
+      'Patch-panel destinations now identify the port number and front or back side explicitly.',
+    ],
+    fixes: [
+      'Unassigned expansion cards and hosts without an actionable destination no longer appear in connection dropdowns.',
+      'Changing the source port now keeps valid selections and resets destinations that are no longer compatible.',
+    ],
+  },
+  {
     version: '0.1.16',
     date: '2026-07-12',
     channel: 'latest',

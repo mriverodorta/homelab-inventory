@@ -46,6 +46,10 @@ import {
 } from '@/lib/cables'
 import { getItemAuditWarnings, type AuditWarning } from '@/lib/audit'
 import { createAgentEnrollment } from '@/lib/agent-api'
+import {
+  getCompatibleDestinationGroups,
+  getEndpointGroupForHost,
+} from '@/lib/connection-endpoints'
 import { getSlotStatus, SLOT_LABELS, sortAssignmentsForDisplay } from '@/lib/constraints'
 import { cn } from '@/lib/utils'
 import {
@@ -1310,55 +1314,6 @@ function PatchPanelRowDisplayControls({
   )
 }
 
-type EndpointOption = {
-  key: string
-  endpoint: ConnectionEndpoint
-  item: InventoryItem
-  port: InventoryPort
-  label: string
-}
-
-function getEndpointOptions(item: InventoryItem): EndpointOption[] {
-  const itemRuntimeKey = runtimeItemKey(item)
-
-  return (item.ports ?? []).flatMap((port) => {
-    if (port.endpoints && port.endpoints.length > 0) {
-      return port.endpoints.map((endpoint) => {
-        const connectionEndpoint = {
-          itemId: itemRuntimeKey,
-          portId: port.id,
-          endpointId: endpoint.id,
-        }
-
-        return {
-          key: endpointKey(connectionEndpoint),
-          endpoint: connectionEndpoint,
-          item,
-          port,
-          label: `${port.label?.trim() || String(port.slotNumber).padStart(2, '0')} ${endpoint.side} · ${formatPortTypeLabel(port.type)}`,
-        }
-      })
-    }
-
-    const connectionEndpoint = {
-      itemId: itemRuntimeKey,
-      portId: port.id,
-    }
-
-    return [
-      {
-        key: endpointKey(connectionEndpoint),
-        endpoint: connectionEndpoint,
-        item,
-        port,
-        label: `${port.label || String(port.slotNumber).padStart(2, '0')} · ${
-          port.speed ? `${formatPortTypeLabel(port.type)} ${port.speed}` : formatPortTypeLabel(port.type)
-        }`,
-      },
-    ]
-  })
-}
-
 function ConnectionEditor({
   project,
   item,
@@ -1372,14 +1327,14 @@ function ConnectionEditor({
   onUpdateLabel: (connectionId: string | number, label: string) => void
   onRemove: (connectionId: string | number) => void
 }) {
-  const allItemsWithPorts = useMemo(
-    () =>
-      Object.values(project.items)
-        .filter((candidate) => (candidate.ports ?? []).length > 0)
-        .sort((first, second) => first.name.localeCompare(second.name)),
-    [project.items],
+  const selectedEndpointGroup = useMemo(
+    () => getEndpointGroupForHost(project, item),
+    [item, project],
   )
-  const selectedEndpointOptions = useMemo(() => getEndpointOptions(item), [item])
+  const selectedEndpointOptions = useMemo(
+    () => selectedEndpointGroup?.options ?? [],
+    [selectedEndpointGroup],
+  )
   const availableFromOptions = useMemo(
     () =>
       selectedEndpointOptions.filter((option) =>
@@ -1396,39 +1351,44 @@ function ConnectionEditor({
       ),
     [item, project.connections],
   )
-  const destinationItems = useMemo(
-    () => allItemsWithPorts.filter((candidate) => runtimeItemKey(candidate) !== runtimeItemKey(item)),
-    [allItemsWithPorts, item],
-  )
   const [fromKey, setFromKey] = useState(EMPTY_SELECT_VALUE)
   const [destinationItemId, setDestinationItemId] = useState(EMPTY_SELECT_VALUE)
   const [toKey, setToKey] = useState(EMPTY_SELECT_VALUE)
 
   const selectedFrom = availableFromOptions.find((option) => option.key === fromKey) ?? null
-  const destinationItem = destinationItems.find((candidate) => runtimeItemKey(candidate) === destinationItemId) ?? null
-  const destinationEndpointOptions = useMemo(() => {
-    if (!selectedFrom || !destinationItem) {
-      return []
-    }
-
-    return getEndpointOptions(destinationItem).filter(
-      (option) =>
-        portsCompatible(selectedFrom.port.type, option.port.type) &&
-        connectionEndpointAvailable(project, option.endpoint),
-    )
-  }, [destinationItem, project, selectedFrom])
+  const destinationGroups = useMemo(
+    () => selectedFrom ? getCompatibleDestinationGroups(project, selectedFrom) : [],
+    [project, selectedFrom],
+  )
+  const destinationGroup = destinationGroups.find((group) => group.key === destinationItemId) ?? null
+  const destinationEndpointOptions = useMemo(
+    () => destinationGroup?.options ?? [],
+    [destinationGroup],
+  )
   const selectedTo = destinationEndpointOptions.find((option) => option.key === toKey) ?? null
 
   useEffect(() => {
-    setFromKey(availableFromOptions[0]?.key ?? EMPTY_SELECT_VALUE)
+    setFromKey((current) =>
+      availableFromOptions.some((option) => option.key === current)
+        ? current
+        : availableFromOptions[0]?.key ?? EMPTY_SELECT_VALUE,
+    )
   }, [availableFromOptions])
 
   useEffect(() => {
-    setDestinationItemId(destinationItems[0] ? runtimeItemKey(destinationItems[0]) : EMPTY_SELECT_VALUE)
-  }, [destinationItems])
+    setDestinationItemId((current) =>
+      destinationGroups.some((group) => group.key === current)
+        ? current
+        : destinationGroups[0]?.key ?? EMPTY_SELECT_VALUE,
+    )
+  }, [destinationGroups])
 
   useEffect(() => {
-    setToKey(destinationEndpointOptions[0]?.key ?? EMPTY_SELECT_VALUE)
+    setToKey((current) =>
+      destinationEndpointOptions.some((option) => option.key === current)
+        ? current
+        : destinationEndpointOptions[0]?.key ?? EMPTY_SELECT_VALUE,
+    )
   }, [destinationEndpointOptions])
 
   if (selectedEndpointOptions.length === 0) {
@@ -1456,7 +1416,7 @@ function ConnectionEditor({
         </div>
       ) : null}
 
-      {availableFromOptions.length > 0 && destinationItems.length > 0 ? (
+      {availableFromOptions.length > 0 && destinationGroups.length > 0 ? (
         <div className="grid min-w-0 gap-2 rounded-md border border-[#e5dccf] bg-[#fffdf8] p-3">
           <Select value={fromKey} onValueChange={setFromKey}>
             <SelectTrigger className="h-9 w-full min-w-0 overflow-hidden text-xs" aria-label="Source port">
@@ -1476,16 +1436,16 @@ function ConnectionEditor({
               <SelectValue />
             </SelectTrigger>
             <SelectContent className="max-w-[min(520px,calc(100vw-2rem))]">
-              {destinationItems.map((candidate) => (
-                <SelectItem key={runtimeItemKey(candidate)} value={runtimeItemKey(candidate)}>
-                  <span className="block max-w-[460px] truncate">{candidate.name}</span>
+              {destinationGroups.map((group) => (
+                <SelectItem key={group.key} value={group.key}>
+                  <span className="block max-w-[460px] truncate">{group.label}</span>
                 </SelectItem>
               ))}
             </SelectContent>
           </Select>
 
           <Select
-            value={toKey === EMPTY_SELECT_VALUE ? undefined : toKey}
+            value={toKey === EMPTY_SELECT_VALUE ? '' : toKey}
             onValueChange={setToKey}
             disabled={destinationEndpointOptions.length === 0}
           >

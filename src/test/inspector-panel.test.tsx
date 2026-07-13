@@ -170,6 +170,7 @@ function renderInspector(
   onUpdateServerSpecs = vi.fn(),
   onUpdateItemIdentity = vi.fn(),
   onUpdateItemSpecs = vi.fn(),
+  projectOverride: ProjectState = project,
 ) {
   const queryClient = new QueryClient({
     defaultOptions: {
@@ -181,7 +182,7 @@ function renderInspector(
   render(
     <QueryClientProvider client={queryClient}>
       <InspectorPanel
-        project={project}
+        project={projectOverride}
         agentStatus={agentStatus}
         selectedItemId={selectedItemId}
         selectedConnectionId={selectedConnectionId}
@@ -399,6 +400,121 @@ describe('InspectorPanel', () => {
     } finally {
       project.items.switch.ports = originalPorts
     }
+  })
+
+  it('offers only compatible available host endpoints in the connection editor', async () => {
+    const user = userEvent.setup()
+    const connectionProject: ProjectState = {
+      ...project,
+      items: {
+        ...project.items,
+        server: {
+          ...project.items.server,
+          ports: [
+            ...(project.items.server.ports ?? []),
+            {
+              id: 'display-01',
+              kind: 'server-port',
+              type: 'displayport',
+              slotNumber: 2,
+              label: 'Display 01',
+            },
+          ],
+        },
+        nic: {
+          id: 'nic',
+          name: 'Intel I350-T4',
+          type: 'network',
+          ports: [
+            {
+              id: 'nic-rj45-01',
+              kind: 'server-port',
+              type: 'rj45',
+              slotNumber: 1,
+              speed: '1G',
+            },
+          ],
+        },
+        looseNic: {
+          id: 'looseNic',
+          name: 'Loose NIC',
+          type: 'network',
+          ports: [
+            {
+              id: 'loose-rj45-01',
+              kind: 'server-port',
+              type: 'rj45',
+              slotNumber: 1,
+              speed: '2.5G',
+            },
+          ],
+        },
+        gpu: {
+          ...project.items.gpu,
+          ports: [
+            {
+              id: 'gpu-display-01',
+              kind: 'server-port',
+              type: 'displayport',
+              slotNumber: 1,
+            },
+          ],
+        },
+      },
+      placements: [
+        { serverId: 'server', x: 0, y: 0 },
+        { serverId: 'switch', x: 400, y: 0 },
+        { serverId: 'patch', x: 800, y: 0 },
+      ],
+      assignments: [
+        {
+          id: 1,
+          serverId: 'server',
+          itemId: 'nic',
+          type: 'network',
+          assignedAt: '2026-07-13T00:00:00.000Z',
+        },
+        {
+          id: 2,
+          serverId: 'server',
+          itemId: 'gpu',
+          type: 'gpu',
+          assignedAt: '2026-07-13T00:00:00.000Z',
+        },
+      ],
+      connections: [],
+    }
+
+    renderInspector(
+      'switch',
+      vi.fn(), vi.fn(), vi.fn(), vi.fn(), vi.fn(), vi.fn(), vi.fn(),
+      vi.fn(), vi.fn(), vi.fn(), vi.fn(), vi.fn(), vi.fn(), vi.fn(), vi.fn(),
+      null,
+      { servers: {}, registeredServerIds: [] },
+      vi.fn(), vi.fn(), vi.fn(), vi.fn(), vi.fn(),
+      connectionProject,
+    )
+
+    await user.click(screen.getByRole('tab', { name: 'Connections' }))
+
+    await user.click(screen.getByRole('combobox', { name: 'Destination item' }))
+    expect(screen.getByRole('option', { name: 'Dell OptiPlex Micro 7090' })).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: 'VCELINK 24 Port Cat6A Patch Panel' })).toBeInTheDocument()
+    expect(screen.queryByRole('option', { name: 'Loose NIC' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('option', { name: 'Intel Arc A310 LP' })).not.toBeInTheDocument()
+    await user.click(screen.getByRole('option', { name: 'Dell OptiPlex Micro 7090' }))
+
+    await user.click(screen.getByRole('combobox', { name: 'Destination port' }))
+    expect(screen.getByRole('option', { name: 'Board / RJ45 01 / 1G' })).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: 'Intel I350-T4 / RJ45 01 / 1G' })).toBeInTheDocument()
+    expect(screen.queryByRole('option', { name: /AMD Radeon RX 640/ })).not.toBeInTheDocument()
+    await user.keyboard('{Escape}')
+
+    await user.click(screen.getByRole('combobox', { name: 'Destination item' }))
+    await user.click(screen.getByRole('option', { name: 'VCELINK 24 Port Cat6A Patch Panel' }))
+    await user.click(screen.getByRole('combobox', { name: 'Destination port' }))
+    expect(screen.getByRole('option', { name: 'Port 01 / Back / RJ45' })).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: 'Port 01 / Front / RJ45' })).toBeInTheDocument()
   })
 
   it('renders patch panel ports and emits type updates', async () => {
