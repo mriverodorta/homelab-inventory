@@ -1,6 +1,7 @@
 import type { InventoryFormValues } from '@/components/inventory-form/model'
 import { PortGroupsEditor } from '@/components/inventory-form/port-groups-editor'
 import {
+  InventoryFormStatus,
   InventorySpecsTabContent,
   type InventorySpecsTabContentProps,
 } from '@/components/inventory-form/specs-tab-content'
@@ -56,11 +57,14 @@ export function ComponentInspectorTabs({
         ) : null}
       </TabsList>
 
+      <InventoryFormStatus
+        validationMessage={validationMessage}
+        saveError={saveError}
+      />
+
       <InventorySpecsTabContent
         values={values}
         errors={errors}
-        validationMessage={validationMessage}
-        saveError={saveError}
         onChange={onChange}
         onSelectOpenChange={onSelectOpenChange}
       />

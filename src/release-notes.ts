@@ -12,6 +12,27 @@ export type ReleaseNoteEntry = {
 
 export const RELEASE_NOTES: ReleaseNoteEntry[] = [
   {
+    version: '0.1.19',
+    date: '2026-07-14',
+    channel: 'latest',
+    title: 'Editable inventory inspectors',
+    highlights: [
+      'Inventory items can now be corrected directly from their inspectors using the same validated fields and select options as the Add Item dialog.',
+      'Servers, switches, NAS devices, patch panels, CPUs, RAM, storage, GPUs, and network cards now use focused tabbed editing workflows.',
+      'Server and NAS slot, port, network, and agent views remain available alongside the editable hardware specifications.',
+    ],
+    fixes: [
+      'Inspector saves preserve item IDs, assignments, placements, detailed port metadata, and existing cable connections.',
+      'Switch port groups retain support for as many as 128 ports and prevent connected or annotated ports from being removed accidentally.',
+      'NAS inspectors clearly identify agent setup as unavailable instead of invoking server-only enrollment APIs.',
+      'Pending text edits are flushed when an inspector closes or switches items so the final keystrokes are not lost.',
+      'Temporarily clearing a port count while typing a replacement no longer removes or multiplies existing ports.',
+    ],
+    notes: [
+      'Text and numeric edits save after a 500 ms pause; select and toggle changes save immediately.',
+    ],
+  },
+  {
     version: '0.1.18',
     date: '2026-07-14',
     channel: 'latest',

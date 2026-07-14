@@ -94,7 +94,6 @@ export function useInventoryItemEditor({
   const revisionRef = useRef(0)
   const submittedDraftRef = useRef<SubmittedDraft | null>(null)
 
-  onSaveRef.current = onSave
   debounceMsRef.current = debounceMs
 
   const cancelPendingSave = useCallback(() => {
@@ -153,16 +152,30 @@ export function useInventoryItemEditor({
     }
   }, [])
 
+  const flushPendingSave = useCallback(() => {
+    if (timerRef.current === null) {
+      return
+    }
+
+    clearTimeout(timerRef.current)
+    timerRef.current = null
+    void persistDraft(
+      draftRef.current,
+      revisionRef.current,
+      generationRef.current,
+    )
+  }, [persistDraft])
+
   useEffect(() => {
     mountedRef.current = true
 
     return () => {
+      flushPendingSave()
       mountedRef.current = false
       generationRef.current += 1
       submittedDraftRef.current = null
-      cancelPendingSave()
     }
-  }, [cancelPendingSave])
+  }, [flushPendingSave])
 
   useEffect(() => {
     const nextItemKey = runtimeItemKey(item)
@@ -189,7 +202,7 @@ export function useInventoryItemEditor({
       return
     }
 
-    cancelPendingSave()
+    flushPendingSave()
     generationRef.current += 1
     revisionRef.current = 0
     submittedDraftRef.current = null
@@ -197,7 +210,11 @@ export function useInventoryItemEditor({
     setValues(nextValues)
     setErrors({})
     setSaveError(null)
-  }, [cancelPendingSave, item])
+  }, [flushPendingSave, item])
+
+  useEffect(() => {
+    onSaveRef.current = onSave
+  }, [onSave])
 
   const updateValues = useCallback((
     patch: Partial<InventoryFormValues>,

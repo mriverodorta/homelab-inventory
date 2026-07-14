@@ -20,7 +20,7 @@ export type InventorySpecsTabContentProps = {
   onSelectOpenChange?: (open: boolean) => void
 }
 
-function InspectorErrors({
+export function InventoryFormStatus({
   validationMessage,
   saveError,
 }: Pick<InventorySpecsTabContentProps, 'validationMessage' | 'saveError'>) {
@@ -42,7 +42,7 @@ function InspectorErrors({
   )
 }
 
-export function InventorySpecsTabContent({
+export function InventorySpecsFormContent({
   values,
   errors,
   validationMessage,
@@ -57,9 +57,8 @@ export function InventorySpecsTabContent({
 
   return (
     <>
-      <InspectorErrors validationMessage={validationMessage} saveError={saveError} />
-
-      <TabsContent value="specs" className="m-0 min-w-0 space-y-4">
+      <InventoryFormStatus validationMessage={validationMessage} saveError={saveError} />
+      <div className="min-w-0 space-y-4">
         <InventoryCommonFields
           type={values.type}
           values={values}
@@ -87,7 +86,15 @@ export function InventorySpecsTabContent({
           />
           <FieldError message={errors.notes} />
         </FieldLabel>
-      </TabsContent>
+      </div>
     </>
+  )
+}
+
+export function InventorySpecsTabContent(props: InventorySpecsTabContentProps) {
+  return (
+    <TabsContent value="specs" className="m-0 min-w-0">
+      <InventorySpecsFormContent {...props} />
+    </TabsContent>
   )
 }

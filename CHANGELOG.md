@@ -14,6 +14,27 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 - Added repository documentation, issue templates, CI, and security guidance.
 - Clarified Docker deployment, data persistence, and development setup.
 
+## [0.1.19] - 2026-07-14
+
+### Added
+
+- Added editable tabbed inspectors for servers, switches, NAS devices, patch panels, CPUs, RAM, storage, GPUs, and network cards.
+- Reused the Add Item form fields, validated selects, and port-group controls throughout inventory inspectors.
+- Added debounced complete-item saves while keeping select and toggle changes immediate.
+
+### Changed
+
+- Server, switch, NAS, and patch-panel inspectors now organize specifications, slots, ports, connections, network details, services, and agent state into focused tabs.
+- Switch management uses canonical management choices while preserving legacy values until they are changed.
+- Large switches and patch panels retain support for port groups of up to 128 ports.
+
+### Fixed
+
+- Inspector edits preserve inventory IDs, assignments, canvas placement, port metadata, and existing cable connections.
+- NAS devices no longer expose server-only agent enrollment actions.
+- Pending debounced edits are saved when an inspector closes or switches to another item.
+- Port-count fields can be cleared and replaced without deleting or multiplying the existing port group.
+
 ## [0.1.18] - 2026-07-14
 
 ### Added

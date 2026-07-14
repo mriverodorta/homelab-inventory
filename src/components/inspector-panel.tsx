@@ -6,17 +6,26 @@ import {
   Copy,
   Info,
   Layers3,
-  Plus,
   Network,
   PlugZap,
   Terminal,
-  Trash2,
   X,
   type LucideIcon,
 } from 'lucide-react'
 import { useMutation } from '@tanstack/react-query'
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { ComponentInspectorTabs } from '@/components/component-inspector-tabs'
+import {
+  inventoryFormValuesToInput,
+  inventoryItemToFormValues,
+  inventoryPortsToFormPatch,
+  type InventoryFormValues,
+} from '@/components/inventory-form/model'
+import { PortGroupsEditor } from '@/components/inventory-form/port-groups-editor'
+import {
+  InventoryFormStatus,
+  InventorySpecsFormContent,
+} from '@/components/inventory-form/specs-tab-content'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
@@ -62,17 +71,6 @@ import {
 } from '@/lib/format'
 import { runtimeItemKey } from '@/lib/item-keys'
 import {
-  addSwitchPortGroup,
-  getSwitchPortSpeedForType,
-  groupSwitchPorts,
-  isSupportedSwitchPortSpeed,
-  isSwitchNetworkPortType,
-  resizeSwitchPortGroup,
-  SWITCH_NETWORK_PORT_SPEEDS,
-  updateSwitchPortGroupDefinition,
-  type SwitchPortGroup,
-} from '@/lib/switch-ports'
-import {
   connectionEndpointAvailable,
   endpointKey,
   getConnectionPort,
@@ -100,19 +98,10 @@ import type {
   InventoryPortRole,
   InventoryPortType,
   InventoryProperties,
-  InventorySpecs,
   ProjectState,
 } from '@/types/inventory'
 import type { AgentServerStatus, AgentState, AgentStatusSummary } from '@/types/agent'
 
-type SpecRow = {
-  label: string
-  value: string
-}
-
-const SERVER_FORM_FACTOR_OPTIONS = ['Tiny', 'Mini', 'Micro', 'Small', 'SFF', 'Tower', 'Mini-ITX', 'Micro-ATX', 'ATX', 'E-ATX']
-const SERVER_NETWORK_SLOT_OPTIONS = ['On board', 'PCIe', 'M.2 A+E', 'M.2 2230 A/E']
-const SERVER_WIRELESS_OPTIONS = ['Yes', 'No', 'Wi-Fi card supported or installed']
 const NETWORK_INTERFACE_PORT_TYPES = new Set<InventoryPortType>(['rj45', 'sfp', 'sfp-plus'])
 const PORT_TYPE_OPTIONS: InventoryPortType[] = [
   'rj45',
@@ -133,7 +122,6 @@ const SWITCH_PORT_ROLE_OPTIONS: InventoryPortRole[] = [
   'disabled',
 ]
 const CONNECTION_ROUTE_SIDE_OPTIONS: ConnectionRouteSide[] = ['auto', 'top', 'right', 'bottom', 'left']
-const SWITCH_PORT_SPEED_OPTIONS = ['', ...SWITCH_NETWORK_PORT_SPEEDS]
 
 const inspectorSurfaceClass = 'border-[#e3d7c8] bg-[#fffdf8] shadow-[0_16px_34px_rgba(60,52,43,0.08)]'
 const inspectorPanelClass = 'border-[#e5dccf] bg-white/88 shadow-[0_10px_28px_rgba(60,52,43,0.06)]'
@@ -219,9 +207,11 @@ type InspectorTab = {
 function InspectorTabs({
   tabs,
   defaultValue,
+  status,
 }: {
   tabs: InspectorTab[]
   defaultValue?: string
+  status?: ReactNode
 }) {
   if (tabs.length === 0) {
     return null
@@ -243,6 +233,7 @@ function InspectorTabs({
           </TabsTrigger>
         ))}
       </TabsList>
+      {status}
       {tabs.map((tab) => (
         <TabsContent key={tab.value} value={tab.value} forceMount className="m-0 min-w-0 space-y-4">
           {tab.content}
@@ -250,6 +241,36 @@ function InspectorTabs({
       ))}
     </Tabs>
   )
+}
+
+function itemFromEditorValues(item: InventoryItem, values: InventoryFormValues): InventoryItem {
+  try {
+    const input = inventoryFormValuesToInput(values)
+
+    return {
+      ...item,
+      ...input,
+      subtype: input.subtype,
+      manufacturer: input.manufacturer,
+      secondaryManufacturer: input.secondaryManufacturer,
+      family: input.family,
+      model: input.model,
+      number: input.number,
+      specs: input.specs,
+      properties: input.properties,
+      ports: input.ports,
+      notes: input.notes,
+    }
+  } catch {
+    return item
+  }
+}
+
+function itemInputWithPorts(item: InventoryItem, ports: InventoryPort[]): InventoryItemInput {
+  return inventoryFormValuesToInput({
+    ...inventoryItemToFormValues(item),
+    ...inventoryPortsToFormPatch(ports),
+  })
 }
 
 function formatBytes(value: unknown): string {
@@ -330,215 +351,6 @@ function getServerAgentStatus(
     connected: false,
     ageMs: null,
   }
-}
-
-function formatSpecLabel(key: string): string {
-  const labels: Record<string, string> = {
-    displayOutputs: 'Display Outputs',
-    graphicsClockMhz: 'Graphics Clock',
-    memoryBandwidthGbps: 'Memory Bandwidth',
-    memoryBusBit: 'Memory Bus',
-    memorySpeedGbps: 'Memory Speed',
-    openCl: 'OpenCL',
-    openGl: 'OpenGL',
-    pcie: 'PCIe',
-    poeBudgetWatts: 'PoE Budget',
-    powerWatts: 'Power',
-    rackUnits: 'Rack Units',
-    rayTracingUnits: 'Ray Tracing Units',
-    shaderModel: 'Shader Model',
-    slotWidth: 'Slot Width',
-    vramGb: 'VRAM',
-    xeCores: 'Xe Cores',
-  }
-
-  if (labels[key]) {
-    return labels[key]
-  }
-
-  return key
-    .replace(/([A-Z])/g, ' $1')
-    .replace(/^./, (character) => character.toUpperCase())
-}
-
-function formatSpecValue(key: string, value: InventorySpecs[string]): string {
-  if (key === 'vramGb') {
-    return `${value}GB`
-  }
-
-  if (key === 'memoryBusBit') {
-    return `${value}-bit`
-  }
-
-  if (key === 'memoryBandwidthGbps') {
-    return `${value}GB/s`
-  }
-
-  if (key === 'memorySpeedGbps') {
-    return `${value}Gbps`
-  }
-
-  if (key === 'powerWatts') {
-    return typeof value === 'number' ? `${value}W` : String(value)
-  }
-
-  if (key === 'poeBudgetWatts') {
-    return typeof value === 'number' ? `${value}W` : String(value)
-  }
-
-  if (key === 'rackUnits') {
-    return `${value}U`
-  }
-
-  if (key === 'graphicsClockMhz') {
-    return `${value}MHz`
-  }
-
-  return String(value)
-}
-
-function getSpecRows(item: InventoryItem): SpecRow[] {
-  const specs = item.specs ?? {}
-
-  if (item.type === 'storage') {
-    return Object.entries(specs).flatMap(([key, value]) => {
-      if (key === 'formFactor') {
-        return []
-      }
-
-      return [{
-        label: key === 'capacityTb' || key === 'capacityGb' ? 'Capacity' : formatSpecLabel(key),
-        value: key === 'capacityTb' || key === 'capacityGb' ? formatCapacity(specs) : String(value),
-      }]
-    })
-  }
-
-  if (item.type === 'ram') {
-    return Object.entries(specs).flatMap(([key, value]) => {
-      if (key === 'speedMt' || key === 'secondarySpeedMt') {
-        return []
-      }
-
-      if (key !== 'capacityGb' || typeof value !== 'number') {
-        return [
-          {
-            label: formatSpecLabel(key),
-            value: String(value),
-          },
-        ]
-      }
-
-      return [
-        {
-          label: 'Capacity',
-          value: `${value}GB`,
-        },
-        {
-          label: 'Module',
-          value: formatRamModuleCapacity(value),
-        },
-      ]
-    })
-  }
-
-  if (item.type === 'cpu') {
-    const identityRows: SpecRow[] = [
-      typeof item.manufacturer === 'string'
-        ? { label: 'Manufacturer', value: item.manufacturer }
-        : null,
-      typeof item.family === 'string' ? { label: 'Family', value: item.family } : null,
-      typeof item.number === 'string' ? { label: 'Number', value: item.number } : null,
-    ].filter((row): row is SpecRow => row !== null)
-    const specRows = Object.entries(specs).flatMap(([key, value]) => {
-      if (key === 'processor') {
-        return []
-      }
-
-      if (key === 'baseClockGhz') {
-        return [{
-          label: 'Base Clock',
-          value: `${value}GHz`,
-        }]
-      }
-
-      if (key === 'boostClockGhz') {
-        return [{
-          label: 'Boost Clock',
-          value: `${value}GHz`,
-        }]
-      }
-
-      return [{
-        label: formatSpecLabel(key),
-        value: String(value),
-      }]
-    })
-
-    return [...identityRows, ...specRows]
-  }
-
-  if (item.type === 'gpu') {
-    const identityRows: SpecRow[] = [
-      typeof item.manufacturer === 'string'
-        ? { label: 'Manufacturer', value: item.manufacturer }
-        : null,
-      typeof item.model === 'string' ? { label: 'Model', value: item.model } : null,
-    ].filter((row): row is SpecRow => row !== null)
-    const specRows = Object.entries(specs).flatMap(([key, value]) => {
-      if (key === 'formFactor') {
-        return []
-      }
-
-      return [{
-        label: formatSpecLabel(key),
-        value: formatSpecValue(key, value),
-      }]
-    })
-
-    return [...identityRows, ...specRows]
-  }
-
-  if (item.type === 'switch' || item.type === 'patchPanel' || item.type === 'server' || item.type === 'nas') {
-    const identityRows: SpecRow[] = [
-      typeof item.manufacturer === 'string'
-        ? { label: 'Manufacturer', value: item.manufacturer }
-        : null,
-      typeof item.model === 'string' ? { label: 'Model', value: item.model } : null,
-      item.ports && item.ports.length > 0
-        ? { label: 'Ports', value: formatPortSummary(item) }
-        : null,
-    ].filter((row): row is SpecRow => row !== null)
-    const specRows = Object.entries(specs).map(([key, value]) => ({
-      label: formatSpecLabel(key),
-      value: formatSpecValue(key, value),
-    }))
-
-    return [...identityRows, ...specRows]
-  }
-
-  return Object.entries(specs).map(([key, value]) => ({
-    label: formatSpecLabel(key),
-    value: String(value),
-  }))
-}
-
-function SpecRows({ item }: { item: InventoryItem }) {
-  const specs = getSpecRows(item)
-
-  if (specs.length === 0) {
-    return <p className="rounded-md bg-[#f8f3eb] p-3 text-sm font-medium text-[#75695d]">No extra specs recorded.</p>
-  }
-
-  return (
-    <dl className="grid gap-2 sm:grid-cols-2">
-      {specs.map((spec) => (
-        <div key={spec.label} className="min-w-0 rounded-md border border-[#eee6db] bg-[#fbf8f2] p-2.5">
-          <dt className={cn(labelClass, 'text-[9px]')}>{spec.label}</dt>
-          <dd className="mt-1 truncate text-sm font-black text-[#20242c]">{spec.value}</dd>
-        </div>
-      ))}
-    </dl>
-  )
 }
 
 function formatPortTypeLabel(type: InventoryPortType): string {
@@ -722,203 +534,6 @@ function EndpointConnectButton({
       <Cable className="size-3" />
       {selected ? 'Cancel' : compatible ? 'Connect' : 'Invalid'}
     </Button>
-  )
-}
-
-function PortEditor({
-  project,
-  item,
-  pendingEndpoint,
-  onUpdate,
-  onEndpointConnect,
-}: {
-  project: ProjectState
-  item: InventoryItem
-  pendingEndpoint: ConnectionEndpoint | null
-  onUpdate: (ports: InventoryPort[]) => void
-  onEndpointConnect: (endpoint: ConnectionEndpoint) => void
-}) {
-  const ports = item.ports ?? []
-  const itemRuntimeKey = runtimeItemKey(item)
-  const canEditType = item.type === 'patchPanel'
-  const canEditRole = item.type === 'switch'
-
-  if (ports.length === 0) {
-    return null
-  }
-
-  return (
-    <InspectorSection
-      title="Port occupancy"
-      icon={PlugZap}
-      badge={<StatusBadge>{ports.length} ports</StatusBadge>}
-    >
-      <div className="grid gap-2">
-          {ports.map((port) => {
-            const portState = getPortConnectionState(project, item, port)
-            const normalEndpoint = { itemId: itemRuntimeKey, portId: port.id }
-            const portConnectionSummary = describeConnectedEndpoint(project, normalEndpoint)
-
-            return (
-              <div
-                key={port.id}
-                className="grid min-w-0 gap-2 rounded-md border border-[#eee6db] bg-[#fffdf8] p-2.5 shadow-[0_4px_14px_rgba(60,52,43,0.04)]"
-              >
-                <div className="grid min-w-0 grid-cols-[44px_minmax(0,1fr)_auto] items-center gap-2">
-                  <div className="rounded-md bg-[#20242c] px-2 py-1.5 text-center text-[#fffdf8]">
-                    <div className="text-[8px] font-black uppercase tracking-[0.12em] opacity-65">
-                      Slot
-                    </div>
-                    <div className="font-mono text-base font-black leading-none">
-                      {String(port.slotNumber).padStart(2, '0')}
-                    </div>
-                  </div>
-                  <div className="min-w-0">
-                    <div className={cn(labelClass, 'mb-1 text-[9px]')}>
-                      Type
-                    </div>
-                    {canEditType ? (
-                      <Select
-                        value={port.type}
-                        onValueChange={(value) => {
-                          onUpdate(updatePort(ports, port.id, { type: value as InventoryPortType }))
-                        }}
-                      >
-                        <SelectTrigger className="h-8 w-full min-w-0 px-2 text-xs" aria-label={`Port ${port.slotNumber} type`}>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {PORT_TYPE_OPTIONS.map((type) => (
-                            <SelectItem key={type} value={type}>
-                              {formatPortTypeLabel(type)}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    ) : (
-                      <div className="truncate rounded-md bg-[#f3f0ea] px-2 py-1.5 text-xs font-black text-[#3c342b]">
-                        {port.speed ? `${formatPortTypeLabel(port.type)} ${port.speed}` : formatPortTypeLabel(port.type)}
-                        {port.poe ? ' PoE' : ''}
-                      </div>
-                    )}
-                  </div>
-                  <div>
-                    <div className={cn(labelClass, 'mb-1 text-right text-[9px]')}>
-                      Status
-                    </div>
-                    <span
-                      className={`block rounded-md border px-2 py-1.5 text-center text-[10px] font-black uppercase tracking-[0.06em] ${connectionStateTone(portState)}`}
-                    >
-                      {connectionStateLabel(portState)}
-                    </span>
-                  </div>
-                </div>
-
-                <Input
-                  value={port.label ?? ''}
-                  placeholder="Custom label"
-                  className="h-8 min-w-0 text-xs"
-                  aria-label={`Port ${port.slotNumber} label`}
-                  onChange={(event) => {
-                    onUpdate(updatePort(ports, port.id, { label: event.target.value }))
-                  }}
-                />
-
-                {port.endpoints && port.endpoints.length > 0 ? (
-                  <div className="grid gap-1">
-                    {port.endpoints.map((endpoint) => {
-                      const connectionEndpoint = {
-                        itemId: itemRuntimeKey,
-                        portId: port.id,
-                        endpointId: endpoint.id,
-                      }
-                      const endpointState = getEndpointConnectionState(project, connectionEndpoint)
-                      const endpointLabel = `${String(port.slotNumber).padStart(2, '0')} ${endpoint.side}`
-                      const connectedTo = describeConnectedEndpoint(project, connectionEndpoint)
-
-                      return (
-                        <div key={endpoint.id} className="grid min-w-0 gap-2 rounded-md bg-[#f8f3eb] p-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
-                          <div className="min-w-0">
-                            <div className="flex min-w-0 items-center gap-1.5">
-                              <span className="rounded-md bg-white px-1.5 py-0.5 text-[10px] font-black uppercase tracking-[0.08em] text-[#75695d]">
-                                {endpoint.side}
-                              </span>
-                              <span className={`rounded-md border px-1.5 py-0.5 text-[10px] font-black ${connectionStateTone(endpointState)}`}>
-                                {connectionStateLabel(endpointState)}
-                              </span>
-                            </div>
-                            <div className="mt-1 truncate text-[11px] font-medium text-[#75695d]">
-                              {connectedTo}
-                            </div>
-                          </div>
-                          <EndpointConnectButton
-                            project={project}
-                            endpoint={connectionEndpoint}
-                            label={endpointLabel}
-                            pendingEndpoint={pendingEndpoint}
-                            onConnect={onEndpointConnect}
-                          />
-                        </div>
-                      )
-                    })}
-                  </div>
-                ) : (
-                  <div className="grid min-w-0 gap-2 rounded-md bg-[#f8f3eb] p-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
-                    <div className="min-w-0 truncate text-[11px] font-medium text-[#75695d]">
-                      {portConnectionSummary}
-                    </div>
-                    <EndpointConnectButton
-                      project={project}
-                      endpoint={normalEndpoint}
-                      label={port.label || `Port ${port.slotNumber}`}
-                      pendingEndpoint={pendingEndpoint}
-                      onConnect={onEndpointConnect}
-                    />
-                  </div>
-                )}
-                <Input
-                  value={port.notes ?? ''}
-                  placeholder="Port notes"
-                  className="h-8 min-w-0 text-xs"
-                  aria-label={`Port ${port.slotNumber} notes`}
-                  onChange={(event) => {
-                    onUpdate(updatePort(ports, port.id, { notes: event.target.value }))
-                  }}
-                />
-                {canEditRole ? (
-                  <label className="grid min-w-0 grid-cols-[50px_minmax(0,1fr)] items-center gap-2 text-xs font-bold text-[#75695d]">
-                    Role
-                    <Select
-                      value={port.role ?? PORT_ROLE_NONE_VALUE}
-                      onValueChange={(value) => {
-                        onUpdate(
-                          updatePort(ports, port.id, {
-                            role: value === PORT_ROLE_NONE_VALUE
-                              ? undefined
-                              : value as InventoryPortRole,
-                          }),
-                        )
-                      }}
-                    >
-                      <SelectTrigger className="h-8 w-full min-w-0 text-xs" aria-label={`Port ${port.slotNumber} role`}>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value={PORT_ROLE_NONE_VALUE}>No role</SelectItem>
-                        {SWITCH_PORT_ROLE_OPTIONS.map((role) => (
-                          <SelectItem key={role} value={role}>
-                            {PORT_ROLE_LABELS[role]}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </label>
-                ) : null}
-              </div>
-            )
-          })}
-      </div>
-    </InspectorSection>
   )
 }
 
@@ -1811,447 +1426,6 @@ function NetworkTraceCard({
   )
 }
 
-function uniqueOptions(options: string[], current: unknown): string[] {
-  const currentValue = typeof current === 'string' && current.trim() ? current.trim() : null
-
-  return currentValue && !options.includes(currentValue) ? [...options, currentValue] : options
-}
-
-function ServerSpecsForm({
-  server,
-  onUpdateIdentity,
-  onUpdateSpecs,
-  onUpdateProperties,
-}: {
-  server: InventoryItem
-  onUpdateIdentity: (identity: Partial<Pick<InventoryItem, 'name' | 'manufacturer' | 'model'>>) => void
-  onUpdateSpecs: (specs: Record<string, InventorySpecs[string] | undefined>) => void
-  onUpdateProperties: (properties: InventoryProperties) => void
-}) {
-  const properties = server.properties ?? {}
-  const specs = server.specs ?? {}
-  const formFactor = typeof specs.formFactor === 'string' ? specs.formFactor : undefined
-  const networkSlot = typeof specs.networkSlot === 'string' ? specs.networkSlot : undefined
-  const wireless = typeof specs.wireless === 'string' ? specs.wireless : undefined
-
-  return (
-    <InspectorSection title="Server Details" icon={Info}>
-      <div className="grid gap-3 sm:grid-cols-2">
-        <label className={formLabelClass}>
-          Inventory name
-          <Input
-            value={server.name}
-            placeholder="Dell OptiPlex Micro 7090"
-            onChange={(event) => onUpdateIdentity({ name: event.target.value })}
-          />
-        </label>
-        <label className={formLabelClass}>
-          Display name
-          <Input
-            value={properties.displayName ?? ''}
-            placeholder="Server name"
-            onChange={(event) => onUpdateProperties({ displayName: event.target.value })}
-          />
-        </label>
-        <label className={formLabelClass}>
-          Manufacturer
-          <Input
-            value={server.manufacturer ?? ''}
-            placeholder="Dell"
-            onChange={(event) => onUpdateIdentity({ manufacturer: event.target.value })}
-          />
-        </label>
-        <label className={formLabelClass}>
-          Model
-          <Input
-            value={server.model ?? ''}
-            placeholder="OptiPlex Micro 7090"
-            onChange={(event) => onUpdateIdentity({ model: event.target.value })}
-          />
-        </label>
-        <label className={formLabelClass}>
-          Form factor
-          <Select
-            value={formFactor}
-            onValueChange={(value) => onUpdateSpecs({ formFactor: value })}
-          >
-            <SelectTrigger className="w-full" aria-label="Server form factor">
-              <SelectValue placeholder="Select form factor" />
-            </SelectTrigger>
-            <SelectContent>
-              {uniqueOptions(SERVER_FORM_FACTOR_OPTIONS, formFactor).map((option) => (
-                <SelectItem key={option} value={option}>
-                  {option}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </label>
-        <label className={formLabelClass}>
-          Network slot
-          <Select
-            value={networkSlot}
-            onValueChange={(value) => onUpdateSpecs({ networkSlot: value })}
-          >
-            <SelectTrigger className="w-full" aria-label="Server network slot">
-              <SelectValue placeholder="Select network slot" />
-            </SelectTrigger>
-            <SelectContent>
-              {uniqueOptions(SERVER_NETWORK_SLOT_OPTIONS, networkSlot).map((option) => (
-                <SelectItem key={option} value={option}>
-                  {option}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </label>
-        <label className={cn(formLabelClass, 'sm:col-span-2')}>
-          Wireless
-          <Select
-            value={wireless}
-            onValueChange={(value) => onUpdateSpecs({ wireless: value })}
-          >
-            <SelectTrigger className="w-full" aria-label="Server wireless">
-              <SelectValue placeholder="Select wireless support" />
-            </SelectTrigger>
-            <SelectContent>
-              {uniqueOptions(SERVER_WIRELESS_OPTIONS, wireless).map((option) => (
-                <SelectItem key={option} value={option}>
-                  {option}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </label>
-      </div>
-    </InspectorSection>
-  )
-}
-
-function SwitchSpecsForm({
-  item,
-  onUpdateIdentity,
-  onUpdateSpecs,
-}: {
-  item: InventoryItem
-  onUpdateIdentity: (identity: Partial<Pick<InventoryItem, 'name' | 'manufacturer' | 'model'>>) => void
-  onUpdateSpecs: (specs: Record<string, InventorySpecs[string] | undefined>) => void
-}) {
-  const management = typeof item.specs?.management === 'string' ? item.specs.management : ''
-  const switchingCapacity = typeof item.specs?.switchingCapacityGbps === 'number'
-    ? item.specs.switchingCapacityGbps
-    : ''
-  const fanless = item.specs?.fanless === true ? 'yes' : 'no'
-
-  return (
-    <InspectorSection title="Switch Details" icon={Info}>
-      <div className="grid gap-3 sm:grid-cols-2">
-        <label className={formLabelClass}>
-          Name
-          <Input
-            value={item.name}
-            placeholder="Switch name"
-            onChange={(event) => onUpdateIdentity({ name: event.target.value })}
-          />
-        </label>
-        <label className={formLabelClass}>
-          Manufacturer
-          <Input
-            value={item.manufacturer ?? ''}
-            placeholder="Manufacturer"
-            onChange={(event) => onUpdateIdentity({ manufacturer: event.target.value })}
-          />
-        </label>
-        <label className={formLabelClass}>
-          Model
-          <Input
-            value={item.model ?? ''}
-            placeholder="Model"
-            onChange={(event) => onUpdateIdentity({ model: event.target.value })}
-          />
-        </label>
-        <label className={formLabelClass}>
-          Management
-          <Input
-            value={management}
-            placeholder="Managed or unmanaged"
-            onChange={(event) => onUpdateSpecs({ management: event.target.value || undefined })}
-          />
-        </label>
-        <label className={formLabelClass}>
-          Switching capacity (Gbps)
-          <Input
-            type="number"
-            min={0}
-            value={switchingCapacity}
-            placeholder="60"
-            onChange={(event) => {
-              const value = event.target.value
-              onUpdateSpecs({ switchingCapacityGbps: value === '' ? undefined : Number(value) })
-            }}
-          />
-        </label>
-        <label className={formLabelClass}>
-          Cooling
-          <Select
-            value={fanless}
-            onValueChange={(value) => onUpdateSpecs({ fanless: value === 'yes' })}
-          >
-            <SelectTrigger className="w-full" aria-label="Switch cooling">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="yes">Fanless</SelectItem>
-              <SelectItem value="no">Active cooling</SelectItem>
-            </SelectContent>
-          </Select>
-        </label>
-      </div>
-    </InspectorSection>
-  )
-}
-
-function SwitchPortGroupRow({
-  project,
-  item,
-  group,
-  onUpdate,
-  onError,
-}: {
-  project: ProjectState
-  item: InventoryItem
-  group: SwitchPortGroup
-  onUpdate: (ports: InventoryPort[]) => void
-  onError: (message: string | null) => void
-}) {
-  const [count, setCount] = useState(String(group.ports.length))
-  const requiresSpeed = isSwitchNetworkPortType(group.type)
-  const hasValidSpeed = isSupportedSwitchPortSpeed(group.speed)
-  const selectedSpeed = requiresSpeed && !hasValidSpeed ? EMPTY_SELECT_VALUE : group.speed ?? EMPTY_SELECT_VALUE
-
-  useEffect(() => {
-    setCount(String(group.ports.length))
-  }, [group.ports.length])
-
-  function commitCount() {
-    const parsedCount = Number(count)
-
-    if (!Number.isInteger(parsedCount) || parsedCount < 0 || parsedCount > 128) {
-      onError('Port counts must be whole numbers between 0 and 128.')
-      setCount(String(group.ports.length))
-      return
-    }
-
-    if (parsedCount === group.ports.length) {
-      onError(null)
-      return
-    }
-
-    const result = resizeSwitchPortGroup({
-      ports: item.ports ?? [],
-      connections: project.connections,
-      itemId: runtimeItemKey(item),
-      groupKey: group.key,
-      count: parsedCount,
-    })
-
-    if (!result.ok) {
-      onError(result.message)
-      setCount(String(group.ports.length))
-      return
-    }
-
-    onError(null)
-    onUpdate(result.ports)
-  }
-
-  function updateDefinition(
-    definition: Partial<Pick<SwitchPortGroup, 'type' | 'speed'>> & { role?: InventoryPortRole | null },
-  ) {
-    const updatesRole = Object.prototype.hasOwnProperty.call(definition, 'role')
-    onError(null)
-    const nextType = definition.type ?? group.type
-    const requestedSpeed = definition.speed === undefined ? group.speed : definition.speed
-    onUpdate(updateSwitchPortGroupDefinition({
-      ports: item.ports ?? [],
-      groupKey: group.key,
-      definition: {
-        type: nextType,
-        speed: getSwitchPortSpeedForType(nextType, requestedSpeed),
-        role: updatesRole ? definition.role ?? undefined : group.role,
-      },
-    }))
-  }
-
-  return (
-    <div className="grid gap-2 rounded-lg border border-[#e5dccf] bg-[#fffdf8] p-3 sm:grid-cols-[76px_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_44px] sm:items-end">
-      <label className={cn(formLabelClass, 'text-xs')}>
-        Count
-        <Input
-          type="number"
-          min={0}
-          max={128}
-          value={count}
-          aria-label={`${formatPortTypeLabel(group.type)} ${group.speed ?? ''} port count`.trim()}
-          onChange={(event) => setCount(event.target.value)}
-          onBlur={commitCount}
-          onKeyDown={(event) => {
-            if (event.key === 'Enter') {
-              event.preventDefault()
-              commitCount()
-            }
-          }}
-        />
-      </label>
-      <label className={cn(formLabelClass, 'text-xs')}>
-        Type
-        <Select value={group.type} onValueChange={(value) => updateDefinition({ type: value as InventoryPortType })}>
-          <SelectTrigger className="w-full" aria-label={`${formatPortTypeLabel(group.type)} port group type`}>
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {PORT_TYPE_OPTIONS.map((type) => (
-              <SelectItem key={type} value={type}>{formatPortTypeLabel(type)}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </label>
-      <label className={cn(formLabelClass, 'text-xs')}>
-        Speed
-        <Select
-          value={selectedSpeed}
-          onValueChange={(value) => updateDefinition({ speed: value === EMPTY_SELECT_VALUE ? '' : value })}
-        >
-          <SelectTrigger className="w-full" aria-label={`${formatPortTypeLabel(group.type)} port group speed`}>
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {requiresSpeed && !hasValidSpeed ? (
-              <SelectItem value={EMPTY_SELECT_VALUE} disabled>Select speed</SelectItem>
-            ) : null}
-            {(requiresSpeed ? SWITCH_NETWORK_PORT_SPEEDS : SWITCH_PORT_SPEED_OPTIONS).map((speed) => (
-              <SelectItem key={speed || EMPTY_SELECT_VALUE} value={speed || EMPTY_SELECT_VALUE}>
-                {speed || 'No speed'}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </label>
-      <label className={cn(formLabelClass, 'text-xs')}>
-        Role
-        <Select
-          value={group.role ?? PORT_ROLE_NONE_VALUE}
-          onValueChange={(value) => updateDefinition({
-            role: value === PORT_ROLE_NONE_VALUE ? null : value as InventoryPortRole,
-          })}
-        >
-          <SelectTrigger className="w-full" aria-label={`${formatPortTypeLabel(group.type)} port group role`}>
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value={PORT_ROLE_NONE_VALUE}>No role</SelectItem>
-            {SWITCH_PORT_ROLE_OPTIONS.map((role) => (
-              <SelectItem key={role} value={role}>{PORT_ROLE_LABELS[role]}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </label>
-      <Button
-        type="button"
-        variant="ghost"
-        size="icon"
-        className="size-11"
-        aria-label={`Remove ${formatPortTypeLabel(group.type)} ${group.speed ?? ''} port group`.trim()}
-        onClick={() => {
-          setCount('0')
-          const result = resizeSwitchPortGroup({
-            ports: item.ports ?? [],
-            connections: project.connections,
-            itemId: runtimeItemKey(item),
-            groupKey: group.key,
-            count: 0,
-          })
-
-          if (!result.ok) {
-            onError(result.message)
-            setCount(String(group.ports.length))
-            return
-          }
-
-          onError(null)
-          onUpdate(result.ports)
-        }}
-      >
-        <Trash2 data-icon="inline-start" />
-      </Button>
-      {requiresSpeed && !hasValidSpeed ? (
-        <div role="alert" className="flex gap-2 text-xs font-semibold text-[#8b3322] sm:col-span-5">
-          <AlertTriangle className="size-4 shrink-0" />
-          <span>Select a supported speed for this {formatPortTypeLabel(group.type)} switch port group.</span>
-        </div>
-      ) : null}
-    </div>
-  )
-}
-
-function SwitchPortGroupsEditor({
-  project,
-  item,
-  onUpdate,
-}: {
-  project: ProjectState
-  item: InventoryItem
-  onUpdate: (ports: InventoryPort[]) => void
-}) {
-  const groups = useMemo(() => groupSwitchPorts(item.ports ?? []), [item.ports])
-  const [error, setError] = useState<string | null>(null)
-
-  return (
-    <InspectorSection
-      title="Port Groups"
-      icon={Layers3}
-      badge={<StatusBadge>{item.ports?.length ?? 0} total</StatusBadge>}
-    >
-      <div className="grid gap-3">
-        {groups.length > 0 ? groups.map((group) => (
-          <SwitchPortGroupRow
-            key={group.key}
-            project={project}
-            item={item}
-            group={group}
-            onUpdate={onUpdate}
-            onError={setError}
-          />
-        )) : (
-          <div className="rounded-md border border-dashed border-[#d6ccbd] bg-[#f8f3eb] p-3 text-sm font-medium text-[#75695d]">
-            No port groups recorded.
-          </div>
-        )}
-
-        {error ? (
-          <div role="alert" className="flex gap-2 rounded-md border border-[#dfb3a5] bg-[#fff4ee] p-3 text-sm font-semibold text-[#7a2c1d]">
-            <AlertTriangle className="mt-0.5 size-4 shrink-0" />
-            <span>{error}</span>
-          </div>
-        ) : null}
-
-        <Button
-          type="button"
-          variant="outline"
-          className="h-10 justify-center gap-2"
-          onClick={() => {
-            setError(null)
-            onUpdate(addSwitchPortGroup(item.ports ?? []))
-          }}
-        >
-          <Plus data-icon="inline-start" />
-          Add Port Group
-        </Button>
-      </div>
-    </InspectorSection>
-  )
-}
-
 function getAgentString(record: Record<string, unknown> | null | undefined, key: string): string | null {
   const value = record?.[key]
 
@@ -2597,20 +1771,25 @@ function SlotItemCard({ item }: { item: InventoryItem }) {
   )
 }
 
-function ServerSlotsTab({
+function EquipmentSlotsTab({
   project,
-  server,
+  host,
+  title,
+  allowedTypes,
 }: {
   project: ProjectState
-  server: InventoryItem
+  host: InventoryItem
+  title: string
+  allowedTypes?: ComponentType[]
 }) {
-  const serverRuntimeKey = runtimeItemKey(server)
-  const assignments = sortAssignmentsForDisplay(project, serverRuntimeKey)
-  const slotStatus = getSlotStatus(project, serverRuntimeKey)
+  const hostRuntimeKey = runtimeItemKey(host)
+  const assignments = sortAssignmentsForDisplay(project, hostRuntimeKey)
+  const slotStatus = getSlotStatus(project, hostRuntimeKey)
+    .filter((slot) => !allowedTypes || allowedTypes.includes(slot.type))
 
   return (
     <InspectorSection
-      title="Server Slots"
+      title={title}
       icon={Layers3}
       badge={<StatusBadge>{slotStatus.length}</StatusBadge>}
     >
@@ -2725,14 +1904,16 @@ function ServerNetworkTab({
   server,
   status,
   activeNetworkTraceKey,
-  onUpdateItemPorts,
+  onUpdateServerPorts,
+  onUpdateItem,
   onSelectTrace,
 }: {
   project: ProjectState
   server: InventoryItem
   status: AgentServerStatus
   activeNetworkTraceKey: string | null
-  onUpdateItemPorts: (itemId: string, ports: InventoryPort[]) => void
+  onUpdateServerPorts: (ports: InventoryPort[]) => void
+  onUpdateItem: (itemId: string, input: InventoryItemInput) => void
   onSelectTrace: (endpoint: ConnectionEndpoint) => void
 }) {
   const options = useMemo(() => getServerNetworkPortOptions(project, server), [project, server])
@@ -2834,12 +2015,16 @@ function ServerNetworkTab({
                     inputMode="decimal"
                     aria-label={`Port ${selected.port.slotNumber} IP address`}
                     onChange={(event) => {
-                      onUpdateItemPorts(
-                        selected.itemKey,
-                        updatePort(selected.item.ports ?? [], selected.port.id, {
-                          ipAddress: event.target.value,
-                        }),
-                      )
+                      const ports = updatePort(selected.item.ports ?? [], selected.port.id, {
+                        ipAddress: event.target.value,
+                      })
+
+                      if (selected.itemKey === runtimeItemKey(server)) {
+                        onUpdateServerPorts(ports)
+                        return
+                      }
+
+                      onUpdateItem(selected.itemKey, itemInputWithPorts(selected.item, ports))
                     }}
                   />
                 </label>
@@ -2921,6 +2106,54 @@ function ComingSoonSection() {
   )
 }
 
+function EditableSpecsSection({
+  title,
+  editor,
+  auditWarnings,
+  displayName = false,
+}: {
+  title: string
+  editor: ReturnType<typeof useInventoryItemEditor>
+  auditWarnings: AuditWarning[]
+  displayName?: boolean
+}) {
+  return (
+    <>
+      <InspectorSection title={title} icon={Info}>
+        <InventorySpecsFormContent
+          values={editor.values}
+          errors={editor.errors}
+          onChange={editor.updateValues}
+        />
+        {displayName ? (
+          <label className={cn(formLabelClass, 'mt-3')}>
+            Display name
+            <Input
+              aria-label="Display name"
+              value={editor.values.properties?.displayName ?? ''}
+              placeholder="Server name"
+              onChange={(event) => editor.updateValues({
+                properties: {
+                  ...editor.values.properties,
+                  displayName: event.target.value,
+                },
+              })}
+            />
+          </label>
+        ) : null}
+      </InspectorSection>
+      <AuditSection warnings={auditWarnings} />
+    </>
+  )
+}
+
+function updateEditorPorts(
+  editor: ReturnType<typeof useInventoryItemEditor>,
+  ports: InventoryPort[],
+): void {
+  editor.updateValues(inventoryPortsToFormPatch(ports), 'immediate')
+}
+
 function ServerInspectorTabs({
   project,
   server,
@@ -2929,10 +2162,7 @@ function ServerInspectorTabs({
   activeNetworkTraceKey,
   pendingEndpoint,
   auditWarnings,
-  onUpdateServerIdentity,
-  onUpdateServerSpecs,
-  onUpdateServerProperties,
-  onUpdateItemPorts,
+  onUpdateItem,
   onSelectNetworkTrace,
   onEndpointConnectionClick,
 }: {
@@ -2943,62 +2173,65 @@ function ServerInspectorTabs({
   activeNetworkTraceKey: string | null
   pendingEndpoint: ConnectionEndpoint | null
   auditWarnings: AuditWarning[]
-  onUpdateServerIdentity: (
-    serverId: string,
-    identity: Partial<Pick<InventoryItem, 'name' | 'manufacturer' | 'model'>>,
-  ) => void
-  onUpdateServerSpecs: (
-    serverId: string,
-    specs: Record<string, InventorySpecs[string] | undefined>,
-  ) => void
-  onUpdateServerProperties: (serverId: string, properties: InventoryProperties) => void
-  onUpdateItemPorts: (itemId: string, ports: InventoryPort[]) => void
+  onUpdateItem: (itemId: string, input: InventoryItemInput) => void
   onSelectNetworkTrace: (endpoint: ConnectionEndpoint) => void
   onEndpointConnectionClick: (endpoint: ConnectionEndpoint) => void
 }) {
-  const serverRuntimeKey = runtimeItemKey(server)
+  const editor = useInventoryItemEditor({
+    item: server,
+    onSave: (input) => onUpdateItem(runtimeItemKey(server), input),
+  })
+  const draftServer = itemFromEditorValues(server, editor.values)
   const status = getServerAgentStatus(agentStatus, String(server.id))
+  const handlePortsUpdate = (ports: InventoryPort[]) => updateEditorPorts(editor, ports)
 
   return (
     <InspectorTabs
       defaultValue="specs"
+      status={<InventoryFormStatus saveError={editor.saveError} />}
       tabs={[
         {
           value: 'specs',
           label: 'Specs',
           content: (
-            <>
-              <ServerSpecsForm
-                server={server}
-                onUpdateIdentity={(identity) => onUpdateServerIdentity(serverRuntimeKey, identity)}
-                onUpdateSpecs={(specs) => onUpdateServerSpecs(serverRuntimeKey, specs)}
-                onUpdateProperties={(properties) => onUpdateServerProperties(serverRuntimeKey, properties)}
-              />
-              <AuditSection warnings={auditWarnings} />
-              {server.notes ? (
-                <p className="rounded-md border border-[#e5dccf] bg-[#f3f0ea] p-3 text-sm font-medium text-[#5f554b]">
-                  {server.notes}
-                </p>
-              ) : null}
-            </>
+            <EditableSpecsSection
+              title="Server Details"
+              editor={editor}
+              auditWarnings={auditWarnings}
+              displayName
+            />
           ),
         },
         {
           value: 'slots',
           label: 'Slots',
-          content: <ServerSlotsTab project={project} server={server} />,
+          content: (
+            <EquipmentSlotsTab
+              project={project}
+              host={draftServer}
+              title="Server Slots"
+            />
+          ),
         },
         {
           value: 'ports',
           label: 'Ports',
           content: (
-            <PortTabsEditor
-              project={project}
-              item={server}
-              pendingEndpoint={pendingEndpoint}
-              onUpdate={(ports) => onUpdateItemPorts(serverRuntimeKey, ports)}
-              onEndpointConnect={onEndpointConnectionClick}
-            />
+            <>
+              <PortGroupsEditor
+                type="server"
+                groups={editor.values.portGroups}
+                error={editor.errors.portGroups}
+                onChange={(portGroups) => editor.updateValues({ portGroups }, 'immediate')}
+              />
+              <PortTabsEditor
+                project={project}
+                item={draftServer}
+                pendingEndpoint={pendingEndpoint}
+                onUpdate={handlePortsUpdate}
+                onEndpointConnect={onEndpointConnectionClick}
+              />
+            </>
           ),
         },
         {
@@ -3007,10 +2240,11 @@ function ServerInspectorTabs({
           content: (
             <ServerNetworkTab
               project={project}
-              server={server}
+              server={draftServer}
               status={status}
               activeNetworkTraceKey={activeNetworkTraceKey}
-              onUpdateItemPorts={onUpdateItemPorts}
+              onUpdateServerPorts={handlePortsUpdate}
+              onUpdateItem={onUpdateItem}
               onSelectTrace={onSelectNetworkTrace}
             />
           ),
@@ -3023,7 +2257,7 @@ function ServerInspectorTabs({
         {
           value: 'agent',
           label: 'Agent',
-          content: <AgentSetupPanel server={server} status={status} demoMode={demoMode} />,
+          content: <AgentSetupPanel server={draftServer} status={status} demoMode={demoMode} />,
         },
       ]}
     />
@@ -3035,9 +2269,7 @@ function SwitchInspectorTabs({
   item,
   pendingEndpoint,
   auditWarnings,
-  onUpdateIdentity,
-  onUpdateSpecs,
-  onUpdatePorts,
+  onUpdateItem,
   onCreateConnection,
   onEndpointConnectionClick,
   onUpdateConnectionLabel,
@@ -3047,43 +2279,33 @@ function SwitchInspectorTabs({
   item: InventoryItem
   pendingEndpoint: ConnectionEndpoint | null
   auditWarnings: AuditWarning[]
-  onUpdateIdentity: (
-    itemId: string,
-    identity: Partial<Pick<InventoryItem, 'name' | 'manufacturer' | 'model'>>,
-  ) => void
-  onUpdateSpecs: (
-    itemId: string,
-    specs: Record<string, InventorySpecs[string] | undefined>,
-  ) => void
-  onUpdatePorts: (itemId: string, ports: InventoryPort[]) => void
+  onUpdateItem: (itemId: string, input: InventoryItemInput) => void
   onCreateConnection: (from: ConnectionEndpoint, to: ConnectionEndpoint) => void
   onEndpointConnectionClick: (endpoint: ConnectionEndpoint) => void
   onUpdateConnectionLabel: (connectionId: string | number, label: string) => void
   onRemoveConnection: (connectionId: string | number) => void
 }) {
-  const itemRuntimeKey = runtimeItemKey(item)
+  const editor = useInventoryItemEditor({
+    item,
+    onSave: (input) => onUpdateItem(runtimeItemKey(item), input),
+  })
+  const draftItem = itemFromEditorValues(item, editor.values)
+  const handlePortsUpdate = (ports: InventoryPort[]) => updateEditorPorts(editor, ports)
 
   return (
     <InspectorTabs
       defaultValue="specs"
+      status={<InventoryFormStatus saveError={editor.saveError} />}
       tabs={[
         {
           value: 'specs',
           label: 'Specs',
           content: (
-            <>
-              <SwitchSpecsForm
-                item={item}
-                onUpdateIdentity={(identity) => onUpdateIdentity(itemRuntimeKey, identity)}
-                onUpdateSpecs={(specs) => onUpdateSpecs(itemRuntimeKey, specs)}
-              />
-              <AuditSection warnings={auditWarnings} />
-              {item.notes ? (
-                <p className="rounded-md border border-[#e5dccf] bg-[#f3f0ea] p-3 text-sm font-medium text-[#5f554b]">
-                  {item.notes}
-                </p>
-              ) : null}
-            </>
+            <EditableSpecsSection
+              title="Switch Details"
+              editor={editor}
+              auditWarnings={auditWarnings}
+            />
           ),
         },
         {
@@ -3091,16 +2313,17 @@ function SwitchInspectorTabs({
           label: 'Ports',
           content: (
             <>
-              <SwitchPortGroupsEditor
-                project={project}
-                item={item}
-                onUpdate={(ports) => onUpdatePorts(itemRuntimeKey, ports)}
+              <PortGroupsEditor
+                type="switch"
+                groups={editor.values.portGroups}
+                error={editor.errors.portGroups}
+                onChange={(portGroups) => editor.updateValues({ portGroups }, 'immediate')}
               />
               <PortTabsEditor
                 project={project}
-                item={item}
+                item={draftItem}
                 pendingEndpoint={pendingEndpoint}
-                onUpdate={(ports) => onUpdatePorts(itemRuntimeKey, ports)}
+                onUpdate={handlePortsUpdate}
                 onEndpointConnect={onEndpointConnectionClick}
               />
             </>
@@ -3112,10 +2335,239 @@ function SwitchInspectorTabs({
           content: (
             <ConnectionEditor
               project={project}
-              item={item}
+              item={draftItem}
               onCreate={onCreateConnection}
               onUpdateLabel={onUpdateConnectionLabel}
               onRemove={onRemoveConnection}
+            />
+          ),
+        },
+      ]}
+    />
+  )
+}
+
+function NasAgentSection() {
+  return (
+    <InspectorSection title="Agent" icon={Terminal}>
+      <div className="rounded-md border border-dashed border-[#d6ccbd] bg-[#f8f3eb] p-4 text-sm font-semibold text-[#75695d]">
+        Agent setup is not available for NAS yet.
+      </div>
+    </InspectorSection>
+  )
+}
+
+function NasInspectorTabs({
+  project,
+  item,
+  pendingEndpoint,
+  auditWarnings,
+  activeNetworkTraceKey,
+  onUpdateItem,
+  onCreateConnection,
+  onEndpointConnectionClick,
+  onSelectNetworkTrace,
+  onUpdateConnectionLabel,
+  onRemoveConnection,
+}: {
+  project: ProjectState
+  item: InventoryItem
+  pendingEndpoint: ConnectionEndpoint | null
+  auditWarnings: AuditWarning[]
+  activeNetworkTraceKey: string | null
+  onUpdateItem: (itemId: string, input: InventoryItemInput) => void
+  onCreateConnection: (from: ConnectionEndpoint, to: ConnectionEndpoint) => void
+  onEndpointConnectionClick: (endpoint: ConnectionEndpoint) => void
+  onSelectNetworkTrace: (endpoint: ConnectionEndpoint) => void
+  onUpdateConnectionLabel: (connectionId: string | number, label: string) => void
+  onRemoveConnection: (connectionId: string | number) => void
+}) {
+  const editor = useInventoryItemEditor({
+    item,
+    onSave: (input) => onUpdateItem(runtimeItemKey(item), input),
+  })
+  const draftItem = itemFromEditorValues(item, editor.values)
+  const handlePortsUpdate = (ports: InventoryPort[]) => updateEditorPorts(editor, ports)
+
+  return (
+    <InspectorTabs
+      defaultValue="specs"
+      status={<InventoryFormStatus saveError={editor.saveError} />}
+      tabs={[
+        {
+          value: 'specs',
+          label: 'Specs',
+          content: (
+            <EditableSpecsSection
+              title="NAS Details"
+              editor={editor}
+              auditWarnings={auditWarnings}
+            />
+          ),
+        },
+        {
+          value: 'slots',
+          label: 'Slots',
+          content: (
+            <EquipmentSlotsTab
+              project={project}
+              host={draftItem}
+              title="NAS Slots"
+              allowedTypes={['storage', 'network']}
+            />
+          ),
+        },
+        {
+          value: 'ports',
+          label: 'Ports',
+          content: (
+            <>
+              <PortGroupsEditor
+                type="nas"
+                groups={editor.values.portGroups}
+                error={editor.errors.portGroups}
+                onChange={(portGroups) => editor.updateValues({ portGroups }, 'immediate')}
+              />
+              <PortTabsEditor
+                project={project}
+                item={draftItem}
+                pendingEndpoint={pendingEndpoint}
+                onUpdate={handlePortsUpdate}
+                onEndpointConnect={onEndpointConnectionClick}
+              />
+              <ConnectionEditor
+                project={project}
+                item={draftItem}
+                onCreate={onCreateConnection}
+                onUpdateLabel={onUpdateConnectionLabel}
+                onRemove={onRemoveConnection}
+              />
+            </>
+          ),
+        },
+        {
+          value: 'network',
+          label: 'Network',
+          content: (
+            <NetworkTraceSection
+              project={project}
+              item={draftItem}
+              activeTraceKey={activeNetworkTraceKey}
+              onSelectTrace={onSelectNetworkTrace}
+            />
+          ),
+        },
+        {
+          value: 'agent',
+          label: 'Agent',
+          content: <NasAgentSection />,
+        },
+      ]}
+    />
+  )
+}
+
+function PatchPanelInspectorTabs({
+  project,
+  item,
+  pendingEndpoint,
+  auditWarnings,
+  activeNetworkTraceKey,
+  onUpdateItem,
+  onCreateConnection,
+  onEndpointConnectionClick,
+  onSelectNetworkTrace,
+  onUpdateConnectionLabel,
+  onRemoveConnection,
+}: {
+  project: ProjectState
+  item: InventoryItem
+  pendingEndpoint: ConnectionEndpoint | null
+  auditWarnings: AuditWarning[]
+  activeNetworkTraceKey: string | null
+  onUpdateItem: (itemId: string, input: InventoryItemInput) => void
+  onCreateConnection: (from: ConnectionEndpoint, to: ConnectionEndpoint) => void
+  onEndpointConnectionClick: (endpoint: ConnectionEndpoint) => void
+  onSelectNetworkTrace: (endpoint: ConnectionEndpoint) => void
+  onUpdateConnectionLabel: (connectionId: string | number, label: string) => void
+  onRemoveConnection: (connectionId: string | number) => void
+}) {
+  const editor = useInventoryItemEditor({
+    item,
+    onSave: (input) => onUpdateItem(runtimeItemKey(item), input),
+  })
+  const draftItem = itemFromEditorValues(item, editor.values)
+  const handlePortsUpdate = (ports: InventoryPort[]) => updateEditorPorts(editor, ports)
+
+  return (
+    <InspectorTabs
+      defaultValue="specs"
+      status={<InventoryFormStatus saveError={editor.saveError} />}
+      tabs={[
+        {
+          value: 'specs',
+          label: 'Specs',
+          content: (
+            <EditableSpecsSection
+              title="Patch Panel Details"
+              editor={editor}
+              auditWarnings={auditWarnings}
+            />
+          ),
+        },
+        {
+          value: 'ports',
+          label: 'Ports',
+          content: (
+            <>
+              <PatchPanelRowDisplayControls
+                item={draftItem}
+                onUpdateProperties={(properties) => editor.updateValues({
+                  properties: {
+                    ...editor.values.properties,
+                    ...properties,
+                  },
+                }, 'immediate')}
+              />
+              <PatchPanelLabelGrid item={draftItem} onUpdate={handlePortsUpdate} />
+              <PortGroupsEditor
+                type="patchPanel"
+                groups={editor.values.portGroups}
+                error={editor.errors.portGroups}
+                onChange={(portGroups) => editor.updateValues({ portGroups }, 'immediate')}
+              />
+              <PortTabsEditor
+                project={project}
+                item={draftItem}
+                pendingEndpoint={pendingEndpoint}
+                onUpdate={handlePortsUpdate}
+                onEndpointConnect={onEndpointConnectionClick}
+              />
+            </>
+          ),
+        },
+        {
+          value: 'connections',
+          label: 'Connections',
+          content: (
+            <ConnectionEditor
+              project={project}
+              item={draftItem}
+              onCreate={onCreateConnection}
+              onUpdateLabel={onUpdateConnectionLabel}
+              onRemove={onRemoveConnection}
+            />
+          ),
+        },
+        {
+          value: 'network',
+          label: 'Network',
+          content: (
+            <NetworkTraceSection
+              project={project}
+              item={draftItem}
+              activeTraceKey={activeNetworkTraceKey}
+              onSelectTrace={onSelectNetworkTrace}
             />
           ),
         },
@@ -3169,14 +2621,7 @@ export function InspectorPanel({
   persistenceWarning,
   open,
   onClose,
-  onUpdateServerIdentity,
-  onUpdateServerSpecs,
-  onUpdateServerProperties,
   onUpdateItem,
-  onUpdateItemIdentity,
-  onUpdateItemSpecs,
-  onUpdateItemProperties,
-  onUpdateItemPorts,
   onCreateConnection,
   onSelectNetworkTrace,
   onEndpointConnectionClick,
@@ -3196,26 +2641,7 @@ export function InspectorPanel({
   persistenceWarning: string | null
   open: boolean
   onClose: () => void
-  onUpdateServerIdentity: (
-    serverId: string,
-    identity: Partial<Pick<InventoryItem, 'name' | 'manufacturer' | 'model'>>,
-  ) => void
-  onUpdateServerSpecs: (
-    serverId: string,
-    specs: Record<string, InventorySpecs[string] | undefined>,
-  ) => void
-  onUpdateServerProperties: (serverId: string, properties: InventoryProperties) => void
   onUpdateItem: (itemId: string, input: InventoryItemInput) => void
-  onUpdateItemIdentity: (
-    itemId: string,
-    identity: Partial<Pick<InventoryItem, 'name' | 'manufacturer' | 'model'>>,
-  ) => void
-  onUpdateItemSpecs: (
-    itemId: string,
-    specs: Record<string, InventorySpecs[string] | undefined>,
-  ) => void
-  onUpdateItemProperties: (itemId: string, properties: InventoryProperties) => void
-  onUpdateItemPorts: (itemId: string, ports: InventoryPort[]) => void
   onCreateConnection: (from: ConnectionEndpoint, to: ConnectionEndpoint) => void
   onSelectNetworkTrace: (endpoint: ConnectionEndpoint) => void
   onEndpointConnectionClick: (endpoint: ConnectionEndpoint) => void
@@ -3240,10 +2666,13 @@ export function InspectorPanel({
   return (
     <aside
       data-testid="inspector-drawer"
+      role="dialog"
+      aria-label={`${drawerTitle} inspector`}
       className={`fixed bottom-0 right-0 top-0 z-40 flex min-h-0 w-[min(96vw,680px)] flex-col overflow-x-hidden border-l border-[#d6ccbd] bg-[radial-gradient(circle_at_top_left,#fffdf8_0%,#fbf7ef_44%,#f3ede4_100%)] shadow-[-22px_0_46px_rgba(32,36,44,0.18)] transition-transform duration-200 ease-out ${
         open ? 'translate-x-0' : 'translate-x-full'
       }`}
       aria-hidden={!open}
+      inert={!open}
     >
       <div className="flex items-center justify-between gap-3 border-b border-[#e5dccf] bg-[#fffdf8]/88 p-4 backdrop-blur">
         <div className="flex min-w-0 flex-wrap items-center gap-2">
@@ -3321,10 +2750,7 @@ export function InspectorPanel({
                   activeNetworkTraceKey={activeNetworkTraceKey}
                   pendingEndpoint={pendingConnectionEndpoint}
                   auditWarnings={auditWarnings}
-                  onUpdateServerIdentity={onUpdateServerIdentity}
-                  onUpdateServerSpecs={onUpdateServerSpecs}
-                  onUpdateServerProperties={onUpdateServerProperties}
-                  onUpdateItemPorts={onUpdateItemPorts}
+                  onUpdateItem={onUpdateItem}
                   onSelectNetworkTrace={onSelectNetworkTrace}
                   onEndpointConnectionClick={onEndpointConnectionClick}
                 />
@@ -3334,77 +2760,52 @@ export function InspectorPanel({
                   item={selectedItem}
                   pendingEndpoint={pendingConnectionEndpoint}
                   auditWarnings={auditWarnings}
-                  onUpdateIdentity={onUpdateItemIdentity}
-                  onUpdateSpecs={onUpdateItemSpecs}
-                  onUpdatePorts={onUpdateItemPorts}
+                  onUpdateItem={onUpdateItem}
                   onCreateConnection={onCreateConnection}
                   onEndpointConnectionClick={onEndpointConnectionClick}
+                  onUpdateConnectionLabel={onUpdateConnectionLabel}
+                  onRemoveConnection={onRemoveConnection}
+                />
+              ) : selectedItem.type === 'nas' ? (
+                <NasInspectorTabs
+                  project={project}
+                  item={selectedItem}
+                  pendingEndpoint={pendingConnectionEndpoint}
+                  auditWarnings={auditWarnings}
+                  activeNetworkTraceKey={activeNetworkTraceKey}
+                  onUpdateItem={onUpdateItem}
+                  onCreateConnection={onCreateConnection}
+                  onEndpointConnectionClick={onEndpointConnectionClick}
+                  onSelectNetworkTrace={onSelectNetworkTrace}
+                  onUpdateConnectionLabel={onUpdateConnectionLabel}
+                  onRemoveConnection={onRemoveConnection}
+                />
+              ) : selectedItem.type === 'patchPanel' ? (
+                <PatchPanelInspectorTabs
+                  project={project}
+                  item={selectedItem}
+                  pendingEndpoint={pendingConnectionEndpoint}
+                  auditWarnings={auditWarnings}
+                  activeNetworkTraceKey={activeNetworkTraceKey}
+                  onUpdateItem={onUpdateItem}
+                  onCreateConnection={onCreateConnection}
+                  onEndpointConnectionClick={onEndpointConnectionClick}
+                  onSelectNetworkTrace={onSelectNetworkTrace}
                   onUpdateConnectionLabel={onUpdateConnectionLabel}
                   onRemoveConnection={onRemoveConnection}
                 />
               ) : isEditableComponent(selectedItem) ? (
                 <>
                   <ComponentItemEditor
+                    key={runtimeItemKey(selectedItem)}
                     item={selectedItem}
-                    validationMessage={validationMessage}
+                    validationMessage={null}
                     onUpdateItem={onUpdateItem}
                   />
                   <AuditSection warnings={auditWarnings} />
                 </>
               ) : (
-                <>
-                  <InspectorSection title="Specifications" icon={Info}>
-                    <SpecRows item={selectedItem} />
-                  </InspectorSection>
-                  {selectedItem.type === 'nas' ||
-                  selectedItem.type === 'patchPanel' ? (
-                    <>
-                      {selectedItem.type === 'patchPanel' ? (
-                        <>
-                          <PatchPanelRowDisplayControls
-                            item={selectedItem}
-                            onUpdateProperties={(properties) =>
-                              onUpdateItemProperties(runtimeItemKey(selectedItem), properties)
-                            }
-                          />
-                          <PatchPanelLabelGrid
-                            item={selectedItem}
-                            onUpdate={(ports) => onUpdateItemPorts(runtimeItemKey(selectedItem), ports)}
-                          />
-                        </>
-                      ) : null}
-                      <PortEditor
-                        project={project}
-                        item={selectedItem}
-                        pendingEndpoint={pendingConnectionEndpoint}
-                        onUpdate={(ports) => onUpdateItemPorts(runtimeItemKey(selectedItem), ports)}
-                        onEndpointConnect={onEndpointConnectionClick}
-                      />
-                      <ConnectionEditor
-                        project={project}
-                        item={selectedItem}
-                        onCreate={onCreateConnection}
-                        onUpdateLabel={onUpdateConnectionLabel}
-                        onRemove={onRemoveConnection}
-                      />
-                    </>
-                  ) : null}
-                  {selectedItem.type === 'nas' ||
-                  selectedItem.type === 'patchPanel' ? (
-                    <NetworkTraceSection
-                      project={project}
-                      item={selectedItem}
-                      activeTraceKey={activeNetworkTraceKey}
-                      onSelectTrace={onSelectNetworkTrace}
-                    />
-                  ) : null}
-                  <AuditSection warnings={auditWarnings} />
-                  {selectedItem.notes ? (
-                    <p className="rounded-md border border-[#e5dccf] bg-[#f3f0ea] p-3 text-sm font-medium text-[#5f554b]">
-                      {selectedItem.notes}
-                    </p>
-                  ) : null}
-                </>
+                null
               )}
             </>
           ) : (

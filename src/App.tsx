@@ -81,10 +81,6 @@ import {
   placementsCollide,
   removeConnection,
   removeAssignment,
-  updateItemIdentity,
-  updateItemPorts,
-  updateItemProperties,
-  updateItemSpecs,
   updateConnectionLabel,
   updateConnectionRoute,
   upsertPlacements,
@@ -1290,24 +1286,6 @@ function App() {
               setSelectedConnectionId(null)
               setPendingConnectionEndpoint(null)
             }}
-            onUpdateServerIdentity={(serverId, identity) => {
-              updateProject(updateItemIdentity(project, serverId, identity), {
-                recordHistory: false,
-              })
-              setValidationMessage(null)
-            }}
-            onUpdateServerSpecs={(serverId, specs) => {
-              updateProject(updateItemSpecs(project, serverId, specs), {
-                recordHistory: false,
-              })
-              setValidationMessage(null)
-            }}
-            onUpdateServerProperties={(serverId, properties) => {
-              updateProject(updateItemProperties(project, serverId, properties), {
-                recordHistory: false,
-              })
-              setValidationMessage(null)
-            }}
             onUpdateItem={(itemId, input) => {
               const currentProject = projectRef.current
 
@@ -1316,30 +1294,6 @@ function App() {
               }
 
               updateProject(applyInventoryItemInput(currentProject, itemId, input), {
-                recordHistory: false,
-              })
-              setValidationMessage(null)
-            }}
-            onUpdateItemIdentity={(itemId, identity) => {
-              updateProject(updateItemIdentity(project, itemId, identity), {
-                recordHistory: false,
-              })
-              setValidationMessage(null)
-            }}
-            onUpdateItemSpecs={(itemId, specs) => {
-              updateProject(updateItemSpecs(project, itemId, specs), {
-                recordHistory: false,
-              })
-              setValidationMessage(null)
-            }}
-            onUpdateItemProperties={(itemId, properties) => {
-              updateProject(updateItemProperties(project, itemId, properties), {
-                recordHistory: false,
-              })
-              setValidationMessage(null)
-            }}
-            onUpdateItemPorts={(itemId, ports) => {
-              updateProject(updateItemPorts(project, itemId, ports), {
                 recordHistory: false,
               })
               setValidationMessage(null)

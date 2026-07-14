@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react'
+import { useId, type ReactNode } from 'react'
 import { Input } from '@/components/ui/input'
 import {
   Select,
@@ -19,8 +19,8 @@ export function FieldLabel({
   return <label className={`space-y-1 text-xs font-bold text-[#75695d] ${className}`}>{children}</label>
 }
 
-export function FieldError({ message }: { message?: string }) {
-  return message ? <span role="alert" className="block text-xs font-semibold text-[#8b3322]">{message}</span> : null
+export function FieldError({ message, id }: { message?: string; id?: string }) {
+  return message ? <span id={id} role="alert" className="block text-xs font-semibold text-[#8b3322]">{message}</span> : null
 }
 
 export function TextField({
@@ -48,12 +48,15 @@ export function TextField({
   className?: string
   onChange: (value: string) => void
 }) {
+  const errorId = useId()
+
   return (
     <FieldLabel className={className}>
       <span>{label}</span>
       <Input
         aria-label={label}
         aria-invalid={Boolean(error)}
+        aria-describedby={error ? errorId : undefined}
         name={name}
         value={value}
         placeholder={placeholder}
@@ -64,7 +67,7 @@ export function TextField({
         className={fieldClassName()}
         onChange={(event) => onChange(event.target.value)}
       />
-      <FieldError message={error} />
+      <FieldError id={errorId} message={error} />
     </FieldLabel>
   )
 }
@@ -92,6 +95,7 @@ export function SelectField({
   onValueChange: (value: string) => void
   onOpenChange?: (open: boolean) => void
 }) {
+  const errorId = useId()
   const selectableOptions = withLegacyOption(options, value)
   const selectValue = value || (emptyLabel ? 'none' : '')
 
@@ -104,7 +108,7 @@ export function SelectField({
         onValueChange={(nextValue) => onValueChange(nextValue === 'none' ? '' : nextValue)}
         onOpenChange={onOpenChange}
       >
-        <SelectTrigger aria-label={label} aria-invalid={Boolean(error)} className={fieldClassName()}>
+        <SelectTrigger aria-label={label} aria-invalid={Boolean(error)} aria-describedby={error ? errorId : undefined} className={fieldClassName()}>
           <SelectValue placeholder={placeholder} />
         </SelectTrigger>
         <SelectContent>
@@ -116,7 +120,7 @@ export function SelectField({
           ))}
         </SelectContent>
       </Select>
-      <FieldError message={error} />
+      <FieldError id={errorId} message={error} />
     </FieldLabel>
   )
 }

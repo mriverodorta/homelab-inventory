@@ -50,7 +50,7 @@ describe('useInventoryItemEditor', () => {
     expect(vi.getTimerCount()).toBe(0)
   })
 
-  it('cancels a pending save and resyncs when the selected item changes', async () => {
+  it('flushes a pending save before resyncing when the selected item changes', async () => {
     vi.useFakeTimers()
     const onSave = vi.fn()
     const nextCpu: InventoryItem = {
@@ -69,11 +69,15 @@ describe('useInventoryItemEditor', () => {
 
     expect(result.current.values.name).toBe('Second CPU')
 
+    expect(onSave).toHaveBeenCalledWith(expect.objectContaining({
+      name: 'Unsaved CPU',
+    }))
+
     await act(async () => vi.advanceTimersByTimeAsync(500))
-    expect(onSave).not.toHaveBeenCalled()
+    expect(onSave).toHaveBeenCalledOnce()
   })
 
-  it('cancels a pending save when unmounted', async () => {
+  it('flushes a pending save when unmounted', async () => {
     vi.useFakeTimers()
     const onSave = vi.fn()
     const { result, unmount } = renderHook(() => useInventoryItemEditor({ item: cpu, onSave }))
@@ -82,7 +86,9 @@ describe('useInventoryItemEditor', () => {
     unmount()
     await vi.advanceTimersByTimeAsync(500)
 
-    expect(onSave).not.toHaveBeenCalled()
+    expect(onSave).toHaveBeenCalledWith(expect.objectContaining({
+      name: 'Unsaved CPU',
+    }))
   })
 
   it('resyncs when the canonical selected item changes outside the draft', () => {

@@ -4,8 +4,13 @@ import userEvent from '@testing-library/user-event'
 import type { ComponentProps } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { InspectorPanel } from '@/components/inspector-panel'
+import { createAgentEnrollment } from '@/lib/agent-api'
 import type { AgentStatusSummary } from '@/types/agent'
 import type { ProjectState } from '@/types/inventory'
+
+vi.mock('@/lib/agent-api', () => ({
+  createAgentEnrollment: vi.fn(),
+}))
 
 const project: ProjectState = {
   id: 'default-project',
@@ -138,14 +143,66 @@ const project: ProjectState = {
         },
       ],
     },
+    nas: {
+      id: 'nas',
+      name: 'Synology DS923+',
+      type: 'nas',
+      manufacturer: 'Synology',
+      model: 'DS923+',
+      specs: {
+        driveBays: 4,
+        m2Slots: 2,
+      },
+      ports: [
+        {
+          id: 'nas-lan-01',
+          kind: 'server-port',
+          type: 'rj45',
+          slotNumber: 1,
+          label: 'LAN 01',
+          speed: '1G',
+        },
+      ],
+    },
+    nasNic: {
+      id: 'nasNic',
+      name: 'Synology 10GbE Card',
+      type: 'network',
+      manufacturer: 'Synology',
+      ports: [
+        {
+          id: 'nas-nic-01',
+          kind: 'server-port',
+          type: 'rj45',
+          slotNumber: 1,
+          speed: '10G',
+        },
+      ],
+    },
   },
   placements: [{ serverId: 'server', x: 0, y: 0 }],
-  assignments: [],
+  assignments: [
+    {
+      id: 'nas-storage',
+      serverId: 'nas',
+      itemId: 'storage',
+      type: 'storage',
+      assignedAt: '2026-07-13T00:00:00.000Z',
+    },
+    {
+      id: 'nas-network',
+      serverId: 'nas',
+      itemId: 'nasNic',
+      type: 'network',
+      assignedAt: '2026-07-13T00:00:00.000Z',
+    },
+  ],
   connections: [],
 }
 
 afterEach(() => {
   cleanup()
+  vi.clearAllMocks()
   vi.useRealTimers()
 })
 
@@ -153,13 +210,6 @@ type InspectorPanelProps = ComponentProps<typeof InspectorPanel>
 
 type RenderInspectorOptions = Partial<Pick<InspectorPanelProps,
   | 'onUpdateItem'
-  | 'onUpdateServerIdentity'
-  | 'onUpdateServerSpecs'
-  | 'onUpdateServerProperties'
-  | 'onUpdateItemIdentity'
-  | 'onUpdateItemSpecs'
-  | 'onUpdateItemProperties'
-  | 'onUpdateItemPorts'
   | 'onCreateConnection'
   | 'onSelectNetworkTrace'
   | 'onUpdateConnectionLabel'
@@ -182,13 +232,6 @@ function renderInspector({
   project: projectOverride = project,
   demoMode = false,
   onUpdateItem = vi.fn(),
-  onUpdateServerIdentity = vi.fn(),
-  onUpdateServerSpecs = vi.fn(),
-  onUpdateServerProperties = vi.fn(),
-  onUpdateItemIdentity = vi.fn(),
-  onUpdateItemSpecs = vi.fn(),
-  onUpdateItemProperties = vi.fn(),
-  onUpdateItemPorts = vi.fn(),
   onCreateConnection = vi.fn(),
   onSelectNetworkTrace = vi.fn(),
   onUpdateConnectionLabel = vi.fn(),
@@ -218,14 +261,7 @@ function renderInspector({
         persistenceWarning={null}
         open
         onClose={() => {}}
-        onUpdateServerIdentity={onUpdateServerIdentity}
-        onUpdateServerSpecs={onUpdateServerSpecs}
-        onUpdateServerProperties={onUpdateServerProperties}
         onUpdateItem={onUpdateItem}
-        onUpdateItemIdentity={onUpdateItemIdentity}
-        onUpdateItemSpecs={onUpdateItemSpecs}
-        onUpdateItemProperties={onUpdateItemProperties}
-        onUpdateItemPorts={onUpdateItemPorts}
         onCreateConnection={onCreateConnection}
         onSelectNetworkTrace={onSelectNetworkTrace}
         onEndpointConnectionClick={onEndpointConnectionClick}
@@ -239,13 +275,6 @@ function renderInspector({
 
   return {
     onUpdateItem,
-    onUpdateServerIdentity,
-    onUpdateServerSpecs,
-    onUpdateServerProperties,
-    onUpdateItemIdentity,
-    onUpdateItemSpecs,
-    onUpdateItemProperties,
-    onUpdateItemPorts,
     onCreateConnection,
     onSelectNetworkTrace,
     onUpdateConnectionLabel,
@@ -257,6 +286,58 @@ function renderInspector({
 }
 
 describe('InspectorPanel', () => {
+  it.each([
+    ['server', ['Specs', 'Slots', 'Ports', 'Network', 'Services', 'Agent']],
+    ['switch', ['Specs', 'Ports', 'Connections']],
+    ['nas', ['Specs', 'Slots', 'Ports', 'Network', 'Agent']],
+    ['patch', ['Specs', 'Ports', 'Connections', 'Network']],
+  ] as const)('renders the approved %s tab order', (selectedItemId, labels) => {
+    renderInspector({ selectedItemId })
+
+    expect(screen.getAllByRole('tab').slice(0, labels.length).map((tab) => tab.textContent)).toEqual(labels)
+  })
+
+  it('edits NAS specs through a complete item payload', async () => {
+    vi.useFakeTimers()
+    const { onUpdateItem } = renderInspector({ selectedItemId: 'nas' })
+
+    expect(screen.getByLabelText('Drive Bays')).toHaveValue(4)
+    expect(screen.getByLabelText('M.2 Slots')).toHaveValue(2)
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Backup NAS' } })
+    fireEvent.change(screen.getByLabelText('Drive Bays'), { target: { value: '6' } })
+    await act(async () => vi.advanceTimersByTimeAsync(500))
+
+    expect(onUpdateItem).toHaveBeenCalledWith('nas', {
+      type: 'nas',
+      name: 'Backup NAS',
+      manufacturer: 'Synology',
+      model: 'DS923+',
+      specs: {
+        driveBays: 6,
+        m2Slots: 2,
+      },
+      ports: project.items.nas.ports,
+    })
+  })
+
+  it('limits NAS slots and keeps agent enrollment unavailable', () => {
+    renderInspector({ selectedItemId: 'nas' })
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Slots' }))
+    expect(screen.getByText('NAS Slots')).toBeInTheDocument()
+    expect(screen.getAllByText('Storage').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('Network').length).toBeGreaterThan(0)
+    expect(screen.queryByText('CPU')).not.toBeInTheDocument()
+    expect(screen.queryByText('RAM')).not.toBeInTheDocument()
+    expect(screen.queryByText('GPU')).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Agent' }))
+    expect(screen.getByText('Agent setup is not available for NAS yet.')).toBeInTheDocument()
+    expect(screen.queryByLabelText('Agent endpoint')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Setup Agent' })).not.toBeInTheDocument()
+    expect(createAgentEnrollment).not.toHaveBeenCalled()
+  })
+
   it('renders storage in the reusable tabbed editor with simplified chrome', () => {
     renderInspector({ selectedItemId: 'storage' })
 
@@ -329,52 +410,77 @@ describe('InspectorPanel', () => {
     })
   })
 
-  it('renders editable switch details and emits identity and spec updates', async () => {
-    const user = userEvent.setup()
-    const { onUpdateItemIdentity, onUpdateItemSpecs } = renderInspector({ selectedItemId: 'switch' })
+  it('renders editable switch details and emits one complete item update', () => {
+    const { onUpdateItem } = renderInspector({ selectedItemId: 'switch' })
 
     expect(screen.getByRole('tab', { name: 'Specs' })).toHaveAttribute('aria-selected', 'true')
-    expect(screen.getByLabelText('Switching capacity (Gbps)')).toHaveValue(80)
-    expect(screen.getByRole('combobox', { name: 'Switch cooling' })).toHaveTextContent('Fanless')
+    expect(screen.getByLabelText('Switching Gbps')).toHaveValue(80)
+    expect(screen.getByRole('checkbox', { name: 'Fanless' })).toBeChecked()
 
     fireEvent.change(screen.getByLabelText('Name'), {
       target: { value: 'Core switch' },
     })
-    fireEvent.change(screen.getByLabelText('Switching capacity (Gbps)'), {
+    fireEvent.change(screen.getByLabelText('Switching Gbps'), {
       target: { value: '60' },
     })
-    await user.click(screen.getByRole('combobox', { name: 'Switch cooling' }))
-    await user.click(screen.getByRole('option', { name: 'Active cooling' }))
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Fanless' }))
 
-    expect(onUpdateItemIdentity).toHaveBeenCalledWith('switch', { name: 'Core switch' })
-    expect(onUpdateItemSpecs).toHaveBeenCalledWith('switch', { switchingCapacityGbps: 60 })
-    expect(onUpdateItemSpecs).toHaveBeenCalledWith('switch', { fanless: false })
+    expect(onUpdateItem).toHaveBeenCalledWith('switch', {
+      type: 'switch',
+      name: 'Core switch',
+      manufacturer: 'TP-Link Omada',
+      model: 'ES210X-M2',
+      specs: {
+        management: 'Omada managed',
+        switchingCapacityGbps: 60,
+        fanless: false,
+      },
+      ports: project.items.switch.ports,
+    })
+  })
+
+  it('uses canonical switch management choices while preserving a legacy value', async () => {
+    const user = userEvent.setup()
+    const { onUpdateItem } = renderInspector({ selectedItemId: 'switch' })
+
+    expect(screen.getByRole('combobox', { name: 'Management' })).toHaveTextContent('Omada managed (Legacy)')
+    await user.click(screen.getByRole('combobox', { name: 'Management' }))
+    expect(screen.getByRole('option', { name: 'Omada managed (Legacy)' })).toBeInTheDocument()
+    await user.click(screen.getByRole('option', { name: 'Layer 2 Managed' }))
+
+    expect(onUpdateItem).toHaveBeenCalledWith('switch', expect.objectContaining({
+      type: 'switch',
+      name: 'Omada ES210X-M2 #1',
+      specs: expect.objectContaining({ management: 'Layer 2 Managed' }),
+      ports: project.items.switch.ports,
+    }))
   })
 
   it('edits switch port groups and individual port details', async () => {
     const user = userEvent.setup()
-    const { onUpdateItemPorts, onEndpointConnectionClick } = renderInspector({ selectedItemId: 'switch' })
+    const { onUpdateItem, onEndpointConnectionClick } = renderInspector({ selectedItemId: 'switch' })
 
     await user.click(screen.getByRole('tab', { name: 'Ports' }))
 
-    expect(screen.getByText('Port Groups')).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Ports' })).toBeInTheDocument()
     expect(screen.getByText('Port occupancy')).toBeInTheDocument()
-    expect(screen.getByText('RJ45 2.5G')).toBeInTheDocument()
     expect(screen.getAllByText('Open').length).toBeGreaterThan(0)
 
-    fireEvent.change(screen.getByLabelText('RJ45 2.5G port count'), {
+    fireEvent.change(screen.getByLabelText('Port group 1 count'), {
       target: { value: '4' },
     })
-    fireEvent.blur(screen.getByLabelText('RJ45 2.5G port count'))
 
-    expect(onUpdateItemPorts).toHaveBeenCalledWith(
+    expect(onUpdateItem).toHaveBeenCalledWith(
       'switch',
-      expect.arrayContaining([
-        expect.objectContaining({ id: 'rj45-01' }),
-        expect.objectContaining({ id: 'rj45-04' }),
-      ]),
+      expect.objectContaining({
+        type: 'switch',
+        ports: expect.arrayContaining([
+          expect.objectContaining({ id: 'rj45-01' }),
+          expect.objectContaining({ id: 'rj45-04' }),
+        ]),
+      }),
     )
-    expect(vi.mocked(onUpdateItemPorts).mock.calls[0][1]).toHaveLength(4)
+    expect(vi.mocked(onUpdateItem).mock.calls[0][1].ports).toHaveLength(4)
 
     fireEvent.click(screen.getByRole('button', { name: 'Connect Port 1' }))
 
@@ -389,17 +495,21 @@ describe('InspectorPanel', () => {
     await user.click(screen.getByRole('combobox', { name: 'Port 1 role' }))
     await user.click(screen.getByRole('option', { name: 'Uplink' }))
 
-    expect(onUpdateItemPorts).toHaveBeenCalledWith(
+    expect(onUpdateItem).toHaveBeenCalledWith(
       'switch',
-      expect.arrayContaining([
-        expect.objectContaining({ id: 'rj45-01', label: 'Office uplink' }),
-      ]),
+      expect.objectContaining({
+        ports: expect.arrayContaining([
+          expect.objectContaining({ id: 'rj45-01', label: 'Office uplink' }),
+        ]),
+      }),
     )
-    expect(onUpdateItemPorts).toHaveBeenCalledWith(
+    expect(onUpdateItem).toHaveBeenCalledWith(
       'switch',
-      expect.arrayContaining([
-        expect.objectContaining({ id: 'rj45-01', role: 'uplink' }),
-      ]),
+      expect.objectContaining({
+        ports: expect.arrayContaining([
+          expect.objectContaining({ id: 'rj45-01', role: 'uplink' }),
+        ]),
+      }),
     )
   })
 
@@ -409,7 +519,7 @@ describe('InspectorPanel', () => {
     project.items.switch.ports = originalPorts?.map((port) => ({ ...port, speed: undefined }))
 
     try {
-      const { onUpdateItemPorts } = renderInspector({ selectedItemId: 'switch' })
+      const { onUpdateItem } = renderInspector({ selectedItemId: 'switch' })
 
       await user.click(screen.getByRole('tab', { name: 'Ports' }))
 
@@ -417,15 +527,17 @@ describe('InspectorPanel', () => {
         'Select a supported speed for this RJ45 switch port group.',
       )
 
-      await user.click(screen.getByRole('combobox', { name: 'RJ45 port group speed' }))
+      await user.click(screen.getByRole('combobox', { name: 'Port group 1 speed' }))
       expect(screen.queryByRole('option', { name: 'No speed' })).not.toBeInTheDocument()
       await user.click(screen.getByRole('option', { name: '10G' }))
 
-      expect(onUpdateItemPorts).toHaveBeenCalledWith(
+      expect(onUpdateItem).toHaveBeenCalledWith(
         'switch',
-        expect.arrayContaining([
-          expect.objectContaining({ speed: '10G' }),
-        ]),
+        expect.objectContaining({
+          ports: expect.arrayContaining([
+            expect.objectContaining({ speed: '10G' }),
+          ]),
+        }),
       )
     } finally {
       project.items.switch.ports = originalPorts
@@ -544,9 +656,10 @@ describe('InspectorPanel', () => {
 
   it('renders patch panel ports and emits type updates', async () => {
     const user = userEvent.setup()
-    const { onUpdateItemPorts, onEndpointConnectionClick } = renderInspector({ selectedItemId: 'patch' })
+    const { onUpdateItem, onEndpointConnectionClick } = renderInspector({ selectedItemId: 'patch' })
 
-    expect(screen.getByText('1x RJ45')).toBeInTheDocument()
+    await user.click(screen.getByRole('tab', { name: 'Ports' }))
+    expect(screen.getByLabelText('Port group 1 count')).toHaveValue(1)
     fireEvent.click(screen.getByRole('button', { name: 'Connect 01 back' }))
 
     expect(onEndpointConnectionClick).toHaveBeenCalledWith({
@@ -558,8 +671,11 @@ describe('InspectorPanel', () => {
     await user.click(screen.getByRole('combobox', { name: 'Port 1 type' }))
     await user.click(screen.getByRole('option', { name: 'HDMI' }))
 
-    expect(onUpdateItemPorts).toHaveBeenCalledWith('patch', [
-      {
+    expect(onUpdateItem).toHaveBeenCalledWith('patch', expect.objectContaining({
+      type: 'patchPanel',
+      name: 'VCELINK 24 Port Cat6A Patch Panel',
+      specs: { rackUnits: 1 },
+      ports: [expect.objectContaining({
         id: 'keystone-01',
         kind: 'keystone',
         type: 'hdmi',
@@ -568,12 +684,14 @@ describe('InspectorPanel', () => {
           { id: 'keystone-01-front', side: 'front' },
           { id: 'keystone-01-back', side: 'back' },
         ],
-      },
-    ])
+      })],
+    }))
   })
 
   it('edits patch panel labels in the compact grid and port notes in occupancy', () => {
-    const { onUpdateItemPorts } = renderInspector({ selectedItemId: 'patch' })
+    const { onUpdateItem } = renderInspector({ selectedItemId: 'patch' })
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Ports' }))
 
     fireEvent.change(screen.getByLabelText('Keystone 1 label'), {
       target: { value: 'Proxmox 01' },
@@ -582,18 +700,32 @@ describe('InspectorPanel', () => {
       target: { value: 'Rack A short cable' },
     })
 
-    expect(onUpdateItemPorts).toHaveBeenCalledWith('patch', [
-      expect.objectContaining({
+    expect(onUpdateItem).toHaveBeenCalledWith('patch', expect.objectContaining({
+      ports: [expect.objectContaining({
         id: 'keystone-01',
         label: 'Proxmox 01',
-      }),
-    ])
-    expect(onUpdateItemPorts).toHaveBeenCalledWith('patch', [
-      expect.objectContaining({
+      })],
+    }))
+    expect(onUpdateItem).toHaveBeenCalledWith('patch', expect.objectContaining({
+      ports: [expect.objectContaining({
         id: 'keystone-01',
+        label: 'Proxmox 01',
         notes: 'Rack A short cable',
-      }),
-    ])
+      })],
+    }))
+  })
+
+  it('saves patch panel row order through the complete draft', () => {
+    const { onUpdateItem } = renderInspector({ selectedItemId: 'patch' })
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Ports' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Swap Rows' }))
+
+    expect(onUpdateItem).toHaveBeenCalledWith('patch', expect.objectContaining({
+      type: 'patchPanel',
+      properties: { patchPanelRowOrder: 'front-back' },
+      ports: project.items.patch.ports,
+    }))
   })
 
   it('renders RAM in the reusable tabbed editor', () => {
@@ -706,13 +838,11 @@ describe('InspectorPanel', () => {
     expect(screen.getAllByText('Dell OptiPlex Micro 7090').length).toBeGreaterThan(0)
   })
 
-  it('renders editable server properties and emits updates on keystrokes', () => {
-    const {
-      onUpdateServerIdentity,
-      onUpdateServerProperties,
-    } = renderInspector({ selectedItemId: 'server' })
+  it('renders shared server fields and emits a complete debounced update', async () => {
+    vi.useFakeTimers()
+    const { onUpdateItem } = renderInspector({ selectedItemId: 'server' })
 
-    const inventoryNameInput = screen.getByLabelText('Inventory name')
+    const inventoryNameInput = screen.getByLabelText('Name')
     const displayNameInput = screen.getByLabelText('Display name')
     const manufacturerInput = screen.getByLabelText('Manufacturer')
 
@@ -724,13 +854,132 @@ describe('InspectorPanel', () => {
 
     fireEvent.change(displayNameInput, { target: { value: 'Proxmox 02' } })
     fireEvent.change(manufacturerInput, { target: { value: 'HP' } })
+    await act(async () => vi.advanceTimersByTimeAsync(500))
 
-    expect(onUpdateServerProperties).toHaveBeenCalledWith('server', {
-      displayName: 'Proxmox 02',
-    })
-    expect(onUpdateServerIdentity).toHaveBeenCalledWith('server', {
+    expect(onUpdateItem).toHaveBeenCalledWith('server', {
+      type: 'server',
+      name: 'Dell OptiPlex Micro 7090',
       manufacturer: 'HP',
+      model: 'OptiPlex Micro 7090',
+      specs: {
+        formFactor: 'Micro',
+        networkSlot: 'M.2 2230 A/E',
+        wireless: 'Wi-Fi card supported or installed',
+      },
+      properties: {
+        displayName: 'Proxmox 02',
+        lanIp: '192.168.1.20',
+        tailscaleIp: '100.64.1.20',
+      },
+      ports: project.items.server.ports,
     })
+  })
+
+  it('merges a pending display name into an immediate board port IP update', async () => {
+    vi.useFakeTimers()
+    const { onUpdateItem } = renderInspector({ selectedItemId: 'server' })
+
+    fireEvent.change(screen.getByLabelText('Display name'), {
+      target: { value: 'Proxmox pending' },
+    })
+    fireEvent.click(screen.getByRole('tab', { name: 'Network' }))
+    fireEvent.change(screen.getByLabelText('Port 1 IP address'), {
+      target: { value: '192.168.1.55' },
+    })
+
+    expect(onUpdateItem).toHaveBeenCalledTimes(1)
+    expect(onUpdateItem).toHaveBeenCalledWith('server', expect.objectContaining({
+      properties: expect.objectContaining({ displayName: 'Proxmox pending' }),
+      ports: [expect.objectContaining({
+        id: 'lan-01',
+        ipAddress: '192.168.1.55',
+      })],
+    }))
+
+    await act(async () => vi.advanceTimersByTimeAsync(500))
+    expect(onUpdateItem).toHaveBeenCalledTimes(1)
+  })
+
+  it('saves a hosted NIC IP separately without overwriting the server draft', async () => {
+    const user = userEvent.setup()
+    const hostedNicProject: ProjectState = {
+      ...project,
+      items: {
+        ...project.items,
+        serverNic: {
+          id: 'serverNic',
+          name: 'Intel I350-T4',
+          type: 'network',
+          manufacturer: 'Intel',
+          specs: {
+            interface: 'PCIe 3.0 x4',
+            formFactor: 'Low profile',
+          },
+          ports: [
+            {
+              id: 'server-nic-01',
+              kind: 'server-port',
+              type: 'rj45',
+              slotNumber: 1,
+              speed: '1G',
+            },
+          ],
+        },
+      },
+      assignments: [
+        ...project.assignments,
+        {
+          id: 'server-network',
+          serverId: 'server',
+          itemId: 'serverNic',
+          type: 'network',
+          assignedAt: '2026-07-13T00:00:00.000Z',
+        },
+      ],
+    }
+    const { onUpdateItem } = renderInspector({
+      selectedItemId: 'server',
+      project: hostedNicProject,
+    })
+
+    fireEvent.change(screen.getByLabelText('Name'), {
+      target: { value: 'Pending server name' },
+    })
+    await user.click(screen.getByRole('tab', { name: 'Network' }))
+    const interfaceTabs = screen.getAllByRole('tab', { name: 'RJ4501' })
+    const hostedInterfaceTab = interfaceTabs.find((tab) => tab.id.includes('serverNic'))
+    expect(hostedInterfaceTab).toBeDefined()
+    await user.click(hostedInterfaceTab!)
+    expect(screen.getByText('Intel I350-T4 / RJ45 1G')).toBeInTheDocument()
+    fireEvent.change(screen.getByLabelText('Port 1 IP address'), {
+      target: { value: '10.0.0.15' },
+    })
+
+    expect(onUpdateItem).toHaveBeenCalledTimes(1)
+    expect(onUpdateItem).toHaveBeenLastCalledWith('serverNic', {
+      type: 'network',
+      name: 'Intel I350-T4',
+      manufacturer: 'Intel',
+      specs: {
+        ports: 1,
+        speedMbps: 1000,
+        interface: 'PCIe 3.0 x4',
+        formFactor: 'Low profile',
+      },
+      ports: [expect.objectContaining({
+        id: 'server-nic-01',
+        ipAddress: '10.0.0.15',
+      })],
+    })
+
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 550))
+    })
+    expect(onUpdateItem).toHaveBeenCalledTimes(2)
+    expect(onUpdateItem).toHaveBeenLastCalledWith('server', expect.objectContaining({
+      name: 'Pending server name',
+      properties: expect.objectContaining({ displayName: 'Proxmox 01' }),
+    }))
   })
 
   it('renders agent operational telemetry for a selected server', () => {
@@ -818,14 +1067,7 @@ describe('InspectorPanel', () => {
           persistenceWarning={null}
           open
           onClose={() => {}}
-          onUpdateServerIdentity={vi.fn()}
-          onUpdateServerSpecs={vi.fn()}
-          onUpdateServerProperties={vi.fn()}
           onUpdateItem={vi.fn()}
-          onUpdateItemIdentity={vi.fn()}
-          onUpdateItemSpecs={vi.fn()}
-          onUpdateItemProperties={vi.fn()}
-          onUpdateItemPorts={vi.fn()}
           onCreateConnection={vi.fn()}
           onSelectNetworkTrace={vi.fn()}
           onEndpointConnectionClick={vi.fn()}
@@ -884,14 +1126,7 @@ describe('InspectorPanel', () => {
           persistenceWarning={null}
           open
           onClose={() => {}}
-          onUpdateServerIdentity={vi.fn()}
-          onUpdateServerSpecs={vi.fn()}
-          onUpdateServerProperties={vi.fn()}
           onUpdateItem={vi.fn()}
-          onUpdateItemIdentity={vi.fn()}
-          onUpdateItemSpecs={vi.fn()}
-          onUpdateItemProperties={vi.fn()}
-          onUpdateItemPorts={vi.fn()}
           onCreateConnection={vi.fn()}
           onSelectNetworkTrace={vi.fn()}
           onEndpointConnectionClick={vi.fn()}
