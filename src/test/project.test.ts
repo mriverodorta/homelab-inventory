@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { assignComponent } from '@/lib/constraints'
 import { mergeInventoryWithProject } from '@/lib/inventory'
 import {
+  applyInventoryItemInput,
   autoArrangeCanvasItems,
   createConnection,
   getCanvasItemHeight,
@@ -18,7 +19,8 @@ import {
   upsertPlacement,
   validateConnection,
 } from '@/lib/project'
-import type { InventoryItem } from '@/types/inventory'
+import type { InventoryItemInput } from '@/lib/db'
+import type { InventoryItem, ProjectState } from '@/types/inventory'
 
 const inventory: InventoryItem[] = [
   { id: 'server-a', name: 'Server A', type: 'server' },
@@ -130,6 +132,218 @@ const connectionInventory: InventoryItem[] = [
     ],
   },
 ]
+
+describe('inventory item input updates', () => {
+  it('replaces editable fields without retaining removed optional values', () => {
+    const project: ProjectState = {
+      id: 'default',
+      metadata: { name: 'Inventory', version: 1, updatedAt: '2026-07-14T12:00:00.000Z' },
+      items: {
+        'server:7': {
+          id: 7,
+          key: 'server:7',
+          type: 'server',
+          name: 'Old server',
+          manufacturer: 'Old manufacturer',
+          secondaryManufacturer: 'Old secondary manufacturer',
+          model: 'Old model',
+          family: 'Old family',
+          number: 'Old number',
+          subtype: 'Old subtype',
+          specs: { formFactor: 'Tower', staleSpec: true },
+          properties: { displayName: 'Old display name' },
+          ports: [{ id: 1, kind: 'server-port', type: 'rj45', slotNumber: 1 }],
+          notes: 'Old notes',
+        },
+      },
+      placements: [],
+      assignments: [],
+      connections: [],
+    }
+    const input: InventoryItemInput = {
+      type: 'server',
+      name: 'Updated server',
+      specs: { formFactor: 'Mini' },
+    }
+
+    const updated = applyInventoryItemInput(project, 'server:7', input)
+
+    expect(updated.items['server:7']).toEqual({
+      ...input,
+      id: 7,
+      key: 'server:7',
+    })
+  })
+
+  it('preserves runtime identity and project relationships', () => {
+    const relatedItem: InventoryItem = { id: 8, key: 'cpu:8', type: 'cpu', name: 'CPU' }
+    const placement = { serverId: 'server:7', x: 24, y: 48 }
+    const assignment = {
+      id: 'assignment-1',
+      serverId: 'server:7',
+      itemId: 'cpu:8',
+      type: 'cpu' as const,
+      assignedAt: '2026-07-14T12:00:00.000Z',
+    }
+    const connection = {
+      id: 'connection-1',
+      from: { itemId: 'server:7', portId: 1 },
+      to: { itemId: 'switch:9', portId: 1 },
+      type: 'network' as const,
+      createdAt: '2026-07-14T12:00:00.000Z',
+    }
+    const project: ProjectState = {
+      id: 'default',
+      metadata: { name: 'Inventory', version: 1, updatedAt: '2026-07-14T12:00:00.000Z' },
+      items: {
+        'server:7': { id: 7, key: 'server:7', type: 'server', name: 'Old server' },
+        'cpu:8': relatedItem,
+      },
+      placements: [placement],
+      assignments: [assignment],
+      connections: [connection],
+    }
+    const input: InventoryItemInput = {
+      type: 'server',
+      name: 'Updated server',
+      ports: [{ id: 1, kind: 'server-port', type: 'rj45', slotNumber: 1 }],
+    }
+
+    const updated = applyInventoryItemInput(project, 'server:7', input)
+
+    expect(updated.items['server:7']).toEqual({ ...input, id: 7, key: 'server:7' })
+    expect(updated.items['cpu:8']).toBe(relatedItem)
+    expect(updated.placements).toBe(project.placements)
+    expect(updated.assignments).toBe(project.assignments)
+    expect(updated.connections).toBe(project.connections)
+  })
+
+  it('rejects removing a directly connected item port', () => {
+    const project: ProjectState = {
+      id: 'default',
+      metadata: { name: 'Inventory', version: 1, updatedAt: '2026-07-14T12:00:00.000Z' },
+      items: {
+        'gpu:7': {
+          id: 7,
+          key: 'gpu:7',
+          type: 'gpu',
+          name: 'GPU',
+          ports: [
+            { id: 'dp-1', kind: 'server-port', type: 'displayport', slotNumber: 1 },
+            { id: 'dp-2', kind: 'server-port', type: 'displayport', slotNumber: 2 },
+          ],
+        },
+      },
+      placements: [],
+      assignments: [],
+      connections: [{
+        id: 'display-1',
+        from: { itemId: 'gpu:7', portId: 'dp-2' },
+        to: { itemId: 'server:8', portId: 'dp-1' },
+        type: 'display',
+        createdAt: '2026-07-14T12:00:00.000Z',
+      }],
+    }
+    const input: InventoryItemInput = {
+      type: 'gpu',
+      name: 'GPU',
+      ports: [{ id: 'dp-1', kind: 'server-port', type: 'displayport', slotNumber: 1 }],
+    }
+
+    expect(() => applyInventoryItemInput(project, 'gpu:7', input)).toThrow(/connected port dp-2/i)
+  })
+
+  it('rejects removing a connected hosted component port', () => {
+    const project: ProjectState = {
+      id: 'default',
+      metadata: { name: 'Inventory', version: 1, updatedAt: '2026-07-14T12:00:00.000Z' },
+      items: {
+        'server:7': { id: 7, key: 'server:7', type: 'server', name: 'Server' },
+        'network:8': {
+          id: 8,
+          key: 'network:8',
+          type: 'network',
+          name: 'NIC',
+          ports: [
+            { id: 'lan-1', kind: 'server-port', type: 'rj45', slotNumber: 1 },
+            { id: 'lan-2', kind: 'server-port', type: 'rj45', slotNumber: 2 },
+          ],
+        },
+      },
+      placements: [],
+      assignments: [{
+        id: 'assignment-1',
+        serverId: 'server:7',
+        itemId: 'network:8',
+        type: 'network',
+        assignedAt: '2026-07-14T12:00:00.000Z',
+      }],
+      connections: [{
+        id: 'network-1',
+        from: { itemId: 'switch:9', portId: 'lan-1' },
+        to: { itemId: 'server:7', hostedItemId: 'network:8', portId: 'lan-2' },
+        type: 'network',
+        createdAt: '2026-07-14T12:00:00.000Z',
+      }],
+    }
+    const input: InventoryItemInput = {
+      type: 'network',
+      name: 'NIC',
+      ports: [{ id: 'lan-1', kind: 'server-port', type: 'rj45', slotNumber: 1 }],
+    }
+
+    expect(() => applyInventoryItemInput(project, 'network:8', input)).toThrow(/connected port lan-2/i)
+  })
+
+  it('rejects removing a connected patch-panel endpoint', () => {
+    const project: ProjectState = {
+      id: 'default',
+      metadata: { name: 'Inventory', version: 1, updatedAt: '2026-07-14T12:00:00.000Z' },
+      items: {
+        'patchPanel:7': {
+          id: 7,
+          key: 'patchPanel:7',
+          type: 'patchPanel',
+          name: 'Patch panel',
+          ports: [{
+            id: 'keystone-1',
+            kind: 'keystone',
+            type: 'rj45',
+            slotNumber: 1,
+            endpoints: [
+              { id: 'front', side: 'front' },
+              { id: 'back', side: 'back' },
+            ],
+          }],
+        },
+      },
+      placements: [],
+      assignments: [],
+      connections: [{
+        id: 'network-1',
+        from: { itemId: 'patchPanel:7', portId: 'keystone-1', endpointId: 'back' },
+        to: { itemId: 'switch:8', portId: 'lan-1' },
+        type: 'network',
+        createdAt: '2026-07-14T12:00:00.000Z',
+      }],
+    }
+    const input: InventoryItemInput = {
+      type: 'patchPanel',
+      name: 'Patch panel',
+      ports: [{
+        id: 'keystone-1',
+        kind: 'keystone',
+        type: 'rj45',
+        slotNumber: 1,
+        endpoints: [{ id: 'front', side: 'front' }],
+      }],
+    }
+
+    expect(() => applyInventoryItemInput(project, 'patchPanel:7', input)).toThrow(
+      /connected endpoint back/i,
+    )
+  })
+})
 
 describe('server placement collisions', () => {
   it('rejects overlapping server placements', () => {

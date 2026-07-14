@@ -13,6 +13,7 @@ import type {
   ServerPlacement,
   ValidationResult,
 } from '@/types/inventory'
+import type { InventoryItemInput } from '@/lib/db'
 import { nextNumericId } from '@/lib/ids'
 import { runtimeItemKey } from '@/lib/item-keys'
 
@@ -68,6 +69,75 @@ export function touchProject(project: ProjectState): ProjectState {
       updatedAt: new Date().toISOString(),
     },
   }
+}
+
+function connectionEndpointTargetsItem(
+  endpoint: ConnectionEndpoint,
+  runtimeItemId: string,
+): boolean {
+  return endpoint.hostedItemId === runtimeItemId
+    || (endpoint.hostedItemId === undefined && endpoint.itemId === runtimeItemId)
+}
+
+function assertConnectedPortsRetained(
+  project: ProjectState,
+  runtimeItemId: string,
+  input: InventoryItemInput,
+): void {
+  const ports = input.ports ?? []
+
+  for (const connection of project.connections) {
+    for (const endpoint of [connection.from, connection.to]) {
+      if (!connectionEndpointTargetsItem(endpoint, runtimeItemId)) {
+        continue
+      }
+
+      const port = ports.find((candidate) => String(candidate.id) === String(endpoint.portId))
+
+      if (!port) {
+        throw new Error(
+          `Cannot remove connected port ${String(endpoint.portId)}. Disconnect it first.`,
+        )
+      }
+
+      if (endpoint.endpointId !== undefined
+        && !port.endpoints?.some(
+          (candidate) => String(candidate.id) === String(endpoint.endpointId),
+        )) {
+        throw new Error(
+          `Cannot remove connected endpoint ${String(endpoint.endpointId)} from port ${String(endpoint.portId)}. Disconnect it first.`,
+        )
+      }
+    }
+  }
+}
+
+export function applyInventoryItemInput(
+  project: ProjectState,
+  runtimeItemId: string,
+  input: InventoryItemInput,
+): ProjectState {
+  const item = project.items[runtimeItemId]
+
+  if (!item) {
+    return project
+  }
+
+  assertConnectedPortsRetained(project, runtimeItemId, input)
+
+  const nextItem: InventoryItem = {
+    ...input,
+    id: item.id,
+    ...(item.key !== undefined ? { key: item.key } : {}),
+  }
+
+  return touchProject({
+    ...project,
+    items: {
+      ...project.items,
+      [runtimeItemId]: nextItem,
+    },
+  })
 }
 
 export function upsertPlacement(project: ProjectState, placement: ServerPlacement): ProjectState {
