@@ -1,4 +1,5 @@
 import express from 'express'
+import { rateLimit } from 'express-rate-limit'
 import fs from 'node:fs/promises'
 import helmet from 'helmet'
 import path from 'node:path'
@@ -6,6 +7,7 @@ import { fileURLToPath } from 'node:url'
 import { RELEASE_NOTES } from '../src/release-notes.ts'
 import { registerAgentRoutes } from './agent-routes.mjs'
 import { HomelabInventoryStore } from './db/store.mjs'
+import { createRateLimitOptions, readRateLimitConfig } from './rate-limit.mjs'
 import { DockerHubUpdateChecker } from './update-checker.mjs'
 import { registerUpdateRoutes } from './update-routes.mjs'
 import { startUpdateCheckSchedule } from './update-scheduler.mjs'
@@ -46,6 +48,9 @@ const updateChecker = new DockerHubUpdateChecker({
 })
 
 const app = express()
+const rateLimitConfig = readRateLimitConfig()
+
+app.set('trust proxy', rateLimitConfig.trustProxy)
 
 let store = null
 let demoManager = null
@@ -101,6 +106,7 @@ app.use(helmet({
   crossOriginEmbedderPolicy: false,
 }))
 
+app.use(rateLimit(createRateLimitOptions(rateLimitConfig)))
 app.use(express.json({ limit: '10mb' }))
 
 registerAgentRoutes(app, store, { disabled: isDemoMode })

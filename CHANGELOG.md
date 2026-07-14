@@ -14,6 +14,19 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 - Added repository documentation, issue templates, CI, and security guidance.
 - Clarified Docker deployment, data persistence, and development setup.
 
+## [0.1.18] - 2026-07-14
+
+### Added
+
+- Added global request limiting across API routes, static assets, and the SPA fallback.
+- Added configurable `RATE_LIMIT_WINDOW_MS`, `RATE_LIMIT_MAX`, and `TRUST_PROXY` runtime settings.
+- Added standard rate-limit response headers and structured `429` API responses.
+
+### Security
+
+- Restricted the CI workflow token to read-only repository contents.
+- Rejects unsafe `TRUST_PROXY=true` configuration and falls back from invalid numeric rate-limit values.
+
 ## [0.1.17] - 2026-07-13
 
 ### Changed

@@ -12,6 +12,23 @@ export type ReleaseNoteEntry = {
 
 export const RELEASE_NOTES: ReleaseNoteEntry[] = [
   {
+    version: '0.1.18',
+    date: '2026-07-14',
+    channel: 'latest',
+    title: 'Request rate limiting and CI hardening',
+    highlights: [
+      'Homelab Inventory now applies a global request limit to API routes, static assets, and the application fallback.',
+      'Rate-limit responses include standard headers and return structured JSON for API clients.',
+    ],
+    fixes: [
+      'GitHub Actions CI now declares read-only repository permissions explicitly.',
+      'Invalid rate-limit environment values fall back to safe defaults with a server warning.',
+    ],
+    notes: [
+      'Deployments can tune RATE_LIMIT_WINDOW_MS and RATE_LIMIT_MAX, and should set TRUST_PROXY to an explicit hop count or proxy range when running behind a reverse proxy.',
+    ],
+  },
+  {
     version: '0.1.17',
     date: '2026-07-13',
     channel: 'latest',

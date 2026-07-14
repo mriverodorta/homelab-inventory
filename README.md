@@ -69,7 +69,12 @@ SAVE_DEBOUNCE_MS=500
 APP_MODE=production
 UPDATE_CHANNEL=stable
 UPDATE_CHECK_ENABLED=true
+RATE_LIMIT_WINDOW_MS=60000
+RATE_LIMIT_MAX=600
+TRUST_PROXY=false
 ```
+
+When running behind a reverse proxy, set `TRUST_PROXY` to the exact proxy hop count or trusted proxy range so rate limits use the correct client address. Do not set it to `true`.
 
 Production starts empty. Create inventory items from the web interface, or copy an existing `/data` directory into the mounted volume.
 

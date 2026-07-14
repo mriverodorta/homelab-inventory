@@ -24,9 +24,14 @@ PORT=8798
 DATA_DIR=/data
 SAVE_DEBOUNCE_MS=500
 APP_MODE=production
+RATE_LIMIT_WINDOW_MS=60000
+RATE_LIMIT_MAX=600
+TRUST_PROXY=false
 ```
 
 You only need environment variables when overriding defaults.
+
+When running behind a reverse proxy, set `TRUST_PROXY` to the exact proxy hop count or trusted proxy range so rate limits use the correct client address. Do not set it to `true`.
 
 ## Data Directory Permissions
 
