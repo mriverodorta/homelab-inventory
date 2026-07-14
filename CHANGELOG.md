@@ -27,6 +27,10 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 - Restricted the CI workflow token to read-only repository contents.
 - Rejects unsafe `TRUST_PROXY=true` configuration and falls back from invalid numeric rate-limit values.
 
+### Fixed
+
+- Included the request-limiting middleware in the production Docker runtime stage.
+
 ## [0.1.17] - 2026-07-13
 
 ### Changed

@@ -23,6 +23,7 @@ export const RELEASE_NOTES: ReleaseNoteEntry[] = [
     fixes: [
       'GitHub Actions CI now declares read-only repository permissions explicitly.',
       'Invalid rate-limit environment values fall back to safe defaults with a server warning.',
+      'Production images now include the request-limiting middleware used by the runtime server.',
     ],
     notes: [
       'Deployments can tune RATE_LIMIT_WINDOW_MS and RATE_LIMIT_MAX, and should set TRUST_PROXY to an explicit hop count or proxy range when running behind a reverse proxy.',
