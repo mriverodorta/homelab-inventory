@@ -111,10 +111,12 @@ describe('ComponentInspectorTabs', () => {
     }, 'immediate')
   })
 
-  it('renders concise validation and save errors supplied by the parent', () => {
+  it('keeps concise validation and save errors visible across tabs', async () => {
+    const user = userEvent.setup()
+
     render(
       <ComponentInspectorTabs
-        values={valuesFor('storage')}
+        values={valuesFor('network')}
         errors={{ name: 'Name is required.' }}
         validationMessage="Capacity must be greater than zero."
         saveError="The item could not be saved."
@@ -129,5 +131,9 @@ describe('ComponentInspectorTabs', () => {
       'The item could not be saved.',
     )
     expect(screen.getByRole('alert', { name: '' })).toHaveTextContent('Name is required.')
+
+    await user.click(screen.getByRole('tab', { name: 'Ports' }))
+
+    expect(screen.getByRole('region', { name: 'Inspector errors' })).toBeVisible()
   })
 })

@@ -69,6 +69,8 @@ export type InventoryFormValues = {
 
 export type InventoryFormErrors = Partial<Record<keyof InventoryFormValues, string>>
 
+export const MAX_PORT_GROUP_COUNT = 128
+
 const KNOWN_SPEC_KEYS: Record<InventoryType, string[]> = {
   server: ['formFactor', 'networkSlot', 'wireless'],
   nas: ['driveBays', 'm2Slots'],
@@ -169,7 +171,7 @@ export function inventoryTypeHasPorts(type: InventoryType): boolean {
   return ['server', 'nas', 'gpu', 'network', 'switch', 'patchPanel'].includes(type)
 }
 
-function portGroupsFromPorts(ports: InventoryPort[] | undefined): PortGroup[] {
+export function inventoryPortsToPortGroups(ports: InventoryPort[] | undefined): PortGroup[] {
   if (!ports?.length) return []
   const groups: PortGroup[] = []
 
@@ -284,11 +286,20 @@ export function inventoryItemToFormValues(item: InventoryItem): InventoryFormVal
     fanless: specs.fanless === true,
     rackUnits: stringValue(specs.rackUnits),
     mount: stringValue(specs.mount),
-    portGroups: portGroupsFromPorts(item.ports),
+    portGroups: inventoryPortsToPortGroups(item.ports),
     originalPorts: item.ports?.map(clonePort) ?? [],
     preservedSpecs,
     subtype: item.subtype,
     properties: item.properties ? { ...item.properties } : undefined,
+  }
+}
+
+export function inventoryPortsToFormPatch(
+  ports: InventoryPort[],
+): Pick<InventoryFormValues, 'portGroups' | 'originalPorts'> {
+  return {
+    portGroups: inventoryPortsToPortGroups(ports),
+    originalPorts: ports.map(clonePort),
   }
 }
 
@@ -310,7 +321,7 @@ export function reconcilePorts(
   const allocateId = nextAvailablePortId(originalPorts)
 
   for (const group of groups) {
-    const count = Math.max(0, Math.min(96, Math.trunc(Number(group.count) || 0)))
+    const count = Math.max(0, Math.min(MAX_PORT_GROUP_COUNT, Math.trunc(Number(group.count) || 0)))
     for (let index = 0; index < count; index += 1) {
       const originalId = group.originalPortIds?.[index]
       const originalPort = originalId === undefined
@@ -444,9 +455,13 @@ export function validateInventoryFormValues(values: InventoryFormValues): Invent
   for (const key of nonNegativeFields) validateNumber(errors, values, key)
 
   const invalidCount = values.portGroups.find(
-    (group) => !Number.isInteger(Number(group.count)) || Number(group.count) < 0 || Number(group.count) > 96,
+    (group) => !Number.isInteger(Number(group.count))
+      || Number(group.count) < 0
+      || Number(group.count) > MAX_PORT_GROUP_COUNT,
   )
-  if (invalidCount) errors.portGroups = 'Port counts must be whole numbers from 0 to 96.'
+  if (invalidCount) {
+    errors.portGroups = `Port counts must be whole numbers from 0 to ${MAX_PORT_GROUP_COUNT}.`
+  }
 
   if (values.type === 'switch') {
     const invalidSpeed = values.portGroups.find(

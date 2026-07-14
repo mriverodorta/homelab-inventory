@@ -3,6 +3,8 @@ import {
   createInventoryFormValues,
   inventoryFormValuesToInput,
   inventoryItemToFormValues,
+  inventoryPortsToFormPatch,
+  MAX_PORT_GROUP_COUNT,
   reconcilePorts,
   validateInventoryFormValues,
 } from '@/components/inventory-form/model'
@@ -313,5 +315,52 @@ describe('inventory form model', () => {
     expect(values.capacity).toBe('4')
     expect(inventoryFormValuesToInput(values).specs).toMatchObject({ capacityTb: 4 })
     expect(inventoryFormValuesToInput(values).specs).not.toHaveProperty('capacityGb')
+  })
+
+  it('supports the existing 128-port switch ceiling without clamping', () => {
+    const values = createInventoryFormValues('switch')
+    values.name = 'Large switch'
+    values.portGroups[0] = {
+      ...values.portGroups[0],
+      count: MAX_PORT_GROUP_COUNT,
+    }
+
+    expect(validateInventoryFormValues(values).portGroups).toBeUndefined()
+    expect(inventoryFormValuesToInput(values).ports).toHaveLength(128)
+
+    values.portGroups[0] = {
+      ...values.portGroups[0],
+      count: MAX_PORT_GROUP_COUNT + 1,
+    }
+
+    expect(validateInventoryFormValues(values).portGroups).toMatch(/0 to 128/)
+  })
+
+  it('keeps detailed port edits synchronized with grouped form values', () => {
+    const ports = [
+      {
+        id: 'nic-1',
+        kind: 'server-port' as const,
+        type: 'rj45' as const,
+        slotNumber: 1,
+        speed: '2.5G',
+        label: 'Management',
+        notes: 'Static address',
+        ipAddress: '192.168.1.20',
+      },
+    ]
+
+    const patch = inventoryPortsToFormPatch(ports)
+
+    expect(patch.portGroups).toEqual([
+      expect.objectContaining({
+        count: 1,
+        type: 'rj45',
+        speed: '2.5G',
+        originalPortIds: ['nic-1'],
+      }),
+    ])
+    expect(patch.originalPorts).toEqual(ports)
+    expect(patch.originalPorts[0]).not.toBe(ports[0])
   })
 })
