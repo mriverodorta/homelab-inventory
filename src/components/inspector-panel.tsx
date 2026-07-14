@@ -4,7 +4,6 @@ import {
   ArrowUpDown,
   Cable,
   Copy,
-  HardDrive,
   Info,
   Layers3,
   Plus,
@@ -17,6 +16,7 @@ import {
 } from 'lucide-react'
 import { useMutation } from '@tanstack/react-query'
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
+import { ComponentInspectorTabs } from '@/components/component-inspector-tabs'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
@@ -46,6 +46,8 @@ import {
 } from '@/lib/cables'
 import { getItemAuditWarnings, type AuditWarning } from '@/lib/audit'
 import { createAgentEnrollment } from '@/lib/agent-api'
+import type { InventoryItemInput } from '@/lib/db'
+import { useInventoryItemEditor } from '@/hooks/use-inventory-item-editor'
 import {
   getCompatibleDestinationGroups,
   getEndpointGroupForHost,
@@ -108,14 +110,6 @@ type SpecRow = {
   value: string
 }
 
-const RAM_SPEED_OPTIONS: Record<string, number[]> = {
-  DDR3L: [1066, 1333, 1600, 1866],
-  DDR4: [2133, 2400, 2666, 2933, 3200],
-  DDR5: [4800, 5200, 5600, 6000, 6400],
-}
-
-const STORAGE_FORM_FACTOR_OPTIONS = ['2230', '2242', '2260', '2280', '22110', '2.5-inch', 'eMMC']
-const GPU_FORM_FACTOR_OPTIONS = ['Low profile', 'Full height']
 const SERVER_FORM_FACTOR_OPTIONS = ['Tiny', 'Mini', 'Micro', 'Small', 'SFF', 'Tower', 'Mini-ITX', 'Micro-ATX', 'ATX', 'E-ATX']
 const SERVER_NETWORK_SLOT_OPTIONS = ['On board', 'PCIe', 'M.2 A+E', 'M.2 2230 A/E']
 const SERVER_WIRELESS_OPTIONS = ['Yes', 'No', 'Wi-Fi card supported or installed']
@@ -3130,208 +3124,36 @@ function SwitchInspectorTabs({
   )
 }
 
-function StoragePropertiesForm({
-  storage,
-  onUpdateManufacturer,
-  onUpdate,
-}: {
-  storage: InventoryItem
-  onUpdateManufacturer: (manufacturer: string) => void
-  onUpdate: (specs: Record<string, InventorySpecs[string] | undefined>) => void
-}) {
-  const formFactor = storage.specs?.formFactor
-
-  return (
-    <InspectorSection title="Storage Properties" icon={HardDrive}>
-      <div className="grid gap-3">
-        <label className={formLabelClass}>
-          Manufacturer
-          <Input
-            value={storage.manufacturer ?? ''}
-            placeholder="Storage manufacturer"
-            onChange={(event) => onUpdateManufacturer(event.target.value)}
-          />
-        </label>
-        <label className={formLabelClass}>
-          Form factor
-          <Select
-            value={typeof formFactor === 'string' ? formFactor : undefined}
-            onValueChange={(value) => {
-              onUpdate({ formFactor: value === 'none' ? undefined : value })
-            }}
-          >
-            <SelectTrigger className="w-full" aria-label="Storage form factor">
-              <SelectValue placeholder="Select form factor" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="none">No form factor</SelectItem>
-              {STORAGE_FORM_FACTOR_OPTIONS.map((option) => (
-                <SelectItem key={option} value={option}>
-                  {option}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </label>
-      </div>
-    </InspectorSection>
-  )
+function isEditableComponent(item: InventoryItem): item is InventoryItem & { type: ComponentType } {
+  return item.type === 'cpu'
+    || item.type === 'ram'
+    || item.type === 'storage'
+    || item.type === 'gpu'
+    || item.type === 'network'
 }
 
-function GpuPropertiesForm({
-  gpu,
-  onUpdateIdentity,
-  onUpdate,
+function ComponentItemEditor({
+  item,
+  validationMessage,
+  onUpdateItem,
 }: {
-  gpu: InventoryItem
-  onUpdateIdentity: (identity: Partial<Pick<InventoryItem, 'manufacturer' | 'model'>>) => void
-  onUpdate: (specs: Record<string, InventorySpecs[string] | undefined>) => void
+  item: InventoryItem & { type: ComponentType }
+  validationMessage: string | null
+  onUpdateItem: (itemId: string, input: InventoryItemInput) => void
 }) {
-  const formFactor = gpu.specs?.formFactor
+  const editor = useInventoryItemEditor({
+    item,
+    onSave: (input) => onUpdateItem(runtimeItemKey(item), input),
+  })
 
   return (
-    <InspectorSection title="GPU Properties" icon={Layers3}>
-      <div className="grid gap-3">
-        <label className={formLabelClass}>
-          Manufacturer
-          <Input
-            value={gpu.manufacturer ?? ''}
-            placeholder="GPU manufacturer"
-            onChange={(event) => onUpdateIdentity({ manufacturer: event.target.value })}
-          />
-        </label>
-        <label className={formLabelClass}>
-          Model
-          <Input
-            value={gpu.model ?? ''}
-            placeholder="GPU model"
-            onChange={(event) => onUpdateIdentity({ model: event.target.value })}
-          />
-        </label>
-        <label className={formLabelClass}>
-          Form factor
-          <Select
-            value={typeof formFactor === 'string' ? formFactor : undefined}
-            onValueChange={(value) => {
-              onUpdate({ formFactor: value === 'none' ? undefined : value })
-            }}
-          >
-            <SelectTrigger className="w-full" aria-label="GPU form factor">
-              <SelectValue placeholder="Select form factor" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="none">No form factor</SelectItem>
-              {GPU_FORM_FACTOR_OPTIONS.map((option) => (
-                <SelectItem key={option} value={option}>
-                  {option}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </label>
-      </div>
-    </InspectorSection>
-  )
-}
-
-function RamPropertiesForm({
-  ram,
-  onUpdateManufacturer,
-  onUpdate,
-}: {
-  ram: InventoryItem
-  onUpdateManufacturer: (
-    manufacturer: string,
-    key?: 'manufacturer' | 'secondaryManufacturer',
-  ) => void
-  onUpdate: (specs: Record<string, InventorySpecs[string] | undefined>) => void
-}) {
-  const generation = typeof ram.specs?.generation === 'string' ? ram.specs.generation : ''
-  const speedMt = ram.specs?.speedMt
-  const secondarySpeedMt = ram.specs?.secondarySpeedMt
-  const speedOptions = RAM_SPEED_OPTIONS[generation] ?? []
-
-  return (
-    <InspectorSection title="RAM Sticks" icon={Layers3}>
-      <div className="grid gap-4">
-        <div className="grid gap-3 rounded-md border border-[#eee6db] bg-white p-3">
-          <div className={labelClass}>
-            Stick 1
-          </div>
-          <label className={formLabelClass}>
-            Manufacturer
-            <Input
-              value={ram.manufacturer ?? ''}
-              placeholder="RAM manufacturer"
-              onChange={(event) => onUpdateManufacturer(event.target.value)}
-            />
-          </label>
-          <label className={formLabelClass}>
-            Speed
-            <Select
-              value={typeof speedMt === 'number' ? String(speedMt) : undefined}
-              onValueChange={(value) => {
-                onUpdate({ speedMt: value === 'none' ? undefined : Number(value) })
-              }}
-              disabled={speedOptions.length === 0}
-            >
-              <SelectTrigger className="w-full" aria-label="RAM speed">
-                <SelectValue placeholder="Select speed" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="none">No speed</SelectItem>
-                {speedOptions.map((speed) => (
-                  <SelectItem key={speed} value={String(speed)}>
-                    {speed}MHz
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </label>
-        </div>
-        <div className="grid gap-3 rounded-md border border-[#e5dccf] bg-[#f8f3eb] p-3">
-          <div className={labelClass}>
-            Stick 2
-          </div>
-          <label className={formLabelClass}>
-            Manufacturer
-            <Input
-              value={ram.secondaryManufacturer ?? ''}
-              placeholder={ram.manufacturer ? `Same as ${ram.manufacturer}` : 'Same as stick 1'}
-              onChange={(event) =>
-                onUpdateManufacturer(event.target.value, 'secondaryManufacturer')
-              }
-            />
-          </label>
-          <label className={formLabelClass}>
-            Speed
-            <Select
-              value={typeof secondarySpeedMt === 'number' ? String(secondarySpeedMt) : undefined}
-              onValueChange={(value) => {
-                onUpdate({ secondarySpeedMt: value === 'none' ? undefined : Number(value) })
-              }}
-              disabled={speedOptions.length === 0}
-            >
-              <SelectTrigger className="w-full" aria-label="RAM stick 2 speed">
-                <SelectValue
-                  placeholder={
-                    typeof speedMt === 'number' ? `Same as ${speedMt}MHz` : 'Same as stick 1'
-                  }
-                />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="none">Same as stick 1</SelectItem>
-                {speedOptions.map((speed) => (
-                  <SelectItem key={speed} value={String(speed)}>
-                    {speed}MHz
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </label>
-        </div>
-      </div>
-    </InspectorSection>
+    <ComponentInspectorTabs
+      values={editor.values}
+      errors={editor.errors}
+      validationMessage={validationMessage}
+      saveError={editor.saveError}
+      onChange={editor.updateValues}
+    />
   )
 }
 
@@ -3350,12 +3172,7 @@ export function InspectorPanel({
   onUpdateServerIdentity,
   onUpdateServerSpecs,
   onUpdateServerProperties,
-  onUpdateRamManufacturer,
-  onUpdateRamSpecs,
-  onUpdateStorageManufacturer,
-  onUpdateStorageSpecs,
-  onUpdateGpuIdentity,
-  onUpdateGpuSpecs,
+  onUpdateItem,
   onUpdateItemIdentity,
   onUpdateItemSpecs,
   onUpdateItemProperties,
@@ -3388,28 +3205,7 @@ export function InspectorPanel({
     specs: Record<string, InventorySpecs[string] | undefined>,
   ) => void
   onUpdateServerProperties: (serverId: string, properties: InventoryProperties) => void
-  onUpdateRamManufacturer: (
-    ramId: string,
-    manufacturer: string,
-    key?: 'manufacturer' | 'secondaryManufacturer',
-  ) => void
-  onUpdateRamSpecs: (
-    ramId: string,
-    specs: Record<string, InventorySpecs[string] | undefined>,
-  ) => void
-  onUpdateStorageManufacturer: (storageId: string, manufacturer: string) => void
-  onUpdateStorageSpecs: (
-    storageId: string,
-    specs: Record<string, InventorySpecs[string] | undefined>,
-  ) => void
-  onUpdateGpuIdentity: (
-    gpuId: string,
-    identity: Partial<Pick<InventoryItem, 'manufacturer' | 'model'>>,
-  ) => void
-  onUpdateGpuSpecs: (
-    gpuId: string,
-    specs: Record<string, InventorySpecs[string] | undefined>,
-  ) => void
+  onUpdateItem: (itemId: string, input: InventoryItemInput) => void
   onUpdateItemIdentity: (
     itemId: string,
     identity: Partial<Pick<InventoryItem, 'name' | 'manufacturer' | 'model'>>,
@@ -3546,40 +3342,20 @@ export function InspectorPanel({
                   onUpdateConnectionLabel={onUpdateConnectionLabel}
                   onRemoveConnection={onRemoveConnection}
                 />
+              ) : isEditableComponent(selectedItem) ? (
+                <>
+                  <ComponentItemEditor
+                    item={selectedItem}
+                    validationMessage={validationMessage}
+                    onUpdateItem={onUpdateItem}
+                  />
+                  <AuditSection warnings={auditWarnings} />
+                </>
               ) : (
                 <>
                   <InspectorSection title="Specifications" icon={Info}>
                     <SpecRows item={selectedItem} />
                   </InspectorSection>
-                  {selectedItem.type === 'ram' ? (
-                    <RamPropertiesForm
-                      ram={selectedItem}
-                      onUpdateManufacturer={(manufacturer, key) => {
-                        if (key) {
-                          onUpdateRamManufacturer(runtimeItemKey(selectedItem), manufacturer, key)
-                        } else {
-                          onUpdateRamManufacturer(runtimeItemKey(selectedItem), manufacturer)
-                        }
-                      }}
-                      onUpdate={(specs) => onUpdateRamSpecs(runtimeItemKey(selectedItem), specs)}
-                    />
-                  ) : null}
-                  {selectedItem.type === 'storage' ? (
-                    <StoragePropertiesForm
-                      storage={selectedItem}
-                      onUpdateManufacturer={(manufacturer) =>
-                        onUpdateStorageManufacturer(runtimeItemKey(selectedItem), manufacturer)
-                      }
-                      onUpdate={(specs) => onUpdateStorageSpecs(runtimeItemKey(selectedItem), specs)}
-                    />
-                  ) : null}
-                  {selectedItem.type === 'gpu' ? (
-                    <GpuPropertiesForm
-                      gpu={selectedItem}
-                      onUpdateIdentity={(identity) => onUpdateGpuIdentity(runtimeItemKey(selectedItem), identity)}
-                      onUpdate={(specs) => onUpdateGpuSpecs(runtimeItemKey(selectedItem), specs)}
-                    />
-                  ) : null}
                   {selectedItem.type === 'nas' ||
                   selectedItem.type === 'patchPanel' ? (
                     <>

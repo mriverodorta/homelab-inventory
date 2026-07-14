@@ -71,6 +71,7 @@ import { normalizeNetworkProject } from '@/lib/negotiated-speed'
 import {
   getCanvasItemHeight,
   getCanvasItemWidth,
+  applyInventoryItemInput,
   autoArrangeCanvasItems,
   createConnection,
   endpointKey,
@@ -81,7 +82,6 @@ import {
   removeConnection,
   removeAssignment,
   updateItemIdentity,
-  updateItemManufacturer,
   updateItemPorts,
   updateItemProperties,
   updateItemSpecs,
@@ -1308,38 +1308,14 @@ function App() {
               })
               setValidationMessage(null)
             }}
-            onUpdateRamManufacturer={(ramId, manufacturer, key) => {
-              updateProject(updateItemManufacturer(project, ramId, manufacturer, key), {
-                recordHistory: false,
-              })
-              setValidationMessage(null)
-            }}
-            onUpdateRamSpecs={(ramId, specs) => {
-              updateProject(updateItemSpecs(project, ramId, specs), {
-                recordHistory: false,
-              })
-              setValidationMessage(null)
-            }}
-            onUpdateStorageManufacturer={(storageId, manufacturer) => {
-              updateProject(updateItemManufacturer(project, storageId, manufacturer), {
-                recordHistory: false,
-              })
-              setValidationMessage(null)
-            }}
-            onUpdateStorageSpecs={(storageId, specs) => {
-              updateProject(updateItemSpecs(project, storageId, specs), {
-                recordHistory: false,
-              })
-              setValidationMessage(null)
-            }}
-            onUpdateGpuIdentity={(gpuId, identity) => {
-              updateProject(updateItemIdentity(project, gpuId, identity), {
-                recordHistory: false,
-              })
-              setValidationMessage(null)
-            }}
-            onUpdateGpuSpecs={(gpuId, specs) => {
-              updateProject(updateItemSpecs(project, gpuId, specs), {
+            onUpdateItem={(itemId, input) => {
+              const currentProject = projectRef.current
+
+              if (!currentProject) {
+                return
+              }
+
+              updateProject(applyInventoryItemInput(currentProject, itemId, input), {
                 recordHistory: false,
               })
               setValidationMessage(null)

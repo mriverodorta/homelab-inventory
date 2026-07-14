@@ -1,6 +1,7 @@
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import userEvent from '@testing-library/user-event'
+import type { ComponentProps } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { InspectorPanel } from '@/components/inspector-panel'
 import type { AgentStatusSummary } from '@/types/agent'
@@ -43,16 +44,17 @@ const project: ProjectState = {
     },
     cpu: {
       id: 'cpu',
-      name: 'Intel Core i7-10700T',
+      name: 'Intel Core i7-7700',
       type: 'cpu',
       manufacturer: 'Intel',
       family: 'Core i7',
-      number: 'i7-10700T',
+      number: 'i7-7700',
       specs: {
-        cores: 8,
-        threads: 16,
-        baseClockGhz: 2.3,
+        cores: 4,
+        threads: 8,
+        baseClockGhz: 2.9,
         boostClockGhz: 3.8,
+        socket: 'LGA1151',
       },
     },
     ram: {
@@ -144,34 +146,57 @@ const project: ProjectState = {
 
 afterEach(() => {
   cleanup()
+  vi.useRealTimers()
 })
 
-function renderInspector(
-  selectedItemId: string | null,
+type InspectorPanelProps = ComponentProps<typeof InspectorPanel>
+
+type RenderInspectorOptions = Partial<Pick<InspectorPanelProps,
+  | 'onUpdateItem'
+  | 'onUpdateServerIdentity'
+  | 'onUpdateServerSpecs'
+  | 'onUpdateServerProperties'
+  | 'onUpdateItemIdentity'
+  | 'onUpdateItemSpecs'
+  | 'onUpdateItemProperties'
+  | 'onUpdateItemPorts'
+  | 'onCreateConnection'
+  | 'onSelectNetworkTrace'
+  | 'onUpdateConnectionLabel'
+  | 'onUpdateConnectionRoute'
+  | 'onRemoveConnection'
+  | 'onEndpointConnectionClick'
+  | 'onCancelPendingConnection'
+>> & {
+  selectedItemId?: string | null
+  selectedConnectionId?: string | null
+  agentStatus?: AgentStatusSummary
+  project?: ProjectState
+  demoMode?: boolean
+}
+
+function renderInspector({
+  selectedItemId = null,
+  selectedConnectionId = null,
+  agentStatus = { servers: {}, registeredServerIds: [] },
+  project: projectOverride = project,
+  demoMode = false,
+  onUpdateItem = vi.fn(),
+  onUpdateServerIdentity = vi.fn(),
+  onUpdateServerSpecs = vi.fn(),
   onUpdateServerProperties = vi.fn(),
-  onUpdateRamManufacturer = vi.fn(),
-  onUpdateRamSpecs = vi.fn(),
-  onUpdateStorageManufacturer = vi.fn(),
-  onUpdateStorageSpecs = vi.fn(),
-  onUpdateGpuIdentity = vi.fn(),
-  onUpdateGpuSpecs = vi.fn(),
+  onUpdateItemIdentity = vi.fn(),
+  onUpdateItemSpecs = vi.fn(),
   onUpdateItemProperties = vi.fn(),
   onUpdateItemPorts = vi.fn(),
   onCreateConnection = vi.fn(),
   onSelectNetworkTrace = vi.fn(),
   onUpdateConnectionLabel = vi.fn(),
+  onUpdateConnectionRoute = vi.fn(),
   onRemoveConnection = vi.fn(),
   onEndpointConnectionClick = vi.fn(),
   onCancelPendingConnection = vi.fn(),
-  selectedConnectionId: string | null = null,
-  agentStatus: AgentStatusSummary = { servers: {}, registeredServerIds: [] },
-  onUpdateConnectionRoute = vi.fn(),
-  onUpdateServerIdentity = vi.fn(),
-  onUpdateServerSpecs = vi.fn(),
-  onUpdateItemIdentity = vi.fn(),
-  onUpdateItemSpecs = vi.fn(),
-  projectOverride: ProjectState = project,
-) {
+}: RenderInspectorOptions = {}) {
   const queryClient = new QueryClient({
     defaultOptions: {
       queries: { retry: false },
@@ -184,6 +209,7 @@ function renderInspector(
       <InspectorPanel
         project={projectOverride}
         agentStatus={agentStatus}
+        demoMode={demoMode}
         selectedItemId={selectedItemId}
         selectedConnectionId={selectedConnectionId}
         activeNetworkTraceKey={null}
@@ -195,12 +221,7 @@ function renderInspector(
         onUpdateServerIdentity={onUpdateServerIdentity}
         onUpdateServerSpecs={onUpdateServerSpecs}
         onUpdateServerProperties={onUpdateServerProperties}
-        onUpdateRamManufacturer={onUpdateRamManufacturer}
-        onUpdateRamSpecs={onUpdateRamSpecs}
-        onUpdateStorageManufacturer={onUpdateStorageManufacturer}
-        onUpdateStorageSpecs={onUpdateStorageSpecs}
-        onUpdateGpuIdentity={onUpdateGpuIdentity}
-        onUpdateGpuSpecs={onUpdateGpuSpecs}
+        onUpdateItem={onUpdateItem}
         onUpdateItemIdentity={onUpdateItemIdentity}
         onUpdateItemSpecs={onUpdateItemSpecs}
         onUpdateItemProperties={onUpdateItemProperties}
@@ -217,15 +238,10 @@ function renderInspector(
   )
 
   return {
-    onUpdateRamManufacturer,
-    onUpdateRamSpecs,
+    onUpdateItem,
     onUpdateServerIdentity,
     onUpdateServerSpecs,
     onUpdateServerProperties,
-    onUpdateStorageManufacturer,
-    onUpdateStorageSpecs,
-    onUpdateGpuIdentity,
-    onUpdateGpuSpecs,
     onUpdateItemIdentity,
     onUpdateItemSpecs,
     onUpdateItemProperties,
@@ -241,67 +257,81 @@ function renderInspector(
 }
 
 describe('InspectorPanel', () => {
-  it('renders storage specs with a clean capacity label and simplified chrome', () => {
-    renderInspector('storage')
+  it('renders storage in the reusable tabbed editor with simplified chrome', () => {
+    renderInspector({ selectedItemId: 'storage' })
 
     expect(screen.queryByText('Specs, slot status, and project save controls.')).not.toBeInTheDocument()
     expect(screen.queryByText('Ready for drag and drop.')).not.toBeInTheDocument()
     expect(screen.queryByText('Selected Item')).not.toBeInTheDocument()
     expect(screen.queryByText('Assigned')).not.toBeInTheDocument()
     expect(screen.queryByText('Server Slots')).not.toBeInTheDocument()
-    expect(screen.queryByText('Capacity Tb')).not.toBeInTheDocument()
     expect(screen.queryByText('Inventory item')).not.toBeInTheDocument()
 
     expect(screen.getByText('1TB NVMe SSD')).toBeInTheDocument()
-    expect(screen.getByText('Capacity')).toBeInTheDocument()
-    expect(screen.getByText('1TB')).toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: 'Specs' })).toHaveAttribute('aria-selected', 'true')
+    expect(screen.queryByRole('tab', { name: 'Ports' })).not.toBeInTheDocument()
+    expect(screen.getByLabelText('Name')).toHaveValue('1TB NVMe SSD')
     expect(screen.getByLabelText('Manufacturer')).toHaveValue('Samsung')
-    expect(screen.getByRole('combobox', { name: 'Storage form factor' })).toHaveTextContent('2280')
-    expect(screen.queryByText('Form Factor', { selector: 'dt' })).not.toBeInTheDocument()
+    expect(screen.getByLabelText('Capacity')).toHaveValue(1)
+    expect(screen.getByRole('combobox', { name: 'Unit' })).toHaveTextContent('TB')
+    expect(screen.getByRole('combobox', { name: 'Interface' })).toHaveTextContent('NVMe')
+    expect(screen.getByRole('combobox', { name: 'Form Factor' })).toHaveTextContent('2280')
   })
 
-  it('renders editable storage fields and emits updates', async () => {
-    const user = userEvent.setup()
-    const { onUpdateStorageManufacturer, onUpdateStorageSpecs } = renderInspector('storage')
+  it('debounces storage text edits and emits the complete item input', async () => {
+    vi.useFakeTimers()
+    const { onUpdateItem } = renderInspector({ selectedItemId: 'storage' })
 
     fireEvent.change(screen.getByLabelText('Manufacturer'), { target: { value: 'Crucial' } })
-    await user.click(screen.getByRole('combobox', { name: 'Storage form factor' }))
-    await user.click(screen.getByRole('option', { name: '2230' }))
+    await act(async () => vi.advanceTimersByTimeAsync(499))
+    expect(onUpdateItem).not.toHaveBeenCalled()
 
-    expect(onUpdateStorageManufacturer).toHaveBeenCalledWith('storage', 'Crucial')
-    expect(onUpdateStorageSpecs).toHaveBeenCalledWith('storage', {
-      formFactor: '2230',
+    await act(async () => vi.advanceTimersByTimeAsync(1))
+    expect(onUpdateItem).toHaveBeenCalledWith('storage', {
+      type: 'storage',
+      name: '1TB NVMe SSD',
+      manufacturer: 'Crucial',
+      specs: {
+        capacityTb: 1,
+        interface: 'NVMe',
+        formFactor: '2280',
+      },
     })
   })
 
-  it('renders editable GPU fields and emits updates', async () => {
-    const user = userEvent.setup()
-    const { onUpdateGpuIdentity, onUpdateGpuSpecs } = renderInspector('gpu')
+  it('renders GPU tabs and debounces a complete model update', async () => {
+    vi.useFakeTimers()
+    const { onUpdateItem } = renderInspector({ selectedItemId: 'gpu' })
 
-    expect(screen.getByText('VRAM')).toBeInTheDocument()
-    expect(screen.getByText('4GB')).toBeInTheDocument()
-    expect(screen.getByText('Memory Bus')).toBeInTheDocument()
-    expect(screen.getByText('64-bit')).toBeInTheDocument()
-    expect(screen.getByLabelText('Manufacturer')).toHaveValue('Intel')
+    expect(screen.getByRole('tab', { name: 'Specs' })).toHaveAttribute('aria-selected', 'true')
+    expect(screen.getByRole('tab', { name: 'Ports' })).toBeInTheDocument()
+    expect(screen.getByRole('combobox', { name: 'Manufacturer' })).toHaveTextContent('Intel')
     expect(screen.getByLabelText('Model')).toHaveValue('Arc A310 LP')
-    expect(screen.getByRole('combobox', { name: 'GPU form factor' })).toHaveTextContent('Low profile')
-    expect(screen.queryByText('Form Factor', { selector: 'dt' })).not.toBeInTheDocument()
+    expect(screen.getByLabelText('VRAM GB')).toHaveValue(4)
+    expect(screen.getByRole('combobox', { name: 'Form Factor' })).toHaveTextContent('Low profile')
 
     fireEvent.change(screen.getByLabelText('Model'), { target: { value: 'Arc A310 ECO' } })
-    await user.click(screen.getByRole('combobox', { name: 'GPU form factor' }))
-    await user.click(screen.getByRole('option', { name: 'Full height' }))
+    await act(async () => vi.advanceTimersByTimeAsync(499))
+    expect(onUpdateItem).not.toHaveBeenCalled()
 
-    expect(onUpdateGpuIdentity).toHaveBeenCalledWith('gpu', {
+    await act(async () => vi.advanceTimersByTimeAsync(1))
+    expect(onUpdateItem).toHaveBeenCalledWith('gpu', {
+      type: 'gpu',
+      name: 'Intel Arc A310 LP',
+      manufacturer: 'Intel',
       model: 'Arc A310 ECO',
-    })
-    expect(onUpdateGpuSpecs).toHaveBeenCalledWith('gpu', {
-      formFactor: 'Full height',
+      specs: {
+        formFactor: 'Low profile',
+        vramGb: 4,
+        memoryType: 'GDDR6',
+        memoryBusBit: 64,
+      },
     })
   })
 
   it('renders editable switch details and emits identity and spec updates', async () => {
     const user = userEvent.setup()
-    const { onUpdateItemIdentity, onUpdateItemSpecs } = renderInspector('switch')
+    const { onUpdateItemIdentity, onUpdateItemSpecs } = renderInspector({ selectedItemId: 'switch' })
 
     expect(screen.getByRole('tab', { name: 'Specs' })).toHaveAttribute('aria-selected', 'true')
     expect(screen.getByLabelText('Switching capacity (Gbps)')).toHaveValue(80)
@@ -323,7 +353,7 @@ describe('InspectorPanel', () => {
 
   it('edits switch port groups and individual port details', async () => {
     const user = userEvent.setup()
-    const { onUpdateItemPorts, onEndpointConnectionClick } = renderInspector('switch')
+    const { onUpdateItemPorts, onEndpointConnectionClick } = renderInspector({ selectedItemId: 'switch' })
 
     await user.click(screen.getByRole('tab', { name: 'Ports' }))
 
@@ -344,7 +374,7 @@ describe('InspectorPanel', () => {
         expect.objectContaining({ id: 'rj45-04' }),
       ]),
     )
-    expect(onUpdateItemPorts.mock.calls[0][1]).toHaveLength(4)
+    expect(vi.mocked(onUpdateItemPorts).mock.calls[0][1]).toHaveLength(4)
 
     fireEvent.click(screen.getByRole('button', { name: 'Connect Port 1' }))
 
@@ -379,7 +409,7 @@ describe('InspectorPanel', () => {
     project.items.switch.ports = originalPorts?.map((port) => ({ ...port, speed: undefined }))
 
     try {
-      const { onUpdateItemPorts } = renderInspector('switch')
+      const { onUpdateItemPorts } = renderInspector({ selectedItemId: 'switch' })
 
       await user.click(screen.getByRole('tab', { name: 'Ports' }))
 
@@ -485,15 +515,10 @@ describe('InspectorPanel', () => {
       connections: [],
     }
 
-    renderInspector(
-      'switch',
-      vi.fn(), vi.fn(), vi.fn(), vi.fn(), vi.fn(), vi.fn(), vi.fn(),
-      vi.fn(), vi.fn(), vi.fn(), vi.fn(), vi.fn(), vi.fn(), vi.fn(), vi.fn(),
-      null,
-      { servers: {}, registeredServerIds: [] },
-      vi.fn(), vi.fn(), vi.fn(), vi.fn(), vi.fn(),
-      connectionProject,
-    )
+    renderInspector({
+      selectedItemId: 'switch',
+      project: connectionProject,
+    })
 
     await user.click(screen.getByRole('tab', { name: 'Connections' }))
 
@@ -519,7 +544,7 @@ describe('InspectorPanel', () => {
 
   it('renders patch panel ports and emits type updates', async () => {
     const user = userEvent.setup()
-    const { onUpdateItemPorts, onEndpointConnectionClick } = renderInspector('patch')
+    const { onUpdateItemPorts, onEndpointConnectionClick } = renderInspector({ selectedItemId: 'patch' })
 
     expect(screen.getByText('1x RJ45')).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Connect 01 back' }))
@@ -548,7 +573,7 @@ describe('InspectorPanel', () => {
   })
 
   it('edits patch panel labels in the compact grid and port notes in occupancy', () => {
-    const { onUpdateItemPorts } = renderInspector('patch')
+    const { onUpdateItemPorts } = renderInspector({ selectedItemId: 'patch' })
 
     fireEvent.change(screen.getByLabelText('Keystone 1 label'), {
       target: { value: 'Proxmox 01' },
@@ -571,86 +596,111 @@ describe('InspectorPanel', () => {
     ])
   })
 
-  it('renders RAM capacity as module layout', () => {
-    renderInspector('ram')
+  it('renders RAM in the reusable tabbed editor', () => {
+    renderInspector({ selectedItemId: 'ram' })
 
     expect(screen.getByText('32GB RAM')).toBeInTheDocument()
-    expect(screen.getByText('Capacity')).toBeInTheDocument()
-    expect(screen.getByText('32GB')).toBeInTheDocument()
-    expect(screen.getByText('Module')).toBeInTheDocument()
-    expect(screen.getByText('2x16GB')).toBeInTheDocument()
-    expect(screen.getByText('Stick 1')).toBeInTheDocument()
-    expect(screen.getByText('Stick 2')).toBeInTheDocument()
-    expect(screen.getAllByLabelText('Manufacturer')[0]).toHaveValue('Crucial')
-    expect(screen.getAllByLabelText('Manufacturer')[1]).toHaveValue('Kingston')
-    expect(screen.getByRole('combobox', { name: 'RAM speed' })).toHaveTextContent('3200MHz')
-    expect(screen.getByRole('combobox', { name: 'RAM stick 2 speed' })).toHaveTextContent('2666MHz')
-    expect(screen.queryByText('Speed', { selector: 'dt' })).not.toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: 'Specs' })).toHaveAttribute('aria-selected', 'true')
+    expect(screen.queryByRole('tab', { name: 'Ports' })).not.toBeInTheDocument()
+    expect(screen.getByLabelText('Manufacturer')).toHaveValue('Crucial')
+    expect(screen.getByLabelText('Stick 2 Manufacturer')).toHaveValue('Kingston')
+    expect(screen.getByLabelText('Capacity GB')).toHaveValue(32)
+    expect(screen.getByRole('combobox', { name: 'Generation' })).toHaveTextContent('DDR4')
+    expect(screen.getByRole('combobox', { name: 'Stick 1 Speed' })).toHaveTextContent('3200')
+    expect(screen.getByRole('combobox', { name: 'Stick 2 Speed' })).toHaveTextContent('2666')
     expect(screen.queryByText('Server Slots')).not.toBeInTheDocument()
   })
 
-  it('renders editable RAM manufacturers and emits updates on keystrokes', () => {
-    const { onUpdateRamManufacturer } = renderInspector('ram')
+  it('debounces RAM manufacturer edits into one complete item update', async () => {
+    vi.useFakeTimers()
+    const { onUpdateItem } = renderInspector({ selectedItemId: 'ram' })
 
-    const manufacturerInputs = screen.getAllByLabelText('Manufacturer')
-    fireEvent.change(manufacturerInputs[0]!, { target: { value: 'G.Skill' } })
-    fireEvent.change(manufacturerInputs[1]!, { target: { value: 'Corsair' } })
+    fireEvent.change(screen.getByLabelText('Manufacturer'), { target: { value: 'G.Skill' } })
+    fireEvent.change(screen.getByLabelText('Stick 2 Manufacturer'), { target: { value: 'Corsair' } })
+    await act(async () => vi.advanceTimersByTimeAsync(499))
+    expect(onUpdateItem).not.toHaveBeenCalled()
 
-    expect(onUpdateRamManufacturer).toHaveBeenCalledWith('ram', 'G.Skill')
-    expect(onUpdateRamManufacturer).toHaveBeenCalledWith('ram', 'Corsair', 'secondaryManufacturer')
+    await act(async () => vi.advanceTimersByTimeAsync(1))
+    expect(onUpdateItem).toHaveBeenCalledWith('ram', {
+      type: 'ram',
+      name: '32GB RAM',
+      manufacturer: 'G.Skill',
+      secondaryManufacturer: 'Corsair',
+      specs: {
+        capacityGb: 32,
+        generation: 'DDR4',
+        speedMt: 3200,
+        secondarySpeedMt: 2666,
+      },
+    })
   })
 
   it('renders RAM speed options by generation and emits selected speed', async () => {
     const user = userEvent.setup()
-    const { onUpdateRamSpecs } = renderInspector('ram')
+    const { onUpdateItem } = renderInspector({ selectedItemId: 'ram' })
 
-    await user.click(screen.getByRole('combobox', { name: 'RAM speed' }))
-    expect(screen.getByRole('option', { name: '2666MHz' })).toBeInTheDocument()
-    expect(screen.getByRole('option', { name: '3200MHz' })).toBeInTheDocument()
+    await user.click(screen.getByRole('combobox', { name: 'Stick 1 Speed' }))
+    expect(screen.getByRole('option', { name: '2666' })).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: '3200' })).toBeInTheDocument()
 
-    await user.click(screen.getByRole('option', { name: '2666MHz' }))
+    await user.click(screen.getByRole('option', { name: '2666' }))
 
-    expect(onUpdateRamSpecs).toHaveBeenCalledWith('ram', {
-      speedMt: 2666,
-    })
+    expect(onUpdateItem).toHaveBeenCalledWith('ram', expect.objectContaining({
+      specs: expect.objectContaining({ speedMt: 2666 }),
+    }))
   })
 
   it('renders RAM stick 2 speed options and emits secondary speed', async () => {
     const user = userEvent.setup()
-    const { onUpdateRamSpecs } = renderInspector('ram')
+    const { onUpdateItem } = renderInspector({ selectedItemId: 'ram' })
 
-    await user.click(screen.getByRole('combobox', { name: 'RAM stick 2 speed' }))
-    await user.click(screen.getByRole('option', { name: '2933MHz' }))
+    await user.click(screen.getByRole('combobox', { name: 'Stick 2 Speed' }))
+    await user.click(screen.getByRole('option', { name: '2933' }))
 
-    expect(onUpdateRamSpecs).toHaveBeenCalledWith('ram', {
-      secondarySpeedMt: 2933,
+    expect(onUpdateItem).toHaveBeenCalledWith('ram', expect.objectContaining({
+      specs: expect.objectContaining({ secondarySpeedMt: 2933 }),
+    }))
+  })
+
+  it('corrects a CPU number after 500ms and preserves unrelated specs', async () => {
+    vi.useFakeTimers()
+    const { onUpdateItem } = renderInspector({ selectedItemId: 'cpu' })
+
+    expect(screen.getByRole('tab', { name: 'Specs' })).toHaveAttribute('aria-selected', 'true')
+    expect(screen.getByRole('combobox', { name: 'Manufacturer' })).toHaveTextContent('Intel')
+    expect(screen.getByLabelText('Family')).toHaveValue('Core i7')
+    expect(screen.getByLabelText('Number')).toHaveValue('i7-7700')
+    expect(screen.getByLabelText('Base Clock')).toHaveValue(2.9)
+    expect(screen.getByLabelText('Boost Clock')).toHaveValue(3.8)
+
+    fireEvent.change(screen.getByLabelText('Number'), { target: { value: 'i7-7700T' } })
+    expect(screen.getByLabelText('Number')).toHaveValue('i7-7700T')
+    await act(async () => vi.advanceTimersByTimeAsync(499))
+    expect(onUpdateItem).not.toHaveBeenCalled()
+
+    await act(async () => vi.advanceTimersByTimeAsync(1))
+    expect(onUpdateItem).toHaveBeenCalledWith('cpu', {
+      type: 'cpu',
+      name: 'Intel Core i7-7700',
+      manufacturer: 'Intel',
+      family: 'Core i7',
+      number: 'i7-7700T',
+      specs: {
+        cores: 4,
+        threads: 8,
+        baseClockGhz: 2.9,
+        boostClockGhz: 3.8,
+        socket: 'LGA1151',
+      },
     })
   })
 
-  it('renders CPU clock labels with GHz on the values', () => {
-    renderInspector('cpu')
-
-    expect(screen.getByText('Manufacturer')).toBeInTheDocument()
-    expect(screen.getByText('Intel')).toBeInTheDocument()
-    expect(screen.getByText('Family')).toBeInTheDocument()
-    expect(screen.getByText('Core i7')).toBeInTheDocument()
-    expect(screen.getByText('Number')).toBeInTheDocument()
-    expect(screen.getByText('i7-10700T')).toBeInTheDocument()
-    expect(screen.getByText('Base Clock')).toBeInTheDocument()
-    expect(screen.getByText('2.3GHz')).toBeInTheDocument()
-    expect(screen.getByText('Boost Clock')).toBeInTheDocument()
-    expect(screen.getByText('3.8GHz')).toBeInTheDocument()
-    expect(screen.queryByText('Processor')).not.toBeInTheDocument()
-    expect(screen.queryByText('Base Clock Ghz')).not.toBeInTheDocument()
-    expect(screen.queryByText('Boost Clock Ghz')).not.toBeInTheDocument()
-  })
-
   it('shows server slots only when a server is selected', () => {
-    renderInspector('cpu')
+    renderInspector({ selectedItemId: 'cpu' })
     expect(screen.queryByText('Server Slots')).not.toBeInTheDocument()
 
     cleanup()
-    renderInspector('server')
+    renderInspector({ selectedItemId: 'server' })
 
     expect(screen.getByText('Server Slots')).toBeInTheDocument()
     expect(screen.getAllByText('Dell OptiPlex Micro 7090').length).toBeGreaterThan(0)
@@ -660,7 +710,7 @@ describe('InspectorPanel', () => {
     const {
       onUpdateServerIdentity,
       onUpdateServerProperties,
-    } = renderInspector('server')
+    } = renderInspector({ selectedItemId: 'server' })
 
     const inventoryNameInput = screen.getByLabelText('Inventory name')
     const displayNameInput = screen.getByLabelText('Display name')
@@ -684,25 +734,9 @@ describe('InspectorPanel', () => {
   })
 
   it('renders agent operational telemetry for a selected server', () => {
-    renderInspector(
-      'server',
-      vi.fn(),
-      vi.fn(),
-      vi.fn(),
-      vi.fn(),
-      vi.fn(),
-      vi.fn(),
-      vi.fn(),
-      vi.fn(),
-      vi.fn(),
-      vi.fn(),
-      vi.fn(),
-      vi.fn(),
-      vi.fn(),
-      vi.fn(),
-      vi.fn(),
-      null,
-      {
+    renderInspector({
+      selectedItemId: 'server',
+      agentStatus: {
         registeredServerIds: ['server'],
         servers: {
           server: {
@@ -744,7 +778,7 @@ describe('InspectorPanel', () => {
           },
         },
       },
-    )
+    })
 
     fireEvent.click(screen.getByRole('tab', { name: 'Services' }))
 
@@ -787,12 +821,7 @@ describe('InspectorPanel', () => {
           onUpdateServerIdentity={vi.fn()}
           onUpdateServerSpecs={vi.fn()}
           onUpdateServerProperties={vi.fn()}
-          onUpdateRamManufacturer={vi.fn()}
-          onUpdateRamSpecs={vi.fn()}
-          onUpdateStorageManufacturer={vi.fn()}
-          onUpdateStorageSpecs={vi.fn()}
-          onUpdateGpuIdentity={vi.fn()}
-          onUpdateGpuSpecs={vi.fn()}
+          onUpdateItem={vi.fn()}
           onUpdateItemIdentity={vi.fn()}
           onUpdateItemSpecs={vi.fn()}
           onUpdateItemProperties={vi.fn()}
@@ -814,7 +843,7 @@ describe('InspectorPanel', () => {
   })
 
   it('does not render server audit warnings for unplanned open LAN ports', () => {
-    renderInspector('server')
+    renderInspector({ selectedItemId: 'server' })
 
     expect(screen.queryByText('Audit')).not.toBeInTheDocument()
     expect(screen.queryByText('LAN port 01 is open.')).not.toBeInTheDocument()
@@ -858,12 +887,7 @@ describe('InspectorPanel', () => {
           onUpdateServerIdentity={vi.fn()}
           onUpdateServerSpecs={vi.fn()}
           onUpdateServerProperties={vi.fn()}
-          onUpdateRamManufacturer={vi.fn()}
-          onUpdateRamSpecs={vi.fn()}
-          onUpdateStorageManufacturer={vi.fn()}
-          onUpdateStorageSpecs={vi.fn()}
-          onUpdateGpuIdentity={vi.fn()}
-          onUpdateGpuSpecs={vi.fn()}
+          onUpdateItem={vi.fn()}
           onUpdateItemIdentity={vi.fn()}
           onUpdateItemSpecs={vi.fn()}
           onUpdateItemProperties={vi.fn()}
