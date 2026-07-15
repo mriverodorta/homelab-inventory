@@ -34,8 +34,11 @@ async function run(command, args, options) {
   }
 }
 
-async function runCheck(repo, args = []) {
-  return run(bunExecutable, [scriptPath, '--base', 'HEAD', ...args], { cwd: repo })
+async function runCheck(repo, args = [], env = {}) {
+  return run(bunExecutable, [scriptPath, '--base', 'HEAD', ...args], {
+    cwd: repo,
+    env: { ...process.env, ...env },
+  })
 }
 
 async function makeRepo() {
@@ -104,6 +107,45 @@ describe('check-release-notes', () => {
     const result = await runCheck(repo, ['--message', '[skip release-notes]'])
 
     expect(result.exitCode).toBe(0)
+  })
+
+  it('passes for Dependabot-only GitHub Actions updates', async () => {
+    const repo = await makeRepo()
+    const workflowDir = path.join(repo, '.github', 'workflows')
+    await fs.mkdir(workflowDir, { recursive: true })
+    await fs.writeFile(
+      path.join(workflowDir, 'publish.yml'),
+      'steps:\n  - uses: docker/build-push-action@v7\n',
+    )
+
+    const result = await runCheck(repo, [], { GITHUB_ACTOR: 'dependabot[bot]' })
+
+    expect(result.exitCode).toBe(0)
+  })
+
+  it('fails for non-Dependabot GitHub Actions updates without release notes', async () => {
+    const repo = await makeRepo()
+    const workflowDir = path.join(repo, '.github', 'workflows')
+    await fs.mkdir(workflowDir, { recursive: true })
+    await fs.writeFile(
+      path.join(workflowDir, 'publish.yml'),
+      'steps:\n  - uses: docker/build-push-action@v7\n',
+    )
+
+    await expect(runCheck(repo, [], { GITHUB_ACTOR: 'octocat' })).rejects.toMatchObject({
+      exitCode: 1,
+    })
+  })
+
+  it('fails for Dependabot runtime source updates without release notes', async () => {
+    const repo = await makeRepo()
+    await fs.writeFile(path.join(repo, 'src', 'App.tsx'), 'export function App() { return null }\n')
+
+    await expect(
+      runCheck(repo, [], { GITHUB_ACTOR: 'dependabot[bot]' }),
+    ).rejects.toMatchObject({
+      exitCode: 1,
+    })
   })
 
   it('fails when the current package version has no release note', async () => {

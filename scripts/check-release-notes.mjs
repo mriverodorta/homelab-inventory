@@ -98,6 +98,14 @@ function isExemptPath(file) {
   )
 }
 
+function isDependabotWorkflowOnlyUpdate(files, runtimeFiles) {
+  return (
+    process.env.GITHUB_ACTOR === 'dependabot[bot]'
+    && runtimeFiles.length > 0
+    && files.every((file) => file.startsWith('.github/workflows/'))
+  )
+}
+
 function packageVersion() {
   return JSON.parse(fs.readFileSync('package.json', 'utf8')).version
 }
@@ -131,6 +139,10 @@ try {
   }
 
   const runtimeFiles = files.filter((file) => isRuntimePath(file) && !isExemptPath(file))
+
+  if (isDependabotWorkflowOnlyUpdate(files, runtimeFiles)) {
+    process.exit(0)
+  }
 
   if (runtimeFiles.length > 0 && !files.includes('src/release-notes.ts')) {
     console.error('Runtime files changed without a release note entry.')
