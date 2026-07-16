@@ -14,6 +14,20 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 - Added repository documentation, issue templates, CI, and security guidance.
 - Clarified Docker deployment, data persistence, and development setup.
 
+## [0.1.20] - 2026-07-15
+
+### Changed
+
+- Docker update checks now distinguish newer channel images, exact matches, revision-only rebuilds, and installations ahead of the selected channel.
+- The update dialog identifies the published `latest` or `stable` image instead of labeling every channel result as an available update.
+- Docker Compose update instructions only appear when an update is actually available.
+
+### Fixed
+
+- Older channel versions are no longer presented as available updates when the running installation is newer.
+- Same-version images built from a different known revision are detected as revision-only updates.
+- Current and ahead-of-channel results no longer show an empty release-details placeholder.
+
 ## [0.1.19] - 2026-07-14
 
 ### Added

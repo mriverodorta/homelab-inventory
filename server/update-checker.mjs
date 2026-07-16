@@ -42,6 +42,28 @@ function isNonEmptyString(value) {
   return typeof value === 'string' && value.trim().length > 0
 }
 
+function isKnownRevision(value) {
+  return isNonEmptyString(value) && value.trim().toLowerCase() !== 'unknown'
+}
+
+export function determineImageRelationship({
+  availableRevision,
+  availableVersion,
+  runningRevision,
+  runningVersion,
+}) {
+  const comparison = compareVersions(availableVersion, runningVersion)
+
+  if (comparison > 0) return 'available'
+  if (comparison < 0) return 'ahead'
+
+  return isKnownRevision(availableRevision)
+    && isKnownRevision(runningRevision)
+    && availableRevision.trim() !== runningRevision.trim()
+    ? 'available'
+    : 'current'
+}
+
 function validateDigest(value) {
   if (!isNonEmptyString(value) || !DIGEST_PATTERN.test(value)) {
     throw new UpdateCheckError('registry-response-invalid')
@@ -184,38 +206,44 @@ function isTimeoutError(error) {
     || (error?.name === 'AbortError' && /timeout/i.test(error?.message ?? ''))
 }
 
-export function normalizePersistedUpdateResult(result, { channel, runningVersion }) {
+export function normalizePersistedUpdateResult(result, { channel, runningRevision, runningVersion }) {
   if (!isRecord(result) || result.errorCode !== null || result.channel !== channel) return null
-  if (result.state !== 'available' && result.state !== 'current') return null
+  if (!['ahead', 'available', 'current'].includes(result.state)) return null
   if (!isNonEmptyString(result.runningVersion) || !isNonEmptyString(result.availableVersion)) return null
   if (!isNonEmptyString(result.runningRevision) || !isNonEmptyString(result.availableRevision)) return null
   if (typeof result.checkedAt !== 'string') return null
 
   const normalizedRunningVersion = runningVersion.trim().replace(/^v/, '')
-  const persistedRunningVersion = result.runningVersion.trim().replace(/^v/, '')
+  const normalizedRunningRevision = isNonEmptyString(runningRevision) ? runningRevision.trim() : 'unknown'
   const availableVersion = result.availableVersion.trim().replace(/^v/, '')
+  const availableRevision = result.availableRevision.trim()
   const checkedAtMs = Date.parse(result.checkedAt)
 
-  if (persistedRunningVersion !== normalizedRunningVersion || !Number.isFinite(checkedAtMs)) return null
+  if (!Number.isFinite(checkedAtMs)) return null
 
-  let comparison
+  let state
   try {
     compareVersions(normalizedRunningVersion, normalizedRunningVersion)
-    comparison = compareVersions(availableVersion, normalizedRunningVersion)
+    state = determineImageRelationship({
+      availableRevision,
+      availableVersion,
+      runningRevision: normalizedRunningRevision,
+      runningVersion: normalizedRunningVersion,
+    })
   } catch {
     return null
   }
 
   const normalized = {
-    availableRevision: result.availableRevision.trim(),
+    availableRevision,
     availableVersion,
     channel,
     checkedAt: new Date(checkedAtMs).toISOString(),
     errorCode: null,
-    runningRevision: result.runningRevision.trim(),
+    runningRevision: normalizedRunningRevision,
     runningVersion: normalizedRunningVersion,
-    state: comparison > 0 ? 'available' : 'current',
-    updateAvailable: comparison > 0,
+    state,
+    updateAvailable: state === 'available',
   }
 
   return Object.entries(normalized).every(([key, value]) => result[key] === value)
@@ -265,7 +293,7 @@ export class DockerHubUpdateChecker {
     this.tag = tag
     this.platformArchitecture = platformArchitecture
     this.runningVersion = runningVersion.trim().replace(/^v/, '')
-    this.runningRevision = runningRevision
+    this.runningRevision = isNonEmptyString(runningRevision) ? runningRevision.trim() : 'unknown'
     this.fetch = fetch
     this.now = now
     this.timeoutMs = timeoutMs
@@ -329,7 +357,12 @@ export class DockerHubUpdateChecker {
       },
     )
     const metadata = validateLabels(config?.config?.Labels, this.channel)
-    const comparison = compareVersions(metadata.version, this.runningVersion)
+    const state = determineImageRelationship({
+      availableRevision: metadata.revision,
+      availableVersion: metadata.version,
+      runningRevision: this.runningRevision,
+      runningVersion: this.runningVersion,
+    })
 
     return {
       availableRevision: metadata.revision,
@@ -339,8 +372,8 @@ export class DockerHubUpdateChecker {
       errorCode: null,
       runningRevision: this.runningRevision,
       runningVersion: this.runningVersion,
-      state: comparison > 0 ? 'available' : 'current',
-      updateAvailable: comparison > 0,
+      state,
+      updateAvailable: state === 'available',
     }
   }
 
@@ -411,6 +444,7 @@ export class DockerHubUpdateChecker {
     return results
       .map((result) => normalizePersistedUpdateResult(result, {
         channel: this.channel,
+        runningRevision: this.runningRevision,
         runningVersion: this.runningVersion,
       }))
       .filter(Boolean)

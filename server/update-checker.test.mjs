@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import {
+  determineImageRelationship,
   DockerHubUpdateChecker,
   UPDATE_CACHE_MS,
   UpdateCheckError,
@@ -140,6 +141,29 @@ function createChecker({
 }
 
 describe('DockerHubUpdateChecker', () => {
+  it.each([
+    ['newer semantic version', '0.1.16', 'published-sha', '0.1.15', 'running-sha', 'available'],
+    ['exact image match', '0.1.15', 'same-sha', '0.1.15', 'same-sha', 'current'],
+    ['same version rebuilt', '0.1.15', 'published-sha', '0.1.15', 'running-sha', 'available'],
+    ['running image ahead', '0.1.14', 'published-sha', '0.1.15', 'running-sha', 'ahead'],
+    ['unknown running revision', '0.1.15', 'published-sha', '0.1.15', 'unknown', 'current'],
+    ['missing running revision', '0.1.15', 'published-sha', '0.1.15', null, 'current'],
+  ])('determines the image relationship for %s', (
+    _name,
+    availableVersion,
+    availableRevision,
+    runningVersion,
+    runningRevision,
+    expected,
+  ) => {
+    expect(determineImageRelationship({
+      availableRevision,
+      availableVersion,
+      runningRevision,
+      runningVersion,
+    })).toBe(expected)
+  })
+
   it('resolves a newer stable image from the fixed Docker Hub repository', async () => {
     const fetch = createRegistryFetch()
     const checker = createChecker({ fetch })
@@ -215,18 +239,24 @@ describe('DockerHubUpdateChecker', () => {
   })
 
   it.each([
-    ['0.1.16', '0.1.15', 'available', true],
-    ['0.1.15', '0.1.15', 'current', false],
-    ['0.1.14', '0.1.15', 'current', false],
-  ])('compares published %s with running %s', async (
+    ['0.1.16', 'published-sha', '0.1.15', 'running-sha', 'available', true],
+    ['0.1.15', 'same-sha', '0.1.15', 'same-sha', 'current', false],
+    ['0.1.15', 'published-sha', '0.1.15', 'running-sha', 'available', true],
+    ['0.1.14', 'published-sha', '0.1.15', 'running-sha', 'ahead', false],
+    ['0.1.15', 'published-sha', '0.1.15', 'unknown', 'current', false],
+  ])('compares published image %s@%s with running %s@%s', async (
     availableVersion,
+    availableRevision,
     runningVersion,
+    runningRevision,
     state,
     updateAvailable,
   ) => {
-    const fetch = createRegistryFetch({ labels: requiredLabels({ version: availableVersion }) })
+    const fetch = createRegistryFetch({
+      labels: requiredLabels({ revision: availableRevision, version: availableVersion }),
+    })
 
-    await expect(createChecker({ fetch, runningVersion }).check()).resolves.toMatchObject({
+    await expect(createChecker({ fetch, runningRevision, runningVersion }).check()).resolves.toMatchObject({
       availableVersion,
       state,
       updateAvailable,
@@ -378,7 +408,40 @@ describe('DockerHubUpdateChecker', () => {
       updateAvailable: true,
     }
 
-    await expect(checker.check({ persistedResult })).resolves.toEqual(persistedResult)
+    await expect(checker.check({ persistedResult })).resolves.toEqual({
+      ...persistedResult,
+      runningRevision: 'running-sha',
+    })
+    expect(fetch).not.toHaveBeenCalled()
+  })
+
+  it('recomputes a persisted relationship against the current running image', async () => {
+    const fetch = createRegistryFetch()
+    const checker = createChecker({
+      fetch,
+      runningRevision: 'new-running-sha',
+      runningVersion: '0.1.17',
+    })
+    const persistedResult = {
+      availableRevision: 'persisted-sha',
+      availableVersion: '0.1.16',
+      channel: 'stable',
+      checkedAt: '2026-07-12T11:00:00.000Z',
+      errorCode: null,
+      runningRevision: 'old-running-sha',
+      runningVersion: '0.1.15',
+      state: 'available',
+      updateAvailable: true,
+    }
+
+    await expect(checker.check({ persistedResult })).resolves.toMatchObject({
+      availableRevision: 'persisted-sha',
+      availableVersion: '0.1.16',
+      runningRevision: 'new-running-sha',
+      runningVersion: '0.1.17',
+      state: 'ahead',
+      updateAvailable: false,
+    })
     expect(fetch).not.toHaveBeenCalled()
   })
 
@@ -386,7 +449,6 @@ describe('DockerHubUpdateChecker', () => {
     ['invalid available version', { availableVersion: 'next' }],
     ['empty available revision', { availableRevision: '   ' }],
     ['invalid check timestamp', { checkedAt: 'not-a-date' }],
-    ['wrong running version', { runningVersion: '0.1.14' }],
     ['wrong channel', { channel: 'latest' }],
     ['unknown state', { state: 'unknown' }],
   ])('does not reuse persisted metadata with %s', async (_name, override) => {

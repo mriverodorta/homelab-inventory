@@ -99,6 +99,7 @@ describe('UpdateDialog', () => {
 
     const dialog = screen.getByRole('dialog', { name: /update available/i })
     expect(within(dialog).getByText(/stable channel/i)).toBeInTheDocument()
+    expect(within(dialog).getByText('Stable image')).toBeInTheDocument()
     expect(within(dialog).getByText('0.1.15')).toBeInTheDocument()
     expect(within(dialog).getAllByText('0.1.16')).toHaveLength(2)
     expect(within(dialog).getByText('running-sha-1234567890')).toBeInTheDocument()
@@ -171,7 +172,14 @@ describe('UpdateDialog', () => {
     const { unmount } = render(
       <UpdateDialog
         open
-        status={{ ...availableStatus, state: 'current', updateAvailable: false, availableVersion: '0.1.15' }}
+        status={{
+          ...availableStatus,
+          state: 'current',
+          updateAvailable: false,
+          availableVersion: '0.1.15',
+          availableRevision: 'running-sha-1234567890',
+          entries: [],
+        }}
         checking={false}
         skipping={false}
         clearingSkip={false}
@@ -182,6 +190,10 @@ describe('UpdateDialog', () => {
       />,
     )
     expect(screen.getByRole('dialog', { name: /up to date/i })).toBeInTheDocument()
+    expect(screen.getByText('Stable image')).toBeInTheDocument()
+    expect(screen.getByText(/matches the current stable image/i)).toBeInTheDocument()
+    expect(screen.queryByText(/release details are not available/i)).not.toBeInTheDocument()
+    expect(screen.queryByTestId('update-commands')).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /skip this version/i })).not.toBeInTheDocument()
     unmount()
 
@@ -199,6 +211,88 @@ describe('UpdateDialog', () => {
     })
     expect(screen.getByRole('dialog', { name: /update checks disabled/i })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /check now/i })).not.toBeInTheDocument()
+  })
+
+  it('shows an ahead state without presenting the older channel image as an update', () => {
+    renderDialog({
+      status: {
+        ...availableStatus,
+        channel: 'latest',
+        runningVersion: '0.1.19',
+        runningRevision: 'newer-running-revision',
+        availableVersion: '0.1.18',
+        availableRevision: 'older-latest-revision',
+        updateAvailable: false,
+        state: 'ahead',
+        entries: [],
+      },
+    })
+
+    const dialog = screen.getByRole('dialog', { name: /ahead of latest/i })
+    expect(within(dialog).getByText('Latest image')).toBeInTheDocument()
+    expect(within(dialog).getByText(/running version is newer than the current latest image/i)).toBeInTheDocument()
+    expect(within(dialog).queryByText(/release details are not available/i)).not.toBeInTheDocument()
+    expect(within(dialog).queryByTestId('update-commands')).not.toBeInTheDocument()
+    expect(within(dialog).queryByRole('button', { name: /skip this version/i })).not.toBeInTheDocument()
+  })
+
+  it('explains a same-version rebuild and still shows update actions', () => {
+    renderDialog({
+      status: {
+        ...availableStatus,
+        channel: 'latest',
+        runningVersion: '0.1.19',
+        runningRevision: 'older-running-revision',
+        availableVersion: '0.1.19',
+        availableRevision: 'newer-published-revision',
+        updateAvailable: true,
+        state: 'available',
+        entries: [],
+      },
+    })
+
+    const dialog = screen.getByRole('dialog', { name: /update available/i })
+    expect(within(dialog).getByText('Latest image')).toBeInTheDocument()
+    expect(within(dialog).getByText(/rebuilt from a newer commit/i)).toBeInTheDocument()
+    expect(within(dialog).queryByText(/release details are not available/i)).not.toBeInTheDocument()
+    expect(within(dialog).getByTestId('update-commands')).toBeInTheDocument()
+    expect(within(dialog).getByRole('button', { name: /skip this version/i })).toBeInTheDocument()
+  })
+
+  it('keeps diagnostic states free of update instructions', () => {
+    const { unmount } = render(
+      <UpdateDialog
+        open
+        status={{
+          ...availableStatus,
+          state: 'unknown',
+          updateAvailable: false,
+          entries: [],
+          errorCode: 'registry-timeout',
+        }}
+        checking={false}
+        skipping={false}
+        clearingSkip={false}
+        onOpenChange={() => {}}
+        onCheck={() => {}}
+        onSkip={() => {}}
+        onClearSkip={() => {}}
+      />,
+    )
+
+    expect(screen.queryByTestId('update-commands')).not.toBeInTheDocument()
+    unmount()
+
+    renderDialog({
+      status: {
+        ...availableStatus,
+        enabled: false,
+        state: 'disabled',
+        updateAvailable: false,
+        entries: [],
+      },
+    })
+    expect(screen.queryByTestId('update-commands')).not.toBeInTheDocument()
   })
 
   it('uses a bounded dialog, scrollable body, wrapping content, and mobile-first controls', () => {

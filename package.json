@@ -2,7 +2,7 @@
   "name": "homelab-inventory",
   "private": true,
   "description": "Self-hosted visual inventory and cabling workbench for homelab hardware.",
-  "version": "0.1.19",
+  "version": "0.1.20",
   "license": "MIT",
   "type": "module",
   "repository": {

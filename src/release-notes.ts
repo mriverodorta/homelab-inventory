@@ -12,6 +12,24 @@ export type ReleaseNoteEntry = {
 
 export const RELEASE_NOTES: ReleaseNoteEntry[] = [
   {
+    version: '0.1.20',
+    date: '2026-07-15',
+    channel: 'latest',
+    title: 'Accurate Docker update status',
+    highlights: [
+      'Docker update checks now distinguish newer channel images, exact matches, revision-only rebuilds, and installations ahead of their selected channel.',
+      'The update dialog labels the published latest or stable image explicitly and only shows update instructions when an update is actually available.',
+    ],
+    fixes: [
+      'An older stable or latest image is no longer presented as an available update when the running installation has a higher version.',
+      'Images rebuilt from a different commit at the same version can now be detected when both revisions are known.',
+      'Up-to-date and ahead-of-channel states no longer show an empty release-details message or unnecessary Docker Compose commands.',
+    ],
+    notes: [
+      'UPDATE_CHANNEL remains authoritative; recreate the container after changing Compose environment variables so Docker applies the new configuration.',
+    ],
+  },
+  {
     version: '0.1.19',
     date: '2026-07-14',
     channel: 'latest',

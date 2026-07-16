@@ -148,19 +148,33 @@ export function UpdateDialog({
   const [copied, setCopied] = useState(false)
   const availableVersion = status.availableVersion ?? 'Unknown'
   const availableRevision = status.availableRevision ?? 'Revision unavailable'
+  const channelName = status.channel === 'latest' ? 'Latest' : 'Stable'
+  const isAvailable = status.state === 'available' && status.updateAvailable
+  const isRevisionOnlyUpdate = isAvailable
+    && status.availableVersion === status.runningVersion
+    && status.availableRevision !== null
+    && status.availableRevision !== status.runningRevision
+  const showUpdateActions = isAvailable
+  const showReleaseNotes = isAvailable && (!isRevisionOnlyUpdate || status.entries.length > 0)
   const title = status.state === 'disabled'
     ? 'Update checks disabled'
     : status.state === 'unknown'
       ? 'Update status unavailable'
-      : status.updateAvailable
+      : status.state === 'ahead'
+        ? `Ahead of ${status.channel}`
+        : isAvailable
         ? status.skipped ? 'Update skipped' : 'Update available'
         : 'Up to date'
   const description = status.state === 'disabled'
     ? 'Enable update checks with UPDATE_CHECK_ENABLED=true.'
     : status.state === 'unknown'
       ? 'Docker Hub could not be reached. The last confirmed result is shown when available.'
-      : status.updateAvailable
-        ? `A newer ${status.channel} image is available on Docker Hub.`
+      : status.state === 'ahead'
+        ? `The running version is newer than the current ${status.channel} image.`
+        : isRevisionOnlyUpdate
+          ? `The ${status.channel} image was rebuilt from a newer commit at the same version.`
+          : isAvailable
+            ? `A newer ${status.channel} image is available on Docker Hub.`
         : `This installation matches the current ${status.channel} image.`
 
   async function copyCommands() {
@@ -207,10 +221,10 @@ export function UpdateDialog({
                   revision={status.runningRevision}
                 />
                 <VersionCard
-                  label="Available"
+                  label={`${channelName} image`}
                   version={availableVersion}
                   revision={availableRevision}
-                  emphasized
+                  emphasized={status.state === 'available' || status.state === 'current'}
                 />
               </div>
 
@@ -230,36 +244,38 @@ export function UpdateDialog({
                 ) : null}
               </div>
 
-              <ReleaseNoteList entries={status.entries} />
+              {showReleaseNotes ? <ReleaseNoteList entries={status.entries} /> : null}
 
-              <section className="grid min-w-0 gap-3 rounded-lg border border-[#ded8ce] bg-[#f5f0e8] p-3">
-                <div className="flex items-center gap-2">
-                  <Download className="size-4 text-[#756d62]" />
-                  <h3 className="text-sm font-black text-[#20242c]">Update with Docker Compose</h3>
-                </div>
-                <pre
-                  data-testid="update-commands"
-                  className="min-w-0 whitespace-pre-wrap break-words rounded-md bg-[#20242c] p-3 font-mono text-xs leading-5 text-[#fff7e8]"
-                >
-                  <code>{COMPOSE_COMMANDS}</code>
-                </pre>
-                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                  <p className="text-xs font-semibold leading-5 text-[#756d62]">
-                    Watchtower users may receive this image automatically.
-                  </p>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    className="w-full bg-white sm:w-auto"
-                    onClick={() => void copyCommands()}
-                    aria-label={copied ? 'Commands copied' : 'Copy commands'}
+              {showUpdateActions ? (
+                <section className="grid min-w-0 gap-3 rounded-lg border border-[#ded8ce] bg-[#f5f0e8] p-3">
+                  <div className="flex items-center gap-2">
+                    <Download className="size-4 text-[#756d62]" />
+                    <h3 className="text-sm font-black text-[#20242c]">Update with Docker Compose</h3>
+                  </div>
+                  <pre
+                    data-testid="update-commands"
+                    className="min-w-0 whitespace-pre-wrap break-words rounded-md bg-[#20242c] p-3 font-mono text-xs leading-5 text-[#fff7e8]"
                   >
-                    {copied ? <Check className="size-4 text-[#2f7b57]" /> : <Copy className="size-4" />}
-                    {copied ? 'Copied' : 'Copy commands'}
-                  </Button>
-                </div>
-              </section>
+                    <code>{COMPOSE_COMMANDS}</code>
+                  </pre>
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                    <p className="text-xs font-semibold leading-5 text-[#756d62]">
+                      Watchtower users may receive this image automatically.
+                    </p>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="w-full bg-white sm:w-auto"
+                      onClick={() => void copyCommands()}
+                      aria-label={copied ? 'Commands copied' : 'Copy commands'}
+                    >
+                      {copied ? <Check className="size-4 text-[#2f7b57]" /> : <Copy className="size-4" />}
+                      {copied ? 'Copied' : 'Copy commands'}
+                    </Button>
+                  </div>
+                </section>
+              ) : null}
             </div>
           </ScrollArea>
         </div>
@@ -268,7 +284,7 @@ export function UpdateDialog({
           data-testid="update-dialog-footer"
           className="!mx-0 !mb-0 shrink-0 !flex-col-reverse rounded-b-xl border-t border-[#ded8ce] bg-[#f5f0e8] px-5 py-4 sm:!flex-row"
         >
-          {status.updateAvailable && !status.skipped ? (
+          {isAvailable && !status.skipped ? (
             <Button type="button" variant="ghost" disabled={skipping} onClick={onSkip} className="w-full sm:w-auto">
               {skipping ? 'Skipping...' : 'Skip this version'}
             </Button>

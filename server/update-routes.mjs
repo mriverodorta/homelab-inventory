@@ -1,12 +1,16 @@
 import { compareVersions, getReleaseNotesBetween } from '../src/release-notes.ts'
-import { normalizePersistedUpdateResult, UPDATE_CACHE_MS } from './update-checker.mjs'
+import {
+  determineImageRelationship,
+  normalizePersistedUpdateResult,
+  UPDATE_CACHE_MS,
+} from './update-checker.mjs'
 
 function errorCode(error) {
   return typeof error?.code === 'string' ? error.code : 'registry-unavailable'
 }
 
 function isSuccessful(result) {
-  return (result?.state === 'available' || result?.state === 'current')
+  return ['ahead', 'available', 'current'].includes(result?.state)
     && result.errorCode === null
     && typeof result.availableVersion === 'string'
     && typeof result.availableRevision === 'string'
@@ -45,19 +49,43 @@ function disabledResult(checker) {
   }
 }
 
+function getSkipIdentity({ availableRevision, availableVersion, runningVersion }) {
+  if (availableVersion === null) return null
+
+  try {
+    return compareVersions(availableVersion, runningVersion) > 0
+      ? availableVersion
+      : `${availableVersion}@${availableRevision}`
+  } catch {
+    return null
+  }
+}
+
 function buildStatus({ checker, result, store, releaseNotes }) {
   const availableVersion = result.availableVersion ?? null
-  let updateAvailable = false
+  const availableRevision = result.availableRevision ?? null
+  let relationship = 'current'
+  let semanticUpdateAvailable = false
   try {
-    updateAvailable = availableVersion !== null
-      && compareVersions(availableVersion, checker.runningVersion) > 0
+    if (availableVersion !== null) {
+      relationship = determineImageRelationship({
+        availableRevision,
+        availableVersion,
+        runningRevision: checker.runningRevision,
+        runningVersion: checker.runningVersion,
+      })
+      semanticUpdateAvailable = compareVersions(availableVersion, checker.runningVersion) > 0
+    }
   } catch {
-    updateAvailable = false
+    relationship = 'current'
+    semanticUpdateAvailable = false
   }
-  const skipped = updateAvailable
-    && availableVersion !== null
-    && store.isUpdateVersionSkipped(availableVersion)
-  const entries = updateAvailable && availableVersion
+  const updateAvailable = relationship === 'available'
+  const skipIdentity = updateAvailable
+    ? getSkipIdentity({ availableRevision, availableVersion, runningVersion: checker.runningVersion })
+    : null
+  const skipped = skipIdentity !== null && store.isUpdateVersionSkipped(skipIdentity)
+  const entries = semanticUpdateAvailable && availableVersion
     ? getReleaseNotesBetween(releaseNotes, checker.runningVersion, availableVersion)
     : []
 
@@ -67,13 +95,13 @@ function buildStatus({ checker, result, store, releaseNotes }) {
     runningVersion: checker.runningVersion,
     runningRevision: checker.runningRevision,
     availableVersion,
-    availableRevision: result.availableRevision ?? null,
+    availableRevision,
     updateAvailable,
     skipped,
     checkedAt: result.checkedAt ?? null,
     state: result.state === 'unknown' || result.state === 'disabled'
       ? result.state
-      : updateAvailable ? 'available' : 'current',
+      : relationship,
     errorCode: result.errorCode ?? null,
     entries,
   }
@@ -92,6 +120,7 @@ async function resolveStatusResult({ checker, store, force = false, backgroundIf
   const metadata = store.getUpdateMetadata()
   const persistedResult = normalizePersistedUpdateResult(metadata.lastUpdateCheck, {
     channel: checker.channel,
+    runningRevision: checker.runningRevision,
     runningVersion: checker.runningVersion,
   })
   const checkedAt = Date.parse(persistedResult?.checkedAt ?? '')
@@ -137,7 +166,8 @@ export function registerUpdateRoutes(app, { withStore, checker, releaseNotes }) 
         return
       }
 
-      await store.skipUpdateVersion(status.availableVersion)
+      const skipIdentity = getSkipIdentity(status)
+      await store.skipUpdateVersion(skipIdentity)
       response.json({ ...status, skipped: true })
     }, { message: 'Unable to skip the available update.' })
   })

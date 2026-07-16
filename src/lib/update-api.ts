@@ -3,7 +3,7 @@ import type { ReleaseNoteEntry } from '@/release-notes'
 
 export type UpdateChannel = 'stable' | 'latest'
 
-export type UpdateCheckState = 'current' | 'available' | 'unknown' | 'disabled'
+export type UpdateCheckState = 'current' | 'available' | 'ahead' | 'unknown' | 'disabled'
 
 export type UpdateStatus = {
   enabled: boolean

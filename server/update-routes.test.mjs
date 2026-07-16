@@ -126,6 +126,93 @@ describe('update status routes', () => {
     }
   })
 
+  it('returns a revision-only rebuild as available without semantic release notes', async () => {
+    const rebuiltResult = {
+      ...AVAILABLE_RESULT,
+      runningVersion: '0.1.16',
+      availableVersion: '0.1.16',
+      runningRevision: 'running-sha',
+      availableRevision: 'rebuilt-sha',
+    }
+    const checker = {
+      enabled: true,
+      channel: 'stable',
+      runningVersion: '0.1.16',
+      runningRevision: 'running-sha',
+      now: Date.now,
+      check: vi.fn(async () => rebuiltResult),
+    }
+    const store = createStore()
+    const { server, url } = await listen(createApp({ checker, store }))
+
+    try {
+      const { body } = await requestJson(`${url}/api/update-status`)
+      expect(body).toMatchObject({ state: 'available', updateAvailable: true })
+      expect(body.entries).toEqual([])
+    } finally {
+      await close(server)
+    }
+  })
+
+  it('uses a revision-aware skip key for equal-version rebuilds', async () => {
+    const rebuiltResult = {
+      ...AVAILABLE_RESULT,
+      runningVersion: '0.1.16',
+      availableVersion: '0.1.16',
+      runningRevision: 'running-sha',
+      availableRevision: 'rebuilt-sha',
+    }
+    const checker = {
+      enabled: true,
+      channel: 'stable',
+      runningVersion: '0.1.16',
+      runningRevision: 'running-sha',
+      now: Date.now,
+      check: vi.fn(async () => rebuiltResult),
+    }
+    const store = createStore({ lastUpdateCheck: rebuiltResult })
+    const { server, url } = await listen(createApp({ checker, store }))
+
+    try {
+      const skipped = await requestJson(`${url}/api/update-status/skip`, { method: 'POST' })
+      expect(skipped.response.status).toBe(200)
+      expect(skipped.body.skipped).toBe(true)
+      expect(store.skipUpdateVersion).toHaveBeenCalledWith('0.1.16@rebuilt-sha')
+      expect(store.isUpdateVersionSkipped).toHaveBeenCalledWith('0.1.16@rebuilt-sha')
+    } finally {
+      await close(server)
+    }
+  })
+
+  it('returns ahead when the running version is newer than the channel image', async () => {
+    const aheadResult = {
+      ...AVAILABLE_RESULT,
+      state: 'ahead',
+      runningVersion: '0.1.17',
+      availableVersion: '0.1.16',
+      updateAvailable: false,
+    }
+    const checker = {
+      enabled: true,
+      channel: 'stable',
+      runningVersion: '0.1.17',
+      runningRevision: 'running-sha',
+      now: Date.now,
+      check: vi.fn(async () => aheadResult),
+    }
+    const store = createStore()
+    const { server, url } = await listen(createApp({ checker, store }))
+
+    try {
+      const { body } = await requestJson(`${url}/api/update-status`)
+      expect(body).toMatchObject({ state: 'ahead', updateAvailable: false, skipped: false })
+      expect(body.entries).toEqual([])
+      expect(store.saveUpdateCheck).toHaveBeenCalledWith(aheadResult)
+    } finally {
+      await close(server)
+    }
+  })
+
   it('forces a registry refresh from the check endpoint', async () => {
     const checker = {
       enabled: true,
@@ -204,7 +291,13 @@ describe('update status routes', () => {
   })
 
   it('rejects skipping when no newer image is available', async () => {
-    const currentResult = { ...AVAILABLE_RESULT, state: 'current', updateAvailable: false, availableVersion: '0.1.15' }
+    const currentResult = {
+      ...AVAILABLE_RESULT,
+      state: 'current',
+      updateAvailable: false,
+      availableVersion: '0.1.15',
+      availableRevision: 'running-sha',
+    }
     const checker = {
       enabled: true,
       channel: 'stable',
@@ -275,7 +368,7 @@ describe('update status routes', () => {
       state: 'current',
       runningVersion: '0.1.16',
       availableVersion: '0.1.16',
-      availableRevision: 'current-sha',
+      availableRevision: 'running-sha',
       updateAvailable: false,
     }
     const checker = {
@@ -309,6 +402,7 @@ describe('update status routes', () => {
       state: 'current',
       runningVersion: '0.1.15',
       availableVersion: '0.1.15',
+      availableRevision: 'running-sha',
       updateAvailable: false,
     }
     const checker = {
@@ -325,7 +419,7 @@ describe('update status routes', () => {
     try {
       const { body } = await requestJson(`${url}/api/update-status`)
       expect(checker.check).toHaveBeenCalledWith({ force: false, persistedResult: null })
-      expect(body).toMatchObject({ state: 'current', availableRevision: 'published-sha' })
+      expect(body).toMatchObject({ state: 'current', availableRevision: 'running-sha' })
     } finally {
       await close(server)
     }
