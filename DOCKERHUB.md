@@ -12,7 +12,7 @@ The public source repository is available on GitHub:
 
 https://github.com/mriverodorta/homelab-inventory
 
-GitHub is the source of truth for CI/CD. Docker Hub images are built and published by GitHub Actions from the `main`, `stable`, and semver tag release channels.
+GitHub is the source of truth for CI/CD. Docker Hub images are built and published by GitHub Actions from the `main` and `stable` branches, with numbered releases created during stable promotion.
 
 ## Security Notice
 
@@ -131,7 +131,10 @@ The image is intended to work well with Watchtower:
 
 - Use `mriverodorta/homelab-inventory:stable` for regular automatic updates from the stable branch.
 - Use `mriverodorta/homelab-inventory:latest` for the newest image from `main`. This channel can be unstable.
-- Use a semver tag such as `mriverodorta/homelab-inventory:0.1.8` to pin a specific version.
+- Use an immutable version such as `mriverodorta/homelab-inventory:0.1.20` to pin a specific release.
+- Use a minor alias such as `mriverodorta/homelab-inventory:0.1` to follow the newest stable patch in that series.
+
+New package versions promoted through `stable` publish `stable`, immutable `X.Y.Z`, and moving `X.Y` tags. The matching Git tag and GitHub Release are created only after the multi-platform image is verified. Existing numbered images are never overwritten.
 
 The app tracks a database schema version in `/data/meta.json`. When schema changes are introduced, migrations run on startup and create backups before modifying data.
 

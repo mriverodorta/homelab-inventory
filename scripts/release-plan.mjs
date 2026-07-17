@@ -15,38 +15,31 @@ export function parseReleaseVersion(version) {
   }
 }
 
-export function createStableReleasePlan({ version, revision, existingTagRevision, imageName }) {
+export function createStableReleasePlan({ version, revision, existingTagRevision }) {
   const parsed = parseReleaseVersion(version)
-  if (!revision || !imageName) throw new Error('revision and imageName are required')
+  if (!revision) throw new Error('revision is required')
   if (existingTagRevision && existingTagRevision !== revision) {
     throw new Error(`${parsed.gitTag} already points to ${existingTagRevision}; refusing to reuse it for ${revision}.`)
   }
 
   const state = existingTagRevision === revision ? 'existing' : 'create'
-  const dockerTags = [`${imageName}:stable`]
-  if (state === 'create') {
-    dockerTags.push(`${imageName}:${parsed.exactTag}`, `${imageName}:${parsed.minorTag}`)
-  }
 
   return {
     state,
     channel: 'stable',
     verificationTag: 'stable',
     ...parsed,
-    dockerTags,
   }
 }
 
 export function createBranchReleasePlan(options) {
   if (options.branch === 'main') {
     const parsed = parseReleaseVersion(options.version)
-    if (!options.imageName) throw new Error('imageName is required')
     return {
       state: 'channel',
       channel: 'latest',
       verificationTag: 'latest',
       ...parsed,
-      dockerTags: [`${options.imageName}:latest`],
     }
   }
   if (options.branch === 'stable') return createStableReleasePlan(options)
@@ -64,7 +57,7 @@ function parseArguments(args) {
     values[key.slice(2)] = value
   }
 
-  for (const key of ['branch', 'version', 'revision', 'image-name']) {
+  for (const key of ['branch', 'version', 'revision']) {
     if (!values[key]) throw new Error(`Missing required --${key} argument.`)
   }
   return values
@@ -77,7 +70,6 @@ async function main() {
     version: values.version,
     revision: values.revision,
     existingTagRevision: values['existing-tag-revision'] ?? '',
-    imageName: values['image-name'],
   })
   const output = [
     `state=${plan.state}`,
@@ -86,9 +78,6 @@ async function main() {
     `git_tag=${plan.gitTag}`,
     `exact_tag=${plan.exactTag}`,
     `minor_tag=${plan.minorTag}`,
-    'docker_tags<<EOF',
-    ...plan.dockerTags,
-    'EOF',
   ].join('\n') + '\n'
 
   if (process.env.GITHUB_OUTPUT) await appendFile(process.env.GITHUB_OUTPUT, output)

@@ -16,17 +16,25 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 
 ## [0.1.20] - 2026-07-15
 
+### Added
+
+- Added immutable `X.Y.Z` Docker images, moving `X.Y` aliases, matching Git tags, and GitHub Releases for newly promoted stable versions.
+- Added a guarded manual workflow for restoring historical numbered releases from their original source commits.
+
 ### Changed
 
 - Docker update checks now distinguish newer channel images, exact matches, revision-only rebuilds, and installations ahead of the selected channel.
 - The update dialog identifies the published `latest` or `stable` image instead of labeling every channel result as an available update.
 - Docker Compose update instructions only appear when an update is actually available.
+- `main` now publishes only `latest`; `stable` owns release promotion and publishes `stable`, immutable `X.Y.Z`, and the moving `X.Y` alias.
 
 ### Fixed
 
 - Older channel versions are no longer presented as available updates when the running installation is newer.
 - Same-version images built from a different known revision are detected as revision-only updates.
 - Current and ahead-of-channel results no longer show an empty release-details placeholder.
+- Release publication now stops before overwriting an existing numbered Docker tag or reusing a Git tag from a different commit.
+- Historical backfills are restricted to an authoritative version-to-commit map and do not expose Docker credentials while historical dependency or build scripts run.
 
 ## [0.1.19] - 2026-07-14
 

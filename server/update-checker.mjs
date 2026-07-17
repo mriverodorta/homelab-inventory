@@ -23,8 +23,21 @@ const CONFIG_MEDIA_TYPES = new Set([
 const JSON_MEDIA_TYPES = new Set(['application/json'])
 const MANIFEST_ACCEPT = [...INDEX_MEDIA_TYPES, ...MANIFEST_MEDIA_TYPES].join(', ')
 const DIGEST_PATTERN = /^sha256:[a-f0-9]{64}$/
+const EXACT_VERSION_TAG_PATTERN = /^\d+\.\d+\.\d+$/
+const MINOR_VERSION_TAG_PATTERN = /^\d+\.\d+$/
 
 export const UPDATE_CACHE_MS = 6 * 60 * 60 * 1000
+
+export function isSupportedUpdateTarget(channel, tag) {
+  if (typeof tag !== 'string') return false
+  if (channel === 'latest') return tag === 'latest'
+  if (channel === 'stable') return tag === 'stable'
+  if (channel === 'release') {
+    return EXACT_VERSION_TAG_PATTERN.test(tag) || MINOR_VERSION_TAG_PATTERN.test(tag)
+  }
+
+  return false
+}
 
 export class UpdateCheckError extends Error {
   constructor(code, options) {
@@ -267,10 +280,7 @@ export class DockerHubUpdateChecker {
     if (!['stable', 'latest', 'release'].includes(channel)) {
       throw new Error(`Unsupported update channel: ${channel}`)
     }
-    if (
-      (channel === 'release' && !/^\d+\.\d+\.\d+$/.test(tag))
-      || (channel !== 'release' && tag !== channel)
-    ) {
+    if (!isSupportedUpdateTarget(channel, tag)) {
       throw new Error(`Unsupported update tag: ${tag}`)
     }
     if (platformArchitecture !== null && !['amd64', 'arm64'].includes(platformArchitecture)) {

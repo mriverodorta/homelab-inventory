@@ -2,7 +2,7 @@
 
 import assert from 'node:assert/strict'
 import { pathToFileURL } from 'node:url'
-import { DockerHubUpdateChecker } from '../server/update-checker.mjs'
+import { DockerHubUpdateChecker, isSupportedUpdateTarget } from '../server/update-checker.mjs'
 
 const HELP = `Usage: bun scripts/verify-published-image.mjs [options]
 
@@ -31,14 +31,8 @@ export function parseArguments(args) {
     if (!values[key]) throw new Error(`Missing required --${key} argument.`)
   }
   if (!['latest', 'stable', 'release'].includes(values.channel)) throw new Error(`Unsupported channel: ${values.channel}`)
-  const isSemanticVersionTag = /^\d+\.\d+\.\d+$/.test(values.tag)
-  const isFloatingChannelTag = values.tag === 'latest' || values.tag === 'stable'
-  if (!isSemanticVersionTag && !isFloatingChannelTag) throw new Error(`Unsupported image tag: ${values.tag}`)
-  if (isFloatingChannelTag && values.tag !== values.channel) {
-    throw new Error('A floating channel tag must match the expected image channel.')
-  }
-  if (isSemanticVersionTag && !['stable', 'release'].includes(values.channel)) {
-    throw new Error('A semantic-version image must use stable or release channel metadata.')
+  if (!isSupportedUpdateTarget(values.channel, values.tag)) {
+    throw new Error(`Unsupported image tag ${values.tag} for channel ${values.channel}.`)
   }
 
   return values

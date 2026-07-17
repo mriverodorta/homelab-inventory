@@ -5,9 +5,11 @@ on:
     branches:
       - main
       - stable
-    tags:
-      - "v*.*.*"
   workflow_dispatch:
+
+concurrency:
+  group: homelab-inventory-docker-release
+  cancel-in-progress: false
 
 env:
   IMAGE_NAME: mriverodorta/homelab-inventory
@@ -17,15 +19,22 @@ jobs:
   publish:
     runs-on: ubuntu-latest
     permissions:
-      contents: write
+      contents: read
+    outputs:
+      channel: ${{ steps.release_plan.outputs.channel }}
+      exact_tag: ${{ steps.release_plan.outputs.exact_tag }}
+      git_tag: ${{ steps.release_plan.outputs.git_tag }}
+      revision: ${{ github.sha }}
+      should_finalize: ${{ steps.finalize_plan.outputs.should_finalize }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
         with:
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
           bun-version: latest
 
@@ -63,98 +72,300 @@ jobs:
           docker logs "$container_id"
           exit 1
 
+      - name: Compute release plan and validate Git tag ownership
+        id: release_plan
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="$(bun -p "require('./package.json').version")"
+          git_tag="v${version}"
+          existing_tag_revision=""
+
+          if [[ "${GITHUB_REF_NAME}" == "stable" ]]; then
+            remote_tag="$(git ls-remote --refs origin "refs/tags/${git_tag}")"
+            if [[ -n "$remote_tag" ]]; then
+              git fetch --force origin "refs/tags/${git_tag}:refs/tags/${git_tag}"
+              existing_tag_revision="$(git rev-parse "${git_tag}^{commit}")"
+            fi
+          fi
+
+          bun scripts/release-plan.mjs \
+            --branch "${GITHUB_REF_NAME}" \
+            --version "$version" \
+            --revision "${GITHUB_SHA}" \
+            --existing-tag-revision "${existing_tag_revision:-}"
+
       - name: Setup QEMU
-        uses: docker/setup-qemu-action@v4
+        uses: docker/setup-qemu-action@96fe6ef7f33517b61c61be40b68a1882f3264fb8 # v4
 
       - name: Setup Docker Buildx
-        uses: docker/setup-buildx-action@v4
+        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4
 
       - name: Verify Docker Hub token
         env:
           DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
         run: |
-          if [ -z "$DOCKERHUB_TOKEN" ]; then
+          if [[ -z "$DOCKERHUB_TOKEN" ]]; then
             echo "::error title=Missing Docker Hub token::Add a DOCKERHUB_TOKEN repository secret with permission to push ${IMAGE_NAME}."
             exit 1
           fi
 
       - name: Login to Docker Hub
-        uses: docker/login-action@v4
+        uses: docker/login-action@af1e73f918a031802d376d3c8bbc3fe56130a9b0 # v4
         with:
           username: mriverodorta
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Compute Docker tags
-        id: docker_tags
+      - name: Inspect immutable Docker image
+        id: exact_image
+        if: github.ref_name == 'stable'
         shell: bash
         run: |
           set -euo pipefail
+          image="${IMAGE_NAME}:${{ steps.release_plan.outputs.exact_tag }}"
 
-          tags=()
-          version="$(bun -p "require('./package.json').version")"
-          channel="release"
-          verification_tag=""
-
-          if [[ "${GITHUB_REF_TYPE}" == "branch" && "${GITHUB_REF_NAME}" == "main" ]]; then
-            tags+=("${IMAGE_NAME}:latest")
-            channel="latest"
-            verification_tag="latest"
-          elif [[ "${GITHUB_REF_TYPE}" == "branch" && "${GITHUB_REF_NAME}" == "stable" ]]; then
-            tags+=("${IMAGE_NAME}:stable")
-            channel="stable"
-            verification_tag="stable"
-          elif [[ "${GITHUB_REF_TYPE}" == "tag" && "${GITHUB_REF_NAME}" =~ ^v([0-9]+)\.([0-9]+)\.([0-9]+)$ ]]; then
-            tag_version="${GITHUB_REF_NAME#v}"
-            if [[ "${tag_version}" != "${version}" ]]; then
-              echo "::error title=Version mismatch::Git tag ${tag_version} does not match package version ${version}."
-              exit 1
-            fi
-            major="${BASH_REMATCH[1]}"
-            minor="${BASH_REMATCH[2]}"
-            tags+=("${IMAGE_NAME}:${tag_version}")
-            tags+=("${IMAGE_NAME}:${major}.${minor}")
-            verification_tag="${tag_version}"
+          if docker buildx imagetools inspect "$image" >/dev/null 2>&1; then
+            bun scripts/verify-published-image.mjs \
+              --tag "${{ steps.release_plan.outputs.exact_tag }}" \
+              --version "${{ steps.release_plan.outputs.exact_tag }}" \
+              --revision "${GITHUB_SHA}" \
+              --channel release
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+            exit 0
           fi
 
+          if output="$(docker buildx imagetools inspect "$image" 2>&1)"; then
+            echo "::error title=Registry preflight failed::The exact image changed state during inspection."
+            exit 1
+          fi
+          if ! grep -Eqi 'not found|manifest unknown|no such manifest' <<< "$output"; then
+            printf '%s\n' "$output"
+            echo "::error title=Registry preflight failed::Could not safely establish whether ${image} exists."
+            exit 1
+          fi
+
+          echo "exists=false" >> "$GITHUB_OUTPUT"
+
+      - name: Inspect minor Docker alias
+        id: minor_alias
+        if: github.ref_name == 'stable'
+        shell: bash
+        env:
+          REQUESTED_VERSION: ${{ steps.release_plan.outputs.exact_tag }}
+          REQUESTED_REVISION: ${{ github.sha }}
+          MINOR_TAG: ${{ steps.release_plan.outputs.minor_tag }}
+        run: |
+          set -euo pipefail
+          image="${IMAGE_NAME}:${MINOR_TAG}"
+
+          if ! docker buildx imagetools inspect "$image" >/dev/null 2>&1; then
+            if output="$(docker buildx imagetools inspect "$image" 2>&1)"; then
+              echo "::error title=Registry preflight failed::The minor alias changed state during inspection."
+              exit 1
+            fi
+            if ! grep -Eqi 'not found|manifest unknown|no such manifest' <<< "$output"; then
+              printf '%s\n' "$output"
+              echo "::error title=Registry preflight failed::Could not safely establish whether ${image} exists."
+              exit 1
+            fi
+            echo "action=move" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          docker pull --quiet --platform linux/amd64 "$image" >/dev/null
+          current_version="$(docker image inspect --format '{{ index .Config.Labels "org.opencontainers.image.version" }}' "$image")"
+          current_revision="$(docker image inspect --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}' "$image")"
+          current_source="$(docker image inspect --format '{{ index .Config.Labels "org.opencontainers.image.source" }}' "$image")"
+          current_channel="$(docker image inspect --format '{{ index .Config.Labels "io.homelab-inventory.channel" }}' "$image")"
+
+          if [[ ! "$current_version" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ \
+            || ! "$current_revision" =~ ^[0-9a-fA-F]{40}$ \
+            || "$current_source" != "https://github.com/mriverodorta/homelab-inventory" \
+            || ! "$current_channel" =~ ^(release|stable)$ ]]; then
+            echo "::error title=Invalid minor alias metadata::${image} does not carry trusted release metadata."
+            exit 1
+          fi
+
+          comparison="$(CURRENT_VERSION="$current_version" bun -e 'import { compareVersions } from "./src/release-notes.ts"; console.log(compareVersions(process.env.REQUESTED_VERSION, process.env.CURRENT_VERSION));')"
+
+          if [[ "$comparison" -lt 0 ]]; then
+            echo "::error title=Minor alias is newer::${image} contains ${current_version}; refusing to promote older ${REQUESTED_VERSION}."
+            exit 1
+          fi
+          if [[ "$comparison" -eq 0 && "$current_revision" != "$REQUESTED_REVISION" ]]; then
+            echo "::error title=Minor alias revision conflict::${image} has the requested version at a different revision."
+            exit 1
+          fi
+
+          if [[ "$comparison" -gt 0 || "$current_channel" != "release" ]]; then
+            echo "action=move" >> "$GITHUB_OUTPUT"
+          else
+            echo "action=keep" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Compute channel image tags
+        id: channel_tags
+        shell: bash
+        run: |
+          set -euo pipefail
           {
-            echo "tags<<EOF"
-            printf '%s\n' "${tags[@]}"
-            echo "EOF"
-            echo "version=${version}"
-            echo "channel=${channel}"
-            echo "verification_tag=${verification_tag}"
+            echo 'tags<<EOF'
+            if [[ "${GITHUB_REF_NAME}" == "main" ]]; then
+              echo "${IMAGE_NAME}:latest"
+            elif [[ "${GITHUB_REF_NAME}" == "stable" ]]; then
+              echo "${IMAGE_NAME}:stable"
+            else
+              echo "::error title=Unsupported release branch::${GITHUB_REF_NAME} cannot publish Docker images."
+              exit 1
+            fi
+            echo 'EOF'
           } >> "$GITHUB_OUTPUT"
 
-      - name: Build and push Docker image
-        uses: docker/build-push-action@v7
+      - name: Build and push channel Docker image
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7
         with:
           context: .
           platforms: ${{ env.PLATFORMS }}
           push: true
-          tags: ${{ steps.docker_tags.outputs.tags }}
+          tags: ${{ steps.channel_tags.outputs.tags }}
           build-args: |
-            APP_VERSION=${{ steps.docker_tags.outputs.version }}
+            APP_VERSION=${{ steps.release_plan.outputs.exact_tag }}
             APP_REVISION=${{ github.sha }}
-            APP_CHANNEL=${{ steps.docker_tags.outputs.channel }}
+            APP_CHANNEL=${{ steps.release_plan.outputs.channel }}
           labels: |
-            org.opencontainers.image.version=${{ steps.docker_tags.outputs.version }}
+            org.opencontainers.image.version=${{ steps.release_plan.outputs.exact_tag }}
             org.opencontainers.image.revision=${{ github.sha }}
             org.opencontainers.image.source=https://github.com/mriverodorta/homelab-inventory
-            io.homelab-inventory.channel=${{ steps.docker_tags.outputs.channel }}
+            io.homelab-inventory.channel=${{ steps.release_plan.outputs.channel }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      - name: Verify published image metadata
-        if: steps.docker_tags.outputs.verification_tag != ''
+      - name: Verify published channel image metadata
         run: >-
           bun scripts/verify-published-image.mjs
-          --tag "${{ steps.docker_tags.outputs.verification_tag }}"
-          --version "${{ steps.docker_tags.outputs.version }}"
+          --tag "${{ steps.release_plan.outputs.verification_tag }}"
+          --version "${{ steps.release_plan.outputs.exact_tag }}"
           --revision "${{ github.sha }}"
-          --channel "${{ steps.docker_tags.outputs.channel }}"
+          --channel "${{ steps.release_plan.outputs.channel }}"
 
-      - name: Create GitHub release
-        if: startsWith(github.ref, 'refs/tags/v')
-        uses: softprops/action-gh-release@v3
+      - name: Build and push immutable release image
+        if: github.ref_name == 'stable' && steps.exact_image.outputs.exists != 'true'
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7
         with:
-          generate_release_notes: true
+          context: .
+          platforms: ${{ env.PLATFORMS }}
+          push: true
+          tags: ${{ env.IMAGE_NAME }}:${{ steps.release_plan.outputs.exact_tag }}
+          build-args: |
+            APP_VERSION=${{ steps.release_plan.outputs.exact_tag }}
+            APP_REVISION=${{ github.sha }}
+            APP_CHANNEL=release
+          labels: |
+            org.opencontainers.image.version=${{ steps.release_plan.outputs.exact_tag }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.source=https://github.com/mriverodorta/homelab-inventory
+            io.homelab-inventory.channel=release
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Verify immutable release image metadata
+        if: github.ref_name == 'stable'
+        run: >-
+          bun scripts/verify-published-image.mjs
+          --tag "${{ steps.release_plan.outputs.exact_tag }}"
+          --version "${{ steps.release_plan.outputs.exact_tag }}"
+          --revision "${{ github.sha }}"
+          --channel release
+
+      - name: Publish minor release alias
+        if: github.ref_name == 'stable' && steps.minor_alias.outputs.action == 'move'
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker buildx imagetools create \
+            --tag "${IMAGE_NAME}:${{ steps.release_plan.outputs.minor_tag }}" \
+            "${IMAGE_NAME}:${{ steps.release_plan.outputs.exact_tag }}"
+
+      - name: Verify minor release alias metadata
+        if: github.ref_name == 'stable'
+        run: >-
+          bun scripts/verify-published-image.mjs
+          --tag "${{ steps.release_plan.outputs.minor_tag }}"
+          --version "${{ steps.release_plan.outputs.exact_tag }}"
+          --revision "${{ github.sha }}"
+          --channel release
+
+      - name: Recheck Git tag ownership
+        if: github.ref_name == 'stable'
+        shell: bash
+        run: |
+          set -euo pipefail
+          git_tag="${{ steps.release_plan.outputs.git_tag }}"
+          remote_tag="$(git ls-remote --refs origin "refs/tags/${git_tag}")"
+          if [[ -n "$remote_tag" ]]; then
+            git fetch --force origin "refs/tags/${git_tag}:refs/tags/${git_tag}"
+            existing_tag_revision="$(git rev-parse "${git_tag}^{commit}")"
+            if [[ "$existing_tag_revision" != "${GITHUB_SHA}" ]]; then
+              echo "::error title=Immutable Git tag conflict::${git_tag} points to ${existing_tag_revision}, not ${GITHUB_SHA}."
+              exit 1
+            fi
+          fi
+
+      - name: Prepare finalization
+        id: finalize_plan
+        shell: bash
+        run: |
+          if [[ "${GITHUB_REF_NAME}" == "stable" ]]; then
+            echo "should_finalize=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "should_finalize=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  finalize:
+    needs: publish
+    if: needs.publish.outputs.should_finalize == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout verified revision
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+        with:
+          ref: ${{ needs.publish.outputs.revision }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Finalize immutable Git tag and GitHub release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_REVISION: ${{ needs.publish.outputs.revision }}
+          RELEASE_TAG: ${{ needs.publish.outputs.git_tag }}
+        run: |
+          set -euo pipefail
+          remote_tag="$(git ls-remote --refs origin "refs/tags/${RELEASE_TAG}")"
+
+          if [[ -n "$remote_tag" ]]; then
+            git fetch --force origin "refs/tags/${RELEASE_TAG}:refs/tags/${RELEASE_TAG}"
+            existing_tag_revision="$(git rev-parse "${RELEASE_TAG}^{commit}")"
+            if [[ "$existing_tag_revision" != "$RELEASE_REVISION" ]]; then
+              echo "::error title=Immutable Git tag conflict::${RELEASE_TAG} points to ${existing_tag_revision}, not ${RELEASE_REVISION}."
+              exit 1
+            fi
+          fi
+
+          if gh release view "$RELEASE_TAG" --repo "${{ github.repository }}" >/dev/null 2>&1; then
+            echo "${RELEASE_TAG} already has a GitHub release at the verified revision."
+          elif [[ -n "$remote_tag" ]]; then
+            gh release create "$RELEASE_TAG" \
+              --repo "${{ github.repository }}" \
+              --verify-tag \
+              --title "$RELEASE_TAG" \
+              --generate-notes
+          else
+            gh release create "$RELEASE_TAG" \
+              --repo "${{ github.repository }}" \
+              --target "$RELEASE_REVISION" \
+              --title "$RELEASE_TAG" \
+              --generate-notes
+          fi

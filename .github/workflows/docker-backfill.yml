@@ -1,0 +1,393 @@
+name: Backfill Docker Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Strict release version in X.Y.Z format
+        required: true
+        type: string
+      revision:
+        description: Full 40-character historical source commit SHA
+        required: true
+        type: string
+
+concurrency:
+  group: homelab-inventory-docker-release
+  cancel-in-progress: false
+
+env:
+  IMAGE_NAME: mriverodorta/homelab-inventory
+  PLATFORMS: linux/amd64,linux/arm64
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      git_tag: ${{ steps.release.outputs.git_tag }}
+      revision: ${{ steps.release.outputs.revision }}
+      should_finalize: ${{ steps.finalize_plan.outputs.should_finalize }}
+      version: ${{ steps.release.outputs.version }}
+    steps:
+      - name: Checkout release automation
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+        with:
+          path: automation
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: latest
+
+      - name: Validate release inputs and Git tag ownership
+        id: release
+        shell: bash
+        working-directory: automation
+        env:
+          REQUESTED_VERSION: ${{ inputs.version }}
+          REQUESTED_REVISION: ${{ inputs.revision }}
+        run: |
+          set -euo pipefail
+          bun scripts/historical-release-map.mjs \
+            --version "$REQUESTED_VERSION" \
+            --revision "$REQUESTED_REVISION"
+
+          requested_revision="${REQUESTED_REVISION,,}"
+          if ! git cat-file -e "${requested_revision}^{commit}" 2>/dev/null; then
+            git fetch --no-tags origin "$requested_revision"
+          fi
+          resolved_revision="$(git rev-parse "${requested_revision}^{commit}")"
+          if [[ "$resolved_revision" != "$requested_revision" ]]; then
+            echo "::error title=Revision mismatch::revision did not resolve to the exact requested commit."
+            exit 1
+          fi
+
+          git_tag="v${REQUESTED_VERSION}"
+          remote_tag="$(git ls-remote --refs origin "refs/tags/${git_tag}")"
+          if [[ -n "$remote_tag" ]]; then
+            git fetch --force origin "refs/tags/${git_tag}:refs/tags/${git_tag}"
+            existing_tag_revision="$(git rev-parse "${git_tag}^{commit}")"
+            if [[ "$existing_tag_revision" != "$requested_revision" ]]; then
+              echo "::error title=Immutable Git tag conflict::${git_tag} points to ${existing_tag_revision}, not ${requested_revision}."
+              exit 1
+            fi
+          fi
+
+      - name: Validate structured release notes
+        shell: bash
+        working-directory: automation
+        env:
+          RELEASE_VERSION: ${{ steps.release.outputs.version }}
+        run: >-
+          bun -e 'import fs from "node:fs";
+          const source = fs.readFileSync("src/release-notes.ts", "utf8");
+          const escaped = process.env.RELEASE_VERSION.replaceAll(".", "\\.");
+          if (!new RegExp(`version:\\s*["\x27]${escaped}["\x27]`).test(source))
+          throw new Error(`No structured release notes found for ${process.env.RELEASE_VERSION}.`);'
+
+      - name: Install current automation dependencies
+        working-directory: automation
+        run: bun install --frozen-lockfile
+
+      - name: Setup QEMU
+        uses: docker/setup-qemu-action@96fe6ef7f33517b61c61be40b68a1882f3264fb8 # v4
+
+      - name: Setup Docker Buildx
+        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4
+
+      - name: Inspect immutable Docker image
+        id: exact_image
+        shell: bash
+        env:
+          RELEASE_VERSION: ${{ steps.release.outputs.version }}
+          RELEASE_REVISION: ${{ steps.release.outputs.revision }}
+        run: |
+          set -euo pipefail
+          image="${IMAGE_NAME}:${RELEASE_VERSION}"
+
+          if docker buildx imagetools inspect "$image" >/dev/null 2>&1; then
+            (cd automation && bun scripts/verify-published-image.mjs \
+              --tag "$RELEASE_VERSION" \
+              --version "$RELEASE_VERSION" \
+              --revision "$RELEASE_REVISION" \
+              --channel release)
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if output="$(docker buildx imagetools inspect "$image" 2>&1)"; then
+            echo "::error title=Registry preflight failed::The exact image changed state during inspection."
+            exit 1
+          fi
+          if ! grep -Eqi 'not found|manifest unknown|no such manifest' <<< "$output"; then
+            printf '%s\n' "$output"
+            echo "::error title=Registry preflight failed::Could not safely establish whether ${image} exists."
+            exit 1
+          fi
+
+          echo "exists=false" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout historical source
+        if: steps.exact_image.outputs.exists != 'true'
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+        with:
+          ref: ${{ steps.release.outputs.revision }}
+          path: source
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Validate historical source
+        if: steps.exact_image.outputs.exists != 'true'
+        shell: bash
+        working-directory: source
+        env:
+          EXPECTED_VERSION: ${{ steps.release.outputs.version }}
+          EXPECTED_REVISION: ${{ steps.release.outputs.revision }}
+        run: |
+          set -euo pipefail
+          source_revision="$(git rev-parse HEAD)"
+          package_version="$(bun -p "require('./package.json').version")"
+
+          if [[ "$source_revision" != "$EXPECTED_REVISION" ]]; then
+            echo "::error title=Historical checkout mismatch::checked out ${source_revision}, expected ${EXPECTED_REVISION}."
+            exit 1
+          fi
+          if [[ "$package_version" != "$EXPECTED_VERSION" ]]; then
+            echo "::error title=Historical version mismatch::package.json contains ${package_version}, expected ${EXPECTED_VERSION}."
+            exit 1
+          fi
+
+      - name: Install historical dependencies
+        if: steps.exact_image.outputs.exists != 'true'
+        working-directory: source
+        run: bun install --frozen-lockfile
+
+      - name: Lint historical source
+        if: steps.exact_image.outputs.exists != 'true'
+        working-directory: source
+        run: bun run lint
+
+      - name: Test historical source
+        if: steps.exact_image.outputs.exists != 'true'
+        working-directory: source
+        run: bun run test
+
+      - name: Build historical source
+        if: steps.exact_image.outputs.exists != 'true'
+        working-directory: source
+        run: bun run build
+
+      - name: Smoke-test historical runtime image
+        if: steps.exact_image.outputs.exists != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker build \
+            --build-arg "APP_VERSION=${{ steps.release.outputs.version }}" \
+            --build-arg "APP_REVISION=${{ steps.release.outputs.revision }}" \
+            --build-arg "APP_CHANNEL=release" \
+            --tag homelab-inventory-backfill-smoke \
+            ./source
+          container_id="$(docker run --detach --publish 127.0.0.1::8798 homelab-inventory-backfill-smoke)"
+          trap 'docker rm --force "$container_id" >/dev/null 2>&1 || true' EXIT
+          host_port="$(docker port "$container_id" 8798/tcp | sed 's/.*://')"
+
+          for attempt in {1..20}; do
+            if curl --fail --silent "http://127.0.0.1:${host_port}/api/health" >/dev/null; then
+              exit 0
+            fi
+            sleep 1
+          done
+
+          docker logs "$container_id"
+          exit 1
+
+      - name: Verify Docker Hub token
+        env:
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+        run: |
+          if [[ -z "$DOCKERHUB_TOKEN" ]]; then
+            echo "::error title=Missing Docker Hub token::Add a DOCKERHUB_TOKEN repository secret with permission to push ${IMAGE_NAME}."
+            exit 1
+          fi
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@af1e73f918a031802d376d3c8bbc3fe56130a9b0 # v4
+        with:
+          username: mriverodorta
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build and push historical Docker image
+        if: steps.exact_image.outputs.exists != 'true'
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7
+        with:
+          context: ./source
+          platforms: ${{ env.PLATFORMS }}
+          push: true
+          tags: ${{ env.IMAGE_NAME }}:${{ steps.release.outputs.version }}
+          build-args: |
+            APP_VERSION=${{ steps.release.outputs.version }}
+            APP_REVISION=${{ steps.release.outputs.revision }}
+            APP_CHANNEL=release
+          labels: |
+            org.opencontainers.image.version=${{ steps.release.outputs.version }}
+            org.opencontainers.image.revision=${{ steps.release.outputs.revision }}
+            org.opencontainers.image.source=https://github.com/mriverodorta/homelab-inventory
+            io.homelab-inventory.channel=release
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Verify immutable image metadata
+        working-directory: automation
+        run: >-
+          bun scripts/verify-published-image.mjs
+          --tag "${{ steps.release.outputs.version }}"
+          --version "${{ steps.release.outputs.version }}"
+          --revision "${{ steps.release.outputs.revision }}"
+          --channel release
+
+      - name: Inspect minor Docker alias
+        id: minor_alias
+        shell: bash
+        env:
+          REQUESTED_VERSION: ${{ steps.release.outputs.version }}
+          REQUESTED_REVISION: ${{ steps.release.outputs.revision }}
+          MINOR_TAG: ${{ steps.release.outputs.minor_tag }}
+        run: |
+          set -euo pipefail
+          image="${IMAGE_NAME}:${MINOR_TAG}"
+
+          if ! docker buildx imagetools inspect "$image" >/dev/null 2>&1; then
+            if output="$(docker buildx imagetools inspect "$image" 2>&1)"; then
+              echo "::error title=Registry preflight failed::The minor alias changed state during inspection."
+              exit 1
+            fi
+            if ! grep -Eqi 'not found|manifest unknown|no such manifest' <<< "$output"; then
+              printf '%s\n' "$output"
+              echo "::error title=Registry preflight failed::Could not safely establish whether ${image} exists."
+              exit 1
+            fi
+            echo "action=move" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          docker pull --quiet --platform linux/amd64 "$image" >/dev/null
+          current_version="$(docker image inspect --format '{{ index .Config.Labels "org.opencontainers.image.version" }}' "$image")"
+          current_revision="$(docker image inspect --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}' "$image")"
+          current_source="$(docker image inspect --format '{{ index .Config.Labels "org.opencontainers.image.source" }}' "$image")"
+          current_channel="$(docker image inspect --format '{{ index .Config.Labels "io.homelab-inventory.channel" }}' "$image")"
+
+          if [[ ! "$current_version" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ \
+            || ! "$current_revision" =~ ^[0-9a-fA-F]{40}$ \
+            || "$current_source" != "https://github.com/mriverodorta/homelab-inventory" \
+            || ! "$current_channel" =~ ^(release|stable)$ ]]; then
+            echo "::error title=Invalid minor alias metadata::${image} does not carry trusted release metadata."
+            exit 1
+          fi
+
+          comparison="$(cd automation && CURRENT_VERSION="$current_version" bun -e 'import { compareVersions } from "./src/release-notes.ts"; console.log(compareVersions(process.env.REQUESTED_VERSION, process.env.CURRENT_VERSION));')"
+
+          if [[ "$comparison" -lt 0 ]]; then
+            echo "action=keep-newer" >> "$GITHUB_OUTPUT"
+          elif [[ "$comparison" -eq 0 && "$current_revision" != "$REQUESTED_REVISION" ]]; then
+            echo "::error title=Minor alias revision conflict::${image} has the requested version at a different revision."
+            exit 1
+          elif [[ "$comparison" -gt 0 || "$current_channel" != "release" ]]; then
+            echo "action=move" >> "$GITHUB_OUTPUT"
+          else
+            echo "action=keep" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Publish minor release alias
+        if: steps.minor_alias.outputs.action == 'move'
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker buildx imagetools create \
+            --tag "${IMAGE_NAME}:${{ steps.release.outputs.minor_tag }}" \
+            "${IMAGE_NAME}:${{ steps.release.outputs.version }}"
+
+      - name: Verify minor release alias metadata
+        if: steps.minor_alias.outputs.action != 'keep-newer'
+        working-directory: automation
+        run: >-
+          bun scripts/verify-published-image.mjs
+          --tag "${{ steps.release.outputs.minor_tag }}"
+          --version "${{ steps.release.outputs.version }}"
+          --revision "${{ steps.release.outputs.revision }}"
+          --channel release
+
+      - name: Recheck Git tag ownership
+        shell: bash
+        working-directory: automation
+        env:
+          RELEASE_REVISION: ${{ steps.release.outputs.revision }}
+          RELEASE_TAG: ${{ steps.release.outputs.git_tag }}
+        run: |
+          set -euo pipefail
+          remote_tag="$(git ls-remote --refs origin "refs/tags/${RELEASE_TAG}")"
+          if [[ -n "$remote_tag" ]]; then
+            git fetch --force origin "refs/tags/${RELEASE_TAG}:refs/tags/${RELEASE_TAG}"
+            existing_tag_revision="$(git rev-parse "${RELEASE_TAG}^{commit}")"
+            if [[ "$existing_tag_revision" != "$RELEASE_REVISION" ]]; then
+              echo "::error title=Immutable Git tag conflict::${RELEASE_TAG} appeared at ${existing_tag_revision} during publication."
+              exit 1
+            fi
+          fi
+
+      - name: Prepare finalization
+        id: finalize_plan
+        run: echo "should_finalize=true" >> "$GITHUB_OUTPUT"
+
+  finalize:
+    needs: publish
+    if: needs.publish.outputs.should_finalize == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout verified revision
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+        with:
+          ref: ${{ needs.publish.outputs.revision }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Finalize immutable Git tag and GitHub release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_REVISION: ${{ needs.publish.outputs.revision }}
+          RELEASE_TAG: ${{ needs.publish.outputs.git_tag }}
+        run: |
+          set -euo pipefail
+          remote_tag="$(git ls-remote --refs origin "refs/tags/${RELEASE_TAG}")"
+
+          if [[ -n "$remote_tag" ]]; then
+            git fetch --force origin "refs/tags/${RELEASE_TAG}:refs/tags/${RELEASE_TAG}"
+            existing_tag_revision="$(git rev-parse "${RELEASE_TAG}^{commit}")"
+            if [[ "$existing_tag_revision" != "$RELEASE_REVISION" ]]; then
+              echo "::error title=Immutable Git tag conflict::${RELEASE_TAG} points to ${existing_tag_revision}, not ${RELEASE_REVISION}."
+              exit 1
+            fi
+          fi
+
+          if gh release view "$RELEASE_TAG" --repo "${{ github.repository }}" >/dev/null 2>&1; then
+            echo "${RELEASE_TAG} already has a GitHub release at the verified revision."
+          elif [[ -n "$remote_tag" ]]; then
+            gh release create "$RELEASE_TAG" \
+              --repo "${{ github.repository }}" \
+              --verify-tag \
+              --title "$RELEASE_TAG" \
+              --generate-notes
+          else
+            gh release create "$RELEASE_TAG" \
+              --repo "${{ github.repository }}" \
+              --target "$RELEASE_REVISION" \
+              --title "$RELEASE_TAG" \
+              --generate-notes
+          fi

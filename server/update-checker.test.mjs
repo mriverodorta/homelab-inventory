@@ -70,7 +70,7 @@ function createRegistryFetch({
 
     expect(options.headers?.Authorization).toBe('Bearer registry-token')
 
-    if (/\/manifests\/(?:stable|latest|\d+\.\d+\.\d+)$/.test(requestUrl)) {
+    if (/\/manifests\/(?:stable|latest|\d+\.\d+(?:\.\d+)?)$/.test(requestUrl)) {
       manifestCalls += 1
 
       if (rootIsManifest) {
@@ -196,6 +196,48 @@ describe('DockerHubUpdateChecker', () => {
       state: 'available',
     })
     expect(fetch.urls[1]).toContain('/manifests/latest')
+  })
+
+  it.each([
+    ['latest', 'latest'],
+    ['stable', 'stable'],
+    ['release', '0.1.20'],
+    ['release', '0.1'],
+  ])('accepts the known-safe %s channel with tag %s', async (channel, tag) => {
+    const fetch = createRegistryFetch({
+      labels: requiredLabels({ channel, version: '0.1.20' }),
+    })
+    const checker = createChecker({
+      channel,
+      fetch,
+      runningVersion: '0.1.20',
+      tag,
+    })
+
+    await expect(checker.check()).resolves.toMatchObject({
+      availableVersion: '0.1.20',
+      channel,
+      errorCode: null,
+    })
+    expect(fetch.urls).toContain(
+      `https://registry-1.docker.io/v2/mriverodorta/homelab-inventory/manifests/${tag}`,
+    )
+  })
+
+  it.each([
+    ['latest', 'stable'],
+    ['latest', '0.1.20'],
+    ['stable', 'latest'],
+    ['stable', '0.1'],
+    ['stable', '0.1.20'],
+    ['release', 'latest'],
+    ['release', 'stable'],
+    ['release', 'feature-branch'],
+    ['release', 'v0.1.20'],
+    ['release', '0.1.20-alpine'],
+    ['release', `sha256:${'a'.repeat(64)}`],
+  ])('rejects the unsupported %s channel with tag %s', (channel, tag) => {
+    expect(() => createChecker({ channel, tag })).toThrow(`Unsupported update tag: ${tag}`)
   })
 
   it('checks an immutable release tag and an explicit arm64 config', async () => {

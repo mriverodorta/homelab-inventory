@@ -18,12 +18,11 @@ describe('parseReleaseVersion', () => {
 })
 
 describe('createStableReleasePlan', () => {
-  test('publishes release tags when the Git tag is absent', () => {
+  test('plans a new stable release when the Git tag is absent', () => {
     expect(createStableReleasePlan({
       version: '0.1.20',
       revision: 'abc123',
       existingTagRevision: '',
-      imageName: 'mriverodorta/homelab-inventory',
     })).toEqual({
       state: 'create',
       channel: 'stable',
@@ -32,23 +31,16 @@ describe('createStableReleasePlan', () => {
       gitTag: 'v0.1.20',
       exactTag: '0.1.20',
       minorTag: '0.1',
-      dockerTags: [
-        'mriverodorta/homelab-inventory:stable',
-        'mriverodorta/homelab-inventory:0.1.20',
-        'mriverodorta/homelab-inventory:0.1',
-      ],
     })
   })
 
-  test('publishes only stable when the release already belongs to this commit', () => {
+  test('recognizes a release that already belongs to this commit', () => {
     expect(createStableReleasePlan({
       version: '0.1.20',
       revision: 'abc123',
       existingTagRevision: 'abc123',
-      imageName: 'mriverodorta/homelab-inventory',
     })).toMatchObject({
       state: 'existing',
-      dockerTags: ['mriverodorta/homelab-inventory:stable'],
     })
   })
 
@@ -57,24 +49,21 @@ describe('createStableReleasePlan', () => {
       version: '0.1.20',
       revision: 'abc123',
       existingTagRevision: 'def456',
-      imageName: 'mriverodorta/homelab-inventory',
     })).toThrow('v0.1.20 already points to def456')
   })
 })
 
 describe('createBranchReleasePlan', () => {
-  test('main publishes only the latest channel tag', () => {
+  test('main plans the latest channel', () => {
     expect(createBranchReleasePlan({
       branch: 'main',
       version: '0.1.20',
       revision: 'abc123',
       existingTagRevision: '',
-      imageName: 'mriverodorta/homelab-inventory',
     })).toMatchObject({
       state: 'channel',
       channel: 'latest',
       verificationTag: 'latest',
-      dockerTags: ['mriverodorta/homelab-inventory:latest'],
     })
   })
 
@@ -84,7 +73,6 @@ describe('createBranchReleasePlan', () => {
       version: '0.1.20',
       revision: 'abc123',
       existingTagRevision: '',
-      imageName: 'mriverodorta/homelab-inventory',
     })).toThrow('Publication is limited to main and stable')
   })
 })

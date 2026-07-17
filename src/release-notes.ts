@@ -19,14 +19,18 @@ export const RELEASE_NOTES: ReleaseNoteEntry[] = [
     highlights: [
       'Docker update checks now distinguish newer channel images, exact matches, revision-only rebuilds, and installations ahead of their selected channel.',
       'The update dialog labels the published latest or stable image explicitly and only shows update instructions when an update is actually available.',
+      'Stable releases now publish immutable X.Y.Z images, a moving X.Y series alias, a matching Git tag, and GitHub Release only after the Docker image is verified.',
     ],
     fixes: [
       'An older stable or latest image is no longer presented as an available update when the running installation has a higher version.',
       'Images rebuilt from a different commit at the same version can now be detected when both revisions are known.',
       'Up-to-date and ahead-of-channel states no longer show an empty release-details message or unnecessary Docker Compose commands.',
+      'Release automation refuses to overwrite an existing numbered Docker image or reuse a Git tag that belongs to another commit.',
+      'Historical release restoration now accepts only approved version-to-commit pairs and keeps registry credentials unavailable to historical build scripts.',
     ],
     notes: [
       'UPDATE_CHANNEL remains authoritative; recreate the container after changing Compose environment variables so Docker applies the new configuration.',
+      'A guarded manual workflow can restore historical numbered images without changing latest or stable.',
     ],
   },
   {

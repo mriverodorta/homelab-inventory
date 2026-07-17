@@ -124,7 +124,8 @@ More data details: [docs/DATA.md](docs/DATA.md)
 
 - `mriverodorta/homelab-inventory:stable` is built from the `stable` branch. Use this for regular homelab deployments and Watchtower.
 - `mriverodorta/homelab-inventory:latest` is built from the `main` branch. It is the newest development image and can be unstable.
-- `mriverodorta/homelab-inventory:<semver>` is built from Git tags such as `v0.2.0` and pins a specific release.
+- `mriverodorta/homelab-inventory:<X.Y.Z>` is an immutable stable release image for pinned deployments.
+- `mriverodorta/homelab-inventory:<X.Y>` follows the newest stable patch in that minor series.
 
 Recommended Compose image:
 
@@ -136,8 +137,9 @@ CI/CD uses GitHub as the source of truth:
 
 - Pull requests validate lint, tests, and production build.
 - Merges to `main` publish the `latest` Docker image.
-- Merges to `stable` publish the `stable` Docker image.
-- Tags like `v0.2.0` publish immutable semver Docker images and create a GitHub Release.
+- A new package version merged to `stable` publishes `stable`, immutable `X.Y.Z`, and the moving `X.Y` series alias.
+- Stable promotion creates the matching `vX.Y.Z` Git tag and GitHub Release only after both Docker architectures are verified.
+- Existing numbered Docker images are never overwritten; historical restoration uses a guarded manual backfill workflow.
 
 Release process details: [docs/RELEASES.md](docs/RELEASES.md)
 

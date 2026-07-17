@@ -8,7 +8,7 @@ describe('published image verification arguments', () => {
     ['latest', 'latest'],
     ['stable', 'stable'],
     ['0.1.20', 'release'],
-    ['0.1.20', 'stable'],
+    ['0.1', 'release'],
   ])('accepts tag %s with channel %s', (tag, channel) => {
     expect(parseArguments(['--tag', tag, ...metadata, '--channel', channel])).toMatchObject({ tag, channel })
   })
@@ -17,6 +17,9 @@ describe('published image verification arguments', () => {
     ['latest', 'stable'],
     ['stable', 'latest'],
     ['not-semver', 'release'],
+    ['0.1', 'stable'],
+    ['0.1.20', 'stable'],
+    ['0.1.20', 'latest'],
   ])('rejects tag %s with channel %s', (tag, channel) => {
     expect(() => parseArguments(['--tag', tag, ...metadata, '--channel', channel])).toThrow()
   })
