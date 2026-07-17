@@ -365,7 +365,14 @@ jobs:
               --generate-notes
           else
             git tag "$RELEASE_TAG" "$RELEASE_REVISION"
-            git push origin "refs/tags/${RELEASE_TAG}"
+            if ! git push origin "refs/tags/${RELEASE_TAG}"; then
+              git fetch --force origin "refs/tags/${RELEASE_TAG}:refs/tags/${RELEASE_TAG}"
+              existing_tag_revision="$(git rev-parse "${RELEASE_TAG}^{commit}")"
+              if [[ "$existing_tag_revision" != "$RELEASE_REVISION" ]]; then
+                echo "::error title=Immutable Git tag conflict::${RELEASE_TAG} appeared at ${existing_tag_revision}, not ${RELEASE_REVISION}."
+                exit 1
+              fi
+            fi
             gh release create "$RELEASE_TAG" \
               --repo "${{ github.repository }}" \
               --verify-tag \

@@ -292,9 +292,8 @@ jobs:
             || ! "$current_revision" =~ ^[0-9a-fA-F]{40}$ \
             || "$current_source" != "https://github.com/mriverodorta/homelab-inventory" \
             || ! "$current_channel" =~ ^(release|stable)$ ]]; then
-            echo "::warning title=Repairing minor alias metadata::${image} does not carry trusted release metadata; replacing the mutable alias from the verified exact image."
-            echo "action=move" >> "$GITHUB_OUTPUT"
-            exit 0
+            echo "::error title=Invalid minor alias metadata::${image} does not carry trusted release metadata; refusing to risk moving the alias backward."
+            exit 1
           fi
 
           comparison="$(cd automation && CURRENT_VERSION="$current_version" bun -e 'import { compareVersions } from "./src/release-notes.ts"; console.log(compareVersions(process.env.REQUESTED_VERSION, process.env.CURRENT_VERSION));')"
@@ -394,7 +393,14 @@ jobs:
               --generate-notes
           else
             git tag "$RELEASE_TAG" "$RELEASE_REVISION"
-            git push origin "refs/tags/${RELEASE_TAG}"
+            if ! git push origin "refs/tags/${RELEASE_TAG}"; then
+              git fetch --force origin "refs/tags/${RELEASE_TAG}:refs/tags/${RELEASE_TAG}"
+              existing_tag_revision="$(git rev-parse "${RELEASE_TAG}^{commit}")"
+              if [[ "$existing_tag_revision" != "$RELEASE_REVISION" ]]; then
+                echo "::error title=Immutable Git tag conflict::${RELEASE_TAG} appeared at ${existing_tag_revision}, not ${RELEASE_REVISION}."
+                exit 1
+              fi
+            fi
             gh release create "$RELEASE_TAG" \
               --repo "${{ github.repository }}" \
               --verify-tag \
