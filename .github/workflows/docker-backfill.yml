@@ -363,7 +363,7 @@ jobs:
         with:
           ref: ${{ needs.publish.outputs.revision }}
           fetch-depth: 0
-          persist-credentials: false
+          persist-credentials: true
 
       - name: Finalize immutable Git tag and GitHub release
         shell: bash
@@ -393,10 +393,8 @@ jobs:
               --title "$RELEASE_TAG" \
               --generate-notes
           else
-            gh api --method POST \
-              "repos/${{ github.repository }}/git/refs" \
-              -f ref="refs/tags/${RELEASE_TAG}" \
-              -f sha="$RELEASE_REVISION" >/dev/null
+            git tag "$RELEASE_TAG" "$RELEASE_REVISION"
+            git push origin "refs/tags/${RELEASE_TAG}"
             gh release create "$RELEASE_TAG" \
               --repo "${{ github.repository }}" \
               --verify-tag \
