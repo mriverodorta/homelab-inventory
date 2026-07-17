@@ -362,6 +362,7 @@ jobs:
         with:
           ref: ${{ needs.publish.outputs.revision }}
           fetch-depth: 0
+          ssh-key: ${{ secrets.RELEASE_DEPLOY_KEY }}
           persist-credentials: true
 
       - name: Finalize immutable Git tag and GitHub release
