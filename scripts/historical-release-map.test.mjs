@@ -139,11 +139,12 @@ describe('formatHistoricalReleaseOutput', () => {
 
 describe('historical release map CLI', () => {
   test('writes canonical output to stdout', () => {
+    const { GITHUB_OUTPUT: _githubOutput, ...env } = process.env
     const output = execFileSync('bun', [
       scriptPath,
       '--version', '0.1.19',
       '--revision', HISTORICAL_RELEASE_MAP['0.1.19'],
-    ], { encoding: 'utf8' })
+    ], { encoding: 'utf8', env })
 
     expect(output).toBe(formatHistoricalReleaseOutput(getHistoricalRelease('0.1.19')))
   })
