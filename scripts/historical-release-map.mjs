@@ -14,6 +14,7 @@ const RELEASES = {
   '0.1.17': '02ff99c215ee09a53b814a4b7b23e05c4157f7c4',
   '0.1.18': '0e1a85b3828626067247b1f6644b197de2eec220',
   '0.1.19': 'a41f8bc79bcb2aab12a687ad4929c5d697b34817',
+  '0.1.20': '6612ed277563ea3067ad34fe8c8710a65c3c7105',
 }
 
 export const HISTORICAL_RELEASE_MAP = Object.freeze(RELEASES)

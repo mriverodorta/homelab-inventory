@@ -27,6 +27,7 @@ const expectedReleases = [
   ['0.1.17', '02ff99c215ee09a53b814a4b7b23e05c4157f7c4'],
   ['0.1.18', '0e1a85b3828626067247b1f6644b197de2eec220'],
   ['0.1.19', 'a41f8bc79bcb2aab12a687ad4929c5d697b34817'],
+  ['0.1.20', '6612ed277563ea3067ad34fe8c8710a65c3c7105'],
 ]
 
 afterEach(() => {
@@ -36,7 +37,7 @@ afterEach(() => {
 })
 
 describe('HISTORICAL_RELEASE_MAP', () => {
-  test('contains exactly the bounded 0.1.10 through 0.1.19 releases', () => {
+  test('contains exactly the bounded 0.1.10 through 0.1.20 releases', () => {
     expect(Object.entries(HISTORICAL_RELEASE_MAP)).toEqual(expectedReleases)
   })
 
@@ -74,7 +75,7 @@ describe('getHistoricalRelease', () => {
     })
   })
 
-  test.each(['0.1.9', '0.1.20', 'v0.1.10', '0.1.10-beta.1', '']) (
+  test.each(['0.1.9', '0.1.21', 'v0.1.10', '0.1.10-beta.1', '']) (
     'rejects unsupported version %j',
     (version) => expect(() => getHistoricalRelease(version)).toThrow('Unsupported historical release version'),
   )
@@ -168,7 +169,7 @@ describe('historical release map CLI', () => {
   })
 
   test.each([
-    ['0.1.20', HISTORICAL_RELEASE_MAP['0.1.19'], 'Unsupported historical release version'],
+    ['0.1.21', HISTORICAL_RELEASE_MAP['0.1.20'], 'Unsupported historical release version'],
     ['0.1.19', 'a41f8bc', 'Expected a full 40-character Git SHA'],
     ['0.1.19', HISTORICAL_RELEASE_MAP['0.1.18'], 'refusing mismatched revision'],
   ])('fails without output for invalid mapping %s', (version, revision, message) => {
