@@ -161,6 +161,13 @@ jobs:
             exit 1
           fi
 
+      - name: Prepare historical runtime packaging
+        if: steps.exact_image.outputs.exists != 'true'
+        run: |
+          bun automation/scripts/prepare-historical-runtime.mjs \
+            --source-dir source \
+            --version "${{ steps.release.outputs.version }}"
+
       - name: Install historical dependencies
         if: steps.exact_image.outputs.exists != 'true'
         working-directory: source
