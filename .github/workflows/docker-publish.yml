@@ -363,9 +363,13 @@ jobs:
               --title "$RELEASE_TAG" \
               --generate-notes
           else
+            gh api --method POST \
+              "repos/${{ github.repository }}/git/refs" \
+              -f ref="refs/tags/${RELEASE_TAG}" \
+              -f sha="$RELEASE_REVISION" >/dev/null
             gh release create "$RELEASE_TAG" \
               --repo "${{ github.repository }}" \
-              --target "$RELEASE_REVISION" \
+              --verify-tag \
               --title "$RELEASE_TAG" \
               --generate-notes
           fi
