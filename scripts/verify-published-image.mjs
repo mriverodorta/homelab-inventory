@@ -1,6 +1,7 @@
 #!/usr/bin/env bun
 
 import assert from 'node:assert/strict'
+import { pathToFileURL } from 'node:url'
 import { DockerHubUpdateChecker } from '../server/update-checker.mjs'
 
 const HELP = `Usage: bun scripts/verify-published-image.mjs [options]
@@ -15,7 +16,7 @@ Options:
   --help                      Show this help
 `
 
-function parseArguments(args) {
+export function parseArguments(args) {
   if (args.includes('--help')) return { help: true }
 
   const values = {}
@@ -30,11 +31,14 @@ function parseArguments(args) {
     if (!values[key]) throw new Error(`Missing required --${key} argument.`)
   }
   if (!['latest', 'stable', 'release'].includes(values.channel)) throw new Error(`Unsupported channel: ${values.channel}`)
-  if (values.channel === 'release' && !/^\d+\.\d+\.\d+$/.test(values.tag)) {
-    throw new Error(`Unsupported release tag: ${values.tag}`)
+  const isSemanticVersionTag = /^\d+\.\d+\.\d+$/.test(values.tag)
+  const isFloatingChannelTag = values.tag === 'latest' || values.tag === 'stable'
+  if (!isSemanticVersionTag && !isFloatingChannelTag) throw new Error(`Unsupported image tag: ${values.tag}`)
+  if (isFloatingChannelTag && values.tag !== values.channel) {
+    throw new Error('A floating channel tag must match the expected image channel.')
   }
-  if (values.channel !== 'release' && values.tag !== values.channel) {
-    throw new Error('The channel tag and image channel must match.')
+  if (isSemanticVersionTag && !['stable', 'release'].includes(values.channel)) {
+    throw new Error('A semantic-version image must use stable or release channel metadata.')
   }
 
   return values
@@ -84,14 +88,15 @@ async function verify({ tag, version, revision, channel }) {
   assert.equal(lastResult?.channel, channel, 'Published image channel does not match.')
 }
 
-try {
+async function main() {
   const options = parseArguments(process.argv.slice(2))
-  if (options.help) {
-    console.log(HELP)
-  } else {
-    await verify(options)
-  }
-} catch (error) {
-  console.error(error instanceof Error ? error.message : 'Unable to verify the published image.')
-  process.exitCode = 1
+  if (options.help) console.log(HELP)
+  else await verify(options)
+}
+
+if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
+  main().catch((error) => {
+    console.error(error instanceof Error ? error.message : 'Unable to verify the published image.')
+    process.exitCode = 1
+  })
 }
