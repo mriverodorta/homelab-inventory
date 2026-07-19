@@ -20,6 +20,31 @@ function valuesFor(type: InventoryType): InventoryFormValues {
 }
 
 describe('InventorySpecsTabContent', () => {
+  it('uses the same type-aware placeholders in editable inspector forms', () => {
+    render(
+      <Tabs defaultValue="specs">
+        <InventorySpecsTabContent
+          values={createInventoryFormValues('storage')}
+          errors={{}}
+          onChange={vi.fn()}
+        />
+      </Tabs>,
+    )
+
+    expect(screen.getByRole('textbox', { name: 'Name' })).toHaveAttribute(
+      'placeholder',
+      'Samsung 990 EVO Plus 4TB',
+    )
+    expect(screen.getByRole('textbox', { name: 'Manufacturer' })).toHaveAttribute(
+      'placeholder',
+      'Samsung',
+    )
+    expect(screen.getByRole('spinbutton', { name: 'Capacity' })).toHaveAttribute(
+      'placeholder',
+      '4',
+    )
+  })
+
   it.each([
     ['server', 'Form Factor'],
     ['nas', 'Drive Bays'],

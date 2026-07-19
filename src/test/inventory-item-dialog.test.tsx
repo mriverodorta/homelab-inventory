@@ -10,6 +10,30 @@ afterEach(() => {
 })
 
 describe('InventoryItemDialog switch port groups', () => {
+  it('changes common and type-specific placeholders with the inventory type', async () => {
+    const user = userEvent.setup()
+
+    render(<InventoryItemDialog open onOpenChange={vi.fn()} onCreate={vi.fn()} />)
+
+    expect(screen.getByRole('textbox', { name: 'Name' })).toHaveAttribute(
+      'placeholder',
+      'Dell OptiPlex Micro 7090',
+    )
+
+    await user.click(screen.getByRole('combobox', { name: 'Inventory type' }))
+    await user.click(screen.getByRole('option', { name: 'CPU' }))
+
+    expect(screen.getByRole('textbox', { name: 'Name' })).toHaveAttribute(
+      'placeholder',
+      'Intel Core i5-10500T',
+    )
+    expect(screen.getByRole('textbox', { name: 'Model' })).toHaveAttribute(
+      'placeholder',
+      'Core i5-10500T',
+    )
+    expect(screen.getByRole('spinbutton', { name: 'Cores' })).toHaveAttribute('placeholder', '6')
+  })
+
   it('uses constrained selects for type-specific inventory fields', async () => {
     const user = userEvent.setup()
 

@@ -12,9 +12,25 @@ export type ReleaseNoteEntry = {
 
 export const RELEASE_NOTES: ReleaseNoteEntry[] = [
   {
-    version: '0.1.23',
+    version: '0.1.24',
     date: '2026-07-19',
     channel: 'latest',
+    title: 'Clearer inventory form examples',
+    highlights: [
+      'Add Item and editable inspector forms now show realistic examples tailored to the selected hardware category.',
+    ],
+    fixes: [
+      'CPU, RAM, storage, GPU, network card, NAS, switch, and patch-panel forms no longer inherit server name, manufacturer, or model placeholders.',
+      'Numeric hardware fields now include relevant examples such as CPU core counts, NAS bay counts, storage capacity, and GPU memory.',
+    ],
+    notes: [
+      'Examples remain placeholders only and are never saved as inventory values.',
+    ],
+  },
+  {
+    version: '0.1.23',
+    date: '2026-07-19',
+    channel: 'release',
     title: 'Clearer mobile inventory controls',
     highlights: [
       'The mobile inventory header now keeps Add and Close as separate, consistently spaced touch targets.',

@@ -14,6 +14,17 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 - Added repository documentation, issue templates, CI, and security guidance.
 - Clarified Docker deployment, data persistence, and development setup.
 
+## [0.1.24] - 2026-07-19
+
+### Changed
+
+- Added realistic, category-specific examples to Add Item and editable inspector forms for every inventory type.
+
+### Fixed
+
+- CPU, RAM, storage, GPU, network card, NAS, switch, and patch-panel forms no longer display server-specific name, manufacturer, and model placeholders.
+- Numeric hardware fields now show relevant examples without initializing or persisting those example values.
+
 ## [0.1.23] - 2026-07-19
 
 ### Fixed
