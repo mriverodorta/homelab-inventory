@@ -15,6 +15,7 @@ import {
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { ComponentInspectorTabs } from '@/components/component-inspector-tabs'
+import { HostCompatibilityTab } from '@/components/host-compatibility-tab'
 import { InventoryActionsMenu } from '@/components/inventory-actions-menu'
 import {
   inventoryFormValuesToInput,
@@ -2330,6 +2331,11 @@ function ServerInspectorTabs({
             />
           ),
         },
+        {
+          value: 'compatibility',
+          label: 'Compatibility',
+          content: <HostCompatibilityTab project={project} host={draftServer} />,
+        },
       ]}
     />
   )
@@ -2533,6 +2539,11 @@ function NasInspectorTabs({
           label: 'Agent',
           content: <NasAgentSection />,
         },
+        {
+          value: 'compatibility',
+          label: 'Compatibility',
+          content: <HostCompatibilityTab project={project} host={draftItem} />,
+        },
       ]}
     />
   )
@@ -2656,10 +2667,12 @@ function isEditableComponent(item: InventoryItem): item is InventoryItem & { typ
 }
 
 function ComponentItemEditor({
+  project,
   item,
   validationMessage,
   onUpdateItem,
 }: {
+  project: ProjectState
   item: InventoryItem & { type: ComponentType }
   validationMessage: string | null
   onUpdateItem: (itemId: string, input: InventoryItemInput) => void
@@ -2668,9 +2681,12 @@ function ComponentItemEditor({
     item,
     onSave: (input) => onUpdateItem(runtimeItemKey(item), input),
   })
+  const draftItem = itemFromEditorValues(item, editor.values)
 
   return (
     <ComponentInspectorTabs
+      project={project}
+      item={draftItem}
       values={editor.values}
       errors={editor.errors}
       validationMessage={validationMessage}
@@ -2903,6 +2919,7 @@ export function InspectorPanel({
                 <>
                   <ComponentItemEditor
                     key={runtimeItemKey(selectedItem)}
+                    project={project}
                     item={selectedItem}
                     validationMessage={null}
                     onUpdateItem={onUpdateItem}

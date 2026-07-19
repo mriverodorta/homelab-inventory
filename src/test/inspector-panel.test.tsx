@@ -1,4 +1,4 @@
-import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import userEvent from '@testing-library/user-event'
 import type { ComponentProps } from 'react'
@@ -206,6 +206,237 @@ const project: ProjectState = {
   connections: [],
 }
 
+const compatibilityProject: ProjectState = {
+  ...project,
+  items: {
+    ...project.items,
+    server: {
+      ...project.items.server,
+      compatibility: {
+        host: {
+          cpu: {
+            sockets: ['LGA1151'],
+            generations: ['8th Gen'],
+          },
+          memory: {
+            generations: ['DDR4'],
+            slots: 2,
+            maxCapacityGb: 64,
+            maxModuleCapacityGb: 32,
+            maxSpeedMt: 2666,
+          },
+          storageSlots: [{
+            id: 'm2-slots',
+            label: 'M.2 slots',
+            count: 2,
+            interfaces: ['NVMe'],
+            formFactors: ['2280'],
+            pcieGeneration: 3,
+          }],
+          expansionSlots: [{
+            id: 'pcie-slot',
+            label: 'PCIe slot',
+            count: 1,
+            interfaceFamily: 'pcie',
+            pcieGeneration: 3,
+            mechanicalLanes: 16,
+            electricalLanes: 4,
+            acceptedHeights: ['low-profile'],
+            maxSlotWidth: 1,
+            maxPowerWatts: 75,
+          }],
+          maxExpansionPowerWatts: 75,
+        },
+      },
+    },
+    cpu: {
+      ...project.items.cpu,
+      compatibility: {
+        requirements: {
+          cpu: {
+            socket: 'LGA1151',
+            generation: '7th Gen',
+            tdpWatts: 65,
+          },
+        },
+      },
+    },
+    ram: {
+      ...project.items.ram,
+      specs: {
+        ...project.items.ram.specs,
+        moduleCount: 2,
+      },
+    },
+    storage: {
+      ...project.items.storage,
+      specs: {
+        ...project.items.storage.specs,
+        pcie: 'PCIe 4.0 x4',
+      },
+    },
+    gpu: {
+      ...project.items.gpu,
+      compatibility: {
+        requirements: {
+          expansion: {
+            interfaceFamily: 'pcie',
+            pcieGeneration: 4,
+            connectorLanes: 8,
+            minimumElectricalLanes: 4,
+            height: 'low-profile',
+            slotWidth: 1,
+            powerWatts: 75,
+          },
+        },
+      },
+    },
+    nas: {
+      ...project.items.nas,
+      compatibility: {
+        host: {
+          memory: {
+            generations: ['DDR4'],
+            slots: 2,
+            maxCapacityGb: 32,
+            maxModuleCapacityGb: 16,
+            maxSpeedMt: 2666,
+          },
+          storageSlots: [{
+            id: 'drive-bays',
+            label: 'Drive bays',
+            count: 4,
+            interfaces: ['SATA'],
+            formFactors: ['2.5-inch', '3.5-inch'],
+          }],
+          expansionSlots: [{
+            id: 'network-slot',
+            label: 'Network slot',
+            count: 1,
+            interfaceFamily: 'pcie',
+          }],
+        },
+      },
+    },
+  },
+  assignments: [
+    ...project.assignments,
+    {
+      id: 'server-cpu',
+      serverId: 'server',
+      itemId: 'cpu',
+      type: 'cpu',
+      assignedAt: '2026-07-19T00:00:00.000Z',
+    },
+    {
+      id: 'server-ram',
+      serverId: 'server',
+      itemId: 'ram',
+      type: 'ram',
+      assignedAt: '2026-07-19T00:00:01.000Z',
+      allocation: {
+        resourceType: 'memory',
+        positions: [0, 1],
+      },
+    },
+    {
+      id: 'server-storage',
+      serverId: 'server',
+      itemId: 'storage',
+      type: 'storage',
+      assignedAt: '2026-07-19T00:00:02.000Z',
+      allocation: {
+        resourceType: 'storage',
+        groupId: 'm2-slots',
+        positions: [0],
+      },
+    },
+    {
+      id: 'server-gpu',
+      serverId: 'server',
+      itemId: 'gpu',
+      type: 'gpu',
+      assignedAt: '2026-07-19T00:00:03.000Z',
+      allocation: {
+        resourceType: 'expansion',
+        groupId: 'pcie-slot',
+        positions: [0],
+      },
+    },
+  ],
+}
+
+const collidingCompatibilityProject: ProjectState = {
+  ...compatibilityProject,
+  items: {
+    'server:1': {
+      ...compatibilityProject.items.server,
+      id: 1,
+      key: 'server:1',
+      name: 'Typed server host',
+    },
+    'nas:1': {
+      ...compatibilityProject.items.nas,
+      id: 1,
+      key: 'nas:1',
+      name: 'Colliding NAS',
+    },
+    'cpu:1': {
+      ...compatibilityProject.items.cpu,
+      id: 1,
+      key: 'cpu:1',
+      name: 'Typed CPU',
+    },
+    'ram:1': {
+      ...compatibilityProject.items.ram,
+      id: 1,
+      key: 'ram:1',
+      name: 'Typed RAM',
+    },
+    'storage:1': {
+      ...compatibilityProject.items.storage,
+      id: 1,
+      key: 'storage:1',
+      name: 'Typed storage',
+    },
+    'gpu:1': {
+      ...compatibilityProject.items.gpu,
+      id: 1,
+      key: 'gpu:1',
+      name: 'Typed GPU',
+    },
+  },
+  assignments: (['cpu', 'ram', 'storage', 'gpu'] as const).map((type, index) => ({
+    id: index + 1,
+    serverId: '1',
+    hostType: 'server',
+    hostId: 1,
+    itemId: '1',
+    itemType: type,
+    type,
+    assignedAt: `2026-07-19T00:00:0${index}.000Z`,
+    ...(type === 'ram' ? {
+      allocation: { resourceType: 'memory' as const, positions: [0, 1] },
+    } : type === 'storage' ? {
+      allocation: {
+        resourceType: 'storage' as const,
+        groupId: 'm2-slots',
+        positions: [0],
+      },
+    } : type === 'gpu' ? {
+      allocation: {
+        resourceType: 'expansion' as const,
+        groupId: 'pcie-slot',
+        positions: [0],
+      },
+    } : {}),
+  } as ProjectState['assignments'][number] & {
+    hostType: 'server'
+    hostId: number
+    itemType: typeof type
+  })),
+}
+
 afterEach(() => {
   cleanup()
   vi.clearAllMocks()
@@ -322,14 +553,65 @@ describe('InspectorPanel', () => {
     expect(errorNotice).toHaveClass('bg-[#fff4ee]')
   })
   it.each([
-    ['server', ['Specs', 'Slots', 'Ports', 'Network', 'Services', 'Agent']],
+    ['server', ['Specs', 'Slots', 'Ports', 'Network', 'Services', 'Agent', 'Compatibility']],
     ['switch', ['Specs', 'Ports', 'Connections']],
-    ['nas', ['Specs', 'Slots', 'Ports', 'Network', 'Agent']],
+    ['nas', ['Specs', 'Slots', 'Ports', 'Network', 'Agent', 'Compatibility']],
     ['patch', ['Specs', 'Ports', 'Connections', 'Network']],
   ] as const)('renders the approved %s tab order', (selectedItemId, labels) => {
     renderInspector({ selectedItemId })
 
     expect(screen.getAllByRole('tab').slice(0, labels.length).map((tab) => tab.textContent)).toEqual(labels)
+  })
+
+  it('explains server compatibility, utilization, allocations, and grouped findings', async () => {
+    const user = userEvent.setup()
+    renderInspector({ selectedItemId: 'server', project: compatibilityProject })
+
+    await user.click(screen.getByRole('tab', { name: 'Compatibility' }))
+
+    expect(screen.getByRole('status')).toHaveTextContent('Needs attention')
+    const utilization = screen.getByRole('heading', { name: 'Resource utilization' }).closest('section')
+    expect(utilization).not.toBeNull()
+    const utilizationView = within(utilization as HTMLElement)
+    expect(utilizationView.getByText('Memory')).toBeVisible()
+    expect(utilizationView.getByText('2 of 2 positions')).toBeVisible()
+    expect(utilizationView.getByText('Storage')).toBeVisible()
+    expect(utilizationView.getByText('1 of 2 positions')).toBeVisible()
+    expect(utilizationView.getByText('Expansion')).toBeVisible()
+    expect(utilizationView.getByText('1 of 1 positions')).toBeVisible()
+    expect(screen.getAllByText('32GB RAM')).not.toHaveLength(0)
+    expect(screen.getByText('Memory positions 1-2')).toBeVisible()
+    expect(screen.getByText('M.2 slots, position 1')).toBeVisible()
+    expect(screen.getByText('PCIe slot, position 1')).toBeVisible()
+    expect(screen.getByRole('heading', { name: 'Errors' })).toBeVisible()
+    expect(screen.getByRole('heading', { name: 'Warnings' })).toBeVisible()
+    expect(screen.getByRole('heading', { name: 'Unknowns' })).toBeVisible()
+  })
+
+  it('shows NAS compatibility resources without server-only slot assumptions', async () => {
+    const user = userEvent.setup()
+    renderInspector({ selectedItemId: 'nas', project: compatibilityProject })
+
+    await user.click(screen.getByRole('tab', { name: 'Compatibility' }))
+
+    expect(screen.getByRole('heading', { name: 'Resource utilization' })).toBeVisible()
+    expect(screen.getByText('Drive bays')).toBeVisible()
+  })
+
+  it('resolves typed hosts and component names when category-scoped numeric IDs collide', async () => {
+    const user = userEvent.setup()
+    renderInspector({
+      selectedItemId: 'server:1',
+      project: collidingCompatibilityProject,
+    })
+
+    await user.click(screen.getByRole('tab', { name: 'Compatibility' }))
+
+    expect(screen.getByText('Typed CPU')).toBeVisible()
+    expect(screen.getByText('Typed RAM')).toBeVisible()
+    expect(screen.getByText('Typed storage')).toBeVisible()
+    expect(screen.getByText('Typed GPU')).toBeVisible()
+    expect(screen.queryByText('Colliding NAS')).not.toBeInTheDocument()
   })
 
   it('edits NAS specs through a complete item payload', async () => {

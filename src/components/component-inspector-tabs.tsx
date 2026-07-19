@@ -1,4 +1,5 @@
 import type { InventoryFormValues } from '@/components/inventory-form/model'
+import { ComponentCompatibilityTab } from '@/components/component-compatibility-tab'
 import { PortGroupsEditor } from '@/components/inventory-form/port-groups-editor'
 import {
   InventoryFormStatus,
@@ -11,8 +12,12 @@ import {
   TabsList,
   TabsTrigger,
 } from '@/components/ui/tabs'
+import type { InventoryItem, ProjectState } from '@/types/inventory'
 
-export type ComponentInspectorTabsProps = InventorySpecsTabContentProps
+export type ComponentInspectorTabsProps = InventorySpecsTabContentProps & {
+  project: ProjectState
+  item: InventoryItem
+}
 
 const componentTypes = new Set<InventoryFormValues['type']>([
   'cpu',
@@ -23,6 +28,8 @@ const componentTypes = new Set<InventoryFormValues['type']>([
 ])
 
 export function ComponentInspectorTabs({
+  project,
+  item,
   values,
   errors,
   validationMessage,
@@ -55,6 +62,12 @@ export function ComponentInspectorTabs({
             Ports
           </TabsTrigger>
         ) : null}
+        <TabsTrigger
+          value="compatibility"
+          className="!h-9 flex-none rounded-none px-2 text-[11px] font-black uppercase tracking-[0.09em] text-[#75695d] data-active:text-[#20242c]"
+        >
+          Compatibility
+        </TabsTrigger>
       </TabsList>
 
       <InventoryFormStatus
@@ -80,6 +93,10 @@ export function ComponentInspectorTabs({
           />
         </TabsContent>
       ) : null}
+
+      <TabsContent value="compatibility" className="m-0 min-w-0">
+        <ComponentCompatibilityTab project={project} item={item} />
+      </TabsContent>
     </Tabs>
   )
 }
