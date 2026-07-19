@@ -69,6 +69,11 @@ export type ProjectCompatibilityResult = CompatibilityResult & {
   itemId: string
 }
 
+export type HostAllocationPlan = {
+  assignments: ComponentAssignment[]
+  results: ProjectCompatibilityResult[]
+}
+
 export function normalizeHostCapabilities(item: InventoryItem): HostCompatibility
 export function parsePcieDescriptor(value: unknown): PcieDescriptor
 export function normalizeComponentRequirements(
@@ -78,3 +83,5 @@ export function evaluateAssignmentCompatibility(
   input: AssignmentCompatibilityInput,
 ): CompatibilityResult
 export function evaluateProjectCompatibility(project: ProjectState): ProjectCompatibilityResult[]
+export function planHostAllocations(project: ProjectState, hostId: string): HostAllocationPlan
+export function normalizeCompatibilityProject(project: ProjectState): ProjectState

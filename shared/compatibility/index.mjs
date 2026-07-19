@@ -744,3 +744,528 @@ export function evaluateProjectCompatibility(project) {
     }]
   })
 }
+
+function compareAssignmentIds(left, right) {
+  const leftNumber = optionalNumber(left)
+  const rightNumber = optionalNumber(right)
+  const leftIsNumeric = leftNumber !== undefined && String(left).trim() !== ''
+  const rightIsNumeric = rightNumber !== undefined && String(right).trim() !== ''
+
+  if (leftIsNumeric && rightIsNumeric && leftNumber !== rightNumber) {
+    return leftNumber - rightNumber
+  }
+  if (leftIsNumeric !== rightIsNumeric) {
+    return leftIsNumeric ? -1 : 1
+  }
+  return String(left).localeCompare(String(right), undefined, { numeric: true })
+}
+
+function compareAssignments(left, right) {
+  const assignedAt = String(left.assignedAt ?? '').localeCompare(String(right.assignedAt ?? ''))
+  return assignedAt || compareAssignmentIds(left.id, right.id)
+}
+
+function assignmentIdentity(hostId, assignmentId) {
+  return JSON.stringify([String(hostId), typeof assignmentId, assignmentId])
+}
+
+function validResourceGroups(groups) {
+  if (!Array.isArray(groups)) {
+    return []
+  }
+
+  const idCounts = new Map()
+  for (const group of groups) {
+    const id = optionalString(group?.id)
+    if (id) {
+      idCounts.set(id, (idCounts.get(id) ?? 0) + 1)
+    }
+  }
+
+  return groups.filter((group) => {
+    const id = optionalString(group?.id)
+    return id && idCounts.get(id) === 1 && Number.isInteger(group.count) && group.count > 0
+  })
+}
+
+function allocationFinding(code, severity, message, field, resourceId) {
+  return {
+    code,
+    severity,
+    message,
+    field,
+    ...(resourceId ? { resourceId } : {}),
+  }
+}
+
+function resultWithFinding(result, finding) {
+  const findings = [...result.findings]
+  addFinding(findings, finding)
+  return { status: statusFor(findings), findings }
+}
+
+function allocationSize(requirements) {
+  if (requirements.type === 'ram') {
+    return Number.isInteger(requirements.moduleCount) && requirements.moduleCount > 0
+      ? requirements.moduleCount
+      : undefined
+  }
+  if (requirements.type === 'storage') {
+    return 1
+  }
+  if (requirements.type === 'gpu' || requirements.type === 'network') {
+    return Number.isInteger(requirements.slotWidth) && requirements.slotWidth > 0
+      ? requirements.slotWidth
+      : undefined
+  }
+  return 0
+}
+
+function resourceTypeFor(requirements) {
+  if (requirements.type === 'ram') return 'memory'
+  if (requirements.type === 'storage') return 'storage'
+  if (requirements.type === 'gpu' || requirements.type === 'network') return 'expansion'
+  return undefined
+}
+
+function candidateHost(host, resourceType, group) {
+  const compatibility = structuredClone(host.compatibility ?? {})
+  compatibility.host ??= {}
+  if (resourceType === 'storage') {
+    compatibility.host.storageSlots = [group]
+  } else if (resourceType === 'expansion') {
+    compatibility.host.expansionSlots = [group]
+  }
+  return { ...host, compatibility }
+}
+
+function evaluateResourceCandidate({
+  host,
+  component,
+  assignments,
+  items,
+  resourceType,
+  group,
+}) {
+  return evaluateAssignmentCompatibility({
+    host: group ? candidateHost(host, resourceType, group) : host,
+    component,
+    assignments,
+    items,
+  })
+}
+
+function requiredGroups(hostCapabilities, resourceType) {
+  if (resourceType === 'storage') {
+    return {
+      all: Array.isArray(hostCapabilities.storageSlots) ? hostCapabilities.storageSlots : [],
+      valid: validResourceGroups(hostCapabilities.storageSlots),
+    }
+  }
+  if (resourceType === 'expansion') {
+    return {
+      all: Array.isArray(hostCapabilities.expansionSlots) ? hostCapabilities.expansionSlots : [],
+      valid: validResourceGroups(hostCapabilities.expansionSlots),
+    }
+  }
+  return { all: [], valid: [] }
+}
+
+function positionsAreConsecutive(positions, size) {
+  return (
+    Array.isArray(positions) &&
+    positions.length === size &&
+    positions.every((position) => Number.isInteger(position) && position >= 0) &&
+    positions.every((position, index) => index === 0 || position === positions[index - 1] + 1)
+  )
+}
+
+function occupancyKey(resourceType, groupId) {
+  return `${resourceType}:${groupId ?? 'memory'}`
+}
+
+function occupiedSet(occupancy, resourceType, groupId) {
+  const key = occupancyKey(resourceType, groupId)
+  if (!occupancy.has(key)) {
+    occupancy.set(key, new Set())
+  }
+  return occupancy.get(key)
+}
+
+function positionsAreFree(occupancy, resourceType, groupId, positions) {
+  const occupied = occupiedSet(occupancy, resourceType, groupId)
+  return positions.every((position) => !occupied.has(position))
+}
+
+function reservePositions(occupancy, allocation) {
+  const occupied = occupiedSet(occupancy, allocation.resourceType, allocation.groupId)
+  for (const position of allocation.positions) {
+    occupied.add(position)
+  }
+}
+
+function firstConsecutivePositions(occupancy, resourceType, groupId, count, size) {
+  if (!Number.isInteger(count) || count <= 0 || !Number.isInteger(size) || size <= 0 || size > count) {
+    return undefined
+  }
+  const occupied = occupiedSet(occupancy, resourceType, groupId)
+  for (let start = 0; start <= count - size; start += 1) {
+    const positions = Array.from({ length: size }, (_, index) => start + index)
+    if (positions.every((position) => !occupied.has(position))) {
+      return positions
+    }
+  }
+  return undefined
+}
+
+function memoryCapacity(hostCapabilities) {
+  const slots = hostCapabilities.memory?.slots
+  return Number.isInteger(slots) && slots > 0 ? slots : undefined
+}
+
+function allocationMatchesResource(allocation, resourceType, group, size, occupancy, capacity) {
+  if (!allocation || allocation.resourceType !== resourceType) {
+    return false
+  }
+  if (resourceType === 'memory') {
+    if (allocation.groupId !== undefined || capacity === undefined) {
+      return false
+    }
+  } else if (!group || allocation.groupId !== group.id) {
+    return false
+  }
+  if (!positionsAreConsecutive(allocation.positions, size)) {
+    return false
+  }
+  const limit = resourceType === 'memory' ? capacity : group.count
+  return (
+    allocation.positions.every((position) => position < limit) &&
+    positionsAreFree(occupancy, resourceType, allocation.groupId, allocation.positions)
+  )
+}
+
+function invalidResourceResult(baseResult, resourceType) {
+  return resultWithFinding(
+    baseResult,
+    allocationFinding(
+      'compatibility.resource.invalid',
+      'unknown',
+      `The host's ${resourceType} resource definition is missing, duplicated, or invalid.`,
+      `host.${resourceType}Resources`,
+    ),
+  )
+}
+
+function exhaustedResourceResult(baseResult, resourceType) {
+  return resultWithFinding(
+    baseResult,
+    allocationFinding(
+      'compatibility.resource.exhausted',
+      'error',
+      `No available ${resourceType} positions can satisfy this component.`,
+      `host.${resourceType}Resources`,
+    ),
+  )
+}
+
+function missingComponentResult() {
+  return resultWithFinding(
+    { status: 'compatible', findings: [] },
+    allocationFinding(
+      'compatibility.component.missing',
+      'unknown',
+      'The assigned inventory component could not be found.',
+      'component',
+    ),
+  )
+}
+
+function planResult(assignment, result, allocation) {
+  return {
+    assignmentId: assignment.id,
+    hostId: assignment.serverId,
+    itemId: assignment.itemId,
+    ...result,
+    ...(allocation ? { allocation } : {}),
+  }
+}
+
+export function planHostAllocations(project, hostId) {
+  const host = itemLookup(project?.items, hostId)
+  if (!host || (host.type !== 'server' && host.type !== 'nas')) {
+    return { assignments: [], results: [] }
+  }
+
+  const assignments = (project.assignments ?? [])
+    .filter((assignment) => String(assignment.serverId) === String(hostId))
+    .map((assignment) => ({ ...assignment }))
+    .sort(compareAssignments)
+  const hostCapabilities = normalizeHostCapabilities(host)
+  const occupancy = new Map()
+  const preserved = new Map()
+  const priorAssignments = []
+
+  // Reserve valid persisted allocations first so recalculation does not move hardware unnecessarily.
+  for (const assignment of assignments) {
+    const component = itemLookup(project.items, assignment.itemId)
+    if (!component) {
+      priorAssignments.push(assignment)
+      continue
+    }
+    const requirements = normalizeComponentRequirements(component)
+    const resourceType = resourceTypeFor(requirements)
+    const size = allocationSize(requirements)
+    if (!resourceType || !size || !assignment.allocation) {
+      priorAssignments.push(assignment)
+      continue
+    }
+
+    if (resourceType === 'memory') {
+      const result = evaluateResourceCandidate({
+        host,
+        component,
+        assignments: priorAssignments,
+        items: project.items,
+        resourceType,
+      })
+      const capacity = memoryCapacity(hostCapabilities)
+      if (
+        result.status === 'compatible' &&
+        allocationMatchesResource(
+          assignment.allocation,
+          resourceType,
+          undefined,
+          size,
+          occupancy,
+          capacity,
+        )
+      ) {
+        reservePositions(occupancy, assignment.allocation)
+        preserved.set(assignment.id, { allocation: assignment.allocation, result })
+      }
+    } else {
+      const groups = requiredGroups(hostCapabilities, resourceType).valid
+      const group = groups.find((candidate) => candidate.id === assignment.allocation.groupId)
+      if (group) {
+        const result = evaluateResourceCandidate({
+          host,
+          component,
+          assignments: priorAssignments,
+          items: project.items,
+          resourceType,
+          group,
+        })
+        if (
+          result.status === 'compatible' &&
+          allocationMatchesResource(
+            assignment.allocation,
+            resourceType,
+            group,
+            size,
+            occupancy,
+          )
+        ) {
+          reservePositions(occupancy, assignment.allocation)
+          preserved.set(assignment.id, { allocation: assignment.allocation, result })
+        }
+      }
+    }
+    priorAssignments.push(assignment)
+  }
+
+  const plannedAssignments = []
+  const results = []
+  const processedAssignments = []
+
+  for (const assignment of assignments) {
+    const component = itemLookup(project.items, assignment.itemId)
+    if (!component) {
+      const cleanAssignment = { ...assignment }
+      delete cleanAssignment.allocation
+      plannedAssignments.push(cleanAssignment)
+      results.push(planResult(assignment, missingComponentResult()))
+      processedAssignments.push(assignment)
+      continue
+    }
+
+    const persisted = preserved.get(assignment.id)
+    if (persisted) {
+      const planned = { ...assignment, allocation: structuredClone(persisted.allocation) }
+      plannedAssignments.push(planned)
+      results.push(planResult(assignment, persisted.result, planned.allocation))
+      processedAssignments.push(planned)
+      continue
+    }
+
+    const requirements = normalizeComponentRequirements(component)
+    const resourceType = resourceTypeFor(requirements)
+    const size = allocationSize(requirements)
+    const cleanAssignment = { ...assignment }
+    delete cleanAssignment.allocation
+
+    if (!resourceType) {
+      const result = evaluateAssignmentCompatibility({
+        host,
+        component,
+        assignments: processedAssignments,
+        items: project.items,
+      })
+      plannedAssignments.push(cleanAssignment)
+      results.push(planResult(assignment, result))
+      processedAssignments.push(cleanAssignment)
+      continue
+    }
+
+    if (!size) {
+      const result = invalidResourceResult(
+        evaluateAssignmentCompatibility({
+          host,
+          component,
+          assignments: processedAssignments,
+          items: project.items,
+        }),
+        resourceType,
+      )
+      plannedAssignments.push(cleanAssignment)
+      results.push(planResult(assignment, result))
+      processedAssignments.push(cleanAssignment)
+      continue
+    }
+
+    if (resourceType === 'memory') {
+      const result = evaluateResourceCandidate({
+        host,
+        component,
+        assignments: processedAssignments,
+        items: project.items,
+        resourceType,
+      })
+      const capacity = memoryCapacity(hostCapabilities)
+      if (result.status !== 'compatible') {
+        plannedAssignments.push(cleanAssignment)
+        results.push(planResult(assignment, result))
+      } else if (capacity === undefined) {
+        const invalid = invalidResourceResult(result, resourceType)
+        plannedAssignments.push(cleanAssignment)
+        results.push(planResult(assignment, invalid))
+      } else {
+        const positions = firstConsecutivePositions(
+          occupancy,
+          resourceType,
+          undefined,
+          capacity,
+          size,
+        )
+        if (!positions) {
+          const exhausted = exhaustedResourceResult(result, resourceType)
+          plannedAssignments.push(cleanAssignment)
+          results.push(planResult(assignment, exhausted))
+        } else {
+          const allocation = { resourceType, positions }
+          reservePositions(occupancy, allocation)
+          const planned = { ...cleanAssignment, allocation }
+          plannedAssignments.push(planned)
+          results.push(planResult(assignment, result, allocation))
+        }
+      }
+      processedAssignments.push(cleanAssignment)
+      continue
+    }
+
+    const { all, valid } = requiredGroups(hostCapabilities, resourceType)
+    let compatibleCandidate
+    let unknownResult
+    let exhaustedUnknownResult
+    let incompatibleResult
+    for (const group of valid) {
+      const result = evaluateResourceCandidate({
+        host,
+        component,
+        assignments: processedAssignments,
+        items: project.items,
+        resourceType,
+        group,
+      })
+      if (result.status === 'compatible') {
+        const positions = firstConsecutivePositions(
+          occupancy,
+          resourceType,
+          group.id,
+          group.count,
+          size,
+        )
+        if (positions) {
+          compatibleCandidate = { group, positions, result }
+          break
+        }
+        incompatibleResult ??= exhaustedResourceResult(result, resourceType)
+      } else if (result.status === 'unknown') {
+        const positions = firstConsecutivePositions(
+          occupancy,
+          resourceType,
+          group.id,
+          group.count,
+          size,
+        )
+        if (positions) {
+          unknownResult ??= result
+        } else {
+          exhaustedUnknownResult ??= exhaustedResourceResult(result, resourceType)
+        }
+      } else {
+        incompatibleResult ??= result
+      }
+    }
+
+    if (compatibleCandidate) {
+      const allocation = {
+        resourceType,
+        groupId: compatibleCandidate.group.id,
+        positions: compatibleCandidate.positions,
+      }
+      reservePositions(occupancy, allocation)
+      const planned = { ...cleanAssignment, allocation }
+      plannedAssignments.push(planned)
+      results.push(planResult(assignment, compatibleCandidate.result, allocation))
+    } else {
+      const baseResult = evaluateAssignmentCompatibility({
+        host,
+        component,
+        assignments: processedAssignments,
+        items: project.items,
+      })
+      const result =
+        unknownResult ??
+        exhaustedUnknownResult ??
+        (valid.length === 0 && all.length > 0
+          ? invalidResourceResult(baseResult, resourceType)
+          : incompatibleResult ?? baseResult)
+      plannedAssignments.push(cleanAssignment)
+      results.push(planResult(assignment, result))
+    }
+    processedAssignments.push(cleanAssignment)
+  }
+
+  return { assignments: plannedAssignments, results }
+}
+
+export function normalizeCompatibilityProject(project) {
+  const hosts = Object.entries(project?.items ?? {})
+    .filter(([, item]) => item?.type === 'server' || item?.type === 'nas')
+    .map(([key]) => key)
+  const plannedByAssignment = new Map()
+
+  for (const hostId of hosts) {
+    for (const assignment of planHostAllocations(project, hostId).assignments) {
+      plannedByAssignment.set(assignmentIdentity(hostId, assignment.id), assignment)
+    }
+  }
+
+  return {
+    ...project,
+    assignments: (project.assignments ?? []).map(
+      (assignment) =>
+        plannedByAssignment.get(assignmentIdentity(assignment.serverId, assignment.id)) ?? assignment,
+    ),
+  }
+}
