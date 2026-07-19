@@ -64,6 +64,7 @@ function inventoryItemAsInput(item: InventoryItem): InventoryItemInput {
     ...(item.model !== undefined ? { model: item.model } : {}),
     ...(item.number !== undefined ? { number: item.number } : {}),
     ...(item.specs !== undefined ? { specs: item.specs } : {}),
+    ...(item.compatibility !== undefined ? { compatibility: item.compatibility } : {}),
     ...(item.properties !== undefined ? { properties: item.properties } : {}),
     ...(item.ports !== undefined ? { ports: item.ports } : {}),
     ...(item.notes !== undefined ? { notes: item.notes } : {}),

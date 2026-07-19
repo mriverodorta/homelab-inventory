@@ -1,5 +1,6 @@
 import { AlertTriangle } from 'lucide-react'
 import { TabsContent } from '@/components/ui/tabs'
+import { CompatibilityFields } from './compatibility-fields'
 import { FieldError, FieldLabel } from './field-primitives'
 import type { InventoryFormErrors, InventoryFormValues } from './model'
 import {
@@ -68,6 +69,12 @@ export function InventorySpecsFormContent({
         />
         <InventoryTypeFields
           type={values.type}
+          values={values}
+          errors={errors}
+          onChange={handleFieldChange}
+          onSelectOpenChange={onSelectOpenChange}
+        />
+        <CompatibilityFields
           values={values}
           errors={errors}
           onChange={handleFieldChange}

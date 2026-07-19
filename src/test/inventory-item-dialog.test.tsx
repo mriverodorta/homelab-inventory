@@ -10,6 +10,20 @@ afterEach(() => {
 })
 
 describe('InventoryItemDialog switch port groups', () => {
+  it('shares compatibility controls with the inspector form', async () => {
+    const user = userEvent.setup()
+    render(<InventoryItemDialog open onOpenChange={vi.fn()} onCreate={vi.fn()} />)
+
+    expect(screen.getByRole('heading', { name: 'Compatibility' })).toBeInTheDocument()
+    expect(screen.getByLabelText('Supported CPU sockets')).toBeInTheDocument()
+
+    await user.click(screen.getByRole('combobox', { name: 'Inventory type' }))
+    await user.click(screen.getByRole('option', { name: 'CPU' }))
+
+    expect(screen.getByLabelText('CPU socket')).toBeInTheDocument()
+    expect(screen.queryByLabelText('Supported CPU sockets')).not.toBeInTheDocument()
+  })
+
   it('changes common and type-specific placeholders with the inventory type', async () => {
     const user = userEvent.setup()
 

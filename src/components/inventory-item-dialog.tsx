@@ -1,5 +1,6 @@
 import { AlertTriangle } from 'lucide-react'
 import { useRef, useState, type FormEvent } from 'react'
+import { CompatibilityFields } from '@/components/inventory-form/compatibility-fields'
 import { FieldLabel } from '@/components/inventory-form/field-primitives'
 import {
   createInventoryFormValues,
@@ -184,6 +185,7 @@ export function InventoryItemDialog({
 
               <InventoryCommonFields type={values.type} values={values} errors={errors} onChange={updateValues} onSelectOpenChange={handleSelectOpenChange} />
               <InventoryTypeFields type={values.type} values={values} errors={errors} onChange={updateValues} onSelectOpenChange={handleSelectOpenChange} />
+              <CompatibilityFields values={values} errors={errors} onChange={updateValues} onSelectOpenChange={handleSelectOpenChange} />
               <PortGroupsEditor type={values.type} groups={values.portGroups} error={errors.portGroups} onChange={(portGroups) => updateValues({ portGroups })} onSelectOpenChange={handleSelectOpenChange} />
 
               <FieldLabel>

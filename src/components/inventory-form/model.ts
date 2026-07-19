@@ -5,6 +5,11 @@ import {
   isSwitchNetworkPortType,
 } from '@/lib/switch-ports'
 import type {
+  CardHeight,
+  ExpansionInterfaceFamily,
+  InventoryCompatibility,
+} from '@/types/compatibility'
+import type {
   InventoryItem,
   InventoryPort,
   InventoryPortRole,
@@ -22,6 +27,28 @@ export type PortGroup = {
   speed: string
   role: InventoryPortRole
   originalPortIds?: Array<string | number>
+}
+
+export type StorageSlotGroupDraft = {
+  id: string
+  label: string
+  count: string
+  interfaces: string[]
+  formFactors: string[]
+  pcieGeneration: string
+}
+
+export type ExpansionSlotGroupDraft = {
+  id: string
+  label: string
+  count: string
+  interfaceFamily: string
+  pcieGeneration: string
+  mechanicalLanes: string
+  electricalLanes: string
+  acceptedHeights: string[]
+  maxSlotWidth: string
+  maxPowerWatts: string
 }
 
 export type InventoryFormValues = {
@@ -46,6 +73,7 @@ export type InventoryFormValues = {
   generation: string
   speedMt: string
   secondarySpeedMt: string
+  moduleCount: string
   capacity: string
   storageUnit: 'GB' | 'TB'
   interface: string
@@ -63,6 +91,28 @@ export type InventoryFormValues = {
   portGroups: PortGroup[]
   originalPorts: InventoryPort[]
   preservedSpecs: InventorySpecs
+  hostCpuSockets: string[]
+  hostCpuGenerations: string[]
+  hostCpuMaxTdpWatts: string
+  hostMemoryGenerations: string[]
+  hostMemorySlots: string
+  hostMemoryMaxCapacityGb: string
+  hostMemoryMaxModuleCapacityGb: string
+  hostMemoryMaxSpeedMt: string
+  storageSlotGroups: StorageSlotGroupDraft[]
+  expansionSlotGroups: ExpansionSlotGroupDraft[]
+  hostMaxExpansionPowerWatts: string
+  cpuSocket: string
+  cpuGeneration: string
+  cpuTdpWatts: string
+  expansionInterfaceFamily: string
+  expansionPcieGeneration: string
+  expansionConnectorLanes: string
+  expansionMinimumElectricalLanes: string
+  expansionHeight: string
+  expansionSlotWidth: string
+  expansionPowerWatts: string
+  preservedCompatibility: InventoryCompatibility
   subtype?: string
   properties?: InventoryProperties
 }
@@ -75,7 +125,7 @@ const KNOWN_SPEC_KEYS: Record<InventoryType, string[]> = {
   server: ['formFactor', 'networkSlot', 'wireless'],
   nas: ['driveBays', 'm2Slots'],
   cpu: ['cores', 'threads', 'baseClockGhz', 'boostClockGhz'],
-  ram: ['capacityGb', 'generation', 'speedMt', 'secondarySpeedMt'],
+  ram: ['capacityGb', 'generation', 'speedMt', 'secondarySpeedMt', 'moduleCount'],
   storage: ['capacityGb', 'capacityTb', 'interface', 'formFactor'],
   gpu: ['vramGb', 'formFactor', 'slotWidth', 'pcie'],
   network: ['ports', 'speedMbps', 'interface', 'formFactor'],
@@ -96,6 +146,35 @@ function numberValue(value: string): number | undefined {
   if (value.trim() === '') return undefined
   const parsed = Number(value)
   return Number.isFinite(parsed) ? parsed : undefined
+}
+
+function stringArray(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.filter((entry): entry is string => typeof entry === 'string' && entry.trim() !== '')
+    : []
+}
+
+function cloneCompatibility(value: InventoryCompatibility | undefined): InventoryCompatibility {
+  return value ? structuredClone(value) : {}
+}
+
+function asMutableRecord(value: object): Record<string, unknown> {
+  return value as Record<string, unknown>
+}
+
+function setOptional(target: Record<string, unknown>, key: string, value: unknown): void {
+  if (value === undefined || value === '' || (Array.isArray(value) && value.length === 0)) {
+    delete target[key]
+  } else {
+    target[key] = value
+  }
+}
+
+function removeEmptyObject(target: Record<string, unknown>, key: string): void {
+  const value = target[key]
+  if (value && typeof value === 'object' && !Array.isArray(value) && Object.keys(value).length === 0) {
+    delete target[key]
+  }
 }
 
 function speedMbps(speed: string): number | undefined {
@@ -221,6 +300,7 @@ export function createInventoryFormValues(type: InventoryType): InventoryFormVal
     generation: '',
     speedMt: '',
     secondarySpeedMt: '',
+    moduleCount: '',
     capacity: '',
     storageUnit: 'TB',
     interface: '',
@@ -238,6 +318,28 @@ export function createInventoryFormValues(type: InventoryType): InventoryFormVal
     portGroups: defaultPortGroups(type),
     originalPorts: [],
     preservedSpecs: {},
+    hostCpuSockets: [],
+    hostCpuGenerations: [],
+    hostCpuMaxTdpWatts: '',
+    hostMemoryGenerations: [],
+    hostMemorySlots: '',
+    hostMemoryMaxCapacityGb: '',
+    hostMemoryMaxModuleCapacityGb: '',
+    hostMemoryMaxSpeedMt: '',
+    storageSlotGroups: [],
+    expansionSlotGroups: [],
+    hostMaxExpansionPowerWatts: '',
+    cpuSocket: '',
+    cpuGeneration: '',
+    cpuTdpWatts: '',
+    expansionInterfaceFamily: '',
+    expansionPcieGeneration: '',
+    expansionConnectorLanes: '',
+    expansionMinimumElectricalLanes: '',
+    expansionHeight: '',
+    expansionSlotWidth: '',
+    expansionPowerWatts: '',
+    preservedCompatibility: {},
   }
 }
 
@@ -272,6 +374,7 @@ export function inventoryItemToFormValues(item: InventoryItem): InventoryFormVal
     generation: stringValue(specs.generation),
     speedMt: stringValue(specs.speedMt),
     secondarySpeedMt: stringValue(specs.secondarySpeedMt),
+    moduleCount: stringValue(specs.moduleCount),
     capacity: stringValue(hasCapacityTb ? specs.capacityTb : specs.capacityGb),
     storageUnit: hasCapacityTb ? 'TB' : 'GB',
     interface: stringValue(specs.interface),
@@ -289,6 +392,46 @@ export function inventoryItemToFormValues(item: InventoryItem): InventoryFormVal
     portGroups: inventoryPortsToPortGroups(item.ports),
     originalPorts: item.ports?.map(clonePort) ?? [],
     preservedSpecs,
+    hostCpuSockets: stringArray(item.compatibility?.host?.cpu?.sockets),
+    hostCpuGenerations: stringArray(item.compatibility?.host?.cpu?.generations),
+    hostCpuMaxTdpWatts: stringValue(item.compatibility?.host?.cpu?.maxTdpWatts),
+    hostMemoryGenerations: stringArray(item.compatibility?.host?.memory?.generations),
+    hostMemorySlots: stringValue(item.compatibility?.host?.memory?.slots),
+    hostMemoryMaxCapacityGb: stringValue(item.compatibility?.host?.memory?.maxCapacityGb),
+    hostMemoryMaxModuleCapacityGb: stringValue(item.compatibility?.host?.memory?.maxModuleCapacityGb),
+    hostMemoryMaxSpeedMt: stringValue(item.compatibility?.host?.memory?.maxSpeedMt),
+    storageSlotGroups: item.compatibility?.host?.storageSlots?.map((group) => ({
+      id: group.id,
+      label: group.label,
+      count: stringValue(group.count),
+      interfaces: stringArray(group.interfaces),
+      formFactors: stringArray(group.formFactors),
+      pcieGeneration: stringValue(group.pcieGeneration),
+    })) ?? [],
+    expansionSlotGroups: item.compatibility?.host?.expansionSlots?.map((group) => ({
+      id: group.id,
+      label: group.label,
+      count: stringValue(group.count),
+      interfaceFamily: stringValue(group.interfaceFamily),
+      pcieGeneration: stringValue(group.pcieGeneration),
+      mechanicalLanes: stringValue(group.mechanicalLanes),
+      electricalLanes: stringValue(group.electricalLanes),
+      acceptedHeights: stringArray(group.acceptedHeights),
+      maxSlotWidth: stringValue(group.maxSlotWidth),
+      maxPowerWatts: stringValue(group.maxPowerWatts),
+    })) ?? [],
+    hostMaxExpansionPowerWatts: stringValue(item.compatibility?.host?.maxExpansionPowerWatts),
+    cpuSocket: stringValue(item.compatibility?.requirements?.cpu?.socket),
+    cpuGeneration: stringValue(item.compatibility?.requirements?.cpu?.generation),
+    cpuTdpWatts: stringValue(item.compatibility?.requirements?.cpu?.tdpWatts),
+    expansionInterfaceFamily: stringValue(item.compatibility?.requirements?.expansion?.interfaceFamily),
+    expansionPcieGeneration: stringValue(item.compatibility?.requirements?.expansion?.pcieGeneration),
+    expansionConnectorLanes: stringValue(item.compatibility?.requirements?.expansion?.connectorLanes),
+    expansionMinimumElectricalLanes: stringValue(item.compatibility?.requirements?.expansion?.minimumElectricalLanes),
+    expansionHeight: stringValue(item.compatibility?.requirements?.expansion?.height),
+    expansionSlotWidth: stringValue(item.compatibility?.requirements?.expansion?.slotWidth),
+    expansionPowerWatts: stringValue(item.compatibility?.requirements?.expansion?.powerWatts),
+    preservedCompatibility: cloneCompatibility(item.compatibility),
     subtype: item.subtype,
     properties: item.properties ? { ...item.properties } : undefined,
   }
@@ -387,6 +530,7 @@ export function inventoryFormValuesToInput(values: InventoryFormValues): Invento
     setSpec(specs, 'generation', cleanString(values.generation))
     setSpec(specs, 'speedMt', numberValue(values.speedMt))
     setSpec(specs, 'secondarySpeedMt', numberValue(values.secondarySpeedMt))
+    setSpec(specs, 'moduleCount', numberValue(values.moduleCount))
   } else if (type === 'storage') {
     delete specs.capacityGb
     delete specs.capacityTb
@@ -414,6 +558,7 @@ export function inventoryFormValuesToInput(values: InventoryFormValues): Invento
     setSpec(specs, 'mount', cleanString(values.mount))
   }
 
+  const compatibility = buildCompatibility(values)
   const ports = inventoryTypeHasPorts(type)
     ? reconcilePorts(type, values.portGroups, values.originalPorts)
     : undefined
@@ -427,10 +572,124 @@ export function inventoryFormValuesToInput(values: InventoryFormValues): Invento
     ...(cleanString(values.number) ? { number: values.number.trim() } : {}),
     ...(values.subtype ? { subtype: values.subtype } : {}),
     ...(Object.keys(specs).length ? { specs } : {}),
+    ...(compatibility ? { compatibility } : {}),
     ...(values.properties ? { properties: { ...values.properties } } : {}),
     ...(ports ? { ports } : {}),
     ...(cleanString(values.notes) ? { notes: values.notes.trim() } : {}),
   }
+}
+
+function buildCompatibility(values: InventoryFormValues): InventoryCompatibility | undefined {
+  const compatibility = cloneCompatibility(values.preservedCompatibility)
+  const root = asMutableRecord(compatibility)
+
+  if (values.type === 'server' || values.type === 'nas') {
+    const host = compatibility.host ? structuredClone(compatibility.host) : {}
+    const hostRecord = asMutableRecord(host)
+    const cpu = host.cpu ? { ...host.cpu } : {}
+    const cpuRecord = asMutableRecord(cpu)
+    setOptional(cpuRecord, 'sockets', values.hostCpuSockets.map((value) => value.trim()).filter(Boolean))
+    setOptional(cpuRecord, 'generations', values.hostCpuGenerations)
+    setOptional(cpuRecord, 'maxTdpWatts', numberValue(values.hostCpuMaxTdpWatts))
+    if (Object.keys(cpuRecord).length) host.cpu = cpu
+    else delete host.cpu
+
+    const memory = host.memory ? { ...host.memory } : {}
+    const memoryRecord = asMutableRecord(memory)
+    setOptional(memoryRecord, 'generations', values.hostMemoryGenerations)
+    setOptional(memoryRecord, 'slots', numberValue(values.hostMemorySlots))
+    setOptional(memoryRecord, 'maxCapacityGb', numberValue(values.hostMemoryMaxCapacityGb))
+    setOptional(memoryRecord, 'maxModuleCapacityGb', numberValue(values.hostMemoryMaxModuleCapacityGb))
+    setOptional(memoryRecord, 'maxSpeedMt', numberValue(values.hostMemoryMaxSpeedMt))
+    if (Object.keys(memoryRecord).length) host.memory = memory
+    else delete host.memory
+
+    const originalStorageGroups = new Map(
+      (compatibility.host?.storageSlots ?? []).map((group) => [group.id, group]),
+    )
+    const storageSlots = values.storageSlotGroups.filter((draft) => (
+      draft.label.trim() !== ''
+      || draft.count.trim() !== ''
+      || draft.interfaces.length > 0
+      || draft.formFactors.length > 0
+      || draft.pcieGeneration.trim() !== ''
+    )).map((draft) => {
+      const group = structuredClone(originalStorageGroups.get(draft.id) ?? {}) as Record<string, unknown>
+      group.id = draft.id
+      group.label = draft.label.trim()
+      setOptional(group, 'count', numberValue(draft.count))
+      setOptional(group, 'interfaces', draft.interfaces)
+      setOptional(group, 'formFactors', draft.formFactors)
+      setOptional(group, 'pcieGeneration', numberValue(draft.pcieGeneration))
+      return group
+    })
+    setOptional(hostRecord, 'storageSlots', storageSlots)
+
+    const originalExpansionGroups = new Map(
+      (compatibility.host?.expansionSlots ?? []).map((group) => [group.id, group]),
+    )
+    const expansionSlots = values.expansionSlotGroups.filter((draft) => (
+      draft.label.trim() !== ''
+      || draft.count.trim() !== ''
+      || draft.interfaceFamily.trim() !== ''
+      || draft.pcieGeneration.trim() !== ''
+      || draft.mechanicalLanes.trim() !== ''
+      || draft.electricalLanes.trim() !== ''
+      || draft.acceptedHeights.length > 0
+      || draft.maxSlotWidth.trim() !== ''
+      || draft.maxPowerWatts.trim() !== ''
+    )).map((draft) => {
+      const group = structuredClone(originalExpansionGroups.get(draft.id) ?? {}) as Record<string, unknown>
+      group.id = draft.id
+      group.label = draft.label.trim()
+      setOptional(group, 'count', numberValue(draft.count))
+      setOptional(group, 'interfaceFamily', cleanString(draft.interfaceFamily))
+      setOptional(group, 'pcieGeneration', numberValue(draft.pcieGeneration))
+      setOptional(group, 'mechanicalLanes', numberValue(draft.mechanicalLanes))
+      setOptional(group, 'electricalLanes', numberValue(draft.electricalLanes))
+      setOptional(group, 'acceptedHeights', draft.acceptedHeights)
+      setOptional(group, 'maxSlotWidth', numberValue(draft.maxSlotWidth))
+      setOptional(group, 'maxPowerWatts', numberValue(draft.maxPowerWatts))
+      return group
+    })
+    setOptional(hostRecord, 'expansionSlots', expansionSlots)
+    setOptional(hostRecord, 'maxExpansionPowerWatts', numberValue(values.hostMaxExpansionPowerWatts))
+    if (Object.keys(hostRecord).length) compatibility.host = host
+    else delete compatibility.host
+  }
+
+  if (values.type === 'cpu') {
+    const requirements = compatibility.requirements ? structuredClone(compatibility.requirements) : {}
+    const requirementsRecord = asMutableRecord(requirements)
+    const cpu = requirements.cpu ? { ...requirements.cpu } : {}
+    const cpuRecord = asMutableRecord(cpu)
+    setOptional(cpuRecord, 'socket', cleanString(values.cpuSocket))
+    setOptional(cpuRecord, 'generation', cleanString(values.cpuGeneration))
+    setOptional(cpuRecord, 'tdpWatts', numberValue(values.cpuTdpWatts))
+    if (Object.keys(cpuRecord).length) requirements.cpu = cpu
+    else delete requirements.cpu
+    removeEmptyObject(requirementsRecord, 'cpu')
+    if (Object.keys(requirementsRecord).length) compatibility.requirements = requirements
+    else delete compatibility.requirements
+  } else if (values.type === 'gpu' || values.type === 'network') {
+    const requirements = compatibility.requirements ? structuredClone(compatibility.requirements) : {}
+    const requirementsRecord = asMutableRecord(requirements)
+    const expansion = requirements.expansion ? { ...requirements.expansion } : {}
+    const expansionRecord = asMutableRecord(expansion)
+    setOptional(expansionRecord, 'interfaceFamily', cleanString(values.expansionInterfaceFamily) as ExpansionInterfaceFamily | undefined)
+    setOptional(expansionRecord, 'pcieGeneration', numberValue(values.expansionPcieGeneration))
+    setOptional(expansionRecord, 'connectorLanes', numberValue(values.expansionConnectorLanes))
+    setOptional(expansionRecord, 'minimumElectricalLanes', numberValue(values.expansionMinimumElectricalLanes))
+    setOptional(expansionRecord, 'height', cleanString(values.expansionHeight) as CardHeight | undefined)
+    setOptional(expansionRecord, 'slotWidth', numberValue(values.expansionSlotWidth))
+    setOptional(expansionRecord, 'powerWatts', numberValue(values.expansionPowerWatts))
+    if (Object.keys(expansionRecord).length) requirements.expansion = expansion
+    else delete requirements.expansion
+    if (Object.keys(requirementsRecord).length) compatibility.requirements = requirements
+    else delete compatibility.requirements
+  }
+
+  return Object.keys(root).length ? compatibility : undefined
 }
 
 function validateNumber(errors: InventoryFormErrors, values: InventoryFormValues, key: keyof InventoryFormValues, minimum = 0): void {
@@ -446,13 +705,28 @@ export function validateInventoryFormValues(values: InventoryFormValues): Invent
   const errors: InventoryFormErrors = {}
   if (!values.name.trim()) errors.name = 'Name is required.'
 
-  const positiveFields: Array<keyof InventoryFormValues> = ['cores', 'threads', 'capacityGb']
+  const positiveFields: Array<keyof InventoryFormValues> = ['cores', 'threads', 'capacityGb', 'moduleCount', 'hostMemorySlots']
   const nonNegativeFields: Array<keyof InventoryFormValues> = [
     'baseClockGhz', 'boostClockGhz', 'driveBays', 'm2Slots', 'speedMt', 'secondarySpeedMt',
     'capacity', 'vramGb', 'switchingCapacityGbps', 'rackUnits',
+    'hostCpuMaxTdpWatts', 'hostMemoryMaxCapacityGb', 'hostMemoryMaxModuleCapacityGb',
+    'hostMemoryMaxSpeedMt', 'hostMaxExpansionPowerWatts', 'cpuTdpWatts',
+    'expansionPowerWatts',
   ]
   for (const key of positiveFields) validateNumber(errors, values, key, 1)
   for (const key of nonNegativeFields) validateNumber(errors, values, key)
+
+  const invalidStorageGroup = values.storageSlotGroups.find((group) => (
+    group.count.trim() !== ''
+      && (!Number.isInteger(Number(group.count)) || Number(group.count) < 1)
+  ))
+  if (invalidStorageGroup) errors.storageSlotGroups = 'Storage slot counts must be whole numbers of at least 1.'
+
+  const invalidExpansionGroup = values.expansionSlotGroups.find((group) => (
+    group.count.trim() !== ''
+      && (!Number.isInteger(Number(group.count)) || Number(group.count) < 1)
+  ))
+  if (invalidExpansionGroup) errors.expansionSlotGroups = 'Expansion slot counts must be whole numbers of at least 1.'
 
   const invalidCount = values.portGroups.find(
     (group) => !Number.isInteger(Number(group.count))

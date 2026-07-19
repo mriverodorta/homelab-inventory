@@ -9,6 +9,11 @@ import {
   validateInventoryFormValues,
 } from '@/components/inventory-form/model'
 import {
+  CPU_GENERATIONS,
+  EXPANSION_INTERFACE_FAMILIES,
+  PCIE_GENERATIONS,
+  PCIE_LANE_WIDTHS,
+  STORAGE_INTERFACES,
   SWITCH_MANAGEMENT_OPTIONS,
   withLegacyOption,
 } from '@/components/inventory-form/options'
@@ -99,6 +104,169 @@ function fixtureFor(type: InventoryType): InventoryItem {
 }
 
 describe('inventory form model', () => {
+  it('creates blank compatibility drafts without inventing support data', () => {
+    const values = createInventoryFormValues('server')
+
+    expect(values.hostCpuSockets).toEqual([])
+    expect(values.hostMemoryGenerations).toEqual([])
+    expect(values.storageSlotGroups).toEqual([])
+    expect(values.expansionSlotGroups).toEqual([])
+    expect(values.preservedCompatibility).toEqual({})
+
+    values.name = 'Unknown chassis'
+    expect(inventoryFormValuesToInput(values)).not.toHaveProperty('compatibility')
+  })
+
+  it('round trips host compatibility resource groups with stable IDs', () => {
+    const item: InventoryItem = {
+      id: 1,
+      type: 'server',
+      name: 'Compatible host',
+      compatibility: {
+        host: {
+          cpu: { sockets: ['LGA1200'], generations: ['Intel 10th Gen'], maxTdpWatts: 65 },
+          memory: {
+            generations: ['DDR4'],
+            slots: 2,
+            maxCapacityGb: 64,
+            maxModuleCapacityGb: 32,
+            maxSpeedMt: 3200,
+          },
+          storageSlots: [{
+            id: 'm2-primary',
+            label: 'M.2 Primary',
+            count: 1,
+            interfaces: ['NVMe'],
+            formFactors: ['2280'],
+            pcieGeneration: 3,
+          }],
+          expansionSlots: [{
+            id: 'pcie-main',
+            label: 'PCIe Main',
+            count: 1,
+            interfaceFamily: 'pcie',
+            pcieGeneration: 3,
+            mechanicalLanes: 16,
+            electricalLanes: 8,
+            acceptedHeights: ['low-profile'],
+            maxSlotWidth: 2,
+            maxPowerWatts: 75,
+          }],
+          maxExpansionPowerWatts: 100,
+        },
+      },
+    }
+
+    const values = inventoryItemToFormValues(item)
+    expect(values.storageSlotGroups[0].id).toBe('m2-primary')
+    expect(values.expansionSlotGroups[0].id).toBe('pcie-main')
+    expect(inventoryFormValuesToInput(values).compatibility).toEqual(item.compatibility)
+  })
+
+  it('round trips CPU and expansion requirements and omits cleared values', () => {
+    const cpu = inventoryItemToFormValues({
+      id: 2,
+      type: 'cpu',
+      name: 'CPU',
+      compatibility: { requirements: { cpu: { socket: 'LGA1200', generation: 'Intel 10th Gen', tdpWatts: 35 } } },
+    })
+    expect(inventoryFormValuesToInput(cpu).compatibility).toEqual({
+      requirements: { cpu: { socket: 'LGA1200', generation: 'Intel 10th Gen', tdpWatts: 35 } },
+    })
+
+    const network = inventoryItemToFormValues({
+      id: 3,
+      type: 'network',
+      name: 'NIC',
+      compatibility: {
+        requirements: {
+          expansion: {
+            interfaceFamily: 'pcie',
+            pcieGeneration: 3,
+            connectorLanes: 8,
+            minimumElectricalLanes: 4,
+            height: 'low-profile',
+            slotWidth: 1,
+            powerWatts: 12,
+          },
+        },
+      },
+    })
+    expect(inventoryFormValuesToInput(network).compatibility).toEqual({
+      requirements: {
+        expansion: {
+          interfaceFamily: 'pcie',
+          pcieGeneration: 3,
+          connectorLanes: 8,
+          minimumElectricalLanes: 4,
+          height: 'low-profile',
+          slotWidth: 1,
+          powerWatts: 12,
+        },
+      },
+    })
+
+    network.expansionPowerWatts = ''
+    expect(inventoryFormValuesToInput(network).compatibility?.requirements?.expansion)
+      .not.toHaveProperty('powerWatts')
+  })
+
+  it('persists RAM moduleCount as a canonical spec', () => {
+    const values = inventoryItemToFormValues({
+      id: 4,
+      type: 'ram',
+      name: '32GB DDR4',
+      specs: { capacityGb: 32, generation: 'DDR4', moduleCount: 2 },
+    })
+
+    expect(values.moduleCount).toBe('2')
+    expect(inventoryFormValuesToInput(values).specs).toEqual({
+      capacityGb: 32,
+      generation: 'DDR4',
+      moduleCount: 2,
+    })
+  })
+
+  it('preserves unknown compatibility fields while editing known values', () => {
+    const item = {
+      id: 5,
+      type: 'server' as const,
+      name: 'Legacy host',
+      compatibility: {
+        legacyRoot: { keep: true },
+        host: {
+          legacyHost: 'keep-me',
+          cpu: { sockets: ['LGA1151'], legacyCpu: 42 },
+          storageSlots: [{
+            id: 'legacy-slot',
+            label: 'Legacy slot',
+            count: 1,
+            interfaces: ['SATA'],
+            legacyGroup: 'keep-group',
+          }],
+        },
+      },
+    } as unknown as InventoryItem
+
+    const values = inventoryItemToFormValues(item)
+    values.hostCpuMaxTdpWatts = '65'
+    const compatibility = inventoryFormValuesToInput(values).compatibility as unknown as Record<string, any>
+
+    expect(compatibility.legacyRoot).toEqual({ keep: true })
+    expect(compatibility.host.legacyHost).toBe('keep-me')
+    expect(compatibility.host.cpu.legacyCpu).toBe(42)
+    expect(compatibility.host.storageSlots[0].legacyGroup).toBe('keep-group')
+    expect(compatibility.host.cpu.maxTdpWatts).toBe(65)
+  })
+
+  it('exposes canonical constrained compatibility choices', () => {
+    expect(CPU_GENERATIONS).toContain('Intel 10th Gen')
+    expect(STORAGE_INTERFACES).toContain('NVMe')
+    expect(PCIE_GENERATIONS).toEqual(['1', '2', '3', '4', '5', '6'])
+    expect(PCIE_LANE_WIDTHS).toEqual(['1', '2', '4', '8', '16'])
+    expect(EXPANSION_INTERFACE_FAMILIES).toEqual(['pcie', 'm2-ae', 'usb', 'onboard'])
+  })
+
   it.each([
     'server',
     'nas',

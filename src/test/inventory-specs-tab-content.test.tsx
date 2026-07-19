@@ -20,6 +20,68 @@ function valuesFor(type: InventoryType): InventoryFormValues {
 }
 
 describe('InventorySpecsTabContent', () => {
+  it.each([
+    ['server', 'Supported CPU sockets'],
+    ['nas', 'Supported CPU sockets'],
+    ['cpu', 'CPU socket'],
+    ['ram', 'Module count'],
+    ['gpu', 'Expansion interface'],
+    ['network', 'Expansion interface'],
+  ] as const)('renders relevant compatibility controls for %s', (type, label) => {
+    render(
+      <Tabs defaultValue="specs">
+        <InventorySpecsTabContent
+          values={valuesFor(type)}
+          errors={{}}
+          onChange={vi.fn()}
+        />
+      </Tabs>,
+    )
+
+    expect(screen.getByRole('heading', { name: 'Compatibility' })).toBeInTheDocument()
+    expect(screen.getByLabelText(label)).toBeInTheDocument()
+  })
+
+  it('does not render compatibility controls for non-host infrastructure', () => {
+    render(
+      <Tabs defaultValue="specs">
+        <InventorySpecsTabContent
+          values={valuesFor('switch')}
+          errors={{}}
+          onChange={vi.fn()}
+        />
+      </Tabs>,
+    )
+
+    expect(screen.queryByRole('heading', { name: 'Compatibility' })).not.toBeInTheDocument()
+  })
+
+  it('adds and removes host resource groups as complete stable drafts', () => {
+    const onChange = vi.fn()
+    render(
+      <Tabs defaultValue="specs">
+        <InventorySpecsTabContent
+          values={valuesFor('server')}
+          errors={{}}
+          onChange={onChange}
+        />
+      </Tabs>,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'Add storage slot group' }))
+    const patch = onChange.mock.calls.at(-1)?.[0]
+    expect(patch.storageSlotGroups).toEqual([
+      expect.objectContaining({
+        id: expect.stringMatching(/^storage-/),
+        label: '',
+        count: '',
+        interfaces: [],
+        formFactors: [],
+        pcieGeneration: '',
+      }),
+    ])
+  })
+
   it('uses the same type-aware placeholders in editable inspector forms', () => {
     render(
       <Tabs defaultValue="specs">
