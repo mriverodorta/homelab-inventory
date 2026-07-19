@@ -37,6 +37,16 @@ function normalizeRamGeneration(value) {
   return optionalString(value)?.toUpperCase()
 }
 
+function normalizeCpuSocket(value) {
+  const normalized = optionalString(value)
+  if (!normalized) {
+    return undefined
+  }
+
+  const compact = normalized.toUpperCase().replace(/[\s_-]+/g, '')
+  return compact.replace(/^FC(?=(?:LGA|BGA|PGA)\d)/, '')
+}
+
 function normalizeStorageInterface(value) {
   const normalized = optionalString(value)
   if (!normalized) {
@@ -75,6 +85,11 @@ export function normalizeHostCapabilities(item) {
   }
 
   const normalized = structuredClone(host)
+  if (Array.isArray(normalized.cpu?.sockets)) {
+    normalized.cpu.sockets = normalized.cpu.sockets
+      .map(normalizeCpuSocket)
+      .filter(Boolean)
+  }
   normalizeNumericField(normalized.cpu, 'maxTdpWatts')
   for (const field of ['slots', 'maxCapacityGb', 'maxModuleCapacityGb', 'maxSpeedMt']) {
     normalizeNumericField(normalized.memory, field)
@@ -123,7 +138,7 @@ export function normalizeComponentRequirements(item) {
   if (item?.type === 'cpu') {
     const structured = item.compatibility?.requirements?.cpu ?? {}
     const normalized = { type: 'cpu' }
-    const socket = optionalString(structured.socket)
+    const socket = normalizeCpuSocket(structured.socket)
     const generation = optionalString(structured.generation)
     const tdpWatts = optionalNumber(structured.tdpWatts)
     if (socket !== undefined) normalized.socket = socket

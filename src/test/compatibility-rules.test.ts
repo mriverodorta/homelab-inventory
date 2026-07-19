@@ -70,6 +70,20 @@ describe('compatibility rule evaluation', () => {
     )
   })
 
+  it('treats Intel FC package socket names as aliases of their physical socket', () => {
+    const result = evaluate(
+      host({ host: { cpu: { sockets: ['LGA1200'], generations: ['10'], maxTdpWatts: 65 } } }),
+      component('cpu', {
+        requirements: { cpu: { socket: 'FCLGA1200', generation: '10', tdpWatts: 35 } },
+      }),
+    )
+
+    expect(result.status).toBe('compatible')
+    expect(result.findings).not.toEqual(
+      expect.arrayContaining([expect.objectContaining({ code: 'cpu.socket.mismatch' })]),
+    )
+  })
+
   it('reports missing CPU facts as unknown with the exact field', () => {
     const result = evaluate(
       host({ host: { cpu: { sockets: ['LGA1200'], generations: ['10'] } } }),
