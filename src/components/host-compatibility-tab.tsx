@@ -7,6 +7,11 @@ import {
   normalizeCompatibilityViewProject,
 } from '@/components/compatibility-status'
 import {
+  CompatibilityFields,
+  type CompatibilityFieldsProps,
+} from '@/components/inventory-form/compatibility-fields'
+import { Checkbox } from '@/components/ui/checkbox'
+import {
   normalizeHostCapabilities,
   planHostAllocations,
   type ProjectCompatibilityResult,
@@ -113,9 +118,17 @@ function GroupUtilization({
 export function HostCompatibilityTab({
   project,
   host,
-}: {
+  enabled,
+  onEnabledChange,
+  values,
+  errors,
+  onChange,
+  onSelectOpenChange,
+}: CompatibilityFieldsProps & {
   project: ProjectState
   host: InventoryItem
+  enabled: boolean
+  onEnabledChange: (enabled: boolean) => void
 }) {
   const evaluationProject = normalizeCompatibilityViewProject(project, [host])
   const hostReference = runtimeItemKey(host)
@@ -144,7 +157,45 @@ export function HostCompatibilityTab({
 
   return (
     <div className="space-y-4">
-      <section aria-labelledby="compatibility-overview-heading" className="space-y-3">
+      <section className="rounded-md border border-[#ded8ce] bg-[#fffdfa] px-3 py-3">
+        <div className="flex items-start gap-3">
+          <Checkbox
+            id="host-compatibility-enabled"
+            aria-describedby="host-compatibility-description"
+            checked={enabled}
+            onCheckedChange={(checked) => onEnabledChange(checked === true)}
+          />
+          <span className="min-w-0">
+            <label
+              htmlFor="host-compatibility-enabled"
+              className="block cursor-pointer text-sm font-black text-[#20242c]"
+            >
+              Enable compatibility checks
+            </label>
+            <span
+              id="host-compatibility-description"
+              className="mt-0.5 block text-xs font-semibold leading-5 text-[#75695d]"
+            >
+              Disabling checks bypasses hardware matching and compatibility audit findings. Slot and capacity limits remain enforced.
+            </span>
+          </span>
+        </div>
+      </section>
+
+      <CompatibilityFields
+        values={values}
+        errors={errors}
+        onChange={onChange}
+        onSelectOpenChange={onSelectOpenChange}
+      />
+
+      {!enabled ? (
+        <div className="rounded-md border border-dashed border-[#d6ccbd] bg-[#f8f3eb] px-3 py-3 text-sm font-semibold text-[#75695d]">
+          Hardware compatibility checks are disabled for this host. Physical limits still apply.
+        </div>
+      ) : (
+        <>
+          <section aria-labelledby="compatibility-overview-heading" className="space-y-3">
         <div className="flex items-center gap-2">
           <Cpu aria-hidden="true" className="size-4 text-[#75695d]" />
           <h2
@@ -158,9 +209,9 @@ export function HostCompatibilityTab({
           status={overallStatus(plan.results)}
           findings={findings.map(({ finding }) => finding)}
         />
-      </section>
+          </section>
 
-      <section aria-labelledby="resource-utilization-heading" className="border-t border-[#e5dccf] pt-4">
+          <section aria-labelledby="resource-utilization-heading" className="border-t border-[#e5dccf] pt-4">
         <div className="mb-2 flex items-center gap-2">
           <Boxes aria-hidden="true" className="size-4 text-[#75695d]" />
           <h2
@@ -205,9 +256,9 @@ export function HostCompatibilityTab({
           ) : null}
         </div>
         <GroupUtilization host={capabilities} allocations={allocations} />
-      </section>
+          </section>
 
-      {visibleAssignments.length > 0 ? (
+          {visibleAssignments.length > 0 ? (
         <section aria-labelledby="component-allocations-heading" className="border-t border-[#e5dccf] pt-4">
           <h2
             id="component-allocations-heading"
@@ -231,13 +282,15 @@ export function HostCompatibilityTab({
             })}
           </div>
         </section>
-      ) : null}
+          ) : null}
 
-      {findings.length > 0 ? (
+          {findings.length > 0 ? (
         <section aria-label="Compatibility findings" className="border-t border-[#e5dccf] pt-4">
           <CompatibilityFindingGroups findings={findings} />
         </section>
-      ) : null}
+          ) : null}
+        </>
+      )}
     </div>
   )
 }

@@ -80,6 +80,7 @@ export function ComponentInspectorTabs({
         errors={errors}
         onChange={onChange}
         onSelectOpenChange={onSelectOpenChange}
+        includeCompatibility={false}
       />
 
       {hasPortsTab ? (
@@ -95,7 +96,14 @@ export function ComponentInspectorTabs({
       ) : null}
 
       <TabsContent value="compatibility" className="m-0 min-w-0">
-        <ComponentCompatibilityTab project={project} item={item} />
+        <ComponentCompatibilityTab
+          project={project}
+          item={item}
+          values={values}
+          errors={errors}
+          onChange={(patch, mode = 'debounced') => onChange(patch, mode)}
+          onSelectOpenChange={onSelectOpenChange}
+        />
       </TabsContent>
     </Tabs>
   )

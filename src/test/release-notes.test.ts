@@ -89,17 +89,20 @@ describe('release notes helpers', () => {
     expect(entries.map((entry) => entry.version)).toEqual(['0.1.10'])
   })
 
-  it('has structured compatibility notes for the package version under development', () => {
-    expect(hasReleaseNoteForVersion(RELEASE_NOTES, '0.1.26')).toBe(true)
+  it('has structured compatibility-policy and audit-ignore notes for the package version under development', () => {
+    expect(hasReleaseNoteForVersion(RELEASE_NOTES, '0.1.27')).toBe(true)
     expect(RELEASE_NOTES[0]).toEqual(
       expect.objectContaining({
-        version: '0.1.26',
-        title: 'Hardware compatibility rules',
+        version: '0.1.27',
+        title: 'Compatibility policies and audit acknowledgements',
       }),
     )
     expect(RELEASE_NOTES.filter((entry) => entry.channel === 'latest')).toEqual([
-      expect.objectContaining({ version: '0.1.26' }),
+      expect.objectContaining({ version: '0.1.27' }),
     ])
+    expect(RELEASE_NOTES.find((entry) => entry.version === '0.1.26')).toEqual(
+      expect.objectContaining({ channel: 'release' }),
+    )
 
     const compatibilityRelease = RELEASE_NOTES[0]
     const releaseText = [
@@ -108,12 +111,14 @@ describe('release notes helpers', () => {
       ...(compatibilityRelease?.notes ?? []),
     ].join(' ')
 
-    expect(releaseText).toMatch(/known-invalid|known incompatible/i)
-    expect(releaseText).toMatch(/unknown/i)
-    expect(releaseText).toMatch(/deterministic.*allocat/i)
-    expect(releaseText).toMatch(/compatibility.*tab/i)
-    expect(releaseText).toMatch(/audit/i)
-    expect(releaseText).toMatch(/schema 7/i)
-    expect(releaseText).toMatch(/backup|migration/i)
+    expect(releaseText).toMatch(/dedicated compatibility editing tabs/i)
+    expect(releaseText).toMatch(/servers and NAS devices can opt out/i)
+    expect(releaseText).toMatch(/ignored view.*ignored.*active audit/i)
+    expect(releaseText).toMatch(/physical slot, cardinality, and resource limits.*matching is disabled/i)
+    expect(releaseText).toMatch(/failed.*policy.*audit-ignore saves.*roll back/i)
+    expect(releaseText).toMatch(/deterministic warning IDs.*avoid collisions.*different hosts/i)
+    expect(releaseText).toMatch(/schema 8 migration.*backup/i)
+    expect(releaseText).toMatch(/ignored warning IDs.*project-scoped.*dormant/i)
+    expect(releaseText).toMatch(/opt-out suppresses only compatibility warnings/i)
   })
 })

@@ -49,6 +49,7 @@ import {
   moveAssignedComponent,
   tryAssignComponent,
 } from '@/lib/constraints'
+import { setAuditWarningIgnored } from '@/lib/compatibility-policy'
 import { loadAgentStatus } from '@/lib/agent-api'
 import {
   createInventoryItems,
@@ -422,6 +423,7 @@ function App() {
   const [portConnectionPreview, setPortConnectionPreview] = useState<PortConnectionPreview | null>(null)
   const [activeNetworkTraceEndpoint, setActiveNetworkTraceEndpoint] = useState<ConnectionEndpoint | null>(null)
   const [saveStatus, setSaveStatus] = useState<SaveStatus>('saved')
+  const [autosaveRevision, setAutosaveRevision] = useState(0)
   const [history, setHistory] = useState<HistoryState<ProjectState>>(() => createEmptyHistory())
   const [inventoryWidth, setInventoryWidth] = useState(getStoredInventoryWidth)
   const [desktopInventoryVisible, setDesktopInventoryVisible] = useState(getStoredInventoryVisible)
@@ -442,7 +444,14 @@ function App() {
   const [inventoryLifecycleRevision, setInventoryLifecycleRevision] = useState(0)
   const canvasControllerRef = useRef<CanvasController | null>(null)
   const projectRef = useRef<ProjectState | null>(null)
-  const skipNextSaveRef = useRef(false)
+  const lastPersistedProjectRef = useRef<ProjectState | null>(null)
+  const queuedSaveProjectRef = useRef<{
+    generation: number
+    project: ProjectState
+  } | null>(null)
+  const saveInFlightRef = useRef(false)
+  const saveGenerationRef = useRef(0)
+  const saveTimerRef = useRef<number | null>(null)
   const hasHydratedProjectRef = useRef(false)
   const demoExpirationFinalizedRef = useRef(false)
   const resizeStateRef = useRef<{
@@ -474,9 +483,72 @@ function App() {
     refetchInterval: (query) => getUpdateStatusRefetchInterval(query.state.data),
     retry: false,
   })
-  const { mutate: mutateSaveProject } = useMutation({
+  const { mutateAsync: persistProject } = useMutation({
     mutationFn: saveProject,
   })
+  const processQueuedProjectSaves = useCallback(() => {
+    if (saveInFlightRef.current) {
+      return
+    }
+
+    saveInFlightRef.current = true
+
+    void (async () => {
+      try {
+        while (queuedSaveProjectRef.current) {
+          const queuedSave = queuedSaveProjectRef.current
+          queuedSaveProjectRef.current = null
+
+          try {
+            const savedProject = await persistProject(queuedSave.project)
+
+            if (queuedSave.generation !== saveGenerationRef.current) {
+              continue
+            }
+
+            lastPersistedProjectRef.current = savedProject
+
+            if (
+              !queuedSaveProjectRef.current &&
+              projectRef.current === queuedSave.project
+            ) {
+              setPersistenceWarning(null)
+              setSaveStatus('saved')
+            }
+          } catch (error) {
+            if (
+              queuedSave.generation !== saveGenerationRef.current ||
+              queuedSaveProjectRef.current ||
+              projectRef.current !== queuedSave.project
+            ) {
+              continue
+            }
+
+            const lastPersistedProject = lastPersistedProjectRef.current
+
+            if (lastPersistedProject) {
+              projectRef.current = lastPersistedProject
+              setProject(lastPersistedProject)
+            }
+
+            setSaveStatus('error')
+            setPersistenceWarning(
+              error instanceof Error ? error.message : 'Project could not be saved to the JSON database.',
+            )
+          }
+        }
+      } finally {
+        saveInFlightRef.current = false
+      }
+    })()
+  }, [persistProject])
+  const enqueueProjectSave = useCallback((projectToSave: ProjectState) => {
+    queuedSaveProjectRef.current = {
+      generation: saveGenerationRef.current,
+      project: projectToSave,
+    }
+    processQueuedProjectSaves()
+  }, [processQueuedProjectSaves])
   const acknowledgeReleaseNotesMutation = useMutation({
     mutationFn: acknowledgeReleaseNotes,
     onSuccess: (status) => {
@@ -542,8 +614,9 @@ function App() {
 
     const loadedProject = projectQuery.data
 
-    skipNextSaveRef.current = true
     hasHydratedProjectRef.current = true
+    projectRef.current = loadedProject
+    lastPersistedProjectRef.current = loadedProject
     setProject(loadedProject)
     setHistory(createEmptyHistory())
     setSelectedItemId((current) => (current && loadedProject.items[current] ? current : null))
@@ -679,36 +752,30 @@ function App() {
   }, [portConnectionPreview])
 
   useEffect(() => {
-    if (!project || !hasHydratedProjectRef.current) {
+    if (!hasHydratedProjectRef.current || autosaveRevision === 0) {
       return
     }
 
-    if (skipNextSaveRef.current) {
-      skipNextSaveRef.current = false
+    const projectToSave = projectRef.current
+
+    if (!projectToSave) {
       return
     }
 
     setSaveStatus('saving')
 
-    const saveTimer = window.setTimeout(() => {
-      mutateSaveProject(project, {
-        onSuccess: () => {
-          setPersistenceWarning(null)
-          setSaveStatus('saved')
-        },
-        onError: (error) => {
-          setSaveStatus('error')
-          setPersistenceWarning(
-            error instanceof Error ? error.message : 'Project could not be saved to the JSON database.',
-          )
-        },
-      })
+    saveTimerRef.current = window.setTimeout(() => {
+      saveTimerRef.current = null
+      enqueueProjectSave(projectToSave)
     }, SAVE_DEBOUNCE_MS)
 
     return () => {
-      window.clearTimeout(saveTimer)
+      if (saveTimerRef.current !== null) {
+        window.clearTimeout(saveTimerRef.current)
+        saveTimerRef.current = null
+      }
     }
-  }, [mutateSaveProject, project])
+  }, [autosaveRevision, enqueueProjectSave])
 
   const selectedItem = useMemo(
     () => (project && selectedItemId ? project.items[selectedItemId] ?? null : null),
@@ -761,6 +828,10 @@ function App() {
 
     projectRef.current = negotiatedProject
     setProject(negotiatedProject)
+
+    if (negotiatedProject !== currentProject) {
+      setAutosaveRevision((current) => current + 1)
+    }
   }
 
   function setValidationMessage(
@@ -774,8 +845,16 @@ function App() {
   function applyInventoryCommandSnapshot(nextProject: ProjectState) {
     const negotiatedProject = normalizeNetworkProject(nextProject)
 
-    skipNextSaveRef.current = true
+    saveGenerationRef.current += 1
+    queuedSaveProjectRef.current = null
+
+    if (saveTimerRef.current !== null) {
+      window.clearTimeout(saveTimerRef.current)
+      saveTimerRef.current = null
+    }
+
     projectRef.current = negotiatedProject
+    lastPersistedProjectRef.current = negotiatedProject
     setProject(negotiatedProject)
     setHistory(createEmptyHistory())
     setSelectedConnectionId(null)
@@ -1242,7 +1321,12 @@ function App() {
         return currentHistory
       }
 
+      projectRef.current = result.project
       setProject(result.project)
+
+      if (result.project !== currentProject) {
+        setAutosaveRevision((current) => current + 1)
+      }
       setSelectedItemId((current) => (current && result.project.items[current] ? current : null))
       setSelectedConnectionId((current) =>
         current && result.project.connections.some((connection) => connection.id === current)
@@ -1269,7 +1353,12 @@ function App() {
         return currentHistory
       }
 
+      projectRef.current = result.project
       setProject(result.project)
+
+      if (result.project !== currentProject) {
+        setAutosaveRevision((current) => current + 1)
+      }
       setSelectedItemId((current) => (current && result.project.items[current] ? current : null))
       setSelectedConnectionId((current) =>
         current && result.project.connections.some((connection) => connection.id === current)
@@ -1495,6 +1584,7 @@ function App() {
               setSelectedConnectionId(null)
               setPendingConnectionEndpoint(null)
             }}
+            onUpdateProject={updateProject}
             onUpdateItem={handleUpdateInventoryItem}
             onDuplicateItem={handleDuplicateInventoryItem}
             onArchiveItem={(item) => void requestInventoryLifecycle('archive', [item])}
@@ -1556,6 +1646,9 @@ function App() {
               setAuditOpen(false)
               setActiveNetworkTraceEndpoint(null)
               focusCanvasItem(itemId)
+            }}
+            onSetWarningIgnored={(warningId, ignored) => {
+              updateProject(setAuditWarningIgnored(project, warningId, ignored))
             }}
           />
           <GlobalItemSearch

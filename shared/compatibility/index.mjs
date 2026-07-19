@@ -33,6 +33,38 @@ function optionalString(value) {
   return normalized || undefined
 }
 
+export function normalizeCompatibilityPolicy(policy) {
+  const uniqueStrings = (values) => [...new Set(
+    (Array.isArray(values) ? values : [])
+      .filter((value) => typeof value === 'string')
+      .map((value) => value.trim())
+      .filter(Boolean),
+  )]
+
+  return {
+    disabledHostIds: uniqueStrings(policy?.disabledHostIds),
+    ignoredWarningIds: uniqueStrings(policy?.ignoredWarningIds),
+  }
+}
+
+export function isHostCompatibilityEnabled(project, hostId) {
+  return !normalizeCompatibilityPolicy(project?.compatibilityPolicy)
+    .disabledHostIds.includes(String(hostId))
+}
+
+export function normalizeProjectCompatibilityPolicy(project) {
+  const policy = normalizeCompatibilityPolicy(project?.compatibilityPolicy)
+  const disabledHostIds = policy.disabledHostIds.filter((hostId) => {
+    const item = project?.items?.[hostId]
+    return item?.type === 'server' || item?.type === 'nas'
+  })
+
+  return {
+    ...project,
+    compatibilityPolicy: { ...policy, disabledHostIds },
+  }
+}
+
 function normalizeRamGeneration(value) {
   return optionalString(value)?.toUpperCase()
 }
@@ -836,6 +868,14 @@ function allocationSize(requirements) {
   return 0
 }
 
+function resultCanOccupyResource(result, compatibilityEnabled) {
+  return result.status === 'compatible' || (
+    !compatibilityEnabled && (
+      result.status === 'incompatible' || result.status === 'unknown'
+    )
+  )
+}
+
 function resourceTypeFor(requirements) {
   if (requirements.type === 'ram') return 'memory'
   if (requirements.type === 'storage') return 'storage'
@@ -1015,6 +1055,7 @@ export function planHostAllocations(project, hostId) {
     .filter((assignment) => String(assignment.serverId) === String(hostId))
     .map((assignment) => ({ ...assignment }))
     .sort(compareAssignments)
+  const compatibilityEnabled = isHostCompatibilityEnabled(project, hostId)
   const hostCapabilities = normalizeHostCapabilities(host)
   const occupancy = new Map()
   const preserved = new Map()
@@ -1045,7 +1086,7 @@ export function planHostAllocations(project, hostId) {
       })
       const capacity = memoryCapacity(hostCapabilities)
       if (
-        result.status === 'compatible' &&
+        resultCanOccupyResource(result, compatibilityEnabled) &&
         allocationMatchesResource(
           assignment.allocation,
           resourceType,
@@ -1071,7 +1112,7 @@ export function planHostAllocations(project, hostId) {
           group,
         })
         if (
-          result.status === 'compatible' &&
+          resultCanOccupyResource(result, compatibilityEnabled) &&
           allocationMatchesResource(
             assignment.allocation,
             resourceType,
@@ -1156,7 +1197,7 @@ export function planHostAllocations(project, hostId) {
         resourceType,
       })
       const capacity = memoryCapacity(hostCapabilities)
-      if (result.status !== 'compatible') {
+      if (!resultCanOccupyResource(result, compatibilityEnabled)) {
         plannedAssignments.push(cleanAssignment)
         results.push(planResult(assignment, result))
       } else if (capacity === undefined) {
@@ -1189,8 +1230,11 @@ export function planHostAllocations(project, hostId) {
 
     const { all, valid } = requiredGroups(hostCapabilities, resourceType)
     let compatibleCandidate
+    let unknownCandidate
     let unknownResult
     let exhaustedUnknownResult
+    let incompatibleCandidate
+    let exhaustedIncompatibleResult
     let incompatibleResult
     for (const group of valid) {
       const result = evaluateResourceCandidate({
@@ -1223,25 +1267,44 @@ export function planHostAllocations(project, hostId) {
           size,
         )
         if (positions) {
-          unknownResult ??= result
+          if (compatibilityEnabled) {
+            unknownResult ??= result
+          } else {
+            unknownCandidate ??= { group, positions, result }
+          }
         } else {
           exhaustedUnknownResult ??= exhaustedResourceResult(result, resourceType)
         }
       } else {
         incompatibleResult ??= result
+        if (!compatibilityEnabled) {
+          const positions = firstConsecutivePositions(
+            occupancy,
+            resourceType,
+            group.id,
+            group.count,
+            size,
+          )
+          if (positions) {
+            incompatibleCandidate ??= { group, positions, result }
+          } else {
+            exhaustedIncompatibleResult ??= exhaustedResourceResult(result, resourceType)
+          }
+        }
       }
     }
 
-    if (compatibleCandidate) {
+    const selectedCandidate = compatibleCandidate ?? unknownCandidate ?? incompatibleCandidate
+    if (selectedCandidate) {
       const allocation = {
         resourceType,
-        groupId: compatibleCandidate.group.id,
-        positions: compatibleCandidate.positions,
+        groupId: selectedCandidate.group.id,
+        positions: selectedCandidate.positions,
       }
       reservePositions(occupancy, allocation)
       const planned = { ...cleanAssignment, allocation }
       plannedAssignments.push(planned)
-      results.push(planResult(assignment, compatibleCandidate.result, allocation))
+      results.push(planResult(assignment, selectedCandidate.result, allocation))
     } else {
       const baseResult = evaluateAssignmentCompatibility({
         host,
@@ -1254,7 +1317,7 @@ export function planHostAllocations(project, hostId) {
         exhaustedUnknownResult ??
         (valid.length === 0 && all.length > 0
           ? invalidResourceResult(baseResult, resourceType)
-          : incompatibleResult ?? baseResult)
+          : exhaustedIncompatibleResult ?? incompatibleResult ?? baseResult)
       plannedAssignments.push(cleanAssignment)
       results.push(planResult(assignment, result))
     }

@@ -12,9 +12,30 @@ export type ReleaseNoteEntry = {
 
 export const RELEASE_NOTES: ReleaseNoteEntry[] = [
   {
-    version: '0.1.26',
+    version: '0.1.27',
     date: '2026-07-19',
     channel: 'latest',
+    title: 'Compatibility policies and audit acknowledgements',
+    highlights: [
+      'Dedicated Compatibility editing tabs keep host matching policies separate from general server and NAS specifications.',
+      'Individual servers and NAS devices can opt out of hardware compatibility matching without changing global project behavior.',
+      'Audit now includes an Ignored view where findings can be ignored or returned to the active audit.',
+    ],
+    fixes: [
+      'Physical slot, cardinality, and resource limits remain enforced when hardware compatibility matching is disabled.',
+      'Failed compatibility-policy or audit-ignore saves now roll back the optimistic interface change.',
+      'Deterministic warning IDs include host context to avoid collisions between equivalent findings on different hosts.',
+    ],
+    notes: [
+      'Schema 8 migration creates an automatic backup before adding compatibility policies and ignored audit warning IDs.',
+      'Ignored warning IDs are project-scoped and remain dormant when their warnings are not currently present.',
+      'A host opt-out suppresses only compatibility warnings; other audit findings and physical resource limits remain active.',
+    ],
+  },
+  {
+    version: '0.1.26',
+    date: '2026-07-19',
+    channel: 'release',
     title: 'Hardware compatibility rules',
     highlights: [
       'Known-invalid CPU, RAM, storage, GPU, and network-card assignments are now blocked before project data changes.',

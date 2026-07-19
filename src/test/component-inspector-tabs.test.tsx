@@ -197,6 +197,41 @@ describe('ComponentInspectorTabs', () => {
     expect(screen.getByRole('textbox', { name: 'Notes' })).toBeInTheDocument()
   })
 
+  it.each([
+    ['cpu', 'CPU socket'],
+    ['ram', 'Module count'],
+    ['storage', 'Interface'],
+    ['gpu', 'Expansion interface'],
+    ['network', 'Expansion interface'],
+  ] as const)('moves editable %s compatibility fields out of Specs', async (type, label) => {
+    const user = userEvent.setup()
+
+    renderTabs(type)
+
+    expect(screen.queryByLabelText(label)).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole('tab', { name: 'Compatibility' }))
+
+    expect(screen.getByLabelText(label)).toBeVisible()
+    const fieldsHeading = screen.getByRole('heading', { name: 'Compatibility', level: 3 })
+    const contextHeading = screen.getByRole('heading', { name: 'Normalized requirements' })
+    expect(fieldsHeading.compareDocumentPosition(contextHeading) & Node.DOCUMENT_POSITION_FOLLOWING)
+      .toBeTruthy()
+  })
+
+  it('keeps compatibility fields editable in the dedicated tab', async () => {
+    const user = userEvent.setup()
+    const onChange = vi.fn()
+
+    renderTabs('cpu', { onChange })
+    await user.click(screen.getByRole('tab', { name: 'Compatibility' }))
+    fireEvent.change(screen.getByRole('spinbutton', { name: 'TDP (W)' }), {
+      target: { value: '65' },
+    })
+
+    expect(onChange).toHaveBeenLastCalledWith({ cpuTdpWatts: '65' }, 'debounced')
+  })
+
   it.each(['gpu', 'network'] as const)('switches between Specs and Ports for %s', async (type) => {
     const user = userEvent.setup()
 
@@ -287,7 +322,7 @@ describe('ComponentInspectorTabs', () => {
     await user.click(screen.getByRole('tab', { name: 'Compatibility' }))
 
     expect(screen.getByRole('status')).toHaveTextContent('Compatible')
-    expect(screen.getByText('PCIe generation')).toBeVisible()
+    expect(screen.getAllByText('PCIe generation')).not.toHaveLength(0)
     expect(screen.getByText('4')).toBeVisible()
     expect(screen.getByText('Dell Precision Compact 3240')).toBeVisible()
     expect(screen.getByText('PCIe slot, position 1')).toBeVisible()

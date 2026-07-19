@@ -138,6 +138,52 @@ describe('item audit warnings', () => {
     ).toEqual(['LAN port 01 does not trace to a switch.'])
   })
 
+  it('keeps port warning ignores isolated between hosts with matching local port IDs', () => {
+    const secondServer: InventoryItem = {
+      ...server,
+      id: 'server-2',
+      name: 'Server 2',
+    }
+    const secondPatchPanel: InventoryItem = {
+      ...patchPanel,
+      id: 'patch-2',
+      name: 'Patch Panel 2',
+    }
+    const project = createProject([server, secondServer, patchPanel, secondPatchPanel])
+    const firstConnection = createConnection(
+      project,
+      { itemId: 'server', portId: 'lan-01' },
+      { itemId: 'patch', portId: 'keystone-01', endpointId: 'keystone-01-back' },
+    )
+    const secondConnection = createConnection(
+      firstConnection.ok ? firstConnection.project : project,
+      { itemId: 'server-2', portId: 'lan-01' },
+      { itemId: 'patch-2', portId: 'keystone-01', endpointId: 'keystone-01-back' },
+    )
+
+    expect(firstConnection.ok).toBe(true)
+    expect(secondConnection.ok).toBe(true)
+
+    const connectedProject = secondConnection.ok ? secondConnection.project : project
+    const firstWarning = getItemAuditWarnings(connectedProject, 'server')[0]
+    const secondWarning = getItemAuditWarnings(connectedProject, 'server-2')[0]
+
+    expect(firstWarning.id).toBe('server-network-path-incomplete-server-lan-01')
+    expect(secondWarning.id).toBe('server-network-path-incomplete-server-2-lan-01')
+    expect(firstWarning.id).not.toBe(secondWarning.id)
+
+    const ignoredProject: ProjectState = {
+      ...connectedProject,
+      compatibilityPolicy: {
+        disabledHostIds: [],
+        ignoredWarningIds: [firstWarning.id],
+      },
+    }
+
+    expect(getItemAuditWarnings(ignoredProject, 'server')).toEqual([])
+    expect(getItemAuditWarnings(ignoredProject, 'server-2')).toEqual([secondWarning])
+  })
+
   it('does not warn when a switch has no connected ports before wiring is planned', () => {
     const project = createProject([switchItem])
 
@@ -476,5 +522,174 @@ describe('item audit warnings', () => {
         severity: 'error',
       }),
     )
+  })
+
+  it('separates open and ignored audit warnings', () => {
+    const switchWithoutRole: InventoryItem = {
+      ...switchItem,
+      ports: switchItem.ports?.map((port) => ({
+        ...port,
+        role: undefined,
+      })),
+    }
+    const project: ProjectState = {
+      ...createProject([server, switchWithoutRole]),
+      placements: [{ serverId: 'switch', x: 0, y: 0 }],
+      connections: [
+        {
+          id: 'connection-1',
+          from: { itemId: 'switch', portId: 'rj45-01' },
+          to: { itemId: 'server', portId: 'lan-01' },
+          type: 'network',
+          createdAt: '2026-07-19T00:00:00.000Z',
+        },
+      ],
+      compatibilityPolicy: {
+        disabledHostIds: [],
+        ignoredWarningIds: ['switch-no-uplink-trunk-switch'],
+      },
+    }
+
+    expect(getItemAuditWarnings(project, 'switch')).toEqual([])
+    expect(getProjectAuditWarnings(project)).toEqual([])
+    expect(getItemAuditWarnings(project, 'switch', { visibility: 'ignored' })).toEqual([
+      expect.objectContaining({ id: 'switch-no-uplink-trunk-switch' }),
+    ])
+    expect(getProjectAuditWarnings(project, { visibility: 'ignored' })).toEqual([
+      expect.objectContaining({
+        item: expect.objectContaining({ id: 'switch' }),
+        warnings: [expect.objectContaining({ id: 'switch-no-uplink-trunk-switch' })],
+      }),
+    ])
+  })
+
+  it('suppresses only compatibility warnings for a disabled NAS host', () => {
+    const host: InventoryItem = {
+      id: 'nas',
+      name: 'NAS',
+      type: 'nas',
+      compatibility: {
+        host: {
+          cpu: {
+            sockets: ['LGA1200'],
+            generations: ['10'],
+            maxTdpWatts: 35,
+          },
+        },
+      },
+    }
+    const incompatibleCpu: InventoryItem = {
+      id: 'bad-cpu',
+      name: 'Socket Mismatch CPU',
+      type: 'cpu',
+      compatibility: {
+        requirements: {
+          cpu: {
+            socket: 'LGA1700',
+            generation: '12',
+            tdpWatts: 65,
+          },
+        },
+      },
+    }
+    const project: ProjectState = {
+      ...createProject([host, incompatibleCpu]),
+      placements: [{ serverId: 'nas', x: 0, y: 0 }],
+      assignments: [
+        {
+          id: 1,
+          serverId: 'nas',
+          itemId: 'bad-cpu',
+          type: 'cpu',
+          assignedAt: '2026-07-19T00:00:00.000Z',
+        },
+      ],
+    }
+    const compatibilityWarning = getItemAuditWarnings(project, 'nas').find(
+      (warning) => warning.code === 'cpu.socket.mismatch',
+    )
+
+    expect(compatibilityWarning).toBeDefined()
+
+    const disabledProject: ProjectState = {
+      ...project,
+      connections: [
+        {
+          id: 'stale-connection',
+          from: { itemId: 'nas', portId: 'missing-port' },
+          to: { itemId: 'bad-cpu', portId: 'missing-port' },
+          type: 'other',
+          createdAt: '2026-07-19T00:01:00.000Z',
+        },
+      ],
+      compatibilityPolicy: {
+        disabledHostIds: ['nas'],
+        ignoredWarningIds: [compatibilityWarning!.id],
+      },
+    }
+
+    expect(getItemAuditWarnings(disabledProject, 'nas')).toEqual([
+      expect.objectContaining({
+        id: 'stale-stale-connection-nas:direct:missing-port:port',
+      }),
+    ])
+    expect(getItemAuditWarnings(disabledProject, 'nas', { visibility: 'ignored' })).toEqual([])
+    expect(getProjectAuditWarnings(disabledProject)).toEqual([
+      expect.objectContaining({
+        warnings: [
+          expect.objectContaining({
+            id: 'stale-stale-connection-nas:direct:missing-port:port',
+          }),
+        ],
+      }),
+    ])
+    expect(getProjectAuditWarnings(disabledProject, { visibility: 'ignored' })).toEqual([])
+  })
+
+  it('keeps dormant ignored IDs and reapplies them when warnings return', () => {
+    const ignoredWarningId = 'switch-no-uplink-trunk-switch'
+    const switchWithoutRole: InventoryItem = {
+      ...switchItem,
+      ports: switchItem.ports?.map((port) => ({
+        ...port,
+        role: undefined,
+      })),
+    }
+    const dormantProject: ProjectState = {
+      ...createProject([switchWithoutRole, patchPanel]),
+      placements: [{ serverId: 'switch', x: 0, y: 0 }],
+      compatibilityPolicy: {
+        disabledHostIds: [],
+        ignoredWarningIds: [ignoredWarningId],
+      },
+    }
+
+    expect(getProjectAuditWarnings(dormantProject)).toEqual([])
+    expect(getProjectAuditWarnings(dormantProject, { visibility: 'ignored' })).toEqual([])
+    expect(dormantProject.compatibilityPolicy?.ignoredWarningIds).toEqual([ignoredWarningId])
+
+    const returnedProject: ProjectState = {
+      ...dormantProject,
+      connections: [
+        {
+          id: 'connection-1',
+          from: { itemId: 'switch', portId: 'rj45-01' },
+          to: {
+            itemId: 'patch',
+            portId: 'keystone-01',
+            endpointId: 'keystone-01-front',
+          },
+          type: 'network',
+          createdAt: '2026-07-19T00:00:00.000Z',
+        },
+      ],
+    }
+
+    expect(getProjectAuditWarnings(returnedProject)).toEqual([])
+    expect(getProjectAuditWarnings(returnedProject, { visibility: 'ignored' })).toEqual([
+      expect.objectContaining({
+        warnings: [expect.objectContaining({ id: ignoredWarningId })],
+      }),
+    ])
   })
 })

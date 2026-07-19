@@ -4,6 +4,7 @@ import {
   swapAssignedComponent,
   tryAssignComponent,
 } from '@/lib/constraints'
+import { setHostCompatibilityEnabled } from '@/lib/compatibility-policy'
 import type {
   ComponentAssignment,
   InventoryItem,
@@ -122,6 +123,15 @@ function network(key: string): InventoryItem {
   }
 }
 
+function gpu(key: string): InventoryItem {
+  return {
+    ...network(key),
+    key,
+    name: key,
+    type: 'gpu',
+  }
+}
+
 function assignment(
   id: string | number,
   serverId: string,
@@ -172,6 +182,146 @@ describe('transactional compatibility workflows', () => {
     expect(result.ok ? '' : result.message).toContain('CPU socket AM5 is not supported by this host')
     expect(input).toEqual(before)
     expect(JSON.stringify(input)).toBe(beforeJson)
+  })
+
+  it('accepts incompatible assignments for disabled hosts while keeping cardinality limits', () => {
+    const server = host('server:1')
+    const incompatible = cpu('cpu:1', 'AM5', 'Zen 4')
+    const second = cpu('cpu:2', 'AM5', 'Zen 4')
+    const input = setHostCompatibilityEnabled(
+      project([server], [incompatible, second]),
+      server.key!,
+      false,
+    )
+
+    const accepted = tryAssignComponent(input, server.key!, incompatible.key!)
+
+    expect(accepted.ok).toBe(true)
+    if (!accepted.ok) return
+    expect(accepted.compatibility).toEqual(expect.arrayContaining([
+      expect.objectContaining({ hostId: server.key, status: 'incompatible' }),
+    ]))
+    expect(accepted.project.assignments).toHaveLength(1)
+    expect(tryAssignComponent(accepted.project, server.key!, second.key!)).toMatchObject({
+      ok: false,
+      message: 'This server already has a CPU.',
+    })
+  })
+
+  it('rejects storage resource exhaustion after incompatible drives consume a disabled NAS position', () => {
+    const nas = host('nas:1', {}, 'nas')
+    const first = storage('storage:1', '2230')
+    const second = storage('storage:2', '2230')
+    const disabled = setHostCompatibilityEnabled(
+      project([nas], [first, second]),
+      nas.key!,
+      false,
+    )
+    const accepted = tryAssignComponent(disabled, nas.key!, first.key!)
+
+    expect(accepted.ok).toBe(true)
+    if (!accepted.ok) return
+    expect(accepted.project.assignments[0].allocation).toEqual({
+      resourceType: 'storage',
+      groupId: 'm2',
+      positions: [0],
+    })
+    const rejected = tryAssignComponent(accepted.project, nas.key!, second.key!)
+
+    expect(rejected).toMatchObject({
+      ok: false,
+      message: 'No available storage positions can satisfy this component.',
+    })
+    expect(accepted.project.assignments).toHaveLength(1)
+  })
+
+  it('rejects expansion exhaustion after incompatible cards consume a disabled server position', () => {
+    const server = host('server:1', {
+      host: {
+        expansionSlots: [{
+          id: 'legacy',
+          label: 'Legacy expansion',
+          count: 1,
+          interfaceFamily: 'pcie',
+          pcieGeneration: 4,
+          mechanicalLanes: 16,
+          electricalLanes: 16,
+          acceptedHeights: ['low-profile'],
+          maxSlotWidth: 1,
+          maxPowerWatts: 75,
+        }],
+      },
+    })
+    const first = network('network:1')
+    const second = gpu('gpu:1')
+    const disabled = setHostCompatibilityEnabled(
+      project([server], [first, second]),
+      server.key!,
+      false,
+    )
+    const accepted = tryAssignComponent(disabled, server.key!, first.key!)
+
+    expect(accepted.ok).toBe(true)
+    if (!accepted.ok) return
+    expect(accepted.project.assignments[0].allocation).toEqual({
+      resourceType: 'expansion',
+      groupId: 'legacy',
+      positions: [0],
+    })
+    const rejected = tryAssignComponent(accepted.project, server.key!, second.key!)
+
+    expect(rejected).toMatchObject({
+      ok: false,
+      message: 'No available expansion positions can satisfy this component.',
+    })
+    expect(accepted.project.assignments).toHaveLength(1)
+  })
+
+  it('restores compatibility enforcement after re-enabling without removing assignments', () => {
+    const server = host('server:1')
+    const first = storage('storage:1', '2230')
+    const second = storage('storage:2', '2230')
+    const disabled = setHostCompatibilityEnabled(
+      project([server], [first, second]),
+      server.key!,
+      false,
+    )
+    const accepted = tryAssignComponent(disabled, server.key!, first.key!)
+
+    expect(accepted.ok).toBe(true)
+    if (!accepted.ok) return
+    const enabled = setHostCompatibilityEnabled(accepted.project, server.key!, true)
+
+    expect(enabled.assignments).toEqual(accepted.project.assignments)
+    expect(enabled.assignments).toHaveLength(1)
+    expect(tryAssignComponent(enabled, server.key!, second.key!)).toMatchObject({ ok: false })
+  })
+
+  it('allocates disabled-host unknown resources and enforces physical exhaustion without warnings', () => {
+    const server = host('server:1')
+    const first = storage('storage:1', undefined)
+    const second = storage('storage:2', undefined)
+    const input = setHostCompatibilityEnabled(
+      project([server], [first, second]),
+      server.key!,
+      false,
+    )
+
+    const result = tryAssignComponent(input, server.key!, first.key!)
+
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.compatibility[0].status).toBe('unknown')
+    expect(result.unknownFindings).toEqual([])
+    expect(result.project.assignments[0].allocation).toEqual({
+      resourceType: 'storage',
+      groupId: 'm2',
+      positions: [0],
+    })
+    expect(tryAssignComponent(result.project, server.key!, second.key!)).toMatchObject({
+      ok: false,
+      message: 'No available storage positions can satisfy this component.',
+    })
   })
 
   it('accepts an unknown CPU and exposes its unknown compatibility result', () => {

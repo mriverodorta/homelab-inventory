@@ -3,7 +3,11 @@ import {
   endpointKey,
   getConnectionPort,
 } from '@/lib/project'
-import { evaluateProjectCompatibility } from '@/lib/compatibility'
+import {
+  evaluateProjectCompatibility,
+  isHostCompatibilityEnabled,
+  normalizeCompatibilityPolicy,
+} from '@/lib/compatibility'
 import { runtimeItemKey } from '@/lib/item-keys'
 import { getItemNetworkTraces } from '@/lib/network-trace'
 import type { CompatibilityFinding, CompatibilitySeverity } from '@/types/compatibility'
@@ -25,6 +29,12 @@ export type AuditWarning = {
 export type ProjectAuditGroup = {
   item: InventoryItem
   warnings: AuditWarning[]
+}
+
+export type AuditVisibility = 'open' | 'ignored'
+
+export type AuditQuery = {
+  visibility?: AuditVisibility
 }
 
 function portSlot(port: InventoryPort): string {
@@ -123,7 +133,7 @@ function getDisabledSwitchPortTraceWarning(
   }
 
   return {
-    id: `server-network-disabled-switch-${startPort.id}`,
+    id: `server-network-disabled-switch-${trace.start.itemId}-${startPort.id}`,
     itemId: trace.start.itemId,
     message: `LAN port ${portSlot(startPort)} traces to disabled switch port ${portSlot(switchPort)} on ${switchItem.name}.`,
   }
@@ -139,7 +149,7 @@ function getServerAuditWarnings(project: ProjectState, item: InventoryItem): Aud
 
     if (!trace.complete && startPort && isEndpointConnected(project, trace.start)) {
       warnings.push({
-        id: `server-network-path-incomplete-${startPort.id}`,
+        id: `server-network-path-incomplete-${key}-${startPort.id}`,
         itemId: key,
         message: `LAN port ${portSlot(startPort)} does not trace to a switch.`,
       })
@@ -175,7 +185,7 @@ function getSwitchAuditWarnings(project: ProjectState, item: InventoryItem): Aud
     }
 
     warnings.push({
-      id: `switch-disabled-port-connected-${port.id}`,
+      id: `switch-disabled-port-connected-${key}-${port.id}`,
       itemId: key,
       message: `Switch port ${portSlot(port)} is disabled but connected.`,
     })
@@ -256,7 +266,7 @@ function getCompatibilityAuditWarnings(
   return warnings
 }
 
-export function getItemAuditWarnings(project: ProjectState, itemId: string): AuditWarning[] {
+function getRawItemAuditWarnings(project: ProjectState, itemId: string): AuditWarning[] {
   const item = project.items[itemId]
 
   if (!item) {
@@ -273,19 +283,48 @@ export function getItemAuditWarnings(project: ProjectState, itemId: string): Aud
     warnings.push(...getSwitchAuditWarnings(project, item))
   }
 
-  warnings.push(...getCompatibilityAuditWarnings(project, item))
+  if (isHostCompatibilityEnabled(project, itemId)) {
+    warnings.push(...getCompatibilityAuditWarnings(project, item))
+  }
 
   return warnings
 }
 
-export function getProjectAuditWarnings(project: ProjectState): ProjectAuditGroup[] {
+function warningMatchesVisibility(
+  ignoredIds: Set<string>,
+  warning: AuditWarning,
+  visibility: AuditVisibility,
+): boolean {
+  return visibility === 'ignored'
+    ? ignoredIds.has(warning.id)
+    : !ignoredIds.has(warning.id)
+}
+
+export function getItemAuditWarnings(
+  project: ProjectState,
+  itemId: string,
+  query: AuditQuery = {},
+): AuditWarning[] {
+  const visibility = query.visibility ?? 'open'
+  const policy = normalizeCompatibilityPolicy(project.compatibilityPolicy)
+  const ignoredIds = new Set(policy.ignoredWarningIds)
+
+  return getRawItemAuditWarnings(project, itemId).filter((warning) =>
+    warningMatchesVisibility(ignoredIds, warning, visibility),
+  )
+}
+
+export function getProjectAuditWarnings(
+  project: ProjectState,
+  query: AuditQuery = {},
+): ProjectAuditGroup[] {
   const placedItemIds = new Set(project.placements.map((placement) => placement.serverId))
 
   return Object.values(project.items)
     .filter((item) => placedItemIds.has(runtimeItemKey(item)))
     .map((item) => ({
       item,
-      warnings: getItemAuditWarnings(project, runtimeItemKey(item)),
+      warnings: getItemAuditWarnings(project, runtimeItemKey(item), query),
     }))
     .filter((group) => group.warnings.length > 0)
     .sort((first, second) => first.item.name.localeCompare(second.item.name))

@@ -14,6 +14,30 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 - Added repository documentation, issue templates, CI, and security guidance.
 - Clarified Docker deployment, data persistence, and development setup.
 
+## [0.1.27] - 2026-07-19
+
+### Added
+
+- Added dedicated Compatibility editing tabs for server and NAS matching policies.
+- Added per-server and per-NAS compatibility matching opt-outs.
+- Added an Ignored audit view with controls to ignore findings and return them to the active audit.
+
+### Changed
+
+- Compatibility opt-outs suppress only compatibility warnings; other audit findings remain active.
+- Ignored warning IDs are stored per project and remain dormant while their findings are absent.
+
+### Fixed
+
+- Physical slot, cardinality, and resource limits remain enforced when hardware compatibility matching is disabled.
+- Failed compatibility-policy and audit-ignore saves roll back their optimistic interface changes.
+- Deterministic warning IDs include host context so equivalent findings cannot collide across hosts.
+
+### Data
+
+- Upgraded the database to schema 8 with an automatic pre-migration backup before compatibility policies and ignored audit warning IDs are added.
+- Docker users should back up the complete `/data` directory before upgrading even though the migration also creates an internal backup.
+
 ## [0.1.26] - 2026-07-19
 
 ### Added

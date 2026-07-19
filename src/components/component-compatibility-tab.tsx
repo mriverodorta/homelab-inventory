@@ -7,6 +7,11 @@ import {
   normalizeCompatibilityViewProject,
 } from '@/components/compatibility-status'
 import {
+  CompatibilityFields,
+  type CompatibilityFieldsProps,
+} from '@/components/inventory-form/compatibility-fields'
+import { InventoryTypeFields } from '@/components/inventory-form/type-fields'
+import {
   normalizeComponentRequirements,
   normalizeHostCapabilities,
   planHostAllocations,
@@ -80,7 +85,11 @@ function requirementRows(requirements: NormalizedComponentRequirements): Require
 export function ComponentCompatibilityTab({
   project,
   item,
-}: {
+  values,
+  errors,
+  onChange,
+  onSelectOpenChange,
+}: CompatibilityFieldsProps & {
   project: ProjectState
   item: InventoryItem
 }) {
@@ -104,9 +113,39 @@ export function ComponentCompatibilityTab({
   const requirements = normalizeComponentRequirements(item)
   const rows = requirementRows(requirements)
   const hostCapabilities = host ? normalizeHostCapabilities(host) : {}
+  const handleFieldChange: CompatibilityFieldsProps['onChange'] = (
+    patch,
+    mode = 'debounced',
+  ) => onChange(patch, mode)
 
   return (
     <div className="space-y-4">
+      <CompatibilityFields
+        values={values}
+        errors={errors}
+        onChange={handleFieldChange}
+        onSelectOpenChange={onSelectOpenChange}
+      />
+      {values.type === 'ram' || values.type === 'storage' ? (
+        <section
+          aria-labelledby="canonical-compatibility-heading"
+          className="space-y-3 border-t border-[#ded8ce] pt-4"
+        >
+          <h3
+            id="canonical-compatibility-heading"
+            className="text-sm font-extrabold uppercase text-[#75695d]"
+          >
+            {values.type === 'storage' ? 'Compatibility' : 'Memory specifications'}
+          </h3>
+          <InventoryTypeFields
+            type={values.type}
+            values={values}
+            errors={errors}
+            onChange={handleFieldChange}
+            onSelectOpenChange={onSelectOpenChange}
+          />
+        </section>
+      ) : null}
       <section aria-labelledby="normalized-requirements-heading">
         <div className="mb-2 flex items-center gap-2">
           <ListChecks aria-hidden="true" className="size-4 text-[#75695d]" />

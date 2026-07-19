@@ -200,6 +200,30 @@ describe('compatibility validation', () => {
 
     expect(() => assertInventoryStoreShape(inventory)).toThrow(message)
   })
+
+  it.each([
+    [
+      {
+        disabledHostIds: ['server:1', 'server:1'],
+        ignoredWarningIds: [],
+      },
+      'compatibilityPolicy.disabledHostIds must contain unique strings',
+    ],
+    [
+      {
+        disabledHostIds: [],
+        ignoredWarningIds: ['warning:1', 2],
+      },
+      'compatibilityPolicy.ignoredWarningIds must contain unique strings',
+    ],
+  ])('rejects malformed compatibility policy arrays', (compatibilityPolicy, message) => {
+    expect(() => assertProjectStoreShape({
+      placements: [],
+      assignments: [],
+      connections: [],
+      compatibilityPolicy,
+    })).toThrow(message)
+  })
 })
 
 describe('assignment allocation validation', () => {

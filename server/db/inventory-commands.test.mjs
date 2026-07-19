@@ -34,7 +34,7 @@ describe('atomic inventory commands', () => {
     let project = store.createInventoryItems({ type: 'switch', name: 'Edge Switch' }, 2)
     project = store.createInventoryItems({ type: 'ram', name: '32GB DDR4', specs: { capacityGB: 32 } }, 3)
 
-    expect(project.metadata.schemaVersion).toBe(7)
+    expect(project.metadata.schemaVersion).toBe(8)
     expect(store.databases.inventory.data.switches.map(({ id, name }) => ({ id, name }))).toEqual([
       { id: 1, name: 'Edge Switch #1' },
       { id: 2, name: 'Edge Switch #2' },
@@ -208,7 +208,7 @@ describe('atomic inventory commands', () => {
     await store.flush()
 
     const { store: restarted } = await createStore(dataDir)
-    expect(restarted.databases.meta.data.schemaVersion).toBe(7)
+    expect(restarted.databases.meta.data.schemaVersion).toBe(8)
     expect(restarted.getProject().items['cpu:1'].archivedAt).toBeTruthy()
   })
 })

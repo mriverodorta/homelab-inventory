@@ -19,6 +19,7 @@ export type InventorySpecsTabContentProps = {
     mode: InventoryFieldChangeMode,
   ) => void
   onSelectOpenChange?: (open: boolean) => void
+  includeCompatibility?: boolean
 }
 
 export function InventoryFormStatus({
@@ -50,6 +51,7 @@ export function InventorySpecsFormContent({
   saveError,
   onChange,
   onSelectOpenChange,
+  includeCompatibility = true,
 }: InventorySpecsTabContentProps) {
   const handleFieldChange = (
     patch: Partial<InventoryFormValues>,
@@ -67,19 +69,23 @@ export function InventorySpecsFormContent({
           onChange={handleFieldChange}
           onSelectOpenChange={onSelectOpenChange}
         />
-        <InventoryTypeFields
-          type={values.type}
-          values={values}
-          errors={errors}
-          onChange={handleFieldChange}
-          onSelectOpenChange={onSelectOpenChange}
-        />
-        <CompatibilityFields
-          values={values}
-          errors={errors}
-          onChange={handleFieldChange}
-          onSelectOpenChange={onSelectOpenChange}
-        />
+        {includeCompatibility || (values.type !== 'ram' && values.type !== 'storage') ? (
+          <InventoryTypeFields
+            type={values.type}
+            values={values}
+            errors={errors}
+            onChange={handleFieldChange}
+            onSelectOpenChange={onSelectOpenChange}
+          />
+        ) : null}
+        {includeCompatibility ? (
+          <CompatibilityFields
+            values={values}
+            errors={errors}
+            onChange={handleFieldChange}
+            onSelectOpenChange={onSelectOpenChange}
+          />
+        ) : null}
         <FieldLabel>
           <span>Notes</span>
           <textarea

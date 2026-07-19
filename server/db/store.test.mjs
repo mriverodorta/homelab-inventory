@@ -203,7 +203,10 @@ function compatibilityProject(assignments = []) {
   }
 }
 
-async function writeCompatibilityStores(dataDir, { schemaVersion = 7, assignments = [] } = {}) {
+async function writeCompatibilityStores(
+  dataDir,
+  { schemaVersion = 7, assignments = [], compatibilityPolicy } = {},
+) {
   const project = compatibilityProject(assignments)
   const inventory = {
     servers: [structuredClone(project.items['server:1'])],
@@ -244,6 +247,7 @@ async function writeCompatibilityStores(dataDir, { schemaVersion = 7, assignment
       from: { itemType: 'server', itemId: 1, portId: 1 },
       to: { itemType: 'switch', itemId: 1, portId: 1 },
     }],
+    ...(compatibilityPolicy ? { compatibilityPolicy } : {}),
   }
   delete persistedProject.items
 
@@ -262,6 +266,133 @@ afterEach(async () => {
 })
 
 describe('HomelabInventoryStore', () => {
+  it('migrates schema 7 projects to schema 8 with an empty compatibility policy', async () => {
+    const dataDir = await makeTempDir()
+    await writeCompatibilityStores(dataDir, { schemaVersion: 7 })
+
+    const store = createStore({
+      appVersion: '0.1.26',
+      dataDir,
+      legacyProjectPath: path.join(dataDir, 'homelab-inventory-project.json'),
+      saveDebounceMs: 1,
+      seedEmptyData: false,
+      seedDir: path.join(dataDir, 'missing-seed'),
+    })
+
+    await store.init()
+    await store.flush()
+
+    expect(store.databases.meta.data.schemaVersion).toBe(8)
+    expect(store.getProject().compatibilityPolicy).toEqual({
+      disabledHostIds: [],
+      ignoredWarningIds: [],
+    })
+    expect(store.databases.project.data.compatibilityPolicy).toEqual({
+      disabledHostIds: [],
+      ignoredWarningIds: [],
+    })
+    const backupEntries = await fs.readdir(path.join(dataDir, 'backups'), { withFileTypes: true })
+    expect(backupEntries.some(
+      (entry) => entry.isDirectory() && entry.name.endsWith('-schema-7-to-8'),
+    )).toBe(true)
+  })
+
+  it('persists normalized compatibility policies through compose and split cycles', async () => {
+    const dataDir = await makeTempDir()
+    await writeCompatibilityStores(dataDir, {
+      schemaVersion: 8,
+      compatibilityPolicy: {
+        disabledHostIds: ['server:1'],
+        ignoredWarningIds: ['compatibility:["server:1"]'],
+      },
+    })
+
+    const store = createStore({
+      appVersion: '0.1.26',
+      dataDir,
+      legacyProjectPath: path.join(dataDir, 'homelab-inventory-project.json'),
+      saveDebounceMs: 1,
+      seedEmptyData: false,
+      seedDir: path.join(dataDir, 'missing-seed'),
+    })
+
+    await store.init()
+    const saved = store.setProject(store.getProject())
+    await store.flush()
+
+    expect(saved.compatibilityPolicy).toEqual({
+      disabledHostIds: ['server:1'],
+      ignoredWarningIds: ['compatibility:["server:1"]'],
+    })
+    expect(JSON.parse(
+      await fs.readFile(path.join(dataDir, 'stores', 'project.json'), 'utf8'),
+    ).compatibilityPolicy).toEqual(saved.compatibilityPolicy)
+  })
+
+  it('prunes stale and non-host disabled references but retains dormant warning IDs', async () => {
+    const dataDir = await makeTempDir()
+    await writeCompatibilityStores(dataDir, {
+      schemaVersion: 8,
+      compatibilityPolicy: {
+        disabledHostIds: ['server:1', 'switch:1', 'server:999'],
+        ignoredWarningIds: ['warning:no-longer-open'],
+      },
+    })
+
+    const store = createStore({
+      appVersion: '0.1.26',
+      dataDir,
+      legacyProjectPath: path.join(dataDir, 'homelab-inventory-project.json'),
+      saveDebounceMs: 1,
+      seedEmptyData: false,
+      seedDir: path.join(dataDir, 'missing-seed'),
+    })
+
+    await store.init()
+    await store.flush()
+
+    expect(store.getProject().compatibilityPolicy).toEqual({
+      disabledHostIds: ['server:1'],
+      ignoredWarningIds: ['warning:no-longer-open'],
+    })
+    expect(store.databases.project.data.compatibilityPolicy).toEqual(
+      store.getProject().compatibilityPolicy,
+    )
+  })
+
+  it('removes deleted hosts from compatibility opt-outs without pruning ignored warnings', async () => {
+    const dataDir = await makeTempDir()
+    await writeCompatibilityStores(dataDir, {
+      schemaVersion: 8,
+      compatibilityPolicy: {
+        disabledHostIds: ['server:1'],
+        ignoredWarningIds: ['compatibility:["server:1"]'],
+      },
+    })
+    const store = createStore({
+      appVersion: '0.1.26',
+      dataDir,
+      legacyProjectPath: path.join(dataDir, 'homelab-inventory-project.json'),
+      saveDebounceMs: 1,
+      seedEmptyData: false,
+      seedDir: path.join(dataDir, 'missing-seed'),
+    })
+
+    await store.init()
+    const withoutPlacement = store.getProject()
+    withoutPlacement.placements = []
+    withoutPlacement.connections = []
+    store.setProject(withoutPlacement)
+    store.archiveInventoryItems([{ type: 'server', id: 1 }])
+    const deleted = store.deleteInventoryItems([{ type: 'server', id: 1 }])
+
+    expect(deleted.compatibilityPolicy).toEqual({
+      disabledHostIds: [],
+      ignoredWarningIds: ['compatibility:["server:1"]'],
+    })
+    expect(store.databases.project.data.compatibilityPolicy).toEqual(deleted.compatibilityPolicy)
+  })
+
   it('seeds a new data directory from bundled store files', async () => {
     const dataDir = await makeTempDir()
     const seedDir = path.join(dataDir, 'seed')
@@ -665,7 +796,7 @@ describe('HomelabInventoryStore', () => {
       },
       negotiatedSpeedMbps: 10000,
     })
-    expect(store.databases.meta.data.schemaVersion).toBe(7)
+    expect(store.databases.meta.data.schemaVersion).toBe(8)
   })
 
   it('flushes project updates to split stores', async () => {
@@ -1224,7 +1355,7 @@ describe('HomelabInventoryStore', () => {
     ])
   })
 
-  it('migrates schema 6 to schema 7 and deterministically allocates only compatible assignments', async () => {
+  it('migrates schema 6 to schema 8 and deterministically allocates only compatible assignments', async () => {
     const dataDir = await makeTempDir()
     const assignments = [
       {
@@ -1261,7 +1392,7 @@ describe('HomelabInventoryStore', () => {
     await store.init()
     await store.flush()
 
-    expect(store.databases.meta.data.schemaVersion).toBe(7)
+    expect(store.databases.meta.data.schemaVersion).toBe(8)
     expect(store.getProject().assignments).toEqual([
       expect.objectContaining({
         id: 1,
@@ -1274,7 +1405,7 @@ describe('HomelabInventoryStore', () => {
     expect(store.databases.project.data.connections).toEqual(beforeProject.connections)
     const backupEntries = await fs.readdir(path.join(dataDir, 'backups'), { withFileTypes: true })
     expect(backupEntries.some(
-      (entry) => entry.isDirectory() && entry.name.endsWith('-schema-6-to-7'),
+      (entry) => entry.isDirectory() && entry.name.endsWith('-schema-6-to-8'),
     )).toBe(true)
   })
 
@@ -1306,6 +1437,181 @@ describe('HomelabInventoryStore', () => {
     expect(JSON.stringify(Object.fromEntries(
       Object.entries(store.databases).map(([name, database]) => [name, database.data]),
     ))).toBe(before)
+  })
+
+  it('bypasses compatibility enforcement only while a host is disabled', async () => {
+    const dataDir = await makeTempDir()
+    await writeCompatibilityStores(dataDir, {
+      compatibilityPolicy: {
+        disabledHostIds: ['server:1'],
+        ignoredWarningIds: [],
+      },
+    })
+    const store = createStore({
+      appVersion: '0.1.26',
+      dataDir,
+      legacyProjectPath: path.join(dataDir, 'homelab-inventory-project.json'),
+      saveDebounceMs: 1,
+      seedEmptyData: false,
+      seedDir: path.join(dataDir, 'missing-seed'),
+    })
+    await store.init()
+
+    const disabled = store.getProject()
+    disabled.assignments.push({
+      id: 1,
+      serverId: 'server:1',
+      itemId: 'storage:2',
+      type: 'storage',
+      assignedAt: '2026-07-19T00:00:00.000Z',
+    })
+    expect(store.setProject(disabled).assignments).toHaveLength(1)
+
+    const enabled = store.getProject()
+    enabled.compatibilityPolicy.disabledHostIds = []
+    const reenabled = store.setProject(enabled)
+    expect(reenabled.assignments).toHaveLength(1)
+
+    const removed = store.getProject()
+    removed.assignments = []
+    store.setProject(removed)
+    const enforced = store.getProject()
+    enforced.assignments.push({
+      id: 2,
+      serverId: 'server:1',
+      itemId: 'storage:2',
+      type: 'storage',
+      assignedAt: '2026-07-19T00:00:01.000Z',
+    })
+    expect(() => store.setProject(enforced)).toThrow(/storage\.interface\.mismatch/u)
+  })
+
+  it('rejects storage resource exhaustion after incompatible drives consume disabled-host positions', async () => {
+    const dataDir = await makeTempDir()
+    await writeCompatibilityStores(dataDir, {
+      compatibilityPolicy: {
+        disabledHostIds: ['server:1'],
+        ignoredWarningIds: [],
+      },
+    })
+    const store = createStore({
+      appVersion: '0.1.26',
+      dataDir,
+      legacyProjectPath: path.join(dataDir, 'homelab-inventory-project.json'),
+      saveDebounceMs: 1,
+      seedEmptyData: false,
+      seedDir: path.join(dataDir, 'missing-seed'),
+    })
+    await store.init()
+    const withSecondDrive = store.createInventoryItems({
+      type: 'storage',
+      name: 'Second Incompatible SATA',
+      specs: { capacityGb: 1000, interface: 'SATA', formFactor: '2.5' },
+    })
+    const secondDrive = Object.values(withSecondDrive.items).find(
+      (item) => item.name === 'Second Incompatible SATA',
+    )
+    const first = store.getProject()
+    first.assignments.push({
+      id: 1,
+      serverId: 'server:1',
+      itemId: 'storage:2',
+      type: 'storage',
+      assignedAt: '2026-07-19T00:00:00.000Z',
+    })
+    expect(store.setProject(first).assignments).toEqual([
+      expect.objectContaining({
+        itemId: 'storage:2',
+        allocation: { resourceType: 'storage', groupId: 'm2-1', positions: [0] },
+      }),
+    ])
+
+    const exhausted = store.getProject()
+    exhausted.assignments.push({
+      id: 2,
+      serverId: 'server:1',
+      itemId: secondDrive.key,
+      type: 'storage',
+      assignedAt: '2026-07-19T00:00:01.000Z',
+    })
+
+    let rejection
+    try {
+      store.setProject(exhausted)
+    } catch (error) {
+      rejection = error
+    }
+
+    expect(rejection).toBeInstanceOf(Error)
+    expect(rejection.message).toMatch(
+      /compatibility\.resource\.exhausted.*No available storage positions/u,
+    )
+    expect(rejection.message).not.toMatch(/storage\.interface\.mismatch/u)
+    expect(store.getProject().assignments).toHaveLength(1)
+  })
+
+  it('rejects resource exhaustion after unknown drives consume disabled-host positions', async () => {
+    const dataDir = await makeTempDir()
+    await writeCompatibilityStores(dataDir, {
+      compatibilityPolicy: {
+        disabledHostIds: ['server:1'],
+        ignoredWarningIds: [],
+      },
+    })
+    const store = createStore({
+      appVersion: '0.1.26',
+      dataDir,
+      legacyProjectPath: path.join(dataDir, 'homelab-inventory-project.json'),
+      saveDebounceMs: 1,
+      seedEmptyData: false,
+      seedDir: path.join(dataDir, 'missing-seed'),
+    })
+    await store.init()
+    const withSecondDrive = store.createInventoryItems({
+      type: 'storage',
+      name: 'Second Unknown Drive',
+      specs: { capacityGb: 1000 },
+    })
+    const secondDrive = Object.values(withSecondDrive.items).find(
+      (item) => item.name === 'Second Unknown Drive',
+    )
+    const first = store.getProject()
+    first.assignments.push({
+      id: 1,
+      serverId: 'server:1',
+      itemId: 'storage:3',
+      type: 'storage',
+      assignedAt: '2026-07-19T00:00:00.000Z',
+    })
+    expect(store.setProject(first).assignments).toEqual([
+      expect.objectContaining({
+        itemId: 'storage:3',
+        allocation: { resourceType: 'storage', groupId: 'm2-1', positions: [0] },
+      }),
+    ])
+
+    const exhausted = store.getProject()
+    exhausted.assignments.push({
+      id: 2,
+      serverId: 'server:1',
+      itemId: secondDrive.key,
+      type: 'storage',
+      assignedAt: '2026-07-19T00:00:01.000Z',
+    })
+
+    let rejection
+    try {
+      store.setProject(exhausted)
+    } catch (error) {
+      rejection = error
+    }
+
+    expect(rejection).toBeInstanceOf(Error)
+    expect(rejection.message).toMatch(
+      /compatibility\.resource\.exhausted.*No available storage positions/u,
+    )
+    expect(rejection.message).not.toMatch(/compatibility\.data\.missing/u)
+    expect(store.getProject().assignments).toHaveLength(1)
   })
 
   it('rejects canonical assignment ID collisions before transition planning and remains atomic', async () => {
@@ -1632,7 +1938,7 @@ describe('HomelabInventoryStore', () => {
     expect(store.setProject(removed).assignments).toEqual([])
   })
 
-  it('migrates schema 5 inventory records to schema 7 without rewriting them', async () => {
+  it('migrates schema 5 inventory records to schema 8 without rewriting them', async () => {
     const dataDir = await makeTempDir()
     const inventory = {
       servers: [],
@@ -1671,11 +1977,11 @@ describe('HomelabInventoryStore', () => {
 
     await store.init()
 
-    expect(store.databases.meta.data.schemaVersion).toBe(7)
+    expect(store.databases.meta.data.schemaVersion).toBe(8)
     expect(store.databases.inventory.data).toEqual(inventory)
     const backupEntries = await fs.readdir(path.join(dataDir, 'backups'), { withFileTypes: true })
     expect(backupEntries.some(
-      (entry) => entry.isDirectory() && entry.name.endsWith('-schema-5-to-7'),
+      (entry) => entry.isDirectory() && entry.name.endsWith('-schema-5-to-8'),
     )).toBe(true)
   })
 
@@ -1741,7 +2047,7 @@ describe('HomelabInventoryStore', () => {
 
     await store.init()
 
-    expect(store.databases.meta.data.schemaVersion).toBe(7)
+    expect(store.databases.meta.data.schemaVersion).toBe(8)
     expect(store.getProject().items['switch:1'].ports.map((port) => port.speed)).toEqual([
       '1G',
       '1G',
@@ -1791,7 +2097,7 @@ describe('HomelabInventoryStore', () => {
 
     const backupEntries = await fs.readdir(path.join(dataDir, 'backups'), { withFileTypes: true })
     const migrationBackup = backupEntries.find(
-      (entry) => entry.isDirectory() && entry.name.endsWith('-schema-4-to-7'),
+      (entry) => entry.isDirectory() && entry.name.endsWith('-schema-4-to-8'),
     )
 
     expect(migrationBackup).toBeDefined()

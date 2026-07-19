@@ -6,7 +6,8 @@ import { runtimeItemKey } from '@/lib/item-keys'
 import type { CompatibilitySeverity } from '@/types/compatibility'
 import type { InventoryType, ProjectState } from '@/types/inventory'
 
-type AuditFilter = 'all' | 'server' | 'patchPanel' | 'switch' | 'stale'
+type AuditFilter = 'all' | 'server' | 'patchPanel' | 'switch' | 'stale' | 'ignored'
+type OpenAuditFilter = Exclude<AuditFilter, 'ignored'>
 
 const FILTERS: Array<{ label: string; value: AuditFilter }> = [
   { label: 'All', value: 'all' },
@@ -14,6 +15,7 @@ const FILTERS: Array<{ label: string; value: AuditFilter }> = [
   { label: 'Patch Panels', value: 'patchPanel' },
   { label: 'Switches', value: 'switch' },
   { label: 'Stale', value: 'stale' },
+  { label: 'Ignored', value: 'ignored' },
 ]
 
 function itemTypeLabel(type: InventoryType): string {
@@ -24,7 +26,7 @@ function itemTypeLabel(type: InventoryType): string {
   return type.charAt(0).toUpperCase() + type.slice(1)
 }
 
-function filterGroups(groups: ProjectAuditGroup[], filter: AuditFilter): ProjectAuditGroup[] {
+function filterGroups(groups: ProjectAuditGroup[], filter: OpenAuditFilter): ProjectAuditGroup[] {
   if (filter === 'all') {
     return groups
   }
@@ -71,17 +73,26 @@ export function AuditDrawer({
   open,
   onClose,
   onSelectItem,
+  onSetWarningIgnored,
 }: {
   project: ProjectState
   open: boolean
   onClose: () => void
   onSelectItem: (itemId: string) => void
+  onSetWarningIgnored: (warningId: string, ignored: boolean) => void
 }) {
   const [filter, setFilter] = useState<AuditFilter>('all')
-  const groups = useMemo(() => getProjectAuditWarnings(project), [project])
-  const filteredGroups = useMemo(() => filterGroups(groups, filter), [filter, groups])
-  const totalWarnings = groups.reduce((count, group) => count + group.warnings.length, 0)
+  const openGroups = useMemo(() => getProjectAuditWarnings(project), [project])
+  const filteredGroups = useMemo(
+    () =>
+      filter === 'ignored'
+        ? getProjectAuditWarnings(project, { visibility: 'ignored' })
+        : filterGroups(openGroups, filter),
+    [filter, openGroups, project],
+  )
+  const totalWarnings = openGroups.reduce((count, group) => count + group.warnings.length, 0)
   const filteredWarnings = filteredGroups.reduce((count, group) => count + group.warnings.length, 0)
+  const showingIgnored = filter === 'ignored'
 
   return (
     <aside
@@ -96,7 +107,10 @@ export function AuditDrawer({
           <div className="flex items-center gap-2">
             <AlertTriangle className="size-5 text-[#a66f1f]" />
             <h2 className="text-lg font-bold text-[#20242c]">Audit</h2>
-            <span className="rounded bg-[#fff2c7] px-2 py-1 text-xs font-black text-[#3d2a08]">
+            <span
+              className="rounded bg-[#fff2c7] px-2 py-1 text-xs font-black text-[#3d2a08]"
+              aria-label={`${totalWarnings} open audit warnings`}
+            >
               {totalWarnings}
             </span>
           </div>
@@ -161,16 +175,29 @@ export function AuditDrawer({
                     const WarningIcon = style.icon
 
                     return (
-                      <button
-                        key={warning.id}
-                        type="button"
-                        data-severity={severity}
-                        className={`flex w-full items-start gap-2 rounded-md border p-2 text-left text-xs font-semibold leading-snug transition focus-visible:outline-none focus-visible:ring-2 ${style.className}`}
-                        onClick={() => onSelectItem(warning.itemId)}
-                      >
-                        <WarningIcon className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
-                        <span className="min-w-0">{warning.message}</span>
-                      </button>
+                      <div key={warning.id} className="flex items-start gap-2">
+                        <button
+                          type="button"
+                          data-severity={severity}
+                          className={`flex min-w-0 flex-1 items-start gap-2 rounded-md border p-2 text-left text-xs font-semibold leading-snug transition focus-visible:outline-none focus-visible:ring-2 ${style.className}`}
+                          onClick={() => onSelectItem(warning.itemId)}
+                        >
+                          <WarningIcon className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
+                          <span className="min-w-0">{warning.message}</span>
+                        </button>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="xs"
+                          className="mt-0.5 px-2 text-[11px]"
+                          onClick={(event) => {
+                            event.stopPropagation()
+                            onSetWarningIgnored(warning.id, !showingIgnored)
+                          }}
+                        >
+                          {showingIgnored ? 'Unignore' : 'Ignore'}
+                        </Button>
+                      </div>
                     )
                   })}
                 </div>

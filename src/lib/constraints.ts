@@ -1,4 +1,4 @@
-import { planHostAllocations } from '@/lib/compatibility'
+import { isHostCompatibilityEnabled, planHostAllocations } from '@/lib/compatibility'
 import type { ProjectCompatibilityResult } from '@/lib/compatibility'
 import { nextNumericId } from '@/lib/ids'
 import { isArchivedItem, placementCollides, touchProject } from '@/lib/project'
@@ -39,6 +39,10 @@ const SINGLE_ITEM_TYPES = new Set<ComponentType>(['cpu', 'ram', 'gpu', 'network'
 const CANVAS_EQUIPMENT_TYPES = new Set<InventoryType>(['server', 'nas', 'switch', 'patchPanel'])
 const NAS_COMPONENT_TYPES = new Set<ComponentType>(['cpu', 'ram', 'storage', 'network'])
 const SWAPPABLE_COMPONENT_TYPES = new Set<ComponentType>(['cpu', 'ram'])
+const ALWAYS_ENFORCED_COMPATIBILITY_CODES = new Set([
+  'compatibility.resource.exhausted',
+  'memory.slots.exceeded',
+])
 const NAS_COMPONENT_MESSAGE = 'A NAS can accept CPU, RAM, storage drives, and network cards.'
 
 export type AssignmentMutationResult =
@@ -125,6 +129,17 @@ function compatibilityFingerprint(
   ])
 }
 
+function shouldEnforceCompatibilityFinding(
+  project: ProjectState,
+  result: ProjectCompatibilityResult,
+  finding: CompatibilityFinding,
+): boolean {
+  return (
+    isHostCompatibilityEnabled(project, result.hostId) ||
+    ALWAYS_ENFORCED_COMPATIBILITY_CODES.has(finding.code)
+  )
+}
+
 function planHosts(project: ProjectState, hostIds: string[]): PlannedTransition {
   let plannedProject = project
   const compatibility: ProjectCompatibilityResult[] = []
@@ -154,21 +169,29 @@ function evaluateTransition(
   tentative: ProjectState,
   affectedHostIds: string[],
 ): AssignmentMutationResult {
-  const baseline = affectedHostIds.flatMap(
+  const baseline = [...new Set(affectedHostIds)].flatMap(
     (hostId) => planHostAllocations(original, hostId).results,
   )
   const planned = planHosts(tentative, affectedHostIds)
   const baselineErrors = new Set(
     baseline.flatMap((result) =>
       result.findings
-        .filter((finding) => finding.severity === 'error')
+        .filter(
+          (finding) =>
+            finding.severity === 'error' &&
+            shouldEnforceCompatibilityFinding(tentative, result, finding),
+        )
         .map((finding) => compatibilityFingerprint(result, finding)),
     ),
   )
   const baselineUnknown = new Set(
     baseline.flatMap((result) =>
       result.findings
-        .filter((finding) => finding.severity === 'unknown')
+        .filter(
+          (finding) =>
+            finding.severity === 'unknown' &&
+            shouldEnforceCompatibilityFinding(tentative, result, finding),
+        )
         .map((finding) => compatibilityFingerprint(result, finding)),
     ),
   )
@@ -176,6 +199,7 @@ function evaluateTransition(
     result.findings.filter(
       (finding) =>
         finding.severity === 'error' &&
+        shouldEnforceCompatibilityFinding(tentative, result, finding) &&
         !baselineErrors.has(compatibilityFingerprint(result, finding)),
     ),
   )
@@ -192,6 +216,7 @@ function evaluateTransition(
     result.findings.filter(
       (finding) =>
         finding.severity === 'unknown' &&
+        shouldEnforceCompatibilityFinding(tentative, result, finding) &&
         !baselineUnknown.has(compatibilityFingerprint(result, finding)),
     ),
   )

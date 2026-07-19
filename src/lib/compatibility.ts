@@ -1,9 +1,12 @@
 export {
   evaluateAssignmentCompatibility,
   evaluateProjectCompatibility,
+  isHostCompatibilityEnabled,
+  normalizeCompatibilityPolicy,
   normalizeCompatibilityProject,
   normalizeComponentRequirements,
   normalizeHostCapabilities,
+  normalizeProjectCompatibilityPolicy,
   parsePcieDescriptor,
   planHostAllocations,
 } from '../../shared/compatibility/index.mjs'

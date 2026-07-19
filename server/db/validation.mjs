@@ -78,6 +78,20 @@ function assertOptionalStringArray(value, fieldPath) {
   value.forEach((entry, index) => assertRequiredString(entry, `${fieldPath}[${index}]`))
 }
 
+function assertUniqueStringArray(value, fieldPath) {
+  if (!Array.isArray(value)) {
+    throw new Error(`${fieldPath} must contain unique strings.`)
+  }
+
+  const normalized = value.map((entry) => typeof entry === 'string' ? entry.trim() : entry)
+  if (
+    normalized.some((entry) => typeof entry !== 'string' || entry === '') ||
+    new Set(normalized).size !== normalized.length
+  ) {
+    throw new Error(`${fieldPath} must contain unique strings.`)
+  }
+}
+
 function assertOptionalEnum(value, allowed, fieldPath) {
   if (value === undefined) return
   if (!allowed.has(value)) {
@@ -384,6 +398,18 @@ export function assertProjectStoreShape(store) {
 
   if (store.connections !== undefined && !Array.isArray(store.connections)) {
     throw new Error('Project store connections must be an array.')
+  }
+
+  if (store.compatibilityPolicy !== undefined) {
+    assertOptionalObject(store.compatibilityPolicy, 'compatibilityPolicy')
+    assertUniqueStringArray(
+      store.compatibilityPolicy.disabledHostIds,
+      'compatibilityPolicy.disabledHostIds',
+    )
+    assertUniqueStringArray(
+      store.compatibilityPolicy.ignoredWarningIds,
+      'compatibilityPolicy.ignoredWarningIds',
+    )
   }
 
   assertUniqueCanonicalIds(store.assignments, 'Project assignments')

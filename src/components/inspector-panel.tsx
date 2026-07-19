@@ -68,6 +68,8 @@ import {
   getEndpointGroupForHost,
 } from '@/lib/connection-endpoints'
 import { getSlotStatus, SLOT_LABELS, sortAssignmentsForDisplay } from '@/lib/constraints'
+import { isHostCompatibilityEnabled } from '@/lib/compatibility'
+import { setHostCompatibilityEnabled } from '@/lib/compatibility-policy'
 import { cn } from '@/lib/utils'
 import {
   formatCapacity,
@@ -2186,6 +2188,7 @@ function EditableSpecsSection({
           values={editor.values}
           errors={editor.errors}
           onChange={editor.updateValues}
+          includeCompatibility={false}
         />
         {displayName ? (
           <label className={cn(formLabelClass, 'mt-3')}>
@@ -2224,6 +2227,7 @@ function ServerInspectorTabs({
   activeNetworkTraceKey,
   pendingEndpoint,
   auditWarnings,
+  onUpdateProject,
   onUpdateItem,
   onSelectNetworkTrace,
   onEndpointConnectionClick,
@@ -2235,6 +2239,7 @@ function ServerInspectorTabs({
   activeNetworkTraceKey: string | null
   pendingEndpoint: ConnectionEndpoint | null
   auditWarnings: AuditWarning[]
+  onUpdateProject: (project: ProjectState) => void
   onUpdateItem: (itemId: string, input: InventoryItemInput) => void
   onSelectNetworkTrace: (endpoint: ConnectionEndpoint) => void
   onEndpointConnectionClick: (endpoint: ConnectionEndpoint) => void
@@ -2334,7 +2339,19 @@ function ServerInspectorTabs({
         {
           value: 'compatibility',
           label: 'Compatibility',
-          content: <HostCompatibilityTab project={project} host={draftServer} />,
+          content: (
+            <HostCompatibilityTab
+              project={project}
+              host={draftServer}
+              values={editor.values}
+              errors={editor.errors}
+              onChange={editor.updateValues}
+              enabled={isHostCompatibilityEnabled(project, runtimeItemKey(server))}
+              onEnabledChange={(enabled) => onUpdateProject(
+                setHostCompatibilityEnabled(project, runtimeItemKey(server), enabled),
+              )}
+            />
+          ),
         },
       ]}
     />
@@ -2440,6 +2457,7 @@ function NasInspectorTabs({
   pendingEndpoint,
   auditWarnings,
   activeNetworkTraceKey,
+  onUpdateProject,
   onUpdateItem,
   onCreateConnection,
   onEndpointConnectionClick,
@@ -2452,6 +2470,7 @@ function NasInspectorTabs({
   pendingEndpoint: ConnectionEndpoint | null
   auditWarnings: AuditWarning[]
   activeNetworkTraceKey: string | null
+  onUpdateProject: (project: ProjectState) => void
   onUpdateItem: (itemId: string, input: InventoryItemInput) => void
   onCreateConnection: (from: ConnectionEndpoint, to: ConnectionEndpoint) => void
   onEndpointConnectionClick: (endpoint: ConnectionEndpoint) => void
@@ -2542,7 +2561,19 @@ function NasInspectorTabs({
         {
           value: 'compatibility',
           label: 'Compatibility',
-          content: <HostCompatibilityTab project={project} host={draftItem} />,
+          content: (
+            <HostCompatibilityTab
+              project={project}
+              host={draftItem}
+              values={editor.values}
+              errors={editor.errors}
+              onChange={editor.updateValues}
+              enabled={isHostCompatibilityEnabled(project, runtimeItemKey(item))}
+              onEnabledChange={(enabled) => onUpdateProject(
+                setHostCompatibilityEnabled(project, runtimeItemKey(item), enabled),
+              )}
+            />
+          ),
         },
       ]}
     />
@@ -2709,6 +2740,7 @@ export function InspectorPanel({
   persistenceWarning,
   open,
   onClose,
+  onUpdateProject,
   onUpdateItem,
   onDuplicateItem = () => undefined,
   onArchiveItem = () => undefined,
@@ -2733,6 +2765,7 @@ export function InspectorPanel({
   persistenceWarning: string | null
   open: boolean
   onClose: () => void
+  onUpdateProject: (project: ProjectState) => void
   onUpdateItem: (itemId: string, input: InventoryItemInput) => void
   onDuplicateItem?: (item: InventoryItem) => void
   onArchiveItem?: (item: InventoryItem) => void
@@ -2871,6 +2904,7 @@ export function InspectorPanel({
                   activeNetworkTraceKey={activeNetworkTraceKey}
                   pendingEndpoint={pendingConnectionEndpoint}
                   auditWarnings={auditWarnings}
+                  onUpdateProject={onUpdateProject}
                   onUpdateItem={onUpdateItem}
                   onSelectNetworkTrace={onSelectNetworkTrace}
                   onEndpointConnectionClick={onEndpointConnectionClick}
@@ -2894,6 +2928,7 @@ export function InspectorPanel({
                   pendingEndpoint={pendingConnectionEndpoint}
                   auditWarnings={auditWarnings}
                   activeNetworkTraceKey={activeNetworkTraceKey}
+                  onUpdateProject={onUpdateProject}
                   onUpdateItem={onUpdateItem}
                   onCreateConnection={onCreateConnection}
                   onEndpointConnectionClick={onEndpointConnectionClick}

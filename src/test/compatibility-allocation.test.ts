@@ -354,6 +354,82 @@ describe('deterministic compatibility allocation', () => {
     expect(planned.results[0].status).toBe('unknown')
   })
 
+  it('allocates unknown memory, storage, and expansion candidates on disabled hosts without overbooking', () => {
+    const server = host('server:1', {
+      host: {
+        memory: {
+          generations: ['DDR4'],
+          slots: 1,
+          maxCapacityGb: 128,
+          maxModuleCapacityGb: 32,
+          maxSpeedMt: 3200,
+        },
+        storageSlots: [{ id: 'm2', label: 'M.2', count: 1, interfaces: ['NVMe'], formFactors: ['2280'] }],
+        expansionSlots: [{
+          id: 'pcie',
+          label: 'PCIe',
+          count: 1,
+          interfaceFamily: 'pcie',
+          pcieGeneration: 4,
+          mechanicalLanes: 16,
+          electricalLanes: 16,
+          acceptedHeights: ['low-profile'],
+          maxSlotWidth: 1,
+          maxPowerWatts: 75,
+        }],
+      },
+    })
+    const unknownItems: InventoryItem[] = [
+      { id: 1, key: 'ram:1', type: 'ram', name: 'Unknown RAM 1', specs: { capacityGb: 16, moduleCount: 1 } },
+      { id: 2, key: 'ram:2', type: 'ram', name: 'Unknown RAM 2', specs: { capacityGb: 16, moduleCount: 1 } },
+      { id: 1, key: 'storage:1', type: 'storage', name: 'Unknown storage 1', specs: { formFactor: '2280' } },
+      { id: 2, key: 'storage:2', type: 'storage', name: 'Unknown storage 2', specs: { formFactor: '2280' } },
+      {
+        id: 1,
+        key: 'network:1',
+        type: 'network',
+        name: 'Unknown card 1',
+        compatibility: { requirements: { expansion: { interfaceFamily: 'pcie', slotWidth: 1 } } },
+      },
+      {
+        id: 1,
+        key: 'gpu:1',
+        type: 'gpu',
+        name: 'Unknown card 2',
+        compatibility: { requirements: { expansion: { interfaceFamily: 'pcie', slotWidth: 1 } } },
+      },
+    ]
+    const input = project(
+      [server],
+      unknownItems,
+      unknownItems.map((item, index) =>
+        assignment(index + 1, server.key!, item, `2026-01-01T00:00:0${index}Z`),
+      ),
+    )
+    input.compatibilityPolicy = { disabledHostIds: [server.key!], ignoredWarningIds: [] }
+
+    const planned = planHostAllocations(input, server.key!)
+
+    expect(planned.assignments.map((entry) => entry.allocation)).toEqual([
+      { resourceType: 'memory', positions: [0] },
+      undefined,
+      { resourceType: 'storage', groupId: 'm2', positions: [0] },
+      undefined,
+      { resourceType: 'expansion', groupId: 'pcie', positions: [0] },
+      undefined,
+    ])
+    expect([0, 2, 4].map((index) => planned.results[index].status)).toEqual([
+      'unknown',
+      'unknown',
+      'unknown',
+    ])
+    for (const index of [1, 3, 5]) {
+      expect(planned.results[index].findings).toEqual(expect.arrayContaining([
+        expect.objectContaining({ code: 'compatibility.resource.exhausted', severity: 'error' }),
+      ]))
+    }
+  })
+
   it('reports known storage exhaustion even when the next drive has unknown compatibility fields', () => {
     const server = host('server:1', {
       host: {

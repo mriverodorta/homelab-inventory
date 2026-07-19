@@ -1,6 +1,9 @@
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
+import { useState } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { AuditDrawer } from '@/components/audit-drawer'
+import { getProjectAuditWarnings } from '@/lib/audit'
+import { setAuditWarningIgnored } from '@/lib/compatibility-policy'
 import type { ProjectState } from '@/types/inventory'
 
 const project: ProjectState = {
@@ -149,6 +152,31 @@ const compatibilityProject: ProjectState = {
   connections: [],
 }
 
+function StatefulAuditDrawer({
+  initialProject,
+  onSelectItem,
+  onSetWarningIgnored,
+}: {
+  initialProject: ProjectState
+  onSelectItem: (itemId: string) => void
+  onSetWarningIgnored: (warningId: string, ignored: boolean) => void
+}) {
+  const [currentProject, setCurrentProject] = useState(initialProject)
+
+  return (
+    <AuditDrawer
+      project={currentProject}
+      open
+      onClose={vi.fn()}
+      onSelectItem={onSelectItem}
+      onSetWarningIgnored={(warningId, ignored) => {
+        onSetWarningIgnored(warningId, ignored)
+        setCurrentProject((project) => setAuditWarningIgnored(project, warningId, ignored))
+      }}
+    />
+  )
+}
+
 afterEach(() => {
   cleanup()
 })
@@ -163,6 +191,7 @@ describe('AuditDrawer', () => {
         open
         onClose={vi.fn()}
         onSelectItem={onSelectItem}
+        onSetWarningIgnored={vi.fn()}
       />,
     )
 
@@ -183,6 +212,7 @@ describe('AuditDrawer', () => {
         open
         onClose={vi.fn()}
         onSelectItem={vi.fn()}
+        onSetWarningIgnored={vi.fn()}
       />,
     )
 
@@ -201,6 +231,7 @@ describe('AuditDrawer', () => {
         open
         onClose={vi.fn()}
         onSelectItem={onSelectItem}
+        onSetWarningIgnored={vi.fn()}
       />,
     )
 
@@ -211,5 +242,79 @@ describe('AuditDrawer', () => {
     fireEvent.click(screen.getByText(/CPU socket LGA1700 is not supported/))
 
     expect(onSelectItem).toHaveBeenCalledWith('host')
+  })
+
+  it('shows ignored warnings only in the Ignored filter and keeps the badge count open-only', () => {
+    const warnings = getProjectAuditWarnings(compatibilityProject).flatMap((group) => group.warnings)
+    const ignoredWarning = warnings.find((warning) => warning.code === 'cpu.socket.mismatch')
+
+    expect(ignoredWarning).toBeDefined()
+
+    const ignoredProject: ProjectState = {
+      ...compatibilityProject,
+      compatibilityPolicy: {
+        disabledHostIds: [],
+        ignoredWarningIds: [ignoredWarning!.id],
+      },
+    }
+
+    render(
+      <AuditDrawer
+        project={ignoredProject}
+        open
+        onClose={vi.fn()}
+        onSelectItem={vi.fn()}
+        onSetWarningIgnored={vi.fn()}
+      />,
+    )
+
+    expect(screen.queryByText(ignoredWarning!.message)).not.toBeInTheDocument()
+    expect(screen.getByLabelText(`${warnings.length - 1} open audit warnings`)).toHaveTextContent(
+      String(warnings.length - 1),
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'Ignored' }))
+
+    expect(screen.getByText(ignoredWarning!.message)).toBeInTheDocument()
+    expect(screen.getByText('1 shown')).toBeInTheDocument()
+    expect(screen.getByLabelText(`${warnings.length - 1} open audit warnings`)).toHaveTextContent(
+      String(warnings.length - 1),
+    )
+  })
+
+  it('ignores and unignores warnings without selecting an item or closing the drawer', () => {
+    const onSelectItem = vi.fn()
+    const onSetWarningIgnored = vi.fn()
+    const targetWarning = getProjectAuditWarnings(compatibilityProject)
+      .flatMap((group) => group.warnings)
+      .find((warning) => warning.code === 'cpu.socket.mismatch')
+
+    expect(targetWarning).toBeDefined()
+
+    render(
+      <StatefulAuditDrawer
+        initialProject={compatibilityProject}
+        onSelectItem={onSelectItem}
+        onSetWarningIgnored={onSetWarningIgnored}
+      />,
+    )
+
+    const openMessageButton = screen.getByRole('button', { name: targetWarning!.message })
+    fireEvent.click(within(openMessageButton.parentElement!).getByRole('button', { name: 'Ignore' }))
+
+    expect(onSetWarningIgnored).toHaveBeenLastCalledWith(targetWarning!.id, true)
+    expect(onSelectItem).not.toHaveBeenCalled()
+    expect(screen.queryByText(targetWarning!.message)).not.toBeInTheDocument()
+    expect(screen.getByTestId('audit-drawer')).toHaveAttribute('aria-hidden', 'false')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Ignored' }))
+
+    const ignoredMessageButton = screen.getByRole('button', { name: targetWarning!.message })
+    fireEvent.click(within(ignoredMessageButton.parentElement!).getByRole('button', { name: 'Unignore' }))
+
+    expect(onSetWarningIgnored).toHaveBeenLastCalledWith(targetWarning!.id, false)
+    expect(onSelectItem).not.toHaveBeenCalled()
+    expect(screen.queryByText(targetWarning!.message)).not.toBeInTheDocument()
+    expect(screen.getByTestId('audit-drawer')).toHaveAttribute('aria-hidden', 'false')
   })
 })

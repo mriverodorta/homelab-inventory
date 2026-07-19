@@ -121,6 +121,11 @@ export type ProjectMetadata = {
   updatedAt: string
 }
 
+export type CompatibilityPolicy = {
+  disabledHostIds: string[]
+  ignoredWarningIds: string[]
+}
+
 export type ProjectState = {
   id: string
   metadata: ProjectMetadata
@@ -128,6 +133,7 @@ export type ProjectState = {
   placements: ServerPlacement[]
   assignments: ComponentAssignment[]
   connections: InventoryConnection[]
+  compatibilityPolicy?: CompatibilityPolicy
 }
 
 export type SlotStatus = {

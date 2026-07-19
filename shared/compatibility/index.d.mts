@@ -5,6 +5,7 @@ import type {
   HostCompatibility,
 } from '../../src/types/compatibility'
 import type {
+  CompatibilityPolicy,
   ComponentAssignment,
   InventoryItem,
   InventoryType,
@@ -75,6 +76,14 @@ export type HostAllocationPlan = {
 }
 
 export function normalizeHostCapabilities(item: InventoryItem): HostCompatibility
+export function normalizeCompatibilityPolicy(
+  policy?: Partial<CompatibilityPolicy> | null,
+): CompatibilityPolicy
+export function isHostCompatibilityEnabled(
+  project: ProjectState | null | undefined,
+  hostId: string | number,
+): boolean
+export function normalizeProjectCompatibilityPolicy(project: ProjectState): ProjectState
 export function parsePcieDescriptor(value: unknown): PcieDescriptor
 export function normalizeComponentRequirements(
   item: InventoryItem,

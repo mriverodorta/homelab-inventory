@@ -4,7 +4,10 @@ import { Low } from 'lowdb'
 import { normalizeNetworkProject, recalculateNegotiatedSpeeds } from '../../src/lib/negotiated-speed.ts'
 import { getReleaseNotesBetween } from '../../src/release-notes.ts'
 import {
+  isHostCompatibilityEnabled,
+  normalizeCompatibilityPolicy,
   normalizeCompatibilityProject,
+  normalizeProjectCompatibilityPolicy,
   planHostAllocations,
 } from '../../shared/compatibility/index.mjs'
 import {
@@ -23,11 +26,15 @@ import {
   assertProjectStoreShape,
 } from './validation.mjs'
 
-export const CURRENT_SCHEMA_VERSION = 7
+export const CURRENT_SCHEMA_VERSION = 8
 
 const DEFAULT_SAVE_DEBOUNCE_MS = 500
 const BACKUP_LIMIT = 10
 const STORE_NAMES = ['meta', 'inventory', 'project', 'agents', 'agentStatus']
+const ALWAYS_ENFORCED_COMPATIBILITY_CODES = new Set([
+  'compatibility.resource.exhausted',
+  'memory.slots.exceeded',
+])
 const TABLE_BY_TYPE = {
   server: 'servers',
   cpu: 'cpus',
@@ -107,12 +114,14 @@ function createProjectStoreFromProject(project) {
     placements: (project.placements ?? []).map(persistPlacement),
     assignments: (project.assignments ?? []).map(persistAssignment),
     connections: (project.connections ?? []).map(persistConnection),
+    compatibilityPolicy: normalizeCompatibilityPolicy(project.compatibilityPolicy),
   }
 }
 
 function splitProject(project) {
   assertLegacyProjectShape(project)
   project = normalizeLegacyProjectIds(project)
+  project = normalizeProjectCompatibilityPolicy(project)
   assertProjectShape(project)
   project = normalizeCompatibilityProject(project)
   assertProjectShape(project)
@@ -211,6 +220,7 @@ function composeProject(meta, inventory, project) {
     placements: (project.placements ?? []).map(runtimePlacement),
     assignments: (project.assignments ?? []).map(runtimeAssignment),
     connections: (project.connections ?? []).map(runtimeConnection),
+    compatibilityPolicy: normalizeCompatibilityPolicy(project.compatibilityPolicy),
   }
 }
 
@@ -228,6 +238,13 @@ function compatibilityFindingIdentity(result, finding) {
     finding.resourceId ?? '',
     finding.message ?? '',
   ])
+}
+
+function shouldEnforceCompatibilityFinding(project, result, finding) {
+  return (
+    isHostCompatibilityEnabled(project, result.hostId) ||
+    ALWAYS_ENFORCED_COMPATIBILITY_CODES.has(finding.code)
+  )
 }
 
 function parseItemKey(key) {
@@ -944,6 +961,15 @@ export class HomelabInventoryStore {
         continue
       }
 
+      if (currentVersion === 7) {
+        this.databases.project.data.compatibilityPolicy = normalizeCompatibilityPolicy(
+          this.databases.project.data.compatibilityPolicy,
+        )
+        this.databases.meta.data.schemaVersion = 8
+        currentVersion = 8
+        continue
+      }
+
       throw new Error(`No migration registered for schema version ${currentVersion}.`)
     }
 
@@ -1070,7 +1096,9 @@ export class HomelabInventoryStore {
     }
 
     assertProjectShape(submittedProject)
-    const canonicalProject = normalizeLegacyProjectIds(submittedProject)
+    const canonicalProject = normalizeProjectCompatibilityPolicy(
+      normalizeLegacyProjectIds(submittedProject),
+    )
     assertProjectShape(canonicalProject)
     this.assertAssignmentTransitions(this.getProject(), canonicalProject)
     const normalizedProject = normalizeNetworkProject(canonicalProject)
@@ -1124,7 +1152,12 @@ export class HomelabInventoryStore {
     const baseline = new Set()
     for (const hostId of affectedHosts) {
       for (const result of planHostAllocations(currentProject, hostId).results) {
-        for (const finding of result.findings?.filter((entry) => entry.severity === 'error') ?? []) {
+        const errors = result.findings?.filter(
+          (finding) =>
+            finding.severity === 'error' &&
+            shouldEnforceCompatibilityFinding(submittedProject, result, finding),
+        ) ?? []
+        for (const finding of errors) {
           baseline.add(compatibilityFindingIdentity(result, finding))
         }
       }
@@ -1132,7 +1165,11 @@ export class HomelabInventoryStore {
 
     for (const hostId of affectedHosts) {
       for (const result of planHostAllocations(submittedProject, hostId).results) {
-        const errors = result.findings?.filter((finding) => finding.severity === 'error') ?? []
+        const errors = result.findings?.filter(
+          (finding) =>
+            finding.severity === 'error' &&
+            shouldEnforceCompatibilityFinding(submittedProject, result, finding),
+        ) ?? []
         for (const finding of errors) {
           const isEnforced = enforcedIds.has(String(result.assignmentId))
           const isNewHostFailure = !baseline.has(compatibilityFindingIdentity(result, finding))
@@ -1411,6 +1448,17 @@ export class HomelabInventoryStore {
       for (const ref of refs) {
         const resolved = resolveInventoryRef(draft.inventory, ref)
         draft.inventory[resolved.table].splice(resolved.index, 1)
+      }
+
+      const policy = normalizeCompatibilityPolicy(draft.project.compatibilityPolicy)
+      const deletedHostIds = new Set(
+        refs
+          .filter((ref) => ref.type === 'server' || ref.type === 'nas')
+          .map((ref) => itemKey(ref.type, ref.id)),
+      )
+      draft.project.compatibilityPolicy = {
+        ...policy,
+        disabledHostIds: policy.disabledHostIds.filter((hostId) => !deletedHostIds.has(hostId)),
       }
 
       return { items: refs }

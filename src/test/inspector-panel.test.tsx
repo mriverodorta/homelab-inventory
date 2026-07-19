@@ -446,6 +446,7 @@ afterEach(() => {
 type InspectorPanelProps = ComponentProps<typeof InspectorPanel>
 
 type RenderInspectorOptions = Partial<Pick<InspectorPanelProps,
+  | 'onUpdateProject'
   | 'onUpdateItem'
   | 'onCreateConnection'
   | 'onSelectNetworkTrace'
@@ -472,6 +473,7 @@ function renderInspector({
   demoMode = false,
   validationMessage = null,
   validationSeverity = 'error',
+  onUpdateProject = vi.fn(),
   onUpdateItem = vi.fn(),
   onCreateConnection = vi.fn(),
   onSelectNetworkTrace = vi.fn(),
@@ -503,6 +505,7 @@ function renderInspector({
         persistenceWarning={null}
         open
         onClose={() => {}}
+        onUpdateProject={onUpdateProject}
         onUpdateItem={onUpdateItem}
         onCreateConnection={onCreateConnection}
         onSelectNetworkTrace={onSelectNetworkTrace}
@@ -517,6 +520,7 @@ function renderInspector({
 
   return {
     ...renderResult,
+    onUpdateProject,
     onUpdateItem,
     onCreateConnection,
     onSelectNetworkTrace,
@@ -588,6 +592,62 @@ describe('InspectorPanel', () => {
     expect(screen.getByRole('heading', { name: 'Unknowns' })).toBeVisible()
   })
 
+  it.each([
+    ['server', 'server'],
+    ['nas', 'nas'],
+  ] as const)('edits %s compatibility fields and disables checks by runtime key', async (
+    selectedItemId,
+    hostKey,
+  ) => {
+    const user = userEvent.setup()
+    const { onUpdateItem, onUpdateProject } = renderInspector({ selectedItemId })
+    const specsPanel = screen.getByRole('tabpanel', { name: 'Specs' })
+
+    expect(within(specsPanel).queryByLabelText('Supported CPU sockets')).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole('tab', { name: 'Compatibility' }))
+
+    expect(screen.getByLabelText('Supported CPU sockets')).toBeVisible()
+    const checkbox = screen.getByRole('checkbox', { name: 'Enable compatibility checks' })
+    expect(checkbox).toBeChecked()
+
+    fireEvent.change(screen.getByLabelText('Supported CPU sockets'), {
+      target: { value: 'LGA1200' },
+    })
+    expect(onUpdateItem).not.toHaveBeenCalled()
+
+    await user.click(checkbox)
+
+    expect(onUpdateProject).toHaveBeenCalledWith(expect.objectContaining({
+      compatibilityPolicy: expect.objectContaining({ disabledHostIds: [hostKey] }),
+    }))
+  })
+
+  it('keeps host fields editable but hides evaluation findings when checks are disabled', async () => {
+    const user = userEvent.setup()
+    renderInspector({
+      selectedItemId: 'server',
+      project: {
+        ...compatibilityProject,
+        compatibilityPolicy: {
+          disabledHostIds: ['server'],
+          ignoredWarningIds: [],
+        },
+      },
+    })
+
+    await user.click(screen.getByRole('tab', { name: 'Compatibility' }))
+
+    expect(screen.getByRole('checkbox', { name: 'Enable compatibility checks' })).not.toBeChecked()
+    expect(screen.getByLabelText('Supported CPU sockets')).toBeVisible()
+    expect(screen.getByText(
+      'Hardware compatibility checks are disabled for this host. Physical limits still apply.',
+    )).toBeVisible()
+    expect(screen.queryByRole('status')).not.toBeInTheDocument()
+    expect(screen.queryByText('Resource utilization')).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('Compatibility findings')).not.toBeInTheDocument()
+  })
+
   it('shows NAS compatibility resources without server-only slot assumptions', async () => {
     const user = userEvent.setup()
     renderInspector({ selectedItemId: 'nas', project: compatibilityProject })
@@ -655,7 +715,8 @@ describe('InspectorPanel', () => {
     expect(createAgentEnrollment).not.toHaveBeenCalled()
   })
 
-  it('renders storage in the reusable tabbed editor with simplified chrome', () => {
+  it('renders storage in the reusable tabbed editor with simplified chrome', async () => {
+    const user = userEvent.setup()
     renderInspector({ selectedItemId: 'storage' })
 
     expect(screen.queryByText('Specs, slot status, and project save controls.')).not.toBeInTheDocument()
@@ -670,6 +731,9 @@ describe('InspectorPanel', () => {
     expect(screen.queryByRole('tab', { name: 'Ports' })).not.toBeInTheDocument()
     expect(screen.getByLabelText('Name')).toHaveValue('1TB NVMe SSD')
     expect(screen.getByLabelText('Manufacturer')).toHaveValue('Samsung')
+
+    await user.click(screen.getByRole('tab', { name: 'Compatibility' }))
+
     expect(screen.getByLabelText('Capacity')).toHaveValue(1)
     expect(screen.getByRole('combobox', { name: 'Unit' })).toHaveTextContent('TB')
     expect(screen.getByRole('combobox', { name: 'Interface' })).toHaveTextContent('NVMe')
@@ -1045,13 +1109,17 @@ describe('InspectorPanel', () => {
     }))
   })
 
-  it('renders RAM in the reusable tabbed editor', () => {
+  it('renders RAM in the reusable tabbed editor', async () => {
+    const user = userEvent.setup()
     renderInspector({ selectedItemId: 'ram' })
 
     expect(screen.getByText('32GB RAM')).toBeInTheDocument()
     expect(screen.getByRole('tab', { name: 'Specs' })).toHaveAttribute('aria-selected', 'true')
     expect(screen.queryByRole('tab', { name: 'Ports' })).not.toBeInTheDocument()
     expect(screen.getByLabelText('Manufacturer')).toHaveValue('Crucial')
+
+    await user.click(screen.getByRole('tab', { name: 'Compatibility' }))
+
     expect(screen.getByLabelText('Stick 2 Manufacturer')).toHaveValue('Kingston')
     expect(screen.getByLabelText('Capacity GB')).toHaveValue(32)
     expect(screen.getByRole('combobox', { name: 'Generation' })).toHaveTextContent('DDR4')
@@ -1060,11 +1128,12 @@ describe('InspectorPanel', () => {
     expect(screen.queryByText('Server Slots')).not.toBeInTheDocument()
   })
 
-  it('debounces RAM manufacturer edits into one complete item update', async () => {
-    vi.useFakeTimers()
+  it('debounces a RAM secondary manufacturer edit into one complete item update', async () => {
+    const user = userEvent.setup()
     const { onUpdateItem } = renderInspector({ selectedItemId: 'ram' })
 
-    fireEvent.change(screen.getByLabelText('Manufacturer'), { target: { value: 'G.Skill' } })
+    await user.click(screen.getByRole('tab', { name: 'Compatibility' }))
+    vi.useFakeTimers()
     fireEvent.change(screen.getByLabelText('Stick 2 Manufacturer'), { target: { value: 'Corsair' } })
     await act(async () => vi.advanceTimersByTimeAsync(499))
     expect(onUpdateItem).not.toHaveBeenCalled()
@@ -1073,7 +1142,7 @@ describe('InspectorPanel', () => {
     expect(onUpdateItem).toHaveBeenCalledWith('ram', {
       type: 'ram',
       name: '32GB RAM',
-      manufacturer: 'G.Skill',
+      manufacturer: 'Crucial',
       secondaryManufacturer: 'Corsair',
       specs: {
         capacityGb: 32,
@@ -1088,6 +1157,7 @@ describe('InspectorPanel', () => {
     const user = userEvent.setup()
     const { onUpdateItem } = renderInspector({ selectedItemId: 'ram' })
 
+    await user.click(screen.getByRole('tab', { name: 'Compatibility' }))
     await user.click(screen.getByRole('combobox', { name: 'Stick 1 Speed' }))
     expect(screen.getByRole('option', { name: '2666' })).toBeInTheDocument()
     expect(screen.getByRole('option', { name: '3200' })).toBeInTheDocument()
@@ -1103,6 +1173,7 @@ describe('InspectorPanel', () => {
     const user = userEvent.setup()
     const { onUpdateItem } = renderInspector({ selectedItemId: 'ram' })
 
+    await user.click(screen.getByRole('tab', { name: 'Compatibility' }))
     await user.click(screen.getByRole('combobox', { name: 'Stick 2 Speed' }))
     await user.click(screen.getByRole('option', { name: '2933' }))
 
@@ -1444,6 +1515,7 @@ describe('InspectorPanel', () => {
           persistenceWarning={null}
           open
           onClose={() => {}}
+          onUpdateProject={vi.fn()}
           onUpdateItem={vi.fn()}
           onCreateConnection={vi.fn()}
           onSelectNetworkTrace={vi.fn()}
@@ -1503,6 +1575,7 @@ describe('InspectorPanel', () => {
           persistenceWarning={null}
           open
           onClose={() => {}}
+          onUpdateProject={vi.fn()}
           onUpdateItem={vi.fn()}
           onCreateConnection={vi.fn()}
           onSelectNetworkTrace={vi.fn()}
