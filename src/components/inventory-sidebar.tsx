@@ -11,6 +11,7 @@ import {
   Plus,
   Search,
   Server,
+  X,
 } from 'lucide-react'
 import { useMemo, useState, type CSSProperties } from 'react'
 import { Badge } from '@/components/ui/badge'
@@ -201,12 +202,14 @@ export function InventorySidebar({
   project,
   onSelect,
   onCreateItem,
+  onClose,
   width,
   className,
 }: {
   project: ProjectState
   onSelect: (itemId: string) => void
   onCreateItem: (item: InventoryItemInput) => Promise<void>
+  onClose?: () => void
   width?: number
   className?: string
 }) {
@@ -249,19 +252,33 @@ export function InventorySidebar({
     >
       <div className="border-b border-white/10 p-4">
         <div className="flex items-center justify-between gap-3">
-          <div>
-            <h1 className="text-lg font-bold tracking-tight">Homelab Inventory</h1>
+          <div className="min-w-0">
+            <h1 className="truncate text-lg font-bold tracking-tight">Homelab Inventory</h1>
             <p className="text-xs text-[#cfc6b8]">Local hardware workbench</p>
           </div>
-          <Button
-            type="button"
-            size="sm"
-            className="h-8 shrink-0 bg-[#f7f1e8] text-[#20242c] hover:bg-[#e9dcc8]"
-            onClick={() => setAddDialogOpen(true)}
-          >
-            <Plus className="size-3.5" />
-            Add
-          </Button>
+          <div className="flex shrink-0 items-center gap-1.5">
+            <Button
+              type="button"
+              size="sm"
+              className="h-8 shrink-0 bg-[#f7f1e8] text-[#20242c] hover:bg-[#e9dcc8]"
+              onClick={() => setAddDialogOpen(true)}
+            >
+              <Plus className="size-3.5" />
+              Add
+            </Button>
+            {onClose ? (
+              <Button
+                type="button"
+                size="icon-sm"
+                variant="ghost"
+                className="shrink-0 text-[#f7f1e8] hover:bg-white/10 hover:text-[#f7f1e8]"
+                aria-label="Close inventory"
+                onClick={onClose}
+              >
+                <X className="size-4" />
+              </Button>
+            ) : null}
+          </div>
         </div>
         <div className="relative mt-4">
           <Search className="pointer-events-none absolute left-3 top-2.5 size-4 text-[#b9b0a4]" />

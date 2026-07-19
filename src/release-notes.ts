@@ -12,9 +12,21 @@ export type ReleaseNoteEntry = {
 
 export const RELEASE_NOTES: ReleaseNoteEntry[] = [
   {
+    version: '0.1.23',
+    date: '2026-07-19',
+    channel: 'latest',
+    title: 'Clearer mobile inventory controls',
+    highlights: [
+      'The mobile inventory header now keeps Add and Close as separate, consistently spaced touch targets.',
+    ],
+    fixes: [
+      'The inventory drawer close button no longer overlaps the Add inventory item button on phone-sized screens.',
+    ],
+  },
+  {
     version: '0.1.22',
     date: '2026-07-18',
-    channel: 'latest',
+    channel: 'release',
     title: 'Smoother canvas workspace controls',
     highlights: [
       'The desktop inventory sidebar now opens and closes with a smooth width transition while the canvas resizes alongside it.',

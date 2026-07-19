@@ -1143,6 +1143,7 @@ function App() {
           <Sheet open={mobileInventoryOpen} onOpenChange={setMobileInventoryOpen}>
             <SheetContent
               side="left"
+              showCloseButton={false}
               className="!w-[min(94vw,430px)] max-w-none gap-0 border-r-0 bg-[#20242c] p-0 text-[#f7f1e8] sm:max-w-none"
               onOpenAutoFocus={(event) => event.preventDefault()}
             >
@@ -1154,6 +1155,7 @@ function App() {
                 project={project}
                 onSelect={handleInventorySelect}
                 onCreateItem={handleCreateInventoryItem}
+                onClose={() => setMobileInventoryOpen(false)}
                 className="h-full w-full"
               />
             </SheetContent>
