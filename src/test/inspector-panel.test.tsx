@@ -4,12 +4,18 @@ import userEvent from '@testing-library/user-event'
 import type { ComponentProps } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { InspectorPanel } from '@/components/inspector-panel'
-import { createAgentEnrollment } from '@/lib/agent-api'
+import {
+  clearAgentStatus,
+  createAgentEnrollment,
+  revokeAgentRegistration,
+} from '@/lib/agent-api'
 import type { AgentStatusSummary } from '@/types/agent'
 import type { ProjectState } from '@/types/inventory'
 
 vi.mock('@/lib/agent-api', () => ({
+  clearAgentStatus: vi.fn(),
   createAgentEnrollment: vi.fn(),
+  revokeAgentRegistration: vi.fn(),
 }))
 
 const project: ProjectState = {
@@ -1043,6 +1049,66 @@ describe('InspectorPanel', () => {
     expect(screen.getByText('TCP 0.0.0.0:3001')).toBeInTheDocument()
     expect(screen.getByText('Running Services')).toBeInTheDocument()
     expect(screen.getByText('docker.service')).toBeInTheDocument()
+  })
+
+  it('allows registered agents to be revoked from the Agent tab', async () => {
+    const user = userEvent.setup()
+    vi.mocked(revokeAgentRegistration).mockResolvedValue()
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+
+    renderInspector({
+      selectedItemId: 'server',
+      agentStatus: {
+        registeredServerIds: ['server'],
+        servers: {
+          server: {
+            serverId: 'server',
+            state: 'offline',
+            connected: true,
+            ageMs: 600_000,
+            lastSeenAt: '2026-07-18T00:00:00.000Z',
+          },
+        },
+      },
+    })
+
+    await user.click(screen.getByRole('tab', { name: 'Agent' }))
+    await user.click(screen.getByRole('button', { name: 'Revoke Registration' }))
+
+    await vi.waitFor(() => {
+      expect(revokeAgentRegistration).toHaveBeenCalledWith('server')
+    })
+    expect(screen.getByRole('button', { name: 'Clear Saved Telemetry' })).toBeDisabled()
+  })
+
+  it('allows saved telemetry to be cleared after registration is revoked', async () => {
+    const user = userEvent.setup()
+    vi.mocked(clearAgentStatus).mockResolvedValue({ servers: {}, registeredServerIds: [] })
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+
+    renderInspector({
+      selectedItemId: 'server',
+      agentStatus: {
+        registeredServerIds: [],
+        servers: {
+          server: {
+            serverId: 'server',
+            state: 'unregistered',
+            connected: false,
+            ageMs: 600_000,
+            lastSeenAt: '2026-07-18T00:00:00.000Z',
+          },
+        },
+      },
+    })
+
+    await user.click(screen.getByRole('tab', { name: 'Agent' }))
+    await user.click(screen.getByRole('button', { name: 'Clear Saved Telemetry' }))
+
+    await vi.waitFor(() => {
+      expect(clearAgentStatus).toHaveBeenCalledWith('server')
+    })
+    expect(screen.queryByRole('button', { name: 'Revoke Registration' })).not.toBeInTheDocument()
   })
 
   it('explains that agent setup is unavailable in demo mode', () => {

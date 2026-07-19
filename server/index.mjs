@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url'
 import { RELEASE_NOTES } from '../src/release-notes.ts'
 import { registerAgentRoutes } from './agent-routes.mjs'
 import { HomelabInventoryStore } from './db/store.mjs'
+import { registerInventoryRoutes } from './inventory-routes.mjs'
 import { createRateLimitOptions, readRateLimitConfig } from './rate-limit.mjs'
 import { DockerHubUpdateChecker } from './update-checker.mjs'
 import { registerUpdateRoutes } from './update-routes.mjs'
@@ -158,6 +159,8 @@ registerUpdateRoutes(app, {
   releaseNotes: RELEASE_NOTES,
 })
 
+registerInventoryRoutes(app, { withStore })
+
 startUpdateCheckSchedule({
   checker: updateChecker,
   store,
@@ -193,12 +196,6 @@ app.put('/api/project', (request, response) => {
   void withStore(request, response, async (currentStore) => {
     response.json(currentStore.setProject(request.body))
   }, { status: 400, message: 'Unable to save project.' })
-})
-
-app.post('/api/inventory/items', (request, response) => {
-  void withStore(request, response, async (currentStore) => {
-    response.status(201).json(currentStore.addInventoryItem(request.body))
-  }, { status: 400, message: 'Unable to create item.' })
 })
 
 app.post('/api/flush', (request, response) => {

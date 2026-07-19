@@ -140,7 +140,7 @@ describe('HomelabInventoryStore', () => {
     const seedDir = path.join(dataDir, 'seed')
 
     await writeJson(path.join(seedDir, 'meta.json'), {
-      schemaVersion: 5,
+      schemaVersion: 6,
       appLastOpenedWith: 'seed',
       updatedAt: '2026-06-26T00:00:00.000Z',
     })
@@ -434,7 +434,7 @@ describe('HomelabInventoryStore', () => {
       },
       negotiatedSpeedMbps: 10000,
     })
-    expect(store.databases.meta.data.schemaVersion).toBe(5)
+    expect(store.databases.meta.data.schemaVersion).toBe(6)
   })
 
   it('flushes project updates to split stores', async () => {
@@ -442,7 +442,7 @@ describe('HomelabInventoryStore', () => {
     const seedDir = path.join(dataDir, 'seed')
 
     await writeJson(path.join(seedDir, 'meta.json'), {
-      schemaVersion: 5,
+      schemaVersion: 6,
       appLastOpenedWith: 'seed',
       updatedAt: '2026-06-26T00:00:00.000Z',
     })
@@ -535,7 +535,7 @@ describe('HomelabInventoryStore', () => {
     const dataDir = await makeTempDir()
 
     await writeJson(path.join(dataDir, 'meta.json'), {
-      schemaVersion: 5,
+      schemaVersion: 6,
       appLastOpenedWith: '0.1.8',
       updatedAt: '2026-07-08T00:00:00.000Z',
     })
@@ -605,7 +605,7 @@ describe('HomelabInventoryStore', () => {
     const dataDir = await makeTempDir()
 
     await writeJson(path.join(dataDir, 'meta.json'), {
-      schemaVersion: 5,
+      schemaVersion: 6,
       updatedAt: '2026-07-08T00:00:00.000Z',
     })
     await writeJson(path.join(dataDir, 'stores', 'inventory.json'), {
@@ -659,7 +659,7 @@ describe('HomelabInventoryStore', () => {
     const dataDir = await makeTempDir()
 
     await writeJson(path.join(dataDir, 'meta.json'), {
-      schemaVersion: 5,
+      schemaVersion: 6,
       appLastOpenedWith: '0.1.9',
       lastSeenReleaseNotesVersion: '0.1.9',
       updatedAt: '2026-07-08T00:00:00.000Z',
@@ -993,6 +993,53 @@ describe('HomelabInventoryStore', () => {
     ])
   })
 
+  it('migrates schema 5 inventory records to schema 6 without rewriting them', async () => {
+    const dataDir = await makeTempDir()
+    const inventory = {
+      servers: [],
+      cpus: [{ id: 1, name: 'Preserved CPU', specs: { cores: 8 } }],
+      ram: [],
+      storage: [],
+      networkCards: [],
+      gpus: [],
+      nas: [],
+      switches: [],
+      patchPanels: [],
+    }
+
+    await writeJson(path.join(dataDir, 'meta.json'), {
+      schemaVersion: 5,
+      appLastOpenedWith: '0.1.20',
+      updatedAt: '2026-07-19T00:00:00.000Z',
+    })
+    await writeJson(path.join(dataDir, 'stores', 'inventory.json'), inventory)
+    await writeJson(path.join(dataDir, 'stores', 'project.json'), {
+      id: 'default',
+      metadata: { name: 'Migration Test', version: 1, updatedAt: '2026-07-19T00:00:00.000Z' },
+      placements: [],
+      assignments: [],
+      connections: [],
+    })
+
+    const store = createStore({
+      appVersion: '0.1.21',
+      dataDir,
+      legacyProjectPath: path.join(dataDir, 'homelab-inventory-project.json'),
+      saveDebounceMs: 1,
+      seedEmptyData: false,
+      seedDir: path.join(dataDir, 'missing-seed'),
+    })
+
+    await store.init()
+
+    expect(store.databases.meta.data.schemaVersion).toBe(6)
+    expect(store.databases.inventory.data).toEqual(inventory)
+    const backupEntries = await fs.readdir(path.join(dataDir, 'backups'), { withFileTypes: true })
+    expect(backupEntries.some(
+      (entry) => entry.isDirectory() && entry.name.endsWith('-schema-5-to-6'),
+    )).toBe(true)
+  })
+
   it('migrates schema 4 switch ports and legacy links after creating a backup', async () => {
     const dataDir = await makeTempDir()
 
@@ -1055,7 +1102,7 @@ describe('HomelabInventoryStore', () => {
 
     await store.init()
 
-    expect(store.databases.meta.data.schemaVersion).toBe(5)
+    expect(store.databases.meta.data.schemaVersion).toBe(6)
     expect(store.getProject().items['switch:1'].ports.map((port) => port.speed)).toEqual([
       '1G',
       '1G',
@@ -1105,7 +1152,7 @@ describe('HomelabInventoryStore', () => {
 
     const backupEntries = await fs.readdir(path.join(dataDir, 'backups'), { withFileTypes: true })
     const migrationBackup = backupEntries.find(
-      (entry) => entry.isDirectory() && entry.name.endsWith('-schema-4-to-5'),
+      (entry) => entry.isDirectory() && entry.name.endsWith('-schema-4-to-6'),
     )
 
     expect(migrationBackup).toBeDefined()

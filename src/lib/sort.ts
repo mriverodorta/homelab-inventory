@@ -1,14 +1,19 @@
-import { getAssignedItemIds, getPlacedCanvasItemIds, isCanvasItem } from '@/lib/project'
+import {
+  getAssignedItemIds,
+  getPlacedCanvasItemIds,
+  isArchivedItem,
+  isCanvasItem,
+} from '@/lib/project'
 import { runtimeItemKey } from '@/lib/item-keys'
 import type { InventoryItem, InventoryType, ProjectState } from '@/types/inventory'
 
-export type AssignmentFilter = 'all' | 'assigned' | 'unassigned'
+export type InventoryStatusFilter = 'available' | 'assigned' | 'archived' | 'all'
 export type SortKey = 'type' | 'name' | 'capacity' | 'speed' | 'slot-status'
 
 export type InventoryFilters = {
   query: string
   type: InventoryType | 'all'
-  assignment: AssignmentFilter
+  status: InventoryStatusFilter
   sort: SortKey
 }
 
@@ -41,16 +46,21 @@ export function filterAndSortInventory(
   return Object.values(project.items)
     .filter((item) => {
       const assigned = isItemAssigned(project, item)
+      const archived = isArchivedItem(item)
 
       if (filters.type !== 'all' && item.type !== filters.type) {
         return false
       }
 
-      if (filters.assignment === 'assigned' && !assigned) {
+      if (filters.status === 'available' && (archived || assigned)) {
         return false
       }
 
-      if (filters.assignment === 'unassigned' && assigned) {
+      if (filters.status === 'assigned' && (archived || !assigned)) {
+        return false
+      }
+
+      if (filters.status === 'archived' && !archived) {
         return false
       }
 

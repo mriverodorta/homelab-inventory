@@ -26,7 +26,7 @@ async function createTestStore() {
   const seedDir = path.join(dataDir, 'seed')
 
   await writeJson(path.join(seedDir, 'meta.json'), {
-    schemaVersion: 5,
+    schemaVersion: 6,
     appLastOpenedWith: 'test',
     updatedAt: '2026-06-27T00:00:00.000Z',
   })
@@ -130,6 +130,12 @@ describe('agent routes', () => {
 
       expect(installResponse.status).toBe(403)
       expect(installBody).toEqual({ message: disabledMessage })
+
+      const registrationCleanup = await fetch(`${url}/api/agent/servers/1/registration`, { method: 'DELETE' })
+      const statusCleanup = await fetch(`${url}/api/agent/servers/1/status`, { method: 'DELETE' })
+
+      expect(registrationCleanup.status).toBe(403)
+      expect(statusCleanup.status).toBe(403)
     } finally {
       server.close()
     }
@@ -251,6 +257,47 @@ describe('agent routes', () => {
       expect(script).toContain('k3s-agent')
       expect(script).toContain('systemctl", "list-units"')
       expect(script).toContain('ss", "-tulpenH"')
+    } finally {
+      server.close()
+    }
+  })
+
+  it('requires explicit registration revocation before clearing runtime status', async () => {
+    const store = await createTestStore()
+    store.databases.agents.data.devices['1'] = {
+      id: 1,
+      serverId: 1,
+      tokenHash: 'private-device-token-hash',
+      registeredAt: '2026-07-19T00:00:00.000Z',
+    }
+    store.databases.agentStatus.data.servers['1'] = {
+      serverId: 1,
+      hostname: 'lab-node',
+      lastSeenAt: '2026-07-19T00:00:00.000Z',
+    }
+    const app = createApp(store)
+    const { server, url } = await listen(app)
+
+    try {
+      const blocked = await fetch(`${url}/api/agent/servers/1/status`, { method: 'DELETE' })
+      expect(blocked.status).toBe(409)
+
+      const before = store.getInventoryDependencies({ type: 'server', id: 1 })
+      expect(before.reasons.map((entry) => entry.kind)).toEqual(['agent-registration', 'agent-status'])
+      expect(JSON.stringify(before)).not.toContain('private-device-token-hash')
+
+      const revoked = await fetch(`${url}/api/agent/servers/1/registration`, { method: 'DELETE' })
+      const revokedBody = await revoked.json()
+      expect(revoked.status).toBe(200)
+      expect(revokedBody.revoked).toBe(1)
+
+      const afterRevoke = store.getInventoryDependencies({ type: 'server', id: 1 })
+      expect(afterRevoke.reasons.map((entry) => entry.kind)).toEqual(['agent-status'])
+
+      const cleared = await fetch(`${url}/api/agent/servers/1/status`, { method: 'DELETE' })
+      expect(cleared.status).toBe(200)
+      expect(store.databases.agentStatus.data.servers['1']).toBeUndefined()
+      expect(store.getInventoryDependencies({ type: 'server', id: 1 }).blocked).toBe(false)
     } finally {
       server.close()
     }

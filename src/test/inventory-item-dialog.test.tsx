@@ -173,7 +173,7 @@ describe('InventoryItemDialog switch port groups', () => {
         expect.objectContaining({ kind: 'switch-port', speed: '1G', slotNumber: 1 }),
         expect.objectContaining({ kind: 'switch-port', speed: '1G', slotNumber: 4 }),
       ]),
-    }))
+    }), 1)
     expect(onCreate.mock.calls[0][0].ports).toHaveLength(4)
   })
 
@@ -201,7 +201,7 @@ describe('InventoryItemDialog switch port groups', () => {
       family: 'Core i5',
       number: 'i5-10500T',
       specs: { cores: 6, threads: 12 },
-    })
+    }, 1)
   })
 
   it('creates a storage payload with the selected unit and interface', async () => {
@@ -226,7 +226,41 @@ describe('InventoryItemDialog switch port groups', () => {
       type: 'storage',
       name: '4TB NVMe',
       specs: { capacityTb: 4, interface: 'NVMe', formFactor: '2280' },
-    })
+    }, 1)
+  })
+
+  it('creates multiple independent records with a validated quantity', async () => {
+    const user = userEvent.setup()
+    const onCreate = vi.fn().mockResolvedValue(undefined)
+
+    render(<InventoryItemDialog open onOpenChange={vi.fn()} onCreate={onCreate} />)
+
+    await user.type(screen.getByRole('textbox', { name: 'Name' }), 'Lab server')
+    const quantity = screen.getByRole('spinbutton', { name: 'Quantity' })
+    await user.clear(quantity)
+    await user.type(quantity, '3')
+    await user.click(screen.getByRole('button', { name: 'Add item' }))
+
+    expect(onCreate).toHaveBeenCalledWith(expect.objectContaining({
+      type: 'server',
+      name: 'Lab server',
+    }), 3)
+  })
+
+  it('rejects quantities outside the supported range', async () => {
+    const user = userEvent.setup()
+    const onCreate = vi.fn().mockResolvedValue(undefined)
+
+    render(<InventoryItemDialog open onOpenChange={vi.fn()} onCreate={onCreate} />)
+
+    await user.type(screen.getByRole('textbox', { name: 'Name' }), 'Lab server')
+    const quantity = screen.getByRole('spinbutton', { name: 'Quantity' })
+    await user.clear(quantity)
+    await user.type(quantity, '101')
+    await user.click(screen.getByRole('button', { name: 'Add item' }))
+
+    expect(screen.getByText('Quantity must be between 1 and 100.')).toBeInTheDocument()
+    expect(onCreate).not.toHaveBeenCalled()
   })
 
   it('keeps the dirty discard confirmation behavior', async () => {

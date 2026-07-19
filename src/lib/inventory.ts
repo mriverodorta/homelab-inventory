@@ -184,6 +184,10 @@ export function normalizeInventory(input: unknown): InventoryItem[] {
       properties: normalizeProperties(raw.properties),
       ports: normalizePorts(raw.ports, key),
       notes: typeof raw.notes === 'string' ? raw.notes : undefined,
+      archivedAt:
+        typeof raw.archivedAt === 'string' && raw.archivedAt.trim() !== ''
+          ? raw.archivedAt
+          : undefined,
     }
   })
 }

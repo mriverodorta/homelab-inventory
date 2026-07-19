@@ -489,6 +489,8 @@ export function registerAgentRoutes(app, store, { disabled = false } = {}) {
     app.post('/api/agent/enrollments', disabledAgentRoute)
     app.post('/api/agent/servers/:serverId/register', disabledAgentRoute)
     app.post('/api/agent/servers/:serverId/heartbeat', disabledAgentRoute)
+    app.delete('/api/agent/servers/:serverId/registration', disabledAgentRoute)
+    app.delete('/api/agent/servers/:serverId/status', disabledAgentRoute)
 
     return
   }
@@ -499,6 +501,59 @@ export function registerAgentRoutes(app, store, { disabled = false } = {}) {
 
   app.get('/api/agent/status', (_request, response) => {
     response.json(store.getAgentStatusSummary())
+  })
+
+  app.delete('/api/agent/servers/:serverId/registration', (request, response) => {
+    const serverId = normalizeServerId(request.params.serverId)
+
+    if (!serverExists(store, serverId)) {
+      response.status(404).json({ message: 'Server not found.' })
+      return
+    }
+
+    const revokedAt = new Date().toISOString()
+    let revoked = 0
+
+    for (const collection of [
+      store.databases.agents.data.enrollments ?? {},
+      store.databases.agents.data.devices ?? {},
+    ]) {
+      for (const record of Object.values(collection)) {
+        if (normalizeServerId(record.serverId) === serverId && !record.revokedAt) {
+          record.revokedAt = revokedAt
+          revoked += 1
+        }
+      }
+    }
+
+    if (revoked > 0) store.scheduleFlush('agents')
+    response.json({ ok: true, serverId, revoked, revokedAt })
+  })
+
+  app.delete('/api/agent/servers/:serverId/status', (request, response) => {
+    const serverId = normalizeServerId(request.params.serverId)
+
+    if (!serverExists(store, serverId)) {
+      response.status(404).json({ message: 'Server not found.' })
+      return
+    }
+
+    const activeEnrollment = Object.values(store.databases.agents.data.enrollments ?? {}).some((record) =>
+      normalizeServerId(record.serverId) === serverId
+        && !record.revokedAt
+        && !record.usedAt
+        && (!record.expiresAt || Date.parse(record.expiresAt) > Date.now()),
+    )
+    const activeDevice = Object.values(store.databases.agents.data.devices ?? {}).some((record) =>
+      normalizeServerId(record.serverId) === serverId && !record.revokedAt,
+    )
+
+    if (activeEnrollment || activeDevice) {
+      response.status(409).json({ message: 'Revoke the active agent registration before clearing runtime status.' })
+      return
+    }
+
+    response.json(store.clearAgentRuntimeData(serverId))
   })
 
   app.post('/api/agent/enrollments', (request, response) => {

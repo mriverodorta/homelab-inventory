@@ -12,9 +12,32 @@ export type ReleaseNoteEntry = {
 
 export const RELEASE_NOTES: ReleaseNoteEntry[] = [
   {
-    version: '0.1.24',
+    version: '0.1.25',
     date: '2026-07-19',
     channel: 'latest',
+    title: 'Complete inventory lifecycle controls',
+    highlights: [
+      'Inventory records can now be created in quantities, duplicated, archived, restored, and permanently deleted from the inventory sidebar.',
+      'Selection mode adds all-or-nothing batch archive, restore, and delete workflows for the currently filtered inventory.',
+      'Archived records remain available in dedicated Archived and All views while staying unavailable for placement, assignment, editing, and connections until restored.',
+    ],
+    fixes: [
+      'Archive and delete operations now report canvas placements, host assignments, hosted components, cables, port metadata, and agent data that must be cleaned up first.',
+      'Permanent deletion now requires an archived, dependency-free record and uses a clear confirmation dialog without cascade deletion.',
+      'Duplicated hardware receives fresh IDs and clean ports without copying assignments, placements, cables, labels, notes, IP addresses, or agent state.',
+      'Inventory lifecycle changes now replace the authoritative project snapshot and reset canvas undo history so stale state cannot restore removed records.',
+      'Server Agent tabs now provide confirmed controls to revoke registrations and clear saved telemetry before archiving hardware.',
+      'Inventory multi-select now keeps its active icon visible, and item icons and action controls remain vertically centered for one-line and two-line rows.',
+    ],
+    notes: [
+      'Lifecycle commands are transactional and validated by the server; a blocked item prevents the entire selected batch from changing.',
+      'Equipment quantities receive numbered names while interchangeable components retain their shared hardware name.',
+    ],
+  },
+  {
+    version: '0.1.24',
+    date: '2026-07-19',
+    channel: 'release',
     title: 'Clearer inventory form examples',
     highlights: [
       'Add Item and editable inspector forms now show realistic examples tailored to the selected hardware category.',

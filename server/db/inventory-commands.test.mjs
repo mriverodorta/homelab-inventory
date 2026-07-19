@@ -1,0 +1,165 @@
+import fs from 'node:fs/promises'
+import os from 'node:os'
+import path from 'node:path'
+import { afterEach, describe, expect, it } from 'vitest'
+import { HomelabInventoryStore } from './store.mjs'
+
+const tempDirs = []
+const stores = []
+
+async function createStore(dataDir = null) {
+  const directory = dataDir ?? await fs.mkdtemp(path.join(os.tmpdir(), 'inventory-crud-'))
+  if (!dataDir) tempDirs.push(directory)
+  const store = new HomelabInventoryStore({
+    appVersion: '1.0.0',
+    dataDir: directory,
+    legacyProjectPath: path.join(directory, 'legacy.json'),
+    saveDebounceMs: 1,
+    seedEmptyData: false,
+    seedDir: path.join(directory, 'missing-seed'),
+  })
+  await store.init()
+  stores.push(store)
+  return { store, dataDir: directory }
+}
+
+afterEach(async () => {
+  await Promise.all(stores.splice(0).map((store) => store.flush().catch(() => {})))
+  await Promise.all(tempDirs.splice(0).map((directory) => fs.rm(directory, { recursive: true, force: true })))
+})
+
+describe('atomic inventory commands', () => {
+  it('creates sequential quantities and preserves equipment/component naming rules', async () => {
+    const { store } = await createStore()
+    let project = store.createInventoryItems({ type: 'switch', name: 'Edge Switch' }, 2)
+    project = store.createInventoryItems({ type: 'ram', name: '32GB DDR4', specs: { capacityGB: 32 } }, 3)
+
+    expect(project.metadata.schemaVersion).toBe(6)
+    expect(store.databases.inventory.data.switches.map(({ id, name }) => ({ id, name }))).toEqual([
+      { id: 1, name: 'Edge Switch #1' },
+      { id: 2, name: 'Edge Switch #2' },
+    ])
+    expect(store.databases.inventory.data.ram.map(({ id, name }) => ({ id, name }))).toEqual([
+      { id: 1, name: '32GB DDR4' },
+      { id: 2, name: '32GB DDR4' },
+      { id: 3, name: '32GB DDR4' },
+    ])
+    expect(store.databases.inventory.data.ram[0].specs).toEqual({ capacityGB: 32 })
+  })
+
+  it('rejects invalid quantities without changing inventory', async () => {
+    const { store } = await createStore()
+
+    for (const quantity of [0, 101, 1.5, '2']) {
+      expect(() => store.createInventoryItems({ type: 'cpu', name: 'CPU' }, quantity)).toThrow('Quantity')
+    }
+    expect(store.databases.inventory.data.cpus).toEqual([])
+  })
+
+  it('duplicates clean hardware records with fresh ids and no instance data', async () => {
+    const { store } = await createStore()
+    store.createInventoryItems({
+      type: 'server',
+      name: 'Node',
+      manufacturer: 'Example',
+      notes: 'rack note',
+      properties: { name: 'runtime-name' },
+      ports: [{
+        id: 9,
+        kind: 'server-port',
+        type: 'rj45',
+        slotNumber: 1,
+        speed: '1G',
+        label: 'LAN',
+        notes: 'patched',
+      }],
+    })
+
+    const project = store.duplicateInventoryItem({ type: 'server', id: 1 }, 2)
+
+    expect(project.items['server:2']).toMatchObject({ id: 2, name: 'Node #2', manufacturer: 'Example' })
+    expect(project.items['server:3'].name).toBe('Node #3')
+    expect(project.items['server:2'].notes).toBeUndefined()
+    expect(project.items['server:2'].properties).toBeUndefined()
+    expect(project.items['server:2'].ports).toEqual([{
+      id: 1, kind: 'server-port', type: 'rj45', slotNumber: 1, speed: '1G',
+    }])
+  })
+
+  it('archives, restores, and deletes dependency-free records', async () => {
+    const { store } = await createStore()
+    store.createInventoryItems({ type: 'cpu', name: 'CPU' }, 2)
+
+    let project = store.archiveInventoryItems([{ type: 'cpu', id: 1 }])
+    expect(Date.parse(project.items['cpu:1'].archivedAt)).not.toBeNaN()
+    project = store.restoreInventoryItems([{ type: 'cpu', id: 1 }])
+    expect(project.items['cpu:1'].archivedAt).toBeUndefined()
+    expect(() => store.deleteInventoryItems([{ type: 'cpu', id: 1 }])).toThrow(
+      'Archive inventory items before deleting them.',
+    )
+    project = store.archiveInventoryItems([{ type: 'cpu', id: 1 }])
+    project = store.deleteInventoryItems([{ type: 'cpu', id: 1 }])
+    expect(project.items['cpu:1']).toBeUndefined()
+    expect(project.items['cpu:2']).toBeDefined()
+  })
+
+  it('keeps mixed batches atomic when any selected item has a dependency', async () => {
+    const { store } = await createStore()
+    store.createInventoryItems({ type: 'cpu', name: 'CPU' }, 2)
+    store.databases.project.data.assignments.push({
+      id: 1,
+      hostType: 'server',
+      hostId: 99,
+      itemType: 'cpu',
+      itemId: 2,
+      type: 'cpu',
+      assignedAt: '2026-07-19T00:00:00.000Z',
+    })
+
+    expect(() => store.archiveInventoryItems([
+      { type: 'cpu', id: 1 },
+      { type: 'cpu', id: 2 },
+    ])).toThrow('dependencies')
+    expect(store.databases.inventory.data.cpus.every((item) => item.archivedAt === undefined)).toBe(true)
+  })
+
+  it('allows safe edits but blocks material changes to connected ports', async () => {
+    const { store } = await createStore()
+    store.createInventoryItems({
+      type: 'switch',
+      name: 'Switch',
+      ports: [{ id: 1, kind: 'switch-port', type: 'sfp-plus', slotNumber: 1, speed: '10G' }],
+    })
+    store.databases.project.data.connections.push({
+      id: 1,
+      from: { itemType: 'switch', itemId: 1, portId: 1 },
+      to: { itemType: 'switch', itemId: 2, portId: 1 },
+      type: 'network',
+      createdAt: '2026-07-19T00:00:00.000Z',
+    })
+
+    expect(store.updateInventoryItem({ type: 'switch', id: 1 }, {
+      type: 'switch',
+      name: 'Renamed Switch',
+      ports: [{ id: 1, kind: 'switch-port', type: 'sfp-plus', slotNumber: 1, speed: '10G' }],
+    }).items['switch:1'].name).toBe('Renamed Switch')
+
+    expect(() => store.updateInventoryItem({ type: 'switch', id: 1 }, {
+      type: 'switch',
+      name: 'Invalid Change',
+      ports: [{ id: 1, kind: 'switch-port', type: 'sfp-plus', slotNumber: 1, speed: '5G' }],
+    })).toThrow('cannot be removed or materially changed')
+    expect(store.getProject().items['switch:1'].name).toBe('Renamed Switch')
+  })
+
+  it('persists lifecycle state across a flush and restart', async () => {
+    const { store, dataDir } = await createStore()
+    store.createInventoryItems({ type: 'cpu', name: 'CPU' })
+    store.archiveInventoryItems([{ type: 'cpu', id: 1 }])
+    await store.flush()
+
+    const { store: restarted } = await createStore(dataDir)
+    expect(restarted.databases.meta.data.schemaVersion).toBe(6)
+    expect(restarted.getProject().items['cpu:1'].archivedAt).toBeTruthy()
+  })
+})

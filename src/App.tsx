@@ -18,6 +18,10 @@ import { DesktopInventoryShell } from '@/components/desktop-inventory-shell'
 import { GlobalItemSearch } from '@/components/global-item-search'
 import { InspectorPanel } from '@/components/inspector-panel'
 import { InventorySidebar } from '@/components/inventory-sidebar'
+import {
+  InventoryLifecycleDialog,
+  type InventoryLifecycleAction,
+} from '@/components/inventory-lifecycle-dialog'
 import { UpdateDialog } from '@/components/update-dialog'
 import { WhatsNewDialog } from '@/components/whats-new-dialog'
 import {
@@ -38,9 +42,25 @@ import { TooltipProvider } from '@/components/ui/tooltip'
 import type { CanvasPortDragPoint } from '@/types/canvas'
 import { assignComponent, swapAssignedComponent, validateAssignment } from '@/lib/constraints'
 import { loadAgentStatus } from '@/lib/agent-api'
-import { createInventoryItem, loadProject, saveProject, type InventoryItemInput } from '@/lib/db'
+import {
+  createInventoryItems,
+  archiveInventoryItems,
+  deleteInventoryItems,
+  duplicateInventoryItem,
+  loadInventoryDependencyReports,
+  loadProject,
+  restoreInventoryItems,
+  saveProject,
+  updateInventoryItem,
+  type InventoryItemInput,
+} from '@/lib/db'
 import { expireDemoSession, extendDemoSession, loadDemoSession, type DemoSessionStatus } from '@/lib/demo-api'
 import { runtimeItemKey } from '@/lib/item-keys'
+import type {
+  InventoryDependencyReason,
+  InventoryDependencyReport,
+  InventoryRef,
+} from '@/lib/inventory-lifecycle'
 import {
   acknowledgeReleaseNotes,
   loadReleaseNotesStatus,
@@ -79,7 +99,6 @@ import { normalizeNetworkProject } from '@/lib/negotiated-speed'
 import {
   getCanvasItemHeight,
   getCanvasItemWidth,
-  applyInventoryItemInput,
   autoArrangeCanvasItems,
   createConnection,
   endpointKey,
@@ -128,6 +147,32 @@ const RELEASE_NOTES_STATUS_QUERY_KEY = ['release-notes-status'] as const
 const DEMO_SESSION_QUERY_KEY = ['demo-session'] as const
 
 type SaveStatus = 'saved' | 'saving' | 'error'
+
+type InventoryLifecycleRequest = {
+  action: InventoryLifecycleAction
+  items: InventoryItem[]
+}
+
+function inventoryRef(item: InventoryItem): InventoryRef {
+  return { type: item.type, id: item.id }
+}
+
+function aggregateDependencyReports(
+  reports: InventoryDependencyReport[],
+): InventoryDependencyReport {
+  const grouped = new Map<string, InventoryDependencyReason>()
+
+  for (const report of reports) {
+    for (const reason of report.reasons) {
+      const key = `${reason.kind}:${reason.message}`
+      const current = grouped.get(key)
+      grouped.set(key, current ? { ...current, count: current.count + reason.count } : { ...reason })
+    }
+  }
+
+  const reasons = [...grouped.values()]
+  return { blocked: reasons.length > 0, reasons }
+}
 
 function getStoredAutoCenterPreference(): boolean {
   if (typeof window === 'undefined') {
@@ -390,6 +435,11 @@ function App() {
   const [demoRemainingSeconds, setDemoRemainingSeconds] = useState<number | null>(null)
   const [demoDialogState, setDemoDialogState] = useState<DemoSessionDialogState>('closed')
   const [demoExtensionSeconds, setDemoExtensionSeconds] = useState(DEMO_EXTENSION_GRACE_SECONDS)
+  const [inventoryLifecycleRequest, setInventoryLifecycleRequest] = useState<InventoryLifecycleRequest | null>(null)
+  const [inventoryDependencyReport, setInventoryDependencyReport] = useState<InventoryDependencyReport | null>(null)
+  const [inventoryLifecycleBusy, setInventoryLifecycleBusy] = useState(false)
+  const [inventoryLifecycleError, setInventoryLifecycleError] = useState<string | null>(null)
+  const [inventoryLifecycleRevision, setInventoryLifecycleRevision] = useState(0)
   const canvasControllerRef = useRef<CanvasController | null>(null)
   const projectRef = useRef<ProjectState | null>(null)
   const skipNextSaveRef = useRef(false)
@@ -702,6 +752,20 @@ function App() {
     setProject(negotiatedProject)
   }
 
+  function applyInventoryCommandSnapshot(nextProject: ProjectState) {
+    const negotiatedProject = normalizeNetworkProject(nextProject)
+
+    skipNextSaveRef.current = true
+    projectRef.current = negotiatedProject
+    setProject(negotiatedProject)
+    setHistory(createEmptyHistory())
+    setSelectedConnectionId(null)
+    setActiveNetworkTraceEndpoint(null)
+    setValidationMessage(null)
+    setPersistenceWarning(null)
+    setSaveStatus('saved')
+  }
+
   function showMessage(message: string) {
     setValidationMessage(message)
   }
@@ -838,24 +902,119 @@ function App() {
     setMobileInventoryOpen(false)
   }
 
-  async function handleCreateInventoryItem(item: InventoryItemInput) {
+  async function handleCreateInventoryItem(item: InventoryItemInput, quantity: number) {
     const currentProject = projectRef.current
-    const nextProject = await createInventoryItem(item)
+    const nextProject = await createInventoryItems(item, quantity)
     const previousItemIds = new Set(Object.keys(currentProject?.items ?? {}))
     const createdItemId = Object.keys(nextProject.items).find((itemId) => !previousItemIds.has(itemId))
 
-    skipNextSaveRef.current = true
-    projectRef.current = nextProject
-    setProject(nextProject)
-    setHistory(createEmptyHistory())
-    setSelectedConnectionId(null)
-    setActiveNetworkTraceEndpoint(null)
-    setValidationMessage(null)
-    setPersistenceWarning(null)
-    setSaveStatus('saved')
+    applyInventoryCommandSnapshot(nextProject)
 
     if (createdItemId) {
       setSelectedItemId(createdItemId)
+    }
+  }
+
+  async function handleUpdateInventoryItem(itemId: string, input: InventoryItemInput) {
+    const currentItem = projectRef.current?.items[itemId]
+
+    if (!currentItem) {
+      throw new Error('Inventory item could not be found.')
+    }
+
+    const nextProject = await updateInventoryItem(
+      { type: currentItem.type, id: currentItem.id },
+      input,
+    )
+    applyInventoryCommandSnapshot(nextProject)
+    setSelectedItemId(itemId)
+  }
+
+  async function handleDuplicateInventoryItem(item: InventoryItem) {
+    setInventoryLifecycleBusy(true)
+    setInventoryLifecycleError(null)
+
+    try {
+      const currentItemIds = new Set(Object.keys(projectRef.current?.items ?? {}))
+      const nextProject = await duplicateInventoryItem(inventoryRef(item))
+      const duplicatedItemId = Object.keys(nextProject.items).find((itemId) => !currentItemIds.has(itemId))
+
+      applyInventoryCommandSnapshot(nextProject)
+      setInventoryLifecycleRevision((current) => current + 1)
+      if (duplicatedItemId) setSelectedItemId(duplicatedItemId)
+    } catch (error) {
+      setPersistenceWarning(error instanceof Error ? error.message : 'Inventory item could not be duplicated.')
+    } finally {
+      setInventoryLifecycleBusy(false)
+    }
+  }
+
+  async function requestInventoryLifecycle(
+    action: InventoryLifecycleAction,
+    items: InventoryItem[],
+  ) {
+    if (items.length === 0) return
+
+    setInventoryLifecycleRequest({ action, items })
+    setInventoryDependencyReport(null)
+    setInventoryLifecycleError(null)
+    setInventoryLifecycleBusy(true)
+
+    try {
+      const reports = await loadInventoryDependencyReports(items.map(inventoryRef))
+      setInventoryDependencyReport(aggregateDependencyReports(reports))
+    } catch (error) {
+      setInventoryLifecycleError(
+        error instanceof Error ? error.message : 'Inventory dependencies could not be inspected.',
+      )
+    } finally {
+      setInventoryLifecycleBusy(false)
+    }
+  }
+
+  async function confirmInventoryLifecycle() {
+    const request = inventoryLifecycleRequest
+
+    if (!request || !inventoryDependencyReport || inventoryDependencyReport.blocked) return
+
+    setInventoryLifecycleBusy(true)
+    setInventoryLifecycleError(null)
+
+    try {
+      const refs = request.items.map(inventoryRef)
+      const nextProject = request.action === 'archive'
+        ? await archiveInventoryItems(refs)
+        : await deleteInventoryItems(refs)
+      const affectedIds = new Set(request.items.map(runtimeItemKey))
+
+      applyInventoryCommandSnapshot(nextProject)
+      setSelectedItemId((current) => current && affectedIds.has(current) ? null : current)
+      setInventoryLifecycleRevision((current) => current + 1)
+      setInventoryLifecycleRequest(null)
+      setInventoryDependencyReport(null)
+    } catch (error) {
+      setInventoryLifecycleError(
+        error instanceof Error ? error.message : `Inventory items could not be ${request.action}d.`,
+      )
+    } finally {
+      setInventoryLifecycleBusy(false)
+    }
+  }
+
+  async function handleRestoreInventoryItems(items: InventoryItem[]) {
+    if (items.length === 0) return
+
+    setInventoryLifecycleBusy(true)
+    setInventoryLifecycleError(null)
+
+    try {
+      const nextProject = await restoreInventoryItems(items.map(inventoryRef))
+      applyInventoryCommandSnapshot(nextProject)
+      setInventoryLifecycleRevision((current) => current + 1)
+    } catch (error) {
+      setPersistenceWarning(error instanceof Error ? error.message : 'Inventory items could not be restored.')
+    } finally {
+      setInventoryLifecycleBusy(false)
     }
   }
 
@@ -1137,6 +1296,12 @@ function App() {
               project={project}
               onSelect={handleInventorySelect}
               onCreateItem={handleCreateInventoryItem}
+              onDuplicateItem={handleDuplicateInventoryItem}
+              onArchiveItems={(items) => void requestInventoryLifecycle('archive', items)}
+              onRestoreItems={(items) => void handleRestoreInventoryItems(items)}
+              onDeleteItems={(items) => void requestInventoryLifecycle('delete', items)}
+              lifecycleRevision={inventoryLifecycleRevision}
+              lifecycleBusy={inventoryLifecycleBusy}
               width={inventoryWidth}
             />
           </DesktopInventoryShell>
@@ -1155,6 +1320,12 @@ function App() {
                 project={project}
                 onSelect={handleInventorySelect}
                 onCreateItem={handleCreateInventoryItem}
+                onDuplicateItem={handleDuplicateInventoryItem}
+                onArchiveItems={(items) => void requestInventoryLifecycle('archive', items)}
+                onRestoreItems={(items) => void handleRestoreInventoryItems(items)}
+                onDeleteItems={(items) => void requestInventoryLifecycle('delete', items)}
+                lifecycleRevision={inventoryLifecycleRevision}
+                lifecycleBusy={inventoryLifecycleBusy}
                 onClose={() => setMobileInventoryOpen(false)}
                 className="h-full w-full"
               />
@@ -1294,18 +1465,10 @@ function App() {
               setSelectedConnectionId(null)
               setPendingConnectionEndpoint(null)
             }}
-            onUpdateItem={(itemId, input) => {
-              const currentProject = projectRef.current
-
-              if (!currentProject) {
-                return
-              }
-
-              updateProject(applyInventoryItemInput(currentProject, itemId, input), {
-                recordHistory: false,
-              })
-              setValidationMessage(null)
-            }}
+            onUpdateItem={handleUpdateInventoryItem}
+            onDuplicateItem={handleDuplicateInventoryItem}
+            onArchiveItem={(item) => void requestInventoryLifecycle('archive', [item])}
+            lifecycleBusy={inventoryLifecycleBusy}
             onCreateConnection={(from: ConnectionEndpoint, to: ConnectionEndpoint) => {
               const result = createConnection(project, from, to)
 
@@ -1376,6 +1539,21 @@ function App() {
               setActiveNetworkTraceEndpoint(null)
               focusCanvasItem(itemId)
             }}
+          />
+          <InventoryLifecycleDialog
+            open={inventoryLifecycleRequest !== null}
+            action={inventoryLifecycleRequest?.action ?? 'archive'}
+            itemNames={inventoryLifecycleRequest?.items.map((item) => item.name) ?? []}
+            dependencyReport={inventoryDependencyReport}
+            loading={inventoryLifecycleBusy}
+            error={inventoryLifecycleError}
+            onOpenChange={(open) => {
+              if (open) return
+              setInventoryLifecycleRequest(null)
+              setInventoryDependencyReport(null)
+              setInventoryLifecycleError(null)
+            }}
+            onConfirm={() => void confirmInventoryLifecycle()}
           />
           {releaseNotesQuery.data ? (
             <WhatsNewDialog

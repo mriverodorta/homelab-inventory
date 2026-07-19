@@ -3,6 +3,7 @@ import { runtimeItemKey } from '@/lib/item-keys'
 import {
   connectionEndpointAvailable,
   endpointKey,
+  isArchivedItem,
   portsCompatible,
 } from '@/lib/project'
 import type {
@@ -125,7 +126,7 @@ function hostedEndpointOptions(
     .flatMap((assignment) => {
       const owner = project.items[assignment.itemId]
 
-      if (!owner) {
+      if (!owner || isArchivedItem(owner)) {
         return []
       }
 
@@ -172,7 +173,7 @@ export function getEndpointGroupForHost(
   project: ProjectState,
   host: InventoryItem,
 ): ConnectionEndpointGroup | null {
-  if (!CONNECTION_HOST_TYPES.has(host.type)) {
+  if (!CONNECTION_HOST_TYPES.has(host.type) || isArchivedItem(host)) {
     return null
   }
 
@@ -197,7 +198,7 @@ export function getHostEndpointGroups(project: ProjectState): ConnectionEndpoint
   const placedHostKeys = new Set(project.placements.map((placement) => placement.serverId))
 
   return Object.values(project.items)
-    .filter((item) => placedHostKeys.has(runtimeItemKey(item)))
+    .filter((item) => !isArchivedItem(item) && placedHostKeys.has(runtimeItemKey(item)))
     .map((host) => getEndpointGroupForHost(project, host))
     .filter((group): group is ConnectionEndpointGroup => group !== null)
     .sort((first, second) => first.label.localeCompare(second.label))

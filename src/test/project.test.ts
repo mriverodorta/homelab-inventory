@@ -22,6 +22,13 @@ import {
 import type { InventoryItemInput } from '@/lib/db'
 import type { InventoryItem, ProjectState } from '@/types/inventory'
 
+function archived(item: InventoryItem): InventoryItem {
+  return {
+    ...item,
+    archivedAt: '2026-07-19T12:00:00.000Z',
+  }
+}
+
 const inventory: InventoryItem[] = [
   { id: 'server-a', name: 'Server A', type: 'server' },
   { id: 'server-b', name: 'Server B', type: 'server' },
@@ -643,5 +650,52 @@ describe('inventory connections', () => {
     )
 
     expect(clearedProject.connections[0].route).toBeUndefined()
+  })
+})
+
+describe('archived inventory domain guards', () => {
+  it('does not create or preview placements for archived canvas equipment', () => {
+    const base = mergeInventoryWithProject([
+      archived({ id: 'server-archived', name: 'Archived Server', type: 'server' }),
+      { id: 'server-active', name: 'Active Server', type: 'server' },
+    ], null)
+    const archivedPlacement = { serverId: 'server-archived', x: 0, y: 0 }
+    const activePlacement = { serverId: 'server-active', x: 400, y: 0 }
+
+    expect(getNonCollidingPlacement(base, archivedPlacement)).toBeNull()
+    expect(upsertPlacement(base, archivedPlacement)).toBe(base)
+    expect(upsertPlacements(base, [activePlacement, archivedPlacement])).toBe(base)
+  })
+
+  it('rejects connections whose direct host is archived', () => {
+    const project = mergeInventoryWithProject(connectionInventory, null)
+    project.items['server-display'] = archived(project.items['server-display'])
+
+    expect(validateConnection(
+      project,
+      { itemId: 'server-display', portId: 'lan-01' },
+      { itemId: 'patch-rj45', portId: 'keystone-01', endpointId: 'keystone-01-back' },
+    )).toEqual({ ok: false, message: 'One of the selected ports is no longer available.' })
+  })
+
+  it('rejects connections whose assigned expansion card is archived', () => {
+    const assigned = assignComponent(
+      mergeInventoryWithProject(connectionInventory, null),
+      'server-display',
+      'nic-quad',
+    )
+    const project: ProjectState = {
+      ...assigned,
+      items: {
+        ...assigned.items,
+        'nic-quad': archived(assigned.items['nic-quad']),
+      },
+    }
+
+    expect(validateConnection(
+      project,
+      { itemId: 'server-display', hostedItemId: 'nic-quad', portId: 'rj45-01' },
+      { itemId: 'patch-rj45', portId: 'keystone-01', endpointId: 'keystone-01-back' },
+    )).toEqual({ ok: false, message: 'One of the selected ports is no longer available.' })
   })
 })

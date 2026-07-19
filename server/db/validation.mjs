@@ -65,6 +65,13 @@ function assertInventoryItem(itemId, item, expectedType) {
     throw new Error(`Inventory item ${itemId} is in the wrong table.`)
   }
 
+  if (
+    item.archivedAt !== undefined &&
+    (typeof item.archivedAt !== 'string' || !Number.isFinite(Date.parse(item.archivedAt)))
+  ) {
+    throw new Error(`Inventory item ${itemId} has an invalid archivedAt timestamp.`)
+  }
+
   if (item.ports === undefined) {
     return
   }

@@ -1,19 +1,24 @@
 import { useDraggable } from '@dnd-kit/core'
 import { CSS } from '@dnd-kit/utilities'
 import {
+  Archive,
   ChevronDown,
   Cpu,
   Database,
   HardDrive,
+  ListChecks,
   MemoryStick,
   MonitorUp,
   Network,
   Plus,
+  RotateCcw,
   Search,
   Server,
+  Trash2,
   X,
 } from 'lucide-react'
-import { useMemo, useState, type CSSProperties } from 'react'
+import { useEffect, useMemo, useState, type CSSProperties } from 'react'
+import { InventoryActionsMenu } from '@/components/inventory-actions-menu'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -28,10 +33,11 @@ import {
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { formatPortSummary, formatRamSpec } from '@/lib/format'
 import { runtimeItemKey } from '@/lib/item-keys'
+import { isArchivedItem } from '@/lib/project'
 import { cn } from '@/lib/utils'
 import { filterAndSortInventory, isItemAssigned } from '@/lib/sort'
 import type { InventoryItemInput } from '@/lib/db'
-import type { AssignmentFilter, InventoryFilters } from '@/lib/sort'
+import type { InventoryFilters, InventoryStatusFilter } from '@/lib/sort'
 import type { InventoryItem, InventoryType, ProjectState } from '@/types/inventory'
 
 const TYPE_LABELS: Record<InventoryType, string> = {
@@ -145,20 +151,37 @@ function compactSpec(item: InventoryItem): string | null {
 function DraggableInventoryItem({
   item,
   assigned,
+  selectionMode,
+  selected,
   onSelect,
+  onToggleSelected,
+  onDuplicate,
+  onArchive,
+  onRestore,
+  onDelete,
+  busy,
 }: {
   item: InventoryItem
   assigned: boolean
+  selectionMode: boolean
+  selected: boolean
   onSelect: (itemId: string) => void
+  onToggleSelected: (itemId: string) => void
+  onDuplicate: (item: InventoryItem) => void
+  onArchive: (item: InventoryItem) => void
+  onRestore: (item: InventoryItem) => void
+  onDelete: (item: InventoryItem) => void
+  busy: boolean
 }) {
   const itemRuntimeKey = runtimeItemKey(item)
+  const archived = isArchivedItem(item)
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
     id: `inventory:${itemRuntimeKey}`,
     data: {
       kind: 'inventory',
       itemId: itemRuntimeKey,
     },
-    disabled: assigned,
+    disabled: assigned || archived || selectionMode,
   })
   const style = {
     transform: CSS.Translate.toString(transform),
@@ -168,33 +191,60 @@ function DraggableInventoryItem({
   const itemSpec = compactSpec(item)
 
   return (
-    <button
-      ref={setNodeRef}
-      type="button"
-      data-testid="inventory-item"
-      data-inventory-item-id={itemRuntimeKey}
-      style={style}
-      className={`w-full rounded-md border border-white/10 border-l-4 bg-[#303642] px-3 py-2 text-left text-[#f7f1e8] shadow-sm transition hover:bg-[#394150] disabled:cursor-not-allowed disabled:opacity-50 ${TYPE_COLORS[item.type]} ${isDragging ? 'opacity-60' : ''}`}
-      onClick={() => onSelect(itemRuntimeKey)}
-      disabled={assigned}
-      {...listeners}
-      {...attributes}
-    >
-      <div className="flex items-start justify-between gap-2">
-        <div className="min-w-0">
-          <div className="truncate text-sm font-semibold">{item.name}</div>
-          {itemSpec ? (
-            <div className="mt-0.5 truncate text-xs text-[#cfc6b8]">{itemSpec}</div>
-          ) : null}
+    <div className="relative">
+      <button
+        ref={setNodeRef}
+        type="button"
+        data-testid="inventory-item"
+        data-inventory-item-id={itemRuntimeKey}
+        style={style}
+        className={`w-full rounded-md border border-white/10 border-l-4 bg-[#303642] px-3 py-2 pr-11 text-left text-[#f7f1e8] shadow-sm transition hover:bg-[#394150] ${archived ? 'opacity-65' : ''} ${selected ? 'ring-2 ring-[#ddb668]' : ''} ${TYPE_COLORS[item.type]} ${isDragging ? 'opacity-60' : ''}`}
+        onClick={() => selectionMode ? onToggleSelected(itemRuntimeKey) : !archived && onSelect(itemRuntimeKey)}
+        aria-pressed={selectionMode ? selected : undefined}
+        {...(!assigned && !archived && !selectionMode ? listeners : {})}
+        {...(!assigned && !archived && !selectionMode ? attributes : {})}
+      >
+        <div className="flex items-center justify-between gap-2">
+          <div className="min-w-0">
+            <div className="truncate text-sm font-semibold">{item.name}</div>
+            {itemSpec ? <div className="mt-0.5 truncate text-xs text-[#cfc6b8]">{itemSpec}</div> : null}
+          </div>
+          <TypeIcon type={item.type} />
         </div>
-        <TypeIcon type={item.type} />
-      </div>
-      {assigned ? (
-        <Badge variant="outline" className="mt-2 border-white/20 text-[10px] text-[#d8d0c5]">
-          Assigned
-        </Badge>
-      ) : null}
-    </button>
+        {assigned || archived ? (
+          <Badge variant="outline" className="mt-2 border-white/20 text-[10px] text-[#d8d0c5]">
+            {archived ? 'Archived' : 'Assigned'}
+          </Badge>
+        ) : null}
+      </button>
+      {selectionMode ? (
+        <input
+          type="checkbox"
+          aria-label={`Select ${item.name}`}
+          checked={selected}
+          onChange={() => onToggleSelected(itemRuntimeKey)}
+          className="absolute right-3 top-1/2 size-4 -translate-y-1/2 accent-[#ddb668]"
+        />
+      ) : archived ? (
+        <InventoryActionsMenu
+          archived
+          itemName={item.name}
+          busy={busy}
+          className="absolute right-2 top-1/2 -translate-y-1/2 text-[#f7f1e8]"
+          onRestore={() => onRestore(item)}
+          onDelete={() => onDelete(item)}
+        />
+      ) : (
+        <InventoryActionsMenu
+          itemName={item.name}
+          busy={busy}
+          className="absolute right-2 top-1/2 -translate-y-1/2 text-[#f7f1e8]"
+          onEdit={() => onSelect(itemRuntimeKey)}
+          onDuplicate={() => onDuplicate(item)}
+          onArchive={() => onArchive(item)}
+        />
+      )}
+    </div>
   )
 }
 
@@ -202,13 +252,25 @@ export function InventorySidebar({
   project,
   onSelect,
   onCreateItem,
+  onDuplicateItem = () => undefined,
+  onArchiveItems = () => undefined,
+  onRestoreItems = () => undefined,
+  onDeleteItems = () => undefined,
+  lifecycleRevision = 0,
+  lifecycleBusy = false,
   onClose,
   width,
   className,
 }: {
   project: ProjectState
   onSelect: (itemId: string) => void
-  onCreateItem: (item: InventoryItemInput) => Promise<void>
+  onCreateItem: (item: InventoryItemInput, quantity: number) => Promise<void>
+  onDuplicateItem?: (item: InventoryItem) => void
+  onArchiveItems?: (items: InventoryItem[]) => void
+  onRestoreItems?: (items: InventoryItem[]) => void
+  onDeleteItems?: (items: InventoryItem[]) => void
+  lifecycleRevision?: number
+  lifecycleBusy?: boolean
   onClose?: () => void
   width?: number
   className?: string
@@ -217,11 +279,21 @@ export function InventorySidebar({
   const [filters, setFilters] = useState<InventoryFilters>({
     query: '',
     type: 'all',
-    assignment: 'unassigned',
+    status: 'available',
     sort: 'type',
   })
+  const [selectionMode, setSelectionMode] = useState(false)
+  const [selectedItemIds, setSelectedItemIds] = useState<Set<string>>(() => new Set())
   const [collapsedTypes, setCollapsedTypes] = useState<Set<InventoryType>>(() => new Set())
   const items = filterAndSortInventory(project, filters)
+  const selectedItems = useMemo(
+    () => items.filter((item) => selectedItemIds.has(runtimeItemKey(item))),
+    [items, selectedItemIds],
+  )
+  const allVisibleSelected = items.length > 0
+    && items.every((item) => selectedItemIds.has(runtimeItemKey(item)))
+  const allSelectedArchived = selectedItems.length > 0 && selectedItems.every(isArchivedItem)
+  const allSelectedActive = selectedItems.length > 0 && selectedItems.every((item) => !isArchivedItem(item))
   const grouped = useMemo(
     () =>
       TYPE_ORDER.map((type) => ({
@@ -230,6 +302,38 @@ export function InventorySidebar({
       })).filter((group) => group.items.length > 0),
     [items],
   )
+
+  useEffect(() => {
+    setSelectedItemIds(new Set())
+  }, [lifecycleRevision])
+
+  function toggleSelectionMode() {
+    setSelectionMode((current) => !current)
+    setSelectedItemIds(new Set())
+  }
+
+  function toggleSelected(itemId: string) {
+    setSelectedItemIds((current) => {
+      const next = new Set(current)
+      if (next.has(itemId)) next.delete(itemId)
+      else next.add(itemId)
+      return next
+    })
+  }
+
+  function selectVisibleItems() {
+    setSelectedItemIds((current) => {
+      const next = new Set(current)
+
+      if (allVisibleSelected) {
+        for (const item of items) next.delete(runtimeItemKey(item))
+      } else {
+        for (const item of items) next.add(runtimeItemKey(item))
+      }
+
+      return next
+    })
+  }
 
   function toggleType(type: InventoryType) {
     setCollapsedTypes((current) => {
@@ -257,6 +361,22 @@ export function InventorySidebar({
             <p className="text-xs text-[#cfc6b8]">Local hardware workbench</p>
           </div>
           <div className="flex shrink-0 items-center gap-1.5">
+            <Button
+              type="button"
+              size="icon-sm"
+              variant="ghost"
+              className={cn(
+                'shrink-0',
+                selectionMode
+                  ? 'bg-[#ddb668] text-[#20242c] hover:bg-[#e5c47d] hover:text-[#20242c]'
+                  : 'text-[#f7f1e8] hover:bg-white/10 hover:text-[#f7f1e8]',
+              )}
+              aria-label={selectionMode ? 'Exit inventory selection' : 'Select inventory items'}
+              aria-pressed={selectionMode}
+              onClick={toggleSelectionMode}
+            >
+              <ListChecks className="size-4" />
+            </Button>
             <Button
               type="button"
               size="sm"
@@ -309,21 +429,80 @@ export function InventorySidebar({
             </SelectContent>
           </Select>
           <Select
-            value={filters.assignment}
+            value={filters.status}
             onValueChange={(value) =>
-              setFilters((current) => ({ ...current, assignment: value as AssignmentFilter }))
+              setFilters((current) => ({ ...current, status: value as InventoryStatusFilter }))
             }
           >
             <SelectTrigger className="h-9 border-white/10 bg-[#11151b] text-xs text-[#f7f1e8]">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="unassigned">Unassigned</SelectItem>
+              <SelectItem value="available">Available</SelectItem>
               <SelectItem value="assigned">Assigned</SelectItem>
-              <SelectItem value="all">All items</SelectItem>
+              <SelectItem value="archived">Archived</SelectItem>
+              <SelectItem value="all">All</SelectItem>
             </SelectContent>
           </Select>
         </div>
+        {selectionMode ? (
+          <div className="mt-3 rounded-md border border-white/10 bg-[#11151b] p-2.5">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-xs font-semibold text-[#d8d0c5]">
+                {selectedItems.length} selected
+              </span>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="h-7 text-xs text-[#f7f1e8] hover:bg-white/10 hover:text-[#f7f1e8]"
+                onClick={selectVisibleItems}
+              >
+                {allVisibleSelected ? 'Clear visible' : 'Select visible'}
+              </Button>
+            </div>
+            <div className="mt-2 flex flex-wrap gap-2">
+              {allSelectedActive ? (
+                <Button
+                  type="button"
+                  size="sm"
+                  disabled={lifecycleBusy}
+                  onClick={() => onArchiveItems(selectedItems)}
+                >
+                  <Archive className="size-3.5" />
+                  Archive
+                </Button>
+              ) : null}
+              {allSelectedArchived ? (
+                <>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="secondary"
+                    disabled={lifecycleBusy}
+                    onClick={() => onRestoreItems(selectedItems)}
+                  >
+                    <RotateCcw className="size-3.5" />
+                    Restore
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="destructive"
+                    disabled={lifecycleBusy}
+                    onClick={() => onDeleteItems(selectedItems)}
+                  >
+                    <Trash2 className="size-3.5" />
+                    Delete
+                  </Button>
+                </>
+              ) : null}
+              {selectedItems.length > 0 && !allSelectedActive && !allSelectedArchived ? (
+                <p className="text-xs text-amber-300">Select only active or only archived items.</p>
+              ) : null}
+            </div>
+          </div>
+        ) : null}
       </div>
 
       <ScrollArea className="min-h-0 flex-1">
@@ -357,7 +536,15 @@ export function InventorySidebar({
                       key={runtimeItemKey(item)}
                       item={item}
                       assigned={isItemAssigned(project, item)}
+                      selectionMode={selectionMode}
+                      selected={selectedItemIds.has(runtimeItemKey(item))}
                       onSelect={onSelect}
+                      onToggleSelected={toggleSelected}
+                      onDuplicate={onDuplicateItem}
+                      onArchive={(selectedItem) => onArchiveItems([selectedItem])}
+                      onRestore={(selectedItem) => onRestoreItems([selectedItem])}
+                      onDelete={(selectedItem) => onDeleteItems([selectedItem])}
+                      busy={lifecycleBusy}
                     />
                   ))}
                 </div>

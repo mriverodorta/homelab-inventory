@@ -33,3 +33,19 @@ export async function createAgentEnrollment(
     }),
   })
 }
+
+export async function revokeAgentRegistration(
+  serverId: string | number,
+): Promise<void> {
+  await agentRequest(`/api/agent/servers/${serverId}/registration`, {
+    method: 'DELETE',
+  })
+}
+
+export async function clearAgentStatus(
+  serverId: string | number,
+): Promise<AgentStatusSummary> {
+  return agentRequest<AgentStatusSummary>(`/api/agent/servers/${serverId}/status`, {
+    method: 'DELETE',
+  })
+}

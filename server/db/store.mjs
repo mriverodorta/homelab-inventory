@@ -3,9 +3,18 @@ import path from 'node:path'
 import { Low } from 'lowdb'
 import { normalizeNetworkProject, recalculateNegotiatedSpeeds } from '../../src/lib/negotiated-speed.ts'
 import { getReleaseNotesBetween } from '../../src/release-notes.ts'
+import {
+  analyzeInventoryDependencies,
+  assertDependencyFree,
+  buildDuplicateRecord,
+  InventoryLifecycleError,
+  normalizeInventoryRef,
+  referencedPortIds,
+  resolveInventoryRef,
+} from './inventory-lifecycle.mjs'
 import { assertInventoryStoreShape, assertProjectShape, assertProjectStoreShape } from './validation.mjs'
 
-export const CURRENT_SCHEMA_VERSION = 5
+export const CURRENT_SCHEMA_VERSION = 6
 
 const DEFAULT_SAVE_DEBOUNCE_MS = 500
 const BACKUP_LIMIT = 10
@@ -399,20 +408,29 @@ function normalizeInventoryPort(port, index, fallbackKind) {
 
 function normalizeInventoryItemInput(input, id) {
   if (!input || typeof input !== 'object' || Array.isArray(input)) {
-    throw new Error('Inventory item payload must be an object.')
+    throw new InventoryLifecycleError('Inventory item payload must be an object.', {
+      code: 'invalid-inventory-item',
+      status: 400,
+    })
   }
 
   const type = String(input.type ?? '').trim()
   const table = TABLE_BY_TYPE[type]
 
   if (!table) {
-    throw new Error('Inventory item type is not supported.')
+    throw new InventoryLifecycleError('Inventory item type is not supported.', {
+      code: 'unsupported-inventory-type',
+      status: 400,
+    })
   }
 
   const name = String(input.name ?? '').trim()
 
   if (!name) {
-    throw new Error('Inventory item name is required.')
+    throw new InventoryLifecycleError('Inventory item name is required.', {
+      code: 'invalid-inventory-item',
+      status: 400,
+    })
   }
 
   const item = {
@@ -872,6 +890,12 @@ export class HomelabInventoryStore {
         continue
       }
 
+      if (currentVersion === 5) {
+        this.databases.meta.data.schemaVersion = 6
+        currentVersion = 6
+        continue
+      }
+
       throw new Error(`No migration registered for schema version ${currentVersion}.`)
     }
 
@@ -1008,35 +1032,273 @@ export class HomelabInventoryStore {
     return this.getProject()
   }
 
-  addInventoryItem(input) {
+  inventoryTransaction(mutator) {
+    const draft = {
+      meta: structuredClone(this.databases.meta.data),
+      inventory: structuredClone(this.databases.inventory.data),
+      project: structuredClone(this.databases.project.data),
+      agents: structuredClone(this.databases.agents.data),
+      agentStatus: structuredClone(this.databases.agentStatus.data),
+    }
+    mutator(draft)
+    const updatedAt = new Date().toISOString()
+
+    draft.meta.updatedAt = updatedAt
+
+    try {
+      assertInventoryStoreShape(draft.inventory)
+      assertProjectStoreShape(draft.project)
+      assertProjectShape(composeProject(draft.meta, draft.inventory, draft.project))
+    } catch (error) {
+      throw new InventoryLifecycleError(error instanceof Error ? error.message : 'Inventory change is invalid.', {
+        code: 'invalid-inventory-change',
+        status: 400,
+      })
+    }
+
+    this.databases.meta.data = draft.meta
+    this.databases.inventory.data = draft.inventory
+    this.scheduleFlush('meta')
+    this.scheduleFlush('inventory')
+
+    return composeProject(draft.meta, draft.inventory, draft.project)
+  }
+
+  dependencyContext(draft = null) {
+    return {
+      inventory: draft?.inventory ?? this.databases.inventory.data,
+      project: draft?.project ?? this.databases.project.data,
+      agents: draft?.agents ?? this.databases.agents.data,
+      agentStatus: draft?.agentStatus ?? this.databases.agentStatus.data,
+    }
+  }
+
+  getInventoryDependencies(ref) {
+    return analyzeInventoryDependencies(this.dependencyContext(), normalizeInventoryRef(ref))
+  }
+
+  getInventoryDependencyReports(refs) {
+    return this.normalizeInventoryRefs(refs).map((ref) => this.getInventoryDependencies(ref))
+  }
+
+  normalizeInventoryRefs(refs) {
+    if (!Array.isArray(refs) || refs.length === 0) {
+      throw new InventoryLifecycleError('At least one inventory item is required.', {
+        code: 'empty-inventory-selection',
+        status: 400,
+      })
+    }
+
+    const unique = new Map()
+    for (const rawRef of refs) {
+      const ref = normalizeInventoryRef(rawRef)
+      unique.set(`${ref.type}:${ref.id}`, ref)
+    }
+    return [...unique.values()]
+  }
+
+  createInventoryItems(input, quantity = 1) {
+    if (!Number.isInteger(quantity) || quantity < 1 || quantity > 100) {
+      throw new InventoryLifecycleError('Quantity must be an integer between 1 and 100.', {
+        code: 'invalid-quantity',
+        status: 400,
+      })
+    }
+
     const type = String(input?.type ?? '').trim()
     const table = TABLE_BY_TYPE[type]
 
     if (!table) {
-      throw new Error('Inventory item type is not supported.')
+      throw new InventoryLifecycleError('Inventory item type is not supported.', {
+        code: 'unsupported-inventory-type',
+        status: 400,
+      })
     }
 
-    const records = this.databases.inventory.data[table]
-    const id = nextInventoryId(records)
-    const { item } = normalizeInventoryItemInput(input, id)
-    const record = cleanItemForStore(item)
+    return this.inventoryTransaction((draft) => {
+      const records = draft.inventory[table]
+      const startingId = nextInventoryId(records)
+      const created = []
+      const namingRecords = [...records]
 
-    const nextInventory = {
-      ...this.databases.inventory.data,
-      [table]: [...records, record]
-        .sort((first, second) => Number(first.id) - Number(second.id)),
+      for (let index = 0; index < quantity; index += 1) {
+        const id = startingId + index
+        const name = quantity > 1 && ['server', 'nas', 'switch', 'patchPanel'].includes(type)
+          ? (() => {
+              const source = { ...input, id, type }
+              return buildDuplicateRecord({ source, type, nextId: id, existingRecords: namingRecords }).name
+            })()
+          : input.name
+        const { item } = normalizeInventoryItemInput({ ...input, name }, id)
+        const record = cleanItemForStore(item)
+        created.push(record)
+        namingRecords.push(record)
+      }
+
+      draft.inventory[table] = [...records, ...created]
+        .sort((first, second) => Number(first.id) - Number(second.id))
+      return created.map((record) => ({ type, id: record.id, name: record.name }))
+    })
+  }
+
+  addInventoryItem(input) {
+    return this.createInventoryItems(input, 1)
+  }
+
+  updateInventoryItem(rawRef, input) {
+    const ref = normalizeInventoryRef(rawRef)
+
+    return this.inventoryTransaction((draft) => {
+      const resolved = resolveInventoryRef(draft.inventory, ref)
+
+      if (resolved.item.archivedAt) {
+        throw new InventoryLifecycleError('Restore the item before editing it.', {
+          code: 'inventory-item-archived',
+          status: 409,
+        })
+      }
+
+      const { item } = normalizeInventoryItemInput({ ...input, type: ref.type }, ref.id)
+      const record = cleanItemForStore(item)
+      const connectedPortIds = referencedPortIds(draft.project, ref)
+
+      for (const portId of connectedPortIds) {
+        const previousPort = resolved.item.ports?.find((port) => Number(port.id) === portId)
+        const nextPort = record.ports?.find((port) => Number(port.id) === portId)
+
+        if (
+          !previousPort ||
+          !nextPort ||
+          previousPort.kind !== nextPort.kind ||
+          previousPort.type !== nextPort.type ||
+          previousPort.speed !== nextPort.speed ||
+          JSON.stringify(previousPort.endpoints ?? []) !== JSON.stringify(nextPort.endpoints ?? [])
+        ) {
+          throw new InventoryLifecycleError(`Connected port ${portId} cannot be removed or materially changed.`, {
+            code: 'connected-port-change',
+            status: 409,
+            details: { portId },
+          })
+        }
+      }
+
+      draft.inventory[resolved.table][resolved.index] = record
+      return { type: ref.type, id: ref.id, name: record.name }
+    })
+  }
+
+  duplicateInventoryItem(rawRef, quantity = 1) {
+    if (!Number.isInteger(quantity) || quantity < 1 || quantity > 100) {
+      throw new InventoryLifecycleError('Quantity must be an integer between 1 and 100.', {
+        code: 'invalid-quantity',
+        status: 400,
+      })
     }
 
-    assertInventoryStoreShape(nextInventory)
+    const ref = normalizeInventoryRef(rawRef)
 
-    this.databases.inventory.data = nextInventory
-    this.databases.meta.data.updatedAt = new Date().toISOString()
-    assertProjectShape(this.getProject())
+    return this.inventoryTransaction((draft) => {
+      const resolved = resolveInventoryRef(draft.inventory, ref)
 
-    this.scheduleFlush('meta')
-    this.scheduleFlush('inventory')
+      if (resolved.item.archivedAt) {
+        throw new InventoryLifecycleError('Restore the item before duplicating it.', {
+          code: 'inventory-item-archived',
+          status: 409,
+        })
+      }
 
-    return this.getProject()
+      const created = []
+      const records = draft.inventory[resolved.table]
+      let nextId = nextInventoryId(records)
+      const namingRecords = [...records]
+
+      for (let index = 0; index < quantity; index += 1) {
+        const record = buildDuplicateRecord({
+          source: resolved.item,
+          type: ref.type,
+          nextId,
+          existingRecords: namingRecords,
+        })
+        created.push(record)
+        namingRecords.push(record)
+        nextId += 1
+      }
+
+      draft.inventory[resolved.table] = [...records, ...created]
+        .sort((first, second) => Number(first.id) - Number(second.id))
+      return created.map((record) => ({ type: ref.type, id: record.id, name: record.name }))
+    })
+  }
+
+  archiveInventoryItems(rawRefs) {
+    const refs = this.normalizeInventoryRefs(rawRefs)
+
+    return this.inventoryTransaction((draft) => {
+      const context = this.dependencyContext(draft)
+      const reports = refs.map((ref) => analyzeInventoryDependencies(context, ref))
+      assertDependencyFree(reports, 'archive')
+      const archivedAt = new Date().toISOString()
+
+      for (const ref of refs) {
+        const resolved = resolveInventoryRef(draft.inventory, ref)
+        resolved.item.archivedAt = archivedAt
+      }
+
+      return { items: refs, archivedAt }
+    })
+  }
+
+  restoreInventoryItems(rawRefs) {
+    const refs = this.normalizeInventoryRefs(rawRefs)
+
+    return this.inventoryTransaction((draft) => {
+      for (const ref of refs) {
+        const resolved = resolveInventoryRef(draft.inventory, ref)
+        delete resolved.item.archivedAt
+      }
+      return { items: refs }
+    })
+  }
+
+  deleteInventoryItems(rawRefs) {
+    const refs = this.normalizeInventoryRefs(rawRefs)
+
+    return this.inventoryTransaction((draft) => {
+      const activeItems = refs
+        .map((ref) => resolveInventoryRef(draft.inventory, ref))
+        .filter((resolved) => !resolved.item.archivedAt)
+
+      if (activeItems.length > 0) {
+        throw new InventoryLifecycleError('Archive inventory items before deleting them.', {
+          code: 'inventory-item-not-archived',
+          status: 409,
+          details: {
+            items: activeItems.map(({ type, id, item }) => ({ type, id, name: item.name })),
+          },
+        })
+      }
+
+      const context = this.dependencyContext(draft)
+      const reports = refs.map((ref) => analyzeInventoryDependencies(context, ref))
+      assertDependencyFree(reports, 'delete')
+
+      for (const ref of refs) {
+        const resolved = resolveInventoryRef(draft.inventory, ref)
+        draft.inventory[resolved.table].splice(resolved.index, 1)
+      }
+
+      return { items: refs }
+    })
+  }
+
+  clearAgentRuntimeData(serverId) {
+    const id = Number(serverId)
+    if (!Number.isInteger(id)) throw new Error('Server id must be numeric.')
+
+    delete this.databases.agentStatus.data.servers[String(id)]
+    delete this.databases.agentStatus.data.servers[id]
+    this.scheduleFlush('agentStatus')
+    return this.getAgentStatusSummary()
   }
 
   getAgentStatusSummary() {

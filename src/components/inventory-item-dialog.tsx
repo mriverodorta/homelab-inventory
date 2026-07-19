@@ -18,6 +18,7 @@ import {
 import { PortGroupsEditor } from '@/components/inventory-form/port-groups-editor'
 import { InventoryCommonFields, InventoryTypeFields } from '@/components/inventory-form/type-fields'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import {
   Dialog,
   DialogContent,
@@ -43,9 +44,10 @@ export function InventoryItemDialog({
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
-  onCreate: (item: InventoryItemInput) => Promise<void>
+  onCreate: (item: InventoryItemInput, quantity: number) => Promise<void>
 }) {
   const [values, setValues] = useState<InventoryFormValues>(() => createInventoryFormValues('server'))
+  const [quantity, setQuantity] = useState('1')
   const [errors, setErrors] = useState<InventoryFormErrors>({})
   const [pending, setPending] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -59,6 +61,7 @@ export function InventoryItemDialog({
     selectMenuOpenRef.current = false
     lastSelectInteractionRef.current = 0
     setValues(createInventoryFormValues('server'))
+    setQuantity('1')
     setErrors({})
     setPending(false)
     setError(null)
@@ -133,6 +136,12 @@ export function InventoryItemDialog({
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
+    const parsedQuantity = Number(quantity)
+    if (!Number.isInteger(parsedQuantity) || parsedQuantity < 1 || parsedQuantity > 100) {
+      setError('Quantity must be between 1 and 100.')
+      return
+    }
+
     const nextErrors = validateInventoryFormValues(values)
     setErrors(nextErrors)
 
@@ -144,7 +153,7 @@ export function InventoryItemDialog({
     setPending(true)
     setError(null)
     try {
-      await onCreate(inventoryFormValuesToInput(values))
+      await onCreate(inventoryFormValuesToInput(values), parsedQuantity)
       resetDraft()
       onOpenChange(false)
     } catch (createError) {
@@ -161,7 +170,7 @@ export function InventoryItemDialog({
           <DialogHeader className="border-b border-[#ded8ce] px-4 py-4">
             <DialogTitle>Add inventory item</DialogTitle>
           </DialogHeader>
-          <form key={formKey} onSubmit={handleSubmit} onChange={markDirty} className="flex min-h-0 flex-1 flex-col">
+          <form key={formKey} noValidate onSubmit={handleSubmit} onChange={markDirty} className="flex min-h-0 flex-1 flex-col">
             <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-4 py-4">
               <FieldLabel>
                 <span>Type</span>
@@ -176,6 +185,23 @@ export function InventoryItemDialog({
               <InventoryCommonFields type={values.type} values={values} errors={errors} onChange={updateValues} onSelectOpenChange={handleSelectOpenChange} />
               <InventoryTypeFields type={values.type} values={values} errors={errors} onChange={updateValues} onSelectOpenChange={handleSelectOpenChange} />
               <PortGroupsEditor type={values.type} groups={values.portGroups} error={errors.portGroups} onChange={(portGroups) => updateValues({ portGroups })} onSelectOpenChange={handleSelectOpenChange} />
+
+              <FieldLabel>
+                <span>Quantity</span>
+                <Input
+                  aria-label="Quantity"
+                  min={1}
+                  max={100}
+                  step={1}
+                  type="number"
+                  value={quantity}
+                  onChange={(event) => {
+                    markDirty()
+                    setQuantity(event.target.value)
+                    setError(null)
+                  }}
+                />
+              </FieldLabel>
 
               <FieldLabel>
                 <span>Notes</span>

@@ -90,6 +90,7 @@ export type InventoryItem = {
   properties?: InventoryProperties
   ports?: InventoryPort[]
   notes?: string
+  archivedAt?: string
 }
 
 export type ServerPlacement = {

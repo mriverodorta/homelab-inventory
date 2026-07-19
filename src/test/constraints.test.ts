@@ -10,6 +10,13 @@ import { mergeInventoryWithProject } from '@/lib/inventory'
 import { removeAssignment } from '@/lib/project'
 import type { InventoryItem } from '@/types/inventory'
 
+function archived(item: InventoryItem): InventoryItem {
+  return {
+    ...item,
+    archivedAt: '2026-07-19T12:00:00.000Z',
+  }
+}
+
 const items: InventoryItem[] = [
   { id: 'srv', name: 'Server', type: 'server' },
   { id: 'srv-two', name: 'Server Two', type: 'server' },
@@ -71,6 +78,31 @@ describe('slot constraints', () => {
 
     expect(result.ok).toBe(false)
     expect(result.ok ? '' : result.message).toMatch(/storage drives and network cards/i)
+  })
+
+  it('rejects assigning an archived component', () => {
+    const project = mergeInventoryWithProject([
+      ...items,
+      archived({ id: 'cpu-archived', name: 'Archived CPU', type: 'cpu' }),
+    ], null)
+
+    expect(validateAssignment(project, 'srv', 'cpu-archived')).toEqual({
+      ok: false,
+      message: 'Restore Archived CPU before assigning it.',
+    })
+    expect(assignComponent(project, 'srv', 'cpu-archived')).toBe(project)
+  })
+
+  it('rejects assigning a component to an archived host', () => {
+    const project = mergeInventoryWithProject([
+      ...items.filter((item) => item.id !== 'srv'),
+      archived({ id: 'srv', name: 'Archived Server', type: 'server' }),
+    ], null)
+
+    expect(validateAssignment(project, 'srv', 'cpu-a')).toEqual({
+      ok: false,
+      message: 'Restore this server or NAS before assigning components.',
+    })
   })
 
   it('sorts assignments in server display order', () => {
@@ -177,5 +209,35 @@ describe('slot constraints', () => {
         }),
       ]),
     )
+  })
+
+  it('rejects moving an archived component or swapping with an archived target component', () => {
+    const base = mergeInventoryWithProject(items, null)
+    const first = assignComponent(base, 'srv', 'cpu-a')
+    const populated = assignComponent(first, 'srv-two', 'cpu-b')
+    const sourceAssignment = populated.assignments.find((assignment) => assignment.itemId === 'cpu-a')
+    const archivedSource: typeof populated = {
+      ...populated,
+      items: {
+        ...populated.items,
+        'cpu-a': archived(populated.items['cpu-a']),
+      },
+    }
+    const archivedTarget: typeof populated = {
+      ...populated,
+      items: {
+        ...populated.items,
+        'cpu-b': archived(populated.items['cpu-b']),
+      },
+    }
+
+    expect(swapAssignedComponent(archivedSource, sourceAssignment?.id ?? '', 'srv-two')).toEqual({
+      ok: false,
+      message: 'Restore archived components and hosts before moving or swapping them.',
+    })
+    expect(swapAssignedComponent(archivedTarget, sourceAssignment?.id ?? '', 'srv-two')).toEqual({
+      ok: false,
+      message: 'Restore archived components before moving or swapping them.',
+    })
   })
 })

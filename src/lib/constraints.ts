@@ -1,5 +1,5 @@
 import { nextNumericId } from '@/lib/ids'
-import { touchProject } from '@/lib/project'
+import { isArchivedItem, touchProject } from '@/lib/project'
 import type {
   ComponentAssignment,
   ComponentType,
@@ -99,8 +99,16 @@ export function validateAssignment(
     return { ok: false, message: 'Drop components onto a server or NAS.' }
   }
 
+  if (isArchivedItem(host)) {
+    return { ok: false, message: 'Restore this server or NAS before assigning components.' }
+  }
+
   if (!item) {
     return { ok: false, message: 'That inventory item no longer exists.' }
+  }
+
+  if (isArchivedItem(item)) {
+    return { ok: false, message: `Restore ${item.name} before assigning it.` }
   }
 
   if (!isAssignableComponentType(item.type)) {
@@ -182,6 +190,10 @@ export function swapAssignedComponent(
     return { ok: false, message: 'That component or server no longer exists.' }
   }
 
+  if (isArchivedItem(item) || isArchivedItem(sourceHost) || isArchivedItem(targetHost)) {
+    return { ok: false, message: 'Restore archived components and hosts before moving or swapping them.' }
+  }
+
   if (!SWAPPABLE_COMPONENT_TYPES.has(sourceAssignment.type)) {
     return { ok: false, message: 'Only CPU and RAM slots can be swapped.' }
   }
@@ -197,6 +209,12 @@ export function swapAssignedComponent(
   const targetAssignment = project.assignments.find(
     (assignment) => assignment.serverId === targetServerId && assignment.type === sourceAssignment.type,
   )
+
+  const targetItem = targetAssignment ? project.items[targetAssignment.itemId] : undefined
+
+  if (isArchivedItem(targetItem)) {
+    return { ok: false, message: 'Restore archived components before moving or swapping them.' }
+  }
 
   if (!targetAssignment) {
     const projectWithoutSource = {

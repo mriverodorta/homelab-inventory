@@ -6,6 +6,13 @@ import {
 } from '@/lib/connection-endpoints'
 import type { InventoryItem, ProjectState } from '@/types/inventory'
 
+function archived(item: InventoryItem): InventoryItem {
+  return {
+    ...item,
+    archivedAt: '2026-07-19T12:00:00.000Z',
+  }
+}
+
 function port(
   id: string,
   type: 'rj45' | 'displayport' | 'mini-displayport',
@@ -135,6 +142,23 @@ describe('connection endpoint catalog', () => {
     expect(groupLabels).not.toContain('Loose GPU')
   })
 
+  it('excludes archived hosts and archived assigned cards from endpoint groups', () => {
+    const project = makeProject()
+    project.items['switch-a'] = archived(project.items['switch-a'])
+    project.items['nic-a'] = archived(project.items['nic-a'])
+
+    expect(getHostEndpointGroups(project).map((group) => group.label)).toEqual([
+      'Patch Panel A',
+      'Server A',
+    ])
+    expect(getEndpointGroupForHost(project, project.items['server-a'])?.options.map((option) => option.owner.name)).toEqual([
+      'Server A',
+      'Server A',
+      'AMD Radeon RX 640',
+    ])
+    expect(getEndpointGroupForHost(project, project.items['switch-a'])).toBeNull()
+  })
+
   it('labels patch-panel front and back endpoints independently', () => {
     const group = getEndpointGroupForHost(makeProject(), patchPanel)
 
@@ -170,5 +194,16 @@ describe('connection endpoint catalog', () => {
     ])
 
     expect(getCompatibleDestinationGroups(project, displaySource!)).toEqual([])
+  })
+
+  it('does not expose archived compatible destinations', () => {
+    const project = makeProject()
+    project.items['switch-a'] = archived(project.items['switch-a'])
+    const source = getEndpointGroupForHost(project, project.items['server-a'])?.options[0]
+
+    expect(source).toBeDefined()
+    expect(getCompatibleDestinationGroups(project, source!).map((group) => group.label)).toEqual([
+      'Patch Panel A',
+    ])
   })
 })

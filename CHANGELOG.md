@@ -14,6 +14,28 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 - Added repository documentation, issue templates, CI, and security guidance.
 - Clarified Docker deployment, data persistence, and development setup.
 
+## [0.1.25] - 2026-07-19
+
+### Added
+
+- Added quantity creation and clean duplication for every inventory category.
+- Added per-item and batch archive, restore, and permanent-delete controls.
+- Added Archived and All inventory views plus dependency-aware lifecycle confirmation dialogs.
+
+### Changed
+
+- Archived records remain in their category tables but are unavailable for editing, dragging, assigning, placement, or connection until restored.
+- Inventory lifecycle commands now run transactionally on the server and return a complete authoritative project snapshot.
+- Inventory lifecycle changes reset canvas undo and redo history to prevent stale project state from restoring removed records.
+
+### Fixed
+
+- Archive and deletion are blocked when records still have canvas placements, host relationships, cable connections, configured port metadata, agent registration, or agent runtime status.
+- Permanent deletion now requires the record to be archived first and never cascades into dependent data.
+- Duplicated records no longer inherit runtime labels, notes, IP addresses, assignments, placements, connections, or agent state.
+- Added confirmed Agent-tab cleanup controls so registrations and saved telemetry can be removed before archiving a server.
+- Fixed active multi-select contrast and vertically centered inventory row icons, action menus, and selection checkboxes.
+
 ## [0.1.24] - 2026-07-19
 
 ### Changed

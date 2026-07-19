@@ -44,6 +44,10 @@ export function isCanvasItem(item: InventoryItem | undefined): boolean {
     item?.type === 'patchPanel'
 }
 
+export function isArchivedItem(item: InventoryItem | undefined): boolean {
+  return typeof item?.archivedAt === 'string' && item.archivedAt.trim().length > 0
+}
+
 export function createEmptyProject(items: InventoryItem[] = []): ProjectState {
   const now = new Date().toISOString()
 
@@ -141,6 +145,10 @@ export function applyInventoryItemInput(
 }
 
 export function upsertPlacement(project: ProjectState, placement: ServerPlacement): ProjectState {
+  if (isArchivedItem(project.items[placement.serverId])) {
+    return project
+  }
+
   const placements = project.placements.some((existing) => existing.serverId === placement.serverId)
     ? project.placements.map((existing) =>
         existing.serverId === placement.serverId ? placement : existing,
@@ -155,6 +163,10 @@ export function upsertPlacement(project: ProjectState, placement: ServerPlacemen
 
 export function upsertPlacements(project: ProjectState, nextPlacements: ServerPlacement[]): ProjectState {
   if (nextPlacements.length === 0) {
+    return project
+  }
+
+  if (nextPlacements.some((placement) => isArchivedItem(project.items[placement.serverId]))) {
     return project
   }
 
@@ -411,6 +423,11 @@ export function getConnectionPort(
   endpoint: ConnectionEndpoint,
 ): InventoryPort | null {
   const item = project.items[endpoint.itemId]
+
+  if (isArchivedItem(item)) {
+    return null
+  }
+
   const resolvedPort = endpoint.hostedItemId
     ? getHostedConnectionPort(project, endpoint)
     : item?.ports?.find((candidate) => String(candidate.id) === String(endpoint.portId)) ??
@@ -449,6 +466,10 @@ function getHostedConnectionPort(
   const hostedPortId = endpoint.hostedItemId ? endpoint.portId : legacyHostedPortId
 
   if (!componentItemId || !hostedPortId) {
+    return null
+  }
+
+  if (isArchivedItem(project.items[componentItemId])) {
     return null
   }
 
@@ -792,6 +813,10 @@ export function getNonCollidingPlacement(
   project: ProjectState,
   placement: ServerPlacement,
 ): ServerPlacement | null {
+  if (isArchivedItem(project.items[placement.serverId])) {
+    return null
+  }
+
   return placementCollides(project, placement) ? null : placement
 }
 

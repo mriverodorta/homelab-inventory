@@ -12,9 +12,10 @@ import {
   X,
   type LucideIcon,
 } from 'lucide-react'
-import { useMutation } from '@tanstack/react-query'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { ComponentInspectorTabs } from '@/components/component-inspector-tabs'
+import { InventoryActionsMenu } from '@/components/inventory-actions-menu'
 import {
   inventoryFormValuesToInput,
   inventoryItemToFormValues,
@@ -54,7 +55,11 @@ import {
   getCableAppearance,
 } from '@/lib/cables'
 import { getItemAuditWarnings, type AuditWarning } from '@/lib/audit'
-import { createAgentEnrollment } from '@/lib/agent-api'
+import {
+  clearAgentStatus,
+  createAgentEnrollment,
+  revokeAgentRegistration,
+} from '@/lib/agent-api'
 import type { InventoryItemInput } from '@/lib/db'
 import { useInventoryItemEditor } from '@/hooks/use-inventory-item-editor'
 import {
@@ -1491,16 +1496,30 @@ function AgentTelemetrySection({
 function AgentSetupPanel({
   server,
   status,
+  registered,
+  hasSavedStatus,
   demoMode,
 }: {
   server: InventoryItem
   status: AgentServerStatus
+  registered: boolean
+  hasSavedStatus: boolean
   demoMode: boolean
 }) {
+  const queryClient = useQueryClient()
   const [endpoint, setEndpoint] = useState(() => window.location.origin)
   const [copied, setCopied] = useState(false)
   const enrollmentMutation = useMutation({
     mutationFn: () => createAgentEnrollment(server.id, endpoint),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['agent-status'] }),
+  })
+  const revokeMutation = useMutation({
+    mutationFn: () => revokeAgentRegistration(server.id),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['agent-status'] }),
+  })
+  const clearStatusMutation = useMutation({
+    mutationFn: () => clearAgentStatus(server.id),
+    onSuccess: (summary) => queryClient.setQueryData(['agent-status'], summary),
   })
   const command = enrollmentMutation.data?.installCommand ?? ''
   const firstDisk = status.disks?.[0]
@@ -1683,6 +1702,48 @@ function AgentSetupPanel({
                 <Copy data-icon="inline-start" />
                 {copied ? 'Copied' : 'Copy Command'}
               </Button>
+            </div>
+          ) : null}
+          {registered || hasSavedStatus ? (
+            <div className="mt-2 grid gap-2 border-t border-[#e5dccf] pt-3">
+              <div className="text-xs font-semibold leading-relaxed text-[#75695d]">
+                Revoke the registration before clearing saved telemetry. These actions also remove agent blockers reported by inventory archive checks.
+              </div>
+              {registered ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={revokeMutation.isPending}
+                  onClick={() => {
+                    if (window.confirm(`Revoke the agent registration for ${server.name}?`)) {
+                      revokeMutation.mutate()
+                    }
+                  }}
+                >
+                  {revokeMutation.isPending ? 'Revoking...' : 'Revoke Registration'}
+                </Button>
+              ) : null}
+              {hasSavedStatus ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={registered || clearStatusMutation.isPending}
+                  onClick={() => {
+                    if (window.confirm(`Clear saved agent telemetry for ${server.name}?`)) {
+                      clearStatusMutation.mutate()
+                    }
+                  }}
+                >
+                  {clearStatusMutation.isPending ? 'Clearing...' : 'Clear Saved Telemetry'}
+                </Button>
+              ) : null}
+              {revokeMutation.isError || clearStatusMutation.isError ? (
+                <div className="rounded-md border border-[#dfb3a5] bg-[#fff4ee] p-2 text-xs font-semibold text-[#7a2c1d]">
+                  {(revokeMutation.error ?? clearStatusMutation.error) instanceof Error
+                    ? (revokeMutation.error ?? clearStatusMutation.error)?.message
+                    : 'Agent cleanup could not be completed.'}
+                </div>
+              ) : null}
             </div>
           ) : null}
         </div>
@@ -2183,6 +2244,8 @@ function ServerInspectorTabs({
   })
   const draftServer = itemFromEditorValues(server, editor.values)
   const status = getServerAgentStatus(agentStatus, String(server.id))
+  const registered = agentStatus?.registeredServerIds.some((serverId) => String(serverId) === String(server.id)) ?? false
+  const hasSavedStatus = Boolean(agentStatus?.servers[String(server.id)])
   const handlePortsUpdate = (ports: InventoryPort[]) => updateEditorPorts(editor, ports)
 
   return (
@@ -2257,7 +2320,15 @@ function ServerInspectorTabs({
         {
           value: 'agent',
           label: 'Agent',
-          content: <AgentSetupPanel server={draftServer} status={status} demoMode={demoMode} />,
+          content: (
+            <AgentSetupPanel
+              server={draftServer}
+              status={status}
+              registered={registered}
+              hasSavedStatus={hasSavedStatus}
+              demoMode={demoMode}
+            />
+          ),
         },
       ]}
     />
@@ -2622,6 +2693,9 @@ export function InspectorPanel({
   open,
   onClose,
   onUpdateItem,
+  onDuplicateItem = () => undefined,
+  onArchiveItem = () => undefined,
+  lifecycleBusy = false,
   onCreateConnection,
   onSelectNetworkTrace,
   onEndpointConnectionClick,
@@ -2642,6 +2716,9 @@ export function InspectorPanel({
   open: boolean
   onClose: () => void
   onUpdateItem: (itemId: string, input: InventoryItemInput) => void
+  onDuplicateItem?: (item: InventoryItem) => void
+  onArchiveItem?: (item: InventoryItem) => void
+  lifecycleBusy?: boolean
   onCreateConnection: (from: ConnectionEndpoint, to: ConnectionEndpoint) => void
   onSelectNetworkTrace: (endpoint: ConnectionEndpoint) => void
   onEndpointConnectionClick: (endpoint: ConnectionEndpoint) => void
@@ -2683,16 +2760,28 @@ export function InspectorPanel({
             </StatusBadge>
           ) : null}
         </div>
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          className="size-8 shrink-0"
-          aria-label="Close inspector"
-          onClick={onClose}
-        >
-          <X />
-        </Button>
+        <div className="flex shrink-0 items-center gap-1">
+          {selectedItem ? (
+            <InventoryActionsMenu
+              itemName={selectedItem.name}
+              busy={lifecycleBusy}
+              showEdit={false}
+              onEdit={() => undefined}
+              onDuplicate={() => onDuplicateItem(selectedItem)}
+              onArchive={() => onArchiveItem(selectedItem)}
+            />
+          ) : null}
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="size-8 shrink-0"
+            aria-label="Close inspector"
+            onClick={onClose}
+          >
+            <X />
+          </Button>
+        </div>
       </div>
 
       <div className="min-h-0 flex-1 space-y-4 overflow-x-hidden overflow-y-auto p-4 sm:p-5">
