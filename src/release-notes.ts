@@ -26,6 +26,7 @@ export const RELEASE_NOTES: ReleaseNoteEntry[] = [
       'CPU and RAM moves or swaps now validate atomically so a rejected operation leaves both hosts unchanged.',
       'Official Intel FC package socket names such as FCLGA1200 are normalized to the matching physical socket name to prevent false incompatibility results.',
       'Existing assignments are preserved during migration, including legacy assignments that current rules would reject; enforcement applies when an assignment is newly created or changed.',
+      'Production container images now include the complete project API route set required to load, save, and migrate project data.',
     ],
     notes: [
       'Schema 7 migration creates an automatic backup before normalizing compatibility profiles and deterministic allocations.',

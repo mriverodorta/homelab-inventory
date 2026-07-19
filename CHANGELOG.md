@@ -33,6 +33,7 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 ### Fixed
 
 - Official Intel FC package socket names such as `FCLGA1200` are normalized to the matching physical socket name to prevent false incompatibility results.
+- Production container images now include the complete project API route set required to load, save, and migrate project data.
 
 ### Data
 
