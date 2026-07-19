@@ -36,8 +36,8 @@ COPY --from=prod-deps --chown=10001:10001 /app/node_modules ./node_modules
 COPY --from=build --chown=10001:10001 /app/dist ./dist
 COPY --chown=10001:10001 src/release-notes.ts ./src/
 COPY --chown=10001:10001 src/lib/negotiated-speed.ts ./src/lib/
-COPY --chown=10001:10001 server/index.mjs server/agent-routes.mjs server/rate-limit.mjs server/update-checker.mjs server/update-routes.mjs server/update-scheduler.mjs ./server/
-COPY --chown=10001:10001 server/db/agent-auth.mjs server/db/store.mjs server/db/validation.mjs ./server/db/
+COPY --chown=10001:10001 server/index.mjs server/agent-routes.mjs server/inventory-routes.mjs server/rate-limit.mjs server/update-checker.mjs server/update-routes.mjs server/update-scheduler.mjs ./server/
+COPY --chown=10001:10001 server/db/agent-auth.mjs server/db/inventory-lifecycle.mjs server/db/store.mjs server/db/validation.mjs ./server/db/
 COPY --chown=10001:10001 server/demo/session-manager.mjs server/demo/sanitizer.mjs ./server/demo/
 COPY --from=build --chown=10001:10001 /tmp/runtime-data /data
 
