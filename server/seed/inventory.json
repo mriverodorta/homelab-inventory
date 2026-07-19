@@ -2,703 +2,202 @@
   "servers": [
     {
       "id": 1,
-      "name": "Example Mini Server A",
-      "manufacturer": "Example Labs",
-      "model": "Mini Node 11",
+      "name": "Compatible Mini Host",
+      "manufacturer": "Northstar Fictional Labs",
+      "model": "MiniHost C1",
       "specs": {
         "formFactor": "Mini",
-        "networkSlot": "M.2 2230 A/E",
         "wireless": "No"
       },
-      "properties": {
-        "displayName": "Compute One"
-      },
-      "ports": [
-        {
-          "id": 1,
-          "kind": "server-port",
-          "type": "rj45",
-          "slotNumber": 1,
-          "label": "LAN 1",
-          "speed": "1G",
-          "role": "access"
-        },
-        {
-          "id": 2,
-          "kind": "server-port",
-          "type": "displayport",
-          "slotNumber": 2,
-          "label": "DP 1"
-        },
-        {
-          "id": 3,
-          "kind": "server-port",
-          "type": "hdmi",
-          "slotNumber": 3,
-          "label": "HDMI 1"
+      "compatibility": {
+        "host": {
+          "storageSlots": [
+            {
+              "id": "mini-m2",
+              "label": "M.2 storage slot",
+              "count": 1,
+              "interfaces": ["NVMe"],
+              "formFactors": ["2280"],
+              "pcieGeneration": 4
+            }
+          ]
         }
-      ]
+      },
+      "ports": []
     },
     {
       "id": 2,
-      "name": "Example Micro Server B",
-      "manufacturer": "Example Labs",
-      "model": "Micro Node 8",
+      "name": "Socket Mismatch Example",
+      "manufacturer": "Northstar Fictional Labs",
+      "model": "SocketLab S2",
       "specs": {
-        "formFactor": "Micro",
-        "networkSlot": "PCIe",
-        "wireless": "Yes"
+        "formFactor": "Mini",
+        "wireless": "No"
       },
-      "properties": {
-        "displayName": "Compute Two"
-      },
-      "ports": [
-        {
-          "id": 1,
-          "kind": "server-port",
-          "type": "rj45",
-          "slotNumber": 1,
-          "label": "LAN 1",
-          "speed": "1G",
-          "role": "access"
-        },
-        {
-          "id": 2,
-          "kind": "server-port",
-          "type": "displayport",
-          "slotNumber": 2,
-          "label": "DP 1"
-        },
-        {
-          "id": 3,
-          "kind": "server-port",
-          "type": "hdmi",
-          "slotNumber": 3,
-          "label": "HDMI 1"
+      "compatibility": {
+        "host": {
+          "cpu": {
+            "sockets": ["FCLGA1700"],
+            "generations": ["Fictional Gen 12"],
+            "maxTdpWatts": 65
+          }
         }
-      ]
+      },
+      "ports": []
+    },
+    {
+      "id": 3,
+      "name": "Incomplete Compatibility Example",
+      "manufacturer": "Northstar Fictional Labs",
+      "model": "UnknownFact U3",
+      "specs": {
+        "formFactor": "Mini",
+        "wireless": "No"
+      },
+      "compatibility": {
+        "host": {
+          "cpu": {
+            "sockets": ["FCLGA1200"],
+            "maxTdpWatts": 65
+          }
+        }
+      },
+      "ports": []
+    },
+    {
+      "id": 4,
+      "name": "PCIe Negotiation Example",
+      "manufacturer": "Northstar Fictional Labs",
+      "model": "ExpansionLab P4",
+      "specs": {
+        "formFactor": "Small",
+        "networkSlot": "PCIe",
+        "wireless": "No"
+      },
+      "compatibility": {
+        "host": {
+          "expansionSlots": [
+            {
+              "id": "pcie-slot",
+              "label": "Low-profile PCIe slot",
+              "count": 1,
+              "interfaceFamily": "pcie",
+              "pcieGeneration": 3,
+              "mechanicalLanes": 16,
+              "electricalLanes": 4,
+              "acceptedHeights": ["low-profile"],
+              "maxSlotWidth": 1,
+              "maxPowerWatts": 75
+            }
+          ],
+          "maxExpansionPowerWatts": 75
+        }
+      },
+      "ports": []
     }
   ],
   "cpus": [
     {
       "id": 1,
-      "name": "Intel Core i5-12500T",
-      "manufacturer": "Intel",
-      "family": "Core i5",
-      "number": "i5-12500T",
+      "name": "Fictional Socket Test CPU",
+      "manufacturer": "Example Silicon Works",
+      "family": "Lab Core",
+      "number": "LC-1200",
       "specs": {
         "cores": 6,
         "threads": 12,
-        "baseClockGhz": 2,
-        "boostClockGhz": 4.4
+        "baseClockGhz": 2.4,
+        "boostClockGhz": 4.1
+      },
+      "compatibility": {
+        "requirements": {
+          "cpu": {
+            "socket": "FCLGA1200",
+            "generation": "Fictional Gen 12",
+            "tdpWatts": 35
+          }
+        }
       }
     },
     {
       "id": 2,
-      "name": "AMD Ryzen 5 PRO 5650GE",
-      "manufacturer": "AMD",
-      "family": "Ryzen 5 PRO",
-      "number": "5650GE",
+      "name": "Fictional Incomplete-Data CPU",
+      "manufacturer": "Example Silicon Works",
+      "family": "Lab Core",
+      "number": "LC-UNKNOWN",
       "specs": {
-        "cores": 6,
-        "threads": 12,
-        "baseClockGhz": 3.4,
-        "boostClockGhz": 4.4
+        "cores": 4,
+        "threads": 8,
+        "baseClockGhz": 2.1,
+        "boostClockGhz": 3.7
+      },
+      "compatibility": {
+        "requirements": {
+          "cpu": {
+            "socket": "FCLGA1200",
+            "generation": "Fictional Gen 10",
+            "tdpWatts": 35
+          }
+        }
       }
     }
   ],
-  "ram": [
-    {
-      "id": 1,
-      "name": "32GB DDR4",
-      "manufacturer": "Example Memory",
-      "specs": {
-        "capacityGb": 32,
-        "generation": "DDR4",
-        "speedMt": 3200
-      }
-    },
-    {
-      "id": 2,
-      "name": "64GB DDR5",
-      "manufacturer": "Example Memory",
-      "specs": {
-        "capacityGb": 64,
-        "generation": "DDR5",
-        "speedMt": 4800
-      }
-    }
-  ],
+  "ram": [],
   "storage": [
     {
       "id": 1,
-      "name": "1TB NVMe",
-      "manufacturer": "Example Storage",
-      "model": "Sample NVMe 1TB",
+      "name": "Fictional 1TB NVMe",
+      "manufacturer": "Example Storage Works",
+      "model": "DemoDrive N1",
       "specs": {
         "capacityTb": 1,
         "interface": "NVMe",
         "formFactor": "2280",
-        "media": "SSD"
-      }
-    },
-    {
-      "id": 2,
-      "name": "2TB NVMe",
-      "manufacturer": "Example Storage",
-      "model": "Sample NVMe 2TB",
-      "specs": {
-        "capacityTb": 2,
-        "interface": "NVMe",
-        "formFactor": "2280",
-        "media": "SSD"
-      }
-    },
-    {
-      "id": 3,
-      "name": "8TB SATA HDD",
-      "manufacturer": "Example Storage",
-      "model": "Sample NAS HDD 8TB",
-      "specs": {
-        "capacityTb": 8,
-        "interface": "SATA",
-        "formFactor": "3.5 inch",
-        "media": "HDD"
+        "media": "SSD",
+        "pcie": "PCIe 4.0 x4"
       }
     }
   ],
-  "networkCards": [
-    {
-      "id": 1,
-      "name": "Example Dual Port 10G SFP+ NIC",
-      "manufacturer": "Example Networks",
-      "model": "Dual SFP+ 10G",
-      "specs": {
-        "chipset": "Example 10G",
-        "ports": 2,
-        "speedMbps": 10000,
-        "interface": "PCIe 3.0 x4",
-        "formFactor": "Low profile"
-      },
-      "ports": [
-        {
-          "id": 1,
-          "kind": "server-port",
-          "type": "sfp-plus",
-          "slotNumber": 1,
-          "label": "SFP+ 1",
-          "speed": "10G",
-          "role": "uplink"
-        },
-        {
-          "id": 2,
-          "kind": "server-port",
-          "type": "sfp-plus",
-          "slotNumber": 2,
-          "label": "SFP+ 2",
-          "speed": "10G",
-          "role": "uplink"
-        }
-      ]
-    },
-    {
-      "id": 2,
-      "name": "Example 2.5G A+E NIC",
-      "manufacturer": "Example Networks",
-      "model": "A+E 2.5G",
-      "specs": {
-        "chipset": "Example 2.5G",
-        "ports": 1,
-        "speedMbps": 2500,
-        "interface": "M.2 A+E",
-        "formFactor": "M.2 2230 A/E"
-      },
-      "ports": [
-        {
-          "id": 1,
-          "kind": "server-port",
-          "type": "rj45",
-          "slotNumber": 1,
-          "label": "2.5G LAN",
-          "speed": "2.5G",
-          "role": "access"
-        }
-      ]
-    }
-  ],
+  "networkCards": [],
   "gpus": [
     {
       "id": 1,
-      "name": "Example Low Profile GPU",
-      "manufacturer": "Intel",
-      "model": "Arc Sample LP",
+      "name": "Fictional PCIe 4 Graphics Card",
+      "manufacturer": "Example Graphics Works",
+      "model": "Demo GPU P4",
       "specs": {
         "formFactor": "Low profile",
         "slotWidth": "Single slot",
         "vramGb": 4,
         "pcie": "PCIe 4.0 x8",
-        "displayOutputs": "1x HDMI / 1x DisplayPort"
+        "powerWatts": 30,
+        "displayOutputs": "1x DisplayPort"
+      },
+      "compatibility": {
+        "requirements": {
+          "expansion": {
+            "interfaceFamily": "pcie",
+            "pcieGeneration": 4,
+            "connectorLanes": 8,
+            "minimumElectricalLanes": 4,
+            "height": "low-profile",
+            "slotWidth": 1,
+            "powerWatts": 30
+          }
+        }
       },
       "ports": [
         {
           "id": 1,
-          "kind": "server-port",
-          "type": "hdmi",
-          "slotNumber": 1,
-          "label": "HDMI 1"
-        },
-        {
-          "id": 2,
           "kind": "server-port",
           "type": "displayport",
-          "slotNumber": 2,
-          "label": "DP 1"
+          "slotNumber": 1,
+          "label": "DisplayPort 1"
         }
       ]
     }
   ],
-  "nas": [
-    {
-      "id": 1,
-      "name": "Example 4-Bay NAS",
-      "manufacturer": "Example Storage",
-      "model": "NAS-4",
-      "properties": {
-        "displayName": "Sample NAS"
-      },
-      "specs": {
-        "driveBays": 4,
-        "m2Slots": 2,
-        "storagePool": "Sample RAID 5 pool"
-      },
-      "ports": [
-        {
-          "id": 1,
-          "kind": "server-port",
-          "type": "rj45",
-          "slotNumber": 1,
-          "label": "LAN 1",
-          "speed": "2.5G",
-          "role": "access"
-        },
-        {
-          "id": 2,
-          "kind": "server-port",
-          "type": "rj45",
-          "slotNumber": 2,
-          "label": "LAN 2",
-          "speed": "2.5G",
-          "role": "access"
-        }
-      ]
-    }
-  ],
-  "switches": [
-    {
-      "id": 1,
-      "name": "Example Core Switch",
-      "manufacturer": "Example Networks",
-      "model": "Core-10",
-      "specs": {
-        "management": "Managed",
-        "switchingCapacityGbps": 120,
-        "fanless": false
-      },
-      "ports": [
-        {
-          "id": 1,
-          "kind": "switch-port",
-          "type": "rj45",
-          "slotNumber": 1,
-          "label": "",
-          "speed": "2.5G",
-          "role": "access"
-        },
-        {
-          "id": 2,
-          "kind": "switch-port",
-          "type": "rj45",
-          "slotNumber": 2,
-          "label": "",
-          "speed": "2.5G",
-          "role": "access"
-        },
-        {
-          "id": 3,
-          "kind": "switch-port",
-          "type": "rj45",
-          "slotNumber": 3,
-          "label": "",
-          "speed": "2.5G",
-          "role": "access"
-        },
-        {
-          "id": 4,
-          "kind": "switch-port",
-          "type": "rj45",
-          "slotNumber": 4,
-          "label": "",
-          "speed": "2.5G",
-          "role": "access"
-        },
-        {
-          "id": 5,
-          "kind": "switch-port",
-          "type": "rj45",
-          "slotNumber": 5,
-          "label": "",
-          "speed": "2.5G",
-          "role": "access"
-        },
-        {
-          "id": 6,
-          "kind": "switch-port",
-          "type": "rj45",
-          "slotNumber": 6,
-          "label": "",
-          "speed": "2.5G",
-          "role": "access"
-        },
-        {
-          "id": 7,
-          "kind": "switch-port",
-          "type": "rj45",
-          "slotNumber": 7,
-          "label": "",
-          "speed": "2.5G",
-          "role": "access"
-        },
-        {
-          "id": 8,
-          "kind": "switch-port",
-          "type": "rj45",
-          "slotNumber": 8,
-          "label": "",
-          "speed": "2.5G",
-          "role": "access"
-        },
-        {
-          "id": 9,
-          "kind": "switch-port",
-          "type": "sfp-plus",
-          "slotNumber": 9,
-          "label": "Uplink 1",
-          "speed": "10G",
-          "role": "uplink"
-        },
-        {
-          "id": 10,
-          "kind": "switch-port",
-          "type": "sfp-plus",
-          "slotNumber": 10,
-          "label": "Uplink 2",
-          "speed": "10G",
-          "role": "uplink"
-        }
-      ]
-    },
-    {
-      "id": 2,
-      "name": "Example Edge Switch",
-      "manufacturer": "Example Networks",
-      "model": "Edge-8",
-      "specs": {
-        "management": "Web managed",
-        "switchingCapacityGbps": 40,
-        "fanless": true
-      },
-      "ports": [
-        {
-          "id": 1,
-          "kind": "switch-port",
-          "type": "rj45",
-          "slotNumber": 1,
-          "label": "",
-          "speed": "1G",
-          "role": "access"
-        },
-        {
-          "id": 2,
-          "kind": "switch-port",
-          "type": "rj45",
-          "slotNumber": 2,
-          "label": "",
-          "speed": "1G",
-          "role": "access"
-        },
-        {
-          "id": 3,
-          "kind": "switch-port",
-          "type": "rj45",
-          "slotNumber": 3,
-          "label": "",
-          "speed": "1G",
-          "role": "access"
-        },
-        {
-          "id": 4,
-          "kind": "switch-port",
-          "type": "rj45",
-          "slotNumber": 4,
-          "label": "",
-          "speed": "1G",
-          "role": "access"
-        },
-        {
-          "id": 5,
-          "kind": "switch-port",
-          "type": "rj45",
-          "slotNumber": 5,
-          "label": "",
-          "speed": "1G",
-          "role": "access"
-        },
-        {
-          "id": 6,
-          "kind": "switch-port",
-          "type": "rj45",
-          "slotNumber": 6,
-          "label": "",
-          "speed": "1G",
-          "role": "access"
-        },
-        {
-          "id": 7,
-          "kind": "switch-port",
-          "type": "rj45",
-          "slotNumber": 7,
-          "label": "",
-          "speed": "1G",
-          "role": "access"
-        },
-        {
-          "id": 8,
-          "kind": "switch-port",
-          "type": "rj45",
-          "slotNumber": 8,
-          "label": "",
-          "speed": "1G",
-          "role": "access"
-        }
-      ]
-    }
-  ],
-  "patchPanels": [
-    {
-      "id": 1,
-      "name": "Example 12 Port Cat6A Patch Panel",
-      "manufacturer": "Example Cabling",
-      "model": "PP-12-CAT6A",
-      "specs": {
-        "rackUnits": 1,
-        "mount": "Rack mounted"
-      },
-      "ports": [
-        {
-          "id": 1,
-          "kind": "keystone",
-          "type": "rj45",
-          "slotNumber": 1,
-          "label": "",
-          "endpoints": [
-            {
-              "id": 1,
-              "side": "front"
-            },
-            {
-              "id": 2,
-              "side": "back"
-            }
-          ]
-        },
-        {
-          "id": 2,
-          "kind": "keystone",
-          "type": "rj45",
-          "slotNumber": 2,
-          "label": "",
-          "endpoints": [
-            {
-              "id": 1,
-              "side": "front"
-            },
-            {
-              "id": 2,
-              "side": "back"
-            }
-          ]
-        },
-        {
-          "id": 3,
-          "kind": "keystone",
-          "type": "rj45",
-          "slotNumber": 3,
-          "label": "",
-          "endpoints": [
-            {
-              "id": 1,
-              "side": "front"
-            },
-            {
-              "id": 2,
-              "side": "back"
-            }
-          ]
-        },
-        {
-          "id": 4,
-          "kind": "keystone",
-          "type": "rj45",
-          "slotNumber": 4,
-          "label": "",
-          "endpoints": [
-            {
-              "id": 1,
-              "side": "front"
-            },
-            {
-              "id": 2,
-              "side": "back"
-            }
-          ]
-        },
-        {
-          "id": 5,
-          "kind": "keystone",
-          "type": "rj45",
-          "slotNumber": 5,
-          "label": "",
-          "endpoints": [
-            {
-              "id": 1,
-              "side": "front"
-            },
-            {
-              "id": 2,
-              "side": "back"
-            }
-          ]
-        },
-        {
-          "id": 6,
-          "kind": "keystone",
-          "type": "rj45",
-          "slotNumber": 6,
-          "label": "",
-          "endpoints": [
-            {
-              "id": 1,
-              "side": "front"
-            },
-            {
-              "id": 2,
-              "side": "back"
-            }
-          ]
-        },
-        {
-          "id": 7,
-          "kind": "keystone",
-          "type": "rj45",
-          "slotNumber": 7,
-          "label": "",
-          "endpoints": [
-            {
-              "id": 1,
-              "side": "front"
-            },
-            {
-              "id": 2,
-              "side": "back"
-            }
-          ]
-        },
-        {
-          "id": 8,
-          "kind": "keystone",
-          "type": "rj45",
-          "slotNumber": 8,
-          "label": "",
-          "endpoints": [
-            {
-              "id": 1,
-              "side": "front"
-            },
-            {
-              "id": 2,
-              "side": "back"
-            }
-          ]
-        },
-        {
-          "id": 9,
-          "kind": "keystone",
-          "type": "rj45",
-          "slotNumber": 9,
-          "label": "",
-          "endpoints": [
-            {
-              "id": 1,
-              "side": "front"
-            },
-            {
-              "id": 2,
-              "side": "back"
-            }
-          ]
-        },
-        {
-          "id": 10,
-          "kind": "keystone",
-          "type": "rj45",
-          "slotNumber": 10,
-          "label": "",
-          "endpoints": [
-            {
-              "id": 1,
-              "side": "front"
-            },
-            {
-              "id": 2,
-              "side": "back"
-            }
-          ]
-        },
-        {
-          "id": 11,
-          "kind": "keystone",
-          "type": "rj45",
-          "slotNumber": 11,
-          "label": "",
-          "endpoints": [
-            {
-              "id": 1,
-              "side": "front"
-            },
-            {
-              "id": 2,
-              "side": "back"
-            }
-          ]
-        },
-        {
-          "id": 12,
-          "kind": "keystone",
-          "type": "rj45",
-          "slotNumber": 12,
-          "label": "",
-          "endpoints": [
-            {
-              "id": 1,
-              "side": "front"
-            },
-            {
-              "id": 2,
-              "side": "back"
-            }
-          ]
-        }
-      ]
-    }
-  ]
+  "nas": [],
+  "switches": [],
+  "patchPanels": []
 }

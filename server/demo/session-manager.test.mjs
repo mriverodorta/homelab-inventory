@@ -228,6 +228,50 @@ describe('demo data sanitizer', () => {
     expect(agentStatus).toEqual({ servers: {} })
     await expect(fs.access(path.join(targetDir, 'backups'))).rejects.toThrow()
   })
+
+  it('preserves bundled fictional compatibility profiles and successful allocations', async () => {
+    const sourceDir = await makeTempDir()
+    const targetDir = await makeTempDir()
+    const sourceStore = new HomelabInventoryStore({
+      appVersion: '0.1.26',
+      dataDir: sourceDir,
+      legacyProjectPath: path.join(sourceDir, 'homelab-inventory-project.json'),
+      saveDebounceMs: 1,
+      seedDir: path.resolve('server/seed'),
+    })
+
+    await sourceStore.init()
+    await sourceStore.flush()
+    await sanitizeDemoStores({ sourceDir, targetDir, appVersion: '0.1.26' })
+
+    const inventory = await readJson(path.join(targetDir, 'stores', 'inventory.json'))
+    const project = await readJson(path.join(targetDir, 'stores', 'project.json'))
+
+    expect(inventory.servers).toHaveLength(4)
+    expect(inventory.servers[0].compatibility.host.storageSlots[0]).toMatchObject({
+      id: 'mini-m2',
+      interfaces: ['NVMe'],
+      formFactors: ['2280'],
+    })
+    expect(inventory.servers[2].compatibility.host.cpu).toEqual({
+      sockets: ['FCLGA1200'],
+      maxTdpWatts: 65,
+    })
+    expect(project.assignments).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        id: 1,
+        allocation: { resourceType: 'storage', groupId: 'mini-m2', positions: [0] },
+      }),
+      expect.objectContaining({ id: 2, itemType: 'cpu' }),
+      expect.objectContaining({ id: 3, itemType: 'cpu' }),
+      expect.objectContaining({
+        id: 4,
+        allocation: { resourceType: 'expansion', groupId: 'pcie-slot', positions: [0] },
+      }),
+    ]))
+    expect(project.assignments.find((assignment) => assignment.id === 2).allocation).toBeUndefined()
+    expect(project.assignments.find((assignment) => assignment.id === 3).allocation).toBeUndefined()
+  })
 })
 
 describe('demo API routing contract', () => {

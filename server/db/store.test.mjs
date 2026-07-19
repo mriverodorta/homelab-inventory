@@ -2,6 +2,7 @@ import fs from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
+import { evaluateProjectCompatibility } from '../../shared/compatibility/index.mjs'
 import { HomelabInventoryStore } from './store.mjs'
 import { assertInventoryStoreShape, assertProjectStoreShape } from './validation.mjs'
 
@@ -425,7 +426,7 @@ describe('HomelabInventoryStore', () => {
     expect(JSON.parse(await fs.readFile(path.join(dataDir, 'meta.json'), 'utf8')).skippedUpdateVersion).toBeNull()
   })
 
-  it('loads the bundled sample seed with persisted negotiated cable speeds', async () => {
+  it('loads the bundled sample seed without private network topology', async () => {
     const dataDir = await makeTempDir()
     const store = createStore({
       appVersion: '0.1.14',
@@ -437,18 +438,59 @@ describe('HomelabInventoryStore', () => {
 
     await store.init()
 
-    const networkConnections = store
-      .getProject()
-      .connections
-      .filter((connection) => connection.type === 'network')
+    expect(store.getProject().connections).toEqual([])
+  })
 
-    expect(networkConnections).toHaveLength(4)
-    expect(networkConnections.map((connection) => connection.negotiatedSpeedMbps)).toEqual([
-      1000,
-      1000,
-      2500,
-      2500,
-    ])
+  it('loads the bundled fictional compatibility scenarios with deterministic outcomes', async () => {
+    const dataDir = await makeTempDir()
+    const store = createStore({
+      appVersion: '0.1.26',
+      dataDir,
+      legacyProjectPath: path.join(dataDir, 'homelab-inventory-project.json'),
+      saveDebounceMs: 1,
+      seedDir: path.resolve('server/seed'),
+    })
+
+    await store.init()
+
+    const project = store.getProject()
+    const results = evaluateProjectCompatibility(project)
+    const scenarioResult = (name) => {
+      const host = Object.values(project.items).find((item) => item.name === name)
+      expect(host, `Missing bundled scenario: ${name}`).toBeDefined()
+      const result = results.find((entry) => entry.hostId === host.key)
+      const assignment = project.assignments.find((entry) => entry.serverId === host.key)
+
+      return { ...result, allocation: assignment?.allocation }
+    }
+
+    const compatible = scenarioResult('Compatible Mini Host')
+    const incompatible = scenarioResult('Socket Mismatch Example')
+    const unknown = scenarioResult('Incomplete Compatibility Example')
+    const negotiated = scenarioResult('PCIe Negotiation Example')
+
+    expect(compatible).toMatchObject({
+      status: 'compatible',
+      findings: [],
+      allocation: { resourceType: 'storage', groupId: 'mini-m2', positions: [0] },
+    })
+    expect(incompatible).toMatchObject({ status: 'incompatible' })
+    expect(incompatible.findings).toEqual(expect.arrayContaining([
+      expect.objectContaining({ code: 'cpu.socket.mismatch', severity: 'error' }),
+    ]))
+    expect(incompatible.allocation).toBeUndefined()
+    expect(unknown).toMatchObject({ status: 'unknown' })
+    expect(unknown.findings).toEqual(expect.arrayContaining([
+      expect.objectContaining({ code: 'compatibility.data.missing', severity: 'unknown' }),
+    ]))
+    expect(unknown.allocation).toBeUndefined()
+    expect(negotiated).toMatchObject({
+      status: 'compatible',
+      allocation: { resourceType: 'expansion', groupId: 'pcie-slot', positions: [0] },
+    })
+    expect(negotiated.findings).toEqual(expect.arrayContaining([
+      expect.objectContaining({ code: 'expansion.pcie-generation.negotiated', severity: 'warning' }),
+    ]))
   })
 
   it('splits an old single-file project into lowdb stores', async () => {
