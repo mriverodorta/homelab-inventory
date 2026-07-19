@@ -6,6 +6,7 @@ import {
   useSensor,
   useSensors,
   type DragEndEvent,
+  type DragOverEvent,
   type DragStartEvent,
 } from '@dnd-kit/core'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -29,6 +30,8 @@ import {
   WorkbenchCanvas,
   type CanvasController,
   type CanvasFocusOptions,
+  type ComponentDragData,
+  getComponentDropCompatibilityStatus,
 } from '@/components/workbench-canvas'
 import { Button } from '@/components/ui/button'
 import {
@@ -125,18 +128,6 @@ import type {
   InventoryItem,
   ProjectState,
 } from '@/types/inventory'
-
-type DragData =
-  | {
-      kind: 'inventory'
-      itemId: string
-    }
-  | {
-      kind: 'assigned-component'
-      assignmentId: string | number
-      itemId: string
-      sourceServerId: string
-    }
 
 type PortConnectionPreview = {
   from: ConnectionEndpoint
@@ -436,6 +427,8 @@ function App() {
   const [desktopInventoryVisible, setDesktopInventoryVisible] = useState(getStoredInventoryVisible)
   const [mobileInventoryOpen, setMobileInventoryOpen] = useState(false)
   const [draggingItemId, setDraggingItemId] = useState<string | null>(null)
+  const [activeComponentDragData, setActiveComponentDragData] = useState<ComponentDragData | null>(null)
+  const [dragOverHostId, setDragOverHostId] = useState<string | null>(null)
   const [autoCenterOnSelect, setAutoCenterOnSelect] = useState(getStoredAutoCenterPreference)
   const [releaseNotesDismissedForSession, setReleaseNotesDismissedForSession] = useState(false)
   const [updateDialogOpen, setUpdateDialogOpen] = useState(false)
@@ -740,6 +733,17 @@ function App() {
     () => (activeNetworkTrace ? getNetworkTraceItemIds(activeNetworkTrace) : []),
     [activeNetworkTrace],
   )
+  const dropCompatibilityByHostId = useMemo(() => {
+    if (!project || !activeComponentDragData || !dragOverHostId) return {}
+
+    const status = getComponentDropCompatibilityStatus(
+      project,
+      activeComponentDragData,
+      dragOverHostId,
+    )
+
+    return status ? { [dragOverHostId]: status } : {}
+  }, [activeComponentDragData, dragOverHostId, project])
   const shouldShowWhatsNewDialog =
     !releaseNotesDismissedForSession &&
     releaseNotesQuery.data?.hasUnseen === true &&
@@ -1080,12 +1084,14 @@ function App() {
 
   function handleDragEnd(event: DragEndEvent) {
     setDraggingItemId(null)
+    setActiveComponentDragData(null)
+    setDragOverHostId(null)
 
     if (!project) {
       return
     }
 
-    const data = event.active.data.current as DragData | undefined
+    const data = event.active.data.current as ComponentDragData | undefined
     const overId = event.over?.id ? String(event.over.id) : null
 
     if (!data) {
@@ -1195,13 +1201,31 @@ function App() {
   }
 
   function handleDragStart(event: DragStartEvent) {
-    const data = event.active.data.current as DragData | undefined
+    const data = event.active.data.current as ComponentDragData | undefined
 
-    if (data?.kind === 'inventory' || data?.kind === 'assigned-component') {
-      setDraggingItemId(data.itemId)
-      setMobileInventoryOpen(false)
-      setValidationMessage(null)
-    }
+    if (!data || (data.kind !== 'inventory' && data.kind !== 'assigned-component')) return
+
+    const currentDragData: ComponentDragData = data.kind === 'inventory'
+      ? { kind: 'inventory', itemId: data.itemId }
+      : {
+          kind: 'assigned-component',
+          assignmentId: data.assignmentId,
+          itemId: data.itemId,
+          sourceServerId: data.sourceServerId,
+        }
+    const currentAssignment = data.kind === 'assigned-component' && project
+      ? findAssignmentById(project.assignments, data.assignmentId)
+      : undefined
+
+    setActiveComponentDragData(currentDragData)
+    setDragOverHostId(null)
+    setDraggingItemId(currentAssignment?.itemId ?? data.itemId)
+    setMobileInventoryOpen(false)
+    setValidationMessage(null)
+  }
+
+  function handleDragOver(event: DragOverEvent) {
+    setDragOverHostId(getServerIdFromOver(event.over?.id ? String(event.over.id) : null))
   }
 
   function undoProjectChange() {
@@ -1281,7 +1305,12 @@ function App() {
       <DndContext
         sensors={sensors}
         onDragStart={handleDragStart}
-        onDragCancel={() => setDraggingItemId(null)}
+        onDragOver={handleDragOver}
+        onDragCancel={() => {
+          setDraggingItemId(null)
+          setActiveComponentDragData(null)
+          setDragOverHostId(null)
+        }}
         onDragEnd={handleDragEnd}
       >
         <div className="relative flex h-dvh w-screen overflow-hidden bg-[#e8e2d8] lg:min-w-[1080px]">
@@ -1340,6 +1369,7 @@ function App() {
             activeNetworkTraceItemIds={activeNetworkTraceItemIds}
             pendingEndpoint={pendingConnectionEndpoint}
             draggingEndpoint={portConnectionPreview?.mode === 'drag' ? portConnectionPreview.from : null}
+            dropCompatibilityByHostId={dropCompatibilityByHostId}
             validationMessage={validationMessage}
             validationSeverity={validationSeverity}
             canUndo={history.past.length > 0}

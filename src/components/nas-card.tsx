@@ -27,6 +27,7 @@ import type {
   ProjectState,
 } from '@/types/inventory'
 import type { CanvasPortDragPoint } from '@/types/canvas'
+import type { CompatibilityStatus } from '@/types/compatibility'
 
 export type NasNodeData = {
   project: ProjectState
@@ -37,6 +38,7 @@ export type NasNodeData = {
   spotlightItemId: string | null
   pendingEndpoint: ConnectionEndpoint | null
   draggingEndpoint: ConnectionEndpoint | null
+  dropCompatibilityStatus?: CompatibilityStatus
   onSelect: (itemId: string) => void
   onRemoveAssignment: (assignmentId: string | number) => void
   onEndpointClick: (endpoint: ConnectionEndpoint, point: CanvasPortDragPoint) => void
@@ -536,12 +538,13 @@ export function NasNode({ data }: NodeProps<NasFlowNode>) {
     focusActive,
     spotlightItemId,
     pendingEndpoint,
-	    draggingEndpoint,
-	    onSelect,
-	    onRemoveAssignment,
-	    onEndpointClick,
-	    onEndpointDragStart,
-	    onEndpointDrop,
+    draggingEndpoint,
+    dropCompatibilityStatus,
+    onSelect,
+    onRemoveAssignment,
+    onEndpointClick,
+    onEndpointDragStart,
+    onEndpointDrop,
   } = data
   const nas = project.items[itemId]
   const nasRuntimeKey = nas ? runtimeItemKey(nas) : itemId
@@ -568,11 +571,19 @@ export function NasNode({ data }: NodeProps<NasFlowNode>) {
   const auditCount = getItemAuditWarnings(project, nasRuntimeKey).length
   const focused = focusedItemIds.includes(nasRuntimeKey)
   const dimmed = focusActive && !focused
+  const compatibilityDropRing = dropCompatibilityStatus === 'incompatible'
+    ? 'ring-2 ring-inset ring-[#c85b4a]'
+    : dropCompatibilityStatus === 'unknown'
+      ? 'ring-2 ring-inset ring-[#d49a32]'
+      : dropCompatibilityStatus === 'compatible'
+        ? 'ring-2 ring-inset ring-[#ddb668]'
+        : ''
 
   return (
     <div
       ref={droppable.setNodeRef}
-      className={`relative rounded-lg border bg-[#20242c] p-2 text-[#f8f1e8] shadow-[0_20px_42px_rgba(32,36,44,0.26)] transition ${droppable.isOver ? 'border-[#ddb668]' : 'border-[#11151b]'} ${selectedItemId === nasRuntimeKey || focused ? 'ring-2 ring-[#ddb668]' : ''} ${spotlightItemId === nasRuntimeKey ? 'homelab-inventory-spotlight' : ''} ${dimmed ? 'opacity-35 grayscale' : ''}`}
+      data-compatibility-drop={dropCompatibilityStatus}
+      className={`relative rounded-lg border bg-[#20242c] p-2 text-[#f8f1e8] shadow-[0_20px_42px_rgba(32,36,44,0.26)] transition ${droppable.isOver && !dropCompatibilityStatus ? 'border-[#ddb668]' : 'border-[#11151b]'} ${!dropCompatibilityStatus && (selectedItemId === nasRuntimeKey || focused) ? 'ring-2 ring-[#ddb668]' : ''} ${compatibilityDropRing} ${spotlightItemId === nasRuntimeKey ? 'homelab-inventory-spotlight' : ''} ${dimmed ? 'opacity-35 grayscale' : ''}`}
       style={{ width: NAS_CARD_WIDTH } satisfies CSSProperties}
       {...tapSelection}
     >

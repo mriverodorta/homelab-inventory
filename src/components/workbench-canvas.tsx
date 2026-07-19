@@ -36,10 +36,17 @@ import { connectionMatchesSelectedItem, getFocusedCableItemIds } from '@/lib/cab
 import { getConnectionRoute } from '@/lib/cable-routing'
 import { describeConnection, getCableAppearance } from '@/lib/cables'
 import { formatRemainingSeconds } from '@/lib/demo-api'
+import {
+  findAssignmentById,
+  getAssignedComponentDropGeometryError,
+  moveAssignedComponent,
+  tryAssignComponent,
+} from '@/lib/constraints'
 import { runtimeItemKey } from '@/lib/item-keys'
-import { getCanvasItemHeight, getCanvasItemWidth } from '@/lib/project'
+import { getCanvasItemHeight, getCanvasItemWidth, placementCollides } from '@/lib/project'
 import { cn } from '@/lib/utils'
 import type { AgentStatusSummary } from '@/types/agent'
+import type { CompatibilityStatus } from '@/types/compatibility'
 import type {
   ConnectionEndpoint,
   ConnectionRoutePreferences,
@@ -50,6 +57,84 @@ import type { CanvasPortDragPoint } from '@/types/canvas'
 
 export const GRID_SIZE = 24
 export type ValidationMessageSeverity = 'error' | 'unknown'
+
+export type ComponentDragData =
+  | {
+      kind: 'inventory'
+      itemId: string
+    }
+  | {
+      kind: 'assigned-component'
+      assignmentId: string | number
+      itemId: string
+      sourceServerId: string
+    }
+
+export function CompatibilityDropAnnouncement({
+  hostName,
+  status,
+}: {
+  hostName?: string
+  status?: CompatibilityStatus
+}) {
+  const message = hostName && status
+    ? `${hostName}: ${status} component compatibility.`
+    : ''
+
+  return (
+    <div className="sr-only" aria-live="polite" aria-atomic="true">
+      {message}
+    </div>
+  )
+}
+
+export function getComponentDropCompatibilityStatus(
+  project: ProjectState,
+  dragData: ComponentDragData,
+  targetHostId: string,
+): CompatibilityStatus | null {
+  if (dragData.kind === 'inventory') {
+    const item = project.items[dragData.itemId]
+
+    if (!item) return 'incompatible'
+    if (item.type === 'server' || item.type === 'nas' || item.type === 'switch' || item.type === 'patchPanel') {
+      return null
+    }
+
+    const transition = tryAssignComponent(project, targetHostId, dragData.itemId)
+
+    if (!transition.ok) return 'incompatible'
+
+    const targetPlacement = transition.project.placements.find(
+      (placement) => placement.serverId === targetHostId,
+    )
+
+    if (targetPlacement && placementCollides(transition.project, targetPlacement)) {
+      return 'incompatible'
+    }
+
+    return transition.unknownFindings.length > 0 ? 'unknown' : 'compatible'
+  }
+
+  const assignment = findAssignmentById(project.assignments, dragData.assignmentId)
+
+  if (!assignment) return 'incompatible'
+
+  const transition = moveAssignedComponent(project, assignment.id, targetHostId)
+
+  if (!transition.ok) return 'incompatible'
+
+  if (getAssignedComponentDropGeometryError(
+    project,
+    transition.project,
+    assignment,
+    targetHostId,
+  )) {
+    return 'incompatible'
+  }
+
+  return transition.unknownFindings.length > 0 ? 'unknown' : 'compatible'
+}
 
 export type CanvasProjector = (point: XYPosition) => XYPosition
 export type CanvasFocusOptions = Record<string, never>
@@ -136,6 +221,7 @@ function CanvasViewport({
   activeNetworkTraceItemIds,
   pendingEndpoint,
   draggingEndpoint,
+  dropCompatibilityByHostId,
   validationMessage,
   validationSeverity = 'error',
   demoRemainingSeconds,
@@ -175,6 +261,7 @@ function CanvasViewport({
   activeNetworkTraceItemIds: string[]
   pendingEndpoint: ConnectionEndpoint | null
   draggingEndpoint: ConnectionEndpoint | null
+  dropCompatibilityByHostId: Readonly<Record<string, CompatibilityStatus | undefined>>
   validationMessage: string | null
   validationSeverity?: ValidationMessageSeverity
   demoRemainingSeconds?: number | null
@@ -269,6 +356,7 @@ function CanvasViewport({
               spotlightItemId,
               pendingEndpoint,
               draggingEndpoint,
+              dropCompatibilityStatus: dropCompatibilityByHostId[placement.serverId],
               onSelect,
               onRemoveAssignment,
               onEndpointClick,
@@ -303,6 +391,7 @@ function CanvasViewport({
               spotlightItemId,
               pendingEndpoint,
               draggingEndpoint,
+              dropCompatibilityStatus: dropCompatibilityByHostId[placement.serverId],
               onSelect,
               onRemoveAssignment,
               onEndpointClick,
@@ -350,6 +439,7 @@ function CanvasViewport({
     },
     [
       draggingEndpoint,
+      dropCompatibilityByHostId,
       agentStatus,
       focusActive,
       focusedItemIds,
@@ -951,6 +1041,7 @@ export function WorkbenchCanvas(props: {
   activeNetworkTraceItemIds: string[]
   pendingEndpoint: ConnectionEndpoint | null
   draggingEndpoint: ConnectionEndpoint | null
+  dropCompatibilityByHostId: Readonly<Record<string, CompatibilityStatus | undefined>>
   validationMessage: string | null
   validationSeverity?: ValidationMessageSeverity
   demoRemainingSeconds?: number | null
@@ -981,9 +1072,27 @@ export function WorkbenchCanvas(props: {
   onOpenUpdate: () => void
   onOpenInventory: () => void
 }) {
+  const compatibilityAnnouncement = useMemo(() => {
+    const activeEntry = Object.entries(props.dropCompatibilityByHostId)
+      .find(([, status]) => status !== undefined)
+
+    if (!activeEntry) return null
+
+    const [hostId, status] = activeEntry
+    const hostName = props.project.items[hostId]?.name
+
+    return hostName && status ? { hostName, status } : null
+  }, [props.dropCompatibilityByHostId, props.project])
+
   return (
-    <ReactFlowProvider>
-      <CanvasViewport {...props} />
-    </ReactFlowProvider>
+    <>
+      <CompatibilityDropAnnouncement
+        hostName={compatibilityAnnouncement?.hostName}
+        status={compatibilityAnnouncement?.status}
+      />
+      <ReactFlowProvider>
+        <CanvasViewport {...props} />
+      </ReactFlowProvider>
+    </>
   )
 }

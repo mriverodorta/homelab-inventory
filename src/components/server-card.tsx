@@ -31,6 +31,7 @@ import {
 import type { CanvasPortDragPoint } from '@/types/canvas'
 import { startSelectedPortDrag } from '@/lib/port-interactions'
 import type { AgentServerStatus, AgentStatusSummary, AgentState } from '@/types/agent'
+import type { CompatibilityStatus } from '@/types/compatibility'
 import type {
   ComponentAssignment,
   ConnectionEndpoint,
@@ -50,6 +51,7 @@ export type ServerNodeData = {
   spotlightItemId: string | null
   pendingEndpoint: ConnectionEndpoint | null
   draggingEndpoint: ConnectionEndpoint | null
+  dropCompatibilityStatus?: CompatibilityStatus
   onSelect: (itemId: string) => void
   onRemoveAssignment: (assignmentId: string | number) => void
   onEndpointClick: (endpoint: ConnectionEndpoint, point: CanvasPortDragPoint) => void
@@ -711,11 +713,12 @@ export function ServerNode({ data }: NodeProps<ServerFlowNode>) {
     spotlightItemId,
     pendingEndpoint,
     draggingEndpoint,
-	    onSelect,
-	    onRemoveAssignment,
-	    onEndpointClick,
-	    onEndpointDragStart,
-	    onEndpointDrop,
+    dropCompatibilityStatus,
+    onSelect,
+    onRemoveAssignment,
+    onEndpointClick,
+    onEndpointDragStart,
+    onEndpointDrop,
   } = data
   const server = project.items[serverId]
   const serverRuntimeKey = server ? runtimeItemKey(server) : serverId
@@ -739,11 +742,19 @@ export function ServerNode({ data }: NodeProps<ServerFlowNode>) {
   const auditCount = getItemAuditWarnings(project, serverRuntimeKey).length
   const focused = focusedItemIds.includes(serverRuntimeKey)
   const dimmed = focusActive && !focused
+  const compatibilityDropRing = dropCompatibilityStatus === 'incompatible'
+    ? 'ring-2 ring-inset ring-[#c85b4a]'
+    : dropCompatibilityStatus === 'unknown'
+      ? 'ring-2 ring-inset ring-[#d49a32]'
+      : dropCompatibilityStatus === 'compatible'
+        ? 'ring-2 ring-inset ring-[#ddb668]'
+        : ''
 
   return (
     <div
       ref={droppable.setNodeRef}
-      className={`relative w-[282px] rounded-lg border bg-[#20242c] p-2 text-[#f8f1e8] shadow-[0_20px_42px_rgba(32,36,44,0.26)] transition ${droppable.isOver ? 'border-[#ddb668]' : 'border-[#11151b]'} ${selectedItemId === serverRuntimeKey || focused ? 'ring-2 ring-[#ddb668]' : ''} ${spotlightItemId === serverRuntimeKey ? 'homelab-inventory-spotlight' : ''} ${dimmed ? 'opacity-35 grayscale' : ''}`}
+      data-compatibility-drop={dropCompatibilityStatus}
+      className={`relative w-[282px] rounded-lg border bg-[#20242c] p-2 text-[#f8f1e8] shadow-[0_20px_42px_rgba(32,36,44,0.26)] transition ${droppable.isOver && !dropCompatibilityStatus ? 'border-[#ddb668]' : 'border-[#11151b]'} ${!dropCompatibilityStatus && (selectedItemId === serverRuntimeKey || focused) ? 'ring-2 ring-[#ddb668]' : ''} ${compatibilityDropRing} ${spotlightItemId === serverRuntimeKey ? 'homelab-inventory-spotlight' : ''} ${dimmed ? 'opacity-35 grayscale' : ''}`}
       {...tapSelection}
     >
       {auditCount > 0 ? (
