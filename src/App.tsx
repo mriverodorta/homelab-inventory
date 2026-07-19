@@ -10,10 +10,11 @@ import {
 } from '@dnd-kit/core'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { XYPosition } from '@xyflow/react'
-import { AlertTriangle, Menu } from 'lucide-react'
+import { AlertTriangle } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { AuditDrawer } from '@/components/audit-drawer'
 import { DemoSessionDialog, type DemoSessionDialogState } from '@/components/demo-session-dialog'
+import { DesktopInventoryShell } from '@/components/desktop-inventory-shell'
 import { GlobalItemSearch } from '@/components/global-item-search'
 import { InspectorPanel } from '@/components/inspector-panel'
 import { InventorySidebar } from '@/components/inventory-sidebar'
@@ -55,6 +56,13 @@ import {
   UPDATE_STATUS_QUERY_KEY,
   type UpdateStatus,
 } from '@/lib/update-api'
+import {
+  clampInventoryWidth,
+  getStoredInventoryVisible,
+  getStoredInventoryWidth,
+  storeInventoryVisible,
+  storeInventoryWidth,
+} from '@/lib/ui-preferences'
 import {
   createEmptyHistory,
   pushHistory,
@@ -113,9 +121,6 @@ type PortConnectionPreview = {
   mode: 'click' | 'drag'
 }
 
-const MIN_INVENTORY_WIDTH = 390
-const MAX_INVENTORY_WIDTH = 460
-const DEFAULT_INVENTORY_WIDTH = 390
 const SAVE_DEBOUNCE_MS = 500
 const DEMO_EXTENSION_GRACE_SECONDS = 30
 const AUTO_CENTER_STORAGE_KEY = 'homelab-inventory:auto-center-on-select'
@@ -375,7 +380,8 @@ function App() {
   const [activeNetworkTraceEndpoint, setActiveNetworkTraceEndpoint] = useState<ConnectionEndpoint | null>(null)
   const [saveStatus, setSaveStatus] = useState<SaveStatus>('saved')
   const [history, setHistory] = useState<HistoryState<ProjectState>>(() => createEmptyHistory())
-  const [inventoryWidth, setInventoryWidth] = useState(DEFAULT_INVENTORY_WIDTH)
+  const [inventoryWidth, setInventoryWidth] = useState(getStoredInventoryWidth)
+  const [desktopInventoryVisible, setDesktopInventoryVisible] = useState(getStoredInventoryVisible)
   const [mobileInventoryOpen, setMobileInventoryOpen] = useState(false)
   const [draggingItemId, setDraggingItemId] = useState<string | null>(null)
   const [autoCenterOnSelect, setAutoCenterOnSelect] = useState(getStoredAutoCenterPreference)
@@ -509,6 +515,14 @@ function App() {
   useEffect(() => {
     window.localStorage.setItem(AUTO_CENTER_STORAGE_KEY, String(autoCenterOnSelect))
   }, [autoCenterOnSelect])
+
+  useEffect(() => {
+    storeInventoryVisible(desktopInventoryVisible)
+  }, [desktopInventoryVisible])
+
+  useEffect(() => {
+    storeInventoryWidth(inventoryWidth)
+  }, [inventoryWidth])
 
   useEffect(() => {
     const status = demoSessionQuery.data
@@ -845,14 +859,6 @@ function App() {
     }
   }
 
-  const stopInventoryResize = useCallback(() => {
-    resizeStateRef.current = null
-    document.body.style.cursor = ''
-    document.body.style.userSelect = ''
-    window.removeEventListener('pointermove', handleInventoryResize)
-    window.removeEventListener('pointerup', stopInventoryResize)
-  }, [])
-
   const handleInventoryResize = useCallback((event: PointerEvent) => {
     const resizeState = resizeStateRef.current
 
@@ -860,13 +866,18 @@ function App() {
       return
     }
 
-    const nextWidth = Math.min(
-      MAX_INVENTORY_WIDTH,
-      Math.max(MIN_INVENTORY_WIDTH, resizeState.startWidth + event.clientX - resizeState.startX),
-    )
+    const nextWidth = clampInventoryWidth(resizeState.startWidth + event.clientX - resizeState.startX)
 
     setInventoryWidth(nextWidth)
   }, [])
+
+  const stopInventoryResize = useCallback(() => {
+    resizeStateRef.current = null
+    document.body.style.cursor = ''
+    document.body.style.userSelect = ''
+    window.removeEventListener('pointermove', handleInventoryResize)
+    window.removeEventListener('pointerup', stopInventoryResize)
+  }, [handleInventoryResize])
 
   function startInventoryResize(event: React.PointerEvent<HTMLButtonElement>) {
     resizeStateRef.current = {
@@ -1117,33 +1128,18 @@ function App() {
         onDragEnd={handleDragEnd}
       >
         <div className="relative flex h-dvh w-screen overflow-hidden bg-[#e8e2d8] lg:min-w-[1080px]">
-          <div className="relative hidden min-h-0 shrink-0 lg:flex" style={{ width: inventoryWidth }}>
+          <DesktopInventoryShell
+            expanded={desktopInventoryVisible}
+            width={inventoryWidth}
+            onResizePointerDown={startInventoryResize}
+          >
             <InventorySidebar
               project={project}
               onSelect={handleInventorySelect}
               onCreateItem={handleCreateInventoryItem}
               width={inventoryWidth}
             />
-            <button
-              type="button"
-              aria-label="Resize inventory sidebar"
-              className="absolute right-0 top-0 z-30 h-full w-2 translate-x-1 cursor-col-resize border-r border-transparent transition hover:border-[#ddb668] focus-visible:border-[#ddb668] focus-visible:outline-none"
-              onPointerDown={startInventoryResize}
-            />
-          </div>
-          <Button
-            type="button"
-            className="fixed z-30 h-11 gap-2 rounded-lg bg-[#20242c] px-3 text-sm font-bold text-[#fffdf8] shadow-[0_12px_28px_rgba(32,36,44,0.28)] hover:bg-[#2f3642] lg:hidden"
-            style={{
-              left: 'max(1rem, env(safe-area-inset-left))',
-              top: 'max(1rem, env(safe-area-inset-top))',
-            }}
-            onClick={() => setMobileInventoryOpen(true)}
-            aria-label="Open inventory"
-          >
-            <Menu className="size-4" />
-            Inventory
-          </Button>
+          </DesktopInventoryShell>
           <Sheet open={mobileInventoryOpen} onOpenChange={setMobileInventoryOpen}>
             <SheetContent
               side="left"
@@ -1177,6 +1173,8 @@ function App() {
             canUndo={history.past.length > 0}
             canRedo={history.future.length > 0}
             saveStatus={saveStatus}
+            desktopInventoryVisible={desktopInventoryVisible}
+            inspectorOpen={selectedItem !== null || selectedConnection !== null}
             autoCenterOnSelect={autoCenterOnSelect}
             updateAvailable={shouldHighlightUpdate(updateStatusQuery.data)}
             updateStatusLoading={updateStatusQuery.isFetching && !updateStatusQuery.data}
@@ -1245,6 +1243,14 @@ function App() {
             }}
             onUndo={undoProjectChange}
             onRedo={redoProjectChange}
+            onOpenInventory={() => {
+              if (window.matchMedia('(min-width: 1024px)').matches) {
+                setDesktopInventoryVisible((current) => !current)
+                return
+              }
+
+              setMobileInventoryOpen(true)
+            }}
             onToggleAutoCenterOnSelect={() => setAutoCenterOnSelect((current) => !current)}
             onAutoArrange={() => {
               if (project.placements.length === 0) {

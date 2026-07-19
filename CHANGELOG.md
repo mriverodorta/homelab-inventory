@@ -14,6 +14,29 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 - Added repository documentation, issue templates, CI, and security guidance.
 - Clarified Docker deployment, data persistence, and development setup.
 
+## [0.1.22] - 2026-07-18
+
+### Changed
+
+- The desktop inventory sidebar now animates open and closed while the canvas resizes smoothly with it.
+- The floating canvas command bar now shares the bottom alignment used by the React Flow canvas controls.
+
+### Fixed
+
+- Inventory visibility changes no longer blink abruptly between the expanded and collapsed workspace layouts.
+
+## [0.1.21] - 2026-07-18
+
+### Added
+
+- Added a responsive, icon-only command bar centered at the bottom of the canvas on desktop and mobile.
+- Added a persistent desktop inventory toggle that restores the sidebar at its previously saved width.
+
+### Changed
+
+- Moved save status, history, update, audit, centering, arrangement, and cable visibility controls out of the crowded top-right canvas area.
+- Removed the cable color legend while retaining the cable visibility control.
+
 ## [0.1.20] - 2026-07-15
 
 ### Added

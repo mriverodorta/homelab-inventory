@@ -90,6 +90,10 @@ describe('release notes helpers', () => {
   })
 
   it('has a structured entry for the package version under development', () => {
-    expect(hasReleaseNoteForVersion(RELEASE_NOTES, '0.1.16')).toBe(true)
+    expect(hasReleaseNoteForVersion(RELEASE_NOTES, '0.1.22')).toBe(true)
+    expect(RELEASE_NOTES[0]?.version).toBe('0.1.22')
+    expect(RELEASE_NOTES.filter((entry) => entry.channel === 'latest')).toEqual([
+      expect.objectContaining({ version: '0.1.22' }),
+    ])
   })
 })

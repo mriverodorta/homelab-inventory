@@ -12,9 +12,43 @@ export type ReleaseNoteEntry = {
 
 export const RELEASE_NOTES: ReleaseNoteEntry[] = [
   {
+    version: '0.1.22',
+    date: '2026-07-18',
+    channel: 'latest',
+    title: 'Smoother canvas workspace controls',
+    highlights: [
+      'The desktop inventory sidebar now opens and closes with a smooth width transition while the canvas resizes alongside it.',
+      'The floating canvas command bar now aligns with the bottom edge of the React Flow controls for a tighter, more consistent workspace layout.',
+    ],
+    fixes: [
+      'Inventory visibility changes no longer make the sidebar and canvas blink abruptly between layouts.',
+    ],
+    notes: [
+      'Reduced-motion preferences continue to disable nonessential interface animation.',
+    ],
+  },
+  {
+    version: '0.1.21',
+    date: '2026-07-18',
+    channel: 'release',
+    title: 'Responsive canvas command bar',
+    highlights: [
+      'Canvas actions now live in a responsive, icon-only command bar centered along the bottom of the workspace on desktop and mobile.',
+      'Desktop users can hide the inventory sidebar to expand the canvas, then restore it at its previously saved width.',
+      'Every command-bar action includes an accessible label and hover tooltip while retaining quick access to history, updates, audits, centering, arrangement, and cable visibility.',
+    ],
+    fixes: [
+      'Removed the crowded top-right canvas controls and the cable color legend while retaining the cable visibility toggle.',
+      'The mobile command bar remains usable on narrow screens without wrapping over the canvas.',
+    ],
+    notes: [
+      'Desktop inventory visibility and width persist across browser refreshes.',
+    ],
+  },
+  {
     version: '0.1.20',
     date: '2026-07-15',
-    channel: 'latest',
+    channel: 'release',
     title: 'Accurate Docker update status',
     highlights: [
       'Docker update checks now distinguish newer channel images, exact matches, revision-only rebuilds, and installations ahead of their selected channel.',
@@ -36,7 +70,7 @@ export const RELEASE_NOTES: ReleaseNoteEntry[] = [
   {
     version: '0.1.19',
     date: '2026-07-14',
-    channel: 'latest',
+    channel: 'release',
     title: 'Editable inventory inspectors',
     highlights: [
       'Inventory items can now be corrected directly from their inspectors using the same validated fields and select options as the Add Item dialog.',
@@ -57,7 +91,7 @@ export const RELEASE_NOTES: ReleaseNoteEntry[] = [
   {
     version: '0.1.18',
     date: '2026-07-14',
-    channel: 'latest',
+    channel: 'release',
     title: 'Request rate limiting and CI hardening',
     highlights: [
       'Homelab Inventory now applies a global request limit to API routes, static assets, and the application fallback.',
@@ -75,7 +109,7 @@ export const RELEASE_NOTES: ReleaseNoteEntry[] = [
   {
     version: '0.1.17',
     date: '2026-07-13',
-    channel: 'latest',
+    channel: 'release',
     title: 'Connection endpoint filtering',
     highlights: [
       'Manual connection editors now list only compatible, available ports on equipment placed on the canvas.',
@@ -90,7 +124,7 @@ export const RELEASE_NOTES: ReleaseNoteEntry[] = [
   {
     version: '0.1.16',
     date: '2026-07-12',
-    channel: 'latest',
+    channel: 'release',
     title: 'Docker update notifications',
     highlights: [
       'Homelab Inventory now checks the configured stable or latest Docker Hub channel and shows when a newer image is available.',
@@ -104,7 +138,7 @@ export const RELEASE_NOTES: ReleaseNoteEntry[] = [
   {
     version: '0.1.15',
     date: '2026-07-12',
-    channel: 'latest',
+    channel: 'release',
     title: "What's New ordering",
     highlights: [],
     fixes: [
@@ -118,7 +152,7 @@ export const RELEASE_NOTES: ReleaseNoteEntry[] = [
   {
     version: '0.1.14',
     date: '2026-07-10',
-    channel: 'latest',
+    channel: 'release',
     title: 'Negotiated network cable speeds',
     highlights: [
       'Network connections now persist their negotiated speed and use the lowest advertised speed across the full connected path.',
@@ -137,7 +171,7 @@ export const RELEASE_NOTES: ReleaseNoteEntry[] = [
   {
     version: '0.1.13',
     date: '2026-07-10',
-    channel: 'latest',
+    channel: 'release',
     title: 'Editable switch inspectors',
     highlights: [
       'Switch inspectors now use focused Specs, Ports, and Connections tabs that match the server inspector workflow.',
@@ -154,7 +188,7 @@ export const RELEASE_NOTES: ReleaseNoteEntry[] = [
   {
     version: '0.1.12',
     date: '2026-07-10',
-    channel: 'latest',
+    channel: 'release',
     title: 'Patch panel row controls',
     highlights: [
       'Patch panel inspectors can now swap the front and back row display order on the canvas.',
@@ -167,7 +201,7 @@ export const RELEASE_NOTES: ReleaseNoteEntry[] = [
   {
     version: '0.1.11',
     date: '2026-07-09',
-    channel: 'latest',
+    channel: 'release',
     title: 'Public demo sandboxes',
     highlights: [
       'A new APP_MODE=demo runtime creates isolated writable demo sessions from a read-only source data mount.',

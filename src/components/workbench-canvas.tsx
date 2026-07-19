@@ -17,7 +17,6 @@ import {
   type XYPosition,
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
-import { AlertTriangle, Eye, EyeOff, LayoutGrid, LocateFixed, Redo2, Undo2 } from 'lucide-react'
 import {
   useCallback,
   useEffect,
@@ -28,15 +27,14 @@ import {
   type TouchEvent as ReactTouchEvent,
 } from 'react'
 import { CableEdge, type CableFlowEdge } from '@/components/cable-edge'
+import { CanvasCommandBar } from '@/components/canvas-command-bar'
 import { EquipmentNode, type EquipmentFlowNode } from '@/components/equipment-card'
 import { NasNode, type NasFlowNode } from '@/components/nas-card'
 import { ServerNode, type ServerFlowNode } from '@/components/server-card'
-import { UpdateAvailableButton } from '@/components/update-dialog'
-import { Button } from '@/components/ui/button'
 import { getProjectAuditWarnings } from '@/lib/audit'
 import { connectionMatchesSelectedItem, getFocusedCableItemIds } from '@/lib/cable-focus'
 import { getConnectionRoute } from '@/lib/cable-routing'
-import { CABLE_COLORS, describeConnection, getCableAppearance } from '@/lib/cables'
+import { describeConnection, getCableAppearance } from '@/lib/cables'
 import { formatRemainingSeconds } from '@/lib/demo-api'
 import { runtimeItemKey } from '@/lib/item-keys'
 import { getCanvasItemHeight, getCanvasItemWidth } from '@/lib/project'
@@ -70,13 +68,6 @@ const edgeTypes: EdgeTypes = {
 
 type WorkbenchFlowNode = ServerFlowNode | EquipmentFlowNode | NasFlowNode
 
-const CABLE_LEGEND = [
-  { label: '1G', color: CABLE_COLORS.oneGig },
-  { label: '2.5G', color: CABLE_COLORS.twoPointFiveGig },
-  { label: '5G', color: CABLE_COLORS.fiveGig },
-  { label: '10G', color: CABLE_COLORS.tenGig },
-  { label: 'Display', color: CABLE_COLORS.display },
-]
 const INSPECTOR_DRAWER_SELECTOR = '[data-testid="inspector-drawer"]'
 const FOCUS_MARGIN = 72
 const DEFAULT_NODE_DRAG_THRESHOLD = 6
@@ -162,12 +153,15 @@ function CanvasViewport({
   autoCenterOnSelect,
   updateAvailable,
   updateStatusLoading,
+  desktopInventoryVisible,
+  inspectorOpen,
   onUndo,
   onRedo,
   onToggleAutoCenterOnSelect,
   onAutoArrange,
   onOpenAudit,
   onOpenUpdate,
+  onOpenInventory,
 }: {
   project: ProjectState
   agentStatus: AgentStatusSummary | null
@@ -186,6 +180,8 @@ function CanvasViewport({
   autoCenterOnSelect: boolean
   updateAvailable: boolean
   updateStatusLoading: boolean
+  desktopInventoryVisible: boolean
+  inspectorOpen: boolean
   onSelect: (itemId: string) => void
   onSelectConnection: (connectionId: string | number) => void
   onRemoveAssignment: (assignmentId: string | number) => void
@@ -203,6 +199,7 @@ function CanvasViewport({
   onAutoArrange: () => void
   onOpenAudit: () => void
   onOpenUpdate: () => void
+  onOpenInventory: () => void
 }) {
   const { setNodeRef, isOver } = useDroppable({
     id: 'canvas',
@@ -855,109 +852,26 @@ function CanvasViewport({
             Demo session {formatRemainingSeconds(demoRemainingSeconds)}
           </div>
         ) : null}
-        <div className="absolute right-4 top-4 z-20 flex items-center overflow-hidden rounded-md border border-[#d6ccbd] bg-[#fffdf8] shadow-sm">
-          <div
-            className={`border-r border-[#e5dccf] px-2.5 py-2 text-[11px] font-semibold uppercase tracking-[0.08em] ${
-              saveStatus === 'error' ? 'text-[#a84834]' : 'text-[#75695d]'
-            }`}
-          >
-            {saveStatus === 'saving' ? 'Saving' : saveStatus === 'error' ? 'Save failed' : 'Saved'}
-          </div>
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            className="size-9 rounded-none border-r border-[#e5dccf]"
-            aria-label="Undo"
-            disabled={!canUndo}
-            onClick={onUndo}
-          >
-            <Undo2 className="size-4" />
-          </Button>
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            className="size-9 rounded-none"
-            aria-label="Redo"
-            disabled={!canRedo}
-            onClick={onRedo}
-          >
-            <Redo2 className="size-4" />
-          </Button>
-        </div>
-        <div className="absolute right-4 top-[58px] z-20 flex items-center gap-2">
-          <UpdateAvailableButton
-            updateAvailable={updateAvailable}
-            checking={updateStatusLoading}
-            onClick={onOpenUpdate}
-          />
-          <Button
-            type="button"
-            variant="outline"
-            className="h-9 gap-2 border-[#d6ccbd] bg-[#fffdf8] px-3 text-xs font-bold shadow-sm"
-            onClick={onOpenAudit}
-            aria-label="Open audit"
-          >
-            <AlertTriangle className="size-4 text-[#a66f1f]" />
-            Audit
-            <span className="rounded bg-[#fff2c7] px-1.5 py-0.5 text-[11px] font-black text-[#3d2a08]">
-              {auditWarningCount}
-            </span>
-          </Button>
-        </div>
-        <div className="absolute right-4 top-[104px] z-20 flex items-center gap-2">
-          <Button
-            type="button"
-            variant={autoCenterOnSelect ? 'default' : 'outline'}
-            className={`h-9 gap-2 px-3 text-xs font-bold shadow-sm ${
-              autoCenterOnSelect
-                ? 'bg-[#20242c] text-[#fffdf8] hover:bg-[#2f3642]'
-                : 'border-[#d6ccbd] bg-[#fffdf8]'
-            }`}
-            onClick={onToggleAutoCenterOnSelect}
-            aria-pressed={autoCenterOnSelect}
-            aria-label={autoCenterOnSelect ? 'Disable selection centering' : 'Enable selection centering'}
-          >
-            <LocateFixed className="size-4" />
-            Center
-          </Button>
-          <Button
-            type="button"
-            variant="outline"
-            className="h-9 gap-2 border-[#d6ccbd] bg-[#fffdf8] px-3 text-xs font-bold shadow-sm"
-            onClick={onAutoArrange}
-            aria-label="Auto arrange canvas"
-          >
-            <LayoutGrid className="size-4" />
-            Arrange
-          </Button>
-        </div>
-        <div className="absolute right-4 top-[150px] z-20 hidden max-w-[360px] items-center gap-2 rounded-md border border-[#d6ccbd] bg-[#fffdf8] p-2 shadow-sm sm:flex">
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            className="h-8 gap-1.5 px-2 text-xs font-bold"
-            onClick={() => setCablesVisible((current) => !current)}
-            aria-label={cablesVisible ? 'Hide cables' : 'Show cables'}
-          >
-            {cablesVisible ? <Eye className="size-4" /> : <EyeOff className="size-4" />}
-            {cablesVisible ? 'Hide' : 'Show'}
-          </Button>
-          <div className="h-6 w-px bg-[#e5dccf]" />
-          <div className="flex flex-wrap items-center gap-2">
-            {CABLE_LEGEND.map((item) => (
-              <div key={item.label} className="flex items-center gap-1 text-[10px] font-bold text-[#5f554b]">
-                <span
-                  className="h-1.5 w-5 rounded-full"
-                  style={{ backgroundColor: item.color }}
-                />
-                {item.label}
-              </div>
-            ))}
-          </div>
-        </div>
+        <CanvasCommandBar
+          className={inspectorOpen ? 'lg:right-[680px]' : undefined}
+          desktopInventoryVisible={desktopInventoryVisible}
+          saveStatus={saveStatus}
+          canUndo={canUndo}
+          canRedo={canRedo}
+          updateAvailable={updateAvailable}
+          updateStatusLoading={updateStatusLoading}
+          auditWarningCount={auditWarningCount}
+          autoCenterOnSelect={autoCenterOnSelect}
+          cablesVisible={cablesVisible}
+          onInventory={onOpenInventory}
+          onUndo={onUndo}
+          onRedo={onRedo}
+          onOpenUpdate={onOpenUpdate}
+          onOpenAudit={onOpenAudit}
+          onToggleAutoCenterOnSelect={onToggleAutoCenterOnSelect}
+          onAutoArrange={onAutoArrange}
+          onToggleCablesVisible={() => setCablesVisible((current) => !current)}
+        />
 
         <ReactFlow
           nodes={nodes}
@@ -1031,6 +945,8 @@ export function WorkbenchCanvas(props: {
   autoCenterOnSelect: boolean
   updateAvailable: boolean
   updateStatusLoading: boolean
+  desktopInventoryVisible: boolean
+  inspectorOpen: boolean
   onSelect: (itemId: string) => void
   onSelectConnection: (connectionId: string | number) => void
   onRemoveAssignment: (assignmentId: string | number) => void
@@ -1048,6 +964,7 @@ export function WorkbenchCanvas(props: {
   onAutoArrange: () => void
   onOpenAudit: () => void
   onOpenUpdate: () => void
+  onOpenInventory: () => void
 }) {
   return (
     <ReactFlowProvider>
