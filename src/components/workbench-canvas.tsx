@@ -38,6 +38,7 @@ import { describeConnection, getCableAppearance } from '@/lib/cables'
 import { formatRemainingSeconds } from '@/lib/demo-api'
 import { runtimeItemKey } from '@/lib/item-keys'
 import { getCanvasItemHeight, getCanvasItemWidth } from '@/lib/project'
+import { cn } from '@/lib/utils'
 import type { AgentStatusSummary } from '@/types/agent'
 import type {
   ConnectionEndpoint,
@@ -48,6 +49,7 @@ import type {
 import type { CanvasPortDragPoint } from '@/types/canvas'
 
 export const GRID_SIZE = 24
+export type ValidationMessageSeverity = 'error' | 'unknown'
 
 export type CanvasProjector = (point: XYPosition) => XYPosition
 export type CanvasFocusOptions = Record<string, never>
@@ -135,6 +137,7 @@ function CanvasViewport({
   pendingEndpoint,
   draggingEndpoint,
   validationMessage,
+  validationSeverity = 'error',
   demoRemainingSeconds,
   onSelect,
   onSelectConnection,
@@ -173,6 +176,7 @@ function CanvasViewport({
   pendingEndpoint: ConnectionEndpoint | null
   draggingEndpoint: ConnectionEndpoint | null
   validationMessage: string | null
+  validationSeverity?: ValidationMessageSeverity
   demoRemainingSeconds?: number | null
   canUndo: boolean
   canRedo: boolean
@@ -838,7 +842,17 @@ function CanvasViewport({
         className={`relative h-dvh overflow-hidden bg-[#fbf8f1] transition ${isOver ? 'ring-2 ring-inset ring-[#ddb668]' : ''}`}
       >
         {validationMessage ? (
-          <div className="pointer-events-none absolute left-4 top-4 z-20 rounded-md border border-[#dfb3a5] bg-[#fff4ee] px-3 py-2 text-xs font-semibold text-[#613126] shadow-sm">
+          <div
+            data-testid="canvas-validation-message"
+            data-severity={validationSeverity}
+            role={validationSeverity === 'unknown' ? 'status' : 'alert'}
+            className={cn(
+              'pointer-events-none absolute left-4 top-4 z-20 rounded-md border px-3 py-2 text-xs font-semibold shadow-sm',
+              validationSeverity === 'unknown'
+                ? 'border-[#dfc483] bg-[#fff8df] text-[#5d4814]'
+                : 'border-[#dfb3a5] bg-[#fff4ee] text-[#613126]',
+            )}
+          >
             {validationMessage}
           </div>
         ) : null}
@@ -938,6 +952,7 @@ export function WorkbenchCanvas(props: {
   pendingEndpoint: ConnectionEndpoint | null
   draggingEndpoint: ConnectionEndpoint | null
   validationMessage: string | null
+  validationSeverity?: ValidationMessageSeverity
   demoRemainingSeconds?: number | null
   canUndo: boolean
   canRedo: boolean

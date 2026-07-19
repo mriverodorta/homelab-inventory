@@ -40,7 +40,12 @@ import {
 } from '@/components/ui/sheet'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import type { CanvasPortDragPoint } from '@/types/canvas'
-import { assignComponent, swapAssignedComponent, validateAssignment } from '@/lib/constraints'
+import {
+  findAssignmentById,
+  getAssignedComponentDropGeometryError,
+  moveAssignedComponent,
+  tryAssignComponent,
+} from '@/lib/constraints'
 import { loadAgentStatus } from '@/lib/agent-api'
 import {
   createInventoryItems,
@@ -147,6 +152,7 @@ const RELEASE_NOTES_STATUS_QUERY_KEY = ['release-notes-status'] as const
 const DEMO_SESSION_QUERY_KEY = ['demo-session'] as const
 
 type SaveStatus = 'saved' | 'saving' | 'error'
+type ValidationSeverity = 'error' | 'unknown'
 
 type InventoryLifecycleRequest = {
   action: InventoryLifecycleAction
@@ -416,7 +422,8 @@ function App() {
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null)
   const [selectedConnectionId, setSelectedConnectionId] = useState<string | number | null>(null)
   const [pendingConnectionEndpoint, setPendingConnectionEndpoint] = useState<ConnectionEndpoint | null>(null)
-  const [validationMessage, setValidationMessage] = useState<string | null>(null)
+  const [validationMessage, setValidationMessageValue] = useState<string | null>(null)
+  const [validationSeverity, setValidationSeverity] = useState<ValidationSeverity>('error')
   const [persistenceWarning, setPersistenceWarning] = useState<string | null>(null)
   const [auditOpen, setAuditOpen] = useState(false)
   const [searchOpen, setSearchOpen] = useState(false)
@@ -752,6 +759,14 @@ function App() {
     setProject(negotiatedProject)
   }
 
+  function setValidationMessage(
+    message: string | null,
+    severity: ValidationSeverity = 'error',
+  ) {
+    setValidationMessageValue(message)
+    setValidationSeverity(message ? severity : 'error')
+  }
+
   function applyInventoryCommandSnapshot(nextProject: ProjectState) {
     const negotiatedProject = normalizeNetworkProject(nextProject)
 
@@ -768,6 +783,20 @@ function App() {
 
   function showMessage(message: string) {
     setValidationMessage(message)
+  }
+
+  function showCompatibilityUnknownMessage(
+    action: 'Assigned' | 'Moved',
+    itemName: string,
+    unknownFindings: { message: string }[],
+  ) {
+    const unknownMessage = unknownFindings[0]?.message
+    setValidationMessage(
+      unknownMessage
+        ? `${action} ${itemName}. Compatibility could not be fully verified: ${unknownMessage}`
+        : null,
+      'unknown',
+    )
   }
 
   function handleWhatsNewOpenChange(open: boolean) {
@@ -1063,14 +1092,14 @@ function App() {
       return
     }
 
-    const item = project.items[data.itemId]
+    const item = data.kind === 'inventory' ? project.items[data.itemId] : undefined
 
-    if (!item) {
+    if (data.kind === 'inventory' && !item) {
       showMessage('That inventory item no longer exists.')
       return
     }
 
-    if (data.kind === 'inventory' && isCanvasItem(item)) {
+    if (data.kind === 'inventory' && item && isCanvasItem(item)) {
       if (overId !== 'canvas') {
         showMessage('Drop canvas equipment onto the canvas.')
         return
@@ -1100,72 +1129,41 @@ function App() {
     }
 
     if (data.kind === 'assigned-component') {
-      if (serverId === data.sourceServerId) {
-        setSelectedItemId(data.itemId)
-        setSelectedConnectionId(null)
-        setValidationMessage(null)
-        focusCanvasItem(data.itemId)
+      const result = moveAssignedComponent(project, data.assignmentId, serverId)
+
+      if (!result.ok) {
+        showMessage(result.message)
         return
       }
 
-      const assignment = project.assignments.find((candidate) => candidate.id === data.assignmentId)
-
-      if (!assignment) {
-        showMessage('That assigned component is no longer attached.')
+      const assignment = findAssignmentById(project.assignments, data.assignmentId)
+      const assignedItem = assignment ? project.items[assignment.itemId] : undefined
+      if (!assignment || !assignedItem) {
+        showMessage('That component or server no longer exists.')
         return
       }
 
-      if (assignment.type === 'cpu' || assignment.type === 'ram') {
-        const result = swapAssignedComponent(project, data.assignmentId, serverId)
-
-        if (!result.ok) {
-          showMessage(result.message)
-          return
-        }
-
-        const targetPlacement = result.project.placements.find((placement) => placement.serverId === serverId)
-        const sourcePlacement = result.project.placements.find((placement) => placement.serverId === data.sourceServerId)
-
-        if (
-          (targetPlacement && placementCollides(result.project, targetPlacement)) ||
-          (sourcePlacement && placementCollides(result.project, sourcePlacement))
-        ) {
-          showMessage('This swap needs more open space before moving that component.')
-          return
-        }
-
-        updateProject(result.project)
-        setSelectedItemId(data.itemId)
-        setSelectedConnectionId(null)
-        setValidationMessage(null)
-        focusCanvasItem(serverId)
+      const geometryError = getAssignedComponentDropGeometryError(
+        project,
+        result.project,
+        assignment,
+        serverId,
+      )
+      if (geometryError) {
+        showMessage(geometryError)
         return
       }
 
-      const projectWithoutAssignment = {
-        ...project,
-        assignments: project.assignments.filter((candidate) => candidate.id !== data.assignmentId),
-      }
-      const validation = validateAssignment(projectWithoutAssignment, serverId, data.itemId)
-
-      if (!validation.ok) {
-        showMessage(validation.message)
-        return
-      }
-
-      const nextProject = assignComponent(projectWithoutAssignment, serverId, data.itemId)
-      const targetPlacement = nextProject.placements.find((placement) => placement.serverId === serverId)
-
-      if (targetPlacement && placementCollides(nextProject, targetPlacement)) {
-        showMessage('This server needs more open space before moving that component.')
-        return
-      }
-
-      updateProject(nextProject)
-      setSelectedItemId(data.itemId)
+      if (result.project !== project) updateProject(result.project)
+      setSelectedItemId(assignment.itemId)
       setSelectedConnectionId(null)
-      setValidationMessage(null)
-      focusCanvasItem(data.itemId)
+      showCompatibilityUnknownMessage('Moved', assignedItem.name, result.unknownFindings)
+      focusCanvasItem(serverId)
+      return
+    }
+
+    if (!item) {
+      showMessage('That inventory item no longer exists.')
       return
     }
 
@@ -1174,14 +1172,14 @@ function App() {
       return
     }
 
-    const validation = validateAssignment(project, serverId, data.itemId)
+    const result = tryAssignComponent(project, serverId, data.itemId)
 
-    if (!validation.ok) {
-      showMessage(validation.message)
+    if (!result.ok) {
+      showMessage(result.message)
       return
     }
 
-    const nextProject = assignComponent(project, serverId, data.itemId)
+    const nextProject = result.project
     const serverPlacement = nextProject.placements.find((placement) => placement.serverId === serverId)
 
     if (serverPlacement && placementCollides(nextProject, serverPlacement)) {
@@ -1192,7 +1190,7 @@ function App() {
     updateProject(nextProject)
     setSelectedItemId(data.itemId)
     setSelectedConnectionId(null)
-    setValidationMessage(null)
+    showCompatibilityUnknownMessage('Assigned', item.name, result.unknownFindings)
     focusCanvasItem(data.itemId)
   }
 
@@ -1343,6 +1341,7 @@ function App() {
             pendingEndpoint={pendingConnectionEndpoint}
             draggingEndpoint={portConnectionPreview?.mode === 'drag' ? portConnectionPreview.from : null}
             validationMessage={validationMessage}
+            validationSeverity={validationSeverity}
             canUndo={history.past.length > 0}
             canRedo={history.future.length > 0}
             saveStatus={saveStatus}
@@ -1458,6 +1457,7 @@ function App() {
             activeNetworkTraceKey={activeNetworkTraceEndpoint ? endpointKey(activeNetworkTraceEndpoint) : null}
             pendingConnectionEndpoint={pendingConnectionEndpoint}
             validationMessage={validationMessage}
+            validationSeverity={validationSeverity}
             persistenceWarning={persistenceWarning}
             open={selectedItem !== null || selectedConnection !== null}
             onClose={() => {

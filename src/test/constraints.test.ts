@@ -64,20 +64,22 @@ describe('slot constraints', () => {
     expect(result.ok ? '' : result.message).toMatch(/canvas equipment/i)
   })
 
-  it('allows storage and one network card on a NAS', () => {
+  it('allows CPU, RAM, storage, and one network card on a NAS', () => {
     const base = mergeInventoryWithProject(items, null)
-    const withStorage = assignComponent(base, 'nas', 'storage-a')
+    const withCpu = assignComponent(base, 'nas', 'cpu-a')
+    const withRam = assignComponent(withCpu, 'nas', 'ram')
+    const withStorage = assignComponent(withRam, 'nas', 'storage-a')
     const withNetwork = assignComponent(withStorage, 'nas', 'wifi')
 
-    expect(withNetwork.assignments.filter((assignment) => assignment.serverId === 'nas')).toHaveLength(2)
+    expect(withNetwork.assignments.filter((assignment) => assignment.serverId === 'nas')).toHaveLength(4)
     expect(validateAssignment(withNetwork, 'nas', 'eth').ok).toBe(false)
   })
 
-  it('rejects non-NAS components on a NAS', () => {
-    const result = validateAssignment(mergeInventoryWithProject(items, null), 'nas', 'cpu-a')
+  it('rejects GPUs on a NAS', () => {
+    const result = validateAssignment(mergeInventoryWithProject(items, null), 'nas', 'gpu')
 
     expect(result.ok).toBe(false)
-    expect(result.ok ? '' : result.message).toMatch(/storage drives and network cards/i)
+    expect(result.ok ? '' : result.message).toMatch(/CPU, RAM, storage drives, and network cards/i)
   })
 
   it('rejects assigning an archived component', () => {

@@ -2689,6 +2689,7 @@ export function InspectorPanel({
   activeNetworkTraceKey,
   pendingConnectionEndpoint,
   validationMessage,
+  validationSeverity = 'error',
   persistenceWarning,
   open,
   onClose,
@@ -2712,6 +2713,7 @@ export function InspectorPanel({
   activeNetworkTraceKey: string | null
   pendingConnectionEndpoint: ConnectionEndpoint | null
   validationMessage: string | null
+  validationSeverity?: 'error' | 'unknown'
   persistenceWarning: string | null
   open: boolean
   onClose: () => void
@@ -2806,8 +2808,22 @@ export function InspectorPanel({
         ) : null}
 
         {validationMessage ? (
-          <div className="flex gap-2 rounded-lg border border-[#dfb3a5] bg-[#fff4ee] p-3 text-sm font-semibold text-[#613126]">
-            <AlertTriangle className="mt-0.5 size-4 shrink-0" />
+          <div
+            data-testid="inspector-validation-message"
+            data-severity={validationSeverity}
+            role={validationSeverity === 'unknown' ? 'status' : 'alert'}
+            className={cn(
+              'flex gap-2 rounded-lg border p-3 text-sm font-semibold',
+              validationSeverity === 'unknown'
+                ? 'border-[#dfc483] bg-[#fff8df] text-[#5d4814]'
+                : 'border-[#dfb3a5] bg-[#fff4ee] text-[#613126]',
+            )}
+          >
+            {validationSeverity === 'unknown' ? (
+              <Info className="mt-0.5 size-4 shrink-0" />
+            ) : (
+              <AlertTriangle className="mt-0.5 size-4 shrink-0" />
+            )}
             <span>{validationMessage}</span>
           </div>
         ) : null}

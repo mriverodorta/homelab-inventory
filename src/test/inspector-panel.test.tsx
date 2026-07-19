@@ -229,6 +229,8 @@ type RenderInspectorOptions = Partial<Pick<InspectorPanelProps,
   agentStatus?: AgentStatusSummary
   project?: ProjectState
   demoMode?: boolean
+  validationMessage?: string | null
+  validationSeverity?: 'error' | 'unknown'
 }
 
 function renderInspector({
@@ -237,6 +239,8 @@ function renderInspector({
   agentStatus = { servers: {}, registeredServerIds: [] },
   project: projectOverride = project,
   demoMode = false,
+  validationMessage = null,
+  validationSeverity = 'error',
   onUpdateItem = vi.fn(),
   onCreateConnection = vi.fn(),
   onSelectNetworkTrace = vi.fn(),
@@ -253,7 +257,7 @@ function renderInspector({
     },
   })
 
-  render(
+  const renderResult = render(
     <QueryClientProvider client={queryClient}>
       <InspectorPanel
         project={projectOverride}
@@ -263,7 +267,8 @@ function renderInspector({
         selectedConnectionId={selectedConnectionId}
         activeNetworkTraceKey={null}
         pendingConnectionEndpoint={null}
-        validationMessage={null}
+        validationMessage={validationMessage}
+        validationSeverity={validationSeverity}
         persistenceWarning={null}
         open
         onClose={() => {}}
@@ -280,6 +285,7 @@ function renderInspector({
   )
 
   return {
+    ...renderResult,
     onUpdateItem,
     onCreateConnection,
     onSelectNetworkTrace,
@@ -292,6 +298,29 @@ function renderInspector({
 }
 
 describe('InspectorPanel', () => {
+  it('renders unknown compatibility feedback as amber status while errors remain alerts', () => {
+    const { unmount } = renderInspector({
+      selectedItemId: 'server',
+      validationMessage: 'Compatibility could not be fully verified.',
+      validationSeverity: 'unknown',
+    })
+
+    const unknownNotice = screen.getByTestId('inspector-validation-message')
+    expect(unknownNotice).toHaveAttribute('role', 'status')
+    expect(unknownNotice).toHaveAttribute('data-severity', 'unknown')
+    expect(unknownNotice).toHaveClass('bg-[#fff8df]')
+
+    unmount()
+    renderInspector({
+      selectedItemId: 'server',
+      validationMessage: 'The component is incompatible.',
+    })
+
+    const errorNotice = screen.getByTestId('inspector-validation-message')
+    expect(errorNotice).toHaveAttribute('role', 'alert')
+    expect(errorNotice).toHaveAttribute('data-severity', 'error')
+    expect(errorNotice).toHaveClass('bg-[#fff4ee]')
+  })
   it.each([
     ['server', ['Specs', 'Slots', 'Ports', 'Network', 'Services', 'Agent']],
     ['switch', ['Specs', 'Ports', 'Connections']],
