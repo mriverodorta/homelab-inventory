@@ -65,6 +65,90 @@ const project: ProjectState = {
   ],
 }
 
+const compatibilityProject: ProjectState = {
+  id: 'compatibility-project',
+  metadata: {
+    name: 'Compatibility Project',
+    version: 1,
+    updatedAt: '2026-07-19T00:00:00.000Z',
+  },
+  items: {
+    host: {
+      id: 'host',
+      name: 'Compatibility Host',
+      type: 'server',
+      compatibility: {
+        host: {
+          cpu: { sockets: ['LGA1200'], generations: ['10'], maxTdpWatts: 35 },
+          memory: {
+            generations: ['DDR4'],
+            slots: 2,
+            maxCapacityGb: 32,
+            maxModuleCapacityGb: 16,
+            maxSpeedMt: 2666,
+          },
+          storageSlots: [
+            {
+              id: 'm2-slot',
+              label: 'M.2 Slot',
+              count: 1,
+              interfaces: ['NVMe'],
+              formFactors: ['2280'],
+            },
+          ],
+        },
+      },
+    },
+    cpu: {
+      id: 'cpu',
+      name: 'Mismatch CPU',
+      type: 'cpu',
+      compatibility: {
+        requirements: {
+          cpu: { socket: 'LGA1700', generation: '12', tdpWatts: 65 },
+        },
+      },
+    },
+    ram: {
+      id: 'ram',
+      name: 'Fast RAM',
+      type: 'ram',
+      specs: { capacityGb: 16, moduleCount: 1, generation: 'DDR4', speedMt: 3200 },
+    },
+    storage: {
+      id: 'storage',
+      name: 'Unknown Storage',
+      type: 'storage',
+      specs: { interface: 'NVMe' },
+    },
+  },
+  placements: [{ serverId: 'host', x: 0, y: 0 }],
+  assignments: [
+    {
+      id: 1,
+      serverId: 'host',
+      itemId: 'cpu',
+      type: 'cpu',
+      assignedAt: '2026-07-19T00:00:00.000Z',
+    },
+    {
+      id: 2,
+      serverId: 'host',
+      itemId: 'ram',
+      type: 'ram',
+      assignedAt: '2026-07-19T00:01:00.000Z',
+    },
+    {
+      id: 3,
+      serverId: 'host',
+      itemId: 'storage',
+      type: 'storage',
+      assignedAt: '2026-07-19T00:02:00.000Z',
+    },
+  ],
+  connections: [],
+}
+
 afterEach(() => {
   cleanup()
 })
@@ -106,5 +190,26 @@ describe('AuditDrawer', () => {
 
     expect(screen.queryByText('Server A')).not.toBeInTheDocument()
     expect(screen.getByText('Switch A')).toBeInTheDocument()
+  })
+
+  it('renders compatibility severities and focuses the affected host', () => {
+    const onSelectItem = vi.fn()
+
+    const { container } = render(
+      <AuditDrawer
+        project={compatibilityProject}
+        open
+        onClose={vi.fn()}
+        onSelectItem={onSelectItem}
+      />,
+    )
+
+    expect(container.querySelectorAll('[data-severity="error"]')).not.toHaveLength(0)
+    expect(container.querySelectorAll('[data-severity="warning"]')).not.toHaveLength(0)
+    expect(container.querySelectorAll('[data-severity="unknown"]')).not.toHaveLength(0)
+
+    fireEvent.click(screen.getByText(/CPU socket LGA1700 is not supported/))
+
+    expect(onSelectItem).toHaveBeenCalledWith('host')
   })
 })

@@ -3,8 +3,10 @@ import {
   endpointKey,
   getConnectionPort,
 } from '@/lib/project'
+import { evaluateProjectCompatibility } from '@/lib/compatibility'
 import { runtimeItemKey } from '@/lib/item-keys'
 import { getItemNetworkTraces } from '@/lib/network-trace'
+import type { CompatibilityFinding, CompatibilitySeverity } from '@/types/compatibility'
 import type {
   ConnectionEndpoint,
   InventoryItem,
@@ -16,6 +18,8 @@ export type AuditWarning = {
   id: string
   itemId: string
   message: string
+  code?: string
+  severity?: CompatibilitySeverity
 }
 
 export type ProjectAuditGroup = {
@@ -190,6 +194,68 @@ function getSwitchAuditWarnings(project: ProjectState, item: InventoryItem): Aud
   return warnings
 }
 
+function compatibilityResourceKey(
+  finding: CompatibilityFinding,
+  componentKey: string,
+): string {
+  return finding.resourceId ?? finding.field ?? componentKey
+}
+
+function compatibilityWarningId(
+  hostKey: string,
+  finding: CompatibilityFinding,
+  componentKey: string,
+): string {
+  return `compatibility:${JSON.stringify([
+    hostKey,
+    finding.code,
+    componentKey,
+    compatibilityResourceKey(finding, componentKey),
+  ])}`
+}
+
+function getCompatibilityAuditWarnings(
+  project: ProjectState,
+  host: InventoryItem,
+): AuditWarning[] {
+  if (host.type !== 'server' && host.type !== 'nas') {
+    return []
+  }
+
+  const hostKey = runtimeItemKey(host)
+  const seen = new Set<string>()
+  const warnings: AuditWarning[] = []
+
+  for (const result of evaluateProjectCompatibility(project)) {
+    if (String(result.hostId) !== hostKey) {
+      continue
+    }
+
+    const componentKey = String(result.itemId)
+    const component = project.items[componentKey]
+
+    for (const finding of result.findings) {
+      const resourceKey = compatibilityResourceKey(finding, componentKey)
+      const dedupeKey = JSON.stringify([hostKey, finding.code, resourceKey])
+
+      if (seen.has(dedupeKey)) {
+        continue
+      }
+
+      seen.add(dedupeKey)
+      warnings.push({
+        id: compatibilityWarningId(hostKey, finding, componentKey),
+        itemId: hostKey,
+        message: component ? `${component.name}: ${finding.message}` : finding.message,
+        code: finding.code,
+        severity: finding.severity,
+      })
+    }
+  }
+
+  return warnings
+}
+
 export function getItemAuditWarnings(project: ProjectState, itemId: string): AuditWarning[] {
   const item = project.items[itemId]
 
@@ -206,6 +272,8 @@ export function getItemAuditWarnings(project: ProjectState, itemId: string): Aud
   if (item.type === 'switch') {
     warnings.push(...getSwitchAuditWarnings(project, item))
   }
+
+  warnings.push(...getCompatibilityAuditWarnings(project, item))
 
   return warnings
 }

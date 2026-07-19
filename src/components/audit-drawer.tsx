@@ -1,8 +1,9 @@
-import { AlertTriangle, X } from 'lucide-react'
+import { AlertCircle, AlertTriangle, CircleHelp, X } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { getProjectAuditWarnings, type ProjectAuditGroup } from '@/lib/audit'
 import { runtimeItemKey } from '@/lib/item-keys'
+import type { CompatibilitySeverity } from '@/types/compatibility'
 import type { InventoryType, ProjectState } from '@/types/inventory'
 
 type AuditFilter = 'all' | 'server' | 'patchPanel' | 'switch' | 'stale'
@@ -38,6 +39,31 @@ function filterGroups(groups: ProjectAuditGroup[], filter: AuditFilter): Project
   }
 
   return groups.filter((group) => group.item.type === filter)
+}
+
+const WARNING_STYLES: Record<
+  CompatibilitySeverity,
+  { className: string; icon: typeof AlertTriangle }
+> = {
+  error: {
+    className:
+      'border-[#e4b4aa] bg-[#fff0ed] text-[#742a20] hover:border-[#cf8d80] hover:bg-[#ffe5df] focus-visible:ring-[#cf8d80]',
+    icon: AlertCircle,
+  },
+  warning: {
+    className:
+      'border-[#ead9a5] bg-[#fff8df] text-[#5d4814] hover:border-[#ddb668] hover:bg-[#fff2c7] focus-visible:ring-[#ddb668]',
+    icon: AlertTriangle,
+  },
+  unknown: {
+    className:
+      'border-[#c9c4d8] bg-[#f4f2fa] text-[#4d4761] hover:border-[#aaa2c1] hover:bg-[#ebe8f4] focus-visible:ring-[#aaa2c1]',
+    icon: CircleHelp,
+  },
+}
+
+function warningSeverity(severity?: CompatibilitySeverity): CompatibilitySeverity {
+  return severity ?? 'warning'
 }
 
 export function AuditDrawer({
@@ -129,16 +155,24 @@ export function AuditDrawer({
                 </div>
 
                 <div className="mt-3 space-y-2">
-                  {group.warnings.map((warning) => (
-                    <button
-                      key={warning.id}
-                      type="button"
-                      className="w-full rounded-md border border-[#ead9a5] bg-[#fff8df] p-2 text-left text-xs font-semibold leading-snug text-[#5d4814] transition hover:border-[#ddb668] hover:bg-[#fff2c7] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#ddb668]"
-                      onClick={() => onSelectItem(runtimeItemKey(group.item))}
-                    >
-                      {warning.message}
-                    </button>
-                  ))}
+                  {group.warnings.map((warning) => {
+                    const severity = warningSeverity(warning.severity)
+                    const style = WARNING_STYLES[severity]
+                    const WarningIcon = style.icon
+
+                    return (
+                      <button
+                        key={warning.id}
+                        type="button"
+                        data-severity={severity}
+                        className={`flex w-full items-start gap-2 rounded-md border p-2 text-left text-xs font-semibold leading-snug transition focus-visible:outline-none focus-visible:ring-2 ${style.className}`}
+                        onClick={() => onSelectItem(warning.itemId)}
+                      >
+                        <WarningIcon className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
+                        <span className="min-w-0">{warning.message}</span>
+                      </button>
+                    )
+                  })}
                 </div>
               </div>
             ))}

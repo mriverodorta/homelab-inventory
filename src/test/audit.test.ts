@@ -269,4 +269,212 @@ describe('item audit warnings', () => {
       { itemId: 'switch', warningCount: 1 },
     ])
   })
+
+  it('audits only assigned hardware and preserves compatibility finding metadata', () => {
+    const host: InventoryItem = {
+      id: 'compat-host',
+      name: 'Compatibility Host',
+      type: 'server',
+      compatibility: {
+        host: {
+          cpu: {
+            sockets: ['LGA1200'],
+            generations: ['10'],
+            maxTdpWatts: 35,
+          },
+          memory: {
+            generations: ['DDR4'],
+            slots: 4,
+            maxCapacityGb: 64,
+            maxModuleCapacityGb: 32,
+            maxSpeedMt: 2666,
+          },
+          storageSlots: [
+            {
+              id: 'm2-slot',
+              label: 'M.2 Slot',
+              count: 1,
+              interfaces: ['NVMe'],
+              formFactors: ['2280'],
+              pcieGeneration: 3,
+            },
+          ],
+        },
+      },
+    }
+    const incompatibleCpu: InventoryItem = {
+      id: 'bad-cpu',
+      name: 'Socket Mismatch CPU',
+      type: 'cpu',
+      compatibility: {
+        requirements: {
+          cpu: {
+            socket: 'LGA1700',
+            generation: '12',
+            tdpWatts: 65,
+          },
+        },
+      },
+    }
+    const performanceRam: InventoryItem = {
+      id: 'fast-ram',
+      name: 'Fast RAM',
+      type: 'ram',
+      specs: {
+        capacityGb: 16,
+        moduleCount: 2,
+        generation: 'DDR4',
+        speedMt: 3200,
+      },
+    }
+    const unknownStorage: InventoryItem = {
+      id: 'unknown-storage',
+      name: 'Unknown Storage',
+      type: 'storage',
+      specs: {
+        interface: 'NVMe',
+      },
+    }
+    const unassignedCpu: InventoryItem = {
+      id: 'unassigned-cpu',
+      name: 'Unassigned Incompatible CPU',
+      type: 'cpu',
+      compatibility: {
+        requirements: {
+          cpu: {
+            socket: 'AM5',
+            generation: 'Zen 5',
+            tdpWatts: 170,
+          },
+        },
+      },
+    }
+    const project: ProjectState = {
+      ...createProject([host, incompatibleCpu, performanceRam, unknownStorage, unassignedCpu]),
+      placements: [{ serverId: 'compat-host', x: 0, y: 0 }],
+      assignments: [
+        {
+          id: 1,
+          serverId: 'compat-host',
+          itemId: 'bad-cpu',
+          type: 'cpu',
+          assignedAt: '2026-07-19T00:00:00.000Z',
+        },
+        {
+          id: 2,
+          serverId: 'compat-host',
+          itemId: 'fast-ram',
+          type: 'ram',
+          assignedAt: '2026-07-19T00:01:00.000Z',
+        },
+        {
+          id: 3,
+          serverId: 'compat-host',
+          itemId: 'unknown-storage',
+          type: 'storage',
+          assignedAt: '2026-07-19T00:02:00.000Z',
+        },
+      ],
+    }
+
+    const warnings = getItemAuditWarnings(project, 'compat-host')
+
+    expect(warnings).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ code: 'cpu.socket.mismatch', severity: 'error' }),
+        expect.objectContaining({ code: 'compatibility.data.missing', severity: 'unknown' }),
+        expect.objectContaining({ code: 'memory.speed.negotiated', severity: 'warning' }),
+      ]),
+    )
+    expect(warnings.some((warning) => warning.message.includes('Unassigned Incompatible CPU'))).toBe(false)
+    expect(getItemAuditWarnings(project, 'compat-host')).toEqual(warnings)
+  })
+
+  it('does not create compatibility audit noise from unassigned inventory', () => {
+    const host: InventoryItem = {
+      id: 'empty-host',
+      name: 'Empty Host',
+      type: 'server',
+    }
+    const unassignedCpu: InventoryItem = {
+      id: 'unassigned',
+      name: 'Unassigned CPU',
+      type: 'cpu',
+      compatibility: {
+        requirements: {
+          cpu: { socket: 'AM5', generation: 'Zen 5', tdpWatts: 170 },
+        },
+      },
+    }
+    const project: ProjectState = {
+      ...createProject([host, unassignedCpu]),
+      placements: [{ serverId: 'empty-host', x: 0, y: 0 }],
+    }
+
+    expect(getItemAuditWarnings(project, 'empty-host')).toEqual([])
+    expect(getProjectAuditWarnings(project)).toEqual([])
+  })
+
+  it('deduplicates repeated host, code, and resource compatibility findings', () => {
+    const host: InventoryItem = {
+      id: 'memory-host',
+      name: 'Memory Host',
+      type: 'server',
+      compatibility: {
+        host: {
+          memory: {
+            generations: ['DDR4'],
+            slots: 4,
+            maxCapacityGb: 32,
+            maxModuleCapacityGb: 32,
+            maxSpeedMt: 3200,
+          },
+        },
+      },
+    }
+    const firstRam: InventoryItem = {
+      id: 'ram-one',
+      name: 'RAM One',
+      type: 'ram',
+      specs: { capacityGb: 32, moduleCount: 1, generation: 'DDR4', speedMt: 3200 },
+    }
+    const secondRam: InventoryItem = {
+      id: 'ram-two',
+      name: 'RAM Two',
+      type: 'ram',
+      specs: { capacityGb: 32, moduleCount: 1, generation: 'DDR4', speedMt: 3200 },
+    }
+    const project: ProjectState = {
+      ...createProject([host, firstRam, secondRam]),
+      placements: [{ serverId: 'memory-host', x: 0, y: 0 }],
+      assignments: [
+        {
+          id: 1,
+          serverId: 'memory-host',
+          itemId: 'ram-one',
+          type: 'ram',
+          assignedAt: '2026-07-19T00:00:00.000Z',
+        },
+        {
+          id: 2,
+          serverId: 'memory-host',
+          itemId: 'ram-two',
+          type: 'ram',
+          assignedAt: '2026-07-19T00:01:00.000Z',
+        },
+      ],
+    }
+
+    const capacityWarnings = getItemAuditWarnings(project, 'memory-host').filter(
+      (warning) => warning.code === 'memory.capacity.exceeded',
+    )
+
+    expect(capacityWarnings).toHaveLength(1)
+    expect(capacityWarnings[0]).toEqual(
+      expect.objectContaining({
+        itemId: 'memory-host',
+        severity: 'error',
+      }),
+    )
+  })
 })
