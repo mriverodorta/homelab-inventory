@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { assignComponent } from '@/lib/constraints'
 import { mergeInventoryWithProject, normalizeInventory, getUnassignedItems } from '@/lib/inventory'
 import { upsertPlacement } from '@/lib/project'
+import type { CompatibilityAllocation } from '@/types/compatibility'
 import type { InventoryItem } from '@/types/inventory'
 
 const starter: InventoryItem[] = [
@@ -10,6 +11,43 @@ const starter: InventoryItem[] = [
 ]
 
 describe('inventory parsing and merge', () => {
+  it('preserves structured compatibility profiles and assignment allocations', () => {
+    const host: InventoryItem = {
+      id: 1,
+      name: 'Example Mini Host',
+      type: 'server',
+      compatibility: {
+        host: {
+          cpu: { sockets: ['LGA1200'], generations: ['10'], maxTdpWatts: 65 },
+          memory: {
+            generations: ['DDR4'],
+            slots: 2,
+            maxCapacityGb: 64,
+            maxModuleCapacityGb: 32,
+            maxSpeedMt: 2933,
+          },
+          storageSlots: [
+            {
+              id: 'm2-1',
+              label: 'M.2 Slot',
+              count: 1,
+              interfaces: ['NVMe'],
+              formFactors: ['2280'],
+            },
+          ],
+        },
+      },
+    }
+
+    const allocation: CompatibilityAllocation = {
+      resourceType: 'storage',
+      groupId: 'm2-1',
+      positions: [0],
+    }
+
+    expect(structuredClone({ host, allocation })).toEqual({ host, allocation })
+  })
+
   it('normalizes valid inventory items', () => {
     const items = normalizeInventory([
       { id: 'srv-one', name: 'Server One', type: 'server' },

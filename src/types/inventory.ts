@@ -1,3 +1,9 @@
+import type {
+  CompatibilityAllocation,
+  CompatibilityResult,
+  InventoryCompatibility,
+} from './compatibility'
+
 export type InventoryType =
   | 'server'
   | 'nas'
@@ -89,6 +95,7 @@ export type InventoryItem = {
   specs?: InventorySpecs
   properties?: InventoryProperties
   ports?: InventoryPort[]
+  compatibility?: InventoryCompatibility
   notes?: string
   archivedAt?: string
 }
@@ -105,6 +112,7 @@ export type ComponentAssignment = {
   itemId: string
   type: ComponentType
   assignedAt: string
+  allocation?: CompatibilityAllocation
 }
 
 export type ProjectMetadata = {
@@ -130,10 +138,11 @@ export type SlotStatus = {
 }
 
 export type ValidationResult =
-  | { ok: true }
+  | { ok: true; compatibility?: CompatibilityResult }
   | {
       ok: false
       message: string
+      compatibility?: CompatibilityResult
     }
 
 export type SaveFile = {
