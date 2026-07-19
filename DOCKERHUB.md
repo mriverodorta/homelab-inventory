@@ -54,6 +54,18 @@ Inventory items can be created from the web interface. Once hardware exists in t
 
 The container serves the web app and writes changes asynchronously to the mounted data directory.
 
+## Hardware Compatibility
+
+Homelab Inventory validates documented CPU, RAM, storage, GPU, and network-card requirements when components are assigned:
+
+- **Compatible** assignments fit the known host capabilities and receive deterministic resource allocations.
+- **Incompatible** assignments have a verified conflict and are blocked before project data changes.
+- **Unknown** assignments are missing one or more compatibility fields and remain usable with a warning.
+
+Compatibility inspector tabs explain requirements, host capabilities, and allocations. Audit highlights assigned hardware with incompatible or incomplete data. Existing assignments are preserved during schema migration, including legacy combinations that would be blocked if newly created or changed.
+
+Compatibility fields are entered when inventory is created or edited. The app does not perform online hardware lookups or include a universal hardware database, so ongoing maintenance is limited to new hardware and corrections.
+
 ## Normal Production
 
 Use the `stable` image for regular homelab deployments:
@@ -137,6 +149,10 @@ The image is intended to work well with Watchtower:
 New package versions promoted through `stable` publish `stable`, immutable `X.Y.Z`, and moving `X.Y` tags. The matching Git tag and GitHub Release are created only after the multi-platform image is verified. Existing numbered images are never overwritten.
 
 The app tracks a database schema version in `/data/meta.json`. When schema changes are introduced, migrations run on startup and create backups before modifying data.
+
+Schema 7 normalizes hardware compatibility profiles and calculates deterministic allocations for compatible existing assignments. It preserves all existing assignments and reports incomplete or incompatible legacy data through inspectors and Audit rather than removing hardware.
+
+Back up the complete mounted `/data` directory before upgrading across schema versions. The automatic migration backup is useful for recovery, but it should not be the only copy of operational inventory data.
 
 ### Update notifications
 

@@ -12,9 +12,31 @@ export type ReleaseNoteEntry = {
 
 export const RELEASE_NOTES: ReleaseNoteEntry[] = [
   {
-    version: '0.1.25',
+    version: '0.1.26',
     date: '2026-07-19',
     channel: 'latest',
+    title: 'Hardware compatibility rules',
+    highlights: [
+      'Known-invalid CPU, RAM, storage, GPU, and network-card assignments are now blocked before project data changes.',
+      'Incomplete compatibility data remains usable with clear unknown-data warnings instead of being treated as incompatible.',
+      'Compatible assignments now receive deterministic host resource allocations for memory, storage, and expansion slots.',
+      'Compatibility inspector tabs explain requirements, host capabilities, allocations, and findings, while Audit reports assigned hardware that needs review.',
+    ],
+    fixes: [
+      'CPU and RAM moves or swaps now validate atomically so a rejected operation leaves both hosts unchanged.',
+      'Official Intel FC package socket names such as FCLGA1200 are normalized to the matching physical socket name to prevent false incompatibility results.',
+      'Existing assignments are preserved during migration, including legacy assignments that current rules would reject; enforcement applies when an assignment is newly created or changed.',
+    ],
+    notes: [
+      'Schema 7 migration creates an automatic backup before normalizing compatibility profiles and deterministic allocations.',
+      'Compatibility details are entered when inventory is created or edited, keeping ongoing upkeep limited to new or corrected hardware records.',
+      'Homelab Inventory does not perform online hardware lookups or bundle a universal compatibility database.',
+    ],
+  },
+  {
+    version: '0.1.25',
+    date: '2026-07-19',
+    channel: 'release',
     title: 'Complete inventory lifecycle controls',
     highlights: [
       'Inventory records can now be created in quantities, duplicated, archived, restored, and permanently deleted from the inventory sidebar.',

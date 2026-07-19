@@ -89,11 +89,31 @@ describe('release notes helpers', () => {
     expect(entries.map((entry) => entry.version)).toEqual(['0.1.10'])
   })
 
-  it('has a structured entry for the package version under development', () => {
-    expect(hasReleaseNoteForVersion(RELEASE_NOTES, '0.1.25')).toBe(true)
-    expect(RELEASE_NOTES[0]?.version).toBe('0.1.25')
+  it('has structured compatibility notes for the package version under development', () => {
+    expect(hasReleaseNoteForVersion(RELEASE_NOTES, '0.1.26')).toBe(true)
+    expect(RELEASE_NOTES[0]).toEqual(
+      expect.objectContaining({
+        version: '0.1.26',
+        title: 'Hardware compatibility rules',
+      }),
+    )
     expect(RELEASE_NOTES.filter((entry) => entry.channel === 'latest')).toEqual([
-      expect.objectContaining({ version: '0.1.25' }),
+      expect.objectContaining({ version: '0.1.26' }),
     ])
+
+    const compatibilityRelease = RELEASE_NOTES[0]
+    const releaseText = [
+      ...(compatibilityRelease?.highlights ?? []),
+      ...(compatibilityRelease?.fixes ?? []),
+      ...(compatibilityRelease?.notes ?? []),
+    ].join(' ')
+
+    expect(releaseText).toMatch(/known-invalid|known incompatible/i)
+    expect(releaseText).toMatch(/unknown/i)
+    expect(releaseText).toMatch(/deterministic.*allocat/i)
+    expect(releaseText).toMatch(/compatibility.*tab/i)
+    expect(releaseText).toMatch(/audit/i)
+    expect(releaseText).toMatch(/schema 7/i)
+    expect(releaseText).toMatch(/backup|migration/i)
   })
 })

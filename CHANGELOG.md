@@ -14,6 +14,31 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 - Added repository documentation, issue templates, CI, and security guidance.
 - Clarified Docker deployment, data persistence, and development setup.
 
+## [0.1.26] - 2026-07-19
+
+### Added
+
+- Added structured compatibility profiles for host CPU sockets and generations, memory banks, storage bays, and PCIe or expansion resources.
+- Added deterministic resource allocation for successful RAM, storage, GPU, and network-card assignments.
+- Added Compatibility inspector tabs that explain component requirements, host capabilities, allocations, and grouped findings.
+- Added Audit findings for assigned hardware with incompatible or incomplete compatibility data.
+
+### Changed
+
+- Known-invalid component assignments are blocked before project state changes, including atomic CPU and RAM moves or swaps.
+- Missing compatibility data produces a nonblocking unknown warning so partially documented hardware remains usable.
+- Existing assignments are preserved during migration, even when current rules would reject the same assignment if it were newly created or changed.
+- Compatibility data is maintained manually when creating or editing inventory; the app does not perform online lookups or bundle a universal hardware database.
+
+### Fixed
+
+- Official Intel FC package socket names such as `FCLGA1200` are normalized to the matching physical socket name to prevent false incompatibility results.
+
+### Data
+
+- Upgraded the database to schema 7 with automatic pre-migration backups, normalized compatibility profiles, and deterministic allocations for compatible existing assignments.
+- Docker users should back up the complete `/data` directory before upgrading even though the migration also creates an internal backup.
+
 ## [0.1.25] - 2026-07-19
 
 ### Added

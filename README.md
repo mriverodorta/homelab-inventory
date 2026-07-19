@@ -18,6 +18,8 @@ Live demo: [lab.hkloud.org](https://lab.hkloud.org/)
 - Infinite canvas for servers, NAS devices, switches, patch panels, and cables.
 - Searchable inventory sidebar with in-app item creation.
 - Drag components into compatible hosts: CPU, RAM, storage, GPU, and network cards.
+- Validate known CPU, RAM, storage, and expansion-card incompatibilities before assignment.
+- Explain compatibility requirements, deterministic resource allocations, and unknown-data warnings in inspectors and Audit.
 - Individual port chips for servers, expansion cards, NAS devices, switches, and patch panels.
 - Color-coded cable routing for network and display connections.
 - JSON database stored outside the app image under a persistent `/data` volume.
@@ -120,6 +122,18 @@ Only one app container should write to a mounted data directory.
 
 More data details: [docs/DATA.md](docs/DATA.md)
 
+## Hardware Compatibility
+
+Compatibility rules help prevent known-invalid assignments while keeping partially documented hardware usable:
+
+- **Compatible** means the known component requirements fit the host and any required resource was allocated deterministically.
+- **Incompatible** means a verified rule conflicts, such as a CPU socket mismatch, unsupported RAM generation, unavailable storage bay, or unsuitable expansion slot. New or changed assignments are blocked.
+- **Unknown** means one or more required fields are not documented. The assignment remains available with an amber warning so incomplete inventory does not stop normal work.
+
+Servers and NAS devices expose compatibility details in their inspectors. Component inspectors show requirements and the current host allocation, while Audit identifies assigned hardware that is incompatible or needs more data.
+
+Compatibility fields are entered when an inventory item is created or edited. Homelab Inventory does not perform online hardware lookups or include a universal hardware database, which keeps ongoing upkeep limited to new items and corrections. Existing assignments are preserved when upgrading to schema 7, even if a current rule would block creating the same assignment today.
+
 ## Docker Tags And Release Channels
 
 - `mriverodorta/homelab-inventory:stable` is built from the `stable` branch. Use this for regular homelab deployments and Watchtower.
@@ -142,6 +156,8 @@ CI/CD uses GitHub as the source of truth:
 - Existing numbered Docker images are never overwritten; historical restoration uses a guarded manual backfill workflow.
 
 Release process details: [docs/RELEASES.md](docs/RELEASES.md)
+
+Before upgrading a Docker deployment across schema versions, back up the complete mounted `/data` directory. Schema migrations create an internal backup before changing data, but that does not replace an external copy or filesystem snapshot.
 
 ## Update Notifications
 
