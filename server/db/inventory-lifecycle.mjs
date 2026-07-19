@@ -129,6 +129,32 @@ function cleanPort(port, index, fallbackKind) {
   return cleaned
 }
 
+function cleanCompatibility(compatibility) {
+  if (!compatibility || typeof compatibility !== 'object' || Array.isArray(compatibility)) {
+    return undefined
+  }
+
+  const cleaned = structuredClone(compatibility)
+  const host = cleaned.host
+
+  if (host && typeof host === 'object' && !Array.isArray(host)) {
+    if (Array.isArray(host.storageSlots)) {
+      host.storageSlots = host.storageSlots.map((group, index) => ({
+        ...group,
+        id: `storage-${index + 1}`,
+      }))
+    }
+    if (Array.isArray(host.expansionSlots)) {
+      host.expansionSlots = host.expansionSlots.map((group, index) => ({
+        ...group,
+        id: `expansion-${index + 1}`,
+      }))
+    }
+  }
+
+  return cleaned
+}
+
 export function buildCleanRecord({ source, id, type, name = source?.name }) {
   const record = {
     id,
@@ -142,6 +168,9 @@ export function buildCleanRecord({ source, id, type, name = source?.name }) {
   if (source?.specs && typeof source.specs === 'object' && !Array.isArray(source.specs)) {
     record.specs = structuredClone(source.specs)
   }
+
+  const compatibility = cleanCompatibility(source?.compatibility)
+  if (compatibility) record.compatibility = compatibility
 
   if (Array.isArray(source?.ports) && source.ports.length > 0) {
     const fallbackKind = type === 'switch'
@@ -178,6 +207,9 @@ export function buildQuantityRecords({ input, type, quantity, startingId, existi
     delete record.type
     delete record.key
     delete record.archivedAt
+
+    const compatibility = cleanCompatibility(record.compatibility)
+    if (compatibility) record.compatibility = compatibility
 
     if (Array.isArray(record.ports)) {
       const fallbackKind = type === 'switch'

@@ -34,7 +34,7 @@ describe('atomic inventory commands', () => {
     let project = store.createInventoryItems({ type: 'switch', name: 'Edge Switch' }, 2)
     project = store.createInventoryItems({ type: 'ram', name: '32GB DDR4', specs: { capacityGB: 32 } }, 3)
 
-    expect(project.metadata.schemaVersion).toBe(6)
+    expect(project.metadata.schemaVersion).toBe(7)
     expect(store.databases.inventory.data.switches.map(({ id, name }) => ({ id, name }))).toEqual([
       { id: 1, name: 'Edge Switch #1' },
       { id: 2, name: 'Edge Switch #2' },
@@ -45,6 +45,28 @@ describe('atomic inventory commands', () => {
       { id: 3, name: '32GB DDR4' },
     ])
     expect(store.databases.inventory.data.ram[0].specs).toEqual({ capacityGB: 32 })
+  })
+
+  it('preserves independent compatibility profiles for quantity creation', async () => {
+    const { store } = await createStore()
+    const compatibility = {
+      host: {
+        storageSlots: [{ id: 'source-slot', label: 'M.2', count: 1, interfaces: ['NVMe'] }],
+      },
+      extension: { retained: true },
+    }
+
+    store.createInventoryItems({ type: 'server', name: 'Node', compatibility }, 2)
+
+    const [first, second] = store.databases.inventory.data.servers
+    expect(first.compatibility).toEqual({
+      host: {
+        storageSlots: [{ id: 'source-slot', label: 'M.2', count: 1, interfaces: ['NVMe'] }],
+      },
+      extension: { retained: true },
+    })
+    expect(second.compatibility).toEqual(first.compatibility)
+    expect(second.compatibility).not.toBe(first.compatibility)
   })
 
   it('rejects invalid quantities without changing inventory', async () => {
@@ -73,6 +95,14 @@ describe('atomic inventory commands', () => {
         label: 'LAN',
         notes: 'patched',
       }],
+      compatibility: {
+        host: {
+          storageSlots: [{ id: 'm2-original', label: 'M.2', count: 1, interfaces: ['NVMe'] }],
+          expansionSlots: [{
+            id: 'pcie-original', label: 'PCIe', count: 1, interfaceFamily: 'pcie',
+          }],
+        },
+      },
     })
 
     const project = store.duplicateInventoryItem({ type: 'server', id: 1 }, 2)
@@ -84,6 +114,25 @@ describe('atomic inventory commands', () => {
     expect(project.items['server:2'].ports).toEqual([{
       id: 1, kind: 'server-port', type: 'rj45', slotNumber: 1, speed: '1G',
     }])
+    expect(project.items['server:2'].compatibility).toEqual({
+      host: {
+        storageSlots: [{ id: 'storage-1', label: 'M.2', count: 1, interfaces: ['NVMe'] }],
+        expansionSlots: [{
+          id: 'expansion-1', label: 'PCIe', count: 1, interfaceFamily: 'pcie',
+        }],
+      },
+    })
+  })
+
+  it('preserves compatibility profiles while archiving and restoring', async () => {
+    const { store } = await createStore()
+    const compatibility = { requirements: { cpu: { socket: 'LGA1200', generation: '10' } } }
+    store.createInventoryItems({ type: 'cpu', name: 'CPU', compatibility })
+
+    store.archiveInventoryItems([{ type: 'cpu', id: 1 }])
+    expect(store.getProject().items['cpu:1'].compatibility).toEqual(compatibility)
+    store.restoreInventoryItems([{ type: 'cpu', id: 1 }])
+    expect(store.getProject().items['cpu:1'].compatibility).toEqual(compatibility)
   })
 
   it('archives, restores, and deletes dependency-free records', async () => {
@@ -159,7 +208,7 @@ describe('atomic inventory commands', () => {
     await store.flush()
 
     const { store: restarted } = await createStore(dataDir)
-    expect(restarted.databases.meta.data.schemaVersion).toBe(6)
+    expect(restarted.databases.meta.data.schemaVersion).toBe(7)
     expect(restarted.getProject().items['cpu:1'].archivedAt).toBeTruthy()
   })
 })

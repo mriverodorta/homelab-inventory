@@ -8,6 +8,7 @@ import { RELEASE_NOTES } from '../src/release-notes.ts'
 import { registerAgentRoutes } from './agent-routes.mjs'
 import { HomelabInventoryStore } from './db/store.mjs'
 import { registerInventoryRoutes } from './inventory-routes.mjs'
+import { registerProjectRoutes } from './project-routes.mjs'
 import { createRateLimitOptions, readRateLimitConfig } from './rate-limit.mjs'
 import { DockerHubUpdateChecker } from './update-checker.mjs'
 import { registerUpdateRoutes } from './update-routes.mjs'
@@ -160,6 +161,7 @@ registerUpdateRoutes(app, {
 })
 
 registerInventoryRoutes(app, { withStore })
+registerProjectRoutes(app, { withStore })
 
 startUpdateCheckSchedule({
   checker: updateChecker,
@@ -174,12 +176,6 @@ app.get('/api/health', (_request, response) => {
   })
 })
 
-app.get('/api/project', (request, response) => {
-  void withStore(request, response, async (currentStore) => {
-    response.json(currentStore.getProject())
-  }, { message: 'Unable to load project.' })
-})
-
 app.get('/api/release-notes/status', (request, response) => {
   void withStore(request, response, async (currentStore) => {
     response.json(currentStore.getReleaseNotesStatus(RELEASE_NOTES))
@@ -190,12 +186,6 @@ app.post('/api/release-notes/acknowledge', (request, response) => {
   void withStore(request, response, async (currentStore) => {
     response.json(await currentStore.acknowledgeReleaseNotes())
   }, { message: 'Unable to acknowledge release notes.' })
-})
-
-app.put('/api/project', (request, response) => {
-  void withStore(request, response, async (currentStore) => {
-    response.json(currentStore.setProject(request.body))
-  }, { status: 400, message: 'Unable to save project.' })
 })
 
 app.post('/api/flush', (request, response) => {

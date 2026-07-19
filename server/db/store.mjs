@@ -4,6 +4,10 @@ import { Low } from 'lowdb'
 import { normalizeNetworkProject, recalculateNegotiatedSpeeds } from '../../src/lib/negotiated-speed.ts'
 import { getReleaseNotesBetween } from '../../src/release-notes.ts'
 import {
+  normalizeCompatibilityProject,
+  planHostAllocations,
+} from '../../shared/compatibility/index.mjs'
+import {
   analyzeInventoryDependencies,
   assertDependencyFree,
   buildDuplicateRecord,
@@ -12,9 +16,14 @@ import {
   referencedPortIds,
   resolveInventoryRef,
 } from './inventory-lifecycle.mjs'
-import { assertInventoryStoreShape, assertProjectShape, assertProjectStoreShape } from './validation.mjs'
+import {
+  assertInventoryStoreShape,
+  assertLegacyProjectShape,
+  assertProjectShape,
+  assertProjectStoreShape,
+} from './validation.mjs'
 
-export const CURRENT_SCHEMA_VERSION = 6
+export const CURRENT_SCHEMA_VERSION = 7
 
 const DEFAULT_SAVE_DEBOUNCE_MS = 500
 const BACKUP_LIMIT = 10
@@ -102,7 +111,10 @@ function createProjectStoreFromProject(project) {
 }
 
 function splitProject(project) {
+  assertLegacyProjectShape(project)
   project = normalizeLegacyProjectIds(project)
+  assertProjectShape(project)
+  project = normalizeCompatibilityProject(project)
   assertProjectShape(project)
 
   return {
@@ -204,6 +216,18 @@ function composeProject(meta, inventory, project) {
 
 function itemKey(type, id) {
   return `${type}:${id}`
+}
+
+function compatibilityFindingIdentity(result, finding) {
+  return JSON.stringify([
+    String(result.hostId),
+    String(result.assignmentId),
+    String(result.itemId),
+    finding.code,
+    finding.field ?? '',
+    finding.resourceId ?? '',
+    finding.message ?? '',
+  ])
 }
 
 function parseItemKey(key) {
@@ -456,6 +480,10 @@ function normalizeInventoryItemInput(input, id) {
     item.properties = properties
   }
 
+  if (input.compatibility && typeof input.compatibility === 'object' && !Array.isArray(input.compatibility)) {
+    item.compatibility = structuredClone(input.compatibility)
+  }
+
   if (Array.isArray(input.ports)) {
     const fallbackKind = type === 'switch'
       ? 'switch-port'
@@ -551,6 +579,7 @@ function persistAssignment(assignment) {
     itemId: item?.id ?? assignment.itemId,
     type: assignment.type,
     assignedAt: assignment.assignedAt,
+    ...(assignment.allocation ? { allocation: structuredClone(assignment.allocation) } : {}),
   }
 }
 
@@ -565,6 +594,7 @@ function runtimeAssignment(assignment) {
     itemId: itemKey(assignment.itemType, assignment.itemId),
     type: assignment.type,
     assignedAt: assignment.assignedAt,
+    ...(assignment.allocation ? { allocation: structuredClone(assignment.allocation) } : {}),
   }
 }
 
@@ -685,6 +715,8 @@ export class HomelabInventoryStore {
     await this.openStores()
     await this.runMigrations()
     await this.validateStores()
+    await this.normalizeLoadedCompatibility()
+    await this.validateStores()
     this.initializeReleaseNotesMetadata()
     await this.markAppOpened()
   }
@@ -703,6 +735,7 @@ export class HomelabInventoryStore {
 
     if (this.legacyProjectPath && await pathExists(this.legacyProjectPath)) {
       const legacyProject = await readJson(this.legacyProjectPath)
+      assertLegacyProjectShape(legacyProject)
       const split = splitProject(normalizeNetworkProject(legacyProject))
 
       await writeJson(this.paths.meta, {
@@ -896,6 +929,21 @@ export class HomelabInventoryStore {
         continue
       }
 
+      if (currentVersion === 6) {
+        const composedProject = composeProject(
+          this.databases.meta.data,
+          this.databases.inventory.data,
+          this.databases.project.data,
+        )
+        const split = splitProject(composedProject)
+
+        this.databases.inventory.data = split.inventory
+        this.databases.project.data = split.project
+        this.databases.meta.data.schemaVersion = 7
+        currentVersion = 7
+        continue
+      }
+
       throw new Error(`No migration registered for schema version ${currentVersion}.`)
     }
 
@@ -912,6 +960,21 @@ export class HomelabInventoryStore {
     this.databases.agents.data.enrollments ??= {}
     this.databases.agents.data.devices ??= {}
     this.databases.agentStatus.data.servers ??= {}
+  }
+
+  async normalizeLoadedCompatibility() {
+    const split = splitProject(this.getProject())
+    const inventoryChanged = JSON.stringify(split.inventory) !== JSON.stringify(this.databases.inventory.data)
+    const projectChanged = JSON.stringify(split.project) !== JSON.stringify(this.databases.project.data)
+
+    if (inventoryChanged) this.databases.inventory.data = split.inventory
+    if (projectChanged) this.databases.project.data = split.project
+    if (inventoryChanged || projectChanged) {
+      await this.flush([
+        ...(inventoryChanged ? ['inventory'] : []),
+        ...(projectChanged ? ['project'] : []),
+      ])
+    }
   }
 
   initializeReleaseNotesMetadata() {
@@ -1007,7 +1070,10 @@ export class HomelabInventoryStore {
     }
 
     assertProjectShape(submittedProject)
-    const normalizedProject = normalizeNetworkProject(submittedProject)
+    const canonicalProject = normalizeLegacyProjectIds(submittedProject)
+    assertProjectShape(canonicalProject)
+    this.assertAssignmentTransitions(this.getProject(), canonicalProject)
+    const normalizedProject = normalizeNetworkProject(canonicalProject)
     const split = splitProject(normalizedProject)
     const updatedAt = new Date().toISOString()
 
@@ -1032,6 +1098,61 @@ export class HomelabInventoryStore {
     return this.getProject()
   }
 
+  assertAssignmentTransitions(currentProject, submittedProject) {
+    const currentById = new Map(
+      (currentProject.assignments ?? []).map((assignment) => [String(assignment.id), assignment]),
+    )
+    const enforcedIds = new Set()
+    const affectedHosts = new Set()
+
+    for (const assignment of submittedProject.assignments ?? []) {
+      const previous = currentById.get(String(assignment.id))
+      if (
+        !previous ||
+        String(previous.serverId) !== String(assignment.serverId) ||
+        String(previous.itemId) !== String(assignment.itemId) ||
+        previous.type !== assignment.type
+      ) {
+        enforcedIds.add(String(assignment.id))
+        affectedHosts.add(String(assignment.serverId))
+        if (previous) affectedHosts.add(String(previous.serverId))
+      }
+    }
+
+    if (enforcedIds.size === 0) return
+
+    const baseline = new Set()
+    for (const hostId of affectedHosts) {
+      for (const result of planHostAllocations(currentProject, hostId).results) {
+        for (const finding of result.findings?.filter((entry) => entry.severity === 'error') ?? []) {
+          baseline.add(compatibilityFindingIdentity(result, finding))
+        }
+      }
+    }
+
+    for (const hostId of affectedHosts) {
+      for (const result of planHostAllocations(submittedProject, hostId).results) {
+        const errors = result.findings?.filter((finding) => finding.severity === 'error') ?? []
+        for (const finding of errors) {
+          const isEnforced = enforcedIds.has(String(result.assignmentId))
+          const isNewHostFailure = !baseline.has(compatibilityFindingIdentity(result, finding))
+          if (isEnforced || isNewHostFailure) {
+            throw new InventoryLifecycleError(`[${finding.code}] ${finding.message}`, {
+              code: 'hardware-incompatible',
+              status: 409,
+              details: {
+                assignmentId: result.assignmentId,
+                hostId: result.hostId,
+                itemId: result.itemId,
+                finding,
+              },
+            })
+          }
+        }
+      }
+    }
+  }
+
   inventoryTransaction(mutator) {
     const draft = {
       meta: structuredClone(this.databases.meta.data),
@@ -1046,6 +1167,9 @@ export class HomelabInventoryStore {
     draft.meta.updatedAt = updatedAt
 
     try {
+      const split = splitProject(composeProject(draft.meta, draft.inventory, draft.project))
+      draft.inventory = split.inventory
+      draft.project = split.project
       assertInventoryStoreShape(draft.inventory)
       assertProjectStoreShape(draft.project)
       assertProjectShape(composeProject(draft.meta, draft.inventory, draft.project))
@@ -1058,8 +1182,10 @@ export class HomelabInventoryStore {
 
     this.databases.meta.data = draft.meta
     this.databases.inventory.data = draft.inventory
+    this.databases.project.data = draft.project
     this.scheduleFlush('meta')
     this.scheduleFlush('inventory')
+    this.scheduleFlush('project')
 
     return composeProject(draft.meta, draft.inventory, draft.project)
   }

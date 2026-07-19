@@ -181,6 +181,9 @@ export function normalizeInventory(input: unknown): InventoryItem[] {
       model: typeof raw.model === 'string' ? raw.model : undefined,
       number: typeof raw.number === 'string' ? raw.number : undefined,
       specs: isRecord(raw.specs) ? (raw.specs as InventoryItem['specs']) : undefined,
+      compatibility: isRecord(raw.compatibility)
+        ? structuredClone(raw.compatibility) as InventoryItem['compatibility']
+        : undefined,
       properties: normalizeProperties(raw.properties),
       ports: normalizePorts(raw.ports, key),
       notes: typeof raw.notes === 'string' ? raw.notes : undefined,

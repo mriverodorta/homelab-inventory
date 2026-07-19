@@ -129,6 +129,132 @@ function negotiationInventoryStore() {
   }
 }
 
+function compatibilityItems() {
+  return {
+    'server:1': {
+      id: 1,
+      key: 'server:1',
+      type: 'server',
+      name: 'Storage Host',
+      compatibility: {
+        host: {
+          storageSlots: [{
+            id: 'm2-1',
+            label: 'M.2 slots',
+            count: 1,
+            interfaces: ['NVMe'],
+            formFactors: ['2280'],
+          }],
+        },
+      },
+      ports: [{ id: 1, kind: 'server-port', type: 'rj45', slotNumber: 1, speed: '1G' }],
+    },
+    'storage:1': {
+      id: 1,
+      key: 'storage:1',
+      type: 'storage',
+      name: 'Compatible NVMe',
+      specs: { capacityGb: 1000, interface: 'NVMe', formFactor: '2280' },
+    },
+    'storage:2': {
+      id: 2,
+      key: 'storage:2',
+      type: 'storage',
+      name: 'Incompatible SATA',
+      specs: { capacityGb: 1000, interface: 'SATA', formFactor: '2.5' },
+    },
+    'storage:3': {
+      id: 3,
+      key: 'storage:3',
+      type: 'storage',
+      name: 'Unknown storage',
+      specs: { capacityGb: 1000 },
+    },
+    'switch:1': {
+      id: 1,
+      key: 'switch:1',
+      type: 'switch',
+      name: 'Switch',
+      ports: [{ id: 1, kind: 'switch-port', type: 'rj45', slotNumber: 1, speed: '1G' }],
+    },
+  }
+}
+
+function compatibilityProject(assignments = []) {
+  return {
+    id: 'default',
+    metadata: {
+      name: 'Compatibility Test',
+      version: 1,
+      updatedAt: '2026-07-19T00:00:00.000Z',
+    },
+    items: compatibilityItems(),
+    placements: [{ serverId: 'server:1', x: 10, y: 20 }],
+    assignments,
+    connections: [{
+      id: 1,
+      from: { itemId: 'server:1', portId: 1 },
+      to: { itemId: 'switch:1', portId: 1 },
+      type: 'network',
+      createdAt: '2026-07-19T00:00:00.000Z',
+      negotiatedSpeedMbps: 1000,
+    }],
+  }
+}
+
+async function writeCompatibilityStores(dataDir, { schemaVersion = 7, assignments = [] } = {}) {
+  const project = compatibilityProject(assignments)
+  const inventory = {
+    servers: [structuredClone(project.items['server:1'])],
+    cpus: [],
+    ram: [],
+    storage: [
+      structuredClone(project.items['storage:1']),
+      structuredClone(project.items['storage:2']),
+      structuredClone(project.items['storage:3']),
+    ],
+    networkCards: [],
+    gpus: [],
+    nas: [],
+    switches: [structuredClone(project.items['switch:1'])],
+    patchPanels: [],
+  }
+  for (const records of Object.values(inventory)) {
+    for (const item of records) {
+      delete item.key
+      delete item.type
+    }
+  }
+  const persistedProject = {
+    ...project,
+    placements: [{ itemType: 'server', itemId: 1, x: 10, y: 20 }],
+    assignments: assignments.map((assignment) => ({
+      id: assignment.id,
+      hostType: 'server',
+      hostId: 1,
+      itemType: 'storage',
+      itemId: Number(String(assignment.itemId).split(':').pop()),
+      type: 'storage',
+      assignedAt: assignment.assignedAt,
+      ...(assignment.allocation ? { allocation: structuredClone(assignment.allocation) } : {}),
+    })),
+    connections: [{
+      ...project.connections[0],
+      from: { itemType: 'server', itemId: 1, portId: 1 },
+      to: { itemType: 'switch', itemId: 1, portId: 1 },
+    }],
+  }
+  delete persistedProject.items
+
+  await writeJson(path.join(dataDir, 'meta.json'), {
+    schemaVersion,
+    appLastOpenedWith: '0.1.20',
+    updatedAt: '2026-07-19T00:00:00.000Z',
+  })
+  await writeJson(path.join(dataDir, 'stores', 'inventory.json'), inventory)
+  await writeJson(path.join(dataDir, 'stores', 'project.json'), persistedProject)
+}
+
 afterEach(async () => {
   await Promise.all(activeStores.splice(0).map((store) => store.flush().catch(() => {})))
   await Promise.all(tempDirs.splice(0).map((dir) => fs.rm(dir, { recursive: true, force: true })))
@@ -140,7 +266,7 @@ describe('HomelabInventoryStore', () => {
     const seedDir = path.join(dataDir, 'seed')
 
     await writeJson(path.join(seedDir, 'meta.json'), {
-      schemaVersion: 6,
+      schemaVersion: 7,
       appLastOpenedWith: 'seed',
       updatedAt: '2026-06-26T00:00:00.000Z',
     })
@@ -366,6 +492,69 @@ describe('HomelabInventoryStore', () => {
     expect(JSON.parse(await fs.readFile(path.join(dataDir, 'stores', 'project.json'), 'utf8')).items).toBeUndefined()
   })
 
+  it('rejects unsupported legacy inventory records before creating split stores', async () => {
+    const dataDir = await makeTempDir()
+    const legacyPath = path.join(dataDir, 'homelab-inventory-project.json')
+
+    await writeJson(legacyPath, {
+      id: 'default',
+      metadata: {},
+      items: {
+        mystery: { id: 'mystery', type: 'router', name: 'Unsupported router' },
+      },
+      placements: [],
+      assignments: [],
+      connections: [],
+    })
+
+    const store = createStore({
+      appVersion: '1.0.0',
+      dataDir,
+      legacyProjectPath: legacyPath,
+      saveDebounceMs: 1,
+      seedEmptyData: false,
+      seedDir: path.join(dataDir, 'missing-seed'),
+    })
+
+    await expect(store.init()).rejects.toThrow(
+      'Project items["mystery"].type has an unsupported value.',
+    )
+    await expect(fs.access(path.join(dataDir, 'meta.json'))).rejects.toMatchObject({ code: 'ENOENT' })
+    await expect(fs.access(path.join(dataDir, 'stores', 'inventory.json')))
+      .rejects.toMatchObject({ code: 'ENOENT' })
+  })
+
+  it('rejects colliding normalized legacy inventory keys before creating split stores', async () => {
+    const dataDir = await makeTempDir()
+    const legacyPath = path.join(dataDir, 'homelab-inventory-project.json')
+
+    await writeJson(legacyPath, {
+      id: 'default',
+      metadata: {},
+      items: {
+        first: { id: '1', type: 'cpu', name: 'First CPU' },
+        'cpu:1': { id: 1, type: 'cpu', name: 'Second CPU' },
+      },
+      placements: [],
+      assignments: [],
+      connections: [],
+    })
+
+    const store = createStore({
+      appVersion: '1.0.0',
+      dataDir,
+      legacyProjectPath: legacyPath,
+      saveDebounceMs: 1,
+      seedEmptyData: false,
+      seedDir: path.join(dataDir, 'missing-seed'),
+    })
+
+    await expect(store.init()).rejects.toThrow(
+      'Project items["cpu:1"] normalizes to duplicate inventory key cpu:1 from Project items["first"].',
+    )
+    await expect(fs.access(path.join(dataDir, 'meta.json'))).rejects.toMatchObject({ code: 'ENOENT' })
+  })
+
   it('normalizes switch speeds and legacy uplinks while importing a single-file project', async () => {
     const dataDir = await makeTempDir()
     const legacyPath = path.join(dataDir, 'homelab-inventory-project.json')
@@ -434,7 +623,7 @@ describe('HomelabInventoryStore', () => {
       },
       negotiatedSpeedMbps: 10000,
     })
-    expect(store.databases.meta.data.schemaVersion).toBe(6)
+    expect(store.databases.meta.data.schemaVersion).toBe(7)
   })
 
   it('flushes project updates to split stores', async () => {
@@ -442,7 +631,7 @@ describe('HomelabInventoryStore', () => {
     const seedDir = path.join(dataDir, 'seed')
 
     await writeJson(path.join(seedDir, 'meta.json'), {
-      schemaVersion: 6,
+      schemaVersion: 7,
       appLastOpenedWith: 'seed',
       updatedAt: '2026-06-26T00:00:00.000Z',
     })
@@ -535,7 +724,7 @@ describe('HomelabInventoryStore', () => {
     const dataDir = await makeTempDir()
 
     await writeJson(path.join(dataDir, 'meta.json'), {
-      schemaVersion: 6,
+      schemaVersion: 7,
       appLastOpenedWith: '0.1.8',
       updatedAt: '2026-07-08T00:00:00.000Z',
     })
@@ -605,7 +794,7 @@ describe('HomelabInventoryStore', () => {
     const dataDir = await makeTempDir()
 
     await writeJson(path.join(dataDir, 'meta.json'), {
-      schemaVersion: 6,
+      schemaVersion: 7,
       updatedAt: '2026-07-08T00:00:00.000Z',
     })
     await writeJson(path.join(dataDir, 'stores', 'inventory.json'), {
@@ -659,7 +848,7 @@ describe('HomelabInventoryStore', () => {
     const dataDir = await makeTempDir()
 
     await writeJson(path.join(dataDir, 'meta.json'), {
-      schemaVersion: 6,
+      schemaVersion: 7,
       appLastOpenedWith: '0.1.9',
       lastSeenReleaseNotesVersion: '0.1.9',
       updatedAt: '2026-07-08T00:00:00.000Z',
@@ -993,7 +1182,415 @@ describe('HomelabInventoryStore', () => {
     ])
   })
 
-  it('migrates schema 5 inventory records to schema 6 without rewriting them', async () => {
+  it('migrates schema 6 to schema 7 and deterministically allocates only compatible assignments', async () => {
+    const dataDir = await makeTempDir()
+    const assignments = [
+      {
+        id: 1,
+        serverId: 'server:1',
+        itemId: 'storage:1',
+        type: 'storage',
+        assignedAt: '2026-07-19T00:00:00.000Z',
+      },
+      {
+        id: 2,
+        serverId: 'server:1',
+        itemId: 'storage:2',
+        type: 'storage',
+        assignedAt: '2026-07-19T00:00:01.000Z',
+      },
+    ]
+    await writeCompatibilityStores(dataDir, { schemaVersion: 6, assignments })
+    const beforeInventory = JSON.parse(
+      await fs.readFile(path.join(dataDir, 'stores', 'inventory.json'), 'utf8'),
+    )
+    const beforeProject = JSON.parse(
+      await fs.readFile(path.join(dataDir, 'stores', 'project.json'), 'utf8'),
+    )
+
+    const store = createStore({
+      appVersion: '0.1.21',
+      dataDir,
+      legacyProjectPath: path.join(dataDir, 'homelab-inventory-project.json'),
+      saveDebounceMs: 1,
+      seedEmptyData: false,
+      seedDir: path.join(dataDir, 'missing-seed'),
+    })
+    await store.init()
+    await store.flush()
+
+    expect(store.databases.meta.data.schemaVersion).toBe(7)
+    expect(store.getProject().assignments).toEqual([
+      expect.objectContaining({
+        id: 1,
+        allocation: { resourceType: 'storage', groupId: 'm2-1', positions: [0] },
+      }),
+      expect.not.objectContaining({ allocation: expect.anything() }),
+    ])
+    expect(store.databases.inventory.data).toEqual(beforeInventory)
+    expect(store.databases.project.data.placements).toEqual(beforeProject.placements)
+    expect(store.databases.project.data.connections).toEqual(beforeProject.connections)
+    const backupEntries = await fs.readdir(path.join(dataDir, 'backups'), { withFileTypes: true })
+    expect(backupEntries.some(
+      (entry) => entry.isDirectory() && entry.name.endsWith('-schema-6-to-7'),
+    )).toBe(true)
+  })
+
+  it('enforces only new assignment transitions and keeps rejected saves byte-for-byte atomic', async () => {
+    const dataDir = await makeTempDir()
+    await writeCompatibilityStores(dataDir)
+    const store = createStore({
+      appVersion: '0.1.21',
+      dataDir,
+      legacyProjectPath: path.join(dataDir, 'homelab-inventory-project.json'),
+      saveDebounceMs: 1,
+      seedEmptyData: false,
+      seedDir: path.join(dataDir, 'missing-seed'),
+    })
+    await store.init()
+    const before = JSON.stringify(Object.fromEntries(
+      Object.entries(store.databases).map(([name, database]) => [name, database.data]),
+    ))
+    const submitted = store.getProject()
+    submitted.assignments.push({
+      id: 1,
+      serverId: 'server:1',
+      itemId: 'storage:2',
+      type: 'storage',
+      assignedAt: '2026-07-19T00:00:00.000Z',
+    })
+
+    expect(() => store.setProject(submitted)).toThrow(/storage\.interface\.mismatch.*No storage slot accepts/u)
+    expect(JSON.stringify(Object.fromEntries(
+      Object.entries(store.databases).map(([name, database]) => [name, database.data]),
+    ))).toBe(before)
+  })
+
+  it('rejects canonical assignment ID collisions before transition planning and remains atomic', async () => {
+    const dataDir = await makeTempDir()
+    await writeCompatibilityStores(dataDir)
+    const store = createStore({
+      appVersion: '0.1.21',
+      dataDir,
+      legacyProjectPath: path.join(dataDir, 'homelab-inventory-project.json'),
+      saveDebounceMs: 1,
+      seedEmptyData: false,
+      seedDir: path.join(dataDir, 'missing-seed'),
+    })
+    await store.init()
+    const before = JSON.stringify(Object.fromEntries(
+      Object.entries(store.databases).map(([name, database]) => [name, database.data]),
+    ))
+    const submitted = store.getProject()
+    submitted.assignments = [
+      { id: 1, serverId: 'server:1', itemId: 'storage:1', type: 'storage' },
+      { id: '1', serverId: 'server:1', itemId: 'storage:2', type: 'storage' },
+    ]
+
+    expect(() => store.setProject(submitted)).toThrow(
+      'Project assignments[1].id duplicates canonical id 1 from Project assignments[0].id.',
+    )
+    expect(JSON.stringify(Object.fromEntries(
+      Object.entries(store.databases).map(([name, database]) => [name, database.data]),
+    ))).toBe(before)
+  })
+
+  it('rejects canonical connection ID collisions before transition planning and remains atomic', async () => {
+    const dataDir = await makeTempDir()
+    await writeCompatibilityStores(dataDir)
+    const store = createStore({
+      appVersion: '0.1.21',
+      dataDir,
+      legacyProjectPath: path.join(dataDir, 'homelab-inventory-project.json'),
+      saveDebounceMs: 1,
+      seedEmptyData: false,
+      seedDir: path.join(dataDir, 'missing-seed'),
+    })
+    await store.init()
+    const before = JSON.stringify(Object.fromEntries(
+      Object.entries(store.databases).map(([name, database]) => [name, database.data]),
+    ))
+    const submitted = store.getProject()
+    submitted.connections.push({ ...structuredClone(submitted.connections[0]), id: '1' })
+
+    expect(() => store.setProject(submitted)).toThrow(
+      'Project connections[1].id duplicates canonical id 1 from Project connections[0].id.',
+    )
+    expect(JSON.stringify(Object.fromEntries(
+      Object.entries(store.databases).map(([name, database]) => [name, database.data]),
+    ))).toBe(before)
+  })
+
+  it('rejects duplicate component assignments and conflicting allocations atomically', async () => {
+    const dataDir = await makeTempDir()
+    await writeCompatibilityStores(dataDir)
+    const store = createStore({
+      appVersion: '0.1.21',
+      dataDir,
+      legacyProjectPath: path.join(dataDir, 'homelab-inventory-project.json'),
+      saveDebounceMs: 1,
+      seedEmptyData: false,
+      seedDir: path.join(dataDir, 'missing-seed'),
+    })
+    await store.init()
+    const before = JSON.stringify(Object.fromEntries(
+      Object.entries(store.databases).map(([name, database]) => [name, database.data]),
+    ))
+    const duplicate = store.getProject()
+    duplicate.assignments = [
+      { id: 1, serverId: 'server:1', itemId: 'storage:1', type: 'storage' },
+      { id: 2, serverId: 'server:1', itemId: 'storage:1', type: 'storage' },
+    ]
+
+    expect(() => store.setProject(duplicate)).toThrow(
+      'Project assignments[1].itemId duplicates component storage:1 from Project assignments[0].itemId.',
+    )
+    expect(JSON.stringify(Object.fromEntries(
+      Object.entries(store.databases).map(([name, database]) => [name, database.data]),
+    ))).toBe(before)
+
+    const overlapping = store.getProject()
+    overlapping.assignments = [
+      {
+        id: 1,
+        serverId: 'server:1',
+        itemId: 'storage:1',
+        type: 'storage',
+        allocation: { resourceType: 'storage', groupId: 'm2-1', positions: [0] },
+      },
+      {
+        id: 2,
+        serverId: 'server:1',
+        itemId: 'storage:2',
+        type: 'storage',
+        allocation: { resourceType: 'storage', groupId: 'm2-1', positions: [0] },
+      },
+    ]
+
+    expect(() => store.setProject(overlapping)).toThrow(
+      'Project assignments[1].allocation.positions[0] conflicts with Project assignments[0].allocation.positions[0].',
+    )
+    expect(JSON.stringify(Object.fromEntries(
+      Object.entries(store.databases).map(([name, database]) => [name, database.data]),
+    ))).toBe(before)
+  })
+
+  it('rejects assignment type-only changes and remains byte-for-byte atomic', async () => {
+    const dataDir = await makeTempDir()
+    await writeCompatibilityStores(dataDir, {
+      assignments: [{
+        id: 1,
+        serverId: 'server:1',
+        itemId: 'storage:1',
+        type: 'storage',
+        assignedAt: '2026-07-19T00:00:00.000Z',
+      }],
+    })
+    const store = createStore({
+      appVersion: '0.1.21',
+      dataDir,
+      legacyProjectPath: path.join(dataDir, 'homelab-inventory-project.json'),
+      saveDebounceMs: 1,
+      seedEmptyData: false,
+      seedDir: path.join(dataDir, 'missing-seed'),
+    })
+    await store.init()
+    const before = JSON.stringify(Object.fromEntries(
+      Object.entries(store.databases).map(([name, database]) => [name, database.data]),
+    ))
+    const submitted = store.getProject()
+    submitted.assignments[0].type = 'gpu'
+
+    expect(() => store.setProject(submitted)).toThrow(
+      'Project assignments[0].type gpu does not match referenced inventory item storage:1 type storage.',
+    )
+    expect(JSON.stringify(Object.fromEntries(
+      Object.entries(store.databases).map(([name, database]) => [name, database.data]),
+    ))).toBe(before)
+  })
+
+  it('rejects a changed assignment that replaces a compatible item with an incompatible item', async () => {
+    const dataDir = await makeTempDir()
+    await writeCompatibilityStores(dataDir, {
+      assignments: [{
+        id: 1,
+        serverId: 'server:1',
+        itemId: 'storage:1',
+        type: 'storage',
+        assignedAt: '2026-07-19T00:00:00.000Z',
+      }],
+    })
+    const store = createStore({
+      appVersion: '0.1.21',
+      dataDir,
+      legacyProjectPath: path.join(dataDir, 'homelab-inventory-project.json'),
+      saveDebounceMs: 1,
+      seedEmptyData: false,
+      seedDir: path.join(dataDir, 'missing-seed'),
+    })
+    await store.init()
+    const before = JSON.stringify(Object.fromEntries(
+      Object.entries(store.databases).map(([name, database]) => [name, database.data]),
+    ))
+    const submitted = store.getProject()
+    submitted.assignments[0].itemId = 'storage:2'
+
+    expect(() => store.setProject(submitted)).toThrow(/storage\.interface\.mismatch/u)
+    expect(JSON.stringify(Object.fromEntries(
+      Object.entries(store.databases).map(([name, database]) => [name, database.data]),
+    ))).toBe(before)
+  })
+
+  it('evaluates both submitted hosts atomically when swapping assigned CPUs', async () => {
+    const dataDir = await makeTempDir()
+    const store = createStore({
+      appVersion: '0.1.21',
+      dataDir,
+      legacyProjectPath: path.join(dataDir, 'homelab-inventory-project.json'),
+      saveDebounceMs: 1,
+      seedEmptyData: false,
+      seedDir: path.join(dataDir, 'missing-seed'),
+    })
+    await store.init()
+    store.createInventoryItems({
+      type: 'server',
+      name: 'LGA1200 Host',
+      compatibility: {
+        host: { cpu: { sockets: ['LGA1200'], generations: ['10'], maxTdpWatts: 65 } },
+      },
+    })
+    store.createInventoryItems({
+      type: 'server',
+      name: 'LGA1151 Host',
+      compatibility: {
+        host: { cpu: { sockets: ['LGA1151'], generations: ['8'], maxTdpWatts: 65 } },
+      },
+    })
+    store.createInventoryItems({
+      type: 'cpu',
+      name: '10th Gen CPU',
+      compatibility: {
+        requirements: { cpu: { socket: 'LGA1200', generation: '10', tdpWatts: 35 } },
+      },
+    })
+    store.createInventoryItems({
+      type: 'cpu',
+      name: '8th Gen CPU',
+      compatibility: {
+        requirements: { cpu: { socket: 'LGA1151', generation: '8', tdpWatts: 35 } },
+      },
+    })
+    const initial = store.getProject()
+    initial.assignments = [
+      {
+        id: 1,
+        serverId: 'server:1',
+        itemId: 'cpu:1',
+        type: 'cpu',
+        assignedAt: '2026-07-19T00:00:00.000Z',
+      },
+      {
+        id: 2,
+        serverId: 'server:2',
+        itemId: 'cpu:2',
+        type: 'cpu',
+        assignedAt: '2026-07-19T00:00:01.000Z',
+      },
+    ]
+    store.setProject(initial)
+
+    const before = JSON.stringify(Object.fromEntries(
+      Object.entries(store.databases).map(([name, database]) => [name, database.data]),
+    ))
+    const swapped = store.getProject()
+    swapped.assignments[0].itemId = 'cpu:2'
+    swapped.assignments[1].itemId = 'cpu:1'
+
+    expect(() => store.setProject(swapped)).toThrow(/cpu\.(socket\.mismatch|generation\.unsupported)/u)
+    expect(JSON.stringify(Object.fromEntries(
+      Object.entries(store.databases).map(([name, database]) => [name, database.data]),
+    ))).toBe(before)
+  })
+
+  it('preserves deterministic compatible allocations across a flush and restart', async () => {
+    const dataDir = await makeTempDir()
+    await writeCompatibilityStores(dataDir, {
+      assignments: [{
+        id: 1,
+        serverId: 'server:1',
+        itemId: 'storage:1',
+        type: 'storage',
+        assignedAt: '2026-07-19T00:00:00.000Z',
+      }],
+    })
+    const options = {
+      appVersion: '0.1.21',
+      dataDir,
+      legacyProjectPath: path.join(dataDir, 'homelab-inventory-project.json'),
+      saveDebounceMs: 1,
+      seedEmptyData: false,
+      seedDir: path.join(dataDir, 'missing-seed'),
+    }
+    const store = createStore(options)
+    await store.init()
+    await store.flush()
+    const beforeRestart = store.getProject().assignments
+
+    const restarted = createStore(options)
+    await restarted.init()
+
+    expect(beforeRestart).toEqual([
+      expect.objectContaining({
+        id: 1,
+        allocation: { resourceType: 'storage', groupId: 'm2-1', positions: [0] },
+      }),
+    ])
+    expect(restarted.getProject().assignments).toEqual(beforeRestart)
+  })
+
+  it('accepts unknown transitions without fabricating allocations and permits legacy removals', async () => {
+    const dataDir = await makeTempDir()
+    await writeCompatibilityStores(dataDir, {
+      assignments: [{
+        id: 1,
+        serverId: 'server:1',
+        itemId: 'storage:2',
+        type: 'storage',
+        assignedAt: '2026-07-19T00:00:00.000Z',
+      }],
+    })
+    const store = createStore({
+      appVersion: '0.1.21',
+      dataDir,
+      legacyProjectPath: path.join(dataDir, 'homelab-inventory-project.json'),
+      saveDebounceMs: 1,
+      seedEmptyData: false,
+      seedDir: path.join(dataDir, 'missing-seed'),
+    })
+    await store.init()
+
+    const unrelated = store.getProject()
+    unrelated.metadata.name = 'Unrelated save'
+    unrelated.placements[0].x = 44
+    expect(() => store.setProject(unrelated)).not.toThrow()
+    expect(store.getProject().assignments[0].allocation).toBeUndefined()
+
+    const withUnknown = store.getProject()
+    withUnknown.assignments.push({
+      id: 2,
+      serverId: 'server:1',
+      itemId: 'storage:3',
+      type: 'storage',
+      assignedAt: '2026-07-19T00:00:01.000Z',
+    })
+    expect(store.setProject(withUnknown).assignments[1].allocation).toBeUndefined()
+
+    const removed = store.getProject()
+    removed.assignments = []
+    expect(store.setProject(removed).assignments).toEqual([])
+  })
+
+  it('migrates schema 5 inventory records to schema 7 without rewriting them', async () => {
     const dataDir = await makeTempDir()
     const inventory = {
       servers: [],
@@ -1032,11 +1629,11 @@ describe('HomelabInventoryStore', () => {
 
     await store.init()
 
-    expect(store.databases.meta.data.schemaVersion).toBe(6)
+    expect(store.databases.meta.data.schemaVersion).toBe(7)
     expect(store.databases.inventory.data).toEqual(inventory)
     const backupEntries = await fs.readdir(path.join(dataDir, 'backups'), { withFileTypes: true })
     expect(backupEntries.some(
-      (entry) => entry.isDirectory() && entry.name.endsWith('-schema-5-to-6'),
+      (entry) => entry.isDirectory() && entry.name.endsWith('-schema-5-to-7'),
     )).toBe(true)
   })
 
@@ -1102,7 +1699,7 @@ describe('HomelabInventoryStore', () => {
 
     await store.init()
 
-    expect(store.databases.meta.data.schemaVersion).toBe(6)
+    expect(store.databases.meta.data.schemaVersion).toBe(7)
     expect(store.getProject().items['switch:1'].ports.map((port) => port.speed)).toEqual([
       '1G',
       '1G',
@@ -1152,7 +1749,7 @@ describe('HomelabInventoryStore', () => {
 
     const backupEntries = await fs.readdir(path.join(dataDir, 'backups'), { withFileTypes: true })
     const migrationBackup = backupEntries.find(
-      (entry) => entry.isDirectory() && entry.name.endsWith('-schema-4-to-6'),
+      (entry) => entry.isDirectory() && entry.name.endsWith('-schema-4-to-7'),
     )
 
     expect(migrationBackup).toBeDefined()

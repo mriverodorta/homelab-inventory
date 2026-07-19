@@ -81,6 +81,83 @@ describe('inventory lifecycle routes', () => {
     }
   })
 
+  it('preserves compatibility profiles for quantities and regenerates nested resource IDs for duplicates', async () => {
+    const { store, server, url } = await createTestContext()
+    const compatibility = {
+      host: {
+        storageSlots: [{ id: 'storage-custom', label: 'M.2', count: 1 }],
+        expansionSlots: [{
+          id: 'expansion-custom',
+          label: 'PCIe',
+          count: 1,
+          interfaceFamily: 'pcie',
+        }],
+      },
+      extension: { retained: true },
+    }
+
+    try {
+      const quantity = await jsonRequest(url, '/api/inventory/items', {
+        method: 'POST',
+        body: JSON.stringify({ item: { type: 'server', name: 'Node', compatibility }, quantity: 2 }),
+      })
+      const duplicated = await jsonRequest(url, '/api/inventory/items/server/1/duplicate', {
+        method: 'POST',
+        body: JSON.stringify({ quantity: 1 }),
+      })
+
+      expect(quantity.response.status).toBe(201)
+      expect(quantity.body.items['server:1'].compatibility).toEqual(compatibility)
+      expect(quantity.body.items['server:2'].compatibility).toEqual(compatibility)
+      expect(quantity.body.items['server:2'].compatibility).not.toBe(
+        quantity.body.items['server:1'].compatibility,
+      )
+      expect(duplicated.response.status).toBe(201)
+      expect(duplicated.body.items['server:3'].compatibility).toEqual({
+        host: {
+          storageSlots: [{ id: 'storage-1', label: 'M.2', count: 1 }],
+          expansionSlots: [{
+            id: 'expansion-1',
+            label: 'PCIe',
+            count: 1,
+            interfaceFamily: 'pcie',
+          }],
+        },
+        extension: { retained: true },
+      })
+      expect(store.getProject().items['server:1'].compatibility).toEqual(compatibility)
+    } finally {
+      server.close()
+    }
+  })
+
+  it('returns exact nested validation paths for invalid compatibility profiles', async () => {
+    const { server, url } = await createTestContext()
+
+    try {
+      const invalid = await jsonRequest(url, '/api/inventory/items', {
+        method: 'POST',
+        body: JSON.stringify({
+          item: {
+            type: 'server',
+            name: 'Node',
+            compatibility: {
+              host: { storageSlots: [{ id: 'storage-1', label: 'M.2', count: 0 }] },
+            },
+          },
+          quantity: 1,
+        }),
+      })
+
+      expect(invalid.response.status).toBe(400)
+      expect(invalid.body.message).toContain(
+        'Inventory item server:1 compatibility.host.storageSlots[0].count must be a positive integer.',
+      )
+    } finally {
+      server.close()
+    }
+  })
+
   it('returns 400 for invalid input and 404 for missing records', async () => {
     const { server, url } = await createTestContext()
 

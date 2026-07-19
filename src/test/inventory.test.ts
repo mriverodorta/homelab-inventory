@@ -69,6 +69,24 @@ describe('inventory parsing and merge', () => {
     expect(items[1]?.properties).toEqual({ displayName: 'Memory Kit' })
   })
 
+  it('preserves compatibility profiles and forward-compatible extensions during normalization', () => {
+    const compatibility = {
+      host: {
+        storageSlots: [{ id: 'm2-1', label: 'M.2', count: 1, interfaces: ['NVMe'] }],
+      },
+      extension: { retained: true },
+    }
+    const [item] = normalizeInventory([{
+      id: 1,
+      name: 'Host',
+      type: 'server',
+      compatibility,
+    }])
+
+    expect(item.compatibility).toEqual(compatibility)
+    expect(item.compatibility).not.toBe(compatibility)
+  })
+
   it('normalizes switch and patch panel ports', () => {
     const items = normalizeInventory([
       {

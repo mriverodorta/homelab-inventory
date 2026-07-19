@@ -49,7 +49,7 @@ async function createSourceData() {
   const sourceDir = await makeTempDir()
 
   await writeJson(path.join(sourceDir, 'meta.json'), {
-    schemaVersion: 6,
+    schemaVersion: 7,
     appLastOpenedWith: '0.1.10',
     updatedAt: '2026-07-09T00:00:00.000Z',
   })
@@ -93,7 +93,7 @@ describe('demo data sanitizer', () => {
     const targetDir = await makeTempDir()
 
     await writeJson(path.join(sourceDir, 'meta.json'), {
-      schemaVersion: 6,
+      schemaVersion: 7,
       appLastOpenedWith: '0.1.10',
       lastSeenReleaseNotesVersion: '0.1.10',
       skippedUpdateVersion: '0.1.16',
@@ -122,11 +122,32 @@ describe('demo data sanitizer', () => {
             tailscaleIp: '100.76.116.58',
             notes: 'token=abc123',
           },
+          compatibility: {
+            host: {
+              storageSlots: [
+                {
+                  id: 'm2-1',
+                  label: 'M.2 slot',
+                  count: 1,
+                  interfaces: ['NVMe'],
+                  formFactors: ['2280'],
+                },
+              ],
+            },
+            extension: { retained: true },
+          },
         },
       ],
       cpus: [],
       ram: [],
-      storage: [],
+      storage: [
+        {
+          id: 1,
+          name: '1TB NVMe',
+          type: 'storage',
+          specs: { interface: 'NVMe', formFactor: '2280' },
+        },
+      ],
       networkCards: [],
       gpus: [],
       nas: [],
@@ -141,7 +162,22 @@ describe('demo data sanitizer', () => {
         updatedAt: '2026-07-09T00:00:00.000Z',
       },
       placements: [{ itemType: 'server', itemId: 1, x: 24, y: 48 }],
-      assignments: [],
+      assignments: [
+        {
+          id: 1,
+          hostType: 'server',
+          hostId: 1,
+          itemType: 'storage',
+          itemId: 1,
+          type: 'storage',
+          assignedAt: '2026-07-09T00:00:00.000Z',
+          allocation: {
+            resourceType: 'storage',
+            groupId: 'm2-1',
+            positions: [0],
+          },
+        },
+      ],
       connections: [],
     })
     await writeJson(path.join(sourceDir, 'stores', 'agents.json'), {
@@ -166,6 +202,25 @@ describe('demo data sanitizer', () => {
     expect(inventory.servers[0].properties.lanIp).toBe('')
     expect(inventory.servers[0].properties.tailscaleIp).toBe('')
     expect(inventory.servers[0].properties.notes).toBe('')
+    expect(inventory.servers[0].compatibility).toEqual({
+      host: {
+        storageSlots: [
+          {
+            id: 'm2-1',
+            label: 'M.2 slot',
+            count: 1,
+            interfaces: ['NVMe'],
+            formFactors: ['2280'],
+          },
+        ],
+      },
+      extension: { retained: true },
+    })
+    expect(project.assignments[0].allocation).toEqual({
+      resourceType: 'storage',
+      groupId: 'm2-1',
+      positions: [0],
+    })
     expect(project.metadata.name).toBe('Homelab Inventory Demo')
     expect(meta.skippedUpdateVersion).toBeNull()
     expect(meta.lastUpdateCheck).toBeNull()
@@ -408,7 +463,7 @@ describe('DemoSessionManager', () => {
     const dataDir = await makeTempDir()
 
     await writeJson(path.join(sourceDir, 'meta.json'), {
-      schemaVersion: 6,
+      schemaVersion: 7,
       appLastOpenedWith: '0.1.10',
       updatedAt: '2026-07-09T00:00:00.000Z',
     })

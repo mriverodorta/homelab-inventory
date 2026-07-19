@@ -26,7 +26,7 @@ async function createTestStore() {
   const seedDir = path.join(dataDir, 'seed')
 
   await writeJson(path.join(seedDir, 'meta.json'), {
-    schemaVersion: 6,
+    schemaVersion: 7,
     appLastOpenedWith: 'test',
     updatedAt: '2026-06-27T00:00:00.000Z',
   })
