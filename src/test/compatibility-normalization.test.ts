@@ -168,6 +168,90 @@ describe('compatibility normalization', () => {
     expect(normalizeHostCapabilities({ id: 9, type: 'server', name: 'Unknown host' })).toEqual({})
   })
 
+  it('normalizes all structured host numeric fields strictly', () => {
+    expect(
+      normalizeHostCapabilities({
+        id: 17,
+        type: 'server',
+        name: 'Structured host',
+        compatibility: {
+          host: {
+            cpu: { sockets: ['LGA1200'], maxTdpWatts: '65' as never },
+            memory: {
+              generations: ['DDR4'],
+              slots: '2' as never,
+              maxCapacityGb: '64' as never,
+              maxModuleCapacityGb: true as never,
+              maxSpeedMt: '3200 MT/s' as never,
+            },
+            storageSlots: [
+              {
+                id: 'm2',
+                label: 'M.2 Slot',
+                count: '1' as never,
+                interfaces: ['NVMe'],
+                formFactors: ['2280'],
+                pcieGeneration: '4' as never,
+              },
+              {
+                id: 'bay',
+                label: 'Drive Bay',
+                count: false as never,
+                pcieGeneration: { value: 3 } as never,
+              },
+              {
+                id: 'array-values',
+                label: 'Malformed Slot',
+                count: [1] as never,
+                pcieGeneration: [4] as never,
+              },
+            ],
+            expansionSlots: [
+              {
+                id: 'pcie',
+                label: 'PCIe Slot',
+                interfaceFamily: 'pcie',
+                count: '1' as never,
+                pcieGeneration: true as never,
+                mechanicalLanes: '16' as never,
+                electricalLanes: { value: 8 } as never,
+                maxSlotWidth: '2 slots' as never,
+                maxPowerWatts: '75.5' as never,
+              },
+            ],
+            maxExpansionPowerWatts: '150' as never,
+          },
+        },
+      }),
+    ).toEqual({
+      cpu: { sockets: ['LGA1200'], maxTdpWatts: 65 },
+      memory: { generations: ['DDR4'], slots: 2, maxCapacityGb: 64 },
+      storageSlots: [
+        {
+          id: 'm2',
+          label: 'M.2 Slot',
+          count: 1,
+          interfaces: ['NVMe'],
+          formFactors: ['2280'],
+          pcieGeneration: 4,
+        },
+        { id: 'bay', label: 'Drive Bay' },
+        { id: 'array-values', label: 'Malformed Slot' },
+      ],
+      expansionSlots: [
+        {
+          id: 'pcie',
+          label: 'PCIe Slot',
+          interfaceFamily: 'pcie',
+          count: 1,
+          mechanicalLanes: 16,
+          maxPowerWatts: 75.5,
+        },
+      ],
+      maxExpansionPowerWatts: 150,
+    })
+  })
+
   it('parses only explicit PCIe generation and lane descriptors', () => {
     expect(parsePcieDescriptor('PCIe 4.0 x8')).toEqual({
       pcieGeneration: 4,
@@ -202,6 +286,121 @@ describe('compatibility normalization', () => {
       moduleCapacityGb: undefined,
       generation: undefined,
       speedMt: undefined,
+    })
+
+    expect(
+      normalizeComponentRequirements({
+        id: 11,
+        type: 'ram',
+        name: 'Invalid scalar RAM',
+        specs: {
+          capacityGb: true,
+          moduleCount: { value: 2 } as never,
+          speedMt: '0xC80',
+        },
+      }),
+    ).toEqual({
+      type: 'ram',
+      capacityGb: undefined,
+      moduleCount: undefined,
+      moduleCapacityGb: undefined,
+      generation: undefined,
+      speedMt: undefined,
+    })
+
+    expect(
+      normalizeComponentRequirements({
+        id: 12,
+        type: 'ram',
+        name: 'Numeric string RAM',
+        specs: {
+          capacityGb: '32',
+          moduleCount: '2',
+          speedMt: '3200',
+        },
+      }),
+    ).toEqual({
+      type: 'ram',
+      capacityGb: 32,
+      moduleCount: 2,
+      moduleCapacityGb: 16,
+      generation: undefined,
+      speedMt: 3200,
+    })
+  })
+
+  it('normalizes every structured CPU and expansion numeric field strictly', () => {
+    expect(
+      normalizeComponentRequirements({
+        id: 13,
+        type: 'cpu',
+        name: 'Numeric string CPU',
+        compatibility: {
+          requirements: { cpu: { socket: 'LGA1200', generation: '10', tdpWatts: '35' as never } },
+        },
+      }),
+    ).toEqual({ type: 'cpu', socket: 'LGA1200', generation: '10', tdpWatts: 35 })
+
+    expect(
+      normalizeComponentRequirements({
+        id: 14,
+        type: 'cpu',
+        name: 'Malformed CPU',
+        compatibility: {
+          requirements: { cpu: { tdpWatts: true as never } },
+        },
+      }),
+    ).toEqual({ type: 'cpu' })
+
+    expect(
+      normalizeComponentRequirements({
+        id: 15,
+        type: 'network',
+        name: 'Numeric string NIC',
+        compatibility: {
+          requirements: {
+            expansion: {
+              interfaceFamily: 'pcie',
+              pcieGeneration: '4' as never,
+              connectorLanes: '8' as never,
+              minimumElectricalLanes: '4' as never,
+              slotWidth: '1' as never,
+              powerWatts: '25.5' as never,
+            },
+          },
+        },
+      }),
+    ).toEqual({
+      type: 'network',
+      interfaceFamily: 'pcie',
+      pcieGeneration: 4,
+      connectorLanes: 8,
+      minimumElectricalLanes: 4,
+      slotWidth: 1,
+      powerWatts: 25.5,
+    })
+
+    expect(
+      normalizeComponentRequirements({
+        id: 16,
+        type: 'gpu',
+        name: 'Malformed GPU',
+        compatibility: {
+          requirements: {
+            expansion: {
+              interfaceFamily: 'pcie',
+              pcieGeneration: false as never,
+              connectorLanes: { value: 16 } as never,
+              minimumElectricalLanes: 'x8' as never,
+              slotWidth: '2 slots' as never,
+              powerWatts: Number.POSITIVE_INFINITY,
+            },
+          },
+        },
+      }),
+    ).toEqual({
+      type: 'gpu',
+      interfaceFamily: 'pcie',
     })
   })
 })

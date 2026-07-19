@@ -1,9 +1,15 @@
 import type {
   CardHeight,
+  CompatibilityResult,
   ExpansionInterfaceFamily,
   HostCompatibility,
 } from '../../src/types/compatibility'
-import type { InventoryItem, InventoryType } from '../../src/types/inventory'
+import type {
+  ComponentAssignment,
+  InventoryItem,
+  InventoryType,
+  ProjectState,
+} from '../../src/types/inventory'
 
 export type PcieDescriptor = {
   pcieGeneration?: number
@@ -48,10 +54,27 @@ export type NormalizedComponentRequirements =
   | NormalizedRamRequirements
   | NormalizedStorageRequirements
   | NormalizedExpansionRequirements
-  | { type?: InventoryType }
+  | { type?: Exclude<InventoryType, 'cpu' | 'ram' | 'storage' | 'gpu' | 'network'> }
+
+export type AssignmentCompatibilityInput = {
+  host: InventoryItem
+  component: InventoryItem
+  assignments?: ComponentAssignment[]
+  items?: Record<string, InventoryItem> | InventoryItem[] | Map<string | number, InventoryItem>
+}
+
+export type ProjectCompatibilityResult = CompatibilityResult & {
+  assignmentId: string | number
+  hostId: string
+  itemId: string
+}
 
 export function normalizeHostCapabilities(item: InventoryItem): HostCompatibility
 export function parsePcieDescriptor(value: unknown): PcieDescriptor
 export function normalizeComponentRequirements(
   item: InventoryItem,
 ): NormalizedComponentRequirements
+export function evaluateAssignmentCompatibility(
+  input: AssignmentCompatibilityInput,
+): CompatibilityResult
+export function evaluateProjectCompatibility(project: ProjectState): ProjectCompatibilityResult[]

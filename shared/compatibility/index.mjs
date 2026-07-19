@@ -8,7 +8,19 @@ function optionalNumber(value) {
     return undefined
   }
 
-  const parsed = Number(value)
+  if (typeof value !== 'number' && typeof value !== 'string') {
+    return undefined
+  }
+
+  const normalized = typeof value === 'string' ? value.trim() : value
+  if (
+    typeof normalized === 'string' &&
+    !/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?$/i.test(normalized)
+  ) {
+    return undefined
+  }
+
+  const parsed = typeof normalized === 'number' ? normalized : Number(normalized)
   return Number.isFinite(parsed) ? parsed : undefined
 }
 
@@ -44,9 +56,48 @@ function normalizeStorageInterface(value) {
   return canonicalInterfaces.get(normalized.toLowerCase()) ?? normalized
 }
 
+function normalizeNumericField(target, field) {
+  if (!target || !Object.prototype.hasOwnProperty.call(target, field)) {
+    return
+  }
+  const normalized = optionalNumber(target[field])
+  if (normalized === undefined) {
+    delete target[field]
+  } else {
+    target[field] = normalized
+  }
+}
+
 export function normalizeHostCapabilities(item) {
   const host = item?.compatibility?.host
-  return host && typeof host === 'object' ? structuredClone(host) : {}
+  if (!host || typeof host !== 'object') {
+    return {}
+  }
+
+  const normalized = structuredClone(host)
+  normalizeNumericField(normalized.cpu, 'maxTdpWatts')
+  for (const field of ['slots', 'maxCapacityGb', 'maxModuleCapacityGb', 'maxSpeedMt']) {
+    normalizeNumericField(normalized.memory, field)
+  }
+  for (const group of Array.isArray(normalized.storageSlots) ? normalized.storageSlots : []) {
+    for (const field of ['count', 'pcieGeneration']) {
+      normalizeNumericField(group, field)
+    }
+  }
+  normalizeNumericField(normalized, 'maxExpansionPowerWatts')
+  for (const group of Array.isArray(normalized.expansionSlots) ? normalized.expansionSlots : []) {
+    for (const field of [
+      'count',
+      'pcieGeneration',
+      'mechanicalLanes',
+      'electricalLanes',
+      'maxSlotWidth',
+      'maxPowerWatts',
+    ]) {
+      normalizeNumericField(group, field)
+    }
+  }
+  return normalized
 }
 
 export function parsePcieDescriptor(value) {
@@ -70,10 +121,15 @@ export function normalizeComponentRequirements(item) {
   const specs = item?.specs ?? {}
 
   if (item?.type === 'cpu') {
-    return {
-      type: 'cpu',
-      ...(item.compatibility?.requirements?.cpu ?? {}),
-    }
+    const structured = item.compatibility?.requirements?.cpu ?? {}
+    const normalized = { type: 'cpu' }
+    const socket = optionalString(structured.socket)
+    const generation = optionalString(structured.generation)
+    const tdpWatts = optionalNumber(structured.tdpWatts)
+    if (socket !== undefined) normalized.socket = socket
+    if (generation !== undefined) normalized.generation = generation
+    if (tdpWatts !== undefined) normalized.tdpWatts = tdpWatts
+    return normalized
   }
 
   if (item?.type === 'ram') {
@@ -105,14 +161,586 @@ export function normalizeComponentRequirements(item) {
 
   if (item?.type === 'gpu' || item?.type === 'network') {
     const legacyPcie = item.type === 'network' ? (specs.pcie ?? specs.interface) : specs.pcie
-
-    return {
-      type: item.type,
-      ...parsePcieDescriptor(legacyPcie),
-      powerWatts: optionalNumber(specs.powerWatts),
-      ...(item.compatibility?.requirements?.expansion ?? {}),
+    const legacy = parsePcieDescriptor(legacyPcie)
+    const structured = item.compatibility?.requirements?.expansion
+    const normalized = { type: item.type }
+    const structuredNumber = (field, fallback) => {
+      if (structured && Object.prototype.hasOwnProperty.call(structured, field)) {
+        return optionalNumber(structured[field])
+      }
+      return fallback
     }
+    const interfaceFamily = optionalString(structured?.interfaceFamily)
+    const height = optionalString(structured?.height)
+    const pcieGeneration = structuredNumber('pcieGeneration', legacy.pcieGeneration)
+    const connectorLanes = structuredNumber('connectorLanes', legacy.connectorLanes)
+    const minimumElectricalLanes = structuredNumber('minimumElectricalLanes', undefined)
+    const slotWidth = structuredNumber('slotWidth', undefined)
+    const powerWatts = structuredNumber('powerWatts', optionalNumber(specs.powerWatts))
+
+    if (interfaceFamily !== undefined) normalized.interfaceFamily = interfaceFamily
+    if (pcieGeneration !== undefined) normalized.pcieGeneration = pcieGeneration
+    if (connectorLanes !== undefined) normalized.connectorLanes = connectorLanes
+    if (minimumElectricalLanes !== undefined) {
+      normalized.minimumElectricalLanes = minimumElectricalLanes
+    }
+    if (height !== undefined) normalized.height = height
+    if (slotWidth !== undefined) normalized.slotWidth = slotWidth
+    if (powerWatts !== undefined) normalized.powerWatts = powerWatts
+    return normalized
   }
 
   return { type: item?.type }
+}
+
+function normalizedText(value) {
+  return optionalString(value)?.toLowerCase()
+}
+
+function includesNormalized(values, value) {
+  const expected = normalizedText(value)
+  return expected !== undefined && values.some((entry) => normalizedText(entry) === expected)
+}
+
+function addFinding(findings, finding) {
+  const duplicate = findings.some(
+    (entry) =>
+      entry.code === finding.code &&
+      entry.field === finding.field &&
+      entry.resourceId === finding.resourceId,
+  )
+  if (!duplicate) {
+    findings.push(finding)
+  }
+}
+
+function addMissing(findings, field, message, resourceId) {
+  addFinding(findings, {
+    code: 'compatibility.data.missing',
+    severity: 'unknown',
+    message,
+    field,
+    ...(resourceId ? { resourceId } : {}),
+  })
+}
+
+function statusFor(findings) {
+  if (findings.some((finding) => finding.severity === 'error')) {
+    return 'incompatible'
+  }
+  if (findings.some((finding) => finding.severity === 'unknown')) {
+    return 'unknown'
+  }
+  return 'compatible'
+}
+
+function itemLookup(items, id) {
+  if (!items) {
+    return undefined
+  }
+  if (items instanceof Map) {
+    return items.get(id) ?? items.get(String(id))
+  }
+  if (Array.isArray(items)) {
+    return items.find(
+      (item) => String(item?.id) === String(id) || (item?.key && item.key === String(id)),
+    )
+  }
+  return (
+    items[id] ??
+    items[String(id)] ??
+    Object.values(items).find(
+      (item) => String(item?.id) === String(id) || (item?.key && item.key === String(id)),
+    )
+  )
+}
+
+function assignedComponents(assignments, items, component) {
+  const assigned = new Map()
+  for (const assignment of assignments ?? []) {
+    const item = itemLookup(items, assignment.itemId)
+    if (item) {
+      assigned.set(item.key ?? `${item.type}:${String(item.id)}`, item)
+    }
+  }
+  if (component) {
+    assigned.set(component.key ?? `${component.type}:${String(component.id)}`, component)
+  }
+  return [...assigned.values()]
+}
+
+function evaluateCpu(hostCapabilities, requirements, findings) {
+  const support = hostCapabilities.cpu
+  const checks = [
+    ['socket', support?.sockets, requirements.socket, 'cpu.socket.mismatch'],
+    ['generation', support?.generations, requirements.generation, 'cpu.generation.unsupported'],
+  ]
+
+  for (const [field, accepted, actual, code] of checks) {
+    if (!Array.isArray(accepted) || accepted.length === 0) {
+      addMissing(findings, `host.cpu.${field === 'socket' ? 'sockets' : 'generations'}`, `Host CPU ${field} support is not recorded.`)
+    } else if (!actual) {
+      addMissing(findings, `component.cpu.${field}`, `CPU ${field} is not recorded.`)
+    } else if (!includesNormalized(accepted, actual)) {
+      addFinding(findings, {
+        code,
+        severity: 'error',
+        message: `CPU ${field} ${actual} is not supported by this host.`,
+        field: `component.cpu.${field}`,
+      })
+    }
+  }
+
+  if (support?.maxTdpWatts === undefined) {
+    addMissing(findings, 'host.cpu.maxTdpWatts', 'Host CPU TDP limit is not recorded.')
+  } else if (requirements.tdpWatts === undefined) {
+    addMissing(findings, 'component.cpu.tdpWatts', 'CPU TDP is not recorded.')
+  } else if (requirements.tdpWatts > support.maxTdpWatts) {
+    addFinding(findings, {
+      code: 'cpu.tdp.exceeded',
+      severity: 'error',
+      message: `CPU TDP ${requirements.tdpWatts}W exceeds the host limit of ${support.maxTdpWatts}W.`,
+      field: 'component.cpu.tdpWatts',
+    })
+  }
+}
+
+function evaluateMemory(hostCapabilities, requirements, assignments, items, component, findings) {
+  const support = hostCapabilities.memory
+  const ramItems = assignedComponents(assignments, items, component).filter((item) => item.type === 'ram')
+  const normalized = ramItems.map(normalizeComponentRequirements)
+
+  if (!Array.isArray(support?.generations) || support.generations.length === 0) {
+    addMissing(findings, 'host.memory.generations', 'Host memory generations are not recorded.')
+  } else if (!requirements.generation) {
+    addMissing(findings, 'component.memory.generation', 'Memory generation is not recorded.')
+  } else if (!includesNormalized(support.generations, requirements.generation)) {
+    addFinding(findings, {
+      code: 'memory.generation.mismatch',
+      severity: 'error',
+      message: `${requirements.generation} memory is not supported by this host.`,
+      field: 'component.memory.generation',
+    })
+  }
+
+  if (support?.slots === undefined) {
+    addMissing(findings, 'host.memory.slots', 'Host memory slot count is not recorded.')
+  } else {
+    const knownCounts = normalized
+      .map((entry) => entry.moduleCount)
+      .filter((value) => value !== undefined)
+    const moduleCount = knownCounts.reduce((total, value) => total + value, 0)
+    if (knownCounts.length !== normalized.length) {
+      addMissing(findings, 'component.memory.moduleCount', 'Memory module count is not recorded.')
+    }
+    if (moduleCount > support.slots) {
+      addFinding(findings, {
+        code: 'memory.slots.exceeded',
+        severity: 'error',
+        message: `${moduleCount} memory modules exceed the host's ${support.slots} slots.`,
+        field: 'component.memory.moduleCount',
+      })
+    }
+  }
+
+  if (support?.maxCapacityGb === undefined) {
+    addMissing(findings, 'host.memory.maxCapacityGb', 'Host memory capacity limit is not recorded.')
+  } else {
+    const knownCapacities = normalized
+      .map((entry) => entry.capacityGb)
+      .filter((value) => value !== undefined)
+    const capacity = knownCapacities.reduce((total, value) => total + value, 0)
+    if (knownCapacities.length !== normalized.length) {
+      addMissing(findings, 'component.memory.capacityGb', 'Memory capacity is not recorded.')
+    }
+    if (capacity > support.maxCapacityGb) {
+      addFinding(findings, {
+        code: 'memory.capacity.exceeded',
+        severity: 'error',
+        message: `${capacity}GB installed memory exceeds the host limit of ${support.maxCapacityGb}GB.`,
+        field: 'component.memory.capacityGb',
+      })
+    }
+  }
+
+  if (support?.maxModuleCapacityGb === undefined) {
+    addMissing(findings, 'host.memory.maxModuleCapacityGb', 'Host per-module memory limit is not recorded.')
+  } else {
+    const knownModuleCapacities = normalized
+      .map((entry) => entry.moduleCapacityGb)
+      .filter((value) => value !== undefined)
+    if (knownModuleCapacities.length !== normalized.length) {
+      addMissing(findings, 'component.memory.moduleCapacityGb', 'Memory module capacity is not known.')
+    }
+    const largestModule =
+      knownModuleCapacities.length > 0 ? Math.max(...knownModuleCapacities) : undefined
+    if (largestModule !== undefined && largestModule > support.maxModuleCapacityGb) {
+      addFinding(findings, {
+        code: 'memory.module-capacity.exceeded',
+        severity: 'error',
+        message: `${largestModule}GB modules exceed the host limit of ${support.maxModuleCapacityGb}GB per module.`,
+        field: 'component.memory.moduleCapacityGb',
+      })
+    }
+  }
+
+  if (support?.maxSpeedMt === undefined) {
+    addMissing(findings, 'host.memory.maxSpeedMt', 'Host memory speed limit is not recorded.')
+  } else if (requirements.speedMt === undefined) {
+    addMissing(findings, 'component.memory.speedMt', 'Memory speed is not recorded.')
+  } else if (requirements.speedMt > support.maxSpeedMt) {
+    addFinding(findings, {
+      code: 'memory.speed.negotiated',
+      severity: 'warning',
+      message: `${requirements.speedMt}MT/s memory will operate at up to ${support.maxSpeedMt}MT/s.`,
+      field: 'component.memory.speedMt',
+    })
+  }
+}
+
+function evaluateStorage(hostCapabilities, requirements, findings) {
+  const groups = hostCapabilities.storageSlots
+  if (!Array.isArray(groups) || groups.length === 0) {
+    addMissing(findings, 'host.storageSlots', 'Host storage slot capabilities are not recorded.')
+    return
+  }
+  if (!requirements.interface) {
+    addMissing(findings, 'component.storage.interface', 'Storage interface is not recorded.')
+    if (!requirements.formFactor) {
+      addMissing(findings, 'component.storage.formFactor', 'Storage form factor is not recorded.')
+    }
+    return
+  }
+
+  const interfaceGroups = groups.filter(
+    (group) =>
+      Array.isArray(group.interfaces) && includesNormalized(group.interfaces, requirements.interface),
+  )
+  if (interfaceGroups.length === 0) {
+    const unknownInterfaceGroups = groups.filter(
+      (group) => !Array.isArray(group.interfaces) || group.interfaces.length === 0,
+    )
+    if (unknownInterfaceGroups.length > 0) {
+      for (const group of unknownInterfaceGroups) {
+        addMissing(
+          findings,
+          'host.storageSlots.interfaces',
+          'Accepted storage interfaces are not recorded for this slot group.',
+          group.id,
+        )
+      }
+      if (!requirements.formFactor) {
+        addMissing(findings, 'component.storage.formFactor', 'Storage form factor is not recorded.')
+      }
+      return
+    }
+    addFinding(findings, {
+      code: 'storage.interface.mismatch',
+      severity: 'error',
+      message: `No storage slot accepts the ${requirements.interface} interface.`,
+      field: 'component.storage.interface',
+    })
+    if (!requirements.formFactor) {
+      addMissing(findings, 'component.storage.formFactor', 'Storage form factor is not recorded.')
+    }
+    return
+  }
+
+  if (!requirements.formFactor) {
+    addMissing(findings, 'component.storage.formFactor', 'Storage form factor is not recorded.')
+    return
+  }
+
+  const group = interfaceGroups.find(
+    (candidate) =>
+      Array.isArray(candidate.formFactors) &&
+      includesNormalized(candidate.formFactors, requirements.formFactor),
+  )
+  if (!group) {
+    const unknownFormFactorGroups = interfaceGroups.filter(
+      (candidate) => !Array.isArray(candidate.formFactors) || candidate.formFactors.length === 0,
+    )
+    if (unknownFormFactorGroups.length > 0) {
+      for (const candidate of unknownFormFactorGroups) {
+        addMissing(
+          findings,
+          'host.storageSlots.formFactors',
+          'Accepted storage form factors are not recorded for this slot group.',
+          candidate.id,
+        )
+      }
+      return
+    }
+    addFinding(findings, {
+      code: 'storage.form-factor.mismatch',
+      severity: 'error',
+      message: `No ${requirements.interface} storage slot accepts the ${requirements.formFactor} form factor.`,
+      field: 'component.storage.formFactor',
+    })
+    return
+  }
+
+  if (
+    normalizedText(requirements.interface) === 'nvme' &&
+    requirements.pcieGeneration !== undefined &&
+    group.pcieGeneration !== undefined &&
+    requirements.pcieGeneration > group.pcieGeneration
+  ) {
+    addFinding(findings, {
+      code: 'storage.pcie-generation.negotiated',
+      severity: 'warning',
+      message: `PCIe ${requirements.pcieGeneration} storage will negotiate at the slot's PCIe ${group.pcieGeneration} generation.`,
+      field: 'component.storage.pcieGeneration',
+      resourceId: group.id,
+    })
+  }
+}
+
+function expansionPowerItems(assignments, items, component) {
+  return assignedComponents(assignments, items, component).filter(
+    (item) => item.type === 'gpu' || item.type === 'network',
+  )
+}
+
+function evaluateExpansionGroup(group, requirements) {
+  const findings = []
+  if (requirements.interfaceFamily === 'pcie') {
+    if (requirements.connectorLanes === undefined) {
+      addMissing(findings, 'component.expansion.connectorLanes', 'Card connector width is not recorded.', group.id)
+    } else if (group.mechanicalLanes === undefined) {
+      addMissing(findings, 'host.expansionSlots.mechanicalLanes', 'Slot mechanical width is not recorded.', group.id)
+    } else if (requirements.connectorLanes > group.mechanicalLanes) {
+      addFinding(findings, {
+        code: 'expansion.mechanical-lanes.insufficient',
+        severity: 'error',
+        message: `The card's x${requirements.connectorLanes} connector does not fit the x${group.mechanicalLanes} slot.`,
+        field: 'component.expansion.connectorLanes',
+        resourceId: group.id,
+      })
+    }
+
+    if (requirements.pcieGeneration === undefined) {
+      addMissing(findings, 'component.expansion.pcieGeneration', 'Card PCIe generation is not recorded.', group.id)
+    } else if (group.pcieGeneration === undefined) {
+      addMissing(findings, 'host.expansionSlots.pcieGeneration', 'Slot PCIe generation is not recorded.', group.id)
+    } else if (requirements.pcieGeneration > group.pcieGeneration) {
+      addFinding(findings, {
+        code: 'expansion.pcie-generation.negotiated',
+        severity: 'warning',
+        message: `PCIe ${requirements.pcieGeneration} hardware will negotiate at PCIe ${group.pcieGeneration}.`,
+        field: 'component.expansion.pcieGeneration',
+        resourceId: group.id,
+      })
+    }
+
+    if (group.electricalLanes === undefined) {
+      addMissing(findings, 'host.expansionSlots.electricalLanes', 'Slot electrical lane count is not recorded.', group.id)
+    } else if (
+      requirements.minimumElectricalLanes !== undefined &&
+      group.electricalLanes < requirements.minimumElectricalLanes
+    ) {
+      addFinding(findings, {
+        code: 'expansion.minimum-lanes.insufficient',
+        severity: 'error',
+        message: `The slot provides x${group.electricalLanes}, below the card's required x${requirements.minimumElectricalLanes}.`,
+        field: 'component.expansion.minimumElectricalLanes',
+        resourceId: group.id,
+      })
+    } else if (
+      requirements.connectorLanes !== undefined &&
+      group.electricalLanes < requirements.connectorLanes
+    ) {
+      addFinding(findings, {
+        code: 'expansion.electrical-lanes.reduced',
+        severity: 'warning',
+        message: `The card will operate with x${group.electricalLanes} electrical lanes instead of x${requirements.connectorLanes}.`,
+        field: 'component.expansion.connectorLanes',
+        resourceId: group.id,
+      })
+    }
+
+    if (!requirements.height) {
+      addMissing(findings, 'component.expansion.height', 'Card height is not recorded.', group.id)
+    } else if (!Array.isArray(group.acceptedHeights) || group.acceptedHeights.length === 0) {
+      addMissing(findings, 'host.expansionSlots.acceptedHeights', 'Accepted card heights are not recorded.', group.id)
+    } else if (!group.acceptedHeights.includes(requirements.height)) {
+      addFinding(findings, {
+        code: 'expansion.height.unsupported',
+        severity: 'error',
+        message: `${requirements.height} cards are not supported by this slot.`,
+        field: 'component.expansion.height',
+        resourceId: group.id,
+      })
+    }
+
+    if (requirements.slotWidth === undefined) {
+      addMissing(findings, 'component.expansion.slotWidth', 'Card occupied width is not recorded.', group.id)
+    } else if (group.maxSlotWidth === undefined) {
+      addMissing(findings, 'host.expansionSlots.maxSlotWidth', 'Slot occupied-width limit is not recorded.', group.id)
+    } else if (requirements.slotWidth > group.maxSlotWidth) {
+      addFinding(findings, {
+        code: 'expansion.width.exceeded',
+        severity: 'error',
+        message: `${requirements.slotWidth}-slot hardware exceeds the ${group.maxSlotWidth}-slot width limit.`,
+        field: 'component.expansion.slotWidth',
+        resourceId: group.id,
+      })
+    }
+  }
+
+  if (requirements.powerWatts === undefined) {
+    addMissing(findings, 'component.expansion.powerWatts', 'Expansion-card power draw is not recorded.', group.id)
+  } else if (group.maxPowerWatts === undefined) {
+    addMissing(findings, 'host.expansionSlots.maxPowerWatts', 'Per-slot power limit is not recorded.', group.id)
+  } else if (requirements.powerWatts > group.maxPowerWatts) {
+    addFinding(findings, {
+      code: 'expansion.slot-power.exceeded',
+      severity: 'error',
+      message: `${requirements.powerWatts}W card draw exceeds the slot limit of ${group.maxPowerWatts}W.`,
+      field: 'component.expansion.powerWatts',
+      resourceId: group.id,
+    })
+  }
+
+  return findings
+}
+
+function expansionCandidateRank(candidate) {
+  const errors = candidate.findings.filter((finding) => finding.severity === 'error').length
+  const unknowns = candidate.findings.filter((finding) => finding.severity === 'unknown').length
+  const category = errors === 0 && unknowns === 0 ? 0 : errors === 0 ? 1 : 2
+  return [category, errors, unknowns, candidate.index]
+}
+
+function compareCandidateRank(left, right) {
+  const leftRank = expansionCandidateRank(left)
+  const rightRank = expansionCandidateRank(right)
+  for (let index = 0; index < leftRank.length; index += 1) {
+    if (leftRank[index] !== rightRank[index]) {
+      return leftRank[index] - rightRank[index]
+    }
+  }
+  return 0
+}
+
+function evaluateExpansionPower(hostCapabilities, assignments, items, component, findings) {
+  const powerItems = expansionPowerItems(assignments, items, component)
+  const powerRequirements = powerItems.map(normalizeComponentRequirements)
+  const knownPower = powerRequirements
+    .map((entry) => entry.powerWatts)
+    .filter((value) => value !== undefined)
+  const totalKnownPower = knownPower.reduce((total, value) => total + value, 0)
+
+  if (hostCapabilities.maxExpansionPowerWatts === undefined) {
+    addMissing(findings, 'host.maxExpansionPowerWatts', 'Host expansion power budget is not recorded.')
+  } else {
+    if (knownPower.length !== powerRequirements.length) {
+      addMissing(
+        findings,
+        'host.expansionPowerAssignments.powerWatts',
+        'Power draw is missing for assigned expansion hardware.',
+      )
+    }
+    if (totalKnownPower > hostCapabilities.maxExpansionPowerWatts) {
+      addFinding(findings, {
+        code: 'expansion.total-power.exceeded',
+        severity: 'error',
+        message: `${totalKnownPower}W known expansion draw exceeds the host budget of ${hostCapabilities.maxExpansionPowerWatts}W.`,
+        field: 'host.maxExpansionPowerWatts',
+      })
+    }
+  }
+}
+
+function evaluateExpansion(hostCapabilities, requirements, assignments, items, component, findings) {
+  const groups = hostCapabilities.expansionSlots
+  if (!Array.isArray(groups) || groups.length === 0) {
+    addMissing(findings, 'host.expansionSlots', 'Host expansion slot capabilities are not recorded.')
+  } else if (!requirements.interfaceFamily) {
+    addMissing(findings, 'component.expansion.interfaceFamily', 'Expansion interface family is not recorded.')
+  } else {
+    const matchingGroups = groups.filter(
+      (candidate) => candidate.interfaceFamily === requirements.interfaceFamily,
+    )
+    if (matchingGroups.length === 0) {
+      addFinding(findings, {
+        code: 'expansion.interface.mismatch',
+        severity: 'error',
+        message: `No expansion slot accepts the ${requirements.interfaceFamily} interface.`,
+        field: 'component.expansion.interfaceFamily',
+      })
+    } else {
+      const candidates = matchingGroups.map((group, index) => ({
+        index,
+        findings: evaluateExpansionGroup(group, requirements),
+      }))
+      const selected = candidates.reduce((best, candidate) =>
+        compareCandidateRank(candidate, best) < 0 ? candidate : best,
+      )
+      for (const finding of selected.findings) {
+        addFinding(findings, finding)
+      }
+    }
+  }
+
+  evaluateExpansionPower(hostCapabilities, assignments, items, component, findings)
+}
+
+export function evaluateAssignmentCompatibility({ host, component, assignments = [], items = {} }) {
+  const findings = []
+  const hostCapabilities = normalizeHostCapabilities(host)
+  const requirements = normalizeComponentRequirements(component)
+
+  if (requirements.type === 'cpu') {
+    evaluateCpu(hostCapabilities, requirements, findings)
+  } else if (requirements.type === 'ram') {
+    evaluateMemory(hostCapabilities, requirements, assignments, items, component, findings)
+  } else if (requirements.type === 'storage') {
+    evaluateStorage(hostCapabilities, requirements, findings)
+  } else if (requirements.type === 'gpu' || requirements.type === 'network') {
+    evaluateExpansion(hostCapabilities, requirements, assignments, items, component, findings)
+  }
+
+  return { status: statusFor(findings), findings }
+}
+
+export function evaluateProjectCompatibility(project) {
+  const hostsWithPowerFindings = new Set()
+  return (project?.assignments ?? []).flatMap((assignment) => {
+    const host = itemLookup(project.items, assignment.serverId)
+    const component = itemLookup(project.items, assignment.itemId)
+    if (!host || !component || (host.type !== 'server' && host.type !== 'nas')) {
+      return []
+    }
+    const result = evaluateAssignmentCompatibility({
+      host,
+      component,
+      assignments: project.assignments.filter(
+        (entry) => String(entry.serverId) === String(assignment.serverId),
+      ),
+      items: project.items,
+    })
+
+    if (component.type === 'gpu' || component.type === 'network') {
+      const hostId = String(assignment.serverId)
+      if (hostsWithPowerFindings.has(hostId)) {
+        result.findings = result.findings.filter(
+          (finding) =>
+            finding.code !== 'expansion.total-power.exceeded' &&
+            finding.field !== 'host.maxExpansionPowerWatts' &&
+            finding.field !== 'host.expansionPowerAssignments.powerWatts',
+        )
+        result.status = statusFor(result.findings)
+      } else {
+        hostsWithPowerFindings.add(hostId)
+      }
+    }
+
+    return [{
+      assignmentId: assignment.id,
+      hostId: assignment.serverId,
+      itemId: assignment.itemId,
+      ...result,
+    }]
+  })
 }
