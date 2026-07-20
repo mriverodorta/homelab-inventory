@@ -16,6 +16,11 @@ import type {
 import type { InventoryItemInput } from '@/lib/db'
 import { nextNumericId } from '@/lib/ids'
 import { runtimeItemKey } from '@/lib/item-keys'
+import { isCanvasEquipmentType } from '@/lib/inventory-capabilities'
+import {
+  PC_BUILD_COMPONENT_ORDER,
+  REQUIRED_PC_BUILD_COMPONENT_TYPES,
+} from '@/lib/pc-build'
 
 export const DEFAULT_PROJECT_ID = 'default'
 export const SERVER_CARD_WIDTH = 282
@@ -34,14 +39,26 @@ export const NAS_CARD_WIDTH = 360
 export const NAS_CARD_HEADER_HEIGHT = 54
 export const NAS_CARD_SECTION_HEIGHT = 50
 export const NAS_CARD_VERTICAL_PADDING = 84
+export const PC_BUILD_CARD_WIDTH = 318
+export const MONITOR_CARD_WIDTH = 360
+export const POWER_EQUIPMENT_CARD_WIDTH = 420
+const PC_BUILD_CARD_BASE_HEIGHT = 72
+const PC_BUILD_EMPTY_SLOT_HEIGHT = 34
+const PC_BUILD_ASSIGNED_SLOT_HEIGHT = 46
+const PC_BUILD_HOSTED_PORT_ROW_HEIGHT = 56
+const PC_BUILD_MOTHERBOARD_IO_HEIGHT = 58
+const PC_BUILD_OPERATING_SYSTEM_HEIGHT = 36
+const STANDALONE_CARD_BASE_HEIGHT = 116
+const STANDALONE_PORT_GROUP_FIXED_HEIGHT = 32
+const STANDALONE_PORT_ROW_HEIGHT = 44
+const STANDALONE_PORT_ROW_GAP = 6
+const MONITOR_PORT_COLUMNS = 5
+const POWER_EQUIPMENT_PORT_COLUMNS = 6
 const AUTO_ARRANGE_COLUMN_GAP = 78
 const AUTO_ARRANGE_GRID_SIZE = 24
 
 export function isCanvasItem(item: InventoryItem | undefined): boolean {
-  return item?.type === 'server' ||
-    item?.type === 'nas' ||
-    item?.type === 'switch' ||
-    item?.type === 'patchPanel'
+  return Boolean(item && isCanvasEquipmentType(item.type))
 }
 
 export function isArchivedItem(item: InventoryItem | undefined): boolean {
@@ -187,8 +204,12 @@ function snapArrangementValue(value: number): number {
   return Math.round(value / AUTO_ARRANGE_GRID_SIZE) * AUTO_ARRANGE_GRID_SIZE
 }
 
+function snapArrangementCeiling(value: number): number {
+  return Math.ceil(value / AUTO_ARRANGE_GRID_SIZE) * AUTO_ARRANGE_GRID_SIZE
+}
+
 function getArrangementColumn(item: InventoryItem | undefined): number {
-  if (item?.type === 'server' || item?.type === 'nas') {
+  if (item?.type === 'server' || item?.type === 'nas' || item?.type === 'pcBuild') {
     return 0
   }
 
@@ -252,7 +273,9 @@ export function autoArrangeCanvasItems(project: ProjectState): ProjectState {
 
       columnY.set(
         column,
-        snapArrangementValue(y + getCanvasItemHeight(project, placement.serverId) + SERVER_CARD_COLLISION_GAP),
+        snapArrangementCeiling(
+          y + getCanvasItemHeight(project, placement.serverId) + SERVER_CARD_COLLISION_GAP,
+        ),
       )
 
       return nextPlacement
@@ -691,6 +714,110 @@ export function getNasCardHeight(project: ProjectState, itemId: string): number 
     NAS_CARD_SECTION_HEIGHT * (hasNetworkCard ? 3 : 2)
 }
 
+function positiveInteger(value: unknown): number {
+  const parsed = typeof value === 'number' ? value : Number(value)
+  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : 0
+}
+
+function getPcBuildCardHeight(project: ProjectState, itemId: string): number {
+  const item = project.items[itemId]
+  const assignments = project.assignments.filter((assignment) => assignment.serverId === itemId)
+  const assignedTypes = new Set(assignments.map((assignment) => assignment.type))
+  const visibleTypes = PC_BUILD_COMPONENT_ORDER.filter(
+    (type) => REQUIRED_PC_BUILD_COMPONENT_TYPES.includes(type) || assignedTypes.has(type),
+  )
+  const motherboardAssignment = assignments.find((assignment) => assignment.type === 'motherboard')
+  const motherboard = motherboardAssignment
+    ? project.items[motherboardAssignment.itemId]
+    : undefined
+  let height = PC_BUILD_CARD_BASE_HEIGHT
+
+  if ((motherboard?.ports?.length ?? 0) > 0) {
+    height += PC_BUILD_MOTHERBOARD_IO_HEIGHT
+  }
+
+  if (String(item?.specs?.operatingSystem ?? '').trim()) {
+    height += PC_BUILD_OPERATING_SYSTEM_HEIGHT
+  }
+
+  for (const type of visibleTypes) {
+    const matchingAssignments = assignments.filter((assignment) => assignment.type === type)
+
+    if (matchingAssignments.length === 0) {
+      height += PC_BUILD_EMPTY_SLOT_HEIGHT
+      continue
+    }
+
+    for (const assignment of matchingAssignments) {
+      height += PC_BUILD_ASSIGNED_SLOT_HEIGHT
+
+      if (
+        assignment.type !== 'motherboard'
+        && (project.items[assignment.itemId]?.ports?.length ?? 0) > 0
+      ) {
+        height += PC_BUILD_HOSTED_PORT_ROW_HEIGHT
+      }
+    }
+  }
+
+  return height
+}
+
+function standalonePortGroupHeight(portCount: number, columns: number): number {
+  if (portCount <= 0) return 0
+
+  const rows = Math.ceil(portCount / columns)
+  return STANDALONE_PORT_GROUP_FIXED_HEIGHT
+    + rows * STANDALONE_PORT_ROW_HEIGHT
+    + Math.max(0, rows - 1) * STANDALONE_PORT_ROW_GAP
+}
+
+function getMonitorCardHeight(item: InventoryItem): number {
+  const ports = item.ports ?? []
+  const displayPorts = ports.filter((port) => port.type !== 'barrel').length
+  const powerPorts = ports.length - displayPorts
+
+  return STANDALONE_CARD_BASE_HEIGHT
+    + standalonePortGroupHeight(displayPorts, MONITOR_PORT_COLUMNS)
+    + standalonePortGroupHeight(powerPorts, MONITOR_PORT_COLUMNS)
+}
+
+function getUpsCardHeight(item: InventoryItem): number {
+  const explicitPorts = item.ports ?? []
+  const batteryOutlets = positiveInteger(item.specs?.batteryBackupOutlets)
+  const surgeOutlets = positiveInteger(item.specs?.surgeProtectedOutlets)
+  const totalOutlets = explicitPorts.length
+    || positiveInteger(item.specs?.outlets)
+    || batteryOutlets + surgeOutlets
+  let batteryCount = 0
+  let surgeCount = 0
+
+  if (explicitPorts.length > 0) {
+    explicitPorts.forEach((port, index) => {
+      const description = `${port.label ?? ''} ${port.notes ?? ''}`.toLowerCase()
+      const battery = description.includes('battery')
+        || (!description.includes('surge') && index < batteryOutlets)
+
+      if (battery) batteryCount += 1
+      else surgeCount += 1
+    })
+  } else {
+    batteryCount = Math.min(totalOutlets, batteryOutlets)
+    surgeCount = Math.max(0, totalOutlets - batteryCount)
+  }
+
+  return STANDALONE_CARD_BASE_HEIGHT
+    + standalonePortGroupHeight(batteryCount, POWER_EQUIPMENT_PORT_COLUMNS)
+    + standalonePortGroupHeight(surgeCount, POWER_EQUIPMENT_PORT_COLUMNS)
+}
+
+function getPowerStripCardHeight(item: InventoryItem): number {
+  const outletCount = item.ports?.length || positiveInteger(item.specs?.outlets)
+
+  return STANDALONE_CARD_BASE_HEIGHT
+    + standalonePortGroupHeight(outletCount, POWER_EQUIPMENT_PORT_COLUMNS)
+}
+
 export function getEquipmentPortColumns(item: InventoryItem | undefined): number {
   if (!item?.ports?.length) {
     return 0
@@ -745,6 +872,18 @@ export function getCanvasItemWidth(project: ProjectState, itemId: string): numbe
     return NAS_CARD_WIDTH
   }
 
+  if (item?.type === 'pcBuild') {
+    return PC_BUILD_CARD_WIDTH
+  }
+
+  if (item?.type === 'monitor') {
+    return MONITOR_CARD_WIDTH
+  }
+
+  if (item?.type === 'ups' || item?.type === 'powerStrip') {
+    return POWER_EQUIPMENT_CARD_WIDTH
+  }
+
   return getEquipmentCardWidth(item)
 }
 
@@ -753,6 +892,22 @@ export function getCanvasItemHeight(project: ProjectState, itemId: string): numb
 
   if (item?.type === 'nas') {
     return getNasCardHeight(project, itemId)
+  }
+
+  if (item?.type === 'pcBuild') {
+    return getPcBuildCardHeight(project, itemId)
+  }
+
+  if (item?.type === 'monitor') {
+    return getMonitorCardHeight(item)
+  }
+
+  if (item?.type === 'ups') {
+    return getUpsCardHeight(item)
+  }
+
+  if (item?.type === 'powerStrip') {
+    return getPowerStripCardHeight(item)
   }
 
   if (item?.type !== 'server') {

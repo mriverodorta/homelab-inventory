@@ -8,8 +8,11 @@ import {
   getCanvasItemHeight,
   getCanvasItemWidth,
   getNonCollidingPlacement,
+  MONITOR_CARD_WIDTH,
+  PC_BUILD_CARD_WIDTH,
   placementCollides,
   placementsCollide,
+  POWER_EQUIPMENT_CARD_WIDTH,
   removeConnection,
   SERVER_CARD_COLLISION_GAP,
   SERVER_CARD_WIDTH,
@@ -59,6 +62,57 @@ const inventory: InventoryItem[] = [
       slotNumber: index + 1,
       speed: index < 8 ? '2.5G' : '10G',
     })),
+  },
+]
+
+const newCanvasEquipmentInventory: InventoryItem[] = [
+  {
+    id: 'pc-build-a',
+    name: 'PC Build A',
+    type: 'pcBuild',
+    specs: { operatingSystem: 'Linux' },
+  },
+  {
+    id: 'motherboard-a',
+    name: 'Motherboard A',
+    type: 'motherboard',
+    ports: [
+      { id: 'lan-01', kind: 'server-port', type: 'rj45', slotNumber: 1, speed: '2.5G' },
+    ],
+  },
+  {
+    id: 'gpu-ports-a',
+    name: 'GPU with ports',
+    type: 'gpu',
+    ports: [
+      { id: 'dp-01', kind: 'server-port', type: 'displayport', slotNumber: 1 },
+    ],
+  },
+  {
+    id: 'monitor-a',
+    name: 'Monitor A',
+    type: 'monitor',
+    ports: [
+      ...Array.from({ length: 6 }, (_, index) => ({
+        id: `display-${index + 1}`,
+        kind: 'server-port' as const,
+        type: 'displayport' as const,
+        slotNumber: index + 1,
+      })),
+      { id: 'power-1', kind: 'server-port', type: 'barrel', slotNumber: 7 },
+    ],
+  },
+  {
+    id: 'ups-a',
+    name: 'UPS A',
+    type: 'ups',
+    specs: { outlets: 12, batteryBackupOutlets: 6, surgeProtectedOutlets: 6 },
+  },
+  {
+    id: 'power-strip-a',
+    name: 'Power Strip A',
+    type: 'powerStrip',
+    specs: { outlets: 12 },
   },
 ]
 
@@ -445,6 +499,102 @@ describe('canvas item geometry', () => {
     expect(getCanvasItemWidth(project, 'patch-a')).toBeGreaterThan(getCanvasItemWidth(project, 'switch-a'))
     expect(getCanvasItemHeight(project, 'patch-a')).toBeGreaterThan(getCanvasItemHeight(project, 'switch-a'))
   })
+
+  it('uses the rendered widths for new canvas equipment', () => {
+    const project = mergeInventoryWithProject(newCanvasEquipmentInventory, null)
+
+    expect(getCanvasItemWidth(project, 'pc-build-a')).toBe(PC_BUILD_CARD_WIDTH)
+    expect(PC_BUILD_CARD_WIDTH).toBe(318)
+    expect(getCanvasItemWidth(project, 'monitor-a')).toBe(MONITOR_CARD_WIDTH)
+    expect(MONITOR_CARD_WIDTH).toBe(360)
+    expect(getCanvasItemWidth(project, 'ups-a')).toBe(POWER_EQUIPMENT_CARD_WIDTH)
+    expect(getCanvasItemWidth(project, 'power-strip-a')).toBe(POWER_EQUIPMENT_CARD_WIDTH)
+    expect(POWER_EQUIPMENT_CARD_WIDTH).toBe(420)
+  })
+
+  it('grows PC build geometry for visible assignments, hosted ports, and the operating system', () => {
+    const emptyProject = mergeInventoryWithProject(newCanvasEquipmentInventory, null)
+    const populatedProject: ProjectState = {
+      ...emptyProject,
+      assignments: [
+        {
+          id: 'motherboard-assignment',
+          serverId: 'pc-build-a',
+          itemId: 'motherboard-a',
+          type: 'motherboard',
+          assignedAt: '2026-07-20T12:00:00.000Z',
+        },
+        {
+          id: 'gpu-assignment',
+          serverId: 'pc-build-a',
+          itemId: 'gpu-ports-a',
+          type: 'gpu',
+          assignedAt: '2026-07-20T12:00:00.000Z',
+        },
+      ],
+    }
+    const withoutOperatingSystem: ProjectState = {
+      ...populatedProject,
+      items: {
+        ...populatedProject.items,
+        'pc-build-a': {
+          ...populatedProject.items['pc-build-a'],
+          specs: {},
+        },
+      },
+    }
+
+    expect(getCanvasItemHeight(populatedProject, 'pc-build-a')).toBeGreaterThan(
+      getCanvasItemHeight(emptyProject, 'pc-build-a'),
+    )
+    expect(getCanvasItemHeight(populatedProject, 'pc-build-a')).toBeGreaterThan(
+      getCanvasItemHeight(withoutOperatingSystem, 'pc-build-a'),
+    )
+  })
+
+  it('accounts for wrapped monitor and power-equipment port groups', () => {
+    const project = mergeInventoryWithProject(newCanvasEquipmentInventory, null)
+    const compactProject: ProjectState = {
+      ...project,
+      items: {
+        ...project.items,
+        'monitor-a': {
+          ...project.items['monitor-a'],
+          ports: project.items['monitor-a'].ports?.slice(0, 2),
+        },
+        'power-strip-a': {
+          ...project.items['power-strip-a'],
+          specs: { outlets: 6 },
+        },
+      },
+    }
+
+    expect(getCanvasItemHeight(project, 'monitor-a')).toBeGreaterThan(
+      getCanvasItemHeight(compactProject, 'monitor-a'),
+    )
+    expect(getCanvasItemHeight(project, 'power-strip-a')).toBeGreaterThan(
+      getCanvasItemHeight(compactProject, 'power-strip-a'),
+    )
+    expect(getCanvasItemHeight(project, 'ups-a')).toBeGreaterThan(0)
+  })
+
+  it('prevents overlap using the new equipment dimensions', () => {
+    const project = upsertPlacement(
+      mergeInventoryWithProject(newCanvasEquipmentInventory, null),
+      { serverId: 'pc-build-a', x: 0, y: 0 },
+    )
+
+    expect(placementCollides(project, {
+      serverId: 'monitor-a',
+      x: PC_BUILD_CARD_WIDTH + SERVER_CARD_COLLISION_GAP - 1,
+      y: 0,
+    })).toBe(true)
+    expect(placementCollides(project, {
+      serverId: 'monitor-a',
+      x: PC_BUILD_CARD_WIDTH + SERVER_CARD_COLLISION_GAP,
+      y: 0,
+    })).toBe(false)
+  })
 })
 
 describe('canvas auto arrange', () => {
@@ -464,6 +614,29 @@ describe('canvas auto arrange', () => {
       { serverId: 'patch-a', x: 360, y: 0 },
       { serverId: 'switch-a', x: 1320, y: 0 },
     ])
+  })
+
+  it('arranges PC builds with hosts and stacks standalone equipment without overlap', () => {
+    const project: ProjectState = {
+      ...mergeInventoryWithProject(newCanvasEquipmentInventory, null),
+      placements: [
+        { serverId: 'ups-a', x: 0, y: 0 },
+        { serverId: 'pc-build-a', x: 0, y: 0 },
+        { serverId: 'monitor-a', x: 0, y: 0 },
+        { serverId: 'power-strip-a', x: 0, y: 0 },
+      ],
+    }
+    const arranged = autoArrangeCanvasItems(project)
+    const pcBuildPlacement = arranged.placements.find(
+      (placement) => placement.serverId === 'pc-build-a',
+    )
+    const standalonePlacements = arranged.placements.filter(
+      (placement) => placement.serverId !== 'pc-build-a',
+    )
+
+    expect(pcBuildPlacement?.x).toBe(0)
+    expect(new Set(standalonePlacements.map((placement) => placement.x)).size).toBe(1)
+    expect(placementsCollide(arranged, arranged.placements)).toBe(false)
   })
 })
 
