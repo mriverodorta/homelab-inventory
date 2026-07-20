@@ -87,7 +87,7 @@ export type ConnectionEndpoint = {
   hostedItemId?: string
 }
 
-export type InventoryConnectionType = 'network' | 'display' | 'other'
+export type InventoryConnectionType = 'network' | 'display' | 'power' | 'other'
 export type ConnectionRouteSide = 'auto' | 'left' | 'right' | 'top' | 'bottom'
 
 export type ConnectionBendPoint = {
