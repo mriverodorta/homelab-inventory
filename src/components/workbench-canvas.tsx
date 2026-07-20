@@ -29,8 +29,12 @@ import {
 import { CableEdge, type CableFlowEdge } from '@/components/cable-edge'
 import { CanvasCommandBar } from '@/components/canvas-command-bar'
 import { EquipmentNode, type EquipmentFlowNode } from '@/components/equipment-card'
+import { MonitorNode, type MonitorFlowNode } from '@/components/monitor-card'
 import { NasNode, type NasFlowNode } from '@/components/nas-card'
+import { PcBuildNode, type PcBuildFlowNode } from '@/components/pc-build-card'
+import { PowerStripNode, type PowerStripFlowNode } from '@/components/power-strip-card'
 import { ServerNode, type ServerFlowNode } from '@/components/server-card'
+import { UpsNode, type UpsFlowNode } from '@/components/ups-card'
 import { getProjectAuditWarnings } from '@/lib/audit'
 import { connectionMatchesSelectedItem, getFocusedCableItemIds } from '@/lib/cable-focus'
 import { getConnectionRoute } from '@/lib/cable-routing'
@@ -43,7 +47,7 @@ import {
   tryAssignComponent,
 } from '@/lib/constraints'
 import { runtimeItemKey } from '@/lib/item-keys'
-import { getCanvasItemHeight, getCanvasItemWidth, placementCollides } from '@/lib/project'
+import { getCanvasItemHeight, getCanvasItemWidth, isCanvasItem, placementCollides } from '@/lib/project'
 import { cn } from '@/lib/utils'
 import type { AgentStatusSummary } from '@/types/agent'
 import type { CompatibilityStatus } from '@/types/compatibility'
@@ -97,7 +101,7 @@ export function getComponentDropCompatibilityStatus(
     const item = project.items[dragData.itemId]
 
     if (!item) return 'incompatible'
-    if (item.type === 'server' || item.type === 'nas' || item.type === 'switch' || item.type === 'patchPanel') {
+    if (isCanvasItem(item)) {
       return null
     }
 
@@ -145,15 +149,26 @@ export type CanvasController = {
 
 const nodeTypes: NodeTypes = {
   equipment: EquipmentNode,
+  monitor: MonitorNode,
   nas: NasNode,
+  pcBuild: PcBuildNode,
+  powerStrip: PowerStripNode,
   server: ServerNode,
+  ups: UpsNode,
 }
 
 const edgeTypes: EdgeTypes = {
   cable: CableEdge,
 }
 
-type WorkbenchFlowNode = ServerFlowNode | EquipmentFlowNode | NasFlowNode
+type WorkbenchFlowNode =
+  | ServerFlowNode
+  | EquipmentFlowNode
+  | MonitorFlowNode
+  | NasFlowNode
+  | PcBuildFlowNode
+  | PowerStripFlowNode
+  | UpsFlowNode
 
 const INSPECTOR_DRAWER_SELECTOR = '[data-testid="inspector-drawer"]'
 const FOCUS_MARGIN = 72
@@ -193,6 +208,14 @@ function getCanvasNodeId(item: InventoryItem): string {
     return `nas-node:${key}`
   }
 
+  if (item.type === 'pcBuild') {
+    return `pc-build-node:${key}`
+  }
+
+  if (item.type === 'monitor' || item.type === 'ups' || item.type === 'powerStrip') {
+    return `${item.type}-node:${key}`
+  }
+
   return `equipment-node:${key}`
 }
 
@@ -204,6 +227,10 @@ function getItemIdFromNodeId(nodeId: string): string {
   return nodeId
     .replace('server-node:', '')
     .replace('nas-node:', '')
+    .replace('pc-build-node:', '')
+    .replace('monitor-node:', '')
+    .replace('ups-node:', '')
+    .replace('powerStrip-node:', '')
     .replace('equipment-node:', '')
 }
 
@@ -406,6 +433,98 @@ function CanvasViewport({
           }
 
           nextNodes.push(node)
+          continue
+        }
+
+        if (item.type === 'pcBuild') {
+          const nodeActive = selectedItemId === placement.serverId ||
+            endpointBelongsToItem(pendingEndpoint, placement.serverId) ||
+            endpointBelongsToItem(draggingEndpoint, placement.serverId)
+          const node: PcBuildFlowNode = {
+            id: `pc-build-node:${placement.serverId}`,
+            type: 'pcBuild',
+            position: {
+              x: placement.x,
+              y: placement.y,
+            },
+            zIndex: nodeActive ? 1000 : focusActive && !focusedItemIds.includes(placement.serverId) ? 0 : 1,
+            dragHandle: '.server-node-drag-handle',
+            data: {
+              project,
+              pcBuildId: placement.serverId,
+              selectedItemId,
+              focusedItemIds,
+              focusActive,
+              spotlightItemId,
+              pendingEndpoint,
+              draggingEndpoint,
+              dropCompatibilityStatus: dropCompatibilityByHostId[placement.serverId],
+              onSelect,
+              onRemoveAssignment,
+              onEndpointClick,
+              onEndpointDragStart,
+              onEndpointDrop,
+            },
+          }
+
+          nextNodes.push(node)
+          continue
+        }
+
+        const standaloneData = {
+          project,
+          itemId: placement.serverId,
+          selectedItemId,
+          focusedItemIds,
+          focusActive,
+          spotlightItemId,
+          pendingEndpoint,
+          draggingEndpoint,
+          onSelect,
+          onEndpointClick,
+          onEndpointDragStart,
+          onEndpointDrop,
+        }
+        const standaloneNodeBase = {
+          position: {
+            x: placement.x,
+            y: placement.y,
+          },
+          zIndex: selectedItemId === placement.serverId ||
+            endpointBelongsToItem(pendingEndpoint, placement.serverId) ||
+            endpointBelongsToItem(draggingEndpoint, placement.serverId)
+            ? 1000
+            : focusActive && !focusedItemIds.includes(placement.serverId) ? 0 : 1,
+          dragHandle: '.server-node-drag-handle',
+        }
+
+        if (item.type === 'monitor') {
+          nextNodes.push({
+            ...standaloneNodeBase,
+            id: `monitor-node:${placement.serverId}`,
+            type: 'monitor',
+            data: standaloneData,
+          } satisfies MonitorFlowNode)
+          continue
+        }
+
+        if (item.type === 'ups') {
+          nextNodes.push({
+            ...standaloneNodeBase,
+            id: `ups-node:${placement.serverId}`,
+            type: 'ups',
+            data: standaloneData,
+          } satisfies UpsFlowNode)
+          continue
+        }
+
+        if (item.type === 'powerStrip') {
+          nextNodes.push({
+            ...standaloneNodeBase,
+            id: `powerStrip-node:${placement.serverId}`,
+            type: 'powerStrip',
+            data: standaloneData,
+          } satisfies PowerStripFlowNode)
           continue
         }
 

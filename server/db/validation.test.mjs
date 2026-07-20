@@ -388,6 +388,83 @@ describe('assignment allocation validation', () => {
     })).toThrow('Project assignment 1 allocation.groupId must be a non-empty string.')
   })
 
+  it('accepts PC Build logical and motherboard-backed allocations', () => {
+    const project = {
+      id: 'default',
+      metadata: {},
+      items: {
+        'pcBuild:1': { id: 1, key: 'pcBuild:1', type: 'pcBuild', name: 'Workstation' },
+        'motherboard:1': {
+          id: 1,
+          key: 'motherboard:1',
+          type: 'motherboard',
+          name: 'AM5 board',
+          specs: { cpuSocketCount: 1 },
+          compatibility: {
+            host: {
+              cpu: { sockets: ['AM5'] },
+              memory: { slots: 2, generations: ['DDR5'] },
+              storageSlots: [{ id: 'm2', label: 'M.2', count: 1 }],
+            },
+          },
+        },
+        'cpu:1': { id: 1, key: 'cpu:1', type: 'cpu', name: 'CPU' },
+        'cpuCooler:1': { id: 1, key: 'cpuCooler:1', type: 'cpuCooler', name: 'Cooler' },
+        'ram:1': { id: 1, key: 'ram:1', type: 'ram', name: 'Memory' },
+        'storage:1': { id: 1, key: 'storage:1', type: 'storage', name: 'Storage' },
+        'powerSupply:1': { id: 1, key: 'powerSupply:1', type: 'powerSupply', name: 'PSU' },
+      },
+      placements: [{ serverId: 'pcBuild:1', x: 0, y: 0 }],
+      assignments: [
+        {
+          id: 1,
+          serverId: 'pcBuild:1',
+          itemId: 'motherboard:1',
+          type: 'motherboard',
+          allocation: { resourceType: 'motherboard', positions: [0] },
+        },
+        {
+          id: 2,
+          serverId: 'pcBuild:1',
+          itemId: 'cpu:1',
+          type: 'cpu',
+          allocation: { resourceType: 'cpu', groupId: 'cpu', positions: [0] },
+        },
+        {
+          id: 3,
+          serverId: 'pcBuild:1',
+          itemId: 'cpuCooler:1',
+          type: 'cpuCooler',
+          allocation: { resourceType: 'cooling', groupId: 'cpu', positions: [0] },
+        },
+        {
+          id: 4,
+          serverId: 'pcBuild:1',
+          itemId: 'ram:1',
+          type: 'ram',
+          allocation: { resourceType: 'memory', groupId: 'dimm', positions: [0, 1] },
+        },
+        {
+          id: 5,
+          serverId: 'pcBuild:1',
+          itemId: 'storage:1',
+          type: 'storage',
+          allocation: { resourceType: 'storage', groupId: 'm2', positions: [0] },
+        },
+        {
+          id: 6,
+          serverId: 'pcBuild:1',
+          itemId: 'powerSupply:1',
+          type: 'powerSupply',
+          allocation: { resourceType: 'power', positions: [0] },
+        },
+      ],
+      connections: [],
+    }
+
+    expect(() => assertProjectShape(project)).not.toThrow()
+  })
+
   it('rejects allocations that reference a missing host group', () => {
     const project = {
       id: 'default',

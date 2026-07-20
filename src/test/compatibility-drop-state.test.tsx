@@ -322,14 +322,30 @@ describe('compatibility drop-state evaluation', () => {
     }, target.key!)).toBe('incompatible')
   })
 
-  it('does not activate compatibility feedback for canvas inventory items', () => {
+  it.each([
+    ['server', 'server:2'],
+    ['pcBuild', 'pcBuild:1'],
+    ['monitor', 'monitor:1'],
+    ['ups', 'ups:1'],
+    ['powerStrip', 'powerStrip:1'],
+    ['switch', 'switch:1'],
+    ['patchPanel', 'patchPanel:1'],
+    ['nas', 'nas:1'],
+  ] as const)('does not activate compatibility feedback for %s canvas inventory items', (type, key) => {
     const server = host('server:1')
-    const otherServer = host('server:2')
-    const currentProject = project([server, otherServer])
+    const canvasItem: InventoryItem = type === 'server' || type === 'nas'
+      ? host(key, type)
+      : {
+          id: Number(key.split(':')[1]),
+          key,
+          name: key,
+          type,
+        }
+    const currentProject = project([server], [canvasItem])
 
     expect(getComponentDropCompatibilityStatus(currentProject, {
       kind: 'inventory',
-      itemId: otherServer.key!,
+      itemId: canvasItem.key!,
     }, server.key!)).toBeNull()
   })
 

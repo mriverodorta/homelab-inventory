@@ -15,13 +15,13 @@ Live demo: [lab.hkloud.org](https://lab.hkloud.org/)
 
 ## Features
 
-- Infinite canvas for servers, NAS devices, switches, patch panels, and cables.
+- Infinite canvas for servers, NAS devices, custom PC builds, monitors, UPS systems, power strips, switches, patch panels, and cables.
 - Searchable inventory sidebar with in-app item creation.
-- Drag components into compatible hosts: CPU, RAM, storage, GPU, and network cards.
+- Drag components into compatible hosts, including CPU, cooling, motherboard, RAM, storage, GPU, network, wireless, sound, case, power supply, and OEM power adapters.
 - Validate known CPU, RAM, storage, and expansion-card incompatibilities before assignment.
 - Explain compatibility requirements, deterministic resource allocations, and unknown-data warnings in inspectors and Audit.
 - Individual port chips for servers, expansion cards, NAS devices, switches, and patch panels.
-- Color-coded cable routing for network and display connections.
+- Color-coded cable routing for network and display connections, plus directional power connections between outlets and equipment inputs.
 - JSON database stored outside the app image under a persistent `/data` volume.
 - lowdb-backed split stores with schema migrations and automatic backups.
 - Optional Linux agent enrollment per server for keepalive and hardware telemetry.

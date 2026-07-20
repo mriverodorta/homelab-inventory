@@ -89,19 +89,30 @@ describe('release notes helpers', () => {
     expect(entries.map((entry) => entry.version)).toEqual(['0.1.10'])
   })
 
-  it('has structured settings simplification notes for the package version under development', () => {
-    expect(hasReleaseNoteForVersion(RELEASE_NOTES, '0.1.29')).toBe(true)
+  it('has structured notes for the package version under development', () => {
+    expect(hasReleaseNoteForVersion(RELEASE_NOTES, '0.1.30')).toBe(true)
     expect(RELEASE_NOTES[0]).toEqual(
       expect.objectContaining({
-        version: '0.1.29',
-        title: 'Focused application settings',
+        version: '0.1.30',
+        title: 'Custom PC builds and power topology',
       }),
     )
     expect(RELEASE_NOTES.filter((entry) => entry.channel === 'latest')).toEqual([
-      expect.objectContaining({ version: '0.1.29' }),
+      expect.objectContaining({ version: '0.1.30' }),
     ])
+  })
 
-    const settingsRelease = RELEASE_NOTES[0]
+  it('retains structured settings simplification notes for version 0.1.29', () => {
+    expect(hasReleaseNoteForVersion(RELEASE_NOTES, '0.1.29')).toBe(true)
+    expect(RELEASE_NOTES.find((entry) => entry.version === '0.1.29')).toEqual(
+      expect.objectContaining({
+        version: '0.1.29',
+        title: 'Focused application settings',
+        channel: 'release',
+      }),
+    )
+
+    const settingsRelease = RELEASE_NOTES.find((entry) => entry.version === '0.1.29')
     const releaseText = [
       ...(settingsRelease?.highlights ?? []),
       ...(settingsRelease?.fixes ?? []),

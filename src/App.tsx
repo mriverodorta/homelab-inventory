@@ -217,12 +217,28 @@ function dragPreviewTone(item: InventoryItem): string {
     return 'border-[#9eb6c8] bg-[#20242c] text-[#f8f1e8]'
   }
 
+  if (item.type === 'pcBuild') {
+    return 'border-[#78a6b8] bg-[#20242c] text-[#f8f1e8]'
+  }
+
   if (item.type === 'switch') {
     return 'border-[#81a6a0] bg-[#1f3536] text-[#f3fbf9]'
   }
 
   if (item.type === 'patchPanel') {
     return 'border-[#a995c8] bg-[#322b45] text-[#faf7ff]'
+  }
+
+  if (item.type === 'monitor') {
+    return 'border-[#7e9ab8] bg-[#354154] text-[#f5f8fb]'
+  }
+
+  if (item.type === 'ups') {
+    return 'border-[#83a890] bg-[#33473f] text-[#f3faf5]'
+  }
+
+  if (item.type === 'powerStrip') {
+    return 'border-[#a68ab3] bg-[#453a4d] text-[#faf4fc]'
   }
 
   if (item.type === 'cpu') {
@@ -253,8 +269,20 @@ function getDragPreviewSubtitle(item: InventoryItem): string {
     return `${item.specs?.driveBays ?? '?'} bays / ${item.specs?.m2Slots ?? 0} M.2`
   }
 
+  if (item.type === 'pcBuild') {
+    return String(item.specs?.operatingSystem ?? 'Custom PC build')
+  }
+
   if (item.type === 'switch' || item.type === 'patchPanel') {
     return formatPortSummary(item)
+  }
+
+  if (item.type === 'monitor') {
+    return `${item.specs?.sizeInches ?? '?'} in / ${item.specs?.resolution ?? 'display'}`
+  }
+
+  if (item.type === 'ups' || item.type === 'powerStrip') {
+    return `${item.specs?.outlets ?? item.ports?.length ?? 0} outlets`
   }
 
   if (item.type === 'cpu') {
@@ -1203,7 +1231,7 @@ function App() {
       const placement = getNonCollidingPlacement(project, { serverId: itemRuntimeKey, ...point })
 
       if (!placement) {
-        showMessage('Servers cannot overlap. Drop this server in an open space.')
+        showMessage('Canvas equipment cannot overlap. Drop this item in an open space.')
         return
       }
 
@@ -1217,7 +1245,7 @@ function App() {
     const serverId = getServerIdFromOver(overId)
 
     if (!serverId) {
-      showMessage('Drop components onto a server.')
+      showMessage('Drop components onto a compatible host.')
       return
     }
 

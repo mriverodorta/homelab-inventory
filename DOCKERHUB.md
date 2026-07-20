@@ -2,7 +2,7 @@
 
 Homelab Inventory is a self-hosted visual workbench for documenting homelab hardware. It is meant for people who want a practical map of what they own, what is installed where, and how network/display ports are connected.
 
-You can model servers, NAS devices, CPUs, RAM kits, storage, GPUs, network cards, switches, patch panels, physical ports, and cables on an infinite canvas.
+You can model servers, NAS devices, free-form PC builds, monitors, UPS systems, power strips, components, physical ports, and network, display, or power cables on an infinite canvas.
 
 Live demo: https://lab.hkloud.org/
 
@@ -34,10 +34,11 @@ This project is being actively built with AI-assisted development. The app is us
 
 Homelab Inventory helps answer questions like:
 
-- Which components are installed in each server or NAS?
+- Which components are installed in each server, NAS, or custom PC build?
 - Which RAM, storage, GPU, or NIC is still unassigned?
 - Which switch or patch panel port is connected to which device?
 - Which equipment is on the canvas and how is it wired?
+- Which UPS or power-strip outlet supplies each powered device?
 - Which servers have an enrolled telemetry agent?
 
 It is designed for local/home infrastructure documentation, planning, rebuilds, and hardware swaps.
@@ -46,11 +47,11 @@ It is designed for local/home infrastructure documentation, planning, rebuilds, 
 
 The app has three main parts:
 
-- **Inventory**: hardware records such as servers, CPUs, RAM, storage, NICs, GPUs, NAS devices, switches, and patch panels.
+- **Inventory**: hardware records such as servers, NAS devices, custom PC builds, reusable components, monitors, UPS systems, power strips, switches, and patch panels.
 - **Canvas**: a visual workspace where inventory items are placed, assigned, connected, moved, and inspected.
 - **JSON database**: lowdb-backed JSON stores under `/data`, kept separate from the container image.
 
-Inventory items can be created from the web interface. Once hardware exists in the inventory, you can drag servers, NAS devices, switches, and patch panels onto the canvas. Components such as CPU, RAM, storage, GPU, and network cards can be assigned to compatible hosts. Ports can be connected with color-coded cables.
+Inventory items can be created from the web interface. Once hardware exists in the inventory, you can place hosts and standalone equipment on the canvas, assemble custom PC builds from reusable components, and connect compatible network, display, and power endpoints directly.
 
 The container serves the web app and writes changes asynchronously to the mounted data directory.
 

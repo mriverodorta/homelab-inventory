@@ -14,6 +14,27 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 - Added repository documentation, issue templates, CI, and security guidance.
 - Clarified Docker deployment, data persistence, and development setup.
 
+## [0.1.30] - 2026-07-20
+
+### Added
+
+- Added free-form PC Build hosts with assignable motherboard, CPU cooler, power supply, case, sound card, wireless card, and existing CPU, RAM, storage, GPU, and network components.
+- Added explicit motherboard resource allocations for CPU sockets, DIMM positions, storage connectors, and expansion slots.
+- Added standalone monitor, UPS, and power-strip equipment with individually addressable power inputs and outlets.
+- Added directional power connections, upstream and downstream tracing, and power-topology audit findings.
+- Added assignable OEM server and NAS power adapters with one exposed AC input and an implicit host-side DC connection.
+
+### Changed
+
+- Canvas placement, collision checks, search, inventory lifecycle controls, inspectors, and audit behavior now treat PC Builds and power equipment as first-class inventory.
+- PC Build operating system remains editable host metadata instead of a draggable component.
+- PC Build completion requires a motherboard, CPU, CPU cooler, RAM, storage, and power supply; a case is optional.
+
+### Fixed
+
+- Physical motherboard resource limits remain enforced when a PC Build opts out of compatibility guidance.
+- Power topology rejects occupied inputs, outlet-to-outlet connections, self-connections, and loops without guessing missing electrical ratings.
+
 ## [0.1.29] - 2026-07-20
 
 ### Changed

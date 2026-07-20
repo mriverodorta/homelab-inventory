@@ -33,7 +33,18 @@ const portRoles = new Set(['access', 'trunk', 'uplink', 'management', 'disabled'
 const portSides = new Set(['front', 'back'])
 const switchNetworkPortTypes = new Set(['rj45', 'sfp', 'sfp-plus'])
 const switchNetworkPortSpeeds = new Set(['1G', '2.5G', '5G', '10G'])
-const compatibilityResourceTypes = new Set(['memory', 'storage', 'expansion'])
+const compatibilityResourceTypes = new Set([
+  'cpu',
+  'memory',
+  'storage',
+  'expansion',
+  'motherboard',
+  'cooling',
+  'power',
+  'case',
+])
+const logicalCompatibilityResourceTypes = new Set(['motherboard', 'power', 'case'])
+const groupedCompatibilityResourceTypes = new Set(['cpu', 'cooling', 'storage', 'expansion'])
 const expansionInterfaceFamilies = new Set(['pcie', 'm2-ae', 'usb', 'onboard'])
 const cardHeights = new Set(['full-height', 'low-profile'])
 
@@ -269,11 +280,13 @@ function assertAssignmentAllocation(assignment) {
   if (!compatibilityResourceTypes.has(allocation.resourceType)) {
     throw new Error(`${path}.resourceType has an unsupported value.`)
   }
-  if (allocation.resourceType === 'memory') {
+  if (logicalCompatibilityResourceTypes.has(allocation.resourceType)) {
     if (allocation.groupId !== undefined) {
-      throw new Error(`${path}.groupId is not supported for memory allocations.`)
+      throw new Error(`${path}.groupId is not supported for ${allocation.resourceType} allocations.`)
     }
-  } else {
+  } else if (groupedCompatibilityResourceTypes.has(allocation.resourceType)) {
+    assertRequiredString(allocation.groupId, `${path}.groupId`)
+  } else if (allocation.groupId !== undefined) {
     assertRequiredString(allocation.groupId, `${path}.groupId`)
   }
   if (!Array.isArray(allocation.positions) || allocation.positions.length === 0) {
@@ -622,7 +635,37 @@ function assertProjectAllocationReferences(project) {
       assignment.hostType,
       assignment.hostId,
     )
-    const hostCompatibility = host?.compatibility?.host
+    const hostReference = projectReference(
+      assignment.serverId,
+      assignment.hostType,
+      assignment.hostId,
+    )
+    const motherboardAssignment = host?.type === 'pcBuild'
+      ? project.assignments?.find((candidate) => (
+          candidate.type === 'motherboard'
+          && projectReference(candidate.serverId, candidate.hostType, candidate.hostId) === hostReference
+        ))
+      : undefined
+    const motherboard = motherboardAssignment
+      ? projectItem(
+          project,
+          motherboardAssignment.itemId,
+          motherboardAssignment.itemType,
+          motherboardAssignment.itemId,
+        )
+      : undefined
+    const capabilitySource = host?.type === 'pcBuild' ? motherboard : host
+    const hostCompatibility = capabilitySource?.compatibility?.host
+
+    if (host?.type === 'pcBuild' && logicalCompatibilityResourceTypes.has(allocation.resourceType)) {
+      if (allocation.positions.some((position) => position !== 0)) {
+        throw new Error(
+          `Project assignment ${assignment.id} allocation.positions must reference the single ${allocation.resourceType} position.`,
+        )
+      }
+      continue
+    }
+
     if (!hostCompatibility) {
       throw new Error(
         `Project assignment ${assignment.id} allocation references a host without compatibility capabilities.`,
@@ -632,8 +675,27 @@ function assertProjectAllocationReferences(project) {
     let group
     let groupPath
     let capacity
-    if (allocation.resourceType === 'memory') {
+    if (allocation.resourceType === 'cpu' || allocation.resourceType === 'cooling') {
+      groupPath = 'compatibility.host.cpu'
+      group = allocation.groupId === 'cpu' ? { id: 'cpu' } : undefined
+      if (!group) {
+        throw new Error(
+          `Project assignment ${assignment.id} allocation.groupId references missing ${groupPath} group ${allocation.groupId}.`,
+        )
+      }
+      const configuredCount = Number(
+        capabilitySource?.specs?.cpuSocketCount ?? capabilitySource?.specs?.cpuSockets ?? 1,
+      )
+      capacity = hostCompatibility.cpu?.sockets?.length > 0 && Number.isInteger(configuredCount)
+        ? configuredCount
+        : undefined
+    } else if (allocation.resourceType === 'memory') {
       groupPath = 'compatibility.host.memory'
+      if (allocation.groupId !== undefined && allocation.groupId !== 'dimm') {
+        throw new Error(
+          `Project assignment ${assignment.id} allocation.groupId references missing ${groupPath} group ${allocation.groupId}.`,
+        )
+      }
       capacity = hostCompatibility.memory?.slots
     } else {
       const groupsField = allocation.resourceType === 'storage' ? 'storageSlots' : 'expansionSlots'

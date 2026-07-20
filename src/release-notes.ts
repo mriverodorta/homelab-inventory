@@ -12,9 +12,30 @@ export type ReleaseNoteEntry = {
 
 export const RELEASE_NOTES: ReleaseNoteEntry[] = [
   {
-    version: '0.1.29',
+    version: '0.1.30',
     date: '2026-07-20',
     channel: 'latest',
+    title: 'Custom PC builds and power topology',
+    highlights: [
+      'Free-form PC Builds can now combine a motherboard, CPU, cooler, memory, storage, graphics, power supply, case, sound, network, and wireless components on the canvas.',
+      'Motherboards expose explicit CPU sockets, DIMM positions, storage connectors, and expansion slots so assigned components retain deterministic physical allocations.',
+      'Monitors, UPS systems, and power strips are now standalone canvas equipment with individually addressable inputs or outlets and directional power connections.',
+      'OEM servers and NAS devices can receive a power adapter component without changing their existing CPU, memory, storage, GPU, and network workflows.',
+    ],
+    fixes: [
+      'PC Build assignment checks distinguish compatibility guidance from hard physical resource limits, and compatibility checks can still be disabled per host.',
+      'Power connections reject occupied inputs, invalid outlet-to-outlet paths, self-connections, and loops while preserving stable endpoint identifiers.',
+      'Inventory creation, lifecycle controls, canvas search, focus, placement, and collision handling recognize every new PC and power equipment category.',
+    ],
+    notes: [
+      'A PC Build requires a motherboard, CPU, CPU cooler, RAM, storage, and power supply to be complete; its case remains optional.',
+      'Operating system remains editable PC Build metadata rather than a draggable inventory component.',
+    ],
+  },
+  {
+    version: '0.1.29',
+    date: '2026-07-20',
+    channel: 'release',
     title: 'Focused application settings',
     highlights: [
       'Settings now focuses on General, Project, Updates, and About, with a concise product overview that explains the inventory, canvas, compatibility, and cabling workflows.',

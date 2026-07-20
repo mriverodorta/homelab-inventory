@@ -32,6 +32,32 @@ function demoCookieFrom(response) {
   return cookie.split(';')[0]
 }
 
+function inventoryTables(overrides = {}) {
+  return {
+    servers: [],
+    pcBuilds: [],
+    cpus: [],
+    ram: [],
+    storage: [],
+    networkCards: [],
+    gpus: [],
+    motherboards: [],
+    cpuCoolers: [],
+    cases: [],
+    powerSupplies: [],
+    soundCards: [],
+    wirelessCards: [],
+    powerAdapters: [],
+    nas: [],
+    switches: [],
+    patchPanels: [],
+    monitors: [],
+    upsSystems: [],
+    powerStrips: [],
+    ...overrides,
+  }
+}
+
 function closeServer(server) {
   return new Promise((resolve, reject) => {
     server.close((error) => {
@@ -54,15 +80,8 @@ async function createSourceData() {
     updatedAt: '2026-07-09T00:00:00.000Z',
   })
   await writeJson(path.join(sourceDir, 'stores', 'inventory.json'), {
+    ...inventoryTables(),
     servers: [{ id: 1, name: 'Private Server', type: 'server', properties: { lanIp: '10.0.0.2' } }],
-    cpus: [],
-    ram: [],
-    storage: [],
-    networkCards: [],
-    gpus: [],
-    nas: [],
-    switches: [],
-    patchPanels: [],
   })
   await writeJson(path.join(sourceDir, 'stores', 'project.json'), {
     id: 'default',
@@ -106,6 +125,7 @@ describe('demo data sanitizer', () => {
       updatedAt: '2026-07-09T00:00:00.000Z',
     })
     await writeJson(path.join(sourceDir, 'stores', 'inventory.json'), {
+      ...inventoryTables(),
       servers: [
         {
           id: 1,
@@ -138,8 +158,6 @@ describe('demo data sanitizer', () => {
           },
         },
       ],
-      cpus: [],
-      ram: [],
       storage: [
         {
           id: 1,
@@ -148,11 +166,6 @@ describe('demo data sanitizer', () => {
           specs: { interface: 'NVMe', formFactor: '2280' },
         },
       ],
-      networkCards: [],
-      gpus: [],
-      nas: [],
-      switches: [],
-      patchPanels: [],
     })
     await writeJson(path.join(sourceDir, 'stores', 'project.json'), {
       id: 'default',
@@ -513,6 +526,7 @@ describe('DemoSessionManager', () => {
     })
     await writeJson(path.join(sourceDir, 'stores', 'inventory.json'), {
       servers: [{ id: 1, name: 'Server', type: 'server' }],
+      pcBuilds: [],
     })
     await writeJson(path.join(sourceDir, 'stores', 'project.json'), {
       id: 'default',

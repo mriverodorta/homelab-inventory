@@ -70,6 +70,8 @@ import {
 import { getSlotStatus, SLOT_LABELS, sortAssignmentsForDisplay } from '@/lib/constraints'
 import { isHostCompatibilityEnabled } from '@/lib/compatibility'
 import { setHostCompatibilityEnabled } from '@/lib/compatibility-policy'
+import { PC_BUILD_COMPONENT_ORDER } from '@/lib/pc-build'
+import { getPowerEndpoints } from '@/lib/power-topology'
 import { cn } from '@/lib/utils'
 import {
   formatCapacity,
@@ -139,14 +141,25 @@ const formLabelClass = 'grid gap-1.5 text-sm font-semibold text-[#20242c]'
 function itemTypeLabel(type: InventoryItem['type']): string {
   const labels: Partial<Record<InventoryItem['type'], string>> = {
     cpu: 'CPU',
+    cpuCooler: 'CPU Cooler',
+    case: 'Case',
     gpu: 'GPU',
+    motherboard: 'Motherboard',
+    monitor: 'Monitor',
     nas: 'NAS',
     network: 'Network Card',
     patchPanel: 'Patch Panel',
+    pcBuild: 'PC Build',
+    powerAdapter: 'Power Adapter',
+    powerStrip: 'Power Strip',
+    powerSupply: 'Power Supply',
     ram: 'RAM',
     server: 'Server',
+    soundCard: 'Sound Card',
     storage: 'Storage',
     switch: 'Switch',
+    ups: 'UPS',
+    wireless: 'Wireless Card',
   }
 
   return labels[type] ?? type
@@ -2690,29 +2703,624 @@ function PatchPanelInspectorTabs({
 }
 
 function isEditableComponent(item: InventoryItem): item is InventoryItem & { type: ComponentType } {
-  return item.type === 'cpu'
-    || item.type === 'ram'
-    || item.type === 'storage'
-    || item.type === 'gpu'
-    || item.type === 'network'
+  return [
+    'cpu',
+    'ram',
+    'storage',
+    'gpu',
+    'network',
+    'motherboard',
+    'cpuCooler',
+    'case',
+    'powerSupply',
+    'soundCard',
+    'wireless',
+    'powerAdapter',
+  ].includes(item.type)
 }
 
-function ComponentItemEditor({
+const LEGACY_COMPONENT_INSPECTOR_TYPES = new Set<ComponentType>([
+  'cpu',
+  'ram',
+  'storage',
+  'gpu',
+  'network',
+])
+
+type HostedPortOption = {
+  key: string
+  endpoint: ConnectionEndpoint
+  item: InventoryItem
+  itemKey: string
+  port: InventoryPort
+  sourceLabel: string
+}
+
+function getPcBuildPortOptions(
+  project: ProjectState,
+  host: InventoryItem,
+  networkOnly = false,
+): HostedPortOption[] {
+  const hostKey = runtimeItemKey(host)
+  const portedTypes = new Set<ComponentType>([
+    'motherboard',
+    'gpu',
+    'network',
+    'soundCard',
+    'wireless',
+  ])
+
+  return sortAssignmentsForDisplay(project, hostKey)
+    .filter((assignment) => portedTypes.has(assignment.type))
+    .flatMap((assignment) => {
+      const item = project.items[assignment.itemId]
+      if (!item) return []
+
+      const itemKey = runtimeItemKey(item)
+      return (item.ports ?? [])
+        .filter((port) => !port.endpoints && (!networkOnly || NETWORK_INTERFACE_PORT_TYPES.has(port.type)))
+        .map((port) => {
+          const endpoint = {
+            itemId: hostKey,
+            hostedItemId: itemKey,
+            portId: port.id,
+          }
+
+          return {
+            key: endpointKey(endpoint),
+            endpoint,
+            item,
+            itemKey,
+            port,
+            sourceLabel: assignment.type === 'motherboard' ? 'Motherboard' : item.name,
+          }
+        })
+    })
+}
+
+function HostedPortsTab({
   project,
-  item,
-  validationMessage,
+  host,
+  networkOnly = false,
+  activeNetworkTraceKey,
+  pendingEndpoint,
   onUpdateItem,
+  onSelectTrace,
+  onEndpointConnect,
 }: {
   project: ProjectState
-  item: InventoryItem & { type: ComponentType }
-  validationMessage: string | null
+  host: InventoryItem
+  networkOnly?: boolean
+  activeNetworkTraceKey: string | null
+  pendingEndpoint: ConnectionEndpoint | null
   onUpdateItem: (itemId: string, input: InventoryItemInput) => void
+  onSelectTrace: (endpoint: ConnectionEndpoint) => void
+  onEndpointConnect: (endpoint: ConnectionEndpoint) => void
+}) {
+  const options = useMemo(
+    () => getPcBuildPortOptions(project, host, networkOnly),
+    [host, networkOnly, project],
+  )
+  const [selectedKey, setSelectedKey] = useState(() => options[0]?.key ?? '')
+  const selected = options.find((option) => option.key === selectedKey) ?? options[0] ?? null
+  const connections = selected ? getEndpointConnections(project, selected.endpoint) : []
+  const trace = networkOnly && selected ? traceNetworkPath(project, selected.endpoint) : null
+
+  useEffect(() => {
+    if (options.length === 0) {
+      setSelectedKey('')
+    } else if (!options.some((option) => option.key === selectedKey)) {
+      setSelectedKey(options[0].key)
+    }
+  }, [options, selectedKey])
+
+  if (options.length === 0) {
+    return (
+      <InspectorSection title={networkOnly ? 'Network Interfaces' : 'PC Build Ports'} icon={networkOnly ? Network : PlugZap}>
+        <div className="rounded-md border border-dashed border-[#d6ccbd] bg-[#f8f3eb] p-3 text-sm font-medium text-[#75695d]">
+          {networkOnly ? 'No physical network interfaces assigned.' : 'No motherboard or expansion-card ports recorded.'}
+        </div>
+      </InspectorSection>
+    )
+  }
+
+  return (
+    <div className="space-y-4">
+      <InspectorSection
+        title={networkOnly ? 'Network Interfaces' : 'PC Build Ports'}
+        icon={networkOnly ? Network : PlugZap}
+        badge={<StatusBadge>{options.length} ports</StatusBadge>}
+      >
+        <Tabs value={selected?.key ?? ''} onValueChange={setSelectedKey} className="gap-4 overflow-visible">
+          <TabsList className="flex !h-auto w-full flex-wrap items-stretch justify-start gap-2 overflow-visible bg-transparent p-0 pb-1">
+            {options.map((option) => (
+              <TabsTrigger
+                key={option.key}
+                value={option.key}
+                className={cn(
+                  '!h-auto flex-none rounded-md border px-2.5 py-1.5 text-[#20242c] shadow-none data-active:ring-2 data-active:ring-[#ddb668]',
+                  portChipClass(getEndpointConnectionState(project, option.endpoint)),
+                )}
+              >
+                <span className="grid leading-none">
+                  <span className="text-[9px] font-black uppercase tracking-[0.06em] opacity-70">
+                    {formatPortTypeLabel(option.port.type)}
+                  </span>
+                  <span className="mt-1 font-mono text-base font-black">
+                    {String(option.port.slotNumber).padStart(2, '0')}
+                  </span>
+                </span>
+              </TabsTrigger>
+            ))}
+          </TabsList>
+
+          {selected ? (
+            <TabsContent value={selected.key} className="m-0">
+              <div className="grid gap-3 rounded-lg border border-[#e5dccf] bg-[#fffdf8] p-3">
+                <div className="grid gap-2 sm:grid-cols-[68px_minmax(0,1fr)_auto] sm:items-end">
+                  <div className="rounded-md bg-[#20242c] px-3 py-2 text-center text-[#fffdf8]">
+                    <div className="text-[8px] font-black uppercase tracking-[0.12em] opacity-65">Port</div>
+                    <div className="font-mono text-xl font-black leading-none">
+                      {String(selected.port.slotNumber).padStart(2, '0')}
+                    </div>
+                  </div>
+                  <div className="min-w-0">
+                    <div className={cn(labelClass, 'mb-1 text-[9px]')}>Source</div>
+                    <div className="truncate rounded-md bg-[#f3f0ea] px-3 py-2 text-sm font-black text-[#3c342b]">
+                      {selected.sourceLabel} / {formatPortTypeLabel(selected.port.type)}
+                      {selected.port.speed ? ` ${selected.port.speed}` : ''}
+                    </div>
+                  </div>
+                  <StatusBadge tone={connections.length > 0 ? 'success' : 'neutral'}>
+                    {connections.length > 0 ? 'Connected' : 'Open'}
+                  </StatusBadge>
+                </div>
+
+                <label className={formLabelClass}>
+                  Custom label
+                  <Input
+                    value={selected.port.label ?? ''}
+                    placeholder="Custom label"
+                    aria-label={`${selected.sourceLabel} port ${selected.port.slotNumber} label`}
+                    onChange={(event) => onUpdateItem(
+                      selected.itemKey,
+                      itemInputWithPorts(selected.item, updatePort(selected.item.ports ?? [], selected.port.id, { label: event.target.value })),
+                    )}
+                  />
+                </label>
+
+                {networkOnly ? (
+                  <label className={formLabelClass}>
+                    IP address
+                    <Input
+                      value={selected.port.ipAddress ?? ''}
+                      placeholder="192.168.1.10"
+                      aria-label={`${selected.sourceLabel} port ${selected.port.slotNumber} IP address`}
+                      onChange={(event) => onUpdateItem(
+                        selected.itemKey,
+                        itemInputWithPorts(selected.item, updatePort(selected.item.ports ?? [], selected.port.id, { ipAddress: event.target.value })),
+                      )}
+                    />
+                  </label>
+                ) : null}
+
+                <div className="grid gap-2">
+                  <div className={labelClass}>Connection</div>
+                  {connections.length === 0 ? (
+                    <div className="grid gap-2 rounded-md bg-[#f8f3eb] p-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
+                      <span className="text-sm font-semibold text-[#75695d]">This port is open.</span>
+                      <EndpointConnectButton
+                        project={project}
+                        endpoint={selected.endpoint}
+                        label={selected.port.label || `${selected.sourceLabel} port ${selected.port.slotNumber}`}
+                        pendingEndpoint={pendingEndpoint}
+                        onConnect={onEndpointConnect}
+                      />
+                    </div>
+                  ) : connections.map((connection) => (
+                    <div key={connection.id} className="rounded-md bg-[#f8f3eb] p-3 text-sm font-semibold text-[#20242c]">
+                      {describeConnectionEndpoint(project, getOppositeEndpoint(connection, selected.endpoint))}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </TabsContent>
+          ) : null}
+        </Tabs>
+      </InspectorSection>
+
+      {networkOnly ? (
+        <InspectorSection title="Network Trace" icon={Cable}>
+          {trace ? (
+            <NetworkTraceCard
+              trace={trace}
+              active={activeNetworkTraceKey === endpointKey(trace.start)}
+              onSelectTrace={onSelectTrace}
+            />
+          ) : (
+            <div className="rounded-md border border-dashed border-[#d6ccbd] bg-[#f8f3eb] p-3 text-sm font-medium text-[#75695d]">
+              No network trace available for this interface.
+            </div>
+          )}
+        </InspectorSection>
+      ) : null}
+    </div>
+  )
+}
+
+function PcBuildSlotsTab({ project, host }: { project: ProjectState; host: InventoryItem }) {
+  const hostKey = runtimeItemKey(host)
+  const assignments = sortAssignmentsForDisplay(project, hostKey)
+
+  return (
+    <InspectorSection title="PC Build Slots" icon={Layers3} badge={<StatusBadge>{PC_BUILD_COMPONENT_ORDER.length}</StatusBadge>}>
+      <div className="grid gap-2">
+        {PC_BUILD_COMPONENT_ORDER.map((type) => {
+          const matches = assignments.filter((assignment) => assignment.type === type)
+          return (
+            <div key={type} className={cn('grid gap-2 rounded-lg border p-3', slotTone(type))}>
+              <div className="flex items-center justify-between gap-2">
+                <div className={cn(labelClass, 'text-[10px]')}>{SLOT_LABELS[type]}</div>
+                <StatusBadge tone={matches.length > 0 ? 'success' : 'neutral'}>
+                  {matches.length > 0 ? `${matches.length} assigned` : 'Open'}
+                </StatusBadge>
+              </div>
+              {matches.length > 0 ? matches.map((assignment) => {
+                const assignedItem = project.items[assignment.itemId]
+                return assignedItem ? <SlotItemCard key={assignment.id} item={assignedItem} /> : null
+              }) : (
+                <div className="rounded-md border border-dashed border-white/80 bg-white/35 p-3 text-sm font-semibold text-[#75695d]">
+                  No {SLOT_LABELS[type].toLowerCase()} assigned.
+                </div>
+              )}
+            </div>
+          )
+        })}
+      </div>
+    </InspectorSection>
+  )
+}
+
+function PowerEndpointsTab({
+  project,
+  item,
+  onUpdateConnectionLabel,
+  onRemoveConnection,
+}: {
+  project: ProjectState
+  item: InventoryItem
+  onUpdateConnectionLabel: (connectionId: string | number, label: string) => void
+  onRemoveConnection: (connectionId: string | number) => void
+}) {
+  const itemKey = runtimeItemKey(item)
+  const endpoints = getPowerEndpoints(project).filter((candidate) => candidate.endpoint.itemId === itemKey)
+  const [selectedKey, setSelectedKey] = useState(() => endpoints[0] ? endpointKey(endpoints[0].endpoint) : '')
+  const selected = endpoints.find((candidate) => endpointKey(candidate.endpoint) === selectedKey) ?? endpoints[0] ?? null
+  const connections = selected ? getEndpointConnections(project, selected.endpoint) : []
+
+  useEffect(() => {
+    if (endpoints.length === 0) setSelectedKey('')
+    else if (!endpoints.some((candidate) => endpointKey(candidate.endpoint) === selectedKey)) {
+      setSelectedKey(endpointKey(endpoints[0].endpoint))
+    }
+  }, [endpoints, selectedKey])
+
+  return (
+    <InspectorSection
+      title={item.type === 'ups' || item.type === 'powerStrip' ? 'Outlets' : 'Power'}
+      icon={PlugZap}
+      badge={<StatusBadge>{endpoints.length}</StatusBadge>}
+    >
+      {endpoints.length === 0 ? (
+        <div className="rounded-md border border-dashed border-[#d6ccbd] bg-[#f8f3eb] p-3 text-sm font-medium text-[#75695d]">
+          No power endpoint is available. Assign the required power component first.
+        </div>
+      ) : (
+        <Tabs value={selected ? endpointKey(selected.endpoint) : ''} onValueChange={setSelectedKey} className="gap-4">
+          <TabsList className="flex !h-auto w-full flex-wrap justify-start gap-2 bg-transparent p-0">
+            {endpoints.map((candidate, index) => {
+              const key = endpointKey(candidate.endpoint)
+              return (
+                <TabsTrigger key={key} value={key} className="!h-auto rounded-md border px-3 py-2 data-active:ring-2 data-active:ring-[#ddb668]">
+                  <span className="grid leading-none">
+                    <span className="text-[9px] font-black uppercase tracking-[0.06em] opacity-70">
+                      {candidate.direction === 'output' ? 'Outlet' : 'Input'}
+                    </span>
+                    <span className="mt-1 font-mono text-base font-black">{String(index + 1).padStart(2, '0')}</span>
+                  </span>
+                </TabsTrigger>
+              )
+            })}
+          </TabsList>
+          {selected ? (
+            <TabsContent value={endpointKey(selected.endpoint)} className="m-0 grid gap-3 rounded-lg border border-[#e5dccf] bg-[#fffdf8] p-3">
+              <div className="rounded-md bg-[#f3f0ea] p-3">
+                <div className={labelClass}>{selected.direction}</div>
+                <div className="mt-1 text-sm font-black text-[#20242c]">{selected.label}</div>
+              </div>
+              {connections.length === 0 ? (
+                <div className="rounded-md bg-[#f8f3eb] p-3 text-sm font-semibold text-[#75695d]">Open</div>
+              ) : connections.map((connection) => (
+                <ConnectionRow
+                  key={connection.id}
+                  connection={connection}
+                  project={project}
+                  onUpdateLabel={onUpdateConnectionLabel}
+                  onRemove={onRemoveConnection}
+                />
+              ))}
+            </TabsContent>
+          ) : null}
+        </Tabs>
+      )}
+    </InspectorSection>
+  )
+}
+
+function PcBuildInspectorTabs({
+  project,
+  item,
+  agentStatus,
+  demoMode,
+  activeNetworkTraceKey,
+  pendingEndpoint,
+  auditWarnings,
+  onUpdateProject,
+  onUpdateItem,
+  onSelectNetworkTrace,
+  onEndpointConnectionClick,
+  onUpdateConnectionLabel,
+  onRemoveConnection,
+}: {
+  project: ProjectState
+  item: InventoryItem
+  agentStatus: AgentStatusSummary | null
+  demoMode: boolean
+  activeNetworkTraceKey: string | null
+  pendingEndpoint: ConnectionEndpoint | null
+  auditWarnings: AuditWarning[]
+  onUpdateProject: (project: ProjectState) => void
+  onUpdateItem: (itemId: string, input: InventoryItemInput) => void
+  onSelectNetworkTrace: (endpoint: ConnectionEndpoint) => void
+  onEndpointConnectionClick: (endpoint: ConnectionEndpoint) => void
+  onUpdateConnectionLabel: (connectionId: string | number, label: string) => void
+  onRemoveConnection: (connectionId: string | number) => void
 }) {
   const editor = useInventoryItemEditor({
     item,
     onSave: (input) => onUpdateItem(runtimeItemKey(item), input),
   })
   const draftItem = itemFromEditorValues(item, editor.values)
+  const status = getServerAgentStatus(agentStatus, String(item.id))
+  const registered = agentStatus?.registeredServerIds.some((id) => String(id) === String(item.id)) ?? false
+  const hasSavedStatus = Boolean(agentStatus?.servers[String(item.id)])
+
+  return (
+    <InspectorTabs
+      defaultValue="specs"
+      status={<InventoryFormStatus saveError={editor.saveError} />}
+      tabs={[
+        {
+          value: 'specs',
+          label: 'Specs',
+          content: <EditableSpecsSection title="PC Build Details" editor={editor} auditWarnings={auditWarnings} displayName />,
+        },
+        { value: 'slots', label: 'Slots', content: <PcBuildSlotsTab project={project} host={draftItem} /> },
+        {
+          value: 'ports',
+          label: 'Ports',
+          content: (
+            <HostedPortsTab
+              project={project}
+              host={draftItem}
+              activeNetworkTraceKey={activeNetworkTraceKey}
+              pendingEndpoint={pendingEndpoint}
+              onUpdateItem={onUpdateItem}
+              onSelectTrace={onSelectNetworkTrace}
+              onEndpointConnect={onEndpointConnectionClick}
+            />
+          ),
+        },
+        {
+          value: 'network',
+          label: 'Network',
+          content: (
+            <HostedPortsTab
+              project={project}
+              host={draftItem}
+              networkOnly
+              activeNetworkTraceKey={activeNetworkTraceKey}
+              pendingEndpoint={pendingEndpoint}
+              onUpdateItem={onUpdateItem}
+              onSelectTrace={onSelectNetworkTrace}
+              onEndpointConnect={onEndpointConnectionClick}
+            />
+          ),
+        },
+        {
+          value: 'power',
+          label: 'Power',
+          content: (
+            <PowerEndpointsTab
+              project={project}
+              item={draftItem}
+              onUpdateConnectionLabel={onUpdateConnectionLabel}
+              onRemoveConnection={onRemoveConnection}
+            />
+          ),
+        },
+        { value: 'services', label: 'Services', content: <ComingSoonSection /> },
+        {
+          value: 'agent',
+          label: 'Agent',
+          content: (
+            <AgentSetupPanel
+              server={draftItem}
+              status={status}
+              registered={registered}
+              hasSavedStatus={hasSavedStatus}
+              demoMode={demoMode}
+            />
+          ),
+        },
+        {
+          value: 'compatibility',
+          label: 'Compatibility',
+          content: (
+            <HostCompatibilityTab
+              project={project}
+              host={draftItem}
+              values={editor.values}
+              errors={editor.errors}
+              onChange={editor.updateValues}
+              enabled={isHostCompatibilityEnabled(project, runtimeItemKey(item))}
+              onEnabledChange={(enabled) => onUpdateProject(
+                setHostCompatibilityEnabled(project, runtimeItemKey(item), enabled),
+              )}
+            />
+          ),
+        },
+      ]}
+    />
+  )
+}
+
+function StandalonePowerEquipmentTabs({
+  project,
+  item,
+  pendingEndpoint,
+  auditWarnings,
+  onUpdateItem,
+  onEndpointConnectionClick,
+  onUpdateConnectionLabel,
+  onRemoveConnection,
+}: {
+  project: ProjectState
+  item: InventoryItem
+  pendingEndpoint: ConnectionEndpoint | null
+  auditWarnings: AuditWarning[]
+  onUpdateItem: (itemId: string, input: InventoryItemInput) => void
+  onEndpointConnectionClick: (endpoint: ConnectionEndpoint) => void
+  onUpdateConnectionLabel: (connectionId: string | number, label: string) => void
+  onRemoveConnection: (connectionId: string | number) => void
+}) {
+  const editor = useInventoryItemEditor({ item, onSave: (input) => onUpdateItem(runtimeItemKey(item), input) })
+  const draftItem = itemFromEditorValues(item, editor.values)
+  const inspectedItem = item.type === 'monitor'
+    ? { ...draftItem, ports: draftItem.ports ?? item.ports }
+    : draftItem
+  const handlePortsUpdate = (ports: InventoryPort[]) => updateEditorPorts(editor, ports)
+
+  return (
+    <InspectorTabs
+      defaultValue="specs"
+      status={<InventoryFormStatus saveError={editor.saveError} />}
+      tabs={[
+        {
+          value: 'specs',
+          label: 'Specs',
+          content: <EditableSpecsSection title={`${itemTypeLabel(item.type)} Details`} editor={editor} auditWarnings={auditWarnings} />,
+        },
+        {
+          value: item.type === 'monitor' ? 'ports' : 'outlets',
+          label: item.type === 'monitor' ? 'Ports' : 'Outlets',
+          content: (
+            <>
+              {item.type === 'monitor' && (inspectedItem.ports?.length ?? 0) > 0 ? (
+                <PortTabsEditor
+                  project={project}
+                  item={inspectedItem}
+                  pendingEndpoint={pendingEndpoint}
+                  onUpdate={handlePortsUpdate}
+                  onEndpointConnect={onEndpointConnectionClick}
+                />
+              ) : null}
+              <PowerEndpointsTab
+                project={project}
+                item={inspectedItem}
+                onUpdateConnectionLabel={onUpdateConnectionLabel}
+                onRemoveConnection={onRemoveConnection}
+              />
+            </>
+          ),
+        },
+      ]}
+    />
+  )
+}
+
+function ComponentItemEditor({
+  project,
+  item,
+  validationMessage,
+  pendingEndpoint,
+  onUpdateItem,
+  onEndpointConnectionClick,
+}: {
+  project: ProjectState
+  item: InventoryItem & { type: ComponentType }
+  validationMessage: string | null
+  pendingEndpoint: ConnectionEndpoint | null
+  onUpdateItem: (itemId: string, input: InventoryItemInput) => void
+  onEndpointConnectionClick: (endpoint: ConnectionEndpoint) => void
+}) {
+  const editor = useInventoryItemEditor({
+    item,
+    onSave: (input) => onUpdateItem(runtimeItemKey(item), input),
+  })
+  const draftItem = itemFromEditorValues(item, editor.values)
+  const handlePortsUpdate = (ports: InventoryPort[]) => updateEditorPorts(editor, ports)
+
+  if (!LEGACY_COMPONENT_INSPECTOR_TYPES.has(item.type)) {
+    const tabs: InspectorTab[] = [
+      {
+        value: 'specs',
+        label: 'Specs',
+        content: (
+          <InspectorSection title={`${itemTypeLabel(item.type)} Details`} icon={Info}>
+            <InventorySpecsFormContent
+              values={editor.values}
+              errors={editor.errors}
+              onChange={editor.updateValues}
+              includeCompatibility={false}
+            />
+          </InspectorSection>
+        ),
+      },
+    ]
+
+    if (item.type === 'motherboard') {
+      tabs.push({
+        value: 'ports',
+        label: 'Ports',
+        content: (
+          <>
+            <PortGroupsEditor
+              type="motherboard"
+              groups={editor.values.portGroups}
+              error={editor.errors.portGroups}
+              onChange={(portGroups) => editor.updateValues({ portGroups }, 'immediate')}
+            />
+            <PortTabsEditor
+              project={project}
+              item={draftItem}
+              pendingEndpoint={pendingEndpoint}
+              onUpdate={handlePortsUpdate}
+              onEndpointConnect={onEndpointConnectionClick}
+            />
+          </>
+        ),
+      })
+    }
+
+    return (
+      <InspectorTabs
+        defaultValue="specs"
+        status={<InventoryFormStatus validationMessage={validationMessage} saveError={editor.saveError} />}
+        tabs={tabs}
+      />
+    )
+  }
 
   return (
     <ComponentInspectorTabs
@@ -2950,6 +3558,35 @@ export function InspectorPanel({
                   onUpdateConnectionLabel={onUpdateConnectionLabel}
                   onRemoveConnection={onRemoveConnection}
                 />
+              ) : selectedItem.type === 'pcBuild' ? (
+                <PcBuildInspectorTabs
+                  project={project}
+                  item={selectedItem}
+                  agentStatus={agentStatus}
+                  demoMode={demoMode}
+                  activeNetworkTraceKey={activeNetworkTraceKey}
+                  pendingEndpoint={pendingConnectionEndpoint}
+                  auditWarnings={auditWarnings}
+                  onUpdateProject={onUpdateProject}
+                  onUpdateItem={onUpdateItem}
+                  onSelectNetworkTrace={onSelectNetworkTrace}
+                  onEndpointConnectionClick={onEndpointConnectionClick}
+                  onUpdateConnectionLabel={onUpdateConnectionLabel}
+                  onRemoveConnection={onRemoveConnection}
+                />
+              ) : selectedItem.type === 'monitor'
+                || selectedItem.type === 'ups'
+                || selectedItem.type === 'powerStrip' ? (
+                <StandalonePowerEquipmentTabs
+                  project={project}
+                  item={selectedItem}
+                  pendingEndpoint={pendingConnectionEndpoint}
+                  auditWarnings={auditWarnings}
+                  onUpdateItem={onUpdateItem}
+                  onEndpointConnectionClick={onEndpointConnectionClick}
+                  onUpdateConnectionLabel={onUpdateConnectionLabel}
+                  onRemoveConnection={onRemoveConnection}
+                />
               ) : isEditableComponent(selectedItem) ? (
                 <>
                   <ComponentItemEditor
@@ -2957,7 +3594,9 @@ export function InspectorPanel({
                     project={project}
                     item={selectedItem}
                     validationMessage={null}
+                    pendingEndpoint={pendingConnectionEndpoint}
                     onUpdateItem={onUpdateItem}
+                    onEndpointConnectionClick={onEndpointConnectionClick}
                   />
                   <AuditSection warnings={auditWarnings} />
                 </>

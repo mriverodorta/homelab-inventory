@@ -10,7 +10,7 @@ import {
   revokeAgentRegistration,
 } from '@/lib/agent-api'
 import type { AgentStatusSummary } from '@/types/agent'
-import type { ProjectState } from '@/types/inventory'
+import type { InventoryItem, ProjectState } from '@/types/inventory'
 
 vi.mock('@/lib/agent-api', () => ({
   clearAgentStatus: vi.fn(),
@@ -533,6 +533,148 @@ function renderInspector({
 }
 
 describe('InspectorPanel', () => {
+  it('renders dedicated PC Build tabs with assigned components, hosted ports, and power input', async () => {
+    const user = userEvent.setup()
+    const pcBuild: InventoryItem = {
+      id: 1,
+      key: 'pcBuild:1',
+      name: 'Gaming Workstation',
+      type: 'pcBuild',
+      specs: { operatingSystem: 'Windows 11 Pro', role: 'Gaming' },
+      properties: { displayName: 'Aurora' },
+    }
+    const motherboard: InventoryItem = {
+      id: 1,
+      key: 'motherboard:1',
+      name: 'ASUS ProArt X670E',
+      type: 'motherboard',
+      manufacturer: 'ASUS',
+      specs: { formFactor: 'ATX' },
+      ports: [{ id: 1, kind: 'server-port', type: 'displayport', slotNumber: 1 }],
+    }
+    const network: InventoryItem = {
+      id: 1,
+      key: 'network:1',
+      name: 'Intel X550-T2',
+      type: 'network',
+      ports: [{ id: 1, kind: 'server-port', type: 'rj45', slotNumber: 1, speed: '10G' }],
+    }
+    const powerSupply: InventoryItem = {
+      id: 1,
+      key: 'powerSupply:1',
+      name: 'Corsair RM750x',
+      type: 'powerSupply',
+      specs: { ratedWatts: 750, formFactor: 'ATX' },
+    }
+    const pcProject: ProjectState = {
+      ...project,
+      items: {
+        'pcBuild:1': pcBuild,
+        'motherboard:1': motherboard,
+        'network:1': network,
+        'powerSupply:1': powerSupply,
+      },
+      placements: [{ serverId: 'pcBuild:1', x: 0, y: 0 }],
+      assignments: [motherboard, network, powerSupply].map((item, index) => ({
+        id: index + 1,
+        serverId: 'pcBuild:1',
+        itemId: item.key!,
+        type: item.type as 'motherboard' | 'network' | 'powerSupply',
+        assignedAt: '2026-07-20T00:00:00.000Z',
+      })),
+      connections: [],
+    }
+
+    renderInspector({ selectedItemId: 'pcBuild:1', project: pcProject })
+
+    expect(screen.getByRole('tab', { name: 'Specs' })).toHaveAttribute('aria-selected', 'true')
+    expect(screen.getByLabelText('Name')).toHaveValue('Gaming Workstation')
+    expect(screen.getByLabelText(/display name/i)).toHaveValue('Aurora')
+    expect(screen.getByLabelText('Operating System')).toHaveValue('Windows 11 Pro')
+
+    await user.click(screen.getByRole('tab', { name: 'Slots' }))
+    expect(screen.getByText('ASUS ProArt X670E')).toBeInTheDocument()
+    expect(screen.getByText('Corsair RM750x')).toBeInTheDocument()
+
+    await user.click(screen.getByRole('tab', { name: 'Ports' }))
+    expect(screen.getByText('PC Build Ports')).toBeInTheDocument()
+    expect(screen.getAllByText('Motherboard').length).toBeGreaterThan(0)
+
+    await user.click(screen.getByRole('tab', { name: 'Network' }))
+    expect(screen.getByText('Network Interfaces')).toBeInTheDocument()
+    expect(screen.getByText(/Intel X550-T2 \/ RJ45 10G/)).toBeInTheDocument()
+
+    await user.click(screen.getByRole('tab', { name: 'Power' }))
+    expect(screen.getByText('Gaming Workstation / Corsair RM750x / AC input')).toBeInTheDocument()
+  })
+
+  it('reuses inventory form fields for new assignable component inspectors', () => {
+    const cooler: InventoryItem = {
+      id: 1,
+      key: 'cpuCooler:1',
+      name: 'Noctua NH-D15',
+      type: 'cpuCooler',
+      manufacturer: 'Noctua',
+      model: 'NH-D15',
+      specs: { coolerType: 'Air' },
+    }
+
+    renderInspector({
+      selectedItemId: 'cpuCooler:1',
+      project: { ...project, items: { 'cpuCooler:1': cooler } },
+    })
+
+    expect(screen.getByText('CPU Cooler Details')).toBeInTheDocument()
+    expect(screen.getByLabelText('Name')).toHaveValue('Noctua NH-D15')
+    expect(screen.getByLabelText('Manufacturer')).toHaveValue('Noctua')
+    expect(screen.getByLabelText('Cooler Type')).toBeInTheDocument()
+  })
+
+  it('renders editable standalone power equipment with outlet and monitor port tabs', async () => {
+    const user = userEvent.setup()
+    const ups: InventoryItem = {
+      id: 1,
+      key: 'ups:1',
+      name: 'Rack UPS',
+      type: 'ups',
+      manufacturer: 'APC',
+      specs: { capacityVa: 1500, batteryBackupOutlets: 2, surgeProtectedOutlets: 1, outlets: 3 },
+    }
+    const monitor: InventoryItem = {
+      id: 1,
+      key: 'monitor:1',
+      name: 'Studio Display',
+      type: 'monitor',
+      specs: { sizeInches: 27, resolution: '4K', refreshRateHz: 60 },
+      ports: [{ id: 1, kind: 'server-port', type: 'displayport', slotNumber: 1 }],
+    }
+    const powerStrip: InventoryItem = {
+      id: 1,
+      key: 'powerStrip:1',
+      name: 'Desk Power Strip',
+      type: 'powerStrip',
+      specs: { outlets: 2, surgeProtected: true },
+    }
+    const powerProject: ProjectState = {
+      ...project,
+      items: { 'ups:1': ups, 'monitor:1': monitor, 'powerStrip:1': powerStrip },
+      placements: [],
+      assignments: [],
+      connections: [],
+    }
+
+    const upsRender = renderInspector({ selectedItemId: 'ups:1', project: powerProject })
+    expect(screen.getByLabelText('Name')).toHaveValue('Rack UPS')
+    await user.click(screen.getByRole('tab', { name: 'Outlets' }))
+    expect(screen.getByText('Rack UPS / Battery outlet 1')).toBeInTheDocument()
+
+    upsRender.unmount()
+    renderInspector({ selectedItemId: 'monitor:1', project: powerProject })
+    await user.click(screen.getByRole('tab', { name: 'Ports' }))
+    expect(screen.getByText(/port occupancy/i)).toBeInTheDocument()
+    expect(screen.getByText('Studio Display / AC input')).toBeInTheDocument()
+  })
+
   it('renders unknown compatibility feedback as amber status while errors remain alerts', () => {
     const { unmount } = renderInspector({
       selectedItemId: 'server',
@@ -1536,7 +1678,6 @@ describe('InspectorPanel', () => {
   it('does not render server audit warnings for unplanned open LAN ports', () => {
     renderInspector({ selectedItemId: 'server' })
 
-    expect(screen.queryByText('Audit')).not.toBeInTheDocument()
     expect(screen.queryByText('LAN port 01 is open.')).not.toBeInTheDocument()
   })
 
