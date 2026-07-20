@@ -49,6 +49,7 @@ import {
   getAssignedComponentDropGeometryError,
   moveAssignedComponent,
   tryAssignComponent,
+  tryRemoveAssignedComponent,
 } from '@/lib/constraints'
 import {
   clearIgnoredAuditWarnings,
@@ -127,7 +128,6 @@ import {
   placementCollides,
   placementsCollide,
   removeConnection,
-  removeAssignment,
   updateConnectionLabel,
   updateConnectionRoute,
   upsertPlacements,
@@ -1489,7 +1489,14 @@ function App() {
               setSelectedItemId(null)
               setActiveNetworkTraceEndpoint(null)
             }}
-            onRemoveAssignment={(assignmentId) => updateProject(removeAssignment(project, assignmentId))}
+            onRemoveAssignment={(assignmentId) => {
+              const result = tryRemoveAssignedComponent(project, assignmentId)
+              if (!result.ok) {
+                showMessage(result.message)
+                return
+              }
+              updateProject(result.project)
+            }}
             onMoveItem={(itemId: string, position: XYPosition) => {
               const placement = getNonCollidingPlacement(project, {
                 serverId: itemId,

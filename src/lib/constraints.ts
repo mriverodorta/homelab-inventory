@@ -3,6 +3,14 @@ import { isAssignableComponentType } from '@/lib/inventory-capabilities'
 import type { ProjectCompatibilityResult } from '@/lib/compatibility'
 import { nextNumericId } from '@/lib/ids'
 import { isArchivedItem, placementCollides, touchProject } from '@/lib/project'
+import {
+  allocatePcBuildAssignment,
+  canRemovePcBuildAssignment,
+  PC_BUILD_COMPONENT_ORDER,
+  PC_BUILD_COMPONENT_TYPES,
+  pcBuildComponentLimitMessage,
+  visiblePcBuildSlotTypes,
+} from '@/lib/pc-build'
 import type { CompatibilityFinding, CompatibilityResult } from '@/types/compatibility'
 import type {
   ComponentAssignment,
@@ -14,17 +22,7 @@ import type {
 } from '@/types/inventory'
 
 export const COMPONENT_ORDER: ComponentType[] = [
-  'cpu',
-  'ram',
-  'storage',
-  'gpu',
-  'network',
-  'motherboard',
-  'cpuCooler',
-  'case',
-  'powerSupply',
-  'soundCard',
-  'wireless',
+  ...PC_BUILD_COMPONENT_ORDER,
   'powerAdapter',
 ]
 
@@ -50,13 +48,20 @@ export const SLOT_LABELS: Record<ComponentType, string> = {
 }
 
 const SINGLE_ITEM_TYPES = new Set<ComponentType>(['cpu', 'ram', 'gpu', 'network'])
-const NAS_COMPONENT_TYPES = new Set<ComponentType>(['cpu', 'ram', 'storage', 'network'])
+const SERVER_COMPONENT_TYPES = new Set<ComponentType>([
+  'cpu', 'ram', 'storage', 'gpu', 'network', 'powerAdapter',
+])
+const NAS_COMPONENT_TYPES = new Set<ComponentType>([
+  'cpu', 'ram', 'storage', 'network', 'powerAdapter',
+])
 const SWAPPABLE_COMPONENT_TYPES = new Set<ComponentType>(['cpu', 'ram'])
 const ALWAYS_ENFORCED_COMPATIBILITY_CODES = new Set([
   'compatibility.resource.exhausted',
   'memory.slots.exceeded',
 ])
-const NAS_COMPONENT_MESSAGE = 'A NAS can accept CPU, RAM, storage drives, and network cards.'
+const NAS_COMPONENT_MESSAGE = 'A NAS can accept CPU, RAM, storage drives, and network cards; it can also accept a power adapter.'
+const SERVER_COMPONENT_MESSAGE = 'An OEM server can accept CPU, RAM, storage, GPU, network, and power adapter components.'
+const PC_BUILD_COMPONENT_MESSAGE = 'A PC Build accepts motherboard-based PC components. Power adapters belong to OEM servers and NAS devices.'
 
 export type AssignmentMutationResult =
   | {
@@ -154,6 +159,7 @@ function planHosts(project: ProjectState, hostIds: string[]): PlannedTransition 
   const compatibility: ProjectCompatibilityResult[] = []
 
   for (const hostId of [...new Set(hostIds)]) {
+    if (plannedProject.items[hostId]?.type === 'pcBuild') continue
     const plan = planHostAllocations(plannedProject, hostId)
     const plannedAssignments = new Map(
       plan.assignments.map((assignment) => [assignmentIdentity(assignment), assignment]),
@@ -178,10 +184,13 @@ function evaluateTransition(
   tentative: ProjectState,
   affectedHostIds: string[],
 ): AssignmentMutationResult {
-  const baseline = [...new Set(affectedHostIds)].flatMap(
+  const legacyHostIds = [...new Set(affectedHostIds)].filter(
+    (hostId) => original.items[hostId]?.type !== 'pcBuild' && tentative.items[hostId]?.type !== 'pcBuild',
+  )
+  const baseline = legacyHostIds.flatMap(
     (hostId) => planHostAllocations(original, hostId).results,
   )
-  const planned = planHosts(tentative, affectedHostIds)
+  const planned = planHosts(tentative, legacyHostIds)
   const baselineErrors = new Set(
     baseline.flatMap((result) =>
       result.findings
@@ -241,12 +250,17 @@ function validateAssignmentBasics(
   const host = project.items[serverId]
   const item = project.items[itemId]
 
-  if (!host || (host.type !== 'server' && host.type !== 'nas')) {
-    return { ok: false, message: 'Drop components onto a server or NAS.' }
+  if (!host || !['server', 'nas', 'pcBuild'].includes(host.type)) {
+    return { ok: false, message: 'Drop components onto a server, NAS, or PC Build.' }
   }
 
   if (isArchivedItem(host)) {
-    return { ok: false, message: 'Restore this server or NAS before assigning components.' }
+    return {
+      ok: false,
+      message: host.type === 'pcBuild'
+        ? 'Restore this PC Build before assigning components.'
+        : 'Restore this server or NAS before assigning components.',
+    }
   }
 
   if (!item) {
@@ -261,8 +275,16 @@ function validateAssignmentBasics(
     return { ok: false, message: 'Canvas equipment belongs on the canvas, not inside another item.' }
   }
 
+  if (host.type === 'server' && !SERVER_COMPONENT_TYPES.has(item.type)) {
+    return { ok: false, message: SERVER_COMPONENT_MESSAGE }
+  }
+
   if (host.type === 'nas' && !NAS_COMPONENT_TYPES.has(item.type)) {
     return { ok: false, message: NAS_COMPONENT_MESSAGE }
+  }
+
+  if (host.type === 'pcBuild' && !PC_BUILD_COMPONENT_TYPES.has(item.type)) {
+    return { ok: false, message: PC_BUILD_COMPONENT_MESSAGE }
   }
 
   const alreadyAssigned = project.assignments.find((assignment) => assignment.itemId === itemId)
@@ -275,7 +297,16 @@ function validateAssignmentBasics(
     return { ok: false, message: `${item.name} is already attached to this item.` }
   }
 
-  if (SINGLE_ITEM_TYPES.has(item.type)) {
+  if (host.type === 'pcBuild') {
+    const hostAssignments = project.assignments.filter(
+      (assignment) => assignment.serverId === serverId,
+    )
+    const limitMessage = pcBuildComponentLimitMessage(
+      hostAssignments,
+      item as InventoryItem & { type: ComponentType },
+    )
+    if (limitMessage) return { ok: false, message: limitMessage }
+  } else if (SINGLE_ITEM_TYPES.has(item.type)) {
     const existing = project.assignments.find(
       (assignment) => assignment.serverId === serverId && assignment.type === item.type,
     )
@@ -294,6 +325,7 @@ function newAssignment(
   serverId: string,
   itemId: string,
   item: InventoryItem & { type: ComponentType },
+  allocation?: ComponentAssignment['allocation'],
 ): ComponentAssignment {
   return {
     id: nextNumericId(project.assignments.map((assignment) => assignment.id)),
@@ -301,7 +333,92 @@ function newAssignment(
     itemId,
     type: item.type,
     assignedAt: new Date().toISOString(),
+    ...(allocation ? { allocation } : {}),
   }
+}
+
+function assignmentForCandidate(
+  project: ProjectState,
+  serverId: string,
+  itemId: string,
+  item: InventoryItem & { type: ComponentType },
+): { ok: true; assignment: ComponentAssignment } | { ok: false; message: string } {
+  if (project.items[serverId]?.type !== 'pcBuild') {
+    return { ok: true, assignment: newAssignment(project, serverId, itemId, item) }
+  }
+
+  const hostAssignments = project.assignments.filter((assignment) => assignment.serverId === serverId)
+  const allocated = allocatePcBuildAssignment(project, serverId, item, hostAssignments)
+  if (!allocated.ok) return allocated
+
+  return {
+    ok: true,
+    assignment: newAssignment(
+      project,
+      serverId,
+      itemId,
+      item,
+      allocated.allocation,
+    ),
+  }
+}
+
+function reallocatePcBuildHost(
+  project: ProjectState,
+  hostId: string,
+): { ok: true; project: ProjectState } | { ok: false; message: string } {
+  if (project.items[hostId]?.type !== 'pcBuild') return { ok: true, project }
+
+  const hostAssignments = project.assignments
+    .filter((assignment) => assignment.serverId === hostId)
+    .sort((a, b) => PC_BUILD_COMPONENT_ORDER.indexOf(a.type) - PC_BUILD_COMPONENT_ORDER.indexOf(b.type))
+  let allocatedAssignments: ComponentAssignment[] = []
+
+  for (const assignment of hostAssignments) {
+    const item = project.items[assignment.itemId]
+    if (!item || !isAssignableComponentType(item.type)) {
+      return { ok: false, message: 'That assigned PC component no longer exists.' }
+    }
+    const allocationProject = {
+      ...project,
+      assignments: [
+        ...project.assignments.filter((candidate) => candidate.serverId !== hostId),
+        ...allocatedAssignments,
+      ],
+    }
+    const allocated = allocatePcBuildAssignment(
+      allocationProject,
+      hostId,
+      item as InventoryItem & { type: ComponentType },
+      allocatedAssignments,
+    )
+    if (!allocated.ok) return allocated
+    allocatedAssignments = [...allocatedAssignments, { ...assignment, allocation: allocated.allocation }]
+  }
+
+  const replacements = new Map(allocatedAssignments.map((assignment) => [assignmentIdentity(assignment), assignment]))
+  return {
+    ok: true,
+    project: {
+      ...project,
+      assignments: project.assignments.map(
+        (assignment) => replacements.get(assignmentIdentity(assignment)) ?? assignment,
+      ),
+    },
+  }
+}
+
+function reallocatePcBuildHosts(
+  project: ProjectState,
+  hostIds: string[],
+): { ok: true; project: ProjectState } | { ok: false; message: string } {
+  let nextProject = project
+  for (const hostId of [...new Set(hostIds)]) {
+    const result = reallocatePcBuildHost(nextProject, hostId)
+    if (!result.ok) return result
+    nextProject = result.project
+  }
+  return { ok: true, project: nextProject }
 }
 
 function candidateCompatibility(
@@ -336,6 +453,9 @@ export function getVisibleServerSlotTypes(
   project: ProjectState,
   serverId: string,
 ): ComponentType[] {
+  if (project.items[serverId]?.type === 'pcBuild') {
+    return visiblePcBuildSlotTypes(project, serverId)
+  }
   const assignedTypes = new Set(
     project.assignments
       .filter((assignment) => assignment.serverId === serverId)
@@ -376,14 +496,15 @@ export function validateAssignment(
   }
 
   const assignment = newAssignment(
-    project,
-    serverId,
-    itemId,
-    item as InventoryItem & { type: ComponentType },
+    project, serverId, itemId, item as InventoryItem & { type: ComponentType },
   )
+  const candidate = project.items[serverId]?.type === 'pcBuild'
+    ? assignmentForCandidate(project, serverId, itemId, item as InventoryItem & { type: ComponentType })
+    : { ok: true as const, assignment }
+  if (!candidate.ok) return candidate
   const transition = evaluateTransition(
     project,
-    { ...project, assignments: [...project.assignments, assignment] },
+    { ...project, assignments: [...project.assignments, candidate.assignment] },
     [serverId],
   )
 
@@ -391,13 +512,13 @@ export function validateAssignment(
     return {
       ok: false,
       message: transition.message,
-      compatibility: candidateCompatibility(transition.compatibility ?? [], assignment),
+      compatibility: candidateCompatibility(transition.compatibility ?? [], candidate.assignment),
     }
   }
 
   return {
     ok: true,
-    compatibility: candidateCompatibility(transition.compatibility, assignment),
+    compatibility: candidateCompatibility(transition.compatibility, candidate.assignment),
   }
 }
 
@@ -414,15 +535,16 @@ export function tryAssignComponent(
     return { ok: false, message: 'That inventory item no longer exists.' }
   }
 
-  const assignment = newAssignment(
+  const candidate = assignmentForCandidate(
     project,
     serverId,
     itemId,
     item as InventoryItem & { type: ComponentType },
   )
+  if (!candidate.ok) return candidate
   const transition = evaluateTransition(
     project,
-    { ...project, assignments: [...project.assignments, assignment] },
+    { ...project, assignments: [...project.assignments, candidate.assignment] },
     [serverId],
   )
 
@@ -453,8 +575,8 @@ export function moveAssignedComponent(
     return { ok: false, message: 'That component or server no longer exists.' }
   }
 
-  if (!['server', 'nas'].includes(sourceHost.type) || !['server', 'nas'].includes(targetHost.type)) {
-    return { ok: false, message: 'Drop components onto a server or NAS.' }
+  if (!['server', 'nas', 'pcBuild'].includes(sourceHost.type) || !['server', 'nas', 'pcBuild'].includes(targetHost.type)) {
+    return { ok: false, message: 'Drop components onto a server, NAS, or PC Build.' }
   }
 
   if (isArchivedItem(item) || isArchivedItem(sourceHost) || isArchivedItem(targetHost)) {
@@ -465,7 +587,7 @@ export function moveAssignedComponent(
     return {
       ok: true,
       project,
-      compatibility: planHostAllocations(project, targetServerId).results,
+      compatibility: targetHost.type === 'pcBuild' ? [] : planHostAllocations(project, targetServerId).results,
       unknownFindings: [],
     }
   }
@@ -512,14 +634,42 @@ export function moveAssignedComponent(
       return assignment
     }),
   }
+  const reallocated = reallocatePcBuildHosts(
+    tentative,
+    [sourceAssignment.serverId, targetServerId],
+  )
+  if (!reallocated.ok) return reallocated
   const transition = evaluateTransition(
     project,
-    tentative,
+    reallocated.project,
     [sourceAssignment.serverId, targetServerId],
   )
 
   if (!transition.ok) return transition
   return { ...transition, project: touchProject(transition.project) }
+}
+
+export function tryRemoveAssignedComponent(
+  project: ProjectState,
+  assignmentId: string | number,
+): { ok: true; project: ProjectState } | { ok: false; message: string } {
+  const assignment = findAssignmentById(project.assignments, assignmentId)
+  if (!assignment) return { ok: false, message: 'That assigned component is no longer attached.' }
+
+  if (project.items[assignment.serverId]?.type === 'pcBuild') {
+    const removable = canRemovePcBuildAssignment(project, assignment)
+    if (!removable.ok) return removable
+  }
+
+  return {
+    ok: true,
+    project: touchProject({
+      ...project,
+      assignments: project.assignments.filter(
+        (candidate) => assignmentIdentity(candidate) !== assignmentIdentity(assignment),
+      ),
+    }),
+  }
 }
 
 export function swapAssignedComponent(
