@@ -88,6 +88,27 @@ export type InventoryFormValues = {
   fanless: boolean
   rackUnits: string
   mount: string
+  operatingSystem: string
+  role: string
+  coolerType: '' | 'air' | 'aio' | 'custom-loop' | 'passive'
+  caseFormFactors: string[]
+  psuFormFactor: string
+  ratedWatts: string
+  efficiencyRating: string
+  wifiGeneration: string
+  bluetooth: '' | 'yes' | 'no'
+  displaySizeInches: string
+  resolution: string
+  refreshRateHz: string
+  upsWatts: string
+  upsVoltAmps: string
+  batteryOutletCount: string
+  surgeOutletCount: string
+  outletCount: string
+  surgeProtected: '' | 'yes' | 'no'
+  adapterOutputWatts: string
+  dcConnector: string
+  cpuSocketCount: string
   portGroups: PortGroup[]
   originalPorts: InventoryPort[]
   preservedSpecs: InventorySpecs
@@ -131,6 +152,17 @@ const KNOWN_SPEC_KEYS: Partial<Record<InventoryType, string[]>> = {
   network: ['ports', 'speedMbps', 'interface', 'formFactor'],
   switch: ['management', 'switchingCapacityGbps', 'fanless'],
   patchPanel: ['rackUnits', 'mount'],
+  pcBuild: ['operatingSystem', 'role'],
+  motherboard: ['formFactor', 'cpuSocketCount'],
+  cpuCooler: ['coolerType'],
+  case: ['formFactors'],
+  powerSupply: ['formFactor', 'wattageWatts', 'efficiency'],
+  soundCard: ['interface'],
+  wireless: ['interface', 'wifiGeneration', 'bluetooth'],
+  powerAdapter: ['wattageWatts', 'connector'],
+  monitor: ['sizeInches', 'resolution', 'refreshRateHz'],
+  ups: ['wattageWatts', 'capacityVa', 'batteryBackupOutlets', 'surgeProtectedOutlets', 'outlets'],
+  powerStrip: ['outlets', 'surgeProtected', 'surgeProtectedOutlets'],
 }
 
 function stringValue(value: unknown): string {
@@ -151,6 +183,13 @@ function numberValue(value: string): number | undefined {
 function stringArray(value: unknown): string[] {
   return Array.isArray(value)
     ? value.filter((entry): entry is string => typeof entry === 'string' && entry.trim() !== '')
+    : []
+}
+
+function commaSeparatedStringArray(value: unknown): string[] {
+  if (Array.isArray(value)) return stringArray(value)
+  return typeof value === 'string'
+    ? value.split(',').map((entry) => entry.trim()).filter(Boolean)
     : []
 }
 
@@ -247,7 +286,7 @@ export function defaultPortGroups(type: InventoryType): PortGroup[] {
 }
 
 export function inventoryTypeHasPorts(type: InventoryType): boolean {
-  return ['server', 'nas', 'gpu', 'network', 'switch', 'patchPanel'].includes(type)
+  return ['server', 'nas', 'motherboard', 'gpu', 'network', 'switch', 'patchPanel'].includes(type)
 }
 
 export function inventoryPortsToPortGroups(ports: InventoryPort[] | undefined): PortGroup[] {
@@ -315,6 +354,27 @@ export function createInventoryFormValues(type: InventoryType): InventoryFormVal
     fanless: false,
     rackUnits: '',
     mount: '',
+    operatingSystem: '',
+    role: '',
+    coolerType: '',
+    caseFormFactors: [],
+    psuFormFactor: '',
+    ratedWatts: '',
+    efficiencyRating: '',
+    wifiGeneration: '',
+    bluetooth: '',
+    displaySizeInches: '',
+    resolution: '',
+    refreshRateHz: '',
+    upsWatts: '',
+    upsVoltAmps: '',
+    batteryOutletCount: '',
+    surgeOutletCount: '',
+    outletCount: '',
+    surgeProtected: '',
+    adapterOutputWatts: '',
+    dcConnector: '',
+    cpuSocketCount: '',
     portGroups: defaultPortGroups(type),
     originalPorts: [],
     preservedSpecs: {},
@@ -389,6 +449,27 @@ export function inventoryItemToFormValues(item: InventoryItem): InventoryFormVal
     fanless: specs.fanless === true,
     rackUnits: stringValue(specs.rackUnits),
     mount: stringValue(specs.mount),
+    operatingSystem: stringValue(specs.operatingSystem),
+    role: stringValue(specs.role),
+    coolerType: stringValue(specs.coolerType) as InventoryFormValues['coolerType'],
+    caseFormFactors: commaSeparatedStringArray(specs.formFactors),
+    psuFormFactor: item.type === 'powerSupply' ? stringValue(specs.formFactor) : '',
+    ratedWatts: stringValue(specs.wattageWatts),
+    efficiencyRating: stringValue(specs.efficiency),
+    wifiGeneration: stringValue(specs.wifiGeneration),
+    bluetooth: specs.bluetooth === true ? 'yes' : specs.bluetooth === false ? 'no' : '',
+    displaySizeInches: stringValue(specs.sizeInches),
+    resolution: stringValue(specs.resolution),
+    refreshRateHz: stringValue(specs.refreshRateHz),
+    upsWatts: item.type === 'ups' ? stringValue(specs.wattageWatts) : '',
+    upsVoltAmps: stringValue(specs.capacityVa),
+    batteryOutletCount: stringValue(specs.batteryBackupOutlets),
+    surgeOutletCount: stringValue(specs.surgeProtectedOutlets),
+    outletCount: stringValue(specs.outlets),
+    surgeProtected: specs.surgeProtected === true ? 'yes' : specs.surgeProtected === false ? 'no' : '',
+    adapterOutputWatts: item.type === 'powerAdapter' ? stringValue(specs.wattageWatts) : '',
+    dcConnector: stringValue(specs.connector),
+    cpuSocketCount: stringValue(specs.cpuSocketCount),
     portGroups: inventoryPortsToPortGroups(item.ports),
     originalPorts: item.ports?.map(clonePort) ?? [],
     preservedSpecs,
@@ -556,6 +637,49 @@ export function inventoryFormValuesToInput(values: InventoryFormValues): Invento
   } else if (type === 'patchPanel') {
     setSpec(specs, 'rackUnits', numberValue(values.rackUnits))
     setSpec(specs, 'mount', cleanString(values.mount))
+  } else if (type === 'pcBuild') {
+    setSpec(specs, 'operatingSystem', cleanString(values.operatingSystem))
+    setSpec(specs, 'role', cleanString(values.role))
+  } else if (type === 'motherboard') {
+    setSpec(specs, 'formFactor', cleanString(values.formFactor))
+    setSpec(specs, 'cpuSocketCount', numberValue(values.cpuSocketCount))
+  } else if (type === 'cpuCooler') {
+    setSpec(specs, 'coolerType', cleanString(values.coolerType))
+  } else if (type === 'case') {
+    setSpec(specs, 'formFactors', values.caseFormFactors.length ? values.caseFormFactors.join(', ') : undefined)
+  } else if (type === 'powerSupply') {
+    setSpec(specs, 'formFactor', cleanString(values.psuFormFactor))
+    setSpec(specs, 'wattageWatts', numberValue(values.ratedWatts))
+    setSpec(specs, 'efficiency', cleanString(values.efficiencyRating))
+  } else if (type === 'soundCard') {
+    setSpec(specs, 'interface', cleanString(values.interface))
+  } else if (type === 'wireless') {
+    setSpec(specs, 'interface', cleanString(values.interface))
+    setSpec(specs, 'wifiGeneration', cleanString(values.wifiGeneration))
+    setSpec(specs, 'bluetooth', values.bluetooth === '' ? undefined : values.bluetooth === 'yes')
+  } else if (type === 'powerAdapter') {
+    setSpec(specs, 'wattageWatts', numberValue(values.adapterOutputWatts))
+    setSpec(specs, 'connector', cleanString(values.dcConnector))
+  } else if (type === 'monitor') {
+    setSpec(specs, 'sizeInches', numberValue(values.displaySizeInches))
+    setSpec(specs, 'resolution', cleanString(values.resolution))
+    setSpec(specs, 'refreshRateHz', numberValue(values.refreshRateHz))
+  } else if (type === 'ups') {
+    const batteryOutlets = numberValue(values.batteryOutletCount)
+    const surgeOutlets = numberValue(values.surgeOutletCount)
+    const existingOutletCount = numberValue(values.outletCount)
+    setSpec(specs, 'wattageWatts', numberValue(values.upsWatts))
+    setSpec(specs, 'capacityVa', numberValue(values.upsVoltAmps))
+    setSpec(specs, 'batteryBackupOutlets', batteryOutlets)
+    setSpec(specs, 'surgeProtectedOutlets', surgeOutlets)
+    setSpec(specs, 'outlets', batteryOutlets !== undefined || surgeOutlets !== undefined
+      ? (batteryOutlets ?? 0) + (surgeOutlets ?? 0)
+      : existingOutletCount)
+  } else if (type === 'powerStrip') {
+    const outlets = numberValue(values.outletCount)
+    setSpec(specs, 'outlets', outlets)
+    setSpec(specs, 'surgeProtected', values.surgeProtected === '' ? undefined : values.surgeProtected === 'yes')
+    setSpec(specs, 'surgeProtectedOutlets', values.surgeProtected === 'yes' ? outlets : values.surgeProtected === 'no' ? 0 : undefined)
   }
 
   const compatibility = buildCompatibility(values)
@@ -583,7 +707,7 @@ function buildCompatibility(values: InventoryFormValues): InventoryCompatibility
   const compatibility = cloneCompatibility(values.preservedCompatibility)
   const root = asMutableRecord(compatibility)
 
-  if (values.type === 'server' || values.type === 'nas') {
+  if (values.type === 'server' || values.type === 'nas' || values.type === 'motherboard') {
     const host = compatibility.host ? structuredClone(compatibility.host) : {}
     const hostRecord = asMutableRecord(host)
     const cpu = host.cpu ? { ...host.cpu } : {}
@@ -705,13 +829,18 @@ export function validateInventoryFormValues(values: InventoryFormValues): Invent
   const errors: InventoryFormErrors = {}
   if (!values.name.trim()) errors.name = 'Name is required.'
 
-  const positiveFields: Array<keyof InventoryFormValues> = ['cores', 'threads', 'capacityGb', 'moduleCount', 'hostMemorySlots']
+  const positiveFields: Array<keyof InventoryFormValues> = [
+    'cores', 'threads', 'capacityGb', 'moduleCount', 'hostMemorySlots', 'cpuSocketCount',
+  ]
   const nonNegativeFields: Array<keyof InventoryFormValues> = [
     'baseClockGhz', 'boostClockGhz', 'driveBays', 'm2Slots', 'speedMt', 'secondarySpeedMt',
     'capacity', 'vramGb', 'switchingCapacityGbps', 'rackUnits',
     'hostCpuMaxTdpWatts', 'hostMemoryMaxCapacityGb', 'hostMemoryMaxModuleCapacityGb',
     'hostMemoryMaxSpeedMt', 'hostMaxExpansionPowerWatts', 'cpuTdpWatts',
     'expansionPowerWatts',
+    'ratedWatts', 'displaySizeInches', 'refreshRateHz', 'upsWatts',
+    'upsVoltAmps', 'batteryOutletCount', 'surgeOutletCount', 'outletCount',
+    'adapterOutputWatts',
   ]
   for (const key of positiveFields) validateNumber(errors, values, key, 1)
   for (const key of nonNegativeFields) validateNumber(errors, values, key)

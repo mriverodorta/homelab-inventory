@@ -153,7 +153,7 @@ function ExpansionCompatibilityFields({ values, errors = {}, onChange, onSelectO
 
 export function CompatibilityFields(props: CompatibilityFieldsProps) {
   const { values, errors = {}, onChange } = props
-  const supported = ['server', 'nas', 'cpu', 'ram', 'gpu', 'network'].includes(values.type)
+  const supported = ['server', 'nas', 'motherboard', 'cpu', 'ram', 'gpu', 'network'].includes(values.type)
   if (!supported) return null
 
   return (
@@ -162,7 +162,7 @@ export function CompatibilityFields(props: CompatibilityFieldsProps) {
         <Puzzle aria-hidden="true" className="size-4 text-[#75695d]" />
         <h3 id="compatibility-heading" className="text-sm font-extrabold uppercase text-[#75695d]">Compatibility</h3>
       </div>
-      {(values.type === 'server' || values.type === 'nas') ? <HostCompatibilityFields {...props} /> : null}
+      {(values.type === 'server' || values.type === 'nas' || values.type === 'motherboard') ? <HostCompatibilityFields {...props} /> : null}
       {values.type === 'cpu' ? <CpuCompatibilityFields {...props} /> : null}
       {values.type === 'ram' ? (
         <TextField label="Module count" name="moduleCount" value={values.moduleCount} type="number" min={1} placeholder="2" error={errors.moduleCount} onChange={(moduleCount) => onChange({ moduleCount })} />

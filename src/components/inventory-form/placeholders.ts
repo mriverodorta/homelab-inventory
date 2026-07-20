@@ -69,19 +69,19 @@ export const INVENTORY_FORM_PLACEHOLDERS: Record<InventoryType, InventoryFormPla
     mount: 'Rack mounted',
   },
   pcBuild: {
-    name: 'Custom PC',
-    manufacturer: 'Custom',
-    model: 'Desktop build',
+    name: 'Gaming PC',
+    manufacturer: '',
+    model: '',
   },
   motherboard: {
-    name: 'ASUS TUF Gaming B650-PLUS',
+    name: 'ASUS ROG Strix B650E-I',
     manufacturer: 'ASUS',
-    model: 'TUF Gaming B650-PLUS',
+    model: 'ROG Strix B650E-I',
   },
   cpuCooler: {
-    name: 'Noctua NH-D15',
+    name: 'Noctua NH-L12S',
     manufacturer: 'Noctua',
-    model: 'NH-D15',
+    model: 'NH-L12S',
   },
   case: {
     name: 'Fractal Design North',
@@ -89,9 +89,9 @@ export const INVENTORY_FORM_PLACEHOLDERS: Record<InventoryType, InventoryFormPla
     model: 'North',
   },
   powerSupply: {
-    name: 'Corsair RM850x',
+    name: 'Corsair SF750',
     manufacturer: 'Corsair',
-    model: 'RM850x',
+    model: 'SF750',
   },
   soundCard: {
     name: 'Creative Sound Blaster AE-7',
@@ -111,10 +111,10 @@ export const INVENTORY_FORM_PLACEHOLDERS: Record<InventoryType, InventoryFormPla
   monitor: {
     name: 'Dell UltraSharp U2723QE',
     manufacturer: 'Dell',
-    model: 'UltraSharp U2723QE',
+    model: 'U2723QE',
   },
   ups: {
-    name: 'APC Back-UPS Pro 1500',
+    name: 'APC Back-UPS Pro',
     manufacturer: 'APC',
     model: 'BR1500MS2',
   },

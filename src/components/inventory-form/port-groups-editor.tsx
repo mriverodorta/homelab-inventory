@@ -101,7 +101,7 @@ export function PortGroupsEditor({
           <h3 className="text-sm font-black text-[#20242c]">Ports</h3>
           <p className="text-xs text-[#75695d]">Add one group per physical port type or speed.</p>
         </div>
-        <Button type="button" variant="outline" size="sm" onClick={addGroup}>
+        <Button type="button" variant="outline" size="sm" onClick={addGroup} aria-label="Add port group">
           <Plus className="size-3" />
           Group
         </Button>

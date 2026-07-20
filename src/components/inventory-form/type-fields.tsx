@@ -2,6 +2,8 @@ import { Input } from '@/components/ui/input'
 import type { InventoryType } from '@/types/inventory'
 import { FieldError, FieldLabel, SelectField, TextField } from './field-primitives'
 import type { InventoryFormErrors, InventoryFormValues } from './model'
+import { PcComponentFields } from './pc-component-fields'
+import { PowerEquipmentFields } from './power-equipment-fields'
 import { getInventoryFormPlaceholders } from './placeholders'
 import {
   CPU_MANUFACTURERS,
@@ -94,6 +96,14 @@ export function InventoryTypeFields({
   onSelectOpenChange,
 }: InventoryTypeFieldsProps) {
   const placeholders = getInventoryFormPlaceholders(type)
+
+  if (['pcBuild', 'motherboard', 'cpuCooler', 'case', 'powerSupply', 'soundCard', 'wireless'].includes(type)) {
+    return <PcComponentFields type={type} values={values} errors={errors} onChange={onChange} onSelectOpenChange={onSelectOpenChange} />
+  }
+
+  if (['powerAdapter', 'monitor', 'ups', 'powerStrip'].includes(type)) {
+    return <PowerEquipmentFields type={type} values={values} errors={errors} onChange={onChange} onSelectOpenChange={onSelectOpenChange} />
+  }
 
   if (type === 'cpu') {
     return (

@@ -12,25 +12,47 @@ export function fieldClassName(): string {
 export const INVENTORY_TYPES: InventoryType[] = [
   'server',
   'nas',
+  'pcBuild',
   'cpu',
   'ram',
   'storage',
   'gpu',
   'network',
+  'motherboard',
+  'cpuCooler',
+  'case',
+  'powerSupply',
+  'soundCard',
+  'wireless',
+  'powerAdapter',
   'switch',
   'patchPanel',
+  'monitor',
+  'ups',
+  'powerStrip',
 ]
 
 export const TYPE_LABELS: Partial<Record<InventoryType, string>> = {
   server: 'Server',
   nas: 'NAS',
+  pcBuild: 'PC Build',
   cpu: 'CPU',
   ram: 'RAM',
   storage: 'Storage',
   gpu: 'GPU',
   network: 'Network Card',
+  motherboard: 'Motherboard',
+  cpuCooler: 'CPU Cooler',
+  case: 'Case',
+  powerSupply: 'Power Supply',
+  soundCard: 'Sound Card',
+  wireless: 'Wireless Card',
+  powerAdapter: 'Power Adapter',
   switch: 'Switch',
   patchPanel: 'Patch Panel',
+  monitor: 'Monitor',
+  ups: 'UPS',
+  powerStrip: 'Power Strip',
 }
 
 export const PORT_TYPES: InventoryPortType[] = [
@@ -95,6 +117,16 @@ export const SWITCH_MANAGEMENT_OPTIONS = [
   'Layer 3 Managed',
   'Controller / Cloud-managed',
 ]
+export const MOTHERBOARD_FORM_FACTORS = ['Mini-ITX', 'Micro-ATX', 'ATX', 'E-ATX', 'SSI CEB', 'SSI EEB']
+export const PSU_FORM_FACTORS = ['ATX', 'SFX', 'SFX-L', 'TFX', 'Flex ATX', 'External']
+export const COOLER_TYPES = ['air', 'aio', 'custom-loop', 'passive']
+export const POWER_EFFICIENCY_RATINGS = ['80 Plus', '80 Plus Bronze', '80 Plus Silver', '80 Plus Gold', '80 Plus Platinum', '80 Plus Titanium']
+export const WIFI_GENERATIONS = ['Wi-Fi 4', 'Wi-Fi 5', 'Wi-Fi 6', 'Wi-Fi 6E', 'Wi-Fi 7']
+export const SOUND_CARD_INTERFACES = ['PCIe', 'USB', 'Onboard']
+export const WIRELESS_INTERFACES = ['M.2 A+E', 'PCIe', 'USB', 'Onboard']
+export const DC_CONNECTORS = ['Barrel', 'USB-C', 'Slim tip', 'Proprietary']
+export const YES_NO_OPTIONS = ['Yes', 'No']
+export const OUTLET_CLASSIFICATIONS = ['Battery backup', 'Surge protection']
 
 export function withLegacyOption(options: string[], currentValue?: string): string[] {
   const value = currentValue?.trim()

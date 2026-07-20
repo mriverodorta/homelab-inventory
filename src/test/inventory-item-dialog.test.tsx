@@ -88,6 +88,61 @@ describe('InventoryItemDialog switch port groups', () => {
     expect(screen.getByRole('option', { name: 'Controller / Cloud-managed' })).toBeInTheDocument()
   })
 
+  it('renders the constrained PC component and power equipment fields', async () => {
+    const user = userEvent.setup()
+    render(<InventoryItemDialog open onOpenChange={vi.fn()} onCreate={vi.fn()} />)
+
+    const chooseType = async (name: string) => {
+      await user.click(screen.getByRole('combobox', { name: 'Inventory type' }))
+      await user.click(screen.getByRole('option', { name }))
+    }
+
+    await chooseType('PC Build')
+    expect(screen.getByRole('textbox', { name: 'Operating System' })).toBeInTheDocument()
+    expect(screen.getByRole('textbox', { name: 'Role' })).toBeInTheDocument()
+
+    await chooseType('Motherboard')
+    expect(screen.getByRole('combobox', { name: 'Form Factor' })).toBeInTheDocument()
+    expect(screen.getByRole('spinbutton', { name: 'CPU Socket Count' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Add storage slot group' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Add expansion slot group' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Add port group' })).toBeInTheDocument()
+
+    await chooseType('CPU Cooler')
+    expect(screen.getByRole('combobox', { name: 'Cooler Type' })).toBeInTheDocument()
+
+    await chooseType('Case')
+    expect(screen.getByRole('checkbox', {
+      name: 'Supported motherboard form factor: Mini-ITX',
+    })).toBeInTheDocument()
+
+    await chooseType('Power Supply')
+    expect(screen.getByRole('combobox', { name: 'PSU Form Factor' })).toBeInTheDocument()
+    expect(screen.getByRole('combobox', { name: 'Efficiency Rating' })).toBeInTheDocument()
+
+    await chooseType('Sound Card')
+    expect(screen.getByRole('combobox', { name: 'Interface' })).toBeInTheDocument()
+
+    await chooseType('Wireless Card')
+    expect(screen.getByRole('combobox', { name: 'Wi-Fi Generation' })).toBeInTheDocument()
+    expect(screen.getByRole('combobox', { name: 'Bluetooth' })).toBeInTheDocument()
+
+    await chooseType('Power Adapter')
+    expect(screen.getByRole('combobox', { name: 'DC Connector' })).toBeInTheDocument()
+
+    await chooseType('Monitor')
+    expect(screen.getByRole('spinbutton', { name: 'Display Size (inches)' })).toBeInTheDocument()
+    expect(screen.getByRole('textbox', { name: 'Resolution' })).toBeInTheDocument()
+
+    await chooseType('UPS')
+    expect(screen.getByRole('spinbutton', { name: 'Battery Backup Outlets' })).toBeInTheDocument()
+    expect(screen.getByRole('spinbutton', { name: 'Surge Protection Outlets' })).toBeInTheDocument()
+
+    await chooseType('Power Strip')
+    expect(screen.getByRole('spinbutton', { name: 'Outlet Count' })).toBeInTheDocument()
+    expect(screen.getByRole('combobox', { name: 'Surge Protected' })).toBeInTheDocument()
+  })
+
   it('clears a noncanonical manufacturer when changing to a constrained type', async () => {
     const user = userEvent.setup()
 
@@ -240,6 +295,52 @@ describe('InventoryItemDialog switch port groups', () => {
       type: 'storage',
       name: '4TB NVMe',
       specs: { capacityTb: 4, interface: 'NVMe', formFactor: '2280' },
+    }, 1)
+  })
+
+  it('creates a PC Build with operating-system metadata', async () => {
+    const user = userEvent.setup()
+    const onCreate = vi.fn().mockResolvedValue(undefined)
+    render(<InventoryItemDialog open onOpenChange={vi.fn()} onCreate={onCreate} />)
+
+    await user.click(screen.getByRole('combobox', { name: 'Inventory type' }))
+    await user.click(screen.getByRole('option', { name: 'PC Build' }))
+    await user.type(screen.getByRole('textbox', { name: 'Name' }), 'Gaming PC')
+    await user.type(screen.getByRole('textbox', { name: 'Operating System' }), 'Windows 11 Pro')
+    await user.type(screen.getByRole('textbox', { name: 'Role' }), 'Gaming')
+    await user.click(screen.getByRole('button', { name: 'Add item' }))
+
+    expect(onCreate).toHaveBeenCalledWith({
+      type: 'pcBuild',
+      name: 'Gaming PC',
+      specs: { operatingSystem: 'Windows 11 Pro', role: 'Gaming' },
+    }, 1)
+  })
+
+  it('creates a UPS with classified outlet counts', async () => {
+    const user = userEvent.setup()
+    const onCreate = vi.fn().mockResolvedValue(undefined)
+    render(<InventoryItemDialog open onOpenChange={vi.fn()} onCreate={onCreate} />)
+
+    await user.click(screen.getByRole('combobox', { name: 'Inventory type' }))
+    await user.click(screen.getByRole('option', { name: 'UPS' }))
+    await user.type(screen.getByRole('textbox', { name: 'Name' }), 'APC Back-UPS Pro')
+    await user.type(screen.getByRole('spinbutton', { name: 'Output Watts' }), '900')
+    await user.type(screen.getByRole('spinbutton', { name: 'Capacity (VA)' }), '1500')
+    await user.type(screen.getByRole('spinbutton', { name: 'Battery Backup Outlets' }), '5')
+    await user.type(screen.getByRole('spinbutton', { name: 'Surge Protection Outlets' }), '5')
+    await user.click(screen.getByRole('button', { name: 'Add item' }))
+
+    expect(onCreate).toHaveBeenCalledWith({
+      type: 'ups',
+      name: 'APC Back-UPS Pro',
+      specs: {
+        wattageWatts: 900,
+        capacityVa: 1500,
+        batteryBackupOutlets: 5,
+        surgeProtectedOutlets: 5,
+        outlets: 10,
+      },
     }, 1)
   })
 

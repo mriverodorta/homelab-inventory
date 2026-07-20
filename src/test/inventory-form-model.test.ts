@@ -9,12 +9,17 @@ import {
   validateInventoryFormValues,
 } from '@/components/inventory-form/model'
 import {
+  COOLER_TYPES,
   CPU_GENERATIONS,
   EXPANSION_INTERFACE_FAMILIES,
+  MOTHERBOARD_FORM_FACTORS,
   PCIE_GENERATIONS,
   PCIE_LANE_WIDTHS,
+  POWER_EFFICIENCY_RATINGS,
+  PSU_FORM_FACTORS,
   STORAGE_INTERFACES,
   SWITCH_MANAGEMENT_OPTIONS,
+  WIFI_GENERATIONS,
   withLegacyOption,
 } from '@/components/inventory-form/options'
 import type { InventoryItem, InventoryType } from '@/types/inventory'
@@ -104,6 +109,120 @@ function fixtureFor(type: InventoryType): InventoryItem {
       throw new Error(`Fixture not implemented for ${type}`)
   }
 }
+
+const newTypeFixtures: InventoryItem[] = [
+  {
+    id: 101,
+    type: 'pcBuild',
+    name: 'Gaming PC',
+    specs: { operatingSystem: 'Windows 11 Pro', role: 'Gaming' },
+  },
+  {
+    id: 102,
+    type: 'motherboard',
+    name: 'ASUS ROG Strix B650E-I',
+    manufacturer: 'ASUS',
+    model: 'ROG Strix B650E-I',
+    specs: { formFactor: 'Mini-ITX', cpuSocketCount: 1 },
+    compatibility: {
+      host: {
+        cpu: { sockets: ['AM5'], generations: ['AMD Zen 4'], maxTdpWatts: 170 },
+        memory: {
+          generations: ['DDR5'],
+          slots: 2,
+          maxCapacityGb: 96,
+          maxModuleCapacityGb: 48,
+          maxSpeedMt: 7600,
+        },
+        storageSlots: [{
+          id: 'm2-primary',
+          label: 'M.2 Primary',
+          count: 2,
+          interfaces: ['NVMe'],
+          formFactors: ['2280'],
+          pcieGeneration: 4,
+        }],
+        expansionSlots: [{
+          id: 'pcie-main',
+          label: 'PCIe Main',
+          count: 1,
+          interfaceFamily: 'pcie',
+          pcieGeneration: 5,
+          mechanicalLanes: 16,
+          electricalLanes: 16,
+          acceptedHeights: ['full-height'],
+          maxSlotWidth: 3,
+          maxPowerWatts: 75,
+        }],
+        maxExpansionPowerWatts: 75,
+      },
+    },
+    ports: [
+      { id: 1, kind: 'server-port', type: 'rj45', slotNumber: 1, speed: '2.5G', label: '' },
+      { id: 2, kind: 'server-port', type: 'hdmi', slotNumber: 2, label: '' },
+    ],
+  },
+  {
+    id: 103,
+    type: 'cpuCooler',
+    name: 'Noctua NH-L12S',
+    specs: { coolerType: 'air' },
+  },
+  {
+    id: 104,
+    type: 'case',
+    name: 'Fractal Design North',
+    specs: { formFactors: 'Mini-ITX, Micro-ATX, ATX' },
+  },
+  {
+    id: 105,
+    type: 'powerSupply',
+    name: 'Corsair SF750',
+    specs: { formFactor: 'SFX', wattageWatts: 750, efficiency: '80 Plus Platinum' },
+  },
+  {
+    id: 106,
+    type: 'soundCard',
+    name: 'Sound Blaster AE-7',
+    specs: { interface: 'PCIe' },
+  },
+  {
+    id: 107,
+    type: 'wireless',
+    name: 'Intel AX210',
+    specs: { interface: 'M.2 A+E', wifiGeneration: 'Wi-Fi 6E', bluetooth: true },
+  },
+  {
+    id: 108,
+    type: 'powerAdapter',
+    name: 'Dell 90W AC Adapter',
+    specs: { wattageWatts: 90, connector: 'Barrel' },
+  },
+  {
+    id: 109,
+    type: 'monitor',
+    name: 'Dell UltraSharp U2723QE',
+    specs: { sizeInches: 27, resolution: '3840x2160', refreshRateHz: 60 },
+  },
+  {
+    id: 110,
+    type: 'ups',
+    name: 'APC Back-UPS Pro',
+    specs: {
+      wattageWatts: 900,
+      capacityVa: 1500,
+      batteryBackupOutlets: 5,
+      surgeProtectedOutlets: 5,
+      outlets: 10,
+    },
+  },
+  {
+    id: 111,
+    type: 'powerStrip',
+    name: 'Kasa Smart Plug Power Strip',
+    specs: { outlets: 6, surgeProtected: true, surgeProtectedOutlets: 6 },
+  },
+]
 
 describe('inventory form model', () => {
   it('creates blank compatibility drafts without inventing support data', () => {
@@ -267,6 +386,73 @@ describe('inventory form model', () => {
     expect(PCIE_GENERATIONS).toEqual(['1', '2', '3', '4', '5', '6'])
     expect(PCIE_LANE_WIDTHS).toEqual(['1', '2', '4', '8', '16'])
     expect(EXPANSION_INTERFACE_FAMILIES).toEqual(['pcie', 'm2-ae', 'usb', 'onboard'])
+    expect(MOTHERBOARD_FORM_FACTORS).toContain('Mini-ITX')
+    expect(PSU_FORM_FACTORS).toContain('SFX')
+    expect(COOLER_TYPES).toEqual(['air', 'aio', 'custom-loop', 'passive'])
+    expect(POWER_EFFICIENCY_RATINGS).toContain('80 Plus Platinum')
+    expect(WIFI_GENERATIONS).toContain('Wi-Fi 6E')
+  })
+
+  it.each(newTypeFixtures)('round trips $type create and edit fields', (item) => {
+    const rebuilt = inventoryFormValuesToInput(inventoryItemToFormValues(item))
+
+    expect(rebuilt).toMatchObject({
+      type: item.type,
+      name: item.name,
+      ...(item.manufacturer ? { manufacturer: item.manufacturer } : {}),
+      ...(item.model ? { model: item.model } : {}),
+      ...(item.specs ? { specs: item.specs } : {}),
+    })
+    expect(rebuilt.compatibility).toEqual(item.compatibility)
+    expect(rebuilt.ports).toEqual(item.ports)
+  })
+
+  it('serializes PC Build operating-system metadata without assignment fields', () => {
+    const values = createInventoryFormValues('pcBuild')
+    values.name = 'Gaming PC'
+    values.operatingSystem = 'Windows 11 Pro'
+    values.role = 'Gaming'
+
+    expect(inventoryFormValuesToInput(values)).toEqual({
+      name: 'Gaming PC',
+      type: 'pcBuild',
+      specs: { operatingSystem: 'Windows 11 Pro', role: 'Gaming' },
+    })
+  })
+
+  it('serializes motherboard DIMM, resource, and rear-I/O definitions', () => {
+    const item = newTypeFixtures.find((fixture) => fixture.type === 'motherboard')!
+    const rebuilt = inventoryFormValuesToInput(inventoryItemToFormValues(item))
+
+    expect(rebuilt.specs).toEqual({ formFactor: 'Mini-ITX', cpuSocketCount: 1 })
+    expect(rebuilt.compatibility?.host?.memory).toEqual(item.compatibility?.host?.memory)
+    expect(rebuilt.compatibility?.host?.storageSlots).toEqual(item.compatibility?.host?.storageSlots)
+    expect(rebuilt.compatibility?.host?.expansionSlots).toEqual(item.compatibility?.host?.expansionSlots)
+    expect(rebuilt.ports).toEqual(item.ports)
+  })
+
+  it('serializes power outlet classifications without assignment-only fields', () => {
+    const ups = inventoryFormValuesToInput(inventoryItemToFormValues(
+      newTypeFixtures.find((fixture) => fixture.type === 'ups')!,
+    ))
+    const powerStrip = inventoryFormValuesToInput(inventoryItemToFormValues(
+      newTypeFixtures.find((fixture) => fixture.type === 'powerStrip')!,
+    ))
+
+    expect(ups.specs).toEqual({
+      wattageWatts: 900,
+      capacityVa: 1500,
+      batteryBackupOutlets: 5,
+      surgeProtectedOutlets: 5,
+      outlets: 10,
+    })
+    expect(powerStrip.specs).toEqual({
+      outlets: 6,
+      surgeProtected: true,
+      surgeProtectedOutlets: 6,
+    })
+    expect(ups).not.toHaveProperty('properties')
+    expect(powerStrip).not.toHaveProperty('properties')
   })
 
   it.each([
