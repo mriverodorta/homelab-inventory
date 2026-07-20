@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import { createConnection } from '@/lib/project'
 import { getItemAuditWarnings, getProjectAuditWarnings } from '@/lib/audit'
+import {
+  monitorPowerInputEndpoint,
+  powerOutletEndpoint,
+} from '@/lib/power-topology'
 import type { InventoryItem, ProjectState } from '@/types/inventory'
 
 function createProject(items: InventoryItem[]): ProjectState {
@@ -457,8 +461,19 @@ describe('item audit warnings', () => {
       placements: [{ serverId: 'empty-host', x: 0, y: 0 }],
     }
 
-    expect(getItemAuditWarnings(project, 'empty-host')).toEqual([])
-    expect(getProjectAuditWarnings(project)).toEqual([])
+    expect(
+      getItemAuditWarnings(project, 'empty-host').filter((warning) =>
+        warning.code?.startsWith('compatibility.')
+        || warning.code?.startsWith('cpu.')
+        || warning.code?.startsWith('memory.')
+        || warning.code?.startsWith('storage.'),
+      ),
+    ).toEqual([])
+    expect(
+      getProjectAuditWarnings(project).flatMap((group) => group.warnings).some((warning) =>
+        warning.message.includes('Unassigned CPU'),
+      ),
+    ).toBe(false)
   })
 
   it('deduplicates repeated host, code, and resource compatibility findings', () => {
@@ -632,6 +647,9 @@ describe('item audit warnings', () => {
       expect.objectContaining({
         id: 'stale-stale-connection-nas:direct:missing-port:port',
       }),
+      expect.objectContaining({
+        id: 'power.host.missing-input:nas',
+      }),
     ])
     expect(getItemAuditWarnings(disabledProject, 'nas', { visibility: 'ignored' })).toEqual([])
     expect(getProjectAuditWarnings(disabledProject)).toEqual([
@@ -639,6 +657,9 @@ describe('item audit warnings', () => {
         warnings: [
           expect.objectContaining({
             id: 'stale-stale-connection-nas:direct:missing-port:port',
+          }),
+          expect.objectContaining({
+            id: 'power.host.missing-input:nas',
           }),
         ],
       }),
@@ -691,5 +712,170 @@ describe('item audit warnings', () => {
         warnings: [expect.objectContaining({ id: ignoredWarningId })],
       }),
     ])
+  })
+})
+
+describe('power topology audit warnings', () => {
+  const createdAt = '2026-07-20T12:00:00.000Z'
+  const ups: InventoryItem = {
+    id: 'ups:1',
+    name: 'Rack UPS',
+    type: 'ups',
+    specs: { outlets: 2 },
+  }
+  const monitor: InventoryItem = {
+    id: 'monitor:1',
+    name: 'Main display',
+    type: 'monitor',
+  }
+  const spareMonitor: InventoryItem = {
+    id: 'monitor:2',
+    name: 'Spare display',
+    type: 'monitor',
+  }
+  const poweredServer: InventoryItem = {
+    id: 'server:1',
+    name: 'Mini server',
+    type: 'server',
+  }
+  const adapter: InventoryItem = {
+    id: 'powerAdapter:1',
+    name: '90W adapter',
+    type: 'powerAdapter',
+  }
+
+  function createPowerProject(overrides: Partial<ProjectState> = {}): ProjectState {
+    return {
+      ...createProject([ups, monitor, spareMonitor, poweredServer, adapter]),
+      assignments: [{
+        id: 1,
+        serverId: 'server:1',
+        itemId: 'powerAdapter:1',
+        type: 'powerAdapter',
+        assignedAt: createdAt,
+      }],
+      ...overrides,
+    }
+  }
+
+  it('reports unpowered monitors and hosts only while they are placed', () => {
+    const project = createPowerProject({
+      placements: [
+        { serverId: 'monitor:1', x: 0, y: 0 },
+        { serverId: 'server:1', x: 100, y: 0 },
+      ],
+    })
+
+    expect(getItemAuditWarnings(project, 'monitor:1')).toEqual([
+      expect.objectContaining({
+        id: 'power.monitor.unpowered:monitor:1',
+        code: 'power.monitor.unpowered',
+        severity: 'warning',
+      }),
+    ])
+    expect(getItemAuditWarnings(project, 'server:1')).toEqual([
+      expect.objectContaining({
+        id: 'power.host.unpowered:server:1',
+        code: 'power.host.unpowered',
+        severity: 'warning',
+      }),
+    ])
+    expect(getItemAuditWarnings(project, 'monitor:2')).toEqual([])
+  })
+
+  it('clears placed load warnings once valid power connections exist', () => {
+    const project = createPowerProject({
+      placements: [
+        { serverId: 'ups:1', x: 0, y: 0 },
+        { serverId: 'monitor:1', x: 100, y: 0 },
+        { serverId: 'server:1', x: 200, y: 0 },
+      ],
+      connections: [
+        {
+          id: 1,
+          from: powerOutletEndpoint('ups:1', 1),
+          to: monitorPowerInputEndpoint('monitor:1'),
+          type: 'power',
+          createdAt,
+        },
+        {
+          id: 2,
+          from: powerOutletEndpoint('ups:1', 2),
+          to: {
+            itemId: 'server:1',
+            hostedItemId: 'powerAdapter:1',
+            portId: 'ac-input',
+          },
+          type: 'power',
+          createdAt,
+        },
+      ],
+    })
+
+    expect(getProjectAuditWarnings(project)).toEqual([])
+  })
+
+  it('assigns outlet faults to placed power equipment without duplicate stale warnings', () => {
+    const project = createPowerProject({
+      placements: [
+        { serverId: 'ups:1', x: 0, y: 0 },
+        { serverId: 'monitor:1', x: 100, y: 0 },
+      ],
+      connections: [{
+        id: 7,
+        from: powerOutletEndpoint('ups:1', 99),
+        to: monitorPowerInputEndpoint('monitor:1'),
+        type: 'power',
+        createdAt,
+      }],
+    })
+
+    expect(getItemAuditWarnings(project, 'ups:1')).toEqual([
+      expect.objectContaining({
+        id: 'power.connection.stale-endpoint:7',
+        code: 'power.connection.stale-endpoint',
+        severity: 'error',
+      }),
+    ])
+    expect(getItemAuditWarnings(project, 'ups:1')).toHaveLength(1)
+  })
+
+  it('keeps power warnings in the existing project-scoped ignored view', () => {
+    const ignoredWarningId = 'power.monitor.unpowered:monitor:1'
+    const project = createPowerProject({
+      placements: [{ serverId: 'monitor:1', x: 0, y: 0 }],
+      compatibilityPolicy: {
+        disabledHostIds: [],
+        ignoredWarningIds: [ignoredWarningId],
+      },
+    })
+
+    expect(getItemAuditWarnings(project, 'monitor:1')).toEqual([])
+    expect(getProjectAuditWarnings(project)).toEqual([])
+    expect(getItemAuditWarnings(project, 'monitor:1', { visibility: 'ignored' })).toEqual([
+      expect.objectContaining({ id: ignoredWarningId }),
+    ])
+    expect(getProjectAuditWarnings(project, { visibility: 'ignored' })).toEqual([
+      expect.objectContaining({
+        item: expect.objectContaining({ id: 'monitor:1' }),
+        warnings: [expect.objectContaining({ id: ignoredWarningId })],
+      }),
+    ])
+  })
+
+  it('does not surface power connection findings for entirely unplaced inventory', () => {
+    const project = createPowerProject({
+      connections: [{
+        id: 9,
+        from: powerOutletEndpoint('ups:1', 1),
+        to: monitorPowerInputEndpoint('monitor:1'),
+        type: 'other',
+        createdAt,
+      }],
+    })
+
+    expect(getItemAuditWarnings(project, 'ups:1')).toEqual([])
+    expect(getItemAuditWarnings(project, 'monitor:1')).toEqual([])
+    expect(getProjectAuditWarnings(project)).toEqual([])
   })
 })

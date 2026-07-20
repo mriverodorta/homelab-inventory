@@ -10,6 +10,11 @@ import {
 } from '@/lib/compatibility'
 import { runtimeItemKey } from '@/lib/item-keys'
 import { getItemNetworkTraces } from '@/lib/network-trace'
+import {
+  getPowerTopologyFindings,
+  resolvePowerEndpoint,
+  type PowerTopologyFinding,
+} from '@/lib/power-topology'
 import type { CompatibilityFinding, CompatibilitySeverity } from '@/types/compatibility'
 import type {
   ConnectionEndpoint,
@@ -89,7 +94,12 @@ function getStaleConnectionWarnings(project: ProjectState, item: InventoryItem):
 
   return (project.connections ?? []).flatMap((connection) =>
     [connection.from, connection.to].flatMap((endpoint) => {
-      if (endpoint.itemId !== key || getConnectionPort(project, endpoint)) {
+      if (
+        connection.type === 'power'
+        || Boolean(resolvePowerEndpoint(project, endpoint))
+        || endpoint.itemId !== key
+        || getConnectionPort(project, endpoint)
+      ) {
         return []
       }
 
@@ -102,6 +112,67 @@ function getStaleConnectionWarnings(project: ProjectState, item: InventoryItem):
       ]
     }),
   )
+}
+
+function getPowerFindingConnection(
+  project: ProjectState,
+  finding: PowerTopologyFinding,
+) {
+  if (finding.connectionId === undefined) {
+    return undefined
+  }
+
+  return project.connections.find(
+    (connection) => String(connection.id) === String(finding.connectionId),
+  )
+}
+
+function getPowerFindingOwnerId(
+  project: ProjectState,
+  finding: PowerTopologyFinding,
+  placedItemIds: Set<string>,
+): string | null {
+  const candidates = [finding.itemId, finding.endpoint?.itemId].filter(
+    (itemId): itemId is string => Boolean(itemId),
+  )
+  const connection = getPowerFindingConnection(project, finding)
+
+  if (connection) {
+    const powerEndpoints = [connection.from, connection.to].filter((endpoint) =>
+      Boolean(resolvePowerEndpoint(project, endpoint)),
+    )
+    candidates.push(
+      ...powerEndpoints.map((endpoint) => endpoint.itemId),
+      connection.from.itemId,
+      connection.to.itemId,
+    )
+  }
+
+  return candidates.find((itemId) => placedItemIds.has(itemId)) ?? null
+}
+
+function getPowerAuditWarnings(project: ProjectState, itemId: string): AuditWarning[] {
+  const placedItemIds = new Set(project.placements.map((placement) => placement.serverId))
+
+  if (!placedItemIds.has(itemId)) {
+    return []
+  }
+
+  return getPowerTopologyFindings(project).flatMap((finding) => {
+    const ownerId = getPowerFindingOwnerId(project, finding, placedItemIds)
+
+    if (ownerId !== itemId) {
+      return []
+    }
+
+    return [{
+      id: finding.id,
+      itemId: ownerId,
+      message: finding.message,
+      code: finding.code,
+      severity: finding.severity,
+    }]
+  })
 }
 
 function getDisabledSwitchPortTraceWarning(
@@ -286,6 +357,8 @@ function getRawItemAuditWarnings(project: ProjectState, itemId: string): AuditWa
   if (isHostCompatibilityEnabled(project, itemId)) {
     warnings.push(...getCompatibilityAuditWarnings(project, item))
   }
+
+  warnings.push(...getPowerAuditWarnings(project, itemId))
 
   return warnings
 }
