@@ -46,3 +46,29 @@ export function setAuditWarningIgnored(
     },
   }
 }
+
+export function clearIgnoredAuditWarnings(project: ProjectState): ProjectState {
+  const policy = normalizeCompatibilityPolicy(project.compatibilityPolicy)
+
+  return {
+    ...project,
+    compatibilityPolicy: {
+      ...policy,
+      ignoredWarningIds: [],
+    },
+  }
+}
+
+export function enableCompatibilityForAllHosts(
+  project: ProjectState,
+): ProjectState {
+  const policy = normalizeCompatibilityPolicy(project.compatibilityPolicy)
+
+  return {
+    ...project,
+    compatibilityPolicy: {
+      ...policy,
+      disabledHostIds: [],
+    },
+  }
+}

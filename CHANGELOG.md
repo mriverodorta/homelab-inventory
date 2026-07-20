@@ -14,6 +14,37 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 - Added repository documentation, issue templates, CI, and security guidance.
 - Clarified Docker deployment, data persistence, and development setup.
 
+## [0.1.29] - 2026-07-20
+
+### Changed
+
+- Simplified Settings to General, Project, Updates, and About.
+- Expanded About with the app's hardware inventory, visual layout, compatibility, cabling, and mounted-data purpose.
+- Removed repetitive Environment, Project, and This Browser scope pills while retaining read-only lock guidance.
+
+### Removed
+
+- Removed the redundant System settings category and the unused `/api/system-info` runtime-information endpoint.
+
+## [0.1.28] - 2026-07-19
+
+### Added
+
+- Added a responsive global Settings dialog with General, Project, Updates, System, and About categories.
+- Added persistent browser preferences for inventory visibility and width, selection centering, and cable visibility.
+- Added confirmed project actions to clear ignored audit findings and enable compatibility checks for all servers and NAS devices.
+- Added a read-only `/api/system-info` endpoint exposing a strict allowlist of non-secret runtime settings.
+- Added an icon-only Settings command to the floating canvas toolbar.
+
+### Changed
+
+- Canvas cable visibility and selection centering now share the same persistent state used by Settings.
+- Environment-derived values are explicitly read-only and explain that Docker Compose or process environment changes require a container recreation or application restart.
+
+### Fixed
+
+- A failure to load runtime information is isolated to the System category so all other settings remain usable.
+
 ## [0.1.27] - 2026-07-19
 
 ### Added

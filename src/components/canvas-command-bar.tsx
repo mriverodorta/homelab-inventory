@@ -11,6 +11,7 @@ import {
   PanelLeft,
   Redo2,
   RefreshCw,
+  Settings as SettingsIcon,
   Undo2,
   type LucideIcon,
 } from 'lucide-react'
@@ -39,6 +40,7 @@ export interface CanvasCommandBarProps {
   onToggleAutoCenterOnSelect: () => void
   onAutoArrange: () => void
   onToggleCablesVisible: () => void
+  onOpenSettings: () => void
   className?: string
 }
 
@@ -148,6 +150,7 @@ export function CanvasCommandBar({
   onToggleAutoCenterOnSelect,
   onAutoArrange,
   onToggleCablesVisible,
+  onOpenSettings,
   className,
 }: CanvasCommandBarProps) {
   const inventoryLabel = desktopInventoryVisible ? 'Hide inventory' : 'Show inventory'
@@ -245,6 +248,9 @@ export function CanvasCommandBar({
           </ToolbarButton>
           <ToolbarButton label={cablesLabel} onClick={onToggleCablesVisible} pressed={cablesVisible}>
             {cablesVisible ? <Eye className="size-4" /> : <EyeOff className="size-4" />}
+          </ToolbarButton>
+          <ToolbarButton label="Settings" onClick={onOpenSettings}>
+            <SettingsIcon className="size-4" />
           </ToolbarButton>
         </div>
       </div>

@@ -12,9 +12,46 @@ export type ReleaseNoteEntry = {
 
 export const RELEASE_NOTES: ReleaseNoteEntry[] = [
   {
+    version: '0.1.29',
+    date: '2026-07-20',
+    channel: 'latest',
+    title: 'Focused application settings',
+    highlights: [
+      'Settings now focuses on General, Project, Updates, and About, with a concise product overview that explains the inventory, canvas, compatibility, and cabling workflows.',
+      'About now documents mounted data persistence alongside release-channel guidance and project links.',
+    ],
+    fixes: [
+      'Removed the redundant System category and its unused runtime-information API.',
+      'Removed repetitive Environment, Project, and This Browser pills while preserving lock icons and guidance for read-only Docker Compose values.',
+    ],
+    notes: [
+      'Update-channel values remain read-only when configured by Docker Compose or the bare-metal process environment.',
+    ],
+  },
+  {
+    version: '0.1.28',
+    date: '2026-07-19',
+    channel: 'release',
+    title: 'Global application settings',
+    highlights: [
+      'A new Settings workspace organizes browser preferences, shared project actions, update controls, runtime information, and project links in one responsive dialog.',
+      'Inventory visibility and width, canvas selection centering, and cable visibility now persist per browser and can be reset together.',
+      'Project settings can rename the project, clear ignored audit findings, and re-enable compatibility checks for every server and NAS.',
+    ],
+    fixes: [
+      'The canvas toolbar and Settings switches now share one preference source so cable and centering controls cannot drift out of sync.',
+      'Runtime configuration failures are isolated to the System section and no longer prevent other settings from being used.',
+      'Only a strict allowlist of non-secret runtime and Docker Compose configuration is exposed by the system information endpoint.',
+    ],
+    notes: [
+      'Environment-derived settings are read-only and must be changed in Docker Compose or the bare-metal process environment before recreating or restarting the app.',
+      'The canvas command bar now includes an icon-only Settings action with an accessible label and tooltip.',
+    ],
+  },
+  {
     version: '0.1.27',
     date: '2026-07-19',
-    channel: 'latest',
+    channel: 'release',
     title: 'Compatibility policies and audit acknowledgements',
     highlights: [
       'Dedicated Compatibility editing tabs keep host matching policies separate from general server and NAS specifications.',

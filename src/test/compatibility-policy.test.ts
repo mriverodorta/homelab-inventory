@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
+  clearIgnoredAuditWarnings,
+  enableCompatibilityForAllHosts,
   setAuditWarningIgnored,
   setHostCompatibilityEnabled,
 } from '@/lib/compatibility-policy'
@@ -63,6 +65,56 @@ describe('compatibility policy mutations', () => {
 
     expect(disabledAgain.compatibilityPolicy?.disabledHostIds).toEqual(['server:1'])
     expect(ignoredAgain.compatibilityPolicy?.ignoredWarningIds).toEqual(['warning:1'])
+    expect(input.compatibilityPolicy).toBeUndefined()
+  })
+
+  it('clears ignored warnings while preserving disabled hosts and prior states', () => {
+    const input = project()
+    input.compatibilityPolicy = {
+      disabledHostIds: ['server:1'],
+      ignoredWarningIds: ['warning:1'],
+    }
+
+    const cleared = clearIgnoredAuditWarnings(input)
+
+    expect(cleared).not.toBe(input)
+    expect(cleared.compatibilityPolicy).not.toBe(input.compatibilityPolicy)
+    expect(cleared.compatibilityPolicy).toEqual({
+      disabledHostIds: ['server:1'],
+      ignoredWarningIds: [],
+    })
+    expect(input.compatibilityPolicy?.ignoredWarningIds).toEqual(['warning:1'])
+  })
+
+  it('enables compatibility for every host while preserving ignored warnings', () => {
+    const input = project()
+    input.compatibilityPolicy = {
+      disabledHostIds: ['server:1'],
+      ignoredWarningIds: ['warning:1'],
+    }
+
+    const enabled = enableCompatibilityForAllHosts(input)
+
+    expect(enabled).not.toBe(input)
+    expect(enabled.compatibilityPolicy).not.toBe(input.compatibilityPolicy)
+    expect(enabled.compatibilityPolicy).toEqual({
+      disabledHostIds: [],
+      ignoredWarningIds: ['warning:1'],
+    })
+    expect(input.compatibilityPolicy?.disabledHostIds).toEqual(['server:1'])
+  })
+
+  it('normalizes legacy projects for bulk policy actions', () => {
+    const input = { ...project(), compatibilityPolicy: undefined }
+
+    expect(clearIgnoredAuditWarnings(input).compatibilityPolicy).toEqual({
+      disabledHostIds: [],
+      ignoredWarningIds: [],
+    })
+    expect(enableCompatibilityForAllHosts(input).compatibilityPolicy).toEqual({
+      disabledHostIds: [],
+      ignoredWarningIds: [],
+    })
     expect(input.compatibilityPolicy).toBeUndefined()
   })
 })

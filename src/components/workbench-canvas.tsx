@@ -240,6 +240,7 @@ function CanvasViewport({
   canRedo,
   saveStatus,
   autoCenterOnSelect,
+  cablesVisible,
   updateAvailable,
   updateStatusLoading,
   desktopInventoryVisible,
@@ -251,6 +252,8 @@ function CanvasViewport({
   onOpenAudit,
   onOpenUpdate,
   onOpenInventory,
+  onToggleCablesVisible,
+  onOpenSettings,
 }: {
   project: ProjectState
   agentStatus: AgentStatusSummary | null
@@ -269,6 +272,7 @@ function CanvasViewport({
   canRedo: boolean
   saveStatus: 'saved' | 'saving' | 'error'
   autoCenterOnSelect: boolean
+  cablesVisible: boolean
   updateAvailable: boolean
   updateStatusLoading: boolean
   desktopInventoryVisible: boolean
@@ -291,6 +295,8 @@ function CanvasViewport({
   onOpenAudit: () => void
   onOpenUpdate: () => void
   onOpenInventory: () => void
+  onToggleCablesVisible: () => void
+  onOpenSettings: () => void
 }) {
   const { setNodeRef, isOver } = useDroppable({
     id: 'canvas',
@@ -301,7 +307,6 @@ function CanvasViewport({
   const { getViewport, screenToFlowPosition, setViewport } = useReactFlow()
   const canvasRootRef = useRef<HTMLElement | null>(null)
   const [hoveredConnectionId, setHoveredConnectionId] = useState<string | number | null>(null)
-  const [cablesVisible, setCablesVisible] = useState(true)
   const [nodeDragThreshold, setNodeDragThreshold] = useState(DEFAULT_NODE_DRAG_THRESHOLD)
   const touchNodeDragGateRef = useRef<TouchNodeDragGate | null>(null)
   const auditWarningCount = useMemo(
@@ -974,7 +979,8 @@ function CanvasViewport({
           onOpenAudit={onOpenAudit}
           onToggleAutoCenterOnSelect={onToggleAutoCenterOnSelect}
           onAutoArrange={onAutoArrange}
-          onToggleCablesVisible={() => setCablesVisible((current) => !current)}
+          onToggleCablesVisible={onToggleCablesVisible}
+          onOpenSettings={onOpenSettings}
         />
 
         <ReactFlow
@@ -1049,6 +1055,7 @@ export function WorkbenchCanvas(props: {
   canRedo: boolean
   saveStatus: 'saved' | 'saving' | 'error'
   autoCenterOnSelect: boolean
+  cablesVisible: boolean
   updateAvailable: boolean
   updateStatusLoading: boolean
   desktopInventoryVisible: boolean
@@ -1071,6 +1078,8 @@ export function WorkbenchCanvas(props: {
   onOpenAudit: () => void
   onOpenUpdate: () => void
   onOpenInventory: () => void
+  onToggleCablesVisible: () => void
+  onOpenSettings: () => void
 }) {
   const compatibilityAnnouncement = useMemo(() => {
     const activeEntry = Object.entries(props.dropCompatibilityByHostId)

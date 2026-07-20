@@ -22,6 +22,7 @@ function createProps(overrides: Partial<CanvasCommandBarProps> = {}): CanvasComm
     onToggleAutoCenterOnSelect: vi.fn(),
     onAutoArrange: vi.fn(),
     onToggleCablesVisible: vi.fn(),
+    onOpenSettings: vi.fn(),
     ...overrides,
   }
 }
@@ -56,6 +57,7 @@ describe('CanvasCommandBar', () => {
     expect(screen.getByRole('button', { name: 'Disable selection centering' })).toHaveAttribute('aria-pressed', 'true')
     expect(screen.getByRole('button', { name: 'Auto arrange canvas' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Hide cables' })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByRole('button', { name: 'Settings' })).toBeInTheDocument()
   })
 
   it('invokes every enabled command callback', () => {
@@ -69,6 +71,7 @@ describe('CanvasCommandBar', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Disable selection centering' }))
     fireEvent.click(screen.getByRole('button', { name: 'Auto arrange canvas' }))
     fireEvent.click(screen.getByRole('button', { name: 'Hide cables' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Settings' }))
 
     expect(props.onInventory).toHaveBeenCalledOnce()
     expect(props.onUndo).toHaveBeenCalledOnce()
@@ -78,6 +81,7 @@ describe('CanvasCommandBar', () => {
     expect(props.onToggleAutoCenterOnSelect).toHaveBeenCalledOnce()
     expect(props.onAutoArrange).toHaveBeenCalledOnce()
     expect(props.onToggleCablesVisible).toHaveBeenCalledOnce()
+    expect(props.onOpenSettings).toHaveBeenCalledOnce()
   })
 
   it('renders save progress and failure states', () => {

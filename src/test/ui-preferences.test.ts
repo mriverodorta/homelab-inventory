@@ -2,11 +2,18 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import {
   DEFAULT_INVENTORY_WIDTH,
+  DEFAULT_UI_PREFERENCES,
   MAX_INVENTORY_WIDTH,
   MIN_INVENTORY_WIDTH,
   clampInventoryWidth,
+  getStoredAutoCenterOnSelect,
+  getStoredCablesVisible,
   getStoredInventoryVisible,
   getStoredInventoryWidth,
+  getStoredUiPreferences,
+  resetStoredUiPreferences,
+  storeAutoCenterOnSelect,
+  storeCablesVisible,
   storeInventoryVisible,
   storeInventoryWidth,
 } from '@/lib/ui-preferences'
@@ -29,6 +36,9 @@ describe('inventory UI preferences', () => {
   it('defaults to a visible sidebar at the default width', () => {
     expect(getStoredInventoryVisible()).toBe(true)
     expect(getStoredInventoryWidth()).toBe(DEFAULT_INVENTORY_WIDTH)
+    expect(getStoredAutoCenterOnSelect()).toBe(true)
+    expect(getStoredCablesVisible()).toBe(true)
+    expect(getStoredUiPreferences()).toEqual(DEFAULT_UI_PREFERENCES)
   })
 
   it('persists visibility and width independently', () => {
@@ -39,10 +49,48 @@ describe('inventory UI preferences', () => {
     expect(getStoredInventoryWidth()).toBe(430)
   })
 
+  it('persists auto-centering and cable visibility independently', () => {
+    storeAutoCenterOnSelect(false)
+    storeCablesVisible(false)
+
+    expect(getStoredAutoCenterOnSelect()).toBe(false)
+    expect(getStoredCablesVisible()).toBe(false)
+    expect(getStoredUiPreferences()).toMatchObject({
+      autoCenterOnSelect: false,
+      cablesVisible: false,
+    })
+  })
+
   it('treats malformed visibility values as visible', () => {
     window.localStorage.setItem('homelab-inventory:inventory-visible', 'invalid')
+    window.localStorage.setItem(
+      'homelab-inventory:auto-center-on-select',
+      'invalid',
+    )
+    window.localStorage.setItem('homelab-inventory:cables-visible', 'invalid')
 
     expect(getStoredInventoryVisible()).toBe(true)
+    expect(getStoredAutoCenterOnSelect()).toBe(true)
+    expect(getStoredCablesVisible()).toBe(true)
+  })
+
+  it('resets only the Homelab Inventory UI preference keys', () => {
+    storeInventoryVisible(false)
+    storeInventoryWidth(430)
+    storeAutoCenterOnSelect(false)
+    storeCablesVisible(false)
+    window.localStorage.setItem('unrelated-preference', 'preserved')
+
+    resetStoredUiPreferences()
+
+    expect(getStoredUiPreferences()).toEqual(DEFAULT_UI_PREFERENCES)
+    expect(window.localStorage.getItem('unrelated-preference')).toBe('preserved')
+    expect(window.localStorage.getItem('homelab-inventory:inventory-visible')).toBeNull()
+    expect(window.localStorage.getItem('homelab-inventory:inventory-width')).toBeNull()
+    expect(
+      window.localStorage.getItem('homelab-inventory:auto-center-on-select'),
+    ).toBeNull()
+    expect(window.localStorage.getItem('homelab-inventory:cables-visible')).toBeNull()
   })
 
   it('ignores malformed widths and clamps stored widths', () => {
@@ -83,6 +131,9 @@ describe('inventory UI preferences', () => {
 
     expect(getStoredInventoryVisible()).toBe(true)
     expect(getStoredInventoryWidth()).toBe(DEFAULT_INVENTORY_WIDTH)
+    expect(getStoredAutoCenterOnSelect()).toBe(true)
+    expect(getStoredCablesVisible()).toBe(true)
+    expect(getStoredUiPreferences()).toEqual(DEFAULT_UI_PREFERENCES)
   })
 
   it('does not throw when localStorage writes are unavailable', () => {
@@ -92,5 +143,15 @@ describe('inventory UI preferences', () => {
 
     expect(() => storeInventoryVisible(false)).not.toThrow()
     expect(() => storeInventoryWidth(430)).not.toThrow()
+    expect(() => storeAutoCenterOnSelect(false)).not.toThrow()
+    expect(() => storeCablesVisible(false)).not.toThrow()
+  })
+
+  it('does not throw when localStorage resets are unavailable', () => {
+    vi.spyOn(Storage.prototype, 'removeItem').mockImplementation(() => {
+      throw new DOMException('Storage blocked', 'SecurityError')
+    })
+
+    expect(() => resetStoredUiPreferences()).not.toThrow()
   })
 })

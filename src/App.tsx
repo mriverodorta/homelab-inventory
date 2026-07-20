@@ -25,6 +25,7 @@ import {
 } from '@/components/inventory-lifecycle-dialog'
 import { UpdateDialog } from '@/components/update-dialog'
 import { WhatsNewDialog } from '@/components/whats-new-dialog'
+import { SettingsDialog } from '@/components/settings-dialog'
 import {
   snapToGrid,
   WorkbenchCanvas,
@@ -49,7 +50,11 @@ import {
   moveAssignedComponent,
   tryAssignComponent,
 } from '@/lib/constraints'
-import { setAuditWarningIgnored } from '@/lib/compatibility-policy'
+import {
+  clearIgnoredAuditWarnings,
+  enableCompatibilityForAllHosts,
+  setAuditWarningIgnored,
+} from '@/lib/compatibility-policy'
 import { loadAgentStatus } from '@/lib/agent-api'
 import {
   createInventoryItems,
@@ -86,9 +91,15 @@ import {
   type UpdateStatus,
 } from '@/lib/update-api'
 import {
+  DEFAULT_UI_PREFERENCES,
   clampInventoryWidth,
+  getStoredAutoCenterOnSelect,
+  getStoredCablesVisible,
   getStoredInventoryVisible,
   getStoredInventoryWidth,
+  resetStoredUiPreferences,
+  storeAutoCenterOnSelect,
+  storeCablesVisible,
   storeInventoryVisible,
   storeInventoryWidth,
 } from '@/lib/ui-preferences'
@@ -139,7 +150,6 @@ type PortConnectionPreview = {
 
 const SAVE_DEBOUNCE_MS = 500
 const DEMO_EXTENSION_GRACE_SECONDS = 30
-const AUTO_CENTER_STORAGE_KEY = 'homelab-inventory:auto-center-on-select'
 const RELEASE_NOTES_STATUS_QUERY_KEY = ['release-notes-status'] as const
 const DEMO_SESSION_QUERY_KEY = ['demo-session'] as const
 
@@ -170,14 +180,6 @@ function aggregateDependencyReports(
 
   const reasons = [...grouped.values()]
   return { blocked: reasons.length > 0, reasons }
-}
-
-function getStoredAutoCenterPreference(): boolean {
-  if (typeof window === 'undefined') {
-    return true
-  }
-
-  return window.localStorage.getItem(AUTO_CENTER_STORAGE_KEY) !== 'false'
 }
 
 function getServerIdFromOver(overId: string | null): string | null {
@@ -431,7 +433,9 @@ function App() {
   const [draggingItemId, setDraggingItemId] = useState<string | null>(null)
   const [activeComponentDragData, setActiveComponentDragData] = useState<ComponentDragData | null>(null)
   const [dragOverHostId, setDragOverHostId] = useState<string | null>(null)
-  const [autoCenterOnSelect, setAutoCenterOnSelect] = useState(getStoredAutoCenterPreference)
+  const [autoCenterOnSelect, setAutoCenterOnSelect] = useState(getStoredAutoCenterOnSelect)
+  const [cablesVisible, setCablesVisible] = useState(getStoredCablesVisible)
+  const [settingsOpen, setSettingsOpen] = useState(false)
   const [releaseNotesDismissedForSession, setReleaseNotesDismissedForSession] = useState(false)
   const [updateDialogOpen, setUpdateDialogOpen] = useState(false)
   const [demoRemainingSeconds, setDemoRemainingSeconds] = useState<number | null>(null)
@@ -636,8 +640,12 @@ function App() {
   }, [project])
 
   useEffect(() => {
-    window.localStorage.setItem(AUTO_CENTER_STORAGE_KEY, String(autoCenterOnSelect))
+    storeAutoCenterOnSelect(autoCenterOnSelect)
   }, [autoCenterOnSelect])
+
+  useEffect(() => {
+    storeCablesVisible(cablesVisible)
+  }, [cablesVisible])
 
   useEffect(() => {
     storeInventoryVisible(desktopInventoryVisible)
@@ -1467,6 +1475,7 @@ function App() {
             desktopInventoryVisible={desktopInventoryVisible}
             inspectorOpen={selectedItem !== null || selectedConnection !== null}
             autoCenterOnSelect={autoCenterOnSelect}
+            cablesVisible={cablesVisible}
             updateAvailable={shouldHighlightUpdate(updateStatusQuery.data)}
             updateStatusLoading={updateStatusQuery.isFetching && !updateStatusQuery.data}
             onSelect={(itemId) => {
@@ -1543,6 +1552,7 @@ function App() {
               setMobileInventoryOpen(true)
             }}
             onToggleAutoCenterOnSelect={() => setAutoCenterOnSelect((current) => !current)}
+            onToggleCablesVisible={() => setCablesVisible((current) => !current)}
             onAutoArrange={() => {
               if (project.placements.length === 0) {
                 showMessage('Drag equipment onto the canvas before arranging.')
@@ -1553,6 +1563,7 @@ function App() {
               setValidationMessage(null)
             }}
             onOpenAudit={() => setAuditOpen(true)}
+            onOpenSettings={() => setSettingsOpen(true)}
             onOpenUpdate={() => {
               if (updateStatusQuery.data) {
                 setUpdateDialogOpen(true)
@@ -1701,6 +1712,48 @@ function App() {
               onClearSkip={() => clearSkippedUpdateMutation.mutate()}
             />
           ) : null}
+          <SettingsDialog
+            open={settingsOpen}
+            projectName={project.metadata.name}
+            saveStatus={saveStatus}
+            inventoryVisible={desktopInventoryVisible}
+            inventoryWidth={inventoryWidth}
+            autoCenterOnSelect={autoCenterOnSelect}
+            cablesVisible={cablesVisible}
+            updateStatus={updateStatusQuery.data ?? null}
+            updateLoading={updateStatusQuery.isLoading}
+            updateChecking={checkForUpdatesMutation.isPending}
+            updateClearingSkip={clearSkippedUpdateMutation.isPending}
+            onOpenChange={setSettingsOpen}
+            onProjectNameChange={(name) => {
+              updateProject({
+                ...project,
+                metadata: {
+                  ...project.metadata,
+                  name,
+                },
+              }, { recordHistory: false })
+            }}
+            onInventoryVisibleChange={setDesktopInventoryVisible}
+            onInventoryWidthChange={(width) => setInventoryWidth(clampInventoryWidth(width))}
+            onAutoCenterOnSelectChange={setAutoCenterOnSelect}
+            onCablesVisibleChange={setCablesVisible}
+            onResetBrowserPreferences={() => {
+              resetStoredUiPreferences()
+              setDesktopInventoryVisible(DEFAULT_UI_PREFERENCES.inventoryVisible)
+              setInventoryWidth(DEFAULT_UI_PREFERENCES.inventoryWidth)
+              setAutoCenterOnSelect(DEFAULT_UI_PREFERENCES.autoCenterOnSelect)
+              setCablesVisible(DEFAULT_UI_PREFERENCES.cablesVisible)
+            }}
+            onClearIgnoredWarnings={() => {
+              updateProject(clearIgnoredAuditWarnings(project))
+            }}
+            onEnableCompatibilityForAllHosts={() => {
+              updateProject(enableCompatibilityForAllHosts(project))
+            }}
+            onCheckForUpdates={() => checkForUpdatesMutation.mutate()}
+            onClearSkippedUpdate={() => clearSkippedUpdateMutation.mutate()}
+          />
           <DemoSessionDialog
             state={demoDialogState}
             secondsRemaining={demoExtensionSeconds}

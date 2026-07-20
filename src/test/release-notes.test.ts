@@ -89,22 +89,46 @@ describe('release notes helpers', () => {
     expect(entries.map((entry) => entry.version)).toEqual(['0.1.10'])
   })
 
-  it('has structured compatibility-policy and audit-ignore notes for the package version under development', () => {
-    expect(hasReleaseNoteForVersion(RELEASE_NOTES, '0.1.27')).toBe(true)
+  it('has structured settings simplification notes for the package version under development', () => {
+    expect(hasReleaseNoteForVersion(RELEASE_NOTES, '0.1.29')).toBe(true)
     expect(RELEASE_NOTES[0]).toEqual(
       expect.objectContaining({
-        version: '0.1.27',
-        title: 'Compatibility policies and audit acknowledgements',
+        version: '0.1.29',
+        title: 'Focused application settings',
       }),
     )
     expect(RELEASE_NOTES.filter((entry) => entry.channel === 'latest')).toEqual([
-      expect.objectContaining({ version: '0.1.27' }),
+      expect.objectContaining({ version: '0.1.29' }),
     ])
+
+    const settingsRelease = RELEASE_NOTES[0]
+    const releaseText = [
+      ...(settingsRelease?.highlights ?? []),
+      ...(settingsRelease?.fixes ?? []),
+      ...(settingsRelease?.notes ?? []),
+    ].join(' ')
+
+    expect(releaseText).toMatch(/General, Project, Updates, and About/i)
+    expect(releaseText).toMatch(/product overview.*inventory.*canvas.*compatibility.*cabling/i)
+    expect(releaseText).toMatch(/mounted data persistence/i)
+    expect(releaseText).toMatch(/Removed the redundant System category/i)
+    expect(releaseText).toMatch(/Removed repetitive Environment, Project, and This Browser pills/i)
+  })
+
+  it('retains structured compatibility-policy and audit-ignore notes for version 0.1.27', () => {
+    expect(hasReleaseNoteForVersion(RELEASE_NOTES, '0.1.27')).toBe(true)
+    expect(RELEASE_NOTES.find((entry) => entry.version === '0.1.27')).toEqual(
+      expect.objectContaining({
+        version: '0.1.27',
+        title: 'Compatibility policies and audit acknowledgements',
+        channel: 'release',
+      }),
+    )
     expect(RELEASE_NOTES.find((entry) => entry.version === '0.1.26')).toEqual(
       expect.objectContaining({ channel: 'release' }),
     )
 
-    const compatibilityRelease = RELEASE_NOTES[0]
+    const compatibilityRelease = RELEASE_NOTES.find((entry) => entry.version === '0.1.27')
     const releaseText = [
       ...(compatibilityRelease?.highlights ?? []),
       ...(compatibilityRelease?.fixes ?? []),
