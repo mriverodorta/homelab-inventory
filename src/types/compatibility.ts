@@ -1,6 +1,14 @@
 export type CompatibilitySeverity = 'error' | 'warning' | 'unknown'
 export type CompatibilityStatus = 'compatible' | 'incompatible' | 'unknown'
-export type CompatibilityResourceType = 'memory' | 'storage' | 'expansion'
+export type CompatibilityResourceType =
+  | 'cpu'
+  | 'memory'
+  | 'storage'
+  | 'expansion'
+  | 'motherboard'
+  | 'cooling'
+  | 'power'
+  | 'case'
 export type ExpansionInterfaceFamily = 'pcie' | 'm2-ae' | 'usb' | 'onboard'
 export type CardHeight = 'full-height' | 'low-profile'
 
