@@ -8,6 +8,35 @@ import { assertInventoryStoreShape, assertProjectStoreShape } from './validation
 
 const tempDirs = []
 const activeStores = []
+const SCHEMA_9_TABLES = [
+  'servers',
+  'pcBuilds',
+  'cpus',
+  'ram',
+  'storage',
+  'networkCards',
+  'gpus',
+  'motherboards',
+  'cpuCoolers',
+  'cases',
+  'powerSupplies',
+  'soundCards',
+  'wirelessCards',
+  'powerAdapters',
+  'nas',
+  'switches',
+  'patchPanels',
+  'monitors',
+  'upsSystems',
+  'powerStrips',
+]
+
+function schema9Inventory(overrides = {}) {
+  return {
+    ...Object.fromEntries(SCHEMA_9_TABLES.map((table) => [table, []])),
+    ...overrides,
+  }
+}
 
 async function makeTempDir() {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'ssi-lowdb-'))
@@ -119,14 +148,25 @@ function negotiationInventoryStore() {
 
   return {
     servers: [forStore(items['server:1'])],
+    pcBuilds: [],
     cpus: [],
     ram: [],
     storage: [],
     networkCards: [],
     gpus: [],
+    motherboards: [],
+    cpuCoolers: [],
+    cases: [],
+    powerSupplies: [],
+    soundCards: [],
+    wirelessCards: [],
+    powerAdapters: [],
     nas: [],
     switches: [forStore(items['switch:1'])],
     patchPanels: [forStore(items['patchPanel:1'])],
+    monitors: [],
+    upsSystems: [],
+    powerStrips: [],
   }
 }
 
@@ -266,7 +306,167 @@ afterEach(async () => {
 })
 
 describe('HomelabInventoryStore', () => {
-  it('migrates schema 7 projects to schema 8 with an empty compatibility policy', async () => {
+  it('migrates schema 8 inventory into schema 9 category arrays', async () => {
+    const dataDir = await makeTempDir()
+    const inventory = {
+      servers: [{ id: 1, name: 'Wireless Host' }],
+      cpus: [],
+      ram: [],
+      storage: [],
+      networkCards: [
+        {
+          id: 7,
+          name: 'Intel AX210 Wi-Fi 6E',
+          subtype: 'wireless',
+          specs: { interface: 'M.2 A+E', wifiGeneration: 'Wi-Fi 6E' },
+        },
+        {
+          id: 8,
+          name: 'Intel I210 Ethernet',
+          subtype: 'ethernet',
+          specs: { interface: 'PCIe', speed: '1G' },
+        },
+        {
+          id: 9,
+          name: 'Truthy String Is Not Explicit',
+          specs: { interface: 'PCIe', wireless: 'true' },
+        },
+        {
+          id: 10,
+          name: 'A/E Key Wireless Adapter',
+          specs: { interface: 'M.2 2230 A/E Key wireless adapter' },
+        },
+        {
+          id: 11,
+          name: 'Boolean Wireless Flag',
+          specs: { interface: 'PCIe', wireless: true },
+        },
+      ],
+      gpus: [],
+      nas: [],
+      switches: [],
+      patchPanels: [],
+    }
+    const project = {
+      id: 'default',
+      metadata: {
+        name: 'Migration Test',
+        version: 1,
+        updatedAt: '2026-07-20T00:00:00.000Z',
+      },
+      placements: [],
+      assignments: [{
+        id: 1,
+        hostType: 'server',
+        hostId: 1,
+        itemType: 'network',
+        itemId: 7,
+        type: 'network',
+        assignedAt: '2026-07-20T00:00:00.000Z',
+      }],
+      connections: [],
+      compatibilityPolicy: { disabledHostIds: [], ignoredWarningIds: [] },
+    }
+
+    await writeJson(path.join(dataDir, 'meta.json'), {
+      schemaVersion: 8,
+      appLastOpenedWith: '0.1.29',
+      updatedAt: '2026-07-20T00:00:00.000Z',
+    })
+    await writeJson(path.join(dataDir, 'stores', 'inventory.json'), inventory)
+    await writeJson(path.join(dataDir, 'stores', 'project.json'), project)
+
+    const store = createStore({
+      appVersion: '0.1.30',
+      dataDir,
+      legacyProjectPath: path.join(dataDir, 'homelab-inventory-project.json'),
+      saveDebounceMs: 1,
+      seedEmptyData: false,
+      seedDir: path.join(dataDir, 'missing-seed'),
+    })
+
+    await store.init()
+    await store.flush()
+
+    expect(store.databases.meta.data.schemaVersion).toBe(9)
+    expect(Object.keys(store.databases.inventory.data)).toEqual(SCHEMA_9_TABLES)
+    expect(store.databases.inventory.data.wirelessCards).toEqual([
+      expect.objectContaining({ id: 7, name: 'Intel AX210 Wi-Fi 6E' }),
+      expect.objectContaining({ id: 10, name: 'A/E Key Wireless Adapter' }),
+      expect.objectContaining({ id: 11, name: 'Boolean Wireless Flag' }),
+    ])
+    expect(store.databases.inventory.data.networkCards).toEqual([
+      expect.objectContaining({ id: 8, name: 'Intel I210 Ethernet' }),
+      expect.objectContaining({ id: 9, name: 'Truthy String Is Not Explicit' }),
+    ])
+    expect(store.databases.inventory.data.servers).toEqual([
+      expect.objectContaining({ id: 1, name: 'Wireless Host' }),
+    ])
+    expect(store.databases.project.data.assignments[0]).toMatchObject({
+      itemType: 'wireless',
+      itemId: 7,
+      type: 'wireless',
+    })
+    for (const table of SCHEMA_9_TABLES.filter(
+      (table) => !['servers', 'networkCards', 'wirelessCards'].includes(table),
+    )) {
+      expect(store.databases.inventory.data[table]).toEqual([])
+    }
+
+    const backupEntries = await fs.readdir(path.join(dataDir, 'backups'), { withFileTypes: true })
+    expect(backupEntries.some(
+      (entry) => entry.isDirectory() && entry.name.endsWith('-schema-8-to-9'),
+    )).toBe(true)
+  })
+
+  it('leaves schema 9 stores unchanged on repeated startup', async () => {
+    const dataDir = await makeTempDir()
+    await writeJson(path.join(dataDir, 'meta.json'), {
+      schemaVersion: 8,
+      appLastOpenedWith: '0.1.29',
+      updatedAt: '2026-07-20T00:00:00.000Z',
+    })
+    await writeJson(path.join(dataDir, 'stores', 'inventory.json'), schema9Inventory({
+      networkCards: [{ id: 2, name: 'Ethernet', specs: { interface: 'PCIe' } }],
+      wirelessCards: [{ id: 1, name: 'Existing Wireless', specs: { interface: 'M.2 A+E' } }],
+    }))
+    await writeJson(path.join(dataDir, 'stores', 'project.json'), {
+      id: 'default',
+      metadata: { name: 'Idempotency', version: 1, updatedAt: '2026-07-20T00:00:00.000Z' },
+      placements: [],
+      assignments: [],
+      connections: [],
+      compatibilityPolicy: { disabledHostIds: [], ignoredWarningIds: [] },
+    })
+
+    const options = {
+      appVersion: '0.1.30',
+      dataDir,
+      legacyProjectPath: path.join(dataDir, 'homelab-inventory-project.json'),
+      saveDebounceMs: 1,
+      seedEmptyData: false,
+      seedDir: path.join(dataDir, 'missing-seed'),
+    }
+    const firstStore = createStore(options)
+    await firstStore.init()
+    await firstStore.flush()
+    const backupsAfterMigration = await fs.readdir(path.join(dataDir, 'backups'))
+
+    const secondStore = createStore(options)
+    await secondStore.init()
+    await secondStore.flush()
+
+    expect(secondStore.databases.meta.data.schemaVersion).toBe(9)
+    expect(secondStore.databases.inventory.data.networkCards).toEqual([
+      expect.objectContaining({ id: 2, name: 'Ethernet' }),
+    ])
+    expect(secondStore.databases.inventory.data.wirelessCards).toEqual([
+      expect.objectContaining({ id: 1, name: 'Existing Wireless' }),
+    ])
+    expect(await fs.readdir(path.join(dataDir, 'backups'))).toEqual(backupsAfterMigration)
+  })
+
+  it('migrates schema 7 projects to schema 9 with an empty compatibility policy', async () => {
     const dataDir = await makeTempDir()
     await writeCompatibilityStores(dataDir, { schemaVersion: 7 })
 
@@ -282,7 +482,7 @@ describe('HomelabInventoryStore', () => {
     await store.init()
     await store.flush()
 
-    expect(store.databases.meta.data.schemaVersion).toBe(8)
+    expect(store.databases.meta.data.schemaVersion).toBe(9)
     expect(store.getProject().compatibilityPolicy).toEqual({
       disabledHostIds: [],
       ignoredWarningIds: [],
@@ -293,7 +493,7 @@ describe('HomelabInventoryStore', () => {
     })
     const backupEntries = await fs.readdir(path.join(dataDir, 'backups'), { withFileTypes: true })
     expect(backupEntries.some(
-      (entry) => entry.isDirectory() && entry.name.endsWith('-schema-7-to-8'),
+      (entry) => entry.isDirectory() && entry.name.endsWith('-schema-7-to-9'),
     )).toBe(true)
   })
 
@@ -447,22 +647,14 @@ describe('HomelabInventoryStore', () => {
       skippedUpdateVersion: null,
       lastUpdateCheck: null,
     })
-    expect(JSON.parse(await fs.readFile(path.join(dataDir, 'stores', 'inventory.json'), 'utf8'))).toEqual({
+    expect(JSON.parse(await fs.readFile(path.join(dataDir, 'stores', 'inventory.json'), 'utf8'))).toEqual(schema9Inventory({
       servers: [
         {
           id: 1,
           name: 'Server',
         },
       ],
-      cpus: [],
-      ram: [],
-      storage: [],
-      networkCards: [],
-      gpus: [],
-      nas: [],
-      switches: [],
-      patchPanels: [],
-    })
+    }))
   })
 
   it('creates empty stores when seed data is disabled', async () => {
@@ -481,17 +673,8 @@ describe('HomelabInventoryStore', () => {
     await store.flush()
 
     expect(store.getProject().items).toEqual({})
-    expect(JSON.parse(await fs.readFile(path.join(dataDir, 'stores', 'inventory.json'), 'utf8'))).toEqual({
-      servers: [],
-      cpus: [],
-      ram: [],
-      storage: [],
-      networkCards: [],
-      gpus: [],
-      nas: [],
-      switches: [],
-      patchPanels: [],
-    })
+    expect(JSON.parse(await fs.readFile(path.join(dataDir, 'stores', 'inventory.json'), 'utf8')))
+      .toEqual(schema9Inventory())
     expect(JSON.parse(await fs.readFile(path.join(dataDir, 'stores', 'project.json'), 'utf8'))).toMatchObject({
       id: 'default',
       metadata: {
@@ -796,7 +979,7 @@ describe('HomelabInventoryStore', () => {
       },
       negotiatedSpeedMbps: 10000,
     })
-    expect(store.databases.meta.data.schemaVersion).toBe(8)
+    expect(store.databases.meta.data.schemaVersion).toBe(9)
   })
 
   it('flushes project updates to split stores', async () => {
@@ -1355,7 +1538,7 @@ describe('HomelabInventoryStore', () => {
     ])
   })
 
-  it('migrates schema 6 to schema 8 and deterministically allocates only compatible assignments', async () => {
+  it('migrates schema 6 to schema 9 and deterministically allocates only compatible assignments', async () => {
     const dataDir = await makeTempDir()
     const assignments = [
       {
@@ -1392,7 +1575,7 @@ describe('HomelabInventoryStore', () => {
     await store.init()
     await store.flush()
 
-    expect(store.databases.meta.data.schemaVersion).toBe(8)
+    expect(store.databases.meta.data.schemaVersion).toBe(9)
     expect(store.getProject().assignments).toEqual([
       expect.objectContaining({
         id: 1,
@@ -1400,12 +1583,12 @@ describe('HomelabInventoryStore', () => {
       }),
       expect.not.objectContaining({ allocation: expect.anything() }),
     ])
-    expect(store.databases.inventory.data).toEqual(beforeInventory)
+    expect(store.databases.inventory.data).toEqual(schema9Inventory(beforeInventory))
     expect(store.databases.project.data.placements).toEqual(beforeProject.placements)
     expect(store.databases.project.data.connections).toEqual(beforeProject.connections)
     const backupEntries = await fs.readdir(path.join(dataDir, 'backups'), { withFileTypes: true })
     expect(backupEntries.some(
-      (entry) => entry.isDirectory() && entry.name.endsWith('-schema-6-to-8'),
+      (entry) => entry.isDirectory() && entry.name.endsWith('-schema-6-to-9'),
     )).toBe(true)
   })
 
@@ -1938,7 +2121,7 @@ describe('HomelabInventoryStore', () => {
     expect(store.setProject(removed).assignments).toEqual([])
   })
 
-  it('migrates schema 5 inventory records to schema 8 without rewriting them', async () => {
+  it('migrates schema 5 inventory records to schema 9 without rewriting existing records', async () => {
     const dataDir = await makeTempDir()
     const inventory = {
       servers: [],
@@ -1977,11 +2160,11 @@ describe('HomelabInventoryStore', () => {
 
     await store.init()
 
-    expect(store.databases.meta.data.schemaVersion).toBe(8)
-    expect(store.databases.inventory.data).toEqual(inventory)
+    expect(store.databases.meta.data.schemaVersion).toBe(9)
+    expect(store.databases.inventory.data).toEqual(schema9Inventory(inventory))
     const backupEntries = await fs.readdir(path.join(dataDir, 'backups'), { withFileTypes: true })
     expect(backupEntries.some(
-      (entry) => entry.isDirectory() && entry.name.endsWith('-schema-5-to-8'),
+      (entry) => entry.isDirectory() && entry.name.endsWith('-schema-5-to-9'),
     )).toBe(true)
   })
 
@@ -2047,7 +2230,7 @@ describe('HomelabInventoryStore', () => {
 
     await store.init()
 
-    expect(store.databases.meta.data.schemaVersion).toBe(8)
+    expect(store.databases.meta.data.schemaVersion).toBe(9)
     expect(store.getProject().items['switch:1'].ports.map((port) => port.speed)).toEqual([
       '1G',
       '1G',
@@ -2097,7 +2280,7 @@ describe('HomelabInventoryStore', () => {
 
     const backupEntries = await fs.readdir(path.join(dataDir, 'backups'), { withFileTypes: true })
     const migrationBackup = backupEntries.find(
-      (entry) => entry.isDirectory() && entry.name.endsWith('-schema-4-to-8'),
+      (entry) => entry.isDirectory() && entry.name.endsWith('-schema-4-to-9'),
     )
 
     expect(migrationBackup).toBeDefined()

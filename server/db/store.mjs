@@ -26,7 +26,7 @@ import {
   assertProjectStoreShape,
 } from './validation.mjs'
 
-export const CURRENT_SCHEMA_VERSION = 8
+export const CURRENT_SCHEMA_VERSION = 9
 
 const DEFAULT_SAVE_DEBOUNCE_MS = 500
 const BACKUP_LIMIT = 10
@@ -37,27 +37,124 @@ const ALWAYS_ENFORCED_COMPATIBILITY_CODES = new Set([
 ])
 const TABLE_BY_TYPE = {
   server: 'servers',
+  pcBuild: 'pcBuilds',
   cpu: 'cpus',
   ram: 'ram',
   storage: 'storage',
   network: 'networkCards',
   gpu: 'gpus',
+  motherboard: 'motherboards',
+  cpuCooler: 'cpuCoolers',
+  case: 'cases',
+  powerSupply: 'powerSupplies',
+  soundCard: 'soundCards',
+  wireless: 'wirelessCards',
+  powerAdapter: 'powerAdapters',
   nas: 'nas',
   switch: 'switches',
   patchPanel: 'patchPanels',
+  monitor: 'monitors',
+  ups: 'upsSystems',
+  powerStrip: 'powerStrips',
 }
 const TYPE_BY_TABLE = Object.fromEntries(Object.entries(TABLE_BY_TYPE).map(([type, table]) => [table, type]))
 const INVENTORY_TABLES = [
   'servers',
+  'pcBuilds',
   'cpus',
   'ram',
   'storage',
   'networkCards',
   'gpus',
+  'motherboards',
+  'cpuCoolers',
+  'cases',
+  'powerSupplies',
+  'soundCards',
+  'wirelessCards',
+  'powerAdapters',
   'nas',
   'switches',
   'patchPanels',
+  'monitors',
+  'upsSystems',
+  'powerStrips',
 ]
+
+function isExplicitWirelessNetworkRecord(record) {
+  const subtype = String(record?.subtype ?? '').trim().toLowerCase()
+  if (subtype === 'wireless' || subtype === 'wifi') {
+    return true
+  }
+
+  if (record?.specs?.wireless === true) {
+    return true
+  }
+
+  const networkInterface = String(record?.specs?.interface ?? '').trim().toLowerCase()
+  return /m\.2.*(?:a\s*\+\s*e|a\s*\/\s*e)/.test(networkInterface)
+}
+
+function migrateInventoryToSchema9(inventory) {
+  const migrated = inventory && typeof inventory === 'object' && !Array.isArray(inventory)
+    ? inventory
+    : {}
+
+  for (const table of INVENTORY_TABLES) {
+    migrated[table] ??= []
+  }
+
+  const wirelessCards = [...migrated.wirelessCards]
+  const networkCards = []
+  const migratedWirelessIds = new Set()
+
+  for (const record of migrated.networkCards) {
+    if (isExplicitWirelessNetworkRecord(record)) {
+      wirelessCards.push(record)
+      migratedWirelessIds.add(Number(record.id))
+    } else {
+      networkCards.push(record)
+    }
+  }
+
+  migrated.networkCards = networkCards
+  migrated.wirelessCards = wirelessCards
+
+  return { inventory: migrated, migratedWirelessIds }
+}
+
+function migrateWirelessProjectReferences(project, migratedWirelessIds) {
+  const isMigratedWirelessId = (value) => migratedWirelessIds.has(Number(value))
+  const migrateEndpoint = (endpoint) => {
+    if (!endpoint || typeof endpoint !== 'object') {
+      return endpoint
+    }
+
+    return {
+      ...endpoint,
+      ...(endpoint.itemType === 'network' && isMigratedWirelessId(endpoint.itemId)
+        ? { itemType: 'wireless' }
+        : {}),
+      ...(endpoint.hostedItemType === 'network' && isMigratedWirelessId(endpoint.hostedItemId)
+        ? { hostedItemType: 'wireless' }
+        : {}),
+    }
+  }
+
+  return {
+    ...project,
+    assignments: (project?.assignments ?? []).map((assignment) => (
+      assignment.itemType === 'network' && isMigratedWirelessId(assignment.itemId)
+        ? { ...assignment, itemType: 'wireless', type: 'wireless' }
+        : assignment
+    )),
+    connections: (project?.connections ?? []).map((connection) => ({
+      ...connection,
+      from: migrateEndpoint(connection.from),
+      to: migrateEndpoint(connection.to),
+    })),
+  }
+}
 
 function timestampForPath() {
   return new Date().toISOString().replace(/[:.]/g, '-')
@@ -967,6 +1064,20 @@ export class HomelabInventoryStore {
         )
         this.databases.meta.data.schemaVersion = 8
         currentVersion = 8
+        continue
+      }
+
+      if (currentVersion === 8) {
+        const { inventory, migratedWirelessIds } = migrateInventoryToSchema9(
+          this.databases.inventory.data,
+        )
+        this.databases.inventory.data = inventory
+        this.databases.project.data = migrateWirelessProjectReferences(
+          this.databases.project.data,
+          migratedWirelessIds,
+        )
+        this.databases.meta.data.schemaVersion = 9
+        currentVersion = 9
         continue
       }
 

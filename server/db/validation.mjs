@@ -7,14 +7,25 @@ const componentTypes = ASSIGNABLE_COMPONENT_TYPE_SET
 const inventoryTypes = INVENTORY_TYPE_SET
 const tableTypes = {
   servers: 'server',
+  pcBuilds: 'pcBuild',
   cpus: 'cpu',
   ram: 'ram',
   storage: 'storage',
   networkCards: 'network',
   gpus: 'gpu',
+  motherboards: 'motherboard',
+  cpuCoolers: 'cpuCooler',
+  cases: 'case',
+  powerSupplies: 'powerSupply',
+  soundCards: 'soundCard',
+  wirelessCards: 'wireless',
+  powerAdapters: 'powerAdapter',
   nas: 'nas',
   switches: 'switch',
   patchPanels: 'patchPanel',
+  monitors: 'monitor',
+  upsSystems: 'ups',
+  powerStrips: 'powerStrip',
 }
 const portKinds = new Set(['switch-port', 'keystone', 'server-port'])
 const portTypes = new Set(['rj45', 'sfp', 'sfp-plus', 'hdmi', 'displayport', 'mini-displayport', 'barrel'])

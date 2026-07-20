@@ -18,17 +18,58 @@ import {
 
 function inventoryWith(item) {
   return {
-    servers: [], cpus: [item], ram: [], storage: [], networkCards: [], gpus: [],
-    nas: [], switches: [], patchPanels: [],
+    ...inventoryTables(),
+    cpus: [item],
   }
 }
 
 function inventoryTables(overrides = {}) {
   return {
-    servers: [], cpus: [], ram: [], storage: [], networkCards: [], gpus: [],
-    nas: [], switches: [], patchPanels: [],
+    servers: [],
+    pcBuilds: [],
+    cpus: [],
+    ram: [],
+    storage: [],
+    networkCards: [],
+    gpus: [],
+    motherboards: [],
+    cpuCoolers: [],
+    cases: [],
+    powerSupplies: [],
+    soundCards: [],
+    wirelessCards: [],
+    powerAdapters: [],
+    nas: [],
+    switches: [],
+    patchPanels: [],
+    monitors: [],
+    upsSystems: [],
+    powerStrips: [],
     ...overrides,
   }
+}
+
+const SCHEMA_9_TABLE_TYPES = {
+  servers: 'server',
+  pcBuilds: 'pcBuild',
+  cpus: 'cpu',
+  ram: 'ram',
+  storage: 'storage',
+  networkCards: 'network',
+  gpus: 'gpu',
+  motherboards: 'motherboard',
+  cpuCoolers: 'cpuCooler',
+  cases: 'case',
+  powerSupplies: 'powerSupply',
+  soundCards: 'soundCard',
+  wirelessCards: 'wireless',
+  powerAdapters: 'powerAdapter',
+  nas: 'nas',
+  switches: 'switch',
+  patchPanels: 'patchPanel',
+  monitors: 'monitor',
+  upsSystems: 'ups',
+  powerStrips: 'powerStrip',
 }
 
 function compatibleItems() {
@@ -87,6 +128,18 @@ describe('inventory lifecycle validation', () => {
 })
 
 describe('inventory capability validation', () => {
+  it.each(Object.entries(SCHEMA_9_TABLE_TYPES))(
+    'requires and validates the schema 9 %s table as %s records',
+    (table, type) => {
+      const inventory = inventoryTables({ [table]: [{ id: 1, name: `${type} item` }] })
+      expect(() => assertInventoryStoreShape(inventory)).not.toThrow()
+
+      delete inventory[table]
+      expect(() => assertInventoryStoreShape(inventory))
+        .toThrow(`Inventory store is missing a ${table} array.`)
+    },
+  )
+
   it('mirrors the complete inventory capability model on the backend', () => {
     expect(HOST_TYPES).toHaveLength(3)
     expect(CANVAS_EQUIPMENT_TYPES).toHaveLength(8)
