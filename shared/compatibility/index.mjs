@@ -33,6 +33,25 @@ function optionalString(value) {
   return normalized || undefined
 }
 
+function optionalStringArray(value) {
+  return [...new Set(
+    (Array.isArray(value) ? value : value === undefined || value === null ? [] : [value])
+      .map(optionalString)
+      .filter(Boolean),
+  )]
+}
+
+const HOST_TYPES = new Set(['server', 'nas', 'pcBuild'])
+const EXPANSION_TYPES = new Set(['gpu', 'network', 'soundCard', 'wireless'])
+
+function isHost(item) {
+  return HOST_TYPES.has(item?.type)
+}
+
+function isExpansion(itemOrType) {
+  return EXPANSION_TYPES.has(typeof itemOrType === 'string' ? itemOrType : itemOrType?.type)
+}
+
 export function normalizeCompatibilityPolicy(policy) {
   const uniqueStrings = (values) => [...new Set(
     (Array.isArray(values) ? values : [])
@@ -56,7 +75,7 @@ export function normalizeProjectCompatibilityPolicy(project) {
   const policy = normalizeCompatibilityPolicy(project?.compatibilityPolicy)
   const disabledHostIds = policy.disabledHostIds.filter((hostId) => {
     const item = project?.items?.[hostId]
-    return item?.type === 'server' || item?.type === 'nas'
+    return isHost(item)
   })
 
   return {
@@ -206,8 +225,8 @@ export function normalizeComponentRequirements(item) {
     }
   }
 
-  if (item?.type === 'gpu' || item?.type === 'network') {
-    const legacyPcie = item.type === 'network' ? (specs.pcie ?? specs.interface) : specs.pcie
+  if (isExpansion(item)) {
+    const legacyPcie = specs.pcie ?? specs.interface
     const legacy = parsePcieDescriptor(legacyPcie)
     const structured = item.compatibility?.requirements?.expansion
     const normalized = { type: item.type }
@@ -217,13 +236,27 @@ export function normalizeComponentRequirements(item) {
       }
       return fallback
     }
-    const interfaceFamily = optionalString(structured?.interfaceFamily)
+    const legacyInterface = optionalString(specs.interface ?? specs.slot ?? specs.pcie)
+    const inferredInterfaceFamily = (item.type === 'soundCard' || item.type === 'wireless') && legacyInterface
+      ? /m\.?2|a\+e/i.test(legacyInterface)
+        ? 'm2-ae'
+        : /usb/i.test(legacyInterface)
+          ? 'usb'
+          : /on[ -]?board/i.test(legacyInterface)
+            ? 'onboard'
+            : /pcie|pci express/i.test(legacyInterface)
+              ? 'pcie'
+              : undefined
+      : undefined
+    const interfaceFamily = optionalString(structured?.interfaceFamily ?? inferredInterfaceFamily)
     const height = optionalString(structured?.height)
     const pcieGeneration = structuredNumber('pcieGeneration', legacy.pcieGeneration)
     const connectorLanes = structuredNumber('connectorLanes', legacy.connectorLanes)
     const minimumElectricalLanes = structuredNumber('minimumElectricalLanes', undefined)
     const slotWidth = structuredNumber('slotWidth', undefined)
     const powerWatts = structuredNumber('powerWatts', optionalNumber(specs.powerWatts))
+    const lengthMm = structuredNumber('lengthMm', optionalNumber(specs.lengthMm))
+    const heightMm = structuredNumber('heightMm', optionalNumber(specs.heightMm))
 
     if (interfaceFamily !== undefined) normalized.interfaceFamily = interfaceFamily
     if (pcieGeneration !== undefined) normalized.pcieGeneration = pcieGeneration
@@ -234,7 +267,57 @@ export function normalizeComponentRequirements(item) {
     if (height !== undefined) normalized.height = height
     if (slotWidth !== undefined) normalized.slotWidth = slotWidth
     if (powerWatts !== undefined) normalized.powerWatts = powerWatts
+    if (lengthMm !== undefined) normalized.lengthMm = lengthMm
+    if (heightMm !== undefined) normalized.heightMm = heightMm
     return normalized
+  }
+
+  if (item?.type === 'cpuCooler') {
+    const structured = item.compatibility?.requirements?.cooling ??
+      item.compatibility?.requirements?.cpuCooler ?? {}
+    return {
+      type: 'cpuCooler',
+      supportedSockets: optionalStringArray(
+        structured.supportedSockets ?? structured.sockets ?? specs.supportedSockets ?? specs.sockets,
+      ).map(normalizeCpuSocket).filter(Boolean),
+      coolingCapacityWatts: optionalNumber(
+        structured.coolingCapacityWatts ?? structured.maxTdpWatts ?? specs.coolingCapacityWatts ??
+          specs.maxTdpWatts ?? specs.tdpWatts,
+      ),
+      heightMm: optionalNumber(structured.heightMm ?? specs.heightMm ?? specs.coolerHeightMm),
+      radiatorSizeMm: optionalNumber(structured.radiatorSizeMm ?? specs.radiatorSizeMm),
+    }
+  }
+
+  if (item?.type === 'powerSupply') {
+    return {
+      type: 'powerSupply',
+      wattageWatts: optionalNumber(specs.wattageWatts ?? specs.wattage ?? specs.powerWatts),
+      formFactor: optionalString(specs.formFactor),
+    }
+  }
+
+  if (item?.type === 'case') {
+    return {
+      type: 'case',
+      supportedMotherboardFormFactors: optionalStringArray(
+        specs.supportedMotherboardFormFactors ?? specs.motherboardFormFactors ?? specs.formFactors,
+      ),
+      supportedPsuFormFactors: optionalStringArray(
+        specs.supportedPsuFormFactors ?? specs.psuFormFactors,
+      ),
+      maxCoolerHeightMm: optionalNumber(specs.maxCoolerHeightMm ?? specs.cpuCoolerHeightMm),
+      maxExpansionLengthMm: optionalNumber(specs.maxExpansionLengthMm ?? specs.maxGpuLengthMm),
+      maxExpansionHeightMm: optionalNumber(specs.maxExpansionHeightMm ?? specs.maxGpuHeightMm),
+      maxExpansionSlotWidth: optionalNumber(specs.maxExpansionSlotWidth ?? specs.maxGpuSlotWidth),
+      supportedRadiatorSizesMm: optionalStringArray(
+        specs.supportedRadiatorSizesMm ?? specs.radiatorSizesMm,
+      ).map(optionalNumber).filter((value) => value !== undefined),
+    }
+  }
+
+  if (item?.type === 'motherboard') {
+    return { type: 'motherboard', formFactor: optionalString(specs.formFactor) }
   }
 
   return { type: item?.type }
@@ -314,6 +397,179 @@ function assignedComponents(assignments, items, component) {
     assigned.set(component.key ?? `${component.type}:${String(component.id)}`, component)
   }
   return [...assigned.values()]
+}
+
+function assignedItemOfType(assignments, items, type, component) {
+  return assignedComponents(assignments, items, component).find((item) => item.type === type)
+}
+
+function effectiveHostForAssignment(host, assignments, items, component) {
+  if (host?.type !== 'pcBuild') {
+    return host
+  }
+  const motherboard = assignedItemOfType(assignments, items, 'motherboard', component)
+  if (!motherboard) {
+    return host
+  }
+  return {
+    ...host,
+    compatibility: {
+      ...(host.compatibility ?? {}),
+      host: structuredClone(motherboard.compatibility?.host ?? {}),
+    },
+  }
+}
+
+function evaluateCpuCooler(hostCapabilities, requirements, assignments, items, component, findings) {
+  const cpu = assignedItemOfType(assignments, items, 'cpu', component)
+  const cpuRequirements = cpu ? normalizeComponentRequirements(cpu) : undefined
+  const sockets = requirements.supportedSockets
+
+  if (sockets.length === 0) {
+    addMissing(findings, 'component.cooling.supportedSockets', 'CPU cooler socket support is not recorded.')
+  } else {
+    const targetSocket = cpuRequirements?.socket ?? hostCapabilities.cpu?.sockets?.[0]
+    if (!targetSocket) {
+      addMissing(findings, 'host.cpu.sockets', 'The active CPU socket is not known.')
+    } else if (!includesNormalized(sockets, targetSocket)) {
+      addFinding(findings, {
+        code: 'cooling.socket.mismatch',
+        severity: 'error',
+        message: `The CPU cooler does not support the ${targetSocket} socket.`,
+        field: 'component.cooling.supportedSockets',
+      })
+    }
+  }
+
+  if (!cpuRequirements || cpuRequirements.tdpWatts === undefined) {
+    addMissing(findings, 'component.cpu.tdpWatts', 'CPU TDP is not recorded for cooler sizing.')
+  } else if (requirements.coolingCapacityWatts === undefined) {
+    addMissing(findings, 'component.cooling.coolingCapacityWatts', 'CPU cooler capacity is not recorded.')
+  } else if (requirements.coolingCapacityWatts < cpuRequirements.tdpWatts) {
+    addFinding(findings, {
+      code: 'cooling.capacity.insufficient',
+      severity: 'warning',
+      message: `${requirements.coolingCapacityWatts}W cooler capacity is below the CPU's ${cpuRequirements.tdpWatts}W TDP.`,
+      field: 'component.cooling.coolingCapacityWatts',
+    })
+  }
+}
+
+function evaluateCaseConstraint(caseItem, component, requirements, findings) {
+  if (!caseItem || component.type === 'case') {
+    return
+  }
+  const caseRequirements = normalizeComponentRequirements(caseItem)
+
+  if (component.type === 'motherboard') {
+    if (caseRequirements.supportedMotherboardFormFactors.length === 0) {
+      addMissing(findings, 'case.supportedMotherboardFormFactors', 'Case motherboard form-factor support is not recorded.')
+    } else if (!requirements.formFactor) {
+      addMissing(findings, 'component.motherboard.formFactor', 'Motherboard form factor is not recorded.')
+    } else if (!includesNormalized(caseRequirements.supportedMotherboardFormFactors, requirements.formFactor)) {
+      addFinding(findings, {
+        code: 'case.motherboard-form-factor.mismatch',
+        severity: 'error',
+        message: `${requirements.formFactor} motherboards are not supported by this case.`,
+        field: 'component.motherboard.formFactor',
+      })
+    }
+  }
+
+  if (component.type === 'powerSupply') {
+    if (caseRequirements.supportedPsuFormFactors.length === 0) {
+      addMissing(findings, 'case.supportedPsuFormFactors', 'Case power-supply form-factor support is not recorded.')
+    } else if (!requirements.formFactor) {
+      addMissing(findings, 'component.powerSupply.formFactor', 'Power-supply form factor is not recorded.')
+    } else if (!includesNormalized(caseRequirements.supportedPsuFormFactors, requirements.formFactor)) {
+      addFinding(findings, {
+        code: 'case.psu-form-factor.mismatch',
+        severity: 'error',
+        message: `${requirements.formFactor} power supplies are not supported by this case.`,
+        field: 'component.powerSupply.formFactor',
+      })
+    }
+  }
+
+  if (component.type === 'cpuCooler') {
+    if (requirements.heightMm !== undefined) {
+      if (caseRequirements.maxCoolerHeightMm === undefined) {
+        addMissing(findings, 'case.maxCoolerHeightMm', 'Case CPU cooler height limit is not recorded.')
+      } else if (requirements.heightMm > caseRequirements.maxCoolerHeightMm) {
+        addFinding(findings, {
+          code: 'case.cooler-height.exceeded',
+          severity: 'error',
+          message: `${requirements.heightMm}mm cooler height exceeds the case limit of ${caseRequirements.maxCoolerHeightMm}mm.`,
+          field: 'component.cooling.heightMm',
+        })
+      }
+    }
+    if (requirements.radiatorSizeMm !== undefined) {
+      if (caseRequirements.supportedRadiatorSizesMm.length === 0) {
+        addMissing(findings, 'case.supportedRadiatorSizesMm', 'Case radiator support is not recorded.')
+      } else if (!caseRequirements.supportedRadiatorSizesMm.includes(requirements.radiatorSizeMm)) {
+        addFinding(findings, {
+          code: 'case.radiator-size.unsupported',
+          severity: 'error',
+          message: `${requirements.radiatorSizeMm}mm radiators are not supported by this case.`,
+          field: 'component.cooling.radiatorSizeMm',
+        })
+      }
+    }
+  }
+
+  if (isExpansion(component)) {
+    const dimensions = [
+      ['lengthMm', 'maxExpansionLengthMm', 'case.expansion-length.exceeded', 'length'],
+      ['heightMm', 'maxExpansionHeightMm', 'case.expansion-height.exceeded', 'height'],
+      ['slotWidth', 'maxExpansionSlotWidth', 'case.expansion-width.exceeded', 'slot width'],
+    ]
+    for (const [field, limitField, code, label] of dimensions) {
+      if (requirements[field] === undefined) continue
+      if (caseRequirements[limitField] === undefined) {
+        addMissing(findings, `case.${limitField}`, `Case expansion ${label} limit is not recorded.`)
+      } else if (requirements[field] > caseRequirements[limitField]) {
+        addFinding(findings, {
+          code,
+          severity: 'error',
+          message: `Expansion-card ${label} exceeds the case limit.`,
+          field: `component.expansion.${field}`,
+        })
+      }
+    }
+  }
+}
+
+function evaluatePowerSupply(assignments, items, component, requirements, findings) {
+  const poweredItems = assignedComponents(assignments, items, component)
+    .filter((item) => item.type === 'cpu' || isExpansion(item))
+  const draws = poweredItems.map((item) => normalizeComponentRequirements(item).tdpWatts ??
+    normalizeComponentRequirements(item).powerWatts)
+  const knownDraw = draws.filter((value) => value !== undefined)
+  const totalDraw = knownDraw.reduce((total, value) => total + value, 0)
+
+  if (requirements.wattageWatts === undefined) {
+    addMissing(findings, 'component.powerSupply.wattageWatts', 'Power-supply wattage is not recorded.')
+    return
+  }
+  if (knownDraw.length !== draws.length) {
+    addMissing(findings, 'pcBuild.powerDrawWatts', 'Power draw is missing for installed CPU or expansion hardware.')
+  }
+  if (totalDraw > requirements.wattageWatts) {
+    addFinding(findings, {
+      code: 'power.capacity.exceeded',
+      severity: 'error',
+      message: `${totalDraw}W known component draw exceeds the ${requirements.wattageWatts}W power supply.`,
+      field: 'component.powerSupply.wattageWatts',
+    })
+  } else if (totalDraw > requirements.wattageWatts * 0.8) {
+    addFinding(findings, {
+      code: 'power.headroom.low',
+      severity: 'warning',
+      message: `${totalDraw}W known component draw leaves less than 20% PSU headroom.`,
+      field: 'component.powerSupply.wattageWatts',
+    })
+  }
 }
 
 function evaluateCpu(hostCapabilities, requirements, findings) {
@@ -545,7 +801,7 @@ function evaluateStorage(hostCapabilities, requirements, findings) {
 
 function expansionPowerItems(assignments, items, component) {
   return assignedComponents(assignments, items, component).filter(
-    (item) => item.type === 'gpu' || item.type === 'network',
+    (item) => isExpansion(item),
   )
 }
 
@@ -735,7 +991,8 @@ function evaluateExpansion(hostCapabilities, requirements, assignments, items, c
 
 export function evaluateAssignmentCompatibility({ host, component, assignments = [], items = {} }) {
   const findings = []
-  const hostCapabilities = normalizeHostCapabilities(host)
+  const effectiveHost = effectiveHostForAssignment(host, assignments, items, component)
+  const hostCapabilities = normalizeHostCapabilities(effectiveHost)
   const requirements = normalizeComponentRequirements(component)
 
   if (requirements.type === 'cpu') {
@@ -744,8 +1001,17 @@ export function evaluateAssignmentCompatibility({ host, component, assignments =
     evaluateMemory(hostCapabilities, requirements, assignments, items, component, findings)
   } else if (requirements.type === 'storage') {
     evaluateStorage(hostCapabilities, requirements, findings)
-  } else if (requirements.type === 'gpu' || requirements.type === 'network') {
+  } else if (isExpansion(requirements.type)) {
     evaluateExpansion(hostCapabilities, requirements, assignments, items, component, findings)
+  } else if (requirements.type === 'cpuCooler' && host?.type === 'pcBuild') {
+    evaluateCpuCooler(hostCapabilities, requirements, assignments, items, component, findings)
+  } else if (requirements.type === 'powerSupply' && host?.type === 'pcBuild') {
+    evaluatePowerSupply(assignments, items, component, requirements, findings)
+  }
+
+  if (host?.type === 'pcBuild') {
+    const caseItem = assignedItemOfType(assignments, items, 'case', component)
+    evaluateCaseConstraint(caseItem, component, requirements, findings)
   }
 
   return { status: statusFor(findings), findings }
@@ -756,7 +1022,7 @@ export function evaluateProjectCompatibility(project) {
   return (project?.assignments ?? []).flatMap((assignment) => {
     const host = itemLookup(project.items, assignment.serverId)
     const component = itemLookup(project.items, assignment.itemId)
-    if (!host || !component || (host.type !== 'server' && host.type !== 'nas')) {
+    if (!host || !component || !isHost(host)) {
       return []
     }
     const result = evaluateAssignmentCompatibility({
@@ -768,7 +1034,7 @@ export function evaluateProjectCompatibility(project) {
       items: project.items,
     })
 
-    if (component.type === 'gpu' || component.type === 'network') {
+    if (isExpansion(component)) {
       const hostId = String(assignment.serverId)
       if (hostsWithPowerFindings.has(hostId)) {
         result.findings = result.findings.filter(
@@ -860,7 +1126,7 @@ function allocationSize(requirements) {
   if (requirements.type === 'storage') {
     return 1
   }
-  if (requirements.type === 'gpu' || requirements.type === 'network') {
+  if (isExpansion(requirements.type)) {
     return Number.isInteger(requirements.slotWidth) && requirements.slotWidth > 0
       ? requirements.slotWidth
       : undefined
@@ -879,7 +1145,7 @@ function resultCanOccupyResource(result, compatibilityEnabled) {
 function resourceTypeFor(requirements) {
   if (requirements.type === 'ram') return 'memory'
   if (requirements.type === 'storage') return 'storage'
-  if (requirements.type === 'gpu' || requirements.type === 'network') return 'expansion'
+  if (isExpansion(requirements.type)) return 'expansion'
   return undefined
 }
 
@@ -1045,10 +1311,154 @@ function planResult(assignment, result, allocation) {
   }
 }
 
+function pcBuildResourceDefinition(component, motherboard, hostCapabilities) {
+  const requirements = normalizeComponentRequirements(component)
+  if (component.type === 'motherboard') return { resourceType: 'motherboard', count: 1, size: 1 }
+  if (component.type === 'powerSupply') return { resourceType: 'power', count: 1, size: 1 }
+  if (component.type === 'case') return { resourceType: 'case', count: 1, size: 1 }
+  if (component.type === 'cpu' || component.type === 'cpuCooler') {
+    const count = optionalNumber(motherboard?.specs?.cpuSocketCount ?? motherboard?.specs?.cpuSockets) ??
+      (hostCapabilities.cpu?.sockets?.length ? 1 : undefined)
+    return {
+      resourceType: component.type === 'cpu' ? 'cpu' : 'cooling',
+      groupId: 'cpu',
+      count,
+      size: 1,
+    }
+  }
+  if (component.type === 'ram') {
+    return {
+      resourceType: 'memory',
+      groupId: 'dimm',
+      count: hostCapabilities.memory?.slots,
+      size: requirements.moduleCount,
+    }
+  }
+  if (component.type === 'storage') {
+    const groups = validResourceGroups(hostCapabilities.storageSlots).filter((group) =>
+      (!requirements.interface || includesNormalized(group.interfaces ?? [], requirements.interface)) &&
+      (!requirements.formFactor || includesNormalized(group.formFactors ?? [], requirements.formFactor)))
+    return { resourceType: 'storage', groups, size: 1 }
+  }
+  if (isExpansion(component)) {
+    const groups = validResourceGroups(hostCapabilities.expansionSlots).filter((group) =>
+      !requirements.interfaceFamily || group.interfaceFamily === requirements.interfaceFamily)
+    return { resourceType: 'expansion', groups, size: requirements.slotWidth ?? 1 }
+  }
+  return undefined
+}
+
+function physicalResourceError(result, resourceType, code = 'compatibility.resource.invalid') {
+  const message = code === 'compatibility.resource.exhausted'
+    ? `No available ${resourceType} positions can satisfy this component.`
+    : `The PC Build's ${resourceType} resource definition is missing or invalid.`
+  return resultWithFinding(result, allocationFinding(
+    code,
+    'error',
+    message,
+    `host.${resourceType}Resources`,
+  ))
+}
+
+function planPcBuildAllocations(project, hostId) {
+  const host = itemLookup(project.items, hostId)
+  const assignments = (project.assignments ?? [])
+    .filter((assignment) => String(assignment.serverId) === String(hostId))
+    .map((assignment) => ({ ...assignment }))
+    .sort(compareAssignments)
+  const motherboard = assignedItemOfType(assignments, project.items, 'motherboard')
+  const effectiveHost = effectiveHostForAssignment(host, assignments, project.items, motherboard)
+  const hostCapabilities = normalizeHostCapabilities(effectiveHost)
+  const compatibilityEnabled = isHostCompatibilityEnabled(project, hostId)
+  const occupancy = new Map()
+  const plannedAssignments = []
+  const results = []
+  const processedAssignments = []
+
+  for (const assignment of assignments) {
+    const component = itemLookup(project.items, assignment.itemId)
+    if (!component) {
+      const clean = { ...assignment }
+      delete clean.allocation
+      plannedAssignments.push(clean)
+      results.push(planResult(assignment, missingComponentResult()))
+      continue
+    }
+    const clean = { ...assignment }
+    delete clean.allocation
+    const result = evaluateAssignmentCompatibility({
+      host,
+      component,
+      assignments: processedAssignments,
+      items: project.items,
+    })
+    const resource = pcBuildResourceDefinition(component, motherboard, hostCapabilities)
+    if (!resource) {
+      plannedAssignments.push(clean)
+      results.push(planResult(assignment, result))
+      processedAssignments.push(clean)
+      continue
+    }
+    if (!resultCanOccupyResource(result, compatibilityEnabled)) {
+      plannedAssignments.push(clean)
+      results.push(planResult(assignment, result))
+      processedAssignments.push(clean)
+      continue
+    }
+
+    const size = resource.size
+    let selected
+    if (Array.isArray(resource.groups)) {
+      for (const group of resource.groups) {
+        const positions = firstConsecutivePositions(
+          occupancy, resource.resourceType, group.id, group.count, size,
+        )
+        if (positions) {
+          selected = { groupId: group.id, positions }
+          break
+        }
+      }
+    } else if (Number.isInteger(resource.count) && Number.isInteger(size) && size > 0) {
+      const positions = firstConsecutivePositions(
+        occupancy, resource.resourceType, resource.groupId, resource.count, size,
+      )
+      if (positions) selected = { groupId: resource.groupId, positions }
+    }
+
+    if (!selected) {
+      const hasDefinition = Array.isArray(resource.groups)
+        ? resource.groups.length > 0 && Number.isInteger(size) && size > 0
+        : Number.isInteger(resource.count) && resource.count > 0 && Number.isInteger(size) && size > 0
+      const physical = physicalResourceError(
+        result,
+        resource.resourceType,
+        hasDefinition ? 'compatibility.resource.exhausted' : 'compatibility.resource.invalid',
+      )
+      plannedAssignments.push(clean)
+      results.push(planResult(assignment, physical))
+    } else {
+      const allocation = {
+        resourceType: resource.resourceType,
+        ...(selected.groupId ? { groupId: selected.groupId } : {}),
+        positions: selected.positions,
+      }
+      reservePositions(occupancy, allocation)
+      const planned = { ...clean, allocation }
+      plannedAssignments.push(planned)
+      results.push(planResult(assignment, result, allocation))
+      processedAssignments.push(planned)
+    }
+  }
+  return { assignments: plannedAssignments, results }
+}
+
 export function planHostAllocations(project, hostId) {
   const host = itemLookup(project?.items, hostId)
-  if (!host || (host.type !== 'server' && host.type !== 'nas')) {
+  if (!host || !isHost(host)) {
     return { assignments: [], results: [] }
+  }
+  if (host.type === 'pcBuild') {
+    return planPcBuildAllocations(project, hostId)
   }
 
   const assignments = (project.assignments ?? [])
@@ -1329,7 +1739,7 @@ export function planHostAllocations(project, hostId) {
 
 export function normalizeCompatibilityProject(project) {
   const hosts = Object.entries(project?.items ?? {})
-    .filter(([, item]) => item?.type === 'server' || item?.type === 'nas')
+    .filter(([, item]) => isHost(item))
     .map(([key]) => key)
   const plannedByAssignment = new Map()
 
