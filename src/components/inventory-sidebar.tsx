@@ -2,19 +2,28 @@ import { useDraggable } from '@dnd-kit/core'
 import { CSS } from '@dnd-kit/utilities'
 import {
   Archive,
+  AudioLines,
+  BatteryCharging,
+  Box,
   ChevronDown,
+  CircuitBoard,
   Cpu,
   Database,
+  Fan,
   HardDrive,
   ListChecks,
   MemoryStick,
+  Monitor,
   MonitorUp,
   Network,
+  Plug,
   Plus,
+  Power,
   RotateCcw,
   Search,
   Server,
   Trash2,
+  Wifi,
   X,
 } from 'lucide-react'
 import { useEffect, useMemo, useState, type CSSProperties } from 'react'
@@ -31,7 +40,12 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import { formatPortSummary, formatRamSpec } from '@/lib/format'
+import { formatInventoryCompactSpec } from '@/lib/format'
+import {
+  isAssignableComponentType,
+  isCanvasEquipmentType,
+} from '@/lib/inventory-capabilities'
+import { INVENTORY_CATEGORY_ORDER, INVENTORY_TYPE_LABELS } from '@/lib/inventory'
 import { runtimeItemKey } from '@/lib/item-keys'
 import { isArchivedItem } from '@/lib/project'
 import { cn } from '@/lib/utils'
@@ -40,40 +54,27 @@ import type { InventoryItemInput } from '@/lib/db'
 import type { InventoryFilters, InventoryStatusFilter } from '@/lib/sort'
 import type { InventoryItem, InventoryType, ProjectState } from '@/types/inventory'
 
-const TYPE_LABELS: Partial<Record<InventoryType, string>> = {
-  server: 'Server',
-  nas: 'NAS',
-  cpu: 'CPU',
-  ram: 'RAM',
-  storage: 'Storage',
-  gpu: 'GPU',
-  network: 'Network',
-  switch: 'Switch',
-  patchPanel: 'Patch Panel',
-}
-
-const TYPE_ORDER: InventoryType[] = [
-  'server',
-  'nas',
-  'switch',
-  'patchPanel',
-  'cpu',
-  'ram',
-  'storage',
-  'gpu',
-  'network',
-]
-
-const TYPE_COLORS: Partial<Record<InventoryType, string>> = {
+const TYPE_COLORS: Record<InventoryType, string> = {
   server: 'border-l-[#adc19b]',
-  nas: 'border-l-[#9eb6c8]',
+  pcBuild: 'border-l-[#8fa9bf]',
   cpu: 'border-l-[#8bb3bd]',
+  cpuCooler: 'border-l-[#9fc7c1]',
+  motherboard: 'border-l-[#789ca5]',
   ram: 'border-l-[#ddb668]',
   storage: 'border-l-[#b5a58f]',
   gpu: 'border-l-[#d57b69]',
   network: 'border-l-[#86a989]',
+  wireless: 'border-l-[#77a8a2]',
+  soundCard: 'border-l-[#b29ac7]',
+  case: 'border-l-[#9ca3af]',
+  powerSupply: 'border-l-[#d3a45f]',
+  powerAdapter: 'border-l-[#c99972]',
+  nas: 'border-l-[#9eb6c8]',
   switch: 'border-l-[#81a6a0]',
   patchPanel: 'border-l-[#a995c8]',
+  monitor: 'border-l-[#7797b8]',
+  ups: 'border-l-[#c49a58]',
+  powerStrip: 'border-l-[#b18a6b]',
 }
 
 function TypeIcon({ type }: { type: InventoryType }) {
@@ -83,69 +84,25 @@ function TypeIcon({ type }: { type: InventoryType }) {
     return <Server className={className} />
   }
 
-  if (type === 'nas') {
-    return <Database className={className} />
-  }
+  if (type === 'pcBuild') return <Monitor className={className} />
+  if (type === 'cpu') return <Cpu className={className} />
+  if (type === 'cpuCooler') return <Fan className={className} />
+  if (type === 'motherboard') return <CircuitBoard className={className} />
+  if (type === 'ram') return <MemoryStick className={className} />
+  if (type === 'storage') return <HardDrive className={className} />
+  if (type === 'gpu') return <MonitorUp className={className} />
+  if (type === 'network' || type === 'switch') return <Network className={className} />
+  if (type === 'wireless') return <Wifi className={className} />
+  if (type === 'soundCard') return <AudioLines className={className} />
+  if (type === 'case') return <Box className={className} />
+  if (type === 'powerSupply') return <Power className={className} />
+  if (type === 'powerAdapter' || type === 'powerStrip') return <Plug className={className} />
+  if (type === 'nas') return <Database className={className} />
+  if (type === 'patchPanel') return <Server className={className} />
+  if (type === 'monitor') return <Monitor className={className} />
+  if (type === 'ups') return <BatteryCharging className={className} />
 
-  if (type === 'cpu') {
-    return <Cpu className={className} />
-  }
-
-  if (type === 'ram') {
-    return <MemoryStick className={className} />
-  }
-
-  if (type === 'storage') {
-    return <HardDrive className={className} />
-  }
-
-  if (type === 'gpu') {
-    return <MonitorUp className={className} />
-  }
-
-  if (type === 'switch') {
-    return <Network className={className} />
-  }
-
-  if (type === 'patchPanel') {
-    return <Server className={className} />
-  }
-
-  return <Network className={className} />
-}
-
-function compactSpec(item: InventoryItem): string | null {
-  const specs = item.specs ?? {}
-
-  if (item.type === 'ram') {
-    return formatRamSpec(item)
-  }
-
-  if (item.type === 'storage') {
-    return null
-  }
-
-  if (item.type === 'network') {
-    return `${specs.speedMbps ?? '?'}Mbps / ${specs.formFactor ?? 'network'}`
-  }
-
-  if (item.type === 'cpu') {
-    return `${specs.cores ?? '?'}C/${specs.threads ?? '?'}T`
-  }
-
-  if (item.type === 'gpu') {
-    return `${specs.vramGb ?? '?'}GB VRAM`
-  }
-
-  if (item.type === 'nas') {
-    return `${specs.driveBays ?? '?'} bays / ${specs.m2Slots ?? 0} M.2`
-  }
-
-  if (item.type === 'switch' || item.type === 'patchPanel') {
-    return formatPortSummary(item)
-  }
-
-  return String(specs.formFactor ?? 'Server')
+  return <Server className={className} />
 }
 
 function DraggableInventoryItem({
@@ -175,20 +132,26 @@ function DraggableInventoryItem({
 }) {
   const itemRuntimeKey = runtimeItemKey(item)
   const archived = isArchivedItem(item)
+  const dragRole = isCanvasEquipmentType(item.type)
+    ? 'equipment'
+    : isAssignableComponentType(item.type)
+      ? 'component'
+      : null
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
     id: `inventory:${itemRuntimeKey}`,
     data: {
       kind: 'inventory',
       itemId: itemRuntimeKey,
+      inventoryRole: dragRole,
     },
-    disabled: assigned || archived || selectionMode,
+    disabled: assigned || archived || selectionMode || dragRole === null,
   })
   const style = {
     transform: CSS.Translate.toString(transform),
     touchAction: 'pan-y',
     WebkitTouchCallout: 'none',
   } satisfies CSSProperties
-  const itemSpec = compactSpec(item)
+  const itemSpec = formatInventoryCompactSpec(item)
 
   return (
     <div className="relative">
@@ -197,8 +160,9 @@ function DraggableInventoryItem({
         type="button"
         data-testid="inventory-item"
         data-inventory-item-id={itemRuntimeKey}
+        data-inventory-drag-role={dragRole ?? undefined}
         style={style}
-        className={`w-full rounded-md border border-white/10 border-l-4 bg-[#303642] px-3 py-2 pr-11 text-left text-[#f7f1e8] shadow-sm transition hover:bg-[#394150] ${archived ? 'opacity-65' : ''} ${selected ? 'ring-2 ring-[#ddb668]' : ''} ${TYPE_COLORS[item.type] ?? 'border-l-[#8d857b]'} ${isDragging ? 'opacity-60' : ''}`}
+        className={`w-full rounded-md border border-white/10 border-l-4 bg-[#303642] px-3 py-2 pr-11 text-left text-[#f7f1e8] shadow-sm transition hover:bg-[#394150] ${archived ? 'opacity-65' : ''} ${selected ? 'ring-2 ring-[#ddb668]' : ''} ${TYPE_COLORS[item.type]} ${isDragging ? 'opacity-60' : ''}`}
         onClick={() => selectionMode ? onToggleSelected(itemRuntimeKey) : !archived && onSelect(itemRuntimeKey)}
         aria-pressed={selectionMode ? selected : undefined}
         {...(!assigned && !archived && !selectionMode ? listeners : {})}
@@ -296,7 +260,7 @@ export function InventorySidebar({
   const allSelectedActive = selectedItems.length > 0 && selectedItems.every((item) => !isArchivedItem(item))
   const grouped = useMemo(
     () =>
-      TYPE_ORDER.map((type) => ({
+      INVENTORY_CATEGORY_ORDER.map((type) => ({
         type,
         items: items.filter((item) => item.type === type),
       })).filter((group) => group.items.length > 0),
@@ -421,9 +385,9 @@ export function InventorySidebar({
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All types</SelectItem>
-              {TYPE_ORDER.map((type) => (
+              {INVENTORY_CATEGORY_ORDER.map((type) => (
                 <SelectItem key={type} value={type}>
-                  {TYPE_LABELS[type] ?? type}
+                  {INVENTORY_TYPE_LABELS[type]}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -518,7 +482,7 @@ export function InventorySidebar({
               >
                 <span className="flex min-w-0 items-center gap-2">
                   <TypeIcon type={group.type} />
-                  <span>{TYPE_LABELS[group.type] ?? group.type}</span>
+                  <span data-testid="inventory-category-label">{INVENTORY_TYPE_LABELS[group.type]}</span>
                   <span className="rounded-full bg-white/10 px-2 py-0.5 text-[10px] tracking-normal text-[#d8d0c5]">
                     {group.items.length}
                   </span>

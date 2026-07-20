@@ -275,3 +275,110 @@ export function formatServerPortCanvasParts(item: InventoryItem): ServerCanvasPo
 
   return parts
 }
+
+function specText(item: InventoryItem, ...keys: string[]): string | undefined {
+  for (const key of keys) {
+    const value = item.specs?.[key]
+    if (typeof value === 'string' && value.trim()) return value.trim()
+  }
+
+  return undefined
+}
+
+function specNumber(item: InventoryItem, ...keys: string[]): number | undefined {
+  for (const key of keys) {
+    const value = item.specs?.[key]
+    if (typeof value === 'number' && Number.isFinite(value)) return value
+  }
+
+  return undefined
+}
+
+function compactParts(...parts: Array<string | undefined>): string | null {
+  const values = parts.filter((part): part is string => Boolean(part))
+  return values.length > 0 ? values.join(' / ') : null
+}
+
+function countLabel(count: number | undefined, singular: string, plural = `${singular}s`): string | undefined {
+  return count === undefined ? undefined : `${count} ${count === 1 ? singular : plural}`
+}
+
+export function formatInventoryCompactSpec(item: InventoryItem): string | null {
+  if (item.type === 'ram') return formatRamSpec(item)
+  if (item.type === 'storage') return null
+  if (item.type === 'cpu') {
+    const cores = specNumber(item, 'cores')
+    const threads = specNumber(item, 'threads')
+    return cores !== undefined || threads !== undefined
+      ? `${cores ?? '?'}C/${threads ?? '?'}T`
+      : compactParts(item.family, item.number)
+  }
+  if (item.type === 'gpu') {
+    const vram = specNumber(item, 'vramGb')
+    return compactParts(vram === undefined ? undefined : `${vram}GB VRAM`, specText(item, 'formFactor'))
+  }
+  if (item.type === 'network') {
+    const speed = specNumber(item, 'speedMbps')
+    return compactParts(speed === undefined ? undefined : `${speed}Mbps`, specText(item, 'formFactor', 'interface'))
+  }
+  if (item.type === 'wireless') {
+    return compactParts(specText(item, 'wifiGeneration', 'standard'), specText(item, 'interface', 'formFactor'))
+  }
+  if (item.type === 'motherboard') {
+    return compactParts(specText(item, 'formFactor'), specText(item, 'socket'), specText(item, 'chipset'))
+  }
+  if (item.type === 'cpuCooler') {
+    const radiatorSize = specNumber(item, 'radiatorSizeMm')
+    return compactParts(
+      specText(item, 'coolerType', 'type'),
+      radiatorSize === undefined ? undefined : `${radiatorSize}mm`,
+      specText(item, 'socket'),
+    )
+  }
+  if (item.type === 'soundCard') {
+    return compactParts(specText(item, 'interface'), specText(item, 'channels'))
+  }
+  if (item.type === 'case') return compactParts(specText(item, 'formFactor', 'caseType'))
+  if (item.type === 'powerSupply') {
+    const watts = specNumber(item, 'wattageWatts', 'watts')
+    return compactParts(watts === undefined ? undefined : `${watts}W`, specText(item, 'formFactor'), specText(item, 'efficiency'))
+  }
+  if (item.type === 'powerAdapter') {
+    const watts = specNumber(item, 'wattageWatts', 'watts')
+    return compactParts(watts === undefined ? undefined : `${watts}W`, specText(item, 'connector', 'plugType'))
+  }
+  if (item.type === 'nas') {
+    return compactParts(
+      countLabel(specNumber(item, 'driveBays'), 'bay'),
+      countLabel(specNumber(item, 'm2Slots'), 'M.2 slot'),
+    )
+  }
+  if (item.type === 'switch' || item.type === 'patchPanel') return formatPortSummary(item)
+  if (item.type === 'monitor') {
+    const size = specNumber(item, 'sizeInches', 'diagonalInches')
+    const refresh = specNumber(item, 'refreshRateHz')
+    return compactParts(
+      size === undefined ? undefined : `${size}\"`,
+      specText(item, 'resolution'),
+      refresh === undefined ? undefined : `${refresh}Hz`,
+    )
+  }
+  if (item.type === 'ups') {
+    const capacity = specNumber(item, 'capacityVa', 'va')
+    return compactParts(
+      capacity === undefined ? undefined : `${capacity}VA`,
+      countLabel(specNumber(item, 'outlets'), 'outlet'),
+    )
+  }
+  if (item.type === 'powerStrip') {
+    return compactParts(
+      countLabel(specNumber(item, 'outlets'), 'outlet'),
+      countLabel(specNumber(item, 'surgeProtectedOutlets'), 'surge outlet'),
+    )
+  }
+  if (item.type === 'pcBuild') {
+    return compactParts(specText(item, 'formFactor'), specText(item, 'operatingSystem')) ?? 'Custom build'
+  }
+
+  return compactParts(specText(item, 'formFactor')) ?? 'Server'
+}

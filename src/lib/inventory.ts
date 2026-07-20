@@ -1,5 +1,6 @@
-import { INVENTORY_TABLE_KEYS, INVENTORY_TYPE_BY_TABLE, runtimeItemKey } from '@/lib/item-keys'
-import { createEmptyProject, isCanvasItem } from '@/lib/project'
+import { isCanvasEquipmentType, isInventoryType } from '@/lib/inventory-capabilities'
+import { runtimeItemKey } from '@/lib/item-keys'
+import { createEmptyProject } from '@/lib/project'
 import type {
   InventoryItem,
   InventoryPort,
@@ -12,17 +13,80 @@ import type {
   ProjectState,
 } from '@/types/inventory'
 
-const TYPES: InventoryType[] = [
+export const INVENTORY_CATEGORY_ORDER = [
   'server',
-  'nas',
+  'pcBuild',
   'cpu',
+  'cpuCooler',
+  'motherboard',
   'ram',
   'storage',
   'gpu',
   'network',
+  'wireless',
+  'soundCard',
+  'case',
+  'powerSupply',
+  'powerAdapter',
+  'nas',
   'switch',
   'patchPanel',
-]
+  'monitor',
+  'ups',
+  'powerStrip',
+] as const satisfies readonly InventoryType[]
+
+export const INVENTORY_TYPE_LABELS: Record<InventoryType, string> = {
+  server: 'Server',
+  pcBuild: 'PC Build',
+  cpu: 'CPU',
+  cpuCooler: 'CPU Cooler',
+  motherboard: 'Motherboard',
+  ram: 'RAM',
+  storage: 'Storage',
+  gpu: 'GPU',
+  network: 'Network',
+  wireless: 'Wireless',
+  soundCard: 'Sound Card',
+  case: 'Case',
+  powerSupply: 'Power Supply',
+  powerAdapter: 'Power Adapter',
+  nas: 'NAS',
+  switch: 'Switch',
+  patchPanel: 'Patch Panel',
+  monitor: 'Monitor',
+  ups: 'UPS',
+  powerStrip: 'Power Strip',
+}
+
+export const INVENTORY_TYPE_RANK: Readonly<Record<InventoryType, number>> =
+  Object.fromEntries(INVENTORY_CATEGORY_ORDER.map((type, index) => [type, index])) as Record<
+    InventoryType,
+    number
+  >
+
+const INVENTORY_TABLES = [
+  ['servers', 'server'],
+  ['pcBuilds', 'pcBuild'],
+  ['cpus', 'cpu'],
+  ['cpuCoolers', 'cpuCooler'],
+  ['motherboards', 'motherboard'],
+  ['ram', 'ram'],
+  ['storage', 'storage'],
+  ['gpus', 'gpu'],
+  ['networkCards', 'network'],
+  ['wirelessCards', 'wireless'],
+  ['soundCards', 'soundCard'],
+  ['cases', 'case'],
+  ['powerSupplies', 'powerSupply'],
+  ['powerAdapters', 'powerAdapter'],
+  ['nas', 'nas'],
+  ['switches', 'switch'],
+  ['patchPanels', 'patchPanel'],
+  ['monitors', 'monitor'],
+  ['upsSystems', 'ups'],
+  ['powerStrips', 'powerStrip'],
+] as const satisfies readonly (readonly [string, InventoryType])[]
 const PORT_KINDS: InventoryPortKind[] = ['switch-port', 'keystone', 'server-port']
 const PORT_TYPES: InventoryPortType[] = [
   'rj45',
@@ -38,10 +102,6 @@ const PORT_ROLES: InventoryPortRole[] = ['access', 'trunk', 'uplink', 'managemen
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
-}
-
-function isInventoryType(value: unknown): value is InventoryType {
-  return typeof value === 'string' && TYPES.includes(value as InventoryType)
 }
 
 function normalizeNumericId(value: unknown, label: string): string | number {
@@ -210,7 +270,7 @@ function inventoryRecords(input: unknown): Array<{ raw: unknown; type?: Inventor
 
   const records: Array<{ raw: unknown; type?: InventoryType }> = []
 
-  for (const tableKey of INVENTORY_TABLE_KEYS) {
+  for (const [tableKey, type] of INVENTORY_TABLES) {
     const table = input[tableKey]
 
     if (table === undefined) {
@@ -221,7 +281,6 @@ function inventoryRecords(input: unknown): Array<{ raw: unknown; type?: Inventor
       throw new Error(`Inventory table ${tableKey} must be an array.`)
     }
 
-    const type = INVENTORY_TYPE_BY_TABLE[tableKey]
     records.push(...table.map((raw) => ({ raw, type })))
   }
 
@@ -272,7 +331,7 @@ export function getUnassignedItems(project: ProjectState): InventoryItem[] {
   const assignedComponents = new Set(project.assignments.map((assignment) => assignment.itemId))
 
   return Object.values(project.items).filter((item) => {
-    if (isCanvasItem(item)) {
+    if (isCanvasEquipmentType(item.type)) {
       return !placedServers.has(runtimeItemKey(item))
     }
 

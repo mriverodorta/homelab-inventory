@@ -1,7 +1,7 @@
 import { fireEvent, render, screen } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import { InventorySidebar } from '@/components/inventory-sidebar'
-import type { ProjectState } from '@/types/inventory'
+import type { InventoryItem, InventoryType, ProjectState } from '@/types/inventory'
 
 const project: ProjectState = {
   id: 'default',
@@ -36,6 +36,32 @@ const projectWithInventory: ProjectState = {
       ],
     },
   },
+}
+
+const orderedTypes: InventoryType[] = [
+  'server', 'pcBuild', 'cpu', 'cpuCooler', 'motherboard', 'ram', 'storage', 'gpu',
+  'network', 'wireless', 'soundCard', 'case', 'powerSupply', 'powerAdapter', 'nas',
+  'switch', 'patchPanel', 'monitor', 'ups', 'powerStrip',
+]
+
+const orderedLabels = [
+  'Server', 'PC Build', 'CPU', 'CPU Cooler', 'Motherboard', 'RAM', 'Storage', 'GPU',
+  'Network', 'Wireless', 'Sound Card', 'Case', 'Power Supply', 'Power Adapter', 'NAS',
+  'Switch', 'Patch Panel', 'Monitor', 'UPS', 'Power Strip',
+]
+
+const completeInventoryProject: ProjectState = {
+  ...project,
+  items: Object.fromEntries(orderedTypes.map((type, index) => {
+    const key = `${type}:${index + 1}`
+    const item: InventoryItem = {
+      id: index + 1,
+      key,
+      type,
+      name: `${orderedLabels[index]} item`,
+    }
+    return [key, item]
+  })),
 }
 
 describe('InventorySidebar', () => {
@@ -111,5 +137,39 @@ describe('InventorySidebar', () => {
       'top-1/2',
       '-translate-y-1/2',
     )
+  })
+
+  it('shows all inventory categories in the approved order', () => {
+    render(
+      <InventorySidebar
+        project={completeInventoryProject}
+        onSelect={vi.fn()}
+        onCreateItem={vi.fn()}
+      />,
+    )
+
+    expect(screen.getAllByTestId('inventory-category-label').map((label) => label.textContent))
+      .toEqual(orderedLabels)
+  })
+
+  it('classifies standalone canvas equipment and assignable components for dragging', () => {
+    render(
+      <InventorySidebar
+        project={completeInventoryProject}
+        onSelect={vi.fn()}
+        onCreateItem={vi.fn()}
+      />,
+    )
+
+    const dragRole = (type: InventoryType) =>
+      document.querySelector(`[data-inventory-item-id^="${type}:"]`)
+
+    for (const type of ['server', 'pcBuild', 'nas', 'switch', 'patchPanel', 'monitor', 'ups', 'powerStrip']) {
+      expect(dragRole(type as InventoryType)).toHaveAttribute('data-inventory-drag-role', 'equipment')
+    }
+
+    for (const type of ['cpu', 'cpuCooler', 'motherboard', 'wireless', 'powerSupply', 'powerAdapter']) {
+      expect(dragRole(type as InventoryType)).toHaveAttribute('data-inventory-drag-role', 'component')
+    }
   })
 })

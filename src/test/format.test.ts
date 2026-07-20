@@ -6,6 +6,7 @@ import {
   formatEquipmentCanvasParts,
   formatGpuCanvasLabel,
   formatGpuCanvasParts,
+  formatInventoryCompactSpec,
   formatRamCanvasLabel,
   formatRamCanvasParts,
   formatRamSpec,
@@ -201,5 +202,24 @@ describe('formatting helpers', () => {
       { label: 'keystone', value: '2x HDMI' },
       { label: 'rackUnits', value: '1U' },
     ])
+  })
+
+  it.each([
+    [{ id: 1, type: 'server', name: 'Server', specs: { formFactor: 'Mini' } }, 'Mini'],
+    [{ id: 1, type: 'pcBuild', name: 'PC', specs: { formFactor: 'ATX', operatingSystem: 'Linux' } }, 'ATX / Linux'],
+    [{ id: 1, type: 'cpuCooler', name: 'Cooler', specs: { coolerType: 'AIO', radiatorSizeMm: 240 } }, 'AIO / 240mm'],
+    [{ id: 1, type: 'motherboard', name: 'Board', specs: { formFactor: 'ATX', socket: 'AM5', chipset: 'B650' } }, 'ATX / AM5 / B650'],
+    [{ id: 1, type: 'network', name: 'NIC', specs: { speedMbps: 2500, interface: 'PCIe' } }, '2500Mbps / PCIe'],
+    [{ id: 1, type: 'wireless', name: 'Wi-Fi', specs: { wifiGeneration: 'Wi-Fi 6E', interface: 'M.2 A+E' } }, 'Wi-Fi 6E / M.2 A+E'],
+    [{ id: 1, type: 'soundCard', name: 'Sound', specs: { interface: 'PCIe', channels: '7.1' } }, 'PCIe / 7.1'],
+    [{ id: 1, type: 'case', name: 'Case', specs: { formFactor: 'ATX' } }, 'ATX'],
+    [{ id: 1, type: 'powerSupply', name: 'PSU', specs: { wattageWatts: 850, formFactor: 'ATX', efficiency: '80 Plus Gold' } }, '850W / ATX / 80 Plus Gold'],
+    [{ id: 1, type: 'powerAdapter', name: 'Adapter', specs: { wattageWatts: 90, connector: 'Barrel' } }, '90W / Barrel'],
+    [{ id: 1, type: 'nas', name: 'NAS', specs: { driveBays: 6, m2Slots: 2 } }, '6 bays / 2 M.2 slots'],
+    [{ id: 1, type: 'monitor', name: 'Display', specs: { sizeInches: 27, resolution: '4K', refreshRateHz: 144 } }, '27" / 4K / 144Hz'],
+    [{ id: 1, type: 'ups', name: 'UPS', specs: { capacityVa: 1500, outlets: 8 } }, '1500VA / 8 outlets'],
+    [{ id: 1, type: 'powerStrip', name: 'Strip', specs: { outlets: 6, surgeProtectedOutlets: 3 } }, '6 outlets / 3 surge outlets'],
+  ] as Array<[InventoryItem, string]>)('formats the compact inventory summary for %s', (item, expected) => {
+    expect(formatInventoryCompactSpec(item)).toBe(expected)
   })
 })

@@ -2,8 +2,9 @@ import {
   getAssignedItemIds,
   getPlacedCanvasItemIds,
   isArchivedItem,
-  isCanvasItem,
 } from '@/lib/project'
+import { isCanvasEquipmentType, isHostType } from '@/lib/inventory-capabilities'
+import { INVENTORY_TYPE_RANK } from '@/lib/inventory'
 import { runtimeItemKey } from '@/lib/item-keys'
 import type { InventoryItem, InventoryType, ProjectState } from '@/types/inventory'
 
@@ -30,7 +31,7 @@ function numericSpec(item: InventoryItem, keys: string[]): number {
 }
 
 export function isItemAssigned(project: ProjectState, item: InventoryItem): boolean {
-  if (isCanvasItem(item)) {
+  if (isCanvasEquipmentType(item.type)) {
     return getPlacedCanvasItemIds(project).has(runtimeItemKey(item))
   }
 
@@ -79,7 +80,8 @@ export function filterAndSortInventory(
 
 function compareItems(project: ProjectState, a: InventoryItem, b: InventoryItem, sort: SortKey): number {
   if (sort === 'type') {
-    return a.type.localeCompare(b.type) || a.name.localeCompare(b.name)
+    return INVENTORY_TYPE_RANK[a.type] - INVENTORY_TYPE_RANK[b.type]
+      || a.name.localeCompare(b.name)
   }
 
   if (sort === 'capacity') {
@@ -99,11 +101,11 @@ function compareItems(project: ProjectState, a: InventoryItem, b: InventoryItem,
 
   if (sort === 'slot-status') {
     const aScore =
-      a.type === 'server'
+      isHostType(a.type)
         ? project.assignments.filter((assignment) => assignment.serverId === runtimeItemKey(a)).length
         : Number(isItemAssigned(project, a))
     const bScore =
-      b.type === 'server'
+      isHostType(b.type)
         ? project.assignments.filter((assignment) => assignment.serverId === runtimeItemKey(b)).length
         : Number(isItemAssigned(project, b))
 
