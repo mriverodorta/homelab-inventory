@@ -12,7 +12,7 @@ export type InventoryTableKey =
   | 'switches'
   | 'patchPanels'
 
-export const INVENTORY_TABLE_BY_TYPE: Record<InventoryType, InventoryTableKey> = {
+export const INVENTORY_TABLE_BY_TYPE: Partial<Record<InventoryType, InventoryTableKey>> = {
   server: 'servers',
   cpu: 'cpus',
   ram: 'ram',

@@ -68,6 +68,61 @@ export const INVENTORY_FORM_PLACEHOLDERS: Record<InventoryType, InventoryFormPla
     rackUnits: '1',
     mount: 'Rack mounted',
   },
+  pcBuild: {
+    name: 'Custom PC',
+    manufacturer: 'Custom',
+    model: 'Desktop build',
+  },
+  motherboard: {
+    name: 'ASUS TUF Gaming B650-PLUS',
+    manufacturer: 'ASUS',
+    model: 'TUF Gaming B650-PLUS',
+  },
+  cpuCooler: {
+    name: 'Noctua NH-D15',
+    manufacturer: 'Noctua',
+    model: 'NH-D15',
+  },
+  case: {
+    name: 'Fractal Design North',
+    manufacturer: 'Fractal Design',
+    model: 'North',
+  },
+  powerSupply: {
+    name: 'Corsair RM850x',
+    manufacturer: 'Corsair',
+    model: 'RM850x',
+  },
+  soundCard: {
+    name: 'Creative Sound Blaster AE-7',
+    manufacturer: 'Creative',
+    model: 'Sound Blaster AE-7',
+  },
+  wireless: {
+    name: 'Intel AX210 Wi-Fi 6E',
+    manufacturer: 'Intel',
+    model: 'AX210',
+  },
+  powerAdapter: {
+    name: 'Dell 90W AC Adapter',
+    manufacturer: 'Dell',
+    model: '90W AC Adapter',
+  },
+  monitor: {
+    name: 'Dell UltraSharp U2723QE',
+    manufacturer: 'Dell',
+    model: 'UltraSharp U2723QE',
+  },
+  ups: {
+    name: 'APC Back-UPS Pro 1500',
+    manufacturer: 'APC',
+    model: 'BR1500MS2',
+  },
+  powerStrip: {
+    name: 'Kasa Smart Plug Power Strip',
+    manufacturer: 'TP-Link',
+    model: 'HS300',
+  },
 }
 
 export function getInventoryFormPlaceholders(type: InventoryType): InventoryFormPlaceholders {

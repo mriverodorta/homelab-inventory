@@ -40,7 +40,7 @@ import type { InventoryItemInput } from '@/lib/db'
 import type { InventoryFilters, InventoryStatusFilter } from '@/lib/sort'
 import type { InventoryItem, InventoryType, ProjectState } from '@/types/inventory'
 
-const TYPE_LABELS: Record<InventoryType, string> = {
+const TYPE_LABELS: Partial<Record<InventoryType, string>> = {
   server: 'Server',
   nas: 'NAS',
   cpu: 'CPU',
@@ -64,7 +64,7 @@ const TYPE_ORDER: InventoryType[] = [
   'network',
 ]
 
-const TYPE_COLORS: Record<InventoryType, string> = {
+const TYPE_COLORS: Partial<Record<InventoryType, string>> = {
   server: 'border-l-[#adc19b]',
   nas: 'border-l-[#9eb6c8]',
   cpu: 'border-l-[#8bb3bd]',
@@ -198,7 +198,7 @@ function DraggableInventoryItem({
         data-testid="inventory-item"
         data-inventory-item-id={itemRuntimeKey}
         style={style}
-        className={`w-full rounded-md border border-white/10 border-l-4 bg-[#303642] px-3 py-2 pr-11 text-left text-[#f7f1e8] shadow-sm transition hover:bg-[#394150] ${archived ? 'opacity-65' : ''} ${selected ? 'ring-2 ring-[#ddb668]' : ''} ${TYPE_COLORS[item.type]} ${isDragging ? 'opacity-60' : ''}`}
+        className={`w-full rounded-md border border-white/10 border-l-4 bg-[#303642] px-3 py-2 pr-11 text-left text-[#f7f1e8] shadow-sm transition hover:bg-[#394150] ${archived ? 'opacity-65' : ''} ${selected ? 'ring-2 ring-[#ddb668]' : ''} ${TYPE_COLORS[item.type] ?? 'border-l-[#8d857b]'} ${isDragging ? 'opacity-60' : ''}`}
         onClick={() => selectionMode ? onToggleSelected(itemRuntimeKey) : !archived && onSelect(itemRuntimeKey)}
         aria-pressed={selectionMode ? selected : undefined}
         {...(!assigned && !archived && !selectionMode ? listeners : {})}
@@ -423,7 +423,7 @@ export function InventorySidebar({
               <SelectItem value="all">All types</SelectItem>
               {TYPE_ORDER.map((type) => (
                 <SelectItem key={type} value={type}>
-                  {TYPE_LABELS[type]}
+                  {TYPE_LABELS[type] ?? type}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -518,7 +518,7 @@ export function InventorySidebar({
               >
                 <span className="flex min-w-0 items-center gap-2">
                   <TypeIcon type={group.type} />
-                  <span>{TYPE_LABELS[group.type]}</span>
+                  <span>{TYPE_LABELS[group.type] ?? group.type}</span>
                   <span className="rounded-full bg-white/10 px-2 py-0.5 text-[10px] tracking-normal text-[#d8d0c5]">
                     {group.items.length}
                   </span>

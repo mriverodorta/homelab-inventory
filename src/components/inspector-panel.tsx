@@ -137,7 +137,7 @@ const labelClass = 'text-[11px] font-black uppercase tracking-[0.12em] text-[#75
 const formLabelClass = 'grid gap-1.5 text-sm font-semibold text-[#20242c]'
 
 function itemTypeLabel(type: InventoryItem['type']): string {
-  const labels: Record<InventoryItem['type'], string> = {
+  const labels: Partial<Record<InventoryItem['type'], string>> = {
     cpu: 'CPU',
     gpu: 'GPU',
     nas: 'NAS',
@@ -149,7 +149,7 @@ function itemTypeLabel(type: InventoryItem['type']): string {
     switch: 'Switch',
   }
 
-  return labels[type]
+  return labels[type] ?? type
 }
 
 function InspectorSection({
@@ -1802,7 +1802,7 @@ function getSlotItemParts(item: InventoryItem): string[] {
 }
 
 function slotTone(type: ComponentType): string {
-  const tones: Record<ComponentType, string> = {
+  const tones: Partial<Record<ComponentType, string>> = {
     cpu: 'border-[#b8d4dc] bg-[#d7eef2]',
     gpu: 'border-[#dfb3a5] bg-[#fff4ee]',
     network: 'border-[#a7d8cd] bg-[#d3eee7]',
@@ -1810,7 +1810,7 @@ function slotTone(type: ComponentType): string {
     storage: 'border-[#d6ccbd] bg-[#f3ead8]',
   }
 
-  return tones[type]
+  return tones[type] ?? 'border-[#e5dccf] bg-[#f3f0ea]'
 }
 
 function SlotItemCard({ item }: { item: InventoryItem }) {

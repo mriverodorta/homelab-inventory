@@ -100,6 +100,8 @@ function fixtureFor(type: InventoryType): InventoryItem {
           },
         ],
       }
+    default:
+      throw new Error(`Fixture not implemented for ${type}`)
   }
 }
 

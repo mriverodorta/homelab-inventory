@@ -7,17 +7,48 @@ import type {
 export type InventoryType =
   | 'server'
   | 'nas'
+  | 'pcBuild'
   | 'cpu'
   | 'ram'
   | 'storage'
   | 'gpu'
   | 'network'
+  | 'motherboard'
+  | 'cpuCooler'
+  | 'case'
+  | 'powerSupply'
+  | 'soundCard'
+  | 'wireless'
+  | 'powerAdapter'
   | 'switch'
   | 'patchPanel'
+  | 'monitor'
+  | 'ups'
+  | 'powerStrip'
 
 export type InventorySpecs = Record<string, string | number | boolean | null>
 export type InventoryProperties = Record<string, string>
-export type ComponentType = Exclude<InventoryType, 'server' | 'nas' | 'switch' | 'patchPanel'>
+export type HostType = 'server' | 'nas' | 'pcBuild'
+export type CanvasEquipmentType =
+  | HostType
+  | 'switch'
+  | 'patchPanel'
+  | 'monitor'
+  | 'ups'
+  | 'powerStrip'
+export type ComponentType =
+  | 'cpu'
+  | 'ram'
+  | 'storage'
+  | 'gpu'
+  | 'network'
+  | 'motherboard'
+  | 'cpuCooler'
+  | 'case'
+  | 'powerSupply'
+  | 'soundCard'
+  | 'wireless'
+  | 'powerAdapter'
 export type InventoryPortKind = 'switch-port' | 'keystone' | 'server-port'
 export type InventoryPortType =
   | 'rj45'

@@ -42,13 +42,33 @@ describe('compatibility rule evaluation', () => {
   it('keeps the normalized requirements union soundly discriminated', () => {
     const fallback = { type: 'switch' } as NormalizedComponentRequirements
     expectTypeOf(fallback.type).toEqualTypeOf<
-      'cpu' | 'ram' | 'storage' | 'gpu' | 'network' | 'server' | 'nas' | 'switch' | 'patchPanel' | undefined
+      | 'cpu'
+      | 'ram'
+      | 'storage'
+      | 'gpu'
+      | 'network'
+      | 'server'
+      | 'nas'
+      | 'pcBuild'
+      | 'switch'
+      | 'patchPanel'
+      | 'monitor'
+      | 'ups'
+      | 'powerStrip'
+      | 'motherboard'
+      | 'cpuCooler'
+      | 'case'
+      | 'powerSupply'
+      | 'soundCard'
+      | 'wireless'
+      | 'powerAdapter'
+      | undefined
     >()
 
     if (fallback.type === 'cpu') {
       expectTypeOf(fallback.socket).toEqualTypeOf<string | undefined>()
     } else if (fallback.type === 'switch') {
-      expectTypeOf(fallback).toEqualTypeOf<{ type?: 'server' | 'nas' | 'switch' | 'patchPanel' }>()
+      expectTypeOf(fallback.type).toEqualTypeOf<'switch'>()
     }
   })
 

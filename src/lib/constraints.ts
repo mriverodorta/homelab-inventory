@@ -1,4 +1,5 @@
 import { isHostCompatibilityEnabled, planHostAllocations } from '@/lib/compatibility'
+import { isAssignableComponentType } from '@/lib/inventory-capabilities'
 import type { ProjectCompatibilityResult } from '@/lib/compatibility'
 import { nextNumericId } from '@/lib/ids'
 import { isArchivedItem, placementCollides, touchProject } from '@/lib/project'
@@ -7,7 +8,6 @@ import type {
   ComponentAssignment,
   ComponentType,
   InventoryItem,
-  InventoryType,
   ProjectState,
   SlotStatus,
   ValidationResult,
@@ -19,6 +19,13 @@ export const COMPONENT_ORDER: ComponentType[] = [
   'storage',
   'gpu',
   'network',
+  'motherboard',
+  'cpuCooler',
+  'case',
+  'powerSupply',
+  'soundCard',
+  'wireless',
+  'powerAdapter',
 ]
 
 export const REQUIRED_SERVER_SLOT_TYPES: ComponentType[] = [
@@ -33,10 +40,16 @@ export const SLOT_LABELS: Record<ComponentType, string> = {
   storage: 'Storage',
   gpu: 'GPU',
   network: 'Network',
+  motherboard: 'Motherboard',
+  cpuCooler: 'CPU Cooler',
+  case: 'Case',
+  powerSupply: 'Power Supply',
+  soundCard: 'Sound Card',
+  wireless: 'Wireless',
+  powerAdapter: 'Power Adapter',
 }
 
 const SINGLE_ITEM_TYPES = new Set<ComponentType>(['cpu', 'ram', 'gpu', 'network'])
-const CANVAS_EQUIPMENT_TYPES = new Set<InventoryType>(['server', 'nas', 'switch', 'patchPanel'])
 const NAS_COMPONENT_TYPES = new Set<ComponentType>(['cpu', 'ram', 'storage', 'network'])
 const SWAPPABLE_COMPONENT_TYPES = new Set<ComponentType>(['cpu', 'ram'])
 const ALWAYS_ENFORCED_COMPATIBILITY_CODES = new Set([
@@ -62,10 +75,6 @@ type PlannedTransition = {
   project: ProjectState
   compatibility: ProjectCompatibilityResult[]
   unknownFindings: CompatibilityFinding[]
-}
-
-function isAssignableComponentType(type: InventoryType): type is ComponentType {
-  return !CANVAS_EQUIPMENT_TYPES.has(type)
 }
 
 function typedId(id: string | number): string {

@@ -1,5 +1,10 @@
-const componentTypes = new Set(['cpu', 'ram', 'storage', 'gpu', 'network'])
-const inventoryTypes = new Set(['server', 'nas', 'switch', 'patchPanel', ...componentTypes])
+import {
+  ASSIGNABLE_COMPONENT_TYPE_SET,
+  INVENTORY_TYPE_SET,
+} from './inventory-capabilities.mjs'
+
+const componentTypes = ASSIGNABLE_COMPONENT_TYPE_SET
+const inventoryTypes = INVENTORY_TYPE_SET
 const tableTypes = {
   servers: 'server',
   cpus: 'cpu',

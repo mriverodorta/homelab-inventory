@@ -121,7 +121,7 @@ export type InventoryFormErrors = Partial<Record<keyof InventoryFormValues, stri
 
 export const MAX_PORT_GROUP_COUNT = 128
 
-const KNOWN_SPEC_KEYS: Record<InventoryType, string[]> = {
+const KNOWN_SPEC_KEYS: Partial<Record<InventoryType, string[]>> = {
   server: ['formFactor', 'networkSlot', 'wireless'],
   nas: ['driveBays', 'm2Slots'],
   cpu: ['cores', 'threads', 'baseClockGhz', 'boostClockGhz'],
@@ -347,7 +347,7 @@ export function inventoryItemToFormValues(item: InventoryItem): InventoryFormVal
   const values = createInventoryFormValues(item.type)
   const specs = item.specs ?? {}
   const preservedSpecs = { ...specs }
-  for (const key of KNOWN_SPEC_KEYS[item.type]) delete preservedSpecs[key]
+  for (const key of KNOWN_SPEC_KEYS[item.type] ?? []) delete preservedSpecs[key]
   const hasCapacityTb = specs.capacityTb !== undefined
     && specs.capacityTb !== null
     && stringValue(specs.capacityTb).trim() !== ''

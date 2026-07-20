@@ -5,6 +5,16 @@ import {
   assertProjectShape,
   assertProjectStoreShape,
 } from './validation.mjs'
+import {
+  ASSIGNABLE_COMPONENT_TYPES,
+  CANVAS_EQUIPMENT_TYPES,
+  HOST_TYPES,
+  INVENTORY_TYPES,
+  isAssignableComponentType,
+  isCanvasEquipmentType,
+  isHostType,
+  isInventoryType,
+} from './inventory-capabilities.mjs'
 
 function inventoryWith(item) {
   return {
@@ -73,6 +83,51 @@ describe('inventory lifecycle validation', () => {
       expect(() => assertInventoryStoreShape(inventoryWith({ id: 1, name: 'CPU', archivedAt })))
         .toThrow('archivedAt')
     }
+  })
+})
+
+describe('inventory capability validation', () => {
+  it('mirrors the complete inventory capability model on the backend', () => {
+    expect(HOST_TYPES).toHaveLength(3)
+    expect(CANVAS_EQUIPMENT_TYPES).toHaveLength(8)
+    expect(ASSIGNABLE_COMPONENT_TYPES).toHaveLength(12)
+    expect(INVENTORY_TYPES).toHaveLength(20)
+    expect(new Set(INVENTORY_TYPES).size).toBe(INVENTORY_TYPES.length)
+    expect(INVENTORY_TYPES.every(isInventoryType)).toBe(true)
+    expect(HOST_TYPES.every(isHostType)).toBe(true)
+    expect(CANVAS_EQUIPMENT_TYPES.every(isCanvasEquipmentType)).toBe(true)
+    expect(ASSIGNABLE_COMPONENT_TYPES.every(isAssignableComponentType)).toBe(true)
+  })
+
+  it.each(INVENTORY_TYPES)('accepts %s as a supported legacy inventory type', (type) => {
+    const project = {
+      id: 'default',
+      metadata: {},
+      items: { [`${type}:1`]: { id: 1, type, name: `${type} item` } },
+      placements: [],
+      assignments: [],
+      connections: [],
+    }
+
+    expect(() => assertLegacyProjectShape(project)).not.toThrow()
+  })
+
+  it('keeps operating systems as host metadata rather than inventory items', () => {
+    expect(isInventoryType('operatingSystem')).toBe(false)
+    expect(() => assertLegacyProjectShape({
+      id: 'default',
+      metadata: {},
+      items: {
+        'operatingSystem:1': {
+          id: 1,
+          type: 'operatingSystem',
+          name: 'Linux',
+        },
+      },
+      placements: [],
+      assignments: [],
+      connections: [],
+    })).toThrow('type has an unsupported value')
   })
 })
 

@@ -21,7 +21,7 @@ export const INVENTORY_TYPES: InventoryType[] = [
   'patchPanel',
 ]
 
-export const TYPE_LABELS: Record<InventoryType, string> = {
+export const TYPE_LABELS: Partial<Record<InventoryType, string>> = {
   server: 'Server',
   nas: 'NAS',
   cpu: 'CPU',

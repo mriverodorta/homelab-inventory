@@ -6,7 +6,9 @@ import type {
 } from '../../src/types/compatibility'
 import type {
   CompatibilityPolicy,
+  CanvasEquipmentType,
   ComponentAssignment,
+  ComponentType,
   InventoryItem,
   InventoryType,
   ProjectState,
@@ -55,7 +57,11 @@ export type NormalizedComponentRequirements =
   | NormalizedRamRequirements
   | NormalizedStorageRequirements
   | NormalizedExpansionRequirements
-  | { type?: Exclude<InventoryType, 'cpu' | 'ram' | 'storage' | 'gpu' | 'network'> }
+  | {
+      type?:
+        | CanvasEquipmentType
+        | Exclude<ComponentType, 'cpu' | 'ram' | 'storage' | 'gpu' | 'network'>
+    }
 
 export type AssignmentCompatibilityInput = {
   host: InventoryItem
