@@ -1,16 +1,32 @@
+import {
+  isAssignableComponentType,
+  isCanvasEquipmentType,
+  isHostType,
+} from './inventory-capabilities.mjs'
+
 const TABLE_BY_TYPE = {
   server: 'servers',
+  pcBuild: 'pcBuilds',
   cpu: 'cpus',
   ram: 'ram',
   storage: 'storage',
   network: 'networkCards',
   gpu: 'gpus',
+  motherboard: 'motherboards',
+  cpuCooler: 'cpuCoolers',
+  case: 'cases',
+  powerSupply: 'powerSupplies',
+  soundCard: 'soundCards',
+  wireless: 'wirelessCards',
+  powerAdapter: 'powerAdapters',
   nas: 'nas',
   switch: 'switches',
   patchPanel: 'patchPanels',
+  monitor: 'monitors',
+  ups: 'upsSystems',
+  powerStrip: 'powerStrips',
 }
 
-const EQUIPMENT_TYPES = new Set(['server', 'nas', 'switch', 'patchPanel'])
 const PORT_RUNTIME_FIELDS = new Set([
   'label',
   'notes',
@@ -74,7 +90,7 @@ export function resolveInventoryRef(inventory, rawRef) {
 }
 
 export function isEquipmentType(type) {
-  return EQUIPMENT_TYPES.has(type)
+  return isCanvasEquipmentType(type)
 }
 
 function baseEquipmentName(name) {
@@ -185,7 +201,7 @@ export function buildCleanRecord({ source, id, type, name = source?.name }) {
 }
 
 export function buildDuplicateRecord({ source, type, nextId, existingRecords }) {
-  const name = isEquipmentType(type)
+  const name = isCanvasEquipmentType(type)
     ? nextEquipmentName(source.name, existingRecords)
     : source.name
 
@@ -198,7 +214,7 @@ export function buildQuantityRecords({ input, type, quantity, startingId, existi
 
   for (let index = 0; index < quantity; index += 1) {
     const id = startingId + index
-    const name = isEquipmentType(type) && quantity > 1
+    const name = isCanvasEquipmentType(type) && quantity > 1
       ? nextEquipmentName(input.name, names)
       : input.name
     const record = structuredClone(input)
@@ -293,39 +309,45 @@ function reason(kind, message, related = []) {
 export function analyzeInventoryDependencies({ inventory, project, agents, agentStatus }, rawRef) {
   const resolved = resolveInventoryRef(inventory, rawRef)
   const ref = { type: resolved.type, id: resolved.id }
-  const placements = (project?.placements ?? []).filter((placement) =>
-    persistedRefMatches(ref.type, ref.id, placement.itemType, placement.itemId)
-      || runtimeRefMatches(ref.type, ref.id, placement.serverId),
-  )
-  const assignments = (project?.assignments ?? []).filter((assignment) =>
-    persistedRefMatches(ref.type, ref.id, assignment.itemType, assignment.itemId)
-      || runtimeRefMatches(ref.type, ref.id, assignment.itemId),
-  )
-  const hostedComponents = (project?.assignments ?? []).filter((assignment) =>
-    persistedRefMatches(ref.type, ref.id, assignment.hostType, assignment.hostId)
-      || runtimeRefMatches(ref.type, ref.id, assignment.serverId),
-  )
+  const placements = isCanvasEquipmentType(ref.type)
+    ? (project?.placements ?? []).filter((placement) =>
+        persistedRefMatches(ref.type, ref.id, placement.itemType, placement.itemId)
+          || runtimeRefMatches(ref.type, ref.id, placement.serverId),
+      )
+    : []
+  const assignments = isAssignableComponentType(ref.type)
+    ? (project?.assignments ?? []).filter((assignment) =>
+        persistedRefMatches(ref.type, ref.id, assignment.itemType, assignment.itemId)
+          || runtimeRefMatches(ref.type, ref.id, assignment.itemId),
+      )
+    : []
+  const hostedComponents = isHostType(ref.type)
+    ? (project?.assignments ?? []).filter((assignment) =>
+        persistedRefMatches(ref.type, ref.id, assignment.hostType, assignment.hostId)
+          || runtimeRefMatches(ref.type, ref.id, assignment.serverId),
+      )
+    : []
   const connections = (project?.connections ?? []).filter((connection) =>
     endpointReferences(connection.from, ref)
       || endpointReferences(connection.to, ref)
-      || (isEquipmentType(ref.type) && (
+      || (isCanvasEquipmentType(ref.type) && (
         endpointReferencesHost(connection.from, ref) || endpointReferencesHost(connection.to, ref)
       )),
   )
   const enrollments = Object.values(agents?.enrollments ?? {}).filter((enrollment) =>
-    (ref.type === 'server' || ref.type === 'nas')
+    isHostType(ref.type)
       && Number(enrollment?.serverId) === ref.id
       && !enrollment?.revokedAt
       && !enrollment?.usedAt
       && (!enrollment?.expiresAt || Date.parse(enrollment.expiresAt) > Date.now()),
   )
   const devices = Object.values(agents?.devices ?? {}).filter((device) =>
-    (ref.type === 'server' || ref.type === 'nas')
+    isHostType(ref.type)
       && Number(device?.serverId) === ref.id
       && !device?.revokedAt,
   )
   const statuses = Object.entries(agentStatus?.servers ?? {}).filter(([serverId, status]) =>
-    (ref.type === 'server' || ref.type === 'nas')
+    isHostType(ref.type)
       && Number(status?.serverId ?? serverId) === ref.id,
   )
   const metadataPorts = (resolved.item.ports ?? []).filter(portHasRuntimeMetadata)

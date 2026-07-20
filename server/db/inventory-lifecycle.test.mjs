@@ -9,14 +9,22 @@ import {
 
 function emptyInventory() {
   return {
-    servers: [], cpus: [], ram: [], storage: [], networkCards: [], gpus: [],
-    nas: [], switches: [], patchPanels: [],
+    servers: [], pcBuilds: [], cpus: [], ram: [], storage: [], networkCards: [], gpus: [],
+    motherboards: [], cpuCoolers: [], cases: [], powerSupplies: [], soundCards: [],
+    wirelessCards: [], powerAdapters: [], nas: [], switches: [], patchPanels: [],
+    monitors: [], upsSystems: [], powerStrips: [],
   }
 }
 
 function state(item, overrides = {}) {
   const inventory = emptyInventory()
-  const table = item.type === 'server' ? 'servers' : item.type === 'network' ? 'networkCards' : 'cpus'
+  const table = {
+    server: 'servers',
+    pcBuild: 'pcBuilds',
+    cpu: 'cpus',
+    network: 'networkCards',
+    ups: 'upsSystems',
+  }[item.type] ?? 'cpus'
   inventory[table] = [{ ...item, type: undefined }]
 
   return {
@@ -53,6 +61,20 @@ describe('inventory lifecycle helpers', () => {
     expect(buildQuantityRecords({
       input: { name: '32GB DDR4' }, type: 'ram', quantity: 2, startingId: 1, existingRecords: [],
     }).map((item) => item.name)).toEqual(['32GB DDR4', '32GB DDR4'])
+  })
+
+  it('numbers every new canvas equipment type while sharing component names', () => {
+    for (const type of ['pcBuild', 'monitor', 'ups', 'powerStrip']) {
+      expect(buildQuantityRecords({
+        input: { name: 'Lab Equipment' }, type, quantity: 2, startingId: 1, existingRecords: [],
+      }).map((item) => item.name)).toEqual(['Lab Equipment #1', 'Lab Equipment #2'])
+    }
+
+    for (const type of ['motherboard', 'powerSupply']) {
+      expect(buildQuantityRecords({
+        input: { name: 'Reusable Part' }, type, quantity: 2, startingId: 1, existingRecords: [],
+      }).map((item) => item.name)).toEqual(['Reusable Part', 'Reusable Part'])
+    }
   })
 
   it('duplicates reusable hardware while clearing instance data and regenerating nested ids', () => {
@@ -123,5 +145,55 @@ describe('inventory lifecycle helpers', () => {
   it('reports a clean unassigned component as dependency free', () => {
     const report = analyzeInventoryDependencies(state({ id: 1, type: 'cpu', name: 'CPU' }), { type: 'cpu', id: 1 })
     expect(report).toMatchObject({ blocked: false, reasons: [] })
+  })
+
+  it('blocks a PC build with a placement and hosted components', () => {
+    const report = analyzeInventoryDependencies(state({
+      id: 1,
+      type: 'pcBuild',
+      name: 'Gaming PC',
+    }, {
+      project: {
+        placements: [{ itemType: 'pcBuild', itemId: 1, x: 0, y: 0 }],
+        assignments: [{
+          id: 1,
+          hostType: 'pcBuild',
+          hostId: 1,
+          itemType: 'motherboard',
+          itemId: 1,
+          type: 'motherboard',
+        }],
+        connections: [],
+      },
+    }), { type: 'pcBuild', id: 1 })
+
+    expect(report.reasons.map((entry) => entry.kind)).toEqual([
+      'canvas-placement',
+      'hosted-components',
+    ])
+  })
+
+  it('blocks a UPS with a placement and connected outlet', () => {
+    const report = analyzeInventoryDependencies(state({
+      id: 1,
+      type: 'ups',
+      name: 'Rack UPS',
+    }, {
+      project: {
+        placements: [{ itemType: 'ups', itemId: 1, x: 0, y: 0 }],
+        assignments: [],
+        connections: [{
+          id: 1,
+          type: 'power',
+          from: { itemType: 'ups', itemId: 1, portId: 1 },
+          to: { itemType: 'powerStrip', itemId: 1, portId: 1 },
+        }],
+      },
+    }), { type: 'ups', id: 1 })
+
+    expect(report.reasons.map((entry) => entry.kind)).toEqual([
+      'canvas-placement',
+      'port-connections',
+    ])
   })
 })

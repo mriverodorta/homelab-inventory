@@ -34,7 +34,7 @@ describe('atomic inventory commands', () => {
     let project = store.createInventoryItems({ type: 'switch', name: 'Edge Switch' }, 2)
     project = store.createInventoryItems({ type: 'ram', name: '32GB DDR4', specs: { capacityGB: 32 } }, 3)
 
-    expect(project.metadata.schemaVersion).toBe(8)
+    expect(project.metadata.schemaVersion).toBe(9)
     expect(store.databases.inventory.data.switches.map(({ id, name }) => ({ id, name }))).toEqual([
       { id: 1, name: 'Edge Switch #1' },
       { id: 2, name: 'Edge Switch #2' },
@@ -45,6 +45,57 @@ describe('atomic inventory commands', () => {
       { id: 3, name: '32GB DDR4' },
     ])
     expect(store.databases.inventory.data.ram[0].specs).toEqual({ capacityGB: 32 })
+  })
+
+  it('supports lifecycle commands for schema-9 PC equipment and components', async () => {
+    const { store } = await createStore()
+    store.createInventoryItems({ type: 'pcBuild', name: 'Gaming PC' })
+    store.createInventoryItems({ type: 'motherboard', name: 'Mini ITX Board' })
+    store.createInventoryItems({ type: 'ups', name: 'Rack UPS' })
+
+    expect(store.getProject().items['pcBuild:1'].name).toBe('Gaming PC')
+    expect(store.getProject().items['motherboard:1'].name).toBe('Mini ITX Board')
+    expect(store.getProject().items['ups:1'].name).toBe('Rack UPS')
+
+    expect(() => store.deleteInventoryItems([{ type: 'motherboard', id: 1 }]))
+      .toThrow('Archive inventory items before deleting them.')
+    store.archiveInventoryItems([{ type: 'motherboard', id: 1 }])
+    const deleted = store.deleteInventoryItems([{ type: 'motherboard', id: 1 }])
+    expect(deleted.items['motherboard:1']).toBeUndefined()
+  })
+
+  it('blocks PC build and UPS lifecycle commands while dependencies remain', async () => {
+    const { store } = await createStore()
+    store.createInventoryItems({ type: 'pcBuild', name: 'Gaming PC' })
+    store.createInventoryItems({ type: 'motherboard', name: 'Mini ITX Board' })
+    store.createInventoryItems({ type: 'ups', name: 'Rack UPS' })
+    store.databases.project.data.placements.push(
+      { itemType: 'pcBuild', itemId: 1, x: 0, y: 0 },
+      { itemType: 'ups', itemId: 1, x: 400, y: 0 },
+    )
+    store.databases.project.data.assignments.push({
+      id: 1,
+      hostType: 'pcBuild',
+      hostId: 1,
+      itemType: 'motherboard',
+      itemId: 1,
+      type: 'motherboard',
+      assignedAt: '2026-07-20T00:00:00.000Z',
+    })
+    store.databases.project.data.connections.push({
+      id: 1,
+      from: { itemType: 'ups', itemId: 1, portId: 1 },
+      to: { itemType: 'powerStrip', itemId: 99, portId: 1 },
+      type: 'power',
+      createdAt: '2026-07-20T00:00:00.000Z',
+    })
+
+    expect(() => store.archiveInventoryItems([{ type: 'pcBuild', id: 1 }]))
+      .toThrow('dependencies')
+    expect(() => store.archiveInventoryItems([{ type: 'ups', id: 1 }]))
+      .toThrow('dependencies')
+    expect(store.getProject().items['pcBuild:1'].archivedAt).toBeUndefined()
+    expect(store.getProject().items['ups:1'].archivedAt).toBeUndefined()
   })
 
   it('preserves independent compatibility profiles for quantity creation', async () => {
@@ -208,7 +259,7 @@ describe('atomic inventory commands', () => {
     await store.flush()
 
     const { store: restarted } = await createStore(dataDir)
-    expect(restarted.databases.meta.data.schemaVersion).toBe(8)
+    expect(restarted.databases.meta.data.schemaVersion).toBe(9)
     expect(restarted.getProject().items['cpu:1'].archivedAt).toBeTruthy()
   })
 })

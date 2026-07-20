@@ -2,8 +2,16 @@ import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 import { InventoryActionsMenu } from '@/components/inventory-actions-menu'
+import { inventoryTypeLabel } from '@/lib/inventory-lifecycle'
 
 describe('InventoryActionsMenu', () => {
+  it('provides lifecycle labels for every new inventory family', () => {
+    expect(inventoryTypeLabel('pcBuild')).toBe('PC build')
+    expect(inventoryTypeLabel('motherboard')).toBe('motherboard')
+    expect(inventoryTypeLabel('powerSupply')).toBe('power supply')
+    expect(inventoryTypeLabel('powerStrip')).toBe('power strip')
+  })
+
   it('exposes the complete active-item action set', async () => {
     const user = userEvent.setup()
     const callbacks = {
