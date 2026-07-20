@@ -5,6 +5,7 @@ import { getEndpointHandleId, type CableSide } from '@/lib/cable-routing'
 import { runtimeItemKey } from '@/lib/item-keys'
 import { startSelectedPortDrag } from '@/lib/port-interactions'
 import { endpointKey } from '@/lib/project'
+import { powerOutletEndpoint, resolvePowerEndpoint } from '@/lib/power-topology'
 import { useTapSelection } from '@/lib/tap-selection'
 import type { CanvasPortDragPoint } from '@/types/canvas'
 import type { ConnectionEndpoint, InventoryItem, InventoryPort, ProjectState } from '@/types/inventory'
@@ -26,6 +27,7 @@ export type StandaloneCanvasNodeData = {
 
 export type StandalonePortView = {
   port: InventoryPort
+  endpoint?: ConnectionEndpoint
   label: string
   detail?: string
   tone: string
@@ -73,7 +75,8 @@ function endpointConnected(project: ProjectState, endpoint: ConnectionEndpoint):
 }
 
 function endpointAvailable(project: ProjectState, endpoint: ConnectionEndpoint): boolean {
-  return !endpointConnected(project, endpoint)
+  const powerEndpoint = resolvePowerEndpoint(project, endpoint)
+  return Boolean(powerEndpoint?.allowFanOut) || !endpointConnected(project, endpoint)
 }
 
 function CableHandles() {
@@ -260,9 +263,9 @@ export function StandaloneCanvasEquipmentCard({
             <div className="flex flex-wrap gap-1.5 overflow-visible">
               {group.ports.map((view) => (
                 <StandalonePortChip
-                  key={view.port.id}
+                  key={endpointKey(view.endpoint ?? { itemId, portId: view.port.id })}
                   draggingEndpoint={draggingEndpoint}
-                  endpoint={{ itemId, portId: view.port.id }}
+                  endpoint={view.endpoint ?? { itemId, portId: view.port.id }}
                   onEndpointClick={onEndpointClick}
                   onEndpointDragStart={onEndpointDragStart}
                   onEndpointDrop={onEndpointDrop}
@@ -288,11 +291,18 @@ export function numericSpec(item: InventoryItem, key: string): number {
   return Number.isFinite(value) && value > 0 ? Math.floor(value) : 0
 }
 
-export function syntheticOutletPort(slotNumber: number, prefix: string): InventoryPort {
+export function syntheticOutletPort(itemId: string, slotNumber: number): StandalonePortView {
+  const endpoint = powerOutletEndpoint(itemId, slotNumber)
+
   return {
-    id: `${prefix}-${slotNumber}`,
-    kind: 'server-port',
-    type: 'barrel',
-    slotNumber,
+    endpoint,
+    port: {
+      id: endpoint.portId,
+      kind: 'server-port',
+      type: 'barrel',
+      slotNumber,
+    },
+    label: 'Outlet',
+    tone: 'bg-[#f3dfc1] text-[#3a2812]',
   }
 }

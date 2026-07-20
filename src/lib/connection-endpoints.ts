@@ -1,11 +1,19 @@
 import { formatPortType } from '@/lib/format'
 import { runtimeItemKey } from '@/lib/item-keys'
 import {
+  createConnection,
   connectionEndpointAvailable,
   endpointKey,
   isArchivedItem,
   portsCompatible,
 } from '@/lib/project'
+import {
+  createPowerConnection,
+  getPowerEndpoints,
+  resolvePowerEndpoint,
+  validatePowerConnection,
+  type PowerEndpoint,
+} from '@/lib/power-topology'
 import type {
   ConnectionEndpoint,
   InventoryItem,
@@ -21,6 +29,7 @@ export type ConnectionEndpointOption = {
   owner: InventoryItem
   port: InventoryPort
   label: string
+  powerEndpoint?: PowerEndpoint
 }
 
 export type ConnectionEndpointGroup = {
@@ -35,6 +44,10 @@ const CONNECTION_HOST_TYPES = new Set<InventoryItem['type']>([
   'nas',
   'switch',
   'patchPanel',
+  'pcBuild',
+  'monitor',
+  'ups',
+  'powerStrip',
 ])
 
 function portNumber(port: InventoryPort): string {
@@ -71,7 +84,9 @@ function hostedPortLabel(owner: InventoryItem, port: InventoryPort): string {
 function directEndpointOptions(host: InventoryItem): ConnectionEndpointOption[] {
   const hostKey = runtimeItemKey(host)
 
-  return (host.ports ?? []).flatMap((port) => {
+  return (host.ports ?? []).filter(
+    (port) => !(['monitor', 'ups', 'powerStrip'] as InventoryItem['type'][]).includes(host.type) || port.type !== 'barrel',
+  ).flatMap((port) => {
     if (port.endpoints?.length) {
       return port.endpoints.map((portEndpoint) => {
         const endpoint: ConnectionEndpoint = {
@@ -111,7 +126,7 @@ function hostedEndpointOptions(
   project: ProjectState,
   host: InventoryItem,
 ): ConnectionEndpointOption[] {
-  if (host.type !== 'server' && host.type !== 'nas') {
+  if (host.type !== 'server' && host.type !== 'nas' && host.type !== 'pcBuild') {
     return []
   }
 
@@ -169,6 +184,55 @@ function hostedEndpointOptions(
     })
 }
 
+function virtualPowerPort(powerEndpoint: PowerEndpoint): InventoryPort {
+  const outletNumber = Number(String(powerEndpoint.endpoint.portId).replace(/^outlet-/, ''))
+
+  return {
+    id: powerEndpoint.endpoint.portId,
+    kind: 'server-port',
+    type: 'barrel',
+    slotNumber: Number.isFinite(outletNumber) && outletNumber > 0 ? outletNumber : 1,
+    label: powerEndpoint.label,
+  }
+}
+
+function powerEndpointOptions(
+  project: ProjectState,
+  host: InventoryItem,
+): ConnectionEndpointOption[] {
+  const hostKey = runtimeItemKey(host)
+
+  return getPowerEndpoints(project)
+    .filter((powerEndpoint) => powerEndpoint.endpoint.itemId === hostKey)
+    .flatMap((powerEndpoint) => {
+      const owner = powerEndpoint.endpoint.hostedItemId
+        ? project.items[powerEndpoint.endpoint.hostedItemId]
+        : host
+
+      if (!owner || isArchivedItem(owner)) {
+        return []
+      }
+
+      return [{
+        key: endpointKey(powerEndpoint.endpoint),
+        endpoint: powerEndpoint.endpoint,
+        host,
+        owner,
+        port: virtualPowerPort(powerEndpoint),
+        label: powerEndpoint.label,
+        powerEndpoint,
+      }]
+    })
+}
+
+function optionAvailable(project: ProjectState, option: ConnectionEndpointOption): boolean {
+  if (!option.powerEndpoint) {
+    return connectionEndpointAvailable(project, option.endpoint)
+  }
+
+  return option.powerEndpoint.allowFanOut || connectionEndpointAvailable(project, option.endpoint)
+}
+
 export function getEndpointGroupForHost(
   project: ProjectState,
   host: InventoryItem,
@@ -180,6 +244,7 @@ export function getEndpointGroupForHost(
   const options = [
     ...directEndpointOptions(host),
     ...hostedEndpointOptions(project, host),
+    ...powerEndpointOptions(project, host),
   ]
 
   if (options.length === 0) {
@@ -212,11 +277,40 @@ export function getCompatibleDestinationGroups(
     .filter((group) => group.key !== runtimeItemKey(source.host))
     .map((group) => ({
       ...group,
-      options: group.options.filter(
-        (option) =>
-          portsCompatible(source.port.type, option.port.type) &&
-          connectionEndpointAvailable(project, option.endpoint),
-      ),
+      options: group.options.filter((option) => {
+        if (source.powerEndpoint || option.powerEndpoint) {
+          if (!source.powerEndpoint || !option.powerEndpoint || !optionAvailable(project, option)) {
+            return false
+          }
+
+          const from = source.powerEndpoint.direction === 'output' ? source.endpoint : option.endpoint
+          const to = source.powerEndpoint.direction === 'input' ? source.endpoint : option.endpoint
+          return validatePowerConnection(project, from, to).ok
+        }
+
+        return portsCompatible(source.port.type, option.port.type) && optionAvailable(project, option)
+      }),
     }))
     .filter((group) => group.options.length > 0)
+}
+
+export function createConnectionForEndpoints(
+  project: ProjectState,
+  first: ConnectionEndpoint,
+  second: ConnectionEndpoint,
+) {
+  const firstPower = resolvePowerEndpoint(project, first)
+  const secondPower = resolvePowerEndpoint(project, second)
+
+  if (firstPower || secondPower) {
+    if (!firstPower || !secondPower) {
+      return { ok: false as const, message: 'Power endpoints can only connect to other power endpoints.' }
+    }
+
+    return firstPower.direction === 'output'
+      ? createPowerConnection(project, first, second)
+      : createPowerConnection(project, second, first)
+  }
+
+  return createConnection(project, first, second)
 }

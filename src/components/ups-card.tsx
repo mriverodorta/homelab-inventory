@@ -1,6 +1,8 @@
 import { type Node, type NodeProps } from '@xyflow/react'
 import { BatteryCharging } from 'lucide-react'
 import { formatInventoryCompactSpec } from '@/lib/format'
+import { runtimeItemKey } from '@/lib/item-keys'
+import { powerOutletEndpoint } from '@/lib/power-topology'
 import type { InventoryPort } from '@/types/inventory'
 import {
   numericSpec,
@@ -24,8 +26,9 @@ function explicitOutletClass(port: InventoryPort): UpsOutletClass | null {
   return null
 }
 
-function outletView(port: InventoryPort, outletClass: UpsOutletClass): StandalonePortView {
+function outletView(itemId: string, port: InventoryPort, outletClass: UpsOutletClass): StandalonePortView {
   return {
+    endpoint: powerOutletEndpoint(itemId, port.slotNumber),
     port,
     label: outletClass === 'battery' ? 'Battery' : 'Surge',
     detail: port.label ?? `${outletClass === 'battery' ? 'Battery-backed' : 'Surge-only'} outlet ${port.slotNumber}`,
@@ -36,13 +39,14 @@ function outletView(port: InventoryPort, outletClass: UpsOutletClass): Standalon
 }
 
 export function upsOutletGroups(item: Parameters<typeof sortedPorts>[0]) {
+  const itemId = runtimeItemKey(item)
   const batteryCount = numericSpec(item, 'batteryBackupOutlets')
   const surgeCount = numericSpec(item, 'surgeProtectedOutlets')
   const total = numericSpec(item, 'outlets') || batteryCount + surgeCount
   const ports = sortedPorts(item)
   const outlets = ports.length > 0
     ? ports
-    : Array.from({ length: total }, (_, index) => syntheticOutletPort(index + 1, 'ups-outlet'))
+    : Array.from({ length: total }, (_, index) => syntheticOutletPort(itemId, index + 1).port)
 
   const battery: StandalonePortView[] = []
   const surge: StandalonePortView[] = []
@@ -51,7 +55,7 @@ export function upsOutletGroups(item: Parameters<typeof sortedPorts>[0]) {
     const explicit = explicitOutletClass(port)
     const outletClass = explicit ?? (index < batteryCount ? 'battery' : 'surge')
     const target = outletClass === 'battery' ? battery : surge
-    target.push(outletView(port, outletClass))
+    target.push(outletView(itemId, port, outletClass))
   })
 
   return [

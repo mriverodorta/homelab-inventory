@@ -1,6 +1,8 @@
 import { type Node, type NodeProps } from '@xyflow/react'
 import { PlugZap } from 'lucide-react'
 import { formatInventoryCompactSpec } from '@/lib/format'
+import { runtimeItemKey } from '@/lib/item-keys'
+import { powerOutletEndpoint } from '@/lib/power-topology'
 import {
   numericSpec,
   sortedPorts,
@@ -14,18 +16,20 @@ export type PowerStripNodeData = StandaloneCanvasNodeData
 export type PowerStripFlowNode = Node<PowerStripNodeData, 'powerStrip'>
 
 export function powerStripOutletViews(item: Parameters<typeof sortedPorts>[0]): StandalonePortView[] {
+  const itemId = runtimeItemKey(item)
   const total = numericSpec(item, 'outlets')
   const surgeProtected = item.specs?.surgeProtected === true
   const surgeCount = numericSpec(item, 'surgeProtectedOutlets')
   const ports = sortedPorts(item)
   const outlets = ports.length > 0
     ? ports
-    : Array.from({ length: total }, (_, index) => syntheticOutletPort(index + 1, 'strip-outlet'))
+    : Array.from({ length: total }, (_, index) => syntheticOutletPort(itemId, index + 1).port)
 
   return outlets.map((port, index) => {
     const protectedOutlet = surgeProtected || index < surgeCount || `${port.label ?? ''} ${port.notes ?? ''}`.toLowerCase().includes('surge')
 
     return {
+      endpoint: powerOutletEndpoint(itemId, port.slotNumber),
       port,
       label: protectedOutlet ? 'Surge' : 'Outlet',
       detail: port.label ?? `${protectedOutlet ? 'Surge-protected outlet' : 'Power outlet'} ${port.slotNumber}`,

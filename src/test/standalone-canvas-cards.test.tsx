@@ -175,7 +175,7 @@ describe('standalone canvas cards', () => {
     const endpoint = { itemId: monitor.key!, portId: 7 }
     const selectedData = { ...nodeData, focusActive: false, pendingEndpoint: endpoint }
     render(<MonitorNode {...monitorProps(selectedData)} />)
-    const chip = screen.getByTestId('standalone-port-chip')
+    const chip = screen.getAllByTestId('standalone-port-chip').find((candidate) => candidate.dataset.portId === '7')!
 
     fireEvent.pointerDown(chip, { pointerId: 2, pointerType: 'mouse', button: 0, clientX: 40, clientY: 50 })
     fireEvent.pointerMove(window, { pointerId: 2, pointerType: 'mouse', clientX: 46, clientY: 50 })
@@ -198,9 +198,44 @@ describe('standalone canvas cards', () => {
     fireEvent.click(chip, { clientX: 25, clientY: 35 })
 
     expect(nodeData.onEndpointClick).toHaveBeenCalledWith(
-      { itemId: strip.key, portId: 'strip-outlet-1' },
+      { itemId: strip.key, portId: 'outlet-1' },
       { x: 25, y: 35 },
     )
     expect(nodeData.onEndpointDragStart).not.toHaveBeenCalled()
+  })
+
+  it('uses the power topology synthetic IDs for monitor inputs and outlets', () => {
+    const monitor: InventoryItem = {
+      id: 1,
+      key: 'monitor:1',
+      type: 'monitor',
+      name: 'Display',
+    }
+    const monitorProject = projectWith(monitor)
+    const monitorData = data(monitorProject, monitor.key!)
+    const monitorRender = render(<MonitorNode {...monitorProps(monitorData)} />)
+
+    fireEvent.click(screen.getByTestId('standalone-port-chip'), { clientX: 10, clientY: 20 })
+    expect(monitorData.onEndpointClick).toHaveBeenCalledWith(
+      { itemId: 'monitor:1', portId: 'ac-input' },
+      { x: 10, y: 20 },
+    )
+    monitorRender.unmount()
+
+    const ups: InventoryItem = {
+      id: 1,
+      key: 'ups:1',
+      type: 'ups',
+      name: 'UPS',
+      specs: { outlets: 1, batteryBackupOutlets: 1 },
+    }
+    const upsProject = projectWith(ups)
+    const upsData = data(upsProject, ups.key!)
+    render(<UpsNode {...upsProps(upsData)} />)
+    fireEvent.click(screen.getByTestId('standalone-port-chip'), { clientX: 30, clientY: 40 })
+    expect(upsData.onEndpointClick).toHaveBeenCalledWith(
+      { itemId: 'ups:1', portId: 'outlet-1' },
+      { x: 30, y: 40 },
+    )
   })
 })

@@ -1,4 +1,5 @@
 import { getConnectionPort } from '@/lib/project'
+import { resolvePowerEndpoint } from '@/lib/power-topology'
 import { formatPortRole } from '@/lib/format'
 import type {
   ConnectionEndpoint,
@@ -14,6 +15,7 @@ export const CABLE_COLORS = {
   fiveGig: '#9b7bd4',
   tenGig: '#2f6fbd',
   display: '#171717',
+  power: '#b94a48',
   other: '#75695d',
 } as const
 
@@ -60,6 +62,13 @@ export function getCableAppearance(
   _project: ProjectState,
   connection: InventoryConnection,
 ): CableAppearance {
+  if (connection.type === 'power') {
+    return {
+      color: CABLE_COLORS.power,
+      label: 'Power',
+    }
+  }
+
   if (connection.type === 'display') {
     return {
       color: CABLE_COLORS.display,
@@ -86,6 +95,12 @@ export function describeConnectionEndpoint(
   project: ProjectState,
   endpoint: ConnectionEndpoint,
 ): string {
+  const powerEndpoint = resolvePowerEndpoint(project, endpoint)
+
+  if (powerEndpoint) {
+    return powerEndpoint.label
+  }
+
   const item = project.items[endpoint.itemId]
   const hostedItem = endpoint.hostedItemId ? project.items[endpoint.hostedItemId] : null
   const portOwner = hostedItem ?? item

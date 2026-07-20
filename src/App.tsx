@@ -71,6 +71,7 @@ import {
 } from '@/lib/db'
 import { expireDemoSession, extendDemoSession, loadDemoSession, type DemoSessionStatus } from '@/lib/demo-api'
 import { runtimeItemKey } from '@/lib/item-keys'
+import { createConnectionForEndpoints } from '@/lib/connection-endpoints'
 import type {
   InventoryDependencyReason,
   InventoryDependencyReport,
@@ -121,7 +122,6 @@ import {
   getCanvasItemHeight,
   getCanvasItemWidth,
   autoArrangeCanvasItems,
-  createConnection,
   endpointKey,
   getNonCollidingPlacement,
   isCanvasItem,
@@ -903,7 +903,7 @@ function App() {
       return
     }
 
-    const result = createConnection(currentProject, from, to)
+    const result = createConnectionForEndpoints(currentProject, from, to)
 
     if (!result.ok) {
       setValidationMessage(result.message)
@@ -1001,7 +1001,7 @@ function App() {
       return
     }
 
-    const result = createConnection(project, pendingConnectionEndpoint, endpoint)
+    const result = createConnectionForEndpoints(project, pendingConnectionEndpoint, endpoint)
 
     if (!result.ok) {
       setValidationMessage(result.message)
@@ -1608,7 +1608,7 @@ function App() {
             onArchiveItem={(item) => void requestInventoryLifecycle('archive', [item])}
             lifecycleBusy={inventoryLifecycleBusy}
             onCreateConnection={(from: ConnectionEndpoint, to: ConnectionEndpoint) => {
-              const result = createConnection(project, from, to)
+              const result = createConnectionForEndpoints(project, from, to)
 
               if (!result.ok) {
                 setValidationMessage(result.message)

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  createConnectionForEndpoints,
   getCompatibleDestinationGroups,
   getEndpointGroupForHost,
   getHostEndpointGroups,
@@ -205,5 +206,71 @@ describe('connection endpoint catalog', () => {
     expect(getCompatibleDestinationGroups(project, source!).map((group) => group.label)).toEqual([
       'Patch Panel A',
     ])
+  })
+
+  it('catalogs virtual power endpoints and creates outlet-to-input connections regardless of selection order', () => {
+    const project = makeProject()
+    const ups: InventoryItem = {
+      id: 'ups-a',
+      name: 'UPS A',
+      type: 'ups',
+      specs: { outlets: 2, batteryBackupOutlets: 2 },
+    }
+    const monitor: InventoryItem = {
+      id: 'monitor-a',
+      name: 'Monitor A',
+      type: 'monitor',
+    }
+    project.items['ups-a'] = ups
+    project.items['monitor-a'] = monitor
+    project.placements.push(
+      { serverId: 'ups-a', x: 0, y: 400 },
+      { serverId: 'monitor-a', x: 400, y: 400 },
+    )
+
+    const upsGroup = getEndpointGroupForHost(project, ups)
+    const monitorGroup = getEndpointGroupForHost(project, monitor)
+    expect(upsGroup?.options.map((option) => option.endpoint.portId)).toEqual(['outlet-1', 'outlet-2'])
+    expect(monitorGroup?.options.map((option) => option.endpoint.portId)).toEqual(['ac-input'])
+
+    const destinations = getCompatibleDestinationGroups(project, monitorGroup!.options[0])
+    expect(destinations.map((group) => group.label)).toEqual(['UPS A'])
+
+    const result = createConnectionForEndpoints(
+      project,
+      { itemId: 'monitor-a', portId: 'ac-input' },
+      { itemId: 'ups-a', portId: 'outlet-1' },
+    )
+    expect(result.ok).toBe(true)
+    if (result.ok) {
+      expect(result.connection).toMatchObject({
+        type: 'power',
+        from: { itemId: 'ups-a', portId: 'outlet-1' },
+        to: { itemId: 'monitor-a', portId: 'ac-input' },
+      })
+
+      const duplicateInput = createConnectionForEndpoints(
+        result.project,
+        { itemId: 'ups-a', portId: 'outlet-2' },
+        { itemId: 'monitor-a', portId: 'ac-input' },
+      )
+      expect(duplicateInput).toEqual({
+        ok: false,
+        message: 'That AC input already has a power connection.',
+      })
+    }
+  })
+
+  it('keeps ordinary network creation on the existing connection workflow', () => {
+    const result = createConnectionForEndpoints(
+      makeProject(),
+      { itemId: 'server-a', portId: 'board-rj45' },
+      { itemId: 'switch-a', portId: 'switch-rj45-1' },
+    )
+
+    expect(result.ok).toBe(true)
+    if (result.ok) {
+      expect(result.connection.type).toBe('network')
+    }
   })
 })
