@@ -1,7 +1,7 @@
 import { type Node, type NodeProps } from '@xyflow/react'
 import { Monitor } from 'lucide-react'
 import { formatInventoryCompactSpec } from '@/lib/format'
-import { monitorPowerInputEndpoint, POWER_INPUT_PORT_ID } from '@/lib/power-topology'
+import { monitorPowerInputEndpoint, POWER_INPUT_PORT_KEY } from '@/lib/power-topology'
 import type { InventoryPort } from '@/types/inventory'
 import {
   sortedPorts,
@@ -35,11 +35,15 @@ export function MonitorNode({ data }: NodeProps<MonitorFlowNode>) {
     return null
   }
 
-  const ports = sortedPorts(item).filter((port) => port.type !== 'barrel').map(monitorPortView)
-  const powerEndpoint = monitorPowerInputEndpoint(data.itemId)
+  const ports = sortedPorts(item).filter((port) => port.type !== 'ac-input').map(monitorPortView)
+  const powerPort = item.ports?.find(
+    (port) => port.key === POWER_INPUT_PORT_KEY && port.type === 'ac-input',
+  )
+  if (!powerPort) return null
+  const powerEndpoint = monitorPowerInputEndpoint(data.itemId, powerPort.id)
   const power: StandalonePortView = {
     endpoint: powerEndpoint,
-    port: { id: POWER_INPUT_PORT_ID, kind: 'server-port', type: 'barrel', slotNumber: 1 },
+    port: powerPort,
     label: 'AC',
     detail: 'AC input',
     tone: 'bg-[#f3dfc1] text-[#3a2812]',

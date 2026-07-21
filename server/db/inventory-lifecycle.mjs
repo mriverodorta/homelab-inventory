@@ -3,6 +3,8 @@ import {
   isCanvasEquipmentType,
   isHostType,
 } from './inventory-capabilities.mjs'
+import { withCanonicalPowerPorts } from '../../shared/power-ports.mjs'
+import { assertRelationalId, isRelationalId } from './relational-ids.mjs'
 
 const TABLE_BY_TYPE = {
   server: 'servers',
@@ -53,9 +55,9 @@ export function inventoryItemKey(type, id) {
 
 export function normalizeInventoryRef(ref) {
   const type = String(ref?.type ?? '').trim()
-  const id = Number(ref?.id)
+  const id = ref?.id
 
-  if (!TABLE_BY_TYPE[type] || !Number.isInteger(id) || id < 1) {
+  if (!TABLE_BY_TYPE[type] || !isRelationalId(id)) {
     throw new InventoryLifecycleError('Inventory reference must include a supported type and numeric id.', {
       code: 'invalid-inventory-reference',
       status: 400,
@@ -77,7 +79,7 @@ export function resolveInventoryRef(inventory, rawRef) {
     })
   }
 
-  const index = records.findIndex((record) => Number(record?.id) === ref.id)
+  const index = records.findIndex((record) => record?.id === ref.id)
 
   if (index < 0) {
     throw new InventoryLifecycleError(`Inventory item ${inventoryItemKey(ref.type, ref.id)} was not found.`, {
@@ -127,11 +129,18 @@ function cleanEndpoint(endpoint, index) {
 }
 
 function cleanPort(port, index, fallbackKind) {
+  const slotNumber = port.slotNumber ?? index + 1
+  if (!Number.isInteger(slotNumber) || slotNumber < 1) {
+    throw new InventoryLifecycleError(`Port ${index + 1} must have a positive integer slot number.`, {
+      code: 'invalid-inventory-port',
+      status: 400,
+    })
+  }
   const cleaned = {
     id: index + 1,
     kind: port.kind ?? fallbackKind,
     type: port.type,
-    slotNumber: Number.isInteger(Number(port.slotNumber)) ? Number(port.slotNumber) : index + 1,
+    slotNumber,
   }
 
   for (const field of ['role', 'speed', 'poe']) {
@@ -157,13 +166,19 @@ function cleanCompatibility(compatibility) {
     if (Array.isArray(host.storageSlots)) {
       host.storageSlots = host.storageSlots.map((group, index) => ({
         ...group,
-        id: `storage-${index + 1}`,
+        id: index + 1,
+        key: typeof group.key === 'string' && group.key.trim()
+          ? group.key.trim()
+          : `storage-${index + 1}`,
       }))
     }
     if (Array.isArray(host.expansionSlots)) {
       host.expansionSlots = host.expansionSlots.map((group, index) => ({
         ...group,
-        id: `expansion-${index + 1}`,
+        id: index + 1,
+        key: typeof group.key === 'string' && group.key.trim()
+          ? group.key.trim()
+          : `expansion-${index + 1}`,
       }))
     }
   }
@@ -197,7 +212,9 @@ export function buildCleanRecord({ source, id, type, name = source?.name }) {
     record.ports = source.ports.map((port, index) => cleanPort(port, index, fallbackKind))
   }
 
-  return record
+  const materialized = withCanonicalPowerPorts({ ...record, type })
+  delete materialized.type
+  return materialized
 }
 
 export function buildDuplicateRecord({ source, type, nextId, existingRecords }) {
@@ -237,7 +254,9 @@ export function buildQuantityRecords({ input, type, quantity, startingId, existi
         ...port,
         id: portIndex + 1,
         kind: port.kind ?? fallbackKind,
-        slotNumber: Number.isInteger(Number(port.slotNumber)) ? Number(port.slotNumber) : portIndex + 1,
+        slotNumber: Number.isInteger(port.slotNumber) && port.slotNumber > 0
+          ? port.slotNumber
+          : portIndex + 1,
         ...(Array.isArray(port.endpoints)
           ? {
               endpoints: port.endpoints.map((endpoint, endpointIndex) => ({
@@ -256,7 +275,7 @@ export function buildQuantityRecords({ input, type, quantity, startingId, existi
 }
 
 function persistedRefMatches(type, id, candidateType, candidateId) {
-  return candidateType === type && Number(candidateId) === id
+  return candidateType === type && candidateId === id
 }
 
 function runtimeRefMatches(type, id, candidate) {
@@ -336,19 +355,20 @@ export function analyzeInventoryDependencies({ inventory, project, agents, agent
   )
   const enrollments = Object.values(agents?.enrollments ?? {}).filter((enrollment) =>
     isHostType(ref.type)
-      && Number(enrollment?.serverId) === ref.id
+      && enrollment?.serverId === ref.id
       && !enrollment?.revokedAt
       && !enrollment?.usedAt
       && (!enrollment?.expiresAt || Date.parse(enrollment.expiresAt) > Date.now()),
   )
   const devices = Object.values(agents?.devices ?? {}).filter((device) =>
     isHostType(ref.type)
-      && Number(device?.serverId) === ref.id
+      && device?.serverId === ref.id
       && !device?.revokedAt,
   )
   const statuses = Object.entries(agentStatus?.servers ?? {}).filter(([serverId, status]) =>
     isHostType(ref.type)
-      && Number(status?.serverId ?? serverId) === ref.id,
+      && status?.serverId === ref.id
+      && String(ref.id) === serverId,
   )
   const metadataPorts = (resolved.item.ports ?? []).filter(portHasRuntimeMetadata)
   const reasons = []
@@ -398,7 +418,7 @@ export function analyzeInventoryDependencies({ inventory, project, agents, agent
     reasons.push(reason(
       'agent-status',
       'Host has stored agent runtime status.',
-      statuses.map(([serverId, status]) => ({ serverId: Number(status?.serverId ?? serverId) })),
+      statuses.map(([, status]) => ({ serverId: assertRelationalId(status.serverId, 'agentStatus.serverId') })),
     ))
   }
   if (metadataPorts.length > 0) {
@@ -444,7 +464,7 @@ export function referencedPortIds(project, ref) {
         || runtimeRefMatches(ref.type, ref.id, endpoint?.itemId)
       )
 
-      if (referencesHostedItem || referencesDirectItem) portIds.add(Number(endpoint.portId))
+      if (referencesHostedItem || referencesDirectItem) portIds.add(endpoint.portId)
     }
   }
 

@@ -1,11 +1,15 @@
 import { type Node, type NodeProps } from '@xyflow/react'
-import { PlugZap } from 'lucide-react'
 import { formatInventoryCompactSpec } from '@/lib/format'
 import { runtimeItemKey } from '@/lib/item-keys'
+import { getPowerEquipmentOrientation } from '@/lib/power-equipment-layout'
+import {
+  POWER_EQUIPMENT_CARD_WIDTH,
+  VERTICAL_POWER_STRIP_CARD_WIDTH,
+} from '@/lib/project'
 import {
   powerOutletEndpoint,
   powerStripPowerInputEndpoint,
-  POWER_INPUT_PORT_ID,
+  POWER_INPUT_PORT_KEY,
 } from '@/lib/power-topology'
 import {
   numericSpec,
@@ -24,7 +28,7 @@ export function powerStripOutletViews(item: Parameters<typeof sortedPorts>[0]): 
   const total = numericSpec(item, 'outlets')
   const surgeProtected = item.specs?.surgeProtected === true
   const surgeCount = numericSpec(item, 'surgeProtectedOutlets')
-  const ports = sortedPorts(item)
+  const ports = sortedPorts(item).filter((port) => port.type === 'ac-outlet')
   const outlets = ports.length > 0
     ? ports
     : Array.from({ length: total }, (_, index) => syntheticOutletPort(itemId, index + 1).port)
@@ -33,7 +37,7 @@ export function powerStripOutletViews(item: Parameters<typeof sortedPorts>[0]): 
     const protectedOutlet = surgeProtected || index < surgeCount || `${port.label ?? ''} ${port.notes ?? ''}`.toLowerCase().includes('surge')
 
     return {
-      endpoint: powerOutletEndpoint(itemId, port.slotNumber),
+      endpoint: powerOutletEndpoint(itemId, port.id),
       port,
       label: protectedOutlet ? 'Surge' : 'Outlet',
       detail: port.label ?? `${protectedOutlet ? 'Surge-protected outlet' : 'Power outlet'} ${port.slotNumber}`,
@@ -46,15 +50,16 @@ export function powerStripOutletViews(item: Parameters<typeof sortedPorts>[0]): 
 
 export function powerStripInputView(item: Parameters<typeof sortedPorts>[0]): StandalonePortView {
   const itemId = runtimeItemKey(item)
+  const port = item.ports?.find(
+    (candidate) => candidate.key === POWER_INPUT_PORT_KEY && candidate.type === 'ac-input',
+  )
+  if (!port) {
+    throw new Error(`${item.name} is missing its persisted AC input port.`)
+  }
 
   return {
-    endpoint: powerStripPowerInputEndpoint(itemId),
-    port: {
-      id: POWER_INPUT_PORT_ID,
-      kind: 'server-port',
-      type: 'barrel',
-      slotNumber: 1,
-    },
+    endpoint: powerStripPowerInputEndpoint(itemId, port.id),
+    port,
     label: 'AC IN',
     detail: `${item.name} AC input`,
     tone: 'bg-[#d9c7b2] text-[#33261b]',
@@ -68,19 +73,23 @@ export function PowerStripNode({ data }: NodeProps<PowerStripFlowNode>) {
     return null
   }
 
+  const orientation = getPowerEquipmentOrientation(item)
+
   return (
     <StandaloneCanvasEquipmentCard
       {...data}
       item={item}
-      icon={<PlugZap className="size-5" />}
+      headerPort={powerStripInputView(item)}
       eyebrow="Power strip"
       accentClassName="bg-[#453a4d]"
       summary={formatInventoryCompactSpec(item) ?? undefined}
       groups={[
-        { id: 'input', label: 'Power input', ports: [powerStripInputView(item)] },
         { id: 'outlets', label: 'Power outlets', ports: powerStripOutletViews(item) },
       ]}
-      width={420}
+      orientation={orientation}
+      width={orientation === 'vertical'
+        ? VERTICAL_POWER_STRIP_CARD_WIDTH
+        : POWER_EQUIPMENT_CARD_WIDTH}
     />
   )
 }

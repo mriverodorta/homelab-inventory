@@ -14,13 +14,14 @@ const project: ProjectState = {
     updatedAt: '2026-06-26T00:00:00.000Z',
   },
   items: {
-    server: {
-      id: 'server',
+    'server:1': {
+      id: 1,
+      key: 'server:1',
       name: 'Server A',
       type: 'server',
       ports: [
         {
-          id: 'lan-01',
+          id: 1,
           kind: 'server-port',
           type: 'rj45',
           slotNumber: 1,
@@ -28,13 +29,14 @@ const project: ProjectState = {
         },
       ],
     },
-    switch: {
-      id: 'switch',
+    'switch:1': {
+      id: 1,
+      key: 'switch:1',
       name: 'Switch A',
       type: 'switch',
       ports: [
         {
-          id: 'rj45-01',
+          id: 1,
           kind: 'switch-port',
           type: 'rj45',
           slotNumber: 1,
@@ -45,7 +47,7 @@ const project: ProjectState = {
   },
   placements: [
     {
-      serverId: 'switch',
+      serverId: 'switch:1',
       x: 0,
       y: 0,
     },
@@ -53,14 +55,14 @@ const project: ProjectState = {
   assignments: [],
   connections: [
     {
-      id: 'connection-1',
+      id: 1,
       from: {
-        itemId: 'switch',
-        portId: 'rj45-01',
+        itemId: 'switch:1',
+        portId: 1,
       },
       to: {
-        itemId: 'server',
-        portId: 'lan-01',
+        itemId: 'server:1',
+        portId: 1,
       },
       type: 'network',
       createdAt: '2026-06-26T00:00:00.000Z',
@@ -76,8 +78,9 @@ const compatibilityProject: ProjectState = {
     updatedAt: '2026-07-19T00:00:00.000Z',
   },
   items: {
-    host: {
-      id: 'host',
+    'server:1': {
+      id: 1,
+      key: 'server:1',
       name: 'Compatibility Host',
       type: 'server',
       compatibility: {
@@ -92,7 +95,7 @@ const compatibilityProject: ProjectState = {
           },
           storageSlots: [
             {
-              id: 'm2-slot',
+              id: 9, key: 'm2-slot',
               label: 'M.2 Slot',
               count: 1,
               interfaces: ['NVMe'],
@@ -102,8 +105,9 @@ const compatibilityProject: ProjectState = {
         },
       },
     },
-    cpu: {
-      id: 'cpu',
+    'cpu:1': {
+      id: 1,
+      key: 'cpu:1',
       name: 'Mismatch CPU',
       type: 'cpu',
       compatibility: {
@@ -112,39 +116,41 @@ const compatibilityProject: ProjectState = {
         },
       },
     },
-    ram: {
-      id: 'ram',
+    'ram:1': {
+      id: 1,
+      key: 'ram:1',
       name: 'Fast RAM',
       type: 'ram',
       specs: { capacityGb: 16, moduleCount: 1, generation: 'DDR4', speedMt: 3200 },
     },
-    storage: {
-      id: 'storage',
+    'storage:1': {
+      id: 1,
+      key: 'storage:1',
       name: 'Unknown Storage',
       type: 'storage',
       specs: { interface: 'NVMe' },
     },
   },
-  placements: [{ serverId: 'host', x: 0, y: 0 }],
+  placements: [{ serverId: 'server:1', x: 0, y: 0 }],
   assignments: [
     {
       id: 1,
-      serverId: 'host',
-      itemId: 'cpu',
+      serverId: 'server:1',
+      itemId: 'cpu:1',
       type: 'cpu',
       assignedAt: '2026-07-19T00:00:00.000Z',
     },
     {
       id: 2,
-      serverId: 'host',
-      itemId: 'ram',
+      serverId: 'server:1',
+      itemId: 'ram:1',
       type: 'ram',
       assignedAt: '2026-07-19T00:01:00.000Z',
     },
     {
       id: 3,
-      serverId: 'host',
-      itemId: 'storage',
+      serverId: 'server:1',
+      itemId: 'storage:1',
       type: 'storage',
       assignedAt: '2026-07-19T00:02:00.000Z',
     },
@@ -202,7 +208,7 @@ describe('AuditDrawer', () => {
 
     fireEvent.click(screen.getByText('Switch has active connections but no uplink or trunk port marked.'))
 
-    expect(onSelectItem).toHaveBeenCalledWith('switch')
+    expect(onSelectItem).toHaveBeenCalledWith('switch:1')
   })
 
   it('filters warnings by item type', () => {
@@ -241,7 +247,7 @@ describe('AuditDrawer', () => {
 
     fireEvent.click(screen.getByText(/CPU socket LGA1700 is not supported/))
 
-    expect(onSelectItem).toHaveBeenCalledWith('host')
+    expect(onSelectItem).toHaveBeenCalledWith('server:1')
   })
 
   it('shows ignored warnings only in the Ignored filter and keeps the badge count open-only', () => {
@@ -253,7 +259,7 @@ describe('AuditDrawer', () => {
     const ignoredProject: ProjectState = {
       ...compatibilityProject,
       compatibilityPolicy: {
-        disabledHostIds: [],
+        disabledHosts: [],
         ignoredWarningIds: [ignoredWarning!.id],
       },
     }

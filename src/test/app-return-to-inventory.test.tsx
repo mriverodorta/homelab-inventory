@@ -130,15 +130,15 @@ const project: ProjectState = {
   connections: [
     {
       id: 1,
-      from: { itemId: 'server:1', hostedItemId: 'network:1', portId: 'nic-1' },
-      to: { itemId: 'switch:1', portId: 'switch-1' },
+      from: { itemId: 'server:1', hostedItemId: 'network:1', portId: 1 },
+      to: { itemId: 'switch:1', portId: 1 },
       type: 'network',
       createdAt: '2026-07-20T12:00:00.000Z',
     },
     {
       id: 2,
-      from: { itemId: 'server:1', hostedItemId: 'gpu:1', portId: 'gpu-1' },
-      to: { itemId: 'switch:1', portId: 'switch-2' },
+      from: { itemId: 'server:1', hostedItemId: 'gpu:1', portId: 1 },
+      to: { itemId: 'switch:1', portId: 2 },
       type: 'display',
       createdAt: '2026-07-20T12:00:00.000Z',
     },

@@ -135,7 +135,7 @@ const newTypeFixtures: InventoryItem[] = [
           maxSpeedMt: 7600,
         },
         storageSlots: [{
-          id: 'm2-primary',
+          id: 11, key: 'm2-primary',
           label: 'M.2 Primary',
           count: 2,
           interfaces: ['NVMe'],
@@ -143,7 +143,7 @@ const newTypeFixtures: InventoryItem[] = [
           pcieGeneration: 4,
         }],
         expansionSlots: [{
-          id: 'pcie-main',
+          id: 12, key: 'pcie-main',
           label: 'PCIe Main',
           count: 1,
           interfaceFamily: 'pcie',
@@ -254,7 +254,7 @@ describe('inventory form model', () => {
             maxSpeedMt: 3200,
           },
           storageSlots: [{
-            id: 'm2-primary',
+            id: 11, key: 'm2-primary',
             label: 'M.2 Primary',
             count: 1,
             interfaces: ['NVMe'],
@@ -262,7 +262,7 @@ describe('inventory form model', () => {
             pcieGeneration: 3,
           }],
           expansionSlots: [{
-            id: 'pcie-main',
+            id: 12, key: 'pcie-main',
             label: 'PCIe Main',
             count: 1,
             interfaceFamily: 'pcie',
@@ -279,8 +279,8 @@ describe('inventory form model', () => {
     }
 
     const values = inventoryItemToFormValues(item)
-    expect(values.storageSlotGroups[0].id).toBe('m2-primary')
-    expect(values.expansionSlotGroups[0].id).toBe('pcie-main')
+    expect(values.storageSlotGroups[0]).toEqual(expect.objectContaining({ id: 11, key: 'm2-primary' }))
+    expect(values.expansionSlotGroups[0]).toEqual(expect.objectContaining({ id: 12, key: 'pcie-main' }))
     expect(inventoryFormValuesToInput(values).compatibility).toEqual(item.compatibility)
   })
 
@@ -359,7 +359,7 @@ describe('inventory form model', () => {
           legacyHost: 'keep-me',
           cpu: { sockets: ['LGA1151'], legacyCpu: 42 },
           storageSlots: [{
-            id: 'legacy-slot',
+            id: 13, key: 'legacy-slot',
             label: 'Legacy slot',
             count: 1,
             interfaces: ['SATA'],
@@ -561,7 +561,7 @@ describe('inventory form model', () => {
   it('retains existing port IDs and metadata while applying edited group structure', () => {
     const originalPorts = [
       {
-        id: 'uplink-a',
+        id: 4,
         kind: 'switch-port' as const,
         type: 'rj45' as const,
         slotNumber: 4,
@@ -571,7 +571,7 @@ describe('inventory form model', () => {
         role: 'access' as const,
         speed: '1G',
         poe: true,
-        endpoints: [{ id: 'front-a', side: 'front' as const }],
+        endpoints: [{ id: 40, side: 'front' as const }],
       },
       {
         id: 9,
@@ -601,7 +601,7 @@ describe('inventory form model', () => {
 
     expect(ports).toEqual([
       {
-        id: 'uplink-a',
+        id: 4,
         kind: 'switch-port',
         type: 'sfp-plus',
         slotNumber: 1,
@@ -611,7 +611,7 @@ describe('inventory form model', () => {
         role: 'uplink',
         speed: '10G',
         poe: true,
-        endpoints: [{ id: 'front-a', side: 'front' }],
+        endpoints: [{ id: 40, side: 'front' }],
       },
       {
         id: 9,
@@ -695,7 +695,7 @@ describe('inventory form model', () => {
   it('keeps detailed port edits synchronized with grouped form values', () => {
     const ports = [
       {
-        id: 'nic-1',
+        id: 1,
         kind: 'server-port' as const,
         type: 'rj45' as const,
         slotNumber: 1,
@@ -713,7 +713,7 @@ describe('inventory form model', () => {
         count: 1,
         type: 'rj45',
         speed: '2.5G',
-        originalPortIds: ['nic-1'],
+        originalPortIds: [1],
       }),
     ])
     expect(patch.originalPorts).toEqual(ports)

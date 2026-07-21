@@ -6,7 +6,6 @@ import type {
 import type { ComponentAssignment, ComponentType, InventoryItem } from './inventory'
 
 export type CpuSocketGroup = {
-  id: string
   label: string
   count: number
   socket: string
@@ -15,7 +14,6 @@ export type CpuSocketGroup = {
 }
 
 export type MemorySlotGroup = {
-  id: string
   label: string
   count: number
   generations: string[]

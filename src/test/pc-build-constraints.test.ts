@@ -25,14 +25,14 @@ function inventory(): InventoryItem[] {
             maxSpeedMt: 6400,
           },
           storageSlots: [{
-            id: 'm2',
+            id: 1, key: 'm2',
             label: 'M.2 slot',
             count: 1,
             interfaces: ['NVMe'],
             formFactors: ['2280'],
           }],
           expansionSlots: [{
-            id: 'pcie-x16',
+            id: 3, key: 'pcie-x16',
             label: 'PCIe x16',
             count: 1,
             interfaceFamily: 'pcie',
@@ -78,15 +78,18 @@ describe('PC Build assignment constraints', () => {
 
     expect(withStorage.assignments).toEqual(expect.arrayContaining([
       expect.objectContaining({ type: 'motherboard', allocation: { resourceType: 'motherboard', positions: [0] } }),
-      expect.objectContaining({ type: 'cpu', allocation: { resourceType: 'cpu', groupId: 'cpu', positions: [0] } }),
-      expect.objectContaining({ type: 'ram', allocation: { resourceType: 'memory', groupId: 'dimm', positions: [0, 1] } }),
-      expect.objectContaining({ type: 'storage', allocation: { resourceType: 'storage', groupId: 'm2', positions: [0] } }),
+      expect.objectContaining({ type: 'cpu', allocation: { resourceType: 'cpu', positions: [0] } }),
+      expect.objectContaining({ type: 'ram', allocation: { resourceType: 'memory', positions: [0, 1] } }),
+      expect.objectContaining({ type: 'storage', allocation: { resourceType: 'storage', groupId: 1, positions: [0] } }),
     ]))
   })
 
   it('enforces motherboard capacity even when host compatibility checks are disabled', () => {
     const empty = mergeInventoryWithProject(inventory(), null)
-    empty.compatibilityPolicy = { disabledHostIds: ['pcBuild:1'], ignoredWarningIds: [] }
+    empty.compatibilityPolicy = {
+      disabledHosts: [{ hostType: 'pcBuild', hostId: 1 }],
+      ignoredWarningIds: [],
+    }
     const withBoard = assign(empty, 'pcBuild:1', 'motherboard:1')
     const withRam = assign(withBoard, 'pcBuild:1', 'ram:1')
     const result = tryAssignComponent(withRam, 'pcBuild:1', 'ram:2')

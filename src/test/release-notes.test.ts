@@ -90,16 +90,19 @@ describe('release notes helpers', () => {
   })
 
   it('has structured notes for the package version under development', () => {
-    expect(hasReleaseNoteForVersion(RELEASE_NOTES, '0.1.33')).toBe(true)
+    expect(hasReleaseNoteForVersion(RELEASE_NOTES, '0.1.38')).toBe(true)
     expect(RELEASE_NOTES[0]).toEqual(
       expect.objectContaining({
-        version: '0.1.33',
-        title: 'Connectable power strip inputs',
+        version: '0.1.38',
+        title: 'Flexible power equipment layouts',
       }),
     )
     expect(RELEASE_NOTES.filter((entry) => entry.channel === 'latest')).toEqual([
-      expect.objectContaining({ version: '0.1.33' }),
+      expect.objectContaining({ version: '0.1.38' }),
     ])
+    expect(RELEASE_NOTES.find((entry) => entry.version === '0.1.37')).toEqual(
+      expect.objectContaining({ channel: 'release' }),
+    )
   })
 
   it('retains structured settings simplification notes for version 0.1.29', () => {

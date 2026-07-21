@@ -14,7 +14,9 @@ afterEach(() => {
 })
 
 const validStorageGroup: StorageSlotGroupDraft = {
-  id: 'storage-1',
+  draftKey: 'storage-1',
+  id: 1,
+  key: 'primary-m2',
   label: 'Primary M.2',
   count: '1',
   interfaces: ['NVMe'],
@@ -23,7 +25,9 @@ const validStorageGroup: StorageSlotGroupDraft = {
 }
 
 const validExpansionGroup: ExpansionSlotGroupDraft = {
-  id: 'expansion-1',
+  draftKey: 'expansion-1',
+  id: 1,
+  key: 'primary-pcie',
   label: 'Primary PCIe slot',
   count: '1',
   interfaceFamily: 'PCIe',
@@ -43,7 +47,9 @@ describe('resource group validation targeting', () => {
           validStorageGroup,
           {
             ...validStorageGroup,
-            id: 'storage-2',
+            draftKey: 'storage-2',
+            id: 2,
+            key: 'secondary-m2',
             label: 'Secondary M.2',
             count: '0',
           },
@@ -64,7 +70,9 @@ describe('resource group validation targeting', () => {
           validExpansionGroup,
           {
             ...validExpansionGroup,
-            id: 'expansion-2',
+            draftKey: 'expansion-2',
+            id: 2,
+            key: 'secondary-pcie',
             label: 'Secondary PCIe slot',
             count: '0',
           },

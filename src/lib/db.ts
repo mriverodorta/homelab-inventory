@@ -1,6 +1,6 @@
 import { DEFAULT_PROJECT_ID } from '@/lib/project'
 import type { InventoryDependencyReport, InventoryRef } from '@/lib/inventory-lifecycle'
-import type { InventoryItem, ProjectState } from '@/types/inventory'
+import type { InventoryItem, InventoryProperties, ProjectState } from '@/types/inventory'
 
 export type InventoryItemInput = Omit<InventoryItem, 'id' | 'key'>
 
@@ -52,6 +52,16 @@ export async function updateInventoryItem(
   return apiRequest<ProjectState>(`/api/inventory/items/${ref.type}/${ref.id}`, {
     method: 'PUT',
     body: JSON.stringify(item),
+  })
+}
+
+export async function updateInventoryItemProperties(
+  ref: InventoryRef,
+  properties: InventoryProperties,
+): Promise<ProjectState> {
+  return apiRequest<ProjectState>(`/api/inventory/items/${ref.type}/${ref.id}/properties`, {
+    method: 'PATCH',
+    body: JSON.stringify({ properties }),
   })
 }
 

@@ -3,6 +3,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { evaluateProjectCompatibility } from '../../shared/compatibility/index.mjs'
+import { canonicalPowerPorts } from '../../shared/power-ports.mjs'
 import { HomelabInventoryStore } from './store.mjs'
 import { assertInventoryStoreShape, assertProjectStoreShape } from './validation.mjs'
 
@@ -180,7 +181,8 @@ function compatibilityItems() {
       compatibility: {
         host: {
           storageSlots: [{
-            id: 'm2-1',
+            id: 1,
+            key: 'm2-1',
             label: 'M.2 slots',
             count: 1,
             interfaces: ['NVMe'],
@@ -245,7 +247,7 @@ function compatibilityProject(assignments = []) {
 
 async function writeCompatibilityStores(
   dataDir,
-  { schemaVersion = 7, assignments = [], compatibilityPolicy } = {},
+  { schemaVersion = 10, assignments = [], compatibilityPolicy } = {},
 ) {
   const project = compatibilityProject(assignments)
   const inventory = {
@@ -267,6 +269,12 @@ async function writeCompatibilityStores(
     for (const item of records) {
       delete item.key
       delete item.type
+      if (schemaVersion <= 9) {
+        for (const group of item.compatibility?.host?.storageSlots ?? []) {
+          group.id = group.key
+          delete group.key
+        }
+      }
     }
   }
   const persistedProject = {
@@ -296,7 +304,10 @@ async function writeCompatibilityStores(
     appLastOpenedWith: '0.1.20',
     updatedAt: '2026-07-19T00:00:00.000Z',
   })
-  await writeJson(path.join(dataDir, 'stores', 'inventory.json'), inventory)
+  await writeJson(
+    path.join(dataDir, 'stores', 'inventory.json'),
+    schemaVersion >= 10 ? schema9Inventory(inventory) : inventory,
+  )
   await writeJson(path.join(dataDir, 'stores', 'project.json'), persistedProject)
 }
 
@@ -388,7 +399,7 @@ describe('HomelabInventoryStore', () => {
     await store.init()
     await store.flush()
 
-    expect(store.databases.meta.data.schemaVersion).toBe(9)
+    expect(store.databases.meta.data.schemaVersion).toBe(11)
     expect(Object.keys(store.databases.inventory.data)).toEqual(SCHEMA_9_TABLES)
     expect(store.databases.inventory.data.wirelessCards).toEqual([
       expect.objectContaining({ id: 7, name: 'Intel AX210 Wi-Fi 6E' }),
@@ -415,8 +426,172 @@ describe('HomelabInventoryStore', () => {
 
     const backupEntries = await fs.readdir(path.join(dataDir, 'backups'), { withFileTypes: true })
     expect(backupEntries.some(
-      (entry) => entry.isDirectory() && entry.name.endsWith('-schema-8-to-9'),
+      (entry) => entry.isDirectory() && entry.name.endsWith('-schema-8-to-11'),
     )).toBe(true)
+  })
+
+  it('migrates schema 10 UPS outlets to persisted power ports after creating a backup', async () => {
+    const dataDir = await makeTempDir()
+    const powerStripSpecs = { outlets: 6, surgeProtectedOutlets: 6 }
+    const existingConnection = {
+      id: 1,
+      from: { itemType: 'ups', itemId: 1, portId: 1 },
+      to: { itemType: 'powerStrip', itemId: 1, portId: 1 },
+      type: 'power',
+      createdAt: '2026-07-21T00:00:00.000Z',
+    }
+    await writeJson(path.join(dataDir, 'meta.json'), {
+      schemaVersion: 10,
+      appLastOpenedWith: '0.1.34',
+      updatedAt: '2026-07-21T00:00:00.000Z',
+    })
+    await writeJson(path.join(dataDir, 'stores', 'inventory.json'), schema9Inventory({
+      upsSystems: [{
+        id: 1,
+        name: 'CyberPower CP1500PFCLCD',
+        specs: {
+          outlets: 10,
+          batteryBackupOutlets: 5,
+          surgeProtectedOutlets: 5,
+        },
+      }],
+      powerStrips: [{
+        id: 1,
+        name: 'Kasa HS300',
+        specs: powerStripSpecs,
+        ports: canonicalPowerPorts({ type: 'powerStrip', specs: powerStripSpecs }),
+      }],
+    }))
+    await writeJson(path.join(dataDir, 'stores', 'project.json'), {
+      id: 'default',
+      metadata: {
+        name: 'Power Migration',
+        version: 1,
+        updatedAt: '2026-07-21T00:00:00.000Z',
+      },
+      placements: [
+        { itemType: 'ups', itemId: 1, x: 10, y: 20 },
+        { itemType: 'powerStrip', itemId: 1, x: 500, y: 20 },
+      ],
+      assignments: [],
+      connections: [existingConnection],
+      compatibilityPolicy: { disabledHosts: [], ignoredWarningIds: [] },
+    })
+
+    const store = createStore({
+      appVersion: '0.1.35',
+      dataDir,
+      legacyProjectPath: path.join(dataDir, 'homelab-inventory-project.json'),
+      saveDebounceMs: 1,
+      seedEmptyData: false,
+      seedDir: path.join(dataDir, 'missing-seed'),
+    })
+
+    await store.init()
+    await store.flush()
+
+    expect(store.databases.meta.data.schemaVersion).toBe(11)
+    expect(store.databases.inventory.data.upsSystems[0].ports).toHaveLength(10)
+    expect(store.getProject().items['ups:1'].ports[0]).toMatchObject({
+      id: 1,
+      key: 'battery-outlet-1',
+      kind: 'power-port',
+      type: 'ac-outlet',
+      slotNumber: 1,
+    })
+    expect(store.databases.project.data.connections).toEqual([existingConnection])
+    expect(store.getProject().connections).toEqual([{
+      id: 1,
+      from: { itemId: 'ups:1', portId: 1 },
+      to: { itemId: 'powerStrip:1', portId: 1 },
+      type: 'power',
+      createdAt: '2026-07-21T00:00:00.000Z',
+    }])
+
+    const persistedProject = JSON.parse(
+      await fs.readFile(path.join(dataDir, 'stores', 'project.json'), 'utf8'),
+    )
+    expect(persistedProject.connections).toEqual([existingConnection])
+    expect(await fs.readdir(path.join(dataDir, 'backups'))).toContainEqual(
+      expect.stringContaining('schema-10-to-11'),
+    )
+  })
+
+  it('persists migrated data before advancing the schema marker and retries after a failed flush', async () => {
+    const dataDir = await makeTempDir()
+    await writeJson(path.join(dataDir, 'meta.json'), {
+      schemaVersion: 10,
+      appLastOpenedWith: '0.1.35',
+      updatedAt: '2026-07-21T00:00:00.000Z',
+    })
+    await writeJson(path.join(dataDir, 'stores', 'inventory.json'), schema9Inventory({
+      upsSystems: [{
+        id: 1,
+        name: 'Migration order UPS',
+        specs: {
+          outlets: 2,
+          batteryBackupOutlets: 1,
+          surgeProtectedOutlets: 1,
+        },
+      }],
+    }))
+    await writeJson(path.join(dataDir, 'stores', 'project.json'), {
+      id: 'default',
+      metadata: {
+        name: 'Migration order',
+        version: 1,
+        updatedAt: '2026-07-21T00:00:00.000Z',
+      },
+      placements: [],
+      assignments: [],
+      connections: [],
+      compatibilityPolicy: { disabledHosts: [], ignoredWarningIds: [] },
+    })
+
+    const options = {
+      appVersion: '0.1.36',
+      dataDir,
+      legacyProjectPath: path.join(dataDir, 'homelab-inventory-project.json'),
+      saveDebounceMs: 1,
+      seedEmptyData: false,
+      seedDir: path.join(dataDir, 'missing-seed'),
+    }
+    const failedStore = createStore(options)
+    await failedStore.ensureStores()
+    await failedStore.openStores()
+    failedStore.databases.inventory.write = async () => {
+      await new Promise((resolve) => setTimeout(resolve, 10))
+      throw new Error('Simulated inventory migration write failure')
+    }
+
+    await expect(failedStore.runMigrations()).rejects.toThrow(
+      'Simulated inventory migration write failure',
+    )
+    expect(JSON.parse(await fs.readFile(path.join(dataDir, 'meta.json'), 'utf8')).schemaVersion).toBe(10)
+
+    const retriedStore = createStore(options)
+    await retriedStore.ensureStores()
+    await retriedStore.openStores()
+    const completedWrites = []
+    for (const [storeName, database] of Object.entries(retriedStore.databases)) {
+      const write = database.write.bind(database)
+      database.write = async () => {
+        await write()
+        completedWrites.push(storeName)
+      }
+    }
+
+    await retriedStore.runMigrations()
+
+    expect(completedWrites.at(-1)).toBe('meta')
+    expect(completedWrites.slice(0, -1).sort()).toEqual([
+      'agentStatus',
+      'agents',
+      'inventory',
+      'project',
+    ])
+    expect(JSON.parse(await fs.readFile(path.join(dataDir, 'meta.json'), 'utf8')).schemaVersion).toBe(11)
+    expect(retriedStore.databases.inventory.data.upsSystems[0].ports).toHaveLength(2)
   })
 
   it('leaves schema 9 stores unchanged on repeated startup', async () => {
@@ -456,7 +631,7 @@ describe('HomelabInventoryStore', () => {
     await secondStore.init()
     await secondStore.flush()
 
-    expect(secondStore.databases.meta.data.schemaVersion).toBe(9)
+    expect(secondStore.databases.meta.data.schemaVersion).toBe(11)
     expect(secondStore.databases.inventory.data.networkCards).toEqual([
       expect.objectContaining({ id: 2, name: 'Ethernet' }),
     ])
@@ -482,18 +657,18 @@ describe('HomelabInventoryStore', () => {
     await store.init()
     await store.flush()
 
-    expect(store.databases.meta.data.schemaVersion).toBe(9)
+    expect(store.databases.meta.data.schemaVersion).toBe(11)
     expect(store.getProject().compatibilityPolicy).toEqual({
-      disabledHostIds: [],
+      disabledHosts: [],
       ignoredWarningIds: [],
     })
     expect(store.databases.project.data.compatibilityPolicy).toEqual({
-      disabledHostIds: [],
+      disabledHosts: [],
       ignoredWarningIds: [],
     })
     const backupEntries = await fs.readdir(path.join(dataDir, 'backups'), { withFileTypes: true })
     expect(backupEntries.some(
-      (entry) => entry.isDirectory() && entry.name.endsWith('-schema-7-to-9'),
+      (entry) => entry.isDirectory() && entry.name.endsWith('-schema-7-to-11'),
     )).toBe(true)
   })
 
@@ -521,7 +696,7 @@ describe('HomelabInventoryStore', () => {
     await store.flush()
 
     expect(saved.compatibilityPolicy).toEqual({
-      disabledHostIds: ['server:1'],
+      disabledHosts: [{ hostType: 'server', hostId: 1 }],
       ignoredWarningIds: ['compatibility:["server:1"]'],
     })
     expect(JSON.parse(
@@ -552,7 +727,7 @@ describe('HomelabInventoryStore', () => {
     await store.flush()
 
     expect(store.getProject().compatibilityPolicy).toEqual({
-      disabledHostIds: ['server:1'],
+      disabledHosts: [{ hostType: 'server', hostId: 1 }],
       ignoredWarningIds: ['warning:no-longer-open'],
     })
     expect(store.databases.project.data.compatibilityPolicy).toEqual(
@@ -587,7 +762,7 @@ describe('HomelabInventoryStore', () => {
     const deleted = store.deleteInventoryItems([{ type: 'server', id: 1 }])
 
     expect(deleted.compatibilityPolicy).toEqual({
-      disabledHostIds: [],
+      disabledHosts: [],
       ignoredWarningIds: ['compatibility:["server:1"]'],
     })
     expect(store.databases.project.data.compatibilityPolicy).toEqual(deleted.compatibilityPolicy)
@@ -786,7 +961,7 @@ describe('HomelabInventoryStore', () => {
     expect(compatible).toMatchObject({
       status: 'compatible',
       findings: [],
-      allocation: { resourceType: 'storage', groupId: 'mini-m2', positions: [0] },
+      allocation: { resourceType: 'storage', groupId: 1, positions: [0] },
     })
     expect(incompatible).toMatchObject({ status: 'incompatible' })
     expect(incompatible.findings).toEqual(expect.arrayContaining([
@@ -800,7 +975,7 @@ describe('HomelabInventoryStore', () => {
     expect(unknown.allocation).toBeUndefined()
     expect(negotiated).toMatchObject({
       status: 'compatible',
-      allocation: { resourceType: 'expansion', groupId: 'pcie-slot', positions: [0] },
+      allocation: { resourceType: 'expansion', groupId: 1, positions: [0] },
     })
     expect(negotiated.findings).toEqual(expect.arrayContaining([
       expect.objectContaining({ code: 'expansion.pcie-generation.negotiated', severity: 'warning' }),
@@ -939,7 +1114,7 @@ describe('HomelabInventoryStore', () => {
       placements: [],
       assignments: [],
       connections: [{
-        id: 'legacy-uplink',
+        id: 1,
         from: { itemId: 'switch-a', portId: 1 },
         to: { itemId: 'switch-b', portId: 1 },
         type: 'other',
@@ -979,7 +1154,7 @@ describe('HomelabInventoryStore', () => {
       },
       negotiatedSpeedMbps: 10000,
     })
-    expect(store.databases.meta.data.schemaVersion).toBe(9)
+    expect(store.databases.meta.data.schemaVersion).toBe(11)
   })
 
   it('flushes project updates to split stores', async () => {
@@ -1575,20 +1750,29 @@ describe('HomelabInventoryStore', () => {
     await store.init()
     await store.flush()
 
-    expect(store.databases.meta.data.schemaVersion).toBe(9)
+    expect(store.databases.meta.data.schemaVersion).toBe(11)
     expect(store.getProject().assignments).toEqual([
       expect.objectContaining({
         id: 1,
-        allocation: { resourceType: 'storage', groupId: 'm2-1', positions: [0] },
+        allocation: { resourceType: 'storage', groupId: 1, positions: [0] },
       }),
       expect.not.objectContaining({ allocation: expect.anything() }),
     ])
-    expect(store.databases.inventory.data).toEqual(schema9Inventory(beforeInventory))
+    const expectedInventory = schema9Inventory(beforeInventory)
+    expectedInventory.servers[0].compatibility.host.storageSlots[0] = {
+      id: 1,
+      key: 'm2-1',
+      label: 'M.2 slots',
+      count: 1,
+      interfaces: ['NVMe'],
+      formFactors: ['2280'],
+    }
+    expect(store.databases.inventory.data).toEqual(expectedInventory)
     expect(store.databases.project.data.placements).toEqual(beforeProject.placements)
     expect(store.databases.project.data.connections).toEqual(beforeProject.connections)
     const backupEntries = await fs.readdir(path.join(dataDir, 'backups'), { withFileTypes: true })
     expect(backupEntries.some(
-      (entry) => entry.isDirectory() && entry.name.endsWith('-schema-6-to-9'),
+      (entry) => entry.isDirectory() && entry.name.endsWith('-schema-6-to-11'),
     )).toBe(true)
   })
 
@@ -1626,7 +1810,7 @@ describe('HomelabInventoryStore', () => {
     const dataDir = await makeTempDir()
     await writeCompatibilityStores(dataDir, {
       compatibilityPolicy: {
-        disabledHostIds: ['server:1'],
+        disabledHosts: [{ hostType: 'server', hostId: 1 }],
         ignoredWarningIds: [],
       },
     })
@@ -1651,7 +1835,7 @@ describe('HomelabInventoryStore', () => {
     expect(store.setProject(disabled).assignments).toHaveLength(1)
 
     const enabled = store.getProject()
-    enabled.compatibilityPolicy.disabledHostIds = []
+    enabled.compatibilityPolicy.disabledHosts = []
     const reenabled = store.setProject(enabled)
     expect(reenabled.assignments).toHaveLength(1)
 
@@ -1673,7 +1857,7 @@ describe('HomelabInventoryStore', () => {
     const dataDir = await makeTempDir()
     await writeCompatibilityStores(dataDir, {
       compatibilityPolicy: {
-        disabledHostIds: ['server:1'],
+        disabledHosts: [{ hostType: 'server', hostId: 1 }],
         ignoredWarningIds: [],
       },
     })
@@ -1705,7 +1889,7 @@ describe('HomelabInventoryStore', () => {
     expect(store.setProject(first).assignments).toEqual([
       expect.objectContaining({
         itemId: 'storage:2',
-        allocation: { resourceType: 'storage', groupId: 'm2-1', positions: [0] },
+        allocation: { resourceType: 'storage', groupId: 1, positions: [0] },
       }),
     ])
 
@@ -1737,7 +1921,7 @@ describe('HomelabInventoryStore', () => {
     const dataDir = await makeTempDir()
     await writeCompatibilityStores(dataDir, {
       compatibilityPolicy: {
-        disabledHostIds: ['server:1'],
+        disabledHosts: [{ hostType: 'server', hostId: 1 }],
         ignoredWarningIds: [],
       },
     })
@@ -1769,7 +1953,7 @@ describe('HomelabInventoryStore', () => {
     expect(store.setProject(first).assignments).toEqual([
       expect.objectContaining({
         itemId: 'storage:3',
-        allocation: { resourceType: 'storage', groupId: 'm2-1', positions: [0] },
+        allocation: { resourceType: 'storage', groupId: 1, positions: [0] },
       }),
     ])
 
@@ -1815,7 +1999,7 @@ describe('HomelabInventoryStore', () => {
     const submitted = store.getProject()
     submitted.assignments = [
       { id: 1, serverId: 'server:1', itemId: 'storage:1', type: 'storage' },
-      { id: '1', serverId: 'server:1', itemId: 'storage:2', type: 'storage' },
+      { id: 1, serverId: 'server:1', itemId: 'storage:2', type: 'storage' },
     ]
 
     expect(() => store.setProject(submitted)).toThrow(
@@ -1842,7 +2026,7 @@ describe('HomelabInventoryStore', () => {
       Object.entries(store.databases).map(([name, database]) => [name, database.data]),
     ))
     const submitted = store.getProject()
-    submitted.connections.push({ ...structuredClone(submitted.connections[0]), id: '1' })
+    submitted.connections.push({ ...structuredClone(submitted.connections[0]), id: 1 })
 
     expect(() => store.setProject(submitted)).toThrow(
       'Project connections[1].id duplicates canonical id 1 from Project connections[0].id.',
@@ -1887,14 +2071,14 @@ describe('HomelabInventoryStore', () => {
         serverId: 'server:1',
         itemId: 'storage:1',
         type: 'storage',
-        allocation: { resourceType: 'storage', groupId: 'm2-1', positions: [0] },
+        allocation: { resourceType: 'storage', groupId: 1, positions: [0] },
       },
       {
         id: 2,
         serverId: 'server:1',
         itemId: 'storage:2',
         type: 'storage',
-        allocation: { resourceType: 'storage', groupId: 'm2-1', positions: [0] },
+        allocation: { resourceType: 'storage', groupId: 1, positions: [0] },
       },
     ]
 
@@ -2073,7 +2257,7 @@ describe('HomelabInventoryStore', () => {
     expect(beforeRestart).toEqual([
       expect.objectContaining({
         id: 1,
-        allocation: { resourceType: 'storage', groupId: 'm2-1', positions: [0] },
+        allocation: { resourceType: 'storage', groupId: 1, positions: [0] },
       }),
     ])
     expect(restarted.getProject().assignments).toEqual(beforeRestart)
@@ -2160,11 +2344,11 @@ describe('HomelabInventoryStore', () => {
 
     await store.init()
 
-    expect(store.databases.meta.data.schemaVersion).toBe(9)
+    expect(store.databases.meta.data.schemaVersion).toBe(11)
     expect(store.databases.inventory.data).toEqual(schema9Inventory(inventory))
     const backupEntries = await fs.readdir(path.join(dataDir, 'backups'), { withFileTypes: true })
     expect(backupEntries.some(
-      (entry) => entry.isDirectory() && entry.name.endsWith('-schema-5-to-9'),
+      (entry) => entry.isDirectory() && entry.name.endsWith('-schema-5-to-11'),
     )).toBe(true)
   })
 
@@ -2230,7 +2414,7 @@ describe('HomelabInventoryStore', () => {
 
     await store.init()
 
-    expect(store.databases.meta.data.schemaVersion).toBe(9)
+    expect(store.databases.meta.data.schemaVersion).toBe(11)
     expect(store.getProject().items['switch:1'].ports.map((port) => port.speed)).toEqual([
       '1G',
       '1G',
@@ -2280,7 +2464,7 @@ describe('HomelabInventoryStore', () => {
 
     const backupEntries = await fs.readdir(path.join(dataDir, 'backups'), { withFileTypes: true })
     const migrationBackup = backupEntries.find(
-      (entry) => entry.isDirectory() && entry.name.endsWith('-schema-4-to-9'),
+      (entry) => entry.isDirectory() && entry.name.endsWith('-schema-4-to-11'),
     )
 
     expect(migrationBackup).toBeDefined()

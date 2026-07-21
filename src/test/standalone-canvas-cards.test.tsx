@@ -1,6 +1,8 @@
 import { fireEvent, render, screen } from '@testing-library/react'
 import type { NodeProps } from '@xyflow/react'
 import { describe, expect, it, vi } from 'vitest'
+import { getEndpointHandleId } from '@/lib/cable-routing'
+import { buildCanvasProjectIndex } from '@/lib/canvas-project-index'
 import { MonitorNode, type MonitorFlowNode } from '@/components/monitor-card'
 import {
   PowerStripNode,
@@ -9,7 +11,8 @@ import {
   type PowerStripFlowNode,
 } from '@/components/power-strip-card'
 import { UpsNode, upsOutletGroups, type UpsFlowNode } from '@/components/ups-card'
-import type { InventoryItem, ProjectState } from '@/types/inventory'
+import type { InventoryItem, InventoryPort, ProjectState } from '@/types/inventory'
+import { withCanonicalPowerPorts } from '../../shared/power-ports.mjs'
 
 vi.mock('@xyflow/react', () => ({
   Handle: ({ id, type }: { id: string; type: string }) => (
@@ -47,9 +50,15 @@ function projectWith(item: InventoryItem): ProjectState {
   }
 }
 
+function canonicalPowerPortsFor(item: InventoryItem): InventoryPort[] {
+  return withCanonicalPowerPorts(item).ports ?? []
+}
+
 function data(project: ProjectState, itemId: string) {
   return {
     project,
+    canvasIndex: buildCanvasProjectIndex(project),
+    requiredHandleIds: new Set<string>(),
     itemId,
     selectedItemId: null,
     focusedItemIds: [],
@@ -85,9 +94,9 @@ describe('standalone canvas cards', () => {
       name: 'Studio Display',
       specs: { sizeInches: 27, resolution: '3840x2160', refreshRateHz: 60 },
       ports: [
-        { id: 1, kind: 'server-port', type: 'displayport', slotNumber: 1 },
-        { id: 2, kind: 'server-port', type: 'hdmi', slotNumber: 2 },
-        { id: 3, kind: 'server-port', type: 'barrel', slotNumber: 1 },
+        ...canonicalPowerPortsFor({ id: 1, type: 'monitor', name: 'Studio Display' }),
+        { id: 2, kind: 'server-port', type: 'displayport', slotNumber: 1 },
+        { id: 3, kind: 'server-port', type: 'hdmi', slotNumber: 2 },
       ],
     }
     const currentProject = projectWith(monitor)
@@ -102,13 +111,13 @@ describe('standalone canvas cards', () => {
   })
 
   it('creates individually numbered UPS outlet chips and separates battery from surge outlets', () => {
-    const ups: InventoryItem = {
+    const ups = withCanonicalPowerPorts({
       id: 1,
       key: 'ups:1',
       type: 'ups',
       name: 'Rack UPS',
       specs: { capacityVa: 1500, batteryBackupOutlets: 3, surgeProtectedOutlets: 2, outlets: 5 },
-    }
+    } satisfies InventoryItem)
 
     const groups = upsOutletGroups(ups)
     expect(groups[0].ports.map((view) => view.port.slotNumber)).toEqual([1, 2, 3])
@@ -122,38 +131,221 @@ describe('standalone canvas cards', () => {
     expect(screen.getAllByTestId('standalone-port-chip')).toHaveLength(5)
   })
 
+  it('renders a vertical UPS with swapped group columns and unchanged endpoint IDs', () => {
+    const ups = withCanonicalPowerPorts({
+      id: 1,
+      key: 'ups:1',
+      type: 'ups',
+      name: 'Vertical UPS',
+      properties: {
+        canvasOrientation: 'vertical',
+        upsOutletGroupOrder: 'surge-battery',
+      },
+      specs: { outlets: 3, batteryBackupOutlets: 2, surgeProtectedOutlets: 1 },
+    } satisfies InventoryItem)
+    const currentProject = projectWith(ups)
+    const nodeData = data(currentProject, ups.key!)
+    const endpoint = { itemId: 'ups:1', portId: 1 }
+    nodeData.requiredHandleIds = new Set([
+      getEndpointHandleId('source', 'bottom', endpoint),
+    ])
+
+    render(<UpsNode {...upsProps(nodeData)} />)
+
+    const card = screen.getByTestId('standalone-equipment-card')
+    const groups = screen.getAllByTestId('standalone-port-group')
+    expect(card).toHaveAttribute('data-orientation', 'vertical')
+    expect(card).toHaveStyle({ width: '248px' })
+    expect(groups.map((group) => group.dataset.portGroup)).toEqual(['surge', 'battery'])
+    expect(groups.every((group) => group.dataset.portLayout === 'vertical')).toBe(true)
+    groups.forEach((group) => {
+      const label = group.querySelector('[data-port-group-label]')
+      expect(label).toHaveClass('h-5', 'overflow-hidden', 'leading-[10px]')
+      expect(label).toHaveAttribute('title', label?.textContent)
+    })
+    expect(document.querySelector('[data-port-id="1"]')).toBeInTheDocument()
+    expect(screen.getAllByTestId(/handle-/)).toHaveLength(1)
+  })
+
+  it('preserves selective UPS endpoint handles when only orientation changes', () => {
+    const baseUps: InventoryItem = withCanonicalPowerPorts({
+      id: 1,
+      key: 'ups:1',
+      type: 'ups',
+      name: 'Orientation UPS',
+      specs: { outlets: 3, batteryBackupOutlets: 2, surgeProtectedOutlets: 1 },
+    } satisfies InventoryItem)
+    const endpoint = { itemId: baseUps.key!, portId: 2 }
+    const requiredHandleId = getEndpointHandleId('source', 'top', endpoint)
+
+    const horizontalData = data(projectWith(baseUps), baseUps.key!)
+    horizontalData.requiredHandleIds = new Set([requiredHandleId])
+    const horizontalRender = render(<UpsNode {...upsProps(horizontalData)} />)
+    const horizontalHandleTestIds = screen.getAllByTestId(/handle-/).map(
+      (handle) => handle.dataset.testid,
+    )
+
+    expect(horizontalHandleTestIds).toEqual([`handle-${requiredHandleId}`])
+    horizontalRender.unmount()
+
+    const verticalUps: InventoryItem = {
+      ...baseUps,
+      properties: {
+        ...baseUps.properties,
+        canvasOrientation: 'vertical',
+      },
+    }
+    const verticalData = data(projectWith(verticalUps), verticalUps.key!)
+    verticalData.requiredHandleIds = new Set([requiredHandleId])
+    render(<UpsNode {...upsProps(verticalData)} />)
+    const verticalHandleTestIds = screen.getAllByTestId(/handle-/).map(
+      (handle) => handle.dataset.testid,
+    )
+
+    expect(verticalHandleTestIds).toEqual(horizontalHandleTestIds)
+    expect(verticalHandleTestIds).toHaveLength(1)
+  })
+
+  it('keeps missing orientation horizontal and preserves UPS default group order', () => {
+    const ups = withCanonicalPowerPorts({
+      id: 1,
+      key: 'ups:1',
+      type: 'ups',
+      name: 'Default UPS',
+      specs: { outlets: 2, batteryBackupOutlets: 1, surgeProtectedOutlets: 1 },
+    } satisfies InventoryItem)
+
+    render(<UpsNode {...upsProps(data(projectWith(ups), ups.key!))} />)
+
+    const card = screen.getByTestId('standalone-equipment-card')
+    expect(card).toHaveAttribute('data-orientation', 'horizontal')
+    expect(card).toHaveStyle({ width: '420px' })
+    expect(screen.getAllByTestId('standalone-port-group').map(
+      (group) => group.dataset.portGroup,
+    )).toEqual(['battery', 'surge'])
+  })
+
   it('uses explicit UPS port labels to classify imported outlets', () => {
+    const canonicalPorts = canonicalPowerPortsFor({
+      id: 1,
+      type: 'ups',
+      name: 'Imported UPS',
+      specs: { outlets: 2, batteryBackupOutlets: 1, surgeProtectedOutlets: 1 },
+    })
     const ups: InventoryItem = {
       id: 1,
       type: 'ups',
       name: 'Imported UPS',
-      ports: [
-        { id: 'a', kind: 'server-port', type: 'barrel', slotNumber: 1, label: 'Surge only' },
-        { id: 'b', kind: 'server-port', type: 'barrel', slotNumber: 2, notes: 'Battery backup bank' },
-      ],
+      ports: canonicalPorts.map((port) => port.key === 'battery-outlet-1'
+        ? { ...port, notes: 'Battery backup bank' }
+        : { ...port, label: 'Surge only' }),
     }
 
     const groups = upsOutletGroups(ups)
-    expect(groups[0].ports[0].port.id).toBe('b')
-    expect(groups[1].ports[0].port.id).toBe('a')
+    expect(groups[0].ports[0].port.id).toBe(1)
+    expect(groups[1].ports[0].port.id).toBe(2)
   })
 
   it('renders one AC input chip and one numbered chip per power-strip outlet', () => {
-    const strip: InventoryItem = {
+    const strip = withCanonicalPowerPorts({
       id: 1,
       key: 'powerStrip:1',
       type: 'powerStrip',
       name: 'Smart Strip',
       specs: { outlets: 6, surgeProtected: true, surgeProtectedOutlets: 6 },
-    }
+    } satisfies InventoryItem)
 
     expect(powerStripOutletViews(strip).map((view) => view.port.slotNumber)).toEqual([1, 2, 3, 4, 5, 6])
-    expect(powerStripInputView(strip).endpoint).toEqual({ itemId: 'powerStrip:1', portId: 'ac-input' })
+    expect(powerStripInputView(strip).endpoint).toEqual({ itemId: 'powerStrip:1', portId: 1 })
 
     const currentProject = projectWith(strip)
     render(<PowerStripNode {...powerStripProps(data(currentProject, strip.key!))} />)
     expect(screen.getAllByTestId('standalone-port-chip')).toHaveLength(7)
-    expect(document.querySelector('[data-port-group="input"]')).toHaveTextContent('AC IN')
+    const headerPort = document.querySelector('[data-header-port="true"]')
+    expect(headerPort).toBeInTheDocument()
+    expect(headerPort).toHaveTextContent('AC IN')
+    expect(headerPort).toHaveTextContent('00')
+    expect(headerPort?.querySelector('[data-port-id="1"]')).toBeInTheDocument()
+    expect(document.querySelector('[data-port-group="input"]')).not.toBeInTheDocument()
+    expect(document.querySelector('[data-port-group="outlets"]')).toHaveTextContent('01')
+    expect(document.querySelector('[data-port-group="outlets"]')).toHaveTextContent('06')
+  })
+
+  it('renders a vertical power strip with a one-line summary and its AC input in the header', () => {
+    const strip = withCanonicalPowerPorts({
+      id: 1,
+      key: 'powerStrip:1',
+      type: 'powerStrip',
+      name: 'Vertical Strip',
+      properties: { canvasOrientation: 'vertical' },
+      specs: {
+        outlets: 3,
+        surgeProtected: true,
+        voltage: '120V household service with a deliberately long summary',
+      },
+    } satisfies InventoryItem)
+
+    render(<PowerStripNode {...powerStripProps(data(projectWith(strip), strip.key!))} />)
+
+    const card = screen.getByTestId('standalone-equipment-card')
+    expect(card).toHaveAttribute('data-orientation', 'vertical')
+    expect(card).toHaveStyle({ width: '176px' })
+    expect(document.querySelector('[data-header-port="true"]')).toHaveTextContent('AC IN')
+    expect(document.querySelector('[data-port-group="outlets"]')).toHaveAttribute(
+      'data-port-layout',
+      'vertical',
+    )
+    expect(screen.getByTestId('standalone-equipment-summary')).toHaveClass(
+      'truncate',
+      'whitespace-nowrap',
+    )
+  })
+
+  it('keeps the header AC input interactive without selecting the power-strip card', () => {
+    const strip = withCanonicalPowerPorts({
+      id: 1,
+      key: 'powerStrip:1',
+      type: 'powerStrip',
+      name: 'Interactive Strip',
+      specs: { outlets: 1 },
+    } satisfies InventoryItem)
+    const currentProject = projectWith(strip)
+    const nodeData = data(currentProject, strip.key!)
+    const endpoint = { itemId: strip.key!, portId: 1 }
+    const firstRender = render(<PowerStripNode {...powerStripProps(nodeData)} />)
+    const headerChip = document.querySelector<HTMLElement>('[data-header-port="true"] [data-port-id="1"]')!
+
+    fireEvent.click(headerChip, { clientX: 25, clientY: 35 })
+    expect(nodeData.onEndpointClick).toHaveBeenCalledWith(endpoint, { x: 25, y: 35 })
+    expect(nodeData.onSelect).not.toHaveBeenCalled()
+
+    firstRender.unmount()
+    const selectedData = { ...nodeData, pendingEndpoint: endpoint }
+    const secondRender = render(<PowerStripNode {...powerStripProps(selectedData)} />)
+    const selectedHeaderChip = document.querySelector<HTMLElement>('[data-header-port="true"] [data-port-id="1"]')!
+
+    fireEvent.pointerDown(selectedHeaderChip, {
+      pointerId: 2,
+      pointerType: 'mouse',
+      button: 0,
+      clientX: 40,
+      clientY: 50,
+    })
+    fireEvent.pointerMove(window, { pointerId: 2, pointerType: 'mouse', clientX: 46, clientY: 50 })
+    expect(selectedData.onEndpointDragStart).toHaveBeenCalledWith(endpoint, { x: 40, y: 50 })
+    expect(selectedData.onSelect).not.toHaveBeenCalled()
+
+    secondRender.unmount()
+    const dropData = {
+      ...nodeData,
+      draggingEndpoint: { itemId: strip.key!, portId: 2 },
+    }
+    render(<PowerStripNode {...powerStripProps(dropData)} />)
+    const dropHeaderChip = document.querySelector<HTMLElement>('[data-header-port="true"] [data-port-id="1"]')!
+
+    fireEvent.pointerUp(dropHeaderChip, { pointerId: 3, pointerType: 'mouse' })
+    expect(dropData.onEndpointDrop).toHaveBeenCalledWith(endpoint)
+    expect(dropData.onSelect).not.toHaveBeenCalled()
   })
 
   it('supports card selection, node dragging, focus, and click-then-drag port callbacks', () => {
@@ -162,7 +354,10 @@ describe('standalone canvas cards', () => {
       key: 'monitor:1',
       type: 'monitor',
       name: 'Interactive Display',
-      ports: [{ id: 7, kind: 'server-port', type: 'hdmi', slotNumber: 1 }],
+      ports: [
+        ...canonicalPowerPortsFor({ id: 1, type: 'monitor', name: 'Interactive Display' }),
+        { id: 2, kind: 'server-port', type: 'hdmi', slotNumber: 1 },
+      ],
     }
     const currentProject = projectWith(monitor)
     const nodeData = data(currentProject, monitor.key!)
@@ -179,10 +374,10 @@ describe('standalone canvas cards', () => {
     expect(nodeData.onSelect).toHaveBeenCalledWith(monitor.key)
 
     firstRender.unmount()
-    const endpoint = { itemId: monitor.key!, portId: 7 }
+    const endpoint = { itemId: monitor.key!, portId: 2 }
     const selectedData = { ...nodeData, focusActive: false, pendingEndpoint: endpoint }
     render(<MonitorNode {...monitorProps(selectedData)} />)
-    const chip = screen.getAllByTestId('standalone-port-chip').find((candidate) => candidate.dataset.portId === '7')!
+    const chip = screen.getAllByTestId('standalone-port-chip').find((candidate) => candidate.dataset.portId === '2')!
 
     fireEvent.pointerDown(chip, { pointerId: 2, pointerType: 'mouse', button: 0, clientX: 40, clientY: 50 })
     fireEvent.pointerMove(window, { pointerId: 2, pointerType: 'mouse', clientX: 46, clientY: 50 })
@@ -190,60 +385,60 @@ describe('standalone canvas cards', () => {
   })
 
   it('selects an open port before permitting its drag contract', () => {
-    const strip: InventoryItem = {
+    const strip = withCanonicalPowerPorts({
       id: 1,
       key: 'powerStrip:1',
       type: 'powerStrip',
       name: 'Strip',
       specs: { outlets: 1 },
-    }
+    } satisfies InventoryItem)
     const currentProject = projectWith(strip)
     const nodeData = data(currentProject, strip.key!)
 
     render(<PowerStripNode {...powerStripProps(nodeData)} />)
     const chip = screen.getAllByTestId('standalone-port-chip').find(
-      (candidate) => candidate.dataset.portId === 'outlet-1',
+      (candidate) => candidate.dataset.portId === '2',
     )!
     fireEvent.click(chip, { clientX: 25, clientY: 35 })
 
     expect(nodeData.onEndpointClick).toHaveBeenCalledWith(
-      { itemId: strip.key, portId: 'outlet-1' },
+      { itemId: strip.key, portId: 2 },
       { x: 25, y: 35 },
     )
     expect(nodeData.onEndpointDragStart).not.toHaveBeenCalled()
   })
 
-  it('uses the power topology synthetic IDs for monitor inputs and outlets', () => {
-    const monitor: InventoryItem = {
+  it('uses persisted canonical numeric IDs for monitor inputs and UPS outlets', () => {
+    const monitor = withCanonicalPowerPorts({
       id: 1,
       key: 'monitor:1',
       type: 'monitor',
       name: 'Display',
-    }
+    } satisfies InventoryItem)
     const monitorProject = projectWith(monitor)
     const monitorData = data(monitorProject, monitor.key!)
     const monitorRender = render(<MonitorNode {...monitorProps(monitorData)} />)
 
     fireEvent.click(screen.getByTestId('standalone-port-chip'), { clientX: 10, clientY: 20 })
     expect(monitorData.onEndpointClick).toHaveBeenCalledWith(
-      { itemId: 'monitor:1', portId: 'ac-input' },
+      { itemId: 'monitor:1', portId: 1 },
       { x: 10, y: 20 },
     )
     monitorRender.unmount()
 
-    const ups: InventoryItem = {
+    const ups = withCanonicalPowerPorts({
       id: 1,
       key: 'ups:1',
       type: 'ups',
       name: 'UPS',
-      specs: { outlets: 1, batteryBackupOutlets: 1 },
-    }
+      specs: { outlets: 1, batteryBackupOutlets: 1, surgeProtectedOutlets: 0 },
+    } satisfies InventoryItem)
     const upsProject = projectWith(ups)
     const upsData = data(upsProject, ups.key!)
     render(<UpsNode {...upsProps(upsData)} />)
     fireEvent.click(screen.getByTestId('standalone-port-chip'), { clientX: 30, clientY: 40 })
     expect(upsData.onEndpointClick).toHaveBeenCalledWith(
-      { itemId: 'ups:1', portId: 'outlet-1' },
+      { itemId: 'ups:1', portId: 1 },
       { x: 30, y: 40 },
     )
   })

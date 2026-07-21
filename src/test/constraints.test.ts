@@ -18,47 +18,47 @@ function archived(item: InventoryItem): InventoryItem {
 }
 
 const items: InventoryItem[] = [
-  { id: 'srv', name: 'Server', type: 'server' },
-  { id: 'srv-two', name: 'Server Two', type: 'server' },
-  { id: 'nas', name: 'NAS', type: 'nas' },
-  { id: 'cpu-a', name: 'CPU A', type: 'cpu' },
-  { id: 'cpu-b', name: 'CPU B', type: 'cpu' },
-  { id: 'ram', name: 'RAM', type: 'ram' },
-  { id: 'ram-b', name: 'RAM B', type: 'ram' },
-  { id: 'storage-a', name: 'Storage A', type: 'storage' },
-  { id: 'storage-b', name: 'Storage B', type: 'storage' },
-  { id: 'gpu', name: 'GPU', type: 'gpu' },
-  { id: 'wifi', name: 'Wi-Fi', type: 'network', subtype: 'wifi' },
-  { id: 'eth', name: 'A+E 2.5GbE', type: 'network', subtype: 'ethernet' },
-  { id: 'switch', name: 'Switch', type: 'switch' },
+  { id: 1, key: 'server:1', name: 'Server', type: 'server' },
+  { id: 2, key: 'server:2', name: 'Server Two', type: 'server' },
+  { id: 1, key: 'nas:1', name: 'NAS', type: 'nas' },
+  { id: 1, key: 'cpu:1', name: 'CPU A', type: 'cpu' },
+  { id: 2, key: 'cpu:2', name: 'CPU B', type: 'cpu' },
+  { id: 1, key: 'ram:1', name: 'RAM', type: 'ram' },
+  { id: 2, key: 'ram:2', name: 'RAM B', type: 'ram' },
+  { id: 1, key: 'storage:1', name: 'Storage A', type: 'storage' },
+  { id: 2, key: 'storage:2', name: 'Storage B', type: 'storage' },
+  { id: 1, key: 'gpu:1', name: 'GPU', type: 'gpu' },
+  { id: 1, key: 'network:1', name: 'Wi-Fi', type: 'network', subtype: 'wifi' },
+  { id: 2, key: 'network:2', name: 'A+E 2.5GbE', type: 'network', subtype: 'ethernet' },
+  { id: 1, key: 'switch:1', name: 'Switch', type: 'switch' },
 ]
 
 describe('slot constraints', () => {
   it('rejects a duplicate CPU', () => {
-    const project = assignComponent(mergeInventoryWithProject(items, null), 'srv', 'cpu-a')
-    const result = validateAssignment(project, 'srv', 'cpu-b')
+    const project = assignComponent(mergeInventoryWithProject(items, null), 'server:1', 'cpu:1')
+    const result = validateAssignment(project, 'server:1', 'cpu:2')
 
     expect(result.ok).toBe(false)
     expect(result.ok ? '' : result.message).toMatch(/already has a CPU/i)
   })
 
   it('allows multiple storage items', () => {
-    const first = assignComponent(mergeInventoryWithProject(items, null), 'srv', 'storage-a')
-    const second = assignComponent(first, 'srv', 'storage-b')
+    const first = assignComponent(mergeInventoryWithProject(items, null), 'server:1', 'storage:1')
+    const second = assignComponent(first, 'server:1', 'storage:2')
 
     expect(second.assignments.filter((assignment) => assignment.type === 'storage')).toHaveLength(2)
   })
 
   it('treats Wi-Fi and A+E 2.5GbE as the same network slot', () => {
-    const project = assignComponent(mergeInventoryWithProject(items, null), 'srv', 'wifi')
-    const result = validateAssignment(project, 'srv', 'eth')
+    const project = assignComponent(mergeInventoryWithProject(items, null), 'server:1', 'network:1')
+    const result = validateAssignment(project, 'server:1', 'network:2')
 
     expect(result.ok).toBe(false)
     expect(result.ok ? '' : result.message).toMatch(/network card/i)
   })
 
   it('rejects canvas equipment as server components', () => {
-    const result = validateAssignment(mergeInventoryWithProject(items, null), 'srv', 'switch')
+    const result = validateAssignment(mergeInventoryWithProject(items, null), 'server:1', 'switch:1')
 
     expect(result.ok).toBe(false)
     expect(result.ok ? '' : result.message).toMatch(/canvas equipment/i)
@@ -66,17 +66,17 @@ describe('slot constraints', () => {
 
   it('allows CPU, RAM, storage, and one network card on a NAS', () => {
     const base = mergeInventoryWithProject(items, null)
-    const withCpu = assignComponent(base, 'nas', 'cpu-a')
-    const withRam = assignComponent(withCpu, 'nas', 'ram')
-    const withStorage = assignComponent(withRam, 'nas', 'storage-a')
-    const withNetwork = assignComponent(withStorage, 'nas', 'wifi')
+    const withCpu = assignComponent(base, 'nas:1', 'cpu:1')
+    const withRam = assignComponent(withCpu, 'nas:1', 'ram:1')
+    const withStorage = assignComponent(withRam, 'nas:1', 'storage:1')
+    const withNetwork = assignComponent(withStorage, 'nas:1', 'network:1')
 
-    expect(withNetwork.assignments.filter((assignment) => assignment.serverId === 'nas')).toHaveLength(4)
-    expect(validateAssignment(withNetwork, 'nas', 'eth').ok).toBe(false)
+    expect(withNetwork.assignments.filter((assignment) => assignment.serverId === 'nas:1')).toHaveLength(4)
+    expect(validateAssignment(withNetwork, 'nas:1', 'network:2').ok).toBe(false)
   })
 
   it('rejects GPUs on a NAS', () => {
-    const result = validateAssignment(mergeInventoryWithProject(items, null), 'nas', 'gpu')
+    const result = validateAssignment(mergeInventoryWithProject(items, null), 'nas:1', 'gpu:1')
 
     expect(result.ok).toBe(false)
     expect(result.ok ? '' : result.message).toMatch(/CPU, RAM, storage drives, and network cards/i)
@@ -85,23 +85,23 @@ describe('slot constraints', () => {
   it('rejects assigning an archived component', () => {
     const project = mergeInventoryWithProject([
       ...items,
-      archived({ id: 'cpu-archived', name: 'Archived CPU', type: 'cpu' }),
+      archived({ id: 3, key: 'cpu:3', name: 'Archived CPU', type: 'cpu' }),
     ], null)
 
-    expect(validateAssignment(project, 'srv', 'cpu-archived')).toEqual({
+    expect(validateAssignment(project, 'server:1', 'cpu:3')).toEqual({
       ok: false,
       message: 'Restore Archived CPU before assigning it.',
     })
-    expect(assignComponent(project, 'srv', 'cpu-archived')).toBe(project)
+    expect(assignComponent(project, 'server:1', 'cpu:3')).toBe(project)
   })
 
   it('rejects assigning a component to an archived host', () => {
     const project = mergeInventoryWithProject([
-      ...items.filter((item) => item.id !== 'srv'),
-      archived({ id: 'srv', name: 'Archived Server', type: 'server' }),
+      ...items.filter((item) => item.key !== 'server:1'),
+      archived({ id: 1, key: 'server:1', name: 'Archived Server', type: 'server' }),
     ], null)
 
-    expect(validateAssignment(project, 'srv', 'cpu-a')).toEqual({
+    expect(validateAssignment(project, 'server:1', 'cpu:1')).toEqual({
       ok: false,
       message: 'Restore this server or NAS before assigning components.',
     })
@@ -109,12 +109,12 @@ describe('slot constraints', () => {
 
   it('sorts assignments in server display order', () => {
     const base = mergeInventoryWithProject(items, null)
-    const project = ['wifi', 'storage-a', 'cpu-a', 'gpu', 'ram'].reduce(
-      (current, itemId) => assignComponent(current, 'srv', itemId),
+    const project = ['network:1', 'storage:1', 'cpu:1', 'gpu:1', 'ram:1'].reduce(
+      (current, itemId) => assignComponent(current, 'server:1', itemId),
       base,
     )
 
-    expect(sortAssignmentsForDisplay(project, 'srv').map((assignment) => assignment.type)).toEqual([
+    expect(sortAssignmentsForDisplay(project, 'server:1').map((assignment) => assignment.type)).toEqual([
       'cpu',
       'ram',
       'storage',
@@ -126,15 +126,15 @@ describe('slot constraints', () => {
   it('shows only required empty slots until optional components are assigned', () => {
     const emptyProject = mergeInventoryWithProject(items, null)
 
-    expect(getVisibleServerSlotTypes(emptyProject, 'srv')).toEqual(['cpu', 'ram', 'storage'])
+    expect(getVisibleServerSlotTypes(emptyProject, 'server:1')).toEqual(['cpu', 'ram', 'storage'])
 
-    const withGpu = assignComponent(emptyProject, 'srv', 'gpu')
+    const withGpu = assignComponent(emptyProject, 'server:1', 'gpu:1')
 
-    expect(getVisibleServerSlotTypes(withGpu, 'srv')).toEqual(['cpu', 'ram', 'storage', 'gpu'])
+    expect(getVisibleServerSlotTypes(withGpu, 'server:1')).toEqual(['cpu', 'ram', 'storage', 'gpu'])
 
-    const withNetwork = assignComponent(withGpu, 'srv', 'wifi')
+    const withNetwork = assignComponent(withGpu, 'server:1', 'network:1')
 
-    expect(getVisibleServerSlotTypes(withNetwork, 'srv')).toEqual([
+    expect(getVisibleServerSlotTypes(withNetwork, 'server:1')).toEqual([
       'cpu',
       'ram',
       'storage',
@@ -143,9 +143,9 @@ describe('slot constraints', () => {
     ])
 
     const gpuAssignment = withNetwork.assignments.find((assignment) => assignment.type === 'gpu')
-    const withoutGpu = removeAssignment(withNetwork, gpuAssignment?.id ?? '')
+    const withoutGpu = removeAssignment(withNetwork, gpuAssignment!.id)
 
-    expect(getVisibleServerSlotTypes(withoutGpu, 'srv')).toEqual([
+    expect(getVisibleServerSlotTypes(withoutGpu, 'server:1')).toEqual([
       'cpu',
       'ram',
       'storage',
@@ -155,10 +155,10 @@ describe('slot constraints', () => {
 
   it('swaps CPUs when moving one CPU onto another populated server', () => {
     const base = mergeInventoryWithProject(items, null)
-    const first = assignComponent(base, 'srv', 'cpu-a')
-    const populated = assignComponent(first, 'srv-two', 'cpu-b')
-    const sourceAssignment = populated.assignments.find((assignment) => assignment.itemId === 'cpu-a')
-    const result = swapAssignedComponent(populated, sourceAssignment?.id ?? '', 'srv-two')
+    const first = assignComponent(base, 'server:1', 'cpu:1')
+    const populated = assignComponent(first, 'server:2', 'cpu:2')
+    const sourceAssignment = populated.assignments.find((assignment) => assignment.itemId === 'cpu:1')
+    const result = swapAssignedComponent(populated, sourceAssignment!.id, 'server:2')
 
     expect(result.ok).toBe(true)
 
@@ -170,13 +170,13 @@ describe('slot constraints', () => {
       expect.arrayContaining([
         expect.objectContaining({
           id: sourceAssignment?.id,
-          serverId: 'srv-two',
-          itemId: 'cpu-a',
+          serverId: 'server:2',
+          itemId: 'cpu:1',
           type: 'cpu',
         }),
         expect.objectContaining({
-          serverId: 'srv',
-          itemId: 'cpu-b',
+          serverId: 'server:1',
+          itemId: 'cpu:2',
           type: 'cpu',
         }),
       ]),
@@ -185,10 +185,10 @@ describe('slot constraints', () => {
 
   it('swaps RAM when moving one RAM module onto another populated server', () => {
     const base = mergeInventoryWithProject(items, null)
-    const first = assignComponent(base, 'srv', 'ram')
-    const populated = assignComponent(first, 'srv-two', 'ram-b')
-    const sourceAssignment = populated.assignments.find((assignment) => assignment.itemId === 'ram')
-    const result = swapAssignedComponent(populated, sourceAssignment?.id ?? '', 'srv-two')
+    const first = assignComponent(base, 'server:1', 'ram:1')
+    const populated = assignComponent(first, 'server:2', 'ram:2')
+    const sourceAssignment = populated.assignments.find((assignment) => assignment.itemId === 'ram:1')
+    const result = swapAssignedComponent(populated, sourceAssignment!.id, 'server:2')
 
     expect(result.ok).toBe(true)
 
@@ -200,13 +200,13 @@ describe('slot constraints', () => {
       expect.arrayContaining([
         expect.objectContaining({
           id: sourceAssignment?.id,
-          serverId: 'srv-two',
-          itemId: 'ram',
+          serverId: 'server:2',
+          itemId: 'ram:1',
           type: 'ram',
         }),
         expect.objectContaining({
-          serverId: 'srv',
-          itemId: 'ram-b',
+          serverId: 'server:1',
+          itemId: 'ram:2',
           type: 'ram',
         }),
       ]),
@@ -215,29 +215,29 @@ describe('slot constraints', () => {
 
   it('rejects moving an archived component or swapping with an archived target component', () => {
     const base = mergeInventoryWithProject(items, null)
-    const first = assignComponent(base, 'srv', 'cpu-a')
-    const populated = assignComponent(first, 'srv-two', 'cpu-b')
-    const sourceAssignment = populated.assignments.find((assignment) => assignment.itemId === 'cpu-a')
+    const first = assignComponent(base, 'server:1', 'cpu:1')
+    const populated = assignComponent(first, 'server:2', 'cpu:2')
+    const sourceAssignment = populated.assignments.find((assignment) => assignment.itemId === 'cpu:1')
     const archivedSource: typeof populated = {
       ...populated,
       items: {
         ...populated.items,
-        'cpu-a': archived(populated.items['cpu-a']),
+        'cpu:1': archived(populated.items['cpu:1']),
       },
     }
     const archivedTarget: typeof populated = {
       ...populated,
       items: {
         ...populated.items,
-        'cpu-b': archived(populated.items['cpu-b']),
+        'cpu:2': archived(populated.items['cpu:2']),
       },
     }
 
-    expect(swapAssignedComponent(archivedSource, sourceAssignment?.id ?? '', 'srv-two')).toEqual({
+    expect(swapAssignedComponent(archivedSource, sourceAssignment!.id, 'server:2')).toEqual({
       ok: false,
       message: 'Restore archived components and hosts before moving or swapping them.',
     })
-    expect(swapAssignedComponent(archivedTarget, sourceAssignment?.id ?? '', 'srv-two')).toEqual({
+    expect(swapAssignedComponent(archivedTarget, sourceAssignment!.id, 'server:2')).toEqual({
       ok: false,
       message: 'Restore archived components before moving or swapping them.',
     })

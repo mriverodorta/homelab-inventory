@@ -108,18 +108,7 @@ function portHasUserMetadata(port: InventoryPort): boolean {
 }
 
 function createPortId(ports: InventoryPort[]): InventoryPort['id'] {
-  if (ports.every((port) => typeof port.id === 'number')) {
-    return ports.reduce((highest, port) => Math.max(highest, Number(port.id)), 0) + 1
-  }
-
-  const usedIds = new Set(ports.map((port) => String(port.id)))
-  let nextId = 1
-
-  while (usedIds.has(`switch-port-${nextId}`)) {
-    nextId += 1
-  }
-
-  return `switch-port-${nextId}`
+  return ports.reduce((highest, port) => Math.max(highest, port.id), 0) + 1
 }
 
 function flattenAndRenumber(groups: SwitchPortGroup[]): InventoryPort[] {

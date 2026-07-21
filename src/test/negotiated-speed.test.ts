@@ -18,13 +18,70 @@ import type {
 
 const CREATED_AT = '2026-07-10T00:00:00.000Z'
 
+const ITEM_REFS: Record<string, { id: number; key: string }> = {
+  server: { id: 1, key: 'server:1' },
+  switch: { id: 1, key: 'switch:1' },
+  'valid-switch': { id: 2, key: 'switch:2' },
+  'switch-a': { id: 1, key: 'switch:1' },
+  'switch-b': { id: 2, key: 'switch:2' },
+  nas: { id: 1, key: 'nas:1' },
+  patch: { id: 1, key: 'patchPanel:1' },
+  'patch-a': { id: 1, key: 'patchPanel:1' },
+  'patch-b': { id: 2, key: 'patchPanel:2' },
+  nic: { id: 1, key: 'network:1' },
+}
+
+const PORT_IDS: Record<string, number> = {
+  rj45: 1,
+  sfp: 2,
+  'sfp-plus': 3,
+  valid: 4,
+  display: 5,
+  'server-port': 1,
+  'switch-port': 1,
+  'switch-a-port': 1,
+  'switch-b-port': 1,
+  'patch-port': 1,
+  'patch-a-port': 1,
+  'patch-b-port': 1,
+  'nic-port': 1,
+  'nas-port': 1,
+  network: 1,
+  dp: 1,
+  barrel: 2,
+}
+
+const ENDPOINT_IDS: Record<string, number> = {
+  'patch-front': 1,
+  'patch-back': 2,
+  'patch-a-front': 1,
+  'patch-a-back': 2,
+  'patch-b-front': 1,
+  'patch-b-back': 2,
+}
+
+const CONNECTION_IDS: Record<string, number> = {
+  'legacy-uplink': 1,
+  'server-patch': 2,
+  'patch-switch': 3,
+  'hosted-nic': 4,
+  'non-network-other': 5,
+  direct: 6,
+  'open-patch': 7,
+  'nas-patch': 8,
+  'implicit-sfp-plus': 9,
+  'passive-only': 10,
+  display: 11,
+  other: 12,
+}
+
 function networkPort(
   id: string,
   speed: string | undefined,
   overrides: Partial<InventoryPort> = {},
 ): InventoryPort {
   return {
-    id,
+    id: PORT_IDS[id],
     kind: 'server-port',
     type: 'rj45',
     slotNumber: 1,
@@ -38,8 +95,11 @@ function activeItem(
   type: 'server' | 'nas' | 'switch',
   speed: string,
 ): InventoryItem {
+  const ref = ITEM_REFS[id]
+
   return {
-    id,
+    id: ref.id,
+    key: ref.key,
     name: id,
     type,
     ports: [
@@ -51,16 +111,19 @@ function activeItem(
 }
 
 function patchPanel(id: string): InventoryItem {
+  const ref = ITEM_REFS[id]
+
   return {
-    id,
+    id: ref.id,
+    key: ref.key,
     name: id,
     type: 'patchPanel',
     ports: [
       networkPort(`${id}-port`, undefined, {
         kind: 'keystone',
         endpoints: [
-          { id: `${id}-front`, side: 'front' },
-          { id: `${id}-back`, side: 'back' },
+          { id: 1, side: 'front' },
+          { id: 2, side: 'back' },
         ],
       }),
     ],
@@ -74,10 +137,10 @@ function endpoint(
   hostedItemId?: string,
 ): ConnectionEndpoint {
   return {
-    itemId,
-    portId,
-    ...(endpointId ? { endpointId } : {}),
-    ...(hostedItemId ? { hostedItemId } : {}),
+    itemId: ITEM_REFS[itemId].key,
+    portId: PORT_IDS[portId],
+    ...(endpointId === undefined ? {} : { endpointId: ENDPOINT_IDS[endpointId] }),
+    ...(hostedItemId === undefined ? {} : { hostedItemId: ITEM_REFS[hostedItemId].key }),
   }
 }
 
@@ -89,7 +152,7 @@ function connection(
   negotiatedSpeedMbps?: number,
 ): InventoryConnection {
   return {
-    id,
+    id: CONNECTION_IDS[id],
     from,
     to,
     type,
@@ -110,7 +173,7 @@ function project(
       version: 1,
       updatedAt: CREATED_AT,
     },
-    items: Object.fromEntries(items.map((item) => [String(item.id), item])),
+    items: Object.fromEntries(items.map((item) => [item.key ?? `${item.type}:${item.id}`, item])),
     placements: [],
     assignments,
     connections,
@@ -150,7 +213,8 @@ describe('switch network port defaults', () => {
 describe('normalizeNetworkProject', () => {
   it('backfills missing and unsupported switch network speeds without replacing valid speeds', () => {
     const malformedSwitch: InventoryItem = {
-      id: 'switch',
+      id: 1,
+      key: 'switch:1',
       name: 'Switch',
       type: 'switch',
       notes: 'Preserve item metadata',
@@ -167,25 +231,25 @@ describe('normalizeNetworkProject', () => {
 
     const result = normalizeNetworkProject(input)
 
-    expect(result.items.switch).toMatchObject({
+    expect(result.items['switch:1']).toMatchObject({
       name: 'Switch',
       notes: 'Preserve item metadata',
     })
-    expect(result.items.switch.ports?.map((port) => port.speed)).toEqual([
+    expect(result.items['switch:1'].ports?.map((port) => port.speed)).toEqual([
       '1G',
       '1G',
       '10G',
       '5G',
       undefined,
     ])
-    expect(input.items.switch.ports?.map((port) => port.speed)).toEqual([
+    expect(input.items['switch:1'].ports?.map((port) => port.speed)).toEqual([
       undefined,
       'unsupported',
       undefined,
       '5G',
       undefined,
     ])
-    expect(result.items['valid-switch']).toBe(validSwitch)
+    expect(result.items['switch:2']).toBe(validSwitch)
   })
 
   it('repairs a direct 10G switch link and preserves all connection metadata', () => {
@@ -273,12 +337,14 @@ describe('normalizeNetworkProject', () => {
 
   it('repairs a hosted NIC connection resolved through its assignment', () => {
     const server: InventoryItem = {
-      id: 'server',
+      id: 1,
+      key: 'server:1',
       name: 'Server',
       type: 'server',
     }
     const nic: InventoryItem = {
-      id: 'nic',
+      id: 1,
+      key: 'network:1',
       name: 'Hosted NIC',
       type: 'network',
       ports: [networkPort('nic-port', '2.5G')],
@@ -296,9 +362,9 @@ describe('normalizeNetworkProject', () => {
       ],
       [
         {
-          id: 'assignment',
-          serverId: 'server',
-          itemId: 'nic',
+          id: 1,
+          serverId: 'server:1',
+          itemId: 'network:1',
           type: 'network',
           assignedAt: CREATED_AT,
         },
@@ -313,7 +379,8 @@ describe('normalizeNetworkProject', () => {
 
   it('leaves other connections unchanged when either endpoint is not a network receptacle', () => {
     const server: InventoryItem = {
-      id: 'server',
+      id: 1,
+      key: 'server:1',
       name: 'Server',
       type: 'server',
       ports: [
@@ -469,12 +536,14 @@ describe('recalculateNegotiatedSpeeds', () => {
 
   it('resolves an assigned hosted NIC port through its server endpoint', () => {
     const server: InventoryItem = {
-      id: 'server',
+      id: 1,
+      key: 'server:1',
       name: 'Server',
       type: 'server',
     }
     const nic: InventoryItem = {
-      id: 'nic',
+      id: 1,
+      key: 'network:1',
       name: 'Hosted NIC',
       type: 'network',
       ports: [networkPort('nic-port', '2.5G')],
@@ -491,9 +560,9 @@ describe('recalculateNegotiatedSpeeds', () => {
       ],
       [
         {
-          id: 'assignment',
-          serverId: 'server',
-          itemId: 'nic',
+          id: 1,
+          serverId: 'server:1',
+          itemId: 'network:1',
           type: 'network',
           assignedAt: CREATED_AT,
         },
@@ -506,7 +575,8 @@ describe('recalculateNegotiatedSpeeds', () => {
   it('treats an sfp-plus active port without an explicit speed as 10G', () => {
     const server = activeItem('server', 'server', '10G')
     const switchItem: InventoryItem = {
-      id: 'switch',
+      id: 1,
+      key: 'switch:1',
       name: 'Switch',
       type: 'switch',
       ports: [
@@ -553,7 +623,8 @@ describe('recalculateNegotiatedSpeeds', () => {
 
   it('removes stale negotiated speeds from display and other connections', () => {
     const server: InventoryItem = {
-      id: 'server',
+      id: 1,
+      key: 'server:1',
       name: 'Server',
       type: 'server',
       ports: [

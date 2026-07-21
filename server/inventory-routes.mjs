@@ -1,4 +1,5 @@
 import { InventoryLifecycleError } from './db/inventory-lifecycle.mjs'
+import { isRelationalId } from './db/relational-ids.mjs'
 
 function lifecycleErrorResponse(response, error) {
   if (!(error instanceof InventoryLifecycleError)) throw error
@@ -21,7 +22,12 @@ function runWithInventoryStore(withStore, request, response, message, handler) {
 }
 
 function itemRef(request) {
-  return { type: request.params.type, id: request.params.id }
+  const rawId = request.params.id
+  const id = typeof rawId === 'string' && /^[1-9]\d*$/.test(rawId)
+    ? Number(rawId)
+    : null
+
+  return { type: request.params.type, id: isRelationalId(id) ? id : null }
 }
 
 function batchItems(request) {
@@ -41,6 +47,12 @@ export function registerInventoryRoutes(app, { withStore }) {
   app.put('/api/inventory/items/:type/:id', (request, response) => {
     runWithInventoryStore(withStore, request, response, 'Unable to update inventory item.', async (store) => {
       response.json(store.updateInventoryItem(itemRef(request), request.body?.item ?? request.body))
+    })
+  })
+
+  app.patch('/api/inventory/items/:type/:id/properties', (request, response) => {
+    runWithInventoryStore(withStore, request, response, 'Unable to update inventory item properties.', async (store) => {
+      response.json(store.updateInventoryItemProperties(itemRef(request), request.body?.properties))
     })
   })
 

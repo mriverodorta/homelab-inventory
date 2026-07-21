@@ -33,7 +33,7 @@ function overallStatus(results: ProjectCompatibilityResult[]): CompatibilityStat
 function occupiedPositionCount(
   allocations: Array<CompatibilityAllocation | undefined>,
   resourceType: CompatibilityAllocation['resourceType'],
-  groupId?: string,
+  groupId?: number,
 ): number {
   const positions = new Set<number>()
   for (const allocation of allocations) {
@@ -49,7 +49,7 @@ function occupiedPositionCount(
 function groupedOccupiedPositionCount(
   allocations: Array<CompatibilityAllocation | undefined>,
   resourceType: 'storage' | 'expansion',
-  groups: Array<{ id: string }>,
+  groups: Array<{ id: number }>,
 ): number {
   return groups.reduce(
     (total, group) => total + occupiedPositionCount(

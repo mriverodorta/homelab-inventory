@@ -3,6 +3,7 @@ import fs from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
+import { canonicalPowerPorts } from '../shared/power-ports.mjs'
 import { HomelabInventoryStore } from './db/store.mjs'
 import { registerInventoryRoutes } from './inventory-routes.mjs'
 
@@ -85,9 +86,10 @@ describe('inventory lifecycle routes', () => {
     const { store, server, url } = await createTestContext()
     const compatibility = {
       host: {
-        storageSlots: [{ id: 'storage-custom', label: 'M.2', count: 1 }],
+        storageSlots: [{ id: 1, key: 'storage-custom', label: 'M.2', count: 1 }],
         expansionSlots: [{
-          id: 'expansion-custom',
+          id: 1,
+          key: 'expansion-custom',
           label: 'PCIe',
           count: 1,
           interfaceFamily: 'pcie',
@@ -115,9 +117,10 @@ describe('inventory lifecycle routes', () => {
       expect(duplicated.response.status).toBe(201)
       expect(duplicated.body.items['server:3'].compatibility).toEqual({
         host: {
-          storageSlots: [{ id: 'storage-1', label: 'M.2', count: 1 }],
+          storageSlots: [{ id: 1, key: 'storage-custom', label: 'M.2', count: 1 }],
           expansionSlots: [{
-            id: 'expansion-1',
+            id: 1,
+            key: 'expansion-custom',
             label: 'PCIe',
             count: 1,
             interfaceFamily: 'pcie',
@@ -142,7 +145,7 @@ describe('inventory lifecycle routes', () => {
             type: 'server',
             name: 'Node',
             compatibility: {
-              host: { storageSlots: [{ id: 'storage-1', label: 'M.2', count: 0 }] },
+              host: { storageSlots: [{ id: 1, key: 'storage-1', label: 'M.2', count: 0 }] },
             },
           },
           quantity: 1,
@@ -231,6 +234,54 @@ describe('inventory lifecycle routes', () => {
     }
   })
 
+  it('patches layout properties without changing connected power endpoints', async () => {
+    const { store, server, url } = await createTestContext()
+    const upsSpecs = { outlets: 1, batteryBackupOutlets: 1, surgeProtectedOutlets: 0 }
+    const stripSpecs = { outlets: 1, surgeProtected: true }
+    store.databases.inventory.data.upsSystems.push({
+      id: 1,
+      name: 'UPS',
+      specs: upsSpecs,
+      ports: canonicalPowerPorts({ type: 'ups', specs: upsSpecs }),
+    })
+    store.databases.inventory.data.powerStrips.push({
+      id: 1,
+      name: 'Power strip',
+      specs: stripSpecs,
+      ports: canonicalPowerPorts({ type: 'powerStrip', specs: stripSpecs }),
+    })
+    store.databases.project.data.connections.push({
+      id: 1,
+      from: { itemType: 'ups', itemId: 1, portId: 1 },
+      to: { itemType: 'powerStrip', itemId: 1, portId: 1 },
+      type: 'power',
+      createdAt: '2026-07-21T00:00:00.000Z',
+    })
+    const portsBefore = structuredClone(store.getProject().items['ups:1'].ports)
+
+    try {
+      const updated = await jsonRequest(url, '/api/inventory/items/ups/1/properties', {
+        method: 'PATCH',
+        body: JSON.stringify({
+          properties: {
+            canvasOrientation: 'vertical',
+            upsOutletGroupOrder: 'surge-battery',
+          },
+        }),
+      })
+
+      expect(updated.response.status).toBe(200)
+      expect(updated.body.items['ups:1'].properties).toEqual({
+        canvasOrientation: 'vertical',
+        upsOutletGroupOrder: 'surge-battery',
+      })
+      expect(updated.body.items['ups:1'].ports).toEqual(portsBefore)
+      expect(updated.body.connections).toEqual(store.getProject().connections)
+    } finally {
+      server.close()
+    }
+  })
+
   it('returns structured dependency reports and 409 for blocked mutations', async () => {
     const { store, server, url } = await createTestContext()
     store.createInventoryItems({ type: 'server', name: 'Server' })
@@ -253,6 +304,7 @@ describe('inventory lifecycle routes', () => {
 
   it('keeps blocked batch deletion atomic and supports archive/restore/delete routes', async () => {
     const { store, server, url } = await createTestContext()
+    store.createInventoryItems({ type: 'server', name: 'Server' })
     store.createInventoryItems({ type: 'cpu', name: 'CPU' }, 3)
     store.databases.project.data.assignments.push({
       id: 1,

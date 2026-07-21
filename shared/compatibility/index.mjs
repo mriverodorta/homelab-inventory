@@ -60,27 +60,43 @@ export function normalizeCompatibilityPolicy(policy) {
       .filter(Boolean),
   )]
 
+  const disabledHosts = []
+  for (const value of Array.isArray(policy?.disabledHosts) ? policy.disabledHosts : []) {
+    if (
+      HOST_TYPES.has(value?.hostType)
+      && Number.isSafeInteger(value?.hostId)
+      && value.hostId > 0
+      && !disabledHosts.some((entry) => entry.hostType === value.hostType && entry.hostId === value.hostId)
+    ) {
+      disabledHosts.push({ hostType: value.hostType, hostId: value.hostId })
+    }
+  }
+
   return {
-    disabledHostIds: uniqueStrings(policy?.disabledHostIds),
+    disabledHosts,
     ignoredWarningIds: uniqueStrings(policy?.ignoredWarningIds),
   }
 }
 
 export function isHostCompatibilityEnabled(project, hostId) {
-  return !normalizeCompatibilityPolicy(project?.compatibilityPolicy)
-    .disabledHostIds.includes(String(hostId))
+  const match = typeof hostId === 'string' ? hostId.match(/^([^:]+):([1-9]\d*)$/) : null
+  if (!match) return true
+  const hostType = match[1]
+  const numericHostId = Number(match[2])
+  return !normalizeCompatibilityPolicy(project?.compatibilityPolicy).disabledHosts
+    .some((entry) => entry.hostType === hostType && entry.hostId === numericHostId)
 }
 
 export function normalizeProjectCompatibilityPolicy(project) {
   const policy = normalizeCompatibilityPolicy(project?.compatibilityPolicy)
-  const disabledHostIds = policy.disabledHostIds.filter((hostId) => {
-    const item = project?.items?.[hostId]
+  const disabledHosts = policy.disabledHosts.filter(({ hostType, hostId }) => {
+    const item = project?.items?.[`${hostType}:${hostId}`]
     return isHost(item)
   })
 
   return {
     ...project,
-    compatibilityPolicy: { ...policy, disabledHostIds },
+    compatibilityPolicy: { ...policy, disabledHosts },
   }
 }
 
@@ -1089,15 +1105,21 @@ function validResourceGroups(groups) {
 
   const idCounts = new Map()
   for (const group of groups) {
-    const id = optionalString(group?.id)
-    if (id) {
+    const id = Number.isSafeInteger(group?.id) && group.id > 0 ? group.id : undefined
+    if (id !== undefined) {
       idCounts.set(id, (idCounts.get(id) ?? 0) + 1)
     }
   }
 
   return groups.filter((group) => {
-    const id = optionalString(group?.id)
-    return id && idCounts.get(id) === 1 && Number.isInteger(group.count) && group.count > 0
+    const id = Number.isSafeInteger(group?.id) && group.id > 0 ? group.id : undefined
+    return (
+      id !== undefined
+      && idCounts.get(id) === 1
+      && optionalString(group?.key)
+      && Number.isInteger(group.count)
+      && group.count > 0
+    )
   })
 }
 
@@ -1321,7 +1343,6 @@ function pcBuildResourceDefinition(component, motherboard, hostCapabilities) {
       (hostCapabilities.cpu?.sockets?.length ? 1 : undefined)
     return {
       resourceType: component.type === 'cpu' ? 'cpu' : 'cooling',
-      groupId: 'cpu',
       count,
       size: 1,
     }
@@ -1329,7 +1350,6 @@ function pcBuildResourceDefinition(component, motherboard, hostCapabilities) {
   if (component.type === 'ram') {
     return {
       resourceType: 'memory',
-      groupId: 'dimm',
       count: hostCapabilities.memory?.slots,
       size: requirements.moduleCount,
     }

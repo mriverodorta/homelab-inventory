@@ -22,7 +22,7 @@
       "assignedAt": "2026-07-19T00:00:00.000Z",
       "allocation": {
         "resourceType": "storage",
-        "groupId": "mini-m2",
+        "groupId": 1,
         "positions": [0]
       }
     },
@@ -54,7 +54,7 @@
       "assignedAt": "2026-07-19T00:00:00.000Z",
       "allocation": {
         "resourceType": "expansion",
-        "groupId": "pcie-slot",
+        "groupId": 1,
         "positions": [0]
       }
     }

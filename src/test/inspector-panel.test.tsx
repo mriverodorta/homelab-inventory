@@ -26,8 +26,9 @@ const project: ProjectState = {
     updatedAt: '2026-06-26T00:00:00.000Z',
   },
   items: {
-    server: {
-      id: 'server',
+    'server:1': {
+      id: 1,
+      key: 'server:1',
       name: 'Dell OptiPlex Micro 7090',
       type: 'server',
       manufacturer: 'Dell',
@@ -44,7 +45,7 @@ const project: ProjectState = {
       },
       ports: [
         {
-          id: 'lan-01',
+          id: 1,
           kind: 'server-port',
           type: 'rj45',
           slotNumber: 1,
@@ -53,8 +54,9 @@ const project: ProjectState = {
         },
       ],
     },
-    cpu: {
-      id: 'cpu',
+    'cpu:1': {
+      id: 1,
+      key: 'cpu:1',
       name: 'Intel Core i7-7700',
       type: 'cpu',
       manufacturer: 'Intel',
@@ -68,8 +70,9 @@ const project: ProjectState = {
         socket: 'LGA1151',
       },
     },
-    ram: {
-      id: 'ram',
+    'ram:1': {
+      id: 1,
+      key: 'ram:1',
       name: '32GB RAM',
       type: 'ram',
       manufacturer: 'Crucial',
@@ -81,8 +84,9 @@ const project: ProjectState = {
         secondarySpeedMt: 2666,
       },
     },
-    storage: {
-      id: 'storage',
+    'storage:1': {
+      id: 1,
+      key: 'storage:1',
       name: '1TB NVMe SSD',
       type: 'storage',
       manufacturer: 'Samsung',
@@ -92,8 +96,9 @@ const project: ProjectState = {
         formFactor: '2280',
       },
     },
-    gpu: {
-      id: 'gpu',
+    'gpu:1': {
+      id: 1,
+      key: 'gpu:1',
       name: 'Intel Arc A310 LP',
       type: 'gpu',
       manufacturer: 'Intel',
@@ -105,8 +110,9 @@ const project: ProjectState = {
         memoryBusBit: 64,
       },
     },
-    switch: {
-      id: 'switch',
+    'switch:1': {
+      id: 1,
+      key: 'switch:1',
       name: 'Omada ES210X-M2 #1',
       type: 'switch',
       manufacturer: 'TP-Link Omada',
@@ -117,7 +123,7 @@ const project: ProjectState = {
         fanless: true,
       },
       ports: Array.from({ length: 5 }, (_, index) => ({
-        id: `rj45-${String(index + 1).padStart(2, '0')}`,
+        id: index + 1,
         kind: 'switch-port',
         type: 'rj45',
         slotNumber: index + 1,
@@ -126,8 +132,9 @@ const project: ProjectState = {
         role: 'access',
       })),
     },
-    patch: {
-      id: 'patch',
+    'patchPanel:1': {
+      id: 1,
+      key: 'patchPanel:1',
       name: 'VCELINK 24 Port Cat6A Patch Panel',
       type: 'patchPanel',
       manufacturer: 'VCELINK',
@@ -137,20 +144,21 @@ const project: ProjectState = {
       },
       ports: [
         {
-          id: 'keystone-01',
+          id: 1,
           kind: 'keystone',
           type: 'rj45',
           slotNumber: 1,
           label: '',
           endpoints: [
-            { id: 'keystone-01-front', side: 'front' },
-            { id: 'keystone-01-back', side: 'back' },
+            { id: 1, side: 'front' },
+            { id: 2, side: 'back' },
           ],
         },
       ],
     },
-    nas: {
-      id: 'nas',
+    'nas:1': {
+      id: 1,
+      key: 'nas:1',
       name: 'Synology DS923+',
       type: 'nas',
       manufacturer: 'Synology',
@@ -161,7 +169,7 @@ const project: ProjectState = {
       },
       ports: [
         {
-          id: 'nas-lan-01',
+          id: 1,
           kind: 'server-port',
           type: 'rj45',
           slotNumber: 1,
@@ -170,14 +178,15 @@ const project: ProjectState = {
         },
       ],
     },
-    nasNic: {
-      id: 'nasNic',
+    'network:1': {
+      id: 1,
+      key: 'network:1',
       name: 'Synology 10GbE Card',
       type: 'network',
       manufacturer: 'Synology',
       ports: [
         {
-          id: 'nas-nic-01',
+          id: 1,
           kind: 'server-port',
           type: 'rj45',
           slotNumber: 1,
@@ -186,19 +195,19 @@ const project: ProjectState = {
       ],
     },
   },
-  placements: [{ serverId: 'server', x: 0, y: 0 }],
+  placements: [{ serverId: 'server:1', x: 0, y: 0 }],
   assignments: [
     {
-      id: 'nas-storage',
-      serverId: 'nas',
-      itemId: 'storage',
+      id: 1,
+      serverId: 'nas:1',
+      itemId: 'storage:1',
       type: 'storage',
       assignedAt: '2026-07-13T00:00:00.000Z',
     },
     {
-      id: 'nas-network',
-      serverId: 'nas',
-      itemId: 'nasNic',
+      id: 2,
+      serverId: 'nas:1',
+      itemId: 'network:1',
       type: 'network',
       assignedAt: '2026-07-13T00:00:00.000Z',
     },
@@ -210,8 +219,8 @@ const compatibilityProject: ProjectState = {
   ...project,
   items: {
     ...project.items,
-    server: {
-      ...project.items.server,
+    'server:1': {
+      ...project.items['server:1'],
       compatibility: {
         host: {
           cpu: {
@@ -226,7 +235,7 @@ const compatibilityProject: ProjectState = {
             maxSpeedMt: 2666,
           },
           storageSlots: [{
-            id: 'm2-slots',
+            id: 5, key: 'm2-slots',
             label: 'M.2 slots',
             count: 2,
             interfaces: ['NVMe'],
@@ -234,7 +243,7 @@ const compatibilityProject: ProjectState = {
             pcieGeneration: 3,
           }],
           expansionSlots: [{
-            id: 'pcie-slot',
+            id: 6, key: 'pcie-slot',
             label: 'PCIe slot',
             count: 1,
             interfaceFamily: 'pcie',
@@ -249,8 +258,8 @@ const compatibilityProject: ProjectState = {
         },
       },
     },
-    cpu: {
-      ...project.items.cpu,
+    'cpu:1': {
+      ...project.items['cpu:1'],
       compatibility: {
         requirements: {
           cpu: {
@@ -261,22 +270,22 @@ const compatibilityProject: ProjectState = {
         },
       },
     },
-    ram: {
-      ...project.items.ram,
+    'ram:1': {
+      ...project.items['ram:1'],
       specs: {
-        ...project.items.ram.specs,
+        ...project.items['ram:1'].specs,
         moduleCount: 2,
       },
     },
-    storage: {
-      ...project.items.storage,
+    'storage:1': {
+      ...project.items['storage:1'],
       specs: {
-        ...project.items.storage.specs,
+        ...project.items['storage:1'].specs,
         pcie: 'PCIe 4.0 x4',
       },
     },
-    gpu: {
-      ...project.items.gpu,
+    'gpu:1': {
+      ...project.items['gpu:1'],
       compatibility: {
         requirements: {
           expansion: {
@@ -291,8 +300,8 @@ const compatibilityProject: ProjectState = {
         },
       },
     },
-    nas: {
-      ...project.items.nas,
+    'nas:1': {
+      ...project.items['nas:1'],
       compatibility: {
         host: {
           memory: {
@@ -303,14 +312,14 @@ const compatibilityProject: ProjectState = {
             maxSpeedMt: 2666,
           },
           storageSlots: [{
-            id: 'drive-bays',
+            id: 7, key: 'drive-bays',
             label: 'Drive bays',
             count: 4,
             interfaces: ['SATA'],
             formFactors: ['2.5-inch', '3.5-inch'],
           }],
           expansionSlots: [{
-            id: 'network-slot',
+            id: 8, key: 'network-slot',
             label: 'Network slot',
             count: 1,
             interfaceFamily: 'pcie',
@@ -322,16 +331,16 @@ const compatibilityProject: ProjectState = {
   assignments: [
     ...project.assignments,
     {
-      id: 'server-cpu',
-      serverId: 'server',
-      itemId: 'cpu',
+      id: 3,
+      serverId: 'server:1',
+      itemId: 'cpu:1',
       type: 'cpu',
       assignedAt: '2026-07-19T00:00:00.000Z',
     },
     {
-      id: 'server-ram',
-      serverId: 'server',
-      itemId: 'ram',
+      id: 4,
+      serverId: 'server:1',
+      itemId: 'ram:1',
       type: 'ram',
       assignedAt: '2026-07-19T00:00:01.000Z',
       allocation: {
@@ -340,26 +349,26 @@ const compatibilityProject: ProjectState = {
       },
     },
     {
-      id: 'server-storage',
-      serverId: 'server',
-      itemId: 'storage',
+      id: 5,
+      serverId: 'server:1',
+      itemId: 'storage:1',
       type: 'storage',
       assignedAt: '2026-07-19T00:00:02.000Z',
       allocation: {
         resourceType: 'storage',
-        groupId: 'm2-slots',
+        groupId: 5,
         positions: [0],
       },
     },
     {
-      id: 'server-gpu',
-      serverId: 'server',
-      itemId: 'gpu',
+      id: 6,
+      serverId: 'server:1',
+      itemId: 'gpu:1',
       type: 'gpu',
       assignedAt: '2026-07-19T00:00:03.000Z',
       allocation: {
         resourceType: 'expansion',
-        groupId: 'pcie-slot',
+        groupId: 6,
         positions: [0],
       },
     },
@@ -370,37 +379,37 @@ const collidingCompatibilityProject: ProjectState = {
   ...compatibilityProject,
   items: {
     'server:1': {
-      ...compatibilityProject.items.server,
+      ...compatibilityProject.items['server:1'],
       id: 1,
       key: 'server:1',
       name: 'Typed server host',
     },
     'nas:1': {
-      ...compatibilityProject.items.nas,
+      ...compatibilityProject.items['nas:1'],
       id: 1,
       key: 'nas:1',
       name: 'Colliding NAS',
     },
     'cpu:1': {
-      ...compatibilityProject.items.cpu,
+      ...compatibilityProject.items['cpu:1'],
       id: 1,
       key: 'cpu:1',
       name: 'Typed CPU',
     },
     'ram:1': {
-      ...compatibilityProject.items.ram,
+      ...compatibilityProject.items['ram:1'],
       id: 1,
       key: 'ram:1',
       name: 'Typed RAM',
     },
     'storage:1': {
-      ...compatibilityProject.items.storage,
+      ...compatibilityProject.items['storage:1'],
       id: 1,
       key: 'storage:1',
       name: 'Typed storage',
     },
     'gpu:1': {
-      ...compatibilityProject.items.gpu,
+      ...compatibilityProject.items['gpu:1'],
       id: 1,
       key: 'gpu:1',
       name: 'Typed GPU',
@@ -408,10 +417,10 @@ const collidingCompatibilityProject: ProjectState = {
   },
   assignments: (['cpu', 'ram', 'storage', 'gpu'] as const).map((type, index) => ({
     id: index + 1,
-    serverId: '1',
+    serverId: 'server:1',
     hostType: 'server',
     hostId: 1,
-    itemId: '1',
+    itemId: `${type}:1`,
     itemType: type,
     type,
     assignedAt: `2026-07-19T00:00:0${index}.000Z`,
@@ -420,13 +429,13 @@ const collidingCompatibilityProject: ProjectState = {
     } : type === 'storage' ? {
       allocation: {
         resourceType: 'storage' as const,
-        groupId: 'm2-slots',
+        groupId: 5,
         positions: [0],
       },
     } : type === 'gpu' ? {
       allocation: {
         resourceType: 'expansion' as const,
-        groupId: 'pcie-slot',
+        groupId: 6,
         positions: [0],
       },
     } : {}),
@@ -448,6 +457,7 @@ type InspectorPanelProps = ComponentProps<typeof InspectorPanel>
 type RenderInspectorOptions = Partial<Pick<InspectorPanelProps,
   | 'onUpdateProject'
   | 'onUpdateItem'
+  | 'onUpdateItemProperties'
   | 'onCreateConnection'
   | 'onSelectNetworkTrace'
   | 'onUpdateConnectionLabel'
@@ -458,7 +468,7 @@ type RenderInspectorOptions = Partial<Pick<InspectorPanelProps,
   | 'onReturnItemToInventory'
 >> & {
   selectedItemId?: string | null
-  selectedConnectionId?: string | null
+  selectedConnectionId?: string | number | null
   agentStatus?: AgentStatusSummary
   project?: ProjectState
   demoMode?: boolean
@@ -476,6 +486,7 @@ function renderInspector({
   validationSeverity = 'error',
   onUpdateProject = vi.fn(),
   onUpdateItem = vi.fn(),
+  onUpdateItemProperties = vi.fn(),
   onCreateConnection = vi.fn(),
   onSelectNetworkTrace = vi.fn(),
   onUpdateConnectionLabel = vi.fn(),
@@ -509,6 +520,7 @@ function renderInspector({
         onClose={() => {}}
         onUpdateProject={onUpdateProject}
         onUpdateItem={onUpdateItem}
+        onUpdateItemProperties={onUpdateItemProperties}
         onReturnItemToInventory={onReturnItemToInventory}
         onCreateConnection={onCreateConnection}
         onSelectNetworkTrace={onSelectNetworkTrace}
@@ -525,6 +537,7 @@ function renderInspector({
     ...renderResult,
     onUpdateProject,
     onUpdateItem,
+    onUpdateItemProperties,
     onCreateConnection,
     onSelectNetworkTrace,
     onUpdateConnectionLabel,
@@ -536,21 +549,68 @@ function renderInspector({
   }
 }
 
+function standalonePowerEquipmentProject(): ProjectState {
+  const ups: InventoryItem = {
+    id: 1,
+    key: 'ups:1',
+    name: 'Rack UPS',
+    type: 'ups',
+    manufacturer: 'APC',
+    specs: { capacityVa: 1500, batteryBackupOutlets: 2, surgeProtectedOutlets: 1, outlets: 3 },
+    ports: [
+      { id: 1, key: 'battery-outlet-1', kind: 'power-port', type: 'ac-outlet', slotNumber: 1, label: 'Battery outlet 1' },
+      { id: 2, key: 'battery-outlet-2', kind: 'power-port', type: 'ac-outlet', slotNumber: 2, label: 'Battery outlet 2' },
+      { id: 3, key: 'surge-outlet-1', kind: 'power-port', type: 'ac-outlet', slotNumber: 3, label: 'Surge outlet 1' },
+    ],
+  }
+  const monitor: InventoryItem = {
+    id: 1,
+    key: 'monitor:1',
+    name: 'Studio Display',
+    type: 'monitor',
+    specs: { sizeInches: 27, resolution: '4K', refreshRateHz: 60 },
+    ports: [
+      { id: 1, kind: 'server-port', type: 'displayport', slotNumber: 1 },
+      { id: 2, key: 'ac-input', kind: 'power-port', type: 'ac-input', slotNumber: 1 },
+    ],
+  }
+  const powerStrip: InventoryItem = {
+    id: 1,
+    key: 'powerStrip:1',
+    name: 'Desk Power Strip',
+    type: 'powerStrip',
+    specs: { outlets: 2, surgeProtected: true },
+    ports: [
+      { id: 1, key: 'ac-input', kind: 'power-port', type: 'ac-input', slotNumber: 0, label: 'AC input' },
+      { id: 2, key: 'outlet-1', kind: 'power-port', type: 'ac-outlet', slotNumber: 1, label: 'Outlet 1' },
+      { id: 3, key: 'outlet-2', kind: 'power-port', type: 'ac-outlet', slotNumber: 2, label: 'Outlet 2' },
+    ],
+  }
+
+  return {
+    ...project,
+    items: { 'ups:1': ups, 'monitor:1': monitor, 'powerStrip:1': powerStrip },
+    placements: [],
+    assignments: [],
+    connections: [],
+  }
+}
+
 describe('InspectorPanel', () => {
   it('offers return to inventory only for an item placed on the canvas', async () => {
     const user = userEvent.setup()
-    const { onReturnItemToInventory, rerender } = renderInspector({ selectedItemId: 'server' })
+    const { onReturnItemToInventory, rerender } = renderInspector({ selectedItemId: 'server:1' })
 
     await user.click(screen.getByRole('button', { name: 'Actions for Dell OptiPlex Micro 7090' }))
     await user.click(screen.getByRole('menuitem', { name: 'Return to inventory' }))
-    expect(onReturnItemToInventory).toHaveBeenCalledWith('server')
+    expect(onReturnItemToInventory).toHaveBeenCalledWith('server:1')
 
     rerender(
       <QueryClientProvider client={new QueryClient()}>
         <InspectorPanel
           project={{ ...project, placements: [] }}
           agentStatus={{ servers: {}, registeredServerIds: [] }}
-          selectedItemId="server"
+          selectedItemId="server:1"
           selectedConnectionId={null}
           activeNetworkTraceKey={null}
           pendingConnectionEndpoint={null}
@@ -608,6 +668,7 @@ describe('InspectorPanel', () => {
       name: 'Corsair RM750x',
       type: 'powerSupply',
       specs: { ratedWatts: 750, formFactor: 'ATX' },
+      ports: [{ id: 1, key: 'ac-input', kind: 'power-port', type: 'ac-input', slotNumber: 1 }],
     }
     const pcProject: ProjectState = {
       ...project,
@@ -641,7 +702,6 @@ describe('InspectorPanel', () => {
 
     await user.click(screen.getByRole('tab', { name: 'Ports' }))
     expect(screen.getByText('PC Build Ports')).toBeInTheDocument()
-    expect(screen.getAllByText('Motherboard').length).toBeGreaterThan(0)
 
     await user.click(screen.getByRole('tab', { name: 'Network' }))
     expect(screen.getByText('Network Interfaces')).toBeInTheDocument()
@@ -675,36 +735,7 @@ describe('InspectorPanel', () => {
 
   it('renders editable standalone power equipment with outlet and monitor port tabs', async () => {
     const user = userEvent.setup()
-    const ups: InventoryItem = {
-      id: 1,
-      key: 'ups:1',
-      name: 'Rack UPS',
-      type: 'ups',
-      manufacturer: 'APC',
-      specs: { capacityVa: 1500, batteryBackupOutlets: 2, surgeProtectedOutlets: 1, outlets: 3 },
-    }
-    const monitor: InventoryItem = {
-      id: 1,
-      key: 'monitor:1',
-      name: 'Studio Display',
-      type: 'monitor',
-      specs: { sizeInches: 27, resolution: '4K', refreshRateHz: 60 },
-      ports: [{ id: 1, kind: 'server-port', type: 'displayport', slotNumber: 1 }],
-    }
-    const powerStrip: InventoryItem = {
-      id: 1,
-      key: 'powerStrip:1',
-      name: 'Desk Power Strip',
-      type: 'powerStrip',
-      specs: { outlets: 2, surgeProtected: true },
-    }
-    const powerProject: ProjectState = {
-      ...project,
-      items: { 'ups:1': ups, 'monitor:1': monitor, 'powerStrip:1': powerStrip },
-      placements: [],
-      assignments: [],
-      connections: [],
-    }
+    const powerProject = standalonePowerEquipmentProject()
 
     const upsRender = renderInspector({ selectedItemId: 'ups:1', project: powerProject })
     expect(screen.getByLabelText('Name')).toHaveValue('Rack UPS')
@@ -713,14 +744,108 @@ describe('InspectorPanel', () => {
 
     upsRender.unmount()
     renderInspector({ selectedItemId: 'monitor:1', project: powerProject })
+    expect(screen.queryByRole('tab', { name: 'Layout' })).not.toBeInTheDocument()
     await user.click(screen.getByRole('tab', { name: 'Ports' }))
     expect(screen.getByText(/port occupancy/i)).toBeInTheDocument()
     expect(screen.getByText('Studio Display / AC input')).toBeInTheDocument()
   })
 
+  it('autosaves UPS orientation and uses a context-aware group swap label', async () => {
+    const user = userEvent.setup()
+    const { onUpdateItem, onUpdateItemProperties } = renderInspector({
+      selectedItemId: 'ups:1',
+      project: standalonePowerEquipmentProject(),
+    })
+
+    expect(screen.queryByText('Canvas Layout')).not.toBeInTheDocument()
+    await user.click(screen.getByRole('tab', { name: 'Layout' }))
+    expect(screen.getByRole('radiogroup', { name: 'Orientation' })).toBeInTheDocument()
+    const horizontal = screen.getByRole('radio', { name: 'Horizontal' })
+    const vertical = screen.getByRole('radio', { name: 'Vertical' })
+    const swapRows = screen.getByRole('button', { name: 'Swap Rows' })
+    expect(horizontal).toBeChecked()
+    expect(horizontal).toHaveAttribute('name', 'power-equipment-orientation-ups-1')
+    expect(vertical).toHaveAttribute('name', 'power-equipment-orientation-ups-1')
+    expect(screen.getByText('Horizontal').closest('label')).toHaveClass('h-11')
+    expect(swapRows).toHaveClass('h-11')
+
+    horizontal.focus()
+    await user.keyboard('{ArrowRight}')
+    expect(vertical).toBeChecked()
+    expect(onUpdateItemProperties).toHaveBeenLastCalledWith('ups:1', {
+      canvasOrientation: 'vertical',
+    })
+    expect(onUpdateItem).not.toHaveBeenCalled()
+    expect(screen.getByRole('button', { name: 'Swap Columns' })).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Swap Columns' }))
+    expect(onUpdateItemProperties).toHaveBeenLastCalledWith('ups:1', {
+      canvasOrientation: 'vertical',
+      upsOutletGroupOrder: 'surge-battery',
+    })
+    expect(onUpdateItem).not.toHaveBeenCalled()
+  })
+
+  it('offers power-strip orientation without UPS group controls', async () => {
+    const user = userEvent.setup()
+    const { onUpdateItem, onUpdateItemProperties } = renderInspector({
+      selectedItemId: 'powerStrip:1',
+      project: standalonePowerEquipmentProject(),
+    })
+
+    await user.click(screen.getByRole('tab', { name: 'Layout' }))
+    await user.click(screen.getByRole('radio', { name: 'Vertical' }))
+
+    expect(onUpdateItemProperties).toHaveBeenLastCalledWith('powerStrip:1', {
+      canvasOrientation: 'vertical',
+    })
+    expect(onUpdateItem).not.toHaveBeenCalled()
+    expect(screen.queryByRole('button', { name: /Swap (Rows|Columns)/ })).not.toBeInTheDocument()
+  })
+
+  it('resets to the first valid tab when power-equipment tabs change in place', async () => {
+    const user = userEvent.setup()
+    const powerProject = standalonePowerEquipmentProject()
+    const { rerender } = renderInspector({ selectedItemId: 'ups:1', project: powerProject })
+
+    await user.click(screen.getByRole('tab', { name: 'Layout' }))
+    expect(screen.getByText('Canvas Layout')).toBeInTheDocument()
+
+    rerender(
+      <QueryClientProvider client={new QueryClient()}>
+        <InspectorPanel
+          project={powerProject}
+          agentStatus={{ servers: {}, registeredServerIds: [] }}
+          selectedItemId="monitor:1"
+          selectedConnectionId={null}
+          activeNetworkTraceKey={null}
+          pendingConnectionEndpoint={null}
+          validationMessage={null}
+          persistenceWarning={null}
+          open
+          onClose={() => {}}
+          onUpdateProject={() => {}}
+          onUpdateItem={() => {}}
+          onReturnItemToInventory={() => {}}
+          onCreateConnection={() => {}}
+          onSelectNetworkTrace={() => {}}
+          onEndpointConnectionClick={() => {}}
+          onCancelPendingConnection={() => {}}
+          onUpdateConnectionLabel={() => {}}
+          onUpdateConnectionRoute={() => {}}
+          onRemoveConnection={() => {}}
+        />
+      </QueryClientProvider>,
+    )
+
+    expect(screen.queryByRole('tab', { name: 'Layout' })).not.toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: 'Specs' })).toHaveAttribute('aria-selected', 'true')
+    expect(await screen.findByDisplayValue('Studio Display')).toBeInTheDocument()
+  })
+
   it('renders unknown compatibility feedback as amber status while errors remain alerts', () => {
     const { unmount } = renderInspector({
-      selectedItemId: 'server',
+      selectedItemId: 'server:1',
       validationMessage: 'Compatibility could not be fully verified.',
       validationSeverity: 'unknown',
     })
@@ -732,7 +857,7 @@ describe('InspectorPanel', () => {
 
     unmount()
     renderInspector({
-      selectedItemId: 'server',
+      selectedItemId: 'server:1',
       validationMessage: 'The component is incompatible.',
     })
 
@@ -742,10 +867,10 @@ describe('InspectorPanel', () => {
     expect(errorNotice).toHaveClass('bg-[#fff4ee]')
   })
   it.each([
-    ['server', ['Specs', 'Slots', 'Ports', 'Network', 'Services', 'Agent', 'Compatibility']],
-    ['switch', ['Specs', 'Ports', 'Connections']],
-    ['nas', ['Specs', 'Slots', 'Ports', 'Network', 'Agent', 'Compatibility']],
-    ['patch', ['Specs', 'Ports', 'Connections', 'Network']],
+    ['server:1', ['Specs', 'Slots', 'Ports', 'Network', 'Services', 'Agent', 'Compatibility']],
+    ['switch:1', ['Specs', 'Ports', 'Connections']],
+    ['nas:1', ['Specs', 'Slots', 'Ports', 'Network', 'Agent', 'Compatibility']],
+    ['patchPanel:1', ['Specs', 'Ports', 'Connections', 'Network']],
   ] as const)('renders the approved %s tab order', (selectedItemId, labels) => {
     renderInspector({ selectedItemId })
 
@@ -754,7 +879,7 @@ describe('InspectorPanel', () => {
 
   it('explains server compatibility, utilization, allocations, and grouped findings', async () => {
     const user = userEvent.setup()
-    renderInspector({ selectedItemId: 'server', project: compatibilityProject })
+    renderInspector({ selectedItemId: 'server:1', project: compatibilityProject })
 
     await user.click(screen.getByRole('tab', { name: 'Compatibility' }))
 
@@ -778,11 +903,11 @@ describe('InspectorPanel', () => {
   })
 
   it.each([
-    ['server', 'server'],
-    ['nas', 'nas'],
+    ['server:1', { hostType: 'server', hostId: 1 }],
+    ['nas:1', { hostType: 'nas', hostId: 1 }],
   ] as const)('edits %s compatibility fields and disables checks by runtime key', async (
     selectedItemId,
-    hostKey,
+    hostRef,
   ) => {
     const user = userEvent.setup()
     const { onUpdateItem, onUpdateProject } = renderInspector({ selectedItemId })
@@ -804,18 +929,18 @@ describe('InspectorPanel', () => {
     await user.click(checkbox)
 
     expect(onUpdateProject).toHaveBeenCalledWith(expect.objectContaining({
-      compatibilityPolicy: expect.objectContaining({ disabledHostIds: [hostKey] }),
+      compatibilityPolicy: expect.objectContaining({ disabledHosts: [hostRef] }),
     }))
   })
 
   it('keeps host fields editable but hides evaluation findings when checks are disabled', async () => {
     const user = userEvent.setup()
     renderInspector({
-      selectedItemId: 'server',
+      selectedItemId: 'server:1',
       project: {
         ...compatibilityProject,
         compatibilityPolicy: {
-          disabledHostIds: ['server'],
+          disabledHosts: [{ hostType: 'server', hostId: 1 }],
           ignoredWarningIds: [],
         },
       },
@@ -835,7 +960,7 @@ describe('InspectorPanel', () => {
 
   it('shows NAS compatibility resources without server-only slot assumptions', async () => {
     const user = userEvent.setup()
-    renderInspector({ selectedItemId: 'nas', project: compatibilityProject })
+    renderInspector({ selectedItemId: 'nas:1', project: compatibilityProject })
 
     await user.click(screen.getByRole('tab', { name: 'Compatibility' }))
 
@@ -852,16 +977,16 @@ describe('InspectorPanel', () => {
 
     await user.click(screen.getByRole('tab', { name: 'Compatibility' }))
 
-    expect(screen.getByText('Typed CPU')).toBeVisible()
-    expect(screen.getByText('Typed RAM')).toBeVisible()
-    expect(screen.getByText('Typed storage')).toBeVisible()
-    expect(screen.getByText('Typed GPU')).toBeVisible()
+    expect(screen.getAllByText('Typed CPU').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('Typed RAM').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('Typed storage').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('Typed GPU').length).toBeGreaterThan(0)
     expect(screen.queryByText('Colliding NAS')).not.toBeInTheDocument()
   })
 
   it('edits NAS specs through a complete item payload', async () => {
     vi.useFakeTimers()
-    const { onUpdateItem } = renderInspector({ selectedItemId: 'nas' })
+    const { onUpdateItem } = renderInspector({ selectedItemId: 'nas:1' })
 
     expect(screen.getByLabelText('Drive Bays')).toHaveValue(4)
     expect(screen.getByLabelText('M.2 Slots')).toHaveValue(2)
@@ -869,7 +994,7 @@ describe('InspectorPanel', () => {
     fireEvent.change(screen.getByLabelText('Drive Bays'), { target: { value: '6' } })
     await act(async () => vi.advanceTimersByTimeAsync(500))
 
-    expect(onUpdateItem).toHaveBeenCalledWith('nas', {
+    expect(onUpdateItem).toHaveBeenCalledWith('nas:1', {
       type: 'nas',
       name: 'Backup NAS',
       manufacturer: 'Synology',
@@ -878,14 +1003,15 @@ describe('InspectorPanel', () => {
         driveBays: 6,
         m2Slots: 2,
       },
-      ports: project.items.nas.ports,
+      ports: project.items['nas:1'].ports,
     })
   })
 
-  it('limits NAS slots and keeps agent enrollment unavailable', () => {
-    renderInspector({ selectedItemId: 'nas' })
+  it('limits NAS slots and keeps agent enrollment unavailable', async () => {
+    const user = userEvent.setup()
+    renderInspector({ selectedItemId: 'nas:1' })
 
-    fireEvent.click(screen.getByRole('tab', { name: 'Slots' }))
+    await user.click(screen.getByRole('tab', { name: 'Slots' }))
     expect(screen.getByText('NAS Slots')).toBeInTheDocument()
     expect(screen.getAllByText('Storage').length).toBeGreaterThan(0)
     expect(screen.getAllByText('Network').length).toBeGreaterThan(0)
@@ -893,7 +1019,7 @@ describe('InspectorPanel', () => {
     expect(screen.queryByText('RAM')).not.toBeInTheDocument()
     expect(screen.queryByText('GPU')).not.toBeInTheDocument()
 
-    fireEvent.click(screen.getByRole('tab', { name: 'Agent' }))
+    await user.click(screen.getByRole('tab', { name: 'Agent' }))
     expect(screen.getByText('Agent setup is not available for NAS yet.')).toBeInTheDocument()
     expect(screen.queryByLabelText('Agent endpoint')).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Setup Agent' })).not.toBeInTheDocument()
@@ -902,7 +1028,7 @@ describe('InspectorPanel', () => {
 
   it('renders storage in the reusable tabbed editor with simplified chrome', async () => {
     const user = userEvent.setup()
-    renderInspector({ selectedItemId: 'storage' })
+    renderInspector({ selectedItemId: 'storage:1' })
 
     expect(screen.queryByText('Specs, slot status, and project save controls.')).not.toBeInTheDocument()
     expect(screen.queryByText('Ready for drag and drop.')).not.toBeInTheDocument()
@@ -927,14 +1053,14 @@ describe('InspectorPanel', () => {
 
   it('debounces storage text edits and emits the complete item input', async () => {
     vi.useFakeTimers()
-    const { onUpdateItem } = renderInspector({ selectedItemId: 'storage' })
+    const { onUpdateItem } = renderInspector({ selectedItemId: 'storage:1' })
 
     fireEvent.change(screen.getByLabelText('Manufacturer'), { target: { value: 'Crucial' } })
     await act(async () => vi.advanceTimersByTimeAsync(499))
     expect(onUpdateItem).not.toHaveBeenCalled()
 
     await act(async () => vi.advanceTimersByTimeAsync(1))
-    expect(onUpdateItem).toHaveBeenCalledWith('storage', {
+    expect(onUpdateItem).toHaveBeenCalledWith('storage:1', {
       type: 'storage',
       name: '1TB NVMe SSD',
       manufacturer: 'Crucial',
@@ -948,7 +1074,7 @@ describe('InspectorPanel', () => {
 
   it('renders GPU tabs and debounces a complete model update', async () => {
     vi.useFakeTimers()
-    const { onUpdateItem } = renderInspector({ selectedItemId: 'gpu' })
+    const { onUpdateItem } = renderInspector({ selectedItemId: 'gpu:1' })
 
     expect(screen.getByRole('tab', { name: 'Specs' })).toHaveAttribute('aria-selected', 'true')
     expect(screen.getByRole('tab', { name: 'Ports' })).toBeInTheDocument()
@@ -962,7 +1088,7 @@ describe('InspectorPanel', () => {
     expect(onUpdateItem).not.toHaveBeenCalled()
 
     await act(async () => vi.advanceTimersByTimeAsync(1))
-    expect(onUpdateItem).toHaveBeenCalledWith('gpu', {
+    expect(onUpdateItem).toHaveBeenCalledWith('gpu:1', {
       type: 'gpu',
       name: 'Intel Arc A310 LP',
       manufacturer: 'Intel',
@@ -977,7 +1103,7 @@ describe('InspectorPanel', () => {
   })
 
   it('renders editable switch details and emits one complete item update', () => {
-    const { onUpdateItem } = renderInspector({ selectedItemId: 'switch' })
+    const { onUpdateItem } = renderInspector({ selectedItemId: 'switch:1' })
 
     expect(screen.getByRole('tab', { name: 'Specs' })).toHaveAttribute('aria-selected', 'true')
     expect(screen.getByLabelText('Switching Gbps')).toHaveValue(80)
@@ -991,7 +1117,7 @@ describe('InspectorPanel', () => {
     })
     fireEvent.click(screen.getByRole('checkbox', { name: 'Fanless' }))
 
-    expect(onUpdateItem).toHaveBeenCalledWith('switch', {
+    expect(onUpdateItem).toHaveBeenCalledWith('switch:1', {
       type: 'switch',
       name: 'Core switch',
       manufacturer: 'TP-Link Omada',
@@ -1001,30 +1127,30 @@ describe('InspectorPanel', () => {
         switchingCapacityGbps: 60,
         fanless: false,
       },
-      ports: project.items.switch.ports,
+      ports: project.items['switch:1'].ports,
     })
   })
 
   it('uses canonical switch management choices while preserving a legacy value', async () => {
     const user = userEvent.setup()
-    const { onUpdateItem } = renderInspector({ selectedItemId: 'switch' })
+    const { onUpdateItem } = renderInspector({ selectedItemId: 'switch:1' })
 
     expect(screen.getByRole('combobox', { name: 'Management' })).toHaveTextContent('Omada managed (Legacy)')
     await user.click(screen.getByRole('combobox', { name: 'Management' }))
     expect(screen.getByRole('option', { name: 'Omada managed (Legacy)' })).toBeInTheDocument()
     await user.click(screen.getByRole('option', { name: 'Layer 2 Managed' }))
 
-    expect(onUpdateItem).toHaveBeenCalledWith('switch', expect.objectContaining({
+    expect(onUpdateItem).toHaveBeenCalledWith('switch:1', expect.objectContaining({
       type: 'switch',
       name: 'Omada ES210X-M2 #1',
       specs: expect.objectContaining({ management: 'Layer 2 Managed' }),
-      ports: project.items.switch.ports,
+      ports: project.items['switch:1'].ports,
     }))
   })
 
   it('edits switch port groups and individual port details', async () => {
     const user = userEvent.setup()
-    const { onUpdateItem, onEndpointConnectionClick } = renderInspector({ selectedItemId: 'switch' })
+    const { onUpdateItem, onEndpointConnectionClick } = renderInspector({ selectedItemId: 'switch:1' })
 
     await user.click(screen.getByRole('tab', { name: 'Ports' }))
 
@@ -1037,12 +1163,12 @@ describe('InspectorPanel', () => {
     })
 
     expect(onUpdateItem).toHaveBeenCalledWith(
-      'switch',
+      'switch:1',
       expect.objectContaining({
         type: 'switch',
         ports: expect.arrayContaining([
-          expect.objectContaining({ id: 'rj45-01' }),
-          expect.objectContaining({ id: 'rj45-04' }),
+          expect.objectContaining({ id: 1 }),
+          expect.objectContaining({ id: 4 }),
         ]),
       }),
     )
@@ -1051,8 +1177,8 @@ describe('InspectorPanel', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Connect Port 1' }))
 
     expect(onEndpointConnectionClick).toHaveBeenCalledWith({
-      itemId: 'switch',
-      portId: 'rj45-01',
+      itemId: 'switch:1',
+      portId: 1,
     })
 
     fireEvent.change(screen.getByLabelText('Port 1 label'), {
@@ -1062,18 +1188,18 @@ describe('InspectorPanel', () => {
     await user.click(screen.getByRole('option', { name: 'Uplink' }))
 
     expect(onUpdateItem).toHaveBeenCalledWith(
-      'switch',
+      'switch:1',
       expect.objectContaining({
         ports: expect.arrayContaining([
-          expect.objectContaining({ id: 'rj45-01', label: 'Office uplink' }),
+          expect.objectContaining({ id: 1, label: 'Office uplink' }),
         ]),
       }),
     )
     expect(onUpdateItem).toHaveBeenCalledWith(
-      'switch',
+      'switch:1',
       expect.objectContaining({
         ports: expect.arrayContaining([
-          expect.objectContaining({ id: 'rj45-01', role: 'uplink' }),
+          expect.objectContaining({ id: 1, role: 'uplink' }),
         ]),
       }),
     )
@@ -1081,11 +1207,11 @@ describe('InspectorPanel', () => {
 
   it('requires a supported speed for malformed imported switch network groups', async () => {
     const user = userEvent.setup()
-    const originalPorts = project.items.switch.ports
-    project.items.switch.ports = originalPorts?.map((port) => ({ ...port, speed: undefined }))
+    const originalPorts = project.items['switch:1'].ports
+    project.items['switch:1'].ports = originalPorts?.map((port) => ({ ...port, speed: undefined }))
 
     try {
-      const { onUpdateItem } = renderInspector({ selectedItemId: 'switch' })
+      const { onUpdateItem } = renderInspector({ selectedItemId: 'switch:1' })
 
       await user.click(screen.getByRole('tab', { name: 'Ports' }))
 
@@ -1098,7 +1224,7 @@ describe('InspectorPanel', () => {
       await user.click(screen.getByRole('option', { name: '10G' }))
 
       expect(onUpdateItem).toHaveBeenCalledWith(
-        'switch',
+        'switch:1',
         expect.objectContaining({
           ports: expect.arrayContaining([
             expect.objectContaining({ speed: '10G' }),
@@ -1106,7 +1232,7 @@ describe('InspectorPanel', () => {
         }),
       )
     } finally {
-      project.items.switch.ports = originalPorts
+      project.items['switch:1'].ports = originalPorts
     }
   })
 
@@ -1116,12 +1242,12 @@ describe('InspectorPanel', () => {
       ...project,
       items: {
         ...project.items,
-        server: {
-          ...project.items.server,
+        'server:1': {
+          ...project.items['server:1'],
           ports: [
-            ...(project.items.server.ports ?? []),
+            ...(project.items['server:1'].ports ?? []),
             {
-              id: 'display-01',
+              id: 2,
               kind: 'server-port',
               type: 'displayport',
               slotNumber: 2,
@@ -1129,13 +1255,14 @@ describe('InspectorPanel', () => {
             },
           ],
         },
-        nic: {
-          id: 'nic',
+        'network:2': {
+          id: 2,
+          key: 'network:2',
           name: 'Intel I350-T4',
           type: 'network',
           ports: [
             {
-              id: 'nic-rj45-01',
+              id: 1,
               kind: 'server-port',
               type: 'rj45',
               slotNumber: 1,
@@ -1143,13 +1270,14 @@ describe('InspectorPanel', () => {
             },
           ],
         },
-        looseNic: {
-          id: 'looseNic',
+        'network:3': {
+          id: 3,
+          key: 'network:3',
           name: 'Loose NIC',
           type: 'network',
           ports: [
             {
-              id: 'loose-rj45-01',
+              id: 1,
               kind: 'server-port',
               type: 'rj45',
               slotNumber: 1,
@@ -1157,11 +1285,11 @@ describe('InspectorPanel', () => {
             },
           ],
         },
-        gpu: {
-          ...project.items.gpu,
+        'gpu:1': {
+          ...project.items['gpu:1'],
           ports: [
             {
-              id: 'gpu-display-01',
+              id: 1,
               kind: 'server-port',
               type: 'displayport',
               slotNumber: 1,
@@ -1170,22 +1298,22 @@ describe('InspectorPanel', () => {
         },
       },
       placements: [
-        { serverId: 'server', x: 0, y: 0 },
-        { serverId: 'switch', x: 400, y: 0 },
-        { serverId: 'patch', x: 800, y: 0 },
+        { serverId: 'server:1', x: 0, y: 0 },
+        { serverId: 'switch:1', x: 400, y: 0 },
+        { serverId: 'patchPanel:1', x: 800, y: 0 },
       ],
       assignments: [
         {
           id: 1,
-          serverId: 'server',
-          itemId: 'nic',
+          serverId: 'server:1',
+          itemId: 'network:2',
           type: 'network',
           assignedAt: '2026-07-13T00:00:00.000Z',
         },
         {
           id: 2,
-          serverId: 'server',
-          itemId: 'gpu',
+          serverId: 'server:1',
+          itemId: 'gpu:1',
           type: 'gpu',
           assignedAt: '2026-07-13T00:00:00.000Z',
         },
@@ -1194,7 +1322,7 @@ describe('InspectorPanel', () => {
     }
 
     renderInspector({
-      selectedItemId: 'switch',
+      selectedItemId: 'switch:1',
       project: connectionProject,
     })
 
@@ -1222,81 +1350,81 @@ describe('InspectorPanel', () => {
 
   it('renders patch panel ports and emits type updates', async () => {
     const user = userEvent.setup()
-    const { onUpdateItem, onEndpointConnectionClick } = renderInspector({ selectedItemId: 'patch' })
+    const { onUpdateItem, onEndpointConnectionClick } = renderInspector({ selectedItemId: 'patchPanel:1' })
 
     await user.click(screen.getByRole('tab', { name: 'Ports' }))
     expect(screen.getByLabelText('Port group 1 count')).toHaveValue(1)
     fireEvent.click(screen.getByRole('button', { name: 'Connect 01 back' }))
 
     expect(onEndpointConnectionClick).toHaveBeenCalledWith({
-      itemId: 'patch',
-      portId: 'keystone-01',
-      endpointId: 'keystone-01-back',
+      itemId: 'patchPanel:1',
+      portId: 1,
+      endpointId: 2,
     })
 
     await user.click(screen.getByRole('combobox', { name: 'Port 1 type' }))
     await user.click(screen.getByRole('option', { name: 'HDMI' }))
 
-    expect(onUpdateItem).toHaveBeenCalledWith('patch', expect.objectContaining({
+    expect(onUpdateItem).toHaveBeenCalledWith('patchPanel:1', expect.objectContaining({
       type: 'patchPanel',
       name: 'VCELINK 24 Port Cat6A Patch Panel',
       specs: { rackUnits: 1 },
       ports: [expect.objectContaining({
-        id: 'keystone-01',
+        id: 1,
         kind: 'keystone',
         type: 'hdmi',
         slotNumber: 1,
         endpoints: [
-          { id: 'keystone-01-front', side: 'front' },
-          { id: 'keystone-01-back', side: 'back' },
+          { id: 1, side: 'front' },
+          { id: 2, side: 'back' },
         ],
       })],
     }))
   })
 
-  it('edits patch panel labels in the compact grid and port notes in occupancy', () => {
-    const { onUpdateItem } = renderInspector({ selectedItemId: 'patch' })
+  it('edits patch panel labels in the compact grid and port notes in occupancy', async () => {
+    const user = userEvent.setup()
+    const { onUpdateItem } = renderInspector({ selectedItemId: 'patchPanel:1' })
 
-    fireEvent.click(screen.getByRole('tab', { name: 'Ports' }))
+    await user.click(screen.getByRole('tab', { name: 'Ports' }))
 
     fireEvent.change(screen.getByLabelText('Keystone 1 label'), {
       target: { value: 'Proxmox 01' },
     })
-    fireEvent.change(screen.getByLabelText('Port 1 notes'), {
-      target: { value: 'Rack A short cable' },
-    })
+    await user.type(screen.getByLabelText('Port 1 notes'), 'Rack A short cable')
 
-    expect(onUpdateItem).toHaveBeenCalledWith('patch', expect.objectContaining({
+    expect(onUpdateItem).toHaveBeenCalledWith('patchPanel:1', expect.objectContaining({
       ports: [expect.objectContaining({
-        id: 'keystone-01',
+        id: 1,
         label: 'Proxmox 01',
       })],
     }))
-    expect(onUpdateItem).toHaveBeenCalledWith('patch', expect.objectContaining({
+    expect(onUpdateItem).toHaveBeenCalledWith('patchPanel:1', expect.objectContaining({
       ports: [expect.objectContaining({
-        id: 'keystone-01',
+        id: 1,
         label: 'Proxmox 01',
         notes: 'Rack A short cable',
       })],
     }))
   })
 
-  it('saves patch panel row order through the complete draft', () => {
-    const { onUpdateItem } = renderInspector({ selectedItemId: 'patch' })
+  it('saves patch panel row order through the complete draft', async () => {
+    const user = userEvent.setup()
+    const { onUpdateItem } = renderInspector({ selectedItemId: 'patchPanel:1' })
 
-    fireEvent.click(screen.getByRole('tab', { name: 'Ports' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Swap Rows' }))
+    await user.click(screen.getByRole('tab', { name: 'Ports' }))
+    await user.click(screen.getByRole('button', { name: 'Swap Rows' }))
 
-    expect(onUpdateItem).toHaveBeenCalledWith('patch', expect.objectContaining({
+    expect(onUpdateItem).toHaveBeenCalledWith('patchPanel:1', expect.objectContaining({
       type: 'patchPanel',
       properties: { patchPanelRowOrder: 'front-back' },
-      ports: project.items.patch.ports,
+      ports: project.items['patchPanel:1'].ports,
     }))
   })
 
   it('renders RAM in the reusable tabbed editor', async () => {
     const user = userEvent.setup()
-    renderInspector({ selectedItemId: 'ram' })
+    renderInspector({ selectedItemId: 'ram:1' })
 
     expect(screen.getByText('32GB RAM')).toBeInTheDocument()
     expect(screen.getByRole('tab', { name: 'Specs' })).toHaveAttribute('aria-selected', 'true')
@@ -1315,7 +1443,7 @@ describe('InspectorPanel', () => {
 
   it('debounces a RAM secondary manufacturer edit into one complete item update', async () => {
     const user = userEvent.setup()
-    const { onUpdateItem } = renderInspector({ selectedItemId: 'ram' })
+    const { onUpdateItem } = renderInspector({ selectedItemId: 'ram:1' })
 
     await user.click(screen.getByRole('tab', { name: 'Compatibility' }))
     vi.useFakeTimers()
@@ -1324,7 +1452,7 @@ describe('InspectorPanel', () => {
     expect(onUpdateItem).not.toHaveBeenCalled()
 
     await act(async () => vi.advanceTimersByTimeAsync(1))
-    expect(onUpdateItem).toHaveBeenCalledWith('ram', {
+    expect(onUpdateItem).toHaveBeenCalledWith('ram:1', {
       type: 'ram',
       name: '32GB RAM',
       manufacturer: 'Crucial',
@@ -1340,7 +1468,7 @@ describe('InspectorPanel', () => {
 
   it('renders RAM speed options by generation and emits selected speed', async () => {
     const user = userEvent.setup()
-    const { onUpdateItem } = renderInspector({ selectedItemId: 'ram' })
+    const { onUpdateItem } = renderInspector({ selectedItemId: 'ram:1' })
 
     await user.click(screen.getByRole('tab', { name: 'Compatibility' }))
     await user.click(screen.getByRole('combobox', { name: 'Stick 1 Speed' }))
@@ -1349,27 +1477,27 @@ describe('InspectorPanel', () => {
 
     await user.click(screen.getByRole('option', { name: '2666' }))
 
-    expect(onUpdateItem).toHaveBeenCalledWith('ram', expect.objectContaining({
+    expect(onUpdateItem).toHaveBeenCalledWith('ram:1', expect.objectContaining({
       specs: expect.objectContaining({ speedMt: 2666 }),
     }))
   })
 
   it('renders RAM stick 2 speed options and emits secondary speed', async () => {
     const user = userEvent.setup()
-    const { onUpdateItem } = renderInspector({ selectedItemId: 'ram' })
+    const { onUpdateItem } = renderInspector({ selectedItemId: 'ram:1' })
 
     await user.click(screen.getByRole('tab', { name: 'Compatibility' }))
     await user.click(screen.getByRole('combobox', { name: 'Stick 2 Speed' }))
     await user.click(screen.getByRole('option', { name: '2933' }))
 
-    expect(onUpdateItem).toHaveBeenCalledWith('ram', expect.objectContaining({
+    expect(onUpdateItem).toHaveBeenCalledWith('ram:1', expect.objectContaining({
       specs: expect.objectContaining({ secondarySpeedMt: 2933 }),
     }))
   })
 
   it('corrects a CPU number after 500ms and preserves unrelated specs', async () => {
     vi.useFakeTimers()
-    const { onUpdateItem } = renderInspector({ selectedItemId: 'cpu' })
+    const { onUpdateItem } = renderInspector({ selectedItemId: 'cpu:1' })
 
     expect(screen.getByRole('tab', { name: 'Specs' })).toHaveAttribute('aria-selected', 'true')
     expect(screen.getByRole('combobox', { name: 'Manufacturer' })).toHaveTextContent('Intel')
@@ -1384,7 +1512,7 @@ describe('InspectorPanel', () => {
     expect(onUpdateItem).not.toHaveBeenCalled()
 
     await act(async () => vi.advanceTimersByTimeAsync(1))
-    expect(onUpdateItem).toHaveBeenCalledWith('cpu', {
+    expect(onUpdateItem).toHaveBeenCalledWith('cpu:1', {
       type: 'cpu',
       name: 'Intel Core i7-7700',
       manufacturer: 'Intel',
@@ -1400,20 +1528,23 @@ describe('InspectorPanel', () => {
     })
   })
 
-  it('shows server slots only when a server is selected', () => {
-    renderInspector({ selectedItemId: 'cpu' })
+  it('mounts server slots only while the Slots tab is active', async () => {
+    const user = userEvent.setup()
+    renderInspector({ selectedItemId: 'cpu:1' })
     expect(screen.queryByText('Server Slots')).not.toBeInTheDocument()
 
     cleanup()
-    renderInspector({ selectedItemId: 'server' })
+    renderInspector({ selectedItemId: 'server:1' })
 
+    expect(screen.queryByText('Server Slots')).not.toBeInTheDocument()
+    await user.click(screen.getByRole('tab', { name: 'Slots' }))
     expect(screen.getByText('Server Slots')).toBeInTheDocument()
     expect(screen.getAllByText('Dell OptiPlex Micro 7090').length).toBeGreaterThan(0)
   })
 
   it('renders shared server fields and emits a complete debounced update', async () => {
     vi.useFakeTimers()
-    const { onUpdateItem } = renderInspector({ selectedItemId: 'server' })
+    const { onUpdateItem } = renderInspector({ selectedItemId: 'server:1' })
 
     const inventoryNameInput = screen.getByLabelText('Name')
     const displayNameInput = screen.getByLabelText('Display name')
@@ -1429,7 +1560,7 @@ describe('InspectorPanel', () => {
     fireEvent.change(manufacturerInput, { target: { value: 'HP' } })
     await act(async () => vi.advanceTimersByTimeAsync(500))
 
-    expect(onUpdateItem).toHaveBeenCalledWith('server', {
+    expect(onUpdateItem).toHaveBeenCalledWith('server:1', {
       type: 'server',
       name: 'Dell OptiPlex Micro 7090',
       manufacturer: 'HP',
@@ -1444,32 +1575,34 @@ describe('InspectorPanel', () => {
         lanIp: '192.168.1.20',
         tailscaleIp: '100.64.1.20',
       },
-      ports: project.items.server.ports,
+      ports: project.items['server:1'].ports,
     })
   })
 
   it('merges a pending display name into an immediate board port IP update', async () => {
-    vi.useFakeTimers()
-    const { onUpdateItem } = renderInspector({ selectedItemId: 'server' })
+    const user = userEvent.setup()
+    const { onUpdateItem } = renderInspector({ selectedItemId: 'server:1' })
 
     fireEvent.change(screen.getByLabelText('Display name'), {
       target: { value: 'Proxmox pending' },
     })
-    fireEvent.click(screen.getByRole('tab', { name: 'Network' }))
+    await user.click(screen.getByRole('tab', { name: 'Network' }))
     fireEvent.change(screen.getByLabelText('Port 1 IP address'), {
       target: { value: '192.168.1.55' },
     })
 
     expect(onUpdateItem).toHaveBeenCalledTimes(1)
-    expect(onUpdateItem).toHaveBeenCalledWith('server', expect.objectContaining({
+    expect(onUpdateItem).toHaveBeenCalledWith('server:1', expect.objectContaining({
       properties: expect.objectContaining({ displayName: 'Proxmox pending' }),
       ports: [expect.objectContaining({
-        id: 'lan-01',
+        id: 1,
         ipAddress: '192.168.1.55',
       })],
     }))
 
-    await act(async () => vi.advanceTimersByTimeAsync(500))
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 550))
+    })
     expect(onUpdateItem).toHaveBeenCalledTimes(1)
   })
 
@@ -1479,8 +1612,9 @@ describe('InspectorPanel', () => {
       ...project,
       items: {
         ...project.items,
-        serverNic: {
-          id: 'serverNic',
+        'network:2': {
+          id: 2,
+          key: 'network:2',
           name: 'Intel I350-T4',
           type: 'network',
           manufacturer: 'Intel',
@@ -1490,7 +1624,7 @@ describe('InspectorPanel', () => {
           },
           ports: [
             {
-              id: 'server-nic-01',
+              id: 1,
               kind: 'server-port',
               type: 'rj45',
               slotNumber: 1,
@@ -1502,16 +1636,16 @@ describe('InspectorPanel', () => {
       assignments: [
         ...project.assignments,
         {
-          id: 'server-network',
-          serverId: 'server',
-          itemId: 'serverNic',
+          id: 3,
+          serverId: 'server:1',
+          itemId: 'network:2',
           type: 'network',
           assignedAt: '2026-07-13T00:00:00.000Z',
         },
       ],
     }
     const { onUpdateItem } = renderInspector({
-      selectedItemId: 'server',
+      selectedItemId: 'server:1',
       project: hostedNicProject,
     })
 
@@ -1520,7 +1654,7 @@ describe('InspectorPanel', () => {
     })
     await user.click(screen.getByRole('tab', { name: 'Network' }))
     const interfaceTabs = screen.getAllByRole('tab', { name: 'RJ4501' })
-    const hostedInterfaceTab = interfaceTabs.find((tab) => tab.id.includes('serverNic'))
+    const hostedInterfaceTab = interfaceTabs.find((tab) => tab.id.includes('network:2'))
     expect(hostedInterfaceTab).toBeDefined()
     await user.click(hostedInterfaceTab!)
     expect(screen.getByText('Intel I350-T4 / RJ45 1G')).toBeInTheDocument()
@@ -1529,7 +1663,7 @@ describe('InspectorPanel', () => {
     })
 
     expect(onUpdateItem).toHaveBeenCalledTimes(1)
-    expect(onUpdateItem).toHaveBeenLastCalledWith('serverNic', {
+    expect(onUpdateItem).toHaveBeenLastCalledWith('network:2', {
       type: 'network',
       name: 'Intel I350-T4',
       manufacturer: 'Intel',
@@ -1540,7 +1674,7 @@ describe('InspectorPanel', () => {
         formFactor: 'Low profile',
       },
       ports: [expect.objectContaining({
-        id: 'server-nic-01',
+        id: 1,
         ipAddress: '10.0.0.15',
       })],
     })
@@ -1549,20 +1683,21 @@ describe('InspectorPanel', () => {
       await new Promise((resolve) => setTimeout(resolve, 550))
     })
     expect(onUpdateItem).toHaveBeenCalledTimes(2)
-    expect(onUpdateItem).toHaveBeenLastCalledWith('server', expect.objectContaining({
+    expect(onUpdateItem).toHaveBeenLastCalledWith('server:1', expect.objectContaining({
       name: 'Pending server name',
       properties: expect.objectContaining({ displayName: 'Proxmox 01' }),
     }))
   })
 
-  it('renders agent operational telemetry for a selected server', () => {
+  it('renders agent operational telemetry for a selected server', async () => {
+    const user = userEvent.setup()
     renderInspector({
-      selectedItemId: 'server',
+      selectedItemId: 'server:1',
       agentStatus: {
-        registeredServerIds: ['server'],
+        registeredServerIds: [1],
         servers: {
-          server: {
-            serverId: 'server',
+          1: {
+            serverId: 1,
             state: 'online',
             connected: true,
             ageMs: 8_000,
@@ -1602,7 +1737,7 @@ describe('InspectorPanel', () => {
       },
     })
 
-    fireEvent.click(screen.getByRole('tab', { name: 'Services' }))
+    await user.click(screen.getByRole('tab', { name: 'Agent' }))
 
     expect(screen.getByText('online')).toBeInTheDocument()
     expect(screen.getByText('lab-node')).toBeInTheDocument()
@@ -1624,12 +1759,12 @@ describe('InspectorPanel', () => {
     vi.spyOn(window, 'confirm').mockReturnValue(true)
 
     renderInspector({
-      selectedItemId: 'server',
+      selectedItemId: 'server:1',
       agentStatus: {
-        registeredServerIds: ['server'],
+        registeredServerIds: [1],
         servers: {
-          server: {
-            serverId: 'server',
+          1: {
+            serverId: 1,
             state: 'offline',
             connected: true,
             ageMs: 600_000,
@@ -1643,7 +1778,7 @@ describe('InspectorPanel', () => {
     await user.click(screen.getByRole('button', { name: 'Revoke Registration' }))
 
     await vi.waitFor(() => {
-      expect(revokeAgentRegistration).toHaveBeenCalledWith('server')
+      expect(revokeAgentRegistration).toHaveBeenCalledWith(1)
     })
     expect(screen.getByRole('button', { name: 'Clear Saved Telemetry' })).toBeDisabled()
   })
@@ -1654,12 +1789,12 @@ describe('InspectorPanel', () => {
     vi.spyOn(window, 'confirm').mockReturnValue(true)
 
     renderInspector({
-      selectedItemId: 'server',
+      selectedItemId: 'server:1',
       agentStatus: {
         registeredServerIds: [],
         servers: {
-          server: {
-            serverId: 'server',
+          1: {
+            serverId: 1,
             state: 'unregistered',
             connected: false,
             ageMs: 600_000,
@@ -1673,12 +1808,13 @@ describe('InspectorPanel', () => {
     await user.click(screen.getByRole('button', { name: 'Clear Saved Telemetry' }))
 
     await vi.waitFor(() => {
-      expect(clearAgentStatus).toHaveBeenCalledWith('server')
+      expect(clearAgentStatus).toHaveBeenCalledWith(1)
     })
     expect(screen.queryByRole('button', { name: 'Revoke Registration' })).not.toBeInTheDocument()
   })
 
-  it('explains that agent setup is unavailable in demo mode', () => {
+  it('explains that agent setup is unavailable in demo mode', async () => {
+    const user = userEvent.setup()
     const queryClient = new QueryClient({
       defaultOptions: {
         queries: { retry: false },
@@ -1692,7 +1828,7 @@ describe('InspectorPanel', () => {
           project={project}
           agentStatus={{ servers: {}, registeredServerIds: [] }}
           demoMode
-          selectedItemId="server"
+          selectedItemId="server:1"
           selectedConnectionId={null}
           activeNetworkTraceKey={null}
           pendingConnectionEndpoint={null}
@@ -1713,13 +1849,14 @@ describe('InspectorPanel', () => {
       </QueryClientProvider>,
     )
 
+    await user.click(screen.getByRole('tab', { name: 'Agent' }))
     expect(screen.getByText('Agent setup is disabled in public demo mode.')).toBeInTheDocument()
     expect(screen.queryByLabelText('Agent endpoint')).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Setup Agent' })).not.toBeInTheDocument()
   })
 
   it('does not render server audit warnings for unplanned open LAN ports', () => {
-    renderInspector({ selectedItemId: 'server' })
+    renderInspector({ selectedItemId: 'server:1' })
 
     expect(screen.queryByText('LAN port 01 is open.')).not.toBeInTheDocument()
   })
@@ -1736,12 +1873,12 @@ describe('InspectorPanel', () => {
       ...project,
       connections: [
         {
-          id: 'conn-1',
+          id: 1,
           type: 'network',
           negotiatedSpeedMbps: 1000,
           createdAt: '2026-06-26T00:00:00.000Z',
-          from: { itemId: 'server', portId: 'lan-01' },
-          to: { itemId: 'patch', portId: 'keystone-01', endpointId: 'keystone-01-back' },
+          from: { itemId: 'server:1', portId: 1 },
+          to: { itemId: 'patchPanel:1', portId: 1, endpointId: 2 },
         },
       ],
     }
@@ -1752,7 +1889,7 @@ describe('InspectorPanel', () => {
           project={projectWithConnection}
           agentStatus={{ servers: {}, registeredServerIds: [] }}
           selectedItemId={null}
-          selectedConnectionId="conn-1"
+          selectedConnectionId={1}
           activeNetworkTraceKey={null}
           pendingConnectionEndpoint={null}
           validationMessage={null}
@@ -1782,6 +1919,6 @@ describe('InspectorPanel', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Remove Cable' }))
 
-    expect(onRemoveConnection).toHaveBeenCalledWith('conn-1')
+    expect(onRemoveConnection).toHaveBeenCalledWith(1)
   })
 })

@@ -24,10 +24,10 @@ const motherboard = {
         maxModuleCapacityGb: 48, maxSpeedMt: 6400,
       },
       storageSlots: [{
-        id: 'm2', count: 2, interfaces: ['NVMe'], formFactors: ['2280'], pcieGeneration: 4,
+        id: 1, key: 'm2', count: 2, interfaces: ['NVMe'], formFactors: ['2280'], pcieGeneration: 4,
       }],
       expansionSlots: [{
-        id: 'pcie', count: 1, interfaceFamily: 'pcie', pcieGeneration: 4,
+        id: 4, key: 'pcie', count: 1, interfaceFamily: 'pcie', pcieGeneration: 4,
         mechanicalLanes: 16, electricalLanes: 16, acceptedHeights: ['full-height'],
         maxSlotWidth: 3, maxPowerWatts: 300,
       }],

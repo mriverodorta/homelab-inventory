@@ -260,7 +260,7 @@ describe('compatibility rule evaluation', () => {
       host({
         host: {
           storageSlots: [
-            { id: 'm2', label: 'M.2 Slot', count: 1, interfaces: ['NVMe'], formFactors: ['2280'] },
+            { id: 1, key: 'm2', label: 'M.2 Slot', count: 1, interfaces: ['NVMe'], formFactors: ['2280'] },
           ],
         },
       }),
@@ -272,7 +272,7 @@ describe('compatibility rule evaluation', () => {
       host({
         host: {
           storageSlots: [
-            { id: 'bay', label: 'Drive Bay', count: 1, interfaces: ['SATA'], formFactors: ['3.5-inch'] },
+            { id: 14, key: 'bay', label: 'Drive Bay', count: 1, interfaces: ['SATA'], formFactors: ['3.5-inch'] },
           ],
         },
       }),
@@ -292,7 +292,7 @@ describe('compatibility rule evaluation', () => {
       host({
         host: {
           storageSlots: [
-            { id: 'sata', label: 'SATA Bay', count: 1, interfaces: ['SATA'], formFactors: ['2.5-inch'] },
+            { id: 2, key: 'sata', label: 'SATA Bay', count: 1, interfaces: ['SATA'], formFactors: ['2.5-inch'] },
           ],
         },
       }),
@@ -307,7 +307,7 @@ describe('compatibility rule evaluation', () => {
         host: {
           storageSlots: [
             {
-              id: 'm2',
+              id: 1, key: 'm2',
               label: 'M.2 Slot',
               count: 1,
               interfaces: ['NVMe'],
@@ -328,7 +328,7 @@ describe('compatibility rule evaluation', () => {
       expect.objectContaining({
         code: 'storage.pcie-generation.negotiated',
         severity: 'warning',
-        resourceId: 'm2',
+        resourceId: 1,
       }),
     )
   })
@@ -338,7 +338,7 @@ describe('compatibility rule evaluation', () => {
       host({
         host: {
           storageSlots: [
-            { id: 'sata', label: 'SATA Bay', count: 1, interfaces: ['SATA'], formFactors: ['2.5-inch'] },
+            { id: 2, key: 'sata', label: 'SATA Bay', count: 1, interfaces: ['SATA'], formFactors: ['2.5-inch'] },
           ],
         },
       }),
@@ -362,8 +362,8 @@ describe('compatibility rule evaluation', () => {
       host({
         host: {
           storageSlots: [
-            { id: 'unknown', label: 'Unknown Slot', count: 1 },
-            { id: 'sata', label: 'SATA Bay', count: 1, interfaces: ['SATA'] },
+            { id: 15, key: 'unknown', label: 'Unknown Slot', count: 1 },
+            { id: 2, key: 'sata', label: 'SATA Bay', count: 1, interfaces: ['SATA'] },
           ],
         },
       }),
@@ -374,7 +374,7 @@ describe('compatibility rule evaluation', () => {
       expect.objectContaining({
         code: 'compatibility.data.missing',
         field: 'host.storageSlots.interfaces',
-        resourceId: 'unknown',
+        resourceId: 15,
       }),
     )
     expect(
@@ -385,7 +385,7 @@ describe('compatibility rule evaluation', () => {
       host({
         host: {
           storageSlots: [
-            { id: 'm2', label: 'M.2 Slot', count: 1, interfaces: ['NVMe'] },
+            { id: 1, key: 'm2', label: 'M.2 Slot', count: 1, interfaces: ['NVMe'] },
           ],
         },
       }),
@@ -396,7 +396,7 @@ describe('compatibility rule evaluation', () => {
       expect.objectContaining({
         code: 'compatibility.data.missing',
         field: 'host.storageSlots.formFactors',
-        resourceId: 'm2',
+        resourceId: 1,
       }),
     )
   })
@@ -407,7 +407,7 @@ describe('compatibility rule evaluation', () => {
         host: {
           expansionSlots: [
             {
-              id: 'pcie',
+              id: 4, key: 'pcie',
               label: 'PCIe x4',
               count: 1,
               interfaceFamily: 'pcie',
@@ -443,10 +443,10 @@ describe('compatibility rule evaluation', () => {
     expect(result.status).toBe('incompatible')
     expect(result.findings).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ code: 'expansion.mechanical-lanes.insufficient', resourceId: 'pcie' }),
-        expect.objectContaining({ code: 'expansion.height.unsupported', resourceId: 'pcie' }),
-        expect.objectContaining({ code: 'expansion.width.exceeded', resourceId: 'pcie' }),
-        expect.objectContaining({ code: 'expansion.slot-power.exceeded', resourceId: 'pcie' }),
+        expect.objectContaining({ code: 'expansion.mechanical-lanes.insufficient', resourceId: 4 }),
+        expect.objectContaining({ code: 'expansion.height.unsupported', resourceId: 4 }),
+        expect.objectContaining({ code: 'expansion.width.exceeded', resourceId: 4 }),
+        expect.objectContaining({ code: 'expansion.slot-power.exceeded', resourceId: 4 }),
         expect.objectContaining({ code: 'expansion.total-power.exceeded', severity: 'error' }),
       ]),
     )
@@ -457,7 +457,7 @@ describe('compatibility rule evaluation', () => {
       host: {
         expansionSlots: [
           {
-            id: 'pcie',
+            id: 4, key: 'pcie',
             label: 'PCIe x16',
             count: 1,
             interfaceFamily: 'pcie',
@@ -521,7 +521,7 @@ describe('compatibility rule evaluation', () => {
         host: {
           expansionSlots: [
             {
-              id: 'x4',
+              id: 16, key: 'x4',
               label: 'PCIe x4',
               count: 1,
               interfaceFamily: 'pcie',
@@ -533,7 +533,8 @@ describe('compatibility rule evaluation', () => {
               maxPowerWatts: 75,
             },
             {
-              id: 'x16',
+              id: 23,
+              key: 'x16',
               label: 'PCIe x16',
               count: 1,
               interfaceFamily: 'pcie',
@@ -572,7 +573,7 @@ describe('compatibility rule evaluation', () => {
         host: {
           expansionSlots: [
             {
-              id: 'first',
+              id: 17, key: 'first',
               label: 'First Slot',
               count: 1,
               interfaceFamily: 'pcie',
@@ -584,7 +585,8 @@ describe('compatibility rule evaluation', () => {
               maxPowerWatts: 75,
             },
             {
-              id: 'second',
+              id: 24,
+              key: 'second',
               label: 'Second Slot',
               count: 1,
               interfaceFamily: 'pcie',
@@ -617,7 +619,7 @@ describe('compatibility rule evaluation', () => {
     expect(result.findings).toContainEqual(
       expect.objectContaining({
         code: 'expansion.pcie-generation.negotiated',
-        resourceId: 'first',
+        resourceId: 17,
       }),
     )
   })
@@ -628,7 +630,7 @@ describe('compatibility rule evaluation', () => {
         host: {
           expansionSlots: [
             {
-              id: 'unknown-width',
+              id: 18, key: 'unknown-width',
               label: 'Unknown Width',
               count: 1,
               interfaceFamily: 'pcie',
@@ -639,7 +641,8 @@ describe('compatibility rule evaluation', () => {
               maxPowerWatts: 75,
             },
             {
-              id: 'too-small',
+              id: 25,
+              key: 'too-small',
               label: 'Too Small',
               count: 1,
               interfaceFamily: 'pcie',
@@ -673,10 +676,10 @@ describe('compatibility rule evaluation', () => {
     expect(result.findings).toContainEqual(
       expect.objectContaining({
         code: 'compatibility.data.missing',
-        resourceId: 'unknown-width',
+        resourceId: 18,
       }),
     )
-    expect(result.findings.some((finding) => finding.resourceId === 'too-small')).toBe(false)
+    expect(result.findings.some((finding) => finding.resourceId === 25)).toBe(false)
   })
 
   it.each(['m2-ae', 'usb', 'onboard'] as const)(
@@ -686,7 +689,7 @@ describe('compatibility rule evaluation', () => {
         host({
           host: {
             expansionSlots: [
-              { id: 'pcie', label: 'PCIe Slot', count: 1, interfaceFamily: 'pcie' },
+              { id: 4, key: 'pcie', label: 'PCIe Slot', count: 1, interfaceFamily: 'pcie' },
             ],
           },
         }),
@@ -738,7 +741,7 @@ describe('compatibility rule evaluation', () => {
         host: {
           expansionSlots: [
             {
-              id: 'pcie',
+              id: 4, key: 'pcie',
               label: 'PCIe Slots',
               count: 2,
               interfaceFamily: 'pcie',
@@ -797,7 +800,7 @@ describe('compatibility rule evaluation', () => {
         host: {
           expansionSlots: [
             {
-              id: 'pcie',
+              id: 4, key: 'pcie',
               label: 'PCIe Slots',
               count: 2,
               interfaceFamily: 'pcie',
@@ -831,7 +834,7 @@ describe('compatibility rule evaluation', () => {
       host: {
         expansionSlots: [
           {
-            id: 'pcie',
+            id: 4, key: 'pcie',
             label: 'PCIe Slots',
             count: 2,
             interfaceFamily: 'pcie',
@@ -910,7 +913,7 @@ describe('compatibility rule evaluation', () => {
       host: {
         expansionSlots: [
           {
-            id: 'pcie',
+            id: 4, key: 'pcie',
             label: 'PCIe Slots',
             count: 2,
             interfaceFamily: 'pcie',

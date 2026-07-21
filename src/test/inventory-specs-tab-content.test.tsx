@@ -72,7 +72,8 @@ describe('InventorySpecsTabContent', () => {
     const patch = onChange.mock.calls.at(-1)?.[0]
     expect(patch.storageSlotGroups).toEqual([
       expect.objectContaining({
-        id: expect.stringMatching(/^storage-/),
+        draftKey: expect.stringMatching(/^storage-/),
+        key: '',
         label: '',
         count: '',
         interfaces: [],

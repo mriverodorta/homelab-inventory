@@ -13,7 +13,8 @@
         "host": {
           "storageSlots": [
             {
-              "id": "mini-m2",
+              "id": 1,
+              "key": "mini-m2",
               "label": "M.2 storage slot",
               "count": 1,
               "interfaces": ["NVMe"],
@@ -78,7 +79,8 @@
         "host": {
           "expansionSlots": [
             {
-              "id": "pcie-slot",
+              "id": 1,
+              "key": "pcie-slot",
               "label": "Low-profile PCIe slot",
               "count": 1,
               "interfaceFamily": "pcie",
@@ -197,7 +199,18 @@
       ]
     }
   ],
+  "pcBuilds": [],
+  "motherboards": [],
+  "cpuCoolers": [],
+  "cases": [],
+  "powerSupplies": [],
+  "soundCards": [],
+  "wirelessCards": [],
+  "powerAdapters": [],
   "nas": [],
   "switches": [],
-  "patchPanels": []
+  "patchPanels": [],
+  "monitors": [],
+  "upsSystems": [],
+  "powerStrips": []
 }

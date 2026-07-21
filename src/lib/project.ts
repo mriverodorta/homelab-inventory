@@ -17,6 +17,7 @@ import type { InventoryItemInput } from '@/lib/db'
 import { nextNumericId } from '@/lib/ids'
 import { runtimeItemKey } from '@/lib/item-keys'
 import { isCanvasEquipmentType } from '@/lib/inventory-capabilities'
+import { getPowerEquipmentOrientation } from '@/lib/power-equipment-layout'
 import {
   PC_BUILD_COMPONENT_ORDER,
   REQUIRED_PC_BUILD_COMPONENT_TYPES,
@@ -42,16 +43,21 @@ export const NAS_CARD_VERTICAL_PADDING = 84
 export const PC_BUILD_CARD_WIDTH = 318
 export const MONITOR_CARD_WIDTH = 360
 export const POWER_EQUIPMENT_CARD_WIDTH = 420
+export const VERTICAL_UPS_CARD_WIDTH = 248
+export const VERTICAL_POWER_STRIP_CARD_WIDTH = 176
 const PC_BUILD_CARD_BASE_HEIGHT = 72
 const PC_BUILD_EMPTY_SLOT_HEIGHT = 34
 const PC_BUILD_ASSIGNED_SLOT_HEIGHT = 46
 const PC_BUILD_HOSTED_PORT_ROW_HEIGHT = 56
 const PC_BUILD_MOTHERBOARD_IO_HEIGHT = 58
 const PC_BUILD_OPERATING_SYSTEM_HEIGHT = 36
-const STANDALONE_CARD_BASE_HEIGHT = 116
-const STANDALONE_PORT_GROUP_FIXED_HEIGHT = 32
+const STANDALONE_CARD_BASE_HEIGHT = 123
+const STANDALONE_PORT_GROUP_FIXED_HEIGHT = 44
+const STANDALONE_VERTICAL_PORT_GROUP_FIXED_HEIGHT = 44
+const POWER_STRIP_HEADER_HEIGHT_DELTA = 8
 const STANDALONE_PORT_ROW_HEIGHT = 44
 const STANDALONE_PORT_ROW_GAP = 6
+const STANDALONE_HORIZONTAL_GROUP_GAP = 8
 const MONITOR_PORT_COLUMNS = 5
 const POWER_EQUIPMENT_PORT_COLUMNS = 6
 const AUTO_ARRANGE_COLUMN_GAP = 78
@@ -643,7 +649,7 @@ export function portsCompatible(first: InventoryPortType, second: InventoryPortT
 export function connectionEndpointAvailable(
   project: ProjectState,
   endpoint: ConnectionEndpoint,
-  ignoreConnectionId?: string,
+  ignoreConnectionId?: number,
 ): boolean {
   const key = endpointKey(endpoint)
 
@@ -877,18 +883,35 @@ function standalonePortGroupHeight(portCount: number, columns: number): number {
     + Math.max(0, rows - 1) * STANDALONE_PORT_ROW_GAP
 }
 
+function standaloneVerticalPortGroupHeight(portCount: number): number {
+  if (portCount <= 0) return 0
+
+  return STANDALONE_VERTICAL_PORT_GROUP_FIXED_HEIGHT
+    + portCount * STANDALONE_PORT_ROW_HEIGHT
+    + Math.max(0, portCount - 1) * STANDALONE_PORT_ROW_GAP
+}
+
+function standaloneHorizontalGroupGap(...portCounts: number[]): number {
+  const visibleGroupCount = portCounts.filter((portCount) => portCount > 0).length
+
+  return Math.max(0, visibleGroupCount - 1) * STANDALONE_HORIZONTAL_GROUP_GAP
+}
+
 function getMonitorCardHeight(item: InventoryItem): number {
   const ports = item.ports ?? []
-  const displayPorts = ports.filter((port) => port.type !== 'barrel').length
-  const powerPorts = ports.length - displayPorts
+  const displayPorts = ports.filter((port) => port.type !== 'ac-input').length
+  const powerPorts = ports.some(
+    (port) => port.type === 'ac-input' && port.key === 'ac-input',
+  ) ? 1 : 0
 
   return STANDALONE_CARD_BASE_HEIGHT
     + standalonePortGroupHeight(displayPorts, MONITOR_PORT_COLUMNS)
     + standalonePortGroupHeight(powerPorts, MONITOR_PORT_COLUMNS)
+    + standaloneHorizontalGroupGap(displayPorts, powerPorts)
 }
 
 function getUpsCardHeight(item: InventoryItem): number {
-  const explicitPorts = item.ports ?? []
+  const explicitPorts = (item.ports ?? []).filter((port) => port.type === 'ac-outlet')
   const batteryOutlets = positiveInteger(item.specs?.batteryBackupOutlets)
   const surgeOutlets = positiveInteger(item.specs?.surgeProtectedOutlets)
   const totalOutlets = explicitPorts.length
@@ -911,16 +934,29 @@ function getUpsCardHeight(item: InventoryItem): number {
     surgeCount = Math.max(0, totalOutlets - batteryCount)
   }
 
+  if (getPowerEquipmentOrientation(item) === 'vertical') {
+    return STANDALONE_CARD_BASE_HEIGHT
+      + standaloneVerticalPortGroupHeight(Math.max(batteryCount, surgeCount))
+  }
+
   return STANDALONE_CARD_BASE_HEIGHT
     + standalonePortGroupHeight(batteryCount, POWER_EQUIPMENT_PORT_COLUMNS)
     + standalonePortGroupHeight(surgeCount, POWER_EQUIPMENT_PORT_COLUMNS)
+    + standaloneHorizontalGroupGap(batteryCount, surgeCount)
 }
 
 function getPowerStripCardHeight(item: InventoryItem): number {
-  const outletCount = item.ports?.length || positiveInteger(item.specs?.outlets)
+  const outletCount = (item.ports ?? []).filter((port) => port.type === 'ac-outlet').length
+    || positiveInteger(item.specs?.outlets)
+
+  if (getPowerEquipmentOrientation(item) === 'vertical') {
+    return STANDALONE_CARD_BASE_HEIGHT
+      + POWER_STRIP_HEADER_HEIGHT_DELTA
+      + standaloneVerticalPortGroupHeight(outletCount)
+  }
 
   return STANDALONE_CARD_BASE_HEIGHT
-    + standalonePortGroupHeight(1, POWER_EQUIPMENT_PORT_COLUMNS)
+    + POWER_STRIP_HEADER_HEIGHT_DELTA
     + standalonePortGroupHeight(outletCount, POWER_EQUIPMENT_PORT_COLUMNS)
 }
 
@@ -986,8 +1022,16 @@ export function getCanvasItemWidth(project: ProjectState, itemId: string): numbe
     return MONITOR_CARD_WIDTH
   }
 
-  if (item?.type === 'ups' || item?.type === 'powerStrip') {
-    return POWER_EQUIPMENT_CARD_WIDTH
+  if (item?.type === 'ups') {
+    return getPowerEquipmentOrientation(item) === 'vertical'
+      ? VERTICAL_UPS_CARD_WIDTH
+      : POWER_EQUIPMENT_CARD_WIDTH
+  }
+
+  if (item?.type === 'powerStrip') {
+    return getPowerEquipmentOrientation(item) === 'vertical'
+      ? VERTICAL_POWER_STRIP_CARD_WIDTH
+      : POWER_EQUIPMENT_CARD_WIDTH
   }
 
   return getEquipmentCardWidth(item)

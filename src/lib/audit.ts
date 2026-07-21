@@ -42,6 +42,20 @@ export type AuditQuery = {
   visibility?: AuditVisibility
 }
 
+type AuditEvaluationContext = {
+  compatibilityResults: ReturnType<typeof evaluateProjectCompatibility>
+  placedItemIds: Set<string>
+  powerFindings: PowerTopologyFinding[]
+}
+
+function createAuditEvaluationContext(project: ProjectState): AuditEvaluationContext {
+  return {
+    compatibilityResults: evaluateProjectCompatibility(project),
+    placedItemIds: new Set(project.placements.map((placement) => placement.serverId)),
+    powerFindings: getPowerTopologyFindings(project),
+  }
+}
+
 function portSlot(port: InventoryPort): string {
   return String(port.slotNumber).padStart(2, '0')
 }
@@ -60,7 +74,7 @@ function endpointForPort(item: InventoryItem, port: InventoryPort): ConnectionEn
 function endpointForPortSide(
   item: InventoryItem,
   port: InventoryPort,
-  endpointId: string | number,
+  endpointId: number,
 ): ConnectionEndpoint {
   return {
     itemId: runtimeItemKey(item),
@@ -151,15 +165,17 @@ function getPowerFindingOwnerId(
   return candidates.find((itemId) => placedItemIds.has(itemId)) ?? null
 }
 
-function getPowerAuditWarnings(project: ProjectState, itemId: string): AuditWarning[] {
-  const placedItemIds = new Set(project.placements.map((placement) => placement.serverId))
-
-  if (!placedItemIds.has(itemId)) {
+function getPowerAuditWarnings(
+  project: ProjectState,
+  itemId: string,
+  context: AuditEvaluationContext,
+): AuditWarning[] {
+  if (!context.placedItemIds.has(itemId)) {
     return []
   }
 
-  return getPowerTopologyFindings(project).flatMap((finding) => {
-    const ownerId = getPowerFindingOwnerId(project, finding, placedItemIds)
+  return context.powerFindings.flatMap((finding) => {
+    const ownerId = getPowerFindingOwnerId(project, finding, context.placedItemIds)
 
     if (ownerId !== itemId) {
       return []
@@ -279,7 +295,7 @@ function compatibilityResourceKey(
   finding: CompatibilityFinding,
   componentKey: string,
 ): string {
-  return finding.resourceId ?? finding.field ?? componentKey
+  return String(finding.resourceId ?? finding.field ?? componentKey)
 }
 
 function compatibilityWarningId(
@@ -298,6 +314,7 @@ function compatibilityWarningId(
 function getCompatibilityAuditWarnings(
   project: ProjectState,
   host: InventoryItem,
+  context: AuditEvaluationContext,
 ): AuditWarning[] {
   if (host.type !== 'server' && host.type !== 'nas') {
     return []
@@ -307,7 +324,7 @@ function getCompatibilityAuditWarnings(
   const seen = new Set<string>()
   const warnings: AuditWarning[] = []
 
-  for (const result of evaluateProjectCompatibility(project)) {
+  for (const result of context.compatibilityResults) {
     if (String(result.hostId) !== hostKey) {
       continue
     }
@@ -337,7 +354,11 @@ function getCompatibilityAuditWarnings(
   return warnings
 }
 
-function getRawItemAuditWarnings(project: ProjectState, itemId: string): AuditWarning[] {
+function getRawItemAuditWarnings(
+  project: ProjectState,
+  itemId: string,
+  context: AuditEvaluationContext,
+): AuditWarning[] {
   const item = project.items[itemId]
 
   if (!item) {
@@ -355,10 +376,10 @@ function getRawItemAuditWarnings(project: ProjectState, itemId: string): AuditWa
   }
 
   if (isHostCompatibilityEnabled(project, itemId)) {
-    warnings.push(...getCompatibilityAuditWarnings(project, item))
+    warnings.push(...getCompatibilityAuditWarnings(project, item, context))
   }
 
-  warnings.push(...getPowerAuditWarnings(project, itemId))
+  warnings.push(...getPowerAuditWarnings(project, itemId, context))
 
   return warnings
 }
@@ -382,7 +403,7 @@ export function getItemAuditWarnings(
   const policy = normalizeCompatibilityPolicy(project.compatibilityPolicy)
   const ignoredIds = new Set(policy.ignoredWarningIds)
 
-  return getRawItemAuditWarnings(project, itemId).filter((warning) =>
+  return getRawItemAuditWarnings(project, itemId, createAuditEvaluationContext(project)).filter((warning) =>
     warningMatchesVisibility(ignoredIds, warning, visibility),
   )
 }
@@ -391,13 +412,18 @@ export function getProjectAuditWarnings(
   project: ProjectState,
   query: AuditQuery = {},
 ): ProjectAuditGroup[] {
-  const placedItemIds = new Set(project.placements.map((placement) => placement.serverId))
+  const context = createAuditEvaluationContext(project)
+  const visibility = query.visibility ?? 'open'
+  const policy = normalizeCompatibilityPolicy(project.compatibilityPolicy)
+  const ignoredIds = new Set(policy.ignoredWarningIds)
 
   return Object.values(project.items)
-    .filter((item) => placedItemIds.has(runtimeItemKey(item)))
+    .filter((item) => context.placedItemIds.has(runtimeItemKey(item)))
     .map((item) => ({
       item,
-      warnings: getItemAuditWarnings(project, runtimeItemKey(item), query),
+      warnings: getRawItemAuditWarnings(project, runtimeItemKey(item), context).filter((warning) =>
+        warningMatchesVisibility(ignoredIds, warning, visibility),
+      ),
     }))
     .filter((group) => group.warnings.length > 0)
     .sort((first, second) => first.item.name.localeCompare(second.item.name))

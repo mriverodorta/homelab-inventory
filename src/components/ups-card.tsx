@@ -2,6 +2,14 @@ import { type Node, type NodeProps } from '@xyflow/react'
 import { BatteryCharging } from 'lucide-react'
 import { formatInventoryCompactSpec } from '@/lib/format'
 import { runtimeItemKey } from '@/lib/item-keys'
+import {
+  getPowerEquipmentOrientation,
+  orderUpsOutletGroups,
+} from '@/lib/power-equipment-layout'
+import {
+  POWER_EQUIPMENT_CARD_WIDTH,
+  VERTICAL_UPS_CARD_WIDTH,
+} from '@/lib/project'
 import { powerOutletEndpoint } from '@/lib/power-topology'
 import type { InventoryPort } from '@/types/inventory'
 import {
@@ -28,7 +36,7 @@ function explicitOutletClass(port: InventoryPort): UpsOutletClass | null {
 
 function outletView(itemId: string, port: InventoryPort, outletClass: UpsOutletClass): StandalonePortView {
   return {
-    endpoint: powerOutletEndpoint(itemId, port.slotNumber),
+    endpoint: powerOutletEndpoint(itemId, port.id),
     port,
     label: outletClass === 'battery' ? 'Battery' : 'Surge',
     detail: port.label ?? `${outletClass === 'battery' ? 'Battery-backed' : 'Surge-only'} outlet ${port.slotNumber}`,
@@ -43,7 +51,7 @@ export function upsOutletGroups(item: Parameters<typeof sortedPorts>[0]) {
   const batteryCount = numericSpec(item, 'batteryBackupOutlets')
   const surgeCount = numericSpec(item, 'surgeProtectedOutlets')
   const total = numericSpec(item, 'outlets') || batteryCount + surgeCount
-  const ports = sortedPorts(item)
+  const ports = sortedPorts(item).filter((port) => port.type === 'ac-outlet')
   const outlets = ports.length > 0
     ? ports
     : Array.from({ length: total }, (_, index) => syntheticOutletPort(itemId, index + 1).port)
@@ -58,10 +66,10 @@ export function upsOutletGroups(item: Parameters<typeof sortedPorts>[0]) {
     target.push(outletView(itemId, port, outletClass))
   })
 
-  return [
+  return orderUpsOutletGroups(item, [
     { id: 'battery', label: 'Battery-backed outlets', ports: battery },
     { id: 'surge', label: 'Surge-only outlets', ports: surge },
-  ]
+  ])
 }
 
 export function UpsNode({ data }: NodeProps<UpsFlowNode>) {
@@ -70,6 +78,8 @@ export function UpsNode({ data }: NodeProps<UpsFlowNode>) {
   if (!item || item.type !== 'ups') {
     return null
   }
+
+  const orientation = getPowerEquipmentOrientation(item)
 
   return (
     <StandaloneCanvasEquipmentCard
@@ -80,7 +90,8 @@ export function UpsNode({ data }: NodeProps<UpsFlowNode>) {
       accentClassName="bg-[#33473f]"
       summary={formatInventoryCompactSpec(item) ?? undefined}
       groups={upsOutletGroups(item)}
-      width={420}
+      orientation={orientation}
+      width={orientation === 'vertical' ? VERTICAL_UPS_CARD_WIDTH : POWER_EQUIPMENT_CARD_WIDTH}
     />
   )
 }

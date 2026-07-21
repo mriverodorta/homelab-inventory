@@ -12,9 +12,87 @@ export type ReleaseNoteEntry = {
 
 export const RELEASE_NOTES: ReleaseNoteEntry[] = [
   {
+    version: '0.1.38',
+    date: '2026-07-21',
+    channel: 'latest',
+    title: 'Flexible power equipment layouts',
+    highlights: [
+      'UPS and power-strip cards can now be arranged horizontally or vertically per canvas item, with the persisted layout restored across sessions.',
+      'UPS outlet groups can be swapped between top and bottom rows or left and right columns directly from the Inspector.',
+      'Power-equipment layout edits now participate in the canvas Undo and Redo history.',
+    ],
+    fixes: [
+      'Canvas collision, auto-arrange, centering, and minimap geometry now match the rendered dimensions of power equipment in either orientation.',
+      'Inspector layout controls now expose clear single-choice semantics and mobile-friendly interaction targets.',
+      'Immediate Inspector edits are saved in order so rapid layout changes cannot be overwritten by an older response.',
+      'Changing UPS or power-strip canvas layout no longer rebuilds connected outlets or triggers a connected-port validation error.',
+    ],
+  },
+  {
+    version: '0.1.37',
+    date: '2026-07-21',
+    channel: 'release',
+    title: 'Responsive canvas interactions',
+    highlights: [
+      'The hardware canvas now precomputes project audits, connection occupancy, compatibility lookups, and cable handles once per project revision.',
+      'Inspector tabs mount only their active content, substantially reducing drawer DOM size and selection latency.',
+      'React Flow now omits offscreen equipment from the live DOM until it enters the viewport.',
+    ],
+    fixes: [
+      'Port-to-port dragging and item selection no longer rebuild thousands of unused React Flow handles on every interaction.',
+      'Unchanged canvas nodes retain stable data and callback references while cable shadows render only for selected or traced connections.',
+    ],
+  },
+  {
+    version: '0.1.36',
+    date: '2026-07-21',
+    channel: 'release',
+    title: 'Reliable power endpoint migration',
+    highlights: [
+      'Existing UPS and power equipment now receive persisted numeric power ports automatically when their database upgrades to schema 11.',
+    ],
+    fixes: [
+      'UPS outlet chips now resolve as real power endpoints when connecting power strips instead of producing a mixed-endpoint validation error.',
+      'Power-port repair now covers UPS records that only declare a total outlet count and preserves existing display or other non-power ports.',
+    ],
+    notes: [
+      'Schema 11 creates a backup before repairing incomplete power-port topology records.',
+    ],
+  },
+  {
+    version: '0.1.35',
+    date: '2026-07-21',
+    channel: 'release',
+    title: 'Compact power strip connections',
+    highlights: [
+      'Power strips now place their single AC input directly in the canvas card header beside the drag grip.',
+    ],
+    fixes: [
+      'Removed the dedicated one-port power-input row while preserving the same persisted endpoint and cable interactions.',
+    ],
+  },
+  {
+    version: '0.1.34',
+    date: '2026-07-20',
+    channel: 'release',
+    title: 'Relational data integrity',
+    highlights: [
+      'Inventory, project, agent, power endpoint, and compatibility relationships now persist as numeric identifiers that map cleanly to future relational database records.',
+      'Stable semantic keys remain separate from record identity for compatibility resources and generated power endpoints.',
+    ],
+    fixes: [
+      'Schema migration rejects missing, ambiguous, or colliding legacy relationships instead of silently saving incorrect assignments or connections.',
+      'Current writes now validate strict numeric relationships while imports and older stores use an explicit legacy migration path.',
+    ],
+    notes: [
+      'Schema 10 creates a backup before converting existing stores to the stricter relational format.',
+      'Typed string keys such as server:1 remain available inside the canvas UI but are converted at the persistence boundary.',
+    ],
+  },
+  {
     version: '0.1.33',
     date: '2026-07-20',
-    channel: 'latest',
+    channel: 'release',
     title: 'Connectable power strip inputs',
     highlights: [
       'Power strips now expose a dedicated draggable AC input on their canvas cards and in the Inspector.',

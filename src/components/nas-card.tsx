@@ -4,19 +4,19 @@ import { AlertTriangle, Grip, X } from 'lucide-react'
 import type { CSSProperties } from 'react'
 import { Button } from '@/components/ui/button'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
-import { getItemAuditWarnings } from '@/lib/audit'
 import { getEndpointHandleId, type CableSide } from '@/lib/cable-routing'
 import { getStorageQualityTone } from '@/lib/canvas-quality'
+import {
+  canvasAuditWarningCount,
+  canvasEndpointAvailable,
+  canvasEndpointConnected,
+  canvasEndpointsCompatible,
+  type CanvasProjectIndex,
+} from '@/lib/canvas-project-index'
 import { formatPortSummary, formatPortType, formatStorageCanvasParts } from '@/lib/format'
 import { runtimeItemKey } from '@/lib/item-keys'
 import { useTapSelection } from '@/lib/tap-selection'
-import {
-  connectionEndpointAvailable,
-  endpointKey,
-  getConnectionPort,
-  NAS_CARD_WIDTH,
-  portsCompatible,
-} from '@/lib/project'
+import { endpointKey, NAS_CARD_WIDTH } from '@/lib/project'
 import { startSelectedPortDrag } from '@/lib/port-interactions'
 import type {
   ComponentAssignment,
@@ -31,6 +31,8 @@ import type { CompatibilityStatus } from '@/types/compatibility'
 
 export type NasNodeData = {
   project: ProjectState
+  canvasIndex: CanvasProjectIndex
+  requiredHandleIds: ReadonlySet<string>
   itemId: string
   selectedItemId: string | null
   focusedItemIds: string[]
@@ -57,34 +59,6 @@ const HANDLE_SIDES: Array<{ side: CableSide; position: Position }> = [
 
 function sortPorts(ports: InventoryPort[] | undefined): InventoryPort[] {
   return [...(ports ?? [])].sort((first, second) => first.slotNumber - second.slotNumber)
-}
-
-function endpointMatches(first: ConnectionEndpoint, second: ConnectionEndpoint): boolean {
-  return first.itemId === second.itemId &&
-    first.hostedItemId === second.hostedItemId &&
-    String(first.portId) === String(second.portId) &&
-    String(first.endpointId ?? '') === String(second.endpointId ?? '')
-}
-
-function endpointConnected(project: ProjectState, endpoint: ConnectionEndpoint): boolean {
-  return (project.connections ?? []).some(
-    (connection) => endpointMatches(connection.from, endpoint) || endpointMatches(connection.to, endpoint),
-  )
-}
-
-function endpointCompatible(
-  project: ProjectState,
-  sourceEndpoint: ConnectionEndpoint | null,
-  targetEndpoint: ConnectionEndpoint,
-): boolean {
-  if (!sourceEndpoint || endpointKey(sourceEndpoint) === endpointKey(targetEndpoint)) {
-    return true
-  }
-
-  const sourcePort = getConnectionPort(project, sourceEndpoint)
-  const targetPort = getConnectionPort(project, targetEndpoint)
-
-  return Boolean(sourcePort && targetPort && portsCompatible(sourcePort.type, targetPort.type))
 }
 
 function portTone(type: InventoryPortType, speed: string | undefined, connected: boolean): string {
@@ -155,27 +129,39 @@ function portTypeChipLabel(type: InventoryPortType): string {
   return formatPortType(type).toUpperCase()
 }
 
-function PortChipHandles({ endpoint }: { endpoint: ConnectionEndpoint }) {
+function PortChipHandles({ endpoint, requiredHandleIds }: {
+  endpoint: ConnectionEndpoint
+  requiredHandleIds: ReadonlySet<string>
+}) {
   return (
     <>
-      {HANDLE_SIDES.flatMap((handle) => [
-        <Handle
-          key={`target-${handle.side}-${endpoint.portId}-${endpoint.endpointId ?? 'port'}`}
-          id={getEndpointHandleId('target', handle.side, endpoint)}
-          type="target"
-          position={handle.position}
-          className="!h-2 !w-2 !border-0 !bg-transparent"
-          isConnectable={false}
-        />,
-        <Handle
-          key={`source-${handle.side}-${endpoint.portId}-${endpoint.endpointId ?? 'port'}`}
-          id={getEndpointHandleId('source', handle.side, endpoint)}
-          type="source"
-          position={handle.position}
-          className="!h-2 !w-2 !border-0 !bg-transparent"
-          isConnectable={false}
-        />,
-      ])}
+      {HANDLE_SIDES.flatMap((handle) => {
+        const targetId = getEndpointHandleId('target', handle.side, endpoint)
+        const sourceId = getEndpointHandleId('source', handle.side, endpoint)
+
+        return [
+          requiredHandleIds.has(targetId) ? (
+            <Handle
+              key={`target-${handle.side}-${endpoint.portId}-${endpoint.endpointId ?? 'port'}`}
+              id={targetId}
+              type="target"
+              position={handle.position}
+              className="!h-2 !w-2 !border-0 !bg-transparent"
+              isConnectable={false}
+            />
+          ) : null,
+          requiredHandleIds.has(sourceId) ? (
+            <Handle
+              key={`source-${handle.side}-${endpoint.portId}-${endpoint.endpointId ?? 'port'}`}
+              id={sourceId}
+              type="source"
+              position={handle.position}
+              className="!h-2 !w-2 !border-0 !bg-transparent"
+              isConnectable={false}
+            />
+          ) : null,
+        ]
+      })}
     </>
   )
 }
@@ -188,8 +174,10 @@ function PortChip({
   onEndpointDrop,
   pendingEndpoint,
   port,
-  project,
+  canvasIndex,
+  requiredHandleIds,
 }: {
+  canvasIndex: CanvasProjectIndex
   draggingEndpoint: ConnectionEndpoint | null
   endpoint: ConnectionEndpoint
   onEndpointClick: (endpoint: ConnectionEndpoint, point: CanvasPortDragPoint) => void
@@ -197,14 +185,14 @@ function PortChip({
   onEndpointDrop: (endpoint: ConnectionEndpoint) => void
   pendingEndpoint: ConnectionEndpoint | null
   port: InventoryPort
-  project: ProjectState
+  requiredHandleIds: ReadonlySet<string>
 }) {
-  const connected = endpointConnected(project, endpoint)
-  const open = connectionEndpointAvailable(project, endpoint)
+  const connected = canvasEndpointConnected(canvasIndex, endpoint)
+  const open = canvasEndpointAvailable(canvasIndex, endpoint)
   const sourceEndpoint = draggingEndpoint ?? pendingEndpoint
   const dragSource = draggingEndpoint ? endpointKey(draggingEndpoint) === endpointKey(endpoint) : false
   const selected = pendingEndpoint ? endpointKey(pendingEndpoint) === endpointKey(endpoint) : false
-  const compatible = endpointCompatible(project, sourceEndpoint, endpoint)
+  const compatible = canvasEndpointsCompatible(canvasIndex, sourceEndpoint, endpoint)
   const activeDropTarget = Boolean(draggingEndpoint && !dragSource)
   const canStartDrag = open && selected
   const canDrop = Boolean(draggingEndpoint && !dragSource && open && compatible)
@@ -256,7 +244,7 @@ function PortChip({
         onEndpointDrop(endpoint)
       }}
     >
-      <PortChipHandles endpoint={endpoint} />
+      <PortChipHandles endpoint={endpoint} requiredHandleIds={requiredHandleIds} />
       <span className="text-[8px] font-black uppercase leading-none opacity-80">{portTypeChipLabel(port.type)}</span>
       <span className="text-[11px] font-black">{String(port.slotNumber).padStart(2, '0')}</span>
     </div>
@@ -428,6 +416,7 @@ function StorageBayRow({
 
 function NetworkCardRow({
   assignment,
+  canvasIndex,
   draggingEndpoint,
   nasId,
   onEndpointClick,
@@ -437,9 +426,11 @@ function NetworkCardRow({
   onSelect,
   pendingEndpoint,
   project,
+  requiredHandleIds,
   selectedItemId,
 }: {
   assignment: ComponentAssignment | undefined
+  canvasIndex: CanvasProjectIndex
   draggingEndpoint: ConnectionEndpoint | null
   nasId: string
   onEndpointClick: (endpoint: ConnectionEndpoint, point: CanvasPortDragPoint) => void
@@ -449,6 +440,7 @@ function NetworkCardRow({
   onSelect: (itemId: string) => void
   pendingEndpoint: ConnectionEndpoint | null
 	project: ProjectState
+	requiredHandleIds: ReadonlySet<string>
 	selectedItemId: string | null
 }) {
   const draggable = useDraggable({
@@ -514,6 +506,7 @@ function NetworkCardRow({
         {sortPorts(card.ports).map((port) => (
           <PortChip
             key={port.id}
+            canvasIndex={canvasIndex}
             draggingEndpoint={draggingEndpoint}
             endpoint={{ itemId: nasId, hostedItemId: cardRuntimeKey, portId: port.id }}
             onEndpointClick={onEndpointClick}
@@ -521,7 +514,7 @@ function NetworkCardRow({
             onEndpointDrop={onEndpointDrop}
             pendingEndpoint={pendingEndpoint}
             port={port}
-            project={project}
+            requiredHandleIds={requiredHandleIds}
           />
         ))}
       </div>
@@ -532,6 +525,8 @@ function NetworkCardRow({
 export function NasNode({ data }: NodeProps<NasFlowNode>) {
   const {
     project,
+    canvasIndex,
+    requiredHandleIds,
     itemId,
     selectedItemId,
     focusedItemIds,
@@ -568,7 +563,7 @@ export function NasNode({ data }: NodeProps<NasFlowNode>) {
   const networkAssignment = assignments.find((assignment) => assignment.type === 'network')
   const bayCount = typeof nas.specs?.driveBays === 'number' ? nas.specs.driveBays : 0
   const m2SlotCount = typeof nas.specs?.m2Slots === 'number' ? nas.specs.m2Slots : 0
-  const auditCount = getItemAuditWarnings(project, nasRuntimeKey).length
+  const auditCount = canvasAuditWarningCount(canvasIndex, nasRuntimeKey)
   const focused = focusedItemIds.includes(nasRuntimeKey)
   const dimmed = focusActive && !focused
   const compatibilityDropRing = dropCompatibilityStatus === 'incompatible'
@@ -628,6 +623,7 @@ export function NasNode({ data }: NodeProps<NasFlowNode>) {
             {sortPorts(nas.ports).map((port) => (
               <PortChip
                 key={port.id}
+                canvasIndex={canvasIndex}
                 draggingEndpoint={draggingEndpoint}
                 endpoint={{ itemId: nasRuntimeKey, portId: port.id }}
                 onEndpointClick={onEndpointClick}
@@ -635,7 +631,7 @@ export function NasNode({ data }: NodeProps<NasFlowNode>) {
                 onEndpointDrop={onEndpointDrop}
                 pendingEndpoint={pendingEndpoint}
                 port={port}
-                project={project}
+                requiredHandleIds={requiredHandleIds}
               />
             ))}
           </div>
@@ -670,6 +666,7 @@ export function NasNode({ data }: NodeProps<NasFlowNode>) {
 
       <NetworkCardRow
         assignment={networkAssignment}
+        canvasIndex={canvasIndex}
         draggingEndpoint={draggingEndpoint}
         nasId={nasRuntimeKey}
         onEndpointClick={onEndpointClick}
@@ -679,6 +676,7 @@ export function NasNode({ data }: NodeProps<NasFlowNode>) {
         onSelect={onSelect}
         pendingEndpoint={pendingEndpoint}
         project={project}
+        requiredHandleIds={requiredHandleIds}
         selectedItemId={selectedItemId}
       />
     </div>

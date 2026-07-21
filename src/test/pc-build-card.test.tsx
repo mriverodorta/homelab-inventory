@@ -1,6 +1,7 @@
 import { fireEvent, render, screen } from '@testing-library/react'
 import type { NodeProps } from '@xyflow/react'
 import { describe, expect, it, vi } from 'vitest'
+import { buildCanvasProjectIndex } from '@/lib/canvas-project-index'
 import { PcBuildNode, type PcBuildFlowNode } from '@/components/pc-build-card'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import type { ComponentAssignment, InventoryItem, ProjectState } from '@/types/inventory'
@@ -126,6 +127,8 @@ function nodeProps(
       onEndpointDragStart: vi.fn(),
       onEndpointDrop: vi.fn(),
       ...overrides,
+      canvasIndex: overrides.canvasIndex ?? buildCanvasProjectIndex(currentProject),
+      requiredHandleIds: overrides.requiredHandleIds ?? new Set<string>(),
     },
   }
 }

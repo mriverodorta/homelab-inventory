@@ -25,7 +25,7 @@ const host = (
       },
       storageSlots: [
         {
-          id: 'm2',
+          id: 1, key: 'm2',
           label: 'M.2 slots',
           count: 2,
           interfaces: ['NVMe'],
@@ -35,7 +35,7 @@ const host = (
       ],
       expansionSlots: [
         {
-          id: 'pcie-x16',
+          id: 3, key: 'pcie-x16',
           label: 'PCIe slots',
           count: 4,
           interfaceFamily: 'pcie',
@@ -95,7 +95,7 @@ const card = (id: number, slotWidth = 2): InventoryItem => ({
 })
 
 const assignment = (
-  id: string | number,
+  id: number,
   serverId: string,
   item: InventoryItem,
   assignedAt: string,
@@ -141,11 +141,11 @@ describe('deterministic compatibility allocation', () => {
       }),
       expect.objectContaining({
         id: 2,
-        allocation: { resourceType: 'storage', groupId: 'm2', positions: [0] },
+        allocation: { resourceType: 'storage', groupId: 1, positions: [0] },
       }),
       expect.objectContaining({
         id: 3,
-        allocation: { resourceType: 'expansion', groupId: 'pcie-x16', positions: [0, 1] },
+        allocation: { resourceType: 'expansion', groupId: 3, positions: [0, 1] },
       }),
     ])
   })
@@ -168,7 +168,7 @@ describe('deterministic compatibility allocation', () => {
     expect(input.assignments.every((entry) => entry.allocation === undefined)).toBe(true)
   })
 
-  it('keeps numeric and string assignment IDs distinct during project normalization', () => {
+  it('keeps numeric assignment IDs distinct during project normalization', () => {
     const server = host('server:1')
     const firstDrive = storage(1)
     const secondDrive = storage(2)
@@ -177,7 +177,7 @@ describe('deterministic compatibility allocation', () => {
       [firstDrive, secondDrive],
       [
         assignment(1, server.key!, firstDrive, '2026-01-01T00:00:00Z'),
-        assignment('1', server.key!, secondDrive, '2026-01-02T00:00:00Z'),
+        assignment(2, server.key!, secondDrive, '2026-01-02T00:00:00Z'),
       ],
     )
 
@@ -188,21 +188,21 @@ describe('deterministic compatibility allocation', () => {
         id: 1,
         serverId: server.key,
         itemId: firstDrive.key,
-        allocation: { resourceType: 'storage', groupId: 'm2', positions: [0] },
+        allocation: { resourceType: 'storage', groupId: 1, positions: [0] },
       }),
       expect.objectContaining({
-        id: '1',
+        id: 2,
         serverId: server.key,
         itemId: secondDrive.key,
-        allocation: { resourceType: 'storage', groupId: 'm2', positions: [1] },
+        allocation: { resourceType: 'storage', groupId: 1, positions: [1] },
       }),
     ])
   })
 
-  it('sorts assignments by assignedAt and then numeric or string ID before allocating', () => {
+  it('sorts assignments by assignedAt and then numeric ID before allocating', () => {
     const server = host('server:1', {
       host: {
-        storageSlots: [{ id: 'm2', label: 'M.2', count: 3, interfaces: ['NVMe'], formFactors: ['2280'] }],
+        storageSlots: [{ id: 1, key: 'm2', label: 'M.2', count: 3, interfaces: ['NVMe'], formFactors: ['2280'] }],
       },
     })
     const items = [storage(1), storage(2), storage(3)]
@@ -211,13 +211,13 @@ describe('deterministic compatibility allocation', () => {
       items,
       [
         assignment(10, server.key!, items[0], '2026-01-02T00:00:00Z'),
-        assignment('alpha', server.key!, items[2], '2026-01-01T00:00:00Z'),
+        assignment(3, server.key!, items[2], '2026-01-01T00:00:00Z'),
         assignment(2, server.key!, items[1], '2026-01-02T00:00:00Z'),
       ],
     )
 
     const planned = planHostAllocations(input, server.key!).assignments
-    expect(planned.map((entry) => entry.id)).toEqual(['alpha', 2, 10])
+    expect(planned.map((entry) => entry.id)).toEqual([3, 2, 10])
     expect(planned.map((entry) => entry.allocation?.positions)).toEqual([[0], [1], [2]])
   })
 
@@ -231,22 +231,22 @@ describe('deterministic compatibility allocation', () => {
       [
         assignment(1, server.key!, first, '2026-01-01T00:00:00Z', {
           resourceType: 'storage',
-          groupId: 'm2',
+          groupId: 1,
           positions: [1],
         }),
         assignment(2, server.key!, second, '2026-01-02T00:00:00Z', {
           resourceType: 'expansion',
-          groupId: 'pcie-x16',
+          groupId: 3,
           positions: [3],
         }),
       ],
     )
 
     const planned = planHostAllocations(input, server.key!).assignments
-    expect(planned[0].allocation).toEqual({ resourceType: 'storage', groupId: 'm2', positions: [1] })
+    expect(planned[0].allocation).toEqual({ resourceType: 'storage', groupId: 1, positions: [1] })
     expect(planned[1].allocation).toEqual({
       resourceType: 'expansion',
-      groupId: 'pcie-x16',
+      groupId: 3,
       positions: [0, 1],
     })
   })
@@ -262,7 +262,7 @@ describe('deterministic compatibility allocation', () => {
         assignment(1, server.key!, first, '2026-01-01T00:00:00Z'),
         assignment(2, server.key!, second, '2026-01-02T00:00:00Z', {
           resourceType: 'storage',
-          groupId: 'm2',
+          groupId: 1,
           positions: [0],
         }),
       ],
@@ -283,9 +283,9 @@ describe('deterministic compatibility allocation', () => {
           maxModuleCapacityGb: 64,
           maxSpeedMt: 3200,
         },
-        storageSlots: [{ id: 'm2', label: 'M.2', count: 1, interfaces: ['NVMe'], formFactors: ['2280'] }],
+        storageSlots: [{ id: 1, key: 'm2', label: 'M.2', count: 1, interfaces: ['NVMe'], formFactors: ['2280'] }],
         expansionSlots: [{
-          id: 'pcie',
+          id: 4, key: 'pcie',
           label: 'PCIe',
           count: 2,
           interfaceFamily: 'pcie',
@@ -309,9 +309,9 @@ describe('deterministic compatibility allocation', () => {
     expect(planned.assignments.map((entry) => entry.allocation)).toEqual([
       { resourceType: 'memory', positions: [0, 1] },
       undefined,
-      { resourceType: 'storage', groupId: 'm2', positions: [0] },
+      { resourceType: 'storage', groupId: 1, positions: [0] },
       undefined,
-      { resourceType: 'expansion', groupId: 'pcie', positions: [0, 1] },
+      { resourceType: 'expansion', groupId: 4, positions: [0, 1] },
       undefined,
     ])
     expect(planned.results.filter((entry) => entry.status === 'incompatible')).toHaveLength(3)
@@ -321,10 +321,10 @@ describe('deterministic compatibility allocation', () => {
     const server = host('server:1', {
       host: {
         storageSlots: [
-          { id: 'duplicate', label: 'First', count: 1, interfaces: ['NVMe'], formFactors: ['2280'] },
-          { id: 'duplicate', label: 'Second', count: 2, interfaces: ['NVMe'], formFactors: ['2280'] },
-          { id: 'zero', label: 'Zero', count: 0, interfaces: ['NVMe'], formFactors: ['2280'] },
-          { id: 'negative', label: 'Negative', count: -1, interfaces: ['NVMe'], formFactors: ['2280'] },
+          { id: 19, key: 'duplicate', label: 'First', count: 1, interfaces: ['NVMe'], formFactors: ['2280'] },
+          { id: 19, key: 'duplicate', label: 'Second', count: 2, interfaces: ['NVMe'], formFactors: ['2280'] },
+          { id: 20, key: 'zero', label: 'Zero', count: 0, interfaces: ['NVMe'], formFactors: ['2280'] },
+          { id: 21, key: 'negative', label: 'Negative', count: -1, interfaces: ['NVMe'], formFactors: ['2280'] },
         ],
       },
     })
@@ -364,9 +364,9 @@ describe('deterministic compatibility allocation', () => {
           maxModuleCapacityGb: 32,
           maxSpeedMt: 3200,
         },
-        storageSlots: [{ id: 'm2', label: 'M.2', count: 1, interfaces: ['NVMe'], formFactors: ['2280'] }],
+        storageSlots: [{ id: 1, key: 'm2', label: 'M.2', count: 1, interfaces: ['NVMe'], formFactors: ['2280'] }],
         expansionSlots: [{
-          id: 'pcie',
+          id: 4, key: 'pcie',
           label: 'PCIe',
           count: 1,
           interfaceFamily: 'pcie',
@@ -406,16 +406,19 @@ describe('deterministic compatibility allocation', () => {
         assignment(index + 1, server.key!, item, `2026-01-01T00:00:0${index}Z`),
       ),
     )
-    input.compatibilityPolicy = { disabledHostIds: [server.key!], ignoredWarningIds: [] }
+    input.compatibilityPolicy = {
+      disabledHosts: [{ hostType: 'server', hostId: server.id }],
+      ignoredWarningIds: [],
+    }
 
     const planned = planHostAllocations(input, server.key!)
 
     expect(planned.assignments.map((entry) => entry.allocation)).toEqual([
       { resourceType: 'memory', positions: [0] },
       undefined,
-      { resourceType: 'storage', groupId: 'm2', positions: [0] },
+      { resourceType: 'storage', groupId: 1, positions: [0] },
       undefined,
-      { resourceType: 'expansion', groupId: 'pcie', positions: [0] },
+      { resourceType: 'expansion', groupId: 4, positions: [0] },
       undefined,
     ])
     expect([0, 2, 4].map((index) => planned.results[index].status)).toEqual([
@@ -433,7 +436,7 @@ describe('deterministic compatibility allocation', () => {
   it('reports known storage exhaustion even when the next drive has unknown compatibility fields', () => {
     const server = host('server:1', {
       host: {
-        storageSlots: [{ id: 'm2', label: 'M.2', count: 1, interfaces: ['NVMe'], formFactors: ['2280'] }],
+        storageSlots: [{ id: 1, key: 'm2', label: 'M.2', count: 1, interfaces: ['NVMe'], formFactors: ['2280'] }],
       },
     })
     const known = storage(1)
@@ -457,7 +460,7 @@ describe('deterministic compatibility allocation', () => {
 
     expect(planned.assignments[0].allocation).toEqual({
       resourceType: 'storage',
-      groupId: 'm2',
+      groupId: 1,
       positions: [0],
     })
     expect(planned.assignments[1].allocation).toBeUndefined()
@@ -477,7 +480,7 @@ describe('deterministic compatibility allocation', () => {
     const server = host('server:1', {
       host: {
         expansionSlots: [{
-          id: 'pcie',
+          id: 4, key: 'pcie',
           label: 'PCIe',
           count: 1,
           interfaceFamily: 'pcie',
@@ -515,7 +518,7 @@ describe('deterministic compatibility allocation', () => {
 
     expect(planned.assignments[0].allocation).toEqual({
       resourceType: 'expansion',
-      groupId: 'pcie',
+      groupId: 4,
       positions: [0],
     })
     expect(planned.assignments[1].allocation).toBeUndefined()
@@ -537,21 +540,21 @@ describe('deterministic compatibility allocation', () => {
       [
         assignment(1, server.key!, drive, '2026-01-01T00:00:00Z'),
         {
-          id: 'missing',
+          id: 404,
           serverId: server.key!,
           itemId: 'storage:404',
           type: 'storage',
           assignedAt: '2026-01-02T00:00:00Z',
-          allocation: { resourceType: 'storage', groupId: 'm2', positions: [1] },
+          allocation: { resourceType: 'storage', groupId: 1, positions: [1] },
         },
       ],
     )
 
     const planned = planHostAllocations(input, server.key!)
 
-    expect(planned.results.map((result) => result.assignmentId)).toEqual([1, 'missing'])
+    expect(planned.results.map((result) => result.assignmentId)).toEqual([1, 404])
     expect(planned.results[1]).toMatchObject({
-      assignmentId: 'missing',
+      assignmentId: 404,
       hostId: server.key,
       itemId: 'storage:404',
       status: 'unknown',
@@ -578,7 +581,7 @@ describe('deterministic compatibility allocation', () => {
         assignment(2, nas.key!, drives[1], '2026-01-01T00:00:00Z'),
         assignment(3, switchItem.key!, drives[2], '2026-01-01T00:00:00Z', {
           resourceType: 'storage',
-          groupId: 'legacy',
+          groupId: 22,
           positions: [8],
         }),
       ],
@@ -596,8 +599,8 @@ describe('deterministic compatibility allocation', () => {
     expect(normalized.items).toBe(input.items)
     expect(normalized.placements).toBe(input.placements)
     expect(normalized.connections).toBe(input.connections)
-    expect(normalized.assignments[0].allocation).toEqual({ resourceType: 'storage', groupId: 'm2', positions: [0] })
-    expect(normalized.assignments[1].allocation).toEqual({ resourceType: 'storage', groupId: 'm2', positions: [0] })
+    expect(normalized.assignments[0].allocation).toEqual({ resourceType: 'storage', groupId: 1, positions: [0] })
+    expect(normalized.assignments[1].allocation).toEqual({ resourceType: 'storage', groupId: 1, positions: [0] })
     expect(normalized.assignments[2]).toEqual(input.assignments[2])
     expect(input.assignments[0].allocation).toBeUndefined()
   })

@@ -262,7 +262,8 @@ describe('demo data sanitizer', () => {
 
     expect(inventory.servers).toHaveLength(4)
     expect(inventory.servers[0].compatibility.host.storageSlots[0]).toMatchObject({
-      id: 'mini-m2',
+      id: 1,
+      key: 'mini-m2',
       interfaces: ['NVMe'],
       formFactors: ['2280'],
     })
@@ -273,13 +274,13 @@ describe('demo data sanitizer', () => {
     expect(project.assignments).toEqual(expect.arrayContaining([
       expect.objectContaining({
         id: 1,
-        allocation: { resourceType: 'storage', groupId: 'mini-m2', positions: [0] },
+        allocation: { resourceType: 'storage', groupId: 1, positions: [0] },
       }),
       expect.objectContaining({ id: 2, itemType: 'cpu' }),
       expect.objectContaining({ id: 3, itemType: 'cpu' }),
       expect.objectContaining({
         id: 4,
-        allocation: { resourceType: 'expansion', groupId: 'pcie-slot', positions: [0] },
+        allocation: { resourceType: 'expansion', groupId: 1, positions: [0] },
       }),
     ]))
     expect(project.assignments.find((assignment) => assignment.id === 2).allocation).toBeUndefined()

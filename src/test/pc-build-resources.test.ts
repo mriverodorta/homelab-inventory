@@ -31,7 +31,7 @@ function motherboard(): InventoryItem {
         },
         storageSlots: [
           {
-            id: 'm2',
+            id: 1, key: 'm2',
             label: 'M.2 slots',
             count: 2,
             interfaces: ['NVMe'],
@@ -39,7 +39,7 @@ function motherboard(): InventoryItem {
             pcieGeneration: 4,
           },
           {
-            id: 'sata',
+            id: 2, key: 'sata',
             label: 'SATA ports',
             count: 4,
             interfaces: ['SATA'],
@@ -48,7 +48,7 @@ function motherboard(): InventoryItem {
         ],
         expansionSlots: [
           {
-            id: 'pcie-x16',
+            id: 3, key: 'pcie-x16',
             label: 'PCIe x16',
             count: 2,
             interfaceFamily: 'pcie',
@@ -67,9 +67,9 @@ function motherboard(): InventoryItem {
 function assignmentUsing(
   type: ComponentType,
   resourceType: CompatibilityAllocation['resourceType'],
-  groupId: string | undefined,
+  groupId: number | undefined,
   positions: number[],
-  id = positions.join('-') || 'single',
+  id = (groupId ?? 0) * 10 + (positions[0] ?? 0) + 1,
 ): ComponentAssignment {
   return {
     id,
@@ -92,7 +92,6 @@ describe('PC Build motherboard resources', () => {
 
     expect(motherboardResources(item)).toEqual({
       cpuSockets: [{
-        id: 'cpu',
         label: 'CPU sockets',
         count: 2,
         socket: 'AM5',
@@ -100,7 +99,6 @@ describe('PC Build motherboard resources', () => {
         maxTdpWatts: 170,
       }],
       memorySlots: [{
-        id: 'dimm',
         label: 'DIMM slots',
         count: 4,
         generations: ['DDR5'],
@@ -116,14 +114,14 @@ describe('PC Build motherboard resources', () => {
 
   it('collects occupied positions only from the exact resource group', () => {
     const assignments = [
-      assignmentUsing('ram', 'memory', 'dimm', [0, 1]),
-      assignmentUsing('storage', 'storage', 'm2', [0]),
-      assignmentUsing('storage', 'storage', 'sata', [0, 1]),
+      assignmentUsing('ram', 'memory', undefined, [0, 1]),
+      assignmentUsing('storage', 'storage', 1, [0]),
+      assignmentUsing('storage', 'storage', 2, [0, 1]),
     ]
 
-    expect([...occupiedPositions(assignments, 'storage', 'm2')]).toEqual([0])
-    expect([...occupiedPositions(assignments, 'storage', 'sata')]).toEqual([0, 1])
-    expect([...occupiedPositions(assignments, 'memory', 'dimm')]).toEqual([0, 1])
+    expect([...occupiedPositions(assignments, 'storage', 1)]).toEqual([0])
+    expect([...occupiedPositions(assignments, 'storage', 2)]).toEqual([0, 1])
+    expect([...occupiedPositions(assignments, 'memory', undefined)]).toEqual([0, 1])
   })
 })
 
@@ -134,10 +132,10 @@ describe('allocatePcBuildResource', () => {
       requiredPositions: 1,
       motherboard: motherboard(),
       requirements: { socket: 'AM5', generation: 'Zen 4', tdpWatts: 120 },
-      assignments: [assignmentUsing('cpu', 'cpu', 'cpu', [0])],
+      assignments: [assignmentUsing('cpu', 'cpu', undefined, [0])],
     })).toEqual({
       ok: true,
-      allocation: { resourceType: 'cpu', groupId: 'cpu', positions: [1] },
+      allocation: { resourceType: 'cpu', positions: [1] },
     })
   })
 
@@ -146,10 +144,10 @@ describe('allocatePcBuildResource', () => {
       componentType: 'cpuCooler',
       requiredPositions: 1,
       motherboard: motherboard(),
-      assignments: [assignmentUsing('cpuCooler', 'cooling', 'cpu', [0])],
+      assignments: [assignmentUsing('cpuCooler', 'cooling', undefined, [0])],
     })).toEqual({
       ok: true,
-      allocation: { resourceType: 'cooling', groupId: 'cpu', positions: [1] },
+      allocation: { resourceType: 'cooling', positions: [1] },
     })
   })
 
@@ -159,10 +157,10 @@ describe('allocatePcBuildResource', () => {
       requiredPositions: 2,
       motherboard: motherboard(),
       requirements: { generation: 'DDR5', moduleCapacityGb: 16, speedMt: 6000 },
-      assignments: [assignmentUsing('ram', 'memory', 'dimm', [0, 1])],
+      assignments: [assignmentUsing('ram', 'memory', undefined, [0, 1])],
     })).toEqual({
       ok: true,
-      allocation: { resourceType: 'memory', groupId: 'dimm', positions: [2, 3] },
+      allocation: { resourceType: 'memory', positions: [2, 3] },
     })
   })
 
@@ -172,10 +170,10 @@ describe('allocatePcBuildResource', () => {
       requiredPositions: 1,
       motherboard: motherboard(),
       requirements: { interfaces: ['NVMe'], formFactors: ['2280'] },
-      assignments: [assignmentUsing('gpu', 'expansion', 'pcie-x16', [0])],
+      assignments: [assignmentUsing('gpu', 'expansion', 3, [0])],
     })).toEqual({
       ok: true,
-      allocation: { resourceType: 'storage', groupId: 'm2', positions: [0] },
+      allocation: { resourceType: 'storage', groupId: 1, positions: [0] },
     })
 
     expect(allocatePcBuildResource({
@@ -188,10 +186,10 @@ describe('allocatePcBuildResource', () => {
         height: 'full-height',
         slotWidth: 2,
       },
-      assignments: [assignmentUsing('storage', 'storage', 'm2', [0])],
+      assignments: [assignmentUsing('storage', 'storage', 1, [0])],
     })).toEqual({
       ok: true,
-      allocation: { resourceType: 'expansion', groupId: 'pcie-x16', positions: [0] },
+      allocation: { resourceType: 'expansion', groupId: 3, positions: [0] },
     })
   })
 
@@ -212,7 +210,7 @@ describe('allocatePcBuildResource', () => {
       componentType: 'ram',
       requiredPositions: 2,
       motherboard: motherboard(),
-      assignments: [assignmentUsing('ram', 'memory', 'dimm', [0, 1, 2])],
+      assignments: [assignmentUsing('ram', 'memory', undefined, [0, 1, 2])],
     })).toEqual({
       ok: false,
       message: 'No available memory positions can satisfy this component.',
@@ -230,8 +228,8 @@ describe('allocatePcBuildResource', () => {
   })
 
   it('deterministically reuses the first position after an assignment is removed', () => {
-    const first = assignmentUsing('storage', 'storage', 'm2', [0])
-    const second = assignmentUsing('storage', 'storage', 'm2', [1])
+    const first = assignmentUsing('storage', 'storage', 1, [0])
+    const second = assignmentUsing('storage', 'storage', 1, [1])
 
     expect(allocatePcBuildResource({
       componentType: 'storage',
@@ -241,7 +239,7 @@ describe('allocatePcBuildResource', () => {
       assignments: [second],
     })).toEqual({
       ok: true,
-      allocation: { resourceType: 'storage', groupId: 'm2', positions: [0] },
+      allocation: { resourceType: 'storage', groupId: 1, positions: [0] },
     })
     expect(first.allocation?.positions).toEqual([0])
   })
@@ -259,16 +257,16 @@ describe('validatePersistedAllocation', () => {
   it('accepts an exact compatible, unoccupied allocation', () => {
     expect(validatePersistedAllocation(request, {
       resourceType: 'storage',
-      groupId: 'm2',
+      groupId: 1,
       positions: [1],
     })).toBe(true)
   })
 
   it.each([
-    { resourceType: 'memory', groupId: 'm2', positions: [0] },
-    { resourceType: 'storage', groupId: 'missing', positions: [0] },
-    { resourceType: 'storage', groupId: 'm2', positions: [2] },
-    { resourceType: 'storage', groupId: 'm2', positions: [0, 0] },
+    { resourceType: 'memory', positions: [0] },
+    { resourceType: 'storage', groupId: 999, positions: [0] },
+    { resourceType: 'storage', groupId: 1, positions: [2] },
+    { resourceType: 'storage', groupId: 1, positions: [0, 0] },
   ] as CompatibilityAllocation[])('rejects malformed or out-of-range allocation %o', (allocation) => {
     expect(validatePersistedAllocation(request, allocation)).toBe(false)
   })
@@ -276,10 +274,10 @@ describe('validatePersistedAllocation', () => {
   it('rejects occupied and incompatible persisted positions', () => {
     expect(validatePersistedAllocation({
       ...request,
-      assignments: [assignmentUsing('storage', 'storage', 'm2', [0])],
+      assignments: [assignmentUsing('storage', 'storage', 1, [0])],
     }, {
       resourceType: 'storage',
-      groupId: 'm2',
+      groupId: 1,
       positions: [0],
     })).toBe(false)
 
@@ -288,7 +286,7 @@ describe('validatePersistedAllocation', () => {
       requirements: { interfaces: ['SATA'], formFactors: ['2280'] },
     }, {
       resourceType: 'storage',
-      groupId: 'm2',
+      groupId: 1,
       positions: [0],
     })).toBe(false)
   })

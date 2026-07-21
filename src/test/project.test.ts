@@ -29,6 +29,8 @@ import {
   upsertPlacements,
   upsertPlacement,
   validateConnection,
+  VERTICAL_POWER_STRIP_CARD_WIDTH,
+  VERTICAL_UPS_CARD_WIDTH,
 } from '@/lib/project'
 import type { InventoryItemInput } from '@/lib/db'
 import type { InventoryItem, ProjectState } from '@/types/inventory'
@@ -41,30 +43,30 @@ function archived(item: InventoryItem): InventoryItem {
 }
 
 const inventory: InventoryItem[] = [
-  { id: 'server-a', name: 'Server A', type: 'server' },
-  { id: 'server-b', name: 'Server B', type: 'server' },
-  { id: 'gpu-a', name: 'GPU A', type: 'gpu' },
+  { id: 1, name: 'Server A', type: 'server' },
+  { id: 2, name: 'Server B', type: 'server' },
+  { id: 1, name: 'GPU A', type: 'gpu' },
   {
-    id: 'patch-a',
+    id: 1,
     name: 'Patch Panel A',
     type: 'patchPanel',
     ports: Array.from({ length: 24 }, (_, index) => ({
-      id: `keystone-${String(index + 1).padStart(2, '0')}`,
+      id: index + 1,
       kind: 'keystone',
       type: 'rj45',
       slotNumber: index + 1,
       endpoints: [
-        { id: `keystone-${String(index + 1).padStart(2, '0')}-back`, side: 'back' },
-        { id: `keystone-${String(index + 1).padStart(2, '0')}-front`, side: 'front' },
+        { id: 1, side: 'back' },
+        { id: 2, side: 'front' },
       ],
     })),
   },
   {
-    id: 'switch-a',
+    id: 1,
     name: 'Switch A',
     type: 'switch',
     ports: Array.from({ length: 10 }, (_, index) => ({
-      id: `port-${String(index + 1).padStart(2, '0')}`,
+      id: index + 1,
       kind: 'switch-port',
       type: index < 8 ? 'rj45' : 'sfp-plus',
       slotNumber: index + 1,
@@ -75,49 +77,55 @@ const inventory: InventoryItem[] = [
 
 const newCanvasEquipmentInventory: InventoryItem[] = [
   {
-    id: 'pc-build-a',
+    id: 1,
     name: 'PC Build A',
     type: 'pcBuild',
     specs: { operatingSystem: 'Linux' },
   },
   {
-    id: 'motherboard-a',
+    id: 1,
     name: 'Motherboard A',
     type: 'motherboard',
     ports: [
-      { id: 'lan-01', kind: 'server-port', type: 'rj45', slotNumber: 1, speed: '2.5G' },
+      { id: 1, kind: 'server-port', type: 'rj45', slotNumber: 1, speed: '2.5G' },
     ],
   },
   {
-    id: 'gpu-ports-a',
+    id: 1,
     name: 'GPU with ports',
     type: 'gpu',
     ports: [
-      { id: 'dp-01', kind: 'server-port', type: 'displayport', slotNumber: 1 },
+      { id: 1, kind: 'server-port', type: 'displayport', slotNumber: 1 },
     ],
   },
   {
-    id: 'monitor-a',
+    id: 1,
     name: 'Monitor A',
     type: 'monitor',
     ports: [
       ...Array.from({ length: 6 }, (_, index) => ({
-        id: `display-${index + 1}`,
+        id: index + 1,
         kind: 'server-port' as const,
         type: 'displayport' as const,
         slotNumber: index + 1,
       })),
-      { id: 'power-1', kind: 'server-port', type: 'barrel', slotNumber: 7 },
+      {
+        id: 7,
+        key: 'ac-input',
+        kind: 'power-port',
+        type: 'ac-input',
+        slotNumber: 1,
+      },
     ],
   },
   {
-    id: 'ups-a',
+    id: 1,
     name: 'UPS A',
     type: 'ups',
     specs: { outlets: 12, batteryBackupOutlets: 6, surgeProtectedOutlets: 6 },
   },
   {
-    id: 'power-strip-a',
+    id: 1,
     name: 'Power Strip A',
     type: 'powerStrip',
     specs: { outlets: 12 },
@@ -126,19 +134,19 @@ const newCanvasEquipmentInventory: InventoryItem[] = [
 
 const connectionInventory: InventoryItem[] = [
   {
-    id: 'server-display',
+    id: 1,
     name: 'Display Server',
     type: 'server',
     ports: [
       {
-        id: 'lan-01',
+        id: 1,
         kind: 'server-port',
         type: 'rj45',
         slotNumber: 1,
         speed: '1G',
       },
       {
-        id: 'dp-01',
+        id: 2,
         kind: 'server-port',
         type: 'displayport',
         slotNumber: 2,
@@ -146,53 +154,53 @@ const connectionInventory: InventoryItem[] = [
     ],
   },
   {
-    id: 'patch-rj45',
+    id: 1,
     name: 'RJ45 Patch Panel',
     type: 'patchPanel',
     ports: [
       {
-        id: 'keystone-01',
+        id: 1,
         kind: 'keystone',
         type: 'rj45',
         slotNumber: 1,
         endpoints: [
-          { id: 'keystone-01-front', side: 'front' },
-          { id: 'keystone-01-back', side: 'back' },
+          { id: 1, side: 'front' },
+          { id: 2, side: 'back' },
         ],
       },
     ],
   },
   {
-    id: 'patch-hdmi',
+    id: 2,
     name: 'HDMI Patch Panel',
     type: 'patchPanel',
     ports: [
       {
-        id: 'keystone-01',
+        id: 1,
         kind: 'keystone',
         type: 'hdmi',
         slotNumber: 1,
         endpoints: [
-          { id: 'keystone-01-front', side: 'front' },
-          { id: 'keystone-01-back', side: 'back' },
+          { id: 1, side: 'front' },
+          { id: 2, side: 'back' },
         ],
       },
     ],
   },
   {
-    id: 'nic-quad',
+    id: 1,
     name: 'Quad NIC',
     type: 'network',
     ports: [
       {
-        id: 'rj45-01',
+        id: 1,
         kind: 'server-port',
         type: 'rj45',
         slotNumber: 1,
         speed: '1G',
       },
       {
-        id: 'rj45-02',
+        id: 2,
         kind: 'server-port',
         type: 'rj45',
         slotNumber: 2,
@@ -248,14 +256,14 @@ describe('inventory item input updates', () => {
     const relatedItem: InventoryItem = { id: 8, key: 'cpu:8', type: 'cpu', name: 'CPU' }
     const placement = { serverId: 'server:7', x: 24, y: 48 }
     const assignment = {
-      id: 'assignment-1',
+      id: 1,
       serverId: 'server:7',
       itemId: 'cpu:8',
       type: 'cpu' as const,
       assignedAt: '2026-07-14T12:00:00.000Z',
     }
     const connection = {
-      id: 'connection-1',
+      id: 1,
       from: { itemId: 'server:7', portId: 1 },
       to: { itemId: 'switch:9', portId: 1 },
       type: 'network' as const,
@@ -298,17 +306,17 @@ describe('inventory item input updates', () => {
           type: 'gpu',
           name: 'GPU',
           ports: [
-            { id: 'dp-1', kind: 'server-port', type: 'displayport', slotNumber: 1 },
-            { id: 'dp-2', kind: 'server-port', type: 'displayport', slotNumber: 2 },
+            { id: 1, kind: 'server-port', type: 'displayport', slotNumber: 1 },
+            { id: 2, kind: 'server-port', type: 'displayport', slotNumber: 2 },
           ],
         },
       },
       placements: [],
       assignments: [],
       connections: [{
-        id: 'display-1',
-        from: { itemId: 'gpu:7', portId: 'dp-2' },
-        to: { itemId: 'server:8', portId: 'dp-1' },
+        id: 1,
+        from: { itemId: 'gpu:7', portId: 2 },
+        to: { itemId: 'server:8', portId: 1 },
         type: 'display',
         createdAt: '2026-07-14T12:00:00.000Z',
       }],
@@ -316,10 +324,10 @@ describe('inventory item input updates', () => {
     const input: InventoryItemInput = {
       type: 'gpu',
       name: 'GPU',
-      ports: [{ id: 'dp-1', kind: 'server-port', type: 'displayport', slotNumber: 1 }],
+      ports: [{ id: 1, kind: 'server-port', type: 'displayport', slotNumber: 1 }],
     }
 
-    expect(() => applyInventoryItemInput(project, 'gpu:7', input)).toThrow(/connected port dp-2/i)
+    expect(() => applyInventoryItemInput(project, 'gpu:7', input)).toThrow(/connected port 2/i)
   })
 
   it('rejects removing a connected hosted component port', () => {
@@ -334,23 +342,23 @@ describe('inventory item input updates', () => {
           type: 'network',
           name: 'NIC',
           ports: [
-            { id: 'lan-1', kind: 'server-port', type: 'rj45', slotNumber: 1 },
-            { id: 'lan-2', kind: 'server-port', type: 'rj45', slotNumber: 2 },
+            { id: 1, kind: 'server-port', type: 'rj45', slotNumber: 1 },
+            { id: 2, kind: 'server-port', type: 'rj45', slotNumber: 2 },
           ],
         },
       },
       placements: [],
       assignments: [{
-        id: 'assignment-1',
+        id: 1,
         serverId: 'server:7',
         itemId: 'network:8',
         type: 'network',
         assignedAt: '2026-07-14T12:00:00.000Z',
       }],
       connections: [{
-        id: 'network-1',
-        from: { itemId: 'switch:9', portId: 'lan-1' },
-        to: { itemId: 'server:7', hostedItemId: 'network:8', portId: 'lan-2' },
+        id: 1,
+        from: { itemId: 'switch:9', portId: 1 },
+        to: { itemId: 'server:7', hostedItemId: 'network:8', portId: 2 },
         type: 'network',
         createdAt: '2026-07-14T12:00:00.000Z',
       }],
@@ -358,10 +366,10 @@ describe('inventory item input updates', () => {
     const input: InventoryItemInput = {
       type: 'network',
       name: 'NIC',
-      ports: [{ id: 'lan-1', kind: 'server-port', type: 'rj45', slotNumber: 1 }],
+      ports: [{ id: 1, kind: 'server-port', type: 'rj45', slotNumber: 1 }],
     }
 
-    expect(() => applyInventoryItemInput(project, 'network:8', input)).toThrow(/connected port lan-2/i)
+    expect(() => applyInventoryItemInput(project, 'network:8', input)).toThrow(/connected port 2/i)
   })
 
   it('rejects removing a connected patch-panel endpoint', () => {
@@ -375,13 +383,13 @@ describe('inventory item input updates', () => {
           type: 'patchPanel',
           name: 'Patch panel',
           ports: [{
-            id: 'keystone-1',
+            id: 1,
             kind: 'keystone',
             type: 'rj45',
             slotNumber: 1,
             endpoints: [
-              { id: 'front', side: 'front' },
-              { id: 'back', side: 'back' },
+              { id: 1, side: 'front' },
+              { id: 2, side: 'back' },
             ],
           }],
         },
@@ -389,9 +397,9 @@ describe('inventory item input updates', () => {
       placements: [],
       assignments: [],
       connections: [{
-        id: 'network-1',
-        from: { itemId: 'patchPanel:7', portId: 'keystone-1', endpointId: 'back' },
-        to: { itemId: 'switch:8', portId: 'lan-1' },
+        id: 1,
+        from: { itemId: 'patchPanel:7', portId: 1, endpointId: 2 },
+        to: { itemId: 'switch:8', portId: 1 },
         type: 'network',
         createdAt: '2026-07-14T12:00:00.000Z',
       }],
@@ -400,16 +408,16 @@ describe('inventory item input updates', () => {
       type: 'patchPanel',
       name: 'Patch panel',
       ports: [{
-        id: 'keystone-1',
+        id: 1,
         kind: 'keystone',
         type: 'rj45',
         slotNumber: 1,
-        endpoints: [{ id: 'front', side: 'front' }],
+        endpoints: [{ id: 1, side: 'front' }],
       }],
     }
 
     expect(() => applyInventoryItemInput(project, 'patchPanel:7', input)).toThrow(
-      /connected endpoint back/i,
+      /connected endpoint 2/i,
     )
   })
 })
@@ -417,22 +425,22 @@ describe('inventory item input updates', () => {
 describe('server placement collisions', () => {
   it('rejects overlapping server placements', () => {
     const project = upsertPlacement(mergeInventoryWithProject(inventory, null), {
-      serverId: 'server-a',
+      serverId: 'server:1',
       x: 0,
       y: 0,
     })
 
-    expect(getNonCollidingPlacement(project, { serverId: 'server-b', x: 96, y: 48 })).toBeNull()
+    expect(getNonCollidingPlacement(project, { serverId: 'server:2', x: 96, y: 48 })).toBeNull()
   })
 
   it('allows separated server placements', () => {
     const project = upsertPlacement(mergeInventoryWithProject(inventory, null), {
-      serverId: 'server-a',
+      serverId: 'server:1',
       x: 0,
       y: 0,
     })
     const nextPlacement = {
-      serverId: 'server-b',
+      serverId: 'server:2',
       x: SERVER_CARD_WIDTH + SERVER_CARD_COLLISION_GAP,
       y: 0,
     }
@@ -442,30 +450,30 @@ describe('server placement collisions', () => {
 
   it('ignores a server colliding with its own saved placement while moving', () => {
     const project = upsertPlacement(mergeInventoryWithProject(inventory, null), {
-      serverId: 'server-a',
+      serverId: 'server:1',
       x: 0,
       y: 0,
     })
 
-    expect(placementCollides(project, { serverId: 'server-a', x: 48, y: 48 })).toBe(false)
+    expect(placementCollides(project, { serverId: 'server:1', x: 48, y: 48 })).toBe(false)
   })
 
   it('detects collisions caused by a server growing after component assignment', () => {
     const project = upsertPlacement(
       upsertPlacement(mergeInventoryWithProject(inventory, null), {
-        serverId: 'server-a',
+        serverId: 'server:1',
         x: 0,
         y: 0,
       }),
       {
-        serverId: 'server-b',
+        serverId: 'server:2',
         x: 0,
         y: 208,
       },
     )
-    const expandedProject = assignComponent(project, 'server-a', 'gpu-a')
+    const expandedProject = assignComponent(project, 'server:1', 'gpu:1')
     const expandedPlacement = expandedProject.placements.find(
-      (placement) => placement.serverId === 'server-a',
+      (placement) => placement.serverId === 'server:1',
     )
 
     expect(expandedPlacement).toBeDefined()
@@ -474,12 +482,12 @@ describe('server placement collisions', () => {
 
   it('allows a selected group to move together without colliding with its own old positions', () => {
     const project = upsertPlacements(mergeInventoryWithProject(inventory, null), [
-      { serverId: 'server-a', x: 0, y: 0 },
-      { serverId: 'server-b', x: SERVER_CARD_WIDTH + SERVER_CARD_COLLISION_GAP, y: 0 },
+      { serverId: 'server:1', x: 0, y: 0 },
+      { serverId: 'server:2', x: SERVER_CARD_WIDTH + SERVER_CARD_COLLISION_GAP, y: 0 },
     ])
     const movedPlacements = [
-      { serverId: 'server-a', x: 0, y: 24 },
-      { serverId: 'server-b', x: SERVER_CARD_WIDTH + SERVER_CARD_COLLISION_GAP, y: 24 },
+      { serverId: 'server:1', x: 0, y: 24 },
+      { serverId: 'server:2', x: SERVER_CARD_WIDTH + SERVER_CARD_COLLISION_GAP, y: 24 },
     ]
 
     expect(placementsCollide(project, movedPlacements)).toBe(false)
@@ -487,14 +495,14 @@ describe('server placement collisions', () => {
 
   it('rejects a selected group move that intersects a non-selected canvas item', () => {
     const project = upsertPlacements(mergeInventoryWithProject(inventory, null), [
-      { serverId: 'server-a', x: 0, y: 0 },
-      { serverId: 'server-b', x: SERVER_CARD_WIDTH + SERVER_CARD_COLLISION_GAP, y: 0 },
-      { serverId: 'switch-a', x: 0, y: 220 },
+      { serverId: 'server:1', x: 0, y: 0 },
+      { serverId: 'server:2', x: SERVER_CARD_WIDTH + SERVER_CARD_COLLISION_GAP, y: 0 },
+      { serverId: 'switch:1', x: 0, y: 220 },
     ])
 
     expect(placementsCollide(project, [
-      { serverId: 'server-a', x: 0, y: 180 },
-      { serverId: 'server-b', x: SERVER_CARD_WIDTH + SERVER_CARD_COLLISION_GAP, y: 180 },
+      { serverId: 'server:1', x: 0, y: 180 },
+      { serverId: 'server:2', x: SERVER_CARD_WIDTH + SERVER_CARD_COLLISION_GAP, y: 180 },
     ])).toBe(true)
   })
 })
@@ -503,21 +511,121 @@ describe('canvas item geometry', () => {
   it('sizes switches and patch panels from visible physical ports', () => {
     const project = mergeInventoryWithProject(inventory, null)
 
-    expect(getCanvasItemWidth(project, 'switch-a')).toBeGreaterThan(SERVER_CARD_WIDTH)
-    expect(getCanvasItemWidth(project, 'patch-a')).toBeGreaterThan(getCanvasItemWidth(project, 'switch-a'))
-    expect(getCanvasItemHeight(project, 'patch-a')).toBeGreaterThan(getCanvasItemHeight(project, 'switch-a'))
+    expect(getCanvasItemWidth(project, 'switch:1')).toBeGreaterThan(SERVER_CARD_WIDTH)
+    expect(getCanvasItemWidth(project, 'patchPanel:1')).toBeGreaterThan(getCanvasItemWidth(project, 'switch:1'))
+    expect(getCanvasItemHeight(project, 'patchPanel:1')).toBeGreaterThan(getCanvasItemHeight(project, 'switch:1'))
   })
 
   it('uses the rendered widths for new canvas equipment', () => {
     const project = mergeInventoryWithProject(newCanvasEquipmentInventory, null)
 
-    expect(getCanvasItemWidth(project, 'pc-build-a')).toBe(PC_BUILD_CARD_WIDTH)
+    expect(getCanvasItemWidth(project, 'pcBuild:1')).toBe(PC_BUILD_CARD_WIDTH)
     expect(PC_BUILD_CARD_WIDTH).toBe(318)
-    expect(getCanvasItemWidth(project, 'monitor-a')).toBe(MONITOR_CARD_WIDTH)
+    expect(getCanvasItemWidth(project, 'monitor:1')).toBe(MONITOR_CARD_WIDTH)
     expect(MONITOR_CARD_WIDTH).toBe(360)
-    expect(getCanvasItemWidth(project, 'ups-a')).toBe(POWER_EQUIPMENT_CARD_WIDTH)
-    expect(getCanvasItemWidth(project, 'power-strip-a')).toBe(POWER_EQUIPMENT_CARD_WIDTH)
+    expect(getCanvasItemWidth(project, 'ups:1')).toBe(POWER_EQUIPMENT_CARD_WIDTH)
+    expect(getCanvasItemWidth(project, 'powerStrip:1')).toBe(POWER_EQUIPMENT_CARD_WIDTH)
     expect(POWER_EQUIPMENT_CARD_WIDTH).toBe(420)
+  })
+
+  it('uses exact measured geometry for horizontal power strips', () => {
+    const project = mergeInventoryWithProject(newCanvasEquipmentInventory, null)
+    const sixOutletProject: ProjectState = {
+      ...project,
+      items: {
+        ...project.items,
+        'powerStrip:1': {
+          ...project.items['powerStrip:1'],
+          specs: { outlets: 6 },
+        },
+      },
+    }
+
+    expect(getCanvasItemHeight(sixOutletProject, 'powerStrip:1')).toBe(219)
+    expect(getCanvasItemHeight(project, 'powerStrip:1')).toBe(269)
+  })
+
+  it('uses exact measured geometry for a two-group horizontal UPS', () => {
+    const project = mergeInventoryWithProject(newCanvasEquipmentInventory, null)
+    const tenOutletProject: ProjectState = {
+      ...project,
+      items: {
+        ...project.items,
+        'ups:1': {
+          ...project.items['ups:1'],
+          specs: {
+            outlets: 10,
+            batteryBackupOutlets: 6,
+            surgeProtectedOutlets: 4,
+          },
+        },
+      },
+    }
+
+    expect(getCanvasItemHeight(tenOutletProject, 'ups:1')).toBe(307)
+  })
+
+  it('uses narrow persisted widths for vertical power equipment', () => {
+    const project = mergeInventoryWithProject(newCanvasEquipmentInventory, null)
+    const verticalProject: ProjectState = {
+      ...project,
+      items: {
+        ...project.items,
+        'ups:1': {
+          ...project.items['ups:1'],
+          properties: { canvasOrientation: 'vertical' },
+        },
+        'powerStrip:1': {
+          ...project.items['powerStrip:1'],
+          properties: { canvasOrientation: 'vertical' },
+        },
+      },
+    }
+
+    expect(getCanvasItemWidth(verticalProject, 'ups:1')).toBe(VERTICAL_UPS_CARD_WIDTH)
+    expect(getCanvasItemWidth(verticalProject, 'powerStrip:1')).toBe(
+      VERTICAL_POWER_STRIP_CARD_WIDTH,
+    )
+    expect(getCanvasItemHeight(verticalProject, 'ups:1')).toBe(461)
+    expect(getCanvasItemHeight(verticalProject, 'powerStrip:1')).toBe(769)
+  })
+
+  it('does not count the power-strip AC input as a vertical outlet', () => {
+    const project = mergeInventoryWithProject(newCanvasEquipmentInventory, null)
+    const outletPorts = Array.from({ length: 6 }, (_, index) => ({
+      id: index + 1,
+      kind: 'power-port' as const,
+      type: 'ac-outlet' as const,
+      slotNumber: index + 1,
+    }))
+    const verticalWithInput: ProjectState = {
+      ...project,
+      items: {
+        ...project.items,
+        'powerStrip:1': {
+          ...project.items['powerStrip:1'],
+          properties: { canvasOrientation: 'vertical' },
+          ports: [
+            { id: 7, kind: 'power-port', type: 'ac-input', slotNumber: 1 },
+            ...outletPorts,
+          ],
+        },
+      },
+    }
+    const verticalWithoutInput: ProjectState = {
+      ...verticalWithInput,
+      items: {
+        ...verticalWithInput.items,
+        'powerStrip:1': {
+          ...verticalWithInput.items['powerStrip:1'],
+          ports: outletPorts,
+        },
+      },
+    }
+
+    expect(getCanvasItemHeight(verticalWithInput, 'powerStrip:1')).toBe(
+      getCanvasItemHeight(verticalWithoutInput, 'powerStrip:1'),
+    )
   })
 
   it('grows PC build geometry for visible assignments, hosted ports, and the operating system', () => {
@@ -526,16 +634,16 @@ describe('canvas item geometry', () => {
       ...emptyProject,
       assignments: [
         {
-          id: 'motherboard-assignment',
-          serverId: 'pc-build-a',
-          itemId: 'motherboard-a',
+          id: 1,
+          serverId: 'pcBuild:1',
+          itemId: 'motherboard:1',
           type: 'motherboard',
           assignedAt: '2026-07-20T12:00:00.000Z',
         },
         {
-          id: 'gpu-assignment',
-          serverId: 'pc-build-a',
-          itemId: 'gpu-ports-a',
+          id: 2,
+          serverId: 'pcBuild:1',
+          itemId: 'gpu:1',
           type: 'gpu',
           assignedAt: '2026-07-20T12:00:00.000Z',
         },
@@ -545,18 +653,18 @@ describe('canvas item geometry', () => {
       ...populatedProject,
       items: {
         ...populatedProject.items,
-        'pc-build-a': {
-          ...populatedProject.items['pc-build-a'],
+        'pcBuild:1': {
+          ...populatedProject.items['pcBuild:1'],
           specs: {},
         },
       },
     }
 
-    expect(getCanvasItemHeight(populatedProject, 'pc-build-a')).toBeGreaterThan(
-      getCanvasItemHeight(emptyProject, 'pc-build-a'),
+    expect(getCanvasItemHeight(populatedProject, 'pcBuild:1')).toBeGreaterThan(
+      getCanvasItemHeight(emptyProject, 'pcBuild:1'),
     )
-    expect(getCanvasItemHeight(populatedProject, 'pc-build-a')).toBeGreaterThan(
-      getCanvasItemHeight(withoutOperatingSystem, 'pc-build-a'),
+    expect(getCanvasItemHeight(populatedProject, 'pcBuild:1')).toBeGreaterThan(
+      getCanvasItemHeight(withoutOperatingSystem, 'pcBuild:1'),
     )
   })
 
@@ -566,40 +674,67 @@ describe('canvas item geometry', () => {
       ...project,
       items: {
         ...project.items,
-        'monitor-a': {
-          ...project.items['monitor-a'],
-          ports: project.items['monitor-a'].ports?.slice(0, 2),
+        'monitor:1': {
+          ...project.items['monitor:1'],
+          ports: [
+            ...(project.items['monitor:1'].ports?.slice(0, 2) ?? []),
+            project.items['monitor:1'].ports?.at(-1),
+          ].filter((port): port is NonNullable<typeof port> => Boolean(port)),
         },
-        'power-strip-a': {
-          ...project.items['power-strip-a'],
+        'powerStrip:1': {
+          ...project.items['powerStrip:1'],
           specs: { outlets: 6 },
         },
       },
     }
 
-    expect(getCanvasItemHeight(project, 'monitor-a')).toBeGreaterThan(
-      getCanvasItemHeight(compactProject, 'monitor-a'),
-    )
-    expect(getCanvasItemHeight(project, 'power-strip-a')).toBeGreaterThan(
-      getCanvasItemHeight(compactProject, 'power-strip-a'),
-    )
-    expect(getCanvasItemHeight(project, 'ups-a')).toBeGreaterThan(0)
+    expect(getCanvasItemHeight(project, 'monitor:1')).toBe(357)
+    expect(getCanvasItemHeight(compactProject, 'monitor:1')).toBe(307)
+    expect(getCanvasItemHeight(project, 'powerStrip:1')).toBe(269)
+    expect(getCanvasItemHeight(compactProject, 'powerStrip:1')).toBe(219)
+    expect(getCanvasItemHeight(project, 'ups:1')).toBeGreaterThan(0)
   })
 
   it('prevents overlap using the new equipment dimensions', () => {
     const project = upsertPlacement(
       mergeInventoryWithProject(newCanvasEquipmentInventory, null),
-      { serverId: 'pc-build-a', x: 0, y: 0 },
+      { serverId: 'pcBuild:1', x: 0, y: 0 },
     )
 
     expect(placementCollides(project, {
-      serverId: 'monitor-a',
+      serverId: 'monitor:1',
       x: PC_BUILD_CARD_WIDTH + SERVER_CARD_COLLISION_GAP - 1,
       y: 0,
     })).toBe(true)
     expect(placementCollides(project, {
-      serverId: 'monitor-a',
+      serverId: 'monitor:1',
       x: PC_BUILD_CARD_WIDTH + SERVER_CARD_COLLISION_GAP,
+      y: 0,
+    })).toBe(false)
+  })
+
+  it('uses vertical dimensions when rejecting power-equipment overlap', () => {
+    const base = mergeInventoryWithProject(newCanvasEquipmentInventory, null)
+    const vertical: ProjectState = {
+      ...base,
+      items: {
+        ...base.items,
+        'powerStrip:1': {
+          ...base.items['powerStrip:1'],
+          properties: { canvasOrientation: 'vertical' },
+        },
+      },
+      placements: [{ serverId: 'powerStrip:1', x: 0, y: 0 }],
+    }
+
+    expect(placementCollides(vertical, {
+      serverId: 'monitor:1',
+      x: VERTICAL_POWER_STRIP_CARD_WIDTH + SERVER_CARD_COLLISION_GAP - 1,
+      y: 0,
+    })).toBe(true)
+    expect(placementCollides(vertical, {
+      serverId: 'monitor:1',
+      x: VERTICAL_POWER_STRIP_CARD_WIDTH + SERVER_CARD_COLLISION_GAP,
       y: 0,
     })).toBe(false)
   })
@@ -610,17 +745,17 @@ describe('canvas auto arrange', () => {
     const project = {
       ...mergeInventoryWithProject(inventory, null),
       placements: [
-        { serverId: 'switch-a', x: 24, y: 48 },
-        { serverId: 'server-a', x: 720, y: 96 },
-        { serverId: 'patch-a', x: 360, y: 144 },
+        { serverId: 'switch:1', x: 24, y: 48 },
+        { serverId: 'server:1', x: 720, y: 96 },
+        { serverId: 'patchPanel:1', x: 360, y: 144 },
       ],
     }
     const arranged = autoArrangeCanvasItems(project)
 
     expect(arranged.placements).toEqual([
-      { serverId: 'server-a', x: 0, y: 0 },
-      { serverId: 'patch-a', x: 360, y: 0 },
-      { serverId: 'switch-a', x: 1320, y: 0 },
+      { serverId: 'server:1', x: 0, y: 0 },
+      { serverId: 'patchPanel:1', x: 360, y: 0 },
+      { serverId: 'switch:1', x: 1320, y: 0 },
     ])
   })
 
@@ -628,22 +763,43 @@ describe('canvas auto arrange', () => {
     const project: ProjectState = {
       ...mergeInventoryWithProject(newCanvasEquipmentInventory, null),
       placements: [
-        { serverId: 'ups-a', x: 0, y: 0 },
-        { serverId: 'pc-build-a', x: 0, y: 0 },
-        { serverId: 'monitor-a', x: 0, y: 0 },
-        { serverId: 'power-strip-a', x: 0, y: 0 },
+        { serverId: 'ups:1', x: 0, y: 0 },
+        { serverId: 'pcBuild:1', x: 0, y: 0 },
+        { serverId: 'monitor:1', x: 0, y: 0 },
+        { serverId: 'powerStrip:1', x: 0, y: 0 },
       ],
     }
     const arranged = autoArrangeCanvasItems(project)
     const pcBuildPlacement = arranged.placements.find(
-      (placement) => placement.serverId === 'pc-build-a',
+      (placement) => placement.serverId === 'pcBuild:1',
     )
     const standalonePlacements = arranged.placements.filter(
-      (placement) => placement.serverId !== 'pc-build-a',
+      (placement) => placement.serverId !== 'pcBuild:1',
     )
 
     expect(pcBuildPlacement?.x).toBe(0)
     expect(new Set(standalonePlacements.map((placement) => placement.x)).size).toBe(1)
+    expect(placementsCollide(arranged, arranged.placements)).toBe(false)
+  })
+
+  it('auto-arranges mixed power-equipment orientations without overlap', () => {
+    const base = mergeInventoryWithProject(newCanvasEquipmentInventory, null)
+    const project: ProjectState = {
+      ...base,
+      items: {
+        ...base.items,
+        'ups:1': {
+          ...base.items['ups:1'],
+          properties: { canvasOrientation: 'vertical' },
+        },
+      },
+      placements: [
+        { serverId: 'ups:1', x: 0, y: 0 },
+        { serverId: 'powerStrip:1', x: 0, y: 0 },
+      ],
+    }
+    const arranged = autoArrangeCanvasItems(project)
+
     expect(placementsCollide(arranged, arranged.placements)).toBe(false)
   })
 })
@@ -653,8 +809,8 @@ describe('inventory connections', () => {
     const project = mergeInventoryWithProject(connectionInventory, null)
     const result = createConnection(
       project,
-      { itemId: 'server-display', portId: 'dp-01' },
-      { itemId: 'patch-hdmi', portId: 'keystone-01', endpointId: 'keystone-01-back' },
+      { itemId: 'server:1', portId: 2 },
+      { itemId: 'patchPanel:2', portId: 1, endpointId: 2 },
     )
 
     expect(result.ok).toBe(true)
@@ -665,8 +821,8 @@ describe('inventory connections', () => {
     const project = mergeInventoryWithProject(connectionInventory, null)
     const result = createConnection(
       project,
-      { itemId: 'server-display', portId: 'lan-01' },
-      { itemId: 'patch-rj45', portId: 'keystone-01', endpointId: 'keystone-01-back' },
+      { itemId: 'server:1', portId: 1 },
+      { itemId: 'patchPanel:1', portId: 1, endpointId: 2 },
     )
 
     expect(result.ok).toBe(true)
@@ -676,13 +832,13 @@ describe('inventory connections', () => {
   it('allows installed server network card ports to connect as hosted endpoints', () => {
     const project = assignComponent(
       mergeInventoryWithProject(connectionInventory, null),
-      'server-display',
-      'nic-quad',
+      'server:1',
+      'network:1',
     )
     const result = createConnection(
       project,
-      { itemId: 'server-display', hostedItemId: 'nic-quad', portId: 'rj45-02' },
-      { itemId: 'patch-rj45', portId: 'keystone-01', endpointId: 'keystone-01-back' },
+      { itemId: 'server:1', hostedItemId: 'network:1', portId: 2 },
+      { itemId: 'patchPanel:1', portId: 1, endpointId: 2 },
     )
 
     expect(result.ok).toBe(true)
@@ -692,12 +848,12 @@ describe('inventory connections', () => {
   it('classifies sfp plus switch links as network connections', () => {
     const project = mergeInventoryWithProject([
       {
-        id: 'switch-a',
+        id: 1,
         name: 'Switch A',
         type: 'switch',
         ports: [
           {
-            id: 'sfp-plus-01',
+            id: 1,
             kind: 'switch-port',
             type: 'sfp-plus',
             slotNumber: 1,
@@ -706,12 +862,12 @@ describe('inventory connections', () => {
         ],
       },
       {
-        id: 'switch-b',
+        id: 2,
         name: 'Switch B',
         type: 'switch',
         ports: [
           {
-            id: 'sfp-plus-01',
+            id: 1,
             kind: 'switch-port',
             type: 'sfp-plus',
             slotNumber: 1,
@@ -722,8 +878,8 @@ describe('inventory connections', () => {
     ], null)
     const result = createConnection(
       project,
-      { itemId: 'switch-a', portId: 'sfp-plus-01' },
-      { itemId: 'switch-b', portId: 'sfp-plus-01' },
+      { itemId: 'switch:1', portId: 1 },
+      { itemId: 'switch:2', portId: 1 },
     )
 
     expect(result.ok).toBe(true)
@@ -736,8 +892,8 @@ describe('inventory connections', () => {
     expect(
       validateConnection(
         project,
-        { itemId: 'server-display', portId: 'lan-01' },
-        { itemId: 'patch-hdmi', portId: 'keystone-01', endpointId: 'keystone-01-back' },
+        { itemId: 'server:1', portId: 1 },
+        { itemId: 'patchPanel:2', portId: 1, endpointId: 2 },
       ),
     ).toEqual({ ok: false, message: 'Those port types cannot be connected.' })
   })
@@ -746,16 +902,16 @@ describe('inventory connections', () => {
     const project = mergeInventoryWithProject(connectionInventory, null)
     const first = createConnection(
       project,
-      { itemId: 'server-display', portId: 'lan-01' },
-      { itemId: 'patch-rj45', portId: 'keystone-01', endpointId: 'keystone-01-back' },
+      { itemId: 'server:1', portId: 1 },
+      { itemId: 'patchPanel:1', portId: 1, endpointId: 2 },
     )
 
     expect(first.ok).toBe(true)
 
     const second = createConnection(
       first.ok ? first.project : project,
-      { itemId: 'server-display', portId: 'lan-01' },
-      { itemId: 'patch-rj45', portId: 'keystone-01', endpointId: 'keystone-01-front' },
+      { itemId: 'server:1', portId: 1 },
+      { itemId: 'patchPanel:1', portId: 1, endpointId: 1 },
     )
 
     expect(second).toEqual({ ok: false, message: 'The source port is already connected.' })
@@ -765,15 +921,15 @@ describe('inventory connections', () => {
     const project = mergeInventoryWithProject(connectionInventory, null)
     const result = createConnection(
       project,
-      { itemId: 'server-display', portId: 'lan-01' },
-      { itemId: 'patch-rj45', portId: 'keystone-01', endpointId: 'keystone-01-back' },
+      { itemId: 'server:1', portId: 1 },
+      { itemId: 'patchPanel:1', portId: 1, endpointId: 2 },
     )
 
     expect(result.ok).toBe(true)
 
     const nextProject = removeConnection(
       result.ok ? result.project : project,
-      result.ok ? result.connection.id : 'missing',
+      result.ok ? result.connection.id : 999,
     )
 
     expect(nextProject.connections).toEqual([])
@@ -783,15 +939,15 @@ describe('inventory connections', () => {
     const project = mergeInventoryWithProject(connectionInventory, null)
     const result = createConnection(
       project,
-      { itemId: 'server-display', portId: 'lan-01' },
-      { itemId: 'patch-rj45', portId: 'keystone-01', endpointId: 'keystone-01-back' },
+      { itemId: 'server:1', portId: 1 },
+      { itemId: 'patchPanel:1', portId: 1, endpointId: 2 },
     )
 
     expect(result.ok).toBe(true)
 
     const nextProject = updateConnectionLabel(
       result.ok ? result.project : project,
-      result.ok ? result.connection.id : 'missing',
+      result.ok ? result.connection.id : 999,
       'LAN uplink',
     )
 
@@ -802,15 +958,15 @@ describe('inventory connections', () => {
     const project = mergeInventoryWithProject(connectionInventory, null)
     const result = createConnection(
       project,
-      { itemId: 'server-display', portId: 'lan-01' },
-      { itemId: 'patch-rj45', portId: 'keystone-01', endpointId: 'keystone-01-back' },
+      { itemId: 'server:1', portId: 1 },
+      { itemId: 'patchPanel:1', portId: 1, endpointId: 2 },
     )
 
     expect(result.ok).toBe(true)
 
     const routedProject = updateConnectionRoute(
       result.ok ? result.project : project,
-      result.ok ? result.connection.id : 'missing',
+      result.ok ? result.connection.id : 999,
       {
         sourceSide: 'top',
         targetSide: 'bottom',
@@ -826,7 +982,7 @@ describe('inventory connections', () => {
 
     const clearedProject = updateConnectionRoute(
       routedProject,
-      result.ok ? result.connection.id : 'missing',
+      result.ok ? result.connection.id : 999,
       {},
     )
 
@@ -837,11 +993,11 @@ describe('inventory connections', () => {
 describe('archived inventory domain guards', () => {
   it('does not create or preview placements for archived canvas equipment', () => {
     const base = mergeInventoryWithProject([
-      archived({ id: 'server-archived', name: 'Archived Server', type: 'server' }),
-      { id: 'server-active', name: 'Active Server', type: 'server' },
+      archived({ id: 1, name: 'Archived Server', type: 'server' }),
+      { id: 2, name: 'Active Server', type: 'server' },
     ], null)
-    const archivedPlacement = { serverId: 'server-archived', x: 0, y: 0 }
-    const activePlacement = { serverId: 'server-active', x: 400, y: 0 }
+    const archivedPlacement = { serverId: 'server:1', x: 0, y: 0 }
+    const activePlacement = { serverId: 'server:2', x: 400, y: 0 }
 
     expect(getNonCollidingPlacement(base, archivedPlacement)).toBeNull()
     expect(upsertPlacement(base, archivedPlacement)).toBe(base)
@@ -850,33 +1006,33 @@ describe('archived inventory domain guards', () => {
 
   it('rejects connections whose direct host is archived', () => {
     const project = mergeInventoryWithProject(connectionInventory, null)
-    project.items['server-display'] = archived(project.items['server-display'])
+    project.items['server:1'] = archived(project.items['server:1'])
 
     expect(validateConnection(
       project,
-      { itemId: 'server-display', portId: 'lan-01' },
-      { itemId: 'patch-rj45', portId: 'keystone-01', endpointId: 'keystone-01-back' },
+      { itemId: 'server:1', portId: 1 },
+      { itemId: 'patchPanel:1', portId: 1, endpointId: 2 },
     )).toEqual({ ok: false, message: 'One of the selected ports is no longer available.' })
   })
 
   it('rejects connections whose assigned expansion card is archived', () => {
     const assigned = assignComponent(
       mergeInventoryWithProject(connectionInventory, null),
-      'server-display',
-      'nic-quad',
+      'server:1',
+      'network:1',
     )
     const project: ProjectState = {
       ...assigned,
       items: {
         ...assigned.items,
-        'nic-quad': archived(assigned.items['nic-quad']),
+        'network:1': archived(assigned.items['network:1']),
       },
     }
 
     expect(validateConnection(
       project,
-      { itemId: 'server-display', hostedItemId: 'nic-quad', portId: 'rj45-01' },
-      { itemId: 'patch-rj45', portId: 'keystone-01', endpointId: 'keystone-01-back' },
+      { itemId: 'server:1', hostedItemId: 'network:1', portId: 1 },
+      { itemId: 'patchPanel:1', portId: 1, endpointId: 2 },
     )).toEqual({ ok: false, message: 'One of the selected ports is no longer available.' })
   })
 })
@@ -933,9 +1089,9 @@ function createReturnCanvasItemProject(): ProjectState {
         from: {
           itemId: 'server:1',
           hostedItemId: 'network:1',
-          portId: 'nic-1',
+          portId: 1,
         },
-        to: { itemId: 'switch:1', portId: 'switch-1' },
+        to: { itemId: 'switch:1', portId: 1 },
         type: 'network',
         createdAt: '2026-07-20T12:00:00.000Z',
       },
@@ -944,16 +1100,16 @@ function createReturnCanvasItemProject(): ProjectState {
         from: {
           itemId: 'server:1',
           hostedItemId: 'gpu:1',
-          portId: 'gpu-1',
+          portId: 1,
         },
-        to: { itemId: 'monitor:1', portId: 'display-1' },
+        to: { itemId: 'monitor:1', portId: 1 },
         type: 'display',
         createdAt: '2026-07-20T12:00:00.000Z',
       },
       {
         id: 3,
-        from: { itemId: 'server:1', portId: 'board-lan-1' },
-        to: { itemId: 'switch:1', portId: 'switch-2' },
+        from: { itemId: 'server:1', portId: 1 },
+        to: { itemId: 'switch:1', portId: 2 },
         type: 'network',
         createdAt: '2026-07-20T12:00:00.000Z',
       },
@@ -962,9 +1118,9 @@ function createReturnCanvasItemProject(): ProjectState {
         from: {
           itemId: 'server:2',
           hostedItemId: 'network:2',
-          portId: 'nic-1',
+          portId: 1,
         },
-        to: { itemId: 'switch:1', portId: 'switch-3' },
+        to: { itemId: 'switch:1', portId: 3 },
         type: 'network',
         createdAt: '2026-07-20T12:00:00.000Z',
       },
@@ -973,9 +1129,9 @@ function createReturnCanvasItemProject(): ProjectState {
         from: {
           itemId: 'server:1',
           hostedItemId: 'network:stale',
-          portId: 'nic-1',
+          portId: 1,
         },
-        to: { itemId: 'switch:1', portId: 'switch-4' },
+        to: { itemId: 'switch:1', portId: 4 },
         type: 'network',
         createdAt: '2026-07-20T12:00:00.000Z',
       },

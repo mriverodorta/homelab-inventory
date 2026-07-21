@@ -22,7 +22,7 @@ export async function loadAgentStatus(): Promise<AgentStatusSummary> {
 }
 
 export async function createAgentEnrollment(
-  serverId: string | number,
+  serverId: number,
   endpoint: string,
 ): Promise<AgentEnrollmentResponse> {
   return agentRequest<AgentEnrollmentResponse>('/api/agent/enrollments', {
@@ -35,7 +35,7 @@ export async function createAgentEnrollment(
 }
 
 export async function revokeAgentRegistration(
-  serverId: string | number,
+  serverId: number,
 ): Promise<void> {
   await agentRequest(`/api/agent/servers/${serverId}/registration`, {
     method: 'DELETE',
@@ -43,7 +43,7 @@ export async function revokeAgentRegistration(
 }
 
 export async function clearAgentStatus(
-  serverId: string | number,
+  serverId: number,
 ): Promise<AgentStatusSummary> {
   return agentRequest<AgentStatusSummary>(`/api/agent/servers/${serverId}/status`, {
     method: 'DELETE',

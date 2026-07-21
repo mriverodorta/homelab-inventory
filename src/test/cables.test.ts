@@ -13,7 +13,7 @@ function projectWithPorts(items: InventoryItem[]): ProjectState {
       version: 1,
       updatedAt: now,
     },
-    items: Object.fromEntries(items.map((item) => [item.id, item])),
+    items: Object.fromEntries(items.map((item) => [item.key, item])),
     placements: [],
     assignments: [],
     connections: [],
@@ -22,19 +22,20 @@ function projectWithPorts(items: InventoryItem[]): ProjectState {
 
 const basePorts: InventoryItem[] = [
   {
-    id: 'server',
+    id: 1,
+    key: 'server:1',
     name: 'Server',
     type: 'server',
     ports: [
       {
-        id: 'lan-01',
+        id: 1,
         kind: 'server-port',
         type: 'rj45',
         slotNumber: 1,
         speed: '1G',
       },
       {
-        id: 'dp-01',
+        id: 2,
         kind: 'server-port',
         type: 'displayport',
         slotNumber: 2,
@@ -42,12 +43,13 @@ const basePorts: InventoryItem[] = [
     ],
   },
   {
-    id: 'switch-25',
+    id: 1,
+    key: 'switch:1',
     name: '2.5G Switch',
     type: 'switch',
     ports: [
       {
-        id: 'rj45-01',
+        id: 1,
         kind: 'switch-port',
         type: 'rj45',
         slotNumber: 1,
@@ -56,12 +58,13 @@ const basePorts: InventoryItem[] = [
     ],
   },
   {
-    id: 'switch-10',
+    id: 2,
+    key: 'switch:2',
     name: '10G Switch',
     type: 'switch',
     ports: [
       {
-        id: 'sfp-01',
+        id: 1,
         kind: 'switch-port',
         type: 'sfp-plus',
         slotNumber: 1,
@@ -70,18 +73,19 @@ const basePorts: InventoryItem[] = [
     ],
   },
   {
-    id: 'patch-hdmi',
+    id: 1,
+    key: 'patchPanel:1',
     name: 'HDMI Patch Panel',
     type: 'patchPanel',
     ports: [
       {
-        id: 'keystone-01',
+        id: 1,
         kind: 'keystone',
         type: 'hdmi',
         slotNumber: 1,
         endpoints: [
-          { id: 'keystone-01-back', side: 'back' },
-          { id: 'keystone-01-front', side: 'front' },
+          { id: 1, side: 'back' },
+          { id: 2, side: 'front' },
         ],
       },
     ],
@@ -90,12 +94,12 @@ const basePorts: InventoryItem[] = [
 
 describe('cable appearance', () => {
   const networkConnection = (negotiatedSpeedMbps?: number) => ({
-    id: `network-${negotiatedSpeedMbps ?? 'unknown'}`,
+    id: ({ 1000: 1, 2500: 2, 5000: 3, 10000: 4 }[negotiatedSpeedMbps ?? 0] ?? 5),
     type: 'network' as const,
     negotiatedSpeedMbps,
     createdAt: '2026-06-26T00:00:00.000Z',
-    from: { itemId: 'server', portId: 'lan-01' },
-    to: { itemId: 'switch-25', portId: 'rj45-01' },
+    from: { itemId: 'server:1', portId: 1 },
+    to: { itemId: 'switch:1', portId: 1 },
   })
 
   const project = projectWithPorts([basePorts[0], basePorts[1], basePorts[2]])
@@ -139,8 +143,8 @@ describe('cable appearance', () => {
     const project = projectWithPorts([basePorts[0], basePorts[3]])
     const result = createConnection(
       project,
-      { itemId: 'server', portId: 'dp-01' },
-      { itemId: 'patch-hdmi', portId: 'keystone-01', endpointId: 'keystone-01-back' },
+      { itemId: 'server:1', portId: 2 },
+      { itemId: 'patchPanel:1', portId: 1, endpointId: 1 },
     )
 
     expect(result.ok).toBe(true)
@@ -155,12 +159,13 @@ describe('cable appearance', () => {
       ...projectWithPorts([
         basePorts[0],
         {
-          id: 'nic-quad',
+          id: 1,
+          key: 'network:1',
           name: 'Intel I350-T4 Quad Port 1G NIC',
           type: 'network',
           ports: [
             {
-              id: 'rj45-02',
+              id: 2,
               kind: 'server-port',
               type: 'rj45',
               slotNumber: 2,
@@ -174,8 +179,8 @@ describe('cable appearance', () => {
       assignments: [
         {
           id: 1,
-          serverId: 'server',
-          itemId: 'nic-quad',
+          serverId: 'server:1',
+          itemId: 'network:1',
           type: 'network',
           assignedAt: '2026-06-26T00:00:00.000Z',
         },
@@ -183,9 +188,9 @@ describe('cable appearance', () => {
     }
 
     expect(describeConnectionEndpoint(project, {
-      itemId: 'server',
-      hostedItemId: 'nic-quad',
-      portId: 'rj45-02',
+      itemId: 'server:1',
+      hostedItemId: 'network:1',
+      portId: 2,
     })).toBe('Server / Intel I350-T4 Quad Port 1G NIC / RJ45 2 / RJ45 1G / Access')
   })
 })

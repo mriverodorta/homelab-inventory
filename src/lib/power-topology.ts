@@ -15,8 +15,7 @@ import type {
   ValidationResult,
 } from '@/types/inventory'
 
-export const POWER_INPUT_PORT_ID = 'ac-input'
-export const POWER_OUTLET_PORT_PREFIX = 'outlet-'
+export const POWER_INPUT_PORT_KEY = 'ac-input'
 
 export type PowerEndpointDirection = 'input' | 'output'
 export type PowerEndpointKind =
@@ -59,11 +58,6 @@ type PowerConnectionResult =
   | { ok: true; project: ProjectState; connection: InventoryConnection }
   | { ok: false; message: string }
 
-function positiveInteger(value: unknown): number {
-  const parsed = typeof value === 'number' ? value : Number(value)
-  return Number.isInteger(parsed) && parsed > 0 ? parsed : 0
-}
-
 function itemEntry(project: ProjectState, itemId: string): [string, InventoryItem] | null {
   const item = project.items[itemId]
   return item && !isArchivedItem(item) ? [itemId, item] : null
@@ -81,29 +75,8 @@ function assignedComponent(
   return assignment ? itemEntry(project, assignment.itemId) : null
 }
 
-function outletCount(item: InventoryItem): number {
-  const explicitCount = positiveInteger(item.specs?.outlets)
-
-  if (explicitCount > 0) {
-    return explicitCount
-  }
-
-  if (item.type !== 'ups') {
-    return 0
-  }
-
-  return positiveInteger(item.specs?.batteryBackupOutlets)
-    + positiveInteger(item.specs?.surgeProtectedOutlets)
-}
-
-function outletLabel(item: InventoryItem, index: number): string {
-  if (item.type !== 'ups') {
-    return `${item.name} / Outlet ${index}`
-  }
-
-  const batteryOutlets = positiveInteger(item.specs?.batteryBackupOutlets)
-  const outletType = index <= batteryOutlets ? 'Battery outlet' : 'Surge outlet'
-  return `${item.name} / ${outletType} ${index}`
+function powerInputPort(item: InventoryItem) {
+  return item.ports?.find((port) => port.key === POWER_INPUT_PORT_KEY && port.type === 'ac-input')
 }
 
 function outputEndpoints(itemId: string, item: InventoryItem): PowerEndpoint[] {
@@ -111,28 +84,29 @@ function outputEndpoints(itemId: string, item: InventoryItem): PowerEndpoint[] {
     return []
   }
 
-  return Array.from({ length: outletCount(item) }, (_, offset) => {
-    const index = offset + 1
-    return {
+  return (item.ports ?? [])
+    .filter((port) => port.type === 'ac-outlet')
+    .map((port) => ({
       endpoint: {
         itemId,
-        portId: `${POWER_OUTLET_PORT_PREFIX}${index}`,
+        portId: port.id,
       },
       direction: 'output' as const,
       kind: item.type === 'ups' ? 'ups-outlet' as const : 'power-strip-outlet' as const,
-      label: outletLabel(item, index),
+      label: `${item.name} / ${port.label ?? `Outlet ${port.slotNumber}`}`,
       allowFanOut: item.specs?.allowOutletFanOut === true,
-    }
-  })
+    }))
 }
 
 function monitorInput(itemId: string, item: InventoryItem): PowerEndpoint | null {
   if (item.type !== 'monitor') {
     return null
   }
+  const port = powerInputPort(item)
+  if (!port) return null
 
   return {
-    endpoint: { itemId, portId: POWER_INPUT_PORT_ID },
+    endpoint: { itemId, portId: port.id },
     direction: 'input',
     kind: 'monitor-input',
     label: `${item.name} / AC input`,
@@ -144,9 +118,11 @@ function powerStripInput(itemId: string, item: InventoryItem): PowerEndpoint | n
   if (item.type !== 'powerStrip') {
     return null
   }
+  const port = powerInputPort(item)
+  if (!port) return null
 
   return {
-    endpoint: { itemId, portId: POWER_INPUT_PORT_ID },
+    endpoint: { itemId, portId: port.id },
     direction: 'input',
     kind: 'power-strip-input',
     label: `${item.name} / AC input`,
@@ -170,12 +146,14 @@ function hostInput(project: ProjectState, itemId: string, item: InventoryItem): 
   if (!component) {
     return null
   }
+  const port = powerInputPort(component[1])
+  if (!port) return null
 
   return {
     endpoint: {
       itemId,
       hostedItemId: component[0],
-      portId: POWER_INPUT_PORT_ID,
+      portId: port.id,
     },
     direction: 'input',
     kind: componentType === 'powerSupply'
@@ -186,16 +164,16 @@ function hostInput(project: ProjectState, itemId: string, item: InventoryItem): 
   }
 }
 
-export function powerOutletEndpoint(itemId: string, outletNumber: number): ConnectionEndpoint {
-  return { itemId, portId: `${POWER_OUTLET_PORT_PREFIX}${outletNumber}` }
+export function powerOutletEndpoint(itemId: string, portId: number): ConnectionEndpoint {
+  return { itemId, portId }
 }
 
-export function monitorPowerInputEndpoint(itemId: string): ConnectionEndpoint {
-  return { itemId, portId: POWER_INPUT_PORT_ID }
+export function monitorPowerInputEndpoint(itemId: string, portId = 1): ConnectionEndpoint {
+  return { itemId, portId }
 }
 
-export function powerStripPowerInputEndpoint(itemId: string): ConnectionEndpoint {
-  return { itemId, portId: POWER_INPUT_PORT_ID }
+export function powerStripPowerInputEndpoint(itemId: string, portId = 1): ConnectionEndpoint {
+  return { itemId, portId }
 }
 
 export function getPowerEndpoints(project: ProjectState): PowerEndpoint[] {

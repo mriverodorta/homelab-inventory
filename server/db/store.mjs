@@ -20,13 +20,18 @@ import {
   resolveInventoryRef,
 } from './inventory-lifecycle.mjs'
 import {
+  assertAgentsStoreShape,
+  assertAgentStatusStoreShape,
   assertInventoryStoreShape,
   assertLegacyProjectShape,
   assertProjectShape,
   assertProjectStoreShape,
 } from './validation.mjs'
+import { assertRelationalId, isRelationalId, parseLegacyRelationalId } from './relational-ids.mjs'
+import { migrateSchema9To10 } from './migrate-schema-10.mjs'
+import { migrateSchema10To11 } from './migrate-schema-11.mjs'
 
-export const CURRENT_SCHEMA_VERSION = 9
+export const CURRENT_SCHEMA_VERSION = 11
 
 const DEFAULT_SAVE_DEBOUNCE_MS = 500
 const BACKUP_LIMIT = 10
@@ -215,9 +220,8 @@ function createProjectStoreFromProject(project) {
   }
 }
 
-function splitProject(project) {
-  assertLegacyProjectShape(project)
-  project = normalizeLegacyProjectIds(project)
+function splitCurrentProject(project) {
+  assertProjectShape(project)
   project = normalizeProjectCompatibilityPolicy(project)
   assertProjectShape(project)
   project = normalizeCompatibilityProject(project)
@@ -227,6 +231,11 @@ function splitProject(project) {
     inventory: inventoryTablesFromItems(project.items ?? {}),
     project: createProjectStoreFromProject(project),
   }
+}
+
+function splitLegacyProject(project) {
+  assertLegacyProjectShape(project)
+  return splitCurrentProject(normalizeLegacyProjectIds(project))
 }
 
 function normalizeLegacyProjectIds(project) {
@@ -350,28 +359,20 @@ function parseItemKey(key) {
   }
 
   const [type, rawId] = key.split(':')
+  if (!/^[1-9]\d*$/.test(rawId ?? '')) return null
   const id = Number(rawId)
 
-  if (!TABLE_BY_TYPE[type] || !Number.isInteger(id)) {
+  if (!TABLE_BY_TYPE[type] || !Number.isSafeInteger(id)) {
     return null
   }
 
   return { type, id }
 }
 
-function numericServerId(value) {
-  if (typeof value === 'number' && Number.isInteger(value)) {
-    return value
-  }
-
-  if (typeof value !== 'string') {
-    return value
-  }
-
+function migrateLegacyServerId(value, field) {
   const parsed = parseItemKey(value)
-  const numeric = parsed?.type === 'server' ? parsed.id : Number(value)
-
-  return Number.isInteger(numeric) ? numeric : value
+  if (parsed?.type === 'server') return parsed.id
+  return parseLegacyRelationalId(value, field)
 }
 
 function normalizeAgentsStore(agents) {
@@ -381,7 +382,7 @@ function normalizeAgentsStore(agents) {
         id,
         {
           ...enrollment,
-          serverId: numericServerId(enrollment.serverId),
+          serverId: migrateLegacyServerId(enrollment.serverId, `agents.enrollments.${id}.serverId`),
         },
       ]),
     ),
@@ -390,7 +391,7 @@ function normalizeAgentsStore(agents) {
         id,
         {
           ...device,
-          serverId: numericServerId(device.serverId),
+          serverId: migrateLegacyServerId(device.serverId, `agents.devices.${id}.serverId`),
         },
       ]),
     ),
@@ -401,7 +402,10 @@ function normalizeAgentStatusStore(agentStatus) {
   return {
     servers: Object.fromEntries(
       Object.entries(agentStatus?.servers ?? {}).map(([serverId, status]) => {
-        const nextServerId = numericServerId(status.serverId ?? serverId)
+        const nextServerId = migrateLegacyServerId(
+          status.serverId ?? serverId,
+          `agentStatus.servers.${serverId}.serverId`,
+        )
 
         return [
           String(nextServerId),
@@ -489,14 +493,20 @@ function cleanPlainObject(value) {
 
 function normalizeInventoryPort(port, index, fallbackKind) {
   if (!port || typeof port !== 'object' || Array.isArray(port)) {
-    return null
+    throw new InventoryLifecycleError(`ports[${index}] must be an object.`, {
+      code: 'invalid-inventory-port',
+      status: 400,
+    })
   }
 
-  const slotNumber = Number(port.slotNumber ?? index + 1)
-  const id = Number(port.id ?? slotNumber)
+  const slotNumber = port.slotNumber ?? index + 1
+  const id = port.id ?? slotNumber
 
-  if (!Number.isInteger(slotNumber) || !Number.isInteger(id)) {
-    return null
+  if (!isRelationalId(slotNumber) || !isRelationalId(id)) {
+    throw new InventoryLifecycleError(
+      `ports[${index}] id and slotNumber must be positive safe-integer relational IDs.`,
+      { code: 'invalid-inventory-port', status: 400 },
+    )
   }
 
   const normalized = {
@@ -527,18 +537,27 @@ function normalizeInventoryPort(port, index, fallbackKind) {
   }
 
   if (Array.isArray(port.endpoints)) {
-    normalized.endpoints = port.endpoints
-      .map((endpoint, endpointIndex) => {
+    normalized.endpoints = port.endpoints.map((endpoint, endpointIndex) => {
         if (!endpoint || typeof endpoint !== 'object' || Array.isArray(endpoint)) {
-          return null
+          throw new InventoryLifecycleError(
+            `ports[${index}].endpoints[${endpointIndex}] must be an object.`,
+            { code: 'invalid-inventory-port', status: 400 },
+          )
+        }
+
+        const endpointId = endpoint.id ?? endpointIndex + 1
+        if (!isRelationalId(endpointId)) {
+          throw new InventoryLifecycleError(
+            `ports[${index}].endpoints[${endpointIndex}].id must be a positive safe-integer relational ID.`,
+            { code: 'invalid-inventory-port', status: 400 },
+          )
         }
 
         return {
-          id: Number(endpoint.id ?? endpointIndex + 1),
+          id: endpointId,
           side: endpoint.side,
         }
       })
-      .filter(Boolean)
   }
 
   return normalized
@@ -618,8 +637,8 @@ function normalizeInventoryItemInput(input, id) {
 
 function nextInventoryId(records) {
   return records.reduce((maxId, record) => {
-    const id = Number(record?.id)
-    return Number.isInteger(id) ? Math.max(maxId, id) : maxId
+    const id = assertRelationalId(record?.id, 'inventory item.id')
+    return Math.max(maxId, id)
   }, 0) + 1
 }
 
@@ -627,14 +646,18 @@ function inventoryTablesFromItems(items) {
   const tables = Object.fromEntries(INVENTORY_TABLES.map((table) => [table, []]))
 
   for (const [key, item] of Object.entries(items)) {
-    const parsed = parseItemKey(key) ?? parseItemKey(item.key) ?? {
-      type: item.type,
-      id: typeof item.id === 'number' ? item.id : Number(String(item.id).split(':').pop()),
+    const parsed = parseItemKey(key) ?? parseItemKey(item.key) ?? (
+      TABLE_BY_TYPE[item.type] && isRelationalId(item.id)
+        ? { type: item.type, id: item.id }
+        : null
+    )
+    if (!parsed) {
+      throw new Error(`Runtime inventory item ${JSON.stringify(key)} has no valid typed relational identity.`)
     }
     const table = TABLE_BY_TYPE[parsed.type]
 
     if (!table) {
-      continue
+      throw new Error(`Runtime inventory item ${JSON.stringify(key)} has unsupported type ${parsed.type}.`)
     }
 
     tables[table].push({
@@ -644,7 +667,7 @@ function inventoryTablesFromItems(items) {
   }
 
   for (const table of INVENTORY_TABLES) {
-    tables[table].sort((first, second) => Number(first.id) - Number(second.id))
+    tables[table].sort((first, second) => first.id - second.id)
   }
 
   return tables
@@ -652,14 +675,17 @@ function inventoryTablesFromItems(items) {
 
 function persistPlacement(placement) {
   if ('itemType' in placement && 'itemId' in placement) {
-    return placement
+    return {
+      ...placement,
+      itemId: assertRelationalId(placement.itemId, 'placement.itemId'),
+    }
   }
 
   const parsed = parseItemKey(placement.serverId)
 
   return {
     itemType: parsed?.type ?? 'server',
-    itemId: parsed?.id ?? placement.serverId,
+    itemId: assertRelationalId(parsed?.id, 'placement.itemId'),
     x: placement.x,
     y: placement.y,
   }
@@ -679,18 +705,33 @@ function runtimePlacement(placement) {
 
 function persistAssignment(assignment) {
   if ('hostType' in assignment && 'hostId' in assignment) {
-    return assignment
+    return {
+      ...assignment,
+      id: assertRelationalId(assignment.id, 'assignment.id'),
+      hostId: assertRelationalId(assignment.hostId, 'assignment.hostId'),
+      itemId: assertRelationalId(assignment.itemId, 'assignment.itemId'),
+      ...(assignment.allocation
+        ? {
+            allocation: {
+              ...structuredClone(assignment.allocation),
+              ...(assignment.allocation.groupId !== undefined
+                ? { groupId: assertRelationalId(assignment.allocation.groupId, 'assignment.allocation.groupId') }
+                : {}),
+            },
+          }
+        : {}),
+    }
   }
 
   const host = parseItemKey(assignment.serverId)
   const item = parseItemKey(assignment.itemId)
 
   return {
-    id: Number(assignment.id),
+    id: assertRelationalId(assignment.id, 'assignment.id'),
     hostType: host?.type ?? 'server',
-    hostId: host?.id ?? assignment.serverId,
+    hostId: assertRelationalId(host?.id, 'assignment.hostId'),
     itemType: item?.type ?? assignment.type,
-    itemId: item?.id ?? assignment.itemId,
+    itemId: assertRelationalId(item?.id, 'assignment.itemId'),
     type: assignment.type,
     assignedAt: assignment.assignedAt,
     ...(assignment.allocation ? { allocation: structuredClone(assignment.allocation) } : {}),
@@ -714,12 +755,22 @@ function runtimeAssignment(assignment) {
 
 function persistEndpoint(endpoint) {
   if ('itemType' in endpoint && 'itemId' in endpoint) {
-    return endpoint
+    return {
+      ...endpoint,
+      itemId: assertRelationalId(endpoint.itemId, 'connection endpoint.itemId'),
+      portId: assertRelationalId(endpoint.portId, 'connection endpoint.portId'),
+      ...(endpoint.hostedItemId !== undefined
+        ? { hostedItemId: assertRelationalId(endpoint.hostedItemId, 'connection endpoint.hostedItemId') }
+        : {}),
+      ...(endpoint.endpointId !== undefined
+        ? { endpointId: assertRelationalId(endpoint.endpointId, 'connection endpoint.endpointId') }
+        : {}),
+    }
   }
 
   const item = parseItemKey(endpoint.itemId)
   const hostedItem = endpoint.hostedItemId ? parseItemKey(endpoint.hostedItemId) : null
-  const legacyPortId = String(endpoint.portId)
+  const legacyPortId = typeof endpoint.portId === 'string' ? endpoint.portId : ''
   const [legacyHostedItemKey, legacyHostedPortId] = legacyPortId.includes('::')
     ? legacyPortId.split('::')
     : [null, null]
@@ -727,15 +778,19 @@ function persistEndpoint(endpoint) {
 
   return {
     itemType: item?.type,
-    itemId: item?.id ?? endpoint.itemId,
+    itemId: assertRelationalId(item?.id, 'connection endpoint.itemId'),
     ...(hostedItem || legacyHostedItem
       ? {
           hostedItemType: (hostedItem ?? legacyHostedItem).type,
           hostedItemId: (hostedItem ?? legacyHostedItem).id,
         }
       : {}),
-    portId: Number(legacyHostedPortId ?? endpoint.portId),
-    ...(endpoint.endpointId !== undefined ? { endpointId: Number(endpoint.endpointId) } : {}),
+    portId: legacyHostedPortId
+      ? parseLegacyRelationalId(legacyHostedPortId, 'connection endpoint.portId')
+      : assertRelationalId(endpoint.portId, 'connection endpoint.portId'),
+    ...(endpoint.endpointId !== undefined
+      ? { endpointId: assertRelationalId(endpoint.endpointId, 'connection endpoint.endpointId') }
+      : {}),
   }
 }
 
@@ -757,7 +812,7 @@ function runtimeEndpoint(endpoint) {
 function persistConnection(connection) {
   return {
     ...connection,
-    id: Number(connection.id),
+    id: assertRelationalId(connection.id, 'connection.id'),
     from: persistEndpoint(connection.from),
     to: persistEndpoint(connection.to),
   }
@@ -849,8 +904,9 @@ export class HomelabInventoryStore {
 
     if (this.legacyProjectPath && await pathExists(this.legacyProjectPath)) {
       const legacyProject = await readJson(this.legacyProjectPath)
-      assertLegacyProjectShape(legacyProject)
-      const split = splitProject(normalizeNetworkProject(legacyProject))
+      const normalizedLegacyProject = normalizeNetworkProject(legacyProject)
+      assertLegacyProjectShape(normalizedLegacyProject)
+      const split = splitLegacyProject(normalizedLegacyProject)
 
       await writeJson(this.paths.meta, {
         schemaVersion: CURRENT_SCHEMA_VERSION,
@@ -954,7 +1010,11 @@ export class HomelabInventoryStore {
   }
 
   async runMigrations() {
-    const schemaVersion = Number(this.databases.meta.data.schemaVersion ?? 0)
+    const schemaVersion = this.databases.meta.data.schemaVersion ?? 0
+
+    if (!Number.isSafeInteger(schemaVersion) || schemaVersion < 0) {
+      throw new Error('Database schema version must be a non-negative safe integer.')
+    }
 
     if (schemaVersion > CURRENT_SCHEMA_VERSION) {
       throw new Error(
@@ -996,7 +1056,7 @@ export class HomelabInventoryStore {
           this.databases.inventory.data,
           this.databases.project.data,
         )
-        const split = splitProject(composedProject)
+        const split = splitLegacyProject(composedProject)
 
         this.databases.inventory.data = split.inventory
         this.databases.project.data = split.project
@@ -1013,7 +1073,7 @@ export class HomelabInventoryStore {
           this.databases.inventory.data,
           this.databases.project.data,
         )
-        const split = splitProject(recalculateNegotiatedSpeeds(composedProject))
+        const split = splitLegacyProject(recalculateNegotiatedSpeeds(composedProject))
 
         this.databases.inventory.data = split.inventory
         this.databases.project.data = split.project
@@ -1028,7 +1088,7 @@ export class HomelabInventoryStore {
           this.databases.inventory.data,
           this.databases.project.data,
         )
-        const split = splitProject(normalizeNetworkProject(composedProject))
+        const split = splitLegacyProject(normalizeNetworkProject(composedProject))
 
         this.databases.inventory.data = split.inventory
         this.databases.project.data = split.project
@@ -1044,15 +1104,8 @@ export class HomelabInventoryStore {
       }
 
       if (currentVersion === 6) {
-        const composedProject = composeProject(
-          this.databases.meta.data,
-          this.databases.inventory.data,
-          this.databases.project.data,
-        )
-        const split = splitProject(composedProject)
-
-        this.databases.inventory.data = split.inventory
-        this.databases.project.data = split.project
+        // Allocation planning is deferred until schema 10 has converted legacy
+        // compatibility group keys into numeric relational identifiers.
         this.databases.meta.data.schemaVersion = 7
         currentVersion = 7
         continue
@@ -1081,26 +1134,49 @@ export class HomelabInventoryStore {
         continue
       }
 
+      if (currentVersion === 9) {
+        const migrated = migrateSchema9To10(
+          this.databases.inventory.data,
+          this.databases.project.data,
+          this.databases.agents.data,
+          this.databases.agentStatus.data,
+        )
+        this.databases.inventory.data = migrated.inventory
+        this.databases.project.data = migrated.project
+        this.databases.agents.data = migrated.agents
+        this.databases.agentStatus.data = migrated.agentStatus
+        this.databases.meta.data.schemaVersion = 10
+        currentVersion = 10
+        continue
+      }
+
+      if (currentVersion === 10) {
+        this.databases.inventory.data = migrateSchema10To11(this.databases.inventory.data)
+        this.databases.meta.data.schemaVersion = 11
+        currentVersion = 11
+        continue
+      }
+
       throw new Error(`No migration registered for schema version ${currentVersion}.`)
     }
 
     this.databases.meta.data.updatedAt = new Date().toISOString()
-    await this.flush(['meta', 'inventory', 'project', 'agents', 'agentStatus'])
+    await this.flush(['inventory', 'project', 'agents', 'agentStatus'])
+    await this.flush(['meta'])
   }
 
   async validateStores() {
     assertInventoryStoreShape(this.databases.inventory.data)
     assertProjectStoreShape(this.databases.project.data)
+    assertAgentsStoreShape(this.databases.agents.data)
+    assertAgentStatusStoreShape(this.databases.agentStatus.data)
     assertProjectShape(this.getProject())
     this.databases.meta.data.skippedUpdateVersion ??= null
     this.databases.meta.data.lastUpdateCheck ??= null
-    this.databases.agents.data.enrollments ??= {}
-    this.databases.agents.data.devices ??= {}
-    this.databases.agentStatus.data.servers ??= {}
   }
 
   async normalizeLoadedCompatibility() {
-    const split = splitProject(this.getProject())
+    const split = splitCurrentProject(this.getProject())
     const inventoryChanged = JSON.stringify(split.inventory) !== JSON.stringify(this.databases.inventory.data)
     const projectChanged = JSON.stringify(split.project) !== JSON.stringify(this.databases.project.data)
 
@@ -1207,13 +1283,11 @@ export class HomelabInventoryStore {
     }
 
     assertProjectShape(submittedProject)
-    const canonicalProject = normalizeProjectCompatibilityPolicy(
-      normalizeLegacyProjectIds(submittedProject),
-    )
+    const canonicalProject = normalizeProjectCompatibilityPolicy(submittedProject)
     assertProjectShape(canonicalProject)
     this.assertAssignmentTransitions(this.getProject(), canonicalProject)
     const normalizedProject = normalizeNetworkProject(canonicalProject)
-    const split = splitProject(normalizedProject)
+    const split = splitCurrentProject(normalizedProject)
     const updatedAt = new Date().toISOString()
 
     this.databases.inventory.data = split.inventory
@@ -1315,7 +1389,7 @@ export class HomelabInventoryStore {
     draft.meta.updatedAt = updatedAt
 
     try {
-      const split = splitProject(composeProject(draft.meta, draft.inventory, draft.project))
+      const split = splitCurrentProject(composeProject(draft.meta, draft.inventory, draft.project))
       draft.inventory = split.inventory
       draft.project = split.project
       assertInventoryStoreShape(draft.inventory)
@@ -1410,7 +1484,7 @@ export class HomelabInventoryStore {
       }
 
       draft.inventory[table] = [...records, ...created]
-        .sort((first, second) => Number(first.id) - Number(second.id))
+        .sort((first, second) => first.id - second.id)
       return created.map((record) => ({ type, id: record.id, name: record.name }))
     })
   }
@@ -1437,8 +1511,8 @@ export class HomelabInventoryStore {
       const connectedPortIds = referencedPortIds(draft.project, ref)
 
       for (const portId of connectedPortIds) {
-        const previousPort = resolved.item.ports?.find((port) => Number(port.id) === portId)
-        const nextPort = record.ports?.find((port) => Number(port.id) === portId)
+        const previousPort = resolved.item.ports?.find((port) => port.id === portId)
+        const nextPort = record.ports?.find((port) => port.id === portId)
 
         if (
           !previousPort ||
@@ -1454,6 +1528,44 @@ export class HomelabInventoryStore {
             details: { portId },
           })
         }
+      }
+
+      draft.inventory[resolved.table][resolved.index] = record
+      return { type: ref.type, id: ref.id, name: record.name }
+    })
+  }
+
+  updateInventoryItemProperties(rawRef, rawProperties) {
+    const ref = normalizeInventoryRef(rawRef)
+
+    if (!rawProperties || typeof rawProperties !== 'object' || Array.isArray(rawProperties)) {
+      throw new InventoryLifecycleError('Inventory item properties must be a plain object.', {
+        code: 'invalid-inventory-properties',
+        status: 400,
+      })
+    }
+
+    return this.inventoryTransaction((draft) => {
+      const resolved = resolveInventoryRef(draft.inventory, ref)
+
+      if (resolved.item.archivedAt) {
+        throw new InventoryLifecycleError('Restore the item before editing it.', {
+          code: 'inventory-item-archived',
+          status: 409,
+        })
+      }
+
+      const properties = cleanPlainObject(rawProperties) ?? {}
+      const mergedProperties = {
+        ...(resolved.item.properties ?? {}),
+        ...properties,
+      }
+      const record = structuredClone(resolved.item)
+
+      if (Object.keys(mergedProperties).length > 0) {
+        record.properties = mergedProperties
+      } else {
+        delete record.properties
       }
 
       draft.inventory[resolved.table][resolved.index] = record
@@ -1499,7 +1611,7 @@ export class HomelabInventoryStore {
       }
 
       draft.inventory[resolved.table] = [...records, ...created]
-        .sort((first, second) => Number(first.id) - Number(second.id))
+        .sort((first, second) => first.id - second.id)
       return created.map((record) => ({ type: ref.type, id: record.id, name: record.name }))
     })
   }
@@ -1562,14 +1674,16 @@ export class HomelabInventoryStore {
       }
 
       const policy = normalizeCompatibilityPolicy(draft.project.compatibilityPolicy)
-      const deletedHostIds = new Set(
+      const deletedHosts = new Set(
         refs
-          .filter((ref) => ref.type === 'server' || ref.type === 'nas')
+          .filter((ref) => ['server', 'nas', 'pcBuild'].includes(ref.type))
           .map((ref) => itemKey(ref.type, ref.id)),
       )
       draft.project.compatibilityPolicy = {
         ...policy,
-        disabledHostIds: policy.disabledHostIds.filter((hostId) => !deletedHostIds.has(hostId)),
+        disabledHosts: policy.disabledHosts.filter(
+          (host) => !deletedHosts.has(itemKey(host.hostType, host.hostId)),
+        ),
       }
 
       return { items: refs }
@@ -1577,8 +1691,7 @@ export class HomelabInventoryStore {
   }
 
   clearAgentRuntimeData(serverId) {
-    const id = Number(serverId)
-    if (!Number.isInteger(id)) throw new Error('Server id must be numeric.')
+    const id = parseLegacyRelationalId(serverId, 'Server id')
 
     delete this.databases.agentStatus.data.servers[String(id)]
     delete this.databases.agentStatus.data.servers[id]

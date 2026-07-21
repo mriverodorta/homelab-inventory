@@ -21,7 +21,8 @@ function valuesFor(type: ComponentType): InventoryFormValues {
 }
 
 const assignedGpu: InventoryItem = {
-  id: 'gpu',
+  id: 1,
+  key: 'gpu:1',
   name: 'Intel Arc A310',
   type: 'gpu',
   compatibility: {
@@ -47,14 +48,15 @@ const compatibilityProject: ProjectState = {
     updatedAt: '2026-07-19T00:00:00.000Z',
   },
   items: {
-    server: {
-      id: 'server',
+    'server:1': {
+      id: 1,
+      key: 'server:1',
       name: 'Dell Precision Compact 3240',
       type: 'server',
       compatibility: {
         host: {
           expansionSlots: [{
-            id: 'pcie-slot',
+            id: 6, key: 'pcie-slot',
             label: 'PCIe slot',
             count: 1,
             interfaceFamily: 'pcie',
@@ -69,9 +71,10 @@ const compatibilityProject: ProjectState = {
         },
       },
     },
-    gpu: assignedGpu,
-    cpu: {
-      id: 'cpu',
+    'gpu:1': assignedGpu,
+    'cpu:1': {
+      id: 1,
+      key: 'cpu:1',
       name: 'Intel Core i5-10500T',
       type: 'cpu',
       compatibility: {
@@ -87,14 +90,14 @@ const compatibilityProject: ProjectState = {
   },
   placements: [],
   assignments: [{
-    id: 'gpu-assignment',
-    serverId: 'server',
-    itemId: 'gpu',
+    id: 1,
+    serverId: 'server:1',
+    itemId: 'gpu:1',
     type: 'gpu',
     assignedAt: '2026-07-19T00:00:00.000Z',
     allocation: {
       resourceType: 'expansion',
-      groupId: 'pcie-slot',
+      groupId: 6,
       positions: [0],
     },
   }],
@@ -105,7 +108,7 @@ const collidingIdProject: ProjectState = {
   ...compatibilityProject,
   items: {
     'server:1': {
-      ...compatibilityProject.items.server,
+      ...compatibilityProject.items['server:1'],
       id: 1,
       key: 'server:1',
       name: 'Correct server host',
@@ -143,16 +146,16 @@ const collidingIdProject: ProjectState = {
   },
   assignments: [{
     id: 1,
-    serverId: '1',
+    serverId: 'server:1',
     hostType: 'server',
     hostId: 1,
-    itemId: '1',
+    itemId: 'gpu:1',
     itemType: 'gpu',
     type: 'gpu',
     assignedAt: '2026-07-19T00:00:00.000Z',
     allocation: {
       resourceType: 'expansion',
-      groupId: 'pcie-slot',
+      groupId: 6,
       positions: [0],
     },
   } as ProjectState['assignments'][number] & {
@@ -163,8 +166,9 @@ const collidingIdProject: ProjectState = {
 }
 
 function itemFor(type: ComponentType): InventoryItem {
-  return compatibilityProject.items[type] ?? {
-    id: type,
+  return compatibilityProject.items[`${type}:1`] ?? {
+    id: 99,
+    key: `${type}:99`,
     name: `${type} item`,
     type,
   }
@@ -333,7 +337,7 @@ describe('ComponentInspectorTabs', () => {
     const user = userEvent.setup()
 
     renderTabs('cpu', {
-      item: compatibilityProject.items.cpu,
+      item: compatibilityProject.items['cpu:1'],
       values: { ...valuesFor('cpu'), name: 'Intel Core i5-10500T' },
     })
 

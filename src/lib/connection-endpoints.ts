@@ -184,18 +184,6 @@ function hostedEndpointOptions(
     })
 }
 
-function virtualPowerPort(powerEndpoint: PowerEndpoint): InventoryPort {
-  const outletNumber = Number(String(powerEndpoint.endpoint.portId).replace(/^outlet-/, ''))
-
-  return {
-    id: powerEndpoint.endpoint.portId,
-    kind: 'server-port',
-    type: 'barrel',
-    slotNumber: Number.isFinite(outletNumber) && outletNumber > 0 ? outletNumber : 1,
-    label: powerEndpoint.label,
-  }
-}
-
 function powerEndpointOptions(
   project: ProjectState,
   host: InventoryItem,
@@ -212,13 +200,17 @@ function powerEndpointOptions(
       if (!owner || isArchivedItem(owner)) {
         return []
       }
+      const port = owner.ports?.find(
+        (candidate) => candidate.id === powerEndpoint.endpoint.portId,
+      )
+      if (!port) return []
 
       return [{
         key: endpointKey(powerEndpoint.endpoint),
         endpoint: powerEndpoint.endpoint,
         host,
         owner,
-        port: virtualPowerPort(powerEndpoint),
+        port,
         label: powerEndpoint.label,
         powerEndpoint,
       }]

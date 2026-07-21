@@ -22,7 +22,7 @@ import {
 
 let resourceGroupSequence = 0
 
-function createResourceGroupId(kind: 'storage' | 'expansion'): string {
+function createResourceGroupDraftKey(kind: 'storage' | 'expansion'): string {
   resourceGroupSequence += 1
   return `${kind}-${Date.now().toString(36)}-${resourceGroupSequence.toString(36)}`
 }
@@ -75,8 +75,8 @@ export function StorageSlotGroupsEditor({
   onSelectOpenChange?: (open: boolean) => void
 }) {
   const validationTarget = error ? getStorageSlotGroupValidationTarget(groups) : null
-  const updateGroup = (id: string, patch: Partial<StorageSlotGroupDraft>) => {
-    onChange(groups.map((group) => group.id === id ? { ...group, ...patch } : group))
+  const updateGroup = (draftKey: string, patch: Partial<StorageSlotGroupDraft>) => {
+    onChange(groups.map((group) => group.draftKey === draftKey ? { ...group, ...patch } : group))
   }
 
   return (
@@ -92,7 +92,8 @@ export function StorageSlotGroupsEditor({
           size="sm"
           aria-label="Add storage slot group"
           onClick={() => onChange([...groups, {
-            id: createResourceGroupId('storage'),
+            draftKey: createResourceGroupDraftKey('storage'),
+            key: '',
             label: '',
             count: '',
             interfaces: [],
@@ -105,27 +106,27 @@ export function StorageSlotGroupsEditor({
         </Button>
       </div>
       {groups.map((group, index) => (
-        <div key={group.id} className="space-y-3 rounded-md border border-[#ded8ce] bg-white p-3">
+        <div key={group.draftKey} className="space-y-3 rounded-md border border-[#ded8ce] bg-white p-3">
           <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_8rem_auto]">
-            <TextField label={`Storage group ${index + 1} label`} name={`storage-group-${group.id}-label`} value={group.label} placeholder="Primary M.2" onChange={(label) => updateGroup(group.id, { label })} />
+            <TextField label={`Storage group ${index + 1} label`} name={`storage-group-${group.draftKey}-label`} value={group.label} placeholder="Primary M.2" onChange={(label) => updateGroup(group.draftKey, { label })} />
             <TextField
               label="Count"
               ariaLabel={`Storage group ${index + 1} count`}
-              name={`storage-group-${group.id}-count`}
+              name={`storage-group-${group.draftKey}-count`}
               value={group.count}
               type="number"
               min={1}
               placeholder="1"
               error={validationTarget?.index === index ? error : undefined}
-              onChange={(count) => updateGroup(group.id, { count })}
+              onChange={(count) => updateGroup(group.draftKey, { count })}
             />
-            <Button type="button" variant="ghost" size="icon" className="self-end" aria-label={`Remove storage group ${index + 1}`} onClick={() => onChange(groups.filter((entry) => entry.id !== group.id))}>
+            <Button type="button" variant="ghost" size="icon" className="self-end" aria-label={`Remove storage group ${index + 1}`} onClick={() => onChange(groups.filter((entry) => entry.draftKey !== group.draftKey))}>
               <Trash2 aria-hidden="true" className="size-4" />
             </Button>
           </div>
-          <CheckboxOptions label={`Storage group ${index + 1} interfaces`} options={STORAGE_INTERFACES} selected={group.interfaces} onChange={(interfaces) => updateGroup(group.id, { interfaces })} />
-          <CheckboxOptions label={`Storage group ${index + 1} form factors`} options={STORAGE_FORM_FACTORS} selected={group.formFactors} onChange={(formFactors) => updateGroup(group.id, { formFactors })} />
-          <SelectField label="PCIe generation" name={`storage-group-${group.id}-pcie-generation`} value={group.pcieGeneration} options={PCIE_GENERATIONS} emptyLabel="Not specified" onOpenChange={onSelectOpenChange} onValueChange={(pcieGeneration) => updateGroup(group.id, { pcieGeneration })} />
+          <CheckboxOptions label={`Storage group ${index + 1} interfaces`} options={STORAGE_INTERFACES} selected={group.interfaces} onChange={(interfaces) => updateGroup(group.draftKey, { interfaces })} />
+          <CheckboxOptions label={`Storage group ${index + 1} form factors`} options={STORAGE_FORM_FACTORS} selected={group.formFactors} onChange={(formFactors) => updateGroup(group.draftKey, { formFactors })} />
+          <SelectField label="PCIe generation" name={`storage-group-${group.draftKey}-pcie-generation`} value={group.pcieGeneration} options={PCIE_GENERATIONS} emptyLabel="Not specified" onOpenChange={onSelectOpenChange} onValueChange={(pcieGeneration) => updateGroup(group.draftKey, { pcieGeneration })} />
         </div>
       ))}
       {!validationTarget ? <FieldError message={error} /> : null}
@@ -145,8 +146,8 @@ export function ExpansionSlotGroupsEditor({
   onSelectOpenChange?: (open: boolean) => void
 }) {
   const validationTarget = error ? getExpansionSlotGroupValidationTarget(groups) : null
-  const updateGroup = (id: string, patch: Partial<ExpansionSlotGroupDraft>) => {
-    onChange(groups.map((group) => group.id === id ? { ...group, ...patch } : group))
+  const updateGroup = (draftKey: string, patch: Partial<ExpansionSlotGroupDraft>) => {
+    onChange(groups.map((group) => group.draftKey === draftKey ? { ...group, ...patch } : group))
   }
 
   return (
@@ -162,7 +163,8 @@ export function ExpansionSlotGroupsEditor({
           size="sm"
           aria-label="Add expansion slot group"
           onClick={() => onChange([...groups, {
-            id: createResourceGroupId('expansion'),
+            draftKey: createResourceGroupDraftKey('expansion'),
+            key: '',
             label: '',
             count: '',
             interfaceFamily: '',
@@ -179,33 +181,33 @@ export function ExpansionSlotGroupsEditor({
         </Button>
       </div>
       {groups.map((group, index) => (
-        <div key={group.id} className="space-y-3 rounded-md border border-[#ded8ce] bg-white p-3">
+        <div key={group.draftKey} className="space-y-3 rounded-md border border-[#ded8ce] bg-white p-3">
           <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_8rem_auto]">
-            <TextField label={`Expansion group ${index + 1} label`} name={`expansion-group-${group.id}-label`} value={group.label} placeholder="PCIe slot" onChange={(label) => updateGroup(group.id, { label })} />
+            <TextField label={`Expansion group ${index + 1} label`} name={`expansion-group-${group.draftKey}-label`} value={group.label} placeholder="PCIe slot" onChange={(label) => updateGroup(group.draftKey, { label })} />
             <TextField
               label="Count"
               ariaLabel={`Expansion group ${index + 1} count`}
-              name={`expansion-group-${group.id}-count`}
+              name={`expansion-group-${group.draftKey}-count`}
               value={group.count}
               type="number"
               min={1}
               placeholder="1"
               error={validationTarget?.index === index ? error : undefined}
-              onChange={(count) => updateGroup(group.id, { count })}
+              onChange={(count) => updateGroup(group.draftKey, { count })}
             />
-            <Button type="button" variant="ghost" size="icon" className="self-end" aria-label={`Remove expansion group ${index + 1}`} onClick={() => onChange(groups.filter((entry) => entry.id !== group.id))}>
+            <Button type="button" variant="ghost" size="icon" className="self-end" aria-label={`Remove expansion group ${index + 1}`} onClick={() => onChange(groups.filter((entry) => entry.draftKey !== group.draftKey))}>
               <Trash2 aria-hidden="true" className="size-4" />
             </Button>
           </div>
           <div className="grid gap-3 sm:grid-cols-3">
-            <SelectField label="Interface family" name={`expansion-group-${group.id}-interface`} value={group.interfaceFamily} options={EXPANSION_INTERFACE_FAMILIES} emptyLabel="Not specified" onOpenChange={onSelectOpenChange} onValueChange={(interfaceFamily) => updateGroup(group.id, { interfaceFamily })} />
-            <SelectField label="PCIe generation" name={`expansion-group-${group.id}-pcie-generation`} value={group.pcieGeneration} options={PCIE_GENERATIONS} emptyLabel="Not specified" onOpenChange={onSelectOpenChange} onValueChange={(pcieGeneration) => updateGroup(group.id, { pcieGeneration })} />
-            <SelectField label="Mechanical lanes" name={`expansion-group-${group.id}-mechanical-lanes`} value={group.mechanicalLanes} options={PCIE_LANE_WIDTHS} emptyLabel="Not specified" onOpenChange={onSelectOpenChange} onValueChange={(mechanicalLanes) => updateGroup(group.id, { mechanicalLanes })} />
-            <SelectField label="Electrical lanes" name={`expansion-group-${group.id}-electrical-lanes`} value={group.electricalLanes} options={PCIE_LANE_WIDTHS} emptyLabel="Not specified" onOpenChange={onSelectOpenChange} onValueChange={(electricalLanes) => updateGroup(group.id, { electricalLanes })} />
-            <SelectField label="Maximum slot width" name={`expansion-group-${group.id}-slot-width`} value={group.maxSlotWidth} options={SLOT_WIDTHS} emptyLabel="Not specified" onOpenChange={onSelectOpenChange} onValueChange={(maxSlotWidth) => updateGroup(group.id, { maxSlotWidth })} />
-            <TextField label="Maximum power (W)" name={`expansion-group-${group.id}-power`} value={group.maxPowerWatts} type="number" min={0} placeholder="75" onChange={(maxPowerWatts) => updateGroup(group.id, { maxPowerWatts })} />
+            <SelectField label="Interface family" name={`expansion-group-${group.draftKey}-interface`} value={group.interfaceFamily} options={EXPANSION_INTERFACE_FAMILIES} emptyLabel="Not specified" onOpenChange={onSelectOpenChange} onValueChange={(interfaceFamily) => updateGroup(group.draftKey, { interfaceFamily })} />
+            <SelectField label="PCIe generation" name={`expansion-group-${group.draftKey}-pcie-generation`} value={group.pcieGeneration} options={PCIE_GENERATIONS} emptyLabel="Not specified" onOpenChange={onSelectOpenChange} onValueChange={(pcieGeneration) => updateGroup(group.draftKey, { pcieGeneration })} />
+            <SelectField label="Mechanical lanes" name={`expansion-group-${group.draftKey}-mechanical-lanes`} value={group.mechanicalLanes} options={PCIE_LANE_WIDTHS} emptyLabel="Not specified" onOpenChange={onSelectOpenChange} onValueChange={(mechanicalLanes) => updateGroup(group.draftKey, { mechanicalLanes })} />
+            <SelectField label="Electrical lanes" name={`expansion-group-${group.draftKey}-electrical-lanes`} value={group.electricalLanes} options={PCIE_LANE_WIDTHS} emptyLabel="Not specified" onOpenChange={onSelectOpenChange} onValueChange={(electricalLanes) => updateGroup(group.draftKey, { electricalLanes })} />
+            <SelectField label="Maximum slot width" name={`expansion-group-${group.draftKey}-slot-width`} value={group.maxSlotWidth} options={SLOT_WIDTHS} emptyLabel="Not specified" onOpenChange={onSelectOpenChange} onValueChange={(maxSlotWidth) => updateGroup(group.draftKey, { maxSlotWidth })} />
+            <TextField label="Maximum power (W)" name={`expansion-group-${group.draftKey}-power`} value={group.maxPowerWatts} type="number" min={0} placeholder="75" onChange={(maxPowerWatts) => updateGroup(group.draftKey, { maxPowerWatts })} />
           </div>
-          <CheckboxOptions label={`Expansion group ${index + 1} accepted heights`} options={CARD_HEIGHTS} selected={group.acceptedHeights} onChange={(acceptedHeights) => updateGroup(group.id, { acceptedHeights })} />
+          <CheckboxOptions label={`Expansion group ${index + 1} accepted heights`} options={CARD_HEIGHTS} selected={group.acceptedHeights} onChange={(acceptedHeights) => updateGroup(group.draftKey, { acceptedHeights })} />
         </div>
       ))}
       {!validationTarget ? <FieldError message={error} /> : null}

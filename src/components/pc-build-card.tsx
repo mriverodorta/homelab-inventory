@@ -4,9 +4,15 @@ import { AlertTriangle, Grip, X } from 'lucide-react'
 import type { CSSProperties } from 'react'
 import { Button } from '@/components/ui/button'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
-import { getItemAuditWarnings } from '@/lib/audit'
 import { getEndpointHandleId, type CableSide } from '@/lib/cable-routing'
 import { getCanvasAssignmentTone } from '@/lib/canvas-quality'
+import {
+  canvasAuditWarningCount,
+  canvasEndpointAvailable,
+  canvasEndpointConnected,
+  canvasEndpointsCompatible,
+  type CanvasProjectIndex,
+} from '@/lib/canvas-project-index'
 import { SLOT_LABELS, sortAssignmentsForDisplay } from '@/lib/constraints'
 import {
   formatCpuCanvasParts,
@@ -20,11 +26,8 @@ import { runtimeItemKey } from '@/lib/item-keys'
 import { visiblePcBuildSlotTypes } from '@/lib/pc-build'
 import { startSelectedPortDrag } from '@/lib/port-interactions'
 import {
-  connectionEndpointAvailable,
   endpointKey,
   EQUIPMENT_PORT_CHIP_WIDTH,
-  getConnectionPort,
-  portsCompatible,
 } from '@/lib/project'
 import { useTapSelection } from '@/lib/tap-selection'
 import type { CanvasPortDragPoint } from '@/types/canvas'
@@ -40,6 +43,8 @@ import type {
 
 export type PcBuildNodeData = {
   project: ProjectState
+  canvasIndex: CanvasProjectIndex
+  requiredHandleIds: ReadonlySet<string>
   pcBuildId: string
   selectedItemId: string | null
   focusedItemIds: string[]
@@ -71,26 +76,30 @@ const HANDLE_SIDES: Array<{ side: CableSide; position: Position }> = [
   { side: 'bottom', position: Position.Bottom },
 ]
 
-function CableHandles() {
+function CableHandles({ requiredHandleIds }: { requiredHandleIds: ReadonlySet<string> }) {
   return (
     <>
       {CABLE_HANDLES.flatMap((handle) => [
-        <Handle
-          key={`target-${handle.id}`}
-          id={`target-${handle.id}`}
-          type="target"
-          position={handle.position}
-          className="!h-3 !w-3 !border-0 !bg-transparent"
-          isConnectable={false}
-        />,
-        <Handle
-          key={`source-${handle.id}`}
-          id={`source-${handle.id}`}
-          type="source"
-          position={handle.position}
-          className="!h-3 !w-3 !border-0 !bg-transparent"
-          isConnectable={false}
-        />,
+        requiredHandleIds.has(`target-${handle.id}`) ? (
+          <Handle
+            key={`target-${handle.id}`}
+            id={`target-${handle.id}`}
+            type="target"
+            position={handle.position}
+            className="!h-3 !w-3 !border-0 !bg-transparent"
+            isConnectable={false}
+          />
+        ) : null,
+        requiredHandleIds.has(`source-${handle.id}`) ? (
+          <Handle
+            key={`source-${handle.id}`}
+            id={`source-${handle.id}`}
+            type="source"
+            position={handle.position}
+            className="!h-3 !w-3 !border-0 !bg-transparent"
+            isConnectable={false}
+          />
+        ) : null,
       ])}
     </>
   )
@@ -98,34 +107,6 @@ function CableHandles() {
 
 function sortPorts(ports: InventoryPort[] | undefined): InventoryPort[] {
   return [...(ports ?? [])].sort((first, second) => first.slotNumber - second.slotNumber)
-}
-
-function endpointMatches(first: ConnectionEndpoint, second: ConnectionEndpoint): boolean {
-  return first.itemId === second.itemId
-    && first.hostedItemId === second.hostedItemId
-    && String(first.portId) === String(second.portId)
-    && String(first.endpointId ?? '') === String(second.endpointId ?? '')
-}
-
-function endpointConnected(project: ProjectState, endpoint: ConnectionEndpoint): boolean {
-  return project.connections.some(
-    (connection) => endpointMatches(connection.from, endpoint) || endpointMatches(connection.to, endpoint),
-  )
-}
-
-function endpointCompatible(
-  project: ProjectState,
-  sourceEndpoint: ConnectionEndpoint | null,
-  targetEndpoint: ConnectionEndpoint,
-): boolean {
-  if (!sourceEndpoint || endpointKey(sourceEndpoint) === endpointKey(targetEndpoint)) {
-    return true
-  }
-
-  const sourcePort = getConnectionPort(project, sourceEndpoint)
-  const targetPort = getConnectionPort(project, targetEndpoint)
-
-  return Boolean(sourcePort && targetPort && portsCompatible(sourcePort.type, targetPort.type))
 }
 
 function portTypeChipLabel(type: InventoryPortType): string {
@@ -170,27 +151,39 @@ function nicSpeedTooltipLabel(port: InventoryPort): string | null {
   return null
 }
 
-function PortChipHandles({ endpoint }: { endpoint: ConnectionEndpoint }) {
+function PortChipHandles({ endpoint, requiredHandleIds }: {
+  endpoint: ConnectionEndpoint
+  requiredHandleIds: ReadonlySet<string>
+}) {
   return (
     <>
-      {HANDLE_SIDES.flatMap((handle) => [
-        <Handle
-          key={`target-${handle.side}-${endpoint.hostedItemId ?? 'host'}-${endpoint.portId}`}
-          id={getEndpointHandleId('target', handle.side, endpoint)}
-          type="target"
-          position={handle.position}
-          className="!h-2 !w-2 !border-0 !bg-transparent"
-          isConnectable={false}
-        />,
-        <Handle
-          key={`source-${handle.side}-${endpoint.hostedItemId ?? 'host'}-${endpoint.portId}`}
-          id={getEndpointHandleId('source', handle.side, endpoint)}
-          type="source"
-          position={handle.position}
-          className="!h-2 !w-2 !border-0 !bg-transparent"
-          isConnectable={false}
-        />,
-      ])}
+      {HANDLE_SIDES.flatMap((handle) => {
+        const targetId = getEndpointHandleId('target', handle.side, endpoint)
+        const sourceId = getEndpointHandleId('source', handle.side, endpoint)
+
+        return [
+          requiredHandleIds.has(targetId) ? (
+            <Handle
+              key={`target-${handle.side}-${endpoint.hostedItemId ?? 'host'}-${endpoint.portId}`}
+              id={targetId}
+              type="target"
+              position={handle.position}
+              className="!h-2 !w-2 !border-0 !bg-transparent"
+              isConnectable={false}
+            />
+          ) : null,
+          requiredHandleIds.has(sourceId) ? (
+            <Handle
+              key={`source-${handle.side}-${endpoint.hostedItemId ?? 'host'}-${endpoint.portId}`}
+              id={sourceId}
+              type="source"
+              position={handle.position}
+              className="!h-2 !w-2 !border-0 !bg-transparent"
+              isConnectable={false}
+            />
+          ) : null,
+        ]
+      })}
     </>
   )
 }
@@ -203,8 +196,10 @@ function PortChip({
   onEndpointDrop,
   pendingEndpoint,
   port,
-  project,
+  canvasIndex,
+  requiredHandleIds,
 }: {
+  canvasIndex: CanvasProjectIndex
   draggingEndpoint: ConnectionEndpoint | null
   endpoint: ConnectionEndpoint
   onEndpointClick: PcBuildNodeData['onEndpointClick']
@@ -212,14 +207,14 @@ function PortChip({
   onEndpointDrop: PcBuildNodeData['onEndpointDrop']
   pendingEndpoint: ConnectionEndpoint | null
   port: InventoryPort
-  project: ProjectState
+  requiredHandleIds: ReadonlySet<string>
 }) {
-  const connected = endpointConnected(project, endpoint)
-  const open = connectionEndpointAvailable(project, endpoint)
+  const connected = canvasEndpointConnected(canvasIndex, endpoint)
+  const open = canvasEndpointAvailable(canvasIndex, endpoint)
   const sourceEndpoint = draggingEndpoint ?? pendingEndpoint
   const dragSource = draggingEndpoint ? endpointKey(draggingEndpoint) === endpointKey(endpoint) : false
   const selected = pendingEndpoint ? endpointKey(pendingEndpoint) === endpointKey(endpoint) : false
-  const compatible = endpointCompatible(project, sourceEndpoint, endpoint)
+  const compatible = canvasEndpointsCompatible(canvasIndex, sourceEndpoint, endpoint)
   const canStartDrag = open && selected
   const canDrop = Boolean(draggingEndpoint && !dragSource && open && compatible)
   const tooltipLabel = nicSpeedTooltipLabel(port)
@@ -258,7 +253,7 @@ function PortChip({
         }
       }}
     >
-      <PortChipHandles endpoint={endpoint} />
+      <PortChipHandles endpoint={endpoint} requiredHandleIds={requiredHandleIds} />
       <span className="text-[8px] font-black uppercase leading-none opacity-80">{portTypeChipLabel(port.type)}</span>
       <span className="text-[11px] font-black">{String(port.slotNumber).padStart(2, '0')}</span>
     </div>
@@ -292,6 +287,7 @@ function assignmentSummary(item: InventoryItem): string {
 
 function AssignedComponentRow({
   assignment,
+  canvasIndex,
   draggingEndpoint,
   hostRuntimeKey,
   item,
@@ -301,10 +297,11 @@ function AssignedComponentRow({
   onRemoveAssignment,
   onSelect,
   pendingEndpoint,
-  project,
+  requiredHandleIds,
   selected,
 }: {
   assignment: ComponentAssignment
+  canvasIndex: CanvasProjectIndex
   draggingEndpoint: ConnectionEndpoint | null
   hostRuntimeKey: string
   item: InventoryItem
@@ -314,7 +311,7 @@ function AssignedComponentRow({
   onRemoveAssignment: PcBuildNodeData['onRemoveAssignment']
   onSelect: PcBuildNodeData['onSelect']
   pendingEndpoint: ConnectionEndpoint | null
-  project: ProjectState
+  requiredHandleIds: ReadonlySet<string>
   selected: boolean
 }) {
   const itemRuntimeKey = runtimeItemKey(item)
@@ -378,6 +375,7 @@ function AssignedComponentRow({
           {ports.map((port) => (
             <PortChip
               key={port.id}
+              canvasIndex={canvasIndex}
               draggingEndpoint={draggingEndpoint}
               endpoint={{ itemId: hostRuntimeKey, hostedItemId: itemRuntimeKey, portId: port.id }}
               onEndpointClick={onEndpointClick}
@@ -385,7 +383,7 @@ function AssignedComponentRow({
               onEndpointDrop={onEndpointDrop}
               pendingEndpoint={pendingEndpoint}
               port={port}
-              project={project}
+              requiredHandleIds={requiredHandleIds}
             />
           ))}
         </div>
@@ -395,6 +393,7 @@ function AssignedComponentRow({
 }
 
 function MotherboardIoRow({
+  canvasIndex,
   draggingEndpoint,
   hostRuntimeKey,
   motherboard,
@@ -402,8 +401,9 @@ function MotherboardIoRow({
   onEndpointDragStart,
   onEndpointDrop,
   pendingEndpoint,
-  project,
+  requiredHandleIds,
 }: {
+  canvasIndex: CanvasProjectIndex
   draggingEndpoint: ConnectionEndpoint | null
   hostRuntimeKey: string
   motherboard: InventoryItem | undefined
@@ -411,7 +411,7 @@ function MotherboardIoRow({
   onEndpointDragStart: PcBuildNodeData['onEndpointDragStart']
   onEndpointDrop: PcBuildNodeData['onEndpointDrop']
   pendingEndpoint: ConnectionEndpoint | null
-  project: ProjectState
+  requiredHandleIds: ReadonlySet<string>
 }) {
   const ports = sortPorts(motherboard?.ports)
 
@@ -428,6 +428,7 @@ function MotherboardIoRow({
         {ports.map((port) => (
           <PortChip
             key={port.id}
+            canvasIndex={canvasIndex}
             draggingEndpoint={draggingEndpoint}
             endpoint={{ itemId: hostRuntimeKey, hostedItemId: motherboardRuntimeKey, portId: port.id }}
             onEndpointClick={onEndpointClick}
@@ -435,7 +436,7 @@ function MotherboardIoRow({
             onEndpointDrop={onEndpointDrop}
             pendingEndpoint={pendingEndpoint}
             port={port}
-            project={project}
+            requiredHandleIds={requiredHandleIds}
           />
         ))}
       </div>
@@ -446,6 +447,8 @@ function MotherboardIoRow({
 export function PcBuildNode({ data }: NodeProps<PcBuildFlowNode>) {
   const {
     project,
+    canvasIndex,
+    requiredHandleIds,
     pcBuildId,
     selectedItemId,
     focusedItemIds,
@@ -476,7 +479,7 @@ export function PcBuildNode({ data }: NodeProps<PcBuildFlowNode>) {
   const motherboard = motherboardAssignment ? project.items[motherboardAssignment.itemId] : undefined
   const operatingSystem = String(pcBuild.specs?.operatingSystem ?? '').trim()
   const displayName = pcBuild.properties?.displayName?.trim() || 'PC Build'
-  const auditCount = getItemAuditWarnings(project, pcBuildRuntimeKey).length
+  const auditCount = canvasAuditWarningCount(canvasIndex, pcBuildRuntimeKey)
   const focused = focusedItemIds.includes(pcBuildRuntimeKey)
   const dimmed = focusActive && !focused
   const compatibilityDropRing = dropCompatibilityStatus === 'incompatible'
@@ -501,7 +504,7 @@ export function PcBuildNode({ data }: NodeProps<PcBuildFlowNode>) {
           {auditCount}
         </div>
       ) : null}
-      <CableHandles />
+      <CableHandles requiredHandleIds={requiredHandleIds} />
       <div className="server-node-drag-handle flex cursor-grab items-center gap-2 rounded-md bg-[#303744] px-3 py-2 active:cursor-grabbing">
         <Grip className="size-4 shrink-0 text-[#cfc6b8]" />
         <div className="min-w-0">
@@ -511,6 +514,7 @@ export function PcBuildNode({ data }: NodeProps<PcBuildFlowNode>) {
       </div>
 
       <MotherboardIoRow
+        canvasIndex={canvasIndex}
         draggingEndpoint={draggingEndpoint}
         hostRuntimeKey={pcBuildRuntimeKey}
         motherboard={motherboard}
@@ -518,7 +522,7 @@ export function PcBuildNode({ data }: NodeProps<PcBuildFlowNode>) {
         onEndpointDragStart={onEndpointDragStart}
         onEndpointDrop={onEndpointDrop}
         pendingEndpoint={pendingEndpoint}
-        project={project}
+        requiredHandleIds={requiredHandleIds}
       />
 
       {operatingSystem ? (
@@ -551,6 +555,7 @@ export function PcBuildNode({ data }: NodeProps<PcBuildFlowNode>) {
               <AssignedComponentRow
                 key={assignment.id}
                 assignment={assignment}
+                canvasIndex={canvasIndex}
                 draggingEndpoint={draggingEndpoint}
                 hostRuntimeKey={pcBuildRuntimeKey}
                 item={item}
@@ -560,7 +565,7 @@ export function PcBuildNode({ data }: NodeProps<PcBuildFlowNode>) {
                 onRemoveAssignment={onRemoveAssignment}
                 onSelect={onSelect}
                 pendingEndpoint={pendingEndpoint}
-                project={project}
+                requiredHandleIds={requiredHandleIds}
                 selected={selectedItemId === runtimeItemKey(item)}
               />
             )

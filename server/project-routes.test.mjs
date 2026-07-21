@@ -68,7 +68,8 @@ describe('project routes', () => {
       compatibility: {
         host: {
           storageSlots: [{
-            id: 'm2-1',
+            id: 1,
+            key: 'm2-1',
             label: 'M.2',
             count: 1,
             interfaces: ['NVMe'],
@@ -96,7 +97,7 @@ describe('project routes', () => {
 
     expect(saved.response.status).toBe(200)
     expect(saved.body.assignments[0].allocation).toEqual({
-      resourceType: 'storage', groupId: 'm2-1', positions: [0],
+      resourceType: 'storage', groupId: 1, positions: [0],
     })
     expect(loaded.body.items['server:1'].compatibility).toEqual(
       submitted.items['server:1'].compatibility,
@@ -109,7 +110,7 @@ describe('project routes', () => {
     store.createInventoryItems({ type: 'server', name: 'Host' })
     const submitted = store.getProject()
     submitted.items['server:1'].compatibility = {
-      host: { storageSlots: [{ id: 'm2-1', label: 'M.2', count: 0 }] },
+      host: { storageSlots: [{ id: 1, key: 'm2-1', label: 'M.2', count: 0 }] },
     }
 
     const result = await requestJson(`${url}/api/project`, 'PUT', submitted)
@@ -126,7 +127,7 @@ describe('project routes', () => {
       type: 'server', name: 'Host',
       compatibility: {
         host: {
-          storageSlots: [{ id: 'm2-1', label: 'M.2', count: 1, interfaces: ['NVMe'] }],
+          storageSlots: [{ id: 1, key: 'm2-1', label: 'M.2', count: 1, interfaces: ['NVMe'] }],
         },
       },
     })

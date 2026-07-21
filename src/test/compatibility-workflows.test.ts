@@ -32,7 +32,7 @@ function host(
           maxSpeedMt: 3200,
         },
         storageSlots: [{
-          id: 'm2',
+          id: 1, key: 'm2',
           label: 'M.2',
           count: 1,
           interfaces: ['NVMe'],
@@ -40,7 +40,7 @@ function host(
           pcieGeneration: 4,
         }],
         expansionSlots: [{
-          id: 'pcie',
+          id: 4, key: 'pcie',
           label: 'PCIe',
           count: 1,
           interfaceFamily: 'pcie',
@@ -133,7 +133,7 @@ function gpu(key: string): InventoryItem {
 }
 
 function assignment(
-  id: string | number,
+  id: number,
   serverId: string,
   item: InventoryItem,
   assignedAt = '2026-07-19T12:00:00.000Z',
@@ -223,7 +223,7 @@ describe('transactional compatibility workflows', () => {
     if (!accepted.ok) return
     expect(accepted.project.assignments[0].allocation).toEqual({
       resourceType: 'storage',
-      groupId: 'm2',
+      groupId: 1,
       positions: [0],
     })
     const rejected = tryAssignComponent(accepted.project, nas.key!, second.key!)
@@ -239,7 +239,7 @@ describe('transactional compatibility workflows', () => {
     const server = host('server:1', {
       host: {
         expansionSlots: [{
-          id: 'legacy',
+          id: 22, key: 'legacy',
           label: 'Legacy expansion',
           count: 1,
           interfaceFamily: 'pcie',
@@ -265,7 +265,7 @@ describe('transactional compatibility workflows', () => {
     if (!accepted.ok) return
     expect(accepted.project.assignments[0].allocation).toEqual({
       resourceType: 'expansion',
-      groupId: 'legacy',
+      groupId: 22,
       positions: [0],
     })
     const rejected = tryAssignComponent(accepted.project, server.key!, second.key!)
@@ -315,7 +315,7 @@ describe('transactional compatibility workflows', () => {
     expect(result.unknownFindings).toEqual([])
     expect(result.project.assignments[0].allocation).toEqual({
       resourceType: 'storage',
-      groupId: 'm2',
+      groupId: 1,
       positions: [0],
     })
     expect(tryAssignComponent(result.project, server.key!, second.key!)).toMatchObject({
@@ -339,7 +339,7 @@ describe('transactional compatibility workflows', () => {
     const server = host('server:1', {
       host: {
         storageSlots: [{
-          id: 'm2',
+          id: 1, key: 'm2',
           label: 'M.2',
           count: 1,
           interfaces: ['NVMe'],
@@ -355,7 +355,7 @@ describe('transactional compatibility workflows', () => {
     if (!result.ok) return
     expect(result.project.assignments[0].allocation).toEqual({
       resourceType: 'storage',
-      groupId: 'm2',
+      groupId: 1,
       positions: [0],
     })
     expect(result.compatibility[0].findings).toEqual(
@@ -369,12 +369,12 @@ describe('transactional compatibility workflows', () => {
     const drive = storage('storage:1', '2280')
     const originalAssignment = assignment(1, source.key!, drive, undefined, {
       resourceType: 'storage',
-      groupId: 'm2',
+      groupId: 1,
       positions: [0],
     })
     const input = project([source, target], [drive], [originalAssignment])
 
-    const result = moveAssignedComponent(input, '1', target.key!)
+    const result = moveAssignedComponent(input, 1, target.key!)
 
     expect(result.ok).toBe(true)
     if (!result.ok) return
@@ -384,7 +384,7 @@ describe('transactional compatibility workflows', () => {
         assignedAt: originalAssignment.assignedAt,
         serverId: target.key,
         itemId: drive.key,
-        allocation: { resourceType: 'storage', groupId: 'm2', positions: [0] },
+        allocation: { resourceType: 'storage', groupId: 1, positions: [0] },
       }),
     ])
   })
@@ -396,7 +396,7 @@ describe('transactional compatibility workflows', () => {
     const stale = storage('storage:2', '2280')
     const input = project([source, target], [actual, stale], [assignment(7, source.key!, actual)])
 
-    const result = moveAssignedComponent(input, '7', target.key!)
+    const result = moveAssignedComponent(input, 7, target.key!)
 
     expect(result.ok).toBe(true)
     if (!result.ok) return
@@ -405,36 +405,30 @@ describe('transactional compatibility workflows', () => {
     )
   })
 
-  it('keeps numeric and string assignment IDs distinct while allowing an unambiguous mixed lookup', () => {
+  it('moves the selected numeric assignment while preserving other assignments', () => {
     const source = host('server:1', {
       host: {
-        storageSlots: [{ id: 'm2', label: 'M.2', count: 2, interfaces: ['NVMe'], formFactors: ['2280'] }],
+        storageSlots: [{ id: 1, key: 'm2', label: 'M.2', count: 2, interfaces: ['NVMe'], formFactors: ['2280'] }],
       },
     })
     const target = host('server:2', {
       host: {
-        storageSlots: [{ id: 'm2', label: 'M.2', count: 2, interfaces: ['NVMe'], formFactors: ['2280'] }],
+        storageSlots: [{ id: 1, key: 'm2', label: 'M.2', count: 2, interfaces: ['NVMe'], formFactors: ['2280'] }],
       },
     })
     const first = storage('storage:1', '2280')
     const second = storage('storage:2', '2280')
-    const ambiguous = project(
+    const input = project(
       [source, target],
       [first, second],
-      [assignment(1, source.key!, first), assignment('1', source.key!, second)],
+      [assignment(1, source.key!, first), assignment(2, source.key!, second)],
     )
 
-    const exact = moveAssignedComponent(ambiguous, 1, target.key!)
+    const exact = moveAssignedComponent(input, 1, target.key!)
     expect(exact.ok).toBe(true)
     if (!exact.ok) return
     expect(exact.project.assignments.find((entry) => entry.id === 1)?.serverId).toBe(target.key)
-    expect(exact.project.assignments.find((entry) => entry.id === '1')?.serverId).toBe(source.key)
-
-    const unambiguous = project([source, target], [first], [assignment(2, source.key!, first)])
-    const mixed = moveAssignedComponent(unambiguous, '2', target.key!)
-    expect(mixed.ok).toBe(true)
-    if (!mixed.ok) return
-    expect(mixed.project.assignments[0].id).toBe(2)
+    expect(exact.project.assignments.find((entry) => entry.id === 2)?.serverId).toBe(source.key)
   })
 
   it('returns the original project for a same-host no-op', () => {
@@ -455,7 +449,7 @@ describe('transactional compatibility workflows', () => {
     const original = assignment(9, source.key!, processor, '2026-07-19T03:00:00.000Z')
     const input = project([source, target], [processor], [original])
 
-    const result = moveAssignedComponent(input, '9', target.key!)
+    const result = moveAssignedComponent(input, 9, target.key!)
 
     expect(result.ok).toBe(true)
     if (!result.ok) return
@@ -485,7 +479,7 @@ describe('transactional compatibility workflows', () => {
     const server = host('server:1', {
       host: {
         storageSlots: [{
-          id: 'm2',
+          id: 1, key: 'm2',
           label: 'M.2',
           count: 2,
           interfaces: ['NVMe'],
@@ -502,7 +496,7 @@ describe('transactional compatibility workflows', () => {
     expect(result.ok).toBe(true)
     if (!result.ok) return
     expect(result.project.assignments.find((entry) => entry.itemId === compatible.key)?.allocation)
-      .toEqual({ resourceType: 'storage', groupId: 'm2', positions: [0] })
+      .toEqual({ resourceType: 'storage', groupId: 1, positions: [0] })
   })
 
   it('rejects an incompatible CPU swap atomically when either resulting host fails', () => {

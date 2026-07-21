@@ -17,6 +17,7 @@ import type {
   InventoryItem,
   ProjectState,
 } from '@/types/inventory'
+import { withCanonicalPowerPorts } from '../../shared/power-ports.mjs'
 
 const CREATED_AT = '2026-07-20T12:00:00.000Z'
 
@@ -26,7 +27,7 @@ function item(
   name: string,
   overrides: Partial<InventoryItem> = {},
 ): InventoryItem {
-  return { id, type, name, ...overrides }
+  return withCanonicalPowerPorts({ id, key: `${type}:${id}`, type, name, ...overrides })
 }
 
 function project(overrides: Partial<ProjectState> = {}): ProjectState {
@@ -84,7 +85,7 @@ function pcInput(): ConnectionEndpoint {
   return {
     itemId: 'pcBuild:1',
     hostedItemId: 'powerSupply:1',
-    portId: 'ac-input',
+    portId: 1,
   }
 }
 
@@ -92,7 +93,7 @@ function serverInput(): ConnectionEndpoint {
   return {
     itemId: 'server:1',
     hostedItemId: 'powerAdapter:1',
-    portId: 'ac-input',
+    portId: 1,
   }
 }
 
@@ -129,7 +130,7 @@ describe('power endpoint modeling', () => {
           kind: 'ups-outlet',
         },
         {
-          endpoint: powerOutletEndpoint('powerStrip:1', 1),
+          endpoint: powerOutletEndpoint('powerStrip:1', 2),
           direction: 'output',
           kind: 'power-strip-outlet',
         },
@@ -175,7 +176,7 @@ describe('power endpoint modeling', () => {
   })
 
   it('uses the explicit outlet fan-out flag and otherwise defaults to one load per outlet', () => {
-    const normal = resolvePowerEndpoint(project(), powerOutletEndpoint('powerStrip:1', 1))
+    const normal = resolvePowerEndpoint(project(), powerOutletEndpoint('powerStrip:1', 2))
     const fanOutProject = project({
       items: {
         ...project().items,
@@ -185,7 +186,7 @@ describe('power endpoint modeling', () => {
         },
       },
     })
-    const modeled = resolvePowerEndpoint(fanOutProject, powerOutletEndpoint('powerStrip:1', 1))
+    const modeled = resolvePowerEndpoint(fanOutProject, powerOutletEndpoint('powerStrip:1', 2))
 
     expect(normal?.allowFanOut).toBe(false)
     expect(modeled?.allowFanOut).toBe(true)
@@ -234,8 +235,8 @@ describe('power connection validation and lifecycle', () => {
     })
     expect(validatePowerConnection(
       state,
-      powerOutletEndpoint('powerStrip:1', 1),
-      { itemId: 'powerStrip:1', portId: 'ac-input' },
+      powerOutletEndpoint('powerStrip:1', 2),
+      powerStripPowerInputEndpoint('powerStrip:1'),
     )).toMatchObject({ ok: false })
   })
 
@@ -317,14 +318,14 @@ describe('power connection validation and lifecycle', () => {
       },
       connections: [powerConnection(
         1,
-        powerOutletEndpoint('powerStrip:1', 1),
+        powerOutletEndpoint('powerStrip:1', 2),
         monitorPowerInputEndpoint('monitor:1'),
       )],
     })
 
     expect(validatePowerConnection(
       state,
-      powerOutletEndpoint('powerStrip:1', 1),
+      powerOutletEndpoint('powerStrip:1', 2),
       monitorPowerInputEndpoint('monitor:2'),
     )).toEqual({ ok: true })
   })
@@ -401,7 +402,7 @@ describe('power topology audit', () => {
         powerConnection(1, outlet, firstInput),
         powerConnection(2, outlet, secondInput),
         powerConnection(3, powerOutletEndpoint('ups:1', 2), firstInput),
-        powerConnection(4, firstInput, powerOutletEndpoint('powerStrip:1', 1)),
+        powerConnection(4, firstInput, powerOutletEndpoint('powerStrip:1', 2)),
         powerConnection(5, powerOutletEndpoint('ups:1', 99), secondInput),
       ],
     })

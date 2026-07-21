@@ -15,6 +15,7 @@ import {
   isHostType,
   isInventoryType,
 } from './inventory-capabilities.mjs'
+import { canonicalPowerPorts } from '../../shared/power-ports.mjs'
 
 function inventoryWith(item) {
   return {
@@ -83,11 +84,12 @@ function compatibleItems() {
         host: {
           memory: { generations: ['DDR4'], slots: 2, maxCapacityGb: 64 },
           storageSlots: [
-            { id: 'storage-1', label: 'M.2', count: 1, interfaces: ['NVMe'] },
+            { id: 1, key: 'storage-1', label: 'M.2', count: 1, interfaces: ['NVMe'] },
           ],
           expansionSlots: [
             {
-              id: 'expansion-1',
+              id: 1,
+              key: 'expansion-1',
               label: 'PCIe',
               count: 1,
               interfaceFamily: 'pcie',
@@ -131,7 +133,11 @@ describe('inventory capability validation', () => {
   it.each(Object.entries(SCHEMA_9_TABLE_TYPES))(
     'requires and validates the schema 9 %s table as %s records',
     (table, type) => {
-      const inventory = inventoryTables({ [table]: [{ id: 1, name: `${type} item` }] })
+      const item = { id: 1, name: `${type} item`, type }
+      const ports = canonicalPowerPorts(item)
+      const inventory = inventoryTables({
+        [table]: [{ ...item, ...(ports.length > 0 ? { ports } : {}) }],
+      })
       expect(() => assertInventoryStoreShape(inventory)).not.toThrow()
 
       delete inventory[table]
@@ -184,6 +190,143 @@ describe('inventory capability validation', () => {
   })
 })
 
+describe('canonical power topology validation', () => {
+  const specs = { batteryBackupOutlets: 1, surgeProtectedOutlets: 1 }
+
+  it('rejects strict UPS records without persisted canonical power ports', () => {
+    const inventory = inventoryTables({
+      upsSystems: [{ id: 1, name: 'UPS', specs }],
+    })
+
+    expect(() => assertInventoryStoreShape(inventory)).toThrow(
+      'Inventory item ups:1 is missing canonical power port battery-outlet-1.',
+    )
+  })
+
+  it.each([
+    ['kind', { kind: 'server-port' }],
+    ['type', { type: 'ac-input' }],
+    ['slot number', { slotNumber: 99 }],
+  ])('rejects a canonical UPS port with a mismatched %s', (_field, changes) => {
+    const ports = canonicalPowerPorts({ type: 'ups', specs }).map((port) => (
+      port.key === 'battery-outlet-1' ? { ...port, ...changes } : port
+    ))
+    const inventory = inventoryTables({
+      upsSystems: [{ id: 1, name: 'UPS', specs, ports }],
+    })
+
+    expect(() => assertInventoryStoreShape(inventory)).toThrow(
+      'Inventory item ups:1 is missing canonical power port battery-outlet-1.',
+    )
+  })
+
+  it('accepts a canonical power port with a non-preferred positive surrogate ID', () => {
+    const ports = canonicalPowerPorts({ type: 'ups', specs }).map((port) => (
+      port.key === 'battery-outlet-1' ? { ...port, id: 42 } : port
+    ))
+    const inventory = inventoryTables({
+      upsSystems: [{ id: 1, name: 'UPS', specs, ports }],
+    })
+
+    expect(() => assertInventoryStoreShape(inventory)).not.toThrow()
+  })
+
+  it('requires and accepts surge-only canonical ports for an outlets-only UPS', () => {
+    const outletsOnlySpecs = { outlets: 3 }
+    const withoutPorts = inventoryTables({
+      upsSystems: [{ id: 1, name: 'UPS', specs: outletsOnlySpecs }],
+    })
+
+    expect(() => assertInventoryStoreShape(withoutPorts)).toThrow(
+      'Inventory item ups:1 is missing canonical power port surge-outlet-1.',
+    )
+
+    const withPorts = inventoryTables({
+      upsSystems: [{
+        id: 1,
+        name: 'UPS',
+        specs: outletsOnlySpecs,
+        ports: canonicalPowerPorts({ type: 'ups', specs: outletsOnlySpecs }),
+      }],
+    })
+    expect(() => assertInventoryStoreShape(withPorts)).not.toThrow()
+  })
+
+  it('accepts a strict UPS record with its canonical persisted power topology', () => {
+    const inventory = inventoryTables({
+      upsSystems: [{
+        id: 1,
+        name: 'UPS',
+        specs,
+        ports: canonicalPowerPorts({ type: 'ups', specs }),
+      }],
+    })
+
+    expect(() => assertInventoryStoreShape(inventory)).not.toThrow()
+  })
+
+  it('rejects duplicate semantic port keys during strict validation', () => {
+    const ports = canonicalPowerPorts({ type: 'ups', specs })
+    const inventory = inventoryTables({
+      upsSystems: [{
+        id: 1,
+        name: 'UPS',
+        specs,
+        ports: [...ports, { ...ports[0], id: 3 }],
+      }],
+    })
+
+    expect(() => assertInventoryStoreShape(inventory)).toThrow(
+      'Inventory item ups:1 port key battery-outlet-1 must be unique.',
+    )
+  })
+
+  it.each([
+    ['power kind', { id: 3, key: 'phantom-kind', kind: 'power-port', type: 'hdmi', slotNumber: 3 }],
+    ['power type', { id: 3, key: 'phantom-type', kind: 'server-port', type: 'ac-outlet', slotNumber: 3 }],
+  ])('rejects an extra port marked as a power endpoint by %s', (_case, phantomPort) => {
+    const inventory = inventoryTables({
+      upsSystems: [{
+        id: 1,
+        name: 'UPS',
+        specs,
+        ports: [...canonicalPowerPorts({ type: 'ups', specs }), phantomPort],
+      }],
+    })
+
+    expect(() => assertInventoryStoreShape(inventory)).toThrow(
+      `Inventory item ups:1 has noncanonical power port ${phantomPort.key}.`,
+    )
+  })
+
+  it('preserves unrelated monitor display ports beside canonical power input', () => {
+    const inventory = inventoryTables({
+      monitors: [{
+        id: 1,
+        name: 'Monitor',
+        ports: [
+          ...canonicalPowerPorts({ type: 'monitor' }),
+          { id: 2, key: 'hdmi-1', kind: 'server-port', type: 'hdmi', slotNumber: 1 },
+          { id: 3, key: 'displayport-1', kind: 'server-port', type: 'displayport', slotNumber: 2 },
+        ],
+      }],
+    })
+
+    expect(() => assertInventoryStoreShape(inventory)).not.toThrow()
+  })
+
+  it('keeps legacy pre-migration UPS records valid without persisted ports', () => {
+    expect(() => assertLegacyProjectShape({
+      id: 'default',
+      metadata: {},
+      items: { 'ups:1': { id: 1, type: 'ups', name: 'UPS', specs } },
+      placements: [],
+      assignments: [],
+      connections: [],
+    })).not.toThrow()
+  })
+})
+
 describe('compatibility validation', () => {
   it('accepts valid compatibility profiles and preserves forward-compatible extension fields', () => {
     const inventory = inventoryTables({
@@ -202,7 +345,8 @@ describe('compatibility validation', () => {
               maxSpeedMt: 3200,
             },
             storageSlots: [{
-              id: 'storage-1',
+              id: 1,
+              key: 'storage-1',
               label: 'M.2 slot',
               count: 1,
               interfaces: ['NVMe'],
@@ -211,7 +355,8 @@ describe('compatibility validation', () => {
               vendorExtension: true,
             }],
             expansionSlots: [{
-              id: 'expansion-1',
+              id: 1,
+              key: 'expansion-1',
               label: 'PCIe slot',
               count: 1,
               interfaceFamily: 'pcie',
@@ -249,8 +394,8 @@ describe('compatibility validation', () => {
         compatibility: {
           host: {
             storageSlots: [
-              { id: 'storage-1', label: 'First', count: 1 },
-              { id: 'storage-1', label: 'Second', count: 1 },
+              { id: 1, key: 'storage-1', label: 'First', count: 1 },
+              { id: 1, key: 'storage-2', label: 'Second', count: 1 },
             ],
           },
         },
@@ -268,7 +413,7 @@ describe('compatibility validation', () => {
         id: 1,
         name: 'Server',
         compatibility: {
-          host: { storageSlots: [{ id: 'storage-1', label: 'M.2', count: 0 }] },
+          host: { storageSlots: [{ id: 1, key: 'storage-1', label: 'M.2', count: 0 }] },
         },
       }],
     })
@@ -287,7 +432,7 @@ describe('compatibility validation', () => {
       {
         host: {
           expansionSlots: [{
-            id: 'expansion-1', label: 'PCIe', count: 1, interfaceFamily: 'pcie', mechanicalLanes: 0,
+            id: 1, key: 'expansion-1', label: 'PCIe', count: 1, interfaceFamily: 'pcie', mechanicalLanes: 0,
           }],
         },
       },
@@ -312,14 +457,17 @@ describe('compatibility validation', () => {
   it.each([
     [
       {
-        disabledHostIds: ['server:1', 'server:1'],
+        disabledHosts: [
+          { hostType: 'server', hostId: 1 },
+          { hostType: 'server', hostId: 1 },
+        ],
         ignoredWarningIds: [],
       },
-      'compatibilityPolicy.disabledHostIds must contain unique strings',
+      'compatibilityPolicy.disabledHosts[1] duplicates host server:1.',
     ],
     [
       {
-        disabledHostIds: [],
+        disabledHosts: [],
         ignoredWarningIds: ['warning:1', 2],
       },
       'compatibilityPolicy.ignoredWarningIds must contain unique strings',
@@ -345,7 +493,7 @@ describe('assignment allocation validation', () => {
         itemType: 'storage',
         itemId: 1,
         type: 'storage',
-        allocation: { resourceType: 'drive', groupId: 'storage-1', positions: [0] },
+        allocation: { resourceType: 'drive', groupId: 1, positions: [0] },
       }],
       connections: [],
     })).toThrow('Project assignment 1 allocation.resourceType has an unsupported value.')
@@ -359,16 +507,18 @@ describe('assignment allocation validation', () => {
       placements: [],
       assignments: [{
         id: 1,
-        serverId: 'server:1',
-        itemId: 'storage:1',
+        hostType: 'server',
+        hostId: 1,
+        itemType: 'storage',
+        itemId: 1,
         type: 'storage',
-        allocation: { resourceType: 'storage', groupId: 'storage-1', positions: [1] },
+        allocation: { resourceType: 'storage', groupId: 1, positions: [1] },
       }],
       connections: [],
     }
 
     expect(() => assertProjectShape(project)).toThrow(
-      'Project assignment 1 allocation.positions[0] is outside compatibility.host.storageSlots group storage-1.',
+      'Project assignment 1 allocation.positions[0] is outside compatibility.host.storageSlots group 1.',
     )
   })
 
@@ -385,7 +535,7 @@ describe('assignment allocation validation', () => {
         allocation: { resourceType: 'storage', positions: [0] },
       }],
       connections: [],
-    })).toThrow('Project assignment 1 allocation.groupId must be a non-empty string.')
+    })).toThrow('Project assignment 1 allocation.groupId must be a positive safe-integer relational ID.')
   })
 
   it('accepts PC Build logical and motherboard-backed allocations', () => {
@@ -404,7 +554,7 @@ describe('assignment allocation validation', () => {
             host: {
               cpu: { sockets: ['AM5'] },
               memory: { slots: 2, generations: ['DDR5'] },
-              storageSlots: [{ id: 'm2', label: 'M.2', count: 1 }],
+              storageSlots: [{ id: 1, key: 'm2', label: 'M.2', count: 1 }],
             },
           },
         },
@@ -412,49 +562,67 @@ describe('assignment allocation validation', () => {
         'cpuCooler:1': { id: 1, key: 'cpuCooler:1', type: 'cpuCooler', name: 'Cooler' },
         'ram:1': { id: 1, key: 'ram:1', type: 'ram', name: 'Memory' },
         'storage:1': { id: 1, key: 'storage:1', type: 'storage', name: 'Storage' },
-        'powerSupply:1': { id: 1, key: 'powerSupply:1', type: 'powerSupply', name: 'PSU' },
+        'powerSupply:1': {
+          id: 1,
+          key: 'powerSupply:1',
+          type: 'powerSupply',
+          name: 'PSU',
+          ports: canonicalPowerPorts({ type: 'powerSupply' }),
+        },
       },
-      placements: [{ serverId: 'pcBuild:1', x: 0, y: 0 }],
+      placements: [{ itemType: 'pcBuild', itemId: 1, x: 0, y: 0 }],
       assignments: [
         {
           id: 1,
-          serverId: 'pcBuild:1',
-          itemId: 'motherboard:1',
+          hostType: 'pcBuild',
+          hostId: 1,
+          itemType: 'motherboard',
+          itemId: 1,
           type: 'motherboard',
           allocation: { resourceType: 'motherboard', positions: [0] },
         },
         {
           id: 2,
-          serverId: 'pcBuild:1',
-          itemId: 'cpu:1',
+          hostType: 'pcBuild',
+          hostId: 1,
+          itemType: 'cpu',
+          itemId: 1,
           type: 'cpu',
-          allocation: { resourceType: 'cpu', groupId: 'cpu', positions: [0] },
+          allocation: { resourceType: 'cpu', positions: [0] },
         },
         {
           id: 3,
-          serverId: 'pcBuild:1',
-          itemId: 'cpuCooler:1',
+          hostType: 'pcBuild',
+          hostId: 1,
+          itemType: 'cpuCooler',
+          itemId: 1,
           type: 'cpuCooler',
-          allocation: { resourceType: 'cooling', groupId: 'cpu', positions: [0] },
+          allocation: { resourceType: 'cooling', positions: [0] },
         },
         {
           id: 4,
-          serverId: 'pcBuild:1',
-          itemId: 'ram:1',
+          hostType: 'pcBuild',
+          hostId: 1,
+          itemType: 'ram',
+          itemId: 1,
           type: 'ram',
-          allocation: { resourceType: 'memory', groupId: 'dimm', positions: [0, 1] },
+          allocation: { resourceType: 'memory', positions: [0, 1] },
         },
         {
           id: 5,
-          serverId: 'pcBuild:1',
-          itemId: 'storage:1',
+          hostType: 'pcBuild',
+          hostId: 1,
+          itemType: 'storage',
+          itemId: 1,
           type: 'storage',
-          allocation: { resourceType: 'storage', groupId: 'm2', positions: [0] },
+          allocation: { resourceType: 'storage', groupId: 1, positions: [0] },
         },
         {
           id: 6,
-          serverId: 'pcBuild:1',
-          itemId: 'powerSupply:1',
+          hostType: 'pcBuild',
+          hostId: 1,
+          itemType: 'powerSupply',
+          itemId: 1,
           type: 'powerSupply',
           allocation: { resourceType: 'power', positions: [0] },
         },
@@ -473,16 +641,18 @@ describe('assignment allocation validation', () => {
       placements: [],
       assignments: [{
         id: 1,
-        serverId: 'server:1',
-        itemId: 'storage:1',
+        hostType: 'server',
+        hostId: 1,
+        itemType: 'storage',
+        itemId: 1,
         type: 'storage',
-        allocation: { resourceType: 'storage', groupId: 'missing', positions: [0] },
+        allocation: { resourceType: 'storage', groupId: 99, positions: [0] },
       }],
       connections: [],
     }
 
     expect(() => assertProjectShape(project)).toThrow(
-      'Project assignment 1 allocation.groupId references missing compatibility.host.storageSlots group missing.',
+      'Project assignment 1 allocation.groupId references missing compatibility.host.storageSlots group 99.',
     )
   })
 
@@ -504,17 +674,21 @@ describe('assignment allocation validation', () => {
       assignments: [
         {
           id: 1,
-          serverId: 'server:1',
-          itemId: 'storage:1',
+          hostType: 'server',
+          hostId: 1,
+          itemType: 'storage',
+          itemId: 1,
           type: 'storage',
-          allocation: { resourceType: 'storage', groupId: 'storage-1', positions: [0] },
+          allocation: { resourceType: 'storage', groupId: 1, positions: [0] },
         },
         {
           id: 2,
-          serverId: 'server:1',
-          itemId: 'storage:2',
+          hostType: 'server',
+          hostId: 1,
+          itemType: 'storage',
+          itemId: 2,
           type: 'storage',
-          allocation: { resourceType: 'storage', groupId: 'storage-1', positions: [0] },
+          allocation: { resourceType: 'storage', groupId: 1, positions: [0] },
         },
       ],
       connections: [],
@@ -527,24 +701,24 @@ describe('assignment allocation validation', () => {
 })
 
 describe('canonical project identity validation', () => {
-  it('rejects assignment IDs that collide after numeric normalization', () => {
+  it('rejects string assignment IDs instead of coercing them', () => {
     expect(() => assertProjectStoreShape({
       placements: [],
       assignments: [
-        { id: 1, serverId: 'server:1', itemId: 'storage:1', type: 'storage' },
-        { id: '1', serverId: 'server:1', itemId: 'storage:2', type: 'storage' },
+        { id: 1, hostType: 'server', hostId: 1, itemType: 'storage', itemId: 1, type: 'storage' },
+        { id: '1', hostType: 'server', hostId: 1, itemType: 'storage', itemId: 2, type: 'storage' },
       ],
       connections: [],
     })).toThrow(
-      'Project assignments[1].id duplicates canonical id 1 from Project assignments[0].id.',
+      'Project assignments[1].id must be a positive safe-integer relational ID.',
     )
   })
 
-  it('rejects connection IDs that collide after numeric normalization', () => {
+  it('rejects string connection IDs instead of coercing them', () => {
     const connection = (id) => ({
       id,
-      from: { itemId: 'server:1', portId: 1 },
-      to: { itemId: 'switch:1', portId: 1 },
+      from: { itemType: 'server', itemId: 1, portId: 1 },
+      to: { itemType: 'switch', itemId: 1, portId: 1 },
       type: 'network',
       createdAt: '2026-07-19T00:00:00.000Z',
     })
@@ -554,7 +728,7 @@ describe('canonical project identity validation', () => {
       assignments: [],
       connections: [connection(1), connection('1')],
     })).toThrow(
-      'Project connections[1].id duplicates canonical id 1 from Project connections[0].id.',
+      'Project connections[1].id must be a positive safe-integer relational ID.',
     )
   })
 
@@ -565,8 +739,8 @@ describe('canonical project identity validation', () => {
       items: compatibleItems(),
       placements: [],
       assignments: [
-        { id: 1, serverId: 'server:1', itemId: 'storage:1', type: 'storage' },
-        { id: 2, serverId: 'server:1', itemId: 'storage:1', type: 'storage' },
+        { id: 1, hostType: 'server', hostId: 1, itemType: 'storage', itemId: 1, type: 'storage' },
+        { id: 2, hostType: 'server', hostId: 1, itemType: 'storage', itemId: 1, type: 'storage' },
       ],
       connections: [],
     }
@@ -583,13 +757,117 @@ describe('canonical project identity validation', () => {
       items: compatibleItems(),
       placements: [],
       assignments: [
-        { id: 1, serverId: 'server:1', itemId: 'storage:1', type: 'gpu' },
+        { id: 1, hostType: 'server', hostId: 1, itemType: 'storage', itemId: 1, type: 'gpu' },
       ],
       connections: [],
     }
 
     expect(() => assertProjectShape(project)).toThrow(
       'Project assignments[0].type gpu does not match referenced inventory item storage:1 type storage.',
+    )
+  })
+
+  it('rejects missing placement and assignment foreign-key references', () => {
+    expect(() => assertProjectShape({
+      id: 'default',
+      metadata: {},
+      items: compatibleItems(),
+      placements: [{ itemType: 'server', itemId: 99, x: 0, y: 0 }],
+      assignments: [],
+      connections: [],
+    })).toThrow('Project placements[0] references missing item server:99.')
+
+    expect(() => assertProjectShape({
+      id: 'default',
+      metadata: {},
+      items: compatibleItems(),
+      placements: [],
+      assignments: [
+        { id: 1, hostType: 'server', hostId: 99, itemType: 'storage', itemId: 1, type: 'storage' },
+      ],
+      connections: [],
+    })).toThrow('Project assignments[0] references missing host server:99.')
+
+    expect(() => assertProjectShape({
+      id: 'default',
+      metadata: {},
+      items: compatibleItems(),
+      placements: [],
+      assignments: [
+        { id: 1, hostType: 'server', hostId: 1, itemType: 'storage', itemId: 99, type: 'storage' },
+      ],
+      connections: [],
+    })).toThrow('Project assignments[0] references missing component storage:99.')
+  })
+
+  it('rejects missing connection owners, ports, sides, and hosted assignments', () => {
+    const project = {
+      id: 'default',
+      metadata: {},
+      items: {
+        ...compatibleItems(),
+        'server:1': {
+          ...compatibleItems()['server:1'],
+          ports: [{ id: 1, slotNumber: 1, kind: 'server-port', type: 'rj45' }],
+        },
+        'network:1': {
+          id: 1,
+          key: 'network:1',
+          type: 'network',
+          name: 'NIC',
+          ports: [{ id: 1, slotNumber: 1, kind: 'server-port', type: 'rj45' }],
+        },
+        'patchPanel:1': {
+          id: 1,
+          key: 'patchPanel:1',
+          type: 'patchPanel',
+          name: 'Patch panel',
+          ports: [{
+            id: 1,
+            slotNumber: 1,
+            kind: 'keystone',
+            type: 'rj45',
+            endpoints: [
+              { id: 1, side: 'front' },
+              { id: 2, side: 'back' },
+            ],
+          }],
+        },
+      },
+      placements: [],
+      assignments: [],
+      connections: [{
+        id: 1,
+        from: { itemId: 'server:1', portId: 99 },
+        to: { itemId: 'patchPanel:1', portId: 1, endpointId: 1 },
+        type: 'network',
+        createdAt: '2026-07-20T00:00:00.000Z',
+      }],
+    }
+
+    expect(() => assertProjectShape(project)).toThrow(
+      'Project connections[0].from.portId references missing port 99 on server:1.',
+    )
+
+    expect(() => assertProjectShape({
+      ...project,
+      connections: [{
+        ...project.connections[0],
+        from: { itemId: 'server:1', hostedItemId: 'network:1', portId: 1 },
+      }],
+    })).toThrow(
+      'Project connections[0].from hosted item network:1 is not assigned to host server:1.',
+    )
+
+    expect(() => assertProjectShape({
+      ...project,
+      connections: [{
+        ...project.connections[0],
+        from: { itemId: 'server:1', portId: 1 },
+        to: { itemId: 'patchPanel:1', portId: 1 },
+      }],
+    })).toThrow(
+      'Project connections[0].to.endpointId is required for multi-sided port 1.',
     )
   })
 })

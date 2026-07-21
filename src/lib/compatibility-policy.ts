@@ -7,19 +7,23 @@ export function setHostCompatibilityEnabled(
   enabled: boolean,
 ): ProjectState {
   const policy = normalizeCompatibilityPolicy(project.compatibilityPolicy)
-  const disabledHostIds = new Set(policy.disabledHostIds)
+  const match = hostId.match(/^([^:]+):([1-9]\d*)$/)
+  if (!match) return project
+  const hostType = match[1] as 'server' | 'nas' | 'pcBuild'
+  const numericHostId = Number(match[2])
+  const disabledHosts = policy.disabledHosts.filter(
+    (entry) => !(entry.hostType === hostType && entry.hostId === numericHostId),
+  )
 
-  if (enabled) {
-    disabledHostIds.delete(hostId)
-  } else {
-    disabledHostIds.add(hostId)
+  if (!enabled) {
+    disabledHosts.push({ hostType, hostId: numericHostId })
   }
 
   return {
     ...project,
     compatibilityPolicy: {
       ...policy,
-      disabledHostIds: [...disabledHostIds],
+      disabledHosts,
     },
   }
 }
@@ -68,7 +72,7 @@ export function enableCompatibilityForAllHosts(
     ...project,
     compatibilityPolicy: {
       ...policy,
-      disabledHostIds: [],
+      disabledHosts: [],
     },
   }
 }

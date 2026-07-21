@@ -104,16 +104,12 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
-function normalizeNumericId(value: unknown, label: string): string | number {
-  if (typeof value === 'number' && Number.isInteger(value)) {
+function normalizeNumericId(value: unknown, label: string): number {
+  if (typeof value === 'number' && Number.isSafeInteger(value) && value > 0) {
     return value
   }
 
-  if (typeof value === 'string' && value.trim() !== '') {
-    return value
-  }
-
-  throw new Error(`${label} is missing an id.`)
+  throw new Error(`${label} must have a positive numeric id.`)
 }
 
 function normalizeProperties(value: unknown): InventoryItem['properties'] {

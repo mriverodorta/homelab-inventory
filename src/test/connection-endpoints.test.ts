@@ -6,6 +6,8 @@ import {
   getHostEndpointGroups,
 } from '@/lib/connection-endpoints'
 import type { InventoryItem, ProjectState } from '@/types/inventory'
+import { migrateSchema10To11 } from '../../server/db/migrate-schema-11.mjs'
+import { withCanonicalPowerPorts } from '../../shared/power-ports.mjs'
 
 function archived(item: InventoryItem): InventoryItem {
   return {
@@ -15,7 +17,7 @@ function archived(item: InventoryItem): InventoryItem {
 }
 
 function port(
-  id: string,
+  id: number,
   type: 'rj45' | 'displayport' | 'mini-displayport',
   slotNumber: number,
   speed?: string,
@@ -30,62 +32,69 @@ function port(
 }
 
 const server: InventoryItem = {
-  id: 'server-a',
+  id: 1,
+  key: 'server:1',
   name: 'Server A',
   type: 'server',
-  ports: [port('board-rj45', 'rj45', 1, '1G'), port('board-dp', 'displayport', 2)],
+  ports: [port(1, 'rj45', 1, '1G'), port(2, 'displayport', 2)],
 }
 
 const nic: InventoryItem = {
-  id: 'nic-a',
+  id: 1,
+  key: 'network:1',
   name: 'Intel I350-T4',
   type: 'network',
-  ports: [port('nic-rj45-1', 'rj45', 1, '1G'), port('nic-rj45-2', 'rj45', 2, '1G')],
+  ports: [port(1, 'rj45', 1, '1G'), port(2, 'rj45', 2, '1G')],
 }
 
 const gpu: InventoryItem = {
-  id: 'gpu-a',
+  id: 1,
+  key: 'gpu:1',
   name: 'AMD Radeon RX 640',
   type: 'gpu',
-  ports: [port('gpu-mdp-1', 'mini-displayport', 1)],
+  ports: [port(1, 'mini-displayport', 1)],
 }
 
 const unassignedNic: InventoryItem = {
-  id: 'nic-loose',
+  id: 2,
+  key: 'network:2',
   name: 'Loose NIC',
   type: 'network',
-  ports: [port('loose-rj45', 'rj45', 1, '2.5G')],
+  ports: [port(1, 'rj45', 1, '2.5G')],
 }
 
 const unassignedGpu: InventoryItem = {
-  id: 'gpu-loose',
+  id: 2,
+  key: 'gpu:2',
   name: 'Loose GPU',
   type: 'gpu',
-  ports: [port('loose-dp', 'displayport', 1)],
+  ports: [port(1, 'displayport', 1)],
 }
 
 const switchItem: InventoryItem = {
-  id: 'switch-a',
+  id: 1,
+  key: 'switch:1',
   name: 'Switch A',
   type: 'switch',
   ports: [
-    { ...port('switch-rj45-1', 'rj45', 1, '2.5G'), kind: 'switch-port' },
-    { ...port('switch-rj45-2', 'rj45', 2, '2.5G'), kind: 'switch-port' },
+    { ...port(1, 'rj45', 1, '2.5G'), kind: 'switch-port' },
+    { ...port(2, 'rj45', 2, '2.5G'), kind: 'switch-port' },
   ],
 }
 
 const patchPanel: InventoryItem = {
-  id: 'patch-a',
+  id: 1,
+  key: 'patchPanel:1',
   name: 'Patch Panel A',
   type: 'patchPanel',
   ports: [{
-    id: 'keystone-7',
+    id: 1,
     kind: 'keystone',
     type: 'rj45',
     slotNumber: 7,
     endpoints: [
-      { id: 'keystone-7-front', side: 'front' },
-      { id: 'keystone-7-back', side: 'back' },
+      { id: 1, side: 'front' },
+      { id: 2, side: 'back' },
     ],
   }],
 }
@@ -95,22 +104,22 @@ function makeProject(): ProjectState {
     id: 'default',
     metadata: { name: 'Test', version: 1, updatedAt: '2026-07-13T00:00:00.000Z' },
     items: {
-      'server-a': server,
-      'nic-a': nic,
-      'gpu-a': gpu,
-      'nic-loose': unassignedNic,
-      'gpu-loose': unassignedGpu,
-      'switch-a': switchItem,
-      'patch-a': patchPanel,
+      'server:1': server,
+      'network:1': nic,
+      'gpu:1': gpu,
+      'network:2': unassignedNic,
+      'gpu:2': unassignedGpu,
+      'switch:1': switchItem,
+      'patchPanel:1': patchPanel,
     },
     placements: [
-      { serverId: 'server-a', x: 0, y: 0 },
-      { serverId: 'switch-a', x: 400, y: 0 },
-      { serverId: 'patch-a', x: 800, y: 0 },
+      { serverId: 'server:1', x: 0, y: 0 },
+      { serverId: 'switch:1', x: 400, y: 0 },
+      { serverId: 'patchPanel:1', x: 800, y: 0 },
     ],
     assignments: [
-      { id: 1, serverId: 'server-a', itemId: 'nic-a', type: 'network', assignedAt: '2026-07-13T00:00:00.000Z' },
-      { id: 2, serverId: 'server-a', itemId: 'gpu-a', type: 'gpu', assignedAt: '2026-07-13T00:00:00.000Z' },
+      { id: 1, serverId: 'server:1', itemId: 'network:1', type: 'network', assignedAt: '2026-07-13T00:00:00.000Z' },
+      { id: 2, serverId: 'server:1', itemId: 'gpu:1', type: 'gpu', assignedAt: '2026-07-13T00:00:00.000Z' },
     ],
     connections: [],
   }
@@ -129,9 +138,9 @@ describe('connection endpoint catalog', () => {
       'AMD Radeon RX 640 / MiniDP 01',
     ])
     expect(group?.options[2].endpoint).toEqual({
-      itemId: 'server-a',
-      hostedItemId: 'nic-a',
-      portId: 'nic-rj45-1',
+      itemId: 'server:1',
+      hostedItemId: 'network:1',
+      portId: 1,
     })
   })
 
@@ -145,19 +154,19 @@ describe('connection endpoint catalog', () => {
 
   it('excludes archived hosts and archived assigned cards from endpoint groups', () => {
     const project = makeProject()
-    project.items['switch-a'] = archived(project.items['switch-a'])
-    project.items['nic-a'] = archived(project.items['nic-a'])
+    project.items['switch:1'] = archived(project.items['switch:1'])
+    project.items['network:1'] = archived(project.items['network:1'])
 
     expect(getHostEndpointGroups(project).map((group) => group.label)).toEqual([
       'Patch Panel A',
       'Server A',
     ])
-    expect(getEndpointGroupForHost(project, project.items['server-a'])?.options.map((option) => option.owner.name)).toEqual([
+    expect(getEndpointGroupForHost(project, project.items['server:1'])?.options.map((option) => option.owner.name)).toEqual([
       'Server A',
       'Server A',
       'AMD Radeon RX 640',
     ])
-    expect(getEndpointGroupForHost(project, project.items['switch-a'])).toBeNull()
+    expect(getEndpointGroupForHost(project, project.items['switch:1'])).toBeNull()
   })
 
   it('labels patch-panel front and back endpoints independently', () => {
@@ -175,8 +184,8 @@ describe('connection endpoint catalog', () => {
       id: 1,
       type: 'network',
       createdAt: '2026-07-13T00:00:00.000Z',
-      from: { itemId: 'switch-a', portId: 'switch-rj45-1' },
-      to: { itemId: 'patch-a', portId: 'keystone-7', endpointId: 'keystone-7-front' },
+      from: { itemId: 'switch:1', portId: 1 },
+      to: { itemId: 'patchPanel:1', portId: 1, endpointId: 1 },
     }]
     const sourceGroup = getEndpointGroupForHost(project, server)
     const networkSource = sourceGroup?.options.find((option) => option.label === 'Board / RJ45 01 / 1G')
@@ -199,8 +208,8 @@ describe('connection endpoint catalog', () => {
 
   it('does not expose archived compatible destinations', () => {
     const project = makeProject()
-    project.items['switch-a'] = archived(project.items['switch-a'])
-    const source = getEndpointGroupForHost(project, project.items['server-a'])?.options[0]
+    project.items['switch:1'] = archived(project.items['switch:1'])
+    const source = getEndpointGroupForHost(project, project.items['server:1'])?.options[0]
 
     expect(source).toBeDefined()
     expect(getCompatibleDestinationGroups(project, source!).map((group) => group.label)).toEqual([
@@ -208,70 +217,76 @@ describe('connection endpoint catalog', () => {
     ])
   })
 
-  it('catalogs virtual power endpoints and creates outlet-to-input connections regardless of selection order', () => {
+  it('catalogs persisted power endpoints and creates outlet-to-input connections regardless of selection order', () => {
     const project = makeProject()
-    const ups: InventoryItem = {
-      id: 'ups-a',
+    const ups = withCanonicalPowerPorts({
+      id: 1,
+      key: 'ups:1',
       name: 'UPS A',
       type: 'ups',
-      specs: { outlets: 2, batteryBackupOutlets: 2 },
-    }
-    const monitor: InventoryItem = {
-      id: 'monitor-a',
+      specs: { outlets: 2, batteryBackupOutlets: 2, surgeProtectedOutlets: 0 },
+    } satisfies InventoryItem)
+    const monitor = withCanonicalPowerPorts({
+      id: 1,
+      key: 'monitor:1',
       name: 'Monitor A',
       type: 'monitor',
-    }
-    const powerStrip: InventoryItem = {
-      id: 'strip-a',
+    } satisfies InventoryItem)
+    const powerStrip = withCanonicalPowerPorts({
+      id: 1,
+      key: 'powerStrip:1',
       name: 'Strip A',
       type: 'powerStrip',
       specs: { outlets: 4 },
-    }
-    project.items['ups-a'] = ups
-    project.items['monitor-a'] = monitor
-    project.items['strip-a'] = powerStrip
+    } satisfies InventoryItem)
+    project.items['ups:1'] = ups
+    project.items['monitor:1'] = monitor
+    project.items['powerStrip:1'] = powerStrip
     project.placements.push(
-      { serverId: 'ups-a', x: 0, y: 400 },
-      { serverId: 'monitor-a', x: 400, y: 400 },
-      { serverId: 'strip-a', x: 800, y: 400 },
+      { serverId: 'ups:1', x: 0, y: 400 },
+      { serverId: 'monitor:1', x: 400, y: 400 },
+      { serverId: 'powerStrip:1', x: 800, y: 400 },
     )
 
     const upsGroup = getEndpointGroupForHost(project, ups)
     const monitorGroup = getEndpointGroupForHost(project, monitor)
     const stripGroup = getEndpointGroupForHost(project, powerStrip)
-    expect(upsGroup?.options.map((option) => option.endpoint.portId)).toEqual(['outlet-1', 'outlet-2'])
-    expect(monitorGroup?.options.map((option) => option.endpoint.portId)).toEqual(['ac-input'])
-    expect(stripGroup?.options.map((option) => option.endpoint.portId)).toEqual([
-      'outlet-1',
-      'outlet-2',
-      'outlet-3',
-      'outlet-4',
-      'ac-input',
+    const upsPowerOptions = upsGroup?.options.filter((option) => option.powerEndpoint)
+    const monitorPowerOptions = monitorGroup?.options.filter((option) => option.powerEndpoint)
+    const stripPowerOptions = stripGroup?.options.filter((option) => option.powerEndpoint)
+    expect(upsPowerOptions?.map((option) => option.endpoint.portId)).toEqual([1, 2])
+    expect(monitorPowerOptions?.map((option) => option.endpoint.portId)).toEqual([1])
+    expect(stripPowerOptions?.map((option) => option.endpoint.portId)).toEqual([
+      2,
+      3,
+      4,
+      5,
+      1,
     ])
 
-    const destinations = getCompatibleDestinationGroups(project, monitorGroup!.options[0])
+    const destinations = getCompatibleDestinationGroups(project, monitorPowerOptions![0])
     expect(destinations.map((group) => group.label)).toEqual(['Strip A', 'UPS A'])
 
-    const stripInput = stripGroup!.options.find((option) => option.endpoint.portId === 'ac-input')!
+    const stripInput = stripPowerOptions!.find((option) => option.powerEndpoint?.direction === 'input')!
     expect(getCompatibleDestinationGroups(project, stripInput).map((group) => group.label)).toEqual(['UPS A'])
 
     const result = createConnectionForEndpoints(
       project,
-      { itemId: 'monitor-a', portId: 'ac-input' },
-      { itemId: 'ups-a', portId: 'outlet-1' },
+      { itemId: 'monitor:1', portId: 1 },
+      { itemId: 'ups:1', portId: 1 },
     )
     expect(result.ok).toBe(true)
     if (result.ok) {
       expect(result.connection).toMatchObject({
         type: 'power',
-        from: { itemId: 'ups-a', portId: 'outlet-1' },
-        to: { itemId: 'monitor-a', portId: 'ac-input' },
+        from: { itemId: 'ups:1', portId: 1 },
+        to: { itemId: 'monitor:1', portId: 1 },
       })
 
       const duplicateInput = createConnectionForEndpoints(
         result.project,
-        { itemId: 'ups-a', portId: 'outlet-2' },
-        { itemId: 'monitor-a', portId: 'ac-input' },
+        { itemId: 'ups:1', portId: 2 },
+        { itemId: 'monitor:1', portId: 1 },
       )
       expect(duplicateInput).toEqual({
         ok: false,
@@ -280,11 +295,66 @@ describe('connection endpoint catalog', () => {
     }
   })
 
+  it('includes a power-strip input for a migrated schema-10 UPS battery outlet', () => {
+    const migrated = migrateSchema10To11({
+      upsSystems: [{
+        id: 1,
+        name: 'CyberPower CP1500PFCLCD',
+        specs: {
+          outlets: 10,
+          batteryBackupOutlets: 5,
+          surgeProtectedOutlets: 5,
+        },
+      }],
+      powerStrips: [withCanonicalPowerPorts({
+        id: 1,
+        name: 'Kasa HS300',
+        type: 'powerStrip',
+        specs: { outlets: 6, surgeProtectedOutlets: 6 },
+      })],
+    })
+    const ups = {
+      ...migrated.upsSystems[0],
+      key: 'ups:1',
+      type: 'ups',
+    } satisfies InventoryItem
+    const powerStrip = {
+      ...migrated.powerStrips[0],
+      key: 'powerStrip:1',
+      type: 'powerStrip',
+    } satisfies InventoryItem
+    const project = makeProject()
+    project.items['ups:1'] = ups
+    project.items['powerStrip:1'] = powerStrip
+    project.placements.push(
+      { serverId: 'ups:1', x: 0, y: 400 },
+      { serverId: 'powerStrip:1', x: 400, y: 400 },
+    )
+
+    const batteryOutlet = getEndpointGroupForHost(project, ups)?.options.find(
+      (option) => option.endpoint.portId === 1 && option.powerEndpoint?.direction === 'output',
+    )
+
+    expect(batteryOutlet).toMatchObject({
+      endpoint: { itemId: 'ups:1', portId: 1 },
+      powerEndpoint: { direction: 'output' },
+    })
+    expect(getCompatibleDestinationGroups(project, batteryOutlet!).map((group) => ({
+      label: group.label,
+      endpoints: group.options.map((option) => option.endpoint),
+    }))).toContainEqual({
+      label: 'Kasa HS300',
+      endpoints: expect.arrayContaining([
+        { itemId: 'powerStrip:1', portId: 1 },
+      ]),
+    })
+  })
+
   it('keeps ordinary network creation on the existing connection workflow', () => {
     const result = createConnectionForEndpoints(
       makeProject(),
-      { itemId: 'server-a', portId: 'board-rj45' },
-      { itemId: 'switch-a', portId: 'switch-rj45-1' },
+      { itemId: 'server:1', portId: 1 },
+      { itemId: 'switch:1', portId: 1 },
     )
 
     expect(result.ok).toBe(true)

@@ -13,7 +13,8 @@ export type ExpansionInterfaceFamily = 'pcie' | 'm2-ae' | 'usb' | 'onboard'
 export type CardHeight = 'full-height' | 'low-profile'
 
 export type StorageSlotGroup = {
-  id: string
+  id: number
+  key: string
   label: string
   count: number
   interfaces?: string[]
@@ -22,7 +23,8 @@ export type StorageSlotGroup = {
 }
 
 export type ExpansionSlotGroup = {
-  id: string
+  id: number
+  key: string
   label: string
   count: number
   interfaceFamily: ExpansionInterfaceFamily
@@ -68,7 +70,7 @@ export type InventoryCompatibility = {
 
 export type CompatibilityAllocation = {
   resourceType: CompatibilityResourceType
-  groupId?: string
+  groupId?: number
   positions: number[]
 }
 
@@ -77,7 +79,7 @@ export type CompatibilityFinding = {
   severity: CompatibilitySeverity
   message: string
   field?: string
-  resourceId?: string
+  resourceId?: number
 }
 
 export type CompatibilityResult = {

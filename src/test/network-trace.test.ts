@@ -11,7 +11,7 @@ function createProject(items: InventoryItem[]): ProjectState {
       version: 1,
       updatedAt: '2026-06-26T00:00:00.000Z',
     },
-    items: Object.fromEntries(items.map((item) => [item.id, item])),
+    items: Object.fromEntries(items.map((item) => [item.key, item])),
     placements: [],
     assignments: [],
     connections: [],
@@ -19,12 +19,13 @@ function createProject(items: InventoryItem[]): ProjectState {
 }
 
 const server: InventoryItem = {
-  id: 'server',
+  id: 1,
+  key: 'server:1',
   name: 'Server',
   type: 'server',
   ports: [
     {
-      id: 'lan-01',
+      id: 1,
       kind: 'server-port',
       type: 'rj45',
       slotNumber: 1,
@@ -34,30 +35,32 @@ const server: InventoryItem = {
 }
 
 const patchPanel: InventoryItem = {
-  id: 'patch',
+  id: 1,
+  key: 'patchPanel:1',
   name: 'Patch Panel',
   type: 'patchPanel',
   ports: [
     {
-      id: 'keystone-01',
+      id: 1,
       kind: 'keystone',
       type: 'rj45',
       slotNumber: 1,
       endpoints: [
-        { id: 'keystone-01-front', side: 'front' },
-        { id: 'keystone-01-back', side: 'back' },
+        { id: 1, side: 'front' },
+        { id: 2, side: 'back' },
       ],
     },
   ],
 }
 
 const switchItem: InventoryItem = {
-  id: 'switch',
+  id: 1,
+  key: 'switch:1',
   name: 'Switch',
   type: 'switch',
   ports: [
     {
-      id: 'rj45-01',
+      id: 1,
       kind: 'switch-port',
       type: 'rj45',
       slotNumber: 1,
@@ -71,37 +74,37 @@ describe('network tracing', () => {
     const project = createProject([server, patchPanel, switchItem])
     const first = createConnection(
       project,
-      { itemId: 'server', portId: 'lan-01' },
-      { itemId: 'patch', portId: 'keystone-01', endpointId: 'keystone-01-back' },
+      { itemId: 'server:1', portId: 1 },
+      { itemId: 'patchPanel:1', portId: 1, endpointId: 2 },
     )
     expect(first.ok).toBe(true)
 
     const second = createConnection(
       first.ok ? first.project : project,
-      { itemId: 'patch', portId: 'keystone-01', endpointId: 'keystone-01-front' },
-      { itemId: 'switch', portId: 'rj45-01' },
+      { itemId: 'patchPanel:1', portId: 1, endpointId: 1 },
+      { itemId: 'switch:1', portId: 1 },
     )
     expect(second.ok).toBe(true)
 
     const trace = traceNetworkPath(second.ok ? second.project : project, {
-      itemId: 'server',
-      portId: 'lan-01',
+      itemId: 'server:1',
+      portId: 1,
     })
 
     expect(trace?.complete).toBe(true)
     expect(trace?.steps.map((step) => step.endpoint.itemId)).toEqual([
-      'server',
-      'patch',
-      'patch',
-      'switch',
+      'server:1',
+      'patchPanel:1',
+      'patchPanel:1',
+      'switch:1',
     ])
   })
 
   it('marks an open server LAN trace as incomplete', () => {
     const project = createProject([server])
     const trace = traceNetworkPath(project, {
-      itemId: 'server',
-      portId: 'lan-01',
+      itemId: 'server:1',
+      portId: 1,
     })
 
     expect(trace?.complete).toBe(false)
@@ -113,7 +116,8 @@ describe('network tracing', () => {
     const project: ProjectState = {
       ...createProject([
         {
-          id: 'server',
+          id: 1,
+          key: 'server:1',
           name: 'Server',
           type: 'server',
           ports: [
@@ -133,7 +137,8 @@ describe('network tracing', () => {
           ],
         },
         {
-          id: 'nic',
+          id: 1,
+          key: 'network:1',
           name: 'Quad NIC',
           type: 'network',
           ports: [
@@ -149,15 +154,15 @@ describe('network tracing', () => {
       ]),
       assignments: [
         {
-          id: 'assign-nic',
-          serverId: 'server',
-          itemId: 'nic',
+          id: 1,
+          serverId: 'server:1',
+          itemId: 'network:1',
           type: 'network',
           assignedAt: '2026-06-26T00:00:00.000Z',
         },
       ],
     }
-    const endpoint = { itemId: 'server', hostedItemId: 'nic', portId: 2 }
+    const endpoint = { itemId: 'server:1', hostedItemId: 'network:1', portId: 2 }
 
     expect(getConnectionPort(project, endpoint)?.type).toBe('rj45')
     expect(traceNetworkPath(project, endpoint)?.steps[0].state).toBe('open')

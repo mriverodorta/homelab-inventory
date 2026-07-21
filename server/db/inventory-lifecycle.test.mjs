@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   analyzeInventoryDependencies,
+  buildCleanRecord,
   buildDuplicateRecord,
   buildQuantityRecords,
   nextEquipmentName,
@@ -40,7 +41,7 @@ describe('inventory lifecycle helpers', () => {
   it('resolves numeric inventory references by category', () => {
     const inventory = emptyInventory()
     inventory.cpus.push({ id: 7, name: 'CPU' })
-    expect(resolveInventoryRef(inventory, { type: 'cpu', id: '7' })).toMatchObject({ table: 'cpus', index: 0 })
+    expect(resolveInventoryRef(inventory, { type: 'cpu', id: 7 })).toMatchObject({ table: 'cpus', index: 0 })
   })
 
   it('allocates collision-free equipment suffixes', () => {
@@ -106,6 +107,27 @@ describe('inventory lifecycle helpers', () => {
         endpoints: [{ id: 1, side: 'front' }],
       }],
     })
+  })
+
+  it('preserves monitor display ports when materializing its canonical power input', () => {
+    const record = buildCleanRecord({
+      id: 1,
+      type: 'monitor',
+      source: {
+        name: 'Monitor',
+        ports: [
+          { id: 1, key: 'ac-input', kind: 'power-port', type: 'ac-input', slotNumber: 1 },
+          { id: 2, key: 'hdmi-1', kind: 'server-port', type: 'hdmi', slotNumber: 1 },
+          { id: 3, key: 'displayport-1', kind: 'server-port', type: 'displayport', slotNumber: 2 },
+        ],
+      },
+    })
+
+    expect(record.ports).toEqual([
+      { id: 1, key: 'ac-input', kind: 'power-port', type: 'ac-input', slotNumber: 1, label: 'AC input' },
+      { id: 2, kind: 'server-port', type: 'hdmi', slotNumber: 1 },
+      { id: 3, kind: 'server-port', type: 'displayport', slotNumber: 2 },
+    ])
   })
 
   it('reports every strict dependency category', () => {

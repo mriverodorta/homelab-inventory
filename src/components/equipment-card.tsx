@@ -2,19 +2,18 @@ import { Handle, Position, type Node, type NodeProps } from '@xyflow/react'
 import { AlertTriangle, Grip } from 'lucide-react'
 import type { CSSProperties } from 'react'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
-import { getItemAuditWarnings } from '@/lib/audit'
 import { getEndpointHandleId, type CableSide } from '@/lib/cable-routing'
+import {
+  canvasAuditWarningCount,
+  canvasEndpointAvailable,
+  canvasEndpointConnected,
+  canvasEndpointsCompatible,
+  type CanvasProjectIndex,
+} from '@/lib/canvas-project-index'
 import { formatEquipmentCanvasParts, formatPortType, type EquipmentCanvasPart } from '@/lib/format'
 import { runtimeItemKey } from '@/lib/item-keys'
 import { useTapSelection } from '@/lib/tap-selection'
-import {
-  connectionEndpointAvailable,
-  endpointKey,
-  EQUIPMENT_PORT_CHIP_WIDTH,
-  getConnectionPort,
-  getEquipmentCardWidth,
-  portsCompatible,
-} from '@/lib/project'
+import { endpointKey, EQUIPMENT_PORT_CHIP_WIDTH, getEquipmentCardWidth } from '@/lib/project'
 import { getPatchPanelRowSides } from '@/lib/patch-panel'
 import { startSelectedPortDrag } from '@/lib/port-interactions'
 import type {
@@ -29,6 +28,8 @@ import type { CanvasPortDragPoint } from '@/types/canvas'
 
 export type EquipmentNodeData = {
   project: ProjectState
+  canvasIndex: CanvasProjectIndex
+  requiredHandleIds: ReadonlySet<string>
   itemId: string
   selectedItemId: string | null
   focusedItemIds: string[]
@@ -58,10 +59,10 @@ const HANDLE_SIDES: Array<{ side: CableSide; position: Position }> = [
   { side: 'bottom', position: Position.Bottom },
 ]
 
-function CableHandles() {
+function CableHandles({ requiredHandleIds }: { requiredHandleIds: ReadonlySet<string> }) {
   return (
     <>
-      {CABLE_HANDLES.map((handle) => (
+      {CABLE_HANDLES.filter((handle) => requiredHandleIds.has(`target-${handle.id}`)).map((handle) => (
         <Handle
           key={`target-${handle.id}`}
           id={`target-${handle.id}`}
@@ -71,7 +72,7 @@ function CableHandles() {
           isConnectable={false}
         />
       ))}
-      {CABLE_HANDLES.map((handle) => (
+      {CABLE_HANDLES.filter((handle) => requiredHandleIds.has(`source-${handle.id}`)).map((handle) => (
         <Handle
           key={`source-${handle.id}`}
           id={`source-${handle.id}`}
@@ -115,33 +116,6 @@ function partTone(label: EquipmentCanvasPart['label']): string {
 
 function sortPorts(ports: InventoryPort[] | undefined): InventoryPort[] {
   return [...(ports ?? [])].sort((first, second) => first.slotNumber - second.slotNumber)
-}
-
-function endpointMatches(first: ConnectionEndpoint, second: ConnectionEndpoint): boolean {
-  return first.itemId === second.itemId &&
-    String(first.portId) === String(second.portId) &&
-    String(first.endpointId ?? '') === String(second.endpointId ?? '')
-}
-
-function endpointConnected(project: ProjectState, endpoint: ConnectionEndpoint): boolean {
-  return (project.connections ?? []).some(
-    (connection) => endpointMatches(connection.from, endpoint) || endpointMatches(connection.to, endpoint),
-  )
-}
-
-function endpointCompatible(
-  project: ProjectState,
-  sourceEndpoint: ConnectionEndpoint | null,
-  targetEndpoint: ConnectionEndpoint,
-): boolean {
-  if (!sourceEndpoint || endpointKey(sourceEndpoint) === endpointKey(targetEndpoint)) {
-    return true
-  }
-
-  const sourcePort = getConnectionPort(project, sourceEndpoint)
-  const targetPort = getConnectionPort(project, targetEndpoint)
-
-  return Boolean(sourcePort && targetPort && portsCompatible(sourcePort.type, targetPort.type))
 }
 
 function portSpeedLabel(port: InventoryPort): string {
@@ -196,27 +170,39 @@ function portTone(type: InventoryPortType, speed: string | undefined, connected:
   return `${base} bg-[#ead8f4] text-[#332047]`
 }
 
-function PortChipHandles({ endpoint }: { endpoint: ConnectionEndpoint }) {
+function PortChipHandles({ endpoint, requiredHandleIds }: {
+  endpoint: ConnectionEndpoint
+  requiredHandleIds: ReadonlySet<string>
+}) {
   return (
     <>
-      {HANDLE_SIDES.flatMap((handle) => [
-        <Handle
-          key={`target-${handle.side}-${endpoint.portId}-${endpoint.endpointId ?? 'port'}`}
-          id={getEndpointHandleId('target', handle.side, endpoint)}
-          type="target"
-          position={handle.position}
-          className="!h-2 !w-2 !border-0 !bg-transparent"
-          isConnectable={false}
-        />,
-        <Handle
-          key={`source-${handle.side}-${endpoint.portId}-${endpoint.endpointId ?? 'port'}`}
-          id={getEndpointHandleId('source', handle.side, endpoint)}
-          type="source"
-          position={handle.position}
-          className="!h-2 !w-2 !border-0 !bg-transparent"
-          isConnectable={false}
-        />,
-      ])}
+      {HANDLE_SIDES.flatMap((handle) => {
+        const targetId = getEndpointHandleId('target', handle.side, endpoint)
+        const sourceId = getEndpointHandleId('source', handle.side, endpoint)
+
+        return [
+          requiredHandleIds.has(targetId) ? (
+            <Handle
+              key={`target-${handle.side}-${endpoint.portId}-${endpoint.endpointId ?? 'port'}`}
+              id={targetId}
+              type="target"
+              position={handle.position}
+              className="!h-2 !w-2 !border-0 !bg-transparent"
+              isConnectable={false}
+            />
+          ) : null,
+          requiredHandleIds.has(sourceId) ? (
+            <Handle
+              key={`source-${handle.side}-${endpoint.portId}-${endpoint.endpointId ?? 'port'}`}
+              id={sourceId}
+              type="source"
+              position={handle.position}
+              className="!h-2 !w-2 !border-0 !bg-transparent"
+              isConnectable={false}
+            />
+          ) : null,
+        ]
+      })}
     </>
   )
 }
@@ -229,8 +215,10 @@ function PortChip({
   onEndpointDrop,
   pendingEndpoint,
   port,
-  project,
+  canvasIndex,
+  requiredHandleIds,
 }: {
+  canvasIndex: CanvasProjectIndex
   draggingEndpoint: ConnectionEndpoint | null
   endpoint: ConnectionEndpoint
   onEndpointClick: (endpoint: ConnectionEndpoint, point: CanvasPortDragPoint) => void
@@ -238,14 +226,14 @@ function PortChip({
   onEndpointDrop: (endpoint: ConnectionEndpoint) => void
   pendingEndpoint: ConnectionEndpoint | null
   port: InventoryPort
-  project: ProjectState
+  requiredHandleIds: ReadonlySet<string>
 }) {
-  const connected = endpointConnected(project, endpoint)
-  const open = connectionEndpointAvailable(project, endpoint)
+  const connected = canvasEndpointConnected(canvasIndex, endpoint)
+  const open = canvasEndpointAvailable(canvasIndex, endpoint)
   const sourceEndpoint = draggingEndpoint ?? pendingEndpoint
   const dragSource = draggingEndpoint ? endpointKey(draggingEndpoint) === endpointKey(endpoint) : false
   const selected = pendingEndpoint ? endpointKey(pendingEndpoint) === endpointKey(endpoint) : false
-  const compatible = endpointCompatible(project, sourceEndpoint, endpoint)
+  const compatible = canvasEndpointsCompatible(canvasIndex, sourceEndpoint, endpoint)
   const activeDropTarget = Boolean(draggingEndpoint && !dragSource)
   const canStartDrag = open && selected
   const canDrop = Boolean(draggingEndpoint && !dragSource && open && compatible)
@@ -301,7 +289,7 @@ function PortChip({
         onEndpointDrop(endpoint)
       }}
     >
-      <PortChipHandles endpoint={endpoint} />
+      <PortChipHandles endpoint={endpoint} requiredHandleIds={requiredHandleIds} />
       <span className="text-[11px] font-black">{String(port.slotNumber).padStart(2, '0')}</span>
     </div>
   )
@@ -321,21 +309,23 @@ function PortChip({
 }
 
 function SwitchPortRow({
+  canvasIndex,
   draggingEndpoint,
   item,
   onEndpointClick,
   onEndpointDragStart,
   onEndpointDrop,
   pendingEndpoint,
-  project,
+  requiredHandleIds,
 }: {
+  canvasIndex: CanvasProjectIndex
   draggingEndpoint: ConnectionEndpoint | null
   item: InventoryItem
   onEndpointClick: (endpoint: ConnectionEndpoint, point: CanvasPortDragPoint) => void
   onEndpointDragStart: (endpoint: ConnectionEndpoint, point: CanvasPortDragPoint) => void
   onEndpointDrop: (endpoint: ConnectionEndpoint) => void
   pendingEndpoint: ConnectionEndpoint | null
-  project: ProjectState
+  requiredHandleIds: ReadonlySet<string>
 }) {
   const ports = sortPorts(item.ports)
   const itemRuntimeKey = runtimeItemKey(item)
@@ -349,6 +339,7 @@ function SwitchPortRow({
       {ports.map((port) => (
         <PortChip
           key={port.id}
+          canvasIndex={canvasIndex}
           draggingEndpoint={draggingEndpoint}
           endpoint={{ itemId: itemRuntimeKey, portId: port.id }}
           onEndpointClick={onEndpointClick}
@@ -356,7 +347,7 @@ function SwitchPortRow({
           onEndpointDrop={onEndpointDrop}
           pendingEndpoint={pendingEndpoint}
           port={port}
-          project={project}
+          requiredHandleIds={requiredHandleIds}
         />
       ))}
     </div>
@@ -378,22 +369,24 @@ function getPortEndpoint(port: InventoryPort, side: InventoryPortSide): Connecti
 }
 
 function PatchPanelPortRow({
+  canvasIndex,
   draggingEndpoint,
   item,
   onEndpointClick,
   onEndpointDragStart,
   onEndpointDrop,
   pendingEndpoint,
-  project,
+  requiredHandleIds,
   side,
 }: {
+  canvasIndex: CanvasProjectIndex
   draggingEndpoint: ConnectionEndpoint | null
   item: InventoryItem
   onEndpointClick: (endpoint: ConnectionEndpoint, point: CanvasPortDragPoint) => void
   onEndpointDragStart: (endpoint: ConnectionEndpoint, point: CanvasPortDragPoint) => void
   onEndpointDrop: (endpoint: ConnectionEndpoint) => void
   pendingEndpoint: ConnectionEndpoint | null
-  project: ProjectState
+  requiredHandleIds: ReadonlySet<string>
   side: InventoryPortSide
 }) {
   const ports = sortPorts(item.ports)
@@ -419,6 +412,7 @@ function PatchPanelPortRow({
         {endpoints.map(({ port, endpoint }) => (
           <PortChip
             key={`${port.id}-${endpoint.endpointId}`}
+            canvasIndex={canvasIndex}
             draggingEndpoint={draggingEndpoint}
             endpoint={endpoint}
             onEndpointClick={onEndpointClick}
@@ -426,7 +420,7 @@ function PatchPanelPortRow({
             onEndpointDrop={onEndpointDrop}
             pendingEndpoint={pendingEndpoint}
             port={port}
-            project={project}
+            requiredHandleIds={requiredHandleIds}
           />
         ))}
       </div>
@@ -435,32 +429,35 @@ function PatchPanelPortRow({
 }
 
 function EquipmentPortRows({
+  canvasIndex,
   draggingEndpoint,
   item,
   onEndpointClick,
   onEndpointDragStart,
   onEndpointDrop,
   pendingEndpoint,
-  project,
+  requiredHandleIds,
 }: {
+  canvasIndex: CanvasProjectIndex
   draggingEndpoint: ConnectionEndpoint | null
   item: InventoryItem
   onEndpointClick: (endpoint: ConnectionEndpoint, point: CanvasPortDragPoint) => void
   onEndpointDragStart: (endpoint: ConnectionEndpoint, point: CanvasPortDragPoint) => void
   onEndpointDrop: (endpoint: ConnectionEndpoint) => void
   pendingEndpoint: ConnectionEndpoint | null
-  project: ProjectState
+  requiredHandleIds: ReadonlySet<string>
 }) {
   if (item.type === 'switch') {
     return (
       <SwitchPortRow
+        canvasIndex={canvasIndex}
         draggingEndpoint={draggingEndpoint}
         item={item}
         onEndpointClick={onEndpointClick}
         onEndpointDragStart={onEndpointDragStart}
         onEndpointDrop={onEndpointDrop}
         pendingEndpoint={pendingEndpoint}
-        project={project}
+        requiredHandleIds={requiredHandleIds}
       />
     )
   }
@@ -471,13 +468,14 @@ function EquipmentPortRows({
         {getPatchPanelRowSides(item).map((side) => (
           <PatchPanelPortRow
             key={side}
+            canvasIndex={canvasIndex}
             draggingEndpoint={draggingEndpoint}
             item={item}
             onEndpointClick={onEndpointClick}
             onEndpointDragStart={onEndpointDragStart}
             onEndpointDrop={onEndpointDrop}
             pendingEndpoint={pendingEndpoint}
-            project={project}
+            requiredHandleIds={requiredHandleIds}
             side={side}
           />
         ))}
@@ -491,6 +489,8 @@ function EquipmentPortRows({
 export function EquipmentNode({ data }: NodeProps<EquipmentFlowNode>) {
   const {
     project,
+    canvasIndex,
+    requiredHandleIds,
     itemId,
     selectedItemId,
     focusedItemIds,
@@ -512,7 +512,7 @@ export function EquipmentNode({ data }: NodeProps<EquipmentFlowNode>) {
   }
 
   const parts = formatEquipmentCanvasParts(item)
-  const auditCount = getItemAuditWarnings(project, itemRuntimeKey).length
+  const auditCount = canvasAuditWarningCount(canvasIndex, itemRuntimeKey)
   const focused = focusedItemIds.includes(itemRuntimeKey)
   const dimmed = focusActive && !focused
   const cardWidth = getEquipmentCardWidth(item)
@@ -531,7 +531,7 @@ export function EquipmentNode({ data }: NodeProps<EquipmentFlowNode>) {
           {auditCount}
         </div>
       ) : null}
-      <CableHandles />
+      <CableHandles requiredHandleIds={requiredHandleIds} />
       <div className="server-node-drag-handle flex cursor-grab items-center gap-2 rounded-md bg-white/10 px-3 py-2 active:cursor-grabbing">
         <Grip className="size-4 shrink-0 text-current opacity-70" />
         <div className="min-w-0">
@@ -552,13 +552,14 @@ export function EquipmentNode({ data }: NodeProps<EquipmentFlowNode>) {
         </div>
       ) : null}
       <EquipmentPortRows
+        canvasIndex={canvasIndex}
         draggingEndpoint={draggingEndpoint}
         item={item}
         onEndpointDragStart={onEndpointDragStart}
         onEndpointDrop={onEndpointDrop}
         onEndpointClick={onEndpointClick}
         pendingEndpoint={pendingEndpoint}
-        project={project}
+        requiredHandleIds={requiredHandleIds}
       />
     </div>
   )

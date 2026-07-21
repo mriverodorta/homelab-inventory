@@ -55,7 +55,7 @@ function includesNormalized(values: string[] | undefined, value: unknown): boole
 
 function cloneStorageGroup(group: StorageSlotGroup): StorageSlotGroup | undefined {
   const count = positiveInteger(group.count)
-  if (!group.id || !group.label || count === undefined) return undefined
+  if (!Number.isSafeInteger(group.id) || group.id < 1 || !group.key || !group.label || count === undefined) return undefined
   return {
     ...group,
     count,
@@ -66,7 +66,7 @@ function cloneStorageGroup(group: StorageSlotGroup): StorageSlotGroup | undefine
 
 function cloneExpansionGroup(group: ExpansionSlotGroup): ExpansionSlotGroup | undefined {
   const count = positiveInteger(group.count)
-  if (!group.id || !group.label || count === undefined || !group.interfaceFamily) return undefined
+  if (!Number.isSafeInteger(group.id) || group.id < 1 || !group.key || !group.label || count === undefined || !group.interfaceFamily) return undefined
   return {
     ...group,
     count,
@@ -83,7 +83,6 @@ export function motherboardResources(item: InventoryItem): MotherboardResources 
   return {
     cpuSockets: sockets.length > 0
       ? [{
-          id: 'cpu',
           label: socketCount === 1 ? 'CPU socket' : 'CPU sockets',
           count: socketCount,
           socket: sockets[0],
@@ -98,7 +97,6 @@ export function motherboardResources(item: InventoryItem): MotherboardResources 
     memorySlots: memoryCount === undefined
       ? []
       : [{
-          id: 'dimm',
           label: 'DIMM slots',
           count: memoryCount,
           generations: stringArray(host?.memory?.generations),
@@ -124,7 +122,7 @@ export function motherboardResources(item: InventoryItem): MotherboardResources 
 export function occupiedPositions(
   assignments: ComponentAssignment[],
   resourceType: CompatibilityResourceType,
-  groupId?: string,
+  groupId?: number,
 ): Set<number> {
   const positions = new Set<number>()
   for (const assignment of assignments) {
@@ -163,6 +161,12 @@ function groupsFor(
     return resources.expansionSlots
   }
   return []
+}
+
+function groupIdFor(resourceType: CompatibilityResourceType, group: ResourceGroup): number | undefined {
+  return resourceType === 'storage' || resourceType === 'expansion'
+    ? (group as StorageSlotGroup | ExpansionSlotGroup).id
+    : undefined
 }
 
 function groupMatches(
@@ -265,12 +269,17 @@ export function allocatePcBuildResource(
   const requirements = request.requirements ?? {}
   for (const group of groupsFor(request.componentType, resources)) {
     if (!groupMatches(request.componentType, group, requirements)) continue
-    const occupied = occupiedPositions(request.assignments, resourceType, group.id)
+    const groupId = groupIdFor(resourceType, group)
+    const occupied = occupiedPositions(request.assignments, resourceType, groupId)
     const positions = firstFreePositions(group.count, occupied, request.requiredPositions)
     if (positions.length === request.requiredPositions) {
       return {
         ok: true,
-        allocation: { resourceType, groupId: group.id, positions },
+        allocation: {
+          resourceType,
+          ...(groupId === undefined ? {} : { groupId }),
+          positions,
+        },
       }
     }
   }
@@ -301,11 +310,27 @@ export function validatePersistedAllocation(
       )
   }
 
-  if (!allocation.groupId) return false
-  const group = groupsFor(request.componentType, motherboardResources(request.motherboard))
-    .find((candidate) => candidate.id === allocation.groupId)
+  const groups = groupsFor(request.componentType, motherboardResources(request.motherboard))
+  if (resourceType !== 'storage' && resourceType !== 'expansion') {
+    if (allocation.groupId !== undefined) return false
+    const group = groups.find((candidate) => groupMatches(
+      request.componentType,
+      candidate,
+      request.requirements ?? {},
+    ))
+    if (!group) return false
+    const occupied = occupiedPositions(request.assignments, resourceType)
+    return allocation.positions.every(
+      (position) => position < group.count && !occupied.has(position),
+    )
+  }
+
+  if (allocation.groupId === undefined) return false
+  const group = groups.find(
+    (candidate) => groupIdFor(resourceType, candidate) === allocation.groupId,
+  )
   if (!group || !groupMatches(request.componentType, group, request.requirements ?? {})) return false
-  const occupied = occupiedPositions(request.assignments, resourceType, group.id)
+  const occupied = occupiedPositions(request.assignments, resourceType, allocation.groupId)
   return allocation.positions.every(
     (position) => position < group.count && !occupied.has(position),
   )

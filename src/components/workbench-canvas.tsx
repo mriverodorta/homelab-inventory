@@ -8,6 +8,7 @@ import {
   ReactFlowProvider,
   useNodesState,
   useReactFlow,
+  useUpdateNodeInternals,
   type EdgeTypes,
   type EdgeMouseHandler,
   type NodeTypes,
@@ -35,8 +36,9 @@ import { PcBuildNode, type PcBuildFlowNode } from '@/components/pc-build-card'
 import { PowerStripNode, type PowerStripFlowNode } from '@/components/power-strip-card'
 import { ServerNode, type ServerFlowNode } from '@/components/server-card'
 import { UpsNode, type UpsFlowNode } from '@/components/ups-card'
-import { getProjectAuditWarnings } from '@/lib/audit'
 import { connectionMatchesSelectedItem, getFocusedCableItemIds } from '@/lib/cable-focus'
+import { buildCanvasHandleIndex, getRequiredCanvasHandles } from '@/lib/canvas-handle-index'
+import { buildCanvasProjectIndex } from '@/lib/canvas-project-index'
 import { getConnectionRoute } from '@/lib/cable-routing'
 import { describeConnection, getCableAppearance } from '@/lib/cables'
 import { formatRemainingSeconds } from '@/lib/demo-api'
@@ -176,6 +178,7 @@ const DEFAULT_NODE_DRAG_THRESHOLD = 6
 const TOUCH_NODE_DRAG_LOCK_THRESHOLD = 100_000
 const TOUCH_DRAG_HOLD_MS = 350
 const TOUCH_DRAG_TOLERANCE_PX = 8
+const EMPTY_FOCUSED_ITEM_IDS: string[] = []
 
 type TouchNodeDragGate = {
   timer: number | null
@@ -232,6 +235,52 @@ function getItemIdFromNodeId(nodeId: string): string {
     .replace('ups-node:', '')
     .replace('powerStrip-node:', '')
     .replace('equipment-node:', '')
+}
+
+function equalNodeDataValue(first: unknown, second: unknown): boolean {
+  if (first === second) return true
+
+  if (Array.isArray(first) && Array.isArray(second)) {
+    return first.length === second.length && first.every((value, index) => value === second[index])
+  }
+
+  return false
+}
+
+function equalNodeData(
+  first: WorkbenchFlowNode['data'],
+  second: WorkbenchFlowNode['data'],
+): boolean {
+  const firstRecord = first as unknown as Record<string, unknown>
+  const secondRecord = second as unknown as Record<string, unknown>
+  const firstKeys = Object.keys(firstRecord)
+
+  return firstKeys.length === Object.keys(secondRecord).length &&
+    firstKeys.every((key) => equalNodeDataValue(firstRecord[key], secondRecord[key]))
+}
+
+function reconcileFlowNodes(
+  currentNodes: WorkbenchFlowNode[],
+  nextNodes: WorkbenchFlowNode[],
+): WorkbenchFlowNode[] {
+  const currentById = new Map(currentNodes.map((node) => [node.id, node]))
+
+  return nextNodes.map((nextNode) => {
+    const currentNode = currentById.get(nextNode.id)
+
+    if (
+      currentNode &&
+      currentNode.type === nextNode.type &&
+      currentNode.zIndex === nextNode.zIndex &&
+      currentNode.position.x === nextNode.position.x &&
+      currentNode.position.y === nextNode.position.y &&
+      equalNodeData(currentNode.data, nextNode.data)
+    ) {
+      return currentNode
+    }
+
+    return nextNode
+  })
 }
 
 export function snapToGrid(value: number): number {
@@ -332,13 +381,60 @@ function CanvasViewport({
     },
   })
   const { getViewport, screenToFlowPosition, setViewport } = useReactFlow()
+  const updateNodeInternals = useUpdateNodeInternals()
   const canvasRootRef = useRef<HTMLElement | null>(null)
   const [hoveredConnectionId, setHoveredConnectionId] = useState<string | number | null>(null)
   const [nodeDragThreshold, setNodeDragThreshold] = useState(DEFAULT_NODE_DRAG_THRESHOLD)
   const touchNodeDragGateRef = useRef<TouchNodeDragGate | null>(null)
+  const canvasIndex = useMemo(() => buildCanvasProjectIndex(project), [project])
+  const canvasHandleIndex = useMemo(() => buildCanvasHandleIndex(project), [project])
+  const callbackRef = useRef({
+    onSelect,
+    onSelectConnection,
+    onRemoveAssignment,
+    onEndpointClick,
+    onEndpointDragStart,
+    onEndpointDrop,
+    onUpdateConnectionRoute,
+  })
+  callbackRef.current = {
+    onSelect,
+    onSelectConnection,
+    onRemoveAssignment,
+    onEndpointClick,
+    onEndpointDragStart,
+    onEndpointDrop,
+    onUpdateConnectionRoute,
+  }
+  const stableOnSelect = useCallback((itemId: string) => callbackRef.current.onSelect(itemId), [])
+  const stableOnSelectConnection = useCallback(
+    (connectionId: string | number) => callbackRef.current.onSelectConnection(connectionId),
+    [],
+  )
+  const stableOnRemoveAssignment = useCallback(
+    (assignmentId: string | number) => callbackRef.current.onRemoveAssignment(assignmentId),
+    [],
+  )
+  const stableOnEndpointClick = useCallback(
+    (endpoint: ConnectionEndpoint, point: CanvasPortDragPoint) => callbackRef.current.onEndpointClick(endpoint, point),
+    [],
+  )
+  const stableOnEndpointDragStart = useCallback(
+    (endpoint: ConnectionEndpoint, point: CanvasPortDragPoint) => callbackRef.current.onEndpointDragStart(endpoint, point),
+    [],
+  )
+  const stableOnEndpointDrop = useCallback(
+    (endpoint: ConnectionEndpoint) => callbackRef.current.onEndpointDrop(endpoint),
+    [],
+  )
+  const stableOnUpdateConnectionRoute = useCallback(
+    (connectionId: string | number, route: ConnectionRoutePreferences) =>
+      callbackRef.current.onUpdateConnectionRoute(connectionId, route),
+    [],
+  )
   const auditWarningCount = useMemo(
-    () => getProjectAuditWarnings(project).reduce((count, group) => count + group.warnings.length, 0),
-    [project],
+    () => [...canvasIndex.auditWarningCountByItemId.values()].reduce((count, value) => count + value, 0),
+    [canvasIndex],
   )
   const focusedItemIds = useMemo(
     () => [
@@ -354,6 +450,7 @@ function CanvasViewport({
     [activeNetworkTraceConnectionIds],
   )
   const focusActive = focusedItemIds.length > 0
+  const focusedItemIdSet = useMemo(() => new Set(focusedItemIds), [focusedItemIds])
   const flowNodes = useMemo<WorkbenchFlowNode[]>(
     () => {
       const nextNodes: WorkbenchFlowNode[] = []
@@ -364,6 +461,17 @@ function CanvasViewport({
         if (!item) {
           continue
         }
+
+        const selectedBelongsToNode = selectedItemId === placement.serverId ||
+          (selectedItemId != null && canvasIndex.assignedHostByItemId.get(selectedItemId) === placement.serverId)
+        const nodeSelectedItemId = selectedBelongsToNode ? selectedItemId : null
+        const nodeFocusedItemIds = focusedItemIdSet.has(placement.serverId)
+          ? [placement.serverId]
+          : EMPTY_FOCUSED_ITEM_IDS
+        const nodeSpotlightItemId = spotlightItemId === placement.serverId ? spotlightItemId : null
+        const nodePendingEndpoint = endpointBelongsToItem(pendingEndpoint, placement.serverId)
+          ? pendingEndpoint
+          : null
 
         if (item.type === 'server') {
           const nodeActive = selectedItemId === placement.serverId ||
@@ -376,24 +484,26 @@ function CanvasViewport({
               x: placement.x,
               y: placement.y,
             },
-            zIndex: nodeActive ? 1000 : focusActive && !focusedItemIds.includes(placement.serverId) ? 0 : 1,
+            zIndex: nodeActive ? 1000 : focusActive && !focusedItemIdSet.has(placement.serverId) ? 0 : 1,
             dragHandle: '.server-node-drag-handle',
             data: {
               project,
+              canvasIndex,
+              requiredHandleIds: getRequiredCanvasHandles(canvasHandleIndex, placement.serverId),
               agentStatus,
               serverId: placement.serverId,
-              selectedItemId,
-              focusedItemIds,
+              selectedItemId: nodeSelectedItemId,
+              focusedItemIds: nodeFocusedItemIds,
               focusActive,
-              spotlightItemId,
-              pendingEndpoint,
+              spotlightItemId: nodeSpotlightItemId,
+              pendingEndpoint: nodePendingEndpoint,
               draggingEndpoint,
               dropCompatibilityStatus: dropCompatibilityByHostId[placement.serverId],
-              onSelect,
-              onRemoveAssignment,
-              onEndpointClick,
-              onEndpointDragStart,
-              onEndpointDrop,
+              onSelect: stableOnSelect,
+              onRemoveAssignment: stableOnRemoveAssignment,
+              onEndpointClick: stableOnEndpointClick,
+              onEndpointDragStart: stableOnEndpointDragStart,
+              onEndpointDrop: stableOnEndpointDrop,
             },
           }
 
@@ -412,23 +522,25 @@ function CanvasViewport({
               x: placement.x,
               y: placement.y,
             },
-            zIndex: nodeActive ? 1000 : focusActive && !focusedItemIds.includes(placement.serverId) ? 0 : 1,
+            zIndex: nodeActive ? 1000 : focusActive && !focusedItemIdSet.has(placement.serverId) ? 0 : 1,
             dragHandle: '.server-node-drag-handle',
             data: {
               project,
+              canvasIndex,
+              requiredHandleIds: getRequiredCanvasHandles(canvasHandleIndex, placement.serverId),
               itemId: placement.serverId,
-              selectedItemId,
-              focusedItemIds,
+              selectedItemId: nodeSelectedItemId,
+              focusedItemIds: nodeFocusedItemIds,
               focusActive,
-              spotlightItemId,
-              pendingEndpoint,
+              spotlightItemId: nodeSpotlightItemId,
+              pendingEndpoint: nodePendingEndpoint,
               draggingEndpoint,
               dropCompatibilityStatus: dropCompatibilityByHostId[placement.serverId],
-              onSelect,
-              onRemoveAssignment,
-              onEndpointClick,
-              onEndpointDragStart,
-              onEndpointDrop,
+              onSelect: stableOnSelect,
+              onRemoveAssignment: stableOnRemoveAssignment,
+              onEndpointClick: stableOnEndpointClick,
+              onEndpointDragStart: stableOnEndpointDragStart,
+              onEndpointDrop: stableOnEndpointDrop,
             },
           }
 
@@ -447,23 +559,25 @@ function CanvasViewport({
               x: placement.x,
               y: placement.y,
             },
-            zIndex: nodeActive ? 1000 : focusActive && !focusedItemIds.includes(placement.serverId) ? 0 : 1,
+            zIndex: nodeActive ? 1000 : focusActive && !focusedItemIdSet.has(placement.serverId) ? 0 : 1,
             dragHandle: '.server-node-drag-handle',
             data: {
               project,
+              canvasIndex,
+              requiredHandleIds: getRequiredCanvasHandles(canvasHandleIndex, placement.serverId),
               pcBuildId: placement.serverId,
-              selectedItemId,
-              focusedItemIds,
+              selectedItemId: nodeSelectedItemId,
+              focusedItemIds: nodeFocusedItemIds,
               focusActive,
-              spotlightItemId,
-              pendingEndpoint,
+              spotlightItemId: nodeSpotlightItemId,
+              pendingEndpoint: nodePendingEndpoint,
               draggingEndpoint,
               dropCompatibilityStatus: dropCompatibilityByHostId[placement.serverId],
-              onSelect,
-              onRemoveAssignment,
-              onEndpointClick,
-              onEndpointDragStart,
-              onEndpointDrop,
+              onSelect: stableOnSelect,
+              onRemoveAssignment: stableOnRemoveAssignment,
+              onEndpointClick: stableOnEndpointClick,
+              onEndpointDragStart: stableOnEndpointDragStart,
+              onEndpointDrop: stableOnEndpointDrop,
             },
           }
 
@@ -473,17 +587,19 @@ function CanvasViewport({
 
         const standaloneData = {
           project,
+          canvasIndex,
+          requiredHandleIds: getRequiredCanvasHandles(canvasHandleIndex, placement.serverId),
           itemId: placement.serverId,
-          selectedItemId,
-          focusedItemIds,
+          selectedItemId: nodeSelectedItemId,
+          focusedItemIds: nodeFocusedItemIds,
           focusActive,
-          spotlightItemId,
-          pendingEndpoint,
+          spotlightItemId: nodeSpotlightItemId,
+          pendingEndpoint: nodePendingEndpoint,
           draggingEndpoint,
-          onSelect,
-          onEndpointClick,
-          onEndpointDragStart,
-          onEndpointDrop,
+          onSelect: stableOnSelect,
+          onEndpointClick: stableOnEndpointClick,
+          onEndpointDragStart: stableOnEndpointDragStart,
+          onEndpointDrop: stableOnEndpointDrop,
         }
         const standaloneNodeBase = {
           position: {
@@ -494,7 +610,7 @@ function CanvasViewport({
             endpointBelongsToItem(pendingEndpoint, placement.serverId) ||
             endpointBelongsToItem(draggingEndpoint, placement.serverId)
             ? 1000
-            : focusActive && !focusedItemIds.includes(placement.serverId) ? 0 : 1,
+            : focusActive && !focusedItemIdSet.has(placement.serverId) ? 0 : 1,
           dragHandle: '.server-node-drag-handle',
         }
 
@@ -538,21 +654,23 @@ function CanvasViewport({
             x: placement.x,
             y: placement.y,
           },
-          zIndex: nodeActive ? 1000 : focusActive && !focusedItemIds.includes(placement.serverId) ? 0 : 1,
+          zIndex: nodeActive ? 1000 : focusActive && !focusedItemIdSet.has(placement.serverId) ? 0 : 1,
           dragHandle: '.server-node-drag-handle',
           data: {
             project,
+            canvasIndex,
+            requiredHandleIds: getRequiredCanvasHandles(canvasHandleIndex, placement.serverId),
             itemId: placement.serverId,
-            selectedItemId,
-            focusedItemIds,
+            selectedItemId: nodeSelectedItemId,
+            focusedItemIds: nodeFocusedItemIds,
             focusActive,
-            spotlightItemId,
-            pendingEndpoint,
+            spotlightItemId: nodeSpotlightItemId,
+            pendingEndpoint: nodePendingEndpoint,
             draggingEndpoint,
-            onSelect,
-            onEndpointClick,
-            onEndpointDragStart,
-            onEndpointDrop,
+            onSelect: stableOnSelect,
+            onEndpointClick: stableOnEndpointClick,
+            onEndpointDragStart: stableOnEndpointDragStart,
+            onEndpointDrop: stableOnEndpointDrop,
           },
         }
 
@@ -563,19 +681,21 @@ function CanvasViewport({
     },
     [
       draggingEndpoint,
+      canvasHandleIndex,
+      canvasIndex,
       dropCompatibilityByHostId,
       agentStatus,
       focusActive,
-      focusedItemIds,
-      onEndpointClick,
-      onEndpointDragStart,
-      onEndpointDrop,
-      onRemoveAssignment,
-      onSelect,
+      focusedItemIdSet,
       pendingEndpoint,
       project,
       selectedItemId,
       spotlightItemId,
+      stableOnEndpointClick,
+      stableOnEndpointDragStart,
+      stableOnEndpointDrop,
+      stableOnRemoveAssignment,
+      stableOnSelect,
     ],
   )
   const [nodes, setNodes, onNodesChange] = useNodesState<WorkbenchFlowNode>(flowNodes)
@@ -802,13 +922,15 @@ function CanvasViewport({
               dimmed,
               connectionId: connection.id,
               route: connection.route,
-              onSelect: onSelectConnection,
-              onUpdateRoute: onUpdateConnectionRoute,
+              onSelect: stableOnSelectConnection,
+              onUpdateRoute: stableOnUpdateConnectionRoute,
             },
             style: {
               stroke: appearance.color,
               strokeWidth: isSelected || isHovered || isTraceConnection ? 6 : 4,
-              filter: 'drop-shadow(0 2px 3px rgba(32, 36, 44, 0.2))',
+              filter: isSelected || isHovered || isTraceConnection
+                ? 'drop-shadow(0 2px 3px rgba(32, 36, 44, 0.2))'
+                : undefined,
             },
             zIndex: isSelected || isHovered || isTraceConnection ? 12 : dimmed ? 0 : 8,
             interactionWidth: 18,
@@ -823,11 +945,11 @@ function CanvasViewport({
       activeNetworkTraceConnectionIds.length,
       cablesVisible,
       hoveredConnectionId,
-      onSelectConnection,
-      onUpdateConnectionRoute,
       project,
       selectedConnectionId,
       selectedItemId,
+      stableOnSelectConnection,
+      stableOnUpdateConnectionRoute,
     ],
   )
 
@@ -989,8 +1111,19 @@ function CanvasViewport({
   }, [focusItem, onViewportReady, screenToFlowPosition])
 
   useEffect(() => {
-    setNodes(flowNodes)
+    setNodes((currentNodes) => reconcileFlowNodes(currentNodes, flowNodes))
   }, [flowNodes, setNodes])
+
+  useEffect(() => {
+    const frame = window.requestAnimationFrame(() => {
+      updateNodeInternals(project.placements.flatMap((placement) => {
+        const item = project.items[placement.serverId]
+        return item ? [getCanvasNodeId(item)] : []
+      }))
+    })
+
+    return () => window.cancelAnimationFrame(frame)
+  }, [canvasHandleIndex, project.items, project.placements, updateNodeInternals])
 
   useEffect(() => resetTouchNodeDragGate, [resetTouchNodeDragGate])
 
@@ -1046,7 +1179,7 @@ function CanvasViewport({
   }
 
   const handleEdgeClick: EdgeMouseHandler<CableFlowEdge> = (_, edge) => {
-    onSelectConnection(edge.id.replace('cable:', ''))
+    stableOnSelectConnection(edge.id.replace('cable:', ''))
   }
 
   return (
@@ -1131,6 +1264,7 @@ function CanvasViewport({
           zoomOnPinch
           zoomOnDoubleClick={false}
           selectionOnDrag={false}
+          onlyRenderVisibleElements
           proOptions={{ hideAttribution: true }}
           fitView={project.placements.length > 0}
           className="homelab-inventory-flow bg-[#fbf8f1]"

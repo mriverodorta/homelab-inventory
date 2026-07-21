@@ -241,7 +241,9 @@ export function CableEdge({
           strokeWidth: selected ? 6 : 4,
           strokeDasharray: traced ? '12 8' : undefined,
           opacity: dimmed ? 0.18 : 1,
-          filter: 'drop-shadow(0 2px 3px rgba(32, 36, 44, 0.22))',
+          filter: selected || traced
+            ? 'drop-shadow(0 2px 3px rgba(32, 36, 44, 0.22))'
+            : undefined,
         }}
       />
       {editable

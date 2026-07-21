@@ -5,8 +5,14 @@ import type { CSSProperties } from 'react'
 import { Button } from '@/components/ui/button'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { getVisibleServerSlotTypes, SLOT_LABELS, sortAssignmentsForDisplay } from '@/lib/constraints'
-import { getItemAuditWarnings } from '@/lib/audit'
 import { getEndpointHandleId, type CableSide } from '@/lib/cable-routing'
+import {
+  canvasAuditWarningCount,
+  canvasEndpointAvailable,
+  canvasEndpointConnected,
+  canvasEndpointsCompatible,
+  type CanvasProjectIndex,
+} from '@/lib/canvas-project-index'
 import { getCanvasAssignmentTone } from '@/lib/canvas-quality'
 import { runtimeItemKey } from '@/lib/item-keys'
 import { useTapSelection } from '@/lib/tap-selection'
@@ -21,13 +27,7 @@ import {
   type RamCanvasPart,
   type StorageCanvasPart,
 } from '@/lib/format'
-import {
-  connectionEndpointAvailable,
-  endpointKey,
-  EQUIPMENT_PORT_CHIP_WIDTH,
-  getConnectionPort,
-  portsCompatible,
-} from '@/lib/project'
+import { endpointKey, EQUIPMENT_PORT_CHIP_WIDTH } from '@/lib/project'
 import type { CanvasPortDragPoint } from '@/types/canvas'
 import { startSelectedPortDrag } from '@/lib/port-interactions'
 import type { AgentServerStatus, AgentStatusSummary, AgentState } from '@/types/agent'
@@ -43,6 +43,8 @@ import type {
 
 export type ServerNodeData = {
   project: ProjectState
+  canvasIndex: CanvasProjectIndex
+  requiredHandleIds: ReadonlySet<string>
   agentStatus: AgentStatusSummary | null
   serverId: string
   selectedItemId: string | null
@@ -75,10 +77,10 @@ const HANDLE_SIDES: Array<{ side: CableSide; position: Position }> = [
   { side: 'bottom', position: Position.Bottom },
 ]
 
-function CableHandles() {
+function CableHandles({ requiredHandleIds }: { requiredHandleIds: ReadonlySet<string> }) {
   return (
     <>
-      {CABLE_HANDLES.map((handle) => (
+      {CABLE_HANDLES.filter((handle) => requiredHandleIds.has(`target-${handle.id}`)).map((handle) => (
         <Handle
           key={`target-${handle.id}`}
           id={`target-${handle.id}`}
@@ -88,7 +90,7 @@ function CableHandles() {
           isConnectable={false}
         />
       ))}
-      {CABLE_HANDLES.map((handle) => (
+      {CABLE_HANDLES.filter((handle) => requiredHandleIds.has(`source-${handle.id}`)).map((handle) => (
         <Handle
           key={`source-${handle.id}`}
           id={`source-${handle.id}`}
@@ -104,34 +106,6 @@ function CableHandles() {
 
 function sortPorts(ports: InventoryPort[] | undefined): InventoryPort[] {
   return [...(ports ?? [])].sort((first, second) => first.slotNumber - second.slotNumber)
-}
-
-function endpointMatches(first: ConnectionEndpoint, second: ConnectionEndpoint): boolean {
-  return first.itemId === second.itemId &&
-    first.hostedItemId === second.hostedItemId &&
-    String(first.portId) === String(second.portId) &&
-    String(first.endpointId ?? '') === String(second.endpointId ?? '')
-}
-
-function endpointConnected(project: ProjectState, endpoint: ConnectionEndpoint): boolean {
-  return (project.connections ?? []).some(
-    (connection) => endpointMatches(connection.from, endpoint) || endpointMatches(connection.to, endpoint),
-  )
-}
-
-function endpointCompatible(
-  project: ProjectState,
-  sourceEndpoint: ConnectionEndpoint | null,
-  targetEndpoint: ConnectionEndpoint,
-): boolean {
-  if (!sourceEndpoint || endpointKey(sourceEndpoint) === endpointKey(targetEndpoint)) {
-    return true
-  }
-
-  const sourcePort = getConnectionPort(project, sourceEndpoint)
-  const targetPort = getConnectionPort(project, targetEndpoint)
-
-  return Boolean(sourcePort && targetPort && portsCompatible(sourcePort.type, targetPort.type))
 }
 
 function portSpeedLabel(port: InventoryPort): string {
@@ -210,27 +184,42 @@ function portTone(type: InventoryPortType, speed: string | undefined, connected:
   return `${base} bg-[#ead8f4] text-[#332047]`
 }
 
-function PortChipHandles({ endpoint }: { endpoint: ConnectionEndpoint }) {
+function PortChipHandles({
+  endpoint,
+  requiredHandleIds,
+}: {
+  endpoint: ConnectionEndpoint
+  requiredHandleIds: ReadonlySet<string>
+}) {
   return (
     <>
-      {HANDLE_SIDES.flatMap((handle) => [
-        <Handle
-          key={`target-${handle.side}-${endpoint.hostedItemId ?? 'board'}-${endpoint.portId}-${endpoint.endpointId ?? 'port'}`}
-          id={getEndpointHandleId('target', handle.side, endpoint)}
-          type="target"
-          position={handle.position}
-          className="!h-2 !w-2 !border-0 !bg-transparent"
-          isConnectable={false}
-        />,
-        <Handle
-          key={`source-${handle.side}-${endpoint.hostedItemId ?? 'board'}-${endpoint.portId}-${endpoint.endpointId ?? 'port'}`}
-          id={getEndpointHandleId('source', handle.side, endpoint)}
-          type="source"
-          position={handle.position}
-          className="!h-2 !w-2 !border-0 !bg-transparent"
-          isConnectable={false}
-        />,
-      ])}
+      {HANDLE_SIDES.flatMap((handle) => {
+        const targetId = getEndpointHandleId('target', handle.side, endpoint)
+        const sourceId = getEndpointHandleId('source', handle.side, endpoint)
+
+        return [
+          requiredHandleIds.has(targetId) ? (
+            <Handle
+              key={`target-${handle.side}-${endpoint.hostedItemId ?? 'board'}-${endpoint.portId}-${endpoint.endpointId ?? 'port'}`}
+              id={targetId}
+              type="target"
+              position={handle.position}
+              className="!h-2 !w-2 !border-0 !bg-transparent"
+              isConnectable={false}
+            />
+          ) : null,
+          requiredHandleIds.has(sourceId) ? (
+            <Handle
+              key={`source-${handle.side}-${endpoint.hostedItemId ?? 'board'}-${endpoint.portId}-${endpoint.endpointId ?? 'port'}`}
+              id={sourceId}
+              type="source"
+              position={handle.position}
+              className="!h-2 !w-2 !border-0 !bg-transparent"
+              isConnectable={false}
+            />
+          ) : null,
+        ]
+      })}
     </>
   )
 }
@@ -243,8 +232,10 @@ function PortChip({
   onEndpointDrop,
   pendingEndpoint,
   port,
-  project,
+  canvasIndex,
+  requiredHandleIds,
 }: {
+  canvasIndex: CanvasProjectIndex
   draggingEndpoint: ConnectionEndpoint | null
   endpoint: ConnectionEndpoint
   onEndpointClick: (endpoint: ConnectionEndpoint, point: CanvasPortDragPoint) => void
@@ -252,14 +243,14 @@ function PortChip({
   onEndpointDrop: (endpoint: ConnectionEndpoint) => void
   pendingEndpoint: ConnectionEndpoint | null
   port: InventoryPort
-  project: ProjectState
+  requiredHandleIds: ReadonlySet<string>
 }) {
-  const connected = endpointConnected(project, endpoint)
-  const open = connectionEndpointAvailable(project, endpoint)
+  const connected = canvasEndpointConnected(canvasIndex, endpoint)
+  const open = canvasEndpointAvailable(canvasIndex, endpoint)
   const sourceEndpoint = draggingEndpoint ?? pendingEndpoint
   const dragSource = draggingEndpoint ? endpointKey(draggingEndpoint) === endpointKey(endpoint) : false
   const selected = pendingEndpoint ? endpointKey(pendingEndpoint) === endpointKey(endpoint) : false
-  const compatible = endpointCompatible(project, sourceEndpoint, endpoint)
+  const compatible = canvasEndpointsCompatible(canvasIndex, sourceEndpoint, endpoint)
   const activeDropTarget = Boolean(draggingEndpoint && !dragSource)
   const canStartDrag = open && selected
   const canDrop = Boolean(draggingEndpoint && !dragSource && open && compatible)
@@ -312,7 +303,7 @@ function PortChip({
         onEndpointDrop(endpoint)
       }}
     >
-      <PortChipHandles endpoint={endpoint} />
+      <PortChipHandles endpoint={endpoint} requiredHandleIds={requiredHandleIds} />
       <span className="text-[8px] font-black uppercase leading-none opacity-80">{portTypeChipLabel(port.type)}</span>
       <span className="text-[11px] font-black">{String(port.slotNumber).padStart(2, '0')}</span>
     </div>
@@ -410,9 +401,9 @@ function agentStateTone(state: AgentState): string {
 
 function getServerAgentStatus(
   summary: AgentStatusSummary | null,
-  serverId: string,
+  serverId: number,
 ): AgentServerStatus {
-  const existing = summary?.servers[serverId]
+  const existing = summary?.servers[String(serverId)]
 
   if (existing) {
     return existing
@@ -541,6 +532,7 @@ function AssignmentLabel({
 
 function AssignedComponentRow({
   assignment,
+  canvasIndex,
   draggingEndpoint,
   item,
   onRemoveAssignment,
@@ -549,11 +541,12 @@ function AssignedComponentRow({
   onEndpointDrop,
   onSelect,
   pendingEndpoint,
-  project,
+  requiredHandleIds,
   selected,
   serverId,
 }: {
   assignment: ComponentAssignment
+  canvasIndex: CanvasProjectIndex
   draggingEndpoint: ConnectionEndpoint | null
   item: InventoryItem
   onRemoveAssignment: (assignmentId: string | number) => void
@@ -562,7 +555,7 @@ function AssignedComponentRow({
   onEndpointDrop: (endpoint: ConnectionEndpoint) => void
   onSelect: (itemId: string) => void
   pendingEndpoint: ConnectionEndpoint | null
-  project: ProjectState
+  requiredHandleIds: ReadonlySet<string>
   selected: boolean
   serverId: string
 }) {
@@ -638,6 +631,7 @@ function AssignedComponentRow({
           {connectablePorts.map((port) => (
             <PortChip
               key={port.id}
+              canvasIndex={canvasIndex}
               draggingEndpoint={draggingEndpoint}
               endpoint={{ itemId: serverId, hostedItemId: itemRuntimeKey, portId: port.id }}
               onEndpointClick={onEndpointClick}
@@ -645,7 +639,7 @@ function AssignedComponentRow({
               onEndpointDrop={onEndpointDrop}
               pendingEndpoint={pendingEndpoint}
               port={port}
-              project={project}
+              requiredHandleIds={requiredHandleIds}
             />
           ))}
         </div>
@@ -655,20 +649,22 @@ function AssignedComponentRow({
 }
 
 function ServerBoardPortRow({
+  canvasIndex,
   draggingEndpoint,
   onEndpointClick,
   onEndpointDragStart,
   onEndpointDrop,
   pendingEndpoint,
-  project,
+  requiredHandleIds,
   server,
 }: {
+  canvasIndex: CanvasProjectIndex
   draggingEndpoint: ConnectionEndpoint | null
   onEndpointClick: (endpoint: ConnectionEndpoint, point: CanvasPortDragPoint) => void
   onEndpointDragStart: (endpoint: ConnectionEndpoint, point: CanvasPortDragPoint) => void
   onEndpointDrop: (endpoint: ConnectionEndpoint) => void
   pendingEndpoint: ConnectionEndpoint | null
-  project: ProjectState
+  requiredHandleIds: ReadonlySet<string>
   server: InventoryItem
 }) {
   const ports = sortPorts(server.ports)
@@ -687,6 +683,7 @@ function ServerBoardPortRow({
         {ports.map((port) => (
           <PortChip
             key={port.id}
+            canvasIndex={canvasIndex}
             draggingEndpoint={draggingEndpoint}
             endpoint={{ itemId: serverRuntimeKey, portId: port.id }}
             onEndpointClick={onEndpointClick}
@@ -694,7 +691,7 @@ function ServerBoardPortRow({
             onEndpointDrop={onEndpointDrop}
             pendingEndpoint={pendingEndpoint}
             port={port}
-            project={project}
+            requiredHandleIds={requiredHandleIds}
           />
         ))}
       </div>
@@ -705,6 +702,8 @@ function ServerBoardPortRow({
 export function ServerNode({ data }: NodeProps<ServerFlowNode>) {
   const {
     project,
+    canvasIndex,
+    requiredHandleIds,
     agentStatus,
     serverId,
     selectedItemId,
@@ -738,8 +737,8 @@ export function ServerNode({ data }: NodeProps<ServerFlowNode>) {
   }
 
   const serverDisplayName = server.properties?.displayName?.trim() || 'Server'
-  const serverAgentStatus = getServerAgentStatus(agentStatus, String(server.id))
-  const auditCount = getItemAuditWarnings(project, serverRuntimeKey).length
+  const serverAgentStatus = getServerAgentStatus(agentStatus, server.id)
+  const auditCount = canvasAuditWarningCount(canvasIndex, serverRuntimeKey)
   const focused = focusedItemIds.includes(serverRuntimeKey)
   const dimmed = focusActive && !focused
   const compatibilityDropRing = dropCompatibilityStatus === 'incompatible'
@@ -763,7 +762,7 @@ export function ServerNode({ data }: NodeProps<ServerFlowNode>) {
           {auditCount}
         </div>
       ) : null}
-      <CableHandles />
+      <CableHandles requiredHandleIds={requiredHandleIds} />
       <div
         className="server-node-drag-handle flex cursor-grab items-center gap-2 rounded-md bg-[#303744] px-3 py-2 active:cursor-grabbing"
       >
@@ -781,12 +780,13 @@ export function ServerNode({ data }: NodeProps<ServerFlowNode>) {
       </div>
 
       <ServerBoardPortRow
+        canvasIndex={canvasIndex}
         draggingEndpoint={draggingEndpoint}
         onEndpointClick={onEndpointClick}
         onEndpointDragStart={onEndpointDragStart}
         onEndpointDrop={onEndpointDrop}
         pendingEndpoint={pendingEndpoint}
-        project={project}
+        requiredHandleIds={requiredHandleIds}
         server={server}
       />
 
@@ -816,6 +816,7 @@ export function ServerNode({ data }: NodeProps<ServerFlowNode>) {
               <AssignedComponentRow
                 key={assignment.id}
                 assignment={assignment}
+                canvasIndex={canvasIndex}
                 draggingEndpoint={draggingEndpoint}
                 item={item}
                 onRemoveAssignment={onRemoveAssignment}
@@ -824,7 +825,7 @@ export function ServerNode({ data }: NodeProps<ServerFlowNode>) {
                 onEndpointDrop={onEndpointDrop}
                 onSelect={onSelect}
                 pendingEndpoint={pendingEndpoint}
-                project={project}
+                requiredHandleIds={requiredHandleIds}
                 selected={selectedItemId === runtimeItemKey(item)}
                 serverId={serverRuntimeKey}
               />

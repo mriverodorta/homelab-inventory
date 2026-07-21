@@ -11,8 +11,9 @@ const project: ProjectState = {
     updatedAt: '2026-06-26T00:00:00.000Z',
   },
   items: {
-    server: {
-      id: 'server',
+    'server:1': {
+      id: 1,
+      key: 'server:1',
       name: 'Dell OptiPlex Micro 7090',
       type: 'server',
       manufacturer: 'Dell',
@@ -21,15 +22,16 @@ const project: ProjectState = {
         displayName: 'Proxmox 01',
       },
     },
-    switch: {
-      id: 'switch',
+    'switch:1': {
+      id: 1,
+      key: 'switch:1',
       name: 'Omada ES210X-M2 #1',
       type: 'switch',
       manufacturer: 'TP-Link',
       model: 'ES210X-M2',
     },
   },
-  placements: [{ serverId: 'server', x: 0, y: 0 }],
+  placements: [{ serverId: 'server:1', x: 0, y: 0 }],
   assignments: [],
   connections: [],
 }
@@ -74,7 +76,7 @@ describe('GlobalItemSearch', () => {
     })
     fireEvent.click(screen.getByRole('button', { name: /Dell OptiPlex Micro 7090/i }))
 
-    expect(onSelectItem).toHaveBeenCalledWith('server')
+    expect(onSelectItem).toHaveBeenCalledWith('server:1')
     expect(onOpenChange).toHaveBeenCalledWith(false)
   })
 })

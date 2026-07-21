@@ -20,12 +20,12 @@ export function timingSafeEqualString(first, second) {
 }
 
 export function createNumericId(existingIds) {
-  const usedIds = new Set(existingIds.map((id) => String(id)).filter(Boolean))
+  const usedIds = new Set(existingIds.map((id) => Number(id)).filter(Number.isSafeInteger))
   let nextId = 1
 
-  while (usedIds.has(String(nextId))) {
+  while (usedIds.has(nextId)) {
     nextId += 1
   }
 
-  return String(nextId)
+  return nextId
 }

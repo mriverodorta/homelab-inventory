@@ -2,6 +2,7 @@ import fs from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
+import { canonicalPowerPorts } from '../../shared/power-ports.mjs'
 import { HomelabInventoryStore } from './store.mjs'
 
 const tempDirs = []
@@ -34,7 +35,7 @@ describe('atomic inventory commands', () => {
     let project = store.createInventoryItems({ type: 'switch', name: 'Edge Switch' }, 2)
     project = store.createInventoryItems({ type: 'ram', name: '32GB DDR4', specs: { capacityGB: 32 } }, 3)
 
-    expect(project.metadata.schemaVersion).toBe(9)
+    expect(project.metadata.schemaVersion).toBe(11)
     expect(store.databases.inventory.data.switches.map(({ id, name }) => ({ id, name }))).toEqual([
       { id: 1, name: 'Edge Switch #1' },
       { id: 2, name: 'Edge Switch #2' },
@@ -47,7 +48,7 @@ describe('atomic inventory commands', () => {
     expect(store.databases.inventory.data.ram[0].specs).toEqual({ capacityGB: 32 })
   })
 
-  it('supports lifecycle commands for schema-9 PC equipment and components', async () => {
+  it('supports lifecycle commands for schema-11 PC equipment and components', async () => {
     const { store } = await createStore()
     store.createInventoryItems({ type: 'pcBuild', name: 'Gaming PC' })
     store.createInventoryItems({ type: 'motherboard', name: 'Mini ITX Board' })
@@ -102,7 +103,7 @@ describe('atomic inventory commands', () => {
     const { store } = await createStore()
     const compatibility = {
       host: {
-        storageSlots: [{ id: 'source-slot', label: 'M.2', count: 1, interfaces: ['NVMe'] }],
+        storageSlots: [{ id: 1, key: 'source-slot', label: 'M.2', count: 1, interfaces: ['NVMe'] }],
       },
       extension: { retained: true },
     }
@@ -112,7 +113,7 @@ describe('atomic inventory commands', () => {
     const [first, second] = store.databases.inventory.data.servers
     expect(first.compatibility).toEqual({
       host: {
-        storageSlots: [{ id: 'source-slot', label: 'M.2', count: 1, interfaces: ['NVMe'] }],
+        storageSlots: [{ id: 1, key: 'source-slot', label: 'M.2', count: 1, interfaces: ['NVMe'] }],
       },
       extension: { retained: true },
     })
@@ -148,9 +149,9 @@ describe('atomic inventory commands', () => {
       }],
       compatibility: {
         host: {
-          storageSlots: [{ id: 'm2-original', label: 'M.2', count: 1, interfaces: ['NVMe'] }],
+          storageSlots: [{ id: 1, key: 'm2-original', label: 'M.2', count: 1, interfaces: ['NVMe'] }],
           expansionSlots: [{
-            id: 'pcie-original', label: 'PCIe', count: 1, interfaceFamily: 'pcie',
+            id: 1, key: 'pcie-original', label: 'PCIe', count: 1, interfaceFamily: 'pcie',
           }],
         },
       },
@@ -167,9 +168,9 @@ describe('atomic inventory commands', () => {
     }])
     expect(project.items['server:2'].compatibility).toEqual({
       host: {
-        storageSlots: [{ id: 'storage-1', label: 'M.2', count: 1, interfaces: ['NVMe'] }],
+        storageSlots: [{ id: 1, key: 'm2-original', label: 'M.2', count: 1, interfaces: ['NVMe'] }],
         expansionSlots: [{
-          id: 'expansion-1', label: 'PCIe', count: 1, interfaceFamily: 'pcie',
+          id: 1, key: 'pcie-original', label: 'PCIe', count: 1, interfaceFamily: 'pcie',
         }],
       },
     })
@@ -229,7 +230,7 @@ describe('atomic inventory commands', () => {
       type: 'switch',
       name: 'Switch',
       ports: [{ id: 1, kind: 'switch-port', type: 'sfp-plus', slotNumber: 1, speed: '10G' }],
-    })
+    }, 2)
     store.databases.project.data.connections.push({
       id: 1,
       from: { itemType: 'switch', itemId: 1, portId: 1 },
@@ -252,6 +253,61 @@ describe('atomic inventory commands', () => {
     expect(store.getProject().items['switch:1'].name).toBe('Renamed Switch')
   })
 
+  it('updates UPS and power-strip layout properties without changing connected power ports', async () => {
+    const { store } = await createStore()
+    const upsSpecs = {
+      outlets: 2,
+      batteryBackupOutlets: 1,
+      surgeProtectedOutlets: 1,
+    }
+    const powerStripSpecs = { outlets: 2, surgeProtected: true }
+
+    store.databases.inventory.data.upsSystems.push({
+      id: 1,
+      name: 'Rack UPS',
+      specs: upsSpecs,
+      ports: canonicalPowerPorts({ type: 'ups', specs: upsSpecs }),
+    })
+    store.databases.inventory.data.powerStrips.push({
+      id: 1,
+      name: 'Rack power strip',
+      specs: powerStripSpecs,
+      ports: canonicalPowerPorts({ type: 'powerStrip', specs: powerStripSpecs }),
+    })
+    store.databases.project.data.connections.push({
+      id: 1,
+      from: { itemType: 'ups', itemId: 1, portId: 1 },
+      to: { itemType: 'powerStrip', itemId: 1, portId: 1 },
+      type: 'power',
+      createdAt: '2026-07-21T00:00:00.000Z',
+    })
+    const portsBefore = structuredClone({
+      ups: store.getProject().items['ups:1'].ports,
+      powerStrip: store.getProject().items['powerStrip:1'].ports,
+    })
+    const connectionsBefore = structuredClone(store.getProject().connections)
+
+    store.updateInventoryItemProperties(
+      { type: 'ups', id: 1 },
+      { canvasOrientation: 'vertical', upsOutletGroupOrder: 'surge-battery' },
+    )
+    const project = store.updateInventoryItemProperties(
+      { type: 'powerStrip', id: 1 },
+      { canvasOrientation: 'vertical' },
+    )
+
+    expect(project.items['ups:1'].properties).toEqual({
+      canvasOrientation: 'vertical',
+      upsOutletGroupOrder: 'surge-battery',
+    })
+    expect(project.items['powerStrip:1'].properties).toEqual({
+      canvasOrientation: 'vertical',
+    })
+    expect(project.items['ups:1'].ports).toEqual(portsBefore.ups)
+    expect(project.items['powerStrip:1'].ports).toEqual(portsBefore.powerStrip)
+    expect(project.connections).toEqual(connectionsBefore)
+  })
+
   it('persists lifecycle state across a flush and restart', async () => {
     const { store, dataDir } = await createStore()
     store.createInventoryItems({ type: 'cpu', name: 'CPU' })
@@ -259,7 +315,7 @@ describe('atomic inventory commands', () => {
     await store.flush()
 
     const { store: restarted } = await createStore(dataDir)
-    expect(restarted.databases.meta.data.schemaVersion).toBe(9)
+    expect(restarted.databases.meta.data.schemaVersion).toBe(11)
     expect(restarted.getProject().items['cpu:1'].archivedAt).toBeTruthy()
   })
 })

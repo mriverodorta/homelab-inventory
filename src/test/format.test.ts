@@ -19,7 +19,7 @@ import type { InventoryItem } from '@/types/inventory'
 describe('formatting helpers', () => {
   it('formats TB storage capacity', () => {
     const item: InventoryItem = {
-      id: 'stor-1tb',
+      id: 1,
       name: '1TB NVMe SSD',
       type: 'storage',
       specs: {
@@ -33,7 +33,7 @@ describe('formatting helpers', () => {
 
   it('formats GB storage capacity without a question-mark TB fallback', () => {
     const item: InventoryItem = {
-      id: 'stor-256gb',
+      id: 1,
       name: '256GB NVMe SSD',
       type: 'storage',
       specs: {
@@ -47,7 +47,7 @@ describe('formatting helpers', () => {
 
   it('formats storage canvas labels from capacity, interface, and form factor', () => {
     const item: InventoryItem = {
-      id: 'stor-1tb',
+      id: 1,
       name: '1TB NVMe',
       type: 'storage',
       specs: {
@@ -67,7 +67,7 @@ describe('formatting helpers', () => {
 
   it('formats RAM compact specs as module composition and speed', () => {
     const item: InventoryItem = {
-      id: 'ram-32gb',
+      id: 1,
       name: '32GB DDR4',
       type: 'ram',
       specs: {
@@ -81,7 +81,7 @@ describe('formatting helpers', () => {
 
   it('formats RAM compact specs with mixed stick speeds', () => {
     const item: InventoryItem = {
-      id: 'ram-32gb',
+      id: 1,
       name: '32GB DDR4',
       type: 'ram',
       specs: {
@@ -97,7 +97,7 @@ describe('formatting helpers', () => {
 
   it('formats RAM canvas labels from mixed stick speeds', () => {
     const item: InventoryItem = {
-      id: 'ram-32gb',
+      id: 1,
       name: '32GB DDR4',
       type: 'ram',
       specs: {
@@ -119,7 +119,7 @@ describe('formatting helpers', () => {
 
   it('formats CPU canvas labels from split identity fields', () => {
     const item: InventoryItem = {
-      id: 'cpu-i5',
+      id: 1,
       name: 'Intel Core i5-10500T',
       type: 'cpu',
       manufacturer: 'Intel',
@@ -142,7 +142,7 @@ describe('formatting helpers', () => {
 
   it('formats GPU canvas labels from identity and form factor', () => {
     const item: InventoryItem = {
-      id: 'gpu-a310',
+      id: 1,
       name: 'Intel Arc A310 LP',
       type: 'gpu',
       manufacturer: 'Intel',
@@ -162,16 +162,16 @@ describe('formatting helpers', () => {
 
   it('formats switch canvas labels from port inventory', () => {
     const item: InventoryItem = {
-      id: 'switch',
+      id: 1,
       name: 'Switch',
       type: 'switch',
       specs: {
         management: 'Managed',
       },
       ports: [
-        { id: 'rj45-01', kind: 'switch-port', type: 'rj45', slotNumber: 1, speed: '2.5G' },
-        { id: 'rj45-02', kind: 'switch-port', type: 'rj45', slotNumber: 2, speed: '2.5G' },
-        { id: 'sfp-plus-01', kind: 'switch-port', type: 'sfp-plus', slotNumber: 3, speed: '10G' },
+        { id: 1, kind: 'switch-port', type: 'rj45', slotNumber: 1, speed: '2.5G' },
+        { id: 2, kind: 'switch-port', type: 'rj45', slotNumber: 2, speed: '2.5G' },
+        { id: 3, kind: 'switch-port', type: 'sfp-plus', slotNumber: 3, speed: '10G' },
       ],
     }
 
@@ -185,15 +185,15 @@ describe('formatting helpers', () => {
 
   it('formats patch panel canvas labels from keystone inventory', () => {
     const item: InventoryItem = {
-      id: 'patch',
+      id: 1,
       name: 'Patch Panel',
       type: 'patchPanel',
       specs: {
         rackUnits: 1,
       },
       ports: [
-        { id: 'keystone-01', kind: 'keystone', type: 'hdmi', slotNumber: 1 },
-        { id: 'keystone-02', kind: 'keystone', type: 'hdmi', slotNumber: 2 },
+        { id: 1, kind: 'keystone', type: 'hdmi', slotNumber: 1 },
+        { id: 2, kind: 'keystone', type: 'hdmi', slotNumber: 2 },
       ],
     }
 

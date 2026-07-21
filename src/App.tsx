@@ -68,6 +68,7 @@ import {
   restoreInventoryItems,
   saveProject,
   updateInventoryItem,
+  updateInventoryItemProperties,
   type InventoryItemInput,
 } from '@/lib/db'
 import { expireDemoSession, extendDemoSession, loadDemoSession, type DemoSessionStatus } from '@/lib/demo-api'
@@ -141,6 +142,7 @@ import type {
   ConnectionEndpoint,
   ConnectionRoutePreferences,
   InventoryItem,
+  InventoryProperties,
   ProjectState,
 } from '@/types/inventory'
 
@@ -889,7 +891,10 @@ function App() {
     setValidationSeverity(message ? severity : 'error')
   }
 
-  function applyInventoryCommandSnapshot(nextProject: ProjectState) {
+  function applyInventoryCommandSnapshot(
+    nextProject: ProjectState,
+    options: { historySnapshot?: ProjectState } = {},
+  ) {
     const negotiatedProject = normalizeNetworkProject(nextProject)
 
     saveGenerationRef.current += 1
@@ -903,7 +908,11 @@ function App() {
     projectRef.current = negotiatedProject
     lastPersistedProjectRef.current = negotiatedProject
     setProject(negotiatedProject)
-    setHistory(createEmptyHistory())
+    setHistory((currentHistory) => (
+      options.historySnapshot
+        ? pushHistory(currentHistory, options.historySnapshot)
+        : createEmptyHistory()
+    ))
     setSelectedConnectionId(null)
     setActiveNetworkTraceEndpoint(null)
     setValidationMessage(null)
@@ -1115,7 +1124,8 @@ function App() {
   }
 
   async function handleUpdateInventoryItem(itemId: string, input: InventoryItemInput) {
-    const currentItem = projectRef.current?.items[itemId]
+    const currentProject = projectRef.current
+    const currentItem = currentProject?.items[itemId]
 
     if (!currentItem) {
       throw new Error('Inventory item could not be found.')
@@ -1125,8 +1135,25 @@ function App() {
       { type: currentItem.type, id: currentItem.id },
       input,
     )
-    applyInventoryCommandSnapshot(nextProject)
-    setSelectedItemId(itemId)
+    applyInventoryCommandSnapshot(nextProject, { historySnapshot: currentProject })
+  }
+
+  async function handleUpdateInventoryItemProperties(
+    itemId: string,
+    properties: InventoryProperties,
+  ) {
+    const currentProject = projectRef.current
+    const currentItem = currentProject?.items[itemId]
+
+    if (!currentItem) {
+      throw new Error('Inventory item could not be found.')
+    }
+
+    const nextProject = await updateInventoryItemProperties(
+      { type: currentItem.type, id: currentItem.id },
+      properties,
+    )
+    applyInventoryCommandSnapshot(nextProject, { historySnapshot: currentProject })
   }
 
   async function handleDuplicateInventoryItem(item: InventoryItem) {
@@ -1683,6 +1710,7 @@ function App() {
             }}
             onUpdateProject={updateProject}
             onUpdateItem={handleUpdateInventoryItem}
+            onUpdateItemProperties={handleUpdateInventoryItemProperties}
             onDuplicateItem={handleDuplicateInventoryItem}
             onArchiveItem={(item) => void requestInventoryLifecycle('archive', [item])}
             onReturnItemToInventory={requestReturnToInventory}

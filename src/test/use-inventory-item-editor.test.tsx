@@ -4,11 +4,22 @@ import { useInventoryItemEditor } from '@/hooks/use-inventory-item-editor'
 import type { InventoryItem } from '@/types/inventory'
 
 const cpu: InventoryItem = {
-  id: 'cpu-a',
+  id: 1,
   name: 'Original CPU',
   type: 'cpu',
   manufacturer: 'Intel',
   specs: { cores: 4, threads: 8 },
+}
+
+function deferred<T>() {
+  let resolve!: (value: T | PromiseLike<T>) => void
+  let reject!: (reason?: unknown) => void
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise
+    reject = rejectPromise
+  })
+
+  return { promise, reject, resolve }
 }
 
 afterEach(() => {
@@ -50,11 +61,280 @@ describe('useInventoryItemEditor', () => {
     expect(vi.getTimerCount()).toBe(0)
   })
 
+  it('serializes immediate saves and sends the latest combined draft next', async () => {
+    const firstSave = deferred<void>()
+    const secondSave = deferred<void>()
+    const onSave = vi.fn()
+      .mockImplementationOnce(() => firstSave.promise)
+      .mockImplementationOnce(() => secondSave.promise)
+    const { result } = renderHook(() => useInventoryItemEditor({ item: cpu, onSave }))
+
+    act(() => result.current.updateValues({ name: 'Queued CPU' }, 'immediate'))
+    act(() => result.current.updateValues({ manufacturer: 'AMD' }, 'immediate'))
+
+    expect(onSave).toHaveBeenCalledOnce()
+    expect(onSave).toHaveBeenNthCalledWith(1, expect.objectContaining({
+      name: 'Queued CPU',
+      manufacturer: 'Intel',
+    }))
+
+    await act(async () => {
+      firstSave.resolve()
+      await firstSave.promise
+    })
+
+    expect(onSave).toHaveBeenCalledTimes(2)
+    expect(onSave).toHaveBeenNthCalledWith(2, expect.objectContaining({
+      name: 'Queued CPU',
+      manufacturer: 'AMD',
+    }))
+
+    await act(async () => {
+      secondSave.resolve()
+      await secondSave.promise
+    })
+  })
+
+  it('preserves the latest draft when an earlier canonical acknowledgement arrives', async () => {
+    const firstSave = deferred<void>()
+    const secondSave = deferred<void>()
+    const onSave = vi.fn()
+      .mockImplementationOnce(() => firstSave.promise)
+      .mockImplementationOnce(() => secondSave.promise)
+    const { result, rerender } = renderHook(
+      ({ item }) => useInventoryItemEditor({ item, onSave }),
+      { initialProps: { item: cpu } },
+    )
+
+    act(() => result.current.updateValues({ name: 'First canonical CPU' }, 'immediate'))
+    act(() => result.current.updateValues({ manufacturer: 'AMD' }, 'immediate'))
+
+    await act(async () => {
+      firstSave.resolve()
+      await firstSave.promise
+    })
+    expect(onSave).toHaveBeenCalledTimes(2)
+
+    rerender({ item: { ...cpu, name: 'First canonical CPU' } })
+
+    expect(result.current.values.name).toBe('First canonical CPU')
+    expect(result.current.values.manufacturer).toBe('AMD')
+
+    await act(async () => {
+      secondSave.resolve()
+      await secondSave.promise
+    })
+  })
+
+  it('prunes skipped acknowledgement revisions when a newer revision is acknowledged', async () => {
+    vi.useFakeTimers()
+    const firstSave = deferred<void>()
+    const secondSave = deferred<void>()
+    const onSave = vi.fn()
+      .mockImplementationOnce(() => firstSave.promise)
+      .mockImplementationOnce(() => secondSave.promise)
+      .mockResolvedValueOnce(undefined)
+    const { result, rerender } = renderHook(
+      ({ item }) => useInventoryItemEditor({ item, onSave }),
+      { initialProps: { item: cpu } },
+    )
+
+    act(() => result.current.updateValues({ name: 'Revision one CPU' }, 'immediate'))
+    act(() => result.current.updateValues({ manufacturer: 'AMD' }, 'immediate'))
+    act(() => result.current.updateValues({ family: 'Pending family' }))
+
+    await act(async () => {
+      firstSave.resolve()
+      await firstSave.promise
+    })
+    expect(onSave).toHaveBeenCalledTimes(2)
+
+    rerender({
+      item: {
+        ...cpu,
+        name: 'Revision one CPU',
+        manufacturer: 'AMD',
+      },
+    })
+
+    expect(result.current.values.family).toBe('Pending family')
+
+    rerender({ item: { ...cpu, name: 'Revision one CPU' } })
+
+    expect(result.current.values.name).toBe('Revision one CPU')
+    expect(result.current.values.manufacturer).toBe('Intel')
+    expect(result.current.values.family).toBe('')
+
+    await act(async () => {
+      secondSave.resolve()
+      await secondSave.promise
+    })
+  })
+
+  it('does not acknowledge a repeated fingerprint until its queued revision becomes active', async () => {
+    vi.useFakeTimers()
+    const firstSave = deferred<void>()
+    const secondSave = deferred<void>()
+    const thirdSave = deferred<void>()
+    const onSave = vi.fn()
+      .mockImplementationOnce(() => firstSave.promise)
+      .mockImplementationOnce(() => secondSave.promise)
+      .mockImplementationOnce(() => thirdSave.promise)
+      .mockResolvedValueOnce(undefined)
+    const horizontalCpu: InventoryItem = {
+      ...cpu,
+      properties: { canvasOrientation: 'horizontal' },
+    }
+    const verticalCpu: InventoryItem = {
+      ...cpu,
+      properties: { canvasOrientation: 'vertical' },
+    }
+    const { result, rerender } = renderHook(
+      ({ item }) => useInventoryItemEditor({ item, onSave }),
+      { initialProps: { item: horizontalCpu } },
+    )
+
+    act(() => result.current.updateValues({
+      properties: { canvasOrientation: 'vertical' },
+    }, 'immediate'))
+    act(() => result.current.updateValues({
+      properties: { canvasOrientation: 'horizontal' },
+    }, 'immediate'))
+    act(() => result.current.updateValues({
+      properties: { canvasOrientation: 'vertical' },
+    }, 'immediate'))
+
+    expect(onSave).toHaveBeenCalledOnce()
+    rerender({ item: verticalCpu })
+
+    act(() => result.current.updateValues({ family: 'Pending family' }))
+
+    await act(async () => {
+      firstSave.resolve()
+      await firstSave.promise
+    })
+    expect(onSave).toHaveBeenCalledTimes(2)
+
+    rerender({ item: horizontalCpu })
+    expect(result.current.values.family).toBe('Pending family')
+    expect(result.current.values.properties?.canvasOrientation).toBe('vertical')
+
+    await act(async () => {
+      secondSave.resolve()
+      await secondSave.promise
+    })
+    expect(onSave).toHaveBeenCalledTimes(3)
+
+    rerender({ item: verticalCpu })
+    expect(result.current.values.family).toBe('Pending family')
+
+    rerender({ item: horizontalCpu })
+    expect(result.current.values.family).toBe('')
+    expect(result.current.values.properties?.canvasOrientation).toBe('horizontal')
+
+    await act(async () => {
+      thirdSave.resolve()
+      await thirdSave.promise
+      await Promise.resolve()
+    })
+  })
+
+  it('continues queued saves after an earlier save fails', async () => {
+    const firstSave = deferred<void>()
+    const onSave = vi.fn()
+      .mockImplementationOnce(() => firstSave.promise)
+      .mockResolvedValueOnce(undefined)
+    const { result } = renderHook(() => useInventoryItemEditor({ item: cpu, onSave }))
+
+    act(() => result.current.updateValues({ name: 'Rejected CPU' }, 'immediate'))
+    act(() => result.current.updateValues({ manufacturer: 'AMD' }, 'immediate'))
+
+    expect(onSave).toHaveBeenCalledOnce()
+
+    await act(async () => {
+      firstSave.reject(new Error('First save failed.'))
+      await firstSave.promise.catch(() => undefined)
+    })
+
+    expect(onSave).toHaveBeenCalledTimes(2)
+    expect(onSave).toHaveBeenLastCalledWith(expect.objectContaining({
+      name: 'Rejected CPU',
+      manufacturer: 'AMD',
+    }))
+    expect(result.current.saveError).toBeNull()
+  })
+
+  it('reset discards unsent queued saves while allowing the active save to finish', async () => {
+    const activeSave = deferred<void>()
+    const onSave = vi.fn().mockImplementationOnce(() => activeSave.promise)
+    const { result } = renderHook(() => useInventoryItemEditor({ item: cpu, onSave }))
+
+    act(() => result.current.updateValues({ name: 'Active CPU' }, 'immediate'))
+    act(() => result.current.updateValues({ manufacturer: 'AMD' }, 'immediate'))
+    expect(onSave).toHaveBeenCalledOnce()
+
+    act(() => result.current.reset())
+    expect(result.current.values.name).toBe('Original CPU')
+    expect(result.current.values.manufacturer).toBe('Intel')
+
+    await act(async () => {
+      activeSave.resolve()
+      await activeSave.promise
+    })
+
+    expect(onSave).toHaveBeenCalledOnce()
+    expect(result.current.values.name).toBe('Original CPU')
+    expect(result.current.values.manufacturer).toBe('Intel')
+  })
+
+  it('keeps queued saves durable and isolated when the selected item changes', async () => {
+    vi.useFakeTimers()
+    const activeSave = deferred<void>()
+    const firstItemSave = vi.fn()
+      .mockImplementationOnce(() => activeSave.promise)
+      .mockRejectedValueOnce(new Error('Old item save failed.'))
+    const secondItemSave = vi.fn()
+    const nextCpu: InventoryItem = {
+      id: 2,
+      name: 'Second CPU',
+      type: 'cpu',
+      manufacturer: 'Intel',
+      specs: { cores: 8 },
+    }
+    const { result, rerender } = renderHook(
+      ({ item, onSave }) => useInventoryItemEditor({ item, onSave }),
+      { initialProps: { item: cpu, onSave: firstItemSave } },
+    )
+
+    act(() => result.current.updateValues({ name: 'Active first CPU' }, 'immediate'))
+    act(() => result.current.updateValues({ manufacturer: 'AMD' }))
+    rerender({ item: nextCpu, onSave: secondItemSave })
+
+    expect(result.current.values.name).toBe('Second CPU')
+    expect(firstItemSave).toHaveBeenCalledOnce()
+
+    await act(async () => {
+      activeSave.resolve()
+      await activeSave.promise
+      await Promise.resolve()
+    })
+
+    expect(firstItemSave).toHaveBeenCalledTimes(2)
+    expect(firstItemSave).toHaveBeenLastCalledWith(expect.objectContaining({
+      name: 'Active first CPU',
+      manufacturer: 'AMD',
+    }))
+    expect(secondItemSave).not.toHaveBeenCalled()
+    expect(result.current.values.name).toBe('Second CPU')
+    expect(result.current.values.manufacturer).toBe('Intel')
+    expect(result.current.saveError).toBeNull()
+  })
+
   it('flushes a pending save before resyncing when the selected item changes', async () => {
     vi.useFakeTimers()
     const onSave = vi.fn()
     const nextCpu: InventoryItem = {
-      id: 'cpu-b',
+      id: 2,
       name: 'Second CPU',
       type: 'cpu',
       specs: { cores: 8 },
@@ -88,6 +368,31 @@ describe('useInventoryItemEditor', () => {
 
     expect(onSave).toHaveBeenCalledWith(expect.objectContaining({
       name: 'Unsaved CPU',
+    }))
+  })
+
+  it('keeps a queued debounced save after unmount', async () => {
+    vi.useFakeTimers()
+    const activeSave = deferred<void>()
+    const onSave = vi.fn()
+      .mockImplementationOnce(() => activeSave.promise)
+      .mockResolvedValueOnce(undefined)
+    const { result, unmount } = renderHook(() => useInventoryItemEditor({ item: cpu, onSave }))
+
+    act(() => result.current.updateValues({ name: 'Active CPU' }, 'immediate'))
+    act(() => result.current.updateValues({ manufacturer: 'AMD' }))
+    unmount()
+
+    expect(onSave).toHaveBeenCalledOnce()
+
+    activeSave.resolve()
+    await activeSave.promise
+    await Promise.resolve()
+
+    expect(onSave).toHaveBeenCalledTimes(2)
+    expect(onSave).toHaveBeenLastCalledWith(expect.objectContaining({
+      name: 'Active CPU',
+      manufacturer: 'AMD',
     }))
   })
 
@@ -134,7 +439,7 @@ describe('useInventoryItemEditor', () => {
 
   it('exposes reconciliation errors without calling save', () => {
     const protectedSwitch: InventoryItem = {
-      id: 'switch-a',
+      id: 1,
       type: 'switch',
       name: 'Protected switch',
       ports: [

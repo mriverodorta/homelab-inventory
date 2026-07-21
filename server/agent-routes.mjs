@@ -1,4 +1,5 @@
 import { createNumericId, createToken, hashToken, timingSafeEqualString } from './db/agent-auth.mjs'
+import { isRelationalId } from './db/relational-ids.mjs'
 
 const ENROLLMENT_TTL_MS = 24 * 60 * 60 * 1000
 const AGENT_VERSION = '0.2.0'
@@ -32,36 +33,25 @@ function installCommand({ endpoint, serverId, token }) {
   ].join(' \\\n  ')
 }
 
-function normalizeServerId(value) {
-  if (typeof value === 'number' && Number.isInteger(value)) {
-    return value
-  }
-
-  if (typeof value !== 'string') {
-    return null
-  }
-
-  const rawId = value.startsWith('server:') ? value.split(':').at(-1) : value
-  const serverId = Number(rawId)
-
-  return Number.isInteger(serverId) ? serverId : null
+function parseServerIdParam(value) {
+  if (typeof value !== 'string' || !/^[1-9]\d*$/.test(value)) return null
+  const serverId = Number(value)
+  return isRelationalId(serverId) ? serverId : null
 }
 
 function serverExists(store, serverId) {
-  const normalizedServerId = normalizeServerId(serverId)
-  const server = normalizedServerId === null
+  const server = !isRelationalId(serverId)
     ? null
-    : store.getProject().items[`server:${normalizedServerId}`]
+    : store.getProject().items[`server:${serverId}`]
 
   return server?.type === 'server'
 }
 
 function findEnrollment(store, serverId, token) {
-  const normalizedServerId = normalizeServerId(serverId)
   const tokenHash = hashToken(token)
 
   return Object.values(store.databases.agents.data.enrollments ?? {}).find((enrollment) =>
-    normalizeServerId(enrollment.serverId) === normalizedServerId &&
+    enrollment.serverId === serverId &&
     !enrollment.usedAt &&
     !enrollment.revokedAt &&
     Date.parse(enrollment.expiresAt) > Date.now() &&
@@ -70,11 +60,10 @@ function findEnrollment(store, serverId, token) {
 }
 
 function findDevice(store, serverId, token) {
-  const normalizedServerId = normalizeServerId(serverId)
   const tokenHash = hashToken(token)
 
   return Object.values(store.databases.agents.data.devices ?? {}).find((device) =>
-    normalizeServerId(device.serverId) === normalizedServerId &&
+    device.serverId === serverId &&
     !device.revokedAt &&
     timingSafeEqualString(device.tokenHash, tokenHash),
   )
@@ -504,7 +493,7 @@ export function registerAgentRoutes(app, store, { disabled = false } = {}) {
   })
 
   app.delete('/api/agent/servers/:serverId/registration', (request, response) => {
-    const serverId = normalizeServerId(request.params.serverId)
+    const serverId = parseServerIdParam(request.params.serverId)
 
     if (!serverExists(store, serverId)) {
       response.status(404).json({ message: 'Server not found.' })
@@ -519,7 +508,7 @@ export function registerAgentRoutes(app, store, { disabled = false } = {}) {
       store.databases.agents.data.devices ?? {},
     ]) {
       for (const record of Object.values(collection)) {
-        if (normalizeServerId(record.serverId) === serverId && !record.revokedAt) {
+        if (record.serverId === serverId && !record.revokedAt) {
           record.revokedAt = revokedAt
           revoked += 1
         }
@@ -531,7 +520,7 @@ export function registerAgentRoutes(app, store, { disabled = false } = {}) {
   })
 
   app.delete('/api/agent/servers/:serverId/status', (request, response) => {
-    const serverId = normalizeServerId(request.params.serverId)
+    const serverId = parseServerIdParam(request.params.serverId)
 
     if (!serverExists(store, serverId)) {
       response.status(404).json({ message: 'Server not found.' })
@@ -539,13 +528,13 @@ export function registerAgentRoutes(app, store, { disabled = false } = {}) {
     }
 
     const activeEnrollment = Object.values(store.databases.agents.data.enrollments ?? {}).some((record) =>
-      normalizeServerId(record.serverId) === serverId
+      record.serverId === serverId
         && !record.revokedAt
         && !record.usedAt
         && (!record.expiresAt || Date.parse(record.expiresAt) > Date.now()),
     )
     const activeDevice = Object.values(store.databases.agents.data.devices ?? {}).some((record) =>
-      normalizeServerId(record.serverId) === serverId && !record.revokedAt,
+      record.serverId === serverId && !record.revokedAt,
     )
 
     if (activeEnrollment || activeDevice) {
@@ -557,7 +546,7 @@ export function registerAgentRoutes(app, store, { disabled = false } = {}) {
   })
 
   app.post('/api/agent/enrollments', (request, response) => {
-    const serverId = normalizeServerId(request.body?.serverId)
+    const serverId = isRelationalId(request.body?.serverId) ? request.body.serverId : null
 
     if (!serverExists(store, serverId)) {
       response.status(404).json({ message: 'Server not found.' })
@@ -591,7 +580,7 @@ export function registerAgentRoutes(app, store, { disabled = false } = {}) {
   })
 
   app.post('/api/agent/servers/:serverId/register', (request, response) => {
-    const serverId = normalizeServerId(request.params.serverId)
+    const serverId = parseServerIdParam(request.params.serverId)
     const token = bearerToken(request)
 
     if (!token) {
@@ -634,7 +623,7 @@ export function registerAgentRoutes(app, store, { disabled = false } = {}) {
   })
 
   app.post('/api/agent/servers/:serverId/heartbeat', (request, response) => {
-    const serverId = normalizeServerId(request.params.serverId)
+    const serverId = parseServerIdParam(request.params.serverId)
     const token = bearerToken(request)
 
     if (!token) {

@@ -30,7 +30,9 @@ export type PortGroup = {
 }
 
 export type StorageSlotGroupDraft = {
-  id: string
+  draftKey: string
+  id?: number
+  key: string
   label: string
   count: string
   interfaces: string[]
@@ -39,7 +41,9 @@ export type StorageSlotGroupDraft = {
 }
 
 export type ExpansionSlotGroupDraft = {
-  id: string
+  draftKey: string
+  id?: number
+  key: string
   label: string
   count: string
   interfaceFamily: string
@@ -487,7 +491,9 @@ export function inventoryItemToFormValues(item: InventoryItem): InventoryFormVal
     hostMemoryMaxModuleCapacityGb: stringValue(item.compatibility?.host?.memory?.maxModuleCapacityGb),
     hostMemoryMaxSpeedMt: stringValue(item.compatibility?.host?.memory?.maxSpeedMt),
     storageSlotGroups: item.compatibility?.host?.storageSlots?.map((group) => ({
+      draftKey: `storage:${group.id}`,
       id: group.id,
+      key: group.key,
       label: group.label,
       count: stringValue(group.count),
       interfaces: stringArray(group.interfaces),
@@ -495,7 +501,9 @@ export function inventoryItemToFormValues(item: InventoryItem): InventoryFormVal
       pcieGeneration: stringValue(group.pcieGeneration),
     })) ?? [],
     expansionSlotGroups: item.compatibility?.host?.expansionSlots?.map((group) => ({
+      draftKey: `expansion:${group.id}`,
       id: group.id,
+      key: group.key,
       label: group.label,
       count: stringValue(group.count),
       interfaceFamily: stringValue(group.interfaceFamily),
@@ -708,6 +716,47 @@ export function inventoryFormValuesToInput(values: InventoryFormValues): Invento
   }
 }
 
+type ResourceGroupDraft = StorageSlotGroupDraft | ExpansionSlotGroupDraft
+
+function assignResourceGroupIds(groups: ResourceGroupDraft[]): number[] {
+  const used = new Set(
+    groups
+      .map((group) => group.id)
+      .filter((id): id is number => Number.isSafeInteger(id) && id !== undefined && id > 0),
+  )
+  let nextId = Math.max(0, ...used) + 1
+  return groups.map((group) => {
+    if (group.id !== undefined && Number.isSafeInteger(group.id) && group.id > 0) return group.id
+    while (used.has(nextId)) nextId += 1
+    const id = nextId
+    used.add(id)
+    nextId += 1
+    return id
+  })
+}
+
+function semanticResourceGroupKey(value: string, fallback: string): string {
+  const key = value.trim().toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+  return key || fallback
+}
+
+function assignResourceGroupKeys(groups: ResourceGroupDraft[], prefix: string): string[] {
+  const used = new Set<string>()
+  return groups.map((group, index) => {
+    const base = semanticResourceGroupKey(group.key || group.label, `${prefix}-${index + 1}`)
+    let key = base
+    let suffix = 2
+    while (used.has(key)) {
+      key = `${base}-${suffix}`
+      suffix += 1
+    }
+    used.add(key)
+    return key
+  })
+}
+
 function buildCompatibility(values: InventoryFormValues): InventoryCompatibility | undefined {
   const compatibility = cloneCompatibility(values.preservedCompatibility)
   const root = asMutableRecord(compatibility)
@@ -736,15 +785,20 @@ function buildCompatibility(values: InventoryFormValues): InventoryCompatibility
     const originalStorageGroups = new Map(
       (compatibility.host?.storageSlots ?? []).map((group) => [group.id, group]),
     )
-    const storageSlots = values.storageSlotGroups.filter((draft) => (
+    const storageDrafts = values.storageSlotGroups.filter((draft) => (
       draft.label.trim() !== ''
       || draft.count.trim() !== ''
       || draft.interfaces.length > 0
       || draft.formFactors.length > 0
       || draft.pcieGeneration.trim() !== ''
-    )).map((draft) => {
-      const group = structuredClone(originalStorageGroups.get(draft.id) ?? {}) as Record<string, unknown>
-      group.id = draft.id
+    ))
+    const storageIds = assignResourceGroupIds(storageDrafts)
+    const storageKeys = assignResourceGroupKeys(storageDrafts, 'storage')
+    const storageSlots = storageDrafts.map((draft, index) => {
+      const originalGroup = draft.id === undefined ? undefined : originalStorageGroups.get(draft.id)
+      const group = structuredClone(originalGroup ?? {}) as Record<string, unknown>
+      group.id = storageIds[index]
+      group.key = storageKeys[index]
       group.label = draft.label.trim()
       setOptional(group, 'count', numberValue(draft.count))
       setOptional(group, 'interfaces', draft.interfaces)
@@ -757,7 +811,7 @@ function buildCompatibility(values: InventoryFormValues): InventoryCompatibility
     const originalExpansionGroups = new Map(
       (compatibility.host?.expansionSlots ?? []).map((group) => [group.id, group]),
     )
-    const expansionSlots = values.expansionSlotGroups.filter((draft) => (
+    const expansionDrafts = values.expansionSlotGroups.filter((draft) => (
       draft.label.trim() !== ''
       || draft.count.trim() !== ''
       || draft.interfaceFamily.trim() !== ''
@@ -767,9 +821,14 @@ function buildCompatibility(values: InventoryFormValues): InventoryCompatibility
       || draft.acceptedHeights.length > 0
       || draft.maxSlotWidth.trim() !== ''
       || draft.maxPowerWatts.trim() !== ''
-    )).map((draft) => {
-      const group = structuredClone(originalExpansionGroups.get(draft.id) ?? {}) as Record<string, unknown>
-      group.id = draft.id
+    ))
+    const expansionIds = assignResourceGroupIds(expansionDrafts)
+    const expansionKeys = assignResourceGroupKeys(expansionDrafts, 'expansion')
+    const expansionSlots = expansionDrafts.map((draft, index) => {
+      const originalGroup = draft.id === undefined ? undefined : originalExpansionGroups.get(draft.id)
+      const group = structuredClone(originalGroup ?? {}) as Record<string, unknown>
+      group.id = expansionIds[index]
+      group.key = expansionKeys[index]
       group.label = draft.label.trim()
       setOptional(group, 'count', numberValue(draft.count))
       setOptional(group, 'interfaceFamily', cleanString(draft.interfaceFamily))

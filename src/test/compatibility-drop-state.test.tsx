@@ -1,6 +1,7 @@
 import { render } from '@testing-library/react'
 import type { NodeProps } from '@xyflow/react'
 import { describe, expect, it, vi } from 'vitest'
+import { buildCanvasProjectIndex } from '@/lib/canvas-project-index'
 import { NasNode, type NasFlowNode } from '@/components/nas-card'
 import { ServerNode, type ServerFlowNode } from '@/components/server-card'
 import {
@@ -77,7 +78,7 @@ function storage(key: string): InventoryItem {
 }
 
 function assignment(
-  id: string | number,
+  id: number,
   serverId: string,
   item: InventoryItem,
 ): ComponentAssignment {
@@ -116,6 +117,8 @@ function nodeData(
 ): ServerFlowNode['data'] & NasFlowNode['data'] {
   return {
     project: currentProject,
+    canvasIndex: buildCanvasProjectIndex(currentProject),
+    requiredHandleIds: new Set<string>(),
     itemId,
     serverId: itemId,
     agentStatus: null,

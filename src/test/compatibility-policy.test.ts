@@ -20,7 +20,7 @@ function project(): ProjectState {
     assignments: [],
     connections: [],
     compatibilityPolicy: {
-      disabledHostIds: [],
+      disabledHosts: [],
       ignoredWarningIds: [],
     },
   }
@@ -34,10 +34,14 @@ describe('compatibility policy mutations', () => {
 
     expect(disabled).not.toBe(input)
     expect(disabled.compatibilityPolicy).not.toBe(input.compatibilityPolicy)
-    expect(disabled.compatibilityPolicy?.disabledHostIds).toEqual(['server:1'])
-    expect(input.compatibilityPolicy?.disabledHostIds).toEqual([])
-    expect(enabled.compatibilityPolicy?.disabledHostIds).toEqual([])
-    expect(disabled.compatibilityPolicy?.disabledHostIds).toEqual(['server:1'])
+    expect(disabled.compatibilityPolicy?.disabledHosts).toEqual([
+      { hostType: 'server', hostId: 1 },
+    ])
+    expect(input.compatibilityPolicy?.disabledHosts).toEqual([])
+    expect(enabled.compatibilityPolicy?.disabledHosts).toEqual([])
+    expect(disabled.compatibilityPolicy?.disabledHosts).toEqual([
+      { hostType: 'server', hostId: 1 },
+    ])
   })
 
   it('ignores and unignores warnings without changing disabled hosts or prior states', () => {
@@ -46,11 +50,13 @@ describe('compatibility policy mutations', () => {
     const ignored = setAuditWarningIgnored(disabled, warningId, true)
     const unignored = setAuditWarningIgnored(ignored, warningId, false)
 
-    expect(ignored.compatibilityPolicy?.disabledHostIds).toEqual(['server:1'])
+    expect(ignored.compatibilityPolicy?.disabledHosts).toEqual([
+      { hostType: 'server', hostId: 1 },
+    ])
     expect(ignored.compatibilityPolicy?.ignoredWarningIds).toEqual([warningId])
     expect(disabled.compatibilityPolicy?.ignoredWarningIds).toEqual([])
     expect(unignored.compatibilityPolicy).toEqual({
-      disabledHostIds: ['server:1'],
+      disabledHosts: [{ hostType: 'server', hostId: 1 }],
       ignoredWarningIds: [],
     })
     expect(ignored.compatibilityPolicy?.ignoredWarningIds).toEqual([warningId])
@@ -63,7 +69,9 @@ describe('compatibility policy mutations', () => {
     const ignored = setAuditWarningIgnored(disabledAgain, 'warning:1', true)
     const ignoredAgain = setAuditWarningIgnored(ignored, 'warning:1', true)
 
-    expect(disabledAgain.compatibilityPolicy?.disabledHostIds).toEqual(['server:1'])
+    expect(disabledAgain.compatibilityPolicy?.disabledHosts).toEqual([
+      { hostType: 'server', hostId: 1 },
+    ])
     expect(ignoredAgain.compatibilityPolicy?.ignoredWarningIds).toEqual(['warning:1'])
     expect(input.compatibilityPolicy).toBeUndefined()
   })
@@ -71,7 +79,7 @@ describe('compatibility policy mutations', () => {
   it('clears ignored warnings while preserving disabled hosts and prior states', () => {
     const input = project()
     input.compatibilityPolicy = {
-      disabledHostIds: ['server:1'],
+      disabledHosts: [{ hostType: 'server', hostId: 1 }],
       ignoredWarningIds: ['warning:1'],
     }
 
@@ -80,7 +88,7 @@ describe('compatibility policy mutations', () => {
     expect(cleared).not.toBe(input)
     expect(cleared.compatibilityPolicy).not.toBe(input.compatibilityPolicy)
     expect(cleared.compatibilityPolicy).toEqual({
-      disabledHostIds: ['server:1'],
+      disabledHosts: [{ hostType: 'server', hostId: 1 }],
       ignoredWarningIds: [],
     })
     expect(input.compatibilityPolicy?.ignoredWarningIds).toEqual(['warning:1'])
@@ -89,7 +97,7 @@ describe('compatibility policy mutations', () => {
   it('enables compatibility for every host while preserving ignored warnings', () => {
     const input = project()
     input.compatibilityPolicy = {
-      disabledHostIds: ['server:1'],
+      disabledHosts: [{ hostType: 'server', hostId: 1 }],
       ignoredWarningIds: ['warning:1'],
     }
 
@@ -98,21 +106,23 @@ describe('compatibility policy mutations', () => {
     expect(enabled).not.toBe(input)
     expect(enabled.compatibilityPolicy).not.toBe(input.compatibilityPolicy)
     expect(enabled.compatibilityPolicy).toEqual({
-      disabledHostIds: [],
+      disabledHosts: [],
       ignoredWarningIds: ['warning:1'],
     })
-    expect(input.compatibilityPolicy?.disabledHostIds).toEqual(['server:1'])
+    expect(input.compatibilityPolicy?.disabledHosts).toEqual([
+      { hostType: 'server', hostId: 1 },
+    ])
   })
 
   it('normalizes legacy projects for bulk policy actions', () => {
     const input = { ...project(), compatibilityPolicy: undefined }
 
     expect(clearIgnoredAuditWarnings(input).compatibilityPolicy).toEqual({
-      disabledHostIds: [],
+      disabledHosts: [],
       ignoredWarningIds: [],
     })
     expect(enableCompatibilityForAllHosts(input).compatibilityPolicy).toEqual({
-      disabledHostIds: [],
+      disabledHosts: [],
       ignoredWarningIds: [],
     })
     expect(input.compatibilityPolicy).toBeUndefined()

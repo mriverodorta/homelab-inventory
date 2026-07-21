@@ -3,10 +3,12 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import App from '@/App'
-import type { ProjectState } from '@/types/inventory'
+import type { InventoryItem, InventoryProperties, ProjectState } from '@/types/inventory'
 
-const { saveProjectMock } = vi.hoisted(() => ({
+const { saveProjectMock, updateInventoryItemMock, updateInventoryItemPropertiesMock } = vi.hoisted(() => ({
   saveProjectMock: vi.fn(),
+  updateInventoryItemMock: vi.fn(),
+  updateInventoryItemPropertiesMock: vi.fn(),
 }))
 
 vi.mock('@/lib/db', () => ({
@@ -18,7 +20,8 @@ vi.mock('@/lib/db', () => ({
   loadProject: vi.fn(),
   restoreInventoryItems: vi.fn(),
   saveProject: saveProjectMock,
-  updateInventoryItem: vi.fn(),
+  updateInventoryItem: updateInventoryItemMock,
+  updateInventoryItemProperties: updateInventoryItemPropertiesMock,
 }))
 
 vi.mock('@/components/desktop-inventory-shell', () => ({
@@ -58,21 +61,26 @@ vi.mock('@/components/inspector-panel', () => ({
     project,
     persistenceWarning,
     onUpdateProject,
+    onUpdateItem,
+    onUpdateItemProperties,
   }: {
     project: ProjectState
     persistenceWarning: string | null
     onUpdateProject: (project: ProjectState) => void
+    onUpdateItem: (itemId: string, input: Omit<InventoryItem, 'id' | 'key'>) => Promise<void>
+    onUpdateItemProperties: (itemId: string, properties: InventoryProperties) => Promise<void>
   }) => (
     <div>
+      <div data-testid="item-name">{project.items['server:1']?.name}</div>
       <div data-testid="disabled-hosts">
-        {project.compatibilityPolicy?.disabledHostIds.join(',') || 'enabled'}
+        {project.compatibilityPolicy?.disabledHosts.map((host) => `${host.hostType}:${host.hostId}`).join(',') || 'enabled'}
       </div>
       <button
         type="button"
         onClick={() => onUpdateProject({
           ...project,
           compatibilityPolicy: {
-            disabledHostIds: ['server'],
+            disabledHosts: [{ hostType: 'server', hostId: 1 }],
             ignoredWarningIds: [],
           },
         })}
@@ -84,12 +92,29 @@ vi.mock('@/components/inspector-panel', () => ({
         onClick={() => onUpdateProject({
           ...project,
           compatibilityPolicy: {
-            disabledHostIds: [],
+            disabledHosts: [],
             ignoredWarningIds: [],
           },
         })}
       >
         Enable compatibility
+      </button>
+      <button
+        type="button"
+        onClick={() => void onUpdateItem('server:1', {
+          name: 'Updated server',
+          type: 'server',
+        })}
+      >
+        Update inventory item
+      </button>
+      <button
+        type="button"
+        onClick={() => void onUpdateItemProperties('server:1', {
+          canvasOrientation: 'vertical',
+        })}
+      >
+        Update inventory properties
       </button>
       {persistenceWarning ? <div role="alert">{persistenceWarning}</div> : null}
     </div>
@@ -111,8 +136,9 @@ const persistedProject: ProjectState = {
     updatedAt: '2026-07-19T00:00:00.000Z',
   },
   items: {
-    server: {
-      id: 'server',
+    'server:1': {
+      id: 1,
+      key: 'server:1',
       name: 'Test server',
       type: 'server',
     },
@@ -121,7 +147,7 @@ const persistedProject: ProjectState = {
   assignments: [],
   connections: [],
   compatibilityPolicy: {
-    disabledHostIds: [],
+    disabledHosts: [],
     ignoredWarningIds: [],
   },
 }
@@ -182,6 +208,78 @@ afterEach(() => {
 })
 
 describe('App project persistence', () => {
+  it('records persisted inventory item updates in Undo and Redo history', async () => {
+    const updatedProject: ProjectState = {
+      ...persistedProject,
+      items: {
+        ...persistedProject.items,
+        'server:1': {
+          ...persistedProject.items['server:1'],
+          name: 'Updated server',
+        },
+      },
+    }
+    updateInventoryItemMock.mockResolvedValueOnce(updatedProject)
+    saveProjectMock.mockImplementation(async (project: ProjectState) => project)
+    renderApp()
+
+    expect(await screen.findByTestId('item-name')).toHaveTextContent('Test server')
+    expect(screen.getByRole('button', { name: 'Undo' })).toBeDisabled()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Update inventory item' }))
+
+    expect(await screen.findByTestId('item-name')).toHaveTextContent('Updated server')
+    expect(screen.getByRole('button', { name: 'Undo' })).toBeEnabled()
+
+    vi.useFakeTimers()
+    fireEvent.click(screen.getByRole('button', { name: 'Undo' }))
+    expect(screen.getByTestId('item-name')).toHaveTextContent('Test server')
+    expect(screen.getByRole('button', { name: 'Redo' })).toBeEnabled()
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(500)
+    })
+    expect(saveProjectMock.mock.calls[0]?.[0].items['server:1']?.name).toBe('Test server')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Redo' }))
+    expect(screen.getByTestId('item-name')).toHaveTextContent('Updated server')
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(500)
+    })
+    expect(saveProjectMock.mock.calls[1]?.[0].items['server:1']?.name).toBe('Updated server')
+  })
+
+  it('records property-only inventory updates in Undo history', async () => {
+    const updatedProject: ProjectState = {
+      ...persistedProject,
+      items: {
+        ...persistedProject.items,
+        'server:1': {
+          ...persistedProject.items['server:1'],
+          properties: { canvasOrientation: 'vertical' },
+        },
+      },
+    }
+    updateInventoryItemPropertiesMock.mockResolvedValueOnce(updatedProject)
+    renderApp()
+
+    expect(await screen.findByTestId('item-name')).toHaveTextContent('Test server')
+    fireEvent.click(screen.getByRole('button', { name: 'Update inventory properties' }))
+
+    await act(async () => {
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    expect(updateInventoryItemPropertiesMock).toHaveBeenCalledWith(
+      { type: 'server', id: 1 },
+      { canvasOrientation: 'vertical' },
+    )
+    expect(updateInventoryItemMock).not.toHaveBeenCalled()
+    expect(screen.getByRole('button', { name: 'Undo' })).toBeEnabled()
+  })
+
   it('rolls a rejected debounced save back to the last confirmed project', async () => {
     saveProjectMock.mockRejectedValueOnce(new Error('Project save rejected.'))
     renderApp()
@@ -197,7 +295,7 @@ describe('App project persistence', () => {
     })
 
     expect(saveProjectMock.mock.calls[0]?.[0]).toEqual(expect.objectContaining({
-      compatibilityPolicy: expect.objectContaining({ disabledHostIds: ['server'] }),
+      compatibilityPolicy: expect.objectContaining({ disabledHosts: [{ hostType: 'server', hostId: 1 }] }),
     }))
     expect(screen.getByTestId('disabled-hosts')).toHaveTextContent('enabled')
     expect(screen.getByRole('alert')).toHaveTextContent('Project save rejected.')
@@ -245,7 +343,7 @@ describe('App project persistence', () => {
 
     expect(saveProjectMock).toHaveBeenCalledTimes(2)
     expect(saveProjectMock.mock.calls[1]?.[0]).toEqual(expect.objectContaining({
-      compatibilityPolicy: expect.objectContaining({ disabledHostIds: [] }),
+      compatibilityPolicy: expect.objectContaining({ disabledHosts: [] }),
     }))
     expect(screen.getByTestId('disabled-hosts')).toHaveTextContent('server')
     expect(screen.getByRole('alert')).toHaveTextContent('Save B rejected.')

@@ -9,38 +9,38 @@ function archived(item: InventoryItem): InventoryItem {
   }
 }
 
-const availableCpu: InventoryItem = { id: 'cpu-available', name: 'Available CPU', type: 'cpu' }
-const assignedCpu: InventoryItem = { id: 'cpu-assigned', name: 'Assigned CPU', type: 'cpu' }
-const activeServer: InventoryItem = { id: 'server-active', name: 'Active Server', type: 'server' }
-const archivedCpu = archived({ id: 'cpu-archived', name: 'Archived CPU', type: 'cpu' })
-const archivedServer = archived({ id: 'server-archived', name: 'Archived Server', type: 'server' })
+const availableCpu: InventoryItem = { id: 1, key: 'cpu:1', name: 'Available CPU', type: 'cpu' }
+const assignedCpu: InventoryItem = { id: 2, key: 'cpu:2', name: 'Assigned CPU', type: 'cpu' }
+const activeServer: InventoryItem = { id: 1, key: 'server:1', name: 'Active Server', type: 'server' }
+const archivedCpu = archived({ id: 3, key: 'cpu:3', name: 'Archived CPU', type: 'cpu' })
+const archivedServer = archived({ id: 2, key: 'server:2', name: 'Archived Server', type: 'server' })
 
 const project: ProjectState = {
   id: 'default',
   metadata: { name: 'Test', version: 1, updatedAt: '2026-07-19T12:00:00.000Z' },
   items: {
-    'cpu-available': availableCpu,
-    'cpu-assigned': assignedCpu,
-    'server-active': activeServer,
-    'cpu-archived': archivedCpu,
-    'server-archived': archivedServer,
+    'cpu:1': availableCpu,
+    'cpu:2': assignedCpu,
+    'server:1': activeServer,
+    'cpu:3': archivedCpu,
+    'server:2': archivedServer,
   },
   placements: [
-    { serverId: 'server-active', x: 0, y: 0 },
-    { serverId: 'server-archived', x: 400, y: 0 },
+    { serverId: 'server:1', x: 0, y: 0 },
+    { serverId: 'server:2', x: 400, y: 0 },
   ],
   assignments: [
     {
       id: 1,
-      serverId: 'server-active',
-      itemId: 'cpu-assigned',
+      serverId: 'server:1',
+      itemId: 'cpu:2',
       type: 'cpu',
       assignedAt: '2026-07-19T12:00:00.000Z',
     },
     {
       id: 2,
-      serverId: 'server-active',
-      itemId: 'cpu-archived',
+      serverId: 'server:1',
+      itemId: 'cpu:3',
       type: 'cpu',
       assignedAt: '2026-07-19T12:00:00.000Z',
     },

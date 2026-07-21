@@ -1,7 +1,7 @@
 export type AgentState = 'unregistered' | 'unknown' | 'online' | 'stale' | 'offline'
 
 export type AgentServerStatus = {
-  serverId: string | number
+  serverId: number
   state: AgentState
   connected: boolean
   ageMs: number | null
@@ -30,11 +30,11 @@ export type AgentServerStatus = {
 
 export type AgentStatusSummary = {
   servers: Record<string, AgentServerStatus>
-  registeredServerIds: Array<string | number>
+  registeredServerIds: number[]
 }
 
 export type AgentEnrollmentResponse = {
-  enrollmentId: string
+  enrollmentId: number
   expiresAt: string
   endpoint: string
   installCommand: string

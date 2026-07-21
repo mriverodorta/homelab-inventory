@@ -8,3 +8,15 @@ export function nextNumericId(existingIds: Array<string | number | null | undefi
 
   return nextId
 }
+
+export function isRelationalId(value: unknown): value is number {
+  return typeof value === 'number' && Number.isSafeInteger(value) && value > 0
+}
+
+export function assertRelationalId(value: unknown, field: string): number {
+  if (!isRelationalId(value)) {
+    throw new Error(`${field} must be a positive safe-integer relational ID.`)
+  }
+
+  return value
+}

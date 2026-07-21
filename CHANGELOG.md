@@ -14,6 +14,75 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 - Added repository documentation, issue templates, CI, and security guidance.
 - Clarified Docker deployment, data persistence, and development setup.
 
+## [0.1.38] - 2026-07-21
+
+### Added
+
+- Added a persisted per-item horizontal or vertical canvas orientation for UPS and power-strip equipment.
+- Added an Inspector control that swaps UPS battery-backed and surge-only groups between rows in horizontal layouts or columns in vertical layouts.
+- Added Undo and Redo history support for persisted power-equipment layout edits.
+
+### Fixed
+
+- Matched collision, auto-arrange, centering, and minimap geometry to the rendered dimensions of power equipment in either orientation.
+- Improved the Inspector layout selector with explicit single-choice semantics and mobile-friendly interaction targets.
+- Ordered immediate Inspector saves so rapid layout changes cannot be overwritten by an older response.
+- Preserved UPS and power-strip ports and connections exactly when changing canvas orientation or UPS outlet-group order.
+
+## [0.1.37] - 2026-07-21
+
+### Changed
+
+- Precomputed canvas audit, endpoint, power-topology, and cable-handle indexes once per project revision.
+- Mounted only the active Inspector tab instead of keeping every hidden tab in the DOM.
+- Reused unchanged React Flow nodes and stable interaction callbacks across transient selections and endpoint drags.
+- Enabled viewport culling so offscreen equipment does not remain mounted in the live canvas DOM.
+
+### Fixed
+
+- Reduced the live project from 1,928 React Flow handles to the 68 handles required by persisted cable routes.
+- Removed default cable drop shadows from unselected connections to reduce SVG paint work.
+- Updated dynamic React Flow node internals when persisted cable handles change.
+
+## [0.1.36] - 2026-07-21
+
+### Changed
+
+- Existing UPS and power equipment now receive persisted numeric power ports automatically when their database upgrades to schema 11.
+
+### Fixed
+
+- UPS outlet chips now resolve as real power endpoints when connecting power strips instead of producing a mixed-endpoint validation error.
+- UPS records that only declare a total outlet count now receive conservative surge-only endpoints, while monitor display ports and other non-power ports remain intact.
+
+### Data migration
+
+- Schema 11 creates a backup before repairing incomplete power-port topology records.
+
+## [0.1.35] - 2026-07-21
+
+### Changed
+
+- Moved the power strip's single AC input connector into the canvas card header beside the drag grip.
+- Removed the redundant dedicated power-input row without changing endpoint identity or cable behavior.
+
+## [0.1.34] - 2026-07-20
+
+### Changed
+
+- Converted persisted inventory, project, agent, power endpoint, and compatibility relationships to positive numeric identifiers.
+- Separated stable semantic resource keys from numeric relational IDs and kept typed string keys confined to runtime UI adapters.
+
+### Fixed
+
+- Schema 10 now rejects unresolved, ambiguous, duplicate, and colliding legacy relationships rather than silently associating the wrong records.
+- Current store writes use strict relational validation while legacy imports and migrations retain a dedicated normalization path.
+
+### Data migration
+
+- A pre-migration backup is created before schema 10 converts existing stores.
+- Compatibility allocations, power connections, agent records, and hosted component assignments are migrated together so their foreign-key relationships remain intact.
+
 ## [0.1.33] - 2026-07-20
 
 ### Added

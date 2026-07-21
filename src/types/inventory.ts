@@ -49,7 +49,7 @@ export type ComponentType =
   | 'soundCard'
   | 'wireless'
   | 'powerAdapter'
-export type InventoryPortKind = 'switch-port' | 'keystone' | 'server-port'
+export type InventoryPortKind = 'switch-port' | 'keystone' | 'server-port' | 'power-port'
 export type InventoryPortType =
   | 'rj45'
   | 'sfp'
@@ -58,16 +58,19 @@ export type InventoryPortType =
   | 'displayport'
   | 'mini-displayport'
   | 'barrel'
+  | 'ac-input'
+  | 'ac-outlet'
 export type InventoryPortSide = 'front' | 'back'
 export type InventoryPortRole = 'access' | 'trunk' | 'uplink' | 'management' | 'disabled'
 
 export type InventoryPortEndpoint = {
-  id: string | number
+  id: number
   side: InventoryPortSide
 }
 
 export type InventoryPort = {
-  id: string | number
+  id: number
+  key?: string
   kind: InventoryPortKind
   type: InventoryPortType
   slotNumber: number
@@ -82,8 +85,8 @@ export type InventoryPort = {
 
 export type ConnectionEndpoint = {
   itemId: string
-  portId: string | number
-  endpointId?: string | number
+  portId: number
+  endpointId?: number
   hostedItemId?: string
 }
 
@@ -102,7 +105,7 @@ export type ConnectionRoutePreferences = {
 }
 
 export type InventoryConnection = {
-  id: string | number
+  id: number
   from: ConnectionEndpoint
   to: ConnectionEndpoint
   type: InventoryConnectionType
@@ -113,7 +116,7 @@ export type InventoryConnection = {
 }
 
 export type InventoryItem = {
-  id: string | number
+  id: number
   key?: string
   name: string
   type: InventoryType
@@ -138,7 +141,7 @@ export type ServerPlacement = {
 }
 
 export type ComponentAssignment = {
-  id: string | number
+  id: number
   serverId: string
   itemId: string
   type: ComponentType
@@ -152,8 +155,13 @@ export type ProjectMetadata = {
   updatedAt: string
 }
 
+export type CompatibilityHostRef = {
+  hostType: HostType
+  hostId: number
+}
+
 export type CompatibilityPolicy = {
-  disabledHostIds: string[]
+  disabledHosts: CompatibilityHostRef[]
   ignoredWarningIds: string[]
 }
 

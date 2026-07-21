@@ -186,7 +186,7 @@ describe('compatibility normalization', () => {
             },
             storageSlots: [
               {
-                id: 'm2',
+                id: 1, key: 'm2',
                 label: 'M.2 Slot',
                 count: '1' as never,
                 interfaces: ['NVMe'],
@@ -194,13 +194,14 @@ describe('compatibility normalization', () => {
                 pcieGeneration: '4' as never,
               },
               {
-                id: 'bay',
+                id: 14, key: 'bay',
                 label: 'Drive Bay',
                 count: false as never,
                 pcieGeneration: { value: 3 } as never,
               },
               {
-                id: 'array-values',
+                id: 23,
+                key: 'array-values',
                 label: 'Malformed Slot',
                 count: [1] as never,
                 pcieGeneration: [4] as never,
@@ -208,7 +209,7 @@ describe('compatibility normalization', () => {
             ],
             expansionSlots: [
               {
-                id: 'pcie',
+                id: 4, key: 'pcie',
                 label: 'PCIe Slot',
                 interfaceFamily: 'pcie',
                 count: '1' as never,
@@ -228,19 +229,19 @@ describe('compatibility normalization', () => {
       memory: { generations: ['DDR4'], slots: 2, maxCapacityGb: 64 },
       storageSlots: [
         {
-          id: 'm2',
+          id: 1, key: 'm2',
           label: 'M.2 Slot',
           count: 1,
           interfaces: ['NVMe'],
           formFactors: ['2280'],
           pcieGeneration: 4,
         },
-        { id: 'bay', label: 'Drive Bay' },
-        { id: 'array-values', label: 'Malformed Slot' },
+        { id: 14, key: 'bay', label: 'Drive Bay' },
+        { id: 23, key: 'array-values', label: 'Malformed Slot' },
       ],
       expansionSlots: [
         {
-          id: 'pcie',
+          id: 4, key: 'pcie',
           label: 'PCIe Slot',
           interfaceFamily: 'pcie',
           count: 1,

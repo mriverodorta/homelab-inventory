@@ -1,6 +1,7 @@
 import {
   Activity,
   AlertTriangle,
+  ArrowLeftRight,
   ArrowUpDown,
   Cable,
   Copy,
@@ -91,6 +92,14 @@ import {
   getPatchPanelRowOrderValue,
   getSwappedPatchPanelRowOrderValue,
 } from '@/lib/patch-panel'
+import {
+  POWER_EQUIPMENT_ORIENTATION_PROPERTY,
+  UPS_OUTLET_GROUP_ORDER_PROPERTY,
+  getPowerEquipmentOrientation,
+  getSwappedUpsOutletGroupOrder,
+  getUpsOutletGroupOrder,
+  type PowerEquipmentOrientation,
+} from '@/lib/power-equipment-layout'
 import {
   getItemNetworkTraces,
   getPatchPanelNetworkTraces,
@@ -256,7 +265,7 @@ function InspectorTabs({
       </TabsList>
       {status}
       {tabs.map((tab) => (
-        <TabsContent key={tab.value} value={tab.value} forceMount className="m-0 min-w-0 space-y-4">
+        <TabsContent key={tab.value} value={tab.value} className="m-0 min-w-0 space-y-4">
           {tab.content}
         </TabsContent>
       ))}
@@ -349,9 +358,9 @@ function agentStateTone(state: AgentState): string {
 
 function getServerAgentStatus(
   summary: AgentStatusSummary | null,
-  serverId: string,
+  serverId: number,
 ): AgentServerStatus {
-  const existing = summary?.servers[serverId]
+  const existing = summary?.servers[String(serverId)]
 
   if (existing) {
     return existing
@@ -939,6 +948,92 @@ function PatchPanelRowDisplayControls({
           <ArrowUpDown className="size-4" />
           Swap Rows
         </Button>
+      </div>
+    </InspectorSection>
+  )
+}
+
+function PowerEquipmentLayoutControls({
+  item,
+  disabled = false,
+  onUpdateProperties,
+}: {
+  item: InventoryItem
+  disabled?: boolean
+  onUpdateProperties: (properties: InventoryProperties) => void
+}) {
+  if (item.type !== 'ups' && item.type !== 'powerStrip') {
+    return null
+  }
+
+  const orientation = getPowerEquipmentOrientation(item)
+  const vertical = orientation === 'vertical'
+  const order = item.type === 'ups' ? getUpsOutletGroupOrder(item) : null
+  const orderDescription = order === 'surge-battery'
+    ? (vertical ? 'Surge left, battery right' : 'Surge top, battery bottom')
+    : (vertical ? 'Battery left, surge right' : 'Battery top, surge bottom')
+  const setOrientation = (next: PowerEquipmentOrientation) => {
+    onUpdateProperties({ [POWER_EQUIPMENT_ORIENTATION_PROPERTY]: next })
+  }
+  const itemKey = runtimeItemKey(item).replace(/[^a-zA-Z0-9_-]/g, '-')
+  const radioGroupName = `power-equipment-orientation-${itemKey}`
+  const orientationLegendId = `${radioGroupName}-legend`
+
+  return (
+    <InspectorSection title="Canvas Layout" icon={vertical ? ArrowLeftRight : ArrowUpDown}>
+      <div className="grid gap-4">
+        <fieldset role="radiogroup" aria-labelledby={orientationLegendId}>
+          <legend id={orientationLegendId} className={cn(labelClass, 'mb-2 text-[9px]')}>
+            Orientation
+          </legend>
+          <div className="grid grid-cols-2 overflow-hidden rounded-md border border-[#e5dccf] bg-[#f8f3eb] p-1">
+            {(['horizontal', 'vertical'] as const).map((value) => {
+              const inputId = `${radioGroupName}-${value}`
+
+              return (
+                <div key={value} className="relative">
+                  <input
+                    id={inputId}
+                    type="radio"
+                    name={radioGroupName}
+                    value={value}
+                    checked={orientation === value}
+                    disabled={disabled}
+                    className="peer sr-only"
+                    onChange={() => setOrientation(value)}
+                  />
+                  <label
+                    htmlFor={inputId}
+                    className="flex h-11 cursor-pointer items-center justify-center rounded-sm text-sm font-semibold text-[#75695d] transition-colors peer-checked:bg-[#20242c] peer-checked:text-[#fffdf8] peer-focus-visible:ring-2 peer-focus-visible:ring-[#ddb668] peer-focus-visible:ring-offset-1 peer-disabled:cursor-not-allowed peer-disabled:opacity-60"
+                  >
+                    {value === 'horizontal' ? 'Horizontal' : 'Vertical'}
+                  </label>
+                </div>
+              )
+            })}
+          </div>
+        </fieldset>
+
+        {item.type === 'ups' ? (
+          <div className="grid gap-3">
+            <div className="rounded-md border border-[#eee6db] bg-[#f8f3eb] p-3">
+              <div className={cn(labelClass, 'text-[9px]')}>Outlet group order</div>
+              <div className="mt-1 text-sm font-black text-[#20242c]">{orderDescription}</div>
+            </div>
+            <Button
+              type="button"
+              variant="outline"
+              className="h-11 justify-center gap-2"
+              disabled={disabled}
+              onClick={() => onUpdateProperties({
+                [UPS_OUTLET_GROUP_ORDER_PROPERTY]: getSwappedUpsOutletGroupOrder(item),
+              })}
+            >
+              {vertical ? <ArrowLeftRight className="size-4" /> : <ArrowUpDown className="size-4" />}
+              {vertical ? 'Swap Columns' : 'Swap Rows'}
+            </Button>
+          </div>
+        ) : null}
       </div>
     </InspectorSection>
   )
@@ -2262,8 +2357,8 @@ function ServerInspectorTabs({
     onSave: (input) => onUpdateItem(runtimeItemKey(server), input),
   })
   const draftServer = itemFromEditorValues(server, editor.values)
-  const status = getServerAgentStatus(agentStatus, String(server.id))
-  const registered = agentStatus?.registeredServerIds.some((serverId) => String(serverId) === String(server.id)) ?? false
+  const status = getServerAgentStatus(agentStatus, server.id)
+  const registered = agentStatus?.registeredServerIds.includes(server.id) ?? false
   const hasSavedStatus = Boolean(agentStatus?.servers[String(server.id)])
   const handlePortsUpdate = (ports: InventoryPort[]) => updateEditorPorts(editor, ports)
 
@@ -3091,8 +3186,8 @@ function PcBuildInspectorTabs({
     onSave: (input) => onUpdateItem(runtimeItemKey(item), input),
   })
   const draftItem = itemFromEditorValues(item, editor.values)
-  const status = getServerAgentStatus(agentStatus, String(item.id))
-  const registered = agentStatus?.registeredServerIds.some((id) => String(id) === String(item.id)) ?? false
+  const status = getServerAgentStatus(agentStatus, item.id)
+  const registered = agentStatus?.registeredServerIds.includes(item.id) ?? false
   const hasSavedStatus = Boolean(agentStatus?.servers[String(item.id)])
 
   return (
@@ -3191,6 +3286,7 @@ function StandalonePowerEquipmentTabs({
   pendingEndpoint,
   auditWarnings,
   onUpdateItem,
+  onUpdateItemProperties,
   onEndpointConnectionClick,
   onUpdateConnectionLabel,
   onRemoveConnection,
@@ -3200,27 +3296,71 @@ function StandalonePowerEquipmentTabs({
   pendingEndpoint: ConnectionEndpoint | null
   auditWarnings: AuditWarning[]
   onUpdateItem: (itemId: string, input: InventoryItemInput) => void
+  onUpdateItemProperties: (
+    itemId: string,
+    properties: InventoryProperties,
+  ) => void | Promise<void>
   onEndpointConnectionClick: (endpoint: ConnectionEndpoint) => void
   onUpdateConnectionLabel: (connectionId: string | number, label: string) => void
   onRemoveConnection: (connectionId: string | number) => void
 }) {
   const editor = useInventoryItemEditor({ item, onSave: (input) => onUpdateItem(runtimeItemKey(item), input) })
   const draftItem = itemFromEditorValues(item, editor.values)
+  const [layoutProperties, setLayoutProperties] = useState<InventoryProperties>(item.properties ?? {})
+  const [layoutSaving, setLayoutSaving] = useState(false)
+  const [layoutSaveError, setLayoutSaveError] = useState<string | null>(null)
+  const layoutItem = { ...draftItem, properties: layoutProperties }
   const inspectedItem = item.type === 'monitor'
     ? { ...draftItem, ports: draftItem.ports ?? item.ports }
     : draftItem
   const handlePortsUpdate = (ports: InventoryPort[]) => updateEditorPorts(editor, ports)
+  const updateProperties = async (properties: InventoryProperties) => {
+    const nextProperties = { ...layoutProperties, ...properties }
+    setLayoutProperties(nextProperties)
+    setLayoutSaving(true)
+    setLayoutSaveError(null)
+
+    try {
+      await onUpdateItemProperties(runtimeItemKey(item), nextProperties)
+    } catch (error) {
+      setLayoutProperties(item.properties ?? {})
+      setLayoutSaveError(error instanceof Error ? error.message : 'Layout could not be saved.')
+    } finally {
+      setLayoutSaving(false)
+    }
+  }
+
+  useEffect(() => {
+    setLayoutProperties(item.properties ?? {})
+  }, [item.properties])
+  const tabSignature = item.type === 'monitor'
+    ? 'specs|ports'
+    : 'specs|layout|outlets'
 
   return (
     <InspectorTabs
+      key={tabSignature}
       defaultValue="specs"
-      status={<InventoryFormStatus saveError={editor.saveError} />}
+      status={<InventoryFormStatus saveError={editor.saveError ?? layoutSaveError} />}
       tabs={[
         {
           value: 'specs',
           label: 'Specs',
           content: <EditableSpecsSection title={`${itemTypeLabel(item.type)} Details`} editor={editor} auditWarnings={auditWarnings} />,
         },
+        ...(item.type === 'ups' || item.type === 'powerStrip'
+          ? [{
+              value: 'layout',
+              label: 'Layout',
+              content: (
+                <PowerEquipmentLayoutControls
+                  item={layoutItem}
+                  disabled={layoutSaving}
+                  onUpdateProperties={updateProperties}
+                />
+              ),
+            } satisfies InspectorTab]
+          : []),
         {
           value: item.type === 'monitor' ? 'ports' : 'outlets',
           label: item.type === 'monitor' ? 'Ports' : 'Outlets',
@@ -3350,6 +3490,7 @@ export function InspectorPanel({
   onClose,
   onUpdateProject,
   onUpdateItem,
+  onUpdateItemProperties = () => undefined,
   onDuplicateItem = () => undefined,
   onArchiveItem = () => undefined,
   onReturnItemToInventory,
@@ -3376,6 +3517,10 @@ export function InspectorPanel({
   onClose: () => void
   onUpdateProject: (project: ProjectState) => void
   onUpdateItem: (itemId: string, input: InventoryItemInput) => void
+  onUpdateItemProperties?: (
+    itemId: string,
+    properties: InventoryProperties,
+  ) => void | Promise<void>
   onDuplicateItem?: (item: InventoryItem) => void
   onArchiveItem?: (item: InventoryItem) => void
   onReturnItemToInventory?: (runtimeItemId: string) => void
@@ -3591,6 +3736,7 @@ export function InspectorPanel({
                   pendingEndpoint={pendingConnectionEndpoint}
                   auditWarnings={auditWarnings}
                   onUpdateItem={onUpdateItem}
+                  onUpdateItemProperties={onUpdateItemProperties}
                   onEndpointConnectionClick={onEndpointConnectionClick}
                   onUpdateConnectionLabel={onUpdateConnectionLabel}
                   onRemoveConnection={onRemoveConnection}

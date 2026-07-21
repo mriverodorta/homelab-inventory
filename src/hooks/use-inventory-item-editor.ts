@@ -32,7 +32,15 @@ export type InventoryItemEditor = {
 type SubmittedDraft = {
   fingerprint: string
   generation: number
+  itemKey: string
   revision: number
+  status: 'queued' | 'active' | 'completed'
+}
+
+type QueuedSave = {
+  input: InventoryItemInput
+  onSave: UseInventoryItemEditorOptions['onSave']
+  submission: SubmittedDraft
 }
 
 function stableSerialize(value: unknown): string {
@@ -93,7 +101,10 @@ export function useInventoryItemEditor({
   const mountedRef = useRef(true)
   const generationRef = useRef(0)
   const revisionRef = useRef(0)
-  const submittedDraftRef = useRef<SubmittedDraft | null>(null)
+  const submittedDraftsRef = useRef<SubmittedDraft[]>([])
+  const saveQueueRef = useRef<QueuedSave[]>([])
+  const saveInFlightRef = useRef(false)
+  const drainSaveQueueRef = useRef<() => void>(() => undefined)
 
   debounceMsRef.current = debounceMs
 
@@ -103,6 +114,39 @@ export function useInventoryItemEditor({
       timerRef.current = null
     }
   }, [])
+
+  drainSaveQueueRef.current = () => {
+    if (saveInFlightRef.current) {
+      return
+    }
+
+    const queuedSave = saveQueueRef.current.shift()
+    if (queuedSave === undefined) {
+      return
+    }
+
+    saveInFlightRef.current = true
+    queuedSave.submission.status = 'active'
+
+    void (async () => {
+      try {
+        await queuedSave.onSave(queuedSave.input)
+        queuedSave.submission.status = 'completed'
+      } catch (error) {
+        submittedDraftsRef.current = submittedDraftsRef.current.filter(
+          (submission) => submission !== queuedSave.submission,
+        )
+        if (mountedRef.current
+          && generationRef.current === queuedSave.submission.generation
+          && revisionRef.current === queuedSave.submission.revision) {
+          setSaveError(saveErrorMessage(error))
+        }
+      } finally {
+        saveInFlightRef.current = false
+        drainSaveQueueRef.current()
+      }
+    })()
+  }
 
   const persistDraft = useCallback(async (
     draft: InventoryFormValues,
@@ -135,22 +179,18 @@ export function useInventoryItemEditor({
     const submission: SubmittedDraft = {
       fingerprint: stableSerialize(input),
       generation,
+      itemKey: itemKeyRef.current,
       revision,
+      status: 'queued',
     }
-    submittedDraftRef.current = submission
 
-    try {
-      await onSaveRef.current(input)
-    } catch (error) {
-      if (submittedDraftRef.current === submission) {
-        submittedDraftRef.current = null
-      }
-      if (mountedRef.current
-        && generationRef.current === generation
-        && revisionRef.current === revision) {
-        setSaveError(saveErrorMessage(error))
-      }
-    }
+    submittedDraftsRef.current.push(submission)
+    saveQueueRef.current.push({
+      input,
+      onSave: onSaveRef.current,
+      submission,
+    })
+    drainSaveQueueRef.current()
   }, [])
 
   const flushPendingSave = useCallback(() => {
@@ -174,7 +214,6 @@ export function useInventoryItemEditor({
       flushPendingSave()
       mountedRef.current = false
       generationRef.current += 1
-      submittedDraftRef.current = null
     }
   }, [flushPendingSave])
 
@@ -189,24 +228,44 @@ export function useInventoryItemEditor({
 
     const nextValues = inventoryItemToFormValues(item)
     const itemChanged = nextItemKey !== itemKeyRef.current
-    const submittedDraft = submittedDraftRef.current
-    const acknowledgesSubmittedDraft = !itemChanged
+    const submittedDraft = submittedDraftsRef.current
+      .filter((submission) => submission.status !== 'queued'
+        && submission.itemKey === nextItemKey
+        && submission.fingerprint === nextFingerprint)
+      .reduce<SubmittedDraft | undefined>((latest, submission) => (
+        latest === undefined || submission.revision > latest.revision
+          ? submission
+          : latest
+      ), undefined)
+
+    if (submittedDraft !== undefined) {
+      submittedDraftsRef.current = submittedDraftsRef.current.filter(
+        (submission) => submission.itemKey !== submittedDraft.itemKey
+          || submission.generation !== submittedDraft.generation
+          || submission.revision > submittedDraft.revision,
+      )
+    }
+
+    const acknowledgesCurrentDraft = !itemChanged
       && submittedDraft?.generation === generationRef.current
-      && submittedDraft.fingerprint === nextFingerprint
+
+    if (itemChanged) {
+      flushPendingSave()
+    }
 
     itemKeyRef.current = nextItemKey
     canonicalValuesRef.current = nextValues
     canonicalFingerprintRef.current = nextFingerprint
 
-    if (acknowledgesSubmittedDraft && revisionRef.current > submittedDraft.revision) {
-      submittedDraftRef.current = null
+    if (acknowledgesCurrentDraft && revisionRef.current > submittedDraft.revision) {
       return
     }
 
-    flushPendingSave()
+    if (!itemChanged) {
+      flushPendingSave()
+    }
     generationRef.current += 1
     revisionRef.current = 0
-    submittedDraftRef.current = null
     draftRef.current = nextValues
     setValues(nextValues)
     setErrors({})
@@ -251,9 +310,15 @@ export function useInventoryItemEditor({
 
   const reset = useCallback(() => {
     cancelPendingSave()
+    const discardedSubmissions = new Set(
+      saveQueueRef.current.map((queuedSave) => queuedSave.submission),
+    )
+    saveQueueRef.current = []
+    submittedDraftsRef.current = submittedDraftsRef.current.filter(
+      (submission) => !discardedSubmissions.has(submission),
+    )
     generationRef.current += 1
     revisionRef.current = 0
-    submittedDraftRef.current = null
     draftRef.current = canonicalValuesRef.current
     setValues(canonicalValuesRef.current)
     setErrors({})

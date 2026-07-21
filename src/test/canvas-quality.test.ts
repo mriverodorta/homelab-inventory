@@ -43,7 +43,7 @@ describe('canvas quality colors', () => {
 
 function cpu(number: string): InventoryItem {
   return {
-    id: `cpu-${number}`,
+    id: Number(number.match(/\d+/)?.[0] ?? 1),
     name: number,
     type: 'cpu',
     manufacturer: 'Intel',
@@ -53,7 +53,7 @@ function cpu(number: string): InventoryItem {
 
 function ram(capacityGb: number): InventoryItem {
   return {
-    id: `ram-${capacityGb}`,
+    id: capacityGb,
     name: `${capacityGb}GB`,
     type: 'ram',
     specs: { capacityGb },
@@ -62,7 +62,7 @@ function ram(capacityGb: number): InventoryItem {
 
 function storageGb(capacityGb: number): InventoryItem {
   return {
-    id: `storage-${capacityGb}gb`,
+    id: capacityGb,
     name: `${capacityGb}GB`,
     type: 'storage',
     specs: { capacityGb },
@@ -71,7 +71,7 @@ function storageGb(capacityGb: number): InventoryItem {
 
 function storageTb(capacityTb: number): InventoryItem {
   return {
-    id: `storage-${capacityTb}tb`,
+    id: capacityTb * 1024,
     name: `${capacityTb}TB`,
     type: 'storage',
     specs: { capacityTb },

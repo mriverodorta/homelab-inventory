@@ -2,6 +2,13 @@ import {
   ASSIGNABLE_COMPONENT_TYPE_SET,
   INVENTORY_TYPE_SET,
 } from './inventory-capabilities.mjs'
+import {
+  assertRelationalId,
+  isLegacyRelationalId,
+  isRelationalId,
+  parseLegacyRelationalId,
+} from './relational-ids.mjs'
+import { canonicalPowerPorts } from '../../shared/power-ports.mjs'
 
 const componentTypes = ASSIGNABLE_COMPONENT_TYPE_SET
 const inventoryTypes = INVENTORY_TYPE_SET
@@ -27,8 +34,18 @@ const tableTypes = {
   upsSystems: 'ups',
   powerStrips: 'powerStrip',
 }
-const portKinds = new Set(['switch-port', 'keystone', 'server-port'])
-const portTypes = new Set(['rj45', 'sfp', 'sfp-plus', 'hdmi', 'displayport', 'mini-displayport', 'barrel'])
+const portKinds = new Set(['switch-port', 'keystone', 'server-port', 'power-port'])
+const portTypes = new Set([
+  'rj45',
+  'sfp',
+  'sfp-plus',
+  'hdmi',
+  'displayport',
+  'mini-displayport',
+  'barrel',
+  'ac-input',
+  'ac-outlet',
+])
 const portRoles = new Set(['access', 'trunk', 'uplink', 'management', 'disabled'])
 const portSides = new Set(['front', 'back'])
 const switchNetworkPortTypes = new Set(['rj45', 'sfp', 'sfp-plus'])
@@ -44,29 +61,40 @@ const compatibilityResourceTypes = new Set([
   'case',
 ])
 const logicalCompatibilityResourceTypes = new Set(['motherboard', 'power', 'case'])
-const groupedCompatibilityResourceTypes = new Set(['cpu', 'cooling', 'storage', 'expansion'])
+const groupedCompatibilityResourceTypes = new Set(['storage', 'expansion'])
 const expansionInterfaceFamilies = new Set(['pcie', 'm2-ae', 'usb', 'onboard'])
 const cardHeights = new Set(['full-height', 'low-profile'])
+const canonicalPowerItemTypes = new Set([
+  'monitor',
+  'ups',
+  'powerStrip',
+  'powerAdapter',
+  'powerSupply',
+])
 
 function parseInventoryKey(key) {
   if (typeof key !== 'string') return null
 
   const [type, rawId] = key.split(':')
-  const id = Number(rawId)
+  if (!isLegacyRelationalId(rawId)) return null
+  const id = parseLegacyRelationalId(rawId, `inventory key ${key}`)
 
-  return inventoryTypes.has(type) && Number.isInteger(id) ? { type, id } : null
+  return inventoryTypes.has(type) && id !== undefined ? { type, id } : null
 }
 
-function canonicalSequenceId(id, index) {
-  const numericId = Number(id)
-  return Number.isInteger(numericId) ? numericId : index + 1
+function isTypedInventoryReference(type, id) {
+  return inventoryTypes.has(type) && isRelationalId(id)
+}
+
+function isRuntimeOrTypedReference(reference, type, id) {
+  return parseInventoryKey(reference) !== null || isTypedInventoryReference(type, id)
 }
 
 function assertUniqueCanonicalIds(records, collectionPath) {
   const seen = new Map()
 
   records.forEach((record, index) => {
-    const id = canonicalSequenceId(record?.id, index)
+    const id = assertRelationalId(record?.id, `${collectionPath}[${index}].id`)
     const previousIndex = seen.get(id)
     if (previousIndex !== undefined) {
       throw new Error(
@@ -95,6 +123,12 @@ function assertRequiredString(value, fieldPath) {
   if (typeof value !== 'string' || value.trim() === '') {
     throw new Error(`${fieldPath} must be a non-empty string.`)
   }
+}
+
+function assertLegacyCompatibilityGroupId(value, fieldPath) {
+  if (isRelationalId(value)) return value
+  if (typeof value === 'string' && value.trim() !== '') return value.trim()
+  throw new Error(`${fieldPath} must be a positive integer or a non-empty legacy key.`)
 }
 
 function assertOptionalStringArray(value, fieldPath) {
@@ -147,25 +181,40 @@ function assertOptionalPositiveInteger(value, fieldPath) {
   }
 }
 
-function assertCompatibilityGroupIds(groups, fieldPath) {
+function assertCompatibilityGroupIds(groups, fieldPath, options = {}) {
   const ids = new Set()
+  const keys = new Set()
   groups.forEach((group, index) => {
     const idPath = `${fieldPath}[${index}].id`
-    assertRequiredString(group.id, idPath)
-    if (ids.has(group.id)) {
+    const id = options.allowLegacyIds
+      ? assertLegacyCompatibilityGroupId(group.id, idPath)
+      : assertRelationalId(group.id, idPath)
+    const key = group.key ?? (options.allowLegacyIds ? String(group.id) : undefined)
+    assertRequiredString(key, `${fieldPath}[${index}].key`)
+    if (ids.has(id)) {
       throw new Error(`${idPath} must be unique.`)
     }
-    ids.add(group.id)
+    if (keys.has(key)) {
+      throw new Error(`${fieldPath}[${index}].key must be unique.`)
+    }
+    ids.add(id)
+    keys.add(key)
   })
 }
 
-function assertStorageSlots(value, fieldPath) {
+function assertStorageSlots(value, fieldPath, options = {}) {
   if (value === undefined) return
   if (!Array.isArray(value)) throw new Error(`${fieldPath} must be an array.`)
   value.forEach((group, index) => {
     const path = `${fieldPath}[${index}]`
     assertOptionalObject(group, path)
-    assertRequiredString(group.id, `${path}.id`)
+    if (options.allowLegacyIds) {
+      assertLegacyCompatibilityGroupId(group.id, `${path}.id`)
+      if (group.key !== undefined) assertRequiredString(group.key, `${path}.key`)
+    } else {
+      assertRelationalId(group.id, `${path}.id`)
+      assertRequiredString(group.key, `${path}.key`)
+    }
     assertRequiredString(group.label, `${path}.label`)
     if (!Number.isInteger(group.count) || group.count < 1) {
       throw new Error(`${path}.count must be a positive integer.`)
@@ -174,16 +223,22 @@ function assertStorageSlots(value, fieldPath) {
     assertOptionalStringArray(group.formFactors, `${path}.formFactors`)
     assertOptionalPositiveNumber(group.pcieGeneration, `${path}.pcieGeneration`)
   })
-  assertCompatibilityGroupIds(value, fieldPath)
+  assertCompatibilityGroupIds(value, fieldPath, options)
 }
 
-function assertExpansionSlots(value, fieldPath) {
+function assertExpansionSlots(value, fieldPath, options = {}) {
   if (value === undefined) return
   if (!Array.isArray(value)) throw new Error(`${fieldPath} must be an array.`)
   value.forEach((group, index) => {
     const path = `${fieldPath}[${index}]`
     assertOptionalObject(group, path)
-    assertRequiredString(group.id, `${path}.id`)
+    if (options.allowLegacyIds) {
+      assertLegacyCompatibilityGroupId(group.id, `${path}.id`)
+      if (group.key !== undefined) assertRequiredString(group.key, `${path}.key`)
+    } else {
+      assertRelationalId(group.id, `${path}.id`)
+      assertRequiredString(group.key, `${path}.key`)
+    }
     assertRequiredString(group.label, `${path}.label`)
     if (!Number.isInteger(group.count) || group.count < 1) {
       throw new Error(`${path}.count must be a positive integer.`)
@@ -205,10 +260,10 @@ function assertExpansionSlots(value, fieldPath) {
     assertOptionalPositiveInteger(group.maxSlotWidth, `${path}.maxSlotWidth`)
     assertOptionalNonNegativeNumber(group.maxPowerWatts, `${path}.maxPowerWatts`)
   })
-  assertCompatibilityGroupIds(value, fieldPath)
+  assertCompatibilityGroupIds(value, fieldPath, options)
 }
 
-function assertInventoryCompatibility(itemId, compatibility) {
+function assertInventoryCompatibility(itemId, compatibility, options = {}) {
   if (compatibility === undefined) return
   const root = `Inventory item ${itemId} compatibility`
   assertOptionalObject(compatibility, root)
@@ -234,8 +289,8 @@ function assertInventoryCompatibility(itemId, compatibility) {
       )
       assertOptionalNonNegativeNumber(host.memory.maxSpeedMt, `${root}.host.memory.maxSpeedMt`)
     }
-    assertStorageSlots(host.storageSlots, `${root}.host.storageSlots`)
-    assertExpansionSlots(host.expansionSlots, `${root}.host.expansionSlots`)
+    assertStorageSlots(host.storageSlots, `${root}.host.storageSlots`, options)
+    assertExpansionSlots(host.expansionSlots, `${root}.host.expansionSlots`, options)
     assertOptionalNonNegativeNumber(
       host.maxExpansionPowerWatts,
       `${root}.host.maxExpansionPowerWatts`,
@@ -272,7 +327,7 @@ function assertInventoryCompatibility(itemId, compatibility) {
   }
 }
 
-function assertAssignmentAllocation(assignment) {
+function assertAssignmentAllocation(assignment, options = {}) {
   if (assignment.allocation === undefined) return
   const path = `Project assignment ${assignment.id} allocation`
   const allocation = assignment.allocation
@@ -285,9 +340,19 @@ function assertAssignmentAllocation(assignment) {
       throw new Error(`${path}.groupId is not supported for ${allocation.resourceType} allocations.`)
     }
   } else if (groupedCompatibilityResourceTypes.has(allocation.resourceType)) {
-    assertRequiredString(allocation.groupId, `${path}.groupId`)
+    if (options.allowLegacyIds) {
+      assertLegacyCompatibilityGroupId(allocation.groupId, `${path}.groupId`)
+    } else {
+      assertRelationalId(allocation.groupId, `${path}.groupId`)
+    }
   } else if (allocation.groupId !== undefined) {
-    assertRequiredString(allocation.groupId, `${path}.groupId`)
+    if (
+      !options.allowLegacyIds
+      || !['cpu', 'cooling', 'memory'].includes(allocation.resourceType)
+      || !['cpu', 'dimm'].includes(allocation.groupId)
+    ) {
+      throw new Error(`${path}.groupId is not supported for ${allocation.resourceType} allocations.`)
+    }
   }
   if (!Array.isArray(allocation.positions) || allocation.positions.length === 0) {
     throw new Error(`${path}.positions must be a non-empty array.`)
@@ -322,8 +387,82 @@ export function assertInventoryStoreShape(store) {
       throw new Error(`Inventory store is missing a ${table} array.`)
     }
 
+    assertUniqueCanonicalIds(store[table], `Inventory ${table}`)
     for (const item of store[table]) {
       assertInventoryItem(`${type}:${item?.id}`, item, type)
+    }
+  }
+}
+
+function assertAgentRecordCollection(records, fieldPath) {
+  if (!records || typeof records !== 'object' || Array.isArray(records)) {
+    throw new Error(`${fieldPath} must be an object.`)
+  }
+
+  const seenIds = new Set()
+  for (const [recordKey, record] of Object.entries(records)) {
+    if (!record || typeof record !== 'object' || Array.isArray(record)) {
+      throw new Error(`${fieldPath}.${recordKey} must be an object.`)
+    }
+    const id = assertRelationalId(record.id, `${fieldPath}.${recordKey}.id`)
+    assertRelationalId(record.serverId, `${fieldPath}.${recordKey}.serverId`)
+    if (String(id) !== recordKey) {
+      throw new Error(`${fieldPath}.${recordKey}.id must match its object key.`)
+    }
+    if (seenIds.has(id)) throw new Error(`${fieldPath}.${recordKey}.id must be unique.`)
+    seenIds.add(id)
+  }
+}
+
+export function assertAgentsStoreShape(store) {
+  if (!store || typeof store !== 'object' || Array.isArray(store)) {
+    throw new Error('Agents store must be an object.')
+  }
+  assertAgentRecordCollection(store.enrollments, 'agents.enrollments')
+  assertAgentRecordCollection(store.devices, 'agents.devices')
+}
+
+export function assertAgentStatusStoreShape(store) {
+  if (!store || typeof store !== 'object' || Array.isArray(store)) {
+    throw new Error('Agent status store must be an object.')
+  }
+  if (!store.servers || typeof store.servers !== 'object' || Array.isArray(store.servers)) {
+    throw new Error('agentStatus.servers must be an object.')
+  }
+  for (const [serverKey, status] of Object.entries(store.servers)) {
+    if (!status || typeof status !== 'object' || Array.isArray(status)) {
+      throw new Error(`agentStatus.servers.${serverKey} must be an object.`)
+    }
+    const serverId = assertRelationalId(status.serverId, `agentStatus.servers.${serverKey}.serverId`)
+    if (String(serverId) !== serverKey) {
+      throw new Error(`agentStatus.servers.${serverKey}.serverId must match its object key.`)
+    }
+  }
+}
+
+function assertCanonicalPowerTopology(itemId, item, type, options) {
+  if (options.allowLegacyIds || !canonicalPowerItemTypes.has(type)) return
+
+  const expectedPorts = canonicalPowerPorts({ ...item, type })
+  const expectedKeys = new Set(expectedPorts.map((port) => port.key))
+  for (const port of item.ports ?? []) {
+    const isPowerEndpoint = port.kind === 'power-port'
+      || port.type === 'ac-input'
+      || port.type === 'ac-outlet'
+    if (isPowerEndpoint && !expectedKeys.has(port.key)) {
+      throw new Error(`Inventory item ${itemId} has noncanonical power port ${port.key ?? port.id}.`)
+    }
+  }
+
+  for (const expected of expectedPorts) {
+    const actual = item.ports?.find((port) => port.key === expected.key)
+    if (
+      !actual
+      || actual.kind !== expected.kind
+      || actual.type !== expected.type
+      || actual.slotNumber !== expected.slotNumber
+    ) {
+      throw new Error(`Inventory item ${itemId} is missing canonical power port ${expected.key}.`)
     }
   }
 }
@@ -333,8 +472,12 @@ function assertInventoryItem(itemId, item, expectedType, options = {}) {
     throw new Error(`Inventory item ${itemId} must be an object.`)
   }
 
-  if (typeof item.id !== 'string' && typeof item.id !== 'number') {
-    throw new Error(`Inventory item ${itemId} is missing an id.`)
+  if (options.allowLegacyIds) {
+    if (!isLegacyRelationalId(item.id)) {
+      throw new Error(`Inventory item ${itemId} is missing a valid legacy id.`)
+    }
+  } else {
+    assertRelationalId(item.id, `Inventory item ${itemId}.id`)
   }
 
   if (typeof item.name !== 'string' || item.name.trim() === '') {
@@ -358,25 +501,37 @@ function assertInventoryItem(itemId, item, expectedType, options = {}) {
     throw new Error(`Inventory item ${itemId} has an invalid archivedAt timestamp.`)
   }
 
-  assertInventoryCompatibility(itemId, item.compatibility)
+  assertInventoryCompatibility(itemId, item.compatibility, options)
 
-  if (item.ports === undefined) {
-    return
-  }
-
-  if (!Array.isArray(item.ports)) {
+  if (item.ports !== undefined && !Array.isArray(item.ports)) {
     throw new Error(`Inventory item ${itemId} ports must be an array.`)
   }
 
-  for (const port of item.ports) {
+  const portIds = new Set()
+  const portKeys = new Set()
+  for (const port of item.ports ?? []) {
     if (
       !port ||
-      (typeof port.id !== 'string' && typeof port.id !== 'number') ||
+      !(options.allowLegacyIds
+        ? isLegacyRelationalId(port.id)
+        : isRelationalId(port.id)) ||
       !portKinds.has(port.kind) ||
       !portTypes.has(port.type) ||
       typeof port.slotNumber !== 'number'
     ) {
       throw new Error(`Inventory item ${itemId} has an invalid port.`)
+    }
+
+    if (portIds.has(port.id)) {
+      throw new Error(`Inventory item ${itemId} port ${port.id} must be unique.`)
+    }
+    portIds.add(port.id)
+
+    if (!options.allowLegacyIds && typeof port.key === 'string' && port.key !== '') {
+      if (portKeys.has(port.key)) {
+        throw new Error(`Inventory item ${itemId} port key ${port.key} must be unique.`)
+      }
+      portKeys.add(port.key)
     }
 
     if (port.role !== undefined && !portRoles.has(port.role)) {
@@ -400,19 +555,30 @@ function assertInventoryItem(itemId, item, expectedType, options = {}) {
       throw new Error(`Inventory item ${itemId} port ${port.id} endpoints must be an array.`)
     }
 
+    const endpointIds = new Set()
     for (const endpoint of port.endpoints) {
       if (
         !endpoint ||
-        (typeof endpoint.id !== 'string' && typeof endpoint.id !== 'number') ||
+        !(options.allowLegacyIds
+          ? isLegacyRelationalId(endpoint.id)
+          : isRelationalId(endpoint.id)) ||
         !portSides.has(endpoint.side)
       ) {
         throw new Error(`Inventory item ${itemId} port ${port.id} has an invalid endpoint.`)
       }
+      if (endpointIds.has(endpoint.id)) {
+        throw new Error(
+          `Inventory item ${itemId} port ${port.id} endpoint ${endpoint.id} must be unique.`,
+        )
+      }
+      endpointIds.add(endpoint.id)
     }
   }
+
+  assertCanonicalPowerTopology(itemId, item, type, options)
 }
 
-export function assertProjectStoreShape(store) {
+export function assertProjectStoreShape(store, options = {}) {
   if (!store || typeof store !== 'object' || Array.isArray(store)) {
     throw new Error('Project store must be an object.')
   }
@@ -431,26 +597,52 @@ export function assertProjectStoreShape(store) {
 
   if (store.compatibilityPolicy !== undefined) {
     assertOptionalObject(store.compatibilityPolicy, 'compatibilityPolicy')
-    assertUniqueStringArray(
-      store.compatibilityPolicy.disabledHostIds,
-      'compatibilityPolicy.disabledHostIds',
-    )
+    if (options.allowLegacyIds) {
+      assertUniqueStringArray(
+        store.compatibilityPolicy.disabledHostIds ?? [],
+        'compatibilityPolicy.disabledHostIds',
+      )
+    } else {
+      const disabledHosts = store.compatibilityPolicy.disabledHosts ?? []
+      if (!Array.isArray(disabledHosts)) {
+        throw new Error('compatibilityPolicy.disabledHosts must be an array.')
+      }
+      const seenHosts = new Set()
+      disabledHosts.forEach((host, index) => {
+        const path = `compatibilityPolicy.disabledHosts[${index}]`
+        if (!host || !inventoryTypes.has(host.hostType)) {
+          throw new Error(`${path}.hostType has an unsupported value.`)
+        }
+        assertRelationalId(host.hostId, `${path}.hostId`)
+        const key = `${host.hostType}:${host.hostId}`
+        if (seenHosts.has(key)) throw new Error(`${path} duplicates host ${key}.`)
+        seenHosts.add(key)
+      })
+    }
     assertUniqueStringArray(
       store.compatibilityPolicy.ignoredWarningIds,
       'compatibilityPolicy.ignoredWarningIds',
     )
   }
 
-  assertUniqueCanonicalIds(store.assignments, 'Project assignments')
-  assertUniqueCanonicalIds(store.connections ?? [], 'Project connections')
+  if (!options.allowLegacyIds) {
+    assertUniqueCanonicalIds(store.assignments, 'Project assignments')
+    assertUniqueCanonicalIds(store.connections ?? [], 'Project connections')
+  }
 
   for (const placement of store.placements) {
     if (
       !placement ||
-      !(
-        typeof placement.serverId === 'string' ||
-        (typeof placement.itemType === 'string' && typeof placement.itemId === 'number')
-      ) ||
+      !(options.allowLegacyIds
+        ? typeof placement.serverId === 'string' ||
+          (inventoryTypes.has(placement.itemType) && isLegacyRelationalId(placement.itemId))
+        : options.runtimeReferences
+          ? isRuntimeOrTypedReference(
+              placement.serverId,
+              placement.itemType,
+              placement.itemId,
+            )
+        : inventoryTypes.has(placement.itemType) && isRelationalId(placement.itemId)) ||
       typeof placement.x !== 'number' ||
       typeof placement.y !== 'number'
     ) {
@@ -461,33 +653,47 @@ export function assertProjectStoreShape(store) {
   for (const assignment of store.assignments) {
     if (
       !assignment ||
-      (typeof assignment.id !== 'string' && typeof assignment.id !== 'number') ||
-      !(
-        typeof assignment.serverId === 'string' ||
-        (typeof assignment.hostType === 'string' && typeof assignment.hostId === 'number')
-      ) ||
-      !(
-        typeof assignment.itemId === 'string' ||
-        (typeof assignment.itemType === 'string' && typeof assignment.itemId === 'number')
-      ) ||
+      !(options.allowLegacyIds ? isLegacyRelationalId(assignment.id) : isRelationalId(assignment.id)) ||
+      !(options.allowLegacyIds
+        ? typeof assignment.serverId === 'string' ||
+          (inventoryTypes.has(assignment.hostType) && isLegacyRelationalId(assignment.hostId))
+        : options.runtimeReferences
+          ? isRuntimeOrTypedReference(
+              assignment.serverId,
+              assignment.hostType,
+              assignment.hostId,
+            )
+        : inventoryTypes.has(assignment.hostType) && isRelationalId(assignment.hostId)) ||
+      !(options.allowLegacyIds
+        ? typeof assignment.itemId === 'string' ||
+          (inventoryTypes.has(assignment.itemType) && isLegacyRelationalId(assignment.itemId))
+        : options.runtimeReferences
+          ? isRuntimeOrTypedReference(
+              assignment.itemId,
+              assignment.itemType,
+              assignment.itemId,
+            )
+        : inventoryTypes.has(assignment.itemType) && isRelationalId(assignment.itemId)) ||
       !componentTypes.has(assignment.type)
     ) {
       throw new Error('Each assignment must include id, serverId, itemId, and component type.')
     }
 
-    assertAssignmentAllocation(assignment)
+    assertAssignmentAllocation(assignment, options)
   }
 
   for (const connection of store.connections ?? []) {
     if (
       !connection ||
-      (typeof connection.id !== 'string' && typeof connection.id !== 'number') ||
+      !(options.allowLegacyIds
+        ? typeof connection.id === 'string' || isLegacyRelationalId(connection.id)
+        : isRelationalId(connection.id)) ||
       typeof connection.createdAt !== 'string' ||
       typeof connection.type !== 'string' ||
       !connection.from ||
-      !isValidEndpoint(connection.from) ||
+      !isValidEndpoint(connection.from, options) ||
       !connection.to ||
-      !isValidEndpoint(connection.to)
+      !isValidEndpoint(connection.to, options)
     ) {
       throw new Error('Each connection must include id, from, to, type, and createdAt.')
     }
@@ -501,23 +707,38 @@ export function assertProjectStoreShape(store) {
   }
 }
 
-function isValidEndpoint(endpoint) {
+function isValidEndpoint(endpoint, options = {}) {
+  const runtimeItem = options.runtimeReferences
+    ? isRuntimeOrTypedReference(endpoint?.itemId, endpoint?.itemType, endpoint?.itemId)
+    : false
+  const runtimeHostedItem = options.runtimeReferences
+    ? endpoint?.hostedItemId === undefined || isRuntimeOrTypedReference(
+        endpoint.hostedItemId,
+        endpoint.hostedItemType,
+        endpoint.hostedItemId,
+      )
+    : false
+
   return Boolean(
     endpoint &&
-    (
-      typeof endpoint.itemId === 'string' ||
-      (typeof endpoint.itemType === 'string' && typeof endpoint.itemId === 'number')
-    ) &&
-    (typeof endpoint.portId === 'string' || typeof endpoint.portId === 'number') &&
+    (options.allowLegacyIds
+      ? typeof endpoint.itemId === 'string' ||
+        (inventoryTypes.has(endpoint.itemType) && isLegacyRelationalId(endpoint.itemId))
+      : options.runtimeReferences
+        ? runtimeItem
+      : inventoryTypes.has(endpoint.itemType) && isRelationalId(endpoint.itemId)) &&
+    (options.allowLegacyIds ? isLegacyRelationalId(endpoint.portId) : isRelationalId(endpoint.portId)) &&
     (endpoint.endpointId === undefined ||
-      typeof endpoint.endpointId === 'string' ||
-      typeof endpoint.endpointId === 'number') &&
+      (options.allowLegacyIds
+        ? isLegacyRelationalId(endpoint.endpointId)
+        : isRelationalId(endpoint.endpointId))) &&
     (endpoint.hostedItemId === undefined ||
-      typeof endpoint.hostedItemId === 'string' ||
-      (
-        typeof endpoint.hostedItemType === 'string' &&
-        typeof endpoint.hostedItemId === 'number'
-      ))
+      (options.allowLegacyIds
+        ? typeof endpoint.hostedItemId === 'string' ||
+          (inventoryTypes.has(endpoint.hostedItemType) && isLegacyRelationalId(endpoint.hostedItemId))
+        : options.runtimeReferences
+          ? runtimeHostedItem
+        : inventoryTypes.has(endpoint.hostedItemType) && isRelationalId(endpoint.hostedItemId)))
   )
 }
 
@@ -527,8 +748,10 @@ export function assertProjectShape(project) {
   }
 
   assertInventoryStoreShape({ items: project.items })
-  assertProjectStoreShape(project)
+  assertProjectStoreShape(project, { runtimeReferences: true })
+  assertProjectPlacementReferences(project)
   assertProjectAssignmentReferences(project)
+  assertProjectConnectionReferences(project)
   assertProjectAllocationReferences(project)
   assertProjectAllocationExclusivity(project)
 }
@@ -576,11 +799,11 @@ export function assertLegacyProjectShape(project) {
       originalKey,
       { ...item, id, type },
       type,
-      { allowLegacyMissingSwitchSpeed: true },
+      { allowLegacyMissingSwitchSpeed: true, allowLegacyIds: true },
     )
   }
 
-  assertProjectStoreShape(project)
+  assertProjectStoreShape(project, { allowLegacyIds: true })
 }
 
 function projectItem(project, reference, type, id) {
@@ -599,12 +822,30 @@ function assertProjectAssignmentReferences(project) {
   const assignedComponents = new Map()
 
   for (const [index, assignment] of (project.assignments ?? []).entries()) {
+    const hostReference = projectReference(
+      assignment.serverId,
+      assignment.hostType,
+      assignment.hostId,
+    )
+    const host = projectItem(project, assignment.serverId, assignment.hostType, assignment.hostId)
     const itemReference = projectReference(
       assignment.itemId,
       assignment.itemType,
       assignment.itemId,
     )
     const item = projectItem(project, assignment.itemId, assignment.itemType, assignment.itemId)
+
+    if (!host) {
+      throw new Error(
+        `Project assignments[${index}] references missing host ${hostReference}.`,
+      )
+    }
+
+    if (!item) {
+      throw new Error(
+        `Project assignments[${index}] references missing component ${itemReference}.`,
+      )
+    }
 
     if (item && assignment.type !== item.type) {
       throw new Error(
@@ -621,6 +862,91 @@ function assertProjectAssignmentReferences(project) {
       }
       assignedComponents.set(itemReference, index)
     }
+  }
+}
+
+function assertProjectPlacementReferences(project) {
+  for (const [index, placement] of (project.placements ?? []).entries()) {
+    const reference = projectReference(
+      placement.serverId,
+      placement.itemType,
+      placement.itemId,
+    )
+    if (!projectItem(project, placement.serverId, placement.itemType, placement.itemId)) {
+      throw new Error(`Project placements[${index}] references missing item ${reference}.`)
+    }
+  }
+
+  for (const [index, host] of (project.compatibilityPolicy?.disabledHosts ?? []).entries()) {
+    const reference = `${host.hostType}:${host.hostId}`
+    if (!project.items?.[reference]) {
+      throw new Error(
+        `Project compatibilityPolicy.disabledHosts[${index}] references missing host ${reference}.`,
+      )
+    }
+  }
+}
+
+function assertProjectConnectionReferences(project) {
+  for (const [connectionIndex, connection] of (project.connections ?? []).entries()) {
+    assertProjectEndpointReference(project, connection.from, `Project connections[${connectionIndex}].from`)
+    assertProjectEndpointReference(project, connection.to, `Project connections[${connectionIndex}].to`)
+  }
+}
+
+function assertProjectEndpointReference(project, endpoint, path) {
+  const hostReference = projectReference(endpoint.itemId, endpoint.itemType, endpoint.itemId)
+  const host = projectItem(project, endpoint.itemId, endpoint.itemType, endpoint.itemId)
+  if (!host) {
+    throw new Error(`${path} references missing item ${hostReference}.`)
+  }
+
+  const hostedReference = endpoint.hostedItemId === undefined
+    ? undefined
+    : projectReference(
+        endpoint.hostedItemId,
+        endpoint.hostedItemType,
+        endpoint.hostedItemId,
+      )
+  const owner = hostedReference
+    ? projectItem(
+        project,
+        endpoint.hostedItemId,
+        endpoint.hostedItemType,
+        endpoint.hostedItemId,
+      )
+    : host
+
+  if (!owner) {
+    throw new Error(`${path} references missing hosted item ${hostedReference}.`)
+  }
+
+  if (hostedReference) {
+    const assignedToHost = (project.assignments ?? []).some((assignment) => (
+      projectReference(assignment.serverId, assignment.hostType, assignment.hostId) === hostReference
+      && projectReference(assignment.itemId, assignment.itemType, assignment.itemId) === hostedReference
+    ))
+    if (!assignedToHost) {
+      throw new Error(
+        `${path} hosted item ${hostedReference} is not assigned to host ${hostReference}.`,
+      )
+    }
+  }
+
+  const port = owner.ports?.find((candidate) => candidate.id === endpoint.portId)
+  if (!port) {
+    throw new Error(`${path}.portId references missing port ${endpoint.portId} on ${hostedReference ?? hostReference}.`)
+  }
+
+  const portEndpoints = port.endpoints ?? []
+  if (endpoint.endpointId !== undefined) {
+    if (!portEndpoints.some((candidate) => candidate.id === endpoint.endpointId)) {
+      throw new Error(
+        `${path}.endpointId references missing endpoint ${endpoint.endpointId} on port ${endpoint.portId}.`,
+      )
+    }
+  } else if (portEndpoints.length > 0) {
+    throw new Error(`${path}.endpointId is required for multi-sided port ${endpoint.portId}.`)
   }
 }
 
@@ -677,25 +1003,14 @@ function assertProjectAllocationReferences(project) {
     let capacity
     if (allocation.resourceType === 'cpu' || allocation.resourceType === 'cooling') {
       groupPath = 'compatibility.host.cpu'
-      group = allocation.groupId === 'cpu' ? { id: 'cpu' } : undefined
-      if (!group) {
-        throw new Error(
-          `Project assignment ${assignment.id} allocation.groupId references missing ${groupPath} group ${allocation.groupId}.`,
-        )
-      }
-      const configuredCount = Number(
-        capabilitySource?.specs?.cpuSocketCount ?? capabilitySource?.specs?.cpuSockets ?? 1,
-      )
+      const configuredCount = capabilitySource?.specs?.cpuSocketCount
+        ?? capabilitySource?.specs?.cpuSockets
+        ?? 1
       capacity = hostCompatibility.cpu?.sockets?.length > 0 && Number.isInteger(configuredCount)
         ? configuredCount
         : undefined
     } else if (allocation.resourceType === 'memory') {
       groupPath = 'compatibility.host.memory'
-      if (allocation.groupId !== undefined && allocation.groupId !== 'dimm') {
-        throw new Error(
-          `Project assignment ${assignment.id} allocation.groupId references missing ${groupPath} group ${allocation.groupId}.`,
-        )
-      }
       capacity = hostCompatibility.memory?.slots
     } else {
       const groupsField = allocation.resourceType === 'storage' ? 'storageSlots' : 'expansionSlots'
@@ -732,7 +1047,9 @@ function assertProjectAllocationExclusivity(project) {
       assignment.hostType,
       assignment.hostId,
     )
-    const groupId = allocation.resourceType === 'memory' ? '' : allocation.groupId
+    const groupId = ['cpu', 'cooling', 'memory'].includes(allocation.resourceType)
+      ? ''
+      : allocation.groupId
 
     allocation.positions.forEach((position, positionIndex) => {
       const key = JSON.stringify([hostReference, allocation.resourceType, groupId, position])
