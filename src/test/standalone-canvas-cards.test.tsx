@@ -2,7 +2,12 @@ import { fireEvent, render, screen } from '@testing-library/react'
 import type { NodeProps } from '@xyflow/react'
 import { describe, expect, it, vi } from 'vitest'
 import { MonitorNode, type MonitorFlowNode } from '@/components/monitor-card'
-import { PowerStripNode, powerStripOutletViews, type PowerStripFlowNode } from '@/components/power-strip-card'
+import {
+  PowerStripNode,
+  powerStripInputView,
+  powerStripOutletViews,
+  type PowerStripFlowNode,
+} from '@/components/power-strip-card'
 import { UpsNode, upsOutletGroups, type UpsFlowNode } from '@/components/ups-card'
 import type { InventoryItem, ProjectState } from '@/types/inventory'
 
@@ -133,7 +138,7 @@ describe('standalone canvas cards', () => {
     expect(groups[1].ports[0].port.id).toBe('a')
   })
 
-  it('renders one numbered chip per power-strip outlet', () => {
+  it('renders one AC input chip and one numbered chip per power-strip outlet', () => {
     const strip: InventoryItem = {
       id: 1,
       key: 'powerStrip:1',
@@ -143,10 +148,12 @@ describe('standalone canvas cards', () => {
     }
 
     expect(powerStripOutletViews(strip).map((view) => view.port.slotNumber)).toEqual([1, 2, 3, 4, 5, 6])
+    expect(powerStripInputView(strip).endpoint).toEqual({ itemId: 'powerStrip:1', portId: 'ac-input' })
 
     const currentProject = projectWith(strip)
     render(<PowerStripNode {...powerStripProps(data(currentProject, strip.key!))} />)
-    expect(screen.getAllByTestId('standalone-port-chip')).toHaveLength(6)
+    expect(screen.getAllByTestId('standalone-port-chip')).toHaveLength(7)
+    expect(document.querySelector('[data-port-group="input"]')).toHaveTextContent('AC IN')
   })
 
   it('supports card selection, node dragging, focus, and click-then-drag port callbacks', () => {
@@ -194,7 +201,9 @@ describe('standalone canvas cards', () => {
     const nodeData = data(currentProject, strip.key!)
 
     render(<PowerStripNode {...powerStripProps(nodeData)} />)
-    const chip = screen.getByTestId('standalone-port-chip')
+    const chip = screen.getAllByTestId('standalone-port-chip').find(
+      (candidate) => candidate.dataset.portId === 'outlet-1',
+    )!
     fireEvent.click(chip, { clientX: 25, clientY: 35 })
 
     expect(nodeData.onEndpointClick).toHaveBeenCalledWith(

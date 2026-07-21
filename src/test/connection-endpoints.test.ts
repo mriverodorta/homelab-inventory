@@ -221,20 +221,39 @@ describe('connection endpoint catalog', () => {
       name: 'Monitor A',
       type: 'monitor',
     }
+    const powerStrip: InventoryItem = {
+      id: 'strip-a',
+      name: 'Strip A',
+      type: 'powerStrip',
+      specs: { outlets: 4 },
+    }
     project.items['ups-a'] = ups
     project.items['monitor-a'] = monitor
+    project.items['strip-a'] = powerStrip
     project.placements.push(
       { serverId: 'ups-a', x: 0, y: 400 },
       { serverId: 'monitor-a', x: 400, y: 400 },
+      { serverId: 'strip-a', x: 800, y: 400 },
     )
 
     const upsGroup = getEndpointGroupForHost(project, ups)
     const monitorGroup = getEndpointGroupForHost(project, monitor)
+    const stripGroup = getEndpointGroupForHost(project, powerStrip)
     expect(upsGroup?.options.map((option) => option.endpoint.portId)).toEqual(['outlet-1', 'outlet-2'])
     expect(monitorGroup?.options.map((option) => option.endpoint.portId)).toEqual(['ac-input'])
+    expect(stripGroup?.options.map((option) => option.endpoint.portId)).toEqual([
+      'outlet-1',
+      'outlet-2',
+      'outlet-3',
+      'outlet-4',
+      'ac-input',
+    ])
 
     const destinations = getCompatibleDestinationGroups(project, monitorGroup!.options[0])
-    expect(destinations.map((group) => group.label)).toEqual(['UPS A'])
+    expect(destinations.map((group) => group.label)).toEqual(['Strip A', 'UPS A'])
+
+    const stripInput = stripGroup!.options.find((option) => option.endpoint.portId === 'ac-input')!
+    expect(getCompatibleDestinationGroups(project, stripInput).map((group) => group.label)).toEqual(['UPS A'])
 
     const result = createConnectionForEndpoints(
       project,

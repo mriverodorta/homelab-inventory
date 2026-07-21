@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { SelectField } from '@/components/inventory-form/field-primitives'
@@ -14,12 +14,24 @@ describe('InventoryItemDialog switch port groups', () => {
     const user = userEvent.setup()
     render(<InventoryItemDialog open onOpenChange={vi.fn()} onCreate={vi.fn()} />)
 
-    expect(screen.getByRole('heading', { name: 'Compatibility' })).toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: 'Specs' })).toHaveAttribute('data-state', 'active')
+    expect(screen.getByRole('tab', { name: 'Compatibility' })).toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: 'Resources' })).toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: 'Ports' })).toBeInTheDocument()
+    expect(screen.queryByLabelText('Supported CPU sockets')).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole('tab', { name: 'Compatibility' }))
     expect(screen.getByLabelText('Supported CPU sockets')).toBeInTheDocument()
 
     await user.click(screen.getByRole('combobox', { name: 'Inventory type' }))
     await user.click(screen.getByRole('option', { name: 'CPU' }))
 
+    expect(screen.getByRole('tab', { name: 'Specs' })).toHaveAttribute('data-state', 'active')
+    expect(screen.queryByRole('tab', { name: 'Resources' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('tab', { name: 'Ports' })).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('CPU socket')).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole('tab', { name: 'Compatibility' }))
     expect(screen.getByLabelText('CPU socket')).toBeInTheDocument()
     expect(screen.queryByLabelText('Supported CPU sockets')).not.toBeInTheDocument()
   })
@@ -104,8 +116,10 @@ describe('InventoryItemDialog switch port groups', () => {
     await chooseType('Motherboard')
     expect(screen.getByRole('combobox', { name: 'Form Factor' })).toBeInTheDocument()
     expect(screen.getByRole('spinbutton', { name: 'CPU Socket Count' })).toBeInTheDocument()
+    await user.click(screen.getByRole('tab', { name: 'Resources' }))
     expect(screen.getByRole('button', { name: 'Add storage slot group' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Add expansion slot group' })).toBeInTheDocument()
+    await user.click(screen.getByRole('tab', { name: 'Ports' }))
     expect(screen.getByRole('button', { name: 'Add port group' })).toBeInTheDocument()
 
     await chooseType('CPU Cooler')
@@ -172,10 +186,12 @@ describe('InventoryItemDialog switch port groups', () => {
 
     await user.click(screen.getByRole('combobox', { name: 'Inventory type' }))
     await user.click(screen.getByRole('option', { name: 'Network Card' }))
+    await user.click(screen.getByRole('tab', { name: 'Ports' }))
     expect(screen.getByRole('combobox', { name: 'Port group 1 role' })).toBeInTheDocument()
 
     await user.click(screen.getByRole('combobox', { name: 'Inventory type' }))
     await user.click(screen.getByRole('option', { name: 'GPU' }))
+    await user.click(screen.getByRole('tab', { name: 'Ports' }))
     expect(screen.queryByRole('combobox', { name: 'Port group 1 role' })).not.toBeInTheDocument()
   })
 
@@ -192,6 +208,7 @@ describe('InventoryItemDialog switch port groups', () => {
 
     await user.click(screen.getByRole('combobox', { name: 'Inventory type' }))
     await user.click(screen.getByRole('option', { name: 'Switch' }))
+    await user.click(screen.getByRole('tab', { name: 'Ports' }))
 
     expect(screen.getByRole('combobox', { name: 'Port group 1 speed' })).toHaveTextContent('1G')
 
@@ -227,6 +244,7 @@ describe('InventoryItemDialog switch port groups', () => {
     await user.type(screen.getByRole('textbox', { name: 'Name' }), 'Lab switch')
     await user.click(screen.getByRole('combobox', { name: 'Management' }))
     await user.click(screen.getByRole('option', { name: 'Layer 2 Managed' }))
+    await user.click(screen.getByRole('tab', { name: 'Ports' }))
     await user.clear(screen.getByRole('spinbutton', { name: 'Port group 1 count' }))
     await user.type(screen.getByRole('spinbutton', { name: 'Port group 1 count' }), '4')
     await user.click(screen.getByRole('button', { name: 'Add item' }))
@@ -375,6 +393,53 @@ describe('InventoryItemDialog switch port groups', () => {
     await user.click(screen.getByRole('button', { name: 'Add item' }))
 
     expect(screen.getByText('Quantity must be between 1 and 100.')).toBeInTheDocument()
+    expect(quantity).toHaveAttribute('aria-invalid', 'true')
+    expect(quantity).toHaveAttribute('aria-describedby')
+    expect(document.getElementById(quantity.getAttribute('aria-describedby') ?? '')).toHaveTextContent(
+      'Quantity must be between 1 and 100.',
+    )
+    expect(screen.getByRole('tab', { name: 'Specs' })).toHaveAttribute('data-state', 'active')
+    await waitFor(() => expect(quantity).toHaveFocus())
+    expect(onCreate).not.toHaveBeenCalled()
+  })
+
+  it('routes compatibility validation errors to the relevant tab and field', async () => {
+    const user = userEvent.setup()
+    const onCreate = vi.fn().mockResolvedValue(undefined)
+
+    render(<InventoryItemDialog open onOpenChange={vi.fn()} onCreate={onCreate} />)
+
+    await user.click(screen.getByRole('combobox', { name: 'Inventory type' }))
+    await user.click(screen.getByRole('option', { name: 'CPU' }))
+    await user.type(screen.getByRole('textbox', { name: 'Name' }), 'Test CPU')
+    await user.click(screen.getByRole('tab', { name: 'Compatibility' }))
+    const tdp = screen.getByRole('spinbutton', { name: 'TDP (W)' })
+    await user.type(tdp, '-1')
+    await user.click(screen.getByRole('tab', { name: 'Specs' }))
+    await user.click(screen.getByRole('button', { name: 'Add item' }))
+
+    expect(screen.getByRole('tab', { name: 'Compatibility' })).toHaveAttribute('data-state', 'active')
+    await waitFor(() => expect(screen.getByRole('spinbutton', { name: 'TDP (W)' })).toHaveFocus())
+    expect(onCreate).not.toHaveBeenCalled()
+  })
+
+  it('keeps a cleared port count invalid instead of submitting the previous value', async () => {
+    const user = userEvent.setup()
+    const onCreate = vi.fn().mockResolvedValue(undefined)
+
+    render(<InventoryItemDialog open onOpenChange={vi.fn()} onCreate={onCreate} />)
+
+    await user.click(screen.getByRole('combobox', { name: 'Inventory type' }))
+    await user.click(screen.getByRole('option', { name: 'Switch' }))
+    await user.type(screen.getByRole('textbox', { name: 'Name' }), 'Lab switch')
+    await user.click(screen.getByRole('tab', { name: 'Ports' }))
+    const count = screen.getByRole('spinbutton', { name: 'Port group 1 count' })
+    await user.clear(count)
+    await user.click(screen.getByRole('button', { name: 'Add item' }))
+
+    expect(screen.getByRole('tab', { name: 'Ports' })).toHaveAttribute('data-state', 'active')
+    expect(count).toHaveAttribute('aria-invalid', 'true')
+    await waitFor(() => expect(count).toHaveFocus())
     expect(onCreate).not.toHaveBeenCalled()
   })
 

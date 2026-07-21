@@ -18,6 +18,7 @@ import { DemoSessionDialog, type DemoSessionDialogState } from '@/components/dem
 import { DesktopInventoryShell } from '@/components/desktop-inventory-shell'
 import { GlobalItemSearch } from '@/components/global-item-search'
 import { InspectorPanel } from '@/components/inspector-panel'
+import { ReturnToInventoryDialog } from '@/components/return-to-inventory-dialog'
 import { InventorySidebar } from '@/components/inventory-sidebar'
 import {
   InventoryLifecycleDialog,
@@ -128,6 +129,8 @@ import {
   placementCollides,
   placementsCollide,
   removeConnection,
+  getReturnCanvasItemImpact,
+  returnCanvasItemToInventory,
   updateConnectionLabel,
   updateConnectionRoute,
   upsertPlacements,
@@ -474,6 +477,8 @@ function App() {
   const [inventoryLifecycleBusy, setInventoryLifecycleBusy] = useState(false)
   const [inventoryLifecycleError, setInventoryLifecycleError] = useState<string | null>(null)
   const [inventoryLifecycleRevision, setInventoryLifecycleRevision] = useState(0)
+  const [returnToInventoryItemId, setReturnToInventoryItemId] = useState<string | null>(null)
+  const [returnToInventoryBusy, setReturnToInventoryBusy] = useState(false)
   const canvasControllerRef = useRef<CanvasController | null>(null)
   const projectRef = useRef<ProjectState | null>(null)
   const lastPersistedProjectRef = useRef<ProjectState | null>(null)
@@ -852,6 +857,12 @@ function App() {
     releaseNotesQuery.data?.hasUnseen === true &&
     releaseNotesQuery.data.entries.length > 0
   const isDemoMode = demoSessionQuery.data?.mode === 'demo'
+  const returnToInventoryItem = returnToInventoryItemId
+    ? project?.items[returnToInventoryItemId] ?? null
+    : null
+  const returnToInventoryImpact = project && returnToInventoryItemId
+    ? getReturnCanvasItemImpact(project, returnToInventoryItemId)
+    : null
 
   function updateProject(nextProject: ProjectState, options: { recordHistory?: boolean } = {}) {
     const negotiatedProject = normalizeNetworkProject(nextProject)
@@ -1048,6 +1059,46 @@ function App() {
     setSelectedConnectionId(null)
     setActiveNetworkTraceEndpoint(null)
     setMobileInventoryOpen(false)
+  }
+
+  function requestReturnToInventory(runtimeItemId: string) {
+    const currentProject = projectRef.current
+
+    if (!currentProject || !getReturnCanvasItemImpact(currentProject, runtimeItemId)) {
+      setValidationMessage('This item is no longer placed on the canvas.')
+      return
+    }
+
+    setReturnToInventoryItemId(runtimeItemId)
+  }
+
+  function confirmReturnToInventory() {
+    const currentProject = projectRef.current
+    const runtimeItemId = returnToInventoryItemId
+
+    if (!currentProject || !runtimeItemId) {
+      return
+    }
+
+    setReturnToInventoryBusy(true)
+    const result = returnCanvasItemToInventory(currentProject, runtimeItemId)
+
+    if (!result.ok) {
+      setReturnToInventoryBusy(false)
+      setReturnToInventoryItemId(null)
+      setValidationMessage(result.message)
+      return
+    }
+
+    updateProject(result.project)
+    setSelectedItemId(null)
+    setSelectedConnectionId(null)
+    setPendingConnectionEndpoint(null)
+    setPortConnectionPreview(null)
+    setActiveNetworkTraceEndpoint(null)
+    setValidationMessage(null)
+    setReturnToInventoryItemId(null)
+    setReturnToInventoryBusy(false)
   }
 
   async function handleCreateInventoryItem(item: InventoryItemInput, quantity: number) {
@@ -1634,6 +1685,7 @@ function App() {
             onUpdateItem={handleUpdateInventoryItem}
             onDuplicateItem={handleDuplicateInventoryItem}
             onArchiveItem={(item) => void requestInventoryLifecycle('archive', [item])}
+            onReturnItemToInventory={requestReturnToInventory}
             lifecycleBusy={inventoryLifecycleBusy}
             onCreateConnection={(from: ConnectionEndpoint, to: ConnectionEndpoint) => {
               const result = createConnectionForEndpoints(project, from, to)
@@ -1723,6 +1775,21 @@ function App() {
               setInventoryLifecycleError(null)
             }}
             onConfirm={() => void confirmInventoryLifecycle()}
+          />
+          <ReturnToInventoryDialog
+            open={returnToInventoryItemId !== null}
+            itemName={returnToInventoryItem?.name ?? 'Canvas item'}
+            itemType={returnToInventoryItem?.type ?? 'item'}
+            impact={returnToInventoryImpact ?? {
+              placementsRemoved: 0,
+              assignmentsReleased: 0,
+              connectionsRemoved: 0,
+            }}
+            busy={returnToInventoryBusy}
+            onOpenChange={(open) => {
+              if (!open && !returnToInventoryBusy) setReturnToInventoryItemId(null)
+            }}
+            onConfirm={confirmReturnToInventory}
           />
           {releaseNotesQuery.data ? (
             <WhatsNewDialog

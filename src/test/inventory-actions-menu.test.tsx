@@ -34,6 +34,37 @@ describe('InventoryActionsMenu', () => {
     expect(callbacks.onDuplicate).toHaveBeenCalledTimes(1)
   })
 
+  it('only exposes the return action when a handler is supplied', async () => {
+    const user = userEvent.setup()
+    const onReturnToInventory = vi.fn()
+    const lifecycleCallbacks = {
+      onEdit: vi.fn(),
+      onDuplicate: vi.fn(),
+      onArchive: vi.fn(),
+    }
+
+    const { rerender } = render(
+      <InventoryActionsMenu itemName="Placed server" {...lifecycleCallbacks} />,
+    )
+
+    await user.click(screen.getByRole('button', { name: 'Actions for Placed server' }))
+    expect(screen.queryByRole('menuitem', { name: 'Return to inventory' })).not.toBeInTheDocument()
+
+    await user.keyboard('{Escape}')
+    rerender(
+      <InventoryActionsMenu
+        itemName="Placed server"
+        {...lifecycleCallbacks}
+        onReturnToInventory={onReturnToInventory}
+      />,
+    )
+
+    await user.click(screen.getByRole('button', { name: 'Actions for Placed server' }))
+    await user.click(screen.getByRole('menuitem', { name: 'Return to inventory' }))
+
+    expect(onReturnToInventory).toHaveBeenCalledTimes(1)
+  })
+
   it('exposes only restore and delete for an archived item', async () => {
     const user = userEvent.setup()
     const onRestore = vi.fn()

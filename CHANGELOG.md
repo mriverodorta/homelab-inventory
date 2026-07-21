@@ -14,6 +14,52 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 - Added repository documentation, issue templates, CI, and security guidance.
 - Clarified Docker deployment, data persistence, and development setup.
 
+## [0.1.33] - 2026-07-20
+
+### Added
+
+- Added a dedicated draggable AC input to every power strip on the canvas and in the Inspector.
+- Added UPS-to-power-strip connections through the existing directional power endpoint workflow.
+
+### Fixed
+
+- Existing power strip inventory records now receive the synthetic input automatically without changing outlet counts.
+- Power strip inputs accept only one upstream power connection while downstream outlet behavior remains unchanged.
+
+## [0.1.32] - 2026-07-20
+
+### Added
+
+- Added an Inspector action that returns placed equipment to inventory without deleting its inventory record.
+- Added a confirmation dialog that previews removed placements, released hosted components, and removed cable connections.
+
+### Changed
+
+- Returning a server, NAS, or PC Build now releases its direct assignments and removes cables attached to the host or its hosted components.
+- The complete return operation is recorded as one project history entry for atomic Undo and Redo.
+
+### Fixed
+
+- Stale return requests now fail safely when the selected equipment is no longer placed on the canvas.
+- Returning equipment clears stale item, connection, pending endpoint, preview, and network trace selections.
+
+## [0.1.31] - 2026-07-20
+
+### Added
+
+- Added type-aware Specs, Compatibility, Resources, and Ports tabs to the Add Inventory Item dialog.
+- Added horizontally scrollable dialog tabs for mobile and narrow viewports.
+
+### Changed
+
+- Kept the inventory type selector and action footer fixed while limiting scrolling to the active form panel.
+- Equipment types now show only the creation tabs relevant to their fields and capabilities.
+
+### Fixed
+
+- Validation now switches to the tab containing the first invalid field and focuses that control for correction.
+- Hidden native scrollbar chrome from the horizontally scrollable Add Item tab strip.
+
 ## [0.1.30] - 2026-07-20
 
 ### Added

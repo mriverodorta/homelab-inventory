@@ -22,6 +22,7 @@ export type PowerEndpointDirection = 'input' | 'output'
 export type PowerEndpointKind =
   | 'ups-outlet'
   | 'power-strip-outlet'
+  | 'power-strip-input'
   | 'monitor-input'
   | 'pc-power-supply-input'
   | 'oem-power-adapter-input'
@@ -139,6 +140,20 @@ function monitorInput(itemId: string, item: InventoryItem): PowerEndpoint | null
   }
 }
 
+function powerStripInput(itemId: string, item: InventoryItem): PowerEndpoint | null {
+  if (item.type !== 'powerStrip') {
+    return null
+  }
+
+  return {
+    endpoint: { itemId, portId: POWER_INPUT_PORT_ID },
+    direction: 'input',
+    kind: 'power-strip-input',
+    label: `${item.name} / AC input`,
+    allowFanOut: false,
+  }
+}
+
 function hostInput(project: ProjectState, itemId: string, item: InventoryItem): PowerEndpoint | null {
   const componentType = item.type === 'pcBuild'
     ? 'powerSupply'
@@ -179,6 +194,10 @@ export function monitorPowerInputEndpoint(itemId: string): ConnectionEndpoint {
   return { itemId, portId: POWER_INPUT_PORT_ID }
 }
 
+export function powerStripPowerInputEndpoint(itemId: string): ConnectionEndpoint {
+  return { itemId, portId: POWER_INPUT_PORT_ID }
+}
+
 export function getPowerEndpoints(project: ProjectState): PowerEndpoint[] {
   return Object.entries(project.items).flatMap(([itemId, item]) => {
     if (isArchivedItem(item)) {
@@ -186,6 +205,7 @@ export function getPowerEndpoints(project: ProjectState): PowerEndpoint[] {
     }
 
     const directInput = monitorInput(itemId, item)
+      ?? powerStripInput(itemId, item)
     const assignedInput = hostInput(project, itemId, item)
     return [
       ...outputEndpoints(itemId, item),

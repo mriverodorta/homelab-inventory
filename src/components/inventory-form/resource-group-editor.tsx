@@ -7,6 +7,10 @@ import type {
   StorageSlotGroupDraft,
 } from './model'
 import {
+  getExpansionSlotGroupValidationTarget,
+  getStorageSlotGroupValidationTarget,
+} from './model'
+import {
   CARD_HEIGHTS,
   EXPANSION_INTERFACE_FAMILIES,
   PCIE_GENERATIONS,
@@ -70,6 +74,7 @@ export function StorageSlotGroupsEditor({
   onChange: (groups: StorageSlotGroupDraft[]) => void
   onSelectOpenChange?: (open: boolean) => void
 }) {
+  const validationTarget = error ? getStorageSlotGroupValidationTarget(groups) : null
   const updateGroup = (id: string, patch: Partial<StorageSlotGroupDraft>) => {
     onChange(groups.map((group) => group.id === id ? { ...group, ...patch } : group))
   }
@@ -103,7 +108,17 @@ export function StorageSlotGroupsEditor({
         <div key={group.id} className="space-y-3 rounded-md border border-[#ded8ce] bg-white p-3">
           <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_8rem_auto]">
             <TextField label={`Storage group ${index + 1} label`} name={`storage-group-${group.id}-label`} value={group.label} placeholder="Primary M.2" onChange={(label) => updateGroup(group.id, { label })} />
-            <TextField label="Count" name={`storage-group-${group.id}-count`} value={group.count} type="number" min={1} placeholder="1" onChange={(count) => updateGroup(group.id, { count })} />
+            <TextField
+              label="Count"
+              ariaLabel={`Storage group ${index + 1} count`}
+              name={`storage-group-${group.id}-count`}
+              value={group.count}
+              type="number"
+              min={1}
+              placeholder="1"
+              error={validationTarget?.index === index ? error : undefined}
+              onChange={(count) => updateGroup(group.id, { count })}
+            />
             <Button type="button" variant="ghost" size="icon" className="self-end" aria-label={`Remove storage group ${index + 1}`} onClick={() => onChange(groups.filter((entry) => entry.id !== group.id))}>
               <Trash2 aria-hidden="true" className="size-4" />
             </Button>
@@ -113,7 +128,7 @@ export function StorageSlotGroupsEditor({
           <SelectField label="PCIe generation" name={`storage-group-${group.id}-pcie-generation`} value={group.pcieGeneration} options={PCIE_GENERATIONS} emptyLabel="Not specified" onOpenChange={onSelectOpenChange} onValueChange={(pcieGeneration) => updateGroup(group.id, { pcieGeneration })} />
         </div>
       ))}
-      <FieldError message={error} />
+      {!validationTarget ? <FieldError message={error} /> : null}
     </section>
   )
 }
@@ -129,6 +144,7 @@ export function ExpansionSlotGroupsEditor({
   onChange: (groups: ExpansionSlotGroupDraft[]) => void
   onSelectOpenChange?: (open: boolean) => void
 }) {
+  const validationTarget = error ? getExpansionSlotGroupValidationTarget(groups) : null
   const updateGroup = (id: string, patch: Partial<ExpansionSlotGroupDraft>) => {
     onChange(groups.map((group) => group.id === id ? { ...group, ...patch } : group))
   }
@@ -166,7 +182,17 @@ export function ExpansionSlotGroupsEditor({
         <div key={group.id} className="space-y-3 rounded-md border border-[#ded8ce] bg-white p-3">
           <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_8rem_auto]">
             <TextField label={`Expansion group ${index + 1} label`} name={`expansion-group-${group.id}-label`} value={group.label} placeholder="PCIe slot" onChange={(label) => updateGroup(group.id, { label })} />
-            <TextField label="Count" name={`expansion-group-${group.id}-count`} value={group.count} type="number" min={1} placeholder="1" onChange={(count) => updateGroup(group.id, { count })} />
+            <TextField
+              label="Count"
+              ariaLabel={`Expansion group ${index + 1} count`}
+              name={`expansion-group-${group.id}-count`}
+              value={group.count}
+              type="number"
+              min={1}
+              placeholder="1"
+              error={validationTarget?.index === index ? error : undefined}
+              onChange={(count) => updateGroup(group.id, { count })}
+            />
             <Button type="button" variant="ghost" size="icon" className="self-end" aria-label={`Remove expansion group ${index + 1}`} onClick={() => onChange(groups.filter((entry) => entry.id !== group.id))}>
               <Trash2 aria-hidden="true" className="size-4" />
             </Button>
@@ -182,7 +208,7 @@ export function ExpansionSlotGroupsEditor({
           <CheckboxOptions label={`Expansion group ${index + 1} accepted heights`} options={CARD_HEIGHTS} selected={group.acceptedHeights} onChange={(acceptedHeights) => updateGroup(group.id, { acceptedHeights })} />
         </div>
       ))}
-      <FieldError message={error} />
+      {!validationTarget ? <FieldError message={error} /> : null}
     </section>
   )
 }

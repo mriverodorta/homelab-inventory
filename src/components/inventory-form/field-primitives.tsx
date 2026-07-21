@@ -25,6 +25,7 @@ export function FieldError({ message, id }: { message?: string; id?: string }) {
 
 export function TextField({
   label,
+  ariaLabel,
   name,
   value,
   placeholder,
@@ -37,6 +38,7 @@ export function TextField({
   onChange,
 }: {
   label: string
+  ariaLabel?: string
   name: string
   value: string
   placeholder?: string
@@ -54,7 +56,7 @@ export function TextField({
     <FieldLabel className={className}>
       <span>{label}</span>
       <Input
-        aria-label={label}
+        aria-label={ariaLabel ?? label}
         aria-invalid={Boolean(error)}
         aria-describedby={error ? errorId : undefined}
         name={name}

@@ -90,15 +90,15 @@ describe('release notes helpers', () => {
   })
 
   it('has structured notes for the package version under development', () => {
-    expect(hasReleaseNoteForVersion(RELEASE_NOTES, '0.1.30')).toBe(true)
+    expect(hasReleaseNoteForVersion(RELEASE_NOTES, '0.1.33')).toBe(true)
     expect(RELEASE_NOTES[0]).toEqual(
       expect.objectContaining({
-        version: '0.1.30',
-        title: 'Custom PC builds and power topology',
+        version: '0.1.33',
+        title: 'Connectable power strip inputs',
       }),
     )
     expect(RELEASE_NOTES.filter((entry) => entry.channel === 'latest')).toEqual([
-      expect.objectContaining({ version: '0.1.30' }),
+      expect.objectContaining({ version: '0.1.33' }),
     ])
   })
 

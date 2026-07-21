@@ -6,6 +6,7 @@ import {
   getPowerTopologyFindings,
   monitorPowerInputEndpoint,
   powerOutletEndpoint,
+  powerStripPowerInputEndpoint,
   removePowerConnection,
   resolvePowerEndpoint,
   validatePowerConnection,
@@ -133,6 +134,11 @@ describe('power endpoint modeling', () => {
           kind: 'power-strip-outlet',
         },
         {
+          endpoint: powerStripPowerInputEndpoint('powerStrip:1'),
+          direction: 'input',
+          kind: 'power-strip-input',
+        },
+        {
           endpoint: monitorPowerInputEndpoint('monitor:1'),
           direction: 'input',
           kind: 'monitor-input',
@@ -231,6 +237,30 @@ describe('power connection validation and lifecycle', () => {
       powerOutletEndpoint('powerStrip:1', 1),
       { itemId: 'powerStrip:1', portId: 'ac-input' },
     )).toMatchObject({ ok: false })
+  })
+
+  it('connects a UPS outlet to a power strip input and reserves that input', () => {
+    const state = project()
+    const stripInput = powerStripPowerInputEndpoint('powerStrip:1')
+    const first = createPowerConnection(
+      state,
+      powerOutletEndpoint('ups:1', 1),
+      stripInput,
+    )
+
+    expect(first.ok).toBe(true)
+    if (!first.ok) return
+
+    expect(first.connection).toMatchObject({
+      type: 'power',
+      from: powerOutletEndpoint('ups:1', 1),
+      to: stripInput,
+    })
+    expect(validatePowerConnection(
+      first.project,
+      powerOutletEndpoint('ups:1', 2),
+      stripInput,
+    )).toMatchObject({ ok: false, message: expect.stringContaining('input already') })
   })
 
   it('creates an additive power connection without mutating the input project', () => {

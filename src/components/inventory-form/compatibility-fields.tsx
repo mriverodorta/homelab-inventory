@@ -74,11 +74,10 @@ function SectionHeading({ icon: Icon, children }: { icon: typeof Cpu; children: 
   )
 }
 
-function HostCompatibilityFields({
+export function HostRequirementFields({
   values,
   errors = {},
   onChange,
-  onSelectOpenChange,
 }: CompatibilityFieldsProps) {
   return (
     <div className="space-y-4">
@@ -117,17 +116,26 @@ function HostCompatibilityFields({
         </div>
       </section>
 
-      <section className="space-y-3 border-t border-[#e4d9c9] pt-4">
-        <SectionHeading icon={ServerCog}>Host resources</SectionHeading>
-        <StorageSlotGroupsEditor groups={values.storageSlotGroups} error={errors.storageSlotGroups} onChange={(storageSlotGroups) => onChange({ storageSlotGroups }, 'immediate')} onSelectOpenChange={onSelectOpenChange} />
-        <ExpansionSlotGroupsEditor groups={values.expansionSlotGroups} error={errors.expansionSlotGroups} onChange={(expansionSlotGroups) => onChange({ expansionSlotGroups }, 'immediate')} onSelectOpenChange={onSelectOpenChange} />
-        <TextField label="Total expansion power (W)" name="hostMaxExpansionPowerWatts" value={values.hostMaxExpansionPowerWatts} type="number" min={0} placeholder="100" error={errors.hostMaxExpansionPowerWatts} onChange={(hostMaxExpansionPowerWatts) => onChange({ hostMaxExpansionPowerWatts })} />
-      </section>
     </div>
   )
 }
 
-function CpuCompatibilityFields({ values, errors = {}, onChange, onSelectOpenChange }: CompatibilityFieldsProps) {
+export function HostResourceFields({
+  values,
+  errors = {},
+  onChange,
+  onSelectOpenChange,
+}: CompatibilityFieldsProps) {
+  return (
+    <div className="space-y-3">
+      <StorageSlotGroupsEditor groups={values.storageSlotGroups} error={errors.storageSlotGroups} onChange={(storageSlotGroups) => onChange({ storageSlotGroups }, 'immediate')} onSelectOpenChange={onSelectOpenChange} />
+      <ExpansionSlotGroupsEditor groups={values.expansionSlotGroups} error={errors.expansionSlotGroups} onChange={(expansionSlotGroups) => onChange({ expansionSlotGroups }, 'immediate')} onSelectOpenChange={onSelectOpenChange} />
+      <TextField label="Total expansion power (W)" name="hostMaxExpansionPowerWatts" value={values.hostMaxExpansionPowerWatts} type="number" min={0} placeholder="100" error={errors.hostMaxExpansionPowerWatts} onChange={(hostMaxExpansionPowerWatts) => onChange({ hostMaxExpansionPowerWatts })} />
+    </div>
+  )
+}
+
+export function CpuCompatibilityFields({ values, errors = {}, onChange, onSelectOpenChange }: CompatibilityFieldsProps) {
   return (
     <div className="grid gap-3 sm:grid-cols-3">
       <SelectField label="CPU socket" name="cpuSocket" value={values.cpuSocket} options={CPU_SOCKET_SUGGESTIONS} emptyLabel="Not specified" onOpenChange={onSelectOpenChange} onValueChange={(cpuSocket) => onChange({ cpuSocket }, 'immediate')} />
@@ -137,7 +145,7 @@ function CpuCompatibilityFields({ values, errors = {}, onChange, onSelectOpenCha
   )
 }
 
-function ExpansionCompatibilityFields({ values, errors = {}, onChange, onSelectOpenChange }: CompatibilityFieldsProps) {
+export function ExpansionCompatibilityFields({ values, errors = {}, onChange, onSelectOpenChange }: CompatibilityFieldsProps) {
   return (
     <div className="grid gap-3 sm:grid-cols-3">
       <SelectField label="Expansion interface" name="expansionInterfaceFamily" value={values.expansionInterfaceFamily} options={EXPANSION_INTERFACE_FAMILIES} emptyLabel="Not specified" onOpenChange={onSelectOpenChange} onValueChange={(expansionInterfaceFamily) => onChange({ expansionInterfaceFamily }, 'immediate')} />
@@ -162,7 +170,15 @@ export function CompatibilityFields(props: CompatibilityFieldsProps) {
         <Puzzle aria-hidden="true" className="size-4 text-[#75695d]" />
         <h3 id="compatibility-heading" className="text-sm font-extrabold uppercase text-[#75695d]">Compatibility</h3>
       </div>
-      {(values.type === 'server' || values.type === 'nas' || values.type === 'motherboard') ? <HostCompatibilityFields {...props} /> : null}
+      {(values.type === 'server' || values.type === 'nas' || values.type === 'motherboard') ? (
+        <>
+          <HostRequirementFields {...props} />
+          <section className="space-y-3 border-t border-[#e4d9c9] pt-4">
+            <SectionHeading icon={ServerCog}>Host resources</SectionHeading>
+            <HostResourceFields {...props} />
+          </section>
+        </>
+      ) : null}
       {values.type === 'cpu' ? <CpuCompatibilityFields {...props} /> : null}
       {values.type === 'ram' ? (
         <TextField label="Module count" name="moduleCount" value={values.moduleCount} type="number" min={1} placeholder="2" error={errors.moduleCount} onChange={(moduleCount) => onChange({ moduleCount })} />

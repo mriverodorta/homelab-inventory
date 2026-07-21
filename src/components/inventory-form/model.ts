@@ -140,6 +140,11 @@ export type InventoryFormValues = {
 
 export type InventoryFormErrors = Partial<Record<keyof InventoryFormValues, string>>
 
+export type InventoryGroupValidationTarget = {
+  index: number
+  field: 'count' | 'speed'
+}
+
 export const MAX_PORT_GROUP_COUNT = 128
 
 const KNOWN_SPEC_KEYS: Partial<Record<InventoryType, string[]>> = {
@@ -825,6 +830,47 @@ function validateNumber(errors: InventoryFormErrors, values: InventoryFormValues
   }
 }
 
+export function getStorageSlotGroupValidationTarget(
+  groups: StorageSlotGroupDraft[],
+): InventoryGroupValidationTarget | null {
+  const index = groups.findIndex((group) => (
+    group.count.trim() !== ''
+      && (!Number.isInteger(Number(group.count)) || Number(group.count) < 1)
+  ))
+  return index >= 0 ? { index, field: 'count' } : null
+}
+
+export function getExpansionSlotGroupValidationTarget(
+  groups: ExpansionSlotGroupDraft[],
+): InventoryGroupValidationTarget | null {
+  const index = groups.findIndex((group) => (
+    group.count.trim() !== ''
+      && (!Number.isInteger(Number(group.count)) || Number(group.count) < 1)
+  ))
+  return index >= 0 ? { index, field: 'count' } : null
+}
+
+export function getPortGroupValidationTarget(
+  type: InventoryType,
+  groups: PortGroup[],
+): InventoryGroupValidationTarget | null {
+  const invalidCountIndex = groups.findIndex(
+    (group) => !Number.isInteger(Number(group.count))
+      || Number(group.count) < 0
+      || Number(group.count) > MAX_PORT_GROUP_COUNT,
+  )
+  if (invalidCountIndex >= 0) return { index: invalidCountIndex, field: 'count' }
+
+  if (type === 'switch') {
+    const invalidSpeedIndex = groups.findIndex(
+      (group) => isSwitchNetworkPortType(group.type) && !isSupportedSwitchPortSpeed(group.speed),
+    )
+    if (invalidSpeedIndex >= 0) return { index: invalidSpeedIndex, field: 'speed' }
+  }
+
+  return null
+}
+
 export function validateInventoryFormValues(values: InventoryFormValues): InventoryFormErrors {
   const errors: InventoryFormErrors = {}
   if (!values.name.trim()) errors.name = 'Name is required.'
@@ -845,34 +891,19 @@ export function validateInventoryFormValues(values: InventoryFormValues): Invent
   for (const key of positiveFields) validateNumber(errors, values, key, 1)
   for (const key of nonNegativeFields) validateNumber(errors, values, key)
 
-  const invalidStorageGroup = values.storageSlotGroups.find((group) => (
-    group.count.trim() !== ''
-      && (!Number.isInteger(Number(group.count)) || Number(group.count) < 1)
-  ))
-  if (invalidStorageGroup) errors.storageSlotGroups = 'Storage slot counts must be whole numbers of at least 1.'
-
-  const invalidExpansionGroup = values.expansionSlotGroups.find((group) => (
-    group.count.trim() !== ''
-      && (!Number.isInteger(Number(group.count)) || Number(group.count) < 1)
-  ))
-  if (invalidExpansionGroup) errors.expansionSlotGroups = 'Expansion slot counts must be whole numbers of at least 1.'
-
-  const invalidCount = values.portGroups.find(
-    (group) => !Number.isInteger(Number(group.count))
-      || Number(group.count) < 0
-      || Number(group.count) > MAX_PORT_GROUP_COUNT,
-  )
-  if (invalidCount) {
-    errors.portGroups = `Port counts must be whole numbers from 0 to ${MAX_PORT_GROUP_COUNT}.`
+  if (getStorageSlotGroupValidationTarget(values.storageSlotGroups)) {
+    errors.storageSlotGroups = 'Storage slot counts must be whole numbers of at least 1.'
   }
 
-  if (values.type === 'switch') {
-    const invalidSpeed = values.portGroups.find(
-      (group) => isSwitchNetworkPortType(group.type) && !isSupportedSwitchPortSpeed(group.speed),
-    )
-    if (invalidSpeed) {
-      errors.portGroups = `Select a supported speed for the ${formatPortTypeLabel(invalidSpeed.type)} switch port group.`
-    }
+  if (getExpansionSlotGroupValidationTarget(values.expansionSlotGroups)) {
+    errors.expansionSlotGroups = 'Expansion slot counts must be whole numbers of at least 1.'
+  }
+
+  const invalidPortGroup = getPortGroupValidationTarget(values.type, values.portGroups)
+  if (invalidPortGroup?.field === 'count') {
+    errors.portGroups = `Port counts must be whole numbers from 0 to ${MAX_PORT_GROUP_COUNT}.`
+  } else if (invalidPortGroup?.field === 'speed') {
+    errors.portGroups = `Select a supported speed for the ${formatPortTypeLabel(values.portGroups[invalidPortGroup.index].type)} switch port group.`
   }
 
   return errors

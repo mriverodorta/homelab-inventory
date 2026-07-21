@@ -455,6 +455,7 @@ type RenderInspectorOptions = Partial<Pick<InspectorPanelProps,
   | 'onRemoveConnection'
   | 'onEndpointConnectionClick'
   | 'onCancelPendingConnection'
+  | 'onReturnItemToInventory'
 >> & {
   selectedItemId?: string | null
   selectedConnectionId?: string | null
@@ -482,6 +483,7 @@ function renderInspector({
   onRemoveConnection = vi.fn(),
   onEndpointConnectionClick = vi.fn(),
   onCancelPendingConnection = vi.fn(),
+  onReturnItemToInventory = vi.fn(),
 }: RenderInspectorOptions = {}) {
   const queryClient = new QueryClient({
     defaultOptions: {
@@ -507,6 +509,7 @@ function renderInspector({
         onClose={() => {}}
         onUpdateProject={onUpdateProject}
         onUpdateItem={onUpdateItem}
+        onReturnItemToInventory={onReturnItemToInventory}
         onCreateConnection={onCreateConnection}
         onSelectNetworkTrace={onSelectNetworkTrace}
         onEndpointConnectionClick={onEndpointConnectionClick}
@@ -529,10 +532,50 @@ function renderInspector({
     onRemoveConnection,
     onEndpointConnectionClick,
     onCancelPendingConnection,
+    onReturnItemToInventory,
   }
 }
 
 describe('InspectorPanel', () => {
+  it('offers return to inventory only for an item placed on the canvas', async () => {
+    const user = userEvent.setup()
+    const { onReturnItemToInventory, rerender } = renderInspector({ selectedItemId: 'server' })
+
+    await user.click(screen.getByRole('button', { name: 'Actions for Dell OptiPlex Micro 7090' }))
+    await user.click(screen.getByRole('menuitem', { name: 'Return to inventory' }))
+    expect(onReturnItemToInventory).toHaveBeenCalledWith('server')
+
+    rerender(
+      <QueryClientProvider client={new QueryClient()}>
+        <InspectorPanel
+          project={{ ...project, placements: [] }}
+          agentStatus={{ servers: {}, registeredServerIds: [] }}
+          selectedItemId="server"
+          selectedConnectionId={null}
+          activeNetworkTraceKey={null}
+          pendingConnectionEndpoint={null}
+          validationMessage={null}
+          persistenceWarning={null}
+          open
+          onClose={() => {}}
+          onUpdateProject={() => {}}
+          onUpdateItem={() => {}}
+          onReturnItemToInventory={onReturnItemToInventory}
+          onCreateConnection={() => {}}
+          onSelectNetworkTrace={() => {}}
+          onEndpointConnectionClick={() => {}}
+          onCancelPendingConnection={() => {}}
+          onUpdateConnectionLabel={() => {}}
+          onUpdateConnectionRoute={() => {}}
+          onRemoveConnection={() => {}}
+        />
+      </QueryClientProvider>,
+    )
+
+    await user.click(screen.getByRole('button', { name: 'Actions for Dell OptiPlex Micro 7090' }))
+    expect(screen.queryByRole('menuitem', { name: 'Return to inventory' })).not.toBeInTheDocument()
+  })
+
   it('renders dedicated PC Build tabs with assigned components, hosted ports, and power input', async () => {
     const user = userEvent.setup()
     const pcBuild: InventoryItem = {

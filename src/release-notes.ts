@@ -12,9 +12,56 @@ export type ReleaseNoteEntry = {
 
 export const RELEASE_NOTES: ReleaseNoteEntry[] = [
   {
-    version: '0.1.30',
+    version: '0.1.33',
     date: '2026-07-20',
     channel: 'latest',
+    title: 'Connectable power strip inputs',
+    highlights: [
+      'Power strips now expose a dedicated draggable AC input on their canvas cards and in the Inspector.',
+      'UPS and other compatible power-source outlets can connect directly to the power strip input using the existing directional power cable workflow.',
+    ],
+    fixes: [
+      'Existing power strip records gain a stable AC input automatically without changing their configured outlet counts.',
+      'Power strip inputs enforce one upstream connection while all downstream outlets retain their existing availability and fan-out rules.',
+    ],
+  },
+  {
+    version: '0.1.32',
+    date: '2026-07-20',
+    channel: 'release',
+    title: 'Return canvas equipment to inventory',
+    highlights: [
+      'Placed equipment can now be returned to inventory from its Inspector action menu without deleting the inventory record.',
+      'The confirmation dialog previews the number of canvas placements, hosted component assignments, and cable connections affected before the change is applied.',
+      'Returning a server, NAS, or PC Build releases its hosted components and removes cables attached to the host or those components.',
+    ],
+    fixes: [
+      'The complete return operation is recorded as one atomic project change, so a single Undo or Redo restores or reapplies the placement, assignments, and cables together.',
+      'Stale return requests fail safely when the equipment is no longer placed on the canvas.',
+    ],
+    notes: [
+      'Returning equipment preserves every inventory record; released components become available for assignment again.',
+    ],
+  },
+  {
+    version: '0.1.31',
+    date: '2026-07-20',
+    channel: 'release',
+    title: 'Tabbed inventory item creation',
+    highlights: [
+      'The Add Inventory Item dialog now organizes fields into type-aware Specs, Compatibility, Resources, and Ports tabs so each equipment type shows only the sections it needs.',
+      'The inventory type selector and action footer remain fixed while only the active tab panel scrolls, keeping long hardware forms easier to navigate.',
+      'On smaller screens, the tab row scrolls horizontally without expanding the dialog beyond the viewport.',
+    ],
+    fixes: [
+      'Validation now opens the tab containing the first invalid field and moves focus directly to that control for faster correction.',
+      'The horizontally scrollable creation tabs no longer show native scrollbar chrome on narrow screens.',
+    ],
+  },
+  {
+    version: '0.1.30',
+    date: '2026-07-20',
+    channel: 'release',
     title: 'Custom PC builds and power topology',
     highlights: [
       'Free-form PC Builds can now combine a motherboard, CPU, cooler, memory, storage, graphics, power supply, case, sound, network, and wireless components on the canvas.',

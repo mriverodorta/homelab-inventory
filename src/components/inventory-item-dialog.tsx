@@ -1,12 +1,22 @@
 import { AlertTriangle } from 'lucide-react'
-import { useRef, useState, type FormEvent } from 'react'
-import { CompatibilityFields } from '@/components/inventory-form/compatibility-fields'
-import { FieldLabel } from '@/components/inventory-form/field-primitives'
+import { useId, useRef, useState, type FormEvent, type ReactNode } from 'react'
+import {
+  CpuCompatibilityFields,
+  ExpansionCompatibilityFields,
+  HostRequirementFields,
+  HostResourceFields,
+} from '@/components/inventory-form/compatibility-fields'
+import {
+  findFirstInventoryDialogErrorTab,
+  getInventoryDialogTabs,
+  type InventoryDialogFormErrors,
+  type InventoryDialogTabId,
+} from '@/components/inventory-form/dialog-tab-policy'
+import { FieldError, FieldLabel, TextField } from '@/components/inventory-form/field-primitives'
 import {
   createInventoryFormValues,
   inventoryFormValuesToInput,
   validateInventoryFormValues,
-  type InventoryFormErrors,
   type InventoryFormValues,
 } from '@/components/inventory-form/model'
 import {
@@ -35,8 +45,16 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import type { InventoryItemInput } from '@/lib/db'
 import type { InventoryType } from '@/types/inventory'
+
+const DIALOG_TAB_LABELS: Record<InventoryDialogTabId, string> = {
+  specs: 'Specs',
+  compatibility: 'Compatibility',
+  resources: 'Resources',
+  ports: 'Ports',
+}
 
 export function InventoryItemDialog({
   open,
@@ -49,12 +67,15 @@ export function InventoryItemDialog({
 }) {
   const [values, setValues] = useState<InventoryFormValues>(() => createInventoryFormValues('server'))
   const [quantity, setQuantity] = useState('1')
-  const [errors, setErrors] = useState<InventoryFormErrors>({})
+  const [errors, setErrors] = useState<InventoryDialogFormErrors>({})
+  const [activeTab, setActiveTab] = useState<InventoryDialogTabId>('specs')
   const [pending, setPending] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [dirty, setDirty] = useState(false)
   const [discardOpen, setDiscardOpen] = useState(false)
   const [formKey, setFormKey] = useState(0)
+  const formRef = useRef<HTMLFormElement>(null)
+  const quantityErrorId = useId()
   const selectMenuOpenRef = useRef(false)
   const lastSelectInteractionRef = useRef(0)
 
@@ -64,6 +85,7 @@ export function InventoryItemDialog({
     setValues(createInventoryFormValues('server'))
     setQuantity('1')
     setErrors({})
+    setActiveTab('specs')
     setPending(false)
     setError(null)
     setDirty(false)
@@ -126,6 +148,7 @@ export function InventoryItemDialog({
       notes: current.notes,
     }))
     setErrors({})
+    setActiveTab('specs')
     setError(null)
     markDirty()
   }
@@ -138,16 +161,21 @@ export function InventoryItemDialog({
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     const parsedQuantity = Number(quantity)
-    if (!Number.isInteger(parsedQuantity) || parsedQuantity < 1 || parsedQuantity > 100) {
-      setError('Quantity must be between 1 and 100.')
-      return
+    const nextErrors: InventoryDialogFormErrors = {
+      ...validateInventoryFormValues(values),
     }
-
-    const nextErrors = validateInventoryFormValues(values)
+    if (!Number.isInteger(parsedQuantity) || parsedQuantity < 1 || parsedQuantity > 100) {
+      nextErrors.quantity = 'Quantity must be between 1 and 100.'
+    }
     setErrors(nextErrors)
 
     if (Object.keys(nextErrors).length) {
-      setError(nextErrors.name ?? nextErrors.portGroups ?? 'Correct the highlighted fields.')
+      const errorTab = findFirstInventoryDialogErrorTab(values.type, nextErrors) ?? 'specs'
+      setActiveTab(errorTab)
+      setError('Correct the highlighted fields.')
+      requestAnimationFrame(() => {
+        formRef.current?.querySelector<HTMLElement>('[aria-invalid="true"]')?.focus()
+      })
       return
     }
 
@@ -164,6 +192,99 @@ export function InventoryItemDialog({
     }
   }
 
+  const tabs = getInventoryDialogTabs(values.type)
+  const sharedFieldProps = {
+    values,
+    errors,
+    onChange: updateValues,
+    onSelectOpenChange: handleSelectOpenChange,
+  }
+
+  let activeTabContent: ReactNode
+  if (activeTab === 'compatibility') {
+    if (values.type === 'server' || values.type === 'nas' || values.type === 'motherboard') {
+      activeTabContent = <HostRequirementFields {...sharedFieldProps} />
+    } else if (values.type === 'cpu') {
+      activeTabContent = <CpuCompatibilityFields {...sharedFieldProps} />
+    } else if (values.type === 'ram') {
+      activeTabContent = (
+        <TextField
+          label="Module count"
+          name="moduleCount"
+          value={values.moduleCount}
+          type="number"
+          min={1}
+          placeholder="2"
+          error={errors.moduleCount}
+          onChange={(moduleCount) => updateValues({ moduleCount })}
+        />
+      )
+    } else {
+      activeTabContent = <ExpansionCompatibilityFields {...sharedFieldProps} />
+    }
+  } else if (activeTab === 'resources') {
+    activeTabContent = <HostResourceFields {...sharedFieldProps} />
+  } else if (activeTab === 'ports') {
+    activeTabContent = (
+      <PortGroupsEditor
+        type={values.type}
+        groups={values.portGroups}
+        error={errors.portGroups}
+        onChange={(portGroups) => updateValues({ portGroups })}
+        onSelectOpenChange={handleSelectOpenChange}
+      />
+    )
+  } else {
+    activeTabContent = (
+      <>
+        <InventoryCommonFields
+          type={values.type}
+          values={values}
+          errors={errors}
+          onChange={updateValues}
+          onSelectOpenChange={handleSelectOpenChange}
+        />
+        <InventoryTypeFields
+          type={values.type}
+          values={values}
+          errors={errors}
+          onChange={updateValues}
+          onSelectOpenChange={handleSelectOpenChange}
+        />
+
+        <FieldLabel>
+          <span>Quantity</span>
+          <Input
+            aria-label="Quantity"
+            aria-invalid={Boolean(errors.quantity)}
+            aria-describedby={errors.quantity ? quantityErrorId : undefined}
+            min={1}
+            max={100}
+            step={1}
+            type="number"
+            value={quantity}
+            onChange={(event) => {
+              markDirty()
+              setQuantity(event.target.value)
+              setErrors((current) => {
+                const next = { ...current }
+                delete next.quantity
+                return next
+              })
+              setError(null)
+            }}
+          />
+          <FieldError id={quantityErrorId} message={errors.quantity} />
+        </FieldLabel>
+
+        <FieldLabel>
+          <span>Notes</span>
+          <textarea aria-label="Notes" name="notes" value={values.notes} onChange={(event) => updateValues({ notes: event.target.value })} className="min-h-20 w-full rounded-lg border border-[#ded8ce] bg-[#fffdf8] px-3 py-2 text-sm text-[#20242c] outline-none transition placeholder:text-[#8d857b] focus-visible:border-[#20242c] focus-visible:ring-2 focus-visible:ring-[#ddb668]/40" placeholder="Optional notes" />
+        </FieldLabel>
+      </>
+    )
+  }
+
   return (
     <>
       <Dialog open={open} onOpenChange={handleDialogOpenChange}>
@@ -171,8 +292,8 @@ export function InventoryItemDialog({
           <DialogHeader className="border-b border-[#ded8ce] px-4 py-4">
             <DialogTitle>Add inventory item</DialogTitle>
           </DialogHeader>
-          <form key={formKey} noValidate onSubmit={handleSubmit} onChange={markDirty} className="flex min-h-0 flex-1 flex-col">
-            <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-4 py-4">
+          <form ref={formRef} key={formKey} noValidate onSubmit={handleSubmit} onChange={markDirty} className="flex min-h-0 flex-1 flex-col">
+            <div className="shrink-0 border-b border-[#ded8ce] px-4 py-3">
               <FieldLabel>
                 <span>Type</span>
                 <Select value={values.type} onValueChange={(value) => changeType(value as InventoryType)} onOpenChange={handleSelectOpenChange}>
@@ -182,36 +303,33 @@ export function InventoryItemDialog({
                   </SelectContent>
                 </Select>
               </FieldLabel>
-
-              <InventoryCommonFields type={values.type} values={values} errors={errors} onChange={updateValues} onSelectOpenChange={handleSelectOpenChange} />
-              <InventoryTypeFields type={values.type} values={values} errors={errors} onChange={updateValues} onSelectOpenChange={handleSelectOpenChange} />
-              <CompatibilityFields values={values} errors={errors} onChange={updateValues} onSelectOpenChange={handleSelectOpenChange} />
-              <PortGroupsEditor type={values.type} groups={values.portGroups} error={errors.portGroups} onChange={(portGroups) => updateValues({ portGroups })} onSelectOpenChange={handleSelectOpenChange} />
-
-              <FieldLabel>
-                <span>Quantity</span>
-                <Input
-                  aria-label="Quantity"
-                  min={1}
-                  max={100}
-                  step={1}
-                  type="number"
-                  value={quantity}
-                  onChange={(event) => {
-                    markDirty()
-                    setQuantity(event.target.value)
-                    setError(null)
-                  }}
-                />
-              </FieldLabel>
-
-              <FieldLabel>
-                <span>Notes</span>
-                <textarea aria-label="Notes" name="notes" value={values.notes} onChange={(event) => updateValues({ notes: event.target.value })} className="min-h-20 w-full rounded-lg border border-[#ded8ce] bg-[#fffdf8] px-3 py-2 text-sm text-[#20242c] outline-none transition placeholder:text-[#8d857b] focus-visible:border-[#20242c] focus-visible:ring-2 focus-visible:ring-[#ddb668]/40" placeholder="Optional notes" />
-              </FieldLabel>
-
-              {error ? <div className="rounded-md border border-[#dfb3a5] bg-[#fff4ef] px-3 py-2 text-sm text-[#8b3322]">{error}</div> : null}
             </div>
+
+            <Tabs
+              value={activeTab}
+              onValueChange={(tab) => setActiveTab(tab as InventoryDialogTabId)}
+              className="min-h-0 flex-1 gap-0 overflow-hidden"
+            >
+              <div className="shrink-0 overflow-x-auto overflow-y-hidden border-b border-[#ded8ce] px-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                <TabsList variant="line" className="h-11 min-w-max justify-start gap-5 p-0">
+                  {tabs.map((tab) => (
+                    <TabsTrigger key={tab} value={tab} className="h-11 flex-none px-1 uppercase tracking-[0.08em]">
+                      {DIALOG_TAB_LABELS[tab]}
+                    </TabsTrigger>
+                  ))}
+                </TabsList>
+              </div>
+              <TabsContent
+                key={activeTab}
+                value={activeTab}
+                className="m-0 min-h-0 overflow-y-auto px-4 py-4"
+              >
+                <div className="space-y-4">
+                  {activeTabContent}
+                  {error ? <div className="rounded-md border border-[#dfb3a5] bg-[#fff4ef] px-3 py-2 text-sm text-[#8b3322]">{error}</div> : null}
+                </div>
+              </TabsContent>
+            </Tabs>
             <DialogFooter className="!mx-0 !mb-0 shrink-0 rounded-b-xl border-t border-[#ded8ce] bg-[#f5f0e8] px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
               <Button type="button" variant="outline" onClick={requestClose}>Cancel</Button>
               <Button type="submit" disabled={pending}>{pending ? 'Adding...' : 'Add item'}</Button>

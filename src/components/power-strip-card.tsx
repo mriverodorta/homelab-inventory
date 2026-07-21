@@ -2,7 +2,11 @@ import { type Node, type NodeProps } from '@xyflow/react'
 import { PlugZap } from 'lucide-react'
 import { formatInventoryCompactSpec } from '@/lib/format'
 import { runtimeItemKey } from '@/lib/item-keys'
-import { powerOutletEndpoint } from '@/lib/power-topology'
+import {
+  powerOutletEndpoint,
+  powerStripPowerInputEndpoint,
+  POWER_INPUT_PORT_ID,
+} from '@/lib/power-topology'
 import {
   numericSpec,
   sortedPorts,
@@ -40,6 +44,23 @@ export function powerStripOutletViews(item: Parameters<typeof sortedPorts>[0]): 
   })
 }
 
+export function powerStripInputView(item: Parameters<typeof sortedPorts>[0]): StandalonePortView {
+  const itemId = runtimeItemKey(item)
+
+  return {
+    endpoint: powerStripPowerInputEndpoint(itemId),
+    port: {
+      id: POWER_INPUT_PORT_ID,
+      kind: 'server-port',
+      type: 'barrel',
+      slotNumber: 1,
+    },
+    label: 'AC IN',
+    detail: `${item.name} AC input`,
+    tone: 'bg-[#d9c7b2] text-[#33261b]',
+  }
+}
+
 export function PowerStripNode({ data }: NodeProps<PowerStripFlowNode>) {
   const item = data.project.items[data.itemId]
 
@@ -55,7 +76,10 @@ export function PowerStripNode({ data }: NodeProps<PowerStripFlowNode>) {
       eyebrow="Power strip"
       accentClassName="bg-[#453a4d]"
       summary={formatInventoryCompactSpec(item) ?? undefined}
-      groups={[{ id: 'outlets', label: 'Power outlets', ports: powerStripOutletViews(item) }]}
+      groups={[
+        { id: 'input', label: 'Power input', ports: [powerStripInputView(item)] },
+        { id: 'outlets', label: 'Power outlets', ports: powerStripOutletViews(item) },
+      ]}
       width={420}
     />
   )

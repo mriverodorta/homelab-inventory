@@ -1,5 +1,5 @@
 import { Plus, Trash2 } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import {
@@ -16,43 +16,60 @@ import {
 } from '@/lib/switch-ports'
 import type { InventoryPortRole, InventoryPortType, InventoryType } from '@/types/inventory'
 import { FieldError } from './field-primitives'
-import { inventoryTypeHasPorts, type PortGroup, updatePortGroupForType } from './model'
+import {
+  getPortGroupValidationTarget,
+  inventoryTypeHasPorts,
+  type PortGroup,
+  updatePortGroupForType,
+} from './model'
 import { fieldClassName, formatPortTypeLabel, PORT_ROLES, PORT_SPEEDS, PORT_TYPES } from './options'
 
 function PortCountInput({
   groupIndex,
   value,
+  invalid,
+  describedBy,
   onChange,
 }: {
   groupIndex: number
   value: number
+  invalid?: boolean
+  describedBy?: string
   onChange: (value: number) => void
 }) {
   const [draft, setDraft] = useState(String(value))
+  const editingRef = useRef(false)
 
   useEffect(() => {
-    setDraft(String(value))
+    if (!editingRef.current) setDraft(String(value))
   }, [value])
 
   return (
     <Input
       aria-label={`Port group ${groupIndex + 1} count`}
+      aria-invalid={invalid}
+      aria-describedby={invalid ? describedBy : undefined}
       type="number"
-      min={1}
+      min={0}
       value={draft}
       className={fieldClassName()}
+      onFocus={() => {
+        editingRef.current = true
+      }}
       onBlur={() => {
-        if (draft === '') setDraft(String(value))
+        editingRef.current = false
+        if (draft !== '') setDraft(String(value))
       }}
       onChange={(event) => {
         const nextDraft = event.target.value
         setDraft(nextDraft)
-        if (nextDraft === '') return
+        if (nextDraft === '') {
+          onChange(Number.NaN)
+          return
+        }
 
         const nextValue = Number(nextDraft)
-        if (Number.isFinite(nextValue) && nextValue >= 1) {
-          onChange(nextValue)
-        }
+        if (Number.isFinite(nextValue)) onChange(nextValue)
       }}
     />
   )
@@ -71,8 +88,10 @@ export function PortGroupsEditor({
   onChange: (groups: PortGroup[]) => void
   onSelectOpenChange?: (open: boolean) => void
 }) {
+  const errorId = useId()
   if (!inventoryTypeHasPorts(type)) return null
   const showsRole = type === 'switch' || type === 'network'
+  const validationTarget = error ? getPortGroupValidationTarget(type, groups) : null
 
   function updateGroup(id: number, update: Partial<PortGroup>) {
     onChange(groups.map((group) => (
@@ -119,6 +138,8 @@ export function PortGroupsEditor({
                 <PortCountInput
                   groupIndex={index}
                   value={group.count}
+                  invalid={validationTarget?.index === index && validationTarget.field === 'count'}
+                  describedBy={errorId}
                   onChange={(count) => updateGroup(group.id, { count })}
                 />
               </label>
@@ -134,7 +155,12 @@ export function PortGroupsEditor({
               <div className="grid gap-1 text-[10px] font-black uppercase tracking-[0.08em] text-[#75695d]">
                 <span>Speed</span>
                 <Select value={requiresSpeed && !hasValidSpeed ? 'required' : group.speed || 'none'} onValueChange={(value) => updateGroup(group.id, { speed: value === 'none' ? '' : value })} onOpenChange={onSelectOpenChange}>
-                  <SelectTrigger className={fieldClassName()} aria-label={`Port group ${index + 1} speed`}><SelectValue placeholder="Select speed" /></SelectTrigger>
+                  <SelectTrigger
+                    className={fieldClassName()}
+                    aria-label={`Port group ${index + 1} speed`}
+                    aria-invalid={validationTarget?.index === index && validationTarget.field === 'speed'}
+                    aria-describedby={validationTarget?.index === index && validationTarget.field === 'speed' ? errorId : undefined}
+                  ><SelectValue placeholder="Select speed" /></SelectTrigger>
                   <SelectContent>
                     {requiresSpeed && !hasValidSpeed ? <SelectItem value="required" disabled>Select speed</SelectItem> : null}
                     {speedOptions.map((speed) => <SelectItem key={speed || 'none'} value={speed || 'none'}>{speed || 'No speed'}</SelectItem>)}
@@ -160,7 +186,7 @@ export function PortGroupsEditor({
           )
         })}
       </div>
-      <FieldError message={error} />
+      <FieldError id={errorId} message={error} />
     </section>
   )
 }

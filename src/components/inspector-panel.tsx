@@ -3352,6 +3352,7 @@ export function InspectorPanel({
   onUpdateItem,
   onDuplicateItem = () => undefined,
   onArchiveItem = () => undefined,
+  onReturnItemToInventory,
   lifecycleBusy = false,
   onCreateConnection,
   onSelectNetworkTrace,
@@ -3377,6 +3378,7 @@ export function InspectorPanel({
   onUpdateItem: (itemId: string, input: InventoryItemInput) => void
   onDuplicateItem?: (item: InventoryItem) => void
   onArchiveItem?: (item: InventoryItem) => void
+  onReturnItemToInventory?: (runtimeItemId: string) => void
   lifecycleBusy?: boolean
   onCreateConnection: (from: ConnectionEndpoint, to: ConnectionEndpoint) => void
   onSelectNetworkTrace: (endpoint: ConnectionEndpoint) => void
@@ -3391,6 +3393,9 @@ export function InspectorPanel({
     ? project.connections.find((connection) => String(connection.id) === String(selectedConnectionId)) ?? null
     : null
   const selectedItemRuntimeKey = selectedItem ? runtimeItemKey(selectedItem) : null
+  const selectedItemIsPlaced = selectedItemRuntimeKey
+    ? project.placements.some((placement) => placement.serverId === selectedItemRuntimeKey)
+    : false
   const auditWarnings = selectedItemRuntimeKey ? getItemAuditWarnings(project, selectedItemRuntimeKey) : []
   const drawerTitle = selectedConnection
     ? selectedConnection.label?.trim() || 'Connection'
@@ -3428,6 +3433,9 @@ export function InspectorPanel({
               onEdit={() => undefined}
               onDuplicate={() => onDuplicateItem(selectedItem)}
               onArchive={() => onArchiveItem(selectedItem)}
+              onReturnToInventory={selectedItemIsPlaced && selectedItemRuntimeKey && onReturnItemToInventory
+                ? () => onReturnItemToInventory(selectedItemRuntimeKey)
+                : undefined}
             />
           ) : null}
           <Button

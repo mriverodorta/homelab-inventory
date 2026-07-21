@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import { assignComponent } from '@/lib/constraints'
+import {
+  createEmptyHistory,
+  pushHistory,
+  redoHistory,
+  undoHistory,
+} from '@/lib/history'
 import { mergeInventoryWithProject } from '@/lib/inventory'
 import {
   applyInventoryItemInput,
@@ -8,11 +14,13 @@ import {
   getCanvasItemHeight,
   getCanvasItemWidth,
   getNonCollidingPlacement,
+  getReturnCanvasItemImpact,
   MONITOR_CARD_WIDTH,
   PC_BUILD_CARD_WIDTH,
   placementCollides,
   placementsCollide,
   POWER_EQUIPMENT_CARD_WIDTH,
+  returnCanvasItemToInventory,
   removeConnection,
   SERVER_CARD_COLLISION_GAP,
   SERVER_CARD_WIDTH,
@@ -870,5 +878,199 @@ describe('archived inventory domain guards', () => {
       { itemId: 'server-display', hostedItemId: 'nic-quad', portId: 'rj45-01' },
       { itemId: 'patch-rj45', portId: 'keystone-01', endpointId: 'keystone-01-back' },
     )).toEqual({ ok: false, message: 'One of the selected ports is no longer available.' })
+  })
+})
+
+function createReturnCanvasItemProject(): ProjectState {
+  return {
+    id: 'default',
+    metadata: {
+      name: 'Inventory',
+      version: 1,
+      updatedAt: '2026-07-20T12:00:00.000Z',
+    },
+    items: {
+      'server:1': { id: 1, key: 'server:1', type: 'server', name: 'Host server' },
+      'switch:1': { id: 1, key: 'switch:1', type: 'switch', name: 'Switch' },
+      'monitor:1': { id: 1, key: 'monitor:1', type: 'monitor', name: 'Monitor' },
+      'server:2': { id: 2, key: 'server:2', type: 'server', name: 'Other server' },
+      'network:1': { id: 1, key: 'network:1', type: 'network', name: 'Hosted NIC' },
+      'gpu:1': { id: 1, key: 'gpu:1', type: 'gpu', name: 'Hosted GPU' },
+      'network:2': { id: 2, key: 'network:2', type: 'network', name: 'Other NIC' },
+    },
+    placements: [
+      { serverId: 'server:1', x: 0, y: 0 },
+      { serverId: 'switch:1', x: 400, y: 0 },
+      { serverId: 'monitor:1', x: 800, y: 0 },
+      { serverId: 'server:2', x: 0, y: 400 },
+    ],
+    assignments: [
+      {
+        id: 1,
+        serverId: 'server:1',
+        itemId: 'network:1',
+        type: 'network',
+        assignedAt: '2026-07-20T12:00:00.000Z',
+      },
+      {
+        id: 2,
+        serverId: 'server:1',
+        itemId: 'gpu:1',
+        type: 'gpu',
+        assignedAt: '2026-07-20T12:00:00.000Z',
+      },
+      {
+        id: 3,
+        serverId: 'server:2',
+        itemId: 'network:2',
+        type: 'network',
+        assignedAt: '2026-07-20T12:00:00.000Z',
+      },
+    ],
+    connections: [
+      {
+        id: 1,
+        from: {
+          itemId: 'server:1',
+          hostedItemId: 'network:1',
+          portId: 'nic-1',
+        },
+        to: { itemId: 'switch:1', portId: 'switch-1' },
+        type: 'network',
+        createdAt: '2026-07-20T12:00:00.000Z',
+      },
+      {
+        id: 2,
+        from: {
+          itemId: 'server:1',
+          hostedItemId: 'gpu:1',
+          portId: 'gpu-1',
+        },
+        to: { itemId: 'monitor:1', portId: 'display-1' },
+        type: 'display',
+        createdAt: '2026-07-20T12:00:00.000Z',
+      },
+      {
+        id: 3,
+        from: { itemId: 'server:1', portId: 'board-lan-1' },
+        to: { itemId: 'switch:1', portId: 'switch-2' },
+        type: 'network',
+        createdAt: '2026-07-20T12:00:00.000Z',
+      },
+      {
+        id: 4,
+        from: {
+          itemId: 'server:2',
+          hostedItemId: 'network:2',
+          portId: 'nic-1',
+        },
+        to: { itemId: 'switch:1', portId: 'switch-3' },
+        type: 'network',
+        createdAt: '2026-07-20T12:00:00.000Z',
+      },
+      {
+        id: 5,
+        from: {
+          itemId: 'server:1',
+          hostedItemId: 'network:stale',
+          portId: 'nic-1',
+        },
+        to: { itemId: 'switch:1', portId: 'switch-4' },
+        type: 'network',
+        createdAt: '2026-07-20T12:00:00.000Z',
+      },
+    ],
+  }
+}
+
+describe('returning canvas items to inventory', () => {
+  it('reports and applies the complete host impact while preserving unrelated graph state', () => {
+    const project = createReturnCanvasItemProject()
+
+    expect(getReturnCanvasItemImpact(project, 'server:1')).toEqual({
+      placementsRemoved: 1,
+      assignmentsReleased: 2,
+      connectionsRemoved: 4,
+    })
+
+    const result = returnCanvasItemToInventory(project, 'server:1')
+
+    expect(result.ok).toBe(true)
+    if (!result.ok) {
+      return
+    }
+
+    expect(result.impact).toEqual({
+      placementsRemoved: 1,
+      assignmentsReleased: 2,
+      connectionsRemoved: 4,
+    })
+    expect(result.project.placements.map((placement) => placement.serverId)).toEqual([
+      'switch:1',
+      'monitor:1',
+      'server:2',
+    ])
+    expect(result.project.assignments.map((assignment) => assignment.id)).toEqual([3])
+    expect(result.project.connections.map((connection) => connection.id)).toEqual([4])
+    expect(result.project.items).toEqual(project.items)
+    expect(result.project.metadata.updatedAt).not.toBe(project.metadata.updatedAt)
+  })
+
+  it('returns a standalone canvas item and removes only its attached cable', () => {
+    const project = createReturnCanvasItemProject()
+
+    expect(getReturnCanvasItemImpact(project, 'monitor:1')).toEqual({
+      placementsRemoved: 1,
+      assignmentsReleased: 0,
+      connectionsRemoved: 1,
+    })
+
+    const result = returnCanvasItemToInventory(project, 'monitor:1')
+
+    expect(result.ok).toBe(true)
+    if (!result.ok) {
+      return
+    }
+
+    expect(result.project.placements.some(
+      (placement) => placement.serverId === 'monitor:1',
+    )).toBe(false)
+    expect(result.project.assignments).toEqual(project.assignments)
+    expect(result.project.connections.map((connection) => connection.id)).toEqual([1, 3, 4, 5])
+    expect(result.project.items['monitor:1']).toEqual(project.items['monitor:1'])
+  })
+
+  it('fails safely when the item is missing or no longer placed', () => {
+    const project = createReturnCanvasItemProject()
+    const expected = {
+      ok: false,
+      message: 'This item is no longer placed on the canvas.',
+    }
+
+    expect(getReturnCanvasItemImpact(project, 'network:1')).toBeNull()
+    expect(returnCanvasItemToInventory(project, 'network:1')).toEqual(expected)
+    expect(getReturnCanvasItemImpact(project, 'server:missing')).toBeNull()
+    expect(returnCanvasItemToInventory(project, 'server:missing')).toEqual(expected)
+  })
+
+  it('restores the atomic return transition with one undo and redo snapshot', () => {
+    const project = createReturnCanvasItemProject()
+    const result = returnCanvasItemToInventory(project, 'server:1')
+
+    expect(result.ok).toBe(true)
+    if (!result.ok) {
+      return
+    }
+
+    const history = pushHistory(createEmptyHistory<ProjectState>(), project)
+    const undo = undoHistory(history, result.project)
+
+    expect(undo?.project).toEqual(project)
+    expect(undo?.history.past).toEqual([])
+
+    const redo = undo ? redoHistory(undo.history, undo.project) : null
+
+    expect(redo?.project).toEqual(result.project)
+    expect(redo?.history.past).toEqual([project])
   })
 })

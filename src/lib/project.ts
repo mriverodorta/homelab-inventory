@@ -100,6 +100,111 @@ function connectionEndpointTargetsItem(
     || (endpoint.hostedItemId === undefined && endpoint.itemId === runtimeItemId)
 }
 
+export type ReturnCanvasItemImpact = {
+  placementsRemoved: number
+  assignmentsReleased: number
+  connectionsRemoved: number
+}
+
+export type ReturnCanvasItemResult =
+  | {
+      ok: true
+      project: ProjectState
+      impact: ReturnCanvasItemImpact
+    }
+  | {
+      ok: false
+      message: string
+    }
+
+type ReturnCanvasItemTransition = {
+  placementIds: Set<string>
+  assignmentIds: Set<string | number>
+  connectionIds: Set<string | number>
+  impact: ReturnCanvasItemImpact
+}
+
+function collectReturnCanvasItemTransition(
+  project: ProjectState,
+  runtimeItemId: string,
+): ReturnCanvasItemTransition | null {
+  if (!project.items[runtimeItemId]) {
+    return null
+  }
+
+  const placements = project.placements.filter(
+    (placement) => placement.serverId === runtimeItemId,
+  )
+
+  if (placements.length === 0) {
+    return null
+  }
+
+  const assignments = project.assignments.filter(
+    (assignment) => assignment.serverId === runtimeItemId,
+  )
+  const hostedItemIds = new Set(assignments.map((assignment) => assignment.itemId))
+  const endpointTargetsReturnedGraph = (endpoint: ConnectionEndpoint): boolean =>
+    endpoint.itemId === runtimeItemId
+    || Array.from(hostedItemIds).some((hostedItemId) =>
+      connectionEndpointTargetsItem(endpoint, hostedItemId),
+    )
+  const connections = project.connections.filter(
+    (connection) =>
+      endpointTargetsReturnedGraph(connection.from)
+      || endpointTargetsReturnedGraph(connection.to),
+  )
+
+  return {
+    placementIds: new Set(placements.map((placement) => placement.serverId)),
+    assignmentIds: new Set(assignments.map((assignment) => assignment.id)),
+    connectionIds: new Set(connections.map((connection) => connection.id)),
+    impact: {
+      placementsRemoved: placements.length,
+      assignmentsReleased: assignments.length,
+      connectionsRemoved: connections.length,
+    },
+  }
+}
+
+export function getReturnCanvasItemImpact(
+  project: ProjectState,
+  runtimeItemId: string,
+): ReturnCanvasItemImpact | null {
+  return collectReturnCanvasItemTransition(project, runtimeItemId)?.impact ?? null
+}
+
+export function returnCanvasItemToInventory(
+  project: ProjectState,
+  runtimeItemId: string,
+): ReturnCanvasItemResult {
+  const transition = collectReturnCanvasItemTransition(project, runtimeItemId)
+
+  if (!transition) {
+    return {
+      ok: false,
+      message: 'This item is no longer placed on the canvas.',
+    }
+  }
+
+  return {
+    ok: true,
+    impact: transition.impact,
+    project: touchProject({
+      ...project,
+      placements: project.placements.filter(
+        (placement) => !transition.placementIds.has(placement.serverId),
+      ),
+      assignments: project.assignments.filter(
+        (assignment) => !transition.assignmentIds.has(assignment.id),
+      ),
+      connections: project.connections.filter(
+        (connection) => !transition.connectionIds.has(connection.id),
+      ),
+    }),
+  }
+}
+
 function assertConnectedPortsRetained(
   project: ProjectState,
   runtimeItemId: string,
@@ -815,6 +920,7 @@ function getPowerStripCardHeight(item: InventoryItem): number {
   const outletCount = item.ports?.length || positiveInteger(item.specs?.outlets)
 
   return STANDALONE_CARD_BASE_HEIGHT
+    + standalonePortGroupHeight(1, POWER_EQUIPMENT_PORT_COLUMNS)
     + standalonePortGroupHeight(outletCount, POWER_EQUIPMENT_PORT_COLUMNS)
 }
 
