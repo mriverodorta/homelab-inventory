@@ -35,8 +35,8 @@ describe('PortGroupsEditor validation targeting', () => {
       />,
     )
 
-    expect(screen.getByLabelText('Port group 1 count')).not.toHaveAttribute('aria-invalid', 'true')
-    expect(screen.getByLabelText('Port group 2 count')).toHaveAttribute('aria-invalid', 'true')
+    expect(screen.getByLabelText('Port group 1 count').getAttribute('aria-invalid')).not.toBe('true')
+    expect(screen.getByLabelText('Port group 2 count').getAttribute('aria-invalid')).toBe('true')
   })
 
   it('marks the later invalid speed instead of any count control', () => {
@@ -58,9 +58,9 @@ describe('PortGroupsEditor validation targeting', () => {
       />,
     )
 
-    expect(screen.getByLabelText('Port group 1 count')).not.toHaveAttribute('aria-invalid', 'true')
-    expect(screen.getByLabelText('Port group 2 count')).not.toHaveAttribute('aria-invalid', 'true')
-    expect(screen.getByLabelText('Port group 1 speed')).not.toHaveAttribute('aria-invalid', 'true')
-    expect(screen.getByLabelText('Port group 2 speed')).toHaveAttribute('aria-invalid', 'true')
+    expect(screen.getByLabelText('Port group 1 count').getAttribute('aria-invalid')).not.toBe('true')
+    expect(screen.getByLabelText('Port group 2 count').getAttribute('aria-invalid')).not.toBe('true')
+    expect(screen.getByLabelText('Port group 1 speed').getAttribute('aria-invalid')).not.toBe('true')
+    expect(screen.getByLabelText('Port group 2 speed').getAttribute('aria-invalid')).toBe('true')
   })
 })

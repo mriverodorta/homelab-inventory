@@ -53,8 +53,8 @@ describe('resource group validation targeting', () => {
       />,
     )
 
-    expect(screen.getByLabelText('Storage group 1 count')).not.toHaveAttribute('aria-invalid', 'true')
-    expect(screen.getByLabelText('Storage group 2 count')).toHaveAttribute('aria-invalid', 'true')
+    expect(screen.getByLabelText('Storage group 1 count').getAttribute('aria-invalid')).not.toBe('true')
+    expect(screen.getByLabelText('Storage group 2 count').getAttribute('aria-invalid')).toBe('true')
   })
 
   it('marks the later invalid expansion count instead of the first group count', () => {
@@ -74,7 +74,7 @@ describe('resource group validation targeting', () => {
       />,
     )
 
-    expect(screen.getByLabelText('Expansion group 1 count')).not.toHaveAttribute('aria-invalid', 'true')
-    expect(screen.getByLabelText('Expansion group 2 count')).toHaveAttribute('aria-invalid', 'true')
+    expect(screen.getByLabelText('Expansion group 1 count').getAttribute('aria-invalid')).not.toBe('true')
+    expect(screen.getByLabelText('Expansion group 2 count').getAttribute('aria-invalid')).toBe('true')
   })
 })
