@@ -70,6 +70,19 @@ function commitMessage() {
     return explicitMessage
   }
 
+  if (process.env.GITHUB_HEAD_REF) {
+    const headMessage = gitOrEmpty([
+      'log',
+      '-1',
+      '--pretty=%B',
+      `refs/remotes/origin/${process.env.GITHUB_HEAD_REF}`,
+    ])
+
+    if (headMessage) {
+      return headMessage
+    }
+  }
+
   return gitOrEmpty(['log', '-1', '--pretty=%B'])
 }
 
