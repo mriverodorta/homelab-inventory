@@ -32,7 +32,7 @@ jobs:
       version: ${{ steps.release.outputs.version }}
     steps:
       - name: Checkout release automation
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           path: automation
           fetch-depth: 0
@@ -133,7 +133,7 @@ jobs:
 
       - name: Checkout historical source
         if: steps.exact_image.outputs.exists != 'true'
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           ref: ${{ steps.release.outputs.revision }}
           path: source
@@ -358,7 +358,7 @@ jobs:
       contents: write
     steps:
       - name: Checkout verified revision
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           ref: ${{ needs.publish.outputs.revision }}
           fetch-depth: 0
