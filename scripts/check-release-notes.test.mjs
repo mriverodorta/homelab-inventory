@@ -109,6 +109,26 @@ describe('check-release-notes', () => {
     expect(result.exitCode).toBe(0)
   })
 
+  it('reads the skip marker from the pull-request head commit', async () => {
+    const repo = await makeRepo()
+    await fs.writeFile(path.join(repo, 'src', 'App.tsx'), 'export function App() { return null }\n')
+    await run('git', ['add', '.'], { cwd: repo })
+    await run('git', ['commit', '-m', 'maintenance [skip release-notes]'], { cwd: repo })
+    await run('git', [
+      'update-ref',
+      'refs/remotes/origin/dependabot/test-update',
+      'HEAD',
+    ], { cwd: repo })
+    await run('git', ['reset', '--hard', 'HEAD~1'], { cwd: repo })
+    await fs.writeFile(path.join(repo, 'src', 'App.tsx'), 'export function App() { return null }\n')
+
+    const result = await runCheck(repo, [], {
+      GITHUB_HEAD_REF: 'dependabot/test-update',
+    })
+
+    expect(result.exitCode).toBe(0)
+  })
+
   it('passes for Dependabot-only GitHub Actions updates', async () => {
     const repo = await makeRepo()
     const workflowDir = path.join(repo, '.github', 'workflows')
