@@ -1,0 +1,13 @@
+[package]
+name = "homelab-engine-protocol"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+postcard-bindgen.workspace = true
+serde.workspace = true
+
+[dev-dependencies]
+postcard.workspace = true
