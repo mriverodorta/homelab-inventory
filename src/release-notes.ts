@@ -71,6 +71,7 @@ const RELEASE_0_2_0_DETAILS: UnreleasedReleaseNotes = {
     'Component assignment now refreshes only affected host cards and nearby cable geometry, while expected engine synchronization retains existing routes instead of flashing a false routing error.',
     'Transient canvas routing and synchronization activity now logs to the browser console even when it completes too quickly to display visually.',
     'Assigning, moving, swapping, or removing a component now commits one incremental WASM change while retaining optimistic canvas references, preventing repeated routing and workspace synchronization after a single drop.',
+    'Clean-checkout tests and Docker publishing now build WASM before integration tests, preventing missing-artifact races on hosted runners.',
   ],
   notes: [
     'Local development now uses the standard ignored data directory after the isolated WASM migration, with DATA_DIR still available for explicit overrides.',

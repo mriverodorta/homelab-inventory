@@ -76,6 +76,7 @@ This release moves the workspace's computational core into a shared Rust/WASM en
 - Scoped component-assignment rendering and handle updates to affected hosts, retained unrelated cable routes during expected engine synchronization, and added browser-console diagnostics for transient canvas activity.
 - Moved component assignment, transfer, swap, and removal saves to atomic revision-checked WASM commands so one component drop no longer resaves the whole project, rebuilds the workspace engine, or reroutes cables repeatedly.
 - Returned local development to the standard ignored `data/` directory after completing the isolated WASM migration, while retaining explicit `DATA_DIR` overrides.
+- Fixed clean-checkout tests and Docker publishing to build WASM before integration tests, preventing missing-artifact races on hosted runners.
 
 ## [0.1.38] - 2026-07-21
 

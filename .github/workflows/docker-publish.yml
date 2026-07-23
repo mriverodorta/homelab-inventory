@@ -50,6 +50,9 @@ jobs:
       - name: Check release notes
         run: bun scripts/check-release-notes.mjs --require-current-version
 
+      - name: Build WASM
+        run: bun run build:wasm
+
       - name: Lint
         run: bun run lint
 

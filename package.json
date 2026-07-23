@@ -28,6 +28,7 @@
     "lint": "oxlint",
     "prebuild": "bun run build:wasm",
     "preview": "vite preview",
+    "pretest": "bun run build:wasm",
     "release-notes:check": "bun scripts/check-release-notes.mjs",
     "start": "NODE_ENV=production bun server/index.mjs",
     "test": "vitest run",
