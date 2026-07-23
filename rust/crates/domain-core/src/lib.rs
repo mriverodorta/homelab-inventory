@@ -1,13 +1,13 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use homelab_engine_protocol::{
-    ArrangementResult, CanvasPlacement, CommandPatchSet, ConnectionDerivedStatesResult,
-    EngineError, EngineRequest, EngineResponse, EngineSnapshot, EngineStatus, GeometryHandle,
-    GeometryUpdateResult, NearestPlacementResult, NetworkTraceResult, NetworkTracesResult,
-    Operation, PROTOCOL_VERSION, PlacementChange, PlacementCheckResult, PowerTopologyResult,
-    ProjectPatch, ResponseBody, RouteDefinition, RouteEdit, RouteEditResult, RouteResult,
-    RoutesUpdateResult, TopologyConnection, TopologyConnectionRoute, TopologyEndpointResult,
-    TopologyError, TopologySnapshot,
+    ArrangementResult, AssignmentChange, CanvasPlacement, CommandPatchSet,
+    ConnectionDerivedStatesResult, EngineError, EngineRequest, EngineResponse, EngineSnapshot,
+    EngineStatus, GeometryHandle, GeometryUpdateResult, NearestPlacementResult, NetworkTraceResult,
+    NetworkTracesResult, Operation, PROTOCOL_VERSION, PlacementChange, PlacementCheckResult,
+    PowerTopologyResult, ProjectPatch, ResponseBody, RouteDefinition, RouteEdit, RouteEditResult,
+    RouteResult, RoutesUpdateResult, TopologyConnection, TopologyConnectionRoute,
+    TopologyEndpointResult, TopologyError, TopologySnapshot,
 };
 use homelab_geometry::{GeometryError, GeometryNode, SpatialIndex, arrange_items};
 use homelab_routing::{
@@ -179,6 +179,7 @@ impl Engine {
                     }))
                 }
             }
+            Operation::UpdateAssignments { changes } => self.update_assignments(changes),
             Operation::UpdatePlacements { changes } => self.update_placements(changes),
             Operation::ReplaceGeometry { nodes, handles } => self.replace_geometry(nodes, handles),
             Operation::UpdateGeometry {
@@ -339,6 +340,115 @@ impl Engine {
             base_revision,
             result,
         }
+    }
+
+    fn update_assignments(&mut self, changes: Vec<AssignmentChange>) -> ResponseBody {
+        if changes.is_empty() {
+            return engine_error(
+                "invalid-assignment-change",
+                "Assignment changes must not be empty.",
+            );
+        }
+        if self.revision == u32::MAX {
+            return engine_error(
+                "revision-exhausted",
+                "Project revision cannot be advanced safely.",
+            );
+        }
+
+        let mut assignments = self
+            .topology
+            .snapshot()
+            .assignments
+            .iter()
+            .cloned()
+            .map(|assignment| (assignment.id, assignment))
+            .collect::<BTreeMap<_, _>>();
+        let mut seen = BTreeSet::new();
+        let mut forward_upsert = Vec::new();
+        let mut forward_remove = Vec::new();
+        let mut inverse_upsert = Vec::new();
+        let mut inverse_remove = Vec::new();
+
+        for change in changes {
+            let assignment_id = match (&change.previous, &change.next) {
+                (Some(previous), Some(next)) if previous.id == next.id => previous.id,
+                (Some(previous), None) => previous.id,
+                (None, Some(next)) => next.id,
+                (Some(_), Some(_)) => {
+                    return engine_error(
+                        "invalid-assignment-change",
+                        "An assignment change cannot replace one assignment ID with another.",
+                    );
+                }
+                (None, None) => {
+                    return engine_error(
+                        "invalid-assignment-change",
+                        "An assignment change requires a previous or next assignment.",
+                    );
+                }
+            };
+
+            if assignment_id == 0 || !seen.insert(assignment_id) {
+                return engine_error(
+                    "invalid-assignment-change",
+                    "Assignment changes must reference unique positive assignment IDs.",
+                );
+            }
+            if assignments.get(&assignment_id) != change.previous.as_ref() {
+                return engine_error(
+                    "stale-assignment-change",
+                    "The assignment change does not match canonical state.",
+                );
+            }
+            if change.previous == change.next {
+                continue;
+            }
+
+            match change.previous {
+                Some(previous) => inverse_upsert.push(previous),
+                None => inverse_remove.push(assignment_id),
+            }
+            match change.next {
+                Some(next) => {
+                    assignments.insert(assignment_id, next.clone());
+                    forward_upsert.push(next);
+                }
+                None => {
+                    assignments.remove(&assignment_id);
+                    forward_remove.push(assignment_id);
+                }
+            }
+        }
+
+        if forward_upsert.is_empty() && forward_remove.is_empty() {
+            return engine_error("unchanged-assignment", "Assignments did not change.");
+        }
+
+        let mut topology = self.topology.snapshot().clone();
+        topology.assignments = assignments.into_values().collect();
+        let next_topology = match TopologyIndex::build(topology) {
+            Ok(topology) => topology,
+            Err(error) => return topology_error(error),
+        };
+
+        forward_upsert.sort_by_key(|assignment| assignment.id);
+        forward_remove.sort_unstable();
+        inverse_upsert.sort_by_key(|assignment| assignment.id);
+        inverse_remove.sort_unstable();
+        self.topology = next_topology;
+        self.revision += 1;
+        ResponseBody::Patch(Box::new(CommandPatchSet {
+            revision: self.revision,
+            forward: ProjectPatch::PatchAssignments {
+                upsert: forward_upsert,
+                remove_assignment_ids: forward_remove,
+            },
+            inverse: ProjectPatch::PatchAssignments {
+                upsert: inverse_upsert,
+                remove_assignment_ids: inverse_remove,
+            },
+        }))
     }
 
     fn update_placements(&mut self, changes: Vec<PlacementChange>) -> ResponseBody {
@@ -1105,6 +1215,72 @@ mod tests {
         (engine, from, to)
     }
 
+    fn assignment_engine(
+        assigned: bool,
+    ) -> (
+        Engine,
+        homelab_engine_protocol::ItemRef,
+        homelab_engine_protocol::ItemRef,
+        homelab_engine_protocol::ItemRef,
+        homelab_engine_protocol::ItemRef,
+    ) {
+        let server_one = homelab_engine_protocol::ItemRef {
+            item_type: "server".into(),
+            id: 1,
+        };
+        let server_two = homelab_engine_protocol::ItemRef {
+            item_type: "server".into(),
+            id: 2,
+        };
+        let adapter_one = homelab_engine_protocol::ItemRef {
+            item_type: "powerAdapter".into(),
+            id: 1,
+        };
+        let adapter_two = homelab_engine_protocol::ItemRef {
+            item_type: "powerAdapter".into(),
+            id: 2,
+        };
+        let item = |item| homelab_engine_protocol::TopologyItem {
+            item,
+            archived: false,
+            power_configuration: None,
+            allow_outlet_fan_out: false,
+            ports: vec![],
+        };
+        let assignment = |id, host, item| homelab_engine_protocol::TopologyAssignment {
+            id,
+            host,
+            item,
+            component_type: "powerAdapter".into(),
+            assigned_at: "2026-07-23T12:00:00.000Z".into(),
+            allocation: None,
+        };
+        let assignments = assigned
+            .then(|| {
+                vec![
+                    assignment(1, server_one.clone(), adapter_one.clone()),
+                    assignment(2, server_two.clone(), adapter_two.clone()),
+                ]
+            })
+            .unwrap_or_default();
+        let engine = Engine::from_snapshot(EngineSnapshot {
+            revision: 12,
+            project_name: "Assignment Lab".into(),
+            topology: TopologySnapshot {
+                items: vec![
+                    item(server_one.clone()),
+                    item(server_two.clone()),
+                    item(adapter_one.clone()),
+                    item(adapter_two.clone()),
+                ],
+                assignments,
+                connections: vec![],
+                placements: vec![server_one.clone(), server_two.clone()],
+            },
+        });
+        (engine, server_one, server_two, adapter_one, adapter_two)
+    }
+
     fn passive_path_engine() -> (
         Engine,
         homelab_engine_protocol::EndpointRef,
@@ -1306,6 +1482,141 @@ mod tests {
                     remove_items: vec![],
                 }
         ));
+    }
+
+    #[test]
+    fn assignment_commands_add_move_and_remove_with_exact_inverse_patches() {
+        let (mut engine, server_one, server_two, adapter_one, _) = assignment_engine(false);
+        let assigned = homelab_engine_protocol::TopologyAssignment {
+            id: 1,
+            host: server_one,
+            item: adapter_one,
+            component_type: "powerAdapter".into(),
+            assigned_at: "2026-07-23T12:00:00.000Z".into(),
+            allocation: None,
+        };
+        let added = engine.dispatch(request(Operation::UpdateAssignments {
+            changes: vec![AssignmentChange {
+                previous: None,
+                next: Some(assigned.clone()),
+            }],
+        }));
+        assert!(matches!(
+            added.result,
+            ResponseBody::Patch(ref patch)
+                if patch.forward == ProjectPatch::PatchAssignments {
+                    upsert: vec![assigned.clone()],
+                    remove_assignment_ids: vec![],
+                }
+                && patch.inverse == ProjectPatch::PatchAssignments {
+                    upsert: vec![],
+                    remove_assignment_ids: vec![1],
+                }
+        ));
+
+        let moved = homelab_engine_protocol::TopologyAssignment {
+            host: server_two,
+            ..assigned.clone()
+        };
+        let moved_response = engine.dispatch(EngineRequest {
+            protocol_version: PROTOCOL_VERSION,
+            request_id: 21,
+            base_revision: 13,
+            operation: Operation::UpdateAssignments {
+                changes: vec![AssignmentChange {
+                    previous: Some(assigned.clone()),
+                    next: Some(moved.clone()),
+                }],
+            },
+        });
+        assert!(matches!(
+            moved_response.result,
+            ResponseBody::Patch(ref patch)
+                if patch.forward == ProjectPatch::PatchAssignments {
+                    upsert: vec![moved.clone()],
+                    remove_assignment_ids: vec![],
+                }
+                && patch.inverse == ProjectPatch::PatchAssignments {
+                    upsert: vec![assigned],
+                    remove_assignment_ids: vec![],
+                }
+        ));
+
+        let removed = engine.dispatch(EngineRequest {
+            protocol_version: PROTOCOL_VERSION,
+            request_id: 22,
+            base_revision: 14,
+            operation: Operation::UpdateAssignments {
+                changes: vec![AssignmentChange {
+                    previous: Some(moved.clone()),
+                    next: None,
+                }],
+            },
+        });
+        assert!(matches!(
+            removed.result,
+            ResponseBody::Patch(ref patch)
+                if patch.forward == ProjectPatch::PatchAssignments {
+                    upsert: vec![],
+                    remove_assignment_ids: vec![1],
+                }
+                && patch.inverse == ProjectPatch::PatchAssignments {
+                    upsert: vec![moved],
+                    remove_assignment_ids: vec![],
+                }
+        ));
+        assert!(engine.topology().assignments.is_empty());
+        assert_eq!(engine.revision(), 15);
+    }
+
+    #[test]
+    fn assignment_swap_is_atomic_and_stale_changes_do_not_advance_revision() {
+        let (mut engine, server_one, server_two, _, _) = assignment_engine(true);
+        let first = engine.topology().assignments[0].clone();
+        let second = engine.topology().assignments[1].clone();
+        let swapped_first = homelab_engine_protocol::TopologyAssignment {
+            host: server_two,
+            ..first.clone()
+        };
+        let swapped_second = homelab_engine_protocol::TopologyAssignment {
+            host: server_one,
+            ..second.clone()
+        };
+        let response = engine.dispatch(request(Operation::UpdateAssignments {
+            changes: vec![
+                AssignmentChange {
+                    previous: Some(first.clone()),
+                    next: Some(swapped_first.clone()),
+                },
+                AssignmentChange {
+                    previous: Some(second.clone()),
+                    next: Some(swapped_second.clone()),
+                },
+            ],
+        }));
+        assert!(matches!(response.result, ResponseBody::Patch(_)));
+        assert_eq!(
+            engine.topology().assignments,
+            vec![swapped_first, swapped_second]
+        );
+        assert_eq!(engine.revision(), 13);
+
+        let stale = engine.dispatch(EngineRequest {
+            protocol_version: PROTOCOL_VERSION,
+            request_id: 23,
+            base_revision: 13,
+            operation: Operation::UpdateAssignments {
+                changes: vec![AssignmentChange {
+                    previous: Some(first),
+                    next: None,
+                }],
+            },
+        });
+        assert!(matches!(
+            stale.result,
+            ResponseBody::Error(ref error) if error.code == "stale-assignment-change"
+        ));
+        assert_eq!(engine.revision(), 13);
     }
 
     #[test]

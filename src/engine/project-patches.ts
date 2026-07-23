@@ -1,4 +1,5 @@
 import type {
+  EngineAssignment,
   EngineResponse,
   ProjectPatch,
   TopologyConnection,
@@ -6,11 +7,34 @@ import type {
 } from '../../shared/engine/protocol.mjs'
 import { fromTopologyEndpointRef, fromTopologyItemRef } from '@/engine/topology'
 import type {
+  ComponentAssignment,
   ConnectionRoutePreferences,
   InventoryConnection,
   InventoryConnectionType,
   ProjectState,
 } from '@/types/inventory'
+import type { CompatibilityResourceType } from '@/types/compatibility'
+
+function runtimeAssignment(assignment: EngineAssignment): ComponentAssignment {
+  return {
+    id: assignment.id,
+    serverId: fromTopologyItemRef(assignment.host),
+    itemId: fromTopologyItemRef(assignment.item),
+    type: assignment.component_type as ComponentAssignment['type'],
+    assignedAt: assignment.assigned_at,
+    ...(assignment.allocation
+      ? {
+          allocation: {
+            resourceType: assignment.allocation.resource_type as CompatibilityResourceType,
+            ...(assignment.allocation.group_id === null
+              ? {}
+              : { groupId: assignment.allocation.group_id }),
+            positions: [...assignment.allocation.positions],
+          },
+        }
+      : {}),
+  }
+}
 
 function runtimeRoute(route: TopologyConnectionRoute | null): ConnectionRoutePreferences | undefined {
   if (!route) return undefined
@@ -142,6 +166,22 @@ export function applyProjectPatch(
       y: placement.y,
     })))
     return { ...project, revision, placements }
+  }
+  if (patch.kind === 'patch-assignments') {
+    const upsert = new Map(patch.payload.upsert.map((assignment) => [
+      assignment.id,
+      assignment,
+    ]))
+    const remove = new Set(patch.payload.remove_assignment_ids)
+    const assignments = project.assignments.flatMap((assignment) => {
+      if (remove.has(assignment.id)) return []
+      const replacement = upsert.get(assignment.id)
+      if (replacement) upsert.delete(assignment.id)
+      return [replacement ? runtimeAssignment(replacement) : assignment]
+    })
+    assignments.push(...[...upsert.values()].map(runtimeAssignment))
+    assignments.sort((left, right) => left.id - right.id)
+    return { ...project, revision, assignments }
   }
   return project
 }

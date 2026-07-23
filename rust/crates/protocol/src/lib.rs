@@ -9,8 +9,8 @@ pub use homelab_routing::{
     RouteWarning, RoutedPath,
 };
 pub use homelab_topology::{
-    ConnectionDerivedState, ConnectionRoute as TopologyConnectionRoute, ConnectionValidation,
-    EndpointDescriptor, EndpointRef, ItemRef, NetworkTrace, NetworkTraceStep,
+    AssignmentAllocation, ConnectionDerivedState, ConnectionRoute as TopologyConnectionRoute,
+    ConnectionValidation, EndpointDescriptor, EndpointRef, ItemRef, NetworkTrace, NetworkTraceStep,
     PowerEndpointDescriptor, PowerTopology, PowerTopologyFinding, TopologyAssignment,
     TopologyConnection, TopologyError, TopologyItem, TopologyPort, TopologyPortSide,
     TopologySnapshot,
@@ -44,6 +44,12 @@ pub struct CanvasPlacement {
 pub struct PlacementChange {
     pub previous: Option<CanvasPlacement>,
     pub next: Option<CanvasPlacement>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AssignmentChange {
+    pub previous: Option<TopologyAssignment>,
+    pub next: Option<TopologyAssignment>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -82,6 +88,9 @@ pub enum Operation {
     },
     UpdateProjectMetadata {
         name: String,
+    },
+    UpdateAssignments {
+        changes: Vec<AssignmentChange>,
     },
     UpdatePlacements {
         changes: Vec<PlacementChange>,
@@ -307,6 +316,10 @@ pub enum ProjectPatch {
         upsert: Vec<CanvasPlacement>,
         remove_items: Vec<ItemRef>,
     },
+    PatchAssignments {
+        upsert: Vec<TopologyAssignment>,
+        remove_assignment_ids: Vec<u32>,
+    },
     Batch {
         patches: Vec<ProjectPatch>,
     },
@@ -336,6 +349,52 @@ mod tests {
         let bytes = rmp_serde::to_vec_named(&request).expect("serialize request");
         let decoded: EngineRequest = rmp_serde::from_slice(&bytes).expect("deserialize request");
         assert_eq!(decoded, request);
+    }
+
+    #[test]
+    fn assignment_request_and_patch_round_trip() {
+        let assignment = TopologyAssignment {
+            id: 7,
+            host: ItemRef {
+                item_type: "server".into(),
+                id: 1,
+            },
+            item: ItemRef {
+                item_type: "powerAdapter".into(),
+                id: 3,
+            },
+            component_type: "powerAdapter".into(),
+            assigned_at: "2026-07-23T12:00:00.000Z".into(),
+            allocation: Some(AssignmentAllocation {
+                resource_type: "power".into(),
+                group_id: None,
+                positions: vec![0],
+            }),
+        };
+        let request = EngineRequest {
+            protocol_version: PROTOCOL_VERSION,
+            request_id: 8,
+            base_revision: 12,
+            operation: Operation::UpdateAssignments {
+                changes: vec![AssignmentChange {
+                    previous: None,
+                    next: Some(assignment.clone()),
+                }],
+            },
+        };
+        let patch = ProjectPatch::PatchAssignments {
+            upsert: vec![assignment],
+            remove_assignment_ids: vec![],
+        };
+
+        let request_bytes = rmp_serde::to_vec_named(&request).expect("serialize request");
+        let decoded_request: EngineRequest =
+            rmp_serde::from_slice(&request_bytes).expect("deserialize request");
+        assert_eq!(decoded_request, request);
+        let patch_bytes = rmp_serde::to_vec_named(&patch).expect("serialize patch");
+        let decoded_patch: ProjectPatch =
+            rmp_serde::from_slice(&patch_bytes).expect("deserialize patch");
+        assert_eq!(decoded_patch, patch);
     }
 
     #[test]

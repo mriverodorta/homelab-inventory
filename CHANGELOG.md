@@ -68,6 +68,7 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 - Fixed revision conflicts when a component assignment change is followed immediately by moving canvas equipment by coordinating legacy saves with canonical WASM commands.
 - Kept routine workspace-engine synchronization nonblocking while reserving centered blocking states for startup and unrecoverable failures.
 - Scoped component-assignment rendering and handle updates to affected hosts, retained unrelated cable routes during expected engine synchronization, and added browser-console diagnostics for transient canvas activity.
+- Moved component assignment, transfer, swap, and removal saves to atomic revision-checked WASM commands so one component drop no longer resaves the whole project, rebuilds the workspace engine, or reroutes cables repeatedly.
 
 ## [0.1.38] - 2026-07-21
 

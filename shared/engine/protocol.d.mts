@@ -54,6 +54,26 @@ export type TopologyConnection = {
   created_at: string
 }
 
+export type AssignmentAllocation = {
+  resource_type: string
+  group_id: number | null
+  positions: number[]
+}
+
+export type EngineAssignment = {
+  id: number
+  host: TopologyItemRef
+  item: TopologyItemRef
+  component_type: string
+  assigned_at: string
+  allocation: AssignmentAllocation | null
+}
+
+export type AssignmentChange = {
+  previous: EngineAssignment | null
+  next: EngineAssignment | null
+}
+
 export type ConnectionDerivedState = {
   connection_id: number
   connection_type: string
@@ -94,12 +114,7 @@ export type TopologyPowerTopology = {
 
 export type TopologySnapshot = {
   items: TopologyItem[]
-  assignments: Array<{
-    id: number
-    host: TopologyItemRef
-    item: TopologyItemRef
-    component_type: string
-  }>
+  assignments: EngineAssignment[]
   connections: TopologyConnection[]
   placements: TopologyItemRef[]
 }
@@ -258,6 +273,7 @@ export type EngineOperation =
       payload: { connection_id: number; route: TopologyConnectionRoute | null }
     }
   | { kind: 'update-project-metadata'; payload: { name: string } }
+  | { kind: 'update-assignments'; payload: { changes: AssignmentChange[] } }
   | { kind: 'update-placements'; payload: { changes: PlacementChange[] } }
   | {
       kind: 'replace-geometry'
@@ -386,6 +402,10 @@ export type ProjectPatch =
   | {
       kind: 'patch-placements'
       payload: { upsert: CanvasPlacement[]; remove_items: TopologyItemRef[] }
+    }
+  | {
+      kind: 'patch-assignments'
+      payload: { upsert: EngineAssignment[]; remove_assignment_ids: number[] }
     }
   | { kind: 'batch'; payload: { patches: ProjectPatch[] } }
 

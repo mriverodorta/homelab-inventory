@@ -2728,6 +2728,77 @@ describe('HomelabInventoryStore', () => {
     expect(store.getProject().placements[0].x).toBe(120)
   })
 
+  it('persists relational assignment patches and rejects mismatched inverse state', async () => {
+    const dataDir = await makeTempDir()
+    const store = createStore({
+      appVersion: '0.1.38',
+      dataDir,
+      legacyProjectPath: path.join(dataDir, 'legacy.json'),
+      saveDebounceMs: 5,
+      seedEmptyData: false,
+      seedDir: path.join(dataDir, 'missing-seed'),
+    })
+    await store.init()
+    store.addInventoryItem({ type: 'server', name: 'Node One' })
+    store.addInventoryItem({ type: 'server', name: 'Node Two' })
+    store.addInventoryItem({ type: 'powerAdapter', name: 'Adapter' })
+    const baseRevision = store.getProject().revision
+    const assignment = {
+      id: 1,
+      host: { item_type: 'server', id: 1 },
+      item: { item_type: 'powerAdapter', id: 1 },
+      component_type: 'powerAdapter',
+      assigned_at: '2026-07-23T12:00:00.000Z',
+      allocation: null,
+    }
+
+    await store.applyEnginePatch({
+      baseRevision,
+      patchSet: {
+        revision: baseRevision + 1,
+        forward: {
+          kind: 'patch-assignments',
+          payload: { upsert: [assignment], remove_assignment_ids: [] },
+        },
+        inverse: {
+          kind: 'patch-assignments',
+          payload: { upsert: [], remove_assignment_ids: [1] },
+        },
+      },
+      responseBytes: Uint8Array.from([1]),
+    })
+    expect(store.getProject().assignments).toEqual([{
+      id: 1,
+      serverId: 'server:1',
+      itemId: 'powerAdapter:1',
+      type: 'powerAdapter',
+      assignedAt: '2026-07-23T12:00:00.000Z',
+    }])
+
+    await expect(store.applyEnginePatch({
+      baseRevision: baseRevision + 1,
+      patchSet: {
+        revision: baseRevision + 2,
+        forward: {
+          kind: 'patch-assignments',
+          payload: {
+            upsert: [{ ...assignment, host: { item_type: 'server', id: 2 } }],
+            remove_assignment_ids: [],
+          },
+        },
+        inverse: {
+          kind: 'patch-assignments',
+          payload: {
+            upsert: [{ ...assignment, host: { item_type: 'server', id: 2 } }],
+            remove_assignment_ids: [],
+          },
+        },
+      },
+      responseBytes: Uint8Array.from([2]),
+    })).rejects.toThrow('does not match current project state')
+    expect(store.getProject().assignments[0].serverId).toBe('server:1')
+  })
+
   it('does not publish a project commit when the project write fails', async () => {
     const dataDir = await makeTempDir()
     const store = createStore({

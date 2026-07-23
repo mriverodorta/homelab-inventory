@@ -56,6 +56,14 @@ export function createEngineSnapshot(project) {
         host: itemRef(project, assignment.serverId, `assignments[${String(index)}].serverId`),
         item: itemRef(project, assignment.itemId, `assignments[${String(index)}].itemId`),
         component_type: assignment.type,
+        assigned_at: assignment.assignedAt,
+        allocation: assignment.allocation
+          ? {
+              resource_type: assignment.allocation.resourceType,
+              group_id: assignment.allocation.groupId ?? null,
+              positions: [...assignment.allocation.positions],
+            }
+          : null,
       })),
       connections: project.connections.map((connection, index) => ({
         id: connection.id,
@@ -73,4 +81,3 @@ export function createEngineSnapshot(project) {
     },
   }
 }
-

@@ -32,6 +32,32 @@ describe('engine MessagePack protocol', () => {
     expect(decodeEngineRequest(encodeEngineRequest(request))).toEqual(request)
   })
 
+  it('round-trips assignment changes with allocation metadata', () => {
+    const assignment = {
+      id: 7,
+      host: { item_type: 'server', id: 1 },
+      item: { item_type: 'powerAdapter', id: 3 },
+      component_type: 'powerAdapter',
+      assigned_at: '2026-07-23T12:00:00.000Z',
+      allocation: {
+        resource_type: 'power',
+        group_id: null,
+        positions: [0],
+      },
+    }
+    const request = {
+      protocol_version: 1 as const,
+      request_id: 10,
+      base_revision: 4,
+      operation: {
+        kind: 'update-assignments' as const,
+        payload: { changes: [{ previous: null, next: assignment }] },
+      },
+    }
+
+    expect(decodeEngineRequest(encodeEngineRequest(request))).toEqual(request)
+  })
+
   it('rejects unsupported protocol versions', () => {
     expect(() => encodeEngineRequest({
       protocol_version: 2 as never,

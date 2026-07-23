@@ -134,4 +134,68 @@ describe('project engine patches', () => {
     expect(result.assignments).toBe(project.assignments)
     expect(result.connections).toBe(project.connections)
   })
+
+  it('upserts and removes assignments while retaining untouched references', () => {
+    const project = {
+      ...createEmptyProject(),
+      assignments: [
+        {
+          id: 1,
+          serverId: 'server:1',
+          itemId: 'ram:1',
+          type: 'ram' as const,
+          assignedAt: '2026-07-23T00:00:00.000Z',
+        },
+        {
+          id: 2,
+          serverId: 'server:2',
+          itemId: 'cpu:1',
+          type: 'cpu' as const,
+          assignedAt: '2026-07-23T00:00:00.000Z',
+        },
+      ],
+    }
+    const untouched = project.assignments[1]
+    const result = applyProjectPatch(project, {
+      kind: 'patch-assignments',
+      payload: {
+        upsert: [{
+          id: 1,
+          host: { item_type: 'server', id: 3 },
+          item: { item_type: 'ram', id: 1 },
+          component_type: 'ram',
+          assigned_at: '2026-07-23T00:00:00.000Z',
+          allocation: {
+            resource_type: 'memory',
+            group_id: 4,
+            positions: [1, 2],
+          },
+        }],
+        remove_assignment_ids: [],
+      },
+    }, 2)
+
+    expect(result.assignments).toEqual([
+      {
+        id: 1,
+        serverId: 'server:3',
+        itemId: 'ram:1',
+        type: 'ram',
+        assignedAt: '2026-07-23T00:00:00.000Z',
+        allocation: {
+          resourceType: 'memory',
+          groupId: 4,
+          positions: [1, 2],
+        },
+      },
+      untouched,
+    ])
+    expect(result.assignments[1]).toBe(untouched)
+
+    const removed = applyProjectPatch(result, {
+      kind: 'patch-assignments',
+      payload: { upsert: [], remove_assignment_ids: [1] },
+    }, 3)
+    expect(removed.assignments).toEqual([untouched])
+  })
 })

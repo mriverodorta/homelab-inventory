@@ -78,6 +78,31 @@ function operationForCommittedPatch(
       },
     }
   }
+  if (patch.kind === 'patch-assignments' && inversePatch?.kind === 'patch-assignments') {
+    const previous = new Map(inversePatch.payload.upsert.map((assignment) => [
+      assignment.id,
+      assignment,
+    ]))
+    const next = new Map(patch.payload.upsert.map((assignment) => [
+      assignment.id,
+      assignment,
+    ]))
+    const ids = [...new Set([
+      ...previous.keys(),
+      ...next.keys(),
+      ...inversePatch.payload.remove_assignment_ids,
+      ...patch.payload.remove_assignment_ids,
+    ])].sort((left, right) => left - right)
+    return {
+      kind: 'update-assignments',
+      payload: {
+        changes: ids.map((id) => ({
+          previous: previous.get(id) ?? null,
+          next: next.get(id) ?? null,
+        })),
+      },
+    }
+  }
   if (patch.kind === 'batch') {
     const inverseChildren = inversePatch?.kind === 'batch'
       ? inversePatch.payload.patches

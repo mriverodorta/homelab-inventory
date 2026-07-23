@@ -176,6 +176,8 @@ describe('Rust WASM engine integration', () => {
           host: serverRef,
           item: nicRef,
           component_type: 'network',
+          assigned_at: '2026-07-23T00:00:00.000Z',
+          allocation: null,
         }],
         connections: [
           {

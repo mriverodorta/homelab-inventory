@@ -72,6 +72,36 @@ class FakeWorker implements WorkerLike {
             },
           },
         }
+      } else if (request.operation.kind === 'update-assignments') {
+        this.revision += 1
+        result = {
+          kind: 'patch',
+          payload: {
+            revision: this.revision,
+            forward: {
+              kind: 'patch-assignments',
+              payload: {
+                upsert: request.operation.payload.changes.flatMap((change) => (
+                  change.next ? [change.next] : []
+                )),
+                remove_assignment_ids: request.operation.payload.changes.flatMap((change) => (
+                  change.next ? [] : [change.previous!.id]
+                )),
+              },
+            },
+            inverse: {
+              kind: 'patch-assignments',
+              payload: {
+                upsert: request.operation.payload.changes.flatMap((change) => (
+                  change.previous ? [change.previous] : []
+                )),
+                remove_assignment_ids: request.operation.payload.changes.flatMap((change) => (
+                  change.previous ? [] : [change.next!.id]
+                )),
+              },
+            },
+          },
+        }
       } else if (
         request.operation.kind === 'replace-geometry'
         || request.operation.kind === 'update-geometry'
@@ -282,6 +312,61 @@ describe('DomainEngineClient', () => {
     client.dispose()
   })
 
+  it('commits an assignment without rebuilding or dispatching it twice', async () => {
+    const assignment = {
+      id: 1,
+      host: { item_type: 'server', id: 1 },
+      item: { item_type: 'powerAdapter', id: 1 },
+      component_type: 'powerAdapter',
+      assigned_at: '2026-07-23T00:00:00.000Z',
+      allocation: null,
+    }
+    const testApi = api({
+      postCommand: vi.fn(async (bytes) => {
+        const request = decodeEngineRequest(bytes)
+        const response: EngineResponse = {
+          protocol_version: 1,
+          request_id: request.request_id,
+          base_revision: request.base_revision,
+          result: {
+            kind: 'patch',
+            payload: {
+              revision: 2,
+              forward: {
+                kind: 'patch-assignments',
+                payload: { upsert: [assignment], remove_assignment_ids: [] },
+              },
+              inverse: {
+                kind: 'patch-assignments',
+                payload: { upsert: [], remove_assignment_ids: [1] },
+              },
+            },
+          },
+        }
+        return { response, bytes: encodeEngineResponse(response) }
+      }),
+    })
+    const worker = new FakeWorker()
+    const client = new DomainEngineClient({ api: testApi, workerFactory: () => worker })
+    await client.start()
+
+    const response = await client.mutate({
+      operation: {
+        kind: 'update-assignments',
+        payload: { changes: [{ previous: null, next: assignment }] },
+      },
+    })
+    const requestCount = worker.requests.length
+    await expect(client.applyCommittedResponse(encodeEngineResponse(response))).resolves.toMatchObject({
+      kind: 'acknowledged',
+    })
+
+    expect(worker.requests).toHaveLength(requestCount)
+    expect(testApi.fetchSnapshot).toHaveBeenCalledOnce()
+    expect(client.status()).toMatchObject({ phase: 'ready', revision: 2 })
+    client.dispose()
+  })
+
   it('accepts the matching server event while its optimistic HTTP commit is still pending', async () => {
     let releaseCommit = () => {}
     const commitGate = new Promise<void>((resolve) => { releaseCommit = resolve })
@@ -409,6 +494,50 @@ describe('DomainEngineClient', () => {
     expect(worker.requests.at(-1)?.operation).toEqual({
       kind: 'update-connection-label',
       payload: { connection_id: 7, label: 'Uplink' },
+    })
+    expect(testApi.fetchSnapshot).toHaveBeenCalledOnce()
+    client.dispose()
+  })
+
+  it('replays external assignment patches without rebuilding the worker', async () => {
+    const worker = new FakeWorker()
+    const testApi = api()
+    const client = new DomainEngineClient({ api: testApi, workerFactory: () => worker })
+    await client.start()
+    const assignment = {
+      id: 4,
+      host: { item_type: 'server', id: 2 },
+      item: { item_type: 'ram', id: 1 },
+      component_type: 'ram',
+      assigned_at: '2026-07-23T00:00:00.000Z',
+      allocation: null,
+    }
+    const commit: EngineResponse = {
+      protocol_version: 1,
+      request_id: 24,
+      base_revision: 1,
+      result: {
+        kind: 'patch',
+        payload: {
+          revision: 2,
+          forward: {
+            kind: 'patch-assignments',
+            payload: { upsert: [assignment], remove_assignment_ids: [] },
+          },
+          inverse: {
+            kind: 'patch-assignments',
+            payload: { upsert: [], remove_assignment_ids: [4] },
+          },
+        },
+      },
+    }
+
+    await expect(client.applyCommittedResponse(encodeEngineResponse(commit))).resolves.toMatchObject({
+      kind: 'applied',
+    })
+    expect(worker.requests.at(-1)?.operation).toEqual({
+      kind: 'update-assignments',
+      payload: { changes: [{ previous: null, next: assignment }] },
     })
     expect(testApi.fetchSnapshot).toHaveBeenCalledOnce()
     client.dispose()

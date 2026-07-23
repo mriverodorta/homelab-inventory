@@ -70,6 +70,7 @@ export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
     'Routine workspace synchronization now keeps the canvas interactive instead of briefly showing a centered rebuilding overlay.',
     'Component assignment now refreshes only affected host cards and nearby cable geometry, while expected engine synchronization retains existing routes instead of flashing a false routing error.',
     'Transient canvas routing and synchronization activity now logs to the browser console even when it completes too quickly to display visually.',
+    'Assigning, moving, swapping, or removing a component now commits one incremental WASM change while retaining optimistic canvas references, preventing repeated routing and workspace synchronization after a single drop.',
   ],
   notes: [],
 }

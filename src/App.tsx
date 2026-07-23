@@ -48,6 +48,11 @@ import {
 } from '@/components/ui/sheet'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { applyEngineResponsePatch } from '@/engine/project-patches'
+import {
+  acknowledgeOptimisticAssignments,
+  applyAssignmentTransition,
+  updateProjectAssignments,
+} from '@/engine/assignments'
 import { updateProjectPlacements } from '@/engine/placements'
 import {
   createTopologyConnection,
@@ -1298,6 +1303,11 @@ function App() {
     options: {
       recordHistory?: boolean
       optimisticProject?: (canonicalProject: ProjectState) => ProjectState
+      acknowledgeOptimistic?: (
+        canonicalProject: ProjectState,
+        optimisticProject: ProjectState,
+        response: EngineResponse,
+      ) => ProjectState
     } = {},
   ): Promise<EngineResponse> {
     if (!domainEngine.enabled) {
@@ -1326,7 +1336,9 @@ function App() {
         )
       }
 
-      const committedProject = applyEngineResponsePatch(activeProject, response)
+      const committedProject = optimisticProject && options.acknowledgeOptimistic
+        ? options.acknowledgeOptimistic(canonicalProject, optimisticProject, response)
+        : applyEngineResponsePatch(activeProject, response)
       projectRef.current = committedProject
       lastPersistedProjectRef.current = committedProject
       queryClient.setQueryData(['project'], committedProject)
@@ -1338,6 +1350,52 @@ function App() {
       setPersistenceWarning(null)
       return response
     })
+  }
+
+  async function commitAssignmentUpdate(
+    previousProject: ProjectState,
+    nextProject: ProjectState,
+    fallbackMessage = 'The component assignment could not be saved.',
+    options: { recordHistory?: boolean } = {},
+  ): Promise<boolean> {
+    if (!domainEngine.enabled) {
+      setValidationMessage('The WebAssembly workspace engine is not available.')
+      return false
+    }
+
+    try {
+      await commitEngineMutation(
+        (canonicalProject) => {
+          const transitionedProject = applyAssignmentTransition(
+            canonicalProject,
+            previousProject,
+            nextProject,
+          )
+          return updateProjectAssignments(
+            domainEngine.client,
+            canonicalProject,
+            transitionedProject,
+          ).then((response) => {
+            if (!response) throw new Error('Component assignments did not change.')
+            return response
+          })
+        },
+        {
+          recordHistory: options.recordHistory ?? true,
+          optimisticProject: (canonicalProject) => applyAssignmentTransition(
+            canonicalProject,
+            previousProject,
+            nextProject,
+          ),
+          acknowledgeOptimistic: acknowledgeOptimisticAssignments,
+        },
+      )
+      setValidationMessage(null)
+      return true
+    } catch (error) {
+      recoverConnectionMutation(error, fallbackMessage)
+      return false
+    }
   }
 
   function createConnectionBetween(from: ConnectionEndpoint, to: ConnectionEndpoint) {
@@ -1670,7 +1728,7 @@ function App() {
     setReturnToInventoryBusy(false)
   }
 
-  function removeAssignedComponent(assignmentId: string | number) {
+  async function removeAssignedComponent(assignmentId: string | number) {
     const currentProject = projectRef.current
     if (!currentProject) return
 
@@ -1680,7 +1738,44 @@ function App() {
       return
     }
 
-    updateProject(result.project)
+    const removedConnectionIds = new Set(
+      currentProject.connections
+        .filter((connection) => !result.project.connections.some((candidate) => candidate.id === connection.id))
+        .map((connection) => connection.id),
+    )
+    if (removedConnectionIds.size > 0) {
+      try {
+        for (const connectionId of removedConnectionIds) {
+          await commitEngineMutation(
+            () => removeTopologyConnection(domainEngine.client, connectionId),
+          )
+        }
+      } catch (error) {
+        recoverConnectionMutation(error, 'The component connections could not be removed.')
+        return
+      }
+
+      const disconnectedProject = projectRef.current
+      if (!disconnectedProject) return
+      const disconnectedResult = tryRemoveAssignedComponent(disconnectedProject, assignmentId)
+      if (!disconnectedResult.ok) {
+        showMessage(disconnectedResult.message)
+        return
+      }
+      if (!await commitAssignmentUpdate(
+        disconnectedProject,
+        disconnectedResult.project,
+        'The component could not be removed.',
+        { recordHistory: false },
+      )) return
+      setHistory((currentHistory) => pushHistory(currentHistory, currentProject))
+    } else if (!await commitAssignmentUpdate(
+      currentProject,
+      result.project,
+      'The component could not be removed.',
+    )) {
+      return
+    }
     setPendingAssignmentRemoval(null)
   }
 
@@ -1696,7 +1791,7 @@ function App() {
 
     const connectionIds = getAssignedComponentConnectionIds(currentProject, assignmentId)
     if (connectionIds.length === 0) {
-      removeAssignedComponent(assignmentId)
+      void removeAssignedComponent(assignmentId)
       return
     }
 
@@ -2008,7 +2103,14 @@ function App() {
         return
       }
 
-      if (result.project !== project) updateProject(result.project)
+      if (
+        result.project !== project
+        && !await commitAssignmentUpdate(
+          project,
+          result.project,
+          'The component could not be moved.',
+        )
+      ) return
       setSelectedItemId(assignment.itemId)
       setSelectedConnectionId(null)
       showCompatibilityUnknownMessage('Moved', assignedItem.name, result.unknownFindings)
@@ -2045,7 +2147,11 @@ function App() {
       }
     }
 
-    updateProject(nextProject)
+    if (!await commitAssignmentUpdate(
+      project,
+      nextProject,
+      'The component could not be assigned.',
+    )) return
     setSelectedItemId(data.itemId)
     setSelectedConnectionId(null)
     showCompatibilityUnknownMessage('Assigned', item.name, result.unknownFindings)
@@ -2501,7 +2607,7 @@ function App() {
             }}
             onConfirm={() => {
               if (pendingAssignmentRemoval) {
-                removeAssignedComponent(pendingAssignmentRemoval.assignmentId)
+                void removeAssignedComponent(pendingAssignmentRemoval.assignmentId)
               }
             }}
           />

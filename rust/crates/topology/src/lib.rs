@@ -99,11 +99,20 @@ pub struct TopologyItem {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AssignmentAllocation {
+    pub resource_type: String,
+    pub group_id: Option<u32>,
+    pub positions: Vec<u32>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TopologyAssignment {
     pub id: u32,
     pub host: ItemRef,
     pub item: ItemRef,
     pub component_type: String,
+    pub assigned_at: String,
+    pub allocation: Option<AssignmentAllocation>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -1035,6 +1044,24 @@ impl TopologySnapshot {
             }
             assignment.host.validate()?;
             assignment.item.validate()?;
+            if assignment.component_type.trim().is_empty()
+                || assignment.assigned_at.trim().is_empty()
+            {
+                return Err(TopologyError::EmptyType);
+            }
+            if assignment.component_type != assignment.item.item_type
+                || !hosts_components(&assignment.host.item_type)
+            {
+                return Err(TopologyError::InvalidHostedItem);
+            }
+            if assignment.allocation.as_ref().is_some_and(|allocation| {
+                allocation.resource_type.trim().is_empty()
+                    || allocation.group_id == Some(0)
+                    || allocation.positions.iter().collect::<BTreeSet<_>>().len()
+                        != allocation.positions.len()
+            }) {
+                return Err(TopologyError::InvalidHostedItem);
+            }
             if !assignment_ids.insert(assignment.id)
                 || !assigned_items.insert(assignment.item.clone())
             {
@@ -1244,6 +1271,8 @@ mod tests {
                 host: host.item.clone(),
                 item: card.item.clone(),
                 component_type: "network".into(),
+                assigned_at: "2026-07-23T00:00:00.000Z".into(),
+                allocation: None,
             }],
             connections: vec![TopologyConnection {
                 id: 1,
@@ -1342,6 +1371,8 @@ mod tests {
                 host: host.item.clone(),
                 item: card.item.clone(),
                 component_type: "network".into(),
+                assigned_at: "2026-07-23T00:00:00.000Z".into(),
+                allocation: None,
             }],
             connections: vec![TopologyConnection {
                 id: 7,
@@ -1828,6 +1859,8 @@ mod tests {
                 host: nas.item.clone(),
                 item: nic.item,
                 component_type: "network".into(),
+                assigned_at: "2026-07-23T00:00:00.000Z".into(),
+                allocation: None,
             }],
             connections: vec![TopologyConnection {
                 id: 1,
@@ -1915,6 +1948,8 @@ mod tests {
                 host: server.item.clone(),
                 item: adapter.item,
                 component_type: "powerAdapter".into(),
+                assigned_at: "2026-07-23T00:00:00.000Z".into(),
+                allocation: None,
             }],
             connections: vec![connection(
                 1,

@@ -984,6 +984,82 @@ function placementPatchFromEngine(payload, label) {
   return { upsert, remove }
 }
 
+function persistedAssignmentFromEngine(assignment, label) {
+  const hostType = assignment?.host?.item_type
+  const itemType = assignment?.item?.item_type
+  if (!TABLE_BY_TYPE[hostType] || !TABLE_BY_TYPE[itemType]) {
+    throw new InventoryLifecycleError(`${label} uses an unsupported inventory type.`, {
+      code: 'invalid-engine-patch',
+      status: 500,
+    })
+  }
+  if (assignment.component_type !== itemType) {
+    throw new InventoryLifecycleError(`${label} component type does not match its item.`, {
+      code: 'invalid-engine-patch',
+      status: 500,
+    })
+  }
+  if (typeof assignment.assigned_at !== 'string' || assignment.assigned_at.trim() === '') {
+    throw new InventoryLifecycleError(`${label}.assigned_at must not be empty.`, {
+      code: 'invalid-engine-patch',
+      status: 500,
+    })
+  }
+
+  let allocation
+  if (assignment.allocation !== null && assignment.allocation !== undefined) {
+    const resourceType = assignment.allocation.resource_type
+    const positions = assignment.allocation.positions
+    const groupId = assignment.allocation.group_id
+    if (
+      typeof resourceType !== 'string'
+      || resourceType.trim() === ''
+      || !Array.isArray(positions)
+      || positions.some((position) => !Number.isSafeInteger(position) || position < 0)
+      || new Set(positions).size !== positions.length
+      || (groupId !== null && groupId !== undefined && (!Number.isSafeInteger(groupId) || groupId <= 0))
+    ) {
+      throw new InventoryLifecycleError(`${label}.allocation is invalid.`, {
+        code: 'invalid-engine-patch',
+        status: 500,
+      })
+    }
+    allocation = {
+      resourceType,
+      ...(groupId === null || groupId === undefined ? {} : { groupId }),
+      positions: [...positions],
+    }
+  }
+
+  return {
+    id: assertRelationalId(assignment.id, `${label}.id`),
+    hostType,
+    hostId: assertRelationalId(assignment.host.id, `${label}.host.id`),
+    itemType,
+    itemId: assertRelationalId(assignment.item.id, `${label}.item.id`),
+    type: assignment.component_type,
+    assignedAt: assignment.assigned_at,
+    ...(allocation ? { allocation } : {}),
+  }
+}
+
+function assignmentPatchFromEngine(payload, label) {
+  const upsert = (payload?.upsert ?? []).map((assignment, index) => (
+    persistedAssignmentFromEngine(assignment, `${label}.upsert[${String(index)}]`)
+  ))
+  const remove = (payload?.remove_assignment_ids ?? []).map((assignmentId, index) => (
+    assertRelationalId(assignmentId, `${label}.remove_assignment_ids[${String(index)}]`)
+  ))
+  const ids = [...upsert.map((assignment) => assignment.id), ...remove]
+  if (ids.length === 0 || new Set(ids).size !== ids.length) {
+    throw new InventoryLifecycleError(`${label} must contain unique assignment changes.`, {
+      code: 'invalid-engine-patch',
+      status: 500,
+    })
+  }
+  return { upsert, remove }
+}
+
 function assertPlacementInverseMatches(project, patch) {
   if (patch?.kind === 'batch') {
     for (const child of patch.payload?.patches ?? []) assertPlacementInverseMatches(project, child)
@@ -1005,6 +1081,55 @@ function assertPlacementInverseMatches(project, patch) {
   for (const item of inverse.remove) {
     if (current.has(placementRefKey(item))) {
       throw new InventoryLifecycleError('Placement patch expected an inventory item to be unplaced.', {
+        code: 'invalid-engine-patch',
+        status: 409,
+      })
+    }
+  }
+}
+
+function assertAssignmentInverseMatches(project, patch) {
+  if (patch?.kind === 'batch') {
+    for (const child of patch.payload?.patches ?? []) assertAssignmentInverseMatches(project, child)
+    return
+  }
+  if (patch?.kind !== 'patch-assignments') return
+
+  const inverse = assignmentPatchFromEngine(patch.payload, 'inverse assignment patch')
+  const current = new Map((project.assignments ?? []).map((assignment) => [assignment.id, assignment]))
+  for (const assignment of inverse.upsert) {
+    const existing = current.get(assignment.id)
+    const existingAllocation = existing?.allocation
+    const assignmentAllocation = assignment.allocation
+    const allocationsMatch = (!existingAllocation && !assignmentAllocation) || (
+      existingAllocation
+      && assignmentAllocation
+      && existingAllocation.resourceType === assignmentAllocation.resourceType
+      && (existingAllocation.groupId ?? null) === (assignmentAllocation.groupId ?? null)
+      && existingAllocation.positions.length === assignmentAllocation.positions.length
+      && existingAllocation.positions.every(
+        (position, index) => position === assignmentAllocation.positions[index],
+      )
+    )
+    if (
+      !existing
+      || existing.hostType !== assignment.hostType
+      || existing.hostId !== assignment.hostId
+      || existing.itemType !== assignment.itemType
+      || existing.itemId !== assignment.itemId
+      || existing.type !== assignment.type
+      || existing.assignedAt !== assignment.assignedAt
+      || !allocationsMatch
+    ) {
+      throw new InventoryLifecycleError('Assignment patch does not match current project state.', {
+        code: 'invalid-engine-patch',
+        status: 409,
+      })
+    }
+  }
+  for (const assignmentId of inverse.remove) {
+    if (current.has(assignmentId)) {
+      throw new InventoryLifecycleError('Assignment patch expected an unassigned component.', {
         code: 'invalid-engine-patch',
         status: 409,
       })
@@ -1202,6 +1327,31 @@ function applyEngineForwardPatch(project, forward) {
     })
     placements.push(...upsert.values())
     return { ...project, placements }
+  }
+
+  if (forward?.kind === 'patch-assignments') {
+    const patch = assignmentPatchFromEngine(forward.payload, 'assignment patch')
+    const upsert = new Map(patch.upsert.map((assignment) => [assignment.id, assignment]))
+    const remove = new Set(patch.remove)
+    const foundRemovals = new Set()
+    const assignments = (project.assignments ?? []).flatMap((assignment) => {
+      if (remove.has(assignment.id)) {
+        foundRemovals.add(assignment.id)
+        return []
+      }
+      const replacement = upsert.get(assignment.id)
+      if (replacement) upsert.delete(assignment.id)
+      return [replacement ?? assignment]
+    })
+    if (foundRemovals.size !== remove.size) {
+      throw new InventoryLifecycleError('Assignment patch references a missing assignment.', {
+        code: 'invalid-engine-patch',
+        status: 500,
+      })
+    }
+    assignments.push(...upsert.values())
+    assignments.sort((first, second) => first.id - second.id)
+    return { ...project, assignments }
   }
 
   throw new InventoryLifecycleError(`Unsupported engine patch ${String(forward?.kind)}.`, {
@@ -1875,6 +2025,7 @@ export class HomelabInventoryStore {
     }
 
     assertPlacementInverseMatches(this.databases.project.data, patchSet.inverse)
+    assertAssignmentInverseMatches(this.databases.project.data, patchSet.inverse)
     const previousProject = structuredClone(this.databases.project.data)
     const previousMeta = structuredClone(this.databases.meta.data)
     const updatedAt = new Date().toISOString()

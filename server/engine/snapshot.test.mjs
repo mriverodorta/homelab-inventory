@@ -37,6 +37,8 @@ function project() {
       serverId: 'server:1',
       itemId: 'network:1',
       type: 'network',
+      assignedAt: '2026-07-23T00:00:00.000Z',
+      allocation: { resourceType: 'expansion', groupId: 1, positions: [0] },
     }],
     placements: [{ serverId: 'server:1', x: 0, y: 0 }],
     connections: [{
@@ -69,6 +71,8 @@ describe('engine topology snapshot', () => {
           host: { item_type: 'server', id: 1 },
           item: { item_type: 'network', id: 1 },
           component_type: 'network',
+          assigned_at: '2026-07-23T00:00:00.000Z',
+          allocation: { resource_type: 'expansion', group_id: 1, positions: [0] },
         }],
         placements: [{ item_type: 'server', id: 1 }],
         connections: [{
@@ -106,4 +110,3 @@ describe('engine topology snapshot', () => {
     )
   })
 })
-
