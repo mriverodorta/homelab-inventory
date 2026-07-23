@@ -902,6 +902,153 @@ function runtimeConnection(connection) {
   }
 }
 
+function persistedEndpointFromEngine(endpoint, label) {
+  const itemType = endpoint?.item?.item_type
+  const hostedItemType = endpoint?.hosted_item?.item_type
+  if (!TABLE_BY_TYPE[itemType] || (hostedItemType !== undefined && hostedItemType !== null && !TABLE_BY_TYPE[hostedItemType])) {
+    throw new InventoryLifecycleError(`${label} uses an unsupported inventory type.`, {
+      code: 'invalid-engine-patch',
+      status: 500,
+    })
+  }
+
+  return {
+    itemType,
+    itemId: assertRelationalId(endpoint?.item?.id, `${label}.item.id`),
+    portId: assertRelationalId(endpoint?.port_id, `${label}.port_id`),
+    ...(endpoint?.endpoint_id === null || endpoint?.endpoint_id === undefined
+      ? {}
+      : { endpointId: assertRelationalId(endpoint.endpoint_id, `${label}.endpoint_id`) }),
+    ...(endpoint?.hosted_item === null || endpoint?.hosted_item === undefined
+      ? {}
+      : {
+          hostedItemType,
+          hostedItemId: assertRelationalId(endpoint.hosted_item.id, `${label}.hosted_item.id`),
+        }),
+  }
+}
+
+function persistedRouteFromEngine(route) {
+  if (!route) return undefined
+
+  const nextRoute = {
+    ...(route.source_side ? { sourceSide: route.source_side } : {}),
+    ...(route.target_side ? { targetSide: route.target_side } : {}),
+    ...(route.bend_points?.length
+      ? { bendPoints: route.bend_points.map((point) => ({ x: point.x, y: point.y })) }
+      : {}),
+    ...(route.avoid_cable_overlap === true ? { avoidCableOverlap: true } : {}),
+  }
+  return Object.keys(nextRoute).length > 0 ? nextRoute : undefined
+}
+
+function persistedConnectionFromEngine(connection) {
+  const connectionType = connection?.connection_type
+  if (!['network', 'display', 'power', 'other'].includes(connectionType)) {
+    throw new InventoryLifecycleError('Engine connection uses an unsupported connection type.', {
+      code: 'invalid-engine-patch',
+      status: 500,
+    })
+  }
+
+  const route = persistedRouteFromEngine(connection.route)
+  return {
+    id: assertRelationalId(connection?.id, 'connection.id'),
+    from: persistedEndpointFromEngine(connection?.from, 'connection.from'),
+    to: persistedEndpointFromEngine(connection?.to, 'connection.to'),
+    type: connectionType,
+    ...(connection.negotiated_speed_mbps === null || connection.negotiated_speed_mbps === undefined
+      ? {}
+      : { negotiatedSpeedMbps: connection.negotiated_speed_mbps }),
+    ...(connection.label === null || connection.label === undefined
+      ? {}
+      : { label: connection.label }),
+    ...(route ? { route } : {}),
+    createdAt: connection.created_at,
+  }
+}
+
+function applyEngineForwardPatch(project, forward) {
+  if (forward?.kind === 'set-project-name') {
+    return {
+      ...project,
+      metadata: { ...project.metadata, name: forward.payload.name },
+    }
+  }
+
+  if (forward?.kind === 'add-connection') {
+    const connection = persistedConnectionFromEngine(forward.payload.connection)
+    if (project.connections.some((candidate) => candidate.id === connection.id)) {
+      throw new InventoryLifecycleError(`Connection ${String(connection.id)} already exists.`, {
+        code: 'invalid-engine-patch',
+        status: 500,
+      })
+    }
+    return { ...project, connections: [...project.connections, connection] }
+  }
+
+  if (forward?.kind === 'remove-connection') {
+    const connectionId = assertRelationalId(
+      forward.payload?.connection?.id,
+      'connection.id',
+    )
+    if (!project.connections.some((candidate) => candidate.id === connectionId)) {
+      throw new InventoryLifecycleError(`Connection ${String(connectionId)} does not exist.`, {
+        code: 'invalid-engine-patch',
+        status: 500,
+      })
+    }
+    return {
+      ...project,
+      connections: project.connections.filter((candidate) => candidate.id !== connectionId),
+    }
+  }
+
+  if (forward?.kind === 'set-connection-label') {
+    const connectionId = assertRelationalId(forward.payload?.connection_id, 'connection.id')
+    let found = false
+    const connections = project.connections.map((connection) => {
+      if (connection.id !== connectionId) return connection
+      found = true
+      const { label: _label, ...withoutLabel } = connection
+      return forward.payload.label === null
+        ? withoutLabel
+        : { ...withoutLabel, label: forward.payload.label }
+    })
+    if (!found) {
+      throw new InventoryLifecycleError(`Connection ${String(connectionId)} does not exist.`, {
+        code: 'invalid-engine-patch',
+        status: 500,
+      })
+    }
+    return { ...project, connections }
+  }
+
+  if (forward?.kind === 'set-connection-route') {
+    const connectionId = assertRelationalId(forward.payload?.connection_id, 'connection.id')
+    const route = persistedRouteFromEngine(forward.payload.route)
+    let found = false
+    const connections = project.connections.map((connection) => {
+      if (connection.id !== connectionId) return connection
+      found = true
+      const { route: _route, ...withoutRoute } = connection
+      return route ? { ...withoutRoute, route } : withoutRoute
+    })
+    if (!found) {
+      throw new InventoryLifecycleError(`Connection ${String(connectionId)} does not exist.`, {
+        code: 'invalid-engine-patch',
+        status: 500,
+      })
+    }
+    return { ...project, connections }
+  }
+
+  throw new InventoryLifecycleError(`Unsupported engine patch ${String(forward?.kind)}.`, {
+    code: 'unsupported-engine-patch',
+    status: 500,
+  })
+}
+
 async function copyDirectory(source, destination) {
   if (!(await pathExists(source))) {
     return
@@ -1569,24 +1716,19 @@ export class HomelabInventoryStore {
 
     const previousProject = structuredClone(this.databases.project.data)
     const previousMeta = structuredClone(this.databases.meta.data)
-    const forward = patchSet.forward
-    if (forward?.kind !== 'set-project-name') {
-      throw new InventoryLifecycleError(`Unsupported engine patch ${String(forward?.kind)}.`, {
-        code: 'unsupported-engine-patch',
-        status: 500,
-      })
-    }
-
     const updatedAt = new Date().toISOString()
-    this.databases.project.data = {
-      ...this.databases.project.data,
+    const patchedProject = applyEngineForwardPatch(this.databases.project.data, patchSet.forward)
+    const nextProject = {
+      ...patchedProject,
       revision: patchSet.revision,
       metadata: {
-        ...this.databases.project.data.metadata,
-        name: forward.payload.name,
+        ...patchedProject.metadata,
         updatedAt,
       },
     }
+    assertProjectStoreShape(nextProject)
+    assertProjectShape(composeProject(this.databases.meta.data, this.databases.inventory.data, nextProject))
+    this.databases.project.data = nextProject
     this.databases.meta.data.updatedAt = updatedAt
     const commitEvent = {
       type: 'project-commit',

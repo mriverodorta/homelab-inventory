@@ -43,6 +43,22 @@ pub enum Operation {
         from: EndpointRef,
         to: EndpointRef,
     },
+    CreateConnection {
+        from: EndpointRef,
+        to: EndpointRef,
+        created_at: String,
+    },
+    RemoveConnection {
+        connection_id: u32,
+    },
+    UpdateConnectionLabel {
+        connection_id: u32,
+        label: Option<String>,
+    },
+    UpdateConnectionRoute {
+        connection_id: u32,
+        route: Option<TopologyConnectionRoute>,
+    },
     UpdateProjectMetadata {
         name: String,
     },
@@ -145,7 +161,7 @@ pub enum ResponseBody {
     Status(EngineStatus),
     TopologyEndpoints(TopologyEndpointResult),
     ConnectionValidation(ConnectionValidation),
-    Patch(CommandPatchSet),
+    Patch(Box<CommandPatchSet>),
     GeometryUpdated(GeometryUpdateResult),
     PlacementCheck(PlacementCheckResult),
     NearestPlacement(NearestPlacementResult),
@@ -209,17 +225,33 @@ pub struct RouteEditResult {
     pub edit: RouteEdit,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct CommandPatchSet {
     pub revision: u32,
     pub forward: ProjectPatch,
     pub inverse: ProjectPatch,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", content = "payload", rename_all = "kebab-case")]
 pub enum ProjectPatch {
-    SetProjectName { name: String },
+    SetProjectName {
+        name: String,
+    },
+    AddConnection {
+        connection: TopologyConnection,
+    },
+    RemoveConnection {
+        connection: TopologyConnection,
+    },
+    SetConnectionLabel {
+        connection_id: u32,
+        label: Option<String>,
+    },
+    SetConnectionRoute {
+        connection_id: u32,
+        route: Option<TopologyConnectionRoute>,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

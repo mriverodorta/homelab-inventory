@@ -222,6 +222,61 @@ describe('Rust WASM engine integration', () => {
         message: 'The source port is already connected.',
       },
     })
+
+    const created = decodeEngineResponse(runtime.dispatch(handle, encodeEngineRequest({
+      protocol_version: 1,
+      request_id: 4,
+      base_revision: 2,
+      operation: {
+        kind: 'create-connection',
+        payload: {
+          from: serverEndpoint,
+          to: freeSwitchEndpoint,
+          created_at: '2026-07-23T00:00:00.000Z',
+        },
+      },
+    })))
+    expect(created.result).toMatchObject({
+      kind: 'patch',
+      payload: {
+        revision: 3,
+        forward: {
+          kind: 'add-connection',
+          payload: {
+            connection: {
+              id: 9,
+              from: serverEndpoint,
+              to: freeSwitchEndpoint,
+              connection_type: 'network',
+            },
+          },
+        },
+        inverse: {
+          kind: 'remove-connection',
+          payload: { connection: { id: 9 } },
+        },
+      },
+    })
+
+    const removed = decodeEngineResponse(runtime.dispatch(handle, encodeEngineRequest({
+      protocol_version: 1,
+      request_id: 5,
+      base_revision: 3,
+      operation: {
+        kind: 'remove-connection',
+        payload: { connection_id: 9 },
+      },
+    })))
+    expect(removed.result).toMatchObject({
+      kind: 'patch',
+      payload: {
+        revision: 4,
+        forward: {
+          kind: 'remove-connection',
+          payload: { connection: { id: 9 } },
+        },
+      },
+    })
     expect(runtime.destroy(handle)).toBe(true)
   })
 

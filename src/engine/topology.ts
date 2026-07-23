@@ -2,10 +2,15 @@ import type {
   TopologyEndpointDescriptor,
   TopologyEndpointRef,
   TopologyItemRef,
+  TopologyConnectionRoute,
 } from '../../shared/engine/protocol.mjs'
 import type { DomainEngineClient } from '@/engine/client'
 import { parseItemKey } from '@/lib/item-keys'
-import type { ConnectionEndpoint, ProjectState } from '@/types/inventory'
+import type {
+  ConnectionEndpoint,
+  ConnectionRoutePreferences,
+  ProjectState,
+} from '@/types/inventory'
 
 export type RuntimeTopologyEndpointDescriptor = Omit<
   TopologyEndpointDescriptor,
@@ -145,4 +150,80 @@ export async function validateTopologyConnection(
       ? response.result.payload.message
       : 'Connection endpoints could not be validated.',
   )
+}
+
+function topologyConnectionRoute(
+  route: ConnectionRoutePreferences,
+): TopologyConnectionRoute | null {
+  const result: TopologyConnectionRoute = {
+    source_side: route.sourceSide ?? null,
+    target_side: route.targetSide ?? null,
+    bend_points: route.bendPoints ?? [],
+    avoid_cable_overlap: route.avoidCableOverlap === true,
+  }
+  return result.source_side === null
+    && result.target_side === null
+    && result.bend_points.length === 0
+    && !result.avoid_cable_overlap
+    ? null
+    : result
+}
+
+export function createTopologyConnection(
+  client: DomainEngineClient,
+  project: ProjectState,
+  first: ConnectionEndpoint,
+  second: ConnectionEndpoint,
+) {
+  return client.mutate({
+    operation: {
+      kind: 'create-connection',
+      payload: {
+        from: toTopologyEndpointRef(project, first),
+        to: toTopologyEndpointRef(project, second),
+        created_at: new Date().toISOString(),
+      },
+    },
+  })
+}
+
+export function removeTopologyConnection(client: DomainEngineClient, connectionId: number) {
+  return client.mutate({
+    operation: {
+      kind: 'remove-connection',
+      payload: { connection_id: connectionId },
+    },
+  })
+}
+
+export function updateTopologyConnectionLabel(
+  client: DomainEngineClient,
+  connectionId: number,
+  label: string,
+) {
+  return client.mutate({
+    operation: {
+      kind: 'update-connection-label',
+      payload: {
+        connection_id: connectionId,
+        label: label.trim() === '' ? null : label,
+      },
+    },
+  })
+}
+
+export function updateTopologyConnectionRoute(
+  client: DomainEngineClient,
+  connectionId: number,
+  route: ConnectionRoutePreferences,
+) {
+  return client.mutate({
+    operation: {
+      kind: 'update-connection-route',
+      payload: {
+        connection_id: connectionId,
+        route: topologyConnectionRoute(route),
+      },
+    },
+  })
 }

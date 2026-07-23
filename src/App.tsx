@@ -11,6 +11,7 @@ import {
 } from '@dnd-kit/core'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { XYPosition } from '@xyflow/react'
+import type { EngineResponse } from '../shared/engine/protocol.mjs'
 import { AlertTriangle } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { AuditDrawer } from '@/components/audit-drawer'
@@ -47,6 +48,12 @@ import {
 } from '@/components/ui/sheet'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { applyEngineResponsePatch } from '@/engine/project-patches'
+import {
+  createTopologyConnection,
+  removeTopologyConnection,
+  updateTopologyConnectionLabel,
+  updateTopologyConnectionRoute,
+} from '@/engine/topology'
 import {
   arrangeProjectItems,
   checkProjectGroupMove,
@@ -89,7 +96,6 @@ import {
   getInventoryDragPreviewPresentation,
   isInventoryDragOverCanvas,
 } from '@/lib/inventory-drag-preview'
-import { createConnectionForEndpoints } from '@/lib/connection-endpoints'
 import { resolveCreatedConnectionSelection } from '@/lib/created-connection-selection'
 import type {
   InventoryDependencyReason,
@@ -154,11 +160,8 @@ import {
   getCanvasItemWidth,
   endpointKey,
   isCanvasItem,
-  removeConnection,
   getReturnCanvasItemImpact,
   returnCanvasItemToInventory,
-  updateConnectionLabel,
-  updateConnectionRoute,
   upsertPlacements,
   upsertPlacement,
 } from '@/lib/project'
@@ -562,6 +565,7 @@ function App() {
   const saveGenerationRef = useRef(0)
   const saveTimerRef = useRef<number | null>(null)
   const projectNameTimerRef = useRef<number | null>(null)
+  const connectionLabelTimerRef = useRef<number | null>(null)
   const hasHydratedProjectRef = useRef(false)
   const demoExpirationFinalizedRef = useRef(false)
   const resizeStateRef = useRef<{
@@ -795,6 +799,9 @@ function App() {
   useEffect(() => () => {
     if (projectNameTimerRef.current !== null) {
       window.clearTimeout(projectNameTimerRef.current)
+    }
+    if (connectionLabelTimerRef.current !== null) {
+      window.clearTimeout(connectionLabelTimerRef.current)
     }
   }, [])
 
@@ -1192,25 +1199,177 @@ function App() {
     setActiveNetworkTraceEndpoint(nextSelection.activeNetworkTraceEndpoint)
   }
 
+  async function commitConnectionMutation(
+    mutation: Promise<EngineResponse>,
+    options: { historySnapshot?: ProjectState } = {},
+  ): Promise<EngineResponse> {
+    if (!domainEngine.enabled) {
+      throw new Error('The WebAssembly workspace engine is not available.')
+    }
+
+    setSaveStatus('saving')
+    setPersistenceWarning(null)
+    const response = await mutation
+    const activeProject = projectRef.current
+    if (!activeProject || response.result.kind !== 'patch') {
+      throw new Error(
+        response.result.kind === 'error'
+          ? response.result.payload.message
+          : 'The connection change was not committed.',
+      )
+    }
+
+    const committedProject = applyEngineResponsePatch(activeProject, response)
+    projectRef.current = committedProject
+    lastPersistedProjectRef.current = committedProject
+    queryClient.setQueryData(['project'], committedProject)
+    setProject(committedProject)
+    if (options.historySnapshot) {
+      setHistory((currentHistory) => pushHistory(currentHistory, options.historySnapshot!))
+    }
+    setSaveStatus('saved')
+    setPersistenceWarning(null)
+    return response
+  }
+
   function createConnectionBetween(from: ConnectionEndpoint, to: ConnectionEndpoint) {
     const currentProject = projectRef.current
 
     if (!currentProject) {
       return
     }
-
-    const result = createConnectionForEndpoints(currentProject, from, to)
-
-    if (!result.ok) {
-      setValidationMessage(result.message)
+    if (!domainEngine.enabled) {
+      setValidationMessage('The WebAssembly workspace engine is not available.')
       return
     }
 
-    updateProject(result.project)
-    applyCreatedConnectionSelection(result.connection.id)
-    setPendingConnectionEndpoint(null)
-    setPortConnectionPreview(null)
-    setValidationMessage(null)
+    void commitConnectionMutation(
+      createTopologyConnection(domainEngine.client, currentProject, from, to),
+      { historySnapshot: currentProject },
+    ).then((response) => {
+      if (response.result.kind !== 'patch' || response.result.payload.forward.kind !== 'add-connection') {
+        throw new Error('The connection change returned an unexpected patch.')
+      }
+      applyCreatedConnectionSelection(response.result.payload.forward.payload.connection.id)
+      setPendingConnectionEndpoint(null)
+      setPortConnectionPreview(null)
+      setValidationMessage(null)
+    }).catch((error) => {
+      setSaveStatus('error')
+      setValidationMessage(error instanceof Error ? error.message : 'The connection could not be created.')
+    })
+  }
+
+  function recoverConnectionMutation(error: unknown, fallbackMessage: string) {
+    setSaveStatus('error')
+    setValidationMessage(error instanceof Error ? error.message : fallbackMessage)
+    void loadProject().then((canonicalProject) => {
+      queryClient.setQueryData(['project'], canonicalProject)
+      applyInventoryCommandSnapshot(canonicalProject)
+    }).catch((reloadError) => {
+      setPersistenceWarning(
+        reloadError instanceof Error
+          ? reloadError.message
+          : 'The canonical project could not be reloaded.',
+      )
+    })
+  }
+
+  function updateConnectionRouteInEngine(
+    connectionId: string | number,
+    route: ConnectionRoutePreferences,
+  ) {
+    const currentProject = projectRef.current
+    const numericConnectionId = Number(connectionId)
+    if (!currentProject || !Number.isSafeInteger(numericConnectionId) || numericConnectionId <= 0) {
+      setValidationMessage('The selected connection is no longer valid.')
+      return
+    }
+    if (!domainEngine.enabled) {
+      setValidationMessage('The WebAssembly workspace engine is not available.')
+      return
+    }
+
+    const optimisticProject: ProjectState = {
+      ...currentProject,
+      connections: currentProject.connections.map((connection) =>
+        connection.id === numericConnectionId ? { ...connection, route } : connection,
+      ),
+    }
+    projectRef.current = optimisticProject
+    setProject(optimisticProject)
+    void commitConnectionMutation(
+      updateTopologyConnectionRoute(domainEngine.client, numericConnectionId, route),
+      { historySnapshot: currentProject },
+    ).then(() => {
+      setValidationMessage(null)
+    }).catch((error) => {
+      recoverConnectionMutation(error, 'The cable route could not be updated.')
+    })
+  }
+
+  function updateConnectionLabelInEngine(connectionId: string | number, label: string) {
+    const currentProject = projectRef.current
+    const numericConnectionId = Number(connectionId)
+    if (!currentProject || !Number.isSafeInteger(numericConnectionId) || numericConnectionId <= 0) {
+      return
+    }
+    if (!domainEngine.enabled) {
+      setValidationMessage('The WebAssembly workspace engine is not available.')
+      return
+    }
+
+    const optimisticProject: ProjectState = {
+      ...currentProject,
+      connections: currentProject.connections.map((connection) =>
+        connection.id === numericConnectionId ? { ...connection, label } : connection,
+      ),
+    }
+    projectRef.current = optimisticProject
+    setProject(optimisticProject)
+    setSaveStatus('saving')
+    if (connectionLabelTimerRef.current !== null) {
+      window.clearTimeout(connectionLabelTimerRef.current)
+    }
+    connectionLabelTimerRef.current = window.setTimeout(() => {
+      connectionLabelTimerRef.current = null
+      void commitConnectionMutation(
+        updateTopologyConnectionLabel(domainEngine.client, numericConnectionId, label),
+      ).then(() => {
+        setValidationMessage(null)
+      }).catch((error) => {
+        recoverConnectionMutation(error, 'The cable label could not be updated.')
+      })
+    }, SAVE_DEBOUNCE_MS)
+  }
+
+  function removeConnectionInEngine(connectionId: string | number) {
+    const currentProject = projectRef.current
+    const numericConnectionId = Number(connectionId)
+    if (!currentProject || !Number.isSafeInteger(numericConnectionId) || numericConnectionId <= 0) {
+      setValidationMessage('The selected connection is no longer valid.')
+      return
+    }
+    if (!domainEngine.enabled) {
+      setValidationMessage('The WebAssembly workspace engine is not available.')
+      return
+    }
+
+    if (connectionLabelTimerRef.current !== null) {
+      window.clearTimeout(connectionLabelTimerRef.current)
+      connectionLabelTimerRef.current = null
+    }
+    void commitConnectionMutation(
+      removeTopologyConnection(domainEngine.client, numericConnectionId),
+      { historySnapshot: currentProject },
+    ).then(() => {
+      if (Number(selectedConnectionId) === numericConnectionId) {
+        setSelectedConnectionId(null)
+      }
+      setValidationMessage(null)
+    }).catch((error) => {
+      recoverConnectionMutation(error, 'The connection could not be removed.')
+    })
   }
 
   function handleCanvasEndpointClick(endpoint: ConnectionEndpoint, point: CanvasPortDragPoint) {
@@ -1296,18 +1455,7 @@ function App() {
       return
     }
 
-    const result = createConnectionForEndpoints(project, pendingConnectionEndpoint, endpoint)
-
-    if (!result.ok) {
-      setValidationMessage(result.message)
-      return
-    }
-
-    updateProject(result.project)
-    applyCreatedConnectionSelection(result.connection.id)
-    setPendingConnectionEndpoint(null)
-    setPortConnectionPreview(null)
-    setValidationMessage(null)
+    createConnectionBetween(pendingConnectionEndpoint, endpoint)
   }
 
   function handleInventorySelect(itemId: string) {
@@ -1995,10 +2143,7 @@ function App() {
             onEndpointClick={handleCanvasEndpointClick}
             onEndpointDragStart={handleCanvasEndpointDragStart}
             onEndpointDrop={handleCanvasEndpointDrop}
-            onUpdateConnectionRoute={(connectionId: string | number, route: ConnectionRoutePreferences) => {
-              updateProject(updateConnectionRoute(project, connectionId, route))
-              setValidationMessage(null)
-            }}
+            onUpdateConnectionRoute={updateConnectionRouteInEngine}
             onViewportReady={(canvasController) => {
               canvasControllerRef.current = canvasController
             }}
@@ -2085,18 +2230,7 @@ function App() {
             onReturnItemToInventory={requestReturnToInventory}
             lifecycleBusy={inventoryLifecycleBusy}
             onCreateConnection={(from: ConnectionEndpoint, to: ConnectionEndpoint) => {
-              const result = createConnectionForEndpoints(project, from, to)
-
-              if (!result.ok) {
-                setValidationMessage(result.message)
-                return
-              }
-
-              updateProject(result.project)
-              applyCreatedConnectionSelection(result.connection.id)
-              setPendingConnectionEndpoint(null)
-              setPortConnectionPreview(null)
-              setValidationMessage(null)
+              createConnectionBetween(from, to)
             }}
             onSelectNetworkTrace={(endpoint) => {
               setActiveNetworkTraceEndpoint(endpoint)
@@ -2109,23 +2243,9 @@ function App() {
               setPendingConnectionEndpoint(null)
               setValidationMessage(null)
             }}
-            onUpdateConnectionLabel={(connectionId, label) => {
-              updateProject(updateConnectionLabel(project, connectionId, label), {
-                recordHistory: false,
-              })
-              setValidationMessage(null)
-            }}
-            onUpdateConnectionRoute={(connectionId, route) => {
-              updateProject(updateConnectionRoute(project, connectionId, route))
-              setValidationMessage(null)
-            }}
-            onRemoveConnection={(connectionId) => {
-              updateProject(removeConnection(project, connectionId))
-              if (String(selectedConnectionId) === String(connectionId)) {
-                setSelectedConnectionId(null)
-              }
-              setValidationMessage(null)
-            }}
+            onUpdateConnectionLabel={updateConnectionLabelInEngine}
+            onUpdateConnectionRoute={updateConnectionRouteInEngine}
+            onRemoveConnection={removeConnectionInEngine}
           />
           <AuditDrawer
             project={project}

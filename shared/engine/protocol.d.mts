@@ -36,6 +36,24 @@ export type TopologyItem = {
   ports: TopologyPort[]
 }
 
+export type TopologyConnectionRoute = {
+  source_side: string | null
+  target_side: string | null
+  bend_points: Array<{ x: number; y: number }>
+  avoid_cable_overlap: boolean
+}
+
+export type TopologyConnection = {
+  id: number
+  from: TopologyEndpointRef
+  to: TopologyEndpointRef
+  connection_type: string
+  negotiated_speed_mbps: number | null
+  label: string | null
+  route: TopologyConnectionRoute | null
+  created_at: string
+}
+
 export type TopologySnapshot = {
   items: TopologyItem[]
   assignments: Array<{
@@ -44,21 +62,7 @@ export type TopologySnapshot = {
     item: TopologyItemRef
     component_type: string
   }>
-  connections: Array<{
-    id: number
-    from: TopologyEndpointRef
-    to: TopologyEndpointRef
-    connection_type: string
-    negotiated_speed_mbps: number | null
-    label: string | null
-    route: {
-      source_side: string | null
-      target_side: string | null
-      bend_points: Array<{ x: number; y: number }>
-      avoid_cable_overlap: boolean
-    } | null
-    created_at: string
-  }>
+  connections: TopologyConnection[]
   placements: TopologyItemRef[]
 }
 
@@ -187,6 +191,19 @@ export type EngineOperation =
       kind: 'validate-connection'
       payload: { from: TopologyEndpointRef; to: TopologyEndpointRef }
     }
+  | {
+      kind: 'create-connection'
+      payload: { from: TopologyEndpointRef; to: TopologyEndpointRef; created_at: string }
+    }
+  | { kind: 'remove-connection'; payload: { connection_id: number } }
+  | {
+      kind: 'update-connection-label'
+      payload: { connection_id: number; label: string | null }
+    }
+  | {
+      kind: 'update-connection-route'
+      payload: { connection_id: number; route: TopologyConnectionRoute | null }
+    }
   | { kind: 'update-project-metadata'; payload: { name: string } }
   | {
       kind: 'replace-geometry'
@@ -296,10 +313,18 @@ export type EngineRequest = {
   operation: EngineOperation
 }
 
-export type ProjectPatch = {
-  kind: 'set-project-name'
-  payload: { name: string }
-}
+export type ProjectPatch =
+  | { kind: 'set-project-name'; payload: { name: string } }
+  | { kind: 'add-connection'; payload: { connection: TopologyConnection } }
+  | { kind: 'remove-connection'; payload: { connection: TopologyConnection } }
+  | {
+      kind: 'set-connection-label'
+      payload: { connection_id: number; label: string | null }
+    }
+  | {
+      kind: 'set-connection-route'
+      payload: { connection_id: number; route: TopologyConnectionRoute | null }
+    }
 
 export type EngineResponseBody =
   | {

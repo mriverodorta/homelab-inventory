@@ -1,9 +1,13 @@
 import { describe, expect, it, vi } from 'vitest'
 import {
   fromTopologyEndpointRef,
+  createTopologyConnection,
   getCompatibleTopologyDestinations,
   getTopologyEndpoints,
   toTopologyEndpointRef,
+  removeTopologyConnection,
+  updateTopologyConnectionLabel,
+  updateTopologyConnectionRoute,
   validateTopologyConnection,
 } from '@/engine/topology'
 import type { DomainEngineClient } from '@/engine/client'
@@ -130,6 +134,59 @@ describe('WASM topology adapter', () => {
       ok: false,
       code: 'incompatible-port-type',
       message: 'The selected port types are not compatible.',
+    })
+  })
+
+  it('sends numeric revision-checked connection commands to the engine', async () => {
+    const mutate = vi.fn().mockResolvedValue({ result: { kind: 'patch' } })
+    const client = { mutate } as unknown as DomainEngineClient
+
+    await createTopologyConnection(
+      client,
+      project,
+      { itemId: 'server:1', portId: 1 },
+      { itemId: 'switch:3', portId: 1 },
+    )
+    await updateTopologyConnectionLabel(client, 7, ' Uplink ')
+    await updateTopologyConnectionRoute(client, 7, {
+      sourceSide: 'right',
+      bendPoints: [{ x: 24, y: 48 }],
+      avoidCableOverlap: true,
+    })
+    await removeTopologyConnection(client, 7)
+
+    expect(mutate.mock.calls[0][0]).toMatchObject({
+      operation: {
+        kind: 'create-connection',
+        payload: {
+          from: { item: { item_type: 'server', id: 1 }, port_id: 1 },
+          to: { item: { item_type: 'switch', id: 3 }, port_id: 1 },
+          created_at: expect.any(String),
+        },
+      },
+    })
+    expect(mutate.mock.calls[1][0]).toEqual({
+      operation: {
+        kind: 'update-connection-label',
+        payload: { connection_id: 7, label: ' Uplink ' },
+      },
+    })
+    expect(mutate.mock.calls[2][0]).toEqual({
+      operation: {
+        kind: 'update-connection-route',
+        payload: {
+          connection_id: 7,
+          route: {
+            source_side: 'right',
+            target_side: null,
+            bend_points: [{ x: 24, y: 48 }],
+            avoid_cable_overlap: true,
+          },
+        },
+      },
+    })
+    expect(mutate.mock.calls[3][0]).toEqual({
+      operation: { kind: 'remove-connection', payload: { connection_id: 7 } },
     })
   })
 })

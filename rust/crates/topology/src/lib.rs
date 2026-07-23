@@ -19,6 +19,7 @@ pub enum TopologyError {
     InvalidHostedItem,
     InvalidPort,
     InvalidPortEndpoint,
+    InvalidRoute,
     UnavailableEndpoint,
 }
 
@@ -36,6 +37,7 @@ impl fmt::Display for TopologyError {
             Self::InvalidHostedItem => "Hosted endpoint does not match an assignment to its host.",
             Self::InvalidPort => "Topology endpoint references a missing port.",
             Self::InvalidPortEndpoint => "Topology endpoint references an invalid port side.",
+            Self::InvalidRoute => "Connection route contains an invalid coordinate.",
             Self::UnavailableEndpoint => {
                 "Topology endpoint is not exposed by a direct host or assigned component."
             }
@@ -527,6 +529,14 @@ impl TopologySnapshot {
             }
             validate_endpoint(self, &connection.from)?;
             validate_endpoint(self, &connection.to)?;
+            if connection.route.as_ref().is_some_and(|route| {
+                route
+                    .bend_points
+                    .iter()
+                    .any(|point| !point.x.is_finite() || !point.y.is_finite())
+            }) {
+                return Err(TopologyError::InvalidRoute);
+            }
         }
 
         let mut placements = BTreeSet::new();

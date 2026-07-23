@@ -4,8 +4,8 @@ use homelab_engine_protocol::{
     ArrangementResult, CommandPatchSet, EngineError, EngineRequest, EngineResponse, EngineSnapshot,
     EngineStatus, GeometryHandle, GeometryUpdateResult, NearestPlacementResult, Operation,
     PROTOCOL_VERSION, PlacementCheckResult, ProjectPatch, ResponseBody, RouteDefinition, RouteEdit,
-    RouteEditResult, RouteResult, RoutesUpdateResult, TopologyEndpointResult, TopologyError,
-    TopologySnapshot,
+    RouteEditResult, RouteResult, RoutesUpdateResult, TopologyConnection, TopologyConnectionRoute,
+    TopologyEndpointResult, TopologyError, TopologySnapshot,
 };
 use homelab_geometry::{GeometryError, GeometryNode, SpatialIndex, arrange_items};
 use homelab_routing::{
@@ -121,6 +121,20 @@ impl Engine {
             Operation::ValidateConnection { from, to } => {
                 ResponseBody::ConnectionValidation(self.topology.validate_connection(&from, &to))
             }
+            Operation::CreateConnection {
+                from,
+                to,
+                created_at,
+            } => self.create_connection(from, to, created_at),
+            Operation::RemoveConnection { connection_id } => self.remove_connection(connection_id),
+            Operation::UpdateConnectionLabel {
+                connection_id,
+                label,
+            } => self.update_connection_label(connection_id, label),
+            Operation::UpdateConnectionRoute {
+                connection_id,
+                route,
+            } => self.update_connection_route(connection_id, route),
             Operation::UpdateProjectMetadata { name } => {
                 let name = name.trim();
                 if name.is_empty() {
@@ -136,7 +150,7 @@ impl Engine {
                 } else {
                     let previous_name = std::mem::replace(&mut self.project_name, name.into());
                     self.revision += 1;
-                    ResponseBody::Patch(CommandPatchSet {
+                    ResponseBody::Patch(Box::new(CommandPatchSet {
                         revision: self.revision,
                         forward: ProjectPatch::SetProjectName {
                             name: self.project_name.clone(),
@@ -144,7 +158,7 @@ impl Engine {
                         inverse: ProjectPatch::SetProjectName {
                             name: previous_name,
                         },
-                    })
+                    }))
                 }
             }
             Operation::ReplaceGeometry { nodes, handles } => self.replace_geometry(nodes, handles),
@@ -306,6 +320,210 @@ impl Engine {
             base_revision,
             result,
         }
+    }
+
+    fn create_connection(
+        &mut self,
+        mut from: homelab_engine_protocol::EndpointRef,
+        mut to: homelab_engine_protocol::EndpointRef,
+        created_at: String,
+    ) -> ResponseBody {
+        let validation = self.topology.validate_connection(&from, &to);
+        if !validation.ok {
+            return ResponseBody::Error(EngineError {
+                code: validation
+                    .code
+                    .unwrap_or_else(|| "invalid-connection".into()),
+                message: validation
+                    .message
+                    .unwrap_or_else(|| "The connection is invalid.".into()),
+            });
+        }
+        let from_descriptor = self
+            .topology
+            .endpoint(&from)
+            .expect("validated source endpoint must exist");
+        let to_descriptor = self
+            .topology
+            .endpoint(&to)
+            .expect("validated destination endpoint must exist");
+        let connection_type = if from_descriptor.power.is_some() {
+            if from_descriptor
+                .power
+                .as_ref()
+                .is_some_and(|power| power.direction == "input")
+            {
+                std::mem::swap(&mut from, &mut to);
+            }
+            "power"
+        } else if is_network_port(&from_descriptor.port_type)
+            && is_network_port(&to_descriptor.port_type)
+        {
+            "network"
+        } else if is_display_port(&from_descriptor.port_type)
+            && is_display_port(&to_descriptor.port_type)
+        {
+            "display"
+        } else {
+            "other"
+        };
+        let Some(connection_id) = self
+            .topology
+            .snapshot()
+            .connections
+            .iter()
+            .map(|connection| connection.id)
+            .max()
+            .unwrap_or(0)
+            .checked_add(1)
+        else {
+            return engine_error(
+                "connection-id-exhausted",
+                "A new connection ID cannot be allocated safely.",
+            );
+        };
+        if created_at.trim().is_empty() {
+            return engine_error(
+                "invalid-created-at",
+                "Connection creation time must not be empty.",
+            );
+        }
+        let connection = TopologyConnection {
+            id: connection_id,
+            from,
+            to,
+            connection_type: connection_type.into(),
+            negotiated_speed_mbps: None,
+            label: None,
+            route: None,
+            created_at,
+        };
+        let mut snapshot = self.topology.snapshot().clone();
+        snapshot.connections.push(connection.clone());
+        snapshot.connections.sort_by_key(|candidate| candidate.id);
+        self.commit_topology(
+            snapshot,
+            ProjectPatch::AddConnection {
+                connection: connection.clone(),
+            },
+            ProjectPatch::RemoveConnection { connection },
+        )
+    }
+
+    fn remove_connection(&mut self, connection_id: u32) -> ResponseBody {
+        let Some(connection) = self
+            .topology
+            .snapshot()
+            .connections
+            .iter()
+            .find(|connection| connection.id == connection_id)
+            .cloned()
+        else {
+            return engine_error(
+                "missing-connection",
+                "The selected connection no longer exists.",
+            );
+        };
+        let mut snapshot = self.topology.snapshot().clone();
+        snapshot
+            .connections
+            .retain(|candidate| candidate.id != connection_id);
+        self.commit_topology(
+            snapshot,
+            ProjectPatch::RemoveConnection {
+                connection: connection.clone(),
+            },
+            ProjectPatch::AddConnection { connection },
+        )
+    }
+
+    fn update_connection_label(
+        &mut self,
+        connection_id: u32,
+        label: Option<String>,
+    ) -> ResponseBody {
+        let next_label = label.and_then(|value| {
+            let trimmed = value.trim();
+            (!trimmed.is_empty()).then(|| trimmed.to_owned())
+        });
+        let mut snapshot = self.topology.snapshot().clone();
+        let Some(connection) = snapshot
+            .connections
+            .iter_mut()
+            .find(|connection| connection.id == connection_id)
+        else {
+            return engine_error(
+                "missing-connection",
+                "The selected connection no longer exists.",
+            );
+        };
+        let previous_label = std::mem::replace(&mut connection.label, next_label.clone());
+        self.commit_topology(
+            snapshot,
+            ProjectPatch::SetConnectionLabel {
+                connection_id,
+                label: next_label,
+            },
+            ProjectPatch::SetConnectionLabel {
+                connection_id,
+                label: previous_label,
+            },
+        )
+    }
+
+    fn update_connection_route(
+        &mut self,
+        connection_id: u32,
+        route: Option<TopologyConnectionRoute>,
+    ) -> ResponseBody {
+        let mut snapshot = self.topology.snapshot().clone();
+        let Some(connection) = snapshot
+            .connections
+            .iter_mut()
+            .find(|connection| connection.id == connection_id)
+        else {
+            return engine_error(
+                "missing-connection",
+                "The selected connection no longer exists.",
+            );
+        };
+        let previous_route = std::mem::replace(&mut connection.route, route.clone());
+        self.commit_topology(
+            snapshot,
+            ProjectPatch::SetConnectionRoute {
+                connection_id,
+                route,
+            },
+            ProjectPatch::SetConnectionRoute {
+                connection_id,
+                route: previous_route,
+            },
+        )
+    }
+
+    fn commit_topology(
+        &mut self,
+        snapshot: TopologySnapshot,
+        forward: ProjectPatch,
+        inverse: ProjectPatch,
+    ) -> ResponseBody {
+        if self.revision == u32::MAX {
+            return engine_error(
+                "revision-exhausted",
+                "Project revision cannot be advanced safely.",
+            );
+        }
+        let topology = match TopologyIndex::build(snapshot) {
+            Ok(topology) => topology,
+            Err(error) => return topology_error(error),
+        };
+        self.topology = topology;
+        self.revision += 1;
+        ResponseBody::Patch(Box::new(CommandPatchSet {
+            revision: self.revision,
+            forward,
+            inverse,
+        }))
     }
 
     fn replace_geometry(
@@ -537,6 +755,25 @@ fn error_response(
     }
 }
 
+fn engine_error(code: &str, message: &str) -> ResponseBody {
+    ResponseBody::Error(EngineError {
+        code: code.into(),
+        message: message.into(),
+    })
+}
+
+fn topology_error(error: TopologyError) -> ResponseBody {
+    engine_error("invalid-topology", &error.to_string())
+}
+
+fn is_network_port(port_type: &str) -> bool {
+    matches!(port_type, "rj45" | "sfp" | "sfp-plus")
+}
+
+fn is_display_port(port_type: &str) -> bool {
+    matches!(port_type, "hdmi" | "displayport" | "mini-displayport")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -552,6 +789,67 @@ mod tests {
                 placements: vec![],
             },
         })
+    }
+
+    fn connection_engine() -> (
+        Engine,
+        homelab_engine_protocol::EndpointRef,
+        homelab_engine_protocol::EndpointRef,
+    ) {
+        let server = homelab_engine_protocol::ItemRef {
+            item_type: "server".into(),
+            id: 1,
+        };
+        let switch = homelab_engine_protocol::ItemRef {
+            item_type: "switch".into(),
+            id: 1,
+        };
+        let port = |id| homelab_engine_protocol::TopologyPort {
+            id,
+            key: None,
+            port_type: "rj45".into(),
+            slot_number: id,
+            speed: Some("2.5G".into()),
+            endpoints: vec![],
+        };
+        let from = homelab_engine_protocol::EndpointRef {
+            item: server.clone(),
+            port_id: 1,
+            endpoint_id: None,
+            hosted_item: None,
+        };
+        let to = homelab_engine_protocol::EndpointRef {
+            item: switch.clone(),
+            port_id: 1,
+            endpoint_id: None,
+            hosted_item: None,
+        };
+        let engine = Engine::from_snapshot(EngineSnapshot {
+            revision: 12,
+            project_name: "Topology Lab".into(),
+            topology: TopologySnapshot {
+                items: vec![
+                    homelab_engine_protocol::TopologyItem {
+                        item: server.clone(),
+                        archived: false,
+                        power_configuration: None,
+                        allow_outlet_fan_out: false,
+                        ports: vec![port(1)],
+                    },
+                    homelab_engine_protocol::TopologyItem {
+                        item: switch.clone(),
+                        archived: false,
+                        power_configuration: None,
+                        allow_outlet_fan_out: false,
+                        ports: vec![port(1)],
+                    },
+                ],
+                assignments: vec![],
+                connections: vec![],
+                placements: vec![server, switch],
+            },
+        });
+        (engine, from, to)
     }
 
     fn node(item_id: &str, x: f64, y: f64) -> GeometryNode {
@@ -628,7 +926,7 @@ mod tests {
         assert_eq!(engine.revision(), 13);
         assert_eq!(
             response.result,
-            ResponseBody::Patch(CommandPatchSet {
+            ResponseBody::Patch(Box::new(CommandPatchSet {
                 revision: 13,
                 forward: ProjectPatch::SetProjectName {
                     name: "Rack Lab".into(),
@@ -636,8 +934,106 @@ mod tests {
                 inverse: ProjectPatch::SetProjectName {
                     name: "Homelab Inventory".into(),
                 },
-            })
+            }))
         );
+    }
+
+    #[test]
+    fn connection_commands_return_exact_forward_and_inverse_patches() {
+        let (mut engine, from, to) = connection_engine();
+        let created = engine.dispatch(request(Operation::CreateConnection {
+            from: from.clone(),
+            to: to.clone(),
+            created_at: "2026-07-23T00:00:00.000Z".into(),
+        }));
+        let connection = engine.topology().connections[0].clone();
+        assert_eq!(connection.id, 1);
+        assert_eq!(connection.connection_type, "network");
+        assert!(matches!(
+            created.result,
+            ResponseBody::Patch(ref patch)
+                if matches!(&patch.forward, ProjectPatch::AddConnection { connection: added } if added == &connection)
+                    && matches!(&patch.inverse, ProjectPatch::RemoveConnection { connection: removed } if removed == &connection)
+        ));
+
+        let labeled = engine.dispatch(EngineRequest {
+            protocol_version: PROTOCOL_VERSION,
+            request_id: 21,
+            base_revision: 13,
+            operation: Operation::UpdateConnectionLabel {
+                connection_id: 1,
+                label: Some("  Uplink  ".into()),
+            },
+        });
+        assert_eq!(
+            engine.topology().connections[0].label.as_deref(),
+            Some("Uplink")
+        );
+        assert!(matches!(
+            labeled.result,
+            ResponseBody::Patch(ref patch)
+                if matches!(&patch.inverse, ProjectPatch::SetConnectionLabel { connection_id: 1, label: None })
+        ));
+
+        let route = TopologyConnectionRoute {
+            source_side: Some("right".into()),
+            target_side: Some("left".into()),
+            bend_points: vec![homelab_engine_protocol::Point { x: 24.0, y: 48.0 }],
+            avoid_cable_overlap: true,
+        };
+        let routed = engine.dispatch(EngineRequest {
+            protocol_version: PROTOCOL_VERSION,
+            request_id: 22,
+            base_revision: 14,
+            operation: Operation::UpdateConnectionRoute {
+                connection_id: 1,
+                route: Some(route.clone()),
+            },
+        });
+        assert_eq!(engine.topology().connections[0].route, Some(route));
+        assert!(matches!(
+            routed.result,
+            ResponseBody::Patch(ref patch)
+                if matches!(&patch.inverse, ProjectPatch::SetConnectionRoute { connection_id: 1, route: None })
+        ));
+
+        let removed_connection = engine.topology().connections[0].clone();
+        let removed = engine.dispatch(EngineRequest {
+            protocol_version: PROTOCOL_VERSION,
+            request_id: 23,
+            base_revision: 15,
+            operation: Operation::RemoveConnection { connection_id: 1 },
+        });
+        assert!(engine.topology().connections.is_empty());
+        assert!(matches!(
+            removed.result,
+            ResponseBody::Patch(ref patch)
+                if matches!(&patch.inverse, ProjectPatch::AddConnection { connection: restored } if restored == &removed_connection)
+        ));
+        assert_eq!(engine.revision(), 16);
+    }
+
+    #[test]
+    fn invalid_or_stale_connection_commands_are_atomic() {
+        let (mut engine, from, _) = connection_engine();
+        let invalid = engine.dispatch(request(Operation::CreateConnection {
+            from: from.clone(),
+            to: from,
+            created_at: "2026-07-23T00:00:00.000Z".into(),
+        }));
+        assert!(matches!(
+            invalid.result,
+            ResponseBody::Error(EngineError { ref code, .. }) if code == "same-endpoint"
+        ));
+        assert_eq!(engine.revision(), 12);
+        assert!(engine.topology().connections.is_empty());
+
+        let missing = engine.dispatch(request(Operation::RemoveConnection { connection_id: 99 }));
+        assert!(matches!(
+            missing.result,
+            ResponseBody::Error(EngineError { ref code, .. }) if code == "missing-connection"
+        ));
+        assert_eq!(engine.revision(), 12);
     }
 
     #[test]

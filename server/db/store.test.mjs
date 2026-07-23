@@ -2547,6 +2547,116 @@ describe('HomelabInventoryStore', () => {
     ])
   })
 
+  it('persists numeric connection engine patches without reloading the project', async () => {
+    const dataDir = await makeTempDir()
+    const store = createStore({
+      appVersion: '0.1.38',
+      dataDir,
+      legacyProjectPath: path.join(dataDir, 'legacy.json'),
+      saveDebounceMs: 5,
+      seedEmptyData: false,
+      seedDir: path.join(dataDir, 'missing-seed'),
+    })
+    await store.init()
+    store.addInventoryItem({
+      type: 'server',
+      name: 'Node',
+      ports: [{ id: 1, kind: 'server-port', type: 'rj45', slotNumber: 1, speed: '1G' }],
+    })
+    store.addInventoryItem({
+      type: 'switch',
+      name: 'Switch',
+      ports: [{ id: 1, kind: 'switch-port', type: 'rj45', slotNumber: 1, speed: '2.5G' }],
+    })
+    const baseRevision = store.getProject().revision
+    const connection = {
+      id: 1,
+      from: {
+        item: { item_type: 'server', id: 1 },
+        port_id: 1,
+        endpoint_id: null,
+        hosted_item: null,
+      },
+      to: {
+        item: { item_type: 'switch', id: 1 },
+        port_id: 1,
+        endpoint_id: null,
+        hosted_item: null,
+      },
+      connection_type: 'network',
+      negotiated_speed_mbps: null,
+      label: null,
+      route: null,
+      created_at: '2026-07-23T00:00:00.000Z',
+    }
+
+    await store.applyEnginePatch({
+      baseRevision,
+      patchSet: {
+        revision: baseRevision + 1,
+        forward: { kind: 'add-connection', payload: { connection } },
+      },
+      responseBytes: Uint8Array.from([1]),
+    })
+    expect(store.getProject().connections).toEqual([{
+      id: 1,
+      from: { itemId: 'server:1', portId: 1 },
+      to: { itemId: 'switch:1', portId: 1 },
+      type: 'network',
+      createdAt: '2026-07-23T00:00:00.000Z',
+    }])
+
+    await expect(store.applyEnginePatch({
+      baseRevision: baseRevision + 1,
+      patchSet: {
+        revision: baseRevision + 2,
+        forward: { kind: 'add-connection', payload: { connection } },
+      },
+      responseBytes: Uint8Array.from([9]),
+    })).rejects.toThrow('Connection 1 already exists.')
+    expect(store.getProject().revision).toBe(baseRevision + 1)
+
+    await store.applyEnginePatch({
+      baseRevision: baseRevision + 1,
+      patchSet: {
+        revision: baseRevision + 2,
+        forward: {
+          kind: 'set-connection-route',
+          payload: {
+            connection_id: 1,
+            route: {
+              source_side: 'right',
+              target_side: 'left',
+              bend_points: [{ x: 24, y: 48 }],
+              avoid_cable_overlap: true,
+            },
+          },
+        },
+      },
+      responseBytes: Uint8Array.from([2]),
+    })
+    expect(store.getProject().connections[0].route).toEqual({
+      sourceSide: 'right',
+      targetSide: 'left',
+      bendPoints: [{ x: 24, y: 48 }],
+      avoidCableOverlap: true,
+    })
+
+    await store.applyEnginePatch({
+      baseRevision: baseRevision + 2,
+      patchSet: {
+        revision: baseRevision + 3,
+        forward: { kind: 'remove-connection', payload: { connection } },
+      },
+      responseBytes: Uint8Array.from([3]),
+    })
+    expect(store.getProject().connections).toEqual([])
+
+    const persisted = JSON.parse(await fs.readFile(path.join(dataDir, 'stores', 'project.json'), 'utf8'))
+    expect(persisted.revision).toBe(baseRevision + 3)
+    expect(persisted.connections).toEqual([])
+  })
+
   it('does not publish a project commit when the project write fails', async () => {
     const dataDir = await makeTempDir()
     const store = createStore({
