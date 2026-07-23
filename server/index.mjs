@@ -7,6 +7,10 @@ import { fileURLToPath } from 'node:url'
 import { RELEASE_NOTES } from '../src/release-notes.ts'
 import { registerAgentRoutes } from './agent-routes.mjs'
 import { HomelabInventoryStore } from './db/store.mjs'
+import { EngineCommandService } from './engine/command-service.mjs'
+import { ServerEngineRuntime } from './engine/runtime.mjs'
+import { EngineSseHub } from './engine/sse-hub.mjs'
+import { registerEngineRoutes } from './engine-routes.mjs'
 import { registerInventoryRoutes } from './inventory-routes.mjs'
 import { registerProjectRoutes } from './project-routes.mjs'
 import { createRateLimitOptions, readRateLimitConfig } from './rate-limit.mjs'
@@ -168,6 +172,15 @@ registerUpdateRoutes(app, {
 
 registerInventoryRoutes(app, { withStore })
 registerProjectRoutes(app, { withStore })
+
+if (process.env.HOMELAB_ENGINE_WASM === 'required') {
+  const engineRuntime = await ServerEngineRuntime.create()
+  registerEngineRoutes(app, {
+    withStore,
+    commandService: new EngineCommandService(engineRuntime),
+    sseHub: new EngineSseHub(),
+  })
+}
 
 startUpdateCheckSchedule({
   checker: updateChecker,
