@@ -27,7 +27,13 @@ function createProps(overrides: Partial<SettingsDialogProps> = {}): SettingsDial
     inventoryVisible: true,
     inventoryWidth: 420,
     autoCenterOnSelect: true,
-    cablesVisible: true,
+    networkCablesVisible: true,
+    powerCablesVisible: true,
+    displayCablesVisible: true,
+    openCreatedConnectionInspector: false,
+    snapCablesToGrid: false,
+    avoidCableCollisionsGlobally: false,
+    snapItemsToGrid: false,
     updateStatus,
     updateLoading: false,
     updateChecking: false,
@@ -37,7 +43,13 @@ function createProps(overrides: Partial<SettingsDialogProps> = {}): SettingsDial
     onInventoryVisibleChange: vi.fn(),
     onInventoryWidthChange: vi.fn(),
     onAutoCenterOnSelectChange: vi.fn(),
-    onCablesVisibleChange: vi.fn(),
+    onNetworkCablesVisibleChange: vi.fn(),
+    onPowerCablesVisibleChange: vi.fn(),
+    onDisplayCablesVisibleChange: vi.fn(),
+    onOpenCreatedConnectionInspectorChange: vi.fn(),
+    onSnapCablesToGridChange: vi.fn(),
+    onAvoidCableCollisionsGloballyChange: vi.fn(),
+    onSnapItemsToGridChange: vi.fn(),
     onResetBrowserPreferences: vi.fn(),
     onClearIgnoredWarnings: vi.fn(),
     onEnableCompatibilityForAllHosts: vi.fn(),
@@ -65,10 +77,22 @@ describe('SettingsDialog', () => {
 
     fireEvent.click(screen.getByRole('switch', { name: 'Show inventory at startup' }))
     fireEvent.click(screen.getByRole('switch', { name: 'Center selected equipment' }))
-    fireEvent.click(screen.getByRole('switch', { name: 'Show cables' }))
+    fireEvent.click(screen.getByRole('switch', { name: 'Show network cables' }))
+    fireEvent.click(screen.getByRole('switch', { name: 'Show power cables' }))
+    fireEvent.click(screen.getByRole('switch', { name: 'Show display cables' }))
+    fireEvent.click(screen.getByRole('switch', { name: 'Open new connections in Inspector' }))
+    fireEvent.click(screen.getByRole('switch', { name: 'Snap cables to grid' }))
+    fireEvent.click(screen.getByRole('switch', { name: 'Avoid cable collisions globally' }))
+    fireEvent.click(screen.getByRole('switch', { name: 'Snap canvas items to grid' }))
     expect(props.onInventoryVisibleChange).toHaveBeenCalledWith(false)
     expect(props.onAutoCenterOnSelectChange).toHaveBeenCalledWith(false)
-    expect(props.onCablesVisibleChange).toHaveBeenCalledWith(false)
+    expect(props.onNetworkCablesVisibleChange).toHaveBeenCalledWith(false)
+    expect(props.onPowerCablesVisibleChange).toHaveBeenCalledWith(false)
+    expect(props.onDisplayCablesVisibleChange).toHaveBeenCalledWith(false)
+    expect(props.onOpenCreatedConnectionInspectorChange).toHaveBeenCalledWith(true)
+    expect(props.onSnapCablesToGridChange).toHaveBeenCalledWith(true)
+    expect(props.onAvoidCableCollisionsGloballyChange).toHaveBeenCalledWith(true)
+    expect(props.onSnapItemsToGridChange).toHaveBeenCalledWith(true)
 
     const slider = screen.getByRole('slider', { name: 'Inventory width' })
     expect(slider).toHaveAttribute('aria-valuemin', '390')

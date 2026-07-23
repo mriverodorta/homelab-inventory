@@ -13,6 +13,12 @@ export type OrthogonalSegment = {
   midpoint: OrthogonalPoint
 }
 
+export type CableEndpoint = 'source' | 'target'
+export type EndpointApproachValidator = (
+  points: readonly OrthogonalPoint[],
+  endpoint: CableEndpoint,
+) => boolean
+
 const DEFAULT_GRID_SIZE = 24
 const MIN_SEGMENT_HANDLE_LENGTH = 18
 export const DEFAULT_ENDPOINT_SNAP_THRESHOLD = 8
@@ -31,6 +37,15 @@ function isHorizontal(first: OrthogonalPoint, second: OrthogonalPoint): boolean 
 
 function isVertical(first: OrthogonalPoint, second: OrthogonalPoint): boolean {
   return first.x === second.x
+}
+
+function segmentOrientation(
+  first: OrthogonalPoint,
+  second: OrthogonalPoint,
+): OrthogonalSegment['orientation'] | null {
+  if (isHorizontal(first, second) && first.x !== second.x) return 'horizontal'
+  if (isVertical(first, second) && first.y !== second.y) return 'vertical'
+  return null
 }
 
 function isCollinear(
@@ -306,10 +321,12 @@ export function moveOrthogonalCableSegment({
   points,
   segmentIndex,
   pointer,
+  canSimplifyEndpointApproach,
 }: {
   points: OrthogonalPoint[]
   segmentIndex: number
   pointer: OrthogonalPoint
+  canSimplifyEndpointApproach?: EndpointApproachValidator
 }): OrthogonalPoint[] {
   const segmentStart = points[segmentIndex]
   const segmentEnd = points[segmentIndex + 1]
@@ -323,6 +340,10 @@ export function moveOrthogonalCableSegment({
 
   if (isHorizontal(segmentStart, segmentEnd)) {
     const y = Math.round(pointer.y)
+    const midpoint = {
+      x: Math.round((segmentStart.x + segmentEnd.x) / 2),
+      y,
+    }
 
     if (segmentIndex === 0 && segmentIndex + 1 === lastIndex) {
       nextPoints.splice(1, 0, { x: nextPoints[0].x, y }, { x: nextPoints[lastIndex].x, y })
@@ -337,11 +358,21 @@ export function moveOrthogonalCableSegment({
       nextPoints[segmentIndex + 1].y = y
     }
 
-    return normalizeOrthogonalPoints(nextPoints)
+    return simplifyMovedSegmentEndpointApproaches({
+      points: normalizeOrthogonalPoints(nextPoints),
+      orientation: 'horizontal',
+      axis: y,
+      midpoint,
+      canSimplifyEndpointApproach,
+    })
   }
 
   if (isVertical(segmentStart, segmentEnd)) {
     const x = Math.round(pointer.x)
+    const midpoint = {
+      x,
+      y: Math.round((segmentStart.y + segmentEnd.y) / 2),
+    }
 
     if (segmentIndex === 0 && segmentIndex + 1 === lastIndex) {
       nextPoints.splice(1, 0, { x, y: nextPoints[0].y }, { x, y: nextPoints[lastIndex].y })
@@ -356,8 +387,155 @@ export function moveOrthogonalCableSegment({
       nextPoints[segmentIndex + 1].x = x
     }
 
-    return normalizeOrthogonalPoints(nextPoints)
+    return simplifyMovedSegmentEndpointApproaches({
+      points: normalizeOrthogonalPoints(nextPoints),
+      orientation: 'vertical',
+      axis: x,
+      midpoint,
+      canSimplifyEndpointApproach,
+    })
   }
 
   return points
+}
+
+function coordinateWithinSegment(value: number, first: number, second: number): boolean {
+  return value >= Math.min(first, second) && value <= Math.max(first, second)
+}
+
+function findMovedSegmentIndex({
+  points,
+  orientation,
+  axis,
+  midpoint,
+}: {
+  points: readonly OrthogonalPoint[]
+  orientation: OrthogonalSegment['orientation']
+  axis: number
+  midpoint: OrthogonalPoint
+}): number {
+  const candidates = points.slice(0, -1).flatMap((point, index) => {
+    const nextPoint = points[index + 1]
+    if (!nextPoint || segmentOrientation(point, nextPoint) !== orientation) return []
+
+    const onAxis = orientation === 'horizontal'
+      ? point.y === axis && nextPoint.y === axis
+      : point.x === axis && nextPoint.x === axis
+    const containsMidpoint = orientation === 'horizontal'
+      ? coordinateWithinSegment(midpoint.x, point.x, nextPoint.x)
+      : coordinateWithinSegment(midpoint.y, point.y, nextPoint.y)
+
+    return onAxis && containsMidpoint
+      ? [{ index, length: segmentLength(point, nextPoint) }]
+      : []
+  })
+
+  return candidates.sort((first, second) => second.length - first.length)[0]?.index ?? -1
+}
+
+function simplifySourceApproach({
+  points,
+  orientation,
+  axis,
+  midpoint,
+  validate,
+}: {
+  points: OrthogonalPoint[]
+  orientation: OrthogonalSegment['orientation']
+  axis: number
+  midpoint: OrthogonalPoint
+  validate: EndpointApproachValidator
+}): OrthogonalPoint[] {
+  const movedIndex = findMovedSegmentIndex({ points, orientation, axis, midpoint })
+  if (movedIndex <= 1) return points
+
+  const source = points[0]
+  const firstTurn = points[1]
+  const movedEnd = points[movedIndex + 1]
+  if (!source || !firstTurn || !movedEnd) return points
+
+  const sourceOrientation = segmentOrientation(source, firstTurn)
+  if (!sourceOrientation || sourceOrientation === orientation) return points
+
+  const candidateTurn = orientation === 'vertical'
+    ? { x: axis, y: source.y }
+    : { x: source.x, y: axis }
+  const candidateApproach = normalizeOrthogonalPoints([source, candidateTurn, movedEnd])
+  if (candidateApproach.length - 1 >= movedIndex + 1) return points
+  if (!validate(candidateApproach, 'source')) return points
+
+  return normalizeOrthogonalPoints([
+    ...candidateApproach,
+    ...points.slice(movedIndex + 2),
+  ])
+}
+
+function simplifyTargetApproach({
+  points,
+  orientation,
+  axis,
+  midpoint,
+  validate,
+}: {
+  points: OrthogonalPoint[]
+  orientation: OrthogonalSegment['orientation']
+  axis: number
+  midpoint: OrthogonalPoint
+  validate: EndpointApproachValidator
+}): OrthogonalPoint[] {
+  const movedIndex = findMovedSegmentIndex({ points, orientation, axis, midpoint })
+  const lastIndex = points.length - 1
+  if (movedIndex < 0 || lastIndex - movedIndex <= 2) return points
+
+  const movedStart = points[movedIndex]
+  const finalTurn = points[lastIndex - 1]
+  const target = points[lastIndex]
+  if (!movedStart || !finalTurn || !target) return points
+
+  const targetOrientation = segmentOrientation(finalTurn, target)
+  if (!targetOrientation || targetOrientation === orientation) return points
+
+  const candidateTurn = orientation === 'vertical'
+    ? { x: axis, y: target.y }
+    : { x: target.x, y: axis }
+  const candidateApproach = normalizeOrthogonalPoints([movedStart, candidateTurn, target])
+  if (candidateApproach.length - 1 >= lastIndex - movedIndex) return points
+  if (!validate(candidateApproach, 'target')) return points
+
+  return normalizeOrthogonalPoints([
+    ...points.slice(0, movedIndex),
+    ...candidateApproach,
+  ])
+}
+
+function simplifyMovedSegmentEndpointApproaches({
+  points,
+  orientation,
+  axis,
+  midpoint,
+  canSimplifyEndpointApproach,
+}: {
+  points: OrthogonalPoint[]
+  orientation: OrthogonalSegment['orientation']
+  axis: number
+  midpoint: OrthogonalPoint
+  canSimplifyEndpointApproach?: EndpointApproachValidator
+}): OrthogonalPoint[] {
+  if (!canSimplifyEndpointApproach) return points
+
+  const sourceSimplified = simplifySourceApproach({
+    points,
+    orientation,
+    axis,
+    midpoint,
+    validate: canSimplifyEndpointApproach,
+  })
+
+  return simplifyTargetApproach({
+    points: sourceSimplified,
+    orientation,
+    axis,
+    midpoint,
+    validate: canSimplifyEndpointApproach,
+  })
 }

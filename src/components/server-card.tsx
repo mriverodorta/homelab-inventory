@@ -2,6 +2,7 @@ import { useDraggable, useDroppable } from '@dnd-kit/core'
 import { Handle, Position, type Node, type NodeProps } from '@xyflow/react'
 import { AlertTriangle, Grip, X } from 'lucide-react'
 import type { CSSProperties } from 'react'
+import { AssignedPowerAdapterRow } from '@/components/assigned-power-adapter-row'
 import { Button } from '@/components/ui/button'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { getVisibleServerSlotTypes, SLOT_LABELS, sortAssignmentsForDisplay } from '@/lib/constraints'
@@ -30,6 +31,7 @@ import {
 import { endpointKey, EQUIPMENT_PORT_CHIP_WIDTH } from '@/lib/project'
 import type { CanvasPortDragPoint } from '@/types/canvas'
 import { startSelectedPortDrag } from '@/lib/port-interactions'
+import { POWER_INPUT_PORT_KEY } from '@/lib/power-topology'
 import type { AgentServerStatus, AgentStatusSummary, AgentState } from '@/types/agent'
 import type { CompatibilityStatus } from '@/types/compatibility'
 import type {
@@ -810,6 +812,41 @@ export function ServerNode({ data }: NodeProps<ServerFlowNode>) {
 
             if (!item) {
               return null
+            }
+
+            if (assignment.type === 'powerAdapter') {
+              const adapterKey = runtimeItemKey(item)
+              const powerPort = item.ports?.find((port) => (
+                port.key === POWER_INPUT_PORT_KEY && port.type === 'ac-input'
+              ))
+
+              return (
+                <AssignedPowerAdapterRow
+                  key={assignment.id}
+                  adapter={item}
+                  assignment={assignment}
+                  onRemoveAssignment={onRemoveAssignment}
+                  onSelect={onSelect}
+                  selected={selectedItemId === adapterKey}
+                  portChip={powerPort ? (
+                    <PortChip
+                      canvasIndex={canvasIndex}
+                      draggingEndpoint={draggingEndpoint}
+                      endpoint={{
+                        itemId: serverRuntimeKey,
+                        hostedItemId: adapterKey,
+                        portId: powerPort.id,
+                      }}
+                      onEndpointClick={onEndpointClick}
+                      onEndpointDragStart={onEndpointDragStart}
+                      onEndpointDrop={onEndpointDrop}
+                      pendingEndpoint={pendingEndpoint}
+                      port={powerPort}
+                      requiredHandleIds={requiredHandleIds}
+                    />
+                  ) : null}
+                />
+              )
             }
 
             return (

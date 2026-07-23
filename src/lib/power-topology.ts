@@ -23,6 +23,7 @@ export type PowerEndpointKind =
   | 'power-strip-outlet'
   | 'power-strip-input'
   | 'monitor-input'
+  | 'nas-internal-input'
   | 'pc-power-supply-input'
   | 'oem-power-adapter-input'
 
@@ -130,10 +131,27 @@ function powerStripInput(itemId: string, item: InventoryItem): PowerEndpoint | n
   }
 }
 
+function nasInternalInput(itemId: string, item: InventoryItem): PowerEndpoint | null {
+  if (item.type !== 'nas' || item.specs?.powerConfiguration !== 'internal-psu') {
+    return null
+  }
+  const port = powerInputPort(item)
+  if (!port) return null
+
+  return {
+    endpoint: { itemId, portId: port.id },
+    direction: 'input',
+    kind: 'nas-internal-input',
+    label: `${item.name} / AC input`,
+    allowFanOut: false,
+  }
+}
+
 function hostInput(project: ProjectState, itemId: string, item: InventoryItem): PowerEndpoint | null {
   const componentType = item.type === 'pcBuild'
     ? 'powerSupply'
-    : item.type === 'server' || item.type === 'nas'
+    : item.type === 'server'
+      || (item.type === 'nas' && item.specs?.powerConfiguration === 'external-adapter')
       ? 'powerAdapter'
       : null
 
@@ -184,6 +202,7 @@ export function getPowerEndpoints(project: ProjectState): PowerEndpoint[] {
 
     const directInput = monitorInput(itemId, item)
       ?? powerStripInput(itemId, item)
+      ?? nasInternalInput(itemId, item)
     const assignedInput = hostInput(project, itemId, item)
     return [
       ...outputEndpoints(itemId, item),
@@ -453,7 +472,7 @@ function unpoweredFindings(project: ProjectState): PowerTopologyFinding[] {
       continue
     }
 
-    const input = hostInput(project, itemId, item)
+    const input = nasInternalInput(itemId, item) ?? hostInput(project, itemId, item)
     if (!input) {
       const requiredComponent = item.type === 'pcBuild' ? 'power supply' : 'power adapter'
       findings.push({

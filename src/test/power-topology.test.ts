@@ -49,7 +49,9 @@ function project(overrides: Partial<ProjectState> = {}): ProjectState {
       'monitor:2': item(2, 'monitor', 'Side display'),
       'pcBuild:1': item(1, 'pcBuild', 'Gaming PC'),
       'server:1': item(1, 'server', 'Mini server'),
-      'nas:1': item(1, 'nas', 'Storage NAS'),
+      'nas:1': item(1, 'nas', 'Storage NAS', {
+        specs: { powerConfiguration: 'external-adapter' },
+      }),
       'powerSupply:1': item(1, 'powerSupply', '750W PSU'),
       'powerAdapter:1': item(1, 'powerAdapter', '90W adapter'),
       'switch:1': item(1, 'switch', 'Network switch', {
@@ -114,6 +116,37 @@ function powerConnection(
 }
 
 describe('power endpoint modeling', () => {
+  it('uses a direct input for internal NAS power and a hosted input for external adapters', () => {
+    const internalNas = item(2, 'nas', 'Internal NAS', {
+      specs: { powerConfiguration: 'internal-psu' },
+      ports: [{ id: 1, kind: 'server-port', type: 'rj45', slotNumber: 1 }],
+    })
+    const externalState = project({
+      assignments: [
+        ...project().assignments,
+        {
+          id: 3,
+          serverId: 'nas:1',
+          itemId: 'powerAdapter:1',
+          type: 'powerAdapter',
+          assignedAt: CREATED_AT,
+        },
+      ],
+    })
+    const internalState = project({
+      items: { ...project().items, 'nas:2': internalNas },
+    })
+
+    expect(getPowerEndpoints(internalState)).toContainEqual(expect.objectContaining({
+      endpoint: { itemId: 'nas:2', portId: 2 },
+      kind: 'nas-internal-input',
+    }))
+    expect(getPowerEndpoints(externalState)).toContainEqual(expect.objectContaining({
+      endpoint: { itemId: 'nas:1', hostedItemId: 'powerAdapter:1', portId: 1 },
+      kind: 'oem-power-adapter-input',
+    }))
+  })
+
   it('derives stable UPS, power strip, monitor, PSU, and OEM adapter endpoints', () => {
     const endpoints = getPowerEndpoints(project())
 

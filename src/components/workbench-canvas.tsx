@@ -8,6 +8,7 @@ import {
   ReactFlowProvider,
   useNodesState,
   useReactFlow,
+  useStoreApi,
   useUpdateNodeInternals,
   type EdgeTypes,
   type EdgeMouseHandler,
@@ -40,7 +41,25 @@ import { connectionMatchesSelectedItem, getFocusedCableItemIds } from '@/lib/cab
 import { buildCanvasHandleIndex, getRequiredCanvasHandles } from '@/lib/canvas-handle-index'
 import { buildCanvasProjectIndex } from '@/lib/canvas-project-index'
 import { getConnectionRoute } from '@/lib/cable-routing'
+import { CableRoutingCoordinator, type CableRoutingState } from '@/lib/cable-routing-coordinator'
+import {
+  CANVAS_CABLE_Z_INDEX,
+  CANVAS_NODE_ACTIVE_Z_INDEX,
+  CANVAS_NODE_BASE_Z_INDEX,
+  preserveCanvasNodeRuntimeState,
+  projectsEqualForCanvasNodes,
+  reconcileItemsById,
+} from '@/lib/cable-render-stability'
+import { buildCableObstacles } from '@/lib/cable-obstacle-routing'
+import { shouldAvoidCableOverlap, type CableLaneRouteRequest } from '@/lib/cable-lane-routing'
+import {
+  normalizeCanvasHandleGeometry,
+  reconcileCanvasHandleGeometry,
+  type CanvasNodeHandleGeometry,
+  type MeasuredHandleNode,
+} from '@/lib/canvas-handle-geometry'
 import { describeConnection, getCableAppearance } from '@/lib/cables'
+import { isCableTypeVisible, type CableVisibility } from '@/lib/cable-visibility'
 import { formatRemainingSeconds } from '@/lib/demo-api'
 import {
   findAssignmentById,
@@ -146,6 +165,7 @@ export type CanvasProjector = (point: XYPosition) => XYPosition
 export type CanvasFocusOptions = Record<string, never>
 export type CanvasController = {
   screenToFlowPosition: CanvasProjector
+  getViewportZoom: () => number
   focusItem: (itemId: string, options?: CanvasFocusOptions) => void
 }
 
@@ -237,6 +257,39 @@ function getItemIdFromNodeId(nodeId: string): string {
     .replace('equipment-node:', '')
 }
 
+function getMeasuredHandlePoint({
+  project,
+  nodeId,
+  kind,
+  handleId,
+  handlesByNodeId,
+}: {
+  project: ProjectState
+  nodeId: string
+  kind: 'source' | 'target'
+  handleId: string
+  handlesByNodeId: ReadonlyMap<string, CanvasNodeHandleGeometry>
+}): { x: number; y: number } | null {
+  const placement = project.placements.find(
+    (candidate) => candidate.serverId === getItemIdFromNodeId(nodeId),
+  )
+  const handle = handlesByNodeId.get(nodeId)?.[kind].find(
+    (candidate) => candidate.id === handleId,
+  )
+
+  if (!placement || !handle) return null
+
+  const x = placement.x + handle.x
+  const y = placement.y + handle.y
+
+  if (handle.position === 'left') return { x: Math.round(x), y: Math.round(y + handle.height / 2) }
+  if (handle.position === 'right') return { x: Math.round(x + handle.width), y: Math.round(y + handle.height / 2) }
+  if (handle.position === 'top') return { x: Math.round(x + handle.width / 2), y: Math.round(y) }
+  if (handle.position === 'bottom') return { x: Math.round(x + handle.width / 2), y: Math.round(y + handle.height) }
+
+  return null
+}
+
 function equalNodeDataValue(first: unknown, second: unknown): boolean {
   if (first === second) return true
 
@@ -279,8 +332,40 @@ function reconcileFlowNodes(
       return currentNode
     }
 
-    return nextNode
+    return preserveCanvasNodeRuntimeState(currentNode, nextNode)
   })
+}
+
+function shallowRecordEqual(
+  first: Record<string, unknown> | undefined,
+  second: Record<string, unknown> | undefined,
+): boolean {
+  if (first === second) return true
+  if (!first || !second) return false
+  const firstKeys = Object.keys(first)
+
+  return firstKeys.length === Object.keys(second).length
+    && firstKeys.every((key) => first[key] === second[key])
+}
+
+function cableFlowEdgesEqual(first: CableFlowEdge, second: CableFlowEdge): boolean {
+  return first.source === second.source
+    && first.target === second.target
+    && first.sourceHandle === second.sourceHandle
+    && first.targetHandle === second.targetHandle
+    && first.type === second.type
+    && first.zIndex === second.zIndex
+    && first.interactionWidth === second.interactionWidth
+    && first.selectable === second.selectable
+    && first.focusable === second.focusable
+    && shallowRecordEqual(
+      first.data as unknown as Record<string, unknown>,
+      second.data as unknown as Record<string, unknown>,
+    )
+    && shallowRecordEqual(
+      first.style as unknown as Record<string, unknown>,
+      second.style as unknown as Record<string, unknown>,
+    )
 }
 
 export function snapToGrid(value: number): number {
@@ -316,7 +401,12 @@ function CanvasViewport({
   canRedo,
   saveStatus,
   autoCenterOnSelect,
-  cablesVisible,
+  networkCablesVisible,
+  powerCablesVisible,
+  displayCablesVisible,
+  snapCablesToGrid,
+  avoidCableCollisionsGlobally,
+  snapItemsToGrid,
   updateAvailable,
   updateStatusLoading,
   desktopInventoryVisible,
@@ -328,7 +418,9 @@ function CanvasViewport({
   onOpenAudit,
   onOpenUpdate,
   onOpenInventory,
-  onToggleCablesVisible,
+  onToggleNetworkCablesVisible,
+  onTogglePowerCablesVisible,
+  onToggleDisplayCablesVisible,
   onOpenSettings,
 }: {
   project: ProjectState
@@ -348,7 +440,12 @@ function CanvasViewport({
   canRedo: boolean
   saveStatus: 'saved' | 'saving' | 'error'
   autoCenterOnSelect: boolean
-  cablesVisible: boolean
+  networkCablesVisible: boolean
+  powerCablesVisible: boolean
+  displayCablesVisible: boolean
+  snapCablesToGrid: boolean
+  avoidCableCollisionsGlobally: boolean
+  snapItemsToGrid: boolean
   updateAvailable: boolean
   updateStatusLoading: boolean
   desktopInventoryVisible: boolean
@@ -371,7 +468,9 @@ function CanvasViewport({
   onOpenAudit: () => void
   onOpenUpdate: () => void
   onOpenInventory: () => void
-  onToggleCablesVisible: () => void
+  onToggleNetworkCablesVisible: () => void
+  onTogglePowerCablesVisible: () => void
+  onToggleDisplayCablesVisible: () => void
   onOpenSettings: () => void
 }) {
   const { setNodeRef, isOver } = useDroppable({
@@ -386,8 +485,22 @@ function CanvasViewport({
   const [hoveredConnectionId, setHoveredConnectionId] = useState<string | number | null>(null)
   const [nodeDragThreshold, setNodeDragThreshold] = useState(DEFAULT_NODE_DRAG_THRESHOLD)
   const touchNodeDragGateRef = useRef<TouchNodeDragGate | null>(null)
-  const canvasIndex = useMemo(() => buildCanvasProjectIndex(project), [project])
-  const canvasHandleIndex = useMemo(() => buildCanvasHandleIndex(project), [project])
+  const nodeProjectRef = useRef(project)
+  const canvasNodeProject = useMemo(() => {
+    if (!projectsEqualForCanvasNodes(nodeProjectRef.current, project)) {
+      nodeProjectRef.current = project
+    }
+
+    return nodeProjectRef.current
+  }, [project])
+  const canvasIndex = useMemo(
+    () => buildCanvasProjectIndex(canvasNodeProject),
+    [canvasNodeProject],
+  )
+  const canvasHandleIndex = useMemo(
+    () => buildCanvasHandleIndex(canvasNodeProject),
+    [canvasNodeProject],
+  )
   const callbackRef = useRef({
     onSelect,
     onSelectConnection,
@@ -439,11 +552,11 @@ function CanvasViewport({
   const focusedItemIds = useMemo(
     () => [
       ...new Set([
-        ...getFocusedCableItemIds(project, selectedItemId, selectedConnectionId),
+        ...getFocusedCableItemIds(canvasNodeProject, selectedItemId, selectedConnectionId),
         ...activeNetworkTraceItemIds,
       ]),
     ],
-    [activeNetworkTraceItemIds, project, selectedConnectionId, selectedItemId],
+    [activeNetworkTraceItemIds, canvasNodeProject, selectedConnectionId, selectedItemId],
   )
   const activeNetworkTraceConnectionIdSet = useMemo(
     () => new Set(activeNetworkTraceConnectionIds.map((connectionId) => String(connectionId))),
@@ -455,8 +568,8 @@ function CanvasViewport({
     () => {
       const nextNodes: WorkbenchFlowNode[] = []
 
-      for (const placement of project.placements) {
-        const item = project.items[placement.serverId]
+      for (const placement of canvasNodeProject.placements) {
+        const item = canvasNodeProject.items[placement.serverId]
 
         if (!item) {
           continue
@@ -484,10 +597,10 @@ function CanvasViewport({
               x: placement.x,
               y: placement.y,
             },
-            zIndex: nodeActive ? 1000 : focusActive && !focusedItemIdSet.has(placement.serverId) ? 0 : 1,
+            zIndex: nodeActive ? CANVAS_NODE_ACTIVE_Z_INDEX : CANVAS_NODE_BASE_Z_INDEX,
             dragHandle: '.server-node-drag-handle',
             data: {
-              project,
+              project: canvasNodeProject,
               canvasIndex,
               requiredHandleIds: getRequiredCanvasHandles(canvasHandleIndex, placement.serverId),
               agentStatus,
@@ -522,10 +635,10 @@ function CanvasViewport({
               x: placement.x,
               y: placement.y,
             },
-            zIndex: nodeActive ? 1000 : focusActive && !focusedItemIdSet.has(placement.serverId) ? 0 : 1,
+            zIndex: nodeActive ? CANVAS_NODE_ACTIVE_Z_INDEX : CANVAS_NODE_BASE_Z_INDEX,
             dragHandle: '.server-node-drag-handle',
             data: {
-              project,
+              project: canvasNodeProject,
               canvasIndex,
               requiredHandleIds: getRequiredCanvasHandles(canvasHandleIndex, placement.serverId),
               itemId: placement.serverId,
@@ -559,10 +672,10 @@ function CanvasViewport({
               x: placement.x,
               y: placement.y,
             },
-            zIndex: nodeActive ? 1000 : focusActive && !focusedItemIdSet.has(placement.serverId) ? 0 : 1,
+            zIndex: nodeActive ? CANVAS_NODE_ACTIVE_Z_INDEX : CANVAS_NODE_BASE_Z_INDEX,
             dragHandle: '.server-node-drag-handle',
             data: {
-              project,
+              project: canvasNodeProject,
               canvasIndex,
               requiredHandleIds: getRequiredCanvasHandles(canvasHandleIndex, placement.serverId),
               pcBuildId: placement.serverId,
@@ -586,7 +699,7 @@ function CanvasViewport({
         }
 
         const standaloneData = {
-          project,
+          project: canvasNodeProject,
           canvasIndex,
           requiredHandleIds: getRequiredCanvasHandles(canvasHandleIndex, placement.serverId),
           itemId: placement.serverId,
@@ -609,8 +722,8 @@ function CanvasViewport({
           zIndex: selectedItemId === placement.serverId ||
             endpointBelongsToItem(pendingEndpoint, placement.serverId) ||
             endpointBelongsToItem(draggingEndpoint, placement.serverId)
-            ? 1000
-            : focusActive && !focusedItemIdSet.has(placement.serverId) ? 0 : 1,
+            ? CANVAS_NODE_ACTIVE_Z_INDEX
+            : CANVAS_NODE_BASE_Z_INDEX,
           dragHandle: '.server-node-drag-handle',
         }
 
@@ -654,10 +767,10 @@ function CanvasViewport({
             x: placement.x,
             y: placement.y,
           },
-          zIndex: nodeActive ? 1000 : focusActive && !focusedItemIdSet.has(placement.serverId) ? 0 : 1,
+          zIndex: nodeActive ? CANVAS_NODE_ACTIVE_Z_INDEX : CANVAS_NODE_BASE_Z_INDEX,
           dragHandle: '.server-node-drag-handle',
           data: {
-            project,
+            project: canvasNodeProject,
             canvasIndex,
             requiredHandleIds: getRequiredCanvasHandles(canvasHandleIndex, placement.serverId),
             itemId: placement.serverId,
@@ -688,7 +801,7 @@ function CanvasViewport({
       focusActive,
       focusedItemIdSet,
       pendingEndpoint,
-      project,
+      canvasNodeProject,
       selectedItemId,
       spotlightItemId,
       stableOnEndpointClick,
@@ -699,6 +812,120 @@ function CanvasViewport({
     ],
   )
   const [nodes, setNodes, onNodesChange] = useNodesState<WorkbenchFlowNode>(flowNodes)
+  const flowStore = useStoreApi<WorkbenchFlowNode, CableFlowEdge>()
+  const [measuredHandleGeometry, setMeasuredHandleGeometry] = useState<CanvasNodeHandleGeometry[]>([])
+  const measuredHandleGeometryRef = useRef<CanvasNodeHandleGeometry[]>([])
+  const requiredHandlesByNodeId = useMemo(
+    () => new Map(flowNodes.map((node) => [node.id, node.data.requiredHandleIds])),
+    [flowNodes],
+  )
+  const requiredHandlesByNodeIdRef = useRef(requiredHandlesByNodeId)
+  requiredHandlesByNodeIdRef.current = requiredHandlesByNodeId
+  const [routingState, setRoutingState] = useState<CableRoutingState>({
+    routes: new Map(),
+    pending: false,
+    error: null,
+  })
+  const routingCoordinatorRef = useRef<CableRoutingCoordinator | null>(null)
+  const measuredNodeSizeSignature = useMemo(() => JSON.stringify(nodes.flatMap((node) => {
+    const width = node.measured?.width
+    const height = node.measured?.height
+
+    return width && height
+      ? [[getItemIdFromNodeId(node.id), Math.ceil(width), Math.ceil(height)]]
+      : []
+  }).sort((first, second) => String(first[0]).localeCompare(String(second[0])))), [nodes])
+  const cableObstacles = useMemo(() => {
+    const measuredSizes = new Map<string, { width: number; height: number }>(
+      (JSON.parse(measuredNodeSizeSignature) as Array<[string, number, number]>).map(
+        ([itemId, width, height]) => [itemId, { width, height }],
+      ),
+    )
+
+    return buildCableObstacles(canvasNodeProject, undefined, measuredSizes)
+  }, [canvasNodeProject, measuredNodeSizeSignature])
+  const measuredHandlesByNodeId = useMemo(() => new Map(
+    measuredHandleGeometry.map(
+      (node) => [node.nodeId, node],
+    ),
+  ), [measuredHandleGeometry])
+  const routeRequests = useMemo<CableLaneRouteRequest[]>(() => {
+    const placedItemIds = new Set(project.placements.map((placement) => placement.serverId))
+    return (project.connections ?? []).flatMap((connection, connectionIndex) => {
+      const fromItem = project.items[connection.from.itemId]
+      const toItem = project.items[connection.to.itemId]
+      const fromItemKey = fromItem ? runtimeItemKey(fromItem) : null
+      const toItemKey = toItem ? runtimeItemKey(toItem) : null
+
+      if (
+        !fromItem || !toItem || !fromItemKey || !toItemKey ||
+        !placedItemIds.has(fromItemKey) || !placedItemIds.has(toItemKey)
+      ) return []
+
+      const route = getConnectionRoute(project, connection, connectionIndex)
+      if (!route) return []
+
+      const sourceNodeId = getCanvasNodeId(fromItem)
+      const targetNodeId = getCanvasNodeId(toItem)
+      const source = getMeasuredHandlePoint({
+        project,
+        nodeId: sourceNodeId,
+        kind: 'source',
+        handleId: route.sourceHandle,
+        handlesByNodeId: measuredHandlesByNodeId,
+      })
+      const target = getMeasuredHandlePoint({
+        project,
+        nodeId: targetNodeId,
+        kind: 'target',
+        handleId: route.targetHandle,
+        handlesByNodeId: measuredHandlesByNodeId,
+      })
+
+      if (!source || !target) return []
+
+      return [{
+        connectionId: connection.id,
+        avoidCableOverlap: shouldAvoidCableOverlap(
+          avoidCableCollisionsGlobally,
+          connection.route?.avoidCableOverlap,
+        ),
+        request: {
+          source,
+          target,
+          sourceSide: route.sourceSide,
+          targetSide: route.targetSide,
+          laneOffset: route.laneOffset,
+          obstacles: cableObstacles,
+          sourceItemId: connection.from.itemId,
+          targetItemId: connection.to.itemId,
+          manualBendPoints: connection.route?.bendPoints,
+          snapToGrid: snapCablesToGrid,
+        },
+      }]
+    })
+  }, [
+    avoidCableCollisionsGlobally,
+    cableObstacles,
+    measuredHandlesByNodeId,
+    project,
+    snapCablesToGrid,
+  ])
+  const plannedCableRoutes = routingState.routes
+  const syncMeasuredHandleGeometry = useCallback(() => {
+    const nextGeometry = reconcileCanvasHandleGeometry(
+      measuredHandleGeometryRef.current,
+      normalizeCanvasHandleGeometry(
+        flowStore.getState().nodeLookup.values() as Iterable<MeasuredHandleNode>,
+      ),
+      requiredHandlesByNodeIdRef.current,
+    )
+
+    if (nextGeometry === measuredHandleGeometryRef.current) return
+
+    measuredHandleGeometryRef.current = nextGeometry
+    setMeasuredHandleGeometry(nextGeometry)
+  }, [flowStore])
   const resetTouchNodeDragGate = useCallback(() => {
     const gate = touchNodeDragGateRef.current
 
@@ -860,15 +1087,18 @@ function CanvasViewport({
       event.preventDefault()
     }
   }, [panOrCancelTouchNodeDragGate])
+  const cableVisibility = useMemo<CableVisibility>(() => ({
+    network: networkCablesVisible,
+    power: powerCablesVisible,
+    display: displayCablesVisible,
+  }), [displayCablesVisible, networkCablesVisible, powerCablesVisible])
+  const flowEdgesRef = useRef<CableFlowEdge[]>([])
   const flowEdges = useMemo<CableFlowEdge[]>(
     () => {
-      if (!cablesVisible) {
-        return []
-      }
-
       const placedItemIds = new Set(project.placements.map((placement) => placement.serverId))
+      const nextEdges: CableFlowEdge[] = (project.connections ?? []).flatMap((connection, connectionIndex) => {
+        if (!isCableTypeVisible(connection.type, cableVisibility)) return []
 
-      return (project.connections ?? []).flatMap((connection, connectionIndex) => {
         const fromItem = project.items[connection.from.itemId]
         const toItem = project.items[connection.to.itemId]
 
@@ -916,12 +1146,18 @@ function CanvasViewport({
               label: connection.label?.trim() || appearance.label,
               detail: describeConnection(project, connection),
               laneOffset: route.laneOffset,
-              selected: isSelected || isHovered || isTraceConnection,
-              editable: isSelected || isHovered,
+              selected: isSelected,
+              hovered: isHovered,
+              editable: isSelected,
               traced: isTraceConnection,
               dimmed,
               connectionId: connection.id,
               route: connection.route,
+              obstacles: cableObstacles,
+              sourceItemId: connection.from.itemId,
+              targetItemId: connection.to.itemId,
+              snapToGrid: snapCablesToGrid,
+              plannedRoute: plannedCableRoutes.get(connection.id),
               onSelect: stableOnSelectConnection,
               onUpdateRoute: stableOnUpdateConnectionRoute,
             },
@@ -932,22 +1168,32 @@ function CanvasViewport({
                 ? 'drop-shadow(0 2px 3px rgba(32, 36, 44, 0.2))'
                 : undefined,
             },
-            zIndex: isSelected || isHovered || isTraceConnection ? 12 : dimmed ? 0 : 8,
+            zIndex: CANVAS_CABLE_Z_INDEX,
             interactionWidth: 18,
-            selectable: true,
+            selectable: false,
             focusable: false,
           },
         ]
       })
+      const reconciled = reconcileItemsById(
+        flowEdgesRef.current,
+        nextEdges,
+        cableFlowEdgesEqual,
+      )
+      flowEdgesRef.current = reconciled
+      return reconciled
     },
     [
       activeNetworkTraceConnectionIdSet,
       activeNetworkTraceConnectionIds.length,
-      cablesVisible,
+      cableVisibility,
+      cableObstacles,
       hoveredConnectionId,
+      plannedCableRoutes,
       project,
       selectedConnectionId,
       selectedItemId,
+      snapCablesToGrid,
       stableOnSelectConnection,
       stableOnUpdateConnectionRoute,
     ],
@@ -1106,24 +1352,106 @@ function CanvasViewport({
   useEffect(() => {
     onViewportReady({
       screenToFlowPosition,
+      getViewportZoom: () => getViewport().zoom,
       focusItem,
     })
-  }, [focusItem, onViewportReady, screenToFlowPosition])
+  }, [focusItem, getViewport, onViewportReady, screenToFlowPosition])
+
+  useEffect(() => {
+    if (typeof Worker === 'undefined') {
+      setRoutingState((current) => ({
+        ...current,
+        error: 'Background cable routing is unavailable in this browser.',
+      }))
+      return
+    }
+
+    let coordinator: CableRoutingCoordinator
+
+    try {
+      const worker = new Worker(
+        new URL('../workers/cable-routing.worker.ts', import.meta.url),
+        { type: 'module' },
+      )
+      coordinator = new CableRoutingCoordinator(worker)
+    } catch {
+      setRoutingState((current) => ({
+        ...current,
+        error: 'Background cable routing could not start.',
+      }))
+      return
+    }
+
+    routingCoordinatorRef.current = coordinator
+    const unsubscribe = coordinator.subscribe(setRoutingState)
+
+    return () => {
+      unsubscribe()
+      coordinator.dispose()
+      routingCoordinatorRef.current = null
+    }
+  }, [])
+
+  useEffect(() => {
+    const coordinator = routingCoordinatorRef.current
+    if (!coordinator) return
+
+    if (routeRequests.length === 0) {
+      coordinator.clear()
+    } else {
+      coordinator.request(routeRequests)
+    }
+  }, [routeRequests])
+
+  useEffect(() => {
+    let frame: number | null = null
+    const scheduleGeometrySync = () => {
+      if (frame !== null) return
+      frame = window.requestAnimationFrame(() => {
+        frame = null
+        syncMeasuredHandleGeometry()
+      })
+    }
+    const unsubscribe = flowStore.subscribe((state, previousState) => {
+      if (state.nodes === previousState.nodes && state.nodeLookup === previousState.nodeLookup) {
+        return
+      }
+
+      scheduleGeometrySync()
+    })
+
+    scheduleGeometrySync()
+    return () => {
+      unsubscribe()
+      if (frame !== null) window.cancelAnimationFrame(frame)
+    }
+  }, [flowStore, syncMeasuredHandleGeometry])
 
   useEffect(() => {
     setNodes((currentNodes) => reconcileFlowNodes(currentNodes, flowNodes))
   }, [flowNodes, setNodes])
 
   useEffect(() => {
+    let syncFrame: number | null = null
     const frame = window.requestAnimationFrame(() => {
       updateNodeInternals(project.placements.flatMap((placement) => {
         const item = project.items[placement.serverId]
         return item ? [getCanvasNodeId(item)] : []
       }))
+      syncFrame = window.requestAnimationFrame(syncMeasuredHandleGeometry)
     })
 
-    return () => window.cancelAnimationFrame(frame)
-  }, [canvasHandleIndex, project.items, project.placements, updateNodeInternals])
+    return () => {
+      window.cancelAnimationFrame(frame)
+      if (syncFrame !== null) window.cancelAnimationFrame(syncFrame)
+    }
+  }, [
+    canvasHandleIndex,
+    project.items,
+    project.placements,
+    syncMeasuredHandleGeometry,
+    updateNodeInternals,
+  ])
 
   useEffect(() => resetTouchNodeDragGate, [resetTouchNodeDragGate])
 
@@ -1137,8 +1465,8 @@ function CanvasViewport({
     const activeNodes = draggedNodes.length > 0 ? draggedNodes : [node]
     const movedPlacements = activeNodes.map((activeNode) => ({
       serverId: getItemIdFromNodeId(activeNode.id),
-      x: snapToGrid(activeNode.position.x),
-      y: snapToGrid(activeNode.position.y),
+      x: snapItemsToGrid ? snapToGrid(activeNode.position.x) : activeNode.position.x,
+      y: snapItemsToGrid ? snapToGrid(activeNode.position.y) : activeNode.position.y,
     }))
     const wasMoved = movedPlacements.length === 1
       ? onMoveItem(movedPlacements[0].serverId, {
@@ -1217,13 +1545,17 @@ function CanvasViewport({
           className={inspectorOpen ? 'lg:right-[680px]' : undefined}
           desktopInventoryVisible={desktopInventoryVisible}
           saveStatus={saveStatus}
+          routingPending={routingState.pending}
+          routingError={routingState.error}
           canUndo={canUndo}
           canRedo={canRedo}
           updateAvailable={updateAvailable}
           updateStatusLoading={updateStatusLoading}
           auditWarningCount={auditWarningCount}
           autoCenterOnSelect={autoCenterOnSelect}
-          cablesVisible={cablesVisible}
+          networkCablesVisible={networkCablesVisible}
+          powerCablesVisible={powerCablesVisible}
+          displayCablesVisible={displayCablesVisible}
           onInventory={onOpenInventory}
           onUndo={onUndo}
           onRedo={onRedo}
@@ -1231,7 +1563,9 @@ function CanvasViewport({
           onOpenAudit={onOpenAudit}
           onToggleAutoCenterOnSelect={onToggleAutoCenterOnSelect}
           onAutoArrange={onAutoArrange}
-          onToggleCablesVisible={onToggleCablesVisible}
+          onToggleNetworkCablesVisible={onToggleNetworkCablesVisible}
+          onTogglePowerCablesVisible={onTogglePowerCablesVisible}
+          onToggleDisplayCablesVisible={onToggleDisplayCablesVisible}
           onOpenSettings={onOpenSettings}
         />
 
@@ -1257,13 +1591,15 @@ function CanvasViewport({
           minZoom={0.25}
           maxZoom={1.8}
           nodeDragThreshold={nodeDragThreshold}
-          snapToGrid
+          snapToGrid={snapItemsToGrid}
           snapGrid={[GRID_SIZE, GRID_SIZE]}
           panOnDrag
           zoomOnScroll
           zoomOnPinch
           zoomOnDoubleClick={false}
           selectionOnDrag={false}
+          elevateNodesOnSelect={false}
+          elevateEdgesOnSelect={false}
           onlyRenderVisibleElements
           proOptions={{ hideAttribution: true }}
           fitView={project.placements.length > 0}
@@ -1308,7 +1644,12 @@ export function WorkbenchCanvas(props: {
   canRedo: boolean
   saveStatus: 'saved' | 'saving' | 'error'
   autoCenterOnSelect: boolean
-  cablesVisible: boolean
+  networkCablesVisible: boolean
+  powerCablesVisible: boolean
+  displayCablesVisible: boolean
+  snapCablesToGrid: boolean
+  avoidCableCollisionsGlobally: boolean
+  snapItemsToGrid: boolean
   updateAvailable: boolean
   updateStatusLoading: boolean
   desktopInventoryVisible: boolean
@@ -1331,7 +1672,9 @@ export function WorkbenchCanvas(props: {
   onOpenAudit: () => void
   onOpenUpdate: () => void
   onOpenInventory: () => void
-  onToggleCablesVisible: () => void
+  onToggleNetworkCablesVisible: () => void
+  onTogglePowerCablesVisible: () => void
+  onToggleDisplayCablesVisible: () => void
   onOpenSettings: () => void
 }) {
   const compatibilityAnnouncement = useMemo(() => {

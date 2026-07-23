@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import {
   assignComponent,
+  getAssignedComponentConnectionIds,
   getVisibleServerSlotTypes,
   sortAssignmentsForDisplay,
   swapAssignedComponent,
+  tryRemoveAssignedComponent,
   validateAssignment,
 } from '@/lib/constraints'
 import { mergeInventoryWithProject } from '@/lib/inventory'
@@ -20,7 +22,7 @@ function archived(item: InventoryItem): InventoryItem {
 const items: InventoryItem[] = [
   { id: 1, key: 'server:1', name: 'Server', type: 'server' },
   { id: 2, key: 'server:2', name: 'Server Two', type: 'server' },
-  { id: 1, key: 'nas:1', name: 'NAS', type: 'nas' },
+  { id: 1, key: 'nas:1', name: 'NAS', type: 'nas', specs: { powerConfiguration: 'internal-psu' } },
   { id: 1, key: 'cpu:1', name: 'CPU A', type: 'cpu' },
   { id: 2, key: 'cpu:2', name: 'CPU B', type: 'cpu' },
   { id: 1, key: 'ram:1', name: 'RAM', type: 'ram' },
@@ -30,6 +32,7 @@ const items: InventoryItem[] = [
   { id: 1, key: 'gpu:1', name: 'GPU', type: 'gpu' },
   { id: 1, key: 'network:1', name: 'Wi-Fi', type: 'network', subtype: 'wifi' },
   { id: 2, key: 'network:2', name: 'A+E 2.5GbE', type: 'network', subtype: 'ethernet' },
+  { id: 1, key: 'powerAdapter:1', name: 'OEM adapter', type: 'powerAdapter' },
   { id: 1, key: 'switch:1', name: 'Switch', type: 'switch' },
 ]
 
@@ -80,6 +83,29 @@ describe('slot constraints', () => {
 
     expect(result.ok).toBe(false)
     expect(result.ok ? '' : result.message).toMatch(/CPU, RAM, storage drives, and network cards/i)
+  })
+
+  it('requires external-adapter mode before assigning a NAS power adapter', () => {
+    const internal = mergeInventoryWithProject(items, null)
+    expect(validateAssignment(internal, 'nas:1', 'powerAdapter:1')).toEqual({
+      ok: false,
+      message: 'This NAS uses an internal PSU. Change it to External power adapter before assigning an adapter.',
+    })
+
+    const external = {
+      ...internal,
+      items: {
+        ...internal.items,
+        'nas:1': {
+          ...internal.items['nas:1'],
+          specs: { powerConfiguration: 'external-adapter' },
+        },
+      },
+    }
+    const assigned = assignComponent(external, 'nas:1', 'powerAdapter:1')
+    expect(assigned.assignments).toEqual([
+      expect.objectContaining({ serverId: 'nas:1', itemId: 'powerAdapter:1' }),
+    ])
   })
 
   it('rejects assigning an archived component', () => {
@@ -241,5 +267,53 @@ describe('slot constraints', () => {
       ok: false,
       message: 'Restore archived components before moving or swapping them.',
     })
+  })
+
+  it('reports and atomically removes connections hosted by an assigned component', () => {
+    const externalNas = mergeInventoryWithProject(items, null)
+    externalNas.items['nas:1'] = {
+      ...externalNas.items['nas:1'],
+      specs: { powerConfiguration: 'external-adapter' },
+    }
+    const assigned = assignComponent(externalNas, 'nas:1', 'powerAdapter:1')
+    const adapterAssignment = assigned.assignments.find(
+      (assignment) => assignment.itemId === 'powerAdapter:1',
+    )!
+    const connected = {
+      ...assigned,
+      connections: [
+        {
+          id: 1,
+          type: 'power' as const,
+          createdAt: '2026-07-22T22:55:00.000Z',
+          from: { itemId: 'switch:1', portId: 1 },
+          to: { itemId: 'nas:1', hostedItemId: 'powerAdapter:1', portId: 1 },
+        },
+        {
+          id: 2,
+          type: 'power' as const,
+          createdAt: '2026-07-22T22:56:00.000Z',
+          from: { itemId: 'nas:1', hostedItemId: 'powerAdapter:1', portId: 1 },
+          to: { itemId: 'switch:1', portId: 1 },
+        },
+        {
+          id: 3,
+          type: 'network' as const,
+          createdAt: '2026-07-22T22:57:00.000Z',
+          from: { itemId: 'server:1', portId: 1 },
+          to: { itemId: 'switch:1', portId: 1 },
+        },
+      ],
+    }
+
+    expect(getAssignedComponentConnectionIds(connected, adapterAssignment.id)).toEqual([1, 2])
+
+    const result = tryRemoveAssignedComponent(connected, adapterAssignment.id)
+    expect(result.ok).toBe(true)
+
+    if (!result.ok) return
+
+    expect(result.project.assignments).not.toContainEqual(adapterAssignment)
+    expect(result.project.connections.map((connection) => connection.id)).toEqual([3])
   })
 })

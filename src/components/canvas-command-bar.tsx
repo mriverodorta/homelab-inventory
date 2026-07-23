@@ -1,10 +1,11 @@
 import {
   AlertTriangle,
+  Cable,
   Cloud,
   CloudAlert,
   Download,
-  Eye,
-  EyeOff,
+  EthernetPort,
+  HdmiPort,
   LayoutGrid,
   LoaderCircle,
   LocateFixed,
@@ -25,13 +26,17 @@ export type CanvasSaveStatus = 'saved' | 'saving' | 'error'
 export interface CanvasCommandBarProps {
   desktopInventoryVisible: boolean
   saveStatus: CanvasSaveStatus
+  routingPending: boolean
+  routingError: string | null
   canUndo: boolean
   canRedo: boolean
   updateAvailable: boolean
   updateStatusLoading: boolean
   auditWarningCount: number
   autoCenterOnSelect: boolean
-  cablesVisible: boolean
+  networkCablesVisible: boolean
+  powerCablesVisible: boolean
+  displayCablesVisible: boolean
   onInventory: () => void
   onUndo: () => void
   onRedo: () => void
@@ -39,7 +44,9 @@ export interface CanvasCommandBarProps {
   onOpenAudit: () => void
   onToggleAutoCenterOnSelect: () => void
   onAutoArrange: () => void
-  onToggleCablesVisible: () => void
+  onToggleNetworkCablesVisible: () => void
+  onTogglePowerCablesVisible: () => void
+  onToggleDisplayCablesVisible: () => void
   onOpenSettings: () => void
   className?: string
 }
@@ -132,16 +139,45 @@ function SaveStatusIndicator({ status }: { status: CanvasSaveStatus }) {
   )
 }
 
+function RoutingStatusIndicator({ pending, error }: { pending: boolean; error: string | null }) {
+  if (!pending && !error) return null
+
+  const label = pending ? 'Routing cables...' : `Cable routing failed: ${error}`
+
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span
+          role="status"
+          aria-label={label}
+          className="inline-flex size-10 shrink-0 items-center justify-center rounded-md"
+        >
+          {pending ? (
+            <LoaderCircle className="size-4 animate-spin text-[#75695d]" />
+          ) : (
+            <AlertTriangle className="size-4 text-[#a84834]" />
+          )}
+        </span>
+      </TooltipTrigger>
+      <TooltipContent side="top" sideOffset={8}>{label}</TooltipContent>
+    </Tooltip>
+  )
+}
+
 export function CanvasCommandBar({
   desktopInventoryVisible,
   saveStatus,
+  routingPending,
+  routingError,
   canUndo,
   canRedo,
   updateAvailable,
   updateStatusLoading,
   auditWarningCount,
   autoCenterOnSelect,
-  cablesVisible,
+  networkCablesVisible,
+  powerCablesVisible,
+  displayCablesVisible,
   onInventory,
   onUndo,
   onRedo,
@@ -149,7 +185,9 @@ export function CanvasCommandBar({
   onOpenAudit,
   onToggleAutoCenterOnSelect,
   onAutoArrange,
-  onToggleCablesVisible,
+  onToggleNetworkCablesVisible,
+  onTogglePowerCablesVisible,
+  onToggleDisplayCablesVisible,
   onOpenSettings,
   className,
 }: CanvasCommandBarProps) {
@@ -163,7 +201,9 @@ export function CanvasCommandBar({
     ? 'Open audit, no warnings'
     : `Open audit, ${auditWarningCount} ${auditWarningCount === 1 ? 'warning' : 'warnings'}`
   const centerLabel = autoCenterOnSelect ? 'Disable selection centering' : 'Enable selection centering'
-  const cablesLabel = cablesVisible ? 'Hide cables' : 'Show cables'
+  const networkCablesLabel = networkCablesVisible ? 'Hide network cables' : 'Show network cables'
+  const powerCablesLabel = powerCablesVisible ? 'Hide power cables' : 'Show power cables'
+  const displayCablesLabel = displayCablesVisible ? 'Hide display cables' : 'Show display cables'
 
   return (
     <div
@@ -183,6 +223,7 @@ export function CanvasCommandBar({
           <ToolbarSeparator />
 
           <SaveStatusIndicator status={saveStatus} />
+          <RoutingStatusIndicator pending={routingPending} error={routingError} />
           <ToolbarButton label="Undo" onClick={onUndo} disabled={!canUndo}>
             <Undo2 className="size-4" />
           </ToolbarButton>
@@ -246,8 +287,26 @@ export function CanvasCommandBar({
           <ToolbarButton label="Auto arrange canvas" onClick={onAutoArrange}>
             <LayoutGrid className="size-4" />
           </ToolbarButton>
-          <ToolbarButton label={cablesLabel} onClick={onToggleCablesVisible} pressed={cablesVisible}>
-            {cablesVisible ? <Eye className="size-4" /> : <EyeOff className="size-4" />}
+          <ToolbarButton
+            label={networkCablesLabel}
+            onClick={onToggleNetworkCablesVisible}
+            pressed={networkCablesVisible}
+          >
+            <EthernetPort className="size-4" />
+          </ToolbarButton>
+          <ToolbarButton
+            label={powerCablesLabel}
+            onClick={onTogglePowerCablesVisible}
+            pressed={powerCablesVisible}
+          >
+            <Cable className="size-4" />
+          </ToolbarButton>
+          <ToolbarButton
+            label={displayCablesLabel}
+            onClick={onToggleDisplayCablesVisible}
+            pressed={displayCablesVisible}
+          >
+            <HdmiPort className="size-4" />
           </ToolbarButton>
           <ToolbarButton label="Settings" onClick={onOpenSettings}>
             <SettingsIcon className="size-4" />

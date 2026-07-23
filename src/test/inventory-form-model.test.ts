@@ -455,6 +455,47 @@ describe('inventory form model', () => {
     expect(powerStrip).not.toHaveProperty('properties')
   })
 
+  it('round-trips smart power-strip identity and outlet names by numeric port ID', () => {
+    const item = {
+      id: 1,
+      type: 'powerStrip',
+      name: 'Kasa HS300',
+      specs: { outlets: 2, surgeProtected: true },
+      ports: [
+        { id: 1, key: 'ac-input', kind: 'power-port', type: 'ac-input', slotNumber: 0, label: 'AC input' },
+        { id: 2, key: 'outlet-1', kind: 'power-port', type: 'ac-outlet', slotNumber: 1, label: 'Outlet 1' },
+        { id: 3, key: 'outlet-2', kind: 'power-port', type: 'ac-outlet', slotNumber: 2, label: 'Outlet 2' },
+      ],
+      smart: {
+        enabled: true,
+        displayName: 'Rack power',
+        managementIp: '192.168.1.50',
+        macAddress: '00:11:22:33:44:55',
+        outlets: [
+          { portId: 2, name: 'Router' },
+          { portId: 3, name: 'NAS' },
+        ],
+      },
+    } satisfies InventoryItem
+
+    const values = inventoryItemToFormValues(item)
+    expect(values.smartEnabled).toBe(true)
+    expect(values.smartDisplayName).toBe('Rack power')
+    expect(values.smartManagementIp).toBe('192.168.1.50')
+    expect(values.smartMacAddress).toBe('00:11:22:33:44:55')
+    expect(values.smartOutletNames).toEqual([
+      { portId: 2, name: 'Router' },
+      { portId: 3, name: 'NAS' },
+    ])
+
+    expect(inventoryFormValuesToInput(values).smart).toEqual(item.smart)
+
+    values.outletCount = '1'
+    expect(inventoryFormValuesToInput(values).smart?.outlets).toEqual([
+      { portId: 2, name: 'Router' },
+    ])
+  })
+
   it.each([
     'server',
     'nas',
@@ -718,5 +759,33 @@ describe('inventory form model', () => {
     ])
     expect(patch.originalPorts).toEqual(ports)
     expect(patch.originalPorts[0]).not.toBe(ports[0])
+  })
+
+  it('requires NAS power configuration and keeps system power ports out of LAN groups', () => {
+    const empty = createInventoryFormValues('nas')
+    empty.name = 'NAS'
+    expect(validateInventoryFormValues(empty).powerConfiguration).toBe(
+      'Select a power configuration.',
+    )
+
+    const values = inventoryItemToFormValues({
+      id: 1,
+      type: 'nas',
+      name: 'NAS',
+      specs: { powerConfiguration: 'internal-psu' },
+      ports: [
+        { id: 1, kind: 'server-port', type: 'rj45', slotNumber: 1, speed: '1G' },
+        { id: 2, key: 'ac-input', kind: 'power-port', type: 'ac-input', slotNumber: 1 },
+      ],
+    })
+
+    expect(values.portGroups).toHaveLength(1)
+    expect(values.powerConfiguration).toBe('internal-psu')
+    expect(inventoryFormValuesToInput(values)).toMatchObject({
+      specs: { powerConfiguration: 'internal-psu' },
+      ports: expect.arrayContaining([
+        expect.objectContaining({ id: 2, key: 'ac-input', type: 'ac-input' }),
+      ]),
+    })
   })
 })

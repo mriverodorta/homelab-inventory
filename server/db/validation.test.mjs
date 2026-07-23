@@ -112,6 +112,34 @@ function compatibleItems() {
 }
 
 describe('inventory lifecycle validation', () => {
+  it('accepts relational smart power-strip outlet names and rejects invalid ownership or references', () => {
+    const ports = canonicalPowerPorts({ id: 1, name: 'Strip', type: 'powerStrip', specs: { outlets: 2 } })
+    const smartStrip = {
+      id: 1,
+      name: 'Strip',
+      specs: { outlets: 2 },
+      ports,
+      smart: {
+        enabled: true,
+        displayName: 'Rack power',
+        managementIp: '192.168.1.50',
+        macAddress: '00:11:22:33:44:55',
+        outlets: [{ portId: 2, name: 'Router' }],
+      },
+    }
+
+    expect(() => assertInventoryStoreShape(inventoryTables({ powerStrips: [smartStrip] }))).not.toThrow()
+    expect(() => assertInventoryStoreShape(inventoryTables({
+      powerStrips: [{
+        ...smartStrip,
+        smart: { enabled: true, outlets: [{ portId: 99, name: 'Missing' }] },
+      }],
+    }))).toThrow('must reference an AC outlet')
+    expect(() => assertInventoryStoreShape(inventoryTables({
+      servers: [{ id: 1, name: 'Server', smart: { enabled: true, outlets: [] } }],
+    }))).toThrow('supported only for power strips')
+  })
+
   it('accepts an absent or valid ISO archivedAt timestamp', () => {
     expect(() => assertInventoryStoreShape(inventoryWith({ id: 1, name: 'CPU' }))).not.toThrow()
     expect(() => assertInventoryStoreShape(inventoryWith({
@@ -133,7 +161,12 @@ describe('inventory capability validation', () => {
   it.each(Object.entries(SCHEMA_9_TABLE_TYPES))(
     'requires and validates the schema 9 %s table as %s records',
     (table, type) => {
-      const item = { id: 1, name: `${type} item`, type }
+      const item = {
+        id: 1,
+        name: `${type} item`,
+        type,
+        ...(type === 'nas' ? { specs: { powerConfiguration: 'internal-psu' } } : {}),
+      }
       const ports = canonicalPowerPorts(item)
       const inventory = inventoryTables({
         [table]: [{ ...item, ...(ports.length > 0 ? { ports } : {}) }],
@@ -145,6 +178,17 @@ describe('inventory capability validation', () => {
         .toThrow(`Inventory store is missing a ${table} array.`)
     },
   )
+
+  it('requires a valid NAS power configuration in the current schema', () => {
+    expect(() => assertInventoryStoreShape(inventoryTables({
+      nas: [{ id: 1, name: 'NAS' }],
+    }))).toThrow('valid NAS power configuration')
+
+    const item = { id: 1, name: 'NAS', type: 'nas', specs: { powerConfiguration: 'internal-psu' } }
+    expect(() => assertInventoryStoreShape(inventoryTables({
+      nas: [{ ...item, ports: canonicalPowerPorts(item) }],
+    }))).not.toThrow()
+  })
 
   it('mirrors the complete inventory capability model on the backend', () => {
     expect(HOST_TYPES).toHaveLength(3)

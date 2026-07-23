@@ -28,6 +28,8 @@ import {
 } from '@/components/inventory-form/options'
 import { PortGroupsEditor } from '@/components/inventory-form/port-groups-editor'
 import { InventoryCommonFields, InventoryTypeFields } from '@/components/inventory-form/type-fields'
+import { SmartPowerStripFields } from '@/components/inventory-form/smart-power-strip-fields'
+import { SmartPowerStripDisableDialog } from '@/components/smart-power-strip-disable-dialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import {
@@ -54,6 +56,7 @@ const DIALOG_TAB_LABELS: Record<InventoryDialogTabId, string> = {
   compatibility: 'Compatibility',
   resources: 'Resources',
   ports: 'Ports',
+  smart: 'Smart',
 }
 
 export function InventoryItemDialog({
@@ -73,6 +76,7 @@ export function InventoryItemDialog({
   const [error, setError] = useState<string | null>(null)
   const [dirty, setDirty] = useState(false)
   const [discardOpen, setDiscardOpen] = useState(false)
+  const [smartDisableOpen, setSmartDisableOpen] = useState(false)
   const [formKey, setFormKey] = useState(0)
   const formRef = useRef<HTMLFormElement>(null)
   const quantityErrorId = useId()
@@ -90,6 +94,7 @@ export function InventoryItemDialog({
     setError(null)
     setDirty(false)
     setDiscardOpen(false)
+    setSmartDisableOpen(false)
     setFormKey((current) => current + 1)
   }
 
@@ -234,6 +239,14 @@ export function InventoryItemDialog({
         onSelectOpenChange={handleSelectOpenChange}
       />
     )
+  } else if (activeTab === 'smart') {
+    activeTabContent = (
+      <SmartPowerStripFields
+        values={values}
+        onChange={updateValues}
+        onDisableRequest={() => setSmartDisableOpen(true)}
+      />
+    )
   } else {
     activeTabContent = (
       <>
@@ -354,6 +367,20 @@ export function InventoryItemDialog({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      <SmartPowerStripDisableDialog
+        open={smartDisableOpen}
+        onOpenChange={setSmartDisableOpen}
+        onConfirm={() => {
+          updateValues({
+            smartEnabled: false,
+            smartDisplayName: '',
+            smartManagementIp: '',
+            smartMacAddress: '',
+            smartOutletNames: [],
+          })
+          setSmartDisableOpen(false)
+        }}
+      />
     </>
   )
 }

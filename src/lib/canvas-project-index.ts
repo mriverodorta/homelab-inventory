@@ -3,12 +3,14 @@ import { runtimeItemKey } from '@/lib/item-keys'
 import { endpointKey, portsCompatible } from '@/lib/project'
 import { getPowerEndpoints, type PowerEndpoint } from '@/lib/power-topology'
 import type {
+  ComponentAssignment,
   ConnectionEndpoint,
   InventoryPort,
   ProjectState,
 } from '@/types/inventory'
 
 export type CanvasProjectIndex = {
+  assignmentsByHostId: ReadonlyMap<string, readonly ComponentAssignment[]>
   assignedHostByItemId: ReadonlyMap<string, string>
   auditWarningCountByItemId: ReadonlyMap<string, number>
   connectedEndpointKeys: ReadonlySet<string>
@@ -38,6 +40,7 @@ function indexPort(
 }
 
 export function buildCanvasProjectIndex(project: ProjectState): CanvasProjectIndex {
+  const assignmentsByHostId = new Map<string, ComponentAssignment[]>()
   const assignedHostByItemId = new Map<string, string>()
   const auditWarningCountByItemId = new Map<string, number>()
   const connectedEndpointKeys = new Set<string>()
@@ -60,6 +63,10 @@ export function buildCanvasProjectIndex(project: ProjectState): CanvasProjectInd
   }
 
   for (const assignment of project.assignments) {
+    assignmentsByHostId.set(assignment.serverId, [
+      ...(assignmentsByHostId.get(assignment.serverId) ?? []),
+      assignment,
+    ])
     assignedHostByItemId.set(assignment.itemId, assignment.serverId)
 
     const item = project.items[assignment.itemId]
@@ -80,6 +87,7 @@ export function buildCanvasProjectIndex(project: ProjectState): CanvasProjectInd
   }
 
   return {
+    assignmentsByHostId,
     assignedHostByItemId,
     auditWarningCountByItemId,
     connectedEndpointKeys,

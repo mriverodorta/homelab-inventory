@@ -6,6 +6,8 @@ import {
   redoHistory,
   undoHistory,
 } from '@/lib/history'
+import { updateConnectionRoute } from '@/lib/project'
+import type { ProjectState } from '@/types/inventory'
 
 describe('project history', () => {
   it('keeps only the last 50 snapshots', () => {
@@ -38,5 +40,57 @@ describe('project history', () => {
 
     expect(undo).not.toBeNull()
     expect(pushHistory(undo!.history, 9).future).toEqual([])
+  })
+
+  it('undoes and redoes a newly inserted cable bend exactly', () => {
+    const project: ProjectState = {
+      id: 'default',
+      metadata: { name: 'History', version: 1, updatedAt: '2026-07-22T00:00:00.000Z' },
+      items: {},
+      placements: [],
+      assignments: [],
+      connections: [{
+        id: 1,
+        type: 'network',
+        createdAt: '2026-07-22T00:00:00.000Z',
+        from: { itemId: 'server:1', portId: 1 },
+        to: { itemId: 'switch:1', portId: 1 },
+      }],
+    }
+    const routed = updateConnectionRoute(project, 1, {
+      bendPoints: [{ x: 120, y: 240 }],
+    })
+    const history = pushHistory(createEmptyHistory<ProjectState>(), project)
+    const undone = undoHistory(history, routed)
+    const redone = undone ? redoHistory(undone.history, undone.project) : null
+
+    expect(undone?.project.connections[0].route).toBeUndefined()
+    expect(redone?.project.connections[0].route?.bendPoints).toEqual([{ x: 120, y: 240 }])
+  })
+
+  it('undoes and redoes a per-cable overlap preference', () => {
+    const project: ProjectState = {
+      id: 'default',
+      metadata: { name: 'History', version: 1, updatedAt: '2026-07-22T00:00:00.000Z' },
+      items: {},
+      placements: [],
+      assignments: [],
+      connections: [{
+        id: 1,
+        type: 'network',
+        createdAt: '2026-07-22T00:00:00.000Z',
+        from: { itemId: 'server:1', portId: 1 },
+        to: { itemId: 'switch:1', portId: 1 },
+      }],
+    }
+    const routed = updateConnectionRoute(project, 1, { avoidCableOverlap: true })
+    const history = pushHistory(createEmptyHistory<ProjectState>(), project)
+    const undone = undoHistory(history, routed)
+    const redone = undone ? redoHistory(undone.history, undone.project) : null
+
+    expect(routed.connections[0].route).toEqual({ avoidCableOverlap: true })
+    expect(undone?.project.connections[0].route).toBeUndefined()
+    expect(redone?.project.connections[0].route).toEqual({ avoidCableOverlap: true })
+    expect(updateConnectionRoute(routed, 1, { avoidCableOverlap: false }).connections[0].route).toBeUndefined()
   })
 })

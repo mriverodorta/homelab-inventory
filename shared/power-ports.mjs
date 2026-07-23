@@ -1,4 +1,13 @@
-const POWER_ITEM_TYPES = new Set(['ups', 'powerStrip', 'monitor', 'powerAdapter', 'powerSupply'])
+const POWER_ITEM_TYPES = new Set(['ups', 'powerStrip', 'monitor', 'powerAdapter', 'powerSupply', 'nas'])
+
+export const NAS_POWER_CONFIGURATIONS = Object.freeze([
+  'internal-psu',
+  'external-adapter',
+])
+
+export function isNasPowerConfiguration(value) {
+  return NAS_POWER_CONFIGURATIONS.includes(value)
+}
 
 function positiveInteger(value) {
   return Number.isSafeInteger(value) && value > 0 ? value : 0
@@ -17,6 +26,12 @@ function powerPort(id, key, type, slotNumber, label) {
 
 function canonicalPowerPortTemplates(item) {
   if (!POWER_ITEM_TYPES.has(item?.type)) return item?.ports ?? []
+
+  if (item.type === 'nas') {
+    return item.specs?.powerConfiguration === 'internal-psu'
+      ? [powerPort(1, 'ac-input', 'ac-input', 1, 'AC input')]
+      : []
+  }
 
   if (item.type === 'monitor' || item.type === 'powerAdapter' || item.type === 'powerSupply') {
     return [powerPort(1, 'ac-input', 'ac-input', 1, 'AC input')]
@@ -95,15 +110,18 @@ export function withCanonicalPowerPorts(item) {
     return { ...port, key: match.key }
   })
   const canonical = canonicalPowerPorts({ ...item, ports: normalizedPorts })
-  const canonicalByKey = new Map(canonical.map((port) => [port.key, port]))
-  const merged = normalizedPorts.map((port) => canonicalByKey.get(port.key) ?? port)
-  const existingKeys = new Set(normalizedPorts.map((port) => port.key))
+  const retained = normalizedPorts.filter((port) => (
+    port.kind !== 'power-port'
+    && port.type !== 'ac-input'
+    && port.type !== 'ac-outlet'
+  ))
+  const merged = [...retained, ...canonical]
+  const next = { ...item }
 
-  for (const port of canonical) {
-    if (!existingKeys.has(port.key)) merged.push(port)
-  }
+  if (merged.length > 0) next.ports = merged
+  else delete next.ports
 
-  return { ...item, ports: merged }
+  return next
 }
 
 export function legacyPowerPortKey(item, legacyPortId) {

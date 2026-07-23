@@ -1,6 +1,7 @@
 import { render } from '@testing-library/react'
 import type { NodeProps } from '@xyflow/react'
 import { describe, expect, it, vi } from 'vitest'
+import { getEndpointHandleId } from '@/lib/cable-routing'
 import { buildCanvasProjectIndex } from '@/lib/canvas-project-index'
 import { NasNode, type NasFlowNode } from '@/components/nas-card'
 import { ServerNode, type ServerFlowNode } from '@/components/server-card'
@@ -26,7 +27,7 @@ vi.mock('@dnd-kit/core', () => ({
 }))
 
 vi.mock('@xyflow/react', () => ({
-  Handle: () => null,
+  Handle: ({ id }: { id: string }) => <span data-testid={`handle-${id}`} />,
   Position: {
     Left: 'left',
     Right: 'right',
@@ -45,6 +46,9 @@ function host(
     key,
     name: key,
     type,
+    ...(type === 'nas'
+      ? { specs: { powerConfiguration: 'internal-psu' } }
+      : {}),
     compatibility: {
       host: {
         cpu: { sockets, generations: ['10'], maxTdpWatts: 65 },
@@ -378,6 +382,106 @@ describe('compatibility drop-state evaluation', () => {
 })
 
 describe('host card compatibility drop-state styling', () => {
+  it('renders an assigned server power adapter with power styling and its hosted AC endpoint', () => {
+    const server = host('server:1')
+    const adapter: InventoryItem = {
+      id: 1,
+      key: 'powerAdapter:1',
+      type: 'powerAdapter',
+      name: 'Dell 130W',
+      specs: { wattageWatts: 130, connector: 'Slim tip' },
+      ports: [{
+        id: 7,
+        key: 'ac-input',
+        kind: 'power-port',
+        type: 'ac-input',
+        slotNumber: 1,
+        label: 'AC input',
+      }],
+    }
+    const currentProject = project(
+      [server],
+      [adapter],
+      [assignment(1, server.key!, adapter)],
+    )
+    const endpoint = { itemId: server.key!, hostedItemId: adapter.key!, portId: 7 }
+    const node = nodeData(currentProject, server.key!)
+    const handleId = getEndpointHandleId('target', 'left', endpoint)
+    node.requiredHandleIds = new Set([handleId])
+
+    const { container } = render(<ServerNode {...serverNodeProps(node)} />)
+    const row = container.querySelector('[data-testid="assigned-power-adapter-row"]')
+
+    expect(row).toHaveClass('bg-[#4a3928]', 'text-[#fff8ec]')
+    expect(row).toHaveTextContent('Dell 130W')
+    expect(row).toHaveTextContent('AC')
+    expect(row).toHaveTextContent('01')
+    expect(container.querySelector(`[data-testid="handle-${handleId}"]`)).toBeInTheDocument()
+  })
+
+  it('renders exactly one NAS power representation for each mode', () => {
+    const internal = {
+      ...host('nas:1', 'nas'),
+      ports: [{
+        id: 1,
+        key: 'ac-input',
+        kind: 'power-port' as const,
+        type: 'ac-input' as const,
+        slotNumber: 1,
+      }],
+    }
+    const external = {
+      ...host('nas:2', 'nas'),
+      specs: { powerConfiguration: 'external-adapter' },
+      ports: [],
+    }
+
+    const internalRender = render(
+      <NasNode {...nasNodeProps(nodeData(project([internal]), internal.key!))} />,
+    )
+    const externalRender = render(
+      <NasNode {...nasNodeProps(nodeData(project([external]), external.key!))} />,
+    )
+
+    expect(internalRender.container.querySelector('[data-testid="nas-internal-power-port"]')).toBeInTheDocument()
+    expect(internalRender.container.querySelector('[data-testid="nas-power-adapter-slot"]')).not.toBeInTheDocument()
+    expect(externalRender.container.querySelector('[data-testid="nas-power-adapter-slot"]')).toHaveTextContent('Empty')
+    expect(externalRender.container.querySelector('[data-testid="nas-internal-power-port"]')).not.toBeInTheDocument()
+  })
+
+  it('uses the shared power row for an assigned external NAS adapter', () => {
+    const nas = {
+      ...host('nas:1', 'nas'),
+      specs: { powerConfiguration: 'external-adapter' },
+    }
+    const adapter: InventoryItem = {
+      id: 2,
+      key: 'powerAdapter:2',
+      type: 'powerAdapter',
+      name: 'NAS 90W',
+      ports: [{
+        id: 3,
+        key: 'ac-input',
+        kind: 'power-port',
+        type: 'ac-input',
+        slotNumber: 1,
+      }],
+    }
+    const currentProject = project(
+      [nas],
+      [adapter],
+      [assignment(2, nas.key!, adapter)],
+    )
+
+    const { container } = render(<NasNode {...nasNodeProps(nodeData(currentProject, nas.key!))} />)
+    const row = container.querySelector('[data-testid="assigned-power-adapter-row"]')
+
+    expect(row).toHaveClass('bg-[#4a3928]', 'text-[#fff8ec]')
+    expect(row).toHaveTextContent('NAS 90W')
+    expect(row).toHaveTextContent('AC')
+    expect(row).toHaveTextContent('01')
+  })
+
   it.each([
     ['compatible', 'ring-[#ddb668]'],
     ['incompatible', 'ring-[#c85b4a]'],

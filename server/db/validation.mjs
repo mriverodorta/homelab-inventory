@@ -8,7 +8,10 @@ import {
   isRelationalId,
   parseLegacyRelationalId,
 } from './relational-ids.mjs'
-import { canonicalPowerPorts } from '../../shared/power-ports.mjs'
+import {
+  canonicalPowerPorts,
+  isNasPowerConfiguration,
+} from '../../shared/power-ports.mjs'
 
 const componentTypes = ASSIGNABLE_COMPONENT_TYPE_SET
 const inventoryTypes = INVENTORY_TYPE_SET
@@ -70,6 +73,7 @@ const canonicalPowerItemTypes = new Set([
   'powerStrip',
   'powerAdapter',
   'powerSupply',
+  'nas',
 ])
 
 function parseInventoryKey(key) {
@@ -492,6 +496,56 @@ function assertInventoryItem(itemId, item, expectedType, options = {}) {
 
   if (type !== expectedType) {
     throw new Error(`Inventory item ${itemId} is in the wrong table.`)
+  }
+
+  if (
+    !options.allowLegacyIds
+    && type === 'nas'
+    && !isNasPowerConfiguration(item.specs?.powerConfiguration)
+  ) {
+    throw new Error(`Inventory item ${itemId} must declare a valid NAS power configuration.`)
+  }
+
+  if (item.smart !== undefined) {
+    if (type !== 'powerStrip') {
+      throw new Error(`Inventory item ${itemId} smart configuration is supported only for power strips.`)
+    }
+    if (!item.smart || typeof item.smart !== 'object' || Array.isArray(item.smart)) {
+      throw new Error(`Inventory item ${itemId}.smart must be an object.`)
+    }
+    if (item.smart.enabled !== true) {
+      throw new Error(`Inventory item ${itemId}.smart.enabled must be true.`)
+    }
+    for (const field of ['displayName', 'managementIp', 'macAddress']) {
+      if (item.smart[field] !== undefined && (
+        typeof item.smart[field] !== 'string' || item.smart[field].trim() === ''
+      )) {
+        throw new Error(`Inventory item ${itemId}.smart.${field} must be a non-empty string.`)
+      }
+    }
+    if (!Array.isArray(item.smart.outlets)) {
+      throw new Error(`Inventory item ${itemId}.smart.outlets must be an array.`)
+    }
+    const outletPortIds = new Set(
+      (item.ports ?? []).filter((port) => port.type === 'ac-outlet').map((port) => port.id),
+    )
+    const smartOutletIds = new Set()
+    item.smart.outlets.forEach((outlet, index) => {
+      if (!outlet || typeof outlet !== 'object' || Array.isArray(outlet)) {
+        throw new Error(`Inventory item ${itemId}.smart.outlets[${index}] must be an object.`)
+      }
+      assertRelationalId(outlet.portId, `Inventory item ${itemId}.smart.outlets[${index}].portId`)
+      if (!outletPortIds.has(outlet.portId)) {
+        throw new Error(`Inventory item ${itemId}.smart.outlets[${index}].portId must reference an AC outlet.`)
+      }
+      if (smartOutletIds.has(outlet.portId)) {
+        throw new Error(`Inventory item ${itemId}.smart.outlets[${index}].portId must be unique.`)
+      }
+      smartOutletIds.add(outlet.portId)
+      if (typeof outlet.name !== 'string' || outlet.name.trim() === '') {
+        throw new Error(`Inventory item ${itemId}.smart.outlets[${index}].name must be a non-empty string.`)
+      }
+    })
   }
 
   if (

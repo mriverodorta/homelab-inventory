@@ -52,7 +52,7 @@ function inventory(): InventoryItem[] {
     { id: 1, type: 'powerSupply', name: '750W PSU' },
     { id: 1, type: 'powerAdapter', name: 'OEM adapter' },
     { id: 1, type: 'server', name: 'OEM server' },
-    { id: 1, type: 'nas', name: 'NAS' },
+    { id: 1, type: 'nas', name: 'NAS', specs: { powerConfiguration: 'external-adapter' } },
   ]
 }
 

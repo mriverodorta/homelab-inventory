@@ -28,6 +28,18 @@ export type InventoryType =
 
 export type InventorySpecs = Record<string, string | number | boolean | null>
 export type InventoryProperties = Record<string, string>
+export type NasPowerConfiguration = 'internal-psu' | 'external-adapter'
+export type SmartPowerStripOutletName = {
+  portId: number
+  name: string
+}
+export type SmartPowerStripConfiguration = {
+  enabled: true
+  displayName?: string
+  managementIp?: string
+  macAddress?: string
+  outlets: SmartPowerStripOutletName[]
+}
 export type HostType = 'server' | 'nas' | 'pcBuild'
 export type CanvasEquipmentType =
   | HostType
@@ -102,6 +114,7 @@ export type ConnectionRoutePreferences = {
   sourceSide?: ConnectionRouteSide
   targetSide?: ConnectionRouteSide
   bendPoints?: ConnectionBendPoint[]
+  avoidCableOverlap?: boolean
 }
 
 export type InventoryConnection = {
@@ -127,6 +140,7 @@ export type InventoryItem = {
   model?: string
   number?: string
   specs?: InventorySpecs
+  smart?: SmartPowerStripConfiguration
   properties?: InventoryProperties
   ports?: InventoryPort[]
   compatibility?: InventoryCompatibility
@@ -174,6 +188,17 @@ export type ProjectState = {
   connections: InventoryConnection[]
   compatibilityPolicy?: CompatibilityPolicy
 }
+
+export type NasPowerConfigurationImpact = {
+  from: NasPowerConfiguration
+  to: NasPowerConfiguration
+  connections: Array<{ id: number; label: string }>
+  releasedAdapter: { type: 'powerAdapter'; id: number; name: string } | null
+}
+
+export type NasPowerConfigurationChangeResult =
+  | { status: 'confirmation-required'; impact: NasPowerConfigurationImpact }
+  | { status: 'applied'; project: ProjectState }
 
 export type SlotStatus = {
   type: ComponentType

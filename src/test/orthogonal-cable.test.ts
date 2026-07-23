@@ -98,6 +98,86 @@ describe('orthogonal cable geometry', () => {
     ])
   })
 
+  it('collapses a redundant source staircase around the moved segment', () => {
+    const points = [
+      { x: 2328, y: -262 },
+      { x: 2292, y: -262 },
+      { x: 2292, y: -204 },
+      { x: 2268, y: -204 },
+      { x: 2268, y: 120 },
+      { x: 1364, y: 120 },
+      { x: 1364, y: 96 },
+    ]
+    const movedPoints = moveOrthogonalCableSegment({
+      points,
+      segmentIndex: 3,
+      pointer: { x: 2208, y: 0 },
+      canSimplifyEndpointApproach: () => true,
+    })
+
+    expect(movedPoints).toEqual([
+      { x: 2328, y: -262 },
+      { x: 2208, y: -262 },
+      { x: 2208, y: 120 },
+      { x: 1364, y: 120 },
+      { x: 1364, y: 96 },
+    ])
+  })
+
+  it('keeps a redundant source staircase when the direct approach is blocked', () => {
+    const points = [
+      { x: 2328, y: -262 },
+      { x: 2292, y: -262 },
+      { x: 2292, y: -204 },
+      { x: 2268, y: -204 },
+      { x: 2268, y: 120 },
+      { x: 1364, y: 120 },
+      { x: 1364, y: 96 },
+    ]
+    const movedPoints = moveOrthogonalCableSegment({
+      points,
+      segmentIndex: 3,
+      pointer: { x: 2208, y: 0 },
+      canSimplifyEndpointApproach: () => false,
+    })
+
+    expect(movedPoints).toEqual([
+      { x: 2328, y: -262 },
+      { x: 2292, y: -262 },
+      { x: 2292, y: -204 },
+      { x: 2208, y: -204 },
+      { x: 2208, y: 120 },
+      { x: 1364, y: 120 },
+      { x: 1364, y: 96 },
+    ])
+  })
+
+  it('collapses a redundant target staircase around a moved horizontal segment', () => {
+    const points = [
+      { x: 0, y: 100 },
+      { x: 24, y: 100 },
+      { x: 24, y: 200 },
+      { x: 160, y: 200 },
+      { x: 160, y: 160 },
+      { x: 220, y: 160 },
+      { x: 220, y: 100 },
+    ]
+    const movedPoints = moveOrthogonalCableSegment({
+      points,
+      segmentIndex: 2,
+      pointer: { x: 80, y: 180 },
+      canSimplifyEndpointApproach: () => true,
+    })
+
+    expect(movedPoints).toEqual([
+      { x: 0, y: 100 },
+      { x: 24, y: 100 },
+      { x: 24, y: 180 },
+      { x: 220, y: 180 },
+      { x: 220, y: 100 },
+    ])
+  })
+
   it('creates one handle per editable cable segment and stores only interior bends', () => {
     const points = [
       { x: 100, y: 200 },

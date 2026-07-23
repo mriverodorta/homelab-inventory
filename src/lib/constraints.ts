@@ -283,6 +283,22 @@ function validateAssignmentBasics(
     return { ok: false, message: NAS_COMPONENT_MESSAGE }
   }
 
+  if (host.type === 'nas' && item.type === 'powerAdapter') {
+    if (host.specs?.powerConfiguration !== 'external-adapter') {
+      return {
+        ok: false,
+        message: 'This NAS uses an internal PSU. Change it to External power adapter before assigning an adapter.',
+      }
+    }
+
+    const existingAdapter = project.assignments.find(
+      (assignment) => assignment.serverId === serverId && assignment.type === 'powerAdapter',
+    )
+    if (existingAdapter) {
+      return { ok: false, message: 'This NAS already has a power adapter.' }
+    }
+  }
+
   if (host.type === 'pcBuild' && !PC_BUILD_COMPONENT_TYPES.has(item.type)) {
     return { ok: false, message: PC_BUILD_COMPONENT_MESSAGE }
   }
@@ -668,8 +684,29 @@ export function tryRemoveAssignedComponent(
       assignments: project.assignments.filter(
         (candidate) => assignmentIdentity(candidate) !== assignmentIdentity(assignment),
       ),
+      connections: project.connections.filter(
+        (connection) => (
+          connection.from.hostedItemId !== assignment.itemId
+          && connection.to.hostedItemId !== assignment.itemId
+        ),
+      ),
     }),
   }
+}
+
+export function getAssignedComponentConnectionIds(
+  project: ProjectState,
+  assignmentId: string | number,
+): number[] {
+  const assignment = findAssignmentById(project.assignments, assignmentId)
+  if (!assignment) return []
+
+  return project.connections
+    .filter((connection) => (
+      connection.from.hostedItemId === assignment.itemId
+      || connection.to.hostedItemId === assignment.itemId
+    ))
+    .map((connection) => connection.id)
 }
 
 export function swapAssignedComponent(

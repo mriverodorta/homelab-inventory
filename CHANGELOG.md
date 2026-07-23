@@ -6,6 +6,18 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 
 ## Unreleased
 
+- Added obstacle-aware shortest-path routing for network, display, and power cables while allowing cable crossings and shared lanes.
+- Added double-click cable anchors, individual bend removal, Reset route, and Undo/Redo support for manual routing changes.
+- Added browser-local cable and canvas-item snapping preferences, disabled by default, using 12 px cable lanes and the 24 px item grid.
+- Preserved manual cable anchors during automatic rerouting and deferred expensive obstacle routing until equipment movement or cable edits commit.
+- Fixed automatic routes to respect source and destination sides, use measured card boundaries, and avoid traveling beneath endpoint equipment.
+- Added optional per-cable lane avoidance so automatic routes can separate long parallel overlaps while preserving clean crossings and shared endpoint approaches.
+- Added a browser-local global cable-collision preference that applies lane avoidance to every cable without overwriting individual cable settings.
+- Moved cable planning into a background worker, retained existing paths while rerouting, and added a non-blocking routing status indicator.
+- Fixed canvas pan and zoom lag caused by serializing every measured cable handle on viewport updates.
+- Prevented single-cable bend edits from rerouting, rebuilding, or visibly blinking unrelated cables and equipment.
+- Prevented cable paths from moving, disappearing, or blinking during cable clicks, equipment focus, Inspector opening, hover, and canvas deselection.
+- Simplified redundant endpoint staircases after manual cable movement while retaining obstacle-safe endpoint approaches.
 - Fixed connection inspector drawer spacing after the server inspector redesign.
 - Documented normal production deployment and persistent data setup.
 - Added GitHub Actions Docker publishing for `latest`, `stable`, and semver image tags.
@@ -13,6 +25,23 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 - Prepared the project for public GitHub publishing.
 - Added repository documentation, issue templates, CI, and security guidance.
 - Clarified Docker deployment, data persistence, and development setup.
+- Materialized canonical numeric power ports before validating newly created power equipment.
+- Restored creation of power adapters with one draggable AC-input endpoint for UPS and power-strip connections.
+- Fixed assigned server power adapters to use power-equipment styling and expose their draggable AC input on the canvas.
+- Added internal-PSU and external-power-adapter configurations for NAS equipment.
+- Added a conditional external-adapter slot to NAS canvas cards while internal-PSU NAS devices expose their AC input directly in the card header.
+- Added confirmed, atomic NAS power-mode changes that remove affected power cables and return assigned adapters to inventory.
+- Added Ignore and Unignore controls to Inspector audit findings while keeping acknowledged findings visible for context.
+- Shortened AC input labels on canvas port chips from `AC-INPUT` to `AC`.
+- Added optional smart mode for power strips with device identity, management addressing, and custom outlet names.
+- Added a shared Smart tab to power-strip creation and inspection while keeping outlet chips compact on the canvas.
+- Added a destructive confirmation before clearing smart power-strip metadata without affecting ports, cables, or layout.
+- Fixed power, network, and video cable routes so they require prior selection and meaningful pointer movement before being repositioned.
+- Changed new connections to keep the current Inspector state by default and added an opt-in General workspace preference for automatic connection inspection.
+- Fixed hosted external power-adapter cables to attach to the adapter's visible AC port chip while internal PSU cables remain attached to the host header chip.
+- Added confirmation and atomic cable cleanup when removing an assigned component that still owns connected ports.
+- Fixed inventory drag previews to match the canvas zoom and final placement footprint, making constrained equipment placement predictable.
+- Added independent, browser-persistent toolbar and workspace controls for network, power, and display cable visibility.
 
 ## [0.1.38] - 2026-07-21
 

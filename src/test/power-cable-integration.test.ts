@@ -109,7 +109,7 @@ describe('power cable integration', () => {
     })
   })
 
-  it('renders power distinctly and routes hosted inputs through a host handle', () => {
+  it('renders power distinctly and routes hosted inputs through the adapter port handle', () => {
     const currentProject = project()
     const connection: InventoryConnection = {
       id: 1,
@@ -127,6 +127,8 @@ describe('power cable integration', () => {
     expect(describeConnection(currentProject, connection)).toBe(
       'Rack UPS / Surge outlet 1 -> Server / 90W adapter / AC input',
     )
-    expect(getConnectionRoute(currentProject, connection)?.targetHandle).toMatch(/^target-(left|right|top|bottom)$/)
+    expect(getConnectionRoute(currentProject, connection)?.targetHandle).toMatch(
+      /^target-(left|right|top|bottom)-powerAdapter:1:1:port$/,
+    )
   })
 })

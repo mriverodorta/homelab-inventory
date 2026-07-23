@@ -766,6 +766,7 @@ export function updateConnectionRoute(
     ...(route.sourceSide ? { sourceSide: route.sourceSide } : {}),
     ...(route.targetSide ? { targetSide: route.targetSide } : {}),
     ...(route.bendPoints?.length ? { bendPoints: route.bendPoints } : {}),
+    ...(route.avoidCableOverlap ? { avoidCableOverlap: true } : {}),
   }
 
   return touchProject({

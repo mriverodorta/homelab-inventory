@@ -14,10 +14,12 @@ import type { XYPosition } from '@xyflow/react'
 import { AlertTriangle } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { AuditDrawer } from '@/components/audit-drawer'
+import { AssignedComponentRemovalDialog } from '@/components/assigned-component-removal-dialog'
 import { DemoSessionDialog, type DemoSessionDialogState } from '@/components/demo-session-dialog'
 import { DesktopInventoryShell } from '@/components/desktop-inventory-shell'
 import { GlobalItemSearch } from '@/components/global-item-search'
 import { InspectorPanel } from '@/components/inspector-panel'
+import { NasPowerConfigurationDialog } from '@/components/nas-power-configuration-dialog'
 import { ReturnToInventoryDialog } from '@/components/return-to-inventory-dialog'
 import { InventorySidebar } from '@/components/inventory-sidebar'
 import {
@@ -47,6 +49,7 @@ import { TooltipProvider } from '@/components/ui/tooltip'
 import type { CanvasPortDragPoint } from '@/types/canvas'
 import {
   findAssignmentById,
+  getAssignedComponentConnectionIds,
   getAssignedComponentDropGeometryError,
   moveAssignedComponent,
   tryAssignComponent,
@@ -61,6 +64,7 @@ import { loadAgentStatus } from '@/lib/agent-api'
 import {
   createInventoryItems,
   archiveInventoryItems,
+  changeNasPowerConfiguration,
   deleteInventoryItems,
   duplicateInventoryItem,
   loadInventoryDependencyReports,
@@ -73,7 +77,12 @@ import {
 } from '@/lib/db'
 import { expireDemoSession, extendDemoSession, loadDemoSession, type DemoSessionStatus } from '@/lib/demo-api'
 import { runtimeItemKey } from '@/lib/item-keys'
+import {
+  getInventoryDragPreviewPresentation,
+  isInventoryDragOverCanvas,
+} from '@/lib/inventory-drag-preview'
 import { createConnectionForEndpoints } from '@/lib/connection-endpoints'
+import { resolveCreatedConnectionSelection } from '@/lib/created-connection-selection'
 import type {
   InventoryDependencyReason,
   InventoryDependencyReport,
@@ -98,14 +107,26 @@ import {
   DEFAULT_UI_PREFERENCES,
   clampInventoryWidth,
   getStoredAutoCenterOnSelect,
-  getStoredCablesVisible,
+  getStoredAvoidCableCollisionsGlobally,
+  getStoredDisplayCablesVisible,
   getStoredInventoryVisible,
   getStoredInventoryWidth,
+  getStoredNetworkCablesVisible,
+  getStoredOpenCreatedConnectionInspector,
+  getStoredPowerCablesVisible,
+  getStoredSnapCablesToGrid,
+  getStoredSnapItemsToGrid,
   resetStoredUiPreferences,
   storeAutoCenterOnSelect,
-  storeCablesVisible,
+  storeAvoidCableCollisionsGlobally,
+  storeDisplayCablesVisible,
   storeInventoryVisible,
   storeInventoryWidth,
+  storeNetworkCablesVisible,
+  storeOpenCreatedConnectionInspector,
+  storePowerCablesVisible,
+  storeSnapCablesToGrid,
+  storeSnapItemsToGrid,
 } from '@/lib/ui-preferences'
 import {
   createEmptyHistory,
@@ -143,6 +164,8 @@ import type {
   ConnectionRoutePreferences,
   InventoryItem,
   InventoryProperties,
+  NasPowerConfiguration,
+  NasPowerConfigurationImpact,
   ProjectState,
 } from '@/types/inventory'
 
@@ -164,6 +187,18 @@ type ValidationSeverity = 'error' | 'unknown'
 type InventoryLifecycleRequest = {
   action: InventoryLifecycleAction
   items: InventoryItem[]
+}
+
+type PendingNasPowerChange = {
+  nasId: number
+  target: NasPowerConfiguration
+  impact: NasPowerConfigurationImpact
+}
+
+type PendingAssignmentRemoval = {
+  assignmentId: string | number
+  itemName: string
+  connectionCount: number
 }
 
 function inventoryRef(item: InventoryItem): InventoryRef {
@@ -195,7 +230,11 @@ function getServerIdFromOver(overId: string | null): string | null {
   return overId.replace('server:', '')
 }
 
-function getCanvasDropPoint(event: DragEndEvent, canvasController: CanvasController | null) {
+function getCanvasDropPoint(
+  event: DragEndEvent,
+  canvasController: CanvasController | null,
+  snapItemsToGrid: boolean,
+) {
   const translated = event.active.rect.current.translated
 
   if (!translated || !canvasController) {
@@ -208,8 +247,8 @@ function getCanvasDropPoint(event: DragEndEvent, canvasController: CanvasControl
   })
 
   return {
-    x: snapToGrid(flowPoint.x),
-    y: snapToGrid(flowPoint.y),
+    x: snapItemsToGrid ? snapToGrid(flowPoint.x) : flowPoint.x,
+    y: snapItemsToGrid ? snapToGrid(flowPoint.y) : flowPoint.y,
   }
 }
 
@@ -312,9 +351,13 @@ function getDragPreviewSubtitle(item: InventoryItem): string {
 function InventoryDragPreview({
   item,
   project,
+  overCanvas,
+  viewportZoom,
 }: {
   item: InventoryItem | null
   project: ProjectState
+  overCanvas: boolean
+  viewportZoom: number
 }) {
   if (!item) {
     return null
@@ -324,11 +367,17 @@ function InventoryDragPreview({
   const itemRuntimeKey = runtimeItemKey(item)
   const width = canvasItem ? getCanvasItemWidth(project, itemRuntimeKey) : 220
   const height = canvasItem ? getCanvasItemHeight(project, itemRuntimeKey) : 68
+  const presentation = getInventoryDragPreviewPresentation(overCanvas, viewportZoom)
 
   return (
     <div
       className={`pointer-events-none rounded-lg border-2 p-2 opacity-95 shadow-[0_20px_48px_rgba(32,36,44,0.32)] ${dragPreviewTone(item)}`}
-      style={{ width, minHeight: height }}
+      style={{
+        width,
+        ...(canvasItem ? { height } : { minHeight: height }),
+        transform: presentation.transform,
+        transformOrigin: presentation.transformOrigin,
+      }}
     >
       <div className="rounded-md bg-black/10 px-3 py-2">
         <div className="truncate text-sm font-black">{item.name}</div>
@@ -466,8 +515,20 @@ function App() {
   const [draggingItemId, setDraggingItemId] = useState<string | null>(null)
   const [activeComponentDragData, setActiveComponentDragData] = useState<ComponentDragData | null>(null)
   const [dragOverHostId, setDragOverHostId] = useState<string | null>(null)
+  const [dragPreviewOverCanvas, setDragPreviewOverCanvas] = useState(false)
+  const [dragPreviewZoom, setDragPreviewZoom] = useState(1)
   const [autoCenterOnSelect, setAutoCenterOnSelect] = useState(getStoredAutoCenterOnSelect)
-  const [cablesVisible, setCablesVisible] = useState(getStoredCablesVisible)
+  const [networkCablesVisible, setNetworkCablesVisible] = useState(getStoredNetworkCablesVisible)
+  const [powerCablesVisible, setPowerCablesVisible] = useState(getStoredPowerCablesVisible)
+  const [displayCablesVisible, setDisplayCablesVisible] = useState(getStoredDisplayCablesVisible)
+  const [openCreatedConnectionInspector, setOpenCreatedConnectionInspector] = useState(
+    getStoredOpenCreatedConnectionInspector,
+  )
+  const [snapCablesToGrid, setSnapCablesToGrid] = useState(getStoredSnapCablesToGrid)
+  const [avoidCableCollisionsGlobally, setAvoidCableCollisionsGlobally] = useState(
+    getStoredAvoidCableCollisionsGlobally,
+  )
+  const [snapItemsToGrid, setSnapItemsToGrid] = useState(getStoredSnapItemsToGrid)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [releaseNotesDismissedForSession, setReleaseNotesDismissedForSession] = useState(false)
   const [updateDialogOpen, setUpdateDialogOpen] = useState(false)
@@ -481,6 +542,10 @@ function App() {
   const [inventoryLifecycleRevision, setInventoryLifecycleRevision] = useState(0)
   const [returnToInventoryItemId, setReturnToInventoryItemId] = useState<string | null>(null)
   const [returnToInventoryBusy, setReturnToInventoryBusy] = useState(false)
+  const [pendingNasPowerChange, setPendingNasPowerChange] = useState<PendingNasPowerChange | null>(null)
+  const [pendingAssignmentRemoval, setPendingAssignmentRemoval] = useState<PendingAssignmentRemoval | null>(null)
+  const [nasPowerChangeBusy, setNasPowerChangeBusy] = useState(false)
+  const [nasPowerChangeError, setNasPowerChangeError] = useState<string | null>(null)
   const canvasControllerRef = useRef<CanvasController | null>(null)
   const projectRef = useRef<ProjectState | null>(null)
   const lastPersistedProjectRef = useRef<ProjectState | null>(null)
@@ -679,8 +744,32 @@ function App() {
   }, [autoCenterOnSelect])
 
   useEffect(() => {
-    storeCablesVisible(cablesVisible)
-  }, [cablesVisible])
+    storeNetworkCablesVisible(networkCablesVisible)
+  }, [networkCablesVisible])
+
+  useEffect(() => {
+    storePowerCablesVisible(powerCablesVisible)
+  }, [powerCablesVisible])
+
+  useEffect(() => {
+    storeDisplayCablesVisible(displayCablesVisible)
+  }, [displayCablesVisible])
+
+  useEffect(() => {
+    storeOpenCreatedConnectionInspector(openCreatedConnectionInspector)
+  }, [openCreatedConnectionInspector])
+
+  useEffect(() => {
+    storeSnapCablesToGrid(snapCablesToGrid)
+  }, [snapCablesToGrid])
+
+  useEffect(() => {
+    storeAvoidCableCollisionsGlobally(avoidCableCollisionsGlobally)
+  }, [avoidCableCollisionsGlobally])
+
+  useEffect(() => {
+    storeSnapItemsToGrid(snapItemsToGrid)
+  }, [snapItemsToGrid])
 
   useEffect(() => {
     storeInventoryVisible(desktopInventoryVisible)
@@ -944,6 +1033,27 @@ function App() {
     }
   }
 
+  function applyCreatedConnectionSelection(connectionId: string | number) {
+    const currentSelection = {
+      selectedItemId,
+      selectedConnectionId,
+      activeNetworkTraceEndpoint,
+    }
+    const nextSelection = resolveCreatedConnectionSelection(
+      currentSelection,
+      connectionId,
+      openCreatedConnectionInspector,
+    )
+
+    if (nextSelection === currentSelection) {
+      return
+    }
+
+    setSelectedItemId(nextSelection.selectedItemId)
+    setSelectedConnectionId(nextSelection.selectedConnectionId)
+    setActiveNetworkTraceEndpoint(nextSelection.activeNetworkTraceEndpoint)
+  }
+
   function createConnectionBetween(from: ConnectionEndpoint, to: ConnectionEndpoint) {
     const currentProject = projectRef.current
 
@@ -959,8 +1069,7 @@ function App() {
     }
 
     updateProject(result.project)
-    setSelectedConnectionId(result.connection.id)
-    setSelectedItemId(null)
+    applyCreatedConnectionSelection(result.connection.id)
     setPendingConnectionEndpoint(null)
     setPortConnectionPreview(null)
     setValidationMessage(null)
@@ -1057,9 +1166,9 @@ function App() {
     }
 
     updateProject(result.project)
-    setSelectedConnectionId(result.connection.id)
-    setSelectedItemId(null)
+    applyCreatedConnectionSelection(result.connection.id)
     setPendingConnectionEndpoint(null)
+    setPortConnectionPreview(null)
     setValidationMessage(null)
   }
 
@@ -1110,6 +1219,43 @@ function App() {
     setReturnToInventoryBusy(false)
   }
 
+  function removeAssignedComponent(assignmentId: string | number) {
+    const currentProject = projectRef.current
+    if (!currentProject) return
+
+    const result = tryRemoveAssignedComponent(currentProject, assignmentId)
+    if (!result.ok) {
+      showMessage(result.message)
+      return
+    }
+
+    updateProject(result.project)
+    setPendingAssignmentRemoval(null)
+  }
+
+  function requestAssignedComponentRemoval(assignmentId: string | number) {
+    const currentProject = projectRef.current
+    if (!currentProject) return
+
+    const assignment = findAssignmentById(currentProject.assignments, assignmentId)
+    if (!assignment) {
+      showMessage('That assigned component is no longer attached.')
+      return
+    }
+
+    const connectionIds = getAssignedComponentConnectionIds(currentProject, assignmentId)
+    if (connectionIds.length === 0) {
+      removeAssignedComponent(assignmentId)
+      return
+    }
+
+    setPendingAssignmentRemoval({
+      assignmentId,
+      itemName: currentProject.items[assignment.itemId]?.name ?? 'component',
+      connectionCount: connectionIds.length,
+    })
+  }
+
   async function handleCreateInventoryItem(item: InventoryItemInput, quantity: number) {
     const currentProject = projectRef.current
     const nextProject = await createInventoryItems(item, quantity)
@@ -1154,6 +1300,55 @@ function App() {
       properties,
     )
     applyInventoryCommandSnapshot(nextProject, { historySnapshot: currentProject })
+  }
+
+  async function requestNasPowerConfigurationChange(
+    item: InventoryItem,
+    target: NasPowerConfiguration,
+  ) {
+    const currentProject = projectRef.current
+    if (!currentProject || item.type !== 'nas') return
+
+    setNasPowerChangeBusy(true)
+    setNasPowerChangeError(null)
+    try {
+      const result = await changeNasPowerConfiguration(item.id, target, false)
+      if (result.status === 'confirmation-required') {
+        setPendingNasPowerChange({ nasId: item.id, target, impact: result.impact })
+        return
+      }
+      applyInventoryCommandSnapshot(result.project, { historySnapshot: currentProject })
+    } catch (error) {
+      setPersistenceWarning(
+        error instanceof Error ? error.message : 'NAS power configuration could not be changed.',
+      )
+    } finally {
+      setNasPowerChangeBusy(false)
+    }
+  }
+
+  async function confirmNasPowerConfigurationChange() {
+    const pending = pendingNasPowerChange
+    const currentProject = projectRef.current
+    if (!pending || !currentProject) return
+
+    setNasPowerChangeBusy(true)
+    setNasPowerChangeError(null)
+    try {
+      const result = await changeNasPowerConfiguration(pending.nasId, pending.target, true)
+      if (result.status !== 'applied') {
+        setPendingNasPowerChange({ ...pending, impact: result.impact })
+        return
+      }
+      applyInventoryCommandSnapshot(result.project, { historySnapshot: currentProject })
+      setPendingNasPowerChange(null)
+    } catch (error) {
+      setNasPowerChangeError(
+        error instanceof Error ? error.message : 'NAS power configuration could not be changed.',
+      )
+    } finally {
+      setNasPowerChangeBusy(false)
+    }
   }
 
   async function handleDuplicateInventoryItem(item: InventoryItem) {
@@ -1279,6 +1474,8 @@ function App() {
     setDraggingItemId(null)
     setActiveComponentDragData(null)
     setDragOverHostId(null)
+    setDragPreviewOverCanvas(false)
+    setDragPreviewZoom(1)
 
     if (!project) {
       return
@@ -1304,7 +1501,7 @@ function App() {
         return
       }
 
-      const point = getCanvasDropPoint(event, canvasControllerRef.current)
+      const point = getCanvasDropPoint(event, canvasControllerRef.current, snapItemsToGrid)
       const itemRuntimeKey = runtimeItemKey(item)
       const placement = getNonCollidingPlacement(project, { serverId: itemRuntimeKey, ...point })
 
@@ -1412,13 +1609,20 @@ function App() {
 
     setActiveComponentDragData(currentDragData)
     setDragOverHostId(null)
+    setDragPreviewOverCanvas(false)
+    setDragPreviewZoom(1)
     setDraggingItemId(currentAssignment?.itemId ?? data.itemId)
     setMobileInventoryOpen(false)
     setValidationMessage(null)
   }
 
   function handleDragOver(event: DragOverEvent) {
-    setDragOverHostId(getServerIdFromOver(event.over?.id ? String(event.over.id) : null))
+    const overId = event.over?.id ? String(event.over.id) : null
+    const overCanvas = isInventoryDragOverCanvas(overId)
+
+    setDragOverHostId(getServerIdFromOver(overId))
+    setDragPreviewOverCanvas(overCanvas)
+    setDragPreviewZoom(overCanvas ? canvasControllerRef.current?.getViewportZoom() ?? 1 : 1)
   }
 
   function undoProjectChange() {
@@ -1513,6 +1717,8 @@ function App() {
           setDraggingItemId(null)
           setActiveComponentDragData(null)
           setDragOverHostId(null)
+          setDragPreviewOverCanvas(false)
+          setDragPreviewZoom(1)
         }}
         onDragEnd={handleDragEnd}
       >
@@ -1581,7 +1787,12 @@ function App() {
             desktopInventoryVisible={desktopInventoryVisible}
             inspectorOpen={selectedItem !== null || selectedConnection !== null}
             autoCenterOnSelect={autoCenterOnSelect}
-            cablesVisible={cablesVisible}
+            networkCablesVisible={networkCablesVisible}
+            powerCablesVisible={powerCablesVisible}
+            displayCablesVisible={displayCablesVisible}
+            snapCablesToGrid={snapCablesToGrid}
+            avoidCableCollisionsGlobally={avoidCableCollisionsGlobally}
+            snapItemsToGrid={snapItemsToGrid}
             updateAvailable={shouldHighlightUpdate(updateStatusQuery.data)}
             updateStatusLoading={updateStatusQuery.isFetching && !updateStatusQuery.data}
             onSelect={(itemId) => {
@@ -1595,19 +1806,12 @@ function App() {
               setSelectedItemId(null)
               setActiveNetworkTraceEndpoint(null)
             }}
-            onRemoveAssignment={(assignmentId) => {
-              const result = tryRemoveAssignedComponent(project, assignmentId)
-              if (!result.ok) {
-                showMessage(result.message)
-                return
-              }
-              updateProject(result.project)
-            }}
+            onRemoveAssignment={requestAssignedComponentRemoval}
             onMoveItem={(itemId: string, position: XYPosition) => {
               const placement = getNonCollidingPlacement(project, {
                 serverId: itemId,
-                x: snapToGrid(position.x),
-                y: snapToGrid(position.y),
+                x: snapItemsToGrid ? snapToGrid(position.x) : position.x,
+                y: snapItemsToGrid ? snapToGrid(position.y) : position.y,
               })
 
               if (!placement) {
@@ -1622,8 +1826,8 @@ function App() {
             onMoveItems={(placements) => {
               const nextPlacements = placements.map((placement) => ({
                 serverId: placement.serverId,
-                x: snapToGrid(placement.x),
-                y: snapToGrid(placement.y),
+                x: snapItemsToGrid ? snapToGrid(placement.x) : placement.x,
+                y: snapItemsToGrid ? snapToGrid(placement.y) : placement.y,
               }))
 
               if (placementsCollide(project, nextPlacements)) {
@@ -1639,9 +1843,7 @@ function App() {
             onEndpointDragStart={handleCanvasEndpointDragStart}
             onEndpointDrop={handleCanvasEndpointDrop}
             onUpdateConnectionRoute={(connectionId: string | number, route: ConnectionRoutePreferences) => {
-              updateProject(updateConnectionRoute(project, connectionId, route), {
-                recordHistory: false,
-              })
+              updateProject(updateConnectionRoute(project, connectionId, route))
               setValidationMessage(null)
             }}
             onViewportReady={(canvasController) => {
@@ -1665,7 +1867,9 @@ function App() {
               setMobileInventoryOpen(true)
             }}
             onToggleAutoCenterOnSelect={() => setAutoCenterOnSelect((current) => !current)}
-            onToggleCablesVisible={() => setCablesVisible((current) => !current)}
+            onToggleNetworkCablesVisible={() => setNetworkCablesVisible((current) => !current)}
+            onTogglePowerCablesVisible={() => setPowerCablesVisible((current) => !current)}
+            onToggleDisplayCablesVisible={() => setDisplayCablesVisible((current) => !current)}
             onAutoArrange={() => {
               if (project.placements.length === 0) {
                 showMessage('Drag equipment onto the canvas before arranging.')
@@ -1710,6 +1914,12 @@ function App() {
             }}
             onUpdateProject={updateProject}
             onUpdateItem={handleUpdateInventoryItem}
+            onRequestNasPowerConfigurationChange={(item, powerConfiguration) => {
+              void requestNasPowerConfigurationChange(item, powerConfiguration)
+            }}
+            onSetWarningIgnored={(warningId, ignored) => {
+              updateProject(setAuditWarningIgnored(project, warningId, ignored))
+            }}
             onUpdateItemProperties={handleUpdateInventoryItemProperties}
             onDuplicateItem={handleDuplicateInventoryItem}
             onArchiveItem={(item) => void requestInventoryLifecycle('archive', [item])}
@@ -1724,10 +1934,9 @@ function App() {
               }
 
               updateProject(result.project)
-              setSelectedConnectionId(result.connection.id)
-              setSelectedItemId(null)
-              setActiveNetworkTraceEndpoint(null)
+              applyCreatedConnectionSelection(result.connection.id)
               setPendingConnectionEndpoint(null)
+              setPortConnectionPreview(null)
               setValidationMessage(null)
             }}
             onSelectNetworkTrace={(endpoint) => {
@@ -1748,9 +1957,7 @@ function App() {
               setValidationMessage(null)
             }}
             onUpdateConnectionRoute={(connectionId, route) => {
-              updateProject(updateConnectionRoute(project, connectionId, route), {
-                recordHistory: false,
-              })
+              updateProject(updateConnectionRoute(project, connectionId, route))
               setValidationMessage(null)
             }}
             onRemoveConnection={(connectionId) => {
@@ -1819,6 +2026,35 @@ function App() {
             }}
             onConfirm={confirmReturnToInventory}
           />
+          <NasPowerConfigurationDialog
+            open={pendingNasPowerChange !== null}
+            nasName={pendingNasPowerChange
+              ? project.items[`nas:${pendingNasPowerChange.nasId}`]?.name ?? 'NAS'
+              : 'NAS'}
+            impact={pendingNasPowerChange?.impact ?? null}
+            busy={nasPowerChangeBusy}
+            error={nasPowerChangeError}
+            onOpenChange={(open) => {
+              if (!open && !nasPowerChangeBusy) {
+                setPendingNasPowerChange(null)
+                setNasPowerChangeError(null)
+              }
+            }}
+            onConfirm={() => void confirmNasPowerConfigurationChange()}
+          />
+          <AssignedComponentRemovalDialog
+            open={pendingAssignmentRemoval !== null}
+            itemName={pendingAssignmentRemoval?.itemName ?? 'component'}
+            connectionCount={pendingAssignmentRemoval?.connectionCount ?? 0}
+            onOpenChange={(open) => {
+              if (!open) setPendingAssignmentRemoval(null)
+            }}
+            onConfirm={() => {
+              if (pendingAssignmentRemoval) {
+                removeAssignedComponent(pendingAssignmentRemoval.assignmentId)
+              }
+            }}
+          />
           {releaseNotesQuery.data ? (
             <WhatsNewDialog
               open={shouldShowWhatsNewDialog}
@@ -1849,7 +2085,13 @@ function App() {
             inventoryVisible={desktopInventoryVisible}
             inventoryWidth={inventoryWidth}
             autoCenterOnSelect={autoCenterOnSelect}
-            cablesVisible={cablesVisible}
+            networkCablesVisible={networkCablesVisible}
+            powerCablesVisible={powerCablesVisible}
+            displayCablesVisible={displayCablesVisible}
+            openCreatedConnectionInspector={openCreatedConnectionInspector}
+            snapCablesToGrid={snapCablesToGrid}
+            avoidCableCollisionsGlobally={avoidCableCollisionsGlobally}
+            snapItemsToGrid={snapItemsToGrid}
             updateStatus={updateStatusQuery.data ?? null}
             updateLoading={updateStatusQuery.isLoading}
             updateChecking={checkForUpdatesMutation.isPending}
@@ -1867,13 +2109,29 @@ function App() {
             onInventoryVisibleChange={setDesktopInventoryVisible}
             onInventoryWidthChange={(width) => setInventoryWidth(clampInventoryWidth(width))}
             onAutoCenterOnSelectChange={setAutoCenterOnSelect}
-            onCablesVisibleChange={setCablesVisible}
+            onNetworkCablesVisibleChange={setNetworkCablesVisible}
+            onPowerCablesVisibleChange={setPowerCablesVisible}
+            onDisplayCablesVisibleChange={setDisplayCablesVisible}
+            onOpenCreatedConnectionInspectorChange={setOpenCreatedConnectionInspector}
+            onSnapCablesToGridChange={setSnapCablesToGrid}
+            onAvoidCableCollisionsGloballyChange={setAvoidCableCollisionsGlobally}
+            onSnapItemsToGridChange={setSnapItemsToGrid}
             onResetBrowserPreferences={() => {
               resetStoredUiPreferences()
               setDesktopInventoryVisible(DEFAULT_UI_PREFERENCES.inventoryVisible)
               setInventoryWidth(DEFAULT_UI_PREFERENCES.inventoryWidth)
               setAutoCenterOnSelect(DEFAULT_UI_PREFERENCES.autoCenterOnSelect)
-              setCablesVisible(DEFAULT_UI_PREFERENCES.cablesVisible)
+              setNetworkCablesVisible(DEFAULT_UI_PREFERENCES.networkCablesVisible)
+              setPowerCablesVisible(DEFAULT_UI_PREFERENCES.powerCablesVisible)
+              setDisplayCablesVisible(DEFAULT_UI_PREFERENCES.displayCablesVisible)
+              setOpenCreatedConnectionInspector(
+                DEFAULT_UI_PREFERENCES.openCreatedConnectionInspector,
+              )
+              setSnapCablesToGrid(DEFAULT_UI_PREFERENCES.snapCablesToGrid)
+              setAvoidCableCollisionsGlobally(
+                DEFAULT_UI_PREFERENCES.avoidCableCollisionsGlobally,
+              )
+              setSnapItemsToGrid(DEFAULT_UI_PREFERENCES.snapItemsToGrid)
             }}
             onClearIgnoredWarnings={() => {
               updateProject(clearIgnoredAuditWarnings(project))
@@ -1895,6 +2153,8 @@ function App() {
           <InventoryDragPreview
             item={draggingItemId ? project.items[draggingItemId] ?? null : null}
             project={project}
+            overCanvas={dragPreviewOverCanvas}
+            viewportZoom={dragPreviewZoom}
           />
         </DragOverlay>
       </DndContext>

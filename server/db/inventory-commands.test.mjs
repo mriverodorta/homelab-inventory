@@ -35,7 +35,7 @@ describe('atomic inventory commands', () => {
     let project = store.createInventoryItems({ type: 'switch', name: 'Edge Switch' }, 2)
     project = store.createInventoryItems({ type: 'ram', name: '32GB DDR4', specs: { capacityGB: 32 } }, 3)
 
-    expect(project.metadata.schemaVersion).toBe(11)
+    expect(project.metadata.schemaVersion).toBe(12)
     expect(store.databases.inventory.data.switches.map(({ id, name }) => ({ id, name }))).toEqual([
       { id: 1, name: 'Edge Switch #1' },
       { id: 2, name: 'Edge Switch #2' },
@@ -63,6 +63,65 @@ describe('atomic inventory commands', () => {
     store.archiveInventoryItems([{ type: 'motherboard', id: 1 }])
     const deleted = store.deleteInventoryItems([{ type: 'motherboard', id: 1 }])
     expect(deleted.items['motherboard:1']).toBeUndefined()
+  })
+
+  it('materializes canonical power ports when creating power equipment', async () => {
+    const { store } = await createStore()
+
+    store.createInventoryItems({
+      type: 'powerAdapter',
+      name: 'Dell 130W',
+      manufacturer: 'Dell',
+      specs: { wattageWatts: 130, connector: 'Slim tip' },
+    }, 2)
+
+    expect(store.databases.inventory.data.powerAdapters).toEqual([
+      {
+        id: 1,
+        name: 'Dell 130W',
+        manufacturer: 'Dell',
+        specs: { wattageWatts: 130, connector: 'Slim tip' },
+        ports: canonicalPowerPorts({ type: 'powerAdapter' }),
+      },
+      {
+        id: 2,
+        name: 'Dell 130W',
+        manufacturer: 'Dell',
+        specs: { wattageWatts: 130, connector: 'Slim tip' },
+        ports: canonicalPowerPorts({ type: 'powerAdapter' }),
+      },
+    ])
+  })
+
+  it('normalizes smart power-strip identity and numeric outlet references', async () => {
+    const { store } = await createStore()
+
+    const project = store.createInventoryItems({
+      type: 'powerStrip',
+      name: 'Kasa HS300',
+      specs: { outlets: 2, surgeProtected: true },
+      smart: {
+        enabled: true,
+        displayName: '  Rack power  ',
+        managementIp: ' 192.168.1.50 ',
+        macAddress: ' 00:11:22:33:44:55 ',
+        outlets: [{ portId: 2, name: ' Router ' }],
+      },
+    })
+
+    expect(project.items['powerStrip:1'].smart).toEqual({
+      enabled: true,
+      displayName: 'Rack power',
+      managementIp: '192.168.1.50',
+      macAddress: '00:11:22:33:44:55',
+      outlets: [{ portId: 2, name: 'Router' }],
+    })
+    expect(() => store.createInventoryItems({
+      type: 'powerStrip',
+      name: 'Invalid strip',
+      specs: { outlets: 1 },
+      smart: { enabled: true, outlets: [{ portId: 99, name: 'Missing' }] },
+    })).toThrow('must reference an existing AC outlet port')
   })
 
   it('blocks PC build and UPS lifecycle commands while dependencies remain', async () => {
@@ -308,6 +367,80 @@ describe('atomic inventory commands', () => {
     expect(project.connections).toEqual(connectionsBefore)
   })
 
+  it('routes NAS power mode changes through one confirmed atomic command', async () => {
+    const { store } = await createStore()
+    store.createInventoryItems({
+      type: 'nas',
+      name: 'External NAS',
+      specs: { powerConfiguration: 'external-adapter' },
+    })
+    store.createInventoryItems({ type: 'powerAdapter', name: 'OEM adapter' })
+    store.createInventoryItems({
+      type: 'ups',
+      name: 'UPS',
+      specs: { outlets: 1, batteryBackupOutlets: 1, surgeProtectedOutlets: 0 },
+    })
+    store.databases.project.data.assignments.push({
+      id: 1,
+      hostType: 'nas',
+      hostId: 1,
+      itemType: 'powerAdapter',
+      itemId: 1,
+      type: 'powerAdapter',
+      assignedAt: '2026-07-22T00:00:00.000Z',
+    })
+    store.databases.project.data.connections.push({
+      id: 1,
+      from: { itemType: 'ups', itemId: 1, portId: 1 },
+      to: {
+        itemType: 'nas',
+        itemId: 1,
+        hostedItemType: 'powerAdapter',
+        hostedItemId: 1,
+        portId: 1,
+      },
+      type: 'power',
+      label: 'NAS power',
+      createdAt: '2026-07-22T00:00:00.000Z',
+    })
+
+    expect(() => store.updateInventoryItem({ type: 'nas', id: 1 }, {
+      type: 'nas',
+      name: 'External NAS',
+      specs: { powerConfiguration: 'internal-psu' },
+    })).toThrow('NAS power configuration command')
+
+    const preview = store.changeNasPowerConfiguration(
+      { type: 'nas', id: 1 },
+      'internal-psu',
+    )
+    expect(preview).toEqual({
+      status: 'confirmation-required',
+      impact: {
+        from: 'external-adapter',
+        to: 'internal-psu',
+        connections: [{ id: 1, label: 'NAS power' }],
+        releasedAdapter: { type: 'powerAdapter', id: 1, name: 'OEM adapter' },
+      },
+    })
+    expect(store.databases.project.data.assignments).toHaveLength(1)
+    expect(store.databases.project.data.connections).toHaveLength(1)
+
+    const applied = store.changeNasPowerConfiguration(
+      { type: 'nas', id: 1 },
+      'internal-psu',
+      true,
+    )
+    expect(applied.status).toBe('applied')
+    expect(applied.project.items['nas:1']).toMatchObject({
+      specs: { powerConfiguration: 'internal-psu' },
+      ports: [expect.objectContaining({ key: 'ac-input', type: 'ac-input' })],
+    })
+    expect(applied.project.assignments).toEqual([])
+    expect(applied.project.connections).toEqual([])
+    expect(applied.project.items['powerAdapter:1']).toBeDefined()
+  })
+
   it('persists lifecycle state across a flush and restart', async () => {
     const { store, dataDir } = await createStore()
     store.createInventoryItems({ type: 'cpu', name: 'CPU' })
@@ -315,7 +448,7 @@ describe('atomic inventory commands', () => {
     await store.flush()
 
     const { store: restarted } = await createStore(dataDir)
-    expect(restarted.databases.meta.data.schemaVersion).toBe(11)
+    expect(restarted.databases.meta.data.schemaVersion).toBe(12)
     expect(restarted.getProject().items['cpu:1'].archivedAt).toBeTruthy()
   })
 })

@@ -67,3 +67,11 @@ Thumbs.db
 
 # Local design/spec scratch space
 docs/superpowers/
+
+# Local Rust/WASM development
+data-wasm/
+rust/target/
+shared/generated/engine-protocol/
+src/engine/generated/
+server/engine/generated/
+*.wasm

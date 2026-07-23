@@ -13,6 +13,7 @@ import {
   NETWORK_FORM_FACTORS,
   NETWORK_INTERFACES,
   NETWORK_SLOTS,
+  NAS_POWER_CONFIGURATION_OPTIONS,
   PCIE_OPTIONS,
   RAM_GENERATIONS,
   RAM_SPEEDS,
@@ -156,6 +157,18 @@ export function InventoryTypeFields({
       <div className="grid gap-3 sm:grid-cols-3">
         <TextField label="Drive Bays" name="driveBays" value={values.driveBays} placeholder={placeholders.driveBays} type="number" min={0} error={errors.driveBays} onChange={(driveBays) => onChange({ driveBays })} />
         <TextField label="M.2 Slots" name="m2Slots" value={values.m2Slots} placeholder={placeholders.m2Slots} type="number" min={0} error={errors.m2Slots} onChange={(m2Slots) => onChange({ m2Slots })} />
+        <SelectField
+          label="Power configuration"
+          name="powerConfiguration"
+          value={values.powerConfiguration}
+          placeholder="Select power configuration"
+          options={NAS_POWER_CONFIGURATION_OPTIONS}
+          error={errors.powerConfiguration}
+          onOpenChange={onSelectOpenChange}
+          onValueChange={(powerConfiguration) => onChange({
+            powerConfiguration: powerConfiguration as InventoryFormValues['powerConfiguration'],
+          }, 'immediate')}
+        />
       </div>
     )
   }

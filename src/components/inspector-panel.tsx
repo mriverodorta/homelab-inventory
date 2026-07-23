@@ -14,7 +14,7 @@ import {
   type LucideIcon,
 } from 'lucide-react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { useEffect, useMemo, useState, type ReactNode } from 'react'
+import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { ComponentInspectorTabs } from '@/components/component-inspector-tabs'
 import { HostCompatibilityTab } from '@/components/host-compatibility-tab'
 import { InventoryActionsMenu } from '@/components/inventory-actions-menu'
@@ -25,10 +25,12 @@ import {
   type InventoryFormValues,
 } from '@/components/inventory-form/model'
 import { PortGroupsEditor } from '@/components/inventory-form/port-groups-editor'
+import { SmartPowerStripFields } from '@/components/inventory-form/smart-power-strip-fields'
 import {
   InventoryFormStatus,
   InventorySpecsFormContent,
 } from '@/components/inventory-form/specs-tab-content'
+import { SmartPowerStripDisableDialog } from '@/components/smart-power-strip-disable-dialog'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
@@ -39,6 +41,7 @@ import {
   CardTitle,
 } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
+import { Switch } from '@/components/ui/switch'
 import {
   Select,
   SelectContent,
@@ -114,6 +117,7 @@ import type {
   InventoryConnection,
   InventoryItem,
   InventoryPort,
+  NasPowerConfiguration,
   InventoryPortRole,
   InventoryPortType,
   InventoryProperties,
@@ -1306,6 +1310,14 @@ function ConnectionDetails({
     })
   }
 
+  function removeBendPoint(index: number) {
+    const bendPoints = (route.bendPoints ?? []).filter((_, bendIndex) => bendIndex !== index)
+    updateRoute({
+      ...route,
+      bendPoints: bendPoints.length > 0 ? bendPoints : undefined,
+    })
+  }
+
   return (
     <Card className={cn(inspectorSurfaceClass, 'overflow-visible rounded-lg')} size="sm">
       <CardHeader className="grid-cols-[1fr_auto] items-start gap-3">
@@ -1402,6 +1414,50 @@ function ConnectionDetails({
               </Select>
             </label>
           </div>
+          <div className="mt-3 flex items-start justify-between gap-4 rounded-md bg-[#f8f3eb] p-3">
+            <div className="min-w-0">
+              <div className="text-sm font-bold text-[#20242c]">Avoid other cables</div>
+              <div className="mt-0.5 text-xs leading-relaxed text-[#75695d]">
+                Uses separate horizontal and vertical lanes. Crossings and shared endpoint approaches remain allowed.
+              </div>
+            </div>
+            <Switch
+              className="mt-0.5 shrink-0"
+              aria-label="Avoid other cables"
+              checked={Boolean(route.avoidCableOverlap)}
+              onCheckedChange={(checked) => updateRoute({
+                ...route,
+                avoidCableOverlap: checked || undefined,
+              })}
+            />
+          </div>
+          {route.bendPoints?.length ? (
+            <div className="mt-3 space-y-1.5" aria-label="Manual cable bends">
+              {route.bendPoints.map((bendPoint, index) => (
+                <div
+                  key={`${bendPoint.x}:${bendPoint.y}:${index}`}
+                  className="flex items-center justify-between gap-2 rounded-md bg-[#f8f3eb] px-2.5 py-2"
+                >
+                  <span className="min-w-0 text-xs font-semibold text-[#5f554b]">
+                    Bend {index + 1}
+                    <span className="ml-2 font-mono text-[10px] text-[#8a8175]">
+                      {Math.round(bendPoint.x)}, {Math.round(bendPoint.y)}
+                    </span>
+                  </span>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 shrink-0 px-2 text-xs"
+                    aria-label={`Remove bend ${index + 1}`}
+                    onClick={() => removeBendPoint(index)}
+                  >
+                    Remove
+                  </Button>
+                </div>
+              ))}
+            </div>
+          ) : null}
           <Button
             type="button"
             variant="outline"
@@ -1426,25 +1482,52 @@ function ConnectionDetails({
   )
 }
 
-function AuditSection({ warnings }: { warnings: AuditWarning[] }) {
+type InspectorAuditWarning = AuditWarning & { ignored: boolean }
+
+const AuditIgnoreContext = createContext<(warningId: string, ignored: boolean) => void>(() => undefined)
+
+function AuditSection({ warnings }: { warnings: InspectorAuditWarning[] }) {
+  const onSetWarningIgnored = useContext(AuditIgnoreContext)
+
   if (warnings.length === 0) {
     return null
   }
+
+  const openWarningCount = warnings.filter((warning) => !warning.ignored).length
 
   return (
     <InspectorSection
       title="Audit"
       icon={AlertTriangle}
-      badge={<StatusBadge tone="warning">{warnings.length}</StatusBadge>}
+      badge={(
+        <StatusBadge tone="warning">
+          <span data-testid="inspector-audit-open-count">{openWarningCount}</span>
+        </StatusBadge>
+      )}
     >
       <div className="space-y-2">
         {warnings.map((warning) => (
           <div
             key={warning.id}
-            className="flex gap-2 rounded-md border border-[#e8d392] bg-[#fff8df] p-2 text-xs font-semibold leading-snug text-[#5d4814]"
+            data-ignored={warning.ignored ? 'true' : 'false'}
+            className={cn(
+              'flex items-start gap-2 rounded-md border p-2 text-xs font-semibold leading-snug',
+              warning.ignored
+                ? 'border-[#d8d1c7] bg-[#f3efe9] text-[#75695d]'
+                : 'border-[#e8d392] bg-[#fff8df] text-[#5d4814]',
+            )}
           >
             <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
-            <span>{warning.message}</span>
+            <span className="min-w-0 flex-1">{warning.message}</span>
+            <Button
+              type="button"
+              variant="outline"
+              size="xs"
+              className="shrink-0 px-2 text-[11px]"
+              onClick={() => onSetWarningIgnored(warning.id, !warning.ignored)}
+            >
+              {warning.ignored ? 'Unignore' : 'Ignore'}
+            </Button>
           </div>
         ))}
       </div>
@@ -2283,11 +2366,16 @@ function EditableSpecsSection({
   editor,
   auditWarnings,
   displayName = false,
+  onChange,
 }: {
   title: string
   editor: ReturnType<typeof useInventoryItemEditor>
-  auditWarnings: AuditWarning[]
+  auditWarnings: InspectorAuditWarning[]
   displayName?: boolean
+  onChange?: (
+    patch: Partial<InventoryFormValues>,
+    mode?: 'debounced' | 'immediate',
+  ) => void
 }) {
   return (
     <>
@@ -2295,7 +2383,7 @@ function EditableSpecsSection({
         <InventorySpecsFormContent
           values={editor.values}
           errors={editor.errors}
-          onChange={editor.updateValues}
+          onChange={onChange ?? editor.updateValues}
           includeCompatibility={false}
         />
         {displayName ? (
@@ -2346,7 +2434,7 @@ function ServerInspectorTabs({
   demoMode: boolean
   activeNetworkTraceKey: string | null
   pendingEndpoint: ConnectionEndpoint | null
-  auditWarnings: AuditWarning[]
+  auditWarnings: InspectorAuditWarning[]
   onUpdateProject: (project: ProjectState) => void
   onUpdateItem: (itemId: string, input: InventoryItemInput) => void
   onSelectNetworkTrace: (endpoint: ConnectionEndpoint) => void
@@ -2480,7 +2568,7 @@ function SwitchInspectorTabs({
   project: ProjectState
   item: InventoryItem
   pendingEndpoint: ConnectionEndpoint | null
-  auditWarnings: AuditWarning[]
+  auditWarnings: InspectorAuditWarning[]
   onUpdateItem: (itemId: string, input: InventoryItemInput) => void
   onCreateConnection: (from: ConnectionEndpoint, to: ConnectionEndpoint) => void
   onEndpointConnectionClick: (endpoint: ConnectionEndpoint) => void
@@ -2572,11 +2660,12 @@ function NasInspectorTabs({
   onSelectNetworkTrace,
   onUpdateConnectionLabel,
   onRemoveConnection,
+  onRequestPowerConfigurationChange,
 }: {
   project: ProjectState
   item: InventoryItem
   pendingEndpoint: ConnectionEndpoint | null
-  auditWarnings: AuditWarning[]
+  auditWarnings: InspectorAuditWarning[]
   activeNetworkTraceKey: string | null
   onUpdateProject: (project: ProjectState) => void
   onUpdateItem: (itemId: string, input: InventoryItemInput) => void
@@ -2585,13 +2674,36 @@ function NasInspectorTabs({
   onSelectNetworkTrace: (endpoint: ConnectionEndpoint) => void
   onUpdateConnectionLabel: (connectionId: string | number, label: string) => void
   onRemoveConnection: (connectionId: string | number) => void
+  onRequestPowerConfigurationChange: (
+    item: InventoryItem,
+    powerConfiguration: NasPowerConfiguration,
+  ) => void
 }) {
   const editor = useInventoryItemEditor({
     item,
     onSave: (input) => onUpdateItem(runtimeItemKey(item), input),
   })
   const draftItem = itemFromEditorValues(item, editor.values)
-  const handlePortsUpdate = (ports: InventoryPort[]) => updateEditorPorts(editor, ports)
+  const systemPowerPorts = (draftItem.ports ?? []).filter((port) => port.kind === 'power-port')
+  const editableNasItem = {
+    ...draftItem,
+    ports: (draftItem.ports ?? []).filter((port) => port.kind !== 'power-port'),
+  }
+  const handlePortsUpdate = (ports: InventoryPort[]) => updateEditorPorts(
+    editor,
+    [...ports.filter((port) => port.kind !== 'power-port'), ...systemPowerPorts],
+  )
+  const handleSpecsChange = (
+    patch: Partial<InventoryFormValues>,
+    mode: 'debounced' | 'immediate' = 'debounced',
+  ) => {
+    const requested = patch.powerConfiguration
+    if (requested && requested !== editor.values.powerConfiguration) {
+      onRequestPowerConfigurationChange(item, requested)
+      return
+    }
+    editor.updateValues(patch, mode)
+  }
 
   return (
     <InspectorTabs
@@ -2606,6 +2718,7 @@ function NasInspectorTabs({
               title="NAS Details"
               editor={editor}
               auditWarnings={auditWarnings}
+              onChange={handleSpecsChange}
             />
           ),
         },
@@ -2617,7 +2730,9 @@ function NasInspectorTabs({
               project={project}
               host={draftItem}
               title="NAS Slots"
-              allowedTypes={['storage', 'network']}
+              allowedTypes={item.specs?.powerConfiguration === 'external-adapter'
+                ? ['storage', 'network', 'powerAdapter']
+                : ['storage', 'network']}
             />
           ),
         },
@@ -2634,7 +2749,7 @@ function NasInspectorTabs({
               />
               <PortTabsEditor
                 project={project}
-                item={draftItem}
+                item={editableNasItem}
                 pendingEndpoint={pendingEndpoint}
                 onUpdate={handlePortsUpdate}
                 onEndpointConnect={onEndpointConnectionClick}
@@ -2704,7 +2819,7 @@ function PatchPanelInspectorTabs({
   project: ProjectState
   item: InventoryItem
   pendingEndpoint: ConnectionEndpoint | null
-  auditWarnings: AuditWarning[]
+  auditWarnings: InspectorAuditWarning[]
   activeNetworkTraceKey: string | null
   onUpdateItem: (itemId: string, input: InventoryItemInput) => void
   onCreateConnection: (from: ConnectionEndpoint, to: ConnectionEndpoint) => void
@@ -3092,6 +3207,9 @@ function PowerEndpointsTab({
   const [selectedKey, setSelectedKey] = useState(() => endpoints[0] ? endpointKey(endpoints[0].endpoint) : '')
   const selected = endpoints.find((candidate) => endpointKey(candidate.endpoint) === selectedKey) ?? endpoints[0] ?? null
   const connections = selected ? getEndpointConnections(project, selected.endpoint) : []
+  const selectedOutletName = selected && item.type === 'powerStrip'
+    ? item.smart?.outlets.find((entry) => entry.portId === selected.endpoint.portId)?.name
+    : undefined
 
   useEffect(() => {
     if (endpoints.length === 0) setSelectedKey('')
@@ -3132,6 +3250,9 @@ function PowerEndpointsTab({
               <div className="rounded-md bg-[#f3f0ea] p-3">
                 <div className={labelClass}>{selected.direction}</div>
                 <div className="mt-1 text-sm font-black text-[#20242c]">{selected.label}</div>
+                {selectedOutletName ? (
+                  <div className="mt-1 text-xs font-semibold text-[#75695d]">{selectedOutletName}</div>
+                ) : null}
               </div>
               {connections.length === 0 ? (
                 <div className="rounded-md bg-[#f8f3eb] p-3 text-sm font-semibold text-[#75695d]">Open</div>
@@ -3173,7 +3294,7 @@ function PcBuildInspectorTabs({
   demoMode: boolean
   activeNetworkTraceKey: string | null
   pendingEndpoint: ConnectionEndpoint | null
-  auditWarnings: AuditWarning[]
+  auditWarnings: InspectorAuditWarning[]
   onUpdateProject: (project: ProjectState) => void
   onUpdateItem: (itemId: string, input: InventoryItemInput) => void
   onSelectNetworkTrace: (endpoint: ConnectionEndpoint) => void
@@ -3294,7 +3415,7 @@ function StandalonePowerEquipmentTabs({
   project: ProjectState
   item: InventoryItem
   pendingEndpoint: ConnectionEndpoint | null
-  auditWarnings: AuditWarning[]
+  auditWarnings: InspectorAuditWarning[]
   onUpdateItem: (itemId: string, input: InventoryItemInput) => void
   onUpdateItemProperties: (
     itemId: string,
@@ -3309,6 +3430,7 @@ function StandalonePowerEquipmentTabs({
   const [layoutProperties, setLayoutProperties] = useState<InventoryProperties>(item.properties ?? {})
   const [layoutSaving, setLayoutSaving] = useState(false)
   const [layoutSaveError, setLayoutSaveError] = useState<string | null>(null)
+  const [smartDisableOpen, setSmartDisableOpen] = useState(false)
   const layoutItem = { ...draftItem, properties: layoutProperties }
   const inspectedItem = item.type === 'monitor'
     ? { ...draftItem, ports: draftItem.ports ?? item.ports }
@@ -3335,14 +3457,17 @@ function StandalonePowerEquipmentTabs({
   }, [item.properties])
   const tabSignature = item.type === 'monitor'
     ? 'specs|ports'
-    : 'specs|layout|outlets'
+    : item.type === 'powerStrip'
+      ? 'specs|layout|outlets|smart'
+      : 'specs|layout|outlets'
 
   return (
-    <InspectorTabs
-      key={tabSignature}
-      defaultValue="specs"
-      status={<InventoryFormStatus saveError={editor.saveError ?? layoutSaveError} />}
-      tabs={[
+    <>
+      <InspectorTabs
+        key={tabSignature}
+        defaultValue="specs"
+        status={<InventoryFormStatus saveError={editor.saveError ?? layoutSaveError} />}
+        tabs={[
         {
           value: 'specs',
           label: 'Specs',
@@ -3384,8 +3509,36 @@ function StandalonePowerEquipmentTabs({
             </>
           ),
         },
-      ]}
-    />
+        ...(item.type === 'powerStrip'
+          ? [{
+              value: 'smart',
+              label: 'Smart',
+              content: (
+                <SmartPowerStripFields
+                  values={editor.values}
+                  onChange={editor.updateValues}
+                  onDisableRequest={() => setSmartDisableOpen(true)}
+                />
+              ),
+            } satisfies InspectorTab]
+          : []),
+        ]}
+      />
+      <SmartPowerStripDisableDialog
+        open={smartDisableOpen}
+        onOpenChange={setSmartDisableOpen}
+        onConfirm={() => {
+          editor.updateValues({
+            smartEnabled: false,
+            smartDisplayName: '',
+            smartManagementIp: '',
+            smartMacAddress: '',
+            smartOutletNames: [],
+          }, 'immediate')
+          setSmartDisableOpen(false)
+        }}
+      />
+    </>
   )
 }
 
@@ -3502,6 +3655,8 @@ export function InspectorPanel({
   onUpdateConnectionLabel,
   onUpdateConnectionRoute,
   onRemoveConnection,
+  onRequestNasPowerConfigurationChange = () => undefined,
+  onSetWarningIgnored = () => undefined,
 }: {
   project: ProjectState
   agentStatus: AgentStatusSummary | null
@@ -3532,6 +3687,11 @@ export function InspectorPanel({
   onUpdateConnectionLabel: (connectionId: string | number, label: string) => void
   onUpdateConnectionRoute: (connectionId: string | number, route: ConnectionRoutePreferences) => void
   onRemoveConnection: (connectionId: string | number) => void
+  onSetWarningIgnored?: (warningId: string, ignored: boolean) => void
+  onRequestNasPowerConfigurationChange?: (
+    item: InventoryItem,
+    powerConfiguration: NasPowerConfiguration,
+  ) => void
 }) {
   const selectedItem = selectedItemId ? project.items[selectedItemId] ?? null : null
   const selectedConnection = selectedConnectionId
@@ -3541,7 +3701,16 @@ export function InspectorPanel({
   const selectedItemIsPlaced = selectedItemRuntimeKey
     ? project.placements.some((placement) => placement.serverId === selectedItemRuntimeKey)
     : false
-  const auditWarnings = selectedItemRuntimeKey ? getItemAuditWarnings(project, selectedItemRuntimeKey) : []
+  const openAuditWarnings = selectedItemRuntimeKey
+    ? getItemAuditWarnings(project, selectedItemRuntimeKey)
+    : []
+  const ignoredAuditWarnings = selectedItemRuntimeKey
+    ? getItemAuditWarnings(project, selectedItemRuntimeKey, { visibility: 'ignored' })
+    : []
+  const auditWarnings: InspectorAuditWarning[] = [
+    ...openAuditWarnings.map((warning) => ({ ...warning, ignored: false })),
+    ...ignoredAuditWarnings.map((warning) => ({ ...warning, ignored: true })),
+  ]
   const drawerTitle = selectedConnection
     ? selectedConnection.label?.trim() || 'Connection'
     : selectedItem ? selectedItem.name : 'Inspector'
@@ -3645,6 +3814,7 @@ export function InspectorPanel({
           </div>
         ) : null}
 
+        <AuditIgnoreContext.Provider value={onSetWarningIgnored}>
         <section className="space-y-4">
           {selectedConnection ? (
             <ConnectionDetails
@@ -3696,6 +3866,7 @@ export function InspectorPanel({
                   onSelectNetworkTrace={onSelectNetworkTrace}
                   onUpdateConnectionLabel={onUpdateConnectionLabel}
                   onRemoveConnection={onRemoveConnection}
+                  onRequestPowerConfigurationChange={onRequestNasPowerConfigurationChange}
                 />
               ) : selectedItem.type === 'patchPanel' ? (
                 <PatchPanelInspectorTabs
@@ -3764,6 +3935,7 @@ export function InspectorPanel({
             </div>
           )}
         </section>
+        </AuditIgnoreContext.Provider>
       </div>
     </aside>
   )

@@ -7,6 +7,7 @@ import {
   formatGpuCanvasLabel,
   formatGpuCanvasParts,
   formatInventoryCompactSpec,
+  formatPortType,
   formatRamCanvasLabel,
   formatRamCanvasParts,
   formatRamSpec,
@@ -17,6 +18,10 @@ import {
 import type { InventoryItem } from '@/types/inventory'
 
 describe('formatting helpers', () => {
+  it('uses a compact canvas label for AC inputs', () => {
+    expect(formatPortType('ac-input')).toBe('AC')
+  })
+
   it('formats TB storage capacity', () => {
     const item: InventoryItem = {
       id: 1,

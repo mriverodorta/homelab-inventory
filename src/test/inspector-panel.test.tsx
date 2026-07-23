@@ -1,4 +1,4 @@
-import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import userEvent from '@testing-library/user-event'
 import type { ComponentProps } from 'react'
@@ -166,6 +166,7 @@ const project: ProjectState = {
       specs: {
         driveBays: 4,
         m2Slots: 2,
+        powerConfiguration: 'external-adapter',
       },
       ports: [
         {
@@ -466,6 +467,8 @@ type RenderInspectorOptions = Partial<Pick<InspectorPanelProps,
   | 'onEndpointConnectionClick'
   | 'onCancelPendingConnection'
   | 'onReturnItemToInventory'
+  | 'onRequestNasPowerConfigurationChange'
+  | 'onSetWarningIgnored'
 >> & {
   selectedItemId?: string | null
   selectedConnectionId?: string | number | null
@@ -495,6 +498,8 @@ function renderInspector({
   onEndpointConnectionClick = vi.fn(),
   onCancelPendingConnection = vi.fn(),
   onReturnItemToInventory = vi.fn(),
+  onRequestNasPowerConfigurationChange = vi.fn(),
+  onSetWarningIgnored = vi.fn(),
 }: RenderInspectorOptions = {}) {
   const queryClient = new QueryClient({
     defaultOptions: {
@@ -529,6 +534,8 @@ function renderInspector({
         onUpdateConnectionLabel={onUpdateConnectionLabel}
         onUpdateConnectionRoute={onUpdateConnectionRoute}
         onRemoveConnection={onRemoveConnection}
+        onRequestNasPowerConfigurationChange={onRequestNasPowerConfigurationChange}
+        onSetWarningIgnored={onSetWarningIgnored}
       />
     </QueryClientProvider>,
   )
@@ -546,6 +553,8 @@ function renderInspector({
     onEndpointConnectionClick,
     onCancelPendingConnection,
     onReturnItemToInventory,
+    onRequestNasPowerConfigurationChange,
+    onSetWarningIgnored,
   }
 }
 
@@ -803,6 +812,46 @@ describe('InspectorPanel', () => {
     expect(screen.queryByRole('button', { name: /Swap (Rows|Columns)/ })).not.toBeInTheDocument()
   })
 
+  it('edits smart power-strip metadata and confirms before clearing it', async () => {
+    const user = userEvent.setup()
+    const powerProject = standalonePowerEquipmentProject()
+    powerProject.items['powerStrip:1'] = {
+      ...powerProject.items['powerStrip:1'],
+      smart: {
+        enabled: true,
+        displayName: 'Rack power',
+        managementIp: '192.168.1.50',
+        macAddress: '00:11:22:33:44:55',
+        outlets: [{ portId: 2, name: 'Router' }],
+      },
+    }
+    const { onUpdateItem } = renderInspector({
+      selectedItemId: 'powerStrip:1',
+      project: powerProject,
+    })
+
+    await user.click(screen.getByRole('tab', { name: 'Smart' }))
+    const smartMode = screen.getByRole('switch', { name: 'Smart power strip' })
+    expect(smartMode).toBeChecked()
+    expect(screen.getByRole('textbox', { name: 'Device display name' })).toHaveValue('Rack power')
+    expect(screen.getByRole('textbox', { name: 'Management IP' })).toHaveValue('192.168.1.50')
+    expect(screen.getByRole('textbox', { name: 'Outlet 1 custom name' })).toHaveValue('Router')
+
+    await user.click(smartMode)
+    expect(screen.getByRole('heading', { name: 'Disable smart mode?' })).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Disable and remove data' }))
+
+    await waitFor(() => expect(onUpdateItem).toHaveBeenCalled())
+    const [itemId, input] = vi.mocked(onUpdateItem).mock.calls.at(-1)!
+    expect(itemId).toBe('powerStrip:1')
+    expect(input).not.toHaveProperty('smart')
+    expect(input).toEqual(expect.objectContaining({
+      type: 'powerStrip',
+      name: 'Desk Power Strip',
+      specs: expect.objectContaining({ outlets: 2 }),
+    }))
+  })
+
   it('resets to the first valid tab when power-equipment tabs change in place', async () => {
     const user = userEvent.setup()
     const powerProject = standalonePowerEquipmentProject()
@@ -1002,6 +1051,7 @@ describe('InspectorPanel', () => {
       specs: {
         driveBays: 6,
         m2Slots: 2,
+        powerConfiguration: 'external-adapter',
       },
       ports: project.items['nas:1'].ports,
     })
@@ -1024,6 +1074,22 @@ describe('InspectorPanel', () => {
     expect(screen.queryByLabelText('Agent endpoint')).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Setup Agent' })).not.toBeInTheDocument()
     expect(createAgentEnrollment).not.toHaveBeenCalled()
+  })
+
+  it('routes NAS power mode changes through the dedicated transition callback', async () => {
+    const user = userEvent.setup()
+    const { onRequestNasPowerConfigurationChange, onUpdateItem } = renderInspector({
+      selectedItemId: 'nas:1',
+    })
+
+    await user.click(screen.getByRole('combobox', { name: 'Power configuration' }))
+    await user.click(screen.getByRole('option', { name: 'Internal PSU' }))
+
+    expect(onRequestNasPowerConfigurationChange).toHaveBeenCalledWith(
+      project.items['nas:1'],
+      'internal-psu',
+    )
+    expect(onUpdateItem).not.toHaveBeenCalled()
   })
 
   it('renders storage in the reusable tabbed editor with simplified chrome', async () => {
@@ -1861,8 +1927,55 @@ describe('InspectorPanel', () => {
     expect(screen.queryByText('LAN port 01 is open.')).not.toBeInTheDocument()
   })
 
-  it('renders selected cable details and removes the cable', () => {
+  it('keeps ignored warnings visible in the Inspector while excluding them from its open count', async () => {
+    const user = userEvent.setup()
+    const warningId = 'switch-no-uplink-trunk-1'
+    const warningMessage = 'Switch has active connections but no uplink or trunk port marked.'
+    const auditProject: ProjectState = {
+      ...project,
+      connections: [{
+        id: 1,
+        from: { itemId: 'switch:1', portId: 1 },
+        to: { itemId: 'server:1', portId: 1 },
+        type: 'network',
+        createdAt: '2026-07-22T00:00:00.000Z',
+      }],
+      compatibilityPolicy: { disabledHosts: [], ignoredWarningIds: [] },
+    }
+    const onSetWarningIgnored = vi.fn()
+
+    renderInspector({
+      selectedItemId: 'switch:1',
+      project: auditProject,
+      onSetWarningIgnored,
+    })
+
+    expect(screen.getByText(warningMessage).closest('[data-ignored]')).toHaveAttribute('data-ignored', 'false')
+    expect(screen.getByTestId('inspector-audit-open-count')).toHaveTextContent('1')
+    await user.click(screen.getByRole('button', { name: 'Ignore' }))
+    expect(onSetWarningIgnored).toHaveBeenCalledWith(warningId, true)
+
+    cleanup()
+    onSetWarningIgnored.mockClear()
+    renderInspector({
+      selectedItemId: 'switch:1',
+      project: {
+        ...auditProject,
+        compatibilityPolicy: { disabledHosts: [], ignoredWarningIds: [warningId] },
+      },
+      onSetWarningIgnored,
+    })
+
+    expect(screen.getByText(warningMessage).closest('[data-ignored]')).toHaveAttribute('data-ignored', 'true')
+    expect(screen.getByTestId('inspector-audit-open-count')).toHaveTextContent('0')
+    await user.click(screen.getByRole('button', { name: 'Unignore' }))
+    expect(onSetWarningIgnored).toHaveBeenCalledWith(warningId, false)
+  })
+
+  it('renders selected cable details, controls overlap avoidance, and removes the cable', async () => {
+    const user = userEvent.setup()
     const onRemoveConnection = vi.fn()
+    const onUpdateConnectionRoute = vi.fn()
     const queryClient = new QueryClient({
       defaultOptions: {
         queries: { retry: false },
@@ -1879,6 +1992,7 @@ describe('InspectorPanel', () => {
           createdAt: '2026-06-26T00:00:00.000Z',
           from: { itemId: 'server:1', portId: 1 },
           to: { itemId: 'patchPanel:1', portId: 1, endpointId: 2 },
+          route: { bendPoints: [{ x: 120, y: 240 }, { x: 360, y: 240 }] },
         },
       ],
     }
@@ -1903,7 +2017,7 @@ describe('InspectorPanel', () => {
           onEndpointConnectionClick={vi.fn()}
           onCancelPendingConnection={vi.fn()}
           onUpdateConnectionLabel={vi.fn()}
-          onUpdateConnectionRoute={vi.fn()}
+          onUpdateConnectionRoute={onUpdateConnectionRoute}
           onRemoveConnection={onRemoveConnection}
         />
       </QueryClientProvider>,
@@ -1916,6 +2030,21 @@ describe('InspectorPanel', () => {
     expect(screen.getByText('Route')).toBeInTheDocument()
     expect(screen.getByText('From side')).toBeInTheDocument()
     expect(screen.getByText('To side')).toBeInTheDocument()
+    const avoidOtherCables = screen.getByRole('switch', { name: 'Avoid other cables' })
+    expect(avoidOtherCables).not.toBeChecked()
+    expect(screen.getByText('Bend 1')).toBeInTheDocument()
+    expect(screen.getByText('120, 240')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Remove bend 1' }))
+    expect(onUpdateConnectionRoute).toHaveBeenCalledWith(1, {
+      bendPoints: [{ x: 360, y: 240 }],
+    })
+
+    await user.click(avoidOtherCables)
+    expect(onUpdateConnectionRoute).toHaveBeenCalledWith(1, {
+      bendPoints: [{ x: 120, y: 240 }, { x: 360, y: 240 }],
+      avoidCableOverlap: true,
+    })
 
     fireEvent.click(screen.getByRole('button', { name: 'Remove Cable' }))
 

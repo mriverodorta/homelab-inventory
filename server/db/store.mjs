@@ -10,6 +10,7 @@ import {
   normalizeProjectCompatibilityPolicy,
   planHostAllocations,
 } from '../../shared/compatibility/index.mjs'
+import { withCanonicalPowerPorts } from '../../shared/power-ports.mjs'
 import {
   analyzeInventoryDependencies,
   assertDependencyFree,
@@ -30,8 +31,13 @@ import {
 import { assertRelationalId, isRelationalId, parseLegacyRelationalId } from './relational-ids.mjs'
 import { migrateSchema9To10 } from './migrate-schema-10.mjs'
 import { migrateSchema10To11 } from './migrate-schema-11.mjs'
+import { migrateSchema11To12 } from './migrate-schema-12.mjs'
+import {
+  applyNasPowerConfigurationChange,
+  inspectNasPowerConfigurationChange,
+} from './nas-power-configuration.mjs'
 
-export const CURRENT_SCHEMA_VERSION = 11
+export const CURRENT_SCHEMA_VERSION = 12
 
 const DEFAULT_SAVE_DEBOUNCE_MS = 500
 const BACKUP_LIMIT = 10
@@ -563,6 +569,68 @@ function normalizeInventoryPort(port, index, fallbackKind) {
   return normalized
 }
 
+function normalizeSmartPowerStripConfiguration(type, rawSmart, ports) {
+  if (rawSmart === undefined) return undefined
+
+  if (type !== 'powerStrip') {
+    throw new InventoryLifecycleError('Smart configuration is supported only for power strips.', {
+      code: 'invalid-smart-power-strip',
+      status: 400,
+    })
+  }
+
+  if (!rawSmart || typeof rawSmart !== 'object' || Array.isArray(rawSmart) || rawSmart.enabled !== true) {
+    throw new InventoryLifecycleError('Smart power-strip configuration must be enabled explicitly.', {
+      code: 'invalid-smart-power-strip',
+      status: 400,
+    })
+  }
+
+  const outletPortIds = new Set(
+    (ports ?? []).filter((port) => port.type === 'ac-outlet').map((port) => port.id),
+  )
+  const outlets = []
+  const seenPortIds = new Set()
+
+  if (rawSmart.outlets !== undefined && !Array.isArray(rawSmart.outlets)) {
+    throw new InventoryLifecycleError('Smart power-strip outlet names must be an array.', {
+      code: 'invalid-smart-power-strip',
+      status: 400,
+    })
+  }
+
+  for (const [index, outlet] of (rawSmart.outlets ?? []).entries()) {
+    if (!outlet || typeof outlet !== 'object' || Array.isArray(outlet)) {
+      throw new InventoryLifecycleError(`smart.outlets[${index}] must be an object.`, {
+        code: 'invalid-smart-power-strip',
+        status: 400,
+      })
+    }
+    if (!isRelationalId(outlet.portId) || !outletPortIds.has(outlet.portId)) {
+      throw new InventoryLifecycleError(
+        `smart.outlets[${index}].portId must reference an existing AC outlet port.`,
+        { code: 'invalid-smart-power-strip', status: 400 },
+      )
+    }
+    if (seenPortIds.has(outlet.portId)) {
+      throw new InventoryLifecycleError(`smart.outlets[${index}].portId must be unique.`, {
+        code: 'invalid-smart-power-strip',
+        status: 400,
+      })
+    }
+    seenPortIds.add(outlet.portId)
+    const name = typeof outlet.name === 'string' ? outlet.name.trim() : ''
+    if (name) outlets.push({ portId: outlet.portId, name })
+  }
+
+  const smart = { enabled: true, outlets }
+  for (const field of ['displayName', 'managementIp', 'macAddress']) {
+    const value = typeof rawSmart[field] === 'string' ? rawSmart[field].trim() : ''
+    if (value) smart[field] = value
+  }
+  return smart
+}
+
 function normalizeInventoryItemInput(input, id) {
   if (!input || typeof input !== 'object' || Array.isArray(input)) {
     throw new InventoryLifecycleError('Inventory item payload must be an object.', {
@@ -632,7 +700,11 @@ function normalizeInventoryItemInput(input, id) {
     }
   }
 
-  return { item, table }
+  const materialized = withCanonicalPowerPorts(item)
+  const smart = normalizeSmartPowerStripConfiguration(type, input.smart, materialized.ports)
+  if (smart) materialized.smart = smart
+
+  return { item: materialized, table }
 }
 
 function nextInventoryId(records) {
@@ -1157,6 +1229,18 @@ export class HomelabInventoryStore {
         continue
       }
 
+      if (currentVersion === 11) {
+        const migrated = migrateSchema11To12(
+          this.databases.inventory.data,
+          this.databases.project.data,
+        )
+        this.databases.inventory.data = migrated.inventory
+        this.databases.project.data = migrated.project
+        this.databases.meta.data.schemaVersion = 12
+        currentVersion = 12
+        continue
+      }
+
       throw new Error(`No migration registered for schema version ${currentVersion}.`)
     }
 
@@ -1508,6 +1592,15 @@ export class HomelabInventoryStore {
 
       const { item } = normalizeInventoryItemInput({ ...input, type: ref.type }, ref.id)
       const record = cleanItemForStore(item)
+      if (
+        ref.type === 'nas'
+        && resolved.item.specs?.powerConfiguration !== record.specs?.powerConfiguration
+      ) {
+        throw new InventoryLifecycleError(
+          'Use the NAS power configuration command to change power modes.',
+          { code: 'nas-power-configuration-command-required', status: 409 },
+        )
+      }
       const connectedPortIds = referencedPortIds(draft.project, ref)
 
       for (const portId of connectedPortIds) {
@@ -1533,6 +1626,24 @@ export class HomelabInventoryStore {
       draft.inventory[resolved.table][resolved.index] = record
       return { type: ref.type, id: ref.id, name: record.name }
     })
+  }
+
+  changeNasPowerConfiguration(rawRef, target, confirmed = false) {
+    const ref = normalizeInventoryRef(rawRef)
+    const impact = inspectNasPowerConfigurationChange(
+      this.dependencyContext(),
+      ref,
+      target,
+    )
+
+    if (impact.requiresConfirmation && !confirmed) {
+      return { status: 'confirmation-required', impact: impact.publicImpact }
+    }
+
+    const project = this.inventoryTransaction((draft) => {
+      applyNasPowerConfigurationChange(draft, ref, target)
+    })
+    return { status: 'applied', project }
   }
 
   updateInventoryItemProperties(rawRef, rawProperties) {

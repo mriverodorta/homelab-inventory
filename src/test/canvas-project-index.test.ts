@@ -70,6 +70,7 @@ describe('canvas project index', () => {
     const hostedEndpoint = { itemId: 'server:1', hostedItemId: 'network:1', portId: 1 }
 
     expect(index.assignedHostByItemId.get('network:1')).toBe('server:1')
+    expect(index.assignmentsByHostId.get('server:1')).toEqual(project().assignments)
     expect(canvasEndpointConnected(index, hostedEndpoint)).toBe(true)
     expect(canvasEndpointAvailable(index, hostedEndpoint)).toBe(false)
   })

@@ -90,7 +90,7 @@ export function SelectField({
   name?: string
   value: string
   placeholder?: string
-  options: string[]
+  options: readonly (string | { value: string; label: string })[]
   error?: string
   className?: string
   emptyLabel?: string
@@ -98,7 +98,13 @@ export function SelectField({
   onOpenChange?: (open: boolean) => void
 }) {
   const errorId = useId()
-  const selectableOptions = withLegacyOption(options, value)
+  const optionValues = options.map((option) => typeof option === 'string' ? option : option.value)
+  const labels = new Map(
+    options
+      .filter((option): option is { value: string; label: string } => typeof option !== 'string')
+      .map((option) => [option.value, option.label]),
+  )
+  const selectableOptions = withLegacyOption(optionValues, value)
   const selectValue = value || (emptyLabel ? 'none' : '')
 
   return (
@@ -117,7 +123,9 @@ export function SelectField({
           {emptyLabel ? <SelectItem value="none">{emptyLabel}</SelectItem> : null}
           {selectableOptions.filter(Boolean).map((option) => (
             <SelectItem key={option} value={option}>
-              {option === value && !options.includes(option) ? `${option} (Legacy)` : option}
+              {option === value && !optionValues.includes(option)
+                ? `${option} (Legacy)`
+                : labels.get(option) ?? option}
             </SelectItem>
           ))}
         </SelectContent>
