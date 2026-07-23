@@ -32,6 +32,7 @@ export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
     'Power strips can now enable smart mode with a device display name, management IP, MAC address, and custom names for individual outlets.',
     'Smart power-strip identity appears on the canvas while outlet chips remain compact and expose custom names in their tooltips and Inspector details.',
     'Network, power, and display cables now have independent visibility controls in the canvas toolbar and General workspace settings.',
+    'Cable pathfinding, lane separation, manual bend editing, and route caching now run in the shared Rust/WASM worker instead of duplicate browser-side routing engines.',
   ],
   fixes: [
     'Workspace startup and recovery now show explicit loading, rebuilding, unsupported-browser, and failed states instead of allowing interaction with an unavailable or stale engine.',
@@ -56,6 +57,7 @@ export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
     'External power-adapter cables now attach to the adapter port chip, while direct internal PSU cables remain attached to the host header port.',
     'Removing an assigned component with connected ports now requires confirmation and removes its cable relationships atomically so the project cannot retain dangling endpoints.',
     'Inventory drag previews now match the canvas zoom and final placement footprint so constrained drops no longer rely on an oversized representation.',
+    'Changing one cable now recalculates only that route and later lane-dependent routes, preserving unrelated cable geometry and reducing canvas stalls.',
   ],
   notes: [],
 }

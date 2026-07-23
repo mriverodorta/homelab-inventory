@@ -43,6 +43,10 @@ import { buildCanvasProjectIndex } from '@/lib/canvas-project-index'
 import { getConnectionRoute } from '@/lib/cable-routing'
 import { CableRoutingCoordinator, type CableRoutingState } from '@/lib/cable-routing-coordinator'
 import {
+  shouldAvoidCableOverlap,
+  type CableLaneRouteRequest,
+} from '@/engine/routing'
+import {
   CANVAS_CABLE_Z_INDEX,
   CANVAS_NODE_ACTIVE_Z_INDEX,
   CANVAS_NODE_BASE_Z_INDEX,
@@ -50,8 +54,7 @@ import {
   projectsEqualForCanvasNodes,
   reconcileItemsById,
 } from '@/lib/cable-render-stability'
-import { buildCableObstacles } from '@/lib/cable-obstacle-routing'
-import { shouldAvoidCableOverlap, type CableLaneRouteRequest } from '@/lib/cable-lane-routing'
+import { buildCableObstacles } from '@/lib/cable-geometry'
 import {
   normalizeCanvasHandleGeometry,
   reconcileCanvasHandleGeometry,
@@ -61,6 +64,7 @@ import {
 import { describeConnection, getCableAppearance } from '@/lib/cables'
 import { isCableTypeVisible, type CableVisibility } from '@/lib/cable-visibility'
 import { formatRemainingSeconds } from '@/lib/demo-api'
+import { useDomainEngine } from '@/hooks/use-domain-engine'
 import {
   findAssignmentById,
   moveAssignedComponent,
@@ -462,6 +466,10 @@ function CanvasViewport({
     },
   })
   const { getViewport, screenToFlowPosition, setViewport } = useReactFlow()
+  const domainEngine = useDomainEngine()
+  const routingEngineError = domainEngine.state.phase === 'failed' && 'error' in domainEngine.state
+    ? domainEngine.state.error ?? 'Background cable routing is unavailable.'
+    : null
   const updateNodeInternals = useUpdateNodeInternals()
   const canvasRootRef = useRef<HTMLElement | null>(null)
   const [hoveredConnectionId, setHoveredConnectionId] = useState<string | number | null>(null)
@@ -1127,7 +1135,6 @@ function CanvasViewport({
               color: appearance.color,
               label: connection.label?.trim() || appearance.label,
               detail: describeConnection(project, connection),
-              laneOffset: route.laneOffset,
               selected: isSelected,
               hovered: isHovered,
               editable: isSelected,
@@ -1135,9 +1142,6 @@ function CanvasViewport({
               dimmed,
               connectionId: connection.id,
               route: connection.route,
-              obstacles: cableObstacles,
-              sourceItemId: connection.from.itemId,
-              targetItemId: connection.to.itemId,
               snapToGrid: snapCablesToGrid,
               plannedRoute: plannedCableRoutes.get(connection.id),
               onSelect: stableOnSelectConnection,
@@ -1169,7 +1173,6 @@ function CanvasViewport({
       activeNetworkTraceConnectionIdSet,
       activeNetworkTraceConnectionIds.length,
       cableVisibility,
-      cableObstacles,
       hoveredConnectionId,
       plannedCableRoutes,
       project,
@@ -1340,30 +1343,16 @@ function CanvasViewport({
   }, [focusItem, getViewport, onViewportReady, screenToFlowPosition])
 
   useEffect(() => {
-    if (typeof Worker === 'undefined') {
+    if (!domainEngine.enabled || domainEngine.state.phase !== 'ready') {
       setRoutingState((current) => ({
         ...current,
-        error: 'Background cable routing is unavailable in this browser.',
+        pending: domainEngine.enabled,
+        error: routingEngineError,
       }))
       return
     }
 
-    let coordinator: CableRoutingCoordinator
-
-    try {
-      const worker = new Worker(
-        new URL('../workers/cable-routing.worker.ts', import.meta.url),
-        { type: 'module' },
-      )
-      coordinator = new CableRoutingCoordinator(worker)
-    } catch {
-      setRoutingState((current) => ({
-        ...current,
-        error: 'Background cable routing could not start.',
-      }))
-      return
-    }
-
+    const coordinator = new CableRoutingCoordinator(domainEngine.client)
     routingCoordinatorRef.current = coordinator
     const unsubscribe = coordinator.subscribe(setRoutingState)
 
@@ -1372,7 +1361,7 @@ function CanvasViewport({
       coordinator.dispose()
       routingCoordinatorRef.current = null
     }
-  }, [])
+  }, [domainEngine.client, domainEngine.enabled, domainEngine.state.phase, routingEngineError])
 
   useEffect(() => {
     const coordinator = routingCoordinatorRef.current
@@ -1383,7 +1372,7 @@ function CanvasViewport({
     } else {
       coordinator.request(routeRequests)
     }
-  }, [routeRequests])
+  }, [domainEngine.state.phase, routeRequests])
 
   useEffect(() => {
     let frame: number | null = null

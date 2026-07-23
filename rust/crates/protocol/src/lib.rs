@@ -4,8 +4,9 @@ pub use homelab_geometry::{
     ArrangementItem, GeometryHandle, GeometryNode, Point, Rect, Segment, Side,
 };
 pub use homelab_routing::{
-    ObstacleRouteRequest, ObstacleRouteResult, ReservedSegment, RouteDefinition, RouteEdit,
-    RouteObstacle, RoutePatch, RouteWarning, RoutedPath,
+    CableRoutePlan, CableRoutePlanRequest, LaneRouteRequest, ObstacleRouteRequest,
+    ObstacleRouteResult, ReservedSegment, RouteDefinition, RouteEdit, RouteObstacle, RoutePatch,
+    RouteWarning, RoutedPath,
 };
 
 pub const PROTOCOL_VERSION: u16 = 1;
@@ -71,6 +72,22 @@ pub enum Operation {
     RouteAroundObstacles {
         request: ObstacleRouteRequest,
     },
+    PlanCableRoutes {
+        plan: CableRoutePlanRequest,
+    },
+    PreviewPlannedRouteSegment {
+        connection_id: u32,
+        segment_index: u16,
+        coordinate: f64,
+        snap_grid: Option<f64>,
+        endpoint_snap_threshold: f64,
+    },
+    InsertPlannedManualBend {
+        connection_id: u32,
+        segment_index: u16,
+        point: Point,
+        snap_grid: Option<f64>,
+    },
     PreviewMoveRouteSegment {
         connection_id: u32,
         segment_index: u16,
@@ -120,6 +137,7 @@ pub enum ResponseBody {
     RoutesUpdated(RoutesUpdateResult),
     Route(RouteResult),
     ObstacleRoute(ObstacleRouteResult),
+    CableRoutesPlanned(CableRoutePlan),
     RoutePreview(RouteEdit),
     RouteEdited(RouteEditResult),
     Error(EngineError),

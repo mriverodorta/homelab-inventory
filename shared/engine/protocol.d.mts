@@ -86,6 +86,21 @@ export type ObstacleRouteResult = {
   warning: 'search-exhausted' | null
 }
 
+export type LaneRouteRequest = {
+  avoid_cable_overlap: boolean
+  request: ObstacleRouteRequest
+}
+
+export type CableRoutePlanRequest = {
+  obstacles: RouteObstacle[]
+  requests: LaneRouteRequest[]
+}
+
+export type CableRoutePlan = {
+  routes: ObstacleRouteResult[]
+  recalculated_connection_ids: number[]
+}
+
 export type EngineOperation =
   | { kind: 'status' }
   | { kind: 'update-project-metadata'; payload: { name: string } }
@@ -131,6 +146,29 @@ export type EngineOperation =
   | {
       kind: 'route-around-obstacles'
       payload: { request: ObstacleRouteRequest }
+    }
+  | {
+      kind: 'plan-cable-routes'
+      payload: { plan: CableRoutePlanRequest }
+    }
+  | {
+      kind: 'preview-planned-route-segment'
+      payload: {
+        connection_id: number
+        segment_index: number
+        coordinate: number
+        snap_grid: number | null
+        endpoint_snap_threshold: number
+      }
+    }
+  | {
+      kind: 'insert-planned-manual-bend'
+      payload: {
+        connection_id: number
+        segment_index: number
+        point: { x: number; y: number }
+        snap_grid: number | null
+      }
     }
   | {
       kind: 'preview-move-route-segment'
@@ -203,6 +241,7 @@ export type EngineResponseBody =
   | { kind: 'routes-updated'; payload: { routing_revision: number } }
   | { kind: 'route'; payload: { route: RoutedPath } }
   | { kind: 'obstacle-route'; payload: ObstacleRouteResult }
+  | { kind: 'cable-routes-planned'; payload: CableRoutePlan }
   | { kind: 'route-preview'; payload: RouteEdit }
   | { kind: 'route-edited'; payload: { routing_revision: number; edit: RouteEdit } }
   | { kind: 'error'; payload: { code: string; message: string } }

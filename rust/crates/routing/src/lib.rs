@@ -1,6 +1,6 @@
 use std::{
     cmp::Ordering,
-    collections::{BinaryHeap, HashMap},
+    collections::{BTreeMap, BTreeSet, BinaryHeap, HashMap},
     fmt,
 };
 
@@ -149,6 +149,163 @@ pub struct ObstacleRouteResult {
     pub route: RoutedPath,
     pub used_fallback: bool,
     pub warning: Option<RouteWarning>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct LaneRouteRequest {
+    pub avoid_cable_overlap: bool,
+    pub request: ObstacleRouteRequest,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct CableRoutePlanRequest {
+    pub obstacles: Vec<RouteObstacle>,
+    pub requests: Vec<LaneRouteRequest>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct CableRoutePlan {
+    pub routes: Vec<ObstacleRouteResult>,
+    pub recalculated_connection_ids: Vec<u32>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+struct CachedLaneRoute {
+    input: LaneRouteRequest,
+    result: ObstacleRouteResult,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct RoutePlanner {
+    cache: BTreeMap<u32, CachedLaneRoute>,
+    obstacles: Vec<RouteObstacle>,
+}
+
+impl RoutePlanner {
+    pub fn plan(
+        &mut self,
+        request: &CableRoutePlanRequest,
+    ) -> Result<CableRoutePlan, RoutingError> {
+        validate_obstacles(&request.obstacles)?;
+        let changed_obstacles = changed_obstacle_bounds(&self.obstacles, &request.obstacles);
+        let mut sorted = request.requests.clone();
+        sorted.sort_by_key(|entry| entry.request.definition.connection_id);
+        let mut desired_ids = BTreeSet::new();
+        for entry in &mut sorted {
+            let connection_id = entry.request.definition.connection_id;
+            if !desired_ids.insert(connection_id) {
+                return Err(RoutingError::InvalidConnectionId);
+            }
+            entry.request.previous_valid_route = None;
+            entry.request.obstacles.clear();
+            validate_obstacle_request_base(&entry.request)?;
+        }
+
+        let removed_any = self.cache.keys().any(|id| !desired_ids.contains(id));
+        self.cache.retain(|id, _| desired_ids.contains(id));
+        let mut dependency_dirty = removed_any;
+        let mut reservations = Vec::new();
+        let mut routes = Vec::with_capacity(sorted.len());
+        let mut recalculated_connection_ids = Vec::new();
+
+        for entry in sorted {
+            let connection_id = entry.request.definition.connection_id;
+            let previous = self.cache.get(&connection_id).cloned();
+            let input_changed = previous.as_ref().is_none_or(|cached| cached.input != entry);
+            let obstacle_changed = previous.as_ref().is_some_and(|cached| {
+                changed_obstacles.iter().any(|(item_id, bounds)| {
+                    item_id == &entry.request.source_item_id
+                        || item_id == &entry.request.target_item_id
+                        || route_near_rect(&cached.result.route.points, *bounds)
+                })
+            });
+            let should_recalculate = input_changed
+                || obstacle_changed
+                || (entry.avoid_cable_overlap && dependency_dirty);
+            let result = if should_recalculate {
+                let mut route_request = entry.request.clone();
+                route_request.obstacles.clone_from(&request.obstacles);
+                route_request.previous_valid_route =
+                    previous.as_ref().map(|cached| cached.result.route.clone());
+                if entry.avoid_cable_overlap {
+                    route_request
+                        .reserved_segments
+                        .extend(reservations.iter().copied());
+                }
+                let result = route_around_obstacles(&route_request)?;
+                let route_changed = previous
+                    .as_ref()
+                    .is_none_or(|cached| cached.result.route != result.route);
+                dependency_dirty |= route_changed;
+                recalculated_connection_ids.push(connection_id);
+                self.cache.insert(
+                    connection_id,
+                    CachedLaneRoute {
+                        input: entry.clone(),
+                        result: result.clone(),
+                    },
+                );
+                result
+            } else {
+                previous.expect("unchanged route must be cached").result
+            };
+            reservations.extend(reservable_segments(&result.route.points));
+            routes.push(result);
+        }
+        self.obstacles.clone_from(&request.obstacles);
+
+        Ok(CableRoutePlan {
+            routes,
+            recalculated_connection_ids,
+        })
+    }
+
+    pub fn clear(&mut self) {
+        self.cache.clear();
+        self.obstacles.clear();
+    }
+
+    pub fn preview_move_segment(
+        &self,
+        connection_id: u32,
+        segment_index: u16,
+        coordinate: f64,
+        snap_grid: Option<f64>,
+        endpoint_snap_threshold: f64,
+    ) -> Result<RouteEdit, RoutingError> {
+        let cached = self
+            .cache
+            .get(&connection_id)
+            .ok_or(RoutingError::InvalidConnectionId)?;
+        preview_move_routed_segment(
+            &cached.input.request.definition,
+            &cached.result.route,
+            segment_index,
+            coordinate,
+            snap_grid,
+            endpoint_snap_threshold,
+        )
+    }
+
+    pub fn preview_insert_manual_bend(
+        &self,
+        connection_id: u32,
+        segment_index: u16,
+        pointer: Point,
+        snap_grid: Option<f64>,
+    ) -> Result<RouteEdit, RoutingError> {
+        let cached = self
+            .cache
+            .get(&connection_id)
+            .ok_or(RoutingError::InvalidConnectionId)?;
+        preview_insert_routed_bend(
+            &cached.input.request.definition,
+            &cached.result.route,
+            segment_index,
+            pointer,
+            snap_grid,
+        )
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -358,26 +515,16 @@ pub fn route_around_obstacles(
 }
 
 fn validate_obstacle_request(request: &ObstacleRouteRequest) -> Result<(), RoutingError> {
+    validate_obstacle_request_base(request)?;
+    validate_obstacles(&request.obstacles)
+}
+
+fn validate_obstacle_request_base(request: &ObstacleRouteRequest) -> Result<(), RoutingError> {
     request.definition.validate()?;
     if request.source_item_id.trim().is_empty() || request.target_item_id.trim().is_empty() {
         return Err(RoutingError::EmptyItemId);
     }
     validate_optional_grid(request.snap_to_grid.then_some(request.grid_size))?;
-    let mut ids = request
-        .obstacles
-        .iter()
-        .map(|obstacle| obstacle.item_id.as_str())
-        .collect::<Vec<_>>();
-    ids.sort_unstable();
-    if ids.windows(2).any(|pair| pair[0] == pair[1]) {
-        return Err(RoutingError::DuplicateObstacleId);
-    }
-    for obstacle in &request.obstacles {
-        if obstacle.item_id.trim().is_empty() {
-            return Err(RoutingError::EmptyItemId);
-        }
-        obstacle.bounds.validate()?;
-    }
     for segment in &request.reserved_segments {
         Segment {
             start: segment.start,
@@ -398,6 +545,76 @@ fn validate_obstacle_request(request: &ObstacleRouteRequest) -> Result<(), Routi
         }
     }
     Ok(())
+}
+
+fn validate_obstacles(obstacles: &[RouteObstacle]) -> Result<(), RoutingError> {
+    let mut ids = obstacles
+        .iter()
+        .map(|obstacle| obstacle.item_id.as_str())
+        .collect::<Vec<_>>();
+    ids.sort_unstable();
+    if ids.windows(2).any(|pair| pair[0] == pair[1]) {
+        return Err(RoutingError::DuplicateObstacleId);
+    }
+    for obstacle in obstacles {
+        if obstacle.item_id.trim().is_empty() {
+            return Err(RoutingError::EmptyItemId);
+        }
+        obstacle.bounds.validate()?;
+    }
+    Ok(())
+}
+
+fn changed_obstacle_bounds(
+    previous: &[RouteObstacle],
+    next: &[RouteObstacle],
+) -> Vec<(String, Rect)> {
+    let previous_by_id = previous
+        .iter()
+        .map(|obstacle| (obstacle.item_id.as_str(), obstacle.bounds))
+        .collect::<BTreeMap<_, _>>();
+    let next_by_id = next
+        .iter()
+        .map(|obstacle| (obstacle.item_id.as_str(), obstacle.bounds))
+        .collect::<BTreeMap<_, _>>();
+    let ids = previous_by_id
+        .keys()
+        .chain(next_by_id.keys())
+        .copied()
+        .collect::<BTreeSet<_>>();
+    let mut changed = Vec::new();
+    for item_id in ids {
+        let previous_bounds = previous_by_id.get(item_id).copied();
+        let next_bounds = next_by_id.get(item_id).copied();
+        if previous_bounds == next_bounds {
+            continue;
+        }
+        if let Some(bounds) = previous_bounds {
+            changed.push((item_id.to_owned(), bounds));
+        }
+        if let Some(bounds) = next_bounds {
+            changed.push((item_id.to_owned(), bounds));
+        }
+    }
+    changed
+}
+
+fn route_near_rect(points: &[Point], rect: Rect) -> bool {
+    let clearance = DEFAULT_ROUTING_GRID;
+    let left = rect.x - clearance;
+    let right = rect.right() + clearance;
+    let top = rect.y - clearance;
+    let bottom = rect.bottom() + clearance;
+    points.windows(2).any(|pair| {
+        let segment_left = pair[0].x.min(pair[1].x);
+        let segment_right = pair[0].x.max(pair[1].x);
+        let segment_top = pair[0].y.min(pair[1].y);
+        let segment_bottom = pair[0].y.max(pair[1].y);
+        segment_right >= left
+            && segment_left <= right
+            && segment_bottom >= top
+            && segment_top <= bottom
+    })
 }
 
 fn fallback_route(request: &ObstacleRouteRequest) -> Result<ObstacleRouteResult, RoutingError> {
@@ -905,6 +1122,22 @@ pub fn segments_have_collinear_conflict(
     }
 }
 
+pub fn reservable_segments(points: &[Point]) -> Vec<ReservedSegment> {
+    points
+        .windows(2)
+        .enumerate()
+        .filter_map(|(index, pair)| {
+            if index == 0 || index + 1 == points.len() - 1 {
+                return None;
+            }
+            orientation(pair[0], pair[1]).map(|_| ReservedSegment {
+                start: pair[0],
+                end: pair[1],
+            })
+        })
+        .collect()
+}
+
 fn route_intersects_obstacles(
     points: &[Point],
     obstacles: &[RouteObstacle],
@@ -965,10 +1198,10 @@ fn advance_phase(node: Point, phase: usize, anchors: &[Point]) -> usize {
 fn compare_search_best(first: &SearchBest, second: &SearchBest) -> Ordering {
     first
         .cost
-        .distance
-        .total_cmp(&second.cost.distance)
+        .overlap_penalty
+        .cmp(&second.cost.overlap_penalty)
+        .then_with(|| first.cost.distance.total_cmp(&second.cost.distance))
         .then_with(|| first.cost.bends.cmp(&second.cost.bends))
-        .then_with(|| first.cost.overlap_penalty.cmp(&second.cost.overlap_penalty))
         .then_with(|| first.lexical_path.cmp(&second.lexical_path))
 }
 
@@ -1083,9 +1316,19 @@ pub fn preview_insert_manual_bend(
     pointer: Point,
     snap_grid: Option<f64>,
 ) -> Result<RouteEdit, RoutingError> {
+    let route = build_route(definition)?;
+    preview_insert_routed_bend(definition, &route, segment_index, pointer, snap_grid)
+}
+
+fn preview_insert_routed_bend(
+    definition: &RouteDefinition,
+    route: &RoutedPath,
+    segment_index: u16,
+    pointer: Point,
+    snap_grid: Option<f64>,
+) -> Result<RouteEdit, RoutingError> {
     pointer.validate()?;
     validate_optional_grid(snap_grid)?;
-    let route = build_route(definition)?;
     let start = *route
         .points
         .get(usize::from(segment_index))
@@ -1155,6 +1398,25 @@ pub fn preview_move_segment(
     snap_grid: Option<f64>,
     endpoint_snap_threshold: f64,
 ) -> Result<RouteEdit, RoutingError> {
+    let route = build_route(definition)?;
+    preview_move_routed_segment(
+        definition,
+        &route,
+        segment_index,
+        coordinate,
+        snap_grid,
+        endpoint_snap_threshold,
+    )
+}
+
+fn preview_move_routed_segment(
+    definition: &RouteDefinition,
+    route: &RoutedPath,
+    segment_index: u16,
+    coordinate: f64,
+    snap_grid: Option<f64>,
+    endpoint_snap_threshold: f64,
+) -> Result<RouteEdit, RoutingError> {
     definition.validate()?;
     if !coordinate.is_finite() {
         return Err(RoutingError::Geometry(GeometryError::NonFinite(
@@ -1163,7 +1425,6 @@ pub fn preview_move_segment(
     }
     validate_optional_grid(snap_grid)?;
     validate_snap_threshold(endpoint_snap_threshold)?;
-    let route = build_route(definition)?;
     let index = usize::from(segment_index);
     let start = *route
         .points
@@ -1477,6 +1738,24 @@ mod tests {
         }
     }
 
+    fn lane_request(connection_id: u32, y: f64, avoid_cable_overlap: bool) -> LaneRouteRequest {
+        let mut request = obstacle_request();
+        request.definition.connection_id = connection_id;
+        request.definition.source.y = y;
+        request.definition.target = Point { x: 240.0, y };
+        LaneRouteRequest {
+            avoid_cable_overlap,
+            request,
+        }
+    }
+
+    fn plan_request(requests: Vec<LaneRouteRequest>) -> CableRoutePlanRequest {
+        CableRoutePlanRequest {
+            obstacles: Vec::new(),
+            requests,
+        }
+    }
+
     #[test]
     fn default_route_is_orthogonal_and_side_aware() {
         let route = build_route(&definition()).unwrap();
@@ -1626,6 +1905,168 @@ mod tests {
         assert_eq!(result.warning, Some(RouteWarning::SearchExhausted));
         assert_eq!(result.route, previous);
         assert_orthogonal(&result.route.points);
+    }
+
+    #[test]
+    fn planner_separates_collinear_routes_in_numeric_order() {
+        let mut planner = RoutePlanner::default();
+        let plan = planner
+            .plan(&plan_request(vec![
+                lane_request(3, 24.0, true),
+                lane_request(1, 24.0, true),
+                lane_request(2, 24.0, true),
+            ]))
+            .unwrap();
+
+        assert_eq!(plan.recalculated_connection_ids, vec![1, 2, 3]);
+        assert_eq!(
+            plan.routes
+                .iter()
+                .map(|result| result.route.connection_id)
+                .collect::<Vec<_>>(),
+            vec![1, 2, 3]
+        );
+        for first in 0..plan.routes.len() {
+            for second in first + 1..plan.routes.len() {
+                assert!(
+                    !reservable_segments(&plan.routes[first].route.points)
+                        .iter()
+                        .any(|first_segment| {
+                            reservable_segments(&plan.routes[second].route.points)
+                                .iter()
+                                .any(|second_segment| {
+                                    segments_have_collinear_conflict(
+                                        *first_segment,
+                                        *second_segment,
+                                        DEFAULT_ROUTING_GRID,
+                                    )
+                                })
+                        })
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn planner_reuses_unchanged_routes_and_invalidates_only_dependants() {
+        let mut planner = RoutePlanner::default();
+        let initial = vec![
+            lane_request(1, 24.0, false),
+            lane_request(2, 60.0, false),
+            lane_request(3, 24.0, true),
+        ];
+        planner.plan(&plan_request(initial.clone())).unwrap();
+        let unchanged = planner.plan(&plan_request(initial)).unwrap();
+        assert!(unchanged.recalculated_connection_ids.is_empty());
+
+        let changed = vec![
+            lane_request(1, 36.0, false),
+            lane_request(2, 60.0, false),
+            lane_request(3, 24.0, true),
+        ];
+        let changed_plan = planner.plan(&plan_request(changed)).unwrap();
+        assert_eq!(changed_plan.recalculated_connection_ids, vec![1, 3]);
+    }
+
+    #[test]
+    fn planner_does_not_invalidate_dependants_when_changed_input_keeps_same_route() {
+        let mut planner = RoutePlanner::default();
+        let initial = vec![lane_request(1, 24.0, false), lane_request(2, 24.0, true)];
+        planner.plan(&plan_request(initial.clone())).unwrap();
+        let plan = planner
+            .plan(&CableRoutePlanRequest {
+                obstacles: vec![obstacle(
+                    "distant:1",
+                    10_000.0,
+                    10_000.0,
+                    10_100.0,
+                    10_100.0,
+                )],
+                requests: initial,
+            })
+            .unwrap();
+
+        assert!(plan.recalculated_connection_ids.is_empty());
+    }
+
+    #[test]
+    fn changed_obstacles_invalidate_only_nearby_or_attached_routes() {
+        let mut planner = RoutePlanner::default();
+        let requests = vec![lane_request(1, 24.0, false), lane_request(2, 240.0, false)];
+        planner.plan(&plan_request(requests.clone())).unwrap();
+
+        let nearby = planner
+            .plan(&CableRoutePlanRequest {
+                obstacles: vec![obstacle("rack:1", 96.0, 12.0, 144.0, 48.0)],
+                requests: requests.clone(),
+            })
+            .unwrap();
+        assert_eq!(nearby.recalculated_connection_ids, vec![1]);
+
+        let attached = planner
+            .plan(&CableRoutePlanRequest {
+                obstacles: vec![obstacle("server:1", -24.0, 216.0, 24.0, 264.0)],
+                requests,
+            })
+            .unwrap();
+        assert_eq!(attached.recalculated_connection_ids, vec![1, 2]);
+    }
+
+    #[test]
+    fn removing_a_reserved_route_invalidates_remaining_overlap_aware_routes() {
+        let mut planner = RoutePlanner::default();
+        planner
+            .plan(&plan_request(vec![
+                lane_request(1, 24.0, false),
+                lane_request(2, 24.0, true),
+            ]))
+            .unwrap();
+        let plan = planner
+            .plan(&plan_request(vec![lane_request(2, 24.0, true)]))
+            .unwrap();
+
+        assert_eq!(plan.recalculated_connection_ids, vec![2]);
+    }
+
+    #[test]
+    fn planner_edits_the_cached_obstacle_route_segments() {
+        let mut planner = RoutePlanner::default();
+        let entry = lane_request(1, 72.0, false);
+        let plan = planner
+            .plan(&CableRoutePlanRequest {
+                obstacles: vec![obstacle("switch:1", 84.0, 12.0, 216.0, 132.0)],
+                requests: vec![entry],
+            })
+            .unwrap();
+        let route = &plan.routes[0].route;
+        let segment_index = route
+            .points
+            .windows(2)
+            .position(|pair| pair[0].y == pair[1].y && (pair[1].x - pair[0].x).abs() > 100.0)
+            .unwrap() as u16;
+
+        let moved = planner
+            .preview_move_segment(1, segment_index, 156.0, Some(12.0), 8.0)
+            .unwrap();
+        assert!(
+            moved
+                .forward
+                .bend_points
+                .iter()
+                .any(|point| point.y == 156.0)
+        );
+        assert_orthogonal(&moved.route.points);
+
+        let segment_start = route.points[usize::from(segment_index)];
+        let segment_end = route.points[usize::from(segment_index) + 1];
+        let anchor = Point {
+            x: ((segment_start.x + segment_end.x) / 2.0 / 12.0).round() * 12.0,
+            y: segment_start.y,
+        };
+        let inserted = planner
+            .preview_insert_manual_bend(1, segment_index, anchor, Some(12.0))
+            .unwrap();
+        assert!(inserted.forward.bend_points.contains(&anchor));
     }
 
     #[test]

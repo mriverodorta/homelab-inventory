@@ -12,37 +12,29 @@ import {
   type MouseEvent as ReactMouseEvent,
   type PointerEvent as ReactPointerEvent,
 } from 'react'
+import type { CableRouteResult } from '@/lib/cable-geometry'
 import {
-  routeCableAroundObstacles,
-  CABLE_ROUTING_GRID_SIZE,
-  segmentCrossesObstacleInterior,
-  type CableObstacle,
-  type CableRouteResult,
-} from '@/lib/cable-obstacle-routing'
-import {
-  buildOrthogonalCablePoints,
   cablePointsToPath,
   DEFAULT_ENDPOINT_SNAP_THRESHOLD,
-  getCableBendPoints,
   getEditableCableSegments,
-  moveOrthogonalCableSegment,
-  snapPoint,
-  snapCableSegmentPointerToEndpoint,
-  type CableEndpoint,
   type OrthogonalPoint,
-  type OrthogonalSide,
 } from '@/lib/orthogonal-cable'
-import type { ConnectionBendPoint, ConnectionRoutePreferences } from '@/types/inventory'
+import {
+  insertCableManualBend,
+  previewCableRouteSegment,
+} from '@/engine/routing'
+import { useDomainEngine } from '@/hooks/use-domain-engine'
+import type { ConnectionRoutePreferences } from '@/types/inventory'
 
 const TOUCH_DRAG_HOLD_MS = 350
 const TOUCH_DRAG_TOLERANCE_PX = 8
 const POINTER_DRAG_THRESHOLD_PX = 4
+const EMPTY_CABLE_POINTS: OrthogonalPoint[] = []
 
 export type CableEdgeData = {
   color: string
   label: string
   detail: string
-  laneOffset: number
   selected: boolean
   hovered?: boolean
   traced?: boolean
@@ -50,9 +42,6 @@ export type CableEdgeData = {
   editable: boolean
   connectionId: string | number
   route?: ConnectionRoutePreferences
-  obstacles: readonly CableObstacle[]
-  sourceItemId: string
-  targetItemId: string
   snapToGrid: boolean
   plannedRoute?: CableRouteResult
   onSelect: (connectionId: string | number) => void
@@ -61,68 +50,21 @@ export type CableEdgeData = {
 
 export type CableFlowEdge = Edge<CableEdgeData, 'cable'>
 
-function positionToSide(position: unknown): OrthogonalSide {
-  if (position === 'left' || position === 'right' || position === 'top' || position === 'bottom') {
-    return position
-  }
-
-  return 'right'
-}
-
 function pointsEqual(first: OrthogonalPoint | undefined, second: OrthogonalPoint): boolean {
   return first?.x === second.x && first.y === second.y
-}
-
-function endpointApproachAvoidsObstacles({
-  points,
-  endpoint,
-  obstacles,
-  sourceItemId,
-  targetItemId,
-}: {
-  points: readonly OrthogonalPoint[]
-  endpoint: CableEndpoint
-  obstacles: readonly CableObstacle[]
-  sourceItemId: string
-  targetItemId: string
-}): boolean {
-  return points.slice(0, -1).every((point, index) => {
-    const nextPoint = points[index + 1]
-    if (!nextPoint) return true
-
-    return obstacles.every((obstacle) => {
-      if (endpoint === 'source' && index === 0 && obstacle.itemId === sourceItemId) {
-        return true
-      }
-      if (
-        endpoint === 'target' &&
-        index === points.length - 2 &&
-        obstacle.itemId === targetItemId
-      ) {
-        return true
-      }
-
-      return !segmentCrossesObstacleInterior(point, nextPoint, obstacle)
-    })
-  })
 }
 
 export function CableEdge({
   id,
   sourceX,
   sourceY,
-  sourcePosition,
   targetX,
   targetY,
-  targetPosition,
   data,
 }: EdgeProps<CableFlowEdge>) {
   const { getViewport, screenToFlowPosition } = useReactFlow()
-  const savedBendPoints = useMemo(
-    () => data?.route?.bendPoints ?? [],
-    [data?.route?.bendPoints],
-  )
-  const [draftBendPoints, setDraftBendPoints] = useState<ConnectionBendPoint[] | null>(null)
+  const domainEngine = useDomainEngine()
+  const [draftRoute, setDraftRoute] = useState<CableRouteResult | null>(null)
   const gestureCleanupRef = useRef<(() => void) | null>(null)
   const source = useMemo<OrthogonalPoint>(
     () => ({ x: Math.round(sourceX), y: Math.round(sourceY) }),
@@ -133,51 +75,19 @@ export function CableEdge({
     [targetX, targetY],
   )
   const routedCable = useMemo(
-    () => draftBendPoints
-      ? {
-          points: buildOrthogonalCablePoints({
-            source,
-            target,
-            sourceSide: positionToSide(sourcePosition),
-            targetSide: positionToSide(targetPosition),
-            laneOffset: data?.laneOffset ?? 24,
-            bendPoints: draftBendPoints,
-          }),
-          manualAnchorPointIndexes: [],
-          usedFallback: false,
-        }
-      : data?.plannedRoute &&
+    () => draftRoute ?? (data?.plannedRoute &&
           pointsEqual(data.plannedRoute.points[0], source) &&
           pointsEqual(data.plannedRoute.points.at(-1), target)
         ? data.plannedRoute
-        : routeCableAroundObstacles({
-          source,
-          target,
-          sourceSide: positionToSide(sourcePosition),
-          targetSide: positionToSide(targetPosition),
-          laneOffset: data?.laneOffset ?? 24,
-          obstacles: data?.obstacles ?? [],
-          sourceItemId: data?.sourceItemId ?? '',
-          targetItemId: data?.targetItemId ?? '',
-          manualBendPoints: savedBendPoints,
-          snapToGrid: data?.snapToGrid ?? false,
-        }),
+        : null),
     [
-      data?.laneOffset,
-      data?.obstacles,
       data?.plannedRoute,
-      data?.snapToGrid,
-      data?.sourceItemId,
-      data?.targetItemId,
-      draftBendPoints,
-      savedBendPoints,
+      draftRoute,
       source,
-      sourcePosition,
       target,
-      targetPosition,
     ],
   )
-  const cablePoints = routedCable.points
+  const cablePoints = routedCable?.points ?? EMPTY_CABLE_POINTS
   const segments = useMemo(() => getEditableCableSegments(cablePoints), [cablePoints])
   const color = data?.color ?? '#75695d'
   const selected = Boolean(data?.selected)
@@ -186,11 +96,11 @@ export function CableEdge({
   const traced = Boolean(data?.traced)
   const dimmed = Boolean(data?.dimmed)
   const emphasized = selected || hovered || traced
-  const renderedPath = cablePointsToPath(cablePoints)
+  const renderedPath = cablePoints.length > 1 ? cablePointsToPath(cablePoints) : ''
 
   useEffect(() => {
-    setDraftBendPoints(null)
-  }, [savedBendPoints])
+    setDraftRoute(null)
+  }, [data?.plannedRoute])
 
   useEffect(() => () => {
     gestureCleanupRef.current?.()
@@ -280,41 +190,25 @@ export function CableEdge({
   }
 
   function insertManualAnchor(event: ReactMouseEvent<SVGPathElement>, segmentIndex: number) {
-    if (!data || !selected || !editable) return
-    const segmentStart = cablePoints[segmentIndex]
-    const segmentEnd = cablePoints[segmentIndex + 1]
-    if (!segmentStart || !segmentEnd) return
+    if (!data || !selected || !editable || !routedCable || !domainEngine.enabled) return
+    const connectionId = Number(data.connectionId)
+    if (!Number.isSafeInteger(connectionId) || connectionId <= 0) return
 
     event.preventDefault()
     event.stopPropagation()
     const pointer = screenToFlowPosition({ x: event.clientX, y: event.clientY }, { snapToGrid: false })
-    const projected = segmentStart.y === segmentEnd.y
-      ? {
-          x: Math.min(Math.max(pointer.x, Math.min(segmentStart.x, segmentEnd.x)), Math.max(segmentStart.x, segmentEnd.x)),
-          y: segmentStart.y,
-        }
-      : {
-          x: segmentStart.x,
-          y: Math.min(Math.max(pointer.y, Math.min(segmentStart.y, segmentEnd.y)), Math.max(segmentStart.y, segmentEnd.y)),
-        }
-    const anchor = data.snapToGrid
-      ? snapPoint(projected, CABLE_ROUTING_GRID_SIZE)
-      : { x: Math.round(projected.x), y: Math.round(projected.y) }
-    if (
-      (anchor.x === segmentStart.x && anchor.y === segmentStart.y) ||
-      (anchor.x === segmentEnd.x && anchor.y === segmentEnd.y) ||
-      savedBendPoints.some((bendPoint) => bendPoint.x === anchor.x && bendPoint.y === anchor.y)
-    ) {
-      return
-    }
-    const insertionIndex = routedCable.manualAnchorPointIndexes.filter((index) => index <= segmentIndex).length
-    const nextBendPoints = [...savedBendPoints]
-    nextBendPoints.splice(insertionIndex, 0, anchor)
-
-    data.onUpdateRoute(data.connectionId, {
-      ...data.route,
-      bendPoints: nextBendPoints,
-    })
+    void insertCableManualBend(domainEngine.client, {
+      connectionId,
+      segmentIndex,
+      point: pointer,
+      snapToGrid: data.snapToGrid,
+    }).then((preview) => {
+      setDraftRoute(preview.route)
+      data.onUpdateRoute(data.connectionId, {
+        ...data.route,
+        bendPoints: preview.bendPoints,
+      })
+    }).catch(() => {})
   }
 
   function beginSegmentDrag(
@@ -322,44 +216,60 @@ export function CableEdge({
     origin: OrthogonalPoint,
     pointerId: number,
   ) {
-    if (!data) {
+    if (!data || !routedCable || !domainEngine.enabled) {
       return
     }
-
+    const connectionId = Number(data.connectionId)
+    if (!Number.isSafeInteger(connectionId) || connectionId <= 0) return
     const startingPoints = cablePoints
+    const segmentStart = startingPoints[segmentIndex]
+    const segmentEnd = startingPoints[segmentIndex + 1]
+    if (!segmentStart || !segmentEnd) return
+    const horizontal = segmentStart.y === segmentEnd.y
     const snapThreshold = DEFAULT_ENDPOINT_SNAP_THRESHOLD / getViewport().zoom
     let active = false
-    const canSimplifyEndpointApproach = (
-      points: readonly OrthogonalPoint[],
-      endpoint: CableEndpoint,
-    ) => endpointApproachAvoidsObstacles({
-      points,
-      endpoint,
-      obstacles: data.obstacles,
-      sourceItemId: data.sourceItemId,
-      targetItemId: data.targetItemId,
-    })
-
-    const getPointerPoint = (pointerEvent: PointerEvent): OrthogonalPoint => {
+    let canceled = false
+    let previewInFlight = false
+    let queuedPreview: { coordinate: number; commit: boolean } | null = null
+    const getCoordinate = (pointerEvent: PointerEvent): number => {
       const rawPoint = screenToFlowPosition({
         x: pointerEvent.clientX,
         y: pointerEvent.clientY,
       }, {
         snapToGrid: false,
       })
-
-      const point = data.snapToGrid
-        ? snapPoint(rawPoint, CABLE_ROUTING_GRID_SIZE)
-        : rawPoint
-
-      return snapCableSegmentPointerToEndpoint({
-        points: startingPoints,
+      return horizontal ? rawPoint.y : rawPoint.x
+    }
+    const dispatchPreview = () => {
+      if (previewInFlight || !queuedPreview || canceled) return
+      const next = queuedPreview
+      queuedPreview = null
+      previewInFlight = true
+      void previewCableRouteSegment(domainEngine.client, {
+        connectionId,
         segmentIndex,
-        pointer: point,
-        source,
-        target,
-        threshold: snapThreshold,
+        coordinate: next.coordinate,
+        snapToGrid: data.snapToGrid,
+        endpointSnapThreshold: snapThreshold,
+      }).then((preview) => {
+        if (canceled) return
+        setDraftRoute(preview.route)
+        if (next.commit) {
+          data.onUpdateRoute(data.connectionId, {
+            ...data.route,
+            bendPoints: preview.bendPoints,
+          })
+        }
+      }).catch(() => {
+        if (next.commit && !canceled) setDraftRoute(null)
+      }).finally(() => {
+        previewInFlight = false
+        dispatchPreview()
       })
+    }
+    const schedulePreview = (coordinate: number, commit: boolean) => {
+      queuedPreview = { coordinate, commit }
+      dispatchPreview()
     }
 
     const moveBend = (pointerEvent: PointerEvent) => {
@@ -375,18 +285,9 @@ export function CableEdge({
         }
 
         active = true
-        setDraftBendPoints(getCableBendPoints(startingPoints))
+        setDraftRoute(routedCable)
       }
-
-      const point = getPointerPoint(pointerEvent)
-      const nextPoints = moveOrthogonalCableSegment({
-        points: startingPoints,
-        segmentIndex,
-        pointer: point,
-        canSimplifyEndpointApproach,
-      })
-
-      setDraftBendPoints(getCableBendPoints(nextPoints))
+      schedulePreview(getCoordinate(pointerEvent), false)
     }
 
     const stopBendDrag = (pointerEvent: PointerEvent) => {
@@ -397,22 +298,10 @@ export function CableEdge({
       cleanupGesture()
 
       if (!active) {
-        setDraftBendPoints(null)
+        setDraftRoute(null)
         return
       }
-
-      const point = getPointerPoint(pointerEvent)
-      const nextPoints = moveOrthogonalCableSegment({
-        points: startingPoints,
-        segmentIndex,
-        pointer: point,
-        canSimplifyEndpointApproach,
-      })
-
-      data.onUpdateRoute(data.connectionId, {
-        ...data.route,
-        bendPoints: getCableBendPoints(nextPoints),
-      })
+      schedulePreview(getCoordinate(pointerEvent), true)
     }
     const cancelBendDrag = (pointerEvent: PointerEvent) => {
       if (pointerEvent.pointerId !== pointerId) {
@@ -420,7 +309,9 @@ export function CableEdge({
       }
 
       cleanupGesture()
-      setDraftBendPoints(null)
+      canceled = true
+      queuedPreview = null
+      setDraftRoute(null)
     }
     const cleanupGesture = () => {
       window.removeEventListener('pointermove', moveBend)

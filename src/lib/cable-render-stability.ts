@@ -1,4 +1,4 @@
-import type { CableRouteResult } from '@/lib/cable-obstacle-routing'
+import type { CableRouteResult } from '@/lib/cable-geometry'
 import type {
   ConnectionEndpoint,
   InventoryConnection,

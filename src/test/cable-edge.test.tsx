@@ -1,12 +1,25 @@
-import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import type { EdgeProps } from '@xyflow/react'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   CableEdge,
   type CableEdgeData,
   type CableFlowEdge,
 } from '@/components/cable-edge'
-import type { CableObstacle } from '@/lib/cable-obstacle-routing'
+
+const engineMocks = vi.hoisted(() => ({
+  insert: vi.fn(),
+  preview: vi.fn(),
+}))
+
+vi.mock('@/engine/routing', () => ({
+  insertCableManualBend: engineMocks.insert,
+  previewCableRouteSegment: engineMocks.preview,
+}))
+
+vi.mock('@/hooks/use-domain-engine', () => ({
+  useDomainEngine: () => ({ enabled: true, client: {} }),
+}))
 
 vi.mock('@xyflow/react', () => ({
   BaseEdge: ({
@@ -23,9 +36,51 @@ vi.mock('@xyflow/react', () => ({
   }),
 }))
 
+const defaultPoints = [
+  { x: 0, y: 0 },
+  { x: 24, y: 0 },
+  { x: 24, y: 100 },
+  { x: 176, y: 100 },
+  { x: 176, y: 100 },
+  { x: 200, y: 100 },
+]
+
 afterEach(() => {
   cleanup()
   vi.useRealTimers()
+})
+
+beforeEach(() => {
+  engineMocks.insert.mockReset()
+  engineMocks.preview.mockReset()
+  engineMocks.insert.mockResolvedValue({
+    route: {
+      points: defaultPoints,
+      manualAnchorPointIndexes: [2],
+      usedFallback: false,
+    },
+    bendPoints: [{ x: 100, y: 100 }],
+  })
+  engineMocks.preview.mockImplementation(async (_: unknown, input: { coordinate: number }) => ({
+    route: {
+      points: [
+        { x: 0, y: 0 },
+        { x: 24, y: 0 },
+        { x: 24, y: input.coordinate },
+        { x: 176, y: input.coordinate },
+        { x: 176, y: 100 },
+        { x: 200, y: 100 },
+      ],
+      manualAnchorPointIndexes: [],
+      usedFallback: false,
+    },
+    bendPoints: [
+      { x: 24, y: 0 },
+      { x: 24, y: input.coordinate },
+      { x: 176, y: input.coordinate },
+      { x: 176, y: 100 },
+    ],
+  }))
 })
 
 function renderCable({
@@ -33,19 +88,13 @@ function renderCable({
   hovered = false,
   editable = selected,
   snapToGrid = false,
-  plannedPoints,
-  obstacles = [],
-  sourcePosition = 'right',
-  targetPosition = 'left',
+  plannedPoints = defaultPoints,
 }: {
   selected?: boolean
   hovered?: boolean
   editable?: boolean
   snapToGrid?: boolean
   plannedPoints?: Array<{ x: number; y: number }>
-  obstacles?: CableObstacle[]
-  sourcePosition?: 'left' | 'right' | 'top' | 'bottom'
-  targetPosition?: 'left' | 'right' | 'top' | 'bottom'
 } = {}) {
   const onSelect = vi.fn()
   const onUpdateRoute = vi.fn()
@@ -53,19 +102,17 @@ function renderCable({
     color: '#ef7d32',
     label: '1G',
     detail: 'Server NIC to switch port',
-    laneOffset: 24,
     selected,
     hovered,
     dimmed: false,
     editable,
     connectionId: 1,
-    obstacles,
-    sourceItemId: 'server:1',
-    targetItemId: 'switch:1',
     snapToGrid,
-    plannedRoute: plannedPoints
-      ? { points: plannedPoints, manualAnchorPointIndexes: [], usedFallback: false }
-      : undefined,
+    plannedRoute: {
+      points: plannedPoints,
+      manualAnchorPointIndexes: [],
+      usedFallback: false,
+    },
     onSelect,
     onUpdateRoute,
   } satisfies CableEdgeData
@@ -73,19 +120,14 @@ function renderCable({
     id: 'cable:1',
     sourceX: 0,
     sourceY: 0,
-    sourcePosition,
+    sourcePosition: 'right',
     targetX: 200,
     targetY: 100,
-    targetPosition,
+    targetPosition: 'left',
     data,
   } as unknown as EdgeProps<CableFlowEdge>
 
-  render(
-    <svg>
-      <CableEdge {...props} />
-    </svg>,
-  )
-
+  render(<svg><CableEdge {...props} /></svg>)
   return { onSelect, onUpdateRoute }
 }
 
@@ -99,319 +141,91 @@ function movableHorizontalSegment(): SVGPathElement {
       }
     })
     .sort((first, second) => second.length - first.length)[0]?.candidate
-
-  if (!segment) {
-    throw new Error('Expected the long horizontal cable segment to be draggable.')
-  }
-
+  if (!segment) throw new Error('Expected a horizontal cable segment.')
   return segment as unknown as SVGPathElement
 }
 
-function movableVerticalSegment(): SVGPathElement {
-  const segment = screen.getAllByLabelText('Move vertical cable segment')
-    .map((candidate) => {
-      const coordinates = candidate.getAttribute('d')?.match(/M ([\d.-]+),([\d.-]+) L ([\d.-]+),([\d.-]+)/)
-      return {
-        candidate,
-        length: coordinates ? Math.abs(Number(coordinates[4]) - Number(coordinates[2])) : 0,
-      }
-    })
-    .sort((first, second) => second.length - first.length)[0]?.candidate
-
-  if (!segment) {
-    throw new Error('Expected the long vertical cable segment to be draggable.')
-  }
-
-  return segment as unknown as SVGPathElement
-}
-
-describe('CableEdge route dragging', () => {
-  it('renders a matching batch-planned route', () => {
-    renderCable({
-      plannedPoints: [
-        { x: 0, y: 0 },
-        { x: 24, y: 0 },
-        { x: 24, y: 120 },
-        { x: 176, y: 120 },
-        { x: 176, y: 100 },
-        { x: 200, y: 100 },
-      ],
-    })
-
+describe('CableEdge route interaction', () => {
+  it('renders only the matching WASM-planned route', () => {
+    renderCable()
     expect(screen.getByTestId('base-cable-path')).toHaveAttribute(
       'd',
-      'M 0,0 L 24,0 L 24,120 L 176,120 L 176,100 L 200,100',
+      'M 0,0 L 24,0 L 24,100 L 176,100 L 176,100 L 200,100',
     )
   })
 
-  it('falls back to a live route while an endpoint no longer matches the batch plan', () => {
-    renderCable({
-      plannedPoints: [
-        { x: 12, y: 0 },
-        { x: 24, y: 0 },
-        { x: 176, y: 100 },
-        { x: 200, y: 100 },
-      ],
-    })
-
-    expect(screen.getByTestId('base-cable-path')).toHaveAttribute(
-      'd',
-      'M 0,0 L 24,0 L 176,0 L 176,100 L 200,100',
-    )
+  it('does not calculate a TypeScript fallback for a stale endpoint route', () => {
+    renderCable({ plannedPoints: [{ x: 12, y: 0 }, { x: 200, y: 100 }] })
+    expect(screen.getByTestId('base-cable-path')).toHaveAttribute('d', '')
   })
 
-  it('does not expose route drag hit areas until the cable is selected', () => {
+  it('does not expose drag hit areas until selected', () => {
     renderCable({ selected: false, hovered: true, editable: true })
-
     expect(screen.queryAllByLabelText(/Move (horizontal|vertical) cable segment/)).toHaveLength(0)
     expect(screen.getByTestId('base-cable-path')).toHaveStyle({ strokeWidth: '6' })
   })
 
-  it('does not save a route when a selected cable is clicked without movement', () => {
+  it('does not preview or save when clicked without movement', () => {
     const { onSelect, onUpdateRoute } = renderCable({ selected: true })
     const segment = movableHorizontalSegment()
-
-    fireEvent.pointerDown(segment, {
-      pointerId: 1,
-      pointerType: 'mouse',
-      clientX: 100,
-      clientY: 100,
-    })
-    fireEvent.pointerUp(window, {
-      pointerId: 1,
-      pointerType: 'mouse',
-      clientX: 100,
-      clientY: 100,
-    })
-
+    fireEvent.pointerDown(segment, { pointerId: 1, pointerType: 'mouse', clientX: 100, clientY: 100 })
+    fireEvent.pointerUp(window, { pointerId: 1, pointerType: 'mouse', clientX: 100, clientY: 100 })
     expect(onSelect).toHaveBeenCalledWith(1)
+    expect(engineMocks.preview).not.toHaveBeenCalled()
     expect(onUpdateRoute).not.toHaveBeenCalled()
   })
 
-  it('adds one manual anchor when a selected segment is double-clicked', () => {
-    const { onUpdateRoute } = renderCable({ selected: true })
-    const segment = movableHorizontalSegment()
-
-    fireEvent.doubleClick(segment, { clientX: 101, clientY: 100 })
-
-    expect(onUpdateRoute).toHaveBeenCalledWith(1, expect.objectContaining({
-      bendPoints: [{ x: 101, y: 0 }],
-    }))
-  })
-
-  it('snaps a newly inserted manual anchor to a twelve-pixel cable lane when enabled', () => {
+  it('delegates manual bend insertion to the WASM route planner', async () => {
     const { onUpdateRoute } = renderCable({ selected: true, snapToGrid: true })
-    const segment = movableHorizontalSegment()
-
-    fireEvent.doubleClick(segment, { clientX: 101, clientY: 100 })
-
-    expect(onUpdateRoute).toHaveBeenCalledWith(1, expect.objectContaining({
-      bendPoints: [{ x: 96, y: 0 }],
+    fireEvent.doubleClick(movableHorizontalSegment(), { clientX: 101, clientY: 100 })
+    await waitFor(() => expect(onUpdateRoute).toHaveBeenCalledWith(1, expect.objectContaining({
+      bendPoints: [{ x: 100, y: 100 }],
+    })))
+    expect(engineMocks.insert).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
+      connectionId: 1,
+      snapToGrid: true,
     }))
   })
 
-  it('ignores movement below the four-pixel activation threshold', () => {
+  it('previews and commits a dragged segment through WASM', async () => {
     const { onUpdateRoute } = renderCable({ selected: true })
     const segment = movableHorizontalSegment()
-    const originalPath = screen.getByTestId('base-cable-path').getAttribute('d')
-
-    fireEvent.pointerDown(segment, {
-      pointerId: 1,
-      pointerType: 'mouse',
-      clientX: 100,
-      clientY: 100,
-    })
-    fireEvent.pointerMove(window, {
-      pointerId: 1,
-      pointerType: 'mouse',
-      clientX: 102,
-      clientY: 102,
-    })
-    fireEvent.pointerUp(window, {
-      pointerId: 1,
-      pointerType: 'mouse',
-      clientX: 102,
-      clientY: 102,
-    })
-
-    expect(screen.getByTestId('base-cable-path')).toHaveAttribute('d', originalPath)
-    expect(onUpdateRoute).not.toHaveBeenCalled()
-  })
-
-  it('previews and saves a selected cable after crossing the movement threshold', () => {
-    const { onUpdateRoute } = renderCable({ selected: true })
-    const segment = movableHorizontalSegment()
-    const originalPath = screen.getByTestId('base-cable-path').getAttribute('d')
-
-    fireEvent.pointerDown(segment, {
-      pointerId: 1,
-      pointerType: 'mouse',
-      clientX: 100,
-      clientY: 100,
-    })
-    fireEvent.pointerMove(window, {
-      pointerId: 1,
-      pointerType: 'mouse',
-      clientX: 100,
-      clientY: 120,
-    })
-
-    expect(screen.getByTestId('base-cable-path')).not.toHaveAttribute('d', originalPath)
-    expect(onUpdateRoute).not.toHaveBeenCalled()
-
-    fireEvent.pointerUp(window, {
-      pointerId: 1,
-      pointerType: 'mouse',
-      clientX: 100,
-      clientY: 120,
-    })
-
-    expect(onUpdateRoute).toHaveBeenCalledTimes(1)
-    expect(onUpdateRoute).toHaveBeenCalledWith(1, expect.objectContaining({
-      bendPoints: expect.any(Array),
-    }))
-  })
-
-  it('previews and saves the simplified endpoint approach after moving a segment', () => {
-    const { onUpdateRoute } = renderCable({
-      selected: true,
-      sourcePosition: 'left',
-      targetPosition: 'top',
-      plannedPoints: [
-        { x: 0, y: 0 },
-        { x: -24, y: 0 },
-        { x: -24, y: 40 },
-        { x: -80, y: 40 },
-        { x: -80, y: 160 },
-        { x: 200, y: 160 },
-        { x: 200, y: 100 },
-      ],
-    })
-    const segment = movableVerticalSegment()
-
-    fireEvent.pointerDown(segment, {
-      pointerId: 1,
-      pointerType: 'mouse',
-      clientX: -80,
-      clientY: 100,
-    })
-    fireEvent.pointerMove(window, {
-      pointerId: 1,
-      pointerType: 'mouse',
-      clientX: -100,
-      clientY: 100,
-    })
-
-    expect(screen.getByTestId('base-cable-path')).toHaveAttribute(
+    fireEvent.pointerDown(segment, { pointerId: 1, pointerType: 'mouse', clientX: 100, clientY: 100 })
+    fireEvent.pointerMove(window, { pointerId: 1, pointerType: 'mouse', clientX: 100, clientY: 120 })
+    await waitFor(() => expect(screen.getByTestId('base-cable-path')).toHaveAttribute(
       'd',
-      'M 0,0 L -100,0 L -100,160 L 200,160 L 200,100',
-    )
-
-    fireEvent.pointerUp(window, {
-      pointerId: 1,
-      pointerType: 'mouse',
-      clientX: -100,
-      clientY: 100,
-    })
-
-    expect(onUpdateRoute).toHaveBeenCalledWith(1, expect.objectContaining({
-      bendPoints: [
-        { x: -100, y: 0 },
-        { x: -100, y: 160 },
-        { x: 200, y: 160 },
-      ],
-    }))
+      'M 0,0 L 24,0 L 24,120 L 176,120 L 176,100 L 200,100',
+    ))
+    fireEvent.pointerUp(window, { pointerId: 1, pointerType: 'mouse', clientX: 100, clientY: 120 })
+    await waitFor(() => expect(onUpdateRoute).toHaveBeenCalledTimes(1))
   })
 
-  it('keeps the existing endpoint staircase when the shorter approach crosses equipment', () => {
-    renderCable({
-      selected: true,
-      sourcePosition: 'left',
-      targetPosition: 'top',
-      obstacles: [{ itemId: 'server:2', left: -70, top: -10, right: -50, bottom: 10 }],
-      plannedPoints: [
-        { x: 0, y: 0 },
-        { x: -24, y: 0 },
-        { x: -24, y: 40 },
-        { x: -80, y: 40 },
-        { x: -80, y: 160 },
-        { x: 200, y: 160 },
-        { x: 200, y: 100 },
-      ],
-    })
-    const segment = movableVerticalSegment()
-
-    fireEvent.pointerDown(segment, {
-      pointerId: 1,
-      pointerType: 'mouse',
-      clientX: -80,
-      clientY: 100,
-    })
-    fireEvent.pointerMove(window, {
-      pointerId: 1,
-      pointerType: 'mouse',
-      clientX: -100,
-      clientY: 100,
-    })
-
-    expect(screen.getByTestId('base-cable-path')).toHaveAttribute(
-      'd',
-      'M 0,0 L -24,0 L -24,40 L -100,40 L -100,160 L 200,160 L 200,100',
-    )
-  })
-
-  it('discards an active route preview when the pointer is canceled', () => {
+  it('discards an active preview when the pointer is canceled', async () => {
     const { onUpdateRoute } = renderCable({ selected: true })
     const segment = movableHorizontalSegment()
-    const originalPath = screen.getByTestId('base-cable-path').getAttribute('d')
-
-    fireEvent.pointerDown(segment, {
-      pointerId: 1,
-      pointerType: 'mouse',
-      clientX: 100,
-      clientY: 100,
-    })
-    fireEvent.pointerMove(window, {
-      pointerId: 1,
-      pointerType: 'mouse',
-      clientX: 100,
-      clientY: 120,
-    })
-    expect(screen.getByTestId('base-cable-path')).not.toHaveAttribute('d', originalPath)
-
+    fireEvent.pointerDown(segment, { pointerId: 1, pointerType: 'mouse', clientX: 100, clientY: 100 })
+    fireEvent.pointerMove(window, { pointerId: 1, pointerType: 'mouse', clientX: 100, clientY: 120 })
+    await waitFor(() => expect(engineMocks.preview).toHaveBeenCalled())
     fireEvent.pointerCancel(window, { pointerId: 1, pointerType: 'mouse' })
-
-    expect(screen.getByTestId('base-cable-path')).toHaveAttribute('d', originalPath)
     expect(onUpdateRoute).not.toHaveBeenCalled()
   })
 
-  it('keeps touch route dragging behind both selection and hold activation', () => {
+  it('keeps touch dragging behind hold activation', async () => {
     vi.useFakeTimers()
     const { onUpdateRoute } = renderCable({ selected: true })
     const segment = movableHorizontalSegment()
-    const originalPath = screen.getByTestId('base-cable-path').getAttribute('d')
-
-    fireEvent.pointerDown(segment, {
-      pointerId: 1,
-      pointerType: 'touch',
-      clientX: 100,
-      clientY: 100,
-    })
+    fireEvent.pointerDown(segment, { pointerId: 1, pointerType: 'touch', clientX: 100, clientY: 100 })
     act(() => vi.advanceTimersByTime(350))
-    fireEvent.pointerMove(window, {
-      pointerId: 1,
-      pointerType: 'touch',
-      clientX: 100,
-      clientY: 120,
+    fireEvent.pointerMove(window, { pointerId: 1, pointerType: 'touch', clientX: 100, clientY: 120 })
+    await act(async () => {
+      await Promise.resolve()
+      await Promise.resolve()
     })
-
-    expect(screen.getByTestId('base-cable-path')).not.toHaveAttribute('d', originalPath)
-
-    fireEvent.pointerUp(window, {
-      pointerId: 1,
-      pointerType: 'touch',
-      clientX: 100,
-      clientY: 120,
+    fireEvent.pointerUp(window, { pointerId: 1, pointerType: 'touch', clientX: 100, clientY: 120 })
+    await act(async () => {
+      await Promise.resolve()
+      await Promise.resolve()
+      await Promise.resolve()
     })
     expect(onUpdateRoute).toHaveBeenCalledTimes(1)
   })

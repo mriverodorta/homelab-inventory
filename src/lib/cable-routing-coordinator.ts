@@ -1,11 +1,10 @@
-import type { CableLaneRouteRequest } from '@/lib/cable-lane-routing'
+import type { DomainEngineClient } from '@/engine/client'
+import {
+  planCableRoutes,
+  type CableLaneRouteRequest,
+} from '@/engine/routing'
+import type { CableRouteResult } from '@/lib/cable-geometry'
 import { cableRouteResultsEqual } from '@/lib/cable-render-stability'
-import type { CableRouteResult } from '@/lib/cable-obstacle-routing'
-import type {
-  CableRoutingWorkerLike,
-  CableRoutingWorkerRequest,
-  CableRoutingWorkerResponse,
-} from '@/lib/cable-routing-worker-protocol'
 
 export type CableRoutingState = {
   routes: ReadonlyMap<number, CableRouteResult>
@@ -16,8 +15,8 @@ export type CableRoutingState = {
 type Listener = (state: CableRoutingState) => void
 
 type RoutingWork = {
-  message: CableRoutingWorkerRequest
-  replaceAll: boolean
+  revision: number
+  requests: CableLaneRouteRequest[]
 }
 
 function pointsEqual(
@@ -55,26 +54,21 @@ function routeRequestsEqual(
     )
 }
 
-function routesWithRemovedConnections(
-  routes: ReadonlyMap<number, CableRouteResult>,
-  desiredRequests: ReadonlyMap<number, CableLaneRouteRequest>,
-): ReadonlyMap<number, CableRouteResult> {
-  if ([...routes.keys()].every((connectionId) => desiredRequests.has(connectionId))) {
-    return routes
-  }
-
-  return new Map(
-    [...routes].filter(([connectionId]) => desiredRequests.has(connectionId)),
-  )
+function requestSetsEqual(
+  first: ReadonlyMap<number, CableLaneRouteRequest>,
+  second: ReadonlyMap<number, CableLaneRouteRequest>,
+) {
+  return first.size === second.size && [...first].every(([connectionId, request]) => {
+    const candidate = second.get(connectionId)
+    return candidate ? routeRequestsEqual(request, candidate) : false
+  })
 }
 
 function reconcileRouteMap(
   current: ReadonlyMap<number, CableRouteResult>,
   calculated: ReadonlyMap<number, CableRouteResult>,
-  replaceAll: boolean,
 ): ReadonlyMap<number, CableRouteResult> {
-  const next = replaceAll ? new Map<number, CableRouteResult>() : new Map(current)
-
+  const next = new Map<number, CableRouteResult>()
   for (const [connectionId, route] of calculated) {
     const previous = current.get(connectionId)
     next.set(
@@ -82,34 +76,29 @@ function reconcileRouteMap(
       previous && cableRouteResultsEqual(previous, route) ? previous : route,
     )
   }
-
   if (
     current.size === next.size
     && [...current].every(([connectionId, route]) => next.get(connectionId) === route)
-  ) {
-    return current
-  }
-
+  ) return current
   return next
 }
 
 export class CableRoutingCoordinator {
-  private readonly worker: CableRoutingWorkerLike
+  private readonly client: DomainEngineClient
   private readonly listeners = new Set<Listener>()
   private revision = 0
   private activeWork: RoutingWork | null = null
   private queuedWork: RoutingWork | null = null
   private desiredRequests = new Map<number, CableLaneRouteRequest>()
+  private disposed = false
   private state: CableRoutingState = {
     routes: new Map(),
     pending: false,
     error: null,
   }
 
-  constructor(worker: CableRoutingWorkerLike) {
-    this.worker = worker
-    this.worker.addEventListener('message', this.handleMessage)
-    this.worker.addEventListener('error', this.handleError)
+  constructor(client: DomainEngineClient) {
+    this.client = client
   }
 
   getState(): CableRoutingState {
@@ -119,128 +108,78 @@ export class CableRoutingCoordinator {
   subscribe(listener: Listener): () => void {
     this.listeners.add(listener)
     listener(this.state)
-
     return () => this.listeners.delete(listener)
   }
 
   request(requests: CableLaneRouteRequest[]): number {
     const nextRequests = new Map(requests.map((request) => [request.connectionId, request]))
-    const changedRequests = requests.filter((request) => {
-      const previous = this.desiredRequests.get(request.connectionId)
-      return !previous || !routeRequestsEqual(previous, request)
-    })
-    const removedConnectionIds = [...this.desiredRequests.keys()].filter(
-      (connectionId) => !nextRequests.has(connectionId),
-    )
+    if (requestSetsEqual(this.desiredRequests, nextRequests)) return this.revision
 
-    if (changedRequests.length === 0 && removedConnectionIds.length === 0) {
-      return this.revision
-    }
-
-    const previousHadCollisionDependencies = [...this.desiredRequests.values()].some(
-      (request) => request.avoidCableOverlap,
-    )
-    const hasCollisionDependencies = requests.some((request) => request.avoidCableOverlap)
     this.desiredRequests = nextRequests
-
-    const retainedRoutes = routesWithRemovedConnections(this.state.routes, nextRequests)
-    const hasCompleteRouteSet = requests.every(
-      (request) => retainedRoutes.has(request.connectionId),
-    )
-    const replaceAll = previousHadCollisionDependencies
-      || hasCollisionDependencies
-      || !hasCompleteRouteSet
-    const requestsToRoute = replaceAll ? requests : changedRequests
     const revision = ++this.revision
-
-    if (requestsToRoute.length === 0) {
-      this.queuedWork = null
-      this.updateState({
-        routes: retainedRoutes,
-        pending: this.activeWork !== null,
-        error: null,
-      })
-      return revision
-    }
-
-    this.queuedWork = {
-      replaceAll,
-      message: {
-        type: 'route-cables',
-        revision,
-        requests: requestsToRoute,
-      },
-    }
-    this.updateState({ routes: retainedRoutes, pending: true, error: null })
+    this.queuedWork = { revision, requests }
+    this.updateState({ ...this.state, pending: true, error: null })
     this.dispatchNext()
     return revision
   }
 
   clear(): void {
+    this.request([])
+    this.updateState({ routes: new Map(), pending: this.activeWork !== null, error: null })
+  }
+
+  dispose(): void {
+    this.disposed = true
     this.revision += 1
     this.activeWork = null
     this.queuedWork = null
     this.desiredRequests.clear()
-    this.updateState({
-      routes: new Map(),
-      pending: false,
-      error: null,
-    })
-  }
-
-  dispose(): void {
-    this.worker.removeEventListener('message', this.handleMessage)
-    this.worker.removeEventListener('error', this.handleError)
-    this.worker.terminate?.()
     this.listeners.clear()
   }
 
-  private readonly handleMessage = (event: MessageEvent<CableRoutingWorkerResponse>) => {
-    const response = event.data
+  private dispatchNext(): void {
+    if (this.disposed || this.activeWork || !this.queuedWork) return
+    const work = this.queuedWork
+    this.activeWork = work
+    this.queuedWork = null
+    void planCableRoutes(this.client, work.requests).then(
+      (result) => this.complete(work, result.routes),
+      (error) => this.fail(work, error),
+    )
+  }
 
-    if (response.revision !== this.activeWork?.message.revision) return
-
-    const completedWork = this.activeWork
+  private complete(work: RoutingWork, routes: ReadonlyMap<number, CableRouteResult>): void {
+    if (this.disposed || this.activeWork !== work) return
     this.activeWork = null
-    const isLatest = response.revision === this.revision
-
-    if (isLatest && response.type === 'routes-ready') {
-      const calculated = new Map(response.routes)
+    if (work.revision === this.revision) {
       this.updateState({
-        routes: reconcileRouteMap(this.state.routes, calculated, completedWork.replaceAll),
+        routes: reconcileRouteMap(this.state.routes, routes),
         pending: this.queuedWork !== null,
         error: null,
       })
-    } else if (isLatest && response.type === 'routes-failed') {
+    }
+    this.dispatchNext()
+    this.finishPendingState()
+  }
+
+  private fail(work: RoutingWork, error: unknown): void {
+    if (this.disposed || this.activeWork !== work) return
+    this.activeWork = null
+    if (work.revision === this.revision) {
       this.updateState({
         ...this.state,
         pending: this.queuedWork !== null,
-        error: response.message,
+        error: error instanceof Error ? error.message : 'Background cable routing failed.',
       })
     }
-
     this.dispatchNext()
+    this.finishPendingState()
+  }
+
+  private finishPendingState(): void {
     if (!this.activeWork && !this.queuedWork && this.state.pending) {
       this.updateState({ ...this.state, pending: false })
     }
-  }
-
-  private readonly handleError = (event: ErrorEvent) => {
-    this.activeWork = null
-    this.queuedWork = null
-    this.updateState({
-      ...this.state,
-      pending: false,
-      error: event.message || 'Background cable routing failed.',
-    })
-  }
-
-  private dispatchNext(): void {
-    if (this.activeWork || !this.queuedWork) return
-
-    this.activeWork = this.queuedWork
-    this.queuedWork = null
-    this.worker.postMessage(this.activeWork.message)
   }
 
   private updateState(nextState: CableRoutingState): void {
@@ -249,7 +188,6 @@ export class CableRoutingCoordinator {
       && this.state.pending === nextState.pending
       && this.state.error === nextState.error
     ) return
-
     this.state = nextState
     for (const listener of this.listeners) listener(this.state)
   }

@@ -8,7 +8,7 @@ use homelab_engine_protocol::{
 };
 use homelab_geometry::{GeometryError, GeometryNode, SpatialIndex, arrange_items};
 use homelab_routing::{
-    RoutingError, build_route, preview_insert_manual_bend, preview_move_segment,
+    RoutePlanner, RoutingError, build_route, preview_insert_manual_bend, preview_move_segment,
     preview_remove_manual_bend, preview_reset_route, route_around_obstacles,
 };
 
@@ -21,6 +21,7 @@ pub struct Engine {
     handles: BTreeMap<String, GeometryHandle>,
     routing_revision: u32,
     routes: BTreeMap<u32, RouteDefinition>,
+    route_planner: RoutePlanner,
 }
 
 impl Engine {
@@ -34,6 +35,7 @@ impl Engine {
             handles: BTreeMap::new(),
             routing_revision: 0,
             routes: BTreeMap::new(),
+            route_planner: RoutePlanner::default(),
         }
     }
 
@@ -173,6 +175,40 @@ impl Engine {
             }
             Operation::RouteAroundObstacles { request } => match route_around_obstacles(&request) {
                 Ok(result) => ResponseBody::ObstacleRoute(result),
+                Err(error) => routing_error(error),
+            },
+            Operation::PlanCableRoutes { plan } => match self.route_planner.plan(&plan) {
+                Ok(result) => ResponseBody::CableRoutesPlanned(result),
+                Err(error) => routing_error(error),
+            },
+            Operation::PreviewPlannedRouteSegment {
+                connection_id,
+                segment_index,
+                coordinate,
+                snap_grid,
+                endpoint_snap_threshold,
+            } => match self.route_planner.preview_move_segment(
+                connection_id,
+                segment_index,
+                coordinate,
+                snap_grid,
+                endpoint_snap_threshold,
+            ) {
+                Ok(edit) => ResponseBody::RoutePreview(edit),
+                Err(error) => routing_error(error),
+            },
+            Operation::InsertPlannedManualBend {
+                connection_id,
+                segment_index,
+                point,
+                snap_grid,
+            } => match self.route_planner.preview_insert_manual_bend(
+                connection_id,
+                segment_index,
+                point,
+                snap_grid,
+            ) {
+                Ok(edit) => ResponseBody::RoutePreview(edit),
                 Err(error) => routing_error(error),
             },
             Operation::PreviewMoveRouteSegment {
@@ -497,12 +533,49 @@ mod tests {
         }
     }
 
+    fn lane_route(
+        connection_id: u32,
+        y: f64,
+        avoid_cable_overlap: bool,
+    ) -> homelab_engine_protocol::LaneRouteRequest {
+        homelab_engine_protocol::LaneRouteRequest {
+            avoid_cable_overlap,
+            request: homelab_engine_protocol::ObstacleRouteRequest {
+                definition: RouteDefinition {
+                    connection_id,
+                    source: homelab_engine_protocol::Point { x: 0.0, y },
+                    target: homelab_engine_protocol::Point { x: 240.0, y },
+                    source_side: homelab_engine_protocol::Side::Right,
+                    target_side: homelab_engine_protocol::Side::Left,
+                    lane_offset: 24.0,
+                    manual_bends: vec![],
+                },
+                source_item_id: "server:1".into(),
+                target_item_id: "switch:1".into(),
+                obstacles: vec![],
+                reserved_segments: vec![],
+                snap_to_grid: true,
+                grid_size: 12.0,
+                previous_valid_route: None,
+            },
+        }
+    }
+
     fn request(operation: Operation) -> EngineRequest {
         EngineRequest {
             protocol_version: PROTOCOL_VERSION,
             request_id: 20,
             base_revision: 12,
             operation,
+        }
+    }
+
+    fn cable_plan(
+        requests: Vec<homelab_engine_protocol::LaneRouteRequest>,
+    ) -> homelab_engine_protocol::CableRoutePlanRequest {
+        homelab_engine_protocol::CableRoutePlanRequest {
+            obstacles: vec![],
+            requests,
         }
     }
 
@@ -815,6 +888,40 @@ mod tests {
             response.result,
             ResponseBody::ObstacleRoute(ref result)
                 if !result.used_fallback && result.warning.is_none()
+        ));
+        assert_eq!(engine.revision(), 12);
+        assert_eq!(engine.routing_revision(), 0);
+    }
+
+    #[test]
+    fn cable_plan_cache_reports_targeted_recalculation() {
+        let mut engine = engine();
+        let requests = vec![lane_route(1, 24.0, false), lane_route(2, 24.0, true)];
+        let initial = engine.dispatch(request(Operation::PlanCableRoutes {
+            plan: cable_plan(requests.clone()),
+        }));
+        assert!(matches!(
+            initial.result,
+            ResponseBody::CableRoutesPlanned(ref plan)
+                if plan.recalculated_connection_ids == vec![1, 2]
+        ));
+
+        let unchanged = engine.dispatch(request(Operation::PlanCableRoutes {
+            plan: cable_plan(requests.clone()),
+        }));
+        assert!(matches!(
+            unchanged.result,
+            ResponseBody::CableRoutesPlanned(ref plan)
+                if plan.recalculated_connection_ids.is_empty()
+        ));
+
+        let changed = engine.dispatch(request(Operation::PlanCableRoutes {
+            plan: cable_plan(vec![lane_route(1, 36.0, false), requests[1].clone()]),
+        }));
+        assert!(matches!(
+            changed.result,
+            ResponseBody::CableRoutesPlanned(ref plan)
+                if plan.recalculated_connection_ids == vec![1, 2]
         ));
         assert_eq!(engine.revision(), 12);
         assert_eq!(engine.routing_revision(), 0);

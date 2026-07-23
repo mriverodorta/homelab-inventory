@@ -24,6 +24,9 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 - Added optional per-cable lane avoidance so automatic routes can separate long parallel overlaps while preserving clean crossings and shared endpoint approaches.
 - Added a browser-local global cable-collision preference that applies lane avoidance to every cable without overwriting individual cable settings.
 - Moved cable planning into a background worker, retained existing paths while rerouting, and added a non-blocking routing status indicator.
+- Moved obstacle pathfinding, lane separation, route caching, manual bend insertion, and segment-drag previews into the shared Rust/WASM worker.
+- Replaced full-canvas cable recalculation with targeted dependency invalidation so unchanged and unrelated routes retain their cached geometry.
+- Removed the duplicate TypeScript cable pathfinder and standalone cable-routing worker.
 - Fixed canvas pan and zoom lag caused by serializing every measured cable handle on viewport updates.
 - Prevented single-cable bend edits from rerouting, rebuilding, or visibly blinking unrelated cables and equipment.
 - Prevented cable paths from moving, disappearing, or blinking during cable clicks, equipment focus, Inspector opening, hover, and canvas deselection.

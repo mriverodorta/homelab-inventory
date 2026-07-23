@@ -215,6 +215,55 @@ describe('Rust WASM engine integration', () => {
     expect(obstacleRoute.result.payload.route.points.some((point) => (
       point.y === 12 || point.y === 132
     ))).toBe(true)
+
+    const laneRequests = [1, 2].map((connectionId) => ({
+      avoid_cable_overlap: connectionId === 2,
+      request: {
+        definition: {
+          connection_id: connectionId,
+          source: { x: 0, y: 24 },
+          target: { x: 240, y: 24 },
+          source_side: 'right' as const,
+          target_side: 'left' as const,
+          lane_offset: 24,
+          manual_bends: [],
+        },
+        source_item_id: 'server:1',
+        target_item_id: 'switch:1',
+        obstacles: [],
+        reserved_segments: [],
+        snap_to_grid: true,
+        grid_size: 12,
+        previous_valid_route: null,
+      },
+    }))
+    const planned = decodeEngineResponse(runtime.dispatch(handle, encodeEngineRequest({
+      protocol_version: 1,
+      request_id: 15,
+      base_revision: 7,
+      operation: {
+        kind: 'plan-cable-routes',
+        payload: { plan: { obstacles: [], requests: laneRequests } },
+      },
+    })))
+    expect(planned.result).toMatchObject({
+      kind: 'cable-routes-planned',
+      payload: { recalculated_connection_ids: [1, 2] },
+    })
+
+    const reused = decodeEngineResponse(runtime.dispatch(handle, encodeEngineRequest({
+      protocol_version: 1,
+      request_id: 16,
+      base_revision: 7,
+      operation: {
+        kind: 'plan-cable-routes',
+        payload: { plan: { obstacles: [], requests: laneRequests } },
+      },
+    })))
+    expect(reused.result).toMatchObject({
+      kind: 'cable-routes-planned',
+      payload: { recalculated_connection_ids: [] },
+    })
     expect(runtime.destroy(handle)).toBe(true)
   })
 })
