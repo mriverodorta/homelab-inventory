@@ -1,12 +1,43 @@
 import { describe, expect, it } from 'vitest'
-import { createConnection } from '@/lib/project'
-import { getItemAuditWarnings, getProjectAuditWarnings } from '@/lib/audit'
+import { getConnectionPort } from '@/lib/project'
+import {
+  getItemAuditWarnings,
+  getProjectAuditWarnings,
+  type AuditTopologySnapshot,
+} from '@/lib/audit'
+import type { RuntimeNetworkTrace, RuntimePowerFinding } from '@/engine/topology'
 import {
   monitorPowerInputEndpoint,
   powerOutletEndpoint,
-} from '@/lib/power-topology'
+} from '@/lib/power-endpoints'
 import { runtimeItemKey } from '@/lib/item-keys'
+import { topologyQueryFixture } from '@/test/topology-query-fixture'
 import type { InventoryItem, ProjectState } from '@/types/inventory'
+
+function createConnection(
+  project: ProjectState,
+  from: ProjectState['connections'][number]['from'],
+  to: ProjectState['connections'][number]['to'],
+) {
+  const fromPort = getConnectionPort(project, from)
+  const toPort = getConnectionPort(project, to)
+  if (!fromPort || !toPort) return { ok: false as const, message: 'Missing test port.' }
+  const displayTypes = new Set(['hdmi', 'displayport', 'mini-displayport'])
+  const connection = {
+    id: Math.max(0, ...project.connections.map((candidate) => candidate.id)) + 1,
+    from,
+    to,
+    type: displayTypes.has(fromPort.type) && displayTypes.has(toPort.type)
+      ? 'display' as const
+      : 'network' as const,
+    createdAt: '2026-07-22T00:00:00.000Z',
+  }
+  return {
+    ok: true as const,
+    connection,
+    project: { ...project, connections: [...project.connections, connection] },
+  }
+}
 
 function createProject(items: InventoryItem[]): ProjectState {
   return {
@@ -20,6 +51,54 @@ function createProject(items: InventoryItem[]): ProjectState {
     placements: [],
     assignments: [],
     connections: [],
+  }
+}
+
+function auditTopology({
+  endpoints = [],
+  networkTraces = [],
+  powerFindings = [],
+}: {
+  endpoints?: AuditTopologySnapshot['endpoints']
+  networkTraces?: RuntimeNetworkTrace[]
+  powerFindings?: RuntimePowerFinding[]
+} = {}): AuditTopologySnapshot {
+  return { endpoints, networkTraces, powerEndpoints: [], powerFindings }
+}
+
+function projectAuditTopology(
+  project: ProjectState,
+  values: Omit<Parameters<typeof auditTopology>[0], 'endpoints'> = {},
+): AuditTopologySnapshot {
+  return auditTopology({
+    ...values,
+    endpoints: topologyQueryFixture(project).endpoints,
+  })
+}
+
+function incompleteTrace(itemId: string): RuntimeNetworkTrace {
+  const start = { itemId, portId: 1 }
+  return {
+    start,
+    steps: [{ endpoint: start, state: 'connected' }],
+    complete: false,
+  }
+}
+
+function powerFinding(
+  id: string,
+  code: RuntimePowerFinding['code'],
+  itemId: string,
+  severity: RuntimePowerFinding['severity'] = 'warning',
+  connectionId?: number,
+): RuntimePowerFinding {
+  return {
+    id,
+    code,
+    itemId,
+    severity,
+    message: id,
+    ...(connectionId === undefined ? {} : { connectionId }),
   }
 }
 
@@ -141,7 +220,14 @@ describe('item audit warnings', () => {
 
     expect(result.ok).toBe(true)
     expect(
-      getItemAuditWarnings(result.ok ? result.project : project, 'server:1').map(
+      getItemAuditWarnings(
+        result.ok ? result.project : project,
+        'server:1',
+        {},
+        projectAuditTopology(result.ok ? result.project : project, {
+          networkTraces: [incompleteTrace('server:1')],
+        }),
+      ).map(
         (warning) => warning.message,
       ),
     ).toEqual(['LAN port 01 does not trace to a switch.'])
@@ -176,8 +262,11 @@ describe('item audit warnings', () => {
     expect(secondConnection.ok).toBe(true)
 
     const connectedProject = secondConnection.ok ? secondConnection.project : project
-    const firstWarning = getItemAuditWarnings(connectedProject, 'server:1')[0]
-    const secondWarning = getItemAuditWarnings(connectedProject, 'server:2')[0]
+    const topology = projectAuditTopology(connectedProject, {
+      networkTraces: [incompleteTrace('server:1'), incompleteTrace('server:2')],
+    })
+    const firstWarning = getItemAuditWarnings(connectedProject, 'server:1', {}, topology)[0]
+    const secondWarning = getItemAuditWarnings(connectedProject, 'server:2', {}, topology)[0]
 
     expect(firstWarning.id).toBe('server-network-path-incomplete-server:1-1')
     expect(secondWarning.id).toBe('server-network-path-incomplete-server:2-1')
@@ -191,8 +280,8 @@ describe('item audit warnings', () => {
       },
     }
 
-    expect(getItemAuditWarnings(ignoredProject, 'server:1')).toEqual([])
-    expect(getItemAuditWarnings(ignoredProject, 'server:2')).toEqual([secondWarning])
+    expect(getItemAuditWarnings(ignoredProject, 'server:1', {}, topology)).toEqual([])
+    expect(getItemAuditWarnings(ignoredProject, 'server:2', {}, topology)).toEqual([secondWarning])
   })
 
   it('does not warn when a switch has no connected ports before wiring is planned', () => {
@@ -229,7 +318,13 @@ describe('item audit warnings', () => {
     )
 
     expect(result.ok).toBe(true)
-    expect(getItemAuditWarnings(result.ok ? result.project : project, 'switch:1').map((warning) => warning.message)).toEqual([
+    const connectedProject = result.ok ? result.project : project
+    expect(getItemAuditWarnings(
+      connectedProject,
+      'switch:1',
+      {},
+      projectAuditTopology(connectedProject),
+    ).map((warning) => warning.message)).toEqual([
       'Switch has active connections but no uplink or trunk port marked.',
     ])
   })
@@ -250,7 +345,13 @@ describe('item audit warnings', () => {
     )
 
     expect(result.ok).toBe(true)
-    expect(getItemAuditWarnings(result.ok ? result.project : project, 'switch:1').map((warning) => warning.message)).toEqual([
+    const connectedProject = result.ok ? result.project : project
+    expect(getItemAuditWarnings(
+      connectedProject,
+      'switch:1',
+      {},
+      projectAuditTopology(connectedProject),
+    ).map((warning) => warning.message)).toEqual([
       'Switch port 01 is disabled but connected.',
       'Switch has active connections but no uplink or trunk port marked.',
     ])
@@ -278,7 +379,23 @@ describe('item audit warnings', () => {
 
     expect(serverToPatch.ok).toBe(true)
     expect(patchToSwitch.ok).toBe(true)
-    expect(getItemAuditWarnings(patchToSwitch.ok ? patchToSwitch.project : project, 'server:1').map((warning) => warning.message)).toEqual([
+    const connectedProject = patchToSwitch.ok ? patchToSwitch.project : project
+    const topology = projectAuditTopology(connectedProject, {
+      networkTraces: [{
+        start: { itemId: 'server:1', portId: 1 },
+        complete: true,
+        steps: [
+          { endpoint: { itemId: 'server:1', portId: 1 }, state: 'connected' },
+          { endpoint: { itemId: 'switch:1', portId: 1 }, state: 'connected' },
+        ],
+      }],
+    })
+    expect(getItemAuditWarnings(
+      connectedProject,
+      'server:1',
+      {},
+      topology,
+    ).map((warning) => warning.message)).toEqual([
       'LAN port 01 traces to disabled switch port 01 on Switch.',
     ])
   })
@@ -318,7 +435,7 @@ describe('item audit warnings', () => {
     } satisfies ProjectState
 
     expect(
-      getProjectAuditWarnings(project).map((group) => ({
+      getProjectAuditWarnings(project, {}, projectAuditTopology(project)).map((group) => ({
         itemId: group.item.id,
         warningCount: group.warnings.length,
       })),
@@ -582,12 +699,13 @@ describe('item audit warnings', () => {
       },
     }
 
-    expect(getItemAuditWarnings(project, 'switch:1')).toEqual([])
-    expect(getProjectAuditWarnings(project)).toEqual([])
-    expect(getItemAuditWarnings(project, 'switch:1', { visibility: 'ignored' })).toEqual([
+    const topology = projectAuditTopology(project)
+    expect(getItemAuditWarnings(project, 'switch:1', {}, topology)).toEqual([])
+    expect(getProjectAuditWarnings(project, {}, topology)).toEqual([])
+    expect(getItemAuditWarnings(project, 'switch:1', { visibility: 'ignored' }, topology)).toEqual([
       expect.objectContaining({ id: 'switch-no-uplink-trunk-1' }),
     ])
-    expect(getProjectAuditWarnings(project, { visibility: 'ignored' })).toEqual([
+    expect(getProjectAuditWarnings(project, { visibility: 'ignored' }, topology)).toEqual([
       expect.objectContaining({
         item: expect.objectContaining({ id: 1 }),
         warnings: [expect.objectContaining({ id: 'switch-no-uplink-trunk-1' })],
@@ -662,7 +780,14 @@ describe('item audit warnings', () => {
       },
     }
 
-    expect(getItemAuditWarnings(disabledProject, 'nas:1')).toEqual([
+    const topology = auditTopology({
+      powerFindings: [powerFinding(
+        'power.host.missing-input:nas:1',
+        'power.host.missing-input',
+        'nas:1',
+      )],
+    })
+    expect(getItemAuditWarnings(disabledProject, 'nas:1', {}, topology)).toEqual([
       expect.objectContaining({
         id: 'stale-99-nas:1:direct:999:port',
       }),
@@ -670,8 +795,8 @@ describe('item audit warnings', () => {
         id: 'power.host.missing-input:nas:1',
       }),
     ])
-    expect(getItemAuditWarnings(disabledProject, 'nas:1', { visibility: 'ignored' })).toEqual([])
-    expect(getProjectAuditWarnings(disabledProject)).toEqual([
+    expect(getItemAuditWarnings(disabledProject, 'nas:1', { visibility: 'ignored' }, topology)).toEqual([])
+    expect(getProjectAuditWarnings(disabledProject, {}, topology)).toEqual([
       expect.objectContaining({
         warnings: [
           expect.objectContaining({
@@ -683,7 +808,7 @@ describe('item audit warnings', () => {
         ],
       }),
     ])
-    expect(getProjectAuditWarnings(disabledProject, { visibility: 'ignored' })).toEqual([])
+    expect(getProjectAuditWarnings(disabledProject, { visibility: 'ignored' }, topology)).toEqual([])
   })
 
   it('keeps dormant ignored IDs and reapplies them when warnings return', () => {
@@ -725,8 +850,9 @@ describe('item audit warnings', () => {
       ],
     }
 
-    expect(getProjectAuditWarnings(returnedProject)).toEqual([])
-    expect(getProjectAuditWarnings(returnedProject, { visibility: 'ignored' })).toEqual([
+    const topology = projectAuditTopology(returnedProject)
+    expect(getProjectAuditWarnings(returnedProject, {}, topology)).toEqual([])
+    expect(getProjectAuditWarnings(returnedProject, { visibility: 'ignored' }, topology)).toEqual([
       expect.objectContaining({
         warnings: [expect.objectContaining({ id: ignoredWarningId })],
       }),
@@ -800,21 +926,25 @@ describe('power topology audit warnings', () => {
       ],
     })
 
-    expect(getItemAuditWarnings(project, 'monitor:1')).toEqual([
+    const topology = auditTopology({ powerFindings: [
+      powerFinding('power.monitor.unpowered:monitor:1', 'power.monitor.unpowered', 'monitor:1'),
+      powerFinding('power.host.unpowered:server:6', 'power.host.unpowered', 'server:6'),
+    ] })
+    expect(getItemAuditWarnings(project, 'monitor:1', {}, topology)).toEqual([
       expect.objectContaining({
         id: 'power.monitor.unpowered:monitor:1',
         code: 'power.monitor.unpowered',
         severity: 'warning',
       }),
     ])
-    expect(getItemAuditWarnings(project, 'server:6')).toEqual([
+    expect(getItemAuditWarnings(project, 'server:6', {}, topology)).toEqual([
       expect.objectContaining({
         id: 'power.host.unpowered:server:6',
         code: 'power.host.unpowered',
         severity: 'warning',
       }),
     ])
-    expect(getItemAuditWarnings(project, 'monitor:2')).toEqual([])
+    expect(getItemAuditWarnings(project, 'monitor:2', {}, topology)).toEqual([])
   })
 
   it('clears placed load warnings once valid power connections exist', () => {
@@ -846,7 +976,7 @@ describe('power topology audit warnings', () => {
       ],
     })
 
-    expect(getProjectAuditWarnings(project)).toEqual([])
+    expect(getProjectAuditWarnings(project, {}, auditTopology())).toEqual([])
   })
 
   it('assigns outlet faults to placed power equipment without duplicate stale warnings', () => {
@@ -864,14 +994,21 @@ describe('power topology audit warnings', () => {
       }],
     })
 
-    expect(getItemAuditWarnings(project, 'ups:1')).toEqual([
+    const topology = auditTopology({ powerFindings: [powerFinding(
+      'power.connection.stale-endpoint:7',
+      'power.connection.stale-endpoint',
+      'ups:1',
+      'error',
+      7,
+    )] })
+    expect(getItemAuditWarnings(project, 'ups:1', {}, topology)).toEqual([
       expect.objectContaining({
         id: 'power.connection.stale-endpoint:7',
         code: 'power.connection.stale-endpoint',
         severity: 'error',
       }),
     ])
-    expect(getItemAuditWarnings(project, 'ups:1')).toHaveLength(1)
+    expect(getItemAuditWarnings(project, 'ups:1', {}, topology)).toHaveLength(1)
   })
 
   it('keeps power warnings in the existing project-scoped ignored view', () => {
@@ -884,12 +1021,17 @@ describe('power topology audit warnings', () => {
       },
     })
 
-    expect(getItemAuditWarnings(project, 'monitor:1')).toEqual([])
-    expect(getProjectAuditWarnings(project)).toEqual([])
-    expect(getItemAuditWarnings(project, 'monitor:1', { visibility: 'ignored' })).toEqual([
+    const topology = auditTopology({ powerFindings: [powerFinding(
+      ignoredWarningId,
+      'power.monitor.unpowered',
+      'monitor:1',
+    )] })
+    expect(getItemAuditWarnings(project, 'monitor:1', {}, topology)).toEqual([])
+    expect(getProjectAuditWarnings(project, {}, topology)).toEqual([])
+    expect(getItemAuditWarnings(project, 'monitor:1', { visibility: 'ignored' }, topology)).toEqual([
       expect.objectContaining({ id: ignoredWarningId }),
     ])
-    expect(getProjectAuditWarnings(project, { visibility: 'ignored' })).toEqual([
+    expect(getProjectAuditWarnings(project, { visibility: 'ignored' }, topology)).toEqual([
       expect.objectContaining({
         item: expect.objectContaining({ id: 1 }),
         warnings: [expect.objectContaining({ id: ignoredWarningId })],

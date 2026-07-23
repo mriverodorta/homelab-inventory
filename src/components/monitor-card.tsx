@@ -1,7 +1,7 @@
 import { type Node, type NodeProps } from '@xyflow/react'
 import { Monitor } from 'lucide-react'
 import { formatInventoryCompactSpec } from '@/lib/format'
-import { monitorPowerInputEndpoint, POWER_INPUT_PORT_KEY } from '@/lib/power-topology'
+import { monitorPowerInputEndpoint, POWER_INPUT_PORT_KEY } from '@/lib/power-endpoints'
 import type { InventoryPort } from '@/types/inventory'
 import {
   sortedPorts,

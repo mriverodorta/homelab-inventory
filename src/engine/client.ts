@@ -3,6 +3,8 @@ import {
   encodeEngineRequest,
   type EngineRequest,
   type EngineResponse,
+  type EngineOperation,
+  type ProjectPatch,
 } from '../../shared/engine/protocol.mjs'
 import { createDomainEngineApi, DomainEngineApiError } from './api'
 import type {
@@ -14,6 +16,42 @@ import type {
 } from './types'
 
 const disposedError = () => new Error('Workspace engine client is disposed.')
+
+function operationForCommittedPatch(patch: ProjectPatch): EngineOperation | null {
+  if (patch.kind === 'set-project-name') {
+    return { kind: 'update-project-metadata', payload: { name: patch.payload.name } }
+  }
+  if (patch.kind === 'add-connection') {
+    const connection = patch.payload.connection
+    return {
+      kind: 'create-connection',
+      payload: {
+        from: connection.from,
+        to: connection.to,
+        created_at: connection.created_at,
+      },
+    }
+  }
+  if (patch.kind === 'remove-connection') {
+    return {
+      kind: 'remove-connection',
+      payload: { connection_id: patch.payload.connection.id },
+    }
+  }
+  if (patch.kind === 'set-connection-label') {
+    return { kind: 'update-connection-label', payload: patch.payload }
+  }
+  if (patch.kind === 'set-connection-route') {
+    return { kind: 'update-connection-route', payload: patch.payload }
+  }
+  if (patch.kind === 'batch') {
+    for (const child of patch.payload.patches) {
+      const operation = operationForCommittedPatch(child)
+      if (operation) return operation
+    }
+  }
+  return null
+}
 
 export class SupersededEngineQueryError extends Error {
   constructor() {
@@ -155,10 +193,7 @@ export class DomainEngineClient {
       return { kind: 'rebuilt' as const, response }
     }
 
-    const forward = response.result.payload.forward
-    const operation = forward.kind === 'set-project-name'
-      ? { kind: 'update-project-metadata' as const, payload: { name: forward.payload.name } }
-      : null
+    const operation = operationForCommittedPatch(response.result.payload.forward)
     if (!operation) {
       await this.rebuild('The committed project patch is not supported locally.')
       return { kind: 'rebuilt' as const, response }

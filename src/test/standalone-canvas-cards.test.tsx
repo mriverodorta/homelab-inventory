@@ -11,6 +11,7 @@ import {
   type PowerStripFlowNode,
 } from '@/components/power-strip-card'
 import { UpsNode, upsOutletGroups, type UpsFlowNode } from '@/components/ups-card'
+import { topologyQueryFixture } from '@/test/topology-query-fixture'
 import type { InventoryItem, InventoryPort, ProjectState } from '@/types/inventory'
 import { withCanonicalPowerPorts } from '../../shared/power-ports.mjs'
 
@@ -57,7 +58,7 @@ function canonicalPowerPortsFor(item: InventoryItem): InventoryPort[] {
 function data(project: ProjectState, itemId: string) {
   return {
     project,
-    canvasIndex: buildCanvasProjectIndex(project),
+    canvasIndex: buildCanvasProjectIndex(project, topologyQueryFixture(project)),
     requiredHandleIds: new Set<string>(),
     itemId,
     selectedItemId: null,

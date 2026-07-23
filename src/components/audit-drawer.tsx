@@ -3,6 +3,7 @@ import { useMemo, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { getProjectAuditWarnings, type ProjectAuditGroup } from '@/lib/audit'
 import { runtimeItemKey } from '@/lib/item-keys'
+import type { TopologyQueryData } from '@/hooks/use-topology-query'
 import type { CompatibilitySeverity } from '@/types/compatibility'
 import type { InventoryType, ProjectState } from '@/types/inventory'
 
@@ -70,25 +71,36 @@ function warningSeverity(severity?: CompatibilitySeverity): CompatibilitySeverit
 
 export function AuditDrawer({
   project,
+  topologyData = null,
   open,
   onClose,
   onSelectItem,
   onSetWarningIgnored,
 }: {
   project: ProjectState
+  topologyData?: TopologyQueryData | null
   open: boolean
   onClose: () => void
   onSelectItem: (itemId: string) => void
   onSetWarningIgnored: (warningId: string, ignored: boolean) => void
 }) {
   const [filter, setFilter] = useState<AuditFilter>('all')
-  const openGroups = useMemo(() => getProjectAuditWarnings(project), [project])
+  const auditTopology = useMemo(() => topologyData ? {
+    endpoints: topologyData.endpoints,
+    networkTraces: topologyData.networkTraces,
+    powerEndpoints: topologyData.power.endpoints,
+    powerFindings: topologyData.power.findings,
+  } : undefined, [topologyData])
+  const openGroups = useMemo(
+    () => getProjectAuditWarnings(project, {}, auditTopology),
+    [auditTopology, project],
+  )
   const filteredGroups = useMemo(
     () =>
       filter === 'ignored'
-        ? getProjectAuditWarnings(project, { visibility: 'ignored' })
+        ? getProjectAuditWarnings(project, { visibility: 'ignored' }, auditTopology)
         : filterGroups(openGroups, filter),
-    [filter, openGroups, project],
+    [auditTopology, filter, openGroups, project],
   )
   const totalWarnings = openGroups.reduce((count, group) => count + group.warnings.length, 0)
   const filteredWarnings = filteredGroups.reduce((count, group) => count + group.warnings.length, 0)

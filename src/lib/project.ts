@@ -1,20 +1,14 @@
 import type {
   ConnectionEndpoint,
-  InventoryConnection,
-  InventoryConnectionType,
-  ConnectionRoutePreferences,
   ComponentAssignment,
   InventoryItem,
   InventoryPort,
-  InventoryPortType,
   InventoryProperties,
   InventorySpecs,
   ProjectState,
   ServerPlacement,
-  ValidationResult,
 } from '@/types/inventory'
 import type { InventoryItemInput } from '@/lib/db'
-import { nextNumericId } from '@/lib/ids'
 import { runtimeItemKey } from '@/lib/item-keys'
 import { isCanvasEquipmentType } from '@/lib/inventory-capabilities'
 import { getPowerEquipmentOrientation } from '@/lib/power-equipment-layout'
@@ -452,9 +446,6 @@ export function updateItemPorts(
   })
 }
 
-const DISPLAY_PORT_TYPES = new Set<InventoryPortType>(['hdmi', 'displayport', 'mini-displayport'])
-const NETWORK_PORT_TYPES = new Set<InventoryPortType>(['rj45', 'sfp', 'sfp-plus'])
-
 export function endpointKey(endpoint: ConnectionEndpoint): string {
   return [
     endpoint.itemId,
@@ -533,165 +524,6 @@ function getHostedConnectionPort(
   return project.items[componentItemId]?.ports?.find(
     (candidate) => String(candidate.id) === String(hostedPortId),
   ) ?? null
-}
-
-export function getConnectionType(
-  first: InventoryPortType,
-  second: InventoryPortType,
-): InventoryConnectionType {
-  if (NETWORK_PORT_TYPES.has(first) && NETWORK_PORT_TYPES.has(second)) {
-    return 'network'
-  }
-
-  if (DISPLAY_PORT_TYPES.has(first) && DISPLAY_PORT_TYPES.has(second)) {
-    return 'display'
-  }
-
-  return 'other'
-}
-
-export function portsCompatible(first: InventoryPortType, second: InventoryPortType): boolean {
-  if (first === second) {
-    return true
-  }
-
-  return DISPLAY_PORT_TYPES.has(first) && DISPLAY_PORT_TYPES.has(second)
-}
-
-export function connectionEndpointAvailable(
-  project: ProjectState,
-  endpoint: ConnectionEndpoint,
-  ignoreConnectionId?: number,
-): boolean {
-  const key = endpointKey(endpoint)
-
-  return !(project.connections ?? []).some((connection) => {
-    if (connection.id === ignoreConnectionId) {
-      return false
-    }
-
-    return endpointKey(connection.from) === key || endpointKey(connection.to) === key
-  })
-}
-
-export function validateConnection(
-  project: ProjectState,
-  from: ConnectionEndpoint,
-  to: ConnectionEndpoint,
-): ValidationResult {
-  if (endpointKey(from) === endpointKey(to)) {
-    return { ok: false, message: 'Choose two different ports to connect.' }
-  }
-
-  const fromPort = getConnectionPort(project, from)
-  const toPort = getConnectionPort(project, to)
-
-  if (!fromPort || !toPort) {
-    return { ok: false, message: 'One of the selected ports is no longer available.' }
-  }
-
-  if (!portsCompatible(fromPort.type, toPort.type)) {
-    return { ok: false, message: 'Those port types cannot be connected.' }
-  }
-
-  if (!connectionEndpointAvailable(project, from)) {
-    return { ok: false, message: 'The source port is already connected.' }
-  }
-
-  if (!connectionEndpointAvailable(project, to)) {
-    return { ok: false, message: 'The destination port is already connected.' }
-  }
-
-  return { ok: true }
-}
-
-export function createConnection(
-  project: ProjectState,
-  from: ConnectionEndpoint,
-  to: ConnectionEndpoint,
-): { ok: true; project: ProjectState; connection: InventoryConnection } | { ok: false; message: string } {
-  const validation = validateConnection(project, from, to)
-
-  if (!validation.ok) {
-    return validation
-  }
-
-  const fromPort = getConnectionPort(project, from)
-  const toPort = getConnectionPort(project, to)
-
-  if (!fromPort || !toPort) {
-    return { ok: false, message: 'One of the selected ports is no longer available.' }
-  }
-
-  const now = new Date().toISOString()
-  const connection: InventoryConnection = {
-    id: nextNumericId((project.connections ?? []).map((connection) => connection.id)),
-    from,
-    to,
-    type: getConnectionType(fromPort.type, toPort.type),
-    createdAt: now,
-  }
-
-  return {
-    ok: true,
-    connection,
-    project: touchProject({
-      ...project,
-      connections: [...(project.connections ?? []), connection],
-    }),
-  }
-}
-
-export function removeConnection(project: ProjectState, connectionId: string | number): ProjectState {
-  return touchProject({
-    ...project,
-    connections: (project.connections ?? []).filter((connection) => String(connection.id) !== String(connectionId)),
-  })
-}
-
-export function updateConnectionLabel(
-  project: ProjectState,
-  connectionId: string | number,
-  label: string,
-): ProjectState {
-  const trimmedLabel = label.trim()
-
-  return touchProject({
-    ...project,
-    connections: (project.connections ?? []).map((connection) =>
-      String(connection.id) === String(connectionId)
-        ? {
-            ...connection,
-            label: trimmedLabel === '' ? undefined : label,
-          }
-        : connection,
-    ),
-  })
-}
-
-export function updateConnectionRoute(
-  project: ProjectState,
-  connectionId: string | number,
-  route: ConnectionRoutePreferences,
-): ProjectState {
-  const cleanedRoute: ConnectionRoutePreferences = {
-    ...(route.sourceSide ? { sourceSide: route.sourceSide } : {}),
-    ...(route.targetSide ? { targetSide: route.targetSide } : {}),
-    ...(route.bendPoints?.length ? { bendPoints: route.bendPoints } : {}),
-    ...(route.avoidCableOverlap ? { avoidCableOverlap: true } : {}),
-  }
-
-  return touchProject({
-    ...project,
-    connections: (project.connections ?? []).map((connection) =>
-      String(connection.id) === String(connectionId)
-        ? {
-            ...connection,
-            route: Object.keys(cleanedRoute).length > 0 ? cleanedRoute : undefined,
-          }
-        : connection,
-    ),
-  })
 }
 
 export function getServerCardHeight(project: ProjectState, serverId: string): number {

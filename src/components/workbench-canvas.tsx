@@ -65,6 +65,7 @@ import { describeConnection, getCableAppearance } from '@/lib/cables'
 import { isCableTypeVisible, type CableVisibility } from '@/lib/cable-visibility'
 import { formatRemainingSeconds } from '@/lib/demo-api'
 import { useDomainEngine } from '@/hooks/use-domain-engine'
+import type { TopologyQueryData } from '@/hooks/use-topology-query'
 import {
   findAssignmentById,
   moveAssignedComponent,
@@ -78,6 +79,7 @@ import type { CompatibilityStatus } from '@/types/compatibility'
 import type {
   ConnectionEndpoint,
   ConnectionRoutePreferences,
+  InventoryConnection,
   InventoryItem,
   ProjectState,
 } from '@/types/inventory'
@@ -360,6 +362,8 @@ export function snapToGrid(value: number): number {
 
 function CanvasViewport({
   project,
+  topologyData = null,
+  compatibleEndpointKeys = null,
   agentStatus,
   selectedItemId,
   selectedConnectionId,
@@ -410,6 +414,8 @@ function CanvasViewport({
   onOpenSettings,
 }: {
   project: ProjectState
+  topologyData?: TopologyQueryData | null
+  compatibleEndpointKeys?: ReadonlySet<string> | null
   agentStatus: AgentStatusSummary | null
   selectedItemId: string | null
   selectedConnectionId: string | number | null
@@ -484,8 +490,8 @@ function CanvasViewport({
     return nodeProjectRef.current
   }, [project])
   const canvasIndex = useMemo(
-    () => buildCanvasProjectIndex(canvasNodeProject),
-    [canvasNodeProject],
+    () => buildCanvasProjectIndex(canvasNodeProject, topologyData, compatibleEndpointKeys),
+    [canvasNodeProject, compatibleEndpointKeys, topologyData],
   )
   const canvasHandleIndex = useMemo(
     () => buildCanvasHandleIndex(canvasNodeProject),
@@ -1087,7 +1093,13 @@ function CanvasViewport({
     () => {
       const placedItemIds = new Set(project.placements.map((placement) => placement.serverId))
       const nextEdges: CableFlowEdge[] = (project.connections ?? []).flatMap((connection, connectionIndex) => {
-        if (!isCableTypeVisible(connection.type, cableVisibility)) return []
+        const derived = topologyData?.connectionDerivedById.get(connection.id)
+        const effectiveConnection = derived ? {
+          ...connection,
+          type: derived.connectionType as InventoryConnection['type'],
+          negotiatedSpeedMbps: derived.negotiatedSpeedMbps ?? undefined,
+        } : connection
+        if (!isCableTypeVisible(effectiveConnection.type, cableVisibility)) return []
 
         const fromItem = project.items[connection.from.itemId]
         const toItem = project.items[connection.to.itemId]
@@ -1106,7 +1118,7 @@ function CanvasViewport({
           return []
         }
 
-        const appearance = getCableAppearance(project, connection)
+        const appearance = getCableAppearance(project, effectiveConnection)
         const route = getConnectionRoute(project, connection, connectionIndex)
         const isSelected = sameOptionalId(selectedConnectionId, connection.id)
         const isHovered = sameOptionalId(hoveredConnectionId, connection.id)
@@ -1134,14 +1146,14 @@ function CanvasViewport({
             data: {
               color: appearance.color,
               label: connection.label?.trim() || appearance.label,
-              detail: describeConnection(project, connection),
+              detail: describeConnection(project, effectiveConnection),
               selected: isSelected,
               hovered: isHovered,
               editable: isSelected,
               traced: isTraceConnection,
               dimmed,
               connectionId: connection.id,
-              route: connection.route,
+              route: effectiveConnection.route,
               snapToGrid: snapCablesToGrid,
               plannedRoute: plannedCableRoutes.get(connection.id),
               onSelect: stableOnSelectConnection,
@@ -1181,6 +1193,7 @@ function CanvasViewport({
       snapCablesToGrid,
       stableOnSelectConnection,
       stableOnUpdateConnectionRoute,
+      topologyData,
     ],
   )
 
@@ -1599,6 +1612,8 @@ function CanvasViewport({
 
 export function WorkbenchCanvas(props: {
   project: ProjectState
+  topologyData?: TopologyQueryData | null
+  compatibleEndpointKeys?: ReadonlySet<string> | null
   agentStatus: AgentStatusSummary | null
   selectedItemId: string | null
   selectedConnectionId: string | number | null

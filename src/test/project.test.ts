@@ -1,5 +1,4 @@
 import { describe, expect, it } from 'vitest'
-import { assignComponent } from '@/lib/constraints'
 import {
   createEmptyHistory,
   pushHistory,
@@ -9,7 +8,6 @@ import {
 import { mergeInventoryWithProject } from '@/lib/inventory'
 import {
   applyInventoryItemInput,
-  createConnection,
   getCanvasItemHeight,
   getCanvasItemWidth,
   getReturnCanvasItemImpact,
@@ -17,13 +15,9 @@ import {
   PC_BUILD_CARD_WIDTH,
   POWER_EQUIPMENT_CARD_WIDTH,
   returnCanvasItemToInventory,
-  removeConnection,
   SERVER_CARD_WIDTH,
-  updateConnectionLabel,
-  updateConnectionRoute,
   upsertPlacements,
   upsertPlacement,
-  validateConnection,
   VERTICAL_POWER_STRIP_CARD_WIDTH,
   VERTICAL_UPS_CARD_WIDTH,
 } from '@/lib/project'
@@ -124,84 +118,6 @@ const newCanvasEquipmentInventory: InventoryItem[] = [
     name: 'Power Strip A',
     type: 'powerStrip',
     specs: { outlets: 12 },
-  },
-]
-
-const connectionInventory: InventoryItem[] = [
-  {
-    id: 1,
-    name: 'Display Server',
-    type: 'server',
-    ports: [
-      {
-        id: 1,
-        kind: 'server-port',
-        type: 'rj45',
-        slotNumber: 1,
-        speed: '1G',
-      },
-      {
-        id: 2,
-        kind: 'server-port',
-        type: 'displayport',
-        slotNumber: 2,
-      },
-    ],
-  },
-  {
-    id: 1,
-    name: 'RJ45 Patch Panel',
-    type: 'patchPanel',
-    ports: [
-      {
-        id: 1,
-        kind: 'keystone',
-        type: 'rj45',
-        slotNumber: 1,
-        endpoints: [
-          { id: 1, side: 'front' },
-          { id: 2, side: 'back' },
-        ],
-      },
-    ],
-  },
-  {
-    id: 2,
-    name: 'HDMI Patch Panel',
-    type: 'patchPanel',
-    ports: [
-      {
-        id: 1,
-        kind: 'keystone',
-        type: 'hdmi',
-        slotNumber: 1,
-        endpoints: [
-          { id: 1, side: 'front' },
-          { id: 2, side: 'back' },
-        ],
-      },
-    ],
-  },
-  {
-    id: 1,
-    name: 'Quad NIC',
-    type: 'network',
-    ports: [
-      {
-        id: 1,
-        kind: 'server-port',
-        type: 'rj45',
-        slotNumber: 1,
-        speed: '1G',
-      },
-      {
-        id: 2,
-        kind: 'server-port',
-        type: 'rj45',
-        slotNumber: 2,
-        speed: '1G',
-      },
-    ],
   },
 ]
 
@@ -607,192 +523,6 @@ describe('canvas item geometry', () => {
 
 })
 
-describe('inventory connections', () => {
-  it('allows displayport to hdmi connections for adapter cables', () => {
-    const project = mergeInventoryWithProject(connectionInventory, null)
-    const result = createConnection(
-      project,
-      { itemId: 'server:1', portId: 2 },
-      { itemId: 'patchPanel:2', portId: 1, endpointId: 2 },
-    )
-
-    expect(result.ok).toBe(true)
-    expect(result.ok ? result.connection.type : null).toBe('display')
-  })
-
-  it('allows rj45 connections to one side of a keystone', () => {
-    const project = mergeInventoryWithProject(connectionInventory, null)
-    const result = createConnection(
-      project,
-      { itemId: 'server:1', portId: 1 },
-      { itemId: 'patchPanel:1', portId: 1, endpointId: 2 },
-    )
-
-    expect(result.ok).toBe(true)
-    expect(result.ok ? result.connection.type : null).toBe('network')
-  })
-
-  it('allows installed server network card ports to connect as hosted endpoints', () => {
-    const project = assignComponent(
-      mergeInventoryWithProject(connectionInventory, null),
-      'server:1',
-      'network:1',
-    )
-    const result = createConnection(
-      project,
-      { itemId: 'server:1', hostedItemId: 'network:1', portId: 2 },
-      { itemId: 'patchPanel:1', portId: 1, endpointId: 2 },
-    )
-
-    expect(result.ok).toBe(true)
-    expect(result.ok ? result.connection.type : null).toBe('network')
-  })
-
-  it('classifies sfp plus switch links as network connections', () => {
-    const project = mergeInventoryWithProject([
-      {
-        id: 1,
-        name: 'Switch A',
-        type: 'switch',
-        ports: [
-          {
-            id: 1,
-            kind: 'switch-port',
-            type: 'sfp-plus',
-            slotNumber: 1,
-            speed: '10G',
-          },
-        ],
-      },
-      {
-        id: 2,
-        name: 'Switch B',
-        type: 'switch',
-        ports: [
-          {
-            id: 1,
-            kind: 'switch-port',
-            type: 'sfp-plus',
-            slotNumber: 1,
-            speed: '10G',
-          },
-        ],
-      },
-    ], null)
-    const result = createConnection(
-      project,
-      { itemId: 'switch:1', portId: 1 },
-      { itemId: 'switch:2', portId: 1 },
-    )
-
-    expect(result.ok).toBe(true)
-    expect(result.ok ? result.connection.type : null).toBe('network')
-  })
-
-  it('rejects incompatible rj45 to hdmi connections', () => {
-    const project = mergeInventoryWithProject(connectionInventory, null)
-
-    expect(
-      validateConnection(
-        project,
-        { itemId: 'server:1', portId: 1 },
-        { itemId: 'patchPanel:2', portId: 1, endpointId: 2 },
-      ),
-    ).toEqual({ ok: false, message: 'Those port types cannot be connected.' })
-  })
-
-  it('prevents two connections from using the same endpoint', () => {
-    const project = mergeInventoryWithProject(connectionInventory, null)
-    const first = createConnection(
-      project,
-      { itemId: 'server:1', portId: 1 },
-      { itemId: 'patchPanel:1', portId: 1, endpointId: 2 },
-    )
-
-    expect(first.ok).toBe(true)
-
-    const second = createConnection(
-      first.ok ? first.project : project,
-      { itemId: 'server:1', portId: 1 },
-      { itemId: 'patchPanel:1', portId: 1, endpointId: 1 },
-    )
-
-    expect(second).toEqual({ ok: false, message: 'The source port is already connected.' })
-  })
-
-  it('removes saved connections by id', () => {
-    const project = mergeInventoryWithProject(connectionInventory, null)
-    const result = createConnection(
-      project,
-      { itemId: 'server:1', portId: 1 },
-      { itemId: 'patchPanel:1', portId: 1, endpointId: 2 },
-    )
-
-    expect(result.ok).toBe(true)
-
-    const nextProject = removeConnection(
-      result.ok ? result.project : project,
-      result.ok ? result.connection.id : 999,
-    )
-
-    expect(nextProject.connections).toEqual([])
-  })
-
-  it('updates saved connection labels', () => {
-    const project = mergeInventoryWithProject(connectionInventory, null)
-    const result = createConnection(
-      project,
-      { itemId: 'server:1', portId: 1 },
-      { itemId: 'patchPanel:1', portId: 1, endpointId: 2 },
-    )
-
-    expect(result.ok).toBe(true)
-
-    const nextProject = updateConnectionLabel(
-      result.ok ? result.project : project,
-      result.ok ? result.connection.id : 999,
-      'LAN uplink',
-    )
-
-    expect(nextProject.connections[0].label).toBe('LAN uplink')
-  })
-
-  it('updates saved connection route preferences and clears empty route metadata', () => {
-    const project = mergeInventoryWithProject(connectionInventory, null)
-    const result = createConnection(
-      project,
-      { itemId: 'server:1', portId: 1 },
-      { itemId: 'patchPanel:1', portId: 1, endpointId: 2 },
-    )
-
-    expect(result.ok).toBe(true)
-
-    const routedProject = updateConnectionRoute(
-      result.ok ? result.project : project,
-      result.ok ? result.connection.id : 999,
-      {
-        sourceSide: 'top',
-        targetSide: 'bottom',
-        bendPoints: [{ x: 160, y: 240 }],
-      },
-    )
-
-    expect(routedProject.connections[0].route).toEqual({
-      sourceSide: 'top',
-      targetSide: 'bottom',
-      bendPoints: [{ x: 160, y: 240 }],
-    })
-
-    const clearedProject = updateConnectionRoute(
-      routedProject,
-      result.ok ? result.connection.id : 999,
-      {},
-    )
-
-    expect(clearedProject.connections[0].route).toBeUndefined()
-  })
-})
-
 describe('archived inventory domain guards', () => {
   it('does not create or preview placements for archived canvas equipment', () => {
     const base = mergeInventoryWithProject([
@@ -806,37 +536,6 @@ describe('archived inventory domain guards', () => {
     expect(upsertPlacements(base, [activePlacement, archivedPlacement])).toBe(base)
   })
 
-  it('rejects connections whose direct host is archived', () => {
-    const project = mergeInventoryWithProject(connectionInventory, null)
-    project.items['server:1'] = archived(project.items['server:1'])
-
-    expect(validateConnection(
-      project,
-      { itemId: 'server:1', portId: 1 },
-      { itemId: 'patchPanel:1', portId: 1, endpointId: 2 },
-    )).toEqual({ ok: false, message: 'One of the selected ports is no longer available.' })
-  })
-
-  it('rejects connections whose assigned expansion card is archived', () => {
-    const assigned = assignComponent(
-      mergeInventoryWithProject(connectionInventory, null),
-      'server:1',
-      'network:1',
-    )
-    const project: ProjectState = {
-      ...assigned,
-      items: {
-        ...assigned.items,
-        'network:1': archived(assigned.items['network:1']),
-      },
-    }
-
-    expect(validateConnection(
-      project,
-      { itemId: 'server:1', hostedItemId: 'network:1', portId: 1 },
-      { itemId: 'patchPanel:1', portId: 1, endpointId: 2 },
-    )).toEqual({ ok: false, message: 'One of the selected ports is no longer available.' })
-  })
 })
 
 function createReturnCanvasItemProject(): ProjectState {

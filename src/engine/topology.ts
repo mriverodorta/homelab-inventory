@@ -3,6 +3,7 @@ import type {
   TopologyEndpointRef,
   TopologyItemRef,
   TopologyConnectionRoute,
+  ConnectionDerivedState,
   TopologyNetworkTrace,
 } from '../../shared/engine/protocol.mjs'
 import type { DomainEngineClient } from '@/engine/client'
@@ -77,6 +78,8 @@ export type RuntimePowerTopology = {
   endpoints: RuntimePowerEndpoint[]
   findings: RuntimePowerFinding[]
 }
+
+export type RuntimeConnectionDerivedState = ConnectionDerivedState
 
 function topologyItemRef(project: ProjectState, runtimeKey: string): TopologyItemRef {
   const parsed = parseItemKey(runtimeKey)
@@ -289,6 +292,24 @@ export async function traceTopologyNetworkPath(
   )
 }
 
+export async function getTopologyNetworkTraces(
+  client: DomainEngineClient,
+): Promise<RuntimeNetworkTrace[]> {
+  const response = await client.queryConsistent({
+    operation: { kind: 'network-traces' },
+  })
+
+  if (response.result.kind === 'network-traces') {
+    return response.result.payload.traces.map(runtimeNetworkTrace)
+  }
+
+  throw new Error(
+    response.result.kind === 'error'
+      ? response.result.payload.message
+      : 'Network paths could not be traced.',
+  )
+}
+
 export async function getPowerTopology(
   client: DomainEngineClient,
   project: ProjectState,
@@ -334,6 +355,24 @@ export async function getPowerTopology(
       }
     }),
   }
+}
+
+export async function getConnectionDerivedStates(
+  client: DomainEngineClient,
+): Promise<RuntimeConnectionDerivedState[]> {
+  const response = await client.queryConsistent({
+    operation: { kind: 'connection-derived-states' },
+  })
+
+  if (response.result.kind === 'connection-derived-states') {
+    return response.result.payload.states
+  }
+
+  throw new Error(
+    response.result.kind === 'error'
+      ? response.result.payload.message
+      : 'Connection derived state could not be loaded.',
+  )
 }
 
 function topologyConnectionRoute(

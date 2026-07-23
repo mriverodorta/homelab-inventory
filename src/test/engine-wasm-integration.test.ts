@@ -363,6 +363,45 @@ describe('Rust WASM engine integration', () => {
       },
     })
 
+    const traces = decodeEngineResponse(runtime.dispatch(handle, encodeEngineRequest({
+      protocol_version: 1,
+      request_id: 51,
+      base_revision: 3,
+      operation: { kind: 'network-traces' },
+    })))
+    expect(traces.result).toMatchObject({
+      kind: 'network-traces',
+      payload: {
+        traces: expect.arrayContaining([
+          expect.objectContaining({ start: serverEndpoint, complete: true }),
+        ]),
+      },
+    })
+
+    const derived = decodeEngineResponse(runtime.dispatch(handle, encodeEngineRequest({
+      protocol_version: 1,
+      request_id: 52,
+      base_revision: 3,
+      operation: { kind: 'connection-derived-states' },
+    })))
+    expect(derived.result).toMatchObject({
+      kind: 'connection-derived-states',
+      payload: {
+        states: expect.arrayContaining([
+          expect.objectContaining({
+            connection_id: 9,
+            connection_type: 'network',
+            negotiated_speed_mbps: 1000,
+          }),
+          expect.objectContaining({
+            connection_id: 10,
+            connection_type: 'network',
+            negotiated_speed_mbps: 1000,
+          }),
+        ]),
+      },
+    })
+
     const removed = decodeEngineResponse(runtime.dispatch(handle, encodeEngineRequest({
       protocol_version: 1,
       request_id: 6,

@@ -1441,7 +1441,7 @@ describe('HomelabInventoryStore', () => {
     ]).hasUnseen).toBe(false)
   })
 
-  it('normalizes negotiated speeds before persisting project updates', async () => {
+  it('preserves engine-derived negotiated speeds when persisting project updates', async () => {
     const dataDir = await makeTempDir()
     const store = createStore({
       appVersion: '1.0.0',
@@ -1453,20 +1453,24 @@ describe('HomelabInventoryStore', () => {
     })
 
     await store.init()
+    const connections = negotiationConnections().map((connection, index) => ({
+      ...connection,
+      negotiatedSpeedMbps: index === 0 ? 2500 : 1000,
+    }))
     const savedProject = store.setProject({
       ...store.getProject(),
       items: negotiationItems(),
-      connections: negotiationConnections(),
+      connections,
     })
     await store.flush()
 
-    expect(savedProject.connections.map((connection) => connection.negotiatedSpeedMbps)).toEqual([1000, 1000])
+    expect(savedProject.connections.map((connection) => connection.negotiatedSpeedMbps)).toEqual([2500, 1000])
 
     const persistedProject = JSON.parse(
       await fs.readFile(path.join(dataDir, 'stores', 'project.json'), 'utf8'),
     )
 
-    expect(persistedProject.connections.map((connection) => connection.negotiatedSpeedMbps)).toEqual([1000, 1000])
+    expect(persistedProject.connections.map((connection) => connection.negotiatedSpeedMbps)).toEqual([2500, 1000])
   })
 
   it('validates persisted negotiated connection speeds', () => {
@@ -1598,7 +1602,7 @@ describe('HomelabInventoryStore', () => {
     }
   })
 
-  it('repairs legacy network connections before persisting project updates', async () => {
+  it('preserves submitted connection classifications during current project updates', async () => {
     const dataDir = await makeTempDir()
     const store = createStore({
       appVersion: '1.0.0',
@@ -1691,9 +1695,9 @@ describe('HomelabInventoryStore', () => {
       type,
       negotiatedSpeedMbps,
     }))).toEqual([
-      { type: 'network', negotiatedSpeedMbps: 10000 },
-      { type: 'network', negotiatedSpeedMbps: 2500 },
-      { type: 'network', negotiatedSpeedMbps: 2500 },
+      { type: 'other', negotiatedSpeedMbps: undefined },
+      { type: 'other', negotiatedSpeedMbps: undefined },
+      { type: 'other', negotiatedSpeedMbps: undefined },
     ])
 
     const persistedProject = JSON.parse(
@@ -1704,12 +1708,11 @@ describe('HomelabInventoryStore', () => {
       ...preservedConnection,
       from: { itemType: 'switch', itemId: 2, portId: 1 },
       to: { itemType: 'switch', itemId: 3, portId: 1 },
-      type: 'network',
-      negotiatedSpeedMbps: 10000,
+      type: 'other',
     })
     expect(persistedProject.connections.slice(1).map((connection) => connection.type)).toEqual([
-      'network',
-      'network',
+      'other',
+      'other',
     ])
   })
 

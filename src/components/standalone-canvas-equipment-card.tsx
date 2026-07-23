@@ -10,7 +10,7 @@ import {
 import { runtimeItemKey } from '@/lib/item-keys'
 import { startSelectedPortDrag } from '@/lib/port-interactions'
 import { endpointKey } from '@/lib/project'
-import { powerOutletEndpoint } from '@/lib/power-topology'
+import { powerOutletEndpoint } from '@/lib/power-endpoints'
 import type { PowerEquipmentOrientation } from '@/lib/power-equipment-layout'
 import { useTapSelection } from '@/lib/tap-selection'
 import { cn } from '@/lib/utils'

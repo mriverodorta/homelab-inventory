@@ -10,7 +10,7 @@ import {
   POWER_EQUIPMENT_CARD_WIDTH,
   VERTICAL_UPS_CARD_WIDTH,
 } from '@/lib/project'
-import { powerOutletEndpoint } from '@/lib/power-topology'
+import { powerOutletEndpoint } from '@/lib/power-endpoints'
 import type { InventoryPort } from '@/types/inventory'
 import {
   numericSpec,

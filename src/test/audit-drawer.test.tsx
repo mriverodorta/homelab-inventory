@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { AuditDrawer } from '@/components/audit-drawer'
 import { getProjectAuditWarnings } from '@/lib/audit'
 import { setAuditWarningIgnored } from '@/lib/compatibility-policy'
+import { topologyQueryFixture } from '@/test/topology-query-fixture'
 import type { ProjectState } from '@/types/inventory'
 
 const project: ProjectState = {
@@ -194,6 +195,7 @@ describe('AuditDrawer', () => {
     render(
       <AuditDrawer
         project={project}
+        topologyData={topologyQueryFixture(project)}
         open
         onClose={vi.fn()}
         onSelectItem={onSelectItem}
@@ -215,6 +217,7 @@ describe('AuditDrawer', () => {
     render(
       <AuditDrawer
         project={project}
+        topologyData={topologyQueryFixture(project)}
         open
         onClose={vi.fn()}
         onSelectItem={vi.fn()}

@@ -49,6 +49,25 @@ class FakeWorker implements WorkerLike {
             inverse: { kind: 'set-project-name', payload: { name: 'Lab' } },
           },
         }
+      } else if (request.operation.kind === 'update-connection-label') {
+        this.revision += 1
+        result = {
+          kind: 'patch',
+          payload: {
+            revision: this.revision,
+            forward: {
+              kind: 'set-connection-label',
+              payload: request.operation.payload,
+            },
+            inverse: {
+              kind: 'set-connection-label',
+              payload: {
+                connection_id: request.operation.payload.connection_id,
+                label: null,
+              },
+            },
+          },
+        }
       } else if (
         request.operation.kind === 'replace-geometry'
         || request.operation.kind === 'update-geometry'
@@ -283,6 +302,42 @@ describe('DomainEngineClient', () => {
       kind: 'rebuilt',
     })
     expect(testApi.fetchSnapshot).toHaveBeenCalledTimes(2)
+    client.dispose()
+  })
+
+  it('replays external connection patches without rebuilding the worker', async () => {
+    const worker = new FakeWorker()
+    const testApi = api()
+    const client = new DomainEngineClient({ api: testApi, workerFactory: () => worker })
+    await client.start()
+    const commit: EngineResponse = {
+      protocol_version: 1,
+      request_id: 23,
+      base_revision: 1,
+      result: {
+        kind: 'patch',
+        payload: {
+          revision: 2,
+          forward: {
+            kind: 'set-connection-label',
+            payload: { connection_id: 7, label: 'Uplink' },
+          },
+          inverse: {
+            kind: 'set-connection-label',
+            payload: { connection_id: 7, label: null },
+          },
+        },
+      },
+    }
+
+    await expect(client.applyCommittedResponse(encodeEngineResponse(commit))).resolves.toMatchObject({
+      kind: 'applied',
+    })
+    expect(worker.requests.at(-1)?.operation).toEqual({
+      kind: 'update-connection-label',
+      payload: { connection_id: 7, label: 'Uplink' },
+    })
+    expect(testApi.fetchSnapshot).toHaveBeenCalledOnce()
     client.dispose()
   })
 

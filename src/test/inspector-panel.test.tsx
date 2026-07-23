@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event'
 import type { ComponentProps } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { InspectorPanel } from '@/components/inspector-panel'
+import type { TopologyQueryData } from '@/hooks/use-topology-query'
 import {
   clearAgentStatus,
   createAgentEnrollment,
@@ -11,12 +12,32 @@ import {
 } from '@/lib/agent-api'
 import type { AgentStatusSummary } from '@/types/agent'
 import type { InventoryItem, ProjectState } from '@/types/inventory'
+import {
+  allTopologyEndpointKeys,
+  topologyQueryFixture,
+} from '@/test/topology-query-fixture'
+
+const topologyHookMocks = vi.hoisted(() => ({
+  useCompatibleTopologyDestinations: vi.fn(),
+}))
+
+vi.mock('@/hooks/use-topology-query', () => ({
+  useCompatibleTopologyDestinations: topologyHookMocks.useCompatibleTopologyDestinations,
+}))
 
 vi.mock('@/lib/agent-api', () => ({
   clearAgentStatus: vi.fn(),
   createAgentEnrollment: vi.fn(),
   revokeAgentRegistration: vi.fn(),
 }))
+
+topologyHookMocks.useCompatibleTopologyDestinations.mockImplementation(
+  (currentProject: ProjectState | null) => ({
+    endpointKeys: currentProject ? allTopologyEndpointKeys(currentProject) : null,
+    isPending: false,
+    isError: false,
+  }),
+)
 
 const project: ProjectState = {
   id: 'default-project',
@@ -477,6 +498,10 @@ type RenderInspectorOptions = Partial<Pick<InspectorPanelProps,
   demoMode?: boolean
   validationMessage?: string | null
   validationSeverity?: 'error' | 'unknown'
+  topologyData?: TopologyQueryData | null
+  compatibleEndpointKeys?: ReadonlySet<string> | null
+  topologyStatusMessage?: string | null
+  topologyStatusIsError?: boolean
 }
 
 function renderInspector({
@@ -487,6 +512,10 @@ function renderInspector({
   demoMode = false,
   validationMessage = null,
   validationSeverity = 'error',
+  topologyData,
+  compatibleEndpointKeys,
+  topologyStatusMessage = null,
+  topologyStatusIsError = false,
   onUpdateProject = vi.fn(),
   onUpdateItem = vi.fn(),
   onUpdateItemProperties = vi.fn(),
@@ -521,6 +550,10 @@ function renderInspector({
         validationMessage={validationMessage}
         validationSeverity={validationSeverity}
         persistenceWarning={null}
+        topologyData={topologyData === undefined ? topologyQueryFixture(projectOverride) : topologyData}
+        compatibleEndpointKeys={compatibleEndpointKeys ?? allTopologyEndpointKeys(projectOverride)}
+        topologyStatusMessage={topologyStatusMessage}
+        topologyStatusIsError={topologyStatusIsError}
         open
         onClose={() => {}}
         onUpdateProject={onUpdateProject}
@@ -606,6 +639,20 @@ function standalonePowerEquipmentProject(): ProjectState {
 }
 
 describe('InspectorPanel', () => {
+  it('shows an explicit disabled state while connection topology is unavailable', async () => {
+    const user = userEvent.setup()
+    renderInspector({
+      selectedItemId: 'switch:1',
+      topologyData: null,
+      topologyStatusMessage: 'Connection topology could not be loaded.',
+      topologyStatusIsError: true,
+    })
+
+    await user.click(screen.getByRole('tab', { name: 'Connections' }))
+    expect(screen.getByRole('alert')).toHaveTextContent('Connection topology could not be loaded.')
+    expect(screen.queryByRole('button', { name: 'Connect' })).not.toBeInTheDocument()
+  })
+
   it('offers return to inventory only for an item placed on the canvas', async () => {
     const user = userEvent.setup()
     const { onReturnItemToInventory, rerender } = renderInspector({ selectedItemId: 'server:1' })

@@ -1,7 +1,7 @@
 import fs from 'node:fs/promises'
 import path from 'node:path'
 import { Low } from 'lowdb'
-import { normalizeNetworkProject, recalculateNegotiatedSpeeds } from '../../src/lib/negotiated-speed.ts'
+import { normalizeNetworkProject, recalculateNegotiatedSpeeds } from './legacy-network-normalization.ts'
 import { getReleaseNotesBetween } from '../../src/release-notes.ts'
 import {
   isHostCompatibilityEnabled,
@@ -1606,8 +1606,7 @@ export class HomelabInventoryStore {
     const canonicalProject = normalizeProjectCompatibilityPolicy(submittedProject)
     assertProjectShape(canonicalProject)
     this.assertAssignmentTransitions(this.getProject(), canonicalProject)
-    const normalizedProject = normalizeNetworkProject(canonicalProject)
-    const split = splitCurrentProject(normalizedProject)
+    const split = splitCurrentProject(canonicalProject)
     const updatedAt = new Date().toISOString()
 
     this.databases.inventory.data = split.inventory

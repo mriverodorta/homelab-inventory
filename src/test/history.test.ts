@@ -6,7 +6,6 @@ import {
   redoHistory,
   undoHistory,
 } from '@/lib/history'
-import { updateConnectionRoute } from '@/lib/project'
 import type { ProjectState } from '@/types/inventory'
 
 describe('project history', () => {
@@ -57,9 +56,13 @@ describe('project history', () => {
         to: { itemId: 'switch:1', portId: 1 },
       }],
     }
-    const routed = updateConnectionRoute(project, 1, {
-      bendPoints: [{ x: 120, y: 240 }],
-    })
+    const routed: ProjectState = {
+      ...project,
+      connections: [{
+        ...project.connections[0],
+        route: { bendPoints: [{ x: 120, y: 240 }] },
+      }],
+    }
     const history = pushHistory(createEmptyHistory<ProjectState>(), project)
     const undone = undoHistory(history, routed)
     const redone = undone ? redoHistory(undone.history, undone.project) : null
@@ -83,7 +86,13 @@ describe('project history', () => {
         to: { itemId: 'switch:1', portId: 1 },
       }],
     }
-    const routed = updateConnectionRoute(project, 1, { avoidCableOverlap: true })
+    const routed: ProjectState = {
+      ...project,
+      connections: [{
+        ...project.connections[0],
+        route: { avoidCableOverlap: true },
+      }],
+    }
     const history = pushHistory(createEmptyHistory<ProjectState>(), project)
     const undone = undoHistory(history, routed)
     const redone = undone ? redoHistory(undone.history, undone.project) : null
@@ -91,6 +100,5 @@ describe('project history', () => {
     expect(routed.connections[0].route).toEqual({ avoidCableOverlap: true })
     expect(undone?.project.connections[0].route).toBeUndefined()
     expect(redone?.project.connections[0].route).toEqual({ avoidCableOverlap: true })
-    expect(updateConnectionRoute(routed, 1, { avoidCableOverlap: false }).connections[0].route).toBeUndefined()
   })
 })

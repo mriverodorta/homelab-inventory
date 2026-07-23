@@ -230,7 +230,9 @@ export type EngineOperation =
       payload: { from: TopologyEndpointRef; to: TopologyEndpointRef }
     }
   | { kind: 'trace-network-path'; payload: { start: TopologyEndpointRef } }
+  | { kind: 'network-traces' }
   | { kind: 'power-topology' }
+  | { kind: 'connection-derived-states' }
   | {
       kind: 'create-connection'
       payload: { from: TopologyEndpointRef; to: TopologyEndpointRef; created_at: string }
@@ -394,8 +396,16 @@ export type EngineResponseBody =
       payload: { trace: TopologyNetworkTrace | null }
     }
   | {
+      kind: 'network-traces'
+      payload: { traces: TopologyNetworkTrace[] }
+    }
+  | {
       kind: 'power-topology'
       payload: { topology: TopologyPowerTopology }
+    }
+  | {
+      kind: 'connection-derived-states'
+      payload: { states: ConnectionDerivedState[] }
     }
   | {
       kind: 'patch'

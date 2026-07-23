@@ -207,6 +207,7 @@ pub struct TopologyIndex {
     assignments_by_host: BTreeMap<ItemRef, Vec<TopologyAssignment>>,
     host_by_assigned_item: BTreeMap<ItemRef, ItemRef>,
     placements: BTreeSet<ItemRef>,
+    connection_index_by_id: BTreeMap<u32, usize>,
 }
 
 impl TopologyIndex {
@@ -231,6 +232,12 @@ impl TopologyIndex {
         }
 
         let placements = snapshot.placements.iter().cloned().collect::<BTreeSet<_>>();
+        let connection_index_by_id = snapshot
+            .connections
+            .iter()
+            .enumerate()
+            .map(|(index, connection)| (connection.id, index))
+            .collect();
         let mut endpoints = BTreeMap::new();
         for item in &snapshot.items {
             if !item.archived && exposes_direct_ports(&item.item.item_type) {
@@ -276,6 +283,7 @@ impl TopologyIndex {
             assignments_by_host,
             host_by_assigned_item,
             placements,
+            connection_index_by_id,
         })
     }
 
@@ -558,6 +566,15 @@ impl TopologyIndex {
     }
 
     #[must_use]
+    pub fn network_traces(&self) -> Vec<NetworkTrace> {
+        self.endpoints
+            .values()
+            .filter(|descriptor| is_network_port(&descriptor.port_type))
+            .filter_map(|descriptor| self.trace_network_path(&descriptor.endpoint))
+            .collect()
+    }
+
+    #[must_use]
     pub fn power_topology(&self) -> PowerTopology {
         PowerTopology {
             endpoints: self
@@ -758,8 +775,7 @@ impl TopologyIndex {
             let connection = self
                 .snapshot
                 .connections
-                .iter()
-                .find(|connection| connection.id == *connection_id)?;
+                .get(*self.connection_index_by_id.get(connection_id)?)?;
             (self.classify_connection(&connection.from, &connection.to) == "network")
                 .then_some(connection)
         })
@@ -1664,6 +1680,7 @@ mod tests {
                 ("switch", "connected"),
             ]
         );
+        assert_eq!(index.network_traces(), vec![trace]);
     }
 
     #[test]

@@ -31,7 +31,7 @@ import {
 import { endpointKey, EQUIPMENT_PORT_CHIP_WIDTH } from '@/lib/project'
 import type { CanvasPortDragPoint } from '@/types/canvas'
 import { startSelectedPortDrag } from '@/lib/port-interactions'
-import { POWER_INPUT_PORT_KEY } from '@/lib/power-topology'
+import { POWER_INPUT_PORT_KEY } from '@/lib/power-endpoints'
 import type { AgentServerStatus, AgentStatusSummary, AgentState } from '@/types/agent'
 import type { CompatibilityStatus } from '@/types/compatibility'
 import type {

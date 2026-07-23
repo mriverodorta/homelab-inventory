@@ -48,7 +48,9 @@ pub enum Operation {
     TraceNetworkPath {
         start: EndpointRef,
     },
+    NetworkTraces,
     PowerTopology,
+    ConnectionDerivedStates,
     CreateConnection {
         from: EndpointRef,
         to: EndpointRef,
@@ -168,7 +170,9 @@ pub enum ResponseBody {
     TopologyEndpoints(TopologyEndpointResult),
     ConnectionValidation(ConnectionValidation),
     NetworkTrace(NetworkTraceResult),
+    NetworkTraces(NetworkTracesResult),
     PowerTopology(PowerTopologyResult),
+    ConnectionDerivedStates(ConnectionDerivedStatesResult),
     Patch(Box<CommandPatchSet>),
     GeometryUpdated(GeometryUpdateResult),
     PlacementCheck(PlacementCheckResult),
@@ -194,8 +198,18 @@ pub struct NetworkTraceResult {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct NetworkTracesResult {
+    pub traces: Vec<NetworkTrace>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PowerTopologyResult {
     pub topology: PowerTopology,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ConnectionDerivedStatesResult {
+    pub states: Vec<ConnectionDerivedState>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

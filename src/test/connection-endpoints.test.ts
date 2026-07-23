@@ -1,10 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import {
-  createConnectionForEndpoints,
-  getCompatibleDestinationGroups,
   getEndpointGroupForHost,
   getHostEndpointGroups,
 } from '@/lib/connection-endpoints'
+import { topologyQueryFixture } from '@/test/topology-query-fixture'
 import type { InventoryItem, ProjectState } from '@/types/inventory'
 import { migrateSchema10To11 } from '../../server/db/migrate-schema-11.mjs'
 import { withCanonicalPowerPorts } from '../../shared/power-ports.mjs'
@@ -178,46 +177,7 @@ describe('connection endpoint catalog', () => {
     ])
   })
 
-  it('keeps only compatible open endpoints and actionable hosts', () => {
-    const project = makeProject()
-    project.connections = [{
-      id: 1,
-      type: 'network',
-      createdAt: '2026-07-13T00:00:00.000Z',
-      from: { itemId: 'switch:1', portId: 1 },
-      to: { itemId: 'patchPanel:1', portId: 1, endpointId: 1 },
-    }]
-    const sourceGroup = getEndpointGroupForHost(project, server)
-    const networkSource = sourceGroup?.options.find((option) => option.label === 'Board / RJ45 01 / 1G')
-    const displaySource = sourceGroup?.options.find((option) => option.label === 'Board / DP 02')
-
-    expect(networkSource).toBeDefined()
-    expect(displaySource).toBeDefined()
-
-    const networkGroups = getCompatibleDestinationGroups(project, networkSource!)
-    expect(networkGroups.map((group) => group.label)).toEqual(['Patch Panel A', 'Switch A'])
-    expect(networkGroups.find((group) => group.label === 'Switch A')?.options.map((option) => option.label)).toEqual([
-      'Port 02 / RJ45 / 2.5G',
-    ])
-    expect(networkGroups.find((group) => group.label === 'Patch Panel A')?.options.map((option) => option.label)).toEqual([
-      'Port 07 / Back / RJ45',
-    ])
-
-    expect(getCompatibleDestinationGroups(project, displaySource!)).toEqual([])
-  })
-
-  it('does not expose archived compatible destinations', () => {
-    const project = makeProject()
-    project.items['switch:1'] = archived(project.items['switch:1'])
-    const source = getEndpointGroupForHost(project, project.items['server:1'])?.options[0]
-
-    expect(source).toBeDefined()
-    expect(getCompatibleDestinationGroups(project, source!).map((group) => group.label)).toEqual([
-      'Patch Panel A',
-    ])
-  })
-
-  it('catalogs persisted power endpoints and creates outlet-to-input connections regardless of selection order', () => {
+  it('presents engine-owned power endpoints beneath their canvas hosts', () => {
     const project = makeProject()
     const ups = withCanonicalPowerPorts({
       id: 1,
@@ -248,51 +208,23 @@ describe('connection endpoint catalog', () => {
       { serverId: 'powerStrip:1', x: 800, y: 400 },
     )
 
-    const upsGroup = getEndpointGroupForHost(project, ups)
-    const monitorGroup = getEndpointGroupForHost(project, monitor)
-    const stripGroup = getEndpointGroupForHost(project, powerStrip)
+    const powerEndpoints = topologyQueryFixture(project).power.endpoints
+    const upsGroup = getEndpointGroupForHost(project, ups, powerEndpoints)
+    const monitorGroup = getEndpointGroupForHost(project, monitor, powerEndpoints)
+    const stripGroup = getEndpointGroupForHost(project, powerStrip, powerEndpoints)
     const upsPowerOptions = upsGroup?.options.filter((option) => option.powerEndpoint)
     const monitorPowerOptions = monitorGroup?.options.filter((option) => option.powerEndpoint)
     const stripPowerOptions = stripGroup?.options.filter((option) => option.powerEndpoint)
     expect(upsPowerOptions?.map((option) => option.endpoint.portId)).toEqual([1, 2])
     expect(monitorPowerOptions?.map((option) => option.endpoint.portId)).toEqual([1])
     expect(stripPowerOptions?.map((option) => option.endpoint.portId)).toEqual([
+      1,
       2,
       3,
       4,
       5,
-      1,
     ])
 
-    const destinations = getCompatibleDestinationGroups(project, monitorPowerOptions![0])
-    expect(destinations.map((group) => group.label)).toEqual(['Strip A', 'UPS A'])
-
-    const stripInput = stripPowerOptions!.find((option) => option.powerEndpoint?.direction === 'input')!
-    expect(getCompatibleDestinationGroups(project, stripInput).map((group) => group.label)).toEqual(['UPS A'])
-
-    const result = createConnectionForEndpoints(
-      project,
-      { itemId: 'monitor:1', portId: 1 },
-      { itemId: 'ups:1', portId: 1 },
-    )
-    expect(result.ok).toBe(true)
-    if (result.ok) {
-      expect(result.connection).toMatchObject({
-        type: 'power',
-        from: { itemId: 'ups:1', portId: 1 },
-        to: { itemId: 'monitor:1', portId: 1 },
-      })
-
-      const duplicateInput = createConnectionForEndpoints(
-        result.project,
-        { itemId: 'ups:1', portId: 2 },
-        { itemId: 'monitor:1', portId: 1 },
-      )
-      expect(duplicateInput).toEqual({
-        ok: false,
-        message: 'That AC input already has a power connection.',
-      })
-    }
   })
 
   it('includes a power-strip input for a migrated schema-10 UPS battery outlet', () => {
@@ -331,7 +263,8 @@ describe('connection endpoint catalog', () => {
       { serverId: 'powerStrip:1', x: 400, y: 400 },
     )
 
-    const batteryOutlet = getEndpointGroupForHost(project, ups)?.options.find(
+    const powerEndpoints = topologyQueryFixture(project).power.endpoints
+    const batteryOutlet = getEndpointGroupForHost(project, ups, powerEndpoints)?.options.find(
       (option) => option.endpoint.portId === 1 && option.powerEndpoint?.direction === 'output',
     )
 
@@ -339,27 +272,13 @@ describe('connection endpoint catalog', () => {
       endpoint: { itemId: 'ups:1', portId: 1 },
       powerEndpoint: { direction: 'output' },
     })
-    expect(getCompatibleDestinationGroups(project, batteryOutlet!).map((group) => ({
-      label: group.label,
-      endpoints: group.options.map((option) => option.endpoint),
-    }))).toContainEqual({
-      label: 'Kasa HS300',
-      endpoints: expect.arrayContaining([
-        { itemId: 'powerStrip:1', portId: 1 },
+    expect(getEndpointGroupForHost(project, powerStrip, powerEndpoints)?.options).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          endpoint: { itemId: 'powerStrip:1', portId: 1 },
+          powerEndpoint: expect.objectContaining({ direction: 'input' }),
+        }),
       ]),
-    })
-  })
-
-  it('keeps ordinary network creation on the existing connection workflow', () => {
-    const result = createConnectionForEndpoints(
-      makeProject(),
-      { itemId: 'server:1', portId: 1 },
-      { itemId: 'switch:1', portId: 1 },
     )
-
-    expect(result.ok).toBe(true)
-    if (result.ok) {
-      expect(result.connection.type).toBe('network')
-    }
   })
 })

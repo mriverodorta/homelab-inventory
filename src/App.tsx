@@ -62,6 +62,10 @@ import {
   syncProjectGeometry,
 } from '@/engine/geometry'
 import { useDomainEngine } from '@/hooks/use-domain-engine'
+import {
+  useCompatibleTopologyDestinations,
+  useTopologyQuery,
+} from '@/hooks/use-topology-query'
 import type { CanvasPortDragPoint } from '@/types/canvas'
 import {
   findAssignmentById,
@@ -149,11 +153,6 @@ import {
   undoHistory,
   type HistoryState,
 } from '@/lib/history'
-import {
-  getNetworkTraceConnectionIds,
-  getNetworkTraceItemIds,
-  traceNetworkPath,
-} from '@/lib/network-trace'
 import {
   getCanvasItemHeight,
   getCanvasItemWidth,
@@ -512,11 +511,31 @@ function App() {
   const queryClient = useQueryClient()
   const domainEngine = useDomainEngine()
   const [project, setProject] = useState<ProjectState | null>(null)
+  const topologyQuery = useTopologyQuery(project)
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null)
   const [selectedConnectionId, setSelectedConnectionId] = useState<string | number | null>(null)
   const [pendingConnectionEndpoint, setPendingConnectionEndpoint] = useState<ConnectionEndpoint | null>(null)
+  const compatibleTopologyDestinations = useCompatibleTopologyDestinations(
+    project,
+    pendingConnectionEndpoint,
+  )
   const [validationMessage, setValidationMessageValue] = useState<string | null>(null)
   const [validationSeverity, setValidationSeverity] = useState<ValidationSeverity>('error')
+  const topologyStatus = project && !topologyQuery.data
+    ? domainEngine.state.phase === 'failed'
+      || domainEngine.state.phase === 'unsupported'
+      || topologyQuery.isError
+      ? {
+          message: topologyQuery.error instanceof Error
+            ? topologyQuery.error.message
+            : 'Connection topology is unavailable. Retry the workspace engine before editing cables.',
+          severity: 'error' as const,
+        }
+      : {
+          message: 'Loading connection topology...',
+          severity: 'unknown' as const,
+        }
+    : null
   const [persistenceWarning, setPersistenceWarning] = useState<string | null>(null)
   const [auditOpen, setAuditOpen] = useState(false)
   const [searchOpen, setSearchOpen] = useState(false)
@@ -996,15 +1015,23 @@ function App() {
     [project, selectedConnectionId],
   )
   const activeNetworkTrace = useMemo(
-    () => (project && activeNetworkTraceEndpoint ? traceNetworkPath(project, activeNetworkTraceEndpoint) : null),
-    [activeNetworkTraceEndpoint, project],
+    () => (activeNetworkTraceEndpoint
+      ? topologyQuery.data?.networkTraceByEndpointKey.get(endpointKey(activeNetworkTraceEndpoint)) ?? null
+      : null),
+    [activeNetworkTraceEndpoint, topologyQuery.data],
   )
   const activeNetworkTraceConnectionIds = useMemo(
-    () => (activeNetworkTrace ? getNetworkTraceConnectionIds(activeNetworkTrace) : []),
+    () => activeNetworkTrace
+      ? [...new Set(activeNetworkTrace.steps.flatMap((step) =>
+          step.connectionId === undefined ? [] : [step.connectionId],
+        ))]
+      : [],
     [activeNetworkTrace],
   )
   const activeNetworkTraceItemIds = useMemo(
-    () => (activeNetworkTrace ? getNetworkTraceItemIds(activeNetworkTrace) : []),
+    () => activeNetworkTrace
+      ? [...new Set(activeNetworkTrace.steps.map((step) => step.endpoint.itemId))]
+      : [],
     [activeNetworkTrace],
   )
   const dropCompatibilityByHostId = useMemo(() => {
@@ -2076,6 +2103,8 @@ function App() {
           </Sheet>
           <WorkbenchCanvas
             project={project}
+            topologyData={topologyQuery.data}
+            compatibleEndpointKeys={compatibleTopologyDestinations.endpointKeys}
             agentStatus={agentStatusQuery.data ?? null}
             demoRemainingSeconds={demoRemainingSeconds}
             selectedItemId={selectedItem ? runtimeItemKey(selectedItem) : null}
@@ -2086,8 +2115,8 @@ function App() {
             pendingEndpoint={pendingConnectionEndpoint}
             draggingEndpoint={portConnectionPreview?.mode === 'drag' ? portConnectionPreview.from : null}
             dropCompatibilityByHostId={dropCompatibilityByHostId}
-            validationMessage={validationMessage}
-            validationSeverity={validationSeverity}
+            validationMessage={validationMessage ?? topologyStatus?.message ?? null}
+            validationSeverity={validationMessage ? validationSeverity : topologyStatus?.severity ?? validationSeverity}
             canUndo={history.past.length > 0}
             canRedo={history.future.length > 0}
             saveStatus={saveStatus}
@@ -2211,6 +2240,10 @@ function App() {
           ) : null}
           <InspectorPanel
             project={project}
+            topologyData={topologyQuery.data}
+            topologyStatusMessage={topologyStatus?.message ?? null}
+            topologyStatusIsError={topologyStatus?.severity === 'error'}
+            compatibleEndpointKeys={compatibleTopologyDestinations.endpointKeys}
             agentStatus={agentStatusQuery.data ?? null}
             demoMode={isDemoMode}
             selectedItemId={selectedItem ? runtimeItemKey(selectedItem) : null}
@@ -2259,6 +2292,7 @@ function App() {
           />
           <AuditDrawer
             project={project}
+            topologyData={topologyQuery.data}
             open={auditOpen}
             onClose={() => setAuditOpen(false)}
             onSelectItem={(itemId) => {

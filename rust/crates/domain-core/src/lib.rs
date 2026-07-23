@@ -1,12 +1,12 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use homelab_engine_protocol::{
-    ArrangementResult, CommandPatchSet, EngineError, EngineRequest, EngineResponse, EngineSnapshot,
-    EngineStatus, GeometryHandle, GeometryUpdateResult, NearestPlacementResult, NetworkTraceResult,
-    Operation, PROTOCOL_VERSION, PlacementCheckResult, PowerTopologyResult, ProjectPatch,
-    ResponseBody, RouteDefinition, RouteEdit, RouteEditResult, RouteResult, RoutesUpdateResult,
-    TopologyConnection, TopologyConnectionRoute, TopologyEndpointResult, TopologyError,
-    TopologySnapshot,
+    ArrangementResult, CommandPatchSet, ConnectionDerivedStatesResult, EngineError, EngineRequest,
+    EngineResponse, EngineSnapshot, EngineStatus, GeometryHandle, GeometryUpdateResult,
+    NearestPlacementResult, NetworkTraceResult, NetworkTracesResult, Operation, PROTOCOL_VERSION,
+    PlacementCheckResult, PowerTopologyResult, ProjectPatch, ResponseBody, RouteDefinition,
+    RouteEdit, RouteEditResult, RouteResult, RoutesUpdateResult, TopologyConnection,
+    TopologyConnectionRoute, TopologyEndpointResult, TopologyError, TopologySnapshot,
 };
 use homelab_geometry::{GeometryError, GeometryNode, SpatialIndex, arrange_items};
 use homelab_routing::{
@@ -127,9 +127,17 @@ impl Engine {
                     trace: self.topology.trace_network_path(&start),
                 })
             }
+            Operation::NetworkTraces => ResponseBody::NetworkTraces(NetworkTracesResult {
+                traces: self.topology.network_traces(),
+            }),
             Operation::PowerTopology => ResponseBody::PowerTopology(PowerTopologyResult {
                 topology: self.topology.power_topology(),
             }),
+            Operation::ConnectionDerivedStates => {
+                ResponseBody::ConnectionDerivedStates(ConnectionDerivedStatesResult {
+                    states: self.topology.connection_derived_states(),
+                })
+            }
             Operation::CreateConnection {
                 from,
                 to,

@@ -10,7 +10,7 @@ import {
   powerOutletEndpoint,
   powerStripPowerInputEndpoint,
   POWER_INPUT_PORT_KEY,
-} from '@/lib/power-topology'
+} from '@/lib/power-endpoints'
 import {
   numericSpec,
   sortedPorts,

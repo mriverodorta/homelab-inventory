@@ -67,15 +67,19 @@ import {
 } from '@/lib/agent-api'
 import type { InventoryItemInput } from '@/lib/db'
 import { useInventoryItemEditor } from '@/hooks/use-inventory-item-editor'
+import type {
+  PresentedNetworkTrace as NetworkTrace,
+  TopologyQueryData,
+} from '@/hooks/use-topology-query'
+import { useCompatibleTopologyDestinations } from '@/hooks/use-topology-query'
 import {
-  getCompatibleDestinationGroups,
   getEndpointGroupForHost,
+  getHostEndpointGroups,
 } from '@/lib/connection-endpoints'
 import { getSlotStatus, SLOT_LABELS, sortAssignmentsForDisplay } from '@/lib/constraints'
 import { isHostCompatibilityEnabled } from '@/lib/compatibility'
 import { setHostCompatibilityEnabled } from '@/lib/compatibility-policy'
 import { PC_BUILD_COMPONENT_ORDER } from '@/lib/pc-build'
-import { getPowerEndpoints } from '@/lib/power-topology'
 import { cn } from '@/lib/utils'
 import {
   formatCapacity,
@@ -85,10 +89,7 @@ import {
 } from '@/lib/format'
 import { runtimeItemKey } from '@/lib/item-keys'
 import {
-  connectionEndpointAvailable,
   endpointKey,
-  getConnectionPort,
-  portsCompatible,
 } from '@/lib/project'
 import {
   PATCH_PANEL_ROW_ORDER_PROPERTY,
@@ -103,12 +104,6 @@ import {
   getUpsOutletGroupOrder,
   type PowerEquipmentOrientation,
 } from '@/lib/power-equipment-layout'
-import {
-  getItemNetworkTraces,
-  getPatchPanelNetworkTraces,
-  traceNetworkPath,
-  type NetworkTrace,
-} from '@/lib/network-trace'
 import type {
   ConnectionEndpoint,
   ConnectionRoutePreferences,
@@ -523,18 +518,15 @@ function describeConnectedEndpoint(project: ProjectState, endpoint: ConnectionEn
 }
 
 function endpointIsCompatible(
-  project: ProjectState,
   pendingEndpoint: ConnectionEndpoint | null,
   endpoint: ConnectionEndpoint,
+  compatibleEndpointKeys: ReadonlySet<string> | null,
 ): boolean {
   if (!pendingEndpoint || endpointKey(pendingEndpoint) === endpointKey(endpoint)) {
     return true
   }
 
-  const pendingPort = getConnectionPort(project, pendingEndpoint)
-  const port = getConnectionPort(project, endpoint)
-
-  return Boolean(pendingPort && port && portsCompatible(pendingPort.type, port.type))
+  return compatibleEndpointKeys?.has(endpointKey(endpoint)) ?? false
 }
 
 function EndpointConnectButton({
@@ -550,9 +542,14 @@ function EndpointConnectButton({
   pendingEndpoint: ConnectionEndpoint | null
   onConnect: (endpoint: ConnectionEndpoint) => void
 }) {
+  const topology = useContext(InspectorTopologyContext)
   const state = getEndpointConnectionState(project, endpoint)
   const selected = pendingEndpoint ? endpointKey(pendingEndpoint) === endpointKey(endpoint) : false
-  const compatible = endpointIsCompatible(project, pendingEndpoint, endpoint)
+  const compatible = endpointIsCompatible(
+    pendingEndpoint,
+    endpoint,
+    topology.compatibleEndpointKeys,
+  )
   const disabled = state !== 'open' || !compatible
 
   return (
@@ -1056,9 +1053,10 @@ function ConnectionEditor({
   onUpdateLabel: (connectionId: string | number, label: string) => void
   onRemove: (connectionId: string | number) => void
 }) {
+  const topology = useContext(InspectorTopologyContext)
   const selectedEndpointGroup = useMemo(
-    () => getEndpointGroupForHost(project, item),
-    [item, project],
+    () => getEndpointGroupForHost(project, item, topology.data?.power.endpoints),
+    [item, project, topology.data],
   )
   const selectedEndpointOptions = useMemo(
     () => selectedEndpointGroup?.options ?? [],
@@ -1066,10 +1064,10 @@ function ConnectionEditor({
   )
   const availableFromOptions = useMemo(
     () =>
-      selectedEndpointOptions.filter((option) =>
-        connectionEndpointAvailable(project, option.endpoint),
-      ),
-    [project, selectedEndpointOptions],
+      selectedEndpointOptions.filter((option) => topology.data?.endpoints.some(
+        (descriptor) => descriptor.available && endpointKey(descriptor.endpoint) === option.key,
+      )),
+    [selectedEndpointOptions, topology.data],
   )
   const relatedConnections = useMemo(
     () =>
@@ -1085,9 +1083,21 @@ function ConnectionEditor({
   const [toKey, setToKey] = useState(EMPTY_SELECT_VALUE)
 
   const selectedFrom = availableFromOptions.find((option) => option.key === fromKey) ?? null
+  const connectionDestinations = useCompatibleTopologyDestinations(
+    project,
+    selectedFrom?.endpoint ?? null,
+  )
   const destinationGroups = useMemo(
-    () => selectedFrom ? getCompatibleDestinationGroups(project, selectedFrom) : [],
-    [project, selectedFrom],
+    () => selectedFrom && connectionDestinations.endpointKeys
+      ? getHostEndpointGroups(project, topology.data?.power.endpoints)
+        .filter((group) => group.key !== runtimeItemKey(selectedFrom.host))
+        .map((group) => ({
+          ...group,
+          options: group.options.filter((option) => connectionDestinations.endpointKeys?.has(option.key)),
+        }))
+        .filter((group) => group.options.length > 0)
+      : [],
+    [connectionDestinations.endpointKeys, project, selectedFrom, topology.data],
   )
   const destinationGroup = destinationGroups.find((group) => group.key === destinationItemId) ?? null
   const destinationEndpointOptions = useMemo(
@@ -1119,6 +1129,19 @@ function ConnectionEditor({
         : destinationEndpointOptions[0]?.key ?? EMPTY_SELECT_VALUE,
     )
   }, [destinationEndpointOptions])
+
+  if (!topology.data) {
+    return (
+      <InspectorSection title="Connections" icon={Cable}>
+        <p
+          role={topology.statusIsError ? 'alert' : 'status'}
+          className="text-sm text-[#75695d]"
+        >
+          {topology.statusMessage ?? 'Loading connection topology...'}
+        </p>
+      </InspectorSection>
+    )
+  }
 
   if (selectedEndpointOptions.length === 0) {
     return null
@@ -1485,6 +1508,19 @@ function ConnectionDetails({
 type InspectorAuditWarning = AuditWarning & { ignored: boolean }
 
 const AuditIgnoreContext = createContext<(warningId: string, ignored: boolean) => void>(() => undefined)
+type InspectorTopologyState = {
+  data: TopologyQueryData | null
+  compatibleEndpointKeys: ReadonlySet<string> | null
+  statusMessage: string | null
+  statusIsError: boolean
+}
+
+const InspectorTopologyContext = createContext<InspectorTopologyState>({
+  data: null,
+  compatibleEndpointKeys: null,
+  statusMessage: null,
+  statusIsError: false,
+})
 
 function AuditSection({ warnings }: { warnings: InspectorAuditWarning[] }) {
   const onSetWarningIgnored = useContext(AuditIgnoreContext)
@@ -1536,19 +1572,16 @@ function AuditSection({ warnings }: { warnings: InspectorAuditWarning[] }) {
 }
 
 function NetworkTraceSection({
-  project,
   item,
   activeTraceKey,
   onSelectTrace,
 }: {
-  project: ProjectState
   item: InventoryItem
   activeTraceKey: string | null
   onSelectTrace: (endpoint: ConnectionEndpoint) => void
 }) {
-  const traces = item.type === 'patchPanel'
-    ? getPatchPanelNetworkTraces(project, item)
-    : getItemNetworkTraces(project, item)
+  const topology = useContext(InspectorTopologyContext)
+  const traces = topology.data?.networkTracesByItemId.get(runtimeItemKey(item)) ?? []
 
   if (traces.length === 0) {
     return null
@@ -2171,10 +2204,13 @@ function ServerNetworkTab({
   onUpdateItem: (itemId: string, input: InventoryItemInput) => void
   onSelectTrace: (endpoint: ConnectionEndpoint) => void
 }) {
+  const topology = useContext(InspectorTopologyContext)
   const options = useMemo(() => getServerNetworkPortOptions(project, server), [project, server])
   const [selectedKey, setSelectedKey] = useState(() => options[0]?.key ?? '')
   const selected = options.find((option) => option.key === selectedKey) ?? options[0] ?? null
-  const trace = selected ? traceNetworkPath(project, selected.endpoint) : null
+  const trace = selected
+    ? topology.data?.networkTraceByEndpointKey.get(endpointKey(selected.endpoint)) ?? null
+    : null
   const connections = selected ? getEndpointConnections(project, selected.endpoint) : []
   const agentIps = status.network?.flatMap((adapter) => adapter.addresses ?? []) ?? []
 
@@ -2769,7 +2805,6 @@ function NasInspectorTabs({
           label: 'Network',
           content: (
             <NetworkTraceSection
-              project={project}
               item={draftItem}
               activeTraceKey={activeNetworkTraceKey}
               onSelectTrace={onSelectNetworkTrace}
@@ -2900,7 +2935,6 @@ function PatchPanelInspectorTabs({
           label: 'Network',
           content: (
             <NetworkTraceSection
-              project={project}
               item={draftItem}
               activeTraceKey={activeNetworkTraceKey}
               onSelectTrace={onSelectNetworkTrace}
@@ -3007,6 +3041,7 @@ function HostedPortsTab({
   onSelectTrace: (endpoint: ConnectionEndpoint) => void
   onEndpointConnect: (endpoint: ConnectionEndpoint) => void
 }) {
+  const topology = useContext(InspectorTopologyContext)
   const options = useMemo(
     () => getPcBuildPortOptions(project, host, networkOnly),
     [host, networkOnly, project],
@@ -3014,7 +3049,9 @@ function HostedPortsTab({
   const [selectedKey, setSelectedKey] = useState(() => options[0]?.key ?? '')
   const selected = options.find((option) => option.key === selectedKey) ?? options[0] ?? null
   const connections = selected ? getEndpointConnections(project, selected.endpoint) : []
-  const trace = networkOnly && selected ? traceNetworkPath(project, selected.endpoint) : null
+  const trace = networkOnly && selected
+    ? topology.data?.networkTraceByEndpointKey.get(endpointKey(selected.endpoint)) ?? null
+    : null
 
   useEffect(() => {
     if (options.length === 0) {
@@ -3202,8 +3239,10 @@ function PowerEndpointsTab({
   onUpdateConnectionLabel: (connectionId: string | number, label: string) => void
   onRemoveConnection: (connectionId: string | number) => void
 }) {
+  const topology = useContext(InspectorTopologyContext)
   const itemKey = runtimeItemKey(item)
-  const endpoints = getPowerEndpoints(project).filter((candidate) => candidate.endpoint.itemId === itemKey)
+  const endpoints = (topology.data?.power.endpoints ?? [])
+    .filter((candidate) => candidate.endpoint.itemId === itemKey)
   const [selectedKey, setSelectedKey] = useState(() => endpoints[0] ? endpointKey(endpoints[0].endpoint) : '')
   const selected = endpoints.find((candidate) => endpointKey(candidate.endpoint) === selectedKey) ?? endpoints[0] ?? null
   const connections = selected ? getEndpointConnections(project, selected.endpoint) : []
@@ -3630,6 +3669,10 @@ function ComponentItemEditor({
 
 export function InspectorPanel({
   project,
+  topologyData = null,
+  compatibleEndpointKeys = null,
+  topologyStatusMessage = null,
+  topologyStatusIsError = false,
   agentStatus,
   demoMode = false,
   selectedItemId,
@@ -3659,6 +3702,10 @@ export function InspectorPanel({
   onSetWarningIgnored = () => undefined,
 }: {
   project: ProjectState
+  topologyData?: TopologyQueryData | null
+  compatibleEndpointKeys?: ReadonlySet<string> | null
+  topologyStatusMessage?: string | null
+  topologyStatusIsError?: boolean
   agentStatus: AgentStatusSummary | null
   demoMode?: boolean
   selectedItemId: string | null
@@ -3702,10 +3749,20 @@ export function InspectorPanel({
     ? project.placements.some((placement) => placement.serverId === selectedItemRuntimeKey)
     : false
   const openAuditWarnings = selectedItemRuntimeKey
-    ? getItemAuditWarnings(project, selectedItemRuntimeKey)
+    ? getItemAuditWarnings(project, selectedItemRuntimeKey, {}, topologyData ? {
+      endpoints: topologyData.endpoints,
+      networkTraces: topologyData.networkTraces,
+      powerEndpoints: topologyData.power.endpoints,
+      powerFindings: topologyData.power.findings,
+    } : undefined)
     : []
   const ignoredAuditWarnings = selectedItemRuntimeKey
-    ? getItemAuditWarnings(project, selectedItemRuntimeKey, { visibility: 'ignored' })
+    ? getItemAuditWarnings(project, selectedItemRuntimeKey, { visibility: 'ignored' }, topologyData ? {
+      endpoints: topologyData.endpoints,
+      networkTraces: topologyData.networkTraces,
+      powerEndpoints: topologyData.power.endpoints,
+      powerFindings: topologyData.power.findings,
+    } : undefined)
     : []
   const auditWarnings: InspectorAuditWarning[] = [
     ...openAuditWarnings.map((warning) => ({ ...warning, ignored: false })),
@@ -3814,6 +3871,12 @@ export function InspectorPanel({
           </div>
         ) : null}
 
+        <InspectorTopologyContext.Provider value={{
+          data: topologyData,
+          compatibleEndpointKeys,
+          statusMessage: topologyStatusMessage,
+          statusIsError: topologyStatusIsError,
+        }}>
         <AuditIgnoreContext.Provider value={onSetWarningIgnored}>
         <section className="space-y-4">
           {selectedConnection ? (
@@ -3936,6 +3999,7 @@ export function InspectorPanel({
           )}
         </section>
         </AuditIgnoreContext.Provider>
+        </InspectorTopologyContext.Provider>
       </div>
     </aside>
   )

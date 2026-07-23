@@ -3,8 +3,10 @@ import {
   fromTopologyEndpointRef,
   createTopologyConnection,
   getCompatibleTopologyDestinations,
+  getConnectionDerivedStates,
   getPowerTopology,
   getTopologyEndpoints,
+  getTopologyNetworkTraces,
   toTopologyEndpointRef,
   removeTopologyConnection,
   traceTopologyNetworkPath,
@@ -139,6 +141,29 @@ describe('WASM topology adapter', () => {
     })
   })
 
+  it('loads Rust-derived connection classification and negotiated speed', async () => {
+    const client = {
+      queryConsistent: vi.fn().mockResolvedValue({
+        result: {
+          kind: 'connection-derived-states',
+          payload: {
+            states: [{
+              connection_id: 8,
+              connection_type: 'network',
+              negotiated_speed_mbps: 1000,
+            }],
+          },
+        },
+      }),
+    } as unknown as DomainEngineClient
+
+    await expect(getConnectionDerivedStates(client)).resolves.toEqual([{
+      connection_id: 8,
+      connection_type: 'network',
+      negotiated_speed_mbps: 1000,
+    }])
+  })
+
   it('converts numeric engine traces back to runtime endpoints', async () => {
     const client = {
       queryConsistent: vi.fn().mockResolvedValue({
@@ -208,6 +233,46 @@ describe('WASM topology adapter', () => {
       ],
       complete: true,
     })
+  })
+
+  it('loads all network traces through the topology query boundary', async () => {
+    const client = {
+      queryConsistent: vi.fn().mockResolvedValue({
+        result: {
+          kind: 'network-traces',
+          payload: {
+            traces: [{
+              start: {
+                item: { item_type: 'server', id: 1 },
+                hosted_item: null,
+                port_id: 1,
+                endpoint_id: null,
+              },
+              steps: [{
+                endpoint: {
+                  item: { item_type: 'server', id: 1 },
+                  hosted_item: null,
+                  port_id: 1,
+                  endpoint_id: null,
+                },
+                state: 'open',
+                connection_id: null,
+              }],
+              complete: false,
+            }],
+          },
+        },
+      }),
+    } as unknown as DomainEngineClient
+
+    await expect(getTopologyNetworkTraces(client)).resolves.toEqual([{
+      start: { itemId: 'server:1', portId: 1 },
+      steps: [{
+        endpoint: { itemId: 'server:1', portId: 1 },
+        state: 'open',
+      }],
+      complete: false,
+    }])
   })
 
   it('adds presentation labels and messages to numeric power topology results', async () => {

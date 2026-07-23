@@ -1,5 +1,4 @@
 import { getConnectionPort } from '@/lib/project'
-import { resolvePowerEndpoint } from '@/lib/power-topology'
 import { formatPortRole } from '@/lib/format'
 import type {
   ConnectionEndpoint,
@@ -95,19 +94,24 @@ export function describeConnectionEndpoint(
   project: ProjectState,
   endpoint: ConnectionEndpoint,
 ): string {
-  const powerEndpoint = resolvePowerEndpoint(project, endpoint)
-
-  if (powerEndpoint) {
-    return powerEndpoint.label
-  }
-
   const item = project.items[endpoint.itemId]
   const hostedItem = endpoint.hostedItemId ? project.items[endpoint.hostedItemId] : null
   const portOwner = hostedItem ?? item
-  const port = getConnectionPort(project, endpoint)
+  const port = hostedItem
+    ? hostedItem.ports?.find((candidate) => candidate.id === endpoint.portId) ?? null
+    : getConnectionPort(project, endpoint)
 
   if (!item || !portOwner || !port) {
     return 'Missing port'
+  }
+
+  if (port.type === 'ac-input') {
+    return hostedItem
+      ? `${item.name} / ${hostedItem.name} / AC input`
+      : `${item.name} / AC input`
+  }
+  if (port.type === 'ac-outlet') {
+    return `${item.name} / ${port.label ?? `Outlet ${String(port.slotNumber)}`}`
   }
 
   const slot = String(port.slotNumber).padStart(2, '0')

@@ -23,7 +23,7 @@ import { runtimeItemKey } from '@/lib/item-keys'
 import { useTapSelection } from '@/lib/tap-selection'
 import { endpointKey, NAS_CARD_WIDTH } from '@/lib/project'
 import { startSelectedPortDrag } from '@/lib/port-interactions'
-import { POWER_INPUT_PORT_KEY } from '@/lib/power-topology'
+import { POWER_INPUT_PORT_KEY } from '@/lib/power-endpoints'
 import type {
   ComponentAssignment,
   ConnectionEndpoint,
