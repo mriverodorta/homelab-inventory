@@ -62,6 +62,7 @@ export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
     'Changing one cable now recalculates only that route and later lane-dependent routes, preserving unrelated cable geometry and reducing canvas stalls.',
     'Removed duplicate browser-side topology implementations and retained legacy network normalization only for ordered historical data migrations.',
     'Externally committed connection changes now replay incrementally through the local worker without rebuilding the complete workspace engine.',
+    'Existing power strips with a canonical AC input at slot zero no longer prevent the workspace engine from starting.',
   ],
   notes: [],
 }

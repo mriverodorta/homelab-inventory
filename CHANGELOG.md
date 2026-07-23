@@ -60,6 +60,7 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 - Removed duplicate browser-side topology, network-trace, power-topology, and negotiated-speed implementations while retaining a frozen normalizer only for historical data migrations.
 - Added synthetic topology benchmarks for endpoint catalogs, compatibility, validation, connection commands, negotiated state, tracing, power findings, and worker indexing.
 - Replayed externally committed connection patches through the local worker without rebuilding the complete engine snapshot.
+- Fixed workspace-engine startup for existing power strips whose canonical AC input uses display slot zero.
 
 ## [0.1.38] - 2026-07-21
 

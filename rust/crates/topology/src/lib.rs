@@ -1081,7 +1081,7 @@ impl TopologySnapshot {
 fn validate_ports(item: &TopologyItem) -> Result<(), TopologyError> {
     let mut port_ids = BTreeSet::new();
     for port in &item.ports {
-        if port.id == 0 || port.slot_number == 0 {
+        if port.id == 0 || (port.slot_number == 0 && port.port_type != "ac-input") {
             return Err(TopologyError::InvalidId);
         }
         if port.port_type.trim().is_empty() {
@@ -1205,6 +1205,32 @@ mod tests {
         assert_eq!(parse_advertised_speed(Some("40G")), None);
         assert_eq!(parse_advertised_speed(Some("unknown")), None);
         assert_eq!(parse_advertised_speed(None), None);
+    }
+
+    #[test]
+    fn permits_zero_slot_only_for_ac_inputs() {
+        let mut power_strip = power_item("powerStrip", 1, 1, "ac-input");
+        power_strip.ports[0].slot_number = 0;
+        let valid_snapshot = TopologySnapshot {
+            items: vec![power_strip],
+            assignments: vec![],
+            connections: vec![],
+            placements: vec![],
+        };
+        assert!(TopologyIndex::build(valid_snapshot).is_ok());
+
+        let mut network_port = item("switch", 1, 1);
+        network_port.ports[0].slot_number = 0;
+        let invalid_snapshot = TopologySnapshot {
+            items: vec![network_port],
+            assignments: vec![],
+            connections: vec![],
+            placements: vec![],
+        };
+        assert_eq!(
+            TopologyIndex::build(invalid_snapshot).unwrap_err(),
+            TopologyError::InvalidId
+        );
     }
 
     #[test]

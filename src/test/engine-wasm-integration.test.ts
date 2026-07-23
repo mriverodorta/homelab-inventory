@@ -439,6 +439,7 @@ describe('Rust WASM engine integration', () => {
     const runtime = await WasmEngineRuntime.instantiate(bytes)
     const upsRef = { item_type: 'ups', id: 1 }
     const monitorRef = { item_type: 'monitor', id: 1 }
+    const powerStripRef = { item_type: 'powerStrip', id: 1 }
     const handle = runtime.create(encodeEngineSnapshot({
       revision: 5,
       project_name: 'Power Lab',
@@ -468,6 +469,20 @@ describe('Rust WASM engine integration', () => {
               key: 'ac-input',
               port_type: 'ac-input',
               slot_number: 1,
+              speed: null,
+              endpoints: [],
+            }],
+          },
+          {
+            item: powerStripRef,
+            archived: false,
+            power_configuration: null,
+            allow_outlet_fan_out: false,
+            ports: [{
+              id: 1,
+              key: 'ac-input',
+              port_type: 'ac-input',
+              slot_number: 0,
               speed: null,
               endpoints: [],
             }],
@@ -516,6 +531,16 @@ describe('Rust WASM engine integration', () => {
             endpoint_id: null,
           },
           power: expect.objectContaining({ direction: 'output', kind: 'ups-outlet' }),
+        }),
+        expect.objectContaining({
+          endpoint: {
+            item: powerStripRef,
+            hosted_item: null,
+            port_id: 1,
+            endpoint_id: null,
+          },
+          slot_number: 0,
+          power: expect.objectContaining({ direction: 'input', kind: 'power-strip-input' }),
         }),
       ]))
       expect(response.result.payload.topology.findings).toEqual(expect.arrayContaining([
