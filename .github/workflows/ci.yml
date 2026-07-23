@@ -24,11 +24,30 @@ jobs:
         with:
           bun-version: latest
 
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.94.1
+          targets: wasm32-unknown-unknown
+          components: rustfmt, clippy
+
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
       - name: Check release notes
         run: bun scripts/check-release-notes.mjs
+
+      - name: Check Rust formatting
+        run: cargo fmt --manifest-path rust/Cargo.toml --all -- --check
+
+      - name: Lint Rust
+        run: cargo clippy --manifest-path rust/Cargo.toml --workspace --all-targets -- -D warnings
+
+      - name: Test Rust
+        run: cargo test --manifest-path rust/Cargo.toml --workspace
+
+      - name: Build WASM
+        run: bun run build:wasm
 
       - name: Lint
         run: bun run lint
@@ -38,3 +57,12 @@ jobs:
 
       - name: Build
         run: bun run build
+
+      - name: Benchmark engine
+        run: bun run benchmark:engine
+
+      - name: Upload engine benchmark
+        uses: actions/upload-artifact@v6
+        with:
+          name: engine-benchmarks
+          path: artifacts/engine-benchmarks/*.json

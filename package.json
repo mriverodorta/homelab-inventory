@@ -23,6 +23,7 @@
     "dev:wasm": "bun scripts/dev-wasm.mjs",
     "dev:vite": "vite",
     "build": "tsc -b && vite build",
+    "benchmark:engine": "bun scripts/benchmark-engine.mjs",
     "lint": "oxlint",
     "prebuild": "bun run build:wasm",
     "preview": "vite preview",

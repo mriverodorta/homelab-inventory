@@ -6,6 +6,7 @@ dist/
 dist-ssr/
 .vite/
 coverage/
+artifacts/engine-benchmarks/
 
 # Runtime data
 data/

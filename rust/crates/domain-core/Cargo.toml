@@ -7,3 +7,10 @@ rust-version.workspace = true
 
 [dependencies]
 homelab-engine-protocol = { path = "../protocol" }
+
+[dev-dependencies]
+rmp-serde.workspace = true
+
+[[bench]]
+name = "phase1"
+harness = false
