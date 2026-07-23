@@ -125,6 +125,8 @@ function topologyFixture() {
       host: server,
       item: adapter,
       component_type: 'powerAdapter',
+      assigned_at: '2026-07-23T00:00:00.000Z',
+      allocation: null,
     })
     assignmentId += 1
     placements.push(server)
