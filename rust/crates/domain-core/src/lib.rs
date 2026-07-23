@@ -4,7 +4,7 @@ use homelab_engine_protocol::{
     ArrangementResult, CommandPatchSet, EngineError, EngineRequest, EngineResponse, EngineSnapshot,
     EngineStatus, GeometryHandle, GeometryUpdateResult, NearestPlacementResult, Operation,
     PROTOCOL_VERSION, PlacementCheckResult, ProjectPatch, ResponseBody, RouteDefinition, RouteEdit,
-    RouteEditResult, RouteResult, RoutesUpdateResult,
+    RouteEditResult, RouteResult, RoutesUpdateResult, TopologyError, TopologySnapshot,
 };
 use homelab_geometry::{GeometryError, GeometryNode, SpatialIndex, arrange_items};
 use homelab_routing::{
@@ -22,12 +22,18 @@ pub struct Engine {
     routing_revision: u32,
     routes: BTreeMap<u32, RouteDefinition>,
     route_planner: RoutePlanner,
+    topology: TopologySnapshot,
 }
 
 impl Engine {
     #[must_use]
     pub fn from_snapshot(snapshot: EngineSnapshot) -> Self {
-        Self {
+        Self::try_from_snapshot(snapshot).expect("engine snapshot must contain valid topology")
+    }
+
+    pub fn try_from_snapshot(snapshot: EngineSnapshot) -> Result<Self, TopologyError> {
+        snapshot.topology.validate()?;
+        Ok(Self {
             revision: snapshot.revision,
             project_name: snapshot.project_name,
             geometry_revision: 0,
@@ -36,7 +42,8 @@ impl Engine {
             routing_revision: 0,
             routes: BTreeMap::new(),
             route_planner: RoutePlanner::default(),
-        }
+            topology: snapshot.topology,
+        })
     }
 
     #[must_use]
@@ -57,6 +64,11 @@ impl Engine {
     #[must_use]
     pub const fn routing_revision(&self) -> u32 {
         self.routing_revision
+    }
+
+    #[must_use]
+    pub const fn topology(&self) -> &TopologySnapshot {
+        &self.topology
     }
 
     pub fn dispatch(&mut self, request: EngineRequest) -> EngineResponse {
@@ -518,6 +530,12 @@ mod tests {
         Engine::from_snapshot(EngineSnapshot {
             revision: 12,
             project_name: "Homelab Inventory".into(),
+            topology: TopologySnapshot {
+                items: vec![],
+                assignments: vec![],
+                connections: vec![],
+                placements: vec![],
+            },
         })
     }
 

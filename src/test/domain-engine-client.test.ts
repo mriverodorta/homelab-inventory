@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import {
   decodeEngineRequest,
+  EMPTY_ENGINE_TOPOLOGY,
   encodeEngineResponse,
   encodeEngineSnapshot,
   type EngineRequest,
@@ -94,7 +95,11 @@ class FakeWorker implements WorkerLike {
 }
 
 function api(overrides: Partial<DomainEngineApi> = {}): DomainEngineApi {
-  const snapshot = { revision: 1, project_name: 'Lab' }
+  const snapshot = {
+    revision: 1,
+    project_name: 'Lab',
+    topology: EMPTY_ENGINE_TOPOLOGY,
+  }
   return {
     fetchSnapshot: vi.fn(async () => ({ snapshot, bytes: encodeEngineSnapshot(snapshot) })),
     postCommand: vi.fn(async (bytes) => {

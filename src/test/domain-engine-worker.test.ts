@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import {
   decodeEngineRequest,
+  EMPTY_ENGINE_TOPOLOGY,
   encodeEngineRequest,
   encodeEngineResponse,
   encodeEngineSnapshot,
@@ -46,7 +47,11 @@ describe('domain engine worker', () => {
     const loadRuntime = vi.fn(async () => runtime)
     attachDomainEngineWorker(scope as never, { loadRuntime: loadRuntime as never })
 
-    const snapshot = encodeEngineSnapshot({ revision: 5, project_name: 'Rack Lab' })
+    const snapshot = encodeEngineSnapshot({
+      revision: 5,
+      project_name: 'Rack Lab',
+      topology: EMPTY_ENGINE_TOPOLOGY,
+    })
     scope.onmessage?.({ data: {
       kind: 'initialize',
       snapshot: snapshot.buffer.slice(snapshot.byteOffset, snapshot.byteOffset + snapshot.byteLength),
@@ -81,7 +86,11 @@ describe('domain engine worker', () => {
     attachDomainEngineWorker(scope, {
       loadRuntime: async () => { throw new Error('WASM unavailable') },
     })
-    const snapshot = encodeEngineSnapshot({ revision: 1, project_name: 'Lab' })
+    const snapshot = encodeEngineSnapshot({
+      revision: 1,
+      project_name: 'Lab',
+      topology: EMPTY_ENGINE_TOPOLOGY,
+    })
 
     scope.onmessage?.({ data: {
       kind: 'initialize',

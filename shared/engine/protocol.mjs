@@ -1,6 +1,12 @@
 import { decode, encode } from '@msgpack/msgpack'
 
 export const ENGINE_PROTOCOL_VERSION = 1
+export const EMPTY_ENGINE_TOPOLOGY = Object.freeze({
+  items: Object.freeze([]),
+  assignments: Object.freeze([]),
+  connections: Object.freeze([]),
+  placements: Object.freeze([]),
+})
 
 function asBytes(value) {
   if (value instanceof Uint8Array) return value
@@ -33,6 +39,15 @@ function decodeValue(bytes, label) {
   return asObject(decode(asBytes(bytes)), label)
 }
 
+function assertTopologySnapshot(topology) {
+  const value = asObject(topology, 'Engine snapshot topology')
+  for (const field of ['items', 'assignments', 'connections', 'placements']) {
+    if (!Array.isArray(value[field])) {
+      throw new TypeError(`Engine snapshot topology.${field} must be an array.`)
+    }
+  }
+}
+
 export function encodeEngineSnapshot(snapshot) {
   const value = asObject(snapshot, 'Engine snapshot')
   if (!Number.isSafeInteger(value.revision) || value.revision < 1) {
@@ -41,6 +56,7 @@ export function encodeEngineSnapshot(snapshot) {
   if (typeof value.project_name !== 'string' || value.project_name.trim() === '') {
     throw new TypeError('Engine snapshot project_name must not be empty.')
   }
+  assertTopologySnapshot(value.topology)
   return encodeValue(value, 'Engine snapshot')
 }
 

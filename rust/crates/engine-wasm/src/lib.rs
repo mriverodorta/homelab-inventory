@@ -44,6 +44,11 @@ mod wasm {
             _ => return 0,
         };
 
+        let engine = match Engine::try_from_snapshot(snapshot) {
+            Ok(engine) => engine,
+            Err(_) => return 0,
+        };
+
         ENGINES.with(|engines| {
             let mut engines = engines.borrow_mut();
             if let Some((index, slot)) = engines
@@ -51,11 +56,11 @@ mod wasm {
                 .enumerate()
                 .find(|(_, engine)| engine.is_none())
             {
-                *slot = Some(Engine::from_snapshot(snapshot));
+                *slot = Some(engine);
                 return (index + 1) as u32;
             }
 
-            engines.push(Some(Engine::from_snapshot(snapshot)));
+            engines.push(Some(engine));
             engines.len() as u32
         })
     }

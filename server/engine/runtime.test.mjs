@@ -1,5 +1,6 @@
 import { beforeAll, describe, expect, it } from 'vitest'
 import { buildWasm } from '../../scripts/build-wasm.mjs'
+import { EMPTY_ENGINE_TOPOLOGY } from '../../shared/engine/protocol.mjs'
 import { ServerEngineRuntime } from './runtime.mjs'
 
 beforeAll(async () => {
@@ -8,7 +9,11 @@ beforeAll(async () => {
 
 function store(revision, projectName) {
   return {
-    getEngineSnapshot: () => ({ revision, project_name: projectName }),
+    getEngineSnapshot: () => ({
+      revision,
+      project_name: projectName,
+      topology: EMPTY_ENGINE_TOPOLOGY,
+    }),
   }
 }
 
@@ -50,10 +55,10 @@ describe('ServerEngineRuntime', () => {
 
   it('reloads a store from its latest canonical snapshot', async () => {
     const runtime = await ServerEngineRuntime.create()
-    let snapshot = { revision: 2, project_name: 'Before' }
+    let snapshot = { revision: 2, project_name: 'Before', topology: EMPTY_ENGINE_TOPOLOGY }
     const currentStore = { getEngineSnapshot: () => snapshot }
     runtime.forStore(currentStore)
-    snapshot = { revision: 7, project_name: 'After' }
+    snapshot = { revision: 7, project_name: 'After', topology: EMPTY_ENGINE_TOPOLOGY }
     runtime.reloadStore(currentStore)
 
     expect(runtime.dispatch(currentStore, {

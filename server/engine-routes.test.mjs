@@ -1,6 +1,11 @@
 import express from 'express'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { decodeEngineSnapshot, encodeEngineRequest, encodeEngineResponse } from '../shared/engine/protocol.mjs'
+import {
+  decodeEngineSnapshot,
+  EMPTY_ENGINE_TOPOLOGY,
+  encodeEngineRequest,
+  encodeEngineResponse,
+} from '../shared/engine/protocol.mjs'
 import { InventoryLifecycleError } from './db/inventory-lifecycle.mjs'
 import { ENGINE_MEDIA_TYPE, registerEngineRoutes } from './engine-routes.mjs'
 
@@ -33,7 +38,11 @@ async function startApp({ store, commandService }) {
 describe('engine routes', () => {
   it('returns a binary canonical snapshot', async () => {
     const url = await startApp({
-      store: { getEngineSnapshot: () => ({ revision: 7, project_name: 'Rack Lab' }) },
+      store: { getEngineSnapshot: () => ({
+        revision: 7,
+        project_name: 'Rack Lab',
+        topology: EMPTY_ENGINE_TOPOLOGY,
+      }) },
       commandService: {},
     })
 
@@ -44,6 +53,7 @@ describe('engine routes', () => {
     expect(decodeEngineSnapshot(await response.arrayBuffer())).toEqual({
       revision: 7,
       project_name: 'Rack Lab',
+      topology: EMPTY_ENGINE_TOPOLOGY,
     })
   })
 

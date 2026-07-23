@@ -8,13 +8,19 @@ pub use homelab_routing::{
     ObstacleRouteResult, ReservedSegment, RouteDefinition, RouteEdit, RouteObstacle, RoutePatch,
     RouteWarning, RoutedPath,
 };
+pub use homelab_topology::{
+    ConnectionRoute as TopologyConnectionRoute, EndpointRef, ItemRef, TopologyAssignment,
+    TopologyConnection, TopologyError, TopologyItem, TopologyPort, TopologyPortSide,
+    TopologySnapshot,
+};
 
 pub const PROTOCOL_VERSION: u16 = 1;
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct EngineSnapshot {
     pub revision: u32,
     pub project_name: String,
+    pub topology: TopologySnapshot,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -232,6 +238,12 @@ mod tests {
         let snapshot = EngineSnapshot {
             revision: 3,
             project_name: "Homelab Inventory".into(),
+            topology: TopologySnapshot {
+                items: vec![],
+                assignments: vec![],
+                connections: vec![],
+                placements: vec![],
+            },
         };
 
         let bytes = rmp_serde::to_vec_named(&snapshot).expect("serialize snapshot");
@@ -244,6 +256,12 @@ mod tests {
         let snapshot = EngineSnapshot {
             revision: 3,
             project_name: "Laboratorio São José 日本".into(),
+            topology: TopologySnapshot {
+                items: vec![],
+                assignments: vec![],
+                connections: vec![],
+                placements: vec![],
+            },
         };
 
         let bytes = rmp_serde::to_vec_named(&snapshot).expect("serialize Unicode snapshot");

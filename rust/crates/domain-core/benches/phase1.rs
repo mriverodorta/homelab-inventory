@@ -10,6 +10,12 @@ fn main() {
     let mut engine = Engine::from_snapshot(EngineSnapshot {
         revision: 1,
         project_name: "Benchmark".into(),
+        topology: homelab_engine_protocol::TopologySnapshot {
+            items: vec![],
+            assignments: vec![],
+            connections: vec![],
+            placements: vec![],
+        },
     });
 
     let status_started = Instant::now();

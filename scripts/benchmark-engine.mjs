@@ -3,6 +3,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import {
   decodeEngineResponse,
+  EMPTY_ENGINE_TOPOLOGY,
   encodeEngineRequest,
   encodeEngineSnapshot,
 } from '../shared/engine/protocol.mjs'
@@ -73,7 +74,11 @@ export async function benchmarkEngine() {
   await buildWasm()
   const wasmBytes = await fs.readFile(wasmPath)
   const runtime = await WasmEngineRuntime.instantiate(wasmBytes)
-  const snapshot = encodeEngineSnapshot({ revision: 1, project_name: 'Benchmark' })
+  const snapshot = encodeEngineSnapshot({
+    revision: 1,
+    project_name: 'Benchmark',
+    topology: EMPTY_ENGINE_TOPOLOGY,
+  })
 
   const creationCount = 500
   let started = performance.now()

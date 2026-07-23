@@ -11,6 +11,7 @@ import {
   planHostAllocations,
 } from '../../shared/compatibility/index.mjs'
 import { withCanonicalPowerPorts } from '../../shared/power-ports.mjs'
+import { createEngineSnapshot } from '../engine/snapshot.mjs'
 import {
   analyzeInventoryDependencies,
   assertDependencyFree,
@@ -1374,11 +1375,7 @@ export class HomelabInventoryStore {
   }
 
   getEngineSnapshot() {
-    const project = this.getProject()
-    return {
-      revision: project.revision,
-      project_name: project.metadata.name,
-    }
+    return createEngineSnapshot(this.getProject())
   }
 
   setProject(project) {

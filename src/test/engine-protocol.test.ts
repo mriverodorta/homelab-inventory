@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   decodeEngineRequest,
   decodeEngineSnapshot,
+  EMPTY_ENGINE_TOPOLOGY,
   encodeEngineRequest,
   encodeEngineSnapshot,
 } from '../../shared/engine/protocol.mjs'
@@ -11,6 +12,7 @@ describe('engine MessagePack protocol', () => {
     const snapshot = {
       revision: 3,
       project_name: 'Laboratorio São José 日本',
+      topology: EMPTY_ENGINE_TOPOLOGY,
     }
 
     expect(decodeEngineSnapshot(encodeEngineSnapshot(snapshot))).toEqual(snapshot)

@@ -3,6 +3,7 @@ import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 import {
   decodeEngineResponse,
+  EMPTY_ENGINE_TOPOLOGY,
   encodeEngineRequest,
   encodeEngineSnapshot,
 } from '../../shared/engine/protocol.mjs'
@@ -17,6 +18,7 @@ describe('Rust WASM engine integration', () => {
     const handle = runtime.create(encodeEngineSnapshot({
       revision: 4,
       project_name: 'Laboratorio São José 日本',
+      topology: EMPTY_ENGINE_TOPOLOGY,
     }))
 
     const response = decodeEngineResponse(runtime.dispatch(handle, encodeEngineRequest({
@@ -52,6 +54,7 @@ describe('Rust WASM engine integration', () => {
     const handle = runtime.create(encodeEngineSnapshot({
       revision: 7,
       project_name: 'Geometry Lab',
+      topology: EMPTY_ENGINE_TOPOLOGY,
     }))
 
     const replaced = decodeEngineResponse(runtime.dispatch(handle, encodeEngineRequest({

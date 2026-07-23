@@ -1,8 +1,65 @@
 export const ENGINE_PROTOCOL_VERSION: 1
+export const EMPTY_ENGINE_TOPOLOGY: TopologySnapshot
 
 export type EngineSnapshot = {
   revision: number
   project_name: string
+  topology: TopologySnapshot
+}
+
+export type TopologyItemRef = {
+  item_type: string
+  id: number
+}
+
+export type TopologyEndpointRef = {
+  item: TopologyItemRef
+  port_id: number
+  endpoint_id: number | null
+  hosted_item: TopologyItemRef | null
+}
+
+export type TopologyPort = {
+  id: number
+  key: string | null
+  port_type: string
+  slot_number: number
+  speed: string | null
+  endpoints: Array<{ id: number; side: string }>
+}
+
+export type TopologyItem = {
+  item: TopologyItemRef
+  archived: boolean
+  power_configuration: string | null
+  allow_outlet_fan_out: boolean
+  ports: TopologyPort[]
+}
+
+export type TopologySnapshot = {
+  items: TopologyItem[]
+  assignments: Array<{
+    id: number
+    host: TopologyItemRef
+    item: TopologyItemRef
+    component_type: string
+  }>
+  connections: Array<{
+    id: number
+    from: TopologyEndpointRef
+    to: TopologyEndpointRef
+    connection_type: string
+    negotiated_speed_mbps: number | null
+    label: string | null
+    route: {
+      source_side: string | null
+      target_side: string | null
+      bend_points: Array<{ x: number; y: number }>
+      avoid_cable_overlap: boolean
+    } | null
+    created_at: string
+  }>
+  placements: TopologyItemRef[]
 }
 
 export type GeometryRect = {
