@@ -199,6 +199,46 @@ describe('DomainEngineClient', () => {
     client.dispose()
   })
 
+  it('synchronizes an externally advanced canonical revision before the next mutation', async () => {
+    let revision = 1
+    const testApi = api({
+      fetchSnapshot: vi.fn(async () => {
+        const snapshot = {
+          revision,
+          project_name: 'Lab',
+          topology: EMPTY_ENGINE_TOPOLOGY,
+        }
+        return { snapshot, bytes: encodeEngineSnapshot(snapshot) }
+      }),
+    })
+    const client = new DomainEngineClient({ api: testApi, workerFactory: () => new FakeWorker() })
+    await client.start()
+
+    revision = 2
+    await expect(client.synchronizeCanonicalRevision(
+      revision,
+      'Synchronizing inventory changes.',
+    )).resolves.toBe(2)
+
+    expect(testApi.fetchSnapshot).toHaveBeenCalledTimes(2)
+    expect(client.status()).toMatchObject({ phase: 'ready', revision: 2 })
+    client.dispose()
+  })
+
+  it('does not rebuild when the worker already has the canonical revision', async () => {
+    const testApi = api()
+    const client = new DomainEngineClient({ api: testApi, workerFactory: () => new FakeWorker() })
+    await client.start()
+
+    await expect(client.synchronizeCanonicalRevision(
+      1,
+      'Synchronizing inventory changes.',
+    )).resolves.toBe(1)
+
+    expect(testApi.fetchSnapshot).toHaveBeenCalledOnce()
+    client.dispose()
+  })
+
   it('retries startup three times before entering failed', async () => {
     const workerFactory = vi.fn(() => new FakeWorker(true))
     const client = new DomainEngineClient({ api: api(), workerFactory })

@@ -33,6 +33,8 @@ function stubClient({
         for (const listener of listeners) listener(state)
       }
     },
+    rebuild: vi.fn(async () => {}),
+    applyCommittedResponse: vi.fn(),
     dispose: vi.fn(),
   }
   return client as unknown as DomainEngineClient
@@ -108,5 +110,27 @@ describe('DomainEngineGate', () => {
     expect(screen.getByText('Canvas workbench')).toBeInTheDocument()
     expect(screen.queryByText('Rebuilding workspace engine')).not.toBeInTheDocument()
     expect(screen.queryByRole('status')).not.toBeInTheDocument()
+  })
+
+  it('ignores a delayed invalidation for the revision already loaded locally', async () => {
+    const listeners = new Map<string, EventListener>()
+    const localEventSourceFactory = vi.fn(() => ({
+      addEventListener: vi.fn((name: string, listener: EventListener) => listeners.set(name, listener)),
+      close: vi.fn(),
+    }) as unknown as EventSource)
+    const client = stubClient({ initial: { phase: 'ready', revision: 3 } })
+
+    render(
+      <DomainEngineProvider enabled client={client} eventSourceFactory={localEventSourceFactory}>
+        <div>Canvas workbench</div>
+      </DomainEngineProvider>,
+    )
+
+    await waitFor(() => expect(listeners.has('project-invalidated')).toBe(true))
+    listeners.get('project-invalidated')?.(new MessageEvent('project-invalidated', {
+      data: JSON.stringify({ baseRevision: 2, revision: 3 }),
+    }))
+
+    expect(client.rebuild).not.toHaveBeenCalled()
   })
 })

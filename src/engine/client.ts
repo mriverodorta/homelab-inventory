@@ -310,6 +310,28 @@ export class DomainEngineClient {
     await this.recover('rebuilding', reason)
   }
 
+  async synchronizeCanonicalRevision(expectedRevision: number, reason: string) {
+    if (!Number.isSafeInteger(expectedRevision) || expectedRevision < 1) {
+      throw new Error('The canonical workspace revision is invalid.')
+    }
+
+    await this.mutationTail
+    if (
+      this.currentState.phase === 'ready'
+      && this.currentState.revision === expectedRevision
+      && this.workerRevision === expectedRevision
+    ) {
+      return expectedRevision
+    }
+
+    await this.rebuild(reason)
+    const revision = this.currentState.revision
+    if (this.currentState.phase !== 'ready' || revision === null) {
+      throw new Error('The workspace engine did not return to a ready state.')
+    }
+    return revision
+  }
+
   dispose() {
     if (this.currentState.phase === 'disposed') return
     this.queuedQuery?.reject(disposedError())

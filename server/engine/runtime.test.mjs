@@ -76,4 +76,26 @@ describe('ServerEngineRuntime', () => {
       },
     })
   })
+
+  it('refreshes a cached handle after inventory changes advance the canonical revision', async () => {
+    const runtime = await ServerEngineRuntime.create()
+    let snapshot = { revision: 2, project_name: 'Before', topology: EMPTY_ENGINE_TOPOLOGY }
+    const currentStore = { getEngineSnapshot: () => snapshot }
+
+    expect(runtime.dispatch(currentStore, {
+      protocol_version: 1,
+      request_id: 4,
+      base_revision: 2,
+      operation: { kind: 'status' },
+    }).result).toMatchObject({ payload: { revision: 2, project_name: 'Before' } })
+
+    snapshot = { revision: 3, project_name: 'After inventory change', topology: EMPTY_ENGINE_TOPOLOGY }
+
+    expect(runtime.dispatch(currentStore, {
+      protocol_version: 1,
+      request_id: 5,
+      base_revision: 3,
+      operation: { kind: 'status' },
+    }).result).toMatchObject({ payload: { revision: 3, project_name: 'After inventory change' } })
+  })
 })

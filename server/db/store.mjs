@@ -1836,6 +1836,10 @@ export class HomelabInventoryStore {
     return createEngineSnapshot(this.getProject())
   }
 
+  getEngineRevision() {
+    return this.databases.project.data.revision
+  }
+
   setProject(project) {
     const currentRevision = this.databases.project.data.revision
     const submittedRevision = project.revision ?? currentRevision

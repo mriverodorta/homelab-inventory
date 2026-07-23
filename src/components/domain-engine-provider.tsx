@@ -79,7 +79,25 @@ export function DomainEngineProvider({
         }
       })()
     }
-    const onInvalidation = () => {
+    const onInvalidation = (event: Event) => {
+      const message = event as MessageEvent<string>
+      const invalidatedRevision = (() => {
+        try {
+          const data = JSON.parse(message.data) as { revision?: unknown }
+          return typeof data.revision === 'number' ? data.revision : null
+        } catch {
+          return null
+        }
+      })()
+
+      if (
+        invalidatedRevision !== null
+        && client.status().phase === 'ready'
+        && client.status().revision === invalidatedRevision
+      ) {
+        return
+      }
+
       void client.rebuild('Project data changed outside the domain command stream.')
         .then(() => {
           sequenceRef.current += 1

@@ -85,11 +85,28 @@ export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
   notes: [],
 }
 
+const RELEASE_0_2_1_DETAILS: UnreleasedReleaseNotes = {
+  highlights: [],
+  fixes: [
+    'Newly created or edited inventory equipment now synchronizes with the local workspace engine before canvas interaction, preventing immediate drops from being rolled back by a revision conflict.',
+    'The server now refreshes stale in-memory WASM state after inventory changes before accepting the next canvas command.',
+    'Delayed inventory update events no longer rebuild a workspace revision that the browser has already loaded.',
+  ],
+  notes: [],
+}
+
 export const RELEASE_NOTES: ReleaseNoteEntry[] = [
+  {
+    version: '0.2.1',
+    date: '2026-07-23',
+    channel: 'latest',
+    title: 'Reliable inventory placement',
+    ...RELEASE_0_2_1_DETAILS,
+  },
   {
     version: '0.2.0',
     date: '2026-07-23',
-    channel: 'latest',
+    channel: 'release',
     title: 'Rust/WASM workspace engine',
     ...RELEASE_0_2_0_DETAILS,
   },

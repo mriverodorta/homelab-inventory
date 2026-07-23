@@ -607,6 +607,8 @@ function App() {
   const projectNameTimerRef = useRef<number | null>(null)
   const connectionLabelTimerRef = useRef<number | null>(null)
   const hasHydratedProjectRef = useRef(false)
+  const applyInventoryCommandSnapshotRef = useRef(applyInventoryCommandSnapshot)
+  applyInventoryCommandSnapshotRef.current = applyInventoryCommandSnapshot
   const demoExpirationFinalizedRef = useRef(false)
   const persistenceCoordinatorRef = useRef<ProjectPersistenceCoordinator | null>(null)
   if (!persistenceCoordinatorRef.current) {
@@ -857,7 +859,7 @@ function App() {
     }
 
     void loadProject()
-      .then((canonicalProject) => {
+      .then(async (canonicalProject) => {
         const activeProject = projectRef.current
         const canonicalRevision = canonicalProject.revision
         const activeRevision = activeProject?.revision
@@ -867,7 +869,7 @@ function App() {
           && canonicalRevision < activeRevision
         ) return
         queryClient.setQueryData(['project'], canonicalProject)
-        applyInventoryCommandSnapshot(canonicalProject)
+        await applyInventoryCommandSnapshotRef.current(canonicalProject)
       })
       .catch((error) => {
         setPersistenceWarning(
@@ -1195,10 +1197,35 @@ function App() {
     setValidationSeverity(message ? severity : 'error')
   }
 
-  function applyInventoryCommandSnapshot(
+  async function applyInventoryCommandSnapshot(
     nextProject: ProjectState,
     options: { historySnapshot?: ProjectState } = {},
   ) {
+    let synchronizedProject = nextProject
+    const expectedRevision = nextProject.revision
+
+    if (
+      domainEngine.enabled
+      && typeof expectedRevision === 'number'
+      && Number.isSafeInteger(expectedRevision)
+    ) {
+      const synchronizedRevision = await domainEngine.client.synchronizeCanonicalRevision(
+        expectedRevision,
+        'Synchronizing inventory changes.',
+      )
+
+      if (synchronizedRevision !== expectedRevision) {
+        synchronizedProject = await loadProject()
+        const latestRevision = synchronizedProject.revision
+        if (typeof latestRevision === 'number' && latestRevision !== synchronizedRevision) {
+          await domainEngine.client.synchronizeCanonicalRevision(
+            latestRevision,
+            'Synchronizing concurrent inventory changes.',
+          )
+        }
+      }
+    }
+
     saveGenerationRef.current += 1
     queuedSaveProjectRef.current = null
     pendingAutosaveProjectRef.current = null
@@ -1208,9 +1235,10 @@ function App() {
       saveTimerRef.current = null
     }
 
-    projectRef.current = nextProject
-    lastPersistedProjectRef.current = nextProject
-    setProject(nextProject)
+    projectRef.current = synchronizedProject
+    lastPersistedProjectRef.current = synchronizedProject
+    queryClient.setQueryData(['project'], synchronizedProject)
+    setProject(synchronizedProject)
     setHistory((currentHistory) => (
       options.historySnapshot
         ? pushHistory(currentHistory, options.historySnapshot)
@@ -1221,6 +1249,7 @@ function App() {
     setValidationMessage(null)
     setPersistenceWarning(null)
     setSaveStatus('saved')
+    return synchronizedProject
   }
 
   function showMessage(message: string) {
@@ -1433,9 +1462,9 @@ function App() {
   function recoverConnectionMutation(error: unknown, fallbackMessage: string) {
     setSaveStatus('error')
     setValidationMessage(error instanceof Error ? error.message : fallbackMessage)
-    void loadProject().then((canonicalProject) => {
+    void loadProject().then(async (canonicalProject) => {
       queryClient.setQueryData(['project'], canonicalProject)
-      applyInventoryCommandSnapshot(canonicalProject)
+      await applyInventoryCommandSnapshot(canonicalProject)
     }).catch((reloadError) => {
       setPersistenceWarning(
         reloadError instanceof Error
@@ -1808,7 +1837,7 @@ function App() {
     const previousItemIds = new Set(Object.keys(currentProject?.items ?? {}))
     const createdItemId = Object.keys(nextProject.items).find((itemId) => !previousItemIds.has(itemId))
 
-    applyInventoryCommandSnapshot(nextProject)
+    await applyInventoryCommandSnapshot(nextProject)
 
     if (createdItemId) {
       setSelectedItemId(createdItemId)
@@ -1827,7 +1856,7 @@ function App() {
       { type: currentItem.type, id: currentItem.id },
       input,
     )
-    applyInventoryCommandSnapshot(nextProject, { historySnapshot: currentProject })
+    await applyInventoryCommandSnapshot(nextProject, { historySnapshot: currentProject })
   }
 
   async function handleUpdateInventoryItemProperties(
@@ -1845,7 +1874,7 @@ function App() {
       { type: currentItem.type, id: currentItem.id },
       properties,
     )
-    applyInventoryCommandSnapshot(nextProject, { historySnapshot: currentProject })
+    await applyInventoryCommandSnapshot(nextProject, { historySnapshot: currentProject })
   }
 
   async function requestNasPowerConfigurationChange(
@@ -1863,7 +1892,7 @@ function App() {
         setPendingNasPowerChange({ nasId: item.id, target, impact: result.impact })
         return
       }
-      applyInventoryCommandSnapshot(result.project, { historySnapshot: currentProject })
+      await applyInventoryCommandSnapshot(result.project, { historySnapshot: currentProject })
     } catch (error) {
       setPersistenceWarning(
         error instanceof Error ? error.message : 'NAS power configuration could not be changed.',
@@ -1886,7 +1915,7 @@ function App() {
         setPendingNasPowerChange({ ...pending, impact: result.impact })
         return
       }
-      applyInventoryCommandSnapshot(result.project, { historySnapshot: currentProject })
+      await applyInventoryCommandSnapshot(result.project, { historySnapshot: currentProject })
       setPendingNasPowerChange(null)
     } catch (error) {
       setNasPowerChangeError(
@@ -1906,7 +1935,7 @@ function App() {
       const nextProject = await duplicateInventoryItem(inventoryRef(item))
       const duplicatedItemId = Object.keys(nextProject.items).find((itemId) => !currentItemIds.has(itemId))
 
-      applyInventoryCommandSnapshot(nextProject)
+      await applyInventoryCommandSnapshot(nextProject)
       setInventoryLifecycleRevision((current) => current + 1)
       if (duplicatedItemId) setSelectedItemId(duplicatedItemId)
     } catch (error) {
@@ -1954,7 +1983,7 @@ function App() {
         : await deleteInventoryItems(refs)
       const affectedIds = new Set(request.items.map(runtimeItemKey))
 
-      applyInventoryCommandSnapshot(nextProject)
+      await applyInventoryCommandSnapshot(nextProject)
       setSelectedItemId((current) => current && affectedIds.has(current) ? null : current)
       setInventoryLifecycleRevision((current) => current + 1)
       setInventoryLifecycleRequest(null)
@@ -1976,7 +2005,7 @@ function App() {
 
     try {
       const nextProject = await restoreInventoryItems(items.map(inventoryRef))
-      applyInventoryCommandSnapshot(nextProject)
+      await applyInventoryCommandSnapshot(nextProject)
       setInventoryLifecycleRevision((current) => current + 1)
     } catch (error) {
       setPersistenceWarning(error instanceof Error ? error.message : 'Inventory items could not be restored.')

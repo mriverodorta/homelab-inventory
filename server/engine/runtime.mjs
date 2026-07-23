@@ -26,21 +26,44 @@ export class ServerEngineRuntime {
   }
 
   forStore(store) {
-    const existing = this.handles.get(store)
-    if (existing) return existing
+    return this.entryForStore(store).handle
+  }
 
-    const handle = this.runtime.create(encodeEngineSnapshot(store.getEngineSnapshot()))
-    this.handles.set(store, handle)
-    return handle
+  entryForStore(store) {
+    const existing = this.handles.get(store)
+    const snapshot = typeof store.getEngineRevision === 'function'
+      ? null
+      : store.getEngineSnapshot()
+    const canonicalRevision = snapshot?.revision ?? store.getEngineRevision()
+    if (existing?.revision === canonicalRevision) return existing
+
+    if (existing) {
+      this.runtime.destroy(existing.handle)
+      this.handles.delete(store)
+    }
+
+    const canonicalSnapshot = snapshot ?? store.getEngineSnapshot()
+    const entry = {
+      handle: this.runtime.create(encodeEngineSnapshot(canonicalSnapshot)),
+      revision: canonicalSnapshot.revision,
+    }
+    this.handles.set(store, entry)
+    return entry
   }
 
   dispatch(store, request) {
     const bytes = encodeEngineRequest(request)
-    return decodeEngineResponse(this.runtime.dispatch(this.forStore(store), bytes))
+    return decodeEngineResponse(this.dispatchBytes(store, bytes))
   }
 
   dispatchBytes(store, requestBytes) {
-    return this.runtime.dispatch(this.forStore(store), requestBytes)
+    const entry = this.entryForStore(store)
+    const responseBytes = this.runtime.dispatch(entry.handle, requestBytes)
+    const response = decodeEngineResponse(responseBytes)
+    if (response.result.kind === 'patch') {
+      entry.revision = response.result.payload.revision
+    }
+    return responseBytes
   }
 
   reloadStore(store) {
@@ -49,9 +72,9 @@ export class ServerEngineRuntime {
   }
 
   destroyStore(store) {
-    const handle = this.handles.get(store)
-    if (!handle) return false
+    const entry = this.handles.get(store)
+    if (!entry) return false
     this.handles.delete(store)
-    return this.runtime.destroy(handle)
+    return this.runtime.destroy(entry.handle)
   }
 }

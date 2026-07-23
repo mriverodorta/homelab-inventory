@@ -6,6 +6,14 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 
 ## Unreleased
 
+## [0.2.1] - 2026-07-23
+
+### Fixed
+
+- Synchronized inventory CRUD responses with the local WASM workspace revision before allowing canvas interaction, preventing newly created equipment from returning to inventory after an immediate drop with a revision-conflict error.
+- Refreshed the Bun server's cached WASM handle whenever inventory CRUD advances the canonical project revision, so the next canvas command is evaluated against current data.
+- Ignored delayed inventory invalidation events when the browser has already loaded the matching revision, avoiding a redundant workspace rebuild.
+
 ## [0.2.0] - 2026-07-23
 
 This release moves the workspace's computational core into a shared Rust/WASM engine used by both the browser worker and Bun server. It also completes the associated cable-routing, topology, power-equipment, persistence, and interaction-performance work accumulated since `0.1.38`.
