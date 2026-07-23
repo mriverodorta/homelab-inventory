@@ -17,6 +17,7 @@ export function registerEngineRoutes(app, { withStore, commandService, sseHub })
   app.get('/api/engine/snapshot', (request, response) => {
     void withStore(request, response, async (store) => {
       const bytes = encodeEngineSnapshot(store.getEngineSnapshot())
+      response.set('Cache-Control', 'no-store')
       response.type(ENGINE_MEDIA_TYPE).send(Buffer.from(bytes))
     }, { message: 'Unable to load engine snapshot.' })
   })
@@ -34,6 +35,7 @@ export function registerEngineRoutes(app, { withStore, commandService, sseHub })
             })
           }
           const result = await commandService.execute(store, request.body)
+          response.set('Cache-Control', 'no-store')
           response.type(ENGINE_MEDIA_TYPE).send(Buffer.from(result.responseBytes))
         } catch (error) {
           respondWithLifecycleError(response, error)

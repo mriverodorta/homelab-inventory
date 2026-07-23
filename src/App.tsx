@@ -46,6 +46,8 @@ import {
   SheetTitle,
 } from '@/components/ui/sheet'
 import { TooltipProvider } from '@/components/ui/tooltip'
+import { applyEngineResponsePatch } from '@/engine/project-patches'
+import { useDomainEngine } from '@/hooks/use-domain-engine'
 import type { CanvasPortDragPoint } from '@/types/canvas'
 import {
   findAssignmentById,
@@ -494,6 +496,7 @@ function PortConnectionPreviewOverlay({ preview }: { preview: PortConnectionPrev
 
 function App() {
   const queryClient = useQueryClient()
+  const domainEngine = useDomainEngine()
   const [project, setProject] = useState<ProjectState | null>(null)
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null)
   const [selectedConnectionId, setSelectedConnectionId] = useState<string | number | null>(null)
@@ -556,6 +559,7 @@ function App() {
   const saveInFlightRef = useRef(false)
   const saveGenerationRef = useRef(0)
   const saveTimerRef = useRef<number | null>(null)
+  const projectNameTimerRef = useRef<number | null>(null)
   const hasHydratedProjectRef = useRef(false)
   const demoExpirationFinalizedRef = useRef(false)
   const resizeStateRef = useRef<{
@@ -616,6 +620,8 @@ function App() {
               !queuedSaveProjectRef.current &&
               projectRef.current === queuedSave.project
             ) {
+              projectRef.current = savedProject
+              setProject(savedProject)
               setPersistenceWarning(null)
               setSaveStatus('saved')
             }
@@ -738,6 +744,40 @@ function App() {
   useEffect(() => {
     projectRef.current = project
   }, [project])
+
+  useEffect(() => {
+    const event = domainEngine.syncEvent
+    if (!domainEngine.enabled || !event || !hasHydratedProjectRef.current) return
+
+    if (event.kind === 'patch') {
+      if (!event.external || !projectRef.current) return
+      const nextProject = applyEngineResponsePatch(projectRef.current, event.response)
+      projectRef.current = nextProject
+      lastPersistedProjectRef.current = nextProject
+      setProject(nextProject)
+      setHistory(createEmptyHistory())
+      setPersistenceWarning(null)
+      setSaveStatus('saved')
+      return
+    }
+
+    void loadProject()
+      .then((canonicalProject) => {
+        queryClient.setQueryData(['project'], canonicalProject)
+        applyInventoryCommandSnapshot(canonicalProject)
+      })
+      .catch((error) => {
+        setPersistenceWarning(
+          error instanceof Error ? error.message : 'Canonical project reload failed.',
+        )
+      })
+  }, [domainEngine.enabled, domainEngine.syncEvent, queryClient])
+
+  useEffect(() => () => {
+    if (projectNameTimerRef.current !== null) {
+      window.clearTimeout(projectNameTimerRef.current)
+    }
+  }, [])
 
   useEffect(() => {
     storeAutoCenterOnSelect(autoCenterOnSelect)
@@ -970,6 +1010,61 @@ function App() {
     if (negotiatedProject !== currentProject) {
       setAutosaveRevision((current) => current + 1)
     }
+  }
+
+  function updateProjectName(name: string) {
+    const currentProject = projectRef.current
+    if (!currentProject) return
+    if (!domainEngine.enabled) {
+      updateProject({
+        ...currentProject,
+        metadata: { ...currentProject.metadata, name },
+      }, { recordHistory: false })
+      return
+    }
+
+    const optimisticProject = {
+      ...currentProject,
+      metadata: { ...currentProject.metadata, name },
+    }
+    projectRef.current = optimisticProject
+    setProject(optimisticProject)
+    setSaveStatus('saving')
+    setPersistenceWarning(null)
+
+    if (projectNameTimerRef.current !== null) {
+      window.clearTimeout(projectNameTimerRef.current)
+    }
+    projectNameTimerRef.current = window.setTimeout(() => {
+      projectNameTimerRef.current = null
+      void domainEngine.client.mutate({
+        operation: { kind: 'update-project-metadata', payload: { name } },
+      }).then((response) => {
+        const activeProject = projectRef.current
+        if (!activeProject || response.result.kind !== 'patch') {
+          throw new Error(
+            response.result.kind === 'error'
+              ? response.result.payload.message
+              : 'Project name was not committed.',
+          )
+        }
+        const committedProject = applyEngineResponsePatch(activeProject, response)
+        projectRef.current = committedProject
+        lastPersistedProjectRef.current = committedProject
+        setProject(committedProject)
+        setSaveStatus('saved')
+      }).catch((error) => {
+        const persistedProject = lastPersistedProjectRef.current
+        if (persistedProject) {
+          projectRef.current = persistedProject
+          setProject(persistedProject)
+        }
+        setSaveStatus('error')
+        setPersistenceWarning(
+          error instanceof Error ? error.message : 'Project name could not be saved.',
+        )
+      })
+    }, SAVE_DEBOUNCE_MS)
   }
 
   function setValidationMessage(
@@ -2097,15 +2192,7 @@ function App() {
             updateChecking={checkForUpdatesMutation.isPending}
             updateClearingSkip={clearSkippedUpdateMutation.isPending}
             onOpenChange={setSettingsOpen}
-            onProjectNameChange={(name) => {
-              updateProject({
-                ...project,
-                metadata: {
-                  ...project.metadata,
-                  name,
-                },
-              }, { recordHistory: false })
-            }}
+            onProjectNameChange={updateProjectName}
             onInventoryVisibleChange={setDesktopInventoryVisible}
             onInventoryWidthChange={(width) => setInventoryWidth(clampInventoryWidth(width))}
             onAutoCenterOnSelectChange={setAutoCenterOnSelect}

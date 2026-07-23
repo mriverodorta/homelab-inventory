@@ -122,6 +122,37 @@ export class DomainEngineClient {
     return mutation
   }
 
+  async applyCommittedResponse(responseBytes: ArrayBuffer | Uint8Array) {
+    const response = decodeEngineResponse(responseBytes)
+    if (response.result.kind !== 'patch') return { kind: 'ignored' as const, response }
+
+    const committedRevision = response.result.payload.revision
+    const currentRevision = this.currentState.revision
+    if (currentRevision === committedRevision) {
+      return { kind: 'acknowledged' as const, response }
+    }
+    if (currentRevision === null || response.base_revision !== currentRevision) {
+      await this.rebuild('A committed project revision was missed.')
+      return { kind: 'rebuilt' as const, response }
+    }
+
+    const forward = response.result.payload.forward
+    const operation = forward.kind === 'set-project-name'
+      ? { kind: 'update-project-metadata' as const, payload: { name: forward.payload.name } }
+      : null
+    if (!operation) {
+      await this.rebuild('The committed project patch is not supported locally.')
+      return { kind: 'rebuilt' as const, response }
+    }
+
+    const applied = await this.dispatch({ operation })
+    if (applied.result.kind !== 'patch' || applied.result.payload.revision !== committedRevision) {
+      await this.rebuild('The committed project patch could not be reconciled.')
+      return { kind: 'rebuilt' as const, response }
+    }
+    return { kind: 'applied' as const, response }
+  }
+
   async rebuild(reason: string) {
     if (this.currentState.phase === 'disposed') throw disposedError()
     await this.recover('rebuilding', reason)

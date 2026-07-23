@@ -208,6 +208,61 @@ describe('DomainEngineClient', () => {
     client.dispose()
   })
 
+  it('acknowledges an already optimistic commit without dispatching it twice', async () => {
+    const worker = new FakeWorker()
+    const client = new DomainEngineClient({ api: api(), workerFactory: () => worker })
+    await client.start()
+    const response = await client.mutate({
+      operation: { kind: 'update-project-metadata', payload: { name: 'Rack Lab' } },
+    })
+    const requestCount = worker.requests.length
+
+    const result = await client.applyCommittedResponse(encodeEngineResponse(response))
+
+    expect(result.kind).toBe('acknowledged')
+    expect(worker.requests).toHaveLength(requestCount)
+    client.dispose()
+  })
+
+  it('applies the next external commit locally and rebuilds on a revision gap', async () => {
+    const worker = new FakeWorker()
+    const testApi = api()
+    const client = new DomainEngineClient({ api: testApi, workerFactory: () => worker })
+    await client.start()
+    const nextCommit: EngineResponse = {
+      protocol_version: 1,
+      request_id: 22,
+      base_revision: 1,
+      result: {
+        kind: 'patch',
+        payload: {
+          revision: 2,
+          forward: { kind: 'set-project-name', payload: { name: 'External' } },
+          inverse: { kind: 'set-project-name', payload: { name: 'Lab' } },
+        },
+      },
+    }
+
+    await expect(client.applyCommittedResponse(encodeEngineResponse(nextCommit))).resolves.toMatchObject({
+      kind: 'applied',
+    })
+    expect(client.status().revision).toBe(2)
+
+    const gap = {
+      ...nextCommit,
+      base_revision: 4,
+      result: {
+        ...nextCommit.result,
+        payload: { ...nextCommit.result.payload, revision: 5 },
+      },
+    } as EngineResponse
+    await expect(client.applyCommittedResponse(encodeEngineResponse(gap))).resolves.toMatchObject({
+      kind: 'rebuilt',
+    })
+    expect(testApi.fetchSnapshot).toHaveBeenCalledTimes(2)
+    client.dispose()
+  })
+
   it('rejects pending requests when disposed', async () => {
     const worker = new FakeWorker()
     worker.postMessage = vi.fn()

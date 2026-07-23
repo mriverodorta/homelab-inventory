@@ -10,6 +10,7 @@ describe('WASM development launcher', () => {
       PORT: '5173',
       DATA_DIR: path.join(root, 'data-wasm'),
       HOMELAB_ENGINE_WASM: 'required',
+      VITE_DOMAIN_ENGINE: 'required',
     })
   })
 

@@ -11,6 +11,7 @@ export function createWasmDevEnvironment(environment = process.env, projectRoot 
     ...environment,
     DATA_DIR: path.join(projectRoot, 'data-wasm'),
     HOMELAB_ENGINE_WASM: 'required',
+    VITE_DOMAIN_ENGINE: 'required',
   }
 }
 
