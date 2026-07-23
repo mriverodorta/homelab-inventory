@@ -76,6 +76,7 @@ export function createEmptyProject(items: InventoryItem[] = []): ProjectState {
 
   return {
     id: DEFAULT_PROJECT_ID,
+    revision: 1,
     metadata: {
       name: 'Homelab Inventory',
       version: 1,

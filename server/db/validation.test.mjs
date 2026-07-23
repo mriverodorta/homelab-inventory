@@ -943,3 +943,25 @@ describe('legacy single-file validation', () => {
     )
   })
 })
+
+describe('project revision validation', () => {
+  const project = {
+    id: 'default',
+    revision: 1,
+    metadata: {},
+    placements: [],
+    assignments: [],
+    connections: [],
+    compatibilityPolicy: { disabledHosts: [], ignoredWarningIds: [] },
+  }
+
+  it('requires a positive safe integer for persisted stores', () => {
+    expect(() => assertProjectStoreShape(project, { requireRevision: true })).not.toThrow()
+    expect(() => assertProjectStoreShape({ ...project, revision: 0 }, { requireRevision: true }))
+      .toThrow(/positive safe integer/)
+    expect(() => assertProjectStoreShape({ ...project, revision: '1' }, { requireRevision: true }))
+      .toThrow(/positive safe integer/)
+    expect(() => assertProjectStoreShape({ ...project, revision: undefined }, { requireRevision: true }))
+      .toThrow(/positive safe integer/)
+  })
+})

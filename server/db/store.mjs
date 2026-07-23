@@ -32,12 +32,13 @@ import { assertRelationalId, isRelationalId, parseLegacyRelationalId } from './r
 import { migrateSchema9To10 } from './migrate-schema-10.mjs'
 import { migrateSchema10To11 } from './migrate-schema-11.mjs'
 import { migrateSchema11To12 } from './migrate-schema-12.mjs'
+import { migrateSchema12To13 } from './migrate-schema-13.mjs'
 import {
   applyNasPowerConfigurationChange,
   inspectNasPowerConfigurationChange,
 } from './nas-power-configuration.mjs'
 
-export const CURRENT_SCHEMA_VERSION = 12
+export const CURRENT_SCHEMA_VERSION = 13
 
 const DEFAULT_SAVE_DEBOUNCE_MS = 500
 const BACKUP_LIMIT = 10
@@ -214,6 +215,7 @@ class JsonFileAdapter {
 function createProjectStoreFromProject(project) {
   return {
     id: project.id ?? 'default',
+    revision: project.revision ?? 1,
     metadata: {
       name: project.metadata?.name ?? 'Homelab Inventory',
       version: project.metadata?.version ?? 1,
@@ -321,6 +323,7 @@ function composeProject(meta, inventory, project) {
 
   return {
     id: project.id ?? 'default',
+    revision: project.revision ?? 1,
     metadata: {
       ...project.metadata,
       name: project.metadata?.name ?? 'Homelab Inventory',
@@ -1020,6 +1023,7 @@ export class HomelabInventoryStore {
     await writeJson(this.paths.inventory, Object.fromEntries(INVENTORY_TABLES.map((table) => [table, []])))
     await writeJson(this.paths.project, {
       id: 'default',
+      revision: 1,
       metadata: {
         name: 'Homelab Inventory',
         version: 1,
@@ -1061,6 +1065,7 @@ export class HomelabInventoryStore {
     )
     this.databases.project = new Low(new JsonFileAdapter(this.paths.project), {
       id: 'default',
+      revision: 1,
       metadata: {
         name: 'Homelab Inventory',
         version: 1,
@@ -1241,6 +1246,13 @@ export class HomelabInventoryStore {
         continue
       }
 
+      if (currentVersion === 12) {
+        this.databases.project.data = migrateSchema12To13(this.databases.project.data)
+        this.databases.meta.data.schemaVersion = 13
+        currentVersion = 13
+        continue
+      }
+
       throw new Error(`No migration registered for schema version ${currentVersion}.`)
     }
 
@@ -1251,7 +1263,7 @@ export class HomelabInventoryStore {
 
   async validateStores() {
     assertInventoryStoreShape(this.databases.inventory.data)
-    assertProjectStoreShape(this.databases.project.data)
+    assertProjectStoreShape(this.databases.project.data, { requireRevision: true })
     assertAgentsStoreShape(this.databases.agents.data)
     assertAgentStatusStoreShape(this.databases.agentStatus.data)
     assertProjectShape(this.getProject())
@@ -1360,6 +1372,14 @@ export class HomelabInventoryStore {
   }
 
   setProject(project) {
+    const currentRevision = this.databases.project.data.revision
+    const submittedRevision = project.revision ?? currentRevision
+    if (submittedRevision !== currentRevision) {
+      throw new InventoryLifecycleError(
+        `Project revision ${String(submittedRevision)} is stale; current revision is ${String(currentRevision)}.`,
+        { code: 'revision-conflict', status: 409 },
+      )
+    }
     const submittedProject = {
       ...project,
       id: 'default',
@@ -1378,6 +1398,7 @@ export class HomelabInventoryStore {
     this.databases.project.data = {
       ...split.project,
       id: 'default',
+      revision: this.nextProjectRevision(),
       metadata: {
         ...split.project.metadata,
         name: split.project.metadata?.name ?? 'Homelab Inventory',
@@ -1471,6 +1492,7 @@ export class HomelabInventoryStore {
     const updatedAt = new Date().toISOString()
 
     draft.meta.updatedAt = updatedAt
+    draft.project.revision = this.nextProjectRevision(draft.project)
 
     try {
       const split = splitCurrentProject(composeProject(draft.meta, draft.inventory, draft.project))
@@ -1494,6 +1516,14 @@ export class HomelabInventoryStore {
     this.scheduleFlush('project')
 
     return composeProject(draft.meta, draft.inventory, draft.project)
+  }
+
+  nextProjectRevision(project = this.databases.project.data) {
+    const current = project.revision
+    if (!Number.isSafeInteger(current) || current < 1 || current >= Number.MAX_SAFE_INTEGER) {
+      throw new Error('Project revision cannot be advanced safely.')
+    }
+    return current + 1
   }
 
   dependencyContext(draft = null) {

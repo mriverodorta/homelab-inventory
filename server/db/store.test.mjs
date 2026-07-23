@@ -399,7 +399,7 @@ describe('HomelabInventoryStore', () => {
     await store.init()
     await store.flush()
 
-    expect(store.databases.meta.data.schemaVersion).toBe(12)
+    expect(store.databases.meta.data.schemaVersion).toBe(13)
     expect(Object.keys(store.databases.inventory.data)).toEqual(SCHEMA_9_TABLES)
     expect(store.databases.inventory.data.wirelessCards).toEqual([
       expect.objectContaining({ id: 7, name: 'Intel AX210 Wi-Fi 6E' }),
@@ -426,7 +426,7 @@ describe('HomelabInventoryStore', () => {
 
     const backupEntries = await fs.readdir(path.join(dataDir, 'backups'), { withFileTypes: true })
     expect(backupEntries.some(
-      (entry) => entry.isDirectory() && entry.name.endsWith('-schema-8-to-12'),
+      (entry) => entry.isDirectory() && entry.name.endsWith('-schema-8-to-13'),
     )).toBe(true)
   })
 
@@ -490,7 +490,7 @@ describe('HomelabInventoryStore', () => {
     await store.init()
     await store.flush()
 
-    expect(store.databases.meta.data.schemaVersion).toBe(12)
+    expect(store.databases.meta.data.schemaVersion).toBe(13)
     expect(store.databases.inventory.data.upsSystems[0].ports).toHaveLength(10)
     expect(store.getProject().items['ups:1'].ports[0]).toMatchObject({
       id: 1,
@@ -513,7 +513,7 @@ describe('HomelabInventoryStore', () => {
     )
     expect(persistedProject.connections).toEqual([existingConnection])
     expect(await fs.readdir(path.join(dataDir, 'backups'))).toContainEqual(
-      expect.stringContaining('schema-10-to-12'),
+      expect.stringContaining('schema-10-to-13'),
     )
   })
 
@@ -590,7 +590,7 @@ describe('HomelabInventoryStore', () => {
       'inventory',
       'project',
     ])
-    expect(JSON.parse(await fs.readFile(path.join(dataDir, 'meta.json'), 'utf8')).schemaVersion).toBe(12)
+    expect(JSON.parse(await fs.readFile(path.join(dataDir, 'meta.json'), 'utf8')).schemaVersion).toBe(13)
     expect(retriedStore.databases.inventory.data.upsSystems[0].ports).toHaveLength(2)
   })
 
@@ -631,7 +631,7 @@ describe('HomelabInventoryStore', () => {
     await secondStore.init()
     await secondStore.flush()
 
-    expect(secondStore.databases.meta.data.schemaVersion).toBe(12)
+    expect(secondStore.databases.meta.data.schemaVersion).toBe(13)
     expect(secondStore.databases.inventory.data.networkCards).toEqual([
       expect.objectContaining({ id: 2, name: 'Ethernet' }),
     ])
@@ -657,7 +657,7 @@ describe('HomelabInventoryStore', () => {
     await store.init()
     await store.flush()
 
-    expect(store.databases.meta.data.schemaVersion).toBe(12)
+    expect(store.databases.meta.data.schemaVersion).toBe(13)
     expect(store.getProject().compatibilityPolicy).toEqual({
       disabledHosts: [],
       ignoredWarningIds: [],
@@ -668,7 +668,7 @@ describe('HomelabInventoryStore', () => {
     })
     const backupEntries = await fs.readdir(path.join(dataDir, 'backups'), { withFileTypes: true })
     expect(backupEntries.some(
-      (entry) => entry.isDirectory() && entry.name.endsWith('-schema-7-to-12'),
+      (entry) => entry.isDirectory() && entry.name.endsWith('-schema-7-to-13'),
     )).toBe(true)
   })
 
@@ -1154,7 +1154,7 @@ describe('HomelabInventoryStore', () => {
       },
       negotiatedSpeedMbps: 10000,
     })
-    expect(store.databases.meta.data.schemaVersion).toBe(12)
+    expect(store.databases.meta.data.schemaVersion).toBe(13)
   })
 
   it('flushes project updates to split stores', async () => {
@@ -1750,7 +1750,7 @@ describe('HomelabInventoryStore', () => {
     await store.init()
     await store.flush()
 
-    expect(store.databases.meta.data.schemaVersion).toBe(12)
+    expect(store.databases.meta.data.schemaVersion).toBe(13)
     expect(store.getProject().assignments).toEqual([
       expect.objectContaining({
         id: 1,
@@ -1772,7 +1772,7 @@ describe('HomelabInventoryStore', () => {
     expect(store.databases.project.data.connections).toEqual(beforeProject.connections)
     const backupEntries = await fs.readdir(path.join(dataDir, 'backups'), { withFileTypes: true })
     expect(backupEntries.some(
-      (entry) => entry.isDirectory() && entry.name.endsWith('-schema-6-to-12'),
+      (entry) => entry.isDirectory() && entry.name.endsWith('-schema-6-to-13'),
     )).toBe(true)
   })
 
@@ -2344,11 +2344,11 @@ describe('HomelabInventoryStore', () => {
 
     await store.init()
 
-    expect(store.databases.meta.data.schemaVersion).toBe(12)
+    expect(store.databases.meta.data.schemaVersion).toBe(13)
     expect(store.databases.inventory.data).toEqual(schema9Inventory(inventory))
     const backupEntries = await fs.readdir(path.join(dataDir, 'backups'), { withFileTypes: true })
     expect(backupEntries.some(
-      (entry) => entry.isDirectory() && entry.name.endsWith('-schema-5-to-12'),
+      (entry) => entry.isDirectory() && entry.name.endsWith('-schema-5-to-13'),
     )).toBe(true)
   })
 
@@ -2414,7 +2414,7 @@ describe('HomelabInventoryStore', () => {
 
     await store.init()
 
-    expect(store.databases.meta.data.schemaVersion).toBe(12)
+    expect(store.databases.meta.data.schemaVersion).toBe(13)
     expect(store.getProject().items['switch:1'].ports.map((port) => port.speed)).toEqual([
       '1G',
       '1G',
@@ -2464,7 +2464,7 @@ describe('HomelabInventoryStore', () => {
 
     const backupEntries = await fs.readdir(path.join(dataDir, 'backups'), { withFileTypes: true })
     const migrationBackup = backupEntries.find(
-      (entry) => entry.isDirectory() && entry.name.endsWith('-schema-4-to-12'),
+      (entry) => entry.isDirectory() && entry.name.endsWith('-schema-4-to-13'),
     )
 
     expect(migrationBackup).toBeDefined()
@@ -2474,5 +2474,31 @@ describe('HomelabInventoryStore', () => {
     )
 
     expect(backupMeta.schemaVersion).toBe(4)
+  })
+
+  it('advances project revision once and rejects stale whole-project writes', async () => {
+    const dataDir = await makeTempDir()
+    const store = createStore({
+      appVersion: '0.1.38',
+      dataDir,
+      legacyProjectPath: path.join(dataDir, 'legacy.json'),
+      saveDebounceMs: 5,
+      seedEmptyData: false,
+      seedDir: path.join(dataDir, 'missing-seed'),
+    })
+    await store.init()
+
+    const initial = store.getProject()
+    expect(initial.revision).toBe(1)
+
+    const committed = store.setProject({
+      ...initial,
+      metadata: { ...initial.metadata, name: 'Revision Test' },
+    })
+    expect(committed.revision).toBe(2)
+    expect(committed.metadata.name).toBe('Revision Test')
+
+    expect(() => store.setProject(initial)).toThrow(/revision 1 is stale; current revision is 2/)
+    expect(store.getProject().revision).toBe(2)
   })
 })

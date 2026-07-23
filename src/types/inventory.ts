@@ -181,6 +181,7 @@ export type CompatibilityPolicy = {
 
 export type ProjectState = {
   id: string
+  revision?: number
   metadata: ProjectMetadata
   items: Record<string, InventoryItem>
   placements: ServerPlacement[]

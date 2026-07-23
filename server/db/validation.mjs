@@ -637,6 +637,13 @@ export function assertProjectStoreShape(store, options = {}) {
     throw new Error('Project store must be an object.')
   }
 
+  if (
+    (options.requireRevision || store.revision !== undefined)
+    && (!Number.isSafeInteger(store.revision) || store.revision < 1)
+  ) {
+    throw new Error('Project store revision must be a positive safe integer.')
+  }
+
   if (!Array.isArray(store.placements)) {
     throw new Error('Project store is missing a placements array.')
   }
