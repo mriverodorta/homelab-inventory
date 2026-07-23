@@ -30,15 +30,15 @@ Install the pinned toolchain target once:
 rustup target add wasm32-unknown-unknown --toolchain 1.94.1
 ```
 
-Run the shared domain engine with isolated development data:
+Run the app with the shared domain engine:
 
 ```bash
 bun run dev:wasm
 ```
 
-The command builds the Rust engine, loads the same WASM module in the browser worker and Bun server, and forces `DATA_DIR` to `./data-wasm`. Create `data-wasm/` as an explicit copy of local development data before starting. Required-WASM mode refuses to use the repository `data/` directory so migration work cannot modify the normal development database.
+The command builds the Rust engine and loads the same WASM module in the browser worker and Bun server. It uses the ignored local `./data` directory by default and honors an explicitly supplied `DATA_DIR` when a separate development database is needed.
 
-Generated `.wasm` files and `data-wasm/` are intentionally untracked. Run `bun run build:wasm` after changing Rust protocol or engine code. Set `WASM_OPTIMIZE=1` when Binaryen is installed and an optimized local artifact is needed.
+Generated `.wasm` files and local runtime data are intentionally untracked. Run `bun run build:wasm` after changing Rust protocol or engine code. Set `WASM_OPTIMIZE=1` when Binaryen is installed and an optimized local artifact is needed.
 
 The worker exclusively owns canvas geometry, cable routing, endpoint indexing and occupancy, compatible-destination filtering, connection validation and commands, negotiated network speeds, network traces, and power-topology findings. React reads revision-scoped results through TanStack Query and retains only presentation concerns such as labels, card layout, and rendering. Do not add a TypeScript computational fallback for these domains; an unavailable engine must produce an explicit disabled or recovery state.
 
@@ -77,7 +77,6 @@ rust/
   crates/          Shared protocol, deterministic core, and raw WASM ABI
 shared/engine/     MessagePack protocol and WASM byte runtime
 data/              local runtime data, gitignored
-data-wasm/         isolated WASM development data, gitignored
 ```
 
 ## Before Opening A Pull Request

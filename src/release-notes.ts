@@ -72,7 +72,9 @@ export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
     'Transient canvas routing and synchronization activity now logs to the browser console even when it completes too quickly to display visually.',
     'Assigning, moving, swapping, or removing a component now commits one incremental WASM change while retaining optimistic canvas references, preventing repeated routing and workspace synchronization after a single drop.',
   ],
-  notes: [],
+  notes: [
+    'Local development now uses the standard ignored data directory after the isolated WASM migration, with DATA_DIR still available for explicit overrides.',
+  ],
 }
 
 export const RELEASE_NOTES: ReleaseNoteEntry[] = [

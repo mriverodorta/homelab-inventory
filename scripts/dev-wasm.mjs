@@ -1,5 +1,4 @@
 import { spawn } from 'node:child_process'
-import fs from 'node:fs/promises'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { buildWasm } from './build-wasm.mjs'
@@ -9,19 +8,10 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 export function createWasmDevEnvironment(environment = process.env, projectRoot = root) {
   return {
     ...environment,
-    DATA_DIR: path.join(projectRoot, 'data-wasm'),
+    DATA_DIR: environment.DATA_DIR ?? path.join(projectRoot, 'data'),
     HOMELAB_ENGINE_WASM: 'required',
     VITE_DOMAIN_ENGINE: 'required',
   }
-}
-
-export function assertSafeWasmDataDir(dataDir, projectRoot = root) {
-  const resolved = path.resolve(dataDir)
-  const protectedDataDir = path.join(path.resolve(projectRoot), 'data')
-  if (resolved === protectedDataDir) {
-    throw new Error('WASM development cannot use the repository data/ directory. Use data-wasm/.')
-  }
-  return resolved
 }
 
 function runServer(environment) {
@@ -45,12 +35,6 @@ function runServer(environment) {
 
 if (import.meta.main) {
   const environment = createWasmDevEnvironment()
-  const dataDir = assertSafeWasmDataDir(environment.DATA_DIR)
-  try {
-    await fs.access(dataDir)
-  } catch {
-    throw new Error('data-wasm/ is missing. Copy data/ explicitly before starting WASM development.')
-  }
   await buildWasm()
   runServer(environment)
 }
