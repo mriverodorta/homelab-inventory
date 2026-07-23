@@ -1255,14 +1255,14 @@ mod tests {
             assigned_at: "2026-07-23T12:00:00.000Z".into(),
             allocation: None,
         };
-        let assignments = assigned
-            .then(|| {
-                vec![
-                    assignment(1, server_one.clone(), adapter_one.clone()),
-                    assignment(2, server_two.clone(), adapter_two.clone()),
-                ]
-            })
-            .unwrap_or_default();
+        let assignments = if assigned {
+            vec![
+                assignment(1, server_one.clone(), adapter_one.clone()),
+                assignment(2, server_two.clone(), adapter_two.clone()),
+            ]
+        } else {
+            Vec::new()
+        };
         let engine = Engine::from_snapshot(EngineSnapshot {
             revision: 12,
             project_name: "Assignment Lab".into(),
