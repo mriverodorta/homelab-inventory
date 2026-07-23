@@ -8,7 +8,11 @@ import {
   type EngineResponse,
 } from '../../shared/engine/protocol.mjs'
 import { DomainEngineApiError } from '../engine/api'
-import { DomainEngineClient, SupersededEngineQueryError } from '../engine/client'
+import {
+  DomainEngineClient,
+  DomainEngineInterruptedError,
+  SupersededEngineQueryError,
+} from '../engine/client'
 import type { DomainEngineApi, DomainWorkerRequest, DomainWorkerResponse, WorkerLike } from '../engine/types'
 
 class FakeWorker implements WorkerLike {
@@ -110,6 +114,16 @@ class FakeWorker implements WorkerLike {
 
   terminate() {
     this.terminated = true
+  }
+}
+
+class HangingDispatchWorker extends FakeWorker {
+  override postMessage(message: DomainWorkerRequest) {
+    if (message.kind === 'dispatch') {
+      this.requests.push(decodeEngineRequest(message.request))
+      return
+    }
+    super.postMessage(message)
   }
 }
 
@@ -410,6 +424,25 @@ describe('DomainEngineClient', () => {
 
     await expect(starting).rejects.toThrow(/disposed|replaced/u)
     expect(worker.terminated).toBe(true)
+  })
+
+  it('types pending transient work as interrupted when the worker is rebuilt', async () => {
+    const firstWorker = new HangingDispatchWorker()
+    const workers = [firstWorker, new FakeWorker()]
+    const client = new DomainEngineClient({
+      api: api(),
+      workerFactory: () => workers.shift() ?? new FakeWorker(),
+    })
+    await client.start()
+
+    const pending = client.transient({ operation: { kind: 'status' } })
+    await vi.waitFor(() => expect(firstWorker.requests).toHaveLength(1))
+    const rebuilding = client.rebuild('Refresh canonical state')
+
+    await expect(pending).rejects.toBeInstanceOf(DomainEngineInterruptedError)
+    await rebuilding
+    expect(client.status().phase).toBe('ready')
+    client.dispose()
   })
 
   it('orders consistent geometry reads after transient updates', async () => {

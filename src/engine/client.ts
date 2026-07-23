@@ -97,6 +97,21 @@ export class SupersededEngineQueryError extends Error {
   }
 }
 
+export class DomainEngineInterruptedError extends Error {
+  readonly code = 'domain-engine-interrupted'
+
+  constructor(message = 'Workspace engine worker was replaced.') {
+    super(message)
+    this.name = 'DomainEngineInterruptedError'
+  }
+}
+
+export function isDomainEngineInterruptedError(
+  error: unknown,
+): error is DomainEngineInterruptedError {
+  return error instanceof DomainEngineInterruptedError
+}
+
 export class DomainEngineClient {
   private readonly api
   private readonly workerFactory
@@ -361,7 +376,7 @@ export class DomainEngineClient {
   }
 
   private initializeWorker(snapshotBytes: Uint8Array) {
-    this.terminateWorker(new Error('Workspace engine worker was replaced.'))
+    this.terminateWorker(new DomainEngineInterruptedError())
     const worker = this.workerFactory()
     this.worker = worker
     worker.onmessage = (event) => this.handleWorkerMessage(event.data)

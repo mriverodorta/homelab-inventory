@@ -1,9 +1,4 @@
 import type { CableRouteResult } from '@/lib/cable-geometry'
-import type {
-  ConnectionEndpoint,
-  InventoryConnection,
-  ProjectState,
-} from '@/types/inventory'
 
 export const CANVAS_NODE_BASE_Z_INDEX = 1
 export const CANVAS_NODE_ACTIVE_Z_INDEX = 1000
@@ -27,45 +22,6 @@ export function preserveCanvasNodeRuntimeState<T extends object>(
     measured: current.measured ?? nextRuntime.measured,
     selected: current.selected ?? nextRuntime.selected,
   }
-}
-
-function endpointsEqual(first: ConnectionEndpoint, second: ConnectionEndpoint): boolean {
-  return first.itemId === second.itemId
-    && first.portId === second.portId
-    && first.endpointId === second.endpointId
-    && first.hostedItemId === second.hostedItemId
-}
-
-function connectionsEqualForCanvasNodes(
-  first: InventoryConnection,
-  second: InventoryConnection,
-): boolean {
-  return first.id === second.id
-    && first.type === second.type
-    && first.negotiatedSpeedMbps === second.negotiatedSpeedMbps
-    && first.label === second.label
-    && first.createdAt === second.createdAt
-    && endpointsEqual(first.from, second.from)
-    && endpointsEqual(first.to, second.to)
-    && first.route?.sourceSide === second.route?.sourceSide
-    && first.route?.targetSide === second.route?.targetSide
-}
-
-export function projectsEqualForCanvasNodes(
-  first: ProjectState,
-  second: ProjectState,
-): boolean {
-  return first.items === second.items
-    && first.placements.length === second.placements.length
-    && first.placements.every((placement, index) => (
-      placement.serverId === second.placements[index]?.serverId
-    ))
-    && first.assignments === second.assignments
-    && first.compatibilityPolicy === second.compatibilityPolicy
-    && first.connections.length === second.connections.length
-    && first.connections.every((connection, index) => (
-      connectionsEqualForCanvasNodes(connection, second.connections[index])
-    ))
 }
 
 function numberArraysEqual(first: readonly number[], second: readonly number[]): boolean {

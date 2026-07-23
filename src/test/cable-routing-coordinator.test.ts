@@ -3,7 +3,7 @@ import type { EngineRequestInput } from '@/engine/types'
 import type { EngineResponse } from '../../shared/engine/protocol.mjs'
 import { CableRoutingCoordinator } from '@/lib/cable-routing-coordinator'
 import type { CableLaneRouteRequest } from '@/engine/routing'
-import type { DomainEngineClient } from '@/engine/client'
+import { DomainEngineInterruptedError, type DomainEngineClient } from '@/engine/client'
 
 type PendingCall = {
   input: EngineRequestInput
@@ -105,6 +105,26 @@ describe('CableRoutingCoordinator', () => {
     await vi.waitFor(() => expect(coordinator.getState().pending).toBe(false))
     expect(coordinator.getState().routes.get(1)).toBe(retained)
     expect(coordinator.getState().error).toBe('route error')
+  })
+
+  it('retains routes without publishing an error for expected worker interruption', async () => {
+    const client = new FakeClient()
+    const coordinator = new CableRoutingCoordinator(client as unknown as DomainEngineClient)
+
+    coordinator.request([request(1)])
+    client.calls[0].resolve(response([cableRoute(1, 0)]))
+    await vi.waitFor(() => expect(coordinator.getState().pending).toBe(false))
+    const retainedRoutes = coordinator.getState().routes
+
+    coordinator.request([request(1, 12)])
+    client.calls[1].reject(new DomainEngineInterruptedError())
+    await vi.waitFor(() => expect(coordinator.getState().pending).toBe(false))
+
+    expect(coordinator.getState()).toEqual({
+      routes: retainedRoutes,
+      pending: false,
+      error: null,
+    })
   })
 
   it('preserves equal route identities returned by the engine', async () => {

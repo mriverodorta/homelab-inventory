@@ -67,6 +67,7 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 - Moved transient routing and synchronization activity out of the bottom toolbar into a delayed top-left canvas indicator so calculations no longer resize or flicker the toolbar.
 - Fixed revision conflicts when a component assignment change is followed immediately by moving canvas equipment by coordinating legacy saves with canonical WASM commands.
 - Kept routine workspace-engine synchronization nonblocking while reserving centered blocking states for startup and unrecoverable failures.
+- Scoped component-assignment rendering and handle updates to affected hosts, retained unrelated cable routes during expected engine synchronization, and added browser-console diagnostics for transient canvas activity.
 
 ## [0.1.38] - 2026-07-21
 

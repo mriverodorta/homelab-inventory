@@ -1,5 +1,5 @@
 import { AlertTriangle, LoaderCircle } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { cn } from '@/lib/utils'
 
 export type CanvasActivity = {
@@ -17,6 +17,24 @@ export function CanvasActivityIndicator({
   className?: string
 }) {
   const [showProgress, setShowProgress] = useState(false)
+  const lastLoggedActivityRef = useRef<string | null>(null)
+
+  useEffect(() => {
+    if (!activity) {
+      lastLoggedActivityRef.current = null
+      return
+    }
+
+    const activityKey = `${activity.kind}:${activity.label}`
+    if (lastLoggedActivityRef.current === activityKey) return
+    lastLoggedActivityRef.current = activityKey
+
+    if (activity.kind === 'error') {
+      console.error('[Canvas activity]', activity.label)
+      return
+    }
+    console.info('[Canvas activity]', activity.label)
+  }, [activity])
 
   useEffect(() => {
     if (activity?.kind !== 'progress') {

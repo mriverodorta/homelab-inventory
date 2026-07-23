@@ -68,6 +68,8 @@ export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
     'Routing and synchronization activity now appears in a delayed top-left canvas indicator instead of adding and removing a slot from the bottom toolbar.',
     'Component assignment saves and later canvas moves now share one canonical persistence queue, preventing optimistic revision conflicts and lost updates.',
     'Routine workspace synchronization now keeps the canvas interactive instead of briefly showing a centered rebuilding overlay.',
+    'Component assignment now refreshes only affected host cards and nearby cable geometry, while expected engine synchronization retains existing routes instead of flashing a false routing error.',
+    'Transient canvas routing and synchronization activity now logs to the browser console even when it completes too quickly to display visually.',
   ],
   notes: [],
 }

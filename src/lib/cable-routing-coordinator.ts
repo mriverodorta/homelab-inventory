@@ -1,4 +1,7 @@
-import type { DomainEngineClient } from '@/engine/client'
+import {
+  isDomainEngineInterruptedError,
+  type DomainEngineClient,
+} from '@/engine/client'
 import {
   planCableRoutes,
   type CableLaneRouteRequest,
@@ -165,6 +168,18 @@ export class CableRoutingCoordinator {
   private fail(work: RoutingWork, error: unknown): void {
     if (this.disposed || this.activeWork !== work) return
     this.activeWork = null
+    if (isDomainEngineInterruptedError(error)) {
+      if (work.revision === this.revision) {
+        this.updateState({
+          ...this.state,
+          pending: this.queuedWork !== null,
+          error: null,
+        })
+      }
+      this.dispatchNext()
+      this.finishPendingState()
+      return
+    }
     if (work.revision === this.revision) {
       this.updateState({
         ...this.state,
