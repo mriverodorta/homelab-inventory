@@ -72,6 +72,7 @@ const RELEASE_0_2_0_DETAILS: UnreleasedReleaseNotes = {
     'Transient canvas routing and synchronization activity now logs to the browser console even when it completes too quickly to display visually.',
     'Assigning, moving, swapping, or removing a component now commits one incremental WASM change while retaining optimistic canvas references, preventing repeated routing and workspace synchronization after a single drop.',
     'Clean-checkout tests and Docker publishing now build WASM before integration tests, preventing missing-artifact races on hosted runners.',
+    'The production runtime image now includes the canonical engine snapshot and legacy migration normalizer while omitting the removed browser negotiated-speed module.',
   ],
   notes: [
     'Local development now uses the standard ignored data directory after the isolated WASM migration, with DATA_DIR still available for explicit overrides.',

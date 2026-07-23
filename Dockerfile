@@ -53,14 +53,13 @@ COPY --chown=10001:10001 package.json bun.lock ./
 COPY --from=prod-deps --chown=10001:10001 /app/node_modules ./node_modules
 COPY --from=build --chown=10001:10001 /app/dist ./dist
 COPY --chown=10001:10001 src/release-notes.ts ./src/
-COPY --chown=10001:10001 src/lib/negotiated-speed.ts ./src/lib/
 COPY --chown=10001:10001 shared/compatibility ./shared/compatibility
 COPY --chown=10001:10001 shared/power-ports.mjs ./shared/
 COPY --chown=10001:10001 shared/engine ./shared/engine
 COPY --chown=10001:10001 server/index.mjs server/agent-routes.mjs server/engine-routes.mjs server/inventory-routes.mjs server/project-routes.mjs server/rate-limit.mjs server/update-checker.mjs server/update-routes.mjs server/update-scheduler.mjs ./server/
-COPY --chown=10001:10001 server/engine/command-service.mjs server/engine/runtime.mjs server/engine/sse-hub.mjs ./server/engine/
+COPY --chown=10001:10001 server/engine/command-service.mjs server/engine/runtime.mjs server/engine/snapshot.mjs server/engine/sse-hub.mjs ./server/engine/
 COPY --from=wasm-build --chown=10001:10001 /app/server/engine/generated/homelab_engine.wasm ./server/engine/generated/homelab_engine.wasm
-COPY --chown=10001:10001 server/db/agent-auth.mjs server/db/inventory-capabilities.mjs server/db/inventory-lifecycle.mjs server/db/migrate-schema-10.mjs server/db/migrate-schema-11.mjs server/db/migrate-schema-12.mjs server/db/migrate-schema-13.mjs server/db/nas-power-configuration.mjs server/db/relational-ids.mjs server/db/store.mjs server/db/validation.mjs ./server/db/
+COPY --chown=10001:10001 server/db/agent-auth.mjs server/db/inventory-capabilities.mjs server/db/inventory-lifecycle.mjs server/db/legacy-network-normalization.ts server/db/migrate-schema-10.mjs server/db/migrate-schema-11.mjs server/db/migrate-schema-12.mjs server/db/migrate-schema-13.mjs server/db/nas-power-configuration.mjs server/db/relational-ids.mjs server/db/store.mjs server/db/validation.mjs ./server/db/
 COPY --chown=10001:10001 server/demo/session-manager.mjs server/demo/sanitizer.mjs ./server/demo/
 COPY --chown=10001:10001 scripts/verify-wasm-runtime.mjs ./scripts/
 COPY --from=build --chown=10001:10001 /tmp/runtime-data /data
