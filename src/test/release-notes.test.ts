@@ -91,44 +91,47 @@ describe('release notes helpers', () => {
   })
 
   it('has structured notes for the package version under development', () => {
-    expect(hasReleaseNoteForVersion(RELEASE_NOTES, '0.1.38')).toBe(true)
+    const currentRelease = RELEASE_NOTES[0]
+
+    expect(hasReleaseNoteForVersion(RELEASE_NOTES, '0.2.0')).toBe(true)
     expect(RELEASE_NOTES[0]).toEqual(
       expect.objectContaining({
-        version: '0.1.38',
-        title: 'Flexible power equipment layouts',
+        version: '0.2.0',
+        title: 'Rust/WASM workspace engine',
       }),
     )
     expect(RELEASE_NOTES.filter((entry) => entry.channel === 'latest')).toEqual([
-      expect.objectContaining({ version: '0.1.38' }),
+      expect.objectContaining({ version: '0.2.0' }),
     ])
-    expect(RELEASE_NOTES.find((entry) => entry.version === '0.1.37')).toEqual(
+    expect(RELEASE_NOTES.find((entry) => entry.version === '0.1.38')).toEqual(
       expect.objectContaining({ channel: 'release' }),
     )
-    expect(UNRELEASED_RELEASE_NOTES.fixes).toContain(
+    expect(UNRELEASED_RELEASE_NOTES).toEqual({ highlights: [], fixes: [], notes: [] })
+    expect(currentRelease.fixes).toContain(
       'New OEM power adapters retain one draggable AC-input endpoint for connections to UPS and power-strip outlets.',
     )
-    expect(UNRELEASED_RELEASE_NOTES.highlights).toContain(
+    expect(currentRelease.highlights).toContain(
       'NAS equipment can now use either a direct internal-PSU connection or a manually assigned external power adapter.',
     )
-    expect(UNRELEASED_RELEASE_NOTES.fixes).toContain(
+    expect(currentRelease.fixes).toContain(
       'Changing a NAS power mode now previews affected cables and adapters, then applies the confirmed cleanup as one Undo-compatible project change.',
     )
-    expect(UNRELEASED_RELEASE_NOTES.highlights).toContain(
+    expect(currentRelease.highlights).toContain(
       'Inspector audit findings can now be ignored or restored in place while acknowledged findings remain visible for context.',
     )
-    expect(UNRELEASED_RELEASE_NOTES.fixes).toContain(
+    expect(currentRelease.fixes).toContain(
       'Canvas AC input chips now use the compact AC label instead of AC-INPUT.',
     )
-    expect(UNRELEASED_RELEASE_NOTES.fixes).toContain(
+    expect(currentRelease.fixes).toContain(
       'Cable routes now require prior selection and meaningful pointer movement before they can be repositioned, preventing ordinary clicks from shifting power, network, or video cables.',
     )
-    expect(UNRELEASED_RELEASE_NOTES.fixes).toContain(
+    expect(currentRelease.fixes).toContain(
       'New connections no longer open the Inspector by default; users can restore automatic opening for every connection workflow in General workspace preferences.',
     )
-    expect(UNRELEASED_RELEASE_NOTES.highlights).toContain(
+    expect(currentRelease.highlights).toContain(
       'A shared Rust/WASM workspace engine now runs in a dedicated browser worker and on the Bun server, establishing a faster deterministic foundation for upcoming routing, compatibility, topology, and inventory operations.',
     )
-    expect(UNRELEASED_RELEASE_NOTES.fixes).toContain(
+    expect(currentRelease.fixes).toContain(
       'Project-name autosave now uses an optimistic revision-checked command and rolls back to canonical data after a conflict without retrying the mutation automatically.',
     )
   })

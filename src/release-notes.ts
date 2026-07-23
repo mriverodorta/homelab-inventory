@@ -16,7 +16,7 @@ export type UnreleasedReleaseNotes = {
   notes: string[]
 }
 
-export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
+const RELEASE_0_2_0_DETAILS: UnreleasedReleaseNotes = {
   highlights: [
     'A shared Rust/WASM workspace engine now runs in a dedicated browser worker and on the Bun server, establishing a faster deterministic foundation for upcoming routing, compatibility, topology, and inventory operations.',
     'Project changes now carry persisted revisions and committed-update events so open browsers can reconcile incremental changes or rebuild safely after a missed update.',
@@ -77,11 +77,24 @@ export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
   ],
 }
 
+export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
+  highlights: [],
+  fixes: [],
+  notes: [],
+}
+
 export const RELEASE_NOTES: ReleaseNoteEntry[] = [
+  {
+    version: '0.2.0',
+    date: '2026-07-23',
+    channel: 'latest',
+    title: 'Rust/WASM workspace engine',
+    ...RELEASE_0_2_0_DETAILS,
+  },
   {
     version: '0.1.38',
     date: '2026-07-21',
-    channel: 'latest',
+    channel: 'release',
     title: 'Flexible power equipment layouts',
     highlights: [
       'UPS and power-strip cards can now be arranged horizontally or vertically per canvas item, with the persisted layout restored across sessions.',

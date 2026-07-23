@@ -6,6 +6,12 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 
 ## Unreleased
 
+## [0.2.0] - 2026-07-23
+
+This release moves the workspace's computational core into a shared Rust/WASM engine used by both the browser worker and Bun server. It also completes the associated cable-routing, topology, power-equipment, persistence, and interaction-performance work accumulated since `0.1.38`.
+
+### Highlights
+
 - Added a shared deterministic Rust/WASM domain-engine foundation that runs the same module in a dedicated browser worker and in the Bun persistence authority.
 - Added persisted project revisions, binary command transport, committed-update streaming, and canonical rebuilds when a browser misses or conflicts with a project revision.
 - Added visible loading, rebuilding, unsupported-browser, and recoverable engine-failure states while keeping normal canvas interaction blocked until the local engine is ready.
