@@ -13,6 +13,7 @@ name = "homelab-domain-core"
 version = "0.1.0"
 dependencies = [
  "homelab-engine-protocol",
+ "homelab-geometry",
  "rmp-serde",
 ]
 

@@ -51,7 +51,11 @@ class FakeWorker implements WorkerLike {
       } else {
         result = {
           kind: 'status',
-          payload: { revision: this.revision, project_name: this.projectName },
+          payload: {
+            revision: this.revision,
+            geometry_revision: 0,
+            project_name: this.projectName,
+          },
         }
       }
       const bytes = encodeEngineResponse({

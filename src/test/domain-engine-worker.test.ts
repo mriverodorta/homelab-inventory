@@ -32,7 +32,11 @@ describe('domain engine worker', () => {
           base_revision: request.base_revision,
           result: {
             kind: 'status',
-            payload: { revision: request.base_revision, project_name: 'Rack Lab' },
+            payload: {
+              revision: request.base_revision,
+              geometry_revision: 0,
+              project_name: 'Rack Lab',
+            },
           },
         })
       }),

@@ -45,4 +45,52 @@ describe('Rust WASM engine integration', () => {
     })
     expect(runtime.destroy(handle)).toBe(true)
   })
+
+  it('indexes geometry and answers placement queries through the real module', async () => {
+    const bytes = await fs.readFile(wasmPath)
+    const runtime = await WasmEngineRuntime.instantiate(bytes)
+    const handle = runtime.create(encodeEngineSnapshot({
+      revision: 7,
+      project_name: 'Geometry Lab',
+    }))
+
+    const replaced = decodeEngineResponse(runtime.dispatch(handle, encodeEngineRequest({
+      protocol_version: 1,
+      request_id: 9,
+      base_revision: 7,
+      operation: {
+        kind: 'replace-geometry',
+        payload: {
+          nodes: [{
+            item_id: 'server:1',
+            bounds: { x: 0, y: 0, width: 100, height: 100 },
+          }],
+          handles: [],
+        },
+      },
+    })))
+    expect(replaced.result).toEqual({
+      kind: 'geometry-updated',
+      payload: { geometry_revision: 1 },
+    })
+
+    const checked = decodeEngineResponse(runtime.dispatch(handle, encodeEngineRequest({
+      protocol_version: 1,
+      request_id: 10,
+      base_revision: 7,
+      operation: {
+        kind: 'check-placement',
+        payload: {
+          item_id: 'server:2',
+          bounds: { x: 50, y: 0, width: 100, height: 100 },
+          exclude_item_ids: [],
+        },
+      },
+    })))
+    expect(checked.result).toEqual({
+      kind: 'placement-check',
+      payload: { valid: false, colliding_item_ids: ['server:1'] },
+    })
+    expect(runtime.destroy(handle)).toBe(true)
+  })
 })
