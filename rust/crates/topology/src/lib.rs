@@ -170,6 +170,20 @@ pub struct ConnectionDerivedState {
     pub negotiated_speed_mbps: Option<u32>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct NetworkTraceStep {
+    pub endpoint: EndpointRef,
+    pub state: String,
+    pub connection_id: Option<u32>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct NetworkTrace {
+    pub start: EndpointRef,
+    pub steps: Vec<NetworkTraceStep>,
+    pub complete: bool,
+}
+
 #[derive(Debug, Clone)]
 pub struct TopologyIndex {
     snapshot: TopologySnapshot,
@@ -449,6 +463,81 @@ impl TopologyIndex {
             .collect()
     }
 
+    #[must_use]
+    pub fn trace_network_path(&self, start: &EndpointRef) -> Option<NetworkTrace> {
+        let start_descriptor = self.endpoint(start)?;
+        if !is_network_port(&start_descriptor.port_type) {
+            return None;
+        }
+        let start_connection = self.network_connection_for_endpoint(start);
+        let mut steps = vec![NetworkTraceStep {
+            endpoint: start.clone(),
+            state: if start_connection.is_some() {
+                "connected"
+            } else {
+                "open"
+            }
+            .into(),
+            connection_id: None,
+        }];
+        if start_connection.is_none() {
+            return Some(NetworkTrace {
+                start: start.clone(),
+                steps,
+                complete: false,
+            });
+        }
+
+        let mut visited = BTreeSet::from([start.clone()]);
+        let mut current = start.clone();
+        let mut complete = false;
+        while visited.len() <= self.endpoints.len() {
+            let Some(connection) = self.network_connection_for_endpoint(&current) else {
+                steps.push(NetworkTraceStep {
+                    endpoint: current,
+                    state: "open".into(),
+                    connection_id: None,
+                });
+                break;
+            };
+            let next = if connection.from == current {
+                connection.to.clone()
+            } else {
+                connection.from.clone()
+            };
+            if !visited.insert(next.clone()) {
+                break;
+            }
+            steps.push(NetworkTraceStep {
+                endpoint: next.clone(),
+                state: "connected".into(),
+                connection_id: Some(connection.id),
+            });
+            if next.item.item_type == "switch" {
+                complete = true;
+                break;
+            }
+            let Some(peer) = self.patch_panel_peer(&next) else {
+                current = next;
+                continue;
+            };
+            if !visited.insert(peer.clone()) {
+                break;
+            }
+            steps.push(NetworkTraceStep {
+                endpoint: peer.clone(),
+                state: "internal".into(),
+                connection_id: None,
+            });
+            current = peer;
+        }
+        Some(NetworkTrace {
+            start: start.clone(),
+            steps,
+            complete,
+        })
+    }
+
     fn classify_connection(&self, from: &EndpointRef, to: &EndpointRef) -> String {
         let Some(from_descriptor) = self.endpoint(from) else {
             return "other".into();
@@ -483,6 +572,51 @@ impl TopologyIndex {
         }
         parse_advertised_speed(descriptor.speed.as_deref()).or_else(|| {
             (descriptor.port_type == "sfp-plus" && descriptor.speed.is_none()).then_some(10_000)
+        })
+    }
+
+    fn network_connection_for_endpoint(
+        &self,
+        endpoint: &EndpointRef,
+    ) -> Option<&TopologyConnection> {
+        let descriptor = self.endpoint(endpoint)?;
+        descriptor.connection_ids.iter().find_map(|connection_id| {
+            let connection = self
+                .snapshot
+                .connections
+                .iter()
+                .find(|connection| connection.id == *connection_id)?;
+            (self.classify_connection(&connection.from, &connection.to) == "network")
+                .then_some(connection)
+        })
+    }
+
+    fn patch_panel_peer(&self, endpoint: &EndpointRef) -> Option<EndpointRef> {
+        if endpoint.item.item_type != "patchPanel" || endpoint.hosted_item.is_some() {
+            return None;
+        }
+        let endpoint_id = endpoint.endpoint_id?;
+        let panel = self
+            .snapshot
+            .items
+            .iter()
+            .find(|item| item.item == endpoint.item)?;
+        let port = panel
+            .ports
+            .iter()
+            .find(|port| port.id == endpoint.port_id)?;
+        if !is_network_port(&port.port_type) {
+            return None;
+        }
+        let peer = port
+            .endpoints
+            .iter()
+            .find(|candidate| candidate.id != endpoint_id)?;
+        Some(EndpointRef {
+            item: endpoint.item.clone(),
+            port_id: endpoint.port_id,
+            endpoint_id: Some(peer.id),
+            hosted_item: None,
         })
     }
 }
@@ -1261,14 +1395,13 @@ mod tests {
             items: vec![server.clone(), switch.clone(), panel.clone()],
             assignments: vec![],
             connections: vec![
-                connection(1, server_endpoint, back),
+                connection(1, server_endpoint.clone(), back),
                 connection(2, front, switch_endpoint),
             ],
             placements: vec![server.item, switch.item, panel.item],
         };
-        let states = TopologyIndex::build(snapshot)
-            .unwrap()
-            .connection_derived_states();
+        let index = TopologyIndex::build(snapshot).unwrap();
+        let states = index.connection_derived_states();
 
         assert_eq!(
             states,
@@ -1283,6 +1416,21 @@ mod tests {
                     connection_type: "network".into(),
                     negotiated_speed_mbps: Some(1_000),
                 },
+            ]
+        );
+        let trace = index.trace_network_path(&server_endpoint).unwrap();
+        assert!(trace.complete);
+        assert_eq!(
+            trace
+                .steps
+                .iter()
+                .map(|step| (step.endpoint.item.item_type.as_str(), step.state.as_str()))
+                .collect::<Vec<_>>(),
+            vec![
+                ("server", "connected"),
+                ("patchPanel", "connected"),
+                ("patchPanel", "internal"),
+                ("switch", "connected"),
             ]
         );
     }
@@ -1426,6 +1574,37 @@ mod tests {
                 .connection_derived_states()[0]
                 .negotiated_speed_mbps,
             Some(5_000)
+        );
+    }
+
+    #[test]
+    fn returns_an_incomplete_open_network_trace() {
+        let server = item("server", 1, 1);
+        let endpoint = EndpointRef {
+            item: server.item.clone(),
+            port_id: 1,
+            endpoint_id: None,
+            hosted_item: None,
+        };
+        let index = TopologyIndex::build(TopologySnapshot {
+            items: vec![server.clone()],
+            assignments: vec![],
+            connections: vec![],
+            placements: vec![server.item],
+        })
+        .unwrap();
+
+        assert_eq!(
+            index.trace_network_path(&endpoint),
+            Some(NetworkTrace {
+                start: endpoint.clone(),
+                steps: vec![NetworkTraceStep {
+                    endpoint,
+                    state: "open".into(),
+                    connection_id: None,
+                }],
+                complete: false,
+            })
         );
     }
 }

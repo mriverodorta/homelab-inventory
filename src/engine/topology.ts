@@ -3,6 +3,7 @@ import type {
   TopologyEndpointRef,
   TopologyItemRef,
   TopologyConnectionRoute,
+  TopologyNetworkTrace,
 } from '../../shared/engine/protocol.mjs'
 import type { DomainEngineClient } from '@/engine/client'
 import { parseItemKey } from '@/lib/item-keys'
@@ -25,6 +26,18 @@ export type RuntimeConnectionValidation = {
   ok: boolean
   code: string | null
   message: string | null
+}
+
+export type RuntimeNetworkTraceStep = {
+  endpoint: ConnectionEndpoint
+  state: 'connected' | 'open' | 'internal'
+  connectionId?: number
+}
+
+export type RuntimeNetworkTrace = {
+  start: ConnectionEndpoint
+  steps: RuntimeNetworkTraceStep[]
+  complete: boolean
 }
 
 function topologyItemRef(project: ProjectState, runtimeKey: string): TopologyItemRef {
@@ -81,6 +94,18 @@ function runtimeDescriptor(
     endpoint: fromTopologyEndpointRef(descriptor.endpoint),
     hostItemId: runtimeKey(descriptor.host),
     ownerItemId: runtimeKey(descriptor.owner),
+  }
+}
+
+function runtimeNetworkTrace(trace: TopologyNetworkTrace): RuntimeNetworkTrace {
+  return {
+    start: fromTopologyEndpointRef(trace.start),
+    steps: trace.steps.map((step) => ({
+      endpoint: fromTopologyEndpointRef(step.endpoint),
+      state: step.state,
+      ...(step.connection_id === null ? {} : { connectionId: step.connection_id }),
+    })),
+    complete: trace.complete,
   }
 }
 
@@ -149,6 +174,31 @@ export async function validateTopologyConnection(
     response.result.kind === 'error'
       ? response.result.payload.message
       : 'Connection endpoints could not be validated.',
+  )
+}
+
+export async function traceTopologyNetworkPath(
+  client: DomainEngineClient,
+  project: ProjectState,
+  start: ConnectionEndpoint,
+): Promise<RuntimeNetworkTrace | null> {
+  const response = await client.queryConsistent({
+    operation: {
+      kind: 'trace-network-path',
+      payload: { start: toTopologyEndpointRef(project, start) },
+    },
+  })
+
+  if (response.result.kind === 'network-trace') {
+    return response.result.payload.trace === null
+      ? null
+      : runtimeNetworkTrace(response.result.payload.trace)
+  }
+
+  throw new Error(
+    response.result.kind === 'error'
+      ? response.result.payload.message
+      : 'Network path could not be traced.',
   )
 }
 

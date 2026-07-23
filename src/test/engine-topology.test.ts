@@ -6,6 +6,7 @@ import {
   getTopologyEndpoints,
   toTopologyEndpointRef,
   removeTopologyConnection,
+  traceTopologyNetworkPath,
   updateTopologyConnectionLabel,
   updateTopologyConnectionRoute,
   validateTopologyConnection,
@@ -134,6 +135,77 @@ describe('WASM topology adapter', () => {
       ok: false,
       code: 'incompatible-port-type',
       message: 'The selected port types are not compatible.',
+    })
+  })
+
+  it('converts numeric engine traces back to runtime endpoints', async () => {
+    const client = {
+      queryConsistent: vi.fn().mockResolvedValue({
+        result: {
+          kind: 'network-trace',
+          payload: {
+            trace: {
+              start: {
+                item: { item_type: 'server', id: 1 },
+                hosted_item: { item_type: 'network', id: 2 },
+                port_id: 4,
+                endpoint_id: null,
+              },
+              steps: [
+                {
+                  endpoint: {
+                    item: { item_type: 'server', id: 1 },
+                    hosted_item: { item_type: 'network', id: 2 },
+                    port_id: 4,
+                    endpoint_id: null,
+                  },
+                  state: 'connected',
+                  connection_id: null,
+                },
+                {
+                  endpoint: {
+                    item: { item_type: 'switch', id: 3 },
+                    hosted_item: null,
+                    port_id: 1,
+                    endpoint_id: null,
+                  },
+                  state: 'connected',
+                  connection_id: 8,
+                },
+              ],
+              complete: true,
+            },
+          },
+        },
+      }),
+    } as unknown as DomainEngineClient
+
+    await expect(traceTopologyNetworkPath(client, project, {
+      itemId: 'server:1',
+      hostedItemId: 'network:2',
+      portId: 4,
+    })).resolves.toEqual({
+      start: {
+        itemId: 'server:1',
+        hostedItemId: 'network:2',
+        portId: 4,
+      },
+      steps: [
+        {
+          endpoint: {
+            itemId: 'server:1',
+            hostedItemId: 'network:2',
+            portId: 4,
+          },
+          state: 'connected',
+        },
+        {
+          endpoint: { itemId: 'switch:3', portId: 1 },
+          state: 'connected',
+          connectionId: 8,
+        },
+      ],
+      complete: true,
     })
   })
 

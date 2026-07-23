@@ -2,10 +2,10 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use homelab_engine_protocol::{
     ArrangementResult, CommandPatchSet, EngineError, EngineRequest, EngineResponse, EngineSnapshot,
-    EngineStatus, GeometryHandle, GeometryUpdateResult, NearestPlacementResult, Operation,
-    PROTOCOL_VERSION, PlacementCheckResult, ProjectPatch, ResponseBody, RouteDefinition, RouteEdit,
-    RouteEditResult, RouteResult, RoutesUpdateResult, TopologyConnection, TopologyConnectionRoute,
-    TopologyEndpointResult, TopologyError, TopologySnapshot,
+    EngineStatus, GeometryHandle, GeometryUpdateResult, NearestPlacementResult, NetworkTraceResult,
+    Operation, PROTOCOL_VERSION, PlacementCheckResult, ProjectPatch, ResponseBody, RouteDefinition,
+    RouteEdit, RouteEditResult, RouteResult, RoutesUpdateResult, TopologyConnection,
+    TopologyConnectionRoute, TopologyEndpointResult, TopologyError, TopologySnapshot,
 };
 use homelab_geometry::{GeometryError, GeometryNode, SpatialIndex, arrange_items};
 use homelab_routing::{
@@ -120,6 +120,11 @@ impl Engine {
             }
             Operation::ValidateConnection { from, to } => {
                 ResponseBody::ConnectionValidation(self.topology.validate_connection(&from, &to))
+            }
+            Operation::TraceNetworkPath { start } => {
+                ResponseBody::NetworkTrace(NetworkTraceResult {
+                    trace: self.topology.trace_network_path(&start),
+                })
             }
             Operation::CreateConnection {
                 from,

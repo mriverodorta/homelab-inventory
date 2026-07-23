@@ -322,9 +322,50 @@ describe('Rust WASM engine integration', () => {
       },
     })
 
-    const removed = decodeEngineResponse(runtime.dispatch(handle, encodeEngineRequest({
+    const trace = decodeEngineResponse(runtime.dispatch(handle, encodeEngineRequest({
       protocol_version: 1,
       request_id: 5,
+      base_revision: 3,
+      operation: {
+        kind: 'trace-network-path',
+        payload: { start: serverEndpoint },
+      },
+    })))
+    expect(trace.result).toEqual({
+      kind: 'network-trace',
+      payload: {
+        trace: {
+          start: serverEndpoint,
+          steps: [
+            {
+              endpoint: serverEndpoint,
+              state: 'connected',
+              connection_id: null,
+            },
+            {
+              endpoint: panelBackEndpoint,
+              state: 'connected',
+              connection_id: 10,
+            },
+            {
+              endpoint: panelFrontEndpoint,
+              state: 'internal',
+              connection_id: null,
+            },
+            {
+              endpoint: freeSwitchEndpoint,
+              state: 'connected',
+              connection_id: 9,
+            },
+          ],
+          complete: true,
+        },
+      },
+    })
+
+    const removed = decodeEngineResponse(runtime.dispatch(handle, encodeEngineRequest({
+      protocol_version: 1,
+      request_id: 6,
       base_revision: 3,
       operation: {
         kind: 'remove-connection',

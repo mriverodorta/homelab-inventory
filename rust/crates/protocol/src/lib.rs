@@ -10,9 +10,9 @@ pub use homelab_routing::{
 };
 pub use homelab_topology::{
     ConnectionDerivedState, ConnectionRoute as TopologyConnectionRoute, ConnectionValidation,
-    EndpointDescriptor, EndpointRef, ItemRef, PowerEndpointDescriptor, TopologyAssignment,
-    TopologyConnection, TopologyError, TopologyItem, TopologyPort, TopologyPortSide,
-    TopologySnapshot,
+    EndpointDescriptor, EndpointRef, ItemRef, NetworkTrace, NetworkTraceStep,
+    PowerEndpointDescriptor, TopologyAssignment, TopologyConnection, TopologyError, TopologyItem,
+    TopologyPort, TopologyPortSide, TopologySnapshot,
 };
 
 pub const PROTOCOL_VERSION: u16 = 1;
@@ -43,6 +43,9 @@ pub enum Operation {
     ValidateConnection {
         from: EndpointRef,
         to: EndpointRef,
+    },
+    TraceNetworkPath {
+        start: EndpointRef,
     },
     CreateConnection {
         from: EndpointRef,
@@ -162,6 +165,7 @@ pub enum ResponseBody {
     Status(EngineStatus),
     TopologyEndpoints(TopologyEndpointResult),
     ConnectionValidation(ConnectionValidation),
+    NetworkTrace(NetworkTraceResult),
     Patch(Box<CommandPatchSet>),
     GeometryUpdated(GeometryUpdateResult),
     PlacementCheck(PlacementCheckResult),
@@ -179,6 +183,11 @@ pub enum ResponseBody {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TopologyEndpointResult {
     pub endpoints: Vec<EndpointDescriptor>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct NetworkTraceResult {
+    pub trace: Option<NetworkTrace>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

@@ -60,6 +60,16 @@ export type ConnectionDerivedState = {
   negotiated_speed_mbps: number | null
 }
 
+export type TopologyNetworkTrace = {
+  start: TopologyEndpointRef
+  steps: Array<{
+    endpoint: TopologyEndpointRef
+    state: 'connected' | 'open' | 'internal'
+    connection_id: number | null
+  }>
+  complete: boolean
+}
+
 export type TopologySnapshot = {
   items: TopologyItem[]
   assignments: Array<{
@@ -197,6 +207,7 @@ export type EngineOperation =
       kind: 'validate-connection'
       payload: { from: TopologyEndpointRef; to: TopologyEndpointRef }
     }
+  | { kind: 'trace-network-path'; payload: { start: TopologyEndpointRef } }
   | {
       kind: 'create-connection'
       payload: { from: TopologyEndpointRef; to: TopologyEndpointRef; created_at: string }
@@ -354,6 +365,10 @@ export type EngineResponseBody =
   | {
       kind: 'connection-validation'
       payload: { ok: boolean; code: string | null; message: string | null }
+    }
+  | {
+      kind: 'network-trace'
+      payload: { trace: TopologyNetworkTrace | null }
     }
   | {
       kind: 'patch'
