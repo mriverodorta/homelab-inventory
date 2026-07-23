@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 pub use homelab_geometry::{
     ArrangementItem, GeometryHandle, GeometryNode, Point, Rect, Segment, Side,
 };
+pub use homelab_routing::{RouteDefinition, RouteEdit, RoutePatch, RoutedPath};
 
 pub const PROTOCOL_VERSION: u16 = 1;
 
@@ -58,6 +59,39 @@ pub enum Operation {
         column_gap: f64,
         item_gap: f64,
     },
+    ReplaceRoutes {
+        routes: Vec<RouteDefinition>,
+    },
+    BuildRoute {
+        connection_id: u32,
+    },
+    PreviewMoveRouteSegment {
+        connection_id: u32,
+        segment_index: u16,
+        coordinate: f64,
+        snap_grid: Option<f64>,
+        endpoint_snap_threshold: f64,
+    },
+    InsertManualBend {
+        connection_id: u32,
+        segment_index: u16,
+        point: Point,
+        snap_grid: Option<f64>,
+    },
+    RemoveManualBend {
+        connection_id: u32,
+        bend_index: u16,
+    },
+    MoveRouteSegment {
+        connection_id: u32,
+        segment_index: u16,
+        coordinate: f64,
+        snap_grid: Option<f64>,
+        endpoint_snap_threshold: f64,
+    },
+    ResetRoute {
+        connection_id: u32,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -77,6 +111,10 @@ pub enum ResponseBody {
     PlacementCheck(PlacementCheckResult),
     NearestPlacement(NearestPlacementResult),
     Arrangement(ArrangementResult),
+    RoutesUpdated(RoutesUpdateResult),
+    Route(RouteResult),
+    RoutePreview(RouteEdit),
+    RouteEdited(RouteEditResult),
     Error(EngineError),
 }
 
@@ -84,6 +122,7 @@ pub enum ResponseBody {
 pub struct EngineStatus {
     pub revision: u32,
     pub geometry_revision: u32,
+    pub routing_revision: u32,
     pub project_name: String,
 }
 
@@ -106,6 +145,22 @@ pub struct NearestPlacementResult {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ArrangementResult {
     pub nodes: Vec<GeometryNode>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RoutesUpdateResult {
+    pub routing_revision: u32,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct RouteResult {
+    pub route: RoutedPath,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct RouteEditResult {
+    pub routing_revision: u32,
+    pub edit: RouteEdit,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -213,6 +268,27 @@ mod tests {
         let bytes = rmp_serde::to_vec_named(&request).expect("serialize geometry request");
         let decoded: EngineRequest =
             rmp_serde::from_slice(&bytes).expect("deserialize geometry request");
+        assert_eq!(decoded, request);
+    }
+
+    #[test]
+    fn route_edit_operations_round_trip() {
+        let request = EngineRequest {
+            protocol_version: PROTOCOL_VERSION,
+            request_id: 10,
+            base_revision: 3,
+            operation: Operation::MoveRouteSegment {
+                connection_id: 42,
+                segment_index: 2,
+                coordinate: 131.5,
+                snap_grid: Some(12.0),
+                endpoint_snap_threshold: 8.0,
+            },
+        };
+
+        let bytes = rmp_serde::to_vec_named(&request).expect("serialize route request");
+        let decoded: EngineRequest =
+            rmp_serde::from_slice(&bytes).expect("deserialize route request");
         assert_eq!(decoded, request);
     }
 }

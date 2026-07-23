@@ -35,6 +35,7 @@ describe('domain engine worker', () => {
             payload: {
               revision: request.base_revision,
               geometry_revision: 0,
+              routing_revision: 0,
               project_name: 'Rack Lab',
             },
           },

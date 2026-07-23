@@ -67,6 +67,7 @@ class FakeWorker implements WorkerLike {
           payload: {
             revision: this.revision,
             geometry_revision: 0,
+            routing_revision: 0,
             project_name: this.projectName,
           },
         }

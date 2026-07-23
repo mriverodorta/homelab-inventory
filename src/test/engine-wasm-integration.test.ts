@@ -118,6 +118,56 @@ describe('Rust WASM engine integration', () => {
         ],
       },
     })
+
+    const routes = decodeEngineResponse(runtime.dispatch(handle, encodeEngineRequest({
+      protocol_version: 1,
+      request_id: 12,
+      base_revision: 7,
+      operation: {
+        kind: 'replace-routes',
+        payload: {
+          routes: [{
+            connection_id: 4,
+            source: { x: 100, y: 200 },
+            target: { x: 460, y: 80 },
+            source_side: 'right',
+            target_side: 'left',
+            lane_offset: 24,
+            manual_bends: [],
+          }],
+        },
+      },
+    })))
+    expect(routes.result).toEqual({
+      kind: 'routes-updated',
+      payload: { routing_revision: 1 },
+    })
+
+    const moved = decodeEngineResponse(runtime.dispatch(handle, encodeEngineRequest({
+      protocol_version: 1,
+      request_id: 13,
+      base_revision: 7,
+      operation: {
+        kind: 'move-route-segment',
+        payload: {
+          connection_id: 4,
+          segment_index: 2,
+          coordinate: 131,
+          snap_grid: null,
+          endpoint_snap_threshold: 8,
+        },
+      },
+    })))
+    expect(moved.result).toMatchObject({
+      kind: 'route-edited',
+      payload: {
+        routing_revision: 2,
+        edit: {
+          route: { connection_id: 4 },
+          inverse: { connection_id: 4, bend_points: [] },
+        },
+      },
+    })
     expect(runtime.destroy(handle)).toBe(true)
   })
 })

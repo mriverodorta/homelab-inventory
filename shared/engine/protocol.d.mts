@@ -32,6 +32,33 @@ export type ArrangementItem = {
   height: number
 }
 
+export type RouteDefinition = {
+  connection_id: number
+  source: { x: number; y: number }
+  target: { x: number; y: number }
+  source_side: 'left' | 'right' | 'top' | 'bottom'
+  target_side: 'left' | 'right' | 'top' | 'bottom'
+  lane_offset: number
+  manual_bends: Array<{ x: number; y: number }>
+}
+
+export type RoutedPath = {
+  connection_id: number
+  points: Array<{ x: number; y: number }>
+  manual_anchor_point_indexes: number[]
+}
+
+export type RoutePatch = {
+  connection_id: number
+  bend_points: Array<{ x: number; y: number }>
+}
+
+export type RouteEdit = {
+  route: RoutedPath
+  forward: RoutePatch
+  inverse: RoutePatch
+}
+
 export type EngineOperation =
   | { kind: 'status' }
   | { kind: 'update-project-metadata'; payload: { name: string } }
@@ -72,6 +99,42 @@ export type EngineOperation =
         item_gap: number
       }
     }
+  | { kind: 'replace-routes'; payload: { routes: RouteDefinition[] } }
+  | { kind: 'build-route'; payload: { connection_id: number } }
+  | {
+      kind: 'preview-move-route-segment'
+      payload: {
+        connection_id: number
+        segment_index: number
+        coordinate: number
+        snap_grid: number | null
+        endpoint_snap_threshold: number
+      }
+    }
+  | {
+      kind: 'insert-manual-bend'
+      payload: {
+        connection_id: number
+        segment_index: number
+        point: { x: number; y: number }
+        snap_grid: number | null
+      }
+    }
+  | {
+      kind: 'remove-manual-bend'
+      payload: { connection_id: number; bend_index: number }
+    }
+  | {
+      kind: 'move-route-segment'
+      payload: {
+        connection_id: number
+        segment_index: number
+        coordinate: number
+        snap_grid: number | null
+        endpoint_snap_threshold: number
+      }
+    }
+  | { kind: 'reset-route'; payload: { connection_id: number } }
 
 export type EngineRequest = {
   protocol_version: 1
@@ -88,7 +151,12 @@ export type ProjectPatch = {
 export type EngineResponseBody =
   | {
       kind: 'status'
-      payload: { revision: number; geometry_revision: number; project_name: string }
+      payload: {
+        revision: number
+        geometry_revision: number
+        routing_revision: number
+        project_name: string
+      }
     }
   | {
       kind: 'patch'
@@ -101,6 +169,10 @@ export type EngineResponseBody =
     }
   | { kind: 'nearest-placement'; payload: { bounds: GeometryRect | null } }
   | { kind: 'arrangement'; payload: { nodes: GeometryNode[] } }
+  | { kind: 'routes-updated'; payload: { routing_revision: number } }
+  | { kind: 'route'; payload: { route: RoutedPath } }
+  | { kind: 'route-preview'; payload: RouteEdit }
+  | { kind: 'route-edited'; payload: { routing_revision: number; edit: RouteEdit } }
   | { kind: 'error'; payload: { code: string; message: string } }
 
 export type EngineResponse = {

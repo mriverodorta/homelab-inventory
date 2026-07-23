@@ -14,6 +14,7 @@ version = "0.1.0"
 dependencies = [
  "homelab-engine-protocol",
  "homelab-geometry",
+ "homelab-routing",
  "rmp-serde",
 ]
 
@@ -22,6 +23,7 @@ name = "homelab-engine-protocol"
 version = "0.1.0"
 dependencies = [
  "homelab-geometry",
+ "homelab-routing",
  "rmp-serde",
  "serde",
 ]
@@ -40,6 +42,14 @@ dependencies = [
 name = "homelab-geometry"
 version = "0.1.0"
 dependencies = [
+ "serde",
+]
+
+[[package]]
+name = "homelab-routing"
+version = "0.1.0"
+dependencies = [
+ "homelab-geometry",
  "serde",
 ]
 

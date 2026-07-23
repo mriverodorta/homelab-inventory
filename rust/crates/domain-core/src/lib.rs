@@ -3,9 +3,14 @@ use std::collections::{BTreeMap, BTreeSet};
 use homelab_engine_protocol::{
     ArrangementResult, CommandPatchSet, EngineError, EngineRequest, EngineResponse, EngineSnapshot,
     EngineStatus, GeometryHandle, GeometryUpdateResult, NearestPlacementResult, Operation,
-    PROTOCOL_VERSION, PlacementCheckResult, ProjectPatch, ResponseBody,
+    PROTOCOL_VERSION, PlacementCheckResult, ProjectPatch, ResponseBody, RouteDefinition, RouteEdit,
+    RouteEditResult, RouteResult, RoutesUpdateResult,
 };
 use homelab_geometry::{GeometryError, GeometryNode, SpatialIndex, arrange_items};
+use homelab_routing::{
+    RoutingError, build_route, preview_insert_manual_bend, preview_move_segment,
+    preview_remove_manual_bend, preview_reset_route,
+};
 
 #[derive(Debug, Clone)]
 pub struct Engine {
@@ -14,6 +19,8 @@ pub struct Engine {
     geometry_revision: u32,
     geometry: SpatialIndex,
     handles: BTreeMap<String, GeometryHandle>,
+    routing_revision: u32,
+    routes: BTreeMap<u32, RouteDefinition>,
 }
 
 impl Engine {
@@ -25,6 +32,8 @@ impl Engine {
             geometry_revision: 0,
             geometry: SpatialIndex::default(),
             handles: BTreeMap::new(),
+            routing_revision: 0,
+            routes: BTreeMap::new(),
         }
     }
 
@@ -41,6 +50,11 @@ impl Engine {
     #[must_use]
     pub const fn geometry_revision(&self) -> u32 {
         self.geometry_revision
+    }
+
+    #[must_use]
+    pub const fn routing_revision(&self) -> u32 {
+        self.routing_revision
     }
 
     pub fn dispatch(&mut self, request: EngineRequest) -> EngineResponse {
@@ -75,6 +89,7 @@ impl Engine {
             Operation::Status => ResponseBody::Status(EngineStatus {
                 revision: self.revision,
                 geometry_revision: self.geometry_revision,
+                routing_revision: self.routing_revision,
                 project_name: self.project_name.clone(),
             }),
             Operation::UpdateProjectMetadata { name } => {
@@ -149,6 +164,73 @@ impl Engine {
                 Ok(nodes) => ResponseBody::Arrangement(ArrangementResult { nodes }),
                 Err(error) => geometry_error(error),
             },
+            Operation::ReplaceRoutes { routes } => self.replace_routes(routes),
+            Operation::BuildRoute { connection_id } => {
+                match self.route(connection_id).and_then(build_route) {
+                    Ok(route) => ResponseBody::Route(RouteResult { route }),
+                    Err(error) => routing_error(error),
+                }
+            }
+            Operation::PreviewMoveRouteSegment {
+                connection_id,
+                segment_index,
+                coordinate,
+                snap_grid,
+                endpoint_snap_threshold,
+            } => match self.route(connection_id).and_then(|route| {
+                preview_move_segment(
+                    route,
+                    segment_index,
+                    coordinate,
+                    snap_grid,
+                    endpoint_snap_threshold,
+                )
+            }) {
+                Ok(edit) => ResponseBody::RoutePreview(edit),
+                Err(error) => routing_error(error),
+            },
+            Operation::InsertManualBend {
+                connection_id,
+                segment_index,
+                point,
+                snap_grid,
+            } => {
+                let edit = self.route(connection_id).and_then(|route| {
+                    preview_insert_manual_bend(route, segment_index, point, snap_grid)
+                });
+                self.commit_route_edit(edit)
+            }
+            Operation::RemoveManualBend {
+                connection_id,
+                bend_index,
+            } => {
+                let edit = self
+                    .route(connection_id)
+                    .and_then(|route| preview_remove_manual_bend(route, bend_index));
+                self.commit_route_edit(edit)
+            }
+            Operation::MoveRouteSegment {
+                connection_id,
+                segment_index,
+                coordinate,
+                snap_grid,
+                endpoint_snap_threshold,
+            } => {
+                let edit = self.route(connection_id).and_then(|route| {
+                    preview_move_segment(
+                        route,
+                        segment_index,
+                        coordinate,
+                        snap_grid,
+                        endpoint_snap_threshold,
+                    )
+                });
+                self.commit_route_edit(edit)
+            }
+            Operation::ResetRoute { connection_id } => {
+                let edit = self.route(connection_id).and_then(preview_reset_route);
+                self.commit_route_edit(edit)
+            }
         };
 
         EngineResponse {
@@ -259,6 +341,53 @@ impl Engine {
             colliding_item_ids,
         })
     }
+
+    fn replace_routes(&mut self, routes: Vec<RouteDefinition>) -> ResponseBody {
+        let mut replacement = BTreeMap::new();
+        for route in routes {
+            if let Err(error) = route.validate() {
+                return routing_error(error);
+            }
+            if replacement.insert(route.connection_id, route).is_some() {
+                return routing_error(RoutingError::InvalidConnectionId);
+            }
+        }
+        let next_revision = match self.routing_revision.checked_add(1) {
+            Some(revision) => revision,
+            None => return routing_revision_exhausted(),
+        };
+        self.routes = replacement;
+        self.routing_revision = next_revision;
+        ResponseBody::RoutesUpdated(RoutesUpdateResult {
+            routing_revision: self.routing_revision,
+        })
+    }
+
+    fn route(&self, connection_id: u32) -> Result<&RouteDefinition, RoutingError> {
+        self.routes
+            .get(&connection_id)
+            .ok_or(RoutingError::InvalidConnectionId)
+    }
+
+    fn commit_route_edit(&mut self, edit: Result<RouteEdit, RoutingError>) -> ResponseBody {
+        let edit = match edit {
+            Ok(edit) => edit,
+            Err(error) => return routing_error(error),
+        };
+        let next_revision = match self.routing_revision.checked_add(1) {
+            Some(revision) => revision,
+            None => return routing_revision_exhausted(),
+        };
+        let Some(route) = self.routes.get_mut(&edit.forward.connection_id) else {
+            return routing_error(RoutingError::InvalidConnectionId);
+        };
+        route.manual_bends = edit.forward.bend_points.clone();
+        self.routing_revision = next_revision;
+        ResponseBody::RouteEdited(RouteEditResult {
+            routing_revision: self.routing_revision,
+            edit,
+        })
+    }
 }
 
 fn collect_handles(
@@ -307,6 +436,20 @@ fn geometry_revision_exhausted() -> ResponseBody {
     ResponseBody::Error(EngineError {
         code: "geometry-revision-exhausted".into(),
         message: "Geometry revision cannot be advanced safely.".into(),
+    })
+}
+
+fn routing_error(error: RoutingError) -> ResponseBody {
+    ResponseBody::Error(EngineError {
+        code: "invalid-route".into(),
+        message: error.to_string(),
+    })
+}
+
+fn routing_revision_exhausted() -> ResponseBody {
+    ResponseBody::Error(EngineError {
+        code: "routing-revision-exhausted".into(),
+        message: "Routing revision cannot be advanced safely.".into(),
     })
 }
 
@@ -440,6 +583,7 @@ mod tests {
             ResponseBody::Status(EngineStatus {
                 revision: 12,
                 geometry_revision: 0,
+                routing_revision: 0,
                 project_name: "Homelab Inventory".into(),
             })
         );
@@ -571,5 +715,63 @@ mod tests {
                 }),
             })
         );
+    }
+
+    #[test]
+    fn route_edits_are_revisioned_and_return_inverse_bends() {
+        let mut engine = engine();
+        let route = RouteDefinition {
+            connection_id: 4,
+            source: homelab_engine_protocol::Point { x: 100.0, y: 200.0 },
+            target: homelab_engine_protocol::Point { x: 460.0, y: 80.0 },
+            source_side: homelab_engine_protocol::Side::Right,
+            target_side: homelab_engine_protocol::Side::Left,
+            lane_offset: 24.0,
+            manual_bends: vec![],
+        };
+        let replaced = engine.dispatch(request(Operation::ReplaceRoutes {
+            routes: vec![route],
+        }));
+        assert_eq!(
+            replaced.result,
+            ResponseBody::RoutesUpdated(RoutesUpdateResult {
+                routing_revision: 1
+            })
+        );
+
+        let preview = engine.dispatch(request(Operation::PreviewMoveRouteSegment {
+            connection_id: 4,
+            segment_index: 2,
+            coordinate: 131.0,
+            snap_grid: None,
+            endpoint_snap_threshold: 8.0,
+        }));
+        assert!(matches!(preview.result, ResponseBody::RoutePreview(_)));
+        assert_eq!(engine.routing_revision(), 1);
+
+        let moved = engine.dispatch(request(Operation::MoveRouteSegment {
+            connection_id: 4,
+            segment_index: 2,
+            coordinate: 131.0,
+            snap_grid: None,
+            endpoint_snap_threshold: 8.0,
+        }));
+        assert!(matches!(
+            moved.result,
+            ResponseBody::RouteEdited(RouteEditResult {
+                routing_revision: 2,
+                ref edit,
+            }) if edit.inverse.bend_points.is_empty() && !edit.forward.bend_points.is_empty()
+        ));
+
+        let reset = engine.dispatch(request(Operation::ResetRoute { connection_id: 4 }));
+        assert!(matches!(
+            reset.result,
+            ResponseBody::RouteEdited(RouteEditResult {
+                routing_revision: 3,
+                ref edit,
+            }) if edit.forward.bend_points.is_empty() && !edit.inverse.bend_points.is_empty()
+        ));
+        assert_eq!(engine.revision(), 12);
     }
 }
