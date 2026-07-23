@@ -32,7 +32,7 @@ describe('engine MessagePack protocol', () => {
 
   it('rejects unsupported protocol versions', () => {
     expect(() => encodeEngineRequest({
-      protocol_version: 2,
+      protocol_version: 2 as never,
       request_id: 1,
       base_revision: 1,
       operation: { kind: 'status' },
