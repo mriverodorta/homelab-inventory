@@ -163,6 +163,13 @@ pub struct ConnectionValidation {
     pub message: Option<String>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ConnectionDerivedState {
+    pub connection_id: u32,
+    pub connection_type: String,
+    pub negotiated_speed_mbps: Option<u32>,
+}
+
 #[derive(Debug, Clone)]
 pub struct TopologyIndex {
     snapshot: TopologySnapshot,
@@ -350,6 +357,134 @@ impl TopologyIndex {
             message: None,
         }
     }
+
+    #[must_use]
+    pub fn connection_derived_states(&self) -> Vec<ConnectionDerivedState> {
+        let mut adjacency = BTreeMap::<EndpointRef, BTreeSet<EndpointRef>>::new();
+        let mut network_connections = BTreeMap::<u32, (&EndpointRef, &EndpointRef)>::new();
+
+        for connection in &self.snapshot.connections {
+            let connection_type = self.classify_connection(&connection.from, &connection.to);
+            if connection_type == "network" {
+                add_graph_edge(&mut adjacency, &connection.from, &connection.to);
+                network_connections.insert(connection.id, (&connection.from, &connection.to));
+            }
+        }
+        for item in &self.snapshot.items {
+            if item.archived || item.item.item_type != "patchPanel" {
+                continue;
+            }
+            for port in &item.ports {
+                if !is_network_port(&port.port_type) {
+                    continue;
+                }
+                let front = port
+                    .endpoints
+                    .iter()
+                    .find(|endpoint| endpoint.side == "front");
+                let back = port
+                    .endpoints
+                    .iter()
+                    .find(|endpoint| endpoint.side == "back");
+                if let (Some(front), Some(back)) = (front, back) {
+                    add_graph_edge(
+                        &mut adjacency,
+                        &EndpointRef {
+                            item: item.item.clone(),
+                            port_id: port.id,
+                            endpoint_id: Some(front.id),
+                            hosted_item: None,
+                        },
+                        &EndpointRef {
+                            item: item.item.clone(),
+                            port_id: port.id,
+                            endpoint_id: Some(back.id),
+                            hosted_item: None,
+                        },
+                    );
+                }
+            }
+        }
+
+        let mut speed_by_endpoint = BTreeMap::<EndpointRef, Option<u32>>::new();
+        let mut visited = BTreeSet::new();
+        for start in adjacency.keys() {
+            if !visited.insert(start.clone()) {
+                continue;
+            }
+            let mut component = vec![];
+            let mut speeds = vec![];
+            let mut pending = vec![start.clone()];
+            while let Some(current) = pending.pop() {
+                component.push(current.clone());
+                if let Some(speed) = self.endpoint_advertised_speed(&current) {
+                    speeds.push(speed);
+                }
+                for neighbor in adjacency.get(&current).into_iter().flatten() {
+                    if visited.insert(neighbor.clone()) {
+                        pending.push(neighbor.clone());
+                    }
+                }
+            }
+            let negotiated = speeds.into_iter().min();
+            for endpoint in component {
+                speed_by_endpoint.insert(endpoint, negotiated);
+            }
+        }
+
+        self.snapshot
+            .connections
+            .iter()
+            .map(|connection| {
+                let connection_type = self.classify_connection(&connection.from, &connection.to);
+                let negotiated_speed_mbps = (connection_type == "network")
+                    .then(|| speed_by_endpoint.get(&connection.from).copied().flatten())
+                    .flatten();
+                ConnectionDerivedState {
+                    connection_id: connection.id,
+                    connection_type,
+                    negotiated_speed_mbps,
+                }
+            })
+            .collect()
+    }
+
+    fn classify_connection(&self, from: &EndpointRef, to: &EndpointRef) -> String {
+        let Some(from_descriptor) = self.endpoint(from) else {
+            return "other".into();
+        };
+        let Some(to_descriptor) = self.endpoint(to) else {
+            return "other".into();
+        };
+        if from_descriptor.power.is_some() && to_descriptor.power.is_some() {
+            "power"
+        } else if from_descriptor.port_type == to_descriptor.port_type
+            && is_network_port(&from_descriptor.port_type)
+        {
+            "network"
+        } else if is_display_port(&from_descriptor.port_type)
+            && is_display_port(&to_descriptor.port_type)
+        {
+            "display"
+        } else {
+            "other"
+        }
+        .into()
+    }
+
+    fn endpoint_advertised_speed(&self, endpoint: &EndpointRef) -> Option<u32> {
+        let descriptor = self.endpoint(endpoint)?;
+        if !matches!(
+            descriptor.host.item_type.as_str(),
+            "server" | "nas" | "pcBuild" | "switch"
+        ) || !is_network_port(&descriptor.port_type)
+        {
+            return None;
+        }
+        parse_advertised_speed(descriptor.speed.as_deref()).or_else(|| {
+            (descriptor.port_type == "sfp-plus" && descriptor.speed.is_none()).then_some(10_000)
+        })
+    }
 }
 
 fn invalid(code: &str, message: &str) -> ConnectionValidation {
@@ -363,6 +498,40 @@ fn invalid(code: &str, message: &str) -> ConnectionValidation {
 fn ports_compatible(first: &str, second: &str) -> bool {
     const DISPLAY: [&str; 3] = ["hdmi", "displayport", "mini-displayport"];
     first == second || (DISPLAY.contains(&first) && DISPLAY.contains(&second))
+}
+
+fn is_network_port(port_type: &str) -> bool {
+    matches!(port_type, "rj45" | "sfp" | "sfp-plus")
+}
+
+fn is_display_port(port_type: &str) -> bool {
+    matches!(port_type, "hdmi" | "displayport" | "mini-displayport")
+}
+
+fn add_graph_edge(
+    adjacency: &mut BTreeMap<EndpointRef, BTreeSet<EndpointRef>>,
+    first: &EndpointRef,
+    second: &EndpointRef,
+) {
+    adjacency
+        .entry(first.clone())
+        .or_default()
+        .insert(second.clone());
+    adjacency
+        .entry(second.clone())
+        .or_default()
+        .insert(first.clone());
+}
+
+fn parse_advertised_speed(speed: Option<&str>) -> Option<u32> {
+    let normalized = speed?.trim().to_ascii_uppercase().replace(' ', "");
+    match normalized.as_str() {
+        "1G" | "1GBPS" | "1GBE" | "1000M" | "1000MBPS" | "1000MB/S" => Some(1_000),
+        "2.5G" | "2.5GBPS" | "2.5GBE" | "2500M" | "2500MBPS" | "2500MB/S" => Some(2_500),
+        "5G" | "5GBPS" | "5GBE" | "5000M" | "5000MBPS" | "5000MB/S" => Some(5_000),
+        "10G" | "10GBPS" | "10GBE" | "10000M" | "10000MBPS" | "10000MB/S" => Some(10_000),
+        _ => None,
+    }
 }
 
 fn exposes_direct_ports(item_type: &str) -> bool {
@@ -644,6 +813,17 @@ mod tests {
                 endpoints: vec![],
             }],
         }
+    }
+
+    #[test]
+    fn parses_only_supported_advertised_network_speeds() {
+        assert_eq!(parse_advertised_speed(Some("1G")), Some(1_000));
+        assert_eq!(parse_advertised_speed(Some("2.5 Gbps")), Some(2_500));
+        assert_eq!(parse_advertised_speed(Some("5000 Mbps")), Some(5_000));
+        assert_eq!(parse_advertised_speed(Some("10GbE")), Some(10_000));
+        assert_eq!(parse_advertised_speed(Some("40G")), None);
+        assert_eq!(parse_advertised_speed(Some("unknown")), None);
+        assert_eq!(parse_advertised_speed(None), None);
     }
 
     #[test]
@@ -1022,6 +1202,230 @@ mod tests {
                 .code
                 .as_deref(),
             Some("destination-occupied")
+        );
+    }
+
+    #[test]
+    fn negotiates_active_speeds_across_passive_patch_panel_continuity() {
+        let mut server = item("server", 1, 1);
+        server.ports[0].speed = Some("1G".into());
+        let mut switch = item("switch", 1, 1);
+        switch.ports[0].speed = Some("2.5 Gbps".into());
+        let mut panel = item("patchPanel", 1, 1);
+        panel.ports[0].speed = None;
+        panel.ports[0].endpoints = vec![
+            TopologyPortSide {
+                id: 1,
+                side: "front".into(),
+            },
+            TopologyPortSide {
+                id: 2,
+                side: "back".into(),
+            },
+        ];
+        let server_endpoint = EndpointRef {
+            item: server.item.clone(),
+            port_id: 1,
+            endpoint_id: None,
+            hosted_item: None,
+        };
+        let switch_endpoint = EndpointRef {
+            item: switch.item.clone(),
+            port_id: 1,
+            endpoint_id: None,
+            hosted_item: None,
+        };
+        let front = EndpointRef {
+            item: panel.item.clone(),
+            port_id: 1,
+            endpoint_id: Some(1),
+            hosted_item: None,
+        };
+        let back = EndpointRef {
+            item: panel.item.clone(),
+            port_id: 1,
+            endpoint_id: Some(2),
+            hosted_item: None,
+        };
+        let connection = |id, from, to| TopologyConnection {
+            id,
+            from,
+            to,
+            connection_type: "other".into(),
+            negotiated_speed_mbps: Some(10_000),
+            label: None,
+            route: None,
+            created_at: String::new(),
+        };
+        let snapshot = TopologySnapshot {
+            items: vec![server.clone(), switch.clone(), panel.clone()],
+            assignments: vec![],
+            connections: vec![
+                connection(1, server_endpoint, back),
+                connection(2, front, switch_endpoint),
+            ],
+            placements: vec![server.item, switch.item, panel.item],
+        };
+        let states = TopologyIndex::build(snapshot)
+            .unwrap()
+            .connection_derived_states();
+
+        assert_eq!(
+            states,
+            vec![
+                ConnectionDerivedState {
+                    connection_id: 1,
+                    connection_type: "network".into(),
+                    negotiated_speed_mbps: Some(1_000),
+                },
+                ConnectionDerivedState {
+                    connection_id: 2,
+                    connection_type: "network".into(),
+                    negotiated_speed_mbps: Some(1_000),
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn keeps_open_active_speed_and_omits_disconnected_passive_speed() {
+        let mut switch = item("switch", 1, 1);
+        switch.ports[0].port_type = "sfp-plus".into();
+        switch.ports[0].speed = None;
+        let mut first_panel = item("patchPanel", 1, 1);
+        let mut second_panel = item("patchPanel", 2, 1);
+        let mut third_panel = item("patchPanel", 3, 1);
+        let mut fourth_panel = item("patchPanel", 4, 1);
+        for panel in [
+            &mut first_panel,
+            &mut second_panel,
+            &mut third_panel,
+            &mut fourth_panel,
+        ] {
+            panel.ports[0].speed = None;
+            panel.ports[0].endpoints = vec![
+                TopologyPortSide {
+                    id: 1,
+                    side: "front".into(),
+                },
+                TopologyPortSide {
+                    id: 2,
+                    side: "back".into(),
+                },
+            ];
+        }
+        first_panel.ports[0].port_type = "sfp-plus".into();
+        second_panel.ports[0].port_type = "sfp-plus".into();
+        let endpoint = |item: &TopologyItem, endpoint_id| EndpointRef {
+            item: item.item.clone(),
+            port_id: 1,
+            endpoint_id,
+            hosted_item: None,
+        };
+        let snapshot = TopologySnapshot {
+            items: vec![
+                switch.clone(),
+                first_panel.clone(),
+                second_panel.clone(),
+                third_panel.clone(),
+                fourth_panel.clone(),
+            ],
+            assignments: vec![],
+            connections: vec![
+                TopologyConnection {
+                    id: 1,
+                    from: endpoint(&switch, None),
+                    to: endpoint(&first_panel, Some(1)),
+                    connection_type: "network".into(),
+                    negotiated_speed_mbps: None,
+                    label: None,
+                    route: None,
+                    created_at: String::new(),
+                },
+                TopologyConnection {
+                    id: 2,
+                    from: endpoint(&first_panel, Some(2)),
+                    to: endpoint(&second_panel, Some(1)),
+                    connection_type: "network".into(),
+                    negotiated_speed_mbps: Some(10_000),
+                    label: None,
+                    route: None,
+                    created_at: String::new(),
+                },
+                TopologyConnection {
+                    id: 3,
+                    from: endpoint(&third_panel, Some(1)),
+                    to: endpoint(&fourth_panel, Some(1)),
+                    connection_type: "network".into(),
+                    negotiated_speed_mbps: Some(10_000),
+                    label: None,
+                    route: None,
+                    created_at: String::new(),
+                },
+            ],
+            placements: vec![
+                switch.item,
+                first_panel.item,
+                second_panel.item,
+                third_panel.item,
+                fourth_panel.item,
+            ],
+        };
+        let states = TopologyIndex::build(snapshot)
+            .unwrap()
+            .connection_derived_states();
+
+        assert_eq!(states[0].negotiated_speed_mbps, Some(10_000));
+        assert_eq!(states[1].negotiated_speed_mbps, Some(10_000));
+        assert_eq!(states[2].negotiated_speed_mbps, None);
+    }
+
+    #[test]
+    fn negotiates_assigned_nas_nic_at_five_gigabit() {
+        let nas = item("nas", 1, 1);
+        let mut nic = item("network", 1, 1);
+        nic.ports[0].speed = Some("5G".into());
+        let mut switch = item("switch", 1, 1);
+        switch.ports[0].speed = Some("10G".into());
+        let hosted = EndpointRef {
+            item: nas.item.clone(),
+            port_id: 1,
+            endpoint_id: None,
+            hosted_item: Some(nic.item.clone()),
+        };
+        let switch_endpoint = EndpointRef {
+            item: switch.item.clone(),
+            port_id: 1,
+            endpoint_id: None,
+            hosted_item: None,
+        };
+        let snapshot = TopologySnapshot {
+            items: vec![nas.clone(), nic.clone(), switch.clone()],
+            assignments: vec![TopologyAssignment {
+                id: 1,
+                host: nas.item.clone(),
+                item: nic.item,
+                component_type: "network".into(),
+            }],
+            connections: vec![TopologyConnection {
+                id: 1,
+                from: hosted,
+                to: switch_endpoint,
+                connection_type: "network".into(),
+                negotiated_speed_mbps: None,
+                label: None,
+                route: None,
+                created_at: String::new(),
+            }],
+            placements: vec![nas.item, switch.item],
+        };
+
+        assert_eq!(
+            TopologyIndex::build(snapshot)
+                .unwrap()
+                .connection_derived_states()[0]
+                .negotiated_speed_mbps,
+            Some(5_000)
         );
     }
 }

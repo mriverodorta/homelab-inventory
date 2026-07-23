@@ -55,6 +55,7 @@ describe('Rust WASM engine integration', () => {
     const nicRef = { item_type: 'network', id: 1 }
     const switchRef = { item_type: 'switch', id: 1 }
     const freeSwitchRef = { item_type: 'switch', id: 2 }
+    const panelRef = { item_type: 'patchPanel', id: 1 }
     const serverEndpoint = {
       item: serverRef,
       hosted_item: null,
@@ -78,6 +79,18 @@ describe('Rust WASM engine integration', () => {
       hosted_item: null,
       port_id: 1,
       endpoint_id: null,
+    }
+    const panelFrontEndpoint = {
+      item: panelRef,
+      hosted_item: null,
+      port_id: 1,
+      endpoint_id: 1,
+    }
+    const panelBackEndpoint = {
+      item: panelRef,
+      hosted_item: null,
+      port_id: 1,
+      endpoint_id: 2,
     }
     const handle = runtime.create(encodeEngineSnapshot({
       revision: 2,
@@ -140,6 +153,23 @@ describe('Rust WASM engine integration', () => {
               endpoints: [],
             }],
           },
+          {
+            item: panelRef,
+            archived: false,
+            power_configuration: null,
+            allow_outlet_fan_out: false,
+            ports: [{
+              id: 1,
+              key: null,
+              port_type: 'rj45',
+              slot_number: 1,
+              speed: null,
+              endpoints: [
+                { id: 1, side: 'front' },
+                { id: 2, side: 'back' },
+              ],
+            }],
+          },
         ],
         assignments: [{
           id: 1,
@@ -147,17 +177,29 @@ describe('Rust WASM engine integration', () => {
           item: nicRef,
           component_type: 'network',
         }],
-        connections: [{
-          id: 8,
-          from: hostedEndpoint,
-          to: switchEndpoint,
-          connection_type: 'network',
-          negotiated_speed_mbps: 2500,
-          label: null,
-          route: null,
-          created_at: '2026-01-01T00:00:00.000Z',
-        }],
-        placements: [serverRef, switchRef, freeSwitchRef],
+        connections: [
+          {
+            id: 8,
+            from: hostedEndpoint,
+            to: switchEndpoint,
+            connection_type: 'network',
+            negotiated_speed_mbps: 2500,
+            label: null,
+            route: null,
+            created_at: '2026-01-01T00:00:00.000Z',
+          },
+          {
+            id: 9,
+            from: freeSwitchEndpoint,
+            to: panelFrontEndpoint,
+            connection_type: 'network',
+            negotiated_speed_mbps: 10000,
+            label: null,
+            route: null,
+            created_at: '2026-01-01T00:00:00.000Z',
+          },
+        ],
+        placements: [serverRef, switchRef, freeSwitchRef, panelRef],
       },
     }))
     expect(handle).toBeGreaterThan(0)
@@ -199,7 +241,7 @@ describe('Rust WASM engine integration', () => {
       kind: 'topology-endpoints',
       payload: {
         endpoints: [expect.objectContaining({
-          endpoint: freeSwitchEndpoint,
+          endpoint: panelBackEndpoint,
           available: true,
         })],
       },
@@ -211,7 +253,7 @@ describe('Rust WASM engine integration', () => {
       base_revision: 2,
       operation: {
         kind: 'validate-connection',
-        payload: { from: hostedEndpoint, to: freeSwitchEndpoint },
+        payload: { from: hostedEndpoint, to: panelBackEndpoint },
       },
     })))
     expect(validation.result).toEqual({
@@ -231,7 +273,7 @@ describe('Rust WASM engine integration', () => {
         kind: 'create-connection',
         payload: {
           from: serverEndpoint,
-          to: freeSwitchEndpoint,
+          to: panelBackEndpoint,
           created_at: '2026-07-23T00:00:00.000Z',
         },
       },
@@ -240,20 +282,42 @@ describe('Rust WASM engine integration', () => {
       kind: 'patch',
       payload: {
         revision: 3,
-        forward: {
-          kind: 'add-connection',
-          payload: {
-            connection: {
-              id: 9,
-              from: serverEndpoint,
-              to: freeSwitchEndpoint,
-              connection_type: 'network',
-            },
-          },
-        },
         inverse: {
-          kind: 'remove-connection',
-          payload: { connection: { id: 9 } },
+          kind: 'batch',
+        },
+      },
+    })
+    expect(created.result).toMatchObject({
+      kind: 'patch',
+      payload: {
+        forward: {
+          kind: 'batch',
+          payload: {
+            patches: [
+              {
+                kind: 'add-connection',
+                payload: {
+                  connection: {
+                    id: 10,
+                    from: serverEndpoint,
+                    to: panelBackEndpoint,
+                    connection_type: 'network',
+                    negotiated_speed_mbps: 1000,
+                  },
+                },
+              },
+              {
+                kind: 'set-connection-derived',
+                payload: {
+                  states: [{
+                    connection_id: 9,
+                    connection_type: 'network',
+                    negotiated_speed_mbps: 1000,
+                  }],
+                },
+              },
+            ],
+          },
         },
       },
     })
@@ -264,7 +328,7 @@ describe('Rust WASM engine integration', () => {
       base_revision: 3,
       operation: {
         kind: 'remove-connection',
-        payload: { connection_id: 9 },
+        payload: { connection_id: 10 },
       },
     })))
     expect(removed.result).toMatchObject({
@@ -272,8 +336,18 @@ describe('Rust WASM engine integration', () => {
       payload: {
         revision: 4,
         forward: {
-          kind: 'remove-connection',
-          payload: { connection: { id: 9 } },
+          kind: 'batch',
+          payload: {
+            patches: [
+              { kind: 'remove-connection', payload: { connection: { id: 10 } } },
+              {
+                kind: 'set-connection-derived',
+                payload: {
+                  states: [{ connection_id: 9, negotiated_speed_mbps: 10000 }],
+                },
+              },
+            ],
+          },
         },
       },
     })

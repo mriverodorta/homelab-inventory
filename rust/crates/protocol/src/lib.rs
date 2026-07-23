@@ -9,9 +9,10 @@ pub use homelab_routing::{
     RouteWarning, RoutedPath,
 };
 pub use homelab_topology::{
-    ConnectionRoute as TopologyConnectionRoute, ConnectionValidation, EndpointDescriptor,
-    EndpointRef, ItemRef, PowerEndpointDescriptor, TopologyAssignment, TopologyConnection,
-    TopologyError, TopologyItem, TopologyPort, TopologyPortSide, TopologySnapshot,
+    ConnectionDerivedState, ConnectionRoute as TopologyConnectionRoute, ConnectionValidation,
+    EndpointDescriptor, EndpointRef, ItemRef, PowerEndpointDescriptor, TopologyAssignment,
+    TopologyConnection, TopologyError, TopologyItem, TopologyPort, TopologyPortSide,
+    TopologySnapshot,
 };
 
 pub const PROTOCOL_VERSION: u16 = 1;
@@ -251,6 +252,12 @@ pub enum ProjectPatch {
     SetConnectionRoute {
         connection_id: u32,
         route: Option<TopologyConnectionRoute>,
+    },
+    SetConnectionDerived {
+        states: Vec<ConnectionDerivedState>,
+    },
+    Batch {
+        patches: Vec<ProjectPatch>,
     },
 }
 

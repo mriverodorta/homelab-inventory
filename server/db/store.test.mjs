@@ -2594,7 +2594,24 @@ describe('HomelabInventoryStore', () => {
       baseRevision,
       patchSet: {
         revision: baseRevision + 1,
-        forward: { kind: 'add-connection', payload: { connection } },
+        forward: {
+          kind: 'batch',
+          payload: {
+            patches: [
+              { kind: 'add-connection', payload: { connection } },
+              {
+                kind: 'set-connection-derived',
+                payload: {
+                  states: [{
+                    connection_id: 1,
+                    connection_type: 'network',
+                    negotiated_speed_mbps: 1000,
+                  }],
+                },
+              },
+            ],
+          },
+        },
       },
       responseBytes: Uint8Array.from([1]),
     })
@@ -2603,6 +2620,7 @@ describe('HomelabInventoryStore', () => {
       from: { itemId: 'server:1', portId: 1 },
       to: { itemId: 'switch:1', portId: 1 },
       type: 'network',
+      negotiatedSpeedMbps: 1000,
       createdAt: '2026-07-23T00:00:00.000Z',
     }])
 

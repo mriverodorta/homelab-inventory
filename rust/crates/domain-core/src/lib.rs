@@ -398,16 +398,36 @@ impl Engine {
             route: None,
             created_at,
         };
-        let mut snapshot = self.topology.snapshot().clone();
-        snapshot.connections.push(connection.clone());
+        let before = self.topology.snapshot().clone();
+        let mut snapshot = before.clone();
+        snapshot.connections.push(connection);
         snapshot.connections.sort_by_key(|candidate| candidate.id);
-        self.commit_topology(
-            snapshot,
-            ProjectPatch::AddConnection {
-                connection: connection.clone(),
-            },
-            ProjectPatch::RemoveConnection { connection },
-        )
+        if let Err(error) = normalize_connection_derived(&mut snapshot) {
+            return topology_error(error);
+        }
+        let connection = snapshot
+            .connections
+            .iter()
+            .find(|candidate| candidate.id == connection_id)
+            .expect("normalized connection must exist")
+            .clone();
+        let (forward_states, inverse_states) = connection_derived_changes(&before, &snapshot);
+        let mut forward = vec![ProjectPatch::AddConnection {
+            connection: connection.clone(),
+        }];
+        if !forward_states.is_empty() {
+            forward.push(ProjectPatch::SetConnectionDerived {
+                states: forward_states,
+            });
+        }
+        let mut inverse = vec![];
+        if !inverse_states.is_empty() {
+            inverse.push(ProjectPatch::SetConnectionDerived {
+                states: inverse_states,
+            });
+        }
+        inverse.push(ProjectPatch::RemoveConnection { connection });
+        self.commit_topology(snapshot, batch_patch(forward), batch_patch(inverse))
     }
 
     fn remove_connection(&mut self, connection_id: u32) -> ResponseBody {
@@ -424,17 +444,31 @@ impl Engine {
                 "The selected connection no longer exists.",
             );
         };
-        let mut snapshot = self.topology.snapshot().clone();
+        let before = self.topology.snapshot().clone();
+        let mut snapshot = before.clone();
         snapshot
             .connections
             .retain(|candidate| candidate.id != connection_id);
-        self.commit_topology(
-            snapshot,
-            ProjectPatch::RemoveConnection {
-                connection: connection.clone(),
-            },
-            ProjectPatch::AddConnection { connection },
-        )
+        if let Err(error) = normalize_connection_derived(&mut snapshot) {
+            return topology_error(error);
+        }
+        let (forward_states, inverse_states) = connection_derived_changes(&before, &snapshot);
+        let mut forward = vec![ProjectPatch::RemoveConnection {
+            connection: connection.clone(),
+        }];
+        if !forward_states.is_empty() {
+            forward.push(ProjectPatch::SetConnectionDerived {
+                states: forward_states,
+            });
+        }
+        let mut inverse = vec![];
+        if !inverse_states.is_empty() {
+            inverse.push(ProjectPatch::SetConnectionDerived {
+                states: inverse_states,
+            });
+        }
+        inverse.push(ProjectPatch::AddConnection { connection });
+        self.commit_topology(snapshot, batch_patch(forward), batch_patch(inverse))
     }
 
     fn update_connection_label(
@@ -762,6 +796,68 @@ fn engine_error(code: &str, message: &str) -> ResponseBody {
     })
 }
 
+fn normalize_connection_derived(snapshot: &mut TopologySnapshot) -> Result<(), TopologyError> {
+    let index = TopologyIndex::build(snapshot.clone())?;
+    let states = index
+        .connection_derived_states()
+        .into_iter()
+        .map(|state| (state.connection_id, state))
+        .collect::<BTreeMap<_, _>>();
+    for connection in &mut snapshot.connections {
+        if let Some(state) = states.get(&connection.id) {
+            connection
+                .connection_type
+                .clone_from(&state.connection_type);
+            connection.negotiated_speed_mbps = state.negotiated_speed_mbps;
+        }
+    }
+    Ok(())
+}
+
+fn connection_derived_changes(
+    before: &TopologySnapshot,
+    after: &TopologySnapshot,
+) -> (
+    Vec<homelab_engine_protocol::ConnectionDerivedState>,
+    Vec<homelab_engine_protocol::ConnectionDerivedState>,
+) {
+    let before = before
+        .connections
+        .iter()
+        .map(|connection| (connection.id, connection))
+        .collect::<BTreeMap<_, _>>();
+    let mut forward = vec![];
+    let mut inverse = vec![];
+    for connection in &after.connections {
+        let Some(previous) = before.get(&connection.id) else {
+            continue;
+        };
+        if previous.connection_type == connection.connection_type
+            && previous.negotiated_speed_mbps == connection.negotiated_speed_mbps
+        {
+            continue;
+        }
+        forward.push(homelab_engine_protocol::ConnectionDerivedState {
+            connection_id: connection.id,
+            connection_type: connection.connection_type.clone(),
+            negotiated_speed_mbps: connection.negotiated_speed_mbps,
+        });
+        inverse.push(homelab_engine_protocol::ConnectionDerivedState {
+            connection_id: previous.id,
+            connection_type: previous.connection_type.clone(),
+            negotiated_speed_mbps: previous.negotiated_speed_mbps,
+        });
+    }
+    (forward, inverse)
+}
+
+fn batch_patch(mut patches: Vec<ProjectPatch>) -> ProjectPatch {
+    if patches.len() == 1 {
+        return patches.pop().expect("single patch must exist");
+    }
+    ProjectPatch::Batch { patches }
+}
+
 fn topology_error(error: TopologyError) -> ResponseBody {
     engine_error("invalid-topology", &error.to_string())
 }
@@ -850,6 +946,88 @@ mod tests {
             },
         });
         (engine, from, to)
+    }
+
+    fn passive_path_engine() -> (
+        Engine,
+        homelab_engine_protocol::EndpointRef,
+        homelab_engine_protocol::EndpointRef,
+    ) {
+        let server = homelab_engine_protocol::ItemRef {
+            item_type: "server".into(),
+            id: 1,
+        };
+        let switch = homelab_engine_protocol::ItemRef {
+            item_type: "switch".into(),
+            id: 1,
+        };
+        let panel = homelab_engine_protocol::ItemRef {
+            item_type: "patchPanel".into(),
+            id: 1,
+        };
+        let endpoint = |item: homelab_engine_protocol::ItemRef, endpoint_id| {
+            homelab_engine_protocol::EndpointRef {
+                item,
+                port_id: 1,
+                endpoint_id,
+                hosted_item: None,
+            }
+        };
+        let server_endpoint = endpoint(server.clone(), None);
+        let panel_front = endpoint(panel.clone(), Some(1));
+        let panel_back = endpoint(panel.clone(), Some(2));
+        let switch_endpoint = endpoint(switch.clone(), None);
+        let item = |item, speed, endpoints| homelab_engine_protocol::TopologyItem {
+            item,
+            archived: false,
+            power_configuration: None,
+            allow_outlet_fan_out: false,
+            ports: vec![homelab_engine_protocol::TopologyPort {
+                id: 1,
+                key: None,
+                port_type: "rj45".into(),
+                slot_number: 1,
+                speed,
+                endpoints,
+            }],
+        };
+        let engine = Engine::from_snapshot(EngineSnapshot {
+            revision: 12,
+            project_name: "Passive Path".into(),
+            topology: TopologySnapshot {
+                items: vec![
+                    item(server.clone(), Some("1G".into()), vec![]),
+                    item(switch.clone(), Some("2.5G".into()), vec![]),
+                    item(
+                        panel.clone(),
+                        None,
+                        vec![
+                            homelab_engine_protocol::TopologyPortSide {
+                                id: 1,
+                                side: "front".into(),
+                            },
+                            homelab_engine_protocol::TopologyPortSide {
+                                id: 2,
+                                side: "back".into(),
+                            },
+                        ],
+                    ),
+                ],
+                assignments: vec![],
+                connections: vec![TopologyConnection {
+                    id: 1,
+                    from: switch_endpoint,
+                    to: panel_front,
+                    connection_type: "network".into(),
+                    negotiated_speed_mbps: Some(2_500),
+                    label: None,
+                    route: None,
+                    created_at: "2026-07-23T00:00:00.000Z".into(),
+                }],
+                placements: vec![server, switch, panel],
+            },
+        });
+        (engine, server_endpoint, panel_back)
     }
 
     fn node(item_id: &str, x: f64, y: f64) -> GeometryNode {
@@ -1034,6 +1212,58 @@ mod tests {
             ResponseBody::Error(EngineError { ref code, .. }) if code == "missing-connection"
         ));
         assert_eq!(engine.revision(), 12);
+    }
+
+    #[test]
+    fn connection_command_batches_passive_path_speed_updates_atomically() {
+        let (mut engine, server, panel) = passive_path_engine();
+        let response = engine.dispatch(request(Operation::CreateConnection {
+            from: server,
+            to: panel,
+            created_at: "2026-07-23T01:00:00.000Z".into(),
+        }));
+
+        assert_eq!(
+            engine
+                .topology()
+                .connections
+                .iter()
+                .map(|connection| connection.negotiated_speed_mbps)
+                .collect::<Vec<_>>(),
+            vec![Some(1_000), Some(1_000)]
+        );
+        assert!(matches!(
+            response.result,
+            ResponseBody::Patch(ref patch)
+                if matches!(&patch.forward,
+                    ProjectPatch::Batch { patches }
+                    if matches!(&patches[0], ProjectPatch::AddConnection { connection } if connection.negotiated_speed_mbps == Some(1_000))
+                        && matches!(&patches[1], ProjectPatch::SetConnectionDerived { states } if states[0].connection_id == 1 && states[0].negotiated_speed_mbps == Some(1_000))
+                )
+                && matches!(&patch.inverse,
+                    ProjectPatch::Batch { patches }
+                    if matches!(&patches[0], ProjectPatch::SetConnectionDerived { states } if states[0].negotiated_speed_mbps == Some(2_500))
+                )
+        ));
+
+        let removed = engine.dispatch(EngineRequest {
+            protocol_version: PROTOCOL_VERSION,
+            request_id: 22,
+            base_revision: 13,
+            operation: Operation::RemoveConnection { connection_id: 2 },
+        });
+        assert_eq!(
+            engine.topology().connections[0].negotiated_speed_mbps,
+            Some(2_500)
+        );
+        assert!(matches!(
+            removed.result,
+            ResponseBody::Patch(ref patch)
+                if matches!(&patch.forward,
+                    ProjectPatch::Batch { patches }
+                    if matches!(&patches[1], ProjectPatch::SetConnectionDerived { states } if states[0].connection_id == 1 && states[0].negotiated_speed_mbps == Some(2_500))
+                )
+        ));
     }
 
     #[test]

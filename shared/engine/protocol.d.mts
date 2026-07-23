@@ -54,6 +54,12 @@ export type TopologyConnection = {
   created_at: string
 }
 
+export type ConnectionDerivedState = {
+  connection_id: number
+  connection_type: string
+  negotiated_speed_mbps: number | null
+}
+
 export type TopologySnapshot = {
   items: TopologyItem[]
   assignments: Array<{
@@ -325,6 +331,11 @@ export type ProjectPatch =
       kind: 'set-connection-route'
       payload: { connection_id: number; route: TopologyConnectionRoute | null }
     }
+  | {
+      kind: 'set-connection-derived'
+      payload: { states: ConnectionDerivedState[] }
+    }
+  | { kind: 'batch'; payload: { patches: ProjectPatch[] } }
 
 export type EngineResponseBody =
   | {

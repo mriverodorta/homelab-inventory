@@ -46,7 +46,24 @@ describe('project engine patches', () => {
 
     const added = applyProjectPatch(
       project,
-      { kind: 'add-connection', payload: { connection } },
+      {
+        kind: 'batch',
+        payload: {
+          patches: [
+            { kind: 'add-connection', payload: { connection } },
+            {
+              kind: 'set-connection-derived',
+              payload: {
+                states: [{
+                  connection_id: 1,
+                  connection_type: 'network',
+                  negotiated_speed_mbps: 1000,
+                }],
+              },
+            },
+          ],
+        },
+      },
       2,
     )
     expect(added.connections).toEqual([{
@@ -54,6 +71,7 @@ describe('project engine patches', () => {
       from: { itemId: 'server:1', portId: 1 },
       to: { itemId: 'switch:1', portId: 2 },
       type: 'network',
+      negotiatedSpeedMbps: 1000,
       createdAt: '2026-07-23T00:00:00.000Z',
     }])
 

@@ -44,6 +44,12 @@ export function applyProjectPatch(
   patch: ProjectPatch,
   revision: number,
 ): ProjectState {
+  if (patch.kind === 'batch') {
+    return patch.payload.patches.reduce(
+      (current, childPatch) => applyProjectPatch(current, childPatch, revision),
+      project,
+    )
+  }
   if (patch.kind === 'set-project-name') {
     return {
       ...project,
@@ -92,6 +98,27 @@ export function applyProjectPatch(
         if (connection.id !== patch.payload.connection_id) return connection
         const { route: _route, ...withoutRoute } = connection
         return route ? { ...withoutRoute, route } : withoutRoute
+      }),
+    }
+  }
+  if (patch.kind === 'set-connection-derived') {
+    const states = new Map(
+      patch.payload.states.map((state) => [state.connection_id, state]),
+    )
+    return {
+      ...project,
+      revision,
+      connections: project.connections.map((connection) => {
+        const state = states.get(connection.id)
+        if (!state) return connection
+        const { negotiatedSpeedMbps: _speed, ...withoutSpeed } = connection
+        return {
+          ...withoutSpeed,
+          type: state.connection_type as InventoryConnectionType,
+          ...(state.negotiated_speed_mbps === null
+            ? {}
+            : { negotiatedSpeedMbps: state.negotiated_speed_mbps }),
+        }
       }),
     }
   }

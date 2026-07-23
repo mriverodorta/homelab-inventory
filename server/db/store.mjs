@@ -969,6 +969,19 @@ function persistedConnectionFromEngine(connection) {
 }
 
 function applyEngineForwardPatch(project, forward) {
+  if (forward?.kind === 'batch') {
+    if (!Array.isArray(forward.payload?.patches) || forward.payload.patches.length === 0) {
+      throw new InventoryLifecycleError('Engine patch batch must not be empty.', {
+        code: 'invalid-engine-patch',
+        status: 500,
+      })
+    }
+    return forward.payload.patches.reduce(
+      (current, patch) => applyEngineForwardPatch(current, patch),
+      project,
+    )
+  }
+
   if (forward?.kind === 'set-project-name') {
     return {
       ...project,
@@ -1036,6 +1049,55 @@ function applyEngineForwardPatch(project, forward) {
     })
     if (!found) {
       throw new InventoryLifecycleError(`Connection ${String(connectionId)} does not exist.`, {
+        code: 'invalid-engine-patch',
+        status: 500,
+      })
+    }
+    return { ...project, connections }
+  }
+
+  if (forward?.kind === 'set-connection-derived') {
+    if (!Array.isArray(forward.payload?.states)) {
+      throw new InventoryLifecycleError('Engine derived connection patch is malformed.', {
+        code: 'invalid-engine-patch',
+        status: 500,
+      })
+    }
+    const states = new Map(forward.payload.states.map((state) => {
+      const connectionId = assertRelationalId(state.connection_id, 'connection.id')
+      if (!['network', 'display', 'power', 'other'].includes(state.connection_type)) {
+        throw new InventoryLifecycleError('Engine connection uses an unsupported connection type.', {
+          code: 'invalid-engine-patch',
+          status: 500,
+        })
+      }
+      if (
+        state.negotiated_speed_mbps !== null &&
+        ![1000, 2500, 5000, 10000].includes(state.negotiated_speed_mbps)
+      ) {
+        throw new InventoryLifecycleError('Engine connection uses an unsupported negotiated speed.', {
+          code: 'invalid-engine-patch',
+          status: 500,
+        })
+      }
+      return [connectionId, state]
+    }))
+    const found = new Set()
+    const connections = project.connections.map((connection) => {
+      const state = states.get(connection.id)
+      if (!state) return connection
+      found.add(connection.id)
+      const { negotiatedSpeedMbps: _speed, ...withoutSpeed } = connection
+      return {
+        ...withoutSpeed,
+        type: state.connection_type,
+        ...(state.negotiated_speed_mbps === null
+          ? {}
+          : { negotiatedSpeedMbps: state.negotiated_speed_mbps }),
+      }
+    })
+    if (found.size !== states.size) {
+      throw new InventoryLifecycleError('Engine derived patch references a missing connection.', {
         code: 'invalid-engine-patch',
         status: 500,
       })

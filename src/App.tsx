@@ -11,7 +11,7 @@ import {
 } from '@dnd-kit/core'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { XYPosition } from '@xyflow/react'
-import type { EngineResponse } from '../shared/engine/protocol.mjs'
+import type { EngineResponse, ProjectPatch } from '../shared/engine/protocol.mjs'
 import { AlertTriangle } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { AuditDrawer } from '@/components/audit-drawer'
@@ -154,7 +154,6 @@ import {
   getNetworkTraceItemIds,
   traceNetworkPath,
 } from '@/lib/network-trace'
-import { normalizeNetworkProject } from '@/lib/negotiated-speed'
 import {
   getCanvasItemHeight,
   getCanvasItemWidth,
@@ -190,6 +189,16 @@ const DEMO_SESSION_QUERY_KEY = ['demo-session'] as const
 
 type SaveStatus = 'saved' | 'saving' | 'error'
 type ValidationSeverity = 'error' | 'unknown'
+
+function addedConnectionId(patch: ProjectPatch): number | null {
+  if (patch.kind === 'add-connection') return patch.payload.connection.id
+  if (patch.kind !== 'batch') return null
+  for (const childPatch of patch.payload.patches) {
+    const connectionId = addedConnectionId(childPatch)
+    if (connectionId !== null) return connectionId
+  }
+  return null
+}
 
 type InventoryLifecycleRequest = {
   action: InventoryLifecycleAction
@@ -1022,7 +1031,6 @@ function App() {
     : null
 
   function updateProject(nextProject: ProjectState, options: { recordHistory?: boolean } = {}) {
-    const negotiatedProject = normalizeNetworkProject(nextProject)
     const shouldRecordHistory = options.recordHistory ?? true
     const currentProject = projectRef.current
 
@@ -1030,10 +1038,10 @@ function App() {
       setHistory((currentHistory) => pushHistory(currentHistory, currentProject))
     }
 
-    projectRef.current = negotiatedProject
-    setProject(negotiatedProject)
+    projectRef.current = nextProject
+    setProject(nextProject)
 
-    if (negotiatedProject !== currentProject) {
+    if (nextProject !== currentProject) {
       setAutosaveRevision((current) => current + 1)
     }
   }
@@ -1129,8 +1137,6 @@ function App() {
     nextProject: ProjectState,
     options: { historySnapshot?: ProjectState } = {},
   ) {
-    const negotiatedProject = normalizeNetworkProject(nextProject)
-
     saveGenerationRef.current += 1
     queuedSaveProjectRef.current = null
 
@@ -1139,9 +1145,9 @@ function App() {
       saveTimerRef.current = null
     }
 
-    projectRef.current = negotiatedProject
-    lastPersistedProjectRef.current = negotiatedProject
-    setProject(negotiatedProject)
+    projectRef.current = nextProject
+    lastPersistedProjectRef.current = nextProject
+    setProject(nextProject)
     setHistory((currentHistory) => (
       options.historySnapshot
         ? pushHistory(currentHistory, options.historySnapshot)
@@ -1247,10 +1253,14 @@ function App() {
       createTopologyConnection(domainEngine.client, currentProject, from, to),
       { historySnapshot: currentProject },
     ).then((response) => {
-      if (response.result.kind !== 'patch' || response.result.payload.forward.kind !== 'add-connection') {
+      if (response.result.kind !== 'patch') {
         throw new Error('The connection change returned an unexpected patch.')
       }
-      applyCreatedConnectionSelection(response.result.payload.forward.payload.connection.id)
+      const connectionId = addedConnectionId(response.result.payload.forward)
+      if (connectionId === null) {
+        throw new Error('The connection change did not include the created connection.')
+      }
+      applyCreatedConnectionSelection(connectionId)
       setPendingConnectionEndpoint(null)
       setPortConnectionPreview(null)
       setValidationMessage(null)
