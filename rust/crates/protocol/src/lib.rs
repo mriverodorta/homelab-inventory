@@ -9,9 +9,9 @@ pub use homelab_routing::{
     RouteWarning, RoutedPath,
 };
 pub use homelab_topology::{
-    ConnectionRoute as TopologyConnectionRoute, EndpointDescriptor, EndpointRef, ItemRef,
-    TopologyAssignment, TopologyConnection, TopologyError, TopologyItem, TopologyPort,
-    TopologyPortSide, TopologySnapshot,
+    ConnectionRoute as TopologyConnectionRoute, ConnectionValidation, EndpointDescriptor,
+    EndpointRef, ItemRef, PowerEndpointDescriptor, TopologyAssignment, TopologyConnection,
+    TopologyError, TopologyItem, TopologyPort, TopologyPortSide, TopologySnapshot,
 };
 
 pub const PROTOCOL_VERSION: u16 = 1;
@@ -36,6 +36,13 @@ pub struct EngineRequest {
 pub enum Operation {
     Status,
     TopologyEndpoints,
+    CompatibleDestinations {
+        source: EndpointRef,
+    },
+    ValidateConnection {
+        from: EndpointRef,
+        to: EndpointRef,
+    },
     UpdateProjectMetadata {
         name: String,
     },
@@ -137,6 +144,7 @@ pub struct EngineResponse {
 pub enum ResponseBody {
     Status(EngineStatus),
     TopologyEndpoints(TopologyEndpointResult),
+    ConnectionValidation(ConnectionValidation),
     Patch(CommandPatchSet),
     GeometryUpdated(GeometryUpdateResult),
     PlacementCheck(PlacementCheckResult),

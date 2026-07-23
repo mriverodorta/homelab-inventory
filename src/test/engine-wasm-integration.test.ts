@@ -54,6 +54,13 @@ describe('Rust WASM engine integration', () => {
     const serverRef = { item_type: 'server', id: 1 }
     const nicRef = { item_type: 'network', id: 1 }
     const switchRef = { item_type: 'switch', id: 1 }
+    const freeSwitchRef = { item_type: 'switch', id: 2 }
+    const serverEndpoint = {
+      item: serverRef,
+      hosted_item: null,
+      port_id: 1,
+      endpoint_id: null,
+    }
     const hostedEndpoint = {
       item: serverRef,
       hosted_item: nicRef,
@@ -62,6 +69,12 @@ describe('Rust WASM engine integration', () => {
     }
     const switchEndpoint = {
       item: switchRef,
+      hosted_item: null,
+      port_id: 1,
+      endpoint_id: null,
+    }
+    const freeSwitchEndpoint = {
+      item: freeSwitchRef,
       hosted_item: null,
       port_id: 1,
       endpoint_id: null,
@@ -113,6 +126,20 @@ describe('Rust WASM engine integration', () => {
               endpoints: [],
             }],
           },
+          {
+            item: freeSwitchRef,
+            archived: false,
+            power_configuration: null,
+            allow_outlet_fan_out: false,
+            ports: [{
+              id: 1,
+              key: null,
+              port_type: 'rj45',
+              slot_number: 1,
+              speed: '10G',
+              endpoints: [],
+            }],
+          },
         ],
         assignments: [{
           id: 1,
@@ -130,7 +157,7 @@ describe('Rust WASM engine integration', () => {
           route: null,
           created_at: '2026-01-01T00:00:00.000Z',
         }],
-        placements: [serverRef, switchRef],
+        placements: [serverRef, switchRef, freeSwitchRef],
       },
     }))
     expect(handle).toBeGreaterThan(0)
@@ -156,6 +183,43 @@ describe('Rust WASM engine integration', () => {
             connection_ids: [8],
           }),
         ]),
+      },
+    })
+
+    const destinations = decodeEngineResponse(runtime.dispatch(handle, encodeEngineRequest({
+      protocol_version: 1,
+      request_id: 2,
+      base_revision: 2,
+      operation: {
+        kind: 'compatible-destinations',
+        payload: { source: serverEndpoint },
+      },
+    })))
+    expect(destinations.result).toEqual({
+      kind: 'topology-endpoints',
+      payload: {
+        endpoints: [expect.objectContaining({
+          endpoint: freeSwitchEndpoint,
+          available: true,
+        })],
+      },
+    })
+
+    const validation = decodeEngineResponse(runtime.dispatch(handle, encodeEngineRequest({
+      protocol_version: 1,
+      request_id: 3,
+      base_revision: 2,
+      operation: {
+        kind: 'validate-connection',
+        payload: { from: hostedEndpoint, to: freeSwitchEndpoint },
+      },
+    })))
+    expect(validation.result).toEqual({
+      kind: 'connection-validation',
+      payload: {
+        ok: false,
+        code: 'source-occupied',
+        message: 'The source port is already connected.',
       },
     })
     expect(runtime.destroy(handle)).toBe(true)

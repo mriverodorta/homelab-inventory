@@ -142,6 +142,23 @@ pub struct EndpointDescriptor {
     pub side: Option<String>,
     pub speed: Option<String>,
     pub connection_ids: Vec<u32>,
+    pub placed: bool,
+    pub available: bool,
+    pub power: Option<PowerEndpointDescriptor>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PowerEndpointDescriptor {
+    pub direction: String,
+    pub kind: String,
+    pub allow_fan_out: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ConnectionValidation {
+    pub ok: bool,
+    pub code: Option<String>,
+    pub message: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -174,10 +191,11 @@ impl TopologyIndex {
             assignments.sort_by_key(|assignment| assignment.id);
         }
 
+        let placements = snapshot.placements.iter().cloned().collect::<BTreeSet<_>>();
         let mut endpoints = BTreeMap::new();
         for item in &snapshot.items {
             if !item.archived && exposes_direct_ports(&item.item.item_type) {
-                index_item_ports(&mut endpoints, &item.item, &item.item, item);
+                index_item_ports(&mut endpoints, item, item, placements.contains(&item.item));
             }
         }
         for assignment in &snapshot.assignments {
@@ -190,7 +208,7 @@ impl TopologyIndex {
             if host.archived || owner.archived || !hosts_components(&host.item.item_type) {
                 continue;
             }
-            index_item_ports(&mut endpoints, &host.item, &owner.item, owner);
+            index_item_ports(&mut endpoints, host, owner, placements.contains(&host.item));
         }
 
         for connection in &snapshot.connections {
@@ -203,9 +221,13 @@ impl TopologyIndex {
         }
         for descriptor in endpoints.values_mut() {
             descriptor.connection_ids.sort_unstable();
+            descriptor.available = descriptor.connection_ids.is_empty()
+                || descriptor
+                    .power
+                    .as_ref()
+                    .is_some_and(|power| power.allow_fan_out);
         }
 
-        let placements = snapshot.placements.iter().cloned().collect();
         Ok(Self {
             snapshot,
             endpoints,
@@ -246,6 +268,99 @@ impl TopologyIndex {
     pub fn is_placed(&self, item: &ItemRef) -> bool {
         self.placements.contains(item)
     }
+
+    #[must_use]
+    pub fn compatible_destinations(&self, source: &EndpointRef) -> Vec<EndpointDescriptor> {
+        let Some(source_descriptor) = self.endpoint(source) else {
+            return vec![];
+        };
+        self.endpoints
+            .values()
+            .filter(|target| {
+                target.placed
+                    && target.host != source_descriptor.host
+                    && self.validate_connection(source, &target.endpoint).ok
+            })
+            .cloned()
+            .collect()
+    }
+
+    #[must_use]
+    pub fn validate_connection(
+        &self,
+        first: &EndpointRef,
+        second: &EndpointRef,
+    ) -> ConnectionValidation {
+        if first == second {
+            return invalid("same-endpoint", "Choose two different ports to connect.");
+        }
+        let Some(first_descriptor) = self.endpoint(first) else {
+            return invalid(
+                "stale-endpoint",
+                "One of the selected ports is no longer available.",
+            );
+        };
+        let Some(second_descriptor) = self.endpoint(second) else {
+            return invalid(
+                "stale-endpoint",
+                "One of the selected ports is no longer available.",
+            );
+        };
+        if first_descriptor.host == second_descriptor.host {
+            return invalid("same-host", "Choose a port on different equipment.");
+        }
+        match (&first_descriptor.power, &second_descriptor.power) {
+            (Some(first_power), Some(second_power)) => {
+                if first_power.direction == second_power.direction {
+                    return invalid(
+                        "invalid-power-direction",
+                        "Power connections must run from an outlet to an AC input.",
+                    );
+                }
+            }
+            (Some(_), None) | (None, Some(_)) => {
+                return invalid(
+                    "incompatible-port-type",
+                    "Power endpoints can only connect to other power endpoints.",
+                );
+            }
+            (None, None) => {
+                if !ports_compatible(&first_descriptor.port_type, &second_descriptor.port_type) {
+                    return invalid(
+                        "incompatible-port-type",
+                        "Those port types cannot be connected.",
+                    );
+                }
+            }
+        }
+        if !first_descriptor.available {
+            return invalid("source-occupied", "The source port is already connected.");
+        }
+        if !second_descriptor.available {
+            return invalid(
+                "destination-occupied",
+                "The destination port is already connected.",
+            );
+        }
+        ConnectionValidation {
+            ok: true,
+            code: None,
+            message: None,
+        }
+    }
+}
+
+fn invalid(code: &str, message: &str) -> ConnectionValidation {
+    ConnectionValidation {
+        ok: false,
+        code: Some(code.into()),
+        message: Some(message.into()),
+    }
+}
+
+fn ports_compatible(first: &str, second: &str) -> bool {
+    const DISPLAY: [&str; 3] = ["hdmi", "displayport", "mini-displayport"];
+    first == second || (DISPLAY.contains(&first) && DISPLAY.contains(&second))
 }
 
 fn exposes_direct_ports(item_type: &str) -> bool {
@@ -261,55 +376,115 @@ fn hosts_components(item_type: &str) -> bool {
 
 fn index_item_ports(
     endpoints: &mut BTreeMap<EndpointRef, EndpointDescriptor>,
-    host: &ItemRef,
-    owner: &ItemRef,
-    item: &TopologyItem,
+    host: &TopologyItem,
+    owner: &TopologyItem,
+    placed: bool,
 ) {
-    for port in &item.ports {
+    for port in &owner.ports {
+        if port.port_type == "barrel" {
+            continue;
+        }
+        let power = power_endpoint(host, owner, port);
         if port.endpoints.is_empty() {
             let endpoint = EndpointRef {
-                item: host.clone(),
+                item: host.item.clone(),
                 port_id: port.id,
                 endpoint_id: None,
-                hosted_item: (host != owner).then(|| owner.clone()),
+                hosted_item: (host.item != owner.item).then(|| owner.item.clone()),
             };
             endpoints.insert(
                 endpoint.clone(),
                 EndpointDescriptor {
                     endpoint,
-                    host: host.clone(),
-                    owner: owner.clone(),
+                    host: host.item.clone(),
+                    owner: owner.item.clone(),
                     port_type: port.port_type.clone(),
                     slot_number: port.slot_number,
                     side: None,
                     speed: port.speed.clone(),
                     connection_ids: vec![],
+                    placed,
+                    available: true,
+                    power: power.clone(),
                 },
             );
             continue;
         }
         for port_endpoint in &port.endpoints {
             let endpoint = EndpointRef {
-                item: host.clone(),
+                item: host.item.clone(),
                 port_id: port.id,
                 endpoint_id: Some(port_endpoint.id),
-                hosted_item: (host != owner).then(|| owner.clone()),
+                hosted_item: (host.item != owner.item).then(|| owner.item.clone()),
             };
             endpoints.insert(
                 endpoint.clone(),
                 EndpointDescriptor {
                     endpoint,
-                    host: host.clone(),
-                    owner: owner.clone(),
+                    host: host.item.clone(),
+                    owner: owner.item.clone(),
                     port_type: port.port_type.clone(),
                     slot_number: port.slot_number,
                     side: Some(port_endpoint.side.clone()),
                     speed: port.speed.clone(),
                     connection_ids: vec![],
+                    placed,
+                    available: true,
+                    power: power.clone(),
                 },
             );
         }
     }
+}
+
+fn power_endpoint(
+    host: &TopologyItem,
+    owner: &TopologyItem,
+    port: &TopologyPort,
+) -> Option<PowerEndpointDescriptor> {
+    if port.port_type == "ac-outlet"
+        && matches!(owner.item.item_type.as_str(), "ups" | "powerStrip")
+    {
+        return Some(PowerEndpointDescriptor {
+            direction: "output".into(),
+            kind: if owner.item.item_type == "ups" {
+                "ups-outlet"
+            } else {
+                "power-strip-outlet"
+            }
+            .into(),
+            allow_fan_out: owner.allow_outlet_fan_out,
+        });
+    }
+    if port.port_type != "ac-input" {
+        return None;
+    }
+    let kind = if host.item == owner.item {
+        match owner.item.item_type.as_str() {
+            "monitor" => Some("monitor-input"),
+            "powerStrip" => Some("power-strip-input"),
+            "nas" if owner.power_configuration.as_deref() == Some("internal-psu") => {
+                Some("nas-internal-input")
+            }
+            _ => None,
+        }
+    } else {
+        match (host.item.item_type.as_str(), owner.item.item_type.as_str()) {
+            ("pcBuild", "powerSupply") => Some("pc-power-supply-input"),
+            ("server", "powerAdapter") => Some("oem-power-adapter-input"),
+            ("nas", "powerAdapter")
+                if host.power_configuration.as_deref() == Some("external-adapter") =>
+            {
+                Some("oem-power-adapter-input")
+            }
+            _ => None,
+        }
+    }?;
+    Some(PowerEndpointDescriptor {
+        direction: "input".into(),
+        kind: kind.into(),
+        allow_fan_out: false,
+    })
 }
 
 impl TopologySnapshot {
@@ -704,5 +879,139 @@ mod tests {
                 .collect::<Vec<_>>();
             assert_eq!(descriptor.connection_ids, brute_force);
         }
+    }
+
+    #[test]
+    fn filters_available_placed_and_compatible_destinations() {
+        let mut server = item("server", 1, 1);
+        server.ports[0].port_type = "displayport".into();
+        let mut monitor = item("monitor", 1, 1);
+        monitor.ports[0].port_type = "hdmi".into();
+        let mut occupied_monitor = item("monitor", 2, 1);
+        occupied_monitor.ports[0].port_type = "hdmi".into();
+        let mut unplaced_monitor = item("monitor", 3, 1);
+        unplaced_monitor.ports[0].port_type = "hdmi".into();
+        let mut switch = item("switch", 1, 1);
+        switch.ports[0].port_type = "rj45".into();
+        let source = EndpointRef {
+            item: server.item.clone(),
+            hosted_item: None,
+            port_id: 1,
+            endpoint_id: None,
+        };
+        let occupied = EndpointRef {
+            item: occupied_monitor.item.clone(),
+            hosted_item: None,
+            port_id: 1,
+            endpoint_id: None,
+        };
+        let snapshot = TopologySnapshot {
+            items: vec![
+                server.clone(),
+                monitor.clone(),
+                occupied_monitor.clone(),
+                unplaced_monitor,
+                switch,
+            ],
+            assignments: vec![],
+            connections: vec![TopologyConnection {
+                id: 1,
+                from: occupied.clone(),
+                to: EndpointRef {
+                    item: ItemRef {
+                        item_type: "switch".into(),
+                        id: 1,
+                    },
+                    hosted_item: None,
+                    port_id: 1,
+                    endpoint_id: None,
+                },
+                connection_type: "other".into(),
+                negotiated_speed_mbps: None,
+                label: None,
+                route: None,
+                created_at: String::new(),
+            }],
+            placements: vec![
+                server.item,
+                monitor.item.clone(),
+                occupied_monitor.item,
+                ItemRef {
+                    item_type: "switch".into(),
+                    id: 1,
+                },
+            ],
+        };
+        let index = TopologyIndex::build(snapshot).unwrap();
+        let destinations = index.compatible_destinations(&source);
+
+        assert_eq!(destinations.len(), 1);
+        assert_eq!(destinations[0].host, monitor.item);
+        assert!(destinations[0].available);
+    }
+
+    #[test]
+    fn validates_power_direction_occupancy_and_fan_out() {
+        let mut ups = item("ups", 1, 1);
+        ups.ports[0].port_type = "ac-outlet".into();
+        ups.allow_outlet_fan_out = true;
+        let mut strip = item("powerStrip", 1, 1);
+        strip.ports[0].key = Some("ac-input".into());
+        strip.ports[0].port_type = "ac-input".into();
+        let mut monitor = item("monitor", 1, 1);
+        monitor.ports[0].key = Some("ac-input".into());
+        monitor.ports[0].port_type = "ac-input".into();
+        let output = EndpointRef {
+            item: ups.item.clone(),
+            hosted_item: None,
+            port_id: 1,
+            endpoint_id: None,
+        };
+        let strip_input = EndpointRef {
+            item: strip.item.clone(),
+            hosted_item: None,
+            port_id: 1,
+            endpoint_id: None,
+        };
+        let monitor_input = EndpointRef {
+            item: monitor.item.clone(),
+            hosted_item: None,
+            port_id: 1,
+            endpoint_id: None,
+        };
+        let snapshot = TopologySnapshot {
+            items: vec![ups.clone(), strip.clone(), monitor.clone()],
+            assignments: vec![],
+            connections: vec![TopologyConnection {
+                id: 1,
+                from: output.clone(),
+                to: strip_input.clone(),
+                connection_type: "power".into(),
+                negotiated_speed_mbps: None,
+                label: None,
+                route: None,
+                created_at: String::new(),
+            }],
+            placements: vec![ups.item, strip.item, monitor.item],
+        };
+        let index = TopologyIndex::build(snapshot).unwrap();
+
+        assert!(index.endpoint(&output).unwrap().available);
+        assert!(!index.endpoint(&strip_input).unwrap().available);
+        assert!(index.validate_connection(&output, &monitor_input).ok);
+        assert_eq!(
+            index
+                .validate_connection(&strip_input, &monitor_input)
+                .code
+                .as_deref(),
+            Some("invalid-power-direction")
+        );
+        assert_eq!(
+            index
+                .validate_connection(&output, &strip_input)
+                .code
+                .as_deref(),
+            Some("destination-occupied")
+        );
     }
 }

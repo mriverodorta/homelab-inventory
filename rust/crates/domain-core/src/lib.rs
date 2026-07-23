@@ -113,6 +113,14 @@ impl Engine {
                     endpoints: self.topology.endpoints(),
                 })
             }
+            Operation::CompatibleDestinations { source } => {
+                ResponseBody::TopologyEndpoints(TopologyEndpointResult {
+                    endpoints: self.topology.compatible_destinations(&source),
+                })
+            }
+            Operation::ValidateConnection { from, to } => {
+                ResponseBody::ConnectionValidation(self.topology.validate_connection(&from, &to))
+            }
             Operation::UpdateProjectMetadata { name } => {
                 let name = name.trim();
                 if name.is_empty() {

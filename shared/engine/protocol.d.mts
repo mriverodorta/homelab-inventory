@@ -71,6 +71,13 @@ export type TopologyEndpointDescriptor = {
   side: string | null
   speed: string | null
   connection_ids: number[]
+  placed: boolean
+  available: boolean
+  power: {
+    direction: string
+    kind: string
+    allow_fan_out: boolean
+  } | null
 }
 
 export type GeometryRect = {
@@ -172,6 +179,14 @@ export type CableRoutePlan = {
 export type EngineOperation =
   | { kind: 'status' }
   | { kind: 'topology-endpoints' }
+  | {
+      kind: 'compatible-destinations'
+      payload: { source: TopologyEndpointRef }
+    }
+  | {
+      kind: 'validate-connection'
+      payload: { from: TopologyEndpointRef; to: TopologyEndpointRef }
+    }
   | { kind: 'update-project-metadata'; payload: { name: string } }
   | {
       kind: 'replace-geometry'
@@ -299,6 +314,10 @@ export type EngineResponseBody =
   | {
       kind: 'topology-endpoints'
       payload: { endpoints: TopologyEndpointDescriptor[] }
+    }
+  | {
+      kind: 'connection-validation'
+      payload: { ok: boolean; code: string | null; message: string | null }
     }
   | {
       kind: 'patch'
