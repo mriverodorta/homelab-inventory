@@ -2501,4 +2501,85 @@ describe('HomelabInventoryStore', () => {
     expect(() => store.setProject(initial)).toThrow(/revision 1 is stale; current revision is 2/)
     expect(store.getProject().revision).toBe(2)
   })
+
+  it('publishes project commits only after the project store is written', async () => {
+    const dataDir = await makeTempDir()
+    const store = createStore({
+      appVersion: '0.1.38',
+      dataDir,
+      legacyProjectPath: path.join(dataDir, 'legacy.json'),
+      saveDebounceMs: 5,
+      seedEmptyData: false,
+      seedDir: path.join(dataDir, 'missing-seed'),
+    })
+    await store.init()
+
+    const events = []
+    store.subscribeToProjectCommits((event) => {
+      events.push({
+        event,
+        persistedRevision: store.databases.project.data.revision,
+      })
+    })
+
+    const responseBytes = Uint8Array.from([1, 2, 3])
+    await store.applyEnginePatch({
+      baseRevision: 1,
+      patchSet: {
+        revision: 2,
+        forward: { kind: 'set-project-name', payload: { name: 'Committed name' } },
+      },
+      responseBytes,
+    })
+
+    const persisted = JSON.parse(await fs.readFile(path.join(dataDir, 'stores', 'project.json'), 'utf8'))
+    expect(persisted.revision).toBe(2)
+    expect(events).toEqual([
+      {
+        event: {
+          type: 'project-commit',
+          baseRevision: 1,
+          revision: 2,
+          responseBytes,
+        },
+        persistedRevision: 2,
+      },
+    ])
+  })
+
+  it('does not publish a project commit when the project write fails', async () => {
+    const dataDir = await makeTempDir()
+    const store = createStore({
+      appVersion: '0.1.38',
+      dataDir,
+      legacyProjectPath: path.join(dataDir, 'legacy.json'),
+      saveDebounceMs: 5,
+      seedEmptyData: false,
+      seedDir: path.join(dataDir, 'missing-seed'),
+    })
+    await store.init()
+
+    const events = []
+    store.subscribeToProjectCommits((event) => events.push(event))
+    const originalWrite = store.databases.project.write.bind(store.databases.project)
+    store.databases.project.write = async () => {
+      throw new Error('simulated write failure')
+    }
+
+    await expect(store.applyEnginePatch({
+      baseRevision: 1,
+      patchSet: {
+        revision: 2,
+        forward: { kind: 'set-project-name', payload: { name: 'Uncommitted name' } },
+      },
+      responseBytes: Uint8Array.from([4, 5, 6]),
+    })).rejects.toThrow('simulated write failure')
+
+    expect(events).toEqual([])
+    expect(store.getProject().revision).toBe(1)
+    expect(store.getProject().metadata.name).toBe('Homelab Inventory')
+
+    store.databases.project.write = originalWrite
+    await store.flush()
+  })
 })

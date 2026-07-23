@@ -950,6 +950,8 @@ export class HomelabInventoryStore {
     this.flushTimer = null
     this.flushPromise = null
     this.createdStores = false
+    this.projectCommitListeners = new Set()
+    this.pendingProjectCommits = []
   }
 
   async init() {
@@ -1416,6 +1418,11 @@ export class HomelabInventoryStore {
       connections: split.project.connections ?? [],
     }
     this.databases.meta.data.updatedAt = updatedAt
+    this.queueProjectCommit({
+      type: 'canonical-invalidated',
+      baseRevision: currentRevision,
+      revision: this.databases.project.data.revision,
+    })
 
     this.scheduleFlush('meta')
     this.scheduleFlush('inventory')
@@ -1489,6 +1496,7 @@ export class HomelabInventoryStore {
   }
 
   inventoryTransaction(mutator) {
+    const baseRevision = this.databases.project.data.revision
     const draft = {
       meta: structuredClone(this.databases.meta.data),
       inventory: structuredClone(this.databases.inventory.data),
@@ -1519,6 +1527,11 @@ export class HomelabInventoryStore {
     this.databases.meta.data = draft.meta
     this.databases.inventory.data = draft.inventory
     this.databases.project.data = draft.project
+    this.queueProjectCommit({
+      type: 'canonical-invalidated',
+      baseRevision,
+      revision: draft.project.revision,
+    })
     this.scheduleFlush('meta')
     this.scheduleFlush('inventory')
     this.scheduleFlush('project')
@@ -1532,6 +1545,74 @@ export class HomelabInventoryStore {
       throw new Error('Project revision cannot be advanced safely.')
     }
     return current + 1
+  }
+
+  subscribeToProjectCommits(listener) {
+    this.projectCommitListeners.add(listener)
+    return () => this.projectCommitListeners.delete(listener)
+  }
+
+  queueProjectCommit(event) {
+    this.pendingProjectCommits.push(event)
+  }
+
+  async applyEnginePatch({ baseRevision, patchSet, responseBytes }) {
+    if (this.databases.project.data.revision !== baseRevision) {
+      throw new InventoryLifecycleError(
+        `Project revision ${String(baseRevision)} is stale; current revision is ${String(this.databases.project.data.revision)}.`,
+        { code: 'revision-conflict', status: 409 },
+      )
+    }
+    if (patchSet.revision !== baseRevision + 1) {
+      throw new InventoryLifecycleError('Engine patch revision is not sequential.', {
+        code: 'invalid-engine-patch',
+        status: 500,
+      })
+    }
+
+    const previousProject = structuredClone(this.databases.project.data)
+    const previousMeta = structuredClone(this.databases.meta.data)
+    const forward = patchSet.forward
+    if (forward?.kind !== 'set-project-name') {
+      throw new InventoryLifecycleError(`Unsupported engine patch ${String(forward?.kind)}.`, {
+        code: 'unsupported-engine-patch',
+        status: 500,
+      })
+    }
+
+    const updatedAt = new Date().toISOString()
+    this.databases.project.data = {
+      ...this.databases.project.data,
+      revision: patchSet.revision,
+      metadata: {
+        ...this.databases.project.data.metadata,
+        name: forward.payload.name,
+        updatedAt,
+      },
+    }
+    this.databases.meta.data.updatedAt = updatedAt
+    const commitEvent = {
+      type: 'project-commit',
+      baseRevision,
+      revision: patchSet.revision,
+      responseBytes: Uint8Array.from(responseBytes),
+    }
+    this.queueProjectCommit(commitEvent)
+    this.dirtyStores.add('project')
+
+    try {
+      await this.flush(['project'])
+    } catch (error) {
+      this.databases.project.data = previousProject
+      this.databases.meta.data = previousMeta
+      this.pendingProjectCommits = this.pendingProjectCommits.filter(
+        (event) => event !== commitEvent,
+      )
+      throw error
+    }
+
+    this.scheduleFlush('meta')
+    return this.getProject()
   }
 
   dependencyContext(draft = null) {
@@ -1921,6 +2002,9 @@ export class HomelabInventoryStore {
 
     const storesToFlush = [...this.dirtyStores]
     this.dirtyStores.clear()
+    const commitsToPublish = storesToFlush.includes('project')
+      ? this.pendingProjectCommits.splice(0)
+      : []
 
     if (storesToFlush.length === 0) {
       return
@@ -1931,7 +2015,23 @@ export class HomelabInventoryStore {
         this.flushPromise = null
       })
 
-    await this.flushPromise
+    try {
+      await this.flushPromise
+    } catch (error) {
+      storesToFlush.forEach((storeName) => this.dirtyStores.add(storeName))
+      this.pendingProjectCommits.unshift(...commitsToPublish)
+      throw error
+    }
+
+    for (const commit of commitsToPublish) {
+      for (const listener of this.projectCommitListeners) {
+        try {
+          listener(commit)
+        } catch (error) {
+          console.error('Project commit listener failed.', error)
+        }
+      }
+    }
   }
 
   async createBackup(reason = 'manual') {
