@@ -5,7 +5,7 @@ import { ServerEngineRuntime } from './runtime.mjs'
 
 beforeAll(async () => {
   await buildWasm()
-})
+}, 30_000)
 
 function store(revision, projectName) {
   return {

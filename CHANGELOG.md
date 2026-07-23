@@ -55,6 +55,11 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 - Added confirmation and atomic cable cleanup when removing an assigned component that still owns connected ports.
 - Fixed inventory drag previews to match the canvas zoom and final placement footprint, making constrained equipment placement predictable.
 - Added independent, browser-persistent toolbar and workspace controls for network, power, and display cable visibility.
+- Moved endpoint indexing and occupancy, compatible-port filtering, connection validation and commands, negotiated network speeds, network traces, and power-topology findings into the shared Rust/WASM worker.
+- Added revision-scoped TanStack Query coordination for topology results so canvas selection, panning, zooming, and Inspector navigation reuse the same deterministic worker snapshot.
+- Removed duplicate browser-side topology, network-trace, power-topology, and negotiated-speed implementations while retaining a frozen normalizer only for historical data migrations.
+- Added synthetic topology benchmarks for endpoint catalogs, compatibility, validation, connection commands, negotiated state, tracing, power findings, and worker indexing.
+- Replayed externally committed connection patches through the local worker without rebuilding the complete engine snapshot.
 
 ## [0.1.38] - 2026-07-21
 

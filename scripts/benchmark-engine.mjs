@@ -14,6 +14,7 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const wasmPath = path.join(root, 'server', 'engine', 'generated', 'homelab_engine.wasm')
 const iterations = 10_000
 const routeIterations = 100
+const topologyIterations = 500
 
 function measurement(durationMs, count) {
   return {
@@ -70,6 +71,130 @@ function cablePlan(sourceOffset = 0) {
   return { kind: 'plan-cable-routes', payload: { plan: { obstacles, requests } } }
 }
 
+function itemRef(itemType, id) {
+  return { item_type: itemType, id }
+}
+
+function endpoint(itemType, id, portId, hostedItem = null) {
+  return {
+    item: itemRef(itemType, id),
+    port_id: portId,
+    endpoint_id: null,
+    hosted_item: hostedItem,
+  }
+}
+
+function port(id, portType, speed = null) {
+  return {
+    id,
+    key: null,
+    port_type: portType,
+    slot_number: id,
+    speed,
+    endpoints: [],
+  }
+}
+
+function topologyFixture() {
+  const items = []
+  const assignments = []
+  const connections = []
+  const placements = []
+  let assignmentId = 1
+  let connectionId = 1
+
+  for (let id = 1; id <= 24; id += 1) {
+    const server = itemRef('server', id)
+    const adapter = itemRef('powerAdapter', id)
+    items.push({
+      item: server,
+      archived: false,
+      power_configuration: null,
+      allow_outlet_fan_out: false,
+      ports: [port(1, 'rj45', id % 3 === 0 ? '2.5G' : '1G')],
+    })
+    items.push({
+      item: adapter,
+      archived: false,
+      power_configuration: null,
+      allow_outlet_fan_out: false,
+      ports: [port(1, 'ac-input')],
+    })
+    assignments.push({
+      id: assignmentId,
+      host: server,
+      item: adapter,
+      component_type: 'powerAdapter',
+    })
+    assignmentId += 1
+    placements.push(server)
+  }
+
+  for (let id = 1; id <= 4; id += 1) {
+    const switchItem = itemRef('switch', id)
+    items.push({
+      item: switchItem,
+      archived: false,
+      power_configuration: null,
+      allow_outlet_fan_out: false,
+      ports: Array.from({ length: 16 }, (_, index) => port(
+        index + 1,
+        index >= 14 ? 'sfp-plus' : 'rj45',
+        index >= 14 ? '10G' : '2.5G',
+      )),
+    })
+    placements.push(switchItem)
+  }
+
+  const ups = itemRef('ups', 1)
+  items.push({
+    item: ups,
+    archived: false,
+    power_configuration: null,
+    allow_outlet_fan_out: false,
+    ports: Array.from({ length: 24 }, (_, index) => port(index + 1, 'ac-outlet')),
+  })
+  placements.push(ups)
+
+  for (let id = 1; id <= 24; id += 1) {
+    const switchId = Math.floor((id - 1) / 6) + 1
+    const switchPort = ((id - 1) % 6) + 1
+    connections.push({
+      id: connectionId,
+      from: endpoint('server', id, 1),
+      to: endpoint('switch', switchId, switchPort),
+      connection_type: 'network',
+      negotiated_speed_mbps: id % 3 === 0 ? 2_500 : 1_000,
+      label: null,
+      route: null,
+      created_at: '2026-07-23T00:00:00.000Z',
+    })
+    connectionId += 1
+    connections.push({
+      id: connectionId,
+      from: endpoint('ups', 1, id),
+      to: endpoint('server', id, 1, itemRef('powerAdapter', id)),
+      connection_type: 'power',
+      negotiated_speed_mbps: null,
+      label: null,
+      route: null,
+      created_at: '2026-07-23T00:00:00.000Z',
+    })
+    connectionId += 1
+  }
+
+  return { items, assignments, connections, placements }
+}
+
+function measureQuery(runtime, handle, snapshotRevision, operation, count = topologyIterations) {
+  const encoded = request(1, snapshotRevision, operation)
+  const started = performance.now()
+  for (let index = 0; index < count; index += 1) {
+    decodeEngineResponse(runtime.dispatch(handle, encoded))
+  }
+  return measurement(performance.now() - started, count)
+}
+
 export async function benchmarkEngine() {
   await buildWasm()
   const wasmBytes = await fs.readFile(wasmPath)
@@ -79,6 +204,11 @@ export async function benchmarkEngine() {
     project_name: 'Benchmark',
     topology: EMPTY_ENGINE_TOPOLOGY,
   })
+  const topologySnapshot = encodeEngineSnapshot({
+    revision: 1,
+    project_name: 'Topology Benchmark',
+    topology: topologyFixture(),
+  })
 
   const creationCount = 500
   let started = performance.now()
@@ -87,6 +217,14 @@ export async function benchmarkEngine() {
     runtime.destroy(handle)
   }
   const creation = measurement(performance.now() - started, creationCount)
+
+  const topologyCreationCount = 100
+  started = performance.now()
+  for (let index = 0; index < topologyCreationCount; index += 1) {
+    const handle = runtime.create(topologySnapshot)
+    runtime.destroy(handle)
+  }
+  const topologyCreation = measurement(performance.now() - started, topologyCreationCount)
 
   const statusHandle = runtime.create(snapshot)
   const statusRequest = request(1, 1, { kind: 'status' })
@@ -124,6 +262,68 @@ export async function benchmarkEngine() {
   const binaryRoundTrips = measurement(performance.now() - started, iterations)
   runtime.destroy(roundTripHandle)
 
+  const topologyHandle = runtime.create(topologySnapshot)
+  const topologyEndpoints = measureQuery(runtime, topologyHandle, 1, { kind: 'topology-endpoints' })
+  const compatibleDestinations = measureQuery(runtime, topologyHandle, 1, {
+    kind: 'compatible-destinations',
+    payload: { source: endpoint('switch', 1, 7) },
+  })
+  const connectionValidation = measureQuery(runtime, topologyHandle, 1, {
+    kind: 'validate-connection',
+    payload: {
+      from: endpoint('switch', 1, 7),
+      to: endpoint('switch', 2, 7),
+    },
+  })
+  const connectionDerivedStates = measureQuery(
+    runtime,
+    topologyHandle,
+    1,
+    { kind: 'connection-derived-states' },
+  )
+  const networkTraces = measureQuery(runtime, topologyHandle, 1, { kind: 'network-traces' })
+  const powerTopology = measureQuery(runtime, topologyHandle, 1, { kind: 'power-topology' })
+
+  let topologyRevision = 1
+  const topologyCommandCycles = 250
+  started = performance.now()
+  for (let index = 0; index < topologyCommandCycles; index += 1) {
+    const created = decodeEngineResponse(runtime.dispatch(
+      topologyHandle,
+      request(index * 2 + 1, topologyRevision, {
+        kind: 'create-connection',
+        payload: {
+          from: endpoint('switch', 1, 7),
+          to: endpoint('switch', 2, 7),
+          created_at: '2026-07-23T00:00:00.000Z',
+        },
+      }),
+    ))
+    topologyRevision = created.result.kind === 'patch'
+      ? created.result.payload.revision
+      : topologyRevision
+    const connectionId = created.result.kind === 'patch'
+      && created.result.payload.forward.kind === 'add-connection'
+      ? created.result.payload.forward.payload.connection.id
+      : null
+    if (connectionId === null) throw new Error('Topology command benchmark could not create a connection.')
+    const removed = decodeEngineResponse(runtime.dispatch(
+      topologyHandle,
+      request(index * 2 + 2, topologyRevision, {
+        kind: 'remove-connection',
+        payload: { connection_id: connectionId },
+      }),
+    ))
+    topologyRevision = removed.result.kind === 'patch'
+      ? removed.result.payload.revision
+      : topologyRevision
+  }
+  const topologyCommandPatches = measurement(
+    performance.now() - started,
+    topologyCommandCycles * 2,
+  )
+  runtime.destroy(topologyHandle)
+
   const routeHandle = runtime.create(snapshot)
   started = performance.now()
   decodeEngineResponse(runtime.dispatch(routeHandle, request(1, 1, cablePlan())))
@@ -155,9 +355,17 @@ export async function benchmarkEngine() {
     wasmBytes: wasmBytes.byteLength,
     measurements: {
       engineCreation: creation,
+      topologyEngineCreation: topologyCreation,
       statusQueries,
       metadataPatchCalculations: patchCalculations,
       binaryEncodeDispatchDecode: binaryRoundTrips,
+      topologyEndpoints,
+      compatibleDestinations,
+      connectionValidation,
+      connectionDerivedStates,
+      networkTraces,
+      powerTopology,
+      topologyCommandPatches,
       initialCablePlan,
       cachedCablePlans,
       targetedCableReplans,

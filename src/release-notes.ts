@@ -33,6 +33,8 @@ export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
     'Smart power-strip identity appears on the canvas while outlet chips remain compact and expose custom names in their tooltips and Inspector details.',
     'Network, power, and display cables now have independent visibility controls in the canvas toolbar and General workspace settings.',
     'Cable pathfinding, lane separation, manual bend editing, and route caching now run in the shared Rust/WASM worker instead of duplicate browser-side routing engines.',
+    'Connection endpoints, port occupancy, compatibility filtering, validation, negotiated network speeds, path tracing, and power findings now run in the shared Rust/WASM worker.',
+    'Topology results are coordinated per project revision so canvas and Inspector interactions reuse one deterministic snapshot instead of recalculating connection state in the browser.',
   ],
   fixes: [
     'Workspace startup and recovery now show explicit loading, rebuilding, unsupported-browser, and failed states instead of allowing interaction with an unavailable or stale engine.',
@@ -58,6 +60,8 @@ export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
     'Removing an assigned component with connected ports now requires confirmation and removes its cable relationships atomically so the project cannot retain dangling endpoints.',
     'Inventory drag previews now match the canvas zoom and final placement footprint so constrained drops no longer rely on an oversized representation.',
     'Changing one cable now recalculates only that route and later lane-dependent routes, preserving unrelated cable geometry and reducing canvas stalls.',
+    'Removed duplicate browser-side topology implementations and retained legacy network normalization only for ordered historical data migrations.',
+    'Externally committed connection changes now replay incrementally through the local worker without rebuilding the complete workspace engine.',
   ],
   notes: [],
 }

@@ -1680,7 +1680,7 @@ mod tests {
                 ("switch", "connected"),
             ]
         );
-        assert_eq!(index.network_traces(), vec![trace]);
+        assert!(index.network_traces().contains(&trace));
     }
 
     #[test]

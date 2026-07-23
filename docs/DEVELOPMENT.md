@@ -38,9 +38,11 @@ bun run dev:wasm
 
 The command builds the Rust engine, loads the same WASM module in the browser worker and Bun server, and forces `DATA_DIR` to `./data-wasm`. Create `data-wasm/` as an explicit copy of local development data before starting. Required-WASM mode refuses to use the repository `data/` directory so migration work cannot modify the normal development database.
 
-Generated `.wasm` files and `data-wasm/` are intentionally untracked. Run `bun run build:wasm` after changing Rust protocol or engine code. Set `WASM_OPTIMIZE=1` when Binaryen is installed and an optimized local artifact is needed. Cable obstacle routing, lane separation, route caching, and manual route previews are owned exclusively by this worker; TypeScript only measures canvas obstacles and renders returned paths.
+Generated `.wasm` files and `data-wasm/` are intentionally untracked. Run `bun run build:wasm` after changing Rust protocol or engine code. Set `WASM_OPTIMIZE=1` when Binaryen is installed and an optimized local artifact is needed.
 
-`bun run benchmark:engine` records engine creation, binary protocol, project patch, cold cable-plan, cached cable-plan, and targeted cable-recalculation measurements under `artifacts/engine-benchmarks/`. The artifact directory is ignored locally and uploaded by CI for regression comparison.
+The worker exclusively owns canvas geometry, cable routing, endpoint indexing and occupancy, compatible-destination filtering, connection validation and commands, negotiated network speeds, network traces, and power-topology findings. React reads revision-scoped results through TanStack Query and retains only presentation concerns such as labels, card layout, and rendering. Do not add a TypeScript computational fallback for these domains; an unavailable engine must produce an explicit disabled or recovery state.
+
+`bun run benchmark:engine` uses generated synthetic topology and records engine indexing, endpoint catalogs, compatibility filtering, connection validation and commands, negotiated state, network traces, power topology, binary protocol, project patches, cold cable plans, cached cable plans, and targeted cable recalculation under `artifacts/engine-benchmarks/`. The artifact directory is ignored locally and uploaded by CI for regression comparison.
 
 ## Scripts
 
