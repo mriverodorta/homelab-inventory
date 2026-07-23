@@ -17,10 +17,13 @@
     "bun": ">=1.1.0"
   },
   "scripts": {
+    "build:wasm": "bun scripts/build-wasm.mjs",
+    "check:wasm": "cargo test --manifest-path rust/Cargo.toml --workspace",
     "dev": "bun server/index.mjs",
     "dev:vite": "vite",
     "build": "tsc -b && vite build",
     "lint": "oxlint",
+    "prebuild": "bun run build:wasm",
     "preview": "vite preview",
     "release-notes:check": "bun scripts/check-release-notes.mjs",
     "start": "NODE_ENV=production bun server/index.mjs",
@@ -32,6 +35,7 @@
     "@dnd-kit/modifiers": "^9.0.0",
     "@dnd-kit/utilities": "^3.2.2",
     "@fontsource-variable/geist": "^5.2.9",
+    "@msgpack/msgpack": "^3.1.3",
     "@tanstack/react-query": "^5.101.1",
     "@xyflow/react": "^12.11.1",
     "class-variance-authority": "^0.7.1",

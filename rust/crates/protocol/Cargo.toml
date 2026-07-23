@@ -6,8 +6,7 @@ license.workspace = true
 rust-version.workspace = true
 
 [dependencies]
-postcard-bindgen.workspace = true
 serde.workspace = true
 
 [dev-dependencies]
-postcard.workspace = true
+rmp-serde.workspace = true

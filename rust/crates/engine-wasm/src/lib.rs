@@ -14,7 +14,7 @@ mod wasm {
 
     #[unsafe(no_mangle)]
     pub extern "C" fn engine_alloc(len: u32) -> u32 {
-        let mut bytes = Vec::<u8>::with_capacity(len as usize);
+        let mut bytes = vec![0_u8; len as usize];
         let pointer = bytes.as_mut_ptr();
         std::mem::forget(bytes);
         pointer as u32
@@ -27,7 +27,11 @@ mod wasm {
         }
 
         unsafe {
-            drop(Vec::from_raw_parts(pointer as *mut u8, 0, len as usize));
+            drop(Vec::from_raw_parts(
+                pointer as *mut u8,
+                len as usize,
+                len as usize,
+            ));
         }
     }
 
@@ -75,7 +79,7 @@ mod wasm {
             }
         });
 
-        match postcard::to_allocvec(&response) {
+        match rmp_serde::to_vec_named(&response) {
             Ok(bytes) => transfer_result(bytes),
             Err(_) => 0,
         }
@@ -110,10 +114,11 @@ mod wasm {
         }
 
         let bytes = unsafe { slice::from_raw_parts(pointer as *const u8, len as usize) };
-        postcard::from_bytes(bytes).map_err(|_| ())
+        rmp_serde::from_slice(bytes).map_err(|_| ())
     }
 
     fn transfer_result(mut bytes: Vec<u8>) -> u32 {
+        bytes.shrink_to_fit();
         let len = u32::try_from(bytes.len()).unwrap_or(0);
         if len == 0 {
             return 0;

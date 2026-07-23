@@ -11,5 +11,5 @@ crate-type = ["cdylib", "rlib"]
 [dependencies]
 homelab-domain-core = { path = "../domain-core" }
 homelab-engine-protocol = { path = "../protocol" }
-postcard.workspace = true
+rmp-serde.workspace = true
 serde.workspace = true
