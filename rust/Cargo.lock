@@ -124,6 +124,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "homelab-engine-wasm"
+version = "0.1.0"
+dependencies = [
+ "homelab-domain-core",
+ "homelab-engine-protocol",
+ "postcard",
+ "serde",
+]
+
+[[package]]
 name = "lock_api"
 version = "0.4.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
