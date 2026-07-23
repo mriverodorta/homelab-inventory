@@ -81,7 +81,7 @@ export type RuntimePowerTopology = {
 
 export type RuntimeConnectionDerivedState = ConnectionDerivedState
 
-function topologyItemRef(project: ProjectState, runtimeKey: string): TopologyItemRef {
+export function toTopologyItemRef(project: ProjectState, runtimeKey: string): TopologyItemRef {
   const parsed = parseItemKey(runtimeKey)
   const item = project.items[runtimeKey]
 
@@ -92,7 +92,7 @@ function topologyItemRef(project: ProjectState, runtimeKey: string): TopologyIte
   return { item_type: parsed.type, id: parsed.id }
 }
 
-function runtimeKey(item: TopologyItemRef): string {
+export function fromTopologyItemRef(item: TopologyItemRef): string {
   const key = `${item.item_type}:${String(item.id)}`
   if (!parseItemKey(key)) {
     throw new Error(`Topology engine returned invalid inventory item ${key}.`)
@@ -105,24 +105,24 @@ export function toTopologyEndpointRef(
   endpoint: ConnectionEndpoint,
 ): TopologyEndpointRef {
   return {
-    item: topologyItemRef(project, endpoint.itemId),
+    item: toTopologyItemRef(project, endpoint.itemId),
     port_id: endpoint.portId,
     endpoint_id: endpoint.endpointId ?? null,
     hosted_item: endpoint.hostedItemId
-      ? topologyItemRef(project, endpoint.hostedItemId)
+      ? toTopologyItemRef(project, endpoint.hostedItemId)
       : null,
   }
 }
 
 export function fromTopologyEndpointRef(endpoint: TopologyEndpointRef): ConnectionEndpoint {
   return {
-    itemId: runtimeKey(endpoint.item),
+    itemId: fromTopologyItemRef(endpoint.item),
     portId: endpoint.port_id,
     ...(endpoint.endpoint_id === null ? {} : { endpointId: endpoint.endpoint_id }),
     ...(endpoint.hosted_item === null
       ? {}
       : {
-          hostedItemId: runtimeKey(endpoint.hosted_item),
+          hostedItemId: fromTopologyItemRef(endpoint.hosted_item),
         }),
   }
 }
@@ -133,8 +133,8 @@ function runtimeDescriptor(
   return {
     ...descriptor,
     endpoint: fromTopologyEndpointRef(descriptor.endpoint),
-    hostItemId: runtimeKey(descriptor.host),
-    ownerItemId: runtimeKey(descriptor.owner),
+    hostItemId: fromTopologyItemRef(descriptor.host),
+    ownerItemId: fromTopologyItemRef(descriptor.owner),
   }
 }
 
@@ -154,8 +154,8 @@ function powerEndpointLabel(
   project: ProjectState,
   descriptor: TopologyEndpointDescriptor,
 ): string {
-  const hostKey = runtimeKey(descriptor.host)
-  const ownerKey = runtimeKey(descriptor.owner)
+  const hostKey = fromTopologyItemRef(descriptor.host)
+  const ownerKey = fromTopologyItemRef(descriptor.owner)
   const host = project.items[hostKey]
   const owner = project.items[ownerKey]
   const port = owner?.ports?.find((candidate) => candidate.id === descriptor.endpoint.port_id)
@@ -340,7 +340,7 @@ export async function getPowerTopology(
       }
     }),
     findings: response.result.payload.topology.findings.map((finding) => {
-      const itemId = finding.item === null ? undefined : runtimeKey(finding.item)
+      const itemId = finding.item === null ? undefined : fromTopologyItemRef(finding.item)
       const connectionId = finding.connection_id ?? undefined
       return {
         id: finding.id,

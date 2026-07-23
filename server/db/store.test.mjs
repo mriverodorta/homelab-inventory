@@ -2678,6 +2678,56 @@ describe('HomelabInventoryStore', () => {
     expect(persisted.connections).toEqual([])
   })
 
+  it('persists relational placement patches and rejects mismatched inverse coordinates', async () => {
+    const dataDir = await makeTempDir()
+    const store = createStore({
+      appVersion: '0.1.38',
+      dataDir,
+      legacyProjectPath: path.join(dataDir, 'legacy.json'),
+      saveDebounceMs: 5,
+      seedEmptyData: false,
+      seedDir: path.join(dataDir, 'missing-seed'),
+    })
+    await store.init()
+    store.addInventoryItem({ type: 'server', name: 'Node' })
+    const item = { item_type: 'server', id: 1 }
+    const baseRevision = store.getProject().revision
+
+    await store.applyEnginePatch({
+      baseRevision,
+      patchSet: {
+        revision: baseRevision + 1,
+        forward: {
+          kind: 'patch-placements',
+          payload: { upsert: [{ item, x: 120, y: 240 }], remove_items: [] },
+        },
+        inverse: {
+          kind: 'patch-placements',
+          payload: { upsert: [], remove_items: [item] },
+        },
+      },
+      responseBytes: Uint8Array.from([1]),
+    })
+    expect(store.getProject().placements).toEqual([{ serverId: 'server:1', x: 120, y: 240 }])
+
+    await expect(store.applyEnginePatch({
+      baseRevision: baseRevision + 1,
+      patchSet: {
+        revision: baseRevision + 2,
+        forward: {
+          kind: 'patch-placements',
+          payload: { upsert: [{ item, x: 108, y: 240 }], remove_items: [] },
+        },
+        inverse: {
+          kind: 'patch-placements',
+          payload: { upsert: [{ item, x: 999, y: 240 }], remove_items: [] },
+        },
+      },
+      responseBytes: Uint8Array.from([2]),
+    })).rejects.toThrow('does not match current project coordinates')
+    expect(store.getProject().placements[0].x).toBe(120)
+  })
+
   it('does not publish a project commit when the project write fails', async () => {
     const dataDir = await makeTempDir()
     const store = createStore({

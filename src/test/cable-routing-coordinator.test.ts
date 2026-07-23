@@ -121,6 +121,23 @@ describe('CableRoutingCoordinator', () => {
     expect(coordinator.getState().routes.get(2)).toBe(secondRoute)
   })
 
+  it('can replay unchanged requests after the worker is rebuilt without clearing routes', async () => {
+    const client = new FakeClient()
+    const coordinator = new CableRoutingCoordinator(client as unknown as DomainEngineClient)
+    const stableRequest = request(1)
+    coordinator.request([stableRequest])
+    client.calls[0].resolve(response([cableRoute(1, 0)]))
+    await vi.waitFor(() => expect(coordinator.getState().pending).toBe(false))
+    const retained = coordinator.getState().routes.get(1)
+
+    coordinator.request([stableRequest], true)
+    expect(client.calls).toHaveLength(2)
+    expect(coordinator.getState().routes.get(1)).toBe(retained)
+    client.calls[1].resolve(response([cableRoute(1, 0)], [1]))
+    await vi.waitFor(() => expect(coordinator.getState().pending).toBe(false))
+    expect(coordinator.getState().routes.get(1)).toBe(retained)
+  })
+
   it('clears rendered routes and ignores an in-flight result after disposal', async () => {
     const client = new FakeClient()
     const coordinator = new CableRoutingCoordinator(client as unknown as DomainEngineClient)

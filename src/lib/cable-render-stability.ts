@@ -56,7 +56,10 @@ export function projectsEqualForCanvasNodes(
   second: ProjectState,
 ): boolean {
   return first.items === second.items
-    && first.placements === second.placements
+    && first.placements.length === second.placements.length
+    && first.placements.every((placement, index) => (
+      placement.serverId === second.placements[index]?.serverId
+    ))
     && first.assignments === second.assignments
     && first.compatibilityPolicy === second.compatibilityPolicy
     && first.connections.length === second.connections.length

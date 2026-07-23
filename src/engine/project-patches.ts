@@ -4,7 +4,7 @@ import type {
   TopologyConnection,
   TopologyConnectionRoute,
 } from '../../shared/engine/protocol.mjs'
-import { fromTopologyEndpointRef } from '@/engine/topology'
+import { fromTopologyEndpointRef, fromTopologyItemRef } from '@/engine/topology'
 import type {
   ConnectionRoutePreferences,
   InventoryConnection,
@@ -121,6 +121,27 @@ export function applyProjectPatch(
         }
       }),
     }
+  }
+  if (patch.kind === 'patch-placements') {
+    const upsert = new Map(patch.payload.upsert.map((placement) => [
+      fromTopologyItemRef(placement.item),
+      placement,
+    ]))
+    const remove = new Set(patch.payload.remove_items.map(fromTopologyItemRef))
+    const placements = project.placements.flatMap((placement) => {
+      if (remove.has(placement.serverId)) return []
+      const replacement = upsert.get(placement.serverId)
+      if (replacement) upsert.delete(placement.serverId)
+      return [replacement
+        ? { serverId: placement.serverId, x: replacement.x, y: replacement.y }
+        : placement]
+    })
+    placements.push(...[...upsert].map(([serverId, placement]) => ({
+      serverId,
+      x: placement.x,
+      y: placement.y,
+    })))
+    return { ...project, revision, placements }
   }
   return project
 }

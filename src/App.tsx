@@ -48,6 +48,7 @@ import {
 } from '@/components/ui/sheet'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { applyEngineResponsePatch } from '@/engine/project-patches'
+import { updateProjectPlacements } from '@/engine/placements'
 import {
   createTopologyConnection,
   removeTopologyConnection,
@@ -161,7 +162,6 @@ import {
   getReturnCanvasItemImpact,
   returnCanvasItemToInventory,
   upsertPlacements,
-  upsertPlacement,
 } from '@/lib/project'
 import { formatCapacity, formatPortSummary } from '@/lib/format'
 import type {
@@ -779,9 +779,18 @@ function App() {
     projectRef.current = project
   }, [project])
 
+  const geometryProjectRef = useRef(project)
+  if (
+    geometryProjectRef.current?.items !== project?.items
+    || geometryProjectRef.current?.assignments !== project?.assignments
+    || geometryProjectRef.current?.placements !== project?.placements
+  ) {
+    geometryProjectRef.current = project
+  }
+  const geometryProject = geometryProjectRef.current
   const projectGeometrySnapshot = useMemo(
-    () => (project ? createProjectGeometrySnapshot(project) : null),
-    [project],
+    () => (geometryProject ? createProjectGeometrySnapshot(geometryProject) : null),
+    [geometryProject],
   )
   const projectGeometrySnapshotRef = useRef(projectGeometrySnapshot)
   projectGeometrySnapshotRef.current = projectGeometrySnapshot
@@ -1232,7 +1241,7 @@ function App() {
     setActiveNetworkTraceEndpoint(nextSelection.activeNetworkTraceEndpoint)
   }
 
-  async function commitConnectionMutation(
+  async function commitEngineMutation(
     mutation: Promise<EngineResponse>,
     options: { historySnapshot?: ProjectState } = {},
   ): Promise<EngineResponse> {
@@ -1276,7 +1285,7 @@ function App() {
       return
     }
 
-    void commitConnectionMutation(
+    void commitEngineMutation(
       createTopologyConnection(domainEngine.client, currentProject, from, to),
       { historySnapshot: currentProject },
     ).then((response) => {
@@ -1312,6 +1321,48 @@ function App() {
     })
   }
 
+  async function commitPlacementUpdates(
+    placements: ProjectState['placements'],
+    fallbackMessage = 'Canvas positions could not be saved.',
+  ): Promise<boolean> {
+    const currentProject = projectRef.current
+    if (!currentProject || !domainEngine.enabled) {
+      setValidationMessage('The WebAssembly workspace engine is not available.')
+      return false
+    }
+
+    const currentPlacements = new Map(
+      currentProject.placements.map((placement) => [placement.serverId, placement]),
+    )
+    const changedPlacements = placements.filter((placement) => {
+      const current = currentPlacements.get(placement.serverId)
+      return !current || current.x !== placement.x || current.y !== placement.y
+    })
+    if (changedPlacements.length === 0) return true
+
+    const optimisticProject = upsertPlacements(currentProject, changedPlacements)
+    if (optimisticProject === currentProject) return true
+    projectRef.current = optimisticProject
+    setProject(optimisticProject)
+
+    try {
+      const mutation = updateProjectPlacements(
+        domainEngine.client,
+        currentProject,
+        changedPlacements,
+      ).then((response) => {
+        if (!response) throw new Error('Canvas positions did not change.')
+        return response
+      })
+      await commitEngineMutation(mutation, { historySnapshot: currentProject })
+      setValidationMessage(null)
+      return true
+    } catch (error) {
+      recoverConnectionMutation(error, fallbackMessage)
+      return false
+    }
+  }
+
   function updateConnectionRouteInEngine(
     connectionId: string | number,
     route: ConnectionRoutePreferences,
@@ -1335,7 +1386,7 @@ function App() {
     }
     projectRef.current = optimisticProject
     setProject(optimisticProject)
-    void commitConnectionMutation(
+    void commitEngineMutation(
       updateTopologyConnectionRoute(domainEngine.client, numericConnectionId, route),
       { historySnapshot: currentProject },
     ).then(() => {
@@ -1370,7 +1421,7 @@ function App() {
     }
     connectionLabelTimerRef.current = window.setTimeout(() => {
       connectionLabelTimerRef.current = null
-      void commitConnectionMutation(
+      void commitEngineMutation(
         updateTopologyConnectionLabel(domainEngine.client, numericConnectionId, label),
       ).then(() => {
         setValidationMessage(null)
@@ -1396,7 +1447,7 @@ function App() {
       window.clearTimeout(connectionLabelTimerRef.current)
       connectionLabelTimerRef.current = null
     }
-    void commitConnectionMutation(
+    void commitEngineMutation(
       removeTopologyConnection(domainEngine.client, numericConnectionId),
       { historySnapshot: currentProject },
     ).then(() => {
@@ -1835,7 +1886,7 @@ function App() {
         return
       }
 
-      updateProject(upsertPlacement(project, placement))
+      if (!await commitPlacementUpdates([placement], 'Canvas item could not be placed.')) return
       setSelectedItemId(itemRuntimeKey)
       setSelectedConnectionId(null)
       setValidationMessage(null)
@@ -2157,9 +2208,7 @@ function App() {
                 return false
               }
 
-              updateProject(upsertPlacement(project, placement))
-              setValidationMessage(null)
-              return true
+              return commitPlacementUpdates([placement])
             }}
             onMoveItems={async (placements) => {
               const nextPlacements = placements.map((placement) => ({
@@ -2175,9 +2224,7 @@ function App() {
                 return false
               }
 
-              updateProject(upsertPlacements(project, nextPlacements))
-              setValidationMessage(null)
-              return true
+              return commitPlacementUpdates(nextPlacements)
             }}
             onEndpointClick={handleCanvasEndpointClick}
             onEndpointDragStart={handleCanvasEndpointDragStart}
@@ -2215,8 +2262,7 @@ function App() {
 
               void arrangeProjectItems(domainEngine.client, project)
                 .then((placements) => {
-                  updateProject(upsertPlacements(project, placements))
-                  setValidationMessage(null)
+                  void commitPlacementUpdates(placements, 'Canvas items could not be arranged.')
                 })
                 .catch((error) => {
                   showMessage(error instanceof Error ? error.message : 'Canvas items could not be arranged.')

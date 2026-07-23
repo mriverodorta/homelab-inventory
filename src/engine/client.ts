@@ -17,7 +17,10 @@ import type {
 
 const disposedError = () => new Error('Workspace engine client is disposed.')
 
-function operationForCommittedPatch(patch: ProjectPatch): EngineOperation | null {
+function operationForCommittedPatch(
+  patch: ProjectPatch,
+  inversePatch?: ProjectPatch,
+): EngineOperation | null {
   if (patch.kind === 'set-project-name') {
     return { kind: 'update-project-metadata', payload: { name: patch.payload.name } }
   }
@@ -44,9 +47,43 @@ function operationForCommittedPatch(patch: ProjectPatch): EngineOperation | null
   if (patch.kind === 'set-connection-route') {
     return { kind: 'update-connection-route', payload: patch.payload }
   }
+  if (patch.kind === 'patch-placements' && inversePatch?.kind === 'patch-placements') {
+    const placementKey = (placement: { item: { item_type: string; id: number } }) => (
+      `${placement.item.item_type}:${String(placement.item.id)}`
+    )
+    const itemKey = (item: { item_type: string; id: number }) => (
+      `${item.item_type}:${String(item.id)}`
+    )
+    const previous = new Map(inversePatch.payload.upsert.map((placement) => [
+      placementKey(placement),
+      placement,
+    ]))
+    const next = new Map(patch.payload.upsert.map((placement) => [
+      placementKey(placement),
+      placement,
+    ]))
+    const keys = new Set([
+      ...previous.keys(),
+      ...next.keys(),
+      ...inversePatch.payload.remove_items.map(itemKey),
+      ...patch.payload.remove_items.map(itemKey),
+    ])
+    return {
+      kind: 'update-placements',
+      payload: {
+        changes: [...keys].map((key) => ({
+          previous: previous.get(key) ?? null,
+          next: next.get(key) ?? null,
+        })),
+      },
+    }
+  }
   if (patch.kind === 'batch') {
-    for (const child of patch.payload.patches) {
-      const operation = operationForCommittedPatch(child)
+    const inverseChildren = inversePatch?.kind === 'batch'
+      ? inversePatch.payload.patches
+      : []
+    for (const [index, child] of patch.payload.patches.entries()) {
+      const operation = operationForCommittedPatch(child, inverseChildren.at(-(index + 1)))
       if (operation) return operation
     }
   }
@@ -193,7 +230,10 @@ export class DomainEngineClient {
       return { kind: 'rebuilt' as const, response }
     }
 
-    const operation = operationForCommittedPatch(response.result.payload.forward)
+    const operation = operationForCommittedPatch(
+      response.result.payload.forward,
+      response.result.payload.inverse,
+    )
     if (!operation) {
       await this.rebuild('The committed project patch is not supported locally.')
       return { kind: 'rebuilt' as const, response }

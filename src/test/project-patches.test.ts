@@ -107,4 +107,31 @@ describe('project engine patches', () => {
     expect(removed.connections).toEqual([])
     expect(removed.revision).toBe(5)
   })
+
+  it('updates only requested placements while retaining unrelated project references', () => {
+    const project = {
+      ...createEmptyProject(),
+      placements: [
+        { serverId: 'server:1', x: 120, y: 240 },
+        { serverId: 'switch:1', x: 480, y: 120 },
+      ],
+    }
+    const untouched = project.placements[1]
+    const result = applyProjectPatch(project, {
+      kind: 'patch-placements',
+      payload: {
+        upsert: [{ item: { item_type: 'server', id: 1 }, x: 108, y: 240 }],
+        remove_items: [],
+      },
+    }, 2)
+
+    expect(result.placements).toEqual([
+      { serverId: 'server:1', x: 108, y: 240 },
+      untouched,
+    ])
+    expect(result.placements[1]).toBe(untouched)
+    expect(result.items).toBe(project.items)
+    expect(result.assignments).toBe(project.assignments)
+    expect(result.connections).toBe(project.connections)
+  })
 })

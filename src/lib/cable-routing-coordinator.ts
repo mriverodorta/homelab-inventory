@@ -111,9 +111,9 @@ export class CableRoutingCoordinator {
     return () => this.listeners.delete(listener)
   }
 
-  request(requests: CableLaneRouteRequest[]): number {
+  request(requests: CableLaneRouteRequest[], force = false): number {
     const nextRequests = new Map(requests.map((request) => [request.connectionId, request]))
-    if (requestSetsEqual(this.desiredRequests, nextRequests)) return this.revision
+    if (!force && requestSetsEqual(this.desiredRequests, nextRequests)) return this.revision
 
     this.desiredRequests = nextRequests
     const revision = ++this.revision

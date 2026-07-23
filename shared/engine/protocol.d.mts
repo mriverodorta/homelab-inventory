@@ -149,6 +149,17 @@ export type ArrangementItem = {
   height: number
 }
 
+export type CanvasPlacement = {
+  item: TopologyItemRef
+  x: number
+  y: number
+}
+
+export type PlacementChange = {
+  previous: CanvasPlacement | null
+  next: CanvasPlacement | null
+}
+
 export type RouteDefinition = {
   connection_id: number
   source: { x: number; y: number }
@@ -247,6 +258,7 @@ export type EngineOperation =
       payload: { connection_id: number; route: TopologyConnectionRoute | null }
     }
   | { kind: 'update-project-metadata'; payload: { name: string } }
+  | { kind: 'update-placements'; payload: { changes: PlacementChange[] } }
   | {
       kind: 'replace-geometry'
       payload: { nodes: GeometryNode[]; handles: GeometryHandle[] }
@@ -370,6 +382,10 @@ export type ProjectPatch =
   | {
       kind: 'set-connection-derived'
       payload: { states: ConnectionDerivedState[] }
+    }
+  | {
+      kind: 'patch-placements'
+      payload: { upsert: CanvasPlacement[]; remove_items: TopologyItemRef[] }
     }
   | { kind: 'batch'; payload: { patches: ProjectPatch[] } }
 

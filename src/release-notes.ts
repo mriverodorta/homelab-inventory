@@ -63,6 +63,8 @@ export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
     'Removed duplicate browser-side topology implementations and retained legacy network normalization only for ordered historical data migrations.',
     'Externally committed connection changes now replay incrementally through the local worker without rebuilding the complete workspace engine.',
     'Existing power strips with a canonical AC input at slot zero no longer prevent the workspace engine from starting.',
+    'Moving one or several selected canvas items now saves one atomic placement patch without clearing the canvas or rebuilding unrelated equipment and cable routes.',
+    'Topology, geometry, handles, and cable planning now retain prior results and refresh only when their relevant project inputs change.',
   ],
   notes: [],
 }

@@ -61,6 +61,9 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 - Added synthetic topology benchmarks for endpoint catalogs, compatibility, validation, connection commands, negotiated state, tracing, power findings, and worker indexing.
 - Replayed externally committed connection patches through the local worker without rebuilding the complete engine snapshot.
 - Fixed workspace-engine startup for existing power strips whose canonical AC input uses display slot zero.
+- Fixed multi-item canvas moves to persist one atomic placement patch instead of replacing and rebuilding the complete workspace snapshot.
+- Preserved unchanged equipment cards, topology results, and cable routes across placement commits and engine recovery so canvas moves no longer clear or blink unrelated content.
+- Narrowed geometry, topology, handle, and route invalidation to the project data each calculation actually uses.
 
 ## [0.1.38] - 2026-07-21
 

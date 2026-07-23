@@ -1,12 +1,13 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use homelab_engine_protocol::{
-    ArrangementResult, CommandPatchSet, ConnectionDerivedStatesResult, EngineError, EngineRequest,
-    EngineResponse, EngineSnapshot, EngineStatus, GeometryHandle, GeometryUpdateResult,
-    NearestPlacementResult, NetworkTraceResult, NetworkTracesResult, Operation, PROTOCOL_VERSION,
-    PlacementCheckResult, PowerTopologyResult, ProjectPatch, ResponseBody, RouteDefinition,
-    RouteEdit, RouteEditResult, RouteResult, RoutesUpdateResult, TopologyConnection,
-    TopologyConnectionRoute, TopologyEndpointResult, TopologyError, TopologySnapshot,
+    ArrangementResult, CanvasPlacement, CommandPatchSet, ConnectionDerivedStatesResult,
+    EngineError, EngineRequest, EngineResponse, EngineSnapshot, EngineStatus, GeometryHandle,
+    GeometryUpdateResult, NearestPlacementResult, NetworkTraceResult, NetworkTracesResult,
+    Operation, PROTOCOL_VERSION, PlacementChange, PlacementCheckResult, PowerTopologyResult,
+    ProjectPatch, ResponseBody, RouteDefinition, RouteEdit, RouteEditResult, RouteResult,
+    RoutesUpdateResult, TopologyConnection, TopologyConnectionRoute, TopologyEndpointResult,
+    TopologyError, TopologySnapshot,
 };
 use homelab_geometry::{GeometryError, GeometryNode, SpatialIndex, arrange_items};
 use homelab_routing::{
@@ -178,6 +179,7 @@ impl Engine {
                     }))
                 }
             }
+            Operation::UpdatePlacements { changes } => self.update_placements(changes),
             Operation::ReplaceGeometry { nodes, handles } => self.replace_geometry(nodes, handles),
             Operation::UpdateGeometry {
                 upsert_nodes,
@@ -337,6 +339,140 @@ impl Engine {
             base_revision,
             result,
         }
+    }
+
+    fn update_placements(&mut self, changes: Vec<PlacementChange>) -> ResponseBody {
+        if changes.is_empty() {
+            return engine_error(
+                "invalid-placement-change",
+                "Placement changes must not be empty.",
+            );
+        }
+        if self.revision == u32::MAX {
+            return engine_error(
+                "revision-exhausted",
+                "Project revision cannot be advanced safely.",
+            );
+        }
+
+        let mut seen = BTreeSet::new();
+        let mut forward_upsert = Vec::new();
+        let mut forward_remove = Vec::new();
+        let mut inverse_upsert = Vec::new();
+        let mut inverse_remove = Vec::new();
+        let mut placed_items = self
+            .topology
+            .snapshot()
+            .placements
+            .iter()
+            .cloned()
+            .collect::<BTreeSet<_>>();
+        let known_items = self
+            .topology
+            .snapshot()
+            .items
+            .iter()
+            .map(|item| item.item.clone())
+            .collect::<BTreeSet<_>>();
+
+        for change in changes {
+            let item = match (&change.previous, &change.next) {
+                (Some(previous), Some(next)) if previous.item == next.item => previous.item.clone(),
+                (Some(previous), None) => previous.item.clone(),
+                (None, Some(next)) => next.item.clone(),
+                (Some(_), Some(_)) => {
+                    return engine_error(
+                        "invalid-placement-change",
+                        "A placement change cannot replace one inventory item with another.",
+                    );
+                }
+                (None, None) => {
+                    return engine_error(
+                        "invalid-placement-change",
+                        "A placement change requires a previous or next placement.",
+                    );
+                }
+            };
+
+            if item.validate().is_err()
+                || !known_items.contains(&item)
+                || !seen.insert(item.clone())
+            {
+                return engine_error(
+                    "invalid-placement-change",
+                    "Placement changes must reference unique existing inventory items.",
+                );
+            }
+            if change
+                .previous
+                .as_ref()
+                .is_some_and(|placement| !valid_canvas_placement(placement))
+                || change
+                    .next
+                    .as_ref()
+                    .is_some_and(|placement| !valid_canvas_placement(placement))
+            {
+                return engine_error(
+                    "invalid-placement-change",
+                    "Placement coordinates must be finite numbers.",
+                );
+            }
+            if change.previous == change.next {
+                continue;
+            }
+
+            match change.previous {
+                Some(previous) => inverse_upsert.push(previous),
+                None => inverse_remove.push(item.clone()),
+            }
+            match change.next {
+                Some(next) => {
+                    placed_items.insert(item);
+                    forward_upsert.push(next);
+                }
+                None => {
+                    placed_items.remove(&item);
+                    forward_remove.push(item);
+                }
+            }
+        }
+
+        if forward_upsert.is_empty() && forward_remove.is_empty() {
+            return engine_error(
+                "unchanged-placement",
+                "Placement coordinates did not change.",
+            );
+        }
+
+        if placed_items
+            != self
+                .topology
+                .snapshot()
+                .placements
+                .iter()
+                .cloned()
+                .collect()
+        {
+            let mut topology = self.topology.snapshot().clone();
+            topology.placements = placed_items.into_iter().collect();
+            self.topology = match TopologyIndex::build(topology) {
+                Ok(topology) => topology,
+                Err(error) => return topology_error(error),
+            };
+        }
+
+        self.revision += 1;
+        ResponseBody::Patch(Box::new(CommandPatchSet {
+            revision: self.revision,
+            forward: ProjectPatch::PatchPlacements {
+                upsert: forward_upsert,
+                remove_items: forward_remove,
+            },
+            inverse: ProjectPatch::PatchPlacements {
+                upsert: inverse_upsert,
+                remove_items: inverse_remove,
+            },
+        }))
     }
 
     fn create_connection(
@@ -875,6 +1011,10 @@ fn batch_patch(mut patches: Vec<ProjectPatch>) -> ProjectPatch {
     ProjectPatch::Batch { patches }
 }
 
+fn valid_canvas_placement(placement: &CanvasPlacement) -> bool {
+    placement.item.validate().is_ok() && placement.x.is_finite() && placement.y.is_finite()
+}
+
 fn topology_error(error: TopologyError) -> ResponseBody {
     engine_error("invalid-topology", &error.to_string())
 }
@@ -1131,6 +1271,41 @@ mod tests {
                 },
             }))
         );
+    }
+
+    #[test]
+    fn placement_command_updates_only_requested_coordinates_atomically() {
+        let (mut engine, from, _) = connection_engine();
+        let previous = CanvasPlacement {
+            item: from.item.clone(),
+            x: 120.0,
+            y: 240.0,
+        };
+        let next = CanvasPlacement {
+            item: from.item,
+            x: 108.0,
+            y: 240.0,
+        };
+        let response = engine.dispatch(request(Operation::UpdatePlacements {
+            changes: vec![PlacementChange {
+                previous: Some(previous.clone()),
+                next: Some(next.clone()),
+            }],
+        }));
+
+        assert_eq!(engine.revision(), 13);
+        assert!(matches!(
+            response.result,
+            ResponseBody::Patch(ref patch)
+                if patch.forward == ProjectPatch::PatchPlacements {
+                    upsert: vec![next],
+                    remove_items: vec![],
+                }
+                && patch.inverse == ProjectPatch::PatchPlacements {
+                    upsert: vec![previous],
+                    remove_items: vec![],
+                }
+        ));
     }
 
     #[test]

@@ -2,6 +2,7 @@ import { render, screen, waitFor } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import { DomainEngineGate } from '@/components/domain-engine-gate'
 import { DomainEngineProvider } from '@/components/domain-engine-provider'
+import { DomainEngineContext } from '@/engine/react-context'
 import type { DomainEngineClient } from '@/engine/client'
 import type { DomainEngineState } from '@/engine/types'
 
@@ -76,5 +77,35 @@ describe('DomainEngineGate', () => {
     )
 
     await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('WebAssembly and Web Worker'))
+  })
+
+  it('keeps the mounted workbench visible while a ready engine rebuilds', () => {
+    const client = stubClient({ initial: { phase: 'ready', revision: 3 } })
+    const { rerender } = render(
+      <DomainEngineContext.Provider value={{
+        enabled: true,
+        client,
+        state: { phase: 'ready', revision: 3 },
+        syncEvent: null,
+        retry: async () => {},
+      }}>
+        <DomainEngineGate><div>Canvas workbench</div></DomainEngineGate>
+      </DomainEngineContext.Provider>,
+    )
+
+    rerender(
+      <DomainEngineContext.Provider value={{
+        enabled: true,
+        client,
+        state: { phase: 'rebuilding', revision: 3, reason: 'External update' },
+        syncEvent: null,
+        retry: async () => {},
+      }}>
+        <DomainEngineGate><div>Canvas workbench</div></DomainEngineGate>
+      </DomainEngineContext.Provider>,
+    )
+
+    expect(screen.getByText('Canvas workbench')).toBeInTheDocument()
+    expect(screen.getByRole('status')).toHaveTextContent('Rebuilding workspace engine')
   })
 })

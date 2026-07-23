@@ -34,6 +34,19 @@ pub struct EngineRequest {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct CanvasPlacement {
+    pub item: ItemRef,
+    pub x: f64,
+    pub y: f64,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PlacementChange {
+    pub previous: Option<CanvasPlacement>,
+    pub next: Option<CanvasPlacement>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", content = "payload", rename_all = "kebab-case")]
 pub enum Operation {
     Status,
@@ -69,6 +82,9 @@ pub enum Operation {
     },
     UpdateProjectMetadata {
         name: String,
+    },
+    UpdatePlacements {
+        changes: Vec<PlacementChange>,
     },
     ReplaceGeometry {
         nodes: Vec<GeometryNode>,
@@ -286,6 +302,10 @@ pub enum ProjectPatch {
     },
     SetConnectionDerived {
         states: Vec<ConnectionDerivedState>,
+    },
+    PatchPlacements {
+        upsert: Vec<CanvasPlacement>,
+        remove_items: Vec<ItemRef>,
     },
     Batch {
         patches: Vec<ProjectPatch>,

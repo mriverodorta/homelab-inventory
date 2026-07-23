@@ -489,6 +489,29 @@ function CanvasViewport({
 
     return nodeProjectRef.current
   }, [project])
+  const geometryProjectRef = useRef(project)
+  const canvasGeometryProject = useMemo(() => {
+    if (
+      geometryProjectRef.current.items !== project.items
+      || geometryProjectRef.current.assignments !== project.assignments
+      || geometryProjectRef.current.placements !== project.placements
+    ) {
+      geometryProjectRef.current = project
+    }
+    return geometryProjectRef.current
+  }, [project])
+  const routingProjectRef = useRef(project)
+  const canvasRoutingProject = useMemo(() => {
+    if (
+      routingProjectRef.current.items !== project.items
+      || routingProjectRef.current.assignments !== project.assignments
+      || routingProjectRef.current.connections !== project.connections
+      || routingProjectRef.current.placements !== project.placements
+    ) {
+      routingProjectRef.current = project
+    }
+    return routingProjectRef.current
+  }, [project])
   const canvasIndex = useMemo(
     () => buildCanvasProjectIndex(canvasNodeProject, topologyData, compatibleEndpointKeys),
     [canvasNodeProject, compatibleEndpointKeys, topologyData],
@@ -564,7 +587,7 @@ function CanvasViewport({
     () => {
       const nextNodes: WorkbenchFlowNode[] = []
 
-      for (const placement of canvasNodeProject.placements) {
+      for (const placement of project.placements) {
         const item = canvasNodeProject.items[placement.serverId]
 
         if (!item) {
@@ -798,6 +821,7 @@ function CanvasViewport({
       focusedItemIdSet,
       pendingEndpoint,
       canvasNodeProject,
+      project.placements,
       selectedItemId,
       spotlightItemId,
       stableOnEndpointClick,
@@ -823,6 +847,7 @@ function CanvasViewport({
     error: null,
   })
   const routingCoordinatorRef = useRef<CableRoutingCoordinator | null>(null)
+  const routingEnginePhaseRef = useRef(domainEngine.state.phase)
   const measuredNodeSizeSignature = useMemo(() => JSON.stringify(nodes.flatMap((node) => {
     const width = node.measured?.width
     const height = node.measured?.height
@@ -838,18 +863,18 @@ function CanvasViewport({
       ),
     )
 
-    return buildCableObstacles(canvasNodeProject, undefined, measuredSizes)
-  }, [canvasNodeProject, measuredNodeSizeSignature])
+    return buildCableObstacles(canvasGeometryProject, undefined, measuredSizes)
+  }, [canvasGeometryProject, measuredNodeSizeSignature])
   const measuredHandlesByNodeId = useMemo(() => new Map(
     measuredHandleGeometry.map(
       (node) => [node.nodeId, node],
     ),
   ), [measuredHandleGeometry])
   const routeRequests = useMemo<CableLaneRouteRequest[]>(() => {
-    const placedItemIds = new Set(project.placements.map((placement) => placement.serverId))
-    return (project.connections ?? []).flatMap((connection, connectionIndex) => {
-      const fromItem = project.items[connection.from.itemId]
-      const toItem = project.items[connection.to.itemId]
+    const placedItemIds = new Set(canvasRoutingProject.placements.map((placement) => placement.serverId))
+    return (canvasRoutingProject.connections ?? []).flatMap((connection, connectionIndex) => {
+      const fromItem = canvasRoutingProject.items[connection.from.itemId]
+      const toItem = canvasRoutingProject.items[connection.to.itemId]
       const fromItemKey = fromItem ? runtimeItemKey(fromItem) : null
       const toItemKey = toItem ? runtimeItemKey(toItem) : null
 
@@ -858,20 +883,20 @@ function CanvasViewport({
         !placedItemIds.has(fromItemKey) || !placedItemIds.has(toItemKey)
       ) return []
 
-      const route = getConnectionRoute(project, connection, connectionIndex)
+      const route = getConnectionRoute(canvasRoutingProject, connection, connectionIndex)
       if (!route) return []
 
       const sourceNodeId = getCanvasNodeId(fromItem)
       const targetNodeId = getCanvasNodeId(toItem)
       const source = getMeasuredHandlePoint({
-        project,
+        project: canvasRoutingProject,
         nodeId: sourceNodeId,
         kind: 'source',
         handleId: route.sourceHandle,
         handlesByNodeId: measuredHandlesByNodeId,
       })
       const target = getMeasuredHandlePoint({
-        project,
+        project: canvasRoutingProject,
         nodeId: targetNodeId,
         kind: 'target',
         handleId: route.targetHandle,
@@ -903,8 +928,8 @@ function CanvasViewport({
   }, [
     avoidCableCollisionsGlobally,
     cableObstacles,
+    canvasRoutingProject,
     measuredHandlesByNodeId,
-    project,
     snapCablesToGrid,
   ])
   const plannedCableRoutes = routingState.routes
@@ -1091,8 +1116,8 @@ function CanvasViewport({
   const flowEdgesRef = useRef<CableFlowEdge[]>([])
   const flowEdges = useMemo<CableFlowEdge[]>(
     () => {
-      const placedItemIds = new Set(project.placements.map((placement) => placement.serverId))
-      const nextEdges: CableFlowEdge[] = (project.connections ?? []).flatMap((connection, connectionIndex) => {
+      const placedItemIds = new Set(canvasRoutingProject.placements.map((placement) => placement.serverId))
+      const nextEdges: CableFlowEdge[] = (canvasRoutingProject.connections ?? []).flatMap((connection, connectionIndex) => {
         const derived = topologyData?.connectionDerivedById.get(connection.id)
         const effectiveConnection = derived ? {
           ...connection,
@@ -1101,8 +1126,8 @@ function CanvasViewport({
         } : connection
         if (!isCableTypeVisible(effectiveConnection.type, cableVisibility)) return []
 
-        const fromItem = project.items[connection.from.itemId]
-        const toItem = project.items[connection.to.itemId]
+        const fromItem = canvasRoutingProject.items[connection.from.itemId]
+        const toItem = canvasRoutingProject.items[connection.to.itemId]
 
         const fromItemKey = fromItem ? runtimeItemKey(fromItem) : null
         const toItemKey = toItem ? runtimeItemKey(toItem) : null
@@ -1118,8 +1143,8 @@ function CanvasViewport({
           return []
         }
 
-        const appearance = getCableAppearance(project, effectiveConnection)
-        const route = getConnectionRoute(project, connection, connectionIndex)
+        const appearance = getCableAppearance(canvasRoutingProject, effectiveConnection)
+        const route = getConnectionRoute(canvasRoutingProject, connection, connectionIndex)
         const isSelected = sameOptionalId(selectedConnectionId, connection.id)
         const isHovered = sameOptionalId(hoveredConnectionId, connection.id)
         const isTraceConnection = activeNetworkTraceConnectionIdSet.has(String(connection.id))
@@ -1146,7 +1171,7 @@ function CanvasViewport({
             data: {
               color: appearance.color,
               label: connection.label?.trim() || appearance.label,
-              detail: describeConnection(project, effectiveConnection),
+              detail: describeConnection(canvasRoutingProject, effectiveConnection),
               selected: isSelected,
               hovered: isHovered,
               editable: isSelected,
@@ -1185,9 +1210,9 @@ function CanvasViewport({
       activeNetworkTraceConnectionIdSet,
       activeNetworkTraceConnectionIds.length,
       cableVisibility,
+      canvasRoutingProject,
       hoveredConnectionId,
       plannedCableRoutes,
-      project,
       selectedConnectionId,
       selectedItemId,
       snapCablesToGrid,
@@ -1356,14 +1381,7 @@ function CanvasViewport({
   }, [focusItem, getViewport, onViewportReady, screenToFlowPosition])
 
   useEffect(() => {
-    if (!domainEngine.enabled || domainEngine.state.phase !== 'ready') {
-      setRoutingState((current) => ({
-        ...current,
-        pending: domainEngine.enabled,
-        error: routingEngineError,
-      }))
-      return
-    }
+    if (!domainEngine.enabled) return
 
     const coordinator = new CableRoutingCoordinator(domainEngine.client)
     routingCoordinatorRef.current = coordinator
@@ -1374,18 +1392,36 @@ function CanvasViewport({
       coordinator.dispose()
       routingCoordinatorRef.current = null
     }
-  }, [domainEngine.client, domainEngine.enabled, domainEngine.state.phase, routingEngineError])
+  }, [domainEngine.client, domainEngine.enabled])
+
+  useEffect(() => {
+    if (domainEngine.state.phase !== 'ready') {
+      setRoutingState((current) => ({
+        ...current,
+        pending: domainEngine.enabled,
+        error: routingEngineError,
+      }))
+    }
+  }, [domainEngine.enabled, domainEngine.state.phase, routingEngineError])
 
   useEffect(() => {
     const coordinator = routingCoordinatorRef.current
-    if (!coordinator) return
+    if (!coordinator || domainEngine.state.phase !== 'ready') return
+    const engineRecovered = routingEnginePhaseRef.current !== 'ready'
+    routingEnginePhaseRef.current = domainEngine.state.phase
 
     if (routeRequests.length === 0) {
       coordinator.clear()
     } else {
-      coordinator.request(routeRequests)
+      coordinator.request(routeRequests, engineRecovered)
     }
   }, [domainEngine.state.phase, routeRequests])
+
+  useEffect(() => {
+    if (domainEngine.state.phase !== 'ready') {
+      routingEnginePhaseRef.current = domainEngine.state.phase
+    }
+  }, [domainEngine.state.phase])
 
   useEffect(() => {
     let frame: number | null = null
@@ -1418,8 +1454,8 @@ function CanvasViewport({
   useEffect(() => {
     let syncFrame: number | null = null
     const frame = window.requestAnimationFrame(() => {
-      updateNodeInternals(project.placements.flatMap((placement) => {
-        const item = project.items[placement.serverId]
+      updateNodeInternals(canvasNodeProject.placements.flatMap((placement) => {
+        const item = canvasNodeProject.items[placement.serverId]
         return item ? [getCanvasNodeId(item)] : []
       }))
       syncFrame = window.requestAnimationFrame(syncMeasuredHandleGeometry)
@@ -1431,8 +1467,7 @@ function CanvasViewport({
     }
   }, [
     canvasHandleIndex,
-    project.items,
-    project.placements,
+    canvasNodeProject,
     syncMeasuredHandleGeometry,
     updateNodeInternals,
   ])

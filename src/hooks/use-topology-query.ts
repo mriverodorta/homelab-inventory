@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useMemo, useRef } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import {
   getPowerTopology,
@@ -34,6 +34,41 @@ export type TopologyQueryData = {
   networkTraces: PresentedNetworkTrace[]
   networkTraceByEndpointKey: ReadonlyMap<string, PresentedNetworkTrace>
   networkTracesByItemId: ReadonlyMap<string, readonly PresentedNetworkTrace[]>
+}
+
+export function createTopologyQueryFingerprint(project: ProjectState): string {
+  return JSON.stringify({
+    items: Object.values(project.items).map((item) => ({
+      key: `${item.type}:${String(item.id)}`,
+      name: item.name,
+      archivedAt: item.archivedAt ?? null,
+      powerConfiguration: item.specs?.powerConfiguration ?? null,
+      allowOutletFanOut: item.specs?.allowOutletFanOut === true,
+      ports: (item.ports ?? []).map((port) => ({
+        id: port.id,
+        key: port.key ?? null,
+        type: port.type,
+        slotNumber: port.slotNumber,
+        speed: port.speed ?? null,
+        label: port.label ?? null,
+        endpoints: port.endpoints ?? [],
+      })),
+    })),
+    assignments: project.assignments.map((assignment) => ({
+      id: assignment.id,
+      host: assignment.serverId,
+      item: assignment.itemId,
+      type: assignment.type,
+    })),
+    connections: project.connections.map((connection) => ({
+      id: connection.id,
+      from: connection.from,
+      to: connection.to,
+      type: connection.type,
+      negotiatedSpeedMbps: connection.negotiatedSpeedMbps ?? null,
+    })),
+    placedItemIds: project.placements.map((placement) => placement.serverId),
+  })
 }
 
 function portTypeLabel(type: InventoryPort['type']): string {
@@ -84,13 +119,18 @@ function presentTrace(project: ProjectState, trace: RuntimeNetworkTrace): Presen
 
 export function useTopologyQuery(project: ProjectState | null) {
   const domainEngine = useDomainEngine()
+  const topologyFingerprint = useMemo(
+    () => project ? createTopologyQueryFingerprint(project) : null,
+    [project],
+  )
   const revision = domainEngine.state.phase === 'ready'
     ? domainEngine.state.revision
     : null
   const query = useQuery({
-    queryKey: ['domain-engine-topology', project?.id ?? null, revision],
+    queryKey: ['domain-engine-topology', project?.id ?? null, topologyFingerprint],
     enabled: domainEngine.enabled && project !== null && revision !== null,
     staleTime: Number.POSITIVE_INFINITY,
+    placeholderData: (previousData) => previousData,
     queryFn: async () => {
       if (!project || revision === null) {
         throw new Error('Topology query requires a ready project revision.')
@@ -105,9 +145,18 @@ export function useTopologyQuery(project: ProjectState | null) {
     },
   })
 
+  const presentationProjectRef = useRef(project)
+  if (
+    presentationProjectRef.current?.items !== project?.items
+    || presentationProjectRef.current?.assignments !== project?.assignments
+  ) {
+    presentationProjectRef.current = project
+  }
+  const presentationProject = presentationProjectRef.current
+
   const data = useMemo<TopologyQueryData | null>(() => {
-    if (!project || !query.data) return null
-    const networkTraces = query.data.networkTraces.map((trace) => presentTrace(project, trace))
+    if (!presentationProject || !query.data) return null
+    const networkTraces = query.data.networkTraces.map((trace) => presentTrace(presentationProject, trace))
     const networkTraceByEndpointKey = new Map<string, PresentedNetworkTrace>()
     const networkTracesByItemId = new Map<string, PresentedNetworkTrace[]>()
     const connectionDerivedById = new Map(
@@ -132,7 +181,7 @@ export function useTopologyQuery(project: ProjectState | null) {
       networkTraceByEndpointKey,
       networkTracesByItemId,
     }
-  }, [project, query.data])
+  }, [presentationProject, query.data])
 
   return {
     ...query,
@@ -145,14 +194,24 @@ export function useCompatibleTopologyDestinations(
   source: ConnectionEndpoint | null,
 ) {
   const domainEngine = useDomainEngine()
+  const topologyFingerprint = useMemo(
+    () => project ? createTopologyQueryFingerprint(project) : null,
+    [project],
+  )
   const revision = domainEngine.state.phase === 'ready'
     ? domainEngine.state.revision
     : null
   const sourceKey = source ? endpointKey(source) : null
   const query = useQuery({
-    queryKey: ['domain-engine-compatible-endpoints', project?.id ?? null, revision, sourceKey],
+    queryKey: [
+      'domain-engine-compatible-endpoints',
+      project?.id ?? null,
+      topologyFingerprint,
+      sourceKey,
+    ],
     enabled: domainEngine.enabled && project !== null && revision !== null && source !== null,
     staleTime: Number.POSITIVE_INFINITY,
+    placeholderData: (previousData) => previousData,
     queryFn: async () => {
       if (!project || !source) return []
       return getCompatibleTopologyDestinations(domainEngine.client, project, source)

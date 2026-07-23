@@ -928,6 +928,90 @@ function persistedEndpointFromEngine(endpoint, label) {
   }
 }
 
+function persistedPlacementFromEngine(placement, label) {
+  const itemType = placement?.item?.item_type
+  if (!TABLE_BY_TYPE[itemType]) {
+    throw new InventoryLifecycleError(`${label} uses an unsupported inventory type.`, {
+      code: 'invalid-engine-patch',
+      status: 500,
+    })
+  }
+  if (!Number.isFinite(placement?.x) || !Number.isFinite(placement?.y)) {
+    throw new InventoryLifecycleError(`${label} uses invalid coordinates.`, {
+      code: 'invalid-engine-patch',
+      status: 500,
+    })
+  }
+  return {
+    itemType,
+    itemId: assertRelationalId(placement.item.id, `${label}.item.id`),
+    x: placement.x,
+    y: placement.y,
+  }
+}
+
+function persistedItemRefFromEngine(item, label) {
+  if (!TABLE_BY_TYPE[item?.item_type]) {
+    throw new InventoryLifecycleError(`${label} uses an unsupported inventory type.`, {
+      code: 'invalid-engine-patch',
+      status: 500,
+    })
+  }
+  return {
+    itemType: item.item_type,
+    itemId: assertRelationalId(item.id, `${label}.id`),
+  }
+}
+
+function placementRefKey(placement) {
+  return `${placement.itemType}:${String(placement.itemId)}`
+}
+
+function placementPatchFromEngine(payload, label) {
+  const upsert = (payload?.upsert ?? []).map((placement, index) => (
+    persistedPlacementFromEngine(placement, `${label}.upsert[${String(index)}]`)
+  ))
+  const remove = (payload?.remove_items ?? []).map((item, index) => (
+    persistedItemRefFromEngine(item, `${label}.remove_items[${String(index)}]`)
+  ))
+  const keys = [...upsert.map(placementRefKey), ...remove.map(placementRefKey)]
+  if (keys.length === 0 || new Set(keys).size !== keys.length) {
+    throw new InventoryLifecycleError(`${label} must contain unique placement changes.`, {
+      code: 'invalid-engine-patch',
+      status: 500,
+    })
+  }
+  return { upsert, remove }
+}
+
+function assertPlacementInverseMatches(project, patch) {
+  if (patch?.kind === 'batch') {
+    for (const child of patch.payload?.patches ?? []) assertPlacementInverseMatches(project, child)
+    return
+  }
+  if (patch?.kind !== 'patch-placements') return
+
+  const inverse = placementPatchFromEngine(patch.payload, 'inverse placement patch')
+  const current = new Map((project.placements ?? []).map((placement) => [placementRefKey(placement), placement]))
+  for (const placement of inverse.upsert) {
+    const existing = current.get(placementRefKey(placement))
+    if (!existing || existing.x !== placement.x || existing.y !== placement.y) {
+      throw new InventoryLifecycleError('Placement patch does not match current project coordinates.', {
+        code: 'invalid-engine-patch',
+        status: 409,
+      })
+    }
+  }
+  for (const item of inverse.remove) {
+    if (current.has(placementRefKey(item))) {
+      throw new InventoryLifecycleError('Placement patch expected an inventory item to be unplaced.', {
+        code: 'invalid-engine-patch',
+        status: 409,
+      })
+    }
+  }
+}
+
 function persistedRouteFromEngine(route) {
   if (!route) return undefined
 
@@ -1103,6 +1187,21 @@ function applyEngineForwardPatch(project, forward) {
       })
     }
     return { ...project, connections }
+  }
+
+  if (forward?.kind === 'patch-placements') {
+    const patch = placementPatchFromEngine(forward.payload, 'placement patch')
+    const upsert = new Map(patch.upsert.map((placement) => [placementRefKey(placement), placement]))
+    const remove = new Set(patch.remove.map(placementRefKey))
+    const placements = (project.placements ?? []).flatMap((placement) => {
+      const key = placementRefKey(placement)
+      if (remove.has(key)) return []
+      const replacement = upsert.get(key)
+      if (replacement) upsert.delete(key)
+      return [replacement ?? placement]
+    })
+    placements.push(...upsert.values())
+    return { ...project, placements }
   }
 
   throw new InventoryLifecycleError(`Unsupported engine patch ${String(forward?.kind)}.`, {
@@ -1775,6 +1874,7 @@ export class HomelabInventoryStore {
       })
     }
 
+    assertPlacementInverseMatches(this.databases.project.data, patchSet.inverse)
     const previousProject = structuredClone(this.databases.project.data)
     const previousMeta = structuredClone(this.databases.meta.data)
     const updatedAt = new Date().toISOString()

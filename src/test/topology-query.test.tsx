@@ -4,7 +4,7 @@ import type { ReactNode } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 import type { DomainEngineClient } from '@/engine/client'
 import { DomainEngineContext } from '@/engine/react-context'
-import { useTopologyQuery } from '@/hooks/use-topology-query'
+import { createTopologyQueryFingerprint, useTopologyQuery } from '@/hooks/use-topology-query'
 import type { ProjectState } from '@/types/inventory'
 
 const project: ProjectState = {
@@ -18,6 +18,26 @@ const project: ProjectState = {
 }
 
 describe('topology query coordinator', () => {
+  it('ignores placement coordinates and project metadata but tracks placement membership', () => {
+    const placed = {
+      ...project,
+      placements: [{ serverId: 'server:1', x: 120, y: 240 }],
+    }
+    const moved = {
+      ...placed,
+      revision: 8,
+      metadata: { ...placed.metadata, name: 'Renamed', updatedAt: '2026-07-23T00:00:00.000Z' },
+      placements: [{ serverId: 'server:1', x: 108, y: 240 }],
+    }
+    const added = {
+      ...moved,
+      placements: [...moved.placements, { serverId: 'switch:1', x: 480, y: 120 }],
+    }
+
+    expect(createTopologyQueryFingerprint(moved)).toBe(createTopologyQueryFingerprint(placed))
+    expect(createTopologyQueryFingerprint(added)).not.toBe(createTopologyQueryFingerprint(placed))
+  })
+
   it('coalesces revision topology reads and does not repeat them for unrelated rerenders', async () => {
     const queryConsistent = vi.fn(async (request: { operation: { kind: string } }) => {
       if (request.operation.kind === 'topology-endpoints') {

@@ -72,6 +72,24 @@ describe('cable render stability', () => {
     expect(projectsEqualForCanvasNodes(first, endpointChanged)).toBe(false)
   })
 
+  it('keeps canvas node content stable when only placement coordinates change', () => {
+    const first = {
+      ...project(),
+      placements: [{ serverId: 'server:1', x: 120, y: 240 }],
+    }
+    const moved = {
+      ...first,
+      placements: [{ serverId: 'server:1', x: 108, y: 240 }],
+    }
+    const membershipChanged = {
+      ...first,
+      placements: [...first.placements, { serverId: 'switch:1', x: 480, y: 120 }],
+    }
+
+    expect(projectsEqualForCanvasNodes(first, moved)).toBe(true)
+    expect(projectsEqualForCanvasNodes(first, membershipChanged)).toBe(false)
+  })
+
   it('recognizes equal calculated routes and preserves equal item objects', () => {
     const route = {
       points: [{ x: 0, y: 0 }, { x: 24, y: 0 }],

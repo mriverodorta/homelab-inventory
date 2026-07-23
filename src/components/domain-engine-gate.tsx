@@ -1,9 +1,11 @@
-import type { ReactNode } from 'react'
+import { useRef, type ReactNode } from 'react'
 import { Button } from '@/components/ui/button'
 import { useDomainEngine } from '@/hooks/use-domain-engine'
 
 export function DomainEngineGate({ children }: { children: ReactNode }) {
   const { enabled, state, retry } = useDomainEngine()
+  const hasBeenReadyRef = useRef(false)
+  if (state.phase === 'ready') hasBeenReadyRef.current = true
   if (!enabled || state.phase === 'ready') return children
 
   const failed = state.phase === 'failed'
@@ -16,9 +18,8 @@ export function DomainEngineGate({ children }: { children: ReactNode }) {
         ? 'Browser not supported'
         : 'Loading workspace engine'
 
-  return (
-    <main className="grid h-dvh place-items-center bg-[#e8e2d8] px-6">
-      <section
+  const status = (
+    <section
         className="w-full max-w-md border border-[#cfc5b7] bg-[#f8f5ef] p-6 shadow-sm"
         role={failed || unsupported ? 'alert' : 'status'}
       >
@@ -33,6 +34,22 @@ export function DomainEngineGate({ children }: { children: ReactNode }) {
           <Button className="mt-5" onClick={() => void retry()}>Retry</Button>
         ) : null}
       </section>
+  )
+
+  if (hasBeenReadyRef.current) {
+    return (
+      <>
+        {children}
+        <div className="fixed inset-0 z-[2000] grid place-items-center bg-[#20242c]/20 px-6 backdrop-blur-[1px]">
+          {status}
+        </div>
+      </>
+    )
+  }
+
+  return (
+    <main className="grid h-dvh place-items-center bg-[#e8e2d8] px-6">
+      {status}
     </main>
   )
 }
