@@ -70,6 +70,28 @@ export type TopologyNetworkTrace = {
   complete: boolean
 }
 
+export type TopologyPowerFinding = {
+  id: string
+  code:
+    | 'power.host.missing-input'
+    | 'power.host.unpowered'
+    | 'power.monitor.unpowered'
+    | 'power.connection.stale-endpoint'
+    | 'power.connection.invalid-direction'
+    | 'power.connection.duplicate-input'
+    | 'power.connection.output-fan-out'
+    | 'power.connection.misclassified'
+  severity: 'warning' | 'error'
+  item: TopologyItemRef | null
+  connection_id: number | null
+  endpoint: TopologyEndpointRef | null
+}
+
+export type TopologyPowerTopology = {
+  endpoints: TopologyEndpointDescriptor[]
+  findings: TopologyPowerFinding[]
+}
+
 export type TopologySnapshot = {
   items: TopologyItem[]
   assignments: Array<{
@@ -208,6 +230,7 @@ export type EngineOperation =
       payload: { from: TopologyEndpointRef; to: TopologyEndpointRef }
     }
   | { kind: 'trace-network-path'; payload: { start: TopologyEndpointRef } }
+  | { kind: 'power-topology' }
   | {
       kind: 'create-connection'
       payload: { from: TopologyEndpointRef; to: TopologyEndpointRef; created_at: string }
@@ -369,6 +392,10 @@ export type EngineResponseBody =
   | {
       kind: 'network-trace'
       payload: { trace: TopologyNetworkTrace | null }
+    }
+  | {
+      kind: 'power-topology'
+      payload: { topology: TopologyPowerTopology }
     }
   | {
       kind: 'patch'

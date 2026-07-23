@@ -184,6 +184,22 @@ pub struct NetworkTrace {
     pub complete: bool,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PowerTopologyFinding {
+    pub id: String,
+    pub code: String,
+    pub severity: String,
+    pub item: Option<ItemRef>,
+    pub connection_id: Option<u32>,
+    pub endpoint: Option<EndpointRef>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PowerTopology {
+    pub endpoints: Vec<EndpointDescriptor>,
+    pub findings: Vec<PowerTopologyFinding>,
+}
+
 #[derive(Debug, Clone)]
 pub struct TopologyIndex {
     snapshot: TopologySnapshot,
@@ -236,10 +252,13 @@ impl TopologyIndex {
 
         for connection in &snapshot.connections {
             for endpoint in [&connection.from, &connection.to] {
-                let descriptor = endpoints
-                    .get_mut(endpoint)
-                    .ok_or(TopologyError::UnavailableEndpoint)?;
-                descriptor.connection_ids.push(connection.id);
+                if let Some(descriptor) = endpoints.get_mut(endpoint) {
+                    descriptor.connection_ids.push(connection.id);
+                } else if endpoint.hosted_item.is_none()
+                    && !exposes_direct_ports(&endpoint.item.item_type)
+                {
+                    return Err(TopologyError::UnavailableEndpoint);
+                }
             }
         }
         for descriptor in endpoints.values_mut() {
@@ -538,6 +557,161 @@ impl TopologyIndex {
         })
     }
 
+    #[must_use]
+    pub fn power_topology(&self) -> PowerTopology {
+        PowerTopology {
+            endpoints: self
+                .endpoints
+                .values()
+                .filter(|endpoint| endpoint.power.is_some())
+                .cloned()
+                .collect(),
+            findings: self.power_findings(),
+        }
+    }
+
+    fn power_findings(&self) -> Vec<PowerTopologyFinding> {
+        let mut findings = Vec::new();
+        let mut input_connections = BTreeMap::<EndpointRef, Vec<&TopologyConnection>>::new();
+        let mut output_connections = BTreeMap::<EndpointRef, Vec<&TopologyConnection>>::new();
+
+        for connection in &self.snapshot.connections {
+            let from = self
+                .endpoint(&connection.from)
+                .and_then(|endpoint| endpoint.power.as_ref());
+            let to = self
+                .endpoint(&connection.to)
+                .and_then(|endpoint| endpoint.power.as_ref());
+
+            if connection.connection_type != "power" {
+                if from.is_some() || to.is_some() {
+                    findings.push(power_connection_finding(
+                        "power.connection.misclassified",
+                        connection,
+                        None,
+                    ));
+                }
+                continue;
+            }
+
+            let (Some(from_power), Some(to_power)) = (from, to) else {
+                findings.push(power_connection_finding(
+                    "power.connection.stale-endpoint",
+                    connection,
+                    Some(if from.is_none() {
+                        connection.from.clone()
+                    } else {
+                        connection.to.clone()
+                    }),
+                ));
+                continue;
+            };
+
+            if from_power.direction != "output"
+                || to_power.direction != "input"
+                || connection.from.item == connection.to.item
+            {
+                findings.push(power_connection_finding(
+                    "power.connection.invalid-direction",
+                    connection,
+                    None,
+                ));
+                continue;
+            }
+
+            input_connections
+                .entry(connection.to.clone())
+                .or_default()
+                .push(connection);
+            output_connections
+                .entry(connection.from.clone())
+                .or_default()
+                .push(connection);
+        }
+
+        for connections in input_connections.values() {
+            for connection in connections.iter().skip(1) {
+                findings.push(power_connection_finding(
+                    "power.connection.duplicate-input",
+                    connection,
+                    Some(connection.to.clone()),
+                ));
+            }
+        }
+        for (endpoint, connections) in output_connections {
+            let allows_fan_out = self
+                .endpoint(&endpoint)
+                .and_then(|descriptor| descriptor.power.as_ref())
+                .is_some_and(|power| power.allow_fan_out);
+            if allows_fan_out {
+                continue;
+            }
+            for connection in connections.iter().skip(1) {
+                findings.push(power_connection_finding(
+                    "power.connection.output-fan-out",
+                    connection,
+                    Some(connection.from.clone()),
+                ));
+            }
+        }
+
+        for item in &self.placements {
+            let item_type = item.item_type.as_str();
+            if item_type == "monitor" {
+                if let Some(input) = self.power_input_for_host(item)
+                    && !self.power_input_is_connected(&input)
+                {
+                    findings.push(power_item_finding(
+                        "power.monitor.unpowered",
+                        item,
+                        Some(input),
+                    ));
+                }
+                continue;
+            }
+            if !matches!(item_type, "server" | "nas" | "pcBuild") {
+                continue;
+            }
+            let Some(input) = self.power_input_for_host(item) else {
+                findings.push(power_item_finding("power.host.missing-input", item, None));
+                continue;
+            };
+            if !self.power_input_is_connected(&input) {
+                findings.push(power_item_finding(
+                    "power.host.unpowered",
+                    item,
+                    Some(input),
+                ));
+            }
+        }
+
+        findings
+    }
+
+    fn power_input_for_host(&self, host: &ItemRef) -> Option<EndpointRef> {
+        self.endpoints
+            .values()
+            .find(|descriptor| {
+                descriptor.host == *host
+                    && descriptor
+                        .power
+                        .as_ref()
+                        .is_some_and(|power| power.direction == "input")
+            })
+            .map(|descriptor| descriptor.endpoint.clone())
+    }
+
+    fn power_input_is_connected(&self, input: &EndpointRef) -> bool {
+        self.snapshot.connections.iter().any(|connection| {
+            connection.connection_type == "power"
+                && connection.to == *input
+                && self
+                    .endpoint(&connection.from)
+                    .and_then(|descriptor| descriptor.power.as_ref())
+                    .is_some_and(|power| power.direction == "output")
+        })
+    }
+
     fn classify_connection(&self, from: &EndpointRef, to: &EndpointRef) -> String {
         let Some(from_descriptor) = self.endpoint(from) else {
             return "other".into();
@@ -618,6 +792,40 @@ impl TopologyIndex {
             endpoint_id: Some(peer.id),
             hosted_item: None,
         })
+    }
+}
+
+fn item_key(item: &ItemRef) -> String {
+    format!("{}:{}", item.item_type, item.id)
+}
+
+fn power_connection_finding(
+    code: &str,
+    connection: &TopologyConnection,
+    endpoint: Option<EndpointRef>,
+) -> PowerTopologyFinding {
+    PowerTopologyFinding {
+        id: format!("{code}:{}", connection.id),
+        code: code.into(),
+        severity: "error".into(),
+        item: None,
+        connection_id: Some(connection.id),
+        endpoint,
+    }
+}
+
+fn power_item_finding(
+    code: &str,
+    item: &ItemRef,
+    endpoint: Option<EndpointRef>,
+) -> PowerTopologyFinding {
+    PowerTopologyFinding {
+        id: format!("{code}:{}", item_key(item)),
+        code: code.into(),
+        severity: "warning".into(),
+        item: Some(item.clone()),
+        connection_id: None,
+        endpoint,
     }
 }
 
@@ -830,8 +1038,8 @@ impl TopologySnapshot {
                     TopologyError::DuplicateConnection
                 });
             }
-            validate_endpoint(self, &connection.from)?;
-            validate_endpoint(self, &connection.to)?;
+            validate_endpoint_reference(self, &connection.from)?;
+            validate_endpoint_reference(self, &connection.to)?;
             if connection.route.as_ref().is_some_and(|route| {
                 route
                     .bend_points
@@ -882,7 +1090,7 @@ fn validate_ports(item: &TopologyItem) -> Result<(), TopologyError> {
     Ok(())
 }
 
-fn validate_endpoint(
+fn validate_endpoint_reference(
     snapshot: &TopologySnapshot,
     endpoint: &EndpointRef,
 ) -> Result<(), TopologyError> {
@@ -900,29 +1108,12 @@ fn validate_endpoint(
     }) {
         return Err(TopologyError::InvalidHostedItem);
     }
-    let owner = snapshot
+    snapshot
         .items
         .iter()
         .find(|item| item.item == *owner_ref)
         .ok_or(TopologyError::MissingItem)?;
-    let port = owner
-        .ports
-        .iter()
-        .find(|port| port.id == endpoint.port_id)
-        .ok_or(TopologyError::InvalidPort)?;
-    match endpoint.endpoint_id {
-        Some(endpoint_id)
-            if port
-                .endpoints
-                .iter()
-                .any(|candidate| candidate.id == endpoint_id) =>
-        {
-            Ok(())
-        }
-        Some(_) => Err(TopologyError::InvalidPortEndpoint),
-        None if port.endpoints.is_empty() => Ok(()),
-        None => Err(TopologyError::InvalidPortEndpoint),
-    }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -946,6 +1137,46 @@ mod tests {
                 speed: Some("1G".into()),
                 endpoints: vec![],
             }],
+        }
+    }
+
+    fn power_item(item_type: &str, id: u32, port_id: u32, port_type: &str) -> TopologyItem {
+        TopologyItem {
+            item: ItemRef {
+                item_type: item_type.into(),
+                id,
+            },
+            archived: false,
+            power_configuration: None,
+            allow_outlet_fan_out: false,
+            ports: vec![TopologyPort {
+                id: port_id,
+                key: Some(
+                    if port_type == "ac-input" {
+                        "ac-input"
+                    } else {
+                        "outlet-1"
+                    }
+                    .into(),
+                ),
+                port_type: port_type.into(),
+                slot_number: 1,
+                speed: None,
+                endpoints: vec![],
+            }],
+        }
+    }
+
+    fn connection(id: u32, from: EndpointRef, to: EndpointRef) -> TopologyConnection {
+        TopologyConnection {
+            id,
+            from,
+            to,
+            connection_type: "power".into(),
+            negotiated_speed_mbps: None,
+            label: None,
+            route: None,
+            created_at: String::new(),
         }
     }
 
@@ -1605,6 +1836,182 @@ mod tests {
                 }],
                 complete: false,
             })
+        );
+    }
+
+    #[test]
+    fn derives_power_endpoints_and_placed_load_findings() {
+        let ups = power_item("ups", 1, 1, "ac-outlet");
+        let monitor = power_item("monitor", 1, 1, "ac-input");
+        let server = TopologyItem {
+            item: ItemRef {
+                item_type: "server".into(),
+                id: 1,
+            },
+            archived: false,
+            power_configuration: None,
+            allow_outlet_fan_out: false,
+            ports: vec![],
+        };
+        let adapter = power_item("powerAdapter", 1, 1, "ac-input");
+        let server_input = EndpointRef {
+            item: server.item.clone(),
+            hosted_item: Some(adapter.item.clone()),
+            port_id: 1,
+            endpoint_id: None,
+        };
+        let index = TopologyIndex::build(TopologySnapshot {
+            items: vec![
+                ups.clone(),
+                monitor.clone(),
+                server.clone(),
+                adapter.clone(),
+            ],
+            assignments: vec![TopologyAssignment {
+                id: 1,
+                host: server.item.clone(),
+                item: adapter.item,
+                component_type: "powerAdapter".into(),
+            }],
+            connections: vec![connection(
+                1,
+                EndpointRef {
+                    item: ups.item.clone(),
+                    hosted_item: None,
+                    port_id: 1,
+                    endpoint_id: None,
+                },
+                server_input.clone(),
+            )],
+            placements: vec![ups.item, monitor.item.clone(), server.item.clone()],
+        })
+        .unwrap();
+        let topology = index.power_topology();
+
+        assert_eq!(topology.endpoints.len(), 3);
+        assert_eq!(
+            topology
+                .findings
+                .iter()
+                .map(|finding| (finding.code.as_str(), finding.item.as_ref()))
+                .collect::<Vec<_>>(),
+            vec![("power.monitor.unpowered", Some(&monitor.item))]
+        );
+        assert!(
+            topology
+                .endpoints
+                .iter()
+                .any(|endpoint| endpoint.endpoint == server_input)
+        );
+    }
+
+    #[test]
+    fn reports_power_connection_integrity_findings_deterministically() {
+        let mut ups = power_item("ups", 1, 1, "ac-outlet");
+        ups.ports.push(TopologyPort {
+            id: 2,
+            key: Some("outlet-2".into()),
+            port_type: "ac-outlet".into(),
+            slot_number: 2,
+            speed: None,
+            endpoints: vec![],
+        });
+        let first_monitor = power_item("monitor", 1, 1, "ac-input");
+        let second_monitor = power_item("monitor", 2, 1, "ac-input");
+        let outlet = EndpointRef {
+            item: ups.item.clone(),
+            hosted_item: None,
+            port_id: 1,
+            endpoint_id: None,
+        };
+        let second_outlet = EndpointRef {
+            port_id: 2,
+            ..outlet.clone()
+        };
+        let first_input = EndpointRef {
+            item: first_monitor.item.clone(),
+            hosted_item: None,
+            port_id: 1,
+            endpoint_id: None,
+        };
+        let second_input = EndpointRef {
+            item: second_monitor.item.clone(),
+            ..first_input.clone()
+        };
+        let stale = EndpointRef {
+            port_id: 99,
+            ..outlet.clone()
+        };
+        let mut connections = vec![
+            connection(1, outlet.clone(), first_input.clone()),
+            connection(2, outlet.clone(), second_input.clone()),
+            connection(3, second_outlet, first_input.clone()),
+            connection(4, first_input.clone(), second_input.clone()),
+            connection(5, stale.clone(), second_input.clone()),
+            connection(6, outlet, second_input),
+        ];
+        connections[5].connection_type = "other".into();
+        let index = TopologyIndex::build(TopologySnapshot {
+            items: vec![ups, first_monitor, second_monitor],
+            assignments: vec![],
+            connections,
+            placements: vec![],
+        })
+        .unwrap();
+
+        let findings = index.power_topology().findings;
+        let codes = findings
+            .iter()
+            .map(|finding| finding.code.as_str())
+            .collect::<Vec<_>>();
+        assert!(codes.contains(&"power.connection.output-fan-out"));
+        assert!(codes.contains(&"power.connection.duplicate-input"));
+        assert!(codes.contains(&"power.connection.invalid-direction"));
+        assert!(codes.contains(&"power.connection.stale-endpoint"));
+        assert!(codes.contains(&"power.connection.misclassified"));
+        assert_eq!(
+            findings
+                .iter()
+                .find(|finding| finding.code == "power.connection.stale-endpoint")
+                .and_then(|finding| finding.endpoint.as_ref()),
+            Some(&stale)
+        );
+    }
+
+    #[test]
+    fn reports_missing_power_components_only_for_placed_hosts() {
+        let server = TopologyItem {
+            item: ItemRef {
+                item_type: "server".into(),
+                id: 1,
+            },
+            archived: false,
+            power_configuration: None,
+            allow_outlet_fan_out: false,
+            ports: vec![],
+        };
+        let spare = TopologyItem {
+            item: ItemRef {
+                item_type: "pcBuild".into(),
+                id: 1,
+            },
+            ..server.clone()
+        };
+        let index = TopologyIndex::build(TopologySnapshot {
+            items: vec![server.clone(), spare],
+            assignments: vec![],
+            connections: vec![],
+            placements: vec![server.item.clone()],
+        })
+        .unwrap();
+
+        assert_eq!(
+            index.power_topology().findings,
+            vec![power_item_finding(
+                "power.host.missing-input",
+                &server.item,
+                None,
+            )]
         );
     }
 }

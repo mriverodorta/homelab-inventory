@@ -40,6 +40,44 @@ export type RuntimeNetworkTrace = {
   complete: boolean
 }
 
+export type RuntimePowerEndpoint = {
+  endpoint: ConnectionEndpoint
+  direction: 'input' | 'output'
+  kind:
+    | 'ups-outlet'
+    | 'power-strip-outlet'
+    | 'power-strip-input'
+    | 'monitor-input'
+    | 'nas-internal-input'
+    | 'pc-power-supply-input'
+    | 'oem-power-adapter-input'
+  label: string
+  allowFanOut: boolean
+}
+
+export type RuntimePowerFinding = {
+  id: string
+  code:
+    | 'power.host.missing-input'
+    | 'power.host.unpowered'
+    | 'power.monitor.unpowered'
+    | 'power.connection.stale-endpoint'
+    | 'power.connection.invalid-direction'
+    | 'power.connection.duplicate-input'
+    | 'power.connection.output-fan-out'
+    | 'power.connection.misclassified'
+  severity: 'warning' | 'error'
+  message: string
+  itemId?: string
+  connectionId?: number
+  endpoint?: ConnectionEndpoint
+}
+
+export type RuntimePowerTopology = {
+  endpoints: RuntimePowerEndpoint[]
+  findings: RuntimePowerFinding[]
+}
+
 function topologyItemRef(project: ProjectState, runtimeKey: string): TopologyItemRef {
   const parsed = parseItemKey(runtimeKey)
   const item = project.items[runtimeKey]
@@ -106,6 +144,55 @@ function runtimeNetworkTrace(trace: TopologyNetworkTrace): RuntimeNetworkTrace {
       ...(step.connection_id === null ? {} : { connectionId: step.connection_id }),
     })),
     complete: trace.complete,
+  }
+}
+
+function powerEndpointLabel(
+  project: ProjectState,
+  descriptor: TopologyEndpointDescriptor,
+): string {
+  const hostKey = runtimeKey(descriptor.host)
+  const ownerKey = runtimeKey(descriptor.owner)
+  const host = project.items[hostKey]
+  const owner = project.items[ownerKey]
+  const port = owner?.ports?.find((candidate) => candidate.id === descriptor.endpoint.port_id)
+  if (descriptor.power?.direction === 'output') {
+    return `${host?.name ?? hostKey} / ${port?.label ?? `Outlet ${String(descriptor.slot_number)}`}`
+  }
+  if (hostKey !== ownerKey) {
+    return `${host?.name ?? hostKey} / ${owner?.name ?? ownerKey} / AC input`
+  }
+  return `${host?.name ?? hostKey} / AC input`
+}
+
+function powerFindingMessage(
+  project: ProjectState,
+  code: RuntimePowerFinding['code'],
+  itemId: string | undefined,
+  connectionId: number | undefined,
+): string {
+  const item = itemId ? project.items[itemId] : undefined
+  const connection = connectionId === undefined
+    ? undefined
+    : project.connections.find((candidate) => candidate.id === connectionId)
+  switch (code) {
+    case 'power.host.missing-input': {
+      const required = item?.type === 'pcBuild' ? 'power supply' : 'power adapter'
+      return `${item?.name ?? itemId ?? 'Placed host'} needs an assigned ${required} before it can be powered.`
+    }
+    case 'power.host.unpowered':
+    case 'power.monitor.unpowered':
+      return `${item?.name ?? itemId ?? 'Placed equipment'} is not connected to a power source.`
+    case 'power.connection.stale-endpoint':
+      return `Power connection ${String(connectionId)} references a missing endpoint.`
+    case 'power.connection.invalid-direction':
+      return `Power connection ${String(connectionId)} must run from an outlet to a different device's AC input.`
+    case 'power.connection.duplicate-input':
+      return `Power connection ${String(connectionId)} shares an AC input with another connection.`
+    case 'power.connection.output-fan-out':
+      return `Power connection ${String(connectionId)} shares an outlet that does not allow fan-out.`
+    case 'power.connection.misclassified':
+      return `Connection ${String(connectionId)} uses a power endpoint but is classified as ${connection?.type ?? 'other'}.`
   }
 }
 
@@ -200,6 +287,53 @@ export async function traceTopologyNetworkPath(
       ? response.result.payload.message
       : 'Network path could not be traced.',
   )
+}
+
+export async function getPowerTopology(
+  client: DomainEngineClient,
+  project: ProjectState,
+): Promise<RuntimePowerTopology> {
+  const response = await client.queryConsistent({
+    operation: { kind: 'power-topology' },
+  })
+
+  if (response.result.kind !== 'power-topology') {
+    throw new Error(
+      response.result.kind === 'error'
+        ? response.result.payload.message
+        : 'Power topology could not be loaded.',
+    )
+  }
+
+  return {
+    endpoints: response.result.payload.topology.endpoints.map((descriptor) => {
+      if (!descriptor.power) {
+        throw new Error('Power topology returned an endpoint without power metadata.')
+      }
+      return {
+        endpoint: fromTopologyEndpointRef(descriptor.endpoint),
+        direction: descriptor.power.direction as RuntimePowerEndpoint['direction'],
+        kind: descriptor.power.kind as RuntimePowerEndpoint['kind'],
+        label: powerEndpointLabel(project, descriptor),
+        allowFanOut: descriptor.power.allow_fan_out,
+      }
+    }),
+    findings: response.result.payload.topology.findings.map((finding) => {
+      const itemId = finding.item === null ? undefined : runtimeKey(finding.item)
+      const connectionId = finding.connection_id ?? undefined
+      return {
+        id: finding.id,
+        code: finding.code,
+        severity: finding.severity,
+        message: powerFindingMessage(project, finding.code, itemId, connectionId),
+        ...(itemId === undefined ? {} : { itemId }),
+        ...(connectionId === undefined ? {} : { connectionId }),
+        ...(finding.endpoint === null
+          ? {}
+          : { endpoint: fromTopologyEndpointRef(finding.endpoint) }),
+      }
+    }),
+  }
 }
 
 function topologyConnectionRoute(

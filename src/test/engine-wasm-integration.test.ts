@@ -395,6 +395,104 @@ describe('Rust WASM engine integration', () => {
     expect(runtime.destroy(handle)).toBe(true)
   })
 
+  it('derives power endpoints and findings through the real module', async () => {
+    const bytes = await fs.readFile(wasmPath)
+    const runtime = await WasmEngineRuntime.instantiate(bytes)
+    const upsRef = { item_type: 'ups', id: 1 }
+    const monitorRef = { item_type: 'monitor', id: 1 }
+    const handle = runtime.create(encodeEngineSnapshot({
+      revision: 5,
+      project_name: 'Power Lab',
+      topology: {
+        items: [
+          {
+            item: upsRef,
+            archived: false,
+            power_configuration: null,
+            allow_outlet_fan_out: false,
+            ports: [{
+              id: 1,
+              key: 'outlet-1',
+              port_type: 'ac-outlet',
+              slot_number: 1,
+              speed: null,
+              endpoints: [],
+            }],
+          },
+          {
+            item: monitorRef,
+            archived: false,
+            power_configuration: null,
+            allow_outlet_fan_out: false,
+            ports: [{
+              id: 1,
+              key: 'ac-input',
+              port_type: 'ac-input',
+              slot_number: 1,
+              speed: null,
+              endpoints: [],
+            }],
+          },
+        ],
+        assignments: [],
+        connections: [{
+          id: 1,
+          from: {
+            item: upsRef,
+            hosted_item: null,
+            port_id: 99,
+            endpoint_id: null,
+          },
+          to: {
+            item: monitorRef,
+            hosted_item: null,
+            port_id: 1,
+            endpoint_id: null,
+          },
+          connection_type: 'power',
+          negotiated_speed_mbps: null,
+          label: null,
+          route: null,
+          created_at: '2026-01-01T00:00:00.000Z',
+        }],
+        placements: [upsRef, monitorRef],
+      },
+    }))
+    expect(handle).toBeGreaterThan(0)
+
+    const response = decodeEngineResponse(runtime.dispatch(handle, encodeEngineRequest({
+      protocol_version: 1,
+      request_id: 7,
+      base_revision: 5,
+      operation: { kind: 'power-topology' },
+    })))
+    expect(response.result.kind).toBe('power-topology')
+    if (response.result.kind === 'power-topology') {
+      expect(response.result.payload.topology.endpoints).toEqual(expect.arrayContaining([
+        expect.objectContaining({
+          endpoint: {
+            item: upsRef,
+            hosted_item: null,
+            port_id: 1,
+            endpoint_id: null,
+          },
+          power: expect.objectContaining({ direction: 'output', kind: 'ups-outlet' }),
+        }),
+      ]))
+      expect(response.result.payload.topology.findings).toEqual(expect.arrayContaining([
+        expect.objectContaining({
+          code: 'power.connection.stale-endpoint',
+          connection_id: 1,
+        }),
+        expect.objectContaining({
+          code: 'power.monitor.unpowered',
+          item: monitorRef,
+        }),
+      ]))
+    }
+    expect(runtime.destroy(handle)).toBe(true)
+  })
+
   it('indexes geometry and answers placement queries through the real module', async () => {
     const bytes = await fs.readFile(wasmPath)
     const runtime = await WasmEngineRuntime.instantiate(bytes)

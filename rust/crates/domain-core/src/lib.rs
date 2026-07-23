@@ -3,9 +3,10 @@ use std::collections::{BTreeMap, BTreeSet};
 use homelab_engine_protocol::{
     ArrangementResult, CommandPatchSet, EngineError, EngineRequest, EngineResponse, EngineSnapshot,
     EngineStatus, GeometryHandle, GeometryUpdateResult, NearestPlacementResult, NetworkTraceResult,
-    Operation, PROTOCOL_VERSION, PlacementCheckResult, ProjectPatch, ResponseBody, RouteDefinition,
-    RouteEdit, RouteEditResult, RouteResult, RoutesUpdateResult, TopologyConnection,
-    TopologyConnectionRoute, TopologyEndpointResult, TopologyError, TopologySnapshot,
+    Operation, PROTOCOL_VERSION, PlacementCheckResult, PowerTopologyResult, ProjectPatch,
+    ResponseBody, RouteDefinition, RouteEdit, RouteEditResult, RouteResult, RoutesUpdateResult,
+    TopologyConnection, TopologyConnectionRoute, TopologyEndpointResult, TopologyError,
+    TopologySnapshot,
 };
 use homelab_geometry::{GeometryError, GeometryNode, SpatialIndex, arrange_items};
 use homelab_routing::{
@@ -126,6 +127,9 @@ impl Engine {
                     trace: self.topology.trace_network_path(&start),
                 })
             }
+            Operation::PowerTopology => ResponseBody::PowerTopology(PowerTopologyResult {
+                topology: self.topology.power_topology(),
+            }),
             Operation::CreateConnection {
                 from,
                 to,

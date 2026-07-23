@@ -3,6 +3,7 @@ import {
   fromTopologyEndpointRef,
   createTopologyConnection,
   getCompatibleTopologyDestinations,
+  getPowerTopology,
   getTopologyEndpoints,
   toTopologyEndpointRef,
   removeTopologyConnection,
@@ -206,6 +207,105 @@ describe('WASM topology adapter', () => {
         },
       ],
       complete: true,
+    })
+  })
+
+  it('adds presentation labels and messages to numeric power topology results', async () => {
+    const powerProject = {
+      ...project,
+      items: {
+        ...project.items,
+        'ups:1': {
+          id: 1,
+          type: 'ups',
+          name: 'Rack UPS',
+          specs: {},
+          ports: [{
+            id: 1,
+            kind: 'power-port',
+            type: 'ac-outlet',
+            slotNumber: 1,
+            label: 'Battery 01',
+          }],
+        },
+        'monitor:1': {
+          id: 1,
+          type: 'monitor',
+          name: 'Main display',
+          specs: {},
+          ports: [{
+            id: 1,
+            key: 'ac-input',
+            kind: 'power-port',
+            type: 'ac-input',
+            slotNumber: 1,
+          }],
+        },
+      },
+    } as ProjectState
+    const client = {
+      queryConsistent: vi.fn().mockResolvedValue({
+        result: {
+          kind: 'power-topology',
+          payload: {
+            topology: {
+              endpoints: [{
+                endpoint: {
+                  item: { item_type: 'ups', id: 1 },
+                  hosted_item: null,
+                  port_id: 1,
+                  endpoint_id: null,
+                },
+                host: { item_type: 'ups', id: 1 },
+                owner: { item_type: 'ups', id: 1 },
+                port_type: 'ac-outlet',
+                slot_number: 1,
+                side: null,
+                speed: null,
+                connection_ids: [],
+                placed: true,
+                available: true,
+                power: {
+                  direction: 'output',
+                  kind: 'ups-outlet',
+                  allow_fan_out: false,
+                },
+              }],
+              findings: [{
+                id: 'power.monitor.unpowered:monitor:1',
+                code: 'power.monitor.unpowered',
+                severity: 'warning',
+                item: { item_type: 'monitor', id: 1 },
+                connection_id: null,
+                endpoint: {
+                  item: { item_type: 'monitor', id: 1 },
+                  hosted_item: null,
+                  port_id: 1,
+                  endpoint_id: null,
+                },
+              }],
+            },
+          },
+        },
+      }),
+    } as unknown as DomainEngineClient
+
+    await expect(getPowerTopology(client, powerProject)).resolves.toEqual({
+      endpoints: [{
+        endpoint: { itemId: 'ups:1', portId: 1 },
+        direction: 'output',
+        kind: 'ups-outlet',
+        label: 'Rack UPS / Battery 01',
+        allowFanOut: false,
+      }],
+      findings: [{
+        id: 'power.monitor.unpowered:monitor:1',
+        code: 'power.monitor.unpowered',
+        severity: 'warning',
+        message: 'Main display is not connected to a power source.',
+        itemId: 'monitor:1',
+        endpoint: { itemId: 'monitor:1', portId: 1 },
+      }],
     })
   })
 
