@@ -130,10 +130,16 @@ export class DemoSessionManager {
       existing.lastSeenAt = nowIso()
       await this.saveIndex()
 
-      return {
-        sessionId: existing.id,
-        session: existing,
-        store: await this.openStore(existing),
+      try {
+        return {
+          sessionId: existing.id,
+          session: existing,
+          store: await this.openStore(existing),
+        }
+      } catch {
+        // Demo sessions are disposable. Rebuild stale sandboxes created by an
+        // older sanitizer instead of leaving the visitor on a broken session.
+        await this.expireSession(existing.id)
       }
     }
 

@@ -229,6 +229,7 @@ describe('demo data sanitizer', () => {
       },
       extension: { retained: true },
     })
+    expect(Object.keys(inventory).sort()).toEqual(Object.keys(inventoryTables()).sort())
     expect(project.assignments[0].allocation).toEqual({
       resourceType: 'storage',
       groupId: 'm2-1',
@@ -547,5 +548,33 @@ describe('DemoSessionManager', () => {
     })
 
     await expect(manager.init()).rejects.toThrow('Inventory store is missing a cpus array.')
+  })
+
+  it('rebuilds a stale existing session that is missing current inventory tables', async () => {
+    const sourceDir = await createSourceData()
+    const dataDir = await makeTempDir()
+    const manager = createManager({
+      appVersion: '0.1.11',
+      dataDir,
+      sourceDir,
+      sessionMinutes: 30,
+      maxSessions: 100,
+      saveDebounceMs: 1,
+    })
+
+    await manager.init()
+    const first = await manager.getOrCreateSessionStore(null)
+    await manager.flushAll()
+    manager.stores.delete(first.sessionId)
+
+    const inventoryPath = path.join(first.session.dataDir, 'stores', 'inventory.json')
+    const inventory = await readJson(inventoryPath)
+    delete inventory.pcBuilds
+    await writeJson(inventoryPath, inventory)
+
+    const rebuilt = await manager.getOrCreateSessionStore(first.sessionId)
+
+    expect(rebuilt.sessionId).not.toBe(first.sessionId)
+    expect((await readJson(path.join(rebuilt.session.dataDir, 'stores', 'inventory.json'))).pcBuilds).toEqual([])
   })
 })

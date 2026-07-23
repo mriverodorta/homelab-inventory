@@ -3,14 +3,25 @@ import path from 'node:path'
 
 const INVENTORY_TABLES = [
   'servers',
+  'pcBuilds',
   'cpus',
   'ram',
   'storage',
   'networkCards',
   'gpus',
+  'motherboards',
+  'cpuCoolers',
+  'cases',
+  'powerSupplies',
+  'soundCards',
+  'wirelessCards',
+  'powerAdapters',
   'nas',
   'switches',
   'patchPanels',
+  'monitors',
+  'upsSystems',
+  'powerStrips',
 ]
 
 const PRIVATE_BLANK_KEY_PATTERNS = [
