@@ -2,7 +2,7 @@ import { isHostCompatibilityEnabled, planHostAllocations } from '@/lib/compatibi
 import { isAssignableComponentType } from '@/lib/inventory-capabilities'
 import type { ProjectCompatibilityResult } from '@/lib/compatibility'
 import { nextNumericId } from '@/lib/ids'
-import { isArchivedItem, placementCollides, touchProject } from '@/lib/project'
+import { isArchivedItem, touchProject } from '@/lib/project'
 import {
   allocatePcBuildAssignment,
   canRemovePcBuildAssignment,
@@ -101,31 +101,6 @@ export function findAssignmentById(
     (assignment) => String(assignment.id) === String(assignmentId),
   )
   return normalized.length === 1 ? normalized[0] : undefined
-}
-
-export function getAssignedComponentDropGeometryError(
-  originalProject: ProjectState,
-  candidateProject: ProjectState,
-  assignment: ComponentAssignment,
-  targetServerId: string,
-): string | null {
-  if (candidateProject === originalProject || assignment.serverId === targetServerId) {
-    return null
-  }
-
-  const targetPlacement = candidateProject.placements.find(
-    (placement) => placement.serverId === targetServerId,
-  )
-  const sourcePlacement = candidateProject.placements.find(
-    (placement) => placement.serverId === assignment.serverId,
-  )
-
-  return (
-    (targetPlacement && placementCollides(candidateProject, targetPlacement)) ||
-    (sourcePlacement && placementCollides(candidateProject, sourcePlacement))
-  )
-    ? 'This server needs more open space before moving that component.'
-    : null
 }
 
 function compatibilityFingerprint(

@@ -48,6 +48,19 @@ class FakeWorker implements WorkerLike {
             inverse: { kind: 'set-project-name', payload: { name: 'Lab' } },
           },
         }
+      } else if (
+        request.operation.kind === 'replace-geometry'
+        || request.operation.kind === 'update-geometry'
+      ) {
+        result = {
+          kind: 'geometry-updated',
+          payload: { geometry_revision: 1 },
+        }
+      } else if (request.operation.kind === 'check-placement') {
+        result = {
+          kind: 'placement-check',
+          payload: { valid: true, colliding_item_ids: [] },
+        }
       } else {
         result = {
           kind: 'status',
@@ -277,5 +290,41 @@ describe('DomainEngineClient', () => {
 
     await expect(starting).rejects.toThrow(/disposed|replaced/u)
     expect(worker.terminated).toBe(true)
+  })
+
+  it('orders consistent geometry reads after transient updates', async () => {
+    const worker = new FakeWorker()
+    const client = new DomainEngineClient({ api: api(), workerFactory: () => worker })
+    await client.start()
+
+    const synchronization = client.transient({
+      operation: {
+        kind: 'replace-geometry',
+        payload: {
+          nodes: [{
+            item_id: 'server:1',
+            bounds: { x: 0, y: 0, width: 100, height: 100 },
+          }],
+          handles: [],
+        },
+      },
+    })
+    const validation = client.queryConsistent({
+      operation: {
+        kind: 'check-placement',
+        payload: {
+          item_id: 'server:2',
+          bounds: { x: 120, y: 0, width: 100, height: 100 },
+          exclude_item_ids: [],
+        },
+      },
+    })
+
+    await Promise.all([synchronization, validation])
+    expect(worker.requests.slice(-2).map((request) => request.operation.kind)).toEqual([
+      'replace-geometry',
+      'check-placement',
+    ])
+    client.dispose()
   })
 })

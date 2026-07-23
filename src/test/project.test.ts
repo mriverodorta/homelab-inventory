@@ -9,20 +9,15 @@ import {
 import { mergeInventoryWithProject } from '@/lib/inventory'
 import {
   applyInventoryItemInput,
-  autoArrangeCanvasItems,
   createConnection,
   getCanvasItemHeight,
   getCanvasItemWidth,
-  getNonCollidingPlacement,
   getReturnCanvasItemImpact,
   MONITOR_CARD_WIDTH,
   PC_BUILD_CARD_WIDTH,
-  placementCollides,
-  placementsCollide,
   POWER_EQUIPMENT_CARD_WIDTH,
   returnCanvasItemToInventory,
   removeConnection,
-  SERVER_CARD_COLLISION_GAP,
   SERVER_CARD_WIDTH,
   updateConnectionLabel,
   updateConnectionRoute,
@@ -422,91 +417,6 @@ describe('inventory item input updates', () => {
   })
 })
 
-describe('server placement collisions', () => {
-  it('rejects overlapping server placements', () => {
-    const project = upsertPlacement(mergeInventoryWithProject(inventory, null), {
-      serverId: 'server:1',
-      x: 0,
-      y: 0,
-    })
-
-    expect(getNonCollidingPlacement(project, { serverId: 'server:2', x: 96, y: 48 })).toBeNull()
-  })
-
-  it('allows separated server placements', () => {
-    const project = upsertPlacement(mergeInventoryWithProject(inventory, null), {
-      serverId: 'server:1',
-      x: 0,
-      y: 0,
-    })
-    const nextPlacement = {
-      serverId: 'server:2',
-      x: SERVER_CARD_WIDTH + SERVER_CARD_COLLISION_GAP,
-      y: 0,
-    }
-
-    expect(getNonCollidingPlacement(project, nextPlacement)).toEqual(nextPlacement)
-  })
-
-  it('ignores a server colliding with its own saved placement while moving', () => {
-    const project = upsertPlacement(mergeInventoryWithProject(inventory, null), {
-      serverId: 'server:1',
-      x: 0,
-      y: 0,
-    })
-
-    expect(placementCollides(project, { serverId: 'server:1', x: 48, y: 48 })).toBe(false)
-  })
-
-  it('detects collisions caused by a server growing after component assignment', () => {
-    const project = upsertPlacement(
-      upsertPlacement(mergeInventoryWithProject(inventory, null), {
-        serverId: 'server:1',
-        x: 0,
-        y: 0,
-      }),
-      {
-        serverId: 'server:2',
-        x: 0,
-        y: 208,
-      },
-    )
-    const expandedProject = assignComponent(project, 'server:1', 'gpu:1')
-    const expandedPlacement = expandedProject.placements.find(
-      (placement) => placement.serverId === 'server:1',
-    )
-
-    expect(expandedPlacement).toBeDefined()
-    expect(placementCollides(expandedProject, expandedPlacement!)).toBe(true)
-  })
-
-  it('allows a selected group to move together without colliding with its own old positions', () => {
-    const project = upsertPlacements(mergeInventoryWithProject(inventory, null), [
-      { serverId: 'server:1', x: 0, y: 0 },
-      { serverId: 'server:2', x: SERVER_CARD_WIDTH + SERVER_CARD_COLLISION_GAP, y: 0 },
-    ])
-    const movedPlacements = [
-      { serverId: 'server:1', x: 0, y: 24 },
-      { serverId: 'server:2', x: SERVER_CARD_WIDTH + SERVER_CARD_COLLISION_GAP, y: 24 },
-    ]
-
-    expect(placementsCollide(project, movedPlacements)).toBe(false)
-  })
-
-  it('rejects a selected group move that intersects a non-selected canvas item', () => {
-    const project = upsertPlacements(mergeInventoryWithProject(inventory, null), [
-      { serverId: 'server:1', x: 0, y: 0 },
-      { serverId: 'server:2', x: SERVER_CARD_WIDTH + SERVER_CARD_COLLISION_GAP, y: 0 },
-      { serverId: 'switch:1', x: 0, y: 220 },
-    ])
-
-    expect(placementsCollide(project, [
-      { serverId: 'server:1', x: 0, y: 180 },
-      { serverId: 'server:2', x: SERVER_CARD_WIDTH + SERVER_CARD_COLLISION_GAP, y: 180 },
-    ])).toBe(true)
-  })
-})
-
 describe('canvas item geometry', () => {
   it('sizes switches and patch panels from visible physical ports', () => {
     const project = mergeInventoryWithProject(inventory, null)
@@ -695,113 +605,6 @@ describe('canvas item geometry', () => {
     expect(getCanvasItemHeight(project, 'ups:1')).toBeGreaterThan(0)
   })
 
-  it('prevents overlap using the new equipment dimensions', () => {
-    const project = upsertPlacement(
-      mergeInventoryWithProject(newCanvasEquipmentInventory, null),
-      { serverId: 'pcBuild:1', x: 0, y: 0 },
-    )
-
-    expect(placementCollides(project, {
-      serverId: 'monitor:1',
-      x: PC_BUILD_CARD_WIDTH + SERVER_CARD_COLLISION_GAP - 1,
-      y: 0,
-    })).toBe(true)
-    expect(placementCollides(project, {
-      serverId: 'monitor:1',
-      x: PC_BUILD_CARD_WIDTH + SERVER_CARD_COLLISION_GAP,
-      y: 0,
-    })).toBe(false)
-  })
-
-  it('uses vertical dimensions when rejecting power-equipment overlap', () => {
-    const base = mergeInventoryWithProject(newCanvasEquipmentInventory, null)
-    const vertical: ProjectState = {
-      ...base,
-      items: {
-        ...base.items,
-        'powerStrip:1': {
-          ...base.items['powerStrip:1'],
-          properties: { canvasOrientation: 'vertical' },
-        },
-      },
-      placements: [{ serverId: 'powerStrip:1', x: 0, y: 0 }],
-    }
-
-    expect(placementCollides(vertical, {
-      serverId: 'monitor:1',
-      x: VERTICAL_POWER_STRIP_CARD_WIDTH + SERVER_CARD_COLLISION_GAP - 1,
-      y: 0,
-    })).toBe(true)
-    expect(placementCollides(vertical, {
-      serverId: 'monitor:1',
-      x: VERTICAL_POWER_STRIP_CARD_WIDTH + SERVER_CARD_COLLISION_GAP,
-      y: 0,
-    })).toBe(false)
-  })
-})
-
-describe('canvas auto arrange', () => {
-  it('places canvas equipment into server, patch panel, and switch columns', () => {
-    const project = {
-      ...mergeInventoryWithProject(inventory, null),
-      placements: [
-        { serverId: 'switch:1', x: 24, y: 48 },
-        { serverId: 'server:1', x: 720, y: 96 },
-        { serverId: 'patchPanel:1', x: 360, y: 144 },
-      ],
-    }
-    const arranged = autoArrangeCanvasItems(project)
-
-    expect(arranged.placements).toEqual([
-      { serverId: 'server:1', x: 0, y: 0 },
-      { serverId: 'patchPanel:1', x: 360, y: 0 },
-      { serverId: 'switch:1', x: 1320, y: 0 },
-    ])
-  })
-
-  it('arranges PC builds with hosts and stacks standalone equipment without overlap', () => {
-    const project: ProjectState = {
-      ...mergeInventoryWithProject(newCanvasEquipmentInventory, null),
-      placements: [
-        { serverId: 'ups:1', x: 0, y: 0 },
-        { serverId: 'pcBuild:1', x: 0, y: 0 },
-        { serverId: 'monitor:1', x: 0, y: 0 },
-        { serverId: 'powerStrip:1', x: 0, y: 0 },
-      ],
-    }
-    const arranged = autoArrangeCanvasItems(project)
-    const pcBuildPlacement = arranged.placements.find(
-      (placement) => placement.serverId === 'pcBuild:1',
-    )
-    const standalonePlacements = arranged.placements.filter(
-      (placement) => placement.serverId !== 'pcBuild:1',
-    )
-
-    expect(pcBuildPlacement?.x).toBe(0)
-    expect(new Set(standalonePlacements.map((placement) => placement.x)).size).toBe(1)
-    expect(placementsCollide(arranged, arranged.placements)).toBe(false)
-  })
-
-  it('auto-arranges mixed power-equipment orientations without overlap', () => {
-    const base = mergeInventoryWithProject(newCanvasEquipmentInventory, null)
-    const project: ProjectState = {
-      ...base,
-      items: {
-        ...base.items,
-        'ups:1': {
-          ...base.items['ups:1'],
-          properties: { canvasOrientation: 'vertical' },
-        },
-      },
-      placements: [
-        { serverId: 'ups:1', x: 0, y: 0 },
-        { serverId: 'powerStrip:1', x: 0, y: 0 },
-      ],
-    }
-    const arranged = autoArrangeCanvasItems(project)
-
-    expect(placementsCollide(arranged, arranged.placements)).toBe(false)
-  })
 })
 
 describe('inventory connections', () => {
@@ -999,7 +802,6 @@ describe('archived inventory domain guards', () => {
     const archivedPlacement = { serverId: 'server:1', x: 0, y: 0 }
     const activePlacement = { serverId: 'server:2', x: 400, y: 0 }
 
-    expect(getNonCollidingPlacement(base, archivedPlacement)).toBeNull()
     expect(upsertPlacement(base, archivedPlacement)).toBe(base)
     expect(upsertPlacements(base, [activePlacement, archivedPlacement])).toBe(base)
   })

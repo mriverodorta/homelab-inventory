@@ -1,11 +1,11 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use homelab_engine_protocol::{
-    CommandPatchSet, EngineError, EngineRequest, EngineResponse, EngineSnapshot, EngineStatus,
-    GeometryHandle, GeometryUpdateResult, NearestPlacementResult, Operation, PROTOCOL_VERSION,
-    PlacementCheckResult, ProjectPatch, ResponseBody,
+    ArrangementResult, CommandPatchSet, EngineError, EngineRequest, EngineResponse, EngineSnapshot,
+    EngineStatus, GeometryHandle, GeometryUpdateResult, NearestPlacementResult, Operation,
+    PROTOCOL_VERSION, PlacementCheckResult, ProjectPatch, ResponseBody,
 };
-use homelab_geometry::{GeometryError, GeometryNode, SpatialIndex};
+use homelab_geometry::{GeometryError, GeometryNode, SpatialIndex, arrange_items};
 
 #[derive(Debug, Clone)]
 pub struct Engine {
@@ -138,6 +138,15 @@ impl Engine {
                 .nearest_valid(&item_id, preferred, clearance, step, max_rings)
             {
                 Ok(bounds) => ResponseBody::NearestPlacement(NearestPlacementResult { bounds }),
+                Err(error) => geometry_error(error),
+            },
+            Operation::ArrangeItems {
+                items,
+                grid_size,
+                column_gap,
+                item_gap,
+            } => match arrange_items(&items, grid_size, column_gap, item_gap) {
+                Ok(nodes) => ResponseBody::Arrangement(ArrangementResult { nodes }),
                 Err(error) => geometry_error(error),
             },
         };

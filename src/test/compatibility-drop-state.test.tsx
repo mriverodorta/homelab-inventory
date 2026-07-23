@@ -263,7 +263,7 @@ describe('compatibility drop-state evaluation', () => {
     }, target.key!)).toBe('incompatible')
   })
 
-  it('rejects an inventory drop when target card growth would collide', () => {
+  it('defers inventory-drop geometry checks to the domain worker', () => {
     const target = host('server:1')
     const neighbor = host('server:2')
     const installed = storage('storage:1')
@@ -281,10 +281,10 @@ describe('compatibility drop-state evaluation', () => {
     expect(getComponentDropCompatibilityStatus(currentProject, {
       kind: 'inventory',
       itemId: candidate.key!,
-    }, target.key!)).toBe('incompatible')
+    }, target.key!)).toBe('unknown')
   })
 
-  it('rejects an assigned drop when target card growth would collide', () => {
+  it('defers assigned-drop geometry checks to the domain worker', () => {
     const source = host('server:1')
     const target = host('server:2')
     const neighbor = host('server:3')
@@ -307,7 +307,7 @@ describe('compatibility drop-state evaluation', () => {
       assignmentId: movingAssignment.id,
       itemId: moving.key!,
       sourceServerId: source.key!,
-    }, target.key!)).toBe('incompatible')
+    }, target.key!)).toBe('unknown')
   })
 
   it('evaluates the complete occupied CPU swap across both hosts', () => {

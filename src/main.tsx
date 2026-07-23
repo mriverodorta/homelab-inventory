@@ -7,12 +7,10 @@ import { DomainEngineGate } from './components/domain-engine-gate.tsx'
 import { DomainEngineProvider } from './components/domain-engine-provider.tsx'
 import { queryClient } from './lib/query-client.ts'
 
-const domainEngineRequired = import.meta.env.VITE_DOMAIN_ENGINE === 'required'
-
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <QueryClientProvider client={queryClient}>
-      <DomainEngineProvider enabled={domainEngineRequired}>
+      <DomainEngineProvider enabled>
         <DomainEngineGate>
           <App />
         </DomainEngineGate>

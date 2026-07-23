@@ -24,6 +24,14 @@ export type GeometryHandle = {
   side: 'left' | 'right' | 'top' | 'bottom'
 }
 
+export type ArrangementItem = {
+  item_id: string
+  name: string
+  column: number
+  width: number
+  height: number
+}
+
 export type EngineOperation =
   | { kind: 'status' }
   | { kind: 'update-project-metadata'; payload: { name: string } }
@@ -55,6 +63,15 @@ export type EngineOperation =
         max_rings: number
       }
     }
+  | {
+      kind: 'arrange-items'
+      payload: {
+        items: ArrangementItem[]
+        grid_size: number
+        column_gap: number
+        item_gap: number
+      }
+    }
 
 export type EngineRequest = {
   protocol_version: 1
@@ -83,6 +100,7 @@ export type EngineResponseBody =
       payload: { valid: boolean; colliding_item_ids: string[] }
     }
   | { kind: 'nearest-placement'; payload: { bounds: GeometryRect | null } }
+  | { kind: 'arrangement'; payload: { nodes: GeometryNode[] } }
   | { kind: 'error'; payload: { code: string; message: string } }
 
 export type EngineResponse = {

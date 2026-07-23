@@ -1,6 +1,8 @@
 use serde::{Deserialize, Serialize};
 
-pub use homelab_geometry::{GeometryHandle, GeometryNode, Point, Rect, Segment, Side};
+pub use homelab_geometry::{
+    ArrangementItem, GeometryHandle, GeometryNode, Point, Rect, Segment, Side,
+};
 
 pub const PROTOCOL_VERSION: u16 = 1;
 
@@ -50,6 +52,12 @@ pub enum Operation {
         step: f64,
         max_rings: u16,
     },
+    ArrangeItems {
+        items: Vec<ArrangementItem>,
+        grid_size: f64,
+        column_gap: f64,
+        item_gap: f64,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -68,6 +76,7 @@ pub enum ResponseBody {
     GeometryUpdated(GeometryUpdateResult),
     PlacementCheck(PlacementCheckResult),
     NearestPlacement(NearestPlacementResult),
+    Arrangement(ArrangementResult),
     Error(EngineError),
 }
 
@@ -92,6 +101,11 @@ pub struct PlacementCheckResult {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct NearestPlacementResult {
     pub bounds: Option<Rect>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ArrangementResult {
+    pub nodes: Vec<GeometryNode>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

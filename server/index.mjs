@@ -175,14 +175,12 @@ registerUpdateRoutes(app, {
 registerInventoryRoutes(app, { withStore })
 registerProjectRoutes(app, { withStore })
 
-if (process.env.HOMELAB_ENGINE_WASM === 'required') {
-  const engineRuntime = await ServerEngineRuntime.create()
-  registerEngineRoutes(app, {
-    withStore,
-    commandService: new EngineCommandService(engineRuntime),
-    sseHub: new EngineSseHub(),
-  })
-}
+const engineRuntime = await ServerEngineRuntime.create()
+registerEngineRoutes(app, {
+  withStore,
+  commandService: new EngineCommandService(engineRuntime),
+  sseHub: new EngineSseHub(),
+})
 
 startUpdateCheckSchedule({
   checker: updateChecker,

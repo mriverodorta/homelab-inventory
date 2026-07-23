@@ -13,6 +13,9 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 - Added schema 13 migration and validation for monotonic project revisions, including automatic pre-migration backups.
 - Added an optimized multi-stage Rust/WASM Docker build while keeping Rust tools, source, tests, development data, and generated build trees out of the distroless runtime image.
 - Added Rust formatting, clippy, unit tests, WASM packaging checks, and non-blocking engine benchmark artifacts to CI.
+- Moved canvas collision checks, group movement validation, nearest placement, and auto-arrangement into the shared Rust/WASM worker.
+- Added a transient indexed geometry revision so canvas calculations remain deterministic without creating persisted project revisions or undo entries.
+- Required the domain engine for browser and server runtimes and removed the duplicate TypeScript placement and arrangement implementations.
 - Added obstacle-aware shortest-path routing for network, display, and power cables while allowing cable crossings and shared lanes.
 - Added double-click cable anchors, individual bend removal, Reset route, and Undo/Redo support for manual routing changes.
 - Added browser-local cable and canvas-item snapping preferences, disabled by default, using 12 px cable lanes and the 24 px item grid.

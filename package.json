@@ -19,7 +19,8 @@
   "scripts": {
     "build:wasm": "bun scripts/build-wasm.mjs",
     "check:wasm": "cargo test --manifest-path rust/Cargo.toml --workspace",
-    "dev": "bun server/index.mjs",
+    "dev": "bun scripts/dev-wasm.mjs",
+    "dev:server": "bun server/index.mjs",
     "dev:wasm": "bun scripts/dev-wasm.mjs",
     "dev:vite": "vite",
     "build": "tsc -b && vite build",

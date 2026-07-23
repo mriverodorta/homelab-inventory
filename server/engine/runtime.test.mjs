@@ -37,7 +37,7 @@ describe('ServerEngineRuntime', () => {
     })
     expect(unchanged.result).toEqual({
       kind: 'status',
-      payload: { revision: 9, project_name: 'Second Lab' },
+      payload: { revision: 9, geometry_revision: 0, project_name: 'Second Lab' },
     })
     expect(runtime.destroyStore(first)).toBe(true)
     expect(runtime.destroyStore(first)).toBe(false)
@@ -58,7 +58,7 @@ describe('ServerEngineRuntime', () => {
       operation: { kind: 'status' },
     }).result).toEqual({
       kind: 'status',
-      payload: { revision: 7, project_name: 'After' },
+      payload: { revision: 7, geometry_revision: 0, project_name: 'After' },
     })
   })
 })

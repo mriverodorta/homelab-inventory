@@ -60,8 +60,6 @@ const STANDALONE_PORT_ROW_GAP = 6
 const STANDALONE_HORIZONTAL_GROUP_GAP = 8
 const MONITOR_PORT_COLUMNS = 5
 const POWER_EQUIPMENT_PORT_COLUMNS = 6
-const AUTO_ARRANGE_COLUMN_GAP = 78
-const AUTO_ARRANGE_GRID_SIZE = 24
 
 export function isCanvasItem(item: InventoryItem | undefined): boolean {
   return Boolean(item && isCanvasEquipmentType(item.type))
@@ -309,93 +307,6 @@ export function upsertPlacements(project: ProjectState, nextPlacements: ServerPl
   return touchProject({
     ...project,
     placements,
-  })
-}
-
-function snapArrangementValue(value: number): number {
-  return Math.round(value / AUTO_ARRANGE_GRID_SIZE) * AUTO_ARRANGE_GRID_SIZE
-}
-
-function snapArrangementCeiling(value: number): number {
-  return Math.ceil(value / AUTO_ARRANGE_GRID_SIZE) * AUTO_ARRANGE_GRID_SIZE
-}
-
-function getArrangementColumn(item: InventoryItem | undefined): number {
-  if (item?.type === 'server' || item?.type === 'nas' || item?.type === 'pcBuild') {
-    return 0
-  }
-
-  if (item?.type === 'patchPanel') {
-    return 1
-  }
-
-  if (item?.type === 'switch') {
-    return 2
-  }
-
-  return 3
-}
-
-export function autoArrangeCanvasItems(project: ProjectState): ProjectState {
-  if (project.placements.length === 0) {
-    return project
-  }
-
-  const columnY = new Map<number, number>()
-  const columnX = new Map<number, number>()
-  const sortedColumns = [
-    ...new Set(
-      project.placements.map((placement) =>
-        getArrangementColumn(project.items[placement.serverId]),
-      ),
-    ),
-  ].sort((first, second) => first - second)
-  let nextColumnX = 0
-
-  for (const column of sortedColumns) {
-    columnX.set(column, nextColumnX)
-    const widestInColumn = project.placements
-      .filter((placement) => getArrangementColumn(project.items[placement.serverId]) === column)
-      .reduce((width, placement) => Math.max(width, getCanvasItemWidth(project, placement.serverId)), 0)
-
-    nextColumnX += widestInColumn + AUTO_ARRANGE_COLUMN_GAP
-  }
-
-  const arrangedPlacements = [...project.placements]
-    .sort((first, second) => {
-      const firstItem = project.items[first.serverId]
-      const secondItem = project.items[second.serverId]
-      const columnDifference = getArrangementColumn(firstItem) - getArrangementColumn(secondItem)
-
-      if (columnDifference !== 0) {
-        return columnDifference
-      }
-
-      return (firstItem?.name ?? first.serverId).localeCompare(secondItem?.name ?? second.serverId)
-    })
-    .map((placement) => {
-      const item = project.items[placement.serverId]
-      const column = getArrangementColumn(item)
-      const y = columnY.get(column) ?? 0
-      const nextPlacement = {
-        serverId: placement.serverId,
-        x: snapArrangementValue(columnX.get(column) ?? 0),
-        y: snapArrangementValue(y),
-      }
-
-      columnY.set(
-        column,
-        snapArrangementCeiling(
-          y + getCanvasItemHeight(project, placement.serverId) + SERVER_CARD_COLLISION_GAP,
-        ),
-      )
-
-      return nextPlacement
-    })
-
-  return touchProject({
-    ...project,
-    placements: arrangedPlacements,
   })
 }
 
@@ -1067,64 +978,6 @@ export function getCanvasItemHeight(project: ProjectState, itemId: string): numb
   }
 
   return getServerCardHeight(project, itemId)
-}
-
-function placementsOverlap(
-  project: ProjectState,
-  first: ServerPlacement,
-  second: ServerPlacement,
-): boolean {
-  const firstRight = first.x + getCanvasItemWidth(project, first.serverId) + SERVER_CARD_COLLISION_GAP
-  const secondRight = second.x + getCanvasItemWidth(project, second.serverId) + SERVER_CARD_COLLISION_GAP
-  const firstBottom = first.y + getCanvasItemHeight(project, first.serverId) + SERVER_CARD_COLLISION_GAP
-  const secondBottom = second.y + getCanvasItemHeight(project, second.serverId) + SERVER_CARD_COLLISION_GAP
-
-  return first.x < secondRight && firstRight > second.x && first.y < secondBottom && firstBottom > second.y
-}
-
-export function placementCollides(
-  project: ProjectState,
-  placement: ServerPlacement,
-): boolean {
-  return project.placements.some(
-    (existing) =>
-      existing.serverId !== placement.serverId &&
-      placementsOverlap(project, placement, existing),
-  )
-}
-
-export function placementsCollide(
-  project: ProjectState,
-  placements: ServerPlacement[],
-): boolean {
-  if (placements.length === 0) {
-    return false
-  }
-
-  const movedPlacements = new Map(placements.map((placement) => [placement.serverId, placement]))
-  const currentIds = new Set(project.placements.map((placement) => placement.serverId))
-  const resolvedPlacements = [
-    ...project.placements.map((placement) => movedPlacements.get(placement.serverId) ?? placement),
-    ...placements.filter((placement) => !currentIds.has(placement.serverId)),
-  ]
-
-  return placements.some((placement) =>
-    resolvedPlacements.some((existing) =>
-      existing.serverId !== placement.serverId &&
-      placementsOverlap(project, placement, existing),
-    ),
-  )
-}
-
-export function getNonCollidingPlacement(
-  project: ProjectState,
-  placement: ServerPlacement,
-): ServerPlacement | null {
-  if (isArchivedItem(project.items[placement.serverId])) {
-    return null
-  }
-
-  return placementCollides(project, placement) ? null : placement
 }
 
 export function removeAssignment(project: ProjectState, assignmentId: string | number): ProjectState {

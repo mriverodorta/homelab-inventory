@@ -193,6 +193,26 @@ pub struct GeometryHandle {
     pub side: Side,
 }
 
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ArrangementItem {
+    pub item_id: String,
+    pub name: String,
+    pub column: i16,
+    pub width: f64,
+    pub height: f64,
+}
+
+impl ArrangementItem {
+    pub fn validate(&self) -> Result<(), GeometryError> {
+        if self.item_id.trim().is_empty() {
+            return Err(GeometryError::EmptyIdentifier("arrangement item_id"));
+        }
+        validate_dimension(self.width, "arrangement width")?;
+        validate_dimension(self.height, "arrangement height")?;
+        Ok(())
+    }
+}
+
 impl GeometryHandle {
     pub fn validate(&self) -> Result<(), GeometryError> {
         if self.key.trim().is_empty() {
@@ -379,6 +399,83 @@ fn validate_step(value: f64) -> Result<(), GeometryError> {
         return Err(GeometryError::NonPositive("step"));
     }
     Ok(())
+}
+
+fn validate_dimension(value: f64, field: &'static str) -> Result<(), GeometryError> {
+    validate_coordinate(value, field)?;
+    if value <= 0.0 {
+        return Err(GeometryError::NonPositive(field));
+    }
+    Ok(())
+}
+
+pub fn arrange_items(
+    items: &[ArrangementItem],
+    grid_size: f64,
+    column_gap: f64,
+    item_gap: f64,
+) -> Result<Vec<GeometryNode>, GeometryError> {
+    validate_step(grid_size)?;
+    validate_clearance(column_gap)?;
+    validate_clearance(item_gap)?;
+
+    let mut seen = BTreeSet::new();
+    let mut column_widths = BTreeMap::<i16, f64>::new();
+    for item in items {
+        item.validate()?;
+        if !seen.insert(item.item_id.as_str()) {
+            return Err(GeometryError::DuplicateIdentifier("arrangement item_id"));
+        }
+        column_widths
+            .entry(item.column)
+            .and_modify(|width| *width = width.max(item.width))
+            .or_insert(item.width);
+    }
+
+    let mut column_x = BTreeMap::new();
+    let mut next_x = 0.0;
+    for (column, width) in column_widths {
+        column_x.insert(column, next_x);
+        next_x += width + column_gap;
+    }
+
+    let mut sorted = items.to_vec();
+    sorted.sort_by(|first, second| {
+        first
+            .column
+            .cmp(&second.column)
+            .then_with(|| first.name.cmp(&second.name))
+            .then_with(|| first.item_id.cmp(&second.item_id))
+    });
+    let mut column_y = BTreeMap::<i16, f64>::new();
+    let mut arranged = Vec::with_capacity(sorted.len());
+    for item in sorted {
+        let y = *column_y.get(&item.column).unwrap_or(&0.0);
+        let bounds = Rect {
+            x: snap_to_grid(*column_x.get(&item.column).unwrap_or(&0.0), grid_size),
+            y: snap_to_grid(y, grid_size),
+            width: item.width,
+            height: item.height,
+        };
+        bounds.validate()?;
+        column_y.insert(
+            item.column,
+            snap_ceiling(y + item.height + item_gap, grid_size),
+        );
+        arranged.push(GeometryNode {
+            item_id: item.item_id,
+            bounds,
+        });
+    }
+    Ok(arranged)
+}
+
+fn snap_to_grid(value: f64, grid_size: f64) -> f64 {
+    (value / grid_size).round() * grid_size
+}
+
+fn snap_ceiling(value: f64, grid_size: f64) -> f64 {
+    (value / grid_size).ceil() * grid_size
 }
 
 fn translated(rect: Rect, x: f64, y: f64) -> Rect {
@@ -636,5 +733,41 @@ mod tests {
                 .collect();
             assert_eq!(actual, expected);
         }
+    }
+
+    #[test]
+    fn arrangement_is_stable_and_uses_column_maximum_width() {
+        let items = vec![
+            ArrangementItem {
+                item_id: "switch:2".into(),
+                name: "Beta".into(),
+                column: 2,
+                width: 300.0,
+                height: 100.0,
+            },
+            ArrangementItem {
+                item_id: "server:2".into(),
+                name: "Zulu".into(),
+                column: 0,
+                width: 282.0,
+                height: 120.0,
+            },
+            ArrangementItem {
+                item_id: "server:1".into(),
+                name: "Alpha".into(),
+                column: 0,
+                width: 360.0,
+                height: 100.0,
+            },
+        ];
+
+        assert_eq!(
+            arrange_items(&items, 24.0, 78.0, 24.0).unwrap(),
+            vec![
+                node("server:1", 0.0, 0.0, 360.0, 100.0),
+                node("server:2", 0.0, 144.0, 282.0, 120.0),
+                node("switch:2", 432.0, 0.0, 300.0, 100.0),
+            ]
+        );
     }
 }

@@ -47,12 +47,18 @@ import {
 } from '@/components/ui/sheet'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { applyEngineResponsePatch } from '@/engine/project-patches'
+import {
+  arrangeProjectItems,
+  checkProjectGroupMove,
+  checkProjectPlacement,
+  createProjectGeometrySnapshot,
+  syncProjectGeometry,
+} from '@/engine/geometry'
 import { useDomainEngine } from '@/hooks/use-domain-engine'
 import type { CanvasPortDragPoint } from '@/types/canvas'
 import {
   findAssignmentById,
   getAssignedComponentConnectionIds,
-  getAssignedComponentDropGeometryError,
   moveAssignedComponent,
   tryAssignComponent,
   tryRemoveAssignedComponent,
@@ -146,12 +152,8 @@ import { normalizeNetworkProject } from '@/lib/negotiated-speed'
 import {
   getCanvasItemHeight,
   getCanvasItemWidth,
-  autoArrangeCanvasItems,
   endpointKey,
-  getNonCollidingPlacement,
   isCanvasItem,
-  placementCollides,
-  placementsCollide,
   removeConnection,
   getReturnCanvasItemImpact,
   returnCanvasItemToInventory,
@@ -745,6 +747,23 @@ function App() {
     projectRef.current = project
   }, [project])
 
+  const projectGeometrySnapshot = useMemo(
+    () => (project ? createProjectGeometrySnapshot(project) : null),
+    [project],
+  )
+  const projectGeometrySnapshotRef = useRef(projectGeometrySnapshot)
+  projectGeometrySnapshotRef.current = projectGeometrySnapshot
+
+  useEffect(() => {
+    const snapshot = projectGeometrySnapshotRef.current
+    if (!snapshot || domainEngine.state.phase !== 'ready') return
+    void syncProjectGeometry(domainEngine.client, snapshot).catch((error) => {
+      setPersistenceWarning(
+        error instanceof Error ? error.message : 'Canvas geometry synchronization failed.',
+      )
+    })
+  }, [domainEngine.client, domainEngine.state.phase, projectGeometrySnapshot?.fingerprint])
+
   useEffect(() => {
     const event = domainEngine.syncEvent
     if (!domainEngine.enabled || !event || !hasHydratedProjectRef.current) return
@@ -1009,6 +1028,30 @@ function App() {
 
     if (negotiatedProject !== currentProject) {
       setAutosaveRevision((current) => current + 1)
+    }
+  }
+
+  async function validateCanvasPlacement(
+    candidateProject: ProjectState,
+    placement: ProjectState['placements'][number],
+  ) {
+    try {
+      return await checkProjectPlacement(domainEngine.client, candidateProject, placement)
+    } catch (error) {
+      showMessage(error instanceof Error ? error.message : 'Canvas placement validation failed.')
+      return null
+    }
+  }
+
+  async function validateCanvasGroupMove(
+    candidateProject: ProjectState,
+    placements: ProjectState['placements'],
+  ) {
+    try {
+      return await checkProjectGroupMove(domainEngine.client, candidateProject, placements)
+    } catch (error) {
+      showMessage(error instanceof Error ? error.message : 'Canvas placement validation failed.')
+      return null
     }
   }
 
@@ -1565,7 +1608,7 @@ function App() {
     window.addEventListener('pointerup', stopInventoryResize)
   }
 
-  function handleDragEnd(event: DragEndEvent) {
+  async function handleDragEnd(event: DragEndEvent) {
     setDraggingItemId(null)
     setActiveComponentDragData(null)
     setDragOverHostId(null)
@@ -1598,9 +1641,11 @@ function App() {
 
       const point = getCanvasDropPoint(event, canvasControllerRef.current, snapItemsToGrid)
       const itemRuntimeKey = runtimeItemKey(item)
-      const placement = getNonCollidingPlacement(project, { serverId: itemRuntimeKey, ...point })
+      const placement = { serverId: itemRuntimeKey, ...point }
+      const placementCheck = await validateCanvasPlacement(project, placement)
 
-      if (!placement) {
+      if (!placementCheck) return
+      if (!placementCheck.valid) {
         showMessage('Canvas equipment cannot overlap. Drop this item in an open space.')
         return
       }
@@ -1634,14 +1679,19 @@ function App() {
         return
       }
 
-      const geometryError = getAssignedComponentDropGeometryError(
-        project,
+      const affectedPlacements = [assignment.serverId, serverId]
+        .filter((itemId, index, itemIds) => itemIds.indexOf(itemId) === index)
+        .flatMap((itemId) => {
+          const placement = result.project.placements.find((candidate) => candidate.serverId === itemId)
+          return placement ? [placement] : []
+        })
+      const placementCheck = await validateCanvasGroupMove(
         result.project,
-        assignment,
-        serverId,
+        affectedPlacements,
       )
-      if (geometryError) {
-        showMessage(geometryError)
+      if (!placementCheck) return
+      if (!placementCheck.valid) {
+        showMessage('This server needs more open space before moving that component.')
         return
       }
 
@@ -1673,9 +1723,13 @@ function App() {
     const nextProject = result.project
     const serverPlacement = nextProject.placements.find((placement) => placement.serverId === serverId)
 
-    if (serverPlacement && placementCollides(nextProject, serverPlacement)) {
-      showMessage('This server needs more open space before adding that component.')
-      return
+    if (serverPlacement) {
+      const placementCheck = await validateCanvasPlacement(nextProject, serverPlacement)
+      if (!placementCheck) return
+      if (!placementCheck.valid) {
+        showMessage('This server needs more open space before adding that component.')
+        return
+      }
     }
 
     updateProject(nextProject)
@@ -1902,14 +1956,16 @@ function App() {
               setActiveNetworkTraceEndpoint(null)
             }}
             onRemoveAssignment={requestAssignedComponentRemoval}
-            onMoveItem={(itemId: string, position: XYPosition) => {
-              const placement = getNonCollidingPlacement(project, {
+            onMoveItem={async (itemId: string, position: XYPosition) => {
+              const placement = {
                 serverId: itemId,
                 x: snapItemsToGrid ? snapToGrid(position.x) : position.x,
                 y: snapItemsToGrid ? snapToGrid(position.y) : position.y,
-              })
+              }
+              const placementCheck = await validateCanvasPlacement(project, placement)
 
-              if (!placement) {
+              if (!placementCheck) return false
+              if (!placementCheck.valid) {
                 showMessage('Canvas equipment cannot overlap. Move this item to an open space.')
                 return false
               }
@@ -1918,14 +1974,16 @@ function App() {
               setValidationMessage(null)
               return true
             }}
-            onMoveItems={(placements) => {
+            onMoveItems={async (placements) => {
               const nextPlacements = placements.map((placement) => ({
                 serverId: placement.serverId,
                 x: snapItemsToGrid ? snapToGrid(placement.x) : placement.x,
                 y: snapItemsToGrid ? snapToGrid(placement.y) : placement.y,
               }))
 
-              if (placementsCollide(project, nextPlacements)) {
+              const placementCheck = await validateCanvasGroupMove(project, nextPlacements)
+              if (!placementCheck) return false
+              if (!placementCheck.valid) {
                 showMessage('Canvas equipment cannot overlap. Move this group to an open space.')
                 return false
               }
@@ -1971,8 +2029,14 @@ function App() {
                 return
               }
 
-              updateProject(autoArrangeCanvasItems(project))
-              setValidationMessage(null)
+              void arrangeProjectItems(domainEngine.client, project)
+                .then((placements) => {
+                  updateProject(upsertPlacements(project, placements))
+                  setValidationMessage(null)
+                })
+                .catch((error) => {
+                  showMessage(error instanceof Error ? error.message : 'Canvas items could not be arranged.')
+                })
             }}
             onOpenAudit={() => setAuditOpen(true)}
             onOpenSettings={() => setSettingsOpen(true)}

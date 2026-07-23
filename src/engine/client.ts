@@ -89,6 +89,25 @@ export class DomainEngineClient {
     })
   }
 
+  async queryConsistent(input: EngineRequestInput) {
+    await this.mutationTail
+    if (this.currentState.phase !== 'ready') {
+      throw new Error('Workspace engine is not ready.')
+    }
+    return this.dispatch(input)
+  }
+
+  transient(input: EngineRequestInput) {
+    const operation = this.mutationTail.then(async () => {
+      if (this.currentState.phase !== 'ready') {
+        throw new Error('Workspace engine is not ready.')
+      }
+      return this.dispatch(input)
+    })
+    this.mutationTail = operation.then(() => undefined, () => undefined)
+    return operation
+  }
+
   mutate(input: EngineRequestInput) {
     const mutation = this.mutationTail.then(async () => {
       if (this.currentState.phase !== 'ready') {

@@ -1,8 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import {
-  getAssignedComponentDropGeometryError,
-  moveAssignedComponent,
-} from '@/lib/constraints'
+import { moveAssignedComponent } from '@/lib/constraints'
 import type { ComponentAssignment, ProjectState } from '@/types/inventory'
 
 function legacyOverlappingProject(): ProjectState {
@@ -33,18 +30,7 @@ function legacyOverlappingProject(): ProjectState {
   }
 }
 
-describe('assigned component drop geometry gate', () => {
-  it('skips geometry rejection for a same-host no-op in a legacy overlapping layout', () => {
-    const project = legacyOverlappingProject()
-    const assignment = project.assignments[0] as ComponentAssignment
-    const result = moveAssignedComponent(project, assignment.id, 'server:1')
-
-    expect(result.ok).toBe(true)
-    if (!result.ok) return
-    expect(result.project).toBe(project)
-    expect(getAssignedComponentDropGeometryError(project, result.project, assignment, 'server:1')).toBeNull()
-  })
-
+describe('assigned component drop guards', () => {
   it.each([
     ['component', 'ram:1'],
     ['host', 'server:1'],
@@ -84,20 +70,6 @@ describe('assigned component drop geometry gate', () => {
       ok: false,
       message: 'That component or server no longer exists.',
     })
-    expect(JSON.stringify(project)).toBe(before)
-  })
-
-  it('rejects changed assignments that leave an affected host colliding without mutating input', () => {
-    const project = legacyOverlappingProject()
-    const before = JSON.stringify(project)
-    const assignment = project.assignments[0] as ComponentAssignment
-    const candidate: ProjectState = {
-      ...project,
-      assignments: project.assignments.map((entry) => ({ ...entry, serverId: 'server:2' })),
-    }
-
-    expect(getAssignedComponentDropGeometryError(project, candidate, assignment, 'server:2'))
-      .toBe('This server needs more open space before moving that component.')
     expect(JSON.stringify(project)).toBe(before)
   })
 })

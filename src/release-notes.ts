@@ -20,6 +20,7 @@ export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
   highlights: [
     'A shared Rust/WASM workspace engine now runs in a dedicated browser worker and on the Bun server, establishing a faster deterministic foundation for upcoming routing, compatibility, topology, and inventory operations.',
     'Project changes now carry persisted revisions and committed-update events so open browsers can reconcile incremental changes or rebuild safely after a missed update.',
+    'Canvas overlap checks, multi-item movement, nearest placement, and auto-arrangement now run in the shared Rust/WASM worker using an indexed geometry model.',
     'Network, display, and power cables now use short orthogonal paths around canvas equipment while still allowing cable crossings.',
     'Selected cable segments support double-click manual anchors, per-bend removal, Reset route, and Undo or Redo for every routing edit.',
     'General workspace preferences now offer optional 12 px cable snapping and 24 px canvas-item snapping, both disabled by default.',
@@ -35,6 +36,7 @@ export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
   fixes: [
     'Workspace startup and recovery now show explicit loading, rebuilding, unsupported-browser, and failed states instead of allowing interaction with an unavailable or stale engine.',
     'Project-name autosave now uses an optimistic revision-checked command and rolls back to canonical data after a conflict without retrying the mutation automatically.',
+    'Canvas geometry uses an independent transient revision and fingerprinted synchronization so ordinary Inspector edits do not rebuild placement state or add undo history.',
     'The production image now compiles and optimizes WASM in an isolated Rust builder while excluding Rust source, tests, build tools, and WASM development data from the non-root runtime image.',
     'Automatic cable detours preserve valid manual bends, recover temporarily covered anchors, and reroute only after equipment movement commits.',
     'Automatic routes now honor configured endpoint sides, use measured card boundaries, and avoid traveling beneath source or destination equipment.',

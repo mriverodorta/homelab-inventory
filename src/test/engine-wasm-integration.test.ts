@@ -91,6 +91,33 @@ describe('Rust WASM engine integration', () => {
       kind: 'placement-check',
       payload: { valid: false, colliding_item_ids: ['server:1'] },
     })
+
+    const arranged = decodeEngineResponse(runtime.dispatch(handle, encodeEngineRequest({
+      protocol_version: 1,
+      request_id: 11,
+      base_revision: 7,
+      operation: {
+        kind: 'arrange-items',
+        payload: {
+          items: [
+            { item_id: 'switch:1', name: 'Core', column: 2, width: 300, height: 100 },
+            { item_id: 'server:1', name: 'Node', column: 0, width: 282, height: 120 },
+          ],
+          grid_size: 24,
+          column_gap: 78,
+          item_gap: 24,
+        },
+      },
+    })))
+    expect(arranged.result).toEqual({
+      kind: 'arrangement',
+      payload: {
+        nodes: [
+          { item_id: 'server:1', bounds: { x: 0, y: 0, width: 282, height: 120 } },
+          { item_id: 'switch:1', bounds: { x: 360, y: 0, width: 300, height: 100 } },
+        ],
+      },
+    })
     expect(runtime.destroy(handle)).toBe(true)
   })
 })

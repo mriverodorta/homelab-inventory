@@ -63,12 +63,11 @@ import { isCableTypeVisible, type CableVisibility } from '@/lib/cable-visibility
 import { formatRemainingSeconds } from '@/lib/demo-api'
 import {
   findAssignmentById,
-  getAssignedComponentDropGeometryError,
   moveAssignedComponent,
   tryAssignComponent,
 } from '@/lib/constraints'
 import { runtimeItemKey } from '@/lib/item-keys'
-import { getCanvasItemHeight, getCanvasItemWidth, isCanvasItem, placementCollides } from '@/lib/project'
+import { getCanvasItemHeight, getCanvasItemWidth, isCanvasItem } from '@/lib/project'
 import { cn } from '@/lib/utils'
 import type { AgentStatusSummary } from '@/types/agent'
 import type { CompatibilityStatus } from '@/types/compatibility'
@@ -130,14 +129,6 @@ export function getComponentDropCompatibilityStatus(
 
     if (!transition.ok) return 'incompatible'
 
-    const targetPlacement = transition.project.placements.find(
-      (placement) => placement.serverId === targetHostId,
-    )
-
-    if (targetPlacement && placementCollides(transition.project, targetPlacement)) {
-      return 'incompatible'
-    }
-
     return transition.unknownFindings.length > 0 ? 'unknown' : 'compatible'
   }
 
@@ -148,15 +139,6 @@ export function getComponentDropCompatibilityStatus(
   const transition = moveAssignedComponent(project, assignment.id, targetHostId)
 
   if (!transition.ok) return 'incompatible'
-
-  if (getAssignedComponentDropGeometryError(
-    project,
-    transition.project,
-    assignment,
-    targetHostId,
-  )) {
-    return 'incompatible'
-  }
 
   return transition.unknownFindings.length > 0 ? 'unknown' : 'compatible'
 }
@@ -453,8 +435,8 @@ function CanvasViewport({
   onSelect: (itemId: string) => void
   onSelectConnection: (connectionId: string | number) => void
   onRemoveAssignment: (assignmentId: string | number) => void
-  onMoveItem: (itemId: string, position: XYPosition) => boolean
-  onMoveItems: (placements: Array<{ serverId: string; x: number; y: number }>) => boolean
+  onMoveItem: (itemId: string, position: XYPosition) => Promise<boolean>
+  onMoveItems: (placements: Array<{ serverId: string; x: number; y: number }>) => Promise<boolean>
   onEndpointClick: (endpoint: ConnectionEndpoint, point: CanvasPortDragPoint) => void
   onEndpointDragStart: (endpoint: ConnectionEndpoint, point: CanvasPortDragPoint) => void
   onEndpointDrop: (endpoint: ConnectionEndpoint) => void
@@ -1459,7 +1441,7 @@ function CanvasViewport({
     onNodesChange(changes)
   }
 
-  const handleNodeDragStop: OnNodeDrag<WorkbenchFlowNode> = (_, node, draggedNodes) => {
+  const handleNodeDragStop: OnNodeDrag<WorkbenchFlowNode> = async (_, node, draggedNodes) => {
     resetTouchNodeDragGate()
 
     const activeNodes = draggedNodes.length > 0 ? draggedNodes : [node]
@@ -1468,12 +1450,12 @@ function CanvasViewport({
       x: snapItemsToGrid ? snapToGrid(activeNode.position.x) : activeNode.position.x,
       y: snapItemsToGrid ? snapToGrid(activeNode.position.y) : activeNode.position.y,
     }))
-    const wasMoved = movedPlacements.length === 1
+    const wasMoved = await (movedPlacements.length === 1
       ? onMoveItem(movedPlacements[0].serverId, {
           x: movedPlacements[0].x,
           y: movedPlacements[0].y,
         })
-      : onMoveItems(movedPlacements)
+      : onMoveItems(movedPlacements))
     const movedPlacementMap = new Map(
       movedPlacements.map((placement) => [placement.serverId, placement]),
     )
@@ -1657,8 +1639,8 @@ export function WorkbenchCanvas(props: {
   onSelect: (itemId: string) => void
   onSelectConnection: (connectionId: string | number) => void
   onRemoveAssignment: (assignmentId: string | number) => void
-  onMoveItem: (itemId: string, position: XYPosition) => boolean
-  onMoveItems: (placements: Array<{ serverId: string; x: number; y: number }>) => boolean
+  onMoveItem: (itemId: string, position: XYPosition) => Promise<boolean>
+  onMoveItems: (placements: Array<{ serverId: string; x: number; y: number }>) => Promise<boolean>
   onEndpointClick: (endpoint: ConnectionEndpoint, point: CanvasPortDragPoint) => void
   onEndpointDragStart: (endpoint: ConnectionEndpoint, point: CanvasPortDragPoint) => void
   onEndpointDrop: (endpoint: ConnectionEndpoint) => void
