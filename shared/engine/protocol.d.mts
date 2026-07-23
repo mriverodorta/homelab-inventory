@@ -62,6 +62,17 @@ export type TopologySnapshot = {
   placements: TopologyItemRef[]
 }
 
+export type TopologyEndpointDescriptor = {
+  endpoint: TopologyEndpointRef
+  host: TopologyItemRef
+  owner: TopologyItemRef
+  port_type: string
+  slot_number: number
+  side: string | null
+  speed: string | null
+  connection_ids: number[]
+}
+
 export type GeometryRect = {
   x: number
   y: number
@@ -160,6 +171,7 @@ export type CableRoutePlan = {
 
 export type EngineOperation =
   | { kind: 'status' }
+  | { kind: 'topology-endpoints' }
   | { kind: 'update-project-metadata'; payload: { name: string } }
   | {
       kind: 'replace-geometry'
@@ -283,6 +295,10 @@ export type EngineResponseBody =
         routing_revision: number
         project_name: string
       }
+    }
+  | {
+      kind: 'topology-endpoints'
+      payload: { endpoints: TopologyEndpointDescriptor[] }
     }
   | {
       kind: 'patch'

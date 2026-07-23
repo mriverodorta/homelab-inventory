@@ -48,6 +48,119 @@ describe('Rust WASM engine integration', () => {
     expect(runtime.destroy(handle)).toBe(true)
   })
 
+  it('indexes direct and hosted topology endpoints through the real module', async () => {
+    const bytes = await fs.readFile(wasmPath)
+    const runtime = await WasmEngineRuntime.instantiate(bytes)
+    const serverRef = { item_type: 'server', id: 1 }
+    const nicRef = { item_type: 'network', id: 1 }
+    const switchRef = { item_type: 'switch', id: 1 }
+    const hostedEndpoint = {
+      item: serverRef,
+      hosted_item: nicRef,
+      port_id: 4,
+      endpoint_id: null,
+    }
+    const switchEndpoint = {
+      item: switchRef,
+      hosted_item: null,
+      port_id: 1,
+      endpoint_id: null,
+    }
+    const handle = runtime.create(encodeEngineSnapshot({
+      revision: 2,
+      project_name: 'Topology Lab',
+      topology: {
+        items: [
+          {
+            item: serverRef,
+            archived: false,
+            power_configuration: null,
+            allow_outlet_fan_out: false,
+            ports: [{
+              id: 1,
+              key: null,
+              port_type: 'rj45',
+              slot_number: 1,
+              speed: '1G',
+              endpoints: [],
+            }],
+          },
+          {
+            item: nicRef,
+            archived: false,
+            power_configuration: null,
+            allow_outlet_fan_out: false,
+            ports: [{
+              id: 4,
+              key: null,
+              port_type: 'rj45',
+              slot_number: 1,
+              speed: '2.5G',
+              endpoints: [],
+            }],
+          },
+          {
+            item: switchRef,
+            archived: false,
+            power_configuration: null,
+            allow_outlet_fan_out: false,
+            ports: [{
+              id: 1,
+              key: null,
+              port_type: 'rj45',
+              slot_number: 1,
+              speed: '2.5G',
+              endpoints: [],
+            }],
+          },
+        ],
+        assignments: [{
+          id: 1,
+          host: serverRef,
+          item: nicRef,
+          component_type: 'network',
+        }],
+        connections: [{
+          id: 8,
+          from: hostedEndpoint,
+          to: switchEndpoint,
+          connection_type: 'network',
+          negotiated_speed_mbps: 2500,
+          label: null,
+          route: null,
+          created_at: '2026-01-01T00:00:00.000Z',
+        }],
+        placements: [serverRef, switchRef],
+      },
+    }))
+    expect(handle).toBeGreaterThan(0)
+
+    const response = decodeEngineResponse(runtime.dispatch(handle, encodeEngineRequest({
+      protocol_version: 1,
+      request_id: 1,
+      base_revision: 2,
+      operation: { kind: 'topology-endpoints' },
+    })))
+    expect(response.result).toMatchObject({
+      kind: 'topology-endpoints',
+      payload: {
+        endpoints: expect.arrayContaining([
+          expect.objectContaining({
+            endpoint: hostedEndpoint,
+            owner: nicRef,
+            connection_ids: [8],
+          }),
+          expect.objectContaining({
+            endpoint: switchEndpoint,
+            owner: switchRef,
+            connection_ids: [8],
+          }),
+        ]),
+      },
+    })
+    expect(runtime.destroy(handle)).toBe(true)
+  })
+
   it('indexes geometry and answers placement queries through the real module', async () => {
     const bytes = await fs.readFile(wasmPath)
     const runtime = await WasmEngineRuntime.instantiate(bytes)

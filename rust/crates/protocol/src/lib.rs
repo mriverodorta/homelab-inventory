@@ -9,9 +9,9 @@ pub use homelab_routing::{
     RouteWarning, RoutedPath,
 };
 pub use homelab_topology::{
-    ConnectionRoute as TopologyConnectionRoute, EndpointRef, ItemRef, TopologyAssignment,
-    TopologyConnection, TopologyError, TopologyItem, TopologyPort, TopologyPortSide,
-    TopologySnapshot,
+    ConnectionRoute as TopologyConnectionRoute, EndpointDescriptor, EndpointRef, ItemRef,
+    TopologyAssignment, TopologyConnection, TopologyError, TopologyItem, TopologyPort,
+    TopologyPortSide, TopologySnapshot,
 };
 
 pub const PROTOCOL_VERSION: u16 = 1;
@@ -35,6 +35,7 @@ pub struct EngineRequest {
 #[serde(tag = "kind", content = "payload", rename_all = "kebab-case")]
 pub enum Operation {
     Status,
+    TopologyEndpoints,
     UpdateProjectMetadata {
         name: String,
     },
@@ -135,6 +136,7 @@ pub struct EngineResponse {
 #[serde(tag = "kind", content = "payload", rename_all = "kebab-case")]
 pub enum ResponseBody {
     Status(EngineStatus),
+    TopologyEndpoints(TopologyEndpointResult),
     Patch(CommandPatchSet),
     GeometryUpdated(GeometryUpdateResult),
     PlacementCheck(PlacementCheckResult),
@@ -147,6 +149,11 @@ pub enum ResponseBody {
     RoutePreview(RouteEdit),
     RouteEdited(RouteEditResult),
     Error(EngineError),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TopologyEndpointResult {
+    pub endpoints: Vec<EndpointDescriptor>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

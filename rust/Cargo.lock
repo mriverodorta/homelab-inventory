@@ -15,6 +15,7 @@ dependencies = [
  "homelab-engine-protocol",
  "homelab-geometry",
  "homelab-routing",
+ "homelab-topology",
  "rmp-serde",
 ]
 

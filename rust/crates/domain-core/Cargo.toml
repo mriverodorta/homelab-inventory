@@ -9,6 +9,7 @@ rust-version.workspace = true
 homelab-engine-protocol = { path = "../protocol" }
 homelab-geometry = { path = "../geometry" }
 homelab-routing = { path = "../routing" }
+homelab-topology = { path = "../topology" }
 
 [dev-dependencies]
 rmp-serde.workspace = true

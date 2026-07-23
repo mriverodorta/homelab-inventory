@@ -4,13 +4,15 @@ use homelab_engine_protocol::{
     ArrangementResult, CommandPatchSet, EngineError, EngineRequest, EngineResponse, EngineSnapshot,
     EngineStatus, GeometryHandle, GeometryUpdateResult, NearestPlacementResult, Operation,
     PROTOCOL_VERSION, PlacementCheckResult, ProjectPatch, ResponseBody, RouteDefinition, RouteEdit,
-    RouteEditResult, RouteResult, RoutesUpdateResult, TopologyError, TopologySnapshot,
+    RouteEditResult, RouteResult, RoutesUpdateResult, TopologyEndpointResult, TopologyError,
+    TopologySnapshot,
 };
 use homelab_geometry::{GeometryError, GeometryNode, SpatialIndex, arrange_items};
 use homelab_routing::{
     RoutePlanner, RoutingError, build_route, preview_insert_manual_bend, preview_move_segment,
     preview_remove_manual_bend, preview_reset_route, route_around_obstacles,
 };
+use homelab_topology::TopologyIndex;
 
 #[derive(Debug, Clone)]
 pub struct Engine {
@@ -22,7 +24,7 @@ pub struct Engine {
     routing_revision: u32,
     routes: BTreeMap<u32, RouteDefinition>,
     route_planner: RoutePlanner,
-    topology: TopologySnapshot,
+    topology: TopologyIndex,
 }
 
 impl Engine {
@@ -32,7 +34,7 @@ impl Engine {
     }
 
     pub fn try_from_snapshot(snapshot: EngineSnapshot) -> Result<Self, TopologyError> {
-        snapshot.topology.validate()?;
+        let topology = TopologyIndex::build(snapshot.topology)?;
         Ok(Self {
             revision: snapshot.revision,
             project_name: snapshot.project_name,
@@ -42,7 +44,7 @@ impl Engine {
             routing_revision: 0,
             routes: BTreeMap::new(),
             route_planner: RoutePlanner::default(),
-            topology: snapshot.topology,
+            topology,
         })
     }
 
@@ -68,7 +70,7 @@ impl Engine {
 
     #[must_use]
     pub const fn topology(&self) -> &TopologySnapshot {
-        &self.topology
+        self.topology.snapshot()
     }
 
     pub fn dispatch(&mut self, request: EngineRequest) -> EngineResponse {
@@ -106,6 +108,11 @@ impl Engine {
                 routing_revision: self.routing_revision,
                 project_name: self.project_name.clone(),
             }),
+            Operation::TopologyEndpoints => {
+                ResponseBody::TopologyEndpoints(TopologyEndpointResult {
+                    endpoints: self.topology.endpoints(),
+                })
+            }
             Operation::UpdateProjectMetadata { name } => {
                 let name = name.trim();
                 if name.is_empty() {
