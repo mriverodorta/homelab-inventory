@@ -164,6 +164,7 @@ import {
   upsertPlacements,
 } from '@/lib/project'
 import { formatCapacity, formatPortSummary } from '@/lib/format'
+import { ProjectPersistenceCoordinator } from '@/lib/project-persistence-coordinator'
 import type {
   ConnectionEndpoint,
   ConnectionRoutePreferences,
@@ -543,7 +544,8 @@ function App() {
   const [portConnectionPreview, setPortConnectionPreview] = useState<PortConnectionPreview | null>(null)
   const [activeNetworkTraceEndpoint, setActiveNetworkTraceEndpoint] = useState<ConnectionEndpoint | null>(null)
   const [saveStatus, setSaveStatus] = useState<SaveStatus>('saved')
-  const [autosaveRevision, setAutosaveRevision] = useState(0)
+  const [canonicalMutationBusy, setCanonicalMutationBusy] = useState(false)
+  const [canvasOperationLabel, setCanvasOperationLabel] = useState<string | null>(null)
   const [history, setHistory] = useState<HistoryState<ProjectState>>(() => createEmptyHistory())
   const [inventoryWidth, setInventoryWidth] = useState(getStoredInventoryWidth)
   const [desktopInventoryVisible, setDesktopInventoryVisible] = useState(getStoredInventoryVisible)
@@ -589,6 +591,11 @@ function App() {
     generation: number
     project: ProjectState
   } | null>(null)
+  const pendingAutosaveProjectRef = useRef<ProjectState | null>(null)
+  const saveDrainWaitersRef = useRef<Array<{
+    resolve: () => void
+    reject: (error: Error) => void
+  }>>([])
   const saveInFlightRef = useRef(false)
   const saveGenerationRef = useRef(0)
   const saveTimerRef = useRef<number | null>(null)
@@ -596,6 +603,10 @@ function App() {
   const connectionLabelTimerRef = useRef<number | null>(null)
   const hasHydratedProjectRef = useRef(false)
   const demoExpirationFinalizedRef = useRef(false)
+  const persistenceCoordinatorRef = useRef<ProjectPersistenceCoordinator | null>(null)
+  if (!persistenceCoordinatorRef.current) {
+    persistenceCoordinatorRef.current = new ProjectPersistenceCoordinator(setCanonicalMutationBusy)
+  }
   const resizeStateRef = useRef<{
     startX: number
     startWidth: number
@@ -628,6 +639,14 @@ function App() {
   const { mutateAsync: persistProject } = useMutation({
     mutationFn: saveProject,
   })
+  const waitForQueuedProjectSaves = useCallback(() => {
+    if (!saveInFlightRef.current && !queuedSaveProjectRef.current) {
+      return Promise.resolve()
+    }
+    return new Promise<void>((resolve, reject) => {
+      saveDrainWaitersRef.current.push({ resolve, reject })
+    })
+  }, [])
   const processQueuedProjectSaves = useCallback(() => {
     if (saveInFlightRef.current) {
       return
@@ -636,6 +655,7 @@ function App() {
     saveInFlightRef.current = true
 
     void (async () => {
+      let drainError: Error | null = null
       try {
         while (queuedSaveProjectRef.current) {
           const queuedSave = queuedSaveProjectRef.current
@@ -655,6 +675,7 @@ function App() {
               projectRef.current === queuedSave.project
             ) {
               projectRef.current = savedProject
+              queryClient.setQueryData(['project'], savedProject)
               setProject(savedProject)
               setPersistenceWarning(null)
               setSaveStatus('saved')
@@ -679,20 +700,29 @@ function App() {
             setPersistenceWarning(
               error instanceof Error ? error.message : 'Project could not be saved to the JSON database.',
             )
+            drainError = error instanceof Error
+              ? error
+              : new Error('Project could not be saved to the JSON database.')
           }
         }
       } finally {
         saveInFlightRef.current = false
+        const waiters = saveDrainWaitersRef.current.splice(0)
+        for (const waiter of waiters) {
+          if (drainError) waiter.reject(drainError)
+          else waiter.resolve()
+        }
       }
     })()
-  }, [persistProject])
+  }, [persistProject, queryClient])
   const enqueueProjectSave = useCallback((projectToSave: ProjectState) => {
     queuedSaveProjectRef.current = {
       generation: saveGenerationRef.current,
       project: projectToSave,
     }
     processQueuedProjectSaves()
-  }, [processQueuedProjectSaves])
+    return waitForQueuedProjectSaves()
+  }, [processQueuedProjectSaves, waitForQueuedProjectSaves])
   const acknowledgeReleaseNotesMutation = useMutation({
     mutationFn: acknowledgeReleaseNotes,
     onSuccess: (status) => {
@@ -823,6 +853,14 @@ function App() {
 
     void loadProject()
       .then((canonicalProject) => {
+        const activeProject = projectRef.current
+        const canonicalRevision = canonicalProject.revision
+        const activeRevision = activeProject?.revision
+        if (
+          typeof canonicalRevision === 'number'
+          && typeof activeRevision === 'number'
+          && canonicalRevision < activeRevision
+        ) return
         queryClient.setQueryData(['project'], canonicalProject)
         applyInventoryCommandSnapshot(canonicalProject)
       })
@@ -834,6 +872,9 @@ function App() {
   }, [domainEngine.enabled, domainEngine.syncEvent, queryClient])
 
   useEffect(() => () => {
+    if (saveTimerRef.current !== null) {
+      window.clearTimeout(saveTimerRef.current)
+    }
     if (projectNameTimerRef.current !== null) {
       window.clearTimeout(projectNameTimerRef.current)
     }
@@ -986,32 +1027,6 @@ function App() {
     }
   }, [portConnectionPreview])
 
-  useEffect(() => {
-    if (!hasHydratedProjectRef.current || autosaveRevision === 0) {
-      return
-    }
-
-    const projectToSave = projectRef.current
-
-    if (!projectToSave) {
-      return
-    }
-
-    setSaveStatus('saving')
-
-    saveTimerRef.current = window.setTimeout(() => {
-      saveTimerRef.current = null
-      enqueueProjectSave(projectToSave)
-    }, SAVE_DEBOUNCE_MS)
-
-    return () => {
-      if (saveTimerRef.current !== null) {
-        window.clearTimeout(saveTimerRef.current)
-        saveTimerRef.current = null
-      }
-    }
-  }, [autosaveRevision, enqueueProjectSave])
-
   const selectedItem = useMemo(
     () => (project && selectedItemId ? project.items[selectedItemId] ?? null : null),
     [project, selectedItemId],
@@ -1078,8 +1093,20 @@ function App() {
     setProject(nextProject)
 
     if (nextProject !== currentProject) {
-      setAutosaveRevision((current) => current + 1)
+      scheduleLegacyProjectSave(nextProject)
     }
+  }
+
+  function scheduleLegacyProjectSave(projectToSave: ProjectState) {
+    pendingAutosaveProjectRef.current = projectToSave
+    setSaveStatus('saving')
+    if (saveTimerRef.current !== null) window.clearTimeout(saveTimerRef.current)
+    saveTimerRef.current = window.setTimeout(() => {
+      saveTimerRef.current = null
+      void persistenceCoordinatorRef.current!
+        .run(settleLegacyProjectPersistence, async () => {})
+        .catch(() => {})
+    }, SAVE_DEBOUNCE_MS)
   }
 
   async function validateCanvasPlacement(
@@ -1131,23 +1158,17 @@ function App() {
     }
     projectNameTimerRef.current = window.setTimeout(() => {
       projectNameTimerRef.current = null
-      void domainEngine.client.mutate({
-        operation: { kind: 'update-project-metadata', payload: { name } },
-      }).then((response) => {
-        const activeProject = projectRef.current
-        if (!activeProject || response.result.kind !== 'patch') {
-          throw new Error(
-            response.result.kind === 'error'
-              ? response.result.payload.message
-              : 'Project name was not committed.',
-          )
-        }
-        const committedProject = applyEngineResponsePatch(activeProject, response)
-        projectRef.current = committedProject
-        lastPersistedProjectRef.current = committedProject
-        setProject(committedProject)
-        setSaveStatus('saved')
-      }).catch((error) => {
+      void commitEngineMutation(
+        () => domainEngine.client.mutate({
+          operation: { kind: 'update-project-metadata', payload: { name } },
+        }),
+        {
+          optimisticProject: (canonicalProject) => ({
+            ...canonicalProject,
+            metadata: { ...canonicalProject.metadata, name },
+          }),
+        },
+      ).catch((error) => {
         const persistedProject = lastPersistedProjectRef.current
         if (persistedProject) {
           projectRef.current = persistedProject
@@ -1175,6 +1196,7 @@ function App() {
   ) {
     saveGenerationRef.current += 1
     queuedSaveProjectRef.current = null
+    pendingAutosaveProjectRef.current = null
 
     if (saveTimerRef.current !== null) {
       window.clearTimeout(saveTimerRef.current)
@@ -1241,37 +1263,81 @@ function App() {
     setActiveNetworkTraceEndpoint(nextSelection.activeNetworkTraceEndpoint)
   }
 
+  async function settleLegacyProjectPersistence() {
+    const hadPendingPersistence = Boolean(
+      pendingAutosaveProjectRef.current
+      || queuedSaveProjectRef.current
+      || saveInFlightRef.current,
+    )
+
+    if (saveTimerRef.current !== null) {
+      window.clearTimeout(saveTimerRef.current)
+      saveTimerRef.current = null
+    }
+
+    const pendingProject = pendingAutosaveProjectRef.current
+    pendingAutosaveProjectRef.current = null
+    if (pendingProject) await enqueueProjectSave(pendingProject)
+    else await waitForQueuedProjectSaves()
+
+    if (!hadPendingPersistence || !domainEngine.enabled) return
+    const canonicalProject = lastPersistedProjectRef.current
+    if (
+      canonicalProject
+      && (
+        domainEngine.client.status().phase !== 'ready'
+        || domainEngine.client.status().revision !== canonicalProject.revision
+      )
+    ) {
+      await domainEngine.client.rebuild('Synchronizing saved project changes.')
+    }
+  }
+
   async function commitEngineMutation(
-    mutation: Promise<EngineResponse>,
-    options: { historySnapshot?: ProjectState } = {},
+    createMutation: (canonicalProject: ProjectState) => Promise<EngineResponse>,
+    options: {
+      recordHistory?: boolean
+      optimisticProject?: (canonicalProject: ProjectState) => ProjectState
+    } = {},
   ): Promise<EngineResponse> {
     if (!domainEngine.enabled) {
       throw new Error('The WebAssembly workspace engine is not available.')
     }
 
-    setSaveStatus('saving')
-    setPersistenceWarning(null)
-    const response = await mutation
-    const activeProject = projectRef.current
-    if (!activeProject || response.result.kind !== 'patch') {
-      throw new Error(
-        response.result.kind === 'error'
-          ? response.result.payload.message
-          : 'The connection change was not committed.',
-      )
-    }
+    return persistenceCoordinatorRef.current!.run(settleLegacyProjectPersistence, async () => {
+      const canonicalProject = projectRef.current
+      if (!canonicalProject) throw new Error('The canonical project is unavailable.')
+      const historySnapshot = options.recordHistory ? canonicalProject : null
+      const optimisticProject = options.optimisticProject?.(canonicalProject)
+      if (optimisticProject) {
+        projectRef.current = optimisticProject
+        setProject(optimisticProject)
+      }
 
-    const committedProject = applyEngineResponsePatch(activeProject, response)
-    projectRef.current = committedProject
-    lastPersistedProjectRef.current = committedProject
-    queryClient.setQueryData(['project'], committedProject)
-    setProject(committedProject)
-    if (options.historySnapshot) {
-      setHistory((currentHistory) => pushHistory(currentHistory, options.historySnapshot!))
-    }
-    setSaveStatus('saved')
-    setPersistenceWarning(null)
-    return response
+      setSaveStatus('saving')
+      setPersistenceWarning(null)
+      const response = await createMutation(canonicalProject)
+      const activeProject = projectRef.current
+      if (!activeProject || response.result.kind !== 'patch') {
+        throw new Error(
+          response.result.kind === 'error'
+            ? response.result.payload.message
+            : 'The workspace change was not committed.',
+        )
+      }
+
+      const committedProject = applyEngineResponsePatch(activeProject, response)
+      projectRef.current = committedProject
+      lastPersistedProjectRef.current = committedProject
+      queryClient.setQueryData(['project'], committedProject)
+      setProject(committedProject)
+      if (historySnapshot) {
+        setHistory((currentHistory) => pushHistory(currentHistory, historySnapshot))
+      }
+      setSaveStatus('saved')
+      setPersistenceWarning(null)
+      return response
+    })
   }
 
   function createConnectionBetween(from: ConnectionEndpoint, to: ConnectionEndpoint) {
@@ -1286,8 +1352,8 @@ function App() {
     }
 
     void commitEngineMutation(
-      createTopologyConnection(domainEngine.client, currentProject, from, to),
-      { historySnapshot: currentProject },
+      (canonicalProject) => createTopologyConnection(domainEngine.client, canonicalProject, from, to),
+      { recordHistory: true },
     ).then((response) => {
       if (response.result.kind !== 'patch') {
         throw new Error('The connection change returned an unexpected patch.')
@@ -1340,21 +1406,24 @@ function App() {
     })
     if (changedPlacements.length === 0) return true
 
-    const optimisticProject = upsertPlacements(currentProject, changedPlacements)
-    if (optimisticProject === currentProject) return true
-    projectRef.current = optimisticProject
-    setProject(optimisticProject)
-
     try {
-      const mutation = updateProjectPlacements(
-        domainEngine.client,
-        currentProject,
-        changedPlacements,
-      ).then((response) => {
-        if (!response) throw new Error('Canvas positions did not change.')
-        return response
-      })
-      await commitEngineMutation(mutation, { historySnapshot: currentProject })
+      await commitEngineMutation(
+        (canonicalProject) => updateProjectPlacements(
+          domainEngine.client,
+          canonicalProject,
+          changedPlacements,
+        ).then((response) => {
+          if (!response) throw new Error('Canvas positions did not change.')
+          return response
+        }),
+        {
+          recordHistory: true,
+          optimisticProject: (canonicalProject) => upsertPlacements(
+            canonicalProject,
+            changedPlacements,
+          ),
+        },
+      )
       setValidationMessage(null)
       return true
     } catch (error) {
@@ -1378,17 +1447,17 @@ function App() {
       return
     }
 
-    const optimisticProject: ProjectState = {
-      ...currentProject,
-      connections: currentProject.connections.map((connection) =>
-        connection.id === numericConnectionId ? { ...connection, route } : connection,
-      ),
-    }
-    projectRef.current = optimisticProject
-    setProject(optimisticProject)
     void commitEngineMutation(
-      updateTopologyConnectionRoute(domainEngine.client, numericConnectionId, route),
-      { historySnapshot: currentProject },
+      () => updateTopologyConnectionRoute(domainEngine.client, numericConnectionId, route),
+      {
+        recordHistory: true,
+        optimisticProject: (canonicalProject) => ({
+          ...canonicalProject,
+          connections: canonicalProject.connections.map((connection) =>
+            connection.id === numericConnectionId ? { ...connection, route } : connection,
+          ),
+        }),
+      },
     ).then(() => {
       setValidationMessage(null)
     }).catch((error) => {
@@ -1422,7 +1491,15 @@ function App() {
     connectionLabelTimerRef.current = window.setTimeout(() => {
       connectionLabelTimerRef.current = null
       void commitEngineMutation(
-        updateTopologyConnectionLabel(domainEngine.client, numericConnectionId, label),
+        () => updateTopologyConnectionLabel(domainEngine.client, numericConnectionId, label),
+        {
+          optimisticProject: (canonicalProject) => ({
+            ...canonicalProject,
+            connections: canonicalProject.connections.map((connection) =>
+              connection.id === numericConnectionId ? { ...connection, label } : connection,
+            ),
+          }),
+        },
       ).then(() => {
         setValidationMessage(null)
       }).catch((error) => {
@@ -1448,8 +1525,8 @@ function App() {
       connectionLabelTimerRef.current = null
     }
     void commitEngineMutation(
-      removeTopologyConnection(domainEngine.client, numericConnectionId),
-      { historySnapshot: currentProject },
+      () => removeTopologyConnection(domainEngine.client, numericConnectionId),
+      { recordHistory: true },
     ).then(() => {
       if (Number(selectedConnectionId) === numericConnectionId) {
         setSelectedConnectionId(null)
@@ -2028,7 +2105,7 @@ function App() {
       setProject(result.project)
 
       if (result.project !== currentProject) {
-        setAutosaveRevision((current) => current + 1)
+        scheduleLegacyProjectSave(result.project)
       }
       setSelectedItemId((current) => (current && result.project.items[current] ? current : null))
       setSelectedConnectionId((current) =>
@@ -2060,7 +2137,7 @@ function App() {
       setProject(result.project)
 
       if (result.project !== currentProject) {
-        setAutosaveRevision((current) => current + 1)
+        scheduleLegacyProjectSave(result.project)
       }
       setSelectedItemId((current) => (current && result.project.items[current] ? current : null))
       setSelectedConnectionId((current) =>
@@ -2171,6 +2248,8 @@ function App() {
             canUndo={history.past.length > 0}
             canRedo={history.future.length > 0}
             saveStatus={saveStatus}
+            canonicalMutationBusy={canonicalMutationBusy}
+            canvasOperationLabel={canvasOperationLabel}
             desktopInventoryVisible={desktopInventoryVisible}
             inspectorOpen={selectedItem !== null || selectedConnection !== null}
             autoCenterOnSelect={autoCenterOnSelect}
@@ -2260,13 +2339,15 @@ function App() {
                 return
               }
 
+              setCanvasOperationLabel('Arranging canvas')
               void arrangeProjectItems(domainEngine.client, project)
-                .then((placements) => {
-                  void commitPlacementUpdates(placements, 'Canvas items could not be arranged.')
+                .then(async (placements) => {
+                  await commitPlacementUpdates(placements, 'Canvas items could not be arranged.')
                 })
                 .catch((error) => {
                   showMessage(error instanceof Error ? error.message : 'Canvas items could not be arranged.')
                 })
+                .finally(() => setCanvasOperationLabel(null))
             }}
             onOpenAudit={() => setAuditOpen(true)}
             onOpenSettings={() => setSettingsOpen(true)}

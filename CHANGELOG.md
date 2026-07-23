@@ -23,7 +23,7 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 - Fixed automatic routes to respect source and destination sides, use measured card boundaries, and avoid traveling beneath endpoint equipment.
 - Added optional per-cable lane avoidance so automatic routes can separate long parallel overlaps while preserving clean crossings and shared endpoint approaches.
 - Added a browser-local global cable-collision preference that applies lane avoidance to every cable without overwriting individual cable settings.
-- Moved cable planning into a background worker, retained existing paths while rerouting, and added a non-blocking routing status indicator.
+- Moved cable planning into a background worker, retained existing paths while rerouting, and added a non-blocking canvas activity indicator.
 - Moved obstacle pathfinding, lane separation, route caching, manual bend insertion, and segment-drag previews into the shared Rust/WASM worker.
 - Replaced full-canvas cable recalculation with targeted dependency invalidation so unchanged and unrelated routes retain their cached geometry.
 - Removed the duplicate TypeScript cable pathfinder and standalone cable-routing worker.
@@ -64,6 +64,9 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 - Fixed multi-item canvas moves to persist one atomic placement patch instead of replacing and rebuilding the complete workspace snapshot.
 - Preserved unchanged equipment cards, topology results, and cable routes across placement commits and engine recovery so canvas moves no longer clear or blink unrelated content.
 - Narrowed geometry, topology, handle, and route invalidation to the project data each calculation actually uses.
+- Moved transient routing and synchronization activity out of the bottom toolbar into a delayed top-left canvas indicator so calculations no longer resize or flicker the toolbar.
+- Fixed revision conflicts when a component assignment change is followed immediately by moving canvas equipment by coordinating legacy saves with canonical WASM commands.
+- Kept routine workspace-engine synchronization nonblocking while reserving centered blocking states for startup and unrecoverable failures.
 
 ## [0.1.38] - 2026-07-21
 

@@ -7,8 +7,6 @@ function createProps(overrides: Partial<CanvasCommandBarProps> = {}): CanvasComm
   return {
     desktopInventoryVisible: true,
     saveStatus: 'saved',
-    routingPending: false,
-    routingError: null,
     canUndo: true,
     canRedo: false,
     updateAvailable: false,
@@ -115,24 +113,6 @@ describe('CanvasCommandBar', () => {
     )
 
     expect(screen.getByLabelText('Save failed')).toHaveAttribute('role', 'status')
-  })
-
-  it('shows non-blocking cable routing progress and failure states', () => {
-    const { rerender } = render(
-      <TooltipProvider>
-        <CanvasCommandBar {...createProps({ routingPending: true })} />
-      </TooltipProvider>,
-    )
-
-    expect(screen.getByRole('status', { name: 'Routing cables...' })).toBeInTheDocument()
-
-    rerender(
-      <TooltipProvider>
-        <CanvasCommandBar {...createProps({ routingError: 'Worker unavailable' })} />
-      </TooltipProvider>,
-    )
-
-    expect(screen.getByRole('status', { name: 'Cable routing failed: Worker unavailable' })).toBeInTheDocument()
   })
 
   it('shows checking and available update states', () => {

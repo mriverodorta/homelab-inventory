@@ -44,7 +44,7 @@ export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
     'Automatic cable detours preserve valid manual bends, recover temporarily covered anchors, and reroute only after equipment movement commits.',
     'Automatic routes now honor configured endpoint sides, use measured card boundaries, and avoid traveling beneath source or destination equipment.',
     'Overlap-aware cable routing resolves deterministic separate lanes without moving manual anchors or persisting generated bends.',
-    'Cable planning now runs in a background worker with a visible routing status, while pan and zoom no longer serialize every measured port handle.',
+    'Cable planning now runs in a background worker with a stable canvas activity indicator, while pan and zoom no longer serialize every measured port handle.',
     'Resetting or editing one cable route now preserves unrelated canvas nodes, route objects, and React Flow edges instead of making the entire cable layer blink.',
     'Cable paths now remain stable during cable clicks, equipment focus, Inspector opening, hover, and canvas deselection instead of briefly moving or disappearing.',
     'Moving a cable segment now collapses clear endpoint staircases into the fewest bends without routing through other equipment.',
@@ -65,6 +65,9 @@ export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
     'Existing power strips with a canonical AC input at slot zero no longer prevent the workspace engine from starting.',
     'Moving one or several selected canvas items now saves one atomic placement patch without clearing the canvas or rebuilding unrelated equipment and cable routes.',
     'Topology, geometry, handles, and cable planning now retain prior results and refresh only when their relevant project inputs change.',
+    'Routing and synchronization activity now appears in a delayed top-left canvas indicator instead of adding and removing a slot from the bottom toolbar.',
+    'Component assignment saves and later canvas moves now share one canonical persistence queue, preventing optimistic revision conflicts and lost updates.',
+    'Routine workspace synchronization now keeps the canvas interactive instead of briefly showing a centered rebuilding overlay.',
   ],
   notes: [],
 }

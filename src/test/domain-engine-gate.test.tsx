@@ -79,7 +79,7 @@ describe('DomainEngineGate', () => {
     await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('WebAssembly and Web Worker'))
   })
 
-  it('keeps the mounted workbench visible while a ready engine rebuilds', () => {
+  it('keeps routine rebuilding nonblocking after the workbench becomes ready', () => {
     const client = stubClient({ initial: { phase: 'ready', revision: 3 } })
     const { rerender } = render(
       <DomainEngineContext.Provider value={{
@@ -106,6 +106,7 @@ describe('DomainEngineGate', () => {
     )
 
     expect(screen.getByText('Canvas workbench')).toBeInTheDocument()
-    expect(screen.getByRole('status')).toHaveTextContent('Rebuilding workspace engine')
+    expect(screen.queryByText('Rebuilding workspace engine')).not.toBeInTheDocument()
+    expect(screen.queryByRole('status')).not.toBeInTheDocument()
   })
 })

@@ -105,6 +105,8 @@ export class DomainEngineClient {
   private readonly listeners = new Set<(state: DomainEngineState) => void>()
   private readonly pending = new Map<number, PendingWorkerRequest>()
   private currentState: DomainEngineState = { phase: 'idle', revision: null }
+  private workerRevision: number | null = null
+  private activeMutationRequestId: number | null = null
   private worker: WorkerLike | null = null
   private initialization: { resolve(): void; reject(error: Error): void } | null = null
   private nextRequestId = 1
@@ -189,10 +191,11 @@ export class DomainEngineClient {
         throw new Error('Workspace engine is not ready.')
       }
 
-      const request = this.createRequest(input)
+      const request = this.createMutationRequest(input)
       const requestBytes = encodeEngineRequest(request)
       const optimistic = await this.dispatchRequest(request, requestBytes)
       if (optimistic.result.kind !== 'patch') return optimistic
+      this.activeMutationRequestId = request.request_id
 
       try {
         const canonical = await this.api.postCommand(requestBytes)
@@ -202,6 +205,7 @@ export class DomainEngineClient {
         ) {
           throw new Error('Canonical engine response did not match the optimistic result.')
         }
+        this.workerRevision = canonical.response.result.payload.revision
         this.setState({ phase: 'ready', revision: canonical.response.result.payload.revision })
         return canonical.response
       } catch (error) {
@@ -210,6 +214,10 @@ export class DomainEngineClient {
         }
         await this.rebuild(error instanceof Error ? error.message : 'Mutation was rejected.')
         throw error
+      } finally {
+        if (this.activeMutationRequestId === request.request_id) {
+          this.activeMutationRequestId = null
+        }
       }
     })
     this.mutationTail = mutation.then(() => undefined, () => undefined)
@@ -223,6 +231,14 @@ export class DomainEngineClient {
     const committedRevision = response.result.payload.revision
     const currentRevision = this.currentState.revision
     if (currentRevision === committedRevision) {
+      return { kind: 'acknowledged' as const, response }
+    }
+    if (
+      response.request_id === this.activeMutationRequestId
+      && response.base_revision === currentRevision
+      && this.workerRevision === committedRevision
+    ) {
+      this.setState({ phase: 'ready', revision: committedRevision })
       return { kind: 'acknowledged' as const, response }
     }
     if (currentRevision === null || response.base_revision !== currentRevision) {
@@ -244,6 +260,8 @@ export class DomainEngineClient {
       await this.rebuild('The committed project patch could not be reconciled.')
       return { kind: 'rebuilt' as const, response }
     }
+    this.workerRevision = committedRevision
+    this.setState({ phase: 'ready', revision: committedRevision })
     return { kind: 'applied' as const, response }
   }
 
@@ -262,13 +280,27 @@ export class DomainEngineClient {
   }
 
   private async dispatch(input: EngineRequestInput) {
-    const request = this.createRequest(input)
+    const request = this.createWorkerRequest(input)
     return this.dispatchRequest(request, encodeEngineRequest(request))
   }
 
-  private createRequest(input: EngineRequestInput): EngineRequest {
+  private createWorkerRequest(input: EngineRequestInput): EngineRequest {
+    const revision = this.workerRevision
+    if (revision === null) throw new Error('Workspace engine worker revision is unavailable.')
+    return {
+      protocol_version: 1,
+      request_id: this.takeRequestId(),
+      base_revision: revision,
+      ...input,
+    }
+  }
+
+  private createMutationRequest(input: EngineRequestInput): EngineRequest {
     const revision = this.currentState.revision
-    if (revision === null) throw new Error('Workspace engine revision is unavailable.')
+    if (revision === null) throw new Error('Canonical workspace revision is unavailable.')
+    if (this.workerRevision !== revision) {
+      throw new Error('Workspace engine has an uncommitted optimistic revision.')
+    }
     return {
       protocol_version: 1,
       request_id: this.takeRequestId(),
@@ -310,6 +342,7 @@ export class DomainEngineClient {
         if (this.isDisposed()) throw disposedError()
         await this.initializeWorker(snapshot.bytes)
         if (this.isDisposed()) throw disposedError()
+        this.workerRevision = snapshot.snapshot.revision
         this.setState({ phase: 'ready', revision: snapshot.snapshot.revision })
         return
       } catch (error) {
@@ -375,7 +408,7 @@ export class DomainEngineClient {
     try {
       const response = decodeEngineResponse(message.response)
       if (response.result.kind === 'patch') {
-        this.setState({ phase: 'ready', revision: response.result.payload.revision })
+        this.workerRevision = response.result.payload.revision
       }
       pending.resolve(response)
     } catch (error) {
@@ -387,6 +420,8 @@ export class DomainEngineClient {
     this.worker?.postMessage({ kind: 'dispose' })
     this.worker?.terminate()
     this.worker = null
+    this.workerRevision = null
+    this.activeMutationRequestId = null
     this.initialization?.reject(error)
     this.initialization = null
     for (const pending of this.pending.values()) pending.reject(error)

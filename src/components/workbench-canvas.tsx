@@ -30,6 +30,10 @@ import {
 } from 'react'
 import { CableEdge, type CableFlowEdge } from '@/components/cable-edge'
 import { CanvasCommandBar } from '@/components/canvas-command-bar'
+import {
+  CanvasActivityIndicator,
+  type CanvasActivity,
+} from '@/components/canvas-activity-indicator'
 import { EquipmentNode, type EquipmentFlowNode } from '@/components/equipment-card'
 import { MonitorNode, type MonitorFlowNode } from '@/components/monitor-card'
 import { NasNode, type NasFlowNode } from '@/components/nas-card'
@@ -390,6 +394,8 @@ function CanvasViewport({
   canUndo,
   canRedo,
   saveStatus,
+  canonicalMutationBusy,
+  canvasOperationLabel,
   autoCenterOnSelect,
   networkCablesVisible,
   powerCablesVisible,
@@ -431,6 +437,8 @@ function CanvasViewport({
   canUndo: boolean
   canRedo: boolean
   saveStatus: 'saved' | 'saving' | 'error'
+  canonicalMutationBusy: boolean
+  canvasOperationLabel: string | null
   autoCenterOnSelect: boolean
   networkCablesVisible: boolean
   powerCablesVisible: boolean
@@ -1529,43 +1537,56 @@ function CanvasViewport({
     stableOnSelectConnection(edge.id.replace('cable:', ''))
   }
 
+  const canvasActivity: CanvasActivity | null = routingState.error
+    ? { kind: 'error', label: `Cable routing failed: ${routingState.error}` }
+    : canonicalMutationBusy
+      ? { kind: 'progress', label: 'Saving and synchronizing workspace' }
+      : domainEngine.state.phase === 'rebuilding' || domainEngine.state.phase === 'conflict'
+        ? { kind: 'progress', label: 'Synchronizing workspace engine' }
+        : canvasOperationLabel
+          ? { kind: 'progress', label: canvasOperationLabel }
+          : routingState.pending
+            ? { kind: 'progress', label: 'Routing cables' }
+            : null
+
   return (
     <main ref={canvasRootRef} className="relative min-w-0 flex-1 bg-[#fbf8f1]">
       <div
         ref={setNodeRef}
         className={`relative h-dvh overflow-hidden bg-[#fbf8f1] transition ${isOver ? 'ring-2 ring-inset ring-[#ddb668]' : ''}`}
       >
-        {validationMessage ? (
-          <div
-            data-testid="canvas-validation-message"
-            data-severity={validationSeverity}
-            role={validationSeverity === 'unknown' ? 'status' : 'alert'}
-            className={cn(
-              'pointer-events-none absolute left-4 top-4 z-20 rounded-md border px-3 py-2 text-xs font-semibold shadow-sm',
-              validationSeverity === 'unknown'
-                ? 'border-[#dfc483] bg-[#fff8df] text-[#5d4814]'
-                : 'border-[#dfb3a5] bg-[#fff4ee] text-[#613126]',
-            )}
-          >
-            {validationMessage}
-          </div>
-        ) : null}
+        <div className="pointer-events-none absolute left-4 top-4 z-30 flex max-w-[min(24rem,calc(100%-2rem))] flex-col items-start gap-2">
+          <CanvasActivityIndicator activity={canvasActivity} />
+          {validationMessage ? (
+            <div
+              data-testid="canvas-validation-message"
+              data-severity={validationSeverity}
+              role={validationSeverity === 'unknown' ? 'status' : 'alert'}
+              className={cn(
+                'rounded-md border px-3 py-2 text-xs font-semibold shadow-sm',
+                validationSeverity === 'unknown'
+                  ? 'border-[#dfc483] bg-[#fff8df] text-[#5d4814]'
+                  : 'border-[#dfb3a5] bg-[#fff4ee] text-[#613126]',
+              )}
+            >
+              {validationMessage}
+            </div>
+          ) : null}
+          {typeof demoRemainingSeconds === 'number' ? (
+            <div className="pointer-events-auto rounded-lg border border-[#d6ccbd] bg-[#fffdf8]/95 px-3 py-2 text-xs font-black uppercase tracking-[0.08em] text-[#5d554c] shadow-sm">
+              Demo session {formatRemainingSeconds(demoRemainingSeconds)}
+            </div>
+          ) : null}
+        </div>
         {project.placements.length === 0 ? (
           <div className="pointer-events-none absolute left-1/2 top-1/2 z-10 w-[280px] -translate-x-1/2 -translate-y-1/2 rounded-lg border border-dashed border-[#b9aa98] bg-white/80 p-5 text-center text-sm text-[#75695d]">
             Drag equipment from the inventory to start a layout.
-          </div>
-        ) : null}
-        {typeof demoRemainingSeconds === 'number' ? (
-          <div className="pointer-events-auto absolute left-4 top-4 z-20 rounded-lg border border-[#d6ccbd] bg-[#fffdf8]/95 px-3 py-2 text-xs font-black uppercase tracking-[0.08em] text-[#5d554c] shadow-sm">
-            Demo session {formatRemainingSeconds(demoRemainingSeconds)}
           </div>
         ) : null}
         <CanvasCommandBar
           className={inspectorOpen ? 'lg:right-[680px]' : undefined}
           desktopInventoryVisible={desktopInventoryVisible}
           saveStatus={saveStatus}
-          routingPending={routingState.pending}
-          routingError={routingState.error}
           canUndo={canUndo}
           canRedo={canRedo}
           updateAvailable={updateAvailable}
@@ -1664,6 +1685,8 @@ export function WorkbenchCanvas(props: {
   canUndo: boolean
   canRedo: boolean
   saveStatus: 'saved' | 'saving' | 'error'
+  canonicalMutationBusy: boolean
+  canvasOperationLabel: string | null
   autoCenterOnSelect: boolean
   networkCablesVisible: boolean
   powerCablesVisible: boolean

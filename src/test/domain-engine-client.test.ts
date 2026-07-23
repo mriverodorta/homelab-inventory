@@ -221,11 +221,13 @@ describe('DomainEngineClient', () => {
     await new Promise((resolve) => setTimeout(resolve, 0))
     expect(testApi.postCommand).toHaveBeenCalledTimes(1)
     expect(worker.requests).toHaveLength(1)
+    expect(client.status().revision).toBe(1)
 
     releaseFirst()
     await Promise.all([first, second])
     expect(testApi.postCommand).toHaveBeenCalledTimes(2)
     expect(worker.requests[1]?.base_revision).toBe(2)
+    expect(client.status().revision).toBe(3)
     client.dispose()
   })
 
@@ -263,6 +265,63 @@ describe('DomainEngineClient', () => {
 
     expect(result.kind).toBe('acknowledged')
     expect(worker.requests).toHaveLength(requestCount)
+    client.dispose()
+  })
+
+  it('accepts the matching server event while its optimistic HTTP commit is still pending', async () => {
+    let releaseCommit = () => {}
+    const commitGate = new Promise<void>((resolve) => { releaseCommit = resolve })
+    const testApi = api({
+      postCommand: vi.fn(async (bytes) => {
+        await commitGate
+        const request = decodeEngineRequest(bytes)
+        const response: EngineResponse = {
+          protocol_version: 1,
+          request_id: request.request_id,
+          base_revision: request.base_revision,
+          result: {
+            kind: 'patch',
+            payload: {
+              revision: request.base_revision + 1,
+              forward: { kind: 'set-project-name', payload: { name: 'Rack Lab' } },
+              inverse: { kind: 'set-project-name', payload: { name: 'Lab' } },
+            },
+          },
+        }
+        return { response, bytes: encodeEngineResponse(response) }
+      }),
+    })
+    const worker = new FakeWorker()
+    const client = new DomainEngineClient({ api: testApi, workerFactory: () => worker })
+    await client.start()
+
+    const mutation = client.mutate({
+      operation: { kind: 'update-project-metadata', payload: { name: 'Rack Lab' } },
+    })
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    const request = worker.requests[0]!
+    const committed: EngineResponse = {
+      protocol_version: 1,
+      request_id: request.request_id,
+      base_revision: request.base_revision,
+      result: {
+        kind: 'patch',
+        payload: {
+          revision: 2,
+          forward: { kind: 'set-project-name', payload: { name: 'Rack Lab' } },
+          inverse: { kind: 'set-project-name', payload: { name: 'Lab' } },
+        },
+      },
+    }
+
+    await expect(client.applyCommittedResponse(encodeEngineResponse(committed))).resolves.toMatchObject({
+      kind: 'acknowledged',
+    })
+    expect(worker.requests).toHaveLength(1)
+    expect(client.status().revision).toBe(2)
+
+    releaseCommit()
+    await mutation
     client.dispose()
   })
 

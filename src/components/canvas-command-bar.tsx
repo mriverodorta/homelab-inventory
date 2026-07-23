@@ -26,8 +26,6 @@ export type CanvasSaveStatus = 'saved' | 'saving' | 'error'
 export interface CanvasCommandBarProps {
   desktopInventoryVisible: boolean
   saveStatus: CanvasSaveStatus
-  routingPending: boolean
-  routingError: string | null
   canUndo: boolean
   canRedo: boolean
   updateAvailable: boolean
@@ -139,36 +137,9 @@ function SaveStatusIndicator({ status }: { status: CanvasSaveStatus }) {
   )
 }
 
-function RoutingStatusIndicator({ pending, error }: { pending: boolean; error: string | null }) {
-  if (!pending && !error) return null
-
-  const label = pending ? 'Routing cables...' : `Cable routing failed: ${error}`
-
-  return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <span
-          role="status"
-          aria-label={label}
-          className="inline-flex size-10 shrink-0 items-center justify-center rounded-md"
-        >
-          {pending ? (
-            <LoaderCircle className="size-4 animate-spin text-[#75695d]" />
-          ) : (
-            <AlertTriangle className="size-4 text-[#a84834]" />
-          )}
-        </span>
-      </TooltipTrigger>
-      <TooltipContent side="top" sideOffset={8}>{label}</TooltipContent>
-    </Tooltip>
-  )
-}
-
 export function CanvasCommandBar({
   desktopInventoryVisible,
   saveStatus,
-  routingPending,
-  routingError,
   canUndo,
   canRedo,
   updateAvailable,
@@ -223,7 +194,6 @@ export function CanvasCommandBar({
           <ToolbarSeparator />
 
           <SaveStatusIndicator status={saveStatus} />
-          <RoutingStatusIndicator pending={routingPending} error={routingError} />
           <ToolbarButton label="Undo" onClick={onUndo} disabled={!canUndo}>
             <Undo2 className="size-4" />
           </ToolbarButton>

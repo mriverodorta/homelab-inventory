@@ -36,6 +36,10 @@ export function DomainEngineGate({ children }: { children: ReactNode }) {
       </section>
   )
 
+  if (hasBeenReadyRef.current && !failed && !unsupported) {
+    return children
+  }
+
   if (hasBeenReadyRef.current) {
     return (
       <>
