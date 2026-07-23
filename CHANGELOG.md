@@ -6,6 +6,13 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 
 ## Unreleased
 
+- Added a shared deterministic Rust/WASM domain-engine foundation that runs the same module in a dedicated browser worker and in the Bun persistence authority.
+- Added persisted project revisions, binary command transport, committed-update streaming, and canonical rebuilds when a browser misses or conflicts with a project revision.
+- Added visible loading, rebuilding, unsupported-browser, and recoverable engine-failure states while keeping normal canvas interaction blocked until the local engine is ready.
+- Migrated project-name autosave to an optimistic, revision-checked WASM command without resaving the complete project document.
+- Added schema 13 migration and validation for monotonic project revisions, including automatic pre-migration backups.
+- Added an optimized multi-stage Rust/WASM Docker build while keeping Rust tools, source, tests, development data, and generated build trees out of the distroless runtime image.
+- Added Rust formatting, clippy, unit tests, WASM packaging checks, and non-blocking engine benchmark artifacts to CI.
 - Added obstacle-aware shortest-path routing for network, display, and power cables while allowing cable crossings and shared lanes.
 - Added double-click cable anchors, individual bend removal, Reset route, and Undo/Redo support for manual routing changes.
 - Added browser-local cable and canvas-item snapping preferences, disabled by default, using 12 px cable lanes and the 24 px item grid.

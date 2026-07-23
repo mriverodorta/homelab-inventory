@@ -125,6 +125,12 @@ describe('release notes helpers', () => {
     expect(UNRELEASED_RELEASE_NOTES.fixes).toContain(
       'New connections no longer open the Inspector by default; users can restore automatic opening for every connection workflow in General workspace preferences.',
     )
+    expect(UNRELEASED_RELEASE_NOTES.highlights).toContain(
+      'A shared Rust/WASM workspace engine now runs in a dedicated browser worker and on the Bun server, establishing a faster deterministic foundation for upcoming routing, compatibility, topology, and inventory operations.',
+    )
+    expect(UNRELEASED_RELEASE_NOTES.fixes).toContain(
+      'Project-name autosave now uses an optimistic revision-checked command and rolls back to canonical data after a conflict without retrying the mutation automatically.',
+    )
   })
 
   it('retains structured settings simplification notes for version 0.1.29', () => {
