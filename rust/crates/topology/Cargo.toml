@@ -8,4 +8,3 @@ rust-version.workspace = true
 [dependencies]
 homelab-geometry = { path = "../geometry" }
 serde.workspace = true
-
