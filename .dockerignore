@@ -19,7 +19,12 @@ LICENSE
 .editorconfig
 .gitattributes
 build.sh
-scripts
+scripts/**/*.test.mjs
+scripts/**/*.test.ts
+scripts/**/*.test.tsx
+artifacts
+rust/target
+data-wasm
 server/seed
 server/**/*.test.mjs
 src/test

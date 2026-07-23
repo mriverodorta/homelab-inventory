@@ -105,7 +105,9 @@ const cspDirectives = {
   frameAncestors: ["'none'"],
   imgSrc: ["'self'", 'data:', 'blob:'],
   objectSrc: ["'none'"],
-  scriptSrc: isProduction ? ["'self'"] : ["'self'", "'unsafe-inline'"],
+  scriptSrc: isProduction
+    ? ["'self'", "'wasm-unsafe-eval'"]
+    : ["'self'", "'unsafe-inline'", "'wasm-unsafe-eval'"],
   scriptSrcAttr: ["'none'"],
   styleSrc: ["'self'", "'unsafe-inline'"],
   upgradeInsecureRequests: null,

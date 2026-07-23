@@ -72,6 +72,16 @@ async function run(command, args) {
 }
 
 async function needsBuild() {
+  if (process.env.HOMELAB_WASM_PREBUILT === '1') {
+    const missingOutputs = []
+    for (const output of outputs) {
+      if (!(await exists(output))) missingOutputs.push(path.relative(root, output))
+    }
+    if (missingOutputs.length > 0) {
+      throw new Error(`Prebuilt WASM artifacts are missing: ${missingOutputs.join(', ')}`)
+    }
+    return false
+  }
   if (!(await exists(sourceArtifact)) || !(await Promise.all(outputs.map(exists))).every(Boolean)) {
     return true
   }
