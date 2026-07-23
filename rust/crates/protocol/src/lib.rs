@@ -1,5 +1,7 @@
 use serde::{Deserialize, Serialize};
 
+pub use homelab_geometry::{GeometryHandle, GeometryNode, Point, Rect, Segment, Side};
+
 pub const PROTOCOL_VERSION: u16 = 1;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -107,5 +109,23 @@ mod tests {
         let decoded: EngineSnapshot =
             rmp_serde::from_slice(&bytes).expect("deserialize Unicode snapshot");
         assert_eq!(decoded, snapshot);
+    }
+
+    #[test]
+    fn geometry_records_round_trip_with_fractional_coordinates() {
+        let node = GeometryNode {
+            item_id: "server:1".into(),
+            bounds: Rect {
+                x: 12.5,
+                y: 24.25,
+                width: 282.0,
+                height: 240.0,
+            },
+        };
+        let bytes = rmp_serde::to_vec_named(&node).expect("serialize geometry node");
+        let decoded: GeometryNode =
+            rmp_serde::from_slice(&bytes).expect("deserialize geometry node");
+        assert_eq!(decoded, node);
+        decoded.validate().expect("valid geometry node");
     }
 }

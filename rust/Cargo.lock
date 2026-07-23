@@ -20,6 +20,7 @@ dependencies = [
 name = "homelab-engine-protocol"
 version = "0.1.0"
 dependencies = [
+ "homelab-geometry",
  "rmp-serde",
  "serde",
 ]
@@ -31,6 +32,13 @@ dependencies = [
  "homelab-domain-core",
  "homelab-engine-protocol",
  "rmp-serde",
+ "serde",
+]
+
+[[package]]
+name = "homelab-geometry"
+version = "0.1.0"
+dependencies = [
  "serde",
 ]
 
