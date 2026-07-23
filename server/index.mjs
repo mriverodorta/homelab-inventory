@@ -21,6 +21,12 @@ const appMode = process.env.APP_MODE ?? 'production'
 const isDemoMode = appMode === 'demo'
 const port = Number(process.env.PORT ?? 5173)
 const dataDir = process.env.DATA_DIR ?? path.join(root, 'data')
+if (
+  process.env.HOMELAB_ENGINE_WASM === 'required'
+  && path.resolve(dataDir) === path.join(root, 'data')
+) {
+  throw new Error('WASM development cannot use the repository data/ directory. Use data-wasm/.')
+}
 const demoSourceDir = process.env.DEMO_SOURCE_DIR ?? '/read-only-data'
 const demoSessionMinutes = Number(process.env.DEMO_SESSION_MINUTES ?? 30)
 const demoMaxSessions = Number(process.env.DEMO_MAX_SESSIONS ?? 100)
