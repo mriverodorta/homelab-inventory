@@ -10,7 +10,7 @@ import {
   powerOutletEndpoint,
   powerStripPowerInputEndpoint,
   POWER_INPUT_PORT_KEY,
-} from '@/lib/power-topology'
+} from '@/lib/power-endpoints'
 import {
   numericSpec,
   sortedPorts,
@@ -32,15 +32,18 @@ export function powerStripOutletViews(item: Parameters<typeof sortedPorts>[0]): 
   const outlets = ports.length > 0
     ? ports
     : Array.from({ length: total }, (_, index) => syntheticOutletPort(itemId, index + 1).port)
+  const customNames = new Map(item.smart?.outlets.map((entry) => [entry.portId, entry.name]) ?? [])
 
   return outlets.map((port, index) => {
     const protectedOutlet = surgeProtected || index < surgeCount || `${port.label ?? ''} ${port.notes ?? ''}`.toLowerCase().includes('surge')
+    const defaultDetail = `${protectedOutlet ? 'Surge-protected outlet' : 'Power outlet'} ${port.slotNumber}`
+    const customName = customNames.get(port.id)
 
     return {
       endpoint: powerOutletEndpoint(itemId, port.id),
       port,
       label: protectedOutlet ? 'Surge' : 'Outlet',
-      detail: port.label ?? `${protectedOutlet ? 'Surge-protected outlet' : 'Power outlet'} ${port.slotNumber}`,
+      detail: customName ? `${customName} - ${defaultDetail}` : port.label ?? defaultDetail,
       tone: protectedOutlet
         ? 'bg-[#ead8f4] text-[#332047]'
         : 'bg-[#f3dfc1] text-[#3a2812]',
@@ -83,6 +86,7 @@ export function PowerStripNode({ data }: NodeProps<PowerStripFlowNode>) {
       eyebrow="Power strip"
       accentClassName="bg-[#453a4d]"
       summary={formatInventoryCompactSpec(item) ?? undefined}
+      subtitle={item.smart?.displayName?.trim() || undefined}
       groups={[
         { id: 'outlets', label: 'Power outlets', ports: powerStripOutletViews(item) },
       ]}

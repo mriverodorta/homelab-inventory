@@ -1,6 +1,12 @@
 import { DEFAULT_PROJECT_ID } from '@/lib/project'
 import type { InventoryDependencyReport, InventoryRef } from '@/lib/inventory-lifecycle'
-import type { InventoryItem, InventoryProperties, ProjectState } from '@/types/inventory'
+import type {
+  InventoryItem,
+  InventoryProperties,
+  NasPowerConfiguration,
+  NasPowerConfigurationChangeResult,
+  ProjectState,
+} from '@/types/inventory'
 
 export type InventoryItemInput = Omit<InventoryItem, 'id' | 'key'>
 
@@ -53,6 +59,20 @@ export async function updateInventoryItem(
     method: 'PUT',
     body: JSON.stringify(item),
   })
+}
+
+export async function changeNasPowerConfiguration(
+  id: number,
+  powerConfiguration: NasPowerConfiguration,
+  confirmed = false,
+): Promise<NasPowerConfigurationChangeResult> {
+  return apiRequest<NasPowerConfigurationChangeResult>(
+    `/api/inventory/items/nas/${id}/power-configuration`,
+    {
+      method: 'POST',
+      body: JSON.stringify({ powerConfiguration, confirmed }),
+    },
+  )
 }
 
 export async function updateInventoryItemProperties(

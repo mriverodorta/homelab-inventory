@@ -17,7 +17,9 @@ import type {
   InventoryProperties,
   InventorySpecs,
   InventoryType,
+  SmartPowerStripOutletName,
 } from '@/types/inventory'
+import { canonicalPowerPorts } from '../../../shared/power-ports.mjs'
 import { formatPortTypeLabel } from './options'
 
 export type PortGroup = {
@@ -69,6 +71,7 @@ export type InventoryFormValues = {
   wireless: string
   driveBays: string
   m2Slots: string
+  powerConfiguration: '' | 'internal-psu' | 'external-adapter'
   cores: string
   threads: string
   baseClockGhz: string
@@ -110,6 +113,11 @@ export type InventoryFormValues = {
   surgeOutletCount: string
   outletCount: string
   surgeProtected: '' | 'yes' | 'no'
+  smartEnabled: boolean
+  smartDisplayName: string
+  smartManagementIp: string
+  smartMacAddress: string
+  smartOutletNames: SmartPowerStripOutletName[]
   adapterOutputWatts: string
   dcConnector: string
   cpuSocketCount: string
@@ -153,7 +161,7 @@ export const MAX_PORT_GROUP_COUNT = 128
 
 const KNOWN_SPEC_KEYS: Partial<Record<InventoryType, string[]>> = {
   server: ['formFactor', 'networkSlot', 'wireless'],
-  nas: ['driveBays', 'm2Slots'],
+  nas: ['driveBays', 'm2Slots', 'powerConfiguration'],
   cpu: ['cores', 'threads', 'baseClockGhz', 'boostClockGhz'],
   ram: ['capacityGb', 'generation', 'speedMt', 'secondarySpeedMt', 'moduleCount'],
   storage: ['capacityGb', 'capacityTb', 'interface', 'formFactor'],
@@ -302,7 +310,12 @@ export function inventoryPortsToPortGroups(ports: InventoryPort[] | undefined): 
   if (!ports?.length) return []
   const groups: PortGroup[] = []
 
-  for (const port of ports.slice().sort((a, b) => a.slotNumber - b.slotNumber)) {
+  for (const port of ports
+    .filter((candidate) => candidate.kind !== 'power-port'
+      && candidate.type !== 'ac-input'
+      && candidate.type !== 'ac-outlet')
+    .slice()
+    .sort((a, b) => a.slotNumber - b.slotNumber)) {
     const previous = groups.at(-1)
     const role = port.role ?? 'access'
     const speed = port.speed ?? ''
@@ -340,6 +353,7 @@ export function createInventoryFormValues(type: InventoryType): InventoryFormVal
     wireless: '',
     driveBays: '',
     m2Slots: '',
+    powerConfiguration: '',
     cores: '',
     threads: '',
     baseClockGhz: '',
@@ -381,6 +395,11 @@ export function createInventoryFormValues(type: InventoryType): InventoryFormVal
     surgeOutletCount: '',
     outletCount: '',
     surgeProtected: '',
+    smartEnabled: false,
+    smartDisplayName: '',
+    smartManagementIp: '',
+    smartMacAddress: '',
+    smartOutletNames: [],
     adapterOutputWatts: '',
     dcConnector: '',
     cpuSocketCount: '',
@@ -435,6 +454,10 @@ export function inventoryItemToFormValues(item: InventoryItem): InventoryFormVal
     wireless: stringValue(specs.wireless),
     driveBays: stringValue(specs.driveBays),
     m2Slots: stringValue(specs.m2Slots),
+    powerConfiguration: specs.powerConfiguration === 'internal-psu'
+      || specs.powerConfiguration === 'external-adapter'
+      ? specs.powerConfiguration
+      : '',
     cores: stringValue(specs.cores),
     threads: stringValue(specs.threads),
     baseClockGhz: stringValue(specs.baseClockGhz),
@@ -476,6 +499,13 @@ export function inventoryItemToFormValues(item: InventoryItem): InventoryFormVal
     surgeOutletCount: stringValue(specs.surgeProtectedOutlets),
     outletCount: stringValue(specs.outlets),
     surgeProtected: specs.surgeProtected === true ? 'yes' : specs.surgeProtected === false ? 'no' : '',
+    smartEnabled: item.type === 'powerStrip' && item.smart?.enabled === true,
+    smartDisplayName: item.type === 'powerStrip' ? item.smart?.displayName ?? '' : '',
+    smartManagementIp: item.type === 'powerStrip' ? item.smart?.managementIp ?? '' : '',
+    smartMacAddress: item.type === 'powerStrip' ? item.smart?.macAddress ?? '' : '',
+    smartOutletNames: item.type === 'powerStrip'
+      ? item.smart?.outlets.map((outlet) => ({ ...outlet })) ?? []
+      : [],
     adapterOutputWatts: item.type === 'powerAdapter' ? stringValue(specs.wattageWatts) : '',
     dcConnector: stringValue(specs.connector),
     cpuSocketCount: stringValue(specs.cpuSocketCount),
@@ -551,8 +581,12 @@ export function reconcilePorts(
 ): InventoryPort[] | undefined {
   let slotNumber = 1
   const ports: InventoryPort[] = []
+  const systemPorts = originalPorts.filter((port) => port.kind === 'power-port'
+    || port.type === 'ac-input'
+    || port.type === 'ac-outlet')
+  const editableOriginalPorts = originalPorts.filter((port) => !systemPorts.includes(port))
   const originalsById = new Map(
-    originalPorts.map((port) => [portIdKey(port.id), clonePort(port)]),
+    editableOriginalPorts.map((port) => [portIdKey(port.id), clonePort(port)]),
   )
   const retainedIds = new Set<string>()
   const allocateId = nextAvailablePortId(originalPorts)
@@ -588,14 +622,15 @@ export function reconcilePorts(
     }
   }
 
-  const protectedRemovedPort = originalPorts.find(
+  const protectedRemovedPort = editableOriginalPorts.find(
     (port) => !retainedIds.has(portIdKey(port.id)) && hasProtectedPortMetadata(port),
   )
   if (protectedRemovedPort) {
     throw new Error(`Cannot remove protected port ${String(protectedRemovedPort.id)} without resolving its saved metadata.`)
   }
 
-  return ports.length ? ports : undefined
+  const reconciled = [...ports, ...systemPorts.map(clonePort)]
+  return reconciled.length ? reconciled : undefined
 }
 
 function setSpec(specs: InventorySpecs, key: string, value: string | number | boolean | undefined): void {
@@ -614,6 +649,7 @@ export function inventoryFormValuesToInput(values: InventoryFormValues): Invento
   } else if (type === 'nas') {
     setSpec(specs, 'driveBays', numberValue(values.driveBays))
     setSpec(specs, 'm2Slots', numberValue(values.m2Slots))
+    setSpec(specs, 'powerConfiguration', cleanString(values.powerConfiguration))
   } else if (type === 'cpu') {
     setSpec(specs, 'cores', numberValue(values.cores))
     setSpec(specs, 'threads', numberValue(values.threads))
@@ -699,6 +735,18 @@ export function inventoryFormValuesToInput(values: InventoryFormValues): Invento
   const ports = inventoryTypeHasPorts(type)
     ? reconcilePorts(type, values.portGroups, values.originalPorts)
     : undefined
+  const smartOutletPortIds = new Set(powerStripOutletPorts(values).map((port) => port.id))
+  const smart = type === 'powerStrip' && values.smartEnabled
+    ? {
+        enabled: true as const,
+        ...(cleanString(values.smartDisplayName) ? { displayName: values.smartDisplayName.trim() } : {}),
+        ...(cleanString(values.smartManagementIp) ? { managementIp: values.smartManagementIp.trim() } : {}),
+        ...(cleanString(values.smartMacAddress) ? { macAddress: values.smartMacAddress.trim() } : {}),
+        outlets: values.smartOutletNames
+          .filter((outlet) => smartOutletPortIds.has(outlet.portId) && outlet.name.trim())
+          .map((outlet) => ({ portId: outlet.portId, name: outlet.name.trim() })),
+      }
+    : undefined
   return {
     type,
     name: values.name.trim(),
@@ -712,8 +760,23 @@ export function inventoryFormValuesToInput(values: InventoryFormValues): Invento
     ...(compatibility ? { compatibility } : {}),
     ...(values.properties ? { properties: { ...values.properties } } : {}),
     ...(ports ? { ports } : {}),
+    ...(smart ? { smart } : {}),
     ...(cleanString(values.notes) ? { notes: values.notes.trim() } : {}),
   }
+}
+
+export function powerStripOutletPorts(values: Pick<
+  InventoryFormValues,
+  'outletCount' | 'originalPorts'
+>): InventoryPort[] {
+  const outlets = Math.max(0, Math.trunc(Number(values.outletCount) || 0))
+  return canonicalPowerPorts({
+    id: 1,
+    name: 'Power strip',
+    type: 'powerStrip',
+    specs: { outlets },
+    ports: values.originalPorts,
+  }).filter((port) => port.type === 'ac-outlet')
 }
 
 type ResourceGroupDraft = StorageSlotGroupDraft | ExpansionSlotGroupDraft
@@ -933,6 +996,9 @@ export function getPortGroupValidationTarget(
 export function validateInventoryFormValues(values: InventoryFormValues): InventoryFormErrors {
   const errors: InventoryFormErrors = {}
   if (!values.name.trim()) errors.name = 'Name is required.'
+  if (values.type === 'nas' && values.powerConfiguration === '') {
+    errors.powerConfiguration = 'Select a power configuration.'
+  }
 
   const positiveFields: Array<keyof InventoryFormValues> = [
     'cores', 'threads', 'capacityGb', 'moduleCount', 'hostMemorySlots', 'cpuSocketCount',

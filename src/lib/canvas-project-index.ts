@@ -1,50 +1,47 @@
 import { getProjectAuditWarnings } from '@/lib/audit'
+import type { RuntimePowerEndpoint } from '@/engine/topology'
+import type { TopologyQueryData } from '@/hooks/use-topology-query'
 import { runtimeItemKey } from '@/lib/item-keys'
-import { endpointKey, portsCompatible } from '@/lib/project'
-import { getPowerEndpoints, type PowerEndpoint } from '@/lib/power-topology'
+import { endpointKey } from '@/lib/project'
 import type {
+  ComponentAssignment,
   ConnectionEndpoint,
-  InventoryPort,
   ProjectState,
 } from '@/types/inventory'
 
 export type CanvasProjectIndex = {
+  assignmentsByHostId: ReadonlyMap<string, readonly ComponentAssignment[]>
   assignedHostByItemId: ReadonlyMap<string, string>
   auditWarningCountByItemId: ReadonlyMap<string, number>
+  availableEndpointKeys: ReadonlySet<string>
+  compatibleEndpointKeys: ReadonlySet<string> | null
   connectedEndpointKeys: ReadonlySet<string>
-  portByEndpointKey: ReadonlyMap<string, InventoryPort>
-  powerEndpointByKey: ReadonlyMap<string, PowerEndpoint>
+  powerEndpointByKey: ReadonlyMap<string, RuntimePowerEndpoint>
 }
 
-function indexPort(
-  portByEndpointKey: Map<string, InventoryPort>,
-  itemId: string,
-  port: InventoryPort,
-  hostedItemId?: string,
-): void {
-  if (port.endpoints?.length) {
-    for (const endpoint of port.endpoints) {
-      portByEndpointKey.set(endpointKey({
-        itemId,
-        hostedItemId,
-        portId: port.id,
-        endpointId: endpoint.id,
-      }), port)
-    }
-    return
-  }
-
-  portByEndpointKey.set(endpointKey({ itemId, hostedItemId, portId: port.id }), port)
-}
-
-export function buildCanvasProjectIndex(project: ProjectState): CanvasProjectIndex {
+export function buildCanvasProjectIndex(
+  project: ProjectState,
+  topology: TopologyQueryData | null = null,
+  compatibleEndpointKeys: ReadonlySet<string> | null = null,
+): CanvasProjectIndex {
+  const assignmentsByHostId = new Map<string, ComponentAssignment[]>()
   const assignedHostByItemId = new Map<string, string>()
   const auditWarningCountByItemId = new Map<string, number>()
+  const availableEndpointKeys = new Set(
+    topology?.endpoints
+      .filter((descriptor) => descriptor.available)
+      .map((descriptor) => endpointKey(descriptor.endpoint)) ?? [],
+  )
   const connectedEndpointKeys = new Set<string>()
-  const portByEndpointKey = new Map<string, InventoryPort>()
-  const powerEndpointByKey = new Map<string, PowerEndpoint>()
+  const powerEndpointByKey = new Map<string, RuntimePowerEndpoint>()
 
-  for (const group of getProjectAuditWarnings(project)) {
+  const auditTopology = topology ? {
+    endpoints: topology.endpoints,
+    networkTraces: topology.networkTraces,
+    powerEndpoints: topology.power.endpoints,
+    powerFindings: topology.power.findings,
+  } : undefined
+  for (const group of getProjectAuditWarnings(project, {}, auditTopology)) {
     auditWarningCountByItemId.set(runtimeItemKey(group.item), group.warnings.length)
   }
 
@@ -53,37 +50,28 @@ export function buildCanvasProjectIndex(project: ProjectState): CanvasProjectInd
     connectedEndpointKeys.add(endpointKey(connection.to))
   }
 
-  for (const [itemId, item] of Object.entries(project.items)) {
-    for (const port of item.ports ?? []) {
-      indexPort(portByEndpointKey, itemId, port)
-    }
-  }
-
   for (const assignment of project.assignments) {
+    assignmentsByHostId.set(assignment.serverId, [
+      ...(assignmentsByHostId.get(assignment.serverId) ?? []),
+      assignment,
+    ])
     assignedHostByItemId.set(assignment.itemId, assignment.serverId)
 
-    const item = project.items[assignment.itemId]
-    for (const port of item?.ports ?? []) {
-      indexPort(portByEndpointKey, assignment.serverId, port, assignment.itemId)
-    }
   }
 
-  for (const powerEndpoint of getPowerEndpoints(project)) {
+  for (const powerEndpoint of topology?.power.endpoints ?? []) {
     const key = endpointKey(powerEndpoint.endpoint)
     powerEndpointByKey.set(key, powerEndpoint)
 
-    const ownerId = powerEndpoint.endpoint.hostedItemId ?? powerEndpoint.endpoint.itemId
-    const port = project.items[ownerId]?.ports?.find(
-      (candidate) => candidate.id === powerEndpoint.endpoint.portId,
-    )
-    if (port) portByEndpointKey.set(key, port)
   }
 
   return {
+    assignmentsByHostId,
     assignedHostByItemId,
     auditWarningCountByItemId,
+    availableEndpointKeys,
+    compatibleEndpointKeys,
     connectedEndpointKeys,
-    portByEndpointKey,
     powerEndpointByKey,
   }
 }
@@ -99,8 +87,7 @@ export function canvasEndpointAvailable(
   index: CanvasProjectIndex,
   endpoint: ConnectionEndpoint,
 ): boolean {
-  const key = endpointKey(endpoint)
-  return index.powerEndpointByKey.get(key)?.allowFanOut === true || !index.connectedEndpointKeys.has(key)
+  return index.availableEndpointKeys.has(endpointKey(endpoint))
 }
 
 export function canvasEndpointsCompatible(
@@ -112,20 +99,7 @@ export function canvasEndpointsCompatible(
     return true
   }
 
-  const sourcePower = index.powerEndpointByKey.get(endpointKey(source))
-  const targetPower = index.powerEndpointByKey.get(endpointKey(target))
-
-  if (sourcePower || targetPower) {
-    return Boolean(
-      sourcePower &&
-      targetPower &&
-      sourcePower.direction !== targetPower.direction,
-    )
-  }
-
-  const sourcePort = index.portByEndpointKey.get(endpointKey(source))
-  const targetPort = index.portByEndpointKey.get(endpointKey(target))
-  return Boolean(sourcePort && targetPort && portsCompatible(sourcePort.type, targetPort.type))
+  return index.compatibleEndpointKeys?.has(endpointKey(target)) ?? false
 }
 
 export function canvasAuditWarningCount(index: CanvasProjectIndex, itemId: string): number {

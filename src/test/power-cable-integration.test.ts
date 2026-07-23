@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { getConnectionRoute } from '@/lib/cable-routing'
 import { CABLE_COLORS, describeConnection, getCableAppearance } from '@/lib/cables'
-import { createConnectionForEndpoints } from '@/lib/connection-endpoints'
 import type { InventoryConnection, InventoryItem, ProjectState } from '@/types/inventory'
 import { migrateSchema10To11 } from '../../server/db/migrate-schema-11.mjs'
 import { withCanonicalPowerPorts } from '../../shared/power-ports.mjs'
@@ -42,7 +41,7 @@ function project(): ProjectState {
 }
 
 describe('power cable integration', () => {
-  it('connects a migrated UPS battery outlet to a power-strip AC input', () => {
+  it('keeps migrated UPS and power-strip ports canonical for the topology engine', () => {
     const migrated = migrateSchema10To11({
       upsSystems: [{
         id: 1,
@@ -93,23 +92,17 @@ describe('power cable integration', () => {
       slotNumber: 1,
     })
 
-    const result = createConnectionForEndpoints(
-      currentProject,
-      { itemId: 'ups:1', portId: 1 },
-      { itemId: 'powerStrip:1', portId: 1 },
-    )
-
-    expect(result).toMatchObject({
-      ok: true,
-      connection: {
-        type: 'power',
-        from: { itemId: 'ups:1', portId: 1 },
-        to: { itemId: 'powerStrip:1', portId: 1 },
-      },
+    expect(powerStrip.ports?.[0]).toMatchObject({
+      id: 1,
+      key: 'ac-input',
+      kind: 'power-port',
+      type: 'ac-input',
+      slotNumber: 0,
     })
+    expect(currentProject.placements).toHaveLength(2)
   })
 
-  it('renders power distinctly and routes hosted inputs through a host handle', () => {
+  it('renders power distinctly and routes hosted inputs through the adapter port handle', () => {
     const currentProject = project()
     const connection: InventoryConnection = {
       id: 1,
@@ -127,6 +120,8 @@ describe('power cable integration', () => {
     expect(describeConnection(currentProject, connection)).toBe(
       'Rack UPS / Surge outlet 1 -> Server / 90W adapter / AC input',
     )
-    expect(getConnectionRoute(currentProject, connection)?.targetHandle).toMatch(/^target-(left|right|top|bottom)$/)
+    expect(getConnectionRoute(currentProject, connection)?.targetHandle).toMatch(
+      /^target-(left|right|top|bottom)-powerAdapter:1:1:port$/,
+    )
   })
 })

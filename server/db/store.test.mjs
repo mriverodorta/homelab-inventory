@@ -399,7 +399,7 @@ describe('HomelabInventoryStore', () => {
     await store.init()
     await store.flush()
 
-    expect(store.databases.meta.data.schemaVersion).toBe(11)
+    expect(store.databases.meta.data.schemaVersion).toBe(13)
     expect(Object.keys(store.databases.inventory.data)).toEqual(SCHEMA_9_TABLES)
     expect(store.databases.inventory.data.wirelessCards).toEqual([
       expect.objectContaining({ id: 7, name: 'Intel AX210 Wi-Fi 6E' }),
@@ -426,7 +426,7 @@ describe('HomelabInventoryStore', () => {
 
     const backupEntries = await fs.readdir(path.join(dataDir, 'backups'), { withFileTypes: true })
     expect(backupEntries.some(
-      (entry) => entry.isDirectory() && entry.name.endsWith('-schema-8-to-11'),
+      (entry) => entry.isDirectory() && entry.name.endsWith('-schema-8-to-13'),
     )).toBe(true)
   })
 
@@ -490,7 +490,7 @@ describe('HomelabInventoryStore', () => {
     await store.init()
     await store.flush()
 
-    expect(store.databases.meta.data.schemaVersion).toBe(11)
+    expect(store.databases.meta.data.schemaVersion).toBe(13)
     expect(store.databases.inventory.data.upsSystems[0].ports).toHaveLength(10)
     expect(store.getProject().items['ups:1'].ports[0]).toMatchObject({
       id: 1,
@@ -513,7 +513,7 @@ describe('HomelabInventoryStore', () => {
     )
     expect(persistedProject.connections).toEqual([existingConnection])
     expect(await fs.readdir(path.join(dataDir, 'backups'))).toContainEqual(
-      expect.stringContaining('schema-10-to-11'),
+      expect.stringContaining('schema-10-to-13'),
     )
   })
 
@@ -590,7 +590,7 @@ describe('HomelabInventoryStore', () => {
       'inventory',
       'project',
     ])
-    expect(JSON.parse(await fs.readFile(path.join(dataDir, 'meta.json'), 'utf8')).schemaVersion).toBe(11)
+    expect(JSON.parse(await fs.readFile(path.join(dataDir, 'meta.json'), 'utf8')).schemaVersion).toBe(13)
     expect(retriedStore.databases.inventory.data.upsSystems[0].ports).toHaveLength(2)
   })
 
@@ -631,7 +631,7 @@ describe('HomelabInventoryStore', () => {
     await secondStore.init()
     await secondStore.flush()
 
-    expect(secondStore.databases.meta.data.schemaVersion).toBe(11)
+    expect(secondStore.databases.meta.data.schemaVersion).toBe(13)
     expect(secondStore.databases.inventory.data.networkCards).toEqual([
       expect.objectContaining({ id: 2, name: 'Ethernet' }),
     ])
@@ -657,7 +657,7 @@ describe('HomelabInventoryStore', () => {
     await store.init()
     await store.flush()
 
-    expect(store.databases.meta.data.schemaVersion).toBe(11)
+    expect(store.databases.meta.data.schemaVersion).toBe(13)
     expect(store.getProject().compatibilityPolicy).toEqual({
       disabledHosts: [],
       ignoredWarningIds: [],
@@ -668,7 +668,7 @@ describe('HomelabInventoryStore', () => {
     })
     const backupEntries = await fs.readdir(path.join(dataDir, 'backups'), { withFileTypes: true })
     expect(backupEntries.some(
-      (entry) => entry.isDirectory() && entry.name.endsWith('-schema-7-to-11'),
+      (entry) => entry.isDirectory() && entry.name.endsWith('-schema-7-to-13'),
     )).toBe(true)
   })
 
@@ -1154,7 +1154,7 @@ describe('HomelabInventoryStore', () => {
       },
       negotiatedSpeedMbps: 10000,
     })
-    expect(store.databases.meta.data.schemaVersion).toBe(11)
+    expect(store.databases.meta.data.schemaVersion).toBe(13)
   })
 
   it('flushes project updates to split stores', async () => {
@@ -1441,7 +1441,7 @@ describe('HomelabInventoryStore', () => {
     ]).hasUnseen).toBe(false)
   })
 
-  it('normalizes negotiated speeds before persisting project updates', async () => {
+  it('preserves engine-derived negotiated speeds when persisting project updates', async () => {
     const dataDir = await makeTempDir()
     const store = createStore({
       appVersion: '1.0.0',
@@ -1453,20 +1453,24 @@ describe('HomelabInventoryStore', () => {
     })
 
     await store.init()
+    const connections = negotiationConnections().map((connection, index) => ({
+      ...connection,
+      negotiatedSpeedMbps: index === 0 ? 2500 : 1000,
+    }))
     const savedProject = store.setProject({
       ...store.getProject(),
       items: negotiationItems(),
-      connections: negotiationConnections(),
+      connections,
     })
     await store.flush()
 
-    expect(savedProject.connections.map((connection) => connection.negotiatedSpeedMbps)).toEqual([1000, 1000])
+    expect(savedProject.connections.map((connection) => connection.negotiatedSpeedMbps)).toEqual([2500, 1000])
 
     const persistedProject = JSON.parse(
       await fs.readFile(path.join(dataDir, 'stores', 'project.json'), 'utf8'),
     )
 
-    expect(persistedProject.connections.map((connection) => connection.negotiatedSpeedMbps)).toEqual([1000, 1000])
+    expect(persistedProject.connections.map((connection) => connection.negotiatedSpeedMbps)).toEqual([2500, 1000])
   })
 
   it('validates persisted negotiated connection speeds', () => {
@@ -1598,7 +1602,7 @@ describe('HomelabInventoryStore', () => {
     }
   })
 
-  it('repairs legacy network connections before persisting project updates', async () => {
+  it('preserves submitted connection classifications during current project updates', async () => {
     const dataDir = await makeTempDir()
     const store = createStore({
       appVersion: '1.0.0',
@@ -1691,9 +1695,9 @@ describe('HomelabInventoryStore', () => {
       type,
       negotiatedSpeedMbps,
     }))).toEqual([
-      { type: 'network', negotiatedSpeedMbps: 10000 },
-      { type: 'network', negotiatedSpeedMbps: 2500 },
-      { type: 'network', negotiatedSpeedMbps: 2500 },
+      { type: 'other', negotiatedSpeedMbps: undefined },
+      { type: 'other', negotiatedSpeedMbps: undefined },
+      { type: 'other', negotiatedSpeedMbps: undefined },
     ])
 
     const persistedProject = JSON.parse(
@@ -1704,12 +1708,11 @@ describe('HomelabInventoryStore', () => {
       ...preservedConnection,
       from: { itemType: 'switch', itemId: 2, portId: 1 },
       to: { itemType: 'switch', itemId: 3, portId: 1 },
-      type: 'network',
-      negotiatedSpeedMbps: 10000,
+      type: 'other',
     })
     expect(persistedProject.connections.slice(1).map((connection) => connection.type)).toEqual([
-      'network',
-      'network',
+      'other',
+      'other',
     ])
   })
 
@@ -1750,7 +1753,7 @@ describe('HomelabInventoryStore', () => {
     await store.init()
     await store.flush()
 
-    expect(store.databases.meta.data.schemaVersion).toBe(11)
+    expect(store.databases.meta.data.schemaVersion).toBe(13)
     expect(store.getProject().assignments).toEqual([
       expect.objectContaining({
         id: 1,
@@ -1772,7 +1775,7 @@ describe('HomelabInventoryStore', () => {
     expect(store.databases.project.data.connections).toEqual(beforeProject.connections)
     const backupEntries = await fs.readdir(path.join(dataDir, 'backups'), { withFileTypes: true })
     expect(backupEntries.some(
-      (entry) => entry.isDirectory() && entry.name.endsWith('-schema-6-to-11'),
+      (entry) => entry.isDirectory() && entry.name.endsWith('-schema-6-to-13'),
     )).toBe(true)
   })
 
@@ -2344,11 +2347,11 @@ describe('HomelabInventoryStore', () => {
 
     await store.init()
 
-    expect(store.databases.meta.data.schemaVersion).toBe(11)
+    expect(store.databases.meta.data.schemaVersion).toBe(13)
     expect(store.databases.inventory.data).toEqual(schema9Inventory(inventory))
     const backupEntries = await fs.readdir(path.join(dataDir, 'backups'), { withFileTypes: true })
     expect(backupEntries.some(
-      (entry) => entry.isDirectory() && entry.name.endsWith('-schema-5-to-11'),
+      (entry) => entry.isDirectory() && entry.name.endsWith('-schema-5-to-13'),
     )).toBe(true)
   })
 
@@ -2414,7 +2417,7 @@ describe('HomelabInventoryStore', () => {
 
     await store.init()
 
-    expect(store.databases.meta.data.schemaVersion).toBe(11)
+    expect(store.databases.meta.data.schemaVersion).toBe(13)
     expect(store.getProject().items['switch:1'].ports.map((port) => port.speed)).toEqual([
       '1G',
       '1G',
@@ -2464,7 +2467,7 @@ describe('HomelabInventoryStore', () => {
 
     const backupEntries = await fs.readdir(path.join(dataDir, 'backups'), { withFileTypes: true })
     const migrationBackup = backupEntries.find(
-      (entry) => entry.isDirectory() && entry.name.endsWith('-schema-4-to-11'),
+      (entry) => entry.isDirectory() && entry.name.endsWith('-schema-4-to-13'),
     )
 
     expect(migrationBackup).toBeDefined()
@@ -2474,5 +2477,361 @@ describe('HomelabInventoryStore', () => {
     )
 
     expect(backupMeta.schemaVersion).toBe(4)
+  })
+
+  it('advances project revision once and rejects stale whole-project writes', async () => {
+    const dataDir = await makeTempDir()
+    const store = createStore({
+      appVersion: '0.1.38',
+      dataDir,
+      legacyProjectPath: path.join(dataDir, 'legacy.json'),
+      saveDebounceMs: 5,
+      seedEmptyData: false,
+      seedDir: path.join(dataDir, 'missing-seed'),
+    })
+    await store.init()
+
+    const initial = store.getProject()
+    expect(initial.revision).toBe(1)
+
+    const committed = store.setProject({
+      ...initial,
+      metadata: { ...initial.metadata, name: 'Revision Test' },
+    })
+    expect(committed.revision).toBe(2)
+    expect(committed.metadata.name).toBe('Revision Test')
+
+    expect(() => store.setProject(initial)).toThrow(/revision 1 is stale; current revision is 2/)
+    expect(store.getProject().revision).toBe(2)
+  })
+
+  it('publishes project commits only after the project store is written', async () => {
+    const dataDir = await makeTempDir()
+    const store = createStore({
+      appVersion: '0.1.38',
+      dataDir,
+      legacyProjectPath: path.join(dataDir, 'legacy.json'),
+      saveDebounceMs: 5,
+      seedEmptyData: false,
+      seedDir: path.join(dataDir, 'missing-seed'),
+    })
+    await store.init()
+
+    const events = []
+    store.subscribeToProjectCommits((event) => {
+      events.push({
+        event,
+        persistedRevision: store.databases.project.data.revision,
+      })
+    })
+
+    const responseBytes = Uint8Array.from([1, 2, 3])
+    await store.applyEnginePatch({
+      baseRevision: 1,
+      patchSet: {
+        revision: 2,
+        forward: { kind: 'set-project-name', payload: { name: 'Committed name' } },
+      },
+      responseBytes,
+    })
+
+    const persisted = JSON.parse(await fs.readFile(path.join(dataDir, 'stores', 'project.json'), 'utf8'))
+    expect(persisted.revision).toBe(2)
+    expect(events).toEqual([
+      {
+        event: {
+          type: 'project-commit',
+          baseRevision: 1,
+          revision: 2,
+          responseBytes,
+        },
+        persistedRevision: 2,
+      },
+    ])
+  })
+
+  it('persists numeric connection engine patches without reloading the project', async () => {
+    const dataDir = await makeTempDir()
+    const store = createStore({
+      appVersion: '0.1.38',
+      dataDir,
+      legacyProjectPath: path.join(dataDir, 'legacy.json'),
+      saveDebounceMs: 5,
+      seedEmptyData: false,
+      seedDir: path.join(dataDir, 'missing-seed'),
+    })
+    await store.init()
+    store.addInventoryItem({
+      type: 'server',
+      name: 'Node',
+      ports: [{ id: 1, kind: 'server-port', type: 'rj45', slotNumber: 1, speed: '1G' }],
+    })
+    store.addInventoryItem({
+      type: 'switch',
+      name: 'Switch',
+      ports: [{ id: 1, kind: 'switch-port', type: 'rj45', slotNumber: 1, speed: '2.5G' }],
+    })
+    const baseRevision = store.getProject().revision
+    const connection = {
+      id: 1,
+      from: {
+        item: { item_type: 'server', id: 1 },
+        port_id: 1,
+        endpoint_id: null,
+        hosted_item: null,
+      },
+      to: {
+        item: { item_type: 'switch', id: 1 },
+        port_id: 1,
+        endpoint_id: null,
+        hosted_item: null,
+      },
+      connection_type: 'network',
+      negotiated_speed_mbps: null,
+      label: null,
+      route: null,
+      created_at: '2026-07-23T00:00:00.000Z',
+    }
+
+    await store.applyEnginePatch({
+      baseRevision,
+      patchSet: {
+        revision: baseRevision + 1,
+        forward: {
+          kind: 'batch',
+          payload: {
+            patches: [
+              { kind: 'add-connection', payload: { connection } },
+              {
+                kind: 'set-connection-derived',
+                payload: {
+                  states: [{
+                    connection_id: 1,
+                    connection_type: 'network',
+                    negotiated_speed_mbps: 1000,
+                  }],
+                },
+              },
+            ],
+          },
+        },
+      },
+      responseBytes: Uint8Array.from([1]),
+    })
+    expect(store.getProject().connections).toEqual([{
+      id: 1,
+      from: { itemId: 'server:1', portId: 1 },
+      to: { itemId: 'switch:1', portId: 1 },
+      type: 'network',
+      negotiatedSpeedMbps: 1000,
+      createdAt: '2026-07-23T00:00:00.000Z',
+    }])
+
+    await expect(store.applyEnginePatch({
+      baseRevision: baseRevision + 1,
+      patchSet: {
+        revision: baseRevision + 2,
+        forward: { kind: 'add-connection', payload: { connection } },
+      },
+      responseBytes: Uint8Array.from([9]),
+    })).rejects.toThrow('Connection 1 already exists.')
+    expect(store.getProject().revision).toBe(baseRevision + 1)
+
+    await store.applyEnginePatch({
+      baseRevision: baseRevision + 1,
+      patchSet: {
+        revision: baseRevision + 2,
+        forward: {
+          kind: 'set-connection-route',
+          payload: {
+            connection_id: 1,
+            route: {
+              source_side: 'right',
+              target_side: 'left',
+              bend_points: [{ x: 24, y: 48 }],
+              avoid_cable_overlap: true,
+            },
+          },
+        },
+      },
+      responseBytes: Uint8Array.from([2]),
+    })
+    expect(store.getProject().connections[0].route).toEqual({
+      sourceSide: 'right',
+      targetSide: 'left',
+      bendPoints: [{ x: 24, y: 48 }],
+      avoidCableOverlap: true,
+    })
+
+    await store.applyEnginePatch({
+      baseRevision: baseRevision + 2,
+      patchSet: {
+        revision: baseRevision + 3,
+        forward: { kind: 'remove-connection', payload: { connection } },
+      },
+      responseBytes: Uint8Array.from([3]),
+    })
+    expect(store.getProject().connections).toEqual([])
+
+    const persisted = JSON.parse(await fs.readFile(path.join(dataDir, 'stores', 'project.json'), 'utf8'))
+    expect(persisted.revision).toBe(baseRevision + 3)
+    expect(persisted.connections).toEqual([])
+  })
+
+  it('persists relational placement patches and rejects mismatched inverse coordinates', async () => {
+    const dataDir = await makeTempDir()
+    const store = createStore({
+      appVersion: '0.1.38',
+      dataDir,
+      legacyProjectPath: path.join(dataDir, 'legacy.json'),
+      saveDebounceMs: 5,
+      seedEmptyData: false,
+      seedDir: path.join(dataDir, 'missing-seed'),
+    })
+    await store.init()
+    store.addInventoryItem({ type: 'server', name: 'Node' })
+    const item = { item_type: 'server', id: 1 }
+    const baseRevision = store.getProject().revision
+
+    await store.applyEnginePatch({
+      baseRevision,
+      patchSet: {
+        revision: baseRevision + 1,
+        forward: {
+          kind: 'patch-placements',
+          payload: { upsert: [{ item, x: 120, y: 240 }], remove_items: [] },
+        },
+        inverse: {
+          kind: 'patch-placements',
+          payload: { upsert: [], remove_items: [item] },
+        },
+      },
+      responseBytes: Uint8Array.from([1]),
+    })
+    expect(store.getProject().placements).toEqual([{ serverId: 'server:1', x: 120, y: 240 }])
+
+    await expect(store.applyEnginePatch({
+      baseRevision: baseRevision + 1,
+      patchSet: {
+        revision: baseRevision + 2,
+        forward: {
+          kind: 'patch-placements',
+          payload: { upsert: [{ item, x: 108, y: 240 }], remove_items: [] },
+        },
+        inverse: {
+          kind: 'patch-placements',
+          payload: { upsert: [{ item, x: 999, y: 240 }], remove_items: [] },
+        },
+      },
+      responseBytes: Uint8Array.from([2]),
+    })).rejects.toThrow('does not match current project coordinates')
+    expect(store.getProject().placements[0].x).toBe(120)
+  })
+
+  it('persists relational assignment patches and rejects mismatched inverse state', async () => {
+    const dataDir = await makeTempDir()
+    const store = createStore({
+      appVersion: '0.1.38',
+      dataDir,
+      legacyProjectPath: path.join(dataDir, 'legacy.json'),
+      saveDebounceMs: 5,
+      seedEmptyData: false,
+      seedDir: path.join(dataDir, 'missing-seed'),
+    })
+    await store.init()
+    store.addInventoryItem({ type: 'server', name: 'Node One' })
+    store.addInventoryItem({ type: 'server', name: 'Node Two' })
+    store.addInventoryItem({ type: 'powerAdapter', name: 'Adapter' })
+    const baseRevision = store.getProject().revision
+    const assignment = {
+      id: 1,
+      host: { item_type: 'server', id: 1 },
+      item: { item_type: 'powerAdapter', id: 1 },
+      component_type: 'powerAdapter',
+      assigned_at: '2026-07-23T12:00:00.000Z',
+      allocation: null,
+    }
+
+    await store.applyEnginePatch({
+      baseRevision,
+      patchSet: {
+        revision: baseRevision + 1,
+        forward: {
+          kind: 'patch-assignments',
+          payload: { upsert: [assignment], remove_assignment_ids: [] },
+        },
+        inverse: {
+          kind: 'patch-assignments',
+          payload: { upsert: [], remove_assignment_ids: [1] },
+        },
+      },
+      responseBytes: Uint8Array.from([1]),
+    })
+    expect(store.getProject().assignments).toEqual([{
+      id: 1,
+      serverId: 'server:1',
+      itemId: 'powerAdapter:1',
+      type: 'powerAdapter',
+      assignedAt: '2026-07-23T12:00:00.000Z',
+    }])
+
+    await expect(store.applyEnginePatch({
+      baseRevision: baseRevision + 1,
+      patchSet: {
+        revision: baseRevision + 2,
+        forward: {
+          kind: 'patch-assignments',
+          payload: {
+            upsert: [{ ...assignment, host: { item_type: 'server', id: 2 } }],
+            remove_assignment_ids: [],
+          },
+        },
+        inverse: {
+          kind: 'patch-assignments',
+          payload: {
+            upsert: [{ ...assignment, host: { item_type: 'server', id: 2 } }],
+            remove_assignment_ids: [],
+          },
+        },
+      },
+      responseBytes: Uint8Array.from([2]),
+    })).rejects.toThrow('does not match current project state')
+    expect(store.getProject().assignments[0].serverId).toBe('server:1')
+  })
+
+  it('does not publish a project commit when the project write fails', async () => {
+    const dataDir = await makeTempDir()
+    const store = createStore({
+      appVersion: '0.1.38',
+      dataDir,
+      legacyProjectPath: path.join(dataDir, 'legacy.json'),
+      saveDebounceMs: 5,
+      seedEmptyData: false,
+      seedDir: path.join(dataDir, 'missing-seed'),
+    })
+    await store.init()
+
+    const events = []
+    store.subscribeToProjectCommits((event) => events.push(event))
+    const originalWrite = store.databases.project.write.bind(store.databases.project)
+    store.databases.project.write = async () => {
+      throw new Error('simulated write failure')
+    }
+
+    await expect(store.applyEnginePatch({
+      baseRevision: 1,
+      patchSet: {
+        revision: 2,
+        forward: { kind: 'set-project-name', payload: { name: 'Uncommitted name' } },
+      },
+      responseBytes: Uint8Array.from([4, 5, 6]),
+    })).rejects.toThrow('simulated write failure')
+
+    expect(events).toEqual([])
+    expect(store.getProject().revision).toBe(1)
+    expect(store.getProject().metadata.name).toBe('Homelab Inventory')
+
+    store.databases.project.write = originalWrite
+    await store.flush()
   })
 })

@@ -6,7 +6,7 @@ import {
   recalculateNegotiatedSpeeds,
   SUPPORTED_SWITCH_PORT_SPEEDS,
   SWITCH_NETWORK_PORT_TYPES,
-} from '@/lib/negotiated-speed'
+} from '../../server/db/legacy-network-normalization'
 import type {
   ComponentAssignment,
   ConnectionEndpoint,

@@ -200,6 +200,10 @@ export function buildCleanRecord({ source, id, type, name = source?.name }) {
     record.specs = structuredClone(source.specs)
   }
 
+  if (type === 'powerStrip' && source?.smart?.enabled === true) {
+    record.smart = { enabled: true, outlets: [] }
+  }
+
   const compatibility = cleanCompatibility(source?.compatibility)
   if (compatibility) record.compatibility = compatibility
 

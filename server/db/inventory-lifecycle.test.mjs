@@ -109,6 +109,29 @@ describe('inventory lifecycle helpers', () => {
     })
   })
 
+  it('keeps duplicated power strips smart without cloning installation identity', () => {
+    const duplicate = buildDuplicateRecord({
+      type: 'powerStrip',
+      nextId: 2,
+      existingRecords: [{ name: 'Kasa HS300' }],
+      source: {
+        id: 1,
+        name: 'Kasa HS300',
+        specs: { outlets: 2 },
+        smart: {
+          enabled: true,
+          displayName: 'Rack power',
+          managementIp: '192.168.1.50',
+          macAddress: '00:11:22:33:44:55',
+          outlets: [{ portId: 2, name: 'Router' }],
+        },
+      },
+    })
+
+    expect(duplicate.smart).toEqual({ enabled: true, outlets: [] })
+    expect(duplicate.ports).toHaveLength(3)
+  })
+
   it('preserves monitor display ports when materializing its canonical power input', () => {
     const record = buildCleanRecord({
       id: 1,
@@ -124,9 +147,9 @@ describe('inventory lifecycle helpers', () => {
     })
 
     expect(record.ports).toEqual([
-      { id: 1, key: 'ac-input', kind: 'power-port', type: 'ac-input', slotNumber: 1, label: 'AC input' },
       { id: 2, kind: 'server-port', type: 'hdmi', slotNumber: 1 },
       { id: 3, kind: 'server-port', type: 'displayport', slotNumber: 2 },
+      { id: 1, key: 'ac-input', kind: 'power-port', type: 'ac-input', slotNumber: 1, label: 'AC input' },
     ])
   })
 

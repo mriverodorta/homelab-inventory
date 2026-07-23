@@ -2,6 +2,7 @@ import { useDraggable, useDroppable } from '@dnd-kit/core'
 import { Handle, Position, type Node, type NodeProps } from '@xyflow/react'
 import { AlertTriangle, Grip, X } from 'lucide-react'
 import type { CSSProperties } from 'react'
+import { AssignedPowerAdapterRow } from '@/components/assigned-power-adapter-row'
 import { Button } from '@/components/ui/button'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { getEndpointHandleId, type CableSide } from '@/lib/cable-routing'
@@ -13,11 +14,16 @@ import {
   canvasEndpointsCompatible,
   type CanvasProjectIndex,
 } from '@/lib/canvas-project-index'
-import { formatPortSummary, formatPortType, formatStorageCanvasParts } from '@/lib/format'
+import {
+  formatPortSummary,
+  formatPortType,
+  formatStorageCanvasParts,
+} from '@/lib/format'
 import { runtimeItemKey } from '@/lib/item-keys'
 import { useTapSelection } from '@/lib/tap-selection'
 import { endpointKey, NAS_CARD_WIDTH } from '@/lib/project'
 import { startSelectedPortDrag } from '@/lib/port-interactions'
+import { POWER_INPUT_PORT_KEY } from '@/lib/power-endpoints'
 import type {
   ComponentAssignment,
   ConnectionEndpoint,
@@ -56,6 +62,7 @@ const HANDLE_SIDES: Array<{ side: CableSide; position: Position }> = [
   { side: 'top', position: Position.Top },
   { side: 'bottom', position: Position.Bottom },
 ]
+const EMPTY_ASSIGNMENTS: readonly ComponentAssignment[] = Object.freeze([])
 
 function sortPorts(ports: InventoryPort[] | undefined): InventoryPort[] {
   return [...(ports ?? [])].sort((first, second) => first.slotNumber - second.slotNumber)
@@ -522,6 +529,81 @@ function NetworkCardRow({
   )
 }
 
+function PowerAdapterRow({
+  assignment,
+  canvasIndex,
+  draggingEndpoint,
+  nasId,
+  onEndpointClick,
+  onEndpointDragStart,
+  onEndpointDrop,
+  onRemoveAssignment,
+  onSelect,
+  pendingEndpoint,
+  project,
+  requiredHandleIds,
+  selectedItemId,
+}: {
+  assignment: ComponentAssignment | undefined
+  canvasIndex: CanvasProjectIndex
+  draggingEndpoint: ConnectionEndpoint | null
+  nasId: string
+  onEndpointClick: (endpoint: ConnectionEndpoint, point: CanvasPortDragPoint) => void
+  onEndpointDragStart: (endpoint: ConnectionEndpoint, point: CanvasPortDragPoint) => void
+  onEndpointDrop: (endpoint: ConnectionEndpoint) => void
+  onRemoveAssignment: (assignmentId: string | number) => void
+  onSelect: (itemId: string) => void
+  pendingEndpoint: ConnectionEndpoint | null
+  project: ProjectState
+  requiredHandleIds: ReadonlySet<string>
+  selectedItemId: string | null
+}) {
+  const adapter = assignment ? project.items[assignment.itemId] : undefined
+  const adapterKey = adapter ? runtimeItemKey(adapter) : ''
+  const powerPort = adapter?.ports?.find((port) => (
+    port.key === POWER_INPUT_PORT_KEY && port.type === 'ac-input'
+  ))
+  if (!assignment || !adapter) {
+    return (
+      <div
+        data-testid="nas-power-adapter-slot"
+        className="mt-2 rounded-md border border-dashed border-[#766e63] bg-[#171b22] px-3 py-2"
+      >
+        <div className="text-[9px] font-black uppercase tracking-[0.16em] text-[#cfc6b8]">
+          Power Adapter
+        </div>
+        <div className="mt-1 text-[11px] font-semibold text-[#8f887d]">Empty</div>
+      </div>
+    )
+  }
+
+  return (
+    <div data-testid="nas-power-adapter-slot">
+      <AssignedPowerAdapterRow
+        adapter={adapter}
+        assignment={assignment}
+        className="mt-2"
+        onRemoveAssignment={onRemoveAssignment}
+        onSelect={onSelect}
+        selected={selectedItemId === adapterKey}
+        portChip={powerPort ? (
+          <PortChip
+            canvasIndex={canvasIndex}
+            draggingEndpoint={draggingEndpoint}
+            endpoint={{ itemId: nasId, hostedItemId: adapterKey, portId: powerPort.id }}
+            onEndpointClick={onEndpointClick}
+            onEndpointDragStart={onEndpointDragStart}
+            onEndpointDrop={onEndpointDrop}
+            pendingEndpoint={pendingEndpoint}
+            port={powerPort}
+            requiredHandleIds={requiredHandleIds}
+          />
+        ) : null}
+      />
+    </div>
+  )
+}
+
 export function NasNode({ data }: NodeProps<NasFlowNode>) {
   const {
     project,
@@ -556,11 +638,16 @@ export function NasNode({ data }: NodeProps<NasFlowNode>) {
     return null
   }
 
-  const assignments = project.assignments.filter((assignment) => assignment.serverId === nasRuntimeKey)
+  const assignments = canvasIndex.assignmentsByHostId.get(nasRuntimeKey) ?? EMPTY_ASSIGNMENTS
   const storageAssignments = assignments.filter((assignment) => assignment.type === 'storage')
   const m2Assignments = storageAssignments.filter((assignment) => storageFitsM2(project.items[assignment.itemId]))
   const driveAssignments = storageAssignments.filter((assignment) => !storageFitsM2(project.items[assignment.itemId]))
   const networkAssignment = assignments.find((assignment) => assignment.type === 'network')
+  const powerAdapterAssignment = assignments.find((assignment) => assignment.type === 'powerAdapter')
+  const networkPorts = sortPorts(nas.ports).filter((port) => port.kind !== 'power-port')
+  const internalPowerPort = nas.specs?.powerConfiguration === 'internal-psu'
+    ? nas.ports?.find((port) => port.key === POWER_INPUT_PORT_KEY && port.type === 'ac-input')
+    : undefined
   const bayCount = typeof nas.specs?.driveBays === 'number' ? nas.specs.driveBays : 0
   const m2SlotCount = typeof nas.specs?.m2Slots === 'number' ? nas.specs.m2Slots : 0
   const auditCount = canvasAuditWarningCount(canvasIndex, nasRuntimeKey)
@@ -590,16 +677,31 @@ export function NasNode({ data }: NodeProps<NasFlowNode>) {
       ) : null}
       <div className="server-node-drag-handle flex cursor-grab items-center gap-2 rounded-md bg-[#303744] px-3 py-2 active:cursor-grabbing">
         <Grip className="size-4 text-[#cfc6b8]" />
-        <div className="min-w-0">
+        <div className="min-w-0 flex-1">
           <div className="truncate text-sm font-bold">{nas.properties?.displayName?.trim() || nas.name}</div>
           <div className="truncate text-[11px] text-[#cfc6b8]">{nas.model ?? nas.name}</div>
         </div>
+        {internalPowerPort ? (
+          <div data-testid="nas-internal-power-port" className="shrink-0">
+            <PortChip
+              canvasIndex={canvasIndex}
+              draggingEndpoint={draggingEndpoint}
+              endpoint={{ itemId: nasRuntimeKey, portId: internalPowerPort.id }}
+              onEndpointClick={onEndpointClick}
+              onEndpointDragStart={onEndpointDragStart}
+              onEndpointDrop={onEndpointDrop}
+              pendingEndpoint={pendingEndpoint}
+              port={internalPowerPort}
+              requiredHandleIds={requiredHandleIds}
+            />
+          </div>
+        ) : null}
       </div>
 
       <div className="mt-2 flex flex-wrap gap-1.5 rounded-md bg-[#171b22] p-1.5">
-        {nas.ports?.length ? (
+        {networkPorts.length ? (
           <span className="rounded bg-[#d3eee7] px-1.5 py-0.5 text-[10px] font-bold leading-none text-[#143733]">
-            {formatPortSummary(nas)}
+            {formatPortSummary({ ...nas, ports: networkPorts })}
           </span>
         ) : null}
         {typeof nas.specs?.memoryGb === 'number' ? (
@@ -614,13 +716,13 @@ export function NasNode({ data }: NodeProps<NasFlowNode>) {
         ) : null}
       </div>
 
-      {nas.ports?.length ? (
+      {networkPorts.length ? (
         <div className="mt-2 rounded-md bg-black/10 p-2">
           <div className="mb-1.5 text-[9px] font-black uppercase tracking-[0.16em] opacity-75">
             LAN
           </div>
           <div className="flex gap-1.5 overflow-visible">
-            {sortPorts(nas.ports).map((port) => (
+            {networkPorts.map((port) => (
               <PortChip
                 key={port.id}
                 canvasIndex={canvasIndex}
@@ -679,6 +781,23 @@ export function NasNode({ data }: NodeProps<NasFlowNode>) {
         requiredHandleIds={requiredHandleIds}
         selectedItemId={selectedItemId}
       />
+      {nas.specs?.powerConfiguration === 'external-adapter' ? (
+        <PowerAdapterRow
+          assignment={powerAdapterAssignment}
+          canvasIndex={canvasIndex}
+          draggingEndpoint={draggingEndpoint}
+          nasId={nasRuntimeKey}
+          onEndpointClick={onEndpointClick}
+          onEndpointDragStart={onEndpointDragStart}
+          onEndpointDrop={onEndpointDrop}
+          onRemoveAssignment={onRemoveAssignment}
+          onSelect={onSelect}
+          pendingEndpoint={pendingEndpoint}
+          project={project}
+          requiredHandleIds={requiredHandleIds}
+          selectedItemId={selectedItemId}
+        />
+      ) : null}
     </div>
   )
 }

@@ -6,6 +6,7 @@ import {
   canvasEndpointsCompatible,
 } from '@/lib/canvas-project-index'
 import type { InventoryItem, ProjectState } from '@/types/inventory'
+import { topologyQueryFixture } from '@/test/topology-query-fixture'
 
 const server: InventoryItem = {
   id: 1,
@@ -66,16 +67,23 @@ function project(): ProjectState {
 
 describe('canvas project index', () => {
   it('indexes assigned hosts, hosted ports, and connection occupancy once', () => {
-    const index = buildCanvasProjectIndex(project())
+    const currentProject = project()
+    const index = buildCanvasProjectIndex(currentProject, topologyQueryFixture(currentProject))
     const hostedEndpoint = { itemId: 'server:1', hostedItemId: 'network:1', portId: 1 }
 
     expect(index.assignedHostByItemId.get('network:1')).toBe('server:1')
+    expect(index.assignmentsByHostId.get('server:1')).toEqual(project().assignments)
     expect(canvasEndpointConnected(index, hostedEndpoint)).toBe(true)
     expect(canvasEndpointAvailable(index, hostedEndpoint)).toBe(false)
   })
 
   it('checks compatibility from indexed port metadata', () => {
-    const index = buildCanvasProjectIndex(project())
+    const currentProject = project()
+    const index = buildCanvasProjectIndex(
+      currentProject,
+      topologyQueryFixture(currentProject),
+      new Set(['switch:1:direct:1:port']),
+    )
 
     expect(canvasEndpointsCompatible(
       index,

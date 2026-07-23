@@ -337,4 +337,55 @@ describe('inventory lifecycle routes', () => {
       server.close()
     }
   })
+
+  it('previews and confirms NAS power configuration changes through the dedicated route', async () => {
+    const { store, server, url } = await createTestContext()
+    store.createInventoryItems({
+      type: 'nas',
+      name: 'External NAS',
+      specs: { powerConfiguration: 'external-adapter' },
+    })
+    store.createInventoryItems({ type: 'powerAdapter', name: 'OEM adapter' })
+    store.databases.project.data.assignments.push({
+      id: 1,
+      hostType: 'nas',
+      hostId: 1,
+      itemType: 'powerAdapter',
+      itemId: 1,
+      type: 'powerAdapter',
+      assignedAt: '2026-07-22T00:00:00.000Z',
+    })
+
+    try {
+      const blockedGenericEdit = await jsonRequest(url, '/api/inventory/items/nas/1', {
+        method: 'PUT',
+        body: JSON.stringify({
+          type: 'nas',
+          name: 'External NAS',
+          specs: { powerConfiguration: 'internal-psu' },
+        }),
+      })
+      expect(blockedGenericEdit.response.status).toBe(409)
+      expect(blockedGenericEdit.body.code).toBe('nas-power-configuration-command-required')
+
+      const preview = await jsonRequest(url, '/api/inventory/items/nas/1/power-configuration', {
+        method: 'POST',
+        body: JSON.stringify({ powerConfiguration: 'internal-psu' }),
+      })
+      expect(preview.response.status).toBe(200)
+      expect(preview.body.status).toBe('confirmation-required')
+      expect(preview.body.impact.releasedAdapter).toMatchObject({ id: 1, name: 'OEM adapter' })
+
+      const applied = await jsonRequest(url, '/api/inventory/items/nas/1/power-configuration', {
+        method: 'POST',
+        body: JSON.stringify({ powerConfiguration: 'internal-psu', confirmed: true }),
+      })
+      expect(applied.response.status).toBe(200)
+      expect(applied.body.status).toBe('applied')
+      expect(applied.body.project.items['nas:1'].specs.powerConfiguration).toBe('internal-psu')
+      expect(applied.body.project.assignments).toEqual([])
+    } finally {
+      server.close()
+    }
+  })
 })

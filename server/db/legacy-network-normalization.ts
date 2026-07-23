@@ -6,6 +6,8 @@ import type {
   ProjectState,
 } from '@/types/inventory'
 
+// Frozen migration support for schemas that predate Rust-owned topology.
+
 export const NETWORK_SPEEDS_MBPS = [1000, 2500, 5000, 10000] as const
 export const SWITCH_NETWORK_PORT_TYPES = new Set<InventoryPortType>([
   'rj45',

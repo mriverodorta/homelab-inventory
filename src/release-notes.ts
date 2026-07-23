@@ -10,6 +10,73 @@ export type ReleaseNoteEntry = {
   notes?: string[]
 }
 
+export type UnreleasedReleaseNotes = {
+  highlights: string[]
+  fixes: string[]
+  notes: string[]
+}
+
+export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
+  highlights: [
+    'A shared Rust/WASM workspace engine now runs in a dedicated browser worker and on the Bun server, establishing a faster deterministic foundation for upcoming routing, compatibility, topology, and inventory operations.',
+    'Project changes now carry persisted revisions and committed-update events so open browsers can reconcile incremental changes or rebuild safely after a missed update.',
+    'Canvas overlap checks, multi-item movement, nearest placement, and auto-arrangement now run in the shared Rust/WASM worker using an indexed geometry model.',
+    'Network, display, and power cables now use short orthogonal paths around canvas equipment while still allowing cable crossings.',
+    'Selected cable segments support double-click manual anchors, per-bend removal, Reset route, and Undo or Redo for every routing edit.',
+    'General workspace preferences now offer optional 12 px cable snapping and 24 px canvas-item snapping, both disabled by default.',
+    'Individual cables can now avoid long horizontal and vertical overlap with other routes while keeping crossings and shared endpoint approaches available.',
+    'General workspace preferences can now apply cable collision avoidance to the entire canvas without changing saved per-cable choices.',
+    'NAS equipment can now use either a direct internal-PSU connection or a manually assigned external power adapter.',
+    'NAS canvas cards expose the active power path without rendering inactive adapter slots or duplicate electrical endpoints.',
+    'Inspector audit findings can now be ignored or restored in place while acknowledged findings remain visible for context.',
+    'Power strips can now enable smart mode with a device display name, management IP, MAC address, and custom names for individual outlets.',
+    'Smart power-strip identity appears on the canvas while outlet chips remain compact and expose custom names in their tooltips and Inspector details.',
+    'Network, power, and display cables now have independent visibility controls in the canvas toolbar and General workspace settings.',
+    'Cable pathfinding, lane separation, manual bend editing, and route caching now run in the shared Rust/WASM worker instead of duplicate browser-side routing engines.',
+    'Connection endpoints, port occupancy, compatibility filtering, validation, negotiated network speeds, path tracing, and power findings now run in the shared Rust/WASM worker.',
+    'Topology results are coordinated per project revision so canvas and Inspector interactions reuse one deterministic snapshot instead of recalculating connection state in the browser.',
+  ],
+  fixes: [
+    'Workspace startup and recovery now show explicit loading, rebuilding, unsupported-browser, and failed states instead of allowing interaction with an unavailable or stale engine.',
+    'Project-name autosave now uses an optimistic revision-checked command and rolls back to canonical data after a conflict without retrying the mutation automatically.',
+    'Canvas geometry uses an independent transient revision and fingerprinted synchronization so ordinary Inspector edits do not rebuild placement state or add undo history.',
+    'The production image now compiles and optimizes WASM in an isolated Rust builder while excluding Rust source, tests, build tools, and WASM development data from the non-root runtime image.',
+    'Automatic cable detours preserve valid manual bends, recover temporarily covered anchors, and reroute only after equipment movement commits.',
+    'Automatic routes now honor configured endpoint sides, use measured card boundaries, and avoid traveling beneath source or destination equipment.',
+    'Overlap-aware cable routing resolves deterministic separate lanes without moving manual anchors or persisting generated bends.',
+    'Cable planning now runs in a background worker with a stable canvas activity indicator, while pan and zoom no longer serialize every measured port handle.',
+    'Resetting or editing one cable route now preserves unrelated canvas nodes, route objects, and React Flow edges instead of making the entire cable layer blink.',
+    'Cable paths now remain stable during cable clicks, equipment focus, Inspector opening, hover, and canvas deselection instead of briefly moving or disappearing.',
+    'Moving a cable segment now collapses clear endpoint staircases into the fewest bends without routing through other equipment.',
+    'Creating power adapters and other powered inventory now materializes their canonical numeric power ports before relational validation.',
+    'New OEM power adapters retain one draggable AC-input endpoint for connections to UPS and power-strip outlets.',
+    'Assigned server power adapters now use the power-equipment color treatment and expose their AC input directly on the server canvas card.',
+    'Changing a NAS power mode now previews affected cables and adapters, then applies the confirmed cleanup as one Undo-compatible project change.',
+    'Canvas AC input chips now use the compact AC label instead of AC-INPUT.',
+    'Disabling smart mode now requires confirmation and removes only smart-device metadata without changing outlets, cables, or canvas layout.',
+    'Cable routes now require prior selection and meaningful pointer movement before they can be repositioned, preventing ordinary clicks from shifting power, network, or video cables.',
+    'New connections no longer open the Inspector by default; users can restore automatic opening for every connection workflow in General workspace preferences.',
+    'External power-adapter cables now attach to the adapter port chip, while direct internal PSU cables remain attached to the host header port.',
+    'Removing an assigned component with connected ports now requires confirmation and removes its cable relationships atomically so the project cannot retain dangling endpoints.',
+    'Inventory drag previews now match the canvas zoom and final placement footprint so constrained drops no longer rely on an oversized representation.',
+    'Changing one cable now recalculates only that route and later lane-dependent routes, preserving unrelated cable geometry and reducing canvas stalls.',
+    'Removed duplicate browser-side topology implementations and retained legacy network normalization only for ordered historical data migrations.',
+    'Externally committed connection changes now replay incrementally through the local worker without rebuilding the complete workspace engine.',
+    'Existing power strips with a canonical AC input at slot zero no longer prevent the workspace engine from starting.',
+    'Moving one or several selected canvas items now saves one atomic placement patch without clearing the canvas or rebuilding unrelated equipment and cable routes.',
+    'Topology, geometry, handles, and cable planning now retain prior results and refresh only when their relevant project inputs change.',
+    'Routing and synchronization activity now appears in a delayed top-left canvas indicator instead of adding and removing a slot from the bottom toolbar.',
+    'Component assignment saves and later canvas moves now share one canonical persistence queue, preventing optimistic revision conflicts and lost updates.',
+    'Routine workspace synchronization now keeps the canvas interactive instead of briefly showing a centered rebuilding overlay.',
+    'Component assignment now refreshes only affected host cards and nearby cable geometry, while expected engine synchronization retains existing routes instead of flashing a false routing error.',
+    'Transient canvas routing and synchronization activity now logs to the browser console even when it completes too quickly to display visually.',
+    'Assigning, moving, swapping, or removing a component now commits one incremental WASM change while retaining optimistic canvas references, preventing repeated routing and workspace synchronization after a single drop.',
+  ],
+  notes: [
+    'Local development now uses the standard ignored data directory after the isolated WASM migration, with DATA_DIR still available for explicit overrides.',
+  ],
+}
+
 export const RELEASE_NOTES: ReleaseNoteEntry[] = [
   {
     version: '0.1.38',

@@ -11,6 +11,7 @@ import {
   type PowerStripFlowNode,
 } from '@/components/power-strip-card'
 import { UpsNode, upsOutletGroups, type UpsFlowNode } from '@/components/ups-card'
+import { topologyQueryFixture } from '@/test/topology-query-fixture'
 import type { InventoryItem, InventoryPort, ProjectState } from '@/types/inventory'
 import { withCanonicalPowerPorts } from '../../shared/power-ports.mjs'
 
@@ -57,7 +58,7 @@ function canonicalPowerPortsFor(item: InventoryItem): InventoryPort[] {
 function data(project: ProjectState, itemId: string) {
   return {
     project,
-    canvasIndex: buildCanvasProjectIndex(project),
+    canvasIndex: buildCanvasProjectIndex(project, topologyQueryFixture(project)),
     requiredHandleIds: new Set<string>(),
     itemId,
     selectedItemId: null,
@@ -269,6 +270,37 @@ describe('standalone canvas cards', () => {
     expect(document.querySelector('[data-port-group="input"]')).not.toBeInTheDocument()
     expect(document.querySelector('[data-port-group="outlets"]')).toHaveTextContent('01')
     expect(document.querySelector('[data-port-group="outlets"]')).toHaveTextContent('06')
+  })
+
+  it('shows smart power-strip identity without replacing compact outlet chips', () => {
+    const strip = withCanonicalPowerPorts({
+      id: 1,
+      key: 'powerStrip:1',
+      type: 'powerStrip',
+      name: 'Kasa HS300',
+      specs: { outlets: 2, surgeProtected: true, surgeProtectedOutlets: 2 },
+      smart: {
+        enabled: true,
+        displayName: 'Rack power',
+        managementIp: '192.168.1.50',
+        macAddress: '00:11:22:33:44:55',
+        outlets: [{ portId: 2, name: 'Router' }],
+      },
+    } satisfies InventoryItem)
+
+    const outletViews = powerStripOutletViews(strip)
+    expect(outletViews[0].detail).toBe('Router - Surge-protected outlet 1')
+    expect(outletViews[1].detail).toBe('Outlet 2')
+
+    render(<PowerStripNode {...powerStripProps(data(projectWith(strip), strip.key!))} />)
+
+    expect(screen.getByText('Kasa HS300')).toBeInTheDocument()
+    expect(screen.getByText('Rack power')).toBeInTheDocument()
+    const namedOutlet = document.querySelector('[data-port-id="2"]')
+    expect(namedOutlet).toHaveAttribute('title', 'Router - Surge-protected outlet 1')
+    expect(namedOutlet).toHaveTextContent('Surge')
+    expect(namedOutlet).toHaveTextContent('01')
+    expect(namedOutlet).not.toHaveTextContent('Router')
   })
 
   it('renders a vertical power strip with a one-line summary and its AC input in the header', () => {

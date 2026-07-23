@@ -362,6 +362,68 @@ describe('InventoryItemDialog switch port groups', () => {
     }, 1)
   })
 
+  it('creates a smart power strip with identity and outlet names', async () => {
+    const user = userEvent.setup()
+    const onCreate = vi.fn().mockResolvedValue(undefined)
+    render(<InventoryItemDialog open onOpenChange={vi.fn()} onCreate={onCreate} />)
+
+    await user.click(screen.getByRole('combobox', { name: 'Inventory type' }))
+    await user.click(screen.getByRole('option', { name: 'Power Strip' }))
+    await user.type(screen.getByRole('textbox', { name: 'Name' }), 'Kasa HS300')
+    const outletCount = screen.getByRole('spinbutton', { name: 'Outlet Count' })
+    await user.clear(outletCount)
+    await user.type(outletCount, '2')
+
+    await user.click(screen.getByRole('tab', { name: 'Smart' }))
+    await user.click(screen.getByRole('switch', { name: 'Smart power strip' }))
+    await user.type(screen.getByRole('textbox', { name: 'Device display name' }), 'Rack power')
+    await user.type(screen.getByRole('textbox', { name: 'Management IP' }), '192.168.1.50')
+    await user.type(screen.getByRole('textbox', { name: 'MAC address' }), '00:11:22:33:44:55')
+    await user.type(screen.getByRole('textbox', { name: 'Outlet 1 custom name' }), 'Router')
+    await user.type(screen.getByRole('textbox', { name: 'Outlet 2 custom name' }), 'NAS')
+    await user.click(screen.getByRole('button', { name: 'Add item' }))
+
+    expect(onCreate).toHaveBeenCalledWith(expect.objectContaining({
+      type: 'powerStrip',
+      name: 'Kasa HS300',
+      specs: expect.objectContaining({ outlets: 2 }),
+      smart: {
+        enabled: true,
+        displayName: 'Rack power',
+        managementIp: '192.168.1.50',
+        macAddress: '00:11:22:33:44:55',
+        outlets: [
+          { portId: 2, name: 'Router' },
+          { portId: 3, name: 'NAS' },
+        ],
+      },
+    }), 1)
+  })
+
+  it('confirms before clearing smart power-strip data', async () => {
+    const user = userEvent.setup()
+    render(<InventoryItemDialog open onOpenChange={vi.fn()} onCreate={vi.fn()} />)
+
+    await user.click(screen.getByRole('combobox', { name: 'Inventory type' }))
+    await user.click(screen.getByRole('option', { name: 'Power Strip' }))
+    await user.click(screen.getByRole('tab', { name: 'Smart' }))
+    const smartMode = screen.getByRole('switch', { name: 'Smart power strip' })
+    await user.click(smartMode)
+    await user.type(screen.getByRole('textbox', { name: 'Device display name' }), 'Desk strip')
+
+    await user.click(smartMode)
+    expect(screen.getByRole('heading', { name: 'Disable smart mode?' })).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Keep smart mode' }))
+    expect(screen.getByRole('textbox', { name: 'Device display name' })).toHaveValue('Desk strip')
+    expect(smartMode).toBeChecked()
+
+    await user.click(smartMode)
+    await user.click(screen.getByRole('button', { name: 'Disable and remove data' }))
+    expect(screen.getByText('This device is configured as a regular power strip.')).toBeInTheDocument()
+    expect(screen.queryByRole('textbox', { name: 'Device display name' })).not.toBeInTheDocument()
+    expect(smartMode).not.toBeChecked()
+  })
+
   it('creates multiple independent records with a validated quantity', async () => {
     const user = userEvent.setup()
     const onCreate = vi.fn().mockResolvedValue(undefined)

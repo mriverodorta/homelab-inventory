@@ -2,7 +2,7 @@ import { isHostCompatibilityEnabled, planHostAllocations } from '@/lib/compatibi
 import { isAssignableComponentType } from '@/lib/inventory-capabilities'
 import type { ProjectCompatibilityResult } from '@/lib/compatibility'
 import { nextNumericId } from '@/lib/ids'
-import { isArchivedItem, placementCollides, touchProject } from '@/lib/project'
+import { isArchivedItem, touchProject } from '@/lib/project'
 import {
   allocatePcBuildAssignment,
   canRemovePcBuildAssignment,
@@ -101,31 +101,6 @@ export function findAssignmentById(
     (assignment) => String(assignment.id) === String(assignmentId),
   )
   return normalized.length === 1 ? normalized[0] : undefined
-}
-
-export function getAssignedComponentDropGeometryError(
-  originalProject: ProjectState,
-  candidateProject: ProjectState,
-  assignment: ComponentAssignment,
-  targetServerId: string,
-): string | null {
-  if (candidateProject === originalProject || assignment.serverId === targetServerId) {
-    return null
-  }
-
-  const targetPlacement = candidateProject.placements.find(
-    (placement) => placement.serverId === targetServerId,
-  )
-  const sourcePlacement = candidateProject.placements.find(
-    (placement) => placement.serverId === assignment.serverId,
-  )
-
-  return (
-    (targetPlacement && placementCollides(candidateProject, targetPlacement)) ||
-    (sourcePlacement && placementCollides(candidateProject, sourcePlacement))
-  )
-    ? 'This server needs more open space before moving that component.'
-    : null
 }
 
 function compatibilityFingerprint(
@@ -281,6 +256,22 @@ function validateAssignmentBasics(
 
   if (host.type === 'nas' && !NAS_COMPONENT_TYPES.has(item.type)) {
     return { ok: false, message: NAS_COMPONENT_MESSAGE }
+  }
+
+  if (host.type === 'nas' && item.type === 'powerAdapter') {
+    if (host.specs?.powerConfiguration !== 'external-adapter') {
+      return {
+        ok: false,
+        message: 'This NAS uses an internal PSU. Change it to External power adapter before assigning an adapter.',
+      }
+    }
+
+    const existingAdapter = project.assignments.find(
+      (assignment) => assignment.serverId === serverId && assignment.type === 'powerAdapter',
+    )
+    if (existingAdapter) {
+      return { ok: false, message: 'This NAS already has a power adapter.' }
+    }
   }
 
   if (host.type === 'pcBuild' && !PC_BUILD_COMPONENT_TYPES.has(item.type)) {
@@ -668,8 +659,29 @@ export function tryRemoveAssignedComponent(
       assignments: project.assignments.filter(
         (candidate) => assignmentIdentity(candidate) !== assignmentIdentity(assignment),
       ),
+      connections: project.connections.filter(
+        (connection) => (
+          connection.from.hostedItemId !== assignment.itemId
+          && connection.to.hostedItemId !== assignment.itemId
+        ),
+      ),
     }),
   }
+}
+
+export function getAssignedComponentConnectionIds(
+  project: ProjectState,
+  assignmentId: string | number,
+): number[] {
+  const assignment = findAssignmentById(project.assignments, assignmentId)
+  if (!assignment) return []
+
+  return project.connections
+    .filter((connection) => (
+      connection.from.hostedItemId === assignment.itemId
+      || connection.to.hostedItemId === assignment.itemId
+    ))
+    .map((connection) => connection.id)
 }
 
 export function swapAssignedComponent(

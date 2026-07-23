@@ -13,7 +13,9 @@ function createProps(overrides: Partial<CanvasCommandBarProps> = {}): CanvasComm
     updateStatusLoading: false,
     auditWarningCount: 3,
     autoCenterOnSelect: true,
-    cablesVisible: true,
+    networkCablesVisible: true,
+    powerCablesVisible: true,
+    displayCablesVisible: true,
     onInventory: vi.fn(),
     onUndo: vi.fn(),
     onRedo: vi.fn(),
@@ -21,7 +23,9 @@ function createProps(overrides: Partial<CanvasCommandBarProps> = {}): CanvasComm
     onOpenAudit: vi.fn(),
     onToggleAutoCenterOnSelect: vi.fn(),
     onAutoArrange: vi.fn(),
-    onToggleCablesVisible: vi.fn(),
+    onToggleNetworkCablesVisible: vi.fn(),
+    onTogglePowerCablesVisible: vi.fn(),
+    onToggleDisplayCablesVisible: vi.fn(),
     onOpenSettings: vi.fn(),
     ...overrides,
   }
@@ -56,7 +60,12 @@ describe('CanvasCommandBar', () => {
     expect(screen.getByRole('button', { name: 'Open audit, 3 warnings' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Disable selection centering' })).toHaveAttribute('aria-pressed', 'true')
     expect(screen.getByRole('button', { name: 'Auto arrange canvas' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Hide cables' })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByRole('button', { name: 'Hide network cables' })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByRole('button', { name: 'Hide power cables' })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByRole('button', { name: 'Hide display cables' })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByRole('button', { name: 'Hide network cables' }).querySelector('.lucide-ethernet-port')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Hide power cables' }).querySelector('.lucide-cable')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Hide display cables' }).querySelector('.lucide-hdmi-port')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Settings' })).toBeInTheDocument()
   })
 
@@ -70,7 +79,9 @@ describe('CanvasCommandBar', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Open audit, 3 warnings' }))
     fireEvent.click(screen.getByRole('button', { name: 'Disable selection centering' }))
     fireEvent.click(screen.getByRole('button', { name: 'Auto arrange canvas' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Hide cables' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Hide network cables' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Hide power cables' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Hide display cables' }))
     fireEvent.click(screen.getByRole('button', { name: 'Settings' }))
 
     expect(props.onInventory).toHaveBeenCalledOnce()
@@ -80,7 +91,9 @@ describe('CanvasCommandBar', () => {
     expect(props.onOpenAudit).toHaveBeenCalledOnce()
     expect(props.onToggleAutoCenterOnSelect).toHaveBeenCalledOnce()
     expect(props.onAutoArrange).toHaveBeenCalledOnce()
-    expect(props.onToggleCablesVisible).toHaveBeenCalledOnce()
+    expect(props.onToggleNetworkCablesVisible).toHaveBeenCalledOnce()
+    expect(props.onTogglePowerCablesVisible).toHaveBeenCalledOnce()
+    expect(props.onToggleDisplayCablesVisible).toHaveBeenCalledOnce()
     expect(props.onOpenSettings).toHaveBeenCalledOnce()
   })
 
@@ -126,13 +139,17 @@ describe('CanvasCommandBar', () => {
       desktopInventoryVisible: false,
       auditWarningCount: 0,
       autoCenterOnSelect: false,
-      cablesVisible: false,
+      networkCablesVisible: false,
+      powerCablesVisible: false,
+      displayCablesVisible: false,
     })
 
     expect(screen.getByRole('button', { name: 'Show inventory' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Open audit, no warnings' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Enable selection centering' })).toHaveAttribute('aria-pressed', 'false')
-    expect(screen.getByRole('button', { name: 'Show cables' })).toHaveAttribute('aria-pressed', 'false')
+    expect(screen.getByRole('button', { name: 'Show network cables' })).toHaveAttribute('aria-pressed', 'false')
+    expect(screen.getByRole('button', { name: 'Show power cables' })).toHaveAttribute('aria-pressed', 'false')
+    expect(screen.getByRole('button', { name: 'Show display cables' })).toHaveAttribute('aria-pressed', 'false')
   })
 
   it('accepts layout classes and keeps the command row horizontally scrollable', () => {

@@ -30,6 +30,14 @@ function itemRef(request) {
   return { type: request.params.type, id: isRelationalId(id) ? id : null }
 }
 
+function nasItemRef(request) {
+  const rawId = request.params.id
+  const id = typeof rawId === 'string' && /^[1-9]\d*$/.test(rawId)
+    ? Number(rawId)
+    : null
+  return { type: 'nas', id: isRelationalId(id) ? id : null }
+}
+
 function batchItems(request) {
   return request.body?.items
 }
@@ -47,6 +55,16 @@ export function registerInventoryRoutes(app, { withStore }) {
   app.put('/api/inventory/items/:type/:id', (request, response) => {
     runWithInventoryStore(withStore, request, response, 'Unable to update inventory item.', async (store) => {
       response.json(store.updateInventoryItem(itemRef(request), request.body?.item ?? request.body))
+    })
+  })
+
+  app.post('/api/inventory/items/nas/:id/power-configuration', (request, response) => {
+    runWithInventoryStore(withStore, request, response, 'Unable to change NAS power configuration.', async (store) => {
+      response.json(store.changeNasPowerConfiguration(
+        nasItemRef(request),
+        request.body?.powerConfiguration,
+        request.body?.confirmed === true,
+      ))
     })
   })
 

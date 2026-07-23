@@ -190,6 +190,10 @@ export function formatGpuCanvasLabel(item: InventoryItem): string {
 }
 
 export function formatPortType(type: InventoryPortType): string {
+  if (type === 'ac-input') {
+    return 'AC'
+  }
+
   if (type === 'sfp-plus') {
     return 'SFP+'
   }

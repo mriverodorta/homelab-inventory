@@ -9,7 +9,6 @@ import {
   SERVER_CARD_ROW_HEIGHT,
 } from '@/lib/project'
 import { runtimeItemKey } from '@/lib/item-keys'
-import { resolvePowerEndpoint } from '@/lib/power-topology'
 import type {
   ConnectionEndpoint,
   ConnectionRouteSide,
@@ -24,6 +23,8 @@ export type CableSide = 'left' | 'right' | 'top' | 'bottom'
 export type CableRoute = {
   sourceHandle: string
   targetHandle: string
+  sourceSide: CableSide
+  targetSide: CableSide
   laneOffset: number
 }
 
@@ -307,22 +308,12 @@ export function getConnectionRoute(
   const targetSide = normalizeRouteSide(connection.route?.targetSide) ??
     sideTowardBox(targetBox, targetPoint, sourceBox, sourcePoint)
   const parallelLaneOffset = (connectionIndex % 3) * 8
-  const sourcePower = resolvePowerEndpoint(project, connection.from)
-  const targetPower = resolvePowerEndpoint(project, connection.to)
-  const sourceUsesHostHandle = Boolean(
-    sourcePower && connection.from.hostedItemId && sourcePower.direction === 'input',
-  )
-  const targetUsesHostHandle = Boolean(
-    targetPower && connection.to.hostedItemId && targetPower.direction === 'input',
-  )
 
   return {
-    sourceHandle: sourceUsesHostHandle
-      ? `source-${sourceSide}`
-      : getEndpointHandleId('source', sourceSide, connection.from),
-    targetHandle: targetUsesHostHandle
-      ? `target-${targetSide}`
-      : getEndpointHandleId('target', targetSide, connection.to),
+    sourceHandle: getEndpointHandleId('source', sourceSide, connection.from),
+    targetHandle: getEndpointHandleId('target', targetSide, connection.to),
+    sourceSide,
+    targetSide,
     laneOffset: baseLaneOffset(connection) + parallelLaneOffset,
   }
 }

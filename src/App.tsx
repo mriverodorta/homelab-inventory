@@ -11,13 +11,16 @@ import {
 } from '@dnd-kit/core'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { XYPosition } from '@xyflow/react'
+import type { EngineResponse, ProjectPatch } from '../shared/engine/protocol.mjs'
 import { AlertTriangle } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { AuditDrawer } from '@/components/audit-drawer'
+import { AssignedComponentRemovalDialog } from '@/components/assigned-component-removal-dialog'
 import { DemoSessionDialog, type DemoSessionDialogState } from '@/components/demo-session-dialog'
 import { DesktopInventoryShell } from '@/components/desktop-inventory-shell'
 import { GlobalItemSearch } from '@/components/global-item-search'
 import { InspectorPanel } from '@/components/inspector-panel'
+import { NasPowerConfigurationDialog } from '@/components/nas-power-configuration-dialog'
 import { ReturnToInventoryDialog } from '@/components/return-to-inventory-dialog'
 import { InventorySidebar } from '@/components/inventory-sidebar'
 import {
@@ -44,10 +47,35 @@ import {
   SheetTitle,
 } from '@/components/ui/sheet'
 import { TooltipProvider } from '@/components/ui/tooltip'
+import { applyEngineResponsePatch } from '@/engine/project-patches'
+import {
+  acknowledgeOptimisticAssignments,
+  applyAssignmentTransition,
+  updateProjectAssignments,
+} from '@/engine/assignments'
+import { updateProjectPlacements } from '@/engine/placements'
+import {
+  createTopologyConnection,
+  removeTopologyConnection,
+  updateTopologyConnectionLabel,
+  updateTopologyConnectionRoute,
+} from '@/engine/topology'
+import {
+  arrangeProjectItems,
+  checkProjectGroupMove,
+  checkProjectPlacement,
+  createProjectGeometrySnapshot,
+  syncProjectGeometry,
+} from '@/engine/geometry'
+import { useDomainEngine } from '@/hooks/use-domain-engine'
+import {
+  useCompatibleTopologyDestinations,
+  useTopologyQuery,
+} from '@/hooks/use-topology-query'
 import type { CanvasPortDragPoint } from '@/types/canvas'
 import {
   findAssignmentById,
-  getAssignedComponentDropGeometryError,
+  getAssignedComponentConnectionIds,
   moveAssignedComponent,
   tryAssignComponent,
   tryRemoveAssignedComponent,
@@ -61,6 +89,7 @@ import { loadAgentStatus } from '@/lib/agent-api'
 import {
   createInventoryItems,
   archiveInventoryItems,
+  changeNasPowerConfiguration,
   deleteInventoryItems,
   duplicateInventoryItem,
   loadInventoryDependencyReports,
@@ -73,7 +102,11 @@ import {
 } from '@/lib/db'
 import { expireDemoSession, extendDemoSession, loadDemoSession, type DemoSessionStatus } from '@/lib/demo-api'
 import { runtimeItemKey } from '@/lib/item-keys'
-import { createConnectionForEndpoints } from '@/lib/connection-endpoints'
+import {
+  getInventoryDragPreviewPresentation,
+  isInventoryDragOverCanvas,
+} from '@/lib/inventory-drag-preview'
+import { resolveCreatedConnectionSelection } from '@/lib/created-connection-selection'
 import type {
   InventoryDependencyReason,
   InventoryDependencyReport,
@@ -98,14 +131,26 @@ import {
   DEFAULT_UI_PREFERENCES,
   clampInventoryWidth,
   getStoredAutoCenterOnSelect,
-  getStoredCablesVisible,
+  getStoredAvoidCableCollisionsGlobally,
+  getStoredDisplayCablesVisible,
   getStoredInventoryVisible,
   getStoredInventoryWidth,
+  getStoredNetworkCablesVisible,
+  getStoredOpenCreatedConnectionInspector,
+  getStoredPowerCablesVisible,
+  getStoredSnapCablesToGrid,
+  getStoredSnapItemsToGrid,
   resetStoredUiPreferences,
   storeAutoCenterOnSelect,
-  storeCablesVisible,
+  storeAvoidCableCollisionsGlobally,
+  storeDisplayCablesVisible,
   storeInventoryVisible,
   storeInventoryWidth,
+  storeNetworkCablesVisible,
+  storeOpenCreatedConnectionInspector,
+  storePowerCablesVisible,
+  storeSnapCablesToGrid,
+  storeSnapItemsToGrid,
 } from '@/lib/ui-preferences'
 import {
   createEmptyHistory,
@@ -115,34 +160,23 @@ import {
   type HistoryState,
 } from '@/lib/history'
 import {
-  getNetworkTraceConnectionIds,
-  getNetworkTraceItemIds,
-  traceNetworkPath,
-} from '@/lib/network-trace'
-import { normalizeNetworkProject } from '@/lib/negotiated-speed'
-import {
   getCanvasItemHeight,
   getCanvasItemWidth,
-  autoArrangeCanvasItems,
   endpointKey,
-  getNonCollidingPlacement,
   isCanvasItem,
-  placementCollides,
-  placementsCollide,
-  removeConnection,
   getReturnCanvasItemImpact,
   returnCanvasItemToInventory,
-  updateConnectionLabel,
-  updateConnectionRoute,
   upsertPlacements,
-  upsertPlacement,
 } from '@/lib/project'
 import { formatCapacity, formatPortSummary } from '@/lib/format'
+import { ProjectPersistenceCoordinator } from '@/lib/project-persistence-coordinator'
 import type {
   ConnectionEndpoint,
   ConnectionRoutePreferences,
   InventoryItem,
   InventoryProperties,
+  NasPowerConfiguration,
+  NasPowerConfigurationImpact,
   ProjectState,
 } from '@/types/inventory'
 
@@ -161,9 +195,31 @@ const DEMO_SESSION_QUERY_KEY = ['demo-session'] as const
 type SaveStatus = 'saved' | 'saving' | 'error'
 type ValidationSeverity = 'error' | 'unknown'
 
+function addedConnectionId(patch: ProjectPatch): number | null {
+  if (patch.kind === 'add-connection') return patch.payload.connection.id
+  if (patch.kind !== 'batch') return null
+  for (const childPatch of patch.payload.patches) {
+    const connectionId = addedConnectionId(childPatch)
+    if (connectionId !== null) return connectionId
+  }
+  return null
+}
+
 type InventoryLifecycleRequest = {
   action: InventoryLifecycleAction
   items: InventoryItem[]
+}
+
+type PendingNasPowerChange = {
+  nasId: number
+  target: NasPowerConfiguration
+  impact: NasPowerConfigurationImpact
+}
+
+type PendingAssignmentRemoval = {
+  assignmentId: string | number
+  itemName: string
+  connectionCount: number
 }
 
 function inventoryRef(item: InventoryItem): InventoryRef {
@@ -195,7 +251,11 @@ function getServerIdFromOver(overId: string | null): string | null {
   return overId.replace('server:', '')
 }
 
-function getCanvasDropPoint(event: DragEndEvent, canvasController: CanvasController | null) {
+function getCanvasDropPoint(
+  event: DragEndEvent,
+  canvasController: CanvasController | null,
+  snapItemsToGrid: boolean,
+) {
   const translated = event.active.rect.current.translated
 
   if (!translated || !canvasController) {
@@ -208,8 +268,8 @@ function getCanvasDropPoint(event: DragEndEvent, canvasController: CanvasControl
   })
 
   return {
-    x: snapToGrid(flowPoint.x),
-    y: snapToGrid(flowPoint.y),
+    x: snapItemsToGrid ? snapToGrid(flowPoint.x) : flowPoint.x,
+    y: snapItemsToGrid ? snapToGrid(flowPoint.y) : flowPoint.y,
   }
 }
 
@@ -312,9 +372,13 @@ function getDragPreviewSubtitle(item: InventoryItem): string {
 function InventoryDragPreview({
   item,
   project,
+  overCanvas,
+  viewportZoom,
 }: {
   item: InventoryItem | null
   project: ProjectState
+  overCanvas: boolean
+  viewportZoom: number
 }) {
   if (!item) {
     return null
@@ -324,11 +388,17 @@ function InventoryDragPreview({
   const itemRuntimeKey = runtimeItemKey(item)
   const width = canvasItem ? getCanvasItemWidth(project, itemRuntimeKey) : 220
   const height = canvasItem ? getCanvasItemHeight(project, itemRuntimeKey) : 68
+  const presentation = getInventoryDragPreviewPresentation(overCanvas, viewportZoom)
 
   return (
     <div
       className={`pointer-events-none rounded-lg border-2 p-2 opacity-95 shadow-[0_20px_48px_rgba(32,36,44,0.32)] ${dragPreviewTone(item)}`}
-      style={{ width, minHeight: height }}
+      style={{
+        width,
+        ...(canvasItem ? { height } : { minHeight: height }),
+        transform: presentation.transform,
+        transformOrigin: presentation.transformOrigin,
+      }}
     >
       <div className="rounded-md bg-black/10 px-3 py-2">
         <div className="truncate text-sm font-black">{item.name}</div>
@@ -445,12 +515,33 @@ function PortConnectionPreviewOverlay({ preview }: { preview: PortConnectionPrev
 
 function App() {
   const queryClient = useQueryClient()
+  const domainEngine = useDomainEngine()
   const [project, setProject] = useState<ProjectState | null>(null)
+  const topologyQuery = useTopologyQuery(project)
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null)
   const [selectedConnectionId, setSelectedConnectionId] = useState<string | number | null>(null)
   const [pendingConnectionEndpoint, setPendingConnectionEndpoint] = useState<ConnectionEndpoint | null>(null)
+  const compatibleTopologyDestinations = useCompatibleTopologyDestinations(
+    project,
+    pendingConnectionEndpoint,
+  )
   const [validationMessage, setValidationMessageValue] = useState<string | null>(null)
   const [validationSeverity, setValidationSeverity] = useState<ValidationSeverity>('error')
+  const topologyStatus = project && !topologyQuery.data
+    ? domainEngine.state.phase === 'failed'
+      || domainEngine.state.phase === 'unsupported'
+      || topologyQuery.isError
+      ? {
+          message: topologyQuery.error instanceof Error
+            ? topologyQuery.error.message
+            : 'Connection topology is unavailable. Retry the workspace engine before editing cables.',
+          severity: 'error' as const,
+        }
+      : {
+          message: 'Loading connection topology...',
+          severity: 'unknown' as const,
+        }
+    : null
   const [persistenceWarning, setPersistenceWarning] = useState<string | null>(null)
   const [auditOpen, setAuditOpen] = useState(false)
   const [searchOpen, setSearchOpen] = useState(false)
@@ -458,7 +549,8 @@ function App() {
   const [portConnectionPreview, setPortConnectionPreview] = useState<PortConnectionPreview | null>(null)
   const [activeNetworkTraceEndpoint, setActiveNetworkTraceEndpoint] = useState<ConnectionEndpoint | null>(null)
   const [saveStatus, setSaveStatus] = useState<SaveStatus>('saved')
-  const [autosaveRevision, setAutosaveRevision] = useState(0)
+  const [canonicalMutationBusy, setCanonicalMutationBusy] = useState(false)
+  const [canvasOperationLabel, setCanvasOperationLabel] = useState<string | null>(null)
   const [history, setHistory] = useState<HistoryState<ProjectState>>(() => createEmptyHistory())
   const [inventoryWidth, setInventoryWidth] = useState(getStoredInventoryWidth)
   const [desktopInventoryVisible, setDesktopInventoryVisible] = useState(getStoredInventoryVisible)
@@ -466,8 +558,20 @@ function App() {
   const [draggingItemId, setDraggingItemId] = useState<string | null>(null)
   const [activeComponentDragData, setActiveComponentDragData] = useState<ComponentDragData | null>(null)
   const [dragOverHostId, setDragOverHostId] = useState<string | null>(null)
+  const [dragPreviewOverCanvas, setDragPreviewOverCanvas] = useState(false)
+  const [dragPreviewZoom, setDragPreviewZoom] = useState(1)
   const [autoCenterOnSelect, setAutoCenterOnSelect] = useState(getStoredAutoCenterOnSelect)
-  const [cablesVisible, setCablesVisible] = useState(getStoredCablesVisible)
+  const [networkCablesVisible, setNetworkCablesVisible] = useState(getStoredNetworkCablesVisible)
+  const [powerCablesVisible, setPowerCablesVisible] = useState(getStoredPowerCablesVisible)
+  const [displayCablesVisible, setDisplayCablesVisible] = useState(getStoredDisplayCablesVisible)
+  const [openCreatedConnectionInspector, setOpenCreatedConnectionInspector] = useState(
+    getStoredOpenCreatedConnectionInspector,
+  )
+  const [snapCablesToGrid, setSnapCablesToGrid] = useState(getStoredSnapCablesToGrid)
+  const [avoidCableCollisionsGlobally, setAvoidCableCollisionsGlobally] = useState(
+    getStoredAvoidCableCollisionsGlobally,
+  )
+  const [snapItemsToGrid, setSnapItemsToGrid] = useState(getStoredSnapItemsToGrid)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [releaseNotesDismissedForSession, setReleaseNotesDismissedForSession] = useState(false)
   const [updateDialogOpen, setUpdateDialogOpen] = useState(false)
@@ -481,6 +585,10 @@ function App() {
   const [inventoryLifecycleRevision, setInventoryLifecycleRevision] = useState(0)
   const [returnToInventoryItemId, setReturnToInventoryItemId] = useState<string | null>(null)
   const [returnToInventoryBusy, setReturnToInventoryBusy] = useState(false)
+  const [pendingNasPowerChange, setPendingNasPowerChange] = useState<PendingNasPowerChange | null>(null)
+  const [pendingAssignmentRemoval, setPendingAssignmentRemoval] = useState<PendingAssignmentRemoval | null>(null)
+  const [nasPowerChangeBusy, setNasPowerChangeBusy] = useState(false)
+  const [nasPowerChangeError, setNasPowerChangeError] = useState<string | null>(null)
   const canvasControllerRef = useRef<CanvasController | null>(null)
   const projectRef = useRef<ProjectState | null>(null)
   const lastPersistedProjectRef = useRef<ProjectState | null>(null)
@@ -488,11 +596,22 @@ function App() {
     generation: number
     project: ProjectState
   } | null>(null)
+  const pendingAutosaveProjectRef = useRef<ProjectState | null>(null)
+  const saveDrainWaitersRef = useRef<Array<{
+    resolve: () => void
+    reject: (error: Error) => void
+  }>>([])
   const saveInFlightRef = useRef(false)
   const saveGenerationRef = useRef(0)
   const saveTimerRef = useRef<number | null>(null)
+  const projectNameTimerRef = useRef<number | null>(null)
+  const connectionLabelTimerRef = useRef<number | null>(null)
   const hasHydratedProjectRef = useRef(false)
   const demoExpirationFinalizedRef = useRef(false)
+  const persistenceCoordinatorRef = useRef<ProjectPersistenceCoordinator | null>(null)
+  if (!persistenceCoordinatorRef.current) {
+    persistenceCoordinatorRef.current = new ProjectPersistenceCoordinator(setCanonicalMutationBusy)
+  }
   const resizeStateRef = useRef<{
     startX: number
     startWidth: number
@@ -525,6 +644,14 @@ function App() {
   const { mutateAsync: persistProject } = useMutation({
     mutationFn: saveProject,
   })
+  const waitForQueuedProjectSaves = useCallback(() => {
+    if (!saveInFlightRef.current && !queuedSaveProjectRef.current) {
+      return Promise.resolve()
+    }
+    return new Promise<void>((resolve, reject) => {
+      saveDrainWaitersRef.current.push({ resolve, reject })
+    })
+  }, [])
   const processQueuedProjectSaves = useCallback(() => {
     if (saveInFlightRef.current) {
       return
@@ -533,6 +660,7 @@ function App() {
     saveInFlightRef.current = true
 
     void (async () => {
+      let drainError: Error | null = null
       try {
         while (queuedSaveProjectRef.current) {
           const queuedSave = queuedSaveProjectRef.current
@@ -551,6 +679,9 @@ function App() {
               !queuedSaveProjectRef.current &&
               projectRef.current === queuedSave.project
             ) {
+              projectRef.current = savedProject
+              queryClient.setQueryData(['project'], savedProject)
+              setProject(savedProject)
               setPersistenceWarning(null)
               setSaveStatus('saved')
             }
@@ -574,20 +705,29 @@ function App() {
             setPersistenceWarning(
               error instanceof Error ? error.message : 'Project could not be saved to the JSON database.',
             )
+            drainError = error instanceof Error
+              ? error
+              : new Error('Project could not be saved to the JSON database.')
           }
         }
       } finally {
         saveInFlightRef.current = false
+        const waiters = saveDrainWaitersRef.current.splice(0)
+        for (const waiter of waiters) {
+          if (drainError) waiter.reject(drainError)
+          else waiter.resolve()
+        }
       }
     })()
-  }, [persistProject])
+  }, [persistProject, queryClient])
   const enqueueProjectSave = useCallback((projectToSave: ProjectState) => {
     queuedSaveProjectRef.current = {
       generation: saveGenerationRef.current,
       project: projectToSave,
     }
     processQueuedProjectSaves()
-  }, [processQueuedProjectSaves])
+    return waitForQueuedProjectSaves()
+  }, [processQueuedProjectSaves, waitForQueuedProjectSaves])
   const acknowledgeReleaseNotesMutation = useMutation({
     mutationFn: acknowledgeReleaseNotes,
     onSuccess: (status) => {
@@ -674,13 +814,111 @@ function App() {
     projectRef.current = project
   }, [project])
 
+  const geometryProjectRef = useRef(project)
+  if (
+    geometryProjectRef.current?.items !== project?.items
+    || geometryProjectRef.current?.assignments !== project?.assignments
+    || geometryProjectRef.current?.placements !== project?.placements
+  ) {
+    geometryProjectRef.current = project
+  }
+  const geometryProject = geometryProjectRef.current
+  const projectGeometrySnapshot = useMemo(
+    () => (geometryProject ? createProjectGeometrySnapshot(geometryProject) : null),
+    [geometryProject],
+  )
+  const projectGeometrySnapshotRef = useRef(projectGeometrySnapshot)
+  projectGeometrySnapshotRef.current = projectGeometrySnapshot
+
+  useEffect(() => {
+    const snapshot = projectGeometrySnapshotRef.current
+    if (!snapshot || domainEngine.state.phase !== 'ready') return
+    void syncProjectGeometry(domainEngine.client, snapshot).catch((error) => {
+      setPersistenceWarning(
+        error instanceof Error ? error.message : 'Canvas geometry synchronization failed.',
+      )
+    })
+  }, [domainEngine.client, domainEngine.state.phase, projectGeometrySnapshot?.fingerprint])
+
+  useEffect(() => {
+    const event = domainEngine.syncEvent
+    if (!domainEngine.enabled || !event || !hasHydratedProjectRef.current) return
+
+    if (event.kind === 'patch') {
+      if (!event.external || !projectRef.current) return
+      const nextProject = applyEngineResponsePatch(projectRef.current, event.response)
+      projectRef.current = nextProject
+      lastPersistedProjectRef.current = nextProject
+      setProject(nextProject)
+      setHistory(createEmptyHistory())
+      setPersistenceWarning(null)
+      setSaveStatus('saved')
+      return
+    }
+
+    void loadProject()
+      .then((canonicalProject) => {
+        const activeProject = projectRef.current
+        const canonicalRevision = canonicalProject.revision
+        const activeRevision = activeProject?.revision
+        if (
+          typeof canonicalRevision === 'number'
+          && typeof activeRevision === 'number'
+          && canonicalRevision < activeRevision
+        ) return
+        queryClient.setQueryData(['project'], canonicalProject)
+        applyInventoryCommandSnapshot(canonicalProject)
+      })
+      .catch((error) => {
+        setPersistenceWarning(
+          error instanceof Error ? error.message : 'Canonical project reload failed.',
+        )
+      })
+  }, [domainEngine.enabled, domainEngine.syncEvent, queryClient])
+
+  useEffect(() => () => {
+    if (saveTimerRef.current !== null) {
+      window.clearTimeout(saveTimerRef.current)
+    }
+    if (projectNameTimerRef.current !== null) {
+      window.clearTimeout(projectNameTimerRef.current)
+    }
+    if (connectionLabelTimerRef.current !== null) {
+      window.clearTimeout(connectionLabelTimerRef.current)
+    }
+  }, [])
+
   useEffect(() => {
     storeAutoCenterOnSelect(autoCenterOnSelect)
   }, [autoCenterOnSelect])
 
   useEffect(() => {
-    storeCablesVisible(cablesVisible)
-  }, [cablesVisible])
+    storeNetworkCablesVisible(networkCablesVisible)
+  }, [networkCablesVisible])
+
+  useEffect(() => {
+    storePowerCablesVisible(powerCablesVisible)
+  }, [powerCablesVisible])
+
+  useEffect(() => {
+    storeDisplayCablesVisible(displayCablesVisible)
+  }, [displayCablesVisible])
+
+  useEffect(() => {
+    storeOpenCreatedConnectionInspector(openCreatedConnectionInspector)
+  }, [openCreatedConnectionInspector])
+
+  useEffect(() => {
+    storeSnapCablesToGrid(snapCablesToGrid)
+  }, [snapCablesToGrid])
+
+  useEffect(() => {
+    storeAvoidCableCollisionsGlobally(avoidCableCollisionsGlobally)
+  }, [avoidCableCollisionsGlobally])
+
+  useEffect(() => {
+    storeSnapItemsToGrid(snapItemsToGrid)
+  }, [snapItemsToGrid])
 
   useEffect(() => {
     storeInventoryVisible(desktopInventoryVisible)
@@ -794,32 +1032,6 @@ function App() {
     }
   }, [portConnectionPreview])
 
-  useEffect(() => {
-    if (!hasHydratedProjectRef.current || autosaveRevision === 0) {
-      return
-    }
-
-    const projectToSave = projectRef.current
-
-    if (!projectToSave) {
-      return
-    }
-
-    setSaveStatus('saving')
-
-    saveTimerRef.current = window.setTimeout(() => {
-      saveTimerRef.current = null
-      enqueueProjectSave(projectToSave)
-    }, SAVE_DEBOUNCE_MS)
-
-    return () => {
-      if (saveTimerRef.current !== null) {
-        window.clearTimeout(saveTimerRef.current)
-        saveTimerRef.current = null
-      }
-    }
-  }, [autosaveRevision, enqueueProjectSave])
-
   const selectedItem = useMemo(
     () => (project && selectedItemId ? project.items[selectedItemId] ?? null : null),
     [project, selectedItemId],
@@ -832,15 +1044,23 @@ function App() {
     [project, selectedConnectionId],
   )
   const activeNetworkTrace = useMemo(
-    () => (project && activeNetworkTraceEndpoint ? traceNetworkPath(project, activeNetworkTraceEndpoint) : null),
-    [activeNetworkTraceEndpoint, project],
+    () => (activeNetworkTraceEndpoint
+      ? topologyQuery.data?.networkTraceByEndpointKey.get(endpointKey(activeNetworkTraceEndpoint)) ?? null
+      : null),
+    [activeNetworkTraceEndpoint, topologyQuery.data],
   )
   const activeNetworkTraceConnectionIds = useMemo(
-    () => (activeNetworkTrace ? getNetworkTraceConnectionIds(activeNetworkTrace) : []),
+    () => activeNetworkTrace
+      ? [...new Set(activeNetworkTrace.steps.flatMap((step) =>
+          step.connectionId === undefined ? [] : [step.connectionId],
+        ))]
+      : [],
     [activeNetworkTrace],
   )
   const activeNetworkTraceItemIds = useMemo(
-    () => (activeNetworkTrace ? getNetworkTraceItemIds(activeNetworkTrace) : []),
+    () => activeNetworkTrace
+      ? [...new Set(activeNetworkTrace.steps.map((step) => step.endpoint.itemId))]
+      : [],
     [activeNetworkTrace],
   )
   const dropCompatibilityByHostId = useMemo(() => {
@@ -867,7 +1087,6 @@ function App() {
     : null
 
   function updateProject(nextProject: ProjectState, options: { recordHistory?: boolean } = {}) {
-    const negotiatedProject = normalizeNetworkProject(nextProject)
     const shouldRecordHistory = options.recordHistory ?? true
     const currentProject = projectRef.current
 
@@ -875,12 +1094,97 @@ function App() {
       setHistory((currentHistory) => pushHistory(currentHistory, currentProject))
     }
 
-    projectRef.current = negotiatedProject
-    setProject(negotiatedProject)
+    projectRef.current = nextProject
+    setProject(nextProject)
 
-    if (negotiatedProject !== currentProject) {
-      setAutosaveRevision((current) => current + 1)
+    if (nextProject !== currentProject) {
+      scheduleLegacyProjectSave(nextProject)
     }
+  }
+
+  function scheduleLegacyProjectSave(projectToSave: ProjectState) {
+    pendingAutosaveProjectRef.current = projectToSave
+    setSaveStatus('saving')
+    if (saveTimerRef.current !== null) window.clearTimeout(saveTimerRef.current)
+    saveTimerRef.current = window.setTimeout(() => {
+      saveTimerRef.current = null
+      void persistenceCoordinatorRef.current!
+        .run(settleLegacyProjectPersistence, async () => {})
+        .catch(() => {})
+    }, SAVE_DEBOUNCE_MS)
+  }
+
+  async function validateCanvasPlacement(
+    candidateProject: ProjectState,
+    placement: ProjectState['placements'][number],
+  ) {
+    try {
+      return await checkProjectPlacement(domainEngine.client, candidateProject, placement)
+    } catch (error) {
+      showMessage(error instanceof Error ? error.message : 'Canvas placement validation failed.')
+      return null
+    }
+  }
+
+  async function validateCanvasGroupMove(
+    candidateProject: ProjectState,
+    placements: ProjectState['placements'],
+  ) {
+    try {
+      return await checkProjectGroupMove(domainEngine.client, candidateProject, placements)
+    } catch (error) {
+      showMessage(error instanceof Error ? error.message : 'Canvas placement validation failed.')
+      return null
+    }
+  }
+
+  function updateProjectName(name: string) {
+    const currentProject = projectRef.current
+    if (!currentProject) return
+    if (!domainEngine.enabled) {
+      updateProject({
+        ...currentProject,
+        metadata: { ...currentProject.metadata, name },
+      }, { recordHistory: false })
+      return
+    }
+
+    const optimisticProject = {
+      ...currentProject,
+      metadata: { ...currentProject.metadata, name },
+    }
+    projectRef.current = optimisticProject
+    setProject(optimisticProject)
+    setSaveStatus('saving')
+    setPersistenceWarning(null)
+
+    if (projectNameTimerRef.current !== null) {
+      window.clearTimeout(projectNameTimerRef.current)
+    }
+    projectNameTimerRef.current = window.setTimeout(() => {
+      projectNameTimerRef.current = null
+      void commitEngineMutation(
+        () => domainEngine.client.mutate({
+          operation: { kind: 'update-project-metadata', payload: { name } },
+        }),
+        {
+          optimisticProject: (canonicalProject) => ({
+            ...canonicalProject,
+            metadata: { ...canonicalProject.metadata, name },
+          }),
+        },
+      ).catch((error) => {
+        const persistedProject = lastPersistedProjectRef.current
+        if (persistedProject) {
+          projectRef.current = persistedProject
+          setProject(persistedProject)
+        }
+        setSaveStatus('error')
+        setPersistenceWarning(
+          error instanceof Error ? error.message : 'Project name could not be saved.',
+        )
+      })
+    }, SAVE_DEBOUNCE_MS)
   }
 
   function setValidationMessage(
@@ -895,19 +1199,18 @@ function App() {
     nextProject: ProjectState,
     options: { historySnapshot?: ProjectState } = {},
   ) {
-    const negotiatedProject = normalizeNetworkProject(nextProject)
-
     saveGenerationRef.current += 1
     queuedSaveProjectRef.current = null
+    pendingAutosaveProjectRef.current = null
 
     if (saveTimerRef.current !== null) {
       window.clearTimeout(saveTimerRef.current)
       saveTimerRef.current = null
     }
 
-    projectRef.current = negotiatedProject
-    lastPersistedProjectRef.current = negotiatedProject
-    setProject(negotiatedProject)
+    projectRef.current = nextProject
+    lastPersistedProjectRef.current = nextProject
+    setProject(nextProject)
     setHistory((currentHistory) => (
       options.historySnapshot
         ? pushHistory(currentHistory, options.historySnapshot)
@@ -944,26 +1247,352 @@ function App() {
     }
   }
 
+  function applyCreatedConnectionSelection(connectionId: string | number) {
+    const currentSelection = {
+      selectedItemId,
+      selectedConnectionId,
+      activeNetworkTraceEndpoint,
+    }
+    const nextSelection = resolveCreatedConnectionSelection(
+      currentSelection,
+      connectionId,
+      openCreatedConnectionInspector,
+    )
+
+    if (nextSelection === currentSelection) {
+      return
+    }
+
+    setSelectedItemId(nextSelection.selectedItemId)
+    setSelectedConnectionId(nextSelection.selectedConnectionId)
+    setActiveNetworkTraceEndpoint(nextSelection.activeNetworkTraceEndpoint)
+  }
+
+  async function settleLegacyProjectPersistence() {
+    const hadPendingPersistence = Boolean(
+      pendingAutosaveProjectRef.current
+      || queuedSaveProjectRef.current
+      || saveInFlightRef.current,
+    )
+
+    if (saveTimerRef.current !== null) {
+      window.clearTimeout(saveTimerRef.current)
+      saveTimerRef.current = null
+    }
+
+    const pendingProject = pendingAutosaveProjectRef.current
+    pendingAutosaveProjectRef.current = null
+    if (pendingProject) await enqueueProjectSave(pendingProject)
+    else await waitForQueuedProjectSaves()
+
+    if (!hadPendingPersistence || !domainEngine.enabled) return
+    const canonicalProject = lastPersistedProjectRef.current
+    if (
+      canonicalProject
+      && (
+        domainEngine.client.status().phase !== 'ready'
+        || domainEngine.client.status().revision !== canonicalProject.revision
+      )
+    ) {
+      await domainEngine.client.rebuild('Synchronizing saved project changes.')
+    }
+  }
+
+  async function commitEngineMutation(
+    createMutation: (canonicalProject: ProjectState) => Promise<EngineResponse>,
+    options: {
+      recordHistory?: boolean
+      optimisticProject?: (canonicalProject: ProjectState) => ProjectState
+      acknowledgeOptimistic?: (
+        canonicalProject: ProjectState,
+        optimisticProject: ProjectState,
+        response: EngineResponse,
+      ) => ProjectState
+    } = {},
+  ): Promise<EngineResponse> {
+    if (!domainEngine.enabled) {
+      throw new Error('The WebAssembly workspace engine is not available.')
+    }
+
+    return persistenceCoordinatorRef.current!.run(settleLegacyProjectPersistence, async () => {
+      const canonicalProject = projectRef.current
+      if (!canonicalProject) throw new Error('The canonical project is unavailable.')
+      const historySnapshot = options.recordHistory ? canonicalProject : null
+      const optimisticProject = options.optimisticProject?.(canonicalProject)
+      if (optimisticProject) {
+        projectRef.current = optimisticProject
+        setProject(optimisticProject)
+      }
+
+      setSaveStatus('saving')
+      setPersistenceWarning(null)
+      const response = await createMutation(canonicalProject)
+      const activeProject = projectRef.current
+      if (!activeProject || response.result.kind !== 'patch') {
+        throw new Error(
+          response.result.kind === 'error'
+            ? response.result.payload.message
+            : 'The workspace change was not committed.',
+        )
+      }
+
+      const committedProject = optimisticProject && options.acknowledgeOptimistic
+        ? options.acknowledgeOptimistic(canonicalProject, optimisticProject, response)
+        : applyEngineResponsePatch(activeProject, response)
+      projectRef.current = committedProject
+      lastPersistedProjectRef.current = committedProject
+      queryClient.setQueryData(['project'], committedProject)
+      setProject(committedProject)
+      if (historySnapshot) {
+        setHistory((currentHistory) => pushHistory(currentHistory, historySnapshot))
+      }
+      setSaveStatus('saved')
+      setPersistenceWarning(null)
+      return response
+    })
+  }
+
+  async function commitAssignmentUpdate(
+    previousProject: ProjectState,
+    nextProject: ProjectState,
+    fallbackMessage = 'The component assignment could not be saved.',
+    options: { recordHistory?: boolean } = {},
+  ): Promise<boolean> {
+    if (!domainEngine.enabled) {
+      setValidationMessage('The WebAssembly workspace engine is not available.')
+      return false
+    }
+
+    try {
+      await commitEngineMutation(
+        (canonicalProject) => {
+          const transitionedProject = applyAssignmentTransition(
+            canonicalProject,
+            previousProject,
+            nextProject,
+          )
+          return updateProjectAssignments(
+            domainEngine.client,
+            canonicalProject,
+            transitionedProject,
+          ).then((response) => {
+            if (!response) throw new Error('Component assignments did not change.')
+            return response
+          })
+        },
+        {
+          recordHistory: options.recordHistory ?? true,
+          optimisticProject: (canonicalProject) => applyAssignmentTransition(
+            canonicalProject,
+            previousProject,
+            nextProject,
+          ),
+          acknowledgeOptimistic: acknowledgeOptimisticAssignments,
+        },
+      )
+      setValidationMessage(null)
+      return true
+    } catch (error) {
+      recoverConnectionMutation(error, fallbackMessage)
+      return false
+    }
+  }
+
   function createConnectionBetween(from: ConnectionEndpoint, to: ConnectionEndpoint) {
     const currentProject = projectRef.current
 
     if (!currentProject) {
       return
     }
-
-    const result = createConnectionForEndpoints(currentProject, from, to)
-
-    if (!result.ok) {
-      setValidationMessage(result.message)
+    if (!domainEngine.enabled) {
+      setValidationMessage('The WebAssembly workspace engine is not available.')
       return
     }
 
-    updateProject(result.project)
-    setSelectedConnectionId(result.connection.id)
-    setSelectedItemId(null)
-    setPendingConnectionEndpoint(null)
-    setPortConnectionPreview(null)
-    setValidationMessage(null)
+    void commitEngineMutation(
+      (canonicalProject) => createTopologyConnection(domainEngine.client, canonicalProject, from, to),
+      { recordHistory: true },
+    ).then((response) => {
+      if (response.result.kind !== 'patch') {
+        throw new Error('The connection change returned an unexpected patch.')
+      }
+      const connectionId = addedConnectionId(response.result.payload.forward)
+      if (connectionId === null) {
+        throw new Error('The connection change did not include the created connection.')
+      }
+      applyCreatedConnectionSelection(connectionId)
+      setPendingConnectionEndpoint(null)
+      setPortConnectionPreview(null)
+      setValidationMessage(null)
+    }).catch((error) => {
+      setSaveStatus('error')
+      setValidationMessage(error instanceof Error ? error.message : 'The connection could not be created.')
+    })
+  }
+
+  function recoverConnectionMutation(error: unknown, fallbackMessage: string) {
+    setSaveStatus('error')
+    setValidationMessage(error instanceof Error ? error.message : fallbackMessage)
+    void loadProject().then((canonicalProject) => {
+      queryClient.setQueryData(['project'], canonicalProject)
+      applyInventoryCommandSnapshot(canonicalProject)
+    }).catch((reloadError) => {
+      setPersistenceWarning(
+        reloadError instanceof Error
+          ? reloadError.message
+          : 'The canonical project could not be reloaded.',
+      )
+    })
+  }
+
+  async function commitPlacementUpdates(
+    placements: ProjectState['placements'],
+    fallbackMessage = 'Canvas positions could not be saved.',
+  ): Promise<boolean> {
+    const currentProject = projectRef.current
+    if (!currentProject || !domainEngine.enabled) {
+      setValidationMessage('The WebAssembly workspace engine is not available.')
+      return false
+    }
+
+    const currentPlacements = new Map(
+      currentProject.placements.map((placement) => [placement.serverId, placement]),
+    )
+    const changedPlacements = placements.filter((placement) => {
+      const current = currentPlacements.get(placement.serverId)
+      return !current || current.x !== placement.x || current.y !== placement.y
+    })
+    if (changedPlacements.length === 0) return true
+
+    try {
+      await commitEngineMutation(
+        (canonicalProject) => updateProjectPlacements(
+          domainEngine.client,
+          canonicalProject,
+          changedPlacements,
+        ).then((response) => {
+          if (!response) throw new Error('Canvas positions did not change.')
+          return response
+        }),
+        {
+          recordHistory: true,
+          optimisticProject: (canonicalProject) => upsertPlacements(
+            canonicalProject,
+            changedPlacements,
+          ),
+        },
+      )
+      setValidationMessage(null)
+      return true
+    } catch (error) {
+      recoverConnectionMutation(error, fallbackMessage)
+      return false
+    }
+  }
+
+  function updateConnectionRouteInEngine(
+    connectionId: string | number,
+    route: ConnectionRoutePreferences,
+  ) {
+    const currentProject = projectRef.current
+    const numericConnectionId = Number(connectionId)
+    if (!currentProject || !Number.isSafeInteger(numericConnectionId) || numericConnectionId <= 0) {
+      setValidationMessage('The selected connection is no longer valid.')
+      return
+    }
+    if (!domainEngine.enabled) {
+      setValidationMessage('The WebAssembly workspace engine is not available.')
+      return
+    }
+
+    void commitEngineMutation(
+      () => updateTopologyConnectionRoute(domainEngine.client, numericConnectionId, route),
+      {
+        recordHistory: true,
+        optimisticProject: (canonicalProject) => ({
+          ...canonicalProject,
+          connections: canonicalProject.connections.map((connection) =>
+            connection.id === numericConnectionId ? { ...connection, route } : connection,
+          ),
+        }),
+      },
+    ).then(() => {
+      setValidationMessage(null)
+    }).catch((error) => {
+      recoverConnectionMutation(error, 'The cable route could not be updated.')
+    })
+  }
+
+  function updateConnectionLabelInEngine(connectionId: string | number, label: string) {
+    const currentProject = projectRef.current
+    const numericConnectionId = Number(connectionId)
+    if (!currentProject || !Number.isSafeInteger(numericConnectionId) || numericConnectionId <= 0) {
+      return
+    }
+    if (!domainEngine.enabled) {
+      setValidationMessage('The WebAssembly workspace engine is not available.')
+      return
+    }
+
+    const optimisticProject: ProjectState = {
+      ...currentProject,
+      connections: currentProject.connections.map((connection) =>
+        connection.id === numericConnectionId ? { ...connection, label } : connection,
+      ),
+    }
+    projectRef.current = optimisticProject
+    setProject(optimisticProject)
+    setSaveStatus('saving')
+    if (connectionLabelTimerRef.current !== null) {
+      window.clearTimeout(connectionLabelTimerRef.current)
+    }
+    connectionLabelTimerRef.current = window.setTimeout(() => {
+      connectionLabelTimerRef.current = null
+      void commitEngineMutation(
+        () => updateTopologyConnectionLabel(domainEngine.client, numericConnectionId, label),
+        {
+          optimisticProject: (canonicalProject) => ({
+            ...canonicalProject,
+            connections: canonicalProject.connections.map((connection) =>
+              connection.id === numericConnectionId ? { ...connection, label } : connection,
+            ),
+          }),
+        },
+      ).then(() => {
+        setValidationMessage(null)
+      }).catch((error) => {
+        recoverConnectionMutation(error, 'The cable label could not be updated.')
+      })
+    }, SAVE_DEBOUNCE_MS)
+  }
+
+  function removeConnectionInEngine(connectionId: string | number) {
+    const currentProject = projectRef.current
+    const numericConnectionId = Number(connectionId)
+    if (!currentProject || !Number.isSafeInteger(numericConnectionId) || numericConnectionId <= 0) {
+      setValidationMessage('The selected connection is no longer valid.')
+      return
+    }
+    if (!domainEngine.enabled) {
+      setValidationMessage('The WebAssembly workspace engine is not available.')
+      return
+    }
+
+    if (connectionLabelTimerRef.current !== null) {
+      window.clearTimeout(connectionLabelTimerRef.current)
+      connectionLabelTimerRef.current = null
+    }
+    void commitEngineMutation(
+      () => removeTopologyConnection(domainEngine.client, numericConnectionId),
+      { recordHistory: true },
+    ).then(() => {
+      if (Number(selectedConnectionId) === numericConnectionId) {
+        setSelectedConnectionId(null)
+      }
+      setValidationMessage(null)
+    }).catch((error) => {
+      recoverConnectionMutation(error, 'The connection could not be removed.')
+    })
   }
 
   function handleCanvasEndpointClick(endpoint: ConnectionEndpoint, point: CanvasPortDragPoint) {
@@ -1049,18 +1678,7 @@ function App() {
       return
     }
 
-    const result = createConnectionForEndpoints(project, pendingConnectionEndpoint, endpoint)
-
-    if (!result.ok) {
-      setValidationMessage(result.message)
-      return
-    }
-
-    updateProject(result.project)
-    setSelectedConnectionId(result.connection.id)
-    setSelectedItemId(null)
-    setPendingConnectionEndpoint(null)
-    setValidationMessage(null)
+    createConnectionBetween(pendingConnectionEndpoint, endpoint)
   }
 
   function handleInventorySelect(itemId: string) {
@@ -1110,6 +1728,80 @@ function App() {
     setReturnToInventoryBusy(false)
   }
 
+  async function removeAssignedComponent(assignmentId: string | number) {
+    const currentProject = projectRef.current
+    if (!currentProject) return
+
+    const result = tryRemoveAssignedComponent(currentProject, assignmentId)
+    if (!result.ok) {
+      showMessage(result.message)
+      return
+    }
+
+    const removedConnectionIds = new Set(
+      currentProject.connections
+        .filter((connection) => !result.project.connections.some((candidate) => candidate.id === connection.id))
+        .map((connection) => connection.id),
+    )
+    if (removedConnectionIds.size > 0) {
+      try {
+        for (const connectionId of removedConnectionIds) {
+          await commitEngineMutation(
+            () => removeTopologyConnection(domainEngine.client, connectionId),
+          )
+        }
+      } catch (error) {
+        recoverConnectionMutation(error, 'The component connections could not be removed.')
+        return
+      }
+
+      const disconnectedProject = projectRef.current
+      if (!disconnectedProject) return
+      const disconnectedResult = tryRemoveAssignedComponent(disconnectedProject, assignmentId)
+      if (!disconnectedResult.ok) {
+        showMessage(disconnectedResult.message)
+        return
+      }
+      if (!await commitAssignmentUpdate(
+        disconnectedProject,
+        disconnectedResult.project,
+        'The component could not be removed.',
+        { recordHistory: false },
+      )) return
+      setHistory((currentHistory) => pushHistory(currentHistory, currentProject))
+    } else if (!await commitAssignmentUpdate(
+      currentProject,
+      result.project,
+      'The component could not be removed.',
+    )) {
+      return
+    }
+    setPendingAssignmentRemoval(null)
+  }
+
+  function requestAssignedComponentRemoval(assignmentId: string | number) {
+    const currentProject = projectRef.current
+    if (!currentProject) return
+
+    const assignment = findAssignmentById(currentProject.assignments, assignmentId)
+    if (!assignment) {
+      showMessage('That assigned component is no longer attached.')
+      return
+    }
+
+    const connectionIds = getAssignedComponentConnectionIds(currentProject, assignmentId)
+    if (connectionIds.length === 0) {
+      void removeAssignedComponent(assignmentId)
+      return
+    }
+
+    setPendingAssignmentRemoval({
+      assignmentId,
+      itemName: currentProject.items[assignment.itemId]?.name ?? 'component',
+      connectionCount: connectionIds.length,
+    })
+  }
+
   async function handleCreateInventoryItem(item: InventoryItemInput, quantity: number) {
     const currentProject = projectRef.current
     const nextProject = await createInventoryItems(item, quantity)
@@ -1154,6 +1846,55 @@ function App() {
       properties,
     )
     applyInventoryCommandSnapshot(nextProject, { historySnapshot: currentProject })
+  }
+
+  async function requestNasPowerConfigurationChange(
+    item: InventoryItem,
+    target: NasPowerConfiguration,
+  ) {
+    const currentProject = projectRef.current
+    if (!currentProject || item.type !== 'nas') return
+
+    setNasPowerChangeBusy(true)
+    setNasPowerChangeError(null)
+    try {
+      const result = await changeNasPowerConfiguration(item.id, target, false)
+      if (result.status === 'confirmation-required') {
+        setPendingNasPowerChange({ nasId: item.id, target, impact: result.impact })
+        return
+      }
+      applyInventoryCommandSnapshot(result.project, { historySnapshot: currentProject })
+    } catch (error) {
+      setPersistenceWarning(
+        error instanceof Error ? error.message : 'NAS power configuration could not be changed.',
+      )
+    } finally {
+      setNasPowerChangeBusy(false)
+    }
+  }
+
+  async function confirmNasPowerConfigurationChange() {
+    const pending = pendingNasPowerChange
+    const currentProject = projectRef.current
+    if (!pending || !currentProject) return
+
+    setNasPowerChangeBusy(true)
+    setNasPowerChangeError(null)
+    try {
+      const result = await changeNasPowerConfiguration(pending.nasId, pending.target, true)
+      if (result.status !== 'applied') {
+        setPendingNasPowerChange({ ...pending, impact: result.impact })
+        return
+      }
+      applyInventoryCommandSnapshot(result.project, { historySnapshot: currentProject })
+      setPendingNasPowerChange(null)
+    } catch (error) {
+      setNasPowerChangeError(
+        error instanceof Error ? error.message : 'NAS power configuration could not be changed.',
+      )
+    } finally {
+      setNasPowerChangeBusy(false)
+    }
   }
 
   async function handleDuplicateInventoryItem(item: InventoryItem) {
@@ -1275,10 +2016,12 @@ function App() {
     window.addEventListener('pointerup', stopInventoryResize)
   }
 
-  function handleDragEnd(event: DragEndEvent) {
+  async function handleDragEnd(event: DragEndEvent) {
     setDraggingItemId(null)
     setActiveComponentDragData(null)
     setDragOverHostId(null)
+    setDragPreviewOverCanvas(false)
+    setDragPreviewZoom(1)
 
     if (!project) {
       return
@@ -1304,16 +2047,18 @@ function App() {
         return
       }
 
-      const point = getCanvasDropPoint(event, canvasControllerRef.current)
+      const point = getCanvasDropPoint(event, canvasControllerRef.current, snapItemsToGrid)
       const itemRuntimeKey = runtimeItemKey(item)
-      const placement = getNonCollidingPlacement(project, { serverId: itemRuntimeKey, ...point })
+      const placement = { serverId: itemRuntimeKey, ...point }
+      const placementCheck = await validateCanvasPlacement(project, placement)
 
-      if (!placement) {
+      if (!placementCheck) return
+      if (!placementCheck.valid) {
         showMessage('Canvas equipment cannot overlap. Drop this item in an open space.')
         return
       }
 
-      updateProject(upsertPlacement(project, placement))
+      if (!await commitPlacementUpdates([placement], 'Canvas item could not be placed.')) return
       setSelectedItemId(itemRuntimeKey)
       setSelectedConnectionId(null)
       setValidationMessage(null)
@@ -1342,18 +2087,30 @@ function App() {
         return
       }
 
-      const geometryError = getAssignedComponentDropGeometryError(
-        project,
+      const affectedPlacements = [assignment.serverId, serverId]
+        .filter((itemId, index, itemIds) => itemIds.indexOf(itemId) === index)
+        .flatMap((itemId) => {
+          const placement = result.project.placements.find((candidate) => candidate.serverId === itemId)
+          return placement ? [placement] : []
+        })
+      const placementCheck = await validateCanvasGroupMove(
         result.project,
-        assignment,
-        serverId,
+        affectedPlacements,
       )
-      if (geometryError) {
-        showMessage(geometryError)
+      if (!placementCheck) return
+      if (!placementCheck.valid) {
+        showMessage('This server needs more open space before moving that component.')
         return
       }
 
-      if (result.project !== project) updateProject(result.project)
+      if (
+        result.project !== project
+        && !await commitAssignmentUpdate(
+          project,
+          result.project,
+          'The component could not be moved.',
+        )
+      ) return
       setSelectedItemId(assignment.itemId)
       setSelectedConnectionId(null)
       showCompatibilityUnknownMessage('Moved', assignedItem.name, result.unknownFindings)
@@ -1381,12 +2138,20 @@ function App() {
     const nextProject = result.project
     const serverPlacement = nextProject.placements.find((placement) => placement.serverId === serverId)
 
-    if (serverPlacement && placementCollides(nextProject, serverPlacement)) {
-      showMessage('This server needs more open space before adding that component.')
-      return
+    if (serverPlacement) {
+      const placementCheck = await validateCanvasPlacement(nextProject, serverPlacement)
+      if (!placementCheck) return
+      if (!placementCheck.valid) {
+        showMessage('This server needs more open space before adding that component.')
+        return
+      }
     }
 
-    updateProject(nextProject)
+    if (!await commitAssignmentUpdate(
+      project,
+      nextProject,
+      'The component could not be assigned.',
+    )) return
     setSelectedItemId(data.itemId)
     setSelectedConnectionId(null)
     showCompatibilityUnknownMessage('Assigned', item.name, result.unknownFindings)
@@ -1412,13 +2177,20 @@ function App() {
 
     setActiveComponentDragData(currentDragData)
     setDragOverHostId(null)
+    setDragPreviewOverCanvas(false)
+    setDragPreviewZoom(1)
     setDraggingItemId(currentAssignment?.itemId ?? data.itemId)
     setMobileInventoryOpen(false)
     setValidationMessage(null)
   }
 
   function handleDragOver(event: DragOverEvent) {
-    setDragOverHostId(getServerIdFromOver(event.over?.id ? String(event.over.id) : null))
+    const overId = event.over?.id ? String(event.over.id) : null
+    const overCanvas = isInventoryDragOverCanvas(overId)
+
+    setDragOverHostId(getServerIdFromOver(overId))
+    setDragPreviewOverCanvas(overCanvas)
+    setDragPreviewZoom(overCanvas ? canvasControllerRef.current?.getViewportZoom() ?? 1 : 1)
   }
 
   function undoProjectChange() {
@@ -1439,7 +2211,7 @@ function App() {
       setProject(result.project)
 
       if (result.project !== currentProject) {
-        setAutosaveRevision((current) => current + 1)
+        scheduleLegacyProjectSave(result.project)
       }
       setSelectedItemId((current) => (current && result.project.items[current] ? current : null))
       setSelectedConnectionId((current) =>
@@ -1471,7 +2243,7 @@ function App() {
       setProject(result.project)
 
       if (result.project !== currentProject) {
-        setAutosaveRevision((current) => current + 1)
+        scheduleLegacyProjectSave(result.project)
       }
       setSelectedItemId((current) => (current && result.project.items[current] ? current : null))
       setSelectedConnectionId((current) =>
@@ -1513,6 +2285,8 @@ function App() {
           setDraggingItemId(null)
           setActiveComponentDragData(null)
           setDragOverHostId(null)
+          setDragPreviewOverCanvas(false)
+          setDragPreviewZoom(1)
         }}
         onDragEnd={handleDragEnd}
       >
@@ -1563,6 +2337,8 @@ function App() {
           </Sheet>
           <WorkbenchCanvas
             project={project}
+            topologyData={topologyQuery.data}
+            compatibleEndpointKeys={compatibleTopologyDestinations.endpointKeys}
             agentStatus={agentStatusQuery.data ?? null}
             demoRemainingSeconds={demoRemainingSeconds}
             selectedItemId={selectedItem ? runtimeItemKey(selectedItem) : null}
@@ -1573,15 +2349,22 @@ function App() {
             pendingEndpoint={pendingConnectionEndpoint}
             draggingEndpoint={portConnectionPreview?.mode === 'drag' ? portConnectionPreview.from : null}
             dropCompatibilityByHostId={dropCompatibilityByHostId}
-            validationMessage={validationMessage}
-            validationSeverity={validationSeverity}
+            validationMessage={validationMessage ?? topologyStatus?.message ?? null}
+            validationSeverity={validationMessage ? validationSeverity : topologyStatus?.severity ?? validationSeverity}
             canUndo={history.past.length > 0}
             canRedo={history.future.length > 0}
             saveStatus={saveStatus}
+            canonicalMutationBusy={canonicalMutationBusy}
+            canvasOperationLabel={canvasOperationLabel}
             desktopInventoryVisible={desktopInventoryVisible}
             inspectorOpen={selectedItem !== null || selectedConnection !== null}
             autoCenterOnSelect={autoCenterOnSelect}
-            cablesVisible={cablesVisible}
+            networkCablesVisible={networkCablesVisible}
+            powerCablesVisible={powerCablesVisible}
+            displayCablesVisible={displayCablesVisible}
+            snapCablesToGrid={snapCablesToGrid}
+            avoidCableCollisionsGlobally={avoidCableCollisionsGlobally}
+            snapItemsToGrid={snapItemsToGrid}
             updateAvailable={shouldHighlightUpdate(updateStatusQuery.data)}
             updateStatusLoading={updateStatusQuery.isFetching && !updateStatusQuery.data}
             onSelect={(itemId) => {
@@ -1595,55 +2378,43 @@ function App() {
               setSelectedItemId(null)
               setActiveNetworkTraceEndpoint(null)
             }}
-            onRemoveAssignment={(assignmentId) => {
-              const result = tryRemoveAssignedComponent(project, assignmentId)
-              if (!result.ok) {
-                showMessage(result.message)
-                return
-              }
-              updateProject(result.project)
-            }}
-            onMoveItem={(itemId: string, position: XYPosition) => {
-              const placement = getNonCollidingPlacement(project, {
+            onRemoveAssignment={requestAssignedComponentRemoval}
+            onMoveItem={async (itemId: string, position: XYPosition) => {
+              const placement = {
                 serverId: itemId,
-                x: snapToGrid(position.x),
-                y: snapToGrid(position.y),
-              })
+                x: snapItemsToGrid ? snapToGrid(position.x) : position.x,
+                y: snapItemsToGrid ? snapToGrid(position.y) : position.y,
+              }
+              const placementCheck = await validateCanvasPlacement(project, placement)
 
-              if (!placement) {
+              if (!placementCheck) return false
+              if (!placementCheck.valid) {
                 showMessage('Canvas equipment cannot overlap. Move this item to an open space.')
                 return false
               }
 
-              updateProject(upsertPlacement(project, placement))
-              setValidationMessage(null)
-              return true
+              return commitPlacementUpdates([placement])
             }}
-            onMoveItems={(placements) => {
+            onMoveItems={async (placements) => {
               const nextPlacements = placements.map((placement) => ({
                 serverId: placement.serverId,
-                x: snapToGrid(placement.x),
-                y: snapToGrid(placement.y),
+                x: snapItemsToGrid ? snapToGrid(placement.x) : placement.x,
+                y: snapItemsToGrid ? snapToGrid(placement.y) : placement.y,
               }))
 
-              if (placementsCollide(project, nextPlacements)) {
+              const placementCheck = await validateCanvasGroupMove(project, nextPlacements)
+              if (!placementCheck) return false
+              if (!placementCheck.valid) {
                 showMessage('Canvas equipment cannot overlap. Move this group to an open space.')
                 return false
               }
 
-              updateProject(upsertPlacements(project, nextPlacements))
-              setValidationMessage(null)
-              return true
+              return commitPlacementUpdates(nextPlacements)
             }}
             onEndpointClick={handleCanvasEndpointClick}
             onEndpointDragStart={handleCanvasEndpointDragStart}
             onEndpointDrop={handleCanvasEndpointDrop}
-            onUpdateConnectionRoute={(connectionId: string | number, route: ConnectionRoutePreferences) => {
-              updateProject(updateConnectionRoute(project, connectionId, route), {
-                recordHistory: false,
-              })
-              setValidationMessage(null)
-            }}
+            onUpdateConnectionRoute={updateConnectionRouteInEngine}
             onViewportReady={(canvasController) => {
               canvasControllerRef.current = canvasController
             }}
@@ -1665,15 +2436,24 @@ function App() {
               setMobileInventoryOpen(true)
             }}
             onToggleAutoCenterOnSelect={() => setAutoCenterOnSelect((current) => !current)}
-            onToggleCablesVisible={() => setCablesVisible((current) => !current)}
+            onToggleNetworkCablesVisible={() => setNetworkCablesVisible((current) => !current)}
+            onTogglePowerCablesVisible={() => setPowerCablesVisible((current) => !current)}
+            onToggleDisplayCablesVisible={() => setDisplayCablesVisible((current) => !current)}
             onAutoArrange={() => {
               if (project.placements.length === 0) {
                 showMessage('Drag equipment onto the canvas before arranging.')
                 return
               }
 
-              updateProject(autoArrangeCanvasItems(project))
-              setValidationMessage(null)
+              setCanvasOperationLabel('Arranging canvas')
+              void arrangeProjectItems(domainEngine.client, project)
+                .then(async (placements) => {
+                  await commitPlacementUpdates(placements, 'Canvas items could not be arranged.')
+                })
+                .catch((error) => {
+                  showMessage(error instanceof Error ? error.message : 'Canvas items could not be arranged.')
+                })
+                .finally(() => setCanvasOperationLabel(null))
             }}
             onOpenAudit={() => setAuditOpen(true)}
             onOpenSettings={() => setSettingsOpen(true)}
@@ -1693,6 +2473,10 @@ function App() {
           ) : null}
           <InspectorPanel
             project={project}
+            topologyData={topologyQuery.data}
+            topologyStatusMessage={topologyStatus?.message ?? null}
+            topologyStatusIsError={topologyStatus?.severity === 'error'}
+            compatibleEndpointKeys={compatibleTopologyDestinations.endpointKeys}
             agentStatus={agentStatusQuery.data ?? null}
             demoMode={isDemoMode}
             selectedItemId={selectedItem ? runtimeItemKey(selectedItem) : null}
@@ -1710,25 +2494,19 @@ function App() {
             }}
             onUpdateProject={updateProject}
             onUpdateItem={handleUpdateInventoryItem}
+            onRequestNasPowerConfigurationChange={(item, powerConfiguration) => {
+              void requestNasPowerConfigurationChange(item, powerConfiguration)
+            }}
+            onSetWarningIgnored={(warningId, ignored) => {
+              updateProject(setAuditWarningIgnored(project, warningId, ignored))
+            }}
             onUpdateItemProperties={handleUpdateInventoryItemProperties}
             onDuplicateItem={handleDuplicateInventoryItem}
             onArchiveItem={(item) => void requestInventoryLifecycle('archive', [item])}
             onReturnItemToInventory={requestReturnToInventory}
             lifecycleBusy={inventoryLifecycleBusy}
             onCreateConnection={(from: ConnectionEndpoint, to: ConnectionEndpoint) => {
-              const result = createConnectionForEndpoints(project, from, to)
-
-              if (!result.ok) {
-                setValidationMessage(result.message)
-                return
-              }
-
-              updateProject(result.project)
-              setSelectedConnectionId(result.connection.id)
-              setSelectedItemId(null)
-              setActiveNetworkTraceEndpoint(null)
-              setPendingConnectionEndpoint(null)
-              setValidationMessage(null)
+              createConnectionBetween(from, to)
             }}
             onSelectNetworkTrace={(endpoint) => {
               setActiveNetworkTraceEndpoint(endpoint)
@@ -1741,28 +2519,13 @@ function App() {
               setPendingConnectionEndpoint(null)
               setValidationMessage(null)
             }}
-            onUpdateConnectionLabel={(connectionId, label) => {
-              updateProject(updateConnectionLabel(project, connectionId, label), {
-                recordHistory: false,
-              })
-              setValidationMessage(null)
-            }}
-            onUpdateConnectionRoute={(connectionId, route) => {
-              updateProject(updateConnectionRoute(project, connectionId, route), {
-                recordHistory: false,
-              })
-              setValidationMessage(null)
-            }}
-            onRemoveConnection={(connectionId) => {
-              updateProject(removeConnection(project, connectionId))
-              if (String(selectedConnectionId) === String(connectionId)) {
-                setSelectedConnectionId(null)
-              }
-              setValidationMessage(null)
-            }}
+            onUpdateConnectionLabel={updateConnectionLabelInEngine}
+            onUpdateConnectionRoute={updateConnectionRouteInEngine}
+            onRemoveConnection={removeConnectionInEngine}
           />
           <AuditDrawer
             project={project}
+            topologyData={topologyQuery.data}
             open={auditOpen}
             onClose={() => setAuditOpen(false)}
             onSelectItem={(itemId) => {
@@ -1819,6 +2582,35 @@ function App() {
             }}
             onConfirm={confirmReturnToInventory}
           />
+          <NasPowerConfigurationDialog
+            open={pendingNasPowerChange !== null}
+            nasName={pendingNasPowerChange
+              ? project.items[`nas:${pendingNasPowerChange.nasId}`]?.name ?? 'NAS'
+              : 'NAS'}
+            impact={pendingNasPowerChange?.impact ?? null}
+            busy={nasPowerChangeBusy}
+            error={nasPowerChangeError}
+            onOpenChange={(open) => {
+              if (!open && !nasPowerChangeBusy) {
+                setPendingNasPowerChange(null)
+                setNasPowerChangeError(null)
+              }
+            }}
+            onConfirm={() => void confirmNasPowerConfigurationChange()}
+          />
+          <AssignedComponentRemovalDialog
+            open={pendingAssignmentRemoval !== null}
+            itemName={pendingAssignmentRemoval?.itemName ?? 'component'}
+            connectionCount={pendingAssignmentRemoval?.connectionCount ?? 0}
+            onOpenChange={(open) => {
+              if (!open) setPendingAssignmentRemoval(null)
+            }}
+            onConfirm={() => {
+              if (pendingAssignmentRemoval) {
+                void removeAssignedComponent(pendingAssignmentRemoval.assignmentId)
+              }
+            }}
+          />
           {releaseNotesQuery.data ? (
             <WhatsNewDialog
               open={shouldShowWhatsNewDialog}
@@ -1849,31 +2641,45 @@ function App() {
             inventoryVisible={desktopInventoryVisible}
             inventoryWidth={inventoryWidth}
             autoCenterOnSelect={autoCenterOnSelect}
-            cablesVisible={cablesVisible}
+            networkCablesVisible={networkCablesVisible}
+            powerCablesVisible={powerCablesVisible}
+            displayCablesVisible={displayCablesVisible}
+            openCreatedConnectionInspector={openCreatedConnectionInspector}
+            snapCablesToGrid={snapCablesToGrid}
+            avoidCableCollisionsGlobally={avoidCableCollisionsGlobally}
+            snapItemsToGrid={snapItemsToGrid}
             updateStatus={updateStatusQuery.data ?? null}
             updateLoading={updateStatusQuery.isLoading}
             updateChecking={checkForUpdatesMutation.isPending}
             updateClearingSkip={clearSkippedUpdateMutation.isPending}
             onOpenChange={setSettingsOpen}
-            onProjectNameChange={(name) => {
-              updateProject({
-                ...project,
-                metadata: {
-                  ...project.metadata,
-                  name,
-                },
-              }, { recordHistory: false })
-            }}
+            onProjectNameChange={updateProjectName}
             onInventoryVisibleChange={setDesktopInventoryVisible}
             onInventoryWidthChange={(width) => setInventoryWidth(clampInventoryWidth(width))}
             onAutoCenterOnSelectChange={setAutoCenterOnSelect}
-            onCablesVisibleChange={setCablesVisible}
+            onNetworkCablesVisibleChange={setNetworkCablesVisible}
+            onPowerCablesVisibleChange={setPowerCablesVisible}
+            onDisplayCablesVisibleChange={setDisplayCablesVisible}
+            onOpenCreatedConnectionInspectorChange={setOpenCreatedConnectionInspector}
+            onSnapCablesToGridChange={setSnapCablesToGrid}
+            onAvoidCableCollisionsGloballyChange={setAvoidCableCollisionsGlobally}
+            onSnapItemsToGridChange={setSnapItemsToGrid}
             onResetBrowserPreferences={() => {
               resetStoredUiPreferences()
               setDesktopInventoryVisible(DEFAULT_UI_PREFERENCES.inventoryVisible)
               setInventoryWidth(DEFAULT_UI_PREFERENCES.inventoryWidth)
               setAutoCenterOnSelect(DEFAULT_UI_PREFERENCES.autoCenterOnSelect)
-              setCablesVisible(DEFAULT_UI_PREFERENCES.cablesVisible)
+              setNetworkCablesVisible(DEFAULT_UI_PREFERENCES.networkCablesVisible)
+              setPowerCablesVisible(DEFAULT_UI_PREFERENCES.powerCablesVisible)
+              setDisplayCablesVisible(DEFAULT_UI_PREFERENCES.displayCablesVisible)
+              setOpenCreatedConnectionInspector(
+                DEFAULT_UI_PREFERENCES.openCreatedConnectionInspector,
+              )
+              setSnapCablesToGrid(DEFAULT_UI_PREFERENCES.snapCablesToGrid)
+              setAvoidCableCollisionsGlobally(
+                DEFAULT_UI_PREFERENCES.avoidCableCollisionsGlobally,
+              )
+              setSnapItemsToGrid(DEFAULT_UI_PREFERENCES.snapItemsToGrid)
             }}
             onClearIgnoredWarnings={() => {
               updateProject(clearIgnoredAuditWarnings(project))
@@ -1895,6 +2701,8 @@ function App() {
           <InventoryDragPreview
             item={draggingItemId ? project.items[draggingItemId] ?? null : null}
             project={project}
+            overCanvas={dragPreviewOverCanvas}
+            viewportZoom={dragPreviewZoom}
           />
         </DragOverlay>
       </DndContext>

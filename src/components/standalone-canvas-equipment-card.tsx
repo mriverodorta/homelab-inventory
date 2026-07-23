@@ -10,7 +10,7 @@ import {
 import { runtimeItemKey } from '@/lib/item-keys'
 import { startSelectedPortDrag } from '@/lib/port-interactions'
 import { endpointKey } from '@/lib/project'
-import { powerOutletEndpoint } from '@/lib/power-topology'
+import { powerOutletEndpoint } from '@/lib/power-endpoints'
 import type { PowerEquipmentOrientation } from '@/lib/power-equipment-layout'
 import { useTapSelection } from '@/lib/tap-selection'
 import { cn } from '@/lib/utils'
@@ -58,6 +58,7 @@ type StandaloneCanvasEquipmentCardProps = StandaloneCanvasNodeData & {
   item: InventoryItem
   orientation?: PowerEquipmentOrientation
   summary?: string
+  subtitle?: string
   width?: number
 }
 
@@ -238,6 +239,7 @@ export function StandaloneCanvasEquipmentCard({
   selectedItemId,
   spotlightItemId,
   summary,
+  subtitle,
   width = 360,
 }: StandaloneCanvasEquipmentCardProps) {
   const itemId = runtimeItemKey(item)
@@ -280,7 +282,11 @@ export function StandaloneCanvasEquipmentCard({
         ) : null}
         <div className="min-w-0 flex-1">
           <div className="truncate text-sm font-bold">{item.name}</div>
-          <div className="mt-0.5 text-[9px] font-black uppercase tracking-[0.14em] opacity-65">{eyebrow}</div>
+          {subtitle ? (
+            <div className="mt-0.5 truncate text-[11px] font-semibold opacity-75">{subtitle}</div>
+          ) : (
+            <div className="mt-0.5 text-[9px] font-black uppercase tracking-[0.14em] opacity-65">{eyebrow}</div>
+          )}
         </div>
       </div>
 

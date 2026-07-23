@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { CABLE_COLORS, describeConnectionEndpoint, getCableAppearance } from '@/lib/cables'
-import { createConnection } from '@/lib/project'
-import type { InventoryItem, ProjectState } from '@/types/inventory'
+import type { InventoryConnection, InventoryItem, ProjectState } from '@/types/inventory'
 
 function projectWithPorts(items: InventoryItem[]): ProjectState {
   const now = '2026-06-26T00:00:00.000Z'
@@ -141,14 +140,15 @@ describe('cable appearance', () => {
 
   it('colors display cables black across displayport and hdmi', () => {
     const project = projectWithPorts([basePorts[0], basePorts[3]])
-    const result = createConnection(
-      project,
-      { itemId: 'server:1', portId: 2 },
-      { itemId: 'patchPanel:1', portId: 1, endpointId: 1 },
-    )
+    const connection: InventoryConnection = {
+      id: 1,
+      type: 'display',
+      createdAt: '2026-07-22T00:00:00.000Z',
+      from: { itemId: 'server:1', portId: 2 },
+      to: { itemId: 'patchPanel:1', portId: 1, endpointId: 1 },
+    }
 
-    expect(result.ok).toBe(true)
-    expect(result.ok ? getCableAppearance(result.project, result.connection) : null).toEqual({
+    expect(getCableAppearance(project, connection)).toEqual({
       color: CABLE_COLORS.display,
       label: 'HDMI',
     })

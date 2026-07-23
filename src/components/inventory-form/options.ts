@@ -75,6 +75,10 @@ export const PORT_ROLES: InventoryPortRole[] = [
 
 export const PORT_SPEEDS = ['', ...SWITCH_NETWORK_PORT_SPEEDS]
 export const RAM_SPEEDS = ['', '1600', '1866', '2133', '2400', '2666', '2933', '3200', '3600', '4800', '5600']
+export const NAS_POWER_CONFIGURATION_OPTIONS = [
+  { value: 'internal-psu', label: 'Internal PSU' },
+  { value: 'external-adapter', label: 'External power adapter' },
+] as const
 export const STORAGE_FORM_FACTORS = ['', '2230', '2242', '2260', '2280', '2.5"', '3.5"', 'eMMC']
 export const SERVER_FORM_FACTORS = ['Tiny', 'Mini', 'Micro', 'Small', 'SFF', 'Tower', 'Mini-ITX', 'Micro-ATX', 'ATX', 'E-ATX']
 export const NETWORK_SLOTS = ['On board', 'PCIe', 'M.2 A+E']

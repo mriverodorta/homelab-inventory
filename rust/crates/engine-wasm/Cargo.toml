@@ -1,0 +1,15 @@
+[package]
+name = "homelab-engine-wasm"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+homelab-domain-core = { path = "../domain-core" }
+homelab-engine-protocol = { path = "../protocol" }
+rmp-serde.workspace = true
+serde.workspace = true

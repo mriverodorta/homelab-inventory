@@ -14,7 +14,7 @@ import {
   type LucideIcon,
 } from 'lucide-react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { useEffect, useMemo, useState, type ReactNode } from 'react'
+import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { ComponentInspectorTabs } from '@/components/component-inspector-tabs'
 import { HostCompatibilityTab } from '@/components/host-compatibility-tab'
 import { InventoryActionsMenu } from '@/components/inventory-actions-menu'
@@ -25,10 +25,12 @@ import {
   type InventoryFormValues,
 } from '@/components/inventory-form/model'
 import { PortGroupsEditor } from '@/components/inventory-form/port-groups-editor'
+import { SmartPowerStripFields } from '@/components/inventory-form/smart-power-strip-fields'
 import {
   InventoryFormStatus,
   InventorySpecsFormContent,
 } from '@/components/inventory-form/specs-tab-content'
+import { SmartPowerStripDisableDialog } from '@/components/smart-power-strip-disable-dialog'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
@@ -39,6 +41,7 @@ import {
   CardTitle,
 } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
+import { Switch } from '@/components/ui/switch'
 import {
   Select,
   SelectContent,
@@ -64,15 +67,19 @@ import {
 } from '@/lib/agent-api'
 import type { InventoryItemInput } from '@/lib/db'
 import { useInventoryItemEditor } from '@/hooks/use-inventory-item-editor'
+import type {
+  PresentedNetworkTrace as NetworkTrace,
+  TopologyQueryData,
+} from '@/hooks/use-topology-query'
+import { useCompatibleTopologyDestinations } from '@/hooks/use-topology-query'
 import {
-  getCompatibleDestinationGroups,
   getEndpointGroupForHost,
+  getHostEndpointGroups,
 } from '@/lib/connection-endpoints'
 import { getSlotStatus, SLOT_LABELS, sortAssignmentsForDisplay } from '@/lib/constraints'
 import { isHostCompatibilityEnabled } from '@/lib/compatibility'
 import { setHostCompatibilityEnabled } from '@/lib/compatibility-policy'
 import { PC_BUILD_COMPONENT_ORDER } from '@/lib/pc-build'
-import { getPowerEndpoints } from '@/lib/power-topology'
 import { cn } from '@/lib/utils'
 import {
   formatCapacity,
@@ -82,10 +89,7 @@ import {
 } from '@/lib/format'
 import { runtimeItemKey } from '@/lib/item-keys'
 import {
-  connectionEndpointAvailable,
   endpointKey,
-  getConnectionPort,
-  portsCompatible,
 } from '@/lib/project'
 import {
   PATCH_PANEL_ROW_ORDER_PROPERTY,
@@ -100,12 +104,6 @@ import {
   getUpsOutletGroupOrder,
   type PowerEquipmentOrientation,
 } from '@/lib/power-equipment-layout'
-import {
-  getItemNetworkTraces,
-  getPatchPanelNetworkTraces,
-  traceNetworkPath,
-  type NetworkTrace,
-} from '@/lib/network-trace'
 import type {
   ConnectionEndpoint,
   ConnectionRoutePreferences,
@@ -114,6 +112,7 @@ import type {
   InventoryConnection,
   InventoryItem,
   InventoryPort,
+  NasPowerConfiguration,
   InventoryPortRole,
   InventoryPortType,
   InventoryProperties,
@@ -519,18 +518,15 @@ function describeConnectedEndpoint(project: ProjectState, endpoint: ConnectionEn
 }
 
 function endpointIsCompatible(
-  project: ProjectState,
   pendingEndpoint: ConnectionEndpoint | null,
   endpoint: ConnectionEndpoint,
+  compatibleEndpointKeys: ReadonlySet<string> | null,
 ): boolean {
   if (!pendingEndpoint || endpointKey(pendingEndpoint) === endpointKey(endpoint)) {
     return true
   }
 
-  const pendingPort = getConnectionPort(project, pendingEndpoint)
-  const port = getConnectionPort(project, endpoint)
-
-  return Boolean(pendingPort && port && portsCompatible(pendingPort.type, port.type))
+  return compatibleEndpointKeys?.has(endpointKey(endpoint)) ?? false
 }
 
 function EndpointConnectButton({
@@ -546,9 +542,14 @@ function EndpointConnectButton({
   pendingEndpoint: ConnectionEndpoint | null
   onConnect: (endpoint: ConnectionEndpoint) => void
 }) {
+  const topology = useContext(InspectorTopologyContext)
   const state = getEndpointConnectionState(project, endpoint)
   const selected = pendingEndpoint ? endpointKey(pendingEndpoint) === endpointKey(endpoint) : false
-  const compatible = endpointIsCompatible(project, pendingEndpoint, endpoint)
+  const compatible = endpointIsCompatible(
+    pendingEndpoint,
+    endpoint,
+    topology.compatibleEndpointKeys,
+  )
   const disabled = state !== 'open' || !compatible
 
   return (
@@ -1052,9 +1053,10 @@ function ConnectionEditor({
   onUpdateLabel: (connectionId: string | number, label: string) => void
   onRemove: (connectionId: string | number) => void
 }) {
+  const topology = useContext(InspectorTopologyContext)
   const selectedEndpointGroup = useMemo(
-    () => getEndpointGroupForHost(project, item),
-    [item, project],
+    () => getEndpointGroupForHost(project, item, topology.data?.power.endpoints),
+    [item, project, topology.data],
   )
   const selectedEndpointOptions = useMemo(
     () => selectedEndpointGroup?.options ?? [],
@@ -1062,10 +1064,10 @@ function ConnectionEditor({
   )
   const availableFromOptions = useMemo(
     () =>
-      selectedEndpointOptions.filter((option) =>
-        connectionEndpointAvailable(project, option.endpoint),
-      ),
-    [project, selectedEndpointOptions],
+      selectedEndpointOptions.filter((option) => topology.data?.endpoints.some(
+        (descriptor) => descriptor.available && endpointKey(descriptor.endpoint) === option.key,
+      )),
+    [selectedEndpointOptions, topology.data],
   )
   const relatedConnections = useMemo(
     () =>
@@ -1081,9 +1083,21 @@ function ConnectionEditor({
   const [toKey, setToKey] = useState(EMPTY_SELECT_VALUE)
 
   const selectedFrom = availableFromOptions.find((option) => option.key === fromKey) ?? null
+  const connectionDestinations = useCompatibleTopologyDestinations(
+    project,
+    selectedFrom?.endpoint ?? null,
+  )
   const destinationGroups = useMemo(
-    () => selectedFrom ? getCompatibleDestinationGroups(project, selectedFrom) : [],
-    [project, selectedFrom],
+    () => selectedFrom && connectionDestinations.endpointKeys
+      ? getHostEndpointGroups(project, topology.data?.power.endpoints)
+        .filter((group) => group.key !== runtimeItemKey(selectedFrom.host))
+        .map((group) => ({
+          ...group,
+          options: group.options.filter((option) => connectionDestinations.endpointKeys?.has(option.key)),
+        }))
+        .filter((group) => group.options.length > 0)
+      : [],
+    [connectionDestinations.endpointKeys, project, selectedFrom, topology.data],
   )
   const destinationGroup = destinationGroups.find((group) => group.key === destinationItemId) ?? null
   const destinationEndpointOptions = useMemo(
@@ -1115,6 +1129,19 @@ function ConnectionEditor({
         : destinationEndpointOptions[0]?.key ?? EMPTY_SELECT_VALUE,
     )
   }, [destinationEndpointOptions])
+
+  if (!topology.data) {
+    return (
+      <InspectorSection title="Connections" icon={Cable}>
+        <p
+          role={topology.statusIsError ? 'alert' : 'status'}
+          className="text-sm text-[#75695d]"
+        >
+          {topology.statusMessage ?? 'Loading connection topology...'}
+        </p>
+      </InspectorSection>
+    )
+  }
 
   if (selectedEndpointOptions.length === 0) {
     return null
@@ -1306,6 +1333,14 @@ function ConnectionDetails({
     })
   }
 
+  function removeBendPoint(index: number) {
+    const bendPoints = (route.bendPoints ?? []).filter((_, bendIndex) => bendIndex !== index)
+    updateRoute({
+      ...route,
+      bendPoints: bendPoints.length > 0 ? bendPoints : undefined,
+    })
+  }
+
   return (
     <Card className={cn(inspectorSurfaceClass, 'overflow-visible rounded-lg')} size="sm">
       <CardHeader className="grid-cols-[1fr_auto] items-start gap-3">
@@ -1402,6 +1437,50 @@ function ConnectionDetails({
               </Select>
             </label>
           </div>
+          <div className="mt-3 flex items-start justify-between gap-4 rounded-md bg-[#f8f3eb] p-3">
+            <div className="min-w-0">
+              <div className="text-sm font-bold text-[#20242c]">Avoid other cables</div>
+              <div className="mt-0.5 text-xs leading-relaxed text-[#75695d]">
+                Uses separate horizontal and vertical lanes. Crossings and shared endpoint approaches remain allowed.
+              </div>
+            </div>
+            <Switch
+              className="mt-0.5 shrink-0"
+              aria-label="Avoid other cables"
+              checked={Boolean(route.avoidCableOverlap)}
+              onCheckedChange={(checked) => updateRoute({
+                ...route,
+                avoidCableOverlap: checked || undefined,
+              })}
+            />
+          </div>
+          {route.bendPoints?.length ? (
+            <div className="mt-3 space-y-1.5" aria-label="Manual cable bends">
+              {route.bendPoints.map((bendPoint, index) => (
+                <div
+                  key={`${bendPoint.x}:${bendPoint.y}:${index}`}
+                  className="flex items-center justify-between gap-2 rounded-md bg-[#f8f3eb] px-2.5 py-2"
+                >
+                  <span className="min-w-0 text-xs font-semibold text-[#5f554b]">
+                    Bend {index + 1}
+                    <span className="ml-2 font-mono text-[10px] text-[#8a8175]">
+                      {Math.round(bendPoint.x)}, {Math.round(bendPoint.y)}
+                    </span>
+                  </span>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 shrink-0 px-2 text-xs"
+                    aria-label={`Remove bend ${index + 1}`}
+                    onClick={() => removeBendPoint(index)}
+                  >
+                    Remove
+                  </Button>
+                </div>
+              ))}
+            </div>
+          ) : null}
           <Button
             type="button"
             variant="outline"
@@ -1426,25 +1505,65 @@ function ConnectionDetails({
   )
 }
 
-function AuditSection({ warnings }: { warnings: AuditWarning[] }) {
+type InspectorAuditWarning = AuditWarning & { ignored: boolean }
+
+const AuditIgnoreContext = createContext<(warningId: string, ignored: boolean) => void>(() => undefined)
+type InspectorTopologyState = {
+  data: TopologyQueryData | null
+  compatibleEndpointKeys: ReadonlySet<string> | null
+  statusMessage: string | null
+  statusIsError: boolean
+}
+
+const InspectorTopologyContext = createContext<InspectorTopologyState>({
+  data: null,
+  compatibleEndpointKeys: null,
+  statusMessage: null,
+  statusIsError: false,
+})
+
+function AuditSection({ warnings }: { warnings: InspectorAuditWarning[] }) {
+  const onSetWarningIgnored = useContext(AuditIgnoreContext)
+
   if (warnings.length === 0) {
     return null
   }
+
+  const openWarningCount = warnings.filter((warning) => !warning.ignored).length
 
   return (
     <InspectorSection
       title="Audit"
       icon={AlertTriangle}
-      badge={<StatusBadge tone="warning">{warnings.length}</StatusBadge>}
+      badge={(
+        <StatusBadge tone="warning">
+          <span data-testid="inspector-audit-open-count">{openWarningCount}</span>
+        </StatusBadge>
+      )}
     >
       <div className="space-y-2">
         {warnings.map((warning) => (
           <div
             key={warning.id}
-            className="flex gap-2 rounded-md border border-[#e8d392] bg-[#fff8df] p-2 text-xs font-semibold leading-snug text-[#5d4814]"
+            data-ignored={warning.ignored ? 'true' : 'false'}
+            className={cn(
+              'flex items-start gap-2 rounded-md border p-2 text-xs font-semibold leading-snug',
+              warning.ignored
+                ? 'border-[#d8d1c7] bg-[#f3efe9] text-[#75695d]'
+                : 'border-[#e8d392] bg-[#fff8df] text-[#5d4814]',
+            )}
           >
             <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
-            <span>{warning.message}</span>
+            <span className="min-w-0 flex-1">{warning.message}</span>
+            <Button
+              type="button"
+              variant="outline"
+              size="xs"
+              className="shrink-0 px-2 text-[11px]"
+              onClick={() => onSetWarningIgnored(warning.id, !warning.ignored)}
+            >
+              {warning.ignored ? 'Unignore' : 'Ignore'}
+            </Button>
           </div>
         ))}
       </div>
@@ -1453,19 +1572,16 @@ function AuditSection({ warnings }: { warnings: AuditWarning[] }) {
 }
 
 function NetworkTraceSection({
-  project,
   item,
   activeTraceKey,
   onSelectTrace,
 }: {
-  project: ProjectState
   item: InventoryItem
   activeTraceKey: string | null
   onSelectTrace: (endpoint: ConnectionEndpoint) => void
 }) {
-  const traces = item.type === 'patchPanel'
-    ? getPatchPanelNetworkTraces(project, item)
-    : getItemNetworkTraces(project, item)
+  const topology = useContext(InspectorTopologyContext)
+  const traces = topology.data?.networkTracesByItemId.get(runtimeItemKey(item)) ?? []
 
   if (traces.length === 0) {
     return null
@@ -2088,10 +2204,13 @@ function ServerNetworkTab({
   onUpdateItem: (itemId: string, input: InventoryItemInput) => void
   onSelectTrace: (endpoint: ConnectionEndpoint) => void
 }) {
+  const topology = useContext(InspectorTopologyContext)
   const options = useMemo(() => getServerNetworkPortOptions(project, server), [project, server])
   const [selectedKey, setSelectedKey] = useState(() => options[0]?.key ?? '')
   const selected = options.find((option) => option.key === selectedKey) ?? options[0] ?? null
-  const trace = selected ? traceNetworkPath(project, selected.endpoint) : null
+  const trace = selected
+    ? topology.data?.networkTraceByEndpointKey.get(endpointKey(selected.endpoint)) ?? null
+    : null
   const connections = selected ? getEndpointConnections(project, selected.endpoint) : []
   const agentIps = status.network?.flatMap((adapter) => adapter.addresses ?? []) ?? []
 
@@ -2283,11 +2402,16 @@ function EditableSpecsSection({
   editor,
   auditWarnings,
   displayName = false,
+  onChange,
 }: {
   title: string
   editor: ReturnType<typeof useInventoryItemEditor>
-  auditWarnings: AuditWarning[]
+  auditWarnings: InspectorAuditWarning[]
   displayName?: boolean
+  onChange?: (
+    patch: Partial<InventoryFormValues>,
+    mode?: 'debounced' | 'immediate',
+  ) => void
 }) {
   return (
     <>
@@ -2295,7 +2419,7 @@ function EditableSpecsSection({
         <InventorySpecsFormContent
           values={editor.values}
           errors={editor.errors}
-          onChange={editor.updateValues}
+          onChange={onChange ?? editor.updateValues}
           includeCompatibility={false}
         />
         {displayName ? (
@@ -2346,7 +2470,7 @@ function ServerInspectorTabs({
   demoMode: boolean
   activeNetworkTraceKey: string | null
   pendingEndpoint: ConnectionEndpoint | null
-  auditWarnings: AuditWarning[]
+  auditWarnings: InspectorAuditWarning[]
   onUpdateProject: (project: ProjectState) => void
   onUpdateItem: (itemId: string, input: InventoryItemInput) => void
   onSelectNetworkTrace: (endpoint: ConnectionEndpoint) => void
@@ -2480,7 +2604,7 @@ function SwitchInspectorTabs({
   project: ProjectState
   item: InventoryItem
   pendingEndpoint: ConnectionEndpoint | null
-  auditWarnings: AuditWarning[]
+  auditWarnings: InspectorAuditWarning[]
   onUpdateItem: (itemId: string, input: InventoryItemInput) => void
   onCreateConnection: (from: ConnectionEndpoint, to: ConnectionEndpoint) => void
   onEndpointConnectionClick: (endpoint: ConnectionEndpoint) => void
@@ -2572,11 +2696,12 @@ function NasInspectorTabs({
   onSelectNetworkTrace,
   onUpdateConnectionLabel,
   onRemoveConnection,
+  onRequestPowerConfigurationChange,
 }: {
   project: ProjectState
   item: InventoryItem
   pendingEndpoint: ConnectionEndpoint | null
-  auditWarnings: AuditWarning[]
+  auditWarnings: InspectorAuditWarning[]
   activeNetworkTraceKey: string | null
   onUpdateProject: (project: ProjectState) => void
   onUpdateItem: (itemId: string, input: InventoryItemInput) => void
@@ -2585,13 +2710,36 @@ function NasInspectorTabs({
   onSelectNetworkTrace: (endpoint: ConnectionEndpoint) => void
   onUpdateConnectionLabel: (connectionId: string | number, label: string) => void
   onRemoveConnection: (connectionId: string | number) => void
+  onRequestPowerConfigurationChange: (
+    item: InventoryItem,
+    powerConfiguration: NasPowerConfiguration,
+  ) => void
 }) {
   const editor = useInventoryItemEditor({
     item,
     onSave: (input) => onUpdateItem(runtimeItemKey(item), input),
   })
   const draftItem = itemFromEditorValues(item, editor.values)
-  const handlePortsUpdate = (ports: InventoryPort[]) => updateEditorPorts(editor, ports)
+  const systemPowerPorts = (draftItem.ports ?? []).filter((port) => port.kind === 'power-port')
+  const editableNasItem = {
+    ...draftItem,
+    ports: (draftItem.ports ?? []).filter((port) => port.kind !== 'power-port'),
+  }
+  const handlePortsUpdate = (ports: InventoryPort[]) => updateEditorPorts(
+    editor,
+    [...ports.filter((port) => port.kind !== 'power-port'), ...systemPowerPorts],
+  )
+  const handleSpecsChange = (
+    patch: Partial<InventoryFormValues>,
+    mode: 'debounced' | 'immediate' = 'debounced',
+  ) => {
+    const requested = patch.powerConfiguration
+    if (requested && requested !== editor.values.powerConfiguration) {
+      onRequestPowerConfigurationChange(item, requested)
+      return
+    }
+    editor.updateValues(patch, mode)
+  }
 
   return (
     <InspectorTabs
@@ -2606,6 +2754,7 @@ function NasInspectorTabs({
               title="NAS Details"
               editor={editor}
               auditWarnings={auditWarnings}
+              onChange={handleSpecsChange}
             />
           ),
         },
@@ -2617,7 +2766,9 @@ function NasInspectorTabs({
               project={project}
               host={draftItem}
               title="NAS Slots"
-              allowedTypes={['storage', 'network']}
+              allowedTypes={item.specs?.powerConfiguration === 'external-adapter'
+                ? ['storage', 'network', 'powerAdapter']
+                : ['storage', 'network']}
             />
           ),
         },
@@ -2634,7 +2785,7 @@ function NasInspectorTabs({
               />
               <PortTabsEditor
                 project={project}
-                item={draftItem}
+                item={editableNasItem}
                 pendingEndpoint={pendingEndpoint}
                 onUpdate={handlePortsUpdate}
                 onEndpointConnect={onEndpointConnectionClick}
@@ -2654,7 +2805,6 @@ function NasInspectorTabs({
           label: 'Network',
           content: (
             <NetworkTraceSection
-              project={project}
               item={draftItem}
               activeTraceKey={activeNetworkTraceKey}
               onSelectTrace={onSelectNetworkTrace}
@@ -2704,7 +2854,7 @@ function PatchPanelInspectorTabs({
   project: ProjectState
   item: InventoryItem
   pendingEndpoint: ConnectionEndpoint | null
-  auditWarnings: AuditWarning[]
+  auditWarnings: InspectorAuditWarning[]
   activeNetworkTraceKey: string | null
   onUpdateItem: (itemId: string, input: InventoryItemInput) => void
   onCreateConnection: (from: ConnectionEndpoint, to: ConnectionEndpoint) => void
@@ -2785,7 +2935,6 @@ function PatchPanelInspectorTabs({
           label: 'Network',
           content: (
             <NetworkTraceSection
-              project={project}
               item={draftItem}
               activeTraceKey={activeNetworkTraceKey}
               onSelectTrace={onSelectNetworkTrace}
@@ -2892,6 +3041,7 @@ function HostedPortsTab({
   onSelectTrace: (endpoint: ConnectionEndpoint) => void
   onEndpointConnect: (endpoint: ConnectionEndpoint) => void
 }) {
+  const topology = useContext(InspectorTopologyContext)
   const options = useMemo(
     () => getPcBuildPortOptions(project, host, networkOnly),
     [host, networkOnly, project],
@@ -2899,7 +3049,9 @@ function HostedPortsTab({
   const [selectedKey, setSelectedKey] = useState(() => options[0]?.key ?? '')
   const selected = options.find((option) => option.key === selectedKey) ?? options[0] ?? null
   const connections = selected ? getEndpointConnections(project, selected.endpoint) : []
-  const trace = networkOnly && selected ? traceNetworkPath(project, selected.endpoint) : null
+  const trace = networkOnly && selected
+    ? topology.data?.networkTraceByEndpointKey.get(endpointKey(selected.endpoint)) ?? null
+    : null
 
   useEffect(() => {
     if (options.length === 0) {
@@ -3087,11 +3239,16 @@ function PowerEndpointsTab({
   onUpdateConnectionLabel: (connectionId: string | number, label: string) => void
   onRemoveConnection: (connectionId: string | number) => void
 }) {
+  const topology = useContext(InspectorTopologyContext)
   const itemKey = runtimeItemKey(item)
-  const endpoints = getPowerEndpoints(project).filter((candidate) => candidate.endpoint.itemId === itemKey)
+  const endpoints = (topology.data?.power.endpoints ?? [])
+    .filter((candidate) => candidate.endpoint.itemId === itemKey)
   const [selectedKey, setSelectedKey] = useState(() => endpoints[0] ? endpointKey(endpoints[0].endpoint) : '')
   const selected = endpoints.find((candidate) => endpointKey(candidate.endpoint) === selectedKey) ?? endpoints[0] ?? null
   const connections = selected ? getEndpointConnections(project, selected.endpoint) : []
+  const selectedOutletName = selected && item.type === 'powerStrip'
+    ? item.smart?.outlets.find((entry) => entry.portId === selected.endpoint.portId)?.name
+    : undefined
 
   useEffect(() => {
     if (endpoints.length === 0) setSelectedKey('')
@@ -3132,6 +3289,9 @@ function PowerEndpointsTab({
               <div className="rounded-md bg-[#f3f0ea] p-3">
                 <div className={labelClass}>{selected.direction}</div>
                 <div className="mt-1 text-sm font-black text-[#20242c]">{selected.label}</div>
+                {selectedOutletName ? (
+                  <div className="mt-1 text-xs font-semibold text-[#75695d]">{selectedOutletName}</div>
+                ) : null}
               </div>
               {connections.length === 0 ? (
                 <div className="rounded-md bg-[#f8f3eb] p-3 text-sm font-semibold text-[#75695d]">Open</div>
@@ -3173,7 +3333,7 @@ function PcBuildInspectorTabs({
   demoMode: boolean
   activeNetworkTraceKey: string | null
   pendingEndpoint: ConnectionEndpoint | null
-  auditWarnings: AuditWarning[]
+  auditWarnings: InspectorAuditWarning[]
   onUpdateProject: (project: ProjectState) => void
   onUpdateItem: (itemId: string, input: InventoryItemInput) => void
   onSelectNetworkTrace: (endpoint: ConnectionEndpoint) => void
@@ -3294,7 +3454,7 @@ function StandalonePowerEquipmentTabs({
   project: ProjectState
   item: InventoryItem
   pendingEndpoint: ConnectionEndpoint | null
-  auditWarnings: AuditWarning[]
+  auditWarnings: InspectorAuditWarning[]
   onUpdateItem: (itemId: string, input: InventoryItemInput) => void
   onUpdateItemProperties: (
     itemId: string,
@@ -3309,6 +3469,7 @@ function StandalonePowerEquipmentTabs({
   const [layoutProperties, setLayoutProperties] = useState<InventoryProperties>(item.properties ?? {})
   const [layoutSaving, setLayoutSaving] = useState(false)
   const [layoutSaveError, setLayoutSaveError] = useState<string | null>(null)
+  const [smartDisableOpen, setSmartDisableOpen] = useState(false)
   const layoutItem = { ...draftItem, properties: layoutProperties }
   const inspectedItem = item.type === 'monitor'
     ? { ...draftItem, ports: draftItem.ports ?? item.ports }
@@ -3335,14 +3496,17 @@ function StandalonePowerEquipmentTabs({
   }, [item.properties])
   const tabSignature = item.type === 'monitor'
     ? 'specs|ports'
-    : 'specs|layout|outlets'
+    : item.type === 'powerStrip'
+      ? 'specs|layout|outlets|smart'
+      : 'specs|layout|outlets'
 
   return (
-    <InspectorTabs
-      key={tabSignature}
-      defaultValue="specs"
-      status={<InventoryFormStatus saveError={editor.saveError ?? layoutSaveError} />}
-      tabs={[
+    <>
+      <InspectorTabs
+        key={tabSignature}
+        defaultValue="specs"
+        status={<InventoryFormStatus saveError={editor.saveError ?? layoutSaveError} />}
+        tabs={[
         {
           value: 'specs',
           label: 'Specs',
@@ -3384,8 +3548,36 @@ function StandalonePowerEquipmentTabs({
             </>
           ),
         },
-      ]}
-    />
+        ...(item.type === 'powerStrip'
+          ? [{
+              value: 'smart',
+              label: 'Smart',
+              content: (
+                <SmartPowerStripFields
+                  values={editor.values}
+                  onChange={editor.updateValues}
+                  onDisableRequest={() => setSmartDisableOpen(true)}
+                />
+              ),
+            } satisfies InspectorTab]
+          : []),
+        ]}
+      />
+      <SmartPowerStripDisableDialog
+        open={smartDisableOpen}
+        onOpenChange={setSmartDisableOpen}
+        onConfirm={() => {
+          editor.updateValues({
+            smartEnabled: false,
+            smartDisplayName: '',
+            smartManagementIp: '',
+            smartMacAddress: '',
+            smartOutletNames: [],
+          }, 'immediate')
+          setSmartDisableOpen(false)
+        }}
+      />
+    </>
   )
 }
 
@@ -3477,6 +3669,10 @@ function ComponentItemEditor({
 
 export function InspectorPanel({
   project,
+  topologyData = null,
+  compatibleEndpointKeys = null,
+  topologyStatusMessage = null,
+  topologyStatusIsError = false,
   agentStatus,
   demoMode = false,
   selectedItemId,
@@ -3502,8 +3698,14 @@ export function InspectorPanel({
   onUpdateConnectionLabel,
   onUpdateConnectionRoute,
   onRemoveConnection,
+  onRequestNasPowerConfigurationChange = () => undefined,
+  onSetWarningIgnored = () => undefined,
 }: {
   project: ProjectState
+  topologyData?: TopologyQueryData | null
+  compatibleEndpointKeys?: ReadonlySet<string> | null
+  topologyStatusMessage?: string | null
+  topologyStatusIsError?: boolean
   agentStatus: AgentStatusSummary | null
   demoMode?: boolean
   selectedItemId: string | null
@@ -3532,6 +3734,11 @@ export function InspectorPanel({
   onUpdateConnectionLabel: (connectionId: string | number, label: string) => void
   onUpdateConnectionRoute: (connectionId: string | number, route: ConnectionRoutePreferences) => void
   onRemoveConnection: (connectionId: string | number) => void
+  onSetWarningIgnored?: (warningId: string, ignored: boolean) => void
+  onRequestNasPowerConfigurationChange?: (
+    item: InventoryItem,
+    powerConfiguration: NasPowerConfiguration,
+  ) => void
 }) {
   const selectedItem = selectedItemId ? project.items[selectedItemId] ?? null : null
   const selectedConnection = selectedConnectionId
@@ -3541,7 +3748,26 @@ export function InspectorPanel({
   const selectedItemIsPlaced = selectedItemRuntimeKey
     ? project.placements.some((placement) => placement.serverId === selectedItemRuntimeKey)
     : false
-  const auditWarnings = selectedItemRuntimeKey ? getItemAuditWarnings(project, selectedItemRuntimeKey) : []
+  const openAuditWarnings = selectedItemRuntimeKey
+    ? getItemAuditWarnings(project, selectedItemRuntimeKey, {}, topologyData ? {
+      endpoints: topologyData.endpoints,
+      networkTraces: topologyData.networkTraces,
+      powerEndpoints: topologyData.power.endpoints,
+      powerFindings: topologyData.power.findings,
+    } : undefined)
+    : []
+  const ignoredAuditWarnings = selectedItemRuntimeKey
+    ? getItemAuditWarnings(project, selectedItemRuntimeKey, { visibility: 'ignored' }, topologyData ? {
+      endpoints: topologyData.endpoints,
+      networkTraces: topologyData.networkTraces,
+      powerEndpoints: topologyData.power.endpoints,
+      powerFindings: topologyData.power.findings,
+    } : undefined)
+    : []
+  const auditWarnings: InspectorAuditWarning[] = [
+    ...openAuditWarnings.map((warning) => ({ ...warning, ignored: false })),
+    ...ignoredAuditWarnings.map((warning) => ({ ...warning, ignored: true })),
+  ]
   const drawerTitle = selectedConnection
     ? selectedConnection.label?.trim() || 'Connection'
     : selectedItem ? selectedItem.name : 'Inspector'
@@ -3645,6 +3871,13 @@ export function InspectorPanel({
           </div>
         ) : null}
 
+        <InspectorTopologyContext.Provider value={{
+          data: topologyData,
+          compatibleEndpointKeys,
+          statusMessage: topologyStatusMessage,
+          statusIsError: topologyStatusIsError,
+        }}>
+        <AuditIgnoreContext.Provider value={onSetWarningIgnored}>
         <section className="space-y-4">
           {selectedConnection ? (
             <ConnectionDetails
@@ -3696,6 +3929,7 @@ export function InspectorPanel({
                   onSelectNetworkTrace={onSelectNetworkTrace}
                   onUpdateConnectionLabel={onUpdateConnectionLabel}
                   onRemoveConnection={onRemoveConnection}
+                  onRequestPowerConfigurationChange={onRequestNasPowerConfigurationChange}
                 />
               ) : selectedItem.type === 'patchPanel' ? (
                 <PatchPanelInspectorTabs
@@ -3764,6 +3998,8 @@ export function InspectorPanel({
             </div>
           )}
         </section>
+        </AuditIgnoreContext.Provider>
+        </InspectorTopologyContext.Provider>
       </div>
     </aside>
   )

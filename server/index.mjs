@@ -7,6 +7,10 @@ import { fileURLToPath } from 'node:url'
 import { RELEASE_NOTES } from '../src/release-notes.ts'
 import { registerAgentRoutes } from './agent-routes.mjs'
 import { HomelabInventoryStore } from './db/store.mjs'
+import { EngineCommandService } from './engine/command-service.mjs'
+import { ServerEngineRuntime } from './engine/runtime.mjs'
+import { EngineSseHub } from './engine/sse-hub.mjs'
+import { registerEngineRoutes } from './engine-routes.mjs'
 import { registerInventoryRoutes } from './inventory-routes.mjs'
 import { registerProjectRoutes } from './project-routes.mjs'
 import { createRateLimitOptions, readRateLimitConfig } from './rate-limit.mjs'
@@ -95,7 +99,9 @@ const cspDirectives = {
   frameAncestors: ["'none'"],
   imgSrc: ["'self'", 'data:', 'blob:'],
   objectSrc: ["'none'"],
-  scriptSrc: isProduction ? ["'self'"] : ["'self'", "'unsafe-inline'"],
+  scriptSrc: isProduction
+    ? ["'self'", "'wasm-unsafe-eval'"]
+    : ["'self'", "'unsafe-inline'", "'wasm-unsafe-eval'"],
   scriptSrcAttr: ["'none'"],
   styleSrc: ["'self'", "'unsafe-inline'"],
   upgradeInsecureRequests: null,
@@ -162,6 +168,13 @@ registerUpdateRoutes(app, {
 
 registerInventoryRoutes(app, { withStore })
 registerProjectRoutes(app, { withStore })
+
+const engineRuntime = await ServerEngineRuntime.create()
+registerEngineRoutes(app, {
+  withStore,
+  commandService: new EngineCommandService(engineRuntime),
+  sseHub: new EngineSseHub(),
+})
 
 startUpdateCheckSchedule({
   checker: updateChecker,

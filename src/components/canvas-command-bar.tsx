@@ -1,10 +1,11 @@
 import {
   AlertTriangle,
+  Cable,
   Cloud,
   CloudAlert,
   Download,
-  Eye,
-  EyeOff,
+  EthernetPort,
+  HdmiPort,
   LayoutGrid,
   LoaderCircle,
   LocateFixed,
@@ -31,7 +32,9 @@ export interface CanvasCommandBarProps {
   updateStatusLoading: boolean
   auditWarningCount: number
   autoCenterOnSelect: boolean
-  cablesVisible: boolean
+  networkCablesVisible: boolean
+  powerCablesVisible: boolean
+  displayCablesVisible: boolean
   onInventory: () => void
   onUndo: () => void
   onRedo: () => void
@@ -39,7 +42,9 @@ export interface CanvasCommandBarProps {
   onOpenAudit: () => void
   onToggleAutoCenterOnSelect: () => void
   onAutoArrange: () => void
-  onToggleCablesVisible: () => void
+  onToggleNetworkCablesVisible: () => void
+  onTogglePowerCablesVisible: () => void
+  onToggleDisplayCablesVisible: () => void
   onOpenSettings: () => void
   className?: string
 }
@@ -141,7 +146,9 @@ export function CanvasCommandBar({
   updateStatusLoading,
   auditWarningCount,
   autoCenterOnSelect,
-  cablesVisible,
+  networkCablesVisible,
+  powerCablesVisible,
+  displayCablesVisible,
   onInventory,
   onUndo,
   onRedo,
@@ -149,7 +156,9 @@ export function CanvasCommandBar({
   onOpenAudit,
   onToggleAutoCenterOnSelect,
   onAutoArrange,
-  onToggleCablesVisible,
+  onToggleNetworkCablesVisible,
+  onTogglePowerCablesVisible,
+  onToggleDisplayCablesVisible,
   onOpenSettings,
   className,
 }: CanvasCommandBarProps) {
@@ -163,7 +172,9 @@ export function CanvasCommandBar({
     ? 'Open audit, no warnings'
     : `Open audit, ${auditWarningCount} ${auditWarningCount === 1 ? 'warning' : 'warnings'}`
   const centerLabel = autoCenterOnSelect ? 'Disable selection centering' : 'Enable selection centering'
-  const cablesLabel = cablesVisible ? 'Hide cables' : 'Show cables'
+  const networkCablesLabel = networkCablesVisible ? 'Hide network cables' : 'Show network cables'
+  const powerCablesLabel = powerCablesVisible ? 'Hide power cables' : 'Show power cables'
+  const displayCablesLabel = displayCablesVisible ? 'Hide display cables' : 'Show display cables'
 
   return (
     <div
@@ -246,8 +257,26 @@ export function CanvasCommandBar({
           <ToolbarButton label="Auto arrange canvas" onClick={onAutoArrange}>
             <LayoutGrid className="size-4" />
           </ToolbarButton>
-          <ToolbarButton label={cablesLabel} onClick={onToggleCablesVisible} pressed={cablesVisible}>
-            {cablesVisible ? <Eye className="size-4" /> : <EyeOff className="size-4" />}
+          <ToolbarButton
+            label={networkCablesLabel}
+            onClick={onToggleNetworkCablesVisible}
+            pressed={networkCablesVisible}
+          >
+            <EthernetPort className="size-4" />
+          </ToolbarButton>
+          <ToolbarButton
+            label={powerCablesLabel}
+            onClick={onTogglePowerCablesVisible}
+            pressed={powerCablesVisible}
+          >
+            <Cable className="size-4" />
+          </ToolbarButton>
+          <ToolbarButton
+            label={displayCablesLabel}
+            onClick={onToggleDisplayCablesVisible}
+            pressed={displayCablesVisible}
+          >
+            <HdmiPort className="size-4" />
           </ToolbarButton>
           <ToolbarButton label="Settings" onClick={onOpenSettings}>
             <SettingsIcon className="size-4" />

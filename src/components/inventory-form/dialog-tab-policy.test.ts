@@ -12,6 +12,7 @@ describe('inventory dialog tab policy', () => {
       'compatibility',
       'resources',
       'ports',
+      'smart',
     ])
   })
 
@@ -26,6 +27,7 @@ describe('inventory dialog tab policy', () => {
     ['switch', ['specs', 'ports']],
     ['patchPanel', ['specs', 'ports']],
     ['storage', ['specs']],
+    ['powerStrip', ['specs', 'smart']],
   ] as const)('returns the available tabs for %s', (type, tabs) => {
     expect(getInventoryDialogTabs(type)).toEqual(tabs)
   })

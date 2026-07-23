@@ -8,7 +8,7 @@ import {
   defaultSwitchPortSpeed as getDefaultSwitchPortSpeed,
   SUPPORTED_SWITCH_PORT_SPEEDS,
   SWITCH_NETWORK_PORT_TYPES,
-} from '@/lib/negotiated-speed'
+} from '@/lib/network-port-speeds'
 
 export type SwitchPortGroup = {
   key: string

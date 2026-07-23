@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { buildCanvasProjectIndex } from '@/lib/canvas-project-index'
 import { PcBuildNode, type PcBuildFlowNode } from '@/components/pc-build-card'
 import { TooltipProvider } from '@/components/ui/tooltip'
+import { topologyQueryFixture } from '@/test/topology-query-fixture'
 import type { ComponentAssignment, InventoryItem, ProjectState } from '@/types/inventory'
 
 vi.mock('@dnd-kit/core', () => ({
@@ -127,7 +128,8 @@ function nodeProps(
       onEndpointDragStart: vi.fn(),
       onEndpointDrop: vi.fn(),
       ...overrides,
-      canvasIndex: overrides.canvasIndex ?? buildCanvasProjectIndex(currentProject),
+      canvasIndex: overrides.canvasIndex
+        ?? buildCanvasProjectIndex(currentProject, topologyQueryFixture(currentProject)),
       requiredHandleIds: overrides.requiredHandleIds ?? new Set<string>(),
     },
   }

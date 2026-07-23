@@ -52,7 +52,13 @@ export type SettingsDialogProps = {
   inventoryVisible: boolean
   inventoryWidth: number
   autoCenterOnSelect: boolean
-  cablesVisible: boolean
+  networkCablesVisible: boolean
+  powerCablesVisible: boolean
+  displayCablesVisible: boolean
+  openCreatedConnectionInspector: boolean
+  snapCablesToGrid: boolean
+  avoidCableCollisionsGlobally: boolean
+  snapItemsToGrid: boolean
   updateStatus: UpdateStatus | null
   updateLoading: boolean
   updateChecking: boolean
@@ -62,7 +68,13 @@ export type SettingsDialogProps = {
   onInventoryVisibleChange: (visible: boolean) => void
   onInventoryWidthChange: (width: number) => void
   onAutoCenterOnSelectChange: (enabled: boolean) => void
-  onCablesVisibleChange: (visible: boolean) => void
+  onNetworkCablesVisibleChange: (visible: boolean) => void
+  onPowerCablesVisibleChange: (visible: boolean) => void
+  onDisplayCablesVisibleChange: (visible: boolean) => void
+  onOpenCreatedConnectionInspectorChange: (enabled: boolean) => void
+  onSnapCablesToGridChange: (enabled: boolean) => void
+  onAvoidCableCollisionsGloballyChange: (enabled: boolean) => void
+  onSnapItemsToGridChange: (enabled: boolean) => void
   onResetBrowserPreferences: () => void
   onClearIgnoredWarnings: () => void
   onEnableCompatibilityForAllHosts: () => void
@@ -183,13 +195,42 @@ function GeneralSettings(props: SettingsDialogProps) {
       <SettingRow label="Center selected equipment" description="Reframe the canvas when an item opens in the inspector.">
         <Switch aria-label="Center selected equipment" checked={props.autoCenterOnSelect} onCheckedChange={props.onAutoCenterOnSelectChange} />
       </SettingRow>
-      <SettingRow label="Show cables" description="Display saved network and display connections on the canvas.">
-        <Switch aria-label="Show cables" checked={props.cablesVisible} onCheckedChange={props.onCablesVisibleChange} />
+      <SettingRow label="Show network cables" description="Display saved Ethernet and SFP connections on the canvas.">
+        <Switch aria-label="Show network cables" checked={props.networkCablesVisible} onCheckedChange={props.onNetworkCablesVisibleChange} />
+      </SettingRow>
+      <SettingRow label="Show power cables" description="Display saved AC power connections on the canvas.">
+        <Switch aria-label="Show power cables" checked={props.powerCablesVisible} onCheckedChange={props.onPowerCablesVisibleChange} />
+      </SettingRow>
+      <SettingRow label="Show display cables" description="Display saved HDMI and DisplayPort connections on the canvas.">
+        <Switch aria-label="Show display cables" checked={props.displayCablesVisible} onCheckedChange={props.onDisplayCablesVisibleChange} />
+      </SettingRow>
+      <SettingRow
+        label="Open new connections in Inspector"
+        description="Select a connection and open its Inspector immediately after it is created."
+      >
+        <Switch
+          aria-label="Open new connections in Inspector"
+          checked={props.openCreatedConnectionInspector}
+          onCheckedChange={props.onOpenCreatedConnectionInspectorChange}
+        />
+      </SettingRow>
+      <SettingRow label="Snap cables to grid" description="Route automatic cable sections and edited bends on 12 px lanes.">
+        <Switch aria-label="Snap cables to grid" checked={props.snapCablesToGrid} onCheckedChange={props.onSnapCablesToGridChange} />
+      </SettingRow>
+      <SettingRow label="Avoid cable collisions globally" description="Route every cable on separate lanes without changing individual cable preferences.">
+        <Switch
+          aria-label="Avoid cable collisions globally"
+          checked={props.avoidCableCollisionsGlobally}
+          onCheckedChange={props.onAvoidCableCollisionsGloballyChange}
+        />
+      </SettingRow>
+      <SettingRow label="Snap canvas items to grid" description="Align newly placed and subsequently moved equipment to the 24 px dot grid.">
+        <Switch aria-label="Snap canvas items to grid" checked={props.snapItemsToGrid} onCheckedChange={props.onSnapItemsToGridChange} />
       </SettingRow>
       <SettingRow label="Reset browser preferences" description="Restore only this browser's workspace controls to their defaults.">
         <ConfirmSettingsAction
           title="Reset browser preferences?"
-          description="Inventory visibility and width, selection centering, and cable visibility will return to their defaults in this browser. Project data is not changed."
+          description="Inventory layout, selection, cable display, connection Inspector, collision avoidance, and grid snapping preferences will return to their defaults in this browser. Project data is not changed."
           actionLabel="Reset preferences"
           onConfirm={props.onResetBrowserPreferences}
         />

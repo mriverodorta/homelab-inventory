@@ -6,26 +6,52 @@ const INVENTORY_VISIBLE_KEY = 'homelab-inventory:inventory-visible'
 const INVENTORY_WIDTH_KEY = 'homelab-inventory:inventory-width'
 const AUTO_CENTER_ON_SELECT_KEY = 'homelab-inventory:auto-center-on-select'
 const CABLES_VISIBLE_KEY = 'homelab-inventory:cables-visible'
+const NETWORK_CABLES_VISIBLE_KEY = 'homelab-inventory:network-cables-visible'
+const POWER_CABLES_VISIBLE_KEY = 'homelab-inventory:power-cables-visible'
+const DISPLAY_CABLES_VISIBLE_KEY = 'homelab-inventory:display-cables-visible'
+const OPEN_CREATED_CONNECTION_INSPECTOR_KEY = 'homelab-inventory:open-created-connection-inspector'
+const SNAP_CABLES_TO_GRID_KEY = 'homelab-inventory:snap-cables-to-grid'
+const AVOID_CABLE_COLLISIONS_GLOBALLY_KEY = 'homelab-inventory:avoid-cable-collisions-globally'
+const SNAP_ITEMS_TO_GRID_KEY = 'homelab-inventory:snap-items-to-grid'
 
 const UI_PREFERENCE_KEYS = [
   INVENTORY_VISIBLE_KEY,
   INVENTORY_WIDTH_KEY,
   AUTO_CENTER_ON_SELECT_KEY,
   CABLES_VISIBLE_KEY,
+  NETWORK_CABLES_VISIBLE_KEY,
+  POWER_CABLES_VISIBLE_KEY,
+  DISPLAY_CABLES_VISIBLE_KEY,
+  OPEN_CREATED_CONNECTION_INSPECTOR_KEY,
+  SNAP_CABLES_TO_GRID_KEY,
+  AVOID_CABLE_COLLISIONS_GLOBALLY_KEY,
+  SNAP_ITEMS_TO_GRID_KEY,
 ] as const
 
 export type UiPreferences = {
   inventoryVisible: boolean
   inventoryWidth: number
   autoCenterOnSelect: boolean
-  cablesVisible: boolean
+  networkCablesVisible: boolean
+  powerCablesVisible: boolean
+  displayCablesVisible: boolean
+  openCreatedConnectionInspector: boolean
+  snapCablesToGrid: boolean
+  avoidCableCollisionsGlobally: boolean
+  snapItemsToGrid: boolean
 }
 
 export const DEFAULT_UI_PREFERENCES: UiPreferences = {
   inventoryVisible: true,
   inventoryWidth: DEFAULT_INVENTORY_WIDTH,
   autoCenterOnSelect: true,
-  cablesVisible: true,
+  networkCablesVisible: true,
+  powerCablesVisible: true,
+  displayCablesVisible: true,
+  openCreatedConnectionInspector: false,
+  snapCablesToGrid: false,
+  avoidCableCollisionsGlobally: false,
+  snapItemsToGrid: false,
 }
 
 export function clampInventoryWidth(width: number): number {
@@ -107,26 +133,109 @@ export function storeAutoCenterOnSelect(enabled: boolean): void {
   }
 }
 
-export function getStoredCablesVisible(): boolean {
+function getStoredCableTypeVisible(key: string): boolean {
   if (typeof window === 'undefined') {
-    return DEFAULT_UI_PREFERENCES.cablesVisible
+    return true
   }
 
   try {
+    const storedValue = window.localStorage.getItem(key)
+    if (storedValue !== null) return storedValue !== 'false'
+
     return window.localStorage.getItem(CABLES_VISIBLE_KEY) !== 'false'
   } catch {
-    return DEFAULT_UI_PREFERENCES.cablesVisible
+    return true
   }
 }
 
-export function storeCablesVisible(visible: boolean): void {
+export function getStoredNetworkCablesVisible(): boolean {
+  return getStoredCableTypeVisible(NETWORK_CABLES_VISIBLE_KEY)
+}
+
+export function storeNetworkCablesVisible(visible: boolean): void {
+  storeBooleanPreference(NETWORK_CABLES_VISIBLE_KEY, visible)
+}
+
+export function getStoredPowerCablesVisible(): boolean {
+  return getStoredCableTypeVisible(POWER_CABLES_VISIBLE_KEY)
+}
+
+export function storePowerCablesVisible(visible: boolean): void {
+  storeBooleanPreference(POWER_CABLES_VISIBLE_KEY, visible)
+}
+
+export function getStoredDisplayCablesVisible(): boolean {
+  return getStoredCableTypeVisible(DISPLAY_CABLES_VISIBLE_KEY)
+}
+
+export function storeDisplayCablesVisible(visible: boolean): void {
+  storeBooleanPreference(DISPLAY_CABLES_VISIBLE_KEY, visible)
+}
+
+export function getStoredOpenCreatedConnectionInspector(): boolean {
+  if (typeof window === 'undefined') {
+    return DEFAULT_UI_PREFERENCES.openCreatedConnectionInspector
+  }
+
+  try {
+    return window.localStorage.getItem(OPEN_CREATED_CONNECTION_INSPECTOR_KEY) === 'true'
+  } catch {
+    return DEFAULT_UI_PREFERENCES.openCreatedConnectionInspector
+  }
+}
+
+export function storeOpenCreatedConnectionInspector(enabled: boolean): void {
   if (typeof window === 'undefined') return
 
   try {
-    window.localStorage.setItem(CABLES_VISIBLE_KEY, String(visible))
+    window.localStorage.setItem(OPEN_CREATED_CONNECTION_INSPECTOR_KEY, String(enabled))
   } catch {
     // Storage may be unavailable in privacy-restricted browser contexts.
   }
+}
+
+function getStoredOptInBoolean(key: string): boolean {
+  if (typeof window === 'undefined') return false
+
+  try {
+    return window.localStorage.getItem(key) === 'true'
+  } catch {
+    return false
+  }
+}
+
+function storeBooleanPreference(key: string, enabled: boolean): void {
+  if (typeof window === 'undefined') return
+
+  try {
+    window.localStorage.setItem(key, String(enabled))
+  } catch {
+    // Storage may be unavailable in privacy-restricted browser contexts.
+  }
+}
+
+export function getStoredSnapCablesToGrid(): boolean {
+  return getStoredOptInBoolean(SNAP_CABLES_TO_GRID_KEY)
+}
+
+export function storeSnapCablesToGrid(enabled: boolean): void {
+  storeBooleanPreference(SNAP_CABLES_TO_GRID_KEY, enabled)
+}
+
+export function getStoredAvoidCableCollisionsGlobally(): boolean {
+  return getStoredOptInBoolean(AVOID_CABLE_COLLISIONS_GLOBALLY_KEY)
+}
+
+export function storeAvoidCableCollisionsGlobally(enabled: boolean): void {
+  storeBooleanPreference(AVOID_CABLE_COLLISIONS_GLOBALLY_KEY, enabled)
+}
+
+export function getStoredSnapItemsToGrid(): boolean {
+  return getStoredOptInBoolean(SNAP_ITEMS_TO_GRID_KEY)
+}
+
+export function storeSnapItemsToGrid(enabled: boolean): void {
+  storeBooleanPreference(SNAP_ITEMS_TO_GRID_KEY, enabled)
 }
 
 export function getStoredUiPreferences(): UiPreferences {
@@ -134,7 +243,13 @@ export function getStoredUiPreferences(): UiPreferences {
     inventoryVisible: getStoredInventoryVisible(),
     inventoryWidth: getStoredInventoryWidth(),
     autoCenterOnSelect: getStoredAutoCenterOnSelect(),
-    cablesVisible: getStoredCablesVisible(),
+    networkCablesVisible: getStoredNetworkCablesVisible(),
+    powerCablesVisible: getStoredPowerCablesVisible(),
+    displayCablesVisible: getStoredDisplayCablesVisible(),
+    openCreatedConnectionInspector: getStoredOpenCreatedConnectionInspector(),
+    snapCablesToGrid: getStoredSnapCablesToGrid(),
+    avoidCableCollisionsGlobally: getStoredAvoidCableCollisionsGlobally(),
+    snapItemsToGrid: getStoredSnapItemsToGrid(),
   }
 }
 

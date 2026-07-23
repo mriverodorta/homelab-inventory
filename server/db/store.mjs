@@ -1,7 +1,7 @@
 import fs from 'node:fs/promises'
 import path from 'node:path'
 import { Low } from 'lowdb'
-import { normalizeNetworkProject, recalculateNegotiatedSpeeds } from '../../src/lib/negotiated-speed.ts'
+import { normalizeNetworkProject, recalculateNegotiatedSpeeds } from './legacy-network-normalization.ts'
 import { getReleaseNotesBetween } from '../../src/release-notes.ts'
 import {
   isHostCompatibilityEnabled,
@@ -10,6 +10,8 @@ import {
   normalizeProjectCompatibilityPolicy,
   planHostAllocations,
 } from '../../shared/compatibility/index.mjs'
+import { withCanonicalPowerPorts } from '../../shared/power-ports.mjs'
+import { createEngineSnapshot } from '../engine/snapshot.mjs'
 import {
   analyzeInventoryDependencies,
   assertDependencyFree,
@@ -30,8 +32,14 @@ import {
 import { assertRelationalId, isRelationalId, parseLegacyRelationalId } from './relational-ids.mjs'
 import { migrateSchema9To10 } from './migrate-schema-10.mjs'
 import { migrateSchema10To11 } from './migrate-schema-11.mjs'
+import { migrateSchema11To12 } from './migrate-schema-12.mjs'
+import { migrateSchema12To13 } from './migrate-schema-13.mjs'
+import {
+  applyNasPowerConfigurationChange,
+  inspectNasPowerConfigurationChange,
+} from './nas-power-configuration.mjs'
 
-export const CURRENT_SCHEMA_VERSION = 11
+export const CURRENT_SCHEMA_VERSION = 13
 
 const DEFAULT_SAVE_DEBOUNCE_MS = 500
 const BACKUP_LIMIT = 10
@@ -208,6 +216,7 @@ class JsonFileAdapter {
 function createProjectStoreFromProject(project) {
   return {
     id: project.id ?? 'default',
+    revision: project.revision ?? 1,
     metadata: {
       name: project.metadata?.name ?? 'Homelab Inventory',
       version: project.metadata?.version ?? 1,
@@ -315,6 +324,7 @@ function composeProject(meta, inventory, project) {
 
   return {
     id: project.id ?? 'default',
+    revision: project.revision ?? 1,
     metadata: {
       ...project.metadata,
       name: project.metadata?.name ?? 'Homelab Inventory',
@@ -563,6 +573,68 @@ function normalizeInventoryPort(port, index, fallbackKind) {
   return normalized
 }
 
+function normalizeSmartPowerStripConfiguration(type, rawSmart, ports) {
+  if (rawSmart === undefined) return undefined
+
+  if (type !== 'powerStrip') {
+    throw new InventoryLifecycleError('Smart configuration is supported only for power strips.', {
+      code: 'invalid-smart-power-strip',
+      status: 400,
+    })
+  }
+
+  if (!rawSmart || typeof rawSmart !== 'object' || Array.isArray(rawSmart) || rawSmart.enabled !== true) {
+    throw new InventoryLifecycleError('Smart power-strip configuration must be enabled explicitly.', {
+      code: 'invalid-smart-power-strip',
+      status: 400,
+    })
+  }
+
+  const outletPortIds = new Set(
+    (ports ?? []).filter((port) => port.type === 'ac-outlet').map((port) => port.id),
+  )
+  const outlets = []
+  const seenPortIds = new Set()
+
+  if (rawSmart.outlets !== undefined && !Array.isArray(rawSmart.outlets)) {
+    throw new InventoryLifecycleError('Smart power-strip outlet names must be an array.', {
+      code: 'invalid-smart-power-strip',
+      status: 400,
+    })
+  }
+
+  for (const [index, outlet] of (rawSmart.outlets ?? []).entries()) {
+    if (!outlet || typeof outlet !== 'object' || Array.isArray(outlet)) {
+      throw new InventoryLifecycleError(`smart.outlets[${index}] must be an object.`, {
+        code: 'invalid-smart-power-strip',
+        status: 400,
+      })
+    }
+    if (!isRelationalId(outlet.portId) || !outletPortIds.has(outlet.portId)) {
+      throw new InventoryLifecycleError(
+        `smart.outlets[${index}].portId must reference an existing AC outlet port.`,
+        { code: 'invalid-smart-power-strip', status: 400 },
+      )
+    }
+    if (seenPortIds.has(outlet.portId)) {
+      throw new InventoryLifecycleError(`smart.outlets[${index}].portId must be unique.`, {
+        code: 'invalid-smart-power-strip',
+        status: 400,
+      })
+    }
+    seenPortIds.add(outlet.portId)
+    const name = typeof outlet.name === 'string' ? outlet.name.trim() : ''
+    if (name) outlets.push({ portId: outlet.portId, name })
+  }
+
+  const smart = { enabled: true, outlets }
+  for (const field of ['displayName', 'managementIp', 'macAddress']) {
+    const value = typeof rawSmart[field] === 'string' ? rawSmart[field].trim() : ''
+    if (value) smart[field] = value
+  }
+  return smart
+}
+
 function normalizeInventoryItemInput(input, id) {
   if (!input || typeof input !== 'object' || Array.isArray(input)) {
     throw new InventoryLifecycleError('Inventory item payload must be an object.', {
@@ -632,7 +704,11 @@ function normalizeInventoryItemInput(input, id) {
     }
   }
 
-  return { item, table }
+  const materialized = withCanonicalPowerPorts(item)
+  const smart = normalizeSmartPowerStripConfiguration(type, input.smart, materialized.ports)
+  if (smart) materialized.smart = smart
+
+  return { item: materialized, table }
 }
 
 function nextInventoryId(records) {
@@ -826,6 +902,464 @@ function runtimeConnection(connection) {
   }
 }
 
+function persistedEndpointFromEngine(endpoint, label) {
+  const itemType = endpoint?.item?.item_type
+  const hostedItemType = endpoint?.hosted_item?.item_type
+  if (!TABLE_BY_TYPE[itemType] || (hostedItemType !== undefined && hostedItemType !== null && !TABLE_BY_TYPE[hostedItemType])) {
+    throw new InventoryLifecycleError(`${label} uses an unsupported inventory type.`, {
+      code: 'invalid-engine-patch',
+      status: 500,
+    })
+  }
+
+  return {
+    itemType,
+    itemId: assertRelationalId(endpoint?.item?.id, `${label}.item.id`),
+    portId: assertRelationalId(endpoint?.port_id, `${label}.port_id`),
+    ...(endpoint?.endpoint_id === null || endpoint?.endpoint_id === undefined
+      ? {}
+      : { endpointId: assertRelationalId(endpoint.endpoint_id, `${label}.endpoint_id`) }),
+    ...(endpoint?.hosted_item === null || endpoint?.hosted_item === undefined
+      ? {}
+      : {
+          hostedItemType,
+          hostedItemId: assertRelationalId(endpoint.hosted_item.id, `${label}.hosted_item.id`),
+        }),
+  }
+}
+
+function persistedPlacementFromEngine(placement, label) {
+  const itemType = placement?.item?.item_type
+  if (!TABLE_BY_TYPE[itemType]) {
+    throw new InventoryLifecycleError(`${label} uses an unsupported inventory type.`, {
+      code: 'invalid-engine-patch',
+      status: 500,
+    })
+  }
+  if (!Number.isFinite(placement?.x) || !Number.isFinite(placement?.y)) {
+    throw new InventoryLifecycleError(`${label} uses invalid coordinates.`, {
+      code: 'invalid-engine-patch',
+      status: 500,
+    })
+  }
+  return {
+    itemType,
+    itemId: assertRelationalId(placement.item.id, `${label}.item.id`),
+    x: placement.x,
+    y: placement.y,
+  }
+}
+
+function persistedItemRefFromEngine(item, label) {
+  if (!TABLE_BY_TYPE[item?.item_type]) {
+    throw new InventoryLifecycleError(`${label} uses an unsupported inventory type.`, {
+      code: 'invalid-engine-patch',
+      status: 500,
+    })
+  }
+  return {
+    itemType: item.item_type,
+    itemId: assertRelationalId(item.id, `${label}.id`),
+  }
+}
+
+function placementRefKey(placement) {
+  return `${placement.itemType}:${String(placement.itemId)}`
+}
+
+function placementPatchFromEngine(payload, label) {
+  const upsert = (payload?.upsert ?? []).map((placement, index) => (
+    persistedPlacementFromEngine(placement, `${label}.upsert[${String(index)}]`)
+  ))
+  const remove = (payload?.remove_items ?? []).map((item, index) => (
+    persistedItemRefFromEngine(item, `${label}.remove_items[${String(index)}]`)
+  ))
+  const keys = [...upsert.map(placementRefKey), ...remove.map(placementRefKey)]
+  if (keys.length === 0 || new Set(keys).size !== keys.length) {
+    throw new InventoryLifecycleError(`${label} must contain unique placement changes.`, {
+      code: 'invalid-engine-patch',
+      status: 500,
+    })
+  }
+  return { upsert, remove }
+}
+
+function persistedAssignmentFromEngine(assignment, label) {
+  const hostType = assignment?.host?.item_type
+  const itemType = assignment?.item?.item_type
+  if (!TABLE_BY_TYPE[hostType] || !TABLE_BY_TYPE[itemType]) {
+    throw new InventoryLifecycleError(`${label} uses an unsupported inventory type.`, {
+      code: 'invalid-engine-patch',
+      status: 500,
+    })
+  }
+  if (assignment.component_type !== itemType) {
+    throw new InventoryLifecycleError(`${label} component type does not match its item.`, {
+      code: 'invalid-engine-patch',
+      status: 500,
+    })
+  }
+  if (typeof assignment.assigned_at !== 'string' || assignment.assigned_at.trim() === '') {
+    throw new InventoryLifecycleError(`${label}.assigned_at must not be empty.`, {
+      code: 'invalid-engine-patch',
+      status: 500,
+    })
+  }
+
+  let allocation
+  if (assignment.allocation !== null && assignment.allocation !== undefined) {
+    const resourceType = assignment.allocation.resource_type
+    const positions = assignment.allocation.positions
+    const groupId = assignment.allocation.group_id
+    if (
+      typeof resourceType !== 'string'
+      || resourceType.trim() === ''
+      || !Array.isArray(positions)
+      || positions.some((position) => !Number.isSafeInteger(position) || position < 0)
+      || new Set(positions).size !== positions.length
+      || (groupId !== null && groupId !== undefined && (!Number.isSafeInteger(groupId) || groupId <= 0))
+    ) {
+      throw new InventoryLifecycleError(`${label}.allocation is invalid.`, {
+        code: 'invalid-engine-patch',
+        status: 500,
+      })
+    }
+    allocation = {
+      resourceType,
+      ...(groupId === null || groupId === undefined ? {} : { groupId }),
+      positions: [...positions],
+    }
+  }
+
+  return {
+    id: assertRelationalId(assignment.id, `${label}.id`),
+    hostType,
+    hostId: assertRelationalId(assignment.host.id, `${label}.host.id`),
+    itemType,
+    itemId: assertRelationalId(assignment.item.id, `${label}.item.id`),
+    type: assignment.component_type,
+    assignedAt: assignment.assigned_at,
+    ...(allocation ? { allocation } : {}),
+  }
+}
+
+function assignmentPatchFromEngine(payload, label) {
+  const upsert = (payload?.upsert ?? []).map((assignment, index) => (
+    persistedAssignmentFromEngine(assignment, `${label}.upsert[${String(index)}]`)
+  ))
+  const remove = (payload?.remove_assignment_ids ?? []).map((assignmentId, index) => (
+    assertRelationalId(assignmentId, `${label}.remove_assignment_ids[${String(index)}]`)
+  ))
+  const ids = [...upsert.map((assignment) => assignment.id), ...remove]
+  if (ids.length === 0 || new Set(ids).size !== ids.length) {
+    throw new InventoryLifecycleError(`${label} must contain unique assignment changes.`, {
+      code: 'invalid-engine-patch',
+      status: 500,
+    })
+  }
+  return { upsert, remove }
+}
+
+function assertPlacementInverseMatches(project, patch) {
+  if (patch?.kind === 'batch') {
+    for (const child of patch.payload?.patches ?? []) assertPlacementInverseMatches(project, child)
+    return
+  }
+  if (patch?.kind !== 'patch-placements') return
+
+  const inverse = placementPatchFromEngine(patch.payload, 'inverse placement patch')
+  const current = new Map((project.placements ?? []).map((placement) => [placementRefKey(placement), placement]))
+  for (const placement of inverse.upsert) {
+    const existing = current.get(placementRefKey(placement))
+    if (!existing || existing.x !== placement.x || existing.y !== placement.y) {
+      throw new InventoryLifecycleError('Placement patch does not match current project coordinates.', {
+        code: 'invalid-engine-patch',
+        status: 409,
+      })
+    }
+  }
+  for (const item of inverse.remove) {
+    if (current.has(placementRefKey(item))) {
+      throw new InventoryLifecycleError('Placement patch expected an inventory item to be unplaced.', {
+        code: 'invalid-engine-patch',
+        status: 409,
+      })
+    }
+  }
+}
+
+function assertAssignmentInverseMatches(project, patch) {
+  if (patch?.kind === 'batch') {
+    for (const child of patch.payload?.patches ?? []) assertAssignmentInverseMatches(project, child)
+    return
+  }
+  if (patch?.kind !== 'patch-assignments') return
+
+  const inverse = assignmentPatchFromEngine(patch.payload, 'inverse assignment patch')
+  const current = new Map((project.assignments ?? []).map((assignment) => [assignment.id, assignment]))
+  for (const assignment of inverse.upsert) {
+    const existing = current.get(assignment.id)
+    const existingAllocation = existing?.allocation
+    const assignmentAllocation = assignment.allocation
+    const allocationsMatch = (!existingAllocation && !assignmentAllocation) || (
+      existingAllocation
+      && assignmentAllocation
+      && existingAllocation.resourceType === assignmentAllocation.resourceType
+      && (existingAllocation.groupId ?? null) === (assignmentAllocation.groupId ?? null)
+      && existingAllocation.positions.length === assignmentAllocation.positions.length
+      && existingAllocation.positions.every(
+        (position, index) => position === assignmentAllocation.positions[index],
+      )
+    )
+    if (
+      !existing
+      || existing.hostType !== assignment.hostType
+      || existing.hostId !== assignment.hostId
+      || existing.itemType !== assignment.itemType
+      || existing.itemId !== assignment.itemId
+      || existing.type !== assignment.type
+      || existing.assignedAt !== assignment.assignedAt
+      || !allocationsMatch
+    ) {
+      throw new InventoryLifecycleError('Assignment patch does not match current project state.', {
+        code: 'invalid-engine-patch',
+        status: 409,
+      })
+    }
+  }
+  for (const assignmentId of inverse.remove) {
+    if (current.has(assignmentId)) {
+      throw new InventoryLifecycleError('Assignment patch expected an unassigned component.', {
+        code: 'invalid-engine-patch',
+        status: 409,
+      })
+    }
+  }
+}
+
+function persistedRouteFromEngine(route) {
+  if (!route) return undefined
+
+  const nextRoute = {
+    ...(route.source_side ? { sourceSide: route.source_side } : {}),
+    ...(route.target_side ? { targetSide: route.target_side } : {}),
+    ...(route.bend_points?.length
+      ? { bendPoints: route.bend_points.map((point) => ({ x: point.x, y: point.y })) }
+      : {}),
+    ...(route.avoid_cable_overlap === true ? { avoidCableOverlap: true } : {}),
+  }
+  return Object.keys(nextRoute).length > 0 ? nextRoute : undefined
+}
+
+function persistedConnectionFromEngine(connection) {
+  const connectionType = connection?.connection_type
+  if (!['network', 'display', 'power', 'other'].includes(connectionType)) {
+    throw new InventoryLifecycleError('Engine connection uses an unsupported connection type.', {
+      code: 'invalid-engine-patch',
+      status: 500,
+    })
+  }
+
+  const route = persistedRouteFromEngine(connection.route)
+  return {
+    id: assertRelationalId(connection?.id, 'connection.id'),
+    from: persistedEndpointFromEngine(connection?.from, 'connection.from'),
+    to: persistedEndpointFromEngine(connection?.to, 'connection.to'),
+    type: connectionType,
+    ...(connection.negotiated_speed_mbps === null || connection.negotiated_speed_mbps === undefined
+      ? {}
+      : { negotiatedSpeedMbps: connection.negotiated_speed_mbps }),
+    ...(connection.label === null || connection.label === undefined
+      ? {}
+      : { label: connection.label }),
+    ...(route ? { route } : {}),
+    createdAt: connection.created_at,
+  }
+}
+
+function applyEngineForwardPatch(project, forward) {
+  if (forward?.kind === 'batch') {
+    if (!Array.isArray(forward.payload?.patches) || forward.payload.patches.length === 0) {
+      throw new InventoryLifecycleError('Engine patch batch must not be empty.', {
+        code: 'invalid-engine-patch',
+        status: 500,
+      })
+    }
+    return forward.payload.patches.reduce(
+      (current, patch) => applyEngineForwardPatch(current, patch),
+      project,
+    )
+  }
+
+  if (forward?.kind === 'set-project-name') {
+    return {
+      ...project,
+      metadata: { ...project.metadata, name: forward.payload.name },
+    }
+  }
+
+  if (forward?.kind === 'add-connection') {
+    const connection = persistedConnectionFromEngine(forward.payload.connection)
+    if (project.connections.some((candidate) => candidate.id === connection.id)) {
+      throw new InventoryLifecycleError(`Connection ${String(connection.id)} already exists.`, {
+        code: 'invalid-engine-patch',
+        status: 500,
+      })
+    }
+    return { ...project, connections: [...project.connections, connection] }
+  }
+
+  if (forward?.kind === 'remove-connection') {
+    const connectionId = assertRelationalId(
+      forward.payload?.connection?.id,
+      'connection.id',
+    )
+    if (!project.connections.some((candidate) => candidate.id === connectionId)) {
+      throw new InventoryLifecycleError(`Connection ${String(connectionId)} does not exist.`, {
+        code: 'invalid-engine-patch',
+        status: 500,
+      })
+    }
+    return {
+      ...project,
+      connections: project.connections.filter((candidate) => candidate.id !== connectionId),
+    }
+  }
+
+  if (forward?.kind === 'set-connection-label') {
+    const connectionId = assertRelationalId(forward.payload?.connection_id, 'connection.id')
+    let found = false
+    const connections = project.connections.map((connection) => {
+      if (connection.id !== connectionId) return connection
+      found = true
+      const { label: _label, ...withoutLabel } = connection
+      return forward.payload.label === null
+        ? withoutLabel
+        : { ...withoutLabel, label: forward.payload.label }
+    })
+    if (!found) {
+      throw new InventoryLifecycleError(`Connection ${String(connectionId)} does not exist.`, {
+        code: 'invalid-engine-patch',
+        status: 500,
+      })
+    }
+    return { ...project, connections }
+  }
+
+  if (forward?.kind === 'set-connection-route') {
+    const connectionId = assertRelationalId(forward.payload?.connection_id, 'connection.id')
+    const route = persistedRouteFromEngine(forward.payload.route)
+    let found = false
+    const connections = project.connections.map((connection) => {
+      if (connection.id !== connectionId) return connection
+      found = true
+      const { route: _route, ...withoutRoute } = connection
+      return route ? { ...withoutRoute, route } : withoutRoute
+    })
+    if (!found) {
+      throw new InventoryLifecycleError(`Connection ${String(connectionId)} does not exist.`, {
+        code: 'invalid-engine-patch',
+        status: 500,
+      })
+    }
+    return { ...project, connections }
+  }
+
+  if (forward?.kind === 'set-connection-derived') {
+    if (!Array.isArray(forward.payload?.states)) {
+      throw new InventoryLifecycleError('Engine derived connection patch is malformed.', {
+        code: 'invalid-engine-patch',
+        status: 500,
+      })
+    }
+    const states = new Map(forward.payload.states.map((state) => {
+      const connectionId = assertRelationalId(state.connection_id, 'connection.id')
+      if (!['network', 'display', 'power', 'other'].includes(state.connection_type)) {
+        throw new InventoryLifecycleError('Engine connection uses an unsupported connection type.', {
+          code: 'invalid-engine-patch',
+          status: 500,
+        })
+      }
+      if (
+        state.negotiated_speed_mbps !== null &&
+        ![1000, 2500, 5000, 10000].includes(state.negotiated_speed_mbps)
+      ) {
+        throw new InventoryLifecycleError('Engine connection uses an unsupported negotiated speed.', {
+          code: 'invalid-engine-patch',
+          status: 500,
+        })
+      }
+      return [connectionId, state]
+    }))
+    const found = new Set()
+    const connections = project.connections.map((connection) => {
+      const state = states.get(connection.id)
+      if (!state) return connection
+      found.add(connection.id)
+      const { negotiatedSpeedMbps: _speed, ...withoutSpeed } = connection
+      return {
+        ...withoutSpeed,
+        type: state.connection_type,
+        ...(state.negotiated_speed_mbps === null
+          ? {}
+          : { negotiatedSpeedMbps: state.negotiated_speed_mbps }),
+      }
+    })
+    if (found.size !== states.size) {
+      throw new InventoryLifecycleError('Engine derived patch references a missing connection.', {
+        code: 'invalid-engine-patch',
+        status: 500,
+      })
+    }
+    return { ...project, connections }
+  }
+
+  if (forward?.kind === 'patch-placements') {
+    const patch = placementPatchFromEngine(forward.payload, 'placement patch')
+    const upsert = new Map(patch.upsert.map((placement) => [placementRefKey(placement), placement]))
+    const remove = new Set(patch.remove.map(placementRefKey))
+    const placements = (project.placements ?? []).flatMap((placement) => {
+      const key = placementRefKey(placement)
+      if (remove.has(key)) return []
+      const replacement = upsert.get(key)
+      if (replacement) upsert.delete(key)
+      return [replacement ?? placement]
+    })
+    placements.push(...upsert.values())
+    return { ...project, placements }
+  }
+
+  if (forward?.kind === 'patch-assignments') {
+    const patch = assignmentPatchFromEngine(forward.payload, 'assignment patch')
+    const upsert = new Map(patch.upsert.map((assignment) => [assignment.id, assignment]))
+    const remove = new Set(patch.remove)
+    const foundRemovals = new Set()
+    const assignments = (project.assignments ?? []).flatMap((assignment) => {
+      if (remove.has(assignment.id)) {
+        foundRemovals.add(assignment.id)
+        return []
+      }
+      const replacement = upsert.get(assignment.id)
+      if (replacement) upsert.delete(assignment.id)
+      return [replacement ?? assignment]
+    })
+    if (foundRemovals.size !== remove.size) {
+      throw new InventoryLifecycleError('Assignment patch references a missing assignment.', {
+        code: 'invalid-engine-patch',
+        status: 500,
+      })
+    }
+    assignments.push(...upsert.values())
+    assignments.sort((first, second) => first.id - second.id)
+    return { ...project, assignments }
+  }
+
+  throw new InventoryLifecycleError(`Unsupported engine patch ${String(forward?.kind)}.`, {
+    code: 'unsupported-engine-patch',
+    status: 500,
+  })
+}
+
 async function copyDirectory(source, destination) {
   if (!(await pathExists(source))) {
     return
@@ -875,6 +1409,8 @@ export class HomelabInventoryStore {
     this.flushTimer = null
     this.flushPromise = null
     this.createdStores = false
+    this.projectCommitListeners = new Set()
+    this.pendingProjectCommits = []
   }
 
   async init() {
@@ -948,6 +1484,7 @@ export class HomelabInventoryStore {
     await writeJson(this.paths.inventory, Object.fromEntries(INVENTORY_TABLES.map((table) => [table, []])))
     await writeJson(this.paths.project, {
       id: 'default',
+      revision: 1,
       metadata: {
         name: 'Homelab Inventory',
         version: 1,
@@ -989,6 +1526,7 @@ export class HomelabInventoryStore {
     )
     this.databases.project = new Low(new JsonFileAdapter(this.paths.project), {
       id: 'default',
+      revision: 1,
       metadata: {
         name: 'Homelab Inventory',
         version: 1,
@@ -1157,6 +1695,25 @@ export class HomelabInventoryStore {
         continue
       }
 
+      if (currentVersion === 11) {
+        const migrated = migrateSchema11To12(
+          this.databases.inventory.data,
+          this.databases.project.data,
+        )
+        this.databases.inventory.data = migrated.inventory
+        this.databases.project.data = migrated.project
+        this.databases.meta.data.schemaVersion = 12
+        currentVersion = 12
+        continue
+      }
+
+      if (currentVersion === 12) {
+        this.databases.project.data = migrateSchema12To13(this.databases.project.data)
+        this.databases.meta.data.schemaVersion = 13
+        currentVersion = 13
+        continue
+      }
+
       throw new Error(`No migration registered for schema version ${currentVersion}.`)
     }
 
@@ -1167,7 +1724,7 @@ export class HomelabInventoryStore {
 
   async validateStores() {
     assertInventoryStoreShape(this.databases.inventory.data)
-    assertProjectStoreShape(this.databases.project.data)
+    assertProjectStoreShape(this.databases.project.data, { requireRevision: true })
     assertAgentsStoreShape(this.databases.agents.data)
     assertAgentStatusStoreShape(this.databases.agentStatus.data)
     assertProjectShape(this.getProject())
@@ -1275,7 +1832,19 @@ export class HomelabInventoryStore {
     )
   }
 
+  getEngineSnapshot() {
+    return createEngineSnapshot(this.getProject())
+  }
+
   setProject(project) {
+    const currentRevision = this.databases.project.data.revision
+    const submittedRevision = project.revision ?? currentRevision
+    if (submittedRevision !== currentRevision) {
+      throw new InventoryLifecycleError(
+        `Project revision ${String(submittedRevision)} is stale; current revision is ${String(currentRevision)}.`,
+        { code: 'revision-conflict', status: 409 },
+      )
+    }
     const submittedProject = {
       ...project,
       id: 'default',
@@ -1286,14 +1855,14 @@ export class HomelabInventoryStore {
     const canonicalProject = normalizeProjectCompatibilityPolicy(submittedProject)
     assertProjectShape(canonicalProject)
     this.assertAssignmentTransitions(this.getProject(), canonicalProject)
-    const normalizedProject = normalizeNetworkProject(canonicalProject)
-    const split = splitCurrentProject(normalizedProject)
+    const split = splitCurrentProject(canonicalProject)
     const updatedAt = new Date().toISOString()
 
     this.databases.inventory.data = split.inventory
     this.databases.project.data = {
       ...split.project,
       id: 'default',
+      revision: this.nextProjectRevision(),
       metadata: {
         ...split.project.metadata,
         name: split.project.metadata?.name ?? 'Homelab Inventory',
@@ -1303,6 +1872,11 @@ export class HomelabInventoryStore {
       connections: split.project.connections ?? [],
     }
     this.databases.meta.data.updatedAt = updatedAt
+    this.queueProjectCommit({
+      type: 'canonical-invalidated',
+      baseRevision: currentRevision,
+      revision: this.databases.project.data.revision,
+    })
 
     this.scheduleFlush('meta')
     this.scheduleFlush('inventory')
@@ -1376,6 +1950,7 @@ export class HomelabInventoryStore {
   }
 
   inventoryTransaction(mutator) {
+    const baseRevision = this.databases.project.data.revision
     const draft = {
       meta: structuredClone(this.databases.meta.data),
       inventory: structuredClone(this.databases.inventory.data),
@@ -1387,6 +1962,7 @@ export class HomelabInventoryStore {
     const updatedAt = new Date().toISOString()
 
     draft.meta.updatedAt = updatedAt
+    draft.project.revision = this.nextProjectRevision(draft.project)
 
     try {
       const split = splitCurrentProject(composeProject(draft.meta, draft.inventory, draft.project))
@@ -1405,11 +1981,89 @@ export class HomelabInventoryStore {
     this.databases.meta.data = draft.meta
     this.databases.inventory.data = draft.inventory
     this.databases.project.data = draft.project
+    this.queueProjectCommit({
+      type: 'canonical-invalidated',
+      baseRevision,
+      revision: draft.project.revision,
+    })
     this.scheduleFlush('meta')
     this.scheduleFlush('inventory')
     this.scheduleFlush('project')
 
     return composeProject(draft.meta, draft.inventory, draft.project)
+  }
+
+  nextProjectRevision(project = this.databases.project.data) {
+    const current = project.revision
+    if (!Number.isSafeInteger(current) || current < 1 || current >= Number.MAX_SAFE_INTEGER) {
+      throw new Error('Project revision cannot be advanced safely.')
+    }
+    return current + 1
+  }
+
+  subscribeToProjectCommits(listener) {
+    this.projectCommitListeners.add(listener)
+    return () => this.projectCommitListeners.delete(listener)
+  }
+
+  queueProjectCommit(event) {
+    this.pendingProjectCommits.push(event)
+  }
+
+  async applyEnginePatch({ baseRevision, patchSet, responseBytes }) {
+    if (this.databases.project.data.revision !== baseRevision) {
+      throw new InventoryLifecycleError(
+        `Project revision ${String(baseRevision)} is stale; current revision is ${String(this.databases.project.data.revision)}.`,
+        { code: 'revision-conflict', status: 409 },
+      )
+    }
+    if (patchSet.revision !== baseRevision + 1) {
+      throw new InventoryLifecycleError('Engine patch revision is not sequential.', {
+        code: 'invalid-engine-patch',
+        status: 500,
+      })
+    }
+
+    assertPlacementInverseMatches(this.databases.project.data, patchSet.inverse)
+    assertAssignmentInverseMatches(this.databases.project.data, patchSet.inverse)
+    const previousProject = structuredClone(this.databases.project.data)
+    const previousMeta = structuredClone(this.databases.meta.data)
+    const updatedAt = new Date().toISOString()
+    const patchedProject = applyEngineForwardPatch(this.databases.project.data, patchSet.forward)
+    const nextProject = {
+      ...patchedProject,
+      revision: patchSet.revision,
+      metadata: {
+        ...patchedProject.metadata,
+        updatedAt,
+      },
+    }
+    assertProjectStoreShape(nextProject)
+    assertProjectShape(composeProject(this.databases.meta.data, this.databases.inventory.data, nextProject))
+    this.databases.project.data = nextProject
+    this.databases.meta.data.updatedAt = updatedAt
+    const commitEvent = {
+      type: 'project-commit',
+      baseRevision,
+      revision: patchSet.revision,
+      responseBytes: Uint8Array.from(responseBytes),
+    }
+    this.queueProjectCommit(commitEvent)
+    this.dirtyStores.add('project')
+
+    try {
+      await this.flush(['project'])
+    } catch (error) {
+      this.databases.project.data = previousProject
+      this.databases.meta.data = previousMeta
+      this.pendingProjectCommits = this.pendingProjectCommits.filter(
+        (event) => event !== commitEvent,
+      )
+      throw error
+    }
+
+    this.scheduleFlush('meta')
+    return this.getProject()
   }
 
   dependencyContext(draft = null) {
@@ -1508,6 +2162,15 @@ export class HomelabInventoryStore {
 
       const { item } = normalizeInventoryItemInput({ ...input, type: ref.type }, ref.id)
       const record = cleanItemForStore(item)
+      if (
+        ref.type === 'nas'
+        && resolved.item.specs?.powerConfiguration !== record.specs?.powerConfiguration
+      ) {
+        throw new InventoryLifecycleError(
+          'Use the NAS power configuration command to change power modes.',
+          { code: 'nas-power-configuration-command-required', status: 409 },
+        )
+      }
       const connectedPortIds = referencedPortIds(draft.project, ref)
 
       for (const portId of connectedPortIds) {
@@ -1533,6 +2196,24 @@ export class HomelabInventoryStore {
       draft.inventory[resolved.table][resolved.index] = record
       return { type: ref.type, id: ref.id, name: record.name }
     })
+  }
+
+  changeNasPowerConfiguration(rawRef, target, confirmed = false) {
+    const ref = normalizeInventoryRef(rawRef)
+    const impact = inspectNasPowerConfigurationChange(
+      this.dependencyContext(),
+      ref,
+      target,
+    )
+
+    if (impact.requiresConfirmation && !confirmed) {
+      return { status: 'confirmation-required', impact: impact.publicImpact }
+    }
+
+    const project = this.inventoryTransaction((draft) => {
+      applyNasPowerConfigurationChange(draft, ref, target)
+    })
+    return { status: 'applied', project }
   }
 
   updateInventoryItemProperties(rawRef, rawProperties) {
@@ -1772,6 +2453,9 @@ export class HomelabInventoryStore {
 
     const storesToFlush = [...this.dirtyStores]
     this.dirtyStores.clear()
+    const commitsToPublish = storesToFlush.includes('project')
+      ? this.pendingProjectCommits.splice(0)
+      : []
 
     if (storesToFlush.length === 0) {
       return
@@ -1782,7 +2466,23 @@ export class HomelabInventoryStore {
         this.flushPromise = null
       })
 
-    await this.flushPromise
+    try {
+      await this.flushPromise
+    } catch (error) {
+      storesToFlush.forEach((storeName) => this.dirtyStores.add(storeName))
+      this.pendingProjectCommits.unshift(...commitsToPublish)
+      throw error
+    }
+
+    for (const commit of commitsToPublish) {
+      for (const listener of this.projectCommitListeners) {
+        try {
+          listener(commit)
+        } catch (error) {
+          console.error('Project commit listener failed.', error)
+        }
+      }
+    }
   }
 
   async createBackup(reason = 'manual') {

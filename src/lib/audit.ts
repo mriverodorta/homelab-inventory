@@ -1,5 +1,4 @@
 import {
-  connectionEndpointAvailable,
   endpointKey,
   getConnectionPort,
 } from '@/lib/project'
@@ -9,12 +8,12 @@ import {
   normalizeCompatibilityPolicy,
 } from '@/lib/compatibility'
 import { runtimeItemKey } from '@/lib/item-keys'
-import { getItemNetworkTraces } from '@/lib/network-trace'
-import {
-  getPowerTopologyFindings,
-  resolvePowerEndpoint,
-  type PowerTopologyFinding,
-} from '@/lib/power-topology'
+import type {
+  RuntimeNetworkTrace,
+  RuntimePowerEndpoint,
+  RuntimePowerFinding,
+  RuntimeTopologyEndpointDescriptor,
+} from '@/engine/topology'
 import type { CompatibilityFinding, CompatibilitySeverity } from '@/types/compatibility'
 import type {
   ConnectionEndpoint,
@@ -42,17 +41,37 @@ export type AuditQuery = {
   visibility?: AuditVisibility
 }
 
+export type AuditTopologySnapshot = {
+  endpoints: readonly RuntimeTopologyEndpointDescriptor[]
+  networkTraces: readonly RuntimeNetworkTrace[]
+  powerEndpoints: readonly RuntimePowerEndpoint[]
+  powerFindings: readonly RuntimePowerFinding[]
+}
+
 type AuditEvaluationContext = {
   compatibilityResults: ReturnType<typeof evaluateProjectCompatibility>
   placedItemIds: Set<string>
-  powerFindings: PowerTopologyFinding[]
+  endpointsByKey: ReadonlyMap<string, RuntimeTopologyEndpointDescriptor>
+  networkTraces: readonly RuntimeNetworkTrace[]
+  powerEndpointsByKey: ReadonlyMap<string, RuntimePowerEndpoint>
+  powerFindings: readonly RuntimePowerFinding[]
 }
 
-function createAuditEvaluationContext(project: ProjectState): AuditEvaluationContext {
+function createAuditEvaluationContext(
+  project: ProjectState,
+  topology?: AuditTopologySnapshot,
+): AuditEvaluationContext {
   return {
     compatibilityResults: evaluateProjectCompatibility(project),
     placedItemIds: new Set(project.placements.map((placement) => placement.serverId)),
-    powerFindings: getPowerTopologyFindings(project),
+    endpointsByKey: new Map(
+      (topology?.endpoints ?? []).map((endpoint) => [endpointKey(endpoint.endpoint), endpoint]),
+    ),
+    networkTraces: topology?.networkTraces ?? [],
+    powerEndpointsByKey: new Map(
+      (topology?.powerEndpoints ?? []).map((endpoint) => [endpointKey(endpoint.endpoint), endpoint]),
+    ),
+    powerFindings: topology?.powerFindings ?? [],
   }
 }
 
@@ -60,8 +79,11 @@ function portSlot(port: InventoryPort): string {
   return String(port.slotNumber).padStart(2, '0')
 }
 
-function isEndpointConnected(project: ProjectState, endpoint: ConnectionEndpoint): boolean {
-  return !connectionEndpointAvailable(project, endpoint)
+function isEndpointConnected(
+  context: AuditEvaluationContext,
+  endpoint: ConnectionEndpoint,
+): boolean {
+  return (context.endpointsByKey.get(endpointKey(endpoint))?.connection_ids.length ?? 0) > 0
 }
 
 function endpointForPort(item: InventoryItem, port: InventoryPort): ConnectionEndpoint {
@@ -92,25 +114,33 @@ function getPortEndpoints(item: InventoryItem, port: InventoryPort): ConnectionE
 }
 
 function getConnectedPortEndpoints(
-  project: ProjectState,
   item: InventoryItem,
   port: InventoryPort,
+  context: AuditEvaluationContext,
 ): ConnectionEndpoint[] {
-  return getPortEndpoints(item, port).filter((endpoint) => isEndpointConnected(project, endpoint))
+  return getPortEndpoints(item, port).filter((endpoint) => isEndpointConnected(context, endpoint))
 }
 
-function isPortConnected(project: ProjectState, item: InventoryItem, port: InventoryPort): boolean {
-  return getConnectedPortEndpoints(project, item, port).length > 0
+function isPortConnected(
+  item: InventoryItem,
+  port: InventoryPort,
+  context: AuditEvaluationContext,
+): boolean {
+  return getConnectedPortEndpoints(item, port, context).length > 0
 }
 
-function getStaleConnectionWarnings(project: ProjectState, item: InventoryItem): AuditWarning[] {
+function getStaleConnectionWarnings(
+  project: ProjectState,
+  item: InventoryItem,
+  context: AuditEvaluationContext,
+): AuditWarning[] {
   const key = runtimeItemKey(item)
 
   return (project.connections ?? []).flatMap((connection) =>
     [connection.from, connection.to].flatMap((endpoint) => {
       if (
         connection.type === 'power'
-        || Boolean(resolvePowerEndpoint(project, endpoint))
+        || context.powerEndpointsByKey.has(endpointKey(endpoint))
         || endpoint.itemId !== key
         || getConnectionPort(project, endpoint)
       ) {
@@ -130,7 +160,7 @@ function getStaleConnectionWarnings(project: ProjectState, item: InventoryItem):
 
 function getPowerFindingConnection(
   project: ProjectState,
-  finding: PowerTopologyFinding,
+  finding: RuntimePowerFinding,
 ) {
   if (finding.connectionId === undefined) {
     return undefined
@@ -143,8 +173,9 @@ function getPowerFindingConnection(
 
 function getPowerFindingOwnerId(
   project: ProjectState,
-  finding: PowerTopologyFinding,
+  finding: RuntimePowerFinding,
   placedItemIds: Set<string>,
+  powerEndpointsByKey: ReadonlyMap<string, RuntimePowerEndpoint>,
 ): string | null {
   const candidates = [finding.itemId, finding.endpoint?.itemId].filter(
     (itemId): itemId is string => Boolean(itemId),
@@ -153,7 +184,7 @@ function getPowerFindingOwnerId(
 
   if (connection) {
     const powerEndpoints = [connection.from, connection.to].filter((endpoint) =>
-      Boolean(resolvePowerEndpoint(project, endpoint)),
+      powerEndpointsByKey.has(endpointKey(endpoint)),
     )
     candidates.push(
       ...powerEndpoints.map((endpoint) => endpoint.itemId),
@@ -175,7 +206,12 @@ function getPowerAuditWarnings(
   }
 
   return context.powerFindings.flatMap((finding) => {
-    const ownerId = getPowerFindingOwnerId(project, finding, context.placedItemIds)
+    const ownerId = getPowerFindingOwnerId(
+      project,
+      finding,
+      context.placedItemIds,
+      context.powerEndpointsByKey,
+    )
 
     if (ownerId !== itemId) {
       return []
@@ -193,11 +229,12 @@ function getPowerAuditWarnings(
 
 function getDisabledSwitchPortTraceWarning(
   project: ProjectState,
-  trace: ReturnType<typeof getItemNetworkTraces>[number],
+  trace: RuntimeNetworkTrace,
+  context: AuditEvaluationContext,
 ): AuditWarning | null {
   const startPort = getConnectionPort(project, trace.start)
 
-  if (!startPort || !isEndpointConnected(project, trace.start)) {
+  if (!startPort || !isEndpointConnected(context, trace.start)) {
     return null
   }
 
@@ -226,15 +263,19 @@ function getDisabledSwitchPortTraceWarning(
   }
 }
 
-function getServerAuditWarnings(project: ProjectState, item: InventoryItem): AuditWarning[] {
+function getServerAuditWarnings(
+  project: ProjectState,
+  item: InventoryItem,
+  context: AuditEvaluationContext,
+): AuditWarning[] {
   const warnings: AuditWarning[] = []
   const key = runtimeItemKey(item)
 
-  for (const trace of getItemNetworkTraces(project, item)) {
+  for (const trace of context.networkTraces.filter((candidate) => candidate.start.itemId === key)) {
     const startPort = getConnectionPort(project, trace.start)
-    const disabledSwitchWarning = getDisabledSwitchPortTraceWarning(project, trace)
+    const disabledSwitchWarning = getDisabledSwitchPortTraceWarning(project, trace, context)
 
-    if (!trace.complete && startPort && isEndpointConnected(project, trace.start)) {
+    if (!trace.complete && startPort && isEndpointConnected(context, trace.start)) {
       warnings.push({
         id: `server-network-path-incomplete-${key}-${startPort.id}`,
         itemId: key,
@@ -250,7 +291,10 @@ function getServerAuditWarnings(project: ProjectState, item: InventoryItem): Aud
   return warnings
 }
 
-function getSwitchAuditWarnings(project: ProjectState, item: InventoryItem): AuditWarning[] {
+function getSwitchAuditWarnings(
+  item: InventoryItem,
+  context: AuditEvaluationContext,
+): AuditWarning[] {
   const ports = item.ports ?? []
   const key = runtimeItemKey(item)
 
@@ -259,7 +303,7 @@ function getSwitchAuditWarnings(project: ProjectState, item: InventoryItem): Aud
   }
 
   const warnings: AuditWarning[] = []
-  const connectedPorts = ports.filter((port) => isPortConnected(project, item, port))
+  const connectedPorts = ports.filter((port) => isPortConnected(item, port, context))
   const hasConnectedPort = connectedPorts.length > 0
 
   if (!hasConnectedPort) {
@@ -365,14 +409,14 @@ function getRawItemAuditWarnings(
     return []
   }
 
-  const warnings = getStaleConnectionWarnings(project, item)
+  const warnings = getStaleConnectionWarnings(project, item, context)
 
   if (item.type === 'server') {
-    warnings.push(...getServerAuditWarnings(project, item))
+    warnings.push(...getServerAuditWarnings(project, item, context))
   }
 
   if (item.type === 'switch') {
-    warnings.push(...getSwitchAuditWarnings(project, item))
+    warnings.push(...getSwitchAuditWarnings(item, context))
   }
 
   if (isHostCompatibilityEnabled(project, itemId)) {
@@ -398,12 +442,13 @@ export function getItemAuditWarnings(
   project: ProjectState,
   itemId: string,
   query: AuditQuery = {},
+  topology?: AuditTopologySnapshot,
 ): AuditWarning[] {
   const visibility = query.visibility ?? 'open'
   const policy = normalizeCompatibilityPolicy(project.compatibilityPolicy)
   const ignoredIds = new Set(policy.ignoredWarningIds)
 
-  return getRawItemAuditWarnings(project, itemId, createAuditEvaluationContext(project)).filter((warning) =>
+  return getRawItemAuditWarnings(project, itemId, createAuditEvaluationContext(project, topology)).filter((warning) =>
     warningMatchesVisibility(ignoredIds, warning, visibility),
   )
 }
@@ -411,8 +456,9 @@ export function getItemAuditWarnings(
 export function getProjectAuditWarnings(
   project: ProjectState,
   query: AuditQuery = {},
+  topology?: AuditTopologySnapshot,
 ): ProjectAuditGroup[] {
-  const context = createAuditEvaluationContext(project)
+  const context = createAuditEvaluationContext(project, topology)
   const visibility = query.visibility ?? 'open'
   const policy = normalizeCompatibilityPolicy(project.compatibilityPolicy)
   const ignoredIds = new Set(policy.ignoredWarningIds)

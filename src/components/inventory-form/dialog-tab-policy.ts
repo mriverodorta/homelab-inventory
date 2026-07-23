@@ -6,6 +6,7 @@ export const INVENTORY_DIALOG_TAB_IDS = [
   'compatibility',
   'resources',
   'ports',
+  'smart',
 ] as const
 
 export type InventoryDialogTabId = (typeof INVENTORY_DIALOG_TAB_IDS)[number]
@@ -81,6 +82,7 @@ export const INVENTORY_DIALOG_ERROR_FIELDS: Readonly<
     'hostMaxExpansionPowerWatts',
   ],
   ports: ['portGroups'],
+  smart: ['smartDisplayName', 'smartManagementIp', 'smartMacAddress', 'smartOutletNames'],
 }
 
 function includesInventoryType(
@@ -99,6 +101,7 @@ export function getInventoryDialogTabs(type: InventoryType): InventoryDialogTabI
       return includesInventoryType(INVENTORY_DIALOG_RESOURCE_TYPES, type)
     }
     if (tab === 'ports') return inventoryTypeHasPorts(type)
+    if (tab === 'smart') return type === 'powerStrip'
     return true
   })
 }
