@@ -3,7 +3,10 @@ use serde::{Deserialize, Serialize};
 pub use homelab_geometry::{
     ArrangementItem, GeometryHandle, GeometryNode, Point, Rect, Segment, Side,
 };
-pub use homelab_routing::{RouteDefinition, RouteEdit, RoutePatch, RoutedPath};
+pub use homelab_routing::{
+    ObstacleRouteRequest, ObstacleRouteResult, ReservedSegment, RouteDefinition, RouteEdit,
+    RouteObstacle, RoutePatch, RouteWarning, RoutedPath,
+};
 
 pub const PROTOCOL_VERSION: u16 = 1;
 
@@ -65,6 +68,9 @@ pub enum Operation {
     BuildRoute {
         connection_id: u32,
     },
+    RouteAroundObstacles {
+        request: ObstacleRouteRequest,
+    },
     PreviewMoveRouteSegment {
         connection_id: u32,
         segment_index: u16,
@@ -113,6 +119,7 @@ pub enum ResponseBody {
     Arrangement(ArrangementResult),
     RoutesUpdated(RoutesUpdateResult),
     Route(RouteResult),
+    ObstacleRoute(ObstacleRouteResult),
     RoutePreview(RouteEdit),
     RouteEdited(RouteEditResult),
     Error(EngineError),
@@ -289,6 +296,51 @@ mod tests {
         let bytes = rmp_serde::to_vec_named(&request).expect("serialize route request");
         let decoded: EngineRequest =
             rmp_serde::from_slice(&bytes).expect("deserialize route request");
+        assert_eq!(decoded, request);
+    }
+
+    #[test]
+    fn obstacle_route_request_round_trips() {
+        let request = EngineRequest {
+            protocol_version: PROTOCOL_VERSION,
+            request_id: 11,
+            base_revision: 3,
+            operation: Operation::RouteAroundObstacles {
+                request: ObstacleRouteRequest {
+                    definition: RouteDefinition {
+                        connection_id: 42,
+                        source: Point { x: 12.0, y: 48.0 },
+                        target: Point { x: 360.0, y: 192.0 },
+                        source_side: Side::Right,
+                        target_side: Side::Bottom,
+                        lane_offset: 24.0,
+                        manual_bends: vec![Point { x: 144.0, y: 96.0 }],
+                    },
+                    source_item_id: "server:1".into(),
+                    target_item_id: "patchPanel:1".into(),
+                    obstacles: vec![RouteObstacle {
+                        item_id: "switch:1".into(),
+                        bounds: Rect {
+                            x: 120.0,
+                            y: 24.0,
+                            width: 96.0,
+                            height: 120.0,
+                        },
+                    }],
+                    reserved_segments: vec![ReservedSegment {
+                        start: Point { x: 24.0, y: 72.0 },
+                        end: Point { x: 240.0, y: 72.0 },
+                    }],
+                    snap_to_grid: true,
+                    grid_size: 12.0,
+                    previous_valid_route: None,
+                },
+            },
+        };
+
+        let bytes = rmp_serde::to_vec_named(&request).expect("serialize obstacle route request");
+        let decoded: EngineRequest =
+            rmp_serde::from_slice(&bytes).expect("deserialize obstacle route request");
         assert_eq!(decoded, request);
     }
 }

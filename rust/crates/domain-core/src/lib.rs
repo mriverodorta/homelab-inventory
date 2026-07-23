@@ -9,7 +9,7 @@ use homelab_engine_protocol::{
 use homelab_geometry::{GeometryError, GeometryNode, SpatialIndex, arrange_items};
 use homelab_routing::{
     RoutingError, build_route, preview_insert_manual_bend, preview_move_segment,
-    preview_remove_manual_bend, preview_reset_route,
+    preview_remove_manual_bend, preview_reset_route, route_around_obstacles,
 };
 
 #[derive(Debug, Clone)]
@@ -171,6 +171,10 @@ impl Engine {
                     Err(error) => routing_error(error),
                 }
             }
+            Operation::RouteAroundObstacles { request } => match route_around_obstacles(&request) {
+                Ok(result) => ResponseBody::ObstacleRoute(result),
+                Err(error) => routing_error(error),
+            },
             Operation::PreviewMoveRouteSegment {
                 connection_id,
                 segment_index,
@@ -773,5 +777,46 @@ mod tests {
             }) if edit.forward.bend_points.is_empty() && !edit.inverse.bend_points.is_empty()
         ));
         assert_eq!(engine.revision(), 12);
+    }
+
+    #[test]
+    fn obstacle_routes_are_read_only_engine_queries() {
+        let mut engine = engine();
+        let response = engine.dispatch(request(Operation::RouteAroundObstacles {
+            request: homelab_engine_protocol::ObstacleRouteRequest {
+                definition: RouteDefinition {
+                    connection_id: 9,
+                    source: homelab_engine_protocol::Point { x: 0.0, y: 72.0 },
+                    target: homelab_engine_protocol::Point { x: 300.0, y: 72.0 },
+                    source_side: homelab_engine_protocol::Side::Right,
+                    target_side: homelab_engine_protocol::Side::Left,
+                    lane_offset: 24.0,
+                    manual_bends: vec![],
+                },
+                source_item_id: "server:1".into(),
+                target_item_id: "patchPanel:1".into(),
+                obstacles: vec![homelab_engine_protocol::RouteObstacle {
+                    item_id: "switch:1".into(),
+                    bounds: homelab_engine_protocol::Rect {
+                        x: 84.0,
+                        y: 12.0,
+                        width: 132.0,
+                        height: 120.0,
+                    },
+                }],
+                reserved_segments: vec![],
+                snap_to_grid: true,
+                grid_size: 12.0,
+                previous_valid_route: None,
+            },
+        }));
+
+        assert!(matches!(
+            response.result,
+            ResponseBody::ObstacleRoute(ref result)
+                if !result.used_fallback && result.warning.is_none()
+        ));
+        assert_eq!(engine.revision(), 12);
+        assert_eq!(engine.routing_revision(), 0);
     }
 }

@@ -168,6 +168,53 @@ describe('Rust WASM engine integration', () => {
         },
       },
     })
+
+    const obstacleRoute = decodeEngineResponse(runtime.dispatch(handle, encodeEngineRequest({
+      protocol_version: 1,
+      request_id: 14,
+      base_revision: 7,
+      operation: {
+        kind: 'route-around-obstacles',
+        payload: {
+          request: {
+            definition: {
+              connection_id: 5,
+              source: { x: 0, y: 72 },
+              target: { x: 300, y: 72 },
+              source_side: 'right',
+              target_side: 'left',
+              lane_offset: 24,
+              manual_bends: [],
+            },
+            source_item_id: 'server:1',
+            target_item_id: 'patchPanel:1',
+            obstacles: [{
+              item_id: 'switch:1',
+              bounds: { x: 84, y: 12, width: 132, height: 120 },
+            }],
+            reserved_segments: [],
+            snap_to_grid: true,
+            grid_size: 12,
+            previous_valid_route: null,
+          },
+        },
+      },
+    })))
+    expect(obstacleRoute.result).toMatchObject({
+      kind: 'obstacle-route',
+      payload: {
+        used_fallback: false,
+        warning: null,
+        route: {
+          connection_id: 5,
+        },
+      },
+    })
+    expect(obstacleRoute.result.kind).toBe('obstacle-route')
+    if (obstacleRoute.result.kind !== 'obstacle-route') throw new Error('Expected obstacle route')
+    expect(obstacleRoute.result.payload.route.points.some((point) => (
+      point.y === 12 || point.y === 132
+    ))).toBe(true)
     expect(runtime.destroy(handle)).toBe(true)
   })
 })

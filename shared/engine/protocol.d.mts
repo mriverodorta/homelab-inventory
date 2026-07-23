@@ -59,6 +59,33 @@ export type RouteEdit = {
   inverse: RoutePatch
 }
 
+export type RouteObstacle = {
+  item_id: string
+  bounds: GeometryRect
+}
+
+export type ReservedSegment = {
+  start: { x: number; y: number }
+  end: { x: number; y: number }
+}
+
+export type ObstacleRouteRequest = {
+  definition: RouteDefinition
+  source_item_id: string
+  target_item_id: string
+  obstacles: RouteObstacle[]
+  reserved_segments: ReservedSegment[]
+  snap_to_grid: boolean
+  grid_size: number
+  previous_valid_route: RoutedPath | null
+}
+
+export type ObstacleRouteResult = {
+  route: RoutedPath
+  used_fallback: boolean
+  warning: 'search-exhausted' | null
+}
+
 export type EngineOperation =
   | { kind: 'status' }
   | { kind: 'update-project-metadata'; payload: { name: string } }
@@ -101,6 +128,10 @@ export type EngineOperation =
     }
   | { kind: 'replace-routes'; payload: { routes: RouteDefinition[] } }
   | { kind: 'build-route'; payload: { connection_id: number } }
+  | {
+      kind: 'route-around-obstacles'
+      payload: { request: ObstacleRouteRequest }
+    }
   | {
       kind: 'preview-move-route-segment'
       payload: {
@@ -171,6 +202,7 @@ export type EngineResponseBody =
   | { kind: 'arrangement'; payload: { nodes: GeometryNode[] } }
   | { kind: 'routes-updated'; payload: { routing_revision: number } }
   | { kind: 'route'; payload: { route: RoutedPath } }
+  | { kind: 'obstacle-route'; payload: ObstacleRouteResult }
   | { kind: 'route-preview'; payload: RouteEdit }
   | { kind: 'route-edited'; payload: { routing_revision: number; edit: RouteEdit } }
   | { kind: 'error'; payload: { code: string; message: string } }
