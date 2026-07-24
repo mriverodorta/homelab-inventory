@@ -17,6 +17,8 @@ env:
 
 jobs:
   publish:
+    # Documentation-only pushes can opt out without disabling CI or manual releases.
+    if: ${{ github.event_name == 'workflow_dispatch' || !contains(github.event.head_commit.message, '[skip docker]') }}
     runs-on: ubuntu-latest
     permissions:
       contents: read

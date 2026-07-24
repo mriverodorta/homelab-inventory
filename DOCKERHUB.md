@@ -4,7 +4,12 @@ Homelab Inventory is a self-hosted visual workbench for documenting homelab hard
 
 You can model servers, NAS devices, free-form PC builds, monitors, UPS systems, power strips, components, physical ports, and network, display, or power cables on an infinite canvas.
 
-Live demo: https://lab.hkloud.org/
+## Project Links
+
+- Official website: https://homelabinventory.com/
+- Live demo: https://demo.homelabinventory.com/
+- Source code: https://github.com/mriverodorta/homelab-inventory
+- Container image: https://hub.docker.com/r/mriverodorta/homelab-inventory
 
 ## Source Code
 
