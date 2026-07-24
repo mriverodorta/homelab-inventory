@@ -85,6 +85,14 @@ export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
   notes: [],
 }
 
+const RELEASE_0_2_2_DETAILS: UnreleasedReleaseNotes = {
+  highlights: [],
+  fixes: [
+    'Connected network, power, and display cables now remain visible when moving equipment changes their automatically selected attachment side.',
+  ],
+  notes: [],
+}
+
 const RELEASE_0_2_1_DETAILS: UnreleasedReleaseNotes = {
   highlights: [],
   fixes: [
@@ -97,9 +105,16 @@ const RELEASE_0_2_1_DETAILS: UnreleasedReleaseNotes = {
 
 export const RELEASE_NOTES: ReleaseNoteEntry[] = [
   {
+    version: '0.2.2',
+    date: '2026-07-24',
+    channel: 'latest',
+    title: 'Reliable cable movement',
+    ...RELEASE_0_2_2_DETAILS,
+  },
+  {
     version: '0.2.1',
     date: '2026-07-23',
-    channel: 'latest',
+    channel: 'release',
     title: 'Reliable inventory placement',
     ...RELEASE_0_2_1_DETAILS,
   },

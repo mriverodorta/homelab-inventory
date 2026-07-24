@@ -6,6 +6,12 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 
 ## Unreleased
 
+## [0.2.2] - 2026-07-24
+
+### Fixed
+
+- Kept connected network, power, and display cables visible when moving equipment changes their automatically selected attachment side.
+
 ## [0.2.1] - 2026-07-23
 
 ### Fixed

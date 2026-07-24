@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest'
-import { buildCanvasHandleIndex, getRequiredCanvasHandles } from '@/lib/canvas-handle-index'
+import {
+  buildCanvasHandleIndex,
+  getChangedCanvasHandleItemIds,
+  getRequiredCanvasHandles,
+} from '@/lib/canvas-handle-index'
 import type { ProjectState } from '@/types/inventory'
 
 function project(): ProjectState {
@@ -34,5 +38,42 @@ describe('canvas handle index', () => {
     expect([...getRequiredCanvasHandles(index, 'server:1')]).toEqual(['source-right-1:port'])
     expect([...getRequiredCanvasHandles(index, 'server:2')]).toEqual(['target-left-1:port'])
     expect(getRequiredCanvasHandles(index, 'server:3').size).toBe(0)
+  })
+
+  it('tracks handle changes when moving equipment changes the automatic cable sides', () => {
+    const before = project()
+    const beforeIndex = buildCanvasHandleIndex(before)
+    const after = {
+      ...before,
+      placements: before.placements.map((placement) => (
+        placement.serverId === 'server:2'
+          ? { ...placement, x: 0, y: -480 }
+          : placement
+      )),
+    }
+    const afterIndex = buildCanvasHandleIndex(after)
+
+    expect([...getRequiredCanvasHandles(afterIndex, 'server:1')]).toEqual(['source-top-1:port'])
+    expect([...getRequiredCanvasHandles(afterIndex, 'server:2')]).toEqual(['target-bottom-1:port'])
+    expect(getChangedCanvasHandleItemIds(beforeIndex, afterIndex)).toEqual(
+      new Set(['server:1', 'server:2']),
+    )
+  })
+
+  it('does not invalidate handles when placement changes preserve cable sides', () => {
+    const before = project()
+    const after = {
+      ...before,
+      placements: before.placements.map((placement) => (
+        placement.serverId === 'server:2'
+          ? { ...placement, x: placement.x + 24 }
+          : placement
+      )),
+    }
+
+    expect(getChangedCanvasHandleItemIds(
+      buildCanvasHandleIndex(before),
+      buildCanvasHandleIndex(after),
+    )).toEqual(new Set())
   })
 })

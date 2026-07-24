@@ -42,7 +42,12 @@ import { PowerStripNode, type PowerStripFlowNode } from '@/components/power-stri
 import { ServerNode, type ServerFlowNode } from '@/components/server-card'
 import { UpsNode, type UpsFlowNode } from '@/components/ups-card'
 import { connectionMatchesSelectedItem, getFocusedCableItemIds } from '@/lib/cable-focus'
-import { buildCanvasHandleIndex, getRequiredCanvasHandles } from '@/lib/canvas-handle-index'
+import {
+  buildCanvasHandleIndex,
+  getChangedCanvasHandleItemIds,
+  getRequiredCanvasHandles,
+  type CanvasHandleIndex,
+} from '@/lib/canvas-handle-index'
 import { buildCanvasProjectIndex } from '@/lib/canvas-project-index'
 import {
   getAffectedCanvasItemIds,
@@ -548,9 +553,10 @@ function CanvasViewport({
     [canvasIndexProject, compatibleEndpointKeys, topologyData],
   )
   const canvasHandleIndex = useMemo(
-    () => buildCanvasHandleIndex(canvasIndexProject),
-    [canvasIndexProject],
+    () => buildCanvasHandleIndex(canvasRoutingProject),
+    [canvasRoutingProject],
   )
+  const previousCanvasHandleIndexRef = useRef<CanvasHandleIndex>(new Map())
   const nodeIndexCacheRef = useRef(new WeakMap<ProjectState, {
     topologyData: TopologyQueryData | null
     compatibleEndpointKeys: ReadonlySet<string> | null
@@ -998,6 +1004,25 @@ function CanvasViewport({
     measuredHandlesByNodeId,
     snapCablesToGrid,
   ])
+  const expectedRouteConnectionIds = useMemo(() => {
+    const placedItemIds = new Set(canvasRoutingProject.placements.map((placement) => placement.serverId))
+
+    return new Set((canvasRoutingProject.connections ?? []).flatMap((connection, connectionIndex) => {
+      const fromItem = canvasRoutingProject.items[connection.from.itemId]
+      const toItem = canvasRoutingProject.items[connection.to.itemId]
+      const fromItemKey = fromItem ? runtimeItemKey(fromItem) : null
+      const toItemKey = toItem ? runtimeItemKey(toItem) : null
+
+      return fromItem && toItem && fromItemKey && toItemKey
+        && placedItemIds.has(fromItemKey)
+        && placedItemIds.has(toItemKey)
+        && getConnectionRoute(canvasRoutingProject, connection, connectionIndex)
+        ? [connection.id]
+        : []
+    }))
+  }, [canvasRoutingProject])
+  const routeGeometryReady = routeRequests.length === expectedRouteConnectionIds.size
+    && routeRequests.every((request) => expectedRouteConnectionIds.has(request.connectionId))
   const plannedCableRoutes = routingState.routes
   const syncMeasuredHandleGeometry = useCallback(() => {
     const nextGeometry = reconcileCanvasHandleGeometry(
@@ -1476,12 +1501,14 @@ function CanvasViewport({
     const engineRecovered = routingEnginePhaseRef.current !== 'ready'
     routingEnginePhaseRef.current = domainEngine.state.phase
 
+    if (!routeGeometryReady) return
+
     if (routeRequests.length === 0) {
       coordinator.clear()
     } else {
       coordinator.request(routeRequests, engineRecovered)
     }
-  }, [domainEngine.state.phase, routeRequests])
+  }, [domainEngine.state.phase, routeGeometryReady, routeRequests])
 
   useEffect(() => {
     if (domainEngine.state.phase !== 'ready') {
@@ -1519,7 +1546,16 @@ function CanvasViewport({
 
   useEffect(() => {
     const placedItemIds = new Set(project.placements.map((placement) => placement.serverId))
-    const changedNodeIds = [...nodeProjectTransition.affectedItemIds].flatMap((itemId) => {
+    const changedHandleItemIds = getChangedCanvasHandleItemIds(
+      previousCanvasHandleIndexRef.current,
+      canvasHandleIndex,
+    )
+    previousCanvasHandleIndexRef.current = canvasHandleIndex
+    const changedItemIds = new Set([
+      ...nodeProjectTransition.affectedItemIds,
+      ...changedHandleItemIds,
+    ])
+    const changedNodeIds = [...changedItemIds].flatMap((itemId) => {
       const item = project.items[itemId]
       return item && placedItemIds.has(itemId) ? [getCanvasNodeId(item)] : []
     })
