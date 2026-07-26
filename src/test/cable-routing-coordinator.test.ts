@@ -141,6 +141,22 @@ describe('CableRoutingCoordinator', () => {
     expect(coordinator.getState().routes.get(2)).toBe(secondRoute)
   })
 
+  it('retains the last route when the planner temporarily omits a desired connection', async () => {
+    const client = new FakeClient()
+    const coordinator = new CableRoutingCoordinator(client as unknown as DomainEngineClient)
+
+    coordinator.request([request(1)])
+    client.calls[0].resolve(response([cableRoute(1, 0)]))
+    await vi.waitFor(() => expect(coordinator.getState().pending).toBe(false))
+    const retained = coordinator.getState().routes.get(1)
+
+    coordinator.request([request(1, 12)])
+    client.calls[1].resolve(response([], [1]))
+    await vi.waitFor(() => expect(coordinator.getState().pending).toBe(false))
+
+    expect(coordinator.getState().routes.get(1)).toBe(retained)
+  })
+
   it('can replay unchanged requests after the worker is rebuilt without clearing routes', async () => {
     const client = new FakeClient()
     const coordinator = new CableRoutingCoordinator(client as unknown as DomainEngineClient)

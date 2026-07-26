@@ -79,6 +79,27 @@ const RELEASE_0_2_0_DETAILS: UnreleasedReleaseNotes = {
   ],
 }
 
+const RELEASE_0_3_0_DETAILS: UnreleasedReleaseNotes = {
+  highlights: [
+    'Settings now links directly to the public roadmap, private feature proposal form, and GitHub bug reporting from a dedicated Feedback section.',
+    'Fresh workspaces can now explore a complete fictional homelab or start empty with an adaptive create, place, and connect checklist.',
+    'A three-step guide demonstrates host inspection, network cabling, and power delivery, then offers to keep the example or remove all sample-owned records and relationships.',
+    'Project settings can review an active example, restart Getting Started, or dismiss the checklist without interrupting normal workspace use.',
+  ],
+  fixes: [
+    'The fictional example now opens with a deliberately spaced topology and a one-time fit-to-view so equipment and cable paths are immediately readable.',
+    'Connections remain visible while attachment-side changes are recalculated by retaining the prior route and rendering a temporary orthogonal fallback when needed.',
+    'Explicit cable sides such as Top to Bottom now use side-aware WASM pathfinding without dangling, backtracking, or self-overlapping endpoint segments.',
+    'Resetting cable bends now discards cached manual geometry and rebuilds clear endpoint trunks outside equipment boundaries.',
+    'Tall equipment cards now include their external Top and Bottom portals in the bounded WASM search area, preventing valid cable routes from failing or falling back through equipment.',
+  ],
+  notes: [
+    'Feedback links include only the public app version and source label; inventory records and diagnostics are never attached.',
+    'Schema 14 stores onboarding progress locally with the project, dismisses existing nonempty installations automatically, and creates no telemetry.',
+    'The bundled example uses fictional hardware and can be removed atomically without deleting inventory records created by the user.',
+  ],
+}
+
 export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
   highlights: [],
   fixes: [],
@@ -105,9 +126,16 @@ const RELEASE_0_2_1_DETAILS: UnreleasedReleaseNotes = {
 
 export const RELEASE_NOTES: ReleaseNoteEntry[] = [
   {
+    version: '0.3.0',
+    date: '2026-07-25',
+    channel: 'latest',
+    title: 'Guided first-run workspace',
+    ...RELEASE_0_3_0_DETAILS,
+  },
+  {
     version: '0.2.2',
     date: '2026-07-24',
-    channel: 'latest',
+    channel: 'release',
     title: 'Reliable cable movement',
     ...RELEASE_0_2_2_DETAILS,
   },

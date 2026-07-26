@@ -5,8 +5,13 @@ import {
   Cpu,
   FolderCog,
   Info,
+  Bug,
+  Lightbulb,
+  Map,
+  MessageSquarePlus,
   MonitorCog,
   Network,
+  Play,
   RefreshCw,
   RotateCcw,
   Settings,
@@ -40,9 +45,10 @@ import {
   MIN_INVENTORY_WIDTH,
 } from '@/lib/ui-preferences'
 import type { UpdateStatus } from '@/lib/update-api'
+import type { OnboardingStatus } from '@/lib/onboarding-api'
 import { cn } from '@/lib/utils'
 
-type SettingsCategory = 'general' | 'project' | 'updates' | 'about'
+type SettingsCategory = 'general' | 'project' | 'updates' | 'feedback' | 'about'
 type SaveStatus = 'saved' | 'saving' | 'error'
 
 export type SettingsDialogProps = {
@@ -63,6 +69,8 @@ export type SettingsDialogProps = {
   updateLoading: boolean
   updateChecking: boolean
   updateClearingSkip: boolean
+  onboardingStatus: OnboardingStatus | null
+  onboardingBusy: boolean
   onOpenChange: (open: boolean) => void
   onProjectNameChange: (name: string) => void
   onInventoryVisibleChange: (visible: boolean) => void
@@ -80,6 +88,10 @@ export type SettingsDialogProps = {
   onEnableCompatibilityForAllHosts: () => void
   onCheckForUpdates: () => void
   onClearSkippedUpdate: () => void
+  onExploreExample: () => void
+  onReviewExample: () => void
+  onRestartOnboarding: () => void
+  onDismissOnboarding: () => void
 }
 
 const categories: Array<{
@@ -91,6 +103,7 @@ const categories: Array<{
   { id: 'general', label: 'General', description: 'Browser workspace preferences', icon: MonitorCog },
   { id: 'project', label: 'Project', description: 'Shared project configuration', icon: FolderCog },
   { id: 'updates', label: 'Updates', description: 'Image channel and status', icon: RefreshCw },
+  { id: 'feedback', label: 'Feedback', description: 'Roadmap, ideas, and issues', icon: MessageSquarePlus },
   { id: 'about', label: 'About', description: 'Purpose, version, and links', icon: Info },
 ]
 
@@ -240,6 +253,17 @@ function GeneralSettings(props: SettingsDialogProps) {
 }
 
 function ProjectSettings(props: SettingsDialogProps) {
+  const onboarding = props.onboardingStatus?.enabled ? props.onboardingStatus : null
+  const onboardingLabel = onboarding?.status === 'sample_active'
+    ? 'Example workspace active'
+    : onboarding?.status === 'completed'
+      ? 'Checklist complete'
+      : onboarding?.status === 'dismissed'
+        ? 'Guidance dismissed'
+        : onboarding?.status === 'checklist_active'
+          ? 'Checklist active'
+          : 'Available'
+
   return (
     <SettingsSection title="Project" description="Shared settings saved with this inventory project.">
       <SettingRow label="Project name" description={`Autosave status: ${saveStatusLabel(props.saveStatus)}`}>
@@ -250,6 +274,30 @@ function ProjectSettings(props: SettingsDialogProps) {
           className="w-full sm:w-[320px]"
         />
       </SettingRow>
+      {onboarding ? (
+        <SettingRow label="Getting started" description={`${onboardingLabel}. Progress is stored with this project.`}>
+          <div className="flex max-w-full flex-wrap justify-end gap-2">
+            {onboarding.status === 'sample_active' ? (
+              <Button type="button" variant="outline" onClick={props.onReviewExample} disabled={props.onboardingBusy}>
+                Review example
+              </Button>
+            ) : null}
+            {onboarding.eligibleForExample && onboarding.status !== 'sample_active' ? (
+              <Button type="button" variant="outline" onClick={props.onExploreExample} disabled={props.onboardingBusy}>
+                <Play className="size-4" />Explore example
+              </Button>
+            ) : null}
+            {onboarding.status !== 'sample_active' ? (
+              <Button type="button" variant="outline" onClick={props.onRestartOnboarding} disabled={props.onboardingBusy}>
+                <RotateCcw className="size-4" />Restart checklist
+              </Button>
+            ) : null}
+            {onboarding.status === 'checklist_active' ? (
+              <Button type="button" variant="ghost" onClick={props.onDismissOnboarding} disabled={props.onboardingBusy}>Dismiss</Button>
+            ) : null}
+          </div>
+        </SettingRow>
+      ) : null}
       <SettingRow label="Ignored audit findings" description="Restore individually ignored findings to the active audit when they still apply.">
         <ConfirmSettingsAction
           title="Clear ignored audit findings?"
@@ -362,6 +410,28 @@ function AboutSettings(props: SettingsDialogProps) {
   )
 }
 
+function FeedbackSettings(props: SettingsDialogProps) {
+  const version = props.updateStatus?.runningVersion ?? 'unknown'
+  const proposalUrl = `https://homelabinventory.com/roadmap/propose?source=self-hosted-app&version=${encodeURIComponent(version)}`
+
+  return (
+    <SettingsSection title="Feedback" description="Help shape Homelab Inventory without sharing inventory records or diagnostics.">
+      <SettingRow label="Propose a feature" description="Submit an idea for private review before it appears on the public roadmap.">
+        <Button asChild variant="outline"><a href={proposalUrl} target="_blank" rel="noreferrer"><Lightbulb className="size-4" />Propose feature</a></Button>
+      </SettingRow>
+      <SettingRow label="Report a bug" description="Open the GitHub issue form. Remove private addresses, serial numbers, and credentials before submitting.">
+        <Button asChild variant="outline"><a href="https://github.com/mriverodorta/homelab-inventory/issues/new/choose" target="_blank" rel="noreferrer"><Bug className="size-4" />Report bug</a></Button>
+      </SettingRow>
+      <SettingRow label="Community roadmap" description="Review approved proposals, vote once with GitHub, and join linked discussions.">
+        <Button asChild variant="outline"><a href="https://homelabinventory.com/roadmap" target="_blank" rel="noreferrer"><Map className="size-4" />View roadmap</a></Button>
+      </SettingRow>
+      <div className="border-t border-[#e8e1d6] bg-[#f7f2e9] px-4 py-3 text-xs leading-5 text-[#665d52]">
+        Feedback links include only the public app version and a self-hosted-app source label. Project data is never attached.
+      </div>
+    </SettingsSection>
+  )
+}
+
 export function SettingsDialog(props: SettingsDialogProps) {
   const [category, setCategory] = useState<SettingsCategory>('general')
 
@@ -385,6 +455,7 @@ export function SettingsDialog(props: SettingsDialogProps) {
               {category === 'general' ? <GeneralSettings {...props} /> : null}
               {category === 'project' ? <ProjectSettings {...props} /> : null}
               {category === 'updates' ? <UpdateSettings {...props} /> : null}
+              {category === 'feedback' ? <FeedbackSettings {...props} /> : null}
               {category === 'about' ? <AboutSettings {...props} /> : null}
             </main>
           </div>

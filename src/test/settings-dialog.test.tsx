@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { SettingsDialog, type SettingsDialogProps } from '@/components/settings-dialog'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import type { UpdateStatus } from '@/lib/update-api'
+import type { OnboardingStatus } from '@/lib/onboarding-api'
 
 const updateStatus: UpdateStatus = {
   enabled: true,
@@ -17,6 +18,23 @@ const updateStatus: UpdateStatus = {
   state: 'available',
   errorCode: null,
   entries: [],
+}
+
+const onboardingStatus: OnboardingStatus = {
+  enabled: true,
+  version: 1,
+  status: 'dismissed',
+  sampleBatchId: null,
+  sampleInventoryRefs: [],
+  sampleAssignmentIds: [],
+  sampleConnectionIds: [],
+  walkthroughStep: 0,
+  startedAt: null,
+  completedAt: null,
+  eligibleForExample: false,
+  shouldInvite: false,
+  milestones: { created: true, placed: true, related: true, completed: true },
+  projectRevision: 1,
 }
 
 function createProps(overrides: Partial<SettingsDialogProps> = {}): SettingsDialogProps {
@@ -38,6 +56,8 @@ function createProps(overrides: Partial<SettingsDialogProps> = {}): SettingsDial
     updateLoading: false,
     updateChecking: false,
     updateClearingSkip: false,
+    onboardingStatus,
+    onboardingBusy: false,
     onOpenChange: vi.fn(),
     onProjectNameChange: vi.fn(),
     onInventoryVisibleChange: vi.fn(),
@@ -55,6 +75,10 @@ function createProps(overrides: Partial<SettingsDialogProps> = {}): SettingsDial
     onEnableCompatibilityForAllHosts: vi.fn(),
     onCheckForUpdates: vi.fn(),
     onClearSkippedUpdate: vi.fn(),
+    onExploreExample: vi.fn(),
+    onReviewExample: vi.fn(),
+    onRestartOnboarding: vi.fn(),
+    onDismissOnboarding: vi.fn(),
     ...overrides,
   }
 }
@@ -120,6 +144,18 @@ describe('SettingsDialog', () => {
     expect(props.onEnableCompatibilityForAllHosts).toHaveBeenCalledOnce()
   })
 
+  it('offers project-scoped getting started controls', () => {
+    const props = renderSettings({
+      onboardingStatus: { ...onboardingStatus, status: 'available', eligibleForExample: true },
+    })
+    fireEvent.click(screen.getByRole('button', { name: /Project.*Shared project configuration/ }))
+
+    fireEvent.click(screen.getByRole('button', { name: 'Explore example' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Restart checklist' }))
+    expect(props.onExploreExample).toHaveBeenCalledOnce()
+    expect(props.onRestartOnboarding).toHaveBeenCalledOnce()
+  })
+
   it('shows update status and update actions', () => {
     const props = renderSettings()
     fireEvent.click(screen.getByRole('button', { name: /Updates.*Image channel and status/ }))
@@ -132,16 +168,26 @@ describe('SettingsDialog', () => {
     expect(props.onClearSkippedUpdate).toHaveBeenCalledOnce()
   })
 
-  it('shows four focused categories without storage-scope pills', () => {
+  it('shows five focused categories without storage-scope pills', () => {
     renderSettings()
     const navigation = screen.getByRole('navigation', { name: 'Settings categories' })
     expect(navigation).toHaveTextContent('General')
     expect(navigation).toHaveTextContent('Project')
     expect(navigation).toHaveTextContent('Updates')
+    expect(navigation).toHaveTextContent('Feedback')
     expect(navigation).toHaveTextContent('About')
     expect(navigation).not.toHaveTextContent('System')
     expect(screen.queryByText('This browser')).not.toBeInTheDocument()
     expect(screen.queryByText('Environment')).not.toBeInTheDocument()
+  })
+
+  it('links to roadmap feedback without including project data', () => {
+    renderSettings()
+    fireEvent.click(screen.getByRole('button', { name: /Feedback.*Roadmap, ideas, and issues/ }))
+    expect(screen.getByRole('link', { name: /Propose feature/ })).toHaveAttribute('href', 'https://homelabinventory.com/roadmap/propose?source=self-hosted-app&version=0.1.28')
+    expect(screen.getByRole('link', { name: /Report bug/ })).toHaveAttribute('href', 'https://github.com/mriverodorta/homelab-inventory/issues/new/choose')
+    expect(screen.getByRole('link', { name: /View roadmap/ })).toHaveAttribute('href', 'https://homelabinventory.com/roadmap')
+    expect(screen.getByText(/Project data is never attached/)).toBeInTheDocument()
   })
 
   it('explains the product purpose and links to public project resources', () => {

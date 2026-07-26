@@ -89,12 +89,16 @@ function renderCable({
   editable = selected,
   snapToGrid = false,
   plannedPoints = defaultPoints,
+  sourceSide = 'right',
+  targetSide = 'left',
 }: {
   selected?: boolean
   hovered?: boolean
   editable?: boolean
   snapToGrid?: boolean
   plannedPoints?: Array<{ x: number; y: number }>
+  sourceSide?: CableEdgeData['sourceSide']
+  targetSide?: CableEdgeData['targetSide']
 } = {}) {
   const onSelect = vi.fn()
   const onUpdateRoute = vi.fn()
@@ -108,6 +112,8 @@ function renderCable({
     editable,
     connectionId: 1,
     snapToGrid,
+    sourceSide,
+    targetSide,
     plannedRoute: {
       points: plannedPoints,
       manualAnchorPointIndexes: [],
@@ -154,9 +160,16 @@ describe('CableEdge route interaction', () => {
     )
   })
 
-  it('does not calculate a TypeScript fallback for a stale endpoint route', () => {
-    renderCable({ plannedPoints: [{ x: 12, y: 0 }, { x: 200, y: 100 }] })
-    expect(screen.getByTestId('base-cable-path')).toHaveAttribute('d', '')
+  it('renders an orthogonal fallback while a stale endpoint route is recalculated', () => {
+    renderCable({
+      plannedPoints: [{ x: 12, y: 0 }, { x: 200, y: 100 }],
+      sourceSide: 'right',
+      targetSide: 'bottom',
+    })
+    expect(screen.getByTestId('base-cable-path')).toHaveAttribute(
+      'd',
+      'M 0,0 L 24,0 L 24,124 L 200,124 L 200,100',
+    )
   })
 
   it('does not expose drag hit areas until selected', () => {

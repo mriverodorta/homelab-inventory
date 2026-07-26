@@ -12,6 +12,7 @@ import { ServerEngineRuntime } from './engine/runtime.mjs'
 import { EngineSseHub } from './engine/sse-hub.mjs'
 import { registerEngineRoutes } from './engine-routes.mjs'
 import { registerInventoryRoutes } from './inventory-routes.mjs'
+import { registerOnboardingRoutes } from './onboarding-routes.mjs'
 import { registerProjectRoutes } from './project-routes.mjs'
 import { createRateLimitOptions, readRateLimitConfig } from './rate-limit.mjs'
 import { DockerHubUpdateChecker } from './update-checker.mjs'
@@ -168,6 +169,7 @@ registerUpdateRoutes(app, {
 
 registerInventoryRoutes(app, { withStore })
 registerProjectRoutes(app, { withStore })
+registerOnboardingRoutes(app, { withStore, disabled: isDemoMode })
 
 const engineRuntime = await ServerEngineRuntime.create()
 registerEngineRoutes(app, {

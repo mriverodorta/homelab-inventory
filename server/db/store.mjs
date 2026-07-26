@@ -34,12 +34,24 @@ import { migrateSchema9To10 } from './migrate-schema-10.mjs'
 import { migrateSchema10To11 } from './migrate-schema-11.mjs'
 import { migrateSchema11To12 } from './migrate-schema-12.mjs'
 import { migrateSchema12To13 } from './migrate-schema-13.mjs'
+import { migrateSchema13To14 } from './migrate-schema-14.mjs'
 import {
   applyNasPowerConfigurationChange,
   inspectNasPowerConfigurationChange,
 } from './nas-power-configuration.mjs'
+import { assertOnboardingState, createOnboardingState } from '../onboarding/model.mjs'
+import {
+  finishExampleInDraft,
+  loadExampleIntoDraft,
+  publicOnboardingStatus,
+  onboardingNeedsReconciliation,
+  reconcileOnboardingDraft,
+  sampleRemovalImpact,
+  setOnboardingStatusInDraft,
+  setWalkthroughStepInDraft,
+} from '../onboarding/lifecycle.mjs'
 
-export const CURRENT_SCHEMA_VERSION = 13
+export const CURRENT_SCHEMA_VERSION = 14
 
 const DEFAULT_SAVE_DEBOUNCE_MS = 500
 const BACKUP_LIMIT = 10
@@ -1419,6 +1431,7 @@ export class HomelabInventoryStore {
     await this.ensureStores()
     await this.openStores()
     await this.runMigrations()
+    await this.reconcileOnboardingState()
     await this.validateStores()
     await this.normalizeLoadedCompatibility()
     await this.validateStores()
@@ -1450,6 +1463,7 @@ export class HomelabInventoryStore {
         lastSeenReleaseNotesVersion: this.appVersion,
         skippedUpdateVersion: null,
         lastUpdateCheck: null,
+        onboarding: createOnboardingState('dismissed'),
         updatedAt: new Date().toISOString(),
       })
       await writeJson(this.paths.inventory, split.inventory)
@@ -1479,6 +1493,7 @@ export class HomelabInventoryStore {
       lastSeenReleaseNotesVersion: this.appVersion,
       skippedUpdateVersion: null,
       lastUpdateCheck: null,
+      onboarding: createOnboardingState('available'),
       updatedAt: now,
     })
     await writeJson(this.paths.inventory, Object.fromEntries(INVENTORY_TABLES.map((table) => [table, []])))
@@ -1518,6 +1533,7 @@ export class HomelabInventoryStore {
       lastSeenReleaseNotesVersion: this.appVersion,
       skippedUpdateVersion: null,
       lastUpdateCheck: null,
+      onboarding: createOnboardingState('available'),
       updatedAt: new Date().toISOString(),
     })
     this.databases.inventory = new Low(
@@ -1714,6 +1730,17 @@ export class HomelabInventoryStore {
         continue
       }
 
+      if (currentVersion === 13) {
+        this.databases.meta.data.onboarding = migrateSchema13To14({
+          inventory: this.databases.inventory.data,
+          project: this.databases.project.data,
+          agents: this.databases.agents.data,
+        })
+        this.databases.meta.data.schemaVersion = 14
+        currentVersion = 14
+        continue
+      }
+
       throw new Error(`No migration registered for schema version ${currentVersion}.`)
     }
 
@@ -1727,9 +1754,23 @@ export class HomelabInventoryStore {
     assertProjectStoreShape(this.databases.project.data, { requireRevision: true })
     assertAgentsStoreShape(this.databases.agents.data)
     assertAgentStatusStoreShape(this.databases.agentStatus.data)
+    assertOnboardingState(this.databases.meta.data.onboarding)
     assertProjectShape(this.getProject())
     this.databases.meta.data.skippedUpdateVersion ??= null
     this.databases.meta.data.lastUpdateCheck ??= null
+  }
+
+  async reconcileOnboardingState() {
+    const current = {
+      meta: this.databases.meta.data,
+      inventory: this.databases.inventory.data,
+      project: this.databases.project.data,
+      agents: this.databases.agents.data,
+      agentStatus: this.databases.agentStatus.data,
+    }
+    if (!onboardingNeedsReconciliation(current)) return
+    this.inventoryTransaction((draft) => reconcileOnboardingDraft(draft))
+    await this.flush(['meta', 'inventory', 'project'])
   }
 
   async normalizeLoadedCompatibility() {
@@ -1830,6 +1871,93 @@ export class HomelabInventoryStore {
       this.databases.inventory.data,
       this.databases.project.data,
     )
+  }
+
+  getOnboardingStatus({ enabled = true } = {}) {
+    return publicOnboardingStatus({
+      meta: this.databases.meta.data,
+      inventory: this.databases.inventory.data,
+      project: this.getProject(),
+      agents: this.databases.agents.data,
+      enabled,
+    })
+  }
+
+  updateOnboardingMetadata(mutator) {
+    const next = structuredClone(this.databases.meta.data.onboarding)
+    const draft = {
+      meta: { onboarding: next },
+      inventory: this.databases.inventory.data,
+      project: this.databases.project.data,
+      agents: this.databases.agents.data,
+      agentStatus: this.databases.agentStatus.data,
+    }
+    mutator(draft)
+    assertOnboardingState(draft.meta.onboarding)
+    this.databases.meta.data.onboarding = draft.meta.onboarding
+    this.databases.meta.data.updatedAt = new Date().toISOString()
+    this.scheduleFlush('meta')
+    return this.getOnboardingStatus()
+  }
+
+  async loadOnboardingExample() {
+    if (this.databases.meta.data.onboarding.status === 'sample_active') {
+      return { status: this.getOnboardingStatus(), project: this.getProject() }
+    }
+    await this.createBackup('onboarding-example-load')
+    const project = this.inventoryTransaction((draft) => loadExampleIntoDraft(draft))
+    return { status: this.getOnboardingStatus(), project }
+  }
+
+  startOnboardingEmpty() {
+    if (this.databases.meta.data.onboarding.status === 'sample_active') {
+      throw new InventoryLifecycleError('Keep or remove the active example before starting empty.', {
+        code: 'onboarding-sample-active', status: 409,
+      })
+    }
+    return this.updateOnboardingMetadata((draft) => setOnboardingStatusInDraft(draft, 'checklist_active'))
+  }
+
+  getOnboardingRemovalImpact() {
+    return sampleRemovalImpact({
+      meta: this.databases.meta.data,
+      inventory: this.databases.inventory.data,
+      project: this.databases.project.data,
+      agents: this.databases.agents.data,
+      agentStatus: this.databases.agentStatus.data,
+    })
+  }
+
+  async finishOnboardingExample(action) {
+    if (action === 'remove') await this.createBackup('onboarding-example-remove')
+    if (action === 'keep') {
+      const status = this.updateOnboardingMetadata((draft) => finishExampleInDraft(draft, action))
+      return { status, project: this.getProject() }
+    }
+    const project = this.inventoryTransaction((draft) => finishExampleInDraft(draft, action))
+    return { status: this.getOnboardingStatus(), project }
+  }
+
+  dismissOnboarding() {
+    if (this.databases.meta.data.onboarding.status === 'sample_active') {
+      throw new InventoryLifecycleError('Keep or remove the active example before dismissing onboarding.', {
+        code: 'onboarding-sample-active', status: 409,
+      })
+    }
+    return this.updateOnboardingMetadata((draft) => setOnboardingStatusInDraft(draft, 'dismissed'))
+  }
+
+  restartOnboardingChecklist() {
+    if (this.databases.meta.data.onboarding.status === 'sample_active') {
+      throw new InventoryLifecycleError('Finish the active example before restarting the checklist.', {
+        code: 'onboarding-sample-active', status: 409,
+      })
+    }
+    return this.updateOnboardingMetadata((draft) => setOnboardingStatusInDraft(draft, 'checklist_active'))
+  }
+
+  setOnboardingWalkthroughStep(step) {
+    return this.updateOnboardingMetadata((draft) => setWalkthroughStepInDraft(draft, step))
   }
 
   getEngineSnapshot() {
@@ -1974,6 +2102,7 @@ export class HomelabInventoryStore {
       draft.project = split.project
       assertInventoryStoreShape(draft.inventory)
       assertProjectStoreShape(draft.project)
+      assertOnboardingState(draft.meta.onboarding)
       assertProjectShape(composeProject(draft.meta, draft.inventory, draft.project))
     } catch (error) {
       throw new InventoryLifecycleError(error instanceof Error ? error.message : 'Inventory change is invalid.', {

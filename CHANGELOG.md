@@ -6,6 +6,29 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 
 ## Unreleased
 
+## [0.3.0] - 2026-07-25
+
+### Added
+
+- Added a dedicated Settings feedback section linking to the public roadmap, private feature proposal workflow, and GitHub bug-report form.
+- Limited self-hosted proposal context to the public app version and source label without attaching inventory records or diagnostics.
+- Added an optional first-run choice between exploring a complete fictional homelab workspace and starting with an empty inventory checklist.
+- Added a three-step example guide covering host inspection, network cabling, and power delivery, with a final choice to keep the workspace or remove every sample-owned record and relationship.
+- Added persistent Getting Started controls in Project settings so onboarding can be reviewed, restarted, or dismissed without interrupting existing installations.
+
+### Fixed
+
+- Opened the fictional example with a deliberately spaced topology and a one-time fit-to-view so equipment and cable paths are immediately readable.
+- Kept connections visible while attachment-side changes are recalculated by retaining the prior route and rendering a temporary orthogonal fallback when needed.
+- Fixed explicit cable sides such as `Top` to `Bottom` so WASM pathfinding approaches both ports from the requested directions without dangling, backtracking, or self-overlapping endpoint segments.
+- Resetting manual bends now invalidates cached route geometry, and automatic endpoint trunks remain outside equipment boundaries instead of preserving a broken pre-reset path.
+- Included equipment-edge portals in the bounded WASM search area so Top and Bottom routes on tall patch panels, switches, and other cards no longer fail or fall back through equipment.
+
+### Data migration
+
+- Schema 14 adds project-scoped onboarding state to the local metadata store. Existing nonempty workspaces are dismissed automatically, while fresh empty workspaces receive the optional invitation.
+- The example contains fictional hardware only, creates no telemetry, and can be removed atomically while preserving user-created inventory records.
+
 ## [0.2.2] - 2026-07-24
 
 ### Fixed

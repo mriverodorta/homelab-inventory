@@ -30,6 +30,10 @@ import {
 import { UpdateDialog } from '@/components/update-dialog'
 import { WhatsNewDialog } from '@/components/whats-new-dialog'
 import { SettingsDialog } from '@/components/settings-dialog'
+import { FirstRunOnboardingDialog } from '@/components/onboarding/first-run-dialog'
+import { ExampleWorkspaceGuide } from '@/components/onboarding/example-workspace-guide'
+import { ExampleCompletionDialog } from '@/components/onboarding/example-completion-dialog'
+import { GettingStartedChecklist } from '@/components/onboarding/getting-started-checklist'
 import {
   snapToGrid,
   WorkbenchCanvas,
@@ -102,6 +106,7 @@ import {
 } from '@/lib/db'
 import { expireDemoSession, extendDemoSession, loadDemoSession, type DemoSessionStatus } from '@/lib/demo-api'
 import { runtimeItemKey } from '@/lib/item-keys'
+import { isCanvasEquipmentType } from '@/lib/inventory-capabilities'
 import {
   getInventoryDragPreviewPresentation,
   isInventoryDragOverCanvas,
@@ -127,6 +132,20 @@ import {
   UPDATE_STATUS_QUERY_KEY,
   type UpdateStatus,
 } from '@/lib/update-api'
+import {
+  dismissOnboarding,
+  finishOnboardingExample,
+  loadOnboardingExample,
+  loadOnboardingRemovalImpact,
+  loadOnboardingStatus,
+  ONBOARDING_QUERY_KEY,
+  restartOnboarding,
+  saveOnboardingWalkthroughStep,
+  startOnboardingEmpty,
+  type OnboardingStatus,
+} from '@/lib/onboarding-api'
+
+type EnabledOnboardingStatus = Extract<OnboardingStatus, { enabled: true }>
 import {
   DEFAULT_UI_PREFERENCES,
   clampInventoryWidth,
@@ -573,6 +592,7 @@ function App() {
   )
   const [snapItemsToGrid, setSnapItemsToGrid] = useState(getStoredSnapItemsToGrid)
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const [onboardingError, setOnboardingError] = useState<string | null>(null)
   const [releaseNotesDismissedForSession, setReleaseNotesDismissedForSession] = useState(false)
   const [updateDialogOpen, setUpdateDialogOpen] = useState(false)
   const [demoRemainingSeconds, setDemoRemainingSeconds] = useState<number | null>(null)
@@ -643,8 +663,74 @@ function App() {
     refetchInterval: (query) => getUpdateStatusRefetchInterval(query.state.data),
     retry: false,
   })
+  const onboardingQuery = useQuery({
+    queryKey: ONBOARDING_QUERY_KEY,
+    queryFn: loadOnboardingStatus,
+    enabled: demoSessionQuery.data !== undefined,
+    retry: false,
+  })
   const { mutateAsync: persistProject } = useMutation({
     mutationFn: saveProject,
+  })
+  const activeOnboarding: EnabledOnboardingStatus | null = onboardingQuery.data?.enabled === true
+    ? onboardingQuery.data
+    : null
+  const removalImpactQuery = useQuery({
+    queryKey: [...ONBOARDING_QUERY_KEY, 'removal-impact'],
+    queryFn: loadOnboardingRemovalImpact,
+    enabled: activeOnboarding?.status === 'sample_active' && activeOnboarding.walkthroughStep >= 3,
+    retry: false,
+  })
+  const loadExampleMutation = useMutation({
+    mutationFn: loadOnboardingExample,
+    onSuccess: async (result) => {
+      await applyInventoryCommandSnapshot(result.project)
+      queryClient.setQueryData(ONBOARDING_QUERY_KEY, result.status)
+      setOnboardingError(null)
+      setSettingsOpen(false)
+      window.requestAnimationFrame(() => {
+        window.requestAnimationFrame(() => canvasControllerRef.current?.fitAll())
+      })
+    },
+    onError: (error) => setOnboardingError(error instanceof Error ? error.message : 'The example workspace could not be loaded.'),
+  })
+  const startEmptyMutation = useMutation({
+    mutationFn: startOnboardingEmpty,
+    onSuccess: (status) => {
+      queryClient.setQueryData(ONBOARDING_QUERY_KEY, status)
+      setOnboardingError(null)
+      setSettingsOpen(false)
+    },
+    onError: (error) => setOnboardingError(error instanceof Error ? error.message : 'Getting started could not be opened.'),
+  })
+  const finishExampleMutation = useMutation({
+    mutationFn: finishOnboardingExample,
+    onSuccess: async (result) => {
+      await applyInventoryCommandSnapshot(result.project)
+      queryClient.setQueryData(ONBOARDING_QUERY_KEY, result.status)
+      queryClient.removeQueries({ queryKey: [...ONBOARDING_QUERY_KEY, 'removal-impact'] })
+      setOnboardingError(null)
+    },
+    onError: (error) => setOnboardingError(error instanceof Error ? error.message : 'The example workspace could not be updated.'),
+  })
+  const walkthroughStepMutation = useMutation({
+    mutationFn: saveOnboardingWalkthroughStep,
+    onSuccess: (status) => {
+      queryClient.setQueryData(ONBOARDING_QUERY_KEY, status)
+      setOnboardingError(null)
+    },
+    onError: (error) => setOnboardingError(error instanceof Error ? error.message : 'Walkthrough progress could not be saved.'),
+  })
+  const dismissOnboardingMutation = useMutation({
+    mutationFn: dismissOnboarding,
+    onSuccess: (status) => queryClient.setQueryData(ONBOARDING_QUERY_KEY, status),
+  })
+  const restartOnboardingMutation = useMutation({
+    mutationFn: restartOnboarding,
+    onSuccess: (status) => {
+      queryClient.setQueryData(ONBOARDING_QUERY_KEY, status)
+      setSettingsOpen(false)
+    },
   })
   const waitForQueuedProjectSaves = useCallback(() => {
     if (!saveInFlightRef.current && !queuedSaveProjectRef.current) {
@@ -1081,12 +1167,77 @@ function App() {
     releaseNotesQuery.data?.hasUnseen === true &&
     releaseNotesQuery.data.entries.length > 0
   const isDemoMode = demoSessionQuery.data?.mode === 'demo'
+  const onboardingMilestones = useMemo(() => {
+    const created = Object.values(project?.items ?? {}).some((item) =>
+      isCanvasEquipmentType(item.type) && !item.archivedAt,
+    )
+    const placed = (project?.placements.length ?? 0) > 0
+    const related = (project?.assignments.length ?? 0) > 0 || (project?.connections.length ?? 0) > 0
+    return { created, placed, related, completed: created && placed && related }
+  }, [project])
+  const workspaceIsEmpty = Object.keys(project?.items ?? {}).length === 0
+    && (project?.placements.length ?? 0) === 0
+    && (project?.assignments.length ?? 0) === 0
+    && (project?.connections.length ?? 0) === 0
+  const currentOnboarding = activeOnboarding
+    ? {
+        ...activeOnboarding,
+        milestones: onboardingMilestones,
+        eligibleForExample: activeOnboarding.eligibleForExample && workspaceIsEmpty,
+      }
+    : null
+  const sampleRefByType = useMemo(() => new Map(
+    (activeOnboarding?.sampleInventoryRefs ?? []).map((ref) => [ref.type, `${ref.type}:${ref.id}`]),
+  ), [activeOnboarding?.sampleInventoryRefs])
+  const sampleConnectionIds = useMemo(
+    () => new Set((activeOnboarding?.sampleConnectionIds ?? []).map(String)),
+    [activeOnboarding?.sampleConnectionIds],
+  )
+  const onboardingBusy = loadExampleMutation.isPending
+    || startEmptyMutation.isPending
+    || finishExampleMutation.isPending
+    || walkthroughStepMutation.isPending
+    || dismissOnboardingMutation.isPending
+    || restartOnboardingMutation.isPending
+  const shouldShowFirstRunOnboarding = activeOnboarding?.shouldInvite === true
+    && workspaceIsEmpty
+    && !shouldShowWhatsNewDialog
+    && demoDialogState === 'closed'
+    && domainEngine.state.phase === 'ready'
+  const shouldShowExampleGuide = activeOnboarding?.status === 'sample_active'
+    && activeOnboarding.walkthroughStep < 3
+  const shouldShowExampleCompletion = activeOnboarding?.status === 'sample_active'
+    && activeOnboarding.walkthroughStep >= 3
+  const shouldShowGettingStarted = activeOnboarding?.status === 'checklist_active'
+    && !settingsOpen
   const returnToInventoryItem = returnToInventoryItemId
     ? project?.items[returnToInventoryItemId] ?? null
     : null
   const returnToInventoryImpact = project && returnToInventoryItemId
     ? getReturnCanvasItemImpact(project, returnToInventoryItemId)
     : null
+
+  useEffect(() => {
+    if (!activeOnboarding || activeOnboarding.status !== 'sample_active' || walkthroughStepMutation.isPending) return
+    const step = activeOnboarding.walkthroughStep
+    const sampleServerId = sampleRefByType.get('server')
+    const selectedIsSampleConnection = selectedConnection && sampleConnectionIds.has(String(selectedConnection.id))
+
+    if (step === 0 && selectedItemId === sampleServerId) {
+      walkthroughStepMutation.mutate(1)
+    } else if (step === 1 && selectedIsSampleConnection && selectedConnection.type === 'network') {
+      walkthroughStepMutation.mutate(2)
+    } else if (step === 2 && selectedIsSampleConnection && selectedConnection.type === 'power') {
+      walkthroughStepMutation.mutate(3)
+    }
+  }, [
+    activeOnboarding,
+    sampleConnectionIds,
+    sampleRefByType,
+    selectedConnection,
+    selectedItemId,
+    walkthroughStepMutation,
+  ])
 
   function updateProject(nextProject: ProjectState, options: { recordHistory?: boolean } = {}) {
     const shouldRecordHistory = options.recordHistory ?? true
@@ -1686,6 +1837,34 @@ function App() {
         })
       })
     }
+    setSpotlightItemId(focusItemId)
+  }
+
+  function showCurrentExampleStep() {
+    if (!activeOnboarding || !project) return
+    setMobileInventoryOpen(false)
+    const step = activeOnboarding.walkthroughStep
+
+    if (step === 0) {
+      const serverId = sampleRefByType.get('server')
+      if (!serverId) return
+      setSelectedItemId(serverId)
+      setSelectedConnectionId(null)
+      const focusItemId = getCanvasFocusItemId(serverId)
+      window.requestAnimationFrame(() => canvasControllerRef.current?.focusItem(focusItemId))
+      setSpotlightItemId(focusItemId)
+      return
+    }
+
+    const type = step === 1 ? 'network' : 'power'
+    const connection = project.connections.find((candidate) =>
+      candidate.type === type && sampleConnectionIds.has(String(candidate.id)),
+    )
+    if (!connection) return
+    setSelectedItemId(null)
+    setSelectedConnectionId(connection.id)
+    const focusItemId = getCanvasFocusItemId(connection.from.itemId)
+    window.requestAnimationFrame(() => canvasControllerRef.current?.focusItem(focusItemId))
     setSpotlightItemId(focusItemId)
   }
 
@@ -2497,6 +2676,22 @@ function App() {
               })
             }}
           />
+          {shouldShowExampleGuide && !settingsOpen ? (
+            <ExampleWorkspaceGuide
+              step={activeOnboarding.walkthroughStep}
+              desktopOffset={desktopInventoryVisible ? inventoryWidth + 16 : 16}
+              busy={onboardingBusy}
+              onShowMe={showCurrentExampleStep}
+              onSkip={() => walkthroughStepMutation.mutate(3)}
+            />
+          ) : null}
+          {shouldShowGettingStarted ? (
+            <GettingStartedChecklist
+              milestones={onboardingMilestones}
+              desktopOffset={desktopInventoryVisible ? inventoryWidth + 16 : 16}
+              onDismiss={() => dismissOnboardingMutation.mutate()}
+            />
+          ) : null}
           {portConnectionPreview ? (
             <PortConnectionPreviewOverlay preview={portConnectionPreview} />
           ) : null}
@@ -2681,6 +2876,8 @@ function App() {
             updateLoading={updateStatusQuery.isLoading}
             updateChecking={checkForUpdatesMutation.isPending}
             updateClearingSkip={clearSkippedUpdateMutation.isPending}
+            onboardingStatus={currentOnboarding ?? onboardingQuery.data ?? null}
+            onboardingBusy={onboardingBusy}
             onOpenChange={setSettingsOpen}
             onProjectNameChange={updateProjectName}
             onInventoryVisibleChange={setDesktopInventoryVisible}
@@ -2718,12 +2915,35 @@ function App() {
             }}
             onCheckForUpdates={() => checkForUpdatesMutation.mutate()}
             onClearSkippedUpdate={() => clearSkippedUpdateMutation.mutate()}
+            onExploreExample={() => loadExampleMutation.mutate()}
+            onReviewExample={() => {
+              setSettingsOpen(false)
+              walkthroughStepMutation.mutate(3)
+            }}
+            onRestartOnboarding={() => restartOnboardingMutation.mutate()}
+            onDismissOnboarding={() => dismissOnboardingMutation.mutate()}
           />
           <DemoSessionDialog
             state={demoDialogState}
             secondsRemaining={demoExtensionSeconds}
             onExtend={() => extendDemoSessionMutation.mutate()}
             onExpire={finalizeDemoExpiration}
+          />
+          <FirstRunOnboardingDialog
+            open={shouldShowFirstRunOnboarding}
+            busy={onboardingBusy}
+            error={onboardingError}
+            onExplore={() => loadExampleMutation.mutate()}
+            onStartEmpty={() => startEmptyMutation.mutate()}
+          />
+          <ExampleCompletionDialog
+            open={shouldShowExampleCompletion}
+            impact={removalImpactQuery.data ?? null}
+            loadingImpact={removalImpactQuery.isLoading}
+            busy={finishExampleMutation.isPending}
+            error={onboardingError}
+            onRemove={() => finishExampleMutation.mutate('remove')}
+            onKeep={() => finishExampleMutation.mutate('keep')}
           />
         </div>
         <DragOverlay dropAnimation={null} zIndex={80}>

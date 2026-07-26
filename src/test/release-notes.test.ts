@@ -92,24 +92,31 @@ describe('release notes helpers', () => {
 
   it('has structured notes for the package version under development', () => {
     const currentRelease = RELEASE_NOTES[0]
+    const cableRelease = RELEASE_NOTES.find((entry) => entry.version === '0.2.2')!
     const previousRelease = RELEASE_NOTES.find((entry) => entry.version === '0.2.1')!
     const engineRelease = RELEASE_NOTES.find((entry) => entry.version === '0.2.0')!
 
-    expect(hasReleaseNoteForVersion(RELEASE_NOTES, '0.2.2')).toBe(true)
+    expect(hasReleaseNoteForVersion(RELEASE_NOTES, '0.3.0')).toBe(true)
     expect(RELEASE_NOTES[0]).toEqual(
       expect.objectContaining({
-        version: '0.2.2',
-        title: 'Reliable cable movement',
+        version: '0.3.0',
+        title: 'Guided first-run workspace',
       }),
     )
     expect(RELEASE_NOTES.filter((entry) => entry.channel === 'latest')).toEqual([
-      expect.objectContaining({ version: '0.2.2' }),
+      expect.objectContaining({ version: '0.3.0' }),
     ])
     expect(RELEASE_NOTES.find((entry) => entry.version === '0.1.38')).toEqual(
       expect.objectContaining({ channel: 'release' }),
     )
     expect(UNRELEASED_RELEASE_NOTES).toEqual({ highlights: [], fixes: [], notes: [] })
+    expect(currentRelease.highlights).toContain(
+      'Fresh workspaces can now explore a complete fictional homelab or start empty with an adaptive create, place, and connect checklist.',
+    )
     expect(currentRelease.fixes).toContain(
+      'Tall equipment cards now include their external Top and Bottom portals in the bounded WASM search area, preventing valid cable routes from failing or falling back through equipment.',
+    )
+    expect(cableRelease.fixes).toContain(
       'Connected network, power, and display cables now remain visible when moving equipment changes their automatically selected attachment side.',
     )
     expect(previousRelease.fixes).toContain(

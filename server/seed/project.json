@@ -1,5 +1,6 @@
 {
   "id": "default",
+  "revision": 1,
   "metadata": {
     "name": "Homelab Inventory Compatibility Examples",
     "version": 1,

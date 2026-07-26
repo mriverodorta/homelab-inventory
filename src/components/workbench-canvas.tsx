@@ -168,6 +168,7 @@ export type CanvasController = {
   screenToFlowPosition: CanvasProjector
   getViewportZoom: () => number
   focusItem: (itemId: string, options?: CanvasFocusOptions) => void
+  fitAll: () => void
 }
 
 const nodeTypes: NodeTypes = {
@@ -488,7 +489,7 @@ function CanvasViewport({
       kind: 'canvas',
     },
   })
-  const { getViewport, screenToFlowPosition, setViewport } = useReactFlow()
+  const { fitView, getViewport, screenToFlowPosition, setViewport } = useReactFlow()
   const domainEngine = useDomainEngine()
   const routingEngineError = domainEngine.state.phase === 'failed' && 'error' in domainEngine.state
     ? domainEngine.state.error ?? 'Background cable routing is unavailable.'
@@ -1272,6 +1273,8 @@ function CanvasViewport({
               route: effectiveConnection.route,
               snapToGrid: snapCablesToGrid,
               plannedRoute: plannedCableRoutes.get(connection.id),
+              sourceSide: route.sourceSide,
+              targetSide: route.targetSide,
               onSelect: stableOnSelectConnection,
               onUpdateRoute: stableOnUpdateConnectionRoute,
             },
@@ -1468,8 +1471,14 @@ function CanvasViewport({
       screenToFlowPosition,
       getViewportZoom: () => getViewport().zoom,
       focusItem,
+      fitAll: () => {
+        void fitView({
+          padding: { top: '12%', right: '6%', bottom: '12%', left: '30%' },
+          duration: 500,
+        })
+      },
     })
-  }, [focusItem, getViewport, onViewportReady, screenToFlowPosition])
+  }, [fitView, focusItem, getViewport, onViewportReady, screenToFlowPosition])
 
   useEffect(() => {
     if (!domainEngine.enabled) return

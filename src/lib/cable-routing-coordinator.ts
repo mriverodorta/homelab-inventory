@@ -70,10 +70,16 @@ function requestSetsEqual(
 function reconcileRouteMap(
   current: ReadonlyMap<number, CableRouteResult>,
   calculated: ReadonlyMap<number, CableRouteResult>,
+  desiredConnectionIds: ReadonlySet<number>,
 ): ReadonlyMap<number, CableRouteResult> {
   const next = new Map<number, CableRouteResult>()
-  for (const [connectionId, route] of calculated) {
+  for (const connectionId of desiredConnectionIds) {
+    const route = calculated.get(connectionId)
     const previous = current.get(connectionId)
+    if (!route) {
+      if (previous) next.set(connectionId, previous)
+      continue
+    }
     next.set(
       connectionId,
       previous && cableRouteResultsEqual(previous, route) ? previous : route,
@@ -156,7 +162,7 @@ export class CableRoutingCoordinator {
     this.activeWork = null
     if (work.revision === this.revision) {
       this.updateState({
-        routes: reconcileRouteMap(this.state.routes, routes),
+        routes: reconcileRouteMap(this.state.routes, routes, new Set(this.desiredRequests.keys())),
         pending: this.queuedWork !== null,
         error: null,
       })

@@ -15,6 +15,7 @@ import {
 import type { CableRouteResult } from '@/lib/cable-geometry'
 import {
   cablePointsToPath,
+  createOrthogonalFallbackRoute,
   DEFAULT_ENDPOINT_SNAP_THRESHOLD,
   getEditableCableSegments,
   type OrthogonalPoint,
@@ -44,6 +45,8 @@ export type CableEdgeData = {
   route?: ConnectionRoutePreferences
   snapToGrid: boolean
   plannedRoute?: CableRouteResult
+  sourceSide: 'left' | 'right' | 'top' | 'bottom'
+  targetSide: 'left' | 'right' | 'top' | 'bottom'
   onSelect: (connectionId: string | number) => void
   onUpdateRoute: (connectionId: string | number, route: ConnectionRoutePreferences) => void
 }
@@ -74,14 +77,24 @@ export function CableEdge({
     () => ({ x: Math.round(targetX), y: Math.round(targetY) }),
     [targetX, targetY],
   )
-  const routedCable = useMemo(
-    () => draftRoute ?? (data?.plannedRoute &&
+  const routedCable = useMemo(() => {
+    if (draftRoute) return draftRoute
+    if (data?.plannedRoute &&
           pointsEqual(data.plannedRoute.points[0], source) &&
           pointsEqual(data.plannedRoute.points.at(-1), target)
-        ? data.plannedRoute
-        : null),
+    ) return data.plannedRoute
+
+    return createOrthogonalFallbackRoute(
+      source,
+      target,
+      data?.sourceSide ?? 'right',
+      data?.targetSide ?? 'left',
+    )
+  },
     [
       data?.plannedRoute,
+      data?.sourceSide,
+      data?.targetSide,
       draftRoute,
       source,
       target,

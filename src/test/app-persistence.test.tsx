@@ -4,11 +4,25 @@ import type { ReactNode } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import App from '@/App'
 import type { InventoryItem, InventoryProperties, ProjectState } from '@/types/inventory'
+import type { OnboardingStatus } from '@/lib/onboarding-api'
 
-const { saveProjectMock, updateInventoryItemMock, updateInventoryItemPropertiesMock } = vi.hoisted(() => ({
+const {
+  fitAllMock,
+  loadOnboardingExampleMock,
+  saveProjectMock,
+  updateInventoryItemMock,
+  updateInventoryItemPropertiesMock,
+} = vi.hoisted(() => ({
+  fitAllMock: vi.fn(),
+  loadOnboardingExampleMock: vi.fn(),
   saveProjectMock: vi.fn(),
   updateInventoryItemMock: vi.fn(),
   updateInventoryItemPropertiesMock: vi.fn(),
+}))
+
+vi.mock('@/lib/onboarding-api', async (importOriginal) => ({
+  ...await importOriginal<typeof import('@/lib/onboarding-api')>(),
+  loadOnboardingExample: loadOnboardingExampleMock,
 }))
 
 vi.mock('@/lib/db', () => ({
@@ -42,16 +56,33 @@ vi.mock('@/components/workbench-canvas', async (importOriginal) => {
       canRedo,
       onUndo,
       onRedo,
+      onViewportReady,
     }: {
       canUndo: boolean
       canRedo: boolean
       onUndo: () => void
       onRedo: () => void
+      onViewportReady: (controller: {
+        screenToFlowPosition: (point: { x: number; y: number }) => { x: number; y: number }
+        getViewportZoom: () => number
+        focusItem: () => void
+        fitAll: () => void
+      }) => void
     }) => (
-      <div>
-        <button type="button" disabled={!canUndo} onClick={onUndo}>Undo</button>
-        <button type="button" disabled={!canRedo} onClick={onRedo}>Redo</button>
-      </div>
+      (() => {
+        onViewportReady({
+          screenToFlowPosition: (point) => point,
+          getViewportZoom: () => 1,
+          focusItem: () => {},
+          fitAll: fitAllMock,
+        })
+        return (
+          <div>
+            <button type="button" disabled={!canUndo} onClick={onUndo}>Undo</button>
+            <button type="button" disabled={!canRedo} onClick={onRedo}>Redo</button>
+          </div>
+        )
+      })()
     ),
   }
 })
@@ -163,16 +194,20 @@ function createDeferred<T>() {
   return { promise, reject, resolve }
 }
 
-function renderApp() {
+function renderApp(
+  projectData: ProjectState = persistedProject,
+  onboarding: OnboardingStatus = { enabled: true, status: 'dismissed' } as OnboardingStatus,
+) {
   const queryClient = new QueryClient({
     defaultOptions: {
       queries: { retry: false, staleTime: Number.POSITIVE_INFINITY },
       mutations: { retry: false },
     },
   })
-  queryClient.setQueryData(['project'], persistedProject)
+  queryClient.setQueryData(['project'], projectData)
   queryClient.setQueryData(['agent-status'], { servers: {}, registeredServerIds: [] })
   queryClient.setQueryData(['demo-session'], { mode: 'production' })
+  queryClient.setQueryData(['onboarding'], onboarding)
   queryClient.setQueryData(['release-notes-status'], {
     currentVersion: '0.1.26',
     lastSeenVersion: '0.1.26',
@@ -208,6 +243,74 @@ afterEach(() => {
 })
 
 describe('App project persistence', () => {
+  it('offers onboarding only for a fresh empty workspace', async () => {
+    const emptyProject: ProjectState = {
+      ...persistedProject,
+      items: {}, placements: [], assignments: [], connections: [],
+    }
+    renderApp(emptyProject, {
+      enabled: true,
+      version: 1,
+      status: 'available',
+      sampleBatchId: null,
+      sampleInventoryRefs: [],
+      sampleAssignmentIds: [],
+      sampleConnectionIds: [],
+      walkthroughStep: 0,
+      startedAt: null,
+      completedAt: null,
+      eligibleForExample: true,
+      shouldInvite: true,
+      milestones: { created: false, placed: false, related: false, completed: false },
+      projectRevision: 1,
+    })
+
+    expect(await screen.findByRole('heading', { name: /See a working homelab/i })).toBeInTheDocument()
+  })
+
+  it('fits the example workspace once after its project snapshot is applied', async () => {
+    const emptyProject: ProjectState = {
+      ...persistedProject,
+      items: {}, placements: [], assignments: [], connections: [],
+    }
+    const availableStatus = {
+      enabled: true,
+      version: 1,
+      status: 'available',
+      sampleBatchId: null,
+      sampleInventoryRefs: [],
+      sampleAssignmentIds: [],
+      sampleConnectionIds: [],
+      walkthroughStep: 0,
+      startedAt: null,
+      completedAt: null,
+      eligibleForExample: true,
+      shouldInvite: true,
+      milestones: { created: false, placed: false, related: false, completed: false },
+      projectRevision: 1,
+    } satisfies Extract<OnboardingStatus, { enabled: true }>
+    loadOnboardingExampleMock.mockResolvedValueOnce({
+      project: { ...emptyProject, revision: 2 },
+      status: {
+        ...availableStatus,
+        status: 'sample_active',
+        sampleBatchId: 1,
+        shouldInvite: false,
+        eligibleForExample: false,
+        projectRevision: 2,
+      },
+    })
+    vi.spyOn(window, 'requestAnimationFrame').mockImplementation((callback) => {
+      callback(0)
+      return 1
+    })
+    renderApp(emptyProject, availableStatus)
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Explore example' }))
+
+    await vi.waitFor(() => expect(fitAllMock).toHaveBeenCalledOnce())
+  })
+
   it('records persisted inventory item updates in Undo and Redo history', async () => {
     const updatedProject: ProjectState = {
       ...persistedProject,

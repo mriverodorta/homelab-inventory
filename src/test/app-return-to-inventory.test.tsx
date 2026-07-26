@@ -155,6 +155,7 @@ function renderApp() {
   queryClient.setQueryData(['project'], project)
   queryClient.setQueryData(['agent-status'], { servers: {}, registeredServerIds: [] })
   queryClient.setQueryData(['demo-session'], { mode: 'production' })
+  queryClient.setQueryData(['onboarding'], { enabled: true, status: 'dismissed' })
   queryClient.setQueryData(['release-notes-status'], {
     currentVersion: '0.1.32',
     lastSeenVersion: '0.1.32',
