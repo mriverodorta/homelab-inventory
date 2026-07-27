@@ -70,7 +70,7 @@ describe('formatting helpers', () => {
     ])
   })
 
-  it('formats RAM compact specs as module composition and speed', () => {
+  it('formats one RAM stick capacity', () => {
     const item: InventoryItem = {
       id: 1,
       name: '32GB DDR4',
@@ -81,10 +81,10 @@ describe('formatting helpers', () => {
       },
     }
 
-    expect(formatRamSpec(item)).toBe('2x16GB')
+    expect(formatRamSpec(item)).toBe('32GB')
   })
 
-  it('formats RAM compact specs with mixed stick speeds', () => {
+  it('ignores removed paired-stick speed fields', () => {
     const item: InventoryItem = {
       id: 1,
       name: '32GB DDR4',
@@ -97,10 +97,10 @@ describe('formatting helpers', () => {
       },
     }
 
-    expect(formatRamSpec(item)).toBe('2x16GB / 3200/2666MHz')
+    expect(formatRamSpec(item)).toBe('32GB / 3200MT/s')
   })
 
-  it('formats RAM canvas labels from mixed stick speeds', () => {
+  it('formats RAM canvas labels for one physical stick', () => {
     const item: InventoryItem = {
       id: 1,
       name: '32GB DDR4',
@@ -113,12 +113,11 @@ describe('formatting helpers', () => {
       },
     }
 
-    expect(formatRamCanvasLabel(item)).toBe('32GB DDR4 2x16GB 3200/2666MHz')
+    expect(formatRamCanvasLabel(item)).toBe('32GB DDR4 3200MT/s')
     expect(formatRamCanvasParts(item)).toEqual([
       { label: 'capacity', value: '32GB' },
       { label: 'generation', value: 'DDR4' },
-      { label: 'module', value: '2x16GB' },
-      { label: 'speed', value: '3200/2666MHz' },
+      { label: 'speed', value: '3200MT/s' },
     ])
   })
 

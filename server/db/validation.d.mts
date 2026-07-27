@@ -4,3 +4,4 @@ export function assertAgentsStoreShape(store: any): void
 export function assertAgentStatusStoreShape(store: any): void
 export function assertLegacyProjectShape(project: any): void
 export function assertProjectShape(project: any): void
+export function assertRegistryStoreShape(store: any): void

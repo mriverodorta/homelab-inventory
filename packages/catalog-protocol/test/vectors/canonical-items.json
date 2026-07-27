@@ -1,0 +1,21 @@
+[
+  {
+    "name": "Intel casing and whitespace",
+    "left": {
+      "type": "cpu",
+      "name": "Core i5-10500T",
+      "manufacturer": "Intel Corporation",
+      "family": " Core   i5 ",
+      "model": "i5–10500T",
+      "specs": { "baseClock": " 2.3 GHz " }
+    },
+    "right": {
+      "type": "CPU",
+      "name": "Core i5-10500T",
+      "manufacturer": "INTEL",
+      "family": "core i5",
+      "model": "I5-10500T",
+      "specs": { "baseClock": "2.3GHz" }
+    }
+  }
+]

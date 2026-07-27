@@ -1,5 +1,7 @@
 import { AlertTriangle } from 'lucide-react'
-import { useId, useRef, useState, type FormEvent, type ReactNode } from 'react'
+import { useEffect, useId, useRef, useState, type FormEvent, type ReactNode } from 'react'
+import { CatalogSourcePanel } from '@/components/inventory/catalog-source-panel'
+import { PrivateTemplatePanel } from '@/components/inventory/private-template-panel'
 import {
   CpuCompatibilityFields,
   ExpansionCompatibilityFields,
@@ -12,7 +14,7 @@ import {
   type InventoryDialogFormErrors,
   type InventoryDialogTabId,
 } from '@/components/inventory-form/dialog-tab-policy'
-import { FieldError, FieldLabel, TextField } from '@/components/inventory-form/field-primitives'
+import { FieldError, FieldLabel } from '@/components/inventory-form/field-primitives'
 import {
   createInventoryFormValues,
   inventoryFormValuesToInput,
@@ -50,6 +52,11 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import type { InventoryItemInput } from '@/lib/db'
 import type { InventoryType } from '@/types/inventory'
+import {
+  DEFAULT_REGISTRY_STATE,
+  type InventorySourceTab,
+  type RegistryState,
+} from '@/types/registry'
 
 const DIALOG_TAB_LABELS: Record<InventoryDialogTabId, string> = {
   specs: 'Specs',
@@ -59,15 +66,32 @@ const DIALOG_TAB_LABELS: Record<InventoryDialogTabId, string> = {
   smart: 'Smart',
 }
 
+function availableDefaultSource(registry: RegistryState): InventorySourceTab {
+  const preferred = registry.settings.defaultInventorySource
+  if (preferred === 'catalog' && (registry.settings.mode === 'disabled' || !registry.snapshot)) return 'manual'
+  return preferred
+}
+
 export function InventoryItemDialog({
   open,
   onOpenChange,
   onCreate,
+  registry = DEFAULT_REGISTRY_STATE,
+  onDuplicatePrivateTemplate,
+  onDeletePrivateTemplate,
+  onOpenRegistrySettings,
+  onCreateCatalogItem,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
   onCreate: (item: InventoryItemInput, quantity: number) => Promise<void>
+  registry?: RegistryState
+  onDuplicatePrivateTemplate?: (id: number) => Promise<void>
+  onDeletePrivateTemplate?: (id: number) => Promise<void>
+  onOpenRegistrySettings?: () => void
+  onCreateCatalogItem?: (templateKey: string, quantity: number) => Promise<void>
 }) {
+  const [activeSource, setActiveSource] = useState<InventorySourceTab>(() => availableDefaultSource(registry))
   const [values, setValues] = useState<InventoryFormValues>(() => createInventoryFormValues('server'))
   const [quantity, setQuantity] = useState('1')
   const [errors, setErrors] = useState<InventoryDialogFormErrors>({})
@@ -82,6 +106,12 @@ export function InventoryItemDialog({
   const quantityErrorId = useId()
   const selectMenuOpenRef = useRef(false)
   const lastSelectInteractionRef = useRef(0)
+  const wasOpenRef = useRef(false)
+
+  useEffect(() => {
+    if (open && !wasOpenRef.current) setActiveSource(availableDefaultSource(registry))
+    wasOpenRef.current = open
+  }, [open, registry])
 
   function resetDraft() {
     selectMenuOpenRef.current = false
@@ -95,6 +125,7 @@ export function InventoryItemDialog({
     setDirty(false)
     setDiscardOpen(false)
     setSmartDisableOpen(false)
+    setActiveSource(availableDefaultSource(registry))
     setFormKey((current) => current + 1)
   }
 
@@ -197,6 +228,20 @@ export function InventoryItemDialog({
     }
   }
 
+  async function handleTemplateCreate(item: InventoryItemInput, templateQuantity: number) {
+    setPending(true)
+    setError(null)
+    try {
+      await onCreate(item, templateQuantity)
+      resetDraft()
+      onOpenChange(false)
+    } catch (createError) {
+      setError(createError instanceof Error ? createError.message : 'Template could not be added.')
+    } finally {
+      setPending(false)
+    }
+  }
+
   const tabs = getInventoryDialogTabs(values.type)
   const sharedFieldProps = {
     values,
@@ -212,18 +257,7 @@ export function InventoryItemDialog({
     } else if (values.type === 'cpu') {
       activeTabContent = <CpuCompatibilityFields {...sharedFieldProps} />
     } else if (values.type === 'ram') {
-      activeTabContent = (
-        <TextField
-          label="Module count"
-          name="moduleCount"
-          value={values.moduleCount}
-          type="number"
-          min={1}
-          placeholder="2"
-          error={errors.moduleCount}
-          onChange={(moduleCount) => updateValues({ moduleCount })}
-        />
-      )
+      activeTabContent = <InventoryTypeFields type="ram" {...sharedFieldProps} />
     } else {
       activeTabContent = <ExpansionCompatibilityFields {...sharedFieldProps} />
     }
@@ -257,13 +291,15 @@ export function InventoryItemDialog({
           onChange={updateValues}
           onSelectOpenChange={handleSelectOpenChange}
         />
-        <InventoryTypeFields
-          type={values.type}
-          values={values}
-          errors={errors}
-          onChange={updateValues}
-          onSelectOpenChange={handleSelectOpenChange}
-        />
+        {values.type === 'ram' ? null : (
+          <InventoryTypeFields
+            type={values.type}
+            values={values}
+            errors={errors}
+            onChange={updateValues}
+            onSelectOpenChange={handleSelectOpenChange}
+          />
+        )}
 
         <FieldLabel>
           <span>Quantity</span>
@@ -301,53 +337,92 @@ export function InventoryItemDialog({
   return (
     <>
       <Dialog open={open} onOpenChange={handleDialogOpenChange}>
-        <DialogContent className="!flex max-h-[calc(100dvh-2rem)] !flex-col gap-0 overflow-hidden bg-[#fffdf8] p-0 text-[#20242c] sm:max-w-2xl">
+        <DialogContent className="!flex max-h-[calc(100dvh-2rem)] !flex-col gap-0 overflow-hidden bg-[#fffdf8] p-0 text-[#20242c] sm:max-w-3xl">
           <DialogHeader className="border-b border-[#ded8ce] px-4 py-4">
             <DialogTitle>Add inventory item</DialogTitle>
           </DialogHeader>
-          <form ref={formRef} key={formKey} noValidate onSubmit={handleSubmit} onChange={markDirty} className="flex min-h-0 flex-1 flex-col">
-            <div className="shrink-0 border-b border-[#ded8ce] px-4 py-3">
-              <FieldLabel>
-                <span>Type</span>
-                <Select value={values.type} onValueChange={(value) => changeType(value as InventoryType)} onOpenChange={handleSelectOpenChange}>
-                  <SelectTrigger className={fieldClassName()} aria-label="Inventory type"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    {INVENTORY_TYPES.map((inventoryType) => <SelectItem key={inventoryType} value={inventoryType}>{TYPE_LABELS[inventoryType]}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-              </FieldLabel>
+          <Tabs value={activeSource} onValueChange={(value) => setActiveSource(value as InventorySourceTab)} className="min-h-0 flex-1 gap-0 overflow-hidden">
+            <div className="shrink-0 overflow-x-auto overflow-y-hidden border-b border-[#ded8ce] px-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+              <TabsList variant="line" className="h-12 min-w-max justify-start gap-6 p-0">
+                <TabsTrigger value="catalog" className="h-12 flex-none px-1">Catalog</TabsTrigger>
+                <TabsTrigger value="manual" className="h-12 flex-none px-1">Manual</TabsTrigger>
+                <TabsTrigger value="private-templates" className="h-12 flex-none px-1">Private templates</TabsTrigger>
+              </TabsList>
             </div>
-
-            <Tabs
-              value={activeTab}
-              onValueChange={(tab) => setActiveTab(tab as InventoryDialogTabId)}
-              className="min-h-0 flex-1 gap-0 overflow-hidden"
-            >
-              <div className="shrink-0 overflow-x-auto overflow-y-hidden border-b border-[#ded8ce] px-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-                <TabsList variant="line" className="h-11 min-w-max justify-start gap-5 p-0">
-                  {tabs.map((tab) => (
-                    <TabsTrigger key={tab} value={tab} className="h-11 flex-none px-1 uppercase tracking-[0.08em]">
-                      {DIALOG_TAB_LABELS[tab]}
-                    </TabsTrigger>
-                  ))}
-                </TabsList>
-              </div>
-              <TabsContent
-                key={activeTab}
-                value={activeTab}
-                className="m-0 min-h-0 overflow-y-auto px-4 py-4"
-              >
-                <div className="space-y-4">
-                  {activeTabContent}
-                  {error ? <div className="rounded-md border border-[#dfb3a5] bg-[#fff4ef] px-3 py-2 text-sm text-[#8b3322]">{error}</div> : null}
+            <TabsContent value="catalog" className="m-0 min-h-0 flex-1 overflow-y-auto">
+              <CatalogSourcePanel
+                registry={registry}
+                onCreate={onCreateCatalogItem ? async (templateKey, catalogQuantity) => {
+                  setPending(true)
+                  setError(null)
+                  try {
+                    await onCreateCatalogItem(templateKey, catalogQuantity)
+                    resetDraft()
+                    onOpenChange(false)
+                  } catch (createError) {
+                    setError(createError instanceof Error ? createError.message : 'Catalog item could not be added.')
+                    throw createError
+                  } finally {
+                    setPending(false)
+                  }
+                } : undefined}
+                onOpenSettings={onOpenRegistrySettings ? () => {
+                  resetDraft()
+                  onOpenChange(false)
+                  onOpenRegistrySettings()
+                } : undefined}
+              />
+            </TabsContent>
+            <TabsContent value="private-templates" className="m-0 min-h-0 flex-1 overflow-hidden">
+              <PrivateTemplatePanel
+                templates={registry.privateTemplates}
+                pending={pending}
+                onCreate={handleTemplateCreate}
+                onDuplicate={onDuplicatePrivateTemplate}
+                onDelete={onDeletePrivateTemplate}
+              />
+              {error ? <div className="mx-4 mb-4 rounded-md border border-[#dfb3a5] bg-[#fff4ef] px-3 py-2 text-sm text-[#8b3322]">{error}</div> : null}
+            </TabsContent>
+            <TabsContent value="manual" className="m-0 min-h-0 flex-1 overflow-hidden">
+              <form ref={formRef} key={formKey} noValidate onSubmit={handleSubmit} onChange={markDirty} className="flex h-full min-h-0 flex-col">
+                <div className="shrink-0 border-b border-[#ded8ce] px-4 py-3">
+                  <FieldLabel>
+                    <span>Type</span>
+                    <Select value={values.type} onValueChange={(value) => changeType(value as InventoryType)} onOpenChange={handleSelectOpenChange}>
+                      <SelectTrigger className={fieldClassName()} aria-label="Inventory type"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        {INVENTORY_TYPES.map((inventoryType) => <SelectItem key={inventoryType} value={inventoryType}>{TYPE_LABELS[inventoryType]}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                  </FieldLabel>
                 </div>
-              </TabsContent>
-            </Tabs>
+                <Tabs value={activeTab} onValueChange={(tab) => setActiveTab(tab as InventoryDialogTabId)} className="min-h-0 flex-1 gap-0 overflow-hidden">
+                  <div className="shrink-0 overflow-x-auto overflow-y-hidden border-b border-[#ded8ce] px-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                    <TabsList variant="line" className="h-11 min-w-max justify-start gap-5 p-0">
+                      {tabs.map((tab) => (
+                        <TabsTrigger key={tab} value={tab} className="h-11 flex-none px-1 uppercase tracking-[0.08em]">{DIALOG_TAB_LABELS[tab]}</TabsTrigger>
+                      ))}
+                    </TabsList>
+                  </div>
+                  <TabsContent key={activeTab} value={activeTab} className="m-0 min-h-0 overflow-y-auto px-4 py-4">
+                    <div className="space-y-4">
+                      {activeTabContent}
+                      {error ? <div className="rounded-md border border-[#dfb3a5] bg-[#fff4ef] px-3 py-2 text-sm text-[#8b3322]">{error}</div> : null}
+                    </div>
+                  </TabsContent>
+                </Tabs>
+                <DialogFooter className="!mx-0 !mb-0 shrink-0 rounded-b-xl border-t border-[#ded8ce] bg-[#f5f0e8] px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+                  <Button type="button" variant="outline" onClick={requestClose}>Cancel</Button>
+                  <Button type="submit" disabled={pending}>{pending ? 'Adding...' : 'Add item'}</Button>
+                </DialogFooter>
+              </form>
+            </TabsContent>
+          </Tabs>
+          {activeSource !== 'manual' ? (
             <DialogFooter className="!mx-0 !mb-0 shrink-0 rounded-b-xl border-t border-[#ded8ce] bg-[#f5f0e8] px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
-              <Button type="button" variant="outline" onClick={requestClose}>Cancel</Button>
-              <Button type="submit" disabled={pending}>{pending ? 'Adding...' : 'Add item'}</Button>
+              <Button type="button" variant="outline" onClick={requestClose}>Close</Button>
             </DialogFooter>
-          </form>
+          ) : null}
         </DialogContent>
       </Dialog>
       <Dialog open={discardOpen} onOpenChange={setDiscardOpen}>

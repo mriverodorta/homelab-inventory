@@ -1,0 +1,117 @@
+import { describe, expect, it } from 'vitest'
+import { createRegistryStore } from './model.mjs'
+import { discoverContributionCandidates } from './contribution-service.mjs'
+
+function fixture(input) {
+  const items = Array.isArray(input) ? input : [input]
+  let registry = createRegistryStore()
+  registry.settings.mode = 'connected'
+  registry.settings.automaticContributions = true
+  const store = {
+    getRegistryState: () => structuredClone(registry),
+    getProject: () => ({ items: Object.fromEntries(items.map((item) => [`${item.type}:${String(item.id)}`, item])) }),
+    registryTransaction(mutator) {
+      const draft = structuredClone(registry)
+      mutator(draft)
+      registry = draft
+      return this.getRegistryState()
+    },
+  }
+  return store
+}
+
+describe('contribution discovery', () => {
+  it('queues only sanitized reusable hardware fields and deduplicates subsequent scans', async () => {
+    const store = fixture({
+      id: 1,
+      key: 'server:1',
+      type: 'server',
+      name: 'Example Mini Server',
+      manufacturer: 'Example',
+      model: 'M1',
+      specs: { formFactor: 'Mini' },
+      properties: { customName: 'secret-host', lanIp: '192.168.1.20', tailscaleIp: '100.64.0.2' },
+      notes: 'serial ABC123',
+      smart: { macAddress: 'aa:bb:cc:dd:ee:ff' },
+    })
+    expect(await discoverContributionCandidates(store, new Date('2026-07-26T12:00:00.000Z'))).toMatchObject({ queued: 1 })
+    const record = store.getRegistryState().contributionOutbox[0]
+    expect(JSON.stringify(record.payload)).not.toMatch(/secret-host|192\.168|100\.64|ABC123|aa:bb/i)
+    expect(record.itemType).toBe('server')
+    expect(record.itemId).toBe(1)
+    expect(await discoverContributionCandidates(store)).toMatchObject({ queued: 0 })
+  })
+
+  it('does nothing when explicit connected contribution consent is absent', async () => {
+    const store = fixture({ id: 1, type: 'cpu', name: 'Example CPU' })
+    store.registryTransaction((draft) => { draft.settings.automaticContributions = false })
+    expect(await discoverContributionCandidates(store)).toEqual({ queued: 0, skipped: 0 })
+  })
+
+  it('does not queue content already present in the signed registry digest index', async () => {
+    const store = fixture({ id: 1, type: 'cpu', name: 'Example CPU', manufacturer: 'Example', model: 'C1' })
+    const { contentHash } = await import('../../packages/catalog-protocol/src/index.ts')
+      .then(({ projectCatalogItem }) => projectCatalogItem(store.getProject().items['cpu:1']))
+    expect(await discoverContributionCandidates(store, new Date(), new Set([contentHash]))).toMatchObject({ queued: 0 })
+  })
+
+  it('collapses identical physical switches into one candidate while retaining local sources', async () => {
+    const store = fixture([1, 2, 3].map((id) => ({
+      id,
+      type: 'switch',
+      name: `Rack switch ${String(id)}`,
+      manufacturer: 'NETGEAR',
+      model: 'GS108T',
+      specs: { management: 'Smart managed' },
+      ports: [{ id: 1, type: 'rj45', speed: '1G', slotNumber: 1 }],
+    })))
+
+    expect(await discoverContributionCandidates(store)).toMatchObject({ queued: 1 })
+    const registry = store.getRegistryState()
+    expect(registry.contributionOutbox).toHaveLength(1)
+    expect(registry.contributionOutbox[0].sources).toEqual([
+      { itemType: 'switch', itemId: 1 },
+      { itemType: 'switch', itemId: 2 },
+      { itemType: 'switch', itemId: 3 },
+    ])
+    expect(registry.contributionGroups[0].sources).toHaveLength(3)
+  })
+
+  it('auto-links every physical copy only for an exact published registry digest', async () => {
+    const switches = [1, 2].map((id) => ({
+      id,
+      type: 'switch',
+      name: `Private rack name ${String(id)}`,
+      manufacturer: 'NETGEAR',
+      model: 'GS108T',
+      specs: { management: 'Smart managed' },
+      ports: [{ id: 1, type: 'rj45', speed: '1G', slotNumber: 1 }],
+    }))
+    const store = fixture(switches)
+    store.registryTransaction((draft) => {
+      draft.sources.push({ id: 1, name: 'Official', origin: 'https://registry.example', enabled: true })
+      draft.snapshot = { sourceId: 1, revision: 4 }
+    })
+    const projection = await import('../../packages/catalog-protocol/src/index.ts')
+      .then(({ projectCatalogItem }) => projectCatalogItem(switches[0]))
+    const known = new Map([[projection.contentHash, {
+      identityHash: projection.identityHash,
+      templateKey: 'netgear-gs108t',
+      revision: 4,
+      state: 'published',
+    }]])
+
+    expect(await discoverContributionCandidates(store, new Date('2026-07-27T12:00:00.000Z'), known))
+      .toMatchObject({ queued: 0 })
+    expect(store.getRegistryState().links).toEqual([
+      expect.objectContaining({ itemType: 'switch', itemId: 1, templateKey: 'netgear-gs108t', importedContentHash: projection.contentHash }),
+      expect.objectContaining({ itemType: 'switch', itemId: 2, templateKey: 'netgear-gs108t', importedContentHash: projection.contentHash }),
+    ])
+  })
+
+  it('withholds unidentified generic storage from contribution delivery', async () => {
+    const store = fixture({ id: 1, type: 'storage', name: '1TB NVMe', specs: { capacityGb: 1024, interface: 'NVMe', formFactor: '2280' } })
+    expect(await discoverContributionCandidates(store)).toMatchObject({ queued: 0 })
+    expect(store.getRegistryState().contributionOutbox).toEqual([])
+  })
+})

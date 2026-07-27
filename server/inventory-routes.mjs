@@ -1,5 +1,6 @@
 import { InventoryLifecycleError } from './db/inventory-lifecycle.mjs'
 import { isRelationalId } from './db/relational-ids.mjs'
+import { computeCatalogDigests } from '../packages/catalog-protocol/src/index.ts'
 
 function lifecycleErrorResponse(response, error) {
   if (!(error instanceof InventoryLifecycleError)) throw error
@@ -54,7 +55,12 @@ export function registerInventoryRoutes(app, { withStore }) {
 
   app.put('/api/inventory/items/:type/:id', (request, response) => {
     runWithInventoryStore(withStore, request, response, 'Unable to update inventory item.', async (store) => {
-      response.json(store.updateInventoryItem(itemRef(request), request.body?.item ?? request.body))
+      const ref = itemRef(request)
+      const input = request.body?.item ?? request.body
+      const project = store.updateInventoryItem(ref, input)
+      const { contentHash } = await computeCatalogDigests({ ...input, type: ref.type })
+      store.reconcileCatalogLink(ref, contentHash)
+      response.json(project)
     })
   })
 

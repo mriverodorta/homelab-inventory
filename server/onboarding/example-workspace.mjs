@@ -50,15 +50,27 @@ const inventory = [
     },
   },
   {
-    type: 'ram', id: 1, name: '16 GB DDR4', manufacturer: 'Fictional Memory Works',
+    type: 'ram', id: 1, name: '8GB DDR4', manufacturer: 'Fictional Memory Works',
+    model: 'FM8G4S3200',
     family: 'DDR4',
     specs: {
-      capacityGb: 16,
-      modules: '2x8GB',
-      moduleCount: 2,
+      capacityGb: 8,
       generation: 'DDR4',
-      speedMhz: 3200,
       speedMt: 3200,
+      formFactor: 'SO-DIMM',
+      ecc: false,
+    },
+  },
+  {
+    type: 'ram', id: 2, name: '8GB DDR4', manufacturer: 'Fictional Memory Works',
+    model: 'FM8G4S3200',
+    family: 'DDR4',
+    specs: {
+      capacityGb: 8,
+      generation: 'DDR4',
+      speedMt: 3200,
+      formFactor: 'SO-DIMM',
+      ecc: false,
     },
   },
   {
@@ -116,7 +128,10 @@ export const EXAMPLE_WORKSPACE_TEMPLATE = Object.freeze({
   ],
   assignments: [
     { id: 1, hostType: 'server', hostId: 1, itemType: 'cpu', itemId: 1, type: 'cpu', assignedAt },
-    { id: 2, hostType: 'server', hostId: 1, itemType: 'ram', itemId: 1, type: 'ram', assignedAt },
+    {
+      id: 2, hostType: 'server', hostId: 1, itemType: 'ram', itemId: 1, type: 'ram', assignedAt,
+      allocation: { resourceType: 'memory', positions: [0] },
+    },
     {
       id: 3,
       hostType: 'server',
@@ -128,6 +143,10 @@ export const EXAMPLE_WORKSPACE_TEMPLATE = Object.freeze({
       allocation: { resourceType: 'storage', groupId: 1, positions: [0] },
     },
     { id: 4, hostType: 'server', hostId: 1, itemType: 'powerAdapter', itemId: 1, type: 'powerAdapter', assignedAt },
+    {
+      id: 5, hostType: 'server', hostId: 1, itemType: 'ram', itemId: 2, type: 'ram', assignedAt,
+      allocation: { resourceType: 'memory', positions: [1] },
+    },
   ],
   connections: [
     {

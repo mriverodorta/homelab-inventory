@@ -33,6 +33,9 @@ export type NormalizedRamRequirements = {
   moduleCapacityGb?: number
   generation?: string
   speedMt?: number
+  formFactor?: string
+  ecc?: boolean
+  rank?: string
 }
 
 export type NormalizedStorageRequirements = PcieDescriptor & {

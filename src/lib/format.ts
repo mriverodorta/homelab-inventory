@@ -87,18 +87,6 @@ export function formatStorageCanvasLabel(item: InventoryItem): string {
 }
 
 export function formatRamModuleCapacity(capacityGb: number): string {
-  if (capacityGb === 64) {
-    return '2x32GB'
-  }
-
-  if (capacityGb === 32) {
-    return '2x16GB'
-  }
-
-  if (capacityGb === 16) {
-    return '2x8GB'
-  }
-
   return `${capacityGb}GB`
 }
 
@@ -112,17 +100,12 @@ export function formatRamSpec(item: InventoryItem): string {
 
 export function formatRamSpeedPair(item: InventoryItem): string {
   const speedMt = item.specs?.speedMt
-  const secondarySpeedMt = item.specs?.secondarySpeedMt
 
   if (typeof speedMt !== 'number') {
     return ''
   }
 
-  if (typeof secondarySpeedMt === 'number' && secondarySpeedMt !== speedMt) {
-    return `${speedMt}/${secondarySpeedMt}MHz`
-  }
-
-  return `${speedMt}MHz`
+  return `${speedMt}MT/s`
 }
 
 export function formatRamCanvasLabel(item: InventoryItem): string {
@@ -138,8 +121,8 @@ export function formatRamCanvasParts(item: InventoryItem): RamCanvasPart[] {
   const parts = [
     typeof capacityGb === 'number' ? { label: 'capacity', value: `${capacityGb}GB` } : null,
     typeof generation === 'string' ? { label: 'generation', value: generation } : null,
-    typeof capacityGb === 'number'
-      ? { label: 'module', value: formatRamModuleCapacity(capacityGb) }
+    typeof item.specs?.formFactor === 'string'
+      ? { label: 'module', value: item.specs.formFactor }
       : null,
     speed ? { label: 'speed', value: speed } : null,
   ].filter((part): part is RamCanvasPart => part !== null)

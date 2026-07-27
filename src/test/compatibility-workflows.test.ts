@@ -79,7 +79,7 @@ function ram(key: string, generation = 'DDR4'): InventoryItem {
     key,
     name: key,
     type: 'ram',
-    specs: { capacityGb: 32, moduleCount: 2, generation, speedMt: 3600 },
+    specs: { capacityGb: 32, generation, speedMt: 3600 },
   }
 }
 
@@ -532,7 +532,7 @@ describe('transactional compatibility workflows', () => {
       [
         assignment(1, firstHost.key!, firstRam, '2026-07-19T01:00:00.000Z', {
           resourceType: 'memory',
-          positions: [9, 10],
+          positions: [9],
         }),
         assignment(2, secondHost.key!, secondRam, '2026-07-19T02:00:00.000Z'),
       ],
@@ -543,8 +543,8 @@ describe('transactional compatibility workflows', () => {
     expect(result.ok).toBe(true)
     if (!result.ok) return
     expect(result.project.assignments).toEqual(expect.arrayContaining([
-      expect.objectContaining({ id: 1, serverId: secondHost.key, allocation: { resourceType: 'memory', positions: [0, 1] } }),
-      expect.objectContaining({ id: 2, serverId: firstHost.key, allocation: { resourceType: 'memory', positions: [0, 1] } }),
+      expect.objectContaining({ id: 1, serverId: secondHost.key, allocation: { resourceType: 'memory', positions: [0] } }),
+      expect.objectContaining({ id: 2, serverId: firstHost.key, allocation: { resourceType: 'memory', positions: [0] } }),
     ]))
   })
 

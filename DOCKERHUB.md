@@ -60,6 +60,8 @@ Inventory items can be created from the web interface. Once hardware exists in t
 
 The container serves the web app and writes changes asynchronously to the mounted data directory.
 
+Add Hardware also supports reusable private templates and an optional verified hardware catalog. Connected catalog use and automatic sanitized contributions are explicit opt-ins; Disabled mode makes no catalog requests, and Offline file mode verifies a downloaded signed snapshot without outbound access.
+
 ## Hardware Compatibility
 
 Homelab Inventory validates documented CPU, RAM, storage, GPU, and network-card requirements when components are assigned:
@@ -70,7 +72,13 @@ Homelab Inventory validates documented CPU, RAM, storage, GPU, and network-card 
 
 Compatibility inspector tabs explain requirements, host capabilities, and allocations. Audit highlights assigned hardware with incompatible or incomplete data. Existing assignments are preserved during schema migration, including legacy combinations that would be blocked if newly created or changed.
 
-Compatibility fields are entered when inventory is created or edited. The app does not perform online hardware lookups or include a universal hardware database, so ongoing maintenance is limited to new hardware and corrections.
+Compatibility fields are entered when inventory is created or edited. Users can also reuse private templates or import verified definitions from the optional official catalog. Catalog search always runs against the local index.
+
+## Registry And Privacy
+
+Eligible opt-in contributions are normalized by hardware category and deduplicated before delivery. Identical physical copies remain separate local inventory records but create one contribution candidate. Private display names, device properties, addresses, serials, notes, assignments, topology, agents, and smart-device instance configuration are excluded. Different board variants and RAM speeds remain separate products, while unidentified generic storage and ambiguous records are withheld locally.
+
+Registry mode defaults to **Disabled**. **Offline file** mode verifies a signed immutable catalog without making outbound requests. **Connected** mode communicates only with the fixed official registry endpoint, keeps catalog search local, and retains the last-known-good catalog if verification fails. Automatic contributions require separate explicit consent and never block an inventory save.
 
 ## Normal Production
 
@@ -138,7 +146,9 @@ The data layout is:
     project.json
     agents.json
     agent-status.json
+    registry.json
   backups/
+  registry/
 ```
 
 Only one app container should write to the same mounted `/data` directory.
@@ -157,6 +167,8 @@ New package versions promoted through `stable` publish `stable`, immutable `X.Y.
 The app tracks a database schema version in `/data/meta.json`. When schema changes are introduced, migrations run on startup and create backups before modifying data.
 
 Schema 7 normalizes hardware compatibility profiles and calculates deterministic allocations for compatible existing assignments. It preserves all existing assignments and reports incomplete or incompatible legacy data through inspectors and Audit rather than removing hardware.
+
+Schema 16 converts legacy RAM kits into one inventory record and assignment per physical stick. The migration preserves slot positions and total capacity, clears obsolete RAM catalog links, refuses ambiguous conversions, and records a safe migration summary. Review the full [migration guide](https://github.com/mriverodorta/homelab-inventory/blob/main/docs/MIGRATIONS.md) before upgrading across this schema.
 
 Back up the complete mounted `/data` directory before upgrading across schema versions. The automatic migration backup is useful for recovery, but it should not be the only copy of operational inventory data.
 

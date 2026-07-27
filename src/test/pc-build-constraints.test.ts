@@ -45,8 +45,9 @@ function inventory(): InventoryItem[] {
     },
     { id: 1, type: 'cpu', name: 'Ryzen CPU', specs: { socket: 'AM5', generation: 'Zen 4', tdpWatts: 120 } },
     { id: 1, type: 'cpuCooler', name: 'AM5 cooler', specs: { socket: 'AM5', maxTdpWatts: 180 } },
-    { id: 1, type: 'ram', name: '32GB DDR5', specs: { capacityGb: 32, moduleCount: 2, generation: 'DDR5', speedMt: 6000 } },
-    { id: 2, type: 'ram', name: 'Second 32GB DDR5', specs: { capacityGb: 32, moduleCount: 2, generation: 'DDR5', speedMt: 6000 } },
+    { id: 1, type: 'ram', name: '16GB DDR5', specs: { capacityGb: 16, generation: 'DDR5', speedMt: 6000 } },
+    { id: 2, type: 'ram', name: 'Second 16GB DDR5', specs: { capacityGb: 16, generation: 'DDR5', speedMt: 6000 } },
+    { id: 3, type: 'ram', name: 'Third 16GB DDR5', specs: { capacityGb: 16, generation: 'DDR5', speedMt: 6000 } },
     { id: 1, type: 'storage', name: '1TB NVMe', specs: { interface: 'NVMe', formFactor: '2280' } },
     { id: 2, type: 'storage', name: 'Second NVMe', specs: { interface: 'NVMe', formFactor: '2280' } },
     { id: 1, type: 'powerSupply', name: '750W PSU' },
@@ -79,7 +80,7 @@ describe('PC Build assignment constraints', () => {
     expect(withStorage.assignments).toEqual(expect.arrayContaining([
       expect.objectContaining({ type: 'motherboard', allocation: { resourceType: 'motherboard', positions: [0] } }),
       expect.objectContaining({ type: 'cpu', allocation: { resourceType: 'cpu', positions: [0] } }),
-      expect.objectContaining({ type: 'ram', allocation: { resourceType: 'memory', positions: [0, 1] } }),
+      expect.objectContaining({ type: 'ram', allocation: { resourceType: 'memory', positions: [0] } }),
       expect.objectContaining({ type: 'storage', allocation: { resourceType: 'storage', groupId: 1, positions: [0] } }),
     ]))
   })
@@ -91,8 +92,9 @@ describe('PC Build assignment constraints', () => {
       ignoredWarningIds: [],
     }
     const withBoard = assign(empty, 'pcBuild:1', 'motherboard:1')
-    const withRam = assign(withBoard, 'pcBuild:1', 'ram:1')
-    const result = tryAssignComponent(withRam, 'pcBuild:1', 'ram:2')
+    const withFirstRam = assign(withBoard, 'pcBuild:1', 'ram:1')
+    const withSecondRam = assign(withFirstRam, 'pcBuild:1', 'ram:2')
+    const result = tryAssignComponent(withSecondRam, 'pcBuild:1', 'ram:3')
 
     expect(result.ok).toBe(false)
     expect(result.ok ? '' : result.message).toBe('No available memory positions can satisfy this component.')

@@ -216,17 +216,17 @@ export function normalizeComponentRequirements(item) {
 
   if (item?.type === 'ram') {
     const capacityGb = optionalNumber(specs.capacityGb)
-    const moduleCount = optionalNumber(specs.moduleCount)
-    const hasModuleCapacity =
-      capacityGb !== undefined && moduleCount !== undefined && moduleCount !== 0
 
     return {
       type: 'ram',
       capacityGb,
-      moduleCount,
-      moduleCapacityGb: hasModuleCapacity ? capacityGb / moduleCount : undefined,
+      moduleCount: 1,
+      moduleCapacityGb: capacityGb,
       generation: normalizeRamGeneration(specs.generation),
       speedMt: optionalNumber(specs.speedMt),
+      formFactor: optionalString(specs.formFactor),
+      ecc: typeof specs.ecc === 'boolean' ? specs.ecc : undefined,
+      rank: optionalString(specs.rank),
     }
   }
 
@@ -645,19 +645,13 @@ function evaluateMemory(hostCapabilities, requirements, assignments, items, comp
   if (support?.slots === undefined) {
     addMissing(findings, 'host.memory.slots', 'Host memory slot count is not recorded.')
   } else {
-    const knownCounts = normalized
-      .map((entry) => entry.moduleCount)
-      .filter((value) => value !== undefined)
-    const moduleCount = knownCounts.reduce((total, value) => total + value, 0)
-    if (knownCounts.length !== normalized.length) {
-      addMissing(findings, 'component.memory.moduleCount', 'Memory module count is not recorded.')
-    }
+    const moduleCount = normalized.length
     if (moduleCount > support.slots) {
       addFinding(findings, {
         code: 'memory.slots.exceeded',
         severity: 'error',
         message: `${moduleCount} memory modules exceed the host's ${support.slots} slots.`,
-        field: 'component.memory.moduleCount',
+        field: 'component.memory.slots',
       })
     }
   }
@@ -1141,9 +1135,7 @@ function resultWithFinding(result, finding) {
 
 function allocationSize(requirements) {
   if (requirements.type === 'ram') {
-    return Number.isInteger(requirements.moduleCount) && requirements.moduleCount > 0
-      ? requirements.moduleCount
-      : undefined
+    return 1
   }
   if (requirements.type === 'storage') {
     return 1
@@ -1351,7 +1343,7 @@ function pcBuildResourceDefinition(component, motherboard, hostCapabilities) {
     return {
       resourceType: 'memory',
       count: hostCapabilities.memory?.slots,
-      size: requirements.moduleCount,
+      size: 1,
     }
   }
   if (component.type === 'storage') {

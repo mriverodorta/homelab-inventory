@@ -1,8 +1,9 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import {
   Cable,
   Boxes,
   Cpu,
+  Database,
   FolderCog,
   Info,
   Bug,
@@ -23,6 +24,8 @@ import {
   SettingsSection,
 } from '@/components/settings/settings-primitives'
 import { Button } from '@/components/ui/button'
+import { CatalogSourceStatus } from '@/components/settings/catalog-source-status'
+import { CatalogUpdateReview } from '@/components/inventory/catalog-update-review'
 import {
   Dialog,
   DialogContent,
@@ -47,8 +50,14 @@ import {
 import type { UpdateStatus } from '@/lib/update-api'
 import type { OnboardingStatus } from '@/lib/onboarding-api'
 import { cn } from '@/lib/utils'
+import {
+  DEFAULT_REGISTRY_STATE,
+  type PrivateTemplatePack,
+  type RegistrySettings,
+  type RegistryState,
+} from '@/types/registry'
 
-type SettingsCategory = 'general' | 'project' | 'updates' | 'feedback' | 'about'
+type SettingsCategory = 'general' | 'project' | 'registry' | 'updates' | 'feedback' | 'about'
 type SaveStatus = 'saved' | 'saving' | 'error'
 
 export type SettingsDialogProps = {
@@ -71,6 +80,9 @@ export type SettingsDialogProps = {
   updateClearingSkip: boolean
   onboardingStatus: OnboardingStatus | null
   onboardingBusy: boolean
+  registry?: RegistryState
+  registryLoading?: boolean
+  registrySaving?: boolean
   onOpenChange: (open: boolean) => void
   onProjectNameChange: (name: string) => void
   onInventoryVisibleChange: (visible: boolean) => void
@@ -92,6 +104,19 @@ export type SettingsDialogProps = {
   onReviewExample: () => void
   onRestartOnboarding: () => void
   onDismissOnboarding: () => void
+  onRegistrySettingsChange?: (
+    settings: Partial<Pick<RegistrySettings, 'mode' | 'defaultInventorySource' | 'automaticContributions'>>,
+    expectedUpdatedAt: string | null,
+  ) => void | Promise<void>
+  onDeletePrivateTemplate?: (id: number) => void
+  onExportPrivateTemplates?: () => Promise<PrivateTemplatePack>
+  onImportPrivateTemplates?: (pack: unknown) => Promise<{ imported: number; skipped: number }>
+  onImportOfficialCatalog?: (artifact: unknown) => Promise<void>
+  onRefreshOfficialCatalog?: () => Promise<void>
+  onApplyCatalogUpdate?: (linkId: number) => Promise<void>
+  onDeliverRegistryContributions?: () => Promise<void>
+  onRevokeRegistryContributions?: () => Promise<void>
+  onRotateRegistryContributionKey?: () => Promise<void>
 }
 
 const categories: Array<{
@@ -102,6 +127,7 @@ const categories: Array<{
 }> = [
   { id: 'general', label: 'General', description: 'Browser workspace preferences', icon: MonitorCog },
   { id: 'project', label: 'Project', description: 'Shared project configuration', icon: FolderCog },
+  { id: 'registry', label: 'Registry', description: 'Catalog and private templates', icon: Database },
   { id: 'updates', label: 'Updates', description: 'Image channel and status', icon: RefreshCw },
   { id: 'feedback', label: 'Feedback', description: 'Roadmap, ideas, and issues', icon: MessageSquarePlus },
   { id: 'about', label: 'About', description: 'Purpose, version, and links', icon: Info },
@@ -318,6 +344,204 @@ function ProjectSettings(props: SettingsDialogProps) {
   )
 }
 
+function RegistrySettingsPanel(props: SettingsDialogProps) {
+  const registry = props.registry ?? DEFAULT_REGISTRY_STATE
+  const contributions = registry.contributions ?? DEFAULT_REGISTRY_STATE.contributions
+  const database = registry.database ?? DEFAULT_REGISTRY_STATE.database
+  const inputRef = useRef<HTMLInputElement>(null)
+  const catalogInputRef = useRef<HTMLInputElement>(null)
+  const [transferStatus, setTransferStatus] = useState<string | null>(null)
+  const busy = props.registryLoading === true || props.registrySaving === true
+
+  async function update(settings: Parameters<NonNullable<SettingsDialogProps['onRegistrySettingsChange']>>[0]) {
+    setTransferStatus(null)
+    try {
+      await props.onRegistrySettingsChange?.(settings, registry.settings.updatedAt)
+    } catch (error) {
+      setTransferStatus(error instanceof Error ? error.message : 'Registry settings could not be updated.')
+    }
+  }
+
+  async function exportTemplates() {
+    if (!props.onExportPrivateTemplates) return
+    setTransferStatus(null)
+    try {
+      const pack = await props.onExportPrivateTemplates()
+      const blob = new Blob([`${JSON.stringify(pack, null, 2)}\n`], { type: 'application/json' })
+      const url = URL.createObjectURL(blob)
+      const anchor = document.createElement('a')
+      anchor.href = url
+      anchor.download = `homelab-inventory-private-templates-${new Date().toISOString().slice(0, 10)}.json`
+      anchor.click()
+      URL.revokeObjectURL(url)
+      setTransferStatus(`Exported ${pack.templates.length} private template${pack.templates.length === 1 ? '' : 's'}.`)
+    } catch (error) {
+      setTransferStatus(error instanceof Error ? error.message : 'Private templates could not be exported.')
+    }
+  }
+
+  async function importTemplates(file: File | undefined) {
+    if (!file || !props.onImportPrivateTemplates) return
+    setTransferStatus(null)
+    try {
+      const result = await props.onImportPrivateTemplates(JSON.parse(await file.text()))
+      setTransferStatus(`Imported ${result.imported}; skipped ${result.skipped} existing template${result.skipped === 1 ? '' : 's'}.`)
+    } catch (error) {
+      setTransferStatus(error instanceof Error ? error.message : 'Private templates could not be imported.')
+    } finally {
+      if (inputRef.current) inputRef.current.value = ''
+    }
+  }
+
+  async function importCatalog(file: File | undefined) {
+    if (!file || !props.onImportOfficialCatalog) return
+    setTransferStatus(null)
+    try {
+      await props.onImportOfficialCatalog(JSON.parse(await file.text()))
+      setTransferStatus('Verified official catalog snapshot imported.')
+    } catch (error) {
+      setTransferStatus(error instanceof Error ? error.message : 'Official catalog could not be imported.')
+    } finally {
+      if (catalogInputRef.current) catalogInputRef.current.value = ''
+    }
+  }
+
+  async function refreshCatalog() {
+    if (!props.onRefreshOfficialCatalog) return
+    setTransferStatus(null)
+    try {
+      await props.onRefreshOfficialCatalog()
+      setTransferStatus('Official catalog is up to date.')
+    } catch (error) {
+      setTransferStatus(error instanceof Error ? error.message : 'Official catalog could not be refreshed.')
+    }
+  }
+
+  return (
+    <SettingsSection title="Registry" description="Choose how this installation finds reusable hardware definitions.">
+      <SettingRow label="Registry mode" description="Disabled makes no registry requests. Offline uses a manually imported signed catalog. Connected will synchronize the official catalog.">
+        <Select value={registry.settings.mode} disabled={busy} onValueChange={(mode) => void update({ mode: mode as RegistrySettings['mode'] })}>
+          <SelectTrigger className="w-full sm:w-[260px]" aria-label="Registry mode"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="disabled">Disabled</SelectItem>
+            <SelectItem value="offline">Offline file</SelectItem>
+            <SelectItem value="connected">Connected</SelectItem>
+          </SelectContent>
+        </Select>
+      </SettingRow>
+      <SettingRow label="Default Add Hardware tab" description="Unavailable catalog sources fall back to Manual without changing this preference.">
+        <Select value={registry.settings.defaultInventorySource} disabled={busy} onValueChange={(defaultInventorySource) => void update({ defaultInventorySource: defaultInventorySource as RegistrySettings['defaultInventorySource'] })}>
+          <SelectTrigger className="w-full sm:w-[260px]" aria-label="Default Add Hardware tab"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="catalog">Catalog</SelectItem>
+            <SelectItem value="manual">Manual</SelectItem>
+            <SelectItem value="private-templates">Private templates</SelectItem>
+          </SelectContent>
+        </Select>
+      </SettingRow>
+      <SettingRow
+        label="Automatic catalog contributions"
+        description="Explicit opt-in. The backend sends only reusable, allowlisted hardware definitions after removing local device names, addresses, serials, notes, topology, assignments, agents, and smart-device instance data. Inventory saves never wait for delivery."
+      >
+        <Switch
+          aria-label="Automatic catalog contributions"
+          checked={registry.settings.automaticContributions}
+          disabled={busy || registry.settings.mode !== 'connected'}
+          onCheckedChange={(automaticContributions) => void update({ automaticContributions })}
+        />
+      </SettingRow>
+      <div className="border-t border-[#e8e1d6] p-4">
+        <div className="grid gap-3 rounded-md border border-[#ded5c8] bg-[#f8f4ed] p-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
+          <div>
+            <h3 className="text-sm font-black text-[#28231f]">Contribution delivery</h3>
+            <p className="mt-1 text-xs leading-5 text-[#756d62]">
+              {contributions.enrollment === 'active' ? 'This installation is enrolled with a backend-only signing key.' : contributions.enrollment === 'revoked' ? 'Registry enrollment has been revoked.' : 'This installation is not enrolled.'}
+              {' '}{contributions.queued} queued, {contributions.retrying} retrying, {contributions.delivered} delivered, and {contributions.suppressed} suppressed.
+            </p>
+            {contributions.lastError ? <p className="mt-1 text-xs font-semibold text-[#9b3f32]">{contributions.lastError}</p> : null}
+          </div>
+          <div className="flex flex-wrap justify-end gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              disabled={!contributions.enabled || busy || !props.onDeliverRegistryContributions}
+              onClick={() => void props.onDeliverRegistryContributions?.()}
+            >
+              Send now
+            </Button>
+            {contributions.enrollment === 'active' && props.onRevokeRegistryContributions ? (
+              <ConfirmSettingsAction
+                title="Revoke registry enrollment?"
+                description="Automatic contributions will stop and the registry token will be revoked. The local signing key remains available for a deliberate future re-enrollment."
+                actionLabel="Revoke enrollment"
+                onConfirm={props.onRevokeRegistryContributions}
+              />
+            ) : null}
+            {contributions.enrollment === 'active' && props.onRotateRegistryContributionKey ? (
+              <ConfirmSettingsAction
+                title="Rotate installation signing key?"
+                description="The current registry enrollment will be revoked and replaced with a new backend-only Ed25519 key. Queued contributions stay local and will use the new identity."
+                actionLabel="Rotate key"
+                onConfirm={props.onRotateRegistryContributionKey}
+              />
+            ) : null}
+          </div>
+        </div>
+      </div>
+      <div className="border-t border-[#e8e1d6] p-4">
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h3 className="text-sm font-black text-[#28231f]">Official catalog source</h3>
+            <p className="mt-0.5 text-xs text-[#756d62]">Signed snapshots are verified before replacing the last-known-good local catalog.</p>
+          </div>
+          <div className="flex gap-2">
+            <input ref={catalogInputRef} type="file" accept="application/json,.json" className="sr-only" aria-label="Import signed official catalog" onChange={(event) => void importCatalog(event.target.files?.[0])} />
+            {registry.settings.mode === 'offline' ? <Button type="button" variant="outline" onClick={() => catalogInputRef.current?.click()} disabled={busy || !props.onImportOfficialCatalog}>Import snapshot</Button> : null}
+            {registry.settings.mode === 'connected' ? <Button type="button" variant="outline" onClick={() => void refreshCatalog()} disabled={busy || !props.onRefreshOfficialCatalog}>Refresh now</Button> : null}
+          </div>
+        </div>
+      <CatalogSourceStatus registry={registry} />
+      <SettingRow
+        label="Data schema"
+        description={database.lastMigration
+          ? `Last migrated from schema ${database.lastMigration.from} to ${database.lastMigration.to} on ${new Date(database.lastMigration.completedAt).toLocaleString()}.`
+          : 'No migration has been recorded for this data directory.'}
+      >
+        <div className="text-right text-sm font-semibold">
+          <div>Schema {database.schemaVersion ?? 'unknown'}</div>
+          {database.lastMigration?.backupId ? (
+            <div className="mt-1 max-w-64 truncate text-xs font-normal text-muted-foreground" title={database.lastMigration.backupId}>
+              Backup {database.lastMigration.backupId}
+            </div>
+          ) : null}
+        </div>
+      </SettingRow>
+      </div>
+      <SettingRow label="Private templates" description={`${registry.privateTemplates.length} reusable local template${registry.privateTemplates.length === 1 ? '' : 's'}. These never leave this installation automatically.`}>
+        <div className="flex flex-wrap justify-end gap-2">
+          <input ref={inputRef} type="file" accept="application/json,.json" className="sr-only" aria-label="Import private templates file" onChange={(event) => void importTemplates(event.target.files?.[0])} />
+          <Button type="button" variant="outline" onClick={() => inputRef.current?.click()} disabled={!props.onImportPrivateTemplates}>Import</Button>
+          <Button type="button" variant="outline" onClick={() => void exportTemplates()} disabled={!props.onExportPrivateTemplates || registry.privateTemplates.length === 0}>Export all</Button>
+        </div>
+      </SettingRow>
+      {transferStatus ? <div className="border-t border-[#e8e1d6] bg-[#f7f2e9] px-4 py-3 text-sm text-[#554b40]">{transferStatus}</div> : null}
+      {props.onApplyCatalogUpdate ? <CatalogUpdateReview onApply={props.onApplyCatalogUpdate} /> : null}
+      {registry.privateTemplates.map((template) => (
+        <SettingRow key={template.id} label={template.name} description={`${template.item.name} · ${template.item.type}`}>
+          {props.onDeletePrivateTemplate ? (
+            <ConfirmSettingsAction
+              title={`Delete ${template.name}?`}
+              description="This removes only the reusable private template. Existing inventory items are not changed."
+              actionLabel="Delete template"
+              onConfirm={() => props.onDeletePrivateTemplate?.(template.id)}
+            />
+          ) : null}
+        </SettingRow>
+      ))}
+    </SettingsSection>
+  )
+}
+
 function UpdateSettings(props: SettingsDialogProps) {
   const status = props.updateStatus
   const channel = status?.channel ?? 'stable'
@@ -454,6 +678,7 @@ export function SettingsDialog(props: SettingsDialogProps) {
             <main className="min-h-0 overflow-y-auto overscroll-contain p-4 sm:p-6" aria-live="polite">
               {category === 'general' ? <GeneralSettings {...props} /> : null}
               {category === 'project' ? <ProjectSettings {...props} /> : null}
+              {category === 'registry' ? <RegistrySettingsPanel {...props} /> : null}
               {category === 'updates' ? <UpdateSettings {...props} /> : null}
               {category === 'feedback' ? <FeedbackSettings {...props} /> : null}
               {category === 'about' ? <AboutSettings {...props} /> : null}

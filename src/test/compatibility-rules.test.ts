@@ -123,16 +123,16 @@ describe('compatibility rule evaluation', () => {
   it('evaluates RAM generation, aggregate limits, module limits, and speed negotiation', () => {
     const first = component('ram', undefined, {
       capacityGb: 32,
-      moduleCount: 2,
       generation: 'DDR5',
       speedMt: 3600,
     })
     const second = component(
       'ram',
       undefined,
-      { capacityGb: 48, moduleCount: 2, generation: 'DDR4', speedMt: 3200 },
+      { capacityGb: 48, generation: 'DDR4', speedMt: 3200 },
       3,
     )
+    const third = component('ram', undefined, { capacityGb: 8, generation: 'DDR4', speedMt: 3200 }, 4)
     const result = evaluate(
       host({
         host: {
@@ -146,7 +146,7 @@ describe('compatibility rule evaluation', () => {
         },
       }),
       first,
-      [first, second],
+      [first, second, third],
     )
 
     expect(result.status).toBe('incompatible')
@@ -185,7 +185,6 @@ describe('compatibility rule evaluation', () => {
       }),
       component('ram', undefined, {
         capacityGb: 32,
-        moduleCount: 2,
         generation: 'DDR4',
         speedMt: 3200,
       }),
@@ -219,7 +218,7 @@ describe('compatibility rule evaluation', () => {
     const known = component(
       'ram',
       undefined,
-      { capacityGb: 48, moduleCount: 3, generation: 'DDR4' },
+      { capacityGb: 48, generation: 'DDR4' },
       2,
     )
     const unknown = component('ram', undefined, { generation: 'DDR4' }, 3)
@@ -228,7 +227,7 @@ describe('compatibility rule evaluation', () => {
         host: {
           memory: {
             generations: ['DDR4'],
-            slots: 2,
+            slots: 1,
             maxCapacityGb: 32,
             maxModuleCapacityGb: 32,
           },
@@ -245,7 +244,7 @@ describe('compatibility rule evaluation', () => {
         expect.objectContaining({ code: 'memory.capacity.exceeded', severity: 'error' }),
         expect.objectContaining({
           code: 'compatibility.data.missing',
-          field: 'component.memory.moduleCount',
+          field: 'component.memory.moduleCapacityGb',
         }),
         expect.objectContaining({
           code: 'compatibility.data.missing',

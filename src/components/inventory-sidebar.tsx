@@ -53,6 +53,7 @@ import { filterAndSortInventory, isItemAssigned } from '@/lib/sort'
 import type { InventoryItemInput } from '@/lib/db'
 import type { InventoryFilters, InventoryStatusFilter } from '@/lib/sort'
 import type { InventoryItem, InventoryType, ProjectState } from '@/types/inventory'
+import { DEFAULT_REGISTRY_STATE, type RegistryState } from '@/types/registry'
 
 const TYPE_COLORS: Record<InventoryType, string> = {
   server: 'border-l-[#adc19b]',
@@ -114,6 +115,7 @@ function DraggableInventoryItem({
   onToggleSelected,
   onDuplicate,
   onArchive,
+  onSaveAsTemplate,
   onRestore,
   onDelete,
   busy,
@@ -126,6 +128,7 @@ function DraggableInventoryItem({
   onToggleSelected: (itemId: string) => void
   onDuplicate: (item: InventoryItem) => void
   onArchive: (item: InventoryItem) => void
+  onSaveAsTemplate?: (item: InventoryItem) => void
   onRestore: (item: InventoryItem) => void
   onDelete: (item: InventoryItem) => void
   busy: boolean
@@ -205,6 +208,7 @@ function DraggableInventoryItem({
           className="absolute right-2 top-1/2 -translate-y-1/2 text-[#f7f1e8]"
           onEdit={() => onSelect(itemRuntimeKey)}
           onDuplicate={() => onDuplicate(item)}
+          onSaveAsTemplate={onSaveAsTemplate ? () => onSaveAsTemplate(item) : undefined}
           onArchive={() => onArchive(item)}
         />
       )}
@@ -220,6 +224,12 @@ export function InventorySidebar({
   onArchiveItems = () => undefined,
   onRestoreItems = () => undefined,
   onDeleteItems = () => undefined,
+  onSaveAsTemplate,
+  registry = DEFAULT_REGISTRY_STATE,
+  onDuplicatePrivateTemplate,
+  onDeletePrivateTemplate,
+  onOpenRegistrySettings,
+  onCreateCatalogItem,
   lifecycleRevision = 0,
   lifecycleBusy = false,
   onClose,
@@ -233,6 +243,12 @@ export function InventorySidebar({
   onArchiveItems?: (items: InventoryItem[]) => void
   onRestoreItems?: (items: InventoryItem[]) => void
   onDeleteItems?: (items: InventoryItem[]) => void
+  onSaveAsTemplate?: (item: InventoryItem) => void
+  registry?: RegistryState
+  onDuplicatePrivateTemplate?: (id: number) => Promise<void>
+  onDeletePrivateTemplate?: (id: number) => Promise<void>
+  onOpenRegistrySettings?: () => void
+  onCreateCatalogItem?: (templateKey: string, quantity: number) => Promise<void>
   lifecycleRevision?: number
   lifecycleBusy?: boolean
   onClose?: () => void
@@ -506,6 +522,7 @@ export function InventorySidebar({
                       onToggleSelected={toggleSelected}
                       onDuplicate={onDuplicateItem}
                       onArchive={(selectedItem) => onArchiveItems([selectedItem])}
+                      onSaveAsTemplate={onSaveAsTemplate}
                       onRestore={(selectedItem) => onRestoreItems([selectedItem])}
                       onDelete={(selectedItem) => onDeleteItems([selectedItem])}
                       busy={lifecycleBusy}
@@ -526,6 +543,11 @@ export function InventorySidebar({
         open={addDialogOpen}
         onOpenChange={setAddDialogOpen}
         onCreate={onCreateItem}
+        registry={registry}
+        onDuplicatePrivateTemplate={onDuplicatePrivateTemplate}
+        onDeletePrivateTemplate={onDeletePrivateTemplate}
+        onOpenRegistrySettings={onOpenRegistrySettings}
+        onCreateCatalogItem={onCreateCatalogItem}
       />
     </aside>
   )

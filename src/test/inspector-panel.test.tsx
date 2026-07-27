@@ -97,12 +97,12 @@ const project: ProjectState = {
       name: '32GB RAM',
       type: 'ram',
       manufacturer: 'Crucial',
-      secondaryManufacturer: 'Kingston',
       specs: {
         capacityGb: 32,
         generation: 'DDR4',
         speedMt: 3200,
-        secondarySpeedMt: 2666,
+        formFactor: 'SO-DIMM',
+        ecc: false,
       },
     },
     'storage:1': {
@@ -292,13 +292,7 @@ const compatibilityProject: ProjectState = {
         },
       },
     },
-    'ram:1': {
-      ...project.items['ram:1'],
-      specs: {
-        ...project.items['ram:1'].specs,
-        moduleCount: 2,
-      },
-    },
+    'ram:1': project.items['ram:1'],
     'storage:1': {
       ...project.items['storage:1'],
       specs: {
@@ -367,7 +361,7 @@ const compatibilityProject: ProjectState = {
       assignedAt: '2026-07-19T00:00:01.000Z',
       allocation: {
         resourceType: 'memory',
-        positions: [0, 1],
+        positions: [0],
       },
     },
     {
@@ -447,7 +441,7 @@ const collidingCompatibilityProject: ProjectState = {
     type,
     assignedAt: `2026-07-19T00:00:0${index}.000Z`,
     ...(type === 'ram' ? {
-      allocation: { resourceType: 'memory' as const, positions: [0, 1] },
+      allocation: { resourceType: 'memory' as const, positions: [0] },
     } : type === 'storage' ? {
       allocation: {
         resourceType: 'storage' as const,
@@ -984,13 +978,12 @@ describe('InspectorPanel', () => {
     expect(utilization).not.toBeNull()
     const utilizationView = within(utilization as HTMLElement)
     expect(utilizationView.getByText('Memory')).toBeVisible()
-    expect(utilizationView.getByText('2 of 2 positions')).toBeVisible()
     expect(utilizationView.getByText('Storage')).toBeVisible()
-    expect(utilizationView.getByText('1 of 2 positions')).toBeVisible()
+    expect(utilizationView.getAllByText('1 of 2 positions')).toHaveLength(2)
     expect(utilizationView.getByText('Expansion')).toBeVisible()
     expect(utilizationView.getByText('1 of 1 positions')).toBeVisible()
     expect(screen.getAllByText('32GB RAM')).not.toHaveLength(0)
-    expect(screen.getByText('Memory positions 1-2')).toBeVisible()
+    expect(screen.getByText('Memory position 1')).toBeVisible()
     expect(screen.getByText('M.2 slots, position 1')).toBeVisible()
     expect(screen.getByText('PCIe slot, position 1')).toBeVisible()
     expect(screen.getByRole('heading', { name: 'Errors' })).toBeVisible()
@@ -1546,21 +1539,18 @@ describe('InspectorPanel', () => {
 
     await user.click(screen.getByRole('tab', { name: 'Compatibility' }))
 
-    expect(screen.getByLabelText('Stick 2 Manufacturer')).toHaveValue('Kingston')
     expect(screen.getByLabelText('Capacity GB')).toHaveValue(32)
     expect(screen.getByRole('combobox', { name: 'Generation' })).toHaveTextContent('DDR4')
-    expect(screen.getByRole('combobox', { name: 'Stick 1 Speed' })).toHaveTextContent('3200')
-    expect(screen.getByRole('combobox', { name: 'Stick 2 Speed' })).toHaveTextContent('2666')
+    expect(screen.getByRole('combobox', { name: 'Speed' })).toHaveTextContent('3200')
+    expect(screen.getByRole('combobox', { name: 'Form Factor' })).toHaveTextContent('SO-DIMM')
     expect(screen.queryByText('Server Slots')).not.toBeInTheDocument()
   })
 
-  it('debounces a RAM secondary manufacturer edit into one complete item update', async () => {
-    const user = userEvent.setup()
+  it('debounces a RAM manufacturer edit into one complete item update', async () => {
     const { onUpdateItem } = renderInspector({ selectedItemId: 'ram:1' })
 
-    await user.click(screen.getByRole('tab', { name: 'Compatibility' }))
     vi.useFakeTimers()
-    fireEvent.change(screen.getByLabelText('Stick 2 Manufacturer'), { target: { value: 'Corsair' } })
+    fireEvent.change(screen.getByLabelText('Manufacturer'), { target: { value: 'Corsair' } })
     await act(async () => vi.advanceTimersByTimeAsync(499))
     expect(onUpdateItem).not.toHaveBeenCalled()
 
@@ -1568,13 +1558,13 @@ describe('InspectorPanel', () => {
     expect(onUpdateItem).toHaveBeenCalledWith('ram:1', {
       type: 'ram',
       name: '32GB RAM',
-      manufacturer: 'Crucial',
-      secondaryManufacturer: 'Corsair',
+      manufacturer: 'Corsair',
       specs: {
         capacityGb: 32,
         generation: 'DDR4',
         speedMt: 3200,
-        secondarySpeedMt: 2666,
+        formFactor: 'SO-DIMM',
+        ecc: false,
       },
     })
   })
@@ -1584,7 +1574,7 @@ describe('InspectorPanel', () => {
     const { onUpdateItem } = renderInspector({ selectedItemId: 'ram:1' })
 
     await user.click(screen.getByRole('tab', { name: 'Compatibility' }))
-    await user.click(screen.getByRole('combobox', { name: 'Stick 1 Speed' }))
+    await user.click(screen.getByRole('combobox', { name: 'Speed' }))
     expect(screen.getByRole('option', { name: '2666' })).toBeInTheDocument()
     expect(screen.getByRole('option', { name: '3200' })).toBeInTheDocument()
 
@@ -1592,19 +1582,6 @@ describe('InspectorPanel', () => {
 
     expect(onUpdateItem).toHaveBeenCalledWith('ram:1', expect.objectContaining({
       specs: expect.objectContaining({ speedMt: 2666 }),
-    }))
-  })
-
-  it('renders RAM stick 2 speed options and emits secondary speed', async () => {
-    const user = userEvent.setup()
-    const { onUpdateItem } = renderInspector({ selectedItemId: 'ram:1' })
-
-    await user.click(screen.getByRole('tab', { name: 'Compatibility' }))
-    await user.click(screen.getByRole('combobox', { name: 'Stick 2 Speed' }))
-    await user.click(screen.getByRole('option', { name: '2933' }))
-
-    expect(onUpdateItem).toHaveBeenCalledWith('ram:1', expect.objectContaining({
-      specs: expect.objectContaining({ secondarySpeedMt: 2933 }),
     }))
   })
 

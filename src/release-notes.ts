@@ -106,6 +106,31 @@ export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
   notes: [],
 }
 
+const RELEASE_0_4_0_DETAILS: UnreleasedReleaseNotes = {
+  highlights: [
+    'Add Hardware now combines a locally searched verified Catalog, the complete Manual editor, and reusable Private templates in one source-aware dialog.',
+    'Inventory items can be saved as sanitized private templates, searched locally, duplicated, exported, imported, and reused with quantity creation.',
+    'Registry settings now control Disabled, Offline file, or Connected modes and the preferred Add Hardware tab while preserving a fully local workflow.',
+    'Offline installations can import signed official snapshots, while connected installations can refresh the same catalog and keep all searches on the local SQLite index.',
+    'Catalog-created inventory remains linked to its verified revision and exposes field-level review before applying a newer catalog definition.',
+    'Connected installations can explicitly opt in to automatic sanitized hardware contributions with signed delivery, local deduplication, retry status, pause, revocation, and key rotation controls.',
+    'Automatic contributions now group identical physical copies by category-aware product identity without merging local inventory, while preserving distinct board variants and RAM speeds.',
+    'RAM is now modeled as individual physical sticks with exact slot placement, two-column host layouts, occupied-slot swapping, and warnings for unknown legacy positions.',
+  ],
+  fixes: [
+    'Atomic JSON persistence now uses collision-resistant temporary files so simultaneous store writes cannot interfere with each other.',
+  ],
+  notes: [
+    'Schema 15 adds an independent registry store for catalog preferences, private templates, signed snapshot metadata, and numeric catalog links without changing canvas, assignment, or cable relationships.',
+    'Disabled registry mode makes no catalog requests. Private templates remove instance properties, addresses, notes, topology, and other local-only data before persistence or export.',
+    'Invalid, expired, oversized, or untrusted snapshots cannot replace the last-known-good catalog, and the disposable SQLite search cache rebuilds from the verified artifact when needed.',
+    'Automatic contributions are disabled by default. When enabled, the backend removes local-only data, checks a signed digest index, queues delivery without blocking inventory saves, and signs each replay-protected batch with a backend-only installation key.',
+    'Installation private keys and short-lived registry tokens remain in mode-0600 files under the configured data directory and are never exposed through the browser API.',
+    'Schema 16 converts legacy RAM kits into physical sticks and one-slot assignments after creating a locked backup. It preserves capacity and known slot positions, refuses ambiguous data, and restores the original stores if migration fails.',
+    'Existing RAM catalog links and queued RAM contributions are cleared during conversion because a kit-level identity cannot safely represent either physical stick.',
+  ],
+}
+
 const RELEASE_0_2_2_DETAILS: UnreleasedReleaseNotes = {
   highlights: [],
   fixes: [
@@ -126,9 +151,16 @@ const RELEASE_0_2_1_DETAILS: UnreleasedReleaseNotes = {
 
 export const RELEASE_NOTES: ReleaseNoteEntry[] = [
   {
+    version: '0.4.0',
+    date: '2026-07-27',
+    channel: 'latest',
+    title: 'Verified hardware catalog and physical RAM',
+    ...RELEASE_0_4_0_DETAILS,
+  },
+  {
     version: '0.3.0',
     date: '2026-07-25',
-    channel: 'latest',
+    channel: 'release',
     title: 'Guided first-run workspace',
     ...RELEASE_0_3_0_DETAILS,
   },

@@ -69,7 +69,7 @@ describe('inventory lifecycle routes', () => {
       })
       const legacy = await jsonRequest(url, '/api/inventory/items', {
         method: 'POST',
-        body: JSON.stringify({ type: 'ram', name: 'RAM' }),
+        body: JSON.stringify({ type: 'ram', name: 'RAM', specs: { capacityGb: 8 } }),
       })
 
       expect(quantity.response.status).toBe(201)

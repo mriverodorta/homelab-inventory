@@ -3,6 +3,7 @@ import { Handle, Position, type Node, type NodeProps } from '@xyflow/react'
 import { AlertTriangle, Grip, X } from 'lucide-react'
 import type { CSSProperties } from 'react'
 import { Button } from '@/components/ui/button'
+import { hostMemorySlotCount, MemorySlotGrid } from '@/components/memory-slot-grid'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { getEndpointHandleId, type CableSide } from '@/lib/cable-routing'
 import { getCanvasAssignmentTone } from '@/lib/canvas-quality'
@@ -535,6 +536,37 @@ export function PcBuildNode({ data }: NodeProps<PcBuildFlowNode>) {
       <div className="mt-2 space-y-1.5">
         {visibleSlotTypes.map((type) => {
           const matches = assignments.filter((assignment) => assignment.type === type)
+
+          if (type === 'ram') {
+            return (
+              <MemorySlotGrid
+                key="ram"
+                assignments={matches}
+                hostId={pcBuildRuntimeKey}
+                slotCount={hostMemorySlotCount(motherboard ?? pcBuild)}
+                renderAssignment={(assignment) => {
+                  const item = project.items[assignment.itemId]
+                  return item ? (
+                    <AssignedComponentRow
+                      assignment={assignment}
+                      canvasIndex={canvasIndex}
+                      draggingEndpoint={draggingEndpoint}
+                      hostRuntimeKey={pcBuildRuntimeKey}
+                      item={item}
+                      onEndpointClick={onEndpointClick}
+                      onEndpointDragStart={onEndpointDragStart}
+                      onEndpointDrop={onEndpointDrop}
+                      onRemoveAssignment={onRemoveAssignment}
+                      onSelect={onSelect}
+                      pendingEndpoint={pendingEndpoint}
+                      requiredHandleIds={requiredHandleIds}
+                      selected={selectedItemId === runtimeItemKey(item)}
+                    />
+                  ) : null
+                }}
+              />
+            )
+          }
 
           if (matches.length === 0) {
             return (

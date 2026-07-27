@@ -1,5 +1,6 @@
 import fs from 'node:fs/promises'
 import path from 'node:path'
+import { randomUUID } from 'node:crypto'
 import { Low } from 'lowdb'
 import { normalizeNetworkProject, recalculateNegotiatedSpeeds } from './legacy-network-normalization.ts'
 import { getReleaseNotesBetween } from '../../src/release-notes.ts'
@@ -35,11 +36,21 @@ import { migrateSchema10To11 } from './migrate-schema-11.mjs'
 import { migrateSchema11To12 } from './migrate-schema-12.mjs'
 import { migrateSchema12To13 } from './migrate-schema-13.mjs'
 import { migrateSchema13To14 } from './migrate-schema-14.mjs'
+import { migrateSchema14To15 } from './migrate-schema-15.mjs'
+import { migrateSchema15To16 } from './migrate-schema-16.mjs'
 import {
   applyNasPowerConfigurationChange,
   inspectNasPowerConfigurationChange,
 } from './nas-power-configuration.mjs'
 import { assertOnboardingState, createOnboardingState } from '../onboarding/model.mjs'
+import {
+  assertRegistryStoreShape,
+  createPrivateTemplatePack,
+  createPrivateTemplateRecord,
+  createRegistryStore,
+  previewPrivateTemplatePack,
+} from '../registry/model.mjs'
+import { catalogFieldDiff, mergeCatalogUpdate } from '../registry/update-service.mjs'
 import {
   finishExampleInDraft,
   loadExampleIntoDraft,
@@ -51,11 +62,11 @@ import {
   setWalkthroughStepInDraft,
 } from '../onboarding/lifecycle.mjs'
 
-export const CURRENT_SCHEMA_VERSION = 14
+export const CURRENT_SCHEMA_VERSION = 16
 
 const DEFAULT_SAVE_DEBOUNCE_MS = 500
 const BACKUP_LIMIT = 10
-const STORE_NAMES = ['meta', 'inventory', 'project', 'agents', 'agentStatus']
+const STORE_NAMES = ['meta', 'inventory', 'project', 'agents', 'agentStatus', 'registry']
 const ALWAYS_ENFORCED_COMPATIBILITY_CODES = new Set([
   'compatibility.resource.exhausted',
   'memory.slots.exceeded',
@@ -200,7 +211,14 @@ async function readJson(filePath) {
 
 async function writeJson(filePath, payload) {
   await fs.mkdir(path.dirname(filePath), { recursive: true })
-  await fs.writeFile(filePath, `${JSON.stringify(payload, null, 2)}\n`)
+  const temporaryPath = `${filePath}.${process.pid}-${randomUUID()}.tmp`
+  try {
+    await fs.writeFile(temporaryPath, `${JSON.stringify(payload, null, 2)}\n`)
+    await fs.rename(temporaryPath, filePath)
+  } catch (error) {
+    await fs.rm(temporaryPath, { force: true }).catch(() => {})
+    throw error
+  }
 }
 
 class JsonFileAdapter {
@@ -1415,11 +1433,13 @@ export class HomelabInventoryStore {
       project: path.join(dataDir, 'stores', 'project.json'),
       agents: path.join(dataDir, 'stores', 'agents.json'),
       agentStatus: path.join(dataDir, 'stores', 'agent-status.json'),
+      registry: path.join(dataDir, 'stores', 'registry.json'),
     }
     this.databases = {}
     this.dirtyStores = new Set()
     this.flushTimer = null
     this.flushPromise = null
+    this.flushQueue = Promise.resolve()
     this.createdStores = false
     this.projectCommitListeners = new Set()
     this.pendingProjectCommits = []
@@ -1430,7 +1450,7 @@ export class HomelabInventoryStore {
     await fs.mkdir(this.storesDir, { recursive: true })
     await this.ensureStores()
     await this.openStores()
-    await this.runMigrations()
+    await this.runMigrationsSafely()
     await this.reconcileOnboardingState()
     await this.validateStores()
     await this.normalizeLoadedCompatibility()
@@ -1524,6 +1544,10 @@ export class HomelabInventoryStore {
         servers: {},
       })
     }
+
+    if (!(await pathExists(this.paths.registry))) {
+      await writeJson(this.paths.registry, createRegistryStore())
+    }
   }
 
   async openStores() {
@@ -1559,8 +1583,50 @@ export class HomelabInventoryStore {
     this.databases.agentStatus = new Low(new JsonFileAdapter(this.paths.agentStatus), {
       servers: {},
     })
+    this.databases.registry = new Low(
+      new JsonFileAdapter(this.paths.registry),
+      createRegistryStore(),
+    )
 
     await Promise.all(STORE_NAMES.map((name) => this.databases[name].read()))
+  }
+
+  async runMigrationsSafely() {
+    const schemaVersion = this.databases.meta.data.schemaVersion ?? 0
+    if (schemaVersion === CURRENT_SCHEMA_VERSION) return
+    const lockPath = path.join(this.dataDir, '.schema-migration.lock')
+    let lock
+    try {
+      try {
+        lock = await fs.open(lockPath, 'wx', 0o600)
+      } catch (error) {
+        if (error?.code !== 'EEXIST') throw error
+        const ageMs = Date.now() - (await fs.stat(lockPath)).mtimeMs
+        if (ageMs < 30 * 60_000) throw new Error('Another schema migration is already in progress.')
+        await fs.rm(lockPath, { force: true })
+        lock = await fs.open(lockPath, 'wx', 0o600)
+      }
+      await lock.writeFile(`${process.pid}\n`)
+      const original = Object.fromEntries(STORE_NAMES.map((name) => [name, structuredClone(this.databases[name].data)]))
+      this.activeMigrationBackupPath = null
+      try {
+        await this.runMigrations()
+      } catch (error) {
+        for (const name of STORE_NAMES) this.databases[name].data = original[name]
+        if (this.activeMigrationBackupPath) {
+          for (const [storeName, filePath] of Object.entries(this.paths)) {
+            const backupFile = path.join(this.activeMigrationBackupPath, `${storeName}.json`)
+            if (await pathExists(backupFile)) await fs.copyFile(backupFile, filePath)
+          }
+        }
+        throw error
+      } finally {
+        this.activeMigrationBackupPath = null
+      }
+    } finally {
+      await lock?.close().catch(() => {})
+      if (lock) await fs.rm(lockPath, { force: true }).catch(() => {})
+    }
   }
 
   async runMigrations() {
@@ -1580,7 +1646,7 @@ export class HomelabInventoryStore {
       return
     }
 
-    await this.createBackup(`schema-${schemaVersion}-to-${CURRENT_SCHEMA_VERSION}`)
+    this.activeMigrationBackupPath = await this.createBackup(`schema-${schemaVersion}-to-${CURRENT_SCHEMA_VERSION}`)
 
     let currentVersion = schemaVersion
 
@@ -1741,11 +1807,39 @@ export class HomelabInventoryStore {
         continue
       }
 
+      if (currentVersion === 14) {
+        this.databases.registry.data = migrateSchema14To15(this.databases.registry.data)
+        this.databases.meta.data.schemaVersion = 15
+        currentVersion = 15
+        continue
+      }
+
+      if (currentVersion === 15) {
+        const migrated = migrateSchema15To16(
+          this.databases.inventory.data,
+          this.databases.project.data,
+          this.databases.registry.data,
+        )
+        this.databases.inventory.data = migrated.inventory
+        this.databases.project.data = migrated.project
+        this.databases.registry.data = migrated.registry
+        this.databases.meta.data.schemaVersion = 16
+        this.databases.meta.data.lastMigration = {
+          from: 15,
+          to: 16,
+          completedAt: new Date().toISOString(),
+          backupId: path.basename(this.activeMigrationBackupPath),
+          summary: migrated.summary,
+        }
+        currentVersion = 16
+        continue
+      }
+
       throw new Error(`No migration registered for schema version ${currentVersion}.`)
     }
 
     this.databases.meta.data.updatedAt = new Date().toISOString()
-    await this.flush(['inventory', 'project', 'agents', 'agentStatus'])
+    await this.flush(['inventory', 'project', 'agents', 'agentStatus', 'registry'])
     await this.flush(['meta'])
   }
 
@@ -1754,6 +1848,7 @@ export class HomelabInventoryStore {
     assertProjectStoreShape(this.databases.project.data, { requireRevision: true })
     assertAgentsStoreShape(this.databases.agents.data)
     assertAgentStatusStoreShape(this.databases.agentStatus.data)
+    assertRegistryStoreShape(this.databases.registry.data)
     assertOnboardingState(this.databases.meta.data.onboarding)
     assertProjectShape(this.getProject())
     this.databases.meta.data.skippedUpdateVersion ??= null
@@ -1966,6 +2061,262 @@ export class HomelabInventoryStore {
 
   getEngineRevision() {
     return this.databases.project.data.revision
+  }
+
+  getRegistryState() {
+    return structuredClone(this.databases.registry.data)
+  }
+
+  registryTransaction(mutator) {
+    const draft = structuredClone(this.databases.registry.data)
+    mutator(draft)
+    assertRegistryStoreShape(draft)
+    this.databases.registry.data = draft
+    this.scheduleFlush('registry')
+    return this.getRegistryState()
+  }
+
+  updateRegistrySettings(patch, expectedUpdatedAt) {
+    const current = this.databases.registry.data.settings
+    if (expectedUpdatedAt !== undefined && expectedUpdatedAt !== current.updatedAt) {
+      throw new InventoryLifecycleError('Registry settings changed in another session.', {
+        code: 'registry-settings-conflict',
+        status: 409,
+      })
+    }
+    return this.registryTransaction((draft) => {
+      const mode = patch?.mode ?? draft.settings.mode
+      const defaultInventorySource = patch?.defaultInventorySource ?? draft.settings.defaultInventorySource
+      if (!['disabled', 'offline', 'connected'].includes(mode)) {
+        throw new InventoryLifecycleError('Registry mode is unsupported.', {
+          code: 'invalid-registry-settings', status: 400,
+        })
+      }
+      if (!['catalog', 'manual', 'private-templates'].includes(defaultInventorySource)) {
+        throw new InventoryLifecycleError('Default inventory source is unsupported.', {
+          code: 'invalid-registry-settings', status: 400,
+        })
+      }
+      draft.settings = {
+        ...draft.settings,
+        mode,
+        defaultInventorySource,
+        automaticContributions: mode === 'connected'
+          ? patch?.automaticContributions ?? draft.settings.automaticContributions
+          : false,
+        updatedAt: new Date().toISOString(),
+      }
+    })
+  }
+
+  async createPrivateTemplate(input) {
+    const record = await createPrivateTemplateRecord(this.databases.registry.data.privateTemplates, input)
+    return this.registryTransaction((draft) => {
+      draft.privateTemplates.push(record)
+    })
+  }
+
+  async duplicatePrivateTemplate(id) {
+    const source = this.databases.registry.data.privateTemplates.find((template) => template.id === id)
+    if (!source) throw new InventoryLifecycleError('Private template was not found.', {
+      code: 'private-template-not-found', status: 404,
+    })
+    return this.createPrivateTemplate({
+      name: `${source.name} copy`,
+      description: source.description,
+      item: source.item,
+    })
+  }
+
+  deletePrivateTemplate(id) {
+    const exists = this.databases.registry.data.privateTemplates.some((template) => template.id === id)
+    if (!exists) throw new InventoryLifecycleError('Private template was not found.', {
+      code: 'private-template-not-found', status: 404,
+    })
+    return this.registryTransaction((draft) => {
+      draft.privateTemplates = draft.privateTemplates.filter((template) => template.id !== id)
+    })
+  }
+
+  async exportPrivateTemplates(ids) {
+    const selectedIds = Array.isArray(ids) && ids.length > 0
+      ? new Set(ids)
+      : null
+    const templates = this.databases.registry.data.privateTemplates.filter(
+      (template) => selectedIds === null || selectedIds.has(template.id),
+    )
+    if (selectedIds && templates.length !== selectedIds.size) {
+      throw new InventoryLifecycleError('One or more private templates were not found.', {
+        code: 'private-template-not-found', status: 404,
+      })
+    }
+    return createPrivateTemplatePack(templates)
+  }
+
+  async previewPrivateTemplateImport(pack) {
+    return previewPrivateTemplatePack(pack)
+  }
+
+  async importPrivateTemplates(pack) {
+    const preview = await previewPrivateTemplatePack(pack)
+    if (!preview.valid) {
+      throw new InventoryLifecycleError('Private template pack is invalid.', {
+        code: 'invalid-private-template-pack', status: 400, details: preview.errors,
+      })
+    }
+    const existingChecksums = new Set(this.databases.registry.data.privateTemplates.map((template) => template.checksum))
+    const imported = []
+    let records = this.databases.registry.data.privateTemplates
+    for (const template of preview.templates) {
+      if (existingChecksums.has(template.checksum)) continue
+      const record = await createPrivateTemplateRecord(records, template)
+      imported.push(record)
+      records = [...records, record]
+      existingChecksums.add(record.checksum)
+    }
+    const registry = this.registryTransaction((draft) => {
+      draft.privateTemplates.push(...imported)
+    })
+    return { registry, imported: imported.length, skipped: preview.templates.length - imported.length }
+  }
+
+  createCatalogInventoryItems(template, quantity = 1) {
+    const sourceId = this.databases.registry.data.snapshot?.sourceId
+    if (!isRelationalId(sourceId)) {
+      throw new InventoryLifecycleError('A verified catalog snapshot must be active before importing hardware.', {
+        code: 'catalog-unavailable', status: 409,
+      })
+    }
+    const type = String(template?.item?.type ?? '').trim()
+    const table = TABLE_BY_TYPE[type]
+    if (!table) {
+      throw new InventoryLifecycleError('Catalog inventory type is not supported.', {
+        code: 'unsupported-inventory-type', status: 400,
+      })
+    }
+    const beforeIds = new Set(this.databases.inventory.data[table].map((record) => record.id))
+    const project = this.createInventoryItems(template.item, quantity)
+    const createdIds = this.databases.inventory.data[table]
+      .map((record) => record.id)
+      .filter((id) => !beforeIds.has(id))
+    if (createdIds.length !== quantity) throw new Error('Catalog import did not create the expected inventory records.')
+
+    this.registryTransaction((draft) => {
+      let linkId = draft.links.reduce((maximum, link) => Math.max(maximum, Number(link.id) || 0), 0) + 1
+      for (const itemId of createdIds) {
+        draft.links.push({
+          id: linkId,
+          itemType: type,
+          itemId,
+          sourceId,
+          templateKey: template.templateKey,
+          importedRevision: template.revision,
+          importedContentHash: template.contentHash,
+          state: 'linked',
+          linkedAt: new Date().toISOString(),
+        })
+        linkId += 1
+      }
+    })
+    return project
+  }
+
+  reconcileCatalogLink(rawRef, contentHash) {
+    const ref = normalizeInventoryRef(rawRef)
+    const link = this.databases.registry.data.links.find(
+      (candidate) => candidate.itemType === ref.type && candidate.itemId === ref.id,
+    )
+    if (!link) return this.getRegistryState()
+    return this.registryTransaction((draft) => {
+      const draftLink = draft.links.find((candidate) => candidate.id === link.id)
+      if (!draftLink) return
+      if (draftLink.importedContentHash !== contentHash) {
+        draftLink.state = 'detached'
+        draftLink.detachedAt = new Date().toISOString()
+        delete draftLink.availableRevision
+        delete draftLink.availableContentHash
+      }
+    })
+  }
+
+  getCatalogUpdates() {
+    return this.databases.registry.data.links
+      .filter((link) => link.state === 'update-available')
+      .map((link) => {
+        const table = TABLE_BY_TYPE[link.itemType]
+        const item = table ? this.databases.inventory.data[table].find((record) => record.id === link.itemId) : null
+        return {
+          linkId: link.id,
+          itemType: link.itemType,
+          itemId: link.itemId,
+          itemName: item?.name ?? 'Missing inventory item',
+          templateKey: link.templateKey,
+          importedRevision: link.importedRevision,
+          availableRevision: link.availableRevision,
+        }
+      })
+  }
+
+  getCatalogUpdatePreview(linkId, template) {
+    const link = this.databases.registry.data.links.find((candidate) => candidate.id === linkId)
+    if (!link || link.state !== 'update-available') {
+      throw new InventoryLifecycleError('Catalog update was not found.', {
+        code: 'catalog-update-not-found', status: 404,
+      })
+    }
+    const table = TABLE_BY_TYPE[link.itemType]
+    const item = table ? this.databases.inventory.data[table].find((record) => record.id === link.itemId) : null
+    if (!item) throw new InventoryLifecycleError('Linked inventory item was not found.', {
+      code: 'linked-inventory-not-found', status: 409,
+    })
+    return {
+      linkId,
+      itemType: link.itemType,
+      itemId: link.itemId,
+      itemName: item.name,
+      templateKey: link.templateKey,
+      importedRevision: link.importedRevision,
+      availableRevision: template.revision,
+      changes: catalogFieldDiff(item, template.item),
+      localFieldsPreserved: Object.keys(item).filter(
+        (key) => !['id', 'key', 'type', 'name', 'subtype', 'manufacturer', 'secondaryManufacturer', 'family', 'model', 'number', 'specs', 'ports', 'compatibility'].includes(key),
+      ),
+    }
+  }
+
+  applyCatalogUpdate(linkId, template) {
+    const link = this.databases.registry.data.links.find((candidate) => candidate.id === linkId)
+    if (!link || link.state !== 'update-available') {
+      throw new InventoryLifecycleError('Catalog update was not found.', {
+        code: 'catalog-update-not-found', status: 404,
+      })
+    }
+    if (link.templateKey !== template.templateKey || link.availableContentHash !== template.contentHash) {
+      throw new InventoryLifecycleError('Catalog update changed; review the latest revision before applying it.', {
+        code: 'catalog-update-stale', status: 409,
+      })
+    }
+    const table = TABLE_BY_TYPE[link.itemType]
+    const current = table ? this.databases.inventory.data[table].find((record) => record.id === link.itemId) : null
+    if (!current) throw new InventoryLifecycleError('Linked inventory item was not found.', {
+      code: 'linked-inventory-not-found', status: 409,
+    })
+    const project = this.updateInventoryItem(
+      { type: link.itemType, id: link.itemId },
+      mergeCatalogUpdate(current, template.item),
+    )
+    this.registryTransaction((draft) => {
+      const draftLink = draft.links.find((candidate) => candidate.id === linkId)
+      if (!draftLink) throw new Error('Catalog link disappeared during update.')
+      draftLink.importedRevision = template.revision
+      draftLink.importedContentHash = template.contentHash
+      draftLink.state = 'linked'
+      draftLink.updatedAt = new Date().toISOString()
+      delete draftLink.availableRevision
+      delete draftLink.availableContentHash
+      delete draftLink.detachedAt
+    })
+    return project
   }
 
   setProject(project) {
@@ -2463,7 +2814,7 @@ export class HomelabInventoryStore {
   deleteInventoryItems(rawRefs) {
     const refs = this.normalizeInventoryRefs(rawRefs)
 
-    return this.inventoryTransaction((draft) => {
+    const project = this.inventoryTransaction((draft) => {
       const activeItems = refs
         .map((ref) => resolveInventoryRef(draft.inventory, ref))
         .filter((resolved) => !resolved.item.archivedAt)
@@ -2502,6 +2853,11 @@ export class HomelabInventoryStore {
 
       return { items: refs }
     })
+    const deleted = new Set(refs.map((ref) => `${ref.type}:${String(ref.id)}`))
+    this.registryTransaction((draft) => {
+      draft.links = draft.links.filter((link) => !deleted.has(`${link.itemType}:${String(link.itemId)}`))
+    })
+    return project
   }
 
   clearAgentRuntimeData(serverId) {
@@ -2580,10 +2936,20 @@ export class HomelabInventoryStore {
       this.dirtyStores.add(storeName)
     }
 
-    if (this.flushPromise) {
-      await this.flushPromise
-    }
+    const operation = this.flushQueue
+      .catch(() => {})
+      .then(() => this.flushDirtyStores())
+    this.flushQueue = operation
+    this.flushPromise = operation
 
+    try {
+      await operation
+    } finally {
+      if (this.flushPromise === operation) this.flushPromise = null
+    }
+  }
+
+  async flushDirtyStores() {
     const storesToFlush = [...this.dirtyStores]
     this.dirtyStores.clear()
     const commitsToPublish = storesToFlush.includes('project')
@@ -2594,13 +2960,8 @@ export class HomelabInventoryStore {
       return
     }
 
-    this.flushPromise = Promise.all(storesToFlush.map((storeName) => this.databases[storeName].write()))
-      .finally(() => {
-        this.flushPromise = null
-      })
-
     try {
-      await this.flushPromise
+      await Promise.all(storesToFlush.map((storeName) => this.databases[storeName].write()))
     } catch (error) {
       storesToFlush.forEach((storeName) => this.dirtyStores.add(storeName))
       this.pendingProjectCommits.unshift(...commitsToPublish)

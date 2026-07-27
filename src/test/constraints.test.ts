@@ -20,13 +20,13 @@ function archived(item: InventoryItem): InventoryItem {
 }
 
 const items: InventoryItem[] = [
-  { id: 1, key: 'server:1', name: 'Server', type: 'server' },
-  { id: 2, key: 'server:2', name: 'Server Two', type: 'server' },
+  { id: 1, key: 'server:1', name: 'Server', type: 'server', compatibility: { host: { memory: { slots: 2 } } } },
+  { id: 2, key: 'server:2', name: 'Server Two', type: 'server', compatibility: { host: { memory: { slots: 2 } } } },
   { id: 1, key: 'nas:1', name: 'NAS', type: 'nas', specs: { powerConfiguration: 'internal-psu' } },
   { id: 1, key: 'cpu:1', name: 'CPU A', type: 'cpu' },
   { id: 2, key: 'cpu:2', name: 'CPU B', type: 'cpu' },
-  { id: 1, key: 'ram:1', name: 'RAM', type: 'ram' },
-  { id: 2, key: 'ram:2', name: 'RAM B', type: 'ram' },
+  { id: 1, key: 'ram:1', name: 'RAM', type: 'ram', specs: { capacityGb: 16 } },
+  { id: 2, key: 'ram:2', name: 'RAM B', type: 'ram', specs: { capacityGb: 16 } },
   { id: 1, key: 'storage:1', name: 'Storage A', type: 'storage' },
   { id: 2, key: 'storage:2', name: 'Storage B', type: 'storage' },
   { id: 1, key: 'gpu:1', name: 'GPU', type: 'gpu' },

@@ -47,7 +47,7 @@ export const SLOT_LABELS: Record<ComponentType, string> = {
   powerAdapter: 'Power Adapter',
 }
 
-const SINGLE_ITEM_TYPES = new Set<ComponentType>(['cpu', 'ram', 'gpu', 'network'])
+const SINGLE_ITEM_TYPES = new Set<ComponentType>(['cpu', 'gpu', 'network'])
 const SERVER_COMPONENT_TYPES = new Set<ComponentType>([
   'cpu', 'ram', 'storage', 'gpu', 'network', 'powerAdapter',
 ])
@@ -468,7 +468,7 @@ export function getSlotStatus(project: ProjectState, serverId: string): SlotStat
       type,
       label: SLOT_LABELS[type],
       filled,
-      limit: type === 'storage' ? null : 1,
+      limit: type === 'storage' || type === 'ram' ? null : 1,
     }
   })
 }
@@ -517,6 +517,7 @@ export function tryAssignComponent(
   project: ProjectState,
   serverId: string,
   itemId: string,
+  targetMemoryPosition?: number,
 ): AssignmentMutationResult {
   const basic = validateAssignmentBasics(project, serverId, itemId)
   if (!basic.ok) return { ok: false, message: basic.message }
@@ -533,6 +534,9 @@ export function tryAssignComponent(
     item as InventoryItem & { type: ComponentType },
   )
   if (!candidate.ok) return candidate
+  if (item.type === 'ram' && Number.isSafeInteger(targetMemoryPosition) && Number(targetMemoryPosition) >= 0) {
+    candidate.assignment.allocation = { resourceType: 'memory', positions: [Number(targetMemoryPosition)] }
+  }
   const transition = evaluateTransition(
     project,
     { ...project, assignments: [...project.assignments, candidate.assignment] },
@@ -552,6 +556,7 @@ export function moveAssignedComponent(
   project: ProjectState,
   assignmentId: string | number,
   targetServerId: string,
+  targetMemoryPosition?: number,
 ): AssignmentMutationResult {
   const sourceAssignment = findAssignmentById(project.assignments, assignmentId)
   if (!sourceAssignment) {
@@ -574,7 +579,10 @@ export function moveAssignedComponent(
     return { ok: false, message: 'Restore archived components and hosts before moving or swapping them.' }
   }
 
-  if (sourceAssignment.serverId === targetServerId) {
+  if (
+    sourceAssignment.serverId === targetServerId
+    && (sourceAssignment.type !== 'ram' || !Number.isSafeInteger(targetMemoryPosition))
+  ) {
     return {
       ok: true,
       project,
@@ -583,7 +591,18 @@ export function moveAssignedComponent(
     }
   }
 
-  const targetAssignment = SWAPPABLE_COMPONENT_TYPES.has(sourceAssignment.type)
+  const targetAssignment = sourceAssignment.type === 'ram'
+    ? Number.isSafeInteger(targetMemoryPosition)
+      ? project.assignments.find(
+          (assignment) => assignment.serverId === targetServerId
+            && assignment.type === 'ram'
+            && assignment.allocation?.resourceType === 'memory'
+            && assignment.allocation.positions[0] === targetMemoryPosition,
+        ) ?? project.assignments
+          .filter((assignment) => assignment.serverId === targetServerId && assignment.type === 'ram')
+          .sort((first, second) => Number(first.id) - Number(second.id))[Number(targetMemoryPosition)]
+      : undefined
+    : SWAPPABLE_COMPONENT_TYPES.has(sourceAssignment.type)
     ? project.assignments.find(
         (assignment) =>
           assignment.serverId === targetServerId && assignment.type === sourceAssignment.type,
@@ -610,20 +629,44 @@ export function moveAssignedComponent(
     if (!basic.ok) return { ok: false, message: basic.message }
   }
 
+  const sourcePosition = sourceAssignment.allocation?.resourceType === 'memory'
+    ? sourceAssignment.allocation.positions[0]
+    : undefined
   const tentative: ProjectState = {
     ...project,
     assignments: project.assignments.map((assignment) => {
       if (assignmentIdentity(assignment) === assignmentIdentity(sourceAssignment)) {
-        return { ...assignment, serverId: targetServerId }
+        return {
+          ...assignment,
+          serverId: targetServerId,
+          ...(sourceAssignment.type === 'ram' && Number.isSafeInteger(targetMemoryPosition)
+            ? { allocation: { resourceType: 'memory', positions: [Number(targetMemoryPosition)] } }
+            : {}),
+        }
       }
       if (
         targetAssignment &&
         assignmentIdentity(assignment) === assignmentIdentity(targetAssignment)
       ) {
-        return { ...assignment, serverId: sourceAssignment.serverId }
+        return {
+          ...assignment,
+          serverId: sourceAssignment.serverId,
+          ...(sourceAssignment.type === 'ram' && Number.isSafeInteger(sourcePosition)
+            ? { allocation: { resourceType: 'memory', positions: [Number(sourcePosition)] } }
+            : {}),
+        }
       }
       return assignment
     }),
+  }
+  if (
+    sourceAssignment.serverId === targetServerId
+    && sourceAssignment.type === 'ram'
+    && Number.isSafeInteger(targetMemoryPosition)
+  ) {
+    const transition = evaluateTransition(project, tentative, [targetServerId])
+    if (!transition.ok) return transition
+    return { ...transition, project: touchProject(transition.project) }
   }
   const reallocated = reallocatePcBuildHosts(
     tentative,
@@ -695,6 +738,14 @@ export function swapAssignedComponent(
   }
   if (!SWAPPABLE_COMPONENT_TYPES.has(sourceAssignment.type)) {
     return { ok: false, message: 'Only CPU and RAM slots can be swapped.' }
+  }
+  if (sourceAssignment.type === 'ram') {
+    const targetPosition = project.assignments.find(
+      (assignment) => assignment.serverId === targetServerId
+        && assignment.type === 'ram'
+        && assignment.allocation?.resourceType === 'memory',
+    )?.allocation?.positions[0] ?? 0
+    return moveAssignedComponent(project, sourceAssignment.id, targetServerId, targetPosition)
   }
   return moveAssignedComponent(project, sourceAssignment.id, targetServerId)
 }

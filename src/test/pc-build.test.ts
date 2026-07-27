@@ -32,15 +32,15 @@ describe('PC Build slots', () => {
     ])
   })
 
-  it('uses the physical RAM module count', () => {
+  it('uses one physical position for each RAM record', () => {
     const ram = {
       id: 1,
       type: 'ram',
       name: '32GB DDR5',
-      specs: { capacityGb: 32, module: '2x16GB' },
+      specs: { capacityGb: 16, generation: 'DDR5' },
     } satisfies InventoryItem
 
-    expect(requiredPcBuildPositions(ram)).toBe(2)
+    expect(requiredPcBuildPositions(ram)).toBe(1)
   })
 
   it('blocks motherboard removal while dependent assignments remain', () => {

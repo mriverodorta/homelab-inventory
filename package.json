@@ -2,7 +2,7 @@
   "name": "homelab-inventory",
   "private": true,
   "description": "Self-hosted visual inventory and cabling workbench for homelab hardware.",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "license": "MIT",
   "type": "module",
   "repository": {
@@ -31,7 +31,8 @@
     "pretest": "bun run build:wasm",
     "release-notes:check": "bun scripts/check-release-notes.mjs",
     "start": "NODE_ENV=production bun server/index.mjs",
-    "test": "vitest run",
+    "test": "vitest run && bun run test:sqlite",
+    "test:sqlite": "bun test server/registry/*.bun_spec.mjs",
     "test:watch": "vitest"
   },
   "dependencies": {

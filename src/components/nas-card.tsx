@@ -3,6 +3,7 @@ import { Handle, Position, type Node, type NodeProps } from '@xyflow/react'
 import { AlertTriangle, Grip, X } from 'lucide-react'
 import type { CSSProperties } from 'react'
 import { AssignedPowerAdapterRow } from '@/components/assigned-power-adapter-row'
+import { hostMemorySlotCount, MemorySlotGrid } from '@/components/memory-slot-grid'
 import { Button } from '@/components/ui/button'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { getEndpointHandleId, type CableSide } from '@/lib/cable-routing'
@@ -17,6 +18,8 @@ import {
 import {
   formatPortSummary,
   formatPortType,
+  formatCpuCanvasParts,
+  formatRamCanvasParts,
   formatStorageCanvasParts,
 } from '@/lib/format'
 import { runtimeItemKey } from '@/lib/item-keys'
@@ -421,6 +424,70 @@ function StorageBayRow({
   )
 }
 
+function NasComponentCell({
+  assignment,
+  item,
+  label,
+  onRemoveAssignment,
+  onSelect,
+  selected,
+}: {
+  assignment: ComponentAssignment
+  item: InventoryItem
+  label: string
+  onRemoveAssignment: (assignmentId: string | number) => void
+  onSelect: (itemId: string) => void
+  selected: boolean
+}) {
+  const draggable = useDraggable({
+    id: `assignment:${assignment.id}`,
+    data: {
+      kind: 'assigned-component', assignmentId: assignment.id,
+      itemId: assignment.itemId, sourceServerId: assignment.serverId,
+    },
+  })
+  const itemKey = runtimeItemKey(item)
+  const tapSelection = useTapSelection<HTMLDivElement>((event) => {
+    event.stopPropagation()
+    onSelect(itemKey)
+  })
+  const parts = item.type === 'cpu' ? formatCpuCanvasParts(item) : formatRamCanvasParts(item)
+
+  return (
+    <div
+      ref={draggable.setNodeRef}
+      className={`group relative flex h-11 min-w-0 cursor-grab items-center gap-1.5 rounded-md px-2 py-1.5 text-[#20242c] active:cursor-grabbing ${
+        item.type === 'cpu' ? 'bg-[#9fd3df]' : 'bg-[#e9c56f]'
+      } ${selected ? 'ring-2 ring-white/80' : ''} ${draggable.isDragging ? 'opacity-45' : ''}`}
+      {...draggable.listeners}
+      {...tapSelection}
+      {...draggable.attributes}
+    >
+      <span className="shrink-0 text-[9px] font-black uppercase">{label}</span>
+      <span className="flex min-w-0 flex-1 flex-wrap gap-1 overflow-hidden">
+        {parts.slice(0, 4).map((part) => (
+          <span key={part.label} className="shrink-0 rounded bg-white/70 px-1 py-0.5 text-[9px] font-bold leading-none">
+            {part.value}
+          </span>
+        ))}
+      </span>
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon"
+        className="size-5 shrink-0 opacity-0 group-hover:opacity-100"
+        onPointerDown={(event) => event.stopPropagation()}
+        onClick={(event) => {
+          event.stopPropagation()
+          onRemoveAssignment(assignment.id)
+        }}
+      >
+        <X className="size-3" />
+      </Button>
+    </div>
+  )
+}
+
 function NetworkCardRow({
   assignment,
   canvasIndex,
@@ -640,6 +707,8 @@ export function NasNode({ data }: NodeProps<NasFlowNode>) {
 
   const assignments = canvasIndex.assignmentsByHostId.get(nasRuntimeKey) ?? EMPTY_ASSIGNMENTS
   const storageAssignments = assignments.filter((assignment) => assignment.type === 'storage')
+  const ramAssignments = assignments.filter((assignment) => assignment.type === 'ram')
+  const cpuAssignment = assignments.find((assignment) => assignment.type === 'cpu')
   const m2Assignments = storageAssignments.filter((assignment) => storageFitsM2(project.items[assignment.itemId]))
   const driveAssignments = storageAssignments.filter((assignment) => !storageFitsM2(project.items[assignment.itemId]))
   const networkAssignment = assignments.find((assignment) => assignment.type === 'network')
@@ -704,16 +773,50 @@ export function NasNode({ data }: NodeProps<NasFlowNode>) {
             {formatPortSummary({ ...nas, ports: networkPorts })}
           </span>
         ) : null}
-        {typeof nas.specs?.memoryGb === 'number' ? (
+        {ramAssignments.length === 0 && typeof nas.specs?.memoryGb === 'number' ? (
           <span className="rounded bg-[#f5ecd8] px-1.5 py-0.5 text-[10px] font-bold leading-none text-[#3c2f1f]">
             {nas.specs.memoryGb}GB RAM
           </span>
         ) : null}
-        {typeof nas.specs?.cpu === 'string' ? (
+        {!cpuAssignment && typeof nas.specs?.cpu === 'string' ? (
           <span className="rounded bg-[#d8e1e8] px-1.5 py-0.5 text-[10px] font-bold leading-none text-[#182b38]">
             {nas.specs.cpu}
           </span>
         ) : null}
+      </div>
+
+      {cpuAssignment && project.items[cpuAssignment.itemId] ? (
+        <div className="mt-2">
+          <NasComponentCell
+            assignment={cpuAssignment}
+            item={project.items[cpuAssignment.itemId]}
+            label="CPU"
+            onRemoveAssignment={onRemoveAssignment}
+            onSelect={onSelect}
+            selected={selectedItemId === runtimeItemKey(project.items[cpuAssignment.itemId])}
+          />
+        </div>
+      ) : null}
+
+      <div className="mt-2">
+        <MemorySlotGrid
+          assignments={ramAssignments}
+          hostId={nasRuntimeKey}
+          slotCount={hostMemorySlotCount(nas)}
+          renderAssignment={(assignment) => {
+            const item = project.items[assignment.itemId]
+            return item ? (
+              <NasComponentCell
+                assignment={assignment}
+                item={item}
+                label="RAM"
+                onRemoveAssignment={onRemoveAssignment}
+                onSelect={onSelect}
+                selected={selectedItemId === runtimeItemKey(item)}
+              />
+            ) : null
+          }}
+        />
       </div>
 
       {networkPorts.length ? (

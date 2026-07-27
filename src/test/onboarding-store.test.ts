@@ -35,11 +35,11 @@ describe('onboarding store integration', () => {
     const loaded = await store.loadOnboardingExample()
     expect(loaded.project.revision).toBe(2)
     expect(loaded.status).toMatchObject({ status: 'sample_active', projectRevision: 2 })
-    expect(Object.keys(loaded.project.items)).toHaveLength(9)
+    expect(Object.keys(loaded.project.items)).toHaveLength(10)
 
     const repeated = await store.loadOnboardingExample()
     expect(repeated.project.revision).toBe(2)
-    expect(Object.keys(repeated.project.items)).toHaveLength(9)
+    expect(Object.keys(repeated.project.items)).toHaveLength(10)
 
     const removed = await store.finishOnboardingExample('remove')
     expect(removed.project.revision).toBe(3)

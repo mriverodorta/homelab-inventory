@@ -3,7 +3,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { canonicalPowerPorts } from '../../shared/power-ports.mjs'
-import { HomelabInventoryStore } from './store.mjs'
+import { CURRENT_SCHEMA_VERSION, HomelabInventoryStore } from './store.mjs'
 
 const tempDirs = []
 const stores = []
@@ -33,9 +33,9 @@ describe('atomic inventory commands', () => {
   it('creates sequential quantities and preserves equipment/component naming rules', async () => {
     const { store } = await createStore()
     let project = store.createInventoryItems({ type: 'switch', name: 'Edge Switch' }, 2)
-    project = store.createInventoryItems({ type: 'ram', name: '32GB DDR4', specs: { capacityGB: 32 } }, 3)
+    project = store.createInventoryItems({ type: 'ram', name: '32GB DDR4', specs: { capacityGb: 32 } }, 3)
 
-    expect(project.metadata.schemaVersion).toBe(14)
+    expect(project.metadata.schemaVersion).toBe(CURRENT_SCHEMA_VERSION)
     expect(store.databases.inventory.data.switches.map(({ id, name }) => ({ id, name }))).toEqual([
       { id: 1, name: 'Edge Switch #1' },
       { id: 2, name: 'Edge Switch #2' },
@@ -45,7 +45,7 @@ describe('atomic inventory commands', () => {
       { id: 2, name: '32GB DDR4' },
       { id: 3, name: '32GB DDR4' },
     ])
-    expect(store.databases.inventory.data.ram[0].specs).toEqual({ capacityGB: 32 })
+    expect(store.databases.inventory.data.ram[0].specs).toEqual({ capacityGb: 32 })
   })
 
   it('supports lifecycle commands for schema-11 PC equipment and components', async () => {
@@ -448,7 +448,7 @@ describe('atomic inventory commands', () => {
     await store.flush()
 
     const { store: restarted } = await createStore(dataDir)
-    expect(restarted.databases.meta.data.schemaVersion).toBe(14)
+    expect(restarted.databases.meta.data.schemaVersion).toBe(CURRENT_SCHEMA_VERSION)
     expect(restarted.getProject().items['cpu:1'].archivedAt).toBeTruthy()
   })
 })

@@ -3,6 +3,7 @@ import { Handle, Position, type Node, type NodeProps } from '@xyflow/react'
 import { AlertTriangle, Grip, X } from 'lucide-react'
 import type { CSSProperties } from 'react'
 import { AssignedPowerAdapterRow } from '@/components/assigned-power-adapter-row'
+import { hostMemorySlotCount, MemorySlotGrid } from '@/components/memory-slot-grid'
 import { Button } from '@/components/ui/button'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { getVisibleServerSlotTypes, SLOT_LABELS, sortAssignmentsForDisplay } from '@/lib/constraints'
@@ -795,6 +796,37 @@ export function ServerNode({ data }: NodeProps<ServerFlowNode>) {
       <div className="mt-2 space-y-1.5">
         {visibleSlotTypes.map((type) => {
           const matches = assignments.filter((assignment) => assignment.type === type)
+
+          if (type === 'ram') {
+            return (
+              <MemorySlotGrid
+                key="ram"
+                assignments={matches}
+                hostId={serverRuntimeKey}
+                slotCount={hostMemorySlotCount(server)}
+                renderAssignment={(assignment) => {
+                  const item = project.items[assignment.itemId]
+                  return item ? (
+                    <AssignedComponentRow
+                      assignment={assignment}
+                      canvasIndex={canvasIndex}
+                      draggingEndpoint={draggingEndpoint}
+                      item={item}
+                      onRemoveAssignment={onRemoveAssignment}
+                      onEndpointClick={onEndpointClick}
+                      onEndpointDragStart={onEndpointDragStart}
+                      onEndpointDrop={onEndpointDrop}
+                      onSelect={onSelect}
+                      pendingEndpoint={pendingEndpoint}
+                      requiredHandleIds={requiredHandleIds}
+                      selected={selectedItemId === runtimeItemKey(item)}
+                      serverId={serverRuntimeKey}
+                    />
+                  ) : null
+                }}
+              />
+            )
+          }
 
           if (matches.length === 0) {
             return (

@@ -4,6 +4,7 @@ import { SettingsDialog, type SettingsDialogProps } from '@/components/settings-
 import { TooltipProvider } from '@/components/ui/tooltip'
 import type { UpdateStatus } from '@/lib/update-api'
 import type { OnboardingStatus } from '@/lib/onboarding-api'
+import { DEFAULT_REGISTRY_STATE } from '@/types/registry'
 
 const updateStatus: UpdateStatus = {
   enabled: true,
@@ -168,17 +169,75 @@ describe('SettingsDialog', () => {
     expect(props.onClearSkippedUpdate).toHaveBeenCalledOnce()
   })
 
-  it('shows five focused categories without storage-scope pills', () => {
+  it('shows six focused categories without storage-scope pills', () => {
     renderSettings()
     const navigation = screen.getByRole('navigation', { name: 'Settings categories' })
     expect(navigation).toHaveTextContent('General')
     expect(navigation).toHaveTextContent('Project')
+    expect(navigation).toHaveTextContent('Registry')
     expect(navigation).toHaveTextContent('Updates')
     expect(navigation).toHaveTextContent('Feedback')
     expect(navigation).toHaveTextContent('About')
     expect(navigation).not.toHaveTextContent('System')
     expect(screen.queryByText('This browser')).not.toBeInTheDocument()
     expect(screen.queryByText('Environment')).not.toBeInTheDocument()
+  })
+
+  it('configures registry mode and default Add Hardware source', () => {
+    const props = renderSettings({
+      registry: {
+        settings: {
+          mode: 'disabled',
+          defaultInventorySource: 'catalog',
+          automaticContributions: false,
+          updatedAt: null,
+        },
+        sources: [],
+        links: [],
+        privateTemplates: [],
+        snapshot: null,
+        contributions: {
+          enabled: false,
+          queued: 0,
+          retrying: 0,
+          delivered: 0,
+          accepted: 0,
+          rejected: 0,
+          suppressed: 0,
+          enrollment: 'not-enrolled',
+          tokenExpiresAt: null,
+          lastError: null,
+        },
+        database: { schemaVersion: 16, lastMigration: null },
+      },
+      onRegistrySettingsChange: vi.fn(),
+    })
+    fireEvent.click(screen.getByRole('button', { name: /Registry.*Catalog and private templates/ }))
+
+    expect(screen.getByRole('combobox', { name: 'Registry mode' })).toBeInTheDocument()
+    expect(screen.getByRole('combobox', { name: 'Default Add Hardware tab' })).toBeInTheDocument()
+    expect(screen.getByRole('switch', { name: 'Automatic catalog contributions' })).toBeDisabled()
+    fireEvent.click(screen.getByRole('combobox', { name: 'Registry mode' }))
+    fireEvent.click(screen.getByRole('option', { name: 'Offline file' }))
+    expect(props.onRegistrySettingsChange).toHaveBeenCalledWith({ mode: 'offline' }, null)
+  })
+
+  it('requires connected mode for contribution consent and reports delivery status', () => {
+    const onRegistrySettingsChange = vi.fn()
+    renderSettings({
+      registry: {
+        ...DEFAULT_REGISTRY_STATE,
+        settings: { ...DEFAULT_REGISTRY_STATE.settings, mode: 'connected' },
+        contributions: { ...DEFAULT_REGISTRY_STATE.contributions, enrollment: 'active', queued: 2, delivered: 4 },
+      },
+      onRegistrySettingsChange,
+    })
+    fireEvent.click(screen.getByRole('button', { name: /Registry.*Catalog and private templates/ }))
+    const contributionSwitch = screen.getByRole('switch', { name: 'Automatic catalog contributions' })
+    expect(contributionSwitch).toBeEnabled()
+    fireEvent.click(contributionSwitch)
+    expect(onRegistrySettingsChange).toHaveBeenCalledWith({ automaticContributions: true }, null)
+    expect(screen.getByText(/2 queued, 0 retrying, 4 delivered/)).toBeInTheDocument()
   })
 
   it('links to roadmap feedback without including project data', () => {

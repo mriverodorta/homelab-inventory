@@ -53,14 +53,13 @@ const host = (
   },
 })
 
-const ram = (id: number, moduleCount = 2): InventoryItem => ({
+const ram = (id: number): InventoryItem => ({
   id,
   key: `ram:${id}`,
   type: 'ram',
   name: `RAM ${id}`,
   specs: {
-    capacityGb: moduleCount * 16,
-    moduleCount,
+    capacityGb: 16,
     generation: 'DDR4',
     speedMt: 3200,
   },
@@ -137,7 +136,7 @@ describe('deterministic compatibility allocation', () => {
     expect(planHostAllocations(input, server.key!).assignments).toEqual([
       expect.objectContaining({
         id: 1,
-        allocation: { resourceType: 'memory', positions: [0, 1] },
+        allocation: { resourceType: 'memory', positions: [0] },
       }),
       expect.objectContaining({
         id: 2,
@@ -298,7 +297,7 @@ describe('deterministic compatibility allocation', () => {
         }],
       },
     })
-    const items = [ram(1, 2), ram(2, 1), storage(1), storage(2), card(1, 2), card(2, 1)]
+    const items = [ram(1), ram(2), ram(3), storage(1), storage(2), card(1, 2), card(2, 1)]
     const input = project(
       [server],
       items,
@@ -307,7 +306,8 @@ describe('deterministic compatibility allocation', () => {
 
     const planned = planHostAllocations(input, server.key!)
     expect(planned.assignments.map((entry) => entry.allocation)).toEqual([
-      { resourceType: 'memory', positions: [0, 1] },
+      { resourceType: 'memory', positions: [0] },
+      { resourceType: 'memory', positions: [1] },
       undefined,
       { resourceType: 'storage', groupId: 1, positions: [0] },
       undefined,

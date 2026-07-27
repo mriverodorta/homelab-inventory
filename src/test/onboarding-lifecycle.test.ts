@@ -38,8 +38,8 @@ function emptyDraft(): any {
 
 describe('example workspace lifecycle', () => {
   it('ships only the approved fictional shape', () => {
-    expect(EXAMPLE_WORKSPACE_TEMPLATE.inventory).toHaveLength(9)
-    expect(EXAMPLE_WORKSPACE_TEMPLATE.assignments).toHaveLength(4)
+    expect(EXAMPLE_WORKSPACE_TEMPLATE.inventory).toHaveLength(10)
+    expect(EXAMPLE_WORKSPACE_TEMPLATE.assignments).toHaveLength(5)
     expect(EXAMPLE_WORKSPACE_TEMPLATE.placements).toHaveLength(5)
     expect(EXAMPLE_WORKSPACE_TEMPLATE.connections).toHaveLength(4)
     expect(JSON.stringify(EXAMPLE_WORKSPACE_TEMPLATE)).not.toMatch(/ipAddress|macAddress|serial|token/i)
@@ -94,8 +94,8 @@ describe('example workspace lifecycle', () => {
 
     expect(loadExampleIntoDraft(draft, '2026-07-25T00:00:00.000Z')).toBe(true)
     expect(loadExampleIntoDraft(draft, '2026-07-25T00:00:01.000Z')).toBe(false)
-    expect(draft.meta.onboarding.sampleInventoryRefs).toHaveLength(9)
-    expect(draft.project.assignments).toHaveLength(4)
+    expect(draft.meta.onboarding.sampleInventoryRefs).toHaveLength(10)
+    expect(draft.project.assignments).toHaveLength(5)
     expect(draft.project.connections).toHaveLength(4)
     expect(draft.project.placements).toHaveLength(5)
     expect(() => assertInventoryStoreShape(draft.inventory)).not.toThrow()

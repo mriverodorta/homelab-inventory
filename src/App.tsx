@@ -72,6 +72,8 @@ import {
   syncProjectGeometry,
 } from '@/engine/geometry'
 import { useDomainEngine } from '@/hooks/use-domain-engine'
+import { useRegistryMutations, useRegistryQuery } from '@/hooks/use-registry'
+import { applyCatalogUpdate, createInventoryFromCatalog, exportPrivateTemplates } from '@/lib/registry-api'
 import {
   useCompatibleTopologyDestinations,
   useTopologyQuery,
@@ -263,11 +265,20 @@ function aggregateDependencyReports(
 }
 
 function getServerIdFromOver(overId: string | null): string | null {
+  const memorySlot = parseMemorySlotOver(overId)
+  if (memorySlot) return memorySlot.serverId
   if (!overId?.startsWith('server:')) {
     return null
   }
 
   return overId.replace('server:', '')
+}
+
+function parseMemorySlotOver(overId: string | null): { serverId: string; position: number } | null {
+  const match = overId?.match(/^memory-slot:(.+):([0-9]+)$/)
+  if (!match) return null
+  const position = Number(match[2])
+  return Number.isSafeInteger(position) ? { serverId: match[1], position } : null
 }
 
 function getCanvasDropPoint(
@@ -669,6 +680,8 @@ function App() {
     enabled: demoSessionQuery.data !== undefined,
     retry: false,
   })
+  const registryQuery = useRegistryQuery()
+  const registryMutations = useRegistryMutations()
   const { mutateAsync: persistProject } = useMutation({
     mutationFn: saveProject,
   })
@@ -2023,6 +2036,24 @@ function App() {
     }
   }
 
+  async function handleCreateCatalogInventoryItem(templateKey: string, quantity: number) {
+    const currentProject = projectRef.current
+    const nextProject = await createInventoryFromCatalog(templateKey, quantity)
+    const previousItemIds = new Set(Object.keys(currentProject?.items ?? {}))
+    const createdItemId = Object.keys(nextProject.items).find((itemId) => !previousItemIds.has(itemId))
+    await applyInventoryCommandSnapshot(nextProject)
+    if (createdItemId) setSelectedItemId(createdItemId)
+  }
+
+  async function handleSavePrivateTemplate(item: InventoryItem) {
+    try {
+      await registryMutations.createTemplate.mutateAsync({ name: item.name, item })
+      setValidationMessage(`Saved ${item.name} as a private template.`, 'unknown')
+    } catch (error) {
+      showMessage(error instanceof Error ? error.message : 'Private template could not be saved.')
+    }
+  }
+
   async function handleUpdateInventoryItem(itemId: string, input: InventoryItemInput) {
     const currentProject = projectRef.current
     const currentItem = currentProject?.items[itemId]
@@ -2274,6 +2305,7 @@ function App() {
     }
 
     const serverId = getServerIdFromOver(overId)
+    const memorySlot = parseMemorySlotOver(overId)
 
     if (!serverId) {
       showMessage('Drop components onto a compatible host.')
@@ -2281,7 +2313,7 @@ function App() {
     }
 
     if (data.kind === 'assigned-component') {
-      const result = moveAssignedComponent(project, data.assignmentId, serverId)
+      const result = moveAssignedComponent(project, data.assignmentId, serverId, memorySlot?.position)
 
       if (!result.ok) {
         showMessage(result.message)
@@ -2336,7 +2368,7 @@ function App() {
       return
     }
 
-    const result = tryAssignComponent(project, serverId, data.itemId)
+    const result = tryAssignComponent(project, serverId, data.itemId, memorySlot?.position)
 
     if (!result.ok) {
       showMessage(result.message)
@@ -2508,6 +2540,7 @@ function App() {
               project={project}
               onSelect={handleInventorySelect}
               onCreateItem={handleCreateInventoryItem}
+              onCreateCatalogItem={handleCreateCatalogInventoryItem}
               onDuplicateItem={handleDuplicateInventoryItem}
               onArchiveItems={(items) => void requestInventoryLifecycle('archive', items)}
               onRestoreItems={(items) => void handleRestoreInventoryItems(items)}
@@ -2515,6 +2548,14 @@ function App() {
               lifecycleRevision={inventoryLifecycleRevision}
               lifecycleBusy={inventoryLifecycleBusy}
               width={inventoryWidth}
+              registry={registryQuery.data}
+              onSaveAsTemplate={(item) => void handleSavePrivateTemplate(item)}
+              onDuplicatePrivateTemplate={async (id) => {
+                await registryMutations.duplicateTemplate.mutateAsync(id)
+              }}
+              onOpenRegistrySettings={() => {
+                setSettingsOpen(true)
+              }}
             />
           </DesktopInventoryShell>
           <Sheet open={mobileInventoryOpen} onOpenChange={setMobileInventoryOpen}>
@@ -2532,6 +2573,7 @@ function App() {
                 project={project}
                 onSelect={handleInventorySelect}
                 onCreateItem={handleCreateInventoryItem}
+                onCreateCatalogItem={handleCreateCatalogInventoryItem}
                 onDuplicateItem={handleDuplicateInventoryItem}
                 onArchiveItems={(items) => void requestInventoryLifecycle('archive', items)}
                 onRestoreItems={(items) => void handleRestoreInventoryItems(items)}
@@ -2540,6 +2582,15 @@ function App() {
                 lifecycleBusy={inventoryLifecycleBusy}
                 onClose={() => setMobileInventoryOpen(false)}
                 className="h-full w-full"
+                registry={registryQuery.data}
+                onSaveAsTemplate={(item) => void handleSavePrivateTemplate(item)}
+                onDuplicatePrivateTemplate={async (id) => {
+                  await registryMutations.duplicateTemplate.mutateAsync(id)
+                }}
+                onOpenRegistrySettings={() => {
+                  setMobileInventoryOpen(false)
+                  setSettingsOpen(true)
+                }}
               />
             </SheetContent>
           </Sheet>
@@ -2878,6 +2929,9 @@ function App() {
             updateClearingSkip={clearSkippedUpdateMutation.isPending}
             onboardingStatus={currentOnboarding ?? onboardingQuery.data ?? null}
             onboardingBusy={onboardingBusy}
+            registry={registryQuery.data}
+            registryLoading={registryQuery.isLoading}
+            registrySaving={registryMutations.updateSettings.isPending || registryMutations.importCatalog.isPending || registryMutations.refreshCatalog.isPending || registryMutations.deliverContributions.isPending || registryMutations.revokeContributions.isPending || registryMutations.rotateContributionKey.isPending}
             onOpenChange={setSettingsOpen}
             onProjectNameChange={updateProjectName}
             onInventoryVisibleChange={setDesktopInventoryVisible}
@@ -2922,6 +2976,37 @@ function App() {
             }}
             onRestartOnboarding={() => restartOnboardingMutation.mutate()}
             onDismissOnboarding={() => dismissOnboardingMutation.mutate()}
+            onRegistrySettingsChange={(settings, expectedUpdatedAt) => {
+              return registryMutations.updateSettings.mutateAsync([settings, expectedUpdatedAt]).then(() => undefined)
+            }}
+            onDeletePrivateTemplate={(id) => {
+              void registryMutations.deleteTemplate.mutateAsync(id)
+            }}
+            onExportPrivateTemplates={() => exportPrivateTemplates()}
+            onImportPrivateTemplates={async (pack) => {
+              const result = await registryMutations.importTemplates.mutateAsync(pack)
+              return { imported: result.imported, skipped: result.skipped }
+            }}
+            onImportOfficialCatalog={async (artifact) => {
+              await registryMutations.importCatalog.mutateAsync(artifact)
+            }}
+            onRefreshOfficialCatalog={async () => {
+              await registryMutations.refreshCatalog.mutateAsync()
+            }}
+            onApplyCatalogUpdate={async (linkId) => {
+              const nextProject = await applyCatalogUpdate(linkId)
+              await applyInventoryCommandSnapshot(nextProject)
+              await queryClient.invalidateQueries({ queryKey: ['registry'] })
+            }}
+            onDeliverRegistryContributions={async () => {
+              await registryMutations.deliverContributions.mutateAsync()
+            }}
+            onRevokeRegistryContributions={async () => {
+              await registryMutations.revokeContributions.mutateAsync()
+            }}
+            onRotateRegistryContributionKey={async () => {
+              await registryMutations.rotateContributionKey.mutateAsync()
+            }}
           />
           <DemoSessionDialog
             state={demoDialogState}

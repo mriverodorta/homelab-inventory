@@ -55,8 +55,7 @@ function fixtureFor(type: InventoryType): InventoryItem {
     case 'ram':
       return {
         ...common,
-        secondaryManufacturer: 'Second Corp',
-        specs: { capacityGb: 32, generation: 'DDR4', speedMt: 3200, secondarySpeedMt: 2666 },
+        specs: { capacityGb: 32, generation: 'DDR4', speedMt: 3200, formFactor: 'SODIMM' },
       }
     case 'storage':
       return { ...common, specs: { capacityTb: 4, interface: 'NVMe', formFactor: '2280' } }
@@ -332,7 +331,7 @@ describe('inventory form model', () => {
       .not.toHaveProperty('powerWatts')
   })
 
-  it('persists RAM moduleCount as a canonical spec', () => {
+  it('removes legacy RAM kit fields from canonical output', () => {
     const values = inventoryItemToFormValues({
       id: 4,
       type: 'ram',
@@ -344,7 +343,6 @@ describe('inventory form model', () => {
     expect(inventoryFormValuesToInput(values).specs).toEqual({
       capacityGb: 32,
       generation: 'DDR4',
-      moduleCount: 2,
     })
   })
 

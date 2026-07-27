@@ -160,7 +160,7 @@ export function ExpansionCompatibilityFields({ values, errors = {}, onChange, on
 }
 
 export function CompatibilityFields(props: CompatibilityFieldsProps) {
-  const { values, errors = {}, onChange } = props
+  const { values } = props
   const supported = ['server', 'nas', 'motherboard', 'cpu', 'ram', 'gpu', 'network'].includes(values.type)
   if (!supported) return null
 
@@ -180,9 +180,6 @@ export function CompatibilityFields(props: CompatibilityFieldsProps) {
         </>
       ) : null}
       {values.type === 'cpu' ? <CpuCompatibilityFields {...props} /> : null}
-      {values.type === 'ram' ? (
-        <TextField label="Module count" name="moduleCount" value={values.moduleCount} type="number" min={1} placeholder="2" error={errors.moduleCount} onChange={(moduleCount) => onChange({ moduleCount })} />
-      ) : null}
       {(values.type === 'gpu' || values.type === 'network') ? <ExpansionCompatibilityFields {...props} /> : null}
     </section>
   )

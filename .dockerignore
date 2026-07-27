@@ -27,6 +27,7 @@ rust/target
 data-wasm
 server/seed
 server/**/*.test.mjs
+server/**/*.bun_spec.mjs
 src/test
 *.test.ts
 *.test.tsx

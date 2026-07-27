@@ -1,0 +1,7 @@
+{
+  "name": "@homelab-inventory/catalog-protocol",
+  "version": "1.0.0",
+  "private": false,
+  "type": "module",
+  "exports": "./src/index.ts"
+}

@@ -81,6 +81,9 @@ export type InventoryFormValues = {
   speedMt: string
   secondarySpeedMt: string
   moduleCount: string
+  ramFormFactor: string
+  ramEcc: '' | 'yes' | 'no'
+  ramRank: string
   capacity: string
   storageUnit: 'GB' | 'TB'
   interface: string
@@ -163,7 +166,7 @@ const KNOWN_SPEC_KEYS: Partial<Record<InventoryType, string[]>> = {
   server: ['formFactor', 'networkSlot', 'wireless'],
   nas: ['driveBays', 'm2Slots', 'powerConfiguration'],
   cpu: ['cores', 'threads', 'baseClockGhz', 'boostClockGhz'],
-  ram: ['capacityGb', 'generation', 'speedMt', 'secondarySpeedMt', 'moduleCount'],
+  ram: ['capacityGb', 'generation', 'speedMt', 'formFactor', 'ecc', 'rank'],
   storage: ['capacityGb', 'capacityTb', 'interface', 'formFactor'],
   gpu: ['vramGb', 'formFactor', 'slotWidth', 'pcie'],
   network: ['ports', 'speedMbps', 'interface', 'formFactor'],
@@ -363,6 +366,9 @@ export function createInventoryFormValues(type: InventoryType): InventoryFormVal
     speedMt: '',
     secondarySpeedMt: '',
     moduleCount: '',
+    ramFormFactor: '',
+    ramEcc: '',
+    ramRank: '',
     capacity: '',
     storageUnit: 'TB',
     interface: '',
@@ -467,6 +473,9 @@ export function inventoryItemToFormValues(item: InventoryItem): InventoryFormVal
     speedMt: stringValue(specs.speedMt),
     secondarySpeedMt: stringValue(specs.secondarySpeedMt),
     moduleCount: stringValue(specs.moduleCount),
+    ramFormFactor: item.type === 'ram' ? stringValue(specs.formFactor) : '',
+    ramEcc: item.type === 'ram' && typeof specs.ecc === 'boolean' ? (specs.ecc ? 'yes' : 'no') : '',
+    ramRank: item.type === 'ram' ? stringValue(specs.rank) : '',
     capacity: stringValue(hasCapacityTb ? specs.capacityTb : specs.capacityGb),
     storageUnit: hasCapacityTb ? 'TB' : 'GB',
     interface: stringValue(specs.interface),
@@ -659,8 +668,13 @@ export function inventoryFormValuesToInput(values: InventoryFormValues): Invento
     setSpec(specs, 'capacityGb', numberValue(values.capacityGb))
     setSpec(specs, 'generation', cleanString(values.generation))
     setSpec(specs, 'speedMt', numberValue(values.speedMt))
-    setSpec(specs, 'secondarySpeedMt', numberValue(values.secondarySpeedMt))
-    setSpec(specs, 'moduleCount', numberValue(values.moduleCount))
+    setSpec(specs, 'formFactor', cleanString(values.ramFormFactor))
+    setSpec(specs, 'ecc', values.ramEcc === '' ? undefined : values.ramEcc === 'yes')
+    setSpec(specs, 'rank', cleanString(values.ramRank))
+    delete specs.secondarySpeedMt
+    delete specs.moduleCount
+    delete specs.module
+    delete specs.modules
   } else if (type === 'storage') {
     delete specs.capacityGb
     delete specs.capacityTb
@@ -751,7 +765,7 @@ export function inventoryFormValuesToInput(values: InventoryFormValues): Invento
     type,
     name: values.name.trim(),
     ...(cleanString(values.manufacturer) ? { manufacturer: values.manufacturer.trim() } : {}),
-    ...(cleanString(values.secondaryManufacturer) ? { secondaryManufacturer: values.secondaryManufacturer.trim() } : {}),
+    ...(type !== 'ram' && cleanString(values.secondaryManufacturer) ? { secondaryManufacturer: values.secondaryManufacturer.trim() } : {}),
     ...(cleanString(values.model) ? { model: values.model.trim() } : {}),
     ...(cleanString(values.family) ? { family: values.family.trim() } : {}),
     ...(cleanString(values.number) ? { number: values.number.trim() } : {}),
@@ -1001,10 +1015,10 @@ export function validateInventoryFormValues(values: InventoryFormValues): Invent
   }
 
   const positiveFields: Array<keyof InventoryFormValues> = [
-    'cores', 'threads', 'capacityGb', 'moduleCount', 'hostMemorySlots', 'cpuSocketCount',
+    'cores', 'threads', 'capacityGb', 'hostMemorySlots', 'cpuSocketCount',
   ]
   const nonNegativeFields: Array<keyof InventoryFormValues> = [
-    'baseClockGhz', 'boostClockGhz', 'driveBays', 'm2Slots', 'speedMt', 'secondarySpeedMt',
+    'baseClockGhz', 'boostClockGhz', 'driveBays', 'm2Slots', 'speedMt',
     'capacity', 'vramGb', 'switchingCapacityGbps', 'rackUnits',
     'hostCpuMaxTdpWatts', 'hostMemoryMaxCapacityGb', 'hostMemoryMaxModuleCapacityGb',
     'hostMemoryMaxSpeedMt', 'hostMaxExpansionPowerWatts', 'cpuTdpWatts',

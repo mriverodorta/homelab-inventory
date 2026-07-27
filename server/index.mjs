@@ -14,6 +14,10 @@ import { registerEngineRoutes } from './engine-routes.mjs'
 import { registerInventoryRoutes } from './inventory-routes.mjs'
 import { registerOnboardingRoutes } from './onboarding-routes.mjs'
 import { registerProjectRoutes } from './project-routes.mjs'
+import { registerRegistryRoutes } from './registry-routes.mjs'
+import { ContributionDeliveryService } from './registry/contribution-delivery.mjs'
+import { InstallationIdentityService } from './registry/installation-identity.mjs'
+import { SnapshotService } from './registry/snapshot-service.mjs'
 import { createRateLimitOptions, readRateLimitConfig } from './rate-limit.mjs'
 import { DockerHubUpdateChecker } from './update-checker.mjs'
 import { registerUpdateRoutes } from './update-routes.mjs'
@@ -116,6 +120,7 @@ app.use(helmet({
 }))
 
 app.use(rateLimit(createRateLimitOptions(rateLimitConfig)))
+app.use('/api/registry/catalog/import', express.json({ limit: '66mb' }))
 app.use(express.json({ limit: '10mb' }))
 
 registerAgentRoutes(app, store, { disabled: isDemoMode })
@@ -167,7 +172,24 @@ registerUpdateRoutes(app, {
   releaseNotes: RELEASE_NOTES,
 })
 
+const registryOrigin = 'https://registry.homelabinventory.com'
+const installationIdentity = !isDemoMode
+  ? new InstallationIdentityService({ dataDir, officialOrigin: registryOrigin })
+  : null
+const contributionDelivery = installationIdentity
+  ? new ContributionDeliveryService({
+      identityService: installationIdentity,
+      digestHashes: (currentStore) => new SnapshotService(currentStore, { officialOrigin: registryOrigin }).knownContributionHashes(),
+    })
+  : null
+
 registerInventoryRoutes(app, { withStore })
+registerRegistryRoutes(app, {
+  withStore,
+  officialOrigin: registryOrigin,
+  identityService: installationIdentity,
+  deliveryService: contributionDelivery,
+})
 registerProjectRoutes(app, { withStore })
 registerOnboardingRoutes(app, { withStore, disabled: isDemoMode })
 
@@ -182,6 +204,7 @@ startUpdateCheckSchedule({
   checker: updateChecker,
   store,
 })
+if (contributionDelivery && store) contributionDelivery.start(store)
 
 app.get('/api/health', (_request, response) => {
   response.json({
@@ -290,6 +313,7 @@ async function shutdown(signal) {
       if (demoManager) {
         await demoManager.flushAll()
       } else {
+        if (contributionDelivery) await contributionDelivery.stop(store)
         await store.flush()
       }
 

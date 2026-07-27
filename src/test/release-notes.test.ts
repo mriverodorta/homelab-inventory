@@ -92,28 +92,35 @@ describe('release notes helpers', () => {
 
   it('has structured notes for the package version under development', () => {
     const currentRelease = RELEASE_NOTES[0]
+    const onboardingRelease = RELEASE_NOTES.find((entry) => entry.version === '0.3.0')!
     const cableRelease = RELEASE_NOTES.find((entry) => entry.version === '0.2.2')!
     const previousRelease = RELEASE_NOTES.find((entry) => entry.version === '0.2.1')!
     const engineRelease = RELEASE_NOTES.find((entry) => entry.version === '0.2.0')!
 
-    expect(hasReleaseNoteForVersion(RELEASE_NOTES, '0.3.0')).toBe(true)
+    expect(hasReleaseNoteForVersion(RELEASE_NOTES, '0.4.0')).toBe(true)
     expect(RELEASE_NOTES[0]).toEqual(
       expect.objectContaining({
-        version: '0.3.0',
-        title: 'Guided first-run workspace',
+        version: '0.4.0',
+        title: 'Verified hardware catalog and physical RAM',
       }),
     )
     expect(RELEASE_NOTES.filter((entry) => entry.channel === 'latest')).toEqual([
-      expect.objectContaining({ version: '0.3.0' }),
+      expect.objectContaining({ version: '0.4.0' }),
     ])
     expect(RELEASE_NOTES.find((entry) => entry.version === '0.1.38')).toEqual(
       expect.objectContaining({ channel: 'release' }),
     )
-    expect(UNRELEASED_RELEASE_NOTES).toEqual({ highlights: [], fixes: [], notes: [] })
     expect(currentRelease.highlights).toContain(
+      'Add Hardware now combines a locally searched verified Catalog, the complete Manual editor, and reusable Private templates in one source-aware dialog.',
+    )
+    expect(currentRelease.notes).toContain(
+      'Schema 15 adds an independent registry store for catalog preferences, private templates, signed snapshot metadata, and numeric catalog links without changing canvas, assignment, or cable relationships.',
+    )
+    expect(UNRELEASED_RELEASE_NOTES).toEqual({ highlights: [], fixes: [], notes: [] })
+    expect(onboardingRelease.highlights).toContain(
       'Fresh workspaces can now explore a complete fictional homelab or start empty with an adaptive create, place, and connect checklist.',
     )
-    expect(currentRelease.fixes).toContain(
+    expect(onboardingRelease.fixes).toContain(
       'Tall equipment cards now include their external Top and Bottom portals in the bounded WASM search area, preventing valid cable routes from failing or falling back through equipment.',
     )
     expect(cableRelease.fixes).toContain(

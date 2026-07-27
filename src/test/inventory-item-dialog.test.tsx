@@ -4,12 +4,54 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { SelectField } from '@/components/inventory-form/field-primitives'
 import { SWITCH_MANAGEMENT_OPTIONS } from '@/components/inventory-form/options'
 import { InventoryItemDialog } from '@/components/inventory-item-dialog'
+import { DEFAULT_REGISTRY_STATE } from '@/types/registry'
 
 afterEach(() => {
   cleanup()
 })
 
 describe('InventoryItemDialog switch port groups', () => {
+  it('falls back to Manual when the preferred catalog is unavailable', () => {
+    render(<InventoryItemDialog open onOpenChange={vi.fn()} onCreate={vi.fn()} />)
+
+    expect(screen.getByRole('tab', { name: 'Manual' })).toHaveAttribute('data-state', 'active')
+    expect(screen.getByRole('tab', { name: 'Catalog' })).toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: 'Private templates' })).toBeInTheDocument()
+  })
+
+  it('creates inventory from a selected private template', async () => {
+    const user = userEvent.setup()
+    const onCreate = vi.fn().mockResolvedValue(undefined)
+    render(
+      <InventoryItemDialog
+        open
+        onOpenChange={vi.fn()}
+        onCreate={onCreate}
+        registry={{
+          ...DEFAULT_REGISTRY_STATE,
+          settings: { ...DEFAULT_REGISTRY_STATE.settings, defaultInventorySource: 'private-templates' },
+          privateTemplates: [{
+            id: 1,
+            name: 'Compute CPU',
+            checksum: 'a'.repeat(64),
+            createdAt: '2026-07-26T00:00:00.000Z',
+            updatedAt: '2026-07-26T00:00:00.000Z',
+            item: { type: 'cpu', name: 'Example CPU', manufacturer: 'Example' },
+          }],
+        }}
+      />,
+    )
+
+    expect(screen.getByRole('tab', { name: 'Private templates' })).toHaveAttribute('data-state', 'active')
+    await user.clear(screen.getByRole('spinbutton', { name: 'Template quantity' }))
+    await user.type(screen.getByRole('spinbutton', { name: 'Template quantity' }), '2')
+    await user.click(screen.getByRole('button', { name: 'Add to inventory' }))
+    await waitFor(() => expect(onCreate).toHaveBeenCalledWith(
+      { type: 'cpu', name: 'Example CPU', manufacturer: 'Example' },
+      2,
+    ))
+  })
+
   it('shares compatibility controls with the inspector form', async () => {
     const user = userEvent.setup()
     render(<InventoryItemDialog open onOpenChange={vi.fn()} onCreate={vi.fn()} />)
@@ -34,6 +76,22 @@ describe('InventoryItemDialog switch port groups', () => {
     await user.click(screen.getByRole('tab', { name: 'Compatibility' }))
     expect(screen.getByLabelText('CPU socket')).toBeInTheDocument()
     expect(screen.queryByLabelText('Supported CPU sockets')).not.toBeInTheDocument()
+  })
+
+  it('uses physical RAM fields on the Compatibility tab', async () => {
+    const user = userEvent.setup()
+    render(<InventoryItemDialog open onOpenChange={vi.fn()} onCreate={vi.fn()} />)
+
+    await user.click(screen.getByRole('combobox', { name: 'Inventory type' }))
+    await user.click(screen.getByRole('option', { name: 'RAM' }))
+
+    expect(screen.queryByLabelText('Capacity GB')).not.toBeInTheDocument()
+    await user.click(screen.getByRole('tab', { name: 'Compatibility' }))
+    expect(screen.getByLabelText('Capacity GB')).toBeVisible()
+    expect(screen.getByRole('combobox', { name: 'Form Factor' })).toBeVisible()
+    expect(screen.getByRole('combobox', { name: 'ECC' })).toBeVisible()
+    expect(screen.queryByLabelText('Expansion interface')).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('Module count')).not.toBeInTheDocument()
   })
 
   it('changes common and type-specific placeholders with the inventory type', async () => {
@@ -77,7 +135,9 @@ describe('InventoryItemDialog switch port groups', () => {
 
     await user.click(screen.getByRole('combobox', { name: 'Inventory type' }))
     await user.click(screen.getByRole('option', { name: 'RAM' }))
+    await user.click(screen.getByRole('tab', { name: 'Compatibility' }))
     expect(screen.getByRole('combobox', { name: 'Generation' })).toBeInTheDocument()
+    await user.click(screen.getByRole('tab', { name: 'Specs' }))
 
     await user.click(screen.getByRole('combobox', { name: 'Inventory type' }))
     await user.click(screen.getByRole('option', { name: 'Storage' }))

@@ -15,7 +15,6 @@ describe('compatibility normalization', () => {
         name: '32GB DDR4',
         specs: {
           capacityGb: 32,
-          moduleCount: 2,
           generation: ' ddr4 ',
           speedMt: 3200,
         },
@@ -23,10 +22,13 @@ describe('compatibility normalization', () => {
     ).toEqual({
       type: 'ram',
       capacityGb: 32,
-      moduleCount: 2,
-      moduleCapacityGb: 16,
+      moduleCount: 1,
+      moduleCapacityGb: 32,
       generation: 'DDR4',
       speedMt: 3200,
+      formFactor: undefined,
+      ecc: undefined,
+      rank: undefined,
     })
 
     expect(
@@ -39,10 +41,13 @@ describe('compatibility normalization', () => {
     ).toEqual({
       type: 'ram',
       capacityGb: 64,
-      moduleCount: undefined,
-      moduleCapacityGb: undefined,
+      moduleCount: 1,
+      moduleCapacityGb: 64,
       generation: 'DDR5',
       speedMt: undefined,
+      formFactor: undefined,
+      ecc: undefined,
+      rank: undefined,
     })
   })
 
@@ -283,10 +288,13 @@ describe('compatibility normalization', () => {
     ).toEqual({
       type: 'ram',
       capacityGb: undefined,
-      moduleCount: undefined,
+      moduleCount: 1,
       moduleCapacityGb: undefined,
       generation: undefined,
       speedMt: undefined,
+      formFactor: undefined,
+      ecc: undefined,
+      rank: undefined,
     })
 
     expect(
@@ -303,10 +311,13 @@ describe('compatibility normalization', () => {
     ).toEqual({
       type: 'ram',
       capacityGb: undefined,
-      moduleCount: undefined,
+      moduleCount: 1,
       moduleCapacityGb: undefined,
       generation: undefined,
       speedMt: undefined,
+      formFactor: undefined,
+      ecc: undefined,
+      rank: undefined,
     })
 
     expect(
@@ -323,10 +334,13 @@ describe('compatibility normalization', () => {
     ).toEqual({
       type: 'ram',
       capacityGb: 32,
-      moduleCount: 2,
-      moduleCapacityGb: 16,
+      moduleCount: 1,
+      moduleCapacityGb: 32,
       generation: undefined,
       speedMt: 3200,
+      formFactor: undefined,
+      ecc: undefined,
+      rank: undefined,
     })
   })
 

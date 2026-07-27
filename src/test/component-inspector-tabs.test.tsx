@@ -203,7 +203,7 @@ describe('ComponentInspectorTabs', () => {
 
   it.each([
     ['cpu', 'CPU socket'],
-    ['ram', 'Module count'],
+    ['ram', 'Form Factor'],
     ['storage', 'Interface'],
     ['gpu', 'Expansion interface'],
     ['network', 'Expansion interface'],

@@ -16,6 +16,9 @@ import {
   NAS_POWER_CONFIGURATION_OPTIONS,
   PCIE_OPTIONS,
   RAM_GENERATIONS,
+  RAM_ECC_OPTIONS,
+  RAM_FORM_FACTORS,
+  RAM_RANKS,
   RAM_SPEEDS,
   SERVER_FORM_FACTORS,
   STORAGE_FORM_FACTORS,
@@ -124,9 +127,10 @@ export function InventoryTypeFields({
       <div className="grid gap-3 sm:grid-cols-3">
         <TextField label="Capacity GB" name="capacityGb" value={values.capacityGb} placeholder={placeholders.capacityGb} type="number" min={1} error={errors.capacityGb} onChange={(capacityGb) => onChange({ capacityGb })} />
         <SelectField label="Generation" name="generation" value={values.generation} placeholder="Select generation" options={RAM_GENERATIONS} onOpenChange={onSelectOpenChange} onValueChange={(generation) => onChange({ generation }, 'immediate')} />
-        <SelectField label="Stick 1 Speed" name="speedMt" value={values.speedMt} placeholder="Select speed" options={RAM_SPEEDS} emptyLabel="Empty" onOpenChange={onSelectOpenChange} onValueChange={(speedMt) => onChange({ speedMt }, 'immediate')} />
-        <TextField label="Stick 2 Manufacturer" name="secondaryManufacturer" value={values.secondaryManufacturer} placeholder={placeholders.secondaryManufacturer} onChange={(secondaryManufacturer) => onChange({ secondaryManufacturer })} />
-        <SelectField label="Stick 2 Speed" name="secondarySpeedMt" value={values.secondarySpeedMt} placeholder="Same as stick 1" options={RAM_SPEEDS} emptyLabel="Same as stick 1" onOpenChange={onSelectOpenChange} onValueChange={(secondarySpeedMt) => onChange({ secondarySpeedMt }, 'immediate')} />
+        <SelectField label="Speed" name="speedMt" value={values.speedMt} placeholder="Select speed" options={RAM_SPEEDS} emptyLabel="Not specified" onOpenChange={onSelectOpenChange} onValueChange={(speedMt) => onChange({ speedMt }, 'immediate')} />
+        <SelectField label="Form Factor" name="ramFormFactor" value={values.ramFormFactor} placeholder="Select form factor" options={RAM_FORM_FACTORS} emptyLabel="Not specified" onOpenChange={onSelectOpenChange} onValueChange={(ramFormFactor) => onChange({ ramFormFactor }, 'immediate')} />
+        <SelectField label="ECC" name="ramEcc" value={values.ramEcc} placeholder="Select ECC" options={RAM_ECC_OPTIONS} emptyLabel="Not specified" onOpenChange={onSelectOpenChange} onValueChange={(ramEcc) => onChange({ ramEcc: ramEcc as InventoryFormValues['ramEcc'] }, 'immediate')} />
+        <SelectField label="Rank" name="ramRank" value={values.ramRank} placeholder="Select rank" options={RAM_RANKS} emptyLabel="Not specified" onOpenChange={onSelectOpenChange} onValueChange={(ramRank) => onChange({ ramRank }, 'immediate')} />
       </div>
     )
   }

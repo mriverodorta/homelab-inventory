@@ -1,4 +1,4 @@
-import { Archive, Copy, EllipsisVertical, PackageOpen, Pencil, RotateCcw, Trash2 } from 'lucide-react'
+import { Archive, BookmarkPlus, Copy, EllipsisVertical, PackageOpen, Pencil, RotateCcw, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
@@ -21,6 +21,7 @@ export type ActiveInventoryActionsMenuProps = InventoryActionsMenuBaseProps & {
   archived?: false
   onEdit: () => void
   onDuplicate: () => void
+  onSaveAsTemplate?: () => void
   onReturnToInventory?: () => void
   onArchive: () => void
   onDelete?: never
@@ -106,6 +107,12 @@ export function InventoryActionsMenu(props: InventoryActionsMenuProps) {
                 <Copy aria-hidden="true" />
                 Duplicate
               </DropdownMenuItem>
+              {props.onSaveAsTemplate ? (
+                <DropdownMenuItem onSelect={(event) => invokeAction(event, props.onSaveAsTemplate!)}>
+                  <BookmarkPlus aria-hidden="true" />
+                  Save as template
+                </DropdownMenuItem>
+              ) : null}
               {props.onReturnToInventory ? (
                 <DropdownMenuItem onSelect={(event) => invokeAction(event, props.onReturnToInventory!)}>
                   <PackageOpen aria-hidden="true" />

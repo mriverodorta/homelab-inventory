@@ -165,6 +165,7 @@ describe('inventory capability validation', () => {
         id: 1,
         name: `${type} item`,
         type,
+        ...(type === 'ram' ? { specs: { capacityGb: 16 } } : {}),
         ...(type === 'nas' ? { specs: { powerConfiguration: 'internal-psu' } } : {}),
       }
       const ports = canonicalPowerPorts(item)
@@ -604,7 +605,7 @@ describe('assignment allocation validation', () => {
         },
         'cpu:1': { id: 1, key: 'cpu:1', type: 'cpu', name: 'CPU' },
         'cpuCooler:1': { id: 1, key: 'cpuCooler:1', type: 'cpuCooler', name: 'Cooler' },
-        'ram:1': { id: 1, key: 'ram:1', type: 'ram', name: 'Memory' },
+        'ram:1': { id: 1, key: 'ram:1', type: 'ram', name: 'Memory', specs: { capacityGb: 16 } },
         'storage:1': { id: 1, key: 'storage:1', type: 'storage', name: 'Storage' },
         'powerSupply:1': {
           id: 1,
@@ -650,7 +651,7 @@ describe('assignment allocation validation', () => {
           itemType: 'ram',
           itemId: 1,
           type: 'ram',
-          allocation: { resourceType: 'memory', positions: [0, 1] },
+          allocation: { resourceType: 'memory', positions: [0] },
         },
         {
           id: 5,

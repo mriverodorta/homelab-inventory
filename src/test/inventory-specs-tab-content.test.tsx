@@ -24,7 +24,7 @@ describe('InventorySpecsTabContent', () => {
     ['server', 'Supported CPU sockets'],
     ['nas', 'Supported CPU sockets'],
     ['cpu', 'CPU socket'],
-    ['ram', 'Module count'],
+    ['ram', 'Form Factor'],
     ['gpu', 'Expansion interface'],
     ['network', 'Expansion interface'],
   ] as const)('renders relevant compatibility controls for %s', (type, label) => {

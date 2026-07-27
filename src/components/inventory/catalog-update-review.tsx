@@ -1,0 +1,113 @@
+import { useQuery } from '@tanstack/react-query'
+import { ArrowRight, RefreshCw, ShieldCheck } from 'lucide-react'
+import { useState } from 'react'
+import { Button } from '@/components/ui/button'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+import { loadCatalogUpdatePreview, loadCatalogUpdates } from '@/lib/registry-api'
+
+function display(value: unknown) {
+  if (value === undefined) return 'Not set'
+  if (typeof value === 'object') return JSON.stringify(value, null, 2)
+  return String(value)
+}
+
+export function CatalogUpdateReview({
+  onApply,
+}: {
+  onApply: (linkId: number) => Promise<void>
+}) {
+  const [selectedLinkId, setSelectedLinkId] = useState<number | null>(null)
+  const [pending, setPending] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const updates = useQuery({ queryKey: ['registry', 'updates'], queryFn: loadCatalogUpdates })
+  const preview = useQuery({
+    queryKey: ['registry', 'update-preview', selectedLinkId],
+    queryFn: () => loadCatalogUpdatePreview(selectedLinkId!),
+    enabled: selectedLinkId !== null,
+  })
+
+  async function apply() {
+    if (selectedLinkId === null) return
+    setPending(true)
+    setError(null)
+    try {
+      await onApply(selectedLinkId)
+      setSelectedLinkId(null)
+      await updates.refetch()
+    } catch (applyError) {
+      setError(applyError instanceof Error ? applyError.message : 'Catalog update could not be applied.')
+    } finally {
+      setPending(false)
+    }
+  }
+
+  const records = updates.data?.updates ?? []
+  return (
+    <>
+      <div className="border-t border-[#e8e1d6] p-4">
+        <div className="mb-3 flex items-center justify-between gap-3">
+          <div>
+            <h3 className="text-sm font-black text-[#28231f]">Catalog updates</h3>
+            <p className="mt-0.5 text-xs text-[#756d62]">Review catalog-owned changes before applying them. Local properties remain untouched.</p>
+          </div>
+          <span className="rounded-full bg-[#20242c] px-2 py-0.5 text-xs font-black text-white">{records.length}</span>
+        </div>
+        <div className="space-y-2">
+          {updates.isLoading ? <p className="text-sm text-[#746b60]">Checking linked inventory…</p> : null}
+          {!updates.isLoading && records.length === 0 ? <p className="text-sm text-[#746b60]">Linked inventory is up to date.</p> : null}
+          {records.map((record) => (
+            <div key={record.linkId} className="flex items-center justify-between gap-3 rounded-md border border-[#ded8ce] bg-white p-3">
+              <div className="min-w-0">
+                <div className="truncate text-sm font-black text-[#28231f]">{record.itemName}</div>
+                <div className="text-xs text-[#746b60]">Revision {record.importedRevision} → {record.availableRevision}</div>
+              </div>
+              <Button type="button" size="sm" variant="outline" onClick={() => setSelectedLinkId(record.linkId)}>Review</Button>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <Dialog open={selectedLinkId !== null} onOpenChange={(open) => { if (!open && !pending) setSelectedLinkId(null) }}>
+        <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto bg-[#fffdf8] sm:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2"><ShieldCheck className="size-5" />Review catalog update</DialogTitle>
+            <DialogDescription>Only verified catalog-owned fields shown below will change.</DialogDescription>
+          </DialogHeader>
+          {preview.isLoading ? <p className="py-8 text-center text-sm text-[#746b60]">Loading verified revision…</p> : null}
+          {preview.data ? (
+            <div className="space-y-3">
+              <div className="rounded-md border border-[#ded8ce] bg-[#f7f2e9] p-3">
+                <div className="font-black">{preview.data.itemName}</div>
+                <div className="text-sm text-[#746b60]">Revision {preview.data.importedRevision} → {preview.data.availableRevision}</div>
+              </div>
+              {preview.data.changes.map((change) => (
+                <div key={change.field} className="rounded-md border border-[#ded8ce] bg-white p-3">
+                  <div className="mb-2 text-xs font-black uppercase text-[#756d62]">{change.field}</div>
+                  <div className="grid items-start gap-2 sm:grid-cols-[1fr_auto_1fr]">
+                    <pre className="min-w-0 overflow-auto whitespace-pre-wrap rounded bg-[#f4eee5] p-2 text-xs">{display(change.current)}</pre>
+                    <ArrowRight className="mt-2 hidden size-4 text-[#80776d] sm:block" />
+                    <pre className="min-w-0 overflow-auto whitespace-pre-wrap rounded bg-[#e7f1ed] p-2 text-xs">{display(change.next)}</pre>
+                  </div>
+                </div>
+              ))}
+              <p className="text-xs text-[#746b60]">Preserved local fields: {preview.data.localFieldsPreserved.join(', ') || 'none'}.</p>
+            </div>
+          ) : null}
+          {preview.isError ? <p className="text-sm font-semibold text-[#a33d31]">{preview.error instanceof Error ? preview.error.message : 'Update preview failed.'}</p> : null}
+          {error ? <p className="text-sm font-semibold text-[#a33d31]" role="alert">{error}</p> : null}
+          <DialogFooter>
+            <Button type="button" variant="outline" disabled={pending} onClick={() => setSelectedLinkId(null)}>Later</Button>
+            <Button type="button" disabled={pending || !preview.data} onClick={() => void apply()}><RefreshCw className="size-4" />{pending ? 'Applying…' : 'Apply update'}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
+  )
+}

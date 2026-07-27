@@ -6,6 +6,34 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 
 ## Unreleased
 
+## [0.4.0] - 2026-07-27
+
+### Added
+
+- Added source tabs to Add Hardware for the official Catalog, the complete Manual editor, and reusable Private templates.
+- Added sanitized private templates that can be created from inventory items, searched locally, duplicated, exported, imported, and instantiated with a quantity.
+- Added Registry settings for Disabled, Offline file, and Connected modes plus a preferred Add Hardware source.
+- Added a shared versioned catalog protocol with deterministic normalization, manufacturer aliases, allowlist sanitization, and separate identity/content hashes.
+- Added Ed25519-verified official catalog snapshots for connected refresh and offline import, with atomic last-known-good activation and a disposable local SQLite search index.
+- Added verified catalog search, linked inventory creation, update detection, field-level review, and dependency-safe catalog update application.
+- Added explicit opt-in automatic catalog contributions with backend-only Ed25519 installation identity, signed replay-protected delivery, a durable bounded outbox, retry backoff, revocation, key rotation, and aggregate delivery status.
+- Added signed digest-index synchronization so published, pending, and suppressed hardware hashes are eliminated locally before contribution delivery.
+- Added deterministic privacy allowlists and adversarial filtering for device names, addresses, serials, notes, topology, assignments, agents, and smart-device instance configuration.
+- Added category-aware registry identity projection that groups identical physical copies without merging inventory, separates board variants and RAM speeds, and withholds ambiguous or unidentified hardware.
+- Added physical RAM slot controls with one inventory record per stick, exact-slot placement, occupied-slot swapping, and visible unknown-slot warnings.
+
+### Data migration
+
+- Schema 15 adds `/data/stores/registry.json` for registry preferences, private templates, numeric catalog links, signed snapshot metadata, and contribution state without changing project topology or inventory relationships.
+- Disabled mode makes no catalog network requests. Offline import performs no outbound request. Connected contributions remain off by default and contact only the fixed official registry endpoint after separate explicit consent.
+- Installation private keys and short-lived registry tokens are stored only in mode-`0600` backend files under `/data/registry`; they are not written to lowdb or returned by the public app API.
+- Schema 16 automatically converts legacy RAM kits into physical sticks and one-slot assignments while preserving IDs where possible, slot positions, and total capacity. It creates a locked pre-migration backup, rejects ambiguity, restores failed writes, and records a safe migration summary.
+- Added a migration guide covering backup, automatic startup behavior, verification, Docker and Watchtower upgrades, interruption recovery, and rollback.
+
+### Fixed
+
+- Prevented simultaneous atomic JSON writes from selecting the same temporary file during migrations or rapid persistence.
+
 ## [0.3.0] - 2026-07-25
 
 ### Added

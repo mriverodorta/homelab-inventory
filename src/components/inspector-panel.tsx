@@ -84,7 +84,6 @@ import { cn } from '@/lib/utils'
 import {
   formatCapacity,
   formatPortSummary,
-  formatRamModuleCapacity,
   PORT_ROLE_LABELS,
 } from '@/lib/format'
 import { runtimeItemKey } from '@/lib/item-keys'
@@ -281,7 +280,6 @@ function itemFromEditorValues(item: InventoryItem, values: InventoryFormValues):
       ...input,
       subtype: input.subtype,
       manufacturer: input.manufacturer,
-      secondaryManufacturer: input.secondaryManufacturer,
       family: input.family,
       model: input.model,
       number: input.number,
@@ -1995,8 +1993,8 @@ function getSlotItemParts(item: InventoryItem): string[] {
 
   if (item.type === 'ram') {
     const capacity = typeof specs.capacityGb === 'number' ? `${specs.capacityGb}GB` : null
-    const module = typeof specs.capacityGb === 'number' ? formatRamModuleCapacity(specs.capacityGb) : null
-    const speed = typeof specs.speedMt === 'number' ? `${specs.speedMt}MHz` : null
+    const module = typeof specs.formFactor === 'string' ? specs.formFactor : null
+    const speed = typeof specs.speedMt === 'number' ? `${specs.speedMt}MT/s` : null
 
     return [
       capacity,

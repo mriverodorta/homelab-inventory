@@ -75,6 +75,12 @@ export const PORT_ROLES: InventoryPortRole[] = [
 
 export const PORT_SPEEDS = ['', ...SWITCH_NETWORK_PORT_SPEEDS]
 export const RAM_SPEEDS = ['', '1600', '1866', '2133', '2400', '2666', '2933', '3200', '3600', '4800', '5600']
+export const RAM_FORM_FACTORS = ['SO-DIMM', 'DIMM', 'LP-DIMM', 'Onboard']
+export const RAM_ECC_OPTIONS = [
+  { value: 'no', label: 'Non-ECC' },
+  { value: 'yes', label: 'ECC' },
+] as const
+export const RAM_RANKS = ['', '1Rx8', '1Rx16', '2Rx8', '2Rx16', '4Rx4']
 export const NAS_POWER_CONFIGURATION_OPTIONS = [
   { value: 'internal-psu', label: 'Internal PSU' },
   { value: 'external-adapter', label: 'External power adapter' },

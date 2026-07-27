@@ -22,6 +22,8 @@ It is built for people who want a practical map of what they own, what is instal
 
 - Infinite canvas for servers, NAS devices, custom PC builds, monitors, UPS systems, power strips, switches, patch panels, and cables.
 - Searchable inventory sidebar with in-app item creation.
+- Reusable private hardware templates with local search and checksummed JSON import/export.
+- Optional verified hardware catalog with automatic category-aware contribution deduplication and a fully offline signed-snapshot mode.
 - Drag components into compatible hosts, including CPU, cooling, motherboard, RAM, storage, GPU, network, wireless, sound, case, power supply, and OEM power adapters.
 - Validate known CPU, RAM, storage, and expansion-card incompatibilities before assignment.
 - Explain compatibility requirements, deterministic resource allocations, and unknown-data warnings in inspectors and Audit.
@@ -120,12 +122,16 @@ The app keeps user data out of the application image. Runtime data lives in `/da
     project.json
     agents.json
     agent-status.json
+    registry.json
   backups/
+  registry/
 ```
 
 Only one app container should write to a mounted data directory.
 
 More data details: [docs/DATA.md](docs/DATA.md)
+
+Upgrade and rollback guidance: [docs/MIGRATIONS.md](docs/MIGRATIONS.md)
 
 ## Hardware Compatibility
 
@@ -137,7 +143,25 @@ Compatibility rules help prevent known-invalid assignments while keeping partial
 
 Servers and NAS devices expose compatibility details in their inspectors. Component inspectors show requirements and the current host allocation, while Audit identifies assigned hardware that is incompatible or needs more data.
 
-Compatibility fields are entered when an inventory item is created or edited. Homelab Inventory does not perform online hardware lookups or include a universal hardware database, which keeps ongoing upkeep limited to new items and corrections. Existing assignments are preserved when upgrading to schema 7, even if a current rule would block creating the same assignment today.
+Compatibility fields are entered when an inventory item is created or edited. Private templates can reuse local definitions, while verified official definitions can be imported from a signed offline snapshot or synchronized in Connected mode. Existing assignments are preserved when upgrading to schema 7, even if a current rule would block creating the same assignment today.
+
+## Registry And Private Templates
+
+Add Hardware supports three sources:
+
+- **Catalog** searches a verified official snapshot through a disposable local SQLite index. Search terms never leave the installation.
+- **Manual** keeps the complete local type-specific editor and remains available in every mode.
+- **Private templates** store sanitized reusable hardware definitions in `/data` and support checksummed JSON import/export.
+
+Registry mode defaults to **Disabled**, which makes no catalog requests. Private templates never include device properties, IP or MAC addresses, notes, assignments, connections, canvas positions, agent data, or smart-device instance configuration.
+
+**Offline file** mode imports the same signed immutable snapshot used by connected installations without making outbound requests. **Connected** mode checks only the fixed official registry endpoint and atomically retains the previous catalog if a checksum, signature, schema, expiry, or size check fails. Catalog imports create independent local inventory records linked by numeric IDs to the verified template revision; newer definitions are reviewed before application, and local-only properties remain unchanged.
+
+Automatic catalog contributions are a separate explicit opt-in available only in Connected mode. The Bun backend allowlists reusable hardware fields, removes instance-owned data, checks the signed published/pending/suppressed digest index locally, and delivers bounded signed batches asynchronously. Inventory saves never wait for registry delivery. The settings view shows queued, retrying, delivered, accepted, rejected, and suppressed totals and provides pause, enrollment revocation, and installation-key rotation controls.
+
+Before delivery, eligible inventory is projected by hardware category and grouped by normalized product identity. Case, whitespace, manufacturer aliases, and private display names do not create duplicate candidates. Identical physical copies remain separate inventory records but produce one contribution candidate, while different board variants and RAM speeds remain distinct. Unidentified generic storage and ambiguous records are withheld locally. Exact matches to a published catalog definition link every matching local copy without asking the user to merge physical inventory.
+
+The Ed25519 private key and short-lived contribution token are backend-only mode-`0600` files under `/data/registry`. They are never stored in `registry.json`, returned to the browser, or included in catalog searches. The registry intake quarantines submissions behind deterministic validation and rate limits; intake does not invoke an AI model synchronously and no contribution is published without the registry moderation workflow.
 
 ## Docker Tags And Release Channels
 
@@ -163,6 +187,8 @@ CI/CD uses GitHub as the source of truth:
 Release process details: [docs/RELEASES.md](docs/RELEASES.md)
 
 Before upgrading a Docker deployment across schema versions, back up the complete mounted `/data` directory. Schema migrations create an internal backup before changing data, but that does not replace an external copy or filesystem snapshot.
+
+Schema 16 converts legacy RAM kits into one inventory record and one assignment per physical stick. It preserves original slot positions and total capacity, refuses ambiguous conversions, and records a safe migration summary. See [docs/MIGRATIONS.md](docs/MIGRATIONS.md) before upgrading across this schema.
 
 ## Update Notifications
 

@@ -12,6 +12,7 @@ import {
   canonicalPowerPorts,
   isNasPowerConfiguration,
 } from '../../shared/power-ports.mjs'
+export { assertRegistryStoreShape } from '../registry/model.mjs'
 
 const componentTypes = ASSIGNABLE_COMPONENT_TYPE_SET
 const inventoryTypes = INVENTORY_TYPE_SET
@@ -498,6 +499,21 @@ function assertInventoryItem(itemId, item, expectedType, options = {}) {
     throw new Error(`Inventory item ${itemId} is in the wrong table.`)
   }
 
+  if (!options.allowLegacyIds && type === 'ram') {
+    if (
+      item.secondaryManufacturer !== undefined
+      || item.specs?.moduleCount !== undefined
+      || item.specs?.secondarySpeedMt !== undefined
+      || item.specs?.module !== undefined
+      || item.specs?.modules !== undefined
+    ) {
+      throw new Error(`Inventory item ${itemId} must represent one physical RAM stick.`)
+    }
+    if (typeof item.specs?.capacityGb !== 'number' || !Number.isFinite(item.specs.capacityGb) || item.specs.capacityGb <= 0) {
+      throw new Error(`Inventory item ${itemId} RAM capacityGb must be a positive number per stick.`)
+    }
+  }
+
   if (
     !options.allowLegacyIds
     && type === 'nas'
@@ -912,6 +928,14 @@ function assertProjectAssignmentReferences(project) {
       throw new Error(
         `Project assignments[${index}].type ${assignment.type} does not match referenced inventory item ${itemReference} type ${item.type}.`,
       )
+    }
+
+    if (
+      item?.type === 'ram'
+      && assignment.allocation !== undefined
+      && (assignment.allocation.resourceType !== 'memory' || assignment.allocation.positions.length !== 1)
+    ) {
+      throw new Error(`Project assignments[${index}] RAM allocation must occupy exactly one memory slot.`)
     }
 
     if (itemReference) {

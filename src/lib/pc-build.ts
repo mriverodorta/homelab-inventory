@@ -33,21 +33,8 @@ const SINGLE_PC_BUILD_COMPONENT_TYPES = new Set<ComponentType>([
   'powerSupply',
 ])
 
-function positiveInteger(value: unknown): number | undefined {
-  const parsed = typeof value === 'number' ? value : Number(value)
-  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : undefined
-}
-
-function ramModuleCount(item: InventoryItem): number {
-  const explicit = positiveInteger(item.specs?.moduleCount)
-  if (explicit !== undefined) return explicit
-
-  const composition = String(item.specs?.module ?? item.specs?.modules ?? '')
-  return positiveInteger(composition.match(/^\s*(\d+)\s*x/i)?.[1]) ?? 1
-}
-
-export function requiredPcBuildPositions(item: InventoryItem & { type: ComponentType }): number {
-  return item.type === 'ram' ? ramModuleCount(item) : 1
+export function requiredPcBuildPositions(_item: InventoryItem & { type: ComponentType }): number {
+  return 1
 }
 
 export function pcBuildRequirements(item: InventoryItem & { type: ComponentType }): Record<string, unknown> {

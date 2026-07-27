@@ -32,11 +32,10 @@ export const INVENTORY_FORM_PLACEHOLDERS: Record<InventoryType, InventoryFormPla
     boostClockGhz: '3.8',
   },
   ram: {
-    name: 'Crucial 32GB DDR4 Kit',
+    name: 'Crucial 16GB DDR4',
     manufacturer: 'Crucial',
-    model: 'CT2K16G4SFRA32A',
-    capacityGb: '32',
-    secondaryManufacturer: 'Same as stick 1',
+    model: 'CT16G4SFRA32A',
+    capacityGb: '16',
   },
   storage: {
     name: 'Samsung 990 EVO Plus 4TB',
