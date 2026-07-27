@@ -102,7 +102,9 @@ const RELEASE_0_3_0_DETAILS: UnreleasedReleaseNotes = {
 
 export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
   highlights: [],
-  fixes: [],
+  fixes: [
+    'Registry enrollment failures now appear directly beside the Automatic catalog contributions control instead of being hidden below the rest of Registry settings.',
+  ],
   notes: [],
 }
 

@@ -240,6 +240,26 @@ describe('SettingsDialog', () => {
     expect(screen.getByText(/2 queued, 0 retrying, 4 delivered/)).toBeInTheDocument()
   })
 
+  it('shows enrollment failures beside the automatic contribution switch', async () => {
+    const onRegistrySettingsChange = vi.fn().mockRejectedValue(
+      new Error('Installation activation signature is invalid.'),
+    )
+    renderSettings({
+      registry: {
+        ...DEFAULT_REGISTRY_STATE,
+        settings: { ...DEFAULT_REGISTRY_STATE.settings, mode: 'connected' },
+      },
+      onRegistrySettingsChange,
+    })
+    fireEvent.click(screen.getByRole('button', { name: /Registry.*Catalog and private templates/ }))
+    const contributionSwitch = screen.getByRole('switch', { name: 'Automatic catalog contributions' })
+
+    fireEvent.click(contributionSwitch)
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Installation activation signature is invalid.')
+    expect(contributionSwitch).not.toBeChecked()
+  })
+
   it('links to roadmap feedback without including project data', () => {
     renderSettings()
     fireEvent.click(screen.getByRole('button', { name: /Feedback.*Roadmap, ideas, and issues/ }))

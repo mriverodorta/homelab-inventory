@@ -120,7 +120,13 @@ describe('release notes helpers', () => {
     expect(registryRelease.notes).toContain(
       'Schema 15 adds an independent registry store for catalog preferences, private templates, signed snapshot metadata, and numeric catalog links without changing canvas, assignment, or cable relationships.',
     )
-    expect(UNRELEASED_RELEASE_NOTES).toEqual({ highlights: [], fixes: [], notes: [] })
+    expect(UNRELEASED_RELEASE_NOTES).toEqual({
+      highlights: [],
+      fixes: [
+        'Registry enrollment failures now appear directly beside the Automatic catalog contributions control instead of being hidden below the rest of Registry settings.',
+      ],
+      notes: [],
+    })
     expect(onboardingRelease.highlights).toContain(
       'Fresh workspaces can now explore a complete fictional homelab or start empty with an adaptive create, place, and connect checklist.',
     )

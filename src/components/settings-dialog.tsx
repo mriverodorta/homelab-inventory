@@ -351,14 +351,19 @@ function RegistrySettingsPanel(props: SettingsDialogProps) {
   const inputRef = useRef<HTMLInputElement>(null)
   const catalogInputRef = useRef<HTMLInputElement>(null)
   const [transferStatus, setTransferStatus] = useState<string | null>(null)
+  const [contributionError, setContributionError] = useState<string | null>(null)
   const busy = props.registryLoading === true || props.registrySaving === true
 
   async function update(settings: Parameters<NonNullable<SettingsDialogProps['onRegistrySettingsChange']>>[0]) {
+    const contributionUpdate = settings.automaticContributions !== undefined
     setTransferStatus(null)
+    setContributionError(null)
     try {
       await props.onRegistrySettingsChange?.(settings, registry.settings.updatedAt)
     } catch (error) {
-      setTransferStatus(error instanceof Error ? error.message : 'Registry settings could not be updated.')
+      const message = error instanceof Error ? error.message : 'Registry settings could not be updated.'
+      if (contributionUpdate) setContributionError(message)
+      else setTransferStatus(message)
     }
   }
 
@@ -443,12 +448,24 @@ function RegistrySettingsPanel(props: SettingsDialogProps) {
         label="Automatic catalog contributions"
         description="Explicit opt-in. The backend sends only reusable, allowlisted hardware definitions after removing local device names, addresses, serials, notes, topology, assignments, agents, and smart-device instance data. Inventory saves never wait for delivery."
       >
-        <Switch
-          aria-label="Automatic catalog contributions"
-          checked={registry.settings.automaticContributions}
-          disabled={busy || registry.settings.mode !== 'connected'}
-          onCheckedChange={(automaticContributions) => void update({ automaticContributions })}
-        />
+        <div className="flex max-w-[280px] flex-col items-end gap-2">
+          <Switch
+            aria-label="Automatic catalog contributions"
+            aria-describedby={contributionError ? 'registry-contribution-error' : undefined}
+            checked={registry.settings.automaticContributions}
+            disabled={busy || registry.settings.mode !== 'connected'}
+            onCheckedChange={(automaticContributions) => void update({ automaticContributions })}
+          />
+          {contributionError ? (
+            <p
+              id="registry-contribution-error"
+              role="alert"
+              className="text-right text-xs font-semibold leading-5 text-[#9b3f32]"
+            >
+              {contributionError}
+            </p>
+          ) : null}
+        </div>
       </SettingRow>
       <div className="border-t border-[#e8e1d6] p-4">
         <div className="grid gap-3 rounded-md border border-[#ded5c8] bg-[#f8f4ed] p-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
