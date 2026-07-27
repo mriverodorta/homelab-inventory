@@ -92,28 +92,32 @@ describe('release notes helpers', () => {
 
   it('has structured notes for the package version under development', () => {
     const currentRelease = RELEASE_NOTES[0]
+    const registryRelease = RELEASE_NOTES.find((entry) => entry.version === '0.4.0')!
     const onboardingRelease = RELEASE_NOTES.find((entry) => entry.version === '0.3.0')!
     const cableRelease = RELEASE_NOTES.find((entry) => entry.version === '0.2.2')!
     const previousRelease = RELEASE_NOTES.find((entry) => entry.version === '0.2.1')!
     const engineRelease = RELEASE_NOTES.find((entry) => entry.version === '0.2.0')!
 
-    expect(hasReleaseNoteForVersion(RELEASE_NOTES, '0.4.0')).toBe(true)
+    expect(hasReleaseNoteForVersion(RELEASE_NOTES, '0.4.1')).toBe(true)
     expect(RELEASE_NOTES[0]).toEqual(
       expect.objectContaining({
-        version: '0.4.0',
-        title: 'Verified hardware catalog and physical RAM',
+        version: '0.4.1',
+        title: 'Reliable registry status',
       }),
     )
     expect(RELEASE_NOTES.filter((entry) => entry.channel === 'latest')).toEqual([
-      expect.objectContaining({ version: '0.4.0' }),
+      expect.objectContaining({ version: '0.4.1' }),
     ])
     expect(RELEASE_NOTES.find((entry) => entry.version === '0.1.38')).toEqual(
       expect.objectContaining({ channel: 'release' }),
     )
-    expect(currentRelease.highlights).toContain(
+    expect(currentRelease.fixes).toContain(
+      'Refreshing or importing the verified hardware catalog now preserves database schema and migration status in Registry settings.',
+    )
+    expect(registryRelease.highlights).toContain(
       'Add Hardware now combines a locally searched verified Catalog, the complete Manual editor, and reusable Private templates in one source-aware dialog.',
     )
-    expect(currentRelease.notes).toContain(
+    expect(registryRelease.notes).toContain(
       'Schema 15 adds an independent registry store for catalog preferences, private templates, signed snapshot metadata, and numeric catalog links without changing canvas, assignment, or cable relationships.',
     )
     expect(UNRELEASED_RELEASE_NOTES).toEqual({ highlights: [], fixes: [], notes: [] })

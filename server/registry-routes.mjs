@@ -67,12 +67,15 @@ export function registerRegistryRoutes(app, {
   officialOrigin,
   identityService,
   deliveryService,
+  snapshotServiceFactory,
 } = {}) {
-  const snapshotService = (store) => new SnapshotService(store, {
-    ...(trustedKeys === undefined ? {} : { trustedKeys }),
-    ...(fetchImpl === undefined ? {} : { fetchImpl }),
-    ...(officialOrigin === undefined ? {} : { officialOrigin }),
-  })
+  const snapshotService = (store) => snapshotServiceFactory
+    ? snapshotServiceFactory(store)
+    : new SnapshotService(store, {
+        ...(trustedKeys === undefined ? {} : { trustedKeys }),
+        ...(fetchImpl === undefined ? {} : { fetchImpl }),
+        ...(officialOrigin === undefined ? {} : { officialOrigin }),
+      })
 
   app.get('/api/registry', (request, response) => {
     run(withStore, request, response, async (store) => response.json(publicRegistryState(store)))
@@ -177,15 +180,15 @@ export function registerRegistryRoutes(app, {
       const imported = request.body?.artifact ?? request.body
       const snapshotArtifact = imported?.snapshot ?? imported
       const digestArtifact = imported?.digests
-      const registry = await snapshotService(store).activate(snapshotArtifact, { mode: 'offline', digestArtifact })
-      response.status(201).json({ registry: publicRegistryState({ getRegistryState: () => registry }) })
+      await snapshotService(store).activate(snapshotArtifact, { mode: 'offline', digestArtifact })
+      response.status(201).json({ registry: publicRegistryState(store) })
     })
   })
 
   app.post('/api/registry/catalog/refresh', (request, response) => {
     run(withStore, request, response, async (store) => {
-      const registry = await snapshotService(store).refreshConnected()
-      response.json({ registry: publicRegistryState({ getRegistryState: () => registry }) })
+      await snapshotService(store).refreshConnected()
+      response.json({ registry: publicRegistryState(store) })
     })
   })
 

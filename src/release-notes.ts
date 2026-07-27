@@ -106,6 +106,14 @@ export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
   notes: [],
 }
 
+const RELEASE_0_4_1_DETAILS: UnreleasedReleaseNotes = {
+  highlights: [],
+  fixes: [
+    'Refreshing or importing the verified hardware catalog now preserves database schema and migration status in Registry settings.',
+  ],
+  notes: [],
+}
+
 const RELEASE_0_4_0_DETAILS: UnreleasedReleaseNotes = {
   highlights: [
     'Add Hardware now combines a locally searched verified Catalog, the complete Manual editor, and reusable Private templates in one source-aware dialog.',
@@ -151,9 +159,16 @@ const RELEASE_0_2_1_DETAILS: UnreleasedReleaseNotes = {
 
 export const RELEASE_NOTES: ReleaseNoteEntry[] = [
   {
-    version: '0.4.0',
+    version: '0.4.1',
     date: '2026-07-27',
     channel: 'latest',
+    title: 'Reliable registry status',
+    ...RELEASE_0_4_1_DETAILS,
+  },
+  {
+    version: '0.4.0',
+    date: '2026-07-27',
+    channel: 'release',
     title: 'Verified hardware catalog and physical RAM',
     ...RELEASE_0_4_0_DETAILS,
   },

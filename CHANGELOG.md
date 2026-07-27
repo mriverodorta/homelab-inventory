@@ -6,6 +6,12 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 
 ## Unreleased
 
+## [0.4.1] - 2026-07-27
+
+### Fixed
+
+- Refreshing or importing the verified hardware catalog now preserves database schema and migration status in Registry settings.
+
 ## [0.4.0] - 2026-07-27
 
 ### Added

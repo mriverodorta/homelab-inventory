@@ -8,7 +8,7 @@ import { registerRegistryRoutes } from './registry-routes.mjs'
 
 const resources = []
 
-async function createServer() {
+async function createServer(registryRouteOptions = {}) {
   const dataDir = await fs.mkdtemp(path.join(os.tmpdir(), 'registry-routes-'))
   const store = new HomelabInventoryStore({
     appVersion: '1.0.0',
@@ -22,7 +22,7 @@ async function createServer() {
   const app = express()
   app.use(express.json())
   const withStore = async (_request, _response, handler) => handler(store)
-  registerRegistryRoutes(app, { withStore })
+  registerRegistryRoutes(app, { withStore, ...registryRouteOptions })
   const server = app.listen(0)
   await new Promise((resolve) => server.once('listening', resolve))
   resources.push({ dataDir, store, server })
@@ -116,5 +116,33 @@ describe('registry routes', () => {
       body: JSON.stringify({ pack: { format: 'other', version: 1, templates: [] } }),
     })
     expect(invalid.status).toBe(400)
+  })
+
+  it.each([
+    { mode: 'offline', path: '/api/registry/catalog/import', expectedStatus: 201 },
+    { mode: 'connected', path: '/api/registry/catalog/refresh', expectedStatus: 200 },
+  ])('preserves database metadata after $mode catalog activation', async ({ mode, path: routePath, expectedStatus }) => {
+    const { baseUrl } = await createServer({
+      snapshotServiceFactory: (store) => ({
+        activate: async () => store.getRegistryState(),
+        refreshConnected: async () => store.getRegistryState(),
+      }),
+    })
+    await fetch(`${baseUrl}/api/registry/settings`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ settings: { mode } }),
+    })
+    const before = await fetch(`${baseUrl}/api/registry`).then((response) => response.json())
+    const response = await fetch(`${baseUrl}${routePath}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({}),
+    })
+    const payload = await response.json()
+
+    expect(response.status).toBe(expectedStatus)
+    expect(payload.registry.database).toEqual(before.database)
+    expect(payload.registry.database.schemaVersion).not.toBeNull()
   })
 })
