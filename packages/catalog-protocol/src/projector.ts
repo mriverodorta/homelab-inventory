@@ -45,7 +45,17 @@ function canonicalName(item: CatalogTemplateItem): string {
   const model = text(item.model)
   const number = text(item.number)
   const family = text(item.family)
-  if (item.type === 'cpu') return [manufacturer, family, number ?? model].filter(Boolean).join(' ')
+  if (item.type === 'cpu') {
+    const identifier = number ?? model
+    const familyParts = family?.split(' ') ?? []
+    const familyTier = familyParts.at(-1)
+    const repeatsFamilyTier = Boolean(
+      familyTier
+      && identifier?.toLowerCase().startsWith(`${familyTier.toLowerCase()}-`),
+    )
+    const canonicalFamily = repeatsFamilyTier ? familyParts.slice(0, -1).join(' ') : family
+    return [manufacturer, canonicalFamily, identifier].filter(Boolean).join(' ')
+  }
   if (item.type === 'ram' && !model) {
     return [scalar(item.specs, 'capacityGb') ? `${scalar(item.specs, 'capacityGb')}GB` : undefined,
       scalar(item.specs, 'generation'), scalar(item.specs, 'speedMt') ? `${scalar(item.specs, 'speedMt')}MT/s` : undefined,

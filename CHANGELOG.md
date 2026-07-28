@@ -9,6 +9,7 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 ### Fixed
 
 - Registry enrollment failures now appear directly beside the Automatic catalog contributions control instead of being hidden below the rest of the Registry settings panel.
+- Official catalog refreshes now use the same frozen fingerprint-v2 CPU normalization contract as the registry, allowing verified templates such as Intel Core i5-10500T to activate without hash mismatches.
 
 ## [0.4.1] - 2026-07-27
 

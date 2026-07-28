@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { projectCatalogItem } from '../src'
+import { assertCatalogProtocolContract, digestCatalogTemplate, FINGERPRINT_VERSION, projectCatalogItem } from '../src'
 
 function switchItem(id: number, name: string) {
   return { id, type: 'switch', name, manufacturer: 'Netgear', model: 'GS108T', specs: { management: 'Web managed' } }
@@ -36,6 +36,79 @@ describe('category-aware catalog projection', () => {
     expect(slow.status).toBe('eligible')
     expect(fast.status).toBe('eligible')
     if (slow.status === 'eligible' && fast.status === 'eligible') expect(slow.identityHash).not.toBe(fast.identityHash)
+  })
+
+  it('does not duplicate a CPU family tier already present in its number', async () => {
+    const projection = await projectCatalogItem({
+      id: 1,
+      type: 'cpu',
+      name: 'CPU',
+      manufacturer: 'Intel',
+      family: 'Core i5',
+      number: 'i5-10500T',
+    })
+
+    expect(projection).toMatchObject({
+      status: 'eligible',
+      item: { name: 'Intel Core i5-10500T' },
+    })
+  })
+
+  it('keeps a CPU family tier when the number does not repeat it', async () => {
+    const projection = await projectCatalogItem({
+      id: 2,
+      type: 'cpu',
+      name: 'CPU',
+      manufacturer: 'AMD',
+      family: 'Ryzen 5',
+      number: '4650GE',
+    })
+
+    expect(projection).toMatchObject({
+      status: 'eligible',
+      item: { name: 'AMD Ryzen 5 4650GE' },
+    })
+  })
+
+  it('preserves the immutable fingerprint-v2 revision-3 CPU contract', async () => {
+    expect(FINGERPRINT_VERSION).toBe(2)
+
+    const projection = await digestCatalogTemplate({
+      type: 'cpu',
+      name: 'Intel Core i5-10500T',
+      manufacturer: 'Intel',
+      family: 'Core i5',
+      model: 'i5-10500T',
+      specs: {
+        cores: 6,
+        socket: 'LGA1200',
+        threads: 12,
+        tdpWatts: 35,
+        generation: '10th Gen',
+        baseClockGhz: 2.3,
+        boostClockGhz: 3.8,
+      },
+    })
+
+    expect(projection.item).toEqual({
+      type: 'cpu',
+      name: 'Intel Core i5-10500T',
+      manufacturer: 'Intel',
+      family: 'Core i5',
+      model: 'i5-10500T',
+      specs: {
+        cores: 6,
+        socket: 'LGA1200',
+        threads: 12,
+        tdpWatts: 35,
+        generation: '10th Gen',
+        baseClockGhz: 2.3,
+        boostClockGhz: 3.8,
+      },
+    })
+    expect(projection.identityHash).toBe('f253f149aac5c3df2ec7bff68f985e49138ebe6f7c19795536738f23b0969416')
+    expect(projection.contentHash).toBe('e404ed4bb011bda97f3d2edfe9d07e4ccc0caa816ff35c3a6c51029501590af2')
+    await expect(assertCatalogProtocolContract()).resolves.toBeUndefined()
   })
 
   it('withholds unidentified generic storage', async () => {

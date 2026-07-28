@@ -104,6 +104,7 @@ export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
   highlights: [],
   fixes: [
     'Registry enrollment failures now appear directly beside the Automatic catalog contributions control instead of being hidden below the rest of Registry settings.',
+    'Official catalog refreshes now share the registry\'s frozen fingerprint-v2 CPU normalization contract, preventing verified CPU templates from being rejected with a declared-hash mismatch.',
   ],
   notes: [],
 }
