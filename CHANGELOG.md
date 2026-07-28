@@ -6,6 +6,8 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 
 ## Unreleased
 
+## [0.4.2] - 2026-07-28
+
 ### Fixed
 
 - Registry enrollment failures now appear directly beside the Automatic catalog contributions control instead of being hidden below the rest of the Registry settings panel.

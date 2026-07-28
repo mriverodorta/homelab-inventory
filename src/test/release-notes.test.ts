@@ -98,21 +98,21 @@ describe('release notes helpers', () => {
     const previousRelease = RELEASE_NOTES.find((entry) => entry.version === '0.2.1')!
     const engineRelease = RELEASE_NOTES.find((entry) => entry.version === '0.2.0')!
 
-    expect(hasReleaseNoteForVersion(RELEASE_NOTES, '0.4.1')).toBe(true)
+    expect(hasReleaseNoteForVersion(RELEASE_NOTES, '0.4.2')).toBe(true)
     expect(RELEASE_NOTES[0]).toEqual(
       expect.objectContaining({
-        version: '0.4.1',
-        title: 'Reliable registry status',
+        version: '0.4.2',
+        title: 'Reliable catalog activation',
       }),
     )
     expect(RELEASE_NOTES.filter((entry) => entry.channel === 'latest')).toEqual([
-      expect.objectContaining({ version: '0.4.1' }),
+      expect.objectContaining({ version: '0.4.2' }),
     ])
     expect(RELEASE_NOTES.find((entry) => entry.version === '0.1.38')).toEqual(
       expect.objectContaining({ channel: 'release' }),
     )
     expect(currentRelease.fixes).toContain(
-      'Refreshing or importing the verified hardware catalog now preserves database schema and migration status in Registry settings.',
+      'Official catalog refreshes now share the registry\'s frozen fingerprint-v2 CPU normalization contract, preventing verified CPU templates from being rejected with a declared-hash mismatch.',
     )
     expect(registryRelease.highlights).toContain(
       'Add Hardware now combines a locally searched verified Catalog, the complete Manual editor, and reusable Private templates in one source-aware dialog.',
@@ -122,10 +122,7 @@ describe('release notes helpers', () => {
     )
     expect(UNRELEASED_RELEASE_NOTES).toEqual({
       highlights: [],
-      fixes: [
-        'Registry enrollment failures now appear directly beside the Automatic catalog contributions control instead of being hidden below the rest of Registry settings.',
-        'Official catalog refreshes now share the registry\'s frozen fingerprint-v2 CPU normalization contract, preventing verified CPU templates from being rejected with a declared-hash mismatch.',
-      ],
+      fixes: [],
       notes: [],
     })
     expect(onboardingRelease.highlights).toContain(

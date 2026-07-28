@@ -102,6 +102,12 @@ const RELEASE_0_3_0_DETAILS: UnreleasedReleaseNotes = {
 
 export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
   highlights: [],
+  fixes: [],
+  notes: [],
+}
+
+const RELEASE_0_4_2_DETAILS: UnreleasedReleaseNotes = {
+  highlights: [],
   fixes: [
     'Registry enrollment failures now appear directly beside the Automatic catalog contributions control instead of being hidden below the rest of Registry settings.',
     'Official catalog refreshes now share the registry\'s frozen fingerprint-v2 CPU normalization contract, preventing verified CPU templates from being rejected with a declared-hash mismatch.',
@@ -162,9 +168,16 @@ const RELEASE_0_2_1_DETAILS: UnreleasedReleaseNotes = {
 
 export const RELEASE_NOTES: ReleaseNoteEntry[] = [
   {
+    version: '0.4.2',
+    date: '2026-07-28',
+    channel: 'latest',
+    title: 'Reliable catalog activation',
+    ...RELEASE_0_4_2_DETAILS,
+  },
+  {
     version: '0.4.1',
     date: '2026-07-27',
-    channel: 'latest',
+    channel: 'release',
     title: 'Reliable registry status',
     ...RELEASE_0_4_1_DETAILS,
   },
