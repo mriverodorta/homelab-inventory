@@ -102,6 +102,12 @@ const RELEASE_0_3_0_DETAILS: UnreleasedReleaseNotes = {
 
 export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
   highlights: [],
+  fixes: [],
+  notes: [],
+}
+
+const RELEASE_0_4_7_DETAILS: UnreleasedReleaseNotes = {
+  highlights: [],
   fixes: [
     'Send now can perform one explicit catalog contribution delivery while automatic background delivery is paused.',
     'Disabling automatic catalog contributions now waits for any active delivery to settle before confirming the paused state.',
@@ -208,9 +214,16 @@ const RELEASE_0_2_1_DETAILS: UnreleasedReleaseNotes = {
 
 export const RELEASE_NOTES: ReleaseNoteEntry[] = [
   {
-    version: '0.4.6',
+    version: '0.4.7',
     date: '2026-07-29',
     channel: 'latest',
+    title: 'Controlled registry delivery',
+    ...RELEASE_0_4_7_DETAILS,
+  },
+  {
+    version: '0.4.6',
+    date: '2026-07-29',
+    channel: 'release',
     title: 'Complete catalog update reviews',
     ...RELEASE_0_4_6_DETAILS,
   },

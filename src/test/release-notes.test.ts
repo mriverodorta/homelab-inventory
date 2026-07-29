@@ -98,21 +98,21 @@ describe('release notes helpers', () => {
     const previousRelease = RELEASE_NOTES.find((entry) => entry.version === '0.2.1')!
     const engineRelease = RELEASE_NOTES.find((entry) => entry.version === '0.2.0')!
 
-    expect(hasReleaseNoteForVersion(RELEASE_NOTES, '0.4.6')).toBe(true)
+    expect(hasReleaseNoteForVersion(RELEASE_NOTES, '0.4.7')).toBe(true)
     expect(RELEASE_NOTES[0]).toEqual(
       expect.objectContaining({
-        version: '0.4.6',
-        title: 'Complete catalog update reviews',
+        version: '0.4.7',
+        title: 'Controlled registry delivery',
       }),
     )
     expect(RELEASE_NOTES.filter((entry) => entry.channel === 'latest')).toEqual([
-      expect.objectContaining({ version: '0.4.6' }),
+      expect.objectContaining({ version: '0.4.7' }),
     ])
     expect(RELEASE_NOTES.find((entry) => entry.version === '0.1.38')).toEqual(
       expect.objectContaining({ channel: 'release' }),
     )
     expect(currentRelease.fixes).toContain(
-      'A locally overridden catalog item now reconnects to its verified catalog identity automatically when that exact sanitized definition is later published.',
+      'Send now can perform one explicit catalog contribution delivery while automatic background delivery is paused.',
     )
     expect(registryRelease.highlights).toContain(
       'Add Hardware now combines a locally searched verified Catalog, the complete Manual editor, and reusable Private templates in one source-aware dialog.',
@@ -122,10 +122,7 @@ describe('release notes helpers', () => {
     )
     expect(UNRELEASED_RELEASE_NOTES).toEqual({
       highlights: [],
-      fixes: [
-        'Send now can perform one explicit catalog contribution delivery while automatic background delivery is paused.',
-        'Disabling automatic catalog contributions now waits for any active delivery to settle before confirming the paused state.',
-      ],
+      fixes: [],
       notes: [],
     })
     expect(onboardingRelease.highlights).toContain(

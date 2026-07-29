@@ -6,6 +6,8 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 
 ## Unreleased
 
+## [0.4.7] - 2026-07-29
+
 ### Fixed
 
 - **Send now** can perform one explicit catalog contribution delivery while automatic background delivery is paused.
