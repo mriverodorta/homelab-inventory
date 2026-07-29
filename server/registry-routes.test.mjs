@@ -103,6 +103,38 @@ describe('registry routes', () => {
     expect(store.getEngineRevision()).toBe(revision)
   })
 
+  it('reconciles automatic scheduling after persisted settings changes', async () => {
+    const catalogRefreshCoordinator = { reconcileSchedule: vi.fn() }
+    const { baseUrl } = await createServer({ catalogRefreshCoordinator })
+    const response = await fetch(`${baseUrl}/api/registry/settings`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ settings: { mode: 'connected' } }),
+    })
+
+    expect(response.status).toBe(200)
+    expect(catalogRefreshCoordinator.reconcileSchedule).toHaveBeenCalledOnce()
+  })
+
+  it('routes manual refresh through the shared coordinator', async () => {
+    const catalogRefreshCoordinator = {
+      refresh: vi.fn(async () => ({ revision: 3 })),
+      reconcileSchedule: vi.fn(),
+    }
+    const { baseUrl } = await createServer({ catalogRefreshCoordinator })
+    await fetch(`${baseUrl}/api/registry/settings`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ settings: { mode: 'connected' } }),
+    })
+
+    const response = await fetch(`${baseUrl}/api/registry/catalog/refresh`, { method: 'POST' })
+
+    expect(response.status).toBe(200)
+    expect(catalogRefreshCoordinator.refresh).toHaveBeenCalledOnce()
+    expect(catalogRefreshCoordinator.refresh).toHaveBeenCalledWith('manual')
+  })
+
   it('creates, exports, deletes, previews, and imports sanitized private templates', async () => {
     const { baseUrl } = await createServer()
     const created = await fetch(`${baseUrl}/api/registry/private-templates`, {

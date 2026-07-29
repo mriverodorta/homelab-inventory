@@ -91,6 +91,7 @@ export function registerRegistryRoutes(app, {
   identityService,
   deliveryService,
   snapshotServiceFactory,
+  catalogRefreshCoordinator,
   registryPolicy,
 } = {}) {
   const policy = normalizedRegistryPolicy(registryPolicy)
@@ -138,6 +139,7 @@ export function registerRegistryRoutes(app, {
         ...(policy.forcedMode ? { mode: policy.forcedMode } : {}),
         ...(!policy.contributionsAllowed ? { automaticContributions: false } : {}),
       }, request.body?.expectedUpdatedAt)
+      catalogRefreshCoordinator?.reconcileSchedule()
       if (store.getRegistryState().settings.automaticContributions) {
         void deliveryService.trigger(store)
       }
@@ -226,7 +228,11 @@ export function registerRegistryRoutes(app, {
 
   app.post('/api/registry/catalog/refresh', (request, response) => {
     run(withStore, request, response, async (store) => {
-      await snapshotService(store).refreshConnected()
+      if (catalogRefreshCoordinator) {
+        await catalogRefreshCoordinator.refresh('manual')
+      } else {
+        await snapshotService(store).refreshConnected()
+      }
       response.json({ registry: publicRegistryState(store, policy) })
     })
   })

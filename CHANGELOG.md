@@ -6,6 +6,14 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 
 ## Unreleased
 
+### Added
+
+- Connected installations now refresh the signed official catalog at startup and every six hours with bounded jitter, one shared in-flight operation, and an optional `REGISTRY_REFRESH_INTERVAL_MS` override.
+
+### Fixed
+
+- Failed catalog refreshes now preserve the last-known-good snapshot, expose a sanitized operational error, and refuse activation if Connected mode is disabled while a download is in progress.
+
 ## [0.4.4] - 2026-07-28
 
 ### Fixed

@@ -15,6 +15,10 @@ import { registerInventoryRoutes } from './inventory-routes.mjs'
 import { registerOnboardingRoutes } from './onboarding-routes.mjs'
 import { registerProjectRoutes } from './project-routes.mjs'
 import { registerRegistryRoutes } from './registry-routes.mjs'
+import {
+  CatalogRefreshCoordinator,
+  readCatalogRefreshInterval,
+} from './registry/catalog-refresh-coordinator.mjs'
 import { ContributionDeliveryService } from './registry/contribution-delivery.mjs'
 import { InstallationIdentityService } from './registry/installation-identity.mjs'
 import { SnapshotService } from './registry/snapshot-service.mjs'
@@ -47,6 +51,9 @@ const updateChannel = ['stable', 'latest'].includes(configuredUpdateChannel)
 const updateCheckEnabled = process.env.UPDATE_CHECK_ENABLED !== 'false'
 const runningRevision = process.env.APP_REVISION ?? 'unknown'
 const registryOrigin = 'https://registry.homelabinventory.com'
+const registryRefreshIntervalMs = isDemoMode
+  ? 0
+  : readCatalogRefreshInterval()
 
 if (configuredUpdateChannel !== updateChannel) {
   console.warn(`Unsupported UPDATE_CHANNEL "${configuredUpdateChannel}"; using stable.`)
@@ -185,6 +192,13 @@ const contributionDelivery = installationIdentity
       digestHashes: (currentStore) => new SnapshotService(currentStore, { officialOrigin: registryOrigin }).knownContributionHashes(),
     })
   : null
+const catalogRefreshCoordinator = store
+  ? new CatalogRefreshCoordinator({
+      store,
+      snapshotService: new SnapshotService(store, { officialOrigin: registryOrigin }),
+      intervalMs: registryRefreshIntervalMs,
+    })
+  : null
 
 registerInventoryRoutes(app, { withStore })
 registerRegistryRoutes(app, {
@@ -192,10 +206,12 @@ registerRegistryRoutes(app, {
   officialOrigin: registryOrigin,
   identityService: installationIdentity,
   deliveryService: contributionDelivery,
+  catalogRefreshCoordinator,
   registryPolicy: isDemoMode
     ? { forcedMode: 'connected', contributionsAllowed: false }
     : undefined,
 })
+catalogRefreshCoordinator?.start()
 registerProjectRoutes(app, { withStore })
 registerOnboardingRoutes(app, { withStore, disabled: isDemoMode })
 
@@ -319,6 +335,7 @@ async function shutdown(signal) {
       if (demoManager) {
         await demoManager.flushAll()
       } else {
+        await catalogRefreshCoordinator?.stop()
         if (contributionDelivery) await contributionDelivery.stop(store)
         await store.flush()
       }

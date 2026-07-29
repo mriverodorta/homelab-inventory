@@ -292,6 +292,40 @@ describe('SettingsDialog', () => {
     expect(screen.getAllByText(/public demo policy/i).length).toBeGreaterThan(0)
   })
 
+  it('shows the latest automatic catalog refresh failure without hiding the active snapshot', () => {
+    renderSettings({
+      registry: {
+        ...DEFAULT_REGISTRY_STATE,
+        settings: { ...DEFAULT_REGISTRY_STATE.settings, mode: 'connected' },
+        sources: [{
+          id: 1,
+          kind: 'official-connected',
+          displayName: 'Official Homelab Inventory Catalog',
+          activeRevision: 3,
+          lastCheckedAt: '2026-07-29T12:00:00.000Z',
+          lastSuccessAt: '2026-07-29T06:00:00.000Z',
+          lastErrorAt: '2026-07-29T12:00:00.000Z',
+          lastError: 'Catalog manifest request failed with HTTP 503.',
+        }],
+        snapshot: {
+          sourceId: 1,
+          revision: 3,
+          generatedAt: '2026-07-29T05:55:00.000Z',
+          expiresAt: null,
+          activatedAt: '2026-07-29T06:00:00.000Z',
+          digest: 'a'.repeat(64),
+          templateCount: 1,
+          keyId: 'registry-2026-01',
+        },
+      },
+    })
+    fireEvent.click(screen.getByRole('button', { name: /Registry.*Catalog and private templates/ }))
+
+    expect(screen.getByText('Revision 3')).toBeInTheDocument()
+    expect(screen.getByRole('alert')).toHaveTextContent('Latest catalog refresh failed')
+    expect(screen.getByRole('alert')).toHaveTextContent('Catalog manifest request failed with HTTP 503.')
+  })
+
   it('links to roadmap feedback without including project data', () => {
     renderSettings()
     fireEvent.click(screen.getByRole('button', { name: /Feedback.*Roadmap, ideas, and issues/ }))

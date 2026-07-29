@@ -29,6 +29,19 @@ function sourceKind(mode) {
   return mode === 'connected' ? 'official-connected' : 'official-offline'
 }
 
+function safeRefreshMessage(error) {
+  if (error?.name === 'AbortError') return 'Official catalog request timed out.'
+  const message = error instanceof Error ? error.message : ''
+  const safePatterns = [
+    /^Catalog (manifest|snapshot|digest) request failed with HTTP \d{3}\.$/,
+    /^Catalog (manifest|snapshot|digest index|digest) .{1,180}\.$/,
+    /^Connected catalog mode was disabled before activation\.$/,
+    /^No trusted official catalog signing keys are configured\.$/,
+  ]
+  if (message.length <= 240 && safePatterns.some((pattern) => pattern.test(message))) return message
+  return 'Official catalog refresh failed.'
+}
+
 export function parseTrustedCatalogKeys(value = process.env.REGISTRY_TRUSTED_KEYS_JSON) {
   return trustedCatalogKeys(value)
 }
@@ -216,7 +229,30 @@ export class SnapshotService {
       }
       if (await sha256Hex(text) !== manifest.snapshot.sha256) throw new Error('Catalog snapshot checksum does not match its manifest.')
       if (await sha256Hex(digestText) !== manifest.digests.sha256) throw new Error('Catalog digest checksum does not match its manifest.')
+      if (this.store.getRegistryState().settings.mode !== 'connected') {
+        throw new Error('Connected catalog mode was disabled before activation.')
+      }
       return this.activate(JSON.parse(text), { mode: 'connected', now, digestArtifact: JSON.parse(digestText) })
+    } catch (error) {
+      const message = safeRefreshMessage(error)
+      const checkedAt = now.toISOString()
+      this.store.registryTransaction((draft) => {
+        let source = draft.sources.find((candidate) => candidate.kind?.startsWith('official-'))
+        if (!source) {
+          source = {
+            id: nextId(draft.sources),
+            kind: 'official-connected',
+            displayName: 'Official Homelab Inventory Catalog',
+          }
+          draft.sources.push(source)
+        }
+        Object.assign(source, {
+          lastCheckedAt: checkedAt,
+          lastErrorAt: checkedAt,
+          lastError: message,
+        })
+      })
+      throw new Error(message, { cause: error })
     } finally {
       clearTimeout(timeout)
     }

@@ -123,10 +123,13 @@ SAVE_DEBOUNCE_MS=500
 APP_MODE=production
 UPDATE_CHANNEL=stable
 UPDATE_CHECK_ENABLED=true
+REGISTRY_REFRESH_INTERVAL_MS=21600000
 RATE_LIMIT_WINDOW_MS=60000
 RATE_LIMIT_MAX=600
 TRUST_PROXY=false
 ```
+
+Connected registry mode refreshes the verified official catalog at startup and approximately every six hours. Set `REGISTRY_REFRESH_INTERVAL_MS=0` to disable automatic catalog refreshes while retaining the manual Refresh action.
 
 You normally do not need to set those environment variables in Compose.
 

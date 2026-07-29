@@ -101,9 +101,15 @@ const RELEASE_0_3_0_DETAILS: UnreleasedReleaseNotes = {
 }
 
 export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
-  highlights: [],
-  fixes: [],
-  notes: [],
+  highlights: [
+    'Connected installations now refresh the verified official hardware catalog at startup and every six hours, with bounded jitter and a single shared operation for automatic and manual refreshes.',
+  ],
+  fixes: [
+    'Failed catalog refreshes now preserve the last-known-good catalog, record a safe visible status, and cannot activate after the installation leaves Connected mode.',
+  ],
+  notes: [
+    'Operators can set REGISTRY_REFRESH_INTERVAL_MS to a custom interval or zero to disable automatic refreshes while retaining the manual Refresh action.',
+  ],
 }
 
 const RELEASE_0_4_4_DETAILS: UnreleasedReleaseNotes = {
