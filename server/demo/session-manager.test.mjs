@@ -2,7 +2,7 @@ import express from 'express'
 import fs from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { HomelabInventoryStore } from '../db/store.mjs'
 import { DemoSessionManager, DEMO_COOKIE_NAME } from './session-manager.mjs'
 import { sanitizeDemoStores } from './sanitizer.mjs'
@@ -362,6 +362,119 @@ describe('demo API routing contract', () => {
 })
 
 describe('DemoSessionManager', () => {
+  it('bootstraps the verified catalog once and reuses the persisted snapshot after reopening', async () => {
+    const sourceDir = await createSourceData()
+    const dataDir = await makeTempDir()
+    const activatedAt = '2026-07-28T20:00:00.000Z'
+    const catalogBootstrap = vi.fn(async (store) => {
+      store.registryTransaction((draft) => {
+        draft.sources.push({
+          id: 1,
+          kind: 'official-connected',
+          displayName: 'Official Homelab Inventory Catalog',
+          activeRevision: 3,
+          lastCheckedAt: activatedAt,
+          lastSuccessAt: activatedAt,
+          lastErrorAt: null,
+          lastError: null,
+        })
+        draft.snapshot = {
+          sourceId: 1,
+          revision: 3,
+          generatedAt: activatedAt,
+          expiresAt: null,
+          activatedAt,
+          digest: 'a'.repeat(64),
+          templateCount: 1,
+          keyId: 'registry-2026-01',
+        }
+      })
+      await store.flush()
+    })
+    const manager = createManager({
+      appVersion: '0.4.3',
+      dataDir,
+      sourceDir,
+      catalogBootstrap,
+      saveDebounceMs: 1,
+    })
+
+    await manager.init()
+    const first = await manager.getOrCreateSessionStore(null)
+
+    expect(catalogBootstrap).toHaveBeenCalledOnce()
+    expect(first.store.getRegistryState().snapshot).toMatchObject({
+      revision: 3,
+      keyId: 'registry-2026-01',
+    })
+
+    manager.stores.delete(first.sessionId)
+    const reopened = await manager.openStore(first.session)
+
+    expect(reopened).not.toBe(first.store)
+    expect(reopened.getRegistryState().snapshot).toMatchObject({ revision: 3 })
+    expect(catalogBootstrap).toHaveBeenCalledOnce()
+  })
+
+  it('shares one catalog bootstrap across concurrent opens of the same session', async () => {
+    const sourceDir = await createSourceData()
+    const dataDir = await makeTempDir()
+    const manager = createManager({
+      appVersion: '0.4.3',
+      dataDir,
+      sourceDir,
+      saveDebounceMs: 1,
+    })
+
+    await manager.init()
+    const created = await manager.getOrCreateSessionStore(null)
+    manager.stores.delete(created.sessionId)
+
+    let finishBootstrap
+    const bootstrapGate = new Promise((resolve) => {
+      finishBootstrap = resolve
+    })
+    manager.catalogBootstrap = vi.fn(() => bootstrapGate)
+
+    const firstOpen = manager.openStore(created.session)
+    const secondOpen = manager.openStore(created.session)
+    await vi.waitFor(() => expect(manager.catalogBootstrap).toHaveBeenCalledOnce())
+    finishBootstrap()
+    const [firstStore, secondStore] = await Promise.all([firstOpen, secondOpen])
+
+    expect(firstStore).toBe(secondStore)
+    expect(manager.catalogBootstrap).toHaveBeenCalledOnce()
+  })
+
+  it('keeps the demo usable when automatic catalog bootstrap fails', async () => {
+    const sourceDir = await createSourceData()
+    const dataDir = await makeTempDir()
+    const logger = { warn: vi.fn() }
+    const catalogBootstrap = vi.fn(async () => {
+      throw new Error('Registry unavailable at https://private.example.test')
+    })
+    const manager = createManager({
+      appVersion: '0.4.3',
+      dataDir,
+      sourceDir,
+      catalogBootstrap,
+      logger,
+      saveDebounceMs: 1,
+    })
+
+    await manager.init()
+    const created = await manager.getOrCreateSessionStore(null)
+
+    expect(catalogBootstrap).toHaveBeenCalledOnce()
+    expect(created.store.getRegistryState()).toMatchObject({
+      settings: { mode: 'connected', automaticContributions: false },
+      snapshot: null,
+    })
+    expect(logger.warn).toHaveBeenCalledWith(
+      'Automatic demo catalog refresh failed; manual refresh remains available.',
+    )
+  })
+
   it('creates and reuses a cookie-backed sandbox without mutating source data', async () => {
     const sourceDir = await createSourceData()
     const dataDir = await makeTempDir()

@@ -61,14 +61,18 @@ export const DEMO_COOKIE_NAME = 'homelab_inventory_demo_session'
 export class DemoSessionManager {
   constructor({
     appVersion,
+    catalogBootstrap = null,
     dataDir,
+    logger = console,
     sourceDir,
     sessionMinutes = 30,
     maxSessions = 100,
     saveDebounceMs = 500,
   }) {
     this.appVersion = appVersion
+    this.catalogBootstrap = catalogBootstrap
     this.dataDir = dataDir
+    this.logger = logger
     this.sourceDir = sourceDir
     this.sessionMinutes = sessionMinutes
     this.maxSessions = maxSessions
@@ -77,6 +81,7 @@ export class DemoSessionManager {
     this.indexPath = path.join(this.sessionsDir, INDEX_FILE)
     this.sessions = sessionIndex()
     this.stores = new Map()
+    this.openingStores = new Map()
   }
 
   async init() {
@@ -178,6 +183,23 @@ export class DemoSessionManager {
       return this.stores.get(session.id)
     }
 
+    if (this.openingStores.has(session.id)) {
+      return this.openingStores.get(session.id)
+    }
+
+    const opening = this.initializeStore(session)
+    this.openingStores.set(session.id, opening)
+
+    try {
+      return await opening
+    } finally {
+      if (this.openingStores.get(session.id) === opening) {
+        this.openingStores.delete(session.id)
+      }
+    }
+  }
+
+  async initializeStore(session) {
     const store = new HomelabInventoryStore({
       appVersion: this.appVersion,
       dataDir: session.dataDir,
@@ -191,6 +213,13 @@ export class DemoSessionManager {
     const registry = store.getRegistryState()
     if (registry.settings.mode !== 'connected' || registry.settings.automaticContributions) {
       store.updateRegistrySettings({ mode: 'connected', automaticContributions: false })
+    }
+    if (!store.getRegistryState().snapshot && this.catalogBootstrap) {
+      try {
+        await this.catalogBootstrap(store)
+      } catch {
+        this.logger.warn('Automatic demo catalog refresh failed; manual refresh remains available.')
+      }
     }
     this.stores.set(session.id, store)
 
@@ -216,6 +245,10 @@ export class DemoSessionManager {
     }
 
     const session = this.sessions[sessionId]
+    const opening = this.openingStores.get(sessionId)
+    if (opening) {
+      await opening.catch(() => {})
+    }
     const store = this.stores.get(sessionId)
     if (store) {
       await store.flush().catch(() => {})
@@ -256,6 +289,7 @@ export class DemoSessionManager {
   }
 
   async flushAll() {
+    await Promise.allSettled(this.openingStores.values())
     await Promise.all([...this.stores.values()].map((store) => store.flush().catch(() => {})))
   }
 }

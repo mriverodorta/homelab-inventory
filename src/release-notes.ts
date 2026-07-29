@@ -102,7 +102,9 @@ const RELEASE_0_3_0_DETAILS: UnreleasedReleaseNotes = {
 
 export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
   highlights: [],
-  fixes: [],
+  fixes: [
+    'New public demo sessions now activate the verified official catalog automatically on first use while remaining available when the registry is temporarily unreachable.',
+  ],
   notes: [],
 }
 

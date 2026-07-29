@@ -122,7 +122,9 @@ describe('release notes helpers', () => {
     )
     expect(UNRELEASED_RELEASE_NOTES).toEqual({
       highlights: [],
-      fixes: [],
+      fixes: [
+        'New public demo sessions now activate the verified official catalog automatically on first use while remaining available when the registry is temporarily unreachable.',
+      ],
       notes: [],
     })
     expect(onboardingRelease.highlights).toContain(

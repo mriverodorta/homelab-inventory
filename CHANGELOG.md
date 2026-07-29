@@ -6,6 +6,10 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 
 ## Unreleased
 
+### Fixed
+
+- New public demo sessions now activate the verified official catalog automatically on first use while remaining available when the registry is temporarily unreachable.
+
 ## [0.4.3] - 2026-07-28
 
 ### Fixed

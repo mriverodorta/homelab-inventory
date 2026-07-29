@@ -46,6 +46,7 @@ const updateChannel = ['stable', 'latest'].includes(configuredUpdateChannel)
   : 'stable'
 const updateCheckEnabled = process.env.UPDATE_CHECK_ENABLED !== 'false'
 const runningRevision = process.env.APP_REVISION ?? 'unknown'
+const registryOrigin = 'https://registry.homelabinventory.com'
 
 if (configuredUpdateChannel !== updateChannel) {
   console.warn(`Unsupported UPDATE_CHANNEL "${configuredUpdateChannel}"; using stable.`)
@@ -71,6 +72,9 @@ if (isDemoMode) {
 
   demoManager = new DemoSessionManager({
     appVersion: packageJson.version,
+    catalogBootstrap: (currentStore) => new SnapshotService(currentStore, {
+      officialOrigin: registryOrigin,
+    }).refreshConnected(),
     dataDir,
     sourceDir: demoSourceDir,
     sessionMinutes: demoSessionMinutes,
@@ -172,7 +176,6 @@ registerUpdateRoutes(app, {
   releaseNotes: RELEASE_NOTES,
 })
 
-const registryOrigin = 'https://registry.homelabinventory.com'
 const installationIdentity = !isDemoMode
   ? new InstallationIdentityService({ dataDir, officialOrigin: registryOrigin })
   : null
