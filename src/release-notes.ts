@@ -102,6 +102,12 @@ const RELEASE_0_3_0_DETAILS: UnreleasedReleaseNotes = {
 
 export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
   highlights: [],
+  fixes: [],
+  notes: [],
+}
+
+const RELEASE_0_4_4_DETAILS: UnreleasedReleaseNotes = {
+  highlights: [],
   fixes: [
     'New public demo sessions now activate the verified official catalog automatically on first use while remaining available when the registry is temporarily unreachable.',
   ],
@@ -178,9 +184,16 @@ const RELEASE_0_2_1_DETAILS: UnreleasedReleaseNotes = {
 
 export const RELEASE_NOTES: ReleaseNoteEntry[] = [
   {
-    version: '0.4.3',
+    version: '0.4.4',
     date: '2026-07-28',
     channel: 'latest',
+    title: 'Automatic demo catalog activation',
+    ...RELEASE_0_4_4_DETAILS,
+  },
+  {
+    version: '0.4.3',
+    date: '2026-07-28',
+    channel: 'release',
     title: 'Safe public demo registry',
     ...RELEASE_0_4_3_DETAILS,
   },
