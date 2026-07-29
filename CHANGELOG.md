@@ -6,6 +6,8 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 
 ## Unreleased
 
+## [0.4.3] - 2026-07-28
+
 ### Fixed
 
 - Public demo sessions now trust the official catalog signing key, stay locked to Connected registry mode, and prohibit automatic catalog contributions while keeping manual catalog refresh available.

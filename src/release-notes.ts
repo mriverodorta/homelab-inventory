@@ -102,6 +102,12 @@ const RELEASE_0_3_0_DETAILS: UnreleasedReleaseNotes = {
 
 export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
   highlights: [],
+  fixes: [],
+  notes: [],
+}
+
+const RELEASE_0_4_3_DETAILS: UnreleasedReleaseNotes = {
+  highlights: [],
   fixes: [
     'Public demo sessions now trust the official catalog signing key, stay locked to Connected registry mode, and prohibit automatic catalog contributions while keeping manual catalog refresh available.',
   ],
@@ -170,9 +176,16 @@ const RELEASE_0_2_1_DETAILS: UnreleasedReleaseNotes = {
 
 export const RELEASE_NOTES: ReleaseNoteEntry[] = [
   {
-    version: '0.4.2',
+    version: '0.4.3',
     date: '2026-07-28',
     channel: 'latest',
+    title: 'Safe public demo registry',
+    ...RELEASE_0_4_3_DETAILS,
+  },
+  {
+    version: '0.4.2',
+    date: '2026-07-28',
+    channel: 'release',
     title: 'Reliable catalog activation',
     ...RELEASE_0_4_2_DETAILS,
   },

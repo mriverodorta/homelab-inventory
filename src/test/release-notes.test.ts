@@ -98,21 +98,21 @@ describe('release notes helpers', () => {
     const previousRelease = RELEASE_NOTES.find((entry) => entry.version === '0.2.1')!
     const engineRelease = RELEASE_NOTES.find((entry) => entry.version === '0.2.0')!
 
-    expect(hasReleaseNoteForVersion(RELEASE_NOTES, '0.4.2')).toBe(true)
+    expect(hasReleaseNoteForVersion(RELEASE_NOTES, '0.4.3')).toBe(true)
     expect(RELEASE_NOTES[0]).toEqual(
       expect.objectContaining({
-        version: '0.4.2',
-        title: 'Reliable catalog activation',
+        version: '0.4.3',
+        title: 'Safe public demo registry',
       }),
     )
     expect(RELEASE_NOTES.filter((entry) => entry.channel === 'latest')).toEqual([
-      expect.objectContaining({ version: '0.4.2' }),
+      expect.objectContaining({ version: '0.4.3' }),
     ])
     expect(RELEASE_NOTES.find((entry) => entry.version === '0.1.38')).toEqual(
       expect.objectContaining({ channel: 'release' }),
     )
     expect(currentRelease.fixes).toContain(
-      'Official catalog refreshes now share the registry\'s frozen fingerprint-v2 CPU normalization contract, preventing verified CPU templates from being rejected with a declared-hash mismatch.',
+      'Public demo sessions now trust the official catalog signing key, stay locked to Connected registry mode, and prohibit automatic catalog contributions while keeping manual catalog refresh available.',
     )
     expect(registryRelease.highlights).toContain(
       'Add Hardware now combines a locally searched verified Catalog, the complete Manual editor, and reusable Private templates in one source-aware dialog.',
@@ -122,9 +122,7 @@ describe('release notes helpers', () => {
     )
     expect(UNRELEASED_RELEASE_NOTES).toEqual({
       highlights: [],
-      fixes: [
-        'Public demo sessions now trust the official catalog signing key, stay locked to Connected registry mode, and prohibit automatic catalog contributions while keeping manual catalog refresh available.',
-      ],
+      fixes: [],
       notes: [],
     })
     expect(onboardingRelease.highlights).toContain(
