@@ -95,7 +95,23 @@ export async function discoverContributionCandidates(store, now = new Date(), ex
     if (Number.isSafeInteger(activeSourceId)) {
       let linkId = nextId(draft.links)
       for (const { source, exact, contentHash } of links) {
-        if (draft.links.some((link) => link.itemType === source.itemType && link.itemId === source.itemId)) continue
+        const existing = draft.links.find((link) => link.itemType === source.itemType && link.itemId === source.itemId)
+        if (existing) {
+          if (existing.state === 'detached' || existing.state === 'contribution-pending') {
+            Object.assign(existing, {
+              sourceId: activeSourceId,
+              templateKey: exact.templateKey,
+              importedRevision: exact.revision ?? 1,
+              importedContentHash: contentHash,
+              state: 'linked',
+              linkedAt: now.toISOString(),
+            })
+            delete existing.availableRevision
+            delete existing.availableContentHash
+            delete existing.detachedAt
+          }
+          continue
+        }
         draft.links.push({
           id: linkId++, itemType: source.itemType, itemId: source.itemId, sourceId: activeSourceId,
           templateKey: exact.templateKey, importedRevision: exact.revision ?? 1,

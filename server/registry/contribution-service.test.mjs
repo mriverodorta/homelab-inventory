@@ -109,6 +109,95 @@ describe('contribution discovery', () => {
     ])
   })
 
+  it('relinks a detached override in place after its exact content is published', async () => {
+    const cpu = {
+      id: 1,
+      type: 'cpu',
+      name: 'Example CPU C1',
+      manufacturer: 'Example',
+      model: 'C1',
+      specs: { cores: 6, threads: 12 },
+    }
+    const store = fixture(cpu)
+    store.registryTransaction((draft) => {
+      draft.sources.push({ id: 1, name: 'Official', origin: 'https://registry.example', enabled: true })
+      draft.snapshot = { sourceId: 1, revision: 5 }
+      draft.links.push({
+        id: 7,
+        itemType: 'cpu',
+        itemId: 1,
+        sourceId: 1,
+        templateKey: 'example-cpu-c1',
+        importedRevision: 1,
+        importedContentHash: 'a'.repeat(64),
+        state: 'detached',
+        linkedAt: '2026-07-26T12:00:00.000Z',
+        detachedAt: '2026-07-27T12:00:00.000Z',
+      })
+    })
+    const projection = await import('../../packages/catalog-protocol/src/index.ts')
+      .then(({ projectCatalogItem }) => projectCatalogItem(cpu))
+    const known = new Map([[projection.contentHash, {
+      identityHash: projection.identityHash,
+      templateKey: 'example-cpu-c1',
+      revision: 2,
+      state: 'published',
+    }]])
+
+    expect(await discoverContributionCandidates(store, new Date('2026-07-28T12:00:00.000Z'), known))
+      .toMatchObject({ queued: 0 })
+    expect(store.getRegistryState().links).toEqual([expect.objectContaining({
+      id: 7,
+      itemType: 'cpu',
+      itemId: 1,
+      sourceId: 1,
+      templateKey: 'example-cpu-c1',
+      importedRevision: 2,
+      importedContentHash: projection.contentHash,
+      state: 'linked',
+      linkedAt: '2026-07-28T12:00:00.000Z',
+    })])
+    expect(store.getRegistryState().links[0]).not.toHaveProperty('detachedAt')
+  })
+
+  it('keeps a detached override detached until its exact content is published', async () => {
+    const cpu = { id: 1, type: 'cpu', name: 'Example CPU C1', manufacturer: 'Example', model: 'C1' }
+    const store = fixture(cpu)
+    store.registryTransaction((draft) => {
+      draft.sources.push({ id: 1, name: 'Official', origin: 'https://registry.example', enabled: true })
+      draft.snapshot = { sourceId: 1, revision: 5 }
+      draft.links.push({
+        id: 7,
+        itemType: 'cpu',
+        itemId: 1,
+        sourceId: 1,
+        templateKey: 'example-cpu-c1',
+        importedRevision: 1,
+        importedContentHash: 'a'.repeat(64),
+        state: 'detached',
+        linkedAt: '2026-07-26T12:00:00.000Z',
+        detachedAt: '2026-07-27T12:00:00.000Z',
+      })
+    })
+    const projection = await import('../../packages/catalog-protocol/src/index.ts')
+      .then(({ projectCatalogItem }) => projectCatalogItem(cpu))
+    const known = new Map([[projection.contentHash, {
+      identityHash: projection.identityHash,
+      templateKey: 'example-cpu-c1',
+      revision: 2,
+      state: 'pending',
+    }]])
+
+    expect(await discoverContributionCandidates(store, new Date('2026-07-28T12:00:00.000Z'), known))
+      .toMatchObject({ queued: 0 })
+    expect(store.getRegistryState().links).toEqual([expect.objectContaining({
+      id: 7,
+      state: 'detached',
+      importedRevision: 1,
+      detachedAt: '2026-07-27T12:00:00.000Z',
+    })])
+  })
+
   it('withholds unidentified generic storage from contribution delivery', async () => {
     const store = fixture({ id: 1, type: 'storage', name: '1TB NVMe', specs: { capacityGb: 1024, interface: 'NVMe', formFactor: '2280' } })
     expect(await discoverContributionCandidates(store)).toMatchObject({ queued: 0 })

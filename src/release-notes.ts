@@ -102,7 +102,9 @@ const RELEASE_0_3_0_DETAILS: UnreleasedReleaseNotes = {
 
 export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
   highlights: [],
-  fixes: [],
+  fixes: [
+    'A locally overridden catalog item now reconnects to its verified catalog identity automatically when that exact sanitized definition is later published.',
+  ],
   notes: [],
 }
 
