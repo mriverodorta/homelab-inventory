@@ -188,6 +188,10 @@ export class DemoSessionManager {
     })
 
     await store.init()
+    const registry = store.getRegistryState()
+    if (registry.settings.mode !== 'connected' || registry.settings.automaticContributions) {
+      store.updateRegistrySettings({ mode: 'connected', automaticContributions: false })
+    }
     this.stores.set(session.id, store)
 
     return store

@@ -2,7 +2,7 @@ import fs from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import express from 'express'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { HomelabInventoryStore } from './db/store.mjs'
 import { registerRegistryRoutes } from './registry-routes.mjs'
 
@@ -39,6 +39,57 @@ afterEach(async () => {
 })
 
 describe('registry routes', () => {
+  it('enforces connected read-only registry policy for public demos', async () => {
+    const refreshConnected = vi.fn(async () => undefined)
+    const { baseUrl } = await createServer({
+      registryPolicy: {
+        forcedMode: 'connected',
+        contributionsAllowed: false,
+      },
+      snapshotServiceFactory: () => ({ refreshConnected }),
+    })
+
+    const state = await fetch(`${baseUrl}/api/registry`).then((response) => response.json())
+    expect(state.settings).toMatchObject({ mode: 'connected', automaticContributions: false })
+    expect(state.policy).toEqual({
+      modeLocked: true,
+      forcedMode: 'connected',
+      contributionsAllowed: false,
+    })
+
+    const preference = await fetch(`${baseUrl}/api/registry/settings`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ settings: { defaultInventorySource: 'manual' } }),
+    })
+    expect(preference.status).toBe(200)
+    expect((await preference.json()).settings).toMatchObject({
+      mode: 'connected',
+      defaultInventorySource: 'manual',
+      automaticContributions: false,
+    })
+
+    for (const settings of [{ mode: 'offline' }, { automaticContributions: true }]) {
+      const response = await fetch(`${baseUrl}/api/registry/settings`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ settings }),
+      })
+      expect(response.status).toBe(403)
+      expect(await response.json()).toMatchObject({ code: 'demo-registry-policy' })
+    }
+
+    const refresh = await fetch(`${baseUrl}/api/registry/catalog/refresh`, { method: 'POST' })
+    expect(refresh.status).toBe(200)
+    expect(refreshConnected).toHaveBeenCalledOnce()
+
+    for (const route of ['deliver', 'revoke', 'rotate-key']) {
+      const response = await fetch(`${baseUrl}/api/registry/contributions/${route}`, { method: 'POST' })
+      expect(response.status).toBe(403)
+      expect(await response.json()).toMatchObject({ code: 'demo-registry-policy' })
+    }
+  })
+
   it('updates local registry preferences without changing the project revision', async () => {
     const { baseUrl, store } = await createServer()
     const revision = store.getEngineRevision()

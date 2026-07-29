@@ -9,6 +9,7 @@ import {
   validateCatalogSnapshot,
   verifySignedCatalogArtifact,
 } from '../../packages/catalog-protocol/src/index.ts'
+import { trustedCatalogKeys } from './trusted-keys.mjs'
 
 const runtimeImport = new Function('specifier', 'return import(specifier)')
 
@@ -29,10 +30,7 @@ function sourceKind(mode) {
 }
 
 export function parseTrustedCatalogKeys(value = process.env.REGISTRY_TRUSTED_KEYS_JSON) {
-  if (!value) return []
-  const parsed = JSON.parse(value)
-  if (!Array.isArray(parsed)) throw new Error('REGISTRY_TRUSTED_KEYS_JSON must be an array.')
-  return parsed
+  return trustedCatalogKeys(value)
 }
 
 export class SnapshotService {

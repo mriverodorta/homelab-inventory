@@ -189,6 +189,9 @@ registerRegistryRoutes(app, {
   officialOrigin: registryOrigin,
   identityService: installationIdentity,
   deliveryService: contributionDelivery,
+  registryPolicy: isDemoMode
+    ? { forcedMode: 'connected', contributionsAllowed: false }
+    : undefined,
 })
 registerProjectRoutes(app, { withStore })
 registerOnboardingRoutes(app, { withStore, disabled: isDemoMode })

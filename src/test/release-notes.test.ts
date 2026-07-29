@@ -122,7 +122,9 @@ describe('release notes helpers', () => {
     )
     expect(UNRELEASED_RELEASE_NOTES).toEqual({
       highlights: [],
-      fixes: [],
+      fixes: [
+        'Public demo sessions now trust the official catalog signing key, stay locked to Connected registry mode, and prohibit automatic catalog contributions while keeping manual catalog refresh available.',
+      ],
       notes: [],
     })
     expect(onboardingRelease.highlights).toContain(

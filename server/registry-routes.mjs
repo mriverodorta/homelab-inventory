@@ -3,7 +3,22 @@ import { isRelationalId } from './db/relational-ids.mjs'
 import { SnapshotService } from './registry/snapshot-service.mjs'
 import { contributionStatus } from './registry/contribution-service.mjs'
 
-function publicRegistryState(store) {
+const DEFAULT_REGISTRY_POLICY = Object.freeze({
+  modeLocked: false,
+  forcedMode: null,
+  contributionsAllowed: true,
+})
+
+function normalizedRegistryPolicy(policy) {
+  if (!policy) return DEFAULT_REGISTRY_POLICY
+  return {
+    modeLocked: typeof policy.forcedMode === 'string',
+    forcedMode: policy.forcedMode ?? null,
+    contributionsAllowed: policy.contributionsAllowed !== false,
+  }
+}
+
+function publicRegistryState(store, policy = DEFAULT_REGISTRY_POLICY) {
   const registry = store.getRegistryState()
   const meta = store.databases?.meta?.data ?? {}
   const lastMigration = meta.lastMigration && typeof meta.lastMigration === 'object'
@@ -16,12 +31,20 @@ function publicRegistryState(store) {
       }
     : null
   return {
-    settings: registry.settings,
+    policy,
+    settings: {
+      ...registry.settings,
+      ...(policy.forcedMode ? { mode: policy.forcedMode } : {}),
+      ...(!policy.contributionsAllowed ? { automaticContributions: false } : {}),
+    },
     sources: registry.sources,
     links: registry.links,
     privateTemplates: registry.privateTemplates,
     snapshot: registry.snapshot,
-    contributions: contributionStatus(store),
+    contributions: {
+      ...contributionStatus(store),
+      ...(!policy.contributionsAllowed ? { enabled: false } : {}),
+    },
     database: {
       schemaVersion: Number.isSafeInteger(meta.schemaVersion) ? meta.schemaVersion : null,
       lastMigration,
@@ -68,7 +91,13 @@ export function registerRegistryRoutes(app, {
   identityService,
   deliveryService,
   snapshotServiceFactory,
+  registryPolicy,
 } = {}) {
+  const policy = normalizedRegistryPolicy(registryPolicy)
+  const demoPolicyError = () => new InventoryLifecycleError(
+    'Registry contribution settings are read-only in public demo mode.',
+    { code: 'demo-registry-policy', status: 403 },
+  )
   const snapshotService = (store) => snapshotServiceFactory
     ? snapshotServiceFactory(store)
     : new SnapshotService(store, {
@@ -78,12 +107,18 @@ export function registerRegistryRoutes(app, {
       })
 
   app.get('/api/registry', (request, response) => {
-    run(withStore, request, response, async (store) => response.json(publicRegistryState(store)))
+    run(withStore, request, response, async (store) => response.json(publicRegistryState(store, policy)))
   })
 
   app.patch('/api/registry/settings', (request, response) => {
     run(withStore, request, response, async (store) => {
       const settings = request.body?.settings ?? request.body
+      if (policy.modeLocked && settings?.mode !== undefined && settings.mode !== policy.forcedMode) {
+        throw demoPolicyError()
+      }
+      if (!policy.contributionsAllowed && settings?.automaticContributions === true) {
+        throw demoPolicyError()
+      }
       if (settings?.automaticContributions === true) {
         const requestedMode = settings?.mode ?? store.getRegistryState().settings.mode
         if (requestedMode !== 'connected') {
@@ -98,18 +133,22 @@ export function registerRegistryRoutes(app, {
         }
         await identityService.credentials(store)
       }
-      store.updateRegistrySettings(settings, request.body?.expectedUpdatedAt)
+      store.updateRegistrySettings({
+        ...settings,
+        ...(policy.forcedMode ? { mode: policy.forcedMode } : {}),
+        ...(!policy.contributionsAllowed ? { automaticContributions: false } : {}),
+      }, request.body?.expectedUpdatedAt)
       if (store.getRegistryState().settings.automaticContributions) {
         void deliveryService.trigger(store)
       }
-      response.json(publicRegistryState(store))
+      response.json(publicRegistryState(store, policy))
     })
   })
 
   app.post('/api/registry/private-templates', (request, response) => {
     run(withStore, request, response, async (store) => {
       await store.createPrivateTemplate(request.body)
-      response.status(201).json(publicRegistryState(store))
+      response.status(201).json(publicRegistryState(store, policy))
     })
   })
 
@@ -120,7 +159,7 @@ export function registerRegistryRoutes(app, {
         code: 'invalid-private-template-id', status: 400,
       })
       await store.duplicatePrivateTemplate(id)
-      response.status(201).json(publicRegistryState(store))
+      response.status(201).json(publicRegistryState(store, policy))
     })
   })
 
@@ -131,7 +170,7 @@ export function registerRegistryRoutes(app, {
         code: 'invalid-private-template-id', status: 400,
       })
       store.deletePrivateTemplate(id)
-      response.json(publicRegistryState(store))
+      response.json(publicRegistryState(store, policy))
     })
   })
 
@@ -152,7 +191,7 @@ export function registerRegistryRoutes(app, {
       const result = await store.importPrivateTemplates(request.body?.pack ?? request.body)
       response.status(201).json({
         ...result,
-        registry: publicRegistryState(store),
+        registry: publicRegistryState(store, policy),
       })
     })
   })
@@ -181,14 +220,14 @@ export function registerRegistryRoutes(app, {
       const snapshotArtifact = imported?.snapshot ?? imported
       const digestArtifact = imported?.digests
       await snapshotService(store).activate(snapshotArtifact, { mode: 'offline', digestArtifact })
-      response.status(201).json({ registry: publicRegistryState(store) })
+      response.status(201).json({ registry: publicRegistryState(store, policy) })
     })
   })
 
   app.post('/api/registry/catalog/refresh', (request, response) => {
     run(withStore, request, response, async (store) => {
       await snapshotService(store).refreshConnected()
-      response.json({ registry: publicRegistryState(store) })
+      response.json({ registry: publicRegistryState(store, policy) })
     })
   })
 
@@ -254,6 +293,7 @@ export function registerRegistryRoutes(app, {
 
   app.post('/api/registry/contributions/deliver', (request, response) => {
     run(withStore, request, response, async (store) => {
+      if (!policy.contributionsAllowed) throw demoPolicyError()
       if (!deliveryService) throw new InventoryLifecycleError('Contribution delivery is unavailable.', {
         code: 'contributions-unavailable', status: 503,
       })
@@ -263,6 +303,7 @@ export function registerRegistryRoutes(app, {
 
   app.post('/api/registry/contributions/revoke', (request, response) => {
     run(withStore, request, response, async (store) => {
+      if (!policy.contributionsAllowed) throw demoPolicyError()
       if (!identityService) throw new InventoryLifecycleError('Registry enrollment is unavailable.', {
         code: 'contributions-unavailable', status: 503,
       })
@@ -273,6 +314,7 @@ export function registerRegistryRoutes(app, {
 
   app.post('/api/registry/contributions/rotate-key', (request, response) => {
     run(withStore, request, response, async (store) => {
+      if (!policy.contributionsAllowed) throw demoPolicyError()
       if (!identityService) throw new InventoryLifecycleError('Registry enrollment is unavailable.', {
         code: 'contributions-unavailable', status: 503,
       })

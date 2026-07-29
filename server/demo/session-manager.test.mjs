@@ -383,6 +383,10 @@ describe('DemoSessionManager', () => {
     expect(first.session.dataDir).toBe(path.join(dataDir, 'demo-sessions', first.sessionId))
     expect(first.store).toBeInstanceOf(HomelabInventoryStore)
     expect(firstProject.items['server:1'].name).toBe('Demo Server 1')
+    expect(first.store.getRegistryState().settings).toMatchObject({
+      mode: 'connected',
+      automaticContributions: false,
+    })
 
     first.store.setProject({
       ...firstProject,
@@ -394,6 +398,10 @@ describe('DemoSessionManager', () => {
 
     expect(second.sessionId).toBe(first.sessionId)
     expect(second.store.getProject().metadata.name).toBe('Changed Demo')
+    expect(second.store.getRegistryState().settings).toMatchObject({
+      mode: 'connected',
+      automaticContributions: false,
+    })
 
     const sourceProject = await readJson(path.join(sourceDir, 'stores', 'project.json'))
     expect(sourceProject.metadata.name).toBe('Private')

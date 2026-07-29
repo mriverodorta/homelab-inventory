@@ -10,6 +10,12 @@ export type RegistrySettings = {
   updatedAt: string | null
 }
 
+export type RegistryPolicy = {
+  modeLocked: boolean
+  forcedMode: RegistryMode | null
+  contributionsAllowed: boolean
+}
+
 export type PrivateTemplate = {
   id: number
   name: string
@@ -21,6 +27,7 @@ export type PrivateTemplate = {
 }
 
 export type RegistryState = {
+  policy?: RegistryPolicy
   settings: RegistrySettings
   sources: RegistrySource[]
   links: RegistryLink[]
@@ -140,6 +147,11 @@ export type PrivateTemplateImportPreview = {
 }
 
 export const DEFAULT_REGISTRY_STATE: RegistryState = {
+  policy: {
+    modeLocked: false,
+    forcedMode: null,
+    contributionsAllowed: true,
+  },
   settings: {
     mode: 'disabled',
     defaultInventorySource: 'catalog',

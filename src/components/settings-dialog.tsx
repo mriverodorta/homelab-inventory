@@ -44,6 +44,11 @@ import {
 import { Slider } from '@/components/ui/slider'
 import { Switch } from '@/components/ui/switch'
 import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from '@/components/ui/tooltip'
+import {
   MAX_INVENTORY_WIDTH,
   MIN_INVENTORY_WIDTH,
 } from '@/lib/ui-preferences'
@@ -346,6 +351,8 @@ function ProjectSettings(props: SettingsDialogProps) {
 
 function RegistrySettingsPanel(props: SettingsDialogProps) {
   const registry = props.registry ?? DEFAULT_REGISTRY_STATE
+  const policy = registry.policy ?? DEFAULT_REGISTRY_STATE.policy!
+  const effectiveMode = policy.forcedMode ?? registry.settings.mode
   const contributions = registry.contributions ?? DEFAULT_REGISTRY_STATE.contributions
   const database = registry.database ?? DEFAULT_REGISTRY_STATE.database
   const inputRef = useRef<HTMLInputElement>(null)
@@ -424,15 +431,31 @@ function RegistrySettingsPanel(props: SettingsDialogProps) {
 
   return (
     <SettingsSection title="Registry" description="Choose how this installation finds reusable hardware definitions.">
-      <SettingRow label="Registry mode" description="Disabled makes no registry requests. Offline uses a manually imported signed catalog. Connected will synchronize the official catalog.">
-        <Select value={registry.settings.mode} disabled={busy} onValueChange={(mode) => void update({ mode: mode as RegistrySettings['mode'] })}>
-          <SelectTrigger className="w-full sm:w-[260px]" aria-label="Registry mode"><SelectValue /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="disabled">Disabled</SelectItem>
-            <SelectItem value="offline">Offline file</SelectItem>
-            <SelectItem value="connected">Connected</SelectItem>
-          </SelectContent>
-        </Select>
+      <SettingRow
+        label="Registry mode"
+        description={policy.modeLocked
+          ? 'Connected mode is enforced by public demo policy so visitors can browse the verified official catalog.'
+          : 'Disabled makes no registry requests. Offline uses a manually imported signed catalog. Connected will synchronize the official catalog.'}
+      >
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <div className="w-full sm:w-[260px]" tabIndex={policy.modeLocked ? 0 : -1}>
+              <Select value={effectiveMode} disabled={busy || policy.modeLocked} onValueChange={(mode) => void update({ mode: mode as RegistrySettings['mode'] })}>
+                <SelectTrigger className="w-full" aria-label="Registry mode"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="disabled">Disabled</SelectItem>
+                  <SelectItem value="offline">Offline file</SelectItem>
+                  <SelectItem value="connected">Connected</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </TooltipTrigger>
+          {policy.modeLocked ? (
+            <TooltipContent side="top" sideOffset={6} className="max-w-sm leading-5">
+              Read-only because connected catalog access is enforced by public demo policy.
+            </TooltipContent>
+          ) : null}
+        </Tooltip>
       </SettingRow>
       <SettingRow label="Default Add Hardware tab" description="Unavailable catalog sources fall back to Manual without changing this preference.">
         <Select value={registry.settings.defaultInventorySource} disabled={busy} onValueChange={(defaultInventorySource) => void update({ defaultInventorySource: defaultInventorySource as RegistrySettings['defaultInventorySource'] })}>
@@ -446,16 +469,29 @@ function RegistrySettingsPanel(props: SettingsDialogProps) {
       </SettingRow>
       <SettingRow
         label="Automatic catalog contributions"
-        description="Explicit opt-in. The backend sends only reusable, allowlisted hardware definitions after removing local device names, addresses, serials, notes, topology, assignments, agents, and smart-device instance data. Inventory saves never wait for delivery."
+        description={policy.contributionsAllowed
+          ? 'Explicit opt-in. The backend sends only reusable, allowlisted hardware definitions after removing local device names, addresses, serials, notes, topology, assignments, agents, and smart-device instance data. Inventory saves never wait for delivery.'
+          : 'Disabled by public demo policy. Demo inventory is disposable and never enrolls with or sends candidates to the registry.'}
       >
         <div className="flex max-w-[280px] flex-col items-end gap-2">
-          <Switch
-            aria-label="Automatic catalog contributions"
-            aria-describedby={contributionError ? 'registry-contribution-error' : undefined}
-            checked={registry.settings.automaticContributions}
-            disabled={busy || registry.settings.mode !== 'connected'}
-            onCheckedChange={(automaticContributions) => void update({ automaticContributions })}
-          />
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <div tabIndex={!policy.contributionsAllowed ? 0 : -1}>
+                <Switch
+                  aria-label="Automatic catalog contributions"
+                  aria-describedby={contributionError ? 'registry-contribution-error' : undefined}
+                  checked={policy.contributionsAllowed && registry.settings.automaticContributions}
+                  disabled={busy || effectiveMode !== 'connected' || !policy.contributionsAllowed}
+                  onCheckedChange={(automaticContributions) => void update({ automaticContributions })}
+                />
+              </div>
+            </TooltipTrigger>
+            {!policy.contributionsAllowed ? (
+              <TooltipContent side="top" sideOffset={6} className="max-w-sm leading-5">
+                Read-only because automatic contributions are prohibited by public demo policy.
+              </TooltipContent>
+            ) : null}
+          </Tooltip>
           {contributionError ? (
             <p
               id="registry-contribution-error"
@@ -467,7 +503,7 @@ function RegistrySettingsPanel(props: SettingsDialogProps) {
           ) : null}
         </div>
       </SettingRow>
-      <div className="border-t border-[#e8e1d6] p-4">
+      {policy.contributionsAllowed ? <div className="border-t border-[#e8e1d6] p-4">
         <div className="grid gap-3 rounded-md border border-[#ded5c8] bg-[#f8f4ed] p-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
           <div>
             <h3 className="text-sm font-black text-[#28231f]">Contribution delivery</h3>
@@ -504,7 +540,7 @@ function RegistrySettingsPanel(props: SettingsDialogProps) {
             ) : null}
           </div>
         </div>
-      </div>
+      </div> : null}
       <div className="border-t border-[#e8e1d6] p-4">
         <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
           <div>
@@ -513,8 +549,8 @@ function RegistrySettingsPanel(props: SettingsDialogProps) {
           </div>
           <div className="flex gap-2">
             <input ref={catalogInputRef} type="file" accept="application/json,.json" className="sr-only" aria-label="Import signed official catalog" onChange={(event) => void importCatalog(event.target.files?.[0])} />
-            {registry.settings.mode === 'offline' ? <Button type="button" variant="outline" onClick={() => catalogInputRef.current?.click()} disabled={busy || !props.onImportOfficialCatalog}>Import snapshot</Button> : null}
-            {registry.settings.mode === 'connected' ? <Button type="button" variant="outline" onClick={() => void refreshCatalog()} disabled={busy || !props.onRefreshOfficialCatalog}>Refresh now</Button> : null}
+            {effectiveMode === 'offline' ? <Button type="button" variant="outline" onClick={() => catalogInputRef.current?.click()} disabled={busy || !props.onImportOfficialCatalog}>Import snapshot</Button> : null}
+            {effectiveMode === 'connected' ? <Button type="button" variant="outline" onClick={() => void refreshCatalog()} disabled={busy || !props.onRefreshOfficialCatalog}>Refresh now</Button> : null}
           </div>
         </div>
       <CatalogSourceStatus registry={registry} />

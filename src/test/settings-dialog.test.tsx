@@ -260,6 +260,38 @@ describe('SettingsDialog', () => {
     expect(contributionSwitch).not.toBeChecked()
   })
 
+  it('renders the public demo registry policy as read-only while keeping refresh available', () => {
+    renderSettings({
+      registry: {
+        ...DEFAULT_REGISTRY_STATE,
+        policy: {
+          modeLocked: true,
+          forcedMode: 'connected',
+          contributionsAllowed: false,
+        },
+        settings: {
+          ...DEFAULT_REGISTRY_STATE.settings,
+          mode: 'connected',
+          automaticContributions: false,
+        },
+      },
+      onRefreshOfficialCatalog: vi.fn(),
+      onDeliverRegistryContributions: vi.fn(),
+      onRevokeRegistryContributions: vi.fn(),
+      onRotateRegistryContributionKey: vi.fn(),
+    })
+    fireEvent.click(screen.getByRole('button', { name: /Registry.*Catalog and private templates/ }))
+
+    expect(screen.getByRole('combobox', { name: 'Registry mode' })).toBeDisabled()
+    expect(screen.getByRole('combobox', { name: 'Registry mode' })).toHaveTextContent('Connected')
+    expect(screen.getByRole('switch', { name: 'Automatic catalog contributions' })).toBeDisabled()
+    expect(screen.getByRole('switch', { name: 'Automatic catalog contributions' })).not.toBeChecked()
+    expect(screen.queryByText('Contribution delivery')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Send now' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Refresh now' })).toBeEnabled()
+    expect(screen.getAllByText(/public demo policy/i).length).toBeGreaterThan(0)
+  })
+
   it('links to roadmap feedback without including project data', () => {
     renderSettings()
     fireEvent.click(screen.getByRole('button', { name: /Feedback.*Roadmap, ideas, and issues/ }))
