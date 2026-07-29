@@ -6,6 +6,8 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 
 ## Unreleased
 
+## [0.4.6] - 2026-07-29
+
 ### Fixed
 
 - Locally overridden catalog items now reconnect to their existing numeric catalog link after the exact sanitized definition is published, while pending and non-published hashes remain detached.

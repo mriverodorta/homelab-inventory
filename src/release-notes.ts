@@ -102,6 +102,12 @@ const RELEASE_0_3_0_DETAILS: UnreleasedReleaseNotes = {
 
 export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
   highlights: [],
+  fixes: [],
+  notes: [],
+}
+
+const RELEASE_0_4_6_DETAILS: UnreleasedReleaseNotes = {
+  highlights: [],
   fixes: [
     'A locally overridden catalog item now reconnects to its verified catalog identity automatically when that exact sanitized definition is later published.',
     'Catalog update previews now restore the item category at the database adapter boundary so linked category-array records can be reviewed and applied reliably.',
@@ -199,9 +205,16 @@ const RELEASE_0_2_1_DETAILS: UnreleasedReleaseNotes = {
 
 export const RELEASE_NOTES: ReleaseNoteEntry[] = [
   {
-    version: '0.4.5',
+    version: '0.4.6',
     date: '2026-07-29',
     channel: 'latest',
+    title: 'Complete catalog update reviews',
+    ...RELEASE_0_4_6_DETAILS,
+  },
+  {
+    version: '0.4.5',
+    date: '2026-07-29',
+    channel: 'release',
     title: 'Automatic catalog refresh',
     ...RELEASE_0_4_5_DETAILS,
   },
