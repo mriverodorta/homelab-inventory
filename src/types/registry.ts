@@ -7,6 +7,7 @@ export type RegistrySettings = {
   mode: RegistryMode
   defaultInventorySource: InventorySourceTab
   automaticContributions: boolean
+  showRegistryLinkIndicators: boolean
   updatedAt: string | null
 }
 
@@ -156,6 +157,7 @@ export const DEFAULT_REGISTRY_STATE: RegistryState = {
     mode: 'disabled',
     defaultInventorySource: 'catalog',
     automaticContributions: false,
+    showRegistryLinkIndicators: false,
     updatedAt: null,
   },
   sources: [],

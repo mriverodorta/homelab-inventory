@@ -12,6 +12,7 @@ describe('registry store model', () => {
       mode: 'disabled',
       defaultInventorySource: 'catalog',
       automaticContributions: false,
+      showRegistryLinkIndicators: false,
       updatedAt: null,
     })
     expect(store.privateTemplates).toEqual([])
@@ -26,8 +27,16 @@ describe('registry store model', () => {
       mode: 'disabled',
       defaultInventorySource: 'catalog',
       automaticContributions: false,
+      showRegistryLinkIndicators: false,
     })
     expect(store.privateTemplates).toEqual([])
+  })
+
+  it('normalizes the optional canvas indicator preference without requiring a migration', () => {
+    expect(normalizeRegistryStore({ settings: {} }).settings.showRegistryLinkIndicators).toBe(false)
+    expect(normalizeRegistryStore({
+      settings: { showRegistryLinkIndicators: true },
+    }).settings.showRegistryLinkIndicators).toBe(true)
   })
 
   it('rejects duplicate and non-numeric private-template identifiers', () => {

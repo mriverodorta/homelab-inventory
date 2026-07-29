@@ -6,6 +6,12 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 
 ## Unreleased
 
+## [0.4.8] - 2026-07-29
+
+### Added
+
+- Registry settings can optionally show a compact canvas marker on catalog-linked equipment and assigned components; the marker is hidden by default.
+
 ## [0.4.7] - 2026-07-29
 
 ### Fixed

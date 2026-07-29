@@ -3,6 +3,7 @@ import { Handle, Position, type Node, type NodeProps } from '@xyflow/react'
 import { AlertTriangle, Grip, X } from 'lucide-react'
 import type { CSSProperties } from 'react'
 import { Button } from '@/components/ui/button'
+import { RegistryLinkIndicator } from '@/components/registry-link-indicator'
 import { hostMemorySlotCount, MemorySlotGrid } from '@/components/memory-slot-grid'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { getEndpointHandleId, type CableSide } from '@/lib/cable-routing'
@@ -24,6 +25,7 @@ import {
   formatStorageCanvasParts,
 } from '@/lib/format'
 import { runtimeItemKey } from '@/lib/item-keys'
+import { EMPTY_REGISTRY_LINK_KEYS } from '@/lib/registry-links'
 import { visiblePcBuildSlotTypes } from '@/lib/pc-build'
 import { startSelectedPortDrag } from '@/lib/port-interactions'
 import {
@@ -44,6 +46,7 @@ import type {
 
 export type PcBuildNodeData = {
   project: ProjectState
+  registryLinkedItemKeys?: ReadonlySet<string>
   canvasIndex: CanvasProjectIndex
   requiredHandleIds: ReadonlySet<string>
   pcBuildId: string
@@ -299,6 +302,7 @@ function AssignedComponentRow({
   onSelect,
   pendingEndpoint,
   requiredHandleIds,
+  registryLinkedItemKeys,
   selected,
 }: {
   assignment: ComponentAssignment
@@ -313,6 +317,7 @@ function AssignedComponentRow({
   onSelect: PcBuildNodeData['onSelect']
   pendingEndpoint: ConnectionEndpoint | null
   requiredHandleIds: ReadonlySet<string>
+  registryLinkedItemKeys: ReadonlySet<string>
   selected: boolean
 }) {
   const itemRuntimeKey = runtimeItemKey(item)
@@ -356,6 +361,7 @@ function AssignedComponentRow({
         <span className="min-w-0 flex-1 truncate font-bold" title={item.name}>
           {assignmentSummary(item)}
         </span>
+        <RegistryLinkIndicator visible={registryLinkedItemKeys.has(itemRuntimeKey)} />
         <Button
           type="button"
           variant="ghost"
@@ -450,6 +456,7 @@ export function PcBuildNode({ data }: NodeProps<PcBuildFlowNode>) {
     project,
     canvasIndex,
     requiredHandleIds,
+    registryLinkedItemKeys = EMPTY_REGISTRY_LINK_KEYS,
     pcBuildId,
     selectedItemId,
     focusedItemIds,
@@ -508,10 +515,11 @@ export function PcBuildNode({ data }: NodeProps<PcBuildFlowNode>) {
       <CableHandles requiredHandleIds={requiredHandleIds} />
       <div className="server-node-drag-handle flex cursor-grab items-center gap-2 rounded-md bg-[#303744] px-3 py-2 active:cursor-grabbing">
         <Grip className="size-4 shrink-0 text-[#cfc6b8]" />
-        <div className="min-w-0">
+        <div className="min-w-0 flex-1">
           <div className="truncate text-sm font-bold">{pcBuild.name}</div>
           <div className="truncate text-[11px] text-[#cfc6b8]">{displayName}</div>
         </div>
+        <RegistryLinkIndicator visible={registryLinkedItemKeys.has(pcBuildRuntimeKey)} />
       </div>
 
       <MotherboardIoRow
@@ -560,6 +568,7 @@ export function PcBuildNode({ data }: NodeProps<PcBuildFlowNode>) {
                       onSelect={onSelect}
                       pendingEndpoint={pendingEndpoint}
                       requiredHandleIds={requiredHandleIds}
+                      registryLinkedItemKeys={registryLinkedItemKeys}
                       selected={selectedItemId === runtimeItemKey(item)}
                     />
                   ) : null
@@ -598,6 +607,7 @@ export function PcBuildNode({ data }: NodeProps<PcBuildFlowNode>) {
                 onSelect={onSelect}
                 pendingEndpoint={pendingEndpoint}
                 requiredHandleIds={requiredHandleIds}
+                registryLinkedItemKeys={registryLinkedItemKeys}
                 selected={selectedItemId === runtimeItemKey(item)}
               />
             )

@@ -106,6 +106,14 @@ export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
   notes: [],
 }
 
+const RELEASE_0_4_8_DETAILS: UnreleasedReleaseNotes = {
+  highlights: [
+    'Registry settings can optionally mark catalog-linked equipment and assigned components on the canvas with a compact link indicator, hidden by default.',
+  ],
+  fixes: [],
+  notes: [],
+}
+
 const RELEASE_0_4_7_DETAILS: UnreleasedReleaseNotes = {
   highlights: [],
   fixes: [
@@ -214,9 +222,16 @@ const RELEASE_0_2_1_DETAILS: UnreleasedReleaseNotes = {
 
 export const RELEASE_NOTES: ReleaseNoteEntry[] = [
   {
-    version: '0.4.7',
+    version: '0.4.8',
     date: '2026-07-29',
     channel: 'latest',
+    title: 'Visible catalog-linked hardware',
+    ...RELEASE_0_4_8_DETAILS,
+  },
+  {
+    version: '0.4.7',
+    date: '2026-07-29',
+    channel: 'release',
     title: 'Controlled registry delivery',
     ...RELEASE_0_4_7_DETAILS,
   },

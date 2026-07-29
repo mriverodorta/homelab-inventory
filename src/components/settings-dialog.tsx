@@ -110,7 +110,7 @@ export type SettingsDialogProps = {
   onRestartOnboarding: () => void
   onDismissOnboarding: () => void
   onRegistrySettingsChange?: (
-    settings: Partial<Pick<RegistrySettings, 'mode' | 'defaultInventorySource' | 'automaticContributions'>>,
+    settings: Partial<Pick<RegistrySettings, 'mode' | 'defaultInventorySource' | 'automaticContributions' | 'showRegistryLinkIndicators'>>,
     expectedUpdatedAt: string | null,
   ) => void | Promise<void>
   onDeletePrivateTemplate?: (id: number) => void
@@ -466,6 +466,17 @@ function RegistrySettingsPanel(props: SettingsDialogProps) {
             <SelectItem value="private-templates">Private templates</SelectItem>
           </SelectContent>
         </Select>
+      </SettingRow>
+      <SettingRow
+        label="Show registry link indicators"
+        description="Mark registry-linked equipment and assigned components on the canvas. Hidden by default."
+      >
+        <Switch
+          aria-label="Show registry link indicators"
+          checked={registry.settings.showRegistryLinkIndicators}
+          disabled={busy}
+          onCheckedChange={(showRegistryLinkIndicators) => void update({ showRegistryLinkIndicators })}
+        />
       </SettingRow>
       <SettingRow
         label="Automatic catalog contributions"

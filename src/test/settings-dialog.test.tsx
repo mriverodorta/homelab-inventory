@@ -190,6 +190,7 @@ describe('SettingsDialog', () => {
           mode: 'disabled',
           defaultInventorySource: 'catalog',
           automaticContributions: false,
+          showRegistryLinkIndicators: false,
           updatedAt: null,
         },
         sources: [],
@@ -217,6 +218,10 @@ describe('SettingsDialog', () => {
     expect(screen.getByRole('combobox', { name: 'Registry mode' })).toBeInTheDocument()
     expect(screen.getByRole('combobox', { name: 'Default Add Hardware tab' })).toBeInTheDocument()
     expect(screen.getByRole('switch', { name: 'Automatic catalog contributions' })).toBeDisabled()
+    const linkIndicatorSwitch = screen.getByRole('switch', { name: 'Show registry link indicators' })
+    expect(linkIndicatorSwitch).not.toBeChecked()
+    fireEvent.click(linkIndicatorSwitch)
+    expect(props.onRegistrySettingsChange).toHaveBeenCalledWith({ showRegistryLinkIndicators: true }, null)
     fireEvent.click(screen.getByRole('combobox', { name: 'Registry mode' }))
     fireEvent.click(screen.getByRole('option', { name: 'Offline file' }))
     expect(props.onRegistrySettingsChange).toHaveBeenCalledWith({ mode: 'offline' }, null)

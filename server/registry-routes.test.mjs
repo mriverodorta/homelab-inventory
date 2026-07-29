@@ -96,10 +96,20 @@ describe('registry routes', () => {
     const response = await fetch(`${baseUrl}/api/registry/settings`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ settings: { mode: 'offline', defaultInventorySource: 'manual' } }),
+      body: JSON.stringify({
+        settings: {
+          mode: 'offline',
+          defaultInventorySource: 'manual',
+          showRegistryLinkIndicators: true,
+        },
+      }),
     })
     expect(response.status).toBe(200)
-    expect((await response.json()).settings).toMatchObject({ mode: 'offline', defaultInventorySource: 'manual' })
+    expect((await response.json()).settings).toMatchObject({
+      mode: 'offline',
+      defaultInventorySource: 'manual',
+      showRegistryLinkIndicators: true,
+    })
     expect(store.getEngineRevision()).toBe(revision)
   })
 

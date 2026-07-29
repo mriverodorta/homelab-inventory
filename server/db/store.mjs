@@ -2087,6 +2087,8 @@ export class HomelabInventoryStore {
     return this.registryTransaction((draft) => {
       const mode = patch?.mode ?? draft.settings.mode
       const defaultInventorySource = patch?.defaultInventorySource ?? draft.settings.defaultInventorySource
+      const showRegistryLinkIndicators = patch?.showRegistryLinkIndicators
+        ?? draft.settings.showRegistryLinkIndicators
       if (!['disabled', 'offline', 'connected'].includes(mode)) {
         throw new InventoryLifecycleError('Registry mode is unsupported.', {
           code: 'invalid-registry-settings', status: 400,
@@ -2101,6 +2103,7 @@ export class HomelabInventoryStore {
         ...draft.settings,
         mode,
         defaultInventorySource,
+        showRegistryLinkIndicators,
         automaticContributions: mode === 'connected'
           ? patch?.automaticContributions ?? draft.settings.automaticContributions
           : false,

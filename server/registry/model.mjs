@@ -15,6 +15,7 @@ export function createRegistryStore() {
       mode: 'disabled',
       defaultInventorySource: 'catalog',
       automaticContributions: false,
+      showRegistryLinkIndicators: false,
       updatedAt: null,
     },
     sources: [],
@@ -49,6 +50,7 @@ export function normalizeRegistryStore(value) {
         ? rawSettings.defaultInventorySource
         : defaults.settings.defaultInventorySource,
       automaticContributions: rawSettings.mode === 'connected' && rawSettings.automaticContributions === true,
+      showRegistryLinkIndicators: rawSettings.showRegistryLinkIndicators === true,
       updatedAt: typeof rawSettings.updatedAt === 'string' ? rawSettings.updatedAt : null,
     },
     sources: Array.isArray(source.sources) ? source.sources : [],
@@ -97,6 +99,9 @@ export function assertRegistryStoreShape(store) {
   }
   if (typeof store.settings.automaticContributions !== 'boolean') {
     throw new Error('registry.settings.automaticContributions must be boolean.')
+  }
+  if (typeof store.settings.showRegistryLinkIndicators !== 'boolean') {
+    throw new Error('registry.settings.showRegistryLinkIndicators must be boolean.')
   }
   if (store.settings.mode !== 'connected' && store.settings.automaticContributions) {
     throw new Error('registry.settings.automaticContributions requires connected mode.')

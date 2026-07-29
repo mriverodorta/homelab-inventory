@@ -108,6 +108,7 @@ import {
 } from '@/lib/db'
 import { expireDemoSession, extendDemoSession, loadDemoSession, type DemoSessionStatus } from '@/lib/demo-api'
 import { runtimeItemKey } from '@/lib/item-keys'
+import { buildVisibleRegistryLinkKeys } from '@/lib/registry-links'
 import { isCanvasEquipmentType } from '@/lib/inventory-capabilities'
 import {
   getInventoryDragPreviewPresentation,
@@ -682,6 +683,10 @@ function App() {
   })
   const registryQuery = useRegistryQuery()
   const registryMutations = useRegistryMutations()
+  const registryLinkedItemKeys = useMemo(
+    () => buildVisibleRegistryLinkKeys(registryQuery.data),
+    [registryQuery.data],
+  )
   const { mutateAsync: persistProject } = useMutation({
     mutationFn: saveProject,
   })
@@ -2596,6 +2601,7 @@ function App() {
           </Sheet>
           <WorkbenchCanvas
             project={project}
+            registryLinkedItemKeys={registryLinkedItemKeys}
             topologyData={topologyQuery.data}
             compatibleEndpointKeys={compatibleTopologyDestinations.endpointKeys}
             agentStatus={agentStatusQuery.data ?? null}

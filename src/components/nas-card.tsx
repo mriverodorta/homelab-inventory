@@ -3,6 +3,7 @@ import { Handle, Position, type Node, type NodeProps } from '@xyflow/react'
 import { AlertTriangle, Grip, X } from 'lucide-react'
 import type { CSSProperties } from 'react'
 import { AssignedPowerAdapterRow } from '@/components/assigned-power-adapter-row'
+import { RegistryLinkIndicator } from '@/components/registry-link-indicator'
 import { hostMemorySlotCount, MemorySlotGrid } from '@/components/memory-slot-grid'
 import { Button } from '@/components/ui/button'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
@@ -23,6 +24,7 @@ import {
   formatStorageCanvasParts,
 } from '@/lib/format'
 import { runtimeItemKey } from '@/lib/item-keys'
+import { EMPTY_REGISTRY_LINK_KEYS } from '@/lib/registry-links'
 import { useTapSelection } from '@/lib/tap-selection'
 import { endpointKey, NAS_CARD_WIDTH } from '@/lib/project'
 import { startSelectedPortDrag } from '@/lib/port-interactions'
@@ -40,6 +42,7 @@ import type { CompatibilityStatus } from '@/types/compatibility'
 
 export type NasNodeData = {
   project: ProjectState
+  registryLinkedItemKeys?: ReadonlySet<string>
   canvasIndex: CanvasProjectIndex
   requiredHandleIds: ReadonlySet<string>
   itemId: string
@@ -300,6 +303,7 @@ function StorageBayCell({
   label,
   onRemoveAssignment,
   onSelect,
+  registryLinked,
   selected,
   type,
 }: {
@@ -309,6 +313,7 @@ function StorageBayCell({
   label: string
   onRemoveAssignment: (assignmentId: string | number) => void
   onSelect: (itemId: string) => void
+  registryLinked: boolean
   selected: boolean
   type: 'drive' | 'm2'
 }) {
@@ -350,6 +355,9 @@ function StorageBayCell({
       {...draggable.attributes}
     >
       {String(index + 1).padStart(2, '0')}
+      <span className="absolute right-0.5 top-0.5 group-hover:hidden">
+        <RegistryLinkIndicator visible={registryLinked} />
+      </span>
       {assignment ? (
         <span
           role="button"
@@ -382,6 +390,7 @@ function StorageBayRow({
   onRemoveAssignment,
   onSelect,
   project,
+  registryLinkedItemKeys,
   selectedItemId,
   type,
 }: {
@@ -391,6 +400,7 @@ function StorageBayRow({
   onRemoveAssignment: (assignmentId: string | number) => void
   onSelect: (itemId: string) => void
   project: ProjectState
+  registryLinkedItemKeys: ReadonlySet<string>
   selectedItemId: string | null
   type: 'drive' | 'm2'
 }) {
@@ -408,6 +418,7 @@ function StorageBayRow({
         label={label}
         onRemoveAssignment={onRemoveAssignment}
         onSelect={onSelect}
+        registryLinked={Boolean(item && registryLinkedItemKeys.has(runtimeItemKey(item)))}
         selected={selected}
         type={type}
       />
@@ -430,6 +441,7 @@ function NasComponentCell({
   label,
   onRemoveAssignment,
   onSelect,
+  registryLinked,
   selected,
 }: {
   assignment: ComponentAssignment
@@ -437,6 +449,7 @@ function NasComponentCell({
   label: string
   onRemoveAssignment: (assignmentId: string | number) => void
   onSelect: (itemId: string) => void
+  registryLinked: boolean
   selected: boolean
 }) {
   const draggable = useDraggable({
@@ -471,6 +484,7 @@ function NasComponentCell({
           </span>
         ))}
       </span>
+      <RegistryLinkIndicator visible={registryLinked} />
       <Button
         type="button"
         variant="ghost"
@@ -500,6 +514,7 @@ function NetworkCardRow({
   onSelect,
   pendingEndpoint,
   project,
+  registryLinkedItemKeys,
   requiredHandleIds,
   selectedItemId,
 }: {
@@ -514,6 +529,7 @@ function NetworkCardRow({
   onSelect: (itemId: string) => void
   pendingEndpoint: ConnectionEndpoint | null
 	project: ProjectState
+	registryLinkedItemKeys: ReadonlySet<string>
 	requiredHandleIds: ReadonlySet<string>
 	selectedItemId: string | null
 }) {
@@ -561,6 +577,7 @@ function NetworkCardRow({
         <span className="truncate text-[10px] font-black uppercase tracking-[0.12em]">
           PCIe Network
         </span>
+        <RegistryLinkIndicator visible={registryLinkedItemKeys.has(cardRuntimeKey)} />
         <Button
           type="button"
           variant="ghost"
@@ -608,6 +625,7 @@ function PowerAdapterRow({
   onSelect,
   pendingEndpoint,
   project,
+  registryLinkedItemKeys,
   requiredHandleIds,
   selectedItemId,
 }: {
@@ -622,6 +640,7 @@ function PowerAdapterRow({
   onSelect: (itemId: string) => void
   pendingEndpoint: ConnectionEndpoint | null
   project: ProjectState
+  registryLinkedItemKeys: ReadonlySet<string>
   requiredHandleIds: ReadonlySet<string>
   selectedItemId: string | null
 }) {
@@ -652,6 +671,7 @@ function PowerAdapterRow({
         className="mt-2"
         onRemoveAssignment={onRemoveAssignment}
         onSelect={onSelect}
+        registryLinked={registryLinkedItemKeys.has(adapterKey)}
         selected={selectedItemId === adapterKey}
         portChip={powerPort ? (
           <PortChip
@@ -676,6 +696,7 @@ export function NasNode({ data }: NodeProps<NasFlowNode>) {
     project,
     canvasIndex,
     requiredHandleIds,
+    registryLinkedItemKeys = EMPTY_REGISTRY_LINK_KEYS,
     itemId,
     selectedItemId,
     focusedItemIds,
@@ -750,6 +771,7 @@ export function NasNode({ data }: NodeProps<NasFlowNode>) {
           <div className="truncate text-sm font-bold">{nas.properties?.displayName?.trim() || nas.name}</div>
           <div className="truncate text-[11px] text-[#cfc6b8]">{nas.model ?? nas.name}</div>
         </div>
+        <RegistryLinkIndicator visible={registryLinkedItemKeys.has(nasRuntimeKey)} />
         {internalPowerPort ? (
           <div data-testid="nas-internal-power-port" className="shrink-0">
             <PortChip
@@ -793,6 +815,7 @@ export function NasNode({ data }: NodeProps<NasFlowNode>) {
             label="CPU"
             onRemoveAssignment={onRemoveAssignment}
             onSelect={onSelect}
+            registryLinked={registryLinkedItemKeys.has(runtimeItemKey(project.items[cpuAssignment.itemId]))}
             selected={selectedItemId === runtimeItemKey(project.items[cpuAssignment.itemId])}
           />
         </div>
@@ -812,6 +835,7 @@ export function NasNode({ data }: NodeProps<NasFlowNode>) {
                 label="RAM"
                 onRemoveAssignment={onRemoveAssignment}
                 onSelect={onSelect}
+                registryLinked={registryLinkedItemKeys.has(runtimeItemKey(item))}
                 selected={selectedItemId === runtimeItemKey(item)}
               />
             ) : null
@@ -851,6 +875,7 @@ export function NasNode({ data }: NodeProps<NasFlowNode>) {
           onRemoveAssignment={onRemoveAssignment}
           onSelect={onSelect}
           project={project}
+          registryLinkedItemKeys={registryLinkedItemKeys}
           selectedItemId={selectedItemId}
           type="drive"
         />
@@ -864,6 +889,7 @@ export function NasNode({ data }: NodeProps<NasFlowNode>) {
           onRemoveAssignment={onRemoveAssignment}
           onSelect={onSelect}
           project={project}
+          registryLinkedItemKeys={registryLinkedItemKeys}
           selectedItemId={selectedItemId}
           type="m2"
         />
@@ -881,6 +907,7 @@ export function NasNode({ data }: NodeProps<NasFlowNode>) {
         onSelect={onSelect}
         pendingEndpoint={pendingEndpoint}
         project={project}
+        registryLinkedItemKeys={registryLinkedItemKeys}
         requiredHandleIds={requiredHandleIds}
         selectedItemId={selectedItemId}
       />
@@ -897,6 +924,7 @@ export function NasNode({ data }: NodeProps<NasFlowNode>) {
           onSelect={onSelect}
           pendingEndpoint={pendingEndpoint}
           project={project}
+          registryLinkedItemKeys={registryLinkedItemKeys}
           requiredHandleIds={requiredHandleIds}
           selectedItemId={selectedItemId}
         />

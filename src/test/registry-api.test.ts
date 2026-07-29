@@ -16,12 +16,15 @@ describe('registry API', () => {
     vi.stubGlobal('fetch', fetchMock)
 
     await loadRegistryState()
-    await updateRegistrySettings({ defaultInventorySource: 'manual' }, null)
+    await updateRegistrySettings({
+      defaultInventorySource: 'manual',
+      showRegistryLinkIndicators: true,
+    }, null)
     await createPrivateTemplate({ name: 'CPU', item: { type: 'cpu', name: 'CPU' } })
 
     expect(fetchMock).toHaveBeenNthCalledWith(1, '/api/registry', expect.any(Object))
     expect(JSON.parse(fetchMock.mock.calls[1][1].body)).toEqual({
-      settings: { defaultInventorySource: 'manual' },
+      settings: { defaultInventorySource: 'manual', showRegistryLinkIndicators: true },
       expectedUpdatedAt: null,
     })
     expect(JSON.parse(fetchMock.mock.calls[2][1].body)).toMatchObject({ name: 'CPU' })

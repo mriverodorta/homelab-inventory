@@ -376,6 +376,7 @@ export function snapToGrid(value: number): number {
 
 function CanvasViewport({
   project,
+  registryLinkedItemKeys,
   topologyData = null,
   compatibleEndpointKeys = null,
   agentStatus,
@@ -430,6 +431,7 @@ function CanvasViewport({
   onOpenSettings,
 }: {
   project: ProjectState
+  registryLinkedItemKeys: ReadonlySet<string>
   topologyData?: TopologyQueryData | null
   compatibleEndpointKeys?: ReadonlySet<string> | null
   agentStatus: AgentStatusSummary | null
@@ -691,6 +693,7 @@ function CanvasViewport({
             dragHandle: '.server-node-drag-handle',
             data: {
               project: nodeProject,
+              registryLinkedItemKeys,
               canvasIndex: nodeCanvasIndex,
               requiredHandleIds: getRequiredCanvasHandles(canvasHandleIndex, placement.serverId),
               agentStatus,
@@ -729,6 +732,7 @@ function CanvasViewport({
             dragHandle: '.server-node-drag-handle',
             data: {
               project: nodeProject,
+              registryLinkedItemKeys,
               canvasIndex: nodeCanvasIndex,
               requiredHandleIds: getRequiredCanvasHandles(canvasHandleIndex, placement.serverId),
               itemId: placement.serverId,
@@ -766,6 +770,7 @@ function CanvasViewport({
             dragHandle: '.server-node-drag-handle',
             data: {
               project: nodeProject,
+              registryLinkedItemKeys,
               canvasIndex: nodeCanvasIndex,
               requiredHandleIds: getRequiredCanvasHandles(canvasHandleIndex, placement.serverId),
               pcBuildId: placement.serverId,
@@ -790,6 +795,7 @@ function CanvasViewport({
 
         const standaloneData = {
           project: nodeProject,
+          registryLinkedItemKeys,
           canvasIndex: nodeCanvasIndex,
           requiredHandleIds: getRequiredCanvasHandles(canvasHandleIndex, placement.serverId),
           itemId: placement.serverId,
@@ -861,6 +867,7 @@ function CanvasViewport({
           dragHandle: '.server-node-drag-handle',
           data: {
             project: nodeProject,
+            registryLinkedItemKeys,
             canvasIndex: nodeCanvasIndex,
             requiredHandleIds: getRequiredCanvasHandles(canvasHandleIndex, placement.serverId),
             itemId: placement.serverId,
@@ -895,6 +902,7 @@ function CanvasViewport({
       pendingEndpoint,
       project.items,
       project.placements,
+      registryLinkedItemKeys,
       selectedItemId,
       spotlightItemId,
       stableOnEndpointClick,
@@ -1777,6 +1785,7 @@ function CanvasViewport({
 
 export function WorkbenchCanvas(props: {
   project: ProjectState
+  registryLinkedItemKeys: ReadonlySet<string>
   topologyData?: TopologyQueryData | null
   compatibleEndpointKeys?: ReadonlySet<string> | null
   agentStatus: AgentStatusSummary | null

@@ -16,7 +16,7 @@ export function loadRegistryState(): Promise<RegistryState> {
 }
 
 export function updateRegistrySettings(
-  settings: Partial<Pick<RegistrySettings, 'mode' | 'defaultInventorySource' | 'automaticContributions'>>,
+  settings: Partial<Pick<RegistrySettings, 'mode' | 'defaultInventorySource' | 'automaticContributions' | 'showRegistryLinkIndicators'>>,
   expectedUpdatedAt?: string | null,
 ): Promise<RegistryState> {
   return apiRequest<RegistryState>('/api/registry/settings', {

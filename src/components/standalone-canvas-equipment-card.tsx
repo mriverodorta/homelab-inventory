@@ -1,6 +1,7 @@
 import { Handle, Position } from '@xyflow/react'
 import { Grip } from 'lucide-react'
 import type { CSSProperties, ReactNode } from 'react'
+import { RegistryLinkIndicator } from '@/components/registry-link-indicator'
 import { getEndpointHandleId, type CableSide } from '@/lib/cable-routing'
 import {
   canvasEndpointAvailable,
@@ -8,6 +9,7 @@ import {
   type CanvasProjectIndex,
 } from '@/lib/canvas-project-index'
 import { runtimeItemKey } from '@/lib/item-keys'
+import { EMPTY_REGISTRY_LINK_KEYS } from '@/lib/registry-links'
 import { startSelectedPortDrag } from '@/lib/port-interactions'
 import { endpointKey } from '@/lib/project'
 import { powerOutletEndpoint } from '@/lib/power-endpoints'
@@ -19,6 +21,7 @@ import type { ConnectionEndpoint, InventoryItem, InventoryPort, ProjectState } f
 
 export type StandaloneCanvasNodeData = {
   project: ProjectState
+  registryLinkedItemKeys?: ReadonlySet<string>
   canvasIndex: CanvasProjectIndex
   requiredHandleIds: ReadonlySet<string>
   itemId: string
@@ -235,6 +238,7 @@ export function StandaloneCanvasEquipmentCard({
   onSelect,
   orientation = 'horizontal',
   pendingEndpoint,
+  registryLinkedItemKeys = EMPTY_REGISTRY_LINK_KEYS,
   requiredHandleIds,
   selectedItemId,
   spotlightItemId,
@@ -288,6 +292,7 @@ export function StandaloneCanvasEquipmentCard({
             <div className="mt-0.5 text-[9px] font-black uppercase tracking-[0.14em] opacity-65">{eyebrow}</div>
           )}
         </div>
+        <RegistryLinkIndicator visible={registryLinkedItemKeys.has(itemId)} />
       </div>
 
       {summary ? (

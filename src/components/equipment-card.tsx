@@ -2,6 +2,7 @@ import { Handle, Position, type Node, type NodeProps } from '@xyflow/react'
 import { AlertTriangle, Grip } from 'lucide-react'
 import type { CSSProperties } from 'react'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+import { RegistryLinkIndicator } from '@/components/registry-link-indicator'
 import { getEndpointHandleId, type CableSide } from '@/lib/cable-routing'
 import {
   canvasAuditWarningCount,
@@ -12,6 +13,7 @@ import {
 } from '@/lib/canvas-project-index'
 import { formatEquipmentCanvasParts, formatPortType, type EquipmentCanvasPart } from '@/lib/format'
 import { runtimeItemKey } from '@/lib/item-keys'
+import { EMPTY_REGISTRY_LINK_KEYS } from '@/lib/registry-links'
 import { useTapSelection } from '@/lib/tap-selection'
 import { endpointKey, EQUIPMENT_PORT_CHIP_WIDTH, getEquipmentCardWidth } from '@/lib/project'
 import { getPatchPanelRowSides } from '@/lib/patch-panel'
@@ -28,6 +30,7 @@ import type { CanvasPortDragPoint } from '@/types/canvas'
 
 export type EquipmentNodeData = {
   project: ProjectState
+  registryLinkedItemKeys?: ReadonlySet<string>
   canvasIndex: CanvasProjectIndex
   requiredHandleIds: ReadonlySet<string>
   itemId: string
@@ -489,6 +492,7 @@ function EquipmentPortRows({
 export function EquipmentNode({ data }: NodeProps<EquipmentFlowNode>) {
   const {
     project,
+    registryLinkedItemKeys = EMPTY_REGISTRY_LINK_KEYS,
     canvasIndex,
     requiredHandleIds,
     itemId,
@@ -534,9 +538,10 @@ export function EquipmentNode({ data }: NodeProps<EquipmentFlowNode>) {
       <CableHandles requiredHandleIds={requiredHandleIds} />
       <div className="server-node-drag-handle flex cursor-grab items-center gap-2 rounded-md bg-white/10 px-3 py-2 active:cursor-grabbing">
         <Grip className="size-4 shrink-0 text-current opacity-70" />
-        <div className="min-w-0">
+        <div className="min-w-0 flex-1">
           <div className="truncate text-sm font-bold">{item.name}</div>
         </div>
+        <RegistryLinkIndicator visible={registryLinkedItemKeys.has(itemRuntimeKey)} />
       </div>
 
       {parts.length > 0 ? (

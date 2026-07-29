@@ -2,6 +2,7 @@ import { useDraggable } from '@dnd-kit/core'
 import { X } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { Button } from '@/components/ui/button'
+import { RegistryLinkIndicator } from '@/components/registry-link-indicator'
 import { formatInventoryCompactSpec } from '@/lib/format'
 import { runtimeItemKey } from '@/lib/item-keys'
 import { useTapSelection } from '@/lib/tap-selection'
@@ -14,6 +15,7 @@ type AssignedPowerAdapterRowProps = {
   onRemoveAssignment: (assignmentId: string | number) => void
   onSelect: (itemId: string) => void
   portChip?: ReactNode
+  registryLinked?: boolean
   selected: boolean
 }
 
@@ -24,6 +26,7 @@ export function AssignedPowerAdapterRow({
   onRemoveAssignment,
   onSelect,
   portChip,
+  registryLinked = false,
   selected,
 }: AssignedPowerAdapterRowProps) {
   const adapterKey = runtimeItemKey(adapter)
@@ -76,6 +79,7 @@ export function AssignedPowerAdapterRow({
             {formatInventoryCompactSpec(adapter)}
           </div>
         </div>
+        <RegistryLinkIndicator visible={registryLinked} />
         {portChip}
         <Button
           type="button"
