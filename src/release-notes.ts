@@ -106,6 +106,14 @@ export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
   notes: [],
 }
 
+const RELEASE_0_4_9_DETAILS: UnreleasedReleaseNotes = {
+  highlights: [],
+  fixes: [
+    'Existing registry stores now receive newly introduced preference defaults before strict validation, preventing an upgrade restart loop.',
+  ],
+  notes: [],
+}
+
 const RELEASE_0_4_8_DETAILS: UnreleasedReleaseNotes = {
   highlights: [
     'Registry settings can optionally mark catalog-linked equipment and assigned components on the canvas with a compact link indicator, hidden by default.',
@@ -222,9 +230,16 @@ const RELEASE_0_2_1_DETAILS: UnreleasedReleaseNotes = {
 
 export const RELEASE_NOTES: ReleaseNoteEntry[] = [
   {
-    version: '0.4.8',
+    version: '0.4.9',
     date: '2026-07-29',
     channel: 'latest',
+    title: 'Safe registry preference upgrades',
+    ...RELEASE_0_4_9_DETAILS,
+  },
+  {
+    version: '0.4.8',
+    date: '2026-07-29',
+    channel: 'release',
     title: 'Visible catalog-linked hardware',
     ...RELEASE_0_4_8_DETAILS,
   },

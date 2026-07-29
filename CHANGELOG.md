@@ -6,6 +6,12 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 
 ## Unreleased
 
+## [0.4.9] - 2026-07-29
+
+### Fixed
+
+- Existing registry stores now receive newly introduced preference defaults before strict validation, preventing an upgrade restart loop.
+
 ## [0.4.8] - 2026-07-29
 
 ### Added

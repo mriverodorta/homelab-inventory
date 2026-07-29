@@ -48,6 +48,7 @@ import {
   createPrivateTemplatePack,
   createPrivateTemplateRecord,
   createRegistryStore,
+  normalizeRegistryStore,
   previewPrivateTemplatePack,
 } from '../registry/model.mjs'
 import { catalogFieldDiff, mergeCatalogUpdate } from '../registry/update-service.mjs'
@@ -1451,6 +1452,7 @@ export class HomelabInventoryStore {
     await this.ensureStores()
     await this.openStores()
     await this.runMigrationsSafely()
+    await this.normalizeLoadedRegistry()
     await this.reconcileOnboardingState()
     await this.validateStores()
     await this.normalizeLoadedCompatibility()
@@ -1853,6 +1855,14 @@ export class HomelabInventoryStore {
     assertProjectShape(this.getProject())
     this.databases.meta.data.skippedUpdateVersion ??= null
     this.databases.meta.data.lastUpdateCheck ??= null
+  }
+
+  async normalizeLoadedRegistry() {
+    const normalized = normalizeRegistryStore(this.databases.registry.data)
+    if (JSON.stringify(normalized) === JSON.stringify(this.databases.registry.data)) return
+
+    this.databases.registry.data = normalized
+    await this.flush(['registry'])
   }
 
   async reconcileOnboardingState() {

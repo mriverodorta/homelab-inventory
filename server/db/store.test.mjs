@@ -317,6 +317,32 @@ afterEach(async () => {
 })
 
 describe('HomelabInventoryStore', () => {
+  it('normalizes newly introduced registry defaults before validating current-schema stores', async () => {
+    const dataDir = await makeTempDir()
+    const options = {
+      appVersion: '0.4.9',
+      dataDir,
+      legacyProjectPath: path.join(dataDir, 'homelab-inventory-project.json'),
+      saveDebounceMs: 1,
+      seedEmptyData: false,
+      seedDir: path.join(dataDir, 'missing-seed'),
+    }
+    const initial = createStore(options)
+    await initial.init()
+    await initial.flush()
+
+    const registryPath = path.join(dataDir, 'stores', 'registry.json')
+    const legacyRegistry = JSON.parse(await fs.readFile(registryPath, 'utf8'))
+    delete legacyRegistry.settings.showRegistryLinkIndicators
+    await writeJson(registryPath, legacyRegistry)
+
+    const restarted = createStore(options)
+    await restarted.init()
+
+    expect(restarted.databases.registry.data.settings.showRegistryLinkIndicators).toBe(false)
+    expect(JSON.parse(await fs.readFile(registryPath, 'utf8')).settings.showRegistryLinkIndicators).toBe(false)
+  })
+
   it('migrates schema 8 inventory into schema 9 category arrays', async () => {
     const dataDir = await makeTempDir()
     const inventory = {

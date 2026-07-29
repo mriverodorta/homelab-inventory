@@ -98,21 +98,21 @@ describe('release notes helpers', () => {
     const previousRelease = RELEASE_NOTES.find((entry) => entry.version === '0.2.1')!
     const engineRelease = RELEASE_NOTES.find((entry) => entry.version === '0.2.0')!
 
-    expect(hasReleaseNoteForVersion(RELEASE_NOTES, '0.4.8')).toBe(true)
+    expect(hasReleaseNoteForVersion(RELEASE_NOTES, '0.4.9')).toBe(true)
     expect(RELEASE_NOTES[0]).toEqual(
       expect.objectContaining({
-        version: '0.4.8',
-        title: 'Visible catalog-linked hardware',
+        version: '0.4.9',
+        title: 'Safe registry preference upgrades',
       }),
     )
     expect(RELEASE_NOTES.filter((entry) => entry.channel === 'latest')).toEqual([
-      expect.objectContaining({ version: '0.4.8' }),
+      expect.objectContaining({ version: '0.4.9' }),
     ])
     expect(RELEASE_NOTES.find((entry) => entry.version === '0.1.38')).toEqual(
       expect.objectContaining({ channel: 'release' }),
     )
-    expect(currentRelease.highlights).toContain(
-      'Registry settings can optionally mark catalog-linked equipment and assigned components on the canvas with a compact link indicator, hidden by default.',
+    expect(currentRelease.fixes).toContain(
+      'Existing registry stores now receive newly introduced preference defaults before strict validation, preventing an upgrade restart loop.',
     )
     expect(registryRelease.highlights).toContain(
       'Add Hardware now combines a locally searched verified Catalog, the complete Manual editor, and reusable Private templates in one source-aware dialog.',
