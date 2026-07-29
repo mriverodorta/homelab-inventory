@@ -116,6 +116,60 @@ describe('registry routes', () => {
     expect(catalogRefreshCoordinator.reconcileSchedule).toHaveBeenCalledOnce()
   })
 
+  it('routes Send now as an explicit one-shot delivery while automatic delivery is disabled', async () => {
+    const deliveryService = {
+      trigger: vi.fn(async () => ({ queued: 0, delivered: 1 })),
+      waitForIdle: vi.fn(async () => undefined),
+    }
+    const { baseUrl, store } = await createServer({ deliveryService })
+    store.updateRegistrySettings({ mode: 'connected', automaticContributions: false })
+
+    const response = await fetch(`${baseUrl}/api/registry/contributions/deliver`, { method: 'POST' })
+
+    expect(response.status).toBe(200)
+    expect(deliveryService.trigger).toHaveBeenCalledWith(store, { explicit: true })
+  })
+
+  it('rejects explicit contribution delivery outside connected registry mode', async () => {
+    const deliveryService = { trigger: vi.fn(), waitForIdle: vi.fn() }
+    const { baseUrl } = await createServer({ deliveryService })
+
+    const response = await fetch(`${baseUrl}/api/registry/contributions/deliver`, { method: 'POST' })
+
+    expect(response.status).toBe(409)
+    expect(await response.json()).toMatchObject({ code: 'connected-registry-required' })
+    expect(deliveryService.trigger).not.toHaveBeenCalled()
+  })
+
+  it('waits for an active delivery to settle before confirming automatic delivery is disabled', async () => {
+    let release
+    const pending = new Promise((resolve) => { release = resolve })
+    const deliveryService = {
+      trigger: vi.fn(async () => ({ queued: 0 })),
+      waitForIdle: vi.fn(() => pending),
+    }
+    const { baseUrl, store } = await createServer({ deliveryService })
+    store.updateRegistrySettings({ mode: 'connected', automaticContributions: true })
+
+    let settled = false
+    const request = fetch(`${baseUrl}/api/registry/settings`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ settings: { automaticContributions: false } }),
+    }).then((response) => {
+      settled = true
+      return response
+    })
+
+    await vi.waitFor(() => expect(deliveryService.waitForIdle).toHaveBeenCalledOnce())
+    expect(settled).toBe(false)
+    release()
+
+    const response = await request
+    expect(response.status).toBe(200)
+    expect((await response.json()).settings.automaticContributions).toBe(false)
+  })
+
   it('routes manual refresh through the shared coordinator', async () => {
     const catalogRefreshCoordinator = {
       refresh: vi.fn(async () => ({ revision: 3 })),

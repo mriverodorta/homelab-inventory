@@ -102,7 +102,10 @@ const RELEASE_0_3_0_DETAILS: UnreleasedReleaseNotes = {
 
 export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
   highlights: [],
-  fixes: [],
+  fixes: [
+    'Send now can perform one explicit catalog contribution delivery while automatic background delivery is paused.',
+    'Disabling automatic catalog contributions now waits for any active delivery to settle before confirming the paused state.',
+  ],
   notes: [],
 }
 

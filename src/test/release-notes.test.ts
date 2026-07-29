@@ -122,7 +122,10 @@ describe('release notes helpers', () => {
     )
     expect(UNRELEASED_RELEASE_NOTES).toEqual({
       highlights: [],
-      fixes: [],
+      fixes: [
+        'Send now can perform one explicit catalog contribution delivery while automatic background delivery is paused.',
+        'Disabling automatic catalog contributions now waits for any active delivery to settle before confirming the paused state.',
+      ],
       notes: [],
     })
     expect(onboardingRelease.highlights).toContain(

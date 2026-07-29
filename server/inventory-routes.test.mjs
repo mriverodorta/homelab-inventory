@@ -234,6 +234,33 @@ describe('inventory lifecycle routes', () => {
     }
   })
 
+  it('advances the canonical revision without changing topology for an inventory-only update', async () => {
+    const { store, server, url } = await createTestContext()
+    store.createInventoryItems({ type: 'cpu', name: 'CPU', manufacturer: 'Example', model: 'C1' })
+    const before = store.getProject()
+
+    try {
+      const updated = await jsonRequest(url, '/api/inventory/items/cpu/1', {
+        method: 'PUT',
+        body: JSON.stringify({
+          name: 'CPU',
+          manufacturer: 'Example',
+          model: 'C1',
+          specs: { cores: 8 },
+        }),
+      })
+
+      expect(updated.response.status).toBe(200)
+      expect(updated.body.revision).toBe(before.revision + 1)
+      expect(updated.body.assignments).toEqual(before.assignments)
+      expect(updated.body.placements).toEqual(before.placements)
+      expect(updated.body.connections).toEqual(before.connections)
+      expect(updated.body.compatibilityPolicy).toEqual(before.compatibilityPolicy)
+    } finally {
+      server.close()
+    }
+  })
+
   it('patches layout properties without changing connected power endpoints', async () => {
     const { store, server, url } = await createTestContext()
     const upsSpecs = { outlets: 1, batteryBackupOutlets: 1, surgeProtectedOutlets: 0 }

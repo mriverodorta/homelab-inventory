@@ -6,6 +6,11 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 
 ## Unreleased
 
+### Fixed
+
+- **Send now** can perform one explicit catalog contribution delivery while automatic background delivery is paused.
+- Disabling automatic catalog contributions now waits for any active delivery to settle before confirming the paused state.
+
 ## [0.4.6] - 2026-07-29
 
 ### Fixed

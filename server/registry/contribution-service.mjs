@@ -14,9 +14,17 @@ function itemKey(type, id) {
   return `${type}:${String(id)}`
 }
 
-export async function discoverContributionCandidates(store, now = new Date(), externalKnownHashes = []) {
+export async function discoverContributionCandidates(
+  store,
+  now = new Date(),
+  externalKnownHashes = [],
+  { explicit = false } = {},
+) {
   const registry = store.getRegistryState()
-  if (registry.settings.mode !== 'connected' || registry.settings.automaticContributions !== true) {
+  if (
+    registry.settings.mode !== 'connected'
+    || (!explicit && registry.settings.automaticContributions !== true)
+  ) {
     return { queued: 0, skipped: 0 }
   }
 

@@ -240,6 +240,32 @@ describe('SettingsDialog', () => {
     expect(screen.getByText(/2 queued, 0 retrying, 4 delivered/)).toBeInTheDocument()
   })
 
+  it('allows explicit delivery for an enrolled installation while automatic delivery is paused', () => {
+    const onDeliverRegistryContributions = vi.fn()
+    renderSettings({
+      registry: {
+        ...DEFAULT_REGISTRY_STATE,
+        settings: {
+          ...DEFAULT_REGISTRY_STATE.settings,
+          mode: 'connected',
+          automaticContributions: false,
+        },
+        contributions: {
+          ...DEFAULT_REGISTRY_STATE.contributions,
+          enabled: false,
+          enrollment: 'active',
+        },
+      },
+      onDeliverRegistryContributions,
+    })
+    fireEvent.click(screen.getByRole('button', { name: /Registry.*Catalog and private templates/ }))
+
+    const sendNow = screen.getByRole('button', { name: 'Send now' })
+    expect(sendNow).toBeEnabled()
+    fireEvent.click(sendNow)
+    expect(onDeliverRegistryContributions).toHaveBeenCalledOnce()
+  })
+
   it('shows enrollment failures beside the automatic contribution switch', async () => {
     const onRegistrySettingsChange = vi.fn().mockRejectedValue(
       new Error('Installation activation signature is invalid.'),

@@ -24,12 +24,20 @@ export class ContributionDeliveryService {
     this.running = null
   }
 
-  async deliver(store, now = new Date()) {
+  async deliver(store, now = new Date(), { explicit = false } = {}) {
     const registry = store.getRegistryState()
-    if (registry.settings.mode !== 'connected' || registry.settings.automaticContributions !== true) {
+    if (
+      registry.settings.mode !== 'connected'
+      || (!explicit && registry.settings.automaticContributions !== true)
+    ) {
       return contributionStatus(store)
     }
-    await discoverContributionCandidates(store, now, await this.digestHashes(store))
+    await discoverContributionCandidates(
+      store,
+      now,
+      await this.digestHashes(store),
+      { explicit },
+    )
     const due = store.getRegistryState().contributionOutbox
       .filter((record) => record.state !== 'delivering' && Date.parse(record.nextAttemptAt) <= now.getTime())
       .slice(0, BATCH_SIZE)
@@ -121,9 +129,22 @@ export class ContributionDeliveryService {
     })
   }
 
-  trigger(store) {
-    if (!this.running) this.running = this.deliver(store).finally(() => { this.running = null })
+  trigger(store, { explicit = false } = {}) {
+    const registry = store.getRegistryState()
+    if (
+      registry.settings.mode !== 'connected'
+      || (!explicit && registry.settings.automaticContributions !== true)
+    ) {
+      return Promise.resolve(contributionStatus(store))
+    }
+    if (!this.running) {
+      this.running = this.deliver(store, new Date(), { explicit }).finally(() => { this.running = null })
+    }
     return this.running
+  }
+
+  async waitForIdle() {
+    if (this.running) await this.running.catch(() => {})
   }
 
   start(store) {
@@ -136,7 +157,7 @@ export class ContributionDeliveryService {
   async stop(store) {
     if (this.timer) clearInterval(this.timer)
     this.timer = null
-    if (this.running) await this.running
+    await this.waitForIdle()
     await store.flush(['registry'])
   }
 }

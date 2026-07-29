@@ -517,7 +517,12 @@ function RegistrySettingsPanel(props: SettingsDialogProps) {
             <Button
               type="button"
               variant="outline"
-              disabled={!contributions.enabled || busy || !props.onDeliverRegistryContributions}
+              disabled={
+                effectiveMode !== 'connected'
+                || contributions.enrollment !== 'active'
+                || busy
+                || !props.onDeliverRegistryContributions
+              }
               onClick={() => void props.onDeliverRegistryContributions?.()}
             >
               Send now

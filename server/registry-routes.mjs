@@ -142,6 +142,8 @@ export function registerRegistryRoutes(app, {
       catalogRefreshCoordinator?.reconcileSchedule()
       if (store.getRegistryState().settings.automaticContributions) {
         void deliveryService.trigger(store)
+      } else if (settings?.automaticContributions === false) {
+        await deliveryService?.waitForIdle?.()
       }
       response.json(publicRegistryState(store, policy))
     })
@@ -303,7 +305,12 @@ export function registerRegistryRoutes(app, {
       if (!deliveryService) throw new InventoryLifecycleError('Contribution delivery is unavailable.', {
         code: 'contributions-unavailable', status: 503,
       })
-      response.json(await deliveryService.trigger(store))
+      if (store.getRegistryState().settings.mode !== 'connected') {
+        throw new InventoryLifecycleError('Contribution delivery requires connected registry mode.', {
+          code: 'connected-registry-required', status: 409,
+        })
+      }
+      response.json(await deliveryService.trigger(store, { explicit: true }))
     })
   })
 
