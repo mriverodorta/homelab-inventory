@@ -124,6 +124,7 @@ describe('release notes helpers', () => {
       highlights: [],
       fixes: [
         'A locally overridden catalog item now reconnects to its verified catalog identity automatically when that exact sanitized definition is later published.',
+        'Catalog update previews now restore the item category at the database adapter boundary so linked category-array records can be reviewed and applied reliably.',
       ],
       notes: [],
     })

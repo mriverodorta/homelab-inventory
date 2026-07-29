@@ -2277,7 +2277,7 @@ export class HomelabInventoryStore {
       templateKey: link.templateKey,
       importedRevision: link.importedRevision,
       availableRevision: template.revision,
-      changes: catalogFieldDiff(item, template.item),
+      changes: catalogFieldDiff({ ...item, type: link.itemType }, template.item),
       localFieldsPreserved: Object.keys(item).filter(
         (key) => !['id', 'key', 'type', 'name', 'subtype', 'manufacturer', 'secondaryManufacturer', 'family', 'model', 'number', 'specs', 'ports', 'compatibility'].includes(key),
       ),

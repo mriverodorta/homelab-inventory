@@ -9,6 +9,7 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 ### Fixed
 
 - Locally overridden catalog items now reconnect to their existing numeric catalog link after the exact sanitized definition is published, while pending and non-published hashes remain detached.
+- Catalog update previews now restore category information omitted by the normalized category-array store, allowing verified revisions to be reviewed and applied without a sanitization failure.
 
 ## [0.4.5] - 2026-07-29
 
