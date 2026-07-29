@@ -101,6 +101,12 @@ const RELEASE_0_3_0_DETAILS: UnreleasedReleaseNotes = {
 }
 
 export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
+  highlights: [],
+  fixes: [],
+  notes: [],
+}
+
+const RELEASE_0_4_5_DETAILS: UnreleasedReleaseNotes = {
   highlights: [
     'Connected installations now refresh the verified official hardware catalog at startup and every six hours, with bounded jitter and a single shared operation for automatic and manual refreshes.',
   ],
@@ -190,9 +196,16 @@ const RELEASE_0_2_1_DETAILS: UnreleasedReleaseNotes = {
 
 export const RELEASE_NOTES: ReleaseNoteEntry[] = [
   {
+    version: '0.4.5',
+    date: '2026-07-29',
+    channel: 'latest',
+    title: 'Automatic catalog refresh',
+    ...RELEASE_0_4_5_DETAILS,
+  },
+  {
     version: '0.4.4',
     date: '2026-07-28',
-    channel: 'latest',
+    channel: 'release',
     title: 'Automatic demo catalog activation',
     ...RELEASE_0_4_4_DETAILS,
   },

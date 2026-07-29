@@ -98,21 +98,21 @@ describe('release notes helpers', () => {
     const previousRelease = RELEASE_NOTES.find((entry) => entry.version === '0.2.1')!
     const engineRelease = RELEASE_NOTES.find((entry) => entry.version === '0.2.0')!
 
-    expect(hasReleaseNoteForVersion(RELEASE_NOTES, '0.4.4')).toBe(true)
+    expect(hasReleaseNoteForVersion(RELEASE_NOTES, '0.4.5')).toBe(true)
     expect(RELEASE_NOTES[0]).toEqual(
       expect.objectContaining({
-        version: '0.4.4',
-        title: 'Automatic demo catalog activation',
+        version: '0.4.5',
+        title: 'Automatic catalog refresh',
       }),
     )
     expect(RELEASE_NOTES.filter((entry) => entry.channel === 'latest')).toEqual([
-      expect.objectContaining({ version: '0.4.4' }),
+      expect.objectContaining({ version: '0.4.5' }),
     ])
     expect(RELEASE_NOTES.find((entry) => entry.version === '0.1.38')).toEqual(
       expect.objectContaining({ channel: 'release' }),
     )
-    expect(currentRelease.fixes).toContain(
-      'New public demo sessions now activate the verified official catalog automatically on first use while remaining available when the registry is temporarily unreachable.',
+    expect(currentRelease.highlights).toContain(
+      'Connected installations now refresh the verified official hardware catalog at startup and every six hours, with bounded jitter and a single shared operation for automatic and manual refreshes.',
     )
     expect(registryRelease.highlights).toContain(
       'Add Hardware now combines a locally searched verified Catalog, the complete Manual editor, and reusable Private templates in one source-aware dialog.',
@@ -120,17 +120,7 @@ describe('release notes helpers', () => {
     expect(registryRelease.notes).toContain(
       'Schema 15 adds an independent registry store for catalog preferences, private templates, signed snapshot metadata, and numeric catalog links without changing canvas, assignment, or cable relationships.',
     )
-    expect(UNRELEASED_RELEASE_NOTES).toEqual({
-      highlights: [
-        'Connected installations now refresh the verified official hardware catalog at startup and every six hours, with bounded jitter and a single shared operation for automatic and manual refreshes.',
-      ],
-      fixes: [
-        'Failed catalog refreshes now preserve the last-known-good catalog, record a safe visible status, and cannot activate after the installation leaves Connected mode.',
-      ],
-      notes: [
-        'Operators can set REGISTRY_REFRESH_INTERVAL_MS to a custom interval or zero to disable automatic refreshes while retaining the manual Refresh action.',
-      ],
-    })
+    expect(UNRELEASED_RELEASE_NOTES).toEqual({ highlights: [], fixes: [], notes: [] })
     expect(onboardingRelease.highlights).toContain(
       'Fresh workspaces can now explore a complete fictional homelab or start empty with an adaptive create, place, and connect checklist.',
     )

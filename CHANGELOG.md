@@ -6,6 +6,8 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 
 ## Unreleased
 
+## [0.4.5] - 2026-07-29
+
 ### Added
 
 - Connected installations now refresh the signed official catalog at startup and every six hours with bounded jitter, one shared in-flight operation, and an optional `REGISTRY_REFRESH_INTERVAL_MS` override.
