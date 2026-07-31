@@ -199,6 +199,41 @@ describe('registry routes', () => {
     expect(catalogRefreshCoordinator.refresh).toHaveBeenCalledWith('manual')
   })
 
+  it('returns a gateway error for a failed official catalog refresh', async () => {
+    const { baseUrl } = await createServer({
+      catalogRefreshCoordinator: {
+        refresh: vi.fn(async () => { throw new Error('Official catalog request timed out.') }),
+        reconcileSchedule: vi.fn(),
+      },
+    })
+
+    const response = await fetch(`${baseUrl}/api/registry/catalog/refresh`, { method: 'POST' })
+
+    expect(response.status).toBe(502)
+    expect(await response.json()).toMatchObject({ code: 'catalog-refresh-failed' })
+  })
+
+  it('does not expose unexpected registry implementation errors', async () => {
+    const errorLog = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const { baseUrl } = await createServer({
+      snapshotServiceFactory: () => ({
+        search: async () => { throw new Error('/private/path/catalog.sqlite is locked') },
+      }),
+    })
+
+    const response = await fetch(`${baseUrl}/api/registry/catalog/search?q=cpu`)
+    const payload = await response.json()
+
+    expect(response.status).toBe(500)
+    expect(payload).toEqual({
+      message: 'Registry request could not be completed.',
+      code: 'registry-request-failed',
+    })
+    expect(JSON.stringify(payload)).not.toContain('/private/path')
+    expect(errorLog).toHaveBeenCalled()
+    errorLog.mockRestore()
+  })
+
   it('creates, exports, deletes, previews, and imports sanitized private templates', async () => {
     const { baseUrl } = await createServer()
     const created = await fetch(`${baseUrl}/api/registry/private-templates`, {
@@ -241,6 +276,29 @@ describe('registry routes', () => {
     }).then((response) => response.json())
     expect(imported).toMatchObject({ imported: 1, skipped: 0 })
     expect(imported.registry.privateTemplates[0].id).toBe(1)
+  })
+
+  it('serializes concurrent private-template creation so numeric ids remain unique', async () => {
+    const { baseUrl } = await createServer()
+    const responses = await Promise.all(
+      Array.from({ length: 8 }, (_, index) => fetch(`${baseUrl}/api/registry/private-templates`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: `Concurrent template ${index + 1}`,
+          item: {
+            type: 'cpu',
+            name: `Example CPU ${index + 1}`,
+            manufacturer: 'Example',
+            model: `CPU-${index + 1}`,
+          },
+        }),
+      })),
+    )
+
+    expect(responses.every((response) => response.status === 201)).toBe(true)
+    const registry = await fetch(`${baseUrl}/api/registry`).then((response) => response.json())
+    expect(registry.privateTemplates.map((template) => template.id)).toEqual([1, 2, 3, 4, 5, 6, 7, 8])
   })
 
   it('rejects invalid packs and stale preference writes', async () => {

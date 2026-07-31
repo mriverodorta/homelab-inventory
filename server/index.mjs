@@ -6,6 +6,8 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { RELEASE_NOTES } from '../src/release-notes.ts'
 import { registerAgentRoutes } from './agent-routes.mjs'
+import { apiErrorHandler } from './api-error-handler.mjs'
+import { applicationHealth } from './app-health.mjs'
 import { HomelabInventoryStore } from './db/store.mjs'
 import { EngineCommandService } from './engine/command-service.mjs'
 import { ServerEngineRuntime } from './engine/runtime.mjs'
@@ -15,6 +17,10 @@ import { registerInventoryRoutes } from './inventory-routes.mjs'
 import { registerOnboardingRoutes } from './onboarding-routes.mjs'
 import { registerProjectRoutes } from './project-routes.mjs'
 import { registerRegistryRoutes } from './registry-routes.mjs'
+import { registerRoutingCacheRoutes } from './routing-cache-routes.mjs'
+import { browserMutationGuard } from './request-security.mjs'
+import { readRuntimeConfig } from './runtime-config.mjs'
+import { gracefullyStopServer } from './server-lifecycle.mjs'
 import {
   CatalogRefreshCoordinator,
   readCatalogRefreshInterval,
@@ -22,33 +28,37 @@ import {
 import { ContributionDeliveryService } from './registry/contribution-delivery.mjs'
 import { InstallationIdentityService } from './registry/installation-identity.mjs'
 import { SnapshotService } from './registry/snapshot-service.mjs'
-import { createRateLimitOptions, readRateLimitConfig } from './rate-limit.mjs'
+import {
+  createRateLimitOptions,
+  readRateLimitConfig,
+  shouldEnableRateLimit,
+} from './rate-limit.mjs'
 import { DockerHubUpdateChecker } from './update-checker.mjs'
 import { registerUpdateRoutes } from './update-routes.mjs'
 import { startUpdateCheckSchedule } from './update-scheduler.mjs'
+import { storeRequestError } from './store-request-error.mjs'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const root = path.resolve(__dirname, '..')
 const isProduction = process.env.NODE_ENV === 'production'
-const appMode = process.env.APP_MODE ?? 'production'
+const runtimeConfig = readRuntimeConfig()
+const appMode = runtimeConfig.appMode
 const isDemoMode = appMode === 'demo'
-const port = Number(process.env.PORT ?? 5173)
+const port = runtimeConfig.port
 const dataDir = process.env.DATA_DIR ?? path.join(root, 'data')
 const demoSourceDir = process.env.DEMO_SOURCE_DIR ?? '/read-only-data'
-const demoSessionMinutes = Number(process.env.DEMO_SESSION_MINUTES ?? 30)
-const demoMaxSessions = Number(process.env.DEMO_MAX_SESSIONS ?? 100)
-const saveDebounceMs = Number(process.env.SAVE_DEBOUNCE_MS ?? 500)
+const demoSessionMinutes = runtimeConfig.demoSessionMinutes
+const demoMaxSessions = runtimeConfig.demoMaxSessions
+const saveDebounceMs = runtimeConfig.saveDebounceMs
 const legacyProjectPath = process.env.PROJECT_DB_PATH ?? path.join(dataDir, 'homelab-inventory-project.json')
-const seedEmptyData = process.env.SEED_EMPTY_DATA === undefined
-  ? !isProduction
-  : process.env.SEED_EMPTY_DATA === 'true'
+const seedEmptyData = runtimeConfig.seedEmptyData
 const seedDir = path.join(root, 'server', 'seed')
 const packageJson = JSON.parse(await fs.readFile(path.join(root, 'package.json'), 'utf8'))
 const configuredUpdateChannel = process.env.UPDATE_CHANNEL ?? (isDemoMode ? 'latest' : 'stable')
 const updateChannel = ['stable', 'latest'].includes(configuredUpdateChannel)
   ? configuredUpdateChannel
   : 'stable'
-const updateCheckEnabled = process.env.UPDATE_CHECK_ENABLED !== 'false'
+const updateCheckEnabled = runtimeConfig.updateCheckEnabled
 const runningRevision = process.env.APP_REVISION ?? 'unknown'
 const registryOrigin = 'https://registry.homelabinventory.com'
 const registryRefreshIntervalMs = isDemoMode
@@ -130,8 +140,14 @@ app.use(helmet({
   crossOriginEmbedderPolicy: false,
 }))
 
-app.use(rateLimit(createRateLimitOptions(rateLimitConfig)))
+if (shouldEnableRateLimit()) {
+  app.use('/api', rateLimit(createRateLimitOptions(rateLimitConfig)))
+}
+app.use(browserMutationGuard)
 app.use('/api/registry/catalog/import', express.json({ limit: '66mb' }))
+app.use('/api/agent/enrollments', express.json({ limit: '16kb' }))
+app.use('/api/agent/servers/:serverId/register', express.json({ limit: '16kb' }))
+app.use('/api/agent/servers/:serverId/heartbeat', express.json({ limit: '256kb' }))
 app.use(express.json({ limit: '10mb' }))
 
 registerAgentRoutes(app, store, { disabled: isDemoMode })
@@ -153,7 +169,7 @@ async function resolveStore(request, response) {
 
   const cookieName = app.locals.demoCookieName
   const sessionCookie = parseCookie(request.get('cookie'), cookieName)
-  const demo = await demoManager.getOrCreateSessionStore(sessionCookie)
+  const demo = await demoManager.getOrCreateSessionStore(sessionCookie, { clientKey: request.ip })
 
   response.cookie(cookieName, demo.sessionId, demoManager.cookieOptions())
 
@@ -168,12 +184,11 @@ async function withStore(request, response, handler, options = {}) {
     const context = await resolveStore(request, response)
     await handler(context.store, context.demoSession)
   } catch (error) {
-    const busy = error instanceof Error && error.message === 'The public demo is temporarily busy.'
-    const status = busy ? 503 : (options.status ?? 500)
-
-    response.status(status).json({
-      message: error instanceof Error ? error.message : (options.message ?? 'Unable to access data store.'),
-    })
+    const failure = storeRequestError(error, options)
+    if (!failure.expose) {
+      console.error('[store] Request failed.', error instanceof Error ? error.message : error)
+    }
+    response.status(failure.status).json({ message: failure.message })
   }
 }
 
@@ -213,27 +228,30 @@ registerRegistryRoutes(app, {
 })
 catalogRefreshCoordinator?.start()
 registerProjectRoutes(app, { withStore })
+registerRoutingCacheRoutes(app, { withStore })
 registerOnboardingRoutes(app, { withStore, disabled: isDemoMode })
 
 const engineRuntime = await ServerEngineRuntime.create()
+const sseHub = new EngineSseHub()
 registerEngineRoutes(app, {
   withStore,
   commandService: new EngineCommandService(engineRuntime),
-  sseHub: new EngineSseHub(),
+  sseHub,
 })
 
-startUpdateCheckSchedule({
+const updateCheckSchedule = startUpdateCheckSchedule({
   checker: updateChecker,
   store,
 })
 if (contributionDelivery && store) contributionDelivery.start(store)
 
 app.get('/api/health', (_request, response) => {
-  response.json({
-    ok: true,
+  const health = applicationHealth({
     mode: isDemoMode ? 'demo' : 'production',
     schemaVersion: isDemoMode ? null : store.databases.meta.data.schemaVersion,
+    persistence: isDemoMode ? null : store.getPersistenceHealth(),
   })
+  response.status(health.status).json(health.payload)
 })
 
 app.get('/api/release-notes/status', (request, response) => {
@@ -292,13 +310,24 @@ app.post('/api/demo/session/expire', (request, response) => {
   const sessionId = parseCookie(request.get('cookie'), app.locals.demoCookieName)
 
   void (async () => {
-    if (sessionId) {
-      await demoManager.expireSession(sessionId)
-    }
+    try {
+      if (sessionId) {
+        await demoManager.expireSession(sessionId)
+      }
 
-    response.clearCookie(app.locals.demoCookieName, { path: '/' })
-    response.json({ ok: true })
+      response.clearCookie(app.locals.demoCookieName, { path: '/' })
+      response.json({ ok: true })
+    } catch (error) {
+      console.error('[demo] Unable to expire session.', error instanceof Error ? error.message : error)
+      response.status(500).json({ message: 'Unable to expire the demo session.' })
+    }
   })()
+})
+
+app.use(apiErrorHandler)
+
+app.use('/api', (_request, response) => {
+  response.status(404).json({ message: 'API endpoint was not found.' })
 })
 
 if (isProduction) {
@@ -328,24 +357,28 @@ const server = app.listen(port, () => {
   console.log(`Lowdb data directory: ${dataDir}`)
 })
 
-async function shutdown(signal) {
-  console.log(`${signal} received; flushing lowdb stores.`)
-  server.close(async () => {
-    try {
-      if (demoManager) {
-        await demoManager.flushAll()
-      } else {
-        await catalogRefreshCoordinator?.stop()
-        if (contributionDelivery) await contributionDelivery.stop(store)
-        await store.flush()
-      }
+let shuttingDown = false
 
-      process.exit(0)
-    } catch (error) {
-      console.error(error)
-      process.exit(1)
-    }
-  })
+async function shutdown(signal) {
+  if (shuttingDown) return
+  shuttingDown = true
+  console.log(`${signal} received; flushing lowdb stores.`)
+  try {
+    await gracefullyStopServer({
+      server,
+      sseHub,
+      stoppers: [
+        () => updateCheckSchedule.stop(),
+        () => catalogRefreshCoordinator?.stop(),
+        () => contributionDelivery?.stop(store),
+      ],
+      flush: () => demoManager ? demoManager.flushAll() : store.flush(),
+    })
+    process.exit(0)
+  } catch (error) {
+    console.error(error)
+    process.exit(1)
+  }
 }
 
 process.on('SIGINT', () => {

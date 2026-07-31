@@ -22,6 +22,12 @@ type MeasuredHandle = {
   height: number
 }
 
+const HANDLE_GEOMETRY_PRECISION = 64
+
+function canonicalizeMeasuredValue(value: number): number {
+  return Math.round(value * HANDLE_GEOMETRY_PRECISION) / HANDLE_GEOMETRY_PRECISION
+}
+
 export type MeasuredHandleNode = {
   id: string
   internals: {
@@ -36,10 +42,10 @@ function normalizeHandle(handle: MeasuredHandle): CanvasHandleGeometry {
   return {
     id: handle.id ?? null,
     position: handle.position,
-    x: handle.x,
-    y: handle.y,
-    width: handle.width,
-    height: handle.height,
+    x: canonicalizeMeasuredValue(handle.x),
+    y: canonicalizeMeasuredValue(handle.y),
+    width: canonicalizeMeasuredValue(handle.width),
+    height: canonicalizeMeasuredValue(handle.height),
   }
 }
 

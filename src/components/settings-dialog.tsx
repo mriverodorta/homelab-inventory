@@ -79,6 +79,12 @@ export type SettingsDialogProps = {
   snapCablesToGrid: boolean
   avoidCableCollisionsGlobally: boolean
   snapItemsToGrid: boolean
+  placementCount: number
+  aligningItemsToGrid: boolean
+  manualCableBendCount: number
+  resettingCableBends: boolean
+  manualCableRouteCount: number
+  restoringAutomaticCableRoutes: boolean
   updateStatus: UpdateStatus | null
   updateLoading: boolean
   updateChecking: boolean
@@ -100,6 +106,9 @@ export type SettingsDialogProps = {
   onSnapCablesToGridChange: (enabled: boolean) => void
   onAvoidCableCollisionsGloballyChange: (enabled: boolean) => void
   onSnapItemsToGridChange: (enabled: boolean) => void
+  onAlignAllItemsToGrid: () => void
+  onResetAllCableBends: () => void
+  onRestoreAutomaticCableRoutes: () => void
   onResetBrowserPreferences: () => void
   onClearIgnoredWarnings: () => void
   onEnableCompatibilityForAllHosts: () => void
@@ -113,7 +122,7 @@ export type SettingsDialogProps = {
     settings: Partial<Pick<RegistrySettings, 'mode' | 'defaultInventorySource' | 'automaticContributions' | 'showRegistryLinkIndicators'>>,
     expectedUpdatedAt: string | null,
   ) => void | Promise<void>
-  onDeletePrivateTemplate?: (id: number) => void
+  onDeletePrivateTemplate?: (id: number) => void | Promise<void>
   onExportPrivateTemplates?: () => Promise<PrivateTemplatePack>
   onImportPrivateTemplates?: (pack: unknown) => Promise<{ imported: number; skipped: number }>
   onImportOfficialCatalog?: (artifact: unknown) => Promise<void>
@@ -270,6 +279,48 @@ function GeneralSettings(props: SettingsDialogProps) {
       </SettingRow>
       <SettingRow label="Snap canvas items to grid" description="Align newly placed and subsequently moved equipment to the 24 px dot grid.">
         <Switch aria-label="Snap canvas items to grid" checked={props.snapItemsToGrid} onCheckedChange={props.onSnapItemsToGridChange} />
+      </SettingRow>
+      <SettingRow
+        label="Align all equipment to grid"
+        description={props.placementCount > 0
+          ? `${props.placementCount} equipment item${props.placementCount === 1 ? '' : 's'} will move to the nearest collision-free 24 px grid positions.`
+          : 'No equipment is currently placed on the canvas.'}
+      >
+        <ConfirmSettingsAction
+          title="Align all equipment to grid?"
+          description={`This starts with the upper-left equipment item, works left to right and then downward, and moves blocking items recursively to the nearest open grid positions. All ${props.placementCount} placement${props.placementCount === 1 ? '' : 's'} update together, and one Undo restores the previous layout.`}
+          actionLabel={props.aligningItemsToGrid ? 'Aligning equipment' : 'Align equipment'}
+          onConfirm={props.onAlignAllItemsToGrid}
+          disabled={!props.snapItemsToGrid || props.placementCount === 0 || props.aligningItemsToGrid}
+        />
+      </SettingRow>
+      <SettingRow
+        label="Reset all cable bends"
+        description={props.manualCableBendCount > 0
+          ? `${props.manualCableBendCount} cable${props.manualCableBendCount === 1 ? '' : 's'} currently use saved manual bends.`
+          : 'No cables currently use saved manual bends.'}
+      >
+        <ConfirmSettingsAction
+          title="Reset all cable bends?"
+          description={`This removes saved manual bend points from ${props.manualCableBendCount} cable${props.manualCableBendCount === 1 ? '' : 's'} and lets automatic routing rebuild only the affected routes. Cable endpoint sides and collision preferences remain unchanged. One Undo restores every removed bend.`}
+          actionLabel={props.resettingCableBends ? 'Resetting bends' : 'Reset cable bends'}
+          onConfirm={props.onResetAllCableBends}
+          disabled={props.manualCableBendCount === 0 || props.resettingCableBends}
+        />
+      </SettingRow>
+      <SettingRow
+        label="Restore automatic cable routes"
+        description={props.manualCableRouteCount > 0
+          ? `${props.manualCableRouteCount} cable${props.manualCableRouteCount === 1 ? '' : 's'} currently use manual bends or endpoint sides.`
+          : 'Every cable currently uses automatic geometry.'}
+      >
+        <ConfirmSettingsAction
+          title="Restore automatic cable routes?"
+          description={`This removes saved bend points and endpoint-side overrides from ${props.manualCableRouteCount} cable${props.manualCableRouteCount === 1 ? '' : 's'}. Automatic routing will choose the shortest valid attachment sides while preserving collision preferences. One Undo restores the previous routes.`}
+          actionLabel={props.restoringAutomaticCableRoutes ? 'Restoring routes' : 'Restore automatic routes'}
+          onConfirm={props.onRestoreAutomaticCableRoutes}
+          disabled={props.manualCableRouteCount === 0 || props.restoringAutomaticCableRoutes}
+        />
       </SettingRow>
       <SettingRow label="Reset browser preferences" description="Restore only this browser's workspace controls to their defaults.">
         <ConfirmSettingsAction
@@ -429,6 +480,17 @@ function RegistrySettingsPanel(props: SettingsDialogProps) {
     }
   }
 
+  async function deliverContributions() {
+    if (!props.onDeliverRegistryContributions) return
+    setTransferStatus(null)
+    try {
+      await props.onDeliverRegistryContributions()
+      setTransferStatus('Catalog contributions are up to date.')
+    } catch (error) {
+      setTransferStatus(error instanceof Error ? error.message : 'Catalog contributions could not be delivered.')
+    }
+  }
+
   return (
     <SettingsSection title="Registry" description="Choose how this installation finds reusable hardware definitions.">
       <SettingRow
@@ -534,7 +596,7 @@ function RegistrySettingsPanel(props: SettingsDialogProps) {
                 || busy
                 || !props.onDeliverRegistryContributions
               }
-              onClick={() => void props.onDeliverRegistryContributions?.()}
+              onClick={() => void deliverContributions()}
             >
               Send now
             </Button>

@@ -9,6 +9,9 @@ import {
   getTopologyNetworkTraces,
   toTopologyEndpointRef,
   removeTopologyConnection,
+  resolveTopologyConnectionRouteSides,
+  resetAllTopologyConnectionBends,
+  restoreAutomaticTopologyConnectionRoutes,
   traceTopologyNetworkPath,
   updateTopologyConnectionLabel,
   updateTopologyConnectionRoute,
@@ -390,6 +393,13 @@ describe('WASM topology adapter', () => {
       bendPoints: [{ x: 24, y: 48 }],
       avoidCableOverlap: true,
     })
+    await resolveTopologyConnectionRouteSides(client, [{
+      connectionId: 7,
+      sourceSide: 'right',
+      targetSide: 'left',
+    }])
+    await resetAllTopologyConnectionBends(client)
+    await restoreAutomaticTopologyConnectionRoutes(client)
     await removeTopologyConnection(client, 7)
 
     expect(mutate.mock.calls[0][0]).toMatchObject({
@@ -423,6 +433,24 @@ describe('WASM topology adapter', () => {
       },
     })
     expect(mutate.mock.calls[3][0]).toEqual({
+      operation: {
+        kind: 'resolve-connection-route-sides',
+        payload: {
+          changes: [{
+            connection_id: 7,
+            source_side: 'right',
+            target_side: 'left',
+          }],
+        },
+      },
+    })
+    expect(mutate.mock.calls[4][0]).toEqual({
+      operation: { kind: 'reset-all-connection-bends' },
+    })
+    expect(mutate.mock.calls[5][0]).toEqual({
+      operation: { kind: 'restore-automatic-connection-routes' },
+    })
+    expect(mutate.mock.calls[6][0]).toEqual({
       operation: { kind: 'remove-connection', payload: { connection_id: 7 } },
     })
   })

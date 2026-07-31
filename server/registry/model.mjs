@@ -8,6 +8,9 @@ import { isRelationalId } from '../db/relational-ids.mjs'
 
 export const REGISTRY_MODES = new Set(['disabled', 'offline', 'connected'])
 export const INVENTORY_SOURCE_TABS = new Set(['catalog', 'manual', 'private-templates'])
+export const MAX_PRIVATE_TEMPLATE_IMPORT_COUNT = 1_000
+const MAX_PRIVATE_TEMPLATE_NAME_LENGTH = 160
+const MAX_PRIVATE_TEMPLATE_DESCRIPTION_LENGTH = 1_000
 
 export function createRegistryStore() {
   return {
@@ -261,9 +264,13 @@ function nextId(records) {
 export async function createPrivateTemplateRecord(records, input, now = new Date().toISOString()) {
   const name = cleanOptionalString(input?.name)
   if (!name) throw new Error('Private template name is required.')
+  if (name.length > MAX_PRIVATE_TEMPLATE_NAME_LENGTH) throw new Error('Private template name is too long.')
   const item = sanitizeCatalogItem(input?.item)
   const { contentHash } = await computeCatalogDigests(item)
   const description = cleanOptionalString(input?.description)
+  if (description && description.length > MAX_PRIVATE_TEMPLATE_DESCRIPTION_LENGTH) {
+    throw new Error('Private template description is too long.')
+  }
   return {
     id: nextId(records),
     name,
@@ -302,21 +309,27 @@ export async function previewPrivateTemplatePack(value) {
     errors.push('Template pack format or version is unsupported.')
   }
   if (!Array.isArray(value.templates)) errors.push('Template pack templates must be an array.')
+  if (Array.isArray(value.templates) && value.templates.length > MAX_PRIVATE_TEMPLATE_IMPORT_COUNT) {
+    errors.push(`Template pack cannot contain more than ${MAX_PRIVATE_TEMPLATE_IMPORT_COUNT} templates.`)
+  }
 
   const templates = []
-  if (Array.isArray(value.templates)) {
+  if (Array.isArray(value.templates) && value.templates.length <= MAX_PRIVATE_TEMPLATE_IMPORT_COUNT) {
     for (const [index, rawTemplate] of value.templates.entries()) {
       try {
         const name = cleanOptionalString(rawTemplate?.name)
         if (!name) throw new Error('name is required')
+        if (name.length > MAX_PRIVATE_TEMPLATE_NAME_LENGTH) throw new Error('name is too long')
         const item = sanitizeCatalogItem(rawTemplate.item)
         const { contentHash } = await computeCatalogDigests(item)
         if (rawTemplate.checksum !== contentHash) throw new Error('item checksum does not match')
+        const description = cleanOptionalString(rawTemplate.description)
+        if (description && description.length > MAX_PRIVATE_TEMPLATE_DESCRIPTION_LENGTH) {
+          throw new Error('description is too long')
+        }
         templates.push({
           name,
-          ...(cleanOptionalString(rawTemplate.description)
-            ? { description: cleanOptionalString(rawTemplate.description) }
-            : {}),
+          ...(description ? { description } : {}),
           checksum: contentHash,
           item,
         })

@@ -25,11 +25,18 @@ export type CableReservedSegment = {
   end: OrthogonalPoint
 }
 
+export type CableEndpointCandidate = {
+  point: OrthogonalPoint
+  side: OrthogonalSide
+}
+
 export type CableRouteRequest = {
   source: OrthogonalPoint
   target: OrthogonalPoint
-  sourceSide: OrthogonalSide
-  targetSide: OrthogonalSide
+  sourceSide: OrthogonalSide | null
+  targetSide: OrthogonalSide | null
+  sourceCandidates: readonly CableEndpointCandidate[]
+  targetCandidates: readonly CableEndpointCandidate[]
   laneOffset: number
   obstacles: readonly CableObstacle[]
   sourceItemId: string
@@ -41,6 +48,8 @@ export type CableRouteRequest = {
 
 export type CableRouteResult = {
   points: OrthogonalPoint[]
+  sourceSide: OrthogonalSide
+  targetSide: OrthogonalSide
   manualAnchorPointIndexes: number[]
   usedFallback: boolean
 }

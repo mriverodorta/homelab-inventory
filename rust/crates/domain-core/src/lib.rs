@@ -9,7 +9,9 @@ use homelab_engine_protocol::{
     RouteResult, RoutesUpdateResult, TopologyConnection, TopologyConnectionRoute,
     TopologyEndpointResult, TopologyError, TopologySnapshot,
 };
-use homelab_geometry::{GeometryError, GeometryNode, SpatialIndex, arrange_items};
+use homelab_geometry::{
+    GeometryError, GeometryNode, SpatialIndex, arrange_items, snap_nodes_to_grid,
+};
 use homelab_routing::{
     RoutePlanner, RoutingError, build_route, preview_insert_manual_bend, preview_move_segment,
     preview_remove_manual_bend, preview_reset_route, route_around_obstacles,
@@ -153,6 +155,13 @@ impl Engine {
                 connection_id,
                 route,
             } => self.update_connection_route(connection_id, route),
+            Operation::ResolveConnectionRouteSides { changes } => {
+                self.resolve_connection_route_sides(changes)
+            }
+            Operation::ResetAllConnectionBends => self.reset_all_connection_bends(),
+            Operation::RestoreAutomaticConnectionRoutes => {
+                self.restore_automatic_connection_routes()
+            }
             Operation::UpdateProjectMetadata { name } => {
                 let name = name.trim();
                 if name.is_empty() {
@@ -181,6 +190,11 @@ impl Engine {
             }
             Operation::UpdateAssignments { changes } => self.update_assignments(changes),
             Operation::UpdatePlacements { changes } => self.update_placements(changes),
+            Operation::SnapPlacementsToGrid {
+                nodes,
+                grid_size,
+                max_rings,
+            } => self.snap_placements_to_grid(nodes, grid_size, max_rings),
             Operation::ReplaceGeometry { nodes, handles } => self.replace_geometry(nodes, handles),
             Operation::UpdateGeometry {
                 upsert_nodes,
@@ -585,6 +599,78 @@ impl Engine {
         }))
     }
 
+    fn snap_placements_to_grid(
+        &mut self,
+        nodes: Vec<GeometryNode>,
+        grid_size: f64,
+        max_rings: u16,
+    ) -> ResponseBody {
+        let placement_items = self
+            .topology
+            .snapshot()
+            .placements
+            .iter()
+            .cloned()
+            .map(|item| (format!("{}:{}", item.item_type, item.id), item))
+            .collect::<BTreeMap<_, _>>();
+        let supplied_ids = nodes
+            .iter()
+            .map(|node| node.item_id.clone())
+            .collect::<BTreeSet<_>>();
+        if supplied_ids.len() != nodes.len()
+            || supplied_ids != placement_items.keys().cloned().collect::<BTreeSet<_>>()
+        {
+            return engine_error(
+                "invalid-grid-placement-set",
+                "Grid alignment geometry must match every placed canvas item exactly.",
+            );
+        }
+        if nodes.is_empty() {
+            return engine_error(
+                "empty-grid-placement-set",
+                "Grid alignment requires at least one placed canvas item.",
+            );
+        }
+
+        let originals = nodes
+            .iter()
+            .map(|node| (node.item_id.clone(), node.bounds))
+            .collect::<BTreeMap<_, _>>();
+        let planned = match snap_nodes_to_grid(&nodes, grid_size, max_rings) {
+            Ok(planned) => planned,
+            Err(error) => return geometry_error(error),
+        };
+        let changes = planned
+            .into_iter()
+            .filter_map(|node| {
+                let previous_bounds = originals.get(&node.item_id)?;
+                if previous_bounds.x == node.bounds.x && previous_bounds.y == node.bounds.y {
+                    return None;
+                }
+                let item = placement_items.get(&node.item_id)?.clone();
+                Some(PlacementChange {
+                    previous: Some(CanvasPlacement {
+                        item: item.clone(),
+                        x: previous_bounds.x,
+                        y: previous_bounds.y,
+                    }),
+                    next: Some(CanvasPlacement {
+                        item,
+                        x: node.bounds.x,
+                        y: node.bounds.y,
+                    }),
+                })
+            })
+            .collect::<Vec<_>>();
+        if changes.is_empty() {
+            return engine_error(
+                "unchanged-placement",
+                "Every canvas item is already aligned to the grid.",
+            );
+        }
+        self.update_placements(changes)
+    }
+
     fn create_connection(
         &mut self,
         mut from: homelab_engine_protocol::EndpointRef,
@@ -796,6 +882,171 @@ impl Engine {
                 route: previous_route,
             },
         )
+    }
+
+    fn resolve_connection_route_sides(
+        &mut self,
+        changes: Vec<homelab_engine_protocol::ConnectionRouteSideResolution>,
+    ) -> ResponseBody {
+        if changes.is_empty() {
+            return engine_error(
+                "unchanged-connection-routes",
+                "No unresolved cable endpoint sides are available to save.",
+            );
+        }
+
+        let mut seen = std::collections::HashSet::new();
+        if changes
+            .iter()
+            .any(|change| !seen.insert(change.connection_id))
+        {
+            return engine_error(
+                "duplicate-connection-route",
+                "A cable endpoint-side resolution was provided more than once.",
+            );
+        }
+
+        let mut snapshot = self.topology.snapshot().clone();
+        let mut forward = Vec::new();
+        let mut inverse = Vec::new();
+
+        for change in changes {
+            let Some(connection) = snapshot
+                .connections
+                .iter_mut()
+                .find(|connection| connection.id == change.connection_id)
+            else {
+                return engine_error(
+                    "missing-connection",
+                    "A cable selected for endpoint-side resolution no longer exists.",
+                );
+            };
+
+            let previous_route = connection.route.clone();
+            let mut next_route = previous_route.clone().unwrap_or(TopologyConnectionRoute {
+                source_side: None,
+                target_side: None,
+                bend_points: Vec::new(),
+                avoid_cable_overlap: false,
+            });
+            if next_route.source_side.is_none() {
+                next_route.source_side = Some(side_name(change.source_side).into());
+            }
+            if next_route.target_side.is_none() {
+                next_route.target_side = Some(side_name(change.target_side).into());
+            }
+            if previous_route.as_ref() == Some(&next_route) {
+                continue;
+            }
+
+            connection.route = Some(next_route.clone());
+            forward.push(ProjectPatch::SetConnectionRoute {
+                connection_id: connection.id,
+                route: Some(next_route),
+            });
+            inverse.push(ProjectPatch::SetConnectionRoute {
+                connection_id: connection.id,
+                route: previous_route,
+            });
+        }
+
+        if forward.is_empty() {
+            return engine_error(
+                "unchanged-connection-routes",
+                "Every cable already has saved endpoint sides.",
+            );
+        }
+
+        inverse.reverse();
+        self.commit_topology(snapshot, batch_patch(forward), batch_patch(inverse))
+    }
+
+    fn reset_all_connection_bends(&mut self) -> ResponseBody {
+        let mut snapshot = self.topology.snapshot().clone();
+        let mut forward = Vec::new();
+        let mut inverse = Vec::new();
+
+        for connection in &mut snapshot.connections {
+            let Some(previous_route) = connection.route.clone() else {
+                continue;
+            };
+            if previous_route.bend_points.is_empty() {
+                continue;
+            }
+
+            let mut next_route = previous_route.clone();
+            next_route.bend_points.clear();
+            let next_route = (next_route.source_side.is_some()
+                || next_route.target_side.is_some()
+                || next_route.avoid_cable_overlap)
+                .then_some(next_route);
+            connection.route.clone_from(&next_route);
+            forward.push(ProjectPatch::SetConnectionRoute {
+                connection_id: connection.id,
+                route: next_route,
+            });
+            inverse.push(ProjectPatch::SetConnectionRoute {
+                connection_id: connection.id,
+                route: Some(previous_route),
+            });
+        }
+
+        if forward.is_empty() {
+            return engine_error(
+                "unchanged-connection-routes",
+                "No saved manual cable bends are available to reset.",
+            );
+        }
+
+        inverse.reverse();
+        self.commit_topology(snapshot, batch_patch(forward), batch_patch(inverse))
+    }
+
+    fn restore_automatic_connection_routes(&mut self) -> ResponseBody {
+        let mut snapshot = self.topology.snapshot().clone();
+        let mut forward = Vec::new();
+        let mut inverse = Vec::new();
+
+        for connection in &mut snapshot.connections {
+            let Some(previous_route) = connection.route.clone() else {
+                continue;
+            };
+            if previous_route.source_side.is_none()
+                && previous_route.target_side.is_none()
+                && previous_route.bend_points.is_empty()
+            {
+                continue;
+            }
+
+            let next_route =
+                previous_route
+                    .avoid_cable_overlap
+                    .then_some(TopologyConnectionRoute {
+                        source_side: None,
+                        target_side: None,
+                        bend_points: Vec::new(),
+                        avoid_cable_overlap: true,
+                    });
+            connection.route.clone_from(&next_route);
+            forward.push(ProjectPatch::SetConnectionRoute {
+                connection_id: connection.id,
+                route: next_route,
+            });
+            inverse.push(ProjectPatch::SetConnectionRoute {
+                connection_id: connection.id,
+                route: Some(previous_route),
+            });
+        }
+
+        if forward.is_empty() {
+            return engine_error(
+                "unchanged-connection-routes",
+                "No manual cable geometry is available to restore automatically.",
+            );
+        }
+
+        inverse.reverse();
+        self.commit_topology(snapshot, batch_patch(forward), batch_patch(inverse))
     }
 
     fn commit_topology(
@@ -1057,6 +1308,15 @@ fn engine_error(code: &str, message: &str) -> ResponseBody {
         code: code.into(),
         message: message.into(),
     })
+}
+
+const fn side_name(side: homelab_engine_protocol::Side) -> &'static str {
+    match side {
+        homelab_engine_protocol::Side::Left => "left",
+        homelab_engine_protocol::Side::Right => "right",
+        homelab_engine_protocol::Side::Top => "top",
+        homelab_engine_protocol::Side::Bottom => "bottom",
+    }
 }
 
 fn normalize_connection_derived(snapshot: &mut TopologySnapshot) -> Result<(), TopologyError> {
@@ -1392,6 +1652,12 @@ mod tests {
                     lane_offset: 24.0,
                     manual_bends: vec![],
                 },
+                source_candidates: vec![],
+                target_candidates: vec![],
+                source_side_constraint: None,
+                target_side_constraint: None,
+                previous_source_side: None,
+                previous_target_side: None,
                 source_item_id: "server:1".into(),
                 target_item_id: "switch:1".into(),
                 obstacles: vec![],
@@ -1418,6 +1684,7 @@ mod tests {
         homelab_engine_protocol::CableRoutePlanRequest {
             obstacles: vec![],
             requests,
+            seed: None,
         }
     }
 
@@ -1481,6 +1748,53 @@ mod tests {
                     upsert: vec![previous],
                     remove_items: vec![],
                 }
+        ));
+    }
+
+    #[test]
+    fn grid_alignment_command_moves_every_item_in_one_reversible_patch() {
+        let (mut engine, server, switch) = connection_engine();
+        let response = engine.dispatch(request(Operation::SnapPlacementsToGrid {
+            nodes: vec![node("server:1", 11.0, 13.0), node("switch:1", 105.0, 13.0)],
+            grid_size: 24.0,
+            max_rings: 64,
+        }));
+
+        assert_eq!(engine.revision(), 13);
+        assert!(matches!(
+            response.result,
+            ResponseBody::Patch(ref patch)
+                if patch.forward == ProjectPatch::PatchPlacements {
+                    upsert: vec![
+                        CanvasPlacement { item: server.item.clone(), x: 0.0, y: 24.0 },
+                        CanvasPlacement { item: switch.item.clone(), x: 120.0, y: 24.0 },
+                    ],
+                    remove_items: vec![],
+                }
+                && patch.inverse == ProjectPatch::PatchPlacements {
+                    upsert: vec![
+                        CanvasPlacement { item: server.item.clone(), x: 11.0, y: 13.0 },
+                        CanvasPlacement { item: switch.item.clone(), x: 105.0, y: 13.0 },
+                    ],
+                    remove_items: vec![],
+                }
+        ));
+    }
+
+    #[test]
+    fn grid_alignment_rejects_partial_geometry_without_advancing_revision() {
+        let (mut engine, _, _) = connection_engine();
+        let response = engine.dispatch(request(Operation::SnapPlacementsToGrid {
+            nodes: vec![node("server:1", 11.0, 13.0)],
+            grid_size: 24.0,
+            max_rings: 64,
+        }));
+
+        assert_eq!(engine.revision(), 12);
+        assert!(matches!(
+            response.result,
+            ResponseBody::Error(EngineError { ref code, .. })
+                if code == "invalid-grid-placement-set"
         ));
     }
 
@@ -1692,6 +2006,193 @@ mod tests {
                 if matches!(&patch.inverse, ProjectPatch::AddConnection { connection: restored } if restored == &removed_connection)
         ));
         assert_eq!(engine.revision(), 16);
+    }
+
+    #[test]
+    fn reset_all_connection_bends_is_atomic_and_preserves_route_preferences() {
+        let (mut engine, from, to) = connection_engine();
+        engine.dispatch(request(Operation::CreateConnection {
+            from,
+            to,
+            created_at: "2026-07-23T00:00:00.000Z".into(),
+        }));
+
+        let mut snapshot = engine.topology().clone();
+        for item in &mut snapshot.items {
+            let mut second_port = item.ports[0].clone();
+            second_port.id = 2;
+            second_port.slot_number = 2;
+            item.ports.push(second_port);
+        }
+        let mut second_connection = snapshot.connections[0].clone();
+        second_connection.id = 2;
+        second_connection.from.port_id = 2;
+        second_connection.to.port_id = 2;
+        snapshot.connections[0].route = Some(TopologyConnectionRoute {
+            source_side: Some("top".into()),
+            target_side: Some("bottom".into()),
+            bend_points: vec![homelab_engine_protocol::Point { x: 24.0, y: 48.0 }],
+            avoid_cable_overlap: true,
+        });
+        second_connection.route = Some(TopologyConnectionRoute {
+            source_side: None,
+            target_side: None,
+            bend_points: vec![homelab_engine_protocol::Point { x: 72.0, y: 96.0 }],
+            avoid_cable_overlap: false,
+        });
+        snapshot.connections.push(second_connection);
+        let mut engine = Engine::from_snapshot(EngineSnapshot {
+            revision: 13,
+            project_name: "Topology Lab".into(),
+            topology: snapshot,
+        });
+
+        let response = engine.dispatch(EngineRequest {
+            protocol_version: PROTOCOL_VERSION,
+            request_id: 24,
+            base_revision: 13,
+            operation: Operation::ResetAllConnectionBends,
+        });
+
+        assert_eq!(engine.revision(), 14);
+        assert_eq!(
+            engine.topology().connections[0].route,
+            Some(TopologyConnectionRoute {
+                source_side: Some("top".into()),
+                target_side: Some("bottom".into()),
+                bend_points: vec![],
+                avoid_cable_overlap: true,
+            })
+        );
+        assert_eq!(engine.topology().connections[1].route, None);
+        assert!(matches!(
+            response.result,
+            ResponseBody::Patch(ref patch)
+                if patch.revision == 14
+                    && matches!(&patch.forward, ProjectPatch::Batch { patches } if patches.len() == 2)
+                    && matches!(&patch.inverse, ProjectPatch::Batch { patches } if patches.len() == 2)
+        ));
+    }
+
+    #[test]
+    fn resolves_missing_connection_sides_atomically_without_overwriting_saved_preferences() {
+        let (mut engine, from, to) = connection_engine();
+        engine.dispatch(request(Operation::CreateConnection {
+            from,
+            to,
+            created_at: "2026-07-23T00:00:00.000Z".into(),
+        }));
+        let mut snapshot = engine.topology().clone();
+        snapshot.connections[0].route = Some(TopologyConnectionRoute {
+            source_side: Some("top".into()),
+            target_side: None,
+            bend_points: vec![homelab_engine_protocol::Point { x: 24.0, y: 48.0 }],
+            avoid_cable_overlap: true,
+        });
+        let mut engine = Engine::from_snapshot(EngineSnapshot {
+            revision: 13,
+            project_name: "Topology Lab".into(),
+            topology: snapshot,
+        });
+
+        let response = engine.dispatch(EngineRequest {
+            protocol_version: PROTOCOL_VERSION,
+            request_id: 24,
+            base_revision: 13,
+            operation: Operation::ResolveConnectionRouteSides {
+                changes: vec![homelab_engine_protocol::ConnectionRouteSideResolution {
+                    connection_id: 1,
+                    source_side: homelab_engine_protocol::Side::Right,
+                    target_side: homelab_engine_protocol::Side::Bottom,
+                }],
+            },
+        });
+
+        assert_eq!(engine.revision(), 14);
+        assert_eq!(
+            engine.topology().connections[0].route,
+            Some(TopologyConnectionRoute {
+                source_side: Some("top".into()),
+                target_side: Some("bottom".into()),
+                bend_points: vec![homelab_engine_protocol::Point { x: 24.0, y: 48.0 }],
+                avoid_cable_overlap: true,
+            })
+        );
+        assert!(matches!(response.result, ResponseBody::Patch(_)));
+    }
+
+    #[test]
+    fn reset_all_connection_bends_rejects_an_unchanged_project() {
+        let (mut engine, from, to) = connection_engine();
+        engine.dispatch(request(Operation::CreateConnection {
+            from,
+            to,
+            created_at: "2026-07-23T00:00:00.000Z".into(),
+        }));
+        assert_eq!(engine.revision(), 13);
+
+        let response = engine.dispatch(EngineRequest {
+            protocol_version: PROTOCOL_VERSION,
+            request_id: 24,
+            base_revision: 13,
+            operation: Operation::ResetAllConnectionBends,
+        });
+
+        assert!(matches!(
+            response.result,
+            ResponseBody::Error(EngineError { ref code, .. })
+                if code == "unchanged-connection-routes"
+        ));
+        assert_eq!(engine.revision(), 13);
+    }
+
+    #[test]
+    fn restore_automatic_connection_routes_is_atomic_and_preserves_overlap_preferences() {
+        let (mut engine, from, to) = connection_engine();
+        engine.dispatch(request(Operation::CreateConnection {
+            from,
+            to,
+            created_at: "2026-07-23T00:00:00.000Z".into(),
+        }));
+
+        let mut snapshot = engine.topology().clone();
+        snapshot.connections[0].route = Some(TopologyConnectionRoute {
+            source_side: Some("top".into()),
+            target_side: Some("bottom".into()),
+            bend_points: vec![homelab_engine_protocol::Point { x: 24.0, y: 48.0 }],
+            avoid_cable_overlap: true,
+        });
+        let mut engine = Engine::from_snapshot(EngineSnapshot {
+            revision: 13,
+            project_name: "Topology Lab".into(),
+            topology: snapshot,
+        });
+
+        let response = engine.dispatch(EngineRequest {
+            protocol_version: PROTOCOL_VERSION,
+            request_id: 25,
+            base_revision: 13,
+            operation: Operation::RestoreAutomaticConnectionRoutes,
+        });
+
+        assert_eq!(engine.revision(), 14);
+        assert_eq!(
+            engine.topology().connections[0].route,
+            Some(TopologyConnectionRoute {
+                source_side: None,
+                target_side: None,
+                bend_points: vec![],
+                avoid_cable_overlap: true,
+            })
+        );
+        assert!(matches!(
+            response.result,
+            ResponseBody::Patch(ref patch)
+                if matches!(&patch.inverse, ProjectPatch::SetConnectionRoute {
+                    route: Some(TopologyConnectionRoute { source_side: Some(_), target_side: Some(_), .. }),
+                    ..
+                })
+        ));
     }
 
     #[test]
@@ -2028,6 +2529,12 @@ mod tests {
                     lane_offset: 24.0,
                     manual_bends: vec![],
                 },
+                source_candidates: vec![],
+                target_candidates: vec![],
+                source_side_constraint: None,
+                target_side_constraint: None,
+                previous_source_side: None,
+                previous_target_side: None,
                 source_item_id: "server:1".into(),
                 target_item_id: "patchPanel:1".into(),
                 obstacles: vec![homelab_engine_protocol::RouteObstacle {

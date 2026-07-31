@@ -24,10 +24,32 @@ const INVENTORY_TABLES = [
   'powerStrips',
 ]
 
-const PRIVATE_BLANK_KEY_PATTERNS = [
-  /lanIp/i,
-  /tailscaleIp/i,
-]
+const PRIVATE_BLANK_KEYS = new Set([
+  'customlabel',
+  'customname',
+  'devicename',
+  'devicedisplayname',
+  'displayname',
+  'friendlyname',
+  'hostname',
+  'ip',
+  'ipaddress',
+  'ipv4',
+  'ipv6',
+  'lanip',
+  'location',
+  'mac',
+  'macaddress',
+  'managementip',
+  'notes',
+  'rack',
+  'room',
+  'ssid',
+  'bssid',
+  'tailscaleip',
+])
+
+const PRIVATE_EMPTY_ARRAY_KEYS = new Set(['addresses'])
 
 const PRIVATE_REMOVE_KEY_PATTERNS = [
   /serial/i,
@@ -54,9 +76,13 @@ async function writeJson(filePath, payload) {
 
 function demoNameForType(type, index) {
   if (type === 'server') return `Demo Server ${index}`
+  if (type === 'pcBuild') return `Demo PC ${index}`
   if (type === 'nas') return `Demo NAS ${index}`
   if (type === 'switch') return `Demo Switch ${index}`
   if (type === 'patchPanel') return `Demo Patch Panel ${index}`
+  if (type === 'monitor') return `Demo Monitor ${index}`
+  if (type === 'ups') return `Demo UPS ${index}`
+  if (type === 'powerStrip') return `Demo Power Strip ${index}`
 
   return null
 }
@@ -64,14 +90,34 @@ function demoNameForType(type, index) {
 function inventoryTypeForTable(table) {
   if (table === 'networkCards') return 'network'
   if (table === 'patchPanels') return 'patchPanel'
+  if (table === 'pcBuilds') return 'pcBuild'
+  if (table === 'upsSystems') return 'ups'
+  if (table === 'powerStrips') return 'powerStrip'
 
   return table.replace(/s$/, '')
 }
 
-function sanitizeValue(key, value) {
-  if (PRIVATE_BLANK_KEY_PATTERNS.some((pattern) => pattern.test(key))) {
+function isCompatibilityLabel(key, pathParts) {
+  return key.toLowerCase() === 'label' && pathParts.includes('compatibility')
+}
+
+function isPrivateInstanceName(key, pathParts) {
+  return key.toLowerCase() === 'name'
+    && (pathParts.includes('smart') || pathParts.includes('outlets'))
+}
+
+function sanitizeValue(key, value, pathParts) {
+  const normalizedKey = key.toLowerCase()
+
+  if (
+    PRIVATE_BLANK_KEYS.has(normalizedKey)
+    || (normalizedKey === 'label' && !isCompatibilityLabel(key, pathParts))
+    || isPrivateInstanceName(key, pathParts)
+  ) {
     return ''
   }
+
+  if (PRIVATE_EMPTY_ARRAY_KEYS.has(normalizedKey)) return []
 
   if (PRIVATE_REMOVE_KEY_PATTERNS.some((pattern) => pattern.test(key))) {
     return undefined
@@ -82,17 +128,19 @@ function sanitizeValue(key, value) {
   }
 
   if (Array.isArray(value)) {
-    return value.map((item) => sanitizeObject(item)).filter((item) => item !== undefined)
+    return value
+      .map((item, index) => sanitizeObject(item, [...pathParts, key, String(index)]))
+      .filter((item) => item !== undefined)
   }
 
   if (value && typeof value === 'object') {
-    return sanitizeObject(value)
+    return sanitizeObject(value, [...pathParts, key])
   }
 
   return value
 }
 
-function sanitizeObject(input) {
+function sanitizeObject(input, pathParts = []) {
   if (!input || typeof input !== 'object' || Array.isArray(input)) {
     return input
   }
@@ -100,7 +148,7 @@ function sanitizeObject(input) {
   const output = {}
 
   for (const [key, value] of Object.entries(input)) {
-    const sanitized = sanitizeValue(key, value)
+    const sanitized = sanitizeValue(key, value, pathParts)
 
     if (sanitized !== undefined) {
       output[key] = sanitized
@@ -139,11 +187,13 @@ function sanitizeInventory(inventory) {
 }
 
 function sanitizeProject(project) {
+  const sanitized = sanitizeObject(project)
+
   return {
-    ...sanitizeObject(project),
+    ...sanitized,
     id: 'default',
     metadata: {
-      ...(project.metadata ?? {}),
+      ...(sanitized.metadata ?? {}),
       name: 'Homelab Inventory Demo',
       updatedAt: new Date().toISOString(),
     },

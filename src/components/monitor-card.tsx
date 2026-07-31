@@ -3,12 +3,12 @@ import { Monitor } from 'lucide-react'
 import { formatInventoryCompactSpec } from '@/lib/format'
 import { monitorPowerInputEndpoint, POWER_INPUT_PORT_KEY } from '@/lib/power-endpoints'
 import type { InventoryPort } from '@/types/inventory'
+import { StandaloneCanvasEquipmentCard } from './standalone-canvas-equipment-card'
 import {
   sortedPorts,
-  StandaloneCanvasEquipmentCard,
   type StandaloneCanvasNodeData,
   type StandalonePortView,
-} from './standalone-canvas-equipment-card'
+} from './standalone-canvas-equipment-model'
 
 export type MonitorNodeData = StandaloneCanvasNodeData
 export type MonitorFlowNode = Node<MonitorNodeData, 'monitor'>

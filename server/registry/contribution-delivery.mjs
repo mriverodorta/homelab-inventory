@@ -1,4 +1,5 @@
 import { contributionStatus, discoverContributionCandidates } from './contribution-service.mjs'
+import { readRegistryJson, registryErrorMessage } from './response-json.mjs'
 
 const BATCH_SIZE = 20
 const MAX_LEDGER_RECORDS = 10_000
@@ -15,11 +16,18 @@ function retryAt(attempts, now, random) {
 }
 
 export class ContributionDeliveryService {
-  constructor({ identityService, digestHashes = async () => new Set(), intervalMs = 60_000, random = Math.random } = {}) {
+  constructor({
+    identityService,
+    digestHashes = async () => new Set(),
+    intervalMs = 60_000,
+    random = Math.random,
+    logger = console,
+  } = {}) {
     this.identityService = identityService
     this.intervalMs = intervalMs
     this.random = random
     this.digestHashes = digestHashes
+    this.logger = logger
     this.timer = null
     this.running = null
   }
@@ -58,9 +66,9 @@ export class ContributionDeliveryService {
     }
     try {
       const response = await this.identityService.signedPost(store, '/v1/contributions', body, now)
-      const payload = await response.json().catch(() => null)
+      const payload = await readRegistryJson(response)
       if (!response.ok || !Array.isArray(payload?.results)) {
-        throw new Error(payload?.message ?? `Contribution delivery failed with HTTP ${response.status}.`)
+        throw new Error(registryErrorMessage(payload, 'Contribution delivery failed', response.status))
       }
       const results = new Map(payload.results.map((result) => [result.contentHash, result.state]))
       store.registryTransaction((draft) => {
@@ -116,7 +124,7 @@ export class ContributionDeliveryService {
       .map((record) => record.contentHash)
     if (hashes.length === 0) return
     const response = await this.identityService.signedPost(store, '/v1/contributions/status', { contentHashes: hashes }, now)
-    const payload = await response.json().catch(() => null)
+    const payload = await readRegistryJson(response).catch(() => null)
     if (!response.ok || !Array.isArray(payload?.statuses)) return
     const statuses = new Map(payload.statuses.map((status) => [status.contentHash, status.state]))
     store.registryTransaction((draft) => {
@@ -147,11 +155,20 @@ export class ContributionDeliveryService {
     if (this.running) await this.running.catch(() => {})
   }
 
+  triggerInBackground(store) {
+    void this.trigger(store).catch((error) => {
+      this.logger.error(
+        '[registry] Automatic contribution delivery failed.',
+        error instanceof Error ? error.message : error,
+      )
+    })
+  }
+
   start(store) {
     if (this.timer) return
-    this.timer = setInterval(() => void this.trigger(store), this.intervalMs)
+    this.timer = setInterval(() => this.triggerInBackground(store), this.intervalMs)
     this.timer.unref?.()
-    void this.trigger(store)
+    this.triggerInBackground(store)
   }
 
   async stop(store) {

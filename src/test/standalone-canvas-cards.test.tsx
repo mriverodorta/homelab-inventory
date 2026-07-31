@@ -5,12 +5,15 @@ import { getEndpointHandleId } from '@/lib/cable-routing'
 import { buildCanvasProjectIndex } from '@/lib/canvas-project-index'
 import { MonitorNode, type MonitorFlowNode } from '@/components/monitor-card'
 import {
-  PowerStripNode,
   powerStripInputView,
   powerStripOutletViews,
+} from '@/components/power-strip-card-model'
+import {
+  PowerStripNode,
   type PowerStripFlowNode,
 } from '@/components/power-strip-card'
-import { UpsNode, upsOutletGroups, type UpsFlowNode } from '@/components/ups-card'
+import { upsOutletGroups } from '@/components/ups-card-model'
+import { UpsNode, type UpsFlowNode } from '@/components/ups-card'
 import { topologyQueryFixture } from '@/test/topology-query-fixture'
 import type { InventoryItem, InventoryPort, ProjectState } from '@/types/inventory'
 import { withCanonicalPowerPorts } from '../../shared/power-ports.mjs'

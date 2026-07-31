@@ -52,6 +52,7 @@ import {
   previewPrivateTemplatePack,
 } from '../registry/model.mjs'
 import { catalogFieldDiff, mergeCatalogUpdate } from '../registry/update-service.mjs'
+import { createRoutingCache, normalizeRoutingCache } from '../routing-cache-model.mjs'
 import {
   finishExampleInDraft,
   loadExampleIntoDraft,
@@ -66,8 +67,11 @@ import {
 export const CURRENT_SCHEMA_VERSION = 16
 
 const DEFAULT_SAVE_DEBOUNCE_MS = 500
+const DEFAULT_FLUSH_RETRY_BASE_MS = 1_000
+const MAX_FLUSH_RETRY_MS = 30_000
+const TRANSACTION_JOURNAL_FILE = '.store-transaction.json'
 const BACKUP_LIMIT = 10
-const STORE_NAMES = ['meta', 'inventory', 'project', 'agents', 'agentStatus', 'registry']
+const STORE_NAMES = ['meta', 'inventory', 'project', 'agents', 'agentStatus', 'registry', 'routingCache']
 const ALWAYS_ENFORCED_COMPATIBILITY_CODES = new Set([
   'compatibility.resource.exhausted',
   'memory.slots.exceeded',
@@ -214,7 +218,7 @@ async function writeJson(filePath, payload) {
   await fs.mkdir(path.dirname(filePath), { recursive: true })
   const temporaryPath = `${filePath}.${process.pid}-${randomUUID()}.tmp`
   try {
-    await fs.writeFile(temporaryPath, `${JSON.stringify(payload, null, 2)}\n`)
+    await fs.writeFile(temporaryPath, `${JSON.stringify(payload, null, 2)}\n`, { mode: 0o600 })
     await fs.rename(temporaryPath, filePath)
   } catch (error) {
     await fs.rm(temporaryPath, { force: true }).catch(() => {})
@@ -241,6 +245,26 @@ class JsonFileAdapter {
 
   async write(payload) {
     await writeJson(this.filePath, payload)
+  }
+}
+
+class RecoverableJsonFileAdapter extends JsonFileAdapter {
+  constructor(filePath, fallback) {
+    super(filePath)
+    this.fallback = fallback
+  }
+
+  async read() {
+    try {
+      return await super.read()
+    } catch (error) {
+      if (!(error instanceof SyntaxError)) throw error
+
+      const quarantinePath = `${this.filePath}.corrupt-${timestampForPath()}`
+      await fs.rename(this.filePath, quarantinePath)
+      await writeJson(this.filePath, this.fallback)
+      return structuredClone(this.fallback)
+    }
   }
 }
 
@@ -1391,31 +1415,12 @@ function applyEngineForwardPatch(project, forward) {
   })
 }
 
-async function copyDirectory(source, destination) {
-  if (!(await pathExists(source))) {
-    return
-  }
-
-  await fs.mkdir(destination, { recursive: true })
-  const entries = await fs.readdir(source, { withFileTypes: true })
-
-  for (const entry of entries) {
-    const sourcePath = path.join(source, entry.name)
-    const destinationPath = path.join(destination, entry.name)
-
-    if (entry.isDirectory()) {
-      await copyDirectory(sourcePath, destinationPath)
-    } else if (entry.isFile()) {
-      await fs.copyFile(sourcePath, destinationPath)
-    }
-  }
-}
-
 export class HomelabInventoryStore {
   constructor({
     appVersion,
     dataDir,
     legacyProjectPath,
+    flushRetryBaseMs = DEFAULT_FLUSH_RETRY_BASE_MS,
     saveDebounceMs = DEFAULT_SAVE_DEBOUNCE_MS,
     seedEmptyData = true,
     seedDir,
@@ -1424,10 +1429,12 @@ export class HomelabInventoryStore {
     this.dataDir = dataDir
     this.legacyProjectPath = legacyProjectPath
     this.saveDebounceMs = saveDebounceMs
+    this.flushRetryBaseMs = flushRetryBaseMs
     this.seedEmptyData = seedEmptyData
     this.seedDir = seedDir
     this.backupDir = path.join(dataDir, 'backups')
     this.storesDir = path.join(dataDir, 'stores')
+    this.transactionJournalPath = path.join(dataDir, TRANSACTION_JOURNAL_FILE)
     this.paths = {
       meta: path.join(dataDir, 'meta.json'),
       inventory: path.join(dataDir, 'stores', 'inventory.json'),
@@ -1435,13 +1442,18 @@ export class HomelabInventoryStore {
       agents: path.join(dataDir, 'stores', 'agents.json'),
       agentStatus: path.join(dataDir, 'stores', 'agent-status.json'),
       registry: path.join(dataDir, 'stores', 'registry.json'),
+      routingCache: path.join(dataDir, 'stores', 'routing-cache.json'),
     }
     this.databases = {}
     this.dirtyStores = new Set()
     this.flushTimer = null
     this.flushPromise = null
     this.flushQueue = Promise.resolve()
+    this.flushRetryTimer = null
+    this.flushRetryAttempt = 0
+    this.persistenceFailure = null
     this.createdStores = false
+    this.registryMutationQueue = Promise.resolve()
     this.projectCommitListeners = new Set()
     this.pendingProjectCommits = []
   }
@@ -1449,8 +1461,14 @@ export class HomelabInventoryStore {
   async init() {
     await fs.mkdir(this.dataDir, { recursive: true })
     await fs.mkdir(this.storesDir, { recursive: true })
+    await this.recoverPendingStoreTransaction()
     await this.ensureStores()
     await this.openStores()
+    const loadedRoutingCache = this.databases.routingCache.data
+    this.databases.routingCache.data = normalizeRoutingCache(loadedRoutingCache)
+    if (JSON.stringify(loadedRoutingCache) !== JSON.stringify(this.databases.routingCache.data)) {
+      await this.databases.routingCache.write()
+    }
     await this.runMigrationsSafely()
     await this.normalizeLoadedRegistry()
     await this.reconcileOnboardingState()
@@ -1506,6 +1524,34 @@ export class HomelabInventoryStore {
     await this.ensureOptionalStoreFiles()
   }
 
+  async recoverPendingStoreTransaction() {
+    if (!(await pathExists(this.transactionJournalPath))) return
+
+    const journal = await readJson(this.transactionJournalPath)
+    if (
+      journal?.version !== 1
+      || !journal.stores
+      || typeof journal.stores !== 'object'
+      || Array.isArray(journal.stores)
+    ) {
+      throw new Error('Pending store transaction journal is invalid.')
+    }
+
+    const entries = Object.entries(journal.stores)
+    if (entries.length < 2) {
+      throw new Error('Pending store transaction journal must contain at least two stores.')
+    }
+
+    for (const [storeName, payload] of entries) {
+      if (!STORE_NAMES.includes(storeName) || !this.paths[storeName]) {
+        throw new Error(`Pending store transaction references unknown store ${storeName}.`)
+      }
+      await writeJson(this.paths[storeName], payload)
+    }
+
+    await fs.rm(this.transactionJournalPath, { force: true })
+  }
+
   async writeEmptyStores() {
     const now = new Date().toISOString()
 
@@ -1550,6 +1596,10 @@ export class HomelabInventoryStore {
     if (!(await pathExists(this.paths.registry))) {
       await writeJson(this.paths.registry, createRegistryStore())
     }
+
+    if (!(await pathExists(this.paths.routingCache))) {
+      await writeJson(this.paths.routingCache, createRoutingCache())
+    }
   }
 
   async openStores() {
@@ -1588,6 +1638,10 @@ export class HomelabInventoryStore {
     this.databases.registry = new Low(
       new JsonFileAdapter(this.paths.registry),
       createRegistryStore(),
+    )
+    this.databases.routingCache = new Low(
+      new RecoverableJsonFileAdapter(this.paths.routingCache, createRoutingCache()),
+      createRoutingCache(),
     )
 
     await Promise.all(STORE_NAMES.map((name) => this.databases[name].read()))
@@ -1978,6 +2032,19 @@ export class HomelabInventoryStore {
     )
   }
 
+  getRoutingCache() {
+    return structuredClone(this.databases.routingCache.data)
+  }
+
+  setRoutingCache(cache) {
+    this.databases.routingCache.data = normalizeRoutingCache({
+      ...cache,
+      updatedAt: new Date().toISOString(),
+    })
+    this.scheduleFlush('routingCache')
+    return this.getRoutingCache()
+  }
+
   getOnboardingStatus({ enabled = true } = {}) {
     return publicOnboardingStatus({
       meta: this.databases.meta.data,
@@ -2086,6 +2153,34 @@ export class HomelabInventoryStore {
     return this.getRegistryState()
   }
 
+  serializeRegistryMutation(operation) {
+    const result = this.registryMutationQueue
+      .catch(() => {})
+      .then(operation)
+    this.registryMutationQueue = result
+    return result
+  }
+
+  withAtomicStoreMutation(storeNames, operation) {
+    const snapshots = Object.fromEntries(storeNames.map((storeName) => [
+      storeName,
+      structuredClone(this.databases[storeName].data),
+    ]))
+    const dirtyStores = new Set(this.dirtyStores)
+    const pendingProjectCommits = [...this.pendingProjectCommits]
+
+    try {
+      return operation()
+    } catch (error) {
+      for (const [storeName, snapshot] of Object.entries(snapshots)) {
+        this.databases[storeName].data = snapshot
+      }
+      this.dirtyStores = dirtyStores
+      this.pendingProjectCommits = pendingProjectCommits
+      throw error
+    }
+  }
+
   updateRegistrySettings(patch, expectedUpdatedAt) {
     const current = this.databases.registry.data.settings
     if (expectedUpdatedAt !== undefined && expectedUpdatedAt !== current.updatedAt) {
@@ -2123,9 +2218,19 @@ export class HomelabInventoryStore {
   }
 
   async createPrivateTemplate(input) {
-    const record = await createPrivateTemplateRecord(this.databases.registry.data.privateTemplates, input)
-    return this.registryTransaction((draft) => {
-      draft.privateTemplates.push(record)
+    return this.serializeRegistryMutation(async () => {
+      let record
+      try {
+        record = await createPrivateTemplateRecord(this.databases.registry.data.privateTemplates, input)
+      } catch (error) {
+        throw new InventoryLifecycleError(
+          error instanceof Error ? error.message : 'Private template is invalid.',
+          { code: 'invalid-private-template', status: 400 },
+        )
+      }
+      return this.registryTransaction((draft) => {
+        draft.privateTemplates.push(record)
+      })
     })
   }
 
@@ -2171,67 +2276,71 @@ export class HomelabInventoryStore {
   }
 
   async importPrivateTemplates(pack) {
-    const preview = await previewPrivateTemplatePack(pack)
-    if (!preview.valid) {
-      throw new InventoryLifecycleError('Private template pack is invalid.', {
-        code: 'invalid-private-template-pack', status: 400, details: preview.errors,
+    return this.serializeRegistryMutation(async () => {
+      const preview = await previewPrivateTemplatePack(pack)
+      if (!preview.valid) {
+        throw new InventoryLifecycleError('Private template pack is invalid.', {
+          code: 'invalid-private-template-pack', status: 400, details: preview.errors,
+        })
+      }
+      const existingChecksums = new Set(this.databases.registry.data.privateTemplates.map((template) => template.checksum))
+      const imported = []
+      let records = this.databases.registry.data.privateTemplates
+      for (const template of preview.templates) {
+        if (existingChecksums.has(template.checksum)) continue
+        const record = await createPrivateTemplateRecord(records, template)
+        imported.push(record)
+        records = [...records, record]
+        existingChecksums.add(record.checksum)
+      }
+      const registry = this.registryTransaction((draft) => {
+        draft.privateTemplates.push(...imported)
       })
-    }
-    const existingChecksums = new Set(this.databases.registry.data.privateTemplates.map((template) => template.checksum))
-    const imported = []
-    let records = this.databases.registry.data.privateTemplates
-    for (const template of preview.templates) {
-      if (existingChecksums.has(template.checksum)) continue
-      const record = await createPrivateTemplateRecord(records, template)
-      imported.push(record)
-      records = [...records, record]
-      existingChecksums.add(record.checksum)
-    }
-    const registry = this.registryTransaction((draft) => {
-      draft.privateTemplates.push(...imported)
+      return { registry, imported: imported.length, skipped: preview.templates.length - imported.length }
     })
-    return { registry, imported: imported.length, skipped: preview.templates.length - imported.length }
   }
 
   createCatalogInventoryItems(template, quantity = 1) {
-    const sourceId = this.databases.registry.data.snapshot?.sourceId
-    if (!isRelationalId(sourceId)) {
-      throw new InventoryLifecycleError('A verified catalog snapshot must be active before importing hardware.', {
-        code: 'catalog-unavailable', status: 409,
-      })
-    }
-    const type = String(template?.item?.type ?? '').trim()
-    const table = TABLE_BY_TYPE[type]
-    if (!table) {
-      throw new InventoryLifecycleError('Catalog inventory type is not supported.', {
-        code: 'unsupported-inventory-type', status: 400,
-      })
-    }
-    const beforeIds = new Set(this.databases.inventory.data[table].map((record) => record.id))
-    const project = this.createInventoryItems(template.item, quantity)
-    const createdIds = this.databases.inventory.data[table]
-      .map((record) => record.id)
-      .filter((id) => !beforeIds.has(id))
-    if (createdIds.length !== quantity) throw new Error('Catalog import did not create the expected inventory records.')
-
-    this.registryTransaction((draft) => {
-      let linkId = draft.links.reduce((maximum, link) => Math.max(maximum, Number(link.id) || 0), 0) + 1
-      for (const itemId of createdIds) {
-        draft.links.push({
-          id: linkId,
-          itemType: type,
-          itemId,
-          sourceId,
-          templateKey: template.templateKey,
-          importedRevision: template.revision,
-          importedContentHash: template.contentHash,
-          state: 'linked',
-          linkedAt: new Date().toISOString(),
+    return this.withAtomicStoreMutation(['meta', 'inventory', 'project', 'registry'], () => {
+      const sourceId = this.databases.registry.data.snapshot?.sourceId
+      if (!isRelationalId(sourceId)) {
+        throw new InventoryLifecycleError('A verified catalog snapshot must be active before importing hardware.', {
+          code: 'catalog-unavailable', status: 409,
         })
-        linkId += 1
       }
+      const type = String(template?.item?.type ?? '').trim()
+      const table = TABLE_BY_TYPE[type]
+      if (!table) {
+        throw new InventoryLifecycleError('Catalog inventory type is not supported.', {
+          code: 'unsupported-inventory-type', status: 400,
+        })
+      }
+      const beforeIds = new Set(this.databases.inventory.data[table].map((record) => record.id))
+      const project = this.createInventoryItems(template.item, quantity)
+      const createdIds = this.databases.inventory.data[table]
+        .map((record) => record.id)
+        .filter((id) => !beforeIds.has(id))
+      if (createdIds.length !== quantity) throw new Error('Catalog import did not create the expected inventory records.')
+
+      this.registryTransaction((draft) => {
+        let linkId = draft.links.reduce((maximum, link) => Math.max(maximum, Number(link.id) || 0), 0) + 1
+        for (const itemId of createdIds) {
+          draft.links.push({
+            id: linkId,
+            itemType: type,
+            itemId,
+            sourceId,
+            templateKey: template.templateKey,
+            importedRevision: template.revision,
+            importedContentHash: template.contentHash,
+            state: 'linked',
+            linkedAt: new Date().toISOString(),
+          })
+          linkId += 1
+        }
+      })
+      return project
     })
-    return project
   }
 
   reconcileCatalogLink(rawRef, contentHash) {
@@ -2249,6 +2358,14 @@ export class HomelabInventoryStore {
         delete draftLink.availableRevision
         delete draftLink.availableContentHash
       }
+    })
+  }
+
+  updateInventoryItemAndReconcileCatalog(rawRef, input, contentHash) {
+    return this.withAtomicStoreMutation(['meta', 'inventory', 'project', 'registry'], () => {
+      const project = this.updateInventoryItem(rawRef, input)
+      this.reconcileCatalogLink(rawRef, contentHash)
+      return project
     })
   }
 
@@ -2314,22 +2431,24 @@ export class HomelabInventoryStore {
     if (!current) throw new InventoryLifecycleError('Linked inventory item was not found.', {
       code: 'linked-inventory-not-found', status: 409,
     })
-    const project = this.updateInventoryItem(
-      { type: link.itemType, id: link.itemId },
-      mergeCatalogUpdate(current, template.item),
-    )
-    this.registryTransaction((draft) => {
-      const draftLink = draft.links.find((candidate) => candidate.id === linkId)
-      if (!draftLink) throw new Error('Catalog link disappeared during update.')
-      draftLink.importedRevision = template.revision
-      draftLink.importedContentHash = template.contentHash
-      draftLink.state = 'linked'
-      draftLink.updatedAt = new Date().toISOString()
-      delete draftLink.availableRevision
-      delete draftLink.availableContentHash
-      delete draftLink.detachedAt
+    return this.withAtomicStoreMutation(['meta', 'inventory', 'project', 'registry'], () => {
+      const project = this.updateInventoryItem(
+        { type: link.itemType, id: link.itemId },
+        mergeCatalogUpdate(current, template.item),
+      )
+      this.registryTransaction((draft) => {
+        const draftLink = draft.links.find((candidate) => candidate.id === linkId)
+        if (!draftLink) throw new Error('Catalog link disappeared during update.')
+        draftLink.importedRevision = template.revision
+        draftLink.importedContentHash = template.contentHash
+        draftLink.state = 'linked'
+        draftLink.updatedAt = new Date().toISOString()
+        delete draftLink.availableRevision
+        delete draftLink.availableContentHash
+        delete draftLink.detachedAt
+      })
+      return project
     })
-    return project
   }
 
   setProject(project) {
@@ -2827,50 +2946,52 @@ export class HomelabInventoryStore {
   deleteInventoryItems(rawRefs) {
     const refs = this.normalizeInventoryRefs(rawRefs)
 
-    const project = this.inventoryTransaction((draft) => {
-      const activeItems = refs
-        .map((ref) => resolveInventoryRef(draft.inventory, ref))
-        .filter((resolved) => !resolved.item.archivedAt)
+    return this.withAtomicStoreMutation(['meta', 'inventory', 'project', 'registry'], () => {
+      const project = this.inventoryTransaction((draft) => {
+        const activeItems = refs
+          .map((ref) => resolveInventoryRef(draft.inventory, ref))
+          .filter((resolved) => !resolved.item.archivedAt)
 
-      if (activeItems.length > 0) {
-        throw new InventoryLifecycleError('Archive inventory items before deleting them.', {
-          code: 'inventory-item-not-archived',
-          status: 409,
-          details: {
-            items: activeItems.map(({ type, id, item }) => ({ type, id, name: item.name })),
-          },
-        })
-      }
+        if (activeItems.length > 0) {
+          throw new InventoryLifecycleError('Archive inventory items before deleting them.', {
+            code: 'inventory-item-not-archived',
+            status: 409,
+            details: {
+              items: activeItems.map(({ type, id, item }) => ({ type, id, name: item.name })),
+            },
+          })
+        }
 
-      const context = this.dependencyContext(draft)
-      const reports = refs.map((ref) => analyzeInventoryDependencies(context, ref))
-      assertDependencyFree(reports, 'delete')
+        const context = this.dependencyContext(draft)
+        const reports = refs.map((ref) => analyzeInventoryDependencies(context, ref))
+        assertDependencyFree(reports, 'delete')
 
-      for (const ref of refs) {
-        const resolved = resolveInventoryRef(draft.inventory, ref)
-        draft.inventory[resolved.table].splice(resolved.index, 1)
-      }
+        for (const ref of refs) {
+          const resolved = resolveInventoryRef(draft.inventory, ref)
+          draft.inventory[resolved.table].splice(resolved.index, 1)
+        }
 
-      const policy = normalizeCompatibilityPolicy(draft.project.compatibilityPolicy)
-      const deletedHosts = new Set(
-        refs
-          .filter((ref) => ['server', 'nas', 'pcBuild'].includes(ref.type))
-          .map((ref) => itemKey(ref.type, ref.id)),
-      )
-      draft.project.compatibilityPolicy = {
-        ...policy,
-        disabledHosts: policy.disabledHosts.filter(
-          (host) => !deletedHosts.has(itemKey(host.hostType, host.hostId)),
-        ),
-      }
+        const policy = normalizeCompatibilityPolicy(draft.project.compatibilityPolicy)
+        const deletedHosts = new Set(
+          refs
+            .filter((ref) => ['server', 'nas', 'pcBuild'].includes(ref.type))
+            .map((ref) => itemKey(ref.type, ref.id)),
+        )
+        draft.project.compatibilityPolicy = {
+          ...policy,
+          disabledHosts: policy.disabledHosts.filter(
+            (host) => !deletedHosts.has(itemKey(host.hostType, host.hostId)),
+          ),
+        }
 
-      return { items: refs }
+        return { items: refs }
+      })
+      const deleted = new Set(refs.map((ref) => `${ref.type}:${String(ref.id)}`))
+      this.registryTransaction((draft) => {
+        draft.links = draft.links.filter((link) => !deleted.has(`${link.itemType}:${String(link.itemId)}`))
+      })
+      return project
     })
-    const deleted = new Set(refs.map((ref) => `${ref.type}:${String(ref.id)}`))
-    this.registryTransaction((draft) => {
-      draft.links = draft.links.filter((link) => !deleted.has(`${link.itemType}:${String(link.itemId)}`))
-    })
-    return project
   }
 
   clearAgentRuntimeData(serverId) {
@@ -2935,8 +3056,48 @@ export class HomelabInventoryStore {
 
     this.flushTimer = setTimeout(() => {
       this.flushTimer = null
-      void this.flush()
+      void this.flush().catch(() => {})
     }, this.saveDebounceMs)
+    this.flushTimer.unref?.()
+  }
+
+  recordPersistenceFailure(error) {
+    this.flushRetryAttempt += 1
+    this.persistenceFailure = {
+      message: error instanceof Error ? error.message : 'Unknown persistence failure.',
+      failedAt: new Date().toISOString(),
+      attempts: this.flushRetryAttempt,
+    }
+
+    console.error('LowDB persistence failed; the write remains queued for retry.', error)
+
+    if (this.flushRetryTimer) return
+    const retryDelay = Math.min(
+      MAX_FLUSH_RETRY_MS,
+      this.flushRetryBaseMs * (2 ** Math.max(0, this.flushRetryAttempt - 1)),
+    )
+    this.flushRetryTimer = setTimeout(() => {
+      this.flushRetryTimer = null
+      void this.flush().catch(() => {})
+    }, retryDelay)
+    this.flushRetryTimer.unref?.()
+  }
+
+  clearPersistenceFailure() {
+    this.persistenceFailure = null
+    this.flushRetryAttempt = 0
+    if (this.flushRetryTimer) {
+      clearTimeout(this.flushRetryTimer)
+      this.flushRetryTimer = null
+    }
+  }
+
+  getPersistenceHealth() {
+    return {
+      ok: this.persistenceFailure === null,
+      dirtyStores: [...this.dirtyStores].sort(),
+      failure: this.persistenceFailure ? { ...this.persistenceFailure } : null,
+    }
   }
 
   async flush(storeNames = [...this.dirtyStores]) {
@@ -2957,6 +3118,10 @@ export class HomelabInventoryStore {
 
     try {
       await operation
+      this.clearPersistenceFailure()
+    } catch (error) {
+      this.recordPersistenceFailure(error)
+      throw error
     } finally {
       if (this.flushPromise === operation) this.flushPromise = null
     }
@@ -2974,7 +3139,24 @@ export class HomelabInventoryStore {
     }
 
     try {
-      await Promise.all(storesToFlush.map((storeName) => this.databases[storeName].write()))
+      if (storesToFlush.length > 1) {
+        await writeJson(this.transactionJournalPath, {
+          version: 1,
+          createdAt: new Date().toISOString(),
+          stores: Object.fromEntries(storesToFlush.map((storeName) => [
+            storeName,
+            structuredClone(this.databases[storeName].data),
+          ])),
+        })
+      }
+
+      for (const storeName of storesToFlush) {
+        await this.databases[storeName].write()
+      }
+
+      if (storesToFlush.length > 1) {
+        await fs.rm(this.transactionJournalPath, { force: true })
+      }
     } catch (error) {
       storesToFlush.forEach((storeName) => this.dirtyStores.add(storeName))
       this.pendingProjectCommits.unshift(...commitsToPublish)
@@ -2993,17 +3175,28 @@ export class HomelabInventoryStore {
   }
 
   async createBackup(reason = 'manual') {
+    await this.flush()
+    const snapshots = []
+
+    for (const [storeName, filePath] of Object.entries(this.paths)) {
+      if (this.databases[storeName]) {
+        snapshots.push([storeName, filePath, structuredClone(this.databases[storeName].data)])
+      } else if (await pathExists(filePath)) {
+        snapshots.push([storeName, filePath, await readJson(filePath)])
+      }
+    }
+
     const backupPath = path.join(this.backupDir, `${timestampForPath()}-${reason}`)
 
     await fs.mkdir(backupPath, { recursive: true })
 
-    for (const [storeName, filePath] of Object.entries(this.paths)) {
-      if (await pathExists(filePath)) {
-        await fs.copyFile(filePath, path.join(backupPath, `${storeName}.json`))
+    for (const [storeName, filePath, payload] of snapshots) {
+      await writeJson(path.join(backupPath, `${storeName}.json`), payload)
+      if (path.dirname(filePath) === this.storesDir) {
+        await writeJson(path.join(backupPath, 'stores', path.basename(filePath)), payload)
       }
     }
 
-    await copyDirectory(this.storesDir, path.join(backupPath, 'stores'))
     await this.pruneBackups()
 
     return backupPath

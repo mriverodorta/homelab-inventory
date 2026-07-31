@@ -103,7 +103,7 @@ export type ConnectionEndpoint = {
 }
 
 export type InventoryConnectionType = 'network' | 'display' | 'power' | 'other'
-export type ConnectionRouteSide = 'auto' | 'left' | 'right' | 'top' | 'bottom'
+export type ConnectionRouteSide = 'left' | 'right' | 'top' | 'bottom'
 
 export type ConnectionBendPoint = {
   x: number

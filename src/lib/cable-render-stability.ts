@@ -1,4 +1,5 @@
 import type { CableRouteResult } from '@/lib/cable-geometry'
+import type { OrthogonalPoint } from '@/lib/orthogonal-cable'
 
 export const CANVAS_NODE_BASE_Z_INDEX = 1
 export const CANVAS_NODE_ACTIVE_Z_INDEX = 1000
@@ -33,11 +34,45 @@ export function cableRouteResultsEqual(
   second: CableRouteResult,
 ): boolean {
   return first.usedFallback === second.usedFallback
+    && first.sourceSide === second.sourceSide
+    && first.targetSide === second.targetSide
     && numberArraysEqual(first.manualAnchorPointIndexes, second.manualAnchorPointIndexes)
     && first.points.length === second.points.length
     && first.points.every((point, index) => (
       point.x === second.points[index].x && point.y === second.points[index].y
     ))
+}
+
+export function cableRouteMatchesEndpoints(
+  route: CableRouteResult | undefined,
+  source: OrthogonalPoint | null,
+  target: OrthogonalPoint | null,
+): route is CableRouteResult {
+  if (!route || !source || !target || route.points.length < 2) return false
+
+  const first = route.points[0]
+  const last = route.points.at(-1)
+
+  return first.x === source.x
+    && first.y === source.y
+    && last?.x === target.x
+    && last.y === target.y
+}
+
+export function selectStableCableRoute({
+  planned,
+  previous,
+  source,
+  target,
+}: {
+  planned: CableRouteResult | undefined
+  previous: CableRouteResult | undefined
+  source: OrthogonalPoint | null
+  target: OrthogonalPoint | null
+}): CableRouteResult | undefined {
+  if (cableRouteMatchesEndpoints(planned, source, target)) return planned
+
+  return previous ?? planned
 }
 
 export function reconcileItemsById<T extends { id: string }>(

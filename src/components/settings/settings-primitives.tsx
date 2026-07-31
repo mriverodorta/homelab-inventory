@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react'
+import { useState, type ReactNode } from 'react'
 import { LockKeyhole } from 'lucide-react'
 import {
   AlertDialog,
@@ -93,17 +93,42 @@ export function ConfirmSettingsAction({
   actionLabel,
   onConfirm,
   destructive = false,
+  disabled = false,
 }: {
   title: string
   description: string
   actionLabel: string
-  onConfirm: () => void
+  onConfirm: () => void | Promise<void>
   destructive?: boolean
+  disabled?: boolean
 }) {
+  const [open, setOpen] = useState(false)
+  const [pending, setPending] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  function changeOpen(nextOpen: boolean) {
+    if (pending) return
+    setOpen(nextOpen)
+    if (!nextOpen) setError(null)
+  }
+
+  async function confirm() {
+    setPending(true)
+    setError(null)
+    try {
+      await onConfirm()
+      setOpen(false)
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'The action could not be completed.')
+    } finally {
+      setPending(false)
+    }
+  }
+
   return (
-    <AlertDialog>
+    <AlertDialog open={open} onOpenChange={changeOpen}>
       <AlertDialogTrigger asChild>
-        <Button type="button" variant={destructive ? 'destructive' : 'outline'}>
+        <Button type="button" variant={destructive ? 'destructive' : 'outline'} disabled={disabled}>
           {actionLabel}
         </Button>
       </AlertDialogTrigger>
@@ -112,10 +137,22 @@ export function ConfirmSettingsAction({
           <AlertDialogTitle>{title}</AlertDialogTitle>
           <AlertDialogDescription>{description}</AlertDialogDescription>
         </AlertDialogHeader>
+        {error ? (
+          <p role="alert" className="rounded-md border border-[#dfb3a5] bg-[#fff4ee] p-3 text-sm font-semibold text-[#7a2c1d]">
+            {error}
+          </p>
+        ) : null}
         <AlertDialogFooter>
-          <AlertDialogCancel>Cancel</AlertDialogCancel>
-          <AlertDialogAction onClick={onConfirm} variant={destructive ? 'destructive' : 'default'}>
-            {actionLabel}
+          <AlertDialogCancel disabled={pending}>Cancel</AlertDialogCancel>
+          <AlertDialogAction
+            disabled={pending}
+            onClick={(event) => {
+              event.preventDefault()
+              void confirm()
+            }}
+            variant={destructive ? 'destructive' : 'default'}
+          >
+            {pending ? 'Working…' : actionLabel}
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>

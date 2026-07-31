@@ -11,6 +11,7 @@ import { parseItemKey } from '@/lib/item-keys'
 import type {
   ConnectionEndpoint,
   ConnectionRoutePreferences,
+  ConnectionRouteSide,
   ProjectState,
 } from '@/types/inventory'
 
@@ -448,5 +449,39 @@ export function updateTopologyConnectionRoute(
         route: topologyConnectionRoute(route),
       },
     },
+  })
+}
+
+export function resolveTopologyConnectionRouteSides(
+  client: DomainEngineClient,
+  changes: Array<{
+    connectionId: number
+    sourceSide: ConnectionRouteSide
+    targetSide: ConnectionRouteSide
+  }>,
+) {
+  return client.mutate({
+    operation: {
+      kind: 'resolve-connection-route-sides',
+      payload: {
+        changes: changes.map((change) => ({
+          connection_id: change.connectionId,
+          source_side: change.sourceSide,
+          target_side: change.targetSide,
+        })),
+      },
+    },
+  })
+}
+
+export function resetAllTopologyConnectionBends(client: DomainEngineClient) {
+  return client.mutate({
+    operation: { kind: 'reset-all-connection-bends' },
+  })
+}
+
+export function restoreAutomaticTopologyConnectionRoutes(client: DomainEngineClient) {
+  return client.mutate({
+    operation: { kind: 'restore-automatic-connection-routes' },
   })
 }

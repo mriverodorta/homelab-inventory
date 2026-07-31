@@ -2,10 +2,12 @@ import { Link2, ListChecks } from 'lucide-react'
 import {
   CompatibilityFindingGroups,
   CompatibilityStatusBand,
+} from '@/components/compatibility-status'
+import {
   compatibilityAssignmentIdentity,
   formatCompatibilityAllocation,
   normalizeCompatibilityViewProject,
-} from '@/components/compatibility-status'
+} from '@/components/compatibility-status-model'
 import {
   CompatibilityFields,
   type CompatibilityFieldsProps,

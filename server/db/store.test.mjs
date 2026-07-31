@@ -1,9 +1,13 @@
 import fs from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { evaluateProjectCompatibility } from '../../shared/compatibility/index.mjs'
 import { canonicalPowerPorts } from '../../shared/power-ports.mjs'
+import {
+  ROUTING_CACHE_FORMAT_VERSION,
+  ROUTING_PLANNER_VERSION,
+} from '../../shared/engine/routing-cache-contract.mjs'
 import { CURRENT_SCHEMA_VERSION, HomelabInventoryStore } from './store.mjs'
 import { assertInventoryStoreShape, assertProjectStoreShape } from './validation.mjs'
 
@@ -317,6 +321,150 @@ afterEach(async () => {
 })
 
 describe('HomelabInventoryStore', () => {
+  it('rolls an interrupted multi-store transaction forward before opening stores', async () => {
+    const dataDir = await makeTempDir()
+    const options = {
+      appVersion: '0.4.9',
+      dataDir,
+      legacyProjectPath: path.join(dataDir, 'legacy.json'),
+      saveDebounceMs: 1,
+      seedEmptyData: false,
+      seedDir: path.join(dataDir, 'missing-seed'),
+    }
+    const initial = createStore(options)
+    await initial.init()
+    await initial.flush()
+    const inventory = structuredClone(initial.databases.inventory.data)
+    const project = structuredClone(initial.databases.project.data)
+    inventory.servers.push({ id: 1, name: 'Recovered server' })
+    project.revision += 1
+    project.metadata.name = 'Recovered project'
+
+    await writeJson(path.join(dataDir, '.store-transaction.json'), {
+      version: 1,
+      createdAt: '2026-07-30T00:00:00.000Z',
+      stores: { inventory, project },
+    })
+    await writeJson(path.join(dataDir, 'stores', 'inventory.json'), initial.databases.inventory.data)
+
+    const recovered = createStore(options)
+    await recovered.init()
+
+    expect(recovered.databases.inventory.data.servers[0].name).toBe('Recovered server')
+    expect(recovered.databases.project.data.metadata.name).toBe('Recovered project')
+    await expect(fs.access(path.join(dataDir, '.store-transaction.json'))).rejects.toThrow()
+  })
+
+  it('retries a failed debounced write without an unhandled rejection', async () => {
+    const dataDir = await makeTempDir()
+    const store = createStore({
+      appVersion: '0.4.9',
+      dataDir,
+      legacyProjectPath: path.join(dataDir, 'legacy.json'),
+      flushRetryBaseMs: 5,
+      saveDebounceMs: 1,
+      seedEmptyData: false,
+      seedDir: path.join(dataDir, 'missing-seed'),
+    })
+    await store.init()
+    await store.flush()
+    const originalWrite = store.databases.inventory.write.bind(store.databases.inventory)
+    let attempts = 0
+    store.databases.inventory.write = async () => {
+      attempts += 1
+      if (attempts === 1) throw new Error('transient disk failure')
+      await originalWrite()
+    }
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+    store.databases.inventory.data.servers.push({ id: 1, name: 'Eventually persisted' })
+    store.scheduleFlush('inventory')
+
+    await vi.waitFor(() => expect(attempts).toBeGreaterThanOrEqual(2))
+    await vi.waitFor(() => expect(store.getPersistenceHealth().ok).toBe(true))
+    expect(JSON.parse(await fs.readFile(store.paths.inventory, 'utf8')).servers[0].name)
+      .toBe('Eventually persisted')
+    expect(consoleError).toHaveBeenCalledWith(
+      'LowDB persistence failed; the write remains queued for retry.',
+      expect.any(Error),
+    )
+    consoleError.mockRestore()
+  })
+
+  it('quarantines a truncated routing cache without blocking startup', async () => {
+    const dataDir = await makeTempDir()
+    const options = {
+      appVersion: '0.4.9',
+      dataDir,
+      legacyProjectPath: path.join(dataDir, 'homelab-inventory-project.json'),
+      saveDebounceMs: 1,
+      seedEmptyData: false,
+      seedDir: path.join(dataDir, 'missing-seed'),
+    }
+    const initial = createStore(options)
+    await initial.init()
+    await initial.flush()
+
+    const routingCachePath = path.join(dataDir, 'stores', 'routing-cache.json')
+    await fs.writeFile(routingCachePath, '{"version":3,"entries":[')
+
+    const restarted = createStore(options)
+    await expect(restarted.init()).resolves.toBeUndefined()
+
+    expect(restarted.getRoutingCache()).toMatchObject({
+      version: ROUTING_CACHE_FORMAT_VERSION,
+      plannerVersion: ROUTING_PLANNER_VERSION,
+      entries: [],
+      failures: [],
+    })
+    expect(JSON.parse(await fs.readFile(routingCachePath, 'utf8'))).toMatchObject({
+      version: ROUTING_CACHE_FORMAT_VERSION,
+      plannerVersion: ROUTING_PLANNER_VERSION,
+      entries: [],
+      failures: [],
+    })
+    const storeFiles = await fs.readdir(path.dirname(routingCachePath))
+    expect(storeFiles.some((name) => name.startsWith('routing-cache.json.corrupt-'))).toBe(true)
+  })
+
+  it('persists an empty cache when an outdated planner snapshot is loaded', async () => {
+    const dataDir = await makeTempDir()
+    const options = {
+      appVersion: '0.4.9',
+      dataDir,
+      legacyProjectPath: path.join(dataDir, 'homelab-inventory-project.json'),
+      saveDebounceMs: 1,
+      seedEmptyData: false,
+      seedDir: path.join(dataDir, 'missing-seed'),
+    }
+    const initial = createStore(options)
+    await initial.init()
+    await initial.flush()
+
+    const routingCachePath = path.join(dataDir, 'stores', 'routing-cache.json')
+    const staleCache = initial.getRoutingCache()
+    staleCache.plannerVersion -= 1
+    staleCache.geometryFingerprint = 'stale-geometry'
+    await writeJson(routingCachePath, staleCache)
+
+    const restarted = createStore(options)
+    await restarted.init()
+
+    expect(restarted.getRoutingCache()).toMatchObject({
+      version: ROUTING_CACHE_FORMAT_VERSION,
+      plannerVersion: ROUTING_PLANNER_VERSION,
+      geometryFingerprint: null,
+      entries: [],
+      failures: [],
+    })
+    expect(JSON.parse(await fs.readFile(routingCachePath, 'utf8'))).toMatchObject({
+      plannerVersion: ROUTING_PLANNER_VERSION,
+      geometryFingerprint: null,
+      entries: [],
+      failures: [],
+    })
+  })
+
   it('normalizes newly introduced registry defaults before validating current-schema stores', async () => {
     const dataDir = await makeTempDir()
     const options = {

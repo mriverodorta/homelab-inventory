@@ -16,6 +16,17 @@ import type {
 } from './types'
 
 const disposedError = () => new Error('Workspace engine client is disposed.')
+const DEFAULT_INITIALIZATION_TIMEOUT_MS = 15_000
+const DEFAULT_REQUEST_TIMEOUT_MS = 30_000
+
+export class DomainEngineWorkerTimeoutError extends Error {
+  readonly code = 'domain-engine-worker-timeout'
+
+  constructor(message: string) {
+    super(message)
+    this.name = 'DomainEngineWorkerTimeoutError'
+  }
+}
 
 function operationForCommittedPatch(
   patch: ProjectPatch,
@@ -142,6 +153,8 @@ export class DomainEngineClient {
   private readonly workerFactory
   private readonly supportsWasm
   private readonly maxStartupAttempts
+  private readonly initializationTimeoutMs
+  private readonly requestTimeoutMs
   private readonly listeners = new Set<(state: DomainEngineState) => void>()
   private readonly pending = new Map<number, PendingWorkerRequest>()
   private currentState: DomainEngineState = { phase: 'idle', revision: null }
@@ -169,6 +182,8 @@ export class DomainEngineClient {
       && (options.workerFactory !== undefined || typeof Worker !== 'undefined')
     ))
     this.maxStartupAttempts = options.maxStartupAttempts ?? 3
+    this.initializationTimeoutMs = options.initializationTimeoutMs ?? DEFAULT_INITIALIZATION_TIMEOUT_MS
+    this.requestTimeoutMs = options.requestTimeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS
   }
 
   status() {
@@ -375,7 +390,27 @@ export class DomainEngineClient {
     const worker = this.worker
     if (!worker) return Promise.reject(new Error('Workspace engine worker is unavailable.'))
     return new Promise<EngineResponse>((resolve, reject) => {
-      this.pending.set(request.request_id, { resolve, reject })
+      const timeout = setTimeout(() => {
+        const pending = this.pending.get(request.request_id)
+        if (!pending) return
+        const error = new DomainEngineWorkerTimeoutError('Workspace engine request timed out.')
+        this.pending.delete(request.request_id)
+        pending.reject(error)
+        const shouldRecover = this.currentState.phase === 'ready'
+        this.terminateWorker(error)
+        if (shouldRecover) void this.recover('rebuilding', error.message).catch(() => {})
+      }, this.requestTimeoutMs)
+      this.pending.set(request.request_id, {
+        resolve: (response) => {
+          clearTimeout(timeout)
+          resolve(response)
+        },
+        reject: (error) => {
+          clearTimeout(timeout)
+          reject(error)
+        },
+        timeout,
+      })
       const buffer = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength)
       worker.postMessage(
         { kind: 'dispatch', requestId: request.request_id, request: buffer },
@@ -437,7 +472,22 @@ export class DomainEngineClient {
     }
 
     return new Promise<void>((resolve, reject) => {
-      this.initialization = { resolve, reject }
+      const timeout = setTimeout(() => {
+        if (!this.initialization) return
+        const error = new DomainEngineWorkerTimeoutError('Workspace engine initialization timed out.')
+        this.initialization = null
+        reject(error)
+      }, this.initializationTimeoutMs)
+      this.initialization = {
+        resolve: () => {
+          clearTimeout(timeout)
+          resolve()
+        },
+        reject: (error) => {
+          clearTimeout(timeout)
+          reject(error)
+        },
+      }
       const buffer = snapshotBytes.buffer.slice(
         snapshotBytes.byteOffset,
         snapshotBytes.byteOffset + snapshotBytes.byteLength,

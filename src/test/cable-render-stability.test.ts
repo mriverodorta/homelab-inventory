@@ -3,20 +3,26 @@ import {
   CANVAS_CABLE_Z_INDEX,
   CANVAS_NODE_ACTIVE_Z_INDEX,
   CANVAS_NODE_BASE_Z_INDEX,
+  cableRouteMatchesEndpoints,
   cableRouteResultsEqual,
   preserveCanvasNodeRuntimeState,
   reconcileItemsById,
+  selectStableCableRoute,
 } from '@/lib/cable-render-stability'
 
 describe('cable render stability', () => {
   it('recognizes equal calculated routes and preserves equal item objects', () => {
     const route = {
       points: [{ x: 0, y: 0 }, { x: 24, y: 0 }],
+      sourceSide: 'right' as const,
+      targetSide: 'left' as const,
       manualAnchorPointIndexes: [1],
       usedFallback: false,
     }
     expect(cableRouteResultsEqual(route, {
       points: route.points.map((point) => ({ ...point })),
+      sourceSide: 'right',
+      targetSide: 'left',
       manualAnchorPointIndexes: [1],
       usedFallback: false,
     })).toBe(true)
@@ -58,6 +64,80 @@ describe('cable render stability', () => {
       measured: current.measured,
       selected: true,
     })
+  })
+
+  it('recognizes whether a planned route matches mounted endpoint handles', () => {
+    const route = {
+      points: [{ x: 24, y: 48 }, { x: 120, y: 48 }],
+      sourceSide: 'right' as const,
+      targetSide: 'left' as const,
+      manualAnchorPointIndexes: [],
+      usedFallback: false,
+    }
+
+    expect(cableRouteMatchesEndpoints(route, { x: 24, y: 48 }, { x: 120, y: 48 })).toBe(true)
+    expect(cableRouteMatchesEndpoints(undefined, { x: 24, y: 48 }, { x: 120, y: 48 })).toBe(false)
+    expect(cableRouteMatchesEndpoints(route, null, { x: 120, y: 48 })).toBe(false)
+    expect(cableRouteMatchesEndpoints(route, { x: 24, y: 48 }, { x: 132, y: 48 })).toBe(false)
+  })
+
+  it('keeps the previous route while a new plan targets stale endpoint geometry', () => {
+    const previous = {
+      points: [{ x: 0, y: 0 }, { x: 100, y: 100 }],
+      sourceSide: 'right' as const,
+      targetSide: 'left' as const,
+      manualAnchorPointIndexes: [],
+      usedFallback: false,
+    }
+    const planned = {
+      ...previous,
+      points: [{ x: 12, y: 0 }, { x: 112, y: 100 }],
+    }
+
+    expect(selectStableCableRoute({
+      planned,
+      previous,
+      source: { x: 0, y: 0 },
+      target: { x: 100, y: 100 },
+    })).toBe(previous)
+  })
+
+  it('uses a persisted plan on first render before handles finish measuring', () => {
+    const planned = {
+      points: [{ x: 12, y: 0 }, { x: 112, y: 100 }],
+      sourceSide: 'right' as const,
+      targetSide: 'left' as const,
+      manualAnchorPointIndexes: [],
+      usedFallback: false,
+    }
+
+    expect(selectStableCableRoute({
+      planned,
+      previous: undefined,
+      source: null,
+      target: null,
+    })).toBe(planned)
+  })
+
+  it('promotes a current plan after it matches both measured endpoints', () => {
+    const previous = {
+      points: [{ x: 0, y: 0 }, { x: 100, y: 100 }],
+      sourceSide: 'right' as const,
+      targetSide: 'left' as const,
+      manualAnchorPointIndexes: [],
+      usedFallback: false,
+    }
+    const planned = {
+      ...previous,
+      points: [{ x: 12, y: 0 }, { x: 112, y: 100 }],
+    }
+
+    expect(selectStableCableRoute({
+      planned,
+      previous,
+      source: { x: 12, y: 0 },
+      target: { x: 112, y: 100 },
+    })).toBe(planned)
   })
 
   it('uses stable base layers while selection emphasis remains presentation-only', () => {

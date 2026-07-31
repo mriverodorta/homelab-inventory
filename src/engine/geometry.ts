@@ -9,6 +9,8 @@ import type { ProjectState, ServerPlacement } from '@/types/inventory'
 
 const ARRANGEMENT_COLUMN_GAP = 78
 const ARRANGEMENT_GRID_SIZE = 24
+const MIN_GRID_PLACEMENT_SEARCH_RINGS = 256
+const MAX_GRID_PLACEMENT_SEARCH_RINGS = 4096
 
 export type ProjectGeometrySnapshot = {
   fingerprint: string
@@ -59,6 +61,33 @@ export async function syncProjectGeometry(
 export function createProjectGeometrySnapshot(project: ProjectState): ProjectGeometrySnapshot {
   const nodes = project.placements.map((placement) => placementNode(project, placement))
   return { nodes, fingerprint: JSON.stringify(nodes) }
+}
+
+export async function snapProjectItemsToGrid(
+  client: DomainEngineClient,
+  project: ProjectState,
+) {
+  const snapshot = createProjectGeometrySnapshot(project)
+  const maxRings = Math.min(
+    MAX_GRID_PLACEMENT_SEARCH_RINGS,
+    Math.max(MIN_GRID_PLACEMENT_SEARCH_RINGS, snapshot.nodes.length * 64),
+  )
+  const response = await client.mutate({
+    operation: {
+      kind: 'snap-placements-to-grid',
+      payload: {
+        nodes: snapshot.nodes,
+        grid_size: ARRANGEMENT_GRID_SIZE,
+        max_rings: maxRings,
+      },
+    },
+  })
+  if (response.result.kind === 'patch') return response
+  throw new Error(
+    response.result.kind === 'error'
+      ? response.result.payload.message
+      : 'Canvas equipment could not be aligned to the grid.',
+  )
 }
 
 export async function checkProjectPlacement(

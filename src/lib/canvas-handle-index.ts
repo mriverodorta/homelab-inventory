@@ -1,4 +1,4 @@
-import { getConnectionRoute } from '@/lib/cable-routing'
+import { CABLE_SIDES, getEndpointHandleId } from '@/lib/cable-routing'
 import type { ProjectState } from '@/types/inventory'
 
 export type CanvasHandleIndex = ReadonlyMap<string, ReadonlySet<string>>
@@ -21,12 +21,11 @@ export function buildCanvasHandleIndex(project: ProjectState): CanvasHandleIndex
     mutableIndex.set(itemId, handles)
   }
 
-  for (const [connectionIndex, connection] of (project.connections ?? []).entries()) {
-    const route = getConnectionRoute(project, connection, connectionIndex)
-    if (!route) continue
-
-    add(connection.from.itemId, route.sourceHandle)
-    add(connection.to.itemId, route.targetHandle)
+  for (const connection of project.connections ?? []) {
+    for (const side of CABLE_SIDES) {
+      add(connection.from.itemId, getEndpointHandleId('source', side, connection.from))
+      add(connection.to.itemId, getEndpointHandleId('target', side, connection.to))
+    }
   }
 
   return mutableIndex

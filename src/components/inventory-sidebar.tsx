@@ -31,7 +31,7 @@ import { InventoryActionsMenu } from '@/components/inventory-actions-menu'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { InventoryItemDialog } from '@/components/inventory-item-dialog'
+import { InventoryItemDialog } from '@/components/inventory/lazy-inventory-item-dialog'
 import {
   Select,
   SelectContent,
@@ -216,6 +216,27 @@ function DraggableInventoryItem({
   )
 }
 
+export type InventorySidebarProps = {
+  project: ProjectState
+  onSelect: (itemId: string) => void
+  onCreateItem: (item: InventoryItemInput, quantity: number) => Promise<void>
+  onDuplicateItem?: (item: InventoryItem) => void
+  onArchiveItems?: (items: InventoryItem[]) => void
+  onRestoreItems?: (items: InventoryItem[]) => void
+  onDeleteItems?: (items: InventoryItem[]) => void
+  onSaveAsTemplate?: (item: InventoryItem) => void
+  registry?: RegistryState
+  onDuplicatePrivateTemplate?: (id: number) => Promise<void>
+  onDeletePrivateTemplate?: (id: number) => Promise<void>
+  onOpenRegistrySettings?: () => void
+  onCreateCatalogItem?: (templateKey: string, quantity: number) => Promise<void>
+  lifecycleRevision?: number
+  lifecycleBusy?: boolean
+  onClose?: () => void
+  width?: number
+  className?: string
+}
+
 export function InventorySidebar({
   project,
   onSelect,
@@ -235,26 +256,7 @@ export function InventorySidebar({
   onClose,
   width,
   className,
-}: {
-  project: ProjectState
-  onSelect: (itemId: string) => void
-  onCreateItem: (item: InventoryItemInput, quantity: number) => Promise<void>
-  onDuplicateItem?: (item: InventoryItem) => void
-  onArchiveItems?: (items: InventoryItem[]) => void
-  onRestoreItems?: (items: InventoryItem[]) => void
-  onDeleteItems?: (items: InventoryItem[]) => void
-  onSaveAsTemplate?: (item: InventoryItem) => void
-  registry?: RegistryState
-  onDuplicatePrivateTemplate?: (id: number) => Promise<void>
-  onDeletePrivateTemplate?: (id: number) => Promise<void>
-  onOpenRegistrySettings?: () => void
-  onCreateCatalogItem?: (templateKey: string, quantity: number) => Promise<void>
-  lifecycleRevision?: number
-  lifecycleBusy?: boolean
-  onClose?: () => void
-  width?: number
-  className?: string
-}) {
+}: InventorySidebarProps) {
   const [addDialogOpen, setAddDialogOpen] = useState(false)
   const [filters, setFilters] = useState<InventoryFilters>({
     query: '',
@@ -361,6 +363,8 @@ export function InventorySidebar({
               type="button"
               size="sm"
               className="h-8 shrink-0 bg-[#f7f1e8] text-[#20242c] hover:bg-[#e9dcc8]"
+              onPointerEnter={() => void InventoryItemDialog.prefetch()}
+              onFocus={() => void InventoryItemDialog.prefetch()}
               onClick={() => setAddDialogOpen(true)}
             >
               <Plus className="size-3.5" />

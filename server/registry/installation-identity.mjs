@@ -12,14 +12,35 @@ import {
   installationPublicKeyId,
   signedRequestPayload,
 } from '../../packages/catalog-protocol/src/index.ts'
+import { expectRegistryJson } from './response-json.mjs'
 
 const DEFAULT_REGISTRY_ORIGIN = 'https://registry.homelabinventory.com'
 const REQUEST_TIMEOUT_MS = 15_000
 
-async function responseJson(response, fallback) {
-  const payload = await response.json().catch(() => null)
-  if (!response.ok) throw new Error(payload?.message ?? `${fallback} (HTTP ${response.status}).`)
-  return payload
+function validCredentialString(value, maximum = 4096) {
+  return typeof value === 'string' && value.length > 0 && value.length <= maximum
+}
+
+function normalizeCredentials(value) {
+  if (
+    !value
+    || typeof value !== 'object'
+    || Array.isArray(value)
+    || !validCredentialString(value.installationKey, 256)
+    || !validCredentialString(value.publicKeyId, 256)
+    || !validCredentialString(value.token)
+    || !validCredentialString(value.tokenScope, 512)
+    || !validCredentialString(value.tokenExpiresAt, 128)
+    || !Number.isFinite(Date.parse(value.tokenExpiresAt))
+  ) return null
+
+  return {
+    installationKey: value.installationKey,
+    publicKeyId: value.publicKeyId,
+    token: value.token,
+    tokenScope: value.tokenScope,
+    tokenExpiresAt: value.tokenExpiresAt,
+  }
 }
 
 export class InstallationIdentityService {
@@ -29,6 +50,8 @@ export class InstallationIdentityService {
     this.credentialsPath = path.join(this.directory, 'installation-credentials.json')
     this.officialOrigin = new URL(officialOrigin).origin
     this.fetchImpl = fetchImpl
+    this.credentialsInFlight = null
+    this.identityMutation = null
   }
 
   async ensureKeyPair() {
@@ -50,8 +73,7 @@ export class InstallationIdentityService {
 
   async readCredentials() {
     try {
-      const credentials = JSON.parse(await fs.readFile(this.credentialsPath, 'utf8'))
-      return credentials?.token && credentials?.tokenExpiresAt ? credentials : null
+      return normalizeCredentials(JSON.parse(await fs.readFile(this.credentialsPath, 'utf8')))
     } catch (error) {
       if (error?.code === 'ENOENT') return null
       throw error
@@ -60,17 +82,26 @@ export class InstallationIdentityService {
 
   async writeCredentials(credentials) {
     const temporary = `${this.credentialsPath}.${process.pid}.${Date.now()}.tmp`
-    await fs.writeFile(temporary, `${JSON.stringify(credentials, null, 2)}\n`, { mode: 0o600 })
-    await fs.chmod(temporary, 0o600)
-    await fs.rename(temporary, this.credentialsPath)
-    await fs.chmod(this.credentialsPath, 0o600)
+    try {
+      await fs.writeFile(temporary, `${JSON.stringify(credentials, null, 2)}\n`, { mode: 0o600 })
+      await fs.chmod(temporary, 0o600)
+      await fs.rename(temporary, this.credentialsPath)
+      await fs.chmod(this.credentialsPath, 0o600)
+    } finally {
+      await fs.rm(temporary, { force: true }).catch(() => {})
+    }
   }
 
   async post(pathname, body, headers = {}) {
+    if (typeof pathname !== 'string' || !pathname.startsWith('/v1/')) {
+      throw new Error('Registry request path is invalid.')
+    }
+    const target = new URL(pathname, this.officialOrigin)
+    if (target.origin !== this.officialOrigin) throw new Error('Registry request origin is invalid.')
     const controller = new AbortController()
     const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS)
     try {
-      return await this.fetchImpl(new URL(pathname, this.officialOrigin), {
+      return await this.fetchImpl(target, {
         method: 'POST',
         headers: { accept: 'application/json', 'content-type': 'application/json', ...headers },
         body: JSON.stringify(body),
@@ -81,9 +112,9 @@ export class InstallationIdentityService {
     }
   }
 
-  async activate(store, now = new Date()) {
+  async activateInternal(store, now = new Date()) {
     const keys = await this.ensureKeyPair()
-    const challenge = await responseJson(
+    const challenge = await expectRegistryJson(
       await this.post('/v1/installations/challenge', { publicKey: keys.publicKey }),
       'Registry installation challenge failed',
     )
@@ -95,7 +126,7 @@ export class InstallationIdentityService {
       Buffer.from(activationSignaturePayload(challenge)),
       keys.privateKey,
     ).toString('base64url')
-    const activation = await responseJson(
+    const activation = await expectRegistryJson(
       await this.post('/v1/installations/activate', { challengeKey: challenge.challengeKey, signature }),
       'Registry installation activation failed',
     )
@@ -120,14 +151,68 @@ export class InstallationIdentityService {
     return credentials
   }
 
-  async credentials(store, now = new Date()) {
-    const credentials = await this.readCredentials()
-    if (credentials && Date.parse(credentials.tokenExpiresAt) > now.getTime() + 30_000) return credentials
-    return this.activate(store, now)
+  runIdentityMutation(operation) {
+    const previous = this.identityMutation
+    const running = (async () => {
+      await previous?.catch(() => {})
+      await this.credentialsInFlight?.catch(() => {})
+      return operation()
+    })()
+    const tracked = running.finally(() => {
+      if (this.identityMutation === tracked) this.identityMutation = null
+    })
+    this.identityMutation = tracked
+    return tracked
   }
 
-  async signedPost(store, pathname, body, now = new Date()) {
-    const credentials = await this.credentials(store, now)
+  activate(store, now = new Date()) {
+    return this.runIdentityMutation(() => this.activateInternal(store, now))
+  }
+
+  async credentials(store, now = new Date()) {
+    await this.identityMutation?.catch(() => {})
+    if (!this.credentialsInFlight) {
+      const operation = (async () => {
+        const credentials = await this.readCredentials()
+        const keys = await this.ensureKeyPair()
+        if (
+          credentials
+          && credentials.publicKeyId === keys.publicKeyId
+          && Date.parse(credentials.tokenExpiresAt) > now.getTime() + 30_000
+        ) {
+          const identity = store.getRegistryState().installationIdentity
+          if (
+            identity?.installationKey !== credentials.installationKey
+            || identity?.publicKeyId !== credentials.publicKeyId
+            || identity?.state !== 'active'
+            || identity?.tokenExpiresAt !== credentials.tokenExpiresAt
+          ) {
+            store.registryTransaction((draft) => {
+              draft.installationIdentity = {
+                installationKey: credentials.installationKey,
+                publicKeyId: credentials.publicKeyId,
+                state: 'active',
+                activatedAt: identity?.activatedAt ?? now.toISOString(),
+                tokenExpiresAt: credentials.tokenExpiresAt,
+                revokedAt: null,
+              }
+            })
+          }
+          return credentials
+        }
+        if (credentials) await fs.rm(this.credentialsPath, { force: true })
+        return this.activateInternal(store, now)
+      })()
+      const inFlight = operation.finally(() => {
+        if (this.credentialsInFlight === inFlight) this.credentialsInFlight = null
+      })
+      this.credentialsInFlight = inFlight
+    }
+    return this.credentialsInFlight
+  }
+
+  async signedPost(store, pathname, body, now = new Date(), providedCredentials = null) {
+    const credentials = providedCredentials ?? await this.credentials(store, now)
     const { privateKey } = await this.ensureKeyPair()
     const timestamp = now.toISOString()
     const nonce = randomBytes(24).toString('base64url')
@@ -143,10 +228,13 @@ export class InstallationIdentityService {
     })
   }
 
-  async revoke(store, { disable = true } = {}) {
+  async revokeInternal(store, { disable = true } = {}) {
     const credentials = await this.readCredentials()
     if (credentials) {
-      await responseJson(await this.signedPost(store, '/v1/installations/revoke', {}), 'Registry revocation failed')
+      await expectRegistryJson(
+        await this.signedPost(store, '/v1/installations/revoke', {}, new Date(), credentials),
+        'Registry revocation failed',
+      )
     }
     await fs.rm(this.credentialsPath, { force: true })
     store.registryTransaction((draft) => {
@@ -160,13 +248,19 @@ export class InstallationIdentityService {
     })
   }
 
-  async rotate(store) {
-    const enabled = store.getRegistryState().settings.automaticContributions === true
-    await this.revoke(store, { disable: false })
-    await fs.rm(this.privateKeyPath, { force: true })
-    store.registryTransaction((draft) => { draft.installationIdentity = null })
-    const credentials = await this.activate(store)
-    if (enabled) store.registryTransaction((draft) => { draft.settings.automaticContributions = true })
-    return credentials
+  revoke(store, options) {
+    return this.runIdentityMutation(() => this.revokeInternal(store, options))
+  }
+
+  rotate(store) {
+    return this.runIdentityMutation(async () => {
+      const enabled = store.getRegistryState().settings.automaticContributions === true
+      await this.revokeInternal(store, { disable: false })
+      await fs.rm(this.privateKeyPath, { force: true })
+      store.registryTransaction((draft) => { draft.installationIdentity = null })
+      const credentials = await this.activateInternal(store)
+      if (enabled) store.registryTransaction((draft) => { draft.settings.automaticContributions = true })
+      return credentials
+    })
   }
 }

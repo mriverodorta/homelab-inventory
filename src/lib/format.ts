@@ -345,7 +345,7 @@ export function formatInventoryCompactSpec(item: InventoryItem): string | null {
     const size = specNumber(item, 'sizeInches', 'diagonalInches')
     const refresh = specNumber(item, 'refreshRateHz')
     return compactParts(
-      size === undefined ? undefined : `${size}\"`,
+      size === undefined ? undefined : `${size}"`,
       specText(item, 'resolution'),
       refresh === undefined ? undefined : `${refresh}Hz`,
     )

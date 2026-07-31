@@ -2,7 +2,9 @@ import { describe, expect, it } from 'vitest'
 import {
   assertRegistryStoreShape,
   createRegistryStore,
+  MAX_PRIVATE_TEMPLATE_IMPORT_COUNT,
   normalizeRegistryStore,
+  previewPrivateTemplatePack,
 } from './model.mjs'
 
 describe('registry store model', () => {
@@ -56,5 +58,18 @@ describe('registry store model', () => {
       ...createRegistryStore(),
       privateTemplates: [{ ...template, id: '1' }],
     })).toThrow(/positive safe integer/)
+  })
+
+  it('rejects oversized private template packs before hashing their entries', async () => {
+    const result = await previewPrivateTemplatePack({
+      format: 'homelab-inventory-private-templates',
+      version: 1,
+      templates: Array.from({ length: MAX_PRIVATE_TEMPLATE_IMPORT_COUNT + 1 }, () => ({})),
+      checksum: 'a'.repeat(64),
+    })
+
+    expect(result.valid).toBe(false)
+    expect(result.templates).toEqual([])
+    expect(result.errors).toContain(`Template pack cannot contain more than ${MAX_PRIVATE_TEMPLATE_IMPORT_COUNT} templates.`)
   })
 })

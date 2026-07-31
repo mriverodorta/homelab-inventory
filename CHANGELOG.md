@@ -6,6 +6,39 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 
 ## Unreleased
 
+## [0.5.0] - 2026-07-31
+
+### Added
+
+- Added a disposable LowDB routing cache that restores calculated cable paths immediately after refresh, hydrates the WASM planner, and safely rebuilds outdated or damaged cache data without changing canonical project data.
+- General workspace settings can now align all equipment to the nearest collision-free grid position, clear every manual cable bend, or restore automatic endpoint sides as confirmed, Undo-compatible project actions.
+- Inspector connection cards now include an **Open cable** action for direct route review and editing.
+
+### Changed
+
+- The workbench now lazy-loads the canvas, drag-and-drop runtime, inventory, Inspector, Settings, onboarding, and secondary dialogs. Retryable loading states and CI bundle budgets protect startup performance.
+- Cable endpoint sides are resolved and persisted as explicit Top, Right, Bottom, or Left values. Routes prefer the center of the selected port face, use 12 px alternatives only when they simplify the path, and preserve manual bend anchors.
+
+### Fixed
+
+- Reworked WASM cable planning for dense layouts: bounded searches expand progressively, straight and one-turn routes win over unnecessary detours, facing ports share nearby grid lanes, and reordered patch panels or rotated power equipment use their measured geometry without routing through cards.
+- Cable rendering now preserves the last validated route while handles are measured or individual paths are recalculated. Partial failures remain isolated, successful routes persist incrementally, and unrelated cables stay visible when equipment or another connection is focused.
+- Routing invalidation and continuation are now geometry-driven and bounded. Pan, zoom, selection, Inspector state, and filters no longer trigger recalculation; large cable sets resume completed batches instead of restarting, timing out, or entering idle render loops.
+- LowDB writes now retry transient failures, expose degraded persistence health, and recover interrupted multi-store saves through a write-ahead journal. Inventory, project, catalog-link, and routing-cache mutations roll back together when validation or persistence fails.
+- Registry enrollment, contribution delivery, catalog refresh, and private-template creation now contain background failures, validate bounded remote responses, preserve the last-known-good catalog and identity, and serialize relational ID allocation.
+- Undo and Redo now rebase onto the latest project revision, while UPS and power-strip orientation changes validate the projected footprint before persistence.
+- Browser and workspace-engine requests now time out into recoverable states; invalid runtime configuration fails fast; graceful shutdown drains schedules, event streams, registry work, and pending stores; and local development no longer applies the production request limiter.
+
+### Security
+
+- Browser mutations now require a same-origin context, unexpected API errors return sanitized responses, and authenticated agent or command-line workflows remain supported.
+- Agent enrollment validates HTTP and HTTPS origins, writes configuration without shell evaluation, and bounds and rate-limits heartbeat telemetry.
+- Public demo sandboxes now remove smart-device addresses, custom names, labels, notes, and metadata across every equipment type while serializing and limiting sandbox creation.
+
+### Notes
+
+- Generated routes are stored separately from canonical project data and do not advance project revisions or enter Undo and Redo history. The cache can be deleted or rebuilt safely.
+
 ## [0.4.9] - 2026-07-29
 
 ### Fixed

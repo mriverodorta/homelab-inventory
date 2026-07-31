@@ -102,6 +102,7 @@ function createManager(options) {
 }
 
 afterEach(async () => {
+  vi.unstubAllEnvs()
   await Promise.all(activeManagers.splice(0).map((manager) => manager.flushAll().catch(() => {})))
   await Promise.all(tempDirs.splice(0).map((dir) => fs.rm(dir, { recursive: true, force: true })))
 })
@@ -166,11 +167,31 @@ describe('demo data sanitizer', () => {
           specs: { interface: 'NVMe', formFactor: '2280' },
         },
       ],
+      powerStrips: [
+        {
+          id: 1,
+          name: 'Office Kasa Strip',
+          type: 'powerStrip',
+          properties: {
+            name: 'Office Kasa Strip',
+            smart: {
+              displayName: 'Rack Strip',
+              managementIp: '192.0.2.99',
+              macAddress: 'aa:bb:cc:dd:ee:ff',
+              outlets: [{ slotNumber: 1, name: 'SkyWatch', customName: 'SkyWatch' }],
+            },
+          },
+          ports: [{ id: 1, label: 'Jellyfin host', notes: 'rack A', ipAddress: '192.0.2.8' }],
+        },
+      ],
+      monitors: [{ id: 1, type: 'monitor', name: 'Office Display' }],
+      upsSystems: [{ id: 1, type: 'ups', name: 'Server Rack UPS' }],
     })
     await writeJson(path.join(sourceDir, 'stores', 'project.json'), {
       id: 'default',
       metadata: {
         name: 'Private Homelab',
+        notes: 'Basement rack at 192.0.2.2',
         version: 1,
         updatedAt: '2026-07-09T00:00:00.000Z',
       },
@@ -229,6 +250,21 @@ describe('demo data sanitizer', () => {
       },
       extension: { retained: true },
     })
+    expect(inventory.powerStrips[0]).toMatchObject({
+      name: 'Demo Power Strip 1',
+      properties: {
+        name: 'Demo Power Strip 1',
+        smart: {
+          displayName: '',
+          managementIp: '',
+          macAddress: '',
+          outlets: [{ slotNumber: 1, name: '', customName: '' }],
+        },
+      },
+      ports: [{ id: 1, label: '', notes: '', ipAddress: '' }],
+    })
+    expect(inventory.monitors[0].name).toBe('Demo Monitor 1')
+    expect(inventory.upsSystems[0].name).toBe('Demo UPS 1')
     expect(Object.keys(inventory).sort()).toEqual(Object.keys(inventoryTables()).sort())
     expect(project.assignments[0].allocation).toEqual({
       resourceType: 'storage',
@@ -236,6 +272,7 @@ describe('demo data sanitizer', () => {
       positions: [0],
     })
     expect(project.metadata.name).toBe('Homelab Inventory Demo')
+    expect(project.metadata.notes).toBe('')
     expect(meta.skippedUpdateVersion).toBeNull()
     expect(meta.lastUpdateCheck).toBeNull()
     expect(agents).toEqual({ enrollments: {}, devices: {} })
@@ -598,6 +635,38 @@ describe('DemoSessionManager', () => {
     expect(Object.hasOwn(manager.sessions, created.sessionId)).toBe(true)
   })
 
+  it('never trusts persisted session IDs or data paths during cleanup', async () => {
+    const sourceDir = await createSourceData()
+    const dataDir = await makeTempDir()
+    const outsideDir = await makeTempDir()
+    const markerPath = path.join(outsideDir, 'keep.txt')
+    const validId = 'A'.repeat(32)
+    const sessionsDir = path.join(dataDir, 'demo-sessions')
+    await fs.writeFile(markerPath, 'keep')
+    await writeJson(path.join(sessionsDir, 'index.json'), {
+      [validId]: {
+        id: validId,
+        createdAt: '2026-07-01T00:00:00.000Z',
+        expiresAt: '2026-07-01T00:01:00.000Z',
+        lastSeenAt: '2026-07-01T00:00:00.000Z',
+        dataDir: outsideDir,
+      },
+      '../outside': {
+        id: '../outside',
+        createdAt: '2026-07-01T00:00:00.000Z',
+        expiresAt: '2099-07-01T00:01:00.000Z',
+        dataDir: outsideDir,
+      },
+    })
+    const manager = createManager({ appVersion: '0.1.11', dataDir, sourceDir, saveDebounceMs: 1 })
+
+    await manager.init()
+
+    expect(await fs.readFile(markerPath, 'utf8')).toBe('keep')
+    expect(Object.keys(manager.sessions)).toEqual([])
+    expect(await readJson(manager.indexPath)).toEqual({})
+  })
+
   it('enforces the active session cap after expired cleanup', async () => {
     const sourceDir = await createSourceData()
     const dataDir = await makeTempDir()
@@ -614,6 +683,52 @@ describe('DemoSessionManager', () => {
     await manager.getOrCreateSessionStore(null)
 
     await expect(manager.getOrCreateSessionStore(null)).rejects.toThrow('The public demo is temporarily busy.')
+  })
+
+  it('serializes concurrent creation so the active session cap cannot be exceeded', async () => {
+    const sourceDir = await createSourceData()
+    const dataDir = await makeTempDir()
+    const manager = createManager({
+      appVersion: '0.1.11',
+      dataDir,
+      sourceDir,
+      maxSessions: 1,
+      saveDebounceMs: 1,
+    })
+
+    await manager.init()
+    const results = await Promise.allSettled([
+      manager.getOrCreateSessionStore(null, { clientKey: '198.51.100.1' }),
+      manager.getOrCreateSessionStore(null, { clientKey: '198.51.100.2' }),
+    ])
+
+    expect(results.filter((result) => result.status === 'fulfilled')).toHaveLength(1)
+    expect(results.filter((result) => result.status === 'rejected')).toHaveLength(1)
+    expect(Object.keys(manager.sessions)).toHaveLength(1)
+    expect(Object.keys(await readJson(manager.indexPath))).toHaveLength(1)
+  })
+
+  it('rate limits new sandboxes per client without blocking a valid existing session', async () => {
+    const sourceDir = await createSourceData()
+    const dataDir = await makeTempDir()
+    const manager = createManager({
+      appVersion: '0.1.11',
+      dataDir,
+      sourceDir,
+      maxSessionCreationsPerClient: 1,
+      maxSessionCreationsGlobally: 10,
+      saveDebounceMs: 1,
+    })
+
+    await manager.init()
+    const created = await manager.getOrCreateSessionStore(null, { clientKey: '198.51.100.8' })
+
+    await expect(
+      manager.getOrCreateSessionStore(null, { clientKey: '198.51.100.8' }),
+    ).rejects.toMatchObject({ status: 429 })
+
+    const reused = await manager.getOrCreateSessionStore(created.sessionId, { clientKey: '198.51.100.8' })
+    expect(reused.sessionId).toBe(created.sessionId)
   })
 
   it('validates source data and exposes cookie options', async () => {
@@ -635,6 +750,10 @@ describe('DemoSessionManager', () => {
       secure: false,
       path: '/',
     })
+    vi.stubEnv('NODE_ENV', 'production')
+    expect(manager.cookieOptions().secure).toBe(true)
+    vi.stubEnv('DEMO_COOKIE_SECURE', 'false')
+    expect(manager.cookieOptions().secure).toBe(false)
     await expect(manager.init()).rejects.toThrow('Demo source data is missing required file:')
   })
 

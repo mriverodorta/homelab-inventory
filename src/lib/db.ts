@@ -1,4 +1,5 @@
 import { DEFAULT_PROJECT_ID } from '@/lib/project'
+import { fetchWithTimeout } from '@/lib/fetch-with-timeout'
 import type { InventoryDependencyReport, InventoryRef } from '@/lib/inventory-lifecycle'
 import type {
   InventoryItem,
@@ -11,7 +12,7 @@ import type {
 export type InventoryItemInput = Omit<InventoryItem, 'id' | 'key'>
 
 export async function apiRequest<T>(url: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(url, {
+  const response = await fetchWithTimeout(url, {
     ...init,
     headers: {
       'Content-Type': 'application/json',

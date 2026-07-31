@@ -32,6 +32,33 @@ describe('WASM runtime verifier', () => {
     await expect(verifyWasmRuntime(root)).rejects.toThrow(/server\/engine.*dist\/assets/u)
   })
 
+  it('rejects missing relative modules imported by the production server graph', async () => {
+    const root = await runtimeFixture()
+    await fs.writeFile(path.join(root, 'server', 'index.mjs'), "import './missing-runtime-module.mjs'\n")
+
+    await expect(verifyWasmRuntime(root)).rejects.toThrow('server/missing-runtime-module.mjs')
+  })
+
+  it('follows Bun-compatible extensionless TypeScript imports', async () => {
+    const root = await runtimeFixture()
+    await fs.writeFile(path.join(root, 'server', 'index.mjs'), "import '../packages/runtime/src/index.ts'\n")
+    await fs.mkdir(path.join(root, 'packages', 'runtime', 'src'), { recursive: true })
+    await fs.writeFile(
+      path.join(root, 'packages', 'runtime', 'src', 'index.ts'),
+      "export { value } from './value'\n",
+    )
+    await fs.writeFile(path.join(root, 'packages', 'runtime', 'src', 'value.ts'), 'export const value = true\n')
+
+    await expect(verifyWasmRuntime(root)).resolves.toMatchObject({ ok: true })
+  })
+
+  it('rejects unresolved extensionless imports', async () => {
+    const root = await runtimeFixture()
+    await fs.writeFile(path.join(root, 'server', 'index.mjs'), "import './missing-runtime-module'\n")
+
+    await expect(verifyWasmRuntime(root)).rejects.toThrow('server/missing-runtime-module')
+  })
+
   it.each([
     ['rust source', 'rust/crates/core/src/lib.rs'],
     ['Cargo manifest', 'Cargo.toml'],

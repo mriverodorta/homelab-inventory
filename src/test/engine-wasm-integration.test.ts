@@ -727,7 +727,7 @@ describe('Rust WASM engine integration', () => {
     expect(obstacleRoute.result.kind).toBe('obstacle-route')
     if (obstacleRoute.result.kind !== 'obstacle-route') throw new Error('Expected obstacle route')
     expect(obstacleRoute.result.payload.route.points.some((point) => (
-      point.y === 12 || point.y === 132
+      point.y <= 6 || point.y >= 138
     ))).toBe(true)
 
     const laneRequests = [1, 2].map((connectionId) => ({
@@ -777,6 +777,159 @@ describe('Rust WASM engine integration', () => {
     expect(reused.result).toMatchObject({
       kind: 'cable-routes-planned',
       payload: { recalculated_connection_ids: [] },
+    })
+    expect(runtime.destroy(handle)).toBe(true)
+  })
+
+  it('routes tightly stacked UPS and power-strip ports through one shared grid lane', async () => {
+    const bytes = await fs.readFile(wasmPath)
+    const runtime = await WasmEngineRuntime.instantiate(bytes)
+    const handle = runtime.create(encodeEngineSnapshot({
+      revision: 1,
+      project_name: 'Power routing regression',
+      topology: EMPTY_ENGINE_TOPOLOGY,
+    }))
+
+    const response = decodeEngineResponse(runtime.dispatch(handle, encodeEngineRequest({
+      protocol_version: 1,
+      request_id: 72,
+      base_revision: 1,
+      operation: {
+        kind: 'route-around-obstacles',
+        payload: {
+          request: {
+            definition: {
+              connection_id: 72,
+              source: { x: 1168, y: 1347 },
+              target: { x: 960, y: 1003 },
+              source_side: 'top',
+              target_side: 'bottom',
+              lane_offset: 40,
+              manual_bends: [],
+            },
+            source_candidates: [
+              { point: { x: 1168, y: 1347 }, side: 'top' },
+              { point: { x: 1156, y: 1347 }, side: 'top' },
+              { point: { x: 1180, y: 1347 }, side: 'top' },
+            ],
+            target_candidates: [
+              { point: { x: 960, y: 1003 }, side: 'bottom' },
+              { point: { x: 972, y: 1003 }, side: 'bottom' },
+              { point: { x: 948, y: 1003 }, side: 'bottom' },
+            ],
+            source_side_constraint: 'top',
+            target_side_constraint: 'bottom',
+            source_item_id: 'ups:1',
+            target_item_id: 'powerStrip:2',
+            obstacles: [
+              {
+                item_id: 'powerStrip:2',
+                bounds: { x: 876, y: 924, width: 444, height: 243 },
+              },
+              {
+                item_id: 'ups:1',
+                bounds: { x: 1044, y: 1188, width: 444, height: 331 },
+              },
+            ],
+            reserved_segments: [],
+            snap_to_grid: true,
+            grid_size: 12,
+            previous_valid_route: null,
+          },
+        },
+      },
+    })))
+
+    expect(response.result).toEqual({
+      kind: 'obstacle-route',
+      payload: {
+        route: {
+          connection_id: 72,
+          points: [
+            { x: 1168, y: 1347 },
+            { x: 1168, y: 1176 },
+            { x: 960, y: 1176 },
+            { x: 960, y: 1003 },
+          ],
+          manual_anchor_point_indexes: [],
+        },
+        source_side: 'top',
+        target_side: 'bottom',
+        used_fallback: false,
+        warning: null,
+      },
+    })
+    expect(runtime.destroy(handle)).toBe(true)
+  })
+
+  it('aligns all placed items to collision-free grid positions in one reversible patch', async () => {
+    const bytes = await fs.readFile(wasmPath)
+    const runtime = await WasmEngineRuntime.instantiate(bytes)
+    const serverRef = { item_type: 'server', id: 1 }
+    const switchRef = { item_type: 'switch', id: 1 }
+    const handle = runtime.create(encodeEngineSnapshot({
+      revision: 12,
+      project_name: 'Grid Lab',
+      topology: {
+        items: [serverRef, switchRef].map((item) => ({
+          item,
+          archived: false,
+          power_configuration: null,
+          allow_outlet_fan_out: false,
+          ports: [],
+        })),
+        assignments: [],
+        connections: [],
+        placements: [serverRef, switchRef],
+      },
+    }))
+
+    const response = decodeEngineResponse(runtime.dispatch(handle, encodeEngineRequest({
+      protocol_version: 1,
+      request_id: 25,
+      base_revision: 12,
+      operation: {
+        kind: 'snap-placements-to-grid',
+        payload: {
+          nodes: [
+            { item_id: 'server:1', bounds: { x: 11, y: 13, width: 100, height: 100 } },
+            { item_id: 'switch:1', bounds: { x: 105, y: 13, width: 100, height: 100 } },
+          ],
+          grid_size: 24,
+          max_rings: 64,
+        },
+      },
+    })))
+
+    expect(response).toMatchObject({
+      request_id: 25,
+      base_revision: 12,
+      result: {
+        kind: 'patch',
+        payload: {
+          revision: 13,
+          forward: {
+            kind: 'patch-placements',
+            payload: {
+              upsert: [
+                { item: serverRef, x: 0, y: 24 },
+                { item: switchRef, x: 120, y: 24 },
+              ],
+              remove_items: [],
+            },
+          },
+          inverse: {
+            kind: 'patch-placements',
+            payload: {
+              upsert: [
+                { item: serverRef, x: 11, y: 13 },
+                { item: switchRef, x: 105, y: 13 },
+              ],
+              remove_items: [],
+            },
+          },
+        },
+      },
     })
     expect(runtime.destroy(handle)).toBe(true)
   })

@@ -4,8 +4,9 @@ pub use homelab_geometry::{
     ArrangementItem, GeometryHandle, GeometryNode, Point, Rect, Segment, Side,
 };
 pub use homelab_routing::{
-    CableRoutePlan, CableRoutePlanRequest, LaneRouteRequest, ObstacleRouteRequest,
-    ObstacleRouteResult, ReservedSegment, RouteDefinition, RouteEdit, RouteObstacle, RoutePatch,
+    CableRouteCacheSeed, CableRouteFailure, CableRoutePlan, CableRoutePlanRequest,
+    CachedLaneRouteSeed, LaneRouteRequest, ObstacleRouteRequest, ObstacleRouteResult,
+    ReservedSegment, RouteDefinition, RouteEdit, RouteEndpointCandidate, RouteObstacle, RoutePatch,
     RouteWarning, RoutedPath,
 };
 pub use homelab_topology::{
@@ -52,6 +53,13 @@ pub struct AssignmentChange {
     pub next: Option<TopologyAssignment>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ConnectionRouteSideResolution {
+    pub connection_id: u32,
+    pub source_side: Side,
+    pub target_side: Side,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", content = "payload", rename_all = "kebab-case")]
 pub enum Operation {
@@ -86,6 +94,11 @@ pub enum Operation {
         connection_id: u32,
         route: Option<TopologyConnectionRoute>,
     },
+    ResolveConnectionRouteSides {
+        changes: Vec<ConnectionRouteSideResolution>,
+    },
+    ResetAllConnectionBends,
+    RestoreAutomaticConnectionRoutes,
     UpdateProjectMetadata {
         name: String,
     },
@@ -94,6 +107,11 @@ pub enum Operation {
     },
     UpdatePlacements {
         changes: Vec<PlacementChange>,
+    },
+    SnapPlacementsToGrid {
+        nodes: Vec<GeometryNode>,
+        grid_size: f64,
+        max_rings: u16,
     },
     ReplaceGeometry {
         nodes: Vec<GeometryNode>,
@@ -500,6 +518,33 @@ mod tests {
     }
 
     #[test]
+    fn snap_placements_to_grid_request_round_trips() {
+        let request = EngineRequest {
+            protocol_version: PROTOCOL_VERSION,
+            request_id: 17,
+            base_revision: 3,
+            operation: Operation::SnapPlacementsToGrid {
+                nodes: vec![GeometryNode {
+                    item_id: "server:1".into(),
+                    bounds: Rect {
+                        x: 11.0,
+                        y: 13.0,
+                        width: 240.0,
+                        height: 320.0,
+                    },
+                }],
+                grid_size: 24.0,
+                max_rings: 256,
+            },
+        };
+
+        let bytes = rmp_serde::to_vec_named(&request).expect("serialize grid alignment request");
+        let decoded: EngineRequest =
+            rmp_serde::from_slice(&bytes).expect("deserialize grid alignment request");
+        assert_eq!(decoded, request);
+    }
+
+    #[test]
     fn obstacle_route_request_round_trips() {
         let request = EngineRequest {
             protocol_version: PROTOCOL_VERSION,
@@ -516,6 +561,12 @@ mod tests {
                         lane_offset: 24.0,
                         manual_bends: vec![Point { x: 144.0, y: 96.0 }],
                     },
+                    source_candidates: vec![],
+                    target_candidates: vec![],
+                    source_side_constraint: None,
+                    target_side_constraint: None,
+                    previous_source_side: None,
+                    previous_target_side: None,
                     source_item_id: "server:1".into(),
                     target_item_id: "patchPanel:1".into(),
                     obstacles: vec![RouteObstacle {

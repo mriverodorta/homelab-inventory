@@ -42,11 +42,14 @@ export type DomainEngineClientOptions = {
   workerFactory?: () => WorkerLike
   supportsWasm?: () => boolean
   maxStartupAttempts?: number
+  initializationTimeoutMs?: number
+  requestTimeoutMs?: number
 }
 
 export type PendingWorkerRequest = {
   resolve(response: EngineResponse): void
   reject(error: Error): void
+  timeout: ReturnType<typeof setTimeout>
 }
 
 export type EngineRequestInput = Omit<EngineRequest, 'protocol_version' | 'request_id' | 'base_revision'>

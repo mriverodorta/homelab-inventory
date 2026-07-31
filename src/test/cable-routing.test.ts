@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { getConnectionRoute } from '@/lib/cable-routing'
+import { getConnectionRoute, getProjectedFaceCandidates } from '@/lib/cable-routing'
 import type { InventoryConnection, InventoryItem, ProjectState } from '@/types/inventory'
 
 const items: InventoryItem[] = [
@@ -185,6 +185,30 @@ function createNasPowerProject(connection: InventoryConnection): ProjectState {
 }
 
 describe('cable routing', () => {
+  it('keeps the horizontal face center first and orders only its alternatives by projection', () => {
+    expect(getProjectedFaceCandidates(
+      { x: 100, y: 100 },
+      'bottom',
+      { x: 130, y: 240 },
+    )).toEqual([
+      { point: { x: 100, y: 100 }, side: 'bottom' },
+      { point: { x: 112, y: 100 }, side: 'bottom' },
+      { point: { x: 88, y: 100 }, side: 'bottom' },
+    ])
+  })
+
+  it('keeps the vertical face center first and orders only its alternatives by projection', () => {
+    expect(getProjectedFaceCandidates(
+      { x: 100, y: 100 },
+      'right',
+      { x: 240, y: 70 },
+    )).toEqual([
+      { point: { x: 100, y: 100 }, side: 'right' },
+      { point: { x: 100, y: 88 }, side: 'right' },
+      { point: { x: 100, y: 112 }, side: 'right' },
+    ])
+  })
+
   it('routes horizontal cables from right side to left side', () => {
     const connection: InventoryConnection = {
       id: 1,

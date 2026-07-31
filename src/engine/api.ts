@@ -5,6 +5,7 @@ import {
   type EngineSnapshot,
 } from '../../shared/engine/protocol.mjs'
 import type { DomainEngineApi } from './types'
+import { fetchWithTimeout } from '@/lib/fetch-with-timeout'
 
 export const ENGINE_MEDIA_TYPE = 'application/vnd.homelab-engine+msgpack'
 
@@ -36,7 +37,11 @@ async function responseError(response: Response) {
 export function createDomainEngineApi(fetchImpl: typeof fetch = fetch): DomainEngineApi {
   return {
     async fetchSnapshot(): Promise<{ snapshot: EngineSnapshot; bytes: Uint8Array }> {
-      const response = await fetchImpl('/api/engine/snapshot', { cache: 'no-store' })
+      const response = await fetchWithTimeout(
+        '/api/engine/snapshot',
+        { cache: 'no-store' },
+        { fetchImpl },
+      )
       if (!response.ok) throw await responseError(response)
       const bytes = new Uint8Array(await response.arrayBuffer())
       return { snapshot: decodeEngineSnapshot(bytes), bytes }
@@ -44,11 +49,15 @@ export function createDomainEngineApi(fetchImpl: typeof fetch = fetch): DomainEn
 
     async postCommand(commandBytes): Promise<{ response: EngineResponse; bytes: Uint8Array }> {
       const body = Uint8Array.from(commandBytes).buffer
-      const response = await fetchImpl('/api/engine/commands', {
-        method: 'POST',
-        headers: { 'Content-Type': ENGINE_MEDIA_TYPE },
-        body,
-      })
+      const response = await fetchWithTimeout(
+        '/api/engine/commands',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': ENGINE_MEDIA_TYPE },
+          body,
+        },
+        { fetchImpl },
+      )
       if (!response.ok) throw await responseError(response)
       const bytes = new Uint8Array(await response.arrayBuffer())
       return { response: decodeEngineResponse(bytes), bytes }

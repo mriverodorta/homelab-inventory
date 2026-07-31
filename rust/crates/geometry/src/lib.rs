@@ -17,6 +17,7 @@ pub enum GeometryError {
     EmptyIdentifier(&'static str),
     UnknownIdentifier(&'static str),
     DuplicateIdentifier(&'static str),
+    PlacementSearchExhausted,
     DiagonalSegment,
 }
 
@@ -30,6 +31,9 @@ impl fmt::Display for GeometryError {
             Self::EmptyIdentifier(field) => write!(formatter, "{field} must not be empty."),
             Self::UnknownIdentifier(field) => write!(formatter, "{field} does not exist."),
             Self::DuplicateIdentifier(field) => write!(formatter, "{field} must be unique."),
+            Self::PlacementSearchExhausted => {
+                formatter.write_str("No collision-free grid placement was found.")
+            }
             Self::DiagonalSegment => {
                 formatter.write_str("Segments must be horizontal or vertical.")
             }
@@ -409,6 +413,164 @@ fn validate_dimension(value: f64, field: &'static str) -> Result<(), GeometryErr
     Ok(())
 }
 
+#[derive(Clone)]
+struct CascadingPlacementState {
+    bounds: BTreeMap<String, Rect>,
+    finalized: BTreeSet<String>,
+}
+
+fn place_cascading_item(
+    item_id: &str,
+    grid_size: f64,
+    max_rings: u16,
+    reserved: &[Rect],
+    state: &mut CascadingPlacementState,
+) -> Result<(), GeometryError> {
+    if state.finalized.contains(item_id) {
+        return Ok(());
+    }
+
+    let original = state
+        .bounds
+        .remove(item_id)
+        .ok_or(GeometryError::UnknownIdentifier("grid placement item_id"))?;
+    let preferred = Rect {
+        x: snap_to_grid(original.x, grid_size),
+        y: snap_to_grid(original.y, grid_size),
+        ..original
+    };
+
+    for ring in 0..=max_rings {
+        for x_steps in (0..=ring).rev() {
+            let y_steps = ring - x_steps;
+            let candidate = translated(
+                preferred,
+                f64::from(x_steps) * grid_size,
+                f64::from(y_steps) * grid_size,
+            );
+            candidate.validate()?;
+            if reserved.iter().any(|bounds| bounds.overlaps(candidate)) {
+                continue;
+            }
+
+            let checkpoint = state.clone();
+            let mut candidate_valid = true;
+            loop {
+                let blocker = state
+                    .bounds
+                    .iter()
+                    .filter(|(_, bounds)| bounds.overlaps(candidate))
+                    .min_by(|(first_id, first), (second_id, second)| {
+                        first
+                            .y
+                            .total_cmp(&second.y)
+                            .then_with(|| first.x.total_cmp(&second.x))
+                            .then_with(|| first_id.cmp(second_id))
+                    })
+                    .map(|(blocker_id, _)| blocker_id.clone());
+                let Some(blocker_id) = blocker else {
+                    break;
+                };
+                if state.finalized.contains(&blocker_id) {
+                    candidate_valid = false;
+                    break;
+                }
+
+                let mut nested_reserved = reserved.to_vec();
+                nested_reserved.push(candidate);
+                match place_cascading_item(
+                    &blocker_id,
+                    grid_size,
+                    max_rings,
+                    &nested_reserved,
+                    state,
+                ) {
+                    Ok(()) => {}
+                    Err(GeometryError::PlacementSearchExhausted) => {
+                        candidate_valid = false;
+                        break;
+                    }
+                    Err(error) => return Err(error),
+                }
+            }
+
+            if candidate_valid
+                && !state
+                    .bounds
+                    .values()
+                    .any(|bounds| bounds.overlaps(candidate))
+            {
+                state.bounds.insert(item_id.to_owned(), candidate);
+                state.finalized.insert(item_id.to_owned());
+                return Ok(());
+            }
+            *state = checkpoint;
+        }
+    }
+
+    state.bounds.insert(item_id.to_owned(), original);
+    Err(GeometryError::PlacementSearchExhausted)
+}
+
+pub fn snap_nodes_to_grid(
+    nodes: &[GeometryNode],
+    grid_size: f64,
+    max_rings: u16,
+) -> Result<Vec<GeometryNode>, GeometryError> {
+    validate_step(grid_size)?;
+    if max_rings == 0 {
+        return Err(GeometryError::NonPositive("max_rings"));
+    }
+
+    let mut bounds = BTreeMap::new();
+    for node in nodes {
+        node.validate()?;
+        if bounds.insert(node.item_id.clone(), node.bounds).is_some() {
+            return Err(GeometryError::DuplicateIdentifier("geometry node item_id"));
+        }
+    }
+
+    let mut ordered_ids = nodes
+        .iter()
+        .map(|node| node.item_id.clone())
+        .collect::<Vec<_>>();
+    ordered_ids.sort_by(|first_id, second_id| {
+        let first = bounds.get(first_id).expect("ordered node exists");
+        let second = bounds.get(second_id).expect("ordered node exists");
+        first
+            .y
+            .total_cmp(&second.y)
+            .then_with(|| first.x.total_cmp(&second.x))
+            .then_with(|| first_id.cmp(second_id))
+    });
+
+    let mut state = CascadingPlacementState {
+        bounds,
+        finalized: BTreeSet::new(),
+    };
+    for item_id in &ordered_ids {
+        place_cascading_item(item_id, grid_size, max_rings, &[], &mut state)?;
+    }
+
+    let result = ordered_ids
+        .into_iter()
+        .map(|item_id| GeometryNode {
+            bounds: *state.bounds.get(&item_id).expect("placed node exists"),
+            item_id,
+        })
+        .collect::<Vec<_>>();
+    for (index, node) in result.iter().enumerate() {
+        debug_assert_eq!(node.bounds.x % grid_size, 0.0);
+        debug_assert_eq!(node.bounds.y % grid_size, 0.0);
+        debug_assert!(
+            result[index + 1..]
+                .iter()
+                .all(|other| !node.bounds.overlaps(other.bounds))
+        );
+    }
+    Ok(result)
+}
+
 pub fn arrange_items(
     items: &[ArrangementItem],
     grid_size: f64,
@@ -694,6 +856,99 @@ mod tests {
                 height: 50.0
             })
         );
+    }
+
+    #[test]
+    fn grid_alignment_rounds_to_the_nearest_intersection() {
+        let aligned = snap_nodes_to_grid(
+            &[
+                node("server:1", 11.0, 13.0, 48.0, 48.0),
+                node("server:2", 121.0, 50.0, 48.0, 48.0),
+            ],
+            24.0,
+            32,
+        )
+        .unwrap();
+
+        assert_eq!(aligned[0].bounds.x, 0.0);
+        assert_eq!(aligned[0].bounds.y, 24.0);
+        assert_eq!(aligned[1].bounds.x, 120.0);
+        assert_eq!(aligned[1].bounds.y, 48.0);
+    }
+
+    #[test]
+    fn grid_alignment_cascades_blockers_to_the_right_before_down() {
+        let aligned = snap_nodes_to_grid(
+            &[
+                node("server:1", 10.0, 10.0, 60.0, 60.0),
+                node("server:2", 70.0, 10.0, 60.0, 60.0),
+                node("server:3", 130.0, 10.0, 60.0, 60.0),
+            ],
+            24.0,
+            32,
+        )
+        .unwrap();
+
+        assert_eq!(aligned[0].bounds.x, 0.0);
+        assert_eq!(aligned[1].bounds.x, 72.0);
+        assert_eq!(aligned[2].bounds.x, 144.0);
+        assert!(aligned.iter().all(|node| node.bounds.y == 0.0));
+    }
+
+    #[test]
+    fn grid_alignment_uses_the_next_row_when_right_is_blocked_by_finalized_items() {
+        let aligned = snap_nodes_to_grid(
+            &[
+                node("server:1", 0.0, 0.0, 60.0, 10.0),
+                node("server:2", 72.0, 0.0, 60.0, 10.0),
+                node("server:3", 61.0, 11.0, 10.0, 10.0),
+            ],
+            24.0,
+            8,
+        )
+        .unwrap();
+
+        assert_eq!(aligned[0].bounds.x, 0.0);
+        assert_eq!(aligned[1].bounds.x, 72.0);
+        assert_eq!(aligned[2].bounds.x, 72.0);
+        assert_eq!(aligned[2].bounds.y, 24.0);
+    }
+
+    #[test]
+    fn grid_alignment_is_deterministic_and_collision_free() {
+        let nodes = vec![
+            node("server:3", 133.0, 17.0, 80.0, 100.0),
+            node("server:1", 11.0, 9.0, 80.0, 100.0),
+            node("server:4", 15.0, 122.0, 80.0, 100.0),
+            node("server:2", 72.0, 12.0, 80.0, 100.0),
+        ];
+        let first = snap_nodes_to_grid(&nodes, 24.0, 64).unwrap();
+        let second = snap_nodes_to_grid(&nodes, 24.0, 64).unwrap();
+
+        assert_eq!(first, second);
+        for (index, item) in first.iter().enumerate() {
+            assert_eq!(item.bounds.x % 24.0, 0.0);
+            assert_eq!(item.bounds.y % 24.0, 0.0);
+            assert!(
+                first[index + 1..]
+                    .iter()
+                    .all(|other| !item.bounds.overlaps(other.bounds))
+            );
+        }
+    }
+
+    #[test]
+    fn grid_alignment_fails_without_returning_a_partial_layout() {
+        let result = snap_nodes_to_grid(
+            &[
+                node("server:1", MAX_CANVAS_COORDINATE - 24.0, 0.0, 24.0, 24.0),
+                node("server:2", MAX_CANVAS_COORDINATE - 25.0, 0.0, 24.0, 24.0),
+            ],
+            24.0,
+            1,
+        );
+
+        assert!(result.is_err());
     }
 
     #[test]

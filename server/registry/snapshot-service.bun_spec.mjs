@@ -102,13 +102,30 @@ async function connectedArtifacts({ artifact, privateKey }) {
 
 describe('catalog snapshot service', () => {
   it('activates only verified snapshots and rebuilds a missing cache', async () => {
-    const { artifact, dataDir, store, trustedKeys } = await fixture()
+    const { artifact, store, trustedKeys } = await fixture()
     const service = new SnapshotService(store, { trustedKeys })
     await service.activate(artifact, { mode: 'offline', now: new Date('2026-07-27T00:00:00.000Z') })
     expect(store.getRegistryState().snapshot).toMatchObject({ revision: 2, templateCount: 1, keyId: 'test-key' })
     expect(await service.search({ query: 'example' })).toMatchObject({ total: 1 })
-    await fs.rm(path.join(dataDir, 'cache', 'catalog.sqlite'))
+    const activePaths = await service.resolveActivePaths()
+    await fs.rm(activePaths.index)
     expect(await service.search({ query: 'sw8' })).toMatchObject({ total: 1 })
+  })
+
+  it('recovers a valid catalog generation when the active pointer is missing', async () => {
+    const { artifact, dataDir, store, trustedKeys } = await fixture()
+    const service = new SnapshotService(store, { trustedKeys })
+    await service.activate(artifact, { mode: 'offline', now: new Date('2026-07-27T00:00:00.000Z') })
+    await fs.rm(path.join(dataDir, 'catalog', 'active-generation.json'))
+
+    const restarted = new SnapshotService(store, { trustedKeys })
+    expect(await restarted.search({ query: 'example' })).toMatchObject({ total: 1 })
+    const pointer = JSON.parse(await fs.readFile(path.join(dataDir, 'catalog', 'active-generation.json'), 'utf8'))
+    expect(pointer).toMatchObject({
+      version: 1,
+      revision: 2,
+      digest: store.getRegistryState().snapshot.digest,
+    })
   })
 
   it('preserves the active snapshot when verification fails', async () => {
@@ -205,6 +222,65 @@ describe('catalog snapshot service', () => {
     })
 
     await expect(service.refreshConnected({ now })).rejects.toThrow('Connected catalog mode was disabled before activation.')
+    expect(store.getRegistryState().snapshot).toBeNull()
+  })
+
+  it('rejects a signed rollback below the active catalog revision', async () => {
+    const { artifact, privateKey, store, trustedKeys } = await fixture()
+    const service = new SnapshotService(store, { trustedKeys })
+    const now = new Date('2026-07-27T00:00:00.000Z')
+    await service.activate(artifact, { mode: 'offline', now })
+    const older = signedArtifact({ ...artifact.payload, catalogRevision: 1 }, privateKey)
+
+    await expect(service.activate(older, { mode: 'offline', now }))
+      .rejects.toThrow('Catalog snapshot revision is older than the active snapshot.')
+    expect(store.getRegistryState().snapshot.revision).toBe(2)
+  })
+
+  it('rejects a digest index that does not describe the signed snapshot', async () => {
+    const { artifact, privateKey, store, trustedKeys } = await fixture()
+    const digestArtifact = signedArtifact({
+      schemaVersion: artifact.payload.schemaVersion,
+      fingerprintVersion: FINGERPRINT_VERSION,
+      manufacturerAliasVersion: 1,
+      catalogRevision: artifact.payload.catalogRevision,
+      generatedAt: artifact.payload.generatedAt,
+      entries: [{
+        identityHash: 'a'.repeat(64),
+        templateKey: artifact.payload.templates[0].templateKey,
+        contentHashes: [{
+          hash: artifact.payload.templates[0].contentHash,
+          state: 'published',
+          revision: artifact.payload.templates[0].revision,
+        }],
+      }],
+    }, privateKey)
+
+    await expect(new SnapshotService(store, { trustedKeys }).activate(artifact, {
+      mode: 'connected',
+      now: new Date('2026-07-27T00:00:00.000Z'),
+      digestArtifact,
+    })).rejects.toThrow(/does not match its snapshot/)
+    expect(store.getRegistryState().snapshot).toBeNull()
+  })
+
+  it('rejects a connected manifest before reading a body larger than the hard limit', async () => {
+    const { store, trustedKeys } = await fixture()
+    store.registryTransaction((draft) => {
+      draft.settings.mode = 'connected'
+    })
+    const service = new SnapshotService(store, {
+      trustedKeys,
+      officialOrigin: 'https://registry.example',
+      fetchImpl: async () => ({
+        ok: true,
+        headers: { get: () => String(2 * 1024 * 1024) },
+        text: async () => { throw new Error('body should not be read') },
+      }),
+    })
+
+    await expect(service.refreshConnected({ now: new Date('2026-07-27T00:00:00.000Z') }))
+      .rejects.toThrow('Catalog manifest exceeds the maximum allowed size.')
     expect(store.getRegistryState().snapshot).toBeNull()
   })
 })

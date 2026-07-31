@@ -11,6 +11,7 @@ import { DomainEngineApiError } from '../engine/api'
 import {
   DomainEngineClient,
   DomainEngineInterruptedError,
+  DomainEngineWorkerTimeoutError,
   SupersededEngineQueryError,
 } from '../engine/client'
 import type { DomainEngineApi, DomainWorkerRequest, DomainWorkerResponse, WorkerLike } from '../engine/types'
@@ -157,6 +158,13 @@ class HangingDispatchWorker extends FakeWorker {
   }
 }
 
+class HangingInitializationWorker extends FakeWorker {
+  override postMessage(message: DomainWorkerRequest) {
+    if (message.kind === 'initialize') return
+    super.postMessage(message)
+  }
+}
+
 function api(overrides: Partial<DomainEngineApi> = {}): DomainEngineApi {
   const snapshot = {
     revision: 1,
@@ -247,6 +255,24 @@ describe('DomainEngineClient', () => {
 
     expect(workerFactory).toHaveBeenCalledTimes(3)
     expect(client.status().phase).toBe('failed')
+  })
+
+  it('times out stalled initialization attempts instead of loading forever', async () => {
+    const workerFactory = vi.fn(() => new HangingInitializationWorker())
+    const client = new DomainEngineClient({
+      api: api(),
+      workerFactory,
+      initializationTimeoutMs: 5,
+      maxStartupAttempts: 2,
+    })
+
+    await expect(client.start()).rejects.toBeInstanceOf(DomainEngineWorkerTimeoutError)
+
+    expect(workerFactory).toHaveBeenCalledTimes(2)
+    expect(client.status()).toMatchObject({
+      phase: 'failed',
+      error: 'Workspace engine initialization timed out.',
+    })
   })
 
   it('enters unsupported when Worker or WebAssembly is unavailable', async () => {
@@ -611,6 +637,26 @@ describe('DomainEngineClient', () => {
     await expect(pending).rejects.toBeInstanceOf(DomainEngineInterruptedError)
     await rebuilding
     expect(client.status().phase).toBe('ready')
+    client.dispose()
+  })
+
+  it('times out stalled worker requests and rebuilds the worker', async () => {
+    const firstWorker = new HangingDispatchWorker()
+    const workers = [firstWorker, new FakeWorker()]
+    const client = new DomainEngineClient({
+      api: api(),
+      workerFactory: () => workers.shift() ?? new FakeWorker(),
+      requestTimeoutMs: 5,
+    })
+    await client.start()
+
+    await expect(client.transient({ operation: { kind: 'status' } }))
+      .rejects.toBeInstanceOf(DomainEngineWorkerTimeoutError)
+    await vi.waitFor(() => expect(client.status().phase).toBe('ready'))
+
+    await expect(client.queryConsistent({ operation: { kind: 'status' } }))
+      .resolves.toMatchObject({ result: { kind: 'status' } })
+    expect(firstWorker.terminated).toBe(true)
     client.dispose()
   })
 

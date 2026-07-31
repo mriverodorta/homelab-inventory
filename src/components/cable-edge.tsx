@@ -15,7 +15,6 @@ import {
 import type { CableRouteResult } from '@/lib/cable-geometry'
 import {
   cablePointsToPath,
-  createOrthogonalFallbackRoute,
   DEFAULT_ENDPOINT_SNAP_THRESHOLD,
   getEditableCableSegments,
   type OrthogonalPoint,
@@ -30,6 +29,7 @@ import type { ConnectionRoutePreferences } from '@/types/inventory'
 const TOUCH_DRAG_HOLD_MS = 350
 const TOUCH_DRAG_TOLERANCE_PX = 8
 const POINTER_DRAG_THRESHOLD_PX = 4
+const DIMMED_CABLE_OPACITY = 0.5
 const EMPTY_CABLE_POINTS: OrthogonalPoint[] = []
 
 export type CableEdgeData = {
@@ -53,51 +53,21 @@ export type CableEdgeData = {
 
 export type CableFlowEdge = Edge<CableEdgeData, 'cable'>
 
-function pointsEqual(first: OrthogonalPoint | undefined, second: OrthogonalPoint): boolean {
-  return first?.x === second.x && first.y === second.y
-}
-
 export function CableEdge({
   id,
-  sourceX,
-  sourceY,
-  targetX,
-  targetY,
   data,
 }: EdgeProps<CableFlowEdge>) {
   const { getViewport, screenToFlowPosition } = useReactFlow()
   const domainEngine = useDomainEngine()
   const [draftRoute, setDraftRoute] = useState<CableRouteResult | null>(null)
   const gestureCleanupRef = useRef<(() => void) | null>(null)
-  const source = useMemo<OrthogonalPoint>(
-    () => ({ x: Math.round(sourceX), y: Math.round(sourceY) }),
-    [sourceX, sourceY],
-  )
-  const target = useMemo<OrthogonalPoint>(
-    () => ({ x: Math.round(targetX), y: Math.round(targetY) }),
-    [targetX, targetY],
-  )
   const routedCable = useMemo(() => {
     if (draftRoute) return draftRoute
-    if (data?.plannedRoute &&
-          pointsEqual(data.plannedRoute.points[0], source) &&
-          pointsEqual(data.plannedRoute.points.at(-1), target)
-    ) return data.plannedRoute
-
-    return createOrthogonalFallbackRoute(
-      source,
-      target,
-      data?.sourceSide ?? 'right',
-      data?.targetSide ?? 'left',
-    )
+    return data?.plannedRoute ?? null
   },
     [
       data?.plannedRoute,
-      data?.sourceSide,
-      data?.targetSide,
       draftRoute,
-      source,
-      target,
     ],
   )
   const cablePoints = routedCable?.points ?? EMPTY_CABLE_POINTS
@@ -216,7 +186,11 @@ export function CableEdge({
       point: pointer,
       snapToGrid: data.snapToGrid,
     }).then((preview) => {
-      setDraftRoute(preview.route)
+      setDraftRoute({
+        ...preview.route,
+        sourceSide: data.sourceSide,
+        targetSide: data.targetSide,
+      })
       data.onUpdateRoute(data.connectionId, {
         ...data.route,
         bendPoints: preview.bendPoints,
@@ -266,7 +240,11 @@ export function CableEdge({
         endpointSnapThreshold: snapThreshold,
       }).then((preview) => {
         if (canceled) return
-        setDraftRoute(preview.route)
+        setDraftRoute({
+          ...preview.route,
+          sourceSide: data.sourceSide,
+          targetSide: data.targetSide,
+        })
         if (next.commit) {
           data.onUpdateRoute(data.connectionId, {
             ...data.route,
@@ -343,21 +321,23 @@ export function CableEdge({
 
   return (
     <>
-      <BaseEdge
-        id={id}
-        path={renderedPath}
-        interactionWidth={22}
-        className={traced ? 'homelab-inventory-trace-cable' : undefined}
-        style={{
-          stroke: color,
-          strokeWidth: emphasized ? 6 : 4,
-          strokeDasharray: traced ? '12 8' : undefined,
-          opacity: dimmed ? 0.18 : 1,
-          filter: emphasized
-            ? 'drop-shadow(0 2px 3px rgba(32, 36, 44, 0.22))'
-            : undefined,
-        }}
-      />
+      {renderedPath ? (
+        <BaseEdge
+          id={id}
+          path={renderedPath}
+          interactionWidth={22}
+          className={traced ? 'homelab-inventory-trace-cable' : undefined}
+          style={{
+            stroke: color,
+            strokeWidth: emphasized ? 6 : 4,
+            strokeDasharray: traced ? '12 8' : undefined,
+            opacity: dimmed ? DIMMED_CABLE_OPACITY : 1,
+            filter: emphasized
+              ? 'drop-shadow(0 2px 3px rgba(32, 36, 44, 0.22))'
+              : undefined,
+          }}
+        />
+      ) : null}
       {editable && selected
         ? segments.map((segment) => (
             <path

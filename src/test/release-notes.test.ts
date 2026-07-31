@@ -98,21 +98,21 @@ describe('release notes helpers', () => {
     const previousRelease = RELEASE_NOTES.find((entry) => entry.version === '0.2.1')!
     const engineRelease = RELEASE_NOTES.find((entry) => entry.version === '0.2.0')!
 
-    expect(hasReleaseNoteForVersion(RELEASE_NOTES, '0.4.9')).toBe(true)
+    expect(hasReleaseNoteForVersion(RELEASE_NOTES, '0.5.0')).toBe(true)
     expect(RELEASE_NOTES[0]).toEqual(
       expect.objectContaining({
-        version: '0.4.9',
-        title: 'Safe registry preference upgrades',
+        version: '0.5.0',
+        title: 'Reliable routing and resilient persistence',
       }),
     )
     expect(RELEASE_NOTES.filter((entry) => entry.channel === 'latest')).toEqual([
-      expect.objectContaining({ version: '0.4.9' }),
+      expect.objectContaining({ version: '0.5.0' }),
     ])
     expect(RELEASE_NOTES.find((entry) => entry.version === '0.1.38')).toEqual(
       expect.objectContaining({ channel: 'release' }),
     )
-    expect(currentRelease.fixes).toContain(
-      'Existing registry stores now receive newly introduced preference defaults before strict validation, preventing an upgrade restart loop.',
+    expect(currentRelease.highlights).toContain(
+      'Cable routing is now more predictable in dense layouts, with explicit endpoint sides, center-first port attachment, shorter orthogonal paths, equipment avoidance, and better handling for reordered patch panels and rotated power equipment.',
     )
     expect(registryRelease.highlights).toContain(
       'Add Hardware now combines a locally searched verified Catalog, the complete Manual editor, and reusable Private templates in one source-aware dialog.',

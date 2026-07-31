@@ -3,8 +3,14 @@ import {
   type DomainEngineClient,
 } from '@/engine/client'
 import {
+  failuresFromRoutingCache,
   planCableRoutes,
+  routingCacheGeometryMatchesRequests,
+  routingCacheMatchesRequests,
+  routesFromRoutingCache,
+  type CableRoutePlanResult,
   type CableLaneRouteRequest,
+  type CableRoutingCacheSnapshot,
 } from '@/engine/routing'
 import type { CableRouteResult } from '@/lib/cable-geometry'
 import { cableRouteResultsEqual } from '@/lib/cable-render-stability'
@@ -13,6 +19,7 @@ export type CableRoutingState = {
   routes: ReadonlyMap<number, CableRouteResult>
   pending: boolean
   error: string | null
+  warnings: ReadonlyMap<number, string>
 }
 
 type Listener = (state: CableRoutingState) => void
@@ -33,6 +40,17 @@ function pointsEqual(
   ))
 }
 
+function candidatesEqual(
+  first: CableLaneRouteRequest['request']['sourceCandidates'],
+  second: CableLaneRouteRequest['request']['sourceCandidates'],
+): boolean {
+  return first.length === second.length && first.every((candidate, index) => (
+    candidate.side === second[index].side
+    && candidate.point.x === second[index].point.x
+    && candidate.point.y === second[index].point.y
+  ))
+}
+
 function routeRequestsEqual(
   first: CableLaneRouteRequest,
   second: CableLaneRouteRequest,
@@ -45,8 +63,10 @@ function routeRequestsEqual(
     && first.request.target.y === second.request.target.y
     && first.request.sourceSide === second.request.sourceSide
     && first.request.targetSide === second.request.targetSide
+    && candidatesEqual(first.request.sourceCandidates, second.request.sourceCandidates)
+    && candidatesEqual(first.request.targetCandidates, second.request.targetCandidates)
     && first.request.laneOffset === second.request.laneOffset
-    && first.request.obstacles === second.request.obstacles
+    && obstaclesEqual(first.request.obstacles, second.request.obstacles)
     && first.request.sourceItemId === second.request.sourceItemId
     && first.request.targetItemId === second.request.targetItemId
     && first.request.snapToGrid === second.request.snapToGrid
@@ -55,6 +75,24 @@ function routeRequestsEqual(
       first.request.reservedSegments?.flatMap((segment) => [segment.start, segment.end]),
       second.request.reservedSegments?.flatMap((segment) => [segment.start, segment.end]),
     )
+}
+
+function obstaclesEqual(
+  first: CableLaneRouteRequest['request']['obstacles'],
+  second: CableLaneRouteRequest['request']['obstacles'],
+): boolean {
+  if (first === second) return true
+  if (first.length !== second.length) return false
+  const secondById = new Map(second.map((obstacle) => [obstacle.itemId, obstacle]))
+  return first.every((obstacle) => {
+    const candidate = secondById.get(obstacle.itemId)
+    return candidate
+      && obstacle.itemId === candidate.itemId
+      && obstacle.left === candidate.left
+      && obstacle.top === candidate.top
+      && obstacle.right === candidate.right
+      && obstacle.bottom === candidate.bottom
+  })
 }
 
 function requestSetsEqual(
@@ -100,14 +138,26 @@ export class CableRoutingCoordinator {
   private queuedWork: RoutingWork | null = null
   private desiredRequests = new Map<number, CableLaneRouteRequest>()
   private disposed = false
+  private cache: CableRoutingCacheSnapshot | null = null
+  private readonly persistCache: ((cache: CableRoutingCacheSnapshot) => Promise<unknown>) | null
   private state: CableRoutingState = {
     routes: new Map(),
     pending: false,
     error: null,
+    warnings: new Map(),
   }
 
-  constructor(client: DomainEngineClient) {
+  constructor(
+    client: DomainEngineClient,
+    options: { persistCache?: (cache: CableRoutingCacheSnapshot) => Promise<unknown> } = {},
+  ) {
     this.client = client
+    this.persistCache = options.persistCache ?? null
+  }
+
+  hydrate(cache: CableRoutingCacheSnapshot): void {
+    if (this.disposed) return
+    this.cache = cache
   }
 
   getState(): CableRoutingState {
@@ -125,6 +175,34 @@ export class CableRoutingCoordinator {
     if (!force && requestSetsEqual(this.desiredRequests, nextRequests)) return this.revision
 
     this.desiredRequests = nextRequests
+    if (!force && this.cache && routingCacheMatchesRequests(this.cache, requests)) {
+      if (this.activeWork || this.queuedWork) this.revision += 1
+      this.queuedWork = null
+      this.updateState({
+        ...this.state,
+        routes: reconcileRouteMap(
+          this.state.routes,
+          routesFromRoutingCache(this.cache),
+          new Set(nextRequests.keys()),
+        ),
+        pending: this.activeWork !== null,
+        error: null,
+        warnings: failuresFromRoutingCache(this.cache),
+      })
+      return this.revision
+    }
+    if (!force && routingCacheGeometryMatchesRequests(this.cache, requests)) {
+      this.updateState({
+        ...this.state,
+        routes: reconcileRouteMap(
+          this.state.routes,
+          routesFromRoutingCache(this.cache),
+          new Set(nextRequests.keys()),
+        ),
+        error: null,
+        warnings: failuresFromRoutingCache(this.cache),
+      })
+    }
     const revision = ++this.revision
     this.queuedWork = { revision, requests }
     this.updateState({ ...this.state, pending: true, error: null })
@@ -134,7 +212,12 @@ export class CableRoutingCoordinator {
 
   clear(): void {
     this.request([])
-    this.updateState({ routes: new Map(), pending: this.activeWork !== null, error: null })
+    this.updateState({
+      routes: new Map(),
+      pending: this.activeWork !== null,
+      error: null,
+      warnings: new Map(),
+    })
   }
 
   dispose(): void {
@@ -151,21 +234,57 @@ export class CableRoutingCoordinator {
     const work = this.queuedWork
     this.activeWork = work
     this.queuedWork = null
-    void planCableRoutes(this.client, work.requests).then(
-      (result) => this.complete(work, result.routes),
+    void planCableRoutes(this.client, work.requests, this.cache).then(
+      (result) => this.complete(work, result),
       (error) => this.fail(work, error),
     )
   }
 
-  private complete(work: RoutingWork, routes: ReadonlyMap<number, CableRouteResult>): void {
+  private complete(work: RoutingWork, result: CableRoutePlanResult): void {
     if (this.disposed || this.activeWork !== work) return
     this.activeWork = null
     if (work.revision === this.revision) {
+      const previousFingerprint = this.cache?.geometryFingerprint
+      const hasCacheableOutcome = result.cache.entries.length > 0
+        || result.cache.failures.length > 0
+        || work.requests.length === 0
+      if (hasCacheableOutcome) this.cache = result.cache
       this.updateState({
-        routes: reconcileRouteMap(this.state.routes, routes, new Set(this.desiredRequests.keys())),
+        routes: reconcileRouteMap(
+          this.state.routes,
+          result.routes,
+          new Set(this.desiredRequests.keys()),
+        ),
         pending: this.queuedWork !== null,
         error: null,
+        warnings: result.failures,
       })
+      if (
+        hasCacheableOutcome
+        && this.persistCache
+        && (previousFingerprint !== result.cache.geometryFingerprint
+          || result.recalculatedConnectionIds.length > 0)
+      ) {
+        void this.persistCache(result.cache).catch((error) => {
+          console.warn('[Cable routing] Unable to persist derived route cache.', error)
+        })
+      }
+      for (const [connectionId, warning] of result.failures) {
+        const failedRequest = work.requests.find((request) => request.connectionId === connectionId)
+        console.warn(
+          `[Cable routing] Connection ${connectionId}: ${warning}`,
+          failedRequest ? {
+            connectionId,
+            sourceItemId: failedRequest.request.sourceItemId,
+            targetItemId: failedRequest.request.targetItemId,
+            sourceSide: failedRequest.request.sourceSide,
+            targetSide: failedRequest.request.targetSide,
+            sourceCandidateCount: failedRequest.request.sourceCandidates.length,
+            targetCandidateCount: failedRequest.request.targetCandidates.length,
+            obstacleCount: failedRequest.request.obstacles.length,
+          } : undefined,
+        )
+      }
     }
     this.dispatchNext()
     this.finishPendingState()
@@ -208,6 +327,7 @@ export class CableRoutingCoordinator {
       this.state.routes === nextState.routes
       && this.state.pending === nextState.pending
       && this.state.error === nextState.error
+      && this.state.warnings === nextState.warnings
     ) return
     this.state = nextState
     for (const listener of this.listeners) listener(this.state)

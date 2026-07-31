@@ -1,7 +1,8 @@
 import type { AgentEnrollmentResponse, AgentStatusSummary } from '@/types/agent'
+import { fetchWithTimeout } from '@/lib/fetch-with-timeout'
 
 async function agentRequest<T>(url: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(url, {
+  const response = await fetchWithTimeout(url, {
     ...init,
     headers: {
       'Content-Type': 'application/json',

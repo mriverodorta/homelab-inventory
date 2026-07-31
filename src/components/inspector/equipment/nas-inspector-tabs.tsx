@@ -1,0 +1,196 @@
+import { Terminal } from 'lucide-react'
+import { HostCompatibilityTab } from '@/components/host-compatibility-tab'
+import type { InspectorAuditWarning } from '@/components/inspector/audit/audit-section'
+import {
+  ConnectionEditor,
+  PortTabsEditor,
+} from '@/components/inspector/connections/connection-editor'
+import { InspectorSection } from '@/components/inspector/inspector-section'
+import { InspectorTabs } from '@/components/inspector/inspector-tabs'
+import { NetworkTraceSection } from '@/components/inspector/network/server-network-tab'
+import {
+  EditableSpecsSection,
+} from '@/components/inspector/shared/editable-specs-section'
+import { updateEditorPorts } from '@/components/inspector/shared/inventory-editor-ports'
+import { itemFromEditorValues } from '@/components/inspector/shared/item-editor-adapters'
+import { EquipmentSlotsTab } from '@/components/inspector/slots/equipment-slots-tab'
+import type { InventoryFormValues } from '@/components/inventory-form/model'
+import { PortGroupsEditor } from '@/components/inventory-form/port-groups-editor'
+import { InventoryFormStatus } from '@/components/inventory-form/specs-tab-content'
+import { useInventoryItemEditor } from '@/hooks/use-inventory-item-editor'
+import { isHostCompatibilityEnabled } from '@/lib/compatibility'
+import { setHostCompatibilityEnabled } from '@/lib/compatibility-policy'
+import type { InventoryItemInput } from '@/lib/db'
+import { runtimeItemKey } from '@/lib/item-keys'
+import type {
+  ConnectionEndpoint,
+  InventoryItem,
+  InventoryPort,
+  NasPowerConfiguration,
+  ProjectState,
+} from '@/types/inventory'
+
+function NasAgentSection() {
+  return (
+    <InspectorSection title="Agent" icon={Terminal}>
+      <div className="rounded-md border border-dashed border-[#d6ccbd] bg-[#f8f3eb] p-4 text-sm font-semibold text-[#75695d]">
+        Agent setup is not available for NAS yet.
+      </div>
+    </InspectorSection>
+  )
+}
+
+export function NasInspectorTabs({
+  project,
+  item,
+  pendingEndpoint,
+  auditWarnings,
+  activeNetworkTraceKey,
+  onUpdateProject,
+  onUpdateItem,
+  onCreateConnection,
+  onEndpointConnectionClick,
+  onSelectNetworkTrace,
+  onUpdateConnectionLabel,
+  onRemoveConnection,
+  onRequestPowerConfigurationChange,
+}: {
+  project: ProjectState
+  item: InventoryItem
+  pendingEndpoint: ConnectionEndpoint | null
+  auditWarnings: InspectorAuditWarning[]
+  activeNetworkTraceKey: string | null
+  onUpdateProject: (project: ProjectState) => void
+  onUpdateItem: (itemId: string, input: InventoryItemInput) => void
+  onCreateConnection: (from: ConnectionEndpoint, to: ConnectionEndpoint) => void
+  onEndpointConnectionClick: (endpoint: ConnectionEndpoint) => void
+  onSelectNetworkTrace: (endpoint: ConnectionEndpoint) => void
+  onUpdateConnectionLabel: (connectionId: string | number, label: string) => void
+  onRemoveConnection: (connectionId: string | number) => void
+  onRequestPowerConfigurationChange: (
+    item: InventoryItem,
+    powerConfiguration: NasPowerConfiguration,
+  ) => void
+}) {
+  const editor = useInventoryItemEditor({
+    item,
+    onSave: (input) => onUpdateItem(runtimeItemKey(item), input),
+  })
+  const draftItem = itemFromEditorValues(item, editor.values)
+  const systemPowerPorts = (draftItem.ports ?? []).filter((port) => port.kind === 'power-port')
+  const editableNasItem = {
+    ...draftItem,
+    ports: (draftItem.ports ?? []).filter((port) => port.kind !== 'power-port'),
+  }
+  const handlePortsUpdate = (ports: InventoryPort[]) => updateEditorPorts(
+    editor,
+    [...ports.filter((port) => port.kind !== 'power-port'), ...systemPowerPorts],
+  )
+  const handleSpecsChange = (
+    patch: Partial<InventoryFormValues>,
+    mode: 'debounced' | 'immediate' = 'debounced',
+  ) => {
+    const requested = patch.powerConfiguration
+    if (requested && requested !== editor.values.powerConfiguration) {
+      onRequestPowerConfigurationChange(item, requested)
+      return
+    }
+    editor.updateValues(patch, mode)
+  }
+
+  return (
+    <InspectorTabs
+      defaultValue="specs"
+      status={<InventoryFormStatus saveError={editor.saveError} />}
+      tabs={[
+        {
+          value: 'specs',
+          label: 'Specs',
+          content: (
+            <EditableSpecsSection
+              title="NAS Details"
+              editor={editor}
+              auditWarnings={auditWarnings}
+              onChange={handleSpecsChange}
+            />
+          ),
+        },
+        {
+          value: 'slots',
+          label: 'Slots',
+          content: (
+            <EquipmentSlotsTab
+              project={project}
+              host={draftItem}
+              title="NAS Slots"
+              allowedTypes={item.specs?.powerConfiguration === 'external-adapter'
+                ? ['storage', 'network', 'powerAdapter']
+                : ['storage', 'network']}
+            />
+          ),
+        },
+        {
+          value: 'ports',
+          label: 'Ports',
+          content: (
+            <>
+              <PortGroupsEditor
+                type="nas"
+                groups={editor.values.portGroups}
+                error={editor.errors.portGroups}
+                onChange={(portGroups) => editor.updateValues({ portGroups }, 'immediate')}
+              />
+              <PortTabsEditor
+                project={project}
+                item={editableNasItem}
+                pendingEndpoint={pendingEndpoint}
+                onUpdate={handlePortsUpdate}
+                onEndpointConnect={onEndpointConnectionClick}
+              />
+              <ConnectionEditor
+                project={project}
+                item={draftItem}
+                onCreate={onCreateConnection}
+                onUpdateLabel={onUpdateConnectionLabel}
+                onRemove={onRemoveConnection}
+              />
+            </>
+          ),
+        },
+        {
+          value: 'network',
+          label: 'Network',
+          content: (
+            <NetworkTraceSection
+              item={draftItem}
+              activeTraceKey={activeNetworkTraceKey}
+              onSelectTrace={onSelectNetworkTrace}
+            />
+          ),
+        },
+        {
+          value: 'agent',
+          label: 'Agent',
+          content: <NasAgentSection />,
+        },
+        {
+          value: 'compatibility',
+          label: 'Compatibility',
+          content: (
+            <HostCompatibilityTab
+              project={project}
+              host={draftItem}
+              values={editor.values}
+              errors={editor.errors}
+              onChange={editor.updateValues}
+              enabled={isHostCompatibilityEnabled(project, runtimeItemKey(item))}
+              onEnabledChange={(enabled) => onUpdateProject(
+                setHostCompatibilityEnabled(project, runtimeItemKey(item), enabled),
+              )}
+            />
+          ),
+        },
+      ]}
+    />
+  )
+}

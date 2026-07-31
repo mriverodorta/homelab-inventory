@@ -6,6 +6,7 @@ import {
   DEFAULT_RATE_LIMIT_MAX,
   DEFAULT_RATE_LIMIT_WINDOW_MS,
   readRateLimitConfig,
+  shouldEnableRateLimit,
 } from './rate-limit.mjs'
 
 function listen(app) {
@@ -24,6 +25,14 @@ function close(server) {
 }
 
 describe('rate-limit configuration', () => {
+  it('enables the global limiter only in production', () => {
+    expect(shouldEnableRateLimit({ NODE_ENV: 'production' })).toBe(true)
+    expect(shouldEnableRateLimit({ NODE_ENV: ' PRODUCTION ' })).toBe(true)
+    expect(shouldEnableRateLimit({ NODE_ENV: 'development' })).toBe(false)
+    expect(shouldEnableRateLimit({ NODE_ENV: 'test' })).toBe(false)
+    expect(shouldEnableRateLimit({})).toBe(false)
+  })
+
   it('uses safe defaults', () => {
     expect(readRateLimitConfig({})).toEqual({
       windowMs: DEFAULT_RATE_LIMIT_WINDOW_MS,
@@ -75,7 +84,7 @@ describe('rate-limit configuration', () => {
 describe('rate-limit middleware options', () => {
   it('returns JSON after an API client exceeds the request limit', async () => {
     const app = express()
-    app.use(rateLimit(createRateLimitOptions({ windowMs: 60_000, limit: 2 })))
+    app.use('/api', rateLimit(createRateLimitOptions({ windowMs: 60_000, limit: 2 })))
     app.get('/api/test', (_request, response) => response.json({ ok: true }))
 
     const { server, url } = await listen(app)
@@ -92,6 +101,25 @@ describe('rate-limit middleware options', () => {
       await expect(blocked.json()).resolves.toEqual({
         message: 'Too many requests. Please try again shortly.',
       })
+    } finally {
+      await close(server)
+    }
+  })
+
+  it('does not count health checks or static browser traffic', async () => {
+    const app = express()
+    app.use('/api', rateLimit(createRateLimitOptions({ windowMs: 60_000, limit: 1 })))
+    app.get('/api/health', (_request, response) => response.json({ ok: true }))
+    app.get('/assets/app.js', (_request, response) => response.send('asset'))
+    app.get('/api/test', (_request, response) => response.json({ ok: true }))
+    const { server, url } = await listen(app)
+
+    try {
+      expect((await fetch(`${url}/api/health`)).status).toBe(200)
+      expect((await fetch(`${url}/api/health`)).status).toBe(200)
+      expect((await fetch(`${url}/assets/app.js`)).status).toBe(200)
+      expect((await fetch(`${url}/api/test`)).status).toBe(200)
+      expect((await fetch(`${url}/api/test`)).status).toBe(429)
     } finally {
       await close(server)
     }

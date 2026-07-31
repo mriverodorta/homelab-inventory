@@ -125,4 +125,23 @@ describe('contribution delivery', () => {
     expect(idle).toBe(true)
     expect(identityService.signedPost).toHaveBeenCalledTimes(2)
   })
+
+  it('reports scheduled discovery failures without creating an unhandled rejection', async () => {
+    const store = fixture()
+    const logger = { error: vi.fn() }
+    const service = new ContributionDeliveryService({
+      identityService: { signedPost: vi.fn() },
+      digestHashes: vi.fn(async () => { throw new Error('digest unavailable') }),
+      intervalMs: 60_000,
+      logger,
+    })
+
+    service.start(store)
+    await service.waitForIdle()
+    await vi.waitFor(() => expect(logger.error).toHaveBeenCalledWith(
+      '[registry] Automatic contribution delivery failed.',
+      'digest unavailable',
+    ))
+    await service.stop(store)
+  })
 })

@@ -3,21 +3,75 @@ import { isRelationalId } from './db/relational-ids.mjs'
 
 const ENROLLMENT_TTL_MS = 24 * 60 * 60 * 1000
 const AGENT_VERSION = '0.2.0'
-
+const HEARTBEAT_RATE_WINDOW_MS = 60_000
+const HEARTBEAT_RATE_LIMIT = 120
+const HEARTBEAT_COLLECTION_LIMITS = {
+  containers: 256,
+  disks: 64,
+  listeningPorts: 1024,
+  loadAverage: 3,
+  network: 64,
+  services: 512,
+}
+const MAX_HEARTBEAT_DEPTH = 5
+const MAX_HEARTBEAT_ARRAY_LENGTH = 1024
+const MAX_HEARTBEAT_OBJECT_KEYS = 64
+const MAX_HEARTBEAT_STRING_LENGTH = 2048
 function bearerToken(request) {
   const header = request.get('authorization') ?? ''
-  const [type, token] = header.split(/\s+/, 2)
+  const match = /^Bearer ([A-Za-z0-9_-]{43})$/.exec(header)
 
-  return type?.toLowerCase() === 'bearer' && token ? token : null
+  return match?.[1] ?? null
+}
+
+function normalizeAgentVersion(value) {
+  if (value === undefined || value === null || value === '') return AGENT_VERSION
+  const hasControlCharacter = typeof value === 'string' && [...value].some((character) => {
+    const code = character.charCodeAt(0)
+    return code <= 0x1f || code === 0x7f
+  })
+  if (typeof value !== 'string' || value.length > 64 || hasControlCharacter) {
+    throw new Error('Agent version must be a string of at most 64 characters.')
+  }
+
+  return value
 }
 
 function publicEndpoint(request) {
-  const forwardedProto = request.get('x-forwarded-proto')
-  const forwardedHost = request.get('x-forwarded-host')
-  const protocol = forwardedProto ?? request.protocol
-  const host = forwardedHost ?? request.get('host')
+  return normalizeAgentEndpoint(`${request.protocol}://${request.get('host')}`)
+}
 
-  return `${protocol}://${host}`
+export function normalizeAgentEndpoint(value) {
+  const containsControlCharacter = typeof value === 'string'
+    && [...value].some((character) => {
+      const codePoint = character.codePointAt(0)
+      return codePoint <= 0x1f || codePoint === 0x7f
+    })
+
+  if (typeof value !== 'string' || !value.trim() || containsControlCharacter) {
+    throw new Error('Agent endpoint must be a valid HTTP or HTTPS origin.')
+  }
+
+  let endpoint
+  try {
+    endpoint = new URL(value.trim())
+  } catch {
+    throw new Error('Agent endpoint must be a valid HTTP or HTTPS origin.')
+  }
+
+  if (
+    !['http:', 'https:'].includes(endpoint.protocol)
+    || !endpoint.hostname
+    || endpoint.username
+    || endpoint.password
+    || endpoint.search
+    || endpoint.hash
+    || (endpoint.pathname && endpoint.pathname !== '/')
+  ) {
+    throw new Error('Agent endpoint must be an HTTP or HTTPS origin without credentials, path, query, or fragment.')
+  }
+
+  return endpoint.origin
 }
 
 function shellEscape(value) {
@@ -69,24 +123,94 @@ function findDevice(store, serverId, token) {
   )
 }
 
-function normalizeHeartbeat(payload) {
+function boundedHeartbeatValue(value, depth = 0) {
+  if (depth > MAX_HEARTBEAT_DEPTH) {
+    throw new Error('Heartbeat payload nesting is too deep.')
+  }
+
+  if (value === null || typeof value === 'boolean') return value
+  if (typeof value === 'number') {
+    if (!Number.isFinite(value)) throw new Error('Heartbeat payload numbers must be finite.')
+    return value
+  }
+  if (typeof value === 'string') {
+    if (value.length > MAX_HEARTBEAT_STRING_LENGTH) {
+      throw new Error('Heartbeat payload contains an oversized string.')
+    }
+    return value
+  }
+  if (Array.isArray(value)) {
+    if (value.length > MAX_HEARTBEAT_ARRAY_LENGTH) {
+      throw new Error(`Heartbeat payload arrays cannot exceed ${MAX_HEARTBEAT_ARRAY_LENGTH} items.`)
+    }
+    return value.map((item) => boundedHeartbeatValue(item, depth + 1))
+  }
+  if (!value || typeof value !== 'object' || Object.getPrototypeOf(value) !== Object.prototype) {
+    throw new Error('Heartbeat payload contains an unsupported value.')
+  }
+
+  const entries = Object.entries(value)
+  if (entries.length > MAX_HEARTBEAT_OBJECT_KEYS) {
+    throw new Error('Heartbeat payload object has too many fields.')
+  }
+
+  return Object.fromEntries(entries.map(([key, item]) => {
+    if (['__proto__', 'constructor', 'prototype'].includes(key)) {
+      throw new Error('Heartbeat payload contains an unsafe field.')
+    }
+    return [key, boundedHeartbeatValue(item, depth + 1)]
+  }))
+}
+
+function optionalHeartbeatObject(payload, key) {
+  const value = payload[key]
+  if (value === undefined || value === null) return null
+  if (Array.isArray(value) || typeof value !== 'object') {
+    throw new Error(`Heartbeat ${key} must be an object.`)
+  }
+  return value
+}
+
+function boundedCollection(payload, key) {
+  const value = payload[key]
+  if (value === undefined || value === null) return key === 'loadAverage' ? null : []
+  if (!Array.isArray(value)) throw new Error(`Heartbeat ${key} must be an array.`)
+  if (value.length > HEARTBEAT_COLLECTION_LIMITS[key]) {
+    throw new Error(`Heartbeat ${key} exceeds the ${HEARTBEAT_COLLECTION_LIMITS[key]} item limit.`)
+  }
+  return boundedHeartbeatValue(value)
+}
+
+export function normalizeHeartbeat(payload) {
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+    throw new Error('Heartbeat payload must be an object.')
+  }
+
+  const normalized = boundedHeartbeatValue(payload)
+  if (typeof normalized.agentVersion === 'string' && normalized.agentVersion.length > 64) {
+    throw new Error('Heartbeat agent version is too long.')
+  }
+  if (typeof normalized.hostname === 'string' && normalized.hostname.length > 255) {
+    throw new Error('Heartbeat hostname is too long.')
+  }
+
   return {
-    agentVersion: typeof payload.agentVersion === 'string' ? payload.agentVersion : AGENT_VERSION,
-    collectedAt: typeof payload.collectedAt === 'string' ? payload.collectedAt : null,
-    hostname: typeof payload.hostname === 'string' ? payload.hostname : null,
-    os: payload.os && typeof payload.os === 'object' ? payload.os : null,
-    uptimeSeconds: typeof payload.uptimeSeconds === 'number' ? payload.uptimeSeconds : null,
-    loadAverage: Array.isArray(payload.loadAverage) ? payload.loadAverage : null,
-    cpu: payload.cpu && typeof payload.cpu === 'object' ? payload.cpu : null,
-    memory: payload.memory && typeof payload.memory === 'object' ? payload.memory : null,
-    swap: payload.swap && typeof payload.swap === 'object' ? payload.swap : null,
-    disks: Array.isArray(payload.disks) ? payload.disks : [],
-    network: Array.isArray(payload.network) ? payload.network : [],
-    motherboard: payload.motherboard && typeof payload.motherboard === 'object' ? payload.motherboard : null,
-    containers: Array.isArray(payload.containers) ? payload.containers : [],
-    kubernetes: payload.kubernetes && typeof payload.kubernetes === 'object' ? payload.kubernetes : null,
-    services: Array.isArray(payload.services) ? payload.services : [],
-    listeningPorts: Array.isArray(payload.listeningPorts) ? payload.listeningPorts : [],
+    agentVersion: typeof normalized.agentVersion === 'string' ? normalized.agentVersion : AGENT_VERSION,
+    collectedAt: typeof normalized.collectedAt === 'string' ? normalized.collectedAt : null,
+    hostname: typeof normalized.hostname === 'string' ? normalized.hostname : null,
+    os: optionalHeartbeatObject(normalized, 'os'),
+    uptimeSeconds: typeof normalized.uptimeSeconds === 'number' ? normalized.uptimeSeconds : null,
+    loadAverage: boundedCollection(normalized, 'loadAverage'),
+    cpu: optionalHeartbeatObject(normalized, 'cpu'),
+    memory: optionalHeartbeatObject(normalized, 'memory'),
+    swap: optionalHeartbeatObject(normalized, 'swap'),
+    disks: boundedCollection(normalized, 'disks'),
+    network: boundedCollection(normalized, 'network'),
+    motherboard: optionalHeartbeatObject(normalized, 'motherboard'),
+    containers: boundedCollection(normalized, 'containers'),
+    kubernetes: optionalHeartbeatObject(normalized, 'kubernetes'),
+    services: boundedCollection(normalized, 'services'),
+    listeningPorts: boundedCollection(normalized, 'listeningPorts'),
   }
 }
 
@@ -147,8 +271,24 @@ if [[ ! -f "$CONFIG_FILE" ]]; then
   exit 1
 fi
 
-# shellcheck disable=SC1090
-source "$CONFIG_FILE"
+SERVER_ID=""
+ENDPOINT=""
+DEVICE_TOKEN=""
+AGENT_VERSION=""
+
+while IFS='=' read -r key value; do
+  case "$key" in
+    SERVER_ID) SERVER_ID="$value" ;;
+    ENDPOINT) ENDPOINT="$value" ;;
+    DEVICE_TOKEN) DEVICE_TOKEN="$value" ;;
+    AGENT_VERSION) AGENT_VERSION="$value" ;;
+  esac
+done < "$CONFIG_FILE"
+
+if [[ -z "$SERVER_ID" || -z "$ENDPOINT" || -z "$DEVICE_TOKEN" || -z "$AGENT_VERSION" ]]; then
+  echo "Invalid $CONFIG_FILE" >&2
+  exit 1
+fi
 
 collect_payload() {
   SERVER_SPECS_AGENT_VERSION="$AGENT_VERSION" python3 <<'PY'
@@ -424,12 +564,12 @@ REGISTER_RESPONSE="$(
 
 DEVICE_TOKEN="$(printf '%s' "$REGISTER_RESPONSE" | python3 -c 'import json,sys; print(json.load(sys.stdin)["deviceToken"])')"
 
-cat >/etc/homelab-inventory-agent/config.env <<CONFIG
-SERVER_ID="$SERVER_ID"
-ENDPOINT="$ENDPOINT"
-DEVICE_TOKEN="$DEVICE_TOKEN"
-AGENT_VERSION="$AGENT_VERSION"
-CONFIG
+{
+  printf 'SERVER_ID=%s\n' "$SERVER_ID"
+  printf 'ENDPOINT=%s\n' "$ENDPOINT"
+  printf 'DEVICE_TOKEN=%s\n' "$DEVICE_TOKEN"
+  printf 'AGENT_VERSION=%s\n' "$AGENT_VERSION"
+} >/etc/homelab-inventory-agent/config.env
 
 chmod 0600 /etc/homelab-inventory-agent/config.env
 
@@ -442,6 +582,16 @@ After=network-online.target
 [Service]
 Type=oneshot
 ExecStart=/opt/homelab-inventory-agent/agent.sh
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
 SERVICE
 
 cat >/etc/systemd/system/homelab-inventory-agent.timer <<'TIMER'
@@ -471,7 +621,11 @@ function disabledAgentRoute(_request, response) {
   response.status(403).json({ message: AGENT_DISABLED_MESSAGE })
 }
 
-export function registerAgentRoutes(app, store, { disabled = false } = {}) {
+export function registerAgentRoutes(app, store, {
+  disabled = false,
+  heartbeatRateLimit = HEARTBEAT_RATE_LIMIT,
+  heartbeatRateWindowMs = HEARTBEAT_RATE_WINDOW_MS,
+} = {}) {
   if (disabled) {
     app.get('/api/agent/install.sh', disabledAgentRoute)
     app.get('/api/agent/status', disabledAgentRoute)
@@ -484,8 +638,34 @@ export function registerAgentRoutes(app, store, { disabled = false } = {}) {
     return
   }
 
+  const heartbeatBuckets = new Map()
+  let lastHeartbeatSweepAt = 0
+
+  function sweepHeartbeatBuckets(now) {
+    if (now - lastHeartbeatSweepAt < heartbeatRateWindowMs) return
+
+    const cutoff = now - heartbeatRateWindowMs
+    for (const [deviceId, timestamps] of heartbeatBuckets) {
+      const recent = timestamps.filter((timestamp) => timestamp > cutoff)
+      if (recent.length === 0) heartbeatBuckets.delete(deviceId)
+      else heartbeatBuckets.set(deviceId, recent)
+    }
+    lastHeartbeatSweepAt = now
+  }
+
+  function heartbeatAllowed(deviceId) {
+    const now = Date.now()
+    sweepHeartbeatBuckets(now)
+    const cutoff = now - heartbeatRateWindowMs
+    const recent = (heartbeatBuckets.get(deviceId) ?? []).filter((timestamp) => timestamp > cutoff)
+    if (recent.length >= heartbeatRateLimit) return false
+    recent.push(now)
+    heartbeatBuckets.set(deviceId, recent)
+    return true
+  }
+
   app.get('/api/agent/install.sh', (_request, response) => {
-    response.type('text/x-shellscript').send(installScript())
+    response.set('Cache-Control', 'no-store').type('text/x-shellscript').send(installScript())
   })
 
   app.get('/api/agent/status', (_request, response) => {
@@ -510,6 +690,7 @@ export function registerAgentRoutes(app, store, { disabled = false } = {}) {
       for (const record of Object.values(collection)) {
         if (record.serverId === serverId && !record.revokedAt) {
           record.revokedAt = revokedAt
+          if (collection === store.databases.agents.data.devices) heartbeatBuckets.delete(record.id)
           revoked += 1
         }
       }
@@ -553,25 +734,38 @@ export function registerAgentRoutes(app, store, { disabled = false } = {}) {
       return
     }
 
-    const endpoint = typeof request.body?.endpoint === 'string' && request.body.endpoint.trim()
-      ? request.body.endpoint.trim().replace(/\/$/, '')
-      : publicEndpoint(request)
+    let endpoint
+    try {
+      endpoint = request.body?.endpoint === undefined || request.body.endpoint === ''
+        ? publicEndpoint(request)
+        : normalizeAgentEndpoint(request.body.endpoint)
+    } catch (error) {
+      response.status(400).json({ message: error instanceof Error ? error.message : 'Agent endpoint is invalid.' })
+      return
+    }
     const token = createToken()
     const enrollmentId = createNumericId(Object.keys(store.databases.agents.data.enrollments))
     const now = new Date()
+    const createdAt = now.toISOString()
     const expiresAt = new Date(now.getTime() + ENROLLMENT_TTL_MS).toISOString()
+
+    for (const enrollment of Object.values(store.databases.agents.data.enrollments ?? {})) {
+      if (enrollment.serverId === serverId && !enrollment.usedAt && !enrollment.revokedAt) {
+        enrollment.revokedAt = createdAt
+      }
+    }
 
     store.databases.agents.data.enrollments[enrollmentId] = {
       id: enrollmentId,
       serverId,
       tokenHash: hashToken(token),
-      createdAt: now.toISOString(),
+      createdAt,
       expiresAt,
       endpoint,
     }
     store.scheduleFlush('agents')
 
-    response.json({
+    response.set('Cache-Control', 'no-store').json({
       enrollmentId,
       expiresAt,
       endpoint,
@@ -600,22 +794,36 @@ export function registerAgentRoutes(app, store, { disabled = false } = {}) {
       return
     }
 
+    let agentVersion
+    try {
+      agentVersion = normalizeAgentVersion(request.body?.agentVersion)
+    } catch (error) {
+      response.status(400).json({ message: error instanceof Error ? error.message : 'Agent version is invalid.' })
+      return
+    }
+
     const deviceToken = createToken()
     const deviceId = createNumericId(Object.keys(store.databases.agents.data.devices))
     const now = new Date().toISOString()
 
     enrollment.usedAt = now
+    for (const device of Object.values(store.databases.agents.data.devices ?? {})) {
+      if (device.serverId === serverId && !device.revokedAt) {
+        device.revokedAt = now
+        heartbeatBuckets.delete(device.id)
+      }
+    }
     store.databases.agents.data.devices[deviceId] = {
       id: deviceId,
       serverId,
       tokenHash: hashToken(deviceToken),
       createdAt: now,
       lastSeenAt: null,
-      agentVersion: typeof request.body?.agentVersion === 'string' ? request.body.agentVersion : AGENT_VERSION,
+      agentVersion,
     }
     store.scheduleFlush('agents')
 
-    response.json({
+    response.set('Cache-Control', 'no-store').json({
       deviceId,
       deviceToken,
       heartbeatUrl: `/api/agent/servers/${serverId}/heartbeat`,
@@ -638,8 +846,19 @@ export function registerAgentRoutes(app, store, { disabled = false } = {}) {
       return
     }
 
+    if (!heartbeatAllowed(device.id)) {
+      response.status(429).json({ message: 'Too many heartbeat requests. Please try again shortly.' })
+      return
+    }
+
     const now = new Date().toISOString()
-    const heartbeat = normalizeHeartbeat(request.body ?? {})
+    let heartbeat
+    try {
+      heartbeat = normalizeHeartbeat(request.body ?? {})
+    } catch (error) {
+      response.status(400).json({ message: error instanceof Error ? error.message : 'Heartbeat payload is invalid.' })
+      return
+    }
 
     device.lastSeenAt = now
     device.agentVersion = heartbeat.agentVersion

@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import { SettingsDialog, type SettingsDialogProps } from '@/components/settings-dialog'
 import { TooltipProvider } from '@/components/ui/tooltip'
@@ -53,6 +53,12 @@ function createProps(overrides: Partial<SettingsDialogProps> = {}): SettingsDial
     snapCablesToGrid: false,
     avoidCableCollisionsGlobally: false,
     snapItemsToGrid: false,
+    placementCount: 3,
+    aligningItemsToGrid: false,
+    manualCableBendCount: 0,
+    resettingCableBends: false,
+    manualCableRouteCount: 0,
+    restoringAutomaticCableRoutes: false,
     updateStatus,
     updateLoading: false,
     updateChecking: false,
@@ -71,6 +77,9 @@ function createProps(overrides: Partial<SettingsDialogProps> = {}): SettingsDial
     onSnapCablesToGridChange: vi.fn(),
     onAvoidCableCollisionsGloballyChange: vi.fn(),
     onSnapItemsToGridChange: vi.fn(),
+    onAlignAllItemsToGrid: vi.fn(),
+    onResetAllCableBends: vi.fn(),
+    onRestoreAutomaticCableRoutes: vi.fn(),
     onResetBrowserPreferences: vi.fn(),
     onClearIgnoredWarnings: vi.fn(),
     onEnableCompatibilityForAllHosts: vi.fn(),
@@ -125,6 +134,71 @@ describe('SettingsDialog', () => {
     expect(screen.getByText('420 px')).toBeInTheDocument()
     fireEvent.keyDown(slider, { key: 'ArrowRight' })
     expect(props.onInventoryWidthChange).toHaveBeenCalled()
+  })
+
+  it('confirms one project-wide reset for every cable with saved manual bends', () => {
+    const props = renderSettings({ manualCableBendCount: 3 })
+
+    expect(screen.getByText('3 cables currently use saved manual bends.')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Reset cable bends' }))
+    expect(props.onResetAllCableBends).not.toHaveBeenCalled()
+    expect(screen.getByText(/One Undo restores every removed bend/)).toBeInTheDocument()
+    fireEvent.click(screen.getAllByRole('button', { name: 'Reset cable bends' }).at(-1)!)
+    expect(props.onResetAllCableBends).toHaveBeenCalledOnce()
+  })
+
+  it('aligns every placed item only after grid snapping is enabled and confirmed', () => {
+    const disabledProps = renderSettings({ snapItemsToGrid: false })
+    expect(screen.getByRole('button', { name: 'Align equipment' })).toBeDisabled()
+    expect(disabledProps.onAlignAllItemsToGrid).not.toHaveBeenCalled()
+
+    cleanup()
+    const props = renderSettings({ snapItemsToGrid: true, placementCount: 3 })
+    expect(screen.getByText('3 equipment items will move to the nearest collision-free 24 px grid positions.')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Align equipment' }))
+    expect(props.onAlignAllItemsToGrid).not.toHaveBeenCalled()
+    expect(screen.getByText(/moves blocking items recursively/)).toBeInTheDocument()
+    fireEvent.click(screen.getAllByRole('button', { name: 'Align equipment' }).at(-1)!)
+    expect(props.onAlignAllItemsToGrid).toHaveBeenCalledOnce()
+  })
+
+  it('disables equipment alignment when the canvas is empty or an alignment is running', () => {
+    const { rerender } = render(
+      <TooltipProvider>
+        <SettingsDialog {...createProps({ snapItemsToGrid: true, placementCount: 0 })} />
+      </TooltipProvider>,
+    )
+    expect(screen.getByText('No equipment is currently placed on the canvas.')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Align equipment' })).toBeDisabled()
+
+    rerender(
+      <TooltipProvider>
+        <SettingsDialog {...createProps({
+          snapItemsToGrid: true,
+          placementCount: 3,
+          aligningItemsToGrid: true,
+        })} />
+      </TooltipProvider>,
+    )
+    expect(screen.getByRole('button', { name: 'Aligning equipment' })).toBeDisabled()
+  })
+
+  it('disables the project-wide bend reset when no cable has manual bends', () => {
+    renderSettings()
+
+    expect(screen.getByText('No cables currently use saved manual bends.')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Reset cable bends' })).toBeDisabled()
+  })
+
+  it('confirms restoring automatic geometry for every manually routed cable', () => {
+    const props = renderSettings({ manualCableRouteCount: 4 })
+
+    expect(screen.getByText('4 cables currently use manual bends or endpoint sides.')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Restore automatic routes' }))
+    expect(props.onRestoreAutomaticCableRoutes).not.toHaveBeenCalled()
+    expect(screen.getByText(/Automatic routing will choose the shortest valid attachment sides/)).toBeInTheDocument()
+    fireEvent.click(screen.getAllByRole('button', { name: 'Restore automatic routes' }).at(-1)!)
+    expect(props.onRestoreAutomaticCableRoutes).toHaveBeenCalledOnce()
   })
 
   it('edits project metadata and confirms policy actions', () => {

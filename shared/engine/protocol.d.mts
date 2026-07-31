@@ -43,6 +43,12 @@ export type TopologyConnectionRoute = {
   avoid_cable_overlap: boolean
 }
 
+export type ConnectionRouteSideResolution = {
+  connection_id: number
+  source_side: Side
+  target_side: Side
+}
+
 export type TopologyConnection = {
   id: number
   from: TopologyEndpointRef
@@ -185,6 +191,11 @@ export type RouteDefinition = {
   manual_bends: Array<{ x: number; y: number }>
 }
 
+export type RouteEndpointCandidate = {
+  point: { x: number; y: number }
+  side: 'left' | 'right' | 'top' | 'bottom'
+}
+
 export type RoutedPath = {
   connection_id: number
   points: Array<{ x: number; y: number }>
@@ -214,6 +225,12 @@ export type ReservedSegment = {
 
 export type ObstacleRouteRequest = {
   definition: RouteDefinition
+  source_candidates?: RouteEndpointCandidate[]
+  target_candidates?: RouteEndpointCandidate[]
+  source_side_constraint?: 'left' | 'right' | 'top' | 'bottom' | null
+  target_side_constraint?: 'left' | 'right' | 'top' | 'bottom' | null
+  previous_source_side?: 'left' | 'right' | 'top' | 'bottom' | null
+  previous_target_side?: 'left' | 'right' | 'top' | 'bottom' | null
   source_item_id: string
   target_item_id: string
   obstacles: RouteObstacle[]
@@ -225,6 +242,8 @@ export type ObstacleRouteRequest = {
 
 export type ObstacleRouteResult = {
   route: RoutedPath
+  source_side: 'left' | 'right' | 'top' | 'bottom'
+  target_side: 'left' | 'right' | 'top' | 'bottom'
   used_fallback: boolean
   warning: 'search-exhausted' | null
 }
@@ -237,11 +256,29 @@ export type LaneRouteRequest = {
 export type CableRoutePlanRequest = {
   obstacles: RouteObstacle[]
   requests: LaneRouteRequest[]
+  seed?: CableRouteCacheSeed | null
+}
+
+export type CachedLaneRoute = {
+  input: LaneRouteRequest
+  result: ObstacleRouteResult
+}
+
+export type CableRouteCacheSeed = {
+  obstacles: RouteObstacle[]
+  entries: CachedLaneRoute[]
+}
+
+export type CableRouteFailure = {
+  connection_id: number
+  message: string
 }
 
 export type CableRoutePlan = {
   routes: ObstacleRouteResult[]
   recalculated_connection_ids: number[]
+  deferred_connection_ids: number[]
+  failures: CableRouteFailure[]
 }
 
 export type EngineOperation =
@@ -272,9 +309,19 @@ export type EngineOperation =
       kind: 'update-connection-route'
       payload: { connection_id: number; route: TopologyConnectionRoute | null }
     }
+  | {
+      kind: 'resolve-connection-route-sides'
+      payload: { changes: ConnectionRouteSideResolution[] }
+    }
+  | { kind: 'reset-all-connection-bends' }
+  | { kind: 'restore-automatic-connection-routes' }
   | { kind: 'update-project-metadata'; payload: { name: string } }
   | { kind: 'update-assignments'; payload: { changes: AssignmentChange[] } }
   | { kind: 'update-placements'; payload: { changes: PlacementChange[] } }
+  | {
+      kind: 'snap-placements-to-grid'
+      payload: { nodes: GeometryNode[]; grid_size: number; max_rings: number }
+    }
   | {
       kind: 'replace-geometry'
       payload: { nodes: GeometryNode[]; handles: GeometryHandle[] }

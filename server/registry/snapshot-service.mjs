@@ -20,6 +20,75 @@ async function openCatalogIndex(filePath) {
 }
 
 const OFFICIAL_REGISTRY_ORIGIN = 'https://registry.homelabinventory.com'
+const MAX_MANIFEST_BYTES = 1 * 1024 * 1024
+const MAX_SNAPSHOT_BYTES = 64 * 1024 * 1024
+const MAX_DIGEST_BYTES = 32 * 1024 * 1024
+const CATALOG_GENERATION_VERSION = 1
+
+function byteLength(value) {
+  return new TextEncoder().encode(value).byteLength
+}
+
+async function readBoundedResponse(response, { label, maxBytes }) {
+  const declaredLength = Number(response.headers?.get?.('content-length'))
+  if (Number.isFinite(declaredLength) && declaredLength > maxBytes) {
+    throw new Error(`${label} exceeds the maximum allowed size.`)
+  }
+
+  if (response.body?.getReader) {
+    const reader = response.body.getReader()
+    const chunks = []
+    let received = 0
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      received += value.byteLength
+      if (received > maxBytes) {
+        await reader.cancel()
+        throw new Error(`${label} exceeds the maximum allowed size.`)
+      }
+      chunks.push(value)
+    }
+    const bytes = new Uint8Array(received)
+    let offset = 0
+    for (const chunk of chunks) {
+      bytes.set(chunk, offset)
+      offset += chunk.byteLength
+    }
+    return new TextDecoder().decode(bytes)
+  }
+
+  const text = typeof response.text === 'function'
+    ? await response.text()
+    : JSON.stringify(await response.json())
+  if (byteLength(text) > maxBytes) throw new Error(`${label} exceeds the maximum allowed size.`)
+  return text
+}
+
+function assertDigestMatchesSnapshot(snapshot, digestIndex) {
+  if (digestIndex.catalogRevision !== snapshot.catalogRevision) {
+    throw new Error('Catalog digest index revision does not match its snapshot.')
+  }
+  if (digestIndex.fingerprintVersion !== FINGERPRINT_VERSION) {
+    throw new Error('Catalog digest index fingerprint version is unsupported.')
+  }
+  if (digestIndex.entries.length !== snapshot.templates.length) {
+    throw new Error('Catalog digest index template count does not match its snapshot.')
+  }
+
+  const entries = new Map(digestIndex.entries.map((entry) => [entry.templateKey, entry]))
+  for (const template of snapshot.templates) {
+    const entry = entries.get(template.templateKey)
+    const publishedHash = entry?.contentHashes.find((candidate) => (
+      candidate.hash === template.contentHash
+      && candidate.revision === template.revision
+      && candidate.state === 'published'
+    ))
+    if (!entry || entry.identityHash !== template.identityHash || !publishedHash) {
+      throw new Error(`Catalog digest index entry for ${template.templateKey} does not match its snapshot.`)
+    }
+  }
+}
 
 function nextId(records) {
   return records.reduce((maximum, record) => Math.max(maximum, Number(record.id) || 0), 0) + 1
@@ -27,6 +96,15 @@ function nextId(records) {
 
 function sourceKind(mode) {
   return mode === 'connected' ? 'official-connected' : 'official-offline'
+}
+
+async function pathExists(filePath) {
+  try {
+    await fs.access(filePath)
+    return true
+  } catch {
+    return false
+  }
 }
 
 function safeRefreshMessage(error) {
@@ -60,9 +138,113 @@ export class SnapshotService {
     this.timeoutMs = timeoutMs
     this.catalogDir = path.join(store.dataDir, 'catalog')
     this.cacheDir = path.join(store.dataDir, 'cache')
-    this.snapshotPath = path.join(this.catalogDir, 'active-snapshot.json')
-    this.digestPath = path.join(this.catalogDir, 'active-digests.json')
-    this.indexPath = path.join(this.cacheDir, 'catalog.sqlite')
+    this.generationsDir = path.join(this.catalogDir, 'generations')
+    this.activePointerPath = path.join(this.catalogDir, 'active-generation.json')
+    this.legacySnapshotPath = path.join(this.catalogDir, 'active-snapshot.json')
+    this.legacyDigestPath = path.join(this.catalogDir, 'active-digests.json')
+    this.legacyIndexPath = path.join(this.cacheDir, 'catalog.sqlite')
+    this.resolvedPaths = null
+  }
+
+  generationName(revision, digest) {
+    return `${revision}-${digest}`
+  }
+
+  generationPaths(generation) {
+    const directory = path.join(this.generationsDir, generation)
+    return {
+      generation,
+      directory,
+      snapshot: path.join(directory, 'snapshot.json'),
+      digest: path.join(directory, 'digests.json'),
+      index: path.join(directory, 'catalog.sqlite'),
+      metadata: path.join(directory, 'generation.json'),
+    }
+  }
+
+  async writeActivePointer(paths, activeSnapshot) {
+    await fs.mkdir(this.catalogDir, { recursive: true })
+    const temporary = `${this.activePointerPath}.${process.pid}.${Date.now()}.tmp`
+    try {
+      await fs.writeFile(temporary, `${JSON.stringify({
+        version: CATALOG_GENERATION_VERSION,
+        generation: paths.generation,
+        revision: activeSnapshot.revision,
+        digest: activeSnapshot.digest,
+      }, null, 2)}\n`, { mode: 0o600 })
+      await fs.rename(temporary, this.activePointerPath)
+    } finally {
+      await fs.rm(temporary, { force: true }).catch(() => {})
+    }
+  }
+
+  async validateStoredGeneration(paths, activeSnapshot) {
+    const metadata = JSON.parse(await fs.readFile(paths.metadata, 'utf8'))
+    if (
+      metadata.version !== CATALOG_GENERATION_VERSION
+      || metadata.revision !== activeSnapshot.revision
+      || metadata.digest !== activeSnapshot.digest
+    ) {
+      throw new Error('Catalog generation metadata does not match the active snapshot.')
+    }
+    const artifact = JSON.parse(await fs.readFile(paths.snapshot, 'utf8'))
+    const payload = await verifySignedCatalogArtifact(artifact, this.trustedKeys)
+    const validationTime = payload.expiresAt
+      ? new Date(Date.parse(payload.expiresAt) - 1)
+      : new Date(Math.max(Date.now(), Date.parse(payload.generatedAt)))
+    const snapshot = await validateCatalogSnapshot(payload, { now: validationTime })
+    if (
+      snapshot.catalogRevision !== activeSnapshot.revision
+      || await catalogSnapshotDigest(snapshot) !== activeSnapshot.digest
+    ) {
+      throw new Error('Catalog generation content does not match the active snapshot.')
+    }
+    const storedDigest = JSON.parse(await fs.readFile(paths.digest, 'utf8'))
+    const digestPayload = storedDigest.signed
+      ? await verifySignedCatalogArtifact(storedDigest.artifact, this.trustedKeys)
+      : storedDigest.payload
+    assertDigestMatchesSnapshot(snapshot, validateCatalogDigestIndex(digestPayload))
+    if (!await pathExists(paths.index)) {
+      await (await openCatalogIndex(paths.index)).rebuild(snapshot, paths.index)
+    }
+    return paths
+  }
+
+  async resolveActivePaths() {
+    const activeSnapshot = this.store.getRegistryState().snapshot
+    if (!activeSnapshot) return null
+    if (
+      this.resolvedPaths?.revision === activeSnapshot.revision
+      && this.resolvedPaths?.digestValue === activeSnapshot.digest
+    ) return this.resolvedPaths
+
+    const generation = this.generationName(activeSnapshot.revision, activeSnapshot.digest)
+    const paths = this.generationPaths(generation)
+    if (await pathExists(paths.directory)) {
+      await this.validateStoredGeneration(paths, activeSnapshot)
+      await this.writeActivePointer(paths, activeSnapshot)
+      this.resolvedPaths = { ...paths, revision: activeSnapshot.revision, digestValue: activeSnapshot.digest }
+      return this.resolvedPaths
+    }
+
+    if (
+      await pathExists(this.legacySnapshotPath)
+      && await pathExists(this.legacyDigestPath)
+    ) {
+      this.resolvedPaths = {
+        generation: null,
+        directory: null,
+        snapshot: this.legacySnapshotPath,
+        digest: this.legacyDigestPath,
+        index: this.legacyIndexPath,
+        metadata: null,
+        revision: activeSnapshot.revision,
+        digestValue: activeSnapshot.digest,
+      }
+      return this.resolvedPaths
+    }
+
+    throw new Error('Active catalog artifacts are unavailable.')
   }
 
   async verifyArtifact(artifact, options = {}) {
@@ -89,29 +271,66 @@ export class SnapshotService {
             contentHashes: [{ hash: template.contentHash, state: 'published', revision: template.revision }],
           })),
         })
-    if (digestIndex.catalogRevision !== snapshot.catalogRevision) throw new Error('Catalog digest index revision does not match its snapshot.')
-    await fs.mkdir(this.catalogDir, { recursive: true })
-    await fs.mkdir(this.cacheDir, { recursive: true })
+    assertDigestMatchesSnapshot(snapshot, digestIndex)
+    const activeSnapshot = this.store.getRegistryState().snapshot
+    if (activeSnapshot && snapshot.catalogRevision < activeSnapshot.revision) {
+      throw new Error('Catalog snapshot revision is older than the active snapshot.')
+    }
+    if (
+      activeSnapshot
+      && snapshot.catalogRevision === activeSnapshot.revision
+      && digest !== activeSnapshot.digest
+    ) {
+      throw new Error('Catalog snapshot reuses the active revision with different content.')
+    }
+    await fs.mkdir(this.generationsDir, { recursive: true })
     const nonce = `${process.pid}-${Date.now()}`
-    const temporarySnapshot = `${this.snapshotPath}.${nonce}.tmp`
-    const temporaryDigests = `${this.digestPath}.${nonce}.tmp`
-    const temporaryIndex = `${this.indexPath}.${nonce}.tmp`
+    const generation = this.generationName(snapshot.catalogRevision, digest)
+    const finalPaths = this.generationPaths(generation)
+    const temporaryDirectory = path.join(this.generationsDir, `.${generation}.${nonce}.tmp`)
+    const temporaryPaths = {
+      directory: temporaryDirectory,
+      snapshot: path.join(temporaryDirectory, 'snapshot.json'),
+      digest: path.join(temporaryDirectory, 'digests.json'),
+      index: path.join(temporaryDirectory, 'catalog.sqlite'),
+      metadata: path.join(temporaryDirectory, 'generation.json'),
+    }
     try {
-      await fs.writeFile(temporarySnapshot, JSON.stringify(artifact), { mode: 0o600 })
-      await fs.writeFile(temporaryDigests, JSON.stringify(digestArtifact
+      await fs.mkdir(temporaryDirectory, { mode: 0o700 })
+      await fs.writeFile(temporaryPaths.snapshot, JSON.stringify(artifact), { mode: 0o600 })
+      await fs.writeFile(temporaryPaths.digest, JSON.stringify(digestArtifact
         ? { signed: true, artifact: digestArtifact }
         : { signed: false, payload: digestIndex }), { mode: 0o600 })
-      await (await openCatalogIndex(temporaryIndex)).rebuild(snapshot, temporaryIndex)
-      await fs.rename(temporarySnapshot, this.snapshotPath)
-      await fs.rename(temporaryDigests, this.digestPath)
-      await fs.rename(temporaryIndex, this.indexPath)
+      await (await openCatalogIndex(temporaryPaths.index)).rebuild(snapshot, temporaryPaths.index)
+      await fs.writeFile(temporaryPaths.metadata, `${JSON.stringify({
+        version: CATALOG_GENERATION_VERSION,
+        revision: snapshot.catalogRevision,
+        digest,
+      }, null, 2)}\n`, { mode: 0o600 })
+
+      if (await pathExists(finalPaths.directory)) {
+        try {
+          await this.validateStoredGeneration(finalPaths, {
+            revision: snapshot.catalogRevision,
+            digest,
+          })
+          await fs.rm(temporaryDirectory, { recursive: true, force: true })
+        } catch {
+          const corrupt = `${finalPaths.directory}.corrupt-${nonce}`
+          await fs.rename(finalPaths.directory, corrupt)
+          await fs.rename(temporaryDirectory, finalPaths.directory)
+          await fs.rm(corrupt, { recursive: true, force: true })
+        }
+      } else {
+        await fs.rename(temporaryDirectory, finalPaths.directory)
+      }
     } catch (error) {
-      await Promise.allSettled([fs.rm(temporarySnapshot, { force: true }), fs.rm(temporaryDigests, { force: true }), fs.rm(temporaryIndex, { force: true })])
+      await fs.rm(temporaryDirectory, { recursive: true, force: true }).catch(() => {})
       throw error
     }
 
     const activatedAt = now.toISOString()
-    return this.store.registryTransaction((draft) => {
+    const registry = this.store.registryTransaction((draft) => {
       const kind = sourceKind(mode)
       let source = draft.sources.find((candidate) => candidate.kind?.startsWith('official-'))
       if (!source) {
@@ -150,35 +369,52 @@ export class SnapshotService {
         }
       }
     })
+    await this.store.flush?.(['registry'])
+    await this.writeActivePointer(finalPaths, registry.snapshot)
+    this.resolvedPaths = {
+      ...finalPaths,
+      revision: registry.snapshot.revision,
+      digestValue: registry.snapshot.digest,
+    }
+    return registry
   }
 
   async ensureIndex() {
+    const paths = await this.resolveActivePaths()
+    if (!paths) return null
     try {
-      await fs.access(this.indexPath)
-      return
+      await fs.access(paths.index)
+      return paths
     } catch {}
-    const artifact = JSON.parse(await fs.readFile(this.snapshotPath, 'utf8'))
-    const snapshot = await this.verifyArtifact(artifact)
-    await (await openCatalogIndex(this.indexPath)).rebuild(snapshot)
+    const artifact = JSON.parse(await fs.readFile(paths.snapshot, 'utf8'))
+    const payload = await verifySignedCatalogArtifact(artifact, this.trustedKeys)
+    const validationTime = payload.expiresAt
+      ? new Date(Date.parse(payload.expiresAt) - 1)
+      : new Date(Math.max(Date.now(), Date.parse(payload.generatedAt)))
+    const snapshot = await validateCatalogSnapshot(payload, { now: validationTime })
+    await (await openCatalogIndex(paths.index)).rebuild(snapshot, paths.index)
+    return paths
   }
 
   async search(parameters) {
     const registry = this.store.getRegistryState()
     if (!registry.snapshot) return { total: 0, limit: 30, offset: 0, items: [] }
-    await this.ensureIndex()
-    return (await openCatalogIndex(this.indexPath)).search(parameters)
+    const paths = await this.ensureIndex()
+    return (await openCatalogIndex(paths.index)).search(parameters)
   }
 
   async template(templateKey) {
     const registry = this.store.getRegistryState()
     if (!registry.snapshot) return null
-    await this.ensureIndex()
-    return (await openCatalogIndex(this.indexPath)).getByKey(templateKey)
+    const paths = await this.ensureIndex()
+    return (await openCatalogIndex(paths.index)).getByKey(templateKey)
   }
 
   async knownContributionHashes() {
     try {
-      const stored = JSON.parse(await fs.readFile(this.digestPath, 'utf8'))
+      const paths = await this.resolveActivePaths()
+      if (!paths) return new Map()
+      const stored = JSON.parse(await fs.readFile(paths.digest, 'utf8'))
       const payload = stored.signed
         ? await verifySignedCatalogArtifact(stored.artifact, this.trustedKeys)
         : stored.payload
@@ -207,9 +443,19 @@ export class SnapshotService {
     try {
       const manifestResponse = await this.fetchImpl(manifestUrl, { signal: controller.signal, headers: { accept: 'application/json' } })
       if (!manifestResponse.ok) throw new Error(`Catalog manifest request failed with HTTP ${manifestResponse.status}.`)
-      const signedManifest = await manifestResponse.json()
+      const manifestText = await readBoundedResponse(manifestResponse, {
+        label: 'Catalog manifest',
+        maxBytes: MAX_MANIFEST_BYTES,
+      })
+      const signedManifest = JSON.parse(manifestText)
       const manifestPayload = await verifySignedCatalogArtifact(signedManifest, this.trustedKeys, { now })
       const manifest = validateCatalogManifest(manifestPayload, { now })
+      if (manifest.snapshot.expandedSizeBytes > MAX_SNAPSHOT_BYTES) {
+        throw new Error('Catalog snapshot exceeds the maximum allowed size.')
+      }
+      if (manifest.digests.expandedSizeBytes > MAX_DIGEST_BYTES) {
+        throw new Error('Catalog digest index exceeds the maximum allowed size.')
+      }
       const snapshotUrl = new URL(manifest.snapshot.url)
       if (snapshotUrl.origin !== this.officialOrigin) throw new Error('Catalog manifest points outside the official registry origin.')
       const digestUrl = new URL(manifest.digests.url)
@@ -220,13 +466,16 @@ export class SnapshotService {
       ])
       if (!response.ok) throw new Error(`Catalog snapshot request failed with HTTP ${response.status}.`)
       if (!digestResponse.ok) throw new Error(`Catalog digest request failed with HTTP ${digestResponse.status}.`)
-      const [text, digestText] = await Promise.all([response.text(), digestResponse.text()])
-      if (new TextEncoder().encode(text).byteLength > manifest.snapshot.expandedSizeBytes) {
-        throw new Error('Catalog snapshot exceeds its declared expanded size.')
-      }
-      if (new TextEncoder().encode(digestText).byteLength > manifest.digests.expandedSizeBytes) {
-        throw new Error('Catalog digest index exceeds its declared expanded size.')
-      }
+      const [text, digestText] = await Promise.all([
+        readBoundedResponse(response, {
+          label: 'Catalog snapshot',
+          maxBytes: manifest.snapshot.expandedSizeBytes,
+        }),
+        readBoundedResponse(digestResponse, {
+          label: 'Catalog digest index',
+          maxBytes: manifest.digests.expandedSizeBytes,
+        }),
+      ])
       if (await sha256Hex(text) !== manifest.snapshot.sha256) throw new Error('Catalog snapshot checksum does not match its manifest.')
       if (await sha256Hex(digestText) !== manifest.digests.sha256) throw new Error('Catalog digest checksum does not match its manifest.')
       if (this.store.getRegistryState().settings.mode !== 'connected') {

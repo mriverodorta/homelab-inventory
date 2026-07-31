@@ -32,15 +32,25 @@ function project(): ProjectState {
 }
 
 describe('canvas handle index', () => {
-  it('keeps only handles required by persisted cable routes', () => {
+  it('keeps all candidate sides for connected endpoints only', () => {
     const index = buildCanvasHandleIndex(project())
 
-    expect([...getRequiredCanvasHandles(index, 'server:1')]).toEqual(['source-right-1:port'])
-    expect([...getRequiredCanvasHandles(index, 'server:2')]).toEqual(['target-left-1:port'])
+    expect([...getRequiredCanvasHandles(index, 'server:1')]).toEqual([
+      'source-top-1:port',
+      'source-right-1:port',
+      'source-bottom-1:port',
+      'source-left-1:port',
+    ])
+    expect([...getRequiredCanvasHandles(index, 'server:2')]).toEqual([
+      'target-top-1:port',
+      'target-right-1:port',
+      'target-bottom-1:port',
+      'target-left-1:port',
+    ])
     expect(getRequiredCanvasHandles(index, 'server:3').size).toBe(0)
   })
 
-  it('tracks handle changes when moving equipment changes the automatic cable sides', () => {
+  it('does not churn mounted handles when equipment movement changes the selected side', () => {
     const before = project()
     const beforeIndex = buildCanvasHandleIndex(before)
     const after = {
@@ -53,11 +63,19 @@ describe('canvas handle index', () => {
     }
     const afterIndex = buildCanvasHandleIndex(after)
 
-    expect([...getRequiredCanvasHandles(afterIndex, 'server:1')]).toEqual(['source-top-1:port'])
-    expect([...getRequiredCanvasHandles(afterIndex, 'server:2')]).toEqual(['target-bottom-1:port'])
-    expect(getChangedCanvasHandleItemIds(beforeIndex, afterIndex)).toEqual(
-      new Set(['server:1', 'server:2']),
-    )
+    expect([...getRequiredCanvasHandles(afterIndex, 'server:1')]).toEqual([
+      'source-top-1:port',
+      'source-right-1:port',
+      'source-bottom-1:port',
+      'source-left-1:port',
+    ])
+    expect([...getRequiredCanvasHandles(afterIndex, 'server:2')]).toEqual([
+      'target-top-1:port',
+      'target-right-1:port',
+      'target-bottom-1:port',
+      'target-left-1:port',
+    ])
+    expect(getChangedCanvasHandleItemIds(beforeIndex, afterIndex)).toEqual(new Set())
   })
 
   it('does not invalidate handles when placement changes preserve cable sides', () => {

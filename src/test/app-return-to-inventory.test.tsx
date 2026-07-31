@@ -25,16 +25,20 @@ vi.mock('@/components/desktop-inventory-shell', () => ({
   DesktopInventoryShell: ({ children }: { children: ReactNode }) => children,
 }))
 
-vi.mock('@/components/inventory-sidebar', () => ({
+vi.mock('@/components/lazy-dnd-workspace', () => ({
+  DndWorkspace: ({ children }: { children: ReactNode }) => children,
+}))
+
+vi.mock('@/components/lazy-inventory-sidebar', () => ({
   InventorySidebar: () => null,
 }))
 
-vi.mock('@/components/workbench-canvas', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('@/components/workbench-canvas')>()
+vi.mock('@/components/lazy-mobile-inventory-sheet', () => ({
+  MobileInventorySheet: () => null,
+}))
 
-  return {
-    ...actual,
-    WorkbenchCanvas: ({
+vi.mock('@/components/lazy-workbench-canvas', () => ({
+  WorkbenchCanvas: ({
       project,
       selectedItemId,
       canUndo,
@@ -64,10 +68,10 @@ vi.mock('@/components/workbench-canvas', async (importOriginal) => {
         <button type="button" disabled={!canRedo} onClick={onRedo}>Redo</button>
       </div>
     ),
-  }
-})
+}))
 
-vi.mock('@/components/inspector-panel', () => ({
+vi.mock('@/components/lazy-app-surfaces', async (importOriginal) => ({
+  ...await importOriginal<typeof import('@/components/lazy-app-surfaces')>(),
   InspectorPanel: ({
     open,
     selectedItemId,
@@ -197,7 +201,7 @@ describe('App return to inventory workflow', () => {
     expect(screen.getByTestId('inspector-selection')).toHaveTextContent('server:1')
 
     fireEvent.click(screen.getByRole('button', { name: 'Request return' }))
-    expect(screen.getByRole('heading', { name: 'Return Host server to inventory?' })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'Return Host server to inventory?' })).toBeInTheDocument()
     expect(screen.getByText('Hosted components released').nextSibling).toHaveTextContent('2')
     expect(screen.getByText('Cable connections removed').nextSibling).toHaveTextContent('2')
 

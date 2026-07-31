@@ -40,6 +40,26 @@ describe('canvas handle geometry', () => {
     expect(canvasHandleGeometryEqual(first, second)).toBe(true)
   })
 
+  it('removes viewport-scale measurement noise without hiding real movement', () => {
+    const lower = node('node:1', 'port:1')
+    const upper = node('node:1', 'port:1')
+
+    lower.internals.handleBounds!.source![0].y = 86.49998982747397
+    upper.internals.handleBounds!.source![0].y = 86.50001525878906
+
+    const lowerGeometry = normalizeCanvasHandleGeometry([lower])
+    const upperGeometry = normalizeCanvasHandleGeometry([upper])
+
+    expect(lowerGeometry[0].source[0].y).toBe(86.5)
+    expect(canvasHandleGeometryEqual(lowerGeometry, upperGeometry)).toBe(true)
+
+    upper.internals.handleBounds!.source![0].y = 87.5
+    expect(canvasHandleGeometryEqual(
+      lowerGeometry,
+      normalizeCanvasHandleGeometry([upper]),
+    )).toBe(false)
+  })
+
   it('detects actual handle geometry changes', () => {
     const firstNode = node('node:1', 'port:1')
     const secondNode = node('node:1', 'port:1')

@@ -475,6 +475,7 @@ type RenderInspectorOptions = Partial<Pick<InspectorPanelProps,
   | 'onUpdateItem'
   | 'onUpdateItemProperties'
   | 'onCreateConnection'
+  | 'onSelectConnection'
   | 'onSelectNetworkTrace'
   | 'onUpdateConnectionLabel'
   | 'onUpdateConnectionRoute'
@@ -514,6 +515,7 @@ function renderInspector({
   onUpdateItem = vi.fn(),
   onUpdateItemProperties = vi.fn(),
   onCreateConnection = vi.fn(),
+  onSelectConnection = vi.fn(),
   onSelectNetworkTrace = vi.fn(),
   onUpdateConnectionLabel = vi.fn(),
   onUpdateConnectionRoute = vi.fn(),
@@ -555,6 +557,7 @@ function renderInspector({
         onUpdateItemProperties={onUpdateItemProperties}
         onReturnItemToInventory={onReturnItemToInventory}
         onCreateConnection={onCreateConnection}
+        onSelectConnection={onSelectConnection}
         onSelectNetworkTrace={onSelectNetworkTrace}
         onEndpointConnectionClick={onEndpointConnectionClick}
         onCancelPendingConnection={onCancelPendingConnection}
@@ -573,6 +576,7 @@ function renderInspector({
     onUpdateItem,
     onUpdateItemProperties,
     onCreateConnection,
+    onSelectConnection,
     onSelectNetworkTrace,
     onUpdateConnectionLabel,
     onUpdateConnectionRoute,
@@ -1452,6 +1456,38 @@ describe('InspectorPanel', () => {
     await user.click(screen.getByRole('combobox', { name: 'Destination port' }))
     expect(screen.getByRole('option', { name: 'Port 01 / Back / RJ45' })).toBeInTheDocument()
     expect(screen.getByRole('option', { name: 'Port 01 / Front / RJ45' })).toBeInTheDocument()
+  })
+
+  it('opens the cable inspector from a related connection card', async () => {
+    const user = userEvent.setup()
+    const onSelectConnection = vi.fn()
+    const connectionProject: ProjectState = {
+      ...project,
+      placements: [
+        { serverId: 'switch:1', x: 0, y: 0 },
+        { serverId: 'patchPanel:1', x: 400, y: 0 },
+      ],
+      connections: [
+        {
+          id: 7,
+          type: 'network',
+          createdAt: '2026-07-31T00:00:00.000Z',
+          from: { itemId: 'switch:1', portId: 1 },
+          to: { itemId: 'patchPanel:1', portId: 1, endpointId: 1 },
+        },
+      ],
+    }
+
+    renderInspector({
+      selectedItemId: 'switch:1',
+      project: connectionProject,
+      onSelectConnection,
+    })
+
+    await user.click(screen.getByRole('tab', { name: 'Connections' }))
+    await user.click(screen.getByRole('button', { name: 'Open cable' }))
+
+    expect(onSelectConnection).toHaveBeenCalledWith(7)
   })
 
   it('renders patch panel ports and emits type updates', async () => {

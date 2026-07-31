@@ -87,6 +87,7 @@ function renderCable({
   selected = false,
   hovered = false,
   editable = selected,
+  dimmed = false,
   snapToGrid = false,
   plannedPoints = defaultPoints,
   sourceSide = 'right',
@@ -95,6 +96,7 @@ function renderCable({
   selected?: boolean
   hovered?: boolean
   editable?: boolean
+  dimmed?: boolean
   snapToGrid?: boolean
   plannedPoints?: Array<{ x: number; y: number }>
   sourceSide?: CableEdgeData['sourceSide']
@@ -108,7 +110,7 @@ function renderCable({
     detail: 'Server NIC to switch port',
     selected,
     hovered,
-    dimmed: false,
+    dimmed,
     editable,
     connectionId: 1,
     snapToGrid,
@@ -116,6 +118,8 @@ function renderCable({
     targetSide,
     plannedRoute: {
       points: plannedPoints,
+      sourceSide,
+      targetSide,
       manualAnchorPointIndexes: [],
       usedFallback: false,
     },
@@ -160,7 +164,12 @@ describe('CableEdge route interaction', () => {
     )
   })
 
-  it('renders an orthogonal fallback while a stale endpoint route is recalculated', () => {
+  it('keeps background cables visible while another canvas item is focused', () => {
+    renderCable({ dimmed: true })
+    expect(screen.getByTestId('base-cable-path')).toHaveStyle({ opacity: '0.5' })
+  })
+
+  it('keeps the last safe planned route visible while endpoints are remeasured', () => {
     renderCable({
       plannedPoints: [{ x: 12, y: 0 }, { x: 200, y: 100 }],
       sourceSide: 'right',
@@ -168,7 +177,7 @@ describe('CableEdge route interaction', () => {
     })
     expect(screen.getByTestId('base-cable-path')).toHaveAttribute(
       'd',
-      'M 0,0 L 24,0 L 24,124 L 200,124 L 200,100',
+      'M 12,0 L 200,100',
     )
   })
 

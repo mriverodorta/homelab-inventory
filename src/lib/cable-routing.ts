@@ -19,6 +19,13 @@ import type {
 } from '@/types/inventory'
 
 export type CableSide = 'left' | 'right' | 'top' | 'bottom'
+export const CABLE_SIDES: readonly CableSide[] = ['top', 'right', 'bottom', 'left']
+export const CABLE_FACE_ATTACHMENT_SPACING = 12
+
+export type CableFaceAttachmentCandidate = {
+  point: Point
+  side: CableSide
+}
 
 export type CableRoute = {
   sourceHandle: string
@@ -38,6 +45,36 @@ type NodeBox = {
 type Point = {
   x: number
   y: number
+}
+
+export function getProjectedFaceCandidates(
+  centerPoint: Point,
+  side: CableSide,
+  towardPoint: Point,
+): CableFaceAttachmentCandidate[] {
+  const horizontalFace = side === 'top' || side === 'bottom'
+  const targetCoordinate = horizontalFace ? towardPoint.x : towardPoint.y
+  const offsets = [-CABLE_FACE_ATTACHMENT_SPACING, CABLE_FACE_ATTACHMENT_SPACING]
+
+  const alternatives = offsets
+    .map((offset) => ({
+      offset,
+      point: horizontalFace
+        ? { x: centerPoint.x + offset, y: centerPoint.y }
+        : { x: centerPoint.x, y: centerPoint.y + offset },
+      side,
+    }))
+    .sort((first, second) => {
+      const firstCoordinate = horizontalFace ? first.point.x : first.point.y
+      const secondCoordinate = horizontalFace ? second.point.x : second.point.y
+
+      return Math.abs(firstCoordinate - targetCoordinate) - Math.abs(secondCoordinate - targetCoordinate)
+        || Math.abs(first.offset) - Math.abs(second.offset)
+        || first.offset - second.offset
+    })
+    .map(({ point, side: candidateSide }) => ({ point, side: candidateSide }))
+
+  return [{ point: centerPoint, side }, ...alternatives]
 }
 
 const EQUIPMENT_PORT_ROW_X = 16
@@ -293,6 +330,7 @@ export function getConnectionRoute(
   project: ProjectState,
   connection: InventoryConnection,
   connectionIndex = 0,
+  selectedSides?: { sourceSide: CableSide; targetSide: CableSide },
 ): CableRoute | null {
   const sourceBox = getNodeBox(project, connection.from.itemId)
   const targetBox = getNodeBox(project, connection.to.itemId)
@@ -304,8 +342,10 @@ export function getConnectionRoute(
   const sourcePoint = getEndpointPoint(project, sourceBox, connection.from)
   const targetPoint = getEndpointPoint(project, targetBox, connection.to)
   const sourceSide = normalizeRouteSide(connection.route?.sourceSide) ??
+    selectedSides?.sourceSide ??
     sideTowardBox(sourceBox, sourcePoint, targetBox, targetPoint)
   const targetSide = normalizeRouteSide(connection.route?.targetSide) ??
+    selectedSides?.targetSide ??
     sideTowardBox(targetBox, targetPoint, sourceBox, sourcePoint)
   const parallelLaneOffset = (connectionIndex % 3) * 8
 

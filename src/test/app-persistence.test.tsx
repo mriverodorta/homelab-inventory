@@ -42,16 +42,20 @@ vi.mock('@/components/desktop-inventory-shell', () => ({
   DesktopInventoryShell: ({ children }: { children: ReactNode }) => children,
 }))
 
-vi.mock('@/components/inventory-sidebar', () => ({
+vi.mock('@/components/lazy-dnd-workspace', () => ({
+  DndWorkspace: ({ children }: { children: ReactNode }) => children,
+}))
+
+vi.mock('@/components/lazy-inventory-sidebar', () => ({
   InventorySidebar: () => null,
 }))
 
-vi.mock('@/components/workbench-canvas', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('@/components/workbench-canvas')>()
+vi.mock('@/components/lazy-mobile-inventory-sheet', () => ({
+  MobileInventorySheet: () => null,
+}))
 
-  return {
-    ...actual,
-    WorkbenchCanvas: ({
+vi.mock('@/components/lazy-workbench-canvas', () => ({
+  WorkbenchCanvas: ({
       canUndo,
       canRedo,
       onUndo,
@@ -84,10 +88,10 @@ vi.mock('@/components/workbench-canvas', async (importOriginal) => {
         )
       })()
     ),
-  }
-})
+}))
 
-vi.mock('@/components/inspector-panel', () => ({
+vi.mock('@/components/lazy-app-surfaces', async (importOriginal) => ({
+  ...await importOriginal<typeof import('@/components/lazy-app-surfaces')>(),
   InspectorPanel: ({
     project,
     persistenceWarning,
@@ -351,6 +355,60 @@ describe('App project persistence', () => {
       await vi.advanceTimersByTimeAsync(500)
     })
     expect(saveProjectMock.mock.calls[1]?.[0].items['server:1']?.name).toBe('Updated server')
+  })
+
+  it('rebases Undo and Redo snapshots onto the current canonical revision', async () => {
+    const initialProject = { ...persistedProject, revision: 7 }
+    const updatedProject: ProjectState = {
+      ...initialProject,
+      revision: 8,
+      items: {
+        ...initialProject.items,
+        'server:1': {
+          ...initialProject.items['server:1'],
+          name: 'Updated server',
+        },
+      },
+    }
+    updateInventoryItemMock.mockResolvedValueOnce(updatedProject)
+    saveProjectMock
+      .mockImplementationOnce(async (project: ProjectState) => ({
+        ...project,
+        revision: (project.revision ?? 0) + 1,
+      }))
+      .mockImplementationOnce(async (project: ProjectState) => ({
+        ...project,
+        revision: (project.revision ?? 0) + 1,
+      }))
+    renderApp(initialProject)
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Update inventory item' }))
+    expect(await screen.findByTestId('item-name')).toHaveTextContent('Updated server')
+
+    vi.useFakeTimers()
+    fireEvent.click(screen.getByRole('button', { name: 'Undo' }))
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(500)
+    })
+
+    expect(saveProjectMock.mock.calls[0]?.[0]).toEqual(expect.objectContaining({
+      revision: 8,
+      items: expect.objectContaining({
+        'server:1': expect.objectContaining({ name: 'Test server' }),
+      }),
+    }))
+
+    fireEvent.click(screen.getByRole('button', { name: 'Redo' }))
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(500)
+    })
+
+    expect(saveProjectMock.mock.calls[1]?.[0]).toEqual(expect.objectContaining({
+      revision: 9,
+      items: expect.objectContaining({
+        'server:1': expect.objectContaining({ name: 'Updated server' }),
+      }),
+    }))
   })
 
   it('records property-only inventory updates in Undo history', async () => {

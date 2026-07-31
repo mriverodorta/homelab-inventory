@@ -57,10 +57,8 @@ export function registerInventoryRoutes(app, { withStore }) {
     runWithInventoryStore(withStore, request, response, 'Unable to update inventory item.', async (store) => {
       const ref = itemRef(request)
       const input = request.body?.item ?? request.body
-      const project = store.updateInventoryItem(ref, input)
       const { contentHash } = await computeCatalogDigests({ ...input, type: ref.type })
-      store.reconcileCatalogLink(ref, contentHash)
-      response.json(project)
+      response.json(store.updateInventoryItemAndReconcileCatalog(ref, input, contentHash))
     })
   })
 

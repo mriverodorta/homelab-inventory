@@ -7,9 +7,11 @@ import { NasNode, type NasFlowNode } from '@/components/nas-card'
 import { ServerNode, type ServerFlowNode } from '@/components/server-card'
 import {
   CompatibilityDropAnnouncement,
+} from '@/components/workbench-canvas'
+import {
   getComponentDropCompatibilityStatus,
   type ComponentDragData,
-} from '@/components/workbench-canvas'
+} from '@/components/workbench-canvas-contract'
 import type { ComponentAssignment, InventoryItem, ProjectState } from '@/types/inventory'
 
 vi.mock('@dnd-kit/core', () => ({

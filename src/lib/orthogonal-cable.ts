@@ -128,6 +128,8 @@ export function createOrthogonalFallbackRoute(
 
   return {
     points: compactOrthogonalPoints([source, sourceStub, ...middlePoints, targetStub, target]),
+    sourceSide,
+    targetSide,
     manualAnchorPointIndexes: [],
     usedFallback: true,
   }

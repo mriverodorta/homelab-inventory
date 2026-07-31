@@ -37,6 +37,10 @@ function readTrustProxy(value, warn) {
   return normalized
 }
 
+export function shouldEnableRateLimit(environment = process.env) {
+  return environment.NODE_ENV?.trim().toLowerCase() === 'production'
+}
+
 export function readRateLimitConfig(environment = process.env, warn = console.warn) {
   return {
     windowMs: readPositiveInteger(
@@ -61,13 +65,11 @@ export function createRateLimitOptions({ windowMs, limit }) {
     limit,
     standardHeaders: 'draft-8',
     legacyHeaders: false,
+    skip(request) {
+      return request.path === '/health' || request.path === '/engine/events'
+    },
     handler(request, response) {
-      if (request.originalUrl.startsWith('/api/')) {
-        response.status(429).json({ message: RATE_LIMIT_MESSAGE })
-        return
-      }
-
-      response.status(429).type('text/plain').send(RATE_LIMIT_MESSAGE)
+      response.status(429).json({ message: RATE_LIMIT_MESSAGE })
     },
   }
 }

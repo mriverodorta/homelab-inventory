@@ -67,9 +67,10 @@ function respondError(response, error, fallback) {
     })
     return
   }
-  response.status(400).json({
-    message: error instanceof Error ? error.message : fallback,
-    code: 'invalid-registry-request',
+  console.error('[registry] Request failed.', error instanceof Error ? error.message : error)
+  response.status(500).json({
+    message: fallback,
+    code: 'registry-request-failed',
   })
 }
 
@@ -78,7 +79,7 @@ function run(withStore, request, response, handler) {
     try {
       await handler(store)
     } catch (error) {
-      respondError(response, error, 'Registry request is invalid.')
+      respondError(response, error, 'Registry request could not be completed.')
     }
   }, { message: 'Unable to access registry data.' })
 }
@@ -223,17 +224,30 @@ export function registerRegistryRoutes(app, {
       const imported = request.body?.artifact ?? request.body
       const snapshotArtifact = imported?.snapshot ?? imported
       const digestArtifact = imported?.digests
-      await snapshotService(store).activate(snapshotArtifact, { mode: 'offline', digestArtifact })
+      try {
+        await snapshotService(store).activate(snapshotArtifact, { mode: 'offline', digestArtifact })
+      } catch {
+        throw new InventoryLifecycleError('Catalog snapshot could not be verified.', {
+          code: 'invalid-catalog-snapshot', status: 400,
+        })
+      }
       response.status(201).json({ registry: publicRegistryState(store, policy) })
     })
   })
 
   app.post('/api/registry/catalog/refresh', (request, response) => {
     run(withStore, request, response, async (store) => {
-      if (catalogRefreshCoordinator) {
-        await catalogRefreshCoordinator.refresh('manual')
-      } else {
-        await snapshotService(store).refreshConnected()
+      try {
+        if (catalogRefreshCoordinator) {
+          await catalogRefreshCoordinator.refresh('manual')
+        } else {
+          await snapshotService(store).refreshConnected()
+        }
+      } catch (error) {
+        throw new InventoryLifecycleError(
+          error instanceof Error ? error.message : 'Official catalog refresh failed.',
+          { code: 'catalog-refresh-failed', status: 502 },
+        )
       }
       response.json({ registry: publicRegistryState(store, policy) })
     })

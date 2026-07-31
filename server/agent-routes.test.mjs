@@ -3,7 +3,7 @@ import fs from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
-import { registerAgentRoutes } from './agent-routes.mjs'
+import { normalizeAgentEndpoint, normalizeHeartbeat, registerAgentRoutes } from './agent-routes.mjs'
 import { HomelabInventoryStore } from './db/store.mjs'
 
 const tempDirs = []
@@ -79,6 +79,7 @@ async function createTestStore() {
 function createApp(store, options) {
   const app = express()
 
+  app.use('/api/agent/servers/:serverId/heartbeat', express.json({ limit: '256kb' }))
   app.use(express.json({ limit: '10mb' }))
   registerAgentRoutes(app, store, options)
 
@@ -98,12 +99,40 @@ function listen(app) {
   })
 }
 
+function closeServer(server) {
+  return new Promise((resolve, reject) => {
+    server.close((error) => error ? reject(error) : resolve())
+    server.closeAllConnections?.()
+  })
+}
+
 afterEach(async () => {
   await Promise.all(activeStores.splice(0).map((store) => store.flush()))
   await Promise.all(tempDirs.splice(0).map((dir) => fs.rm(dir, { recursive: true, force: true })))
 })
 
 describe('agent routes', () => {
+  it('accepts only origin-only HTTP(S) agent endpoints', () => {
+    expect(normalizeAgentEndpoint('https://inventory.example.test/')).toBe('https://inventory.example.test')
+    expect(normalizeAgentEndpoint('http://192.0.2.10:8798')).toBe('http://192.0.2.10:8798')
+    expect(() => normalizeAgentEndpoint('ftp://inventory.example.test')).toThrow('HTTP or HTTPS origin')
+    expect(() => normalizeAgentEndpoint('https://user:pass@inventory.example.test')).toThrow('without credentials')
+    expect(() => normalizeAgentEndpoint('https://inventory.example.test/api')).toThrow('without credentials')
+    expect(() => normalizeAgentEndpoint('https://inventory.example.test?x=1')).toThrow('without credentials')
+    expect(() => normalizeAgentEndpoint('https://inventory.example.test\nEVIL=1')).toThrow('valid HTTP or HTTPS')
+  })
+
+  it('bounds heartbeat telemetry before persistence', () => {
+    expect(() => normalizeHeartbeat({ services: Array.from({ length: 513 }, () => ({})) }))
+      .toThrow('services exceeds the 512 item limit')
+    expect(() => normalizeHeartbeat({ hostname: 'x'.repeat(256) })).toThrow('hostname is too long')
+    expect(() => normalizeHeartbeat({ cpu: { value: Number.POSITIVE_INFINITY } })).toThrow('must be finite')
+    expect(() => normalizeHeartbeat({ cpu: [] })).toThrow('cpu must be an object')
+    expect(() => normalizeHeartbeat({ cpu: { values: Array.from({ length: 1025 }, () => null) } }))
+      .toThrow('arrays cannot exceed 1024 items')
+    expect(normalizeHeartbeat({ loadAverage: [0.1, 0.2, 0.3] }).loadAverage).toEqual([0.1, 0.2, 0.3])
+  })
+
   it('returns 403 for disabled enrollment and install script routes without touching the store', async () => {
     const disabledStore = new Proxy({}, {
       get() {
@@ -137,13 +166,13 @@ describe('agent routes', () => {
       expect(registrationCleanup.status).toBe(403)
       expect(statusCleanup.status).toBe(403)
     } finally {
-      server.close()
+      await closeServer(server)
     }
   })
 
   it('enrolls, registers, and accepts heartbeat for only the scoped server', async () => {
     const store = await createTestStore()
-    const app = createApp(store)
+    const app = createApp(store, { heartbeatRateLimit: 1 })
     const { server, url } = await listen(app)
 
     try {
@@ -159,6 +188,7 @@ describe('agent routes', () => {
       const token = enrollment.installCommand.match(/--token '([^']+)'/)?.[1]
 
       expect(enrollmentResponse.status).toBe(200)
+      expect(enrollmentResponse.headers.get('cache-control')).toBe('no-store')
       expect(token).toBeTruthy()
 
       const blockedRegister = await fetch(`${url}/api/agent/servers/2/register`, {
@@ -183,6 +213,7 @@ describe('agent routes', () => {
       const registration = await registerResponse.json()
 
       expect(registerResponse.status).toBe(200)
+      expect(registerResponse.headers.get('cache-control')).toBe('no-store')
       expect(registration.deviceToken).toBeTruthy()
 
       const heartbeatResponse = await fetch(`${url}/api/agent/servers/1/heartbeat`, {
@@ -236,8 +267,171 @@ describe('agent routes', () => {
       expect(store.getAgentStatusSummary().servers['1'].kubernetes.role).toBe('worker')
       expect(store.getAgentStatusSummary().servers['1'].services[0].unit).toBe('docker.service')
       expect(store.getAgentStatusSummary().servers['1'].listeningPorts[0].port).toBe(3001)
+
+      const rateLimitedHeartbeat = await fetch(`${url}/api/agent/servers/1/heartbeat`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${registration.deviceToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ agentVersion: '0.2.0' }),
+      })
+      expect(rateLimitedHeartbeat.status).toBe(429)
     } finally {
-      server.close()
+      await closeServer(server)
+    }
+  })
+
+  it('keeps only the newest enrollment and registered device active for each server', async () => {
+    const store = await createTestStore()
+    const app = createApp(store)
+    const { server, url } = await listen(app)
+
+    const enroll = async () => {
+      const response = await fetch(`${url}/api/agent/enrollments`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ serverId: 1, endpoint: url }),
+      })
+      const body = await response.json()
+      return body.installCommand.match(/--token '([^']+)'/)?.[1]
+    }
+    const register = (token, agentVersion = '0.2.0') => fetch(`${url}/api/agent/servers/1/register`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ agentVersion }),
+    })
+
+    try {
+      const staleEnrollmentToken = await enroll()
+      const currentEnrollmentToken = await enroll()
+
+      expect((await register(staleEnrollmentToken)).status).toBe(403)
+
+      const firstRegistration = await register(currentEnrollmentToken)
+      const firstDevice = await firstRegistration.json()
+      expect(firstRegistration.status).toBe(200)
+
+      const nextEnrollmentToken = await enroll()
+      const secondRegistration = await register(nextEnrollmentToken)
+      const secondDevice = await secondRegistration.json()
+      expect(secondRegistration.status).toBe(200)
+
+      const staleHeartbeat = await fetch(`${url}/api/agent/servers/1/heartbeat`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${firstDevice.deviceToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ agentVersion: '0.2.0' }),
+      })
+      const currentHeartbeat = await fetch(`${url}/api/agent/servers/1/heartbeat`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${secondDevice.deviceToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ agentVersion: '0.2.0' }),
+      })
+
+      expect(staleHeartbeat.status).toBe(403)
+      expect(currentHeartbeat.status).toBe(200)
+      expect(Object.values(store.databases.agents.data.devices).filter((device) => !device.revokedAt)).toHaveLength(1)
+    } finally {
+      await closeServer(server)
+    }
+  })
+
+  it('rejects malformed bearer credentials and oversized agent versions', async () => {
+    const store = await createTestStore()
+    const app = createApp(store)
+    const { server, url } = await listen(app)
+
+    try {
+      const malformed = await fetch(`${url}/api/agent/servers/1/register`, {
+        method: 'POST',
+        headers: {
+          Authorization: 'Bearer short extra',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ agentVersion: '0.2.0' }),
+      })
+      expect(malformed.status).toBe(401)
+
+      const enrollmentResponse = await fetch(`${url}/api/agent/enrollments`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ serverId: 1, endpoint: url }),
+      })
+      const enrollment = await enrollmentResponse.json()
+      const token = enrollment.installCommand.match(/--token '([^']+)'/)?.[1]
+      expect(token).toMatch(/^[A-Za-z0-9_-]{43}$/)
+
+      const oversized = await fetch(`${url}/api/agent/servers/1/register`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ agentVersion: 'x'.repeat(65) }),
+      })
+      expect(oversized.status).toBe(400)
+    } finally {
+      await closeServer(server)
+    }
+  })
+
+  it('rejects unsafe enrollment endpoints and ignores untrusted forwarded origins', async () => {
+    const store = await createTestStore()
+    const app = createApp(store)
+    const { server, url } = await listen(app)
+
+    try {
+      const unsafe = await fetch(`${url}/api/agent/enrollments`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ serverId: 1, endpoint: 'https://inventory.example.test/path?x=1' }),
+      })
+      expect(unsafe.status).toBe(400)
+      expect(Object.keys(store.databases.agents.data.enrollments)).toHaveLength(0)
+
+      const fallback = await fetch(`${url}/api/agent/enrollments`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Forwarded-Host': 'attacker.example.test',
+          'X-Forwarded-Proto': 'https',
+        },
+        body: JSON.stringify({ serverId: 1 }),
+      })
+      const enrollment = await fallback.json()
+
+      expect(fallback.status).toBe(200)
+      expect(enrollment.endpoint).toBe(url)
+      expect(enrollment.installCommand).not.toContain('attacker.example.test')
+    } finally {
+      await closeServer(server)
+    }
+  })
+
+  it('rejects oversized heartbeat request bodies before route processing', async () => {
+    const store = await createTestStore()
+    const app = createApp(store)
+    const { server, url } = await listen(app)
+
+    try {
+      const response = await fetch(`${url}/api/agent/servers/1/heartbeat`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ padding: 'x'.repeat(300 * 1024) }),
+      })
+
+      expect(response.status).toBe(413)
+    } finally {
+      await closeServer(server)
     }
   })
 
@@ -251,14 +445,20 @@ describe('agent routes', () => {
       const script = await response.text()
 
       expect(response.status).toBe(200)
+      expect(response.headers.get('cache-control')).toBe('no-store')
       expect(script).toContain('AGENT_VERSION="0.2.0"')
       expect(script).toContain('docker", "ps"')
       expect(script).toContain('podman", "ps"')
       expect(script).toContain('k3s-agent')
       expect(script).toContain('systemctl", "list-units"')
       expect(script).toContain('ss", "-tulpenH"')
+      expect(script).not.toContain('source "$CONFIG_FILE"')
+      expect(script).toContain("while IFS='=' read -r key value")
+      expect(script).toContain('NoNewPrivileges=true')
+      expect(script).toContain('ProtectSystem=strict')
+      expect(script).toContain('RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6')
     } finally {
-      server.close()
+      await closeServer(server)
     }
   })
 
@@ -299,7 +499,7 @@ describe('agent routes', () => {
       expect(store.databases.agentStatus.data.servers['1']).toBeUndefined()
       expect(store.getInventoryDependencies({ type: 'server', id: 1 }).blocked).toBe(false)
     } finally {
-      server.close()
+      await closeServer(server)
     }
   })
 })

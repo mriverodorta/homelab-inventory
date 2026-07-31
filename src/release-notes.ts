@@ -106,6 +106,27 @@ export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
   notes: [],
 }
 
+const RELEASE_0_5_0_DETAILS: UnreleasedReleaseNotes = {
+  highlights: [
+    'Cable routing is now more predictable in dense layouts, with explicit endpoint sides, center-first port attachment, shorter orthogonal paths, equipment avoidance, and better handling for reordered patch panels and rotated power equipment.',
+    'Calculated cable paths now persist in a disposable cache, restore immediately after refresh, and recalculate only when equipment geometry or routing preferences actually change.',
+    'General workspace settings can now align all equipment to the nearest collision-free grid position, clear every manual cable bend, or restore automatic endpoint sides as confirmed actions that support Undo.',
+    'Inspector connection cards now open their cable directly for route review and editing.',
+    'The workbench now loads the canvas, drag-and-drop runtime, inventory, Inspector, Settings, onboarding, and secondary dialogs on demand for a smaller and more resilient startup.',
+  ],
+  fixes: [
+    'Cable routes remain visible while ports are measured or individual paths are recalculated, and one blocked connection no longer hides or restarts unrelated cables.',
+    'Large workspaces now route in bounded continuation batches without repeated retries, render loops, or recalculation caused by pan, zoom, selection, Inspector state, or filtering.',
+    'LowDB persistence now retries transient failures and recovers interrupted saves while multi-store inventory and registry changes roll back together instead of leaving partial data.',
+    'Registry enrollment, contribution delivery, catalog refresh, and private templates now handle failures safely, validate remote data, preserve trusted state, and avoid duplicate IDs.',
+    'Browser writes, agent enrollment, public demo sessions, runtime validation, request timeouts, and shutdown handling have been hardened without disrupting supported automation workflows.',
+    'Undo, Redo, and power-equipment orientation changes now validate against the latest project revision and canvas footprint before saving.',
+  ],
+  notes: [
+    'The derived routing cache is stored separately from project data, is safe to delete, and does not affect project revisions or Undo and Redo history.',
+  ],
+}
+
 const RELEASE_0_4_9_DETAILS: UnreleasedReleaseNotes = {
   highlights: [],
   fixes: [
@@ -230,9 +251,16 @@ const RELEASE_0_2_1_DETAILS: UnreleasedReleaseNotes = {
 
 export const RELEASE_NOTES: ReleaseNoteEntry[] = [
   {
+    version: '0.5.0',
+    date: '2026-07-31',
+    channel: 'latest',
+    title: 'Reliable routing and resilient persistence',
+    ...RELEASE_0_5_0_DETAILS,
+  },
+  {
     version: '0.4.9',
     date: '2026-07-29',
-    channel: 'latest',
+    channel: 'release',
     title: 'Safe registry preference upgrades',
     ...RELEASE_0_4_9_DETAILS,
   },
