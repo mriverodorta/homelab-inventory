@@ -16,6 +16,7 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 ### Fixed
 
 - Every physical copy of an identity-matched component receives its own registry link indicator and adoption record without creating duplicate catalog contributions.
+- The production image now includes the complete ordered schema 17 and 18 migration chain required to upgrade existing `/data` stores safely.
 
 ### Notes
 
