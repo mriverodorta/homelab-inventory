@@ -132,6 +132,54 @@ const INVENTORY_TABLES = [
   'powerStrips',
 ]
 
+function updateInventoryItemInDraft(draft, rawRef, input) {
+  const ref = normalizeInventoryRef(rawRef)
+  const resolved = resolveInventoryRef(draft.inventory, ref)
+
+  if (resolved.item.archivedAt) {
+    throw new InventoryLifecycleError('Restore the item before editing it.', {
+      code: 'inventory-item-archived',
+      status: 409,
+    })
+  }
+
+  const { item } = normalizeInventoryItemInput({ ...input, type: ref.type }, ref.id)
+  const record = cleanItemForStore(item)
+  if (
+    ref.type === 'nas'
+    && resolved.item.specs?.powerConfiguration !== record.specs?.powerConfiguration
+  ) {
+    throw new InventoryLifecycleError(
+      'Use the NAS power configuration command to change power modes.',
+      { code: 'nas-power-configuration-command-required', status: 409 },
+    )
+  }
+  const connectedPortIds = referencedPortIds(draft.project, ref)
+
+  for (const portId of connectedPortIds) {
+    const previousPort = resolved.item.ports?.find((port) => port.id === portId)
+    const nextPort = record.ports?.find((port) => port.id === portId)
+
+    if (
+      !previousPort
+      || !nextPort
+      || previousPort.kind !== nextPort.kind
+      || previousPort.type !== nextPort.type
+      || previousPort.speed !== nextPort.speed
+      || JSON.stringify(previousPort.endpoints ?? []) !== JSON.stringify(nextPort.endpoints ?? [])
+    ) {
+      throw new InventoryLifecycleError(`Connected port ${portId} cannot be removed or materially changed.`, {
+        code: 'connected-port-change',
+        status: 409,
+        details: { portId },
+      })
+    }
+  }
+
+  draft.inventory[resolved.table][resolved.index] = record
+  return { type: ref.type, id: ref.id, name: record.name }
+}
+
 function isExplicitWirelessNetworkRecord(record) {
   const subtype = String(record?.subtype ?? '').trim().toLowerCase()
   if (subtype === 'wireless' || subtype === 'wifi') {
@@ -2507,14 +2555,17 @@ export class HomelabInventoryStore {
     if (!current) throw new InventoryLifecycleError('Linked inventory item was not found.', {
       code: 'linked-inventory-not-found', status: 409,
     })
-    return this.withAtomicStoreMutation(['meta', 'inventory', 'project', 'registry'], () => {
-      const project = this.updateInventoryItem(
-        { type: link.itemType, id: link.itemId },
-        materializeCatalogItem(
-          mergeCatalogUpdate(projectLocalItemForCatalog(current, link.itemType), template.item),
-          { usageRole: current.usageRole },
-        ),
-      )
+    return this.withAtomicStoreMutation(['inventory', 'registry'], () => {
+      const project = this.inventoryOnlyTransaction((draft) => {
+        updateInventoryItemInDraft(
+          draft,
+          { type: link.itemType, id: link.itemId },
+          materializeCatalogItem(
+            mergeCatalogUpdate(projectLocalItemForCatalog(current, link.itemType), template.item),
+            { usageRole: current.usageRole },
+          ),
+        )
+      })
       this.registryTransaction((draft) => {
         const draftLink = draft.links.find((candidate) => candidate.id === linkId)
         if (!draftLink) throw new Error('Catalog link disappeared during update.')
@@ -2688,6 +2739,34 @@ export class HomelabInventoryStore {
     return composeProject(draft.meta, draft.inventory, draft.project)
   }
 
+  inventoryOnlyTransaction(mutator) {
+    const inventory = structuredClone(this.databases.inventory.data)
+    const draft = {
+      inventory,
+      project: this.databases.project.data,
+    }
+    mutator(draft)
+
+    try {
+      assertInventoryStoreShape(draft.inventory)
+      assertProjectShape(composeProject(
+        this.databases.meta.data,
+        draft.inventory,
+        this.databases.project.data,
+      ))
+    } catch (error) {
+      throw new InventoryLifecycleError(error instanceof Error ? error.message : 'Inventory change is invalid.', {
+        code: 'invalid-inventory-change',
+        status: 400,
+      })
+    }
+
+    this.databases.inventory.data = draft.inventory
+    this.scheduleFlush('inventory')
+
+    return this.getProject()
+  }
+
   nextProjectRevision(project = this.databases.project.data) {
     const current = project.revision
     if (!Number.isSafeInteger(current) || current < 1 || current >= Number.MAX_SAFE_INTEGER) {
@@ -2846,50 +2925,7 @@ export class HomelabInventoryStore {
     const ref = normalizeInventoryRef(rawRef)
 
     return this.inventoryTransaction((draft) => {
-      const resolved = resolveInventoryRef(draft.inventory, ref)
-
-      if (resolved.item.archivedAt) {
-        throw new InventoryLifecycleError('Restore the item before editing it.', {
-          code: 'inventory-item-archived',
-          status: 409,
-        })
-      }
-
-      const { item } = normalizeInventoryItemInput({ ...input, type: ref.type }, ref.id)
-      const record = cleanItemForStore(item)
-      if (
-        ref.type === 'nas'
-        && resolved.item.specs?.powerConfiguration !== record.specs?.powerConfiguration
-      ) {
-        throw new InventoryLifecycleError(
-          'Use the NAS power configuration command to change power modes.',
-          { code: 'nas-power-configuration-command-required', status: 409 },
-        )
-      }
-      const connectedPortIds = referencedPortIds(draft.project, ref)
-
-      for (const portId of connectedPortIds) {
-        const previousPort = resolved.item.ports?.find((port) => port.id === portId)
-        const nextPort = record.ports?.find((port) => port.id === portId)
-
-        if (
-          !previousPort ||
-          !nextPort ||
-          previousPort.kind !== nextPort.kind ||
-          previousPort.type !== nextPort.type ||
-          previousPort.speed !== nextPort.speed ||
-          JSON.stringify(previousPort.endpoints ?? []) !== JSON.stringify(nextPort.endpoints ?? [])
-        ) {
-          throw new InventoryLifecycleError(`Connected port ${portId} cannot be removed or materially changed.`, {
-            code: 'connected-port-change',
-            status: 409,
-            details: { portId },
-          })
-        }
-      }
-
-      draft.inventory[resolved.table][resolved.index] = record
-      return { type: ref.type, id: ref.id, name: record.name }
+      updateInventoryItemInDraft(draft, ref, input)
     })
   }
 

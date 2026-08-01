@@ -23,6 +23,7 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 - Existing signed catalog revisions retain the publisher's original content digest after client protocol upgrades, preventing valid last-known-good catalogs from being rejected or blocking automatic contributions.
 - Pending contribution batches reconcile automatically when stronger hardware evidence splits a previously generic family into separate variants, preventing one stale candidate from blocking unrelated submissions.
 - Previously delivered local definitions now become reviewable catalog-adoption links when their normalized hardware variant is later published, instead of being skipped as already contributed.
+- Applying a reviewed catalog definition now updates only the linked inventory record and registry relationship, preserving the project revision, assignments, placements, and cables without unnecessary workspace-engine synchronization.
 
 ### Data migration
 

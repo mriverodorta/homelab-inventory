@@ -229,6 +229,9 @@ describe('catalog update lifecycle', () => {
         availableContentHash: registryTemplate.contentHash,
       })
     })
+    await store.flush()
+    const persistedProjectBefore = structuredClone(store.databases.project.data)
+    const persistedMetaBefore = structuredClone(store.databases.meta.data)
 
     expect(store.getCatalogUpdates()).toEqual([expect.objectContaining({
       linkId: 1,
@@ -258,6 +261,9 @@ describe('catalog update lifecycle', () => {
       importedRevision: 2,
       importedContentHash: registryTemplate.contentHash,
     })])
+    expect(store.databases.project.data).toEqual(persistedProjectBefore)
+    expect(store.databases.meta.data).toEqual(persistedMetaBefore)
+    expect(store.dirtyStores).toEqual(new Set(['inventory', 'registry']))
   })
 
   it('rolls back inventory creation when catalog link creation fails', async () => {

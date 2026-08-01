@@ -117,6 +117,7 @@ const RELEASE_0_6_0_DETAILS: UnreleasedReleaseNotes = {
     'Existing signed catalog revisions retain the publisher\'s original content digest after client protocol upgrades, so valid catalogs continue refreshing and automatic contributions remain available.',
     'Pending contribution batches now reconcile automatically when stronger hardware evidence splits a previously generic family into separate variants, preventing one stale candidate from blocking unrelated submissions.',
     'Previously delivered local definitions now become reviewable catalog-adoption links when their normalized hardware variant is later published, instead of being skipped as already contributed.',
+    'Applying a reviewed catalog definition now preserves the project revision and topology while updating only the linked inventory record and registry relationship.',
   ],
   notes: [
     'Schema 19 preserves existing fingerprint-v2 catalog links, contribution state, inventory IDs, assignments, placements, and cables while enabling fingerprint-v3 evidence through the normal backup-first startup migration.',
