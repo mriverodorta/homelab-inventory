@@ -181,14 +181,15 @@ describe('demo data sanitizer', () => {
           id: 1,
           name: 'Office Kasa Strip',
           type: 'powerStrip',
+          smart: {
+            enabled: true,
+            displayName: 'Rack Strip',
+            managementIp: '192.0.2.99',
+            macAddress: 'aa:bb:cc:dd:ee:ff',
+            outlets: [{ portId: 1, slotNumber: 1, name: 'SkyWatch', customName: 'SkyWatch' }],
+          },
           properties: {
             name: 'Office Kasa Strip',
-            smart: {
-              displayName: 'Rack Strip',
-              managementIp: '192.0.2.99',
-              macAddress: 'aa:bb:cc:dd:ee:ff',
-              outlets: [{ slotNumber: 1, name: 'SkyWatch', customName: 'SkyWatch' }],
-            },
           },
           ports: [{ id: 1, label: 'Jellyfin host', notes: 'rack A', ipAddress: '192.0.2.8' }],
         },
@@ -261,14 +262,12 @@ describe('demo data sanitizer', () => {
     })
     expect(inventory.powerStrips[0]).toMatchObject({
       name: 'Demo Power Strip 1',
+      smart: {
+        enabled: true,
+        outlets: [{ portId: 1, slotNumber: 1, name: 'Demo outlet 1' }],
+      },
       properties: {
         name: 'Demo Power Strip 1',
-        smart: {
-          displayName: '',
-          managementIp: '',
-          macAddress: '',
-          outlets: [{ slotNumber: 1, name: '', customName: '' }],
-        },
       },
       ports: [{ id: 1, label: '', notes: '', ipAddress: '' }],
     })

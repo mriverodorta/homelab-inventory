@@ -158,6 +158,29 @@ function sanitizeObject(input, pathParts = []) {
   return output
 }
 
+function sanitizeSmartConfiguration(smart) {
+  if (!smart || typeof smart !== 'object' || Array.isArray(smart)) return smart
+
+  const sanitized = { ...smart }
+  delete sanitized.displayName
+  delete sanitized.managementIp
+  delete sanitized.macAddress
+
+  if (Array.isArray(sanitized.outlets)) {
+    sanitized.outlets = sanitized.outlets.map((outlet, index) => {
+      if (!outlet || typeof outlet !== 'object' || Array.isArray(outlet)) return outlet
+
+      const normalized = { ...outlet }
+      delete normalized.customName
+      normalized.name = `Demo outlet ${normalized.slotNumber ?? index + 1}`
+
+      return normalized
+    })
+  }
+
+  return sanitized
+}
+
 function sanitizeInventory(inventory) {
   const counters = {}
   const output = {}
@@ -176,6 +199,15 @@ function sanitizeInventory(inventory) {
         sanitized.properties = {
           ...(sanitized.properties ?? {}),
           name: demoName,
+        }
+      }
+
+      if (type === 'powerStrip') {
+        if (sanitized.smart !== undefined) {
+          sanitized.smart = sanitizeSmartConfiguration(sanitized.smart)
+        }
+        if (sanitized.properties?.smart !== undefined) {
+          sanitized.properties.smart = sanitizeSmartConfiguration(sanitized.properties.smart)
         }
       }
 

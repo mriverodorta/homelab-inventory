@@ -114,6 +114,7 @@ const RELEASE_0_5_1_DETAILS: UnreleasedReleaseNotes = {
   fixes: [
     'Every physical copy of an identity-matched component now receives its own registry link indicator and reviewable adoption record without creating duplicate catalog contributions.',
     'The production image now carries the complete ordered schema 17 and 18 migration chain required to upgrade existing data stores safely.',
+    'Public demo sessions now use neutral smart-outlet labels and omit private smart-device metadata so sanitized schema 18 sandboxes remain valid.',
   ],
   notes: [
     'Schema 17 extends registry relationships with a reviewable adoption state; existing links and inventory records are preserved.',
