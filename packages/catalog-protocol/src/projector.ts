@@ -218,6 +218,14 @@ function topologySummary(topology: Record<string, JsonValue> | undefined): strin
   return parts.length > 0 ? parts.join(' · ') : undefined
 }
 
+function hasDiscriminatingExpansionTopology(topology: Record<string, JsonValue> | undefined): boolean {
+  if (!topology || !Array.isArray(topology.expansionSlots)) return false
+  return topology.expansionSlots.some((slot) => {
+    const entry = asObject(slot)
+    return text(entry?.interfaceFamily)?.toLowerCase() === 'pcie'
+  })
+}
+
 async function variantIdentity(item: CatalogTemplateItem): Promise<{
   identityPayload: Record<string, JsonValue>
   productFamily?: CatalogProductFamily
@@ -261,7 +269,8 @@ async function variantIdentity(item: CatalogTemplateItem): Promise<{
     }
   }
 
-  if (topology && completeness === 'complete' && topologySignature) {
+  if (topology && topologySignature
+    && (completeness === 'complete' || hasDiscriminatingExpansionTopology(topology))) {
     return {
       productFamily,
       variantEvidence: {

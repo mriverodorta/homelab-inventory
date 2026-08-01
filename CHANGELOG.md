@@ -10,7 +10,7 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 
 ### Added
 
-- Connected catalogs now distinguish hardware variants within the same product family by trusted motherboard identity or complete structural topology, so systems such as standard and discrete-graphics Dell OptiPlex Micro 7090 boards can be reviewed, published, searched, and imported separately.
+- Connected catalogs now distinguish hardware variants within the same product family by trusted motherboard identity, complete structural topology, or explicit OEM PCIe expansion support, so systems such as standard and discrete-graphics Dell OptiPlex Micro 7090 boards can be reviewed, published, searched, and imported separately.
 - Catalog search results and item details show concise motherboard or topology variant labels when a product family contains multiple verified definitions.
 
 ### Changed
@@ -21,6 +21,7 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 ### Fixed
 
 - Existing signed catalog revisions retain the publisher's original content digest after client protocol upgrades, preventing valid last-known-good catalogs from being rejected or blocking automatic contributions.
+- Pending contribution batches reconcile automatically when stronger hardware evidence splits a previously generic family into separate variants, preventing one stale candidate from blocking unrelated submissions.
 
 ### Data migration
 

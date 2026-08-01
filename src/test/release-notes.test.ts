@@ -112,7 +112,7 @@ describe('release notes helpers', () => {
       expect.objectContaining({ channel: 'release' }),
     )
     expect(currentRelease.highlights).toContain(
-      'The verified catalog now distinguishes product variants by trusted motherboard identity or complete structural topology, keeping standard and expansion-capable versions of the same model separate without using installed components or local server roles as identity.',
+      'The verified catalog now distinguishes product variants by trusted motherboard identity, complete structural topology, or explicit OEM PCIe expansion support, keeping standard and expansion-capable versions of the same model separate without using installed components or local server roles as identity.',
     )
     expect(registryRelease.highlights).toContain(
       'Add Hardware now combines a locally searched verified Catalog, the complete Manual editor, and reusable Private templates in one source-aware dialog.',

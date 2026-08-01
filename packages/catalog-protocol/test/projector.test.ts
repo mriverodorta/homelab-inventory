@@ -89,6 +89,53 @@ describe('category-aware catalog projection', () => {
     if (partial.status === 'eligible' && generic.status === 'eligible') expect(partial.identityHash).toBe(generic.identityHash)
   })
 
+  it('separates an explicit PCIe riser variant from a generic family without requiring complete topology', async () => {
+    const base = {
+      type: 'server', hardwareClass: 'desktop', name: '7090', manufacturer: 'Dell', model: 'OptiPlex Micro 7090',
+      compatibility: {
+        host: {
+          expansionSlots: [{
+            id: 1, key: 'm2-ae-slot', count: 1, label: 'M.2 2230 A/E network slot',
+            interfaceFamily: 'm2-ae', maxPowerWatts: 5,
+          }],
+        },
+      },
+    }
+    const standard = await projectCatalogItem({ ...base, id: 1 })
+    const riser = await projectCatalogItem({
+      ...base,
+      id: 2,
+      compatibility: {
+        host: {
+          expansionSlots: [
+            {
+              id: 1, key: 'custom-pcie-slot', count: 1, label: 'Custom low-profile PCIe adapter',
+              interfaceFamily: 'pcie', pcieGeneration: 4, mechanicalLanes: 8, electricalLanes: 8,
+              acceptedHeights: ['low-profile'], maxSlotWidth: 1, maxPowerWatts: 75,
+            },
+            ...base.compatibility.host.expansionSlots,
+          ],
+        },
+      },
+    })
+
+    expect(standard).toMatchObject({
+      status: 'eligible',
+      variantEvidence: { source: 'generic', completeness: 'partial', label: 'Generic family' },
+    })
+    expect(riser).toMatchObject({
+      status: 'eligible',
+      variantEvidence: {
+        source: 'topology', completeness: 'partial', label: 'Topology-defined variant',
+        structuralSummary: 'PCIe Gen4 x8 Custom low-profile PCIe adapter · M.2 2230 A/E network slot',
+      },
+    })
+    if (standard.status === 'eligible' && riser.status === 'eligible') {
+      expect(standard.identityHash).not.toBe(riser.identityHash)
+      expect(standard.contentHash).not.toBe(riser.contentHash)
+    }
+  })
+
   it('does not use installed components or slot occupancy as variant identity', async () => {
     const base = {
       id: 1, type: 'desktop', name: 'System', manufacturer: 'Example', model: 'Mini 1',

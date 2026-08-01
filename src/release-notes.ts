@@ -108,13 +108,14 @@ export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
 
 const RELEASE_0_6_0_DETAILS: UnreleasedReleaseNotes = {
   highlights: [
-    'The verified catalog now distinguishes product variants by trusted motherboard identity or complete structural topology, keeping standard and expansion-capable versions of the same model separate without using installed components or local server roles as identity.',
+    'The verified catalog now distinguishes product variants by trusted motherboard identity, complete structural topology, or explicit OEM PCIe expansion support, keeping standard and expansion-capable versions of the same model separate without using installed components or local server roles as identity.',
     'Catalog search and item details now expose concise variant labels so similar model families remain understandable when importing verified hardware.',
   ],
   fixes: [
     'Catalog matching preserves fingerprint-v2 identities as aliases while preventing ambiguous generic-family records from silently attaching to a specific motherboard or topology variant.',
     'Automatic contributions now deduplicate equivalent local copies while submitting materially different motherboard and expansion variants as separate review candidates.',
     'Existing signed catalog revisions retain the publisher\'s original content digest after client protocol upgrades, so valid catalogs continue refreshing and automatic contributions remain available.',
+    'Pending contribution batches now reconcile automatically when stronger hardware evidence splits a previously generic family into separate variants, preventing one stale candidate from blocking unrelated submissions.',
   ],
   notes: [
     'Schema 19 preserves existing fingerprint-v2 catalog links, contribution state, inventory IDs, assignments, placements, and cables while enabling fingerprint-v3 evidence through the normal backup-first startup migration.',

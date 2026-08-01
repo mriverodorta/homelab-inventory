@@ -20,6 +20,10 @@ function identityKey(fingerprintVersion, identityHash) {
   return `${String(fingerprintVersion)}:${identityHash}`
 }
 
+function contributionKey(fingerprintVersion, identityHash, contentHash) {
+  return `${identityKey(fingerprintVersion, identityHash)}:${contentHash}`
+}
+
 export async function discoverContributionCandidates(
   store,
   now = new Date(),
@@ -94,6 +98,20 @@ export async function discoverContributionCandidates(
   }
 
   const groups = await reconcileCatalogProjections(projections)
+  const activeGroupsByContribution = new Map(groups
+    .filter((group) => group.status !== 'withheld-conflict')
+    .map((group) => [
+      contributionKey(group.fingerprintVersion ?? FINGERPRINT_VERSION, group.identityHash, group.contentHash),
+      group,
+    ]))
+  const retainedOutbox = registry.contributionOutbox.filter((record) => {
+    if (!['queued', 'retrying'].includes(record.state)) return true
+    return activeGroupsByContribution.has(contributionKey(
+      record.fingerprintVersion ?? FINGERPRINT_VERSION,
+      record.identityHash,
+      record.contentHash,
+    ))
+  })
   const activeSourceId = registry.snapshot?.sourceId
   const links = []
   const adoptions = []
@@ -143,10 +161,25 @@ export async function discoverContributionCandidates(
     knownHashes.add(group.contentHash)
   }
 
-  if (registry.contributionOutbox.length + candidates.length > MAX_OUTBOX_RECORDS) {
+  if (retainedOutbox.length + candidates.length > MAX_OUTBOX_RECORDS) {
     throw new Error('Contribution outbox capacity has been reached. Pause contributions and review registry status.')
   }
   store.registryTransaction((draft) => {
+    draft.contributionOutbox = retainedOutbox.map((record) => {
+      if (!['queued', 'retrying'].includes(record.state)) return record
+      const group = activeGroupsByContribution.get(contributionKey(
+        record.fingerprintVersion ?? FINGERPRINT_VERSION,
+        record.identityHash,
+        record.contentHash,
+      ))
+      if (!group || group.status === 'withheld-conflict') return record
+      return {
+        ...record,
+        itemType: group.sources[0].itemType,
+        itemId: group.sources[0].itemId,
+        sources: group.sources,
+      }
+    })
     const groupIds = new Map(draft.contributionGroups.map((group) => [group.identityHash, group.id]))
     let nextGroupId = nextId(draft.contributionGroups)
     draft.projectionCache = projections.map((projection, index) => ({

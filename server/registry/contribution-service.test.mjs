@@ -77,6 +77,37 @@ describe('contribution discovery', () => {
     expect(registry.contributionGroups[0].sources).toHaveLength(3)
   })
 
+  it('reconciles stale pending groups when explicit PCIe topology reveals a host variant', async () => {
+    const standardSlot = {
+      id: 1, key: 'm2-ae-slot', count: 1, label: 'M.2 2230 A/E network slot',
+      interfaceFamily: 'm2-ae', maxPowerWatts: 5,
+    }
+    const servers = [1, 2].map((id) => ({
+      id, type: 'server', hardwareClass: 'desktop', name: `7090 ${String(id)}`,
+      manufacturer: 'Dell', model: 'OptiPlex Micro 7090',
+      compatibility: { host: { expansionSlots: [standardSlot] } },
+    }))
+    const store = fixture(servers)
+
+    expect(await discoverContributionCandidates(store)).toMatchObject({ queued: 1 })
+    expect(store.getRegistryState().contributionOutbox[0].sources).toHaveLength(2)
+
+    servers[1].compatibility.host.expansionSlots = [{
+      id: 1, key: 'custom-pcie-slot', count: 1, label: 'Custom low-profile PCIe adapter',
+      interfaceFamily: 'pcie', pcieGeneration: 4, mechanicalLanes: 8, electricalLanes: 8,
+      acceptedHeights: ['low-profile'], maxSlotWidth: 1, maxPowerWatts: 75,
+    }, standardSlot]
+
+    expect(await discoverContributionCandidates(store)).toMatchObject({ queued: 1 })
+    const outbox = store.getRegistryState().contributionOutbox
+    expect(outbox).toHaveLength(2)
+    expect(outbox.map((record) => record.sources)).toEqual([
+      [{ itemType: 'server', itemId: 1 }],
+      [{ itemType: 'server', itemId: 2 }],
+    ])
+    expect(new Set(outbox.map((record) => record.identityHash)).size).toBe(2)
+  })
+
   it('auto-links every physical copy only for an exact published registry digest', async () => {
     const switches = [1, 2].map((id) => ({
       id,
