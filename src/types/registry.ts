@@ -94,14 +94,40 @@ export type RegistryLink = {
   linkedAt: string
 }
 
+export type CatalogProductFamily = {
+  manufacturer: string
+  model: string
+  physicalClass: string
+}
+
+export type CatalogVariantEvidence = {
+  source: 'motherboard' | 'topology' | 'generic'
+  completeness: 'complete' | 'partial' | 'conflicting'
+  label?: string
+  motherboardPartNumber?: string
+  motherboardRevision?: string
+  variantKey?: string
+  topologySignature?: string
+  structuralSummary?: string
+}
+
+export type CatalogIdentityAlias = {
+  fingerprintVersion: 2 | 3
+  identityHash: string
+}
+
 export type CatalogSearchItem = {
   templateKey: string
   revision: number
+  fingerprintVersion: 2 | 3
   identityHash: string
+  identityAliases: CatalogIdentityAlias[]
   contentHash: string
   type: string
   manufacturer: string | null
   name: string
+  productFamily?: CatalogProductFamily
+  variantEvidence?: CatalogVariantEvidence
   item: Omit<InventoryItemInput, 'type'> & { type: string }
 }
 

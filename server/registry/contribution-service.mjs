@@ -1,4 +1,6 @@
 import {
+  FINGERPRINT_VERSION,
+  LEGACY_FINGERPRINT_VERSION,
   projectCatalogItem,
   reconcileCatalogProjections,
   sha256Hex,
@@ -12,6 +14,10 @@ function nextId(records) {
 
 function itemKey(type, id) {
   return `${type}:${String(id)}`
+}
+
+function identityKey(fingerprintVersion, identityHash) {
+  return `${String(fingerprintVersion)}:${identityHash}`
 }
 
 export async function discoverContributionCandidates(
@@ -34,9 +40,22 @@ export async function discoverContributionCandidates(
   const publishedByIdentity = new Map()
   for (const [contentHash, entry] of externalEntries) {
     if (entry?.state !== 'published' || !entry.identityHash || !entry.templateKey) continue
-    const current = publishedByIdentity.get(entry.identityHash)
-    if (!current || (entry.revision ?? 1) > (current.revision ?? 1)) {
-      publishedByIdentity.set(entry.identityHash, { ...entry, contentHash })
+    const canonicalFingerprintVersion = entry.fingerprintVersion ?? LEGACY_FINGERPRINT_VERSION
+    const identities = [
+      { identityHash: entry.identityHash, fingerprintVersion: canonicalFingerprintVersion },
+      ...(entry.identityAliases ?? []),
+    ]
+    for (const identity of identities) {
+      const key = identityKey(identity.fingerprintVersion ?? canonicalFingerprintVersion, identity.identityHash)
+      const current = publishedByIdentity.get(key)
+      if (!current || (entry.revision ?? 1) > (current.revision ?? 1)) {
+        publishedByIdentity.set(key, {
+          ...entry,
+          matchedIdentityHash: identity.identityHash,
+          matchedFingerprintVersion: identity.fingerprintVersion,
+          contentHash,
+        })
+      }
     }
   }
   const knownHashes = new Set([
@@ -50,6 +69,7 @@ export async function discoverContributionCandidates(
     .map((link) => itemKey(link.itemType, link.itemId)))
   const candidates = []
   const projections = []
+  const legacyIdentityByItem = new Map()
   let skipped = 0
 
   for (const item of Object.values(store.getProject().items)) {
@@ -57,9 +77,20 @@ export async function discoverContributionCandidates(
       skipped += 1
       continue
     }
-    const projection = await projectCatalogItem(item).catch(() => null)
+    const [projection, legacyProjection] = await Promise.all([
+      projectCatalogItem(item).catch(() => null),
+      projectCatalogItem(item, { fingerprintVersion: LEGACY_FINGERPRINT_VERSION }).catch(() => null),
+    ])
     if (!projection || projection.status !== 'eligible') skipped += 1
-    else projections.push(projection)
+    else {
+      projections.push(projection)
+      if (legacyProjection?.status === 'eligible') {
+        legacyIdentityByItem.set(
+          itemKey(projection.source.itemType, projection.source.itemId),
+          legacyProjection.identityHash,
+        )
+      }
+    }
   }
 
   const groups = await reconcileCatalogProjections(projections)
@@ -69,7 +100,14 @@ export async function discoverContributionCandidates(
   for (const group of groups) {
     if (group.status === 'withheld-conflict') continue
     const exact = externalEntries.get(group.contentHash)
-    const identityMatch = publishedByIdentity.get(group.identityHash)
+    const canonicalMatch = publishedByIdentity.get(identityKey(group.fingerprintVersion, group.identityHash))
+    const legacyIdentities = new Set(group.sources
+      .map((source) => legacyIdentityByItem.get(itemKey(source.itemType, source.itemId)))
+      .filter(Boolean))
+    const legacyIdentity = legacyIdentities.size === 1 ? [...legacyIdentities][0] : undefined
+    const identityMatch = canonicalMatch ?? (legacyIdentity
+      ? publishedByIdentity.get(identityKey(LEGACY_FINGERPRINT_VERSION, legacyIdentity))
+      : undefined)
     if (knownHashes.has(group.contentHash)) {
       if (exact?.state === 'published' && exact.templateKey && Number.isSafeInteger(activeSourceId)) {
         for (const source of group.sources) links.push({ source, exact, contentHash: group.contentHash })
@@ -89,7 +127,7 @@ export async function discoverContributionCandidates(
       continue
     }
     const primary = group.sources[0]
-    const idempotencyKey = await sha256Hex(`hli:contribution:v2:${group.identityHash}:${group.contentHash}`)
+    const idempotencyKey = await sha256Hex(`hli:contribution:v${group.fingerprintVersion}:${group.identityHash}:${group.contentHash}`)
     candidates.push({
       itemType: primary.itemType,
       itemId: primary.itemId,
@@ -97,6 +135,9 @@ export async function discoverContributionCandidates(
       payload: group.item,
       identityHash: group.identityHash,
       contentHash: group.contentHash,
+      fingerprintVersion: group.fingerprintVersion ?? FINGERPRINT_VERSION,
+      ...(group.productFamily ? { productFamily: group.productFamily } : {}),
+      ...(group.variantEvidence ? { variantEvidence: group.variantEvidence } : {}),
       idempotencyKey,
     })
     knownHashes.add(group.contentHash)
@@ -112,11 +153,17 @@ export async function discoverContributionCandidates(
       id: index + 1,
       identityHash: projection.identityHash,
       contentHash: projection.contentHash,
+      fingerprintVersion: projection.fingerprintVersion,
+      ...(projection.productFamily ? { productFamily: projection.productFamily } : {}),
+      ...(projection.variantEvidence ? { variantEvidence: projection.variantEvidence } : {}),
       sources: [projection.source],
     }))
     draft.contributionGroups = groups.map((group) => ({
       id: groupIds.get(group.identityHash) ?? nextGroupId++,
       identityHash: group.identityHash,
+      fingerprintVersion: group.fingerprintVersion ?? FINGERPRINT_VERSION,
+      ...(group.productFamily ? { productFamily: group.productFamily } : {}),
+      ...(group.variantEvidence ? { variantEvidence: group.variantEvidence } : {}),
       ...(group.status === 'withheld-conflict'
         ? { status: group.status, sources: group.sources }
         : { status: 'eligible', contentHash: group.contentHash, sources: group.sources }),
@@ -145,6 +192,7 @@ export async function discoverContributionCandidates(
           id: linkId++, itemType: source.itemType, itemId: source.itemId, sourceId: activeSourceId,
           templateKey: exact.templateKey, importedRevision: exact.revision ?? 1,
           importedContentHash: contentHash, state: 'linked', linkedAt: now.toISOString(),
+          importedFingerprintVersion: exact.fingerprintVersion ?? LEGACY_FINGERPRINT_VERSION,
         })
       }
       for (const { source, match, localContentHash } of adoptions) {
@@ -154,6 +202,7 @@ export async function discoverContributionCandidates(
           id: linkId++, itemType: source.itemType, itemId: source.itemId, sourceId: activeSourceId,
           templateKey: match.templateKey, importedRevision: match.revision ?? 1,
           importedContentHash: localContentHash, state: 'adoption-available', linkedAt: now.toISOString(),
+          importedFingerprintVersion: match.matchedFingerprintVersion ?? match.fingerprintVersion ?? FINGERPRINT_VERSION,
           availableRevision: match.revision ?? 1, availableContentHash: match.contentHash,
         })
       }

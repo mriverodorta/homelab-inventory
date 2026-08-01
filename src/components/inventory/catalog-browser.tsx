@@ -1,6 +1,7 @@
 import { Search, ShieldCheck } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { CatalogItemDetail } from '@/components/inventory/catalog-item-detail'
+import { catalogVariantDescription } from '@/components/inventory/catalog-variant'
 import { Input } from '@/components/ui/input'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { useCatalogSearch } from '@/hooks/use-registry'
@@ -57,8 +58,8 @@ export function CatalogBrowser({
               >
                 <span className="flex size-8 shrink-0 items-center justify-center rounded-md bg-[#20242c] text-white"><ShieldCheck className="size-4" /></span>
                 <span className="min-w-0">
-                  <span className="block truncate text-sm font-black text-[#20242c]">{item.name}</span>
-                  <span className="block truncate text-xs text-[#746b60]">{[item.manufacturer, item.type].filter(Boolean).join(' · ')}</span>
+                  <span className="block text-sm font-black text-[#20242c]">{item.name}</span>
+                  <span className="mt-0.5 block text-xs text-[#746b60]">{catalogVariantDescription(item)}</span>
                 </span>
               </button>
             ))}

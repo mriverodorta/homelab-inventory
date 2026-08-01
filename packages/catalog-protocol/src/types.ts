@@ -1,6 +1,33 @@
 export const CATALOG_SCHEMA_VERSION = 1
-export const FINGERPRINT_VERSION = 2
+export const LEGACY_FINGERPRINT_VERSION = 2
+export const FINGERPRINT_VERSION = 3
+export const SUPPORTED_FINGERPRINT_VERSIONS = [LEGACY_FINGERPRINT_VERSION, FINGERPRINT_VERSION] as const
 export const MANUFACTURER_ALIAS_VERSION = 1
+
+export type FingerprintVersion = typeof SUPPORTED_FINGERPRINT_VERSIONS[number]
+export type TopologyCompleteness = 'complete' | 'partial' | 'conflicting'
+
+export type CatalogProductFamily = {
+  manufacturer: string
+  model: string
+  physicalClass: string
+}
+
+export type CatalogVariantEvidence = {
+  source: 'motherboard' | 'topology' | 'generic'
+  completeness: TopologyCompleteness
+  label?: string
+  motherboardPartNumber?: string
+  motherboardRevision?: string
+  variantKey?: string
+  topologySignature?: string
+  structuralSummary?: string
+}
+
+export type CatalogIdentityAlias = {
+  fingerprintVersion: FingerprintVersion
+  identityHash: string
+}
 
 export type JsonPrimitive = string | number | boolean | null
 export type JsonValue = JsonPrimitive | JsonValue[] | { [key: string]: JsonValue }
@@ -51,6 +78,9 @@ export type EligibleCatalogProjection = {
   status: 'eligible'
   source: CatalogSourceRef
   item: CatalogTemplateItem
+  fingerprintVersion: FingerprintVersion
+  productFamily?: CatalogProductFamily
+  variantEvidence?: CatalogVariantEvidence
   identityPayload: Record<string, JsonValue>
   identityHash: string
   contentHash: string
@@ -66,6 +96,9 @@ export type CatalogProjection = EligibleCatalogProjection | IneligibleCatalogPro
 
 export type CatalogProjectionGroup = CatalogDigests & {
   item: CatalogTemplateItem
+  fingerprintVersion: FingerprintVersion
+  productFamily?: CatalogProductFamily
+  variantEvidence?: CatalogVariantEvidence
   sources: CatalogSourceRef[]
 }
 
@@ -84,6 +117,10 @@ export type CatalogDigests = {
 export type CatalogTemplateRevision = CatalogDigests & {
   templateKey: string
   revision: number
+  fingerprintVersion?: FingerprintVersion
+  identityAliases?: CatalogIdentityAlias[]
+  productFamily?: CatalogProductFamily
+  variantEvidence?: CatalogVariantEvidence
   item: CatalogTemplateItem
 }
 
@@ -121,6 +158,8 @@ export type CatalogDigestObservation = {
 
 export type CatalogDigestEntry = {
   identityHash: string
+  fingerprintVersion?: FingerprintVersion
+  identityAliases?: CatalogIdentityAlias[]
   templateKey?: string
   contentHashes: CatalogDigestObservation[]
 }

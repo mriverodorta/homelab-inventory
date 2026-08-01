@@ -144,6 +144,7 @@ describe('contribution discovery', () => {
 
     const known = new Map([[registryProjection.contentHash, {
       identityHash: registryProjection.identityHash,
+      fingerprintVersion: registryProjection.fingerprintVersion,
       templateKey: 'cpu-intel-core-i5-10500t',
       revision: 2,
       state: 'published',
@@ -161,6 +162,59 @@ describe('contribution discovery', () => {
       state: 'adoption-available',
       availableRevision: 2,
       availableContentHash: registryProjection.contentHash,
+    })))
+  })
+
+  it('uses an unambiguous published v2 identity alias to offer a generic host for variant adoption', async () => {
+    const servers = [1, 2].map((id) => ({
+      id,
+      type: 'server',
+      hardwareClass: 'desktop',
+      usageRole: 'server',
+      name: 'Dell OptiPlex Micro 7090',
+      manufacturer: 'Dell',
+      model: 'OptiPlex Micro 7090',
+      specs: { formFactor: 'Micro' },
+    }))
+    const store = fixture(servers)
+    store.registryTransaction((draft) => {
+      draft.settings.automaticContributions = false
+      draft.sources.push({ id: 1, kind: 'official-connected', displayName: 'Official Catalog' })
+      draft.snapshot = { sourceId: 1, revision: 5 }
+    })
+    const protocol = await import('../../packages/catalog-protocol/src/index.ts')
+    const local = await protocol.projectCatalogItem(servers[0])
+    const legacy = await protocol.projectCatalogItem(servers[0], { fingerprintVersion: protocol.LEGACY_FINGERPRINT_VERSION })
+    const published = await protocol.digestCatalogTemplate({
+      type: 'desktop',
+      name: 'Dell OptiPlex Micro 7090',
+      manufacturer: 'Dell',
+      model: 'OptiPlex Micro 7090',
+      specs: {
+        formFactor: 'Micro',
+        motherboardPartNumber: '014T59',
+        motherboardRevision: 'A00',
+      },
+    })
+    expect(local.identityHash).not.toBe(published.identityHash)
+
+    const known = new Map([[published.contentHash, {
+      identityHash: published.identityHash,
+      fingerprintVersion: published.fingerprintVersion,
+      identityAliases: [{ fingerprintVersion: legacy.fingerprintVersion, identityHash: legacy.identityHash }],
+      templateKey: 'desktop-dell-optiplex-7090-014t59',
+      revision: 3,
+      state: 'published',
+    }]])
+
+    await discoverContributionCandidates(store, new Date('2026-08-01T12:00:00.000Z'), known, { linkOnly: true })
+    expect(store.getRegistryState().links).toEqual(servers.map((server) => expect.objectContaining({
+      itemType: 'server',
+      itemId: server.id,
+      templateKey: 'desktop-dell-optiplex-7090-014t59',
+      state: 'adoption-available',
+      importedFingerprintVersion: 2,
+      availableContentHash: published.contentHash,
     })))
   })
 

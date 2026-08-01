@@ -45,6 +45,16 @@ export function normalizeUnitText(value: string): string {
     .replace(/\bwatts?\b/g, 'w')
 }
 
+export function normalizeBoardIdentifier(value: string): string {
+  return normalizeText(value).toLocaleUpperCase('en-US').replace(/[^A-Z0-9]/g, '')
+}
+
+export function normalizeVariantKey(value: string): string {
+  return normalizeFingerprintText(value)
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+}
+
 export function manufacturerAliasVersion(): number {
   return MANUFACTURER_ALIAS_VERSION
 }

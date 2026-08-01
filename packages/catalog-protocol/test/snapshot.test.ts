@@ -2,6 +2,8 @@ import { generateKeyPairSync, sign } from 'node:crypto'
 import { describe, expect, it } from 'vitest'
 import {
   CATALOG_SCHEMA_VERSION,
+  FINGERPRINT_VERSION,
+  LEGACY_FINGERPRINT_VERSION,
   canonicalJson,
   digestCatalogTemplate,
   validateCatalogManifest,
@@ -34,11 +36,40 @@ describe('signed catalog snapshots', () => {
       generatedAt: '2026-07-26T12:00:00.000Z',
       expiresAt: '2026-08-26T12:00:00.000Z',
       manufacturerAliases: {},
-      templates: [{ templateKey: 'example-cpu-1', revision: 1, ...digests, item: projection.item }],
+      templates: [{ templateKey: 'example-cpu-1', revision: 1, fingerprintVersion: FINGERPRINT_VERSION, ...digests, item: projection.item }],
     }
     await expect(validateCatalogSnapshot(snapshot, { now: new Date('2026-07-27T00:00:00.000Z') })).resolves.toMatchObject({ catalogRevision: 1 })
     await expect(validateCatalogSnapshot({ ...snapshot, templates: [{ ...snapshot.templates[0], contentHash: 'a'.repeat(64) }] }, { now: new Date('2026-07-27T00:00:00.000Z') })).rejects.toThrow(/declared hashes/i)
     await expect(validateCatalogSnapshot(snapshot, { now: new Date('2026-09-01T00:00:00.000Z') })).rejects.toThrow(/expired/i)
+  })
+
+  it('accepts legacy v2 templates and rejects canonical or alias collisions', async () => {
+    const item = { type: 'cpu', name: 'Example CPU', manufacturer: 'Example', model: 'C1' }
+    const legacy = await digestCatalogTemplate(item, { fingerprintVersion: LEGACY_FINGERPRINT_VERSION })
+    const modern = await digestCatalogTemplate({ ...item, model: 'C2' })
+    const snapshot = {
+      schemaVersion: CATALOG_SCHEMA_VERSION,
+      catalogRevision: 2,
+      generatedAt: '2026-07-26T12:00:00.000Z',
+      manufacturerAliases: {},
+      templates: [
+        { templateKey: 'example-cpu-v2', revision: 1, ...legacy, item: legacy.item },
+        {
+          templateKey: 'example-cpu-v3', revision: 1, fingerprintVersion: FINGERPRINT_VERSION,
+          identityAliases: [{ fingerprintVersion: LEGACY_FINGERPRINT_VERSION, identityHash: 'a'.repeat(64) }],
+          identityHash: modern.identityHash, contentHash: modern.contentHash, item: modern.item,
+        },
+      ],
+    }
+    await expect(validateCatalogSnapshot(snapshot, { now: new Date('2026-07-27T00:00:00.000Z') })).resolves.toMatchObject({
+      templates: [
+        { fingerprintVersion: LEGACY_FINGERPRINT_VERSION },
+        { fingerprintVersion: FINGERPRINT_VERSION },
+      ],
+    })
+    const collision = structuredClone(snapshot)
+    collision.templates[1].identityAliases = [{ fingerprintVersion: LEGACY_FINGERPRINT_VERSION, identityHash: legacy.identityHash }]
+    await expect(validateCatalogSnapshot(collision, { now: new Date('2026-07-27T00:00:00.000Z') })).rejects.toThrow(/collides/i)
   })
 
   it('rejects stale or insecure manifests', () => {

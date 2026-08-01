@@ -1,7 +1,12 @@
 import { canonicalJson } from './canonicalize'
 import { sha256Hex } from './hash'
 import { digestCatalogTemplate } from './projector'
-import { CATALOG_SCHEMA_VERSION, FINGERPRINT_VERSION } from './types'
+import {
+  CATALOG_SCHEMA_VERSION,
+  LEGACY_FINGERPRINT_VERSION,
+  SUPPORTED_FINGERPRINT_VERSIONS,
+  type FingerprintVersion,
+} from './types'
 import type {
   CatalogManifest,
   CatalogDigestIndex,
@@ -27,6 +32,14 @@ function assertHexDigest(value: unknown, label: string): asserts value is string
   if (typeof value !== 'string' || !/^[a-f0-9]{64}$/.test(value)) {
     throw new Error(`${label} must be a SHA-256 hex digest.`)
   }
+}
+
+function fingerprintVersion(value: unknown, label: string): FingerprintVersion {
+  const resolved = value === undefined ? LEGACY_FINGERPRINT_VERSION : Number(value)
+  if (!(SUPPORTED_FINGERPRINT_VERSIONS as readonly number[]).includes(resolved)) {
+    throw new Error(`${label} fingerprint version is unsupported.`)
+  }
+  return resolved as FingerprintVersion
 }
 
 export async function validateCatalogSnapshot(
@@ -62,7 +75,7 @@ export async function validateCatalogSnapshot(
   if (source.templates.length > maxTemplates) throw new Error(`Catalog snapshot exceeds the ${maxTemplates}-template limit.`)
 
   const templateKeys = new Set<string>()
-  const identities = new Set<string>()
+  const identities = new Map<string, string>()
   const templates: CatalogTemplateRevision[] = []
   for (const [index, raw] of source.templates.entries()) {
     if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw new Error(`Catalog template ${index} must be an object.`)
@@ -74,18 +87,41 @@ export async function validateCatalogSnapshot(
     assertHexDigest(template.identityHash, `Catalog template ${index} identityHash`)
     assertHexDigest(template.contentHash, `Catalog template ${index} contentHash`)
     if (templateKeys.has(template.templateKey)) throw new Error(`Catalog template key ${template.templateKey} is duplicated.`)
-    if (identities.has(template.identityHash)) throw new Error(`Catalog identity ${template.identityHash} is duplicated.`)
-    const projection = await digestCatalogTemplate(template.item)
+    const version = fingerprintVersion(template.fingerprintVersion, `Catalog template ${index}`)
+    const existingCanonical = identities.get(template.identityHash as string)
+    if (existingCanonical) throw new Error(`Catalog identity ${template.identityHash} is duplicated by ${existingCanonical}.`)
+    const projection = await digestCatalogTemplate(template.item, { fingerprintVersion: version })
     const { item, identityHash, contentHash } = projection
     const digests = { identityHash, contentHash }
     if (digests.identityHash !== template.identityHash || digests.contentHash !== template.contentHash) {
       throw new Error(`Catalog template ${template.templateKey} does not match its declared hashes.`)
     }
+    const identityAliases = Array.isArray(template.identityAliases)
+      ? template.identityAliases.map((rawAlias, aliasIndex) => {
+          if (!rawAlias || typeof rawAlias !== 'object' || Array.isArray(rawAlias)) {
+            throw new Error(`Catalog template ${template.templateKey} alias ${aliasIndex} is invalid.`)
+          }
+          const alias = rawAlias as Record<string, unknown>
+          const aliasVersion = fingerprintVersion(alias.fingerprintVersion, `Catalog template ${template.templateKey} alias ${aliasIndex}`)
+          assertHexDigest(alias.identityHash, `Catalog template ${template.templateKey} alias ${aliasIndex} identityHash`)
+          if (alias.identityHash === template.identityHash) {
+            throw new Error(`Catalog template ${template.templateKey} repeats its canonical identity as an alias.`)
+          }
+          const owner = identities.get(alias.identityHash)
+          if (owner) throw new Error(`Catalog identity alias ${alias.identityHash} collides with ${owner}.`)
+          identities.set(alias.identityHash, template.templateKey as string)
+          return { fingerprintVersion: aliasVersion, identityHash: alias.identityHash }
+        })
+      : []
     templateKeys.add(template.templateKey)
-    identities.add(template.identityHash)
+    identities.set(template.identityHash, template.templateKey)
     templates.push({
       templateKey: template.templateKey,
       revision: template.revision,
+      fingerprintVersion: version,
+      ...(identityAliases.length > 0 ? { identityAliases } : {}),
+      ...(projection.productFamily ? { productFamily: projection.productFamily } : {}),
+      ...(projection.variantEvidence ? { variantEvidence: projection.variantEvidence } : {}),
       ...digests,
       item,
     })
@@ -144,7 +180,11 @@ export function validateCatalogManifest(
 export function validateCatalogDigestIndex(value: unknown): CatalogDigestIndex {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('Catalog digest index must be an object.')
   const source = value as Record<string, unknown>
-  if (source.schemaVersion !== CATALOG_SCHEMA_VERSION || source.fingerprintVersion !== FINGERPRINT_VERSION || source.manufacturerAliasVersion !== 1) {
+  if (
+    source.schemaVersion !== CATALOG_SCHEMA_VERSION
+    || !(SUPPORTED_FINGERPRINT_VERSIONS as readonly unknown[]).includes(source.fingerprintVersion)
+    || source.manufacturerAliasVersion !== 1
+  ) {
     throw new Error('Catalog digest index protocol versions are unsupported.')
   }
   assertPositiveInteger(source.catalogRevision, 'Catalog digest revision')
@@ -156,6 +196,7 @@ export function validateCatalogDigestIndex(value: unknown): CatalogDigestIndex {
     if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw new Error(`Catalog digest entry ${index} is invalid.`)
     const entry = raw as Record<string, unknown>
     assertHexDigest(entry.identityHash, `Catalog digest entry ${index} identityHash`)
+    const entryFingerprintVersion = fingerprintVersion(entry.fingerprintVersion ?? source.fingerprintVersion, `Catalog digest entry ${index}`)
     if (entry.templateKey !== undefined && (typeof entry.templateKey !== 'string' || !/^[A-Za-z0-9_-]{8,128}$/.test(entry.templateKey))) {
       throw new Error(`Catalog digest entry ${index} templateKey is invalid.`)
     }
@@ -185,15 +226,30 @@ export function validateCatalogDigestIndex(value: unknown): CatalogDigestIndex {
         ...(observation.retryAfter === undefined ? {} : { retryAfter: observation.retryAfter as string | null }),
       }
     })
+    const identityAliases = Array.isArray(entry.identityAliases)
+      ? entry.identityAliases.map((rawAlias, aliasIndex) => {
+          if (!rawAlias || typeof rawAlias !== 'object' || Array.isArray(rawAlias)) {
+            throw new Error(`Catalog digest entry ${index} alias ${aliasIndex} is invalid.`)
+          }
+          const alias = rawAlias as Record<string, unknown>
+          assertHexDigest(alias.identityHash, `Catalog digest entry ${index} alias ${aliasIndex} identityHash`)
+          return {
+            fingerprintVersion: fingerprintVersion(alias.fingerprintVersion, `Catalog digest entry ${index} alias ${aliasIndex}`),
+            identityHash: alias.identityHash,
+          }
+        })
+      : []
     return {
       identityHash: entry.identityHash,
+      fingerprintVersion: entryFingerprintVersion,
+      ...(identityAliases.length > 0 ? { identityAliases } : {}),
       ...(entry.templateKey === undefined ? {} : { templateKey: entry.templateKey as string }),
       contentHashes,
     }
   })
   return {
     schemaVersion: CATALOG_SCHEMA_VERSION,
-    fingerprintVersion: FINGERPRINT_VERSION,
+    fingerprintVersion: source.fingerprintVersion as FingerprintVersion,
     manufacturerAliasVersion: 1,
     catalogRevision: Number(source.catalogRevision),
     generatedAt: String(source.generatedAt),

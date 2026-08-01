@@ -6,6 +6,22 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 
 ## Unreleased
 
+## [0.6.0] - 2026-08-01
+
+### Added
+
+- Connected catalogs now distinguish hardware variants within the same product family by trusted motherboard identity or complete structural topology, so systems such as standard and discrete-graphics Dell OptiPlex Micro 7090 boards can be reviewed, published, searched, and imported separately.
+- Catalog search results and item details show concise motherboard or topology variant labels when a product family contains multiple verified definitions.
+
+### Changed
+
+- Automatic catalog contributions use fingerprint-v3 product-family and variant evidence, deduplicating equivalent local copies while keeping materially different motherboards or complete expansion topologies separate.
+- Existing fingerprint-v2 identities remain valid aliases, while ambiguous generic-family records require review instead of silently attaching to a specific variant.
+
+### Data migration
+
+- Schema 19 preserves existing fingerprint-v2 catalog links and contribution records while enabling fingerprint-v3 variant evidence and aliases. Startup creates a backup and applies the migration automatically before catalog refresh or contribution discovery.
+
 ## [0.5.1] - 2026-07-31
 
 ### Added

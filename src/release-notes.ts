@@ -106,6 +106,20 @@ export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
   notes: [],
 }
 
+const RELEASE_0_6_0_DETAILS: UnreleasedReleaseNotes = {
+  highlights: [
+    'The verified catalog now distinguishes product variants by trusted motherboard identity or complete structural topology, keeping standard and expansion-capable versions of the same model separate without using installed components or local server roles as identity.',
+    'Catalog search and item details now expose concise variant labels so similar model families remain understandable when importing verified hardware.',
+  ],
+  fixes: [
+    'Catalog matching preserves fingerprint-v2 identities as aliases while preventing ambiguous generic-family records from silently attaching to a specific motherboard or topology variant.',
+    'Automatic contributions now deduplicate equivalent local copies while submitting materially different motherboard and expansion variants as separate review candidates.',
+  ],
+  notes: [
+    'Schema 19 preserves existing fingerprint-v2 catalog links, contribution state, inventory IDs, assignments, placements, and cables while enabling fingerprint-v3 evidence through the normal backup-first startup migration.',
+  ],
+}
+
 const RELEASE_0_5_1_DETAILS: UnreleasedReleaseNotes = {
   highlights: [
     'Connected catalogs now recognize equivalent local hardware by canonical identity and offer an explicit review before adopting verified registry fields.',
@@ -267,9 +281,16 @@ const RELEASE_0_2_1_DETAILS: UnreleasedReleaseNotes = {
 
 export const RELEASE_NOTES: ReleaseNoteEntry[] = [
   {
+    version: '0.6.0',
+    date: '2026-08-01',
+    channel: 'latest',
+    title: 'Hardware variant-aware catalogs',
+    ...RELEASE_0_6_0_DETAILS,
+  },
+  {
     version: '0.5.1',
     date: '2026-07-31',
-    channel: 'latest',
+    channel: 'release',
     title: 'Catalog adoption and computer roles',
     ...RELEASE_0_5_1_DETAILS,
   },

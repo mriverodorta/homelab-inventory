@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { assertCatalogProtocolContract, digestCatalogTemplate, FINGERPRINT_VERSION, projectCatalogItem } from '../src'
+import {
+  assertCatalogProtocolContract,
+  digestCatalogTemplate,
+  FINGERPRINT_VERSION,
+  LEGACY_FINGERPRINT_VERSION,
+  projectCatalogItem,
+} from '../src'
 
 function switchItem(id: number, name: string) {
   return { id, type: 'switch', name, manufacturer: 'Netgear', model: 'GS108T', specs: { management: 'Web managed' } }
@@ -19,14 +25,78 @@ describe('category-aware catalog projection', () => {
   })
 
   it('keeps OptiPlex 7090 board variants distinct', async () => {
-    const base = { id: 1, type: 'server', name: '7090', manufacturer: 'Dell', model: 'OptiPlex Micro 7090' }
-    const discrete = await projectCatalogItem({ ...base, specs: { formFactor: 'Micro', boardVariant: 'Discrete riser' } })
-    const standard = await projectCatalogItem({ ...base, id: 2, specs: { formFactor: 'Micro', boardVariant: '65W' } })
+    const base = {
+      id: 1,
+      type: 'server',
+      hardwareClass: 'desktop',
+      name: '7090',
+      manufacturer: 'Dell',
+      model: 'OptiPlex Micro 7090',
+      specs: { formFactor: 'Micro', motherboardPartNumber: '014T59', motherboardRevision: 'A00', boardVariant: 'Discrete graphics' },
+      compatibility: {
+        host: {
+          topologyCompleteness: 'complete',
+          expansionSlots: [{ id: 1, key: 'dgpu-riser', count: 1, label: 'Proprietary graphics riser', pcieGeneration: 3, electricalLanes: 8 }],
+        },
+      },
+    }
+    const discrete = await projectCatalogItem(base)
+    const standard = await projectCatalogItem({
+      ...base,
+      id: 2,
+      specs: { formFactor: 'Micro', motherboardPartNumber: '04frx5', motherboardRevision: 'a00', boardVariant: 'Standard' },
+      compatibility: { host: { topologyCompleteness: 'complete', expansionSlots: [] } },
+    })
     expect(discrete.status).toBe('eligible')
     expect(standard.status).toBe('eligible')
     if (discrete.status === 'eligible' && standard.status === 'eligible') {
       expect(discrete.identityHash).not.toBe(standard.identityHash)
+      expect(discrete).toMatchObject({
+        fingerprintVersion: 3,
+        productFamily: { manufacturer: 'Dell', model: 'OptiPlex Micro 7090', physicalClass: 'desktop' },
+        variantEvidence: {
+          source: 'motherboard',
+          motherboardPartNumber: '014T59',
+          motherboardRevision: 'A00',
+          variantKey: 'discrete-graphics',
+        },
+      })
+      expect(standard).toMatchObject({
+        variantEvidence: { motherboardPartNumber: '04FRX5', motherboardRevision: 'A00' },
+      })
     }
+  })
+
+  it('normalizes motherboard casing and punctuation before hashing', async () => {
+    const base = { id: 1, type: 'server', hardwareClass: 'desktop', name: '7090', manufacturer: 'Dell', model: 'OptiPlex Micro 7090' }
+    const first = await projectCatalogItem({ ...base, specs: { motherboardPartNumber: '014t59 a00' } })
+    const second = await projectCatalogItem({ ...base, id: 2, specs: { motherboardPartNumber: '014T59', boardRevision: 'A-00' } })
+    expect(first.status).toBe('eligible')
+    expect(second.status).toBe('eligible')
+    if (first.status === 'eligible' && second.status === 'eligible') expect(first.identityHash).toBe(second.identityHash)
+  })
+
+  it('uses complete topology as a fallback but does not infer identity from partial topology', async () => {
+    const base = { id: 1, type: 'desktop', name: 'System', manufacturer: 'Example', model: 'Mini 1' }
+    const topology = { expansionSlots: [{ id: 1, key: 'riser', count: 1, pcieGeneration: 3, electricalLanes: 8 }] }
+    const complete = await projectCatalogItem({ ...base, compatibility: { host: { ...topology, topologyCompleteness: 'complete' } } })
+    const otherComplete = await projectCatalogItem({ ...base, id: 2, compatibility: { host: { expansionSlots: [], topologyCompleteness: 'complete' } } })
+    const partial = await projectCatalogItem({ ...base, id: 3, compatibility: { host: { ...topology, topologyCompleteness: 'partial' } } })
+    const generic = await projectCatalogItem({ ...base, id: 4 })
+    expect(complete).toMatchObject({ status: 'eligible', variantEvidence: { source: 'topology', completeness: 'complete' } })
+    expect(partial).toMatchObject({ status: 'eligible', variantEvidence: { source: 'generic', completeness: 'partial' } })
+    if (complete.status === 'eligible' && otherComplete.status === 'eligible') expect(complete.identityHash).not.toBe(otherComplete.identityHash)
+    if (partial.status === 'eligible' && generic.status === 'eligible') expect(partial.identityHash).toBe(generic.identityHash)
+  })
+
+  it('does not use installed components or slot occupancy as variant identity', async () => {
+    const base = {
+      id: 1, type: 'desktop', name: 'System', manufacturer: 'Example', model: 'Mini 1',
+      specs: { motherboardPartNumber: 'BOARD-1', boardRevision: 'A00' },
+    }
+    const first = await projectCatalogItem({ ...base, installedCpuId: 1, installedGpuId: 2, assignments: [1, 2] })
+    const second = await projectCatalogItem({ ...base, id: 2, installedCpuId: 9, installedGpuId: 10, assignments: [] })
+    if (first.status === 'eligible' && second.status === 'eligible') expect(first.identityHash).toBe(second.identityHash)
   })
 
   it('projects an OEM computer by physical class without leaking its local usage role', async () => {
@@ -119,7 +189,8 @@ describe('category-aware catalog projection', () => {
   })
 
   it('preserves the immutable fingerprint-v2 revision-3 CPU contract', async () => {
-    expect(FINGERPRINT_VERSION).toBe(2)
+    expect(FINGERPRINT_VERSION).toBe(3)
+    expect(LEGACY_FINGERPRINT_VERSION).toBe(2)
 
     const projection = await digestCatalogTemplate({
       type: 'cpu',
@@ -136,7 +207,7 @@ describe('category-aware catalog projection', () => {
         baseClockGhz: 2.3,
         boostClockGhz: 3.8,
       },
-    })
+    }, { fingerprintVersion: LEGACY_FINGERPRINT_VERSION })
 
     expect(projection.item).toEqual({
       type: 'cpu',

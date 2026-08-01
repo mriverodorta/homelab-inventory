@@ -98,21 +98,21 @@ describe('release notes helpers', () => {
     const previousRelease = RELEASE_NOTES.find((entry) => entry.version === '0.2.1')!
     const engineRelease = RELEASE_NOTES.find((entry) => entry.version === '0.2.0')!
 
-    expect(hasReleaseNoteForVersion(RELEASE_NOTES, '0.5.1')).toBe(true)
+    expect(hasReleaseNoteForVersion(RELEASE_NOTES, '0.6.0')).toBe(true)
     expect(RELEASE_NOTES[0]).toEqual(
       expect.objectContaining({
-        version: '0.5.1',
-        title: 'Catalog adoption and computer roles',
+        version: '0.6.0',
+        title: 'Hardware variant-aware catalogs',
       }),
     )
     expect(RELEASE_NOTES.filter((entry) => entry.channel === 'latest')).toEqual([
-      expect.objectContaining({ version: '0.5.1' }),
+      expect.objectContaining({ version: '0.6.0' }),
     ])
     expect(RELEASE_NOTES.find((entry) => entry.version === '0.1.38')).toEqual(
       expect.objectContaining({ channel: 'release' }),
     )
     expect(currentRelease.highlights).toContain(
-      'Computers now separate physical hardware class from local usage role, allowing desktop mini PCs to serve as servers or workstations while matching the correct catalog product.',
+      'The verified catalog now distinguishes product variants by trusted motherboard identity or complete structural topology, keeping standard and expansion-capable versions of the same model separate without using installed components or local server roles as identity.',
     )
     expect(registryRelease.highlights).toContain(
       'Add Hardware now combines a locally searched verified Catalog, the complete Manual editor, and reusable Private templates in one source-aware dialog.',
@@ -120,7 +120,9 @@ describe('release notes helpers', () => {
     expect(registryRelease.notes).toContain(
       'Schema 15 adds an independent registry store for catalog preferences, private templates, signed snapshot metadata, and numeric catalog links without changing canvas, assignment, or cable relationships.',
     )
-    expect(UNRELEASED_RELEASE_NOTES).toEqual({ highlights: [], fixes: [], notes: [] })
+    expect(UNRELEASED_RELEASE_NOTES.highlights).toEqual([])
+    expect(UNRELEASED_RELEASE_NOTES.fixes).toEqual([])
+    expect(UNRELEASED_RELEASE_NOTES.notes).toEqual([])
     expect(onboardingRelease.highlights).toContain(
       'Fresh workspaces can now explore a complete fictional homelab or start empty with an adaptive create, place, and connect checklist.',
     )

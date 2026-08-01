@@ -22,11 +22,19 @@ async function fixture() {
   const { identityHash, contentHash } = await digestCatalogTemplate(item)
   const payload = {
     schemaVersion: 1,
+    fingerprintVersion: FINGERPRINT_VERSION,
     catalogRevision: 2,
     generatedAt: '2026-07-26T12:00:00.000Z',
     expiresAt: '2026-08-26T12:00:00.000Z',
     manufacturerAliases: {},
-    templates: [{ templateKey: 'example-switch-01', revision: 1, identityHash, contentHash, item }],
+    templates: [{
+      templateKey: 'example-switch-01',
+      revision: 1,
+      fingerprintVersion: FINGERPRINT_VERSION,
+      identityHash,
+      contentHash,
+      item,
+    }],
   }
   const artifact = {
     payload,

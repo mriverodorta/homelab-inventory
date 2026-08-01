@@ -60,8 +60,10 @@ export class ContributionDeliveryService {
       }
     })
     const body = {
-      candidates: due.map(({ identityHash, contentHash, idempotencyKey, payload }) => ({
-        identityHash, contentHash, idempotencyKey, payload,
+      candidates: due.map(({
+        identityHash, contentHash, fingerprintVersion, productFamily, variantEvidence, idempotencyKey, payload,
+      }) => ({
+        identityHash, contentHash, fingerprintVersion, productFamily, variantEvidence, idempotencyKey, payload,
       })),
     }
     try {
@@ -91,6 +93,7 @@ export class ContributionDeliveryService {
             sources: record.sources,
             identityHash: record.identityHash,
             contentHash: record.contentHash,
+            fingerprintVersion: record.fingerprintVersion,
             idempotencyKey: record.idempotencyKey,
             state: result === 'suppressed' ? 'suppressed' : 'delivered',
             deliveredAt: now.toISOString(),

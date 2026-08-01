@@ -14,6 +14,11 @@ sanitization, identity, and content-hash behavior for that version.
 - A future normalization change must add a new fingerprint implementation and
   preserve the old implementation for clients or stored records that still use
   it.
+- Fingerprint v3 separates product-family identity from motherboard or complete
+  topology evidence. Fingerprint-v2 hashes remain valid aliases and must never
+  be recomputed with v3 rules.
+- Variant identity must not include installed components, local device names,
+  assignments, topology relationships, or the role a user gives the machine.
 - Registry publication must use a fingerprint implementation already shipped
   by the supported Homelab Inventory release channel.
 - Both repositories must pass the same conformance vector before an application

@@ -1,13 +1,19 @@
-import { computeCatalogDigestsWithIdentity } from './hash'
+import { canonicalJson } from './canonicalize'
+import { computeCatalogDigestsWithIdentity, sha256Hex } from './hash'
+import { normalizeBoardIdentifier, normalizeText, normalizeVariantKey } from './normalization'
 import { sanitizeCatalogItem } from './sanitize'
 import type {
   CatalogEligibilityReason,
+  CatalogProductFamily,
   CatalogProjection,
   CatalogSourceRef,
   CatalogTemplateItem,
+  CatalogVariantEvidence,
+  FingerprintVersion,
   JsonPrimitive,
   JsonValue,
 } from './types'
+import { FINGERPRINT_VERSION, LEGACY_FINGERPRINT_VERSION } from './types'
 
 type SourceItem = Record<string, unknown> & {
   id?: unknown
@@ -69,7 +75,7 @@ function hasAll(item: CatalogTemplateItem, fields: Array<'manufacturer' | 'model
   return fields.every((field) => Boolean(text(item[field])))
 }
 
-function productIdentity(item: CatalogTemplateItem): Record<string, JsonValue> | CatalogEligibilityReason {
+function legacyProductIdentity(item: CatalogTemplateItem): Record<string, JsonValue> | CatalogEligibilityReason {
   const specs = item.specs
   const common = [['type', item.type], ['subtype', item.subtype], ['manufacturer', item.manufacturer]] as Array<[string, JsonValue | undefined]>
   switch (item.type) {
@@ -150,7 +156,141 @@ function productIdentity(item: CatalogTemplateItem): Record<string, JsonValue> |
   }
 }
 
-export async function projectCatalogItem(value: unknown): Promise<CatalogProjection> {
+function asObject(value: unknown): Record<string, JsonValue> | undefined {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, JsonValue>
+    : undefined
+}
+
+function extractMaterialTopology(item: CatalogTemplateItem): Record<string, JsonValue> | undefined {
+  const host = asObject(item.compatibility?.host)
+  if (!host) return undefined
+  const topology = identityObject([
+    ['cpu', host.cpu],
+    ['memory', host.memory],
+    ['expansionSlots', host.expansionSlots],
+    ['storageSlots', host.storageSlots],
+  ])
+  return Object.keys(topology).length > 0 ? topology : undefined
+}
+
+function topologyCompleteness(item: CatalogTemplateItem): 'complete' | 'partial' | 'conflicting' {
+  const host = asObject(item.compatibility?.host)
+  const declared = text(item.specs?.topologyCompleteness) ?? text(host?.topologyCompleteness)
+  if (declared === 'complete' || declared === 'partial' || declared === 'conflicting') return declared
+  if (item.specs?.topologyComplete === true || host?.topologyComplete === true) return 'complete'
+  return 'partial'
+}
+
+function splitBoardIdentity(item: CatalogTemplateItem): {
+  partNumber?: string
+  revision?: string
+} {
+  const rawPartNumber = text(item.specs?.motherboardPartNumber) ?? text(item.specs?.partNumber)
+  const explicitRevision = text(item.specs?.motherboardRevision) ?? text(item.specs?.boardRevision)
+  if (!rawPartNumber) return { revision: explicitRevision ? normalizeBoardIdentifier(explicitRevision) : undefined }
+  const combined = normalizeText(rawPartNumber).match(/^(.+?)[\s/_-]+([A-Z]\d{2})$/i)
+  return {
+    partNumber: normalizeBoardIdentifier(combined?.[1] ?? rawPartNumber),
+    revision: normalizeBoardIdentifier(explicitRevision ?? combined?.[2] ?? '' ) || undefined,
+  }
+}
+
+function topologySummary(topology: Record<string, JsonValue> | undefined): string | undefined {
+  if (!topology) return undefined
+  const expansion = Array.isArray(topology.expansionSlots) ? topology.expansionSlots : []
+  const expansionSummary = expansion
+    .map((slot) => {
+      const entry = asObject(slot)
+      if (!entry) return undefined
+      const generation = typeof entry.pcieGeneration === 'number' ? `PCIe Gen${entry.pcieGeneration}` : undefined
+      const lanes = typeof entry.electricalLanes === 'number' ? `x${entry.electricalLanes}` : undefined
+      const label = typeof entry.label === 'string' ? normalizeText(entry.label) : undefined
+      return [generation, lanes, label].filter(Boolean).join(' ')
+    })
+    .filter(Boolean)
+  if (expansionSummary.length > 0) return expansionSummary.join(' · ')
+  const storage = Array.isArray(topology.storageSlots) ? topology.storageSlots.length : 0
+  const memory = asObject(topology.memory)
+  const memorySlots = typeof memory?.slots === 'number' ? memory.slots : undefined
+  const parts = [storage > 0 ? `${storage} storage group${storage === 1 ? '' : 's'}` : undefined,
+    memorySlots ? `${memorySlots} memory slots` : undefined].filter(Boolean)
+  return parts.length > 0 ? parts.join(' · ') : undefined
+}
+
+async function variantIdentity(item: CatalogTemplateItem): Promise<{
+  identityPayload: Record<string, JsonValue>
+  productFamily?: CatalogProductFamily
+  variantEvidence?: CatalogVariantEvidence
+} | CatalogEligibilityReason> {
+  const legacyIdentity = legacyProductIdentity(item)
+  if (typeof legacyIdentity === 'string') return legacyIdentity
+  if (item.type !== 'desktop' && item.type !== 'server' && item.type !== 'nas') {
+    return { identityPayload: legacyIdentity }
+  }
+
+  const manufacturer = text(item.manufacturer)
+  const model = text(item.model)
+  if (!manufacturer || !model) return 'insufficient-identity'
+  const productFamily: CatalogProductFamily = { manufacturer, model, physicalClass: item.type }
+  const topology = extractMaterialTopology(item)
+  const completeness = topologyCompleteness(item)
+  const board = splitBoardIdentity(item)
+  const explicitVariant = text(item.specs?.boardVariant) ?? text(item.specs?.variantKey)
+  const topologySignature = topology ? await sha256Hex(`hli:topology:v3:${canonicalJson(topology)}`) : undefined
+
+  if (board.partNumber) {
+    const label = explicitVariant ?? `Board ${board.partNumber}${board.revision ? ` ${board.revision}` : ''}`
+    return {
+      productFamily,
+      variantEvidence: {
+        source: 'motherboard',
+        completeness,
+        label,
+        motherboardPartNumber: board.partNumber,
+        ...(board.revision ? { motherboardRevision: board.revision } : {}),
+        ...(explicitVariant ? { variantKey: normalizeVariantKey(explicitVariant) } : {}),
+        ...(topologySignature ? { topologySignature } : {}),
+        ...(topologySummary(topology) ? { structuralSummary: topologySummary(topology) } : {}),
+      },
+      identityPayload: identityObject([
+        ['productFamily', productFamily],
+        ['motherboardPartNumber', board.partNumber],
+        ['motherboardRevision', board.revision],
+      ]),
+    }
+  }
+
+  if (topology && completeness === 'complete' && topologySignature) {
+    return {
+      productFamily,
+      variantEvidence: {
+        source: 'topology', completeness, label: explicitVariant ?? 'Topology-defined variant',
+        ...(explicitVariant ? { variantKey: normalizeVariantKey(explicitVariant) } : {}),
+        topologySignature,
+        ...(topologySummary(topology) ? { structuralSummary: topologySummary(topology) } : {}),
+      },
+      identityPayload: { productFamily, topologySignature },
+    }
+  }
+
+  return {
+    productFamily,
+    variantEvidence: {
+      source: 'generic', completeness,
+      label: explicitVariant ?? 'Generic family',
+      ...(explicitVariant ? { variantKey: normalizeVariantKey(explicitVariant) } : {}),
+      ...(topologySignature ? { topologySignature } : {}),
+      ...(topologySummary(topology) ? { structuralSummary: topologySummary(topology) } : {}),
+    },
+    identityPayload: { productFamily },
+  }
+}
+
+export async function projectCatalogItem(
+  value: unknown,
+  options: { fingerprintVersion?: FingerprintVersion } = {},
+): Promise<CatalogProjection> {
   const source = value as SourceItem
   const sourceType = text(source?.type) ?? ''
   const hardwareClass = text(source?.hardwareClass)
@@ -172,17 +312,44 @@ export async function projectCatalogItem(value: unknown): Promise<CatalogProject
   }
 
   const item = sanitizeCatalogItem({ ...source, type })
-  const identityPayload = productIdentity(item)
-  if (typeof identityPayload === 'string') return { status: 'ineligible', source: sourceRef, reason: identityPayload }
+  const fingerprintVersion = options.fingerprintVersion ?? FINGERPRINT_VERSION
+  let identityPayload: Record<string, JsonValue>
+  let productFamily: CatalogProductFamily | undefined
+  let variantEvidence: CatalogVariantEvidence | undefined
+  if (fingerprintVersion === LEGACY_FINGERPRINT_VERSION) {
+    const identity = legacyProductIdentity(item)
+    if (typeof identity === 'string') return { status: 'ineligible', source: sourceRef, reason: identity }
+    identityPayload = identity
+  } else {
+    const variant = await variantIdentity(item)
+    if (typeof variant === 'string') return { status: 'ineligible', source: sourceRef, reason: variant }
+    identityPayload = variant.identityPayload
+    productFamily = variant.productFamily
+    variantEvidence = variant.variantEvidence
+  }
   const name = canonicalName(item)
   if (!name) return { status: 'ineligible', source: sourceRef, reason: 'insufficient-identity' }
   const canonicalItem = { ...item, name }
-  const digests = await computeCatalogDigestsWithIdentity(canonicalItem, identityPayload)
-  return { status: 'eligible', source: sourceRef, item: canonicalItem, identityPayload, ...digests }
+  const digests = await computeCatalogDigestsWithIdentity(canonicalItem, identityPayload, fingerprintVersion)
+  return {
+    status: 'eligible', source: sourceRef, item: canonicalItem, fingerprintVersion, identityPayload,
+    ...(fingerprintVersion === LEGACY_FINGERPRINT_VERSION ? {} : {
+      ...(productFamily ? { productFamily } : {}),
+      ...(variantEvidence ? { variantEvidence } : {}),
+    }),
+    ...digests,
+  }
 }
 
-export async function digestCatalogTemplate(value: unknown): Promise<Extract<CatalogProjection, { status: 'eligible' }>> {
-  const projection = await projectCatalogItem({ ...(value as Record<string, unknown>), id: 1 })
+export async function projectCatalogItemV2(value: unknown): Promise<CatalogProjection> {
+  return projectCatalogItem(value, { fingerprintVersion: LEGACY_FINGERPRINT_VERSION })
+}
+
+export async function digestCatalogTemplate(
+  value: unknown,
+  options: { fingerprintVersion?: FingerprintVersion } = {},
+): Promise<Extract<CatalogProjection, { status: 'eligible' }>> {
+  const projection = await projectCatalogItem({ ...(value as Record<string, unknown>), id: 1 }, options)
   if (projection.status !== 'eligible') {
     throw new Error(`Catalog template is not eligible for publication: ${projection.reason}.`)
   }
@@ -190,5 +357,5 @@ export async function digestCatalogTemplate(value: unknown): Promise<Extract<Cat
 }
 
 export function catalogItemMeetsEligibility(item: CatalogTemplateItem): boolean {
-  return typeof productIdentity(item) !== 'string'
+  return typeof legacyProductIdentity(item) !== 'string'
 }

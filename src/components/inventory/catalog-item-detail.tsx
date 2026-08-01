@@ -4,6 +4,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { catalogVariantLabel } from '@/components/inventory/catalog-variant'
 import type { EquipmentUsageRole } from '@/types/inventory'
 import type { CatalogSearchItem } from '@/types/registry'
 
@@ -20,6 +21,7 @@ export function CatalogItemDetail({
   const [usageRole, setUsageRole] = useState<EquipmentUsageRole>('server')
   const [error, setError] = useState<string | null>(null)
   const specs = Object.entries(template.item.specs ?? {})
+  const variantLabel = catalogVariantLabel(template.variantEvidence)
 
   useEffect(() => {
     setUsageRole('server')
@@ -54,6 +56,15 @@ export function CatalogItemDetail({
       <p className="mt-1 text-sm text-[#746b60]">
         {[template.manufacturer, template.item.model, template.item.number].filter(Boolean).join(' · ') || 'Official catalog definition'}
       </p>
+      {variantLabel ? (
+        <div className="mt-4 border-l-2 border-[#74968e] pl-3">
+          <div className="text-[10px] font-black uppercase text-[#6f665c]">Hardware variant</div>
+          <div className="mt-0.5 text-sm font-bold text-[#302b26]">{variantLabel}</div>
+          <div className="mt-1 text-xs text-[#746b60]">
+            Verified from {template.variantEvidence?.source === 'motherboard' ? 'motherboard identity' : 'material hardware topology'}.
+          </div>
+        </div>
+      ) : null}
 
       <div className="mt-5 grid gap-px overflow-hidden rounded-md border border-[#ded8ce] bg-[#ded8ce] sm:grid-cols-2">
         {specs.length > 0 ? specs.slice(0, 12).map(([label, value]) => (

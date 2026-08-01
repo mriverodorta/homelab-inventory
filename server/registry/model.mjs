@@ -1,4 +1,7 @@
 import {
+  FINGERPRINT_VERSION,
+  LEGACY_FINGERPRINT_VERSION,
+  SUPPORTED_FINGERPRINT_VERSIONS,
   canonicalJson,
   computeCatalogDigests,
   sanitizeCatalogItem,
@@ -11,6 +14,10 @@ export const INVENTORY_SOURCE_TABS = new Set(['catalog', 'manual', 'private-temp
 export const MAX_PRIVATE_TEMPLATE_IMPORT_COUNT = 1_000
 const MAX_PRIVATE_TEMPLATE_NAME_LENGTH = 160
 const MAX_PRIVATE_TEMPLATE_DESCRIPTION_LENGTH = 1_000
+
+function isFingerprintVersion(value) {
+  return SUPPORTED_FINGERPRINT_VERSIONS.includes(value)
+}
 
 export function createRegistryStore() {
   return {
@@ -59,13 +66,25 @@ export function normalizeRegistryStore(value) {
     sources: Array.isArray(source.sources) ? source.sources : [],
     links: Array.isArray(source.links) ? source.links : [],
     contributionOutbox: Array.isArray(source.contributionOutbox)
-      ? source.contributionOutbox.map((record) => record?.state === 'delivering'
-          ? { ...record, state: 'retrying', lastError: 'Delivery was interrupted before completion.' }
-          : record)
+      ? source.contributionOutbox.map((record) => ({
+          ...record,
+          fingerprintVersion: isFingerprintVersion(record?.fingerprintVersion)
+            ? record.fingerprintVersion
+            : LEGACY_FINGERPRINT_VERSION,
+          ...(record?.state === 'delivering'
+            ? { state: 'retrying', lastError: 'Delivery was interrupted before completion.' }
+            : {}),
+        }))
       : [],
-    contributionLedger: Array.isArray(source.contributionLedger) ? source.contributionLedger : [],
-    contributionGroups: Array.isArray(source.contributionGroups) ? source.contributionGroups : [],
-    projectionCache: Array.isArray(source.projectionCache) ? source.projectionCache : [],
+    contributionLedger: Array.isArray(source.contributionLedger)
+      ? source.contributionLedger.map((record) => ({ ...record, fingerprintVersion: record?.fingerprintVersion ?? LEGACY_FINGERPRINT_VERSION }))
+      : [],
+    contributionGroups: Array.isArray(source.contributionGroups)
+      ? source.contributionGroups.map((record) => ({ ...record, fingerprintVersion: record?.fingerprintVersion ?? LEGACY_FINGERPRINT_VERSION }))
+      : [],
+    projectionCache: Array.isArray(source.projectionCache)
+      ? source.projectionCache.map((record) => ({ ...record, fingerprintVersion: record?.fingerprintVersion ?? LEGACY_FINGERPRINT_VERSION }))
+      : [],
     privateTemplates: Array.isArray(source.privateTemplates)
       ? source.privateTemplates.map((template) => ({
           ...template,
@@ -159,6 +178,9 @@ export function assertRegistryStoreShape(store) {
     if (!['linked', 'update-available', 'adoption-available', 'detached', 'contribution-pending'].includes(link.state)) {
       throw new Error(`registry.links[${index}].state is unsupported.`)
     }
+    if (!isFingerprintVersion(link.importedFingerprintVersion ?? LEGACY_FINGERPRINT_VERSION)) {
+      throw new Error(`registry.links[${index}].importedFingerprintVersion is unsupported.`)
+    }
   })
   store.contributionOutbox.forEach((record, index) => {
     if (typeof record.itemType !== 'string' || !isRelationalId(record.itemId)) {
@@ -170,6 +192,9 @@ export function assertRegistryStoreShape(store) {
     }
     if (!['queued', 'retrying', 'delivering'].includes(record.state)) {
       throw new Error(`registry.contributionOutbox[${index}].state is unsupported.`)
+    }
+    if (!isFingerprintVersion(record.fingerprintVersion ?? FINGERPRINT_VERSION)) {
+      throw new Error(`registry.contributionOutbox[${index}].fingerprintVersion is unsupported.`)
     }
     sanitizeCatalogItem(record.payload)
     if (!Array.isArray(record.sources) || record.sources.length < 1) {
@@ -186,6 +211,9 @@ export function assertRegistryStoreShape(store) {
       if (typeof record.identityHash !== 'string' || !/^[a-f0-9]{64}$/.test(record.identityHash)) {
         throw new Error(`registry.${collection}[${index}].identityHash is invalid.`)
       }
+      if (!isFingerprintVersion(record.fingerprintVersion ?? LEGACY_FINGERPRINT_VERSION)) {
+        throw new Error(`registry.${collection}[${index}].fingerprintVersion is unsupported.`)
+      }
     })
   }
   store.contributionLedger.forEach((record, index) => {
@@ -197,6 +225,9 @@ export function assertRegistryStoreShape(store) {
     }
     if (!['delivered', 'accepted', 'rejected', 'suppressed'].includes(record.state)) {
       throw new Error(`registry.contributionLedger[${index}].state is unsupported.`)
+    }
+    if (!isFingerprintVersion(record.fingerprintVersion ?? LEGACY_FINGERPRINT_VERSION)) {
+      throw new Error(`registry.contributionLedger[${index}].fingerprintVersion is unsupported.`)
     }
   })
   store.privateTemplates.forEach((template, index) => {

@@ -29,7 +29,7 @@ const SAFE_SPEC_FIELDS = new Set([
   'efficiency', 'fanless', 'formFactor', 'formFactors', 'generation', 'heightMm', 'interface', 'lengthMm',
   'm2Slots', 'management', 'maxCoolerHeightMm', 'maxExpansionHeightMm', 'maxExpansionLengthMm',
   'maxExpansionSlotWidth', 'maxGpuHeightMm', 'maxGpuLengthMm', 'maxGpuSlotWidth', 'maxTdpWatts',
-  'media', 'memoryGb', 'motherboardFormFactors', 'mount', 'motherboardPartNumber', 'boardVariant',
+  'media', 'memoryGb', 'motherboardFormFactors', 'mount', 'motherboardPartNumber', 'motherboardRevision', 'boardVariant',
   'networkSlot', 'outlets', 'pcie', 'ports', 'powerConfiguration', 'powerWatts', 'psuFormFactors',
   'rackUnits', 'radiatorSizeMm', 'radiatorSizesMm', 'ratedWatts', 'refreshRateHz', 'resolution',
   'sizeInches', 'slot', 'slotWidth', 'socket', 'sockets', 'speed', 'speedMbps',
@@ -37,6 +37,7 @@ const SAFE_SPEC_FIELDS = new Set([
   'supportedSockets', 'surgeProtected', 'surgeProtectedOutlets', 'switchingCapacityGbps', 'tdpWatts',
   'threads', 'vramGb', 'wattage', 'wattageWatts', 'wifiGeneration', 'wireless', 'allowOutletFanOut',
   'ecc', 'rank', 'hardwareRevision', 'boardRevision', 'partNumber', 'region',
+  'topologyCompleteness', 'topologyComplete', 'variantKey',
 ])
 const SAFE_COMPATIBILITY_FIELDS = new Set([
   'host', 'requirements', 'cpu', 'memory', 'storageSlots', 'expansionSlots', 'motherboard', 'cooling',
@@ -48,6 +49,7 @@ const SAFE_COMPATIBILITY_FIELDS = new Set([
   'supportedSockets', 'supportedMotherboardFormFactors', 'supportedPsuFormFactors',
   'supportedRadiatorSizesMm', 'maxCoolerHeightMm', 'maxGpuLengthMm', 'maxGpuHeightMm',
   'maxGpuSlotWidth', 'radiatorSizesMm', 'psuFormFactors', 'motherboardFormFactors', 'ratedWatts',
+  'topologyCompleteness', 'topologyComplete', 'proprietaryRiser', 'riserCapability', 'variantKey',
 ])
 
 function looksSensitive(value: string): boolean {

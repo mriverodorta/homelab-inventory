@@ -1,5 +1,5 @@
 import { digestCatalogTemplate } from './projector'
-import { FINGERPRINT_VERSION } from './types'
+import { FINGERPRINT_VERSION, LEGACY_FINGERPRINT_VERSION } from './types'
 
 const FINGERPRINT_V2_CPU_VECTOR = {
   item: {
@@ -23,11 +23,13 @@ const FINGERPRINT_V2_CPU_VECTOR = {
 } as const
 
 export async function assertCatalogProtocolContract(): Promise<void> {
-  if (FINGERPRINT_VERSION !== 2) {
+  if (FINGERPRINT_VERSION !== 3 || LEGACY_FINGERPRINT_VERSION !== 2) {
     throw new Error(`Catalog fingerprint version ${FINGERPRINT_VERSION} has no publication contract.`)
   }
 
-  const projection = await digestCatalogTemplate(FINGERPRINT_V2_CPU_VECTOR.item)
+  const projection = await digestCatalogTemplate(FINGERPRINT_V2_CPU_VECTOR.item, {
+    fingerprintVersion: LEGACY_FINGERPRINT_VERSION,
+  })
   if (
     projection.identityHash !== FINGERPRINT_V2_CPU_VECTOR.identityHash
     || projection.contentHash !== FINGERPRINT_V2_CPU_VECTOR.contentHash

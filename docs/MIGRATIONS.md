@@ -25,6 +25,21 @@ On startup, the server:
 
 The first start after a schema upgrade can take longer than a normal restart. Do not stop the container while migration logs are active. If a migration or write fails, startup stops and restores the pre-migration stores rather than serving partially migrated data.
 
+## Schema 19: Hardware Variant Identity
+
+Schema 19 introduces fingerprint-v3 catalog identity for products that share a manufacturer and model but have materially different motherboards or expansion topology. Existing catalog links, contribution records, numeric IDs, inventory records, assignments, placements, and cables remain unchanged.
+
+Existing fingerprint-v2 records are marked as version 2 instead of being reinterpreted. The next catalog refresh and contribution discovery use version 3 for new projections, while published identity aliases keep compatible version-2 relationships reviewable. A generic family record is never silently attached to a specific board variant when the match is ambiguous.
+
+Variant identity uses evidence in this order:
+
+1. Trusted agent-reported motherboard part number and revision.
+2. Explicit motherboard fields saved on the inventory item.
+3. A complete, non-conflicting structural topology such as available expansion slots.
+4. A generic product-family identity when stronger evidence is unavailable.
+
+Installed CPUs, memory, storage, GPUs, network cards, local device names, and local usage roles do not define the reusable product variant. When stronger evidence becomes available later, the item can contribute a separate candidate without changing its local numeric ID or project relationships.
+
 ## Schema 18: Physical Class And Usage Role
 
 Schema 18 separates what a computer physically is from how it is used in the homelab. Every record in the existing `servers` category receives:

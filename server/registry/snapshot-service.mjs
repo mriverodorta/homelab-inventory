@@ -70,9 +70,6 @@ function assertDigestMatchesSnapshot(snapshot, digestIndex) {
   if (digestIndex.catalogRevision !== snapshot.catalogRevision) {
     throw new Error('Catalog digest index revision does not match its snapshot.')
   }
-  if (digestIndex.fingerprintVersion !== FINGERPRINT_VERSION) {
-    throw new Error('Catalog digest index fingerprint version is unsupported.')
-  }
   if (digestIndex.entries.length !== snapshot.templates.length) {
     throw new Error('Catalog digest index template count does not match its snapshot.')
   }
@@ -85,7 +82,12 @@ function assertDigestMatchesSnapshot(snapshot, digestIndex) {
       && candidate.revision === template.revision
       && candidate.state === 'published'
     ))
-    if (!entry || entry.identityHash !== template.identityHash || !publishedHash) {
+    if (
+      !entry
+      || entry.identityHash !== template.identityHash
+      || (entry.fingerprintVersion ?? digestIndex.fingerprintVersion) !== template.fingerprintVersion
+      || !publishedHash
+    ) {
       throw new Error(`Catalog digest index entry for ${template.templateKey} does not match its snapshot.`)
     }
   }
@@ -268,6 +270,8 @@ export class SnapshotService {
           generatedAt: snapshot.generatedAt,
           entries: snapshot.templates.map((template) => ({
             identityHash: template.identityHash,
+            fingerprintVersion: template.fingerprintVersion,
+            ...(template.identityAliases ? { identityAliases: template.identityAliases } : {}),
             templateKey: template.templateKey,
             contentHashes: [{ hash: template.contentHash, state: 'published', revision: template.revision }],
           })),
@@ -443,6 +447,8 @@ export class SnapshotService {
         observation.hash,
         {
           identityHash: entry.identityHash,
+          fingerprintVersion: entry.fingerprintVersion ?? digestIndex.fingerprintVersion,
+          identityAliases: entry.identityAliases ?? [],
           templateKey: entry.templateKey,
           revision: observation.revision,
           state: observation.state,

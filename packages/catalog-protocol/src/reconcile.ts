@@ -48,8 +48,20 @@ export async function reconcileCatalogProjections(
       continue
     }
     const item = merged as CatalogTemplateItem
-    const digests = await computeCatalogDigestsWithIdentity(item, observations[0].identityPayload as Record<string, JsonValue>)
-    output.push({ item, sources, ...digests })
+    const reference = observations[0]
+    const digests = await computeCatalogDigestsWithIdentity(
+      item,
+      reference.identityPayload as Record<string, JsonValue>,
+      reference.fingerprintVersion,
+    )
+    output.push({
+      item,
+      sources,
+      fingerprintVersion: reference.fingerprintVersion,
+      ...(reference.productFamily ? { productFamily: reference.productFamily } : {}),
+      ...(reference.variantEvidence ? { variantEvidence: reference.variantEvidence } : {}),
+      ...digests,
+    })
   }
   return output
 }
