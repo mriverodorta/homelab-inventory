@@ -106,6 +106,20 @@ export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
   notes: [],
 }
 
+const RELEASE_0_5_1_DETAILS: UnreleasedReleaseNotes = {
+  highlights: [
+    'Connected catalogs now recognize equivalent local hardware by canonical identity and offer an explicit review before adopting verified registry fields.',
+    'Computers now separate physical hardware class from local usage role, allowing desktop mini PCs to serve as servers or workstations while matching the correct catalog product.',
+  ],
+  fixes: [
+    'Every physical copy of an identity-matched component now receives its own registry link indicator and reviewable adoption record without creating duplicate catalog contributions.',
+  ],
+  notes: [
+    'Schema 17 extends registry relationships with a reviewable adoption state; existing links and inventory records are preserved.',
+    'Schema 18 classifies existing server records as desktop hardware used as servers without changing numeric IDs, assignments, placements, ports, cables, or registry links.',
+  ],
+}
+
 const RELEASE_0_5_0_DETAILS: UnreleasedReleaseNotes = {
   highlights: [
     'Cable routing is now more predictable in dense layouts, with explicit endpoint sides, center-first port attachment, shorter orthogonal paths, equipment avoidance, and better handling for reordered patch panels and rotated power equipment.',
@@ -251,9 +265,16 @@ const RELEASE_0_2_1_DETAILS: UnreleasedReleaseNotes = {
 
 export const RELEASE_NOTES: ReleaseNoteEntry[] = [
   {
-    version: '0.5.0',
+    version: '0.5.1',
     date: '2026-07-31',
     channel: 'latest',
+    title: 'Catalog adoption and computer roles',
+    ...RELEASE_0_5_1_DETAILS,
+  },
+  {
+    version: '0.5.0',
+    date: '2026-07-31',
+    channel: 'release',
     title: 'Reliable routing and resilient persistence',
     ...RELEASE_0_5_0_DETAILS,
   },

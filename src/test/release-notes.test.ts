@@ -98,21 +98,21 @@ describe('release notes helpers', () => {
     const previousRelease = RELEASE_NOTES.find((entry) => entry.version === '0.2.1')!
     const engineRelease = RELEASE_NOTES.find((entry) => entry.version === '0.2.0')!
 
-    expect(hasReleaseNoteForVersion(RELEASE_NOTES, '0.5.0')).toBe(true)
+    expect(hasReleaseNoteForVersion(RELEASE_NOTES, '0.5.1')).toBe(true)
     expect(RELEASE_NOTES[0]).toEqual(
       expect.objectContaining({
-        version: '0.5.0',
-        title: 'Reliable routing and resilient persistence',
+        version: '0.5.1',
+        title: 'Catalog adoption and computer roles',
       }),
     )
     expect(RELEASE_NOTES.filter((entry) => entry.channel === 'latest')).toEqual([
-      expect.objectContaining({ version: '0.5.0' }),
+      expect.objectContaining({ version: '0.5.1' }),
     ])
     expect(RELEASE_NOTES.find((entry) => entry.version === '0.1.38')).toEqual(
       expect.objectContaining({ channel: 'release' }),
     )
     expect(currentRelease.highlights).toContain(
-      'Cable routing is now more predictable in dense layouts, with explicit endpoint sides, center-first port attachment, shorter orthogonal paths, equipment avoidance, and better handling for reordered patch panels and rotated power equipment.',
+      'Computers now separate physical hardware class from local usage role, allowing desktop mini PCs to serve as servers or workstations while matching the correct catalog product.',
     )
     expect(registryRelease.highlights).toContain(
       'Add Hardware now combines a locally searched verified Catalog, the complete Manual editor, and reusable Private templates in one source-aware dialog.',
@@ -120,11 +120,7 @@ describe('release notes helpers', () => {
     expect(registryRelease.notes).toContain(
       'Schema 15 adds an independent registry store for catalog preferences, private templates, signed snapshot metadata, and numeric catalog links without changing canvas, assignment, or cable relationships.',
     )
-    expect(UNRELEASED_RELEASE_NOTES).toEqual({
-      highlights: [],
-      fixes: [],
-      notes: [],
-    })
+    expect(UNRELEASED_RELEASE_NOTES).toEqual({ highlights: [], fixes: [], notes: [] })
     expect(onboardingRelease.highlights).toContain(
       'Fresh workspaces can now explore a complete fictional homelab or start empty with an adaptive create, place, and connect checklist.',
     )

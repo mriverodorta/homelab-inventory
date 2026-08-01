@@ -18,10 +18,11 @@ type SourceItem = Record<string, unknown> & {
   model?: unknown
   number?: unknown
   specs?: Record<string, unknown>
+  hardwareClass?: unknown
 }
 
 const SUPPORTED_TYPES = new Set([
-  'server', 'nas', 'cpu', 'ram', 'storage', 'motherboard', 'gpu', 'network', 'wireless',
+  'desktop', 'server', 'nas', 'cpu', 'ram', 'storage', 'motherboard', 'gpu', 'network', 'wireless',
   'cpuCooler', 'case', 'powerSupply', 'soundCard', 'powerAdapter', 'switch', 'patchPanel',
   'monitor', 'ups', 'powerStrip',
 ])
@@ -74,6 +75,7 @@ function productIdentity(item: CatalogTemplateItem): Record<string, JsonValue> |
   switch (item.type) {
     case 'pcBuild':
       return 'custom-build'
+    case 'desktop':
     case 'server':
       if (!hasAll(item, ['manufacturer', 'model'])) return 'insufficient-identity'
       return identityObject([...common, ['model', item.model], ['boardVariant', scalar(specs, 'boardVariant')],
@@ -150,9 +152,13 @@ function productIdentity(item: CatalogTemplateItem): Record<string, JsonValue> |
 
 export async function projectCatalogItem(value: unknown): Promise<CatalogProjection> {
   const source = value as SourceItem
-  const type = text(source?.type) ?? ''
+  const sourceType = text(source?.type) ?? ''
+  const hardwareClass = text(source?.hardwareClass)
+  const type = sourceType === 'server' && (hardwareClass === 'desktop' || hardwareClass === 'server')
+    ? hardwareClass
+    : sourceType
   const itemId = Number(source?.id)
-  const sourceRef: CatalogSourceRef = { itemType: type, itemId }
+  const sourceRef: CatalogSourceRef = { itemType: sourceType, itemId }
   if (!Number.isSafeInteger(itemId) || itemId < 1 || !SUPPORTED_TYPES.has(type)) {
     return { status: 'ineligible', source: sourceRef, reason: 'unsupported-type' }
   }
@@ -165,7 +171,7 @@ export async function projectCatalogItem(value: unknown): Promise<CatalogProject
     return { status: 'ineligible', source: sourceRef, reason: 'legacy-ram-kit' }
   }
 
-  const item = sanitizeCatalogItem(source)
+  const item = sanitizeCatalogItem({ ...source, type })
   const identityPayload = productIdentity(item)
   if (typeof identityPayload === 'string') return { status: 'ineligible', source: sourceRef, reason: identityPayload }
   const name = canonicalName(item)

@@ -29,6 +29,54 @@ describe('category-aware catalog projection', () => {
     }
   })
 
+  it('projects an OEM computer by physical class without leaking its local usage role', async () => {
+    const base = {
+      id: 1,
+      type: 'server',
+      name: 'Proxmox node',
+      manufacturer: 'Dell',
+      model: 'OptiPlex Micro 7090',
+      hardwareClass: 'desktop',
+      specs: { formFactor: 'Micro' },
+    }
+    const serverRole = await projectCatalogItem({ ...base, usageRole: 'server' })
+    const workstationRole = await projectCatalogItem({ ...base, id: 2, usageRole: 'workstation' })
+
+    expect(serverRole).toMatchObject({
+      status: 'eligible',
+      source: { itemType: 'server', itemId: 1 },
+      item: { type: 'desktop', name: 'Dell OptiPlex Micro 7090' },
+    })
+    expect(workstationRole).toMatchObject({
+      status: 'eligible',
+      source: { itemType: 'server', itemId: 2 },
+      item: { type: 'desktop', name: 'Dell OptiPlex Micro 7090' },
+    })
+    if (serverRole.status === 'eligible' && workstationRole.status === 'eligible') {
+      expect(serverRole.identityHash).toBe(workstationRole.identityHash)
+      expect(serverRole.contentHash).toBe(workstationRole.contentHash)
+      expect(serverRole.item).not.toHaveProperty('usageRole')
+    }
+  })
+
+  it('keeps desktop and server products as distinct physical catalog identities', async () => {
+    const product = {
+      id: 1,
+      name: 'OEM system',
+      manufacturer: 'Dell',
+      model: 'PowerEdge T40',
+      specs: { formFactor: 'Tower' },
+    }
+    const desktop = await projectCatalogItem({ ...product, type: 'desktop' })
+    const server = await projectCatalogItem({ ...product, type: 'server' })
+
+    expect(desktop.status).toBe('eligible')
+    expect(server.status).toBe('eligible')
+    if (desktop.status === 'eligible' && server.status === 'eligible') {
+      expect(desktop.identityHash).not.toBe(server.identityHash)
+    }
+  })
+
   it('keeps generic RAM speeds distinct', async () => {
     const base = { type: 'ram', name: 'Memory', manufacturer: 'Generic', specs: { capacityGb: 16, generation: 'DDR4', formFactor: 'SO-DIMM', ecc: false } }
     const slow = await projectCatalogItem({ ...base, id: 1, specs: { ...base.specs, speedMt: 2666 } })

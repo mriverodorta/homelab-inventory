@@ -89,7 +89,7 @@ export function InventoryItemDialog({
   onDuplicatePrivateTemplate?: (id: number) => Promise<void>
   onDeletePrivateTemplate?: (id: number) => Promise<void>
   onOpenRegistrySettings?: () => void
-  onCreateCatalogItem?: (templateKey: string, quantity: number) => Promise<void>
+  onCreateCatalogItem?: (templateKey: string, quantity: number, usageRole?: 'server' | 'desktop' | 'workstation') => Promise<void>
 }) {
   const [activeSource, setActiveSource] = useState<InventorySourceTab>(() => availableDefaultSource(registry))
   const [values, setValues] = useState<InventoryFormValues>(() => createInventoryFormValues('server'))
@@ -352,11 +352,11 @@ export function InventoryItemDialog({
             <TabsContent value="catalog" className="m-0 min-h-0 flex-1 overflow-y-auto">
               <CatalogSourcePanel
                 registry={registry}
-                onCreate={onCreateCatalogItem ? async (templateKey, catalogQuantity) => {
+                onCreate={onCreateCatalogItem ? async (templateKey, catalogQuantity, usageRole) => {
                   setPending(true)
                   setError(null)
                   try {
-                    await onCreateCatalogItem(templateKey, catalogQuantity)
+                    await onCreateCatalogItem(templateKey, catalogQuantity, usageRole)
                     resetDraft()
                     onOpenChange(false)
                   } catch (createError) {

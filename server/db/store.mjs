@@ -38,6 +38,8 @@ import { migrateSchema12To13 } from './migrate-schema-13.mjs'
 import { migrateSchema13To14 } from './migrate-schema-14.mjs'
 import { migrateSchema14To15 } from './migrate-schema-15.mjs'
 import { migrateSchema15To16 } from './migrate-schema-16.mjs'
+import { migrateSchema16To17 } from './migrate-schema-17.mjs'
+import { migrateSchema17To18 } from './migrate-schema-18.mjs'
 import {
   applyNasPowerConfigurationChange,
   inspectNasPowerConfigurationChange,
@@ -52,6 +54,11 @@ import {
   previewPrivateTemplatePack,
 } from '../registry/model.mjs'
 import { catalogFieldDiff, mergeCatalogUpdate } from '../registry/update-service.mjs'
+import {
+  localInventoryTypeForCatalogType,
+  materializeCatalogItem,
+  projectLocalItemForCatalog,
+} from '../registry/local-catalog-mapping.mjs'
 import { createRoutingCache, normalizeRoutingCache } from '../routing-cache-model.mjs'
 import {
   finishExampleInDraft,
@@ -64,7 +71,7 @@ import {
   setWalkthroughStepInDraft,
 } from '../onboarding/lifecycle.mjs'
 
-export const CURRENT_SCHEMA_VERSION = 16
+export const CURRENT_SCHEMA_VERSION = 18
 
 const DEFAULT_SAVE_DEBOUNCE_MS = 500
 const DEFAULT_FLUSH_RETRY_BASE_MS = 1_000
@@ -76,6 +83,8 @@ const ALWAYS_ENFORCED_COMPATIBILITY_CODES = new Set([
   'compatibility.resource.exhausted',
   'memory.slots.exceeded',
 ])
+const SERVER_HARDWARE_CLASSES = new Set(['desktop', 'server'])
+const SERVER_USAGE_ROLES = new Set(['server', 'desktop', 'workstation'])
 const TABLE_BY_TYPE = {
   server: 'servers',
   pcBuild: 'pcBuilds',
@@ -721,6 +730,23 @@ function normalizeInventoryItemInput(input, id) {
     id,
     type,
     name,
+  }
+
+  if (type === 'server') {
+    const hardwareClass = String(input.hardwareClass ?? 'desktop').trim()
+    const usageRole = String(input.usageRole ?? 'server').trim()
+    if (!SERVER_HARDWARE_CLASSES.has(hardwareClass)) {
+      throw new InventoryLifecycleError('Server hardware class must be desktop or server.', {
+        code: 'invalid-inventory-item', status: 400,
+      })
+    }
+    if (!SERVER_USAGE_ROLES.has(usageRole)) {
+      throw new InventoryLifecycleError('Server usage role must be server, desktop, or workstation.', {
+        code: 'invalid-inventory-item', status: 400,
+      })
+    }
+    item.hardwareClass = hardwareClass
+    item.usageRole = usageRole
   }
 
   for (const field of ['subtype', 'manufacturer', 'secondaryManufacturer', 'family', 'model', 'number', 'notes']) {
@@ -1891,6 +1917,36 @@ export class HomelabInventoryStore {
         continue
       }
 
+      if (currentVersion === 16) {
+        const migrated = migrateSchema16To17(this.databases.registry.data)
+        this.databases.registry.data = migrated.registry
+        this.databases.meta.data.schemaVersion = 17
+        this.databases.meta.data.lastMigration = {
+          from: 16,
+          to: 17,
+          completedAt: new Date().toISOString(),
+          backupId: path.basename(this.activeMigrationBackupPath),
+          summary: migrated.summary,
+        }
+        currentVersion = 17
+        continue
+      }
+
+      if (currentVersion === 17) {
+        const migrated = migrateSchema17To18(this.databases.inventory.data)
+        this.databases.inventory.data = migrated.inventory
+        this.databases.meta.data.schemaVersion = 18
+        this.databases.meta.data.lastMigration = {
+          from: 17,
+          to: 18,
+          completedAt: new Date().toISOString(),
+          backupId: path.basename(this.activeMigrationBackupPath),
+          summary: migrated.summary,
+        }
+        currentVersion = 18
+        continue
+      }
+
       throw new Error(`No migration registered for schema version ${currentVersion}.`)
     }
 
@@ -2300,7 +2356,7 @@ export class HomelabInventoryStore {
     })
   }
 
-  createCatalogInventoryItems(template, quantity = 1) {
+  createCatalogInventoryItems(template, quantity = 1, options = {}) {
     return this.withAtomicStoreMutation(['meta', 'inventory', 'project', 'registry'], () => {
       const sourceId = this.databases.registry.data.snapshot?.sourceId
       if (!isRelationalId(sourceId)) {
@@ -2308,7 +2364,8 @@ export class HomelabInventoryStore {
           code: 'catalog-unavailable', status: 409,
         })
       }
-      const type = String(template?.item?.type ?? '').trim()
+      const catalogType = String(template?.item?.type ?? '').trim()
+      const type = localInventoryTypeForCatalogType(catalogType)
       const table = TABLE_BY_TYPE[type]
       if (!table) {
         throw new InventoryLifecycleError('Catalog inventory type is not supported.', {
@@ -2316,7 +2373,8 @@ export class HomelabInventoryStore {
         })
       }
       const beforeIds = new Set(this.databases.inventory.data[table].map((record) => record.id))
-      const project = this.createInventoryItems(template.item, quantity)
+      const input = materializeCatalogItem(template.item, { usageRole: options.usageRole })
+      const project = this.createInventoryItems(input, quantity)
       const createdIds = this.databases.inventory.data[table]
         .map((record) => record.id)
         .filter((id) => !beforeIds.has(id))
@@ -2371,7 +2429,7 @@ export class HomelabInventoryStore {
 
   getCatalogUpdates() {
     return this.databases.registry.data.links
-      .filter((link) => link.state === 'update-available')
+      .filter((link) => link.state === 'update-available' || link.state === 'adoption-available')
       .map((link) => {
         const table = TABLE_BY_TYPE[link.itemType]
         const item = table ? this.databases.inventory.data[table].find((record) => record.id === link.itemId) : null
@@ -2383,13 +2441,14 @@ export class HomelabInventoryStore {
           templateKey: link.templateKey,
           importedRevision: link.importedRevision,
           availableRevision: link.availableRevision,
+          state: link.state,
         }
       })
   }
 
   getCatalogUpdatePreview(linkId, template) {
     const link = this.databases.registry.data.links.find((candidate) => candidate.id === linkId)
-    if (!link || link.state !== 'update-available') {
+    if (!link || !['update-available', 'adoption-available'].includes(link.state)) {
       throw new InventoryLifecycleError('Catalog update was not found.', {
         code: 'catalog-update-not-found', status: 404,
       })
@@ -2407,7 +2466,8 @@ export class HomelabInventoryStore {
       templateKey: link.templateKey,
       importedRevision: link.importedRevision,
       availableRevision: template.revision,
-      changes: catalogFieldDiff({ ...item, type: link.itemType }, template.item),
+      state: link.state,
+      changes: catalogFieldDiff(projectLocalItemForCatalog(item, link.itemType), template.item),
       localFieldsPreserved: Object.keys(item).filter(
         (key) => !['id', 'key', 'type', 'name', 'subtype', 'manufacturer', 'secondaryManufacturer', 'family', 'model', 'number', 'specs', 'ports', 'compatibility'].includes(key),
       ),
@@ -2416,7 +2476,7 @@ export class HomelabInventoryStore {
 
   applyCatalogUpdate(linkId, template) {
     const link = this.databases.registry.data.links.find((candidate) => candidate.id === linkId)
-    if (!link || link.state !== 'update-available') {
+    if (!link || !['update-available', 'adoption-available'].includes(link.state)) {
       throw new InventoryLifecycleError('Catalog update was not found.', {
         code: 'catalog-update-not-found', status: 404,
       })
@@ -2434,7 +2494,10 @@ export class HomelabInventoryStore {
     return this.withAtomicStoreMutation(['meta', 'inventory', 'project', 'registry'], () => {
       const project = this.updateInventoryItem(
         { type: link.itemType, id: link.itemId },
-        mergeCatalogUpdate(current, template.item),
+        materializeCatalogItem(
+          mergeCatalogUpdate(projectLocalItemForCatalog(current, link.itemType), template.item),
+          { usageRole: current.usageRole },
+        ),
       )
       this.registryTransaction((draft) => {
         const draftLink = draft.links.find((candidate) => candidate.id === linkId)

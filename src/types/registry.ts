@@ -90,7 +90,7 @@ export type RegistryLink = {
   templateKey: string
   importedRevision: number
   importedContentHash: string
-  state: 'linked' | 'update-available' | 'detached' | 'contribution-pending'
+  state: 'linked' | 'update-available' | 'adoption-available' | 'detached' | 'contribution-pending'
   linkedAt: string
 }
 
@@ -102,7 +102,7 @@ export type CatalogSearchItem = {
   type: string
   manufacturer: string | null
   name: string
-  item: InventoryItemInput
+  item: Omit<InventoryItemInput, 'type'> & { type: string }
 }
 
 export type CatalogSearchResult = {
@@ -120,6 +120,7 @@ export type CatalogUpdateSummary = {
   templateKey: string
   importedRevision: number
   availableRevision: number
+  state: 'update-available' | 'adoption-available'
 }
 
 export type CatalogFieldChange = {

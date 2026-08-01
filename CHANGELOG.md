@@ -6,6 +6,22 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 
 ## Unreleased
 
+## [0.5.1] - 2026-07-31
+
+### Added
+
+- Connected catalogs now recognize equivalent local hardware by canonical identity and offer an explicit review before adopting verified registry fields.
+- OEM and custom computers now separate their physical hardware class (desktop or server) from their local usage role (server, desktop, or workstation), so a mini PC can remain a server in the workspace while matching a desktop catalog definition.
+
+### Fixed
+
+- Every physical copy of an identity-matched component receives its own registry link indicator and adoption record without creating duplicate catalog contributions.
+
+### Notes
+
+- Schema 17 preserves existing inventory and registry links while adding a reviewable catalog-adoption relationship state.
+- Schema 18 classifies existing server records as desktop hardware used as servers while preserving every numeric ID, assignment, placement, port, cable, and local registry relationship.
+
 ## [0.5.0] - 2026-07-31
 
 ### Added

@@ -265,7 +265,11 @@ export function registerRegistryRoutes(app, {
       if (!template) throw new InventoryLifecycleError('Catalog template was not found.', {
         code: 'catalog-template-not-found', status: 404,
       })
-      response.status(201).json(store.createCatalogInventoryItems(template, request.body?.quantity ?? 1))
+      response.status(201).json(store.createCatalogInventoryItems(
+        template,
+        request.body?.quantity ?? 1,
+        { usageRole: request.body?.usageRole },
+      ))
     })
   })
 

@@ -37,10 +37,16 @@ const SCHEMA_9_TABLES = [
 ]
 
 function schema9Inventory(overrides = {}) {
-  return {
+  const inventory = {
     ...Object.fromEntries(SCHEMA_9_TABLES.map((table) => [table, []])),
     ...overrides,
   }
+  inventory.servers = inventory.servers.map((server) => ({
+    hardwareClass: 'desktop',
+    usageRole: 'server',
+    ...server,
+  }))
+  return inventory
 }
 
 async function makeTempDir() {
@@ -69,6 +75,8 @@ function negotiationItems() {
       key: 'server:1',
       name: 'One Gig Server',
       type: 'server',
+      hardwareClass: 'desktop',
+      usageRole: 'server',
       ports: [
         { id: 1, kind: 'server-port', type: 'rj45', slotNumber: 1, speed: '1G' },
       ],
@@ -182,6 +190,8 @@ function compatibilityItems() {
       key: 'server:1',
       type: 'server',
       name: 'Storage Host',
+      hardwareClass: 'desktop',
+      usageRole: 'server',
       compatibility: {
         host: {
           storageSlots: [{
@@ -336,7 +346,12 @@ describe('HomelabInventoryStore', () => {
     await initial.flush()
     const inventory = structuredClone(initial.databases.inventory.data)
     const project = structuredClone(initial.databases.project.data)
-    inventory.servers.push({ id: 1, name: 'Recovered server' })
+    inventory.servers.push({
+      id: 1,
+      name: 'Recovered server',
+      hardwareClass: 'desktop',
+      usageRole: 'server',
+    })
     project.revision += 1
     project.metadata.name = 'Recovered project'
 
@@ -813,7 +828,7 @@ describe('HomelabInventoryStore', () => {
     expect(await fs.readFile(path.join(dataDir, 'stores', 'project.json'), 'utf8')).toBe(before.project)
     await expect(fs.access(path.join(dataDir, '.schema-migration.lock'))).rejects.toMatchObject({ code: 'ENOENT' })
     expect(await fs.readdir(path.join(dataDir, 'backups'))).toContainEqual(
-      expect.stringContaining('schema-15-to-16'),
+      expect.stringContaining('schema-15-to-18'),
     )
   })
 
@@ -1022,6 +1037,8 @@ describe('HomelabInventoryStore', () => {
         {
           id: 1,
           name: 'Server',
+          hardwareClass: 'desktop',
+          usageRole: 'server',
         },
       ],
       cpus: [],
@@ -1446,6 +1463,8 @@ describe('HomelabInventoryStore', () => {
           key: 'server:1',
           name: 'Updated Server',
           type: 'server',
+          hardwareClass: 'desktop',
+          usageRole: 'server',
         },
       },
       placements: [{ serverId: 'server:1', x: 72, y: 96 }],
@@ -1869,6 +1888,8 @@ describe('HomelabInventoryStore', () => {
         key: 'server:2',
         name: 'NIC Host',
         type: 'server',
+        hardwareClass: 'desktop',
+        usageRole: 'server',
       },
       'switch:2': {
         id: 2,

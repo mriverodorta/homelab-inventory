@@ -1,0 +1,28 @@
+const PHYSICAL_EQUIPMENT_CLASSES = new Set(['desktop', 'server'])
+const USAGE_ROLES = new Set(['server', 'desktop', 'workstation'])
+
+export function localInventoryTypeForCatalogType(type) {
+  return PHYSICAL_EQUIPMENT_CLASSES.has(type) ? 'server' : type
+}
+
+export function projectLocalItemForCatalog(item, localType = item.type) {
+  const projected = structuredClone(item)
+  projected.type = localType
+  if (localType === 'server') {
+    projected.type = projected.hardwareClass === 'server' ? 'server' : 'desktop'
+    delete projected.hardwareClass
+    delete projected.usageRole
+  }
+  return projected
+}
+
+export function materializeCatalogItem(item, options = {}) {
+  const materialized = structuredClone(item)
+  if (!PHYSICAL_EQUIPMENT_CLASSES.has(materialized.type)) return materialized
+  const usageRole = USAGE_ROLES.has(options.usageRole) ? options.usageRole : 'server'
+  const hardwareClass = materialized.type
+  materialized.type = 'server'
+  materialized.hardwareClass = hardwareClass
+  materialized.usageRole = usageRole
+  return materialized
+}

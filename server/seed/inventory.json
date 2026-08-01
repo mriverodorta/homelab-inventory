@@ -3,6 +3,8 @@
     {
       "id": 1,
       "name": "Compatible Mini Host",
+      "hardwareClass": "desktop",
+      "usageRole": "server",
       "manufacturer": "Northstar Fictional Labs",
       "model": "MiniHost C1",
       "specs": {
@@ -29,6 +31,8 @@
     {
       "id": 2,
       "name": "Socket Mismatch Example",
+      "hardwareClass": "desktop",
+      "usageRole": "server",
       "manufacturer": "Northstar Fictional Labs",
       "model": "SocketLab S2",
       "specs": {
@@ -49,6 +53,8 @@
     {
       "id": 3,
       "name": "Incomplete Compatibility Example",
+      "hardwareClass": "desktop",
+      "usageRole": "server",
       "manufacturer": "Northstar Fictional Labs",
       "model": "UnknownFact U3",
       "specs": {
@@ -68,6 +74,8 @@
     {
       "id": 4,
       "name": "PCIe Negotiation Example",
+      "hardwareClass": "desktop",
+      "usageRole": "server",
       "manufacturer": "Northstar Fictional Labs",
       "model": "ExpansionLab P4",
       "specs": {

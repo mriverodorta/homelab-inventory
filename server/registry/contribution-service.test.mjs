@@ -109,6 +109,61 @@ describe('contribution discovery', () => {
     ])
   })
 
+  it('offers every physical copy for identity-based adoption without enabling contributions', async () => {
+    const cpus = [1, 2, 3, 4].map((id) => ({
+      id,
+      type: 'cpu',
+      name: 'Intel Core i5-10500T',
+      manufacturer: 'Intel',
+      family: 'Core i5',
+      number: 'i5-10500T',
+      specs: { cores: 6, threads: 12, baseClockGhz: 2.3, boostClockGhz: 3.8 },
+    }))
+    const store = fixture(cpus)
+    store.registryTransaction((draft) => {
+      draft.settings.automaticContributions = false
+      draft.sources.push({ id: 1, kind: 'official-connected', displayName: 'Official Catalog' })
+      draft.snapshot = { sourceId: 1, revision: 4 }
+    })
+    const localProjection = await import('../../packages/catalog-protocol/src/index.ts')
+      .then(({ projectCatalogItem }) => projectCatalogItem(cpus[0]))
+    const registryProjection = await import('../../packages/catalog-protocol/src/index.ts')
+      .then(({ digestCatalogTemplate }) => digestCatalogTemplate({
+        ...cpus[0],
+        model: 'i5-10500T',
+        specs: {
+          ...cpus[0].specs,
+          socket: 'LGA1200',
+          channels: 2,
+          tdpWatts: 35,
+          generation: '10th Gen',
+        },
+      }))
+    expect(registryProjection.identityHash).toBe(localProjection.identityHash)
+    expect(registryProjection.contentHash).not.toBe(localProjection.contentHash)
+
+    const known = new Map([[registryProjection.contentHash, {
+      identityHash: registryProjection.identityHash,
+      templateKey: 'cpu-intel-core-i5-10500t',
+      revision: 2,
+      state: 'published',
+    }]])
+    expect(await discoverContributionCandidates(store, new Date('2026-07-31T12:00:00.000Z'), known, { linkOnly: true }))
+      .toMatchObject({ queued: 0 })
+    expect(store.getRegistryState().contributionOutbox).toEqual([])
+    expect(store.getRegistryState().links).toEqual(cpus.map((cpu, index) => expect.objectContaining({
+      id: index + 1,
+      itemType: 'cpu',
+      itemId: cpu.id,
+      templateKey: 'cpu-intel-core-i5-10500t',
+      importedRevision: 2,
+      importedContentHash: localProjection.contentHash,
+      state: 'adoption-available',
+      availableRevision: 2,
+      availableContentHash: registryProjection.contentHash,
+    })))
+  })
+
   it('relinks a detached override in place after its exact content is published', async () => {
     const cpu = {
       id: 1,

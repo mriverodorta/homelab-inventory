@@ -156,7 +156,7 @@ export function assertRegistryStoreShape(store) {
     if (typeof link.importedContentHash !== 'string' || !/^[a-f0-9]{64}$/.test(link.importedContentHash)) {
       throw new Error(`registry.links[${index}].importedContentHash must be a SHA-256 hex digest.`)
     }
-    if (!['linked', 'update-available', 'detached', 'contribution-pending'].includes(link.state)) {
+    if (!['linked', 'update-available', 'adoption-available', 'detached', 'contribution-pending'].includes(link.state)) {
       throw new Error(`registry.links[${index}].state is unsupported.`)
     }
   })

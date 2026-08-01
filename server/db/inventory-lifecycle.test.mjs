@@ -84,6 +84,8 @@ describe('inventory lifecycle helpers', () => {
       source: {
         id: 1,
         name: 'Server',
+        hardwareClass: 'server',
+        usageRole: 'workstation',
         manufacturer: 'Example',
         notes: 'rack note',
         archivedAt: '2026-07-19T12:00:00.000Z',
@@ -100,6 +102,8 @@ describe('inventory lifecycle helpers', () => {
     expect(duplicate).toEqual({
       id: 8,
       name: 'Server #2',
+      hardwareClass: 'server',
+      usageRole: 'workstation',
       manufacturer: 'Example',
       specs: { formFactor: 'Mini' },
       ports: [{

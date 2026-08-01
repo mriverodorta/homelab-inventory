@@ -1,8 +1,10 @@
 import { BadgeCheck, Plus } from 'lucide-react'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import type { EquipmentUsageRole } from '@/types/inventory'
 import type { CatalogSearchItem } from '@/types/registry'
 
 export function CatalogItemDetail({
@@ -12,11 +14,18 @@ export function CatalogItemDetail({
 }: {
   template: CatalogSearchItem
   pending: boolean
-  onCreate: (templateKey: string, quantity: number) => Promise<void>
+  onCreate: (templateKey: string, quantity: number, usageRole?: EquipmentUsageRole) => Promise<void>
 }) {
   const [quantity, setQuantity] = useState('1')
+  const [usageRole, setUsageRole] = useState<EquipmentUsageRole>('server')
   const [error, setError] = useState<string | null>(null)
   const specs = Object.entries(template.item.specs ?? {})
+
+  useEffect(() => {
+    setUsageRole('server')
+    setQuantity('1')
+    setError(null)
+  }, [template.templateKey])
 
   async function create() {
     const parsed = Number(quantity)
@@ -26,7 +35,7 @@ export function CatalogItemDetail({
     }
     setError(null)
     try {
-      await onCreate(template.templateKey, parsed)
+      await onCreate(template.templateKey, parsed, usageRole)
     } catch (createError) {
       setError(createError instanceof Error ? createError.message : 'Catalog item could not be added.')
     }
@@ -60,7 +69,22 @@ export function CatalogItemDetail({
       <div className="mt-5 rounded-md border border-[#ded8ce] bg-[#f7f2e9] p-3 text-sm text-[#5e554b]">
         This creates independent local inventory records linked to this verified revision. It does not place or assign anything on the canvas.
       </div>
-      <div className="mt-4 flex items-end gap-2">
+      <div className="mt-4 flex flex-wrap items-end gap-2">
+        {template.type === 'desktop' || template.type === 'server' ? (
+          <label className="min-w-40 flex-1 text-xs font-black uppercase text-[#6f665c]">
+            Used as
+            <Select value={usageRole} onValueChange={(value) => setUsageRole(value as EquipmentUsageRole)}>
+              <SelectTrigger className="mt-1 bg-white" aria-label="Use imported equipment as">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="server">Server</SelectItem>
+                <SelectItem value="desktop">Desktop</SelectItem>
+                <SelectItem value="workstation">Workstation</SelectItem>
+              </SelectContent>
+            </Select>
+          </label>
+        ) : null}
         <label className="w-24 text-xs font-black uppercase text-[#6f665c]">
           Quantity
           <Input className="mt-1 bg-white" type="number" min={1} max={100} value={quantity} onChange={(event) => setQuantity(event.target.value)} />

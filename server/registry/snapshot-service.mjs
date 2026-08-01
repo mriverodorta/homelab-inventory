@@ -10,6 +10,7 @@ import {
   verifySignedCatalogArtifact,
 } from '../../packages/catalog-protocol/src/index.ts'
 import { trustedCatalogKeys } from './trusted-keys.mjs'
+import { discoverContributionCandidates } from './contribution-service.mjs'
 
 const runtimeImport = new Function('specifier', 'return import(specifier)')
 
@@ -359,6 +360,18 @@ export class SnapshotService {
       for (const link of draft.links.filter((candidate) => candidate.sourceId === source.id)) {
         const template = templates.get(link.templateKey)
         if (!template || link.state === 'detached' || link.state === 'contribution-pending') continue
+        if (link.state === 'adoption-available') {
+          if (template.contentHash === link.importedContentHash) {
+            link.importedRevision = template.revision
+            link.state = 'linked'
+            delete link.availableRevision
+            delete link.availableContentHash
+            continue
+          }
+          link.availableRevision = template.revision
+          link.availableContentHash = template.contentHash
+          continue
+        }
         if (template.contentHash === link.importedContentHash) {
           link.importedRevision = template.revision
           link.state = 'linked'
@@ -376,7 +389,14 @@ export class SnapshotService {
       revision: registry.snapshot.revision,
       digestValue: registry.snapshot.digest,
     }
-    return registry
+    await discoverContributionCandidates(
+      this.store,
+      now,
+      await this.knownContributionHashes(),
+      { linkOnly: true },
+    )
+    await this.store.flush?.(['registry'])
+    return this.store.getRegistryState()
   }
 
   async ensureIndex() {

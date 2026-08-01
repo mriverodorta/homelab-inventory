@@ -1689,6 +1689,8 @@ describe('InspectorPanel', () => {
     expect(onUpdateItem).toHaveBeenCalledWith('server:1', {
       type: 'server',
       name: 'Dell OptiPlex Micro 7090',
+      hardwareClass: 'desktop',
+      usageRole: 'server',
       manufacturer: 'HP',
       model: 'OptiPlex Micro 7090',
       specs: {

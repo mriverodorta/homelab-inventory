@@ -1,5 +1,7 @@
 import { SWITCH_NETWORK_PORT_SPEEDS } from '@/lib/switch-ports'
 import type {
+  EquipmentUsageRole,
+  HardwareClass,
   InventoryPortRole,
   InventoryPortType,
   InventoryType,
@@ -87,6 +89,15 @@ export const NAS_POWER_CONFIGURATION_OPTIONS = [
 ] as const
 export const STORAGE_FORM_FACTORS = ['', '2230', '2242', '2260', '2280', '2.5"', '3.5"', 'eMMC']
 export const SERVER_FORM_FACTORS = ['Tiny', 'Mini', 'Micro', 'Small', 'SFF', 'Tower', 'Mini-ITX', 'Micro-ATX', 'ATX', 'E-ATX']
+export const SERVER_HARDWARE_CLASS_OPTIONS: ReadonlyArray<{ value: HardwareClass; label: string }> = [
+  { value: 'desktop', label: 'Desktop PC' },
+  { value: 'server', label: 'Server' },
+]
+export const SERVER_USAGE_ROLE_OPTIONS: ReadonlyArray<{ value: EquipmentUsageRole; label: string }> = [
+  { value: 'server', label: 'Server' },
+  { value: 'desktop', label: 'Desktop' },
+  { value: 'workstation', label: 'Workstation' },
+]
 export const NETWORK_SLOTS = ['On board', 'PCIe', 'M.2 A+E']
 export const WIRELESS_OPTIONS = ['Yes', 'No']
 export const CPU_MANUFACTURERS = ['Intel', 'AMD', 'ARM']

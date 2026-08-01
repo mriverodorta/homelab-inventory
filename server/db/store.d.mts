@@ -18,7 +18,7 @@ export class HomelabInventoryStore {
   previewPrivateTemplateImport(pack: any): Promise<any>
   importPrivateTemplates(pack: any): Promise<any>
   registryTransaction(mutator: (draft: any) => void): any
-  createCatalogInventoryItems(template: any, quantity?: number): any
+  createCatalogInventoryItems(template: any, quantity?: number, options?: { usageRole?: string }): any
   reconcileCatalogLink(ref: any, contentHash: string): any
   getCatalogUpdates(): any[]
   getCatalogUpdatePreview(linkId: number, template: any): any

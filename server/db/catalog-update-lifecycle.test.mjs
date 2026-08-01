@@ -24,10 +24,10 @@ async function createStore() {
   return store
 }
 
-async function template(item, revision) {
+async function template(item, revision, templateKey = 'cpu-example-core-c1') {
   const projection = await digestCatalogTemplate(item)
   return {
-    templateKey: 'cpu-example-core-c1',
+    templateKey,
     revision,
     identityHash: projection.identityHash,
     contentHash: projection.contentHash,
@@ -68,6 +68,59 @@ afterEach(async () => {
 })
 
 describe('catalog update lifecycle', () => {
+  it('imports physical desktop templates as locally role-aware equipment and preserves that role on update', async () => {
+    const store = await createStore()
+    const revision1 = await template({
+      type: 'desktop',
+      name: 'Example Mini PC',
+      manufacturer: 'Example',
+      model: 'M1',
+      specs: { formFactor: 'Mini' },
+    }, 1, 'desktop-example-mini-m1')
+    const revision2 = await template({
+      ...revision1.item,
+      specs: { ...revision1.item.specs, chipset: 'Example C1' },
+    }, 2, 'desktop-example-mini-m1')
+
+    activateCatalog(store)
+    store.createCatalogInventoryItems(revision1, 1, { usageRole: 'workstation' })
+
+    expect(store.databases.inventory.data.servers).toEqual([
+      expect.objectContaining({
+        id: 1,
+        name: 'Example M1',
+        hardwareClass: 'desktop',
+        usageRole: 'workstation',
+      }),
+    ])
+    const link = store.getRegistryState().links[0]
+    expect(link).toMatchObject({ itemType: 'server', itemId: 1 })
+
+    store.registryTransaction((draft) => {
+      const current = draft.links.find((candidate) => candidate.id === link.id)
+      current.state = 'update-available'
+      current.availableRevision = revision2.revision
+      current.availableContentHash = revision2.contentHash
+    })
+
+    expect(store.getCatalogUpdatePreview(link.id, revision2)).toMatchObject({
+      changes: [expect.objectContaining({ field: 'specs' })],
+      localFieldsPreserved: expect.arrayContaining(['hardwareClass', 'usageRole']),
+    })
+    store.applyCatalogUpdate(link.id, revision2)
+
+    expect(store.databases.inventory.data.servers[0]).toMatchObject({
+      hardwareClass: 'desktop',
+      usageRole: 'workstation',
+      specs: { formFactor: 'Mini', chipset: 'Example C1' },
+    })
+    expect(store.getRegistryState().links[0]).toMatchObject({
+      itemType: 'server',
+      state: 'linked',
+      importedRevision: 2,
+    })
+  })
+
   it('reviews and applies a newer revision while preserving local fields and link identity', async () => {
     const store = await createStore()
     const revision1 = await template({
@@ -134,6 +187,77 @@ describe('catalog update lifecycle', () => {
       state: 'linked',
     })])
     expect(store.getCatalogUpdates()).toEqual([])
+  })
+
+  it('reviews and adopts a richer registry definition without silently overwriting local fields', async () => {
+    const store = await createStore()
+    const localItem = {
+      type: 'cpu',
+      name: 'Intel Core i5-10500T',
+      manufacturer: 'Intel',
+      family: 'Core i5',
+      number: 'i5-10500T',
+      specs: { cores: 6, threads: 12 },
+      properties: { inventoryTag: 'local-copy-1' },
+    }
+    const registryTemplate = await template({
+      ...localItem,
+      model: 'i5-10500T',
+      specs: {
+        ...localItem.specs,
+        socket: 'LGA1200',
+        channels: 2,
+        tdpWatts: 35,
+        generation: '10th Gen',
+      },
+    }, 2)
+    activateCatalog(store)
+    store.createInventoryItems(localItem)
+    const localProjection = await digestCatalogTemplate(localItem)
+    store.registryTransaction((draft) => {
+      draft.links.push({
+        id: 1,
+        itemType: 'cpu',
+        itemId: 1,
+        sourceId: 1,
+        templateKey: registryTemplate.templateKey,
+        importedRevision: registryTemplate.revision,
+        importedContentHash: localProjection.contentHash,
+        state: 'adoption-available',
+        linkedAt: '2026-07-31T12:00:00.000Z',
+        availableRevision: registryTemplate.revision,
+        availableContentHash: registryTemplate.contentHash,
+      })
+    })
+
+    expect(store.getCatalogUpdates()).toEqual([expect.objectContaining({
+      linkId: 1,
+      state: 'adoption-available',
+      importedRevision: 2,
+      availableRevision: 2,
+    })])
+    expect(store.getCatalogUpdatePreview(1, registryTemplate)).toMatchObject({
+      state: 'adoption-available',
+      changes: expect.arrayContaining([
+        expect.objectContaining({ field: 'model' }),
+        expect.objectContaining({ field: 'specs' }),
+      ]),
+      localFieldsPreserved: expect.arrayContaining(['properties']),
+    })
+
+    store.applyCatalogUpdate(1, registryTemplate)
+
+    expect(store.getProject().items['cpu:1']).toMatchObject({
+      model: 'i5-10500T',
+      specs: expect.objectContaining({ socket: 'LGA1200', channels: 2, tdpWatts: 35 }),
+      properties: { inventoryTag: 'local-copy-1' },
+    })
+    expect(store.getRegistryState().links).toEqual([expect.objectContaining({
+      id: 1,
+      state: 'linked',
+      importedRevision: 2,
+      importedContentHash: registryTemplate.contentHash,
+    })])
   })
 
   it('rolls back inventory creation when catalog link creation fails', async () => {

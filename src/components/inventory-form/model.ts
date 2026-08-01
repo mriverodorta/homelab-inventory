@@ -10,6 +10,8 @@ import type {
   InventoryCompatibility,
 } from '@/types/compatibility'
 import type {
+  EquipmentUsageRole,
+  HardwareClass,
   InventoryItem,
   InventoryPort,
   InventoryPortRole,
@@ -59,6 +61,8 @@ export type ExpansionSlotGroupDraft = {
 
 export type InventoryFormValues = {
   type: InventoryType
+  hardwareClass: HardwareClass
+  usageRole: EquipmentUsageRole
   name: string
   manufacturer: string
   secondaryManufacturer: string
@@ -344,6 +348,8 @@ export function inventoryPortsToPortGroups(ports: InventoryPort[] | undefined): 
 export function createInventoryFormValues(type: InventoryType): InventoryFormValues {
   return {
     type,
+    hardwareClass: 'desktop',
+    usageRole: 'server',
     name: '',
     manufacturer: '',
     secondaryManufacturer: '',
@@ -448,6 +454,8 @@ export function inventoryItemToFormValues(item: InventoryItem): InventoryFormVal
 
   return {
     ...values,
+    hardwareClass: item.hardwareClass === 'server' ? 'server' : 'desktop',
+    usageRole: item.usageRole === 'desktop' || item.usageRole === 'workstation' ? item.usageRole : 'server',
     name: item.name,
     manufacturer: item.manufacturer ?? '',
     secondaryManufacturer: item.secondaryManufacturer ?? '',
@@ -763,6 +771,10 @@ export function inventoryFormValuesToInput(values: InventoryFormValues): Invento
     : undefined
   return {
     type,
+    ...(type === 'server' ? {
+      hardwareClass: values.hardwareClass,
+      usageRole: values.usageRole,
+    } : {}),
     name: values.name.trim(),
     ...(cleanString(values.manufacturer) ? { manufacturer: values.manufacturer.trim() } : {}),
     ...(type !== 'ram' && cleanString(values.secondaryManufacturer) ? { secondaryManufacturer: values.secondaryManufacturer.trim() } : {}),

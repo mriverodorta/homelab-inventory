@@ -41,12 +41,14 @@ async function fixture() {
   const store = {
     dataDir,
     getRegistryState: () => structuredClone(registry),
+    getProject: () => ({ items: {} }),
     registryTransaction(mutator) {
       const draft = structuredClone(registry)
       mutator(draft)
       registry = draft
       return this.getRegistryState()
     },
+    flush: async () => {},
   }
   const trustedKeys = [{ keyId: 'test-key', publicKey: base64UrlToBase64(publicKey.export({ format: 'jwk' }).x) }]
   return { artifact, dataDir, privateKey, store, trustedKeys }

@@ -25,6 +25,25 @@ On startup, the server:
 
 The first start after a schema upgrade can take longer than a normal restart. Do not stop the container while migration logs are active. If a migration or write fails, startup stops and restores the pre-migration stores rather than serving partially migrated data.
 
+## Schema 18: Physical Class And Usage Role
+
+Schema 18 separates what a computer physically is from how it is used in the homelab. Every record in the existing `servers` category receives:
+
+- `hardwareClass`: `desktop` or `server`
+- `usageRole`: `server`, `desktop`, or `workstation`
+
+Legacy records default to desktop hardware used as a server. This matches the existing tiny, mini, and micro computer inventory without changing how those devices appear or function in the workspace. Existing valid values are retained.
+
+The migration does not move records between category arrays and does not change numeric IDs, assignments, placements, ports, cables, or registry-link relationships. After upgrading, edit either field from the equipment Inspector when a physical server or a desktop/workstation requires a different classification.
+
+Registry identity uses `hardwareClass` because it describes the reusable product definition. `usageRole` remains local and is preserved when catalog revisions are reviewed and applied. A catalog desktop or server is still imported into the local `servers` category so all existing relational IDs remain stable.
+
+## Schema 17: Registry Adoption Links
+
+Schema 17 adds a reviewable `adoption-available` relationship for local hardware whose canonical identity matches a verified registry template but whose catalog-owned fields differ. Existing inventory records, assignments, placements, cables, detached overrides, and catalog links are preserved.
+
+After the migration, activating a connected catalog can create one adoption link per physical inventory item. The application does not overwrite the item automatically. Review the proposed canonical fields under **Settings > Registry > Catalog updates** and apply them explicitly. Local-only properties remain untouched.
+
 ## Schema 16: Physical RAM Sticks
 
 Schema 16 changes RAM from a kit or pair record into one inventory record per physical stick. This is a breaking data-model correction required for exact slot placement, mixed manufacturers or speeds, registry identity, and future database relationships.

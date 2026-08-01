@@ -66,7 +66,11 @@ export function CatalogUpdateReview({
             <div key={record.linkId} className="flex items-center justify-between gap-3 rounded-md border border-[#ded8ce] bg-white p-3">
               <div className="min-w-0">
                 <div className="truncate text-sm font-black text-[#28231f]">{record.itemName}</div>
-                <div className="text-xs text-[#746b60]">Revision {record.importedRevision} → {record.availableRevision}</div>
+                <div className="text-xs text-[#746b60]">
+                  {record.state === 'adoption-available'
+                    ? `Local definition → Registry revision ${record.availableRevision}`
+                    : `Revision ${record.importedRevision} → ${record.availableRevision}`}
+                </div>
               </div>
               <Button type="button" size="sm" variant="outline" onClick={() => setSelectedLinkId(record.linkId)}>Review</Button>
             </div>
@@ -85,7 +89,11 @@ export function CatalogUpdateReview({
             <div className="space-y-3">
               <div className="rounded-md border border-[#ded8ce] bg-[#f7f2e9] p-3">
                 <div className="font-black">{preview.data.itemName}</div>
-                <div className="text-sm text-[#746b60]">Revision {preview.data.importedRevision} → {preview.data.availableRevision}</div>
+                <div className="text-sm text-[#746b60]">
+                  {preview.data.state === 'adoption-available'
+                    ? `Local definition → Registry revision ${preview.data.availableRevision}`
+                    : `Revision ${preview.data.importedRevision} → ${preview.data.availableRevision}`}
+                </div>
               </div>
               {preview.data.changes.map((change) => (
                 <div key={change.field} className="rounded-md border border-[#ded8ce] bg-white p-3">

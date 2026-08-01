@@ -26,19 +26,20 @@ describe('registry link indicators', () => {
     })).toEqual(new Set())
   })
 
-  it('includes linked and update-available records only', () => {
+  it('includes linked, update-available, and adoption-available records only', () => {
     const keys = buildVisibleRegistryLinkKeys({
       ...DEFAULT_REGISTRY_STATE,
       settings: { ...DEFAULT_REGISTRY_STATE.settings, showRegistryLinkIndicators: true },
       links: [
         link('linked', 'cpu', 1),
         link('update-available', 'ram', 2),
+        link('adoption-available', 'gpu', 5),
         link('detached', 'storage', 3),
         link('contribution-pending', 'network', 4),
       ],
     })
 
-    expect(keys).toEqual(new Set(['cpu:1', 'ram:2']))
+    expect(keys).toEqual(new Set(['cpu:1', 'ram:2', 'gpu:5']))
   })
 
   it('renders a noninteractive accessible marker only when visible', () => {

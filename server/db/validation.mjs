@@ -499,6 +499,15 @@ function assertInventoryItem(itemId, item, expectedType, options = {}) {
     throw new Error(`Inventory item ${itemId} is in the wrong table.`)
   }
 
+  if (!options.allowLegacyIds && type === 'server') {
+    if (!new Set(['desktop', 'server']).has(item.hardwareClass)) {
+      throw new Error(`Inventory item ${itemId} must declare a valid hardware class.`)
+    }
+    if (!new Set(['server', 'desktop', 'workstation']).has(item.usageRole)) {
+      throw new Error(`Inventory item ${itemId} must declare a valid usage role.`)
+    }
+  }
+
   if (!options.allowLegacyIds && type === 'ram') {
     if (
       item.secondaryManufacturer !== undefined

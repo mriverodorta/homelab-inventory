@@ -108,10 +108,14 @@ export function rotateRegistryContributionKey(): Promise<RegistryState['contribu
   return apiRequest('/api/registry/contributions/rotate-key', { method: 'POST' })
 }
 
-export function createInventoryFromCatalog(templateKey: string, quantity = 1): Promise<ProjectState> {
+export function createInventoryFromCatalog(
+  templateKey: string,
+  quantity = 1,
+  usageRole: 'server' | 'desktop' | 'workstation' = 'server',
+): Promise<ProjectState> {
   return apiRequest(`/api/registry/catalog/templates/${encodeURIComponent(templateKey)}/create`, {
     method: 'POST',
-    body: JSON.stringify({ quantity }),
+    body: JSON.stringify({ quantity, usageRole }),
   })
 }
 

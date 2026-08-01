@@ -192,6 +192,13 @@ export function buildCleanRecord({ source, id, type, name = source?.name }) {
     name,
   }
 
+  if (type === 'server') {
+    record.hardwareClass = source?.hardwareClass === 'server' ? 'server' : 'desktop'
+    record.usageRole = ['server', 'desktop', 'workstation'].includes(source?.usageRole)
+      ? source.usageRole
+      : 'server'
+  }
+
   for (const field of ['subtype', 'manufacturer', 'secondaryManufacturer', 'family', 'model', 'number']) {
     if (source?.[field] !== undefined) record[field] = structuredClone(source[field])
   }

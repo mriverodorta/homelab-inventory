@@ -81,7 +81,14 @@ async function createSourceData() {
   })
   await writeJson(path.join(sourceDir, 'stores', 'inventory.json'), {
     ...inventoryTables(),
-    servers: [{ id: 1, name: 'Private Server', type: 'server', properties: { lanIp: '10.0.0.2' } }],
+    servers: [{
+      id: 1,
+      name: 'Private Server',
+      type: 'server',
+      hardwareClass: 'desktop',
+      usageRole: 'server',
+      properties: { lanIp: '10.0.0.2' },
+    }],
   })
   await writeJson(path.join(sourceDir, 'stores', 'project.json'), {
     id: 'default',
@@ -132,6 +139,8 @@ describe('demo data sanitizer', () => {
           id: 1,
           name: 'SkyWatch',
           type: 'server',
+          hardwareClass: 'desktop',
+          usageRole: 'server',
           specs: {
             manufacturer: 'Dell',
             model: 'OptiPlex Micro 7090',
@@ -767,7 +776,13 @@ describe('DemoSessionManager', () => {
       updatedAt: '2026-07-09T00:00:00.000Z',
     })
     await writeJson(path.join(sourceDir, 'stores', 'inventory.json'), {
-      servers: [{ id: 1, name: 'Server', type: 'server' }],
+      servers: [{
+        id: 1,
+        name: 'Server',
+        type: 'server',
+        hardwareClass: 'desktop',
+        usageRole: 'server',
+      }],
       pcBuilds: [],
     })
     await writeJson(path.join(sourceDir, 'stores', 'project.json'), {

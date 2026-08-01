@@ -229,7 +229,7 @@ export type InventorySidebarProps = {
   onDuplicatePrivateTemplate?: (id: number) => Promise<void>
   onDeletePrivateTemplate?: (id: number) => Promise<void>
   onOpenRegistrySettings?: () => void
-  onCreateCatalogItem?: (templateKey: string, quantity: number) => Promise<void>
+  onCreateCatalogItem?: (templateKey: string, quantity: number, usageRole?: 'server' | 'desktop' | 'workstation') => Promise<void>
   lifecycleRevision?: number
   lifecycleBusy?: boolean
   onClose?: () => void

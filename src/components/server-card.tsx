@@ -19,6 +19,7 @@ import {
 } from '@/lib/canvas-project-index'
 import { getCanvasAssignmentTone } from '@/lib/canvas-quality'
 import { runtimeItemKey } from '@/lib/item-keys'
+import { equipmentUsageRoleLabel } from '@/lib/equipment-classification'
 import { EMPTY_REGISTRY_LINK_KEYS } from '@/lib/registry-links'
 import { useTapSelection } from '@/lib/tap-selection'
 import {
@@ -747,7 +748,7 @@ export function ServerNode({ data }: NodeProps<ServerFlowNode>) {
     return null
   }
 
-  const serverDisplayName = server.properties?.displayName?.trim() || 'Server'
+  const serverDisplayName = server.properties?.displayName?.trim() || equipmentUsageRoleLabel(server.usageRole)
   const serverAgentStatus = getServerAgentStatus(agentStatus, server.id)
   const auditCount = canvasAuditWarningCount(canvasIndex, serverRuntimeKey)
   const focused = focusedItemIds.includes(serverRuntimeKey)

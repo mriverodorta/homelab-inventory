@@ -10,7 +10,7 @@ export function CatalogSourcePanel({
 }: {
   registry: RegistryState
   onOpenSettings?: () => void
-  onCreate?: (templateKey: string, quantity: number) => Promise<void>
+  onCreate?: (templateKey: string, quantity: number, usageRole?: 'server' | 'desktop' | 'workstation') => Promise<void>
 }) {
   const offline = registry.settings.mode === 'offline'
   const disabled = registry.settings.mode === 'disabled'

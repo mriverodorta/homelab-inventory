@@ -25,7 +25,7 @@ function inventoryWith(item) {
 }
 
 function inventoryTables(overrides = {}) {
-  return {
+  const tables = {
     servers: [],
     pcBuilds: [],
     cpus: [],
@@ -48,6 +48,12 @@ function inventoryTables(overrides = {}) {
     powerStrips: [],
     ...overrides,
   }
+  tables.servers = tables.servers.map((server) => ({
+    hardwareClass: 'desktop',
+    usageRole: 'server',
+    ...server,
+  }))
+  return tables
 }
 
 const SCHEMA_9_TABLE_TYPES = {
@@ -80,6 +86,8 @@ function compatibleItems() {
       key: 'server:1',
       type: 'server',
       name: 'Host',
+      hardwareClass: 'desktop',
+      usageRole: 'server',
       compatibility: {
         host: {
           memory: { generations: ['DDR4'], slots: 2, maxCapacityGb: 64 },

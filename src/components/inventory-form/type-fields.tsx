@@ -1,5 +1,5 @@
 import { Input } from '@/components/ui/input'
-import type { InventoryType } from '@/types/inventory'
+import type { EquipmentUsageRole, HardwareClass, InventoryType } from '@/types/inventory'
 import { FieldError, FieldLabel, SelectField, TextField } from './field-primitives'
 import type { InventoryFormErrors, InventoryFormValues } from './model'
 import { PcComponentFields } from './pc-component-fields'
@@ -21,6 +21,8 @@ import {
   RAM_RANKS,
   RAM_SPEEDS,
   SERVER_FORM_FACTORS,
+  SERVER_HARDWARE_CLASS_OPTIONS,
+  SERVER_USAGE_ROLE_OPTIONS,
   STORAGE_FORM_FACTORS,
   STORAGE_INTERFACES,
   SWITCH_MANAGEMENT_OPTIONS,
@@ -148,7 +150,9 @@ export function InventoryTypeFields({
 
   if (type === 'server') {
     return (
-      <div className="grid gap-3 sm:grid-cols-3">
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        <SelectField label="Hardware class" name="hardwareClass" value={values.hardwareClass} options={SERVER_HARDWARE_CLASS_OPTIONS} onOpenChange={onSelectOpenChange} onValueChange={(hardwareClass) => onChange({ hardwareClass: hardwareClass as HardwareClass }, 'immediate')} />
+        <SelectField label="Used as" name="usageRole" value={values.usageRole} options={SERVER_USAGE_ROLE_OPTIONS} onOpenChange={onSelectOpenChange} onValueChange={(usageRole) => onChange({ usageRole: usageRole as EquipmentUsageRole }, 'immediate')} />
         <SelectField label="Form Factor" name="formFactor" value={values.formFactor} placeholder="Select size" options={SERVER_FORM_FACTORS} onOpenChange={onSelectOpenChange} onValueChange={(formFactor) => onChange({ formFactor }, 'immediate')} />
         <SelectField label="Network Slot" name="networkSlot" value={values.networkSlot} placeholder="Select slot" options={NETWORK_SLOTS} onOpenChange={onSelectOpenChange} onValueChange={(networkSlot) => onChange({ networkSlot }, 'immediate')} />
         <SelectField label="Wireless" name="wireless" value={values.wireless} placeholder="Select" options={WIRELESS_OPTIONS} onOpenChange={onSelectOpenChange} onValueChange={(wireless) => onChange({ wireless }, 'immediate')} />

@@ -18,19 +18,27 @@ export async function discoverContributionCandidates(
   store,
   now = new Date(),
   externalKnownHashes = [],
-  { explicit = false } = {},
+  { explicit = false, linkOnly = false } = {},
 ) {
   const registry = store.getRegistryState()
-  if (
-    registry.settings.mode !== 'connected'
-    || (!explicit && registry.settings.automaticContributions !== true)
-  ) {
+  if (registry.settings.mode !== 'connected') {
     return { queued: 0, skipped: 0 }
   }
+  const contributionsAllowed = !linkOnly
+    && (explicit || registry.settings.automaticContributions === true)
+  if (!contributionsAllowed && !linkOnly) return { queued: 0, skipped: 0 }
 
   const externalEntries = externalKnownHashes instanceof Map
     ? externalKnownHashes
     : new Map([...externalKnownHashes].map((hash) => [hash, null]))
+  const publishedByIdentity = new Map()
+  for (const [contentHash, entry] of externalEntries) {
+    if (entry?.state !== 'published' || !entry.identityHash || !entry.templateKey) continue
+    const current = publishedByIdentity.get(entry.identityHash)
+    if (!current || (entry.revision ?? 1) > (current.revision ?? 1)) {
+      publishedByIdentity.set(entry.identityHash, { ...entry, contentHash })
+    }
+  }
   const knownHashes = new Set([
     ...registry.links.map((link) => link.importedContentHash),
     ...registry.contributionOutbox.map((record) => record.contentHash),
@@ -38,7 +46,7 @@ export async function discoverContributionCandidates(
     ...externalEntries.keys(),
   ])
   const linkedItems = new Set(registry.links
-    .filter((link) => link.state === 'linked' || link.state === 'update-available')
+    .filter((link) => ['linked', 'update-available', 'adoption-available'].includes(link.state))
     .map((link) => itemKey(link.itemType, link.itemId)))
   const candidates = []
   const projections = []
@@ -57,13 +65,26 @@ export async function discoverContributionCandidates(
   const groups = await reconcileCatalogProjections(projections)
   const activeSourceId = registry.snapshot?.sourceId
   const links = []
+  const adoptions = []
   for (const group of groups) {
     if (group.status === 'withheld-conflict') continue
     const exact = externalEntries.get(group.contentHash)
+    const identityMatch = publishedByIdentity.get(group.identityHash)
     if (knownHashes.has(group.contentHash)) {
       if (exact?.state === 'published' && exact.templateKey && Number.isSafeInteger(activeSourceId)) {
         for (const source of group.sources) links.push({ source, exact, contentHash: group.contentHash })
       }
+      skipped += group.sources.length
+      continue
+    }
+    if (identityMatch && Number.isSafeInteger(activeSourceId)) {
+      for (const source of group.sources) {
+        adoptions.push({ source, match: identityMatch, localContentHash: group.contentHash })
+      }
+      skipped += group.sources.length
+      continue
+    }
+    if (!contributionsAllowed) {
       skipped += group.sources.length
       continue
     }
@@ -124,6 +145,16 @@ export async function discoverContributionCandidates(
           id: linkId++, itemType: source.itemType, itemId: source.itemId, sourceId: activeSourceId,
           templateKey: exact.templateKey, importedRevision: exact.revision ?? 1,
           importedContentHash: contentHash, state: 'linked', linkedAt: now.toISOString(),
+        })
+      }
+      for (const { source, match, localContentHash } of adoptions) {
+        const existing = draft.links.find((link) => link.itemType === source.itemType && link.itemId === source.itemId)
+        if (existing) continue
+        draft.links.push({
+          id: linkId++, itemType: source.itemType, itemId: source.itemId, sourceId: activeSourceId,
+          templateKey: match.templateKey, importedRevision: match.revision ?? 1,
+          importedContentHash: localContentHash, state: 'adoption-available', linkedAt: now.toISOString(),
+          availableRevision: match.revision ?? 1, availableContentHash: match.contentHash,
         })
       }
     }

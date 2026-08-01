@@ -90,9 +90,13 @@ export function useInventoryLifecycle({
     if (createdItemId) setSelectedItemId(createdItemId)
   }
 
-  async function createCatalogItem(templateKey: string, quantity: number) {
+  async function createCatalogItem(
+    templateKey: string,
+    quantity: number,
+    usageRole: 'server' | 'desktop' | 'workstation' = 'server',
+  ) {
     const currentProject = projectRef.current
-    const nextProject = await createInventoryFromCatalog(templateKey, quantity)
+    const nextProject = await createInventoryFromCatalog(templateKey, quantity, usageRole)
     const previousItemIds = new Set(Object.keys(currentProject?.items ?? {}))
     const createdItemId = Object.keys(nextProject.items).find((itemId) => !previousItemIds.has(itemId))
 

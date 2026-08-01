@@ -7,6 +7,8 @@ const inventory = [
     type: 'server',
     id: 1,
     name: 'Atlas Mini Server',
+    hardwareClass: 'desktop',
+    usageRole: 'server',
     manufacturer: 'Fictional Hardware Works',
     model: 'Atlas Mini',
     specs: { formFactor: 'Mini', wireless: 'No' },
