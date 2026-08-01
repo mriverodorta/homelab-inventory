@@ -18,6 +18,10 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 - Automatic catalog contributions use fingerprint-v3 product-family and variant evidence, deduplicating equivalent local copies while keeping materially different motherboards or complete expansion topologies separate.
 - Existing fingerprint-v2 identities remain valid aliases, while ambiguous generic-family records require review instead of silently attaching to a specific variant.
 
+### Fixed
+
+- Existing signed catalog revisions retain the publisher's original content digest after client protocol upgrades, preventing valid last-known-good catalogs from being rejected or blocking automatic contributions.
+
 ### Data migration
 
 - Schema 19 preserves existing fingerprint-v2 catalog links and contribution records while enabling fingerprint-v3 variant evidence and aliases. Startup creates a backup and applies the migration automatically before catalog refresh or contribution discovery.

@@ -114,6 +114,7 @@ const RELEASE_0_6_0_DETAILS: UnreleasedReleaseNotes = {
   fixes: [
     'Catalog matching preserves fingerprint-v2 identities as aliases while preventing ambiguous generic-family records from silently attaching to a specific motherboard or topology variant.',
     'Automatic contributions now deduplicate equivalent local copies while submitting materially different motherboard and expansion variants as separate review candidates.',
+    'Existing signed catalog revisions retain the publisher\'s original content digest after client protocol upgrades, so valid catalogs continue refreshing and automatic contributions remain available.',
   ],
   notes: [
     'Schema 19 preserves existing fingerprint-v2 catalog links, contribution state, inventory IDs, assignments, placements, and cables while enabling fingerprint-v3 evidence through the normal backup-first startup migration.',

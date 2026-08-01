@@ -198,7 +198,7 @@ export class SnapshotService {
     const snapshot = await validateCatalogSnapshot(payload, { now: validationTime })
     if (
       snapshot.catalogRevision !== activeSnapshot.revision
-      || await catalogSnapshotDigest(snapshot) !== activeSnapshot.digest
+      || await catalogSnapshotDigest(payload) !== activeSnapshot.digest
     ) {
       throw new Error('Catalog generation content does not match the active snapshot.')
     }
@@ -253,13 +253,16 @@ export class SnapshotService {
   async verifyArtifact(artifact, options = {}) {
     if (this.trustedKeys.length === 0) throw new Error('No trusted official catalog signing keys are configured.')
     const payload = await verifySignedCatalogArtifact(artifact, this.trustedKeys, options)
-    return validateCatalogSnapshot(payload, options)
+    return {
+      payload,
+      snapshot: await validateCatalogSnapshot(payload, options),
+    }
   }
 
   async activate(artifact, { mode, now = new Date(), digestArtifact } = {}) {
     if (mode !== 'offline' && mode !== 'connected') throw new Error('Catalog activation mode is invalid.')
-    const snapshot = await this.verifyArtifact(artifact, { now })
-    const digest = await catalogSnapshotDigest(snapshot)
+    const { payload, snapshot } = await this.verifyArtifact(artifact, { now })
+    const digest = await catalogSnapshotDigest(payload)
     const digestIndex = digestArtifact
       ? validateCatalogDigestIndex(await verifySignedCatalogArtifact(digestArtifact, this.trustedKeys, { now }))
       : validateCatalogDigestIndex({

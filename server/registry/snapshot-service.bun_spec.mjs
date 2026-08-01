@@ -116,6 +116,7 @@ describe('catalog snapshot service', () => {
     const service = new SnapshotService(store, { trustedKeys })
     await service.activate(artifact, { mode: 'offline', now: new Date('2026-07-27T00:00:00.000Z') })
     expect(store.getRegistryState().snapshot).toMatchObject({ revision: 2, templateCount: 1, keyId: 'test-key' })
+    expect(store.getRegistryState().snapshot.digest).toBe(await sha256Hex(canonicalJson(artifact.payload)))
     expect(await service.search({ query: 'example' })).toMatchObject({ total: 1 })
     const activePaths = await service.resolveActivePaths()
     await fs.rm(activePaths.index)
