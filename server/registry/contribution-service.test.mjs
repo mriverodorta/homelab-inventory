@@ -196,6 +196,69 @@ describe('contribution discovery', () => {
     })))
   })
 
+  it('offers adoption after a previously delivered local definition is published with normalized content', async () => {
+    const server = {
+      id: 7,
+      type: 'server',
+      hardwareClass: 'desktop',
+      usageRole: 'server',
+      name: 'Dell OptiPlex Micro 7090',
+      manufacturer: 'Dell',
+      model: 'OptiPlex Micro 7090',
+      specs: { formFactor: 'Micro', motherboardPartNumber: '014T59' },
+    }
+    const store = fixture(server)
+    store.registryTransaction((draft) => {
+      draft.sources.push({ id: 1, kind: 'official-connected', displayName: 'Official Catalog' })
+      draft.snapshot = { sourceId: 1, revision: 6 }
+    })
+    const protocol = await import('../../packages/catalog-protocol/src/index.ts')
+    const local = await protocol.projectCatalogItem(server)
+    const published = await protocol.digestCatalogTemplate({
+      ...local.item,
+      specs: {
+        ...local.item.specs,
+        wireless: 'Supported',
+      },
+    })
+    expect(published.identityHash).toBe(local.identityHash)
+    expect(published.contentHash).not.toBe(local.contentHash)
+
+    store.registryTransaction((draft) => {
+      draft.contributionLedger.push({
+        id: 1,
+        itemType: 'server',
+        itemId: server.id,
+        identityHash: local.identityHash,
+        contentHash: local.contentHash,
+        state: 'delivered',
+      })
+    })
+    const known = new Map([[published.contentHash, {
+      identityHash: published.identityHash,
+      fingerprintVersion: published.fingerprintVersion,
+      templateKey: 'desktop-dell-optiplex-micro-7090-pcie-riser',
+      revision: 1,
+      state: 'published',
+    }]])
+
+    expect(await discoverContributionCandidates(
+      store,
+      new Date('2026-08-01T12:00:00.000Z'),
+      known,
+      { linkOnly: true },
+    )).toMatchObject({ queued: 0 })
+    expect(store.getRegistryState().contributionOutbox).toEqual([])
+    expect(store.getRegistryState().links).toEqual([expect.objectContaining({
+      itemType: 'server',
+      itemId: 7,
+      templateKey: 'desktop-dell-optiplex-micro-7090-pcie-riser',
+      importedContentHash: local.contentHash,
+      state: 'adoption-available',
+      availableContentHash: published.contentHash,
+    })])
+  })
+
   it('uses an unambiguous published v2 identity alias to offer a generic host for variant adoption', async () => {
     const servers = [1, 2].map((id) => ({
       id,

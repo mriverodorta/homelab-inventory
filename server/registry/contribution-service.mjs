@@ -126,10 +126,8 @@ export async function discoverContributionCandidates(
     const identityMatch = canonicalMatch ?? (legacyIdentity
       ? publishedByIdentity.get(identityKey(LEGACY_FINGERPRINT_VERSION, legacyIdentity))
       : undefined)
-    if (knownHashes.has(group.contentHash)) {
-      if (exact?.state === 'published' && exact.templateKey && Number.isSafeInteger(activeSourceId)) {
-        for (const source of group.sources) links.push({ source, exact, contentHash: group.contentHash })
-      }
+    if (exact?.state === 'published' && exact.templateKey && Number.isSafeInteger(activeSourceId)) {
+      for (const source of group.sources) links.push({ source, exact, contentHash: group.contentHash })
       skipped += group.sources.length
       continue
     }
@@ -137,6 +135,10 @@ export async function discoverContributionCandidates(
       for (const source of group.sources) {
         adoptions.push({ source, match: identityMatch, localContentHash: group.contentHash })
       }
+      skipped += group.sources.length
+      continue
+    }
+    if (knownHashes.has(group.contentHash)) {
       skipped += group.sources.length
       continue
     }
