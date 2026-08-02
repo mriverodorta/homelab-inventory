@@ -6,15 +6,21 @@ import App from './App.tsx'
 import { DomainEngineGate } from './components/domain-engine-gate.tsx'
 import { DomainEngineProvider } from './components/domain-engine-provider.tsx'
 import { queryClient } from './lib/query-client.ts'
+import { AuthGate } from './components/auth/auth-gate.tsx'
+import { AuthProvider } from './components/auth/auth-provider.tsx'
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <QueryClientProvider client={queryClient}>
-      <DomainEngineProvider enabled>
-        <DomainEngineGate>
-          <App />
-        </DomainEngineGate>
-      </DomainEngineProvider>
+      <AuthProvider>
+        <AuthGate>
+          <DomainEngineProvider enabled>
+            <DomainEngineGate>
+              <App />
+            </DomainEngineGate>
+          </DomainEngineProvider>
+        </AuthGate>
+      </AuthProvider>
     </QueryClientProvider>
   </StrictMode>,
 )

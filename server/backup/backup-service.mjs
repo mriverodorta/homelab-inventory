@@ -61,6 +61,16 @@ function validatePassphrase(value, { required = false } = {}) {
   }
 }
 
+function authenticationHasSensitiveMaterial(authentication) {
+  return authentication.configuration?.enabled === true
+    || authentication.accounts?.length > 0
+    || authentication.localCredentials?.length > 0
+    || authentication.oidcIdentities?.length > 0
+    || authentication.sessions?.length > 0
+    || authentication.recoveryTokens?.length > 0
+    || authentication.oidcTransactions?.length > 0
+}
+
 async function writePrivate(filePath, body) {
   const temporary = `${filePath}.${process.pid}.${Date.now()}.tmp`
   await fs.writeFile(temporary, body, { mode: 0o600 })
@@ -121,6 +131,10 @@ export class BackupService {
     return this.maintenance
   }
 
+  requiresAuthenticationEncryption() {
+    return authenticationHasSensitiveMaterial(this.store.getAuthenticationState())
+  }
+
   status() {
     const management = this.store.getBackupManagementState()
     return {
@@ -157,6 +171,12 @@ export class BackupService {
     try {
       validatePassphrase(passphrase)
       const selected = normalizeBackupSections(sections, { demo })
+      if (
+        selected.includes('authentication')
+        && authenticationHasSensitiveMaterial(this.store.getAuthenticationState())
+      ) {
+        validatePassphrase(passphrase, { required: true })
+      }
       const management = this.store.getBackupManagementState()
       const id = management.nextBackupId
       const createdAt = nowIso()
@@ -293,7 +313,7 @@ export class BackupService {
       for (const [existingToken, inspection] of this.inspections) {
         if (inspection.expiresAt <= Date.now()) this.inspections.delete(existingToken)
       }
-      this.inspections.set(token, { parsed, expiresAt })
+      this.inspections.set(token, { parsed, expiresAt, passphrase: passphrase || null })
       return {
         token,
         expiresAt: new Date(expiresAt).toISOString(),
@@ -376,7 +396,13 @@ export class BackupService {
       const preflight = await this.preflight(token, selected)
       if (!preflight.ok) throw new BackupServiceError('Restore dependencies are not satisfied.', { code: 'restore-blocked', details: preflight.blockers })
       this.finishOperation()
-      preRestore = await this.create({ sections: COMPLETE_BACKUP_SECTIONS, label: `Before restore ${restoreId}`, kind: 'pre-restore', persist: true })
+      preRestore = await this.create({
+        sections: COMPLETE_BACKUP_SECTIONS,
+        label: `Before restore ${restoreId}`,
+        kind: 'pre-restore',
+        persist: true,
+        passphrase: this.environmentPassphrase ?? inspection.passphrase,
+      })
       this.operation = { kind: 'restore', startedAt: nowIso() }
       await this.journal.write({ restoreId, preRestoreBackupId: preRestore.record.id, fileName: preRestore.record.fileName, createdAt: nowIso() })
       await this.applyParsed(inspection.parsed, selected)

@@ -49,6 +49,31 @@ describe('portable backup service', () => {
       .rejects.toMatchObject({ code: 'backup-passphrase-invalid', status: 400 })
   })
 
+  it('requires encryption when owner authentication contains credentials', async () => {
+    const { service, store } = await createContext()
+    const timestamp = new Date().toISOString()
+    store.updateAuthentication((draft) => {
+      draft.accounts.push({ id: 1, username: 'owner', displayName: 'Owner', role: 'owner', active: true, createdAt: timestamp, updatedAt: timestamp })
+      draft.localCredentials.push({ id: 1, accountId: 1, passwordHash: '$argon2id$credential-hash-placeholder', createdAt: timestamp, updatedAt: timestamp })
+      draft.nextAccountId = 2
+      draft.nextLocalCredentialId = 2
+      draft.configuration.enabled = true
+      draft.configuration.localEnabled = true
+      draft.configuration.updatedAt = timestamp
+    })
+    await store.flush()
+
+    await expect(service.create({ sections: ['authentication'] }))
+      .rejects.toMatchObject({ code: 'backup-passphrase-required', status: 400 })
+
+    const created = await service.create({
+      sections: ['authentication'],
+      passphrase: 'correct horse battery staple',
+    })
+    await expect(service.verify(created.record.id, 'correct horse battery staple'))
+      .resolves.toMatchObject({ ok: true, encrypted: true })
+  })
+
   it('verifies encryption and restores selected inventory with a safety backup', async () => {
     const { service, store } = await createContext()
     store.createInventoryItems({

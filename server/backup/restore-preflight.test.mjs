@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { createBackupManagementStore } from './backup-model.mjs'
 import { preflightRestore } from './restore-preflight.mjs'
 import { createRegistryStore } from '../registry/model.mjs'
+import { createAuthenticationStore } from '../auth/model.mjs'
 
 describe('restore preflight', () => {
   it('rejects archives created by a newer schema', () => {
@@ -15,6 +16,7 @@ describe('restore preflight', () => {
       project: { id: 'default', revision: 1, metadata: { name: 'Lab', version: 1, updatedAt: new Date().toISOString() }, placements: [], assignments: [], connections: [], compatibilityPolicy: { disabledHosts: [], ignoredWarningIds: [] } },
       agents: { enrollments: {}, devices: {} }, agentStatus: { servers: {} }, registry: createRegistryStore(),
       backupManagement: createBackupManagementStore(), routingCache: {}, meta: { schemaVersion: 20 },
+      authentication: createAuthenticationStore(),
     }
     const files = new Map([['sections/registry-enrollment.json', Buffer.from('{"installationIdentity":null}')]])
     expect(preflightRestore({ manifest: { schemaVersion: 20, sections: ['registryEnrollment'] }, files, currentStores }).ok).toBe(true)
@@ -26,6 +28,7 @@ describe('restore preflight', () => {
       project: { id: 'default', revision: 1, metadata: { name: 'Lab', version: 1, updatedAt: new Date().toISOString() }, placements: [], assignments: [], connections: [], compatibilityPolicy: { disabledHosts: [], ignoredWarningIds: [] } },
       agents: { enrollments: {}, devices: {} }, agentStatus: { servers: {} }, registry: createRegistryStore(),
       backupManagement: createBackupManagementStore(), routingCache: {}, meta: { schemaVersion: 20 },
+      authentication: createAuthenticationStore(),
     }
     const files = new Map([['sections/application-metadata.json', Buffer.from(JSON.stringify({
       meta: { schemaVersion: 19 },
@@ -38,6 +41,6 @@ describe('restore preflight', () => {
     })
 
     expect(result.ok).toBe(true)
-    expect(result.replacements.meta.schemaVersion).toBe(20)
+    expect(result.replacements.meta.schemaVersion).toBe(21)
   })
 })

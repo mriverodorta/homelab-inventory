@@ -33,4 +33,42 @@ describe('backup scheduler', () => {
     expect(schedule).not.toHaveProperty('operation')
     expect(schedule.lastRunAt).toBeNull()
   })
+
+  it('blocks scheduled backups with authentication data until environment encryption is configured', async () => {
+    const schedule = createBackupSchedule()
+    const store = {
+      getBackupManagementState: () => ({ schedule }),
+      updateBackupManagement: () => { throw new Error('unsafe schedule should not be persisted') },
+    }
+    const service = {
+      environmentPassphrase: null,
+      requiresAuthenticationEncryption: () => true,
+    }
+    const scheduler = new BackupScheduler({ store, service })
+
+    await expect(scheduler.update({ enabled: true })).rejects.toThrow(/BACKUP_ENCRYPTION_PASSPHRASE/)
+  })
+
+  it('allows encrypted scheduled backups with authentication data', async () => {
+    let schedule = createBackupSchedule()
+    const store = {
+      getBackupManagementState: () => ({ schedule }),
+      updateBackupManagement: (mutator) => {
+        const draft = { schedule: structuredClone(schedule) }
+        mutator(draft)
+        schedule = draft.schedule
+      },
+      flush: async () => {},
+    }
+    const service = {
+      environmentPassphrase: 'a sufficiently long backup passphrase',
+      requiresAuthenticationEncryption: () => true,
+      status: () => ({ schedule }),
+    }
+    const scheduler = new BackupScheduler({ store, service })
+
+    await scheduler.update({ enabled: true })
+
+    expect(schedule.enabled).toBe(true)
+  })
 })

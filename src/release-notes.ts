@@ -106,6 +106,20 @@ export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
   notes: [],
 }
 
+const RELEASE_0_7_0_DETAILS: UnreleasedReleaseNotes = {
+  highlights: [
+    'Authentication can now protect Homelab Inventory with a local owner password, OpenID Connect, or both methods together.',
+    'Fresh production installations include guided owner setup, while Authentication settings provide session review, password changes, OIDC owner binding, and recovery support.',
+  ],
+  fixes: [
+    'Browser API access now requires the owner session whenever authentication is enabled, with separate scoped access retained for machine agent registration and heartbeat.',
+    'Authentication data is excluded from custom backups by default, cannot be exported without encryption, and requires an environment encryption passphrase before scheduled backups can be enabled.',
+  ],
+  notes: [
+    'Schema 21 keeps authentication disabled on upgraded installations to prevent lockout. Fresh production data directories require one-time setup, and public demo sessions keep authentication unavailable.',
+  ],
+}
+
 const RELEASE_0_6_2_DETAILS: UnreleasedReleaseNotes = {
   highlights: [
     'Settings now includes Backup & Restore for complete or custom portable archives, stored-backup verification and download, and partial replacement restores.',
@@ -308,9 +322,16 @@ const RELEASE_0_2_1_DETAILS: UnreleasedReleaseNotes = {
 
 export const RELEASE_NOTES: ReleaseNoteEntry[] = [
   {
-    version: '0.6.2',
+    version: '0.7.0',
     date: '2026-08-02',
     channel: 'latest',
+    title: 'Optional owner authentication',
+    ...RELEASE_0_7_0_DETAILS,
+  },
+  {
+    version: '0.6.2',
+    date: '2026-08-02',
+    channel: 'release',
     title: 'Portable backup and restore',
     ...RELEASE_0_6_2_DETAILS,
   },

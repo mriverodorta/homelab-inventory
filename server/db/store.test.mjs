@@ -776,6 +776,7 @@ describe('HomelabInventoryStore', () => {
     expect(completedWrites.slice(0, -1).sort()).toEqual([
       'agentStatus',
       'agents',
+      'authentication',
       'backupManagement',
       'inventory',
       'project',

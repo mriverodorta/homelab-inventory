@@ -98,21 +98,21 @@ describe('release notes helpers', () => {
     const previousRelease = RELEASE_NOTES.find((entry) => entry.version === '0.2.1')!
     const engineRelease = RELEASE_NOTES.find((entry) => entry.version === '0.2.0')!
 
-    expect(hasReleaseNoteForVersion(RELEASE_NOTES, '0.6.2')).toBe(true)
+    expect(hasReleaseNoteForVersion(RELEASE_NOTES, '0.7.0')).toBe(true)
     expect(RELEASE_NOTES[0]).toEqual(
       expect.objectContaining({
-        version: '0.6.2',
-        title: 'Portable backup and restore',
+        version: '0.7.0',
+        title: 'Optional owner authentication',
       }),
     )
     expect(RELEASE_NOTES.filter((entry) => entry.channel === 'latest')).toEqual([
-      expect.objectContaining({ version: '0.6.2' }),
+      expect.objectContaining({ version: '0.7.0' }),
     ])
     expect(RELEASE_NOTES.find((entry) => entry.version === '0.1.38')).toEqual(
       expect.objectContaining({ channel: 'release' }),
     )
     expect(currentRelease.fixes).toContain(
-      'Protected restores now validate archive bounds, checksums, schemas, and dependencies before creating a complete recovery backup, entering maintenance mode, and applying a journaled atomic replacement with automatic rollback.',
+      'Browser API access now requires the owner session whenever authentication is enabled, with separate scoped access retained for machine agent registration and heartbeat.',
     )
     expect(registryRelease.highlights).toContain(
       'Add Hardware now combines a locally searched verified Catalog, the complete Manual editor, and reusable Private templates in one source-aware dialog.',

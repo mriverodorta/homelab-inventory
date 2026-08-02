@@ -9,6 +9,7 @@ const JSON_SECTION_FILES = Object.freeze({
   routingCache: 'sections/routing-cache.json',
   registryConfiguration: 'sections/registry-configuration.json',
   registryEnrollment: 'sections/registry-enrollment.json',
+  authentication: 'sections/authentication.json',
   catalogState: 'sections/catalog-state.json',
   agents: 'sections/agents.json',
   agentTelemetry: 'sections/agent-telemetry.json',
@@ -55,6 +56,7 @@ export async function collectBackupSections({ store, sections, demo = false }) {
     if (section === 'registryConfiguration') files.push(jsonEntry(JSON_SECTION_FILES.registryConfiguration, registryConfiguration(snapshot.registry)))
     if (section === 'agents') files.push(jsonEntry(JSON_SECTION_FILES.agents, snapshot.agents))
     if (section === 'agentTelemetry') files.push(jsonEntry(JSON_SECTION_FILES.agentTelemetry, snapshot.agentStatus))
+    if (section === 'authentication') files.push(jsonEntry(JSON_SECTION_FILES.authentication, snapshot.authentication))
     if (section === 'applicationMetadata') {
       files.push(jsonEntry(JSON_SECTION_FILES.applicationMetadata, {
         meta: snapshot.meta,
@@ -100,6 +102,7 @@ export function materializeBackupSections({ files, sections, currentStores }) {
   if (selected.includes('routingCache')) replacements.routingCache = parseJson(files, JSON_SECTION_FILES.routingCache)
   if (selected.includes('agents')) replacements.agents = parseJson(files, JSON_SECTION_FILES.agents)
   if (selected.includes('agentTelemetry')) replacements.agentStatus = parseJson(files, JSON_SECTION_FILES.agentTelemetry)
+  if (selected.includes('authentication')) replacements.authentication = parseJson(files, JSON_SECTION_FILES.authentication)
 
   let registry = structuredClone(currentStores.registry)
   if (selected.includes('registryConfiguration')) {

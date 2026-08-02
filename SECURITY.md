@@ -8,7 +8,7 @@ Security fixes target the latest Docker image and the newest semver tag.
 
 Do not expose Homelab Inventory directly to the public internet.
 
-The app currently has no built-in user authentication. It is intended for a trusted LAN, VPN, or reverse proxy that provides authentication and TLS. Built-in authentication is planned and coming soon.
+The app supports optional single-owner authentication with a local password, OpenID Connect, or both. Existing upgraded installations keep authentication disabled until the owner opts in. Built-in authentication does not provide TLS and is not a substitute for a trusted LAN, VPN, or HTTPS reverse proxy.
 
 ## Sensitive Data
 
@@ -18,11 +18,13 @@ Never commit or publish a real `/data` directory.
 
 ## Recommended Controls
 
-- Run behind Tailscale, WireGuard, a private LAN, or an authenticated reverse proxy.
+- Enable built-in owner authentication or enforce authentication at the reverse proxy.
+- Run behind Tailscale, WireGuard, a private LAN, or an HTTPS reverse proxy.
 - Use HTTPS/TLS when accessing it outside localhost.
 - Keep `/data` backed up and private.
 - Restrict filesystem permissions on the mounted data directory.
 - Keep only one running container writing to a data directory.
+- Encrypt portable authentication backups and configure `BACKUP_ENCRYPTION_PASSPHRASE` before enabling scheduled backups with authentication data.
 
 ## Reporting A Vulnerability
 

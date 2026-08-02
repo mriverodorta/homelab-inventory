@@ -16,7 +16,7 @@ It is built for people who want a practical map of what they own, what is instal
 - Container image: [Docker Hub](https://hub.docker.com/r/mriverodorta/homelab-inventory)
 
 > [!WARNING]
-> Do not expose Homelab Inventory directly to the public internet. It is currently intended for a trusted LAN, VPN, or reverse proxy that provides authentication and TLS. Built-in authentication is planned and coming soon.
+> Do not expose Homelab Inventory directly to the public internet without HTTPS and access controls. Built-in owner authentication is available but optional on upgraded installations, and it does not provide TLS. Use a trusted LAN, VPN, or TLS reverse proxy.
 
 ## Features
 
@@ -32,6 +32,7 @@ It is built for people who want a practical map of what they own, what is instal
 - JSON database stored outside the app image under a persistent `/data` volume.
 - lowdb-backed split stores with schema migrations and automatic backups.
 - Portable complete or custom backups with protected partial restore, optional encryption, scheduling, and retention controls.
+- Optional owner authentication with a local password, OpenID Connect, or both, plus session management and one-time recovery.
 - Optional Linux agent enrollment per server for keepalive and hardware telemetry.
 - Mobile-friendly inventory drawer and long-press drag behavior for touch devices.
 
@@ -82,6 +83,11 @@ UPDATE_CHECK_ENABLED=true
 REGISTRY_REFRESH_INTERVAL_MS=21600000
 TZ=UTC
 BACKUP_ENCRYPTION_PASSPHRASE=
+AUTH_BOOTSTRAP_CODE=
+AUTH_BOOTSTRAP_CODE_FILE=
+AUTH_EXTERNAL_URL=
+OIDC_CLIENT_SECRET=
+OIDC_CLIENT_SECRET_FILE=
 RATE_LIMIT_WINDOW_MS=60000
 RATE_LIMIT_MAX=600
 TRUST_PROXY=false
@@ -92,6 +98,8 @@ Connected registry mode refreshes the verified official catalog at startup and a
 When running behind a reverse proxy, set `TRUST_PROXY` to the exact proxy hop count or trusted proxy range so rate limits use the correct client address. Do not set it to `true`.
 
 Production starts empty. Create inventory items from the web interface, or copy an existing `/data` directory into the mounted volume.
+
+On a fresh production data directory, the first page opens owner setup. Supply `AUTH_BOOTSTRAP_CODE` or `AUTH_BOOTSTRAP_CODE_FILE`, or read the generated one-time code from `docker compose logs homelab-inventory`. Existing installations upgraded from an earlier release remain open until authentication is enabled in **Settings > Authentication**.
 
 More deployment details: [docs/DOCKER.md](docs/DOCKER.md)
 
@@ -131,7 +139,9 @@ The app keeps user data out of the application image. Runtime data lives in `/da
     registry.json
     routing-cache.json
     backup-management.json
+    authentication.json
   backups/
+  auth/
   registry/
 ```
 
@@ -141,6 +151,34 @@ More data details: [docs/DATA.md](docs/DATA.md)
 
 Upgrade and rollback guidance: [docs/MIGRATIONS.md](docs/MIGRATIONS.md)
 
+## Authentication
+
+Homelab Inventory supports one owner account with three optional modes:
+
+- **Local** uses a username and an Argon2id password of at least 12 characters.
+- **OIDC** uses Authorization Code flow with PKCE and binds the exact issuer and subject returned by the provider.
+- **Hybrid** keeps both methods available for the same owner.
+
+Fresh production installations require one-time local owner setup. Existing upgraded installations default to **Disabled** so an image update cannot lock out an established deployment. Enable or change methods in **Settings > Authentication**. Public demo sessions always bypass and disable authentication configuration.
+
+OIDC requires a public HTTPS application URL. Configure the provider callback as:
+
+```txt
+https://inventory.example.com/api/auth/oidc/callback
+```
+
+The client secret can be entered in Settings and stored as a mode-`0600` backend file, or supplied through `OIDC_CLIENT_SECRET` / `OIDC_CLIENT_SECRET_FILE`. File values take precedence and environment-managed secrets are read-only in the UI. Set `AUTH_EXTERNAL_URL` when the externally visible URL cannot be inferred from the deployment.
+
+If the owner is locked out, stop the application before creating a recovery grant so only one process writes the lowdb stores:
+
+```bash
+docker compose stop homelab-inventory
+docker compose run --rm homelab-inventory bun run auth:reset-owner
+docker compose start homelab-inventory
+```
+
+The command prints a recovery URL valid for 15 minutes. Authentication data is excluded from custom backups by default and can be exported only in an encrypted archive. Complete backups include it. Once authentication data exists, scheduled backups require `BACKUP_ENCRYPTION_PASSPHRASE`.
+
 ## Backup And Restore
 
 Open **Settings > Backup & Restore** to create a complete portable backup or choose individual sections such as inventory, project topology, registry state, agents, telemetry, catalog data, and the disposable cable-routing cache. A complete archive can later be restored in full or used to replace only selected sections.
@@ -149,7 +187,7 @@ Restore is replacement-only. Before changing live data, the app validates archiv
 
 Portable archives use the `.hlibackup` format. Backups containing registry enrollment or agent credentials require a passphrase before download. Stored copies may also be encrypted with scrypt and AES-256-GCM. Keep that passphrase outside the app because it cannot be recovered.
 
-Daily or weekly complete backups can run at a configurable time with a configurable retention count. Set `TZ` in Docker Compose to make the deployment timezone authoritative, or choose an IANA timezone in Settings. Set `BACKUP_ENCRYPTION_PASSPHRASE` to at least 12 characters to encrypt scheduled stored backups; when unset, scheduled copies remain protected by filesystem permissions but are not encrypted at rest.
+Daily or weekly complete backups can run at a configurable time with a configurable retention count. Set `TZ` in Docker Compose to make the deployment timezone authoritative, or choose an IANA timezone in Settings. Set `BACKUP_ENCRYPTION_PASSPHRASE` to at least 12 characters to encrypt scheduled stored backups. It is mandatory for scheduled backups once owner-authentication material exists.
 
 User-managed backups live under `/data/backups/user` with private directory and file permissions. Backup history is never included recursively. Migration and pre-restore recovery backups remain separate from ordinary portable backups. Public demo sessions can download only their disposable inventory and project data and cannot schedule, upload, restore, or export credentials.
 
@@ -226,7 +264,7 @@ The agent is optional. Inventory, canvas layout, and cabling work without it.
 
 ## Security
 
-Homelab Inventory currently has no built-in user authentication. Keep it behind a trusted network boundary or reverse proxy.
+Built-in owner authentication can protect the UI and browser API, but it is optional on upgraded installations and does not terminate TLS. Keep the app behind a trusted network boundary, VPN, or HTTPS reverse proxy. Machine agent registration and heartbeat endpoints retain their separate scoped-token authentication.
 
 Read [SECURITY.md](SECURITY.md) before deploying outside localhost.
 

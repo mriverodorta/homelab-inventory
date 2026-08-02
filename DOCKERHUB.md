@@ -23,11 +23,11 @@ GitHub is the source of truth for CI/CD. Docker Hub images are built and publish
 
 Do not expose Homelab Inventory directly to the public internet.
 
-The app is currently designed for a trusted LAN, VPN, or a reverse proxy that provides authentication and TLS. Built-in user authentication is not available yet; it is planned and coming soon. Until then, anyone who can reach the web UI can view and change inventory data.
+The app includes optional single-owner authentication using a local password, OpenID Connect, or both. Upgraded installations remain open until the owner opts in, and built-in authentication does not provide TLS. Anyone who can reach an installation with authentication disabled can view and change inventory data.
 
 Recommended deployment:
 
-- Put it behind Tailscale, WireGuard, a private LAN, or a reverse proxy with auth.
+- Put it behind Tailscale, WireGuard, a private LAN, or a TLS reverse proxy. Use built-in authentication or proxy authentication for access control.
 - Terminate HTTPS/TLS at the reverse proxy if accessing it outside localhost.
 - Keep the `/data` directory private and backed up.
 
@@ -126,6 +126,11 @@ UPDATE_CHECK_ENABLED=true
 REGISTRY_REFRESH_INTERVAL_MS=21600000
 TZ=UTC
 BACKUP_ENCRYPTION_PASSPHRASE=
+AUTH_BOOTSTRAP_CODE=
+AUTH_BOOTSTRAP_CODE_FILE=
+AUTH_EXTERNAL_URL=
+OIDC_CLIENT_SECRET=
+OIDC_CLIENT_SECRET_FILE=
 RATE_LIMIT_WINDOW_MS=60000
 RATE_LIMIT_MAX=600
 TRUST_PROXY=false
@@ -133,7 +138,9 @@ TRUST_PROXY=false
 
 Connected registry mode refreshes the verified official catalog at startup and approximately every six hours. Set `REGISTRY_REFRESH_INTERVAL_MS=0` to disable automatic catalog refreshes while retaining the manual Refresh action.
 
-You normally do not need to set those environment variables in Compose.
+You normally do not need to set those environment variables in Compose. A fresh production data directory requires one-time owner setup. Configure a bootstrap code or retrieve the generated code with `docker compose logs homelab-inventory`. Existing upgraded installations keep authentication disabled until it is enabled in Settings.
+
+Local login uses Argon2id password hashing. OIDC uses Authorization Code flow with PKCE and the callback `https://your-inventory.example/api/auth/oidc/callback`. `*_FILE` secrets take precedence over inline environment values and become read-only in the UI. If the owner is locked out, stop the service and run `docker compose run --rm homelab-inventory bun run auth:reset-owner` before starting it again.
 
 When running behind a reverse proxy, set `TRUST_PROXY` to the exact proxy hop count or trusted proxy range so rate limits use the correct client address. Do not set it to `true`.
 
@@ -154,7 +161,9 @@ The data layout is:
     registry.json
     routing-cache.json
     backup-management.json
+    authentication.json
   backups/
+  auth/
   registry/
 ```
 
@@ -166,7 +175,7 @@ Only one app container should write to the same mounted `/data` directory.
 
 Every restore performs bounded archive and checksum validation, a dependency-aware preflight, a complete pre-restore recovery backup, maintenance mode, and a journaled atomic replacement. Failed or interrupted restores roll back automatically. Archives containing registry enrollment or agent credentials require a passphrase before download and use scrypt with AES-256-GCM when encrypted.
 
-Daily or weekly complete backups support a configurable time, weekday, timezone, and retention count. Docker `TZ` takes precedence over the UI timezone. Set `BACKUP_ENCRYPTION_PASSPHRASE` to at least 12 characters to encrypt scheduled stored backups; otherwise scheduled copies are unencrypted at rest and rely on the private `/data/backups/user` filesystem permissions. Keep encryption passphrases outside the app.
+Daily or weekly complete backups support a configurable time, weekday, timezone, and retention count. Docker `TZ` takes precedence over the UI timezone. Set `BACKUP_ENCRYPTION_PASSPHRASE` to at least 12 characters to encrypt scheduled stored backups. It is required for scheduled backups once owner-authentication material exists. Authentication is omitted from custom archives by default and can be exported only with archive encryption. Keep encryption passphrases outside the app.
 
 Backup history is never archived recursively. Migration and pre-restore recovery backups are listed separately. Public demo sessions are export-only and cannot access credentials, server-side backup storage, schedules, uploads, or restore.
 

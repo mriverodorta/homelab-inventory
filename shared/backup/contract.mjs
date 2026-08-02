@@ -28,6 +28,11 @@ export const BACKUP_SECTIONS = Object.freeze({
     description: 'Installation signing key and registry credentials.',
     sensitive: true,
   },
+  authentication: {
+    label: 'Owner authentication',
+    description: 'Owner account, password hash, OIDC bindings, sessions, and security history.',
+    sensitive: true,
+  },
   catalogState: {
     label: 'Catalog state',
     description: 'Verified signed catalog generations and active pointer.',
@@ -60,6 +65,7 @@ export const BACKUP_SECTION_DEPENDENCIES = Object.freeze({
   routingCache: ['project'],
   registryConfiguration: ['inventory'],
   registryEnrollment: [],
+  authentication: [],
   catalogState: [],
   agents: ['inventory'],
   agentTelemetry: ['agents'],

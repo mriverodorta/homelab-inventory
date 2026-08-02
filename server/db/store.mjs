@@ -42,6 +42,7 @@ import { migrateSchema16To17 } from './migrate-schema-17.mjs'
 import { migrateSchema17To18 } from './migrate-schema-18.mjs'
 import { migrateSchema18To19 } from './migrate-schema-19.mjs'
 import { migrateSchema19To20 } from './migrate-schema-20.mjs'
+import { migrateSchema20To21 } from './migrate-schema-21.mjs'
 import {
   applyNasPowerConfigurationChange,
   inspectNasPowerConfigurationChange,
@@ -68,6 +69,11 @@ import {
   normalizeBackupManagementStore,
 } from '../backup/backup-model.mjs'
 import {
+  assertAuthenticationStoreShape,
+  createAuthenticationStore,
+  normalizeAuthenticationStore,
+} from '../auth/model.mjs'
+import {
   finishExampleInDraft,
   loadExampleIntoDraft,
   publicOnboardingStatus,
@@ -78,14 +84,14 @@ import {
   setWalkthroughStepInDraft,
 } from '../onboarding/lifecycle.mjs'
 
-export const CURRENT_SCHEMA_VERSION = 20
+export const CURRENT_SCHEMA_VERSION = 21
 
 const DEFAULT_SAVE_DEBOUNCE_MS = 500
 const DEFAULT_FLUSH_RETRY_BASE_MS = 1_000
 const MAX_FLUSH_RETRY_MS = 30_000
 const TRANSACTION_JOURNAL_FILE = '.store-transaction.json'
 const BACKUP_LIMIT = 10
-const STORE_NAMES = ['meta', 'inventory', 'project', 'agents', 'agentStatus', 'registry', 'routingCache', 'backupManagement']
+const STORE_NAMES = ['meta', 'inventory', 'project', 'agents', 'agentStatus', 'registry', 'routingCache', 'backupManagement', 'authentication']
 const ALWAYS_ENFORCED_COMPATIBILITY_CODES = new Set([
   'compatibility.resource.exhausted',
   'memory.slots.exceeded',
@@ -1525,6 +1531,7 @@ export class HomelabInventoryStore {
       registry: path.join(dataDir, 'stores', 'registry.json'),
       routingCache: path.join(dataDir, 'stores', 'routing-cache.json'),
       backupManagement: path.join(dataDir, 'stores', 'backup-management.json'),
+      authentication: path.join(dataDir, 'stores', 'authentication.json'),
     }
     this.databases = {}
     this.dirtyStores = new Set()
@@ -1535,6 +1542,7 @@ export class HomelabInventoryStore {
     this.flushRetryAttempt = 0
     this.persistenceFailure = null
     this.createdStores = false
+    this.freshSetupRequired = false
     this.registryMutationQueue = Promise.resolve()
     this.projectCommitListeners = new Set()
     this.pendingProjectCommits = []
@@ -1555,6 +1563,13 @@ export class HomelabInventoryStore {
     this.databases.backupManagement.data = normalizeBackupManagementStore(loadedBackupManagement)
     if (JSON.stringify(loadedBackupManagement) !== JSON.stringify(this.databases.backupManagement.data)) {
       await this.databases.backupManagement.write()
+    }
+    const loadedAuthentication = this.databases.authentication.data
+    this.databases.authentication.data = normalizeAuthenticationStore(loadedAuthentication, {
+      setupRequired: this.freshSetupRequired,
+    })
+    if (JSON.stringify(loadedAuthentication) !== JSON.stringify(this.databases.authentication.data)) {
+      await this.databases.authentication.write()
     }
     await this.runMigrationsSafely()
     await this.normalizeLoadedRegistry()
@@ -1641,6 +1656,7 @@ export class HomelabInventoryStore {
 
   async writeEmptyStores() {
     const now = new Date().toISOString()
+    this.freshSetupRequired = true
 
     await writeJson(this.paths.meta, {
       schemaVersion: CURRENT_SCHEMA_VERSION,
@@ -1691,6 +1707,12 @@ export class HomelabInventoryStore {
     if (!(await pathExists(this.paths.backupManagement))) {
       await writeJson(this.paths.backupManagement, createBackupManagementStore())
     }
+
+    if (!(await pathExists(this.paths.authentication))) {
+      await writeJson(this.paths.authentication, createAuthenticationStore({
+        setupRequired: this.freshSetupRequired,
+      }))
+    }
   }
 
   async openStores() {
@@ -1737,6 +1759,10 @@ export class HomelabInventoryStore {
     this.databases.backupManagement = new Low(
       new JsonFileAdapter(this.paths.backupManagement),
       createBackupManagementStore(),
+    )
+    this.databases.authentication = new Low(
+      new JsonFileAdapter(this.paths.authentication),
+      createAuthenticationStore({ setupRequired: this.freshSetupRequired }),
     )
 
     await Promise.all(STORE_NAMES.map((name) => this.databases[name].read()))
@@ -2046,11 +2072,26 @@ export class HomelabInventoryStore {
         continue
       }
 
+      if (currentVersion === 20) {
+        const migrated = migrateSchema20To21(this.databases.authentication.data)
+        this.databases.authentication.data = migrated.authentication
+        this.databases.meta.data.schemaVersion = 21
+        this.databases.meta.data.lastMigration = {
+          from: 20,
+          to: 21,
+          completedAt: new Date().toISOString(),
+          backupId: path.basename(this.activeMigrationBackupPath),
+          summary: migrated.summary,
+        }
+        currentVersion = 21
+        continue
+      }
+
       throw new Error(`No migration registered for schema version ${currentVersion}.`)
     }
 
     this.databases.meta.data.updatedAt = new Date().toISOString()
-    await this.flush(['inventory', 'project', 'agents', 'agentStatus', 'registry', 'backupManagement'])
+    await this.flush(['inventory', 'project', 'agents', 'agentStatus', 'registry', 'backupManagement', 'authentication'])
     await this.flush(['meta'])
   }
 
@@ -2061,6 +2102,7 @@ export class HomelabInventoryStore {
     assertAgentStatusStoreShape(this.databases.agentStatus.data)
     assertRegistryStoreShape(this.databases.registry.data)
     assertBackupManagementStoreShape(this.databases.backupManagement.data)
+    assertAuthenticationStoreShape(this.databases.authentication.data)
     assertOnboardingState(this.databases.meta.data.onboarding)
     assertProjectShape(this.getProject())
     this.databases.meta.data.skippedUpdateVersion ??= null
@@ -2302,6 +2344,21 @@ export class HomelabInventoryStore {
 
   getBackupManagementState() {
     return structuredClone(this.databases.backupManagement.data)
+  }
+
+  getAuthenticationState() {
+    return structuredClone(this.databases.authentication.data)
+  }
+
+  updateAuthentication(mutator) {
+    return this.withAtomicStoreMutation(['authentication'], () => {
+      const draft = structuredClone(this.databases.authentication.data)
+      mutator(draft)
+      assertAuthenticationStoreShape(draft)
+      this.databases.authentication.data = draft
+      this.scheduleFlush('authentication')
+      return this.getAuthenticationState()
+    })
   }
 
   updateBackupManagement(mutator) {

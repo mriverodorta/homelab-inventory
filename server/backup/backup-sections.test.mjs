@@ -5,12 +5,14 @@ import { describe, expect, it } from 'vitest'
 import { createBackupManagementStore } from './backup-model.mjs'
 import { collectBackupSections, materializeBackupSections } from './backup-sections.mjs'
 import { createRegistryStore } from '../registry/model.mjs'
+import { createAuthenticationStore } from '../auth/model.mjs'
 
 function stores() {
   return {
     meta: { schemaVersion: 20 }, inventory: { servers: [] }, project: { id: 'default' },
     routingCache: { version: 1 }, agents: { enrollments: {}, devices: {} }, agentStatus: { servers: {} },
     registry: createRegistryStore(), backupManagement: createBackupManagementStore(),
+    authentication: createAuthenticationStore(),
   }
 }
 
@@ -35,6 +37,21 @@ describe('backup section ownership', () => {
     const replacements = materializeBackupSections({ files, sections: ['registryEnrollment'], currentStores: current })
     expect(replacements.registry.settings.mode).toBe('connected')
     expect(replacements.registry.installationIdentity).toEqual({ state: 'active' })
+  })
+
+  it('collects and materializes owner authentication independently', async () => {
+    const dataDir = await fs.mkdtemp(path.join(os.tmpdir(), 'hli-auth-sections-'))
+    const current = stores()
+    current.authentication.bootstrapState.setupRequired = true
+    const result = await collectBackupSections({
+      store: { dataDir, snapshotStores: async () => current },
+      sections: ['authentication'],
+    })
+    const files = new Map(result.files.map((file) => [file.name, file.body]))
+    const replacements = materializeBackupSections({ files, sections: ['authentication'], currentStores: stores() })
+
+    expect(result.files.map((file) => file.name)).toEqual(['sections/authentication.json'])
+    expect(replacements.authentication.bootstrapState.setupRequired).toBe(true)
   })
 
   it('includes immutable catalog indexes while excluding temporary files', async () => {

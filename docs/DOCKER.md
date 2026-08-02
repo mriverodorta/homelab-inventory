@@ -27,6 +27,11 @@ APP_MODE=production
 RATE_LIMIT_WINDOW_MS=60000
 RATE_LIMIT_MAX=600
 TRUST_PROXY=false
+AUTH_BOOTSTRAP_CODE=
+AUTH_BOOTSTRAP_CODE_FILE=
+AUTH_EXTERNAL_URL=
+OIDC_CLIENT_SECRET=
+OIDC_CLIENT_SECRET_FILE=
 ```
 
 You only need environment variables when overriding defaults.
@@ -46,6 +51,14 @@ sudo chown -R 10001:10001 /data/stack/homelab-inventory/data
 
 Production Docker starts with empty stores when `/data` is empty. It does not include personal data or sample inventory in the image.
 
+A fresh data directory requires one-time owner setup. Set `AUTH_BOOTSTRAP_CODE` or mount a Docker secret and set `AUTH_BOOTSTRAP_CODE_FILE`; otherwise the server generates a code and prints it once to the container log:
+
+```bash
+docker compose logs homelab-inventory
+```
+
+Installations upgraded from a release without built-in authentication remain open. Enable local, OIDC, or hybrid login later from **Settings > Authentication**.
+
 To migrate an existing local project:
 
 ```bash
@@ -53,6 +66,26 @@ rsync -av ./data/ user@server:/data/stack/homelab-inventory/data/
 ```
 
 Then start the container.
+
+## Authentication And OIDC
+
+Local owner credentials are stored only as Argon2id hashes. OIDC uses Authorization Code flow with PKCE and an exact issuer/subject binding. Configure the identity provider callback as:
+
+```txt
+https://inventory.example.com/api/auth/oidc/callback
+```
+
+Use `AUTH_EXTERNAL_URL=https://inventory.example.com` when the public URL is not configured through the UI. OIDC secrets entered in Settings are stored below `/data/auth` with mode `0600`. `OIDC_CLIENT_SECRET_FILE` takes precedence over `OIDC_CLIENT_SECRET`; either environment override locks the secret field in Settings.
+
+To recover the only owner, stop the application before running the one-time recovery command:
+
+```bash
+docker compose stop homelab-inventory
+docker compose run --rm homelab-inventory bun run auth:reset-owner
+docker compose start homelab-inventory
+```
+
+The printed URL expires after 15 minutes. Configure `BACKUP_ENCRYPTION_PASSPHRASE` before combining authentication with scheduled backups.
 
 ## Watchtower
 
@@ -102,7 +135,7 @@ See [RELEASES.md](RELEASES.md) for the full release process.
 
 ## Reverse Proxy
 
-Do not expose this app directly to the public internet. Place it behind a trusted LAN, VPN, or a reverse proxy with authentication and TLS.
+Do not expose this app directly to the public internet without HTTPS and access controls. Built-in owner authentication is optional for upgraded installations and does not provide TLS. Place the app behind a trusted LAN, VPN, or TLS reverse proxy.
 
 Example headers to add at the proxy layer:
 

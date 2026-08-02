@@ -6,6 +6,7 @@ import {
   assertProjectStoreShape,
 } from '../db/validation.mjs'
 import { assertRegistryStoreShape } from '../registry/model.mjs'
+import { assertAuthenticationStoreShape } from '../auth/model.mjs'
 import { assertBackupManagementStoreShape } from './backup-model.mjs'
 import { materializeBackupSections } from './backup-sections.mjs'
 
@@ -29,6 +30,7 @@ export function preflightRestore({ manifest, files, currentStores }) {
     assertAgentsStoreShape(composed.agents)
     assertAgentStatusStoreShape(composed.agentStatus)
     assertRegistryStoreShape(composed.registry)
+    assertAuthenticationStoreShape(composed.authentication)
     assertBackupManagementStoreShape(composed.backupManagement)
   } catch (error) {
     blockers.push({ code: 'dependency-conflict', message: error instanceof Error ? error.message : 'Selected sections are incompatible.' })

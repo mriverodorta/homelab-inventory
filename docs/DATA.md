@@ -15,7 +15,10 @@ Homelab Inventory stores data in JSON files managed through lowdb.
     registry.json
     routing-cache.json
     backup-management.json
+    authentication.json
   backups/
+  auth/
+    oidc-client-secret
   registry/
     installation-ed25519.pem
     installation-credentials.json
@@ -30,6 +33,7 @@ Homelab Inventory stores data in JSON files managed through lowdb.
 - `registry.json`: registry preferences, private templates, catalog links, contribution outbox/ledger records, and public enrollment metadata.
 - `routing-cache.json`: disposable generated cable routes; this can be rebuilt from canonical project data.
 - `backup-management.json`: scheduled-backup preferences and backup/restore history. Backup contents are never embedded in this store.
+- `authentication.json`: owner account, Argon2id credential hash, OIDC identity relationship, sessions, recovery grants, and bounded local security events.
 - `meta.json`: database schema version and metadata.
 
 ## Migrations
@@ -66,6 +70,10 @@ Schema 16 converts each legacy RAM kit into one inventory record and one assignm
 
 The migration refuses ambiguous or inconsistent kit data instead of guessing. A failure restores the pre-migration stores and prevents the app from starting with a partially converted database.
 
+### Schema 21 Owner Authentication
+
+Schema 21 adds `stores/authentication.json` with numeric primary and foreign keys. Existing installations migrate with authentication disabled so an unattended Docker update cannot lock out the owner. A genuinely fresh production data directory starts with one-time owner setup enabled. OIDC client secrets live outside lowdb under `/data/auth` with mode `0600`.
+
 ## Backups
 
 Portable user backups are written under:
@@ -78,7 +86,7 @@ Create and restore them from **Settings > Backup & Restore**. Complete archives 
 
 The restore preflight validates archive bounds, paths, hashes, schema compatibility, and dependencies before writes begin. The app then creates a complete pre-restore backup and uses maintenance mode plus a durable journal so failed or interrupted replacement can be rolled back. Backup history itself is excluded from archives to prevent recursion.
 
-Sensitive archives require a passphrase for download. Optional encrypted stored copies use scrypt and AES-256-GCM. Scheduled complete backups can run daily or weekly at a configured time with a configurable retention count. Docker `TZ` is authoritative when set; `BACKUP_ENCRYPTION_PASSPHRASE` encrypts scheduled copies when configured.
+Sensitive archives require a passphrase for download. Optional encrypted stored copies use scrypt and AES-256-GCM. Authentication is excluded from custom archives by default and cannot be exported unencrypted; complete archives include it. Scheduled complete backups can run daily or weekly at a configured time with a configurable retention count. Docker `TZ` is authoritative when set. Scheduled backups require `BACKUP_ENCRYPTION_PASSPHRASE` once authentication material exists.
 
 User backup directories are mode `0700` and files are mode `0600`. Migration and pre-restore recovery backups remain separate from ordinary portable archives.
 

@@ -2,7 +2,7 @@
   "name": "homelab-inventory",
   "private": true,
   "description": "Self-hosted visual inventory and cabling workbench for homelab hardware.",
-  "version": "0.6.2",
+  "version": "0.7.0",
   "license": "MIT",
   "type": "module",
   "repository": {
@@ -32,7 +32,9 @@
     "pretest": "bun run build:wasm",
     "release-notes:check": "bun scripts/check-release-notes.mjs",
     "start": "NODE_ENV=production bun server/index.mjs",
-    "test": "vitest run && bun run test:sqlite",
+    "auth:reset-owner": "bun server/auth/reset-owner-cli.mjs",
+    "test": "vitest run && bun run test:auth && bun run test:sqlite",
+    "test:auth": "bun test server/auth/*.bun_spec.mjs",
     "test:sqlite": "bun test server/registry/*.bun_spec.mjs",
     "test:bundle": "bun test scripts/check-frontend-bundle.bun_spec.mjs",
     "test:watch": "vitest"
@@ -52,6 +54,7 @@
     "helmet": "^8.3.0",
     "lowdb": "^7.0.1",
     "lucide-react": "^1.28.0",
+    "openid-client": "^6.8.4",
     "radix-ui": "^1.6.7",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",

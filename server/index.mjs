@@ -7,6 +7,12 @@ import { fileURLToPath } from 'node:url'
 import { RELEASE_NOTES } from '../src/release-notes.ts'
 import { registerAgentRoutes } from './agent-routes.mjs'
 import { registerBackupRoutes } from './backup-routes.mjs'
+import { AuthService } from './auth/auth-service.mjs'
+import { readAuthRuntimeConfig } from './auth/config.mjs'
+import { createAuthenticationGuard } from './auth/middleware.mjs'
+import { OidcService } from './auth/oidc-service.mjs'
+import { registerAuthenticationRoutes } from './auth/routes.mjs'
+import { SessionService } from './auth/session-service.mjs'
 import { BackupScheduler } from './backup/backup-scheduler.mjs'
 import { BackupService } from './backup/backup-service.mjs'
 import { apiErrorHandler } from './api-error-handler.mjs'
@@ -155,6 +161,21 @@ app.use('/api/agent/servers/:serverId/register', express.json({ limit: '16kb' })
 app.use('/api/agent/servers/:serverId/heartbeat', express.json({ limit: '256kb' }))
 app.use(express.json({ limit: '10mb' }))
 
+const authRuntime = store ? await readAuthRuntimeConfig({
+  dataDir,
+  log: store.getAuthenticationState().bootstrapState.setupRequired ? console.log : () => {},
+}) : null
+if (authRuntime) authRuntime.backupEncryptionConfigured = Boolean(backupEnvironmentPassphrase)
+const sessionService = store ? new SessionService({ store, externalUrl: authRuntime.externalUrl }) : null
+const authService = store ? new AuthService({ store, sessionService, runtime: authRuntime }) : null
+const oidcService = store ? new OidcService({ store, authService, runtime: authRuntime }) : null
+
+registerAuthenticationRoutes(app, {
+  service: authService,
+  oidcService,
+  demo: isDemoMode,
+})
+app.use(createAuthenticationGuard({ service: authService, demo: isDemoMode }))
 registerAgentRoutes(app, store, { disabled: isDemoMode })
 
 function parseCookie(header, name) {

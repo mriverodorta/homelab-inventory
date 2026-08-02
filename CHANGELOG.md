@@ -6,6 +6,22 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 
 ## Unreleased
 
+## [0.7.0] - 2026-08-02
+
+### Added
+
+- Added optional single-owner authentication with local Argon2id credentials, OpenID Connect Authorization Code flow with PKCE, or both methods in hybrid mode.
+- Added first-run owner setup for fresh production installations, authenticated session management, local security activity, password changes, OIDC owner binding, and a 15-minute recovery CLI.
+
+### Security
+
+- Browser API access is denied until first-run setup is complete and requires an authenticated owner session whenever protection is enabled. Health checks and separately authenticated machine-agent registration and heartbeat routes retain their dedicated access rules.
+- Authentication exports are excluded from custom backups by default and require encrypted archives. Scheduled backups cannot be combined with owner-authentication material until `BACKUP_ENCRYPTION_PASSPHRASE` is configured.
+
+### Notes
+
+- Schema 21 adds a relational authentication store. Existing installations upgrade with authentication disabled to prevent lockout, while genuinely fresh production data directories require one-time owner setup. Public demo sessions keep authentication unavailable.
+
 ## [0.6.2] - 2026-08-02
 
 ### Added

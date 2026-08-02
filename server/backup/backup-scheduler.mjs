@@ -51,6 +51,9 @@ export class BackupScheduler {
       .filter((key) => Object.hasOwn(input, key))
       .map((key) => [key, input[key]]))
     const schedule = this.effectiveSchedule({ ...current, ...changes, updatedAt: new Date().toISOString() })
+    if (schedule.enabled && this.service.requiresAuthenticationEncryption?.() && !this.service.environmentPassphrase) {
+      throw new Error('Configure BACKUP_ENCRYPTION_PASSPHRASE before enabling scheduled backups while owner authentication data exists.')
+    }
     const nextRun = nextBackupRun(schedule)
     schedule.nextRunAt = nextRun?.toISOString() ?? null
     assertBackupSchedule(schedule)
