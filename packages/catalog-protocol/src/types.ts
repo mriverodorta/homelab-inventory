@@ -4,6 +4,33 @@ export const FINGERPRINT_VERSION = 3
 export const SUPPORTED_FINGERPRINT_VERSIONS = [LEGACY_FINGERPRINT_VERSION, FINGERPRINT_VERSION] as const
 export const MANUFACTURER_ALIAS_VERSION = 1
 
+export const CPU_SPEC_KEYS = [
+  'socket',
+  'cores',
+  'threads',
+  'baseClockGhz',
+  'boostClockGhz',
+  'tdpWatts',
+  'channels',
+  'generation',
+  'cacheMb',
+  'memoryTypes',
+  'memorySpeedsMt',
+  'eccSupport',
+  'integratedGraphics',
+  'pcieGeneration',
+  'pcieLanes',
+  'maxTemperatureC',
+  'launchDate',
+  'discontinued',
+  'performanceCores',
+  'efficiencyCores',
+  'configurableTdpMinWatts',
+  'configurableTdpMaxWatts',
+] as const
+
+export type CpuCatalogSpecKey = typeof CPU_SPEC_KEYS[number]
+
 export type FingerprintVersion = typeof SUPPORTED_FINGERPRINT_VERSIONS[number]
 export type TopologyCompleteness = 'complete' | 'partial' | 'conflicting'
 

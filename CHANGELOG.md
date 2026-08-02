@@ -6,6 +6,12 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 
 ## Unreleased
 
+## [0.6.1] - 2026-08-02
+
+### Fixed
+
+- Connected clients now preserve and verify the complete official CPU specification contract, allowing signed enriched CPU catalogs to activate without weakening hash or signature validation.
+
 ## [0.6.0] - 2026-08-01
 
 ### Added

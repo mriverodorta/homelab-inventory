@@ -106,6 +106,14 @@ export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
   notes: [],
 }
 
+const RELEASE_0_6_1_DETAILS: UnreleasedReleaseNotes = {
+  highlights: [],
+  fixes: [
+    'Verified CPU catalog updates now preserve the complete official specification set and activate without false content-hash failures.',
+  ],
+  notes: [],
+}
+
 const RELEASE_0_6_0_DETAILS: UnreleasedReleaseNotes = {
   highlights: [
     'The verified catalog now distinguishes product variants by trusted motherboard identity, complete structural topology, or explicit OEM PCIe expansion support, keeping standard and expansion-capable versions of the same model separate without using installed components or local server roles as identity.',
@@ -285,9 +293,16 @@ const RELEASE_0_2_1_DETAILS: UnreleasedReleaseNotes = {
 
 export const RELEASE_NOTES: ReleaseNoteEntry[] = [
   {
+    version: '0.6.1',
+    date: '2026-08-02',
+    channel: 'latest',
+    title: 'Verified enriched CPU catalogs',
+    ...RELEASE_0_6_1_DETAILS,
+  },
+  {
     version: '0.6.0',
     date: '2026-08-01',
-    channel: 'latest',
+    channel: 'release',
     title: 'Hardware variant-aware catalogs',
     ...RELEASE_0_6_0_DETAILS,
   },

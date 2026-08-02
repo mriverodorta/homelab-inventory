@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import vectors from './vectors/canonical-items.json'
 import {
+  CPU_SPEC_KEYS,
   canonicalJson,
   computeCatalogDigests,
+  digestCatalogTemplate,
   normalizeManufacturer,
   sanitizeCatalogItem,
 } from '../src'
@@ -24,6 +26,38 @@ describe('catalog protocol normalization', () => {
 })
 
 describe('catalog protocol sanitizer', () => {
+  it('preserves the canonical official CPU catalog fields', async () => {
+    expect(CPU_SPEC_KEYS).toEqual([
+      'socket', 'cores', 'threads', 'baseClockGhz', 'boostClockGhz',
+      'tdpWatts', 'channels', 'generation', 'cacheMb', 'memoryTypes',
+      'memorySpeedsMt', 'eccSupport', 'integratedGraphics', 'pcieGeneration',
+      'pcieLanes', 'maxTemperatureC', 'launchDate', 'discontinued',
+      'performanceCores', 'efficiencyCores', 'configurableTdpMinWatts',
+      'configurableTdpMaxWatts',
+    ])
+
+    const item = {
+      type: 'cpu',
+      name: 'AMD Ryzen 9 7950X',
+      manufacturer: 'AMD',
+      family: 'Ryzen 9',
+      model: '7950X',
+      number: '7950X',
+      specs: {
+        socket: 'AM5', cores: 16, threads: 32, baseClockGhz: 4.5, boostClockGhz: 5.7,
+        tdpWatts: 170, channels: 2, generation: 'Zen 4', cacheMb: 80, memoryTypes: 'DDR5',
+        memorySpeedsMt: '5200, 3600', eccSupport: true, integratedGraphics: 'AMD Radeon Graphics',
+        pcieGeneration: 5, pcieLanes: 24, maxTemperatureC: 95, launchDate: '2022-09-27',
+        discontinued: false,
+      },
+    }
+
+    const first = await digestCatalogTemplate(item)
+    const second = await digestCatalogTemplate(structuredClone(item))
+    expect(first).toEqual(second)
+    expect(first.item).toEqual(item)
+  })
+
   it('removes instance-owned and secret-adjacent fields', () => {
     const item = sanitizeCatalogItem({
       id: 44,

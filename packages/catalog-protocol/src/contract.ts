@@ -22,6 +22,39 @@ const FINGERPRINT_V2_CPU_VECTOR = {
   contentHash: 'e404ed4bb011bda97f3d2edfe9d07e4ccc0caa816ff35c3a6c51029501590af2',
 } as const
 
+const FINGERPRINT_V3_CPU_IMPORT_VECTOR = {
+  item: {
+    type: 'cpu',
+    name: 'AMD Ryzen 9 7950X',
+    manufacturer: 'AMD',
+    family: 'Ryzen 9',
+    model: '7950X',
+    number: '7950X',
+    specs: {
+      socket: 'AM5',
+      cores: 16,
+      threads: 32,
+      baseClockGhz: 4.5,
+      boostClockGhz: 5.7,
+      tdpWatts: 170,
+      channels: 2,
+      generation: 'Zen 4',
+      cacheMb: 80,
+      memoryTypes: 'DDR5',
+      memorySpeedsMt: '5200, 3600',
+      eccSupport: true,
+      integratedGraphics: 'AMD Radeon Graphics',
+      pcieGeneration: 5,
+      pcieLanes: 24,
+      maxTemperatureC: 95,
+      launchDate: '2022-09-27',
+      discontinued: false,
+    },
+  },
+  identityHash: '6596dbfe2cdc69d21e871629d10227a20d4d1bd1f51d8c7c1456bfd109d12f23',
+  contentHash: '6ca5f91e7b8eb8fcfccc7e5de53b1f170a0916b82d33023c3df96a2245b4f228',
+} as const
+
 export async function assertCatalogProtocolContract(): Promise<void> {
   if (FINGERPRINT_VERSION !== 3 || LEGACY_FINGERPRINT_VERSION !== 2) {
     throw new Error(`Catalog fingerprint version ${FINGERPRINT_VERSION} has no publication contract.`)
@@ -35,5 +68,14 @@ export async function assertCatalogProtocolContract(): Promise<void> {
     || projection.contentHash !== FINGERPRINT_V2_CPU_VECTOR.contentHash
   ) {
     throw new Error('Catalog fingerprint-v2 implementation does not match its immutable publication contract.')
+  }
+
+  const currentProjection = await digestCatalogTemplate(FINGERPRINT_V3_CPU_IMPORT_VECTOR.item)
+  if (
+    currentProjection.status !== 'eligible'
+    || currentProjection.identityHash !== FINGERPRINT_V3_CPU_IMPORT_VECTOR.identityHash
+    || currentProjection.contentHash !== FINGERPRINT_V3_CPU_IMPORT_VECTOR.contentHash
+  ) {
+    throw new Error('Catalog fingerprint-v3 CPU import contract changed unexpectedly.')
   }
 }

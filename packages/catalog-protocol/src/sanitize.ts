@@ -38,6 +38,9 @@ const SAFE_SPEC_FIELDS = new Set([
   'threads', 'vramGb', 'wattage', 'wattageWatts', 'wifiGeneration', 'wireless', 'allowOutletFanOut',
   'ecc', 'rank', 'hardwareRevision', 'boardRevision', 'partNumber', 'region',
   'topologyCompleteness', 'topologyComplete', 'variantKey',
+  'cacheMb', 'memoryTypes', 'memorySpeedsMt', 'eccSupport', 'integratedGraphics',
+  'pcieGeneration', 'pcieLanes', 'maxTemperatureC', 'launchDate', 'discontinued',
+  'performanceCores', 'efficiencyCores', 'configurableTdpMinWatts', 'configurableTdpMaxWatts',
 ])
 const SAFE_COMPATIBILITY_FIELDS = new Set([
   'host', 'requirements', 'cpu', 'memory', 'storageSlots', 'expansionSlots', 'motherboard', 'cooling',

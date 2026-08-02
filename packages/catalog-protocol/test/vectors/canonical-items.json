@@ -17,5 +17,24 @@
       "model": "I5-10500T",
       "specs": { "baseClock": "2.3GHz" }
     }
+  },
+  {
+    "name": "AMD CPU official field normalization",
+    "left": {
+      "type": "cpu",
+      "name": "AMD Ryzen 9 7950X",
+      "manufacturer": "Advanced Micro Devices",
+      "family": "Ryzen 9",
+      "number": "7950X",
+      "specs": { "socket": "AM5", "generation": "Zen 4", "baseClockGhz": 4.5 }
+    },
+    "right": {
+      "type": "CPU",
+      "name": "AMD Ryzen 9 7950X",
+      "manufacturer": "AMD",
+      "family": "ryzen 9",
+      "number": "7950X",
+      "specs": { "socket": "am5", "generation": "zen 4", "baseClockGhz": 4.5 }
+    }
   }
 ]

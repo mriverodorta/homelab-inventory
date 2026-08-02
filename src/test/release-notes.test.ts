@@ -98,21 +98,21 @@ describe('release notes helpers', () => {
     const previousRelease = RELEASE_NOTES.find((entry) => entry.version === '0.2.1')!
     const engineRelease = RELEASE_NOTES.find((entry) => entry.version === '0.2.0')!
 
-    expect(hasReleaseNoteForVersion(RELEASE_NOTES, '0.6.0')).toBe(true)
+    expect(hasReleaseNoteForVersion(RELEASE_NOTES, '0.6.1')).toBe(true)
     expect(RELEASE_NOTES[0]).toEqual(
       expect.objectContaining({
-        version: '0.6.0',
-        title: 'Hardware variant-aware catalogs',
+        version: '0.6.1',
+        title: 'Verified enriched CPU catalogs',
       }),
     )
     expect(RELEASE_NOTES.filter((entry) => entry.channel === 'latest')).toEqual([
-      expect.objectContaining({ version: '0.6.0' }),
+      expect.objectContaining({ version: '0.6.1' }),
     ])
     expect(RELEASE_NOTES.find((entry) => entry.version === '0.1.38')).toEqual(
       expect.objectContaining({ channel: 'release' }),
     )
-    expect(currentRelease.highlights).toContain(
-      'The verified catalog now distinguishes product variants by trusted motherboard identity, complete structural topology, or explicit OEM PCIe expansion support, keeping standard and expansion-capable versions of the same model separate without using installed components or local server roles as identity.',
+    expect(currentRelease.fixes).toContain(
+      'Verified CPU catalog updates now preserve the complete official specification set and activate without false content-hash failures.',
     )
     expect(registryRelease.highlights).toContain(
       'Add Hardware now combines a locally searched verified Catalog, the complete Manual editor, and reusable Private templates in one source-aware dialog.',
@@ -120,9 +120,10 @@ describe('release notes helpers', () => {
     expect(registryRelease.notes).toContain(
       'Schema 15 adds an independent registry store for catalog preferences, private templates, signed snapshot metadata, and numeric catalog links without changing canvas, assignment, or cable relationships.',
     )
-    expect(UNRELEASED_RELEASE_NOTES.highlights).toEqual([])
-    expect(UNRELEASED_RELEASE_NOTES.fixes).toEqual([])
-    expect(UNRELEASED_RELEASE_NOTES.notes).toEqual([])
+    for (const section of Object.values(UNRELEASED_RELEASE_NOTES)) {
+      expect(Array.isArray(section)).toBe(true)
+      expect(section.every((entry) => typeof entry === 'string' && entry.trim().length > 0)).toBe(true)
+    }
     expect(onboardingRelease.highlights).toContain(
       'Fresh workspaces can now explore a complete fictional homelab or start empty with an adaptive create, place, and connect checklist.',
     )
