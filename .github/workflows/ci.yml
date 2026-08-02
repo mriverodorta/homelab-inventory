@@ -62,7 +62,7 @@ jobs:
         run: bun run benchmark:engine
 
       - name: Upload engine benchmark
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: engine-benchmarks
           path: artifacts/engine-benchmarks/*.json
