@@ -114,6 +114,7 @@ const RELEASE_0_6_2_DETAILS: UnreleasedReleaseNotes = {
   fixes: [
     'Protected restores now validate archive bounds, checksums, schemas, and dependencies before creating a complete recovery backup, entering maintenance mode, and applying a journaled atomic replacement with automatic rollback.',
     'Sensitive registry-enrollment and agent data now requires passphrase-protected download, with optional scrypt and AES-256-GCM encryption for stored portable backups.',
+    'The production Docker image includes the backup and restore runtime modules required by the management API and scheduler.',
   ],
   notes: [
     'Schema 20 adds backup-management metadata without changing inventory or project relationships. Portable files live under /data/backups/user, backup history is excluded from archives, and public demo sessions remain export-only.',

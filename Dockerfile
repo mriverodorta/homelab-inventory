@@ -54,9 +54,11 @@ COPY --from=prod-deps --chown=10001:10001 /app/node_modules ./node_modules
 COPY --from=build --chown=10001:10001 /app/dist ./dist
 COPY --chown=10001:10001 src/release-notes.ts ./src/
 COPY --chown=10001:10001 shared/compatibility ./shared/compatibility
+COPY --chown=10001:10001 shared/backup/contract.mjs ./shared/backup/
 COPY --chown=10001:10001 shared/power-ports.mjs ./shared/
 COPY --chown=10001:10001 shared/engine ./shared/engine
-COPY --chown=10001:10001 server/index.mjs server/agent-routes.mjs server/api-error-handler.mjs server/app-health.mjs server/engine-routes.mjs server/inventory-routes.mjs server/onboarding-routes.mjs server/project-routes.mjs server/registry-routes.mjs server/rate-limit.mjs server/request-security.mjs server/routing-cache-model.mjs server/routing-cache-routes.mjs server/runtime-config.mjs server/server-lifecycle.mjs server/store-request-error.mjs server/update-checker.mjs server/update-routes.mjs server/update-scheduler.mjs ./server/
+COPY --chown=10001:10001 server/index.mjs server/agent-routes.mjs server/api-error-handler.mjs server/app-health.mjs server/backup-routes.mjs server/engine-routes.mjs server/inventory-routes.mjs server/onboarding-routes.mjs server/project-routes.mjs server/registry-routes.mjs server/rate-limit.mjs server/request-security.mjs server/routing-cache-model.mjs server/routing-cache-routes.mjs server/runtime-config.mjs server/server-lifecycle.mjs server/store-request-error.mjs server/update-checker.mjs server/update-routes.mjs server/update-scheduler.mjs ./server/
+COPY --chown=10001:10001 server/backup/archive-envelope.mjs server/backup/archive-security.mjs server/backup/backup-model.mjs server/backup/backup-scheduler.mjs server/backup/backup-sections.mjs server/backup/backup-service.mjs server/backup/restore-journal.mjs server/backup/restore-preflight.mjs ./server/backup/
 COPY --chown=10001:10001 server/engine/command-service.mjs server/engine/runtime.mjs server/engine/snapshot.mjs server/engine/sse-hub.mjs ./server/engine/
 COPY --from=wasm-build --chown=10001:10001 /app/server/engine/generated/homelab_engine.wasm ./server/engine/generated/homelab_engine.wasm
 COPY --chown=10001:10001 server/db/agent-auth.mjs server/db/inventory-capabilities.mjs server/db/inventory-lifecycle.mjs server/db/legacy-network-normalization.ts server/db/nas-power-configuration.mjs server/db/relational-ids.mjs server/db/store.mjs server/db/validation.mjs ./server/db/

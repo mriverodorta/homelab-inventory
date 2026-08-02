@@ -21,6 +21,7 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 ### Fixed
 
 - Protected restores create a complete pre-restore backup, journal each replacement, roll back failed or interrupted operations automatically, and reload connected clients only after a successful commit.
+- The production Docker image includes the backup and restore runtime modules required by the new management API and scheduler.
 
 ### Notes
 
