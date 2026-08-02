@@ -6,6 +6,12 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 
 ## Unreleased
 
+## [0.7.1] - 2026-08-02
+
+### Fixed
+
+- Public demo sessions now show authentication as an enforced read-only disabled policy instead of exposing setup controls that can never be applied.
+
 ## [0.7.0] - 2026-08-02
 
 ### Added

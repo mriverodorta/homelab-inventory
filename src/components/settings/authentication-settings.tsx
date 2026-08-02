@@ -127,6 +127,13 @@ export function AuthenticationSettings() {
   const status = auth.status
   const modeLabel = useMemo(() => status?.mode === 'oidc' ? 'OIDC' : status?.mode === 'hybrid' ? 'Local + OIDC' : status?.mode === 'local' ? 'Local' : 'Disabled', [status?.mode])
   if (!status) return <p role="alert" className="text-sm font-semibold text-[#9b3f32]">Authentication status is unavailable.</p>
+  if (!status.canManage) {
+    return <SettingsSection title="Authentication" description="Public demo sessions use an enforced open-access policy.">
+      <SettingRow label="Current mode" description="Authentication cannot be enabled in the public demo. Each isolated demo session and its empty authentication store are deleted when the session expires.">
+        <span className="rounded-md border border-[#ded8ce] bg-[#f7f2e9] px-3 py-2 text-sm font-black">Disabled</span>
+      </SettingRow>
+    </SettingsSection>
+  }
   return <div className="grid gap-4">
     <SettingsSection title="Authentication" description="Protect the inventory interface and API with local credentials, an identity provider, or both.">
       <SettingRow label="Current mode" description={status.mode === 'disabled' ? 'This existing installation remains open until you opt in.' : 'All browser API access requires an authenticated owner session.'}><span className="rounded-md border border-[#ded8ce] bg-[#f7f2e9] px-3 py-2 text-sm font-black">{modeLabel}</span></SettingRow>

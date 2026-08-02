@@ -106,6 +106,16 @@ export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
   notes: [],
 }
 
+const RELEASE_0_7_1_DETAILS: UnreleasedReleaseNotes = {
+  highlights: [],
+  fixes: [
+    'Public demo sessions now show authentication as an enforced read-only disabled policy instead of exposing setup controls that cannot be applied.',
+  ],
+  notes: [
+    'Demo authentication remains unavailable, and the empty per-session authentication store is deleted with the disposable demo session.',
+  ],
+}
+
 const RELEASE_0_7_0_DETAILS: UnreleasedReleaseNotes = {
   highlights: [
     'Authentication can now protect Homelab Inventory with a local owner password, OpenID Connect, or both methods together.',
@@ -322,9 +332,16 @@ const RELEASE_0_2_1_DETAILS: UnreleasedReleaseNotes = {
 
 export const RELEASE_NOTES: ReleaseNoteEntry[] = [
   {
-    version: '0.7.0',
+    version: '0.7.1',
     date: '2026-08-02',
     channel: 'latest',
+    title: 'Demo authentication policy',
+    ...RELEASE_0_7_1_DETAILS,
+  },
+  {
+    version: '0.7.0',
+    date: '2026-08-02',
+    channel: 'release',
     title: 'Optional owner authentication',
     ...RELEASE_0_7_0_DETAILS,
   },
