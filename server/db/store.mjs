@@ -43,6 +43,7 @@ import { migrateSchema17To18 } from './migrate-schema-18.mjs'
 import { migrateSchema18To19 } from './migrate-schema-19.mjs'
 import { migrateSchema19To20 } from './migrate-schema-20.mjs'
 import { migrateSchema20To21 } from './migrate-schema-21.mjs'
+import { migrateSchema21To22 } from './migrate-schema-22.mjs'
 import {
   applyNasPowerConfigurationChange,
   inspectNasPowerConfigurationChange,
@@ -84,7 +85,7 @@ import {
   setWalkthroughStepInDraft,
 } from '../onboarding/lifecycle.mjs'
 
-export const CURRENT_SCHEMA_VERSION = 21
+export const CURRENT_SCHEMA_VERSION = 22
 
 const DEFAULT_SAVE_DEBOUNCE_MS = 500
 const DEFAULT_FLUSH_RETRY_BASE_MS = 1_000
@@ -97,7 +98,7 @@ const ALWAYS_ENFORCED_COMPATIBILITY_CODES = new Set([
   'memory.slots.exceeded',
 ])
 const SERVER_HARDWARE_CLASSES = new Set(['desktop', 'server'])
-const SERVER_USAGE_ROLES = new Set(['server', 'desktop', 'workstation'])
+const SERVER_USAGE_ROLES = new Set(['server', 'desktop', 'workstation', 'other'])
 const TABLE_BY_TYPE = {
   server: 'servers',
   pcBuild: 'pcBuilds',
@@ -671,6 +672,10 @@ function normalizeInventoryPort(port, index, fallbackKind) {
     normalized.poe = port.poe
   }
 
+  if (port.origin === 'fixed' || port.origin === 'module') {
+    normalized.origin = port.origin
+  }
+
   if (Array.isArray(port.endpoints)) {
     normalized.endpoints = port.endpoints.map((endpoint, endpointIndex) => {
         if (!endpoint || typeof endpoint !== 'object' || Array.isArray(endpoint)) {
@@ -802,7 +807,7 @@ function normalizeInventoryItemInput(input, id) {
       })
     }
     if (!SERVER_USAGE_ROLES.has(usageRole)) {
-      throw new InventoryLifecycleError('Server usage role must be server, desktop, or workstation.', {
+      throw new InventoryLifecycleError('Server usage role must be server, desktop, workstation, or other.', {
         code: 'invalid-inventory-item', status: 400,
       })
     }
@@ -2087,6 +2092,25 @@ export class HomelabInventoryStore {
         continue
       }
 
+      if (currentVersion === 21) {
+        const migrated = migrateSchema21To22(
+          this.databases.inventory.data,
+          this.databases.registry.data,
+        )
+        this.databases.inventory.data = migrated.inventory
+        this.databases.registry.data = migrated.registry
+        this.databases.meta.data.schemaVersion = 22
+        this.databases.meta.data.lastMigration = {
+          from: 21,
+          to: 22,
+          completedAt: new Date().toISOString(),
+          backupId: path.basename(this.activeMigrationBackupPath),
+          summary: migrated.summary,
+        }
+        currentVersion = 22
+        continue
+      }
+
       throw new Error(`No migration registered for schema version ${currentVersion}.`)
     }
 
@@ -2602,6 +2626,10 @@ export class HomelabInventoryStore {
             templateKey: template.templateKey,
             importedRevision: template.revision,
             importedContentHash: template.contentHash,
+            importedFingerprintVersion: template.fingerprintVersion,
+            ...(template.productFamily ? { productFamily: template.productFamily } : {}),
+            ...(template.variantEvidence ? { variantEvidence: template.variantEvidence } : {}),
+            ...(template.identityAliases ? { identityAliases: template.identityAliases } : {}),
             state: 'linked',
             linkedAt: new Date().toISOString(),
           })
@@ -2639,7 +2667,7 @@ export class HomelabInventoryStore {
   }
 
   getCatalogUpdates() {
-    return this.databases.registry.data.links
+    const linkedUpdates = this.databases.registry.data.links
       .filter((link) => link.state === 'update-available' || link.state === 'adoption-available')
       .map((link) => {
         const table = TABLE_BY_TYPE[link.itemType]
@@ -2655,6 +2683,58 @@ export class HomelabInventoryStore {
           state: link.state,
         }
       })
+    const variantUpdates = (this.databases.registry.data.variantMatches ?? []).map((match) => {
+      const table = TABLE_BY_TYPE[match.itemType]
+      const item = table ? this.databases.inventory.data[table].find((record) => record.id === match.itemId) : null
+      return {
+        variantMatchId: match.id,
+        itemType: match.itemType,
+        itemId: match.itemId,
+        itemName: item?.name ?? 'Missing inventory item',
+        state: 'variant-selection-required',
+        productFamily: match.productFamily,
+        candidates: match.candidates,
+      }
+    })
+    return [...variantUpdates, ...linkedUpdates]
+  }
+
+  selectCatalogVariant(variantMatchId, template) {
+    const match = (this.databases.registry.data.variantMatches ?? [])
+      .find((candidate) => candidate.id === variantMatchId)
+    if (!match) throw new InventoryLifecycleError('Catalog variant selection was not found.', {
+      code: 'catalog-variant-selection-not-found', status: 404,
+    })
+    if (!match.candidates.some((candidate) => candidate.templateKey === template.templateKey)) {
+      throw new InventoryLifecycleError('The selected template is not a candidate for this hardware variant.', {
+        code: 'catalog-variant-selection-invalid', status: 409,
+      })
+    }
+    return this.registryTransaction((draft) => {
+      if (draft.links.some((link) => link.itemType === match.itemType && link.itemId === match.itemId)) {
+        throw new InventoryLifecycleError('This inventory item already has a registry link.', {
+          code: 'catalog-link-already-exists', status: 409,
+        })
+      }
+      draft.links.push({
+        id: nextId(draft.links),
+        itemType: match.itemType,
+        itemId: match.itemId,
+        sourceId: match.sourceId,
+        templateKey: template.templateKey,
+        importedRevision: template.revision,
+        importedContentHash: match.localContentHash,
+        importedFingerprintVersion: template.fingerprintVersion,
+        ...(template.productFamily ? { productFamily: template.productFamily } : {}),
+        ...(template.variantEvidence ? { variantEvidence: template.variantEvidence } : {}),
+        ...(template.identityAliases ? { identityAliases: template.identityAliases } : {}),
+        state: 'adoption-available',
+        linkedAt: new Date().toISOString(),
+        availableRevision: template.revision,
+        availableContentHash: template.contentHash,
+      })
+      draft.variantMatches = draft.variantMatches.filter((candidate) => candidate.id !== variantMatchId)
+    })
   }
 
   getCatalogUpdatePreview(linkId, template) {
@@ -2680,7 +2760,7 @@ export class HomelabInventoryStore {
       state: link.state,
       changes: catalogFieldDiff(projectLocalItemForCatalog(item, link.itemType), template.item),
       localFieldsPreserved: Object.keys(item).filter(
-        (key) => !['id', 'key', 'type', 'name', 'subtype', 'manufacturer', 'secondaryManufacturer', 'family', 'model', 'number', 'specs', 'ports', 'compatibility'].includes(key),
+        (key) => key === 'name' || !['id', 'key', 'type', 'subtype', 'manufacturer', 'secondaryManufacturer', 'family', 'model', 'number', 'specs', 'ports', 'compatibility'].includes(key),
       ),
     }
   }
@@ -2718,6 +2798,13 @@ export class HomelabInventoryStore {
         if (!draftLink) throw new Error('Catalog link disappeared during update.')
         draftLink.importedRevision = template.revision
         draftLink.importedContentHash = template.contentHash
+        draftLink.importedFingerprintVersion = template.fingerprintVersion
+        if (template.productFamily) draftLink.productFamily = template.productFamily
+        else delete draftLink.productFamily
+        if (template.variantEvidence) draftLink.variantEvidence = template.variantEvidence
+        else delete draftLink.variantEvidence
+        if (template.identityAliases) draftLink.identityAliases = template.identityAliases
+        else delete draftLink.identityAliases
         draftLink.state = 'linked'
         draftLink.updatedAt = new Date().toISOString()
         delete draftLink.availableRevision

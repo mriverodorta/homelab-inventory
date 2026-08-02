@@ -89,7 +89,7 @@ export function InventoryItemDialog({
   onDuplicatePrivateTemplate?: (id: number) => Promise<void>
   onDeletePrivateTemplate?: (id: number) => Promise<void>
   onOpenRegistrySettings?: () => void
-  onCreateCatalogItem?: (templateKey: string, quantity: number, usageRole?: 'server' | 'desktop' | 'workstation') => Promise<void>
+  onCreateCatalogItem?: (templateKey: string, quantity: number, usageRole?: 'server' | 'desktop' | 'workstation' | 'other') => Promise<void>
 }) {
   const [activeSource, setActiveSource] = useState<InventorySourceTab>(() => availableDefaultSource(registry))
   const [values, setValues] = useState<InventoryFormValues>(() => createInventoryFormValues('server'))

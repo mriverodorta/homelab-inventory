@@ -106,6 +106,21 @@ export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
   notes: [],
 }
 
+const RELEASE_0_7_2_DETAILS: UnreleasedReleaseNotes = {
+  highlights: [
+    'Connected catalogs now preserve complete OEM hardware variants, including motherboard evidence, fixed and optional ports, memory ECC support, storage and expansion topology, proprietary risers, optional modules, and power requirements.',
+    'Ambiguous product families now require an explicit variant selection, while exact board evidence and complete hardware topology link deterministically without using installed components as identity selectors.',
+    'Inventory editors now expose OEM topology, riser, optional-module, and power capabilities, with a suppressible Lenovo ThinkCentre M720q warning for mutually exclusive PCIe expansion and 2.5-inch SATA configurations.',
+  ],
+  fixes: [
+    'Catalog adoption and reviewed updates preserve local names, assignments, placements, and cables while retaining compatibility with previously published fingerprint-v2 and fingerprint-v3 definitions.',
+    'Equipment-owned ports and assignment-dependent module ports now retain separate provenance so each port becomes active at the correct point in the host lifecycle.',
+  ],
+  notes: [
+    'Schema 22 creates a pre-migration backup and upgrades existing compatibility resources, port provenance, hardware class, usage role, and registry variant state automatically and idempotently.',
+  ],
+}
+
 const RELEASE_0_7_1_DETAILS: UnreleasedReleaseNotes = {
   highlights: [],
   fixes: [
@@ -332,9 +347,16 @@ const RELEASE_0_2_1_DETAILS: UnreleasedReleaseNotes = {
 
 export const RELEASE_NOTES: ReleaseNoteEntry[] = [
   {
-    version: '0.7.1',
+    version: '0.7.2',
     date: '2026-08-02',
     channel: 'latest',
+    title: 'OEM hardware topology and variant fidelity',
+    ...RELEASE_0_7_2_DETAILS,
+  },
+  {
+    version: '0.7.1',
+    date: '2026-08-02',
+    channel: 'release',
     title: 'Demo authentication policy',
     ...RELEASE_0_7_1_DETAILS,
   },

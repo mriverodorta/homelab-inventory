@@ -68,6 +68,7 @@ const project: ProjectState = {
         {
           id: 1,
           kind: 'server-port',
+          origin: 'fixed',
           type: 'rj45',
           slotNumber: 1,
           label: 'LAN 01',
@@ -146,6 +147,7 @@ const project: ProjectState = {
       ports: Array.from({ length: 5 }, (_, index) => ({
         id: index + 1,
         kind: 'switch-port',
+        origin: 'fixed',
         type: 'rj45',
         slotNumber: index + 1,
         label: '',
@@ -167,6 +169,7 @@ const project: ProjectState = {
         {
           id: 1,
           kind: 'keystone',
+          origin: 'fixed',
           type: 'rj45',
           slotNumber: 1,
           label: '',
@@ -193,6 +196,7 @@ const project: ProjectState = {
         {
           id: 1,
           kind: 'server-port',
+          origin: 'fixed',
           type: 'rj45',
           slotNumber: 1,
           label: 'LAN 01',

@@ -29,7 +29,7 @@ export type InventoryType =
 export type InventorySpecs = Record<string, string | number | boolean | null>
 export type InventoryProperties = Record<string, string>
 export type HardwareClass = 'desktop' | 'server'
-export type EquipmentUsageRole = 'server' | 'desktop' | 'workstation'
+export type EquipmentUsageRole = 'server' | 'desktop' | 'workstation' | 'other'
 export type NasPowerConfiguration = 'internal-psu' | 'external-adapter'
 export type SmartPowerStripOutletName = {
   portId: number
@@ -63,7 +63,13 @@ export type ComponentType =
   | 'soundCard'
   | 'wireless'
   | 'powerAdapter'
-export type InventoryPortKind = 'switch-port' | 'keystone' | 'server-port' | 'power-port'
+export type InventoryPortKind =
+  | 'switch-port'
+  | 'keystone'
+  | 'server-port'
+  | 'power-port'
+  | 'network'
+  | 'video'
 export type InventoryPortType =
   | 'rj45'
   | 'sfp'
@@ -76,6 +82,7 @@ export type InventoryPortType =
   | 'ac-outlet'
 export type InventoryPortSide = 'front' | 'back'
 export type InventoryPortRole = 'access' | 'trunk' | 'uplink' | 'management' | 'disabled'
+export type InventoryPortOrigin = 'fixed' | 'module'
 
 export type InventoryPortEndpoint = {
   id: number
@@ -94,6 +101,7 @@ export type InventoryPort = {
   role?: InventoryPortRole
   speed?: string
   poe?: boolean
+  origin?: InventoryPortOrigin
   endpoints?: InventoryPortEndpoint[]
 }
 

@@ -37,6 +37,8 @@ const validExpansionGroup: ExpansionSlotGroupDraft = {
   acceptedHeights: ['Full height'],
   maxSlotWidth: '2',
   maxPowerWatts: '75',
+  proprietaryRiser: false,
+  riserCapability: '',
 }
 
 describe('resource group validation targeting', () => {

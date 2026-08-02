@@ -503,7 +503,7 @@ function assertInventoryItem(itemId, item, expectedType, options = {}) {
     if (!new Set(['desktop', 'server']).has(item.hardwareClass)) {
       throw new Error(`Inventory item ${itemId} must declare a valid hardware class.`)
     }
-    if (!new Set(['server', 'desktop', 'workstation']).has(item.usageRole)) {
+    if (!new Set(['server', 'desktop', 'workstation', 'other']).has(item.usageRole)) {
       throw new Error(`Inventory item ${itemId} must declare a valid usage role.`)
     }
   }

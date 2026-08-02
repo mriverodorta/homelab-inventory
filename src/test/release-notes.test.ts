@@ -98,21 +98,21 @@ describe('release notes helpers', () => {
     const previousRelease = RELEASE_NOTES.find((entry) => entry.version === '0.2.1')!
     const engineRelease = RELEASE_NOTES.find((entry) => entry.version === '0.2.0')!
 
-    expect(hasReleaseNoteForVersion(RELEASE_NOTES, '0.7.1')).toBe(true)
+    expect(hasReleaseNoteForVersion(RELEASE_NOTES, '0.7.2')).toBe(true)
     expect(RELEASE_NOTES[0]).toEqual(
       expect.objectContaining({
-        version: '0.7.1',
-        title: 'Demo authentication policy',
+        version: '0.7.2',
+        title: 'OEM hardware topology and variant fidelity',
       }),
     )
     expect(RELEASE_NOTES.filter((entry) => entry.channel === 'latest')).toEqual([
-      expect.objectContaining({ version: '0.7.1' }),
+      expect.objectContaining({ version: '0.7.2' }),
     ])
     expect(RELEASE_NOTES.find((entry) => entry.version === '0.1.38')).toEqual(
       expect.objectContaining({ channel: 'release' }),
     )
-    expect(currentRelease.fixes).toContain(
-      'Public demo sessions now show authentication as an enforced read-only disabled policy instead of exposing setup controls that cannot be applied.',
+    expect(currentRelease.highlights).toContain(
+      'Connected catalogs now preserve complete OEM hardware variants, including motherboard evidence, fixed and optional ports, memory ECC support, storage and expansion topology, proprietary risers, optional modules, and power requirements.',
     )
     expect(registryRelease.highlights).toContain(
       'Add Hardware now combines a locally searched verified Catalog, the complete Manual editor, and reusable Private templates in one source-aware dialog.',

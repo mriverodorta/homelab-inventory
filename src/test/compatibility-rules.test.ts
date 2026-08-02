@@ -974,6 +974,87 @@ describe('compatibility rule evaluation', () => {
     )
   })
 
+  it('warns once when an M720q combines its PCIe riser with a 2.5-inch SATA drive', () => {
+    const hostItem: InventoryItem = {
+      ...host({
+        host: {
+          storageSlots: [
+            {
+              id: 1,
+              key: 'sata-bay',
+              label: '2.5-inch SATA bay',
+              count: 1,
+              interfaces: ['SATA'],
+              formFactors: ['2.5-inch'],
+            },
+          ],
+          expansionSlots: [
+            {
+              id: 1,
+              key: 'pcie-riser',
+              label: 'PCIe riser',
+              count: 1,
+              interfaceFamily: 'pcie',
+              mechanicalLanes: 16,
+              electricalLanes: 8,
+              proprietaryRiser: true,
+              riserCapability: 'Lenovo Tiny PCIe riser',
+            },
+          ],
+        },
+      }),
+      manufacturer: 'Lenovo',
+      model: 'ThinkCentre M720q',
+    }
+    const sataDrive = component(
+      'storage',
+      undefined,
+      { interface: 'SATA', formFactor: '2.5-inch' },
+      2,
+    )
+    const pcieNic = component(
+      'network',
+      {
+        requirements: {
+          expansion: {
+            interfaceFamily: 'pcie',
+            connectorLanes: 4,
+            height: 'low-profile',
+            slotWidth: 1,
+          },
+        },
+      },
+      undefined,
+      3,
+    )
+    const project: ProjectState = {
+      id: 'default',
+      metadata: { name: 'Test', version: 1, updatedAt: '2026-01-01T00:00:00Z' },
+      items: {
+        'server:1': hostItem,
+        'storage:2': sataDrive,
+        'network:3': pcieNic,
+      },
+      placements: [],
+      assignments: [
+        { id: 1, serverId: 'server:1', itemId: 'storage:2', type: 'storage', assignedAt: '2026-01-01' },
+        { id: 2, serverId: 'server:1', itemId: 'network:3', type: 'network', assignedAt: '2026-01-02' },
+      ],
+      connections: [],
+    }
+
+    const findings = evaluateProjectCompatibility(project).flatMap((result) => result.findings)
+
+    expect(findings.filter(
+      (finding) => finding.code === 'lenovo.m720q.pcie-sata-mutual-exclusion',
+    )).toEqual([
+      expect.objectContaining({
+        severity: 'warning',
+        field: 'host.resourceConstraints',
+      }),
+    ])
+  })
+
   it('evaluates assigned project components without mutating the project', () => {
     const hostItem = host({
       host: { cpu: { sockets: ['LGA1200'], generations: ['10'], maxTdpWatts: 65 } },

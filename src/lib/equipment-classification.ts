@@ -1,7 +1,7 @@
 import type { EquipmentUsageRole, HardwareClass, InventoryItem } from '@/types/inventory'
 
 export const HARDWARE_CLASSES: readonly HardwareClass[] = ['desktop', 'server']
-export const EQUIPMENT_USAGE_ROLES: readonly EquipmentUsageRole[] = ['server', 'desktop', 'workstation']
+export const EQUIPMENT_USAGE_ROLES: readonly EquipmentUsageRole[] = ['server', 'desktop', 'workstation', 'other']
 
 export function normalizeHardwareClass(value: unknown): HardwareClass {
   return value === 'server' ? 'server' : 'desktop'

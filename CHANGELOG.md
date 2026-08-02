@@ -6,6 +6,27 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 
 ## Unreleased
 
+## [0.7.2] - 2026-08-02
+
+### Added
+
+- Added OEM catalog fingerprint v4 support with lossless motherboard evidence, fixed and optional port origins, memory ECC capabilities, storage and expansion topology, proprietary riser details, optional module slots, and power requirements.
+- Added deterministic OEM variant matching that prioritizes exact board evidence and complete hardware topology, while presenting ambiguous product-family matches for explicit review instead of silently linking the wrong variant.
+- Added host topology, ECC, riser, optional-module, and power fields to shared inventory editors, plus a suppressible Lenovo ThinkCentre M720q warning when PCIe expansion and a 2.5-inch SATA drive are assigned together.
+
+### Changed
+
+- Physical hardware class remains separate from local usage role, allowing desktop-class mini PCs to keep server, desktop, workstation, or other workspace roles without changing catalog identity.
+- Fixed equipment ports and assignment-dependent module ports now retain explicit provenance so catalog imports and canvas behavior activate each port at the correct lifecycle stage.
+
+### Fixed
+
+- Catalog updates preserve local names and project topology, and previously published fingerprint-v2 or fingerprint-v3 definitions can still adopt equivalent v4 inventory without changing historical hashes.
+
+### Data migration
+
+- Schema 22 backs up and upgrades existing stores automatically, assigning relational compatibility resource IDs, port provenance, host class and usage-role defaults, and registry variant state without changing assignments, placements, or cables.
+
 ## [0.7.1] - 2026-08-02
 
 ### Fixed

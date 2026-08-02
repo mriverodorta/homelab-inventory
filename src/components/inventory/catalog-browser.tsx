@@ -10,7 +10,7 @@ import { cn } from '@/lib/utils'
 export function CatalogBrowser({
   onCreate,
 }: {
-  onCreate: (templateKey: string, quantity: number, usageRole?: 'server' | 'desktop' | 'workstation') => Promise<void>
+  onCreate: (templateKey: string, quantity: number, usageRole?: 'server' | 'desktop' | 'workstation' | 'other') => Promise<void>
 }) {
   const [query, setQuery] = useState('')
   const [selectedKey, setSelectedKey] = useState<string | null>(null)
@@ -23,7 +23,7 @@ export function CatalogBrowser({
     if (selected && selectedKey !== selected.templateKey) setSelectedKey(selected.templateKey)
   }, [selected, selectedKey])
 
-  async function create(templateKey: string, quantity: number, usageRole?: 'server' | 'desktop' | 'workstation') {
+  async function create(templateKey: string, quantity: number, usageRole?: 'server' | 'desktop' | 'workstation' | 'other') {
     setPending(true)
     try {
       await onCreate(templateKey, quantity, usageRole)

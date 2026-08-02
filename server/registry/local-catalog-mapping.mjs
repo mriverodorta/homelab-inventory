@@ -1,5 +1,5 @@
 const PHYSICAL_EQUIPMENT_CLASSES = new Set(['desktop', 'server'])
-const USAGE_ROLES = new Set(['server', 'desktop', 'workstation'])
+const USAGE_ROLES = new Set(['server', 'desktop', 'workstation', 'other'])
 
 export function localInventoryTypeForCatalogType(type) {
   return PHYSICAL_EQUIPMENT_CLASSES.has(type) ? 'server' : type
@@ -12,6 +12,11 @@ export function projectLocalItemForCatalog(item, localType = item.type) {
     projected.type = projected.hardwareClass === 'server' ? 'server' : 'desktop'
     delete projected.hardwareClass
     delete projected.usageRole
+  }
+  if (PHYSICAL_EQUIPMENT_CLASSES.has(projected.type) || projected.type === 'nas') {
+    const manufacturer = typeof projected.manufacturer === 'string' ? projected.manufacturer.trim() : ''
+    const model = typeof projected.model === 'string' ? projected.model.trim() : ''
+    if (manufacturer && model) projected.name = `${manufacturer} ${model}`
   }
   return projected
 }

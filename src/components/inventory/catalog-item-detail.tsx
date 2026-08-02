@@ -92,6 +92,7 @@ export function CatalogItemDetail({
                 <SelectItem value="server">Server</SelectItem>
                 <SelectItem value="desktop">Desktop</SelectItem>
                 <SelectItem value="workstation">Workstation</SelectItem>
+                <SelectItem value="other">Other</SelectItem>
               </SelectContent>
             </Select>
           </label>

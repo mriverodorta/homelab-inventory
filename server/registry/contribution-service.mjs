@@ -1,10 +1,13 @@
 import {
   FINGERPRINT_VERSION,
   LEGACY_FINGERPRINT_VERSION,
+  OEM_FINGERPRINT_VERSION,
   projectCatalogItem,
   reconcileCatalogProjections,
   sha256Hex,
 } from '../../packages/catalog-protocol/src/index.ts'
+import { projectLocalItemForCatalog } from './local-catalog-mapping.mjs'
+import { matchOemVariant } from './oem-variant-matcher.mjs'
 
 const MAX_OUTBOX_RECORDS = 10_000
 
@@ -22,6 +25,21 @@ function identityKey(fingerprintVersion, identityHash) {
 
 function contributionKey(fingerprintVersion, identityHash, contentHash) {
   return `${identityKey(fingerprintVersion, identityHash)}:${contentHash}`
+}
+
+function fingerprintVersionForItem(item) {
+  const catalogItem = projectLocalItemForCatalog(item, item.type)
+  return ['desktop', 'server', 'nas'].includes(catalogItem.type)
+    && typeof catalogItem.manufacturer === 'string'
+    && typeof catalogItem.model === 'string'
+    ? OEM_FINGERPRINT_VERSION
+    : FINGERPRINT_VERSION
+}
+
+async function projectLocalInventoryItem(item, fingerprintVersion) {
+  const catalogItem = projectLocalItemForCatalog(item, item.type)
+  const projection = await projectCatalogItem(catalogItem, { fingerprintVersion })
+  return { ...projection, source: { itemType: item.type, itemId: item.id } }
 }
 
 export async function discoverContributionCandidates(
@@ -42,8 +60,10 @@ export async function discoverContributionCandidates(
     ? externalKnownHashes
     : new Map([...externalKnownHashes].map((hash) => [hash, null]))
   const publishedByIdentity = new Map()
+  const publishedCandidates = []
   for (const [contentHash, entry] of externalEntries) {
     if (entry?.state !== 'published' || !entry.identityHash || !entry.templateKey) continue
+    publishedCandidates.push({ ...entry, contentHash })
     const canonicalFingerprintVersion = entry.fingerprintVersion ?? LEGACY_FINGERPRINT_VERSION
     const identities = [
       { identityHash: entry.identityHash, fingerprintVersion: canonicalFingerprintVersion },
@@ -73,7 +93,7 @@ export async function discoverContributionCandidates(
     .map((link) => itemKey(link.itemType, link.itemId)))
   const candidates = []
   const projections = []
-  const legacyIdentityByItem = new Map()
+  const compatibilityIdentitiesByItem = new Map()
   let skipped = 0
 
   for (const item of Object.values(store.getProject().items)) {
@@ -81,19 +101,28 @@ export async function discoverContributionCandidates(
       skipped += 1
       continue
     }
-    const [projection, legacyProjection] = await Promise.all([
-      projectCatalogItem(item).catch(() => null),
-      projectCatalogItem(item, { fingerprintVersion: LEGACY_FINGERPRINT_VERSION }).catch(() => null),
+    const fingerprintVersion = fingerprintVersionForItem(item)
+    const compatibilityVersions = [...new Set([
+      FINGERPRINT_VERSION,
+      LEGACY_FINGERPRINT_VERSION,
+    ].filter((version) => version !== fingerprintVersion))]
+    const [projection, ...compatibilityProjections] = await Promise.all([
+      projectLocalInventoryItem(item, fingerprintVersion).catch(() => null),
+      ...compatibilityVersions.map((version) => projectLocalInventoryItem(item, version).catch(() => null)),
     ])
     if (!projection || projection.status !== 'eligible') skipped += 1
     else {
       projections.push(projection)
-      if (legacyProjection?.status === 'eligible') {
-        legacyIdentityByItem.set(
-          itemKey(projection.source.itemType, projection.source.itemId),
-          legacyProjection.identityHash,
-        )
-      }
+      compatibilityIdentitiesByItem.set(
+        itemKey(projection.source.itemType, projection.source.itemId),
+        compatibilityProjections
+          .filter((candidate) => candidate?.status === 'eligible')
+          .map((candidate) => ({
+            fingerprintVersion: candidate.fingerprintVersion,
+            identityHash: candidate.identityHash,
+            contentHash: candidate.contentHash,
+          })),
+      )
     }
   }
 
@@ -115,17 +144,28 @@ export async function discoverContributionCandidates(
   const activeSourceId = registry.snapshot?.sourceId
   const links = []
   const adoptions = []
+  const ambiguousMatches = []
   for (const group of groups) {
     if (group.status === 'withheld-conflict') continue
     const exact = externalEntries.get(group.contentHash)
     const canonicalMatch = publishedByIdentity.get(identityKey(group.fingerprintVersion, group.identityHash))
-    const legacyIdentities = new Set(group.sources
-      .map((source) => legacyIdentityByItem.get(itemKey(source.itemType, source.itemId)))
-      .filter(Boolean))
-    const legacyIdentity = legacyIdentities.size === 1 ? [...legacyIdentities][0] : undefined
-    const identityMatch = canonicalMatch ?? (legacyIdentity
-      ? publishedByIdentity.get(identityKey(LEGACY_FINGERPRINT_VERSION, legacyIdentity))
-      : undefined)
+    const compatibilityMatches = []
+    for (const fingerprintVersion of [FINGERPRINT_VERSION, LEGACY_FINGERPRINT_VERSION]) {
+      const identities = new Set(group.sources
+        .flatMap((source) => compatibilityIdentitiesByItem.get(itemKey(source.itemType, source.itemId)) ?? [])
+        .filter((identity) => identity.fingerprintVersion === fingerprintVersion)
+        .map((identity) => identity.identityHash))
+      if (identities.size !== 1) continue
+      const match = publishedByIdentity.get(identityKey(fingerprintVersion, [...identities][0]))
+      if (match) compatibilityMatches.push({ match, fingerprintVersion })
+    }
+    const oemMatch = canonicalMatch || group.fingerprintVersion !== OEM_FINGERPRINT_VERSION
+      ? { outcome: 'none' }
+      : matchOemVariant(group, publishedCandidates)
+    const compatibilityMatch = compatibilityMatches[0]
+    const identityMatch = canonicalMatch
+      ?? (oemMatch.outcome === 'match' ? oemMatch.match : undefined)
+      ?? compatibilityMatch?.match
     if (exact?.state === 'published' && exact.templateKey && Number.isSafeInteger(activeSourceId)) {
       for (const source of group.sources) links.push({ source, exact, contentHash: group.contentHash })
       skipped += group.sources.length
@@ -133,7 +173,25 @@ export async function discoverContributionCandidates(
     }
     if (identityMatch && Number.isSafeInteger(activeSourceId)) {
       for (const source of group.sources) {
-        adoptions.push({ source, match: identityMatch, localContentHash: group.contentHash })
+        const localContentHash = compatibilityMatch
+          ? compatibilityIdentitiesByItem.get(itemKey(source.itemType, source.itemId))
+            ?.find((identity) => identity.fingerprintVersion === compatibilityMatch.fingerprintVersion)
+            ?.contentHash
+          : group.contentHash
+        adoptions.push({ source, match: identityMatch, localContentHash: localContentHash ?? group.contentHash })
+      }
+      skipped += group.sources.length
+      continue
+    }
+    if (oemMatch.outcome === 'ambiguous' && Number.isSafeInteger(activeSourceId)) {
+      for (const source of group.sources) {
+        ambiguousMatches.push({
+          source,
+          productFamily: oemMatch.productFamily,
+          candidates: oemMatch.candidates,
+          localContentHash: group.contentHash,
+          fingerprintVersion: group.fingerprintVersion,
+        })
       }
       skipped += group.sources.length
       continue
@@ -214,6 +272,10 @@ export async function discoverContributionCandidates(
               templateKey: exact.templateKey,
               importedRevision: exact.revision ?? 1,
               importedContentHash: contentHash,
+              importedFingerprintVersion: exact.fingerprintVersion ?? LEGACY_FINGERPRINT_VERSION,
+              ...(exact.productFamily ? { productFamily: exact.productFamily } : {}),
+              ...(exact.variantEvidence ? { variantEvidence: exact.variantEvidence } : {}),
+              ...(exact.identityAliases ? { identityAliases: exact.identityAliases } : {}),
               state: 'linked',
               linkedAt: now.toISOString(),
             })
@@ -228,6 +290,9 @@ export async function discoverContributionCandidates(
           templateKey: exact.templateKey, importedRevision: exact.revision ?? 1,
           importedContentHash: contentHash, state: 'linked', linkedAt: now.toISOString(),
           importedFingerprintVersion: exact.fingerprintVersion ?? LEGACY_FINGERPRINT_VERSION,
+          ...(exact.productFamily ? { productFamily: exact.productFamily } : {}),
+          ...(exact.variantEvidence ? { variantEvidence: exact.variantEvidence } : {}),
+          ...(exact.identityAliases ? { identityAliases: exact.identityAliases } : {}),
         })
       }
       for (const { source, match, localContentHash } of adoptions) {
@@ -238,7 +303,29 @@ export async function discoverContributionCandidates(
           templateKey: match.templateKey, importedRevision: match.revision ?? 1,
           importedContentHash: localContentHash, state: 'adoption-available', linkedAt: now.toISOString(),
           importedFingerprintVersion: match.matchedFingerprintVersion ?? match.fingerprintVersion ?? FINGERPRINT_VERSION,
+          ...(match.productFamily ? { productFamily: match.productFamily } : {}),
+          ...(match.variantEvidence ? { variantEvidence: match.variantEvidence } : {}),
+          ...(match.identityAliases ? { identityAliases: match.identityAliases } : {}),
           availableRevision: match.revision ?? 1, availableContentHash: match.contentHash,
+        })
+      }
+      const unlinkedItems = new Set(projections.flatMap((projection) => projection.sources ?? [projection.source])
+        .map((source) => itemKey(source.itemType, source.itemId)))
+      draft.variantMatches = (draft.variantMatches ?? []).filter((record) => (
+        !unlinkedItems.has(itemKey(record.itemType, record.itemId))
+      ))
+      let variantMatchId = nextId(draft.variantMatches)
+      for (const match of ambiguousMatches) {
+        draft.variantMatches.push({
+          id: variantMatchId++,
+          itemType: match.source.itemType,
+          itemId: match.source.itemId,
+          sourceId: activeSourceId,
+          productFamily: match.productFamily,
+          candidates: match.candidates,
+          localContentHash: match.localContentHash,
+          fingerprintVersion: match.fingerprintVersion,
+          createdAt: now.toISOString(),
         })
       }
     }

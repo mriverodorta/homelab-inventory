@@ -97,6 +97,7 @@ export const SERVER_USAGE_ROLE_OPTIONS: ReadonlyArray<{ value: EquipmentUsageRol
   { value: 'server', label: 'Server' },
   { value: 'desktop', label: 'Desktop' },
   { value: 'workstation', label: 'Workstation' },
+  { value: 'other', label: 'Other' },
 ]
 export const NETWORK_SLOTS = ['On board', 'PCIe', 'M.2 A+E']
 export const WIRELESS_OPTIONS = ['Yes', 'No']
@@ -130,6 +131,17 @@ export const PCIE_LANE_WIDTHS = ['1', '2', '4', '8', '16']
 export const EXPANSION_INTERFACE_FAMILIES = ['pcie', 'm2-ae', 'usb', 'onboard']
 export const CARD_HEIGHTS = ['full-height', 'low-profile']
 export const SLOT_WIDTHS = ['1', '2', '3', '4']
+export const TOPOLOGY_COMPLETENESS_OPTIONS = ['complete', 'partial', 'conflicting']
+export const ECC_SUPPORT_OPTIONS = ['supported', 'unsupported', 'optional', 'unknown']
+export const OPTIONAL_MODULE_KINDS = [
+  'wireless-card',
+  'network-card',
+  'sound-card',
+  'video-port',
+  'serial-port',
+  'flex-io-module',
+]
+export const HOST_POWER_CONFIGURATIONS = ['external-adapter', 'internal-psu']
 export const SWITCH_MANAGEMENT_OPTIONS = [
   'Unmanaged',
   'Smart / Web-managed',

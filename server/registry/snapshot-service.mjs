@@ -452,6 +452,8 @@ export class SnapshotService {
           identityHash: entry.identityHash,
           fingerprintVersion: entry.fingerprintVersion ?? digestIndex.fingerprintVersion,
           identityAliases: entry.identityAliases ?? [],
+          ...(entry.productFamily ? { productFamily: entry.productFamily } : {}),
+          ...(entry.variantEvidence ? { variantEvidence: entry.variantEvidence } : {}),
           templateKey: entry.templateKey,
           revision: observation.revision,
           state: observation.state,

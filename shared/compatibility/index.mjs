@@ -52,6 +52,29 @@ function isExpansion(itemOrType) {
   return EXPANSION_TYPES.has(typeof itemOrType === 'string' ? itemOrType : itemOrType?.type)
 }
 
+function optionalModuleKinds(component) {
+  const explicit = optionalStringArray([
+    component?.specs?.moduleKind,
+    component?.compatibility?.requirements?.optionalModule?.kind,
+  ])
+  if (explicit.length > 0) return explicit
+  if (component?.type === 'wireless') return ['wireless-card']
+  if (component?.type === 'soundCard') return ['sound-card']
+  if (component?.type === 'network') {
+    const descriptor = `${component?.subtype ?? ''} ${component?.specs?.formFactor ?? ''}`.toLowerCase()
+    return descriptor.includes('flex') ? ['flex-io-module', 'network-card'] : ['network-card']
+  }
+  return []
+}
+
+function optionalModuleGroupsFor(hostCapabilities, component) {
+  const acceptedKinds = optionalModuleKinds(component)
+  if (acceptedKinds.length === 0) return []
+  return validResourceGroups(hostCapabilities.optionalModuleSlots).filter((group) => (
+    optionalStringArray(group.acceptedModuleKinds).some((kind) => acceptedKinds.includes(kind))
+  ))
+}
+
 export function normalizeCompatibilityPolicy(policy) {
   const uniqueStrings = (values) => [...new Set(
     (Array.isArray(values) ? values : [])
@@ -165,6 +188,18 @@ export function normalizeHostCapabilities(item) {
     for (const field of ['count', 'pcieGeneration']) {
       normalizeNumericField(group, field)
     }
+  }
+  for (const group of Array.isArray(normalized.optionalModuleSlots) ? normalized.optionalModuleSlots : []) {
+    normalizeNumericField(group, 'count')
+  }
+  for (const port of Array.isArray(normalized.fixedPorts) ? normalized.fixedPorts : []) {
+    normalizeNumericField(port, 'id')
+    normalizeNumericField(port, 'slotNumber')
+  }
+  if (Array.isArray(normalized.power?.supportedWattagesWatts)) {
+    normalized.power.supportedWattagesWatts = normalized.power.supportedWattagesWatts
+      .map(optionalNumber)
+      .filter((value) => value !== undefined)
   }
   normalizeNumericField(normalized, 'maxExpansionPowerWatts')
   for (const group of Array.isArray(normalized.expansionSlots) ? normalized.expansionSlots : []) {
@@ -999,11 +1034,29 @@ function evaluateExpansion(hostCapabilities, requirements, assignments, items, c
   evaluateExpansionPower(hostCapabilities, assignments, items, component, findings)
 }
 
+function evaluateOptionalModule(hostCapabilities, component, findings) {
+  const kinds = optionalModuleKinds(component)
+  const groups = validResourceGroups(hostCapabilities.optionalModuleSlots)
+  if (groups.length === 0) {
+    addMissing(findings, 'host.optionalModuleSlots', 'Host optional module capabilities are not recorded.')
+    return
+  }
+  if (!groups.some((group) => optionalStringArray(group.acceptedModuleKinds).some((kind) => kinds.includes(kind)))) {
+    addFinding(findings, {
+      code: 'optional-module.kind.mismatch',
+      severity: 'error',
+      message: `No optional module slot accepts ${kinds.join(' or ')}.`,
+      field: 'host.optionalModuleSlots.acceptedModuleKinds',
+    })
+  }
+}
+
 export function evaluateAssignmentCompatibility({ host, component, assignments = [], items = {} }) {
   const findings = []
   const effectiveHost = effectiveHostForAssignment(host, assignments, items, component)
   const hostCapabilities = normalizeHostCapabilities(effectiveHost)
   const requirements = normalizeComponentRequirements(component)
+  const optionalGroups = optionalModuleGroupsFor(hostCapabilities, component)
 
   if (requirements.type === 'cpu') {
     evaluateCpu(hostCapabilities, requirements, findings)
@@ -1011,6 +1064,8 @@ export function evaluateAssignmentCompatibility({ host, component, assignments =
     evaluateMemory(hostCapabilities, requirements, assignments, items, component, findings)
   } else if (requirements.type === 'storage') {
     evaluateStorage(hostCapabilities, requirements, findings)
+  } else if (optionalGroups.length > 0) {
+    evaluateOptionalModule(hostCapabilities, component, findings)
   } else if (isExpansion(requirements.type)) {
     evaluateExpansion(hostCapabilities, requirements, assignments, items, component, findings)
   } else if (requirements.type === 'cpuCooler' && host?.type === 'pcBuild') {
@@ -1027,8 +1082,51 @@ export function evaluateAssignmentCompatibility({ host, component, assignments =
   return { status: statusFor(findings), findings }
 }
 
+function isLenovoM720q(host) {
+  const identity = normalizedText([
+    host?.manufacturer,
+    host?.model,
+    host?.name,
+  ].filter(Boolean).join(' '))
+  return identity.includes('lenovo') && identity.includes('m720q')
+}
+
+function m720qConflictHostIds(project) {
+  const conflicts = new Set()
+  const assignments = project?.assignments ?? []
+
+  for (const assignment of assignments) {
+    const host = itemLookup(project?.items, assignment.serverId)
+    if (!host || !isLenovoM720q(host)) continue
+
+    const hostAssignments = assignments.filter(
+      (entry) => String(entry.serverId) === String(assignment.serverId),
+    )
+    const requirements = hostAssignments
+      .map((entry) => itemLookup(project.items, entry.itemId))
+      .filter(Boolean)
+      .map(normalizeComponentRequirements)
+    const hasSataDrive = requirements.some((entry) => (
+      entry.type === 'storage'
+      && normalizedText(entry.interface) === 'sata'
+      && ['2.5-inch', '2.5 inch', '2.5"'].includes(normalizedText(entry.formFactor))
+    ))
+    const hasPcieCard = requirements.some((entry) => (
+      isExpansion(entry.type) && normalizedText(entry.interfaceFamily) === 'pcie'
+    ))
+
+    if (hasSataDrive && hasPcieCard) {
+      conflicts.add(String(assignment.serverId))
+    }
+  }
+
+  return conflicts
+}
+
 export function evaluateProjectCompatibility(project) {
   const hostsWithPowerFindings = new Set()
+  const hostsWithM720qConstraintFindings = new Set()
+  const m720qConflicts = m720qConflictHostIds(project)
   return (project?.assignments ?? []).flatMap((assignment) => {
     const host = itemLookup(project.items, assignment.serverId)
     const component = itemLookup(project.items, assignment.itemId)
@@ -1057,6 +1155,22 @@ export function evaluateProjectCompatibility(project) {
       } else {
         hostsWithPowerFindings.add(hostId)
       }
+    }
+
+    const hostId = String(assignment.serverId)
+    if (
+      m720qConflicts.has(hostId)
+      && !hostsWithM720qConstraintFindings.has(hostId)
+      && (component.type === 'storage' || isExpansion(component))
+    ) {
+      addFinding(result.findings, {
+        code: 'lenovo.m720q.pcie-sata-mutual-exclusion',
+        severity: 'warning',
+        message: 'The Lenovo ThinkCentre M720q PCIe riser and 2.5-inch SATA bay can be mutually exclusive in the same physical configuration.',
+        field: 'host.resourceConstraints',
+      })
+      result.status = statusFor(result.findings)
+      hostsWithM720qConstraintFindings.add(hostId)
     }
 
     return [{
@@ -1133,7 +1247,10 @@ function resultWithFinding(result, finding) {
   return { status: statusFor(findings), findings }
 }
 
-function allocationSize(requirements) {
+function allocationSize(requirements, resourceType) {
+  if (resourceType === 'optionalModule') {
+    return 1
+  }
   if (requirements.type === 'ram') {
     return 1
   }
@@ -1156,9 +1273,10 @@ function resultCanOccupyResource(result, compatibilityEnabled) {
   )
 }
 
-function resourceTypeFor(requirements) {
+function resourceTypeFor(requirements, hostCapabilities, component) {
   if (requirements.type === 'ram') return 'memory'
   if (requirements.type === 'storage') return 'storage'
+  if (optionalModuleGroupsFor(hostCapabilities, component).length > 0) return 'optionalModule'
   if (isExpansion(requirements.type)) return 'expansion'
   return undefined
 }
@@ -1170,6 +1288,8 @@ function candidateHost(host, resourceType, group) {
     compatibility.host.storageSlots = [group]
   } else if (resourceType === 'expansion') {
     compatibility.host.expansionSlots = [group]
+  } else if (resourceType === 'optionalModule') {
+    compatibility.host.optionalModuleSlots = [group]
   }
   return { ...host, compatibility }
 }
@@ -1201,6 +1321,12 @@ function requiredGroups(hostCapabilities, resourceType) {
     return {
       all: Array.isArray(hostCapabilities.expansionSlots) ? hostCapabilities.expansionSlots : [],
       valid: validResourceGroups(hostCapabilities.expansionSlots),
+    }
+  }
+  if (resourceType === 'optionalModule') {
+    return {
+      all: Array.isArray(hostCapabilities.optionalModuleSlots) ? hostCapabilities.optionalModuleSlots : [],
+      valid: validResourceGroups(hostCapabilities.optionalModuleSlots),
     }
   }
   return { all: [], valid: [] }
@@ -1353,6 +1479,10 @@ function pcBuildResourceDefinition(component, motherboard, hostCapabilities) {
     return { resourceType: 'storage', groups, size: 1 }
   }
   if (isExpansion(component)) {
+    const optionalGroups = optionalModuleGroupsFor(hostCapabilities, component)
+    if (optionalGroups.length > 0) {
+      return { resourceType: 'optionalModule', groups: optionalGroups, size: 1 }
+    }
     const groups = validResourceGroups(hostCapabilities.expansionSlots).filter((group) =>
       !requirements.interfaceFamily || group.interfaceFamily === requirements.interfaceFamily)
     return { resourceType: 'expansion', groups, size: requirements.slotWidth ?? 1 }
@@ -1491,8 +1621,8 @@ export function planHostAllocations(project, hostId) {
       continue
     }
     const requirements = normalizeComponentRequirements(component)
-    const resourceType = resourceTypeFor(requirements)
-    const size = allocationSize(requirements)
+    const resourceType = resourceTypeFor(requirements, hostCapabilities, component)
+    const size = allocationSize(requirements, resourceType)
     if (!resourceType || !size || !assignment.allocation) {
       priorAssignments.push(assignment)
       continue
@@ -1576,8 +1706,8 @@ export function planHostAllocations(project, hostId) {
     }
 
     const requirements = normalizeComponentRequirements(component)
-    const resourceType = resourceTypeFor(requirements)
-    const size = allocationSize(requirements)
+    const resourceType = resourceTypeFor(requirements, hostCapabilities, component)
+    const size = allocationSize(requirements, resourceType)
     const cleanAssignment = { ...assignment }
     delete cleanAssignment.allocation
 

@@ -30,6 +30,7 @@ export function createRegistryStore() {
     },
     sources: [],
     links: [],
+    variantMatches: [],
     contributionOutbox: [],
     contributionLedger: [],
     contributionGroups: [],
@@ -65,6 +66,7 @@ export function normalizeRegistryStore(value) {
     },
     sources: Array.isArray(source.sources) ? source.sources : [],
     links: Array.isArray(source.links) ? source.links : [],
+    variantMatches: Array.isArray(source.variantMatches) ? source.variantMatches : [],
     contributionOutbox: Array.isArray(source.contributionOutbox)
       ? source.contributionOutbox.map((record) => ({
           ...record,
@@ -135,6 +137,7 @@ export function assertRegistryStoreShape(store) {
   for (const collection of [
     'sources',
     'links',
+    'variantMatches',
     'contributionOutbox',
     'contributionLedger',
     'contributionGroups',
@@ -147,6 +150,7 @@ export function assertRegistryStoreShape(store) {
   assertUniqueNumericIds(store.privateTemplates, 'registry.privateTemplates')
   assertUniqueNumericIds(store.sources, 'registry.sources')
   assertUniqueNumericIds(store.links, 'registry.links')
+  assertUniqueNumericIds(store.variantMatches, 'registry.variantMatches')
   assertUniqueNumericIds(store.contributionOutbox, 'registry.contributionOutbox')
   assertUniqueNumericIds(store.contributionLedger, 'registry.contributionLedger')
   assertUniqueNumericIds(store.contributionGroups, 'registry.contributionGroups')
@@ -180,6 +184,33 @@ export function assertRegistryStoreShape(store) {
     }
     if (!isFingerprintVersion(link.importedFingerprintVersion ?? LEGACY_FINGERPRINT_VERSION)) {
       throw new Error(`registry.links[${index}].importedFingerprintVersion is unsupported.`)
+    }
+  })
+  store.variantMatches.forEach((match, index) => {
+    if (typeof match.itemType !== 'string' || match.itemType.trim() === '' || !isRelationalId(match.itemId)) {
+      throw new Error(`registry.variantMatches[${index}] must reference an inventory type and numeric ID.`)
+    }
+    if (!isRelationalId(match.sourceId) || !store.sources.some((source) => source.id === match.sourceId)) {
+      throw new Error(`registry.variantMatches[${index}].sourceId must reference a registry source.`)
+    }
+    if (!isFingerprintVersion(match.fingerprintVersion)) {
+      throw new Error(`registry.variantMatches[${index}].fingerprintVersion is unsupported.`)
+    }
+    if (!match.productFamily || typeof match.productFamily !== 'object' || Array.isArray(match.productFamily)) {
+      throw new Error(`registry.variantMatches[${index}].productFamily is required.`)
+    }
+    if (!Array.isArray(match.candidates) || match.candidates.length < 2) {
+      throw new Error(`registry.variantMatches[${index}].candidates must contain ambiguous variants.`)
+    }
+    if (match.candidates.some((candidate) => (
+      typeof candidate?.templateKey !== 'string'
+      || !/^[A-Za-z0-9_-]{8,128}$/.test(candidate.templateKey)
+      || !isRelationalId(candidate.revision)
+    ))) {
+      throw new Error(`registry.variantMatches[${index}].candidates contain an invalid catalog reference.`)
+    }
+    if (typeof match.localContentHash !== 'string' || !/^[a-f0-9]{64}$/.test(match.localContentHash)) {
+      throw new Error(`registry.variantMatches[${index}].localContentHash must be a SHA-256 hex digest.`)
     }
   })
   store.contributionOutbox.forEach((record, index) => {

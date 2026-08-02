@@ -4,10 +4,12 @@ import { Input } from '@/components/ui/input'
 import { FieldError, SelectField, TextField } from './field-primitives'
 import type {
   ExpansionSlotGroupDraft,
+  OptionalModuleSlotGroupDraft,
   StorageSlotGroupDraft,
 } from './model'
 import {
   getExpansionSlotGroupValidationTarget,
+  getOptionalModuleSlotGroupValidationTarget,
   getStorageSlotGroupValidationTarget,
 } from './model'
 import {
@@ -15,6 +17,7 @@ import {
   EXPANSION_INTERFACE_FAMILIES,
   PCIE_GENERATIONS,
   PCIE_LANE_WIDTHS,
+  OPTIONAL_MODULE_KINDS,
   SLOT_WIDTHS,
   STORAGE_FORM_FACTORS,
   STORAGE_INTERFACES,
@@ -22,7 +25,7 @@ import {
 
 let resourceGroupSequence = 0
 
-function createResourceGroupDraftKey(kind: 'storage' | 'expansion'): string {
+function createResourceGroupDraftKey(kind: 'storage' | 'expansion' | 'optional-module'): string {
   resourceGroupSequence += 1
   return `${kind}-${Date.now().toString(36)}-${resourceGroupSequence.toString(36)}`
 }
@@ -174,6 +177,8 @@ export function ExpansionSlotGroupsEditor({
             acceptedHeights: [],
             maxSlotWidth: '',
             maxPowerWatts: '',
+            proprietaryRiser: false,
+            riserCapability: '',
           }])}
         >
           <Plus aria-hidden="true" className="size-4" />
@@ -208,6 +213,84 @@ export function ExpansionSlotGroupsEditor({
             <TextField label="Maximum power (W)" name={`expansion-group-${group.draftKey}-power`} value={group.maxPowerWatts} type="number" min={0} placeholder="75" onChange={(maxPowerWatts) => updateGroup(group.draftKey, { maxPowerWatts })} />
           </div>
           <CheckboxOptions label={`Expansion group ${index + 1} accepted heights`} options={CARD_HEIGHTS} selected={group.acceptedHeights} onChange={(acceptedHeights) => updateGroup(group.draftKey, { acceptedHeights })} />
+          <div className="grid gap-3 sm:grid-cols-[auto_minmax(0,1fr)]">
+            <label className="flex min-h-10 items-center gap-2 rounded-md border border-[#ded8ce] bg-[#fffdf8] px-3 text-xs font-semibold text-[#3d3832]">
+              <Input
+                aria-label={`Expansion group ${index + 1} requires proprietary riser`}
+                type="checkbox"
+                checked={group.proprietaryRiser}
+                className="size-4 rounded-none"
+                onChange={(event) => updateGroup(group.draftKey, { proprietaryRiser: event.target.checked })}
+              />
+              Proprietary riser
+            </label>
+            <TextField label="Riser capability" name={`expansion-group-${group.draftKey}-riser-capability`} value={group.riserCapability} placeholder="Dell proprietary PCIe riser" onChange={(riserCapability) => updateGroup(group.draftKey, { riserCapability })} />
+          </div>
+        </div>
+      ))}
+      {!validationTarget ? <FieldError message={error} /> : null}
+    </section>
+  )
+}
+
+export function OptionalModuleSlotGroupsEditor({
+  groups,
+  error,
+  onChange,
+}: {
+  groups: OptionalModuleSlotGroupDraft[]
+  error?: string
+  onChange: (groups: OptionalModuleSlotGroupDraft[]) => void
+}) {
+  const validationTarget = error ? getOptionalModuleSlotGroupValidationTarget(groups) : null
+  const updateGroup = (draftKey: string, patch: Partial<OptionalModuleSlotGroupDraft>) => {
+    onChange(groups.map((group) => group.draftKey === draftKey ? { ...group, ...patch } : group))
+  }
+
+  return (
+    <section aria-labelledby="optional-module-slot-groups-heading" className="space-y-3 rounded-md border border-[#e4d9c9] bg-[#fbf8f2] p-3">
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <h4 id="optional-module-slot-groups-heading" className="text-sm font-bold text-[#20242c]">Optional module groups</h4>
+          <p className="text-xs text-[#75695d]">Describe WLAN, rear I/O, Flex IO, and other OEM module positions.</p>
+        </div>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          aria-label="Add optional module group"
+          onClick={() => onChange([...groups, {
+            draftKey: createResourceGroupDraftKey('optional-module'),
+            key: '',
+            label: '',
+            count: '',
+            acceptedModuleKinds: [],
+          }])}
+        >
+          <Plus aria-hidden="true" className="size-4" />
+          Add group
+        </Button>
+      </div>
+      {groups.map((group, index) => (
+        <div key={group.draftKey} className="space-y-3 rounded-md border border-[#ded8ce] bg-white p-3">
+          <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_8rem_auto]">
+            <TextField label={`Optional module group ${index + 1} label`} name={`optional-module-group-${group.draftKey}-label`} value={group.label} placeholder="Optional rear I/O" onChange={(label) => updateGroup(group.draftKey, { label })} />
+            <TextField
+              label="Count"
+              ariaLabel={`Optional module group ${index + 1} count`}
+              name={`optional-module-group-${group.draftKey}-count`}
+              value={group.count}
+              type="number"
+              min={1}
+              placeholder="1"
+              error={validationTarget?.index === index ? error : undefined}
+              onChange={(count) => updateGroup(group.draftKey, { count })}
+            />
+            <Button type="button" variant="ghost" size="icon" className="self-end" aria-label={`Remove optional module group ${index + 1}`} onClick={() => onChange(groups.filter((entry) => entry.draftKey !== group.draftKey))}>
+              <Trash2 aria-hidden="true" className="size-4" />
+            </Button>
+          </div>
+          <CheckboxOptions label={`Optional module group ${index + 1} accepted kinds`} options={OPTIONAL_MODULE_KINDS} selected={group.acceptedModuleKinds} onChange={(acceptedModuleKinds) => updateGroup(group.draftKey, { acceptedModuleKinds })} />
         </div>
       ))}
       {!validationTarget ? <FieldError message={error} /> : null}

@@ -1,7 +1,12 @@
 export const CATALOG_SCHEMA_VERSION = 1
 export const LEGACY_FINGERPRINT_VERSION = 2
 export const FINGERPRINT_VERSION = 3
-export const SUPPORTED_FINGERPRINT_VERSIONS = [LEGACY_FINGERPRINT_VERSION, FINGERPRINT_VERSION] as const
+export const OEM_FINGERPRINT_VERSION = 4
+export const SUPPORTED_FINGERPRINT_VERSIONS = [
+  LEGACY_FINGERPRINT_VERSION,
+  FINGERPRINT_VERSION,
+  OEM_FINGERPRINT_VERSION,
+] as const
 export const MANUFACTURER_ALIAS_VERSION = 1
 
 export const CPU_SPEC_KEYS = [
@@ -64,6 +69,8 @@ export type CatalogPortEndpoint = {
   side: 'front' | 'back'
 }
 
+export type CatalogPortOrigin = 'fixed' | 'module'
+
 export type CatalogPort = {
   id: number
   key?: string
@@ -73,6 +80,7 @@ export type CatalogPort = {
   role?: string
   speed?: string
   poe?: boolean
+  origin?: CatalogPortOrigin
   endpoints?: CatalogPortEndpoint[]
 }
 

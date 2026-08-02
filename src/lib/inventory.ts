@@ -87,7 +87,9 @@ const INVENTORY_TABLES = [
   ['upsSystems', 'ups'],
   ['powerStrips', 'powerStrip'],
 ] as const satisfies readonly (readonly [string, InventoryType])[]
-const PORT_KINDS: InventoryPortKind[] = ['switch-port', 'keystone', 'server-port']
+const PORT_KINDS: InventoryPortKind[] = [
+  'switch-port', 'keystone', 'server-port', 'power-port', 'network', 'video',
+]
 const PORT_TYPES: InventoryPortType[] = [
   'rj45',
   'sfp',
@@ -96,6 +98,8 @@ const PORT_TYPES: InventoryPortType[] = [
   'displayport',
   'mini-displayport',
   'barrel',
+  'ac-input',
+  'ac-outlet',
 ]
 const PORT_SIDES: InventoryPortSide[] = ['front', 'back']
 const PORT_ROLES: InventoryPortRole[] = ['access', 'trunk', 'uplink', 'management', 'disabled']
@@ -187,6 +191,7 @@ function normalizePorts(value: unknown, itemId: string): InventoryPort[] | undef
         : undefined,
       speed: typeof raw.speed === 'string' ? raw.speed : undefined,
       poe: typeof raw.poe === 'boolean' ? raw.poe : undefined,
+      origin: raw.origin === 'fixed' || raw.origin === 'module' ? raw.origin : undefined,
       endpoints,
     }
   })
@@ -229,6 +234,17 @@ export function normalizeInventory(input: unknown): InventoryItem[] {
       key,
       name: raw.name,
       type,
+      hardwareClass:
+        raw.hardwareClass === 'desktop' || raw.hardwareClass === 'server'
+          ? raw.hardwareClass
+          : undefined,
+      usageRole:
+        raw.usageRole === 'server'
+        || raw.usageRole === 'desktop'
+        || raw.usageRole === 'workstation'
+        || raw.usageRole === 'other'
+          ? raw.usageRole
+          : undefined,
       subtype: typeof raw.subtype === 'string' ? raw.subtype : undefined,
       manufacturer: typeof raw.manufacturer === 'string' ? raw.manufacturer : undefined,
       secondaryManufacturer:

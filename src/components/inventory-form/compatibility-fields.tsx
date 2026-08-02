@@ -7,14 +7,18 @@ import {
   CPU_GENERATIONS,
   CPU_SOCKET_SUGGESTIONS,
   EXPANSION_INTERFACE_FAMILIES,
+  ECC_SUPPORT_OPTIONS,
+  HOST_POWER_CONFIGURATIONS,
   PCIE_GENERATIONS,
   PCIE_LANE_WIDTHS,
   RAM_GENERATIONS,
   SLOT_WIDTHS,
+  TOPOLOGY_COMPLETENESS_OPTIONS,
   fieldClassName,
 } from './options'
 import {
   ExpansionSlotGroupsEditor,
+  OptionalModuleSlotGroupsEditor,
   StorageSlotGroupsEditor,
 } from './resource-group-editor'
 import type { InventoryFieldChangeMode } from './type-fields'
@@ -81,6 +85,7 @@ export function HostRequirementFields({
 }: CompatibilityFieldsProps) {
   return (
     <div className="space-y-4">
+      <SelectField label="Topology completeness" name="hostTopologyCompleteness" value={values.hostTopologyCompleteness} options={TOPOLOGY_COMPLETENESS_OPTIONS} emptyLabel="Not specified" onValueChange={(hostTopologyCompleteness) => onChange({ hostTopologyCompleteness: hostTopologyCompleteness as InventoryFormValues['hostTopologyCompleteness'] }, 'immediate')} />
       <section className="space-y-3">
         <SectionHeading icon={Cpu}>Processor support</SectionHeading>
         <div className="grid gap-3 sm:grid-cols-3">
@@ -113,6 +118,7 @@ export function HostRequirementFields({
           <TextField label="Maximum capacity (GB)" name="hostMemoryMaxCapacityGb" value={values.hostMemoryMaxCapacityGb} type="number" min={0} placeholder="64" error={errors.hostMemoryMaxCapacityGb} onChange={(hostMemoryMaxCapacityGb) => onChange({ hostMemoryMaxCapacityGb })} />
           <TextField label="Maximum module (GB)" name="hostMemoryMaxModuleCapacityGb" value={values.hostMemoryMaxModuleCapacityGb} type="number" min={0} placeholder="32" error={errors.hostMemoryMaxModuleCapacityGb} onChange={(hostMemoryMaxModuleCapacityGb) => onChange({ hostMemoryMaxModuleCapacityGb })} />
           <TextField label="Maximum speed (MT/s)" name="hostMemoryMaxSpeedMt" value={values.hostMemoryMaxSpeedMt} type="number" min={0} placeholder="3200" error={errors.hostMemoryMaxSpeedMt} onChange={(hostMemoryMaxSpeedMt) => onChange({ hostMemoryMaxSpeedMt })} />
+          <SelectField label="ECC behavior" name="hostMemoryEccSupport" value={values.hostMemoryEccSupport} options={ECC_SUPPORT_OPTIONS} emptyLabel="Not specified" onValueChange={(hostMemoryEccSupport) => onChange({ hostMemoryEccSupport: hostMemoryEccSupport as InventoryFormValues['hostMemoryEccSupport'] }, 'immediate')} />
         </div>
       </section>
 
@@ -130,7 +136,21 @@ export function HostResourceFields({
     <div className="space-y-3">
       <StorageSlotGroupsEditor groups={values.storageSlotGroups} error={errors.storageSlotGroups} onChange={(storageSlotGroups) => onChange({ storageSlotGroups }, 'immediate')} onSelectOpenChange={onSelectOpenChange} />
       <ExpansionSlotGroupsEditor groups={values.expansionSlotGroups} error={errors.expansionSlotGroups} onChange={(expansionSlotGroups) => onChange({ expansionSlotGroups }, 'immediate')} onSelectOpenChange={onSelectOpenChange} />
+      <OptionalModuleSlotGroupsEditor groups={values.optionalModuleSlotGroups} error={errors.optionalModuleSlotGroups} onChange={(optionalModuleSlotGroups) => onChange({ optionalModuleSlotGroups }, 'immediate')} />
       <TextField label="Total expansion power (W)" name="hostMaxExpansionPowerWatts" value={values.hostMaxExpansionPowerWatts} type="number" min={0} placeholder="100" error={errors.hostMaxExpansionPowerWatts} onChange={(hostMaxExpansionPowerWatts) => onChange({ hostMaxExpansionPowerWatts })} />
+      <section className="space-y-3 rounded-md border border-[#e4d9c9] bg-[#fbf8f2] p-3">
+        <div>
+          <h4 className="text-sm font-bold text-[#20242c]">Power compatibility</h4>
+          <p className="text-xs text-[#75695d]">Describe the OEM power source without assigning an installed adapter.</p>
+        </div>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <SelectField label="Configuration" name="hostPowerConfiguration" value={values.hostPowerConfiguration} options={HOST_POWER_CONFIGURATIONS} emptyLabel="Not specified" onOpenChange={onSelectOpenChange} onValueChange={(hostPowerConfiguration) => onChange({ hostPowerConfiguration }, 'immediate')} />
+          <TextField label="Connector" name="hostPowerConnector" value={values.hostPowerConnector} placeholder="Dell 4.5mm barrel" onChange={(hostPowerConnector) => onChange({ hostPowerConnector })} />
+          <TextField label="Supported wattages" name="hostPowerSupportedWattagesWatts" value={values.hostPowerSupportedWattagesWatts} placeholder="65, 90, 130" onChange={(hostPowerSupportedWattagesWatts) => onChange({ hostPowerSupportedWattagesWatts })} />
+          <SelectField label="Adapter required" name="hostPowerAdapterRequired" value={values.hostPowerAdapterRequired} options={['yes', 'no']} emptyLabel="Not specified" onOpenChange={onSelectOpenChange} onValueChange={(hostPowerAdapterRequired) => onChange({ hostPowerAdapterRequired: hostPowerAdapterRequired as InventoryFormValues['hostPowerAdapterRequired'] }, 'immediate')} />
+          <TextField label="Adapter type" name="hostPowerAdapterType" value={values.hostPowerAdapterType} placeholder="Dell OEM external adapter" onChange={(hostPowerAdapterType) => onChange({ hostPowerAdapterType })} />
+        </div>
+      </section>
     </div>
   )
 }

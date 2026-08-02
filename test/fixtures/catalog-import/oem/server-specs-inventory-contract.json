@@ -1,0 +1,1311 @@
+{
+  "schemaVersion": 1,
+  "protocol": {
+    "catalogSchemaVersion": 1,
+    "fingerprintVersion": 4,
+    "manufacturerAliasVersion": 1
+  },
+  "platformCases": [
+    {
+      "caseId": "dell-standard-micro",
+      "description": "Dell standard Micro",
+      "sourceRecordKey": "dell:optiplex-micro:7090:standard",
+      "templateKey": "desktop-dell-optiplex-micro-7090-standard-sata-board",
+      "fingerprintVersion": 4,
+      "productFamily": {
+        "manufacturer": "Dell",
+        "model": "7090",
+        "physicalClass": "desktop"
+      },
+      "variantEvidence": {
+        "source": "topology",
+        "completeness": "complete",
+        "label": "Standard SATA board",
+        "variantKey": "standard-sata-board",
+        "topologySignature": "9ddd7b59a7cf49d84e6203193a6bba23a04ce7bacd8992b56f3cdca0bda9a43f",
+        "structuralSummary": "2 storage groups · 2 memory slots"
+      },
+      "identityHash": "2595506774bdbde6e2e60f9cd5feddccbe089748b500270e62b5a1b24a91b4eb",
+      "contentHash": "34da7e33202c3a83c25090e193f07c1ae8c73adfc86d7cf5e4f3d76568ec9080",
+      "item": {
+        "type": "desktop",
+        "name": "Dell OptiPlex Micro 7090",
+        "manufacturer": "Dell",
+        "family": "OptiPlex Micro",
+        "model": "7090",
+        "specs": {
+          "formFactor": "Micro",
+          "topologyCompleteness": "complete",
+          "variantKey": "standard",
+          "launchDate": "2021-01-01",
+          "boardVariant": "Standard SATA board"
+        },
+        "ports": [
+          {
+            "id": 1,
+            "kind": "network",
+            "type": "rj45",
+            "slotNumber": 1,
+            "key": "lan-1",
+            "speed": "1G",
+            "origin": "fixed"
+          },
+          {
+            "id": 2,
+            "kind": "video",
+            "type": "displayport",
+            "slotNumber": 2,
+            "key": "displayport-1",
+            "origin": "fixed"
+          },
+          {
+            "id": 3,
+            "kind": "video",
+            "type": "displayport",
+            "slotNumber": 3,
+            "key": "displayport-2",
+            "origin": "fixed"
+          }
+        ],
+        "compatibility": {
+          "host": {
+            "topologyCompleteness": "complete",
+            "cpu": {
+              "sockets": [
+                "LGA1200"
+              ],
+              "generations": [
+                "10th Gen",
+                "11th Gen"
+              ],
+              "maxTdpWatts": 65
+            },
+            "memory": {
+              "slots": 2,
+              "generations": [
+                "DDR4"
+              ],
+              "maxCapacityGb": 64,
+              "maxModuleCapacityGb": 32,
+              "maxSpeedMt": 3200,
+              "eccSupport": "unsupported"
+            },
+            "storageSlots": [
+              {
+                "id": 1,
+                "key": "m2-ssd",
+                "label": "M.2 NVMe SSD slots",
+                "count": 2,
+                "interfaces": [
+                  "NVMe"
+                ],
+                "formFactors": [
+                  "2230",
+                  "2280"
+                ],
+                "pcieGeneration": 4
+              },
+              {
+                "id": 2,
+                "key": "sata-2-5",
+                "label": "2.5-inch SATA bay",
+                "count": 1,
+                "interfaces": [
+                  "SATA"
+                ],
+                "formFactors": [
+                  "2.5-inch"
+                ]
+              }
+            ],
+            "optionalModuleSlots": [
+              {
+                "id": 1,
+                "key": "wlan-m2",
+                "label": "M.2 2230 WLAN slot",
+                "count": 1,
+                "acceptedModuleKinds": [
+                  "wireless-card"
+                ]
+              },
+              {
+                "id": 2,
+                "key": "optional-rear-io",
+                "label": "Optional rear I/O module",
+                "count": 1,
+                "acceptedModuleKinds": [
+                  "video-port",
+                  "serial-port"
+                ]
+              }
+            ],
+            "power": {
+              "configuration": "external-adapter",
+              "connector": "Dell 4.5mm barrel",
+              "supportedWattagesWatts": [
+                65,
+                90
+              ],
+              "adapterRequired": true,
+              "adapterType": "Dell OEM external adapter"
+            }
+          }
+        }
+      }
+    },
+    {
+      "caseId": "dell-proprietary-pcie-riser-micro",
+      "description": "Dell proprietary PCIe-riser Micro",
+      "sourceRecordKey": "dell:optiplex-micro:7090:pcie-riser",
+      "templateKey": "desktop-dell-optiplex-micro-7090-discrete-graphics-board-with-proprietary-pcie-riser",
+      "fingerprintVersion": 4,
+      "productFamily": {
+        "manufacturer": "Dell",
+        "model": "7090",
+        "physicalClass": "desktop"
+      },
+      "variantEvidence": {
+        "source": "topology",
+        "completeness": "complete",
+        "label": "Discrete graphics board with proprietary PCIe riser",
+        "variantKey": "discrete-graphics-board-with-proprietary-pcie-riser",
+        "topologySignature": "2c0abb5199a520c559715cd790fb3908b624d208d936c8506d75f9b44807f1e3",
+        "structuralSummary": "PCIe Gen3 x8 Dell proprietary PCIe riser"
+      },
+      "identityHash": "20a844b1e558d1f410785e72ee9fd807b35875212419e0f21e7b4a40434ca8a0",
+      "contentHash": "ebd5ce76abab862b051b32ea62349e425aa43e166aedcc807c7df2b60d3a5f33",
+      "item": {
+        "type": "desktop",
+        "name": "Dell OptiPlex Micro 7090 - Discrete Graphics PCIe Riser",
+        "manufacturer": "Dell",
+        "family": "OptiPlex Micro",
+        "model": "7090",
+        "specs": {
+          "formFactor": "Micro",
+          "topologyCompleteness": "complete",
+          "variantKey": "pcie-riser",
+          "launchDate": "2021-01-01",
+          "boardVariant": "Discrete graphics board with proprietary PCIe riser"
+        },
+        "ports": [
+          {
+            "id": 1,
+            "kind": "network",
+            "type": "rj45",
+            "slotNumber": 1,
+            "key": "lan-1",
+            "speed": "1G",
+            "origin": "fixed"
+          },
+          {
+            "id": 2,
+            "kind": "video",
+            "type": "displayport",
+            "slotNumber": 2,
+            "key": "displayport-1",
+            "origin": "fixed"
+          },
+          {
+            "id": 3,
+            "kind": "video",
+            "type": "displayport",
+            "slotNumber": 3,
+            "key": "displayport-2",
+            "origin": "fixed"
+          }
+        ],
+        "compatibility": {
+          "host": {
+            "topologyCompleteness": "complete",
+            "cpu": {
+              "sockets": [
+                "LGA1200"
+              ],
+              "generations": [
+                "10th Gen",
+                "11th Gen"
+              ],
+              "maxTdpWatts": 65
+            },
+            "memory": {
+              "slots": 2,
+              "generations": [
+                "DDR4"
+              ],
+              "maxCapacityGb": 64,
+              "maxModuleCapacityGb": 32,
+              "maxSpeedMt": 3200,
+              "eccSupport": "unsupported"
+            },
+            "storageSlots": [
+              {
+                "id": 1,
+                "key": "m2-ssd",
+                "label": "M.2 NVMe SSD slots",
+                "count": 2,
+                "interfaces": [
+                  "NVMe"
+                ],
+                "formFactors": [
+                  "2230",
+                  "2280"
+                ],
+                "pcieGeneration": 4
+              }
+            ],
+            "expansionSlots": [
+              {
+                "id": 1,
+                "key": "proprietary-pcie-riser",
+                "label": "Dell proprietary PCIe riser",
+                "count": 1,
+                "interfaceFamily": "pcie",
+                "pcieGeneration": 3,
+                "mechanicalLanes": 16,
+                "electricalLanes": 8,
+                "proprietaryRiser": true,
+                "riserCapability": "Dell OptiPlex Micro discrete graphics riser"
+              }
+            ],
+            "optionalModuleSlots": [
+              {
+                "id": 1,
+                "key": "wlan-m2",
+                "label": "M.2 2230 WLAN slot",
+                "count": 1,
+                "acceptedModuleKinds": [
+                  "wireless-card"
+                ]
+              },
+              {
+                "id": 2,
+                "key": "optional-rear-io",
+                "label": "Optional rear I/O module",
+                "count": 1,
+                "acceptedModuleKinds": [
+                  "video-port",
+                  "serial-port"
+                ]
+              }
+            ],
+            "power": {
+              "configuration": "external-adapter",
+              "connector": "Dell 7.4mm barrel",
+              "supportedWattagesWatts": [
+                180,
+                240
+              ],
+              "adapterRequired": true,
+              "adapterType": "Dell OEM external adapter"
+            }
+          }
+        }
+      }
+    },
+    {
+      "caseId": "hp-intel-mini-optional-io",
+      "description": "HP Intel Mini with optional I/O",
+      "sourceRecordKey": "hp:elitedesk-mini:800-g5:35-65w",
+      "templateKey": "desktop-hp-elitedesk-mini-800-g5-35w-and-65w-platform-without-95w-discrete-graphics-topology",
+      "fingerprintVersion": 4,
+      "productFamily": {
+        "manufacturer": "HP",
+        "model": "800 G5",
+        "physicalClass": "desktop"
+      },
+      "variantEvidence": {
+        "source": "topology",
+        "completeness": "complete",
+        "label": "35W and 65W platform without 95W discrete graphics topology",
+        "variantKey": "35w-and-65w-platform-without-95w-discrete-graphics-topology",
+        "topologySignature": "e691266ed1e0a9315f1f7ac7b984f6545b4712bcb4f0a136f9d504d9425c9d85",
+        "structuralSummary": "2 storage groups · 2 memory slots"
+      },
+      "identityHash": "790a4f6c01f020ddc739b506b26bc3ccd43cdcc51dc437c23d556813332a3886",
+      "contentHash": "1076c491f0783c379c856800e589589d04f3fa705f6272292c3f52afd241b904",
+      "item": {
+        "type": "desktop",
+        "name": "HP EliteDesk Mini 800 G5 - 35W and 65W platform",
+        "manufacturer": "HP",
+        "family": "EliteDesk Mini",
+        "model": "800 G5",
+        "specs": {
+          "formFactor": "Mini",
+          "topologyCompleteness": "complete",
+          "variantKey": "35-65w",
+          "launchDate": "2019-01-01",
+          "boardVariant": "35W and 65W platform without 95W discrete graphics topology"
+        },
+        "ports": [
+          {
+            "id": 1,
+            "kind": "network",
+            "type": "rj45",
+            "slotNumber": 1,
+            "key": "lan-1",
+            "speed": "1G",
+            "origin": "fixed"
+          },
+          {
+            "id": 2,
+            "kind": "video",
+            "type": "displayport",
+            "slotNumber": 2,
+            "key": "displayport-1",
+            "origin": "fixed"
+          },
+          {
+            "id": 3,
+            "kind": "video",
+            "type": "displayport",
+            "slotNumber": 3,
+            "key": "displayport-2",
+            "origin": "fixed"
+          }
+        ],
+        "compatibility": {
+          "host": {
+            "topologyCompleteness": "complete",
+            "cpu": {
+              "sockets": [
+                "LGA1151"
+              ],
+              "generations": [
+                "8th Gen",
+                "9th Gen"
+              ],
+              "maxTdpWatts": 65
+            },
+            "memory": {
+              "slots": 2,
+              "generations": [
+                "DDR4"
+              ],
+              "maxCapacityGb": 64,
+              "maxModuleCapacityGb": 32,
+              "maxSpeedMt": 2666,
+              "eccSupport": "unsupported"
+            },
+            "storageSlots": [
+              {
+                "id": 1,
+                "key": "m2-ssd",
+                "label": "M.2 2230/2280 NVMe SSD slots",
+                "count": 2,
+                "interfaces": [
+                  "NVMe"
+                ],
+                "formFactors": [
+                  "2230",
+                  "2280"
+                ],
+                "pcieGeneration": 3
+              },
+              {
+                "id": 2,
+                "key": "sata-2-5",
+                "label": "2.5-inch SATA bay",
+                "count": 1,
+                "interfaces": [
+                  "SATA"
+                ],
+                "formFactors": [
+                  "2.5-inch"
+                ]
+              }
+            ],
+            "optionalModuleSlots": [
+              {
+                "id": 1,
+                "key": "wlan-m2",
+                "label": "M.2 2230 WLAN slot",
+                "count": 1,
+                "acceptedModuleKinds": [
+                  "wireless-card"
+                ]
+              },
+              {
+                "id": 2,
+                "key": "flex-io",
+                "label": "HP Flex IO module slot",
+                "count": 1,
+                "acceptedModuleKinds": [
+                  "displayport",
+                  "hdmi",
+                  "fiber-nic",
+                  "serial-port",
+                  "usb-c",
+                  "thunderbolt",
+                  "vga"
+                ]
+              }
+            ],
+            "power": {
+              "configuration": "external-adapter",
+              "connector": "HP 4.5mm barrel",
+              "supportedWattagesWatts": [
+                65,
+                90
+              ],
+              "adapterRequired": true,
+              "adapterType": "HP OEM external adapter"
+            }
+          }
+        }
+      }
+    },
+    {
+      "caseId": "hp-amd-ryzen-pro-mini",
+      "description": "HP AMD Ryzen PRO Mini",
+      "sourceRecordKey": "hp:elitedesk-mini:805-g8:standard",
+      "templateKey": "desktop-hp-elitedesk-mini-805-g8-standard",
+      "fingerprintVersion": 4,
+      "productFamily": {
+        "manufacturer": "HP",
+        "model": "805 G8",
+        "physicalClass": "desktop"
+      },
+      "variantEvidence": {
+        "source": "topology",
+        "completeness": "complete",
+        "label": "standard",
+        "variantKey": "standard",
+        "topologySignature": "f37d8899545168c24e8fcfb0b4201dd547e8c1ddb3c1f792850de822c6739ade",
+        "structuralSummary": "2 storage groups · 2 memory slots"
+      },
+      "identityHash": "deeca98a31c867d4f10c88946657f3aa5facaac315c6e4468c8e59f7c2c0a7b6",
+      "contentHash": "b1bb351f906d133a91fc5425fd1089475d572ba649b4095208f85820b4e79e7a",
+      "item": {
+        "type": "desktop",
+        "name": "HP EliteDesk Mini 805 G8",
+        "manufacturer": "HP",
+        "family": "EliteDesk Mini",
+        "model": "805 G8",
+        "specs": {
+          "formFactor": "Mini",
+          "topologyCompleteness": "complete",
+          "variantKey": "standard",
+          "launchDate": "2021-01-01"
+        },
+        "ports": [
+          {
+            "id": 1,
+            "kind": "network",
+            "type": "rj45",
+            "slotNumber": 1,
+            "key": "lan-1",
+            "speed": "1G",
+            "origin": "fixed"
+          },
+          {
+            "id": 2,
+            "kind": "video",
+            "type": "displayport",
+            "slotNumber": 2,
+            "key": "displayport-1",
+            "origin": "fixed"
+          },
+          {
+            "id": 3,
+            "kind": "video",
+            "type": "displayport",
+            "slotNumber": 3,
+            "key": "displayport-2",
+            "origin": "fixed"
+          }
+        ],
+        "compatibility": {
+          "host": {
+            "topologyCompleteness": "complete",
+            "cpu": {
+              "sockets": [
+                "AM4"
+              ],
+              "generations": [
+                "Ryzen PRO 5000"
+              ],
+              "maxTdpWatts": 65
+            },
+            "memory": {
+              "slots": 2,
+              "generations": [
+                "DDR4"
+              ],
+              "maxCapacityGb": 64,
+              "maxModuleCapacityGb": 32,
+              "maxSpeedMt": 3200,
+              "eccSupport": "unsupported"
+            },
+            "storageSlots": [
+              {
+                "id": 1,
+                "key": "m2-ssd",
+                "label": "M.2 2280 NVMe SSD slots",
+                "count": 2,
+                "interfaces": [
+                  "NVMe"
+                ],
+                "formFactors": [
+                  "2280"
+                ]
+              },
+              {
+                "id": 2,
+                "key": "sata-2-5",
+                "label": "2.5-inch SATA bay",
+                "count": 1,
+                "interfaces": [
+                  "SATA"
+                ],
+                "formFactors": [
+                  "2.5-inch"
+                ]
+              }
+            ],
+            "optionalModuleSlots": [
+              {
+                "id": 1,
+                "key": "wlan-m2",
+                "label": "M.2 2230 WLAN slot",
+                "count": 1,
+                "acceptedModuleKinds": [
+                  "wireless-card"
+                ]
+              },
+              {
+                "id": 2,
+                "key": "flex-io-1",
+                "label": "HP Flex IO module slot 1",
+                "count": 1,
+                "acceptedModuleKinds": [
+                  "displayport",
+                  "hdmi",
+                  "usb-c",
+                  "vga",
+                  "fiber-nic",
+                  "2.5gbe-nic"
+                ]
+              },
+              {
+                "id": 3,
+                "key": "flex-io-2",
+                "label": "HP Flex IO module slot 2",
+                "count": 1,
+                "acceptedModuleKinds": [
+                  "dual-usb",
+                  "graphics-module",
+                  "serial-port"
+                ]
+              }
+            ],
+            "power": {
+              "configuration": "external-adapter",
+              "connector": "HP 4.5mm barrel",
+              "supportedWattagesWatts": [
+                65,
+                90,
+                150
+              ],
+              "adapterRequired": true,
+              "adapterType": "HP OEM external adapter"
+            }
+          }
+        }
+      }
+    },
+    {
+      "caseId": "lenovo-standard-tiny-single-nvme",
+      "description": "Lenovo standard Tiny with one M.2 NVMe group",
+      "sourceRecordKey": "lenovo:thinkcentre-tiny:m710q:standard",
+      "templateKey": "desktop-lenovo-thinkcentre-tiny-m710q-standard",
+      "fingerprintVersion": 4,
+      "productFamily": {
+        "manufacturer": "Lenovo",
+        "model": "M710q",
+        "physicalClass": "desktop"
+      },
+      "variantEvidence": {
+        "source": "topology",
+        "completeness": "complete",
+        "label": "standard",
+        "variantKey": "standard",
+        "topologySignature": "b1798e0d1ca643035c2e6dc04fa2f616451a03bd88f520d2bf5ca6710c009fd4",
+        "structuralSummary": "2 storage groups · 2 memory slots"
+      },
+      "identityHash": "a82932e0fb4e6b187edbecc07c8274e736870d80e5cfdc5301bb33fd93a06eba",
+      "contentHash": "0e31818721c632b98540f6f429a10954c543c0c3ff9b1495b0b46405c54bae69",
+      "item": {
+        "type": "desktop",
+        "name": "Lenovo ThinkCentre Tiny M710q",
+        "manufacturer": "Lenovo",
+        "family": "ThinkCentre Tiny",
+        "model": "M710q",
+        "specs": {
+          "formFactor": "Tiny",
+          "topologyCompleteness": "complete",
+          "variantKey": "standard",
+          "launchDate": "2017-02-01"
+        },
+        "ports": [
+          {
+            "id": 1,
+            "kind": "network",
+            "type": "rj45",
+            "slotNumber": 1,
+            "key": "lan-1",
+            "speed": "1G",
+            "origin": "fixed"
+          },
+          {
+            "id": 2,
+            "kind": "video",
+            "type": "displayport",
+            "slotNumber": 2,
+            "key": "displayport-1",
+            "origin": "fixed"
+          },
+          {
+            "id": 3,
+            "kind": "video",
+            "type": "displayport",
+            "slotNumber": 3,
+            "key": "displayport-2",
+            "origin": "fixed"
+          }
+        ],
+        "compatibility": {
+          "host": {
+            "topologyCompleteness": "complete",
+            "cpu": {
+              "sockets": [
+                "LGA1151"
+              ],
+              "generations": [
+                "6th Gen",
+                "7th Gen"
+              ],
+              "maxTdpWatts": 35
+            },
+            "memory": {
+              "slots": 2,
+              "generations": [
+                "DDR4"
+              ],
+              "maxCapacityGb": 32,
+              "maxModuleCapacityGb": 16,
+              "maxSpeedMt": 2400,
+              "eccSupport": "unsupported"
+            },
+            "storageSlots": [
+              {
+                "id": 1,
+                "key": "m2-ssd",
+                "label": "M.2 2242/2280 NVMe SSD slot",
+                "count": 1,
+                "interfaces": [
+                  "NVMe"
+                ],
+                "formFactors": [
+                  "2242",
+                  "2280"
+                ],
+                "pcieGeneration": 3
+              },
+              {
+                "id": 2,
+                "key": "sata-2-5",
+                "label": "2.5-inch SATA bay",
+                "count": 1,
+                "interfaces": [
+                  "SATA"
+                ],
+                "formFactors": [
+                  "2.5-inch"
+                ]
+              }
+            ],
+            "optionalModuleSlots": [
+              {
+                "id": 1,
+                "key": "wlan-m2",
+                "label": "M.2 WLAN slot",
+                "count": 1,
+                "acceptedModuleKinds": [
+                  "wireless-card"
+                ]
+              },
+              {
+                "id": 2,
+                "key": "optional-rear-port-1",
+                "label": "Optional rear port 1",
+                "count": 1,
+                "acceptedModuleKinds": [
+                  "displayport",
+                  "hdmi",
+                  "serial-port",
+                  "usb-c",
+                  "vga"
+                ]
+              },
+              {
+                "id": 3,
+                "key": "optional-rear-port-2",
+                "label": "Optional rear port 2",
+                "count": 1,
+                "acceptedModuleKinds": [
+                  "serial-port"
+                ]
+              }
+            ],
+            "power": {
+              "configuration": "external-adapter",
+              "connector": "Lenovo Slim tip",
+              "supportedWattagesWatts": [
+                65,
+                90
+              ],
+              "adapterRequired": true,
+              "adapterType": "Lenovo OEM external adapter"
+            }
+          }
+        }
+      }
+    },
+    {
+      "caseId": "lenovo-pcie-tiny-dual-nvme",
+      "description": "Lenovo PCIe-capable Tiny with dual NVMe",
+      "sourceRecordKey": "lenovo:thinkcentre-tiny:m920x:pcie-dual-nvme",
+      "templateKey": "desktop-lenovo-thinkcentre-tiny-m920x-q370-pcie-capable-dual-nvme-platform",
+      "fingerprintVersion": 4,
+      "productFamily": {
+        "manufacturer": "Lenovo",
+        "model": "M920x",
+        "physicalClass": "desktop"
+      },
+      "variantEvidence": {
+        "source": "topology",
+        "completeness": "complete",
+        "label": "Q370 PCIe-capable dual-NVMe platform",
+        "variantKey": "q370-pcie-capable-dual-nvme-platform",
+        "topologySignature": "8bd431ea0e40d9373252d57b12f58ea4d164d4195087598552b9fb453eba86b0",
+        "structuralSummary": "PCIe Gen3 x8 PCIe 3.0 x8 low-profile slot"
+      },
+      "identityHash": "3a97ad678314ba8585af0ba0f4d40806fafd677f2331b4562c76094a3f1d6df1",
+      "contentHash": "f2373e058c264f20968f88668b7eb2a54393ee59de844910880104c26a9072ab",
+      "item": {
+        "type": "desktop",
+        "name": "Lenovo ThinkCentre Tiny M920x - PCIe-capable dual-NVMe platform",
+        "manufacturer": "Lenovo",
+        "family": "ThinkCentre Tiny",
+        "model": "M920x",
+        "specs": {
+          "formFactor": "Tiny",
+          "topologyCompleteness": "complete",
+          "variantKey": "pcie-dual-nvme",
+          "launchDate": "2018-01-01",
+          "boardVariant": "Q370 PCIe-capable dual-NVMe platform"
+        },
+        "ports": [
+          {
+            "id": 1,
+            "kind": "network",
+            "type": "rj45",
+            "slotNumber": 1,
+            "key": "lan-1",
+            "speed": "1G",
+            "origin": "fixed"
+          },
+          {
+            "id": 2,
+            "kind": "video",
+            "type": "displayport",
+            "slotNumber": 2,
+            "key": "displayport-1",
+            "origin": "fixed"
+          },
+          {
+            "id": 3,
+            "kind": "video",
+            "type": "hdmi",
+            "slotNumber": 3,
+            "key": "hdmi-1",
+            "origin": "fixed"
+          }
+        ],
+        "compatibility": {
+          "host": {
+            "topologyCompleteness": "complete",
+            "cpu": {
+              "sockets": [
+                "LGA1151"
+              ],
+              "generations": [
+                "8th Gen",
+                "9th Gen"
+              ],
+              "maxTdpWatts": 65
+            },
+            "memory": {
+              "slots": 2,
+              "generations": [
+                "DDR4"
+              ],
+              "maxCapacityGb": 32,
+              "maxModuleCapacityGb": 16,
+              "maxSpeedMt": 2666,
+              "eccSupport": "unsupported"
+            },
+            "storageSlots": [
+              {
+                "id": 1,
+                "key": "m2-ssd",
+                "label": "M.2 2242/2280 NVMe SSD slots",
+                "count": 2,
+                "interfaces": [
+                  "NVMe"
+                ],
+                "formFactors": [
+                  "2242",
+                  "2280"
+                ],
+                "pcieGeneration": 3
+              },
+              {
+                "id": 2,
+                "key": "sata-2-5",
+                "label": "2.5-inch SATA bay",
+                "count": 1,
+                "interfaces": [
+                  "SATA"
+                ],
+                "formFactors": [
+                  "2.5-inch"
+                ]
+              }
+            ],
+            "expansionSlots": [
+              {
+                "id": 1,
+                "key": "pcie-low-profile",
+                "label": "PCIe 3.0 x8 low-profile slot",
+                "count": 1,
+                "interfaceFamily": "pcie",
+                "pcieGeneration": 3,
+                "mechanicalLanes": 8,
+                "electricalLanes": 8,
+                "acceptedHeights": [
+                  "low-profile"
+                ],
+                "maxSlotWidth": 1
+              }
+            ],
+            "optionalModuleSlots": [
+              {
+                "id": 1,
+                "key": "wlan-m2",
+                "label": "M.2 WLAN slot",
+                "count": 1,
+                "acceptedModuleKinds": [
+                  "wireless-card"
+                ]
+              },
+              {
+                "id": 2,
+                "key": "optional-rear-port-1",
+                "label": "Optional rear port 1",
+                "count": 1,
+                "acceptedModuleKinds": [
+                  "displayport",
+                  "hdmi",
+                  "serial-port",
+                  "usb-c",
+                  "vga"
+                ]
+              },
+              {
+                "id": 3,
+                "key": "optional-rear-port-2",
+                "label": "Optional rear port 2",
+                "count": 1,
+                "acceptedModuleKinds": [
+                  "serial-port"
+                ]
+              }
+            ],
+            "power": {
+              "configuration": "external-adapter",
+              "connector": "Lenovo Slim tip",
+              "supportedWattagesWatts": [
+                135
+              ],
+              "adapterRequired": true,
+              "adapterType": "Lenovo OEM external adapter"
+            }
+          }
+        }
+      }
+    }
+  ],
+  "linkingCases": [
+    {
+      "caseId": "ambiguous-local-family-detached",
+      "description": "A partial Dell 7090 family projection cannot choose between material standard and PCIe-riser variants.",
+      "localItem": {
+        "type": "desktop",
+        "name": "Dell OptiPlex Micro 7090",
+        "manufacturer": "Dell",
+        "family": "OptiPlex Micro",
+        "model": "7090",
+        "specs": {
+          "formFactor": "Micro",
+          "topologyCompleteness": "partial"
+        }
+      },
+      "localProjection": {
+        "fingerprintVersion": 4,
+        "productFamily": {
+          "manufacturer": "Dell",
+          "model": "7090",
+          "physicalClass": "desktop"
+        },
+        "variantEvidence": {
+          "source": "generic",
+          "completeness": "partial",
+          "label": "Generic family"
+        },
+        "identityHash": "d49abf72e3b155ecc5b15abf97cca28bfe0ee394c5555b518dbe10cb5f8697ff",
+        "contentHash": "05a224dca1465a9540c77f4a09a0451592523636e8873cfde49cb4b3695f8a3d"
+      },
+      "catalogCandidates": [
+        {
+          "templateKey": "desktop-dell-optiplex-micro-7090-standard-sata-board",
+          "fingerprintVersion": 4,
+          "productFamily": {
+            "manufacturer": "Dell",
+            "model": "7090",
+            "physicalClass": "desktop"
+          },
+          "variantEvidence": {
+            "source": "topology",
+            "completeness": "complete",
+            "label": "Standard SATA board",
+            "variantKey": "standard-sata-board",
+            "topologySignature": "9ddd7b59a7cf49d84e6203193a6bba23a04ce7bacd8992b56f3cdca0bda9a43f",
+            "structuralSummary": "2 storage groups · 2 memory slots"
+          },
+          "identityHash": "2595506774bdbde6e2e60f9cd5feddccbe089748b500270e62b5a1b24a91b4eb",
+          "contentHash": "34da7e33202c3a83c25090e193f07c1ae8c73adfc86d7cf5e4f3d76568ec9080"
+        },
+        {
+          "templateKey": "desktop-dell-optiplex-micro-7090-discrete-graphics-board-with-proprietary-pcie-riser",
+          "fingerprintVersion": 4,
+          "productFamily": {
+            "manufacturer": "Dell",
+            "model": "7090",
+            "physicalClass": "desktop"
+          },
+          "variantEvidence": {
+            "source": "topology",
+            "completeness": "complete",
+            "label": "Discrete graphics board with proprietary PCIe riser",
+            "variantKey": "discrete-graphics-board-with-proprietary-pcie-riser",
+            "topologySignature": "2c0abb5199a520c559715cd790fb3908b624d208d936c8506d75f9b44807f1e3",
+            "structuralSummary": "PCIe Gen3 x8 Dell proprietary PCIe riser"
+          },
+          "identityHash": "20a844b1e558d1f410785e72ee9fd807b35875212419e0f21e7b4a40434ca8a0",
+          "contentHash": "ebd5ce76abab862b051b32ea62349e425aa43e166aedcc807c7df2b60d3a5f33"
+        }
+      ],
+      "expected": {
+        "outcome": "detached",
+        "templateKey": null,
+        "reason": "Generic or partial family evidence cannot auto-link when multiple material variants share the product family."
+      }
+    },
+    {
+      "caseId": "exact-board-auto-link",
+      "description": "An exact normalized motherboard part and revision auto-link to the matching board-owned template.",
+      "localItem": {
+        "type": "desktop",
+        "name": "Dell OptiPlex Micro 7090 - PCIe Riser",
+        "manufacturer": "Dell",
+        "family": "OptiPlex Micro",
+        "model": "7090",
+        "specs": {
+          "formFactor": "Micro",
+          "topologyCompleteness": "complete",
+          "motherboardPartNumber": "014T59",
+          "motherboardRevision": "A00",
+          "variantKey": "pcie-riser"
+        },
+        "compatibility": {
+          "host": {
+            "topologyCompleteness": "complete",
+            "expansionSlots": [
+              {
+                "id": 1,
+                "key": "proprietary-pcie-riser",
+                "label": "Dell proprietary PCIe riser",
+                "count": 1,
+                "interfaceFamily": "pcie",
+                "pcieGeneration": 3,
+                "mechanicalLanes": 16,
+                "electricalLanes": 8,
+                "proprietaryRiser": true,
+                "riserCapability": "Dell OptiPlex Micro discrete graphics riser"
+              }
+            ]
+          }
+        }
+      },
+      "localProjection": {
+        "fingerprintVersion": 4,
+        "productFamily": {
+          "manufacturer": "Dell",
+          "model": "7090",
+          "physicalClass": "desktop"
+        },
+        "variantEvidence": {
+          "source": "motherboard",
+          "completeness": "complete",
+          "label": "pcie-riser",
+          "motherboardPartNumber": "014T59",
+          "motherboardRevision": "A00",
+          "variantKey": "pcie-riser",
+          "topologySignature": "eb5461b1879a7d64d3aa7fbd4751f5b053f6bd958d5980307c4811d4be3eea16",
+          "structuralSummary": "PCIe Gen3 x8 Dell proprietary PCIe riser"
+        },
+        "identityHash": "fe6dad97c38d6e9cfb6d890fb8755a781633fa70cfd3b4b4450a83f121ca4605",
+        "contentHash": "5d126bb1d0930f7f63519211fbfd166513934d3030ad4c6f8a1ce5435ff2e86d"
+      },
+      "catalogCandidates": [
+        {
+          "templateKey": "contract-dell-optiplex-micro-7090-board-014t59-a00",
+          "fingerprintVersion": 4,
+          "productFamily": {
+            "manufacturer": "Dell",
+            "model": "7090",
+            "physicalClass": "desktop"
+          },
+          "variantEvidence": {
+            "source": "motherboard",
+            "completeness": "complete",
+            "label": "pcie-riser",
+            "motherboardPartNumber": "014T59",
+            "motherboardRevision": "A00",
+            "variantKey": "pcie-riser",
+            "topologySignature": "eb5461b1879a7d64d3aa7fbd4751f5b053f6bd958d5980307c4811d4be3eea16",
+            "structuralSummary": "PCIe Gen3 x8 Dell proprietary PCIe riser"
+          },
+          "identityHash": "fe6dad97c38d6e9cfb6d890fb8755a781633fa70cfd3b4b4450a83f121ca4605",
+          "contentHash": "5d126bb1d0930f7f63519211fbfd166513934d3030ad4c6f8a1ce5435ff2e86d"
+        }
+      ],
+      "expected": {
+        "outcome": "auto-link",
+        "templateKey": "contract-dell-optiplex-micro-7090-board-014t59-a00",
+        "reason": "Fingerprint v4 exact motherboard identity is authoritative within the product family."
+      }
+    },
+    {
+      "caseId": "complete-topology-auto-link",
+      "description": "A complete Lenovo M920x topology auto-links to the catalog template with the same topology signature.",
+      "localItem": {
+        "type": "desktop",
+        "name": "Lenovo ThinkCentre Tiny M920x - PCIe-capable dual-NVMe platform",
+        "manufacturer": "Lenovo",
+        "family": "ThinkCentre Tiny",
+        "model": "M920x",
+        "specs": {
+          "formFactor": "Tiny",
+          "topologyCompleteness": "complete",
+          "variantKey": "pcie-dual-nvme",
+          "launchDate": "2018-01-01",
+          "boardVariant": "Q370 PCIe-capable dual-NVMe platform"
+        },
+        "ports": [
+          {
+            "id": 1,
+            "kind": "network",
+            "type": "rj45",
+            "slotNumber": 1,
+            "key": "lan-1",
+            "speed": "1G",
+            "origin": "fixed"
+          },
+          {
+            "id": 2,
+            "kind": "video",
+            "type": "displayport",
+            "slotNumber": 2,
+            "key": "displayport-1",
+            "origin": "fixed"
+          },
+          {
+            "id": 3,
+            "kind": "video",
+            "type": "hdmi",
+            "slotNumber": 3,
+            "key": "hdmi-1",
+            "origin": "fixed"
+          }
+        ],
+        "compatibility": {
+          "host": {
+            "topologyCompleteness": "complete",
+            "cpu": {
+              "sockets": [
+                "LGA1151"
+              ],
+              "generations": [
+                "8th Gen",
+                "9th Gen"
+              ],
+              "maxTdpWatts": 65
+            },
+            "memory": {
+              "slots": 2,
+              "generations": [
+                "DDR4"
+              ],
+              "maxCapacityGb": 32,
+              "maxModuleCapacityGb": 16,
+              "maxSpeedMt": 2666,
+              "eccSupport": "unsupported"
+            },
+            "storageSlots": [
+              {
+                "id": 1,
+                "key": "m2-ssd",
+                "label": "M.2 2242/2280 NVMe SSD slots",
+                "count": 2,
+                "interfaces": [
+                  "NVMe"
+                ],
+                "formFactors": [
+                  "2242",
+                  "2280"
+                ],
+                "pcieGeneration": 3
+              },
+              {
+                "id": 2,
+                "key": "sata-2-5",
+                "label": "2.5-inch SATA bay",
+                "count": 1,
+                "interfaces": [
+                  "SATA"
+                ],
+                "formFactors": [
+                  "2.5-inch"
+                ]
+              }
+            ],
+            "expansionSlots": [
+              {
+                "id": 1,
+                "key": "pcie-low-profile",
+                "label": "PCIe 3.0 x8 low-profile slot",
+                "count": 1,
+                "interfaceFamily": "pcie",
+                "pcieGeneration": 3,
+                "mechanicalLanes": 8,
+                "electricalLanes": 8,
+                "acceptedHeights": [
+                  "low-profile"
+                ],
+                "maxSlotWidth": 1
+              }
+            ],
+            "optionalModuleSlots": [
+              {
+                "id": 1,
+                "key": "wlan-m2",
+                "label": "M.2 WLAN slot",
+                "count": 1,
+                "acceptedModuleKinds": [
+                  "wireless-card"
+                ]
+              },
+              {
+                "id": 2,
+                "key": "optional-rear-port-1",
+                "label": "Optional rear port 1",
+                "count": 1,
+                "acceptedModuleKinds": [
+                  "displayport",
+                  "hdmi",
+                  "serial-port",
+                  "usb-c",
+                  "vga"
+                ]
+              },
+              {
+                "id": 3,
+                "key": "optional-rear-port-2",
+                "label": "Optional rear port 2",
+                "count": 1,
+                "acceptedModuleKinds": [
+                  "serial-port"
+                ]
+              }
+            ],
+            "power": {
+              "configuration": "external-adapter",
+              "connector": "Lenovo Slim tip",
+              "supportedWattagesWatts": [
+                135
+              ],
+              "adapterRequired": true,
+              "adapterType": "Lenovo OEM external adapter"
+            }
+          }
+        }
+      },
+      "localProjection": {
+        "fingerprintVersion": 4,
+        "productFamily": {
+          "manufacturer": "Lenovo",
+          "model": "M920x",
+          "physicalClass": "desktop"
+        },
+        "variantEvidence": {
+          "source": "topology",
+          "completeness": "complete",
+          "label": "Q370 PCIe-capable dual-NVMe platform",
+          "variantKey": "q370-pcie-capable-dual-nvme-platform",
+          "topologySignature": "8bd431ea0e40d9373252d57b12f58ea4d164d4195087598552b9fb453eba86b0",
+          "structuralSummary": "PCIe Gen3 x8 PCIe 3.0 x8 low-profile slot"
+        },
+        "identityHash": "3a97ad678314ba8585af0ba0f4d40806fafd677f2331b4562c76094a3f1d6df1",
+        "contentHash": "f2373e058c264f20968f88668b7eb2a54393ee59de844910880104c26a9072ab"
+      },
+      "catalogCandidates": [
+        {
+          "templateKey": "desktop-lenovo-thinkcentre-tiny-m920x-q370-pcie-capable-dual-nvme-platform",
+          "fingerprintVersion": 4,
+          "productFamily": {
+            "manufacturer": "Lenovo",
+            "model": "M920x",
+            "physicalClass": "desktop"
+          },
+          "variantEvidence": {
+            "source": "topology",
+            "completeness": "complete",
+            "label": "Q370 PCIe-capable dual-NVMe platform",
+            "variantKey": "q370-pcie-capable-dual-nvme-platform",
+            "topologySignature": "8bd431ea0e40d9373252d57b12f58ea4d164d4195087598552b9fb453eba86b0",
+            "structuralSummary": "PCIe Gen3 x8 PCIe 3.0 x8 low-profile slot"
+          },
+          "identityHash": "3a97ad678314ba8585af0ba0f4d40806fafd677f2331b4562c76094a3f1d6df1",
+          "contentHash": "f2373e058c264f20968f88668b7eb2a54393ee59de844910880104c26a9072ab"
+        }
+      ],
+      "expected": {
+        "outcome": "auto-link",
+        "templateKey": "desktop-lenovo-thinkcentre-tiny-m920x-q370-pcie-capable-dual-nvme-platform",
+        "reason": "Fingerprint v4 complete topology identity matches exactly."
+      }
+    }
+  ]
+}

@@ -32,6 +32,7 @@ export type RegistryState = {
   settings: RegistrySettings
   sources: RegistrySource[]
   links: RegistryLink[]
+  variantMatches?: CatalogVariantMatch[]
   privateTemplates: PrivateTemplate[]
   snapshot: RegistrySnapshot | null
   contributions: ContributionStatus
@@ -90,6 +91,10 @@ export type RegistryLink = {
   templateKey: string
   importedRevision: number
   importedContentHash: string
+  importedFingerprintVersion?: 2 | 3 | 4
+  productFamily?: CatalogProductFamily
+  variantEvidence?: CatalogVariantEvidence
+  identityAliases?: CatalogIdentityAlias[]
   state: 'linked' | 'update-available' | 'adoption-available' | 'detached' | 'contribution-pending'
   linkedAt: string
 }
@@ -112,14 +117,14 @@ export type CatalogVariantEvidence = {
 }
 
 export type CatalogIdentityAlias = {
-  fingerprintVersion: 2 | 3
+  fingerprintVersion: 2 | 3 | 4
   identityHash: string
 }
 
 export type CatalogSearchItem = {
   templateKey: string
   revision: number
-  fingerprintVersion: 2 | 3
+  fingerprintVersion: 2 | 3 | 4
   identityHash: string
   identityAliases: CatalogIdentityAlias[]
   contentHash: string
@@ -148,6 +153,39 @@ export type CatalogUpdateSummary = {
   availableRevision: number
   state: 'update-available' | 'adoption-available'
 }
+
+export type CatalogVariantCandidate = {
+  templateKey: string
+  revision: number
+  contentHash: string
+  fingerprintVersion: 2 | 3 | 4
+  label: string
+  structuralSummary?: string
+}
+
+export type CatalogVariantMatch = {
+  id: number
+  itemType: string
+  itemId: number
+  sourceId: number
+  productFamily: CatalogProductFamily
+  candidates: CatalogVariantCandidate[]
+  localContentHash: string
+  fingerprintVersion: 4
+  createdAt: string
+}
+
+export type CatalogVariantUpdateSummary = {
+  variantMatchId: number
+  itemType: string
+  itemId: number
+  itemName: string
+  state: 'variant-selection-required'
+  productFamily: CatalogProductFamily
+  candidates: CatalogVariantCandidate[]
+}
+
+export type CatalogReviewSummary = CatalogUpdateSummary | CatalogVariantUpdateSummary
 
 export type CatalogFieldChange = {
   field: string
@@ -189,6 +227,7 @@ export const DEFAULT_REGISTRY_STATE: RegistryState = {
   },
   sources: [],
   links: [],
+  variantMatches: [],
   privateTemplates: [],
   snapshot: null,
   contributions: {

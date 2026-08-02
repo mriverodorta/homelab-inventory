@@ -10,7 +10,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-import { loadCatalogUpdatePreview, loadCatalogUpdates } from '@/lib/registry-api'
+import { loadCatalogUpdatePreview, loadCatalogUpdates, selectCatalogVariant } from '@/lib/registry-api'
+import type { CatalogVariantUpdateSummary } from '@/types/registry'
 
 function display(value: unknown) {
   if (value === undefined) return 'Not set'
@@ -24,6 +25,8 @@ export function CatalogUpdateReview({
   onApply: (linkId: number) => Promise<void>
 }) {
   const [selectedLinkId, setSelectedLinkId] = useState<number | null>(null)
+  const [selectedVariant, setSelectedVariant] = useState<CatalogVariantUpdateSummary | null>(null)
+  const [selectedTemplateKey, setSelectedTemplateKey] = useState<string | null>(null)
   const [pending, setPending] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const updates = useQuery({ queryKey: ['registry', 'updates'], queryFn: loadCatalogUpdates })
@@ -48,6 +51,22 @@ export function CatalogUpdateReview({
     }
   }
 
+  async function chooseVariant() {
+    if (!selectedVariant || !selectedTemplateKey) return
+    setPending(true)
+    setError(null)
+    try {
+      await selectCatalogVariant(selectedVariant.variantMatchId, selectedTemplateKey)
+      setSelectedVariant(null)
+      setSelectedTemplateKey(null)
+      await updates.refetch()
+    } catch (selectionError) {
+      setError(selectionError instanceof Error ? selectionError.message : 'Catalog variant could not be selected.')
+    } finally {
+      setPending(false)
+    }
+  }
+
   const records = updates.data?.updates ?? []
   return (
     <>
@@ -63,16 +82,23 @@ export function CatalogUpdateReview({
           {updates.isLoading ? <p className="text-sm text-[#746b60]">Checking linked inventory…</p> : null}
           {!updates.isLoading && records.length === 0 ? <p className="text-sm text-[#746b60]">Linked inventory is up to date.</p> : null}
           {records.map((record) => (
-            <div key={record.linkId} className="flex items-center justify-between gap-3 rounded-md border border-[#ded8ce] bg-white p-3">
+            <div key={record.state === 'variant-selection-required' ? `variant-${record.variantMatchId}` : `link-${record.linkId}`} className="flex items-center justify-between gap-3 rounded-md border border-[#ded8ce] bg-white p-3">
               <div className="min-w-0">
                 <div className="truncate text-sm font-black text-[#28231f]">{record.itemName}</div>
                 <div className="text-xs text-[#746b60]">
-                  {record.state === 'adoption-available'
+                  {record.state === 'variant-selection-required'
+                    ? `${record.candidates.length} verified physical variants require selection`
+                    : record.state === 'adoption-available'
                     ? `Local definition → Registry revision ${record.availableRevision}`
                     : `Revision ${record.importedRevision} → ${record.availableRevision}`}
                 </div>
               </div>
-              <Button type="button" size="sm" variant="outline" onClick={() => setSelectedLinkId(record.linkId)}>Review</Button>
+              <Button type="button" size="sm" variant="outline" onClick={() => {
+                if (record.state === 'variant-selection-required') {
+                  setSelectedVariant(record)
+                  setSelectedTemplateKey(null)
+                } else setSelectedLinkId(record.linkId)
+              }}>Review</Button>
             </div>
           ))}
         </div>
@@ -113,6 +139,41 @@ export function CatalogUpdateReview({
           <DialogFooter>
             <Button type="button" variant="outline" disabled={pending} onClick={() => setSelectedLinkId(null)}>Later</Button>
             <Button type="button" disabled={pending || !preview.data} onClick={() => void apply()}><RefreshCw className="size-4" />{pending ? 'Applying…' : 'Apply update'}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={selectedVariant !== null} onOpenChange={(open) => {
+        if (!open && !pending) {
+          setSelectedVariant(null)
+          setSelectedTemplateKey(null)
+          setError(null)
+        }
+      }}>
+        <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto bg-[#fffdf8] sm:max-w-xl">
+          <DialogHeader>
+            <DialogTitle>Select the physical hardware variant</DialogTitle>
+            <DialogDescription>The model family matches multiple verified layouts. Choose the motherboard or topology that matches this device; installed components are not used to guess.</DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-2">
+            {selectedVariant?.candidates.map((candidate) => (
+              <button
+                key={candidate.templateKey}
+                type="button"
+                aria-pressed={selectedTemplateKey === candidate.templateKey}
+                className={`grid gap-1 rounded-md border p-3 text-left transition-colors ${selectedTemplateKey === candidate.templateKey ? 'border-[#3c746a] bg-[#e7f1ed]' : 'border-[#ded8ce] bg-white hover:bg-[#f7f2e9]'}`}
+                onClick={() => setSelectedTemplateKey(candidate.templateKey)}
+              >
+                <span className="text-sm font-black text-[#28231f]">{candidate.label}</span>
+                {candidate.structuralSummary ? <span className="text-xs leading-5 text-[#746b60]">{candidate.structuralSummary}</span> : null}
+                <span className="text-[11px] text-[#8a8177]">Revision {candidate.revision}</span>
+              </button>
+            ))}
+          </div>
+          {error ? <p className="text-sm font-semibold text-[#a33d31]" role="alert">{error}</p> : null}
+          <DialogFooter>
+            <Button type="button" variant="outline" disabled={pending} onClick={() => setSelectedVariant(null)}>Later</Button>
+            <Button type="button" disabled={pending || !selectedTemplateKey} onClick={() => void chooseVariant()}>{pending ? 'Selecting…' : 'Continue to review'}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

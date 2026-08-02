@@ -238,6 +238,7 @@ function noCapacityMessage(resourceType: CompatibilityResourceType): string {
     memory: 'memory',
     storage: 'storage',
     expansion: 'expansion',
+    optionalModule: 'optional module',
     motherboard: 'motherboard',
     cooling: 'cooling',
     power: 'power supply',

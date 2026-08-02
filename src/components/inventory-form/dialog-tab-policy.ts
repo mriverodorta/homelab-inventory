@@ -78,6 +78,7 @@ export const INVENTORY_DIALOG_ERROR_FIELDS: Readonly<
   resources: [
     'storageSlotGroups',
     'expansionSlotGroups',
+    'optionalModuleSlotGroups',
     'hostMaxExpansionPowerWatts',
   ],
   ports: ['portGroups'],

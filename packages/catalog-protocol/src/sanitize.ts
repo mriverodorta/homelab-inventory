@@ -53,6 +53,8 @@ const SAFE_COMPATIBILITY_FIELDS = new Set([
   'supportedRadiatorSizesMm', 'maxCoolerHeightMm', 'maxGpuLengthMm', 'maxGpuHeightMm',
   'maxGpuSlotWidth', 'radiatorSizesMm', 'psuFormFactors', 'motherboardFormFactors', 'ratedWatts',
   'topologyCompleteness', 'topologyComplete', 'proprietaryRiser', 'riserCapability', 'variantKey',
+  'optionalModuleSlots', 'acceptedModuleKinds', 'configuration', 'supportedWattagesWatts',
+  'connector', 'eccSupport', 'adapterRequired', 'adapterType', 'fixedPorts', 'origin',
 ])
 
 function looksSensitive(value: string): boolean {
@@ -124,6 +126,7 @@ function sanitizePort(value: unknown): CatalogPort | undefined {
     if (entry) sanitized[key] = entry
   }
   if (typeof port.poe === 'boolean') sanitized.poe = port.poe
+  if (port.origin === 'fixed' || port.origin === 'module') sanitized.origin = port.origin
   if (Array.isArray(port.endpoints)) {
     const endpoints = port.endpoints
       .map(sanitizeEndpoint)

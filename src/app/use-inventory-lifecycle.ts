@@ -93,7 +93,7 @@ export function useInventoryLifecycle({
   async function createCatalogItem(
     templateKey: string,
     quantity: number,
-    usageRole: 'server' | 'desktop' | 'workstation' = 'server',
+    usageRole: 'server' | 'desktop' | 'workstation' | 'other' = 'server',
   ) {
     const currentProject = projectRef.current
     const nextProject = await createInventoryFromCatalog(templateKey, quantity, usageRole)

@@ -5,7 +5,7 @@ import type {
   PrivateTemplatePack,
   CatalogSearchResult,
   CatalogUpdatePreview,
-  CatalogUpdateSummary,
+  CatalogReviewSummary,
   RegistrySettings,
   RegistryState,
 } from '@/types/registry'
@@ -111,7 +111,7 @@ export function rotateRegistryContributionKey(): Promise<RegistryState['contribu
 export function createInventoryFromCatalog(
   templateKey: string,
   quantity = 1,
-  usageRole: 'server' | 'desktop' | 'workstation' = 'server',
+  usageRole: 'server' | 'desktop' | 'workstation' | 'other' = 'server',
 ): Promise<ProjectState> {
   return apiRequest(`/api/registry/catalog/templates/${encodeURIComponent(templateKey)}/create`, {
     method: 'POST',
@@ -119,8 +119,15 @@ export function createInventoryFromCatalog(
   })
 }
 
-export function loadCatalogUpdates(): Promise<{ updates: CatalogUpdateSummary[] }> {
+export function loadCatalogUpdates(): Promise<{ updates: CatalogReviewSummary[] }> {
   return apiRequest('/api/registry/updates')
+}
+
+export function selectCatalogVariant(variantMatchId: number, templateKey: string): Promise<{ updates: CatalogReviewSummary[] }> {
+  return apiRequest(`/api/registry/variant-matches/${variantMatchId}/select`, {
+    method: 'POST',
+    body: JSON.stringify({ templateKey }),
+  })
 }
 
 export function loadCatalogUpdatePreview(linkId: number): Promise<CatalogUpdatePreview> {

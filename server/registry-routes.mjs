@@ -277,6 +277,26 @@ export function registerRegistryRoutes(app, {
     run(withStore, request, response, async (store) => response.json({ updates: store.getCatalogUpdates() }))
   })
 
+  app.post('/api/registry/variant-matches/:id/select', (request, response) => {
+    run(withStore, request, response, async (store) => {
+      const id = parseId(request.params.id)
+      if (id === null) throw new InventoryLifecycleError('Catalog variant match ID is invalid.', {
+        code: 'invalid-catalog-variant-match-id', status: 400,
+      })
+      const match = store.getRegistryState().variantMatches.find((candidate) => candidate.id === id)
+      const templateKey = request.body?.templateKey
+      if (!match || typeof templateKey !== 'string') throw new InventoryLifecycleError('Catalog variant selection was not found.', {
+        code: 'catalog-variant-selection-not-found', status: 404,
+      })
+      const template = await snapshotService(store).template(templateKey)
+      if (!template) throw new InventoryLifecycleError('Selected catalog template was not found.', {
+        code: 'catalog-template-not-found', status: 404,
+      })
+      store.selectCatalogVariant(id, template)
+      response.json({ updates: store.getCatalogUpdates() })
+    })
+  })
+
   app.get('/api/registry/links/:id/update-preview', (request, response) => {
     run(withStore, request, response, async (store) => {
       const id = parseId(request.params.id)

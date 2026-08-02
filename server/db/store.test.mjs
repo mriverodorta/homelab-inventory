@@ -2025,6 +2025,9 @@ describe('HomelabInventoryStore', () => {
       expect.not.objectContaining({ allocation: expect.anything() }),
     ])
     const expectedInventory = schema9Inventory(beforeInventory)
+    for (const item of [...expectedInventory.servers, ...expectedInventory.switches]) {
+      for (const port of item.ports ?? []) port.origin = 'fixed'
+    }
     expectedInventory.servers[0].compatibility.host.storageSlots[0] = {
       id: 1,
       key: 'm2-1',

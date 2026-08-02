@@ -5,12 +5,15 @@ export type CompatibilityResourceType =
   | 'memory'
   | 'storage'
   | 'expansion'
+  | 'optionalModule'
   | 'motherboard'
   | 'cooling'
   | 'power'
   | 'case'
 export type ExpansionInterfaceFamily = 'pcie' | 'm2-ae' | 'usb' | 'onboard'
 export type CardHeight = 'full-height' | 'low-profile'
+export type TopologyCompleteness = 'complete' | 'partial' | 'conflicting'
+export type EccSupport = 'supported' | 'unsupported' | 'optional' | 'unknown'
 
 export type StorageSlotGroup = {
   id: number
@@ -34,9 +37,38 @@ export type ExpansionSlotGroup = {
   acceptedHeights?: CardHeight[]
   maxSlotWidth?: number
   maxPowerWatts?: number
+  proprietaryRiser?: boolean
+  riserCapability?: string
+}
+
+export type OptionalModuleSlotGroup = {
+  id: number
+  key: string
+  label: string
+  count: number
+  acceptedModuleKinds?: string[]
+}
+
+export type HostPowerCompatibility = {
+  configuration?: string
+  connector?: string
+  supportedWattagesWatts?: number[]
+  adapterRequired?: boolean
+  adapterType?: string
+}
+
+export type FixedHostPort = {
+  id: number
+  key: string
+  kind: string
+  type: string
+  slotNumber: number
+  speed?: string
+  origin: 'fixed'
 }
 
 export type HostCompatibility = {
+  topologyCompleteness?: TopologyCompleteness
   cpu?: { sockets?: string[]; generations?: string[]; maxTdpWatts?: number }
   memory?: {
     generations?: string[]
@@ -44,9 +76,13 @@ export type HostCompatibility = {
     maxCapacityGb?: number
     maxModuleCapacityGb?: number
     maxSpeedMt?: number
+    eccSupport?: EccSupport
   }
   storageSlots?: StorageSlotGroup[]
   expansionSlots?: ExpansionSlotGroup[]
+  optionalModuleSlots?: OptionalModuleSlotGroup[]
+  fixedPorts?: FixedHostPort[]
+  power?: HostPowerCompatibility
   maxExpansionPowerWatts?: number
 }
 

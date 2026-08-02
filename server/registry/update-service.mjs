@@ -30,7 +30,7 @@ export function catalogFieldDiff(currentValue, nextValue) {
 export function mergeCatalogUpdate(currentValue, nextValue) {
   const current = structuredClone(currentValue)
   const next = sanitizeCatalogItem(nextValue)
-  const result = { ...next }
+  const result = { ...next, ...(current.name ? { name: current.name } : {}) }
   for (const [key, value] of Object.entries(current)) {
     if (key === 'id' || key === 'key' || key === 'type' || CATALOG_FIELDS.includes(key)) continue
     result[key] = value

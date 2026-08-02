@@ -41,6 +41,6 @@ describe('restore preflight', () => {
     })
 
     expect(result.ok).toBe(true)
-    expect(result.replacements.meta.schemaVersion).toBe(21)
+    expect(result.replacements.meta.schemaVersion).toBe(22)
   })
 })

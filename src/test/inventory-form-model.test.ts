@@ -157,8 +157,8 @@ const newTypeFixtures: InventoryItem[] = [
       },
     },
     ports: [
-      { id: 1, kind: 'server-port', type: 'rj45', slotNumber: 1, speed: '2.5G', label: '' },
-      { id: 2, kind: 'server-port', type: 'hdmi', slotNumber: 2, label: '' },
+      { id: 1, kind: 'server-port', type: 'rj45', slotNumber: 1, speed: '2.5G', label: '', origin: 'fixed' },
+      { id: 2, kind: 'server-port', type: 'hdmi', slotNumber: 2, label: '', origin: 'fixed' },
     ],
   },
   {
@@ -642,6 +642,7 @@ describe('inventory form model', () => {
       {
         id: 4,
         kind: 'switch-port',
+        origin: 'fixed',
         type: 'sfp-plus',
         slotNumber: 1,
         label: 'Core uplink',
@@ -655,6 +656,7 @@ describe('inventory form model', () => {
       {
         id: 9,
         kind: 'switch-port',
+        origin: 'fixed',
         type: 'sfp-plus',
         slotNumber: 2,
         label: '',
@@ -664,6 +666,7 @@ describe('inventory form model', () => {
       {
         id: 10,
         kind: 'switch-port',
+        origin: 'fixed',
         type: 'sfp-plus',
         slotNumber: 3,
         label: '',
