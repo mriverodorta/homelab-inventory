@@ -45,13 +45,18 @@ describe('apiErrorHandler', () => {
   })
 
   it('does not expose unexpected server details', async () => {
-    vi.spyOn(console, 'error').mockImplementation(() => {})
+    const errorLog = vi.spyOn(console, 'error').mockImplementation(() => {})
     const url = await listen()
-    const response = await fetch(`${url}/api/fail`)
+    const response = await fetch(`${url}/api/fail?value=%25s%0Aforged`)
     const body = await response.json()
 
     expect(response.status).toBe(500)
     expect(body).toEqual({ message: 'The request could not be completed.', code: 'request-failed' })
     expect(JSON.stringify(body)).not.toContain('/data/private')
+    expect(errorLog).toHaveBeenCalledWith('[api] Request failed.', {
+      method: 'GET',
+      path: '/api/fail?value=%25s%0Aforged',
+      error: 'EACCES: /data/private/store.json',
+    })
   })
 })

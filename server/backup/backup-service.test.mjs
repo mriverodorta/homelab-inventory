@@ -32,6 +32,16 @@ afterEach(async () => {
 })
 
 describe('portable backup service', () => {
+  it.each(['archive', ['archive'], { length: 128 }, new Uint8Array([1, 2, 3])])(
+    'rejects non-Buffer upload input %#',
+    async (archive) => {
+      const { service } = await createContext()
+
+      await expect(service.inspect(archive))
+        .rejects.toMatchObject({ code: 'invalid-backup', status: 400 })
+    },
+  )
+
   it('rejects weak encryption passphrases as input errors', async () => {
     const { service } = await createContext()
 

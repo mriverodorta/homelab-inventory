@@ -275,7 +275,8 @@ export class BackupService {
   }
 
   async inspect(archive, passphrase = null) {
-    if (!Buffer.isBuffer(archive) || archive.length > MAX_UPLOAD_BYTES) throw new BackupServiceError('Backup upload is too large.', { code: 'invalid-backup', status: 413 })
+    if (!Buffer.isBuffer(archive)) throw new BackupServiceError('Backup upload is invalid.', { code: 'invalid-backup', status: 400 })
+    if (archive.byteLength > MAX_UPLOAD_BYTES) throw new BackupServiceError('Backup upload is too large.', { code: 'invalid-backup', status: 413 })
     this.assertAvailable('inspect')
     try {
       let parsed

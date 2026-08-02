@@ -14,6 +14,13 @@ function fixture() {
 }
 
 describe('portable backup archive envelope', () => {
+  it.each(['archive', ['archive'], { length: 128 }, new Uint8Array([1, 2, 3])])(
+    'rejects non-Buffer archive input %#',
+    async (archive) => {
+      await expect(inspectArchiveBuffer(archive)).rejects.toThrow('Backup archive size is invalid.')
+    },
+  )
+
   it('round trips an unencrypted archive and verifies checksums', async () => {
     const archive = await createArchiveBuffer(fixture())
     const inspected = await inspectArchiveBuffer(archive)

@@ -54,13 +54,18 @@ function encodeHeader(header) {
 }
 
 function decodeEnvelope(archive) {
-  if (!Buffer.isBuffer(archive) || archive.length > MAX_ARCHIVE_BYTES) throw new Error('Backup archive size is invalid.')
+  if (!Buffer.isBuffer(archive)) throw new Error('Backup archive size is invalid.')
+  if (archive.byteLength > MAX_ARCHIVE_BYTES) throw new Error('Backup archive size is invalid.')
   const prefixBytes = BACKUP_ARCHIVE_MAGIC.length + 4
-  if (archive.length < prefixBytes || archive.subarray(0, BACKUP_ARCHIVE_MAGIC.length).toString('ascii') !== BACKUP_ARCHIVE_MAGIC) {
+  if (archive.byteLength < prefixBytes) throw new Error('Backup archive signature is invalid.')
+  if (archive.subarray(0, BACKUP_ARCHIVE_MAGIC.length).toString('ascii') !== BACKUP_ARCHIVE_MAGIC) {
     throw new Error('Backup archive signature is invalid.')
   }
   const headerBytes = archive.readUInt32BE(BACKUP_ARCHIVE_MAGIC.length)
-  if (headerBytes < 2 || headerBytes > MAX_HEADER_BYTES || archive.length < prefixBytes + headerBytes) {
+  if (headerBytes < 2 || headerBytes > MAX_HEADER_BYTES) {
+    throw new Error('Backup archive header is invalid.')
+  }
+  if (archive.byteLength < prefixBytes + headerBytes) {
     throw new Error('Backup archive header is invalid.')
   }
   let header

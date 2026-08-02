@@ -20,7 +20,11 @@ export function apiErrorHandler(error, request, response, next) {
     return
   }
 
-  console.error(`[api] ${request.method} ${request.originalUrl} failed.`, error instanceof Error ? error.message : error)
+  console.error('[api] Request failed.', {
+    method: request.method,
+    path: request.originalUrl,
+    error: error instanceof Error ? error.message : error,
+  })
   response.status(500).json({
     message: 'The request could not be completed.',
     code: 'request-failed',
