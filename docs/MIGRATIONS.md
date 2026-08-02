@@ -25,6 +25,12 @@ On startup, the server:
 
 The first start after a schema upgrade can take longer than a normal restart. Do not stop the container while migration logs are active. If a migration or write fails, startup stops and restores the pre-migration stores rather than serving partially migrated data.
 
+## Schema 20: Backup Management
+
+Schema 20 adds `/data/stores/backup-management.json` for scheduled-backup preferences and backup/restore history. Existing inventory, project topology, registry relationships, agents, catalog state, and routing data are not changed. Startup creates the new store through the normal backup-first migration chain.
+
+Portable backup files are stored separately under `/data/backups/user`; they are not embedded in lowdb and are never copied recursively into another archive. Restoring application metadata from an older supported backup keeps the currently running schema version so a partial restore cannot roll the database marker backward.
+
 ## Schema 19: Hardware Variant Identity
 
 Schema 19 introduces fingerprint-v3 catalog identity for products that share a manufacturer and model but have materially different motherboards or expansion topology. Existing catalog links, contribution records, numeric IDs, inventory records, assignments, placements, and cables remain unchanged.

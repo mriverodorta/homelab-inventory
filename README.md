@@ -31,6 +31,7 @@ It is built for people who want a practical map of what they own, what is instal
 - Color-coded cable routing for network and display connections, plus directional power connections between outlets and equipment inputs.
 - JSON database stored outside the app image under a persistent `/data` volume.
 - lowdb-backed split stores with schema migrations and automatic backups.
+- Portable complete or custom backups with protected partial restore, optional encryption, scheduling, and retention controls.
 - Optional Linux agent enrollment per server for keepalive and hardware telemetry.
 - Mobile-friendly inventory drawer and long-press drag behavior for touch devices.
 
@@ -79,6 +80,8 @@ APP_MODE=production
 UPDATE_CHANNEL=stable
 UPDATE_CHECK_ENABLED=true
 REGISTRY_REFRESH_INTERVAL_MS=21600000
+TZ=UTC
+BACKUP_ENCRYPTION_PASSPHRASE=
 RATE_LIMIT_WINDOW_MS=60000
 RATE_LIMIT_MAX=600
 TRUST_PROXY=false
@@ -126,6 +129,8 @@ The app keeps user data out of the application image. Runtime data lives in `/da
     agents.json
     agent-status.json
     registry.json
+    routing-cache.json
+    backup-management.json
   backups/
   registry/
 ```
@@ -135,6 +140,18 @@ Only one app container should write to a mounted data directory.
 More data details: [docs/DATA.md](docs/DATA.md)
 
 Upgrade and rollback guidance: [docs/MIGRATIONS.md](docs/MIGRATIONS.md)
+
+## Backup And Restore
+
+Open **Settings > Backup & Restore** to create a complete portable backup or choose individual sections such as inventory, project topology, registry state, agents, telemetry, catalog data, and the disposable cable-routing cache. A complete archive can later be restored in full or used to replace only selected sections.
+
+Restore is replacement-only. Before changing live data, the app validates archive paths, sizes, checksums, schema compatibility, and section dependencies; creates a complete pre-restore recovery backup; enters maintenance mode; and records a durable restore journal. A failed or interrupted restore rolls back automatically. Connected browsers reload after a successful restore.
+
+Portable archives use the `.hlibackup` format. Backups containing registry enrollment or agent credentials require a passphrase before download. Stored copies may also be encrypted with scrypt and AES-256-GCM. Keep that passphrase outside the app because it cannot be recovered.
+
+Daily or weekly complete backups can run at a configurable time with a configurable retention count. Set `TZ` in Docker Compose to make the deployment timezone authoritative, or choose an IANA timezone in Settings. Set `BACKUP_ENCRYPTION_PASSPHRASE` to at least 12 characters to encrypt scheduled stored backups; when unset, scheduled copies remain protected by filesystem permissions but are not encrypted at rest.
+
+User-managed backups live under `/data/backups/user` with private directory and file permissions. Backup history is never included recursively. Migration and pre-restore recovery backups remain separate from ordinary portable backups. Public demo sessions can download only their disposable inventory and project data and cannot schedule, upload, restore, or export credentials.
 
 ## Hardware Compatibility
 

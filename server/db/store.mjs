@@ -41,6 +41,7 @@ import { migrateSchema15To16 } from './migrate-schema-16.mjs'
 import { migrateSchema16To17 } from './migrate-schema-17.mjs'
 import { migrateSchema17To18 } from './migrate-schema-18.mjs'
 import { migrateSchema18To19 } from './migrate-schema-19.mjs'
+import { migrateSchema19To20 } from './migrate-schema-20.mjs'
 import {
   applyNasPowerConfigurationChange,
   inspectNasPowerConfigurationChange,
@@ -62,6 +63,11 @@ import {
 } from '../registry/local-catalog-mapping.mjs'
 import { createRoutingCache, normalizeRoutingCache } from '../routing-cache-model.mjs'
 import {
+  assertBackupManagementStoreShape,
+  createBackupManagementStore,
+  normalizeBackupManagementStore,
+} from '../backup/backup-model.mjs'
+import {
   finishExampleInDraft,
   loadExampleIntoDraft,
   publicOnboardingStatus,
@@ -72,14 +78,14 @@ import {
   setWalkthroughStepInDraft,
 } from '../onboarding/lifecycle.mjs'
 
-export const CURRENT_SCHEMA_VERSION = 19
+export const CURRENT_SCHEMA_VERSION = 20
 
 const DEFAULT_SAVE_DEBOUNCE_MS = 500
 const DEFAULT_FLUSH_RETRY_BASE_MS = 1_000
 const MAX_FLUSH_RETRY_MS = 30_000
 const TRANSACTION_JOURNAL_FILE = '.store-transaction.json'
 const BACKUP_LIMIT = 10
-const STORE_NAMES = ['meta', 'inventory', 'project', 'agents', 'agentStatus', 'registry', 'routingCache']
+const STORE_NAMES = ['meta', 'inventory', 'project', 'agents', 'agentStatus', 'registry', 'routingCache', 'backupManagement']
 const ALWAYS_ENFORCED_COMPATIBILITY_CODES = new Set([
   'compatibility.resource.exhausted',
   'memory.slots.exceeded',
@@ -1518,6 +1524,7 @@ export class HomelabInventoryStore {
       agentStatus: path.join(dataDir, 'stores', 'agent-status.json'),
       registry: path.join(dataDir, 'stores', 'registry.json'),
       routingCache: path.join(dataDir, 'stores', 'routing-cache.json'),
+      backupManagement: path.join(dataDir, 'stores', 'backup-management.json'),
     }
     this.databases = {}
     this.dirtyStores = new Set()
@@ -1543,6 +1550,11 @@ export class HomelabInventoryStore {
     this.databases.routingCache.data = normalizeRoutingCache(loadedRoutingCache)
     if (JSON.stringify(loadedRoutingCache) !== JSON.stringify(this.databases.routingCache.data)) {
       await this.databases.routingCache.write()
+    }
+    const loadedBackupManagement = this.databases.backupManagement.data
+    this.databases.backupManagement.data = normalizeBackupManagementStore(loadedBackupManagement)
+    if (JSON.stringify(loadedBackupManagement) !== JSON.stringify(this.databases.backupManagement.data)) {
+      await this.databases.backupManagement.write()
     }
     await this.runMigrationsSafely()
     await this.normalizeLoadedRegistry()
@@ -1675,6 +1687,10 @@ export class HomelabInventoryStore {
     if (!(await pathExists(this.paths.routingCache))) {
       await writeJson(this.paths.routingCache, createRoutingCache())
     }
+
+    if (!(await pathExists(this.paths.backupManagement))) {
+      await writeJson(this.paths.backupManagement, createBackupManagementStore())
+    }
   }
 
   async openStores() {
@@ -1717,6 +1733,10 @@ export class HomelabInventoryStore {
     this.databases.routingCache = new Low(
       new RecoverableJsonFileAdapter(this.paths.routingCache, createRoutingCache()),
       createRoutingCache(),
+    )
+    this.databases.backupManagement = new Low(
+      new JsonFileAdapter(this.paths.backupManagement),
+      createBackupManagementStore(),
     )
 
     await Promise.all(STORE_NAMES.map((name) => this.databases[name].read()))
@@ -2011,11 +2031,26 @@ export class HomelabInventoryStore {
         continue
       }
 
+      if (currentVersion === 19) {
+        const migrated = migrateSchema19To20(this.databases.backupManagement.data)
+        this.databases.backupManagement.data = migrated.backupManagement
+        this.databases.meta.data.schemaVersion = 20
+        this.databases.meta.data.lastMigration = {
+          from: 19,
+          to: 20,
+          completedAt: new Date().toISOString(),
+          backupId: path.basename(this.activeMigrationBackupPath),
+          summary: migrated.summary,
+        }
+        currentVersion = 20
+        continue
+      }
+
       throw new Error(`No migration registered for schema version ${currentVersion}.`)
     }
 
     this.databases.meta.data.updatedAt = new Date().toISOString()
-    await this.flush(['inventory', 'project', 'agents', 'agentStatus', 'registry'])
+    await this.flush(['inventory', 'project', 'agents', 'agentStatus', 'registry', 'backupManagement'])
     await this.flush(['meta'])
   }
 
@@ -2025,6 +2060,7 @@ export class HomelabInventoryStore {
     assertAgentsStoreShape(this.databases.agents.data)
     assertAgentStatusStoreShape(this.databases.agentStatus.data)
     assertRegistryStoreShape(this.databases.registry.data)
+    assertBackupManagementStoreShape(this.databases.backupManagement.data)
     assertOnboardingState(this.databases.meta.data.onboarding)
     assertProjectShape(this.getProject())
     this.databases.meta.data.skippedUpdateVersion ??= null
@@ -2262,6 +2298,60 @@ export class HomelabInventoryStore {
 
   getRegistryState() {
     return structuredClone(this.databases.registry.data)
+  }
+
+  getBackupManagementState() {
+    return structuredClone(this.databases.backupManagement.data)
+  }
+
+  updateBackupManagement(mutator) {
+    return this.withAtomicStoreMutation(['backupManagement'], () => {
+      const draft = structuredClone(this.databases.backupManagement.data)
+      mutator(draft)
+      assertBackupManagementStoreShape(draft)
+      this.databases.backupManagement.data = draft
+      this.scheduleFlush('backupManagement')
+      return this.getBackupManagementState()
+    })
+  }
+
+  async snapshotStores(storeNames = STORE_NAMES) {
+    await this.flush()
+    return Object.fromEntries(storeNames.map((storeName) => {
+      if (!STORE_NAMES.includes(storeName)) throw new Error(`Unknown store ${storeName}.`)
+      return [storeName, structuredClone(this.databases[storeName].data)]
+    }))
+  }
+
+  async replaceStoresAtomically(replacements) {
+    const storeNames = Object.keys(replacements)
+    if (storeNames.length === 0) return this.snapshotStores()
+    if (storeNames.some((storeName) => !STORE_NAMES.includes(storeName))) {
+      throw new Error('Restore references an unknown store.')
+    }
+
+    await this.flush()
+    const previous = Object.fromEntries(storeNames.map((storeName) => [
+      storeName,
+      structuredClone(this.databases[storeName].data),
+    ]))
+
+    try {
+      for (const storeName of storeNames) {
+        this.databases[storeName].data = structuredClone(replacements[storeName])
+        this.dirtyStores.add(storeName)
+      }
+      await this.validateStores()
+      await this.flush(storeNames)
+      return this.snapshotStores(storeNames)
+    } catch (error) {
+      for (const [storeName, payload] of Object.entries(previous)) {
+        this.databases[storeName].data = payload
+        this.dirtyStores.add(storeName)
+      }
+      await this.flush(storeNames).catch(() => {})
+      throw error
+    }
   }
 
   registryTransaction(mutator) {
@@ -3320,7 +3410,7 @@ export class HomelabInventoryStore {
   async pruneBackups() {
     const entries = await fs.readdir(this.backupDir, { withFileTypes: true }).catch(() => [])
     const backups = entries
-      .filter((entry) => entry.isDirectory())
+      .filter((entry) => entry.isDirectory() && entry.name !== 'user' && !entry.name.startsWith('.'))
       .map((entry) => entry.name)
       .sort()
 

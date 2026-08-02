@@ -6,6 +6,26 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 
 ## Unreleased
 
+## [0.6.2] - 2026-08-02
+
+### Added
+
+- Added a dedicated **Backup & Restore** settings area for complete or custom portable archives, stored-backup verification and download, partial replacement restores, and separate recovery and restore history.
+- Added daily or weekly complete backup scheduling with configurable time, weekday, IANA timezone, and retention count. Docker `TZ` remains authoritative when configured.
+
+### Security
+
+- Sensitive registry-enrollment and agent sections require passphrase-protected downloads; encrypted archives use scrypt and AES-256-GCM.
+- Restore now validates archive paths, types, sizes, counts, checksums, schema compatibility, and relational dependencies before entering maintenance mode.
+
+### Fixed
+
+- Protected restores create a complete pre-restore backup, journal each replacement, roll back failed or interrupted operations automatically, and reload connected clients only after a successful commit.
+
+### Notes
+
+- Schema 20 adds a backup-management metadata store without changing existing inventory or project relationships. Portable files live under `/data/backups/user`, backup history is excluded from archives, and public demo sessions remain export-only.
+
 ## [0.6.1] - 2026-08-02
 
 ### Fixed

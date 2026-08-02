@@ -776,6 +776,7 @@ describe('HomelabInventoryStore', () => {
     expect(completedWrites.slice(0, -1).sort()).toEqual([
       'agentStatus',
       'agents',
+      'backupManagement',
       'inventory',
       'project',
       'registry',
@@ -828,7 +829,7 @@ describe('HomelabInventoryStore', () => {
     expect(await fs.readFile(path.join(dataDir, 'stores', 'project.json'), 'utf8')).toBe(before.project)
     await expect(fs.access(path.join(dataDir, '.schema-migration.lock'))).rejects.toMatchObject({ code: 'ENOENT' })
     expect(await fs.readdir(path.join(dataDir, 'backups'))).toContainEqual(
-      expect.stringContaining('schema-15-to-19'),
+      expect.stringContaining(`schema-15-to-${CURRENT_SCHEMA_VERSION}`),
     )
   })
 

@@ -10,6 +10,10 @@ export class HomelabInventoryStore {
   getEngineRevision(): number
   databases: Record<string, any>
   getRegistryState(): any
+  getBackupManagementState(): any
+  updateBackupManagement(mutator: (draft: any) => void): any
+  snapshotStores(storeNames?: string[]): Promise<Record<string, any>>
+  replaceStoresAtomically(replacements: Record<string, any>): Promise<Record<string, any>>
   updateRegistrySettings(patch: any, expectedUpdatedAt?: string | null): any
   createPrivateTemplate(input: any): Promise<any>
   duplicatePrivateTemplate(id: number): Promise<any>

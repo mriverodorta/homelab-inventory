@@ -106,6 +106,20 @@ export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
   notes: [],
 }
 
+const RELEASE_0_6_2_DETAILS: UnreleasedReleaseNotes = {
+  highlights: [
+    'Settings now includes Backup & Restore for complete or custom portable archives, stored-backup verification and download, and partial replacement restores.',
+    'Complete backups can run daily or weekly at a configurable time with a configurable IANA timezone and retention count; Docker TZ remains authoritative when configured.',
+  ],
+  fixes: [
+    'Protected restores now validate archive bounds, checksums, schemas, and dependencies before creating a complete recovery backup, entering maintenance mode, and applying a journaled atomic replacement with automatic rollback.',
+    'Sensitive registry-enrollment and agent data now requires passphrase-protected download, with optional scrypt and AES-256-GCM encryption for stored portable backups.',
+  ],
+  notes: [
+    'Schema 20 adds backup-management metadata without changing inventory or project relationships. Portable files live under /data/backups/user, backup history is excluded from archives, and public demo sessions remain export-only.',
+  ],
+}
+
 const RELEASE_0_6_1_DETAILS: UnreleasedReleaseNotes = {
   highlights: [],
   fixes: [
@@ -293,9 +307,16 @@ const RELEASE_0_2_1_DETAILS: UnreleasedReleaseNotes = {
 
 export const RELEASE_NOTES: ReleaseNoteEntry[] = [
   {
-    version: '0.6.1',
+    version: '0.6.2',
     date: '2026-08-02',
     channel: 'latest',
+    title: 'Portable backup and restore',
+    ...RELEASE_0_6_2_DETAILS,
+  },
+  {
+    version: '0.6.1',
+    date: '2026-08-02',
+    channel: 'release',
     title: 'Verified enriched CPU catalogs',
     ...RELEASE_0_6_1_DETAILS,
   },

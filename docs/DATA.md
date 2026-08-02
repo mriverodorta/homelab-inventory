@@ -13,6 +13,8 @@ Homelab Inventory stores data in JSON files managed through lowdb.
     agents.json
     agent-status.json
     registry.json
+    routing-cache.json
+    backup-management.json
   backups/
   registry/
     installation-ed25519.pem
@@ -26,6 +28,8 @@ Homelab Inventory stores data in JSON files managed through lowdb.
 - `agents.json`: enrolled agent credentials and ownership.
 - `agent-status.json`: latest agent telemetry.
 - `registry.json`: registry preferences, private templates, catalog links, contribution outbox/ledger records, and public enrollment metadata.
+- `routing-cache.json`: disposable generated cable routes; this can be rebuilt from canonical project data.
+- `backup-management.json`: scheduled-backup preferences and backup/restore history. Backup contents are never embedded in this store.
 - `meta.json`: database schema version and metadata.
 
 ## Migrations
@@ -64,11 +68,19 @@ The migration refuses ambiguous or inconsistent kit data instead of guessing. A 
 
 ## Backups
 
-Backups are written under:
+Portable user backups are written under:
 
 ```txt
-/data/backups
+/data/backups/user
 ```
+
+Create and restore them from **Settings > Backup & Restore**. Complete archives contain every portable section; custom archives can contain selected stores, registry credentials, signed catalog state, agents, telemetry, metadata, or the routing cache. A complete archive can be partially restored later. Restore replaces selected sections and never merges records.
+
+The restore preflight validates archive bounds, paths, hashes, schema compatibility, and dependencies before writes begin. The app then creates a complete pre-restore backup and uses maintenance mode plus a durable journal so failed or interrupted replacement can be rolled back. Backup history itself is excluded from archives to prevent recursion.
+
+Sensitive archives require a passphrase for download. Optional encrypted stored copies use scrypt and AES-256-GCM. Scheduled complete backups can run daily or weekly at a configured time with a configurable retention count. Docker `TZ` is authoritative when set; `BACKUP_ENCRYPTION_PASSPHRASE` encrypts scheduled copies when configured.
+
+User backup directories are mode `0700` and files are mode `0600`. Migration and pre-restore recovery backups remain separate from ordinary portable archives.
 
 Keep the whole `/data` directory backed up if this inventory becomes operationally important.
 

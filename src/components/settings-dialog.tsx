@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react'
 import {
   Cable,
+  ArchiveRestore,
   Boxes,
   Cpu,
   Database,
@@ -25,6 +26,7 @@ import {
 } from '@/components/settings/settings-primitives'
 import { Button } from '@/components/ui/button'
 import { CatalogSourceStatus } from '@/components/settings/catalog-source-status'
+import { BackupRestoreSettings } from '@/components/settings/backup-restore-settings'
 import { CatalogUpdateReview } from '@/components/inventory/catalog-update-review'
 import {
   Dialog,
@@ -62,7 +64,7 @@ import {
   type RegistryState,
 } from '@/types/registry'
 
-type SettingsCategory = 'general' | 'project' | 'registry' | 'updates' | 'feedback' | 'about'
+type SettingsCategory = 'general' | 'project' | 'registry' | 'backup-restore' | 'updates' | 'feedback' | 'about'
 type SaveStatus = 'saved' | 'saving' | 'error'
 
 export type SettingsDialogProps = {
@@ -142,6 +144,7 @@ const categories: Array<{
   { id: 'general', label: 'General', description: 'Browser workspace preferences', icon: MonitorCog },
   { id: 'project', label: 'Project', description: 'Shared project configuration', icon: FolderCog },
   { id: 'registry', label: 'Registry', description: 'Catalog and private templates', icon: Database },
+  { id: 'backup-restore', label: 'Backup & Restore', description: 'Portable data protection', icon: ArchiveRestore },
   { id: 'updates', label: 'Updates', description: 'Image channel and status', icon: RefreshCw },
   { id: 'feedback', label: 'Feedback', description: 'Roadmap, ideas, and issues', icon: MessageSquarePlus },
   { id: 'about', label: 'About', description: 'Purpose, version, and links', icon: Info },
@@ -810,6 +813,7 @@ export function SettingsDialog(props: SettingsDialogProps) {
               {category === 'general' ? <GeneralSettings {...props} /> : null}
               {category === 'project' ? <ProjectSettings {...props} /> : null}
               {category === 'registry' ? <RegistrySettingsPanel {...props} /> : null}
+              {category === 'backup-restore' ? <BackupRestoreSettings /> : null}
               {category === 'updates' ? <UpdateSettings {...props} /> : null}
               {category === 'feedback' ? <FeedbackSettings {...props} /> : null}
               {category === 'about' ? <AboutSettings {...props} /> : null}

@@ -6,6 +6,9 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { RELEASE_NOTES } from '../src/release-notes.ts'
 import { registerAgentRoutes } from './agent-routes.mjs'
+import { registerBackupRoutes } from './backup-routes.mjs'
+import { BackupScheduler } from './backup/backup-scheduler.mjs'
+import { BackupService } from './backup/backup-service.mjs'
 import { apiErrorHandler } from './api-error-handler.mjs'
 import { applicationHealth } from './app-health.mjs'
 import { HomelabInventoryStore } from './db/store.mjs'
@@ -64,6 +67,8 @@ const registryOrigin = 'https://registry.homelabinventory.com'
 const registryRefreshIntervalMs = isDemoMode
   ? 0
   : readCatalogRefreshInterval()
+const backupEnvironmentPassphrase = process.env.BACKUP_ENCRYPTION_PASSPHRASE?.trim() || null
+const backupEnvironmentTimezone = process.env.TZ?.trim() || null
 
 if (configuredUpdateChannel !== updateChannel) {
   console.warn(`Unsupported UPDATE_CHANNEL "${configuredUpdateChannel}"; using stable.`)
@@ -214,6 +219,26 @@ const catalogRefreshCoordinator = store
       intervalMs: registryRefreshIntervalMs,
     })
   : null
+const backupService = store
+  ? new BackupService({
+      store,
+      appVersion: packageJson.version,
+      environmentPassphrase: backupEnvironmentPassphrase,
+      environmentTimezone: backupEnvironmentTimezone,
+    })
+  : null
+await backupService?.init()
+const backupScheduler = backupService
+  ? new BackupScheduler({ store, service: backupService, environmentTimezone: backupEnvironmentTimezone })
+  : null
+
+registerBackupRoutes(app, {
+  service: backupService,
+  scheduler: backupScheduler,
+  withStore,
+  demo: isDemoMode,
+  appVersion: packageJson.version,
+})
 
 registerInventoryRoutes(app, { withStore })
 registerRegistryRoutes(app, {
@@ -227,6 +252,7 @@ registerRegistryRoutes(app, {
     : undefined,
 })
 catalogRefreshCoordinator?.start()
+const backupSchedule = backupScheduler?.start()
 registerProjectRoutes(app, { withStore })
 registerRoutingCacheRoutes(app, { withStore })
 registerOnboardingRoutes(app, { withStore, disabled: isDemoMode })
@@ -369,6 +395,7 @@ async function shutdown(signal) {
       sseHub,
       stoppers: [
         () => updateCheckSchedule.stop(),
+        () => backupSchedule?.stop(),
         () => catalogRefreshCoordinator?.stop(),
         () => contributionDelivery?.stop(store),
       ],

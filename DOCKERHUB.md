@@ -124,6 +124,8 @@ APP_MODE=production
 UPDATE_CHANNEL=stable
 UPDATE_CHECK_ENABLED=true
 REGISTRY_REFRESH_INTERVAL_MS=21600000
+TZ=UTC
+BACKUP_ENCRYPTION_PASSPHRASE=
 RATE_LIMIT_WINDOW_MS=60000
 RATE_LIMIT_MAX=600
 TRUST_PROXY=false
@@ -150,11 +152,23 @@ The data layout is:
     agents.json
     agent-status.json
     registry.json
+    routing-cache.json
+    backup-management.json
   backups/
   registry/
 ```
 
 Only one app container should write to the same mounted `/data` directory.
+
+## Backup And Restore
+
+**Settings > Backup & Restore** creates portable `.hlibackup` archives. Use a complete backup for every portable section or select only inventory, project topology, registry configuration and enrollment, catalog state, agents, telemetry, application metadata, or the disposable cable-routing cache. Restore can replace the complete backup or only selected sections from it.
+
+Every restore performs bounded archive and checksum validation, a dependency-aware preflight, a complete pre-restore recovery backup, maintenance mode, and a journaled atomic replacement. Failed or interrupted restores roll back automatically. Archives containing registry enrollment or agent credentials require a passphrase before download and use scrypt with AES-256-GCM when encrypted.
+
+Daily or weekly complete backups support a configurable time, weekday, timezone, and retention count. Docker `TZ` takes precedence over the UI timezone. Set `BACKUP_ENCRYPTION_PASSPHRASE` to at least 12 characters to encrypt scheduled stored backups; otherwise scheduled copies are unencrypted at rest and rely on the private `/data/backups/user` filesystem permissions. Keep encryption passphrases outside the app.
+
+Backup history is never archived recursively. Migration and pre-restore recovery backups are listed separately. Public demo sessions are export-only and cannot access credentials, server-side backup storage, schedules, uploads, or restore.
 
 ## Updates And Schema Migrations
 
