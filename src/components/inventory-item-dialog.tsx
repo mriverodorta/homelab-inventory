@@ -51,6 +51,7 @@ import {
 } from '@/components/ui/select'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import type { InventoryItemInput } from '@/lib/db'
+import { cn } from '@/lib/utils'
 import type { InventoryType } from '@/types/inventory'
 import {
   DEFAULT_REGISTRY_STATE,
@@ -337,7 +338,10 @@ export function InventoryItemDialog({
   return (
     <>
       <Dialog open={open} onOpenChange={handleDialogOpenChange}>
-        <DialogContent className="!flex max-h-[calc(100dvh-2rem)] !flex-col gap-0 overflow-hidden bg-[#fffdf8] p-0 text-[#20242c] sm:max-w-3xl">
+        <DialogContent className={cn(
+          '!flex max-h-[calc(100dvh-2rem)] !flex-col gap-0 overflow-hidden bg-[#fffdf8] p-0 text-[#20242c]',
+          activeSource === 'catalog' ? 'sm:max-w-[min(96vw,88rem)]' : 'sm:max-w-3xl',
+        )}>
           <DialogHeader className="border-b border-[#ded8ce] px-4 py-4">
             <DialogTitle>Add inventory item</DialogTitle>
           </DialogHeader>

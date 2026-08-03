@@ -5,6 +5,7 @@ import {
   FINGERPRINT_VERSION,
   sha256Hex,
   validateCatalogManifest,
+  validateCatalogFacetIndex,
   validateCatalogDigestIndex,
   validateCatalogSnapshot,
   verifySignedCatalogArtifact,
@@ -24,6 +25,7 @@ const OFFICIAL_REGISTRY_ORIGIN = 'https://registry.homelabinventory.com'
 const MAX_MANIFEST_BYTES = 1 * 1024 * 1024
 const MAX_SNAPSHOT_BYTES = 64 * 1024 * 1024
 const MAX_DIGEST_BYTES = 32 * 1024 * 1024
+const MAX_FACET_BYTES = 8 * 1024 * 1024
 const CATALOG_GENERATION_VERSION = 1
 
 function byteLength(value) {
@@ -114,8 +116,8 @@ function safeRefreshMessage(error) {
   if (error?.name === 'AbortError') return 'Official catalog request timed out.'
   const message = error instanceof Error ? error.message : ''
   const safePatterns = [
-    /^Catalog (manifest|snapshot|digest) request failed with HTTP \d{3}\.$/,
-    /^Catalog (manifest|snapshot|digest index|digest) .{1,180}\.$/,
+    /^Catalog (manifest|snapshot|digest|facet) request failed with HTTP \d{3}\.$/,
+    /^Catalog (manifest|snapshot|digest index|digest|facet index|facet) .{1,180}\.$/,
     /^Connected catalog mode was disabled before activation\.$/,
     /^No trusted official catalog signing keys are configured\.$/,
   ]
@@ -160,6 +162,7 @@ export class SnapshotService {
       directory,
       snapshot: path.join(directory, 'snapshot.json'),
       digest: path.join(directory, 'digests.json'),
+      facets: path.join(directory, 'facets.json'),
       index: path.join(directory, 'catalog.sqlite'),
       metadata: path.join(directory, 'generation.json'),
     }
@@ -207,8 +210,17 @@ export class SnapshotService {
       ? await verifySignedCatalogArtifact(storedDigest.artifact, this.trustedKeys)
       : storedDigest.payload
     assertDigestMatchesSnapshot(snapshot, validateCatalogDigestIndex(digestPayload))
-    if (!await pathExists(paths.index)) {
-      await (await openCatalogIndex(paths.index)).rebuild(snapshot, paths.index)
+    let facets = null
+    if (await pathExists(paths.facets)) {
+      const storedFacets = JSON.parse(await fs.readFile(paths.facets, 'utf8'))
+      facets = validateCatalogFacetIndex(await verifySignedCatalogArtifact(storedFacets, this.trustedKeys))
+      if (facets.catalogRevision !== snapshot.catalogRevision) {
+        throw new Error('Catalog facet index revision does not match its snapshot.')
+      }
+    }
+    const index = await openCatalogIndex(paths.index)
+    if (!await pathExists(paths.index) || !index.isCurrent()) {
+      await index.rebuild(snapshot, paths.index, facets)
     }
     return paths
   }
@@ -239,6 +251,7 @@ export class SnapshotService {
         directory: null,
         snapshot: this.legacySnapshotPath,
         digest: this.legacyDigestPath,
+        facets: null,
         index: this.legacyIndexPath,
         metadata: null,
         revision: activeSnapshot.revision,
@@ -259,7 +272,7 @@ export class SnapshotService {
     }
   }
 
-  async activate(artifact, { mode, now = new Date(), digestArtifact } = {}) {
+  async activate(artifact, { mode, now = new Date(), digestArtifact, facetArtifact } = {}) {
     if (mode !== 'offline' && mode !== 'connected') throw new Error('Catalog activation mode is invalid.')
     const { payload, snapshot } = await this.verifyArtifact(artifact, { now })
     const digest = await catalogSnapshotDigest(payload)
@@ -280,6 +293,12 @@ export class SnapshotService {
           })),
         })
     assertDigestMatchesSnapshot(snapshot, digestIndex)
+    const facetIndex = facetArtifact
+      ? validateCatalogFacetIndex(await verifySignedCatalogArtifact(facetArtifact, this.trustedKeys, { now }))
+      : null
+    if (facetIndex && facetIndex.catalogRevision !== snapshot.catalogRevision) {
+      throw new Error('Catalog facet index revision does not match its snapshot.')
+    }
     const activeSnapshot = this.store.getRegistryState().snapshot
     if (activeSnapshot && snapshot.catalogRevision < activeSnapshot.revision) {
       throw new Error('Catalog snapshot revision is older than the active snapshot.')
@@ -300,6 +319,7 @@ export class SnapshotService {
       directory: temporaryDirectory,
       snapshot: path.join(temporaryDirectory, 'snapshot.json'),
       digest: path.join(temporaryDirectory, 'digests.json'),
+      facets: path.join(temporaryDirectory, 'facets.json'),
       index: path.join(temporaryDirectory, 'catalog.sqlite'),
       metadata: path.join(temporaryDirectory, 'generation.json'),
     }
@@ -309,7 +329,8 @@ export class SnapshotService {
       await fs.writeFile(temporaryPaths.digest, JSON.stringify(digestArtifact
         ? { signed: true, artifact: digestArtifact }
         : { signed: false, payload: digestIndex }), { mode: 0o600 })
-      await (await openCatalogIndex(temporaryPaths.index)).rebuild(snapshot, temporaryPaths.index)
+      if (facetArtifact) await fs.writeFile(temporaryPaths.facets, JSON.stringify(facetArtifact), { mode: 0o600 })
+      await (await openCatalogIndex(temporaryPaths.index)).rebuild(snapshot, temporaryPaths.index, facetIndex)
       await fs.writeFile(temporaryPaths.metadata, `${JSON.stringify({
         version: CATALOG_GENERATION_VERSION,
         revision: snapshot.catalogRevision,
@@ -322,6 +343,12 @@ export class SnapshotService {
             revision: snapshot.catalogRevision,
             digest,
           })
+          if (facetArtifact) {
+            const existingFacets = await fs.readFile(finalPaths.facets, 'utf8').catch(() => null)
+            if (existingFacets !== JSON.stringify(facetArtifact)) {
+              throw new Error('Catalog generation facet index changed.')
+            }
+          }
           await fs.rm(temporaryDirectory, { recursive: true, force: true })
         } catch {
           const corrupt = `${finalPaths.directory}.corrupt-${nonce}`
@@ -411,7 +438,7 @@ export class SnapshotService {
     if (!paths) return null
     try {
       await fs.access(paths.index)
-      return paths
+      if ((await openCatalogIndex(paths.index)).isCurrent()) return paths
     } catch {}
     const artifact = JSON.parse(await fs.readFile(paths.snapshot, 'utf8'))
     const payload = await verifySignedCatalogArtifact(artifact, this.trustedKeys)
@@ -419,15 +446,26 @@ export class SnapshotService {
       ? new Date(Date.parse(payload.expiresAt) - 1)
       : new Date(Math.max(Date.now(), Date.parse(payload.generatedAt)))
     const snapshot = await validateCatalogSnapshot(payload, { now: validationTime })
-    await (await openCatalogIndex(paths.index)).rebuild(snapshot, paths.index)
+    let facets = null
+    if (paths.facets && await pathExists(paths.facets)) {
+      facets = validateCatalogFacetIndex(await verifySignedCatalogArtifact(JSON.parse(await fs.readFile(paths.facets, 'utf8')), this.trustedKeys))
+    }
+    await (await openCatalogIndex(paths.index)).rebuild(snapshot, paths.index, facets)
     return paths
   }
 
   async search(parameters) {
     const registry = this.store.getRegistryState()
-    if (!registry.snapshot) return { total: 0, limit: 30, offset: 0, items: [] }
+    if (!registry.snapshot) return { total: 0, limit: 30, offset: 0, hasMore: false, nextOffset: null, items: [] }
     const paths = await this.ensureIndex()
     return (await openCatalogIndex(paths.index)).search(parameters)
+  }
+
+  async facets() {
+    const registry = this.store.getRegistryState()
+    if (!registry.snapshot) return { available: false, categories: [] }
+    const paths = await this.ensureIndex()
+    return (await openCatalogIndex(paths.index)).facets()
   }
 
   async template(templateKey) {
@@ -487,17 +525,24 @@ export class SnapshotService {
       if (manifest.digests.expandedSizeBytes > MAX_DIGEST_BYTES) {
         throw new Error('Catalog digest index exceeds the maximum allowed size.')
       }
+      if (manifest.facets && manifest.facets.expandedSizeBytes > MAX_FACET_BYTES) {
+        throw new Error('Catalog facet index exceeds the maximum allowed size.')
+      }
       const snapshotUrl = new URL(manifest.snapshot.url)
       if (snapshotUrl.origin !== this.officialOrigin) throw new Error('Catalog manifest points outside the official registry origin.')
       const digestUrl = new URL(manifest.digests.url)
       if (digestUrl.origin !== this.officialOrigin) throw new Error('Catalog manifest digest index points outside the official registry origin.')
-      const [response, digestResponse] = await Promise.all([
+      const facetUrl = manifest.facets ? new URL(manifest.facets.url) : null
+      if (facetUrl && facetUrl.origin !== this.officialOrigin) throw new Error('Catalog manifest facet index points outside the official registry origin.')
+      const [response, digestResponse, facetResponse] = await Promise.all([
         this.fetchImpl(snapshotUrl, { signal: controller.signal, headers: { accept: 'application/json' } }),
         this.fetchImpl(digestUrl, { signal: controller.signal, headers: { accept: 'application/json' } }),
+        facetUrl ? this.fetchImpl(facetUrl, { signal: controller.signal, headers: { accept: 'application/json' } }) : null,
       ])
       if (!response.ok) throw new Error(`Catalog snapshot request failed with HTTP ${response.status}.`)
       if (!digestResponse.ok) throw new Error(`Catalog digest request failed with HTTP ${digestResponse.status}.`)
-      const [text, digestText] = await Promise.all([
+      if (facetResponse && !facetResponse.ok) throw new Error(`Catalog facet request failed with HTTP ${facetResponse.status}.`)
+      const [text, digestText, facetText] = await Promise.all([
         readBoundedResponse(response, {
           label: 'Catalog snapshot',
           maxBytes: manifest.snapshot.expandedSizeBytes,
@@ -506,13 +551,23 @@ export class SnapshotService {
           label: 'Catalog digest index',
           maxBytes: manifest.digests.expandedSizeBytes,
         }),
+        facetResponse ? readBoundedResponse(facetResponse, {
+          label: 'Catalog facet index',
+          maxBytes: manifest.facets.expandedSizeBytes,
+        }) : null,
       ])
       if (await sha256Hex(text) !== manifest.snapshot.sha256) throw new Error('Catalog snapshot checksum does not match its manifest.')
       if (await sha256Hex(digestText) !== manifest.digests.sha256) throw new Error('Catalog digest checksum does not match its manifest.')
+      if (facetText && await sha256Hex(facetText) !== manifest.facets.sha256) throw new Error('Catalog facet checksum does not match its manifest.')
       if (this.store.getRegistryState().settings.mode !== 'connected') {
         throw new Error('Connected catalog mode was disabled before activation.')
       }
-      return this.activate(JSON.parse(text), { mode: 'connected', now, digestArtifact: JSON.parse(digestText) })
+      return this.activate(JSON.parse(text), {
+        mode: 'connected',
+        now,
+        digestArtifact: JSON.parse(digestText),
+        ...(facetText ? { facetArtifact: JSON.parse(facetText) } : {}),
+      })
     } catch (error) {
       const message = safeRefreshMessage(error)
       const checkedAt = now.toISOString()

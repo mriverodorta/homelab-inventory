@@ -60,4 +60,47 @@ describe('catalog sqlite index', () => {
     })
     expect(index.search({ query: 'no riser' })).toMatchObject({ total: 1, items: [{ templateKey: 'dell-7090-04frx5' }] })
   })
+
+  it('indexes signed facets and combines term, range, and pagination constraints locally', async () => {
+    const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'hli-catalog-facets-'))
+    const index = new CatalogIndex(path.join(directory, 'catalog.sqlite'))
+    const templates = [
+      { templateKey: 'cpu-intel-01', revision: 1, fingerprintVersion: 3, identityHash: 'a'.repeat(64), contentHash: 'b'.repeat(64), item: { type: 'cpu', name: 'Intel Six Core', manufacturer: 'Intel', specs: { cores: 6, socket: 'LGA1200' } } },
+      { templateKey: 'cpu-amd-01', revision: 1, fingerprintVersion: 3, identityHash: 'c'.repeat(64), contentHash: 'd'.repeat(64), item: { type: 'cpu', name: 'AMD Eight Core', manufacturer: 'AMD', specs: { cores: 8, socket: 'AM4' } } },
+      { templateKey: 'cpu-amd-02', revision: 1, fingerprintVersion: 3, identityHash: 'e'.repeat(64), contentHash: 'f'.repeat(64), item: { type: 'cpu', name: 'AMD Twelve Core', manufacturer: 'AMD', specs: { cores: 12, socket: 'AM5' } } },
+    ]
+    const facets = {
+      schemaVersion: 1,
+      catalogRevision: 7,
+      generatedAt: '2026-08-03T12:00:00.000Z',
+      categories: [{
+        type: 'cpu', label: 'Processors', count: 3,
+        facets: [
+          { key: 'manufacturer', label: 'Manufacturer', kind: 'terms', values: [{ value: 'AMD', label: 'AMD', count: 2 }, { value: 'Intel', label: 'Intel', count: 1 }] },
+          { key: 'specs.socket', label: 'Socket', kind: 'terms', values: [{ value: 'AM4', label: 'AM4', count: 1 }, { value: 'AM5', label: 'AM5', count: 1 }, { value: 'LGA1200', label: 'LGA1200', count: 1 }] },
+          { key: 'specs.cores', label: 'Core count', kind: 'range', minimum: 6, maximum: 12, step: 1 },
+        ],
+      }],
+    }
+    await index.rebuild({ templates }, index.filePath, facets)
+
+    expect(index.facets()).toMatchObject({ available: true, catalogRevision: 7, categories: [{ type: 'cpu', count: 3 }] })
+    expect(index.search({
+      type: 'cpu',
+      terms: { manufacturer: ['AMD'], 'specs.socket': ['AM5'] },
+      ranges: { 'specs.cores': { minimum: 10, maximum: 12 } },
+      limit: 1,
+    })).toMatchObject({
+      total: 1,
+      hasMore: false,
+      nextOffset: null,
+      items: [{ templateKey: 'cpu-amd-02' }],
+    })
+    expect(index.search({ type: 'cpu', terms: { manufacturer: ['AMD'] }, limit: 1 })).toMatchObject({
+      total: 2,
+      hasMore: true,
+      nextOffset: 1,
+      items: [{ templateKey: 'cpu-amd-01' }],
+    })
+  })
 })

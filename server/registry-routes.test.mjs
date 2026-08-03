@@ -234,6 +234,65 @@ describe('registry routes', () => {
     errorLog.mockRestore()
   })
 
+  it('serves signed facet metadata and forwards validated local facet filters', async () => {
+    const search = vi.fn(async (parameters) => ({
+      total: 1,
+      limit: Number(parameters.limit),
+      offset: Number(parameters.offset),
+      hasMore: false,
+      nextOffset: null,
+      items: [],
+    }))
+    const facets = vi.fn(async () => ({
+      available: true,
+      schemaVersion: 1,
+      catalogRevision: 8,
+      categories: [{ type: 'cpu', label: 'Processors', count: 1, facets: [] }],
+    }))
+    const { baseUrl } = await createServer({
+      snapshotServiceFactory: () => ({ search, facets }),
+    })
+
+    const facetResponse = await fetch(`${baseUrl}/api/registry/catalog/facets`)
+    expect(facetResponse.status).toBe(200)
+    expect(await facetResponse.json()).toMatchObject({ available: true, catalogRevision: 8 })
+
+    const parameters = new URLSearchParams({ q: '10500T', type: 'cpu', limit: '40', offset: '80' })
+    parameters.append('term', 'manufacturer:Intel')
+    parameters.append('term', 'specs.socket:LGA1200')
+    parameters.append('term', 'specs.socket:LGA1700')
+    parameters.append('min', 'specs.cores:4')
+    parameters.append('max', 'specs.cores:16')
+    const response = await fetch(`${baseUrl}/api/registry/catalog/search?${parameters}`)
+
+    expect(response.status).toBe(200)
+    expect(search).toHaveBeenCalledWith({
+      query: '10500T',
+      type: 'cpu',
+      manufacturer: undefined,
+      terms: {
+        manufacturer: ['Intel'],
+        'specs.socket': ['LGA1200', 'LGA1700'],
+      },
+      ranges: { 'specs.cores': { minimum: 4, maximum: 16 } },
+      limit: '40',
+      offset: '80',
+    })
+  })
+
+  it('rejects malformed catalog facet constraints before searching', async () => {
+    const search = vi.fn()
+    const { baseUrl } = await createServer({
+      snapshotServiceFactory: () => ({ search, facets: async () => ({ available: false, categories: [] }) }),
+    })
+
+    const response = await fetch(`${baseUrl}/api/registry/catalog/search?type=cpu&min=specs.cores:not-a-number`)
+
+    expect(response.status).toBe(400)
+    expect(await response.json()).toMatchObject({ code: 'invalid-catalog-filters' })
+    expect(search).not.toHaveBeenCalled()
+  })
+
   it('creates, exports, deletes, previews, and imports sanitized private templates', async () => {
     const { baseUrl } = await createServer()
     const created = await fetch(`${baseUrl}/api/registry/private-templates`, {

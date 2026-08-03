@@ -6,6 +6,7 @@ import {
   LEGACY_FINGERPRINT_VERSION,
   canonicalJson,
   digestCatalogTemplate,
+  validateCatalogFacetIndex,
   validateCatalogManifest,
   validateCatalogSnapshot,
   verifySignedCatalogArtifact,
@@ -107,8 +108,30 @@ describe('signed catalog snapshots', () => {
       expiresAt: '2026-08-26T12:00:00.000Z',
       snapshot: { url: 'https://registry.example/v1/releases/1/catalog.json', sha256: 'a'.repeat(64), sizeBytes: 10, expandedSizeBytes: 20 },
       digests: { url: 'https://registry.example/v1/releases/1/digests.json', sha256: 'b'.repeat(64), sizeBytes: 10, expandedSizeBytes: 20 },
+      facets: { url: 'https://registry.example/v1/releases/1/facets.json', sha256: 'c'.repeat(64), sizeBytes: 10, expandedSizeBytes: 20 },
     }
     expect(validateCatalogManifest(manifest, { now: new Date('2026-07-27T00:00:00.000Z') })).toEqual(manifest)
     expect(() => validateCatalogManifest({ ...manifest, snapshot: { ...manifest.snapshot, url: 'http://registry.example/catalog.json' } }, { now: new Date('2026-07-27T00:00:00.000Z') })).toThrow(/HTTPS/)
+  })
+
+  it('validates revision-bound category and facet metadata', () => {
+    const facets = {
+      schemaVersion: 1,
+      catalogRevision: 4,
+      generatedAt: '2026-08-03T12:00:00.000Z',
+      categories: [{
+        type: 'cpu',
+        label: 'Processors',
+        count: 2,
+        facets: [
+          { key: 'manufacturer', label: 'Manufacturer', kind: 'terms', values: [{ value: 'Intel', label: 'Intel', count: 2 }] },
+          { key: 'specs.cores', label: 'Core count', kind: 'range', minimum: 2, maximum: 64, step: 1 },
+        ],
+      }],
+    }
+
+    expect(validateCatalogFacetIndex(facets)).toEqual(facets)
+    expect(() => validateCatalogFacetIndex({ ...facets, categories: [{ ...facets.categories[0], count: -1 }] })).toThrow(/count/i)
+    expect(() => validateCatalogFacetIndex({ ...facets, categories: [{ ...facets.categories[0], facets: [{ key: 'specs.cores', label: 'Core count', kind: 'range', minimum: 64, maximum: 2, step: 1 }] }] })).toThrow(/range/i)
   })
 })

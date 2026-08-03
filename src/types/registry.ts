@@ -141,7 +141,49 @@ export type CatalogSearchResult = {
   total: number
   limit: number
   offset: number
+  hasMore: boolean
+  nextOffset: number | null
   items: CatalogSearchItem[]
+}
+
+export type CatalogFacetTermValue = {
+  value: string
+  label: string
+  count: number
+}
+
+export type CatalogFacetDefinition = {
+  key: string
+  label: string
+} & ({
+  kind: 'terms'
+  values: CatalogFacetTermValue[]
+} | {
+  kind: 'range'
+  minimum: number
+  maximum: number
+  step: number
+  unit?: string | null
+})
+
+export type CatalogFacetCategory = {
+  type: string
+  label: string
+  count: number
+  facets: CatalogFacetDefinition[]
+}
+
+export type CatalogFacetResponse = {
+  available: boolean
+  schemaVersion?: 1
+  catalogRevision?: number
+  generatedAt?: string
+  categories: CatalogFacetCategory[]
+}
+
+export type CatalogSearchFilters = {
+  terms?: Record<string, string[]>
+  ranges?: Record<string, { minimum?: number; maximum?: number }>
 }
 
 export type CatalogUpdateSummary = {

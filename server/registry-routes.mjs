@@ -60,6 +60,44 @@ function parseId(value) {
     : null
 }
 
+function queryValues(value) {
+  if (value === undefined) return []
+  return (Array.isArray(value) ? value : [value]).map(String)
+}
+
+function parseFacetSearch(query) {
+  const terms = {}
+  const ranges = {}
+  const entries = [
+    ...queryValues(query.term).map((value) => ['term', value]),
+    ...queryValues(query.min).map((value) => ['minimum', value]),
+    ...queryValues(query.max).map((value) => ['maximum', value]),
+  ]
+  if (entries.length > 80) throw new InventoryLifecycleError('Too many catalog facet constraints were supplied.', {
+    code: 'invalid-catalog-filters', status: 400,
+  })
+  for (const [kind, entry] of entries) {
+    const separator = entry.indexOf(':')
+    const key = separator > 0 ? entry.slice(0, separator) : ''
+    const value = separator > 0 ? entry.slice(separator + 1) : ''
+    if (!/^[A-Za-z][A-Za-z0-9_.-]{0,127}$/.test(key) || value === '' || value.length > 200) {
+      throw new InventoryLifecycleError('Catalog facet filters are invalid.', {
+        code: 'invalid-catalog-filters', status: 400,
+      })
+    }
+    if (kind === 'term') {
+      terms[key] = [...new Set([...(terms[key] ?? []), value])]
+      continue
+    }
+    const numeric = Number(value)
+    if (!Number.isFinite(numeric)) throw new InventoryLifecycleError('Catalog range filters are invalid.', {
+      code: 'invalid-catalog-filters', status: 400,
+    })
+    ranges[key] = { ...(ranges[key] ?? {}), [kind]: numeric }
+  }
+  return { terms, ranges }
+}
+
 function respondError(response, error, fallback) {
   if (error instanceof InventoryLifecycleError) {
     response.status(error.status).json({
@@ -209,10 +247,17 @@ export function registerRegistryRoutes(app, {
         query: request.query.q,
         type: request.query.type,
         manufacturer: request.query.manufacturer,
+        ...parseFacetSearch(request.query),
         limit: request.query.limit,
         offset: request.query.offset,
       })
       response.json(results)
+    })
+  })
+
+  app.get('/api/registry/catalog/facets', (request, response) => {
+    run(withStore, request, response, async (store) => {
+      response.json(await snapshotService(store).facets())
     })
   })
 
@@ -226,8 +271,9 @@ export function registerRegistryRoutes(app, {
       const imported = request.body?.artifact ?? request.body
       const snapshotArtifact = imported?.snapshot ?? imported
       const digestArtifact = imported?.digests
+      const facetArtifact = imported?.facets
       try {
-        await snapshotService(store).activate(snapshotArtifact, { mode: 'offline', digestArtifact })
+        await snapshotService(store).activate(snapshotArtifact, { mode: 'offline', digestArtifact, facetArtifact })
       } catch {
         throw new InventoryLifecycleError('Catalog snapshot could not be verified.', {
           code: 'invalid-catalog-snapshot', status: 400,

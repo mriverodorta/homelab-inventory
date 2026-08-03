@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   createPrivateTemplate,
   deletePrivateTemplate,
@@ -6,6 +6,7 @@ import {
   importPrivateTemplates,
   importOfficialCatalog,
   loadRegistryState,
+  loadCatalogFacets,
   refreshOfficialCatalog,
   deliverRegistryContributions,
   revokeRegistryContributions,
@@ -66,6 +67,29 @@ export function useCatalogSearch(parameters: Parameters<typeof searchOfficialCat
   return useQuery({
     queryKey: ['registry', 'catalog-search', parameters],
     queryFn: () => searchOfficialCatalog(parameters),
+    enabled,
+    staleTime: 30_000,
+  })
+}
+
+export function useCatalogFacets(enabled = true) {
+  return useQuery({
+    queryKey: ['registry', 'catalog-facets'],
+    queryFn: loadCatalogFacets,
+    enabled,
+    staleTime: 5 * 60_000,
+  })
+}
+
+export function useInfiniteCatalogSearch(
+  parameters: Omit<Parameters<typeof searchOfficialCatalog>[0], 'limit' | 'offset'>,
+  enabled = true,
+) {
+  return useInfiniteQuery({
+    queryKey: ['registry', 'catalog-search', parameters],
+    queryFn: ({ pageParam }) => searchOfficialCatalog({ ...parameters, limit: 40, offset: pageParam }),
+    initialPageParam: 0,
+    getNextPageParam: (page) => page.nextOffset ?? undefined,
     enabled,
     staleTime: 30_000,
   })

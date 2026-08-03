@@ -186,6 +186,46 @@ export type CatalogManifest = {
   expiresAt: string
   snapshot: CatalogArtifactDescriptor
   digests: CatalogArtifactDescriptor
+  facets?: CatalogArtifactDescriptor
+}
+
+export type CatalogFacetTermValue = {
+  value: string
+  label: string
+  count: number
+}
+
+export type CatalogTermFacet = {
+  key: string
+  label: string
+  kind: 'terms'
+  values: CatalogFacetTermValue[]
+}
+
+export type CatalogRangeFacet = {
+  key: string
+  label: string
+  kind: 'range'
+  minimum: number
+  maximum: number
+  step: number
+  unit?: string | null
+}
+
+export type CatalogFacetDefinition = CatalogTermFacet | CatalogRangeFacet
+
+export type CatalogFacetCategory = {
+  type: string
+  label: string
+  count: number
+  facets: CatalogFacetDefinition[]
+}
+
+export type CatalogFacetIndex = {
+  schemaVersion: 1
+  catalogRevision: number
+  generatedAt: string
+  categories: CatalogFacetCategory[]
 }
 
 export type CatalogDigestObservation = {

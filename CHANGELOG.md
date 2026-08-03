@@ -6,6 +6,16 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 
 ## Unreleased
 
+## [0.8.2] - 2026-08-03
+
+### Added
+
+- Added category-first official catalog browsing with category-specific multi-select and numeric-range filters, local search, and explicit paginated loading for large registries.
+
+### Changed
+
+- Connected catalogs can consume an optional signed, revision-bound facet index and build local SQLite filter indexes, keeping inventory searches private and off the registry service.
+
 ## [0.8.1] - 2026-08-03
 
 ### Added

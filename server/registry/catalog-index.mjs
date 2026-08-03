@@ -33,6 +33,23 @@ function parseOptionalJson(value) {
   return value == null ? undefined : JSON.parse(value)
 }
 
+function valuesAtPath(value, pathSegments) {
+  if (pathSegments.length === 0) {
+    if (Array.isArray(value)) return value.flatMap((entry) => valuesAtPath(entry, []))
+    return value == null ? [] : [value]
+  }
+  if (Array.isArray(value)) return value.flatMap((entry) => valuesAtPath(entry, pathSegments))
+  if (!value || typeof value !== 'object') return []
+  const [head, ...tail] = pathSegments
+  return valuesAtPath(value[head], tail)
+}
+
+function uniqueScalarValues(item, key) {
+  const values = valuesAtPath(item, key.split('.'))
+    .filter((value) => ['string', 'number', 'boolean'].includes(typeof value))
+  return [...new Set(values.map((value) => String(value)))]
+}
+
 function catalogRow(row) {
   return {
     templateKey: row.template_key,
@@ -55,7 +72,7 @@ export class CatalogIndex {
     this.filePath = filePath
   }
 
-  async rebuild(snapshot, targetPath = this.filePath) {
+  async rebuild(snapshot, targetPath = this.filePath, facets = null) {
     await fs.mkdir(path.dirname(targetPath), { recursive: true })
     await fs.rm(targetPath, { force: true })
     const database = new Database(targetPath, { create: true })
@@ -79,6 +96,29 @@ export class CatalogIndex {
         );
         CREATE INDEX templates_type_index ON templates(type);
         CREATE INDEX templates_manufacturer_index ON templates(manufacturer);
+        CREATE TABLE facet_metadata (
+          id INTEGER PRIMARY KEY CHECK (id = 1),
+          payload_json TEXT NOT NULL
+        );
+        CREATE TABLE facet_terms (
+          template_key TEXT NOT NULL,
+          type TEXT NOT NULL,
+          facet_key TEXT NOT NULL,
+          value TEXT NOT NULL,
+          PRIMARY KEY (template_key, facet_key, value),
+          FOREIGN KEY (template_key) REFERENCES templates(template_key) ON DELETE CASCADE
+        );
+        CREATE INDEX facet_terms_lookup_index ON facet_terms(type, facet_key, value, template_key);
+        CREATE TABLE facet_numbers (
+          template_key TEXT NOT NULL,
+          type TEXT NOT NULL,
+          facet_key TEXT NOT NULL,
+          value REAL NOT NULL,
+          PRIMARY KEY (template_key, facet_key, value),
+          FOREIGN KEY (template_key) REFERENCES templates(template_key) ON DELETE CASCADE
+        );
+        CREATE INDEX facet_numbers_lookup_index ON facet_numbers(type, facet_key, value, template_key);
+        PRAGMA user_version = 2;
       `)
       const insert = database.prepare(`
         INSERT INTO templates (
@@ -108,13 +148,56 @@ export class CatalogIndex {
         }
       })
       transaction(snapshot.templates)
+      if (facets) {
+        database.prepare('INSERT INTO facet_metadata (id, payload_json) VALUES (1, ?)').run(JSON.stringify(facets))
+        const categories = new Map(facets.categories.map((category) => [category.type, category]))
+        const insertTerm = database.prepare('INSERT OR IGNORE INTO facet_terms (template_key, type, facet_key, value) VALUES (?, ?, ?, ?)')
+        const insertNumber = database.prepare('INSERT OR IGNORE INTO facet_numbers (template_key, type, facet_key, value) VALUES (?, ?, ?, ?)')
+        const facetTransaction = database.transaction((templates) => {
+          for (const template of templates) {
+            const category = categories.get(template.item.type)
+            if (!category) continue
+            for (const facet of category.facets) {
+              const values = uniqueScalarValues(template.item, facet.key)
+              if (facet.kind === 'terms') {
+                for (const value of values) insertTerm.run(template.templateKey, template.item.type, facet.key, value)
+              } else {
+                for (const value of values) {
+                  const numeric = Number(value)
+                  if (Number.isFinite(numeric)) insertNumber.run(template.templateKey, template.item.type, facet.key, numeric)
+                }
+              }
+            }
+          }
+        })
+        facetTransaction(snapshot.templates)
+      }
       database.exec('PRAGMA optimize;')
     } finally {
       database.close()
     }
   }
 
-  search({ query = '', type, manufacturer, limit = 30, offset = 0 } = {}) {
+  isCurrent() {
+    const database = new Database(this.filePath, { readonly: true })
+    try {
+      return Number(database.query('PRAGMA user_version').get().user_version) === 2
+    } finally {
+      database.close()
+    }
+  }
+
+  facets() {
+    const database = new Database(this.filePath, { readonly: true })
+    try {
+      const row = database.query('SELECT payload_json FROM facet_metadata WHERE id = 1').get()
+      return row ? { available: true, ...JSON.parse(row.payload_json) } : { available: false, categories: [] }
+    } finally {
+      database.close()
+    }
+  }
+
+  search({ query = '', type, manufacturer, terms = {}, ranges = {}, limit = 30, offset = 0 } = {}) {
     const database = new Database(this.filePath, { readonly: true })
     try {
       const clauses = []
@@ -132,6 +215,34 @@ export class CatalogIndex {
         clauses.push('manufacturer = ? COLLATE NOCASE')
         parameters.push(manufacturer)
       }
+      for (const [facetKey, rawValues] of Object.entries(terms)) {
+        const values = [...new Set((Array.isArray(rawValues) ? rawValues : [rawValues]).map(String).filter(Boolean))]
+        if (values.length === 0) continue
+        clauses.push(`EXISTS (
+          SELECT 1 FROM facet_terms selected_terms
+          WHERE selected_terms.template_key = templates.template_key
+            AND selected_terms.facet_key = ?
+            AND selected_terms.value IN (${values.map(() => '?').join(', ')})
+        )`)
+        parameters.push(facetKey, ...values)
+      }
+      for (const [facetKey, bounds] of Object.entries(ranges)) {
+        const minimum = Number(bounds?.minimum)
+        const maximum = Number(bounds?.maximum)
+        if (!Number.isFinite(minimum) && !Number.isFinite(maximum)) continue
+        const rangeClauses = ['selected_numbers.template_key = templates.template_key', 'selected_numbers.facet_key = ?']
+        const rangeParameters = [facetKey]
+        if (Number.isFinite(minimum)) {
+          rangeClauses.push('selected_numbers.value >= ?')
+          rangeParameters.push(minimum)
+        }
+        if (Number.isFinite(maximum)) {
+          rangeClauses.push('selected_numbers.value <= ?')
+          rangeParameters.push(maximum)
+        }
+        clauses.push(`EXISTS (SELECT 1 FROM facet_numbers selected_numbers WHERE ${rangeClauses.join(' AND ')})`)
+        parameters.push(...rangeParameters)
+      }
       const where = clauses.length > 0 ? `WHERE ${clauses.join(' AND ')}` : ''
       const boundedLimit = Math.max(1, Math.min(100, Number(limit) || 30))
       const boundedOffset = Math.max(0, Number(offset) || 0)
@@ -148,6 +259,8 @@ export class CatalogIndex {
         total,
         limit: boundedLimit,
         offset: boundedOffset,
+        hasMore: boundedOffset + rows.length < total,
+        nextOffset: boundedOffset + rows.length < total ? boundedOffset + rows.length : null,
         items: rows.map(catalogRow),
       }
     } finally {

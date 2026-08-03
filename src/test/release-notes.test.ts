@@ -92,6 +92,7 @@ describe('release notes helpers', () => {
 
   it('has structured notes for the package version under development', () => {
     const currentRelease = RELEASE_NOTES[0]
+    const topologyRelease = RELEASE_NOTES.find((entry) => entry.version === '0.8.1')!
     const accessRelease = RELEASE_NOTES.find((entry) => entry.version === '0.8.0')!
     const registryRelease = RELEASE_NOTES.find((entry) => entry.version === '0.4.0')!
     const onboardingRelease = RELEASE_NOTES.find((entry) => entry.version === '0.3.0')!
@@ -99,15 +100,15 @@ describe('release notes helpers', () => {
     const previousRelease = RELEASE_NOTES.find((entry) => entry.version === '0.2.1')!
     const engineRelease = RELEASE_NOTES.find((entry) => entry.version === '0.2.0')!
 
-    expect(hasReleaseNoteForVersion(RELEASE_NOTES, '0.8.1')).toBe(true)
+    expect(hasReleaseNoteForVersion(RELEASE_NOTES, '0.8.2')).toBe(true)
     expect(RELEASE_NOTES[0]).toEqual(
       expect.objectContaining({
-        version: '0.8.1',
-        title: 'OEM workstation and server topology',
+        version: '0.8.2',
+        title: 'Faceted hardware catalog browsing',
       }),
     )
     expect(RELEASE_NOTES.filter((entry) => entry.channel === 'latest')).toEqual([
-      expect.objectContaining({ version: '0.8.1' }),
+      expect.objectContaining({ version: '0.8.2' }),
     ])
     expect(RELEASE_NOTES.find((entry) => entry.version === '0.1.38')).toEqual(
       expect.objectContaining({ channel: 'release' }),
@@ -116,6 +117,9 @@ describe('release notes helpers', () => {
       'Access settings now support invited local or OIDC users, built-in roles, and reusable custom global roles composed from explicit permissions.',
     )
     expect(currentRelease.highlights).toContain(
+      'The official catalog now starts with a hardware category chooser, then provides category-specific multi-select and numeric-range filters with explicit Load more pagination.',
+    )
+    expect(topologyRelease.highlights).toContain(
       'OEM workstations and conventional servers now preserve their complete physical topology through catalog import, inventory editing, compatibility checks, auditing, inspection, and canvas workflows.',
     )
     expect(registryRelease.highlights).toContain(

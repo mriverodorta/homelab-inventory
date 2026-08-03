@@ -106,6 +106,16 @@ export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
   notes: [],
 }
 
+const RELEASE_0_8_2_DETAILS: UnreleasedReleaseNotes = {
+  highlights: [
+    'The official catalog now starts with a hardware category chooser, then provides category-specific multi-select and numeric-range filters with explicit Load more pagination.',
+  ],
+  fixes: [],
+  notes: [
+    'Catalog facets and filtered searches are verified and indexed locally, so browsing never sends search terms or filter selections to the registry service.',
+  ],
+}
+
 const RELEASE_0_8_1_DETAILS: UnreleasedReleaseNotes = {
   highlights: [
     'OEM workstations and conventional servers now preserve their complete physical topology through catalog import, inventory editing, compatibility checks, auditing, inspection, and canvas workflows.',
@@ -379,9 +389,16 @@ const RELEASE_0_2_1_DETAILS: UnreleasedReleaseNotes = {
 
 export const RELEASE_NOTES: ReleaseNoteEntry[] = [
   {
-    version: '0.8.1',
+    version: '0.8.2',
     date: '2026-08-03',
     channel: 'latest',
+    title: 'Faceted hardware catalog browsing',
+    ...RELEASE_0_8_2_DETAILS,
+  },
+  {
+    version: '0.8.1',
+    date: '2026-08-03',
+    channel: 'release',
     title: 'OEM workstation and server topology',
     ...RELEASE_0_8_1_DETAILS,
   },

@@ -4,6 +4,8 @@ import type {
   PrivateTemplateImportPreview,
   PrivateTemplatePack,
   CatalogSearchResult,
+  CatalogFacetResponse,
+  CatalogSearchFilters,
   CatalogUpdatePreview,
   CatalogReviewSummary,
   RegistrySettings,
@@ -75,6 +77,7 @@ export function searchOfficialCatalog(parameters: {
   manufacturer?: string
   limit?: number
   offset?: number
+  filters?: CatalogSearchFilters
 } = {}): Promise<CatalogSearchResult> {
   const query = new URLSearchParams()
   if (parameters.query) query.set('q', parameters.query)
@@ -82,7 +85,18 @@ export function searchOfficialCatalog(parameters: {
   if (parameters.manufacturer) query.set('manufacturer', parameters.manufacturer)
   if (parameters.limit !== undefined) query.set('limit', String(parameters.limit))
   if (parameters.offset !== undefined) query.set('offset', String(parameters.offset))
+  for (const [key, values] of Object.entries(parameters.filters?.terms ?? {})) {
+    for (const value of values) query.append('term', `${key}:${value}`)
+  }
+  for (const [key, bounds] of Object.entries(parameters.filters?.ranges ?? {})) {
+    if (bounds.minimum !== undefined) query.append('min', `${key}:${bounds.minimum}`)
+    if (bounds.maximum !== undefined) query.append('max', `${key}:${bounds.maximum}`)
+  }
   return apiRequest(`/api/registry/catalog/search?${query.toString()}`)
+}
+
+export function loadCatalogFacets(): Promise<CatalogFacetResponse> {
+  return apiRequest('/api/registry/catalog/facets')
 }
 
 export function importOfficialCatalog(artifact: unknown): Promise<{ registry: RegistryState }> {

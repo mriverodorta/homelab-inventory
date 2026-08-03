@@ -1,27 +1,93 @@
-import { Search, ShieldCheck } from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
+import { Database, LoaderCircle } from 'lucide-react'
+import { useDeferredValue, useEffect, useMemo, useState } from 'react'
+import { CatalogCategoryPicker } from '@/components/inventory/catalog-category-picker'
+import { CatalogFilterPanel } from '@/components/inventory/catalog-filter-panel'
+import {
+  buildCatalogSearchFilters,
+  countActiveCatalogFilters,
+  createRangeFilterState,
+  type CatalogRangeFilterState,
+  type CatalogTermFilterState,
+} from '@/components/inventory/catalog-browser-model'
 import { CatalogItemDetail } from '@/components/inventory/catalog-item-detail'
-import { catalogVariantDescription } from '@/components/inventory/catalog-variant'
-import { Input } from '@/components/ui/input'
-import { ScrollArea } from '@/components/ui/scroll-area'
-import { useCatalogSearch } from '@/hooks/use-registry'
-import { cn } from '@/lib/utils'
+import { CatalogResultList } from '@/components/inventory/catalog-result-list'
+import { Button } from '@/components/ui/button'
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetFooter,
+  SheetHeader,
+  SheetTitle,
+} from '@/components/ui/sheet'
+import { useCatalogFacets, useInfiniteCatalogSearch } from '@/hooks/use-registry'
+import type { CatalogFacetCategory } from '@/types/registry'
 
 export function CatalogBrowser({
   onCreate,
 }: {
   onCreate: (templateKey: string, quantity: number, usageRole?: 'server' | 'desktop' | 'workstation' | 'other') => Promise<void>
 }) {
+  const [category, setCategory] = useState<CatalogFacetCategory | null>(null)
   const [query, setQuery] = useState('')
+  const deferredQuery = useDeferredValue(query)
   const [selectedKey, setSelectedKey] = useState<string | null>(null)
+  const [termFilters, setTermFilters] = useState<CatalogTermFilterState>({})
+  const [rangeFilters, setRangeFilters] = useState<CatalogRangeFilterState>({})
+  const [filterSheetOpen, setFilterSheetOpen] = useState(false)
   const [pending, setPending] = useState(false)
-  const search = useCatalogSearch({ query, limit: 100 })
-  const items = useMemo(() => search.data?.items ?? [], [search.data?.items])
-  const selected = items.find((item) => item.templateKey === selectedKey) ?? items[0] ?? null
+  const facets = useCatalogFacets()
+  const categories = useMemo(
+    () => (facets.data?.categories ?? []).filter((candidate) => candidate.count > 0),
+    [facets.data?.categories],
+  )
+  const searchFilters = useMemo(
+    () => category ? buildCatalogSearchFilters(category, termFilters, rangeFilters) : {},
+    [category, rangeFilters, termFilters],
+  )
+  const search = useInfiniteCatalogSearch({
+    query: deferredQuery,
+    type: category?.type,
+    filters: searchFilters,
+  }, Boolean(category))
+  const items = useMemo(() => search.data?.pages.flatMap((page) => page.items) ?? [], [search.data?.pages])
+  const total = search.data?.pages[0]?.total ?? 0
+  const selected = items.find((item) => item.templateKey === selectedKey) ?? null
+  const activeFilterCount = category
+    ? countActiveCatalogFilters(category, termFilters, rangeFilters)
+    : 0
 
   useEffect(() => {
-    if (selected && selectedKey !== selected.templateKey) setSelectedKey(selected.templateKey)
-  }, [selected, selectedKey])
+    if (!selectedKey && items[0]) setSelectedKey(items[0].templateKey)
+    if (selectedKey && items.length > 0 && !items.some((item) => item.templateKey === selectedKey)) {
+      setSelectedKey(items[0]?.templateKey ?? null)
+    }
+  }, [items, selectedKey])
+
+  function selectCategory(nextCategory: CatalogFacetCategory) {
+    setCategory(nextCategory)
+    setQuery('')
+    setSelectedKey(null)
+    setTermFilters({})
+    setRangeFilters(createRangeFilterState(nextCategory))
+    setFilterSheetOpen(false)
+  }
+
+  function clearFilters() {
+    if (!category) return
+    setTermFilters({})
+    setRangeFilters(createRangeFilterState(category))
+    setSelectedKey(null)
+  }
+
+  function changeCategory() {
+    setCategory(null)
+    setQuery('')
+    setSelectedKey(null)
+    setTermFilters({})
+    setRangeFilters({})
+    setFilterSheetOpen(false)
+  }
 
   async function create(templateKey: string, quantity: number, usageRole?: 'server' | 'desktop' | 'workstation' | 'other') {
     setPending(true)
@@ -32,43 +98,88 @@ export function CatalogBrowser({
     }
   }
 
-  return (
-    <div className="flex min-h-0 flex-1 flex-col lg:grid lg:grid-cols-[minmax(220px,0.8fr)_minmax(320px,1.2fr)]">
-      <div className="flex min-h-0 flex-col border-b border-[#ded8ce] lg:border-r lg:border-b-0">
-        <div className="relative shrink-0 p-4">
-          <Search className="pointer-events-none absolute top-1/2 left-7 size-4 -translate-y-1/2 text-[#81786e]" aria-hidden="true" />
-          <Input value={query} onChange={(event) => setQuery(event.target.value)} className="bg-white pl-9" placeholder="Search model, manufacturer, or part number" aria-label="Search official catalog" />
-        </div>
-        <ScrollArea className="min-h-48 flex-1 lg:min-h-0">
-          <div className="space-y-1 px-3 pb-4">
-            {search.isLoading ? <p className="p-3 text-sm text-[#746b60]">Searching local catalog…</p> : null}
-            {search.isError ? <p className="p-3 text-sm font-semibold text-[#a33d31]">{search.error instanceof Error ? search.error.message : 'Catalog search failed.'}</p> : null}
-            {!search.isLoading && items.length === 0 ? <p className="p-3 text-sm text-[#746b60]">No verified catalog items match this search.</p> : null}
-            {items.map((item) => (
-              <button
-                key={item.templateKey}
-                type="button"
-                onClick={() => setSelectedKey(item.templateKey)}
-                className={cn(
-                  'flex w-full items-center gap-3 rounded-md border px-3 py-3 text-left transition-colors',
-                  selected?.templateKey === item.templateKey
-                    ? 'border-[#74968e] bg-[#e7f1ed]'
-                    : 'border-transparent hover:border-[#ded8ce] hover:bg-[#f7f2e9]',
-                )}
-              >
-                <span className="flex size-8 shrink-0 items-center justify-center rounded-md bg-[#20242c] text-white"><ShieldCheck className="size-4" /></span>
-                <span className="min-w-0">
-                  <span className="block text-sm font-black text-[#20242c]">{item.name}</span>
-                  <span className="mt-0.5 block text-xs text-[#746b60]">{catalogVariantDescription(item)}</span>
-                </span>
-              </button>
-            ))}
-          </div>
-        </ScrollArea>
+  if (facets.isLoading) {
+    return (
+      <div className="flex min-h-72 flex-1 items-center justify-center gap-2 text-sm text-[#746b60]">
+        <LoaderCircle className="size-4 animate-spin" aria-hidden="true" />Loading catalog categories…
       </div>
-      {selected ? <CatalogItemDetail template={selected} pending={pending} onCreate={create} /> : (
-        <div className="hidden items-center justify-center p-8 text-sm text-[#746b60] lg:flex">Select a verified item to inspect its catalog definition.</div>
-      )}
+    )
+  }
+
+  if (facets.isError || !facets.data?.available) {
+    return (
+      <div className="flex min-h-72 flex-1 items-center justify-center p-6">
+        <div className="max-w-md text-center">
+          <span className="mx-auto flex size-11 items-center justify-center rounded-md bg-[#20242c] text-white">
+            <Database className="size-5" aria-hidden="true" />
+          </span>
+          <h3 className="mt-4 text-lg font-black text-[#20242c]">Catalog filters are not available</h3>
+          <p className="mt-2 text-sm leading-6 text-[#6f665c]">
+            This catalog revision does not include signed filter metadata yet. Refresh after the registry publishes its facet index.
+          </p>
+        </div>
+      </div>
+    )
+  }
+
+  if (!category) return <CatalogCategoryPicker categories={categories} onSelect={selectCategory} />
+
+  const filterPanelProps = {
+    category,
+    terms: termFilters,
+    ranges: rangeFilters,
+    activeFilterCount,
+    onTermsChange: setTermFilters,
+    onRangesChange: setRangeFilters,
+    onClear: clearFilters,
+    onChangeCategory: changeCategory,
+  }
+
+  return (
+    <div className="flex min-h-0 flex-1 flex-col lg:grid lg:grid-cols-[240px_minmax(260px,0.8fr)_minmax(380px,1.2fr)]">
+      <aside className="hidden min-h-0 border-r border-[#ded8ce] lg:flex" aria-label="Catalog filters">
+        <CatalogFilterPanel {...filterPanelProps} idPrefix="desktop-catalog-filter" />
+      </aside>
+      <CatalogResultList
+        categoryLabel={category.label}
+        query={query}
+        items={items}
+        total={total}
+        selectedKey={selected?.templateKey ?? null}
+        loading={search.isLoading}
+        loadingMore={search.isFetchingNextPage}
+        error={search.isError ? (search.error instanceof Error ? search.error.message : 'Catalog search failed.') : null}
+        hasMore={Boolean(search.hasNextPage)}
+        activeFilterCount={activeFilterCount}
+        onQueryChange={(nextQuery) => {
+          setQuery(nextQuery)
+          setSelectedKey(null)
+        }}
+        onSelect={setSelectedKey}
+        onLoadMore={() => void search.fetchNextPage()}
+        onOpenFilters={() => setFilterSheetOpen(true)}
+      />
+      <div className="min-h-0 overflow-y-auto">
+        {selected ? (
+          <CatalogItemDetail template={selected} pending={pending} onCreate={create} />
+        ) : (
+          <div className="hidden h-full min-h-64 items-center justify-center p-8 text-center text-sm text-[#746b60] lg:flex">
+            Select a verified item to inspect its catalog definition.
+          </div>
+        )}
+      </div>
+      <Sheet open={filterSheetOpen} onOpenChange={setFilterSheetOpen}>
+        <SheetContent side="left" className="w-[min(90vw,22rem)] gap-0 bg-[#f7f2e9] p-0 sm:max-w-sm">
+          <SheetHeader className="sr-only">
+            <SheetTitle>Filter {category.label}</SheetTitle>
+            <SheetDescription>Choose one or more catalog filters.</SheetDescription>
+          </SheetHeader>
+          <CatalogFilterPanel {...filterPanelProps} idPrefix="mobile-catalog-filter" />
+          <SheetFooter className="border-t border-[#ded8ce] bg-[#fffdf8]">
+            <Button type="button" onClick={() => setFilterSheetOpen(false)}>Show {total.toLocaleString()} items</Button>
+          </SheetFooter>
+        </SheetContent>
+      </Sheet>
     </div>
   )
 }
