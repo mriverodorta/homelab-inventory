@@ -82,7 +82,7 @@ export function AuditDrawer({
   open: boolean
   onClose: () => void
   onSelectItem: (itemId: string) => void
-  onSetWarningIgnored: (warningId: string, ignored: boolean) => void
+  onSetWarningIgnored?: (warningId: string, ignored: boolean) => void
 }) {
   const [filter, setFilter] = useState<AuditFilter>('all')
   const auditTopology = useMemo(() => topologyData ? {
@@ -197,18 +197,20 @@ export function AuditDrawer({
                           <WarningIcon className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
                           <span className="min-w-0">{warning.message}</span>
                         </button>
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="xs"
-                          className="mt-0.5 px-2 text-[11px]"
-                          onClick={(event) => {
-                            event.stopPropagation()
-                            onSetWarningIgnored(warning.id, !showingIgnored)
-                          }}
-                        >
-                          {showingIgnored ? 'Unignore' : 'Ignore'}
-                        </Button>
+                        {onSetWarningIgnored ? (
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="xs"
+                            className="mt-0.5 px-2 text-[11px]"
+                            onClick={(event) => {
+                              event.stopPropagation()
+                              onSetWarningIgnored(warning.id, !showingIgnored)
+                            }}
+                          >
+                            {showingIgnored ? 'Unignore' : 'Ignore'}
+                          </Button>
+                        ) : null}
                       </div>
                     )
                   })}

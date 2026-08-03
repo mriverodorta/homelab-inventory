@@ -1,4 +1,5 @@
 import { rateLimit } from 'express-rate-limit'
+import { deriveAuthenticationMode } from './model.mjs'
 import { SESSION_COOKIE_NAME, sessionTokenFromRequest } from './session-service.mjs'
 import { OIDC_TRANSACTION_COOKIE } from './oidc-service.mjs'
 
@@ -29,7 +30,22 @@ function setSessionCookie(request, response, sessionService, token, session) {
   })
 }
 
-export function registerAuthenticationRoutes(app, { service, oidcService, demo = false }) {
+function requirePermissionWhenEnabled(service, authorization, permission, { allowDisabled = false } = {}) {
+  return async (request, response, next) => {
+    try {
+      if (!service || !authorization) return next()
+      if (allowDisabled && deriveAuthenticationMode(service.state()) === 'disabled') return next()
+      const authentication = service.sessions.authenticateRequest(request)
+      if (!authentication) return response.status(401).json({ message: 'Authentication is required.', code: 'authentication-required' })
+      request.authentication = authentication
+      const { allowed } = await authorization.authorize(authentication.account.id, permission)
+      if (!allowed) return response.status(403).json({ message: 'You do not have permission to perform this action.', code: 'permission-denied', permission })
+      next()
+    } catch (error) { next(error) }
+  }
+}
+
+export function registerAuthenticationRoutes(app, { service, oidcService, authorization = null, demo = false }) {
   app.get('/api/auth/status', (request, response) => {
     if (demo || !service) {
       response.json({
@@ -70,7 +86,7 @@ export function registerAuthenticationRoutes(app, { service, oidcService, demo =
     } catch (error) { failure(response, error, 401) }
   })
 
-  app.post('/api/auth/logout', async (request, response) => {
+  app.post('/api/auth/logout', requirePermissionWhenEnabled(service, authorization, 'workspace.view'), async (request, response) => {
     if (service) await service.logout(request)
     response.clearCookie(SESSION_COOKIE_NAME, service?.sessions.cookieOptions() ?? { path: '/' })
     response.json({ ok: true })
@@ -80,7 +96,11 @@ export function registerAuthenticationRoutes(app, { service, oidcService, demo =
     if (demo || !service || !oidcService) return failure(response, new Error('OIDC authentication is unavailable.'), 404)
     try {
       const authentication = service.sessions.authenticateRequest(request)
-      const started = await oidcService.start({ returnTo: request.query.returnTo, bindAccountId: authentication?.account.id ?? null })
+      const started = await oidcService.start({
+        returnTo: request.query.returnTo,
+        bindAccountId: request.query.link === '1' ? authentication?.account.id ?? null : null,
+        invitationToken: request.query.invitation,
+      })
       response.cookie(OIDC_TRANSACTION_COOKIE, started.transactionToken, oidcService.cookieOptions())
       response.redirect(started.url)
     } catch (error) { failure(response, error) }
@@ -101,14 +121,19 @@ export function registerAuthenticationRoutes(app, { service, oidcService, demo =
     }
   })
 
-  app.patch('/api/auth/settings', async (request, response) => {
+  app.patch('/api/auth/settings', requirePermissionWhenEnabled(service, authorization, 'authentication.manage', { allowDisabled: true }), async (request, response) => {
     if (demo || !service) return failure(response, new Error('Authentication settings are unavailable in demo mode.'), 404)
     try { response.json(await service.updateMethods(request.body ?? {}, request)) } catch (error) { failure(response, error) }
   })
 
-  app.post('/api/auth/password', authRateLimit(10), async (request, response) => {
+  app.post('/api/auth/password', authRateLimit(10), requirePermissionWhenEnabled(service, authorization, 'authentication.view'), async (request, response) => {
     if (demo || !service) return failure(response, new Error('Authentication is unavailable.'), 404)
     try { await service.changePassword(request.body ?? {}, request); response.json({ ok: true }) } catch (error) { failure(response, error) }
+  })
+
+  app.post('/api/auth/identities/local', authRateLimit(5), requirePermissionWhenEnabled(service, authorization, 'authentication.view'), async (request, response) => {
+    if (demo || !service) return failure(response, new Error('Authentication is unavailable.'), 404)
+    try { response.json(await service.addLocalIdentity(request.body ?? {}, request)) } catch (error) { failure(response, error) }
   })
 
   app.post('/api/auth/recovery/reset', authRateLimit(5), async (request, response) => {
@@ -120,11 +145,11 @@ export function registerAuthenticationRoutes(app, { service, oidcService, demo =
     } catch (error) { failure(response, error) }
   })
 
-  app.get('/api/auth/sessions', (request, response) => {
+  app.get('/api/auth/sessions', requirePermissionWhenEnabled(service, authorization, 'authentication.view'), (request, response) => {
     if (demo || !service) return failure(response, new Error('Authentication is unavailable.'), 404)
     try { response.json({ sessions: service.sessionsFor(request) }) } catch (error) { failure(response, error, 401) }
   })
-  app.delete('/api/auth/sessions/:id', async (request, response) => {
+  app.delete('/api/auth/sessions/:id', requirePermissionWhenEnabled(service, authorization, 'authentication.view'), async (request, response) => {
     if (demo || !service) return failure(response, new Error('Authentication is unavailable.'), 404)
     try {
       const authentication = service.requireAuthenticated(request)
@@ -136,7 +161,7 @@ export function registerAuthenticationRoutes(app, { service, oidcService, demo =
       response.json({ ok: true })
     } catch (error) { failure(response, error) }
   })
-  app.get('/api/auth/events', (request, response) => {
+  app.get('/api/auth/events', requirePermissionWhenEnabled(service, authorization, 'authentication.view'), (request, response) => {
     if (demo || !service) return failure(response, new Error('Authentication is unavailable.'), 404)
     try { response.json({ events: service.eventsFor(request) }) } catch (error) { failure(response, error, 401) }
   })

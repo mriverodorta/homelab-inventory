@@ -3,6 +3,7 @@ import { createBackupManagementStore } from './backup-model.mjs'
 import { preflightRestore } from './restore-preflight.mjs'
 import { createRegistryStore } from '../registry/model.mjs'
 import { createAuthenticationStore } from '../auth/model.mjs'
+import { CURRENT_SCHEMA_VERSION } from '../db/store.mjs'
 
 describe('restore preflight', () => {
   it('rejects archives created by a newer schema', () => {
@@ -41,6 +42,6 @@ describe('restore preflight', () => {
     })
 
     expect(result.ok).toBe(true)
-    expect(result.replacements.meta.schemaVersion).toBe(22)
+    expect(result.replacements.meta.schemaVersion).toBe(CURRENT_SCHEMA_VERSION)
   })
 })

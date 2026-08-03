@@ -4,6 +4,7 @@ import {
   type CanvasController,
 } from '@/components/workbench-canvas-contract'
 import { useDomainEngine } from '@/hooks/use-domain-engine'
+import { usePermission } from '@/hooks/use-permission'
 import { useRegistryMutations, useRegistryQuery } from '@/hooks/use-registry'
 import {
   useCompatibleTopologyDestinations,
@@ -55,6 +56,10 @@ type ValidationSeverity = 'error' | 'unknown'
 function App() {
   const queryClient = useQueryClient()
   const domainEngine = useDomainEngine()
+  const canViewAgents = usePermission('agents.view')
+  const canViewRegistry = usePermission('registry.view')
+  const canViewUpdates = usePermission('updates.view')
+  const canManageAudit = usePermission('audit.manage')
   const [project, setProject] = useState<ProjectState | null>(null)
   const projectRef = useRef<ProjectState | null>(null)
   const topologyQuery = useTopologyQuery(project)
@@ -215,7 +220,7 @@ function App() {
     setValidationMessage,
     setCanvasOperationLabel,
   })
-  const releaseUpdateController = useReleaseUpdateController()
+  const releaseUpdateController = useReleaseUpdateController({ canViewUpdates })
   const canvasEquipmentLifecycle = useCanvasEquipmentLifecycle({
     project,
     projectRef,
@@ -272,7 +277,8 @@ function App() {
   const agentStatusQuery = useQuery({
     queryKey: ['agent-status'],
     queryFn: loadAgentStatus,
-    refetchInterval: 30_000,
+    enabled: canViewAgents,
+    refetchInterval: canViewAgents ? 30_000 : false,
   })
   const {
     updateStatusQuery,
@@ -280,7 +286,7 @@ function App() {
     whatsNewVisible: shouldShowWhatsNewDialog,
     updateHighlighted,
   } = releaseUpdateController
-  const registryQuery = useRegistryQuery()
+  const registryQuery = useRegistryQuery(canViewRegistry)
   const registryMutations = useRegistryMutations()
   const inventoryLifecycle = useInventoryLifecycle({
     projectRef,
@@ -540,9 +546,11 @@ function App() {
               open: auditOpen,
               onClose: () => setAuditOpen(false),
               onSelectItem: navigationActions.selectAuditItem,
-              onSetWarningIgnored: (warningId, ignored) => {
-                updateProject(setAuditWarningIgnored(project, warningId, ignored))
-              },
+              onSetWarningIgnored: canManageAudit
+                ? (warningId, ignored) => {
+                    updateProject(setAuditWarningIgnored(project, warningId, ignored))
+                  }
+                : undefined,
             }}
             search={{
               project,

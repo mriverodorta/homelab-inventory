@@ -33,6 +33,7 @@ import { useCanvasHandleMeasurement } from '@/components/canvas/use-canvas-handl
 import { useCanvasNodeDrag } from '@/components/canvas/use-canvas-node-drag'
 import { useCanvasProjectModel } from '@/components/canvas/use-canvas-project-model'
 import { useStableCanvasCallbacks } from '@/components/canvas/use-stable-canvas-callbacks'
+import { usePermission } from '@/hooks/use-permission'
 
 function CanvasViewport({
   project,
@@ -91,8 +92,15 @@ function CanvasViewport({
   onToggleDisplayCablesVisible,
   onOpenSettings,
 }: WorkbenchCanvasProps) {
+  const canEditWorkspace = usePermission('workspace.edit')
+  const canEditCanvas = usePermission('canvas.edit')
+  const canEditConnections = usePermission('connections.edit')
+  const canEditInventory = usePermission('inventory.edit')
+  const canViewAudit = usePermission('audit.view')
+  const canViewUpdates = usePermission('updates.view')
   const { setNodeRef, isOver } = useDroppable({
     id: 'canvas',
+    disabled: !canEditCanvas && !canEditInventory,
     data: {
       kind: 'canvas',
     },
@@ -149,12 +157,12 @@ function CanvasViewport({
   } = useStableCanvasCallbacks({
     onSelect,
     onSelectConnection,
-    onRemoveAssignment,
-    onEndpointClick,
-    onEndpointDragStart,
-    onEndpointDrop,
-    onUpdateConnectionRoute,
-    onResolveConnectionRouteSides,
+    onRemoveAssignment: canEditInventory ? onRemoveAssignment : () => undefined,
+    onEndpointClick: canEditConnections ? onEndpointClick : () => undefined,
+    onEndpointDragStart: canEditConnections ? onEndpointDragStart : () => undefined,
+    onEndpointDrop: canEditConnections ? onEndpointDrop : () => undefined,
+    onUpdateConnectionRoute: canEditConnections ? onUpdateConnectionRoute : () => undefined,
+    onResolveConnectionRouteSides: canEditConnections ? onResolveConnectionRouteSides : async () => undefined,
   })
   const flowNodes = useCanvasFlowNodes({
     project,
@@ -292,6 +300,7 @@ function CanvasViewport({
       nodeDragThreshold={nodeDragThreshold}
       snapItemsToGrid={snapItemsToGrid}
       forceRenderAllNodes={forceRenderAllNodes}
+      nodesDraggable={canEditCanvas}
       activity={canvasActivity}
       validationMessage={validationMessage}
       validationSeverity={validationSeverity}
@@ -309,6 +318,10 @@ function CanvasViewport({
         networkCablesVisible,
         powerCablesVisible,
         displayCablesVisible,
+        canEditWorkspace,
+        canEditCanvas,
+        canViewAudit,
+        canViewUpdates,
         onInventory: onOpenInventory,
         onUndo,
         onRedo,

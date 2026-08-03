@@ -2,7 +2,7 @@
   "name": "homelab-inventory",
   "private": true,
   "description": "Self-hosted visual inventory and cabling workbench for homelab hardware.",
-  "version": "0.7.2",
+  "version": "0.8.0",
   "license": "MIT",
   "type": "module",
   "repository": {
@@ -47,6 +47,7 @@
     "@msgpack/msgpack": "^3.1.3",
     "@tanstack/react-query": "^5.101.4",
     "@xyflow/react": "^12.11.2",
+    "casbin": "5.51.1",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "express": "^5.2.1",

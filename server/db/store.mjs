@@ -44,6 +44,7 @@ import { migrateSchema18To19 } from './migrate-schema-19.mjs'
 import { migrateSchema19To20 } from './migrate-schema-20.mjs'
 import { migrateSchema20To21 } from './migrate-schema-21.mjs'
 import { migrateSchema21To22 } from './migrate-schema-22.mjs'
+import { migrateSchema22To23 } from './migrate-schema-23.mjs'
 import {
   applyNasPowerConfigurationChange,
   inspectNasPowerConfigurationChange,
@@ -85,7 +86,7 @@ import {
   setWalkthroughStepInDraft,
 } from '../onboarding/lifecycle.mjs'
 
-export const CURRENT_SCHEMA_VERSION = 22
+export const CURRENT_SCHEMA_VERSION = 23
 
 const DEFAULT_SAVE_DEBOUNCE_MS = 500
 const DEFAULT_FLUSH_RETRY_BASE_MS = 1_000
@@ -2108,6 +2109,21 @@ export class HomelabInventoryStore {
           summary: migrated.summary,
         }
         currentVersion = 22
+        continue
+      }
+
+      if (currentVersion === 22) {
+        const migrated = migrateSchema22To23(this.databases.authentication.data)
+        this.databases.authentication.data = migrated.authentication
+        this.databases.meta.data.schemaVersion = 23
+        this.databases.meta.data.lastMigration = {
+          from: 22,
+          to: 23,
+          completedAt: new Date().toISOString(),
+          backupId: path.basename(this.activeMigrationBackupPath),
+          summary: migrated.summary,
+        }
+        currentVersion = 23
         continue
       }
 

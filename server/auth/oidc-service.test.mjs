@@ -1,11 +1,12 @@
 import { describe, expect, it, vi } from 'vitest'
-import { assertAuthenticationStoreShape, createAuthenticationStore, createOwnerAccount } from './model.mjs'
+import { assertAuthenticationStoreShape, createAuthenticationStore, createOwnerAccount, ensureProtectedOwnerRole } from './model.mjs'
 import { OidcService } from './oidc-service.mjs'
 
-function harness(claims = { iss: 'https://identity.example/application/o/inventory', sub: 'owner-subject', name: 'Owner' }) {
+function harness(claims = { iss: 'https://identity.example/application/o/inventory', sub: 'owner-subject', name: 'Owner', email: 'owner@example.com', email_verified: true }) {
   let state = createAuthenticationStore()
   state.accounts.push(createOwnerAccount(1, 'owner', 'Owner'))
   state.nextAccountId = 2
+  ensureProtectedOwnerRole(state, 1)
   state.configuration.enabled = true
   state.configuration.oidcEnabled = true
   state.configuration.oidc.issuer = 'https://identity.example/application/o/inventory'
@@ -71,9 +72,10 @@ describe('OIDC authentication service', () => {
     expect(store.getAuthenticationState().oidcTransactions[0].returnTo).toBe('/')
   })
 
-  it('requires a local owner session before the first OIDC identity binding', async () => {
+  it('rejects an unknown OIDC identity unless it was invited or explicitly linked', async () => {
     const { service } = harness()
-    await expect(service.start()).rejects.toThrow(/Sign in locally and link/)
+    const started = await service.start()
+    await expect(service.callback('https://inventory.example/api/auth/oidc/callback?code=unknown', started.transactionToken)).rejects.toThrow(/not linked to an invited account/)
   })
 
   it('rejects an unlinked subject after the owner has bound an exact OIDC identity', async () => {
@@ -86,13 +88,15 @@ describe('OIDC authentication service', () => {
         iss: 'https://identity.example/application/o/inventory',
         sub: 'different-subject',
         name: 'Different User',
+        email: 'different@example.com',
+        email_verified: true,
       }),
     })
     const login = await service.start()
     await expect(service.callback(
       'https://inventory.example/api/auth/oidc/callback?code=unknown',
       login.transactionToken,
-    )).rejects.toThrow(/not linked to the owner account/)
+    )).rejects.toThrow(/not linked to an invited account/)
     expect(store.getAuthenticationState().oidcIdentities).toHaveLength(1)
   })
 })

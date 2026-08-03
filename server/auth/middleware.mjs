@@ -9,12 +9,14 @@ const PUBLIC_AUTH_PATHS = new Set([
   '/api/auth/recovery/reset',
 ])
 
+const PUBLIC_INVITATION_PATH = /^\/api\/auth\/invitations\/[^/]+(?:\/activate-local)?\/?$/
+
 const MACHINE_AGENT_PATH = /^\/api\/agent\/servers\/[1-9]\d*\/(?:register|heartbeat)\/?$/
 
 export function createAuthenticationGuard({ service, demo = false }) {
   return function authenticationGuard(request, response, next) {
     if (demo || !service || !request.path.startsWith('/api/')) return next()
-    if (request.path === '/api/health' || PUBLIC_AUTH_PATHS.has(request.path) || MACHINE_AGENT_PATH.test(request.path)) return next()
+    if (request.path === '/api/health' || PUBLIC_AUTH_PATHS.has(request.path) || PUBLIC_INVITATION_PATH.test(request.path) || MACHINE_AGENT_PATH.test(request.path)) return next()
     const state = service.state()
     if (state.bootstrapState.setupRequired) {
       response.status(401).json({ message: 'First-run setup is required.', code: 'setup-required' })

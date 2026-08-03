@@ -6,6 +6,24 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 
 ## Unreleased
 
+## [0.8.0] - 2026-08-03
+
+### Added
+
+- Added multi-user access administration with local or OIDC invitations, built-in Owner, Administrator, Editor, and Viewer roles, and reusable custom global roles composed from a static permission catalog.
+- Added explicit identity linking so one account can use both local and OIDC sign-in without automatically merging accounts that happen to share an email address.
+- Added permission-aware navigation and controls across inventory, canvas, connections, projects, registry, backups, agents, audits, updates, authentication, users, and roles.
+
+### Security
+
+- API authorization now uses a server-side Casbin policy with default-deny route classification and operation-specific workspace-engine permissions; hidden frontend actions are never the enforcement boundary.
+- The original owner account and Owner role remain protected, delegated roles and resent invitations cannot grant permissions the acting administrator does not possess, and concurrent access-policy writes are serialized and rolled back atomically if policy compilation or persistence fails.
+- Access-administration APIs remain unavailable while authentication is disabled, preserving the legacy open workspace without exposing account, role, or invitation metadata.
+
+### Data migration
+
+- Schema 23 backs up and upgrades the authentication store with numeric role, permission, assignment, invitation, and identity-link relationships. Existing authentication mode and owner access are preserved, while demo sessions remain open and omit Access administration entirely.
+
 ## [0.7.2] - 2026-08-02
 
 ### Added

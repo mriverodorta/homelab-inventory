@@ -3,7 +3,16 @@ export type AuthenticationMode = 'disabled' | 'local' | 'oidc' | 'hybrid'
 export interface AuthAccount {
   id: number
   username: string
+  email: string | null
   displayName: string
+  protectedOwner: boolean
+}
+
+export interface AuthRoleSummary {
+  id: number
+  key: string
+  name: string
+  builtIn: boolean
 }
 
 export interface AuthStatus {
@@ -15,6 +24,9 @@ export interface AuthStatus {
   oidcSecretReadOnly: boolean
   localCredentialConfigured: boolean
   account: AuthAccount | null
+  permissions: string[]
+  roles: AuthRoleSummary[]
+  identityMethods: { local: boolean; oidc: boolean }
   methods: { local: boolean; oidc: boolean }
   oidc: {
     issuer?: string | null

@@ -1,4 +1,4 @@
-import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { act, cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import userEvent from '@testing-library/user-event'
 import type { ComponentProps } from 'react'
@@ -16,6 +16,7 @@ import {
   allTopologyEndpointKeys,
   topologyQueryFixture,
 } from '@/test/topology-query-fixture'
+import { renderWithOpenAuth as render } from '@/test/open-auth-test-render'
 
 const topologyHookMocks = vi.hoisted(() => ({
   useCompatibleTopologyDestinations: vi.fn(),

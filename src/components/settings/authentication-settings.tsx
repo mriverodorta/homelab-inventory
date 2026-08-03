@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { KeyRound, Laptop, LogOut, ShieldCheck, Trash2 } from 'lucide-react'
+import { KeyRound, Laptop, Link2, LogOut, ShieldCheck, Trash2 } from 'lucide-react'
 import { PasswordField } from '@/components/auth/password-field'
 import { ConfirmSettingsAction, EnvironmentValue, SettingRow, SettingsSection } from '@/components/settings/settings-primitives'
 import { Button } from '@/components/ui/button'
@@ -98,6 +98,9 @@ function AccountSecurity() {
   const [currentPassword, setCurrentPassword] = useState('')
   const [newPassword, setNewPassword] = useState('')
   const [message, setMessage] = useState<string | null>(null)
+  const [localUsername, setLocalUsername] = useState(status.account?.username ?? '')
+  const [localPassword, setLocalPassword] = useState('')
+  const [identityBusy, setIdentityBusy] = useState(false)
   const sessions = useQuery({ queryKey: ['authentication', 'sessions'], queryFn: authApi.sessions, enabled: status.authenticated })
   const events = useQuery({ queryKey: ['authentication', 'events'], queryFn: authApi.events, enabled: status.authenticated })
 
@@ -107,8 +110,32 @@ function AccountSecurity() {
     catch (error) { setMessage(errorMessage(error)) }
   }
 
+  async function addLocalIdentity() {
+    setIdentityBusy(true); setMessage(null)
+    try {
+      await authApi.addLocalIdentity({ username: localUsername, password: localPassword })
+      setLocalPassword('')
+      await auth.refresh()
+      setMessage('Local sign-in added to this account.')
+    } catch (error) { setMessage(errorMessage(error)) }
+    finally { setIdentityBusy(false) }
+  }
+
   return <div className="grid gap-4">
-    {status.methods.local ? <SettingsSection title="Owner password" description="Changing the password revokes every other active session.">
+    <SettingsSection title="Login identities" description="Link multiple verified login methods to this one account. Matching email alone never merges accounts.">
+      <SettingRow label="Local sign-in" description={status.identityMethods.local ? `Enabled as @${status.account?.username}` : 'Add a local username and password after proving this OIDC identity.'}>
+        {status.identityMethods.local ? <span className="rounded-md border border-[#ded8ce] bg-[#f7f2e9] px-3 py-2 text-sm font-black">Linked</span> : null}
+      </SettingRow>
+      {!status.identityMethods.local && status.identityMethods.oidc ? <div className="grid gap-3 border-b border-[#e8e1d6] p-4 sm:grid-cols-2">
+        <label className="grid gap-1.5 text-sm font-bold">Username<Input value={localUsername} onChange={(event) => setLocalUsername(event.target.value)} autoComplete="username" /></label>
+        <label htmlFor="authentication-linked-local-password" className="grid gap-1.5 text-sm font-bold">Password<PasswordField id="authentication-linked-local-password" value={localPassword} onChange={setLocalPassword} autoComplete="new-password" /></label>
+        <div className="flex justify-end sm:col-span-2"><Button disabled={identityBusy || !localUsername.trim() || localPassword.length < 12} onClick={() => void addLocalIdentity()}><KeyRound />{identityBusy ? 'Adding…' : 'Add local sign-in'}</Button></div>
+      </div> : null}
+      <SettingRow label="OpenID Connect" description={status.identityMethods.oidc ? 'A verified issuer and subject are linked to this account.' : 'Link OIDC by signing in while this account session is active.'}>
+        {status.identityMethods.oidc ? <span className="rounded-md border border-[#ded8ce] bg-[#f7f2e9] px-3 py-2 text-sm font-black">Linked</span> : status.methods.oidc ? <Button variant="outline" onClick={() => window.location.assign(`/api/auth/oidc/start?link=1&returnTo=${encodeURIComponent(window.location.pathname)}`)}><Link2 />Link OIDC</Button> : <span className="text-sm font-semibold text-[#756d62]">Not configured</span>}
+      </SettingRow>
+    </SettingsSection>
+    {status.identityMethods.local ? <SettingsSection title="Account password" description="Changing the password revokes every other active session.">
       <div className="grid gap-3 p-4 sm:grid-cols-2"><label htmlFor="authentication-current-password" className="grid gap-1.5 text-sm font-bold">Current password<PasswordField id="authentication-current-password" value={currentPassword} onChange={setCurrentPassword} autoComplete="current-password" /></label><label htmlFor="authentication-new-password" className="grid gap-1.5 text-sm font-bold">New password<PasswordField id="authentication-new-password" value={newPassword} onChange={setNewPassword} autoComplete="new-password" /></label></div>
       <div className="flex items-center justify-end gap-3 border-t border-[#e8e1d6] p-4">{message ? <p role="status" className="mr-auto text-sm font-semibold text-[#665d52]">{message}</p> : null}<Button disabled={!currentPassword || newPassword.length < 12} onClick={() => void changePassword()}>Change password</Button></div>
     </SettingsSection> : null}
@@ -127,13 +154,20 @@ export function AuthenticationSettings() {
   const status = auth.status
   const modeLabel = useMemo(() => status?.mode === 'oidc' ? 'OIDC' : status?.mode === 'hybrid' ? 'Local + OIDC' : status?.mode === 'local' ? 'Local' : 'Disabled', [status?.mode])
   if (!status) return <p role="alert" className="text-sm font-semibold text-[#9b3f32]">Authentication status is unavailable.</p>
-  if (!status.canManage) {
+  if (!status.canManage && status.mode === 'disabled') {
     return <SettingsSection title="Authentication" description="Public demo sessions use an enforced open-access policy.">
       <SettingRow label="Current mode" description="Authentication cannot be enabled in the public demo. Each isolated demo session and its empty authentication store are deleted when the session expires.">
         <span className="rounded-md border border-[#ded8ce] bg-[#f7f2e9] px-3 py-2 text-sm font-black">Disabled</span>
       </SettingRow>
     </SettingsSection>
   }
+  if (!status.canManage) return <div className="grid gap-4">
+    <SettingsSection title="Authentication" description="Your account can review its own security without changing installation-wide login methods.">
+      <SettingRow label="Current mode" description="Login methods are managed by an administrator."><span className="rounded-md border border-[#ded8ce] bg-[#f7f2e9] px-3 py-2 text-sm font-black">{modeLabel}</span></SettingRow>
+    </SettingsSection>
+    <AccountSecurity />
+    <div className="flex justify-end"><Button variant="outline" onClick={() => void auth.logout()}><LogOut />Sign out</Button></div>
+  </div>
   return <div className="grid gap-4">
     <SettingsSection title="Authentication" description="Protect the inventory interface and API with local credentials, an identity provider, or both.">
       <SettingRow label="Current mode" description={status.mode === 'disabled' ? 'This existing installation remains open until you opt in.' : 'All browser API access requires an authenticated owner session.'}><span className="rounded-md border border-[#ded8ce] bg-[#f7f2e9] px-3 py-2 text-sm font-black">{modeLabel}</span></SettingRow>

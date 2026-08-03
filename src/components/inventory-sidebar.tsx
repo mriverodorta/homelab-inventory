@@ -54,6 +54,7 @@ import type { InventoryItemInput } from '@/lib/db'
 import type { InventoryFilters, InventoryStatusFilter } from '@/lib/sort'
 import type { InventoryItem, InventoryType, ProjectState } from '@/types/inventory'
 import { DEFAULT_REGISTRY_STATE, type RegistryState } from '@/types/registry'
+import { usePermission } from '@/hooks/use-permission'
 
 const TYPE_COLORS: Record<InventoryType, string> = {
   server: 'border-l-[#adc19b]',
@@ -118,6 +119,11 @@ function DraggableInventoryItem({
   onSaveAsTemplate,
   onRestore,
   onDelete,
+  canEdit,
+  canDuplicate,
+  canArchive,
+  canDelete,
+  canDrag,
   busy,
 }: {
   item: InventoryItem
@@ -132,6 +138,11 @@ function DraggableInventoryItem({
   onRestore: (item: InventoryItem) => void
   onDelete: (item: InventoryItem) => void
   busy: boolean
+  canEdit: boolean
+  canDuplicate: boolean
+  canArchive: boolean
+  canDelete: boolean
+  canDrag: boolean
 }) {
   const itemRuntimeKey = runtimeItemKey(item)
   const archived = isArchivedItem(item)
@@ -147,7 +158,7 @@ function DraggableInventoryItem({
       itemId: itemRuntimeKey,
       inventoryRole: dragRole,
     },
-    disabled: assigned || archived || selectionMode || dragRole === null,
+    disabled: assigned || archived || selectionMode || dragRole === null || !canDrag,
   })
   const style = {
     transform: CSS.Translate.toString(transform),
@@ -198,18 +209,18 @@ function DraggableInventoryItem({
           itemName={item.name}
           busy={busy}
           className="absolute right-2 top-1/2 -translate-y-1/2 text-[#f7f1e8]"
-          onRestore={() => onRestore(item)}
-          onDelete={() => onDelete(item)}
+          onRestore={canArchive ? () => onRestore(item) : undefined}
+          onDelete={canDelete ? () => onDelete(item) : undefined}
         />
       ) : (
         <InventoryActionsMenu
           itemName={item.name}
           busy={busy}
           className="absolute right-2 top-1/2 -translate-y-1/2 text-[#f7f1e8]"
-          onEdit={() => onSelect(itemRuntimeKey)}
-          onDuplicate={() => onDuplicate(item)}
-          onSaveAsTemplate={onSaveAsTemplate ? () => onSaveAsTemplate(item) : undefined}
-          onArchive={() => onArchive(item)}
+          onEdit={canEdit ? () => onSelect(itemRuntimeKey) : undefined}
+          onDuplicate={canDuplicate ? () => onDuplicate(item) : undefined}
+          onSaveAsTemplate={canEdit && onSaveAsTemplate ? () => onSaveAsTemplate(item) : undefined}
+          onArchive={canArchive ? () => onArchive(item) : undefined}
         />
       )}
     </div>
@@ -257,6 +268,12 @@ export function InventorySidebar({
   width,
   className,
 }: InventorySidebarProps) {
+  const canCreate = usePermission('inventory.create')
+  const canEdit = usePermission('inventory.edit')
+  const canArchive = usePermission('inventory.archive')
+  const canDelete = usePermission('inventory.delete')
+  const canEditCanvas = usePermission('canvas.edit')
+  const canManageRegistry = usePermission('registry.manage')
   const [addDialogOpen, setAddDialogOpen] = useState(false)
   const [filters, setFilters] = useState<InventoryFilters>({
     query: '',
@@ -343,7 +360,7 @@ export function InventorySidebar({
             <p className="text-xs text-[#cfc6b8]">Local hardware workbench</p>
           </div>
           <div className="flex shrink-0 items-center gap-1.5">
-            <Button
+            {canArchive || canDelete ? <Button
               type="button"
               size="icon-sm"
               variant="ghost"
@@ -358,8 +375,8 @@ export function InventorySidebar({
               onClick={toggleSelectionMode}
             >
               <ListChecks className="size-4" />
-            </Button>
-            <Button
+            </Button> : null}
+            {canCreate ? <Button
               type="button"
               size="sm"
               className="h-8 shrink-0 bg-[#f7f1e8] text-[#20242c] hover:bg-[#e9dcc8]"
@@ -369,7 +386,7 @@ export function InventorySidebar({
             >
               <Plus className="size-3.5" />
               Add
-            </Button>
+            </Button> : null}
             {onClose ? (
               <Button
                 type="button"
@@ -446,7 +463,7 @@ export function InventorySidebar({
               </Button>
             </div>
             <div className="mt-2 flex flex-wrap gap-2">
-              {allSelectedActive ? (
+              {allSelectedActive && canArchive ? (
                 <Button
                   type="button"
                   size="sm"
@@ -459,7 +476,7 @@ export function InventorySidebar({
               ) : null}
               {allSelectedArchived ? (
                 <>
-                  <Button
+                  {canArchive ? <Button
                     type="button"
                     size="sm"
                     variant="secondary"
@@ -468,8 +485,8 @@ export function InventorySidebar({
                   >
                     <RotateCcw className="size-3.5" />
                     Restore
-                  </Button>
-                  <Button
+                  </Button> : null}
+                  {canDelete ? <Button
                     type="button"
                     size="sm"
                     variant="destructive"
@@ -478,7 +495,7 @@ export function InventorySidebar({
                   >
                     <Trash2 className="size-3.5" />
                     Delete
-                  </Button>
+                  </Button> : null}
                 </>
               ) : null}
               {selectedItems.length > 0 && !allSelectedActive && !allSelectedArchived ? (
@@ -526,10 +543,15 @@ export function InventorySidebar({
                       onToggleSelected={toggleSelected}
                       onDuplicate={onDuplicateItem}
                       onArchive={(selectedItem) => onArchiveItems([selectedItem])}
-                      onSaveAsTemplate={onSaveAsTemplate}
+                      onSaveAsTemplate={canManageRegistry ? onSaveAsTemplate : undefined}
                       onRestore={(selectedItem) => onRestoreItems([selectedItem])}
                       onDelete={(selectedItem) => onDeleteItems([selectedItem])}
                       busy={lifecycleBusy}
+                      canEdit={canEdit}
+                      canDuplicate={canCreate}
+                      canArchive={canArchive}
+                      canDelete={canDelete}
+                      canDrag={isCanvasEquipmentType(item.type) ? canEditCanvas : canEdit}
                     />
                   ))}
                 </div>
@@ -543,7 +565,7 @@ export function InventorySidebar({
           ) : null}
         </div>
       </ScrollArea>
-      <InventoryItemDialog
+      {canCreate ? <InventoryItemDialog
         open={addDialogOpen}
         onOpenChange={setAddDialogOpen}
         onCreate={onCreateItem}
@@ -552,7 +574,7 @@ export function InventorySidebar({
         onDeletePrivateTemplate={onDeletePrivateTemplate}
         onOpenRegistrySettings={onOpenRegistrySettings}
         onCreateCatalogItem={onCreateCatalogItem}
-      />
+      /> : null}
     </aside>
   )
 }

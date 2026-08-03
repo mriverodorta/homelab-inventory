@@ -8,7 +8,12 @@ import { RELEASE_NOTES } from '../src/release-notes.ts'
 import { registerAgentRoutes } from './agent-routes.mjs'
 import { registerBackupRoutes } from './backup-routes.mjs'
 import { AuthService } from './auth/auth-service.mjs'
+import { AccessService } from './auth/access-service.mjs'
+import { registerAccessRoutes } from './auth/access-routes.mjs'
+import { createAuthorizationGuard } from './auth/api-permissions.mjs'
+import { AuthorizationService } from './auth/authorization-service.mjs'
 import { readAuthRuntimeConfig } from './auth/config.mjs'
+import { InvitationService } from './auth/invitation-service.mjs'
 import { createAuthenticationGuard } from './auth/middleware.mjs'
 import { OidcService } from './auth/oidc-service.mjs'
 import { registerAuthenticationRoutes } from './auth/routes.mjs'
@@ -167,15 +172,26 @@ const authRuntime = store ? await readAuthRuntimeConfig({
 }) : null
 if (authRuntime) authRuntime.backupEncryptionConfigured = Boolean(backupEnvironmentPassphrase)
 const sessionService = store ? new SessionService({ store, externalUrl: authRuntime.externalUrl }) : null
-const authService = store ? new AuthService({ store, sessionService, runtime: authRuntime }) : null
-const oidcService = store ? new OidcService({ store, authService, runtime: authRuntime }) : null
+const authorizationService = store ? await AuthorizationService.create({ readState: () => store.getAuthenticationState() }) : null
+const authService = store ? new AuthService({ store, sessionService, authorization: authorizationService, runtime: authRuntime }) : null
+const accessService = store ? new AccessService({ store, authorization: authorizationService, sessions: sessionService }) : null
+const invitationService = accessService ? new InvitationService({ accessService, sessionService }) : null
+const oidcService = store ? new OidcService({ store, authService, invitationService, runtime: authRuntime }) : null
 
 registerAuthenticationRoutes(app, {
   service: authService,
   oidcService,
+  authorization: authorizationService,
   demo: isDemoMode,
 })
 app.use(createAuthenticationGuard({ service: authService, demo: isDemoMode }))
+app.use(createAuthorizationGuard({ service: authService, authorization: authorizationService, demo: isDemoMode }))
+registerAccessRoutes(app, {
+  access: accessService,
+  invitations: invitationService,
+  sessions: sessionService,
+  demo: isDemoMode,
+})
 registerAgentRoutes(app, store, { disabled: isDemoMode })
 
 function parseCookie(header, name) {
@@ -246,6 +262,11 @@ const backupService = store
       appVersion: packageJson.version,
       environmentPassphrase: backupEnvironmentPassphrase,
       environmentTimezone: backupEnvironmentTimezone,
+      onRestoreApplied: async ({ sections }) => {
+        if (sections.includes('authentication')) {
+          await authorizationService.rebuild(store.getAuthenticationState())
+        }
+      },
     })
   : null
 await backupService?.init()
@@ -284,6 +305,9 @@ registerEngineRoutes(app, {
   withStore,
   commandService: new EngineCommandService(engineRuntime),
   sseHub,
+  authService,
+  authorization: authorizationService,
+  demo: isDemoMode,
 })
 
 const updateCheckSchedule = startUpdateCheckSchedule({

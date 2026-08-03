@@ -33,7 +33,7 @@ Homelab Inventory stores data in JSON files managed through lowdb.
 - `registry.json`: registry preferences, private templates, catalog links, contribution outbox/ledger records, and public enrollment metadata.
 - `routing-cache.json`: disposable generated cable routes; this can be rebuilt from canonical project data.
 - `backup-management.json`: scheduled-backup preferences and backup/restore history. Backup contents are never embedded in this store.
-- `authentication.json`: owner account, Argon2id credential hash, OIDC identity relationship, sessions, recovery grants, and bounded local security events.
+- `authentication.json`: accounts, Argon2id credential hashes, OIDC identities, roles, permission relationships, invitations, identity-link requests, sessions, recovery grants, and bounded local security events.
 - `meta.json`: database schema version and metadata.
 
 ## Migrations
@@ -73,6 +73,12 @@ The migration refuses ambiguous or inconsistent kit data instead of guessing. A 
 ### Schema 21 Owner Authentication
 
 Schema 21 adds `stores/authentication.json` with numeric primary and foreign keys. Existing installations migrate with authentication disabled so an unattended Docker update cannot lock out the owner. A genuinely fresh production data directory starts with one-time owner setup enabled. OIDC client secrets live outside lowdb under `/data/auth` with mode `0600`.
+
+### Schema 23 Multi-User Authorization
+
+Schema 23 upgrades the authentication store to relational accounts, local credentials, OIDC identities, global roles, role-permission relationships, account-role assignments, invitations, and identity-link requests. It creates built-in Owner, Administrator, Editor, and Viewer roles, preserves the existing authentication mode and original account, and assigns the protected Owner role to that account. The migration creates a backup first and retains positive numeric primary and foreign keys throughout.
+
+The application compiles those canonical LowDB relationships into an in-memory Casbin policy at startup and after access changes. LowDB remains the source of truth for backup and future database migration; Casbin policy is derived runtime state and is never persisted as a second authority.
 
 ## Backups
 

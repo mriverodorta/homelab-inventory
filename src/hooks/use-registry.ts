@@ -16,8 +16,8 @@ import {
 
 export const REGISTRY_QUERY_KEY = ['registry'] as const
 
-export function useRegistryQuery() {
-  return useQuery({ queryKey: REGISTRY_QUERY_KEY, queryFn: loadRegistryState })
+export function useRegistryQuery(enabled = true) {
+  return useQuery({ queryKey: REGISTRY_QUERY_KEY, queryFn: loadRegistryState, enabled })
 }
 
 export function useRegistryMutations() {

@@ -48,6 +48,7 @@ interface CanvasViewportSurfaceProps {
   nodeDragThreshold: number
   snapItemsToGrid: boolean
   forceRenderAllNodes: boolean
+  nodesDraggable: boolean
   activity: CanvasActivity | null
   validationMessage: string | null
   validationSeverity: ValidationMessageSeverity
@@ -66,6 +67,7 @@ export function CanvasViewportSurface({
   nodeDragThreshold,
   snapItemsToGrid,
   forceRenderAllNodes,
+  nodesDraggable,
   activity,
   validationMessage,
   validationSeverity,
@@ -119,6 +121,7 @@ export function CanvasViewportSurface({
           minZoom={0.25}
           maxZoom={1.8}
           nodeDragThreshold={nodeDragThreshold}
+          nodesDraggable={nodesDraggable}
           snapToGrid={snapItemsToGrid}
           snapGrid={[GRID_SIZE, GRID_SIZE]}
           panOnDrag

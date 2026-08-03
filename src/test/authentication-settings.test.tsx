@@ -17,8 +17,11 @@ describe('AuthenticationSettings', () => {
         canManage: false,
         bootstrapSource: null,
         oidcSecretReadOnly: false,
-        localCredentialConfigured: false,
-        account: null,
+      localCredentialConfigured: false,
+      account: null,
+      permissions: [],
+      roles: [],
+      identityMethods: { local: false, oidc: false },
         methods: { local: false, oidc: false },
         oidc: {
           clientSecretConfigured: false,

@@ -42,15 +42,17 @@ export function AuditSection({ warnings }: { warnings: InspectorAuditWarning[] }
           >
             <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
             <span className="min-w-0 flex-1">{warning.message}</span>
-            <Button
-              type="button"
-              variant="outline"
-              size="xs"
-              className="shrink-0 px-2 text-[11px]"
-              onClick={() => onSetWarningIgnored(warning.id, !warning.ignored)}
-            >
-              {warning.ignored ? 'Unignore' : 'Ignore'}
-            </Button>
+            {onSetWarningIgnored ? (
+              <Button
+                type="button"
+                variant="outline"
+                size="xs"
+                className="shrink-0 px-2 text-[11px]"
+                onClick={() => onSetWarningIgnored(warning.id, !warning.ignored)}
+              >
+                {warning.ignored ? 'Unignore' : 'Ignore'}
+              </Button>
+            ) : null}
           </div>
         ))}
       </div>

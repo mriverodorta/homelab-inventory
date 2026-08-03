@@ -4,6 +4,7 @@ import {
   createAuthenticationStore,
   createOwnerAccount,
   deriveAuthenticationMode,
+  ensureProtectedOwnerRole,
   publicAuthenticationStatus,
 } from './model.mjs'
 
@@ -31,6 +32,7 @@ describe('authentication store model', () => {
     const store = createAuthenticationStore()
     store.accounts.push(createOwnerAccount(1, 'owner', 'Owner'))
     store.nextAccountId = 2
+    ensureProtectedOwnerRole(store, 1)
     store.localCredentials.push({ id: 1, accountId: 1, passwordHash: 'x'.repeat(32), createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() })
     store.nextLocalCredentialId = 2
     expect(() => assertAuthenticationStoreShape(store)).not.toThrow()
@@ -45,7 +47,7 @@ describe('authentication store model', () => {
     store.localCredentials.push({ id: 1, accountId: 1, passwordHash: 'secret-hash-value'.repeat(2), createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() })
     store.nextLocalCredentialId = 2
     const status = publicAuthenticationStatus(store, { authenticatedAccountId: 1 })
-    expect(status.account).toEqual({ id: 1, username: 'owner', displayName: 'Owner' })
+    expect(status.account).toEqual({ id: 1, username: 'owner', email: null, displayName: 'Owner', protectedOwner: true })
     expect(JSON.stringify(status)).not.toContain('secret-hash')
   })
 
@@ -62,6 +64,6 @@ describe('authentication store model', () => {
     const store = createAuthenticationStore()
     store.accounts.push(createOwnerAccount(1, 'first-owner', 'First'), createOwnerAccount(2, 'second-owner', 'Second'))
     store.nextAccountId = 3
-    expect(() => assertAuthenticationStoreShape(store)).toThrow(/one owner/)
+    expect(() => assertAuthenticationStoreShape(store)).toThrow(/one protected owner/)
   })
 })

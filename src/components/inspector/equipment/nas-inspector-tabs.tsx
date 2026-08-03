@@ -18,6 +18,7 @@ import type { InventoryFormValues } from '@/components/inventory-form/model'
 import { PortGroupsEditor } from '@/components/inventory-form/port-groups-editor'
 import { InventoryFormStatus } from '@/components/inventory-form/specs-tab-content'
 import { useInventoryItemEditor } from '@/hooks/use-inventory-item-editor'
+import { usePermission } from '@/hooks/use-permission'
 import { isHostCompatibilityEnabled } from '@/lib/compatibility'
 import { setHostCompatibilityEnabled } from '@/lib/compatibility-policy'
 import type { InventoryItemInput } from '@/lib/db'
@@ -72,6 +73,7 @@ export function NasInspectorTabs({
     powerConfiguration: NasPowerConfiguration,
   ) => void
 }) {
+  const canViewAgents = usePermission('agents.view')
   const editor = useInventoryItemEditor({
     item,
     onSave: (input) => onUpdateItem(runtimeItemKey(item), input),
@@ -168,11 +170,11 @@ export function NasInspectorTabs({
             />
           ),
         },
-        {
+        ...(canViewAgents ? [{
           value: 'agent',
           label: 'Agent',
           content: <NasAgentSection />,
-        },
+        }] : []),
         {
           value: 'compatibility',
           label: 'Compatibility',

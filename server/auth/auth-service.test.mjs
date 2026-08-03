@@ -1,12 +1,15 @@
 import fs from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { AuthService } from './auth-service.mjs'
-import { assertAuthenticationStoreShape, createAuthenticationStore } from './model.mjs'
+import { assertAuthenticationStoreShape, createAuthenticationStore, createOwnerAccount, ensureProtectedOwnerRole } from './model.mjs'
 
 const directories = []
-afterEach(async () => Promise.all(directories.splice(0).map((directory) => fs.rm(directory, { recursive: true, force: true }))))
+afterEach(async () => {
+  vi.unstubAllGlobals()
+  await Promise.all(directories.splice(0).map((directory) => fs.rm(directory, { recursive: true, force: true })))
+})
 
 function fakeStore({ failNextFlush = false, initialState = null } = {}) {
   let state = structuredClone(initialState ?? createAuthenticationStore())
@@ -52,6 +55,34 @@ function oidcSettings(clientSecret = 'new-client-secret') {
 }
 
 describe('authentication settings service', () => {
+  it('lets an authenticated OIDC account add local sign-in without creating another account', async () => {
+    vi.stubGlobal('Bun', { password: { hash: vi.fn(async () => '$argon2id$test-password-hash') } })
+    const state = createAuthenticationStore()
+    state.accounts.push(createOwnerAccount(1, 'owner', 'Owner'))
+    state.nextAccountId = 2
+    ensureProtectedOwnerRole(state, 1)
+    state.oidcIdentities.push({
+      id: state.nextOidcIdentityId++, accountId: 1,
+      issuer: 'https://identity.example/application/o/inventory', subject: 'owner-subject',
+      email: 'owner@example.com', createdAt: '2026-08-02T00:00:00.000Z', lastLoginAt: '2026-08-02T00:00:00.000Z',
+    })
+    const store = fakeStore({ initialState: state })
+    const authorization = { permissionsForSync: () => ['authentication.view'] }
+    const service = new AuthService({
+      store,
+      sessionService: { authenticateRequest: () => ({ account: { id: 1 }, session: { id: 1 } }) },
+      authorization,
+      runtime: runtime('/unused'),
+    })
+
+    const status = await service.addLocalIdentity({ username: 'owner-local', password: 'A-long-local-password-123!' }, {})
+
+    expect(store.getAuthenticationState().accounts).toHaveLength(1)
+    expect(store.getAuthenticationState().accounts[0].username).toBe('owner-local')
+    expect(store.getAuthenticationState().localCredentials).toHaveLength(1)
+    expect(status.identityMethods).toEqual({ local: true, oidc: true })
+  })
+
   it('writes OIDC secrets privately and reports actual runtime configuration', async () => {
     const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'hli-auth-service-'))
     directories.push(directory)
@@ -70,9 +101,10 @@ describe('authentication settings service', () => {
     directories.push(directory)
     const secretFile = path.join(directory, 'oidc-secret')
     const store = fakeStore({ failNextFlush: true })
+    const originalState = store.getAuthenticationState()
     const service = new AuthService({ store, sessionService: { externalUrl: null }, runtime: runtime(secretFile) })
     await expect(service.updateMethods(oidcSettings())).rejects.toThrow('simulated persistence failure')
-    expect(store.getAuthenticationState()).toEqual(createAuthenticationStore())
+    expect(store.getAuthenticationState()).toEqual(originalState)
     await expect(fs.stat(secretFile)).rejects.toMatchObject({ code: 'ENOENT' })
     expect(service.runtime.oidcClientSecret).toBeNull()
   })

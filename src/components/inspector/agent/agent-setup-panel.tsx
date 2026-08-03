@@ -5,6 +5,7 @@ import { InspectorSection } from '@/components/inspector/inspector-section'
 import { formatBytes, formatRelativeAge } from '@/components/inspector/shared/item-formatters'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { usePermission } from '@/hooks/use-permission'
 import {
   clearAgentStatus,
   createAgentEnrollment,
@@ -110,6 +111,7 @@ export function AgentSetupPanel({
   hasSavedStatus: boolean
   demoMode: boolean
 }) {
+  const canManage = usePermission('agents.manage')
   const queryClient = useQueryClient()
   const [endpoint, setEndpoint] = useState(() => window.location.origin)
   const [copied, setCopied] = useState(false)
@@ -265,6 +267,10 @@ export function AgentSetupPanel({
       {demoMode ? (
         <div className="mt-3 rounded-md border border-[#dfc483] bg-[#fff8df] p-3 text-sm font-semibold text-[#5d4814]">
           Agent setup is disabled in public demo mode.
+        </div>
+      ) : !canManage ? (
+        <div className="mt-3 rounded-md border border-[#d6ccbd] bg-[#f8f3eb] p-3 text-sm font-semibold text-[#75695d]">
+          Agent telemetry is read-only for your account. An administrator can manage enrollment and saved telemetry.
         </div>
       ) : (
         <div className="mt-3 grid gap-2">

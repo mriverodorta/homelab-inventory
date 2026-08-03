@@ -9,38 +9,20 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { cn } from '@/lib/utils'
 
-type InventoryActionsMenuBaseProps = {
+export type InventoryActionsMenuProps = {
   itemName: string
   busy?: boolean
   className?: string
   align?: 'start' | 'center' | 'end'
-  showEdit?: boolean
-}
-
-export type ActiveInventoryActionsMenuProps = InventoryActionsMenuBaseProps & {
-  archived?: false
-  onEdit: () => void
-  onDuplicate: () => void
+  archived?: boolean
+  onEdit?: () => void
+  onDuplicate?: () => void
   onSaveAsTemplate?: () => void
   onReturnToInventory?: () => void
-  onArchive: () => void
-  onDelete?: never
-  onRestore?: never
+  onArchive?: () => void
+  onRestore?: () => void
+  onDelete?: () => void
 }
-
-export type ArchivedInventoryActionsMenuProps = InventoryActionsMenuBaseProps & {
-  archived: true
-  onRestore: () => void
-  onDelete: () => void
-  onEdit?: never
-  onDuplicate?: never
-  onReturnToInventory?: never
-  onArchive?: never
-}
-
-export type InventoryActionsMenuProps =
-  | ActiveInventoryActionsMenuProps
-  | ArchivedInventoryActionsMenuProps
 
 function stopInteraction(event: { stopPropagation: () => void }) {
   event.stopPropagation()
@@ -48,10 +30,10 @@ function stopInteraction(event: { stopPropagation: () => void }) {
 
 function invokeAction(
   event: Event,
-  callback: () => void,
+  callback: (() => void) | undefined,
 ) {
   event.stopPropagation()
-  callback()
+  callback?.()
 }
 
 export function InventoryActionsMenu(props: InventoryActionsMenuProps) {
@@ -60,8 +42,12 @@ export function InventoryActionsMenu(props: InventoryActionsMenuProps) {
     busy = false,
     className,
     align = 'end',
-    showEdit = true,
   } = props
+
+  const hasActions = props.archived
+    ? Boolean(props.onRestore || props.onDelete)
+    : Boolean(props.onEdit || props.onDuplicate || props.onSaveAsTemplate || props.onReturnToInventory || props.onArchive)
+  if (!hasActions) return null
 
   return (
     <span
@@ -91,42 +77,41 @@ export function InventoryActionsMenu(props: InventoryActionsMenuProps) {
           onPointerDown={stopInteraction}
         >
           {props.archived === true ? (
-            <DropdownMenuItem onSelect={(event) => invokeAction(event, props.onRestore)}>
+            props.onRestore ? <DropdownMenuItem onSelect={(event) => invokeAction(event, props.onRestore)}>
               <RotateCcw aria-hidden="true" />
               Restore
-            </DropdownMenuItem>
+            </DropdownMenuItem> : null
           ) : (
             <>
-              {showEdit ? (
+              {props.onEdit ? (
                 <DropdownMenuItem onSelect={(event) => invokeAction(event, props.onEdit)}>
                   <Pencil aria-hidden="true" />
                   Edit
                 </DropdownMenuItem>
               ) : null}
-              <DropdownMenuItem onSelect={(event) => invokeAction(event, props.onDuplicate)}>
-                <Copy aria-hidden="true" />
-                Duplicate
-              </DropdownMenuItem>
+              {props.onDuplicate ? <DropdownMenuItem onSelect={(event) => invokeAction(event, props.onDuplicate)}>
+                <Copy aria-hidden="true" />Duplicate
+              </DropdownMenuItem> : null}
               {props.onSaveAsTemplate ? (
-                <DropdownMenuItem onSelect={(event) => invokeAction(event, props.onSaveAsTemplate!)}>
+                <DropdownMenuItem onSelect={(event) => invokeAction(event, props.onSaveAsTemplate)}>
                   <BookmarkPlus aria-hidden="true" />
                   Save as template
                 </DropdownMenuItem>
               ) : null}
               {props.onReturnToInventory ? (
-                <DropdownMenuItem onSelect={(event) => invokeAction(event, props.onReturnToInventory!)}>
+                <DropdownMenuItem onSelect={(event) => invokeAction(event, props.onReturnToInventory)}>
                   <PackageOpen aria-hidden="true" />
                   Return to inventory
                 </DropdownMenuItem>
               ) : null}
-              <DropdownMenuSeparator />
-              <DropdownMenuItem onSelect={(event) => invokeAction(event, props.onArchive)}>
+              {props.onArchive ? <DropdownMenuSeparator /> : null}
+              {props.onArchive ? <DropdownMenuItem onSelect={(event) => invokeAction(event, props.onArchive)}>
                 <Archive aria-hidden="true" />
                 Archive
-              </DropdownMenuItem>
+              </DropdownMenuItem> : null}
             </>
           )}
-          {props.archived === true ? (
+          {props.archived === true && props.onDelete ? (
             <DropdownMenuItem
               variant="destructive"
               onSelect={(event) => invokeAction(event, props.onDelete)}

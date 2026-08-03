@@ -31,6 +31,7 @@ export const authApi = {
   ),
   logout: () => request<{ ok: true }>('/api/auth/logout', { method: 'POST' }),
   updateSettings: (input: AuthSettingsInput) => request<AuthStatus>('/api/auth/settings', { method: 'PATCH', body: JSON.stringify(input) }),
+  addLocalIdentity: (input: { username: string; password: string }) => request<AuthStatus>('/api/auth/identities/local', { method: 'POST', body: JSON.stringify(input) }),
   changePassword: (input: { currentPassword: string; newPassword: string }) => request<{ ok: true }>('/api/auth/password', { method: 'POST', body: JSON.stringify(input) }),
   recover: (input: { token: string; username: string; displayName: string; password: string }) => (
     request<AuthStatus>('/api/auth/recovery/reset', { method: 'POST', body: JSON.stringify(input) })

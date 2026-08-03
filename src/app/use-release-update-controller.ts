@@ -18,7 +18,7 @@ import {
 
 const RELEASE_NOTES_STATUS_QUERY_KEY = ['release-notes-status'] as const
 
-export function useReleaseUpdateController() {
+export function useReleaseUpdateController({ canViewUpdates = true }: { canViewUpdates?: boolean } = {}) {
   const queryClient = useQueryClient()
   const [releaseNotesDismissedForSession, setReleaseNotesDismissedForSession] = useState(false)
   const [updateDialogOpen, setUpdateDialogOpen] = useState(false)
@@ -32,6 +32,7 @@ export function useReleaseUpdateController() {
     staleTime: 6 * 60 * 60 * 1000,
     refetchInterval: (query) => getUpdateStatusRefetchInterval(query.state.data),
     retry: false,
+    enabled: canViewUpdates,
   })
   const acknowledgeReleaseNotesMutation = useMutation({
     mutationFn: acknowledgeReleaseNotes,

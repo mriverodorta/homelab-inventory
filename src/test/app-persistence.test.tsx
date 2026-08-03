@@ -1,8 +1,9 @@
-import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { act, cleanup, fireEvent, screen } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import App from '@/App'
+import { renderWithOpenAuth as render } from '@/test/open-auth-test-render'
 import type { InventoryItem, InventoryProperties, ProjectState } from '@/types/inventory'
 import type { OnboardingStatus } from '@/lib/onboarding-api'
 

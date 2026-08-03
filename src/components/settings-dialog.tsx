@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { lazy, Suspense, useRef, useState } from 'react'
 import {
   Cable,
   ArchiveRestore,
@@ -16,6 +16,7 @@ import {
   Play,
   RefreshCw,
   ShieldCheck,
+  UsersRound,
   RotateCcw,
   Settings,
 } from 'lucide-react'
@@ -29,6 +30,8 @@ import { Button } from '@/components/ui/button'
 import { CatalogSourceStatus } from '@/components/settings/catalog-source-status'
 import { BackupRestoreSettings } from '@/components/settings/backup-restore-settings'
 import { AuthenticationSettings } from '@/components/settings/authentication-settings'
+import { useAuth } from '@/hooks/use-auth'
+import { hasPermission, usePermission } from '@/hooks/use-permission'
 import { CatalogUpdateReview } from '@/components/inventory/catalog-update-review'
 import {
   Dialog,
@@ -58,6 +61,7 @@ import {
 } from '@/lib/ui-preferences'
 import type { UpdateStatus } from '@/lib/update-api'
 import type { OnboardingStatus } from '@/lib/onboarding-api'
+import type { AuthStatus } from '@/types/auth'
 import { cn } from '@/lib/utils'
 import {
   DEFAULT_REGISTRY_STATE,
@@ -66,7 +70,9 @@ import {
   type RegistryState,
 } from '@/types/registry'
 
-type SettingsCategory = 'general' | 'project' | 'authentication' | 'registry' | 'backup-restore' | 'updates' | 'feedback' | 'about'
+const AccessSettings = lazy(() => import('@/components/settings/access-settings').then((module) => ({ default: module.AccessSettings })))
+
+type SettingsCategory = 'general' | 'project' | 'authentication' | 'access' | 'registry' | 'backup-restore' | 'updates' | 'feedback' | 'about'
 type SaveStatus = 'saved' | 'saving' | 'error'
 
 export type SettingsDialogProps = {
@@ -145,13 +151,29 @@ const categories: Array<{
 }> = [
   { id: 'general', label: 'General', description: 'Browser workspace preferences', icon: MonitorCog },
   { id: 'project', label: 'Project', description: 'Shared project configuration', icon: FolderCog },
-  { id: 'authentication', label: 'Authentication', description: 'Owner access and login methods', icon: ShieldCheck },
+  { id: 'authentication', label: 'Authentication', description: 'Login methods and identities', icon: ShieldCheck },
+  { id: 'access', label: 'Access', description: 'Users, invitations, and roles', icon: UsersRound },
   { id: 'registry', label: 'Registry', description: 'Catalog and private templates', icon: Database },
   { id: 'backup-restore', label: 'Backup & Restore', description: 'Portable data protection', icon: ArchiveRestore },
   { id: 'updates', label: 'Updates', description: 'Image channel and status', icon: RefreshCw },
   { id: 'feedback', label: 'Feedback', description: 'Roadmap, ideas, and issues', icon: MessageSquarePlus },
   { id: 'about', label: 'About', description: 'Purpose, version, and links', icon: Info },
 ]
+
+export function visibleSettingsCategories(status: AuthStatus | null): typeof categories {
+  return categories.filter((category) => {
+    if (['general', 'authentication', 'feedback', 'about'].includes(category.id)) return true
+    if (category.id === 'access') {
+      return status?.mode !== 'disabled'
+        && (hasPermission(status, 'users.view') || hasPermission(status, 'roles.view'))
+    }
+    if (category.id === 'project') return hasPermission(status, 'project.view')
+    if (category.id === 'registry') return hasPermission(status, 'registry.view')
+    if (category.id === 'backup-restore') return hasPermission(status, 'backups.view')
+    if (category.id === 'updates') return hasPermission(status, 'updates.view')
+    return false
+  })
+}
 
 function formatDate(value: string | null | undefined): string {
   if (!value) return 'Not checked yet'
@@ -172,14 +194,16 @@ function saveStatusLabel(status: SaveStatus): string {
 function CategoryNavigation({
   active,
   onChange,
+  availableCategories,
 }: {
   active: SettingsCategory
   onChange: (category: SettingsCategory) => void
+  availableCategories: typeof categories
 }) {
   return (
     <nav className="hidden border-r border-[#e2dbcf] bg-[#f5f1ea] p-3 lg:block" aria-label="Settings categories">
       <div className="grid gap-1">
-        {categories.map((category) => {
+        {availableCategories.map((category) => {
           const Icon = category.icon
           return (
             <button
@@ -212,9 +236,11 @@ function CategoryNavigation({
 function MobileCategorySelector({
   active,
   onChange,
+  availableCategories,
 }: {
   active: SettingsCategory
   onChange: (category: SettingsCategory) => void
+  availableCategories: typeof categories
 }) {
   return (
     <div className="border-b border-[#e2dbcf] bg-[#f5f1ea] px-4 py-3 lg:hidden">
@@ -223,7 +249,7 @@ function MobileCategorySelector({
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
-          {categories.map((category) => (
+          {availableCategories.map((category) => (
             <SelectItem key={category.id} value={category.id}>{category.label}</SelectItem>
           ))}
         </SelectContent>
@@ -233,6 +259,9 @@ function MobileCategorySelector({
 }
 
 function GeneralSettings(props: SettingsDialogProps) {
+  const canEditCanvas = usePermission('canvas.edit')
+  const canEditConnections = usePermission('connections.edit')
+
   return (
     <SettingsSection title="General" description="Workspace preferences stored only in this browser.">
       <SettingRow label="Show inventory at startup" description="Keep the inventory rail open when this browser loads the workbench.">
@@ -297,7 +326,7 @@ function GeneralSettings(props: SettingsDialogProps) {
           description={`This starts with the upper-left equipment item, works left to right and then downward, and moves blocking items recursively to the nearest open grid positions. All ${props.placementCount} placement${props.placementCount === 1 ? '' : 's'} update together, and one Undo restores the previous layout.`}
           actionLabel={props.aligningItemsToGrid ? 'Aligning equipment' : 'Align equipment'}
           onConfirm={props.onAlignAllItemsToGrid}
-          disabled={!props.snapItemsToGrid || props.placementCount === 0 || props.aligningItemsToGrid}
+          disabled={!canEditCanvas || !props.snapItemsToGrid || props.placementCount === 0 || props.aligningItemsToGrid}
         />
       </SettingRow>
       <SettingRow
@@ -311,7 +340,7 @@ function GeneralSettings(props: SettingsDialogProps) {
           description={`This removes saved manual bend points from ${props.manualCableBendCount} cable${props.manualCableBendCount === 1 ? '' : 's'} and lets automatic routing rebuild only the affected routes. Cable endpoint sides and collision preferences remain unchanged. One Undo restores every removed bend.`}
           actionLabel={props.resettingCableBends ? 'Resetting bends' : 'Reset cable bends'}
           onConfirm={props.onResetAllCableBends}
-          disabled={props.manualCableBendCount === 0 || props.resettingCableBends}
+          disabled={!canEditConnections || props.manualCableBendCount === 0 || props.resettingCableBends}
         />
       </SettingRow>
       <SettingRow
@@ -325,7 +354,7 @@ function GeneralSettings(props: SettingsDialogProps) {
           description={`This removes saved bend points and endpoint-side overrides from ${props.manualCableRouteCount} cable${props.manualCableRouteCount === 1 ? '' : 's'}. Automatic routing will choose the shortest valid attachment sides while preserving collision preferences. One Undo restores the previous routes.`}
           actionLabel={props.restoringAutomaticCableRoutes ? 'Restoring routes' : 'Restore automatic routes'}
           onConfirm={props.onRestoreAutomaticCableRoutes}
-          disabled={props.manualCableRouteCount === 0 || props.restoringAutomaticCableRoutes}
+          disabled={!canEditConnections || props.manualCableRouteCount === 0 || props.restoringAutomaticCableRoutes}
         />
       </SettingRow>
       <SettingRow label="Reset browser preferences" description="Restore only this browser's workspace controls to their defaults.">
@@ -341,6 +370,9 @@ function GeneralSettings(props: SettingsDialogProps) {
 }
 
 function ProjectSettings(props: SettingsDialogProps) {
+  const canEditWorkspace = usePermission('workspace.edit')
+  const canManageProject = usePermission('project.settings.manage')
+  const canResolveAudit = usePermission('audit.manage')
   const onboarding = props.onboardingStatus?.enabled ? props.onboardingStatus : null
   const onboardingLabel = onboarding?.status === 'sample_active'
     ? 'Example workspace active'
@@ -358,6 +390,7 @@ function ProjectSettings(props: SettingsDialogProps) {
         <Input
           aria-label="Project name"
           value={props.projectName}
+          disabled={!canManageProject}
           onChange={(event) => props.onProjectNameChange(event.target.value)}
           className="w-full sm:w-[320px]"
         />
@@ -366,22 +399,22 @@ function ProjectSettings(props: SettingsDialogProps) {
         <SettingRow label="Getting started" description={`${onboardingLabel}. Progress is stored with this project.`}>
           <div className="flex max-w-full flex-wrap justify-end gap-2">
             {onboarding.status === 'sample_active' ? (
-              <Button type="button" variant="outline" onClick={props.onReviewExample} disabled={props.onboardingBusy}>
+              <Button type="button" variant="outline" onClick={props.onReviewExample} disabled={!canEditWorkspace || props.onboardingBusy}>
                 Review example
               </Button>
             ) : null}
             {onboarding.eligibleForExample && onboarding.status !== 'sample_active' ? (
-              <Button type="button" variant="outline" onClick={props.onExploreExample} disabled={props.onboardingBusy}>
+              <Button type="button" variant="outline" onClick={props.onExploreExample} disabled={!canEditWorkspace || props.onboardingBusy}>
                 <Play className="size-4" />Explore example
               </Button>
             ) : null}
             {onboarding.status !== 'sample_active' ? (
-              <Button type="button" variant="outline" onClick={props.onRestartOnboarding} disabled={props.onboardingBusy}>
+              <Button type="button" variant="outline" onClick={props.onRestartOnboarding} disabled={!canEditWorkspace || props.onboardingBusy}>
                 <RotateCcw className="size-4" />Restart checklist
               </Button>
             ) : null}
             {onboarding.status === 'checklist_active' ? (
-              <Button type="button" variant="ghost" onClick={props.onDismissOnboarding} disabled={props.onboardingBusy}>Dismiss</Button>
+              <Button type="button" variant="ghost" onClick={props.onDismissOnboarding} disabled={!canEditWorkspace || props.onboardingBusy}>Dismiss</Button>
             ) : null}
           </div>
         </SettingRow>
@@ -392,6 +425,7 @@ function ProjectSettings(props: SettingsDialogProps) {
           description="Previously ignored findings will return to the active audit if they still apply. Host compatibility opt-outs remain unchanged."
           actionLabel="Clear ignored findings"
           onConfirm={props.onClearIgnoredWarnings}
+          disabled={!canResolveAudit}
         />
       </SettingRow>
       <SettingRow label="Host compatibility checks" description="Remove all server and NAS compatibility opt-outs in this project.">
@@ -400,6 +434,7 @@ function ProjectSettings(props: SettingsDialogProps) {
           description="Compatibility checks will be re-enabled for every server and NAS. Ignored individual findings remain unchanged."
           actionLabel="Enable for all hosts"
           onConfirm={props.onEnableCompatibilityForAllHosts}
+          disabled={!canManageProject}
         />
       </SettingRow>
     </SettingsSection>
@@ -407,6 +442,8 @@ function ProjectSettings(props: SettingsDialogProps) {
 }
 
 function RegistrySettingsPanel(props: SettingsDialogProps) {
+  const canManageRegistry = usePermission('registry.manage')
+  const canContributeRegistry = usePermission('registry.contribute')
   const registry = props.registry ?? DEFAULT_REGISTRY_STATE
   const policy = registry.policy ?? DEFAULT_REGISTRY_STATE.policy!
   const effectiveMode = policy.forcedMode ?? registry.settings.mode
@@ -508,7 +545,7 @@ function RegistrySettingsPanel(props: SettingsDialogProps) {
         <Tooltip>
           <TooltipTrigger asChild>
             <div className="w-full sm:w-[260px]" tabIndex={policy.modeLocked ? 0 : -1}>
-              <Select value={effectiveMode} disabled={busy || policy.modeLocked} onValueChange={(mode) => void update({ mode: mode as RegistrySettings['mode'] })}>
+              <Select value={effectiveMode} disabled={busy || policy.modeLocked || !canManageRegistry} onValueChange={(mode) => void update({ mode: mode as RegistrySettings['mode'] })}>
                 <SelectTrigger className="w-full" aria-label="Registry mode"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="disabled">Disabled</SelectItem>
@@ -526,7 +563,7 @@ function RegistrySettingsPanel(props: SettingsDialogProps) {
         </Tooltip>
       </SettingRow>
       <SettingRow label="Default Add Hardware tab" description="Unavailable catalog sources fall back to Manual without changing this preference.">
-        <Select value={registry.settings.defaultInventorySource} disabled={busy} onValueChange={(defaultInventorySource) => void update({ defaultInventorySource: defaultInventorySource as RegistrySettings['defaultInventorySource'] })}>
+        <Select value={registry.settings.defaultInventorySource} disabled={busy || !canManageRegistry} onValueChange={(defaultInventorySource) => void update({ defaultInventorySource: defaultInventorySource as RegistrySettings['defaultInventorySource'] })}>
           <SelectTrigger className="w-full sm:w-[260px]" aria-label="Default Add Hardware tab"><SelectValue /></SelectTrigger>
           <SelectContent>
             <SelectItem value="catalog">Catalog</SelectItem>
@@ -542,7 +579,7 @@ function RegistrySettingsPanel(props: SettingsDialogProps) {
         <Switch
           aria-label="Show registry link indicators"
           checked={registry.settings.showRegistryLinkIndicators}
-          disabled={busy}
+          disabled={busy || !canManageRegistry}
           onCheckedChange={(showRegistryLinkIndicators) => void update({ showRegistryLinkIndicators })}
         />
       </SettingRow>
@@ -560,7 +597,7 @@ function RegistrySettingsPanel(props: SettingsDialogProps) {
                   aria-label="Automatic catalog contributions"
                   aria-describedby={contributionError ? 'registry-contribution-error' : undefined}
                   checked={policy.contributionsAllowed && registry.settings.automaticContributions}
-                  disabled={busy || effectiveMode !== 'connected' || !policy.contributionsAllowed}
+                  disabled={busy || effectiveMode !== 'connected' || !policy.contributionsAllowed || !canManageRegistry}
                   onCheckedChange={(automaticContributions) => void update({ automaticContributions })}
                 />
               </div>
@@ -600,13 +637,14 @@ function RegistrySettingsPanel(props: SettingsDialogProps) {
                 effectiveMode !== 'connected'
                 || contributions.enrollment !== 'active'
                 || busy
+                || !canContributeRegistry
                 || !props.onDeliverRegistryContributions
               }
               onClick={() => void deliverContributions()}
             >
               Send now
             </Button>
-            {contributions.enrollment === 'active' && props.onRevokeRegistryContributions ? (
+            {canContributeRegistry && contributions.enrollment === 'active' && props.onRevokeRegistryContributions ? (
               <ConfirmSettingsAction
                 title="Revoke registry enrollment?"
                 description="Automatic contributions will stop and the registry token will be revoked. The local signing key remains available for a deliberate future re-enrollment."
@@ -614,7 +652,7 @@ function RegistrySettingsPanel(props: SettingsDialogProps) {
                 onConfirm={props.onRevokeRegistryContributions}
               />
             ) : null}
-            {contributions.enrollment === 'active' && props.onRotateRegistryContributionKey ? (
+            {canContributeRegistry && contributions.enrollment === 'active' && props.onRotateRegistryContributionKey ? (
               <ConfirmSettingsAction
                 title="Rotate installation signing key?"
                 description="The current registry enrollment will be revoked and replaced with a new backend-only Ed25519 key. Queued contributions stay local and will use the new identity."
@@ -633,8 +671,8 @@ function RegistrySettingsPanel(props: SettingsDialogProps) {
           </div>
           <div className="flex gap-2">
             <input ref={catalogInputRef} type="file" accept="application/json,.json" className="sr-only" aria-label="Import signed official catalog" onChange={(event) => void importCatalog(event.target.files?.[0])} />
-            {effectiveMode === 'offline' ? <Button type="button" variant="outline" onClick={() => catalogInputRef.current?.click()} disabled={busy || !props.onImportOfficialCatalog}>Import snapshot</Button> : null}
-            {effectiveMode === 'connected' ? <Button type="button" variant="outline" onClick={() => void refreshCatalog()} disabled={busy || !props.onRefreshOfficialCatalog}>Refresh now</Button> : null}
+            {effectiveMode === 'offline' ? <Button type="button" variant="outline" onClick={() => catalogInputRef.current?.click()} disabled={busy || !canManageRegistry || !props.onImportOfficialCatalog}>Import snapshot</Button> : null}
+            {effectiveMode === 'connected' ? <Button type="button" variant="outline" onClick={() => void refreshCatalog()} disabled={busy || !canManageRegistry || !props.onRefreshOfficialCatalog}>Refresh now</Button> : null}
           </div>
         </div>
       <CatalogSourceStatus registry={registry} />
@@ -657,15 +695,15 @@ function RegistrySettingsPanel(props: SettingsDialogProps) {
       <SettingRow label="Private templates" description={`${registry.privateTemplates.length} reusable local template${registry.privateTemplates.length === 1 ? '' : 's'}. These never leave this installation automatically.`}>
         <div className="flex flex-wrap justify-end gap-2">
           <input ref={inputRef} type="file" accept="application/json,.json" className="sr-only" aria-label="Import private templates file" onChange={(event) => void importTemplates(event.target.files?.[0])} />
-          <Button type="button" variant="outline" onClick={() => inputRef.current?.click()} disabled={!props.onImportPrivateTemplates}>Import</Button>
-          <Button type="button" variant="outline" onClick={() => void exportTemplates()} disabled={!props.onExportPrivateTemplates || registry.privateTemplates.length === 0}>Export all</Button>
+          <Button type="button" variant="outline" onClick={() => inputRef.current?.click()} disabled={!canManageRegistry || !props.onImportPrivateTemplates}>Import</Button>
+          <Button type="button" variant="outline" onClick={() => void exportTemplates()} disabled={!canManageRegistry || !props.onExportPrivateTemplates || registry.privateTemplates.length === 0}>Export all</Button>
         </div>
       </SettingRow>
       {transferStatus ? <div className="border-t border-[#e8e1d6] bg-[#f7f2e9] px-4 py-3 text-sm text-[#554b40]">{transferStatus}</div> : null}
-      {props.onApplyCatalogUpdate ? <CatalogUpdateReview onApply={props.onApplyCatalogUpdate} /> : null}
+      {canManageRegistry && props.onApplyCatalogUpdate ? <CatalogUpdateReview onApply={props.onApplyCatalogUpdate} /> : null}
       {registry.privateTemplates.map((template) => (
         <SettingRow key={template.id} label={template.name} description={`${template.item.name} · ${template.item.type}`}>
-          {props.onDeletePrivateTemplate ? (
+          {canManageRegistry && props.onDeletePrivateTemplate ? (
             <ConfirmSettingsAction
               title={`Delete ${template.name}?`}
               description="This removes only the reusable private template. Existing inventory items are not changed."
@@ -794,7 +832,10 @@ function FeedbackSettings(props: SettingsDialogProps) {
 }
 
 export function SettingsDialog(props: SettingsDialogProps) {
+  const auth = useAuth()
   const [category, setCategory] = useState<SettingsCategory>('general')
+  const availableCategories = visibleSettingsCategories(auth.status)
+  const activeCategory = availableCategories.some((entry) => entry.id === category) ? category : 'general'
 
   return (
     <Dialog open={props.open} onOpenChange={props.onOpenChange}>
@@ -809,18 +850,19 @@ export function SettingsDialog(props: SettingsDialogProps) {
           </div>
         </DialogHeader>
         <div className="grid min-h-0 lg:grid-cols-[220px_minmax(0,1fr)]">
-          <CategoryNavigation active={category} onChange={setCategory} />
+          <CategoryNavigation active={activeCategory} onChange={setCategory} availableCategories={availableCategories} />
           <div className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)] lg:grid-rows-[minmax(0,1fr)]">
-            <MobileCategorySelector active={category} onChange={setCategory} />
+            <MobileCategorySelector active={activeCategory} onChange={setCategory} availableCategories={availableCategories} />
             <main className="min-h-0 overflow-y-auto overscroll-contain p-4 sm:p-6" aria-live="polite">
-              {category === 'general' ? <GeneralSettings {...props} /> : null}
-              {category === 'project' ? <ProjectSettings {...props} /> : null}
-              {category === 'authentication' ? <AuthenticationSettings /> : null}
-              {category === 'registry' ? <RegistrySettingsPanel {...props} /> : null}
-              {category === 'backup-restore' ? <BackupRestoreSettings /> : null}
-              {category === 'updates' ? <UpdateSettings {...props} /> : null}
-              {category === 'feedback' ? <FeedbackSettings {...props} /> : null}
-              {category === 'about' ? <AboutSettings {...props} /> : null}
+              {activeCategory === 'general' ? <GeneralSettings {...props} /> : null}
+              {activeCategory === 'project' ? <ProjectSettings {...props} /> : null}
+              {activeCategory === 'authentication' ? <AuthenticationSettings /> : null}
+              {activeCategory === 'access' ? <Suspense fallback={<div className="grid min-h-52 place-items-center text-sm font-bold text-[#756d62]">Loading access policy…</div>}><AccessSettings /></Suspense> : null}
+              {activeCategory === 'registry' ? <RegistrySettingsPanel {...props} /> : null}
+              {activeCategory === 'backup-restore' ? <BackupRestoreSettings /> : null}
+              {activeCategory === 'updates' ? <UpdateSettings {...props} /> : null}
+              {activeCategory === 'feedback' ? <FeedbackSettings {...props} /> : null}
+              {activeCategory === 'about' ? <AboutSettings {...props} /> : null}
             </main>
           </div>
         </div>

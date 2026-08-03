@@ -1,0 +1,133 @@
+import { deriveAuthenticationMode } from './model.mjs'
+import { permissionByKey } from './permission-catalog.mjs'
+
+const PUBLIC_ROUTES = [
+  ['GET', /^\/api\/health\/?$/],
+  ['GET', /^\/api\/auth\/status\/?$/],
+  ['POST', /^\/api\/auth\/(?:setup|login|recovery\/reset)\/?$/],
+  ['GET', /^\/api\/auth\/oidc\/(?:start|callback)\/?$/],
+  ['GET', /^\/api\/auth\/invitations\/[^/]+\/?$/],
+  ['POST', /^\/api\/auth\/invitations\/[^/]+\/activate-local\/?$/],
+  ['GET', /^\/api\/demo\/session\/?$/],
+  ['POST', /^\/api\/demo\/session\/(?:extend|expire)\/?$/],
+]
+
+const MACHINE_ROUTES = [
+  ['POST', /^\/api\/agent\/servers\/[1-9]\d*\/(?:register|heartbeat)\/?$/],
+]
+
+const PROTECTED_ROUTES = [
+  ['POST', /^\/api\/auth\/logout\/?$/, 'workspace.view'],
+  ['PATCH', /^\/api\/auth\/settings\/?$/, 'authentication.manage'],
+  ['POST', /^\/api\/auth\/password\/?$/, 'authentication.view'],
+  ['POST', /^\/api\/auth\/identities\/local\/?$/, 'authentication.view'],
+  ['GET', /^\/api\/auth\/sessions\/?$/, 'authentication.view'],
+  ['DELETE', /^\/api\/auth\/sessions\/[1-9]\d*\/?$/, 'authentication.view'],
+  ['GET', /^\/api\/auth\/events\/?$/, 'authentication.view'],
+
+  ['GET', /^\/api\/access\/permissions\/?$/, 'roles.view'],
+  ['GET', /^\/api\/access\/roles\/?$/, 'roles.view'],
+  ['POST', /^\/api\/access\/roles\/?$/, 'roles.manage'],
+  ['POST', /^\/api\/access\/roles\/[1-9]\d*\/duplicate\/?$/, 'roles.manage'],
+  ['PATCH', /^\/api\/access\/roles\/[1-9]\d*\/?$/, 'roles.manage'],
+  ['PUT', /^\/api\/access\/roles\/[1-9]\d*\/permissions\/?$/, 'roles.manage'],
+  ['DELETE', /^\/api\/access\/roles\/[1-9]\d*\/?$/, 'roles.manage'],
+  ['GET', /^\/api\/access\/users\/?$/, 'users.view'],
+  ['PATCH', /^\/api\/access\/users\/[1-9]\d*\/?$/, 'users.manage'],
+  ['PUT', /^\/api\/access\/users\/[1-9]\d*\/roles\/?$/, 'users.manage'],
+  ['POST', /^\/api\/access\/users\/[1-9]\d*\/revoke-sessions\/?$/, 'users.manage'],
+  ['DELETE', /^\/api\/access\/users\/[1-9]\d*\/?$/, 'users.manage'],
+  ['GET', /^\/api\/access\/invitations\/?$/, 'users.view'],
+  ['POST', /^\/api\/access\/invitations\/?$/, 'users.manage'],
+  ['POST', /^\/api\/access\/invitations\/[1-9]\d*\/resend\/?$/, 'users.manage'],
+  ['DELETE', /^\/api\/access\/invitations\/[1-9]\d*\/?$/, 'users.manage'],
+
+  ['GET', /^\/api\/inventory(?:\/.*)?$/, 'inventory.view'],
+  ['POST', /^\/api\/inventory\/items\/?$/, 'inventory.create'],
+  ['POST', /^\/api\/inventory\/items\/[^/]+\/[1-9]\d*\/duplicate\/?$/, 'inventory.create'],
+  ['POST', /^\/api\/inventory\/(?:dependencies|items\/nas\/[1-9]\d*\/power-configuration)\/?$/, 'inventory.edit'],
+  ['PUT', /^\/api\/inventory\/items\/[^/]+\/[1-9]\d*\/?$/, 'inventory.edit'],
+  ['PATCH', /^\/api\/inventory\/items\/[^/]+\/[1-9]\d*\/properties\/?$/, 'inventory.edit'],
+  ['POST', /^\/api\/inventory\/(?:items\/[^/]+\/[1-9]\d*\/(?:archive|restore)|batch\/(?:archive|restore))\/?$/, 'inventory.archive'],
+  ['DELETE', /^\/api\/inventory\/items\/[^/]+\/[1-9]\d*\/?$/, 'inventory.delete'],
+  ['POST', /^\/api\/inventory\/batch\/delete\/?$/, 'inventory.delete'],
+
+  ['GET', /^\/api\/project\/?$/, 'project.view'],
+  ['PUT', /^\/api\/project\/?$/, 'project.settings.manage'],
+  ['GET', /^\/api\/engine\/(?:snapshot|events)\/?$/, 'canvas.view'],
+  // The command body receives operation-specific authorization in engine-routes.
+  ['POST', /^\/api\/engine\/commands\/?$/, 'workspace.view'],
+  ['GET', /^\/api\/routing-cache\/?$/, 'canvas.view'],
+  ['PUT', /^\/api\/routing-cache\/?$/, 'connections.edit'],
+
+  ['GET', /^\/api\/registry(?:\/.*)?$/, 'registry.view'],
+  ['PATCH', /^\/api\/registry\/settings\/?$/, 'registry.manage'],
+  ['POST', /^\/api\/registry\/contributions\/(?:deliver|revoke|rotate-key)\/?$/, 'registry.contribute'],
+  ['POST', /^\/api\/registry(?:\/(?!contributions\/).*)?$/, 'registry.manage'],
+  ['DELETE', /^\/api\/registry(?:\/.*)?$/, 'registry.manage'],
+
+  ['GET', /^\/api\/backups\/?$/, 'backups.view'],
+  ['POST', /^\/api\/backups\/?$/, 'backups.create'],
+  ['POST', /^\/api\/backups\/[^/]+\/verify\/?$/, 'backups.view'],
+  ['POST', /^\/api\/backups\/[^/]+\/download\/?$/, 'backups.download'],
+  ['DELETE', /^\/api\/backups\/[^/]+\/?$/, 'backups.delete'],
+  ['PATCH', /^\/api\/backups\/schedule\/?$/, 'backups.schedule'],
+  ['POST', /^\/api\/backups\/(?:inspect|restore\/preflight|restore)\/?$/, 'backups.restore'],
+  ['POST', /^\/api\/backups\/demo-export\/?$/, 'backups.download'],
+
+  ['GET', /^\/api\/agent\/(?:install\.sh|status)\/?$/, 'agents.view'],
+  ['POST', /^\/api\/agent\/enrollments\/?$/, 'agents.manage'],
+  ['DELETE', /^\/api\/agent\/servers\/[1-9]\d*\/(?:registration|status)\/?$/, 'agents.manage'],
+
+  ['GET', /^\/api\/onboarding(?:\/.*)?$/, 'workspace.view'],
+  ['POST', /^\/api\/onboarding(?:\/.*)?$/, 'workspace.edit'],
+  ['GET', /^\/api\/release-notes\/status\/?$/, 'workspace.view'],
+  ['POST', /^\/api\/release-notes\/acknowledge\/?$/, 'workspace.view'],
+  ['POST', /^\/api\/flush\/?$/, 'workspace.edit'],
+  ['GET', /^\/api\/update-status\/?$/, 'updates.view'],
+  ['POST', /^\/api\/update-status\/check\/?$/, 'updates.view'],
+  ['POST', /^\/api\/update-status\/skip\/?$/, 'updates.manage'],
+  ['DELETE', /^\/api\/update-status\/skip\/?$/, 'updates.manage'],
+]
+
+function matches(routes, method, path) {
+  return routes.find(([candidateMethod, pattern]) => candidateMethod === method && pattern.test(path))
+}
+
+export function classifyApiRequest(methodInput, pathInput) {
+  const method = String(methodInput ?? '').toUpperCase()
+  const path = String(pathInput ?? '').split('?')[0]
+  if (!path.startsWith('/api/')) return { access: 'not-api' }
+  if (matches(PUBLIC_ROUTES, method, path)) return { access: 'public' }
+  if (matches(MACHINE_ROUTES, method, path)) return { access: 'machine' }
+  const protectedRoute = matches(PROTECTED_ROUTES, method, path)
+  if (!protectedRoute) return { access: 'denied' }
+  permissionByKey(protectedRoute[2])
+  return { access: 'protected', permission: protectedRoute[2] }
+}
+
+export function createAuthorizationGuard({ service, authorization, demo = false }) {
+  return async function authorizationGuard(request, response, next) {
+    try {
+      const classification = classifyApiRequest(request.method, request.path)
+      if (classification.access === 'not-api' || classification.access === 'public' || classification.access === 'machine') return next()
+      if (classification.access === 'denied') {
+        return response.status(403).json({ message: 'This API operation has no authorization policy.', code: 'authorization-policy-missing' })
+      }
+      if (demo || !service || deriveAuthenticationMode(service.state()) === 'disabled') return next()
+      const accountId = request.authentication?.account?.id
+      if (!accountId) return response.status(401).json({ message: 'Authentication is required.', code: 'authentication-required' })
+      const decision = await authorization.authorize(accountId, classification.permission)
+      if (!decision.allowed) {
+        return response.status(403).json({
+          message: 'You do not have permission to perform this action.',
+          code: 'permission-denied',
+          permission: classification.permission,
+        })
+      }
+      next()
+    } catch (error) {
+      next(error)
+    }
+  }
+}

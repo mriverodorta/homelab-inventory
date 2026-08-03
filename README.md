@@ -16,7 +16,7 @@ It is built for people who want a practical map of what they own, what is instal
 - Container image: [Docker Hub](https://hub.docker.com/r/mriverodorta/homelab-inventory)
 
 > [!WARNING]
-> Do not expose Homelab Inventory directly to the public internet without HTTPS and access controls. Built-in owner authentication is available but optional on upgraded installations, and it does not provide TLS. Use a trusted LAN, VPN, or TLS reverse proxy.
+> Do not expose Homelab Inventory directly to the public internet without HTTPS and access controls. Built-in multi-user authentication is available but optional on upgraded installations, and it does not provide TLS. Use a trusted LAN, VPN, or TLS reverse proxy.
 
 ## Features
 
@@ -32,7 +32,7 @@ It is built for people who want a practical map of what they own, what is instal
 - JSON database stored outside the app image under a persistent `/data` volume.
 - lowdb-backed split stores with schema migrations and automatic backups.
 - Portable complete or custom backups with protected partial restore, optional encryption, scheduling, and retention controls.
-- Optional owner authentication with a local password, OpenID Connect, or both, plus session management and one-time recovery.
+- Optional multi-user authentication with local passwords, OpenID Connect, or both, plus invitations, custom roles, session management, and one-time owner recovery.
 - Optional Linux agent enrollment per server for keepalive and hardware telemetry.
 - Mobile-friendly inventory drawer and long-press drag behavior for touch devices.
 
@@ -153,13 +153,15 @@ Upgrade and rollback guidance: [docs/MIGRATIONS.md](docs/MIGRATIONS.md)
 
 ## Authentication
 
-Homelab Inventory supports one owner account with three optional modes:
+Homelab Inventory supports multiple accounts with three optional authentication modes:
 
 - **Local** uses a username and an Argon2id password of at least 12 characters.
 - **OIDC** uses Authorization Code flow with PKCE and binds the exact issuer and subject returned by the provider.
-- **Hybrid** keeps both methods available for the same owner.
+- **Hybrid** allows an account to link both methods after explicitly confirming the second identity.
 
-Fresh production installations require one-time local owner setup. Existing upgraded installations default to **Disabled** so an image update cannot lock out an established deployment. Enable or change methods in **Settings > Authentication**. Public demo sessions always bypass and disable authentication configuration.
+Fresh production installations require one-time local owner setup. Existing upgraded installations default to **Disabled** so an image update cannot lock out an established deployment. Enable or change methods in **Settings > Authentication**. The protected original owner can then invite local or OIDC users from **Settings > Access**, assign built-in roles, or compose custom global roles from the static permission catalog. Public demo sessions always bypass authentication and omit Access administration.
+
+Invitations choose one initial login method. Matching email addresses are not merged automatically; an authenticated account must explicitly link the second local or OIDC identity. The original owner and Owner role cannot be reassigned or removed. API permissions are enforced on the server with default-deny routing, independently of which controls are visible in the browser.
 
 OIDC requires a public HTTPS application URL. Configure the provider callback as:
 
@@ -169,7 +171,7 @@ https://inventory.example.com/api/auth/oidc/callback
 
 The client secret can be entered in Settings and stored as a mode-`0600` backend file, or supplied through `OIDC_CLIENT_SECRET` / `OIDC_CLIENT_SECRET_FILE`. File values take precedence and environment-managed secrets are read-only in the UI. Set `AUTH_EXTERNAL_URL` when the externally visible URL cannot be inferred from the deployment.
 
-If the owner is locked out, stop the application before creating a recovery grant so only one process writes the lowdb stores:
+If the original owner is locked out, stop the application before creating a recovery grant so only one process writes the lowdb stores:
 
 ```bash
 docker compose stop homelab-inventory
@@ -264,7 +266,7 @@ The agent is optional. Inventory, canvas layout, and cabling work without it.
 
 ## Security
 
-Built-in owner authentication can protect the UI and browser API, but it is optional on upgraded installations and does not terminate TLS. Keep the app behind a trusted network boundary, VPN, or HTTPS reverse proxy. Machine agent registration and heartbeat endpoints retain their separate scoped-token authentication.
+Built-in multi-user authentication can protect the UI and browser API, but it is optional on upgraded installations and does not terminate TLS. Keep the app behind a trusted network boundary, VPN, or HTTPS reverse proxy. Machine agent registration and heartbeat endpoints retain their separate scoped-token authentication.
 
 Read [SECURITY.md](SECURITY.md) before deploying outside localhost.
 

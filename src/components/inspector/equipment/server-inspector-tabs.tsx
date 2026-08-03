@@ -15,6 +15,7 @@ import { InspectorTabs } from '@/components/inspector/inspector-tabs'
 import { PortGroupsEditor } from '@/components/inventory-form/port-groups-editor'
 import { InventoryFormStatus } from '@/components/inventory-form/specs-tab-content'
 import { useInventoryItemEditor } from '@/hooks/use-inventory-item-editor'
+import { usePermission } from '@/hooks/use-permission'
 import { isHostCompatibilityEnabled } from '@/lib/compatibility'
 import { setHostCompatibilityEnabled } from '@/lib/compatibility-policy'
 import type { InventoryItemInput } from '@/lib/db'
@@ -52,6 +53,7 @@ export function ServerInspectorTabs({
   onSelectNetworkTrace: (endpoint: ConnectionEndpoint) => void
   onEndpointConnectionClick: (endpoint: ConnectionEndpoint) => void
 }) {
+  const canViewAgents = usePermission('agents.view')
   const editor = useInventoryItemEditor({
     item: server,
     onSave: (input) => onUpdateItem(runtimeItemKey(server), input),
@@ -131,7 +133,7 @@ export function ServerInspectorTabs({
           label: 'Services',
           content: <ComingSoonSection />,
         },
-        {
+        ...(canViewAgents ? [{
           value: 'agent',
           label: 'Agent',
           content: (
@@ -143,7 +145,7 @@ export function ServerInspectorTabs({
               demoMode={demoMode}
             />
           ),
-        },
+        }] : []),
         {
           value: 'compatibility',
           label: 'Compatibility',

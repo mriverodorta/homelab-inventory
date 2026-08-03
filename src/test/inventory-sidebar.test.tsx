@@ -1,6 +1,7 @@
-import { fireEvent, render, screen } from '@testing-library/react'
+import { fireEvent, screen } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import { InventorySidebar } from '@/components/inventory-sidebar'
+import { renderWithOpenAuth as render } from '@/test/open-auth-test-render'
 import type { InventoryItem, InventoryType, ProjectState } from '@/types/inventory'
 
 const project: ProjectState = {

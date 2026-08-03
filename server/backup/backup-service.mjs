@@ -88,12 +88,20 @@ async function directorySize(directory) {
 }
 
 export class BackupService {
-  constructor({ store, appVersion, mode = 'production', environmentPassphrase = null, environmentTimezone = null }) {
+  constructor({
+    store,
+    appVersion,
+    mode = 'production',
+    environmentPassphrase = null,
+    environmentTimezone = null,
+    onRestoreApplied = null,
+  }) {
     this.store = store
     this.appVersion = appVersion
     this.mode = mode
     this.environmentPassphrase = environmentPassphrase || null
     this.environmentTimezone = environmentTimezone || null
+    this.onRestoreApplied = onRestoreApplied
     this.directory = path.join(store.dataDir, 'backups', 'user')
     this.stagingDirectory = path.join(this.directory, '.staging')
     this.journal = new RestoreJournal(store.dataDir)
@@ -371,7 +379,7 @@ export class BackupService {
     }
   }
 
-  async applyParsed(parsed, sections) {
+  async applyParsed(parsed, sections, { phase = 'restore' } = {}) {
     const result = preflightRestore({
       manifest: { ...parsed.manifest, sections },
       files: parsed.files,
@@ -380,6 +388,7 @@ export class BackupService {
     if (!result.ok) throw new BackupServiceError('Restore dependencies are not satisfied.', { code: 'restore-blocked', details: result.blockers })
     await this.store.replaceStoresAtomically(result.replacements)
     await this.replaceExternalFiles(parsed, sections)
+    await this.onRestoreApplied?.({ sections, phase })
     return result
   }
 
@@ -420,7 +429,7 @@ export class BackupService {
       if (preRestore) {
         try {
           const rollback = await inspectArchiveBuffer(await this.readRecordArchive(preRestore.record))
-          await this.applyParsed(rollback, COMPLETE_BACKUP_SECTIONS)
+          await this.applyParsed(rollback, COMPLETE_BACKUP_SECTIONS, { phase: 'rollback' })
           await this.journal.clear()
           status = 'rolled-back'
         } catch (rollbackError) {
@@ -447,7 +456,7 @@ export class BackupService {
     try {
       const record = this.record(pending.preRestoreBackupId)
       const parsed = await inspectArchiveBuffer(await this.readRecordArchive(record))
-      await this.applyParsed(parsed, COMPLETE_BACKUP_SECTIONS)
+      await this.applyParsed(parsed, COMPLETE_BACKUP_SECTIONS, { phase: 'recovery' })
       await this.journal.clear()
       const completedAt = nowIso()
       this.store.updateBackupManagement((draft) => {

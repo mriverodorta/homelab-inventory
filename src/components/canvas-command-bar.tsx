@@ -35,6 +35,10 @@ export interface CanvasCommandBarProps {
   networkCablesVisible: boolean
   powerCablesVisible: boolean
   displayCablesVisible: boolean
+  canEditWorkspace: boolean
+  canEditCanvas: boolean
+  canViewAudit: boolean
+  canViewUpdates: boolean
   onInventory: () => void
   onUndo: () => void
   onRedo: () => void
@@ -149,6 +153,10 @@ export function CanvasCommandBar({
   networkCablesVisible,
   powerCablesVisible,
   displayCablesVisible,
+  canEditWorkspace,
+  canEditCanvas,
+  canViewAudit,
+  canViewUpdates,
   onInventory,
   onUndo,
   onRedo,
@@ -194,56 +202,60 @@ export function CanvasCommandBar({
           <ToolbarSeparator />
 
           <SaveStatusIndicator status={saveStatus} />
-          <ToolbarButton label="Undo" onClick={onUndo} disabled={!canUndo}>
+          <ToolbarButton label="Undo" onClick={onUndo} disabled={!canEditWorkspace || !canUndo}>
             <Undo2 className="size-4" />
           </ToolbarButton>
-          <ToolbarButton label="Redo" onClick={onRedo} disabled={!canRedo}>
+          <ToolbarButton label="Redo" onClick={onRedo} disabled={!canEditWorkspace || !canRedo}>
             <Redo2 className="size-4" />
           </ToolbarButton>
 
-          <ToolbarSeparator />
+          {canViewUpdates || canViewAudit ? <ToolbarSeparator /> : null}
 
-          <ToolbarButton
-            label={updateLabel}
-            onClick={onOpenUpdate}
-            disabled={updateStatusLoading}
-            indicator={updateAvailable ? (
-              <>
-                <span className="sr-only">Update available</span>
+          {canViewUpdates ? (
+            <ToolbarButton
+              label={updateLabel}
+              onClick={onOpenUpdate}
+              disabled={updateStatusLoading}
+              indicator={updateAvailable ? (
+                <>
+                  <span className="sr-only">Update available</span>
+                  <span
+                    aria-hidden="true"
+                    className="absolute right-1.5 top-1.5 size-2 rounded-full bg-[#2f8a62] ring-2 ring-[#fffdf8]"
+                  />
+                </>
+              ) : undefined}
+            >
+              {updateStatusLoading ? (
+                <RefreshCw className="size-4 animate-spin" />
+              ) : updateAvailable ? (
+                <Download className="size-4" />
+              ) : (
+                <RefreshCw className="size-4" />
+              )}
+            </ToolbarButton>
+          ) : null}
+          {canViewAudit ? (
+            <ToolbarButton
+              label={auditLabel}
+              onClick={onOpenAudit}
+              indicator={(
                 <span
                   aria-hidden="true"
-                  className="absolute right-1.5 top-1.5 size-2 rounded-full bg-[#2f8a62] ring-2 ring-[#fffdf8]"
-                />
-              </>
-            ) : undefined}
-          >
-            {updateStatusLoading ? (
-              <RefreshCw className="size-4 animate-spin" />
-            ) : updateAvailable ? (
-              <Download className="size-4" />
-            ) : (
-              <RefreshCw className="size-4" />
-            )}
-          </ToolbarButton>
-          <ToolbarButton
-            label={auditLabel}
-            onClick={onOpenAudit}
-            indicator={(
-              <span
-                aria-hidden="true"
-                className={cn(
-                  'absolute -right-0.5 -top-0.5 min-w-4 rounded-full px-1 text-center text-[9px] font-black leading-4',
-                  auditWarningCount > 0
-                    ? 'bg-[#fff2c7] text-[#3d2a08]'
-                    : 'bg-[#efebe5] text-[#75695d]',
-                )}
-              >
-                {auditWarningCount}
-              </span>
-            )}
-          >
-            <AlertTriangle className={cn('size-4', auditWarningCount > 0 && 'text-[#a66f1f]')} />
-          </ToolbarButton>
+                  className={cn(
+                    'absolute -right-0.5 -top-0.5 min-w-4 rounded-full px-1 text-center text-[9px] font-black leading-4',
+                    auditWarningCount > 0
+                      ? 'bg-[#fff2c7] text-[#3d2a08]'
+                      : 'bg-[#efebe5] text-[#75695d]',
+                  )}
+                >
+                  {auditWarningCount}
+                </span>
+              )}
+            >
+              <AlertTriangle className={cn('size-4', auditWarningCount > 0 && 'text-[#a66f1f]')} />
+            </ToolbarButton>
+          ) : null}
 
           <ToolbarSeparator />
 
@@ -254,7 +266,7 @@ export function CanvasCommandBar({
           >
             <LocateFixed className="size-4" />
           </ToolbarButton>
-          <ToolbarButton label="Auto arrange canvas" onClick={onAutoArrange}>
+          <ToolbarButton label="Auto arrange canvas" onClick={onAutoArrange} disabled={!canEditCanvas}>
             <LayoutGrid className="size-4" />
           </ToolbarButton>
           <ToolbarButton

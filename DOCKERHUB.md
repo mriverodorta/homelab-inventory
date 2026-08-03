@@ -23,7 +23,7 @@ GitHub is the source of truth for CI/CD. Docker Hub images are built and publish
 
 Do not expose Homelab Inventory directly to the public internet.
 
-The app includes optional single-owner authentication using a local password, OpenID Connect, or both. Upgraded installations remain open until the owner opts in, and built-in authentication does not provide TLS. Anyone who can reach an installation with authentication disabled can view and change inventory data.
+The app includes optional multi-user authentication using local passwords, OpenID Connect, or both. It supports invitations, built-in and custom global roles, and server-enforced permissions. Upgraded installations remain open until the owner opts in, and built-in authentication does not provide TLS. Anyone who can reach an installation with authentication disabled can view and change inventory data.
 
 Recommended deployment:
 
@@ -140,7 +140,7 @@ Connected registry mode refreshes the verified official catalog at startup and a
 
 You normally do not need to set those environment variables in Compose. A fresh production data directory requires one-time owner setup. Configure a bootstrap code or retrieve the generated code with `docker compose logs homelab-inventory`. Existing upgraded installations keep authentication disabled until it is enabled in Settings.
 
-Local login uses Argon2id password hashing. OIDC uses Authorization Code flow with PKCE and the callback `https://your-inventory.example/api/auth/oidc/callback`. `*_FILE` secrets take precedence over inline environment values and become read-only in the UI. If the owner is locked out, stop the service and run `docker compose run --rm homelab-inventory bun run auth:reset-owner` before starting it again.
+Local login uses Argon2id password hashing. OIDC uses Authorization Code flow with PKCE and the callback `https://your-inventory.example/api/auth/oidc/callback`. After owner setup, **Settings > Access** manages local or OIDC invitations, users, built-in roles, and custom permission sets. Matching emails are linked only through an explicit authenticated flow. `*_FILE` secrets take precedence over inline environment values and become read-only in the UI. If the original owner is locked out, stop the service and run `docker compose run --rm homelab-inventory bun run auth:reset-owner` before starting it again.
 
 When running behind a reverse proxy, set `TRUST_PROXY` to the exact proxy hop count or trusted proxy range so rate limits use the correct client address. Do not set it to `true`.
 

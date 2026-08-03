@@ -69,7 +69,7 @@ Then start the container.
 
 ## Authentication And OIDC
 
-Local owner credentials are stored only as Argon2id hashes. OIDC uses Authorization Code flow with PKCE and an exact issuer/subject binding. Configure the identity provider callback as:
+Local credentials are stored only as Argon2id hashes. OIDC uses Authorization Code flow with PKCE and an exact issuer/subject binding. The protected original owner can invite local or OIDC users and assign built-in or custom global roles from **Settings > Access**. Matching email addresses are never merged automatically; linking a second login method requires an authenticated confirmation. Configure the identity provider callback as:
 
 ```txt
 https://inventory.example.com/api/auth/oidc/callback
@@ -77,7 +77,7 @@ https://inventory.example.com/api/auth/oidc/callback
 
 Use `AUTH_EXTERNAL_URL=https://inventory.example.com` when the public URL is not configured through the UI. OIDC secrets entered in Settings are stored below `/data/auth` with mode `0600`. `OIDC_CLIENT_SECRET_FILE` takes precedence over `OIDC_CLIENT_SECRET`; either environment override locks the secret field in Settings.
 
-To recover the only owner, stop the application before running the one-time recovery command:
+To recover the original owner, stop the application before running the one-time recovery command:
 
 ```bash
 docker compose stop homelab-inventory
@@ -135,7 +135,7 @@ See [RELEASES.md](RELEASES.md) for the full release process.
 
 ## Reverse Proxy
 
-Do not expose this app directly to the public internet without HTTPS and access controls. Built-in owner authentication is optional for upgraded installations and does not provide TLS. Place the app behind a trusted LAN, VPN, or TLS reverse proxy.
+Do not expose this app directly to the public internet without HTTPS and access controls. Built-in multi-user authentication is optional for upgraded installations and does not provide TLS. Place the app behind a trusted LAN, VPN, or TLS reverse proxy.
 
 Example headers to add at the proxy layer:
 

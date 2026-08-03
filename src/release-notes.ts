@@ -106,6 +106,23 @@ export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
   notes: [],
 }
 
+const RELEASE_0_8_0_DETAILS: UnreleasedReleaseNotes = {
+  highlights: [
+    'Access settings now support invited local or OIDC users, built-in roles, and reusable custom global roles composed from explicit permissions.',
+    'One account can link local and OIDC sign-in methods through a confirmed identity-link workflow without automatically merging matching email addresses.',
+    'Inventory, canvas, connections, projects, registry, backups, agents, audits, updates, authentication, users, and roles now expose only the actions permitted for the signed-in account.',
+  ],
+  fixes: [
+    'Server-side Casbin authorization now protects browser APIs with default-deny route classification and operation-specific workspace-engine permissions.',
+    'The original owner and Owner role cannot be delegated or removed, administrators and resent invitations cannot grant permissions the acting user does not possess, and concurrent access changes commit without overwriting each other.',
+    'Access-administration APIs remain unavailable while authentication is disabled, so the legacy open workspace does not expose account, role, or invitation metadata.',
+  ],
+  notes: [
+    'Schema 23 backs up and upgrades authentication data with numeric role, permission, invitation, and identity-link relationships while preserving existing authentication mode and owner access.',
+    'Public demo sessions remain open and do not expose Access administration.',
+  ],
+}
+
 const RELEASE_0_7_2_DETAILS: UnreleasedReleaseNotes = {
   highlights: [
     'Connected catalogs now preserve complete OEM hardware variants, including motherboard evidence, fixed and optional ports, memory ECC support, storage and expansion topology, proprietary risers, optional modules, and power requirements.',
@@ -347,9 +364,16 @@ const RELEASE_0_2_1_DETAILS: UnreleasedReleaseNotes = {
 
 export const RELEASE_NOTES: ReleaseNoteEntry[] = [
   {
+    version: '0.8.0',
+    date: '2026-08-03',
+    channel: 'latest',
+    title: 'Multi-user access control',
+    ...RELEASE_0_8_0_DETAILS,
+  },
+  {
     version: '0.7.2',
     date: '2026-08-02',
-    channel: 'latest',
+    channel: 'release',
     title: 'OEM hardware topology and variant fidelity',
     ...RELEASE_0_7_2_DETAILS,
   },

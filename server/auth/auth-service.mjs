@@ -1,5 +1,5 @@
 import { timingSafeEqual } from 'node:crypto'
-import { createOwnerAccount, deriveAuthenticationMode, publicAuthenticationStatus } from './model.mjs'
+import { createOwnerAccount, deriveAuthenticationMode, ensureProtectedOwnerRole, publicAuthenticationStatus } from './model.mjs'
 import { hashPassword, normalizeUsername, verifyPassword } from './passwords.mjs'
 import { createOpaqueToken, hashOpaqueToken } from './tokens.mjs'
 import { removePrivateSecret, writePrivateSecret } from './config.mjs'
@@ -43,10 +43,11 @@ function requestMetadata(request) {
 }
 
 export class AuthService {
-  constructor({ store, sessionService, runtime, now = () => new Date() }) {
+  constructor({ store, sessionService, authorization = null, runtime, now = () => new Date() }) {
     this.store = store
     this.sessions = sessionService
     this.runtime = runtime
+    this.authorization = authorization
     this.now = now
   }
 
@@ -59,7 +60,11 @@ export class AuthService {
     const state = this.state()
     const status = {
       ...publicAuthenticationStatus(state, { authenticatedAccountId: authentication?.account.id ?? null }),
-      canManage: deriveAuthenticationMode(state) === 'disabled' || authentication !== null,
+      permissions: authentication ? this.authorization?.permissionsForSync(authentication.account.id) ?? [] : [],
+      roles: authentication ? this.rolesForAccount(state, authentication.account.id) : [],
+      identityMethods: authentication ? this.identityMethodsForAccount(state, authentication.account.id) : { local: false, oidc: false },
+      canManage: deriveAuthenticationMode(state) === 'disabled'
+        || (this.authorization?.permissionsForSync(authentication?.account.id).includes('authentication.manage') ?? authentication !== null),
       bootstrapSource: state.bootstrapState.setupRequired ? this.runtime.bootstrapSource : null,
       oidcSecretReadOnly: this.runtime.oidcSecretLocked === true,
     }
@@ -74,7 +79,10 @@ export class AuthService {
     const state = this.state()
     const status = {
       ...publicAuthenticationStatus(state, { authenticatedAccountId: accountId }),
-      canManage: true,
+      permissions: this.authorization?.permissionsForSync(accountId) ?? [],
+      roles: this.rolesForAccount(state, accountId),
+      identityMethods: this.identityMethodsForAccount(state, accountId),
+      canManage: this.authorization?.permissionsForSync(accountId).includes('authentication.manage') ?? true,
       bootstrapSource: null,
       oidcSecretReadOnly: this.runtime.oidcSecretLocked === true,
     }
@@ -85,10 +93,34 @@ export class AuthService {
     return status
   }
 
-  async persist(mutator) {
+  rolesForAccount(state, accountId) {
+    const ids = new Set(state.accountRoles.filter((assignment) => assignment.accountId === accountId && assignment.scopeKind === 'global' && assignment.scopeId === 0).map((assignment) => assignment.roleId))
+    return state.roles.filter((role) => ids.has(role.id) && role.active).map(({ id, key, name, builtIn }) => ({ id, key, name, builtIn }))
+  }
+
+  identityMethodsForAccount(state, accountId) {
+    return {
+      local: state.localCredentials.some((credential) => credential.accountId === accountId),
+      oidc: state.oidcIdentities.some((identity) => identity.accountId === accountId),
+    }
+  }
+
+  async persist(mutator, { rebuildAuthorization = false } = {}) {
+    const previous = this.state()
     const result = this.store.updateAuthentication(mutator)
-    await this.store.flush(['authentication'])
-    return result
+    try {
+      await this.store.flush(['authentication'])
+      if (rebuildAuthorization && this.authorization) await this.authorization.rebuild(this.state())
+      return result
+    } catch (error) {
+      this.store.updateAuthentication((draft) => {
+        for (const key of Object.keys(draft)) delete draft[key]
+        Object.assign(draft, structuredClone(previous))
+      })
+      await this.store.flush(['authentication']).catch(() => {})
+      if (rebuildAuthorization && this.authorization) await this.authorization.rebuild(previous).catch(() => {})
+      throw error
+    }
   }
 
   async recordEvent(type, { accountId = null, request = null, detail = null } = {}) {
@@ -122,6 +154,7 @@ export class AuthService {
       account.createdAt = timestamp
       account.updatedAt = timestamp
       draft.accounts.push(account)
+      ensureProtectedOwnerRole(draft, accountId)
       draft.localCredentials.push({
         id: draft.nextLocalCredentialId++, accountId, passwordHash, createdAt: timestamp, updatedAt: timestamp,
       })
@@ -130,7 +163,7 @@ export class AuthService {
       draft.configuration.updatedAt = timestamp
       draft.bootstrapState.setupRequired = false
       draft.bootstrapState.completedAt = timestamp
-    })
+    }, { rebuildAuthorization: true })
     await this.recordEvent('bootstrap-completed', { accountId, request })
     return this.createSession(accountId, { remember: false, request })
   }
@@ -253,6 +286,7 @@ export class AuthService {
           account.createdAt = timestamp
           account.updatedAt = timestamp
           draft.accounts.push(account)
+          ensureProtectedOwnerRole(draft, ownerId)
         }
         if (passwordHash && ownerId && !draft.localCredentials.some((credential) => credential.accountId === ownerId)) {
           draft.localCredentials.push({ id: draft.nextLocalCredentialId++, accountId: ownerId, passwordHash, createdAt: timestamp, updatedAt: timestamp })
@@ -268,7 +302,7 @@ export class AuthService {
           draft.configuration.oidc.externalUrl = normalizedOidc.externalUrl
         }
         draft.configuration.oidc.clientSecretConfigured = Boolean(this.runtime.oidcClientSecret)
-      })
+      }, { rebuildAuthorization: true })
     } catch (error) {
       await Promise.allSettled([restoreSecret(), restoreState()])
       throw error
@@ -299,9 +333,38 @@ export class AuthService {
     await this.recordEvent('password-changed', { accountId: account.id, request })
   }
 
+  async addLocalIdentity({ username, password }, request) {
+    const { account } = this.requireAuthenticated(request)
+    const state = this.state()
+    if (!state.oidcIdentities.some((identity) => identity.accountId === account.id)) {
+      throw new Error('An authenticated OIDC identity is required before adding local sign-in.')
+    }
+    if (state.localCredentials.some((credential) => credential.accountId === account.id)) {
+      throw new Error('This account already has local sign-in.')
+    }
+    const normalizedUsername = normalizeUsername(username)
+    if (state.accounts.some((candidate) => candidate.id !== account.id && candidate.username === normalizedUsername)) {
+      throw new Error('Username is already in use.')
+    }
+    const passwordHash = await hashPassword(password)
+    const timestamp = this.now().toISOString()
+    await this.persist((draft) => {
+      const current = draft.accounts.find((candidate) => candidate.id === account.id)
+      if (!current?.active) throw new Error('Account is unavailable.')
+      current.username = normalizedUsername
+      current.updatedAt = timestamp
+      draft.localCredentials.push({
+        id: draft.nextLocalCredentialId++, accountId: current.id, passwordHash,
+        createdAt: timestamp, updatedAt: timestamp,
+      })
+    })
+    await this.recordEvent('local-identity-linked', { accountId: account.id, request })
+    return this.statusForAccount(account.id)
+  }
+
   async createRecoveryGrant() {
     const state = this.state()
-    const account = state.accounts.find((candidate) => candidate.role === 'owner' && candidate.active)
+    const account = state.accounts.find((candidate) => candidate.protectedOwner === true && candidate.active)
     if (!account) throw new Error('No active owner account exists.')
     const { token, hash } = createOpaqueToken()
     const now = this.now()
@@ -329,6 +392,7 @@ export class AuthService {
       account.displayName = normalizedDisplayName
       account.updatedAt = timestamp
       account.active = true
+      ensureProtectedOwnerRole(draft, account.id)
       let credential = draft.localCredentials.find((candidate) => candidate.accountId === account.id)
       if (!credential) {
         credential = { id: draft.nextLocalCredentialId++, accountId: account.id, createdAt: timestamp }
@@ -341,7 +405,7 @@ export class AuthService {
       draft.configuration.enabled = true
       draft.configuration.localEnabled = true
       draft.configuration.updatedAt = timestamp
-    })
+    }, { rebuildAuthorization: true })
     this.sessions.revokeAllForAccount(grant.accountId)
     await this.store.flush(['authentication'])
     await this.recordEvent('owner-recovered', { accountId: grant.accountId, request })
@@ -362,8 +426,9 @@ export class AuthService {
 
   eventsFor(request) {
     const authentication = this.requireAuthenticated(request)
+    const canViewAll = this.authorization?.permissionsForSync(authentication.account.id).includes('security.events.view') === true
     return this.state().securityEvents
-      .filter((event) => event.accountId === null || event.accountId === authentication.account.id)
+      .filter((event) => canViewAll || event.accountId === null || event.accountId === authentication.account.id)
       .slice(-100).reverse()
       .map(({ id, type, detail, ip, userAgent, createdAt }) => ({ id, type, detail, ip, userAgent, createdAt }))
   }

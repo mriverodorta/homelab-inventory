@@ -26,6 +26,7 @@ import {
 import { isEditableComponent } from '@/components/inspector/equipment/component-item-editor-model'
 import { PcBuildInspectorTabs } from '@/components/inspector/equipment/pc-build-inspector-tabs'
 import { StandalonePowerEquipmentTabs } from '@/components/inspector/equipment/standalone-power-equipment-tabs'
+import { usePermission } from '@/hooks/use-permission'
 
 const labelClass = 'text-[11px] font-black uppercase tracking-[0.12em] text-[#75695d]'
 
@@ -64,6 +65,21 @@ export function InspectorPanel({
   onRequestNasPowerConfigurationChange = () => undefined,
   onSetWarningIgnored = () => undefined,
 }: InspectorPanelProps) {
+  const canCreateInventory = usePermission('inventory.create')
+  const canEditInventory = usePermission('inventory.edit')
+  const canArchiveInventory = usePermission('inventory.archive')
+  const canEditCanvas = usePermission('canvas.edit')
+  const canEditConnections = usePermission('connections.edit')
+  const canManageProject = usePermission('project.settings.manage')
+  const canManageAudit = usePermission('audit.manage')
+  const updateProject = canManageProject ? onUpdateProject : () => undefined
+  const updateItem = canEditInventory ? onUpdateItem : () => undefined
+  const updateItemProperties = canEditInventory ? onUpdateItemProperties : () => undefined
+  const updateConnectionLabel = canEditConnections ? onUpdateConnectionLabel : () => undefined
+  const updateConnectionRoute = canEditConnections ? onUpdateConnectionRoute : () => undefined
+  const removeConnection = canEditConnections ? onRemoveConnection : () => undefined
+  const createConnection = canEditConnections ? onCreateConnection : () => undefined
+  const requestNasPowerConfigurationChange = canEditInventory ? onRequestNasPowerConfigurationChange : () => undefined
   const selectedItem = selectedItemId ? project.items[selectedItemId] ?? null : null
   const selectedConnection = selectedConnectionId
     ? project.connections.find((connection) => String(connection.id) === String(selectedConnectionId)) ?? null
@@ -124,11 +140,9 @@ export function InspectorPanel({
             <InventoryActionsMenu
               itemName={selectedItem.name}
               busy={lifecycleBusy}
-              showEdit={false}
-              onEdit={() => undefined}
-              onDuplicate={() => onDuplicateItem(selectedItem)}
-              onArchive={() => onArchiveItem(selectedItem)}
-              onReturnToInventory={selectedItemIsPlaced && selectedItemRuntimeKey && onReturnItemToInventory
+              onDuplicate={canCreateInventory ? () => onDuplicateItem(selectedItem) : undefined}
+              onArchive={canArchiveInventory ? () => onArchiveItem(selectedItem) : undefined}
+              onReturnToInventory={canEditCanvas && selectedItemIsPlaced && selectedItemRuntimeKey && onReturnItemToInventory
                 ? () => onReturnItemToInventory(selectedItemRuntimeKey)
                 : undefined}
             />
@@ -202,15 +216,15 @@ export function InspectorPanel({
             statusMessage: topologyStatusMessage,
             statusIsError: topologyStatusIsError,
           }}>
-            <AuditIgnoreContext.Provider value={onSetWarningIgnored}>
+            <AuditIgnoreContext.Provider value={canManageAudit ? onSetWarningIgnored : null}>
               <section className="space-y-4">
           {selectedConnection ? (
             <ConnectionDetails
               project={project}
               connection={selectedConnection}
-              onUpdateLabel={onUpdateConnectionLabel}
-              onUpdateRoute={onUpdateConnectionRoute}
-              onRemove={onRemoveConnection}
+              onUpdateLabel={updateConnectionLabel}
+              onUpdateRoute={updateConnectionRoute}
+              onRemove={removeConnection}
             />
           ) : selectedItem ? (
             <>
@@ -223,8 +237,8 @@ export function InspectorPanel({
                   activeNetworkTraceKey={activeNetworkTraceKey}
                   pendingEndpoint={pendingConnectionEndpoint}
                   auditWarnings={auditWarnings}
-                  onUpdateProject={onUpdateProject}
-                  onUpdateItem={onUpdateItem}
+                  onUpdateProject={updateProject}
+                  onUpdateItem={updateItem}
                   onSelectNetworkTrace={onSelectNetworkTrace}
                   onEndpointConnectionClick={onEndpointConnectionClick}
                 />
@@ -234,11 +248,11 @@ export function InspectorPanel({
                   item={selectedItem}
                   pendingEndpoint={pendingConnectionEndpoint}
                   auditWarnings={auditWarnings}
-                  onUpdateItem={onUpdateItem}
-                  onCreateConnection={onCreateConnection}
+                  onUpdateItem={updateItem}
+                  onCreateConnection={createConnection}
                   onEndpointConnectionClick={onEndpointConnectionClick}
-                  onUpdateConnectionLabel={onUpdateConnectionLabel}
-                  onRemoveConnection={onRemoveConnection}
+                  onUpdateConnectionLabel={updateConnectionLabel}
+                  onRemoveConnection={removeConnection}
                 />
               ) : selectedItem.type === 'nas' ? (
                 <NasInspectorTabs
@@ -247,14 +261,14 @@ export function InspectorPanel({
                   pendingEndpoint={pendingConnectionEndpoint}
                   auditWarnings={auditWarnings}
                   activeNetworkTraceKey={activeNetworkTraceKey}
-                  onUpdateProject={onUpdateProject}
-                  onUpdateItem={onUpdateItem}
-                  onCreateConnection={onCreateConnection}
+                  onUpdateProject={updateProject}
+                  onUpdateItem={updateItem}
+                  onCreateConnection={createConnection}
                   onEndpointConnectionClick={onEndpointConnectionClick}
                   onSelectNetworkTrace={onSelectNetworkTrace}
-                  onUpdateConnectionLabel={onUpdateConnectionLabel}
-                  onRemoveConnection={onRemoveConnection}
-                  onRequestPowerConfigurationChange={onRequestNasPowerConfigurationChange}
+                  onUpdateConnectionLabel={updateConnectionLabel}
+                  onRemoveConnection={removeConnection}
+                  onRequestPowerConfigurationChange={requestNasPowerConfigurationChange}
                 />
               ) : selectedItem.type === 'patchPanel' ? (
                 <PatchPanelInspectorTabs
@@ -263,12 +277,12 @@ export function InspectorPanel({
                   pendingEndpoint={pendingConnectionEndpoint}
                   auditWarnings={auditWarnings}
                   activeNetworkTraceKey={activeNetworkTraceKey}
-                  onUpdateItem={onUpdateItem}
-                  onCreateConnection={onCreateConnection}
+                  onUpdateItem={updateItem}
+                  onCreateConnection={createConnection}
                   onEndpointConnectionClick={onEndpointConnectionClick}
                   onSelectNetworkTrace={onSelectNetworkTrace}
-                  onUpdateConnectionLabel={onUpdateConnectionLabel}
-                  onRemoveConnection={onRemoveConnection}
+                  onUpdateConnectionLabel={updateConnectionLabel}
+                  onRemoveConnection={removeConnection}
                 />
               ) : selectedItem.type === 'pcBuild' ? (
                 <PcBuildInspectorTabs
@@ -279,12 +293,12 @@ export function InspectorPanel({
                   activeNetworkTraceKey={activeNetworkTraceKey}
                   pendingEndpoint={pendingConnectionEndpoint}
                   auditWarnings={auditWarnings}
-                  onUpdateProject={onUpdateProject}
-                  onUpdateItem={onUpdateItem}
+                  onUpdateProject={updateProject}
+                  onUpdateItem={updateItem}
                   onSelectNetworkTrace={onSelectNetworkTrace}
                   onEndpointConnectionClick={onEndpointConnectionClick}
-                  onUpdateConnectionLabel={onUpdateConnectionLabel}
-                  onRemoveConnection={onRemoveConnection}
+                  onUpdateConnectionLabel={updateConnectionLabel}
+                  onRemoveConnection={removeConnection}
                 />
               ) : selectedItem.type === 'monitor'
                 || selectedItem.type === 'ups'
@@ -294,11 +308,11 @@ export function InspectorPanel({
                   item={selectedItem}
                   pendingEndpoint={pendingConnectionEndpoint}
                   auditWarnings={auditWarnings}
-                  onUpdateItem={onUpdateItem}
-                  onUpdateItemProperties={onUpdateItemProperties}
+                  onUpdateItem={updateItem}
+                  onUpdateItemProperties={updateItemProperties}
                   onEndpointConnectionClick={onEndpointConnectionClick}
-                  onUpdateConnectionLabel={onUpdateConnectionLabel}
-                  onRemoveConnection={onRemoveConnection}
+                  onUpdateConnectionLabel={updateConnectionLabel}
+                  onRemoveConnection={removeConnection}
                 />
               ) : isEditableComponent(selectedItem) ? (
                 <>
@@ -308,7 +322,7 @@ export function InspectorPanel({
                     item={selectedItem}
                     validationMessage={null}
                     pendingEndpoint={pendingConnectionEndpoint}
-                    onUpdateItem={onUpdateItem}
+                    onUpdateItem={updateItem}
                     onEndpointConnectionClick={onEndpointConnectionClick}
                   />
                   <AuditSection warnings={auditWarnings} />

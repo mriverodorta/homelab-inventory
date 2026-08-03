@@ -5,6 +5,10 @@ import { TooltipProvider } from '@/components/ui/tooltip'
 
 function createProps(overrides: Partial<CanvasCommandBarProps> = {}): CanvasCommandBarProps {
   return {
+    canEditWorkspace: true,
+    canEditCanvas: true,
+    canViewAudit: true,
+    canViewUpdates: true,
     desktopInventoryVisible: true,
     saveStatus: 'saved',
     canUndo: true,
@@ -161,5 +165,12 @@ describe('CanvasCommandBar', () => {
     expect(toolbar).toHaveClass('pl-14', 'pr-3', 'sm:px-3')
     expect(toolbar).not.toHaveClass('bottom-[max(4.75rem,env(safe-area-inset-bottom))]')
     expect(toolbar.firstElementChild).toHaveClass('overflow-x-auto')
+  })
+
+  it('omits audit and update commands when the account cannot view them', () => {
+    renderToolbar({ canViewAudit: false, canViewUpdates: false })
+
+    expect(screen.queryByRole('button', { name: /update/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /audit/i })).not.toBeInTheDocument()
   })
 })

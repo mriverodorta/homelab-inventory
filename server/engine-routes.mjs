@@ -1,5 +1,7 @@
 import express from 'express'
-import { encodeEngineSnapshot } from '../shared/engine/protocol.mjs'
+import { decodeEngineRequest, encodeEngineSnapshot } from '../shared/engine/protocol.mjs'
+import { deriveAuthenticationMode } from './auth/model.mjs'
+import { permissionForEngineOperation } from './auth/engine-permissions.mjs'
 import { InventoryLifecycleError } from './db/inventory-lifecycle.mjs'
 
 export const ENGINE_MEDIA_TYPE = 'application/vnd.homelab-engine+msgpack'
@@ -13,7 +15,7 @@ function respondWithLifecycleError(response, error) {
   })
 }
 
-export function registerEngineRoutes(app, { withStore, commandService, sseHub }) {
+export function registerEngineRoutes(app, { withStore, commandService, sseHub, authService = null, authorization = null, demo = false }) {
   app.get('/api/engine/snapshot', (request, response) => {
     void withStore(request, response, async (store) => {
       const bytes = encodeEngineSnapshot(store.getEngineSnapshot())
@@ -33,6 +35,25 @@ export function registerEngineRoutes(app, { withStore, commandService, sseHub })
               code: 'invalid-engine-command',
               status: 400,
             })
+          }
+          if (!demo && authService && deriveAuthenticationMode(authService.state()) !== 'disabled') {
+            const command = decodeEngineRequest(request.body)
+            const permission = permissionForEngineOperation(command.operation?.kind)
+            if (!permission) {
+              return response.status(403).json({
+                message: 'This engine operation has no authorization policy.',
+                code: 'authorization-policy-missing',
+              })
+            }
+            const accountId = request.authentication?.account?.id
+            const decision = accountId ? await authorization?.authorize(accountId, permission) : { allowed: false }
+            if (!decision?.allowed) {
+              return response.status(403).json({
+                message: 'You do not have permission to perform this action.',
+                code: 'permission-denied',
+                permission,
+              })
+            }
           }
           const result = await commandService.execute(store, request.body)
           response.set('Cache-Control', 'no-store')

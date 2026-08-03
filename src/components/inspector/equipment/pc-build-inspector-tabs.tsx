@@ -33,6 +33,7 @@ import { slotTone } from '@/components/inspector/slots/equipment-slot-model'
 import { Input } from '@/components/ui/input'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useInventoryItemEditor } from '@/hooks/use-inventory-item-editor'
+import { usePermission } from '@/hooks/use-permission'
 import { describeConnectionEndpoint } from '@/lib/cables'
 import { isHostCompatibilityEnabled } from '@/lib/compatibility'
 import { setHostCompatibilityEnabled } from '@/lib/compatibility-policy'
@@ -289,6 +290,7 @@ export function PcBuildInspectorTabs({
   onUpdateConnectionLabel: (connectionId: string | number, label: string) => void
   onRemoveConnection: (connectionId: string | number) => void
 }) {
+  const canViewAgents = usePermission('agents.view')
   const editor = useInventoryItemEditor({
     item,
     onSave: (input) => onUpdateItem(runtimeItemKey(item), input),
@@ -353,7 +355,7 @@ export function PcBuildInspectorTabs({
           ),
         },
         { value: 'services', label: 'Services', content: <ComingSoonSection /> },
-        {
+        ...(canViewAgents ? [{
           value: 'agent',
           label: 'Agent',
           content: (
@@ -365,7 +367,7 @@ export function PcBuildInspectorTabs({
               demoMode={demoMode}
             />
           ),
-        },
+        }] : []),
         {
           value: 'compatibility',
           label: 'Compatibility',

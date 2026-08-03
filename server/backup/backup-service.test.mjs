@@ -3,12 +3,13 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { HomelabInventoryStore } from '../db/store.mjs'
+import { createOwnerAccount, ensureProtectedOwnerRole } from '../auth/model.mjs'
 import { BackupService } from './backup-service.mjs'
 
 const tempDirs = []
 const stores = []
 
-async function createContext() {
+async function createContext({ onRestoreApplied = null } = {}) {
   const dataDir = await fs.mkdtemp(path.join(os.tmpdir(), 'backup-service-'))
   tempDirs.push(dataDir)
   const store = new HomelabInventoryStore({
@@ -21,7 +22,7 @@ async function createContext() {
   })
   await store.init()
   stores.push(store)
-  const service = new BackupService({ store, appVersion: '1.0.0' })
+  const service = new BackupService({ store, appVersion: '1.0.0', onRestoreApplied })
   await service.init()
   return { dataDir, service, store }
 }
@@ -53,10 +54,11 @@ describe('portable backup service', () => {
     const { service, store } = await createContext()
     const timestamp = new Date().toISOString()
     store.updateAuthentication((draft) => {
-      draft.accounts.push({ id: 1, username: 'owner', displayName: 'Owner', role: 'owner', active: true, createdAt: timestamp, updatedAt: timestamp })
+      draft.accounts.push(createOwnerAccount(1, 'owner', 'Owner'))
       draft.localCredentials.push({ id: 1, accountId: 1, passwordHash: '$argon2id$credential-hash-placeholder', createdAt: timestamp, updatedAt: timestamp })
       draft.nextAccountId = 2
       draft.nextLocalCredentialId = 2
+      ensureProtectedOwnerRole(draft, 1)
       draft.configuration.enabled = true
       draft.configuration.localEnabled = true
       draft.configuration.updatedAt = timestamp
@@ -128,8 +130,31 @@ describe('portable backup service', () => {
     }])
   })
 
+  it('notifies runtime services after applying restored authentication state', async () => {
+    const notifications = []
+    const { service, store } = await createContext({
+      onRestoreApplied: async (event) => notifications.push(event),
+    })
+    const created = await service.create({ sections: ['authentication'] })
+    store.updateAuthentication((draft) => {
+      draft.configuration.updatedAt = new Date().toISOString()
+    })
+    await store.flush(['authentication'])
+
+    const inspection = await service.inspect(created.archive)
+    await service.restore(inspection.token, ['authentication'])
+
+    expect(notifications).toEqual([{
+      sections: ['authentication'],
+      phase: 'restore',
+    }])
+  })
+
   it('rolls back selected stores when a restore fails after replacement', async () => {
-    const { service, store } = await createContext()
+    const notifications = []
+    const { service, store } = await createContext({
+      onRestoreApplied: async (event) => notifications.push(event),
+    })
     store.createInventoryItems({ type: 'cpu', name: 'Baseline CPU' })
     await store.flush()
     const created = await service.create({ sections: ['inventory'], label: 'Baseline' })
@@ -157,6 +182,9 @@ describe('portable backup service', () => {
       status: 'rolled-back',
       sections: ['inventory'],
     }])
+    expect(notifications).toHaveLength(1)
+    expect(notifications[0]).toMatchObject({ phase: 'rollback' })
+    expect(notifications[0].sections).toContain('authentication')
     await expect(service.journal.read()).resolves.toBeNull()
   })
 })

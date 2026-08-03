@@ -1,6 +1,4 @@
 import * as oidc from 'openid-client'
-import { createOwnerAccount } from './model.mjs'
-import { normalizeUsername } from './passwords.mjs'
 import { createOpaqueToken, hashOpaqueToken } from './tokens.mjs'
 
 export const OIDC_TRANSACTION_COOKIE = 'hli_oidc'
@@ -19,20 +17,17 @@ function safeReturnPath(value) {
   return path.startsWith('/') && !path.startsWith('//') ? path : '/'
 }
 
-function ownerIdentityFromClaims(claims) {
-  const displayName = String(claims.name || claims.preferred_username || claims.email || 'OIDC Owner')
-    .normalize('NFKC').trim().slice(0, 100) || 'OIDC Owner'
-  const source = String(claims.preferred_username || claims.email?.split('@')[0] || 'owner')
-    .normalize('NFKC').toLowerCase().replace(/[^a-z0-9._-]+/g, '-').replace(/^-+|-+$/g, '')
-  let username = source.length >= 3 ? source.slice(0, 64) : 'owner'
-  try { username = normalizeUsername(username) } catch { username = 'owner' }
-  return { username, displayName }
+function normalizeEmail(value) {
+  const email = String(value ?? '').normalize('NFKC').trim().toLowerCase()
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new Error('OIDC provider did not return a valid email address.')
+  return email
 }
 
 export class OidcService {
-  constructor({ store, authService, runtime, now = () => new Date(), client = oidc }) {
+  constructor({ store, authService, invitationService = null, runtime, now = () => new Date(), client = oidc }) {
     this.store = store
     this.authService = authService
+    this.invitations = invitationService
     this.runtime = runtime
     this.now = now
     this.client = client
@@ -72,18 +67,16 @@ export class OidcService {
     }
   }
 
-  async start({ returnTo = '/', bindAccountId = null } = {}) {
+  async start({ returnTo = '/', bindAccountId = null, invitationToken = null } = {}) {
     const settings = this.settings()
     const authentication = this.store.getAuthenticationState()
-    const activeOwner = authentication.accounts.find((account) => account.role === 'owner' && account.active)
-    const ownerIdentityBound = activeOwner
-      ? authentication.oidcIdentities.some((identity) => identity.accountId === activeOwner.id)
-      : false
-    if (!bindAccountId && activeOwner && !ownerIdentityBound) {
-      throw new Error('Sign in locally and link the identity provider before using OIDC login.')
-    }
-    if (bindAccountId && (!activeOwner || bindAccountId !== activeOwner.id)) {
-      throw new Error('OIDC can only be linked to the active owner account.')
+    if (bindAccountId && !authentication.accounts.some((account) => account.id === bindAccountId && account.active)) throw new Error('Account is unavailable.')
+    let invitationId = null
+    if (invitationToken) {
+      if (bindAccountId) throw new Error('An OIDC transaction cannot link an account and accept an invitation at the same time.')
+      const invitation = this.invitations?.inspect(invitationToken)
+      if (!invitation || invitation.identityType !== 'oidc') throw new Error('OIDC invitation is invalid.')
+      invitationId = invitation.id
     }
     const configuration = await this.configuration()
     const codeVerifier = this.client.randomPKCECodeVerifier()
@@ -99,6 +92,8 @@ export class OidcService {
       draft.oidcTransactions.push({
         id: draft.nextOidcTransactionId++,
         accountId: bindAccountId,
+        purpose: invitationId ? 'accept-invitation' : bindAccountId ? 'link-identity' : 'login',
+        invitationId,
         tokenHash: hash,
         state,
         nonce,
@@ -143,6 +138,15 @@ export class OidcService {
     const subject = String(claims.sub)
     const timestamp = this.now().toISOString()
     let accountId = transaction.accountId
+    const purpose = transaction.purpose ?? (transaction.accountId ? 'link-identity' : 'login')
+
+    if (purpose === 'accept-invitation') {
+      if (!this.invitations || !transaction.invitationId) throw new Error('OIDC invitation transaction is incomplete.')
+      accountId = await this.invitations.activateOidc(transaction.invitationId, transaction.id, claims, issuer, subject)
+      await this.authService.recordEvent('oidc-login-succeeded', { accountId, detail: issuer })
+      return { accountId, issuer, subject, returnTo: transaction.returnTo }
+    }
+
     await this.authService.persist((draft) => {
       const currentTransaction = draft.oidcTransactions.find((candidate) => candidate.id === transaction.id)
       if (!currentTransaction || currentTransaction.usedAt) throw new Error('OIDC login transaction was already used.')
@@ -151,33 +155,27 @@ export class OidcService {
       if (existingIdentity) {
         if (accountId && existingIdentity.accountId !== accountId) throw new Error('OIDC identity is already bound to another account.')
         accountId = existingIdentity.accountId
-        existingIdentity.email = typeof claims.email === 'string' ? claims.email : existingIdentity.email
+        existingIdentity.email = typeof claims.email === 'string' ? normalizeEmail(claims.email) : existingIdentity.email
         existingIdentity.displayName = typeof claims.name === 'string' ? claims.name : existingIdentity.displayName
         existingIdentity.lastLoginAt = timestamp
         return
       }
-      if (!accountId && draft.accounts.some((account) => account.role === 'owner' && account.active)) {
-        throw new Error('OIDC identity is not linked to the owner account.')
-      }
-      if (!accountId) {
-        const owner = draft.accounts.find((account) => account.role === 'owner' && account.active)
-        if (owner) accountId = owner.id
-        else {
-          const identity = ownerIdentityFromClaims(claims)
-          accountId = draft.nextAccountId++
-          const account = createOwnerAccount(accountId, identity.username, identity.displayName)
-          account.createdAt = timestamp
-          account.updatedAt = timestamp
-          draft.accounts.push(account)
-        }
-      }
+      if (purpose !== 'link-identity' || !accountId) throw new Error('OIDC identity is not linked to an invited account.')
+      if (claims.email_verified !== true) throw new Error('OIDC email must be verified before linking accounts.')
+      const email = normalizeEmail(claims.email)
+      const account = draft.accounts.find((candidate) => candidate.id === accountId && candidate.active)
+      if (!account) throw new Error('Account is unavailable.')
+      if (account.email && account.email !== email) throw new Error('OIDC email does not match the signed-in account.')
+      if (draft.accounts.some((candidate) => candidate.id !== account.id && candidate.email === email)) throw new Error('OIDC email belongs to another account.')
+      account.email = email
+      account.updatedAt = timestamp
       draft.oidcIdentities.push({
         id: draft.nextOidcIdentityId++, accountId, issuer, subject,
-        email: typeof claims.email === 'string' ? claims.email : null,
+        email,
         displayName: typeof claims.name === 'string' ? claims.name : null,
         createdAt: timestamp, lastLoginAt: timestamp,
       })
-    })
+    }, { rebuildAuthorization: false })
     await this.authService.recordEvent('oidc-login-succeeded', { accountId, detail: issuer })
     return { accountId, issuer, subject, returnTo: transaction.returnTo }
   }

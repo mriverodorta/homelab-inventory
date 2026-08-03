@@ -29,8 +29,8 @@ export const BACKUP_SECTIONS = Object.freeze({
     sensitive: true,
   },
   authentication: {
-    label: 'Owner authentication',
-    description: 'Owner account, password hash, OIDC bindings, sessions, and security history.',
+    label: 'Authentication and access',
+    description: 'User accounts, credentials, roles, invitations, sessions, and security history.',
     sensitive: true,
   },
   catalogState: {
