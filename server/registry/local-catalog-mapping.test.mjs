@@ -19,8 +19,9 @@ describe('local catalog equipment mapping', () => {
     })
   })
 
-  it('materializes desktop and server templates into the local server table', () => {
+  it('materializes desktop, workstation, and server templates into the local server table', () => {
     expect(localInventoryTypeForCatalogType('desktop')).toBe('server')
+    expect(localInventoryTypeForCatalogType('workstation')).toBe('server')
     expect(localInventoryTypeForCatalogType('server')).toBe('server')
     expect(materializeCatalogItem({ type: 'desktop', name: 'Mini PC' }, {
       usageRole: 'workstation',
@@ -34,6 +35,14 @@ describe('local catalog equipment mapping', () => {
       type: 'server',
       name: 'Rack server',
       hardwareClass: 'server',
+      usageRole: 'server',
+    })
+    expect(materializeCatalogItem({ type: 'workstation', name: 'Precision workstation' }, {
+      usageRole: 'server',
+    })).toEqual({
+      type: 'server',
+      name: 'Precision workstation',
+      hardwareClass: 'workstation',
       usageRole: 'server',
     })
   })

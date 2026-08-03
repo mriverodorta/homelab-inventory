@@ -22,6 +22,9 @@ const validStorageGroup: StorageSlotGroupDraft = {
   interfaces: ['NVMe'],
   formFactors: ['2280'],
   pcieGeneration: '4',
+  location: '',
+  backplane: '',
+  controllerSlotIds: '',
 }
 
 const validExpansionGroup: ExpansionSlotGroupDraft = {
@@ -39,6 +42,8 @@ const validExpansionGroup: ExpansionSlotGroupDraft = {
   maxPowerWatts: '75',
   proprietaryRiser: false,
   riserCapability: '',
+  requiredCpuSockets: '',
+  riserGroup: '',
 }
 
 describe('resource group validation targeting', () => {

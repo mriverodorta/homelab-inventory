@@ -1,3 +1,5 @@
+import fs from 'node:fs'
+import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 import {
   createInventoryFormValues,
@@ -23,6 +25,15 @@ import {
   withLegacyOption,
 } from '@/components/inventory-form/options'
 import type { InventoryItem, InventoryType } from '@/types/inventory'
+import type { CatalogTemplateItem } from '../../packages/catalog-protocol/src/types'
+
+function oemFixtureItems(fileName: string): CatalogTemplateItem[] {
+  const fixture = JSON.parse(fs.readFileSync(path.resolve(
+    'test/fixtures/catalog-import/oem',
+    fileName,
+  ), 'utf8')) as { platformCases: Array<{ item: CatalogTemplateItem }> }
+  return fixture.platformCases.map(({ item }) => item)
+}
 
 function fixtureFor(type: InventoryType): InventoryItem {
   const common = {
@@ -281,6 +292,32 @@ describe('inventory form model', () => {
     expect(values.storageSlotGroups[0]).toEqual(expect.objectContaining({ id: 11, key: 'm2-primary' }))
     expect(values.expansionSlotGroups[0]).toEqual(expect.objectContaining({ id: 12, key: 'pcie-main' }))
     expect(inventoryFormValuesToInput(values).compatibility).toEqual(item.compatibility)
+  })
+
+  it.each([
+    ['workstation v5', 'server-specs-inventory-workstation-v5.json'],
+    ['conventional server v6', 'server-specs-inventory-server-v6.json'],
+  ])('round trips every %s OEM field through the add/edit form model', (_label, fileName) => {
+    for (const [index, catalogItem] of oemFixtureItems(fileName).entries()) {
+      const localItem = {
+        ...structuredClone(catalogItem),
+        id: index + 1,
+        type: 'server',
+        hardwareClass: catalogItem.type,
+        usageRole: 'server',
+      } as InventoryItem
+      const output = inventoryFormValuesToInput(inventoryItemToFormValues(localItem))
+
+      expect(output.name).toBe(catalogItem.name)
+      expect(output.manufacturer).toBe(catalogItem.manufacturer)
+      expect(output.family).toBe(catalogItem.family)
+      expect(output.model).toBe(catalogItem.model)
+      expect(output.specs).toEqual(catalogItem.specs)
+      expect(output.ports).toEqual(catalogItem.ports)
+      expect(output.compatibility).toEqual(catalogItem.compatibility)
+      expect(output.hardwareClass).toBe(catalogItem.type)
+      expect(output.usageRole).toBe('server')
+    }
   })
 
   it('round trips CPU and expansion requirements and omits cleared values', () => {

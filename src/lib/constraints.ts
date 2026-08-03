@@ -3,6 +3,7 @@ import { isAssignableComponentType } from '@/lib/inventory-capabilities'
 import type { ProjectCompatibilityResult } from '@/lib/compatibility'
 import { nextNumericId } from '@/lib/ids'
 import { isArchivedItem, touchProject } from '@/lib/project'
+import { hostCpuSocketCount } from '@/components/cpu-slot-model'
 import {
   allocatePcBuildAssignment,
   canRemovePcBuildAssignment,
@@ -47,7 +48,7 @@ export const SLOT_LABELS: Record<ComponentType, string> = {
   powerAdapter: 'Power Adapter',
 }
 
-const SINGLE_ITEM_TYPES = new Set<ComponentType>(['cpu', 'gpu', 'network'])
+const SINGLE_ITEM_TYPES = new Set<ComponentType>(['gpu', 'network'])
 const SERVER_COMPONENT_TYPES = new Set<ComponentType>([
   'cpu', 'ram', 'storage', 'gpu', 'network', 'powerAdapter',
 ])
@@ -297,6 +298,16 @@ function validateAssignmentBasics(
       item as InventoryItem & { type: ComponentType },
     )
     if (limitMessage) return { ok: false, message: limitMessage }
+  } else if (item.type === 'cpu') {
+    const assignedCpuCount = project.assignments.filter(
+      (assignment) => assignment.serverId === serverId && assignment.type === 'cpu',
+    ).length
+    if (assignedCpuCount >= hostCpuSocketCount(host)) {
+      return {
+        ok: false,
+        message: `This ${host.type === 'nas' ? 'NAS' : 'server'} has no available CPU sockets.`,
+      }
+    }
   } else if (SINGLE_ITEM_TYPES.has(item.type)) {
     const existing = project.assignments.find(
       (assignment) => assignment.serverId === serverId && assignment.type === item.type,
@@ -468,7 +479,11 @@ export function getSlotStatus(project: ProjectState, serverId: string): SlotStat
       type,
       label: SLOT_LABELS[type],
       filled,
-      limit: type === 'storage' || type === 'ram' ? null : 1,
+      limit: type === 'storage' || type === 'ram'
+        ? null
+        : type === 'cpu'
+          ? hostCpuSocketCount(project.items[serverId])
+          : 1,
     }
   })
 }

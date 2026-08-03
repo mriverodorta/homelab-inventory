@@ -6,6 +6,23 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 
 ## Unreleased
 
+## [0.8.1] - 2026-08-03
+
+### Added
+
+- Added first-class OEM workstation contract v5 and conventional-server contract v6 support, including Compact, SFF, Tower, Rack Workstation, MicroServer, Tower Server, and Rack Server physical classes while keeping local usage roles independent.
+- Added complete host-topology editing, inspection, auditing, compatibility, canvas, and catalog-import support for multi-socket CPUs, per-CPU memory layouts, ECC and module types, storage backplanes and controllers, hot-swap and direct-connect bays, risers and CPU-dependent expansion, boot devices, PSU redundancy, cooling profiles, and management controllers.
+- Multi-socket hosts now expose one assignable CPU position per physical socket on the canvas and enforce the declared population and CPU-dependency rules.
+
+### Changed
+
+- OEM registry matching now prioritizes an existing link, then motherboard or complete topology evidence, then a unique high-confidence normalized identity. Systems with the same model name are never merged by model alone.
+- Homelab Inventory now reports OEM contract version 6 and accepts signed catalog fingerprints through v6 while explicitly rejecting newer unsupported contracts.
+
+### Data migration
+
+- Schema 24 creates and verifies a pre-migration backup before initializing the new topology collections and numeric relational IDs. The ordered migration preserves unknown registry fields, existing assignments, placements, cables, hardware classes, and usage roles, and rolls back from the verified backup if validation fails.
+
 ## [0.8.0] - 2026-08-03
 
 ### Added

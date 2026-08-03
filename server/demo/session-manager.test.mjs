@@ -330,7 +330,10 @@ describe('demo data sanitizer', () => {
       }),
     ]))
     expect(project.assignments.find((assignment) => assignment.id === 2).allocation).toBeUndefined()
-    expect(project.assignments.find((assignment) => assignment.id === 3).allocation).toBeUndefined()
+    expect(project.assignments.find((assignment) => assignment.id === 3).allocation).toEqual({
+      resourceType: 'cpu',
+      positions: [0],
+    })
   })
 })
 

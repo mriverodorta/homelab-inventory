@@ -10,6 +10,25 @@ async function fixture() {
   ))
 }
 
+async function versionedFixture(name) {
+  return JSON.parse(await fs.readFile(
+    path.resolve(`test/fixtures/catalog-import/oem/${name}`),
+    'utf8',
+  ))
+}
+
+function publishedCandidate(testCase) {
+  return {
+    templateKey: testCase.templateKey,
+    fingerprintVersion: testCase.fingerprintVersion,
+    productFamily: testCase.productFamily,
+    variantEvidence: testCase.variantEvidence,
+    contentHash: testCase.expectedContentHash,
+    state: 'published',
+    revision: 1,
+  }
+}
+
 describe('OEM variant matcher', () => {
   it('uses authoritative evidence and refuses ambiguous family-only matches', async () => {
     const contract = await fixture()
@@ -84,5 +103,56 @@ describe('OEM variant matcher', () => {
     ])
 
     expect(result).toMatchObject({ outcome: 'match', match: { revision: 2 } })
+  })
+
+  it('matches workstation v5 variants by topology and never by a duplicated model alone', async () => {
+    const contract = await versionedFixture('server-specs-inventory-workstation-v5.json')
+    const family = contract.platformCases.filter(
+      (entry) => entry.item.model === 'P3 Ultra SFF Gen 2',
+    )
+    const candidates = family.map(publishedCandidate)
+    const expected = family.find((entry) => entry.caseId === 'lenovo-compact-riser-three-slot')
+
+    expect(matchOemVariant({
+      fingerprintVersion: 5,
+      productFamily: expected.productFamily,
+      variantEvidence: expected.variantEvidence,
+    }, candidates)).toMatchObject({
+      outcome: 'match',
+      reason: 'variant',
+      match: { templateKey: expected.templateKey },
+    })
+
+    expect(matchOemVariant({
+      fingerprintVersion: 5,
+      productFamily: expected.productFamily,
+      variantEvidence: { source: 'normalized', completeness: 'partial', label: 'unknown' },
+    }, candidates)).toMatchObject({ outcome: 'ambiguous' })
+  })
+
+  it('matches conventional-server v6 variants by topology and never by a duplicated model alone', async () => {
+    const contract = await versionedFixture('server-specs-inventory-server-v6.json')
+    const family = contract.platformCases.filter((entry) => entry.item.model === 'R740')
+    const candidates = family.map(publishedCandidate)
+    const expected = family.find((entry) => entry.caseId === 'dell-poweredge-r740-16-sff-nvme')
+
+    expect(matchOemVariant({
+      fingerprintVersion: 6,
+      productFamily: expected.productFamily,
+      variantEvidence: {
+        ...expected.variantEvidence,
+        variantKey: undefined,
+      },
+    }, candidates)).toMatchObject({
+      outcome: 'match',
+      reason: 'topology',
+      match: { templateKey: expected.templateKey },
+    })
+
+    expect(matchOemVariant({
+      fingerprintVersion: 6,
+      productFamily: expected.productFamily,
+      variantEvidence: { source: 'normalized', completeness: 'partial', label: 'unknown' },
+    }, candidates)).toMatchObject({ outcome: 'ambiguous' })
   })
 })

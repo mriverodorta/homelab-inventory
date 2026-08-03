@@ -8,6 +8,16 @@ import { catalogVariantLabel } from '@/components/inventory/catalog-variant'
 import type { EquipmentUsageRole } from '@/types/inventory'
 import type { CatalogSearchItem } from '@/types/registry'
 
+function groupCount(groups: Array<{ count: number }> | undefined): number {
+  return (groups ?? []).reduce((total, group) => total + Math.max(0, group.count), 0)
+}
+
+function formatSpecValue(value: unknown): string {
+  if (Array.isArray(value)) return value.join(', ')
+  if (value && typeof value === 'object') return JSON.stringify(value)
+  return String(value)
+}
+
 export function CatalogItemDetail({
   template,
   pending,
@@ -22,6 +32,19 @@ export function CatalogItemDetail({
   const [error, setError] = useState<string | null>(null)
   const specs = Object.entries(template.item.specs ?? {})
   const variantLabel = catalogVariantLabel(template.variantEvidence)
+  const host = template.item.compatibility?.host
+  const topologyFacts = host ? [
+    host.cpu?.socketCount ? `${host.cpu.socketCount} CPU socket${host.cpu.socketCount === 1 ? '' : 's'}` : null,
+    host.memory?.slots ? `${host.memory.slots} memory slots${host.memory.slotsPerCpu ? ` (${host.memory.slotsPerCpu}/CPU)` : ''}` : null,
+    groupCount(host.storageSlots) ? `${groupCount(host.storageSlots)} storage bays` : null,
+    groupCount(host.expansionSlots) ? `${groupCount(host.expansionSlots)} expansion slots` : null,
+    groupCount(host.controllerSlots) ? `${groupCount(host.controllerSlots)} controller slots` : null,
+    groupCount(host.bootDeviceSlots) ? `${groupCount(host.bootDeviceSlots)} boot-device slots` : null,
+    host.power?.psuBayCount ? `${host.power.psuBayCount} PSU bays` : null,
+    host.management?.controllerFamily
+      ? [host.management.controllerFamily, host.management.controllerGeneration].filter(Boolean).join(' ')
+      : null,
+  ].filter((value): value is string => Boolean(value)) : []
 
   useEffect(() => {
     setUsageRole('server')
@@ -66,11 +89,24 @@ export function CatalogItemDetail({
         </div>
       ) : null}
 
+      {topologyFacts.length > 0 ? (
+        <div className="mt-4 border-y border-[#e5dccf] py-3">
+          <div className="text-[10px] font-black uppercase text-[#6f665c]">Material topology</div>
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            {topologyFacts.map((fact) => (
+              <span key={fact} className="rounded border border-[#ded8ce] bg-[#fffdf8] px-2 py-1 text-xs font-bold text-[#514940]">
+                {fact}
+              </span>
+            ))}
+          </div>
+        </div>
+      ) : null}
+
       <div className="mt-5 grid gap-px overflow-hidden rounded-md border border-[#ded8ce] bg-[#ded8ce] sm:grid-cols-2">
         {specs.length > 0 ? specs.slice(0, 12).map(([label, value]) => (
           <div key={label} className="bg-[#fffdf8] px-3 py-2.5">
             <div className="text-[10px] font-black uppercase text-[#8a8177]">{label}</div>
-            <div className="mt-0.5 break-words text-sm font-bold text-[#302b26]">{String(value)}</div>
+            <div className="mt-0.5 break-words text-sm font-bold text-[#302b26]">{formatSpecValue(value)}</div>
           </div>
         )) : (
           <div className="bg-[#fffdf8] px-3 py-4 text-sm text-[#746b60] sm:col-span-2">No additional specifications are published for this item.</div>
@@ -81,7 +117,7 @@ export function CatalogItemDetail({
         This creates independent local inventory records linked to this verified revision. It does not place or assign anything on the canvas.
       </div>
       <div className="mt-4 flex flex-wrap items-end gap-2">
-        {template.type === 'desktop' || template.type === 'server' ? (
+        {template.type === 'desktop' || template.type === 'workstation' || template.type === 'server' ? (
           <label className="min-w-40 flex-1 text-xs font-black uppercase text-[#6f665c]">
             Used as
             <Select value={usageRole} onValueChange={(value) => setUsageRole(value as EquipmentUsageRole)}>

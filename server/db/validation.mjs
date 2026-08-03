@@ -63,11 +63,35 @@ const compatibilityResourceTypes = new Set([
   'cooling',
   'power',
   'case',
+  'optionalModule',
+  'controllerSlot',
+  'bootDeviceSlot',
+  'coolingProfile',
 ])
 const logicalCompatibilityResourceTypes = new Set(['motherboard', 'power', 'case'])
-const groupedCompatibilityResourceTypes = new Set(['storage', 'expansion'])
+const groupedCompatibilityResourceTypes = new Set([
+  'storage',
+  'expansion',
+  'optionalModule',
+  'controllerSlot',
+  'bootDeviceSlot',
+  'coolingProfile',
+])
 const expansionInterfaceFamilies = new Set(['pcie', 'm2-ae', 'usb', 'onboard'])
 const cardHeights = new Set(['full-height', 'low-profile'])
+const eccSupportValues = new Set(['supported', 'unsupported', 'conditional', 'unknown'])
+const memoryModuleTypes = new Set(['SODIMM', 'UDIMM', 'RDIMM', 'LRDIMM'])
+const powerRedundancyValues = new Set(['none', 'optional', 'required', 'supported'])
+const psuTypes = new Set(['fixed', 'cabled', 'hot-plug'])
+const constraintKinds = new Set(['mutually-exclusive'])
+const constraintResourceCollections = new Map([
+  ['storage-slot', 'storageSlots'],
+  ['expansion-slot', 'expansionSlots'],
+  ['optional-module-slot', 'optionalModuleSlots'],
+  ['controller-slot', 'controllerSlots'],
+  ['boot-device-slot', 'bootDeviceSlots'],
+  ['cooling-profile', 'coolingProfiles'],
+])
 const canonicalPowerItemTypes = new Set([
   'monitor',
   'ups',
@@ -186,6 +210,33 @@ function assertOptionalPositiveInteger(value, fieldPath) {
   }
 }
 
+function assertOptionalBoolean(value, fieldPath) {
+  if (value === undefined) return
+  if (typeof value !== 'boolean') throw new Error(`${fieldPath} must be a boolean.`)
+}
+
+function assertOptionalPositiveIntegerArray(value, fieldPath) {
+  if (value === undefined) return
+  if (!Array.isArray(value)) throw new Error(`${fieldPath} must be an array.`)
+  const seen = new Set()
+  value.forEach((entry, index) => {
+    const id = assertRelationalId(entry, `${fieldPath}[${index}]`)
+    if (seen.has(id)) throw new Error(`${fieldPath}[${index}] must be unique.`)
+    seen.add(id)
+  })
+}
+
+function assertOptionalEnumArray(value, allowed, fieldPath) {
+  if (value === undefined) return
+  if (!Array.isArray(value)) throw new Error(`${fieldPath} must be an array.`)
+  const seen = new Set()
+  value.forEach((entry, index) => {
+    assertOptionalEnum(entry, allowed, `${fieldPath}[${index}]`)
+    if (seen.has(entry)) throw new Error(`${fieldPath}[${index}] must be unique.`)
+    seen.add(entry)
+  })
+}
+
 function assertCompatibilityGroupIds(groups, fieldPath, options = {}) {
   const ids = new Set()
   const keys = new Set()
@@ -227,6 +278,11 @@ function assertStorageSlots(value, fieldPath, options = {}) {
     assertOptionalStringArray(group.interfaces, `${path}.interfaces`)
     assertOptionalStringArray(group.formFactors, `${path}.formFactors`)
     assertOptionalPositiveNumber(group.pcieGeneration, `${path}.pcieGeneration`)
+    assertOptionalString(group.location, `${path}.location`)
+    assertOptionalBoolean(group.hotSwap, `${path}.hotSwap`)
+    assertOptionalString(group.backplane, `${path}.backplane`)
+    assertOptionalPositiveIntegerArray(group.controllerSlotIds, `${path}.controllerSlotIds`)
+    assertOptionalBoolean(group.directConnect, `${path}.directConnect`)
   })
   assertCompatibilityGroupIds(value, fieldPath, options)
 }
@@ -264,8 +320,105 @@ function assertExpansionSlots(value, fieldPath, options = {}) {
     }
     assertOptionalPositiveInteger(group.maxSlotWidth, `${path}.maxSlotWidth`)
     assertOptionalNonNegativeNumber(group.maxPowerWatts, `${path}.maxPowerWatts`)
+    assertOptionalBoolean(group.proprietaryRiser, `${path}.proprietaryRiser`)
+    assertOptionalString(group.riserCapability, `${path}.riserCapability`)
+    assertOptionalPositiveInteger(group.requiredCpuSockets, `${path}.requiredCpuSockets`)
+    assertOptionalString(group.riserGroup, `${path}.riserGroup`)
   })
   assertCompatibilityGroupIds(value, fieldPath, options)
+}
+
+function assertCountedResourceGroups(value, fieldPath, options, validateGroup) {
+  if (value === undefined) return
+  if (!Array.isArray(value)) throw new Error(`${fieldPath} must be an array.`)
+  value.forEach((group, index) => {
+    const path = `${fieldPath}[${index}]`
+    assertOptionalObject(group, path)
+    if (options.allowLegacyIds) {
+      assertLegacyCompatibilityGroupId(group.id, `${path}.id`)
+      if (group.key !== undefined) assertRequiredString(group.key, `${path}.key`)
+    } else {
+      assertRelationalId(group.id, `${path}.id`)
+      assertRequiredString(group.key, `${path}.key`)
+    }
+    assertRequiredString(group.label, `${path}.label`)
+    if (!Number.isInteger(group.count) || group.count < 1) {
+      throw new Error(`${path}.count must be a positive integer.`)
+    }
+    validateGroup?.(group, path)
+  })
+  assertCompatibilityGroupIds(value, fieldPath, options)
+}
+
+function assertConstraintGroups(value, fieldPath, options = {}) {
+  if (value === undefined) return
+  if (!Array.isArray(value)) throw new Error(`${fieldPath} must be an array.`)
+  value.forEach((group, index) => {
+    const path = `${fieldPath}[${index}]`
+    assertOptionalObject(group, path)
+    if (options.allowLegacyIds) {
+      assertLegacyCompatibilityGroupId(group.id, `${path}.id`)
+      if (group.key !== undefined) assertRequiredString(group.key, `${path}.key`)
+    } else {
+      assertRelationalId(group.id, `${path}.id`)
+      assertRequiredString(group.key, `${path}.key`)
+    }
+    assertRequiredString(group.label, `${path}.label`)
+    if (!constraintKinds.has(group.kind)) {
+      throw new Error(`${path}.kind has an unsupported value.`)
+    }
+    if (!Array.isArray(group.members) || group.members.length < 2) {
+      throw new Error(`${path}.members must contain at least two resources.`)
+    }
+    group.members.forEach((member, memberIndex) => {
+      const memberPath = `${path}.members[${memberIndex}]`
+      assertOptionalObject(member, memberPath)
+      if (!constraintResourceCollections.has(member.resourceType)) {
+        throw new Error(`${memberPath}.resourceType has an unsupported value.`)
+      }
+      assertRelationalId(member.resourceId, `${memberPath}.resourceId`)
+    })
+  })
+  assertCompatibilityGroupIds(value, fieldPath, options)
+}
+
+function assertHostTopologyReferences(host, root, options) {
+  if (options.allowLegacyIds) return
+  const resources = new Map()
+  for (const collection of constraintResourceCollections.values()) {
+    resources.set(collection, new Set((host[collection] ?? []).map((group) => group.id)))
+  }
+
+  for (const [index, group] of (host.storageSlots ?? []).entries()) {
+    for (const controllerId of group.controllerSlotIds ?? []) {
+      if (!resources.get('controllerSlots').has(controllerId)) {
+        throw new Error(`${root}.storageSlots[${index}].controllerSlotIds references missing controller slot ${controllerId}.`)
+      }
+    }
+  }
+  for (const [index, group] of (host.bootDeviceSlots ?? []).entries()) {
+    if (group.controllerSlotId !== undefined && !resources.get('controllerSlots').has(group.controllerSlotId)) {
+      throw new Error(`${root}.bootDeviceSlots[${index}].controllerSlotId references missing controller slot ${group.controllerSlotId}.`)
+    }
+  }
+
+  const socketCount = host.cpu?.socketCount
+  for (const collection of ['expansionSlots', 'controllerSlots', 'bootDeviceSlots']) {
+    for (const [index, group] of (host[collection] ?? []).entries()) {
+      if (socketCount !== undefined && group.requiredCpuSockets > socketCount) {
+        throw new Error(`${root}.${collection}[${index}].requiredCpuSockets exceeds the CPU socket count.`)
+      }
+    }
+  }
+
+  for (const [groupIndex, group] of (host.constraintGroups ?? []).entries()) {
+    for (const [memberIndex, member] of group.members.entries()) {
+      const collection = constraintResourceCollections.get(member.resourceType)
+      if (!collection || !resources.get(collection).has(member.resourceId)) {
+        throw new Error(`${root}.constraintGroups[${groupIndex}].members[${memberIndex}] references a missing resource.`)
+      }
+    }
+  }
 }
 
 function assertInventoryCompatibility(itemId, compatibility, options = {}) {
@@ -282,6 +435,15 @@ function assertInventoryCompatibility(itemId, compatibility, options = {}) {
       assertOptionalStringArray(host.cpu.sockets, `${root}.host.cpu.sockets`)
       assertOptionalStringArray(host.cpu.generations, `${root}.host.cpu.generations`)
       assertOptionalNonNegativeNumber(host.cpu.maxTdpWatts, `${root}.host.cpu.maxTdpWatts`)
+      assertOptionalPositiveInteger(host.cpu.socketCount, `${root}.host.cpu.socketCount`)
+      assertOptionalPositiveIntegerArray(host.cpu.populationModes, `${root}.host.cpu.populationModes`)
+      if (host.cpu.socketCount !== undefined) {
+        for (const mode of host.cpu.populationModes ?? []) {
+          if (mode > host.cpu.socketCount) {
+            throw new Error(`${root}.host.cpu.populationModes cannot exceed socketCount.`)
+          }
+        }
+      }
     }
     if (host.memory !== undefined) {
       assertOptionalObject(host.memory, `${root}.host.memory`)
@@ -293,13 +455,77 @@ function assertInventoryCompatibility(itemId, compatibility, options = {}) {
         `${root}.host.memory.maxModuleCapacityGb`,
       )
       assertOptionalNonNegativeNumber(host.memory.maxSpeedMt, `${root}.host.memory.maxSpeedMt`)
+      assertOptionalEnum(host.memory.eccSupport, eccSupportValues, `${root}.host.memory.eccSupport`)
+      assertOptionalPositiveInteger(host.memory.slotsPerCpu, `${root}.host.memory.slotsPerCpu`)
+      assertOptionalEnumArray(host.memory.moduleTypes, memoryModuleTypes, `${root}.host.memory.moduleTypes`)
     }
     assertStorageSlots(host.storageSlots, `${root}.host.storageSlots`, options)
     assertExpansionSlots(host.expansionSlots, `${root}.host.expansionSlots`, options)
+    assertCountedResourceGroups(
+      host.optionalModuleSlots,
+      `${root}.host.optionalModuleSlots`,
+      options,
+      (group, path) => assertOptionalStringArray(group.acceptedModuleKinds, `${path}.acceptedModuleKinds`),
+    )
+    assertCountedResourceGroups(
+      host.controllerSlots,
+      `${root}.host.controllerSlots`,
+      options,
+      (group, path) => {
+        assertOptionalStringArray(group.acceptedControllerKinds, `${path}.acceptedControllerKinds`)
+        assertOptionalString(group.interfaceFamily, `${path}.interfaceFamily`)
+        assertOptionalBoolean(group.dedicated, `${path}.dedicated`)
+        assertOptionalPositiveInteger(group.requiredCpuSockets, `${path}.requiredCpuSockets`)
+      },
+    )
+    assertCountedResourceGroups(
+      host.bootDeviceSlots,
+      `${root}.host.bootDeviceSlots`,
+      options,
+      (group, path) => {
+        assertOptionalStringArray(group.acceptedDeviceKinds, `${path}.acceptedDeviceKinds`)
+        assertOptionalStringArray(group.interfaces, `${path}.interfaces`)
+        assertOptionalStringArray(group.formFactors, `${path}.formFactors`)
+        if (group.controllerSlotId !== undefined) assertRelationalId(group.controllerSlotId, `${path}.controllerSlotId`)
+        assertOptionalPositiveInteger(group.requiredCpuSockets, `${path}.requiredCpuSockets`)
+      },
+    )
+    assertCountedResourceGroups(
+      host.coolingProfiles,
+      `${root}.host.coolingProfiles`,
+      options,
+      (group, path) => {
+        assertOptionalNonNegativeNumber(group.fanCount, `${path}.fanCount`)
+        assertOptionalBoolean(group.redundant, `${path}.redundant`)
+        assertOptionalStringArray(group.conditions, `${path}.conditions`)
+      },
+    )
+    if (host.management !== undefined) {
+      const path = `${root}.host.management`
+      assertOptionalObject(host.management, path)
+      assertOptionalString(host.management.controllerFamily, `${path}.controllerFamily`)
+      assertOptionalString(host.management.controllerGeneration, `${path}.controllerGeneration`)
+      assertOptionalBoolean(host.management.dedicatedPort, `${path}.dedicatedPort`)
+      assertOptionalBoolean(host.management.sharedNic, `${path}.sharedNic`)
+      assertOptionalString(host.management.portType, `${path}.portType`)
+      assertOptionalString(host.management.speed, `${path}.speed`)
+    }
+    assertConstraintGroups(host.constraintGroups, `${root}.host.constraintGroups`, options)
+    if (host.power !== undefined) {
+      const path = `${root}.host.power`
+      assertOptionalObject(host.power, path)
+      assertOptionalEnum(host.power.redundancy, powerRedundancyValues, `${path}.redundancy`)
+      assertOptionalNonNegativeNumber(host.power.maxGraphicsPowerWatts, `${path}.maxGraphicsPowerWatts`)
+      assertOptionalPositiveInteger(host.power.psuBayCount, `${path}.psuBayCount`)
+      assertOptionalEnum(host.power.psuType, psuTypes, `${path}.psuType`)
+      assertOptionalBoolean(host.power.mixedPsuAllowed, `${path}.mixedPsuAllowed`)
+      assertOptionalStringArray(host.power.redundancyModes, `${path}.redundancyModes`)
+    }
     assertOptionalNonNegativeNumber(
       host.maxExpansionPowerWatts,
       `${root}.host.maxExpansionPowerWatts`,
     )
+    assertHostTopologyReferences(host, `${root}.host`, options)
   }
 
   if (compatibility.requirements !== undefined) {
@@ -500,7 +726,7 @@ function assertInventoryItem(itemId, item, expectedType, options = {}) {
   }
 
   if (!options.allowLegacyIds && type === 'server') {
-    if (!new Set(['desktop', 'server']).has(item.hardwareClass)) {
+    if (!new Set(['desktop', 'workstation', 'server']).has(item.hardwareClass)) {
       throw new Error(`Inventory item ${itemId} must declare a valid hardware class.`)
     }
     if (!new Set(['server', 'desktop', 'workstation', 'other']).has(item.usageRole)) {

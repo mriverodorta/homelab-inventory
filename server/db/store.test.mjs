@@ -1086,6 +1086,18 @@ describe('HomelabInventoryStore', () => {
         {
           id: 1,
           name: 'Server',
+          compatibility: {
+            host: {
+              bootDeviceSlots: [],
+              constraintGroups: [],
+              controllerSlots: [],
+              coolingProfiles: [],
+              expansionSlots: [],
+              fixedPorts: [],
+              optionalModuleSlots: [],
+              storageSlots: [],
+            },
+          },
         },
       ],
     }))
@@ -1231,7 +1243,7 @@ describe('HomelabInventoryStore', () => {
     expect(unknown.findings).toEqual(expect.arrayContaining([
       expect.objectContaining({ code: 'compatibility.data.missing', severity: 'unknown' }),
     ]))
-    expect(unknown.allocation).toBeUndefined()
+    expect(unknown.allocation).toEqual({ resourceType: 'cpu', positions: [0] })
     expect(negotiated).toMatchObject({
       status: 'compatible',
       allocation: { resourceType: 'expansion', groupId: 1, positions: [0] },
@@ -2024,7 +2036,7 @@ describe('HomelabInventoryStore', () => {
       }),
       expect.not.objectContaining({ allocation: expect.anything() }),
     ])
-    const expectedInventory = schema9Inventory(beforeInventory)
+    const expectedInventory = schema9Inventory(structuredClone(beforeInventory))
     for (const item of [...expectedInventory.servers, ...expectedInventory.switches]) {
       for (const port of item.ports ?? []) port.origin = 'fixed'
     }
@@ -2036,13 +2048,35 @@ describe('HomelabInventoryStore', () => {
       interfaces: ['NVMe'],
       formFactors: ['2280'],
     }
+    Object.assign(expectedInventory.servers[0].compatibility.host, {
+      bootDeviceSlots: [],
+      constraintGroups: [],
+      controllerSlots: [],
+      coolingProfiles: [],
+      expansionSlots: [],
+      fixedPorts: [],
+      optionalModuleSlots: [],
+    })
     expect(store.databases.inventory.data).toEqual(expectedInventory)
     expect(store.databases.project.data.placements).toEqual(beforeProject.placements)
     expect(store.databases.project.data.connections).toEqual(beforeProject.connections)
     const backupEntries = await fs.readdir(path.join(dataDir, 'backups'), { withFileTypes: true })
-    expect(backupEntries.some(
+    const migrationBackup = backupEntries.find(
       (entry) => entry.isDirectory() && entry.name.endsWith(`-schema-6-to-${CURRENT_SCHEMA_VERSION}`),
-    )).toBe(true)
+    )
+    expect(migrationBackup).toBeDefined()
+    expect(JSON.parse(await fs.readFile(
+      path.join(dataDir, 'backups', migrationBackup.name, 'inventory.json'),
+      'utf8',
+    ))).toEqual(beforeInventory)
+    expect(JSON.parse(await fs.readFile(
+      path.join(dataDir, 'backups', migrationBackup.name, 'project.json'),
+      'utf8',
+    ))).toEqual(beforeProject)
+    expect(JSON.parse(await fs.readFile(
+      path.join(dataDir, 'backups', migrationBackup.name, 'stores', 'inventory.json'),
+      'utf8',
+    ))).toEqual(beforeInventory)
   })
 
   it('enforces only new assignment transitions and keeps rejected saves byte-for-byte atomic', async () => {

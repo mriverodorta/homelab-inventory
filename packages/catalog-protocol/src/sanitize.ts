@@ -38,6 +38,7 @@ const SAFE_SPEC_FIELDS = new Set([
   'threads', 'vramGb', 'wattage', 'wattageWatts', 'wifiGeneration', 'wireless', 'allowOutletFanOut',
   'ecc', 'rank', 'hardwareRevision', 'boardRevision', 'partNumber', 'region',
   'topologyCompleteness', 'topologyComplete', 'variantKey',
+  'oemGeneration',
   'cacheMb', 'memoryTypes', 'memorySpeedsMt', 'eccSupport', 'integratedGraphics',
   'pcieGeneration', 'pcieLanes', 'maxTemperatureC', 'launchDate', 'discontinued',
   'performanceCores', 'efficiencyCores', 'configurableTdpMinWatts', 'configurableTdpMaxWatts',
@@ -55,6 +56,14 @@ const SAFE_COMPATIBILITY_FIELDS = new Set([
   'topologyCompleteness', 'topologyComplete', 'proprietaryRiser', 'riserCapability', 'variantKey',
   'optionalModuleSlots', 'acceptedModuleKinds', 'configuration', 'supportedWattagesWatts',
   'connector', 'eccSupport', 'adapterRequired', 'adapterType', 'fixedPorts', 'origin',
+  'socketCount', 'moduleTypes', 'location', 'hotSwap', 'backplane', 'redundancy',
+  'maxGraphicsPowerWatts', 'constraintGroups', 'kind', 'members', 'resourceType', 'resourceId',
+  'populationModes', 'slotsPerCpu', 'controllerSlotIds', 'directConnect', 'requiredCpuSockets',
+  'riserGroup', 'controllerSlots', 'acceptedControllerKinds', 'dedicated', 'bootDeviceSlots',
+  'acceptedDeviceKinds', 'controllerSlotId', 'psuBayCount', 'psuType', 'mixedPsuAllowed',
+  'redundancyModes', 'coolingProfiles', 'fanCount', 'redundant', 'conditions', 'management',
+  'controllerFamily', 'controllerGeneration', 'dedicatedPort', 'sharedNic', 'portType',
+  'speed',
 ])
 
 function looksSensitive(value: string): boolean {
@@ -87,7 +96,7 @@ function sanitizeJson(value: unknown, depth = 0): JsonValue | undefined {
   if (typeof value === 'string') return nonEmptyString(value)
   if (Array.isArray(value)) {
     const output = value.slice(0, MAX_ARRAY_LENGTH).map((entry) => sanitizeJson(entry, depth + 1)).filter((entry): entry is JsonValue => entry !== undefined)
-    return output.length > 0 ? output : undefined
+    return output
   }
   if (value && typeof value === 'object') {
     const output: Record<string, JsonValue> = {}

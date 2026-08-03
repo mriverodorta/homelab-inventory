@@ -6,6 +6,8 @@ import { AssignedPowerAdapterRow } from '@/components/assigned-power-adapter-row
 import { RegistryLinkIndicator } from '@/components/registry-link-indicator'
 import { MemorySlotGrid } from '@/components/memory-slot-grid'
 import { hostMemorySlotCount } from '@/components/memory-slot-model'
+import { CpuSlotGrid } from '@/components/cpu-slot-grid'
+import { hostCpuSocketCount } from '@/components/cpu-slot-model'
 import { Button } from '@/components/ui/button'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { getVisibleServerSlotTypes, SLOT_LABELS, sortAssignmentsForDisplay } from '@/lib/constraints'
@@ -19,7 +21,7 @@ import {
 } from '@/lib/canvas-project-index'
 import { getCanvasAssignmentTone } from '@/lib/canvas-quality'
 import { runtimeItemKey } from '@/lib/item-keys'
-import { equipmentUsageRoleLabel } from '@/lib/equipment-classification'
+import { equipmentUsageRoleLabel, hardwareClassLabel } from '@/lib/equipment-classification'
 import { EMPTY_REGISTRY_LINK_KEYS } from '@/lib/registry-links'
 import { useTapSelection } from '@/lib/tap-selection'
 import {
@@ -748,7 +750,9 @@ export function ServerNode({ data }: NodeProps<ServerFlowNode>) {
     return null
   }
 
-  const serverDisplayName = server.properties?.displayName?.trim() || equipmentUsageRoleLabel(server.usageRole)
+  const serverDisplayName = server.properties?.displayName?.trim()
+  const usageRoleLabel = equipmentUsageRoleLabel(server.usageRole)
+  const physicalClassLabel = hardwareClassLabel(server.hardwareClass)
   const serverAgentStatus = getServerAgentStatus(agentStatus, server.id)
   const auditCount = canvasAuditWarningCount(canvasIndex, serverRuntimeKey)
   const focused = focusedItemIds.includes(serverRuntimeKey)
@@ -781,8 +785,14 @@ export function ServerNode({ data }: NodeProps<ServerFlowNode>) {
         <Grip className="size-4 text-[#cfc6b8]" />
         <div className="min-w-0 flex-1">
           <div className="truncate text-sm font-bold">{server.name}</div>
-          <div className="truncate text-[11px] text-[#cfc6b8]">
-            {serverDisplayName}
+          <div className="flex min-w-0 items-center gap-1.5 text-[10px] text-[#cfc6b8]">
+            {serverDisplayName ? <span className="truncate">{serverDisplayName}</span> : null}
+            <span className="shrink-0 rounded border border-[#596171] px-1 py-px font-bold">
+              {physicalClassLabel}
+            </span>
+            {usageRoleLabel !== physicalClassLabel ? (
+              <span className="shrink-0">Used as {usageRoleLabel}</span>
+            ) : null}
           </div>
         </div>
         <RegistryLinkIndicator visible={registryLinkedItemKeys.has(serverRuntimeKey)} />
@@ -806,6 +816,37 @@ export function ServerNode({ data }: NodeProps<ServerFlowNode>) {
       <div className="mt-2 space-y-1.5">
         {visibleSlotTypes.map((type) => {
           const matches = assignments.filter((assignment) => assignment.type === type)
+
+          if (type === 'cpu') {
+            return (
+              <CpuSlotGrid
+                key="cpu"
+                assignments={matches}
+                socketCount={hostCpuSocketCount(server)}
+                renderAssignment={(assignment) => {
+                  const item = project.items[assignment.itemId]
+                  return item ? (
+                    <AssignedComponentRow
+                      assignment={assignment}
+                      canvasIndex={canvasIndex}
+                      draggingEndpoint={draggingEndpoint}
+                      item={item}
+                      onRemoveAssignment={onRemoveAssignment}
+                      onEndpointClick={onEndpointClick}
+                      onEndpointDragStart={onEndpointDragStart}
+                      onEndpointDrop={onEndpointDrop}
+                      onSelect={onSelect}
+                      pendingEndpoint={pendingEndpoint}
+                      requiredHandleIds={requiredHandleIds}
+                      registryLinkedItemKeys={registryLinkedItemKeys}
+                      selected={selectedItemId === runtimeItemKey(item)}
+                      serverId={serverRuntimeKey}
+                    />
+                  ) : null
+                }}
+              />
+            )
+          }
 
           if (type === 'ram') {
             return (

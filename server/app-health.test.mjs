@@ -13,6 +13,7 @@ describe('application health', () => {
         ok: true,
         mode: 'production',
         schemaVersion: 16,
+        applicationOemContractVersion: 6,
         persistence: { ok: true, dirtyStores: [], failure: null },
       },
     })
@@ -36,6 +37,7 @@ describe('application health', () => {
         ok: true,
         mode: 'demo',
         schemaVersion: null,
+        applicationOemContractVersion: 6,
         persistence: null,
       },
     })

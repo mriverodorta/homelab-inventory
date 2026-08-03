@@ -204,7 +204,7 @@ describe('transactional compatibility workflows', () => {
     expect(accepted.project.assignments).toHaveLength(1)
     expect(tryAssignComponent(accepted.project, server.key!, second.key!)).toMatchObject({
       ok: false,
-      message: 'This server already has a CPU.',
+      message: 'This server has no available CPU sockets.',
     })
   })
 
@@ -461,7 +461,10 @@ describe('transactional compatibility workflows', () => {
         assignedAt: original.assignedAt,
       }),
     ])
-    expect(result.project.assignments[0].allocation).toBeUndefined()
+    expect(result.project.assignments[0].allocation).toEqual({
+      resourceType: 'cpu',
+      positions: [0],
+    })
   })
 
   it('accepts unknown resource matches without fabricating an allocation', () => {

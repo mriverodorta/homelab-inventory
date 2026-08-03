@@ -40,9 +40,9 @@ export function describeVariantCandidate(candidate) {
 }
 
 export function matchOemVariant(projection, publishedCandidates) {
-  if (projection?.fingerprintVersion !== 4 || !projection.productFamily) return { outcome: 'none' }
+  if (![4, 5, 6].includes(projection?.fingerprintVersion) || !projection.productFamily) return { outcome: 'none' }
   const family = latestPerTemplate(publishedCandidates)
-    .filter((candidate) => candidate.fingerprintVersion === 4)
+    .filter((candidate) => candidate.fingerprintVersion === projection.fingerprintVersion)
     .filter((candidate) => sameFamily(projection.productFamily, candidate.productFamily))
   if (family.length === 0) return { outcome: 'none' }
 

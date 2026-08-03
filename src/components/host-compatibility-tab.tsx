@@ -1,4 +1,4 @@
-import { Boxes, Cpu, HardDrive, MemoryStick } from 'lucide-react'
+import { Boxes, Cpu, HardDrive, MemoryStick, Network } from 'lucide-react'
 import {
   CompatibilityFindingGroups,
   CompatibilityStatusBand,
@@ -87,6 +87,87 @@ function ResourceSummary({
   )
 }
 
+function resourceCount(groups: Array<{ count: number }> | undefined): number {
+  return (groups ?? []).reduce((total, group) => total + Math.max(0, group.count), 0)
+}
+
+function TopologyFact({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="min-w-0 border-b border-[#eee6da] py-2 last:border-b-0 sm:border-b-0 sm:border-r sm:px-3 sm:first:pl-0 sm:last:border-r-0">
+      <div className="text-[10px] font-black uppercase text-[#8a8177]">{label}</div>
+      <div className="mt-0.5 break-words text-sm font-bold text-[#302a25]">{value}</div>
+    </div>
+  )
+}
+
+function HostTopologySummary({ host }: { host: HostCompatibility }) {
+  const facts = [
+    host.cpu?.socketCount
+      ? {
+          label: 'Processor topology',
+          value: `${host.cpu.socketCount} socket${host.cpu.socketCount === 1 ? '' : 's'}${host.cpu.populationModes?.length ? ` · ${host.cpu.populationModes.join('/')} populated` : ''}`,
+        }
+      : null,
+    host.memory?.slots
+      ? {
+          label: 'Memory topology',
+          value: `${host.memory.slots} slots${host.memory.slotsPerCpu ? ` · ${host.memory.slotsPerCpu}/CPU` : ''}${host.memory.moduleTypes?.length ? ` · ${host.memory.moduleTypes.join('/')}` : ''}${host.memory.eccSupport ? ` · ECC ${host.memory.eccSupport}` : ''}`,
+        }
+      : null,
+    resourceCount(host.storageSlots) > 0
+      ? {
+          label: 'Storage topology',
+          value: `${resourceCount(host.storageSlots)} bays · ${resourceCount(host.controllerSlots)} controller slots · ${resourceCount(host.bootDeviceSlots)} boot slots`,
+        }
+      : null,
+    resourceCount(host.expansionSlots) > 0
+      ? {
+          label: 'Expansion topology',
+          value: `${resourceCount(host.expansionSlots)} expansion · ${resourceCount(host.optionalModuleSlots)} module slots`,
+        }
+      : null,
+    host.power?.psuBayCount || host.power?.redundancy
+      ? {
+          label: 'Power topology',
+          value: `${host.power?.psuBayCount ?? 0} PSU bays${host.power?.psuType ? ` · ${host.power.psuType}` : ''}${host.power?.redundancy ? ` · ${host.power.redundancy} redundancy` : ''}`,
+        }
+      : null,
+    host.coolingProfiles?.length
+      ? {
+          label: 'Cooling',
+          value: `${host.coolingProfiles.length} profile${host.coolingProfiles.length === 1 ? '' : 's'}`,
+        }
+      : null,
+    host.management?.controllerFamily
+      ? {
+          label: 'Management',
+          value: [host.management.controllerFamily, host.management.controllerGeneration]
+            .filter(Boolean)
+            .join(' '),
+        }
+      : null,
+  ].filter((fact): fact is { label: string; value: string } => fact !== null)
+
+  if (facts.length === 0) return null
+
+  return (
+    <section aria-labelledby="host-topology-heading" className="border-t border-[#e5dccf] pt-4">
+      <div className="mb-2 flex items-center gap-2">
+        <Network aria-hidden="true" className="size-4 text-[#75695d]" />
+        <h2
+          id="host-topology-heading"
+          className="text-[12px] font-black uppercase tracking-[0.09em] text-[#75695d]"
+        >
+          Platform topology
+        </h2>
+      </div>
+      <div className="grid rounded-md border border-[#e5dccf] bg-[#fffdfa] px-3 sm:grid-cols-2 xl:grid-cols-3">
+        {facts.map((fact) => <TopologyFact key={fact.label} {...fact} />)}
+      </div>
+    </section>
+  )
+}
+
 function GroupUtilization({
   host,
   allocations,
@@ -151,6 +232,7 @@ export function HostCompatibilityTab({
     return result.findings.map((finding) => ({ finding, itemName: item?.name }))
   })
   const allocations = visibleAssignments.map((assignment) => assignment.allocation)
+  const cpuTotal = capabilities.cpu?.socketCount ?? 0
   const memoryTotal = capabilities.memory?.slots ?? 0
   const storageTotal = (capabilities.storageSlots ?? [])
     .reduce((total, group) => total + Math.max(0, group.count), 0)
@@ -213,6 +295,8 @@ export function HostCompatibilityTab({
         />
           </section>
 
+          <HostTopologySummary host={capabilities} />
+
           <section aria-labelledby="resource-utilization-heading" className="border-t border-[#e5dccf] pt-4">
         <div className="mb-2 flex items-center gap-2">
           <Boxes aria-hidden="true" className="size-4 text-[#75695d]" />
@@ -224,6 +308,14 @@ export function HostCompatibilityTab({
           </h2>
         </div>
         <div className="rounded-md border border-[#e5dccf] bg-[#fffdfa] px-3">
+          {cpuTotal > 0 ? (
+            <ResourceSummary
+              label="Processors"
+              used={occupiedPositionCount(allocations, 'cpu')}
+              total={cpuTotal}
+              icon={Cpu}
+            />
+          ) : null}
           {memoryTotal > 0 ? (
             <ResourceSummary
               label="Memory"

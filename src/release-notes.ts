@@ -106,6 +106,21 @@ export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
   notes: [],
 }
 
+const RELEASE_0_8_1_DETAILS: UnreleasedReleaseNotes = {
+  highlights: [
+    'OEM workstations and conventional servers now preserve their complete physical topology through catalog import, inventory editing, compatibility checks, auditing, inspection, and canvas workflows.',
+    'Compact, SFF, Tower, Rack Workstation, MicroServer, Tower Server, and Rack Server hardware classes remain independent from each machine\'s local server, desktop, workstation, or other usage role.',
+    'Multi-socket hosts now expose assignable CPU socket positions and support per-CPU memory layouts, ECC and module types, storage backplanes and controllers, risers, boot devices, redundant power, cooling profiles, and management controllers.',
+  ],
+  fixes: [
+    'OEM registry matching now uses existing links, motherboard or complete topology evidence, and only then a unique high-confidence normalized identity; systems are never merged by model name alone.',
+    'Signed catalogs through OEM contract version 6 are accepted losslessly, while unsupported future contracts fail explicitly instead of dropping unknown topology.',
+  ],
+  notes: [
+    'Schema 24 verifies a complete pre-migration backup before assigning new numeric topology IDs and preserves existing assignments, placements, cables, physical classes, usage roles, and unknown registry fields.',
+  ],
+}
+
 const RELEASE_0_8_0_DETAILS: UnreleasedReleaseNotes = {
   highlights: [
     'Access settings now support invited local or OIDC users, built-in roles, and reusable custom global roles composed from explicit permissions.',
@@ -364,9 +379,16 @@ const RELEASE_0_2_1_DETAILS: UnreleasedReleaseNotes = {
 
 export const RELEASE_NOTES: ReleaseNoteEntry[] = [
   {
-    version: '0.8.0',
+    version: '0.8.1',
     date: '2026-08-03',
     channel: 'latest',
+    title: 'OEM workstation and server topology',
+    ...RELEASE_0_8_1_DETAILS,
+  },
+  {
+    version: '0.8.0',
+    date: '2026-08-03',
+    channel: 'release',
     title: 'Multi-user access control',
     ...RELEASE_0_8_0_DETAILS,
   },

@@ -72,6 +72,33 @@ describe('signed catalog snapshots', () => {
     await expect(validateCatalogSnapshot(collision, { now: new Date('2026-07-27T00:00:00.000Z') })).rejects.toThrow(/collides/i)
   })
 
+  it('rejects templates that require a newer unsupported OEM contract', async () => {
+    const projection = await digestCatalogTemplate({
+      type: 'server',
+      name: 'Future Server',
+      manufacturer: 'Example',
+      model: 'S7',
+    })
+    const snapshot = {
+      schemaVersion: CATALOG_SCHEMA_VERSION,
+      catalogRevision: 7,
+      generatedAt: '2026-07-26T12:00:00.000Z',
+      manufacturerAliases: {},
+      templates: [{
+        templateKey: 'future-server-v7',
+        revision: 1,
+        fingerprintVersion: 7,
+        identityHash: projection.identityHash,
+        contentHash: projection.contentHash,
+        item: projection.item,
+      }],
+    }
+
+    await expect(validateCatalogSnapshot(snapshot, {
+      now: new Date('2026-07-27T00:00:00.000Z'),
+    })).rejects.toThrow(/fingerprint version is unsupported/i)
+  })
+
   it('rejects stale or insecure manifests', () => {
     const manifest = {
       schemaVersion: 1,

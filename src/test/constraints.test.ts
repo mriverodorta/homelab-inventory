@@ -42,7 +42,24 @@ describe('slot constraints', () => {
     const result = validateAssignment(project, 'server:1', 'cpu:2')
 
     expect(result.ok).toBe(false)
-    expect(result.ok ? '' : result.message).toMatch(/already has a CPU/i)
+    expect(result.ok ? '' : result.message).toMatch(/no available CPU sockets/i)
+  })
+
+  it('allows one assigned CPU per declared socket', () => {
+    const project = mergeInventoryWithProject(items, null)
+    project.items['server:1'] = {
+      ...project.items['server:1'],
+      compatibility: { host: { cpu: { socketCount: 2 }, memory: { slots: 2 } } },
+    }
+
+    const first = assignComponent(project, 'server:1', 'cpu:1')
+    const second = assignComponent(first, 'server:1', 'cpu:2')
+
+    expect(second.assignments.filter((assignment) => assignment.type === 'cpu')).toHaveLength(2)
+    expect(second.assignments.map((assignment) => assignment.allocation)).toEqual([
+      { resourceType: 'cpu', positions: [0] },
+      { resourceType: 'cpu', positions: [1] },
+    ])
   })
 
   it('allows multiple storage items', () => {

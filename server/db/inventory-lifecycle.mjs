@@ -193,7 +193,9 @@ export function buildCleanRecord({ source, id, type, name = source?.name }) {
   }
 
   if (type === 'server') {
-    record.hardwareClass = source?.hardwareClass === 'server' ? 'server' : 'desktop'
+    record.hardwareClass = ['desktop', 'workstation', 'server'].includes(source?.hardwareClass)
+      ? source.hardwareClass
+      : 'desktop'
     record.usageRole = ['server', 'desktop', 'workstation', 'other'].includes(source?.usageRole)
       ? source.usageRole
       : 'server'

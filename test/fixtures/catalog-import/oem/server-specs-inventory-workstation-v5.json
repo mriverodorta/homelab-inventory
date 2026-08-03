@@ -1,0 +1,1612 @@
+{
+  "schemaVersion": 1,
+  "protocol": {
+    "catalogSchemaVersion": 1,
+    "fingerprintVersion": 5,
+    "manufacturerAliasVersion": 1,
+    "requiredApplicationOemContractVersion": 5
+  },
+  "platformCases": [
+    {
+      "caseId": "dell-compact",
+      "description": "Dell compact workstation with socketable CPU and SODIMM topology.",
+      "sourceRecordKey": "dell:precision:3240-compact:standard",
+      "templateKey": "workstation-dell-precision-3240-compact-standard",
+      "fingerprintVersion": 5,
+      "productFamily": {
+        "manufacturer": "Dell",
+        "model": "3240 Compact",
+        "physicalClass": "workstation"
+      },
+      "variantEvidence": {
+        "source": "topology",
+        "completeness": "complete",
+        "label": "standard",
+        "variantKey": "standard",
+        "topologySignature": "4b06f93b1e12b232856dd7455a2193d09d21fb0a55f5571a28a79e5d5d3d64cf",
+        "structuralSummary": "PCIe Gen3 x8 Low-profile PCIe x8 slot"
+      },
+      "identityHash": "67176b3c96ad472d934fc015131c2d963e429ce81b272b25d3fe8541a6cdf70a",
+      "contentHash": "b6851f2c1ef1a700705954b905623dabb40466b19a54b274f6327bb54ce088b5",
+      "item": {
+        "type": "workstation",
+        "name": "Dell Precision 3240 Compact",
+        "manufacturer": "Dell",
+        "family": "Precision",
+        "model": "3240 Compact",
+        "specs": {
+          "formFactor": "Compact",
+          "topologyCompleteness": "complete",
+          "variantKey": "standard"
+        },
+        "ports": [
+          {
+            "id": 1,
+            "kind": "network",
+            "type": "rj45",
+            "slotNumber": 1,
+            "key": "lan-1",
+            "speed": "1G",
+            "origin": "fixed"
+          },
+          {
+            "id": 2,
+            "kind": "video",
+            "type": "displayport",
+            "slotNumber": 2,
+            "key": "displayport-1",
+            "origin": "fixed"
+          },
+          {
+            "id": 3,
+            "kind": "video",
+            "type": "displayport",
+            "slotNumber": 3,
+            "key": "displayport-2",
+            "origin": "fixed"
+          }
+        ],
+        "compatibility": {
+          "host": {
+            "topologyCompleteness": "complete",
+            "cpu": {
+              "sockets": [
+                "LGA1200"
+              ],
+              "generations": [
+                "10th Gen Intel Core",
+                "Intel Xeon W-1200"
+              ],
+              "maxTdpWatts": 125,
+              "socketCount": 1
+            },
+            "memory": {
+              "slots": 2,
+              "generations": [
+                "DDR4"
+              ],
+              "maxCapacityGb": 64,
+              "maxModuleCapacityGb": 32,
+              "maxSpeedMt": 3200,
+              "eccSupport": "conditional",
+              "moduleTypes": [
+                "SODIMM"
+              ]
+            },
+            "storageSlots": [
+              {
+                "id": 1,
+                "key": "m2-nvme",
+                "label": "M.2 NVMe storage slots",
+                "count": 2,
+                "interfaces": [
+                  "NVMe"
+                ],
+                "formFactors": [
+                  "2280"
+                ],
+                "pcieGeneration": 3,
+                "location": "internal",
+                "hotSwap": false
+              },
+              {
+                "id": 2,
+                "key": "sata-bays",
+                "label": "Internal SATA drive bays",
+                "count": 1,
+                "interfaces": [
+                  "SATA"
+                ],
+                "formFactors": [
+                  "2.5-inch"
+                ],
+                "location": "internal",
+                "hotSwap": false
+              }
+            ],
+            "expansionSlots": [
+              {
+                "id": 1,
+                "key": "pcie-x8",
+                "label": "Low-profile PCIe x8 slot",
+                "count": 1,
+                "interfaceFamily": "pcie",
+                "pcieGeneration": 3,
+                "mechanicalLanes": 8,
+                "electricalLanes": 8,
+                "acceptedHeights": [
+                  "low-profile"
+                ],
+                "maxSlotWidth": 1,
+                "maxPowerWatts": 75
+              }
+            ],
+            "power": {
+              "configuration": "external-adapter",
+              "connector": "Dell barrel",
+              "supportedWattagesWatts": [
+                180,
+                240
+              ],
+              "adapterRequired": true,
+              "adapterType": "Dell AC adapter",
+              "redundancy": "none"
+            }
+          }
+        }
+      }
+    },
+    {
+      "caseId": "dell-sff",
+      "description": "Dell small-form-factor workstation with full host resource topology.",
+      "sourceRecordKey": "dell:precision:3460-sff:standard",
+      "templateKey": "workstation-dell-precision-3460-sff-standard",
+      "fingerprintVersion": 5,
+      "productFamily": {
+        "manufacturer": "Dell",
+        "model": "3460 SFF",
+        "physicalClass": "workstation"
+      },
+      "variantEvidence": {
+        "source": "topology",
+        "completeness": "complete",
+        "label": "standard",
+        "variantKey": "standard",
+        "topologySignature": "30694d35d7c7d4edfc49f969bca4e65556b9eecc05c0dd0dc35b6c97466fc919",
+        "structuralSummary": "PCIe Gen4 x16 Low-profile PCIe x16 slot · PCIe Gen3 x4 Low-profile PCIe x4 slot"
+      },
+      "identityHash": "7536a25eebda90ff58fd5855f9c202e8b5da2cfa202f6ecf49268268aa87079c",
+      "contentHash": "10de53d6228ed8fad23fc04181b9d8123763e0b473599aa1014f28563147ad13",
+      "item": {
+        "type": "workstation",
+        "name": "Dell Precision 3460 SFF",
+        "manufacturer": "Dell",
+        "family": "Precision",
+        "model": "3460 SFF",
+        "specs": {
+          "formFactor": "SFF",
+          "topologyCompleteness": "complete",
+          "variantKey": "standard"
+        },
+        "ports": [
+          {
+            "id": 1,
+            "kind": "network",
+            "type": "rj45",
+            "slotNumber": 1,
+            "key": "lan-1",
+            "speed": "1G",
+            "origin": "fixed"
+          },
+          {
+            "id": 2,
+            "kind": "video",
+            "type": "displayport",
+            "slotNumber": 2,
+            "key": "displayport-1",
+            "origin": "fixed"
+          },
+          {
+            "id": 3,
+            "kind": "video",
+            "type": "displayport",
+            "slotNumber": 3,
+            "key": "displayport-2",
+            "origin": "fixed"
+          }
+        ],
+        "compatibility": {
+          "host": {
+            "topologyCompleteness": "complete",
+            "cpu": {
+              "sockets": [
+                "LGA1700"
+              ],
+              "generations": [
+                "12th Gen Intel Core",
+                "13th Gen Intel Core"
+              ],
+              "maxTdpWatts": 125,
+              "socketCount": 1
+            },
+            "memory": {
+              "slots": 4,
+              "generations": [
+                "DDR5"
+              ],
+              "maxCapacityGb": 128,
+              "maxModuleCapacityGb": 32,
+              "maxSpeedMt": 4800,
+              "eccSupport": "conditional",
+              "moduleTypes": [
+                "UDIMM"
+              ]
+            },
+            "storageSlots": [
+              {
+                "id": 1,
+                "key": "m2-nvme",
+                "label": "M.2 NVMe storage slots",
+                "count": 2,
+                "interfaces": [
+                  "NVMe"
+                ],
+                "formFactors": [
+                  "2280"
+                ],
+                "pcieGeneration": 4,
+                "location": "internal",
+                "hotSwap": false
+              },
+              {
+                "id": 2,
+                "key": "sata-bays",
+                "label": "Internal SATA drive bays",
+                "count": 2,
+                "interfaces": [
+                  "SATA"
+                ],
+                "formFactors": [
+                  "2.5-inch",
+                  "3.5-inch"
+                ],
+                "location": "internal",
+                "hotSwap": false
+              }
+            ],
+            "expansionSlots": [
+              {
+                "id": 1,
+                "key": "pcie-x16",
+                "label": "Low-profile PCIe x16 slot",
+                "count": 1,
+                "interfaceFamily": "pcie",
+                "pcieGeneration": 4,
+                "mechanicalLanes": 16,
+                "electricalLanes": 16,
+                "acceptedHeights": [
+                  "low-profile"
+                ],
+                "maxSlotWidth": 1,
+                "maxPowerWatts": 75
+              },
+              {
+                "id": 2,
+                "key": "pcie-x4",
+                "label": "Low-profile PCIe x4 slot",
+                "count": 1,
+                "interfaceFamily": "pcie",
+                "pcieGeneration": 3,
+                "mechanicalLanes": 16,
+                "electricalLanes": 4,
+                "acceptedHeights": [
+                  "low-profile"
+                ],
+                "maxSlotWidth": 1,
+                "maxPowerWatts": 25
+              }
+            ],
+            "power": {
+              "configuration": "internal-psu",
+              "connector": "IEC C14",
+              "supportedWattagesWatts": [
+                260,
+                300
+              ],
+              "adapterRequired": false,
+              "redundancy": "none",
+              "maxGraphicsPowerWatts": 75
+            }
+          }
+        }
+      }
+    },
+    {
+      "caseId": "dell-dual-socket-tower",
+      "description": "Dell dual-socket tower with numeric mutually-exclusive resource constraints.",
+      "sourceRecordKey": "dell:precision:7920-tower:standard",
+      "templateKey": "workstation-dell-precision-7920-tower-standard",
+      "fingerprintVersion": 5,
+      "productFamily": {
+        "manufacturer": "Dell",
+        "model": "7920 Tower",
+        "physicalClass": "workstation"
+      },
+      "variantEvidence": {
+        "source": "topology",
+        "completeness": "complete",
+        "label": "standard",
+        "variantKey": "standard",
+        "topologySignature": "37b195b39237311444f22244a7fc9eb10dba3d9b3b9dab527e24412429f26419",
+        "structuralSummary": "PCIe Gen3 x16 Full-height PCIe x16 slots · PCIe Gen3 x8 Full-height PCIe x8 slots"
+      },
+      "identityHash": "5d244348d5a686df3dfbf873703cc2bb5d6cea0499208247326f4bee8e375d08",
+      "contentHash": "7f9c900a7a58effe10fdcee2a97057460c094f621427f37c011e23d5a3eb7d40",
+      "item": {
+        "type": "workstation",
+        "name": "Dell Precision 7920 Tower",
+        "manufacturer": "Dell",
+        "family": "Precision",
+        "model": "7920 Tower",
+        "specs": {
+          "formFactor": "Tower",
+          "topologyCompleteness": "complete",
+          "variantKey": "standard"
+        },
+        "ports": [
+          {
+            "id": 1,
+            "kind": "network",
+            "type": "rj45",
+            "slotNumber": 1,
+            "key": "lan-1",
+            "speed": "1G",
+            "origin": "fixed"
+          },
+          {
+            "id": 2,
+            "kind": "video",
+            "type": "displayport",
+            "slotNumber": 2,
+            "key": "displayport-1",
+            "origin": "fixed"
+          },
+          {
+            "id": 3,
+            "kind": "video",
+            "type": "displayport",
+            "slotNumber": 3,
+            "key": "displayport-2",
+            "origin": "fixed"
+          }
+        ],
+        "compatibility": {
+          "host": {
+            "topologyCompleteness": "complete",
+            "cpu": {
+              "sockets": [
+                "LGA3647"
+              ],
+              "generations": [
+                "Intel Xeon Scalable"
+              ],
+              "maxTdpWatts": 205,
+              "socketCount": 2
+            },
+            "memory": {
+              "slots": 24,
+              "generations": [
+                "DDR4"
+              ],
+              "maxCapacityGb": 3072,
+              "maxModuleCapacityGb": 128,
+              "maxSpeedMt": 2933,
+              "eccSupport": "supported",
+              "moduleTypes": [
+                "LRDIMM",
+                "RDIMM"
+              ]
+            },
+            "storageSlots": [
+              {
+                "id": 1,
+                "key": "sata-bays",
+                "label": "Internal SATA drive bays",
+                "count": 4,
+                "interfaces": [
+                  "SATA"
+                ],
+                "formFactors": [
+                  "2.5-inch",
+                  "3.5-inch"
+                ],
+                "location": "internal",
+                "hotSwap": false
+              },
+              {
+                "id": 2,
+                "key": "front-nvme-bays",
+                "label": "Front hot-swap NVMe bays",
+                "count": 4,
+                "interfaces": [
+                  "NVMe"
+                ],
+                "formFactors": [
+                  "2.5-inch"
+                ],
+                "pcieGeneration": 3,
+                "location": "internal",
+                "hotSwap": true,
+                "backplane": "Dell front NVMe backplane"
+              }
+            ],
+            "expansionSlots": [
+              {
+                "id": 1,
+                "key": "pcie-x16-primary",
+                "label": "Full-height PCIe x16 slots",
+                "count": 4,
+                "interfaceFamily": "pcie",
+                "pcieGeneration": 3,
+                "mechanicalLanes": 16,
+                "electricalLanes": 16,
+                "acceptedHeights": [
+                  "full-height"
+                ],
+                "maxSlotWidth": 2,
+                "maxPowerWatts": 300
+              },
+              {
+                "id": 2,
+                "key": "pcie-x8-secondary",
+                "label": "Full-height PCIe x8 slots",
+                "count": 3,
+                "interfaceFamily": "pcie",
+                "pcieGeneration": 3,
+                "mechanicalLanes": 16,
+                "electricalLanes": 8,
+                "acceptedHeights": [
+                  "full-height"
+                ],
+                "maxSlotWidth": 1,
+                "maxPowerWatts": 75
+              }
+            ],
+            "power": {
+              "configuration": "internal-psu",
+              "connector": "IEC C14",
+              "supportedWattagesWatts": [
+                950,
+                1400
+              ],
+              "adapterRequired": false,
+              "redundancy": "none",
+              "maxGraphicsPowerWatts": 600
+            },
+            "constraintGroups": [
+              {
+                "id": 1,
+                "key": "nvme-backplane-or-secondary-pcie",
+                "label": "NVMe backplane and secondary PCIe allocation are mutually exclusive",
+                "kind": "mutually-exclusive",
+                "members": [
+                  {
+                    "resourceType": "expansion-slot",
+                    "resourceId": 2
+                  },
+                  {
+                    "resourceType": "storage-slot",
+                    "resourceId": 2
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "caseId": "dell-rack",
+      "description": "Dell rack workstation with dual sockets and hot-swap storage.",
+      "sourceRecordKey": "dell:precision:7920-rack:standard",
+      "templateKey": "workstation-dell-precision-7920-rack-standard",
+      "fingerprintVersion": 5,
+      "productFamily": {
+        "manufacturer": "Dell",
+        "model": "7920 Rack",
+        "physicalClass": "workstation"
+      },
+      "variantEvidence": {
+        "source": "topology",
+        "completeness": "complete",
+        "label": "standard",
+        "variantKey": "standard",
+        "topologySignature": "0c1023142070fb1df527d50949e3ec5e36ed89f66eff13773ab24ab5b69700a3",
+        "structuralSummary": "PCIe Gen3 x16 Riser PCIe x16 slots · PCIe Gen3 x8 Riser PCIe x8 slots"
+      },
+      "identityHash": "41a4451948dbc0abc2c9b47b539df9b8f40758436efee1e2dbdbaf3fc3982563",
+      "contentHash": "480f8b29698c936838c9e19d570d5bac220cac25d3f796fcee20907798aef500",
+      "item": {
+        "type": "workstation",
+        "name": "Dell Precision 7920 Rack",
+        "manufacturer": "Dell",
+        "family": "Precision",
+        "model": "7920 Rack",
+        "specs": {
+          "formFactor": "Rack Workstation",
+          "topologyCompleteness": "complete",
+          "variantKey": "standard"
+        },
+        "ports": [
+          {
+            "id": 1,
+            "kind": "network",
+            "type": "rj45",
+            "slotNumber": 1,
+            "key": "lan-1",
+            "speed": "1G",
+            "origin": "fixed"
+          },
+          {
+            "id": 2,
+            "kind": "network",
+            "type": "rj45",
+            "slotNumber": 2,
+            "key": "lan-2",
+            "speed": "1G",
+            "origin": "fixed"
+          },
+          {
+            "id": 3,
+            "kind": "video",
+            "type": "vga",
+            "slotNumber": 3,
+            "key": "vga-1",
+            "origin": "fixed"
+          }
+        ],
+        "compatibility": {
+          "host": {
+            "topologyCompleteness": "complete",
+            "cpu": {
+              "sockets": [
+                "LGA3647"
+              ],
+              "generations": [
+                "Intel Xeon Scalable"
+              ],
+              "maxTdpWatts": 205,
+              "socketCount": 2
+            },
+            "memory": {
+              "slots": 24,
+              "generations": [
+                "DDR4"
+              ],
+              "maxCapacityGb": 3072,
+              "maxModuleCapacityGb": 128,
+              "maxSpeedMt": 2933,
+              "eccSupport": "supported",
+              "moduleTypes": [
+                "LRDIMM",
+                "RDIMM"
+              ]
+            },
+            "storageSlots": [
+              {
+                "id": 1,
+                "key": "front-sas-sata-bays",
+                "label": "Front hot-swap SAS and SATA bays",
+                "count": 8,
+                "interfaces": [
+                  "SAS",
+                  "SATA"
+                ],
+                "formFactors": [
+                  "2.5-inch"
+                ],
+                "location": "internal",
+                "hotSwap": true,
+                "backplane": "Dell front SAS/SATA backplane"
+              },
+              {
+                "id": 2,
+                "key": "front-nvme-bays",
+                "label": "Front hot-swap NVMe bays",
+                "count": 4,
+                "interfaces": [
+                  "NVMe"
+                ],
+                "formFactors": [
+                  "2.5-inch"
+                ],
+                "pcieGeneration": 3,
+                "location": "internal",
+                "hotSwap": true,
+                "backplane": "Dell front NVMe backplane"
+              }
+            ],
+            "expansionSlots": [
+              {
+                "id": 1,
+                "key": "riser-pcie-x16",
+                "label": "Riser PCIe x16 slots",
+                "count": 4,
+                "interfaceFamily": "pcie",
+                "pcieGeneration": 3,
+                "mechanicalLanes": 16,
+                "electricalLanes": 16,
+                "acceptedHeights": [
+                  "full-height"
+                ],
+                "maxSlotWidth": 2,
+                "maxPowerWatts": 300
+              },
+              {
+                "id": 2,
+                "key": "riser-pcie-x8",
+                "label": "Riser PCIe x8 slots",
+                "count": 3,
+                "interfaceFamily": "pcie",
+                "pcieGeneration": 3,
+                "mechanicalLanes": 16,
+                "electricalLanes": 8,
+                "acceptedHeights": [
+                  "full-height"
+                ],
+                "maxSlotWidth": 1,
+                "maxPowerWatts": 75
+              }
+            ],
+            "power": {
+              "configuration": "internal-psu",
+              "connector": "IEC C14",
+              "supportedWattagesWatts": [
+                1100
+              ],
+              "adapterRequired": false,
+              "redundancy": "optional",
+              "maxGraphicsPowerWatts": 600
+            },
+            "constraintGroups": [
+              {
+                "id": 1,
+                "key": "nvme-backplane-or-secondary-riser",
+                "label": "NVMe backplane and secondary riser allocation are mutually exclusive",
+                "kind": "mutually-exclusive",
+                "members": [
+                  {
+                    "resourceType": "expansion-slot",
+                    "resourceId": 2
+                  },
+                  {
+                    "resourceType": "storage-slot",
+                    "resourceId": 2
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "caseId": "hp-amd-tower",
+      "description": "HP AMD workstation platform with ECC memory and PCIe expansion.",
+      "sourceRecordKey": "hp:z-workstation:z6-g5-a:standard",
+      "templateKey": "workstation-hp-z-workstation-z6-g5-a-standard",
+      "fingerprintVersion": 5,
+      "productFamily": {
+        "manufacturer": "HP",
+        "model": "Z6 G5 A",
+        "physicalClass": "workstation"
+      },
+      "variantEvidence": {
+        "source": "topology",
+        "completeness": "complete",
+        "label": "standard",
+        "variantKey": "standard",
+        "topologySignature": "4ed26090525cbfd8efe01034138f604c0aaec7a35263ed665653fc97bea29290",
+        "structuralSummary": "PCIe Gen5 x16 Primary PCIe expansion slots"
+      },
+      "identityHash": "8734591cd9ff0c401f70d1aeb598339e7fbce986eb17bc6fcfe08bca9e14806d",
+      "contentHash": "41988fb39fec1cceed919da1fa022eef86bc11825bc8f5ccce4e60e60b49441d",
+      "item": {
+        "type": "workstation",
+        "name": "HP Z Workstation Z6 G5 A",
+        "manufacturer": "HP",
+        "family": "Z Workstation",
+        "model": "Z6 G5 A",
+        "specs": {
+          "formFactor": "Tower",
+          "topologyCompleteness": "complete",
+          "variantKey": "standard"
+        },
+        "ports": [
+          {
+            "id": 1,
+            "kind": "network",
+            "type": "rj45",
+            "slotNumber": 1,
+            "key": "lan-1",
+            "speed": "1G",
+            "origin": "fixed"
+          },
+          {
+            "id": 2,
+            "kind": "video",
+            "type": "displayport",
+            "slotNumber": 2,
+            "key": "displayport-1",
+            "origin": "fixed"
+          },
+          {
+            "id": 3,
+            "kind": "video",
+            "type": "displayport",
+            "slotNumber": 3,
+            "key": "displayport-2",
+            "origin": "fixed"
+          }
+        ],
+        "compatibility": {
+          "host": {
+            "topologyCompleteness": "complete",
+            "cpu": {
+              "sockets": [
+                "SWRX8"
+              ],
+              "generations": [
+                "AMD Ryzen Threadripper PRO 7000 WX"
+              ],
+              "maxTdpWatts": 350,
+              "socketCount": 1
+            },
+            "memory": {
+              "slots": 8,
+              "generations": [
+                "DDR5"
+              ],
+              "maxCapacityGb": 1024,
+              "maxModuleCapacityGb": 128,
+              "maxSpeedMt": 5200,
+              "eccSupport": "supported",
+              "moduleTypes": [
+                "RDIMM"
+              ]
+            },
+            "storageSlots": [
+              {
+                "id": 1,
+                "key": "m2-nvme",
+                "label": "M.2 NVMe storage slots",
+                "count": 2,
+                "interfaces": [
+                  "NVMe"
+                ],
+                "formFactors": [
+                  "2280"
+                ],
+                "pcieGeneration": 5,
+                "location": "internal",
+                "hotSwap": false
+              },
+              {
+                "id": 2,
+                "key": "sata-bays",
+                "label": "Internal SATA drive bays",
+                "count": 4,
+                "interfaces": [
+                  "SATA"
+                ],
+                "formFactors": [
+                  "2.5-inch",
+                  "3.5-inch"
+                ],
+                "location": "internal",
+                "hotSwap": false
+              }
+            ],
+            "expansionSlots": [
+              {
+                "id": 1,
+                "key": "pcie-primary",
+                "label": "Primary PCIe expansion slots",
+                "count": 6,
+                "interfaceFamily": "pcie",
+                "pcieGeneration": 5,
+                "mechanicalLanes": 16,
+                "electricalLanes": 16,
+                "acceptedHeights": [
+                  "full-height"
+                ],
+                "maxSlotWidth": 2,
+                "maxPowerWatts": 300
+              }
+            ],
+            "power": {
+              "configuration": "internal-psu",
+              "connector": "IEC C14",
+              "supportedWattagesWatts": [
+                1450
+              ],
+              "adapterRequired": false,
+              "redundancy": "none",
+              "maxGraphicsPowerWatts": 900
+            }
+          }
+        }
+      }
+    },
+    {
+      "caseId": "hp-sff",
+      "description": "HP small-form-factor workstation platform.",
+      "sourceRecordKey": "hp:z-workstation:z2-sff-g9:standard",
+      "templateKey": "workstation-hp-z-workstation-z2-sff-g9-standard",
+      "fingerprintVersion": 5,
+      "productFamily": {
+        "manufacturer": "HP",
+        "model": "Z2 SFF G9",
+        "physicalClass": "workstation"
+      },
+      "variantEvidence": {
+        "source": "topology",
+        "completeness": "complete",
+        "label": "standard",
+        "variantKey": "standard",
+        "topologySignature": "541165ffee3ce54b926e5e505eeb63ad482241891d99241ec074270db8904fe4",
+        "structuralSummary": "PCIe Gen5 x16 Primary PCIe expansion slots"
+      },
+      "identityHash": "88d2cf636720ed32ef7710646ea29a3698973d2e846af513cb7ba6850c9c159b",
+      "contentHash": "afa646a031039be0c5e705f5ba0ee286d3ce1b7e57b8b2acaa2e19cfc14102a1",
+      "item": {
+        "type": "workstation",
+        "name": "HP Z Workstation Z2 SFF G9",
+        "manufacturer": "HP",
+        "family": "Z Workstation",
+        "model": "Z2 SFF G9",
+        "specs": {
+          "formFactor": "SFF",
+          "topologyCompleteness": "complete",
+          "variantKey": "standard"
+        },
+        "ports": [
+          {
+            "id": 1,
+            "kind": "network",
+            "type": "rj45",
+            "slotNumber": 1,
+            "key": "lan-1",
+            "speed": "1G",
+            "origin": "fixed"
+          },
+          {
+            "id": 2,
+            "kind": "video",
+            "type": "displayport",
+            "slotNumber": 2,
+            "key": "displayport-1",
+            "origin": "fixed"
+          },
+          {
+            "id": 3,
+            "kind": "video",
+            "type": "displayport",
+            "slotNumber": 3,
+            "key": "displayport-2",
+            "origin": "fixed"
+          }
+        ],
+        "compatibility": {
+          "host": {
+            "topologyCompleteness": "complete",
+            "cpu": {
+              "sockets": [
+                "LGA1700"
+              ],
+              "generations": [
+                "12th Gen Intel Core",
+                "13th Gen Intel Core",
+                "14th Gen Intel Core"
+              ],
+              "maxTdpWatts": 125,
+              "socketCount": 1
+            },
+            "memory": {
+              "slots": 4,
+              "generations": [
+                "DDR5"
+              ],
+              "maxCapacityGb": 128,
+              "maxModuleCapacityGb": 32,
+              "maxSpeedMt": 4800,
+              "eccSupport": "conditional",
+              "moduleTypes": [
+                "UDIMM"
+              ]
+            },
+            "storageSlots": [
+              {
+                "id": 1,
+                "key": "m2-nvme",
+                "label": "M.2 NVMe storage slots",
+                "count": 2,
+                "interfaces": [
+                  "NVMe"
+                ],
+                "formFactors": [
+                  "2280"
+                ],
+                "pcieGeneration": 4,
+                "location": "internal",
+                "hotSwap": false
+              },
+              {
+                "id": 2,
+                "key": "sata-bays",
+                "label": "Internal SATA drive bays",
+                "count": 2,
+                "interfaces": [
+                  "SATA"
+                ],
+                "formFactors": [
+                  "2.5-inch",
+                  "3.5-inch"
+                ],
+                "location": "internal",
+                "hotSwap": false
+              }
+            ],
+            "expansionSlots": [
+              {
+                "id": 1,
+                "key": "pcie-primary",
+                "label": "Primary PCIe expansion slots",
+                "count": 4,
+                "interfaceFamily": "pcie",
+                "pcieGeneration": 5,
+                "mechanicalLanes": 16,
+                "electricalLanes": 16,
+                "acceptedHeights": [
+                  "low-profile"
+                ],
+                "maxSlotWidth": 2
+              }
+            ],
+            "power": {
+              "configuration": "internal-psu",
+              "connector": "IEC C14",
+              "supportedWattagesWatts": [
+                450
+              ],
+              "adapterRequired": false,
+              "redundancy": "none",
+              "maxGraphicsPowerWatts": 150
+            }
+          }
+        }
+      }
+    },
+    {
+      "caseId": "lenovo-compact-riser-two-slot",
+      "description": "Lenovo compact workstation with the two-slot riser topology.",
+      "sourceRecordKey": "lenovo:thinkstation:p3-ultra-sff-gen-2:two-slot-riser",
+      "templateKey": "workstation-lenovo-thinkstation-p3-ultra-sff-gen-2-two-slot-riser",
+      "fingerprintVersion": 5,
+      "productFamily": {
+        "manufacturer": "Lenovo",
+        "model": "P3 Ultra SFF Gen 2",
+        "physicalClass": "workstation"
+      },
+      "variantEvidence": {
+        "source": "topology",
+        "completeness": "complete",
+        "label": "two-slot-riser",
+        "variantKey": "two-slot-riser",
+        "topologySignature": "9593df047c67e4fbe2e3b8ef3c877cea996751a4cd52d7517128ba14e1069999",
+        "structuralSummary": "PCIe Gen4 x16 Two-slot proprietary PCIe riser"
+      },
+      "identityHash": "de052716a14c3b22134cfd9321d7dfd2bdbeec86079c5939a17dcad31019f95a",
+      "contentHash": "7cea8da5db6a7af85a8292dc3baaac4187f12164df38e3f0a60bf7729b979661",
+      "item": {
+        "type": "workstation",
+        "name": "Lenovo ThinkStation P3 Ultra SFF Gen 2 - Two-slot proprietary riser topology",
+        "manufacturer": "Lenovo",
+        "family": "ThinkStation",
+        "model": "P3 Ultra SFF Gen 2",
+        "specs": {
+          "formFactor": "Compact",
+          "topologyCompleteness": "complete",
+          "variantKey": "two-slot-riser"
+        },
+        "ports": [
+          {
+            "id": 1,
+            "kind": "network",
+            "type": "rj45",
+            "slotNumber": 1,
+            "key": "lan-1",
+            "speed": "1G",
+            "origin": "fixed"
+          },
+          {
+            "id": 2,
+            "kind": "video",
+            "type": "displayport",
+            "slotNumber": 2,
+            "key": "displayport-1",
+            "origin": "fixed"
+          },
+          {
+            "id": 3,
+            "kind": "video",
+            "type": "displayport",
+            "slotNumber": 3,
+            "key": "displayport-2",
+            "origin": "fixed"
+          }
+        ],
+        "compatibility": {
+          "host": {
+            "topologyCompleteness": "complete",
+            "cpu": {
+              "sockets": [
+                "LGA1851"
+              ],
+              "generations": [
+                "Intel Core Ultra Series 2"
+              ],
+              "maxTdpWatts": 125,
+              "socketCount": 1
+            },
+            "memory": {
+              "slots": 2,
+              "generations": [
+                "DDR5"
+              ],
+              "maxCapacityGb": 128,
+              "maxModuleCapacityGb": 64,
+              "maxSpeedMt": 6400,
+              "eccSupport": "conditional",
+              "moduleTypes": [
+                "SODIMM"
+              ]
+            },
+            "storageSlots": [
+              {
+                "id": 1,
+                "key": "m2-nvme",
+                "label": "M.2 NVMe storage positions",
+                "count": 4,
+                "interfaces": [
+                  "NVMe"
+                ],
+                "formFactors": [
+                  "2280"
+                ],
+                "pcieGeneration": 5,
+                "location": "internal",
+                "hotSwap": false
+              }
+            ],
+            "expansionSlots": [
+              {
+                "id": 1,
+                "key": "pcie-expansion",
+                "label": "Two-slot proprietary PCIe riser",
+                "count": 2,
+                "interfaceFamily": "pcie",
+                "pcieGeneration": 4,
+                "mechanicalLanes": 16,
+                "electricalLanes": 16,
+                "acceptedHeights": [
+                  "low-profile"
+                ],
+                "maxSlotWidth": 2,
+                "proprietaryRiser": true,
+                "riserCapability": "Two-slot proprietary PCIe riser"
+              }
+            ],
+            "optionalModuleSlots": [
+              {
+                "id": 1,
+                "key": "wlan-m2",
+                "label": "M.2 wireless module slot",
+                "count": 1,
+                "acceptedModuleKinds": [
+                  "wireless-card"
+                ]
+              }
+            ],
+            "power": {
+              "configuration": "external-adapter",
+              "connector": "Lenovo Slim tip",
+              "supportedWattagesWatts": [
+                170,
+                230,
+                330
+              ],
+              "adapterRequired": true,
+              "adapterType": "OEM external power adapter",
+              "redundancy": "none"
+            }
+          }
+        }
+      }
+    },
+    {
+      "caseId": "lenovo-compact-riser-three-slot",
+      "description": "Lenovo compact workstation with the three-slot riser topology.",
+      "sourceRecordKey": "lenovo:thinkstation:p3-ultra-sff-gen-2:three-slot-riser",
+      "templateKey": "workstation-lenovo-thinkstation-p3-ultra-sff-gen-2-three-slot-riser",
+      "fingerprintVersion": 5,
+      "productFamily": {
+        "manufacturer": "Lenovo",
+        "model": "P3 Ultra SFF Gen 2",
+        "physicalClass": "workstation"
+      },
+      "variantEvidence": {
+        "source": "topology",
+        "completeness": "complete",
+        "label": "three-slot-riser",
+        "variantKey": "three-slot-riser",
+        "topologySignature": "c3110ec21b569308234922f66f4523d34d08c4adce1219707a45e1d4579cfaf7",
+        "structuralSummary": "PCIe Gen4 x8 Three-slot proprietary PCIe riser"
+      },
+      "identityHash": "74ce110a88c744c76bdb16ddd9f04c2f7c0d0e78ddfea41609b6f1e5d6193100",
+      "contentHash": "a761e4c12e66cc8f8c315c9afdf6869002c56a93e6687fcf7dd49dc8875db443",
+      "item": {
+        "type": "workstation",
+        "name": "Lenovo ThinkStation P3 Ultra SFF Gen 2 - Three-slot proprietary riser topology",
+        "manufacturer": "Lenovo",
+        "family": "ThinkStation",
+        "model": "P3 Ultra SFF Gen 2",
+        "specs": {
+          "formFactor": "Compact",
+          "topologyCompleteness": "complete",
+          "variantKey": "three-slot-riser"
+        },
+        "ports": [
+          {
+            "id": 1,
+            "kind": "network",
+            "type": "rj45",
+            "slotNumber": 1,
+            "key": "lan-1",
+            "speed": "1G",
+            "origin": "fixed"
+          },
+          {
+            "id": 2,
+            "kind": "video",
+            "type": "displayport",
+            "slotNumber": 2,
+            "key": "displayport-1",
+            "origin": "fixed"
+          },
+          {
+            "id": 3,
+            "kind": "video",
+            "type": "displayport",
+            "slotNumber": 3,
+            "key": "displayport-2",
+            "origin": "fixed"
+          }
+        ],
+        "compatibility": {
+          "host": {
+            "topologyCompleteness": "complete",
+            "cpu": {
+              "sockets": [
+                "LGA1851"
+              ],
+              "generations": [
+                "Intel Core Ultra Series 2"
+              ],
+              "maxTdpWatts": 125,
+              "socketCount": 1
+            },
+            "memory": {
+              "slots": 2,
+              "generations": [
+                "DDR5"
+              ],
+              "maxCapacityGb": 128,
+              "maxModuleCapacityGb": 64,
+              "maxSpeedMt": 6400,
+              "eccSupport": "conditional",
+              "moduleTypes": [
+                "SODIMM"
+              ]
+            },
+            "storageSlots": [
+              {
+                "id": 1,
+                "key": "m2-nvme",
+                "label": "M.2 NVMe storage positions",
+                "count": 4,
+                "interfaces": [
+                  "NVMe"
+                ],
+                "formFactors": [
+                  "2280"
+                ],
+                "pcieGeneration": 5,
+                "location": "internal",
+                "hotSwap": false
+              }
+            ],
+            "expansionSlots": [
+              {
+                "id": 1,
+                "key": "pcie-expansion",
+                "label": "Three-slot proprietary PCIe riser",
+                "count": 3,
+                "interfaceFamily": "pcie",
+                "pcieGeneration": 4,
+                "mechanicalLanes": 16,
+                "electricalLanes": 8,
+                "acceptedHeights": [
+                  "low-profile"
+                ],
+                "maxSlotWidth": 2,
+                "proprietaryRiser": true,
+                "riserCapability": "Three-slot proprietary PCIe riser"
+              }
+            ],
+            "optionalModuleSlots": [
+              {
+                "id": 1,
+                "key": "wlan-m2",
+                "label": "M.2 wireless module slot",
+                "count": 1,
+                "acceptedModuleKinds": [
+                  "wireless-card"
+                ]
+              }
+            ],
+            "power": {
+              "configuration": "external-adapter",
+              "connector": "Lenovo Slim tip",
+              "supportedWattagesWatts": [
+                170,
+                230,
+                330
+              ],
+              "adapterRequired": true,
+              "adapterType": "OEM external power adapter",
+              "redundancy": "none"
+            }
+          }
+        }
+      }
+    },
+    {
+      "caseId": "lenovo-dual-socket-tower",
+      "description": "Lenovo dual-socket high-end tower workstation.",
+      "sourceRecordKey": "lenovo:thinkstation:px:standard",
+      "templateKey": "workstation-lenovo-thinkstation-px-standard",
+      "fingerprintVersion": 5,
+      "productFamily": {
+        "manufacturer": "Lenovo",
+        "model": "PX",
+        "physicalClass": "workstation"
+      },
+      "variantEvidence": {
+        "source": "topology",
+        "completeness": "complete",
+        "label": "standard",
+        "variantKey": "standard",
+        "topologySignature": "00c8d80dc028b09e3914afcda8778db94ccadaf7fc9c1c4e3805a09a36e51d48",
+        "structuralSummary": "PCIe Gen5 x16 PCIe expansion slots"
+      },
+      "identityHash": "4b5b1198addce03372ab0b1eea9e8ce8a7522547e107d1026340acf720e9c6ae",
+      "contentHash": "e8d13e4194fc03e95c78266175de188b51026b40ae816f816d2ff8204747bddd",
+      "item": {
+        "type": "workstation",
+        "name": "Lenovo ThinkStation PX",
+        "manufacturer": "Lenovo",
+        "family": "ThinkStation",
+        "model": "PX",
+        "specs": {
+          "formFactor": "Tower",
+          "topologyCompleteness": "complete",
+          "variantKey": "standard"
+        },
+        "ports": [
+          {
+            "id": 1,
+            "kind": "network",
+            "type": "rj45",
+            "slotNumber": 1,
+            "key": "lan-1",
+            "speed": "1G",
+            "origin": "fixed"
+          },
+          {
+            "id": 2,
+            "kind": "network",
+            "type": "rj45",
+            "slotNumber": 2,
+            "key": "lan-2",
+            "speed": "10G",
+            "origin": "fixed"
+          },
+          {
+            "id": 3,
+            "kind": "video",
+            "type": "displayport",
+            "slotNumber": 3,
+            "key": "displayport-1",
+            "origin": "fixed"
+          },
+          {
+            "id": 4,
+            "kind": "video",
+            "type": "displayport",
+            "slotNumber": 4,
+            "key": "displayport-2",
+            "origin": "fixed"
+          }
+        ],
+        "compatibility": {
+          "host": {
+            "topologyCompleteness": "complete",
+            "cpu": {
+              "sockets": [
+                "LGA4677"
+              ],
+              "generations": [
+                "4th Gen Intel Xeon Scalable"
+              ],
+              "maxTdpWatts": 350,
+              "socketCount": 2
+            },
+            "memory": {
+              "slots": 16,
+              "generations": [
+                "DDR5"
+              ],
+              "maxCapacityGb": 2048,
+              "maxModuleCapacityGb": 128,
+              "maxSpeedMt": 4800,
+              "eccSupport": "supported",
+              "moduleTypes": [
+                "RDIMM"
+              ]
+            },
+            "storageSlots": [
+              {
+                "id": 1,
+                "key": "m2-nvme",
+                "label": "M.2 NVMe storage positions",
+                "count": 7,
+                "interfaces": [
+                  "NVMe"
+                ],
+                "formFactors": [
+                  "2280"
+                ],
+                "pcieGeneration": 5,
+                "location": "internal",
+                "hotSwap": false
+              },
+              {
+                "id": 2,
+                "key": "sata-sas-bays",
+                "label": "SATA and SAS drive bays",
+                "count": 4,
+                "interfaces": [
+                  "SATA",
+                  "SAS"
+                ],
+                "formFactors": [
+                  "2.5-inch",
+                  "3.5-inch"
+                ],
+                "location": "internal",
+                "hotSwap": true
+              }
+            ],
+            "expansionSlots": [
+              {
+                "id": 1,
+                "key": "pcie-expansion",
+                "label": "PCIe expansion slots",
+                "count": 9,
+                "interfaceFamily": "pcie",
+                "pcieGeneration": 5,
+                "mechanicalLanes": 16,
+                "electricalLanes": 16,
+                "acceptedHeights": [
+                  "full-height"
+                ],
+                "maxSlotWidth": 2,
+                "proprietaryRiser": false
+              }
+            ],
+            "power": {
+              "configuration": "internal-psu",
+              "connector": "IEC C14",
+              "supportedWattagesWatts": [
+                1850
+              ],
+              "adapterRequired": false,
+              "redundancy": "optional",
+              "maxGraphicsPowerWatts": 1200
+            }
+          }
+        }
+      }
+    },
+    {
+      "caseId": "lenovo-rack",
+      "description": "Lenovo dual-socket rack workstation.",
+      "sourceRecordKey": "lenovo:thinkstation:p920-rack:standard",
+      "templateKey": "workstation-lenovo-thinkstation-p920-rack-standard",
+      "fingerprintVersion": 5,
+      "productFamily": {
+        "manufacturer": "Lenovo",
+        "model": "P920 Rack",
+        "physicalClass": "workstation"
+      },
+      "variantEvidence": {
+        "source": "topology",
+        "completeness": "complete",
+        "label": "standard",
+        "variantKey": "standard",
+        "topologySignature": "508a89e8e2f96952040d056446dbf3231021a6a44aa635bacb329ea3af183272",
+        "structuralSummary": "PCIe Gen3 x16 PCIe expansion slots"
+      },
+      "identityHash": "5f71a51e7e8363f325203afada055ce1263fb37b97fa4c4a969cf1d94694da7d",
+      "contentHash": "15c117442f12fe3d7ac22d64acce8c08724c9b9a21b3bbcd26e6046c8450ddc4",
+      "item": {
+        "type": "workstation",
+        "name": "Lenovo ThinkStation P920 Rack",
+        "manufacturer": "Lenovo",
+        "family": "ThinkStation",
+        "model": "P920 Rack",
+        "specs": {
+          "formFactor": "Rack Workstation",
+          "topologyCompleteness": "complete",
+          "variantKey": "standard"
+        },
+        "ports": [
+          {
+            "id": 1,
+            "kind": "network",
+            "type": "rj45",
+            "slotNumber": 1,
+            "key": "lan-1",
+            "speed": "10G",
+            "origin": "fixed"
+          },
+          {
+            "id": 2,
+            "kind": "network",
+            "type": "rj45",
+            "slotNumber": 2,
+            "key": "lan-2",
+            "speed": "10G",
+            "origin": "fixed"
+          },
+          {
+            "id": 3,
+            "kind": "network",
+            "type": "rj45",
+            "slotNumber": 3,
+            "key": "lan-3",
+            "speed": "10G",
+            "origin": "fixed"
+          },
+          {
+            "id": 4,
+            "kind": "network",
+            "type": "rj45",
+            "slotNumber": 4,
+            "key": "lan-4",
+            "speed": "10G",
+            "origin": "fixed"
+          },
+          {
+            "id": 5,
+            "kind": "network",
+            "type": "rj45",
+            "slotNumber": 5,
+            "key": "lan-5",
+            "speed": "1G",
+            "origin": "fixed"
+          }
+        ],
+        "compatibility": {
+          "host": {
+            "topologyCompleteness": "complete",
+            "cpu": {
+              "sockets": [
+                "LGA3647"
+              ],
+              "generations": [
+                "2nd Gen Intel Xeon Scalable"
+              ],
+              "maxTdpWatts": 165,
+              "socketCount": 2
+            },
+            "memory": {
+              "slots": 24,
+              "generations": [
+                "DDR4"
+              ],
+              "maxCapacityGb": 768,
+              "maxModuleCapacityGb": 32,
+              "maxSpeedMt": 2933,
+              "eccSupport": "supported",
+              "moduleTypes": [
+                "RDIMM"
+              ]
+            },
+            "storageSlots": [
+              {
+                "id": 1,
+                "key": "sata-sas-bays",
+                "label": "SATA and SAS drive bays",
+                "count": 8,
+                "interfaces": [
+                  "SATA",
+                  "SAS"
+                ],
+                "formFactors": [
+                  "2.5-inch",
+                  "3.5-inch"
+                ],
+                "location": "internal",
+                "hotSwap": true
+              },
+              {
+                "id": 2,
+                "key": "m2-sata",
+                "label": "M.2 SATA boot storage slots",
+                "count": 2,
+                "interfaces": [
+                  "SATA"
+                ],
+                "formFactors": [
+                  "2280"
+                ],
+                "location": "internal",
+                "hotSwap": false
+              }
+            ],
+            "expansionSlots": [
+              {
+                "id": 1,
+                "key": "pcie-expansion",
+                "label": "PCIe expansion slots",
+                "count": 5,
+                "interfaceFamily": "pcie",
+                "pcieGeneration": 3,
+                "mechanicalLanes": 16,
+                "electricalLanes": 16,
+                "acceptedHeights": [
+                  "full-height"
+                ],
+                "maxSlotWidth": 2,
+                "proprietaryRiser": false
+              }
+            ],
+            "power": {
+              "configuration": "internal-psu",
+              "connector": "IEC C20",
+              "supportedWattagesWatts": [
+                1100,
+                1600
+              ],
+              "adapterRequired": false,
+              "redundancy": "optional",
+              "maxGraphicsPowerWatts": 600
+            }
+          }
+        }
+      }
+    }
+  ]
+}

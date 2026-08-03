@@ -2,6 +2,7 @@ import { InventoryLifecycleError } from './db/inventory-lifecycle.mjs'
 import { isRelationalId } from './db/relational-ids.mjs'
 import { SnapshotService } from './registry/snapshot-service.mjs'
 import { contributionStatus } from './registry/contribution-service.mjs'
+import { APPLICATION_OEM_CONTRACT_VERSION } from './app-health.mjs'
 
 const DEFAULT_REGISTRY_POLICY = Object.freeze({
   modeLocked: false,
@@ -47,6 +48,7 @@ function publicRegistryState(store, policy = DEFAULT_REGISTRY_POLICY) {
     },
     database: {
       schemaVersion: Number.isSafeInteger(meta.schemaVersion) ? meta.schemaVersion : null,
+      applicationOemContractVersion: APPLICATION_OEM_CONTRACT_VERSION,
       lastMigration,
     },
   }

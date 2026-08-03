@@ -9,8 +9,11 @@ import {
   EXPANSION_INTERFACE_FAMILIES,
   ECC_SUPPORT_OPTIONS,
   HOST_POWER_CONFIGURATIONS,
+  MEMORY_MODULE_TYPES,
   PCIE_GENERATIONS,
   PCIE_LANE_WIDTHS,
+  POWER_REDUNDANCY_OPTIONS,
+  PSU_TYPE_OPTIONS,
   RAM_GENERATIONS,
   SLOT_WIDTHS,
   TOPOLOGY_COMPLETENESS_OPTIONS,
@@ -106,6 +109,12 @@ export function HostRequirementFields({
             </datalist>
           </FieldLabel>
           <TextField label="Maximum CPU TDP (W)" name="hostCpuMaxTdpWatts" value={values.hostCpuMaxTdpWatts} type="number" min={0} placeholder="65" error={errors.hostCpuMaxTdpWatts} onChange={(hostCpuMaxTdpWatts) => onChange({ hostCpuMaxTdpWatts })} />
+          <TextField label="CPU sockets" name="hostCpuSocketCount" value={values.hostCpuSocketCount} type="number" min={1} placeholder="2" error={errors.hostCpuSocketCount} onChange={(hostCpuSocketCount) => onChange({ hostCpuSocketCount })} />
+          <FieldLabel className="sm:col-span-2">
+            <span>Supported CPU population modes</span>
+            <Input aria-label="Supported CPU population modes" value={values.hostCpuPopulationModes.join(', ')} placeholder="1, 2" className={fieldClassName()} onChange={(event) => onChange({ hostCpuPopulationModes: event.target.value.split(',').map((value) => value.trim()).filter(Boolean) })} />
+            {errors.hostCpuPopulationModes ? <span className="text-xs font-semibold text-red-700">{errors.hostCpuPopulationModes}</span> : null}
+          </FieldLabel>
           <MultiOptionField label="Supported CPU generations" options={CPU_GENERATIONS} selected={values.hostCpuGenerations} onChange={(hostCpuGenerations) => onChange({ hostCpuGenerations }, 'immediate')} />
         </div>
       </section>
@@ -119,6 +128,8 @@ export function HostRequirementFields({
           <TextField label="Maximum module (GB)" name="hostMemoryMaxModuleCapacityGb" value={values.hostMemoryMaxModuleCapacityGb} type="number" min={0} placeholder="32" error={errors.hostMemoryMaxModuleCapacityGb} onChange={(hostMemoryMaxModuleCapacityGb) => onChange({ hostMemoryMaxModuleCapacityGb })} />
           <TextField label="Maximum speed (MT/s)" name="hostMemoryMaxSpeedMt" value={values.hostMemoryMaxSpeedMt} type="number" min={0} placeholder="3200" error={errors.hostMemoryMaxSpeedMt} onChange={(hostMemoryMaxSpeedMt) => onChange({ hostMemoryMaxSpeedMt })} />
           <SelectField label="ECC behavior" name="hostMemoryEccSupport" value={values.hostMemoryEccSupport} options={ECC_SUPPORT_OPTIONS} emptyLabel="Not specified" onValueChange={(hostMemoryEccSupport) => onChange({ hostMemoryEccSupport: hostMemoryEccSupport as InventoryFormValues['hostMemoryEccSupport'] }, 'immediate')} />
+          <TextField label="Slots per CPU" name="hostMemorySlotsPerCpu" value={values.hostMemorySlotsPerCpu} type="number" min={1} placeholder="12" error={errors.hostMemorySlotsPerCpu} onChange={(hostMemorySlotsPerCpu) => onChange({ hostMemorySlotsPerCpu })} />
+          <MultiOptionField label="Supported module types" options={MEMORY_MODULE_TYPES} selected={values.hostMemoryModuleTypes} onChange={(hostMemoryModuleTypes) => onChange({ hostMemoryModuleTypes }, 'immediate')} />
         </div>
       </section>
 
@@ -149,7 +160,51 @@ export function HostResourceFields({
           <TextField label="Supported wattages" name="hostPowerSupportedWattagesWatts" value={values.hostPowerSupportedWattagesWatts} placeholder="65, 90, 130" onChange={(hostPowerSupportedWattagesWatts) => onChange({ hostPowerSupportedWattagesWatts })} />
           <SelectField label="Adapter required" name="hostPowerAdapterRequired" value={values.hostPowerAdapterRequired} options={['yes', 'no']} emptyLabel="Not specified" onOpenChange={onSelectOpenChange} onValueChange={(hostPowerAdapterRequired) => onChange({ hostPowerAdapterRequired: hostPowerAdapterRequired as InventoryFormValues['hostPowerAdapterRequired'] }, 'immediate')} />
           <TextField label="Adapter type" name="hostPowerAdapterType" value={values.hostPowerAdapterType} placeholder="Dell OEM external adapter" onChange={(hostPowerAdapterType) => onChange({ hostPowerAdapterType })} />
+          <SelectField label="Redundancy policy" name="hostPowerRedundancy" value={values.hostPowerRedundancy} options={POWER_REDUNDANCY_OPTIONS} emptyLabel="Not specified" onOpenChange={onSelectOpenChange} onValueChange={(hostPowerRedundancy) => onChange({ hostPowerRedundancy }, 'immediate')} />
+          <TextField label="Maximum graphics power (W)" name="hostPowerMaxGraphicsPowerWatts" value={values.hostPowerMaxGraphicsPowerWatts} type="number" min={0} placeholder="300" error={errors.hostPowerMaxGraphicsPowerWatts} onChange={(hostPowerMaxGraphicsPowerWatts) => onChange({ hostPowerMaxGraphicsPowerWatts })} />
+          <TextField label="PSU bays" name="hostPowerPsuBayCount" value={values.hostPowerPsuBayCount} type="number" min={1} placeholder="2" error={errors.hostPowerPsuBayCount} onChange={(hostPowerPsuBayCount) => onChange({ hostPowerPsuBayCount })} />
+          <SelectField label="PSU type" name="hostPowerPsuType" value={values.hostPowerPsuType} options={PSU_TYPE_OPTIONS} emptyLabel="Not specified" onOpenChange={onSelectOpenChange} onValueChange={(hostPowerPsuType) => onChange({ hostPowerPsuType }, 'immediate')} />
+          <SelectField label="Mixed PSU wattages" name="hostPowerMixedPsuAllowed" value={values.hostPowerMixedPsuAllowed} options={['yes', 'no']} emptyLabel="Not specified" onOpenChange={onSelectOpenChange} onValueChange={(hostPowerMixedPsuAllowed) => onChange({ hostPowerMixedPsuAllowed: hostPowerMixedPsuAllowed as InventoryFormValues['hostPowerMixedPsuAllowed'] }, 'immediate')} />
+          <FieldLabel>
+            <span>Supported redundancy modes</span>
+            <Input
+              aria-label="Supported redundancy modes"
+              value={values.hostPowerRedundancyModes.join(', ')}
+              placeholder="non-redundant, 1+1"
+              className={fieldClassName()}
+              onChange={(event) => onChange({
+                hostPowerRedundancyModes: event.target.value
+                  .split(',')
+                  .map((value) => value.trim())
+                  .filter(Boolean),
+              })}
+            />
+          </FieldLabel>
         </div>
+      </section>
+      <section className="space-y-3 rounded-md border border-[#e4d9c9] bg-[#fbf8f2] p-3">
+        <div>
+          <h4 className="text-sm font-bold text-[#20242c]">Advanced OEM topology</h4>
+          <p className="text-xs leading-5 text-[#75695d]">
+            Preserve controller, boot-device, cooling, management, fixed-port, and relational constraint resources as structured JSON.
+          </p>
+        </div>
+        <FieldLabel>
+          <span>Topology definition</span>
+          <textarea
+            aria-label="Advanced OEM topology definition"
+            aria-invalid={Boolean(errors.hostAdvancedTopologyJson)}
+            value={values.hostAdvancedTopologyJson}
+            rows={12}
+            spellCheck={false}
+            placeholder={'{\n  "controllerSlots": [],\n  "bootDeviceSlots": [],\n  "coolingProfiles": [],\n  "management": {}\n}'}
+            className={`${fieldClassName()} min-h-56 resize-y rounded-md border px-3 py-2 font-mono text-xs leading-5`}
+            onChange={(event) => onChange({ hostAdvancedTopologyJson: event.target.value })}
+          />
+          {errors.hostAdvancedTopologyJson ? (
+            <span className="text-xs font-semibold text-red-700">{errors.hostAdvancedTopologyJson}</span>
+          ) : null}
+        </FieldLabel>
       </section>
     </div>
   )

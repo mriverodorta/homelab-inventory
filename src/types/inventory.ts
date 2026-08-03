@@ -28,7 +28,7 @@ export type InventoryType =
 
 export type InventorySpecs = Record<string, string | number | boolean | null>
 export type InventoryProperties = Record<string, string>
-export type HardwareClass = 'desktop' | 'server'
+export type HardwareClass = 'desktop' | 'workstation' | 'server'
 export type EquipmentUsageRole = 'server' | 'desktop' | 'workstation' | 'other'
 export type NasPowerConfiguration = 'internal-psu' | 'external-adapter'
 export type SmartPowerStripOutletName = {

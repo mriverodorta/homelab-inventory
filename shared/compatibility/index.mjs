@@ -181,12 +181,23 @@ export function normalizeHostCapabilities(item) {
       .filter(Boolean)
   }
   normalizeNumericField(normalized.cpu, 'maxTdpWatts')
-  for (const field of ['slots', 'maxCapacityGb', 'maxModuleCapacityGb', 'maxSpeedMt']) {
+  normalizeNumericField(normalized.cpu, 'socketCount')
+  if (Array.isArray(normalized.cpu?.populationModes)) {
+    normalized.cpu.populationModes = normalized.cpu.populationModes
+      .map(optionalNumber)
+      .filter((value) => Number.isSafeInteger(value) && value > 0)
+  }
+  for (const field of ['slots', 'slotsPerCpu', 'maxCapacityGb', 'maxModuleCapacityGb', 'maxSpeedMt']) {
     normalizeNumericField(normalized.memory, field)
   }
   for (const group of Array.isArray(normalized.storageSlots) ? normalized.storageSlots : []) {
-    for (const field of ['count', 'pcieGeneration']) {
+    for (const field of ['id', 'count', 'pcieGeneration']) {
       normalizeNumericField(group, field)
+    }
+    if (Array.isArray(group.controllerSlotIds)) {
+      group.controllerSlotIds = group.controllerSlotIds
+        .map(optionalNumber)
+        .filter((value) => Number.isSafeInteger(value) && value > 0)
     }
   }
   for (const group of Array.isArray(normalized.optionalModuleSlots) ? normalized.optionalModuleSlots : []) {
@@ -204,14 +215,26 @@ export function normalizeHostCapabilities(item) {
   normalizeNumericField(normalized, 'maxExpansionPowerWatts')
   for (const group of Array.isArray(normalized.expansionSlots) ? normalized.expansionSlots : []) {
     for (const field of [
+      'id',
       'count',
       'pcieGeneration',
       'mechanicalLanes',
       'electricalLanes',
       'maxSlotWidth',
       'maxPowerWatts',
+      'requiredCpuSockets',
     ]) {
       normalizeNumericField(group, field)
+    }
+  }
+  for (const field of ['psuBayCount', 'maxGraphicsPowerWatts']) {
+    normalizeNumericField(normalized.power, field)
+  }
+  for (const collection of ['controllerSlots', 'bootDeviceSlots', 'coolingProfiles']) {
+    for (const group of Array.isArray(normalized[collection]) ? normalized[collection] : []) {
+      for (const field of ['id', 'count', 'requiredCpuSockets', 'controllerSlotId', 'fanCount']) {
+        normalizeNumericField(group, field)
+      }
     }
   }
   return normalized
@@ -623,7 +646,7 @@ function evaluatePowerSupply(assignments, items, component, requirements, findin
   }
 }
 
-function evaluateCpu(hostCapabilities, requirements, findings) {
+function evaluateCpu(hostCapabilities, requirements, assignments, items, component, findings) {
   const support = hostCapabilities.cpu
   const checks = [
     ['socket', support?.sockets, requirements.socket, 'cpu.socket.mismatch'],
@@ -655,6 +678,31 @@ function evaluateCpu(hostCapabilities, requirements, findings) {
       severity: 'error',
       message: `CPU TDP ${requirements.tdpWatts}W exceeds the host limit of ${support.maxTdpWatts}W.`,
       field: 'component.cpu.tdpWatts',
+    })
+  }
+
+  const socketCount = support?.socketCount
+  const cpuCount = assignedComponents(assignments, items, component)
+    .filter((item) => item.type === 'cpu').length
+  if (Number.isSafeInteger(socketCount) && socketCount > 0 && cpuCount > socketCount) {
+    addFinding(findings, {
+      code: 'cpu.sockets.exceeded',
+      severity: 'error',
+      message: `${cpuCount} assigned CPUs exceed the host's ${socketCount} sockets.`,
+      field: 'host.cpu.socketCount',
+    })
+  }
+
+  if (
+    Array.isArray(support?.populationModes) &&
+    support.populationModes.length > 0 &&
+    !support.populationModes.includes(cpuCount)
+  ) {
+    addFinding(findings, {
+      code: 'cpu.population.incomplete',
+      severity: 'warning',
+      message: `${cpuCount} populated CPU socket${cpuCount === 1 ? '' : 's'} does not match the supported population modes (${support.populationModes.join(', ')}).`,
+      field: 'host.cpu.populationModes',
     })
   }
 }
@@ -742,6 +790,32 @@ function evaluateMemory(hostCapabilities, requirements, assignments, items, comp
       severity: 'warning',
       message: `${requirements.speedMt}MT/s memory will operate at up to ${support.maxSpeedMt}MT/s.`,
       field: 'component.memory.speedMt',
+    })
+  }
+
+  if (Array.isArray(support?.moduleTypes) && support.moduleTypes.length > 0 && !requirements.formFactor) {
+    addMissing(findings, 'component.memory.formFactor', 'Memory module type is not recorded.')
+  } else if (
+    Array.isArray(support?.moduleTypes) &&
+    support.moduleTypes.length > 0 &&
+    !includesNormalized(support.moduleTypes, requirements.formFactor)
+  ) {
+    addFinding(findings, {
+      code: 'memory.module-type.mismatch',
+      severity: 'error',
+      message: `${requirements.formFactor} memory is not supported by this host.`,
+      field: 'component.memory.formFactor',
+    })
+  }
+
+  if (support?.eccSupport && support.eccSupport !== 'unknown' && requirements.ecc === undefined) {
+    addMissing(findings, 'component.memory.ecc', 'Memory ECC capability is not recorded.')
+  } else if (requirements.ecc && support.eccSupport === 'unsupported') {
+    addFinding(findings, {
+      code: 'memory.ecc.unsupported',
+      severity: 'error',
+      message: 'ECC memory is not supported by this host.',
+      field: 'component.memory.ecc',
     })
   }
 }
@@ -850,8 +924,20 @@ function expansionPowerItems(assignments, items, component) {
   )
 }
 
-function evaluateExpansionGroup(group, requirements) {
+function evaluateExpansionGroup(group, requirements, populatedCpuSockets) {
   const findings = []
+  if (
+    Number.isSafeInteger(group.requiredCpuSockets) &&
+    group.requiredCpuSockets > populatedCpuSockets
+  ) {
+    addFinding(findings, {
+      code: 'expansion.cpu-population.insufficient',
+      severity: 'error',
+      message: `${group.label ?? 'This expansion slot'} requires ${group.requiredCpuSockets} populated CPU sockets.`,
+      field: 'host.expansionSlots.requiredCpuSockets',
+      resourceId: group.id,
+    })
+  }
   if (requirements.interfaceFamily === 'pcie') {
     if (requirements.connectorLanes === undefined) {
       addMissing(findings, 'component.expansion.connectorLanes', 'Card connector width is not recorded.', group.id)
@@ -1018,9 +1104,11 @@ function evaluateExpansion(hostCapabilities, requirements, assignments, items, c
         field: 'component.expansion.interfaceFamily',
       })
     } else {
+      const populatedCpuSockets = assignedComponents(assignments, items)
+        .filter((item) => item.type === 'cpu').length
       const candidates = matchingGroups.map((group, index) => ({
         index,
-        findings: evaluateExpansionGroup(group, requirements),
+        findings: evaluateExpansionGroup(group, requirements, populatedCpuSockets),
       }))
       const selected = candidates.reduce((best, candidate) =>
         compareCandidateRank(candidate, best) < 0 ? candidate : best,
@@ -1059,7 +1147,7 @@ export function evaluateAssignmentCompatibility({ host, component, assignments =
   const optionalGroups = optionalModuleGroupsFor(hostCapabilities, component)
 
   if (requirements.type === 'cpu') {
-    evaluateCpu(hostCapabilities, requirements, findings)
+    evaluateCpu(hostCapabilities, requirements, assignments, items, component, findings)
   } else if (requirements.type === 'ram') {
     evaluateMemory(hostCapabilities, requirements, assignments, items, component, findings)
   } else if (requirements.type === 'storage') {
@@ -1202,6 +1290,13 @@ function compareAssignments(left, right) {
   return assignedAt || compareAssignmentIds(left.id, right.id)
 }
 
+function compareHostAllocationAssignments(items, left, right) {
+  const leftIsCpu = itemLookup(items, left.itemId)?.type === 'cpu'
+  const rightIsCpu = itemLookup(items, right.itemId)?.type === 'cpu'
+  if (leftIsCpu !== rightIsCpu) return leftIsCpu ? -1 : 1
+  return compareAssignments(left, right)
+}
+
 function assignmentIdentity(hostId, assignmentId) {
   return JSON.stringify([String(hostId), typeof assignmentId, assignmentId])
 }
@@ -1248,6 +1343,9 @@ function resultWithFinding(result, finding) {
 }
 
 function allocationSize(requirements, resourceType) {
+  if (resourceType === 'cpu') {
+    return 1
+  }
   if (resourceType === 'optionalModule') {
     return 1
   }
@@ -1274,6 +1372,7 @@ function resultCanOccupyResource(result, compatibilityEnabled) {
 }
 
 function resourceTypeFor(requirements, hostCapabilities, component) {
+  if (requirements.type === 'cpu') return 'cpu'
   if (requirements.type === 'ram') return 'memory'
   if (requirements.type === 'storage') return 'storage'
   if (optionalModuleGroupsFor(hostCapabilities, component).length > 0) return 'optionalModule'
@@ -1342,7 +1441,7 @@ function positionsAreConsecutive(positions, size) {
 }
 
 function occupancyKey(resourceType, groupId) {
-  return `${resourceType}:${groupId ?? 'memory'}`
+  return `${resourceType}:${groupId ?? 'scalar'}`
 }
 
 function occupiedSet(occupancy, resourceType, groupId) {
@@ -1379,16 +1478,22 @@ function firstConsecutivePositions(occupancy, resourceType, groupId, count, size
   return undefined
 }
 
-function memoryCapacity(hostCapabilities) {
-  const slots = hostCapabilities.memory?.slots
-  return Number.isInteger(slots) && slots > 0 ? slots : undefined
+function scalarCapacity(hostCapabilities, resourceType) {
+  const capacity = resourceType === 'cpu'
+    ? hostCapabilities.cpu?.socketCount ?? (
+        Array.isArray(hostCapabilities.cpu?.sockets) && hostCapabilities.cpu.sockets.length > 0
+          ? 1
+          : undefined
+      )
+    : hostCapabilities.memory?.slots
+  return Number.isInteger(capacity) && capacity > 0 ? capacity : undefined
 }
 
 function allocationMatchesResource(allocation, resourceType, group, size, occupancy, capacity) {
   if (!allocation || allocation.resourceType !== resourceType) {
     return false
   }
-  if (resourceType === 'memory') {
+  if (resourceType === 'memory' || resourceType === 'cpu') {
     if (allocation.groupId !== undefined || capacity === undefined) {
       return false
     }
@@ -1398,7 +1503,7 @@ function allocationMatchesResource(allocation, resourceType, group, size, occupa
   if (!positionsAreConsecutive(allocation.positions, size)) {
     return false
   }
-  const limit = resourceType === 'memory' ? capacity : group.count
+  const limit = resourceType === 'memory' || resourceType === 'cpu' ? capacity : group.count
   return (
     allocation.positions.every((position) => position < limit) &&
     positionsAreFree(occupancy, resourceType, allocation.groupId, allocation.positions)
@@ -1606,7 +1711,7 @@ export function planHostAllocations(project, hostId) {
   const assignments = (project.assignments ?? [])
     .filter((assignment) => String(assignment.serverId) === String(hostId))
     .map((assignment) => ({ ...assignment }))
-    .sort(compareAssignments)
+    .sort((left, right) => compareHostAllocationAssignments(project.items, left, right))
   const compatibilityEnabled = isHostCompatibilityEnabled(project, hostId)
   const hostCapabilities = normalizeHostCapabilities(host)
   const occupancy = new Map()
@@ -1628,7 +1733,7 @@ export function planHostAllocations(project, hostId) {
       continue
     }
 
-    if (resourceType === 'memory') {
+    if (resourceType === 'memory' || resourceType === 'cpu') {
       const result = evaluateResourceCandidate({
         host,
         component,
@@ -1636,7 +1741,7 @@ export function planHostAllocations(project, hostId) {
         items: project.items,
         resourceType,
       })
-      const capacity = memoryCapacity(hostCapabilities)
+      const capacity = scalarCapacity(hostCapabilities, resourceType)
       if (
         resultCanOccupyResource(result, compatibilityEnabled) &&
         allocationMatchesResource(
@@ -1740,7 +1845,7 @@ export function planHostAllocations(project, hostId) {
       continue
     }
 
-    if (resourceType === 'memory') {
+    if (resourceType === 'memory' || resourceType === 'cpu') {
       const result = evaluateResourceCandidate({
         host,
         component,
@@ -1748,8 +1853,11 @@ export function planHostAllocations(project, hostId) {
         items: project.items,
         resourceType,
       })
-      const capacity = memoryCapacity(hostCapabilities)
-      if (!resultCanOccupyResource(result, compatibilityEnabled)) {
+      const capacity = scalarCapacity(hostCapabilities, resourceType)
+      const canOccupy = resultCanOccupyResource(result, compatibilityEnabled) || (
+        resourceType === 'cpu' && result.status === 'unknown'
+      )
+      if (!canOccupy) {
         plannedAssignments.push(cleanAssignment)
         results.push(planResult(assignment, result))
       } else if (capacity === undefined) {

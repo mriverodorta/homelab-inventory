@@ -1,4 +1,4 @@
-const PHYSICAL_EQUIPMENT_CLASSES = new Set(['desktop', 'server'])
+const PHYSICAL_EQUIPMENT_CLASSES = new Set(['desktop', 'workstation', 'server'])
 const USAGE_ROLES = new Set(['server', 'desktop', 'workstation', 'other'])
 
 export function localInventoryTypeForCatalogType(type) {
@@ -9,7 +9,9 @@ export function projectLocalItemForCatalog(item, localType = item.type) {
   const projected = structuredClone(item)
   projected.type = localType
   if (localType === 'server') {
-    projected.type = projected.hardwareClass === 'server' ? 'server' : 'desktop'
+    projected.type = PHYSICAL_EQUIPMENT_CLASSES.has(projected.hardwareClass)
+      ? projected.hardwareClass
+      : 'desktop'
     delete projected.hardwareClass
     delete projected.usageRole
   }

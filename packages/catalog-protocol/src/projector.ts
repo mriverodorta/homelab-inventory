@@ -17,7 +17,9 @@ import {
   FINGERPRINT_VERSION,
   LEGACY_FINGERPRINT_VERSION,
   OEM_FINGERPRINT_VERSION,
+  SERVER_FINGERPRINT_VERSION,
   SUPPORTED_FINGERPRINT_VERSIONS,
+  WORKSTATION_FINGERPRINT_VERSION,
 } from './types'
 
 type SourceItem = Record<string, unknown> & {
@@ -33,7 +35,7 @@ type SourceItem = Record<string, unknown> & {
 }
 
 const SUPPORTED_TYPES = new Set([
-  'desktop', 'server', 'nas', 'cpu', 'ram', 'storage', 'motherboard', 'gpu', 'network', 'wireless',
+  'desktop', 'workstation', 'server', 'nas', 'cpu', 'ram', 'storage', 'motherboard', 'gpu', 'network', 'wireless',
   'cpuCooler', 'case', 'powerSupply', 'soundCard', 'powerAdapter', 'switch', 'patchPanel',
   'monitor', 'ups', 'powerStrip',
 ])
@@ -77,8 +79,10 @@ function canonicalName(item: CatalogTemplateItem): string {
 }
 
 function canonicalNameForFingerprint(item: CatalogTemplateItem, fingerprintVersion: FingerprintVersion): string {
-  if (fingerprintVersion === OEM_FINGERPRINT_VERSION
-    && (item.type === 'desktop' || item.type === 'server' || item.type === 'nas')) {
+  if ((fingerprintVersion === OEM_FINGERPRINT_VERSION
+    || fingerprintVersion === WORKSTATION_FINGERPRINT_VERSION
+    || fingerprintVersion === SERVER_FINGERPRINT_VERSION)
+    && (item.type === 'desktop' || item.type === 'workstation' || item.type === 'server' || item.type === 'nas')) {
     return text(item.name) ?? canonicalName(item)
   }
   return canonicalName(item)
@@ -198,6 +202,47 @@ function extractOemMaterialTopology(item: CatalogTemplateItem): Record<string, J
     ['storageSlots', host.storageSlots],
     ['optionalModuleSlots', host.optionalModuleSlots],
     ['power', host.power],
+    ['fixedPorts', fixedPorts],
+  ])
+  return Object.keys(topology).length > 0 ? topology : undefined
+}
+
+function extractWorkstationMaterialTopology(item: CatalogTemplateItem): Record<string, JsonValue> | undefined {
+  const host = asObject(item.compatibility?.host)
+  if (!host) return undefined
+  const fixedPorts = item.ports?.filter((port) => port.origin === 'fixed')
+  const topology = identityObject([
+    ['formFactor', item.specs?.formFactor],
+    ['cpu', host.cpu],
+    ['memory', host.memory],
+    ['expansionSlots', host.expansionSlots],
+    ['storageSlots', host.storageSlots],
+    ['optionalModuleSlots', host.optionalModuleSlots],
+    ['power', host.power],
+    ['constraintGroups', host.constraintGroups],
+    ['fixedPorts', fixedPorts],
+  ])
+  return Object.keys(topology).length > 0 ? topology : undefined
+}
+
+function extractServerMaterialTopology(item: CatalogTemplateItem): Record<string, JsonValue> | undefined {
+  const host = asObject(item.compatibility?.host)
+  if (!host) return undefined
+  const fixedPorts = item.ports?.filter((port) => port.origin === 'fixed')
+  const topology = identityObject([
+    ['formFactor', item.specs?.formFactor],
+    ['rackUnits', item.specs?.rackUnits],
+    ['cpu', host.cpu],
+    ['memory', host.memory],
+    ['storageSlots', host.storageSlots],
+    ['expansionSlots', host.expansionSlots],
+    ['optionalModuleSlots', host.optionalModuleSlots],
+    ['controllerSlots', host.controllerSlots],
+    ['bootDeviceSlots', host.bootDeviceSlots],
+    ['power', host.power],
+    ['coolingProfiles', host.coolingProfiles],
+    ['management', host.management],
+    ['constraintGroups', host.constraintGroups],
     ['fixedPorts', fixedPorts],
   ])
   return Object.keys(topology).length > 0 ? topology : undefined
@@ -400,6 +445,110 @@ async function oemVariantIdentity(item: CatalogTemplateItem): Promise<{
   }
 }
 
+async function workstationVariantIdentity(item: CatalogTemplateItem): Promise<{
+  identityPayload: Record<string, JsonValue>
+  productFamily: CatalogProductFamily
+  variantEvidence: CatalogVariantEvidence
+} | CatalogEligibilityReason> {
+  if (item.type !== 'workstation') return 'unsupported-type'
+  const manufacturer = text(item.manufacturer)
+  const model = text(item.model)
+  if (!manufacturer || !model) return 'insufficient-identity'
+
+  const productFamily: CatalogProductFamily = { manufacturer, model, physicalClass: item.type }
+  const topology = extractWorkstationMaterialTopology(item)
+  const completeness = topologyCompleteness(item)
+  const board = splitBoardIdentity(item)
+  const explicitVariant = text(item.specs?.boardVariant) ?? text(item.specs?.variantKey)
+  const topologySignature = topology
+    ? await sha256Hex(`hli:topology:v${WORKSTATION_FINGERPRINT_VERSION}:${canonicalJson(topology)}`)
+    : undefined
+  const structuralSummary = topologySummary(topology)
+
+  if (board.partNumber) {
+    const label = explicitVariant ?? `Board ${board.partNumber}${board.revision ? ` ${board.revision}` : ''}`
+    return {
+      productFamily,
+      variantEvidence: {
+        source: 'motherboard',
+        completeness,
+        label,
+        motherboardPartNumber: board.partNumber,
+        ...(board.revision ? { motherboardRevision: board.revision } : {}),
+        ...(explicitVariant ? { variantKey: normalizeVariantKey(explicitVariant) } : {}),
+        ...(topologySignature ? { topologySignature } : {}),
+        ...(structuralSummary ? { structuralSummary } : {}),
+      },
+      identityPayload: identityObject([
+        ['productFamily', productFamily],
+        ['motherboardPartNumber', board.partNumber],
+        ['motherboardRevision', board.revision],
+        ['topologySignature', topologySignature],
+      ]),
+    }
+  }
+
+  if (!topology || !topologySignature || completeness !== 'complete') return 'insufficient-identity'
+  return {
+    productFamily,
+    variantEvidence: {
+      source: 'topology',
+      completeness,
+      label: explicitVariant ?? 'Topology-defined variant',
+      ...(explicitVariant ? { variantKey: normalizeVariantKey(explicitVariant) } : {}),
+      topologySignature,
+      ...(structuralSummary ? { structuralSummary } : {}),
+    },
+    identityPayload: { productFamily, topologySignature },
+  }
+}
+
+async function serverVariantIdentity(item: CatalogTemplateItem): Promise<{
+  identityPayload: Record<string, JsonValue>
+  productFamily: CatalogProductFamily
+  variantEvidence: CatalogVariantEvidence
+} | CatalogEligibilityReason> {
+  if (item.type !== 'server') return 'unsupported-type'
+  const manufacturer = text(item.manufacturer)
+  const model = text(item.model)
+  if (!manufacturer || !model) return 'insufficient-identity'
+
+  const productFamily: CatalogProductFamily = { manufacturer, model, physicalClass: item.type }
+  const topology = extractServerMaterialTopology(item)
+  const completeness = topologyCompleteness(item)
+  const board = splitBoardIdentity(item)
+  const explicitVariant = text(item.specs?.boardVariant) ?? text(item.specs?.variantKey)
+  const topologySignature = topology
+    ? await sha256Hex(`hli:topology:v${SERVER_FINGERPRINT_VERSION}:${canonicalJson(topology)}`)
+    : undefined
+  const structuralSummary = topologySummary(topology)
+
+  if (!topology || !topologySignature || completeness !== 'complete') return 'insufficient-identity'
+
+  const variantEvidence: CatalogVariantEvidence = {
+    source: board.partNumber ? 'motherboard' : 'topology',
+    completeness,
+    label: explicitVariant
+      ?? (board.partNumber ? `Board ${board.partNumber}${board.revision ? ` ${board.revision}` : ''}` : 'Topology-defined variant'),
+    ...(board.partNumber ? { motherboardPartNumber: board.partNumber } : {}),
+    ...(board.revision ? { motherboardRevision: board.revision } : {}),
+    ...(explicitVariant ? { variantKey: normalizeVariantKey(explicitVariant) } : {}),
+    topologySignature,
+    ...(structuralSummary ? { structuralSummary } : {}),
+  }
+
+  return {
+    productFamily,
+    variantEvidence,
+    identityPayload: identityObject([
+      ['productFamily', productFamily],
+      ['motherboardPartNumber', board.partNumber],
+      ['motherboardRevision', board.revision],
+      ['topologySignature', topologySignature],
+    ]),
+  }
+}
+
 export async function projectCatalogItem(
   value: unknown,
   options: { fingerprintVersion?: FingerprintVersion } = {},
@@ -407,7 +556,8 @@ export async function projectCatalogItem(
   const source = value as SourceItem
   const sourceType = text(source?.type) ?? ''
   const hardwareClass = text(source?.hardwareClass)
-  const type = sourceType === 'server' && (hardwareClass === 'desktop' || hardwareClass === 'server')
+  const type = sourceType === 'server'
+    && (hardwareClass === 'desktop' || hardwareClass === 'workstation' || hardwareClass === 'server')
     ? hardwareClass
     : sourceType
   const itemId = Number(source?.id)
@@ -438,6 +588,18 @@ export async function projectCatalogItem(
     identityPayload = identity
   } else if (fingerprintVersion === OEM_FINGERPRINT_VERSION) {
     const variant = await oemVariantIdentity(item)
+    if (typeof variant === 'string') return { status: 'ineligible', source: sourceRef, reason: variant }
+    identityPayload = variant.identityPayload
+    productFamily = variant.productFamily
+    variantEvidence = variant.variantEvidence
+  } else if (fingerprintVersion === WORKSTATION_FINGERPRINT_VERSION) {
+    const variant = await workstationVariantIdentity(item)
+    if (typeof variant === 'string') return { status: 'ineligible', source: sourceRef, reason: variant }
+    identityPayload = variant.identityPayload
+    productFamily = variant.productFamily
+    variantEvidence = variant.variantEvidence
+  } else if (fingerprintVersion === SERVER_FINGERPRINT_VERSION) {
+    const variant = await serverVariantIdentity(item)
     if (typeof variant === 'string') return { status: 'ineligible', source: sourceRef, reason: variant }
     identityPayload = variant.identityPayload
     productFamily = variant.productFamily
@@ -479,5 +641,6 @@ export async function digestCatalogTemplate(
 }
 
 export function catalogItemMeetsEligibility(item: CatalogTemplateItem): boolean {
+  if (item.type === 'workstation') return Boolean(text(item.manufacturer) && text(item.model))
   return typeof legacyProductIdentity(item) !== 'string'
 }

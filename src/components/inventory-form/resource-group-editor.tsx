@@ -102,6 +102,11 @@ export function StorageSlotGroupsEditor({
             interfaces: [],
             formFactors: [],
             pcieGeneration: '',
+            location: '',
+            hotSwap: false,
+            backplane: '',
+            controllerSlotIds: '',
+            directConnect: false,
           }])}
         >
           <Plus aria-hidden="true" className="size-4" />
@@ -130,6 +135,15 @@ export function StorageSlotGroupsEditor({
           <CheckboxOptions label={`Storage group ${index + 1} interfaces`} options={STORAGE_INTERFACES} selected={group.interfaces} onChange={(interfaces) => updateGroup(group.draftKey, { interfaces })} />
           <CheckboxOptions label={`Storage group ${index + 1} form factors`} options={STORAGE_FORM_FACTORS} selected={group.formFactors} onChange={(formFactors) => updateGroup(group.draftKey, { formFactors })} />
           <SelectField label="PCIe generation" name={`storage-group-${group.draftKey}-pcie-generation`} value={group.pcieGeneration} options={PCIE_GENERATIONS} emptyLabel="Not specified" onOpenChange={onSelectOpenChange} onValueChange={(pcieGeneration) => updateGroup(group.draftKey, { pcieGeneration })} />
+          <div className="grid gap-3 sm:grid-cols-3">
+            <TextField label="Location" name={`storage-group-${group.draftKey}-location`} value={group.location} placeholder="external" onChange={(location) => updateGroup(group.draftKey, { location })} />
+            <TextField label="Backplane" name={`storage-group-${group.draftKey}-backplane`} value={group.backplane} placeholder="10-bay SFF backplane" onChange={(backplane) => updateGroup(group.draftKey, { backplane })} />
+            <TextField label="Controller slot IDs" name={`storage-group-${group.draftKey}-controllers`} value={group.controllerSlotIds} placeholder="1, 2" onChange={(controllerSlotIds) => updateGroup(group.draftKey, { controllerSlotIds })} />
+          </div>
+          <div className="flex flex-wrap gap-4 text-xs font-semibold text-[#3d3832]">
+            <label className="flex items-center gap-2"><Input type="checkbox" className="size-4 rounded-none" checked={group.hotSwap} onChange={(event) => updateGroup(group.draftKey, { hotSwap: event.target.checked })} />Hot-swap</label>
+            <label className="flex items-center gap-2"><Input type="checkbox" className="size-4 rounded-none" checked={group.directConnect} onChange={(event) => updateGroup(group.draftKey, { directConnect: event.target.checked })} />Direct-connect topology</label>
+          </div>
         </div>
       ))}
       {!validationTarget ? <FieldError message={error} /> : null}
@@ -179,6 +193,8 @@ export function ExpansionSlotGroupsEditor({
             maxPowerWatts: '',
             proprietaryRiser: false,
             riserCapability: '',
+            requiredCpuSockets: '',
+            riserGroup: '',
           }])}
         >
           <Plus aria-hidden="true" className="size-4" />
@@ -213,18 +229,20 @@ export function ExpansionSlotGroupsEditor({
             <TextField label="Maximum power (W)" name={`expansion-group-${group.draftKey}-power`} value={group.maxPowerWatts} type="number" min={0} placeholder="75" onChange={(maxPowerWatts) => updateGroup(group.draftKey, { maxPowerWatts })} />
           </div>
           <CheckboxOptions label={`Expansion group ${index + 1} accepted heights`} options={CARD_HEIGHTS} selected={group.acceptedHeights} onChange={(acceptedHeights) => updateGroup(group.draftKey, { acceptedHeights })} />
-          <div className="grid gap-3 sm:grid-cols-[auto_minmax(0,1fr)]">
+          <div className="grid gap-3 sm:grid-cols-3">
             <label className="flex min-h-10 items-center gap-2 rounded-md border border-[#ded8ce] bg-[#fffdf8] px-3 text-xs font-semibold text-[#3d3832]">
               <Input
                 aria-label={`Expansion group ${index + 1} requires proprietary riser`}
                 type="checkbox"
-                checked={group.proprietaryRiser}
+                checked={group.proprietaryRiser === true}
                 className="size-4 rounded-none"
                 onChange={(event) => updateGroup(group.draftKey, { proprietaryRiser: event.target.checked })}
               />
               Proprietary riser
             </label>
             <TextField label="Riser capability" name={`expansion-group-${group.draftKey}-riser-capability`} value={group.riserCapability} placeholder="Dell proprietary PCIe riser" onChange={(riserCapability) => updateGroup(group.draftKey, { riserCapability })} />
+            <TextField label="Riser group" name={`expansion-group-${group.draftKey}-riser-group`} value={group.riserGroup} placeholder="riser-2" onChange={(riserGroup) => updateGroup(group.draftKey, { riserGroup })} />
+            <TextField label="Required populated CPUs" name={`expansion-group-${group.draftKey}-required-cpus`} value={group.requiredCpuSockets} type="number" min={1} placeholder="2" onChange={(requiredCpuSockets) => updateGroup(group.draftKey, { requiredCpuSockets })} />
           </div>
         </div>
       ))}

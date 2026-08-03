@@ -88,9 +88,26 @@ export const NAS_POWER_CONFIGURATION_OPTIONS = [
   { value: 'external-adapter', label: 'External power adapter' },
 ] as const
 export const STORAGE_FORM_FACTORS = ['', '2230', '2242', '2260', '2280', '2.5"', '3.5"', 'eMMC']
-export const SERVER_FORM_FACTORS = ['Tiny', 'Mini', 'Micro', 'Small', 'SFF', 'Tower', 'Mini-ITX', 'Micro-ATX', 'ATX', 'E-ATX']
+export const SERVER_FORM_FACTORS = [
+  'Tiny',
+  'Mini',
+  'Micro',
+  'Compact',
+  'Small',
+  'SFF',
+  'Tower',
+  'Rack Workstation',
+  'MicroServer',
+  'Tower Server',
+  'Rack Server',
+  'Mini-ITX',
+  'Micro-ATX',
+  'ATX',
+  'E-ATX',
+]
 export const SERVER_HARDWARE_CLASS_OPTIONS: ReadonlyArray<{ value: HardwareClass; label: string }> = [
   { value: 'desktop', label: 'Desktop PC' },
+  { value: 'workstation', label: 'Workstation' },
   { value: 'server', label: 'Server' },
 ]
 export const SERVER_USAGE_ROLE_OPTIONS: ReadonlyArray<{ value: EquipmentUsageRole; label: string }> = [
@@ -132,7 +149,10 @@ export const EXPANSION_INTERFACE_FAMILIES = ['pcie', 'm2-ae', 'usb', 'onboard']
 export const CARD_HEIGHTS = ['full-height', 'low-profile']
 export const SLOT_WIDTHS = ['1', '2', '3', '4']
 export const TOPOLOGY_COMPLETENESS_OPTIONS = ['complete', 'partial', 'conflicting']
-export const ECC_SUPPORT_OPTIONS = ['supported', 'unsupported', 'optional', 'unknown']
+export const ECC_SUPPORT_OPTIONS = ['supported', 'unsupported', 'conditional', 'unknown']
+export const MEMORY_MODULE_TYPES = ['SODIMM', 'UDIMM', 'RDIMM', 'LRDIMM']
+export const POWER_REDUNDANCY_OPTIONS = ['none', 'optional', 'required']
+export const PSU_TYPE_OPTIONS = ['fixed', 'cabled', 'hot-plug']
 export const OPTIONAL_MODULE_KINDS = [
   'wireless-card',
   'network-card',

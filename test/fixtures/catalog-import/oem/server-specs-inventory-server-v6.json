@@ -1,0 +1,3435 @@
+{
+  "schemaVersion": 1,
+  "protocol": {
+    "catalogSchemaVersion": 1,
+    "fingerprintVersion": 6,
+    "manufacturerAliasVersion": 1,
+    "requiredApplicationOemContractVersion": 6
+  },
+  "platformCases": [
+    {
+      "caseId": "dell-poweredge-r640-10-sff-nvme",
+      "description": "Dell R640 10-sff-nvme conventional server topology.",
+      "sourceRecordKey": "dell:poweredge:r640:10-sff-nvme",
+      "templateKey": "server-dell-poweredge-r640-10-sff-nvme",
+      "fingerprintVersion": 6,
+      "productFamily": {
+        "manufacturer": "Dell",
+        "model": "R640",
+        "physicalClass": "server"
+      },
+      "variantEvidence": {
+        "source": "topology",
+        "completeness": "complete",
+        "label": "10-sff-nvme",
+        "variantKey": "10-sff-nvme",
+        "topologySignature": "ea3812d52a4cbbe04b5d90c0fbc129f57dd8d2ba5b63f7b0c3396bfe8c3738bb",
+        "structuralSummary": "PCIe Gen3 x16 Primary PCIe slots · PCIe Gen3 x8 Secondary-CPU PCIe slots"
+      },
+      "identityHash": "d856ab4063ab0e49e03a95867ed2c3fa241359a7a678e7dcb6471e0276bd1660",
+      "contentHash": "ee22b75082cb8346471e32b28db628b3abbc2a100dcb46bc2373d8fb3cd6cbf7",
+      "item": {
+        "type": "server",
+        "name": "Dell PowerEdge R640 - 10x 2.5-inch with NVMe support",
+        "manufacturer": "Dell",
+        "family": "PowerEdge",
+        "model": "R640",
+        "specs": {
+          "formFactor": "Rack Server",
+          "topologyCompleteness": "complete",
+          "variantKey": "10-sff-nvme",
+          "launchDate": "2017-07-11",
+          "oemGeneration": "14G",
+          "rackUnits": 1
+        },
+        "ports": [
+          {
+            "id": 1,
+            "kind": "management",
+            "type": "rj45",
+            "slotNumber": 1,
+            "key": "dedicated-management",
+            "role": "dedicated-management",
+            "speed": "1G",
+            "origin": "fixed"
+          }
+        ],
+        "compatibility": {
+          "host": {
+            "topologyCompleteness": "complete",
+            "cpu": {
+              "sockets": [
+                "LGA3647"
+              ],
+              "generations": [
+                "Intel Xeon Scalable 1st Gen",
+                "Intel Xeon Scalable 2nd Gen"
+              ],
+              "maxTdpWatts": 205,
+              "socketCount": 2,
+              "populationModes": [
+                1,
+                2
+              ]
+            },
+            "memory": {
+              "slots": 24,
+              "generations": [
+                "DDR4"
+              ],
+              "maxCapacityGb": 3072,
+              "maxModuleCapacityGb": 128,
+              "maxSpeedMt": 2933,
+              "eccSupport": "supported",
+              "moduleTypes": [
+                "LRDIMM",
+                "RDIMM"
+              ],
+              "slotsPerCpu": 12
+            },
+            "storageSlots": [
+              {
+                "id": 1,
+                "key": "front-sff-nvme-bays",
+                "label": "Front 2.5-inch SAS/SATA/NVMe bays",
+                "count": 10,
+                "interfaces": [
+                  "SAS",
+                  "SATA",
+                  "NVMe"
+                ],
+                "formFactors": [
+                  "2.5-inch"
+                ],
+                "pcieGeneration": 3,
+                "location": "external",
+                "hotSwap": true,
+                "backplane": "10-bay SFF universal backplane",
+                "controllerSlotIds": [
+                  1
+                ],
+                "directConnect": false
+              }
+            ],
+            "expansionSlots": [
+              {
+                "id": 1,
+                "key": "primary-pcie-slots",
+                "label": "Primary PCIe slots",
+                "count": 2,
+                "interfaceFamily": "pcie",
+                "pcieGeneration": 3,
+                "mechanicalLanes": 16,
+                "electricalLanes": 16,
+                "acceptedHeights": [
+                  "full-height",
+                  "low-profile"
+                ],
+                "riserGroup": "riser-1"
+              },
+              {
+                "id": 2,
+                "key": "secondary-pcie-slots",
+                "label": "Secondary-CPU PCIe slots",
+                "count": 1,
+                "interfaceFamily": "pcie",
+                "pcieGeneration": 3,
+                "mechanicalLanes": 16,
+                "electricalLanes": 8,
+                "acceptedHeights": [
+                  "full-height",
+                  "low-profile"
+                ],
+                "requiredCpuSockets": 2,
+                "riserGroup": "riser-2"
+              }
+            ],
+            "optionalModuleSlots": [
+              {
+                "id": 1,
+                "key": "network-daughter-card",
+                "label": "Network Daughter Card slot",
+                "count": 1,
+                "acceptedModuleKinds": [
+                  "ndc",
+                  "network-adapter"
+                ]
+              }
+            ],
+            "controllerSlots": [
+              {
+                "id": 1,
+                "key": "perc-slot",
+                "label": "Dedicated PERC storage-controller slot",
+                "count": 1,
+                "acceptedControllerKinds": [
+                  "hba",
+                  "raid-controller"
+                ],
+                "interfaceFamily": "pcie",
+                "dedicated": true
+              }
+            ],
+            "bootDeviceSlots": [
+              {
+                "id": 1,
+                "key": "boss-slot",
+                "label": "BOSS boot-controller slot",
+                "count": 1,
+                "acceptedDeviceKinds": [
+                  "boot-controller",
+                  "boot-storage"
+                ],
+                "interfaces": [
+                  "SATA"
+                ],
+                "formFactors": [
+                  "2280"
+                ],
+                "controllerSlotId": 1
+              }
+            ],
+            "power": {
+              "configuration": "internal-psu",
+              "connector": "IEC C14",
+              "supportedWattagesWatts": [
+                750,
+                1100
+              ],
+              "adapterRequired": false,
+              "redundancy": "optional",
+              "psuBayCount": 2,
+              "psuType": "hot-plug",
+              "mixedPsuAllowed": false,
+              "redundancyModes": [
+                "1+0",
+                "1+1"
+              ]
+            },
+            "coolingProfiles": [
+              {
+                "id": 1,
+                "key": "standard-fan-set",
+                "label": "Standard fan set",
+                "fanCount": 7,
+                "redundant": true,
+                "conditions": [
+                  "standard configuration"
+                ]
+              },
+              {
+                "id": 2,
+                "key": "high-performance-fan-set",
+                "label": "High-performance fan set",
+                "fanCount": 8,
+                "redundant": true,
+                "conditions": [
+                  "NVMe or high-TDP configuration"
+                ]
+              }
+            ],
+            "management": {
+              "controllerFamily": "iDRAC",
+              "controllerGeneration": "iDRAC9",
+              "dedicatedPort": true,
+              "sharedNic": true,
+              "portType": "rj45",
+              "speed": "1G"
+            },
+            "constraintGroups": []
+          }
+        }
+      }
+    },
+    {
+      "caseId": "dell-poweredge-r740-16-sff-nvme",
+      "description": "Dell R740 16-sff-nvme conventional server topology.",
+      "sourceRecordKey": "dell:poweredge:r740:16-sff-nvme",
+      "templateKey": "server-dell-poweredge-r740-16-sff-nvme",
+      "fingerprintVersion": 6,
+      "productFamily": {
+        "manufacturer": "Dell",
+        "model": "R740",
+        "physicalClass": "server"
+      },
+      "variantEvidence": {
+        "source": "topology",
+        "completeness": "complete",
+        "label": "16-sff-nvme",
+        "variantKey": "16-sff-nvme",
+        "topologySignature": "ca079243b8c3c236065fcbf6407d270123305c29e734d3cac0d1f32be79ed8d4",
+        "structuralSummary": "PCIe Gen3 x16 Primary PCIe slots · PCIe Gen3 x8 Secondary-CPU PCIe slots"
+      },
+      "identityHash": "9071968e439f92fe6a36d990865201cb8defb82b317fe9f2bde89df6602f70d4",
+      "contentHash": "efe87d46c511473d0477c0a21a394c382fd887a80a0152421ef7c5187a376672",
+      "item": {
+        "type": "server",
+        "name": "Dell PowerEdge R740 - 16x 2.5-inch with NVMe support",
+        "manufacturer": "Dell",
+        "family": "PowerEdge",
+        "model": "R740",
+        "specs": {
+          "formFactor": "Rack Server",
+          "topologyCompleteness": "complete",
+          "variantKey": "16-sff-nvme",
+          "launchDate": "2017-07-11",
+          "oemGeneration": "14G",
+          "rackUnits": 2
+        },
+        "ports": [
+          {
+            "id": 1,
+            "kind": "management",
+            "type": "rj45",
+            "slotNumber": 1,
+            "key": "dedicated-management",
+            "role": "dedicated-management",
+            "speed": "1G",
+            "origin": "fixed"
+          }
+        ],
+        "compatibility": {
+          "host": {
+            "topologyCompleteness": "complete",
+            "cpu": {
+              "sockets": [
+                "LGA3647"
+              ],
+              "generations": [
+                "Intel Xeon Scalable 1st Gen",
+                "Intel Xeon Scalable 2nd Gen"
+              ],
+              "maxTdpWatts": 205,
+              "socketCount": 2,
+              "populationModes": [
+                1,
+                2
+              ]
+            },
+            "memory": {
+              "slots": 24,
+              "generations": [
+                "DDR4"
+              ],
+              "maxCapacityGb": 3072,
+              "maxModuleCapacityGb": 128,
+              "maxSpeedMt": 2933,
+              "eccSupport": "supported",
+              "moduleTypes": [
+                "LRDIMM",
+                "RDIMM"
+              ],
+              "slotsPerCpu": 12
+            },
+            "storageSlots": [
+              {
+                "id": 1,
+                "key": "front-sff-nvme-bays",
+                "label": "Front 2.5-inch SAS/SATA/NVMe bays",
+                "count": 16,
+                "interfaces": [
+                  "SAS",
+                  "SATA",
+                  "NVMe"
+                ],
+                "formFactors": [
+                  "2.5-inch"
+                ],
+                "pcieGeneration": 3,
+                "location": "external",
+                "hotSwap": true,
+                "backplane": "16-bay SFF universal backplane",
+                "controllerSlotIds": [
+                  1
+                ],
+                "directConnect": false
+              }
+            ],
+            "expansionSlots": [
+              {
+                "id": 1,
+                "key": "primary-pcie-slots",
+                "label": "Primary PCIe slots",
+                "count": 4,
+                "interfaceFamily": "pcie",
+                "pcieGeneration": 3,
+                "mechanicalLanes": 16,
+                "electricalLanes": 16,
+                "acceptedHeights": [
+                  "full-height",
+                  "low-profile"
+                ],
+                "riserGroup": "riser-1"
+              },
+              {
+                "id": 2,
+                "key": "secondary-pcie-slots",
+                "label": "Secondary-CPU PCIe slots",
+                "count": 4,
+                "interfaceFamily": "pcie",
+                "pcieGeneration": 3,
+                "mechanicalLanes": 16,
+                "electricalLanes": 8,
+                "acceptedHeights": [
+                  "full-height",
+                  "low-profile"
+                ],
+                "requiredCpuSockets": 2,
+                "riserGroup": "riser-2"
+              }
+            ],
+            "optionalModuleSlots": [
+              {
+                "id": 1,
+                "key": "network-daughter-card",
+                "label": "Network Daughter Card slot",
+                "count": 1,
+                "acceptedModuleKinds": [
+                  "ndc",
+                  "network-adapter"
+                ]
+              }
+            ],
+            "controllerSlots": [
+              {
+                "id": 1,
+                "key": "perc-slot",
+                "label": "Dedicated PERC storage-controller slot",
+                "count": 1,
+                "acceptedControllerKinds": [
+                  "hba",
+                  "raid-controller"
+                ],
+                "interfaceFamily": "pcie",
+                "dedicated": true
+              }
+            ],
+            "bootDeviceSlots": [
+              {
+                "id": 1,
+                "key": "boss-slot",
+                "label": "BOSS boot-controller slot",
+                "count": 1,
+                "acceptedDeviceKinds": [
+                  "boot-controller",
+                  "boot-storage"
+                ],
+                "interfaces": [
+                  "SATA"
+                ],
+                "formFactors": [
+                  "2280"
+                ],
+                "controllerSlotId": 1
+              }
+            ],
+            "power": {
+              "configuration": "internal-psu",
+              "connector": "IEC C14",
+              "supportedWattagesWatts": [
+                750,
+                1100
+              ],
+              "adapterRequired": false,
+              "redundancy": "optional",
+              "psuBayCount": 2,
+              "psuType": "hot-plug",
+              "mixedPsuAllowed": false,
+              "redundancyModes": [
+                "1+0",
+                "1+1"
+              ]
+            },
+            "coolingProfiles": [
+              {
+                "id": 1,
+                "key": "standard-fan-set",
+                "label": "Standard fan set",
+                "fanCount": 6,
+                "redundant": true,
+                "conditions": [
+                  "standard configuration"
+                ]
+              },
+              {
+                "id": 2,
+                "key": "high-performance-fan-set",
+                "label": "High-performance fan set",
+                "fanCount": 8,
+                "redundant": true,
+                "conditions": [
+                  "NVMe or high-TDP configuration"
+                ]
+              }
+            ],
+            "management": {
+              "controllerFamily": "iDRAC",
+              "controllerGeneration": "iDRAC9",
+              "dedicatedPort": true,
+              "sharedNic": true,
+              "portType": "rj45",
+              "speed": "1G"
+            },
+            "constraintGroups": []
+          }
+        }
+      }
+    },
+    {
+      "caseId": "dell-poweredge-r740-8-sff",
+      "description": "Dell R740 8-sff conventional server topology.",
+      "sourceRecordKey": "dell:poweredge:r740:8-sff",
+      "templateKey": "server-dell-poweredge-r740-8-sff",
+      "fingerprintVersion": 6,
+      "productFamily": {
+        "manufacturer": "Dell",
+        "model": "R740",
+        "physicalClass": "server"
+      },
+      "variantEvidence": {
+        "source": "topology",
+        "completeness": "complete",
+        "label": "8-sff",
+        "variantKey": "8-sff",
+        "topologySignature": "82eb044012178076442af9561913414b598f7c97b1a2aedfb3d87f888a2b4aab",
+        "structuralSummary": "PCIe Gen3 x16 Primary PCIe slots · PCIe Gen3 x8 Secondary-CPU PCIe slots"
+      },
+      "identityHash": "e250f40cc5cbad2d00c426b8b1b3f4d96b3a2e73d160185d8dccea32cf6c2b1f",
+      "contentHash": "457813b77a7fa88d873c15cae865c54a859ba1f4de322d5aba1c7db32278e57e",
+      "item": {
+        "type": "server",
+        "name": "Dell PowerEdge R740 - 8x 2.5-inch hot-swap",
+        "manufacturer": "Dell",
+        "family": "PowerEdge",
+        "model": "R740",
+        "specs": {
+          "formFactor": "Rack Server",
+          "topologyCompleteness": "complete",
+          "variantKey": "8-sff",
+          "launchDate": "2017-07-11",
+          "oemGeneration": "14G",
+          "rackUnits": 2
+        },
+        "ports": [
+          {
+            "id": 1,
+            "kind": "management",
+            "type": "rj45",
+            "slotNumber": 1,
+            "key": "dedicated-management",
+            "role": "dedicated-management",
+            "speed": "1G",
+            "origin": "fixed"
+          }
+        ],
+        "compatibility": {
+          "host": {
+            "topologyCompleteness": "complete",
+            "cpu": {
+              "sockets": [
+                "LGA3647"
+              ],
+              "generations": [
+                "Intel Xeon Scalable 1st Gen",
+                "Intel Xeon Scalable 2nd Gen"
+              ],
+              "maxTdpWatts": 205,
+              "socketCount": 2,
+              "populationModes": [
+                1,
+                2
+              ]
+            },
+            "memory": {
+              "slots": 24,
+              "generations": [
+                "DDR4"
+              ],
+              "maxCapacityGb": 3072,
+              "maxModuleCapacityGb": 128,
+              "maxSpeedMt": 2933,
+              "eccSupport": "supported",
+              "moduleTypes": [
+                "LRDIMM",
+                "RDIMM"
+              ],
+              "slotsPerCpu": 12
+            },
+            "storageSlots": [
+              {
+                "id": 1,
+                "key": "front-sff-bays",
+                "label": "Front 2.5-inch hot-swap bays",
+                "count": 8,
+                "interfaces": [
+                  "SAS",
+                  "SATA"
+                ],
+                "formFactors": [
+                  "2.5-inch"
+                ],
+                "location": "external",
+                "hotSwap": true,
+                "backplane": "8-bay SFF SAS/SATA backplane",
+                "controllerSlotIds": [
+                  1
+                ],
+                "directConnect": false
+              }
+            ],
+            "expansionSlots": [
+              {
+                "id": 1,
+                "key": "primary-pcie-slots",
+                "label": "Primary PCIe slots",
+                "count": 4,
+                "interfaceFamily": "pcie",
+                "pcieGeneration": 3,
+                "mechanicalLanes": 16,
+                "electricalLanes": 16,
+                "acceptedHeights": [
+                  "full-height",
+                  "low-profile"
+                ],
+                "riserGroup": "riser-1"
+              },
+              {
+                "id": 2,
+                "key": "secondary-pcie-slots",
+                "label": "Secondary-CPU PCIe slots",
+                "count": 4,
+                "interfaceFamily": "pcie",
+                "pcieGeneration": 3,
+                "mechanicalLanes": 16,
+                "electricalLanes": 8,
+                "acceptedHeights": [
+                  "full-height",
+                  "low-profile"
+                ],
+                "requiredCpuSockets": 2,
+                "riserGroup": "riser-2"
+              }
+            ],
+            "optionalModuleSlots": [
+              {
+                "id": 1,
+                "key": "network-daughter-card",
+                "label": "Network Daughter Card slot",
+                "count": 1,
+                "acceptedModuleKinds": [
+                  "ndc",
+                  "network-adapter"
+                ]
+              }
+            ],
+            "controllerSlots": [
+              {
+                "id": 1,
+                "key": "perc-slot",
+                "label": "Dedicated PERC storage-controller slot",
+                "count": 1,
+                "acceptedControllerKinds": [
+                  "hba",
+                  "raid-controller"
+                ],
+                "interfaceFamily": "pcie",
+                "dedicated": true
+              }
+            ],
+            "bootDeviceSlots": [
+              {
+                "id": 1,
+                "key": "boss-slot",
+                "label": "BOSS boot-controller slot",
+                "count": 1,
+                "acceptedDeviceKinds": [
+                  "boot-controller",
+                  "boot-storage"
+                ],
+                "interfaces": [
+                  "SATA"
+                ],
+                "formFactors": [
+                  "2280"
+                ],
+                "controllerSlotId": 1
+              }
+            ],
+            "power": {
+              "configuration": "internal-psu",
+              "connector": "IEC C14",
+              "supportedWattagesWatts": [
+                750,
+                1100
+              ],
+              "adapterRequired": false,
+              "redundancy": "optional",
+              "psuBayCount": 2,
+              "psuType": "hot-plug",
+              "mixedPsuAllowed": false,
+              "redundancyModes": [
+                "1+0",
+                "1+1"
+              ]
+            },
+            "coolingProfiles": [
+              {
+                "id": 1,
+                "key": "standard-fan-set",
+                "label": "Standard fan set",
+                "fanCount": 6,
+                "redundant": true,
+                "conditions": [
+                  "standard configuration"
+                ]
+              },
+              {
+                "id": 2,
+                "key": "high-performance-fan-set",
+                "label": "High-performance fan set",
+                "fanCount": 8,
+                "redundant": true,
+                "conditions": [
+                  "NVMe or high-TDP configuration"
+                ]
+              }
+            ],
+            "management": {
+              "controllerFamily": "iDRAC",
+              "controllerGeneration": "iDRAC9",
+              "dedicatedPort": true,
+              "sharedNic": true,
+              "portType": "rj45",
+              "speed": "1G"
+            },
+            "constraintGroups": []
+          }
+        }
+      }
+    },
+    {
+      "caseId": "dell-poweredge-r750-24-sff-nvme",
+      "description": "Dell R750 24-sff-nvme conventional server topology.",
+      "sourceRecordKey": "dell:poweredge:r750:24-sff-nvme",
+      "templateKey": "server-dell-poweredge-r750-24-sff-nvme",
+      "fingerprintVersion": 6,
+      "productFamily": {
+        "manufacturer": "Dell",
+        "model": "R750",
+        "physicalClass": "server"
+      },
+      "variantEvidence": {
+        "source": "topology",
+        "completeness": "complete",
+        "label": "24-sff-nvme",
+        "variantKey": "24-sff-nvme",
+        "topologySignature": "59aa76c24cc8d9ee6413fedf012a95439793c748ba4939335fa939e3b05923a1",
+        "structuralSummary": "PCIe Gen4 x16 Primary PCIe slots · PCIe Gen4 x8 Secondary-CPU PCIe slots"
+      },
+      "identityHash": "f21491c4c51446ebd2aa8f9f4b1e755f10a39d096bd9213f14abec7fb68d0551",
+      "contentHash": "5a746971ef339b0cd309fccc7902124a607e9fb5d9267ea2e5f38978a6836238",
+      "item": {
+        "type": "server",
+        "name": "Dell PowerEdge R750 - 24x 2.5-inch with NVMe support",
+        "manufacturer": "Dell",
+        "family": "PowerEdge",
+        "model": "R750",
+        "specs": {
+          "formFactor": "Rack Server",
+          "topologyCompleteness": "complete",
+          "variantKey": "24-sff-nvme",
+          "launchDate": "2021-03-17",
+          "oemGeneration": "15G",
+          "rackUnits": 2
+        },
+        "ports": [
+          {
+            "id": 1,
+            "kind": "management",
+            "type": "rj45",
+            "slotNumber": 1,
+            "key": "dedicated-management",
+            "role": "dedicated-management",
+            "speed": "1G",
+            "origin": "fixed"
+          }
+        ],
+        "compatibility": {
+          "host": {
+            "topologyCompleteness": "complete",
+            "cpu": {
+              "sockets": [
+                "LGA4189"
+              ],
+              "generations": [
+                "Intel Xeon Scalable 3rd Gen"
+              ],
+              "maxTdpWatts": 270,
+              "socketCount": 2,
+              "populationModes": [
+                1,
+                2
+              ]
+            },
+            "memory": {
+              "slots": 32,
+              "generations": [
+                "DDR4"
+              ],
+              "maxCapacityGb": 8192,
+              "maxModuleCapacityGb": 256,
+              "maxSpeedMt": 3200,
+              "eccSupport": "supported",
+              "moduleTypes": [
+                "LRDIMM",
+                "RDIMM"
+              ],
+              "slotsPerCpu": 16
+            },
+            "storageSlots": [
+              {
+                "id": 1,
+                "key": "front-sff-nvme-bays",
+                "label": "Front 2.5-inch SAS/SATA/NVMe bays",
+                "count": 24,
+                "interfaces": [
+                  "SAS",
+                  "SATA",
+                  "NVMe"
+                ],
+                "formFactors": [
+                  "2.5-inch"
+                ],
+                "pcieGeneration": 4,
+                "location": "external",
+                "hotSwap": true,
+                "backplane": "24-bay SFF universal backplane",
+                "controllerSlotIds": [
+                  1
+                ],
+                "directConnect": false
+              }
+            ],
+            "expansionSlots": [
+              {
+                "id": 1,
+                "key": "primary-pcie-slots",
+                "label": "Primary PCIe slots",
+                "count": 4,
+                "interfaceFamily": "pcie",
+                "pcieGeneration": 4,
+                "mechanicalLanes": 16,
+                "electricalLanes": 16,
+                "acceptedHeights": [
+                  "full-height",
+                  "low-profile"
+                ],
+                "riserGroup": "riser-1"
+              },
+              {
+                "id": 2,
+                "key": "secondary-pcie-slots",
+                "label": "Secondary-CPU PCIe slots",
+                "count": 4,
+                "interfaceFamily": "pcie",
+                "pcieGeneration": 4,
+                "mechanicalLanes": 16,
+                "electricalLanes": 8,
+                "acceptedHeights": [
+                  "full-height",
+                  "low-profile"
+                ],
+                "requiredCpuSockets": 2,
+                "riserGroup": "riser-2"
+              }
+            ],
+            "optionalModuleSlots": [
+              {
+                "id": 1,
+                "key": "network-daughter-card",
+                "label": "Network Daughter Card slot",
+                "count": 1,
+                "acceptedModuleKinds": [
+                  "ndc",
+                  "network-adapter"
+                ]
+              }
+            ],
+            "controllerSlots": [
+              {
+                "id": 1,
+                "key": "perc-slot",
+                "label": "Dedicated PERC storage-controller slot",
+                "count": 1,
+                "acceptedControllerKinds": [
+                  "hba",
+                  "raid-controller"
+                ],
+                "interfaceFamily": "pcie",
+                "dedicated": true
+              }
+            ],
+            "bootDeviceSlots": [
+              {
+                "id": 1,
+                "key": "boss-slot",
+                "label": "BOSS boot-controller slot",
+                "count": 1,
+                "acceptedDeviceKinds": [
+                  "boot-controller",
+                  "boot-storage"
+                ],
+                "interfaces": [
+                  "SATA"
+                ],
+                "formFactors": [
+                  "2280"
+                ],
+                "controllerSlotId": 1
+              }
+            ],
+            "power": {
+              "configuration": "internal-psu",
+              "connector": "IEC C14",
+              "supportedWattagesWatts": [
+                800,
+                1100,
+                1400
+              ],
+              "adapterRequired": false,
+              "redundancy": "optional",
+              "psuBayCount": 2,
+              "psuType": "hot-plug",
+              "mixedPsuAllowed": false,
+              "redundancyModes": [
+                "1+0",
+                "1+1"
+              ]
+            },
+            "coolingProfiles": [
+              {
+                "id": 1,
+                "key": "standard-fan-set",
+                "label": "Standard fan set",
+                "fanCount": 6,
+                "redundant": true,
+                "conditions": [
+                  "standard configuration"
+                ]
+              },
+              {
+                "id": 2,
+                "key": "high-performance-fan-set",
+                "label": "High-performance fan set",
+                "fanCount": 8,
+                "redundant": true,
+                "conditions": [
+                  "NVMe or high-TDP configuration"
+                ]
+              }
+            ],
+            "management": {
+              "controllerFamily": "iDRAC",
+              "controllerGeneration": "iDRAC9",
+              "dedicatedPort": true,
+              "sharedNic": true,
+              "portType": "rj45",
+              "speed": "1G"
+            },
+            "constraintGroups": []
+          }
+        }
+      }
+    },
+    {
+      "caseId": "dell-poweredge-t440-8-lff",
+      "description": "Dell T440 8-lff conventional server topology.",
+      "sourceRecordKey": "dell:poweredge:t440:8-lff",
+      "templateKey": "server-dell-poweredge-t440-8-lff",
+      "fingerprintVersion": 6,
+      "productFamily": {
+        "manufacturer": "Dell",
+        "model": "T440",
+        "physicalClass": "server"
+      },
+      "variantEvidence": {
+        "source": "topology",
+        "completeness": "complete",
+        "label": "8-lff",
+        "variantKey": "8-lff",
+        "topologySignature": "0409c7e0dd5e2d17c792c09ec4edb37572e2fea84286b16565e4388fd1c55270",
+        "structuralSummary": "PCIe Gen3 x16 Primary PCIe slots · PCIe Gen3 x8 Secondary-CPU PCIe slots"
+      },
+      "identityHash": "5e340c78ebbaec82769b191087d4f05466600759e7ab8be7a4dbb1f9f188c14a",
+      "contentHash": "ed0b2003af439ee248c2f632ddecd7b460a55964efecf9845f6480c777903f81",
+      "item": {
+        "type": "server",
+        "name": "Dell PowerEdge T440 - 8x 3.5-inch hot-swap",
+        "manufacturer": "Dell",
+        "family": "PowerEdge",
+        "model": "T440",
+        "specs": {
+          "formFactor": "Tower Server",
+          "topologyCompleteness": "complete",
+          "variantKey": "8-lff",
+          "launchDate": "2017-07-11",
+          "oemGeneration": "14G"
+        },
+        "ports": [
+          {
+            "id": 1,
+            "kind": "management",
+            "type": "rj45",
+            "slotNumber": 1,
+            "key": "dedicated-management",
+            "role": "dedicated-management",
+            "speed": "1G",
+            "origin": "fixed"
+          }
+        ],
+        "compatibility": {
+          "host": {
+            "topologyCompleteness": "complete",
+            "cpu": {
+              "sockets": [
+                "LGA3647"
+              ],
+              "generations": [
+                "Intel Xeon Scalable 1st Gen",
+                "Intel Xeon Scalable 2nd Gen"
+              ],
+              "maxTdpWatts": 205,
+              "socketCount": 2,
+              "populationModes": [
+                1,
+                2
+              ]
+            },
+            "memory": {
+              "slots": 24,
+              "generations": [
+                "DDR4"
+              ],
+              "maxCapacityGb": 3072,
+              "maxModuleCapacityGb": 128,
+              "maxSpeedMt": 2933,
+              "eccSupport": "supported",
+              "moduleTypes": [
+                "LRDIMM",
+                "RDIMM"
+              ],
+              "slotsPerCpu": 12
+            },
+            "storageSlots": [
+              {
+                "id": 1,
+                "key": "front-lff-bays",
+                "label": "Front 3.5-inch hot-swap bays",
+                "count": 8,
+                "interfaces": [
+                  "SAS",
+                  "SATA"
+                ],
+                "formFactors": [
+                  "3.5-inch"
+                ],
+                "location": "external",
+                "hotSwap": true,
+                "backplane": "8-bay LFF SAS/SATA backplane",
+                "controllerSlotIds": [
+                  1
+                ],
+                "directConnect": false
+              }
+            ],
+            "expansionSlots": [
+              {
+                "id": 1,
+                "key": "primary-pcie-slots",
+                "label": "Primary PCIe slots",
+                "count": 3,
+                "interfaceFamily": "pcie",
+                "pcieGeneration": 3,
+                "mechanicalLanes": 16,
+                "electricalLanes": 16,
+                "acceptedHeights": [
+                  "full-height"
+                ]
+              },
+              {
+                "id": 2,
+                "key": "secondary-pcie-slots",
+                "label": "Secondary-CPU PCIe slots",
+                "count": 2,
+                "interfaceFamily": "pcie",
+                "pcieGeneration": 3,
+                "mechanicalLanes": 16,
+                "electricalLanes": 8,
+                "acceptedHeights": [
+                  "full-height"
+                ],
+                "requiredCpuSockets": 2
+              }
+            ],
+            "optionalModuleSlots": [
+              {
+                "id": 1,
+                "key": "network-daughter-card",
+                "label": "Network Daughter Card slot",
+                "count": 1,
+                "acceptedModuleKinds": [
+                  "ndc",
+                  "network-adapter"
+                ]
+              }
+            ],
+            "controllerSlots": [
+              {
+                "id": 1,
+                "key": "perc-slot",
+                "label": "Dedicated PERC storage-controller slot",
+                "count": 1,
+                "acceptedControllerKinds": [
+                  "hba",
+                  "raid-controller"
+                ],
+                "interfaceFamily": "pcie",
+                "dedicated": true
+              }
+            ],
+            "bootDeviceSlots": [
+              {
+                "id": 1,
+                "key": "boss-slot",
+                "label": "BOSS boot-controller slot",
+                "count": 1,
+                "acceptedDeviceKinds": [
+                  "boot-controller",
+                  "boot-storage"
+                ],
+                "interfaces": [
+                  "SATA"
+                ],
+                "formFactors": [
+                  "2280"
+                ],
+                "controllerSlotId": 1
+              }
+            ],
+            "power": {
+              "configuration": "internal-psu",
+              "connector": "IEC C14",
+              "supportedWattagesWatts": [
+                750,
+                1100
+              ],
+              "adapterRequired": false,
+              "redundancy": "optional",
+              "psuBayCount": 2,
+              "psuType": "hot-plug",
+              "mixedPsuAllowed": false,
+              "redundancyModes": [
+                "1+0",
+                "1+1"
+              ]
+            },
+            "coolingProfiles": [
+              {
+                "id": 1,
+                "key": "standard-fan-set",
+                "label": "Standard fan set",
+                "fanCount": 5,
+                "redundant": true,
+                "conditions": [
+                  "standard configuration"
+                ]
+              }
+            ],
+            "management": {
+              "controllerFamily": "iDRAC",
+              "controllerGeneration": "iDRAC9",
+              "dedicatedPort": true,
+              "sharedNic": true,
+              "portType": "rj45",
+              "speed": "1G"
+            },
+            "constraintGroups": []
+          }
+        }
+      }
+    },
+    {
+      "caseId": "hp-proliant-dl360-gen10-10-sff-nvme",
+      "description": "HP DL360 Gen10 10-sff-nvme conventional server topology.",
+      "sourceRecordKey": "hp:proliant:dl360-gen10:10-sff-nvme",
+      "templateKey": "server-hp-proliant-dl360-gen10-10-sff-nvme",
+      "fingerprintVersion": 6,
+      "productFamily": {
+        "manufacturer": "HP",
+        "model": "DL360 Gen10",
+        "physicalClass": "server"
+      },
+      "variantEvidence": {
+        "source": "topology",
+        "completeness": "complete",
+        "label": "10-sff-nvme",
+        "variantKey": "10-sff-nvme",
+        "topologySignature": "678f77d60df58a123ca7ee3c75e87e56849dfdacfb6a587abf307c388b363af9",
+        "structuralSummary": "PCIe Gen3 x16 Primary PCIe slots · PCIe Gen3 x8 Secondary-CPU PCIe slots"
+      },
+      "identityHash": "a8646f87aa35bc00e4b9fdd274c3ed9461a9cfead6a8a2776794f80c2dbbbb98",
+      "contentHash": "3a460427e39097ed3270858688946a8b2f2988e3abf71068c6f9839311221a1b",
+      "item": {
+        "type": "server",
+        "name": "HP ProLiant DL360 Gen10 - 10x 2.5-inch with NVMe support",
+        "manufacturer": "HP",
+        "family": "ProLiant",
+        "model": "DL360 Gen10",
+        "specs": {
+          "formFactor": "Rack Server",
+          "topologyCompleteness": "complete",
+          "variantKey": "10-sff-nvme",
+          "launchDate": "2017-07-11",
+          "oemGeneration": "Gen10",
+          "rackUnits": 1
+        },
+        "ports": [
+          {
+            "id": 1,
+            "kind": "management",
+            "type": "rj45",
+            "slotNumber": 1,
+            "key": "dedicated-management",
+            "role": "dedicated-management",
+            "speed": "1G",
+            "origin": "fixed"
+          }
+        ],
+        "compatibility": {
+          "host": {
+            "topologyCompleteness": "complete",
+            "cpu": {
+              "sockets": [
+                "LGA3647"
+              ],
+              "generations": [
+                "Intel Xeon Scalable 1st Gen",
+                "Intel Xeon Scalable 2nd Gen"
+              ],
+              "maxTdpWatts": 205,
+              "socketCount": 2,
+              "populationModes": [
+                1,
+                2
+              ]
+            },
+            "memory": {
+              "slots": 24,
+              "generations": [
+                "DDR4"
+              ],
+              "maxCapacityGb": 3072,
+              "maxModuleCapacityGb": 128,
+              "maxSpeedMt": 2933,
+              "eccSupport": "supported",
+              "moduleTypes": [
+                "LRDIMM",
+                "RDIMM"
+              ],
+              "slotsPerCpu": 12
+            },
+            "storageSlots": [
+              {
+                "id": 1,
+                "key": "front-sff-nvme-bays",
+                "label": "Front 2.5-inch SAS/SATA/NVMe bays",
+                "count": 10,
+                "interfaces": [
+                  "SAS",
+                  "SATA",
+                  "NVMe"
+                ],
+                "formFactors": [
+                  "2.5-inch"
+                ],
+                "pcieGeneration": 3,
+                "location": "external",
+                "hotSwap": true,
+                "backplane": "10-bay SFF universal backplane",
+                "controllerSlotIds": [
+                  1
+                ],
+                "directConnect": false
+              }
+            ],
+            "expansionSlots": [
+              {
+                "id": 1,
+                "key": "primary-pcie-slots",
+                "label": "Primary PCIe slots",
+                "count": 2,
+                "interfaceFamily": "pcie",
+                "pcieGeneration": 3,
+                "mechanicalLanes": 16,
+                "electricalLanes": 16,
+                "acceptedHeights": [
+                  "full-height",
+                  "low-profile"
+                ],
+                "riserGroup": "riser-1"
+              },
+              {
+                "id": 2,
+                "key": "secondary-pcie-slots",
+                "label": "Secondary-CPU PCIe slots",
+                "count": 1,
+                "interfaceFamily": "pcie",
+                "pcieGeneration": 3,
+                "mechanicalLanes": 16,
+                "electricalLanes": 8,
+                "acceptedHeights": [
+                  "full-height",
+                  "low-profile"
+                ],
+                "requiredCpuSockets": 2,
+                "riserGroup": "riser-2"
+              }
+            ],
+            "optionalModuleSlots": [
+              {
+                "id": 1,
+                "key": "flexiblelom-slot",
+                "label": "FlexibleLOM network slot",
+                "count": 1,
+                "acceptedModuleKinds": [
+                  "flexiblelom",
+                  "network-adapter"
+                ]
+              }
+            ],
+            "controllerSlots": [
+              {
+                "id": 1,
+                "key": "smart-array-slot",
+                "label": "Smart Array storage-controller slot",
+                "count": 1,
+                "acceptedControllerKinds": [
+                  "hba",
+                  "raid-controller"
+                ],
+                "interfaceFamily": "pcie",
+                "dedicated": true
+              }
+            ],
+            "bootDeviceSlots": [
+              {
+                "id": 1,
+                "key": "ns204i-slot",
+                "label": "NS204i boot-device slot",
+                "count": 1,
+                "acceptedDeviceKinds": [
+                  "boot-controller",
+                  "boot-storage"
+                ],
+                "interfaces": [
+                  "NVMe"
+                ],
+                "formFactors": [
+                  "2280"
+                ],
+                "controllerSlotId": 1
+              }
+            ],
+            "power": {
+              "configuration": "internal-psu",
+              "connector": "IEC C14",
+              "supportedWattagesWatts": [
+                750,
+                1100
+              ],
+              "adapterRequired": false,
+              "redundancy": "optional",
+              "psuBayCount": 2,
+              "psuType": "hot-plug",
+              "mixedPsuAllowed": false,
+              "redundancyModes": [
+                "1+0",
+                "1+1"
+              ]
+            },
+            "coolingProfiles": [
+              {
+                "id": 1,
+                "key": "standard-fan-set",
+                "label": "Standard fan set",
+                "fanCount": 5,
+                "redundant": true,
+                "conditions": [
+                  "standard configuration"
+                ]
+              },
+              {
+                "id": 2,
+                "key": "high-performance-fan-set",
+                "label": "High-performance fan set",
+                "fanCount": 7,
+                "redundant": true,
+                "conditions": [
+                  "NVMe or high-TDP configuration"
+                ]
+              }
+            ],
+            "management": {
+              "controllerFamily": "iLO",
+              "controllerGeneration": "iLO 5",
+              "dedicatedPort": true,
+              "sharedNic": true,
+              "portType": "rj45",
+              "speed": "1G"
+            },
+            "constraintGroups": []
+          }
+        }
+      }
+    },
+    {
+      "caseId": "hp-proliant-dl380-gen10-12-lff",
+      "description": "HP DL380 Gen10 12-lff conventional server topology.",
+      "sourceRecordKey": "hp:proliant:dl380-gen10:12-lff",
+      "templateKey": "server-hp-proliant-dl380-gen10-12-lff",
+      "fingerprintVersion": 6,
+      "productFamily": {
+        "manufacturer": "HP",
+        "model": "DL380 Gen10",
+        "physicalClass": "server"
+      },
+      "variantEvidence": {
+        "source": "topology",
+        "completeness": "complete",
+        "label": "12-lff",
+        "variantKey": "12-lff",
+        "topologySignature": "6c89ffea91e9c27a709a2ca7a332ced014099e56ab9ad5bf1dcc8492dc3f8a61",
+        "structuralSummary": "PCIe Gen3 x16 Primary PCIe slots · PCIe Gen3 x8 Secondary-CPU PCIe slots"
+      },
+      "identityHash": "82f7f904d0ec42af6c6a552371ed46b701083abee403244531b425caeee95fb0",
+      "contentHash": "aca22b76115df96d9d49a7e32d97269fd4f40e03d3aa35fb8f29933cf7567400",
+      "item": {
+        "type": "server",
+        "name": "HP ProLiant DL380 Gen10 - 12x 3.5-inch hot-plug",
+        "manufacturer": "HP",
+        "family": "ProLiant",
+        "model": "DL380 Gen10",
+        "specs": {
+          "formFactor": "Rack Server",
+          "topologyCompleteness": "complete",
+          "variantKey": "12-lff",
+          "launchDate": "2017-07-11",
+          "oemGeneration": "Gen10",
+          "rackUnits": 2
+        },
+        "ports": [
+          {
+            "id": 1,
+            "kind": "management",
+            "type": "rj45",
+            "slotNumber": 1,
+            "key": "dedicated-management",
+            "role": "dedicated-management",
+            "speed": "1G",
+            "origin": "fixed"
+          }
+        ],
+        "compatibility": {
+          "host": {
+            "topologyCompleteness": "complete",
+            "cpu": {
+              "sockets": [
+                "LGA3647"
+              ],
+              "generations": [
+                "Intel Xeon Scalable 1st Gen",
+                "Intel Xeon Scalable 2nd Gen"
+              ],
+              "maxTdpWatts": 205,
+              "socketCount": 2,
+              "populationModes": [
+                1,
+                2
+              ]
+            },
+            "memory": {
+              "slots": 24,
+              "generations": [
+                "DDR4"
+              ],
+              "maxCapacityGb": 3072,
+              "maxModuleCapacityGb": 128,
+              "maxSpeedMt": 2933,
+              "eccSupport": "supported",
+              "moduleTypes": [
+                "LRDIMM",
+                "RDIMM"
+              ],
+              "slotsPerCpu": 12
+            },
+            "storageSlots": [
+              {
+                "id": 1,
+                "key": "front-lff-bays",
+                "label": "Front 3.5-inch hot-plug bays",
+                "count": 12,
+                "interfaces": [
+                  "SAS",
+                  "SATA"
+                ],
+                "formFactors": [
+                  "3.5-inch"
+                ],
+                "location": "external",
+                "hotSwap": true,
+                "backplane": "12-bay LFF SAS/SATA backplane",
+                "controllerSlotIds": [
+                  1
+                ],
+                "directConnect": false
+              }
+            ],
+            "expansionSlots": [
+              {
+                "id": 1,
+                "key": "primary-pcie-slots",
+                "label": "Primary PCIe slots",
+                "count": 4,
+                "interfaceFamily": "pcie",
+                "pcieGeneration": 3,
+                "mechanicalLanes": 16,
+                "electricalLanes": 16,
+                "acceptedHeights": [
+                  "full-height",
+                  "low-profile"
+                ],
+                "riserGroup": "riser-1"
+              },
+              {
+                "id": 2,
+                "key": "secondary-pcie-slots",
+                "label": "Secondary-CPU PCIe slots",
+                "count": 4,
+                "interfaceFamily": "pcie",
+                "pcieGeneration": 3,
+                "mechanicalLanes": 16,
+                "electricalLanes": 8,
+                "acceptedHeights": [
+                  "full-height",
+                  "low-profile"
+                ],
+                "requiredCpuSockets": 2,
+                "riserGroup": "riser-2"
+              }
+            ],
+            "optionalModuleSlots": [
+              {
+                "id": 1,
+                "key": "flexiblelom-slot",
+                "label": "FlexibleLOM network slot",
+                "count": 1,
+                "acceptedModuleKinds": [
+                  "flexiblelom",
+                  "network-adapter"
+                ]
+              }
+            ],
+            "controllerSlots": [
+              {
+                "id": 1,
+                "key": "smart-array-slot",
+                "label": "Smart Array storage-controller slot",
+                "count": 1,
+                "acceptedControllerKinds": [
+                  "hba",
+                  "raid-controller"
+                ],
+                "interfaceFamily": "pcie",
+                "dedicated": true
+              }
+            ],
+            "bootDeviceSlots": [
+              {
+                "id": 1,
+                "key": "ns204i-slot",
+                "label": "NS204i boot-device slot",
+                "count": 1,
+                "acceptedDeviceKinds": [
+                  "boot-controller",
+                  "boot-storage"
+                ],
+                "interfaces": [
+                  "NVMe"
+                ],
+                "formFactors": [
+                  "2280"
+                ],
+                "controllerSlotId": 1
+              }
+            ],
+            "power": {
+              "configuration": "internal-psu",
+              "connector": "IEC C14",
+              "supportedWattagesWatts": [
+                750,
+                1100
+              ],
+              "adapterRequired": false,
+              "redundancy": "optional",
+              "psuBayCount": 2,
+              "psuType": "hot-plug",
+              "mixedPsuAllowed": false,
+              "redundancyModes": [
+                "1+0",
+                "1+1"
+              ]
+            },
+            "coolingProfiles": [
+              {
+                "id": 1,
+                "key": "standard-fan-set",
+                "label": "Standard fan set",
+                "fanCount": 6,
+                "redundant": true,
+                "conditions": [
+                  "standard configuration"
+                ]
+              },
+              {
+                "id": 2,
+                "key": "high-performance-fan-set",
+                "label": "High-performance fan set",
+                "fanCount": 8,
+                "redundant": true,
+                "conditions": [
+                  "NVMe or high-TDP configuration"
+                ]
+              }
+            ],
+            "management": {
+              "controllerFamily": "iLO",
+              "controllerGeneration": "iLO 5",
+              "dedicatedPort": true,
+              "sharedNic": true,
+              "portType": "rj45",
+              "speed": "1G"
+            },
+            "constraintGroups": []
+          }
+        }
+      }
+    },
+    {
+      "caseId": "hp-proliant-dl380-gen10-8-sff",
+      "description": "HP DL380 Gen10 8-sff conventional server topology.",
+      "sourceRecordKey": "hp:proliant:dl380-gen10:8-sff",
+      "templateKey": "server-hp-proliant-dl380-gen10-8-sff",
+      "fingerprintVersion": 6,
+      "productFamily": {
+        "manufacturer": "HP",
+        "model": "DL380 Gen10",
+        "physicalClass": "server"
+      },
+      "variantEvidence": {
+        "source": "topology",
+        "completeness": "complete",
+        "label": "8-sff",
+        "variantKey": "8-sff",
+        "topologySignature": "1ffe0eeae4b19097d00242e10a26ee411dc77cea750f68b164f183cc3f8fdcf2",
+        "structuralSummary": "PCIe Gen3 x16 Primary PCIe slots · PCIe Gen3 x8 Secondary-CPU PCIe slots"
+      },
+      "identityHash": "b4f75da815ed2f70b2fab5ef295d368f41eeae22e56349d11dff643b8ddcfd25",
+      "contentHash": "f420e4f9815b289c5534eb85fd81479c1779f810276670b57589ba4282ed2f0b",
+      "item": {
+        "type": "server",
+        "name": "HP ProLiant DL380 Gen10 - 8x 2.5-inch hot-plug",
+        "manufacturer": "HP",
+        "family": "ProLiant",
+        "model": "DL380 Gen10",
+        "specs": {
+          "formFactor": "Rack Server",
+          "topologyCompleteness": "complete",
+          "variantKey": "8-sff",
+          "launchDate": "2017-07-11",
+          "oemGeneration": "Gen10",
+          "rackUnits": 2
+        },
+        "ports": [
+          {
+            "id": 1,
+            "kind": "management",
+            "type": "rj45",
+            "slotNumber": 1,
+            "key": "dedicated-management",
+            "role": "dedicated-management",
+            "speed": "1G",
+            "origin": "fixed"
+          }
+        ],
+        "compatibility": {
+          "host": {
+            "topologyCompleteness": "complete",
+            "cpu": {
+              "sockets": [
+                "LGA3647"
+              ],
+              "generations": [
+                "Intel Xeon Scalable 1st Gen",
+                "Intel Xeon Scalable 2nd Gen"
+              ],
+              "maxTdpWatts": 205,
+              "socketCount": 2,
+              "populationModes": [
+                1,
+                2
+              ]
+            },
+            "memory": {
+              "slots": 24,
+              "generations": [
+                "DDR4"
+              ],
+              "maxCapacityGb": 3072,
+              "maxModuleCapacityGb": 128,
+              "maxSpeedMt": 2933,
+              "eccSupport": "supported",
+              "moduleTypes": [
+                "LRDIMM",
+                "RDIMM"
+              ],
+              "slotsPerCpu": 12
+            },
+            "storageSlots": [
+              {
+                "id": 1,
+                "key": "front-sff-bays",
+                "label": "Front 2.5-inch hot-plug bays",
+                "count": 8,
+                "interfaces": [
+                  "SAS",
+                  "SATA"
+                ],
+                "formFactors": [
+                  "2.5-inch"
+                ],
+                "location": "external",
+                "hotSwap": true,
+                "backplane": "8-bay SFF SAS/SATA backplane",
+                "controllerSlotIds": [
+                  1
+                ],
+                "directConnect": false
+              }
+            ],
+            "expansionSlots": [
+              {
+                "id": 1,
+                "key": "primary-pcie-slots",
+                "label": "Primary PCIe slots",
+                "count": 4,
+                "interfaceFamily": "pcie",
+                "pcieGeneration": 3,
+                "mechanicalLanes": 16,
+                "electricalLanes": 16,
+                "acceptedHeights": [
+                  "full-height",
+                  "low-profile"
+                ],
+                "riserGroup": "riser-1"
+              },
+              {
+                "id": 2,
+                "key": "secondary-pcie-slots",
+                "label": "Secondary-CPU PCIe slots",
+                "count": 4,
+                "interfaceFamily": "pcie",
+                "pcieGeneration": 3,
+                "mechanicalLanes": 16,
+                "electricalLanes": 8,
+                "acceptedHeights": [
+                  "full-height",
+                  "low-profile"
+                ],
+                "requiredCpuSockets": 2,
+                "riserGroup": "riser-2"
+              }
+            ],
+            "optionalModuleSlots": [
+              {
+                "id": 1,
+                "key": "flexiblelom-slot",
+                "label": "FlexibleLOM network slot",
+                "count": 1,
+                "acceptedModuleKinds": [
+                  "flexiblelom",
+                  "network-adapter"
+                ]
+              }
+            ],
+            "controllerSlots": [
+              {
+                "id": 1,
+                "key": "smart-array-slot",
+                "label": "Smart Array storage-controller slot",
+                "count": 1,
+                "acceptedControllerKinds": [
+                  "hba",
+                  "raid-controller"
+                ],
+                "interfaceFamily": "pcie",
+                "dedicated": true
+              }
+            ],
+            "bootDeviceSlots": [
+              {
+                "id": 1,
+                "key": "ns204i-slot",
+                "label": "NS204i boot-device slot",
+                "count": 1,
+                "acceptedDeviceKinds": [
+                  "boot-controller",
+                  "boot-storage"
+                ],
+                "interfaces": [
+                  "NVMe"
+                ],
+                "formFactors": [
+                  "2280"
+                ],
+                "controllerSlotId": 1
+              }
+            ],
+            "power": {
+              "configuration": "internal-psu",
+              "connector": "IEC C14",
+              "supportedWattagesWatts": [
+                750,
+                1100
+              ],
+              "adapterRequired": false,
+              "redundancy": "optional",
+              "psuBayCount": 2,
+              "psuType": "hot-plug",
+              "mixedPsuAllowed": false,
+              "redundancyModes": [
+                "1+0",
+                "1+1"
+              ]
+            },
+            "coolingProfiles": [
+              {
+                "id": 1,
+                "key": "standard-fan-set",
+                "label": "Standard fan set",
+                "fanCount": 6,
+                "redundant": true,
+                "conditions": [
+                  "standard configuration"
+                ]
+              },
+              {
+                "id": 2,
+                "key": "high-performance-fan-set",
+                "label": "High-performance fan set",
+                "fanCount": 8,
+                "redundant": true,
+                "conditions": [
+                  "NVMe or high-TDP configuration"
+                ]
+              }
+            ],
+            "management": {
+              "controllerFamily": "iLO",
+              "controllerGeneration": "iLO 5",
+              "dedicatedPort": true,
+              "sharedNic": true,
+              "portType": "rj45",
+              "speed": "1G"
+            },
+            "constraintGroups": []
+          }
+        }
+      }
+    },
+    {
+      "caseId": "hp-proliant-microserver-gen10-plus-4-lff",
+      "description": "HP MicroServer Gen10 Plus 4-lff conventional server topology.",
+      "sourceRecordKey": "hp:proliant:microserver-gen10-plus:4-lff",
+      "templateKey": "server-hp-proliant-microserver-gen10-plus-4-lff",
+      "fingerprintVersion": 6,
+      "productFamily": {
+        "manufacturer": "HP",
+        "model": "MicroServer Gen10 Plus",
+        "physicalClass": "server"
+      },
+      "variantEvidence": {
+        "source": "topology",
+        "completeness": "complete",
+        "label": "4-lff",
+        "variantKey": "4-lff",
+        "topologySignature": "513a7e1b88bc0dbdd4687d11a97fce6ef246a54b51f9b2f44b85404a42df112d",
+        "structuralSummary": "PCIe Gen3 x16 Primary PCIe slots"
+      },
+      "identityHash": "14549ff635809d01377f193901f5ff026d82b388b607287bee27a34b050f1f4b",
+      "contentHash": "a60152d92e97be6f48db46c1dea8c5055338216205c2023e3e86e355e0d4d0c8",
+      "item": {
+        "type": "server",
+        "name": "HP ProLiant MicroServer Gen10 Plus - 4x 3.5-inch non-hot-plug",
+        "manufacturer": "HP",
+        "family": "ProLiant",
+        "model": "MicroServer Gen10 Plus",
+        "specs": {
+          "formFactor": "MicroServer",
+          "topologyCompleteness": "complete",
+          "variantKey": "4-lff",
+          "launchDate": "2019-11-04",
+          "oemGeneration": "Gen10 Plus"
+        },
+        "ports": [
+          {
+            "id": 1,
+            "kind": "management",
+            "type": "rj45",
+            "slotNumber": 1,
+            "key": "dedicated-management",
+            "role": "dedicated-management",
+            "speed": "1G",
+            "origin": "fixed"
+          }
+        ],
+        "compatibility": {
+          "host": {
+            "topologyCompleteness": "complete",
+            "cpu": {
+              "sockets": [
+                "LGA1151"
+              ],
+              "generations": [
+                "Intel Xeon E-2200",
+                "Intel Pentium Gold"
+              ],
+              "maxTdpWatts": 71,
+              "socketCount": 1,
+              "populationModes": [
+                1
+              ]
+            },
+            "memory": {
+              "slots": 2,
+              "generations": [
+                "DDR4"
+              ],
+              "maxCapacityGb": 32,
+              "maxModuleCapacityGb": 16,
+              "maxSpeedMt": 2666,
+              "eccSupport": "supported",
+              "moduleTypes": [
+                "UDIMM"
+              ],
+              "slotsPerCpu": 2
+            },
+            "storageSlots": [
+              {
+                "id": 1,
+                "key": "internal-lff-bays",
+                "label": "Internal 3.5-inch drive bays",
+                "count": 4,
+                "interfaces": [
+                  "SATA"
+                ],
+                "formFactors": [
+                  "3.5-inch"
+                ],
+                "location": "external",
+                "hotSwap": false,
+                "backplane": "4-bay LFF SATA cage",
+                "controllerSlotIds": [
+                  1
+                ],
+                "directConnect": true
+              }
+            ],
+            "expansionSlots": [
+              {
+                "id": 1,
+                "key": "primary-pcie-slots",
+                "label": "Primary PCIe slots",
+                "count": 1,
+                "interfaceFamily": "pcie",
+                "pcieGeneration": 3,
+                "mechanicalLanes": 16,
+                "electricalLanes": 16,
+                "acceptedHeights": [
+                  "full-height"
+                ]
+              }
+            ],
+            "optionalModuleSlots": [
+              {
+                "id": 1,
+                "key": "flexiblelom-slot",
+                "label": "FlexibleLOM network slot",
+                "count": 1,
+                "acceptedModuleKinds": [
+                  "flexiblelom",
+                  "network-adapter"
+                ]
+              }
+            ],
+            "controllerSlots": [
+              {
+                "id": 1,
+                "key": "smart-array-slot",
+                "label": "Smart Array storage-controller slot",
+                "count": 1,
+                "acceptedControllerKinds": [
+                  "hba",
+                  "raid-controller"
+                ],
+                "interfaceFamily": "pcie",
+                "dedicated": true
+              }
+            ],
+            "bootDeviceSlots": [
+              {
+                "id": 1,
+                "key": "ns204i-slot",
+                "label": "NS204i boot-device slot",
+                "count": 1,
+                "acceptedDeviceKinds": [
+                  "boot-controller",
+                  "boot-storage"
+                ],
+                "interfaces": [
+                  "NVMe"
+                ],
+                "formFactors": [
+                  "2280"
+                ],
+                "controllerSlotId": 1
+              }
+            ],
+            "power": {
+              "configuration": "internal-psu",
+              "connector": "IEC C14",
+              "supportedWattagesWatts": [
+                180
+              ],
+              "adapterRequired": false,
+              "redundancy": "none",
+              "psuBayCount": 1,
+              "psuType": "fixed",
+              "mixedPsuAllowed": false,
+              "redundancyModes": [
+                "1+0"
+              ]
+            },
+            "coolingProfiles": [
+              {
+                "id": 1,
+                "key": "standard-fan-set",
+                "label": "Standard fan set",
+                "fanCount": 1,
+                "redundant": false,
+                "conditions": [
+                  "standard configuration"
+                ]
+              }
+            ],
+            "management": {
+              "controllerFamily": "iLO",
+              "controllerGeneration": "iLO 5",
+              "dedicatedPort": true,
+              "sharedNic": true,
+              "portType": "rj45",
+              "speed": "1G"
+            },
+            "constraintGroups": []
+          }
+        }
+      }
+    },
+    {
+      "caseId": "hp-proliant-ml350-gen10-8-sff",
+      "description": "HP ML350 Gen10 8-sff conventional server topology.",
+      "sourceRecordKey": "hp:proliant:ml350-gen10:8-sff",
+      "templateKey": "server-hp-proliant-ml350-gen10-8-sff",
+      "fingerprintVersion": 6,
+      "productFamily": {
+        "manufacturer": "HP",
+        "model": "ML350 Gen10",
+        "physicalClass": "server"
+      },
+      "variantEvidence": {
+        "source": "topology",
+        "completeness": "complete",
+        "label": "8-sff",
+        "variantKey": "8-sff",
+        "topologySignature": "5eb52a2ddb5aafea909585bc465b591e4b2a1f91020bbb3a1c55cdc4fc807f12",
+        "structuralSummary": "PCIe Gen3 x16 Primary PCIe slots · PCIe Gen3 x8 Secondary-CPU PCIe slots"
+      },
+      "identityHash": "dad98cdd0c9189f253f482b3ebd22f84d82ec3449aae576fb6b159a90ef5222f",
+      "contentHash": "351752d7bb1ed17dafa9cafde2f698d139a6e093ad757f2437aaefc57dbfb3ef",
+      "item": {
+        "type": "server",
+        "name": "HP ProLiant ML350 Gen10 - 8x 2.5-inch hot-plug",
+        "manufacturer": "HP",
+        "family": "ProLiant",
+        "model": "ML350 Gen10",
+        "specs": {
+          "formFactor": "Tower Server",
+          "topologyCompleteness": "complete",
+          "variantKey": "8-sff",
+          "launchDate": "2017-07-11",
+          "oemGeneration": "Gen10"
+        },
+        "ports": [
+          {
+            "id": 1,
+            "kind": "management",
+            "type": "rj45",
+            "slotNumber": 1,
+            "key": "dedicated-management",
+            "role": "dedicated-management",
+            "speed": "1G",
+            "origin": "fixed"
+          }
+        ],
+        "compatibility": {
+          "host": {
+            "topologyCompleteness": "complete",
+            "cpu": {
+              "sockets": [
+                "LGA3647"
+              ],
+              "generations": [
+                "Intel Xeon Scalable 1st Gen",
+                "Intel Xeon Scalable 2nd Gen"
+              ],
+              "maxTdpWatts": 205,
+              "socketCount": 2,
+              "populationModes": [
+                1,
+                2
+              ]
+            },
+            "memory": {
+              "slots": 24,
+              "generations": [
+                "DDR4"
+              ],
+              "maxCapacityGb": 3072,
+              "maxModuleCapacityGb": 128,
+              "maxSpeedMt": 2933,
+              "eccSupport": "supported",
+              "moduleTypes": [
+                "LRDIMM",
+                "RDIMM"
+              ],
+              "slotsPerCpu": 12
+            },
+            "storageSlots": [
+              {
+                "id": 1,
+                "key": "front-sff-bays",
+                "label": "Front 2.5-inch hot-plug bays",
+                "count": 8,
+                "interfaces": [
+                  "SAS",
+                  "SATA"
+                ],
+                "formFactors": [
+                  "2.5-inch"
+                ],
+                "location": "external",
+                "hotSwap": true,
+                "backplane": "8-bay SFF SAS/SATA backplane",
+                "controllerSlotIds": [
+                  1
+                ],
+                "directConnect": false
+              }
+            ],
+            "expansionSlots": [
+              {
+                "id": 1,
+                "key": "primary-pcie-slots",
+                "label": "Primary PCIe slots",
+                "count": 4,
+                "interfaceFamily": "pcie",
+                "pcieGeneration": 3,
+                "mechanicalLanes": 16,
+                "electricalLanes": 16,
+                "acceptedHeights": [
+                  "full-height"
+                ]
+              },
+              {
+                "id": 2,
+                "key": "secondary-pcie-slots",
+                "label": "Secondary-CPU PCIe slots",
+                "count": 4,
+                "interfaceFamily": "pcie",
+                "pcieGeneration": 3,
+                "mechanicalLanes": 16,
+                "electricalLanes": 8,
+                "acceptedHeights": [
+                  "full-height"
+                ],
+                "requiredCpuSockets": 2
+              }
+            ],
+            "optionalModuleSlots": [
+              {
+                "id": 1,
+                "key": "flexiblelom-slot",
+                "label": "FlexibleLOM network slot",
+                "count": 1,
+                "acceptedModuleKinds": [
+                  "flexiblelom",
+                  "network-adapter"
+                ]
+              }
+            ],
+            "controllerSlots": [
+              {
+                "id": 1,
+                "key": "smart-array-slot",
+                "label": "Smart Array storage-controller slot",
+                "count": 1,
+                "acceptedControllerKinds": [
+                  "hba",
+                  "raid-controller"
+                ],
+                "interfaceFamily": "pcie",
+                "dedicated": true
+              }
+            ],
+            "bootDeviceSlots": [
+              {
+                "id": 1,
+                "key": "ns204i-slot",
+                "label": "NS204i boot-device slot",
+                "count": 1,
+                "acceptedDeviceKinds": [
+                  "boot-controller",
+                  "boot-storage"
+                ],
+                "interfaces": [
+                  "NVMe"
+                ],
+                "formFactors": [
+                  "2280"
+                ],
+                "controllerSlotId": 1
+              }
+            ],
+            "power": {
+              "configuration": "internal-psu",
+              "connector": "IEC C14",
+              "supportedWattagesWatts": [
+                750,
+                1100
+              ],
+              "adapterRequired": false,
+              "redundancy": "optional",
+              "psuBayCount": 2,
+              "psuType": "hot-plug",
+              "mixedPsuAllowed": false,
+              "redundancyModes": [
+                "1+0",
+                "1+1"
+              ]
+            },
+            "coolingProfiles": [
+              {
+                "id": 1,
+                "key": "standard-fan-set",
+                "label": "Standard fan set",
+                "fanCount": 4,
+                "redundant": false,
+                "conditions": [
+                  "standard configuration"
+                ]
+              },
+              {
+                "id": 2,
+                "key": "high-performance-fan-set",
+                "label": "High-performance fan set",
+                "fanCount": 8,
+                "redundant": true,
+                "conditions": [
+                  "NVMe or high-TDP configuration"
+                ]
+              }
+            ],
+            "management": {
+              "controllerFamily": "iLO",
+              "controllerGeneration": "iLO 5",
+              "dedicatedPort": true,
+              "sharedNic": true,
+              "portType": "rj45",
+              "speed": "1G"
+            },
+            "constraintGroups": []
+          }
+        }
+      }
+    },
+    {
+      "caseId": "lenovo-thinksystem-sr630-10-sff-anybay",
+      "description": "Lenovo SR630 10-sff-anybay conventional server topology.",
+      "sourceRecordKey": "lenovo:thinksystem:sr630:10-sff-anybay",
+      "templateKey": "server-lenovo-thinksystem-sr630-10-sff-anybay",
+      "fingerprintVersion": 6,
+      "productFamily": {
+        "manufacturer": "Lenovo",
+        "model": "SR630",
+        "physicalClass": "server"
+      },
+      "variantEvidence": {
+        "source": "topology",
+        "completeness": "complete",
+        "label": "10-sff-anybay",
+        "variantKey": "10-sff-anybay",
+        "topologySignature": "f7dfb9d2648d5c569cc36d52b1f2c83c692154988d0a382143442c44bd467b80",
+        "structuralSummary": "PCIe Gen3 x16 Primary PCIe slots · PCIe Gen3 x8 Secondary-CPU PCIe slots"
+      },
+      "identityHash": "4477d1d9fc874c77ce9a4e986e528681f4511bc569021a05c74e35c910d421a7",
+      "contentHash": "55f0e2b3b73b6bb66943615fa6d6eab570cd7d5acce4e58dfb40ba719984e50b",
+      "item": {
+        "type": "server",
+        "name": "Lenovo ThinkSystem SR630 - 10x 2.5-inch AnyBay/NVMe",
+        "manufacturer": "Lenovo",
+        "family": "ThinkSystem",
+        "model": "SR630",
+        "specs": {
+          "formFactor": "Rack Server",
+          "topologyCompleteness": "complete",
+          "variantKey": "10-sff-anybay",
+          "launchDate": "2017-07-11",
+          "oemGeneration": "1st Gen",
+          "rackUnits": 1
+        },
+        "ports": [
+          {
+            "id": 1,
+            "kind": "management",
+            "type": "rj45",
+            "slotNumber": 1,
+            "key": "dedicated-management",
+            "role": "dedicated-management",
+            "speed": "1G",
+            "origin": "fixed"
+          }
+        ],
+        "compatibility": {
+          "host": {
+            "topologyCompleteness": "complete",
+            "cpu": {
+              "sockets": [
+                "LGA3647"
+              ],
+              "generations": [
+                "Intel Xeon Scalable 1st Gen",
+                "Intel Xeon Scalable 2nd Gen"
+              ],
+              "maxTdpWatts": 205,
+              "socketCount": 2,
+              "populationModes": [
+                1,
+                2
+              ]
+            },
+            "memory": {
+              "slots": 24,
+              "generations": [
+                "DDR4"
+              ],
+              "maxCapacityGb": 3072,
+              "maxModuleCapacityGb": 128,
+              "maxSpeedMt": 2933,
+              "eccSupport": "supported",
+              "moduleTypes": [
+                "LRDIMM",
+                "RDIMM"
+              ],
+              "slotsPerCpu": 12
+            },
+            "storageSlots": [
+              {
+                "id": 1,
+                "key": "front-sff-anybay",
+                "label": "Front 2.5-inch AnyBay/NVMe bays",
+                "count": 10,
+                "interfaces": [
+                  "SAS",
+                  "SATA",
+                  "NVMe"
+                ],
+                "formFactors": [
+                  "2.5-inch"
+                ],
+                "pcieGeneration": 3,
+                "location": "external",
+                "hotSwap": true,
+                "backplane": "10-bay SFF AnyBay backplane",
+                "controllerSlotIds": [
+                  1
+                ],
+                "directConnect": false
+              }
+            ],
+            "expansionSlots": [
+              {
+                "id": 1,
+                "key": "primary-pcie-slots",
+                "label": "Primary PCIe slots",
+                "count": 2,
+                "interfaceFamily": "pcie",
+                "pcieGeneration": 3,
+                "mechanicalLanes": 16,
+                "electricalLanes": 16,
+                "acceptedHeights": [
+                  "full-height",
+                  "low-profile"
+                ],
+                "riserGroup": "riser-1"
+              },
+              {
+                "id": 2,
+                "key": "secondary-pcie-slots",
+                "label": "Secondary-CPU PCIe slots",
+                "count": 1,
+                "interfaceFamily": "pcie",
+                "pcieGeneration": 3,
+                "mechanicalLanes": 16,
+                "electricalLanes": 8,
+                "acceptedHeights": [
+                  "full-height",
+                  "low-profile"
+                ],
+                "requiredCpuSockets": 2,
+                "riserGroup": "riser-2"
+              }
+            ],
+            "optionalModuleSlots": [
+              {
+                "id": 1,
+                "key": "lom-slot",
+                "label": "LOM/OCP network slot",
+                "count": 1,
+                "acceptedModuleKinds": [
+                  "lom",
+                  "ocp",
+                  "network-adapter"
+                ]
+              }
+            ],
+            "controllerSlots": [
+              {
+                "id": 1,
+                "key": "raid-slot",
+                "label": "Dedicated storage-controller slot",
+                "count": 1,
+                "acceptedControllerKinds": [
+                  "hba",
+                  "raid-controller"
+                ],
+                "interfaceFamily": "pcie",
+                "dedicated": true
+              }
+            ],
+            "bootDeviceSlots": [
+              {
+                "id": 1,
+                "key": "m2-boot-slot",
+                "label": "M.2 boot adapter slot",
+                "count": 1,
+                "acceptedDeviceKinds": [
+                  "boot-controller",
+                  "boot-storage"
+                ],
+                "interfaces": [
+                  "NVMe",
+                  "SATA"
+                ],
+                "formFactors": [
+                  "2280"
+                ],
+                "controllerSlotId": 1
+              }
+            ],
+            "power": {
+              "configuration": "internal-psu",
+              "connector": "IEC C14",
+              "supportedWattagesWatts": [
+                750,
+                1100
+              ],
+              "adapterRequired": false,
+              "redundancy": "optional",
+              "psuBayCount": 2,
+              "psuType": "hot-plug",
+              "mixedPsuAllowed": false,
+              "redundancyModes": [
+                "1+0",
+                "1+1"
+              ]
+            },
+            "coolingProfiles": [
+              {
+                "id": 1,
+                "key": "standard-fan-set",
+                "label": "Standard fan set",
+                "fanCount": 5,
+                "redundant": true,
+                "conditions": [
+                  "standard configuration"
+                ]
+              },
+              {
+                "id": 2,
+                "key": "high-performance-fan-set",
+                "label": "High-performance fan set",
+                "fanCount": 7,
+                "redundant": true,
+                "conditions": [
+                  "NVMe or high-TDP configuration"
+                ]
+              }
+            ],
+            "management": {
+              "controllerFamily": "XClarity Controller",
+              "controllerGeneration": "XCC",
+              "dedicatedPort": true,
+              "sharedNic": true,
+              "portType": "rj45",
+              "speed": "1G"
+            },
+            "constraintGroups": []
+          }
+        }
+      }
+    },
+    {
+      "caseId": "lenovo-thinksystem-sr650-12-lff",
+      "description": "Lenovo SR650 12-lff conventional server topology.",
+      "sourceRecordKey": "lenovo:thinksystem:sr650:12-lff",
+      "templateKey": "server-lenovo-thinksystem-sr650-12-lff",
+      "fingerprintVersion": 6,
+      "productFamily": {
+        "manufacturer": "Lenovo",
+        "model": "SR650",
+        "physicalClass": "server"
+      },
+      "variantEvidence": {
+        "source": "topology",
+        "completeness": "complete",
+        "label": "12-lff",
+        "variantKey": "12-lff",
+        "topologySignature": "be9c8574699f556a3ee5842bfe0d421e1e0ded52be350501ffbde5101145784f",
+        "structuralSummary": "PCIe Gen3 x16 Primary PCIe slots · PCIe Gen3 x8 Secondary-CPU PCIe slots"
+      },
+      "identityHash": "9fa51a3a65010195f271b92620f8084b991ec05655148ae3ac9f33628c31322f",
+      "contentHash": "c2be51ff7bd73617c03c5416f43584d6ae237709790384b0584fb1d24403b0ff",
+      "item": {
+        "type": "server",
+        "name": "Lenovo ThinkSystem SR650 - 12x 3.5-inch hot-swap",
+        "manufacturer": "Lenovo",
+        "family": "ThinkSystem",
+        "model": "SR650",
+        "specs": {
+          "formFactor": "Rack Server",
+          "topologyCompleteness": "complete",
+          "variantKey": "12-lff",
+          "launchDate": "2017-07-11",
+          "oemGeneration": "1st Gen",
+          "rackUnits": 2
+        },
+        "ports": [
+          {
+            "id": 1,
+            "kind": "management",
+            "type": "rj45",
+            "slotNumber": 1,
+            "key": "dedicated-management",
+            "role": "dedicated-management",
+            "speed": "1G",
+            "origin": "fixed"
+          }
+        ],
+        "compatibility": {
+          "host": {
+            "topologyCompleteness": "complete",
+            "cpu": {
+              "sockets": [
+                "LGA3647"
+              ],
+              "generations": [
+                "Intel Xeon Scalable 1st Gen",
+                "Intel Xeon Scalable 2nd Gen"
+              ],
+              "maxTdpWatts": 205,
+              "socketCount": 2,
+              "populationModes": [
+                1,
+                2
+              ]
+            },
+            "memory": {
+              "slots": 24,
+              "generations": [
+                "DDR4"
+              ],
+              "maxCapacityGb": 3072,
+              "maxModuleCapacityGb": 128,
+              "maxSpeedMt": 2933,
+              "eccSupport": "supported",
+              "moduleTypes": [
+                "LRDIMM",
+                "RDIMM"
+              ],
+              "slotsPerCpu": 12
+            },
+            "storageSlots": [
+              {
+                "id": 1,
+                "key": "front-lff-bays",
+                "label": "Front 3.5-inch hot-swap bays",
+                "count": 12,
+                "interfaces": [
+                  "SAS",
+                  "SATA"
+                ],
+                "formFactors": [
+                  "3.5-inch"
+                ],
+                "location": "external",
+                "hotSwap": true,
+                "backplane": "12-bay LFF SAS/SATA backplane",
+                "controllerSlotIds": [
+                  1
+                ],
+                "directConnect": false
+              }
+            ],
+            "expansionSlots": [
+              {
+                "id": 1,
+                "key": "primary-pcie-slots",
+                "label": "Primary PCIe slots",
+                "count": 4,
+                "interfaceFamily": "pcie",
+                "pcieGeneration": 3,
+                "mechanicalLanes": 16,
+                "electricalLanes": 16,
+                "acceptedHeights": [
+                  "full-height",
+                  "low-profile"
+                ],
+                "riserGroup": "riser-1"
+              },
+              {
+                "id": 2,
+                "key": "secondary-pcie-slots",
+                "label": "Secondary-CPU PCIe slots",
+                "count": 4,
+                "interfaceFamily": "pcie",
+                "pcieGeneration": 3,
+                "mechanicalLanes": 16,
+                "electricalLanes": 8,
+                "acceptedHeights": [
+                  "full-height",
+                  "low-profile"
+                ],
+                "requiredCpuSockets": 2,
+                "riserGroup": "riser-2"
+              }
+            ],
+            "optionalModuleSlots": [
+              {
+                "id": 1,
+                "key": "lom-slot",
+                "label": "LOM/OCP network slot",
+                "count": 1,
+                "acceptedModuleKinds": [
+                  "lom",
+                  "ocp",
+                  "network-adapter"
+                ]
+              }
+            ],
+            "controllerSlots": [
+              {
+                "id": 1,
+                "key": "raid-slot",
+                "label": "Dedicated storage-controller slot",
+                "count": 1,
+                "acceptedControllerKinds": [
+                  "hba",
+                  "raid-controller"
+                ],
+                "interfaceFamily": "pcie",
+                "dedicated": true
+              }
+            ],
+            "bootDeviceSlots": [
+              {
+                "id": 1,
+                "key": "m2-boot-slot",
+                "label": "M.2 boot adapter slot",
+                "count": 1,
+                "acceptedDeviceKinds": [
+                  "boot-controller",
+                  "boot-storage"
+                ],
+                "interfaces": [
+                  "NVMe",
+                  "SATA"
+                ],
+                "formFactors": [
+                  "2280"
+                ],
+                "controllerSlotId": 1
+              }
+            ],
+            "power": {
+              "configuration": "internal-psu",
+              "connector": "IEC C14",
+              "supportedWattagesWatts": [
+                750,
+                1100
+              ],
+              "adapterRequired": false,
+              "redundancy": "optional",
+              "psuBayCount": 2,
+              "psuType": "hot-plug",
+              "mixedPsuAllowed": false,
+              "redundancyModes": [
+                "1+0",
+                "1+1"
+              ]
+            },
+            "coolingProfiles": [
+              {
+                "id": 1,
+                "key": "standard-fan-set",
+                "label": "Standard fan set",
+                "fanCount": 6,
+                "redundant": true,
+                "conditions": [
+                  "standard configuration"
+                ]
+              },
+              {
+                "id": 2,
+                "key": "high-performance-fan-set",
+                "label": "High-performance fan set",
+                "fanCount": 8,
+                "redundant": true,
+                "conditions": [
+                  "NVMe or high-TDP configuration"
+                ]
+              }
+            ],
+            "management": {
+              "controllerFamily": "XClarity Controller",
+              "controllerGeneration": "XCC",
+              "dedicatedPort": true,
+              "sharedNic": true,
+              "portType": "rj45",
+              "speed": "1G"
+            },
+            "constraintGroups": []
+          }
+        }
+      }
+    },
+    {
+      "caseId": "lenovo-thinksystem-sr650-24-sff-anybay",
+      "description": "Lenovo SR650 24-sff-anybay conventional server topology.",
+      "sourceRecordKey": "lenovo:thinksystem:sr650:24-sff-anybay",
+      "templateKey": "server-lenovo-thinksystem-sr650-24-sff-anybay",
+      "fingerprintVersion": 6,
+      "productFamily": {
+        "manufacturer": "Lenovo",
+        "model": "SR650",
+        "physicalClass": "server"
+      },
+      "variantEvidence": {
+        "source": "topology",
+        "completeness": "complete",
+        "label": "24-sff-anybay",
+        "variantKey": "24-sff-anybay",
+        "topologySignature": "8c73d60867400cf9f624f4a39328eaf2662bf09ca24ec334e84ffdd728506e13",
+        "structuralSummary": "PCIe Gen3 x16 Primary PCIe slots · PCIe Gen3 x8 Secondary-CPU PCIe slots"
+      },
+      "identityHash": "50e430aa187a63c3a953bc0bd2ac8d739ef1982c1449f4849857524f37d28542",
+      "contentHash": "f0a7083a8f4e842bf555c28017b23230fda3d9b7bfd89c3d4ed762fd9f9517a1",
+      "item": {
+        "type": "server",
+        "name": "Lenovo ThinkSystem SR650 - 24x 2.5-inch AnyBay/NVMe",
+        "manufacturer": "Lenovo",
+        "family": "ThinkSystem",
+        "model": "SR650",
+        "specs": {
+          "formFactor": "Rack Server",
+          "topologyCompleteness": "complete",
+          "variantKey": "24-sff-anybay",
+          "launchDate": "2017-07-11",
+          "oemGeneration": "1st Gen",
+          "rackUnits": 2
+        },
+        "ports": [
+          {
+            "id": 1,
+            "kind": "management",
+            "type": "rj45",
+            "slotNumber": 1,
+            "key": "dedicated-management",
+            "role": "dedicated-management",
+            "speed": "1G",
+            "origin": "fixed"
+          }
+        ],
+        "compatibility": {
+          "host": {
+            "topologyCompleteness": "complete",
+            "cpu": {
+              "sockets": [
+                "LGA3647"
+              ],
+              "generations": [
+                "Intel Xeon Scalable 1st Gen",
+                "Intel Xeon Scalable 2nd Gen"
+              ],
+              "maxTdpWatts": 205,
+              "socketCount": 2,
+              "populationModes": [
+                1,
+                2
+              ]
+            },
+            "memory": {
+              "slots": 24,
+              "generations": [
+                "DDR4"
+              ],
+              "maxCapacityGb": 3072,
+              "maxModuleCapacityGb": 128,
+              "maxSpeedMt": 2933,
+              "eccSupport": "supported",
+              "moduleTypes": [
+                "LRDIMM",
+                "RDIMM"
+              ],
+              "slotsPerCpu": 12
+            },
+            "storageSlots": [
+              {
+                "id": 1,
+                "key": "front-sff-anybay",
+                "label": "Front 2.5-inch AnyBay/NVMe bays",
+                "count": 24,
+                "interfaces": [
+                  "SAS",
+                  "SATA",
+                  "NVMe"
+                ],
+                "formFactors": [
+                  "2.5-inch"
+                ],
+                "pcieGeneration": 3,
+                "location": "external",
+                "hotSwap": true,
+                "backplane": "24-bay SFF AnyBay backplane",
+                "controllerSlotIds": [
+                  1
+                ],
+                "directConnect": false
+              }
+            ],
+            "expansionSlots": [
+              {
+                "id": 1,
+                "key": "primary-pcie-slots",
+                "label": "Primary PCIe slots",
+                "count": 4,
+                "interfaceFamily": "pcie",
+                "pcieGeneration": 3,
+                "mechanicalLanes": 16,
+                "electricalLanes": 16,
+                "acceptedHeights": [
+                  "full-height",
+                  "low-profile"
+                ],
+                "riserGroup": "riser-1"
+              },
+              {
+                "id": 2,
+                "key": "secondary-pcie-slots",
+                "label": "Secondary-CPU PCIe slots",
+                "count": 4,
+                "interfaceFamily": "pcie",
+                "pcieGeneration": 3,
+                "mechanicalLanes": 16,
+                "electricalLanes": 8,
+                "acceptedHeights": [
+                  "full-height",
+                  "low-profile"
+                ],
+                "requiredCpuSockets": 2,
+                "riserGroup": "riser-2"
+              }
+            ],
+            "optionalModuleSlots": [
+              {
+                "id": 1,
+                "key": "lom-slot",
+                "label": "LOM/OCP network slot",
+                "count": 1,
+                "acceptedModuleKinds": [
+                  "lom",
+                  "ocp",
+                  "network-adapter"
+                ]
+              }
+            ],
+            "controllerSlots": [
+              {
+                "id": 1,
+                "key": "raid-slot",
+                "label": "Dedicated storage-controller slot",
+                "count": 1,
+                "acceptedControllerKinds": [
+                  "hba",
+                  "raid-controller"
+                ],
+                "interfaceFamily": "pcie",
+                "dedicated": true
+              }
+            ],
+            "bootDeviceSlots": [
+              {
+                "id": 1,
+                "key": "m2-boot-slot",
+                "label": "M.2 boot adapter slot",
+                "count": 1,
+                "acceptedDeviceKinds": [
+                  "boot-controller",
+                  "boot-storage"
+                ],
+                "interfaces": [
+                  "NVMe",
+                  "SATA"
+                ],
+                "formFactors": [
+                  "2280"
+                ],
+                "controllerSlotId": 1
+              }
+            ],
+            "power": {
+              "configuration": "internal-psu",
+              "connector": "IEC C14",
+              "supportedWattagesWatts": [
+                750,
+                1100
+              ],
+              "adapterRequired": false,
+              "redundancy": "optional",
+              "psuBayCount": 2,
+              "psuType": "hot-plug",
+              "mixedPsuAllowed": false,
+              "redundancyModes": [
+                "1+0",
+                "1+1"
+              ]
+            },
+            "coolingProfiles": [
+              {
+                "id": 1,
+                "key": "standard-fan-set",
+                "label": "Standard fan set",
+                "fanCount": 6,
+                "redundant": true,
+                "conditions": [
+                  "standard configuration"
+                ]
+              },
+              {
+                "id": 2,
+                "key": "high-performance-fan-set",
+                "label": "High-performance fan set",
+                "fanCount": 8,
+                "redundant": true,
+                "conditions": [
+                  "NVMe or high-TDP configuration"
+                ]
+              }
+            ],
+            "management": {
+              "controllerFamily": "XClarity Controller",
+              "controllerGeneration": "XCC",
+              "dedicatedPort": true,
+              "sharedNic": true,
+              "portType": "rj45",
+              "speed": "1G"
+            },
+            "constraintGroups": []
+          }
+        }
+      }
+    },
+    {
+      "caseId": "lenovo-thinksystem-st250-8-lff",
+      "description": "Lenovo ST250 8-lff conventional server topology.",
+      "sourceRecordKey": "lenovo:thinksystem:st250:8-lff",
+      "templateKey": "server-lenovo-thinksystem-st250-8-lff",
+      "fingerprintVersion": 6,
+      "productFamily": {
+        "manufacturer": "Lenovo",
+        "model": "ST250",
+        "physicalClass": "server"
+      },
+      "variantEvidence": {
+        "source": "topology",
+        "completeness": "complete",
+        "label": "8-lff",
+        "variantKey": "8-lff",
+        "topologySignature": "290cf3917bbb95d01363d271a1290aa574e13ea73e3af319178bd6c788fdaf62",
+        "structuralSummary": "PCIe Gen3 x16 Primary PCIe slots"
+      },
+      "identityHash": "ce30a32b645a9a5c91355d80398530d8f28c003a3a96f9414f5c26d648027de5",
+      "contentHash": "581523a0bd892ec94c47f0c47fdc675457becbcd6a12f15e89962519fcf08bf6",
+      "item": {
+        "type": "server",
+        "name": "Lenovo ThinkSystem ST250 - 8x 3.5-inch hot-swap",
+        "manufacturer": "Lenovo",
+        "family": "ThinkSystem",
+        "model": "ST250",
+        "specs": {
+          "formFactor": "Tower Server",
+          "topologyCompleteness": "complete",
+          "variantKey": "8-lff",
+          "launchDate": "2019-03-19",
+          "oemGeneration": "1st Gen"
+        },
+        "ports": [
+          {
+            "id": 1,
+            "kind": "management",
+            "type": "rj45",
+            "slotNumber": 1,
+            "key": "dedicated-management",
+            "role": "dedicated-management",
+            "speed": "1G",
+            "origin": "fixed"
+          }
+        ],
+        "compatibility": {
+          "host": {
+            "topologyCompleteness": "complete",
+            "cpu": {
+              "sockets": [
+                "LGA1151"
+              ],
+              "generations": [
+                "Intel Xeon E-2100",
+                "Intel Xeon E-2200"
+              ],
+              "maxTdpWatts": 95,
+              "socketCount": 1,
+              "populationModes": [
+                1
+              ]
+            },
+            "memory": {
+              "slots": 4,
+              "generations": [
+                "DDR4"
+              ],
+              "maxCapacityGb": 128,
+              "maxModuleCapacityGb": 32,
+              "maxSpeedMt": 2666,
+              "eccSupport": "supported",
+              "moduleTypes": [
+                "UDIMM"
+              ],
+              "slotsPerCpu": 4
+            },
+            "storageSlots": [
+              {
+                "id": 1,
+                "key": "front-lff-bays",
+                "label": "Front 3.5-inch hot-swap bays",
+                "count": 8,
+                "interfaces": [
+                  "SAS",
+                  "SATA"
+                ],
+                "formFactors": [
+                  "3.5-inch"
+                ],
+                "location": "external",
+                "hotSwap": true,
+                "backplane": "8-bay LFF SAS/SATA backplane",
+                "controllerSlotIds": [
+                  1
+                ],
+                "directConnect": false
+              }
+            ],
+            "expansionSlots": [
+              {
+                "id": 1,
+                "key": "primary-pcie-slots",
+                "label": "Primary PCIe slots",
+                "count": 4,
+                "interfaceFamily": "pcie",
+                "pcieGeneration": 3,
+                "mechanicalLanes": 16,
+                "electricalLanes": 16,
+                "acceptedHeights": [
+                  "full-height"
+                ]
+              }
+            ],
+            "optionalModuleSlots": [
+              {
+                "id": 1,
+                "key": "lom-slot",
+                "label": "LOM/OCP network slot",
+                "count": 1,
+                "acceptedModuleKinds": [
+                  "lom",
+                  "ocp",
+                  "network-adapter"
+                ]
+              }
+            ],
+            "controllerSlots": [
+              {
+                "id": 1,
+                "key": "raid-slot",
+                "label": "Dedicated storage-controller slot",
+                "count": 1,
+                "acceptedControllerKinds": [
+                  "hba",
+                  "raid-controller"
+                ],
+                "interfaceFamily": "pcie",
+                "dedicated": true
+              }
+            ],
+            "bootDeviceSlots": [
+              {
+                "id": 1,
+                "key": "m2-boot-slot",
+                "label": "M.2 boot adapter slot",
+                "count": 1,
+                "acceptedDeviceKinds": [
+                  "boot-controller",
+                  "boot-storage"
+                ],
+                "interfaces": [
+                  "NVMe",
+                  "SATA"
+                ],
+                "formFactors": [
+                  "2280"
+                ],
+                "controllerSlotId": 1
+              }
+            ],
+            "power": {
+              "configuration": "internal-psu",
+              "connector": "IEC C14",
+              "supportedWattagesWatts": [
+                550,
+                750
+              ],
+              "adapterRequired": false,
+              "redundancy": "optional",
+              "psuBayCount": 2,
+              "psuType": "hot-plug",
+              "mixedPsuAllowed": false,
+              "redundancyModes": [
+                "1+0",
+                "1+1"
+              ]
+            },
+            "coolingProfiles": [
+              {
+                "id": 1,
+                "key": "standard-fan-set",
+                "label": "Standard fan set",
+                "fanCount": 2,
+                "redundant": false,
+                "conditions": [
+                  "standard configuration"
+                ]
+              },
+              {
+                "id": 2,
+                "key": "high-performance-fan-set",
+                "label": "High-performance fan set",
+                "fanCount": 3,
+                "redundant": true,
+                "conditions": [
+                  "NVMe or high-TDP configuration"
+                ]
+              }
+            ],
+            "management": {
+              "controllerFamily": "XClarity Controller",
+              "controllerGeneration": "XCC",
+              "dedicatedPort": true,
+              "sharedNic": true,
+              "portType": "rj45",
+              "speed": "1G"
+            },
+            "constraintGroups": []
+          }
+        }
+      }
+    },
+    {
+      "caseId": "lenovo-thinksystem-st550-16-sff",
+      "description": "Lenovo ST550 16-sff conventional server topology.",
+      "sourceRecordKey": "lenovo:thinksystem:st550:16-sff",
+      "templateKey": "server-lenovo-thinksystem-st550-16-sff",
+      "fingerprintVersion": 6,
+      "productFamily": {
+        "manufacturer": "Lenovo",
+        "model": "ST550",
+        "physicalClass": "server"
+      },
+      "variantEvidence": {
+        "source": "topology",
+        "completeness": "complete",
+        "label": "16-sff",
+        "variantKey": "16-sff",
+        "topologySignature": "ffe61ee600e04d41a44464cc5a0f87575bf0b4ae78fbe798b6af9cec8eda89cc",
+        "structuralSummary": "PCIe Gen3 x16 Primary PCIe slots · PCIe Gen3 x8 Secondary-CPU PCIe slots"
+      },
+      "identityHash": "c2ad24802d7c537c4b4befedfb98167988457343c3807a41051813068e5f2344",
+      "contentHash": "f12e1194b564cf17e78289fb51669b1527b536ba24c7e126d66eed569fab2831",
+      "item": {
+        "type": "server",
+        "name": "Lenovo ThinkSystem ST550 - 16x 2.5-inch hot-swap",
+        "manufacturer": "Lenovo",
+        "family": "ThinkSystem",
+        "model": "ST550",
+        "specs": {
+          "formFactor": "Tower Server",
+          "topologyCompleteness": "complete",
+          "variantKey": "16-sff",
+          "launchDate": "2017-07-11",
+          "oemGeneration": "1st Gen"
+        },
+        "ports": [
+          {
+            "id": 1,
+            "kind": "management",
+            "type": "rj45",
+            "slotNumber": 1,
+            "key": "dedicated-management",
+            "role": "dedicated-management",
+            "speed": "1G",
+            "origin": "fixed"
+          }
+        ],
+        "compatibility": {
+          "host": {
+            "topologyCompleteness": "complete",
+            "cpu": {
+              "sockets": [
+                "LGA3647"
+              ],
+              "generations": [
+                "Intel Xeon Scalable 1st Gen",
+                "Intel Xeon Scalable 2nd Gen"
+              ],
+              "maxTdpWatts": 205,
+              "socketCount": 2,
+              "populationModes": [
+                1,
+                2
+              ]
+            },
+            "memory": {
+              "slots": 12,
+              "generations": [
+                "DDR4"
+              ],
+              "maxCapacityGb": 768,
+              "maxModuleCapacityGb": 64,
+              "maxSpeedMt": 2666,
+              "eccSupport": "supported",
+              "moduleTypes": [
+                "LRDIMM",
+                "RDIMM"
+              ],
+              "slotsPerCpu": 6
+            },
+            "storageSlots": [
+              {
+                "id": 1,
+                "key": "front-sff-bays",
+                "label": "Front 2.5-inch hot-swap bays",
+                "count": 16,
+                "interfaces": [
+                  "SAS",
+                  "SATA",
+                  "NVMe"
+                ],
+                "formFactors": [
+                  "2.5-inch"
+                ],
+                "pcieGeneration": 3,
+                "location": "external",
+                "hotSwap": true,
+                "backplane": "16-bay SFF AnyBay-capable backplane",
+                "controllerSlotIds": [
+                  1
+                ],
+                "directConnect": false
+              }
+            ],
+            "expansionSlots": [
+              {
+                "id": 1,
+                "key": "primary-pcie-slots",
+                "label": "Primary PCIe slots",
+                "count": 4,
+                "interfaceFamily": "pcie",
+                "pcieGeneration": 3,
+                "mechanicalLanes": 16,
+                "electricalLanes": 16,
+                "acceptedHeights": [
+                  "full-height"
+                ]
+              },
+              {
+                "id": 2,
+                "key": "secondary-pcie-slots",
+                "label": "Secondary-CPU PCIe slots",
+                "count": 2,
+                "interfaceFamily": "pcie",
+                "pcieGeneration": 3,
+                "mechanicalLanes": 16,
+                "electricalLanes": 8,
+                "acceptedHeights": [
+                  "full-height"
+                ],
+                "requiredCpuSockets": 2
+              }
+            ],
+            "optionalModuleSlots": [
+              {
+                "id": 1,
+                "key": "lom-slot",
+                "label": "LOM/OCP network slot",
+                "count": 1,
+                "acceptedModuleKinds": [
+                  "lom",
+                  "ocp",
+                  "network-adapter"
+                ]
+              }
+            ],
+            "controllerSlots": [
+              {
+                "id": 1,
+                "key": "raid-slot",
+                "label": "Dedicated storage-controller slot",
+                "count": 1,
+                "acceptedControllerKinds": [
+                  "hba",
+                  "raid-controller"
+                ],
+                "interfaceFamily": "pcie",
+                "dedicated": true
+              }
+            ],
+            "bootDeviceSlots": [
+              {
+                "id": 1,
+                "key": "m2-boot-slot",
+                "label": "M.2 boot adapter slot",
+                "count": 1,
+                "acceptedDeviceKinds": [
+                  "boot-controller",
+                  "boot-storage"
+                ],
+                "interfaces": [
+                  "NVMe",
+                  "SATA"
+                ],
+                "formFactors": [
+                  "2280"
+                ],
+                "controllerSlotId": 1
+              }
+            ],
+            "power": {
+              "configuration": "internal-psu",
+              "connector": "IEC C14",
+              "supportedWattagesWatts": [
+                750,
+                1100
+              ],
+              "adapterRequired": false,
+              "redundancy": "optional",
+              "psuBayCount": 2,
+              "psuType": "hot-plug",
+              "mixedPsuAllowed": false,
+              "redundancyModes": [
+                "1+0",
+                "1+1"
+              ]
+            },
+            "coolingProfiles": [
+              {
+                "id": 1,
+                "key": "standard-fan-set",
+                "label": "Standard fan set",
+                "fanCount": 4,
+                "redundant": false,
+                "conditions": [
+                  "standard configuration"
+                ]
+              },
+              {
+                "id": 2,
+                "key": "high-performance-fan-set",
+                "label": "High-performance fan set",
+                "fanCount": 6,
+                "redundant": true,
+                "conditions": [
+                  "NVMe or high-TDP configuration"
+                ]
+              }
+            ],
+            "management": {
+              "controllerFamily": "XClarity Controller",
+              "controllerGeneration": "XCC",
+              "dedicatedPort": true,
+              "sharedNic": true,
+              "portType": "rj45",
+              "speed": "1G"
+            },
+            "constraintGroups": []
+          }
+        }
+      }
+    }
+  ]
+}

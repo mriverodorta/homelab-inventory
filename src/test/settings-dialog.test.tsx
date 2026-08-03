@@ -284,7 +284,7 @@ describe('SettingsDialog', () => {
           tokenExpiresAt: null,
           lastError: null,
         },
-        database: { schemaVersion: 16, lastMigration: null },
+        database: { schemaVersion: 16, applicationOemContractVersion: 6, lastMigration: null },
       },
       onRegistrySettingsChange: vi.fn(),
     })

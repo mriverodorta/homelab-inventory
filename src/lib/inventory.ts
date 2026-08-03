@@ -235,7 +235,9 @@ export function normalizeInventory(input: unknown): InventoryItem[] {
       name: raw.name,
       type,
       hardwareClass:
-        raw.hardwareClass === 'desktop' || raw.hardwareClass === 'server'
+        raw.hardwareClass === 'desktop'
+        || raw.hardwareClass === 'workstation'
+        || raw.hardwareClass === 'server'
           ? raw.hardwareClass
           : undefined,
       usageRole:

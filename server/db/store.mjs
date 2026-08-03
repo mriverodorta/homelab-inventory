@@ -45,6 +45,7 @@ import { migrateSchema19To20 } from './migrate-schema-20.mjs'
 import { migrateSchema20To21 } from './migrate-schema-21.mjs'
 import { migrateSchema21To22 } from './migrate-schema-22.mjs'
 import { migrateSchema22To23 } from './migrate-schema-23.mjs'
+import { migrateSchema23To24 } from './migrate-schema-24.mjs'
 import {
   applyNasPowerConfigurationChange,
   inspectNasPowerConfigurationChange,
@@ -86,7 +87,7 @@ import {
   setWalkthroughStepInDraft,
 } from '../onboarding/lifecycle.mjs'
 
-export const CURRENT_SCHEMA_VERSION = 23
+export const CURRENT_SCHEMA_VERSION = 24
 
 const DEFAULT_SAVE_DEBOUNCE_MS = 500
 const DEFAULT_FLUSH_RETRY_BASE_MS = 1_000
@@ -98,7 +99,7 @@ const ALWAYS_ENFORCED_COMPATIBILITY_CODES = new Set([
   'compatibility.resource.exhausted',
   'memory.slots.exceeded',
 ])
-const SERVER_HARDWARE_CLASSES = new Set(['desktop', 'server'])
+const SERVER_HARDWARE_CLASSES = new Set(['desktop', 'workstation', 'server'])
 const SERVER_USAGE_ROLES = new Set(['server', 'desktop', 'workstation', 'other'])
 const TABLE_BY_TYPE = {
   server: 'servers',
@@ -803,7 +804,7 @@ function normalizeInventoryItemInput(input, id) {
     const hardwareClass = String(input.hardwareClass ?? 'desktop').trim()
     const usageRole = String(input.usageRole ?? 'server').trim()
     if (!SERVER_HARDWARE_CLASSES.has(hardwareClass)) {
-      throw new InventoryLifecycleError('Server hardware class must be desktop or server.', {
+      throw new InventoryLifecycleError('Server hardware class must be desktop, workstation, or server.', {
         code: 'invalid-inventory-item', status: 400,
       })
     }
@@ -2124,6 +2125,21 @@ export class HomelabInventoryStore {
           summary: migrated.summary,
         }
         currentVersion = 23
+        continue
+      }
+
+      if (currentVersion === 23) {
+        const migrated = migrateSchema23To24(this.databases.inventory.data)
+        this.databases.inventory.data = migrated.inventory
+        this.databases.meta.data.schemaVersion = 24
+        this.databases.meta.data.lastMigration = {
+          from: 23,
+          to: 24,
+          completedAt: new Date().toISOString(),
+          backupId: path.basename(this.activeMigrationBackupPath),
+          summary: migrated.summary,
+        }
+        currentVersion = 24
         continue
       }
 
@@ -3555,11 +3571,29 @@ export class HomelabInventoryStore {
 
     await fs.mkdir(backupPath, { recursive: true })
 
-    for (const [storeName, filePath, payload] of snapshots) {
-      await writeJson(path.join(backupPath, `${storeName}.json`), payload)
-      if (path.dirname(filePath) === this.storesDir) {
-        await writeJson(path.join(backupPath, 'stores', path.basename(filePath)), payload)
+    try {
+      for (const [storeName, filePath, payload] of snapshots) {
+        await writeJson(path.join(backupPath, `${storeName}.json`), payload)
+        if (path.dirname(filePath) === this.storesDir) {
+          await writeJson(path.join(backupPath, 'stores', path.basename(filePath)), payload)
+        }
       }
+
+      for (const [storeName, filePath, payload] of snapshots) {
+        const rootCopy = await readJson(path.join(backupPath, `${storeName}.json`))
+        if (JSON.stringify(rootCopy) !== JSON.stringify(payload)) {
+          throw new Error(`Backup verification failed for ${storeName}.`)
+        }
+        if (path.dirname(filePath) === this.storesDir) {
+          const storeCopy = await readJson(path.join(backupPath, 'stores', path.basename(filePath)))
+          if (JSON.stringify(storeCopy) !== JSON.stringify(payload)) {
+            throw new Error(`Backup verification failed for stores/${path.basename(filePath)}.`)
+          }
+        }
+      }
+    } catch (error) {
+      await fs.rm(backupPath, { recursive: true, force: true }).catch(() => {})
+      throw error
     }
 
     await this.pruneBackups()

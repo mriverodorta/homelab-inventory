@@ -2,6 +2,8 @@ import {
   FINGERPRINT_VERSION,
   LEGACY_FINGERPRINT_VERSION,
   OEM_FINGERPRINT_VERSION,
+  SERVER_FINGERPRINT_VERSION,
+  WORKSTATION_FINGERPRINT_VERSION,
   projectCatalogItem,
   reconcileCatalogProjections,
   sha256Hex,
@@ -29,6 +31,8 @@ function contributionKey(fingerprintVersion, identityHash, contentHash) {
 
 function fingerprintVersionForItem(item) {
   const catalogItem = projectLocalItemForCatalog(item, item.type)
+  if (catalogItem.type === 'workstation') return WORKSTATION_FINGERPRINT_VERSION
+  if (catalogItem.type === 'server') return SERVER_FINGERPRINT_VERSION
   return ['desktop', 'server', 'nas'].includes(catalogItem.type)
     && typeof catalogItem.manufacturer === 'string'
     && typeof catalogItem.model === 'string'
@@ -159,7 +163,11 @@ export async function discoverContributionCandidates(
       const match = publishedByIdentity.get(identityKey(fingerprintVersion, [...identities][0]))
       if (match) compatibilityMatches.push({ match, fingerprintVersion })
     }
-    const oemMatch = canonicalMatch || group.fingerprintVersion !== OEM_FINGERPRINT_VERSION
+    const oemMatch = canonicalMatch || ![
+      OEM_FINGERPRINT_VERSION,
+      WORKSTATION_FINGERPRINT_VERSION,
+      SERVER_FINGERPRINT_VERSION,
+    ].includes(group.fingerprintVersion)
       ? { outcome: 'none' }
       : matchOemVariant(group, publishedCandidates)
     const compatibilityMatch = compatibilityMatches[0]
