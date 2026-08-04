@@ -6,6 +6,18 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 
 ## Unreleased
 
+## [0.8.3] - 2026-08-04
+
+### Fixed
+
+- Concurrent catalog searches now reuse one snapshot service and update the active catalog pointer without temporary-file collisions.
+- Updated the IP address parser used by request rate limiting to close CVE-2026-69192, CVE-2026-54272, and CVE-2026-69198.
+
+### Security
+
+- Docker publication now blocks fixable medium, high, and critical runtime vulnerabilities before any image is pushed, while a daily monitor rescans both `latest` and `stable` for vulnerabilities disclosed after release.
+- The final Bun runtime now applies current Debian security updates during each release build before the image is scanned.
+
 ## [0.8.2] - 2026-08-03
 
 ### Added

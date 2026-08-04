@@ -31,7 +31,10 @@ ENV HOMELAB_WASM_PREBUILT=1
 ENV VITE_DOMAIN_ENGINE=required
 RUN mkdir -p /tmp/runtime-data && bun run build
 
-FROM oven/bun:1-distroless AS runtime
+FROM oven/bun:1-slim AS runtime
+RUN apt-get update \
+  && apt-get upgrade -y \
+  && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 ARG APP_VERSION=development
 ARG APP_REVISION=unknown

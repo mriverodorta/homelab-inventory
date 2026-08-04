@@ -140,13 +140,20 @@ export function registerRegistryRoutes(app, {
     'Registry contribution settings are read-only in public demo mode.',
     { code: 'demo-registry-policy', status: 403 },
   )
-  const snapshotService = (store) => snapshotServiceFactory
-    ? snapshotServiceFactory(store)
-    : new SnapshotService(store, {
+  const snapshotServices = new WeakMap()
+  const snapshotService = (store) => {
+    const existing = snapshotServices.get(store)
+    if (existing) return existing
+    const service = snapshotServiceFactory
+      ? snapshotServiceFactory(store)
+      : new SnapshotService(store, {
         ...(trustedKeys === undefined ? {} : { trustedKeys }),
         ...(fetchImpl === undefined ? {} : { fetchImpl }),
         ...(officialOrigin === undefined ? {} : { officialOrigin }),
       })
+    snapshotServices.set(store, service)
+    return service
+  }
 
   app.get('/api/registry', (request, response) => {
     run(withStore, request, response, async (store) => response.json(publicRegistryState(store, policy)))

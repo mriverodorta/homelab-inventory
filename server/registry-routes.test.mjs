@@ -280,6 +280,23 @@ describe('registry routes', () => {
     })
   })
 
+  it('reuses one catalog snapshot service for requests sharing a data store', async () => {
+    const search = vi.fn(async () => ({ total: 0, limit: 40, offset: 0, hasMore: false, nextOffset: null, items: [] }))
+    const facets = vi.fn(async () => ({ available: true, categories: [] }))
+    const snapshotServiceFactory = vi.fn(() => ({ search, facets }))
+    const { baseUrl } = await createServer({ snapshotServiceFactory })
+
+    await Promise.all([
+      fetch(`${baseUrl}/api/registry/catalog/facets`),
+      fetch(`${baseUrl}/api/registry/catalog/search?type=cpu&limit=40&offset=0`),
+      fetch(`${baseUrl}/api/registry/catalog/search?type=desktop&limit=40&offset=0`),
+    ])
+
+    expect(snapshotServiceFactory).toHaveBeenCalledOnce()
+    expect(facets).toHaveBeenCalledOnce()
+    expect(search).toHaveBeenCalledTimes(2)
+  })
+
   it('rejects malformed catalog facet constraints before searching', async () => {
     const search = vi.fn()
     const { baseUrl } = await createServer({

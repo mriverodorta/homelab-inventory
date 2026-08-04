@@ -106,6 +106,17 @@ export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
   notes: [],
 }
 
+const RELEASE_0_8_3_DETAILS: UnreleasedReleaseNotes = {
+  highlights: [],
+  fixes: [
+    'Concurrent catalog searches now share one snapshot service and update the active catalog pointer atomically without temporary-file collisions.',
+    'Updated the IP address parser used by request rate limiting to the patched release that closes three trust-boundary bypass vulnerabilities.',
+  ],
+  notes: [
+    'Docker releases now apply current Debian security updates and fail before publication when the runtime contains a fixable medium-or-higher vulnerability. The latest and stable images are also rescanned daily for newly disclosed issues.',
+  ],
+}
+
 const RELEASE_0_8_2_DETAILS: UnreleasedReleaseNotes = {
   highlights: [
     'The official catalog now starts with a hardware category chooser, then provides category-specific multi-select and numeric-range filters with explicit Load more pagination.',
@@ -388,6 +399,13 @@ const RELEASE_0_2_1_DETAILS: UnreleasedReleaseNotes = {
 }
 
 export const RELEASE_NOTES: ReleaseNoteEntry[] = [
+  {
+    version: '0.8.3',
+    date: '2026-08-04',
+    channel: 'release',
+    title: 'Catalog reliability and release security',
+    ...RELEASE_0_8_3_DETAILS,
+  },
   {
     version: '0.8.2',
     date: '2026-08-03',

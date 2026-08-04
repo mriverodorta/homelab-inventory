@@ -92,6 +92,7 @@ describe('release notes helpers', () => {
 
   it('has structured notes for the package version under development', () => {
     const currentRelease = RELEASE_NOTES[0]
+    const catalogRelease = RELEASE_NOTES.find((entry) => entry.version === '0.8.2')!
     const topologyRelease = RELEASE_NOTES.find((entry) => entry.version === '0.8.1')!
     const accessRelease = RELEASE_NOTES.find((entry) => entry.version === '0.8.0')!
     const registryRelease = RELEASE_NOTES.find((entry) => entry.version === '0.4.0')!
@@ -100,11 +101,11 @@ describe('release notes helpers', () => {
     const previousRelease = RELEASE_NOTES.find((entry) => entry.version === '0.2.1')!
     const engineRelease = RELEASE_NOTES.find((entry) => entry.version === '0.2.0')!
 
-    expect(hasReleaseNoteForVersion(RELEASE_NOTES, '0.8.2')).toBe(true)
+    expect(hasReleaseNoteForVersion(RELEASE_NOTES, '0.8.3')).toBe(true)
     expect(RELEASE_NOTES[0]).toEqual(
       expect.objectContaining({
-        version: '0.8.2',
-        title: 'Faceted hardware catalog browsing',
+        version: '0.8.3',
+        title: 'Catalog reliability and release security',
       }),
     )
     expect(RELEASE_NOTES.filter((entry) => entry.channel === 'latest')).toEqual([
@@ -116,7 +117,10 @@ describe('release notes helpers', () => {
     expect(accessRelease.highlights).toContain(
       'Access settings now support invited local or OIDC users, built-in roles, and reusable custom global roles composed from explicit permissions.',
     )
-    expect(currentRelease.highlights).toContain(
+    expect(currentRelease.fixes).toContain(
+      'Updated the IP address parser used by request rate limiting to the patched release that closes three trust-boundary bypass vulnerabilities.',
+    )
+    expect(catalogRelease.highlights).toContain(
       'The official catalog now starts with a hardware category chooser, then provides category-specific multi-select and numeric-range filters with explicit Load more pagination.',
     )
     expect(topologyRelease.highlights).toContain(

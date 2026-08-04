@@ -68,7 +68,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          docker build --tag homelab-inventory-smoke .
+          docker build --pull --tag homelab-inventory-smoke .
           container_id="$(docker run --detach --publish 127.0.0.1::8798 homelab-inventory-smoke)"
           trap 'docker rm --force "$container_id" >/dev/null 2>&1 || true' EXIT
           host_port="$(docker port "$container_id" 8798/tcp | sed 's/.*://')"
@@ -82,6 +82,11 @@ jobs:
 
           docker logs "$container_id"
           exit 1
+
+      - name: Enforce runtime vulnerability policy
+        uses: ./.github/actions/scan-runtime
+        with:
+          image-ref: homelab-inventory-smoke
 
       - name: Compute release plan and validate Git tag ownership
         id: release_plan
@@ -238,6 +243,7 @@ jobs:
         with:
           context: .
           platforms: ${{ env.PLATFORMS }}
+          pull: true
           push: true
           tags: ${{ steps.channel_tags.outputs.tags }}
           build-args: |
@@ -266,6 +272,7 @@ jobs:
         with:
           context: .
           platforms: ${{ env.PLATFORMS }}
+          pull: true
           push: true
           tags: ${{ env.IMAGE_NAME }}:${{ steps.release_plan.outputs.exact_tag }}
           build-args: |

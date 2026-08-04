@@ -1,0 +1,23 @@
+name: Scan runtime image
+description: Block fixable medium-or-higher vulnerabilities in a Homelab Inventory runtime image.
+
+inputs:
+  image-ref:
+    description: Local or remote container image reference to scan.
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Scan fixable runtime vulnerabilities
+      uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+      with:
+        scan-type: image
+        image-ref: ${{ inputs.image-ref }}
+        scanners: vuln
+        vuln-type: os,library
+        ignore-unfixed: true
+        severity: MEDIUM,HIGH,CRITICAL
+        format: table
+        exit-code: '1'
+        timeout: 15m

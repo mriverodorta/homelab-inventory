@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto'
 import fs from 'node:fs/promises'
 import path from 'node:path'
 import {
@@ -170,14 +171,21 @@ export class SnapshotService {
 
   async writeActivePointer(paths, activeSnapshot) {
     await fs.mkdir(this.catalogDir, { recursive: true })
-    const temporary = `${this.activePointerPath}.${process.pid}.${Date.now()}.tmp`
+    const contents = `${JSON.stringify({
+      version: CATALOG_GENERATION_VERSION,
+      generation: paths.generation,
+      revision: activeSnapshot.revision,
+      digest: activeSnapshot.digest,
+    }, null, 2)}\n`
+    const current = await fs.readFile(this.activePointerPath, 'utf8').catch((error) => {
+      if (error?.code === 'ENOENT') return null
+      throw error
+    })
+    if (current === contents) return
+
+    const temporary = `${this.activePointerPath}.${process.pid}-${randomUUID()}.tmp`
     try {
-      await fs.writeFile(temporary, `${JSON.stringify({
-        version: CATALOG_GENERATION_VERSION,
-        generation: paths.generation,
-        revision: activeSnapshot.revision,
-        digest: activeSnapshot.digest,
-      }, null, 2)}\n`, { mode: 0o600 })
+      await fs.writeFile(temporary, contents, { mode: 0o600 })
       await fs.rename(temporary, this.activePointerPath)
     } finally {
       await fs.rm(temporary, { force: true }).catch(() => {})

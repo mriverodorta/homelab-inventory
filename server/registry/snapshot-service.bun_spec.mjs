@@ -139,6 +139,32 @@ describe('catalog snapshot service', () => {
     })
   })
 
+  it('writes the active catalog pointer safely when first reads overlap', async () => {
+    const { artifact, dataDir, store, trustedKeys } = await fixture()
+    const service = new SnapshotService(store, { trustedKeys })
+    await service.activate(artifact, { mode: 'offline', now: new Date('2026-07-27T00:00:00.000Z') })
+    const activePaths = await service.resolveActivePaths()
+    await fs.rm(path.join(dataDir, 'catalog', 'active-generation.json'))
+
+    const originalNow = Date.now
+    Date.now = () => 1_785_800_974_177
+    try {
+      await Promise.all(Array.from({ length: 12 }, () => (
+        service.writeActivePointer(activePaths, store.getRegistryState().snapshot)
+      )))
+    } finally {
+      Date.now = originalNow
+    }
+
+    const pointer = JSON.parse(await fs.readFile(path.join(dataDir, 'catalog', 'active-generation.json'), 'utf8'))
+    expect(pointer).toMatchObject({
+      version: 1,
+      generation: activePaths.generation,
+      revision: 2,
+      digest: store.getRegistryState().snapshot.digest,
+    })
+  })
+
   it('preserves the active snapshot when verification fails', async () => {
     const { artifact, store, trustedKeys } = await fixture()
     const service = new SnapshotService(store, { trustedKeys })
