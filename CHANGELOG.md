@@ -6,6 +6,8 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 
 ## Unreleased
 
+## [0.8.6] - 2026-08-05
+
 ### Added
 
 - Added a permanent random installation UUID for registry enrollment, owner-reviewed lost-key recovery states, and explicit approval checks in Registry settings.

@@ -101,6 +101,12 @@ const RELEASE_0_3_0_DETAILS: UnreleasedReleaseNotes = {
 }
 
 export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
+  highlights: [],
+  fixes: [],
+  notes: [],
+}
+
+const RELEASE_0_8_6_DETAILS: UnreleasedReleaseNotes = {
   highlights: [
     'Registry enrollment now has a permanent random installation UUID and owner-reviewed lost-key recovery with actionable status in Registry settings.',
     'Complete and registry-enrollment backups now carry the stable UUID, signing key, and credentials as one validated identity set.',
@@ -429,9 +435,16 @@ const RELEASE_0_2_1_DETAILS: UnreleasedReleaseNotes = {
 
 export const RELEASE_NOTES: ReleaseNoteEntry[] = [
   {
-    version: '0.8.5',
+    version: '0.8.6',
     date: '2026-08-05',
     channel: 'latest',
+    title: 'Stable registry installation identity',
+    ...RELEASE_0_8_6_DETAILS,
+  },
+  {
+    version: '0.8.5',
+    date: '2026-08-05',
+    channel: 'release',
     title: 'Catalog scrolling and hardened releases',
     ...RELEASE_0_8_5_DETAILS,
   },
