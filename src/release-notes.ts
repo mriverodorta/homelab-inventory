@@ -104,13 +104,16 @@ export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
   highlights: [
     'The next-generation Homelab Inventory Agent foundation now supports typed enrollment for servers, NAS devices, and custom PC builds with a capability-driven protocol contract.',
     'Signed one-minute telemetry can be persisted atomically in a dedicated WAL-mode SQLite database with indexed latest state and bounded historical retention.',
+    'The Linux agent now collects bounded host, filesystem, disk, network, sensor, battery, systemd, GPU, eMMC, mdraid, and opt-in SMART telemetry for AMD64 and ARM64 hosts.',
   ],
   fixes: [
     'Agent telemetry no longer shares the workspace persistence path, so heartbeat history cannot advance the project revision or modify inventory, placements, assignments, or cables.',
     'Heartbeat requests now authenticate their exact compressed body, endpoint, timestamp, and sequence with Ed25519 and reject replay, cross-host use, malformed compression, oversized payloads, and unsafe container fields.',
+    'Lost heartbeat responses no longer leave the agent queue blocked: a machine-confirmed replay is treated as the acknowledgement for that exact signed sample.',
   ],
   notes: [
     'Schema 25 migrates existing server-agent relationships to typed numeric host references while preserving legacy endpoints during the transition. The independently compiled agent and its installer are still under development.',
+    'SMART remains disabled unless both the application contract and the host allowlist enable it; standby checks do not wake disks, and raw serial numbers or WWNs are never sent by normal telemetry.',
   ],
 }
 

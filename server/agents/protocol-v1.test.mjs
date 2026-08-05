@@ -14,7 +14,11 @@ function heartbeat(overrides = {}) {
     collectedAt: '2026-08-05T20:00:00.000Z',
     host: { type: 'server', id: 1 },
     capabilities: { 'host.cpu': { state: 'available' } },
-    metrics: { loadAverage: [0.1, 0.2, 0.3], cpu: { percent: 10 } },
+    metrics: {
+      loadAverage: [0.1, 0.2, 0.3],
+      system: { operatingSystem: 'linux', architecture: 'amd64' },
+      cpu: { percent: 10 },
+    },
     ...overrides,
   }
 }

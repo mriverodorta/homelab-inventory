@@ -10,15 +10,18 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 
 - Added the protocol-v1 foundation for the independent Homelab Inventory Agent, including a versioned capability contract, Ed25519 request signatures, replay protection, bounded gzip heartbeats, and typed enrollment for servers, NAS devices, and custom PC builds.
 - Added an isolated WAL-mode SQLite telemetry database with atomic one-minute samples, indexed latest-state projections, service/container/storage transition history, seven-day default retention, and bounded maintenance.
+- Added the first Linux agent telemetry profile for CPU and per-core utilization, load, memory and swap, ZFS ARC, filesystems, detailed disk I/O, aggregate and per-interface networking, sensors, batteries, systemd services, averaged GPU metrics, eMMC/mdraid health, and explicitly allowlisted SMART devices.
 
 ### Changed
 
 - Agent relationships now use explicit compute-host types and numeric relational IDs while legacy server-agent endpoints remain available during the transition to the compiled agent.
 - Telemetry persistence completes before an agent sequence is acknowledged, and telemetry writes never advance the project revision or modify inventory, canvas placements, assignments, or cables.
+- GPU samples are averaged in agent memory before the normal one-minute heartbeat, services refresh on the contract cadence, and SMART requires both server approval and a local device allowlist.
 
 ### Security
 
 - Protocol-v1 heartbeats authenticate the exact compressed request body, HTTP method, path, timestamp, and monotonic sequence with an enrolled Ed25519 device key. Demo sessions cannot enroll, activate, or submit agent data.
+- Linux collector commands use fixed arguments, strict time and output bounds, and no shell. SMART checks avoid waking standby disks and remove raw serial numbers and WWNs before transmission; hardware references use installation-specific opaque identifiers.
 
 ### Data migration
 

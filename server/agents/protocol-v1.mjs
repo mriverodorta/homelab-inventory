@@ -122,7 +122,7 @@ function normalizeHost(value, expectedHost) {
 function normalizeMetrics(value) {
   const metrics = boundedValue(object(value, 'metrics'), 'metrics')
   const allowed = new Set([
-    'uptimeSeconds', 'loadAverage', 'cpu', 'memory', 'filesystems', 'diskIo',
+    'uptimeSeconds', 'loadAverage', 'system', 'cpu', 'memory', 'filesystems', 'diskIo',
     'network', 'sensors', 'batteries', 'gpus',
   ])
   const unknown = Object.keys(metrics).find((field) => !allowed.has(field))
