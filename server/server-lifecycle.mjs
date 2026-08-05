@@ -10,6 +10,7 @@ export async function gracefullyStopServer({
   server,
   sseHub,
   stoppers = [],
+  closers = [],
   flush,
   timeoutMs = DEFAULT_SHUTDOWN_TIMEOUT_MS,
   setTimeoutFn = setTimeout,
@@ -23,12 +24,6 @@ export async function gracefullyStopServer({
   for (const result of stopperResults) {
     if (result.status === 'rejected') failures.push(result.reason)
   }
-  try {
-    await flush?.()
-  } catch (error) {
-    failures.push(error)
-  }
-
   let timeout
   const timedOut = new Promise((resolve) => {
     timeout = setTimeoutFn(() => resolve(true), timeoutMs)
@@ -41,6 +36,16 @@ export async function gracefullyStopServer({
     server.closeIdleConnections?.()
     server.closeAllConnections?.()
     await closed
+  }
+
+  try {
+    await flush?.()
+  } catch (error) {
+    failures.push(error)
+  }
+  const closerResults = await Promise.allSettled(closers.map((close) => close?.()))
+  for (const result of closerResults) {
+    if (result.status === 'rejected') failures.push(result.reason)
   }
 
   if (failures.length > 0) {

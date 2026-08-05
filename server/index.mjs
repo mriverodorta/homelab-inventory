@@ -52,6 +52,9 @@ import { DockerHubUpdateChecker } from './update-checker.mjs'
 import { registerUpdateRoutes } from './update-routes.mjs'
 import { startUpdateCheckSchedule } from './update-scheduler.mjs'
 import { storeRequestError } from './store-request-error.mjs'
+import { closeTelemetryDatabase, openTelemetryDatabase } from './telemetry/database.mjs'
+import { TelemetryRepository } from './telemetry/repository.mjs'
+import { startTelemetryRetentionSchedule } from './telemetry/retention.mjs'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const root = path.resolve(__dirname, '..')
@@ -100,6 +103,9 @@ app.set('trust proxy', rateLimitConfig.trustProxy)
 
 let store = null
 let demoManager = null
+let telemetryDatabase = null
+let telemetryRepository = null
+let telemetryRetentionSchedule = null
 
 if (isDemoMode) {
   const { DemoSessionManager, DEMO_COOKIE_NAME } = await import('./demo/session-manager.mjs')
@@ -129,6 +135,9 @@ if (isDemoMode) {
   })
 
   await store.init()
+  telemetryDatabase = await openTelemetryDatabase({ dataDir })
+  telemetryRepository = new TelemetryRepository(telemetryDatabase)
+  telemetryRetentionSchedule = startTelemetryRetentionSchedule(telemetryDatabase)
 }
 
 const cspDirectives = {
@@ -197,7 +206,12 @@ registerAccessRoutes(app, {
   demo: isDemoMode,
 })
 registerAgentRoutes(app, store, { disabled: isDemoMode })
-registerAgentV1Routes(app, store, { disabled: isDemoMode })
+registerAgentV1Routes(app, store, {
+  disabled: isDemoMode,
+  heartbeatSink: telemetryRepository
+    ? (heartbeat) => telemetryRepository.recordHeartbeat(heartbeat)
+    : null,
+})
 
 function parseCookie(header, name) {
   return (header ?? '')
@@ -452,8 +466,10 @@ async function shutdown(signal) {
         () => backupSchedule?.stop(),
         () => catalogRefreshCoordinator?.stop(),
         () => contributionDelivery?.stop(store),
+        () => telemetryRetentionSchedule?.stop(),
       ],
       flush: () => demoManager ? demoManager.flushAll() : store.flush(),
+      closers: [() => closeTelemetryDatabase(telemetryDatabase)],
     })
     process.exit(0)
   } catch (error) {

@@ -181,7 +181,7 @@ export function registerAgentV1Routes(app, store, {
   contractService = new AgentContractService(),
   heartbeatRateLimit = HEARTBEAT_RATE_LIMIT,
   heartbeatRateWindowMs = HEARTBEAT_RATE_WINDOW_MS,
-  heartbeatSink = persistHeartbeat,
+  heartbeatSink = null,
 } = {}) {
   app.get('/api/agent/contracts/current', disabled
     ? disabledRoute
@@ -297,10 +297,18 @@ export function registerAgentV1Routes(app, store, {
     try {
       const { authentication, heartbeat } = decodeHeartbeat(request, device, host, request.body)
       const receivedAt = new Date().toISOString()
-      await heartbeatSink(store, device, host, authentication, heartbeat, receivedAt)
+      await heartbeatSink?.({
+        deviceId: device.id,
+        hostType: host.hostType,
+        hostId: host.hostId,
+        receivedAt,
+        payload: heartbeat,
+      })
+      persistHeartbeat(store, device, host, authentication, heartbeat, receivedAt)
       return response.json({ ok: true, receivedAt, sequence: authentication.sequence })
     } catch (error) {
-      if (!(error instanceof AgentAuthenticationError) && Number(error?.status) >= 500) throw error
+      if (!(error instanceof AgentAuthenticationError) && !Number.isInteger(error?.status)) throw error
+      if (Number(error.status) >= 500) throw error
       return routeError(response, error)
     }
   })

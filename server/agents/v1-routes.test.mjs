@@ -48,6 +48,7 @@ function createApp(store, options) {
   app.use('/api/agent/hosts/:hostType/:hostId/heartbeats', createAgentV1BodyMiddleware())
   app.use(express.json({ limit: '1mb' }))
   registerAgentV1Routes(app, store, options)
+  app.use((_error, _request, response, _next) => response.status(500).json({ message: 'Internal error.' }))
   return app
 }
 
@@ -220,6 +221,42 @@ describe('agent protocol v1 routes', () => {
         pair: enrolled.agentIdentity.pair, sequence: 2,
       })).status).toBe(429)
       expect(store.databases.agents.data.devices[enrolled.activation.deviceId].lastSequence).toBe(1)
+    } finally {
+      await close(server)
+    }
+  })
+
+  it('advances device state only after the telemetry sink commits', async () => {
+    const store = await createStore()
+    const received = []
+    const { server, url } = await listen(createApp(store, {
+      heartbeatRateLimit: 20,
+      heartbeatSink: async (heartbeat) => {
+        received.push(heartbeat)
+        if (heartbeat.payload.sequence === 2) throw new Error('telemetry unavailable')
+      },
+    }))
+    try {
+      const enrolled = await enrollAndActivate(url, 'server', 1)
+      const first = await signedHeartbeat({
+        url, hostType: 'server', hostId: 1, deviceId: enrolled.activation.deviceId,
+        pair: enrolled.agentIdentity.pair, sequence: 1,
+      })
+      expect(first.status).toBe(200)
+      expect(received[0]).toMatchObject({
+        deviceId: enrolled.activation.deviceId,
+        hostType: 'server',
+        hostId: 1,
+        payload: { sequence: 1 },
+      })
+
+      const rejected = await signedHeartbeat({
+        url, hostType: 'server', hostId: 1, deviceId: enrolled.activation.deviceId,
+        pair: enrolled.agentIdentity.pair, sequence: 2,
+      })
+      expect(rejected.status).toBe(500)
+      expect(store.databases.agents.data.devices[enrolled.activation.deviceId].lastSequence).toBe(1)
+      expect(store.databases.agentStatus.data.hosts['server:1'].sequence).toBeUndefined()
     } finally {
       await close(server)
     }

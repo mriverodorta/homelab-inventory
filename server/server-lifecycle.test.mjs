@@ -55,4 +55,36 @@ describe('gracefullyStopServer', () => {
 
     expect(order).toEqual(['server-close', 'stop-background', 'flush'])
   })
+
+  it('closes databases only after active requests and persistence complete', async () => {
+    const order = []
+    let finishRequest
+    const server = {
+      close(callback) {
+        order.push('server-close')
+        finishRequest = () => {
+          order.push('request-finished')
+          callback()
+        }
+      },
+    }
+
+    const stopping = gracefullyStopServer({
+      server,
+      stoppers: [async () => order.push('scheduler-stopped')],
+      flush: async () => order.push('stores-flushed'),
+      closers: [async () => order.push('database-closed')],
+    })
+    await Promise.resolve()
+    expect(order).toEqual(['server-close', 'scheduler-stopped'])
+    finishRequest()
+    await stopping
+    expect(order).toEqual([
+      'server-close',
+      'scheduler-stopped',
+      'request-finished',
+      'stores-flushed',
+      'database-closed',
+    ])
+  })
 })
