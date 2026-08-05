@@ -1,0 +1,17 @@
+#!/bin/sh
+set -eu
+
+scan_required=false
+
+while read -r local_ref local_sha remote_ref remote_sha; do
+  case "$remote_ref" in
+    refs/heads/main|refs/heads/stable)
+      scan_required=true
+      ;;
+  esac
+done
+
+if [ "$scan_required" = true ]; then
+  echo "Running mandatory multi-architecture container security preflight..."
+  bun run security:container
+fi

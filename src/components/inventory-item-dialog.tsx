@@ -338,10 +338,15 @@ export function InventoryItemDialog({
   return (
     <>
       <Dialog open={open} onOpenChange={handleDialogOpenChange}>
-        <DialogContent className={cn(
-          '!flex max-h-[calc(100dvh-2rem)] !flex-col gap-0 overflow-hidden bg-[#fffdf8] p-0 text-[#20242c]',
-          activeSource === 'catalog' ? 'sm:max-w-[min(96vw,88rem)]' : 'sm:max-w-3xl',
-        )}>
+        <DialogContent
+          data-testid="inventory-item-dialog-content"
+          className={cn(
+            '!flex max-h-[calc(100dvh-2rem)] !flex-col gap-0 overflow-hidden bg-[#fffdf8] p-0 text-[#20242c]',
+            activeSource === 'catalog'
+              ? 'h-[calc(100dvh-2rem)] sm:h-[min(52rem,calc(100dvh-2rem))] sm:max-w-[min(96vw,88rem)]'
+              : 'sm:max-w-3xl',
+          )}
+        >
           <DialogHeader className="border-b border-[#ded8ce] px-4 py-4">
             <DialogTitle>Add inventory item</DialogTitle>
           </DialogHeader>
@@ -356,7 +361,7 @@ export function InventoryItemDialog({
             <TabsContent
               value="catalog"
               data-testid="catalog-tab-content"
-              className="m-0 min-h-0 flex-1 overflow-y-auto lg:overflow-hidden"
+              className="m-0 min-h-0 flex-1 overflow-y-auto lg:flex lg:overflow-hidden"
             >
               <CatalogSourcePanel
                 registry={registry}

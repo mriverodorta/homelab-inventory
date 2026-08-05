@@ -64,29 +64,79 @@ jobs:
       - name: Build
         run: bun run build
 
-      - name: Smoke-test runtime image
+      - name: Verify Docker Hub token for security scanning
+        env:
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+        run: |
+          if [[ -z "$DOCKERHUB_TOKEN" ]]; then
+            echo "::error title=Missing Docker Hub token::Add a DOCKERHUB_TOKEN repository secret for Docker Scout and image publication."
+            exit 1
+          fi
+
+      - name: Setup QEMU
+        uses: docker/setup-qemu-action@96fe6ef7f33517b61c61be40b68a1882f3264fb8 # v4
+
+      - name: Setup Docker Buildx
+        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4
+
+      - name: Build target runtime images for security verification
         shell: bash
         run: |
           set -euo pipefail
-          docker build --pull --tag homelab-inventory-smoke .
-          container_id="$(docker run --detach --publish 127.0.0.1::8798 homelab-inventory-smoke)"
-          trap 'docker rm --force "$container_id" >/dev/null 2>&1 || true' EXIT
-          host_port="$(docker port "$container_id" 8798/tcp | sed 's/.*://')"
-
-          for attempt in {1..20}; do
-            if curl --fail --silent "http://127.0.0.1:${host_port}/api/health" >/dev/null; then
-              exit 0
-            fi
-            sleep 1
+          for architecture in amd64 arm64; do
+            docker buildx build \
+              --pull \
+              --load \
+              --platform "linux/${architecture}" \
+              --tag "homelab-inventory-security:${architecture}" \
+              .
           done
 
-          docker logs "$container_id"
-          exit 1
+      - name: Smoke-test both target runtime images
+        shell: bash
+        run: |
+          set -euo pipefail
+          for architecture in amd64 arm64; do
+            container_name="homelab-inventory-smoke-${architecture}"
+            docker run \
+              --detach \
+              --name "$container_name" \
+              --platform "linux/${architecture}" \
+              --publish 127.0.0.1::8798 \
+              "homelab-inventory-security:${architecture}"
+            host_port="$(docker port "$container_name" 8798/tcp | sed -n '1s/.*://p')"
 
-      - name: Enforce runtime vulnerability policy
+            healthy=false
+            for _ in {1..30}; do
+              if curl --fail --silent "http://127.0.0.1:${host_port}/api/health" >/dev/null; then
+                healthy=true
+                break
+              fi
+              sleep 1
+            done
+
+            if [[ "$healthy" != true ]]; then
+              docker logs "$container_name"
+              exit 1
+            fi
+            docker rm --force "$container_name"
+          done
+
+      - name: Enforce amd64 runtime vulnerability policy
         uses: ./.github/actions/scan-runtime
         with:
-          image-ref: homelab-inventory-smoke
+          image-ref: homelab-inventory-security:amd64
+          platform: linux/amd64
+          dockerhub-user: mriverodorta
+          dockerhub-token: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Enforce arm64 runtime vulnerability policy
+        uses: ./.github/actions/scan-runtime
+        with:
+          image-ref: homelab-inventory-security:arm64
+          platform: linux/arm64
+          dockerhub-user: mriverodorta
+          dockerhub-token: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Compute release plan and validate Git tag ownership
         id: release_plan
@@ -110,21 +160,6 @@ jobs:
             --version "$version" \
             --revision "${GITHUB_SHA}" \
             --existing-tag-revision "${existing_tag_revision:-}"
-
-      - name: Setup QEMU
-        uses: docker/setup-qemu-action@96fe6ef7f33517b61c61be40b68a1882f3264fb8 # v4
-
-      - name: Setup Docker Buildx
-        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4
-
-      - name: Verify Docker Hub token
-        env:
-          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
-        run: |
-          if [[ -z "$DOCKERHUB_TOKEN" ]]; then
-            echo "::error title=Missing Docker Hub token::Add a DOCKERHUB_TOKEN repository secret with permission to push ${IMAGE_NAME}."
-            exit 1
-          fi
 
       - name: Login to Docker Hub
         uses: docker/login-action@371161bbe7024a29a25c5e19bfcbc0804fe9ad2c # v4

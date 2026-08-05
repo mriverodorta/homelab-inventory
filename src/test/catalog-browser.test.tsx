@@ -105,10 +105,15 @@ describe('CatalogBrowser', () => {
 
     await user.click(screen.getByRole('button', { name: /Processors/ }))
 
-    expect(screen.getByTestId('catalog-browser')).toHaveClass('overflow-visible', 'lg:overflow-hidden')
+    expect(screen.getByTestId('catalog-browser')).toHaveClass(
+      'overflow-visible',
+      'lg:h-full',
+      'lg:grid-rows-[minmax(0,1fr)]',
+      'lg:overflow-hidden',
+    )
     expect(screen.getByTestId('catalog-filter-pane')).toHaveClass('min-h-0', 'overflow-hidden')
-    expect(screen.getByTestId('catalog-filter-scroll')).toHaveClass('overflow-y-auto')
-    expect(screen.getByTestId('catalog-results-scroll')).toHaveClass('overflow-y-auto')
-    expect(screen.getByTestId('catalog-detail-pane')).toHaveClass('min-h-0', 'overflow-y-auto')
+    expect(screen.getByTestId('catalog-filter-scroll')).toHaveClass('overflow-y-auto', 'overscroll-contain')
+    expect(screen.getByTestId('catalog-results-scroll')).toHaveClass('overflow-y-auto', 'overscroll-contain')
+    expect(screen.getByTestId('catalog-detail-pane')).toHaveClass('min-h-0', 'overflow-y-auto', 'overscroll-contain')
   })
 })

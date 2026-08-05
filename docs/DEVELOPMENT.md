@@ -54,8 +54,17 @@ bun run build
 bun run build:wasm
 bun run check:wasm
 bun run benchmark:engine
+bun run security:container
 bun run start
 ```
+
+Install the versioned Git hooks once per checkout:
+
+```bash
+bun run hooks:install
+```
+
+Pushes to `main` or `stable` run `bun run security:container` automatically. The preflight builds the actual distroless production image for `linux/amd64` and `linux/arm64`, boots both images, and requires Docker Scout and Trivy to report zero known vulnerabilities at every severity. Docker Desktop must be running and Docker Scout must be available.
 
 ## Project Shape
 
@@ -90,6 +99,7 @@ bun run build
 cargo fmt --manifest-path rust/Cargo.toml --all -- --check
 cargo clippy --manifest-path rust/Cargo.toml --workspace --all-targets -- -D warnings
 cargo test --manifest-path rust/Cargo.toml --workspace
+bun run security:container
 ```
 
 Keep public examples and seed files fictional. Do not commit real inventory, LAN IPs, Tailscale IPs, serial numbers, tokens, or agent status.

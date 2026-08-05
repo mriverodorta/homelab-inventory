@@ -14,7 +14,7 @@ concurrency:
 
 jobs:
   scan:
-    name: Scan ${{ matrix.channel }}
+    name: Scan ${{ matrix.channel }} (${{ matrix.platform }})
     runs-on: ubuntu-latest
     timeout-minutes: 20
     strategy:
@@ -23,13 +23,28 @@ jobs:
         channel:
           - latest
           - stable
+        platform:
+          - amd64
+          - arm64
     steps:
       - name: Checkout security policy
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
 
+      - name: Pull target platform
+        run: |
+          docker pull \
+            --platform "linux/${{ matrix.platform }}" \
+            "mriverodorta/homelab-inventory:${{ matrix.channel }}"
+          docker tag \
+            "mriverodorta/homelab-inventory:${{ matrix.channel }}" \
+            "homelab-inventory-monitor:${{ matrix.channel }}-${{ matrix.platform }}"
+
       - name: Enforce runtime vulnerability policy
         uses: ./.github/actions/scan-runtime
         with:
-          image-ref: mriverodorta/homelab-inventory:${{ matrix.channel }}
+          image-ref: homelab-inventory-monitor:${{ matrix.channel }}-${{ matrix.platform }}
+          platform: linux/${{ matrix.platform }}
+          dockerhub-user: mriverodorta
+          dockerhub-token: ${{ secrets.DOCKERHUB_TOKEN }}

@@ -31,10 +31,10 @@ ENV HOMELAB_WASM_PREBUILT=1
 ENV VITE_DOMAIN_ENGINE=required
 RUN mkdir -p /tmp/runtime-data && bun run build
 
-FROM oven/bun:1-slim AS runtime
-RUN apt-get update \
-  && apt-get upgrade -y \
-  && rm -rf /var/lib/apt/lists/*
+FROM gcr.io/distroless/static-debian13:nonroot@sha256:f7f8f729987ad0fdf6b05eeeae94b26e6a0f613bdf46feea7fc40f7bd72953e6 AS runtime
+COPY --from=bun-toolchain /usr/local/bin/bun /usr/local/bin/bun
+COPY --from=bun-toolchain /lib/ld-musl-*.so.1 /lib/
+COPY --from=bun-toolchain /usr/lib/libstdc++.so.6 /usr/lib/libgcc_s.so.1 /usr/lib/
 WORKDIR /app
 ARG APP_VERSION=development
 ARG APP_REVISION=unknown
@@ -85,4 +85,5 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
 
 USER 10001:10001
 
+ENTRYPOINT ["bun"]
 CMD ["server/index.mjs"]

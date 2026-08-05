@@ -106,6 +106,16 @@ export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
   notes: [],
 }
 
+const RELEASE_0_8_5_DETAILS: UnreleasedReleaseNotes = {
+  highlights: [],
+  fixes: [
+    'The official catalog once again keeps filters, result cards, and item details independently scrollable after a category is selected.',
+  ],
+  notes: [
+    'The published container is back on a pinned distroless runtime, with mandatory amd64 and arm64 smoke tests plus zero-vulnerability Docker Scout and Trivy gates before release.',
+  ],
+}
+
 const RELEASE_0_8_4_DETAILS: UnreleasedReleaseNotes = {
   highlights: [
     'The official catalog browser now keeps filters, results, and hardware details in independently scrollable desktop panes, while assigned expansion cards present their hardware name, interface, and connector chips in a clearer hierarchy.',
@@ -410,9 +420,16 @@ const RELEASE_0_2_1_DETAILS: UnreleasedReleaseNotes = {
 
 export const RELEASE_NOTES: ReleaseNoteEntry[] = [
   {
+    version: '0.8.5',
+    date: '2026-08-05',
+    channel: 'latest',
+    title: 'Catalog scrolling and hardened releases',
+    ...RELEASE_0_8_5_DETAILS,
+  },
+  {
     version: '0.8.4',
     date: '2026-08-04',
-    channel: 'latest',
+    channel: 'release',
     title: 'Catalog and canvas layout polish',
     ...RELEASE_0_8_4_DETAILS,
   },

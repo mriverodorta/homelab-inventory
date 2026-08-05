@@ -3,6 +3,7 @@ dist
 node_modules
 .git
 .github
+.githooks
 .vscode
 .idea
 .DS_Store
@@ -19,6 +20,8 @@ LICENSE
 .editorconfig
 .gitattributes
 build.sh
+scripts/check-container-security.mjs
+scripts/install-git-hooks.mjs
 scripts/**/*.test.mjs
 scripts/**/*.test.ts
 scripts/**/*.test.tsx

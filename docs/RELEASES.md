@@ -13,13 +13,16 @@ GitHub is the source of truth for CI/CD. Docker Hub receives images from GitHub 
 ## Normal Flow
 
 1. Open pull requests into `main`.
-2. CI runs lint, tests, and production build.
-3. Merge into `main` when ready.
-4. GitHub Actions publishes `mriverodorta/homelab-inventory:latest`.
-5. When `main` is considered safe, merge or fast-forward it into `stable`.
-6. GitHub Actions publishes `mriverodorta/homelab-inventory:stable`.
-7. When the package version has not been released before, the same verified build also publishes immutable `X.Y.Z` and moving `X.Y` tags.
-8. After both Docker architectures and metadata are verified, automation creates `vX.Y.Z` and the matching GitHub Release.
+2. Run `bun run security:container` locally. It builds, boots, and scans the distroless amd64 and arm64 runtime images with Docker Scout and Trivy. Any known vulnerability blocks the release.
+3. CI repeats lint, tests, production build, runtime smoke tests, and both vulnerability scanners for both target architectures.
+4. Merge into `main` when ready.
+5. GitHub Actions publishes `mriverodorta/homelab-inventory:latest`.
+6. When `main` is considered safe, merge or fast-forward it into `stable`.
+7. GitHub Actions publishes `mriverodorta/homelab-inventory:stable`.
+8. When the package version has not been released before, the same verified build also publishes immutable `X.Y.Z` and moving `X.Y` tags.
+9. After both Docker architectures and metadata are verified, automation creates `vX.Y.Z` and the matching GitHub Release.
+
+The final runtime is pinned to a reviewed Bun distroless multi-architecture digest. Build stages may use larger toolchain images, but their operating-system packages are not copied into the published runtime.
 
 ## Immutability Guards
 

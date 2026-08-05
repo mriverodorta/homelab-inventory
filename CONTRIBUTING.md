@@ -21,6 +21,15 @@ bun run test
 bun run build
 ```
 
+Before pushing a release branch, also run:
+
+```bash
+bun run hooks:install
+bun run security:container
+```
+
+The container preflight is mandatory for `main` and `stable`. It smoke-tests and scans the final amd64 and arm64 distroless images with Docker Scout and Trivy, and it accepts no known vulnerabilities.
+
 ## Pull Requests
 
 - Keep changes focused.

@@ -1,0 +1,156 @@
+#!/usr/bin/env bun
+
+const ROOT = new URL('../', import.meta.url).pathname
+const TRIVY_IMAGE = 'aquasec/trivy:0.73.0@sha256:7cced7cae583819fc7806d4cbc0dbbc7cad18b99f7d3e235192e6da8c091045c'
+const PLATFORMS = ['linux/amd64', 'linux/arm64']
+const SEVERITIES = 'critical,high,medium,low,unspecified'
+
+function commandText(command) {
+  return command.map((part) => /\s/.test(part) ? JSON.stringify(part) : part).join(' ')
+}
+
+async function run(command, options = {}) {
+  console.log(`\n$ ${commandText(command)}`)
+  const process = Bun.spawn(command, {
+    cwd: ROOT,
+    env: { ...Bun.env, ...(options.env ?? {}) },
+    stdout: options.capture ? 'pipe' : 'inherit',
+    stderr: options.capture ? 'pipe' : 'inherit',
+  })
+  const exitCode = await process.exited
+  const stdout = options.capture ? await new Response(process.stdout).text() : ''
+  const stderr = options.capture ? await new Response(process.stderr).text() : ''
+  if (exitCode !== 0) {
+    if (stdout) console.error(stdout.trim())
+    if (stderr) console.error(stderr.trim())
+    throw new Error(`${command[0]} exited with code ${exitCode}.`)
+  }
+  return stdout.trim()
+}
+
+async function commandAvailable(command) {
+  const process = Bun.spawn(command, { cwd: ROOT, stdout: 'ignore', stderr: 'ignore' })
+  return (await process.exited) === 0
+}
+
+async function waitForHealth(containerName) {
+  const portOutput = await run(['docker', 'port', containerName, '8798/tcp'], { capture: true })
+  const published = portOutput.split('\n')[0]?.trim()
+  const port = published?.match(/:(\d+)$/)?.[1]
+  if (!port) throw new Error(`Could not determine the health-check port for ${containerName}.`)
+
+  for (let attempt = 0; attempt < 30; attempt += 1) {
+    try {
+      const response = await fetch(`http://127.0.0.1:${port}/api/health`)
+      if (response.ok) return
+    } catch {
+      // The container may still be starting.
+    }
+    await Bun.sleep(1_000)
+  }
+
+  await run(['docker', 'logs', containerName])
+  throw new Error(`${containerName} did not become healthy within 30 seconds.`)
+}
+
+async function smokeTest(image, platform) {
+  const containerName = `homelab-inventory-security-${platform.replaceAll('/', '-')}-${Date.now()}`
+  try {
+    await run([
+      'docker', 'run', '--detach', '--name', containerName,
+      '--platform', platform,
+      '--publish', '127.0.0.1::8798',
+      image,
+    ])
+    await waitForHealth(containerName)
+  } finally {
+    const cleanup = Bun.spawn(['docker', 'rm', '--force', containerName], {
+      cwd: ROOT,
+      stdout: 'ignore',
+      stderr: 'ignore',
+    })
+    await cleanup.exited
+  }
+}
+
+async function scanWithScout(image) {
+  await run([
+    'docker', 'scout', 'cves',
+    '--exit-code',
+    '--only-severity', SEVERITIES,
+    `local://${image}`,
+  ])
+}
+
+async function scanWithTrivy(image) {
+  await run([
+    'docker', 'run', '--rm',
+    '--volume', '/var/run/docker.sock:/var/run/docker.sock',
+    '--volume', 'homelab-inventory-trivy-cache:/root/.cache/',
+    TRIVY_IMAGE,
+    'image',
+    '--image-src', 'docker',
+    '--scanners', 'vuln',
+    '--pkg-types', 'os,library',
+    '--severity', 'UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL',
+    '--ignore-unfixed=false',
+    '--exit-code', '1',
+    '--timeout', '15m',
+    image,
+  ])
+}
+
+async function main() {
+  if (Bun.argv.includes('--help')) {
+    console.log('Build, smoke-test, and scan the amd64 and arm64 production images with Docker Scout and Trivy.')
+    return
+  }
+
+  if (!(await commandAvailable(['docker', 'info']))) {
+    throw new Error('Docker is unavailable. Start Docker Desktop before running the container security preflight.')
+  }
+  if (!(await commandAvailable(['docker', 'scout', 'version']))) {
+    throw new Error('Docker Scout is unavailable. Install or enable Docker Scout before pushing a release branch.')
+  }
+
+  const version = JSON.parse(await Bun.file(new URL('../package.json', import.meta.url)).text()).version
+  const revision = await run(['git', 'rev-parse', 'HEAD'], { capture: true })
+  const builtImages = []
+
+  try {
+    for (const platform of PLATFORMS) {
+      const architecture = platform.split('/')[1]
+      const image = `homelab-inventory-security:${architecture}`
+      builtImages.push(image)
+      await run([
+        'docker', 'buildx', 'build',
+        '--pull',
+        '--load',
+        '--platform', platform,
+        '--tag', image,
+        '--build-arg', `APP_VERSION=${version}`,
+        '--build-arg', `APP_REVISION=${revision}`,
+        '--build-arg', 'APP_CHANNEL=security-preflight',
+        '.',
+      ])
+      await smokeTest(image, platform)
+      await scanWithScout(image)
+      await scanWithTrivy(image)
+    }
+  } finally {
+    if (Bun.env.SECURITY_KEEP_IMAGES !== '1') {
+      for (const image of builtImages) {
+        const cleanup = Bun.spawn(['docker', 'image', 'rm', '--force', image], {
+          cwd: ROOT,
+          stdout: 'ignore',
+          stderr: 'ignore',
+        })
+        await cleanup.exited
+      }
+    }
+  }
+
+  console.log('\nContainer security preflight passed for linux/amd64 and linux/arm64 with zero known vulnerabilities.')
+}
+
+await main()

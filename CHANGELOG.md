@@ -6,6 +6,17 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 
 ## Unreleased
 
+## [0.8.5] - 2026-08-05
+
+### Fixed
+
+- Restored independent scrolling in all three desktop catalog panes by giving the catalog dialog a stable viewport-bounded height and a strictly constrained pane layout.
+
+### Security
+
+- Restored the pinned distroless Bun runtime and removed Debian package-management layers from the published image.
+- Added a mandatory local pre-push and CI security gate that builds, boots, and scans both amd64 and arm64 runtime images with Docker Scout and Trivy, failing on any known vulnerability at any severity.
+
 ## [0.8.4] - 2026-08-04
 
 ### Changed

@@ -2,7 +2,7 @@
   "name": "homelab-inventory",
   "private": true,
   "description": "Self-hosted visual inventory and cabling workbench for homelab hardware.",
-  "version": "0.8.4",
+  "version": "0.8.5",
   "license": "MIT",
   "type": "module",
   "repository": {
@@ -28,6 +28,8 @@
     "dev:vite": "vite",
     "build": "tsc -b && vite build",
     "bundle:check": "bun scripts/check-frontend-bundle.mjs",
+    "hooks:install": "bun scripts/install-git-hooks.mjs",
+    "security:container": "bun scripts/check-container-security.mjs",
     "benchmark:engine": "bun scripts/benchmark-engine.mjs",
     "lint": "oxlint",
     "prebuild": "bun run build:wasm",

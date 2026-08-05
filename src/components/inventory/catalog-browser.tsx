@@ -138,7 +138,7 @@ export function CatalogBrowser({
   return (
     <div
       data-testid="catalog-browser"
-      className="flex min-h-0 flex-1 flex-col overflow-visible lg:grid lg:grid-cols-[240px_minmax(260px,0.8fr)_minmax(380px,1.2fr)] lg:overflow-hidden"
+      className="flex min-h-0 flex-1 flex-col overflow-visible lg:grid lg:h-full lg:grid-cols-[240px_minmax(260px,0.8fr)_minmax(380px,1.2fr)] lg:grid-rows-[minmax(0,1fr)] lg:overflow-hidden"
     >
       <aside
         data-testid="catalog-filter-pane"
@@ -166,7 +166,7 @@ export function CatalogBrowser({
         onLoadMore={() => void search.fetchNextPage()}
         onOpenFilters={() => setFilterSheetOpen(true)}
       />
-      <div data-testid="catalog-detail-pane" className="min-h-0 overflow-y-auto">
+      <div data-testid="catalog-detail-pane" className="min-h-0 overflow-y-auto overscroll-contain">
         {selected ? (
           <CatalogItemDetail template={selected} pending={pending} onCreate={create} />
         ) : (

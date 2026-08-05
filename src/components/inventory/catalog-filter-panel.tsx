@@ -57,7 +57,7 @@ export function CatalogFilterPanel({
       </div>
       <div
         data-testid={idPrefix === 'desktop-catalog-filter' ? 'catalog-filter-scroll' : undefined}
-        className="min-h-0 flex-1 overflow-y-auto px-4 pb-6"
+        className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-6"
       >
         {category.facets.map((facet, index) => (
           <div key={facet.key}>

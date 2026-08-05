@@ -92,6 +92,7 @@ describe('release notes helpers', () => {
 
   it('has structured notes for the package version under development', () => {
     const currentRelease = RELEASE_NOTES[0]
+    const layoutRelease = RELEASE_NOTES.find((entry) => entry.version === '0.8.4')!
     const securityRelease = RELEASE_NOTES.find((entry) => entry.version === '0.8.3')!
     const catalogRelease = RELEASE_NOTES.find((entry) => entry.version === '0.8.2')!
     const topologyRelease = RELEASE_NOTES.find((entry) => entry.version === '0.8.1')!
@@ -102,15 +103,15 @@ describe('release notes helpers', () => {
     const previousRelease = RELEASE_NOTES.find((entry) => entry.version === '0.2.1')!
     const engineRelease = RELEASE_NOTES.find((entry) => entry.version === '0.2.0')!
 
-    expect(hasReleaseNoteForVersion(RELEASE_NOTES, '0.8.4')).toBe(true)
+    expect(hasReleaseNoteForVersion(RELEASE_NOTES, '0.8.5')).toBe(true)
     expect(RELEASE_NOTES[0]).toEqual(
       expect.objectContaining({
-        version: '0.8.4',
-        title: 'Catalog and canvas layout polish',
+        version: '0.8.5',
+        title: 'Catalog scrolling and hardened releases',
       }),
     )
     expect(RELEASE_NOTES.filter((entry) => entry.channel === 'latest')).toEqual([
-      expect.objectContaining({ version: '0.8.4' }),
+      expect.objectContaining({ version: '0.8.5' }),
     ])
     expect(RELEASE_NOTES.find((entry) => entry.version === '0.1.38')).toEqual(
       expect.objectContaining({ channel: 'release' }),
@@ -122,6 +123,9 @@ describe('release notes helpers', () => {
       'Updated the IP address parser used by request rate limiting to the patched release that closes three trust-boundary bypass vulnerabilities.',
     )
     expect(currentRelease.fixes).toContain(
+      'The official catalog once again keeps filters, result cards, and item details independently scrollable after a category is selected.',
+    )
+    expect(layoutRelease.fixes).toContain(
       'Canvas component cards now use the full width for single CPUs, compact multi-socket CPU chips without overflow, and place registry, remove, and audit controls in consistent nonoverlapping corners.',
     )
     expect(catalogRelease.highlights).toContain(

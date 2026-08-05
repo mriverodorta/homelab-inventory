@@ -25,7 +25,18 @@ describe('InventoryItemDialog switch port groups', () => {
 
     await user.click(screen.getByRole('tab', { name: 'Catalog' }))
 
-    expect(screen.getByTestId('catalog-tab-content')).toHaveClass('overflow-y-auto', 'lg:overflow-hidden')
+    expect(screen.getByTestId('inventory-item-dialog-content')).toHaveClass(
+      'h-[calc(100dvh-2rem)]',
+      'sm:h-[min(52rem,calc(100dvh-2rem))]',
+      'overflow-hidden',
+    )
+    expect(screen.getByTestId('catalog-tab-content')).toHaveClass(
+      'min-h-0',
+      'flex-1',
+      'overflow-y-auto',
+      'lg:flex',
+      'lg:overflow-hidden',
+    )
   })
 
   it('creates inventory from a selected private template', async () => {
