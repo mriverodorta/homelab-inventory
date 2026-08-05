@@ -1,5 +1,6 @@
 import {
   ASSIGNABLE_COMPONENT_TYPE_SET,
+  HOST_TYPE_SET,
   INVENTORY_TYPE_SET,
 } from './inventory-capabilities.mjs'
 import {
@@ -636,7 +637,13 @@ function assertAgentRecordCollection(records, fieldPath) {
       throw new Error(`${fieldPath}.${recordKey} must be an object.`)
     }
     const id = assertRelationalId(record.id, `${fieldPath}.${recordKey}.id`)
-    assertRelationalId(record.serverId, `${fieldPath}.${recordKey}.serverId`)
+    if (!HOST_TYPE_SET.has(record.hostType)) {
+      throw new Error(`${fieldPath}.${recordKey}.hostType must be a supported compute-host type.`)
+    }
+    assertRelationalId(record.hostId, `${fieldPath}.${recordKey}.hostId`)
+    if ('serverId' in record) {
+      throw new Error(`${fieldPath}.${recordKey}.serverId is a legacy relationship and cannot be persisted.`)
+    }
     if (String(id) !== recordKey) {
       throw new Error(`${fieldPath}.${recordKey}.id must match its object key.`)
     }
@@ -657,16 +664,22 @@ export function assertAgentStatusStoreShape(store) {
   if (!store || typeof store !== 'object' || Array.isArray(store)) {
     throw new Error('Agent status store must be an object.')
   }
-  if (!store.servers || typeof store.servers !== 'object' || Array.isArray(store.servers)) {
-    throw new Error('agentStatus.servers must be an object.')
+  if (!store.hosts || typeof store.hosts !== 'object' || Array.isArray(store.hosts)) {
+    throw new Error('agentStatus.hosts must be an object.')
   }
-  for (const [serverKey, status] of Object.entries(store.servers)) {
+  for (const [hostKey, status] of Object.entries(store.hosts)) {
     if (!status || typeof status !== 'object' || Array.isArray(status)) {
-      throw new Error(`agentStatus.servers.${serverKey} must be an object.`)
+      throw new Error(`agentStatus.hosts.${hostKey} must be an object.`)
     }
-    const serverId = assertRelationalId(status.serverId, `agentStatus.servers.${serverKey}.serverId`)
-    if (String(serverId) !== serverKey) {
-      throw new Error(`agentStatus.servers.${serverKey}.serverId must match its object key.`)
+    if (!HOST_TYPE_SET.has(status.hostType)) {
+      throw new Error(`agentStatus.hosts.${hostKey}.hostType must be a supported compute-host type.`)
+    }
+    const hostId = assertRelationalId(status.hostId, `agentStatus.hosts.${hostKey}.hostId`)
+    if (`${status.hostType}:${hostId}` !== hostKey) {
+      throw new Error(`agentStatus.hosts.${hostKey} must match its typed host reference.`)
+    }
+    if ('serverId' in status) {
+      throw new Error(`agentStatus.hosts.${hostKey}.serverId is a legacy relationship and cannot be persisted.`)
     }
   }
 }

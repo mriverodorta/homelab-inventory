@@ -466,12 +466,14 @@ describe('agent routes', () => {
     const store = await createTestStore()
     store.databases.agents.data.devices['1'] = {
       id: 1,
-      serverId: 1,
+      hostType: 'server',
+      hostId: 1,
       tokenHash: 'private-device-token-hash',
       registeredAt: '2026-07-19T00:00:00.000Z',
     }
-    store.databases.agentStatus.data.servers['1'] = {
-      serverId: 1,
+    store.databases.agentStatus.data.hosts['server:1'] = {
+      hostType: 'server',
+      hostId: 1,
       hostname: 'lab-node',
       lastSeenAt: '2026-07-19T00:00:00.000Z',
     }
@@ -496,7 +498,7 @@ describe('agent routes', () => {
 
       const cleared = await fetch(`${url}/api/agent/servers/1/status`, { method: 'DELETE' })
       expect(cleared.status).toBe(200)
-      expect(store.databases.agentStatus.data.servers['1']).toBeUndefined()
+      expect(store.databases.agentStatus.data.hosts['server:1']).toBeUndefined()
       expect(store.getInventoryDependencies({ type: 'server', id: 1 }).blocked).toBe(false)
     } finally {
       await closeServer(server)

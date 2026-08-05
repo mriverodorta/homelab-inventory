@@ -93,19 +93,23 @@ function parseServerIdParam(value) {
   return isRelationalId(serverId) ? serverId : null
 }
 
-function serverExists(store, serverId) {
-  const server = !isRelationalId(serverId)
+function hostExists(store, hostType, hostId) {
+  const host = !['server', 'nas', 'pcBuild'].includes(hostType) || !isRelationalId(hostId)
     ? null
-    : store.getProject().items[`server:${serverId}`]
+    : store.getProject().items[`${hostType}:${hostId}`]
 
-  return server?.type === 'server'
+  return host?.type === hostType
 }
 
-function findEnrollment(store, serverId, token) {
+function recordMatchesHost(record, hostType, hostId) {
+  return record.hostType === hostType && record.hostId === hostId
+}
+
+function findEnrollment(store, hostType, hostId, token) {
   const tokenHash = hashToken(token)
 
   return Object.values(store.databases.agents.data.enrollments ?? {}).find((enrollment) =>
-    enrollment.serverId === serverId &&
+    recordMatchesHost(enrollment, hostType, hostId) &&
     !enrollment.usedAt &&
     !enrollment.revokedAt &&
     Date.parse(enrollment.expiresAt) > Date.now() &&
@@ -113,11 +117,11 @@ function findEnrollment(store, serverId, token) {
   )
 }
 
-function findDevice(store, serverId, token) {
+function findDevice(store, hostType, hostId, token) {
   const tokenHash = hashToken(token)
 
   return Object.values(store.databases.agents.data.devices ?? {}).find((device) =>
-    device.serverId === serverId &&
+    recordMatchesHost(device, hostType, hostId) &&
     !device.revokedAt &&
     timingSafeEqualString(device.tokenHash, tokenHash),
   )
@@ -675,7 +679,7 @@ export function registerAgentRoutes(app, store, {
   app.delete('/api/agent/servers/:serverId/registration', (request, response) => {
     const serverId = parseServerIdParam(request.params.serverId)
 
-    if (!serverExists(store, serverId)) {
+    if (!hostExists(store, 'server', serverId)) {
       response.status(404).json({ message: 'Server not found.' })
       return
     }
@@ -688,7 +692,7 @@ export function registerAgentRoutes(app, store, {
       store.databases.agents.data.devices ?? {},
     ]) {
       for (const record of Object.values(collection)) {
-        if (record.serverId === serverId && !record.revokedAt) {
+        if (recordMatchesHost(record, 'server', serverId) && !record.revokedAt) {
           record.revokedAt = revokedAt
           if (collection === store.databases.agents.data.devices) heartbeatBuckets.delete(record.id)
           revoked += 1
@@ -703,19 +707,19 @@ export function registerAgentRoutes(app, store, {
   app.delete('/api/agent/servers/:serverId/status', (request, response) => {
     const serverId = parseServerIdParam(request.params.serverId)
 
-    if (!serverExists(store, serverId)) {
+    if (!hostExists(store, 'server', serverId)) {
       response.status(404).json({ message: 'Server not found.' })
       return
     }
 
     const activeEnrollment = Object.values(store.databases.agents.data.enrollments ?? {}).some((record) =>
-      record.serverId === serverId
+      recordMatchesHost(record, 'server', serverId)
         && !record.revokedAt
         && !record.usedAt
         && (!record.expiresAt || Date.parse(record.expiresAt) > Date.now()),
     )
     const activeDevice = Object.values(store.databases.agents.data.devices ?? {}).some((record) =>
-      record.serverId === serverId && !record.revokedAt,
+      recordMatchesHost(record, 'server', serverId) && !record.revokedAt,
     )
 
     if (activeEnrollment || activeDevice) {
@@ -723,13 +727,13 @@ export function registerAgentRoutes(app, store, {
       return
     }
 
-    response.json(store.clearAgentRuntimeData(serverId))
+    response.json(store.clearAgentRuntimeData('server', serverId))
   })
 
   app.post('/api/agent/enrollments', (request, response) => {
     const serverId = isRelationalId(request.body?.serverId) ? request.body.serverId : null
 
-    if (!serverExists(store, serverId)) {
+    if (!hostExists(store, 'server', serverId)) {
       response.status(404).json({ message: 'Server not found.' })
       return
     }
@@ -750,14 +754,15 @@ export function registerAgentRoutes(app, store, {
     const expiresAt = new Date(now.getTime() + ENROLLMENT_TTL_MS).toISOString()
 
     for (const enrollment of Object.values(store.databases.agents.data.enrollments ?? {})) {
-      if (enrollment.serverId === serverId && !enrollment.usedAt && !enrollment.revokedAt) {
+      if (recordMatchesHost(enrollment, 'server', serverId) && !enrollment.usedAt && !enrollment.revokedAt) {
         enrollment.revokedAt = createdAt
       }
     }
 
     store.databases.agents.data.enrollments[enrollmentId] = {
       id: enrollmentId,
-      serverId,
+      hostType: 'server',
+      hostId: serverId,
       tokenHash: hashToken(token),
       createdAt,
       expiresAt,
@@ -782,12 +787,12 @@ export function registerAgentRoutes(app, store, {
       return
     }
 
-    if (!serverExists(store, serverId)) {
+    if (!hostExists(store, 'server', serverId)) {
       response.status(404).json({ message: 'Server not found.' })
       return
     }
 
-    const enrollment = findEnrollment(store, serverId, token)
+    const enrollment = findEnrollment(store, 'server', serverId, token)
 
     if (!enrollment) {
       response.status(403).json({ message: 'Enrollment token is invalid or expired.' })
@@ -808,14 +813,15 @@ export function registerAgentRoutes(app, store, {
 
     enrollment.usedAt = now
     for (const device of Object.values(store.databases.agents.data.devices ?? {})) {
-      if (device.serverId === serverId && !device.revokedAt) {
+      if (recordMatchesHost(device, 'server', serverId) && !device.revokedAt) {
         device.revokedAt = now
         heartbeatBuckets.delete(device.id)
       }
     }
     store.databases.agents.data.devices[deviceId] = {
       id: deviceId,
-      serverId,
+      hostType: 'server',
+      hostId: serverId,
       tokenHash: hashToken(deviceToken),
       createdAt: now,
       lastSeenAt: null,
@@ -839,7 +845,7 @@ export function registerAgentRoutes(app, store, {
       return
     }
 
-    const device = findDevice(store, serverId, token)
+    const device = findDevice(store, 'server', serverId, token)
 
     if (!device) {
       response.status(403).json({ message: 'Device token is invalid.' })
@@ -862,8 +868,9 @@ export function registerAgentRoutes(app, store, {
 
     device.lastSeenAt = now
     device.agentVersion = heartbeat.agentVersion
-    store.databases.agentStatus.data.servers[serverId] = {
-      serverId,
+    store.databases.agentStatus.data.hosts[`server:${serverId}`] = {
+      hostType: 'server',
+      hostId: serverId,
       lastSeenAt: now,
       ...heartbeat,
     }

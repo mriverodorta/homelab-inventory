@@ -46,6 +46,7 @@ import { migrateSchema20To21 } from './migrate-schema-21.mjs'
 import { migrateSchema21To22 } from './migrate-schema-22.mjs'
 import { migrateSchema22To23 } from './migrate-schema-23.mjs'
 import { migrateSchema23To24 } from './migrate-schema-24.mjs'
+import { migrateSchema24To25 } from './migrate-schema-25.mjs'
 import {
   applyNasPowerConfigurationChange,
   inspectNasPowerConfigurationChange,
@@ -87,7 +88,7 @@ import {
   setWalkthroughStepInDraft,
 } from '../onboarding/lifecycle.mjs'
 
-export const CURRENT_SCHEMA_VERSION = 24
+export const CURRENT_SCHEMA_VERSION = 25
 
 const DEFAULT_SAVE_DEBOUNCE_MS = 500
 const DEFAULT_FLUSH_RETRY_BASE_MS = 1_000
@@ -1699,7 +1700,7 @@ export class HomelabInventoryStore {
 
     if (!(await pathExists(this.paths.agentStatus))) {
       await writeJson(this.paths.agentStatus, {
-        servers: {},
+        hosts: {},
       })
     }
 
@@ -1753,7 +1754,7 @@ export class HomelabInventoryStore {
       devices: {},
     })
     this.databases.agentStatus = new Low(new JsonFileAdapter(this.paths.agentStatus), {
-      servers: {},
+      hosts: {},
     })
     this.databases.registry = new Low(
       new JsonFileAdapter(this.paths.registry),
@@ -2140,6 +2141,25 @@ export class HomelabInventoryStore {
           summary: migrated.summary,
         }
         currentVersion = 24
+        continue
+      }
+
+      if (currentVersion === 24) {
+        const migrated = migrateSchema24To25(
+          this.databases.agents.data,
+          this.databases.agentStatus.data,
+        )
+        this.databases.agents.data = migrated.agents
+        this.databases.agentStatus.data = migrated.agentStatus
+        this.databases.meta.data.schemaVersion = 25
+        this.databases.meta.data.lastMigration = {
+          from: 24,
+          to: 25,
+          completedAt: new Date().toISOString(),
+          backupId: path.basename(this.activeMigrationBackupPath),
+          summary: migrated.summary,
+        }
+        currentVersion = 25
         continue
       }
 
@@ -3375,11 +3395,11 @@ export class HomelabInventoryStore {
     })
   }
 
-  clearAgentRuntimeData(serverId) {
-    const id = parseLegacyRelationalId(serverId, 'Server id')
+  clearAgentRuntimeData(hostType, hostId) {
+    const id = parseLegacyRelationalId(hostId, 'Host id')
+    const key = `${hostType}:${id}`
 
-    delete this.databases.agentStatus.data.servers[String(id)]
-    delete this.databases.agentStatus.data.servers[id]
+    delete this.databases.agentStatus.data.hosts[key]
     this.scheduleFlush('agentStatus')
     return this.getAgentStatusSummary()
   }
@@ -3387,44 +3407,52 @@ export class HomelabInventoryStore {
   getAgentStatusSummary() {
     const now = Date.now()
     const devices = this.databases.agents.data.devices ?? {}
-    const statuses = this.databases.agentStatus.data.servers ?? {}
+    const statuses = this.databases.agentStatus.data.hosts ?? {}
+
+    const hosts = Object.fromEntries(
+      Object.entries(statuses).map(([hostKey, status]) => {
+        const lastSeenAt = status.lastSeenAt
+        const ageMs = typeof lastSeenAt === 'string' ? now - Date.parse(lastSeenAt) : null
+        const connected = Object.values(devices).some(
+          (device) => device.hostType === status.hostType
+            && device.hostId === status.hostId
+            && !device.revokedAt,
+        )
+        const state = !connected
+          ? 'unregistered'
+          : ageMs === null
+            ? 'unknown'
+            : ageMs <= 90_000
+              ? 'online'
+              : ageMs <= 300_000
+                ? 'stale'
+                : 'offline'
+
+        return [hostKey, { ...status, state, ageMs, connected }]
+      }),
+    )
+    const registeredHosts = [
+      ...new Map(
+        Object.values(devices)
+          .filter((device) => !device.revokedAt)
+          .map((device) => [
+            `${device.hostType}:${device.hostId}`,
+            { hostType: device.hostType, hostId: device.hostId },
+          ]),
+      ).values(),
+    ]
 
     return {
+      hosts,
+      registeredHosts,
       servers: Object.fromEntries(
-        Object.entries(statuses).map(([serverId, status]) => {
-          const lastSeenAt = status.lastSeenAt
-          const ageMs = typeof lastSeenAt === 'string' ? now - Date.parse(lastSeenAt) : null
-          const connected = Object.values(devices).some(
-            (device) => String(device.serverId) === String(status.serverId ?? serverId) && !device.revokedAt,
-          )
-          const state = !connected
-            ? 'unregistered'
-            : ageMs === null
-              ? 'unknown'
-              : ageMs <= 90_000
-                ? 'online'
-                : ageMs <= 300_000
-                  ? 'stale'
-                  : 'offline'
-
-          return [
-            serverId,
-            {
-              ...status,
-              state,
-              ageMs,
-              connected,
-            },
-          ]
-        }),
+        Object.values(hosts)
+          .filter((status) => status.hostType === 'server')
+          .map((status) => [String(status.hostId), { ...status, serverId: status.hostId }]),
       ),
-      registeredServerIds: [
-        ...new Set(
-          Object.values(devices)
-            .filter((device) => !device.revokedAt)
-            .map((device) => device.serverId),
-        ),
-      ],
+      registeredServerIds: registeredHosts
+        .filter((host) => host.hostType === 'server')
+        .map((host) => host.hostId),
     }
   }
 

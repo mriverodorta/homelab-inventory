@@ -368,20 +368,22 @@ export function analyzeInventoryDependencies({ inventory, project, agents, agent
   )
   const enrollments = Object.values(agents?.enrollments ?? {}).filter((enrollment) =>
     isHostType(ref.type)
-      && enrollment?.serverId === ref.id
+      && (enrollment?.hostType ?? 'server') === ref.type
+      && (enrollment?.hostId ?? enrollment?.serverId) === ref.id
       && !enrollment?.revokedAt
       && !enrollment?.usedAt
       && (!enrollment?.expiresAt || Date.parse(enrollment.expiresAt) > Date.now()),
   )
   const devices = Object.values(agents?.devices ?? {}).filter((device) =>
     isHostType(ref.type)
-      && device?.serverId === ref.id
+      && (device?.hostType ?? 'server') === ref.type
+      && (device?.hostId ?? device?.serverId) === ref.id
       && !device?.revokedAt,
   )
-  const statuses = Object.entries(agentStatus?.servers ?? {}).filter(([serverId, status]) =>
+  const statuses = Object.entries(agentStatus?.hosts ?? agentStatus?.servers ?? {}).filter(([, status]) =>
     isHostType(ref.type)
-      && status?.serverId === ref.id
-      && String(ref.id) === serverId,
+      && (status?.hostType ?? 'server') === ref.type
+      && (status?.hostId ?? status?.serverId) === ref.id,
   )
   const metadataPorts = (resolved.item.ports ?? []).filter(portHasRuntimeMetadata)
   const reasons = []
@@ -424,14 +426,20 @@ export function analyzeInventoryDependencies({ inventory, project, agents, agent
     reasons.push(reason(
       'agent-registration',
       'Host has active agent registration data.',
-      [...enrollments, ...devices].map((record) => safeReference(record, ['id', 'serverId'])),
+      [...enrollments, ...devices].map((record) => safeReference(
+        record,
+        ['id', 'hostType', 'hostId', 'serverId'],
+      )),
     ))
   }
   if (statuses.length > 0) {
     reasons.push(reason(
       'agent-status',
       'Host has stored agent runtime status.',
-      statuses.map(([, status]) => ({ serverId: assertRelationalId(status.serverId, 'agentStatus.serverId') })),
+      statuses.map(([, status]) => ({
+        hostType: status.hostType ?? 'server',
+        hostId: assertRelationalId(status.hostId ?? status.serverId, 'agentStatus.hostId'),
+      })),
     ))
   }
   if (metadataPorts.length > 0) {

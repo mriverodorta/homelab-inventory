@@ -9,6 +9,7 @@ import { assertRegistryStoreShape } from '../registry/model.mjs'
 import { assertAuthenticationStoreShape } from '../auth/model.mjs'
 import { assertBackupManagementStoreShape } from './backup-model.mjs'
 import { materializeBackupSections, validateEnrollmentFiles } from './backup-sections.mjs'
+import { migrateSchema24To25 } from '../db/migrate-schema-25.mjs'
 
 export function preflightRestore({ manifest, files, currentStores }) {
   if (manifest.schemaVersion > CURRENT_SCHEMA_VERSION) {
@@ -23,6 +24,13 @@ export function preflightRestore({ manifest, files, currentStores }) {
   const replacements = materializeBackupSections({ files, sections: manifest.sections, currentStores })
   if (replacements.meta) replacements.meta.schemaVersion = CURRENT_SCHEMA_VERSION
   const composed = { ...structuredClone(currentStores), ...replacements }
+  if (manifest.schemaVersion < 25) {
+    const migrated = migrateSchema24To25(composed.agents, composed.agentStatus)
+    composed.agents = migrated.agents
+    composed.agentStatus = migrated.agentStatus
+    if (replacements.agents) replacements.agents = migrated.agents
+    if (replacements.agentStatus) replacements.agentStatus = migrated.agentStatus
+  }
   const blockers = []
   try {
     if (manifest.sections.includes('registryEnrollment')) validateEnrollmentFiles(files)
