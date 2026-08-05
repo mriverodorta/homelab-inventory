@@ -91,7 +91,7 @@ describe('release notes helpers', () => {
   })
 
   it('has structured notes for the package version under development', () => {
-    const currentRelease = RELEASE_NOTES[0]
+    const identityRelease = RELEASE_NOTES.find((entry) => entry.version === '0.8.6')!
     const hardenedRelease = RELEASE_NOTES.find((entry) => entry.version === '0.8.5')!
     const layoutRelease = RELEASE_NOTES.find((entry) => entry.version === '0.8.4')!
     const securityRelease = RELEASE_NOTES.find((entry) => entry.version === '0.8.3')!
@@ -104,15 +104,15 @@ describe('release notes helpers', () => {
     const previousRelease = RELEASE_NOTES.find((entry) => entry.version === '0.2.1')!
     const engineRelease = RELEASE_NOTES.find((entry) => entry.version === '0.2.0')!
 
-    expect(hasReleaseNoteForVersion(RELEASE_NOTES, '0.8.6')).toBe(true)
+    expect(hasReleaseNoteForVersion(RELEASE_NOTES, '0.8.7')).toBe(true)
     expect(RELEASE_NOTES[0]).toEqual(
       expect.objectContaining({
-        version: '0.8.6',
-        title: 'Stable registry installation identity',
+        version: '0.8.7',
+        title: 'Reliable cable route recovery',
       }),
     )
     expect(RELEASE_NOTES.filter((entry) => entry.channel === 'latest')).toEqual([
-      expect.objectContaining({ version: '0.8.6' }),
+      expect.objectContaining({ version: '0.8.7' }),
     ])
     expect(RELEASE_NOTES.find((entry) => entry.version === '0.1.38')).toEqual(
       expect.objectContaining({ channel: 'release' }),
@@ -126,7 +126,7 @@ describe('release notes helpers', () => {
     expect(hardenedRelease.fixes).toContain(
       'The official catalog once again keeps filters, result cards, and item details independently scrollable after a category is selected.',
     )
-    expect(currentRelease.highlights).toContain(
+    expect(identityRelease.highlights).toContain(
       'Registry enrollment now has a permanent random installation UUID and owner-reviewed lost-key recovery with actionable status in Registry settings.',
     )
     expect(layoutRelease.fixes).toContain(
