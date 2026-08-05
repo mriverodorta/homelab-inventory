@@ -246,6 +246,8 @@ export type ObstacleRouteResult = {
   target_side: 'left' | 'right' | 'top' | 'bottom'
   used_fallback: boolean
   warning: 'search-exhausted' | null
+  repaired_bend_points?: Point[]
+  repair_reason?: 'terminal-overlap'
 }
 
 export type LaneRouteRequest = {
@@ -274,11 +276,24 @@ export type CableRouteFailure = {
   message: string
 }
 
+export type CableRouteRepair = {
+  connection_id: number
+  bend_points: Point[]
+  reason: 'terminal-overlap'
+}
+
+export type ConnectionRouteCanonicalization = {
+  connection_id: number
+  expected_bend_points: Point[]
+  bend_points: Point[]
+}
+
 export type CableRoutePlan = {
   routes: ObstacleRouteResult[]
   recalculated_connection_ids: number[]
   deferred_connection_ids: number[]
   failures: CableRouteFailure[]
+  repairs: CableRouteRepair[]
 }
 
 export type EngineOperation =
@@ -312,6 +327,10 @@ export type EngineOperation =
   | {
       kind: 'resolve-connection-route-sides'
       payload: { changes: ConnectionRouteSideResolution[] }
+    }
+  | {
+      kind: 'canonicalize-connection-routes'
+      payload: { changes: ConnectionRouteCanonicalization[] }
     }
   | { kind: 'reset-all-connection-bends' }
   | { kind: 'restore-automatic-connection-routes' }

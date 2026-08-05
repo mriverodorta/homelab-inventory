@@ -474,6 +474,28 @@ export function resolveTopologyConnectionRouteSides(
   })
 }
 
+export function canonicalizeTopologyConnectionRoutes(
+  client: DomainEngineClient,
+  changes: Array<{
+    connectionId: number
+    originalBendPoints: Array<{ x: number; y: number }>
+    bendPoints: Array<{ x: number; y: number }>
+  }>,
+) {
+  return client.mutate({
+    operation: {
+      kind: 'canonicalize-connection-routes',
+      payload: {
+        changes: changes.map((change) => ({
+          connection_id: change.connectionId,
+          expected_bend_points: change.originalBendPoints,
+          bend_points: change.bendPoints,
+        })),
+      },
+    },
+  })
+}
+
 export function resetAllTopologyConnectionBends(client: DomainEngineClient) {
   return client.mutate({
     operation: { kind: 'reset-all-connection-bends' },

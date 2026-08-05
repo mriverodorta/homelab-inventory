@@ -172,6 +172,12 @@ pub enum RouteWarning {
     SearchExhausted,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum RouteRepairReason {
+    TerminalOverlap,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ObstacleRouteResult {
     pub route: RoutedPath,
@@ -179,6 +185,10 @@ pub struct ObstacleRouteResult {
     pub target_side: Side,
     pub used_fallback: bool,
     pub warning: Option<RouteWarning>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub repaired_bend_points: Option<Vec<Point>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub repair_reason: Option<RouteRepairReason>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -214,11 +224,19 @@ pub struct CableRouteFailure {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct CableRouteRepair {
+    pub connection_id: u32,
+    pub bend_points: Vec<Point>,
+    pub reason: RouteRepairReason,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct CableRoutePlan {
     pub routes: Vec<ObstacleRouteResult>,
     pub recalculated_connection_ids: Vec<u32>,
     pub deferred_connection_ids: Vec<u32>,
     pub failures: Vec<CableRouteFailure>,
+    pub repairs: Vec<CableRouteRepair>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -358,16 +376,19 @@ impl RoutePlanner {
                 let result = match route_around_obstacles(&route_request) {
                     Ok(result) => result,
                     Err(RoutingError::NoRoute) => {
-                        failures.push(CableRouteFailure {
-                            connection_id,
-                            message: RoutingError::NoRoute.to_string(),
-                        });
                         if let Some(cached) = previous
                             .as_ref()
                             .filter(|cached| route_safe_for_result(&cached.result, &route_request))
                         {
-                            cached.result.clone()
+                            let mut retained = cached.result.clone();
+                            retained.used_fallback = true;
+                            retained.warning = Some(RouteWarning::SearchExhausted);
+                            retained
                         } else {
+                            failures.push(CableRouteFailure {
+                                connection_id,
+                                message: RoutingError::NoRoute.to_string(),
+                            });
                             self.cache.remove(&connection_id);
                             recalculated_connection_ids.push(connection_id);
                             continue;
@@ -410,6 +431,16 @@ impl RoutePlanner {
             .iter()
             .filter(|(connection_id, _)| desired_ids.contains(connection_id))
             .map(|(_, cached)| cached.result.clone())
+            .collect::<Vec<_>>();
+        let repairs = routes
+            .iter()
+            .filter_map(|result| {
+                Some(CableRouteRepair {
+                    connection_id: result.route.connection_id,
+                    bend_points: result.repaired_bend_points.clone()?,
+                    reason: result.repair_reason?,
+                })
+            })
             .collect();
         if deferred_connection_ids.is_empty() {
             self.obstacles.clone_from(&request.obstacles);
@@ -429,6 +460,7 @@ impl RoutePlanner {
             recalculated_connection_ids,
             deferred_connection_ids,
             failures,
+            repairs,
         })
     }
 
@@ -442,13 +474,13 @@ impl RoutePlanner {
             input.request.obstacles.clear();
             input.request.previous_valid_route = None;
             let connection_id = input.request.definition.connection_id;
+            let selected = selected_definition(&input.request, &entry.result);
             if validate_obstacle_request_base(&input.request).is_err()
                 || connection_id == 0
                 || entry.result.route.connection_id != connection_id
-                || !route_structure_valid(
-                    &entry.result.route.points,
-                    &selected_definition(&input.request, &entry.result),
-                )
+                || selected.as_ref().is_none_or(|definition| {
+                    !route_structure_valid(&entry.result.route.points, definition)
+                })
                 || route_intersects_equipment_clearance(
                     &entry.result.route.points,
                     &seed.obstacles,
@@ -494,8 +526,10 @@ impl RoutePlanner {
             .cache
             .get(&connection_id)
             .ok_or(RoutingError::InvalidConnectionId)?;
+        let definition = selected_definition(&cached.input.request, &cached.result)
+            .ok_or(RoutingError::InvalidEndpointCandidates)?;
         preview_move_routed_segment(
-            &selected_definition(&cached.input.request, &cached.result),
+            &definition,
             &cached.result.route,
             segment_index,
             coordinate,
@@ -515,8 +549,10 @@ impl RoutePlanner {
             .cache
             .get(&connection_id)
             .ok_or(RoutingError::InvalidConnectionId)?;
+        let definition = selected_definition(&cached.input.request, &cached.result)
+            .ok_or(RoutingError::InvalidEndpointCandidates)?;
         preview_insert_routed_bend(
-            &selected_definition(&cached.input.request, &cached.result),
+            &definition,
             &cached.result.route,
             segment_index,
             pointer,
@@ -757,7 +793,119 @@ fn route_candidate_pair(
     pair_request.target_candidates.clear();
     pair_request.source_side_constraint = None;
     pair_request.target_side_constraint = None;
-    route_single_pair(&pair_request)
+    let repaired_bend_points = canonicalize_terminal_bends(&pair_request);
+    if let Some(bend_points) = &repaired_bend_points {
+        pair_request.definition.manual_bends.clone_from(bend_points);
+    }
+    let mut result = route_single_pair(&pair_request)?;
+    if let Some(bend_points) = repaired_bend_points {
+        result.repaired_bend_points = Some(bend_points);
+        result.repair_reason = Some(RouteRepairReason::TerminalOverlap);
+    }
+    Ok(result)
+}
+
+fn canonicalize_terminal_bends(request: &ObstacleRouteRequest) -> Option<Vec<Point>> {
+    let bends = &request.definition.manual_bends;
+    if bends.is_empty() {
+        return None;
+    }
+
+    let mut canonical = bends.clone();
+    let first_next = bends.get(1).copied().unwrap_or(request.definition.target);
+    canonicalize_source_terminal(
+        request.definition.source,
+        request.definition.source_side,
+        &mut canonical[0],
+        first_next,
+    );
+
+    let last_index = canonical.len() - 1;
+    let last_previous = if last_index > 0 {
+        canonical[last_index - 1]
+    } else {
+        request.definition.source
+    };
+    canonicalize_target_terminal(
+        request.definition.target,
+        request.definition.target_side,
+        last_previous,
+        &mut canonical[last_index],
+    );
+
+    (canonical != *bends).then_some(canonical)
+}
+
+fn value_between(value: f64, first: f64, second: f64) -> bool {
+    value >= first.min(second) && value <= first.max(second)
+}
+
+fn canonicalize_source_terminal(source: Point, side: Side, first: &mut Point, next: Point) {
+    match side {
+        Side::Left | Side::Right
+            if first.x == next.x
+                && source.y != first.y
+                && value_between(source.y, first.y, next.y) =>
+        {
+            let outward = match side {
+                Side::Left => first.x < source.x,
+                Side::Right => first.x > source.x,
+                _ => unreachable!(),
+            };
+            if outward {
+                first.y = source.y;
+            }
+        }
+        Side::Top | Side::Bottom
+            if first.y == next.y
+                && source.x != first.x
+                && value_between(source.x, first.x, next.x) =>
+        {
+            let outward = match side {
+                Side::Top => first.y < source.y,
+                Side::Bottom => first.y > source.y,
+                _ => unreachable!(),
+            };
+            if outward {
+                first.x = source.x;
+            }
+        }
+        _ => {}
+    }
+}
+
+fn canonicalize_target_terminal(target: Point, side: Side, previous: Point, last: &mut Point) {
+    match side {
+        Side::Left | Side::Right
+            if previous.x == last.x
+                && target.y != last.y
+                && value_between(target.y, previous.y, last.y) =>
+        {
+            let outward = match side {
+                Side::Left => last.x < target.x,
+                Side::Right => last.x > target.x,
+                _ => unreachable!(),
+            };
+            if outward {
+                last.y = target.y;
+            }
+        }
+        Side::Top | Side::Bottom
+            if previous.y == last.y
+                && target.x != last.x
+                && value_between(target.x, previous.x, last.x) =>
+        {
+            let outward = match side {
+                Side::Top => last.y < target.y,
+                Side::Bottom => last.y > target.y,
+                _ => unreachable!(),
+            };
+            if outward {
+                last.x = target.x;
+            }
+        }
+        _ => {}
+    }
 }
 
 fn facing_endpoint_corridor_route(
@@ -1060,6 +1208,8 @@ fn perimeter_fallback_route(
                 target_side: target.side,
                 used_fallback: true,
                 warning: Some(RouteWarning::SearchExhausted),
+                repaired_bend_points: None,
+                repair_reason: None,
             };
             let score = route_pair_score(request, &result);
             if best
@@ -1202,6 +1352,8 @@ fn route_single_pair(request: &ObstacleRouteRequest) -> Result<ObstacleRouteResu
             target_side: request.definition.target_side,
             used_fallback: false,
             warning: None,
+            repaired_bend_points: None,
+            repair_reason: None,
         });
     }
     let source_exit = obstacle_portal(
@@ -1232,6 +1384,8 @@ fn route_single_pair(request: &ObstacleRouteRequest) -> Result<ObstacleRouteResu
             target_side: request.definition.target_side,
             used_fallback: false,
             warning: None,
+            repaired_bend_points: None,
+            repair_reason: None,
         });
     }
     let route_coordinates = std::iter::once(request.definition.source)
@@ -1332,6 +1486,8 @@ fn route_single_pair(request: &ObstacleRouteRequest) -> Result<ObstacleRouteResu
             target_side: request.definition.target_side,
             used_fallback: false,
             warning: None,
+            repaired_bend_points: None,
+            repair_reason: None,
         });
     }
 
@@ -1664,29 +1820,41 @@ fn fallback_route(request: &ObstacleRouteRequest) -> Result<ObstacleRouteResult,
         target_side: request.definition.target_side,
         used_fallback: true,
         warning: Some(RouteWarning::SearchExhausted),
+        repaired_bend_points: None,
+        repair_reason: None,
     })
 }
 
 fn selected_definition(
     request: &ObstacleRouteRequest,
     result: &ObstacleRouteResult,
-) -> RouteDefinition {
+) -> Option<RouteDefinition> {
+    let source_point = result.route.points.first().copied()?;
+    let target_point = result.route.points.last().copied()?;
+    let source_candidates = endpoint_candidates(
+        &request.source_candidates,
+        request.definition.source,
+        request.definition.source_side,
+        request.source_side_constraint,
+    );
+    let target_candidates = endpoint_candidates(
+        &request.target_candidates,
+        request.definition.target,
+        request.definition.target_side,
+        request.target_side_constraint,
+    );
+    let source = source_candidates.iter().find(|candidate| {
+        candidate.side == result.source_side && points_equal(candidate.point, source_point)
+    })?;
+    let target = target_candidates.iter().find(|candidate| {
+        candidate.side == result.target_side && points_equal(candidate.point, target_point)
+    })?;
     let mut definition = request.definition.clone();
-    definition.source_side = result.source_side;
-    definition.target_side = result.target_side;
-    definition.source = result
-        .route
-        .points
-        .first()
-        .copied()
-        .unwrap_or(definition.source);
-    definition.target = result
-        .route
-        .points
-        .last()
-        .copied()
-        .unwrap_or(definition.target);
-    definition
+    definition.source_side = source.side;
+    definition.target_side = target.side;
+    definition.source = source.point;
+    definition.target = target.point;
+    Some(definition)
 }
 
 fn route_safe_for_request(route: &RoutedPath, request: &ObstacleRouteRequest) -> bool {
@@ -1701,7 +1869,10 @@ fn route_safe_for_request(route: &RoutedPath, request: &ObstacleRouteRequest) ->
 
 fn route_safe_for_result(result: &ObstacleRouteResult, request: &ObstacleRouteRequest) -> bool {
     let mut selected_request = request.clone();
-    selected_request.definition = selected_definition(request, result);
+    let Some(definition) = selected_definition(request, result) else {
+        return false;
+    };
+    selected_request.definition = definition;
     route_safe_for_request(&result.route, &selected_request)
 }
 
@@ -3720,6 +3891,142 @@ mod tests {
     }
 
     #[test]
+    fn planner_canonicalizes_connection_28_terminal_overlap() {
+        let source = Point { x: 2749.0, y: 11.0 };
+        let target = Point {
+            x: 1496.0,
+            y: -457.0,
+        };
+        let mut request = obstacle_request();
+        request.definition = RouteDefinition {
+            connection_id: 28,
+            source,
+            target,
+            source_side: Side::Left,
+            target_side: Side::Top,
+            lane_offset: 32.0,
+            manual_bends: vec![
+                Point { x: 2688.0, y: 42.0 },
+                Point {
+                    x: 2688.0,
+                    y: -624.0,
+                },
+                Point {
+                    x: 1496.0,
+                    y: -624.0,
+                },
+            ],
+        };
+        request.source_side_constraint = Some(Side::Left);
+        request.target_side_constraint = Some(Side::Top);
+        request.source_candidates = vec![RouteEndpointCandidate {
+            point: source,
+            side: Side::Left,
+        }];
+        request.target_candidates = vec![RouteEndpointCandidate {
+            point: target,
+            side: Side::Top,
+        }];
+
+        let plan = RoutePlanner::default()
+            .plan(&plan_request(vec![LaneRouteRequest {
+                avoid_cable_overlap: true,
+                request,
+            }]))
+            .unwrap();
+
+        assert!(plan.failures.is_empty());
+        assert_eq!(plan.routes.len(), 1);
+        assert_eq!(plan.routes[0].route.points.first(), Some(&source));
+        assert_eq!(
+            plan.repairs,
+            vec![CableRouteRepair {
+                connection_id: 28,
+                bend_points: vec![
+                    Point { x: 2688.0, y: 11.0 },
+                    Point {
+                        x: 2688.0,
+                        y: -624.0,
+                    },
+                    Point {
+                        x: 1496.0,
+                        y: -624.0,
+                    },
+                ],
+                reason: RouteRepairReason::TerminalOverlap,
+            }]
+        );
+        assert_eq!(
+            plan.routes[0].route.manual_anchor_point_indexes,
+            vec![1, 2, 3]
+        );
+        assert_eq!(
+            plan.routes[0].route.points,
+            vec![
+                source,
+                Point { x: 2688.0, y: 11.0 },
+                Point {
+                    x: 2688.0,
+                    y: -624.0,
+                },
+                Point {
+                    x: 1496.0,
+                    y: -624.0,
+                },
+                target,
+            ]
+        );
+    }
+
+    #[test]
+    fn terminal_canonicalization_supports_every_endpoint_side() {
+        let cases = [
+            (
+                Side::Left,
+                Point { x: 100.0, y: 100.0 },
+                Point { x: 40.0, y: 130.0 },
+                Point { x: 40.0, y: 40.0 },
+                Point { x: 40.0, y: 100.0 },
+            ),
+            (
+                Side::Right,
+                Point { x: 100.0, y: 100.0 },
+                Point { x: 160.0, y: 130.0 },
+                Point { x: 160.0, y: 40.0 },
+                Point { x: 160.0, y: 100.0 },
+            ),
+            (
+                Side::Top,
+                Point { x: 100.0, y: 100.0 },
+                Point { x: 130.0, y: 40.0 },
+                Point { x: 40.0, y: 40.0 },
+                Point { x: 100.0, y: 40.0 },
+            ),
+            (
+                Side::Bottom,
+                Point { x: 100.0, y: 100.0 },
+                Point { x: 130.0, y: 160.0 },
+                Point { x: 40.0, y: 160.0 },
+                Point { x: 100.0, y: 160.0 },
+            ),
+        ];
+
+        for (side, endpoint, mut terminal, next, expected) in cases {
+            canonicalize_source_terminal(endpoint, side, &mut terminal, next);
+            assert_eq!(terminal, expected);
+
+            let mut target_terminal = match side {
+                Side::Left => Point { x: 40.0, y: 130.0 },
+                Side::Right => Point { x: 160.0, y: 130.0 },
+                Side::Top => Point { x: 130.0, y: 40.0 },
+                Side::Bottom => Point { x: 130.0, y: 160.0 },
+            };
+            canonicalize_target_terminal(endpoint, side, next, &mut target_terminal);
+            assert_eq!(target_terminal, expected);
+        }
+    }
+
+    #[test]
     fn automatic_endpoint_selection_respects_manual_side_constraints() {
         let source_bounds = Rect {
             x: 0.0,
@@ -4403,6 +4710,42 @@ mod tests {
         assert!(plan.recalculated_connection_ids.is_empty());
         assert!(plan.failures.is_empty());
         assert_eq!(plan.routes, initial.routes);
+    }
+
+    #[test]
+    fn planner_rejects_cached_endpoints_outside_current_candidates() {
+        let requests = vec![lane_request(1, 24.0, false)];
+        let mut original = RoutePlanner::default();
+        let initial = original.plan(&plan_request(requests.clone())).unwrap();
+        let mut stale = initial.routes[0].clone();
+        stale.route.points = vec![
+            Point { x: 0.0, y: 36.0 },
+            Point { x: 120.0, y: 36.0 },
+            Point { x: 120.0, y: 24.0 },
+            Point { x: 240.0, y: 24.0 },
+        ];
+        let seed = CableRouteCacheSeed {
+            obstacles: Vec::new(),
+            entries: vec![CachedLaneRouteSeed {
+                input: requests[0].clone(),
+                result: stale,
+            }],
+        };
+
+        let plan = RoutePlanner::default()
+            .plan(&CableRoutePlanRequest {
+                obstacles: Vec::new(),
+                requests,
+                seed: Some(seed),
+            })
+            .unwrap();
+
+        assert_eq!(plan.recalculated_connection_ids, vec![1]);
+        assert_eq!(
+            plan.routes[0].route.points.first(),
+            Some(&Point { x: 0.0, y: 24.0 })
+        );
+        assert!(plan.failures.is_empty());
     }
 
     #[test]

@@ -27,6 +27,23 @@ function finitePoint(point) {
   return point && Number.isFinite(point.x) && Number.isFinite(point.y)
 }
 
+function resultEndpointMatchesCandidates(entry, endpoint, side, candidateKey, fallbackPointKey, fallbackSideKey) {
+  const request = entry?.input?.request
+  const candidates = request?.[candidateKey]
+  const available = Array.isArray(candidates) && candidates.length > 0
+    ? candidates
+    : [{
+        point: request?.definition?.[fallbackPointKey],
+        side: request?.definition?.[fallbackSideKey],
+      }]
+  return available.some((candidate) => (
+    candidate?.side === side
+    && finitePoint(candidate.point)
+    && candidate.point.x === endpoint.x
+    && candidate.point.y === endpoint.y
+  ))
+}
+
 function isOrthogonalRoute(points) {
   return points.slice(1).every((point, index) => {
     const previous = points[index]
@@ -82,22 +99,43 @@ function assertRoutingCacheShape(cache) {
   for (const entry of cache.entries) {
     const id = entry?.input?.request?.definition?.connection_id
     const result = entry?.result
+    const points = result?.route?.points
     if (
       !Number.isSafeInteger(id) || id <= 0 || connectionIds.has(id)
       || result?.route?.connection_id !== id
-      || !Array.isArray(result.route.points)
-      || result.route.points.length < 2
-      || result.route.points.length > MAX_ROUTE_POINTS
-      || !result.route.points.every(finitePoint)
-      || !isOrthogonalRoute(result.route.points)
+      || !Array.isArray(points)
+      || points.length < 2
+      || points.length > MAX_ROUTE_POINTS
+      || !points.every(finitePoint)
+      || !isOrthogonalRoute(points)
       || !CABLE_SIDES.has(result.source_side)
       || !CABLE_SIDES.has(result.target_side)
       || typeof result.used_fallback !== 'boolean'
       || (result.warning !== null && typeof result.warning !== 'string')
       || !hasValidManualAnchors(
         result.route.manual_anchor_point_indexes,
-        result.route.points.length,
+        points.length,
       )
+      || !resultEndpointMatchesCandidates(
+        entry,
+        points[0],
+        result.source_side,
+        'source_candidates',
+        'source',
+        'source_side',
+      )
+      || !resultEndpointMatchesCandidates(
+        entry,
+        points[points.length - 1],
+        result.target_side,
+        'target_candidates',
+        'target',
+        'target_side',
+      )
+      || (result.repaired_bend_points !== undefined
+        && (!Array.isArray(result.repaired_bend_points)
+          || !result.repaired_bend_points.every(finitePoint)))
+      || (result.repair_reason !== undefined && result.repair_reason !== 'terminal-overlap')
     ) throw new Error('Routing cache contains an invalid route entry.')
     connectionIds.add(id)
   }

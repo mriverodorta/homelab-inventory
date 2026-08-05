@@ -62,6 +62,7 @@ function CanvasViewport({
   onEndpointDrop,
   onUpdateConnectionRoute,
   onResolveConnectionRouteSides,
+  onCanonicalizeConnectionRoutes,
   onViewportReady,
   onCanvasClick,
   canUndo,
@@ -154,6 +155,7 @@ function CanvasViewport({
     onEndpointDrop: stableOnEndpointDrop,
     onUpdateConnectionRoute: stableOnUpdateConnectionRoute,
     onResolveConnectionRouteSides: stableOnResolveConnectionRouteSides,
+    onCanonicalizeConnectionRoutes: stableOnCanonicalizeConnectionRoutes,
   } = useStableCanvasCallbacks({
     onSelect,
     onSelectConnection,
@@ -163,6 +165,9 @@ function CanvasViewport({
     onEndpointDrop: canEditConnections ? onEndpointDrop : () => undefined,
     onUpdateConnectionRoute: canEditConnections ? onUpdateConnectionRoute : () => undefined,
     onResolveConnectionRouteSides: canEditConnections ? onResolveConnectionRouteSides : async () => undefined,
+    onCanonicalizeConnectionRoutes: canEditConnections
+      ? onCanonicalizeConnectionRoutes
+      : async () => undefined,
   })
   const flowNodes = useCanvasFlowNodes({
     project,
@@ -213,6 +218,7 @@ function CanvasViewport({
     routeRequests,
     routeGeometryReady,
     onResolveConnectionRouteSides: stableOnResolveConnectionRouteSides,
+    onCanonicalizeConnectionRoutes: stableOnCanonicalizeConnectionRoutes,
   })
   const plannedCableRoutes = routingState.routes
   const flowEdges = useCanvasFlowEdges({

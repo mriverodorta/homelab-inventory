@@ -176,6 +176,13 @@ describe('routing cache routes', () => {
     ['invalid endpoint sides', (payload) => {
       payload.entries[0].result.source_side = 'center'
     }],
+    ['route endpoints outside current attachment candidates', (payload) => {
+      payload.entries[0].result.route.points = [
+        { x: 0, y: 24 },
+        { x: 100, y: 24 },
+        { x: 100, y: 0 },
+      ]
+    }],
     ['invalid manual anchor indexes', (payload) => {
       payload.entries[0].result.route.manual_anchor_point_indexes = [1]
     }],

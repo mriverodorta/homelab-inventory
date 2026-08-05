@@ -158,6 +158,9 @@ impl Engine {
             Operation::ResolveConnectionRouteSides { changes } => {
                 self.resolve_connection_route_sides(changes)
             }
+            Operation::CanonicalizeConnectionRoutes { changes } => {
+                self.canonicalize_connection_routes(changes)
+            }
             Operation::ResetAllConnectionBends => self.reset_all_connection_bends(),
             Operation::RestoreAutomaticConnectionRoutes => {
                 self.restore_automatic_connection_routes()
@@ -995,6 +998,90 @@ impl Engine {
             return engine_error(
                 "unchanged-connection-routes",
                 "No saved manual cable bends are available to reset.",
+            );
+        }
+
+        inverse.reverse();
+        self.commit_topology(snapshot, batch_patch(forward), batch_patch(inverse))
+    }
+
+    fn canonicalize_connection_routes(
+        &mut self,
+        changes: Vec<homelab_engine_protocol::ConnectionRouteCanonicalization>,
+    ) -> ResponseBody {
+        if changes.is_empty() {
+            return engine_error(
+                "unchanged-connection-routes",
+                "No cable route repairs are available to save.",
+            );
+        }
+
+        let mut seen = std::collections::HashSet::new();
+        if changes.iter().any(|change| {
+            !seen.insert(change.connection_id)
+                || change
+                    .expected_bend_points
+                    .iter()
+                    .chain(&change.bend_points)
+                    .any(|point| !point.x.is_finite() || !point.y.is_finite())
+        }) {
+            return engine_error(
+                "invalid-connection-route-repair",
+                "Cable route repairs must have unique connections and finite bend points.",
+            );
+        }
+
+        let mut snapshot = self.topology.snapshot().clone();
+        let mut forward = Vec::new();
+        let mut inverse = Vec::new();
+
+        for change in changes {
+            let Some(connection) = snapshot
+                .connections
+                .iter_mut()
+                .find(|connection| connection.id == change.connection_id)
+            else {
+                return engine_error(
+                    "missing-connection",
+                    "A cable selected for route repair no longer exists.",
+                );
+            };
+            let previous_route = connection.route.clone();
+            let current_bend_points = previous_route
+                .as_ref()
+                .map_or(&[][..], |route| route.bend_points.as_slice());
+            if current_bend_points != change.expected_bend_points {
+                return engine_error(
+                    "stale-connection-route-repair",
+                    "A cable route changed before its automatic repair could be saved.",
+                );
+            }
+
+            let mut next_route = previous_route.clone().unwrap_or(TopologyConnectionRoute {
+                source_side: None,
+                target_side: None,
+                bend_points: Vec::new(),
+                avoid_cable_overlap: false,
+            });
+            next_route.bend_points = change.bend_points;
+            if previous_route.as_ref() == Some(&next_route) {
+                continue;
+            }
+            connection.route = Some(next_route.clone());
+            forward.push(ProjectPatch::SetConnectionRoute {
+                connection_id: connection.id,
+                route: Some(next_route),
+            });
+            inverse.push(ProjectPatch::SetConnectionRoute {
+                connection_id: connection.id,
+                route: previous_route,
+            });
+        }
+
+        if forward.is_empty() {
+            return engine_error(
+                "unchanged-connection-routes",
+                "Every cable route repair is already saved.",
             );
         }
 
@@ -2006,6 +2093,115 @@ mod tests {
                 if matches!(&patch.inverse, ProjectPatch::AddConnection { connection: restored } if restored == &removed_connection)
         ));
         assert_eq!(engine.revision(), 16);
+    }
+
+    #[test]
+    fn canonical_route_repairs_are_atomic_undoable_and_stale_safe() {
+        let (mut engine, from, to) = connection_engine();
+        engine.dispatch(request(Operation::CreateConnection {
+            from,
+            to,
+            created_at: "2026-08-05T00:00:00.000Z".into(),
+        }));
+        let mut snapshot = engine.topology().clone();
+        let mut second = snapshot.connections[0].clone();
+        second.id = 2;
+        snapshot.connections.push(second);
+        for (index, connection) in snapshot.connections.iter_mut().enumerate() {
+            connection.route = Some(TopologyConnectionRoute {
+                source_side: Some("left".into()),
+                target_side: Some("top".into()),
+                bend_points: vec![homelab_engine_protocol::Point {
+                    x: 100.0 + index as f64,
+                    y: 42.0,
+                }],
+                avoid_cable_overlap: index == 0,
+            });
+        }
+        let mut engine = Engine::from_snapshot(EngineSnapshot {
+            revision: 20,
+            project_name: "Topology Lab".into(),
+            topology: snapshot,
+        });
+        let expected = engine
+            .topology()
+            .connections
+            .iter()
+            .map(|connection| connection.route.clone().unwrap())
+            .collect::<Vec<_>>();
+
+        let response = engine.dispatch(EngineRequest {
+            protocol_version: PROTOCOL_VERSION,
+            request_id: 50,
+            base_revision: 20,
+            operation: Operation::CanonicalizeConnectionRoutes {
+                changes: expected
+                    .iter()
+                    .enumerate()
+                    .map(|(index, route)| {
+                        homelab_engine_protocol::ConnectionRouteCanonicalization {
+                            connection_id: index as u32 + 1,
+                            expected_bend_points: route.bend_points.clone(),
+                            bend_points: vec![homelab_engine_protocol::Point {
+                                x: route.bend_points[0].x,
+                                y: 11.0,
+                            }],
+                        }
+                    })
+                    .collect(),
+            },
+        });
+
+        assert_eq!(engine.revision(), 21);
+        assert_eq!(
+            engine.topology().connections[0]
+                .route
+                .as_ref()
+                .unwrap()
+                .source_side
+                .as_deref(),
+            Some("left")
+        );
+        assert_eq!(
+            engine.topology().connections[0]
+                .route
+                .as_ref()
+                .unwrap()
+                .target_side
+                .as_deref(),
+            Some("top")
+        );
+        assert!(
+            engine.topology().connections[0]
+                .route
+                .as_ref()
+                .unwrap()
+                .avoid_cable_overlap
+        );
+        assert!(matches!(
+            response.result,
+            ResponseBody::Patch(ref patch)
+                if matches!(&patch.forward, ProjectPatch::Batch { patches } if patches.len() == 2)
+                    && matches!(&patch.inverse, ProjectPatch::Batch { patches } if patches.len() == 2)
+        ));
+
+        let stale = engine.dispatch(EngineRequest {
+            protocol_version: PROTOCOL_VERSION,
+            request_id: 51,
+            base_revision: 21,
+            operation: Operation::CanonicalizeConnectionRoutes {
+                changes: vec![homelab_engine_protocol::ConnectionRouteCanonicalization {
+                    connection_id: 1,
+                    expected_bend_points: expected[0].bend_points.clone(),
+                    bend_points: vec![homelab_engine_protocol::Point { x: 100.0, y: 12.0 }],
+                }],
+            },
+        });
+        assert!(matches!(
+            stale.result,
+            ResponseBody::Error(ref error) if error.code == "stale-connection-route-repair"
+        ));
+        assert_eq!(engine.revision(), 21);
     }
 
     #[test]

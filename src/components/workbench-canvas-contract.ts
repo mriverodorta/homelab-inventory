@@ -15,6 +15,7 @@ import type {
   ProjectState,
 } from '@/types/inventory'
 import type { XYPosition } from '@xyflow/react'
+import type { CableRouteCanonicalRepair } from '@/lib/cable-routing-coordinator'
 
 export const GRID_SIZE = 24
 
@@ -123,6 +124,7 @@ export type WorkbenchCanvasProps = {
     sourceSide: ConnectionRouteSide
     targetSide: ConnectionRouteSide
   }>) => Promise<void>
+  onCanonicalizeConnectionRoutes: (changes: CableRouteCanonicalRepair[]) => Promise<void>
   onViewportReady: (canvasController: CanvasController) => void
   onCanvasClick: () => void
   onUndo: () => void

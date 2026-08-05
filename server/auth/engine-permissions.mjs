@@ -4,6 +4,7 @@ const CONNECTION_OPERATIONS = new Set([
   'update-connection-label',
   'update-connection-route',
   'resolve-connection-route-sides',
+  'canonicalize-connection-routes',
   'reset-all-connection-bends',
   'restore-automatic-connection-routes',
   'replace-routes',

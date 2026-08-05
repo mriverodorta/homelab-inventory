@@ -106,6 +106,18 @@ export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
   notes: [],
 }
 
+const RELEASE_0_8_7_DETAILS: UnreleasedReleaseNotes = {
+  highlights: [],
+  fixes: [
+    'Cable routing now repairs legacy endpoint bends that reverse across a port, persists the corrected terminal anchor as one Undo-compatible change, and leaves valid manual bends untouched.',
+    'Derived route caches now accept only current measured endpoint candidates and one route-or-failure outcome per cable, preventing stale geometry and impossible routes from being presented as valid.',
+    'Private local/live synchronization keeps each destination environment\'s browser-measured routing cache instead of transferring it with project data.',
+  ],
+  notes: [
+    'Routing planner version 12 performs one bounded cache refresh after upgrade; subsequent starts render matching cached routes immediately while the WASM worker synchronizes in the background.',
+  ],
+}
+
 const RELEASE_0_8_6_DETAILS: UnreleasedReleaseNotes = {
   highlights: [
     'Registry enrollment now has a permanent random installation UUID and owner-reviewed lost-key recovery with actionable status in Registry settings.',
@@ -435,9 +447,16 @@ const RELEASE_0_2_1_DETAILS: UnreleasedReleaseNotes = {
 
 export const RELEASE_NOTES: ReleaseNoteEntry[] = [
   {
-    version: '0.8.6',
+    version: '0.8.7',
     date: '2026-08-05',
     channel: 'latest',
+    title: 'Reliable cable route recovery',
+    ...RELEASE_0_8_7_DETAILS,
+  },
+  {
+    version: '0.8.6',
+    date: '2026-08-05',
+    channel: 'release',
     title: 'Stable registry installation identity',
     ...RELEASE_0_8_6_DETAILS,
   },

@@ -33,6 +33,11 @@ function response(
   recalculated = routes.map((route) => route.route.connection_id),
   failures: Array<{ connection_id: number; message: string }> = [],
   deferredConnectionIds: number[] = [],
+  repairs: Array<{
+    connection_id: number
+    bend_points: Array<{ x: number; y: number }>
+    reason: 'terminal-overlap'
+  }> = [],
 ): EngineResponse {
   return {
     protocol_version: 1 as const,
@@ -45,6 +50,7 @@ function response(
         recalculated_connection_ids: recalculated,
         deferred_connection_ids: deferredConnectionIds,
         failures,
+        repairs,
       },
     },
   }
@@ -179,6 +185,7 @@ describe('CableRoutingCoordinator', () => {
       pending: false,
       error: null,
       warnings: new Map(),
+      repairs: new Map(),
     })
   })
 
@@ -312,7 +319,57 @@ describe('CableRoutingCoordinator', () => {
       pending: false,
       error: null,
       warnings: new Map(),
+      repairs: new Map(),
     })
+  })
+
+  it('renders an exact cache immediately while reseeding a rebuilt worker', async () => {
+    const client = new FakeClient()
+    const coordinator = new CableRoutingCoordinator(client as unknown as DomainEngineClient)
+    const stableRequest = request(1)
+    coordinator.hydrate(exactCache(stableRequest))
+
+    coordinator.request([stableRequest], true)
+
+    expect(client.calls).toHaveLength(1)
+    expect(coordinator.getState().routes.get(1)?.points).toEqual(cableRoute(1, 0).route.points)
+    expect(coordinator.getState().pending).toBe(true)
+    client.calls[0].resolve(response([cableRoute(1, 0)], []))
+    await vi.waitFor(() => expect(coordinator.getState().pending).toBe(false))
+    expect(coordinator.getState().routes.get(1)?.points).toEqual(cableRoute(1, 0).route.points)
+  })
+
+  it('publishes route repairs without persisting a cache built from stale bend inputs', async () => {
+    const client = new FakeClient()
+    const persistCache = vi.fn(async () => undefined)
+    const coordinator = new CableRoutingCoordinator(
+      client as unknown as DomainEngineClient,
+      { persistCache },
+    )
+    const invalidRequest = request(1)
+    invalidRequest.request.manualBendPoints = [{ x: 24, y: 12 }]
+
+    coordinator.request([invalidRequest])
+    client.calls[0].resolve(response(
+      [cableRoute(1, 0)],
+      [1],
+      [],
+      [],
+      [{
+        connection_id: 1,
+        bend_points: [{ x: 24, y: 0 }],
+        reason: 'terminal-overlap',
+      }],
+    ))
+    await vi.waitFor(() => expect(coordinator.getState().pending).toBe(false))
+
+    expect(coordinator.getState().repairs.get(1)).toEqual({
+      connectionId: 1,
+      originalBendPoints: [{ x: 24, y: 12 }],
+      bendPoints: [{ x: 24, y: 0 }],
+      reason: 'terminal-overlap',
+    })
+    expect(persistCache).not.toHaveBeenCalled()
   })
 
   it('hydrates a known route failure without retrying unchanged geometry', () => {
@@ -561,7 +618,7 @@ describe('CableRoutingCoordinator', () => {
     ))
     await vi.waitFor(() => expect(coordinator.getState().pending).toBe(false))
 
-    expect(coordinator.getState().routes.get(1)?.points).toEqual(cableRoute(1, 0).route.points)
+    expect(coordinator.getState().routes.has(1)).toBe(false)
     expect(coordinator.getState().warnings.has(1)).toBe(true)
     expect(persistCache).toHaveBeenCalledOnce()
     expect(persisted[0]?.failures).toEqual([{
@@ -593,4 +650,67 @@ describe('CableRoutingCoordinator', () => {
     expect(persisted[0]?.entries).toHaveLength(1)
     expect(persisted[0]?.entries[0]?.result.route.connection_id).toBe(1)
   })
+
+  it('serializes one exclusive cache outcome when a returned route is also reported failed', async () => {
+    const client = new FakeClient()
+    const persisted: CableRoutingCacheSnapshot[] = []
+    const coordinator = new CableRoutingCoordinator(
+      client as unknown as DomainEngineClient,
+      { persistCache: async (cache) => { persisted.push(cache) } },
+    )
+
+    coordinator.request([request(1)])
+    client.calls[0].resolve(response(
+      [cableRoute(1, 0)],
+      [1],
+      [{ connection_id: 1, message: 'No bounded orthogonal route was found.' }],
+    ))
+    await vi.waitFor(() => expect(coordinator.getState().pending).toBe(false))
+
+    expect(coordinator.getState().warnings.has(1)).toBe(false)
+    expect(persisted).toHaveLength(1)
+    expect(persisted[0]?.entries).toHaveLength(1)
+    expect(persisted[0]?.failures).toEqual([])
+  })
 })
+
+function exactCache(stableRequest: CableLaneRouteRequest): CableRoutingCacheSnapshot {
+  return {
+    version: ROUTING_CACHE_FORMAT_VERSION,
+    plannerVersion: ROUTING_PLANNER_VERSION,
+    geometryFingerprint: cableRoutingGeometryFingerprint([stableRequest]),
+    obstacles: [],
+    entries: [{
+      input: {
+        avoid_cable_overlap: false,
+        request: {
+          definition: {
+            connection_id: stableRequest.connectionId,
+            source: stableRequest.request.source,
+            target: stableRequest.request.target,
+            source_side: 'right',
+            target_side: 'left',
+            lane_offset: 24,
+            manual_bends: [],
+          },
+          source_candidates: [{ point: stableRequest.request.source, side: 'right' }],
+          target_candidates: [{ point: stableRequest.request.target, side: 'left' }],
+          source_side_constraint: 'right',
+          target_side_constraint: 'left',
+          previous_source_side: null,
+          previous_target_side: null,
+          source_item_id: 'server:1',
+          target_item_id: 'switch:1',
+          obstacles: [],
+          reserved_segments: [],
+          snap_to_grid: false,
+          grid_size: 12,
+          previous_valid_route: null,
+        },
+      },
+      result: cableRoute(stableRequest.connectionId, stableRequest.request.source.y),
+    }],
+    failures: [],
+    updatedAt: '2026-08-05T00:00:00.000Z',
+  }
+}

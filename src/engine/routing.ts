@@ -1,6 +1,7 @@
 import type {
   CableRouteCacheSeed,
   CableRouteFailure,
+  CableRouteRepair,
   LaneRouteRequest,
   ObstacleRouteResult,
   RouteObstacle,
@@ -36,6 +37,7 @@ export type CableRoutePlanResult = {
   routes: ReadonlyMap<number, CableRouteResult>
   recalculatedConnectionIds: number[]
   failures: ReadonlyMap<number, string>
+  repairs: CableRouteRepair[]
   cache: CableRoutingCacheSnapshot
 }
 
@@ -220,6 +222,7 @@ export async function planCableRoutes(
     ? { obstacles: cache.obstacles, entries: cache.entries }
     : null
   const failures = new Map<number, string>()
+  const repairs = new Map<number, CableRouteRepair>()
   const recalculatedConnectionIds = new Set<number>()
   let engineRoutes = new Map<number, ObstacleRouteResult>()
   let nextSeed = seed
@@ -255,6 +258,9 @@ export async function planCableRoutes(
     for (const failure of response.result.payload.failures) {
       failures.set(failure.connection_id, failure.message)
     }
+    for (const repair of response.result.payload.repairs) {
+      repairs.set(repair.connection_id, repair)
+    }
     if (response.result.payload.deferred_connection_ids.length === 0) break
 
     nextSeed = null
@@ -267,6 +273,8 @@ export async function planCableRoutes(
     const result = engineRoutes.get(input.request.definition.connection_id)
     return result ? [{ input, result }] : []
   })
+  for (const connectionId of engineRoutes.keys()) failures.delete(connectionId)
+  const cacheFailures = [...failures].map(([connection_id, message]) => ({ connection_id, message }))
   return {
     routes: new Map([...engineRoutes].map(([connectionId, route]) => [
       connectionId,
@@ -274,13 +282,14 @@ export async function planCableRoutes(
     ])),
     recalculatedConnectionIds: [...recalculatedConnectionIds],
     failures,
+    repairs: [...repairs.values()],
     cache: {
       version: ROUTING_CACHE_FORMAT_VERSION,
       plannerVersion: ROUTING_PLANNER_VERSION,
       geometryFingerprint: cableRoutingGeometryFingerprint(requests),
       obstacles,
       entries,
-      failures: [...failures].map(([connection_id, message]) => ({ connection_id, message })),
+      failures: cacheFailures,
       updatedAt: null,
     },
   }

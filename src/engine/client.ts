@@ -118,12 +118,53 @@ function operationForCommittedPatch(
     const inverseChildren = inversePatch?.kind === 'batch'
       ? inversePatch.payload.patches
       : []
+    const inverseRoutes = new Map(inverseChildren.flatMap((child) => (
+      child.kind === 'set-connection-route'
+        ? [[child.payload.connection_id, child.payload.route]]
+        : []
+    )))
+    const routeChildren = patch.payload.patches.every(
+      (child) => child.kind === 'set-connection-route',
+    )
+    const bendOnlyRouteBatch = patch.payload.patches.length > 0
+      && routeChildren
+      && patch.payload.patches.every((child) => {
+        if (child.kind !== 'set-connection-route') return false
+        const previous = inverseRoutes.get(child.payload.connection_id)
+        return routesEqualExceptBends(previous, child.payload.route)
+      })
+    if (bendOnlyRouteBatch) {
+      return {
+        kind: 'canonicalize-connection-routes',
+        payload: {
+          changes: patch.payload.patches.map((child) => {
+            if (child.kind !== 'set-connection-route') throw new Error('Unreachable route patch.')
+            return {
+              connection_id: child.payload.connection_id,
+              expected_bend_points: inverseRoutes.get(child.payload.connection_id)?.bend_points ?? [],
+              bend_points: child.payload.route?.bend_points ?? [],
+            }
+          }),
+        },
+      }
+    }
+    if (routeChildren) return null
     for (const [index, child] of patch.payload.patches.entries()) {
       const operation = operationForCommittedPatch(child, inverseChildren.at(-(index + 1)))
       if (operation) return operation
     }
   }
   return null
+}
+
+function routesEqualExceptBends(
+  previous: Extract<ProjectPatch, { kind: 'set-connection-route' }>['payload']['route'] | undefined,
+  next: Extract<ProjectPatch, { kind: 'set-connection-route' }>['payload']['route'],
+) {
+  if (!previous || !next) return previous === next
+  return previous.source_side === next.source_side
+    && previous.target_side === next.target_side
+    && previous.avoid_cable_overlap === next.avoid_cable_overlap
 }
 
 export class SupersededEngineQueryError extends Error {

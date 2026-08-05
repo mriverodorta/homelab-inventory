@@ -862,6 +862,80 @@ describe('Rust WASM engine integration', () => {
     expect(runtime.destroy(handle)).toBe(true)
   })
 
+  it('returns a canonical terminal-bend repair for the connection 28 regression', async () => {
+    const bytes = await fs.readFile(wasmPath)
+    const runtime = await WasmEngineRuntime.instantiate(bytes)
+    const handle = runtime.create(encodeEngineSnapshot({
+      revision: 1,
+      project_name: 'Connection 28 regression',
+      topology: EMPTY_ENGINE_TOPOLOGY,
+    }))
+    const source = { x: 2749, y: 11 }
+    const target = { x: 1496, y: -457 }
+    const response = decodeEngineResponse(runtime.dispatch(handle, encodeEngineRequest({
+      protocol_version: 1,
+      request_id: 73,
+      base_revision: 1,
+      operation: {
+        kind: 'plan-cable-routes',
+        payload: {
+          plan: {
+            obstacles: [],
+            requests: [{
+              avoid_cable_overlap: true,
+              request: {
+                definition: {
+                  connection_id: 28,
+                  source,
+                  target,
+                  source_side: 'left',
+                  target_side: 'top',
+                  lane_offset: 32,
+                  manual_bends: [
+                    { x: 2688, y: 42 },
+                    { x: 2688, y: -624 },
+                    { x: 1496, y: -624 },
+                  ],
+                },
+                source_candidates: [{ point: source, side: 'left' }],
+                target_candidates: [{ point: target, side: 'top' }],
+                source_side_constraint: 'left',
+                target_side_constraint: 'top',
+                previous_source_side: null,
+                previous_target_side: null,
+                source_item_id: 'nas:1',
+                target_item_id: 'switch:1',
+                obstacles: [],
+                reserved_segments: [],
+                snap_to_grid: true,
+                grid_size: 12,
+                previous_valid_route: null,
+              },
+            }],
+            seed: null,
+          },
+        },
+      },
+    })))
+
+    expect(response.result).toMatchObject({
+      kind: 'cable-routes-planned',
+      payload: {
+        failures: [],
+        repairs: [{
+          connection_id: 28,
+          bend_points: [
+            { x: 2688, y: 11 },
+            { x: 2688, y: -624 },
+            { x: 1496, y: -624 },
+          ],
+          reason: 'terminal-overlap',
+        }],
+      },
+    })
+    expect(runtime.destroy(handle)).toBe(true)
+  })
+
   it('aligns all placed items to collision-free grid positions in one reversible patch', async () => {
     const bytes = await fs.readFile(wasmPath)
     const runtime = await WasmEngineRuntime.instantiate(bytes)

@@ -5,6 +5,7 @@ import type {
   ConnectionRoutePreferences,
   ConnectionRouteSide,
 } from '@/types/inventory'
+import type { CableRouteCanonicalRepair } from '@/lib/cable-routing-coordinator'
 
 interface StableCanvasCallbacksOptions {
   onSelect: (itemId: string) => void
@@ -22,6 +23,7 @@ interface StableCanvasCallbacksOptions {
     sourceSide: ConnectionRouteSide
     targetSide: ConnectionRouteSide
   }>) => Promise<void>
+  onCanonicalizeConnectionRoutes: (changes: CableRouteCanonicalRepair[]) => Promise<void>
 }
 
 export function useStableCanvasCallbacks(options: StableCanvasCallbacksOptions) {
@@ -63,6 +65,11 @@ export function useStableCanvasCallbacks(options: StableCanvasCallbacksOptions) 
         sourceSide: ConnectionRouteSide
         targetSide: ConnectionRouteSide
       }>) => callbackRef.current.onResolveConnectionRouteSides(changes),
+      [],
+    ),
+    onCanonicalizeConnectionRoutes: useCallback(
+      (changes: CableRouteCanonicalRepair[]) =>
+        callbackRef.current.onCanonicalizeConnectionRoutes(changes),
       [],
     ),
   }

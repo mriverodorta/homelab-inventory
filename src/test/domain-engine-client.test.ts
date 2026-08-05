@@ -103,6 +103,45 @@ class FakeWorker implements WorkerLike {
             },
           },
         }
+      } else if (request.operation.kind === 'canonicalize-connection-routes') {
+        this.revision += 1
+        const routePatch = (
+          change: typeof request.operation.payload.changes[number],
+          bendPoints: Array<{ x: number; y: number }>,
+        ) => ({
+          kind: 'set-connection-route' as const,
+          payload: {
+            connection_id: change.connection_id,
+            route: {
+              source_side: 'left' as const,
+              target_side: 'top' as const,
+              bend_points: bendPoints,
+              avoid_cable_overlap: true,
+            },
+          },
+        })
+        result = {
+          kind: 'patch',
+          payload: {
+            revision: this.revision,
+            forward: {
+              kind: 'batch',
+              payload: {
+                patches: request.operation.payload.changes.map(
+                  (change) => routePatch(change, change.bend_points),
+                ),
+              },
+            },
+            inverse: {
+              kind: 'batch',
+              payload: {
+                patches: [...request.operation.payload.changes].reverse().map(
+                  (change) => routePatch(change, change.expected_bend_points),
+                ),
+              },
+            },
+          },
+        }
       } else if (
         request.operation.kind === 'replace-geometry'
         || request.operation.kind === 'update-geometry'
@@ -560,6 +599,61 @@ describe('DomainEngineClient', () => {
     expect(worker.requests.at(-1)?.operation).toEqual({
       kind: 'update-connection-label',
       payload: { connection_id: 7, label: 'Uplink' },
+    })
+    expect(testApi.fetchSnapshot).toHaveBeenCalledOnce()
+    client.dispose()
+  })
+
+  it('replays an external atomic bend repair without rebuilding the worker', async () => {
+    const worker = new FakeWorker()
+    const testApi = api()
+    const client = new DomainEngineClient({ api: testApi, workerFactory: () => worker })
+    await client.start()
+    const previousRoute = {
+      source_side: 'left' as const,
+      target_side: 'top' as const,
+      bend_points: [{ x: 48, y: 24 }],
+      avoid_cable_overlap: true,
+    }
+    const nextRoute = { ...previousRoute, bend_points: [{ x: 48, y: 12 }] }
+    const commit: EngineResponse = {
+      protocol_version: 1,
+      request_id: 25,
+      base_revision: 1,
+      result: {
+        kind: 'patch',
+        payload: {
+          revision: 2,
+          forward: {
+            kind: 'batch',
+            payload: { patches: [{
+              kind: 'set-connection-route',
+              payload: { connection_id: 7, route: nextRoute },
+            }] },
+          },
+          inverse: {
+            kind: 'batch',
+            payload: { patches: [{
+              kind: 'set-connection-route',
+              payload: { connection_id: 7, route: previousRoute },
+            }] },
+          },
+        },
+      },
+    }
+
+    await expect(client.applyCommittedResponse(encodeEngineResponse(commit))).resolves.toMatchObject({
+      kind: 'applied',
+    })
+    expect(worker.requests.at(-1)?.operation).toEqual({
+      kind: 'canonicalize-connection-routes',
+      payload: {
+        changes: [{
+          connection_id: 7,
+          expected_bend_points: previousRoute.bend_points,
+          bend_points: nextRoute.bend_points,
+        }],
+      },
     })
     expect(testApi.fetchSnapshot).toHaveBeenCalledOnce()
     client.dispose()

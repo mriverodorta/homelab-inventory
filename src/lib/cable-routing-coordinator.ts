@@ -20,6 +20,14 @@ export type CableRoutingState = {
   pending: boolean
   error: string | null
   warnings: ReadonlyMap<number, string>
+  repairs: ReadonlyMap<number, CableRouteCanonicalRepair>
+}
+
+export type CableRouteCanonicalRepair = {
+  connectionId: number
+  originalBendPoints: Array<{ x: number; y: number }>
+  bendPoints: Array<{ x: number; y: number }>
+  reason: 'terminal-overlap'
 }
 
 type Listener = (state: CableRoutingState) => void
@@ -130,6 +138,16 @@ function reconcileRouteMap(
   return next
 }
 
+function removeFailedRoutes(
+  routes: ReadonlyMap<number, CableRouteResult>,
+  failures: ReadonlyMap<number, string>,
+) {
+  if (![...failures.keys()].some((connectionId) => routes.has(connectionId))) return routes
+  const next = new Map(routes)
+  for (const connectionId of failures.keys()) next.delete(connectionId)
+  return next
+}
+
 export class CableRoutingCoordinator {
   private readonly client: DomainEngineClient
   private readonly listeners = new Set<Listener>()
@@ -145,6 +163,7 @@ export class CableRoutingCoordinator {
     pending: false,
     error: null,
     warnings: new Map(),
+    repairs: new Map(),
   }
 
   constructor(
@@ -175,9 +194,9 @@ export class CableRoutingCoordinator {
     if (!force && requestSetsEqual(this.desiredRequests, nextRequests)) return this.revision
 
     this.desiredRequests = nextRequests
-    if (!force && this.cache && routingCacheMatchesRequests(this.cache, requests)) {
-      if (this.activeWork || this.queuedWork) this.revision += 1
-      this.queuedWork = null
+    if (this.cache && routingCacheMatchesRequests(this.cache, requests)) {
+      if (!force && (this.activeWork || this.queuedWork)) this.revision += 1
+      if (!force) this.queuedWork = null
       this.updateState({
         ...this.state,
         routes: reconcileRouteMap(
@@ -185,11 +204,12 @@ export class CableRoutingCoordinator {
           routesFromRoutingCache(this.cache),
           new Set(nextRequests.keys()),
         ),
-        pending: this.activeWork !== null,
+        pending: force || this.activeWork !== null,
         error: null,
         warnings: failuresFromRoutingCache(this.cache),
+        repairs: new Map(),
       })
-      return this.revision
+      if (!force) return this.revision
     }
     if (!force && routingCacheGeometryMatchesRequests(this.cache, requests)) {
       this.updateState({
@@ -201,6 +221,7 @@ export class CableRoutingCoordinator {
         ),
         error: null,
         warnings: failuresFromRoutingCache(this.cache),
+        repairs: new Map(),
       })
     }
     const revision = ++this.revision
@@ -217,6 +238,7 @@ export class CableRoutingCoordinator {
       pending: this.activeWork !== null,
       error: null,
       warnings: new Map(),
+      repairs: new Map(),
     })
   }
 
@@ -249,18 +271,29 @@ export class CableRoutingCoordinator {
         || result.cache.failures.length > 0
         || work.requests.length === 0
       if (hasCacheableOutcome) this.cache = result.cache
-      this.updateState({
-        routes: reconcileRouteMap(
+      const nextRoutes = removeFailedRoutes(reconcileRouteMap(
           this.state.routes,
           result.routes,
           new Set(this.desiredRequests.keys()),
-        ),
+        ), result.failures)
+      this.updateState({
+        routes: nextRoutes,
         pending: this.queuedWork !== null,
         error: null,
         warnings: result.failures,
+        repairs: new Map(result.repairs.flatMap((repair) => {
+          const request = work.requests.find((candidate) => candidate.connectionId === repair.connection_id)
+          return request ? [[repair.connection_id, {
+            connectionId: repair.connection_id,
+            originalBendPoints: [...(request.request.manualBendPoints ?? [])],
+            bendPoints: repair.bend_points,
+            reason: repair.reason,
+          } satisfies CableRouteCanonicalRepair]] : []
+        })),
       })
       if (
         hasCacheableOutcome
+        && result.repairs.length === 0
         && this.persistCache
         && (previousFingerprint !== result.cache.geometryFingerprint
           || result.recalculatedConnectionIds.length > 0)
@@ -328,6 +361,7 @@ export class CableRoutingCoordinator {
       && this.state.pending === nextState.pending
       && this.state.error === nextState.error
       && this.state.warnings === nextState.warnings
+      && this.state.repairs === nextState.repairs
     ) return
     this.state = nextState
     for (const listener of this.listeners) listener(this.state)

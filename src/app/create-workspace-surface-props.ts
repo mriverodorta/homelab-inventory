@@ -194,6 +194,7 @@ export function createWorkspaceSurfaceProps({
       onEndpointDrop: connection.handleCanvasEndpointDrop,
       onUpdateConnectionRoute: connection.updateConnectionRoute,
       onResolveConnectionRouteSides: connection.resolveConnectionRouteSides,
+      onCanonicalizeConnectionRoutes: connection.canonicalizeConnectionRoutes,
       onViewportReady: (controller) => {
         canvasControllerRef.current = controller
       },

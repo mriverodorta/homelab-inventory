@@ -2,12 +2,14 @@ import { useEffect, useRef, useState, type RefObject } from 'react'
 import type { EngineResponse } from '../../shared/engine/protocol.mjs'
 import { useDomainEngine } from '@/hooks/use-domain-engine'
 import {
+  canonicalizeTopologyConnectionRoutes,
   createTopologyConnection,
   removeTopologyConnection,
   resolveTopologyConnectionRouteSides,
   updateTopologyConnectionLabel,
   updateTopologyConnectionRoute,
 } from '@/engine/topology'
+import type { CableRouteCanonicalRepair } from '@/lib/cable-routing-coordinator'
 import { resolveCreatedConnectionSelection } from '@/lib/created-connection-selection'
 import { endpointKey } from '@/lib/project'
 import { addedConnectionId } from '@/app/project-drop-helpers'
@@ -41,7 +43,7 @@ type ConnectionControllerOptions = {
   setActiveNetworkTraceEndpoint(value: ConnectionEndpoint | null): void
   setProject(project: ProjectState): void
   setSaveStatus(value: 'saved' | 'saving' | 'error'): void
-  setValidationMessage(message: string | null): void
+  setValidationMessage(message: string | null, severity?: 'error' | 'unknown'): void
   commitEngineMutation: CommitEngineMutation
   recoverMutation(error: unknown, fallbackMessage: string): void
 }
@@ -66,6 +68,7 @@ export function useConnectionController({
   const [portConnectionPreview, setPortConnectionPreview] = useState<PortConnectionPreview | null>(null)
   const connectionLabelTimerRef = useRef<number | null>(null)
   const routeSideResolutionInFlightRef = useRef(false)
+  const routeCanonicalizationInFlightRef = useRef(false)
 
   useEffect(() => () => {
     if (connectionLabelTimerRef.current !== null) {
@@ -226,6 +229,40 @@ export function useConnectionController({
     }
   }
 
+  async function canonicalizeConnectionRoutes(changes: CableRouteCanonicalRepair[]) {
+    const currentProject = projectRef.current
+    if (!currentProject || routeCanonicalizationInFlightRef.current) return
+    if (!domainEngine.enabled) throw new Error('The WebAssembly workspace engine is not available.')
+
+    const currentRepairs = changes.filter((change) => {
+      const connection = currentProject.connections.find(
+        (candidate) => candidate.id === change.connectionId,
+      )
+      return connection && pointsEqual(
+        connection.route?.bendPoints ?? [],
+        change.originalBendPoints,
+      )
+    })
+    if (currentRepairs.length === 0) return
+
+    routeCanonicalizationInFlightRef.current = true
+    try {
+      await commitEngineMutation(
+        () => canonicalizeTopologyConnectionRoutes(domainEngine.client, currentRepairs),
+        { recordHistory: true },
+      )
+      setValidationMessage(
+        `Corrected invalid terminal bends on ${currentRepairs.length} cable${currentRepairs.length === 1 ? '' : 's'}. Undo is available.`,
+        'unknown',
+      )
+    } catch (error) {
+      recoverMutation(error, 'Invalid cable bends could not be corrected.')
+      throw error
+    } finally {
+      routeCanonicalizationInFlightRef.current = false
+    }
+  }
+
   function updateConnectionLabel(connectionId: string | number, label: string) {
     const currentProject = projectRef.current
     const numericConnectionId = Number(connectionId)
@@ -351,6 +388,7 @@ export function useConnectionController({
     createConnectionBetween,
     updateConnectionRoute,
     resolveConnectionRouteSides,
+    canonicalizeConnectionRoutes,
     updateConnectionLabel,
     removeConnection,
     handleCanvasEndpointClick,
@@ -358,4 +396,13 @@ export function useConnectionController({
     handleCanvasEndpointDrop,
     handleEndpointConnectionClick,
   }
+}
+
+function pointsEqual(
+  left: readonly { x: number; y: number }[],
+  right: readonly { x: number; y: number }[],
+) {
+  return left.length === right.length && left.every(
+    (point, index) => point.x === right[index]?.x && point.y === right[index]?.y,
+  )
 }

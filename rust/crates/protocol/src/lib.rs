@@ -5,9 +5,9 @@ pub use homelab_geometry::{
 };
 pub use homelab_routing::{
     CableRouteCacheSeed, CableRouteFailure, CableRoutePlan, CableRoutePlanRequest,
-    CachedLaneRouteSeed, LaneRouteRequest, ObstacleRouteRequest, ObstacleRouteResult,
-    ReservedSegment, RouteDefinition, RouteEdit, RouteEndpointCandidate, RouteObstacle, RoutePatch,
-    RouteWarning, RoutedPath,
+    CableRouteRepair, CachedLaneRouteSeed, LaneRouteRequest, ObstacleRouteRequest,
+    ObstacleRouteResult, ReservedSegment, RouteDefinition, RouteEdit, RouteEndpointCandidate,
+    RouteObstacle, RoutePatch, RouteRepairReason, RouteWarning, RoutedPath,
 };
 pub use homelab_topology::{
     AssignmentAllocation, ConnectionDerivedState, ConnectionRoute as TopologyConnectionRoute,
@@ -61,6 +61,13 @@ pub struct ConnectionRouteSideResolution {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ConnectionRouteCanonicalization {
+    pub connection_id: u32,
+    pub expected_bend_points: Vec<Point>,
+    pub bend_points: Vec<Point>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", content = "payload", rename_all = "kebab-case")]
 pub enum Operation {
     Status,
@@ -96,6 +103,9 @@ pub enum Operation {
     },
     ResolveConnectionRouteSides {
         changes: Vec<ConnectionRouteSideResolution>,
+    },
+    CanonicalizeConnectionRoutes {
+        changes: Vec<ConnectionRouteCanonicalization>,
     },
     ResetAllConnectionBends,
     RestoreAutomaticConnectionRoutes,
@@ -514,6 +524,27 @@ mod tests {
         let bytes = rmp_serde::to_vec_named(&request).expect("serialize route request");
         let decoded: EngineRequest =
             rmp_serde::from_slice(&bytes).expect("deserialize route request");
+        assert_eq!(decoded, request);
+    }
+
+    #[test]
+    fn canonical_route_repair_operation_round_trips() {
+        let request = EngineRequest {
+            protocol_version: PROTOCOL_VERSION,
+            request_id: 18,
+            base_revision: 9,
+            operation: Operation::CanonicalizeConnectionRoutes {
+                changes: vec![ConnectionRouteCanonicalization {
+                    connection_id: 28,
+                    expected_bend_points: vec![Point { x: 2688.0, y: 42.0 }],
+                    bend_points: vec![Point { x: 2688.0, y: 11.0 }],
+                }],
+            },
+        };
+
+        let bytes = rmp_serde::to_vec_named(&request).expect("serialize repair request");
+        let decoded: EngineRequest =
+            rmp_serde::from_slice(&bytes).expect("deserialize repair request");
         assert_eq!(decoded, request);
     }
 

@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import {
   fromTopologyEndpointRef,
+  canonicalizeTopologyConnectionRoutes,
   createTopologyConnection,
   getCompatibleTopologyDestinations,
   getConnectionDerivedStates,
@@ -398,6 +399,11 @@ describe('WASM topology adapter', () => {
       sourceSide: 'right',
       targetSide: 'left',
     }])
+    await canonicalizeTopologyConnectionRoutes(client, [{
+      connectionId: 7,
+      originalBendPoints: [{ x: 24, y: 48 }],
+      bendPoints: [{ x: 24, y: 36 }],
+    }])
     await resetAllTopologyConnectionBends(client)
     await restoreAutomaticTopologyConnectionRoutes(client)
     await removeTopologyConnection(client, 7)
@@ -432,6 +438,18 @@ describe('WASM topology adapter', () => {
         },
       },
     })
+    expect(mutate.mock.calls[4][0]).toEqual({
+      operation: {
+        kind: 'canonicalize-connection-routes',
+        payload: {
+          changes: [{
+            connection_id: 7,
+            expected_bend_points: [{ x: 24, y: 48 }],
+            bend_points: [{ x: 24, y: 36 }],
+          }],
+        },
+      },
+    })
     expect(mutate.mock.calls[3][0]).toEqual({
       operation: {
         kind: 'resolve-connection-route-sides',
@@ -444,13 +462,13 @@ describe('WASM topology adapter', () => {
         },
       },
     })
-    expect(mutate.mock.calls[4][0]).toEqual({
+    expect(mutate.mock.calls[5][0]).toEqual({
       operation: { kind: 'reset-all-connection-bends' },
     })
-    expect(mutate.mock.calls[5][0]).toEqual({
+    expect(mutate.mock.calls[6][0]).toEqual({
       operation: { kind: 'restore-automatic-connection-routes' },
     })
-    expect(mutate.mock.calls[6][0]).toEqual({
+    expect(mutate.mock.calls[7][0]).toEqual({
       operation: { kind: 'remove-connection', payload: { connection_id: 7 } },
     })
   })

@@ -6,6 +6,18 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 
 ## Unreleased
 
+## [0.8.7] - 2026-08-05
+
+### Fixed
+
+- Cable routing now detects legacy terminal bends that reverse across an endpoint, corrects only the invalid terminal anchor, and saves all repairs as one Undo-compatible project change.
+- Persisted route-cache entries must match the currently measured endpoint candidates, and each connection now has exactly one cached outcome so stale or impossible routes are never rendered as valid cables.
+- Local/live data synchronization keeps each destination's derived route cache instead of copying browser-measured geometry between environments.
+
+### Changed
+
+- Matching route caches render immediately while the rebuilt WASM worker is synchronized in the background; planner version 12 performs one bounded cache refresh after upgrade.
+
 ## [0.8.6] - 2026-08-05
 
 ### Added

@@ -23,7 +23,7 @@ if [[ -d "${destination_data_dir}" ]]; then
 fi
 mkdir -p -- "${output_data_dir}/stores"
 
-for name in inventory.json project.json routing-cache.json; do
+for name in inventory.json project.json; do
   if [[ -f "${source_data_dir}/stores/${name}" ]]; then
     cp -- "${source_data_dir}/stores/${name}" "${output_data_dir}/stores/${name}"
   fi
@@ -40,7 +40,7 @@ if [[ -f "${source_data_dir}/stores/registry.json" ]]; then
     > "${output_data_dir}/stores/registry.json"
 fi
 
-for name in inventory.json project.json registry.json routing-cache.json; do
+for name in inventory.json project.json registry.json; do
   file="${output_data_dir}/stores/${name}"
   if [[ -f "${file}" ]]; then
     jq -e 'type == "object"' "${file}" >/dev/null || fail "synchronized stores/${name} is invalid."
