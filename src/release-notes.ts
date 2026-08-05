@@ -101,9 +101,17 @@ const RELEASE_0_3_0_DETAILS: UnreleasedReleaseNotes = {
 }
 
 export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
-  highlights: [],
-  fixes: [],
-  notes: [],
+  highlights: [
+    'The next-generation Homelab Inventory Agent foundation now supports typed enrollment for servers, NAS devices, and custom PC builds with a capability-driven protocol contract.',
+    'Signed one-minute telemetry can be persisted atomically in a dedicated WAL-mode SQLite database with indexed latest state and bounded historical retention.',
+  ],
+  fixes: [
+    'Agent telemetry no longer shares the workspace persistence path, so heartbeat history cannot advance the project revision or modify inventory, placements, assignments, or cables.',
+    'Heartbeat requests now authenticate their exact compressed body, endpoint, timestamp, and sequence with Ed25519 and reject replay, cross-host use, malformed compression, oversized payloads, and unsafe container fields.',
+  ],
+  notes: [
+    'Schema 25 migrates existing server-agent relationships to typed numeric host references while preserving legacy endpoints during the transition. The independently compiled agent and its installer are still under development.',
+  ],
 }
 
 const RELEASE_0_8_7_DETAILS: UnreleasedReleaseNotes = {

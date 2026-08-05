@@ -6,6 +6,24 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 
 ## Unreleased
 
+### Added
+
+- Added the protocol-v1 foundation for the independent Homelab Inventory Agent, including a versioned capability contract, Ed25519 request signatures, replay protection, bounded gzip heartbeats, and typed enrollment for servers, NAS devices, and custom PC builds.
+- Added an isolated WAL-mode SQLite telemetry database with atomic one-minute samples, indexed latest-state projections, service/container/storage transition history, seven-day default retention, and bounded maintenance.
+
+### Changed
+
+- Agent relationships now use explicit compute-host types and numeric relational IDs while legacy server-agent endpoints remain available during the transition to the compiled agent.
+- Telemetry persistence completes before an agent sequence is acknowledged, and telemetry writes never advance the project revision or modify inventory, canvas placements, assignments, or cables.
+
+### Security
+
+- Protocol-v1 heartbeats authenticate the exact compressed request body, HTTP method, path, timestamp, and monotonic sequence with an enrolled Ed25519 device key. Demo sessions cannot enroll, activate, or submit agent data.
+
+### Data migration
+
+- Schema 25 automatically converts legacy server-only agent enrollment and status references to typed compute-host relationships without changing agent IDs, token hashes, timestamps, or retained status.
+
 ## [0.8.7] - 2026-08-05
 
 ### Fixed

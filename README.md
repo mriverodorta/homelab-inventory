@@ -33,7 +33,7 @@ It is built for people who want a practical map of what they own, what is instal
 - lowdb-backed split stores with schema migrations and automatic backups.
 - Portable complete or custom backups with protected partial restore, optional encryption, scheduling, and retention controls.
 - Optional multi-user authentication with local passwords, OpenID Connect, or both, plus invitations, custom roles, session management, and one-time owner recovery.
-- Optional Linux agent enrollment per server for keepalive and hardware telemetry.
+- Optional host-agent foundation for signed, outbound-only telemetry from servers, NAS devices, and custom PC builds.
 - Mobile-friendly inventory drawer and long-press drag behavior for touch devices.
 
 ## AI Development Notice
@@ -91,6 +91,7 @@ OIDC_CLIENT_SECRET_FILE=
 RATE_LIMIT_WINDOW_MS=60000
 RATE_LIMIT_MAX=600
 TRUST_PROXY=false
+AGENT_TELEMETRY_RETENTION_DAYS=7
 ```
 
 Connected registry mode refreshes the verified official catalog at startup and approximately every six hours. Set `REGISTRY_REFRESH_INTERVAL_MS=0` to disable automatic catalog refreshes while retaining the manual Refresh action.
@@ -146,6 +147,8 @@ The app keeps user data out of the application image. Runtime data lives in `/da
     installation-instance.json
     installation-ed25519.pem
     installation-credentials.json
+  telemetry/
+    telemetry.sqlite
 ```
 
 Only one app container should write to a mounted data directory.
@@ -263,7 +266,9 @@ When an update is available, the canvas toolbar shows an update notice with rele
 
 ## Agent
 
-From a selected server in the inspector, use `Setup Agent` to generate a scoped install command. The command includes the selected server id, endpoint, and a one-time enrollment token. The installed Linux agent stores a device token locally and can only update that specific server.
+The next-generation agent protocol is outbound-only and scopes one Ed25519 device identity to one server, NAS device, or custom PC build. Signed protocol-v1 heartbeats are stored independently under `/data/telemetry/telemetry.sqlite`; they do not create workspace history or change the project revision. Raw samples are retained for seven days by default. Set `AGENT_TELEMETRY_RETENTION_DAYS` to an integer from 1 through 365 to change that backend retention period.
+
+The independently compiled Linux and FreeBSD agent, installers, and capability-driven inspector are still under development. Existing legacy Linux agent installations and endpoints remain supported during this transition; do not attempt to construct protocol-v1 enrollment requests manually.
 
 The agent is optional. Inventory, canvas layout, and cabling work without it.
 
