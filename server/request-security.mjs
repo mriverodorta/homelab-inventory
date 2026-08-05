@@ -1,5 +1,5 @@
 const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS'])
-const MACHINE_AGENT_ROUTE = /^\/api\/agent\/servers\/[1-9]\d*\/(?:register|heartbeat)\/?$/
+const MACHINE_AGENT_ROUTE = /^\/api\/agent\/(?:servers\/[1-9]\d*\/(?:register|heartbeat)|hosts\/(?:server|nas|pcBuild)\/[1-9]\d*\/(?:activate|heartbeats))\/?$/
 
 function requestOrigin(request) {
   try {

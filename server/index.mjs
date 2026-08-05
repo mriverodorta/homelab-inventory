@@ -6,6 +6,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { RELEASE_NOTES } from '../src/release-notes.ts'
 import { registerAgentRoutes } from './agent-routes.mjs'
+import { createAgentV1BodyMiddleware, registerAgentV1Routes } from './agents/v1-routes.mjs'
 import { registerBackupRoutes } from './backup-routes.mjs'
 import { AuthService } from './auth/auth-service.mjs'
 import { AccessService } from './auth/access-service.mjs'
@@ -164,6 +165,9 @@ app.use('/api/registry/catalog/import', express.json({ limit: '66mb' }))
 app.use('/api/agent/enrollments', express.json({ limit: '16kb' }))
 app.use('/api/agent/servers/:serverId/register', express.json({ limit: '16kb' }))
 app.use('/api/agent/servers/:serverId/heartbeat', express.json({ limit: '256kb' }))
+app.use('/api/agent/hosts/:hostType/:hostId/enrollments', express.json({ limit: '16kb' }))
+app.use('/api/agent/hosts/:hostType/:hostId/activate', express.json({ limit: '16kb' }))
+app.use('/api/agent/hosts/:hostType/:hostId/heartbeats', createAgentV1BodyMiddleware())
 app.use(express.json({ limit: '10mb' }))
 
 const authRuntime = store ? await readAuthRuntimeConfig({
@@ -193,6 +197,7 @@ registerAccessRoutes(app, {
   demo: isDemoMode,
 })
 registerAgentRoutes(app, store, { disabled: isDemoMode })
+registerAgentV1Routes(app, store, { disabled: isDemoMode })
 
 function parseCookie(header, name) {
   return (header ?? '')

@@ -88,8 +88,7 @@ export function parseEd25519PublicKey(value) {
   try {
     const der = decodeCanonicalBase64(value, 'Agent public key')
     key = createPublicKey({ key: der, format: 'der', type: 'spki' })
-  } catch (error) {
-    if (error instanceof AgentAuthenticationError) throw error
+  } catch {
     throw new AgentAuthenticationError('Agent public key is invalid.', 'invalid-agent-public-key', 400)
   }
   if (key.asymmetricKeyType !== 'ed25519') {

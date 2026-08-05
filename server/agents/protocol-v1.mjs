@@ -40,6 +40,11 @@ function object(value, field) {
   return value
 }
 
+function assertAllowedFields(record, allowed, field) {
+  const unknown = Object.keys(record).find((key) => !allowed.has(key))
+  if (unknown) throw protocolError(`${field} contains unsupported field ${unknown}.`)
+}
+
 function string(value, field, { max = MAX_STRING_LENGTH, optional = false } = {}) {
   if (optional && (value === undefined || value === null || value === '')) return null
   if (typeof value !== 'string' || !value.trim() || value.length > max) {
@@ -94,6 +99,7 @@ function normalizeCapabilities(value) {
   return Object.fromEntries(Object.entries(capabilities).map(([name, input]) => {
     if (!/^[a-z][a-z0-9.-]{0,63}$/.test(name)) throw protocolError(`Capability name ${name} is invalid.`)
     const capability = object(input, `capabilities.${name}`)
+    assertAllowedFields(capability, new Set(['state', 'detail']), `capabilities.${name}`)
     if (!CAPABILITY_STATE_SET.has(capability.state)) throw protocolError(`capabilities.${name}.state is invalid.`)
     return [name, {
       state: capability.state,
@@ -178,6 +184,7 @@ function normalizeStorageHealth(value = []) {
   if (!Array.isArray(value) || value.length > 64) throw protocolError('storageHealth cannot exceed 64 items.')
   return value.map((input, index) => {
     const record = boundedValue(object(input, `storageHealth[${index}]`), `storageHealth[${index}]`)
+    assertAllowedFields(record, new Set(['deviceId', 'kind', 'state', 'collectedAt', 'metrics']), `storageHealth[${index}]`)
     if (!STORAGE_KINDS.has(record.kind) || !STORAGE_STATES.has(record.state)) {
       throw protocolError(`storageHealth[${index}] kind or state is invalid.`)
     }
@@ -191,6 +198,7 @@ function normalizeStorageHealth(value = []) {
 
 export function normalizeV1Activation(payload) {
   const input = object(payload, 'activation')
+  assertAllowedFields(input, new Set(['protocolMajor', 'agentVersion', 'publicKey', 'capabilities']), 'activation')
   if (input.protocolMajor !== AGENT_PROTOCOL_MAJOR) {
     throw protocolError(`Unsupported agent protocol major ${String(input.protocolMajor)}.`)
   }
@@ -206,6 +214,10 @@ export function normalizeV1Activation(payload) {
 
 export function normalizeV1Heartbeat(payload, expectedHost) {
   const input = object(payload, 'heartbeat')
+  assertAllowedFields(input, new Set([
+    'protocolMajor', 'sequence', 'agentVersion', 'collectedAt', 'host', 'hostname',
+    'droppedSamples', 'capabilities', 'metrics', 'services', 'containers', 'storageHealth',
+  ]), 'heartbeat')
   if (input.protocolMajor !== AGENT_PROTOCOL_MAJOR) {
     throw protocolError(`Unsupported agent protocol major ${String(input.protocolMajor)}.`)
   }

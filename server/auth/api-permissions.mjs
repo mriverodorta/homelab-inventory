@@ -9,11 +9,13 @@ const PUBLIC_ROUTES = [
   ['GET', /^\/api\/auth\/invitations\/[^/]+\/?$/],
   ['POST', /^\/api\/auth\/invitations\/[^/]+\/activate-local\/?$/],
   ['GET', /^\/api\/demo\/session\/?$/],
+  ['GET', /^\/api\/agent\/contracts\/current\/?$/],
   ['POST', /^\/api\/demo\/session\/(?:extend|expire)\/?$/],
 ]
 
 const MACHINE_ROUTES = [
   ['POST', /^\/api\/agent\/servers\/[1-9]\d*\/(?:register|heartbeat)\/?$/],
+  ['POST', /^\/api\/agent\/hosts\/(?:server|nas|pcBuild)\/[1-9]\d*\/(?:activate|heartbeats)\/?$/],
 ]
 
 const PROTECTED_ROUTES = [
@@ -77,7 +79,9 @@ const PROTECTED_ROUTES = [
 
   ['GET', /^\/api\/agent\/(?:install\.sh|status)\/?$/, 'agents.view'],
   ['POST', /^\/api\/agent\/enrollments\/?$/, 'agents.manage'],
+  ['POST', /^\/api\/agent\/hosts\/(?:server|nas|pcBuild)\/[1-9]\d*\/enrollments\/?$/, 'agents.manage'],
   ['DELETE', /^\/api\/agent\/servers\/[1-9]\d*\/(?:registration|status)\/?$/, 'agents.manage'],
+  ['DELETE', /^\/api\/agent\/hosts\/(?:server|nas|pcBuild)\/[1-9]\d*\/(?:registration|status)\/?$/, 'agents.manage'],
 
   ['GET', /^\/api\/onboarding(?:\/.*)?$/, 'workspace.view'],
   ['POST', /^\/api\/onboarding(?:\/.*)?$/, 'workspace.edit'],
