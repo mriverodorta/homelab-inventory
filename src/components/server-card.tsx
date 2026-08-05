@@ -1,14 +1,16 @@
 import { useDraggable, useDroppable } from '@dnd-kit/core'
 import { Handle, Position, type Node, type NodeProps } from '@xyflow/react'
-import { AlertTriangle, Grip, X } from 'lucide-react'
+import { AlertTriangle, Grip } from 'lucide-react'
 import type { CSSProperties } from 'react'
 import { AssignedPowerAdapterRow } from '@/components/assigned-power-adapter-row'
+import { AssignedExpansionHeading } from '@/components/assigned-expansion-heading'
+import { isExpansionItem } from '@/components/assigned-expansion-heading-model'
+import { AssignedItemCornerActions } from '@/components/assigned-item-corner-actions'
 import { RegistryLinkIndicator } from '@/components/registry-link-indicator'
 import { MemorySlotGrid } from '@/components/memory-slot-grid'
 import { hostMemorySlotCount } from '@/components/memory-slot-model'
 import { CpuSlotGrid } from '@/components/cpu-slot-grid'
 import { hostCpuSocketCount } from '@/components/cpu-slot-model'
-import { Button } from '@/components/ui/button'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { getVisibleServerSlotTypes, SLOT_LABELS, sortAssignmentsForDisplay } from '@/lib/constraints'
 import { getEndpointHandleId, type CableSide } from '@/lib/cable-routing'
@@ -437,11 +439,13 @@ function getServerAgentStatus(
 }
 
 function ChipAssignmentLabel({
+  compact = false,
   label,
   parts,
   tone,
   layout = 'two-row',
 }: {
+  compact?: boolean
   label: string
   parts: Array<{ label: string; value: string }>
   tone: (label: string) => string
@@ -450,17 +454,17 @@ function ChipAssignmentLabel({
   const rows = layout === 'one-row' ? [parts] : [parts.slice(0, 2), parts.slice(2, 4)]
 
   return (
-    <span className="flex min-w-0 items-center gap-2">
-      <span className="shrink-0 text-[10px] font-bold uppercase tracking-[0.08em] text-current">
+    <span className={`flex min-w-0 items-center ${compact ? 'flex-wrap gap-1' : 'gap-2'}`}>
+      <span className={`shrink-0 font-bold uppercase text-current ${compact ? 'text-[8px]' : 'text-[10px] tracking-[0.08em]'}`}>
         {label}
       </span>
-      <span className={`flex min-w-0 gap-1 ${layout === 'one-row' ? 'items-center' : 'flex-col'}`}>
+      <span className={`flex min-w-0 gap-1 ${layout === 'one-row' ? 'flex-wrap items-center' : 'flex-col'}`}>
         {rows.map((row, rowIndex) => (
-          <span key={rowIndex} className="flex min-w-0 items-center gap-1">
+          <span key={rowIndex} className="flex min-w-0 flex-wrap items-center gap-1">
             {row.map((part) => (
               <span
                 key={part.label}
-                className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-bold leading-none ${tone(part.label)}`}
+                className={`shrink-0 rounded py-0.5 font-bold leading-none ${compact ? 'px-1 text-[8px]' : 'px-1.5 text-[10px]'} ${tone(part.label)}`}
               >
                 {part.value}
               </span>
@@ -473,9 +477,11 @@ function ChipAssignmentLabel({
 }
 
 function AssignmentLabel({
+  compact = false,
   item,
   type,
 }: {
+  compact?: boolean
   item: InventoryItem
   type: ComponentAssignment['type']
 }) {
@@ -485,6 +491,7 @@ function AssignmentLabel({
     if (parts.length > 0) {
       return (
         <ChipAssignmentLabel
+          compact={compact}
           label={SLOT_LABELS[type]}
           parts={parts}
           tone={(label) => cpuPartTone(label as CpuCanvasPart['label'])}
@@ -555,6 +562,7 @@ function AssignedComponentRow({
   registryLinkedItemKeys,
   selected,
   serverId,
+  compact = false,
 }: {
   assignment: ComponentAssignment
   canvasIndex: CanvasProjectIndex
@@ -570,6 +578,7 @@ function AssignedComponentRow({
   registryLinkedItemKeys: ReadonlySet<string>
   selected: boolean
   serverId: string
+  compact?: boolean
 }) {
   const itemRuntimeKey = runtimeItemKey(item)
   const connectablePorts = (assignment.type === 'network' || assignment.type === 'gpu')
@@ -599,7 +608,7 @@ function AssignedComponentRow({
       ref={draggable.setNodeRef}
       role="button"
       tabIndex={0}
-      className={`nodrag group flex w-full cursor-grab gap-2 rounded-md px-2 text-left text-xs font-semibold active:cursor-grabbing ${
+      className={`nodrag group relative flex w-full cursor-grab gap-2 rounded-md px-2 text-left text-xs font-semibold active:cursor-grabbing ${
         connectablePorts.length > 0
           ? 'flex-col items-stretch py-2'
           : assignment.type === 'ram' ||
@@ -622,22 +631,16 @@ function AssignedComponentRow({
       {...tapSelection}
       {...dragAttributes}
     >
-      <div className="flex min-w-0 items-center justify-between gap-2">
-        <AssignmentLabel type={assignment.type} item={item} />
-        <RegistryLinkIndicator visible={registryLinkedItemKeys.has(itemRuntimeKey)} />
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          className="size-6 shrink-0 opacity-0 transition group-hover:opacity-100"
-          onPointerDown={(event) => event.stopPropagation()}
-          onClick={(event) => {
-            event.stopPropagation()
-            onRemoveAssignment(assignment.id)
-          }}
-        >
-          <X className="size-3" />
-        </Button>
+      <div className="flex min-w-0 items-center justify-between gap-2 pr-5">
+        {isExpansionItem(item)
+          ? <AssignedExpansionHeading item={item} />
+          : <AssignmentLabel type={assignment.type} item={item} compact={compact} />}
+        <AssignedItemCornerActions
+          itemName={item.name}
+          linked={registryLinkedItemKeys.has(itemRuntimeKey)}
+          onRemove={() => onRemoveAssignment(assignment.id)}
+          selected={selected}
+        />
       </div>
       {connectablePorts.length > 0 ? (
         <div className="flex gap-1.5 overflow-visible rounded bg-black/10 p-1.5">
@@ -773,7 +776,7 @@ export function ServerNode({ data }: NodeProps<ServerFlowNode>) {
       {...tapSelection}
     >
       {auditCount > 0 ? (
-        <div className="absolute -right-2 -top-2 z-10 flex h-7 min-w-7 items-center justify-center gap-1 rounded-full border border-[#ddb668] bg-[#fff2c7] px-2 text-[11px] font-black text-[#3d2a08] shadow-sm">
+        <div className="absolute -right-2 -bottom-2 z-30 flex h-7 min-w-7 items-center justify-center gap-1 rounded-full border border-[#ddb668] bg-[#fff2c7] px-2 text-[11px] font-black text-[#3d2a08] shadow-sm">
           <AlertTriangle className="size-3" />
           {auditCount}
         </div>
@@ -823,7 +826,7 @@ export function ServerNode({ data }: NodeProps<ServerFlowNode>) {
                 key="cpu"
                 assignments={matches}
                 socketCount={hostCpuSocketCount(server)}
-                renderAssignment={(assignment) => {
+                renderAssignment={(assignment, _position, compact) => {
                   const item = project.items[assignment.itemId]
                   return item ? (
                     <AssignedComponentRow
@@ -841,6 +844,7 @@ export function ServerNode({ data }: NodeProps<ServerFlowNode>) {
                       registryLinkedItemKeys={registryLinkedItemKeys}
                       selected={selectedItemId === runtimeItemKey(item)}
                       serverId={serverRuntimeKey}
+                      compact={compact}
                     />
                   ) : null
                 }}

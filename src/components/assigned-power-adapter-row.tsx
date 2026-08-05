@@ -1,8 +1,6 @@
 import { useDraggable } from '@dnd-kit/core'
-import { X } from 'lucide-react'
 import type { ReactNode } from 'react'
-import { Button } from '@/components/ui/button'
-import { RegistryLinkIndicator } from '@/components/registry-link-indicator'
+import { AssignedItemCornerActions } from '@/components/assigned-item-corner-actions'
 import { formatInventoryCompactSpec } from '@/lib/format'
 import { runtimeItemKey } from '@/lib/item-keys'
 import { useTapSelection } from '@/lib/tap-selection'
@@ -55,7 +53,7 @@ export function AssignedPowerAdapterRow({
       role="button"
       tabIndex={0}
       data-testid="assigned-power-adapter-row"
-      className={`nodrag cursor-grab rounded-md bg-[#4a3928] p-2 text-[#fff8ec] active:cursor-grabbing ${
+      className={`nodrag group relative cursor-grab rounded-md bg-[#4a3928] p-2 text-[#fff8ec] active:cursor-grabbing ${
         selected ? 'ring-2 ring-white/80' : ''
       } ${draggable.isDragging ? 'opacity-45' : ''} ${className}`}
       onKeyDown={(event) => {
@@ -69,7 +67,7 @@ export function AssignedPowerAdapterRow({
       {...tapSelection}
       {...dragAttributes}
     >
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-2 pr-5">
         <div className="min-w-0 flex-1">
           <div className="text-[9px] font-black uppercase tracking-[0.16em] opacity-75">
             Power Adapter
@@ -79,22 +77,14 @@ export function AssignedPowerAdapterRow({
             {formatInventoryCompactSpec(adapter)}
           </div>
         </div>
-        <RegistryLinkIndicator visible={registryLinked} />
         {portChip}
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          className="size-5 shrink-0 text-[#fff8ec] opacity-70 hover:opacity-100"
-          onPointerDown={(event) => event.stopPropagation()}
-          onClick={(event) => {
-            event.stopPropagation()
-            onRemoveAssignment(assignment.id)
-          }}
-          aria-label={`Remove ${adapter.name}`}
-        >
-          <X className="size-3" />
-        </Button>
+        <AssignedItemCornerActions
+          itemName={adapter.name}
+          linked={registryLinked}
+          onRemove={() => onRemoveAssignment(assignment.id)}
+          removeClassName="size-5 text-[#fff8ec]"
+          selected={selected}
+        />
       </div>
     </div>
   )

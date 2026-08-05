@@ -47,6 +47,12 @@ describe('registry link indicators', () => {
     expect(screen.queryByLabelText('Linked to the official registry')).not.toBeInTheDocument()
 
     rerender(<RegistryLinkIndicator visible />)
-    expect(screen.getByLabelText('Linked to the official registry')).toHaveClass('pointer-events-none', 'opacity-50')
+    expect(screen.getByLabelText('Linked to the official registry')).toHaveClass(
+      'pointer-events-none',
+      'absolute',
+      'top-1',
+      'right-1',
+      'opacity-50',
+    )
   })
 })

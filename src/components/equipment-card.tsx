@@ -530,7 +530,7 @@ export function EquipmentNode({ data }: NodeProps<EquipmentFlowNode>) {
       {...tapSelection}
     >
       {auditCount > 0 ? (
-        <div className="absolute -right-2 -top-2 z-10 flex h-7 min-w-7 items-center justify-center gap-1 rounded-full border border-[#ddb668] bg-[#fff2c7] px-2 text-[11px] font-black text-[#3d2a08] shadow-sm">
+        <div className="absolute -right-2 -bottom-2 z-30 flex h-7 min-w-7 items-center justify-center gap-1 rounded-full border border-[#ddb668] bg-[#fff2c7] px-2 text-[11px] font-black text-[#3d2a08] shadow-sm">
           <AlertTriangle className="size-3" />
           {auditCount}
         </div>

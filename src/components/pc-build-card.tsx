@@ -1,8 +1,10 @@
 import { useDraggable, useDroppable } from '@dnd-kit/core'
 import { Handle, Position, type Node, type NodeProps } from '@xyflow/react'
-import { AlertTriangle, Grip, X } from 'lucide-react'
+import { AlertTriangle, Grip } from 'lucide-react'
 import type { CSSProperties } from 'react'
-import { Button } from '@/components/ui/button'
+import { AssignedExpansionHeading } from '@/components/assigned-expansion-heading'
+import { isExpansionItem } from '@/components/assigned-expansion-heading-model'
+import { AssignedItemCornerActions } from '@/components/assigned-item-corner-actions'
 import { RegistryLinkIndicator } from '@/components/registry-link-indicator'
 import { MemorySlotGrid } from '@/components/memory-slot-grid'
 import { hostMemorySlotCount } from '@/components/memory-slot-model'
@@ -343,7 +345,7 @@ function AssignedComponentRow({
       ref={draggable.setNodeRef}
       role="button"
       tabIndex={0}
-      className={`nodrag group flex w-full cursor-grab flex-col gap-1.5 rounded-md px-2 py-2 text-left text-xs active:cursor-grabbing ${getCanvasAssignmentTone(assignment.type, item)} ${selected ? 'ring-2 ring-white/80' : ''} ${draggable.isDragging ? 'opacity-45' : ''}`}
+      className={`nodrag group relative flex w-full cursor-grab flex-col gap-1.5 rounded-md px-2 py-2 text-left text-xs active:cursor-grabbing ${getCanvasAssignmentTone(assignment.type, item)} ${selected ? 'ring-2 ring-white/80' : ''} ${draggable.isDragging ? 'opacity-45' : ''}`}
       onKeyDown={(event) => {
         if (event.key === 'Enter' || event.key === ' ') {
           event.preventDefault()
@@ -355,28 +357,25 @@ function AssignedComponentRow({
       {...tapSelection}
       {...dragAttributes}
     >
-      <div className="flex min-w-0 items-center gap-2">
-        <span className="shrink-0 text-[10px] font-black uppercase tracking-[0.08em]">
-          {SLOT_LABELS[assignment.type]}
-        </span>
-        <span className="min-w-0 flex-1 truncate font-bold" title={item.name}>
-          {assignmentSummary(item)}
-        </span>
-        <RegistryLinkIndicator visible={registryLinkedItemKeys.has(itemRuntimeKey)} />
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          aria-label={`Remove ${item.name}`}
-          className="size-6 shrink-0 opacity-0 transition group-hover:opacity-100 focus-visible:opacity-100"
-          onPointerDown={(event) => event.stopPropagation()}
-          onClick={(event) => {
-            event.stopPropagation()
-            onRemoveAssignment(assignment.id)
-          }}
-        >
-          <X className="size-3" />
-        </Button>
+      <div className="flex min-w-0 items-center gap-2 pr-5">
+        {isExpansionItem(item) ? (
+          <AssignedExpansionHeading item={item} />
+        ) : (
+          <>
+            <span className="shrink-0 text-[10px] font-black uppercase tracking-[0.08em]">
+              {SLOT_LABELS[assignment.type]}
+            </span>
+            <span className="min-w-0 flex-1 truncate font-bold" title={item.name}>
+              {assignmentSummary(item)}
+            </span>
+          </>
+        )}
+        <AssignedItemCornerActions
+          itemName={item.name}
+          linked={registryLinkedItemKeys.has(itemRuntimeKey)}
+          onRemove={() => onRemoveAssignment(assignment.id)}
+          selected={selected}
+        />
       </div>
       {ports.length > 0 ? (
         <div className="flex flex-wrap gap-1.5 rounded bg-black/10 p-1.5">
@@ -508,7 +507,7 @@ export function PcBuildNode({ data }: NodeProps<PcBuildFlowNode>) {
       {...tapSelection}
     >
       {auditCount > 0 ? (
-        <div className="absolute -right-2 -top-2 z-10 flex h-7 min-w-7 items-center justify-center gap-1 rounded-full border border-[#ddb668] bg-[#fff2c7] px-2 text-[11px] font-black text-[#3d2a08] shadow-sm">
+        <div className="absolute -right-2 -bottom-2 z-30 flex h-7 min-w-7 items-center justify-center gap-1 rounded-full border border-[#ddb668] bg-[#fff2c7] px-2 text-[11px] font-black text-[#3d2a08] shadow-sm">
           <AlertTriangle className="size-3" />
           {auditCount}
         </div>

@@ -6,6 +6,18 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 
 ## Unreleased
 
+## [0.8.4] - 2026-08-04
+
+### Changed
+
+- The official catalog browser now keeps filters, result lists, and item details in independently scrollable desktop panes while preserving the compact mobile filter sheet.
+- Assigned expansion cards now lead with the hardware name and a compact PCIe, M.2, or USB interface pill, with connector chips kept on their own row.
+
+### Fixed
+
+- Single-socket CPUs now use the full host-card width, while multi-socket CPUs retain a compact two-column layout without overflowing their chip labels.
+- Registry-link indicators and assignment remove controls now share a nonintrusive top-right overlay; remove controls appear on hover, keyboard focus, or touch selection, and audit counts remain clear at the bottom-right corner.
+
 ## [0.8.3] - 2026-08-04
 
 ### Fixed

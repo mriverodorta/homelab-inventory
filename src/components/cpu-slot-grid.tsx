@@ -8,7 +8,7 @@ export function CpuSlotGrid({
   socketCount,
 }: {
   assignments: ComponentAssignment[]
-  renderAssignment: (assignment: ComponentAssignment, position: number) => ReactNode
+  renderAssignment: (assignment: ComponentAssignment, position: number, compact: boolean) => ReactNode
   socketCount: number
 }) {
   const byPosition = new Map<number, ComponentAssignment>()
@@ -23,11 +23,14 @@ export function CpuSlotGrid({
   }
 
   return (
-    <div className="grid grid-cols-2 gap-1.5" data-cpu-socket-count={socketCount}>
+    <div
+      className={`grid gap-1.5 ${socketCount > 1 ? 'grid-cols-2' : 'grid-cols-1'}`}
+      data-cpu-socket-count={socketCount}
+    >
       {Array.from({ length: socketCount }, (_, position) => {
         const assignment = byPosition.get(position)
         return assignment
-          ? <div key={position} className="min-w-0">{renderAssignment(assignment, position)}</div>
+          ? <div key={position} className="min-w-0">{renderAssignment(assignment, position, socketCount > 1)}</div>
           : (
             <div
               key={position}

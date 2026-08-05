@@ -98,4 +98,17 @@ describe('CatalogBrowser', () => {
       true,
     )
   })
+
+  it('gives each desktop catalog pane independent vertical overflow', async () => {
+    const user = userEvent.setup()
+    render(<CatalogBrowser onCreate={vi.fn()} />)
+
+    await user.click(screen.getByRole('button', { name: /Processors/ }))
+
+    expect(screen.getByTestId('catalog-browser')).toHaveClass('overflow-visible', 'lg:overflow-hidden')
+    expect(screen.getByTestId('catalog-filter-pane')).toHaveClass('min-h-0', 'overflow-hidden')
+    expect(screen.getByTestId('catalog-filter-scroll')).toHaveClass('overflow-y-auto')
+    expect(screen.getByTestId('catalog-results-scroll')).toHaveClass('overflow-y-auto')
+    expect(screen.getByTestId('catalog-detail-pane')).toHaveClass('min-h-0', 'overflow-y-auto')
+  })
 })

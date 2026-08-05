@@ -19,6 +19,15 @@ describe('InventoryItemDialog switch port groups', () => {
     expect(screen.getByRole('tab', { name: 'Private templates' })).toBeInTheDocument()
   })
 
+  it('keeps catalog scrolling inside the catalog panes', async () => {
+    const user = userEvent.setup()
+    render(<InventoryItemDialog open onOpenChange={vi.fn()} onCreate={vi.fn()} />)
+
+    await user.click(screen.getByRole('tab', { name: 'Catalog' }))
+
+    expect(screen.getByTestId('catalog-tab-content')).toHaveClass('overflow-y-auto', 'lg:overflow-hidden')
+  })
+
   it('creates inventory from a selected private template', async () => {
     const user = userEvent.setup()
     const onCreate = vi.fn().mockResolvedValue(undefined)

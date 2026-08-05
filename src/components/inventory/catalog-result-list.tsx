@@ -59,7 +59,7 @@ export function CatalogResultList({
           />
         </div>
       </div>
-      <div className="min-h-48 flex-1 overflow-y-auto px-3 py-3 lg:min-h-0">
+      <div data-testid="catalog-results-scroll" className="min-h-48 flex-1 overflow-y-auto px-3 py-3 lg:min-h-0">
         <div className="space-y-1">
           {loading ? (
             <div className="flex items-center gap-2 p-3 text-sm text-[#746b60]">

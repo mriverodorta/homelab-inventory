@@ -106,6 +106,16 @@ export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
   notes: [],
 }
 
+const RELEASE_0_8_4_DETAILS: UnreleasedReleaseNotes = {
+  highlights: [
+    'The official catalog browser now keeps filters, results, and hardware details in independently scrollable desktop panes, while assigned expansion cards present their hardware name, interface, and connector chips in a clearer hierarchy.',
+  ],
+  fixes: [
+    'Canvas component cards now use the full width for single CPUs, compact multi-socket CPU chips without overflow, and place registry, remove, and audit controls in consistent nonoverlapping corners.',
+  ],
+  notes: [],
+}
+
 const RELEASE_0_8_3_DETAILS: UnreleasedReleaseNotes = {
   highlights: [],
   fixes: [
@@ -400,6 +410,13 @@ const RELEASE_0_2_1_DETAILS: UnreleasedReleaseNotes = {
 
 export const RELEASE_NOTES: ReleaseNoteEntry[] = [
   {
+    version: '0.8.4',
+    date: '2026-08-04',
+    channel: 'latest',
+    title: 'Catalog and canvas layout polish',
+    ...RELEASE_0_8_4_DETAILS,
+  },
+  {
     version: '0.8.3',
     date: '2026-08-04',
     channel: 'release',
@@ -409,7 +426,7 @@ export const RELEASE_NOTES: ReleaseNoteEntry[] = [
   {
     version: '0.8.2',
     date: '2026-08-03',
-    channel: 'latest',
+    channel: 'release',
     title: 'Faceted hardware catalog browsing',
     ...RELEASE_0_8_2_DETAILS,
   },

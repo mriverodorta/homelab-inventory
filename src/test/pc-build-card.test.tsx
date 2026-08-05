@@ -64,6 +64,7 @@ const gpu: InventoryItem = {
   name: 'NVIDIA RTX 4070',
   manufacturer: 'NVIDIA',
   model: 'RTX 4070',
+  specs: { pcie: 'PCIe 4.0 x16' },
   ports: [{
     id: 1,
     kind: 'server-port',
@@ -170,8 +171,17 @@ describe('PcBuildNode', () => {
     expect(screen.getByText('Motherboard I/O')).toBeInTheDocument()
     expect(screen.getByText('ATX / AM5')).toBeInTheDocument()
     expect(screen.getByText('NVIDIA RTX 4070')).toBeInTheDocument()
+    expect(screen.getByText('PCIE')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: '01 2.5G' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: '01 DP' })).toBeInTheDocument()
+  })
+
+  it('reveals an assigned component remove control when the component is selected', () => {
+    const currentProject = project([gpu], [assignment(2, gpu)])
+
+    renderCard(nodeProps(currentProject, { selectedItemId: 'gpu:1' }))
+
+    expect(screen.getByRole('button', { name: 'Remove NVIDIA RTX 4070' })).toHaveClass('opacity-100')
   })
 
   it('uses existing selection, removal, and endpoint callback contracts', () => {

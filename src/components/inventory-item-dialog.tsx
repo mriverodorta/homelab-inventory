@@ -353,7 +353,11 @@ export function InventoryItemDialog({
                 <TabsTrigger value="private-templates" className="h-12 flex-none px-1">Private templates</TabsTrigger>
               </TabsList>
             </div>
-            <TabsContent value="catalog" className="m-0 min-h-0 flex-1 overflow-y-auto">
+            <TabsContent
+              value="catalog"
+              data-testid="catalog-tab-content"
+              className="m-0 min-h-0 flex-1 overflow-y-auto lg:overflow-hidden"
+            >
               <CatalogSourcePanel
                 registry={registry}
                 onCreate={onCreateCatalogItem ? async (templateKey, catalogQuantity, usageRole) => {

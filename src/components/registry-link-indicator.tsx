@@ -15,7 +15,7 @@ export function RegistryLinkIndicator({
       data-testid="registry-link-indicator"
       aria-label="Linked to the official registry"
       className={cn(
-        'pointer-events-none inline-flex size-4 shrink-0 items-center justify-center opacity-50',
+        'pointer-events-none absolute top-1 right-1 z-10 inline-flex size-4 items-center justify-center opacity-50',
         className,
       )}
     >

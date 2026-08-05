@@ -3,10 +3,11 @@ import { Handle, Position, type Node, type NodeProps } from '@xyflow/react'
 import { AlertTriangle, Grip, X } from 'lucide-react'
 import type { CSSProperties } from 'react'
 import { AssignedPowerAdapterRow } from '@/components/assigned-power-adapter-row'
+import { AssignedExpansionHeading } from '@/components/assigned-expansion-heading'
+import { AssignedItemCornerActions } from '@/components/assigned-item-corner-actions'
 import { RegistryLinkIndicator } from '@/components/registry-link-indicator'
 import { MemorySlotGrid } from '@/components/memory-slot-grid'
 import { hostMemorySlotCount } from '@/components/memory-slot-model'
-import { Button } from '@/components/ui/button'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { getEndpointHandleId, type CableSide } from '@/lib/cable-routing'
 import { getStorageQualityTone } from '@/lib/canvas-quality'
@@ -356,14 +357,12 @@ function StorageBayCell({
       {...draggable.attributes}
     >
       {String(index + 1).padStart(2, '0')}
-      <span className="absolute right-0.5 top-0.5 group-hover:hidden">
-        <RegistryLinkIndicator visible={registryLinked} />
-      </span>
+      <RegistryLinkIndicator visible={registryLinked} className="top-0.5 right-0.5 group-hover:opacity-0" />
       {assignment ? (
         <span
           role="button"
           tabIndex={0}
-          className="absolute -right-1 -top-1 hidden size-4 items-center justify-center rounded-full bg-white text-[#20242c] shadow group-hover:flex"
+          className={`absolute -top-1 -right-1 z-20 size-4 items-center justify-center rounded-full bg-white text-[#20242c] shadow ${selected ? 'flex' : 'hidden group-hover:flex group-focus-within:flex'}`}
           onPointerDown={(event) => event.stopPropagation()}
           onClick={(event) => {
             event.stopPropagation()
@@ -470,7 +469,7 @@ function NasComponentCell({
   return (
     <div
       ref={draggable.setNodeRef}
-      className={`group relative flex h-11 min-w-0 cursor-grab items-center gap-1.5 rounded-md px-2 py-1.5 text-[#20242c] active:cursor-grabbing ${
+      className={`group relative flex h-11 min-w-0 cursor-grab items-center gap-1.5 rounded-md py-1.5 pr-7 pl-2 text-[#20242c] active:cursor-grabbing ${
         item.type === 'cpu' ? 'bg-[#9fd3df]' : 'bg-[#e9c56f]'
       } ${selected ? 'ring-2 ring-white/80' : ''} ${draggable.isDragging ? 'opacity-45' : ''}`}
       {...draggable.listeners}
@@ -485,20 +484,13 @@ function NasComponentCell({
           </span>
         ))}
       </span>
-      <RegistryLinkIndicator visible={registryLinked} />
-      <Button
-        type="button"
-        variant="ghost"
-        size="icon"
-        className="size-5 shrink-0 opacity-0 group-hover:opacity-100"
-        onPointerDown={(event) => event.stopPropagation()}
-        onClick={(event) => {
-          event.stopPropagation()
-          onRemoveAssignment(assignment.id)
-        }}
-      >
-        <X className="size-3" />
-      </Button>
+      <AssignedItemCornerActions
+        itemName={item.name}
+        linked={registryLinked}
+        onRemove={() => onRemoveAssignment(assignment.id)}
+        removeClassName="size-5"
+        selected={selected}
+      />
     </div>
   )
 }
@@ -567,33 +559,23 @@ function NetworkCardRow({
   return (
     <div
       ref={draggable.setNodeRef}
-      className={`mt-2 cursor-grab rounded-md bg-[#173426] p-2 text-[#f4fff7] active:cursor-grabbing ${
+      className={`group relative mt-2 cursor-grab rounded-md bg-[#173426] p-2 text-[#f4fff7] active:cursor-grabbing ${
         selectedItemId === cardRuntimeKey ? 'ring-2 ring-white/80' : ''
       } ${draggable.isDragging ? 'opacity-45' : ''}`}
       {...draggable.listeners}
       {...tapSelection}
       {...draggable.attributes}
     >
-      <div className="mb-1.5 flex items-center justify-between gap-2">
-        <span className="truncate text-[10px] font-black uppercase tracking-[0.12em]">
-          PCIe Network
-        </span>
-        <RegistryLinkIndicator visible={registryLinkedItemKeys.has(cardRuntimeKey)} />
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          className="size-5 shrink-0 text-[#f4fff7] opacity-70 hover:opacity-100"
-          onPointerDown={(event) => event.stopPropagation()}
-          onClick={(event) => {
-            event.stopPropagation()
-            onRemoveAssignment(assignment.id)
-          }}
-        >
-          <X className="size-3" />
-        </Button>
+      <div className="mb-1.5 flex items-center justify-between gap-2 pr-5">
+        <AssignedExpansionHeading item={card} />
+        <AssignedItemCornerActions
+          itemName={card.name}
+          linked={registryLinkedItemKeys.has(cardRuntimeKey)}
+          onRemove={() => onRemoveAssignment(assignment.id)}
+          removeClassName="size-5 text-[#f4fff7]"
+          selected={selectedItemId === cardRuntimeKey}
+        />
       </div>
-      <div className="mb-2 truncate text-[11px] font-bold">{card.name}</div>
       <div className="flex gap-1.5 overflow-visible">
         {sortPorts(card.ports).map((port) => (
           <PortChip
@@ -761,7 +743,7 @@ export function NasNode({ data }: NodeProps<NasFlowNode>) {
       {...tapSelection}
     >
       {auditCount > 0 ? (
-        <div className="absolute -right-2 -top-2 z-10 flex h-7 min-w-7 items-center justify-center gap-1 rounded-full border border-[#ddb668] bg-[#fff2c7] px-2 text-[11px] font-black text-[#3d2a08] shadow-sm">
+        <div className="absolute -right-2 -bottom-2 z-30 flex h-7 min-w-7 items-center justify-center gap-1 rounded-full border border-[#ddb668] bg-[#fff2c7] px-2 text-[11px] font-black text-[#3d2a08] shadow-sm">
           <AlertTriangle className="size-3" />
           {auditCount}
         </div>
