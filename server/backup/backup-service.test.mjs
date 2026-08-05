@@ -1,10 +1,12 @@
 import fs from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
+import { createPublicKey, generateKeyPairSync } from 'node:crypto'
 import { afterEach, describe, expect, it } from 'vitest'
 import { HomelabInventoryStore } from '../db/store.mjs'
 import { createOwnerAccount, ensureProtectedOwnerRole } from '../auth/model.mjs'
 import { BackupService } from './backup-service.mjs'
+import { installationPublicKeyId } from '../../packages/catalog-protocol/src/index.ts'
 
 const tempDirs = []
 const stores = []
@@ -33,6 +35,26 @@ afterEach(async () => {
 })
 
 describe('portable backup service', () => {
+  async function writeEnrollment(dataDir, clientInstanceId, tokenCharacter) {
+    const directory = path.join(dataDir, 'registry')
+    const { privateKey } = generateKeyPairSync('ed25519')
+    const privateKeyPem = privateKey.export({ format: 'pem', type: 'pkcs8' }).toString()
+    const publicKey = createPublicKey(privateKey).export({ format: 'der', type: 'spki' }).toString('base64')
+    const publicKeyId = await installationPublicKeyId(publicKey)
+    await fs.mkdir(directory, { recursive: true, mode: 0o700 })
+    await fs.writeFile(path.join(directory, 'installation-instance.json'), `${JSON.stringify({ version: 1, clientInstanceId })}\n`, { mode: 0o600 })
+    await fs.writeFile(path.join(directory, 'installation-ed25519.pem'), privateKeyPem, { mode: 0o600 })
+    await fs.writeFile(path.join(directory, 'installation-credentials.json'), `${JSON.stringify({
+      installationKey: '22222222-2222-4222-8222-222222222222',
+      publicKeyId,
+      token: tokenCharacter.repeat(43),
+      tokenScope: 'contributions:write',
+      tokenExpiresAt: '2099-01-01T00:00:00.000Z',
+      clientInstanceId,
+    })}\n`, { mode: 0o600 })
+    return { privateKeyPem, publicKeyId }
+  }
+
   it.each(['archive', ['archive'], { length: 128 }, new Uint8Array([1, 2, 3])])(
     'rejects non-Buffer upload input %#',
     async (archive) => {
@@ -148,6 +170,31 @@ describe('portable backup service', () => {
       sections: ['authentication'],
       phase: 'restore',
     }])
+  })
+
+  it('restores the stable enrollment UUID, key, and credentials with private modes', async () => {
+    const { dataDir, service } = await createContext()
+    const originalId = '11111111-2222-4333-8444-555555555555'
+    const replacementId = 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee'
+    const original = await writeEnrollment(dataDir, originalId, 'a')
+    const created = await service.create({
+      sections: ['registryEnrollment'],
+      passphrase: 'correct horse battery staple',
+    })
+    await writeEnrollment(dataDir, replacementId, 'b')
+
+    const inspection = await service.inspect(created.archive, 'correct horse battery staple')
+    expect((await service.preflight(inspection.token, ['registryEnrollment'])).ok).toBe(true)
+    await service.restore(inspection.token, ['registryEnrollment'])
+
+    const directory = path.join(dataDir, 'registry')
+    expect((await fs.stat(directory)).mode & 0o777).toBe(0o700)
+    expect(JSON.parse(await fs.readFile(path.join(directory, 'installation-instance.json'), 'utf8')).clientInstanceId).toBe(originalId)
+    expect(await fs.readFile(path.join(directory, 'installation-ed25519.pem'), 'utf8')).toBe(original.privateKeyPem)
+    expect(JSON.parse(await fs.readFile(path.join(directory, 'installation-credentials.json'), 'utf8')).clientInstanceId).toBe(originalId)
+    for (const name of ['installation-instance.json', 'installation-ed25519.pem', 'installation-credentials.json']) {
+      expect((await fs.stat(path.join(directory, name))).mode & 0o777).toBe(0o600)
+    }
   })
 
   it('rolls back selected stores when a restore fails after replacement', async () => {

@@ -356,17 +356,22 @@ export async function discoverContributionCandidates(
 
 export function contributionStatus(store) {
   const registry = store.getRegistryState()
+  const identity = registry.installationIdentity
   const count = (records, state) => records.filter((record) => record.state === state).length
   return {
-    enabled: registry.settings.mode === 'connected' && registry.settings.automaticContributions === true,
+    enabled: registry.settings.mode === 'connected'
+      && registry.settings.automaticContributions === true
+      && identity?.state === 'active',
     queued: count(registry.contributionOutbox, 'queued'),
     retrying: count(registry.contributionOutbox, 'retrying'),
     delivered: count(registry.contributionLedger, 'delivered'),
     accepted: count(registry.contributionLedger, 'accepted'),
     rejected: count(registry.contributionLedger, 'rejected'),
     suppressed: count(registry.contributionLedger, 'suppressed'),
-    enrollment: registry.installationIdentity?.state ?? 'not-enrolled',
-    tokenExpiresAt: registry.installationIdentity?.tokenExpiresAt ?? null,
-    lastError: registry.contributionOutbox.find((record) => record.lastError)?.lastError ?? null,
+    enrollment: identity?.state ?? 'not-enrolled',
+    clientInstanceId: identity?.clientInstanceId ?? null,
+    recoveryKey: identity?.recoveryKey ?? null,
+    tokenExpiresAt: identity?.tokenExpiresAt ?? null,
+    lastError: identity?.lastError ?? registry.contributionOutbox.find((record) => record.lastError)?.lastError ?? null,
   }
 }

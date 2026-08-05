@@ -122,6 +122,14 @@ export function rotateRegistryContributionKey(): Promise<RegistryState['contribu
   return apiRequest('/api/registry/contributions/rotate-key', { method: 'POST' })
 }
 
+export function resumeRegistryContributionRecovery(): Promise<RegistryState['contributions']> {
+  return apiRequest('/api/registry/contributions/resume-recovery', { method: 'POST' })
+}
+
+export function resetRegistryContributionRecovery(): Promise<RegistryState['contributions']> {
+  return apiRequest('/api/registry/contributions/reset-recovery', { method: 'POST' })
+}
+
 export function createInventoryFromCatalog(
   templateKey: string,
   quantity = 1,

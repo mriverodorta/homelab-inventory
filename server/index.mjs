@@ -249,6 +249,7 @@ const contributionDelivery = installationIdentity
       digestHashes: (currentStore) => new SnapshotService(currentStore, { officialOrigin: registryOrigin }).knownContributionHashes(),
     })
   : null
+await installationIdentity?.initialize(store)
 const catalogRefreshCoordinator = store
   ? new CatalogRefreshCoordinator({
       store,
@@ -265,6 +266,9 @@ const backupService = store
       onRestoreApplied: async ({ sections }) => {
         if (sections.includes('authentication')) {
           await authorizationService.rebuild(store.getAuthenticationState())
+        }
+        if (sections.includes('registryEnrollment') || sections.includes('registryConfiguration')) {
+          await installationIdentity?.initialize(store)
         }
       },
     })

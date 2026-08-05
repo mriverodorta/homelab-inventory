@@ -143,6 +143,9 @@ The app keeps user data out of the application image. Runtime data lives in `/da
   backups/
   auth/
   registry/
+    installation-instance.json
+    installation-ed25519.pem
+    installation-credentials.json
 ```
 
 Only one app container should write to a mounted data directory.
@@ -187,7 +190,7 @@ Open **Settings > Backup & Restore** to create a complete portable backup or cho
 
 Restore is replacement-only. Before changing live data, the app validates archive paths, sizes, checksums, schema compatibility, and section dependencies; creates a complete pre-restore recovery backup; enters maintenance mode; and records a durable restore journal. A failed or interrupted restore rolls back automatically. Connected browsers reload after a successful restore.
 
-Portable archives use the `.hlibackup` format. Backups containing registry enrollment or agent credentials require a passphrase before download. Stored copies may also be encrypted with scrypt and AES-256-GCM. Keep that passphrase outside the app because it cannot be recovered.
+Portable archives use the `.hlibackup` format. Registry-enrollment backups include the stable installation UUID, signing key, and credentials as one validated set. Backups containing registry enrollment or agent credentials require a passphrase before download. Stored copies may also be encrypted with scrypt and AES-256-GCM. Keep that passphrase outside the app because it cannot be recovered.
 
 Daily or weekly complete backups can run at a configurable time with a configurable retention count. Set `TZ` in Docker Compose to make the deployment timezone authoritative, or choose an IANA timezone in Settings. Set `BACKUP_ENCRYPTION_PASSPHRASE` to at least 12 characters to encrypt scheduled stored backups. It is mandatory for scheduled backups once owner-authentication material exists.
 
@@ -221,7 +224,7 @@ Automatic catalog contributions are a separate explicit opt-in available only in
 
 Before delivery, eligible inventory is projected by hardware category and grouped by normalized product identity. Case, whitespace, manufacturer aliases, and private display names do not create duplicate candidates. Identical physical copies remain separate inventory records but produce one contribution candidate, while different board variants and RAM speeds remain distinct. Unidentified generic storage and ambiguous records are withheld locally. Exact matches to a published catalog definition link every matching local copy without asking the user to merge physical inventory.
 
-The Ed25519 private key and short-lived contribution token are backend-only mode-`0600` files under `/data/registry`. They are never stored in `registry.json`, returned to the browser, or included in catalog searches. The registry intake quarantines submissions behind deterministic validation and rate limits; intake does not invoke an AI model synchronously and no contribution is published without the registry moderation workflow.
+Each deployment keeps a random stable UUID in `/data/registry/installation-instance.json` beside its Ed25519 private key and short-lived contribution credentials. All three files are backend-only mode-`0600` enrollment state. The UUID is not derived from the host or inventory, key rotation preserves the same logical installation, and lost keys require registry-owner approval before contributions resume. Private keys and tokens are never stored in `registry.json`, returned to the browser, or included in catalog searches. The registry intake quarantines submissions behind deterministic validation and rate limits; intake does not invoke an AI model synchronously and no contribution is published without the registry moderation workflow.
 
 ## Docker Tags And Release Channels
 

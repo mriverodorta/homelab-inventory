@@ -46,5 +46,11 @@ export function useRegistrySettingsActions({
     rotateContributionKey: async () => {
       await mutations.rotateContributionKey.mutateAsync()
     },
+    resumeContributionRecovery: async () => {
+      await mutations.resumeContributionRecovery.mutateAsync()
+    },
+    resetContributionRecovery: async () => {
+      await mutations.resetContributionRecovery.mutateAsync()
+    },
   }), [applyCatalogUpdate, mutations, queryClient])
 }

@@ -281,6 +281,8 @@ describe('SettingsDialog', () => {
           rejected: 0,
           suppressed: 0,
           enrollment: 'not-enrolled',
+          clientInstanceId: null,
+          recoveryKey: null,
           tokenExpiresAt: null,
           lastError: null,
         },
@@ -344,6 +346,31 @@ describe('SettingsDialog', () => {
     expect(sendNow).toBeEnabled()
     fireEvent.click(sendNow)
     expect(onDeliverRegistryContributions).toHaveBeenCalledOnce()
+  })
+
+  it('shows stable installation recovery diagnostics and resumes only on demand', () => {
+    const onResumeRegistryContributionRecovery = vi.fn()
+    renderSettings({
+      registry: {
+        ...DEFAULT_REGISTRY_STATE,
+        settings: { ...DEFAULT_REGISTRY_STATE.settings, mode: 'connected', automaticContributions: true },
+        contributions: {
+          ...DEFAULT_REGISTRY_STATE.contributions,
+          enrollment: 'recovery-pending',
+          clientInstanceId: '11111111-2222-4333-8444-555555555555',
+          recoveryKey: '33333333-4444-4555-8666-777777777777',
+          lastError: 'Installation key recovery requires owner approval.',
+        },
+      },
+      onResumeRegistryContributionRecovery,
+    })
+    fireEvent.click(screen.getByRole('button', { name: /Registry.*Catalog and private templates/ }))
+
+    expect(screen.getByText(/Installation 11111111-2222-4333-8444-555555555555/)).toBeInTheDocument()
+    expect(screen.getByText(/Recovery 33333333-4444-4555-8666-777777777777/)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Send now' })).toBeDisabled()
+    fireEvent.click(screen.getByRole('button', { name: 'Check approval' }))
+    expect(onResumeRegistryContributionRecovery).toHaveBeenCalledOnce()
   })
 
   it('shows enrollment failures beside the automatic contribution switch', async () => {

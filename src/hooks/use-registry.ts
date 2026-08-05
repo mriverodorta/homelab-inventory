@@ -11,6 +11,8 @@ import {
   deliverRegistryContributions,
   revokeRegistryContributions,
   rotateRegistryContributionKey,
+  resumeRegistryContributionRecovery,
+  resetRegistryContributionRecovery,
   searchOfficialCatalog,
   updateRegistrySettings,
 } from '@/lib/registry-api'
@@ -32,6 +34,7 @@ export function useRegistryMutations() {
     updateSettings: useMutation({
       mutationFn: (input: Parameters<typeof updateRegistrySettings>) => updateRegistrySettings(...input),
       onSuccess: updateCache,
+      onError: () => queryClient.invalidateQueries({ queryKey: REGISTRY_QUERY_KEY }),
     }),
     createTemplate: useMutation({ mutationFn: createPrivateTemplate, onSuccess: updateCache }),
     duplicateTemplate: useMutation({ mutationFn: duplicatePrivateTemplate, onSuccess: updateCache }),
@@ -58,6 +61,14 @@ export function useRegistryMutations() {
     }),
     rotateContributionKey: useMutation({
       mutationFn: rotateRegistryContributionKey,
+      onSuccess: () => queryClient.invalidateQueries({ queryKey: REGISTRY_QUERY_KEY }),
+    }),
+    resumeContributionRecovery: useMutation({
+      mutationFn: resumeRegistryContributionRecovery,
+      onSettled: () => queryClient.invalidateQueries({ queryKey: REGISTRY_QUERY_KEY }),
+    }),
+    resetContributionRecovery: useMutation({
+      mutationFn: resetRegistryContributionRecovery,
       onSuccess: () => queryClient.invalidateQueries({ queryKey: REGISTRY_QUERY_KEY }),
     }),
   }

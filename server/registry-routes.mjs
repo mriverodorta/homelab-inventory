@@ -2,6 +2,7 @@ import { InventoryLifecycleError } from './db/inventory-lifecycle.mjs'
 import { isRelationalId } from './db/relational-ids.mjs'
 import { SnapshotService } from './registry/snapshot-service.mjs'
 import { contributionStatus } from './registry/contribution-service.mjs'
+import { InstallationRecoveryError } from './registry/installation-identity.mjs'
 import { APPLICATION_OEM_CONTRACT_VERSION } from './app-health.mjs'
 
 const DEFAULT_REGISTRY_POLICY = Object.freeze({
@@ -107,6 +108,14 @@ function respondError(response, error, fallback) {
     })
     return
   }
+  if (error instanceof InstallationRecoveryError) {
+    response.status(409).json({
+      message: error.message,
+      code: error.code,
+      recoveryKey: error.recoveryKey,
+    })
+    return
+  }
   console.error('[registry] Request failed.', error instanceof Error ? error.message : error)
   response.status(500).json({
     message: fallback,
@@ -180,7 +189,14 @@ export function registerRegistryRoutes(app, {
             code: 'contributions-unavailable', status: 503,
           })
         }
-        await identityService.credentials(store)
+        try {
+          await identityService.credentials(store)
+        } catch (error) {
+          if (error instanceof InstallationRecoveryError) {
+            store.updateRegistrySettings({ ...settings, automaticContributions: true }, request.body?.expectedUpdatedAt)
+          }
+          throw error
+        }
       }
       store.updateRegistrySettings({
         ...settings,
@@ -425,6 +441,29 @@ export function registerRegistryRoutes(app, {
         code: 'contributions-unavailable', status: 503,
       })
       await identityService.rotate(store)
+      response.json(contributionStatus(store))
+    })
+  })
+
+  app.post('/api/registry/contributions/resume-recovery', (request, response) => {
+    run(withStore, request, response, async (store) => {
+      if (!policy.contributionsAllowed) throw demoPolicyError()
+      if (!identityService) throw new InventoryLifecycleError('Registry enrollment recovery is unavailable.', {
+        code: 'contributions-unavailable', status: 503,
+      })
+      await identityService.resumeRecovery(store)
+      if (store.getRegistryState().settings.automaticContributions) void deliveryService?.trigger(store)
+      response.json(contributionStatus(store))
+    })
+  })
+
+  app.post('/api/registry/contributions/reset-recovery', (request, response) => {
+    run(withStore, request, response, async (store) => {
+      if (!policy.contributionsAllowed) throw demoPolicyError()
+      if (!identityService) throw new InventoryLifecycleError('Registry enrollment recovery is unavailable.', {
+        code: 'contributions-unavailable', status: 503,
+      })
+      await identityService.resetRecovery(store)
       response.json(contributionStatus(store))
     })
   })

@@ -78,7 +78,9 @@ export function createSettingsDialogProps({
       || registryMutations.refreshCatalog.isPending
       || registryMutations.deliverContributions.isPending
       || registryMutations.revokeContributions.isPending
-      || registryMutations.rotateContributionKey.isPending,
+      || registryMutations.rotateContributionKey.isPending
+      || registryMutations.resumeContributionRecovery.isPending
+      || registryMutations.resetContributionRecovery.isPending,
     onOpenChange: setOpen,
     onProjectNameChange: updateProjectName,
     onInventoryVisibleChange: preferences.setDesktopInventoryVisible,
@@ -116,5 +118,7 @@ export function createSettingsDialogProps({
     onDeliverRegistryContributions: registryActions.deliverContributions,
     onRevokeRegistryContributions: registryActions.revokeContributions,
     onRotateRegistryContributionKey: registryActions.rotateContributionKey,
+    onResumeRegistryContributionRecovery: registryActions.resumeContributionRecovery,
+    onResetRegistryContributionRecovery: registryActions.resetContributionRecovery,
   }
 }

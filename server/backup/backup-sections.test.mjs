@@ -6,6 +6,7 @@ import { createBackupManagementStore } from './backup-model.mjs'
 import { collectBackupSections, materializeBackupSections } from './backup-sections.mjs'
 import { createRegistryStore } from '../registry/model.mjs'
 import { createAuthenticationStore } from '../auth/model.mjs'
+import { COMPLETE_BACKUP_SECTIONS } from '../../shared/backup/contract.mjs'
 
 function stores() {
   return {
@@ -37,6 +38,52 @@ describe('backup section ownership', () => {
     const replacements = materializeBackupSections({ files, sections: ['registryEnrollment'], currentStores: current })
     expect(replacements.registry.settings.mode).toBe('connected')
     expect(replacements.registry.installationIdentity).toEqual({ state: 'active' })
+  })
+
+  it('keeps destination enrollment when restoring registry configuration only', () => {
+    const current = stores()
+    const enrollment = {
+      installationKey: '22222222-2222-4222-8222-222222222222',
+      publicKeyId: 'a'.repeat(64),
+      clientInstanceId: '11111111-2222-4333-8444-555555555555',
+      state: 'active',
+    }
+    current.registry.installationIdentity = enrollment
+    const files = new Map([[
+      'sections/registry-configuration.json',
+      Buffer.from(JSON.stringify({ ...createRegistryStore(), settings: { ...createRegistryStore().settings, mode: 'offline' } })),
+    ]])
+
+    const replacements = materializeBackupSections({ files, sections: ['registryConfiguration'], currentStores: current })
+
+    expect(replacements.registry.settings.mode).toBe('offline')
+    expect(replacements.registry.installationIdentity).toEqual(enrollment)
+  })
+
+  it('includes the stable installation instance in enrollment backups', async () => {
+    const dataDir = await fs.mkdtemp(path.join(os.tmpdir(), 'hli-enrollment-sections-'))
+    const directory = path.join(dataDir, 'registry')
+    await fs.mkdir(directory, { recursive: true })
+    await fs.writeFile(path.join(directory, 'installation-instance.json'), '{"version":1,"clientInstanceId":"11111111-2222-4333-8444-555555555555"}\n')
+    await fs.writeFile(path.join(directory, 'installation-ed25519.pem'), 'private-key')
+    await fs.writeFile(path.join(directory, 'installation-credentials.json'), '{}')
+
+    const result = await collectBackupSections({
+      store: { dataDir, snapshotStores: async () => stores() },
+      sections: ['registryEnrollment'],
+    })
+
+    expect(result.files.map((file) => file.name)).toEqual([
+      'sections/registry-enrollment.json',
+      'registry/installation-instance.json',
+      'registry/installation-ed25519.pem',
+      'registry/installation-credentials.json',
+    ])
+    const complete = await collectBackupSections({
+      store: { dataDir, snapshotStores: async () => stores() },
+      sections: COMPLETE_BACKUP_SECTIONS,
+    })
+    expect(complete.files.map((file) => file.name)).toContain('registry/installation-instance.json')
   })
 
   it('collects and materializes owner authentication independently', async () => {

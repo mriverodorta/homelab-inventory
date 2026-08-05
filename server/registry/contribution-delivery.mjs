@@ -36,6 +36,7 @@ export class ContributionDeliveryService {
     const registry = store.getRegistryState()
     if (
       registry.settings.mode !== 'connected'
+      || registry.installationIdentity?.state !== 'active'
       || (!explicit && registry.settings.automaticContributions !== true)
     ) {
       return contributionStatus(store)
@@ -144,6 +145,7 @@ export class ContributionDeliveryService {
     const registry = store.getRegistryState()
     if (
       registry.settings.mode !== 'connected'
+      || registry.installationIdentity?.state !== 'active'
       || (!explicit && registry.settings.automaticContributions !== true)
     ) {
       return Promise.resolve(contributionStatus(store))

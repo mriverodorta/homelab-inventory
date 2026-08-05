@@ -80,6 +80,8 @@ Eligible opt-in contributions are normalized by hardware category and deduplicat
 
 Registry mode defaults to **Disabled**. **Offline file** mode verifies a signed immutable catalog without making outbound requests. **Connected** mode communicates only with the fixed official registry endpoint, keeps catalog search local, and retains the last-known-good catalog if verification fails. Automatic contributions require separate explicit consent and never block an inventory save.
 
+Each deployment keeps a random stable UUID, Ed25519 signing key, and short-lived credentials as mode-`0600` backend files under `/data/registry`. The UUID is not derived from the host or inventory. Authenticated key rotation preserves the logical installation, while a missing key stops delivery until registry-owner recovery approval. Private keys and tokens are never returned to the browser.
+
 ## Normal Production
 
 Use the `stable` image for regular homelab deployments:
@@ -165,6 +167,9 @@ The data layout is:
   backups/
   auth/
   registry/
+    installation-instance.json
+    installation-ed25519.pem
+    installation-credentials.json
 ```
 
 Only one app container should write to the same mounted `/data` directory.
@@ -173,7 +178,7 @@ Only one app container should write to the same mounted `/data` directory.
 
 **Settings > Backup & Restore** creates portable `.hlibackup` archives. Use a complete backup for every portable section or select only inventory, project topology, registry configuration and enrollment, catalog state, agents, telemetry, application metadata, or the disposable cable-routing cache. Restore can replace the complete backup or only selected sections from it.
 
-Every restore performs bounded archive and checksum validation, a dependency-aware preflight, a complete pre-restore recovery backup, maintenance mode, and a journaled atomic replacement. Failed or interrupted restores roll back automatically. Archives containing registry enrollment or agent credentials require a passphrase before download and use scrypt with AES-256-GCM when encrypted.
+Every restore performs bounded archive and checksum validation, a dependency-aware preflight, a complete pre-restore recovery backup, maintenance mode, and a journaled atomic replacement. Failed or interrupted restores roll back automatically. Registry-enrollment backups carry the stable installation UUID, signing key, and credentials as one validated set. Archives containing registry enrollment or agent credentials require a passphrase before download and use scrypt with AES-256-GCM when encrypted.
 
 Daily or weekly complete backups support a configurable time, weekday, timezone, and retention count. Docker `TZ` takes precedence over the UI timezone. Set `BACKUP_ENCRYPTION_PASSPHRASE` to at least 12 characters to encrypt scheduled stored backups. It is required for scheduled backups once owner-authentication material exists. Authentication is omitted from custom archives by default and can be exported only with archive encryption. Keep encryption passphrases outside the app.
 

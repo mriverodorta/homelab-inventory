@@ -25,7 +25,7 @@ export const BACKUP_SECTIONS = Object.freeze({
   },
   registryEnrollment: {
     label: 'Registry enrollment',
-    description: 'Installation signing key and registry credentials.',
+    description: 'Stable installation UUID, signing key, and registry credentials.',
     sensitive: true,
   },
   authentication: {

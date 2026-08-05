@@ -83,7 +83,7 @@ describe('registry routes', () => {
     expect(refresh.status).toBe(200)
     expect(refreshConnected).toHaveBeenCalledOnce()
 
-    for (const route of ['deliver', 'revoke', 'rotate-key']) {
+    for (const route of ['deliver', 'revoke', 'rotate-key', 'resume-recovery', 'reset-recovery']) {
       const response = await fetch(`${baseUrl}/api/registry/contributions/${route}`, { method: 'POST' })
       expect(response.status).toBe(403)
       expect(await response.json()).toMatchObject({ code: 'demo-registry-policy' })
@@ -138,6 +138,40 @@ describe('registry routes', () => {
 
     expect(response.status).toBe(200)
     expect(deliveryService.trigger).toHaveBeenCalledWith(store, { explicit: true })
+  })
+
+  it('resumes an approved installation recovery and restarts opted-in delivery', async () => {
+    const identityService = {
+      resumeRecovery: vi.fn(async (store) => store.registryTransaction((draft) => {
+        draft.installationIdentity.state = 'active'
+        draft.installationIdentity.recoveryKey = null
+        draft.installationIdentity.lastError = null
+      })),
+    }
+    const deliveryService = { trigger: vi.fn(async () => undefined) }
+    const { baseUrl, store } = await createServer({ identityService, deliveryService })
+    store.registryTransaction((draft) => {
+      draft.settings.mode = 'connected'
+      draft.settings.automaticContributions = true
+      draft.installationIdentity = {
+        installationKey: '22222222-2222-4222-8222-222222222222',
+        publicKeyId: 'a'.repeat(64),
+        clientInstanceId: '11111111-2222-4333-8444-555555555555',
+        state: 'recovery-pending',
+        recoveryKey: '33333333-4444-4555-8666-777777777777',
+        lastError: 'Approval required.',
+        activatedAt: null,
+        tokenExpiresAt: null,
+        revokedAt: null,
+      }
+    })
+
+    const response = await fetch(`${baseUrl}/api/registry/contributions/resume-recovery`, { method: 'POST' })
+
+    expect(response.status).toBe(200)
+    expect(await response.json()).toMatchObject({ enrollment: 'active', enabled: true })
+    expect(identityService.resumeRecovery).toHaveBeenCalledWith(store)
+    expect(deliveryService.trigger).toHaveBeenCalledWith(store)
   })
 
   it('rejects explicit contribution delivery outside connected registry mode', async () => {

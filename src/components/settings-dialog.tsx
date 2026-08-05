@@ -141,6 +141,8 @@ export type SettingsDialogProps = {
   onDeliverRegistryContributions?: () => Promise<void>
   onRevokeRegistryContributions?: () => Promise<void>
   onRotateRegistryContributionKey?: () => Promise<void>
+  onResumeRegistryContributionRecovery?: () => Promise<void>
+  onResetRegistryContributionRecovery?: () => Promise<void>
 }
 
 const categories: Array<{
@@ -534,6 +536,27 @@ function RegistrySettingsPanel(props: SettingsDialogProps) {
     }
   }
 
+  async function resumeContributionRecovery() {
+    if (!props.onResumeRegistryContributionRecovery) return
+    setContributionError(null)
+    try {
+      await props.onResumeRegistryContributionRecovery()
+      setTransferStatus('Registry installation recovery is active.')
+    } catch (error) {
+      setContributionError(error instanceof Error ? error.message : 'Registry installation recovery is still pending.')
+    }
+  }
+
+  const enrollmentDescription = contributions.enrollment === 'active'
+    ? 'This installation is enrolled with a backend-only signing key.'
+    : contributions.enrollment === 'recovery-pending'
+      ? 'A replacement signing key is waiting for owner approval in the registry.'
+      : contributions.enrollment === 'rejected'
+        ? 'The registry owner rejected this signing-key recovery request.'
+        : contributions.enrollment === 'revoked'
+          ? 'Registry enrollment has been revoked.'
+          : 'This installation is not enrolled.'
+
   return (
     <SettingsSection title="Registry" description="Choose how this installation finds reusable hardware definitions.">
       <SettingRow
@@ -624,9 +647,11 @@ function RegistrySettingsPanel(props: SettingsDialogProps) {
           <div>
             <h3 className="text-sm font-black text-[#28231f]">Contribution delivery</h3>
             <p className="mt-1 text-xs leading-5 text-[#756d62]">
-              {contributions.enrollment === 'active' ? 'This installation is enrolled with a backend-only signing key.' : contributions.enrollment === 'revoked' ? 'Registry enrollment has been revoked.' : 'This installation is not enrolled.'}
+              {enrollmentDescription}
               {' '}{contributions.queued} queued, {contributions.retrying} retrying, {contributions.delivered} delivered, and {contributions.suppressed} suppressed.
             </p>
+            {contributions.clientInstanceId ? <p className="mt-1 break-all font-mono text-[11px] text-[#756d62]">Installation {contributions.clientInstanceId}</p> : null}
+            {contributions.recoveryKey ? <p className="mt-1 break-all font-mono text-[11px] text-[#756d62]">Recovery {contributions.recoveryKey}</p> : null}
             {contributions.lastError ? <p className="mt-1 text-xs font-semibold text-[#9b3f32]">{contributions.lastError}</p> : null}
           </div>
           <div className="flex flex-wrap justify-end gap-2">
@@ -655,9 +680,22 @@ function RegistrySettingsPanel(props: SettingsDialogProps) {
             {canContributeRegistry && contributions.enrollment === 'active' && props.onRotateRegistryContributionKey ? (
               <ConfirmSettingsAction
                 title="Rotate installation signing key?"
-                description="The current registry enrollment will be revoked and replaced with a new backend-only Ed25519 key. Queued contributions stay local and will use the new identity."
+                description="The registry will authenticate the current installation before replacing its backend-only Ed25519 key. The current key and credentials remain unchanged if rotation fails."
                 actionLabel="Rotate key"
                 onConfirm={props.onRotateRegistryContributionKey}
+              />
+            ) : null}
+            {canContributeRegistry && contributions.enrollment === 'recovery-pending' && props.onResumeRegistryContributionRecovery ? (
+              <Button type="button" variant="outline" onClick={() => void resumeContributionRecovery()}>
+                Check approval
+              </Button>
+            ) : null}
+            {canContributeRegistry && contributions.enrollment === 'rejected' && props.onResetRegistryContributionRecovery ? (
+              <ConfirmSettingsAction
+                title="Reset rejected enrollment recovery?"
+                description="This removes the rejected replacement key from this installation. The stable installation identifier remains unchanged, and automatic contributions stay disabled until you enroll again."
+                actionLabel="Reset recovery"
+                onConfirm={props.onResetRegistryContributionRecovery}
               />
             ) : null}
           </div>

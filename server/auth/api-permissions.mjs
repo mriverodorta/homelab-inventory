@@ -62,7 +62,7 @@ const PROTECTED_ROUTES = [
 
   ['GET', /^\/api\/registry(?:\/.*)?$/, 'registry.view'],
   ['PATCH', /^\/api\/registry\/settings\/?$/, 'registry.manage'],
-  ['POST', /^\/api\/registry\/contributions\/(?:deliver|revoke|rotate-key)\/?$/, 'registry.contribute'],
+  ['POST', /^\/api\/registry\/contributions\/(?:deliver|revoke|rotate-key|resume-recovery|reset-recovery)\/?$/, 'registry.contribute'],
   ['POST', /^\/api\/registry(?:\/(?!contributions\/).*)?$/, 'registry.manage'],
   ['DELETE', /^\/api\/registry(?:\/.*)?$/, 'registry.manage'],
 

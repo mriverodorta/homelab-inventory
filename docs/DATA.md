@@ -20,6 +20,7 @@ Homelab Inventory stores data in JSON files managed through lowdb.
   auth/
     oidc-client-secret
   registry/
+    installation-instance.json
     installation-ed25519.pem
     installation-credentials.json
 ```
@@ -62,7 +63,7 @@ Schema 15 adds `stores/registry.json` as an independent lowdb store. Private tem
 
 Verified signed artifacts are retained as immutable generations under `/data/catalog/generations`. Each generation keeps its signed snapshot, digest index, and disposable SQLite search index together, while `/data/catalog/active-generation.json` identifies the active generation. The backend can recover that pointer and rebuild a missing search index from the verified artifacts after an interrupted update. Catalog links never use names or UI keys as relationships.
 
-When automatic contributions are explicitly enabled, `/data/registry/installation-ed25519.pem` and `/data/registry/installation-credentials.json` are created with mode `0600`. The private key and short-lived token never enter lowdb or browser API responses. Back up these files with the rest of `/data`; revoking enrollment invalidates the remote token, and rotating the key replaces both files without changing queued hardware records.
+The app creates `/data/registry/installation-instance.json` with a random UUID v4 and mode `0600`, then retains it for the lifetime of that deployment. When automatic contributions are explicitly enabled, `/data/registry/installation-ed25519.pem` and `/data/registry/installation-credentials.json` are also created with mode `0600`. The UUID identifies the logical installation while Ed25519 keys authenticate it; it is never derived from a hostname, address, or hardware fingerprint. The private key and short-lived token never enter lowdb or browser API responses. Authenticated rotation changes the key without changing the installation UUID, and a missing key enters owner-reviewed recovery instead of enrolling a duplicate installation.
 
 ### Schema 16 Physical RAM Records
 
@@ -92,7 +93,7 @@ Create and restore them from **Settings > Backup & Restore**. Complete archives 
 
 The restore preflight validates archive bounds, paths, hashes, schema compatibility, and dependencies before writes begin. The app then creates a complete pre-restore backup and uses maintenance mode plus a durable journal so failed or interrupted replacement can be rolled back. Backup history itself is excluded from archives to prevent recursion.
 
-Sensitive archives require a passphrase for download. Optional encrypted stored copies use scrypt and AES-256-GCM. Authentication is excluded from custom archives by default and cannot be exported unencrypted; complete archives include it. Scheduled complete backups can run daily or weekly at a configured time with a configurable retention count. Docker `TZ` is authoritative when set. Scheduled backups require `BACKUP_ENCRYPTION_PASSPHRASE` once authentication material exists.
+Sensitive archives require a passphrase for download. Registry-enrollment and complete archives include the installation UUID, signing key, and credentials together and validate their relationship before restore. Optional encrypted stored copies use scrypt and AES-256-GCM. Authentication is excluded from custom archives by default and cannot be exported unencrypted; complete archives include it. Scheduled complete backups can run daily or weekly at a configured time with a configurable retention count. Docker `TZ` is authoritative when set. Scheduled backups require `BACKUP_ENCRYPTION_PASSPHRASE` once authentication material exists.
 
 User backup directories are mode `0700` and files are mode `0600`. Migration and pre-restore recovery backups remain separate from ordinary portable archives.
 

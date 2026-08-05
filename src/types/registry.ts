@@ -57,7 +57,9 @@ export type ContributionStatus = {
   accepted: number
   rejected: number
   suppressed: number
-  enrollment: 'not-enrolled' | 'active' | 'revoked'
+  enrollment: 'not-enrolled' | 'active' | 'recovery-pending' | 'rejected' | 'revoked'
+  clientInstanceId: string | null
+  recoveryKey: string | null
   tokenExpiresAt: string | null
   lastError: string | null
 }
@@ -282,6 +284,8 @@ export const DEFAULT_REGISTRY_STATE: RegistryState = {
     rejected: 0,
     suppressed: 0,
     enrollment: 'not-enrolled',
+    clientInstanceId: null,
+    recoveryKey: null,
     tokenExpiresAt: null,
     lastError: null,
   },

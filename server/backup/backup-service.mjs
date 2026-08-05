@@ -361,7 +361,8 @@ export class BackupService {
     if (sections.includes('registryEnrollment')) {
       const directory = path.join(this.store.dataDir, 'registry')
       await fs.mkdir(directory, { recursive: true, mode: 0o700 })
-      for (const name of ['installation-ed25519.pem', 'installation-credentials.json']) await fs.rm(path.join(directory, name), { force: true })
+      await fs.chmod(directory, 0o700)
+      for (const name of ['installation-instance.json', 'installation-ed25519.pem', 'installation-credentials.json']) await fs.rm(path.join(directory, name), { force: true })
       for (const file of enrollmentFilesFromArchive(parsed.files)) await writePrivate(path.join(directory, file.relativePath), file.body)
     }
     if (sections.includes('catalogState')) {

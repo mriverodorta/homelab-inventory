@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import vectors from './vectors/canonical-items.json'
 import {
   CPU_SPEC_KEYS,
+  activationSignaturePayload,
   canonicalJson,
   computeCatalogDigests,
   digestCatalogTemplate,
@@ -10,6 +11,19 @@ import {
 } from '../src'
 
 describe('catalog protocol normalization', () => {
+  it('preserves legacy activation signature bytes while binding stable installation UUIDs', () => {
+    const challenge = {
+      challengeKey: '11111111-1111-4111-8111-111111111111',
+      nonce: 'abc',
+      publicKeyId: 'def',
+      publicKey: 'ghi',
+      expiresAt: '2026-01-01T00:00:00.000Z',
+    }
+    expect(activationSignaturePayload(challenge)).toBe('{"challengekey":"11111111-1111-4111-8111-111111111111","expiresat":"2026-01-01t00:00:00.000z","nonce":"abc","protocol":"hli-contribution-v1","publickey":"ghi","publickeyid":"def","purpose":"installation-activation"}')
+    expect(activationSignaturePayload({ ...challenge, clientInstanceId: '22222222-2222-4222-8222-222222222222' }))
+      .toContain('"clientinstanceid":"22222222-2222-4222-8222-222222222222"')
+  })
+
   it('normalizes controlled manufacturer aliases', () => {
     expect(normalizeManufacturer(' Hewlett-Packard ')).toBe('hp')
     expect(normalizeManufacturer('INTEL Corporation')).toBe('intel')

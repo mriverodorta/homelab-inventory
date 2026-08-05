@@ -101,9 +101,18 @@ const RELEASE_0_3_0_DETAILS: UnreleasedReleaseNotes = {
 }
 
 export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
-  highlights: [],
-  fixes: [],
-  notes: [],
+  highlights: [
+    'Registry enrollment now has a permanent random installation UUID and owner-reviewed lost-key recovery with actionable status in Registry settings.',
+    'Complete and registry-enrollment backups now carry the stable UUID, signing key, and credentials as one validated identity set.',
+  ],
+  fixes: [
+    'Existing connected installations adopt the stable identity using their current Ed25519 key, and deleted public registry state rebuilds without creating a duplicate remote installation.',
+    'Authenticated key rotation preserves the active key and credentials unless the registry successfully accepts and returns the replacement identity.',
+    'Contribution delivery stops during pending or rejected recovery, while private local/live synchronization preserves the destination registry identity in both directions.',
+  ],
+  notes: [
+    'Public demo sessions remain unable to enroll, rotate, recover, or contribute.',
+  ],
 }
 
 const RELEASE_0_8_5_DETAILS: UnreleasedReleaseNotes = {

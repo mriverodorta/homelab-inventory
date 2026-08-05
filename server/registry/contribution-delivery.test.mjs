@@ -6,6 +6,17 @@ function fixture({ mode = 'connected', automaticContributions = true } = {}) {
   let registry = createRegistryStore()
   registry.settings.mode = mode
   registry.settings.automaticContributions = automaticContributions
+  registry.installationIdentity = {
+    installationKey: '11111111-1111-4111-8111-111111111111',
+    publicKeyId: 'a'.repeat(64),
+    clientInstanceId: '11111111-1111-4111-8111-111111111111',
+    state: 'active',
+    activatedAt: '2026-07-26T00:00:00.000Z',
+    tokenExpiresAt: '2026-07-26T13:00:00.000Z',
+    recoveryKey: null,
+    lastError: null,
+    revokedAt: null,
+  }
   const item = { id: 1, key: 'cpu:1', type: 'cpu', name: 'Example CPU', manufacturer: 'Example', model: 'C1' }
   return {
     getRegistryState: () => structuredClone(registry),
@@ -67,6 +78,19 @@ describe('contribution delivery', () => {
     const service = new ContributionDeliveryService({ identityService })
 
     await service.trigger(store)
+
+    expect(identityService.signedPost).not.toHaveBeenCalled()
+    expect(store.getRegistryState().contributionOutbox).toEqual([])
+  })
+
+  it('stops explicit and scheduled delivery while installation recovery is pending', async () => {
+    const store = fixture()
+    store.registryTransaction((draft) => { draft.installationIdentity.state = 'recovery-pending' })
+    const identityService = { signedPost: vi.fn() }
+    const service = new ContributionDeliveryService({ identityService })
+
+    await service.trigger(store)
+    await service.trigger(store, { explicit: true })
 
     expect(identityService.signedPost).not.toHaveBeenCalled()
     expect(store.getRegistryState().contributionOutbox).toEqual([])

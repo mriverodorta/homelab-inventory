@@ -1,7 +1,10 @@
 import fs from 'node:fs/promises'
 import path from 'node:path'
+import { createHash, createPrivateKey, createPublicKey } from 'node:crypto'
 import { normalizeBackupSections } from '../../shared/backup/contract.mjs'
 import { createRegistryStore, normalizeRegistryStore } from '../registry/model.mjs'
+import { parseInstallationInstance } from '../registry/installation-instance.mjs'
+import { normalizeInstallationCredentials } from '../registry/installation-identity.mjs'
 
 const JSON_SECTION_FILES = Object.freeze({
   inventory: 'sections/inventory.json',
@@ -16,6 +19,7 @@ const JSON_SECTION_FILES = Object.freeze({
   applicationMetadata: 'sections/application-metadata.json',
 })
 const ENROLLMENT_FILE_NAMES = new Set([
+  'installation-instance.json',
   'installation-ed25519.pem',
   'installation-credentials.json',
 ])
@@ -66,7 +70,7 @@ export async function collectBackupSections({ store, sections, demo = false }) {
     if (section === 'registryEnrollment') {
       const enrollmentFiles = []
       const registryDir = path.join(store.dataDir, 'registry')
-      for (const name of ['installation-ed25519.pem', 'installation-credentials.json']) {
+      for (const name of ENROLLMENT_FILE_NAMES) {
         const absolute = path.join(registryDir, name)
         if (await pathExists(absolute)) enrollmentFiles.push({ name: `registry/${name}`, body: await fs.readFile(absolute) })
       }
@@ -138,6 +142,51 @@ export function enrollmentFilesFromArchive(files) {
   return [...files.entries()]
     .filter(([name]) => name.startsWith('registry/') && ENROLLMENT_FILE_NAMES.has(name.slice('registry/'.length)))
     .map(([name, body]) => ({ relativePath: name.slice('registry/'.length), body }))
+}
+
+export function validateEnrollmentFiles(files) {
+  const marker = parseJson(files, JSON_SECTION_FILES.registryEnrollment)
+  const unexpected = [...files.keys()].filter((name) => name.startsWith('registry/') && !ENROLLMENT_FILE_NAMES.has(name.slice('registry/'.length)))
+  if (unexpected.length > 0) throw new Error('Registry enrollment backup contains unsupported files.')
+  const archived = new Map(enrollmentFilesFromArchive(files).map((file) => [file.relativePath, file.body]))
+  if (!Array.isArray(marker.files) || marker.files.some((name) => typeof name !== 'string')) {
+    throw new Error('Registry enrollment backup file list is invalid.')
+  }
+  const expected = [...new Set(marker.files)].sort()
+  const actual = [...archived.keys()].map((name) => `registry/${name}`).sort()
+  if (JSON.stringify(expected) !== JSON.stringify(actual)) {
+    throw new Error('Registry enrollment backup files do not match the manifest.')
+  }
+  const instanceBody = archived.get('installation-instance.json')
+  const instance = instanceBody ? parseInstallationInstance(instanceBody) : null
+  const keyBody = archived.get('installation-ed25519.pem')
+  const credentialsBody = archived.get('installation-credentials.json')
+  if (credentialsBody && !keyBody) throw new Error('Registry enrollment credentials require an installation signing key.')
+  let publicKeyId = null
+  if (keyBody) {
+    try {
+      const privateKey = createPrivateKey(keyBody)
+      if (privateKey.asymmetricKeyType !== 'ed25519') throw new Error('unsupported key')
+      const publicKey = createPublicKey(privateKey).export({ format: 'der', type: 'spki' }).toString('base64')
+      publicKeyId = createHash('sha256').update(`hli-contribution-v1:installation-key:${publicKey}`).digest('hex')
+    } catch {
+      throw new Error('Registry enrollment signing key is invalid.')
+    }
+  }
+  if (credentialsBody) {
+    let parsed
+    try { parsed = JSON.parse(credentialsBody.toString('utf8')) } catch { throw new Error('Registry enrollment credentials are invalid JSON.') }
+    const credentials = normalizeInstallationCredentials(parsed, {
+      clientInstanceId: instance?.clientInstanceId ?? null,
+      allowLegacy: !instance,
+    })
+    if (!credentials) throw new Error('Registry enrollment credentials are invalid.')
+    if (publicKeyId !== credentials.publicKeyId) throw new Error('Registry enrollment credentials do not match the signing key.')
+  }
+  if (marker.installationIdentity?.clientInstanceId && instance && marker.installationIdentity.clientInstanceId !== instance.clientInstanceId) {
+    throw new Error('Registry enrollment projection does not match the installation instance.')
+  }
+  return { instance, publicKeyId }
 }
 
 export { JSON_SECTION_FILES }

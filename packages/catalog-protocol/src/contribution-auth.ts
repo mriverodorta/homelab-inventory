@@ -11,6 +11,7 @@ export type InstallationChallenge = {
   publicKeyId: string
   publicKey: string
   expiresAt: string
+  clientInstanceId?: string
 }
 
 export type SignedRequestInput = {
@@ -34,6 +35,7 @@ export function activationSignaturePayload(challenge: InstallationChallenge): st
     publicKeyId: challenge.publicKeyId,
     publicKey: challenge.publicKey,
     expiresAt: challenge.expiresAt,
+    ...(challenge.clientInstanceId ? { clientInstanceId: challenge.clientInstanceId } : {}),
   })
 }
 

@@ -6,6 +6,21 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 
 ## Unreleased
 
+### Added
+
+- Added a permanent random installation UUID for registry enrollment, owner-reviewed lost-key recovery states, and explicit approval checks in Registry settings.
+
+### Changed
+
+- Registry key rotation now uses the authenticated rotation protocol and preserves the current key and credentials byte-for-byte unless the registry accepts the replacement.
+- Complete and registry-enrollment backups now include and validate the stable installation UUID together with the signing key and credentials.
+
+### Fixed
+
+- Existing registry installations adopt the stable UUID with their current Ed25519 key, and deleted public registry state rebuilds without creating another remote installation.
+- Private local/live synchronization now moves only allowlisted business stores while preserving each destination environment's registry UUID, key, credentials, and public enrollment projection.
+- Contribution delivery remains stopped during pending or rejected key recovery and public demo sessions cannot enroll, rotate, recover, or contribute.
+
 ## [0.8.5] - 2026-08-05
 
 ### Fixed

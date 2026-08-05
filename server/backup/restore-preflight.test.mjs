@@ -19,8 +19,25 @@ describe('restore preflight', () => {
       backupManagement: createBackupManagementStore(), routingCache: {}, meta: { schemaVersion: 20 },
       authentication: createAuthenticationStore(),
     }
-    const files = new Map([['sections/registry-enrollment.json', Buffer.from('{"installationIdentity":null}')]])
+    const files = new Map([['sections/registry-enrollment.json', Buffer.from('{"installationIdentity":null,"files":[]}')]])
     expect(preflightRestore({ manifest: { schemaVersion: 20, sections: ['registryEnrollment'] }, files, currentStores }).ok).toBe(true)
+  })
+
+  it('blocks a malformed stable installation instance before restore', () => {
+    const currentStores = {
+      inventory: { servers: [], pcBuilds: [], cpus: [], ram: [], storage: [], networkCards: [], gpus: [], motherboards: [], cpuCoolers: [], cases: [], powerSupplies: [], soundCards: [], wirelessCards: [], powerAdapters: [], nas: [], switches: [], patchPanels: [], monitors: [], upsSystems: [], powerStrips: [] },
+      project: { id: 'default', revision: 1, metadata: { name: 'Lab', version: 1, updatedAt: new Date().toISOString() }, placements: [], assignments: [], connections: [], compatibilityPolicy: { disabledHosts: [], ignoredWarningIds: [] } },
+      agents: { enrollments: {}, devices: {} }, agentStatus: { servers: {} }, registry: createRegistryStore(),
+      backupManagement: createBackupManagementStore(), routingCache: {}, meta: { schemaVersion: 20 },
+      authentication: createAuthenticationStore(),
+    }
+    const files = new Map([
+      ['sections/registry-enrollment.json', Buffer.from('{"installationIdentity":null,"files":["registry/installation-instance.json"]}')],
+      ['registry/installation-instance.json', Buffer.from('{"version":1,"clientInstanceId":"corrupt"}')],
+    ])
+    const result = preflightRestore({ manifest: { schemaVersion: 20, sections: ['registryEnrollment'] }, files, currentStores })
+    expect(result.ok).toBe(false)
+    expect(result.blockers[0].message).toContain('installation instance')
   })
 
   it('keeps the running schema when restoring older application metadata', () => {

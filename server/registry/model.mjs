@@ -311,8 +311,17 @@ export function assertRegistryStoreShape(store) {
     if (typeof identity.publicKeyId !== 'string' || !/^[a-f0-9]{64}$/.test(identity.publicKeyId)) {
       throw new Error('registry.installationIdentity.publicKeyId must be a SHA-256 digest.')
     }
-    if (!['active', 'revoked'].includes(identity.state)) {
+    if (!['active', 'recovery-pending', 'rejected', 'revoked'].includes(identity.state)) {
       throw new Error('registry.installationIdentity.state is unsupported.')
+    }
+    if (identity.clientInstanceId !== undefined && (typeof identity.clientInstanceId !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(identity.clientInstanceId))) {
+      throw new Error('registry.installationIdentity.clientInstanceId must be a canonical UUID v4.')
+    }
+    if (identity.recoveryKey !== null && identity.recoveryKey !== undefined && (typeof identity.recoveryKey !== 'string' || identity.recoveryKey.length > 128)) {
+      throw new Error('registry.installationIdentity.recoveryKey is invalid.')
+    }
+    if (identity.lastError !== null && identity.lastError !== undefined && (typeof identity.lastError !== 'string' || identity.lastError.length > 512)) {
+      throw new Error('registry.installationIdentity.lastError is invalid.')
     }
   }
 }

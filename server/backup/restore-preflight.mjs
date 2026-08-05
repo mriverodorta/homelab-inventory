@@ -8,7 +8,7 @@ import {
 import { assertRegistryStoreShape } from '../registry/model.mjs'
 import { assertAuthenticationStoreShape } from '../auth/model.mjs'
 import { assertBackupManagementStoreShape } from './backup-model.mjs'
-import { materializeBackupSections } from './backup-sections.mjs'
+import { materializeBackupSections, validateEnrollmentFiles } from './backup-sections.mjs'
 
 export function preflightRestore({ manifest, files, currentStores }) {
   if (manifest.schemaVersion > CURRENT_SCHEMA_VERSION) {
@@ -25,6 +25,7 @@ export function preflightRestore({ manifest, files, currentStores }) {
   const composed = { ...structuredClone(currentStores), ...replacements }
   const blockers = []
   try {
+    if (manifest.sections.includes('registryEnrollment')) validateEnrollmentFiles(files)
     assertInventoryStoreShape(composed.inventory)
     assertProjectStoreShape(composed.project, { requireRevision: true })
     assertAgentsStoreShape(composed.agents)
