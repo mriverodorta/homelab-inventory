@@ -22,7 +22,7 @@ describe('agent contract service', () => {
         schemaBundleDigest: AGENT_SCHEMA_BUNDLE_DIGEST,
         collection: { hostIntervalSeconds: 60, serviceIntervalSeconds: 600 },
         privacy: {
-          containersEnabled: false,
+          containersEnabled: true,
           smartEnabled: false,
           rawHardwareIdentifiersEnabled: false,
         },

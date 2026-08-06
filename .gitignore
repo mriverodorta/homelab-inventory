@@ -10,6 +10,7 @@ artifacts/engine-benchmarks/
 
 # Runtime data
 data/
+server/agent-release/
 *.sqlite
 *.sqlite3
 *.db

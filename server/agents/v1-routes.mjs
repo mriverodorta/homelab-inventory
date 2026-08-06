@@ -281,6 +281,7 @@ export function registerAgentV1Routes(app, store, {
   heartbeatRateWindowMs = HEARTBEAT_RATE_WINDOW_MS,
   heartbeatSink = null,
   telemetryRepository = null,
+  releaseService = null,
 } = {}) {
   app.get('/api/agent/contracts/current', disabled
     ? disabledRoute
@@ -324,7 +325,28 @@ export function registerAgentV1Routes(app, store, {
     } catch (error) {
       return routeError(response, error)
     }
+    let commands = null
+    try {
+      commands = releaseService?.installCommands({
+        endpoint,
+        hostType: host.hostType,
+        hostId: host.hostId,
+        activationToken: 'pending',
+        containers: request.body?.containers,
+      }) ?? null
+    } catch (error) {
+      return routeError(response, error)
+    }
     const token = createToken()
+    if (commands) {
+      commands = releaseService.installCommands({
+        endpoint,
+        hostType: host.hostType,
+        hostId: host.hostId,
+        activationToken: token,
+        containers: request.body?.containers,
+      })
+    }
     const enrollmentId = createNumericId(Object.keys(store.databases.agents.data.enrollments))
     const createdAt = new Date().toISOString()
     const expiresAt = new Date(Date.now() + ENROLLMENT_TTL_MS).toISOString()
@@ -347,6 +369,11 @@ export function registerAgentV1Routes(app, store, {
       expiresAt,
       activationToken: token,
       protocolMajor: 1,
+      ...(commands ? {
+        agentVersion: releaseService.current().version,
+        installCommand: commands.linux,
+        installCommands: commands,
+      } : {}),
     })
   })
 

@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url'
 import { RELEASE_NOTES } from '../src/release-notes.ts'
 import { registerAgentRoutes } from './agent-routes.mjs'
 import { createAgentV1BodyMiddleware, registerAgentV1Routes } from './agents/v1-routes.mjs'
+import { AgentReleaseService, registerAgentReleaseRoutes } from './agents/release-service.mjs'
 import { registerBackupRoutes } from './backup-routes.mjs'
 import { AuthService } from './auth/auth-service.mjs'
 import { AccessService } from './auth/access-service.mjs'
@@ -72,6 +73,12 @@ const legacyProjectPath = process.env.PROJECT_DB_PATH ?? path.join(dataDir, 'hom
 const seedEmptyData = runtimeConfig.seedEmptyData
 const seedDir = path.join(root, 'server', 'seed')
 const packageJson = JSON.parse(await fs.readFile(path.join(root, 'package.json'), 'utf8'))
+const agentReleasePin = JSON.parse(await fs.readFile(path.join(root, 'server', 'agent-release-pin.json'), 'utf8'))
+const agentReleaseService = new AgentReleaseService({
+  expectedVersion: agentReleasePin.version,
+  expectedSourceRevision: agentReleasePin.sourceRevision,
+})
+await agentReleaseService.initialize()
 const configuredUpdateChannel = process.env.UPDATE_CHANNEL ?? (isDemoMode ? 'latest' : 'stable')
 const updateChannel = ['stable', 'latest'].includes(configuredUpdateChannel)
   ? configuredUpdateChannel
@@ -209,9 +216,11 @@ registerAccessRoutes(app, {
   sessions: sessionService,
   demo: isDemoMode,
 })
-registerAgentRoutes(app, store, { disabled: isDemoMode })
+registerAgentReleaseRoutes(app, agentReleaseService, { disabled: isDemoMode })
+registerAgentRoutes(app, store, { disabled: isDemoMode, releaseService: agentReleaseService })
 registerAgentV1Routes(app, store, {
   disabled: isDemoMode,
+  releaseService: agentReleaseService,
   heartbeatSink: telemetryRepository
     ? (heartbeat) => telemetryRepository.recordHeartbeat(heartbeat)
     : null,
@@ -287,6 +296,7 @@ const backupService = store
       appVersion: packageJson.version,
       environmentPassphrase: backupEnvironmentPassphrase,
       environmentTimezone: backupEnvironmentTimezone,
+      telemetryRepository,
       onRestoreApplied: async ({ sections }) => {
         if (sections.includes('authentication')) {
           await authorizationService.rebuild(store.getAuthenticationState())

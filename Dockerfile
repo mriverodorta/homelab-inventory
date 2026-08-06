@@ -10,6 +10,16 @@ RUN bun install --frozen-lockfile --production
 
 FROM oven/bun:1-alpine AS bun-toolchain
 
+FROM golang:1.26.5-alpine AS agent-build
+WORKDIR /agent
+ARG AGENT_VERSION=0.1.0
+ARG AGENT_SOURCE_REVISION=a76e342605903ad1aad49d35cf411380d430f8b1
+COPY server/agent-release-pin.json /agent-release-pin.json
+COPY vendor/homelab-inventory-agent ./
+RUN grep -Fq "\"version\": \"${AGENT_VERSION}\"" /agent-release-pin.json \
+  && grep -Fq "\"sourceRevision\": \"${AGENT_SOURCE_REVISION}\"" /agent-release-pin.json \
+  && sh scripts/build-release.sh "${AGENT_VERSION}" /agent-release "${AGENT_SOURCE_REVISION}"
+
 FROM rust:1.94.1-alpine AS wasm-build
 WORKDIR /app
 RUN apk add --no-cache binaryen libstdc++ musl-dev \
@@ -69,6 +79,11 @@ COPY --from=wasm-build --chown=10001:10001 /app/server/engine/generated/homelab_
 COPY --chown=10001:10001 server/db/agent-auth.mjs server/db/inventory-capabilities.mjs server/db/inventory-lifecycle.mjs server/db/legacy-network-normalization.ts server/db/nas-power-configuration.mjs server/db/relational-ids.mjs server/db/store.mjs server/db/validation.mjs ./server/db/
 COPY --chown=10001:10001 server/db/migrate-schema-*.mjs ./server/db/
 COPY --chown=10001:10001 server/registry ./server/registry
+COPY --chown=10001:10001 server/agents ./server/agents
+COPY --chown=10001:10001 server/telemetry ./server/telemetry
+COPY --chown=10001:10001 server/agent-release-pin.json ./server/
+COPY --from=agent-build --chown=10001:10001 /agent-release ./server/agent-release
+RUN ["bun", "-e", "const fs = await import('node:fs/promises'); const { AgentReleaseService } = await import('./server/agents/release-service.mjs'); const pin = JSON.parse(await fs.readFile('./server/agent-release-pin.json', 'utf8')); await new AgentReleaseService({ expectedVersion: pin.version, expectedSourceRevision: pin.sourceRevision }).initialize();"]
 COPY --chown=10001:10001 packages/catalog-protocol/package.json ./packages/catalog-protocol/
 COPY --chown=10001:10001 packages/catalog-protocol/src ./packages/catalog-protocol/src
 COPY --chown=10001:10001 server/demo/session-manager.mjs server/demo/sanitizer.mjs ./server/demo/

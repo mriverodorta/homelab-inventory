@@ -45,7 +45,7 @@ export const BACKUP_SECTIONS = Object.freeze({
   },
   agentTelemetry: {
     label: 'Agent telemetry',
-    description: 'Latest agent-reported hardware and health state.',
+    description: 'Latest agent state, one-minute history, and service, container, and storage-health events.',
     sensitive: true,
   },
   applicationMetadata: {

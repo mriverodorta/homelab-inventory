@@ -376,6 +376,7 @@ export function PcBuildInspectorTabs({
               registered={registered}
               hasSavedStatus={hasSavedStatus}
               demoMode={demoMode}
+              release={agentStatus?.release ?? null}
             />
           ),
         }] : []),

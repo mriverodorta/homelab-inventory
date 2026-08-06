@@ -10,6 +10,8 @@ const PUBLIC_ROUTES = [
   ['POST', /^\/api\/auth\/invitations\/[^/]+\/activate-local\/?$/],
   ['GET', /^\/api\/demo\/session\/?$/],
   ['GET', /^\/api\/agent\/contracts\/current\/?$/],
+  ['GET', /^\/api\/agent\/install\.sh\/?$/],
+  ['GET', /^\/api\/agent\/releases\/[^/]+\/.+$/],
   ['POST', /^\/api\/demo\/session\/(?:extend|expire)\/?$/],
 ]
 
@@ -77,7 +79,7 @@ const PROTECTED_ROUTES = [
   ['POST', /^\/api\/backups\/(?:inspect|restore\/preflight|restore)\/?$/, 'backups.restore'],
   ['POST', /^\/api\/backups\/demo-export\/?$/, 'backups.download'],
 
-  ['GET', /^\/api\/agent\/(?:install\.sh|status)\/?$/, 'agents.view'],
+  ['GET', /^\/api\/agent\/status\/?$/, 'agents.view'],
   ['POST', /^\/api\/agent\/enrollments\/?$/, 'agents.manage'],
   ['POST', /^\/api\/agent\/hosts\/(?:server|nas|pcBuild)\/[1-9]\d*\/enrollments\/?$/, 'agents.manage'],
   ['GET', /^\/api\/agent\/hosts\/(?:server|nas|pcBuild)\/[1-9]\d*\/hardware-(?:snapshot|suggestions)\/?$/, 'agents.view'],

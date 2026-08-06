@@ -33,7 +33,7 @@ It is built for people who want a practical map of what they own, what is instal
 - lowdb-backed split stores with schema migrations and automatic backups.
 - Portable complete or custom backups with protected partial restore, optional encryption, scheduling, and retention controls.
 - Optional multi-user authentication with local passwords, OpenID Connect, or both, plus invitations, custom roles, session management, and one-time owner recovery.
-- Optional host-agent foundation for signed, outbound-only telemetry from servers, NAS devices, and custom PC builds.
+- Optional embedded host agent for signed, outbound-only telemetry from Linux, FreeBSD, and OPNsense servers, NAS devices, and custom PC builds.
 - Reviewed one-time host hardware discovery through a privilege-separated local command; detected values remain private and never modify inventory automatically.
 - Mobile-friendly inventory drawer and long-press drag behavior for touch devices.
 
@@ -271,7 +271,11 @@ When an update is available, the canvas toolbar shows an update notice with rele
 
 The next-generation agent protocol is outbound-only and scopes one Ed25519 device identity to one server, NAS device, or custom PC build. Signed protocol-v1 heartbeats are stored independently under `/data/telemetry/telemetry.sqlite`; they do not create workspace history or change the project revision. Raw samples are retained for seven days by default. Set `AGENT_TELEMETRY_RETENTION_DAYS` to an integer from 1 through 365 to change that backend retention period.
 
-The independently compiled Linux and FreeBSD agent, installers, and capability-driven inspector are still under development. Existing legacy Linux agent installations and endpoints remain supported during this transition; do not attempt to construct protocol-v1 enrollment requests manually.
+Open a compute host's **Agent** tab to create a one-time enrollment and copy the generated Linux or FreeBSD/OPNsense installation command. Each Docker image embeds a pinned, reproducibly built agent release for Linux AMD64, Linux ARM64, and FreeBSD AMD64; the server verifies every embedded byte before startup and serves versioned immutable downloads. Agent upgrades remain an explicit administrator action, and the inspector provides the command when a newer embedded agent is available.
+
+Container telemetry is disabled by default. Setup can opt into a credential-free loopback Docker/Podman proxy or, with a clear warning, direct access to a local runtime socket. Only bounded operational fields are accepted; environment variables, labels, commands, arguments, mounts, secrets, and raw inspect payloads are excluded. A privileged `agent inventory` scan is separate from the unprivileged service and submits hardware evidence only after local review.
+
+The independently maintained source is public at [mriverodorta/homelab-inventory-agent](https://github.com/mriverodorta/homelab-inventory-agent). The application pins an exact source revision, while normal users install the verified binary served by their own Homelab Inventory instance.
 
 The agent is optional. Inventory, canvas layout, and cabling work without it.
 

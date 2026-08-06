@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto'
 import { isRelationalId } from '../db/relational-ids.mjs'
 import { AGENT_HOST_TYPES } from '../agents/protocol-v1.mjs'
+import { exportTelemetryBackup, replaceTelemetryBackup } from './backup.mjs'
 
 const HOST_TYPE_SET = new Set(AGENT_HOST_TYPES)
 const DEFAULT_QUERY_LIMIT = 1_440
@@ -218,5 +219,13 @@ export class TelemetryRepository {
       ) recent_samples
       ORDER BY received_at_ms, id
     `).all(hostType, hostId, fromMs, toMs, boundedLimit(limit)).map(decodeSample)
+  }
+
+  exportBackup() {
+    return exportTelemetryBackup(this.database)
+  }
+
+  replaceBackup(value, currentStores) {
+    replaceTelemetryBackup(this.database, value, currentStores)
   }
 }

@@ -18,10 +18,13 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 - Added capability-driven Agent, Services, and Containers inspector tabs with a 30-minute heartbeat timeline, one-minute CPU and memory charts, health states, and detected-hardware summaries.
 - Added per-field detected-hardware suggestions to inventory editors, including explicit replacement confirmation and normal Undo support.
 - Added opt-in, read-only Docker and Podman telemetry through a credential-free loopback proxy or an advanced local socket, with strictly allowlisted container fields.
+- Added a pinned, verified agent release inside the application image for Linux AMD64, Linux ARM64, and FreeBSD AMD64, with immutable self-hosted downloads and generated Linux or FreeBSD/OPNsense setup commands.
+- Added manual agent update notices and backend-generated upgrade commands when an enrolled host reports an older agent version.
 
 ### Changed
 
 - Agent relationships now use explicit compute-host types and numeric relational IDs while legacy server-agent endpoints remain available during the transition to the compiled agent.
+- Complete and Agent telemetry backups now preserve the full SQLite sample, service, container, and storage-health history with relational preflight validation and transactional replacement.
 - Telemetry persistence completes before an agent sequence is acknowledged, and telemetry writes never advance the project revision or modify inventory, canvas placements, assignments, or cables.
 - GPU samples are averaged in agent memory before the normal one-minute heartbeat, services refresh on the contract cadence, and SMART requires both server approval and a local device allowlist.
 - Services and Containers tabs appear only when the assigned agent reports the corresponding capability, while Virtualization remains hidden until a collector exists.

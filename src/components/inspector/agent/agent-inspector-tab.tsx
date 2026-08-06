@@ -1,6 +1,6 @@
 import { lazy, Suspense } from 'react'
 import { RefreshCw } from 'lucide-react'
-import type { AgentHostStatus } from '@/types/agent'
+import type { AgentHostStatus, AgentStatusSummary } from '@/types/agent'
 import type { InventoryItem } from '@/types/inventory'
 
 const LazyAgentSetupPanel = lazy(async () => {
@@ -14,12 +14,14 @@ export function AgentInspectorTab({
   registered,
   hasSavedStatus,
   demoMode,
+  release,
 }: {
   host: InventoryItem
   status: AgentHostStatus
   registered: boolean
   hasSavedStatus: boolean
   demoMode: boolean
+  release: AgentStatusSummary['release']
 }) {
   return (
     <Suspense
@@ -36,6 +38,7 @@ export function AgentInspectorTab({
         registered={registered}
         hasSavedStatus={hasSavedStatus}
         demoMode={demoMode}
+        release={release}
       />
     </Suspense>
   )

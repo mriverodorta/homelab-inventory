@@ -18,6 +18,7 @@ jobs:
         uses: actions/checkout@v7.0.1
         with:
           fetch-depth: 0
+          submodules: recursive
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
@@ -33,6 +34,9 @@ jobs:
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
+
+      - name: Verify pinned agent source
+        run: bun run check:agent-release
 
       - name: Check release notes
         run: bun scripts/check-release-notes.mjs

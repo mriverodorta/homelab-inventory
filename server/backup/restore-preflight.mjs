@@ -8,7 +8,8 @@ import {
 import { assertRegistryStoreShape } from '../registry/model.mjs'
 import { assertAuthenticationStoreShape } from '../auth/model.mjs'
 import { assertBackupManagementStoreShape } from './backup-model.mjs'
-import { materializeBackupSections, validateEnrollmentFiles } from './backup-sections.mjs'
+import { materializeBackupSections, telemetryBackupFromArchive, validateEnrollmentFiles } from './backup-sections.mjs'
+import { validateTelemetryBackup } from '../telemetry/backup.mjs'
 import { migrateSchema24To25 } from '../db/migrate-schema-25.mjs'
 import { migrateSchema25To26 } from '../db/migrate-schema-26.mjs'
 
@@ -47,6 +48,7 @@ export function preflightRestore({ manifest, files, currentStores }) {
     assertRegistryStoreShape(composed.registry)
     assertAuthenticationStoreShape(composed.authentication)
     assertBackupManagementStoreShape(composed.backupManagement)
+    if (manifest.sections.includes('agentTelemetry')) validateTelemetryBackup(telemetryBackupFromArchive(files), composed)
   } catch (error) {
     blockers.push({ code: 'dependency-conflict', message: error instanceof Error ? error.message : 'Selected sections are incompatible.' })
   }

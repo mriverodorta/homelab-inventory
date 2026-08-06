@@ -16,7 +16,7 @@ const MACHINE_AGENT_PATH = /^\/api\/agent\/(?:servers\/[1-9]\d*\/(?:register|hea
 export function createAuthenticationGuard({ service, demo = false }) {
   return function authenticationGuard(request, response, next) {
     if (demo || !service || !request.path.startsWith('/api/')) return next()
-    if (request.path === '/api/health' || request.path === '/api/agent/contracts/current' || PUBLIC_AUTH_PATHS.has(request.path) || PUBLIC_INVITATION_PATH.test(request.path) || MACHINE_AGENT_PATH.test(request.path)) return next()
+    if (request.path === '/api/health' || request.path === '/api/agent/contracts/current' || request.path === '/api/agent/install.sh' || request.path.startsWith('/api/agent/releases/') || PUBLIC_AUTH_PATHS.has(request.path) || PUBLIC_INVITATION_PATH.test(request.path) || MACHINE_AGENT_PATH.test(request.path)) return next()
     const state = service.state()
     if (state.bootstrapState.setupRequired) {
       response.status(401).json({ message: 'First-run setup is required.', code: 'setup-required' })

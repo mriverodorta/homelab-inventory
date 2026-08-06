@@ -29,30 +29,34 @@ export async function loadAgentStatus(): Promise<AgentStatusSummary> {
 }
 
 export async function createAgentEnrollment(
-  serverId: number,
+  hostType: AgentHostType,
+  hostId: number,
   endpoint: string,
+  containers: { mode: 'disabled' | 'proxy' | 'socket'; runtime: 'docker' | 'podman'; endpoint: string },
 ): Promise<AgentEnrollmentResponse> {
-  return agentRequest<AgentEnrollmentResponse>('/api/agent/enrollments', {
+  return agentRequest<AgentEnrollmentResponse>(`/api/agent/hosts/${hostType}/${hostId}/enrollments`, {
     method: 'POST',
     body: JSON.stringify({
-      serverId,
       endpoint,
+      containers,
     }),
   })
 }
 
 export async function revokeAgentRegistration(
-  serverId: number,
+  hostType: AgentHostType,
+  hostId: number,
 ): Promise<void> {
-  await agentRequest(`/api/agent/servers/${serverId}/registration`, {
+  await agentRequest(`/api/agent/hosts/${hostType}/${hostId}/registration`, {
     method: 'DELETE',
   })
 }
 
 export async function clearAgentStatus(
-  serverId: number,
+  hostType: AgentHostType,
+  hostId: number,
 ): Promise<AgentStatusSummary> {
-  return agentRequest<AgentStatusSummary>(`/api/agent/servers/${serverId}/status`, {
+  return agentRequest<AgentStatusSummary>(`/api/agent/hosts/${hostType}/${hostId}/status`, {
     method: 'DELETE',
   })
 }

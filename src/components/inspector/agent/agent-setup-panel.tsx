@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Copy, RefreshCw, ScanSearch, ShieldCheck, Terminal } from 'lucide-react'
+import { AlertTriangle, Copy, Download, RefreshCw, ScanSearch, ShieldCheck, Terminal } from 'lucide-react'
 import { useState } from 'react'
 import { AgentHeartbeatTimeline } from '@/components/inspector/agent/agent-heartbeat-timeline'
 import { AgentMetricsPanel } from '@/components/inspector/agent/agent-metrics-panel'
@@ -18,6 +18,8 @@ import {
 } from '@/components/ui/alert-dialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Switch } from '@/components/ui/switch'
 import { usePermission } from '@/hooks/use-permission'
 import {
   clearAgentStatus,
@@ -26,7 +28,7 @@ import {
   loadAgentTelemetry,
   revokeAgentRegistration,
 } from '@/lib/agent-api'
-import type { AgentHostStatus, AgentState } from '@/types/agent'
+import type { AgentHostStatus, AgentState, AgentStatusSummary } from '@/types/agent'
 import type { InventoryItem } from '@/types/inventory'
 
 const formLabelClass = 'grid gap-1.5 text-sm font-semibold text-[#20242c]'
@@ -106,28 +108,44 @@ export function AgentSetupPanel({
   registered,
   hasSavedStatus,
   demoMode,
+  release,
 }: {
   server: InventoryItem
   status: AgentHostStatus
   registered: boolean
   hasSavedStatus: boolean
   demoMode: boolean
+  release: AgentStatusSummary['release']
 }) {
   const canManage = usePermission('agents.manage')
   const queryClient = useQueryClient()
   const [endpoint, setEndpoint] = useState(() => window.location.origin)
   const [copied, setCopied] = useState(false)
+  const [platform, setPlatform] = useState<'linux' | 'freebsd'>('linux')
+  const [containersEnabled, setContainersEnabled] = useState(false)
+  const [containerMode, setContainerMode] = useState<'proxy' | 'socket'>('proxy')
+  const [containerRuntime, setContainerRuntime] = useState<'docker' | 'podman'>('docker')
+  const [containerEndpoint, setContainerEndpoint] = useState('http://127.0.0.1:2375')
   const [confirmAction, setConfirmAction] = useState<'revoke' | 'clear' | null>(null)
   const enrollmentMutation = useMutation({
-    mutationFn: () => createAgentEnrollment(host.id, endpoint),
+    mutationFn: () => createAgentEnrollment(
+      host.type as 'server' | 'nas' | 'pcBuild',
+      host.id,
+      endpoint,
+      {
+        mode: containersEnabled ? containerMode : 'disabled',
+        runtime: containerRuntime,
+        endpoint: containersEnabled ? containerEndpoint : '',
+      },
+    ),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['agent-status'] }),
   })
   const revokeMutation = useMutation({
-    mutationFn: () => revokeAgentRegistration(host.id),
+    mutationFn: () => revokeAgentRegistration(host.type as 'server' | 'nas' | 'pcBuild', host.id),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['agent-status'] }),
   })
   const clearStatusMutation = useMutation({
-    mutationFn: () => clearAgentStatus(host.id),
+    mutationFn: () => clearAgentStatus(host.type as 'server' | 'nas' | 'pcBuild', host.id),
     onSuccess: (summary) => queryClient.setQueryData(['agent-status'], summary),
   })
   const telemetry = useQuery({
@@ -140,7 +158,9 @@ export function AgentSetupPanel({
     retry: 1,
     refetchInterval: status.state === 'online' ? 60_000 : false,
   })
-  const command = enrollmentMutation.data?.installCommand ?? ''
+  const command = enrollmentMutation.data?.installCommands?.[platform] ?? ''
+  const updateAvailable = Boolean(registered && status.agentVersion && release?.version && status.agentVersion !== release.version)
+  const upgradeCommand = status.upgradeCommands?.[platform] ?? ''
   const metrics = agentMetrics(status)
   const cpuPercent = metricNumber(metrics.cpu, 'percent')
   const memoryUsed = metricNumber(metrics.memory, 'usedBytes')
@@ -199,14 +219,67 @@ export function AgentSetupPanel({
           <p className="text-sm font-semibold text-[#75695d]">Agent setup is disabled in public demo mode.</p>
         ) : !canManage ? (
           <p className="text-sm font-semibold text-[#75695d]">Agent telemetry is read-only for your account. An administrator can manage enrollment and saved telemetry.</p>
-        ) : host.type !== 'server' ? (
-          <p className="text-sm font-semibold text-[#75695d]">Compiled agent setup for this host type will become available with the embedded agent release.</p>
         ) : (
           <div className="grid gap-3">
+            <label className={formLabelClass}>
+              Host operating system
+              <Select value={platform} onValueChange={(value) => setPlatform(value as 'linux' | 'freebsd')}>
+                <SelectTrigger aria-label="Host operating system"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="linux">Linux</SelectItem>
+                  <SelectItem value="freebsd">FreeBSD / OPNsense</SelectItem>
+                </SelectContent>
+              </Select>
+            </label>
             <label className={formLabelClass}>
               Agent endpoint
               <Input type="url" inputMode="url" value={endpoint} placeholder="http://192.168.1.10:8798" onChange={(event) => setEndpoint(event.target.value)} />
             </label>
+            <div className="flex items-center justify-between gap-3 rounded-md border border-[#d6ccbd] bg-[#fffdf8] p-3">
+              <div className="min-w-0">
+                <p className="text-sm font-bold text-[#20242c]">Container telemetry</p>
+                <p className="text-xs font-medium leading-relaxed text-[#75695d]">Opt in to sanitized Docker or Podman metrics.</p>
+              </div>
+              <Switch checked={containersEnabled} onCheckedChange={setContainersEnabled} aria-label="Enable container telemetry" />
+            </div>
+            {containersEnabled ? (
+              <div className="grid gap-3 border-l-2 border-[#d6ccbd] pl-3">
+                <label className={formLabelClass}>
+                  Access mode
+                  <Select value={containerMode} onValueChange={(value) => {
+                    const next = value as 'proxy' | 'socket'
+                    setContainerMode(next)
+                    setContainerEndpoint(next === 'proxy' ? 'http://127.0.0.1:2375' : containerRuntime === 'docker' ? '/var/run/docker.sock' : '/run/podman/podman.sock')
+                  }}>
+                    <SelectTrigger aria-label="Container access mode"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="proxy">Read-only socket proxy</SelectItem>
+                      <SelectItem value="socket">Direct local socket</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </label>
+                <label className={formLabelClass}>
+                  Runtime
+                  <Select value={containerRuntime} onValueChange={(value) => {
+                    const next = value as 'docker' | 'podman'
+                    setContainerRuntime(next)
+                    if (containerMode === 'socket') setContainerEndpoint(next === 'docker' ? '/var/run/docker.sock' : '/run/podman/podman.sock')
+                  }}>
+                    <SelectTrigger aria-label="Container runtime"><SelectValue /></SelectTrigger>
+                    <SelectContent><SelectItem value="docker">Docker</SelectItem><SelectItem value="podman">Podman</SelectItem></SelectContent>
+                  </Select>
+                </label>
+                <label className={formLabelClass}>
+                  {containerMode === 'proxy' ? 'Loopback proxy URL' : 'Runtime socket'}
+                  <Input value={containerEndpoint} onChange={(event) => setContainerEndpoint(event.target.value)} />
+                </label>
+                {containerMode === 'socket' ? (
+                  <div className="flex gap-2 rounded-md border border-[#e3c886] bg-[#fff8df] p-3 text-xs font-semibold leading-relaxed text-[#5f4514]">
+                    <AlertTriangle className="mt-0.5 size-4 shrink-0" />Direct socket access grants the agent the permissions exposed by that runtime socket. The service remains non-root, but may require explicit group access.
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
             <Button type="button" variant="outline" className="justify-start gap-2" disabled={enrollmentMutation.isPending || endpoint.trim() === ''} onClick={() => enrollmentMutation.mutate()}>
               <Terminal data-icon="inline-start" />{enrollmentMutation.isPending ? 'Generating...' : 'Setup agent'}
             </Button>
@@ -226,6 +299,14 @@ export function AgentSetupPanel({
           </div>
         )}
       </InspectorSection>
+
+      {updateAvailable && upgradeCommand ? (
+        <InspectorSection title="Agent Update" icon={Download} badge={<span className="text-xs font-bold text-[#a05b26]">{release?.version}</span>}>
+          <p className="text-sm font-semibold leading-relaxed text-[#75695d]">This host reports agent {status.agentVersion}. Upgrades are manual so the host never replaces its own executable without an administrator action.</p>
+          <textarea readOnly value={upgradeCommand} className="mt-3 min-h-24 w-full resize-y rounded-md border border-[#d6ccbd] bg-[#20242c] p-2 font-mono text-xs leading-relaxed text-[#fffdf8]" aria-label="Agent upgrade command" />
+          <Button type="button" variant="outline" className="mt-2 gap-2" onClick={() => void navigator.clipboard.writeText(upgradeCommand)}><Copy data-icon="inline-start" />Copy upgrade command</Button>
+        </InspectorSection>
+      ) : null}
 
       <AlertDialog open={confirmAction !== null} onOpenChange={(open) => { if (!open) setConfirmAction(null) }}>
         <AlertDialogContent>

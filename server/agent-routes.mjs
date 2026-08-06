@@ -629,6 +629,7 @@ export function registerAgentRoutes(app, store, {
   disabled = false,
   heartbeatRateLimit = HEARTBEAT_RATE_LIMIT,
   heartbeatRateWindowMs = HEARTBEAT_RATE_WINDOW_MS,
+  releaseService = null,
 } = {}) {
   if (disabled) {
     app.get('/api/agent/install.sh', disabledAgentRoute)
@@ -673,7 +674,28 @@ export function registerAgentRoutes(app, store, {
   })
 
   app.get('/api/agent/status', (_request, response) => {
-    response.json(store.getAgentStatusSummary())
+    const summary = store.getAgentStatusSummary()
+    if (releaseService) {
+      const enrollments = Object.values(store.databases.agents.data.enrollments ?? {})
+        .filter((enrollment) => typeof enrollment.endpoint === 'string')
+        .sort((first, second) => second.id - first.id)
+      for (const [hostKey, status] of Object.entries(summary.hosts ?? {})) {
+        const enrollment = enrollments.find((candidate) => recordMatchesHost(candidate, status.hostType, status.hostId))
+        if (!enrollment) continue
+        const upgradeCommands = releaseService.upgradeCommands(enrollment.endpoint)
+        summary.hosts[hostKey] = { ...status, upgradeCommands }
+        if (status.hostType === 'server' && summary.servers[String(status.hostId)]) {
+          summary.servers[String(status.hostId)] = { ...summary.servers[String(status.hostId)], upgradeCommands }
+        }
+      }
+    }
+    response.json({
+      ...summary,
+      release: releaseService ? {
+        version: releaseService.current().version,
+        sourceRevision: releaseService.current().sourceRevision,
+      } : null,
+    })
   })
 
   app.delete('/api/agent/servers/:serverId/registration', (request, response) => {

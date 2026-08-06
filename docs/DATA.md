@@ -23,6 +23,8 @@ Homelab Inventory stores data in JSON files managed through lowdb.
     installation-instance.json
     installation-ed25519.pem
     installation-credentials.json
+  telemetry/
+    telemetry.sqlite
 ```
 
 ## Stores
@@ -30,7 +32,8 @@ Homelab Inventory stores data in JSON files managed through lowdb.
 - `inventory.json`: hardware records grouped by category.
 - `project.json`: canvas layout, assignments, cables, and project state.
 - `agents.json`: enrolled agent credentials and ownership.
-- `agent-status.json`: latest agent telemetry.
+- `agent-status.json`: latest public agent status projection and retained reviewed hardware evidence.
+- `telemetry/telemetry.sqlite`: bounded raw heartbeat history and latest service, container, and storage-health projections. It is independent from workspace revision persistence.
 - `registry.json`: registry preferences, private templates, catalog links, contribution outbox/ledger records, and public enrollment metadata.
 - `routing-cache.json`: disposable generated cable routes; this can be rebuilt from canonical project data.
 - `backup-management.json`: scheduled-backup preferences and backup/restore history. Backup contents are never embedded in this store.
@@ -89,7 +92,7 @@ Portable user backups are written under:
 /data/backups/user
 ```
 
-Create and restore them from **Settings > Backup & Restore**. Complete archives contain every portable section; custom archives can contain selected stores, registry credentials, signed catalog state, agents, telemetry, metadata, or the routing cache. A complete archive can be partially restored later. Restore replaces selected sections and never merges records.
+Create and restore them from **Settings > Backup & Restore**. Complete archives contain every portable section; custom archives can contain selected stores, registry credentials, signed catalog state, agents, telemetry, metadata, or the routing cache. The Agent telemetry section includes both `agent-status.json` and a versioned export of every retained SQLite telemetry table. A complete archive can be partially restored later. Restore replaces selected sections and never merges records.
 
 The restore preflight validates archive bounds, paths, hashes, schema compatibility, and dependencies before writes begin. The app then creates a complete pre-restore backup and uses maintenance mode plus a durable journal so failed or interrupted replacement can be rolled back. Backup history itself is excluded from archives to prevent recursion.
 

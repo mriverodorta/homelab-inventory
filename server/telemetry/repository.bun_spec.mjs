@@ -37,6 +37,13 @@ function receivedAt(sequence) {
   return new Date(Date.UTC(2026, 7, 5, 12, sequence, 30)).toISOString()
 }
 
+function currentStores() {
+  return {
+    inventory: { servers: [{ id: 1 }], nas: [], pcBuilds: [] },
+    agents: { devices: { 7: { id: 7, hostType: 'server', hostId: 1 } } },
+  }
+}
+
 afterEach(async () => {
   for (const resource of resources.splice(0)) {
     try { closeTelemetryDatabase(resource.database) } catch {}
@@ -125,5 +132,45 @@ describe('telemetry repository', () => {
 
     const kinds = database.query("SELECT event_kind FROM component_events WHERE family = 'storage-health' ORDER BY id").all().map((row) => row.event_kind)
     expect(kinds).toEqual(['observed', 'checkpoint', 'checkpoint'])
+  })
+
+  test('exports and restores complete telemetry history and projections', async () => {
+    const { repository } = await context()
+    repository.recordHeartbeat({
+      deviceId: 7,
+      hostType: 'server',
+      hostId: 1,
+      receivedAt: receivedAt(1),
+      payload: heartbeat(1, {
+        services: [{ name: 'docker', activeState: 'active', enabled: true }],
+        containers: [{ runtime: 'docker', runtimeId: 'abc', name: 'web', image: 'web:1', state: 'running' }],
+      }),
+    })
+    const exported = repository.exportBackup()
+
+    repository.replaceBackup({
+      ...exported,
+      tables: Object.fromEntries(Object.keys(exported.tables).map((table) => [table, []])),
+    }, currentStores())
+    expect(repository.getHostSummary('server', 1)).toBeNull()
+
+    repository.replaceBackup(exported, currentStores())
+    const restored = repository.getHostSummary('server', 1)
+    expect(restored.sequence).toBe(1)
+    expect(restored.services[0].state.name).toBe('docker')
+    expect(restored.containers[0].state.name).toBe('web')
+    expect(repository.exportBackup()).toEqual(exported)
+  })
+
+  test('rolls back the SQLite replacement when imported telemetry violates constraints', async () => {
+    const { database, repository } = await context()
+    repository.recordHeartbeat({ deviceId: 7, hostType: 'server', hostId: 1, receivedAt: receivedAt(1), payload: heartbeat(1) })
+    const before = repository.exportBackup()
+    const invalid = structuredClone(before)
+    invalid.tables.telemetry_samples.push(structuredClone(invalid.tables.telemetry_samples[0]))
+
+    expect(() => repository.replaceBackup(invalid, currentStores())).toThrow()
+    expect(database.query('SELECT COUNT(*) AS count FROM telemetry_samples').get().count).toBe(1)
+    expect(repository.exportBackup()).toEqual(before)
   })
 })

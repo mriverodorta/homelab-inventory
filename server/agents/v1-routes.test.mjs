@@ -168,6 +168,36 @@ afterEach(async () => {
 })
 
 describe('agent protocol v1 routes', () => {
+  it('returns verified Linux and FreeBSD install commands with explicit container options', async () => {
+    const store = await createStore()
+    const releaseService = {
+      current: () => ({ version: '0.1.0' }),
+      installCommands: ({ endpoint, hostType, hostId, activationToken, containers }) => ({
+        linux: `linux:${endpoint}:${hostType}:${hostId}:${activationToken}:${containers.mode}`,
+        freebsd: `freebsd:${endpoint}:${hostType}:${hostId}:${activationToken}:${containers.mode}`,
+      }),
+    }
+    const { server, url } = await listen(createApp(store, { releaseService }))
+    try {
+      const response = await fetch(`${url}/api/agent/hosts/nas/1/enrollments`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          endpoint: url,
+          containers: { mode: 'proxy', runtime: 'docker', endpoint: 'http://127.0.0.1:2375' },
+        }),
+      })
+      const body = await response.json()
+      expect(response.status).toBe(200)
+      expect(body.agentVersion).toBe('0.1.0')
+      expect(body.installCommand).toContain(`linux:${url}:nas:1:`)
+      expect(body.installCommands.freebsd).toContain(`freebsd:${url}:nas:1:`)
+      expect(body.installCommands.linux).toContain(':proxy')
+    } finally {
+      await close(server)
+    }
+  })
+
   it.each(['server', 'nas', 'pcBuild'])('enrolls, activates, and ingests a signed %s heartbeat', async (hostType) => {
     const store = await createStore()
     const { server, url } = await listen(createApp(store))

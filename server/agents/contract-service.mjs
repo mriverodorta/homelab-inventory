@@ -20,7 +20,7 @@ const BASE_CONTRACT = Object.freeze({
     offlineBytes: 10 * 1024 * 1024,
   }),
   privacy: Object.freeze({
-    containersEnabled: false,
+    containersEnabled: true,
     smartEnabled: false,
     rawHardwareIdentifiersEnabled: false,
   }),

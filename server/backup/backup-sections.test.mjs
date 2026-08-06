@@ -3,10 +3,23 @@ import os from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { createBackupManagementStore } from './backup-model.mjs'
-import { collectBackupSections, materializeBackupSections } from './backup-sections.mjs'
+import { collectBackupSections, materializeBackupSections, telemetryBackupFromArchive } from './backup-sections.mjs'
 import { createRegistryStore } from '../registry/model.mjs'
 import { createAuthenticationStore } from '../auth/model.mjs'
 import { COMPLETE_BACKUP_SECTIONS } from '../../shared/backup/contract.mjs'
+
+const telemetryRepository = {
+  exportBackup: () => ({
+    formatVersion: 1,
+    schemaVersion: 1,
+    tables: {
+      telemetry_samples: [],
+      latest_host_state: [],
+      latest_component_state: [],
+      component_events: [],
+    },
+  }),
+}
 
 function stores() {
   return {
@@ -60,6 +73,15 @@ describe('backup section ownership', () => {
     expect(replacements.registry.installationIdentity).toEqual(enrollment)
   })
 
+  it('restores pre-SQLite agent telemetry archives with an empty history', () => {
+    expect(telemetryBackupFromArchive(new Map()).tables).toEqual({
+      telemetry_samples: [],
+      latest_host_state: [],
+      latest_component_state: [],
+      component_events: [],
+    })
+  })
+
   it('includes the stable installation instance in enrollment backups', async () => {
     const dataDir = await fs.mkdtemp(path.join(os.tmpdir(), 'hli-enrollment-sections-'))
     const directory = path.join(dataDir, 'registry')
@@ -82,6 +104,7 @@ describe('backup section ownership', () => {
     const complete = await collectBackupSections({
       store: { dataDir, snapshotStores: async () => stores() },
       sections: COMPLETE_BACKUP_SECTIONS,
+      telemetryRepository,
     })
     expect(complete.files.map((file) => file.name)).toContain('registry/installation-instance.json')
   })

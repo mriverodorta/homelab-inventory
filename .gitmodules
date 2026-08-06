@@ -1,0 +1,3 @@
+[submodule "vendor/homelab-inventory-agent"]
+	path = vendor/homelab-inventory-agent
+	url = https://github.com/mriverodorta/homelab-inventory-agent.git

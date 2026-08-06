@@ -5,6 +5,7 @@ import { normalizeBackupSections } from '../../shared/backup/contract.mjs'
 import { createRegistryStore, normalizeRegistryStore } from '../registry/model.mjs'
 import { parseInstallationInstance } from '../registry/installation-instance.mjs'
 import { normalizeInstallationCredentials } from '../registry/installation-identity.mjs'
+import { AGENT_TELEMETRY_BACKUP_FILE, emptyTelemetryBackup } from '../telemetry/backup.mjs'
 
 const JSON_SECTION_FILES = Object.freeze({
   inventory: 'sections/inventory.json',
@@ -49,7 +50,7 @@ function registryConfiguration(registry) {
   return { ...structuredClone(registry), installationIdentity: null }
 }
 
-export async function collectBackupSections({ store, sections, demo = false }) {
+export async function collectBackupSections({ store, sections, demo = false, telemetryRepository = null }) {
   const selected = normalizeBackupSections(sections, { demo })
   const snapshot = await store.snapshotStores()
   const files = []
@@ -59,7 +60,13 @@ export async function collectBackupSections({ store, sections, demo = false }) {
     if (section === 'routingCache') files.push(jsonEntry(JSON_SECTION_FILES.routingCache, snapshot.routingCache))
     if (section === 'registryConfiguration') files.push(jsonEntry(JSON_SECTION_FILES.registryConfiguration, registryConfiguration(snapshot.registry)))
     if (section === 'agents') files.push(jsonEntry(JSON_SECTION_FILES.agents, snapshot.agents))
-    if (section === 'agentTelemetry') files.push(jsonEntry(JSON_SECTION_FILES.agentTelemetry, snapshot.agentStatus))
+    if (section === 'agentTelemetry') {
+      if (!telemetryRepository) throw new Error('Agent telemetry storage is unavailable for backup.')
+      files.push(
+        jsonEntry(JSON_SECTION_FILES.agentTelemetry, snapshot.agentStatus),
+        jsonEntry(AGENT_TELEMETRY_BACKUP_FILE, telemetryRepository.exportBackup()),
+      )
+    }
     if (section === 'authentication') files.push(jsonEntry(JSON_SECTION_FILES.authentication, snapshot.authentication))
     if (section === 'applicationMetadata') {
       files.push(jsonEntry(JSON_SECTION_FILES.applicationMetadata, {
@@ -142,6 +149,12 @@ export function enrollmentFilesFromArchive(files) {
   return [...files.entries()]
     .filter(([name]) => name.startsWith('registry/') && ENROLLMENT_FILE_NAMES.has(name.slice('registry/'.length)))
     .map(([name, body]) => ({ relativePath: name.slice('registry/'.length), body }))
+}
+
+export function telemetryBackupFromArchive(files) {
+  return files.has(AGENT_TELEMETRY_BACKUP_FILE)
+    ? parseJson(files, AGENT_TELEMETRY_BACKUP_FILE)
+    : emptyTelemetryBackup()
 }
 
 export function validateEnrollmentFiles(files) {

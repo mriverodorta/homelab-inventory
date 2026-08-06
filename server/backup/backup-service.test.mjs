@@ -11,6 +11,19 @@ import { installationPublicKeyId } from '../../packages/catalog-protocol/src/ind
 const tempDirs = []
 const stores = []
 
+function emptyTelemetryBackup() {
+  return {
+    formatVersion: 1,
+    schemaVersion: 1,
+    tables: {
+      telemetry_samples: [],
+      latest_host_state: [],
+      latest_component_state: [],
+      component_events: [],
+    },
+  }
+}
+
 async function createContext({ onRestoreApplied = null } = {}) {
   const dataDir = await fs.mkdtemp(path.join(os.tmpdir(), 'backup-service-'))
   tempDirs.push(dataDir)
@@ -24,7 +37,16 @@ async function createContext({ onRestoreApplied = null } = {}) {
   })
   await store.init()
   stores.push(store)
-  const service = new BackupService({ store, appVersion: '1.0.0', onRestoreApplied })
+  const telemetryRepository = {
+    exportBackup: () => emptyTelemetryBackup(),
+    replaceBackup: () => {},
+  }
+  const service = new BackupService({
+    store,
+    appVersion: '1.0.0',
+    onRestoreApplied,
+    telemetryRepository,
+  })
   await service.init()
   return { dataDir, service, store }
 }

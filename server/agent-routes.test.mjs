@@ -133,6 +133,52 @@ describe('agent routes', () => {
     expect(normalizeHeartbeat({ loadAverage: [0.1, 0.2, 0.3] }).loadAverage).toEqual([0.1, 0.2, 0.3])
   })
 
+  it('returns backend-generated upgrade commands for the enrolled host endpoint', async () => {
+    const store = await createTestStore()
+    const timestamp = new Date().toISOString()
+    store.databases.agents.data.enrollments[1] = {
+      id: 1,
+      hostType: 'server',
+      hostId: 1,
+      endpoint: 'https://inventory.example.test',
+      tokenHash: 'a'.repeat(64),
+      protocolMajor: 1,
+      createdAt: timestamp,
+      expiresAt: '2099-01-01T00:00:00.000Z',
+      usedAt: timestamp,
+    }
+    store.databases.agents.data.devices[1] = {
+      id: 1,
+      hostType: 'server',
+      hostId: 1,
+      protocolMajor: 1,
+      tokenHash: 'b'.repeat(64),
+      publicKey: 'test',
+      createdAt: timestamp,
+    }
+    store.databases.agentStatus.data.hosts['server:1'] = {
+      hostType: 'server',
+      hostId: 1,
+      lastSeenAt: timestamp,
+      agentVersion: '0.0.9',
+    }
+    const releaseService = {
+      current: () => ({ version: '0.1.0', sourceRevision: 'a'.repeat(40) }),
+      upgradeCommands: (endpoint) => ({ linux: `linux:${endpoint}`, freebsd: `freebsd:${endpoint}` }),
+    }
+    const { server, url } = await listen(createApp(store, { releaseService }))
+    try {
+      const response = await fetch(`${url}/api/agent/status`)
+      expect(response.status).toBe(200)
+      expect((await response.json()).hosts['server:1'].upgradeCommands).toEqual({
+        linux: 'linux:https://inventory.example.test',
+        freebsd: 'freebsd:https://inventory.example.test',
+      })
+    } finally {
+      await closeServer(server)
+    }
+  })
+
   it('returns 403 for disabled enrollment and install script routes without touching the store', async () => {
     const disabledStore = new Proxy({}, {
       get() {

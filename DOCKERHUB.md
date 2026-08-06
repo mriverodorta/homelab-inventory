@@ -170,13 +170,15 @@ The data layout is:
     installation-instance.json
     installation-ed25519.pem
     installation-credentials.json
+  telemetry/
+    telemetry.sqlite
 ```
 
 Only one app container should write to the same mounted `/data` directory.
 
 ## Backup And Restore
 
-**Settings > Backup & Restore** creates portable `.hlibackup` archives. Use a complete backup for every portable section or select only inventory, project topology, registry configuration and enrollment, catalog state, agents, telemetry, application metadata, or the disposable cable-routing cache. Restore can replace the complete backup or only selected sections from it.
+**Settings > Backup & Restore** creates portable `.hlibackup` archives. Use a complete backup for every portable section or select only inventory, project topology, registry configuration and enrollment, catalog state, agents, telemetry, application metadata, or the disposable cable-routing cache. Agent telemetry includes the retained SQLite sample and service/container/storage-health history. Restore can replace the complete backup or only selected sections from it.
 
 Every restore performs bounded archive and checksum validation, a dependency-aware preflight, a complete pre-restore recovery backup, maintenance mode, and a journaled atomic replacement. Failed or interrupted restores roll back automatically. Registry-enrollment backups carry the stable installation UUID, signing key, and credentials as one validated set. Archives containing registry enrollment or agent credentials require a passphrase before download and use scrypt with AES-256-GCM when encrypted.
 
@@ -213,7 +215,11 @@ When an update exists, the app provides **Check now**, **Skip this version**, an
 
 ## Agent
 
-A selected server can generate a scoped Linux agent install command. The command includes the selected server id, the app endpoint, and a one-time token. The agent can report keepalive status and host telemetry for that specific server.
+The Agent tab on a server, NAS device, or custom PC build creates a one-time enrollment and generates the appropriate Linux or FreeBSD/OPNsense install command. Every application image embeds pinned, checksummed agent binaries for Linux AMD64, Linux ARM64, and FreeBSD AMD64. Downloads are served by your own Homelab Inventory instance and each device identity is permanently scoped to one host record.
+
+Telemetry is outbound-only and is stored independently under `/data/telemetry/telemetry.sqlite`, so it does not modify inventory, canvas history, assignments, or cables. Optional Docker/Podman collection is disabled by default and supports either a credential-free loopback proxy or advanced direct-socket access. Agent upgrades are manual; the inspector shows a copyable command when the embedded release is newer.
+
+Agent source is available for inspection at [github.com/mriverodorta/homelab-inventory-agent](https://github.com/mriverodorta/homelab-inventory-agent).
 
 The agent is optional. The inventory and canvas work without installing it.
 

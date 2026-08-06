@@ -17,6 +17,7 @@ import {
   catalogFilesFromArchive,
   collectBackupSections,
   enrollmentFilesFromArchive,
+  telemetryBackupFromArchive,
 } from './backup-sections.mjs'
 import { preflightRestore } from './restore-preflight.mjs'
 import { RestoreJournal } from './restore-journal.mjs'
@@ -95,6 +96,7 @@ export class BackupService {
     environmentPassphrase = null,
     environmentTimezone = null,
     onRestoreApplied = null,
+    telemetryRepository = null,
   }) {
     this.store = store
     this.appVersion = appVersion
@@ -102,6 +104,7 @@ export class BackupService {
     this.environmentPassphrase = environmentPassphrase || null
     this.environmentTimezone = environmentTimezone || null
     this.onRestoreApplied = onRestoreApplied
+    this.telemetryRepository = telemetryRepository
     this.directory = path.join(store.dataDir, 'backups', 'user')
     this.stagingDirectory = path.join(this.directory, '.staging')
     this.journal = new RestoreJournal(store.dataDir)
@@ -188,7 +191,7 @@ export class BackupService {
       const management = this.store.getBackupManagementState()
       const id = management.nextBackupId
       const createdAt = nowIso()
-      const collected = await collectBackupSections({ store: this.store, sections: selected, demo })
+      const collected = await collectBackupSections({ store: this.store, sections: selected, demo, telemetryRepository: this.telemetryRepository })
       const manifest = {
         formatVersion: BACKUP_ARCHIVE_FORMAT_VERSION,
         backupId: randomUUID(),
@@ -358,6 +361,10 @@ export class BackupService {
   }
 
   async replaceExternalFiles(parsed, sections) {
+    if (sections.includes('agentTelemetry')) {
+      if (!this.telemetryRepository) throw new Error('Agent telemetry storage is unavailable for restore.')
+      this.telemetryRepository.replaceBackup(telemetryBackupFromArchive(parsed.files), await this.store.snapshotStores())
+    }
     if (sections.includes('registryEnrollment')) {
       const directory = path.join(this.store.dataDir, 'registry')
       await fs.mkdir(directory, { recursive: true, mode: 0o700 })

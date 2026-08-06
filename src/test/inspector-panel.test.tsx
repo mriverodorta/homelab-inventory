@@ -1119,7 +1119,7 @@ describe('InspectorPanel', () => {
     })
   })
 
-  it('limits NAS slots and identifies compiled agent setup as pending', async () => {
+  it('limits NAS slots and offers typed compiled-agent setup', async () => {
     const user = userEvent.setup()
     renderInspector({ selectedItemId: 'nas:1' })
 
@@ -1132,9 +1132,9 @@ describe('InspectorPanel', () => {
     expect(screen.queryByText('GPU')).not.toBeInTheDocument()
 
     await user.click(screen.getByRole('tab', { name: 'Agent' }))
-    expect(await screen.findByText('Compiled agent setup for this host type will become available with the embedded agent release.')).toBeInTheDocument()
-    expect(screen.queryByLabelText('Agent endpoint')).not.toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'Setup agent' })).not.toBeInTheDocument()
+    expect(await screen.findByLabelText('Agent endpoint')).toBeInTheDocument()
+    expect(screen.getByLabelText('Host operating system')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Setup agent' })).toBeInTheDocument()
     expect(createAgentEnrollment).not.toHaveBeenCalled()
   })
 
@@ -1964,7 +1964,7 @@ describe('InspectorPanel', () => {
     await user.click(screen.getByRole('button', { name: 'Revoke' }))
 
     await vi.waitFor(() => {
-      expect(revokeAgentRegistration).toHaveBeenCalledWith(1)
+      expect(revokeAgentRegistration).toHaveBeenCalledWith('server', 1)
     })
     expect(screen.getByRole('button', { name: 'Clear Saved Telemetry' })).toBeDisabled()
   })
@@ -1995,7 +1995,7 @@ describe('InspectorPanel', () => {
     await user.click(screen.getByRole('button', { name: 'Clear telemetry' }))
 
     await vi.waitFor(() => {
-      expect(clearAgentStatus).toHaveBeenCalledWith(1)
+      expect(clearAgentStatus).toHaveBeenCalledWith('server', 1)
     })
     expect(screen.queryByRole('button', { name: 'Revoke Registration' })).not.toBeInTheDocument()
   })

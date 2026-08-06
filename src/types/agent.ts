@@ -55,6 +55,10 @@ export type AgentHostStatus = {
   metrics?: AgentMetrics
   storageHealth?: Array<Record<string, unknown>>
   droppedSamples?: number
+  upgradeCommands?: {
+    linux: string
+    freebsd: string
+  }
 }
 
 export type AgentServerStatus = AgentHostStatus
@@ -64,6 +68,10 @@ export type AgentStatusSummary = {
   registeredHosts?: Array<{ hostType: AgentHostType; hostId: number }>
   servers: Record<string, AgentServerStatus>
   registeredServerIds: number[]
+  release?: {
+    version: string
+    sourceRevision: string
+  } | null
 }
 
 export type AgentEnrollmentResponse = {
@@ -71,6 +79,11 @@ export type AgentEnrollmentResponse = {
   expiresAt: string
   endpoint: string
   installCommand: string
+  installCommands: {
+    linux: string
+    freebsd: string
+  }
+  agentVersion: string
 }
 
 export type AgentTelemetrySample = {

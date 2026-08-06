@@ -112,6 +112,8 @@ export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
     'Capability-driven Agent, Services, and Containers tabs now provide a 30-minute heartbeat timeline, one-minute CPU and memory charts, health states, and detected-hardware summaries only when the assigned agent supports them.',
     'Inventory editors can apply individual detected-hardware values with explicit replacement confirmation and normal Undo support.',
     'Optional Docker and Podman telemetry can use a credential-free loopback proxy or an advanced local socket while transmitting only a strict allowlist of operational container fields.',
+    'Each application image now embeds and verifies a pinned agent release for Linux AMD64, Linux ARM64, and FreeBSD AMD64, then serves immutable installers directly from the user\'s own instance.',
+    'The Agent inspector now generates platform-specific setup commands and backend-escaped manual upgrade commands for an enrolled host when a newer embedded agent is available.',
   ],
   fixes: [
     'Agent telemetry no longer shares the workspace persistence path, so heartbeat history cannot advance the project revision or modify inventory, placements, assignments, or cables.',
@@ -120,11 +122,12 @@ export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
     'Detected-hardware suggestions stay pinned to their exact assigned host and edit session, preventing evidence from one device from appearing on another inventory item.',
   ],
   notes: [
-    'Schema 25 migrates existing server-agent relationships to typed numeric host references while preserving legacy endpoints during the transition. The independently compiled agent and its installer are still under development.',
+    'Schema 25 migrates existing server-agent relationships to typed numeric host references while preserving legacy endpoints during the transition.',
     'SMART remains disabled unless both the application contract and the host allowlist enable it; standby checks do not wake disks, and raw serial numbers or WWNs are never sent by normal telemetry.',
     'OPNsense identity is stored under /conf so upgrades preserve enrollment; restricted process visibility is shown as unavailable instead of misleading zero-valued service usage.',
     'Schema 26 retains only the latest private hardware snapshot per host plus bounded non-sensitive change summaries. Complete or Agents backups treat this evidence as sensitive.',
     'Container collection is disabled by default and never sends environment variables, labels, commands, arguments, mounts, secrets, or raw inspect payloads.',
+    'Complete and Agent telemetry backups include a validated versioned export of the retained SQLite history and restore it transactionally without changing workspace relationships.',
   ],
 }
 
