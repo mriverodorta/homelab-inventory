@@ -13,6 +13,8 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 - Added the first Linux agent telemetry profile for CPU and per-core utilization, load, memory and swap, ZFS ARC, filesystems, detailed disk I/O, aggregate and per-interface networking, sensors, batteries, systemd services, averaged GPU metrics, eMMC/mdraid health, and explicitly allowlisted SMART devices.
 - Added reproducible, checksummed agent packages for Linux AMD64/ARM64 and FreeBSD AMD64, including hardened unprivileged systemd and rc.d services, identity-preserving upgrades, rollback, uninstall, SBOM, provenance, and vulnerability gates.
 - Added FreeBSD and generic OPNsense telemetry for CPU, memory, load, filesystems, disk I/O, networking, sensors, batteries, rc.d services, and sanitized PCI/storage inventory with honest permission-blocked states.
+- Added an explicit one-time privileged hardware scan for Linux and FreeBSD that previews detected components before sending motherboard, chassis, BIOS, CPU, DIMM, storage, PCI, NIC, GPU, and power evidence to its assigned host.
+- Added host-scoped detected-hardware and field-suggestion APIs that match existing assigned components by opaque fingerprint, physical locator, or safe one-to-one position without changing inventory automatically.
 
 ### Changed
 
@@ -25,10 +27,12 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 - Protocol-v1 heartbeats authenticate the exact compressed request body, HTTP method, path, timestamp, and monotonic sequence with an enrolled Ed25519 device key. Demo sessions cannot enroll, activate, or submit agent data.
 - Linux collector commands use fixed arguments, strict time and output bounds, and no shell. SMART checks avoid waking standby disks and remove raw serial numbers and WWNs before transmission; hardware references use installation-specific opaque identifiers.
 - FreeBSD collection uses fixed read-only commands with bounded output and timeouts, omits GEOM identifiers, never reads OPNsense configuration, and never accesses firewall, VPN, routing, gateway, CARP, NAT, configd, or hidden process data.
+- The privileged scanner never reads the Ed25519 private key or makes a network request. It submits through a root-authenticated local Unix socket to the unprivileged daemon, which validates the payload again before signing and sending it.
 
 ### Data migration
 
 - Schema 25 automatically converts legacy server-only agent enrollment and status references to typed compute-host relationships without changing agent IDs, token hashes, timestamps, or retained status.
+- Schema 26 initializes numeric latest-hardware snapshot and bounded non-sensitive change-event records. Existing inventory, assignments, canvas placements, cables, agent identities, and telemetry remain unchanged.
 
 ## [0.8.7] - 2026-08-05
 

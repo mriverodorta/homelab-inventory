@@ -10,6 +10,7 @@ import { assertAuthenticationStoreShape } from '../auth/model.mjs'
 import { assertBackupManagementStoreShape } from './backup-model.mjs'
 import { materializeBackupSections, validateEnrollmentFiles } from './backup-sections.mjs'
 import { migrateSchema24To25 } from '../db/migrate-schema-25.mjs'
+import { migrateSchema25To26 } from '../db/migrate-schema-26.mjs'
 
 export function preflightRestore({ manifest, files, currentStores }) {
   if (manifest.schemaVersion > CURRENT_SCHEMA_VERSION) {
@@ -30,6 +31,11 @@ export function preflightRestore({ manifest, files, currentStores }) {
     composed.agentStatus = migrated.agentStatus
     if (replacements.agents) replacements.agents = migrated.agents
     if (replacements.agentStatus) replacements.agentStatus = migrated.agentStatus
+  }
+  if (manifest.schemaVersion < 26) {
+    const migrated = migrateSchema25To26(composed.agents)
+    composed.agents = migrated.agents
+    if (replacements.agents) replacements.agents = migrated.agents
   }
   const blockers = []
   try {

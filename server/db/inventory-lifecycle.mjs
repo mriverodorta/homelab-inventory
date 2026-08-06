@@ -380,6 +380,9 @@ export function analyzeInventoryDependencies({ inventory, project, agents, agent
       && (device?.hostId ?? device?.serverId) === ref.id
       && !device?.revokedAt,
   )
+  const hardwareSnapshots = Object.values(agents?.hardwareSnapshots ?? {}).filter((snapshot) =>
+    isHostType(ref.type) && snapshot?.hostType === ref.type && snapshot?.hostId === ref.id,
+  )
   const statuses = Object.entries(agentStatus?.hosts ?? agentStatus?.servers ?? {}).filter(([, status]) =>
     isHostType(ref.type)
       && (status?.hostType ?? 'server') === ref.type
@@ -430,6 +433,13 @@ export function analyzeInventoryDependencies({ inventory, project, agents, agent
         record,
         ['id', 'hostType', 'hostId', 'serverId'],
       )),
+    ))
+  }
+  if (hardwareSnapshots.length > 0) {
+    reasons.push(reason(
+      'agent-hardware-snapshot',
+      'Host has detected hardware evidence. Clear its agent runtime data before deletion.',
+      hardwareSnapshots.map((record) => safeReference(record, ['id', 'deviceId', 'hostType', 'hostId'])),
     ))
   }
   if (statuses.length > 0) {

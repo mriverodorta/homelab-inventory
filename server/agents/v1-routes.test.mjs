@@ -46,6 +46,7 @@ async function createStore() {
 function createApp(store, options) {
   const app = express()
   app.use('/api/agent/hosts/:hostType/:hostId/heartbeats', createAgentV1BodyMiddleware())
+  app.use('/api/agent/hosts/:hostType/:hostId/hardware-snapshots', createAgentV1BodyMiddleware({ maxBytes: 2 << 20, label: 'Hardware snapshot' }))
   app.use(express.json({ limit: '1mb' }))
   registerAgentV1Routes(app, store, options)
   app.use((_error, _request, response, _next) => response.status(500).json({ message: 'Internal error.' }))
@@ -134,6 +135,33 @@ function signedHeartbeat({ url, hostType, hostId, deviceId, pair, sequence = 1, 
   })
 }
 
+function signedSnapshot({ url, hostType, hostId, deviceId, pair, sequence, components }) {
+  const pathname = `/api/agent/hosts/${hostType}/${hostId}/hardware-snapshots`
+  const timestamp = new Date().toISOString()
+  const body = Buffer.from(JSON.stringify({
+    protocolMajor: 1,
+    host: { type: hostType, id: hostId },
+    collectedAt: timestamp,
+    components,
+  }))
+  const bodyDigest = sha256Hex(body)
+  const signature = sign(null, canonicalAgentRequest({
+    method: 'POST', path: pathname, timestamp, sequence, bodyDigest,
+  }), pair.privateKey).toString('base64')
+  return fetch(`${url}${pathname}`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      [AGENT_SIGNATURE_HEADERS.deviceId]: String(deviceId),
+      [AGENT_SIGNATURE_HEADERS.timestamp]: timestamp,
+      [AGENT_SIGNATURE_HEADERS.sequence]: String(sequence),
+      [AGENT_SIGNATURE_HEADERS.bodyDigest]: bodyDigest,
+      [AGENT_SIGNATURE_HEADERS.signature]: signature,
+    },
+    body,
+  })
+}
+
 afterEach(async () => {
   await Promise.all(activeStores.splice(0).map((store) => store.flush()))
   await Promise.all(tempDirs.splice(0).map((dir) => fs.rm(dir, { recursive: true, force: true })))
@@ -204,6 +232,105 @@ describe('agent protocol v1 routes', () => {
       expect(store.databases.agents.data.devices[enrolled.activation.deviceId].lastSequence).toBe(1)
     } finally {
       await close(server)
+    }
+  })
+
+  it('retains only the latest signed hardware snapshot and exposes host-scoped suggestions', async () => {
+    const store = await createStore()
+    store.databases.inventory.data.ram = [
+      { id: 1, name: 'Memory 1' },
+      { id: 2, name: 'Memory 2' },
+    ]
+    store.databases.project.data.assignments = [
+      { id: 1, hostType: 'server', hostId: 1, itemType: 'ram', itemId: 1, allocation: { resourceType: 'memory', positions: [0] } },
+      { id: 2, hostType: 'server', hostId: 1, itemType: 'ram', itemId: 2, allocation: { resourceType: 'memory', positions: [1] } },
+    ]
+    const { server, url } = await listen(createApp(store))
+    try {
+      const enrolled = await enrollAndActivate(url, 'server', 1)
+      const first = await signedSnapshot({
+        url, hostType: 'server', hostId: 1, deviceId: enrolled.activation.deviceId,
+        pair: enrolled.agentIdentity.pair, sequence: 1,
+        components: [
+          { kind: 'memory', locator: 'DIMM_A1', values: { manufacturer: 'Micron', serialNumber: 'PRIVATE-1', opaqueFingerprint: 'opaque-1' } },
+          { kind: 'memory', locator: 'DIMM_B1', values: { manufacturer: 'Samsung', serialNumber: 'PRIVATE-2', opaqueFingerprint: 'opaque-2' } },
+        ],
+      })
+      expect(first.status).toBe(201)
+      const projectRevision = store.databases.project.data.revision
+      const result = await fetch(`${url}/api/agent/hosts/server/1/hardware-snapshot`).then((response) => response.json())
+      expect(result.snapshot.components).toHaveLength(2)
+      expect(result.suggestions.map((suggestion) => suggestion.detectedValue)).toEqual(['Micron', 'Samsung'])
+      expect(store.databases.project.data.revision).toBe(projectRevision)
+
+      const second = await signedSnapshot({
+        url, hostType: 'server', hostId: 1, deviceId: enrolled.activation.deviceId,
+        pair: enrolled.agentIdentity.pair, sequence: 2,
+        components: [{ kind: 'memory', locator: 'DIMM_A1', values: { manufacturer: 'Micron', serialNumber: 'NEW-PRIVATE', opaqueFingerprint: 'opaque-1' } }],
+      })
+      expect(second.status).toBe(201)
+      expect(Object.values(store.databases.agents.data.hardwareSnapshots)).toHaveLength(1)
+      expect(Object.values(store.databases.agents.data.hardwareSnapshots)[0].components[0].values.serialNumber).toBe('NEW-PRIVATE')
+      expect(JSON.stringify(store.databases.agents.data.hardwareSnapshots)).not.toContain('PRIVATE-2')
+      expect(Object.values(store.databases.agents.data.hardwareEvents)).toEqual([
+        expect.objectContaining({ componentCountBefore: 2, componentCountAfter: 1, changedKinds: ['memory'] }),
+      ])
+    } finally {
+      await close(server)
+    }
+  })
+
+  it('rejects replayed and cross-host hardware snapshots without replacing current evidence', async () => {
+    const store = await createStore()
+    const { server, url } = await listen(createApp(store))
+    try {
+      const enrolled = await enrollAndActivate(url, 'server', 1)
+      const request = {
+        url, hostType: 'server', hostId: 1, deviceId: enrolled.activation.deviceId,
+        pair: enrolled.agentIdentity.pair, sequence: 1,
+        components: [{ kind: 'motherboard', locator: 'board-1', values: { serialNumber: 'PRIVATE' } }],
+      }
+      expect((await signedSnapshot(request)).status).toBe(201)
+      expect((await signedSnapshot(request)).status).toBe(409)
+      expect((await signedSnapshot({ ...request, hostType: 'nas', sequence: 2 })).status).toBe(401)
+      expect(Object.values(store.databases.agents.data.hardwareSnapshots)).toHaveLength(1)
+      expect(store.databases.agents.data.devices[enrolled.activation.deviceId].lastSequence).toBe(1)
+    } finally {
+      await close(server)
+    }
+  })
+
+  it('rolls back snapshot and sequence state when durable persistence fails', async () => {
+    const store = await createStore()
+    const originalFlush = store.flush.bind(store)
+    let failNextAgentFlush = false
+    store.flush = async (names) => {
+      if (failNextAgentFlush && names?.includes('agents')) {
+        failNextAgentFlush = false
+        throw new Error('agents persistence unavailable')
+      }
+      return originalFlush(names)
+    }
+    const { server, url } = await listen(createApp(store))
+    try {
+      const enrolled = await enrollAndActivate(url, 'server', 1)
+      failNextAgentFlush = true
+      const request = {
+        url, hostType: 'server', hostId: 1, deviceId: enrolled.activation.deviceId,
+        pair: enrolled.agentIdentity.pair, sequence: 1,
+        components: [{ kind: 'motherboard', locator: 'board-1', values: { serialNumber: 'PRIVATE' } }],
+      }
+      expect((await signedSnapshot(request)).status).toBe(500)
+      expect(store.databases.agents.data.devices[enrolled.activation.deviceId].lastSequence).toBe(0)
+      expect(store.databases.agents.data.hardwareSnapshots).toEqual({})
+      expect(store.databases.agents.data.hardwareEvents).toEqual({})
+
+      expect((await signedSnapshot(request)).status).toBe(201)
+      expect(store.databases.agents.data.devices[enrolled.activation.deviceId].lastSequence).toBe(1)
+      expect(Object.values(store.databases.agents.data.hardwareSnapshots)).toHaveLength(1)
+    } finally {
+      await close(server)
+      store.flush = originalFlush
     }
   })
 
@@ -299,6 +426,9 @@ describe('agent protocol v1 routes', () => {
         ['POST', '/api/agent/hosts/server/1/enrollments'],
         ['POST', '/api/agent/hosts/server/1/activate'],
         ['POST', '/api/agent/hosts/server/1/heartbeats'],
+        ['POST', '/api/agent/hosts/server/1/hardware-snapshots'],
+        ['GET', '/api/agent/hosts/server/1/hardware-snapshot'],
+        ['GET', '/api/agent/hosts/server/1/hardware-suggestions'],
         ['DELETE', '/api/agent/hosts/server/1/registration'],
         ['DELETE', '/api/agent/hosts/server/1/status'],
       ]) {

@@ -47,6 +47,7 @@ import { migrateSchema21To22 } from './migrate-schema-22.mjs'
 import { migrateSchema22To23 } from './migrate-schema-23.mjs'
 import { migrateSchema23To24 } from './migrate-schema-24.mjs'
 import { migrateSchema24To25 } from './migrate-schema-25.mjs'
+import { migrateSchema25To26 } from './migrate-schema-26.mjs'
 import {
   applyNasPowerConfigurationChange,
   inspectNasPowerConfigurationChange,
@@ -88,7 +89,7 @@ import {
   setWalkthroughStepInDraft,
 } from '../onboarding/lifecycle.mjs'
 
-export const CURRENT_SCHEMA_VERSION = 25
+export const CURRENT_SCHEMA_VERSION = 26
 
 const DEFAULT_SAVE_DEBOUNCE_MS = 500
 const DEFAULT_FLUSH_RETRY_BASE_MS = 1_000
@@ -1695,6 +1696,8 @@ export class HomelabInventoryStore {
       await writeJson(this.paths.agents, {
         enrollments: {},
         devices: {},
+        hardwareSnapshots: {},
+        hardwareEvents: {},
       })
     }
 
@@ -1752,6 +1755,8 @@ export class HomelabInventoryStore {
     this.databases.agents = new Low(new JsonFileAdapter(this.paths.agents), {
       enrollments: {},
       devices: {},
+      hardwareSnapshots: {},
+      hardwareEvents: {},
     })
     this.databases.agentStatus = new Low(new JsonFileAdapter(this.paths.agentStatus), {
       hosts: {},
@@ -2160,6 +2165,21 @@ export class HomelabInventoryStore {
           summary: migrated.summary,
         }
         currentVersion = 25
+        continue
+      }
+
+      if (currentVersion === 25) {
+        const migrated = migrateSchema25To26(this.databases.agents.data)
+        this.databases.agents.data = migrated.agents
+        this.databases.meta.data.schemaVersion = 26
+        this.databases.meta.data.lastMigration = {
+          from: 25,
+          to: 26,
+          completedAt: new Date().toISOString(),
+          backupId: path.basename(this.activeMigrationBackupPath),
+          summary: migrated.summary,
+        }
+        currentVersion = 26
         continue
       }
 
@@ -3400,7 +3420,20 @@ export class HomelabInventoryStore {
     const key = `${hostType}:${id}`
 
     delete this.databases.agentStatus.data.hosts[key]
+    const snapshotIds = new Set()
+    for (const [snapshotKey, snapshot] of Object.entries(this.databases.agents.data.hardwareSnapshots ?? {})) {
+      if (snapshot.hostType === hostType && snapshot.hostId === id) {
+        snapshotIds.add(snapshot.id)
+        delete this.databases.agents.data.hardwareSnapshots[snapshotKey]
+      }
+    }
+    for (const [eventKey, event] of Object.entries(this.databases.agents.data.hardwareEvents ?? {})) {
+      if ((event.hostType === hostType && event.hostId === id) || snapshotIds.has(event.snapshotId)) {
+        delete this.databases.agents.data.hardwareEvents[eventKey]
+      }
+    }
     this.scheduleFlush('agentStatus')
+    this.scheduleFlush('agents')
     return this.getAgentStatusSummary()
   }
 

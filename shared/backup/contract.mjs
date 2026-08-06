@@ -40,7 +40,7 @@ export const BACKUP_SECTIONS = Object.freeze({
   },
   agents: {
     label: 'Agents',
-    description: 'Agent enrollments and device credentials.',
+    description: 'Agent enrollments, device credentials, and private one-time hardware evidence.',
     sensitive: true,
   },
   agentTelemetry: {

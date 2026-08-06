@@ -177,6 +177,10 @@ app.use('/api/agent/servers/:serverId/heartbeat', express.json({ limit: '256kb' 
 app.use('/api/agent/hosts/:hostType/:hostId/enrollments', express.json({ limit: '16kb' }))
 app.use('/api/agent/hosts/:hostType/:hostId/activate', express.json({ limit: '16kb' }))
 app.use('/api/agent/hosts/:hostType/:hostId/heartbeats', createAgentV1BodyMiddleware())
+app.use('/api/agent/hosts/:hostType/:hostId/hardware-snapshots', createAgentV1BodyMiddleware({
+  maxBytes: 2 * 1024 * 1024,
+  label: 'Hardware snapshot',
+}))
 app.use(express.json({ limit: '10mb' }))
 
 const authRuntime = store ? await readAuthRuntimeConfig({

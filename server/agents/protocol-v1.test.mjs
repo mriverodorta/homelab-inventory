@@ -1,6 +1,6 @@
 import { generateKeyPairSync } from 'node:crypto'
 import { describe, expect, it } from 'vitest'
-import { normalizeV1Activation, normalizeV1Heartbeat } from './protocol-v1.mjs'
+import { normalizeV1Activation, normalizeV1HardwareSnapshot, normalizeV1Heartbeat } from './protocol-v1.mjs'
 
 function publicKey() {
   return generateKeyPairSync('ed25519').publicKey.export({ format: 'der', type: 'spki' }).toString('base64')
@@ -64,5 +64,31 @@ describe('agent protocol v1 normalization', () => {
       capabilities: { 'host.gpu': { state: 'permission-blocked' } },
       metrics: {},
     })
+  })
+})
+
+describe('hardware snapshot normalization', () => {
+  it('accepts a bounded typed snapshot for the authenticated host', () => {
+    expect(normalizeV1HardwareSnapshot({
+      protocolMajor: 1,
+      host: { type: 'server', id: 1 },
+      collectedAt: '2026-08-05T12:00:00Z',
+      components: [{ kind: 'memory', locator: 'DIMM_A1', values: { serialNumber: 'PRIVATE', sizeBytes: 8589934592 } }],
+    }, { hostType: 'server', hostId: 1 })).toMatchObject({
+      protocolMajor: 1,
+      components: [{ kind: 'memory', locator: 'DIMM_A1' }],
+    })
+  })
+
+  it('rejects cross-host, empty, and unsafe component payloads', () => {
+    const base = {
+      protocolMajor: 1,
+      host: { type: 'server', id: 1 },
+      collectedAt: '2026-08-05T12:00:00Z',
+      components: [{ kind: 'memory', locator: 'DIMM_A1', values: { sizeBytes: 8589934592 } }],
+    }
+    expect(() => normalizeV1HardwareSnapshot(base, { hostType: 'server', hostId: 2 })).toThrow('does not match')
+    expect(() => normalizeV1HardwareSnapshot({ ...base, components: [] })).toThrow('1 to 1024')
+    expect(() => normalizeV1HardwareSnapshot({ ...base, components: [{ kind: '../memory', locator: 'x', values: { size: 1 } }] })).toThrow('kind is invalid')
   })
 })

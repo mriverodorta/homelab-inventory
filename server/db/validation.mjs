@@ -652,12 +652,51 @@ function assertAgentRecordCollection(records, fieldPath) {
   }
 }
 
+function assertHardwareSnapshotCollection(records, fieldPath) {
+  if (!records || typeof records !== 'object' || Array.isArray(records)) {
+    throw new Error(`${fieldPath} must be an object.`)
+  }
+  for (const [recordKey, record] of Object.entries(records)) {
+    if (!record || typeof record !== 'object' || Array.isArray(record)) {
+      throw new Error(`${fieldPath}.${recordKey} must be an object.`)
+    }
+    const id = assertRelationalId(record.id, `${fieldPath}.${recordKey}.id`)
+    if (String(id) !== recordKey) throw new Error(`${fieldPath}.${recordKey}.id must match its object key.`)
+    assertRelationalId(record.deviceId, `${fieldPath}.${recordKey}.deviceId`)
+    if (!HOST_TYPE_SET.has(record.hostType)) throw new Error(`${fieldPath}.${recordKey}.hostType is invalid.`)
+    assertRelationalId(record.hostId, `${fieldPath}.${recordKey}.hostId`)
+    if (!Array.isArray(record.components) || record.components.length === 0 || record.components.length > 1024) {
+      throw new Error(`${fieldPath}.${recordKey}.components must contain 1 to 1024 entries.`)
+    }
+  }
+}
+
+function assertHardwareEventCollection(records, fieldPath) {
+  if (!records || typeof records !== 'object' || Array.isArray(records)) {
+    throw new Error(`${fieldPath} must be an object.`)
+  }
+  for (const [recordKey, record] of Object.entries(records)) {
+    if (!record || typeof record !== 'object' || Array.isArray(record)) throw new Error(`${fieldPath}.${recordKey} must be an object.`)
+    const id = assertRelationalId(record.id, `${fieldPath}.${recordKey}.id`)
+    if (String(id) !== recordKey) throw new Error(`${fieldPath}.${recordKey}.id must match its object key.`)
+    assertRelationalId(record.snapshotId, `${fieldPath}.${recordKey}.snapshotId`)
+    assertRelationalId(record.deviceId, `${fieldPath}.${recordKey}.deviceId`)
+    if (!HOST_TYPE_SET.has(record.hostType)) throw new Error(`${fieldPath}.${recordKey}.hostType is invalid.`)
+    assertRelationalId(record.hostId, `${fieldPath}.${recordKey}.hostId`)
+    if (!Array.isArray(record.changedKinds) || record.changedKinds.some((kind) => typeof kind !== 'string')) {
+      throw new Error(`${fieldPath}.${recordKey}.changedKinds must be a string array.`)
+    }
+  }
+}
+
 export function assertAgentsStoreShape(store) {
   if (!store || typeof store !== 'object' || Array.isArray(store)) {
     throw new Error('Agents store must be an object.')
   }
   assertAgentRecordCollection(store.enrollments, 'agents.enrollments')
   assertAgentRecordCollection(store.devices, 'agents.devices')
+  assertHardwareSnapshotCollection(store.hardwareSnapshots, 'agents.hardwareSnapshots')
+  assertHardwareEventCollection(store.hardwareEvents, 'agents.hardwareEvents')
 }
 
 export function assertAgentStatusStoreShape(store) {

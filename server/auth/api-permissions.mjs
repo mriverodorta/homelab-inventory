@@ -15,7 +15,7 @@ const PUBLIC_ROUTES = [
 
 const MACHINE_ROUTES = [
   ['POST', /^\/api\/agent\/servers\/[1-9]\d*\/(?:register|heartbeat)\/?$/],
-  ['POST', /^\/api\/agent\/hosts\/(?:server|nas|pcBuild)\/[1-9]\d*\/(?:activate|heartbeats)\/?$/],
+  ['POST', /^\/api\/agent\/hosts\/(?:server|nas|pcBuild)\/[1-9]\d*\/(?:activate|heartbeats|hardware-snapshots)\/?$/],
 ]
 
 const PROTECTED_ROUTES = [
@@ -80,6 +80,7 @@ const PROTECTED_ROUTES = [
   ['GET', /^\/api\/agent\/(?:install\.sh|status)\/?$/, 'agents.view'],
   ['POST', /^\/api\/agent\/enrollments\/?$/, 'agents.manage'],
   ['POST', /^\/api\/agent\/hosts\/(?:server|nas|pcBuild)\/[1-9]\d*\/enrollments\/?$/, 'agents.manage'],
+  ['GET', /^\/api\/agent\/hosts\/(?:server|nas|pcBuild)\/[1-9]\d*\/hardware-(?:snapshot|suggestions)\/?$/, 'agents.view'],
   ['DELETE', /^\/api\/agent\/servers\/[1-9]\d*\/(?:registration|status)\/?$/, 'agents.manage'],
   ['DELETE', /^\/api\/agent\/hosts\/(?:server|nas|pcBuild)\/[1-9]\d*\/(?:registration|status)\/?$/, 'agents.manage'],
 

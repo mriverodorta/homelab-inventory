@@ -34,6 +34,7 @@ It is built for people who want a practical map of what they own, what is instal
 - Portable complete or custom backups with protected partial restore, optional encryption, scheduling, and retention controls.
 - Optional multi-user authentication with local passwords, OpenID Connect, or both, plus invitations, custom roles, session management, and one-time owner recovery.
 - Optional host-agent foundation for signed, outbound-only telemetry from servers, NAS devices, and custom PC builds.
+- Reviewed one-time host hardware discovery through a privilege-separated local command; detected values remain private and never modify inventory automatically.
 - Mobile-friendly inventory drawer and long-press drag behavior for touch devices.
 
 ## AI Development Notice
@@ -152,6 +153,8 @@ The app keeps user data out of the application image. Runtime data lives in `/da
 ```
 
 Only one app container should write to a mounted data directory.
+
+`agents.json` may contain private hardware evidence from a user-confirmed one-time agent scan, including raw serials used for local matching. It is excluded from demo data, treated as sensitive in portable backups, and never enters public registry contributions.
 
 More data details: [docs/DATA.md](docs/DATA.md)
 

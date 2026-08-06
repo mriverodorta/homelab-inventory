@@ -283,7 +283,7 @@ describe('demo data sanitizer', () => {
     expect(project.metadata.notes).toBe('')
     expect(meta.skippedUpdateVersion).toBeNull()
     expect(meta.lastUpdateCheck).toBeNull()
-    expect(agents).toEqual({ enrollments: {}, devices: {} })
+    expect(agents).toEqual({ enrollments: {}, devices: {}, hardwareSnapshots: {}, hardwareEvents: {} })
     expect(agentStatus).toEqual({ servers: {} })
     await expect(fs.access(path.join(targetDir, 'backups'))).rejects.toThrow()
   })

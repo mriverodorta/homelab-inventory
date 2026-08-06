@@ -11,7 +11,7 @@ const PUBLIC_AUTH_PATHS = new Set([
 
 const PUBLIC_INVITATION_PATH = /^\/api\/auth\/invitations\/[^/]+(?:\/activate-local)?\/?$/
 
-const MACHINE_AGENT_PATH = /^\/api\/agent\/(?:servers\/[1-9]\d*\/(?:register|heartbeat)|hosts\/(?:server|nas|pcBuild)\/[1-9]\d*\/(?:activate|heartbeats))\/?$/
+const MACHINE_AGENT_PATH = /^\/api\/agent\/(?:servers\/[1-9]\d*\/(?:register|heartbeat)|hosts\/(?:server|nas|pcBuild)\/[1-9]\d*\/(?:activate|heartbeats|hardware-snapshots))\/?$/
 
 export function createAuthenticationGuard({ service, demo = false }) {
   return function authenticationGuard(request, response, next) {

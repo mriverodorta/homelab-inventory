@@ -114,7 +114,7 @@ function normalizeHost(value, expectedHost) {
     throw protocolError('host must reference a supported compute-host type and positive numeric id.')
   }
   if (expectedHost && (host.type !== expectedHost.hostType || host.id !== expectedHost.hostId)) {
-    throw protocolError('Heartbeat host does not match the authenticated endpoint.')
+    throw protocolError('Agent payload host does not match the authenticated endpoint.')
   }
   return { type: host.type, id: host.id }
 }
@@ -236,5 +236,36 @@ export function normalizeV1Heartbeat(payload, expectedHost) {
     services: normalizeServices(input.services),
     containers: normalizeContainers(input.containers),
     storageHealth: normalizeStorageHealth(input.storageHealth),
+  }
+}
+
+export function normalizeV1HardwareSnapshot(payload, expectedHost) {
+  const input = object(payload, 'hardwareSnapshot')
+  assertAllowedFields(input, new Set(['protocolMajor', 'host', 'collectedAt', 'components']), 'hardwareSnapshot')
+  if (input.protocolMajor !== AGENT_PROTOCOL_MAJOR) {
+    throw protocolError(`Unsupported agent protocol major ${String(input.protocolMajor)}.`)
+  }
+  if (!Array.isArray(input.components) || input.components.length === 0 || input.components.length > 1024) {
+    throw protocolError('hardwareSnapshot.components must contain 1 to 1024 entries.')
+  }
+  return {
+    protocolMajor: AGENT_PROTOCOL_MAJOR,
+    host: normalizeHost(input.host, expectedHost),
+    collectedAt: timestamp(input.collectedAt, 'hardwareSnapshot.collectedAt'),
+    components: input.components.map((candidate, index) => {
+      const component = object(candidate, `hardwareSnapshot.components[${index}]`)
+      assertAllowedFields(component, new Set(['kind', 'locator', 'values']), `hardwareSnapshot.components[${index}]`)
+      const kind = string(component.kind, `hardwareSnapshot.components[${index}].kind`, { max: 64 })
+      if (!/^[a-z][a-z0-9-]{0,63}$/.test(kind)) {
+        throw protocolError(`hardwareSnapshot.components[${index}].kind is invalid.`)
+      }
+      const values = boundedValue(object(component.values, `hardwareSnapshot.components[${index}].values`), `hardwareSnapshot.components[${index}].values`)
+      if (Object.keys(values).length === 0) throw protocolError(`hardwareSnapshot.components[${index}].values cannot be empty.`)
+      return {
+        kind,
+        locator: string(component.locator, `hardwareSnapshot.components[${index}].locator`, { max: 256 }),
+        values,
+      }
+    }),
   }
 }

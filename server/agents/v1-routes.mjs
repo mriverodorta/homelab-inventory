@@ -3,7 +3,8 @@ import { createNumericId, createToken, hashToken, timingSafeEqualString } from '
 import { isRelationalId } from '../db/relational-ids.mjs'
 import { normalizeAgentEndpoint } from '../agent-routes.mjs'
 import { AgentContractService } from './contract-service.mjs'
-import { AGENT_HOST_TYPES, normalizeV1Activation, normalizeV1Heartbeat } from './protocol-v1.mjs'
+import { buildHardwareSuggestions } from './hardware-suggestions.mjs'
+import { AGENT_HOST_TYPES, normalizeV1Activation, normalizeV1HardwareSnapshot, normalizeV1Heartbeat } from './protocol-v1.mjs'
 import {
   AGENT_SIGNATURE_HEADERS,
   AgentAuthenticationError,
@@ -122,6 +123,89 @@ function decodeHeartbeat(request, device, host, rawBody) {
   return { authentication, heartbeat }
 }
 
+function decodeHardwareSnapshot(request, device, host, rawBody) {
+  if (request.get('content-encoding')) {
+    const error = new Error('Hardware snapshots do not accept a content encoding.')
+    error.code = 'invalid-agent-content-encoding'
+    error.status = 415
+    throw error
+  }
+  const authentication = verifyAgentRequest(request, device, rawBody)
+  let payload
+  try {
+    payload = JSON.parse(rawBody.toString('utf8'))
+  } catch {
+    const error = new Error('Hardware snapshot contains invalid JSON.')
+    error.code = 'invalid-agent-json'
+    error.status = 400
+    throw error
+  }
+  return { authentication, snapshot: normalizeV1HardwareSnapshot(payload, host) }
+}
+
+function componentKindCounts(components) {
+  return Object.fromEntries([...components.reduce((counts, component) => {
+    counts.set(component.kind, (counts.get(component.kind) ?? 0) + 1)
+    return counts
+  }, new Map())].sort(([first], [second]) => first.localeCompare(second)))
+}
+
+async function persistHardwareSnapshot(store, device, host, authentication, snapshot, receivedAt) {
+  const collection = store.databases.agents.data.hardwareSnapshots
+  const events = store.databases.agents.data.hardwareEvents
+  const previousSequence = device.lastSequence
+  const previousSnapshots = structuredClone(collection)
+  const previousEvents = structuredClone(events)
+  const previous = Object.values(collection).find((record) => record.hostType === host.hostType && record.hostId === host.hostId)
+  const snapshotId = previous?.id ?? createNumericId(Object.keys(collection))
+  const previousCounts = previous ? componentKindCounts(previous.components) : {}
+  const nextCounts = componentKindCounts(snapshot.components)
+  const changedKinds = [...new Set([...Object.keys(previousCounts), ...Object.keys(nextCounts)])]
+    .filter((kind) => previousCounts[kind] !== nextCounts[kind])
+    .sort()
+  collection[snapshotId] = {
+    id: snapshotId,
+    deviceId: device.id,
+    hostType: host.hostType,
+    hostId: host.hostId,
+    protocolMajor: snapshot.protocolMajor,
+    collectedAt: snapshot.collectedAt,
+    receivedAt,
+    host: snapshot.host,
+    components: snapshot.components,
+  }
+  if (previous) {
+    const eventId = createNumericId(Object.keys(events))
+    events[eventId] = {
+      id: eventId,
+      snapshotId,
+      deviceId: device.id,
+      hostType: host.hostType,
+      hostId: host.hostId,
+      componentCountBefore: previous.components.length,
+      componentCountAfter: snapshot.components.length,
+      changedKinds,
+      createdAt: receivedAt,
+    }
+    const hostEvents = Object.values(events)
+      .filter((event) => event.hostType === host.hostType && event.hostId === host.hostId)
+      .sort((first, second) => second.id - first.id)
+    for (const event of hostEvents.slice(256)) delete events[event.id]
+  }
+  device.lastSequence = authentication.sequence
+  store.scheduleFlush('agents')
+  try {
+    await store.flush(['agents'])
+  } catch (error) {
+    device.lastSequence = previousSequence
+    store.databases.agents.data.hardwareSnapshots = previousSnapshots
+    store.databases.agents.data.hardwareEvents = previousEvents
+    store.scheduleFlush('agents')
+    throw error
+  }
+  return collection[snapshotId]
+}
+
 function persistHeartbeat(store, device, host, authentication, heartbeat, receivedAt) {
   device.lastSequence = authentication.sequence
   device.lastSeenAt = receivedAt
@@ -141,11 +225,11 @@ function persistHeartbeat(store, device, host, authentication, heartbeat, receiv
   store.scheduleFlush('agentStatus')
 }
 
-export function createAgentV1BodyMiddleware() {
+export function createAgentV1BodyMiddleware({ maxBytes = MAX_COMPRESSED_BYTES, label = 'Agent heartbeat' } = {}) {
   return function readSignedAgentBody(request, response, next) {
     const declaredLength = Number(request.get('content-length'))
-    if (Number.isFinite(declaredLength) && declaredLength > MAX_COMPRESSED_BYTES) {
-      response.status(413).json({ message: 'Agent heartbeat exceeds the compressed size limit.' })
+    if (Number.isFinite(declaredLength) && declaredLength > maxBytes) {
+      response.status(413).json({ message: `${label} exceeds the size limit.` })
       return
     }
     const chunks = []
@@ -154,9 +238,9 @@ export function createAgentV1BodyMiddleware() {
     request.on('data', (chunk) => {
       if (finished) return
       size += chunk.length
-      if (size > MAX_COMPRESSED_BYTES) {
+      if (size > maxBytes) {
         finished = true
-        response.status(413).json({ message: 'Agent heartbeat exceeds the compressed size limit.' })
+        response.status(413).json({ message: `${label} exceeds the size limit.` })
         request.destroy()
         return
       }
@@ -191,6 +275,9 @@ export function registerAgentV1Routes(app, store, {
     ['post', '/api/agent/hosts/:hostType/:hostId/enrollments'],
     ['post', '/api/agent/hosts/:hostType/:hostId/activate'],
     ['post', '/api/agent/hosts/:hostType/:hostId/heartbeats'],
+    ['post', '/api/agent/hosts/:hostType/:hostId/hardware-snapshots'],
+    ['get', '/api/agent/hosts/:hostType/:hostId/hardware-snapshot'],
+    ['get', '/api/agent/hosts/:hostType/:hostId/hardware-suggestions'],
     ['delete', '/api/agent/hosts/:hostType/:hostId/registration'],
     ['delete', '/api/agent/hosts/:hostType/:hostId/status'],
   ]
@@ -311,6 +398,52 @@ export function registerAgentV1Routes(app, store, {
       if (Number(error.status) >= 500) throw error
       return routeError(response, error)
     }
+  })
+
+  app.post('/api/agent/hosts/:hostType/:hostId/hardware-snapshots', async (request, response) => {
+    const host = parseHost(request)
+    const device = host ? findDevice(store, host, request) : null
+    if (!host || !device) return response.status(401).json({ message: 'Agent identity is invalid.' })
+    try {
+      const { authentication, snapshot } = decodeHardwareSnapshot(request, device, host, request.body)
+      const receivedAt = new Date().toISOString()
+      const persisted = await persistHardwareSnapshot(store, device, host, authentication, snapshot, receivedAt)
+      return response.status(201).json({ ok: true, snapshotId: persisted.id, receivedAt, sequence: authentication.sequence })
+    } catch (error) {
+      if (!(error instanceof AgentAuthenticationError) && !Number.isInteger(error?.status)) throw error
+      if (Number(error.status) >= 500) throw error
+      return routeError(response, error)
+    }
+  })
+
+  app.get('/api/agent/hosts/:hostType/:hostId/hardware-snapshot', (request, response) => {
+    const host = parseHost(request)
+    if (!host || !hostExists(store, host)) return response.status(404).json({ message: 'Compute host not found.' })
+    const snapshot = Object.values(store.databases.agents.data.hardwareSnapshots)
+      .find((record) => record.hostType === host.hostType && record.hostId === host.hostId) ?? null
+    return response.set('Cache-Control', 'no-store').json(buildHardwareSuggestions({
+      snapshot,
+      inventory: store.databases.inventory.data,
+      project: store.databases.project.data,
+    }))
+  })
+
+  app.get('/api/agent/hosts/:hostType/:hostId/hardware-suggestions', (request, response) => {
+    const host = parseHost(request)
+    if (!host || !hostExists(store, host)) return response.status(404).json({ message: 'Compute host not found.' })
+    const snapshot = Object.values(store.databases.agents.data.hardwareSnapshots)
+      .find((record) => record.hostType === host.hostType && record.hostId === host.hostId) ?? null
+    const result = buildHardwareSuggestions({
+      snapshot,
+      inventory: store.databases.inventory.data,
+      project: store.databases.project.data,
+    })
+    return response.set('Cache-Control', 'no-store').json({
+      snapshotId: result.snapshot?.id ?? null,
+      stale: result.stale,
+      ageMs: result.ageMs ?? null,
+      suggestions: result.suggestions,
+    })
   })
 
   app.delete('/api/agent/hosts/:hostType/:hostId/registration', (request, response) => {
