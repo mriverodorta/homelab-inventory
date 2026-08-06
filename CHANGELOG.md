@@ -11,6 +11,8 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 - Added the protocol-v1 foundation for the independent Homelab Inventory Agent, including a versioned capability contract, Ed25519 request signatures, replay protection, bounded gzip heartbeats, and typed enrollment for servers, NAS devices, and custom PC builds.
 - Added an isolated WAL-mode SQLite telemetry database with atomic one-minute samples, indexed latest-state projections, service/container/storage transition history, seven-day default retention, and bounded maintenance.
 - Added the first Linux agent telemetry profile for CPU and per-core utilization, load, memory and swap, ZFS ARC, filesystems, detailed disk I/O, aggregate and per-interface networking, sensors, batteries, systemd services, averaged GPU metrics, eMMC/mdraid health, and explicitly allowlisted SMART devices.
+- Added reproducible, checksummed agent packages for Linux AMD64/ARM64 and FreeBSD AMD64, including hardened unprivileged systemd and rc.d services, identity-preserving upgrades, rollback, uninstall, SBOM, provenance, and vulnerability gates.
+- Added FreeBSD and generic OPNsense telemetry for CPU, memory, load, filesystems, disk I/O, networking, sensors, batteries, rc.d services, and sanitized PCI/storage inventory with honest permission-blocked states.
 
 ### Changed
 
@@ -22,6 +24,7 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 
 - Protocol-v1 heartbeats authenticate the exact compressed request body, HTTP method, path, timestamp, and monotonic sequence with an enrolled Ed25519 device key. Demo sessions cannot enroll, activate, or submit agent data.
 - Linux collector commands use fixed arguments, strict time and output bounds, and no shell. SMART checks avoid waking standby disks and remove raw serial numbers and WWNs before transmission; hardware references use installation-specific opaque identifiers.
+- FreeBSD collection uses fixed read-only commands with bounded output and timeouts, omits GEOM identifiers, never reads OPNsense configuration, and never accesses firewall, VPN, routing, gateway, CARP, NAT, configd, or hidden process data.
 
 ### Data migration
 

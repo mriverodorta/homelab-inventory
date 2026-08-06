@@ -105,6 +105,8 @@ export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
     'The next-generation Homelab Inventory Agent foundation now supports typed enrollment for servers, NAS devices, and custom PC builds with a capability-driven protocol contract.',
     'Signed one-minute telemetry can be persisted atomically in a dedicated WAL-mode SQLite database with indexed latest state and bounded historical retention.',
     'The Linux agent now collects bounded host, filesystem, disk, network, sensor, battery, systemd, GPU, eMMC, mdraid, and opt-in SMART telemetry for AMD64 and ARM64 hosts.',
+    'Reproducible agent packages now cover Linux AMD64/ARM64 and FreeBSD AMD64 with hardened unprivileged services, verified upgrades, rollback, uninstall, SBOMs, and provenance.',
+    'FreeBSD and OPNsense hosts now report bounded generic host telemetry, rc.d services, and sanitized PCI/storage details without inspecting firewall configuration or hidden processes.',
   ],
   fixes: [
     'Agent telemetry no longer shares the workspace persistence path, so heartbeat history cannot advance the project revision or modify inventory, placements, assignments, or cables.',
@@ -114,6 +116,7 @@ export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
   notes: [
     'Schema 25 migrates existing server-agent relationships to typed numeric host references while preserving legacy endpoints during the transition. The independently compiled agent and its installer are still under development.',
     'SMART remains disabled unless both the application contract and the host allowlist enable it; standby checks do not wake disks, and raw serial numbers or WWNs are never sent by normal telemetry.',
+    'OPNsense identity is stored under /conf so upgrades preserve enrollment; restricted process visibility is shown as unavailable instead of misleading zero-valued service usage.',
   ],
 }
 
