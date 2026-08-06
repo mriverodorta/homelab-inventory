@@ -215,6 +215,7 @@ registerAgentV1Routes(app, store, {
   heartbeatSink: telemetryRepository
     ? (heartbeat) => telemetryRepository.recordHeartbeat(heartbeat)
     : null,
+  telemetryRepository,
 })
 
 function parseCookie(header, name) {

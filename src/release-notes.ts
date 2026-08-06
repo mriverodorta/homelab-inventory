@@ -109,17 +109,22 @@ export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
     'FreeBSD and OPNsense hosts now report bounded generic host telemetry, rc.d services, and sanitized PCI/storage details without inspecting firewall configuration or hidden processes.',
     'An explicit one-time privileged scan can detect motherboard, chassis, BIOS, CPU, DIMM, storage, PCI, network, GPU, and power hardware, preview it locally, and submit it only to its assigned host for review.',
     'Detected hardware now produces host-scoped field suggestions using opaque fingerprints, physical locators, and safe one-to-one component matching without silently editing inventory.',
+    'Capability-driven Agent, Services, and Containers tabs now provide a 30-minute heartbeat timeline, one-minute CPU and memory charts, health states, and detected-hardware summaries only when the assigned agent supports them.',
+    'Inventory editors can apply individual detected-hardware values with explicit replacement confirmation and normal Undo support.',
+    'Optional Docker and Podman telemetry can use a credential-free loopback proxy or an advanced local socket while transmitting only a strict allowlist of operational container fields.',
   ],
   fixes: [
     'Agent telemetry no longer shares the workspace persistence path, so heartbeat history cannot advance the project revision or modify inventory, placements, assignments, or cables.',
     'Heartbeat requests now authenticate their exact compressed body, endpoint, timestamp, and sequence with Ed25519 and reject replay, cross-host use, malformed compression, oversized payloads, and unsafe container fields.',
     'Lost heartbeat responses no longer leave the agent queue blocked: a machine-confirmed replay is treated as the acknowledgement for that exact signed sample.',
+    'Detected-hardware suggestions stay pinned to their exact assigned host and edit session, preventing evidence from one device from appearing on another inventory item.',
   ],
   notes: [
     'Schema 25 migrates existing server-agent relationships to typed numeric host references while preserving legacy endpoints during the transition. The independently compiled agent and its installer are still under development.',
     'SMART remains disabled unless both the application contract and the host allowlist enable it; standby checks do not wake disks, and raw serial numbers or WWNs are never sent by normal telemetry.',
     'OPNsense identity is stored under /conf so upgrades preserve enrollment; restricted process visibility is shown as unavailable instead of misleading zero-valued service usage.',
     'Schema 26 retains only the latest private hardware snapshot per host plus bounded non-sensitive change summaries. Complete or Agents backups treat this evidence as sensitive.',
+    'Container collection is disabled by default and never sends environment variables, labels, commands, arguments, mounts, secrets, or raw inspect payloads.',
   ],
 }
 

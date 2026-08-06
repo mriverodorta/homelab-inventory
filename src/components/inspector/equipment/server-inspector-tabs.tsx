@@ -1,13 +1,17 @@
 import { HostCompatibilityTab } from '@/components/host-compatibility-tab'
-import { AgentSetupPanel } from '@/components/inspector/agent/agent-setup-panel'
-import { getServerAgentStatus } from '@/components/inspector/agent/server-agent-status'
+import { AgentContainersPanel } from '@/components/inspector/agent/agent-containers-panel'
+import { AgentInspectorTab } from '@/components/inspector/agent/agent-inspector-tab'
+import { AgentServicesPanel } from '@/components/inspector/agent/agent-services-panel'
+import {
+  getAgentHostStatus,
+  hasAgentHostStatus,
+  isAgentHostRegistered,
+} from '@/components/inspector/agent/server-agent-status'
+import { agentSectionAvailable } from '@/components/inspector/agent/agent-status-utils'
 import type { InspectorAuditWarning } from '@/components/inspector/audit/audit-section'
 import { PortTabsEditor } from '@/components/inspector/connections/connection-editor'
 import { ServerNetworkTab } from '@/components/inspector/network/server-network-tab'
-import {
-  ComingSoonSection,
-  EditableSpecsSection,
-} from '@/components/inspector/shared/editable-specs-section'
+import { EditableSpecsSection } from '@/components/inspector/shared/editable-specs-section'
 import { updateEditorPorts } from '@/components/inspector/shared/inventory-editor-ports'
 import { itemFromEditorValues } from '@/components/inspector/shared/item-editor-adapters'
 import { EquipmentSlotsTab } from '@/components/inspector/slots/equipment-slots-tab'
@@ -20,7 +24,7 @@ import { isHostCompatibilityEnabled } from '@/lib/compatibility'
 import { setHostCompatibilityEnabled } from '@/lib/compatibility-policy'
 import type { InventoryItemInput } from '@/lib/db'
 import { runtimeItemKey } from '@/lib/item-keys'
-import type { AgentStatusSummary } from '@/types/agent'
+import type { AgentHardwareSuggestion, AgentStatusSummary } from '@/types/agent'
 import type {
   ConnectionEndpoint,
   InventoryItem,
@@ -32,6 +36,7 @@ export function ServerInspectorTabs({
   project,
   server,
   agentStatus,
+  agentHardwareSuggestions,
   demoMode,
   activeNetworkTraceKey,
   pendingEndpoint,
@@ -44,6 +49,7 @@ export function ServerInspectorTabs({
   project: ProjectState
   server: InventoryItem
   agentStatus: AgentStatusSummary | null
+  agentHardwareSuggestions: AgentHardwareSuggestion[]
   demoMode: boolean
   activeNetworkTraceKey: string | null
   pendingEndpoint: ConnectionEndpoint | null
@@ -59,9 +65,13 @@ export function ServerInspectorTabs({
     onSave: (input) => onUpdateItem(runtimeItemKey(server), input),
   })
   const draftServer = itemFromEditorValues(server, editor.values)
-  const status = getServerAgentStatus(agentStatus, server.id)
-  const registered = agentStatus?.registeredServerIds.includes(server.id) ?? false
-  const hasSavedStatus = Boolean(agentStatus?.servers[String(server.id)])
+  const status = getAgentHostStatus(agentStatus, 'server', server.id)
+  const registered = isAgentHostRegistered(agentStatus, 'server', server.id)
+  const hasSavedStatus = hasAgentHostStatus(agentStatus, 'server', server.id)
+  const showServices = (registered || hasSavedStatus)
+    && agentSectionAvailable(status, 'host.services', status.services)
+  const showContainers = (registered || hasSavedStatus)
+    && agentSectionAvailable(status, 'containers', status.containers)
   const handlePortsUpdate = (ports: InventoryPort[]) => updateEditorPorts(editor, ports)
 
   return (
@@ -78,6 +88,7 @@ export function ServerInspectorTabs({
               editor={editor}
               auditWarnings={auditWarnings}
               displayName
+              agentSuggestions={agentHardwareSuggestions}
             />
           ),
         },
@@ -128,17 +139,22 @@ export function ServerInspectorTabs({
             />
           ),
         },
-        {
+        ...(showServices ? [{
           value: 'services',
           label: 'Services',
-          content: <ComingSoonSection />,
-        },
+          content: <AgentServicesPanel services={status.services ?? []} />,
+        }] : []),
+        ...(showContainers ? [{
+          value: 'containers',
+          label: 'Containers',
+          content: <AgentContainersPanel containers={status.containers ?? []} />,
+        }] : []),
         ...(canViewAgents ? [{
           value: 'agent',
           label: 'Agent',
           content: (
-            <AgentSetupPanel
-              server={draftServer}
+            <AgentInspectorTab
+              host={draftServer}
               status={status}
               registered={registered}
               hasSavedStatus={hasSavedStatus}

@@ -15,7 +15,7 @@ const FIELD_MAP = Object.freeze({
   memory: { manufacturer: 'manufacturer', partNumber: 'model', speed: 'specs.speed' },
   storage: { vendor: 'manufacturer', model: 'model', size: 'specs.capacityBytes' },
   'network-interface': { name: 'name' },
-  'power-supply': { manufacturer: 'manufacturer', name: 'model', maxPowerCapacity: 'specs.wattage' },
+  'power-supply': { manufacturer: 'manufacturer', name: 'model', maxPowerCapacity: 'specs.wattageWatts' },
 })
 
 function atPath(record, fieldPath) {

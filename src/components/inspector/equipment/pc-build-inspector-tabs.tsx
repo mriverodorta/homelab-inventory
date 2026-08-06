@@ -1,8 +1,15 @@
 import { useContext, useEffect, useMemo, useState } from 'react'
 import { Cable, Layers3, Network, PlugZap } from 'lucide-react'
 import { HostCompatibilityTab } from '@/components/host-compatibility-tab'
-import { AgentSetupPanel } from '@/components/inspector/agent/agent-setup-panel'
-import { getServerAgentStatus } from '@/components/inspector/agent/server-agent-status'
+import { AgentContainersPanel } from '@/components/inspector/agent/agent-containers-panel'
+import { AgentInspectorTab } from '@/components/inspector/agent/agent-inspector-tab'
+import { AgentServicesPanel } from '@/components/inspector/agent/agent-services-panel'
+import {
+  getAgentHostStatus,
+  hasAgentHostStatus,
+  isAgentHostRegistered,
+} from '@/components/inspector/agent/server-agent-status'
+import { agentSectionAvailable } from '@/components/inspector/agent/agent-status-utils'
 import type { InspectorAuditWarning } from '@/components/inspector/audit/audit-section'
 import {
   EndpointConnectButton,
@@ -20,10 +27,7 @@ import { InspectorTopologyContext } from '@/components/inspector/inspector-topol
 import { NetworkTraceCard } from '@/components/inspector/network/server-network-tab'
 import { PowerEndpointsTab } from '@/components/inspector/power/power-endpoints-tab'
 import { getPcBuildPortOptions } from '@/components/inspector/equipment/pc-build-port-options'
-import {
-  ComingSoonSection,
-  EditableSpecsSection,
-} from '@/components/inspector/shared/editable-specs-section'
+import { EditableSpecsSection } from '@/components/inspector/shared/editable-specs-section'
 import {
   itemFromEditorValues,
   itemInputWithPorts,
@@ -43,7 +47,7 @@ import { runtimeItemKey } from '@/lib/item-keys'
 import { PC_BUILD_COMPONENT_ORDER } from '@/lib/pc-build'
 import { endpointKey } from '@/lib/project'
 import { cn } from '@/lib/utils'
-import type { AgentStatusSummary } from '@/types/agent'
+import type { AgentHardwareSuggestion, AgentStatusSummary } from '@/types/agent'
 import type {
   ConnectionEndpoint,
   InventoryItem,
@@ -265,6 +269,7 @@ export function PcBuildInspectorTabs({
   project,
   item,
   agentStatus,
+  agentHardwareSuggestions,
   demoMode,
   activeNetworkTraceKey,
   pendingEndpoint,
@@ -279,6 +284,7 @@ export function PcBuildInspectorTabs({
   project: ProjectState
   item: InventoryItem
   agentStatus: AgentStatusSummary | null
+  agentHardwareSuggestions: AgentHardwareSuggestion[]
   demoMode: boolean
   activeNetworkTraceKey: string | null
   pendingEndpoint: ConnectionEndpoint | null
@@ -296,9 +302,13 @@ export function PcBuildInspectorTabs({
     onSave: (input) => onUpdateItem(runtimeItemKey(item), input),
   })
   const draftItem = itemFromEditorValues(item, editor.values)
-  const status = getServerAgentStatus(agentStatus, item.id)
-  const registered = agentStatus?.registeredServerIds.includes(item.id) ?? false
-  const hasSavedStatus = Boolean(agentStatus?.servers[String(item.id)])
+  const status = getAgentHostStatus(agentStatus, 'pcBuild', item.id)
+  const registered = isAgentHostRegistered(agentStatus, 'pcBuild', item.id)
+  const hasSavedStatus = hasAgentHostStatus(agentStatus, 'pcBuild', item.id)
+  const showServices = (registered || hasSavedStatus)
+    && agentSectionAvailable(status, 'host.services', status.services)
+  const showContainers = (registered || hasSavedStatus)
+    && agentSectionAvailable(status, 'containers', status.containers)
 
   return (
     <InspectorTabs
@@ -308,7 +318,7 @@ export function PcBuildInspectorTabs({
         {
           value: 'specs',
           label: 'Specs',
-          content: <EditableSpecsSection title="PC Build Details" editor={editor} auditWarnings={auditWarnings} displayName />,
+          content: <EditableSpecsSection title="PC Build Details" editor={editor} auditWarnings={auditWarnings} displayName agentSuggestions={agentHardwareSuggestions} />,
         },
         { value: 'slots', label: 'Slots', content: <PcBuildSlotsTab project={project} host={draftItem} /> },
         {
@@ -354,13 +364,14 @@ export function PcBuildInspectorTabs({
             />
           ),
         },
-        { value: 'services', label: 'Services', content: <ComingSoonSection /> },
+        ...(showServices ? [{ value: 'services', label: 'Services', content: <AgentServicesPanel services={status.services ?? []} /> }] : []),
+        ...(showContainers ? [{ value: 'containers', label: 'Containers', content: <AgentContainersPanel containers={status.containers ?? []} /> }] : []),
         ...(canViewAgents ? [{
           value: 'agent',
           label: 'Agent',
           content: (
-            <AgentSetupPanel
-              server={draftItem}
+            <AgentInspectorTab
+              host={draftItem}
               status={status}
               registered={registered}
               hasSavedStatus={hasSavedStatus}

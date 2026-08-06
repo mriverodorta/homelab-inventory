@@ -1,5 +1,7 @@
 import { useId, type ReactNode } from 'react'
 import { Input } from '@/components/ui/input'
+import { AgentFieldSuggestionButton } from './agent-field-suggestion'
+import { useAgentFieldSuggestion } from './agent-field-suggestion-context'
 import {
   Select,
   SelectContent,
@@ -51,24 +53,37 @@ export function TextField({
   onChange: (value: string) => void
 }) {
   const errorId = useId()
+  const detected = useAgentFieldSuggestion(name)
 
   return (
     <FieldLabel className={className}>
       <span>{label}</span>
-      <Input
-        aria-label={ariaLabel ?? label}
-        aria-invalid={Boolean(error)}
-        aria-describedby={error ? errorId : undefined}
-        name={name}
-        value={value}
-        placeholder={placeholder}
-        type={type}
-        min={min}
-        step={step}
-        required={required}
-        className={fieldClassName()}
-        onChange={(event) => onChange(event.target.value)}
-      />
+      <div className="relative">
+        <Input
+          aria-label={ariaLabel ?? label}
+          aria-invalid={Boolean(error)}
+          aria-describedby={error ? errorId : undefined}
+          name={name}
+          value={value}
+          placeholder={placeholder}
+          type={type}
+          min={min}
+          step={step}
+          required={required}
+          className={`${fieldClassName()} ${detected.suggestion ? 'pr-10' : ''}`}
+          onChange={(event) => onChange(event.target.value)}
+        />
+        {detected.suggestion && detected.apply ? (
+          <span className="absolute right-1 top-1/2 -translate-y-1/2">
+            <AgentFieldSuggestionButton
+              label={label}
+              currentValue={value}
+              detectedValue={detected.suggestion.detectedValue}
+              onApply={detected.apply}
+            />
+          </span>
+        ) : null}
+      </div>
       <FieldError id={errorId} message={error} />
     </FieldLabel>
   )
@@ -98,6 +113,7 @@ export function SelectField({
   onOpenChange?: (open: boolean) => void
 }) {
   const errorId = useId()
+  const detected = useAgentFieldSuggestion(name ?? '')
   const optionValues = options.map((option) => typeof option === 'string' ? option : option.value)
   const labels = new Map(
     options
@@ -110,26 +126,36 @@ export function SelectField({
   return (
     <FieldLabel className={className}>
       <span>{label}</span>
-      <Select
-        name={name}
-        value={selectValue}
-        onValueChange={(nextValue) => onValueChange(nextValue === 'none' ? '' : nextValue)}
-        onOpenChange={onOpenChange}
-      >
-        <SelectTrigger aria-label={label} aria-invalid={Boolean(error)} aria-describedby={error ? errorId : undefined} className={fieldClassName()}>
-          <SelectValue placeholder={placeholder} />
-        </SelectTrigger>
-        <SelectContent>
-          {emptyLabel ? <SelectItem value="none">{emptyLabel}</SelectItem> : null}
-          {selectableOptions.filter(Boolean).map((option) => (
-            <SelectItem key={option} value={option}>
-              {option === value && !optionValues.includes(option)
-                ? `${option} (Legacy)`
-                : labels.get(option) ?? option}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
+      <div className="flex min-w-0 items-center gap-1">
+        <Select
+          name={name}
+          value={selectValue}
+          onValueChange={(nextValue) => onValueChange(nextValue === 'none' ? '' : nextValue)}
+          onOpenChange={onOpenChange}
+        >
+          <SelectTrigger aria-label={label} aria-invalid={Boolean(error)} aria-describedby={error ? errorId : undefined} className={`${fieldClassName()} min-w-0 flex-1`}>
+            <SelectValue placeholder={placeholder} />
+          </SelectTrigger>
+          <SelectContent>
+            {emptyLabel ? <SelectItem value="none">{emptyLabel}</SelectItem> : null}
+            {selectableOptions.filter(Boolean).map((option) => (
+              <SelectItem key={option} value={option}>
+                {option === value && !optionValues.includes(option)
+                  ? `${option} (Legacy)`
+                  : labels.get(option) ?? option}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        {detected.suggestion && detected.apply ? (
+          <AgentFieldSuggestionButton
+            label={label}
+            currentValue={value}
+            detectedValue={detected.suggestion.detectedValue}
+            onApply={detected.apply}
+          />
+        ) : null}
+      </div>
       <FieldError id={errorId} message={error} />
     </FieldLabel>
   )

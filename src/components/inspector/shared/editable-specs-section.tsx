@@ -8,6 +8,7 @@ import {
 import { Input } from '@/components/ui/input'
 import { useInventoryItemEditor } from '@/hooks/use-inventory-item-editor'
 import { cn } from '@/lib/utils'
+import type { AgentHardwareSuggestion } from '@/types/agent'
 
 const formLabelClass = 'grid gap-1.5 text-sm font-semibold text-[#20242c]'
 
@@ -30,6 +31,7 @@ export function EditableSpecsSection({
   auditWarnings,
   displayName = false,
   onChange,
+  agentSuggestions = [],
 }: {
   title: string
   editor: ReturnType<typeof useInventoryItemEditor>
@@ -39,6 +41,7 @@ export function EditableSpecsSection({
     patch: Partial<InventoryFormValues>,
     mode?: 'debounced' | 'immediate',
   ) => void
+  agentSuggestions?: AgentHardwareSuggestion[]
 }) {
   return (
     <>
@@ -48,6 +51,7 @@ export function EditableSpecsSection({
           errors={editor.errors}
           onChange={onChange ?? editor.updateValues}
           includeCompatibility={false}
+          agentSuggestions={agentSuggestions}
         />
         {displayName ? (
           <label className={cn(formLabelClass, 'mt-3')}>

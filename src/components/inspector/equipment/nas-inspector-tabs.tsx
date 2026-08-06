@@ -1,11 +1,18 @@
-import { Terminal } from 'lucide-react'
 import { HostCompatibilityTab } from '@/components/host-compatibility-tab'
+import { AgentContainersPanel } from '@/components/inspector/agent/agent-containers-panel'
+import { AgentInspectorTab } from '@/components/inspector/agent/agent-inspector-tab'
+import { AgentServicesPanel } from '@/components/inspector/agent/agent-services-panel'
+import {
+  getAgentHostStatus,
+  hasAgentHostStatus,
+  isAgentHostRegistered,
+} from '@/components/inspector/agent/server-agent-status'
+import { agentSectionAvailable } from '@/components/inspector/agent/agent-status-utils'
 import type { InspectorAuditWarning } from '@/components/inspector/audit/audit-section'
 import {
   ConnectionEditor,
   PortTabsEditor,
 } from '@/components/inspector/connections/connection-editor'
-import { InspectorSection } from '@/components/inspector/inspector-section'
 import { InspectorTabs } from '@/components/inspector/inspector-tabs'
 import { NetworkTraceSection } from '@/components/inspector/network/server-network-tab'
 import {
@@ -23,6 +30,7 @@ import { isHostCompatibilityEnabled } from '@/lib/compatibility'
 import { setHostCompatibilityEnabled } from '@/lib/compatibility-policy'
 import type { InventoryItemInput } from '@/lib/db'
 import { runtimeItemKey } from '@/lib/item-keys'
+import type { AgentHardwareSuggestion, AgentStatusSummary } from '@/types/agent'
 import type {
   ConnectionEndpoint,
   InventoryItem,
@@ -31,19 +39,12 @@ import type {
   ProjectState,
 } from '@/types/inventory'
 
-function NasAgentSection() {
-  return (
-    <InspectorSection title="Agent" icon={Terminal}>
-      <div className="rounded-md border border-dashed border-[#d6ccbd] bg-[#f8f3eb] p-4 text-sm font-semibold text-[#75695d]">
-        Agent setup is not available for NAS yet.
-      </div>
-    </InspectorSection>
-  )
-}
-
 export function NasInspectorTabs({
   project,
   item,
+  agentStatus,
+  agentHardwareSuggestions,
+  demoMode,
   pendingEndpoint,
   auditWarnings,
   activeNetworkTraceKey,
@@ -58,6 +59,9 @@ export function NasInspectorTabs({
 }: {
   project: ProjectState
   item: InventoryItem
+  agentStatus: AgentStatusSummary | null
+  agentHardwareSuggestions: AgentHardwareSuggestion[]
+  demoMode: boolean
   pendingEndpoint: ConnectionEndpoint | null
   auditWarnings: InspectorAuditWarning[]
   activeNetworkTraceKey: string | null
@@ -79,6 +83,13 @@ export function NasInspectorTabs({
     onSave: (input) => onUpdateItem(runtimeItemKey(item), input),
   })
   const draftItem = itemFromEditorValues(item, editor.values)
+  const status = getAgentHostStatus(agentStatus, 'nas', item.id)
+  const registered = isAgentHostRegistered(agentStatus, 'nas', item.id)
+  const hasSavedStatus = hasAgentHostStatus(agentStatus, 'nas', item.id)
+  const showServices = (registered || hasSavedStatus)
+    && agentSectionAvailable(status, 'host.services', status.services)
+  const showContainers = (registered || hasSavedStatus)
+    && agentSectionAvailable(status, 'containers', status.containers)
   const systemPowerPorts = (draftItem.ports ?? []).filter((port) => port.kind === 'power-port')
   const editableNasItem = {
     ...draftItem,
@@ -114,6 +125,7 @@ export function NasInspectorTabs({
               editor={editor}
               auditWarnings={auditWarnings}
               onChange={handleSpecsChange}
+              agentSuggestions={agentHardwareSuggestions}
             />
           ),
         },
@@ -170,10 +182,20 @@ export function NasInspectorTabs({
             />
           ),
         },
+        ...(showServices ? [{ value: 'services', label: 'Services', content: <AgentServicesPanel services={status.services ?? []} /> }] : []),
+        ...(showContainers ? [{ value: 'containers', label: 'Containers', content: <AgentContainersPanel containers={status.containers ?? []} /> }] : []),
         ...(canViewAgents ? [{
           value: 'agent',
           label: 'Agent',
-          content: <NasAgentSection />,
+          content: (
+            <AgentInspectorTab
+              host={draftItem}
+              status={status}
+              registered={registered}
+              hasSavedStatus={hasSavedStatus}
+              demoMode={demoMode}
+            />
+          ),
         }] : []),
         {
           value: 'compatibility',

@@ -15,12 +15,16 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 - Added FreeBSD and generic OPNsense telemetry for CPU, memory, load, filesystems, disk I/O, networking, sensors, batteries, rc.d services, and sanitized PCI/storage inventory with honest permission-blocked states.
 - Added an explicit one-time privileged hardware scan for Linux and FreeBSD that previews detected components before sending motherboard, chassis, BIOS, CPU, DIMM, storage, PCI, NIC, GPU, and power evidence to its assigned host.
 - Added host-scoped detected-hardware and field-suggestion APIs that match existing assigned components by opaque fingerprint, physical locator, or safe one-to-one position without changing inventory automatically.
+- Added capability-driven Agent, Services, and Containers inspector tabs with a 30-minute heartbeat timeline, one-minute CPU and memory charts, health states, and detected-hardware summaries.
+- Added per-field detected-hardware suggestions to inventory editors, including explicit replacement confirmation and normal Undo support.
+- Added opt-in, read-only Docker and Podman telemetry through a credential-free loopback proxy or an advanced local socket, with strictly allowlisted container fields.
 
 ### Changed
 
 - Agent relationships now use explicit compute-host types and numeric relational IDs while legacy server-agent endpoints remain available during the transition to the compiled agent.
 - Telemetry persistence completes before an agent sequence is acknowledged, and telemetry writes never advance the project revision or modify inventory, canvas placements, assignments, or cables.
 - GPU samples are averaged in agent memory before the normal one-minute heartbeat, services refresh on the contract cadence, and SMART requires both server approval and a local device allowlist.
+- Services and Containers tabs appear only when the assigned agent reports the corresponding capability, while Virtualization remains hidden until a collector exists.
 
 ### Security
 
@@ -28,6 +32,7 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 - Linux collector commands use fixed arguments, strict time and output bounds, and no shell. SMART checks avoid waking standby disks and remove raw serial numbers and WWNs before transmission; hardware references use installation-specific opaque identifiers.
 - FreeBSD collection uses fixed read-only commands with bounded output and timeouts, omits GEOM identifiers, never reads OPNsense configuration, and never accesses firewall, VPN, routing, gateway, CARP, NAT, configd, or hidden process data.
 - The privileged scanner never reads the Ed25519 private key or makes a network request. It submits through a root-authenticated local Unix socket to the unprivileged daemon, which validates the payload again before signing and sending it.
+- Container telemetry excludes environment variables, labels, commands, arguments, mounts, secrets, and inspect payloads; collection remains disabled unless both the application contract and local agent configuration permit it.
 
 ### Data migration
 

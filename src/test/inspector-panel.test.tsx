@@ -8,6 +8,7 @@ import type { TopologyQueryData } from '@/hooks/use-topology-query'
 import {
   clearAgentStatus,
   createAgentEnrollment,
+  loadAgentHardwareSnapshot,
   revokeAgentRegistration,
 } from '@/lib/agent-api'
 import type { AgentStatusSummary } from '@/types/agent'
@@ -29,6 +30,18 @@ vi.mock('@/hooks/use-topology-query', () => ({
 vi.mock('@/lib/agent-api', () => ({
   clearAgentStatus: vi.fn(),
   createAgentEnrollment: vi.fn(),
+  loadAgentHardwareSnapshot: vi.fn(async () => ({
+    snapshot: null,
+    stale: false,
+    ageMs: null,
+    suggestions: [],
+  })),
+  loadAgentTelemetry: vi.fn(async () => ({
+    host: { hostType: 'server', hostId: 1 },
+    from: '2026-08-05T00:00:00.000Z',
+    to: '2026-08-05T00:30:00.000Z',
+    samples: [],
+  })),
   revokeAgentRegistration: vi.fn(),
 }))
 
@@ -966,7 +979,7 @@ describe('InspectorPanel', () => {
     expect(errorNotice).toHaveClass('bg-[#fff4ee]')
   })
   it.each([
-    ['server:1', ['Specs', 'Slots', 'Ports', 'Network', 'Services', 'Agent', 'Compatibility']],
+    ['server:1', ['Specs', 'Slots', 'Ports', 'Network', 'Agent', 'Compatibility']],
     ['switch:1', ['Specs', 'Ports', 'Connections']],
     ['nas:1', ['Specs', 'Slots', 'Ports', 'Network', 'Agent', 'Compatibility']],
     ['patchPanel:1', ['Specs', 'Ports', 'Connections', 'Network']],
@@ -1106,7 +1119,7 @@ describe('InspectorPanel', () => {
     })
   })
 
-  it('limits NAS slots and keeps agent enrollment unavailable', async () => {
+  it('limits NAS slots and identifies compiled agent setup as pending', async () => {
     const user = userEvent.setup()
     renderInspector({ selectedItemId: 'nas:1' })
 
@@ -1119,9 +1132,9 @@ describe('InspectorPanel', () => {
     expect(screen.queryByText('GPU')).not.toBeInTheDocument()
 
     await user.click(screen.getByRole('tab', { name: 'Agent' }))
-    expect(screen.getByText('Agent setup is not available for NAS yet.')).toBeInTheDocument()
+    expect(await screen.findByText('Compiled agent setup for this host type will become available with the embedded agent release.')).toBeInTheDocument()
     expect(screen.queryByLabelText('Agent endpoint')).not.toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'Setup Agent' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Setup agent' })).not.toBeInTheDocument()
     expect(createAgentEnrollment).not.toHaveBeenCalled()
   })
 
@@ -1626,6 +1639,47 @@ describe('InspectorPanel', () => {
     }))
   })
 
+  it('reviews an agent-detected replacement before saving it through the item editor', async () => {
+    const user = userEvent.setup()
+    vi.mocked(loadAgentHardwareSnapshot).mockResolvedValueOnce({
+      snapshot: {
+        id: 9,
+        collectedAt: '2026-08-05T00:00:00.000Z',
+        receivedAt: '2026-08-05T00:00:01.000Z',
+        components: [],
+      },
+      stale: false,
+      ageMs: 1_000,
+      suggestions: [{
+        id: '9:ram:1:manufacturer',
+        snapshotId: 9,
+        target: { itemType: 'ram', itemId: 1 },
+        fieldPath: 'manufacturer',
+        currentValue: 'Crucial',
+        detectedValue: 'Micron',
+        source: {
+          kind: 'memory',
+          locator: 'DIMM 0',
+          collectedAt: '2026-08-05T00:00:00.000Z',
+        },
+        match: { method: 'physical-locator', confidence: 'high' },
+      }],
+    })
+    const { onUpdateItem } = renderInspector({
+      selectedItemId: 'ram:1',
+      project: compatibilityProject,
+    })
+
+    await user.click(await screen.findByRole('button', { name: 'Use detected Manufacturer' }))
+    expect(screen.getByRole('alertdialog')).toHaveTextContent('The current value “Crucial” will be replaced')
+    await user.click(screen.getByRole('button', { name: 'Use detected value' }))
+
+    expect(screen.getByLabelText('Manufacturer')).toHaveValue('Micron')
+    await waitFor(() => {
+      expect(onUpdateItem).toHaveBeenCalledWith('ram:1', expect.objectContaining({ manufacturer: 'Micron' }))
+    })
+  })
+
   it('corrects a CPU number after 500ms and preserves unrelated specs', async () => {
     vi.useFakeTimers()
     const { onUpdateItem } = renderInspector({ selectedItemId: 'cpu:1' })
@@ -1872,17 +1926,15 @@ describe('InspectorPanel', () => {
 
     await user.click(screen.getByRole('tab', { name: 'Agent' }))
 
-    expect(screen.getByText('online')).toBeInTheDocument()
+    expect(await screen.findByText('online')).toBeInTheDocument()
     expect(screen.getByText('lab-node')).toBeInTheDocument()
-    expect(screen.getByText('Load Avg')).toBeInTheDocument()
+    expect(screen.getByText('Load average')).toBeInTheDocument()
     expect(screen.getByText('0.15 / 0.20 / 0.30')).toBeInTheDocument()
-    expect(screen.getByText('Containers')).toBeInTheDocument()
+
+    await user.click(screen.getByRole('tab', { name: 'Containers' }))
     expect(screen.getByText('uptime-kuma')).toBeInTheDocument()
-    expect(screen.getByText('K3s')).toBeInTheDocument()
-    expect(screen.getByText('Worker')).toBeInTheDocument()
-    expect(screen.getByText('LAN Listening Ports')).toBeInTheDocument()
-    expect(screen.getByText('TCP 0.0.0.0:3001')).toBeInTheDocument()
-    expect(screen.getByText('Running Services')).toBeInTheDocument()
+
+    await user.click(screen.getByRole('tab', { name: 'Services' }))
     expect(screen.getByText('docker.service')).toBeInTheDocument()
   })
 
@@ -1908,7 +1960,8 @@ describe('InspectorPanel', () => {
     })
 
     await user.click(screen.getByRole('tab', { name: 'Agent' }))
-    await user.click(screen.getByRole('button', { name: 'Revoke Registration' }))
+    await user.click(await screen.findByRole('button', { name: 'Revoke Registration' }))
+    await user.click(screen.getByRole('button', { name: 'Revoke' }))
 
     await vi.waitFor(() => {
       expect(revokeAgentRegistration).toHaveBeenCalledWith(1)
@@ -1938,7 +1991,8 @@ describe('InspectorPanel', () => {
     })
 
     await user.click(screen.getByRole('tab', { name: 'Agent' }))
-    await user.click(screen.getByRole('button', { name: 'Clear Saved Telemetry' }))
+    await user.click(await screen.findByRole('button', { name: 'Clear Saved Telemetry' }))
+    await user.click(screen.getByRole('button', { name: 'Clear telemetry' }))
 
     await vi.waitFor(() => {
       expect(clearAgentStatus).toHaveBeenCalledWith(1)

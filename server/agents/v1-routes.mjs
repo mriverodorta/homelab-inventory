@@ -35,6 +35,20 @@ function recordMatchesHost(record, host) {
   return record.hostType === host.hostType && record.hostId === host.hostId
 }
 
+function telemetryQuery(request) {
+  const now = Date.now()
+  const from = request.query.from === undefined ? now - (30 * 60 * 1000) : Number(request.query.from)
+  const to = request.query.to === undefined ? now : Number(request.query.to)
+  const limit = request.query.limit === undefined ? 30 : Number(request.query.limit)
+  if (![from, to, limit].every(Number.isSafeInteger) || from < 0 || to < from || limit < 1 || limit > 1_440) {
+    const error = new Error('Telemetry range must contain valid from, to, and limit values.')
+    error.code = 'invalid-telemetry-range'
+    error.status = 400
+    throw error
+  }
+  return { from, to, limit }
+}
+
 function hostExists(store, host) {
   return store.getProject().items[hostKey(host)]?.type === host.hostType
 }
@@ -266,6 +280,7 @@ export function registerAgentV1Routes(app, store, {
   heartbeatRateLimit = HEARTBEAT_RATE_LIMIT,
   heartbeatRateWindowMs = HEARTBEAT_RATE_WINDOW_MS,
   heartbeatSink = null,
+  telemetryRepository = null,
 } = {}) {
   app.get('/api/agent/contracts/current', disabled
     ? disabledRoute
@@ -278,6 +293,7 @@ export function registerAgentV1Routes(app, store, {
     ['post', '/api/agent/hosts/:hostType/:hostId/hardware-snapshots'],
     ['get', '/api/agent/hosts/:hostType/:hostId/hardware-snapshot'],
     ['get', '/api/agent/hosts/:hostType/:hostId/hardware-suggestions'],
+    ['get', '/api/agent/hosts/:hostType/:hostId/telemetry'],
     ['delete', '/api/agent/hosts/:hostType/:hostId/registration'],
     ['delete', '/api/agent/hosts/:hostType/:hostId/status'],
   ]
@@ -444,6 +460,23 @@ export function registerAgentV1Routes(app, store, {
       ageMs: result.ageMs ?? null,
       suggestions: result.suggestions,
     })
+  })
+
+  app.get('/api/agent/hosts/:hostType/:hostId/telemetry', (request, response) => {
+    const host = parseHost(request)
+    if (!host || !hostExists(store, host)) return response.status(404).json({ message: 'Compute host not found.' })
+    if (!telemetryRepository) return response.status(503).json({ message: 'Telemetry storage is unavailable.' })
+    try {
+      const range = telemetryQuery(request)
+      return response.set('Cache-Control', 'no-store').json({
+        host,
+        from: new Date(range.from).toISOString(),
+        to: new Date(range.to).toISOString(),
+        samples: telemetryRepository.listSamples(host.hostType, host.hostId, range),
+      })
+    } catch (error) {
+      return routeError(response, error)
+    }
   })
 
   app.delete('/api/agent/hosts/:hostType/:hostId/registration', (request, response) => {

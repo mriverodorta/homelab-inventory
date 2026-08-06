@@ -25,6 +25,7 @@ import type {
   InventoryPort,
   ProjectState,
 } from '@/types/inventory'
+import type { AgentHardwareSuggestion } from '@/types/agent'
 
 const LEGACY_COMPONENT_INSPECTOR_TYPES = new Set<ComponentType>([
   'cpu',
@@ -42,6 +43,7 @@ export function ComponentItemEditor({
   pendingEndpoint,
   onUpdateItem,
   onEndpointConnectionClick,
+  agentHardwareSuggestions,
 }: {
   project: ProjectState
   item: InventoryItem & { type: ComponentType }
@@ -49,6 +51,7 @@ export function ComponentItemEditor({
   pendingEndpoint: ConnectionEndpoint | null
   onUpdateItem: (itemId: string, input: InventoryItemInput) => void
   onEndpointConnectionClick: (endpoint: ConnectionEndpoint) => void
+  agentHardwareSuggestions: AgentHardwareSuggestion[]
 }) {
   const editor = useInventoryItemEditor({
     item,
@@ -69,6 +72,7 @@ export function ComponentItemEditor({
               errors={editor.errors}
               onChange={editor.updateValues}
               includeCompatibility={false}
+              agentSuggestions={agentHardwareSuggestions}
             />
           </InspectorSection>
         ),
@@ -117,6 +121,7 @@ export function ComponentItemEditor({
       validationMessage={validationMessage}
       saveError={editor.saveError}
       onChange={editor.updateValues}
+      agentSuggestions={agentHardwareSuggestions}
     />
   )
 }

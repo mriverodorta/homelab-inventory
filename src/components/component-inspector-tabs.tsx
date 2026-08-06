@@ -36,6 +36,7 @@ export function ComponentInspectorTabs({
   saveError,
   onChange,
   onSelectOpenChange,
+  agentSuggestions,
 }: ComponentInspectorTabsProps) {
   if (!componentTypes.has(values.type)) return null
 
@@ -81,6 +82,7 @@ export function ComponentInspectorTabs({
         onChange={onChange}
         onSelectOpenChange={onSelectOpenChange}
         includeCompatibility={false}
+        agentSuggestions={agentSuggestions}
       />
 
       {hasPortsTab ? (

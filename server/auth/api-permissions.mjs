@@ -81,6 +81,7 @@ const PROTECTED_ROUTES = [
   ['POST', /^\/api\/agent\/enrollments\/?$/, 'agents.manage'],
   ['POST', /^\/api\/agent\/hosts\/(?:server|nas|pcBuild)\/[1-9]\d*\/enrollments\/?$/, 'agents.manage'],
   ['GET', /^\/api\/agent\/hosts\/(?:server|nas|pcBuild)\/[1-9]\d*\/hardware-(?:snapshot|suggestions)\/?$/, 'agents.view'],
+  ['GET', /^\/api\/agent\/hosts\/(?:server|nas|pcBuild)\/[1-9]\d*\/telemetry\/?$/, 'agents.view'],
   ['DELETE', /^\/api\/agent\/servers\/[1-9]\d*\/(?:registration|status)\/?$/, 'agents.manage'],
   ['DELETE', /^\/api\/agent\/hosts\/(?:server|nas|pcBuild)\/[1-9]\d*\/(?:registration|status)\/?$/, 'agents.manage'],
 

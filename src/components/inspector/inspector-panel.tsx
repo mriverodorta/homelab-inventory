@@ -27,6 +27,7 @@ import { isEditableComponent } from '@/components/inspector/equipment/component-
 import { PcBuildInspectorTabs } from '@/components/inspector/equipment/pc-build-inspector-tabs'
 import { StandalonePowerEquipmentTabs } from '@/components/inspector/equipment/standalone-power-equipment-tabs'
 import { usePermission } from '@/hooks/use-permission'
+import { useAgentHardwareSuggestions } from '@/hooks/use-agent-hardware-suggestions'
 
 const labelClass = 'text-[11px] font-black uppercase tracking-[0.12em] text-[#75695d]'
 
@@ -72,6 +73,7 @@ export function InspectorPanel({
   const canEditConnections = usePermission('connections.edit')
   const canManageProject = usePermission('project.settings.manage')
   const canManageAudit = usePermission('audit.manage')
+  const canViewAgents = usePermission('agents.view')
   const updateProject = canManageProject ? onUpdateProject : () => undefined
   const updateItem = canEditInventory ? onUpdateItem : () => undefined
   const updateItemProperties = canEditInventory ? onUpdateItemProperties : () => undefined
@@ -81,6 +83,11 @@ export function InspectorPanel({
   const createConnection = canEditConnections ? onCreateConnection : () => undefined
   const requestNasPowerConfigurationChange = canEditInventory ? onRequestNasPowerConfigurationChange : () => undefined
   const selectedItem = selectedItemId ? project.items[selectedItemId] ?? null : null
+  const agentHardwareSuggestions = useAgentHardwareSuggestions(
+    project,
+    selectedItem,
+    canViewAgents && !demoMode,
+  )
   const selectedConnection = selectedConnectionId
     ? project.connections.find((connection) => String(connection.id) === String(selectedConnectionId)) ?? null
     : null
@@ -233,6 +240,7 @@ export function InspectorPanel({
                   project={project}
                   server={selectedItem}
                   agentStatus={agentStatus}
+                  agentHardwareSuggestions={agentHardwareSuggestions}
                   demoMode={demoMode}
                   activeNetworkTraceKey={activeNetworkTraceKey}
                   pendingEndpoint={pendingConnectionEndpoint}
@@ -258,6 +266,9 @@ export function InspectorPanel({
                 <NasInspectorTabs
                   project={project}
                   item={selectedItem}
+                  agentStatus={agentStatus}
+                  agentHardwareSuggestions={agentHardwareSuggestions}
+                  demoMode={demoMode}
                   pendingEndpoint={pendingConnectionEndpoint}
                   auditWarnings={auditWarnings}
                   activeNetworkTraceKey={activeNetworkTraceKey}
@@ -289,6 +300,7 @@ export function InspectorPanel({
                   project={project}
                   item={selectedItem}
                   agentStatus={agentStatus}
+                  agentHardwareSuggestions={agentHardwareSuggestions}
                   demoMode={demoMode}
                   activeNetworkTraceKey={activeNetworkTraceKey}
                   pendingEndpoint={pendingConnectionEndpoint}
@@ -324,6 +336,7 @@ export function InspectorPanel({
                     pendingEndpoint={pendingConnectionEndpoint}
                     onUpdateItem={updateItem}
                     onEndpointConnectionClick={onEndpointConnectionClick}
+                    agentHardwareSuggestions={agentHardwareSuggestions}
                   />
                   <AuditSection warnings={auditWarnings} />
                 </>

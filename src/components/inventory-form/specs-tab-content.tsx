@@ -1,5 +1,7 @@
 import { AlertTriangle } from 'lucide-react'
 import { TabsContent } from '@/components/ui/tabs'
+import type { AgentHardwareSuggestion } from '@/types/agent'
+import { AgentFieldSuggestionProvider } from './agent-field-suggestion-context'
 import { CompatibilityFields } from './compatibility-fields'
 import { FieldError, FieldLabel } from './field-primitives'
 import type { InventoryFormErrors, InventoryFormValues } from './model'
@@ -20,6 +22,7 @@ export type InventorySpecsTabContentProps = {
   ) => void
   onSelectOpenChange?: (open: boolean) => void
   includeCompatibility?: boolean
+  agentSuggestions?: AgentHardwareSuggestion[]
 }
 
 export function InventoryFormStatus({
@@ -52,6 +55,7 @@ export function InventorySpecsFormContent({
   onChange,
   onSelectOpenChange,
   includeCompatibility = true,
+  agentSuggestions = [],
 }: InventorySpecsTabContentProps) {
   const handleFieldChange = (
     patch: Partial<InventoryFormValues>,
@@ -61,7 +65,8 @@ export function InventorySpecsFormContent({
   return (
     <>
       <InventoryFormStatus validationMessage={validationMessage} saveError={saveError} />
-      <div className="min-w-0 space-y-4">
+      <AgentFieldSuggestionProvider suggestions={agentSuggestions} onChange={handleFieldChange}>
+        <div className="min-w-0 space-y-4">
         <InventoryCommonFields
           type={values.type}
           values={values}
@@ -99,7 +104,8 @@ export function InventorySpecsFormContent({
           />
           <FieldError message={errors.notes} />
         </FieldLabel>
-      </div>
+        </div>
+      </AgentFieldSuggestionProvider>
     </>
   )
 }

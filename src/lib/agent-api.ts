@@ -1,4 +1,10 @@
-import type { AgentEnrollmentResponse, AgentStatusSummary } from '@/types/agent'
+import type {
+  AgentEnrollmentResponse,
+  AgentHardwareSnapshotResponse,
+  AgentHostType,
+  AgentStatusSummary,
+  AgentTelemetryRange,
+} from '@/types/agent'
 import { fetchWithTimeout } from '@/lib/fetch-with-timeout'
 
 async function agentRequest<T>(url: string, init?: RequestInit): Promise<T> {
@@ -49,4 +55,20 @@ export async function clearAgentStatus(
   return agentRequest<AgentStatusSummary>(`/api/agent/servers/${serverId}/status`, {
     method: 'DELETE',
   })
+}
+
+export async function loadAgentTelemetry(
+  hostType: AgentHostType,
+  hostId: number,
+  { from, to, limit = 30 }: { from: number; to: number; limit?: number },
+): Promise<AgentTelemetryRange> {
+  const query = new URLSearchParams({ from: String(from), to: String(to), limit: String(limit) })
+  return agentRequest<AgentTelemetryRange>(`/api/agent/hosts/${hostType}/${hostId}/telemetry?${query}`)
+}
+
+export async function loadAgentHardwareSnapshot(
+  hostType: AgentHostType,
+  hostId: number,
+): Promise<AgentHardwareSnapshotResponse> {
+  return agentRequest<AgentHardwareSnapshotResponse>(`/api/agent/hosts/${hostType}/${hostId}/hardware-snapshot`)
 }

@@ -7,6 +7,7 @@ describe('API permission classification', () => {
     expect(classifyApiRequest('POST', '/api/agent/servers/1/heartbeat')).toEqual({ access: 'machine' })
     expect(classifyApiRequest('POST', '/api/agent/hosts/server/1/hardware-snapshots')).toEqual({ access: 'machine' })
     expect(classifyApiRequest('GET', '/api/agent/hosts/server/1/hardware-suggestions')).toEqual({ access: 'protected', permission: 'agents.view' })
+    expect(classifyApiRequest('GET', '/api/agent/hosts/nas/1/telemetry')).toEqual({ access: 'protected', permission: 'agents.view' })
     expect(classifyApiRequest('GET', '/api/auth/events')).toEqual({ access: 'protected', permission: 'authentication.view' })
     expect(classifyApiRequest('DELETE', '/api/inventory/items/cpu/1')).toEqual({ access: 'protected', permission: 'inventory.delete' })
     expect(classifyApiRequest('GET', '/api/new-unclassified-route')).toEqual({ access: 'denied' })

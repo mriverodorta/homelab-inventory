@@ -334,6 +334,25 @@ describe('agent protocol v1 routes', () => {
     }
   })
 
+  it('returns a bounded host telemetry range without exposing another host', async () => {
+    const store = await createStore()
+    const listSamples = vi.fn().mockReturnValue([{ id: 1, sequence: 7 }])
+    const { server, url } = await listen(createApp(store, { telemetryRepository: { listSamples } }))
+    try {
+      const response = await fetch(`${url}/api/agent/hosts/server/1/telemetry?from=1000&to=2000&limit=30`)
+      expect(response.status).toBe(200)
+      expect(await response.json()).toMatchObject({
+        host: { hostType: 'server', hostId: 1 },
+        samples: [{ id: 1, sequence: 7 }],
+      })
+      expect(listSamples).toHaveBeenCalledWith('server', 1, { from: 1000, to: 2000, limit: 30 })
+      expect((await fetch(`${url}/api/agent/hosts/server/1/telemetry?limit=9999`)).status).toBe(400)
+      expect((await fetch(`${url}/api/agent/hosts/server/99/telemetry`)).status).toBe(404)
+    } finally {
+      await close(server)
+    }
+  })
+
   it('rate limits signed heartbeats per activated device', async () => {
     const store = await createStore()
     const { server, url } = await listen(createApp(store, { heartbeatRateLimit: 1 }))
@@ -429,6 +448,7 @@ describe('agent protocol v1 routes', () => {
         ['POST', '/api/agent/hosts/server/1/hardware-snapshots'],
         ['GET', '/api/agent/hosts/server/1/hardware-snapshot'],
         ['GET', '/api/agent/hosts/server/1/hardware-suggestions'],
+        ['GET', '/api/agent/hosts/server/1/telemetry'],
         ['DELETE', '/api/agent/hosts/server/1/registration'],
         ['DELETE', '/api/agent/hosts/server/1/status'],
       ]) {
