@@ -104,15 +104,15 @@ describe('release notes helpers', () => {
     const previousRelease = RELEASE_NOTES.find((entry) => entry.version === '0.2.1')!
     const engineRelease = RELEASE_NOTES.find((entry) => entry.version === '0.2.0')!
 
-    expect(hasReleaseNoteForVersion(RELEASE_NOTES, '0.8.7')).toBe(true)
+    expect(hasReleaseNoteForVersion(RELEASE_NOTES, '0.9.0')).toBe(true)
     expect(RELEASE_NOTES[0]).toEqual(
       expect.objectContaining({
-        version: '0.8.7',
-        title: 'Reliable cable route recovery',
+        version: '0.9.0',
+        title: 'Homelab Inventory Agent',
       }),
     )
     expect(RELEASE_NOTES.filter((entry) => entry.channel === 'latest')).toEqual([
-      expect.objectContaining({ version: '0.8.7' }),
+      expect.objectContaining({ version: '0.9.0' }),
     ])
     expect(RELEASE_NOTES.find((entry) => entry.version === '0.1.38')).toEqual(
       expect.objectContaining({ channel: 'release' }),

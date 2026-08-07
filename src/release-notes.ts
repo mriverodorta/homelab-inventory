@@ -101,6 +101,12 @@ const RELEASE_0_3_0_DETAILS: UnreleasedReleaseNotes = {
 }
 
 export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
+  highlights: [],
+  fixes: [],
+  notes: [],
+}
+
+const RELEASE_0_9_0_DETAILS: UnreleasedReleaseNotes = {
   highlights: [
     'The next-generation Homelab Inventory Agent foundation now supports typed enrollment for servers, NAS devices, and custom PC builds with a capability-driven protocol contract.',
     'Signed one-minute telemetry can be persisted atomically in a dedicated WAL-mode SQLite database with indexed latest state and bounded historical retention.',
@@ -472,9 +478,16 @@ const RELEASE_0_2_1_DETAILS: UnreleasedReleaseNotes = {
 
 export const RELEASE_NOTES: ReleaseNoteEntry[] = [
   {
+    version: '0.9.0',
+    date: '2026-08-07',
+    channel: 'latest',
+    title: 'Homelab Inventory Agent',
+    ...RELEASE_0_9_0_DETAILS,
+  },
+  {
     version: '0.8.7',
     date: '2026-08-05',
-    channel: 'latest',
+    channel: 'release',
     title: 'Reliable cable route recovery',
     ...RELEASE_0_8_7_DETAILS,
   },

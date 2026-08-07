@@ -6,6 +6,8 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 
 ## Unreleased
 
+## [0.9.0] - 2026-08-07
+
 ### Added
 
 - Added the protocol-v1 foundation for the independent Homelab Inventory Agent, including a versioned capability contract, Ed25519 request signatures, replay protection, bounded gzip heartbeats, and typed enrollment for servers, NAS devices, and custom PC builds.
