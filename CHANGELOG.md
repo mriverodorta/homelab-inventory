@@ -6,8 +6,11 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 
 ## Unreleased
 
+## [0.9.1] - 2026-08-07
+
 ### Fixed
 
+- Embedded agent 0.1.1 now negotiates the current Docker-compatible API version advertised by each runtime and performs one bounded renegotiation if the supported range changes.
 - Agent heartbeats now accept standards-compliant RFC 3339 UTC timestamps with up to nanosecond precision and return a controlled authentication error for malformed signed metadata.
 - The open Agent inspector now refreshes host status, heartbeat history, and metrics every minute even while a host is unknown, stale, or offline.
 

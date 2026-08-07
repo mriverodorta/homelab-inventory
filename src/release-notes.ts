@@ -102,10 +102,20 @@ const RELEASE_0_3_0_DETAILS: UnreleasedReleaseNotes = {
 
 export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
   highlights: [],
-  fixes: [
-    'Agent heartbeats now accept standards-compliant RFC 3339 UTC timestamps, while the open Agent inspector refreshes host status and telemetry every minute across online, unknown, stale, and offline states.',
-  ],
+  fixes: [],
   notes: [],
+}
+
+const RELEASE_0_9_1_DETAILS: UnreleasedReleaseNotes = {
+  highlights: [],
+  fixes: [
+    'Embedded agent 0.1.1 now negotiates the Docker-compatible API version advertised by each runtime instead of assuming a fixed version, with one bounded renegotiation when the supported range changes.',
+    'Agent heartbeats now accept standards-compliant RFC 3339 UTC timestamps with up to nanosecond precision and return a controlled authentication error for malformed signed metadata.',
+    'The open Agent inspector now refreshes host status, heartbeat history, and metrics every minute across online, unknown, stale, and offline states.',
+  ],
+  notes: [
+    'Agent upgrades remain manual and preserve the existing device identity, enrollment, configuration, and queued telemetry.',
+  ],
 }
 
 const RELEASE_0_9_0_DETAILS: UnreleasedReleaseNotes = {
@@ -480,9 +490,16 @@ const RELEASE_0_2_1_DETAILS: UnreleasedReleaseNotes = {
 
 export const RELEASE_NOTES: ReleaseNoteEntry[] = [
   {
-    version: '0.9.0',
+    version: '0.9.1',
     date: '2026-08-07',
     channel: 'latest',
+    title: 'Agent runtime compatibility',
+    ...RELEASE_0_9_1_DETAILS,
+  },
+  {
+    version: '0.9.0',
+    date: '2026-08-07',
+    channel: 'release',
     title: 'Homelab Inventory Agent',
     ...RELEASE_0_9_0_DETAILS,
   },
