@@ -102,8 +102,13 @@ const RELEASE_0_3_0_DETAILS: UnreleasedReleaseNotes = {
 
 export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
   highlights: [],
-  fixes: [],
-  notes: [],
+  fixes: [
+    'Fresh agent setup now replaces a stale device identity and its queued sequence state transactionally, preventing repeated setup commands from failing with an invalid-agent HTTP 401.',
+    'A failed agent replacement restores the previous identity, queue, configuration, binary, and service files byte-for-byte, while normal upgrades continue to preserve the active identity.',
+  ],
+  notes: [
+    'Agent release validation now runs the real installer in Ubuntu 24.04 with disabled telemetry, Docker-proxy telemetry, failed-activation rollback, stale-identity replacement, and identity-preserving upgrade coverage.',
+  ],
 }
 
 const RELEASE_0_9_2_DETAILS: UnreleasedReleaseNotes = {

@@ -114,10 +114,14 @@ async function main() {
   }
 
   const version = JSON.parse(await Bun.file(new URL('../package.json', import.meta.url)).text()).version
+  const agentPin = JSON.parse(await Bun.file(new URL('../server/agent-release-pin.json', import.meta.url)).text())
   const revision = await run(['git', 'rev-parse', 'HEAD'], { capture: true })
   const builtImages = []
 
   try {
+    await run([
+      'sh', 'vendor/homelab-inventory-agent/scripts/test-ubuntu-install.sh', agentPin.version,
+    ])
     for (const platform of PLATFORMS) {
       const architecture = platform.split('/')[1]
       const image = `homelab-inventory-security:${architecture}`

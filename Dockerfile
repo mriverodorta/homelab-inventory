@@ -12,8 +12,8 @@ FROM oven/bun:1-alpine AS bun-toolchain
 
 FROM golang:1.26.5-alpine AS agent-build
 WORKDIR /agent
-ARG AGENT_VERSION=0.1.2
-ARG AGENT_SOURCE_REVISION=594f381e1e4e45163d12ab9aadecb573be6a1935
+ARG AGENT_VERSION=0.1.3-dev
+ARG AGENT_SOURCE_REVISION=278e980fe11f1b4bc039306d360f34eb22c7e6bd
 COPY server/agent-release-pin.json /agent-release-pin.json
 COPY vendor/homelab-inventory-agent ./
 RUN grep -Fq "\"version\": \"${AGENT_VERSION}\"" /agent-release-pin.json \

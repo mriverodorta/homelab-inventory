@@ -6,6 +6,15 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 
 ## Unreleased
 
+### Fixed
+
+- Fresh agent setup now replaces stale device identity and queued sequence state transactionally, preventing retries from failing with `Agent identity is invalid` while restoring the previous installation exactly if activation or the first heartbeat fails.
+- Agent upgrades continue to preserve the active identity and configuration instead of rotating credentials.
+
+### Changed
+
+- Agent release validation now runs the real installer in Ubuntu 24.04 across disabled telemetry, Docker-proxy telemetry, failed-activation rollback, stale-identity replacement, and upgrade paths.
+
 ## [0.9.2] - 2026-08-07
 
 ### Fixed
