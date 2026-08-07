@@ -6,6 +6,8 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 
 ## Unreleased
 
+## [0.9.3] - 2026-08-07
+
 ### Fixed
 
 - Fresh agent setup now replaces stale device identity and queued sequence state transactionally, preventing retries from failing with `Agent identity is invalid` while restoring the previous installation exactly if activation or the first heartbeat fails.

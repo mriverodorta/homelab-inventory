@@ -102,6 +102,12 @@ const RELEASE_0_3_0_DETAILS: UnreleasedReleaseNotes = {
 
 export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
   highlights: [],
+  fixes: [],
+  notes: [],
+}
+
+const RELEASE_0_9_3_DETAILS: UnreleasedReleaseNotes = {
+  highlights: [],
   fixes: [
     'Fresh agent setup now replaces a stale device identity and its queued sequence state transactionally, preventing repeated setup commands from failing with an invalid-agent HTTP 401.',
     'A failed agent replacement restores the previous identity, queue, configuration, binary, and service files byte-for-byte, while normal upgrades continue to preserve the active identity.',
@@ -505,9 +511,16 @@ const RELEASE_0_2_1_DETAILS: UnreleasedReleaseNotes = {
 
 export const RELEASE_NOTES: ReleaseNoteEntry[] = [
   {
-    version: '0.9.2',
+    version: '0.9.3',
     date: '2026-08-07',
     channel: 'latest',
+    title: 'Transactional agent setup recovery',
+    ...RELEASE_0_9_3_DETAILS,
+  },
+  {
+    version: '0.9.2',
+    date: '2026-08-07',
+    channel: 'release',
     title: 'Reliable agent enrollment',
     ...RELEASE_0_9_2_DETAILS,
   },
