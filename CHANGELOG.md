@@ -6,6 +6,12 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 
 ## Unreleased
 
+## [0.9.2] - 2026-08-07
+
+### Fixed
+
+- Embedded agent 0.1.2 now starts and enrolls correctly when optional container telemetry is disabled instead of dereferencing an unset container collector.
+
 ## [0.9.1] - 2026-08-07
 
 ### Fixed

@@ -106,6 +106,16 @@ export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
   notes: [],
 }
 
+const RELEASE_0_9_2_DETAILS: UnreleasedReleaseNotes = {
+  highlights: [],
+  fixes: [
+    'Embedded agent 0.1.2 now starts and enrolls correctly when optional container telemetry is disabled instead of dereferencing an unset container collector.',
+  ],
+  notes: [
+    'Failed first-time installations continue to roll back partial configuration and identity files; generate a fresh setup command before retrying.',
+  ],
+}
+
 const RELEASE_0_9_1_DETAILS: UnreleasedReleaseNotes = {
   highlights: [],
   fixes: [
@@ -490,9 +500,16 @@ const RELEASE_0_2_1_DETAILS: UnreleasedReleaseNotes = {
 
 export const RELEASE_NOTES: ReleaseNoteEntry[] = [
   {
-    version: '0.9.1',
+    version: '0.9.2',
     date: '2026-08-07',
     channel: 'latest',
+    title: 'Reliable agent enrollment',
+    ...RELEASE_0_9_2_DETAILS,
+  },
+  {
+    version: '0.9.1',
+    date: '2026-08-07',
+    channel: 'release',
     title: 'Agent runtime compatibility',
     ...RELEASE_0_9_1_DETAILS,
   },
