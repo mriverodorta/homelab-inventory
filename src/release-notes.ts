@@ -102,7 +102,9 @@ const RELEASE_0_3_0_DETAILS: UnreleasedReleaseNotes = {
 
 export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
   highlights: [],
-  fixes: [],
+  fixes: [
+    'Agent heartbeats now accept standards-compliant RFC 3339 UTC timestamps, while the open Agent inspector refreshes host status and telemetry every minute across online, unknown, stale, and offline states.',
+  ],
   notes: [],
 }
 

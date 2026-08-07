@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { AgentHeartbeatTimeline } from '@/components/inspector/agent/agent-heartbeat-timeline'
 import { AgentMetricsPanel } from '@/components/inspector/agent/agent-metrics-panel'
 import { agentMetrics, metricNumber } from '@/components/inspector/agent/agent-status-utils'
+import { useAgentTelemetry } from '@/components/inspector/agent/use-agent-telemetry'
 import { InspectorSection } from '@/components/inspector/inspector-section'
 import { formatBytes, formatRelativeAge } from '@/components/inspector/shared/item-formatters'
 import {
@@ -25,7 +26,6 @@ import {
   clearAgentStatus,
   createAgentEnrollment,
   loadAgentHardwareSnapshot,
-  loadAgentTelemetry,
   revokeAgentRegistration,
 } from '@/lib/agent-api'
 import type { AgentHostStatus, AgentState, AgentStatusSummary } from '@/types/agent'
@@ -148,20 +148,18 @@ export function AgentSetupPanel({
     mutationFn: () => clearAgentStatus(host.type as 'server' | 'nas' | 'pcBuild', host.id),
     onSuccess: (summary) => queryClient.setQueryData(['agent-status'], summary),
   })
-  const telemetry = useQuery({
-    queryKey: ['agent-telemetry', host.type, host.id, '30m'],
-    queryFn: () => {
-      const to = Date.now()
-      return loadAgentTelemetry(host.type as 'server' | 'nas' | 'pcBuild', host.id, { from: to - (30 * 60_000), to, limit: 30 })
-    },
+  const telemetry = useAgentTelemetry({
+    hostType: host.type as 'server' | 'nas' | 'pcBuild',
+    hostId: host.id,
     enabled: registered || hasSavedStatus,
-    retry: 1,
-    refetchInterval: status.state === 'online' ? 60_000 : false,
   })
+  const liveStatus = telemetry.data?.status
+    ? { ...status, ...telemetry.data.status, upgradeCommands: status.upgradeCommands }
+    : status
   const command = enrollmentMutation.data?.installCommands?.[platform] ?? ''
-  const updateAvailable = Boolean(registered && status.agentVersion && release?.version && status.agentVersion !== release.version)
-  const upgradeCommand = status.upgradeCommands?.[platform] ?? ''
-  const metrics = agentMetrics(status)
+  const updateAvailable = Boolean(registered && liveStatus.agentVersion && release?.version && liveStatus.agentVersion !== release.version)
+  const upgradeCommand = liveStatus.upgradeCommands?.[platform] ?? ''
+  const metrics = agentMetrics(liveStatus)
   const cpuPercent = metricNumber(metrics.cpu, 'percent')
   const memoryUsed = metricNumber(metrics.memory, 'usedBytes')
   const memoryTotal = metricNumber(metrics.memory, 'totalBytes')
@@ -188,23 +186,27 @@ export function AgentSetupPanel({
       <InspectorSection
         title="Agent Health"
         icon={ShieldCheck}
-        badge={<span className={`rounded-md px-2 py-1 text-[10px] font-black uppercase ${agentStateTone(status.state)}`}>{status.state}</span>}
+        badge={<span className={`rounded-md px-2 py-1 text-[10px] font-black uppercase ${agentStateTone(liveStatus.state)}`}>{liveStatus.state}</span>}
       >
         <dl>
-          <DetailRow label="Last seen" value={formatRelativeAge(status.ageMs)} />
-          {status.hostname ? <DetailRow label="Hostname" value={status.hostname} /> : null}
-          {status.agentVersion ? <DetailRow label="Agent version" value={status.agentVersion} /> : null}
+          <DetailRow label="Last seen" value={formatRelativeAge(liveStatus.ageMs)} />
+          {liveStatus.hostname ? <DetailRow label="Hostname" value={liveStatus.hostname} /> : null}
+          {liveStatus.agentVersion ? <DetailRow label="Agent version" value={liveStatus.agentVersion} /> : null}
           {operatingSystem || architecture ? <DetailRow label="Platform" value={[operatingSystem, architecture].filter(Boolean).join(' / ')} /> : null}
           {cpuPercent !== null ? <DetailRow label="CPU" value={`${cpuPercent.toFixed(1)}%`} /> : null}
           {memoryUsed !== null || memoryTotal !== null ? <DetailRow label="Memory" value={`${formatBytes(memoryUsed)} / ${formatBytes(memoryTotal)}`} /> : null}
           {loadAverage ? <DetailRow label="Load average" value={loadAverage} /> : null}
-          {typeof status.droppedSamples === 'number' && status.droppedSamples > 0 ? <DetailRow label="Dropped samples" value={String(status.droppedSamples)} /> : null}
+          {typeof liveStatus.droppedSamples === 'number' && liveStatus.droppedSamples > 0 ? <DetailRow label="Dropped samples" value={String(liveStatus.droppedSamples)} /> : null}
         </dl>
       </InspectorSection>
 
       {(registered || hasSavedStatus) ? (
         <>
-          <AgentHeartbeatTimeline samples={telemetry.data?.samples ?? []} expected={status.connected} />
+          <AgentHeartbeatTimeline
+            samples={telemetry.data?.samples ?? []}
+            expected={liveStatus.connected}
+            serverTime={telemetry.data?.serverTime}
+          />
           {telemetry.isError ? (
             <div className="rounded-md border border-[#dfb3a5] bg-[#fff4ee] p-3 text-sm font-semibold text-[#7a2c1d]">
               {telemetry.error instanceof Error ? telemetry.error.message : 'Telemetry history could not be loaded.'}
@@ -302,7 +304,7 @@ export function AgentSetupPanel({
 
       {updateAvailable && upgradeCommand ? (
         <InspectorSection title="Agent Update" icon={Download} badge={<span className="text-xs font-bold text-[#a05b26]">{release?.version}</span>}>
-          <p className="text-sm font-semibold leading-relaxed text-[#75695d]">This host reports agent {status.agentVersion}. Upgrades are manual so the host never replaces its own executable without an administrator action.</p>
+          <p className="text-sm font-semibold leading-relaxed text-[#75695d]">This host reports agent {liveStatus.agentVersion}. Upgrades are manual so the host never replaces its own executable without an administrator action.</p>
           <textarea readOnly value={upgradeCommand} className="mt-3 min-h-24 w-full resize-y rounded-md border border-[#d6ccbd] bg-[#20242c] p-2 font-mono text-xs leading-relaxed text-[#fffdf8]" aria-label="Agent upgrade command" />
           <Button type="button" variant="outline" className="mt-2 gap-2" onClick={() => void navigator.clipboard.writeText(upgradeCommand)}><Copy data-icon="inline-start" />Copy upgrade command</Button>
         </InspectorSection>

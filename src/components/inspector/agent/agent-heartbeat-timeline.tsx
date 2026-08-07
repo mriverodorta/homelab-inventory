@@ -11,11 +11,14 @@ import {
 export function AgentHeartbeatTimeline({
   samples,
   expected,
+  serverTime,
 }: {
   samples: AgentTelemetrySample[]
   expected: boolean
+  serverTime?: string
 }) {
-  const buckets = buildHeartbeatBuckets(samples)
+  const parsedServerTime = serverTime ? Date.parse(serverTime) : Number.NaN
+  const buckets = buildHeartbeatBuckets(samples, Number.isFinite(parsedServerTime) ? parsedServerTime : Date.now())
   const received = buckets.filter((bucket) => bucket.received).length
 
   return (

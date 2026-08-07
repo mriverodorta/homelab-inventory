@@ -64,9 +64,11 @@ export async function clearAgentStatus(
 export async function loadAgentTelemetry(
   hostType: AgentHostType,
   hostId: number,
-  { from, to, limit = 30 }: { from: number; to: number; limit?: number },
+  { from, to, limit = 30 }: { from?: number; to?: number; limit?: number } = {},
 ): Promise<AgentTelemetryRange> {
-  const query = new URLSearchParams({ from: String(from), to: String(to), limit: String(limit) })
+  const query = new URLSearchParams({ limit: String(limit) })
+  if (from !== undefined) query.set('from', String(from))
+  if (to !== undefined) query.set('to', String(to))
   return agentRequest<AgentTelemetryRange>(`/api/agent/hosts/${hostType}/${hostId}/telemetry?${query}`)
 }
 

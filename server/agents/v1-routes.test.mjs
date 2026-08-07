@@ -373,11 +373,46 @@ describe('agent protocol v1 routes', () => {
       expect(response.status).toBe(200)
       expect(await response.json()).toMatchObject({
         host: { hostType: 'server', hostId: 1 },
+        serverTime: expect.stringMatching(/Z$/),
+        status: {
+          hostType: 'server',
+          hostId: 1,
+          state: 'unregistered',
+          connected: false,
+          ageMs: null,
+        },
+        timing: {
+          heartbeatIntervalMs: 60_000,
+          onlineMaxAgeMs: 90_000,
+          staleMaxAgeMs: 300_000,
+        },
         samples: [{ id: 1, sequence: 7 }],
       })
       expect(listSamples).toHaveBeenCalledWith('server', 1, { from: 1000, to: 2000, limit: 30 })
       expect((await fetch(`${url}/api/agent/hosts/server/1/telemetry?limit=9999`)).status).toBe(400)
       expect((await fetch(`${url}/api/agent/hosts/server/99/telemetry`)).status).toBe(404)
+    } finally {
+      await close(server)
+    }
+  })
+
+  it('reports an activated host as unknown before its first heartbeat', async () => {
+    const store = await createStore()
+    const listSamples = vi.fn().mockReturnValue([])
+    const { server, url } = await listen(createApp(store, { telemetryRepository: { listSamples } }))
+    try {
+      await enrollAndActivate(url, 'server', 1)
+      const response = await fetch(`${url}/api/agent/hosts/server/1/telemetry`)
+      expect(response.status).toBe(200)
+      expect(await response.json()).toMatchObject({
+        status: {
+          hostType: 'server',
+          hostId: 1,
+          state: 'unknown',
+          connected: true,
+          ageMs: null,
+        },
+      })
     } finally {
       await close(server)
     }

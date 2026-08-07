@@ -69,6 +69,11 @@ import {
 } from '../registry/local-catalog-mapping.mjs'
 import { createRoutingCache, normalizeRoutingCache } from '../routing-cache-model.mjs'
 import {
+  agentStatusTiming,
+  DEFAULT_AGENT_HEARTBEAT_INTERVAL_SECONDS,
+  resolveAgentStatusState,
+} from '../agents/status-model.mjs'
+import {
   assertBackupManagementStoreShape,
   createBackupManagementStore,
   normalizeBackupManagementStore,
@@ -3437,29 +3442,23 @@ export class HomelabInventoryStore {
     return this.getAgentStatusSummary()
   }
 
-  getAgentStatusSummary() {
-    const now = Date.now()
+  getAgentStatusSummary({
+    heartbeatIntervalSeconds = DEFAULT_AGENT_HEARTBEAT_INTERVAL_SECONDS,
+    now = Date.now(),
+  } = {}) {
+    const timing = agentStatusTiming(heartbeatIntervalSeconds)
     const devices = this.databases.agents.data.devices ?? {}
     const statuses = this.databases.agentStatus.data.hosts ?? {}
 
     const hosts = Object.fromEntries(
       Object.entries(statuses).map(([hostKey, status]) => {
         const lastSeenAt = status.lastSeenAt
-        const ageMs = typeof lastSeenAt === 'string' ? now - Date.parse(lastSeenAt) : null
         const connected = Object.values(devices).some(
           (device) => device.hostType === status.hostType
             && device.hostId === status.hostId
             && !device.revokedAt,
         )
-        const state = !connected
-          ? 'unregistered'
-          : ageMs === null
-            ? 'unknown'
-            : ageMs <= 90_000
-              ? 'online'
-              : ageMs <= 300_000
-                ? 'stale'
-                : 'offline'
+        const { state, ageMs } = resolveAgentStatusState({ connected, lastSeenAt, now, timing })
 
         return [hostKey, { ...status, state, ageMs, connected }]
       }),

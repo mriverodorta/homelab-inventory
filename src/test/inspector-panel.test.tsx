@@ -38,6 +38,9 @@ vi.mock('@/lib/agent-api', () => ({
   })),
   loadAgentTelemetry: vi.fn(async () => ({
     host: { hostType: 'server', hostId: 1 },
+    serverTime: '2026-08-05T00:30:00.000Z',
+    status: { hostType: 'server', hostId: 1, state: 'online', connected: true, ageMs: 0 },
+    timing: { heartbeatIntervalMs: 60_000, onlineMaxAgeMs: 90_000, staleMaxAgeMs: 300_000 },
     from: '2026-08-05T00:00:00.000Z',
     to: '2026-08-05T00:30:00.000Z',
     samples: [],

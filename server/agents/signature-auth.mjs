@@ -67,7 +67,7 @@ export function canonicalAgentRequest({ method, path, timestamp, sequence, bodyD
 
   if (!/^[A-Z]+$/.test(normalizedMethod)) throw new Error('Agent request method is invalid.')
   if (!normalizedPath.startsWith('/') || normalizedPath.includes('\n')) throw new Error('Agent request path is invalid.')
-  if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/.test(normalizedTimestamp)) {
+  if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?Z$/.test(normalizedTimestamp)) {
     throw new Error('Agent request timestamp is invalid.')
   }
   if (!/^[1-9]\d*$/.test(normalizedSequence)) throw new Error('Agent request sequence is invalid.')
@@ -139,13 +139,18 @@ export function verifyAgentRequest(request, device, rawBody, {
   }
 
   const url = new URL(request.originalUrl ?? request.url ?? '/', 'http://agent.local')
-  const canonical = canonicalAgentRequest({
-    method: request.method,
-    path: url.pathname,
-    timestamp,
-    sequence: sequenceText,
-    bodyDigest: suppliedDigest,
-  })
+  let canonical
+  try {
+    canonical = canonicalAgentRequest({
+      method: request.method,
+      path: url.pathname,
+      timestamp,
+      sequence: sequenceText,
+      bodyDigest: suppliedDigest,
+    })
+  } catch {
+    throw new AgentAuthenticationError('Agent signed request metadata is invalid.', 'invalid-agent-signature', 401)
+  }
   const publicKey = parseEd25519PublicKey(device.publicKey)
   if (!verify(null, canonical, publicKey, signature)) {
     throw new AgentAuthenticationError('Agent request signature is invalid.', 'invalid-agent-signature', 401)

@@ -73,6 +73,31 @@ describe('signed agent authentication', () => {
     })
   })
 
+  it.each([
+    '2026-08-05T20:00:00Z',
+    '2026-08-05T20:00:00.1Z',
+    '2026-08-05T20:00:00.123Z',
+    '2026-08-05T20:00:00.123456Z',
+    '2026-08-05T20:00:00.123456789Z',
+  ])('accepts canonical UTC RFC3339 timestamp precision: %s', (timestamp) => {
+    const fixture = signedRequest({ timestamp })
+    expect(verifyAgentRequest(
+      fixture.request,
+      { id: 7, publicKey: fixture.pair.publicKeyBase64, lastSequence: 0 },
+      fixture.body,
+      { now: Date.parse('2026-08-05T20:01:00.000Z') },
+    )).toMatchObject({ timestamp })
+  })
+
+  it('returns a controlled authentication error for a malformed timestamp', () => {
+    const fixture = signedRequest()
+    const originalGet = fixture.request.get
+    fixture.request.get = (name) => name === AGENT_SIGNATURE_HEADERS.timestamp
+      ? '2026-08-05 20:00:00Z'
+      : originalGet(name)
+    expect(() => verifyFixture(fixture)).toThrow(AgentAuthenticationError)
+  })
+
   it('rejects body, path, identity, replay, and clock changes', () => {
     const fixture = signedRequest()
     expect(() => verifyAgentRequest(

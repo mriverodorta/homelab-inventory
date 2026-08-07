@@ -5,6 +5,7 @@ import { normalizeAgentEndpoint } from '../agent-routes.mjs'
 import { AgentContractService } from './contract-service.mjs'
 import { buildHardwareSuggestions } from './hardware-suggestions.mjs'
 import { AGENT_HOST_TYPES, normalizeV1Activation, normalizeV1HardwareSnapshot, normalizeV1Heartbeat } from './protocol-v1.mjs'
+import { agentStatusTiming } from './status-model.mjs'
 import {
   AGENT_SIGNATURE_HEADERS,
   AgentAuthenticationError,
@@ -495,8 +496,28 @@ export function registerAgentV1Routes(app, store, {
     if (!telemetryRepository) return response.status(503).json({ message: 'Telemetry storage is unavailable.' })
     try {
       const range = telemetryQuery(request)
+      const serverTime = new Date()
+      const heartbeatIntervalSeconds = contractService.current().contract.collection.hostIntervalSeconds
+      const timing = agentStatusTiming(heartbeatIntervalSeconds)
+      const summary = store.getAgentStatusSummary({
+        heartbeatIntervalSeconds,
+        now: serverTime.getTime(),
+      })
+      const key = hostKey(host)
+      const connected = summary.registeredHosts.some(
+        (candidate) => candidate.hostType === host.hostType && candidate.hostId === host.hostId,
+      )
+      const status = summary.hosts[key] ?? {
+        ...host,
+        state: connected ? 'unknown' : 'unregistered',
+        connected,
+        ageMs: null,
+      }
       return response.set('Cache-Control', 'no-store').json({
         host,
+        serverTime: serverTime.toISOString(),
+        status,
+        timing,
         from: new Date(range.from).toISOString(),
         to: new Date(range.to).toISOString(),
         samples: telemetryRepository.listSamples(host.hostType, host.hostId, range),

@@ -111,6 +111,13 @@ export type AgentTelemetrySample = {
 
 export type AgentTelemetryRange = {
   host: { hostType: AgentHostType; hostId: number }
+  serverTime: string
+  status: AgentHostStatus
+  timing: {
+    heartbeatIntervalMs: number
+    onlineMaxAgeMs: number
+    staleMaxAgeMs: number
+  }
   from: string
   to: string
   samples: AgentTelemetrySample[]

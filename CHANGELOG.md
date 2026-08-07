@@ -6,6 +6,11 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 
 ## Unreleased
 
+### Fixed
+
+- Agent heartbeats now accept standards-compliant RFC 3339 UTC timestamps with up to nanosecond precision and return a controlled authentication error for malformed signed metadata.
+- The open Agent inspector now refreshes host status, heartbeat history, and metrics every minute even while a host is unknown, stale, or offline.
+
 ## [0.9.0] - 2026-08-07
 
 ### Added
