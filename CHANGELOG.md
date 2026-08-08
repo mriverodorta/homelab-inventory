@@ -6,6 +6,13 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 
 ## Unreleased
 
+## [0.9.6] - 2026-08-08
+
+### Fixed
+
+- Agent upgrades now recover automatically when an older embedded schema makes the derived contract cache incompatible, fetching and atomically activating the current contract without changing identity, enrollment, configuration, or queued telemetry.
+- Linux and FreeBSD installers now require sustained post-restart service health and roll back instead of reporting success when an updated agent immediately enters a restart loop.
+
 ## [0.9.5] - 2026-08-08
 
 ### Added

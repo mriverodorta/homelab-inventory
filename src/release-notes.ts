@@ -106,6 +106,17 @@ export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
   notes: [],
 }
 
+const RELEASE_0_9_6_DETAILS: UnreleasedReleaseNotes = {
+  highlights: [],
+  fixes: [
+    'Agent upgrades now replace an incompatible derived contract cache only after fetching and validating the current contract, preserving identity, enrollment, configuration, and queued telemetry.',
+    'Linux and FreeBSD installers now verify sustained service health after restart and roll back rather than reporting success for an agent that immediately exits.',
+  ],
+  notes: [
+    'Hosts left offline by the 0.1.5 contract-cache incompatibility recover through the normal 0.1.6 upgrade command; no manual cache deletion or reenrollment is required.',
+  ],
+}
+
 const RELEASE_0_9_5_DETAILS: UnreleasedReleaseNotes = {
   highlights: [
     'Registered agents now support a native manual update command and a dedicated unlink workflow with optional host-scoped telemetry deletion.',
@@ -536,9 +547,16 @@ const RELEASE_0_2_1_DETAILS: UnreleasedReleaseNotes = {
 
 export const RELEASE_NOTES: ReleaseNoteEntry[] = [
   {
-    version: '0.9.5',
+    version: '0.9.6',
     date: '2026-08-08',
     channel: 'latest',
+    title: 'Self-healing agent upgrades',
+    ...RELEASE_0_9_6_DETAILS,
+  },
+  {
+    version: '0.9.5',
+    date: '2026-08-08',
+    channel: 'release',
     title: 'Native agent lifecycle management',
     ...RELEASE_0_9_5_DETAILS,
   },
