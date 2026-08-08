@@ -101,6 +101,12 @@ const RELEASE_0_3_0_DETAILS: UnreleasedReleaseNotes = {
 }
 
 export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
+  highlights: [],
+  fixes: [],
+  notes: [],
+}
+
+const RELEASE_0_9_4_DETAILS: UnreleasedReleaseNotes = {
   highlights: [
     'Agent inspectors now show the host operating-system version and uptime, filter services independently by installation scope and runtime state, and present container CPU, memory, uptime, Compose service, published ports, and network metadata.',
   ],
@@ -517,9 +523,16 @@ const RELEASE_0_2_1_DETAILS: UnreleasedReleaseNotes = {
 
 export const RELEASE_NOTES: ReleaseNoteEntry[] = [
   {
+    version: '0.9.4',
+    date: '2026-08-08',
+    channel: 'latest',
+    title: 'Richer host telemetry',
+    ...RELEASE_0_9_4_DETAILS,
+  },
+  {
     version: '0.9.3',
     date: '2026-08-07',
-    channel: 'latest',
+    channel: 'release',
     title: 'Transactional agent setup recovery',
     ...RELEASE_0_9_3_DETAILS,
   },

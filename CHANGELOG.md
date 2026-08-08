@@ -6,6 +6,8 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 
 ## Unreleased
 
+## [0.9.4] - 2026-08-08
+
 ### Added
 
 - Agent inspectors now show the host operating-system version and uptime, provide independent service scope and runtime-state filters, and display container CPU, memory, uptime, Compose service, published ports, and network metadata.

@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto'
 
-export const AGENT_SCHEMA_BUNDLE_DIGEST = 'da509832ec10cbe0e8bab4903627e2c46995d3dcf100735f44bbf8a4330b8d4b'
+export const AGENT_SCHEMA_BUNDLE_DIGEST = '6991de825d245d5906d64a137f51fd52ed820c97c5f093a0935434a0130c06ec'
 
 const BASE_CONTRACT = Object.freeze({
   protocolMajor: 1,

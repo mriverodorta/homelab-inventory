@@ -1892,7 +1892,7 @@ describe('InspectorPanel', () => {
             connected: true,
             ageMs: 8_000,
             hostname: 'lab-node',
-            agentVersion: '0.1.3',
+            agentVersion: '0.1.4',
             metrics: {
               uptimeSeconds: 1_580_640,
               loadAverage: [0.15, 0.2, 0.3],
