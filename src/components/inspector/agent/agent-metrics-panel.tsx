@@ -4,6 +4,7 @@ import { InspectorSection } from '@/components/inspector/inspector-section'
 import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from '@/components/ui/chart'
 import type { AgentTelemetrySample } from '@/types/agent'
 import { sampleMetricNumber } from './agent-status-utils'
+import { AGENT_PERCENTAGE_TICKS } from './agent-telemetry-formatters'
 
 const chartConfig = {
   cpu: { label: 'CPU', color: '#2f7668' },
@@ -33,10 +34,10 @@ function MetricChart({
 }) {
   return (
     <ChartContainer config={chartConfig} className="h-32 w-full aspect-auto" initialDimension={{ width: 320, height: 128 }}>
-      <AreaChart data={rows} margin={{ left: -24, right: 8, top: 8, bottom: 0 }} accessibilityLayer>
+      <AreaChart data={rows} margin={{ left: 0, right: 8, top: 8, bottom: 0 }} accessibilityLayer>
         <CartesianGrid vertical={false} strokeDasharray="3 3" />
         <XAxis dataKey="time" hide />
-        <YAxis domain={[0, 100]} tickLine={false} axisLine={false} width={40} tickFormatter={(value) => `${value}%`} />
+        <YAxis domain={[0, 100]} ticks={[...AGENT_PERCENTAGE_TICKS]} tickLine={false} axisLine={false} width={44} tickFormatter={(value) => `${value}%`} />
         <ChartTooltip content={<ChartTooltipContent indicator="line" />} />
         <Area dataKey={dataKey} type="monotone" stroke={color} fill={color} fillOpacity={0.12} strokeWidth={2} connectNulls={false} isAnimationActive={false} />
       </AreaChart>

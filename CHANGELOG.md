@@ -6,6 +6,18 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 
 ## Unreleased
 
+### Added
+
+- Agent inspectors now show the host operating-system version and uptime, provide independent service scope and runtime-state filters, and display container CPU, memory, uptime, Compose service, published ports, and network metadata.
+
+### Fixed
+
+- Agent CPU and memory charts now render complete percentage labels instead of clipping every numeric tick.
+
+### Changed
+
+- Updated agents classify services without a hardcoded name allowlist and provide richer optional protocol-v1 container metadata without requiring broader Docker API permissions; older agent payloads remain supported.
+
 ## [0.9.3] - 2026-08-07
 
 ### Fixed

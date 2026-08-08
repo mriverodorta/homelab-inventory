@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { AgentHeartbeatTimeline } from '@/components/inspector/agent/agent-heartbeat-timeline'
 import { AgentMetricsPanel } from '@/components/inspector/agent/agent-metrics-panel'
 import { agentMetrics, metricNumber } from '@/components/inspector/agent/agent-status-utils'
+import { formatDuration, formatOperatingSystem } from '@/components/inspector/agent/agent-telemetry-formatters'
 import { useAgentTelemetry } from '@/components/inspector/agent/use-agent-telemetry'
 import { InspectorSection } from '@/components/inspector/inspector-section'
 import { formatBytes, formatRelativeAge } from '@/components/inspector/shared/item-formatters'
@@ -167,6 +168,8 @@ export function AgentSetupPanel({
   const system = metrics.system
   const operatingSystem = typeof system?.operatingSystem === 'string' ? system.operatingSystem : null
   const architecture = typeof system?.architecture === 'string' ? system.architecture : null
+  const operatingSystemVersion = formatOperatingSystem(system)
+  const uptime = formatDuration(metrics.uptimeSeconds)
 
   async function copyCommand() {
     if (!command) return
@@ -193,6 +196,8 @@ export function AgentSetupPanel({
           {liveStatus.hostname ? <DetailRow label="Hostname" value={liveStatus.hostname} /> : null}
           {liveStatus.agentVersion ? <DetailRow label="Agent version" value={liveStatus.agentVersion} /> : null}
           {operatingSystem || architecture ? <DetailRow label="Platform" value={[operatingSystem, architecture].filter(Boolean).join(' / ')} /> : null}
+          {operatingSystemVersion ? <DetailRow label="OS version" value={operatingSystemVersion} /> : null}
+          {uptime ? <DetailRow label="Uptime" value={uptime} /> : null}
           {cpuPercent !== null ? <DetailRow label="CPU" value={`${cpuPercent.toFixed(1)}%`} /> : null}
           {memoryUsed !== null || memoryTotal !== null ? <DetailRow label="Memory" value={`${formatBytes(memoryUsed)} / ${formatBytes(memoryTotal)}`} /> : null}
           {loadAverage ? <DetailRow label="Load average" value={loadAverage} /> : null}

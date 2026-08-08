@@ -1892,16 +1892,27 @@ describe('InspectorPanel', () => {
             connected: true,
             ageMs: 8_000,
             hostname: 'lab-node',
-            loadAverage: [0.15, 0.2, 0.3],
-            memory: {
-              totalBytes: 16 * 1024 * 1024 * 1024,
-              usedBytes: 8 * 1024 * 1024 * 1024,
+            agentVersion: '0.1.3',
+            metrics: {
+              uptimeSeconds: 1_580_640,
+              loadAverage: [0.15, 0.2, 0.3],
+              system: {
+                operatingSystem: 'linux',
+                architecture: 'amd64',
+                distributionName: 'Ubuntu 24.04.3 LTS',
+              },
+              memory: {
+                totalBytes: 16 * 1024 * 1024 * 1024,
+                usedBytes: 8 * 1024 * 1024 * 1024,
+              },
             },
             containers: [
               {
                 name: 'uptime-kuma',
                 image: 'louislam/uptime-kuma:1',
-                status: 'Up 2 hours',
+                state: 'running',
+                uptime: '2 hours',
+                composeService: 'uptime-kuma',
               },
             ],
             kubernetes: {
@@ -1918,8 +1929,10 @@ describe('InspectorPanel', () => {
             ],
             services: [
               {
-                unit: 'docker.service',
+                name: 'docker',
                 description: 'Docker Application Container Engine',
+                activeState: 'active',
+                classification: 'user-installed',
               },
             ],
           },
@@ -1931,6 +1944,8 @@ describe('InspectorPanel', () => {
 
     expect(await screen.findByText('online')).toBeInTheDocument()
     expect(screen.getByText('lab-node')).toBeInTheDocument()
+    expect(screen.getByText('Ubuntu 24.04.3 LTS')).toBeInTheDocument()
+    expect(screen.getByText('18d 7h 4m')).toBeInTheDocument()
     expect(screen.getByText('Load average')).toBeInTheDocument()
     expect(screen.getByText('0.15 / 0.20 / 0.30')).toBeInTheDocument()
 
@@ -1938,7 +1953,7 @@ describe('InspectorPanel', () => {
     expect(screen.getByText('uptime-kuma')).toBeInTheDocument()
 
     await user.click(screen.getByRole('tab', { name: 'Services' }))
-    expect(screen.getByText('docker.service')).toBeInTheDocument()
+    expect(screen.getByText('docker')).toBeInTheDocument()
   })
 
   it('allows registered agents to be revoked from the Agent tab', async () => {

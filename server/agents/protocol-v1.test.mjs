@@ -56,6 +56,38 @@ describe('agent protocol v1 normalization', () => {
     }))).toThrow('forbidden field environment')
   })
 
+  it('accepts optional enriched service and container summaries', () => {
+    expect(normalizeV1Heartbeat(heartbeat({
+      services: [{ name: 'docker', activeState: 'active', classification: 'user-installed' }],
+      containers: [{
+        runtime: 'docker', runtimeId: 'abc', name: 'homarr', image: 'ghcr.io/homarr-labs/homarr:latest', state: 'running',
+        status: 'Up 2 hours (healthy)', uptime: '2 hours', composeService: 'homarr', networkMode: 'custom',
+        networkNames: ['internal_net'], ports: [{ hostPort: 7575, containerPort: 7575, protocol: 'tcp' }],
+      }],
+    }))).toMatchObject({
+      services: [{ classification: 'user-installed' }],
+      containers: [{ uptime: '2 hours', composeService: 'homarr', networkNames: ['internal_net'], ports: [{ hostPort: 7575 }] }],
+    })
+  })
+
+  it('rejects malformed enriched service and container summaries', () => {
+    expect(() => normalizeV1Heartbeat(heartbeat({
+      services: [{ name: 'docker', activeState: 'active', classification: 'third-party' }],
+    }))).toThrow('classification is invalid')
+    expect(() => normalizeV1Heartbeat(heartbeat({
+      containers: [{
+        runtime: 'docker', runtimeId: 'abc', name: 'web', image: 'example/web:1', state: 'running',
+        networkMode: 'internal',
+      }],
+    }))).toThrow('networkMode is invalid')
+    expect(() => normalizeV1Heartbeat(heartbeat({
+      containers: [{
+        runtime: 'docker', runtimeId: 'abc', name: 'web', image: 'example/web:1', state: 'running',
+        ports: [{ hostPort: 0, containerPort: 8080, protocol: 'tcp' }],
+      }],
+    }))).toThrow('ports[0] is invalid')
+  })
+
   it('uses explicit unavailable capability states instead of coercing them to zero', () => {
     expect(normalizeV1Heartbeat(heartbeat({
       capabilities: { 'host.gpu': { state: 'permission-blocked', detail: 'Device access denied' } },

@@ -23,6 +23,35 @@ export type AgentMetrics = {
   gpus?: Array<Record<string, unknown>>
 }
 
+export type AgentService = Record<string, unknown> & {
+  name?: string
+  description?: string
+  activeState?: string
+  classification?: 'user-installed' | 'system' | 'unknown'
+}
+
+export type AgentContainerPort = {
+  hostPort: number
+  containerPort: number
+  protocol: 'tcp' | 'udp' | 'sctp'
+}
+
+export type AgentContainer = Record<string, unknown> & {
+  runtime?: 'docker' | 'podman'
+  runtimeId?: string
+  name?: string
+  image?: string
+  state?: string
+  status?: string
+  uptime?: string
+  composeService?: string
+  networkMode?: 'host' | 'bridge' | 'none' | 'custom'
+  networkNames?: string[]
+  ports?: AgentContainerPort[]
+  cpuPercent?: number
+  memoryBytes?: number
+}
+
 export type AgentHostStatus = {
   hostType?: AgentHostType
   hostId?: number
@@ -47,9 +76,9 @@ export type AgentHostStatus = {
     addresses?: string[]
   }>
   motherboard?: Record<string, unknown> | null
-  containers?: Array<Record<string, unknown>>
+  containers?: AgentContainer[]
   kubernetes?: Record<string, unknown> | null
-  services?: Array<Record<string, unknown>>
+  services?: AgentService[]
   listeningPorts?: Array<Record<string, unknown>>
   capabilities?: Record<string, AgentCapability>
   metrics?: AgentMetrics
@@ -103,8 +132,8 @@ export type AgentTelemetrySample = {
     droppedSamples?: number
     capabilities: Record<string, AgentCapability>
     metrics: AgentMetrics
-    services?: Array<Record<string, unknown>>
-    containers?: Array<Record<string, unknown>>
+    services?: AgentService[]
+    containers?: AgentContainer[]
     storageHealth?: Array<Record<string, unknown>>
   }
 }

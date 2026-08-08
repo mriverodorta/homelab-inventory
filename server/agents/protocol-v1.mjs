@@ -22,6 +22,9 @@ const METRIC_ARRAY_LIMITS = Object.freeze({
 })
 const STORAGE_KINDS = new Set(['smart', 'emmc', 'mdraid'])
 const STORAGE_STATES = new Set(['healthy', 'warning', 'failed', 'unknown'])
+const SERVICE_CLASSIFICATIONS = new Set(['user-installed', 'system', 'unknown'])
+const CONTAINER_NETWORK_MODES = new Set(['host', 'bridge', 'none', 'custom'])
+const CONTAINER_PORT_PROTOCOLS = new Set(['tcp', 'udp', 'sctp'])
 const MAX_OBJECT_KEYS = 128
 const MAX_STRING_LENGTH = 2048
 const MAX_DEPTH = 6
@@ -143,12 +146,15 @@ function normalizeServices(value = []) {
   return value.map((input, index) => {
     const service = boundedValue(object(input, `services[${index}]`), `services[${index}]`)
     const allowed = new Set([
-      'name', 'description', 'activeState', 'subState', 'enabled', 'memoryCurrentBytes',
+      'name', 'description', 'activeState', 'classification', 'subState', 'enabled', 'memoryCurrentBytes',
       'memoryPeakBytes', 'cpuPercent', 'restartCount', 'taskCount', 'taskLimit',
       'lastResult', 'activeEnteredAt', 'inactiveEnteredAt',
     ])
     const unknown = Object.keys(service).find((field) => !allowed.has(field))
     if (unknown) throw protocolError(`services[${index}] contains unsupported field ${unknown}.`)
+    if (service.classification !== undefined && !SERVICE_CLASSIFICATIONS.has(service.classification)) {
+      throw protocolError(`services[${index}].classification is invalid.`)
+    }
     return {
       ...service,
       name: string(service.name, `services[${index}].name`, { max: 256 }),
@@ -160,7 +166,8 @@ function normalizeServices(value = []) {
 function normalizeContainers(value = []) {
   if (!Array.isArray(value) || value.length > 256) throw protocolError('containers cannot exceed 256 items.')
   const allowed = new Set([
-    'runtime', 'runtimeId', 'name', 'image', 'imageDigest', 'state', 'health', 'publishedPorts',
+    'runtime', 'runtimeId', 'name', 'image', 'imageDigest', 'state', 'status', 'uptime', 'health',
+    'composeService', 'networkMode', 'networkNames', 'ports', 'publishedPorts',
     'cpuPercent', 'memoryBytes', 'networkRxBytesPerSecond', 'networkTxBytesPerSecond',
     'diskReadBytesPerSecond', 'diskWriteBytesPerSecond',
   ])
@@ -169,6 +176,29 @@ function normalizeContainers(value = []) {
     const forbidden = Object.keys(container).filter((key) => !allowed.has(key))
     if (forbidden.length > 0) throw protocolError(`containers[${index}] contains forbidden field ${forbidden[0]}.`)
     const normalized = boundedValue(container, `containers[${index}]`)
+    if (!['docker', 'podman'].includes(normalized.runtime)) {
+      throw protocolError(`containers[${index}].runtime is invalid.`)
+    }
+    if (normalized.networkMode !== undefined && !CONTAINER_NETWORK_MODES.has(normalized.networkMode)) {
+      throw protocolError(`containers[${index}].networkMode is invalid.`)
+    }
+    if (normalized.networkNames !== undefined && (!Array.isArray(normalized.networkNames) || normalized.networkNames.length > 32)) {
+      throw protocolError(`containers[${index}].networkNames cannot exceed 32 items.`)
+    }
+    const networkNames = normalized.networkNames?.map((name, nameIndex) => string(name, `containers[${index}].networkNames[${nameIndex}]`, { max: 128 }))
+    if (normalized.ports !== undefined && (!Array.isArray(normalized.ports) || normalized.ports.length > 128)) {
+      throw protocolError(`containers[${index}].ports cannot exceed 128 items.`)
+    }
+    const ports = normalized.ports?.map((inputPort, portIndex) => {
+      const port = object(inputPort, `containers[${index}].ports[${portIndex}]`)
+      assertAllowedFields(port, new Set(['hostPort', 'containerPort', 'protocol']), `containers[${index}].ports[${portIndex}]`)
+      if (!Number.isSafeInteger(port.hostPort) || port.hostPort < 1 || port.hostPort > 65535 ||
+        !Number.isSafeInteger(port.containerPort) || port.containerPort < 1 || port.containerPort > 65535 ||
+        !CONTAINER_PORT_PROTOCOLS.has(port.protocol)) {
+        throw protocolError(`containers[${index}].ports[${portIndex}] is invalid.`)
+      }
+      return { hostPort: port.hostPort, containerPort: port.containerPort, protocol: port.protocol }
+    })
     return {
       ...normalized,
       runtime: string(normalized.runtime, `containers[${index}].runtime`, { max: 16 }),
@@ -176,6 +206,11 @@ function normalizeContainers(value = []) {
       name: string(normalized.name, `containers[${index}].name`, { max: 256 }),
       image: string(normalized.image, `containers[${index}].image`, { max: 512 }),
       state: string(normalized.state, `containers[${index}].state`, { max: 64 }),
+      ...(normalized.status !== undefined ? { status: string(normalized.status, `containers[${index}].status`, { max: 256 }) } : {}),
+      ...(normalized.uptime !== undefined ? { uptime: string(normalized.uptime, `containers[${index}].uptime`, { max: 128 }) } : {}),
+      ...(normalized.composeService !== undefined ? { composeService: string(normalized.composeService, `containers[${index}].composeService`, { max: 256 }) } : {}),
+      ...(networkNames ? { networkNames } : {}),
+      ...(ports ? { ports } : {}),
     }
   })
 }

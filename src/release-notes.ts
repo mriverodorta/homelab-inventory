@@ -101,9 +101,15 @@ const RELEASE_0_3_0_DETAILS: UnreleasedReleaseNotes = {
 }
 
 export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
-  highlights: [],
-  fixes: [],
-  notes: [],
+  highlights: [
+    'Agent inspectors now show the host operating-system version and uptime, filter services independently by installation scope and runtime state, and present container CPU, memory, uptime, Compose service, published ports, and network metadata.',
+  ],
+  fixes: [
+    'Agent CPU and memory charts now render complete percentage labels instead of clipping every numeric tick.',
+  ],
+  notes: [
+    'Service classification and container metadata are optional protocol-v1 additions, so older agents remain compatible while updated agents provide richer telemetry without broader Docker API permissions.',
+  ],
 }
 
 const RELEASE_0_9_3_DETAILS: UnreleasedReleaseNotes = {
