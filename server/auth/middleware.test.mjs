@@ -29,7 +29,7 @@ describe('authentication API guard', () => {
 
   it('keeps setup, health, and bearer-token machine endpoints public', () => {
     const state = createAuthenticationStore({ setupRequired: true })
-    for (const path of ['/api/auth/status', '/api/auth/setup', '/api/health', '/api/agent/install.sh', '/api/agent/releases/0.1.0/install-freebsd.sh', '/api/agent/servers/12/register', '/api/agent/servers/12/heartbeat']) {
+    for (const path of ['/api/auth/status', '/api/auth/setup', '/api/health', '/api/agent/install.sh', '/api/agent/releases/current', '/api/agent/releases/0.1.0/install-freebsd.sh', '/api/agent/servers/12/register', '/api/agent/servers/12/heartbeat']) {
       expect(invoke({ state, path }).next).toHaveBeenCalledOnce()
     }
   })

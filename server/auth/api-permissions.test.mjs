@@ -5,7 +5,10 @@ describe('API permission classification', () => {
   it('classifies public, machine, and protected routes', () => {
     expect(classifyApiRequest('GET', '/api/health')).toEqual({ access: 'public' })
     expect(classifyApiRequest('GET', '/api/agent/install.sh')).toEqual({ access: 'public' })
+    expect(classifyApiRequest('GET', '/api/agent/releases/current')).toEqual({ access: 'public' })
     expect(classifyApiRequest('GET', '/api/agent/releases/0.1.0/install-freebsd.sh')).toEqual({ access: 'public' })
+    expect(classifyApiRequest('POST', '/api/agent/releases/current')).toEqual({ access: 'denied' })
+    expect(classifyApiRequest('GET', '/api/agent/releases/0.1.0')).toEqual({ access: 'denied' })
     expect(classifyApiRequest('POST', '/api/agent/servers/1/heartbeat')).toEqual({ access: 'machine' })
     expect(classifyApiRequest('POST', '/api/agent/hosts/server/1/hardware-snapshots')).toEqual({ access: 'machine' })
     expect(classifyApiRequest('GET', '/api/agent/hosts/server/1/hardware-suggestions')).toEqual({ access: 'protected', permission: 'agents.view' })

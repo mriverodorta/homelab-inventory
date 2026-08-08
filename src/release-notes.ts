@@ -106,6 +106,16 @@ export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
   notes: [],
 }
 
+const RELEASE_0_9_7_DETAILS: UnreleasedReleaseNotes = {
+  highlights: [],
+  fixes: [
+    'Native agent updates can now read the public current-release descriptor when application access control is enabled, without making write operations or unknown release routes public.',
+  ],
+  notes: [
+    'Agent 0.1.6 remains the current release. Hosts affected by the 0.1.5 contract-cache issue can recover with sudo homelab-inventory-agent update after the application updates to 0.9.7.',
+  ],
+}
+
 const RELEASE_0_9_6_DETAILS: UnreleasedReleaseNotes = {
   highlights: [],
   fixes: [
@@ -547,9 +557,16 @@ const RELEASE_0_2_1_DETAILS: UnreleasedReleaseNotes = {
 
 export const RELEASE_NOTES: ReleaseNoteEntry[] = [
   {
-    version: '0.9.6',
+    version: '0.9.7',
     date: '2026-08-08',
     channel: 'latest',
+    title: 'Reliable native agent updates',
+    ...RELEASE_0_9_7_DETAILS,
+  },
+  {
+    version: '0.9.6',
+    date: '2026-08-08',
+    channel: 'release',
     title: 'Self-healing agent upgrades',
     ...RELEASE_0_9_6_DETAILS,
   },

@@ -11,6 +11,7 @@ const PUBLIC_ROUTES = [
   ['GET', /^\/api\/demo\/session\/?$/],
   ['GET', /^\/api\/agent\/contracts\/current\/?$/],
   ['GET', /^\/api\/agent\/install\.sh\/?$/],
+  ['GET', /^\/api\/agent\/releases\/current\/?$/],
   ['GET', /^\/api\/agent\/releases\/[^/]+\/.+$/],
   ['POST', /^\/api\/demo\/session\/(?:extend|expire)\/?$/],
 ]

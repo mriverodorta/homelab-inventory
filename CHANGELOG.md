@@ -6,6 +6,12 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 
 ## Unreleased
 
+## [0.9.7] - 2026-08-08
+
+### Fixed
+
+- Native agent updates can now read the public current-release descriptor when application authentication and authorization are enabled, while unknown and non-read release operations remain denied.
+
 ## [0.9.6] - 2026-08-08
 
 ### Fixed
