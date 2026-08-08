@@ -102,6 +102,27 @@ function findDevice(store, host, request) {
     : null
 }
 
+function findRevokedDevice(store, host, request) {
+  const deviceId = parseDeviceId(request)
+  const device = deviceId ? store.databases.agents.data.devices?.[String(deviceId)] : null
+  return device && recordMatchesHost(device, host) && device.protocolMajor === 1 && device.revokedAt
+    ? device
+    : null
+}
+
+function registrationDeletionOptions(body) {
+  if (body === undefined || body === null || (typeof body === 'object' && !Array.isArray(body) && Object.keys(body).length === 0)) {
+    return { deleteTelemetry: false }
+  }
+  if (typeof body !== 'object' || Array.isArray(body) || Object.keys(body).some((key) => key !== 'deleteTelemetry') || typeof body.deleteTelemetry !== 'boolean') {
+    const error = new Error('Registration deletion must specify deleteTelemetry as a boolean.')
+    error.code = 'invalid-agent-deletion-options'
+    error.status = 400
+    throw error
+  }
+  return { deleteTelemetry: body.deleteTelemetry }
+}
+
 function decodeHeartbeat(request, device, host, rawBody) {
   const authentication = verifyAgentRequest(request, device, rawBody)
   if (request.get('content-encoding')?.toLowerCase() !== 'gzip') {
@@ -423,6 +444,9 @@ export function registerAgentV1Routes(app, store, {
   app.post('/api/agent/hosts/:hostType/:hostId/heartbeats', async (request, response) => {
     const host = parseHost(request)
     const device = host ? findDevice(store, host, request) : null
+    if (host && !device && findRevokedDevice(store, host, request)) {
+      return response.status(410).json({ message: 'Agent registration was revoked.', code: 'agent-registration-revoked' })
+    }
     if (!host || !device) return response.status(401).json({ message: 'Agent identity is invalid.' })
     if (!heartbeatAllowed(device.id)) return response.status(429).json({ message: 'Too many heartbeat requests.' })
     try {
@@ -447,6 +471,9 @@ export function registerAgentV1Routes(app, store, {
   app.post('/api/agent/hosts/:hostType/:hostId/hardware-snapshots', async (request, response) => {
     const host = parseHost(request)
     const device = host ? findDevice(store, host, request) : null
+    if (host && !device && findRevokedDevice(store, host, request)) {
+      return response.status(410).json({ message: 'Agent registration was revoked.', code: 'agent-registration-revoked' })
+    }
     if (!host || !device) return response.status(401).json({ message: 'Agent identity is invalid.' })
     try {
       const { authentication, snapshot } = decodeHardwareSnapshot(request, device, host, request.body)
@@ -527,10 +554,24 @@ export function registerAgentV1Routes(app, store, {
     }
   })
 
-  app.delete('/api/agent/hosts/:hostType/:hostId/registration', (request, response) => {
+  app.delete('/api/agent/hosts/:hostType/:hostId/registration', async (request, response) => {
     const host = parseHost(request)
     if (!host || !hostExists(store, host)) return response.status(404).json({ message: 'Compute host not found.' })
+    let options
+    try {
+      options = registrationDeletionOptions(request.body)
+    } catch (error) {
+      return routeError(response, error)
+    }
+    if (options.deleteTelemetry && !telemetryRepository) {
+      return response.status(503).json({ message: 'Telemetry storage is unavailable.' })
+    }
     const revokedAt = new Date().toISOString()
+    let telemetryDeleted = null
+    if (options.deleteTelemetry) {
+      telemetryDeleted = telemetryRepository.deleteHost(host.hostType, host.hostId)
+      store.clearAgentRuntimeData(host.hostType, host.hostId)
+    }
     let revoked = 0
     for (const collection of [store.databases.agents.data.enrollments ?? {}, store.databases.agents.data.devices ?? {}]) {
       for (const record of Object.values(collection)) {
@@ -542,7 +583,8 @@ export function registerAgentV1Routes(app, store, {
       }
     }
     if (revoked) store.scheduleFlush('agents')
-    return response.json({ ok: true, ...host, revoked, revokedAt })
+    if (revoked || options.deleteTelemetry) await store.flush(['agents', 'agentStatus'])
+    return response.json({ ok: true, ...host, revoked, revokedAt, deleteTelemetry: options.deleteTelemetry, telemetryDeleted })
   })
 
   app.delete('/api/agent/hosts/:hostType/:hostId/status', (request, response) => {

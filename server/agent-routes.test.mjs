@@ -161,18 +161,22 @@ describe('agent routes', () => {
       hostId: 1,
       lastSeenAt: timestamp,
       agentVersion: '0.0.9',
+      capabilities: { 'agent.native-update': { state: 'available' } },
     }
     const releaseService = {
       current: () => ({ version: '0.1.0', sourceRevision: 'a'.repeat(40) }),
-      upgradeCommands: (endpoint) => ({ linux: `linux:${endpoint}`, freebsd: `freebsd:${endpoint}` }),
+      updateAvailable: () => true,
+      upgradeCommands: (endpoint, { native }) => native
+        ? { linux: 'sudo homelab-inventory-agent update', freebsd: 'sudo homelab-inventory-agent update' }
+        : { linux: `linux:${endpoint}`, freebsd: `freebsd:${endpoint}` },
     }
     const { server, url } = await listen(createApp(store, { releaseService }))
     try {
       const response = await fetch(`${url}/api/agent/status`)
       expect(response.status).toBe(200)
       expect((await response.json()).hosts['server:1'].upgradeCommands).toEqual({
-        linux: 'linux:https://inventory.example.test',
-        freebsd: 'freebsd:https://inventory.example.test',
+        linux: 'sudo homelab-inventory-agent update',
+        freebsd: 'sudo homelab-inventory-agent update',
       })
     } finally {
       await closeServer(server)

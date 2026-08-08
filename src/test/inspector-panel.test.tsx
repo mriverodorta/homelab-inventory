@@ -1958,7 +1958,7 @@ describe('InspectorPanel', () => {
 
   it('allows registered agents to be revoked from the Agent tab', async () => {
     const user = userEvent.setup()
-    vi.mocked(revokeAgentRegistration).mockResolvedValue()
+    vi.mocked(revokeAgentRegistration).mockResolvedValue({ ok: true, deleteTelemetry: false })
     vi.spyOn(window, 'confirm').mockReturnValue(true)
 
     renderInspector({
@@ -1978,13 +1978,33 @@ describe('InspectorPanel', () => {
     })
 
     await user.click(screen.getByRole('tab', { name: 'Agent' }))
-    await user.click(await screen.findByRole('button', { name: 'Revoke Registration' }))
-    await user.click(screen.getByRole('button', { name: 'Revoke' }))
+    expect(screen.queryByRole('button', { name: 'Setup agent' })).not.toBeInTheDocument()
+    await user.click(await screen.findByRole('button', { name: 'Unlink agent' }))
+    expect(screen.getByRole('checkbox', { name: /Delete all telemetry history/ })).not.toBeChecked()
+    await user.click(screen.getByRole('button', { name: 'Unlink agent' }))
 
     await vi.waitFor(() => {
-      expect(revokeAgentRegistration).toHaveBeenCalledWith('server', 1)
+      expect(revokeAgentRegistration).toHaveBeenCalledWith('server', 1, false)
     })
-    expect(screen.getByRole('button', { name: 'Clear Saved Telemetry' })).toBeDisabled()
+  })
+
+  it('can permanently delete only the selected host telemetry while unlinking', async () => {
+    const user = userEvent.setup()
+    vi.mocked(revokeAgentRegistration).mockResolvedValue({ ok: true, deleteTelemetry: true })
+    renderInspector({
+      selectedItemId: 'server:1',
+      agentStatus: {
+        registeredServerIds: [1],
+        servers: { 1: { serverId: 1, state: 'online', connected: true, ageMs: 0 } },
+      },
+    })
+
+    await user.click(screen.getByRole('tab', { name: 'Agent' }))
+    await user.click(await screen.findByRole('button', { name: 'Unlink agent' }))
+    await user.click(screen.getByRole('checkbox', { name: /Delete all telemetry history/ }))
+    await user.click(screen.getByRole('button', { name: 'Unlink agent' }))
+
+    await vi.waitFor(() => expect(revokeAgentRegistration).toHaveBeenCalledWith('server', 1, true))
   })
 
   it('allows saved telemetry to be cleared after registration is revoked', async () => {
@@ -2015,7 +2035,7 @@ describe('InspectorPanel', () => {
     await vi.waitFor(() => {
       expect(clearAgentStatus).toHaveBeenCalledWith('server', 1)
     })
-    expect(screen.queryByRole('button', { name: 'Revoke Registration' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Unlink agent' })).not.toBeInTheDocument()
   })
 
   it('explains that agent setup is unavailable in demo mode', async () => {

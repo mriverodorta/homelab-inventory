@@ -418,6 +418,55 @@ describe('agent protocol v1 routes', () => {
     }
   })
 
+  it('unlinks with retained telemetry by default and optionally deletes only that host', async () => {
+    const store = await createStore()
+    store.databases.agentStatus.data.hosts['server:1'] = { hostType: 'server', hostId: 1, lastSeenAt: new Date().toISOString() }
+    const deleteHost = vi.fn().mockReturnValue({ telemetry_samples: 3, latest_host_state: 1 })
+    const telemetryRepository = { listSamples: vi.fn().mockReturnValue([]), deleteHost }
+    const { server, url } = await listen(createApp(store, { telemetryRepository }))
+    try {
+      await enrollAndActivate(url, 'server', 1)
+      const retained = await fetch(`${url}/api/agent/hosts/server/1/registration`, {
+        method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ deleteTelemetry: false }),
+      })
+      expect(retained.status).toBe(200)
+      expect((await retained.json()).deleteTelemetry).toBe(false)
+      expect(deleteHost).not.toHaveBeenCalled()
+      expect(store.databases.agentStatus.data.hosts['server:1']).toBeTruthy()
+
+      await enrollAndActivate(url, 'server', 1)
+      const removed = await fetch(`${url}/api/agent/hosts/server/1/registration`, {
+        method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ deleteTelemetry: true }),
+      })
+      expect(removed.status).toBe(200)
+      expect(await removed.json()).toMatchObject({ deleteTelemetry: true, telemetryDeleted: { telemetry_samples: 3 } })
+      expect(deleteHost).toHaveBeenCalledWith('server', 1)
+      expect(store.databases.agentStatus.data.hosts['server:1']).toBeUndefined()
+      expect(store.databases.agentStatus.data.hosts['nas:1']).toBeUndefined()
+    } finally {
+      await close(server)
+    }
+  })
+
+  it('returns a terminal machine-readable response to a revoked signed agent', async () => {
+    const store = await createStore()
+    const { server, url } = await listen(createApp(store))
+    try {
+      const enrolled = await enrollAndActivate(url, 'server', 1)
+      expect((await fetch(`${url}/api/agent/hosts/server/1/registration`, {
+        method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ deleteTelemetry: false }),
+      })).status).toBe(200)
+      const response = await signedHeartbeat({
+        url, hostType: 'server', hostId: 1, deviceId: enrolled.activation.deviceId,
+        pair: enrolled.agentIdentity.pair, sequence: 1,
+      })
+      expect(response.status).toBe(410)
+      expect(await response.json()).toMatchObject({ code: 'agent-registration-revoked' })
+    } finally {
+      await close(server)
+    }
+  })
+
   it('rate limits signed heartbeats per activated device', async () => {
     const store = await createStore()
     const { server, url } = await listen(createApp(store, { heartbeatRateLimit: 1 }))

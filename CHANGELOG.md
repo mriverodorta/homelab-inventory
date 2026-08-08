@@ -6,6 +6,22 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 
 ## Unreleased
 
+## [0.9.5] - 2026-08-08
+
+### Added
+
+- Registered Linux and FreeBSD agents can now advertise native manual updates, allowing administrators to use `sudo homelab-inventory-agent update` after the one-time transition from a legacy release.
+- The Agent inspector now provides a dedicated unlink action with an optional, unchecked control to permanently delete telemetry history for only that host.
+
+### Changed
+
+- Agent setup is hidden after a host is registered, update instructions appear only when a newer compatible release exists, and command selection is based on reported agent capabilities instead of a hardcoded version.
+
+### Security
+
+- Native agent updates verify the configured application origin, protocol, platform, file sizes, and SHA-256 digests before atomically replacing root-owned files, with automatic rollback if the updated service is unhealthy.
+- Revoked agents persist a dormant state and stop delivery retries; unlinking retains telemetry unless an administrator explicitly opts into host-scoped deletion.
+
 ## [0.9.4] - 2026-08-08
 
 ### Added

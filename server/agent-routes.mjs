@@ -681,8 +681,9 @@ export function registerAgentRoutes(app, store, {
         .sort((first, second) => second.id - first.id)
       for (const [hostKey, status] of Object.entries(summary.hosts ?? {})) {
         const enrollment = enrollments.find((candidate) => recordMatchesHost(candidate, status.hostType, status.hostId))
-        if (!enrollment) continue
-        const upgradeCommands = releaseService.upgradeCommands(enrollment.endpoint)
+        if (!enrollment || !releaseService.updateAvailable(status.agentVersion)) continue
+        const native = status.capabilities?.['agent.native-update']?.state === 'available'
+        const upgradeCommands = releaseService.upgradeCommands(enrollment.endpoint, { native })
         summary.hosts[hostKey] = { ...status, upgradeCommands }
         if (status.hostType === 'server' && summary.servers[String(status.hostId)]) {
           summary.servers[String(status.hostId)] = { ...summary.servers[String(status.hostId)], upgradeCommands }

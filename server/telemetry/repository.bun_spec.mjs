@@ -123,6 +123,30 @@ describe('telemetry repository', () => {
     expect(createHash('sha256').update(await fs.readFile(projectPath)).digest('hex')).toBe(before)
   })
 
+  test('deletes every telemetry projection for one host without touching another host', async () => {
+    const { database, repository } = await context()
+    repository.recordHeartbeat({
+      deviceId: 7,
+      hostType: 'server',
+      hostId: 1,
+      receivedAt: receivedAt(1),
+      payload: heartbeat(1, { services: [{ name: 'docker', activeState: 'active' }] }),
+    })
+    repository.recordHeartbeat({
+      deviceId: 8,
+      hostType: 'nas',
+      hostId: 1,
+      receivedAt: receivedAt(2),
+      payload: heartbeat(2, { host: { type: 'nas', id: 1 }, containers: [{ runtime: 'docker', runtimeId: 'nas', name: 'nas', image: 'nas:1', state: 'running' }] }),
+    })
+
+    const deleted = repository.deleteHost('server', 1)
+    expect(deleted).toMatchObject({ telemetry_samples: 1, latest_host_state: 1, latest_component_state: 1 })
+    expect(repository.getHostSummary('server', 1)).toBeNull()
+    expect(repository.getHostSummary('nas', 1)?.sequence).toBe(2)
+    expect(database.query("SELECT COUNT(*) AS count FROM telemetry_samples WHERE host_type = 'nas'").get().count).toBe(1)
+  })
+
   test('checkpoints unchanged storage health without duplicating every heartbeat', async () => {
     const { database, repository } = await context({ storageCheckpointMs: 60_000 })
     const disk = { deviceId: 'disk-a', kind: 'smart', state: 'healthy', collectedAt: receivedAt(1), metrics: { temperatureC: 30 } }

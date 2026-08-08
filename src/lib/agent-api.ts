@@ -46,9 +46,11 @@ export async function createAgentEnrollment(
 export async function revokeAgentRegistration(
   hostType: AgentHostType,
   hostId: number,
-): Promise<void> {
-  await agentRequest(`/api/agent/hosts/${hostType}/${hostId}/registration`, {
+  deleteTelemetry = false,
+): Promise<{ ok: true; deleteTelemetry: boolean }> {
+  return agentRequest(`/api/agent/hosts/${hostType}/${hostId}/registration`, {
     method: 'DELETE',
+    body: JSON.stringify({ deleteTelemetry }),
   })
 }
 

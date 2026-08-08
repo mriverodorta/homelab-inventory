@@ -19,6 +19,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
 import { Button } from '@/components/ui/button'
+import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
@@ -128,6 +129,7 @@ export function AgentSetupPanel({
   const [containerRuntime, setContainerRuntime] = useState<'docker' | 'podman'>('docker')
   const [containerEndpoint, setContainerEndpoint] = useState('http://127.0.0.1:2375')
   const [confirmAction, setConfirmAction] = useState<'revoke' | 'clear' | null>(null)
+  const [deleteTelemetry, setDeleteTelemetry] = useState(false)
   const enrollmentMutation = useMutation({
     mutationFn: () => createAgentEnrollment(
       host.type as 'server' | 'nas' | 'pcBuild',
@@ -142,8 +144,15 @@ export function AgentSetupPanel({
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['agent-status'] }),
   })
   const revokeMutation = useMutation({
-    mutationFn: () => revokeAgentRegistration(host.type as 'server' | 'nas' | 'pcBuild', host.id),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['agent-status'] }),
+    mutationFn: () => revokeAgentRegistration(host.type as 'server' | 'nas' | 'pcBuild', host.id, deleteTelemetry),
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['agent-status'] }),
+        queryClient.invalidateQueries({ queryKey: ['agent-telemetry', host.type, host.id] }),
+        queryClient.invalidateQueries({ queryKey: ['agent-hardware-snapshot', host.type, host.id] }),
+      ])
+      setDeleteTelemetry(false)
+    },
   })
   const clearStatusMutation = useMutation({
     mutationFn: () => clearAgentStatus(host.type as 'server' | 'nas' | 'pcBuild', host.id),
@@ -158,8 +167,6 @@ export function AgentSetupPanel({
     ? { ...status, ...telemetry.data.status, upgradeCommands: status.upgradeCommands }
     : status
   const command = enrollmentMutation.data?.installCommands?.[platform] ?? ''
-  const updateAvailable = Boolean(registered && liveStatus.agentVersion && release?.version && liveStatus.agentVersion !== release.version)
-  const upgradeCommand = liveStatus.upgradeCommands?.[platform] ?? ''
   const metrics = agentMetrics(liveStatus)
   const cpuPercent = metricNumber(metrics.cpu, 'percent')
   const memoryUsed = metricNumber(metrics.memory, 'usedBytes')
@@ -170,6 +177,9 @@ export function AgentSetupPanel({
   const architecture = typeof system?.architecture === 'string' ? system.architecture : null
   const operatingSystemVersion = formatOperatingSystem(system)
   const uptime = formatDuration(metrics.uptimeSeconds)
+  const updatePlatform = operatingSystem?.toLowerCase().includes('freebsd') ? 'freebsd' : 'linux'
+  const upgradeCommand = liveStatus.upgradeCommands?.[updatePlatform] ?? ''
+  const updateAvailable = Boolean(registered && release?.version && upgradeCommand)
 
   async function copyCommand() {
     if (!command) return
@@ -221,7 +231,7 @@ export function AgentSetupPanel({
         </>
       ) : null}
 
-      <InspectorSection title="Agent Setup" icon={Terminal}>
+      {!registered ? <InspectorSection title="Agent Setup" icon={Terminal}>
         {demoMode ? (
           <p className="text-sm font-semibold text-[#75695d]">Agent setup is disabled in public demo mode.</p>
         ) : !canManage ? (
@@ -297,15 +307,14 @@ export function AgentSetupPanel({
                 <Button type="button" className="gap-2" onClick={() => void copyCommand()}><Copy data-icon="inline-start" />{copied ? 'Copied' : 'Copy command'}</Button>
               </div>
             ) : null}
-            {registered || hasSavedStatus ? (
+            {hasSavedStatus ? (
               <div className="grid gap-2 border-t border-[#e5dccf] pt-3">
-                {registered ? <Button type="button" variant="outline" disabled={revokeMutation.isPending} onClick={() => setConfirmAction('revoke')}>{revokeMutation.isPending ? 'Revoking...' : 'Revoke Registration'}</Button> : null}
-                {hasSavedStatus ? <Button type="button" variant="outline" disabled={registered || clearStatusMutation.isPending} onClick={() => setConfirmAction('clear')}>{clearStatusMutation.isPending ? 'Clearing...' : 'Clear Saved Telemetry'}</Button> : null}
+                <Button type="button" variant="outline" disabled={clearStatusMutation.isPending} onClick={() => setConfirmAction('clear')}>{clearStatusMutation.isPending ? 'Clearing...' : 'Clear Saved Telemetry'}</Button>
               </div>
             ) : null}
           </div>
         )}
-      </InspectorSection>
+      </InspectorSection> : null}
 
       {updateAvailable && upgradeCommand ? (
         <InspectorSection title="Agent Update" icon={Download} badge={<span className="text-xs font-bold text-[#a05b26]">{release?.version}</span>}>
@@ -315,19 +324,60 @@ export function AgentSetupPanel({
         </InspectorSection>
       ) : null}
 
-      <AlertDialog open={confirmAction !== null} onOpenChange={(open) => { if (!open) setConfirmAction(null) }}>
+      {registered && !demoMode ? (
+        <InspectorSection title="Agent Management" icon={Terminal}>
+          {!canManage ? (
+            <p className="text-sm font-semibold text-[#75695d]">Only an administrator can unlink this agent.</p>
+          ) : (
+            <div className="grid gap-2">
+              <p className="text-sm font-semibold leading-relaxed text-[#75695d]">Unlinking revokes this host's current agent identity. Saved telemetry is retained unless you explicitly delete it.</p>
+              <Button
+                type="button"
+                variant="destructive"
+                disabled={revokeMutation.isPending}
+                onClick={() => {
+                  setDeleteTelemetry(false)
+                  setConfirmAction('revoke')
+                }}
+              >
+                {revokeMutation.isPending ? 'Unlinking...' : 'Unlink agent'}
+              </Button>
+              {revokeMutation.isError ? <p className="text-sm font-semibold text-[#7a2c1d]">{revokeMutation.error instanceof Error ? revokeMutation.error.message : 'The agent could not be unlinked.'}</p> : null}
+            </div>
+          )}
+        </InspectorSection>
+      ) : null}
+
+      <AlertDialog open={confirmAction !== null} onOpenChange={(open) => {
+        if (!open) {
+          setConfirmAction(null)
+        }
+      }}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>{confirmAction === 'revoke' ? 'Revoke agent registration?' : 'Clear saved telemetry?'}</AlertDialogTitle>
+            <AlertDialogTitle>{confirmAction === 'revoke' ? 'Unlink agent?' : 'Clear saved telemetry?'}</AlertDialogTitle>
             <AlertDialogDescription>
               {confirmAction === 'revoke'
-                ? `${host.name} will stop accepting signed telemetry from its current agent identity.`
+                ? `${host.name} will stop accepting telemetry from its current agent identity. The installed agent will become dormant and stop retrying.`
                 : `Saved runtime telemetry and detected hardware evidence for ${host.name} will be removed.`}
             </AlertDialogDescription>
           </AlertDialogHeader>
+          {confirmAction === 'revoke' ? (
+            <label className="flex items-start gap-3 rounded-md border border-[#d6ccbd] bg-[#fffdf8] p-3 text-sm font-semibold leading-relaxed text-[#3c342b]">
+              <Checkbox
+                className="mt-0.5"
+                checked={deleteTelemetry}
+                onCheckedChange={(checked) => setDeleteTelemetry(checked === true)}
+              />
+              <span>
+                Delete all telemetry history for this host
+                <span className="mt-1 block text-xs font-medium text-[#75695d]">This permanently removes saved samples, service and container state, storage events, and detected hardware evidence for this host only.</span>
+              </span>
+            </label>
+          ) : null}
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction variant="destructive" onClick={confirmLifecycleAction}>{confirmAction === 'revoke' ? 'Revoke' : 'Clear telemetry'}</AlertDialogAction>
+            <AlertDialogAction variant="destructive" onClick={confirmLifecycleAction}>{confirmAction === 'revoke' ? 'Unlink agent' : 'Clear telemetry'}</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

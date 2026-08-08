@@ -43,6 +43,14 @@ describe('embedded agent release', () => {
     expect(commands.linux).toContain("--host-type' 'nas")
     expect(commands.linux).toContain("--containers-mode' 'proxy")
     expect(commands.freebsd).toContain('install-freebsd.sh')
+    expect(service.upgradeCommands('https://inventory.example.com', { native: true })).toEqual({
+      linux: 'sudo homelab-inventory-agent update',
+      freebsd: 'sudo homelab-inventory-agent update',
+    })
+    expect(service.upgradeCommands('https://inventory.example.com').linux).toContain('install.sh')
+    expect(service.upgradeCommands('https://inventory.example.com').linux).toContain('--upgrade')
+    expect(service.updateAvailable('0.0.9')).toBe(true)
+    expect(service.updateAvailable('0.1.0')).toBe(false)
   })
 
   it('fails initialization when an embedded byte changes', async () => {
@@ -67,6 +75,17 @@ describe('embedded agent release', () => {
         if (!disabled) expect(response.headers.get('cache-control')).toContain('immutable')
         const checksums = await fetch(`${url}/api/agent/releases/0.1.0/checksums.txt`)
         expect(checksums.status).toBe(disabled ? 403 : 200)
+        const current = await fetch(`${url}/api/agent/releases/current`)
+        expect(current.status).toBe(disabled ? 403 : 200)
+        if (!disabled) {
+          expect(current.headers.get('cache-control')).toBe('no-store')
+          expect(await current.json()).toEqual({
+            version: '0.1.0',
+            sourceRevision: 'a'.repeat(40),
+            protocolMajor: 1,
+            manifestUrl: '/api/agent/releases/0.1.0/manifest.json',
+          })
+        }
       } finally {
         await new Promise((resolve) => server.close(resolve))
       }

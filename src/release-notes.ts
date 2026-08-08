@@ -106,6 +106,19 @@ export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
   notes: [],
 }
 
+const RELEASE_0_9_5_DETAILS: UnreleasedReleaseNotes = {
+  highlights: [
+    'Registered agents now support a native manual update command and a dedicated unlink workflow with optional host-scoped telemetry deletion.',
+  ],
+  fixes: [
+    'Agent setup is hidden after enrollment, update instructions appear only for a newer release, and legacy versus native commands are selected from reported capabilities.',
+  ],
+  notes: [
+    'The first native-update release still requires the existing curl or fetch upgrade command once; later releases update with sudo homelab-inventory-agent update while preserving identity, configuration, and queued state.',
+    'Unlinking retains saved telemetry by default. Permanent deletion requires selecting the explicit checkbox in the confirmation dialog and affects only that host.',
+  ],
+}
+
 const RELEASE_0_9_4_DETAILS: UnreleasedReleaseNotes = {
   highlights: [
     'Agent inspectors now show the host operating-system version and uptime, filter services independently by installation scope and runtime state, and present container CPU, memory, uptime, Compose service, published ports, and network metadata.',
@@ -523,9 +536,16 @@ const RELEASE_0_2_1_DETAILS: UnreleasedReleaseNotes = {
 
 export const RELEASE_NOTES: ReleaseNoteEntry[] = [
   {
-    version: '0.9.4',
+    version: '0.9.5',
     date: '2026-08-08',
     channel: 'latest',
+    title: 'Native agent lifecycle management',
+    ...RELEASE_0_9_5_DETAILS,
+  },
+  {
+    version: '0.9.4',
+    date: '2026-08-08',
+    channel: 'release',
     title: 'Richer host telemetry',
     ...RELEASE_0_9_4_DETAILS,
   },

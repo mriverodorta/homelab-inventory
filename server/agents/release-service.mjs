@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto'
 import fs from 'node:fs/promises'
 import path from 'node:path'
+import { compareVersions } from '../../src/release-notes.ts'
 
 const VERSION_PATTERN = /^[0-9]+\.[0-9]+\.[0-9]+(?:[-.][0-9A-Za-z.-]+)?$/
 const REVISION_PATTERN = /^(?:[0-9a-f]{40}|unknown)$/
@@ -124,6 +125,24 @@ export class AgentReleaseService {
     return this.assets.get(assetPath) ?? null
   }
 
+  currentDescriptor() {
+    const release = this.current()
+    return {
+      version: release.version,
+      sourceRevision: release.sourceRevision,
+      protocolMajor: release.protocolMajor,
+      manifestUrl: `/api/agent/releases/${release.version}/manifest.json`,
+    }
+  }
+
+  updateAvailable(agentVersion) {
+    try {
+      return compareVersions(this.current().version, agentVersion) > 0
+    } catch {
+      return false
+    }
+  }
+
   installCommands({ endpoint, hostType, hostId, activationToken, containers }) {
     const config = validateContainerOptions(containers)
     const common = [
@@ -143,7 +162,13 @@ export class AgentReleaseService {
     }
   }
 
-  upgradeCommands(endpoint) {
+  upgradeCommands(endpoint, { native = false } = {}) {
+    if (native) {
+      return {
+        linux: 'sudo homelab-inventory-agent update',
+        freebsd: 'sudo homelab-inventory-agent update',
+      }
+    }
     const version = this.current().version
     const base = `${endpoint}/api/agent/releases/${version}`
     const common = `--endpoint ${shellArgument(endpoint)} --version ${shellArgument(version)} --upgrade`
@@ -178,6 +203,13 @@ export function registerAgentReleaseRoutes(app, service, { disabled = false } = 
     request.params.version = service.current().version
     request.params[0] = 'install.sh'
     return sendAsset(request, response, next)
+  })
+  app.get('/api/agent/releases/current', (request, response) => {
+    if (disabled) return denied(request, response)
+    return response
+      .set('Cache-Control', 'no-store')
+      .set('X-Content-Type-Options', 'nosniff')
+      .json(service.currentDescriptor())
   })
   app.get(/^\/api\/agent\/releases\/([^/]+)\/(.+)$/, (request, response, next) => {
     request.params.version = request.params[0]

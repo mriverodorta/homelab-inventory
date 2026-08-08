@@ -124,6 +124,13 @@ export class TelemetryRepository {
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `)
     this.recordTransaction = database.transaction((input) => this.#recordHeartbeat(input))
+    this.deleteHostTransaction = database.transaction((hostType, hostId) => {
+      const counts = {}
+      for (const table of ['component_events', 'latest_component_state', 'latest_host_state', 'telemetry_samples']) {
+        counts[table] = this.database.query(`DELETE FROM ${table} WHERE host_type = ? AND host_id = ?`).run(hostType, hostId).changes
+      }
+      return counts
+    })
   }
 
   #reconcileComponents({ hostType, hostId, family, components, observedAtMs }) {
@@ -219,6 +226,11 @@ export class TelemetryRepository {
       ) recent_samples
       ORDER BY received_at_ms, id
     `).all(hostType, hostId, fromMs, toMs, boundedLimit(limit)).map(decodeSample)
+  }
+
+  deleteHost(hostType, hostId) {
+    hostReference(hostType, hostId)
+    return this.deleteHostTransaction(hostType, hostId)
   }
 
   exportBackup() {
