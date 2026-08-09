@@ -6,6 +6,8 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 
 ## Unreleased
 
+## [0.9.8] - 2026-08-08
+
 ### Changed
 
 - The Agent inspector keeps the elevated hardware inventory command available after a scan, refreshes scan evidence while the tab is open, and provides a local full-JSON evidence viewer for troubleshooting.

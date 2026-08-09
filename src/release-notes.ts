@@ -101,6 +101,12 @@ const RELEASE_0_3_0_DETAILS: UnreleasedReleaseNotes = {
 }
 
 export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
+  highlights: [],
+  fixes: [],
+  notes: [],
+}
+
+const RELEASE_0_9_8_DETAILS: UnreleasedReleaseNotes = {
   highlights: [
     'Detected hardware evidence can now be inspected as complete formatted JSON from the Agent tab, while the inventory scan command remains available for future hardware changes.',
   ],
@@ -564,9 +570,16 @@ const RELEASE_0_2_1_DETAILS: UnreleasedReleaseNotes = {
 
 export const RELEASE_NOTES: ReleaseNoteEntry[] = [
   {
-    version: '0.9.7',
+    version: '0.9.8',
     date: '2026-08-08',
     channel: 'latest',
+    title: 'Clearer agent evidence and heartbeat history',
+    ...RELEASE_0_9_8_DETAILS,
+  },
+  {
+    version: '0.9.7',
+    date: '2026-08-08',
+    channel: 'release',
     title: 'Reliable native agent updates',
     ...RELEASE_0_9_7_DETAILS,
   },
