@@ -173,8 +173,13 @@ export type AgentHardwareSuggestion = {
 export type AgentHardwareSnapshotResponse = {
   snapshot: {
     id: number
+    deviceId?: number
+    hostType?: AgentHostType
+    hostId?: number
+    protocolMajor?: number
     collectedAt: string
     receivedAt: string
+    host?: Record<string, unknown>
     components: Array<{ kind: string; locator: string; values: Record<string, unknown> }>
   } | null
   stale: boolean

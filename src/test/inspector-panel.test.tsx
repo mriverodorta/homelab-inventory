@@ -1678,9 +1678,53 @@ describe('InspectorPanel', () => {
     await user.click(screen.getByRole('button', { name: 'Use detected value' }))
 
     expect(screen.getByLabelText('Manufacturer')).toHaveValue('Micron')
+    expect(screen.queryByRole('button', { name: 'Use detected Manufacturer' })).not.toBeInTheDocument()
+
+    fireEvent.change(screen.getByLabelText('Manufacturer'), { target: { value: 'Samsung' } })
+    expect(screen.getByRole('button', { name: 'Use detected Manufacturer' })).toBeInTheDocument()
     await waitFor(() => {
       expect(onUpdateItem).toHaveBeenCalledWith('ram:1', expect.objectContaining({ manufacturer: 'Micron' }))
     })
+  })
+
+  it('keeps the inventory command available and shows the complete raw hardware snapshot', async () => {
+    const user = userEvent.setup()
+    vi.mocked(loadAgentHardwareSnapshot).mockResolvedValueOnce({
+      snapshot: {
+        id: 12,
+        deviceId: 4,
+        hostType: 'server',
+        hostId: 1,
+        protocolMajor: 1,
+        collectedAt: '2026-08-08T20:00:00.000Z',
+        receivedAt: '2026-08-08T20:00:01.000Z',
+        host: { type: 'server', id: 1, hostname: 'lab-node' },
+        components: [{
+          kind: 'motherboard',
+          locator: 'baseboard:0',
+          values: { manufacturer: 'Dell', serialNumber: 'PRIVATE-SERIAL-123' },
+        }],
+      },
+      stale: false,
+      ageMs: 1_000,
+      suggestions: [],
+    })
+    renderInspector({
+      selectedItemId: 'server:1',
+      agentStatus: {
+        registeredServerIds: [1],
+        servers: { 1: { serverId: 1, state: 'online', connected: true, ageMs: 5_000 } },
+      },
+    })
+
+    await user.click(screen.getByRole('tab', { name: 'Agent' }))
+
+    expect(await screen.findByRole('button', { name: 'Copy again' })).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'View scan data' }))
+    const dialog = screen.getByRole('dialog', { name: 'Agent scan data' })
+    expect(dialog).toHaveTextContent('PRIVATE-SERIAL-123')
+    expect(dialog).toHaveTextContent('baseboard:0')
+    expect(within(dialog).getByRole('button', { name: 'Copy JSON' })).toBeInTheDocument()
   })
 
   it('corrects a CPU number after 500ms and preserves unrelated specs', async () => {

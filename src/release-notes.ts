@@ -101,9 +101,16 @@ const RELEASE_0_3_0_DETAILS: UnreleasedReleaseNotes = {
 }
 
 export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
-  highlights: [],
-  fixes: [],
-  notes: [],
+  highlights: [
+    'Detected hardware evidence can now be inspected as complete formatted JSON from the Agent tab, while the inventory scan command remains available for future hardware changes.',
+  ],
+  fixes: [
+    'Heartbeat history now follows the agent cadence and online grace period, so a healthy latest report no longer appears as a red missed interval at wall-clock minute boundaries.',
+    'Agent field suggestions now disappear after their complete proposed value is applied and return only when the field differs again.',
+  ],
+  notes: [
+    'The scan-data viewer shows the complete locally stored evidence, which can include serial numbers and hardware fingerprints; opening it does not transmit that data.',
+  ],
 }
 
 const RELEASE_0_9_7_DETAILS: UnreleasedReleaseNotes = {

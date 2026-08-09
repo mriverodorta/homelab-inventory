@@ -1,7 +1,7 @@
 import { useId, type ReactNode } from 'react'
 import { Input } from '@/components/ui/input'
 import { AgentFieldSuggestionButton } from './agent-field-suggestion'
-import { useAgentFieldSuggestion } from './agent-field-suggestion-context'
+import { useAgentFieldSuggestion } from './agent-field-suggestion-state'
 import {
   Select,
   SelectContent,

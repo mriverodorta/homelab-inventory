@@ -1,14 +1,8 @@
-import { createContext, useContext, type ReactNode } from 'react'
+import type { ReactNode } from 'react'
 import type { AgentHardwareSuggestion } from '@/types/agent'
+import { AgentFieldSuggestionContext } from './agent-field-suggestion-state'
 import type { InventoryFormValues } from './model'
 import type { InventoryFieldChangeMode } from './type-fields'
-
-type AgentFieldSuggestionContextValue = {
-  suggestions: Map<string, AgentHardwareSuggestion>
-  apply: (fieldName: string, suggestion: AgentHardwareSuggestion) => void
-}
-
-const AgentFieldSuggestionContext = createContext<AgentFieldSuggestionContextValue | null>(null)
 
 function formFieldName(fieldPath: string): string | null {
   if (['name', 'manufacturer', 'model'].includes(fieldPath)) return fieldPath
@@ -44,17 +38,24 @@ function suggestionPatch(
 
 export function AgentFieldSuggestionProvider({
   suggestions,
+  values,
   onChange,
   children,
 }: {
   suggestions: AgentHardwareSuggestion[]
+  values: InventoryFormValues
   onChange: (patch: Partial<InventoryFormValues>, mode: InventoryFieldChangeMode) => void
   children: ReactNode
 }) {
   const byField = new Map<string, AgentHardwareSuggestion>()
   for (const suggestion of suggestions) {
     const fieldName = formFieldName(suggestion.fieldPath)
-    if (fieldName && !byField.has(fieldName)) byField.set(fieldName, suggestion)
+    if (!fieldName || byField.has(fieldName)) continue
+    const patch = suggestionPatch(fieldName, suggestion)
+    const alreadyApplied = patch && Object.entries(patch).every(([key, detectedValue]) => (
+      String(values[key as keyof InventoryFormValues] ?? '').trim() === String(detectedValue ?? '').trim()
+    ))
+    if (!alreadyApplied) byField.set(fieldName, suggestion)
   }
 
   return (
@@ -68,13 +69,4 @@ export function AgentFieldSuggestionProvider({
       {children}
     </AgentFieldSuggestionContext.Provider>
   )
-}
-
-export function useAgentFieldSuggestion(fieldName: string) {
-  const context = useContext(AgentFieldSuggestionContext)
-  const suggestion = context?.suggestions.get(fieldName) ?? null
-  return {
-    suggestion,
-    apply: suggestion ? () => context?.apply(fieldName, suggestion) : null,
-  }
 }

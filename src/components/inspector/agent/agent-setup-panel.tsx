@@ -1,6 +1,7 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { AlertTriangle, Copy, Download, RefreshCw, ScanSearch, ShieldCheck, Terminal } from 'lucide-react'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { AlertTriangle, Copy, Download, ShieldCheck, Terminal } from 'lucide-react'
 import { useState } from 'react'
+import { AgentHardwareEvidence } from '@/components/inspector/agent/agent-hardware-evidence'
 import { AgentHeartbeatTimeline } from '@/components/inspector/agent/agent-heartbeat-timeline'
 import { AgentMetricsPanel } from '@/components/inspector/agent/agent-metrics-panel'
 import { agentMetrics, metricNumber } from '@/components/inspector/agent/agent-status-utils'
@@ -27,7 +28,6 @@ import { usePermission } from '@/hooks/use-permission'
 import {
   clearAgentStatus,
   createAgentEnrollment,
-  loadAgentHardwareSnapshot,
   revokeAgentRegistration,
 } from '@/lib/agent-api'
 import type { AgentHostStatus, AgentState, AgentStatusSummary } from '@/types/agent'
@@ -49,58 +49,6 @@ function DetailRow({ label, value }: { label: string; value: string }) {
       <dt className="text-sm text-[#75695d]">{label}</dt>
       <dd className="min-w-0 truncate text-right text-sm font-bold text-[#20242c]">{value}</dd>
     </div>
-  )
-}
-
-function HardwareEvidence({ host }: { host: InventoryItem }) {
-  const query = useQuery({
-    queryKey: ['agent-hardware-snapshot', host.type, host.id],
-    queryFn: () => loadAgentHardwareSnapshot(host.type as 'server' | 'nas' | 'pcBuild', host.id),
-    retry: 1,
-    staleTime: 60_000,
-  })
-  const [copied, setCopied] = useState(false)
-  const components = query.data?.snapshot?.components ?? []
-  const counts = Object.entries(components.reduce<Record<string, number>>((result, component) => {
-    result[component.kind] = (result[component.kind] ?? 0) + 1
-    return result
-  }, {})).sort(([first], [second]) => first.localeCompare(second))
-
-  async function copyScanCommand() {
-    await navigator.clipboard.writeText('sudo homelab-inventory-agent inventory')
-    setCopied(true)
-    window.setTimeout(() => setCopied(false), 1200)
-  }
-
-  return (
-    <InspectorSection
-      title="Detected Hardware"
-      icon={ScanSearch}
-      badge={query.data?.stale ? <span className="text-xs font-bold text-[#a05b26]">Stale</span> : null}
-    >
-      {query.isLoading ? (
-        <div className="flex items-center gap-2 text-sm font-semibold text-[#75695d]"><RefreshCw className="size-4 animate-spin" />Loading detected hardware</div>
-      ) : query.isError ? (
-        <p className="text-sm font-semibold text-[#7a2c1d]">{query.error instanceof Error ? query.error.message : 'Detected hardware could not be loaded.'}</p>
-      ) : components.length > 0 ? (
-        <div className="space-y-3">
-          <div className="flex flex-wrap gap-1.5">
-            {counts.map(([kind, count]) => <span key={kind} className="rounded-md bg-[#f3f0ea] px-2 py-1 text-xs font-bold text-[#3c342b]">{kind} {count}</span>)}
-          </div>
-          <p className="text-xs font-medium leading-relaxed text-[#75695d]">
-            Collected {formatRelativeAge(query.data?.ageMs ?? null)}. Private identifiers stay in this installation and are never shown here or sent to the public registry.
-          </p>
-          <p className="text-xs font-bold text-[#3c342b]">{query.data?.suggestions.length ?? 0} reviewable field suggestions</p>
-        </div>
-      ) : (
-        <div className="space-y-3">
-          <p className="text-sm font-semibold leading-relaxed text-[#75695d]">Run one reviewed elevated scan on the host to detect board, CPU, memory, storage, PCI, network, and power hardware.</p>
-          <Button type="button" variant="outline" className="gap-2" onClick={() => void copyScanCommand()}>
-            <Copy data-icon="inline-start" />{copied ? 'Copied' : 'Copy scan command'}
-          </Button>
-        </div>
-      )}
-    </InspectorSection>
   )
 }
 
@@ -221,13 +169,15 @@ export function AgentSetupPanel({
             samples={telemetry.data?.samples ?? []}
             expected={liveStatus.connected}
             serverTime={telemetry.data?.serverTime}
+            heartbeatIntervalMs={telemetry.data?.timing.heartbeatIntervalMs}
+            onlineMaxAgeMs={telemetry.data?.timing.onlineMaxAgeMs}
           />
           {telemetry.isError ? (
             <div className="rounded-md border border-[#dfb3a5] bg-[#fff4ee] p-3 text-sm font-semibold text-[#7a2c1d]">
               {telemetry.error instanceof Error ? telemetry.error.message : 'Telemetry history could not be loaded.'}
             </div>
           ) : <AgentMetricsPanel samples={telemetry.data?.samples ?? []} />}
-          <HardwareEvidence host={host} />
+          <AgentHardwareEvidence host={host} />
         </>
       ) : null}
 

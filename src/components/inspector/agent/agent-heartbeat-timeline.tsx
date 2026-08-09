@@ -12,13 +12,21 @@ export function AgentHeartbeatTimeline({
   samples,
   expected,
   serverTime,
+  heartbeatIntervalMs,
+  onlineMaxAgeMs,
 }: {
   samples: AgentTelemetrySample[]
   expected: boolean
   serverTime?: string
+  heartbeatIntervalMs?: number
+  onlineMaxAgeMs?: number
 }) {
   const parsedServerTime = serverTime ? Date.parse(serverTime) : Number.NaN
-  const buckets = buildHeartbeatBuckets(samples, Number.isFinite(parsedServerTime) ? parsedServerTime : Date.now())
+  const buckets = buildHeartbeatBuckets(samples, {
+    now: Number.isFinite(parsedServerTime) ? parsedServerTime : Date.now(),
+    heartbeatIntervalMs,
+    onlineMaxAgeMs,
+  })
   const received = buckets.filter((bucket) => bucket.received).length
 
   return (

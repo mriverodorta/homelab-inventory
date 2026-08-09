@@ -65,7 +65,7 @@ export function InventorySpecsFormContent({
   return (
     <>
       <InventoryFormStatus validationMessage={validationMessage} saveError={saveError} />
-      <AgentFieldSuggestionProvider suggestions={agentSuggestions} onChange={handleFieldChange}>
+      <AgentFieldSuggestionProvider suggestions={agentSuggestions} values={values} onChange={handleFieldChange}>
         <div className="min-w-0 space-y-4">
         <InventoryCommonFields
           type={values.type}

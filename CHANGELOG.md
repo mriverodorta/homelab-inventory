@@ -6,6 +6,15 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 
 ## Unreleased
 
+### Changed
+
+- The Agent inspector keeps the elevated hardware inventory command available after a scan, refreshes scan evidence while the tab is open, and provides a local full-JSON evidence viewer for troubleshooting.
+
+### Fixed
+
+- Heartbeat history now follows the agent's reporting cadence and online grace period instead of wall-clock minute boundaries, preventing the newest healthy heartbeat from appearing missed.
+- Agent field suggestions disappear once the complete proposed value has been applied and return only when the field differs again.
+
 ## [0.9.7] - 2026-08-08
 
 ### Fixed
