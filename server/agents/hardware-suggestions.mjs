@@ -1,4 +1,5 @@
 import { resolveJedecManufacturer } from './jep106-manufacturers.mjs'
+import { resolveStorageManufacturer } from './storage-manufacturers.mjs'
 
 const TABLE_BY_TYPE = Object.freeze({
   server: 'servers', nas: 'nas', pcBuild: 'pcBuilds', cpu: 'cpus', ram: 'ram', storage: 'storage',
@@ -15,7 +16,10 @@ const FIELD_MAP = Object.freeze({
   motherboard: { manufacturer: 'manufacturer', productName: 'model', version: 'version' },
   cpu: { manufacturer: 'manufacturer', version: 'name' },
   memory: { manufacturer: 'manufacturer', partNumber: 'model', speed: 'specs.speed' },
-  storage: { vendor: 'manufacturer', model: 'model', size: 'specs.capacityBytes' },
+  storage: {
+    vendor: 'manufacturer', model: 'model', size: 'specs.capacityBytes', serial: 'specs.serialNumber',
+    tran: 'specs.interface', pttype: 'specs.partitionTable',
+  },
   'network-interface': { name: 'name' },
   'power-supply': { manufacturer: 'manufacturer', name: 'model', maxPowerCapacity: 'specs.wattageWatts' },
 })
@@ -64,6 +68,9 @@ function isOpaqueManufacturer(value) {
 
 function detectedFieldValue(component, detectedField) {
   const value = component.values?.[detectedField]
+  if (component.kind === 'storage' && detectedField === 'vendor') {
+    return resolveStorageManufacturer(component.values)
+  }
   if (component.kind !== 'memory' || detectedField !== 'manufacturer') return value
   const resolved = resolveJedecManufacturer(component.values?.moduleManufacturerId)
   if (resolved) return resolved

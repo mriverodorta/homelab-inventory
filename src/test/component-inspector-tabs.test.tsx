@@ -201,6 +201,30 @@ describe('ComponentInspectorTabs', () => {
     expect(screen.getByRole('textbox', { name: 'Notes' })).toBeInTheDocument()
   })
 
+  it('shows live usage only for a mapped storage device', async () => {
+    const user = userEvent.setup()
+    renderTabs('storage', {
+      storageTelemetry: {
+        itemType: 'storage', itemId: 99, match: 'one-to-one-position',
+        device: {
+          locator: '/dev/nvme0n1', model: 'SPCC M.2 PCIe SSD', vendor: null,
+          sizeBytes: 1024209543168, transport: 'nvme', partitionTable: 'gpt', rotational: false,
+          topology: [{ name: 'nvme0n1', type: 'disk' }, { name: 'nvme0n1p2', type: 'part', fstype: 'ext4' }],
+        },
+        mounts: [{
+          mountId: 1, parentId: 0, majorMinor: '259:2', source: '/dev/nvme0n1p2',
+          mountPoint: '/', root: '/', fsType: 'ext4', readOnly: false,
+          totalBytes: 1000, usedBytes: 250, availableBytes: 700, usagePercent: 25,
+        }],
+      },
+    })
+    expect(screen.getByRole('tab', { name: 'Usage' })).toBeVisible()
+    await user.click(screen.getByRole('tab', { name: 'Usage' }))
+    expect(screen.getByText('/dev/nvme0n1')).toBeVisible()
+    expect(screen.getByText('25.0%')).toBeVisible()
+    expect(screen.getByText('gpt')).toBeVisible()
+  })
+
   it.each([
     ['cpu', 'CPU socket'],
     ['ram', 'Form Factor'],

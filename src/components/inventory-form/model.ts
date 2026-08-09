@@ -105,6 +105,7 @@ export type InventoryFormValues = {
   model: string
   family: string
   number: string
+  serialNumber: string
   notes: string
   formFactor: string
   chipset: string
@@ -133,6 +134,7 @@ export type InventoryFormValues = {
   storageUnit: 'GB' | 'TB'
   interface: string
   storageFormFactor: string
+  storagePartitionTable: string
   vramGb: string
   gpuFormFactor: string
   slotWidth: string
@@ -233,7 +235,7 @@ const KNOWN_SPEC_KEYS: Partial<Record<InventoryType, string[]>> = {
   nas: ['driveBays', 'm2Slots', 'powerConfiguration'],
   cpu: ['cores', 'threads', 'baseClockGhz', 'boostClockGhz'],
   ram: ['capacityGb', 'generation', 'speedMt', 'formFactor', 'ecc', 'rank'],
-  storage: ['capacityGb', 'capacityTb', 'interface', 'formFactor'],
+  storage: ['capacityGb', 'capacityTb', 'interface', 'formFactor', 'serialNumber', 'partitionTable'],
   gpu: ['vramGb', 'formFactor', 'slotWidth', 'pcie'],
   network: ['ports', 'speedMbps', 'interface', 'formFactor'],
   switch: ['management', 'switchingCapacityGbps', 'fanless'],
@@ -455,6 +457,7 @@ export function createInventoryFormValues(type: InventoryType): InventoryFormVal
     model: '',
     family: '',
     number: '',
+    serialNumber: '',
     notes: '',
     formFactor: type === 'server' ? 'Mini' : '',
     chipset: '',
@@ -483,6 +486,7 @@ export function createInventoryFormValues(type: InventoryType): InventoryFormVal
     storageUnit: 'TB',
     interface: '',
     storageFormFactor: '',
+    storagePartitionTable: '',
     vramGb: '',
     gpuFormFactor: '',
     slotWidth: '',
@@ -593,6 +597,7 @@ export function inventoryItemToFormValues(item: InventoryItem): InventoryFormVal
     model: item.model ?? '',
     family: item.family ?? '',
     number: item.number ?? '',
+    serialNumber: item.type === 'storage' ? stringValue(specs.serialNumber) : '',
     notes: item.notes ?? '',
     formFactor: stringValue(specs.formFactor),
     chipset: stringValue(specs.chipset),
@@ -624,6 +629,7 @@ export function inventoryItemToFormValues(item: InventoryItem): InventoryFormVal
     storageUnit: hasCapacityTb ? 'TB' : 'GB',
     interface: stringValue(specs.interface),
     storageFormFactor: item.type === 'storage' ? stringValue(specs.formFactor) : '',
+    storagePartitionTable: item.type === 'storage' ? stringValue(specs.partitionTable) : '',
     vramGb: stringValue(specs.vramGb),
     gpuFormFactor: item.type === 'gpu' ? stringValue(specs.formFactor) : '',
     slotWidth: stringValue(specs.slotWidth),
@@ -890,6 +896,8 @@ export function inventoryFormValuesToInput(values: InventoryFormValues): Invento
     setSpec(specs, values.storageUnit === 'TB' ? 'capacityTb' : 'capacityGb', numberValue(values.capacity))
     setSpec(specs, 'interface', cleanString(values.interface))
     setSpec(specs, 'formFactor', cleanString(values.storageFormFactor))
+    setSpec(specs, 'serialNumber', cleanString(values.serialNumber))
+    setSpec(specs, 'partitionTable', cleanString(values.storagePartitionTable))
   } else if (type === 'gpu') {
     setSpec(specs, 'vramGb', numberValue(values.vramGb))
     setSpec(specs, 'formFactor', cleanString(values.gpuFormFactor))

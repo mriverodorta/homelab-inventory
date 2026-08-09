@@ -28,6 +28,7 @@ import { PcBuildInspectorTabs } from '@/components/inspector/equipment/pc-build-
 import { StandalonePowerEquipmentTabs } from '@/components/inspector/equipment/standalone-power-equipment-tabs'
 import { usePermission } from '@/hooks/use-permission'
 import { useAgentHardwareSuggestions } from '@/hooks/use-agent-hardware-suggestions'
+import { useAssignedItemAgentTelemetry } from '@/components/inspector/agent/use-agent-telemetry'
 
 const labelClass = 'text-[11px] font-black uppercase tracking-[0.12em] text-[#75695d]'
 
@@ -88,6 +89,14 @@ export function InspectorPanel({
     selectedItem,
     canViewAgents && !demoMode,
   )
+  const selectedItemTelemetry = useAssignedItemAgentTelemetry({
+    project,
+    item: selectedItem,
+    enabled: canViewAgents && !demoMode && selectedItem?.type === 'storage',
+  })
+  const selectedStorageTelemetry = selectedItem?.type === 'storage'
+    ? selectedItemTelemetry.data?.storage?.items.find((entry) => entry.itemId === selectedItem.id) ?? null
+    : null
   const selectedConnection = selectedConnectionId
     ? project.connections.find((connection) => String(connection.id) === String(selectedConnectionId)) ?? null
     : null
@@ -337,6 +346,7 @@ export function InspectorPanel({
                     onUpdateItem={updateItem}
                     onEndpointConnectionClick={onEndpointConnectionClick}
                     agentHardwareSuggestions={agentHardwareSuggestions}
+                    storageTelemetry={selectedStorageTelemetry}
                   />
                   <AuditSection warnings={auditWarnings} />
                 </>

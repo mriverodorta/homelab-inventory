@@ -42,6 +42,17 @@ describe('contribution discovery', () => {
     expect(await discoverContributionCandidates(store)).toMatchObject({ queued: 0 })
   })
 
+  it('never contributes locally stored storage serial numbers', async () => {
+    const store = fixture({
+      id: 1, type: 'storage', name: 'Example NVMe', manufacturer: 'Example', model: 'Drive 1',
+      specs: { capacityTb: 1, interface: 'NVMe', serialNumber: 'PRIVATE-STORAGE-SERIAL', partitionTable: 'gpt' },
+    })
+    expect(await discoverContributionCandidates(store)).toMatchObject({ queued: 1 })
+    const payload = store.getRegistryState().contributionOutbox[0].payload
+    expect(JSON.stringify(payload)).not.toContain('PRIVATE-STORAGE-SERIAL')
+    expect(payload.specs).not.toHaveProperty('serialNumber')
+  })
+
   it('does nothing when explicit connected contribution consent is absent', async () => {
     const store = fixture({ id: 1, type: 'cpu', name: 'Example CPU' })
     store.registryTransaction((draft) => { draft.settings.automaticContributions = false })

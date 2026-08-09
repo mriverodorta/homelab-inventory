@@ -10,11 +10,19 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 
 - Added catalog contract v7 support for retail motherboards, including exact registry import and contribution identity for aliases, board revisions, chipset and form factor, fixed I/O, CPU and memory limits, storage and expansion topology, and internal board-power requirements.
 - Motherboard Add Hardware and inspector forms now share dedicated Specs, CPU, Memory, Storage, Expansion, Ports, Power, and Compatibility tabs, while power supplies can record the ATX and CPU leads they provide.
+- Embedded agent 0.2.0 now reports raw physical storage, partition, filesystem, LVM/RAID, and mount topology on Linux and FreeBSD without normalizing evidence on the host.
+- Agent-connected hosts now show aggregate local-storage usage, and confidently mapped storage items gain a Usage tab with physical-device details, mount-level capacity bars, partition tables, and block topology.
 
 ### Changed
 
 - Assigned motherboards now authoritatively validate custom PC CPU, RAM, storage, expansion-card, and PSU compatibility. Registry topology updates are blocked when they would make installed parts incompatible, without changing assignments, canvas placement, cables, local labels, or project policy.
 - Catalog search now finds motherboards by alias, chipset, socket, CPU generation, and board revision, and assigned motherboard network and display ports remain available as PC Build connection endpoints.
+- Storage suggestions resolve known vendor aliases such as SPCC to readable manufacturers and can fill model, capacity, interface, partition table, and locally stored serial fields independently.
+- Filesystem totals exclude remote shares, container/runtime mounts, loop images, pseudo filesystems, and duplicate bind mounts; ZFS and Btrfs storage is counted once while eligible mount points remain inspectable.
+
+### Security
+
+- Storage serial numbers and other private device identifiers remain available only in local inventory and agent evidence; registry contribution payloads and hashes continue to omit them.
 
 ### Data migration
 

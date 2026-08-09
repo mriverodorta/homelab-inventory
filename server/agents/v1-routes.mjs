@@ -4,6 +4,7 @@ import { isRelationalId } from '../db/relational-ids.mjs'
 import { normalizeAgentEndpoint } from '../agent-routes.mjs'
 import { AgentContractService } from './contract-service.mjs'
 import { buildHardwareSuggestions } from './hardware-suggestions.mjs'
+import { buildStorageTelemetry } from './storage-interpretation.mjs'
 import { AGENT_HOST_TYPES, normalizeV1Activation, normalizeV1HardwareSnapshot, normalizeV1Heartbeat } from './protocol-v1.mjs'
 import { agentStatusTiming } from './status-model.mjs'
 import {
@@ -48,6 +49,12 @@ function telemetryQuery(request) {
     throw error
   }
   return { from, to, limit }
+}
+
+function compactTelemetrySample(sample) {
+  const metrics = { ...(sample.payload?.metrics ?? {}) }
+  delete metrics.filesystems
+  return { ...sample, payload: { ...sample.payload, metrics } }
 }
 
 function hostExists(store, host) {
@@ -540,6 +547,9 @@ export function registerAgentV1Routes(app, store, {
         connected,
         ageMs: null,
       }
+      const latest = telemetryRepository.getHostSummary?.(host.hostType, host.hostId) ?? null
+      const snapshot = Object.values(store.databases.agents.data.hardwareSnapshots)
+        .find((record) => record.hostType === host.hostType && record.hostId === host.hostId) ?? null
       return response.set('Cache-Control', 'no-store').json({
         host,
         serverTime: serverTime.toISOString(),
@@ -547,7 +557,13 @@ export function registerAgentV1Routes(app, store, {
         timing,
         from: new Date(range.from).toISOString(),
         to: new Date(range.to).toISOString(),
-        samples: telemetryRepository.listSamples(host.hostType, host.hostId, range),
+        samples: telemetryRepository.listSamples(host.hostType, host.hostId, range).map(compactTelemetrySample),
+        storage: buildStorageTelemetry({
+          heartbeat: latest?.payload ?? null,
+          snapshot,
+          inventory: store.databases.inventory.data,
+          project: store.databases.project.data,
+        }),
       })
     } catch (error) {
       return routeError(response, error)

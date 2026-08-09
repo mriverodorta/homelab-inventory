@@ -13,10 +13,13 @@ import {
   TabsTrigger,
 } from '@/components/ui/tabs'
 import type { InventoryItem, ProjectState } from '@/types/inventory'
+import type { AgentStorageItemTelemetry } from '@/types/agent'
+import { StorageUsageTab } from '@/components/inspector/equipment/storage-usage-tab'
 
 export type ComponentInspectorTabsProps = InventorySpecsTabContentProps & {
   project: ProjectState
   item: InventoryItem
+  storageTelemetry?: AgentStorageItemTelemetry | null
 }
 
 const componentTypes = new Set<InventoryFormValues['type']>([
@@ -37,6 +40,7 @@ export function ComponentInspectorTabs({
   onChange,
   onSelectOpenChange,
   agentSuggestions,
+  storageTelemetry,
 }: ComponentInspectorTabsProps) {
   if (!componentTypes.has(values.type)) return null
 
@@ -61,6 +65,14 @@ export function ComponentInspectorTabs({
             className="!h-9 flex-none rounded-none px-2 text-[11px] font-black uppercase tracking-[0.09em] text-[#75695d] data-active:text-[#20242c]"
           >
             Ports
+          </TabsTrigger>
+        ) : null}
+        {values.type === 'storage' && storageTelemetry ? (
+          <TabsTrigger
+            value="usage"
+            className="!h-9 flex-none rounded-none px-2 text-[11px] font-black uppercase tracking-[0.09em] text-[#75695d] data-active:text-[#20242c]"
+          >
+            Usage
           </TabsTrigger>
         ) : null}
         <TabsTrigger
@@ -94,6 +106,12 @@ export function ComponentInspectorTabs({
             onChange={(portGroups) => onChange({ portGroups }, 'immediate')}
             onSelectOpenChange={onSelectOpenChange}
           />
+        </TabsContent>
+      ) : null}
+
+      {values.type === 'storage' && storageTelemetry ? (
+        <TabsContent value="usage" className="m-0 min-w-0">
+          <StorageUsageTab storage={storageTelemetry} />
         </TabsContent>
       ) : null}
 

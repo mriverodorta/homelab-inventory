@@ -8,6 +8,9 @@ function formFieldName(fieldPath: string): string | null {
   if (['name', 'manufacturer', 'model'].includes(fieldPath)) return fieldPath
   if (fieldPath === 'specs.speed') return 'speedMt'
   if (fieldPath === 'specs.capacityBytes') return 'capacity'
+  if (fieldPath === 'specs.serialNumber') return 'serialNumber'
+  if (fieldPath === 'specs.interface') return 'interface'
+  if (fieldPath === 'specs.partitionTable') return 'storagePartitionTable'
   if (fieldPath === 'specs.wattageWatts') return 'ratedWatts'
   return null
 }
@@ -30,6 +33,14 @@ function suggestionPatch(
   if (fieldName === 'speedMt' || fieldName === 'ratedWatts') {
     return { [fieldName]: String(suggestion.detectedValue) }
   }
+  if (fieldName === 'interface') {
+    const detected = String(suggestion.detectedValue).trim().toLowerCase()
+    return { interface: detected === 'nvme' ? 'NVMe' : detected === 'sata' ? 'SATA' : String(suggestion.detectedValue) }
+  }
+  if (fieldName === 'storagePartitionTable') {
+    return { storagePartitionTable: String(suggestion.detectedValue).trim().toLowerCase() }
+  }
+  if (fieldName === 'serialNumber') return { serialNumber: String(suggestion.detectedValue) }
   if (['name', 'manufacturer', 'model'].includes(fieldName)) {
     return { [fieldName]: String(suggestion.detectedValue) }
   }

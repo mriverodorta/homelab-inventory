@@ -2,6 +2,7 @@ import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it } from 'vitest'
 import { AgentContainersPanel } from '@/components/inspector/agent/agent-containers-panel'
+import { AgentStorageSummary } from '@/components/inspector/agent/agent-storage-summary'
 import { AgentServicesPanel } from '@/components/inspector/agent/agent-services-panel'
 import { filterServices } from '@/components/inspector/agent/agent-service-filters'
 import { AGENT_PERCENTAGE_TICKS, formatDuration, formatOperatingSystem } from '@/components/inspector/agent/agent-telemetry-formatters'
@@ -66,5 +67,17 @@ describe('agent telemetry presentation', () => {
 
   it('defines complete percentage ticks for utilization charts', () => {
     expect(AGENT_PERCENTAGE_TICKS.map((tick) => `${tick}%`)).toEqual(['0%', '25%', '50%', '75%', '100%'])
+  })
+
+  it('summarizes only backend-approved local filesystems', () => {
+    render(<AgentStorageSummary storage={{
+      summary: {
+        totalBytes: 1000, usedBytes: 400, availableBytes: 550, usagePercent: 40,
+        mounts: [{ mountId: 1, parentId: 0, majorMinor: '8:2', source: '/dev/sda2', mountPoint: '/', root: '/', fsType: 'ext4', readOnly: false, totalBytes: 1000, usedBytes: 400, availableBytes: 550, usagePercent: 40 }],
+      },
+      items: [], unmatchedMounts: [],
+    }} />)
+    expect(screen.getByText('40.0% used')).toBeVisible()
+    expect(screen.getByText(/1 local filesystem counted/)).toBeVisible()
   })
 })

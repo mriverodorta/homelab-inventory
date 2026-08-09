@@ -150,6 +150,53 @@ export type AgentTelemetryRange = {
   from: string
   to: string
   samples: AgentTelemetrySample[]
+  storage?: AgentStorageTelemetry
+}
+
+export type AgentStorageMount = {
+  mountId: number | null
+  parentId: number | null
+  majorMinor: string | null
+  source: string
+  mountPoint: string
+  root: string
+  fsType: string
+  readOnly: boolean
+  totalBytes: number
+  usedBytes: number
+  availableBytes: number
+  usagePercent: number
+}
+
+export type AgentStorageDevice = {
+  locator: string
+  model: string | null
+  vendor: string | null
+  sizeBytes: number | null
+  transport: string | null
+  partitionTable: string | null
+  rotational: boolean | null
+  topology: Array<Record<string, unknown>>
+}
+
+export type AgentStorageItemTelemetry = {
+  itemType: 'storage'
+  itemId: number
+  match: 'opaque-fingerprint' | 'physical-locator' | 'one-to-one-position'
+  device: AgentStorageDevice
+  mounts: AgentStorageMount[]
+}
+
+export type AgentStorageTelemetry = {
+  summary: {
+    totalBytes: number
+    usedBytes: number
+    availableBytes: number
+    usagePercent: number
+    mounts: AgentStorageMount[]
+  }
+  items: AgentStorageItemTelemetry[]
+  unmatchedMounts: AgentStorageMount[]
 }
 
 export type AgentHardwareSuggestion = {

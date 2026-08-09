@@ -90,6 +90,12 @@ export function InventoryCommonFields({
         placeholder={placeholders.model}
         onChange={(model) => onChange({ model })}
       />
+      {type === 'storage' ? (
+        <>
+          <TextField label="Serial number" name="serialNumber" value={values.serialNumber} placeholder="Locally stored device serial" onChange={(serialNumber) => onChange({ serialNumber })} />
+          <SelectField label="Partition table" name="storagePartitionTable" value={values.storagePartitionTable} placeholder="Select table" options={[{ value: 'gpt', label: 'GPT' }, { value: 'dos', label: 'MBR' }]} emptyLabel="Not detected" onOpenChange={onSelectOpenChange} onValueChange={(storagePartitionTable) => onChange({ storagePartitionTable }, 'immediate')} />
+        </>
+      ) : null}
     </div>
   )
 }

@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { AgentHardwareEvidence } from '@/components/inspector/agent/agent-hardware-evidence'
 import { AgentHeartbeatTimeline } from '@/components/inspector/agent/agent-heartbeat-timeline'
 import { AgentMetricsPanel } from '@/components/inspector/agent/agent-metrics-panel'
+import { AgentStorageSummary } from '@/components/inspector/agent/agent-storage-summary'
 import { agentMetrics, metricNumber } from '@/components/inspector/agent/agent-status-utils'
 import { formatDuration, formatOperatingSystem } from '@/components/inspector/agent/agent-telemetry-formatters'
 import { useAgentTelemetry } from '@/components/inspector/agent/use-agent-telemetry'
@@ -177,6 +178,7 @@ export function AgentSetupPanel({
               {telemetry.error instanceof Error ? telemetry.error.message : 'Telemetry history could not be loaded.'}
             </div>
           ) : <AgentMetricsPanel samples={telemetry.data?.samples ?? []} />}
+          <AgentStorageSummary storage={telemetry.data?.storage} />
           <AgentHardwareEvidence host={host} />
         </>
       ) : null}

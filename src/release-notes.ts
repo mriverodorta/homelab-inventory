@@ -104,8 +104,13 @@ export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
   highlights: [
     'Retail motherboards can now be imported from catalog contract v7 with complete CPU, memory, storage, expansion, fixed-I/O, and board-power topology, then edited through dedicated motherboard tabs.',
     'Assigned motherboard topology now drives custom PC compatibility, including PSU lead requirements, and unsafe registry revisions are blocked until incompatible installed parts are resolved.',
+    'Agent-connected hosts now show aggregate local-storage usage, while mapped storage items gain a Usage tab with per-mount capacity, partition-table, physical-device, and block-topology details.',
+    'Embedded agent 0.2.0 preserves raw disk, partition, filesystem, LVM/RAID, and mount evidence on Linux and FreeBSD so the backend can offer independent inventory-field suggestions.',
   ],
-  fixes: [],
+  fixes: [
+    'Local-storage totals exclude remote shares, container and runtime mounts, loop images, pseudo filesystems, and duplicate bind mounts while avoiding duplicate ZFS and Btrfs capacity.',
+    'Storage vendor aliases are interpreted server-side, and serial numbers remain local-only instead of entering registry contributions or reusable catalog hashes.',
+  ],
   notes: [
     'Schema 27 validates motherboard resource relationships after a pre-migration backup while preserving existing inventory, assignments, canvas placements, cables, registry links, and route caches.',
     'Motherboard catalog search includes aliases, chipset, socket, CPU generation, and board revision; contract versions newer than v7 remain explicitly unsupported.',

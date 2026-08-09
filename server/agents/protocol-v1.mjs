@@ -13,7 +13,7 @@ export const AGENT_CAPABILITY_STATES = Object.freeze([
 const HOST_TYPE_SET = new Set(AGENT_HOST_TYPES)
 const CAPABILITY_STATE_SET = new Set(AGENT_CAPABILITY_STATES)
 const METRIC_ARRAY_LIMITS = Object.freeze({
-  filesystems: 64,
+  filesystems: 256,
   diskIo: 128,
   network: 128,
   sensors: 256,
@@ -72,8 +72,8 @@ function nonNegativeInteger(value, field) {
   return value
 }
 
-function boundedValue(value, field, depth = 0) {
-  if (depth > MAX_DEPTH) throw protocolError(`${field} is nested too deeply.`)
+function boundedValue(value, field, depth = 0, maxDepth = MAX_DEPTH) {
+  if (depth > maxDepth) throw protocolError(`${field} is nested too deeply.`)
   if (value === null || typeof value === 'boolean') return value
   if (typeof value === 'number') {
     if (!Number.isFinite(value)) throw protocolError(`${field} must contain only finite numbers.`)
@@ -85,14 +85,14 @@ function boundedValue(value, field, depth = 0) {
   }
   if (Array.isArray(value)) {
     if (value.length > 1024) throw protocolError(`${field} contains an oversized array.`)
-    return value.map((entry, index) => boundedValue(entry, `${field}[${index}]`, depth + 1))
+    return value.map((entry, index) => boundedValue(entry, `${field}[${index}]`, depth + 1, maxDepth))
   }
   const record = object(value, field)
   const entries = Object.entries(record)
   if (entries.length > MAX_OBJECT_KEYS) throw protocolError(`${field} contains too many fields.`)
   return Object.fromEntries(entries.map(([key, entry]) => {
     if (['__proto__', 'constructor', 'prototype'].includes(key)) throw protocolError(`${field} contains an unsafe field.`)
-    return [key, boundedValue(entry, `${field}.${key}`, depth + 1)]
+    return [key, boundedValue(entry, `${field}.${key}`, depth + 1, maxDepth)]
   }))
 }
 
@@ -294,7 +294,7 @@ export function normalizeV1HardwareSnapshot(payload, expectedHost) {
       if (!/^[a-z][a-z0-9-]{0,63}$/.test(kind)) {
         throw protocolError(`hardwareSnapshot.components[${index}].kind is invalid.`)
       }
-      const values = boundedValue(object(component.values, `hardwareSnapshot.components[${index}].values`), `hardwareSnapshot.components[${index}].values`)
+      const values = boundedValue(object(component.values, `hardwareSnapshot.components[${index}].values`), `hardwareSnapshot.components[${index}].values`, 0, 12)
       if (Object.keys(values).length === 0) throw protocolError(`hardwareSnapshot.components[${index}].values cannot be empty.`)
       return {
         kind,

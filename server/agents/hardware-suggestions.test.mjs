@@ -2,6 +2,24 @@ import { describe, expect, it } from 'vitest'
 import { buildHardwareSuggestions } from './hardware-suggestions.mjs'
 
 describe('hardware suggestions', () => {
+  it('interprets storage vendor aliases while keeping serial evidence local', () => {
+    const result = buildHardwareSuggestions({
+      snapshot: {
+        id: 10, host: { type: 'server', id: 7 }, collectedAt: '2026-08-09T00:00:00Z', receivedAt: '2026-08-09T00:00:00Z',
+        components: [{ kind: 'storage', locator: '/dev/nvme0n1', values: {
+          model: 'SPCC M.2 PCIe SSD', serial: 'PRIVATE-SERIAL', size: 1024209543168, tran: 'nvme', pttype: 'gpt',
+        } }],
+      },
+      inventory: { storage: [{ id: 9, name: '1TB NVMe' }] },
+      project: { assignments: [{ id: 1, hostType: 'server', hostId: 7, itemType: 'storage', itemId: 9 }] },
+      now: Date.parse('2026-08-09T00:01:00Z'),
+    })
+    expect(result.suggestions).toEqual(expect.arrayContaining([
+      expect.objectContaining({ fieldPath: 'manufacturer', detectedValue: 'Silicon Power' }),
+      expect.objectContaining({ fieldPath: 'specs.serialNumber', detectedValue: 'PRIVATE-SERIAL' }),
+      expect.objectContaining({ fieldPath: 'specs.partitionTable', detectedValue: 'gpt' }),
+    ]))
+  })
   it('matches assigned components by physical order without crossing hosts', () => {
     const snapshot = {
       id: 4,
