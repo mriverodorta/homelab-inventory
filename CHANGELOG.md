@@ -6,6 +6,12 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 
 ## Unreleased
 
+## [0.9.9] - 2026-08-08
+
+### Fixed
+
+- Agent hardware review now keeps complete JSON evidence inside its dialog, maps detected DIMMs to assigned RAM by natural physical slot order, identifies each suggestion's source slot, and resolves verified JEDEC module IDs into readable manufacturer names without suggesting opaque codes.
+
 ## [0.9.8] - 2026-08-08
 
 ### Changed

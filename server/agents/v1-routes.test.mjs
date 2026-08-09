@@ -282,21 +282,24 @@ describe('agent protocol v1 routes', () => {
         url, hostType: 'server', hostId: 1, deviceId: enrolled.activation.deviceId,
         pair: enrolled.agentIdentity.pair, sequence: 1,
         components: [
-          { kind: 'memory', locator: 'DIMM_A1', values: { manufacturer: 'Micron', serialNumber: 'PRIVATE-1', opaqueFingerprint: 'opaque-1' } },
-          { kind: 'memory', locator: 'DIMM_B1', values: { manufacturer: 'Samsung', serialNumber: 'PRIVATE-2', opaqueFingerprint: 'opaque-2' } },
+          { kind: 'memory', locator: 'DIMM2', values: { manufacturer: '85F700000000', moduleManufacturerId: 'Bank 6, Hex 0xF7', serialNumber: 'PRIVATE-2', opaqueFingerprint: 'opaque-2' } },
+          { kind: 'memory', locator: 'DIMM1', values: { manufacturer: '85F700000000', moduleManufacturerId: 'Bank 6, Hex 0xF7', serialNumber: 'PRIVATE-1', opaqueFingerprint: 'opaque-1' } },
         ],
       })
       expect(first.status).toBe(201)
       const projectRevision = store.databases.project.data.revision
       const result = await fetch(`${url}/api/agent/hosts/server/1/hardware-snapshot`).then((response) => response.json())
       expect(result.snapshot.components).toHaveLength(2)
-      expect(result.suggestions.map((suggestion) => suggestion.detectedValue)).toEqual(['Micron', 'Samsung'])
+      expect(result.suggestions.filter(({ fieldPath }) => fieldPath === 'manufacturer')).toEqual([
+        expect.objectContaining({ target: { itemType: 'ram', itemId: 1 }, detectedValue: 'Avant Technology', source: expect.objectContaining({ locator: 'DIMM1' }) }),
+        expect.objectContaining({ target: { itemType: 'ram', itemId: 2 }, detectedValue: 'Avant Technology', source: expect.objectContaining({ locator: 'DIMM2' }) }),
+      ])
       expect(store.databases.project.data.revision).toBe(projectRevision)
 
       const second = await signedSnapshot({
         url, hostType: 'server', hostId: 1, deviceId: enrolled.activation.deviceId,
         pair: enrolled.agentIdentity.pair, sequence: 2,
-        components: [{ kind: 'memory', locator: 'DIMM_A1', values: { manufacturer: 'Micron', serialNumber: 'NEW-PRIVATE', opaqueFingerprint: 'opaque-1' } }],
+        components: [{ kind: 'memory', locator: 'DIMM1', values: { manufacturer: 'Micron', serialNumber: 'NEW-PRIVATE', opaqueFingerprint: 'opaque-1' } }],
       })
       expect(second.status).toBe(201)
       expect(Object.values(store.databases.agents.data.hardwareSnapshots)).toHaveLength(1)

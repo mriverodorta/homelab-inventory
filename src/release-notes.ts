@@ -106,6 +106,14 @@ export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
   notes: [],
 }
 
+const RELEASE_0_9_9_DETAILS: UnreleasedReleaseNotes = {
+  highlights: [],
+  fixes: [
+    'Agent hardware review now contains complete JSON evidence inside its dialog, maps detected DIMMs to assigned RAM by physical slot order, identifies each suggestion source, and resolves verified JEDEC module IDs into readable manufacturers.',
+  ],
+  notes: [],
+}
+
 const RELEASE_0_9_8_DETAILS: UnreleasedReleaseNotes = {
   highlights: [
     'Detected hardware evidence can now be inspected as complete formatted JSON from the Agent tab, while the inventory scan command remains available for future hardware changes.',
@@ -570,9 +578,16 @@ const RELEASE_0_2_1_DETAILS: UnreleasedReleaseNotes = {
 
 export const RELEASE_NOTES: ReleaseNoteEntry[] = [
   {
-    version: '0.9.8',
+    version: '0.9.9',
     date: '2026-08-08',
     channel: 'latest',
+    title: 'Reliable DIMM hardware evidence',
+    ...RELEASE_0_9_9_DETAILS,
+  },
+  {
+    version: '0.9.8',
+    date: '2026-08-08',
+    channel: 'release',
     title: 'Clearer agent evidence and heartbeat history',
     ...RELEASE_0_9_8_DETAILS,
   },

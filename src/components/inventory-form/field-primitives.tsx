@@ -79,6 +79,7 @@ export function TextField({
               label={label}
               currentValue={value}
               detectedValue={detected.suggestion.detectedValue}
+              sourceLocator={detected.suggestion.source.locator}
               onApply={detected.apply}
             />
           </span>
@@ -152,6 +153,7 @@ export function SelectField({
             label={label}
             currentValue={value}
             detectedValue={detected.suggestion.detectedValue}
+            sourceLocator={detected.suggestion.source.locator}
             onApply={detected.apply}
           />
         ) : null}

@@ -1,3 +1,5 @@
+import { resolveJedecManufacturer } from './jep106-manufacturers.mjs'
+
 const TABLE_BY_TYPE = Object.freeze({
   server: 'servers', nas: 'nas', pcBuild: 'pcBuilds', cpu: 'cpus', ram: 'ram', storage: 'storage',
   network: 'networkCards', gpu: 'gpus', motherboard: 'motherboards', powerSupply: 'powerSupplies',
@@ -47,6 +49,27 @@ function componentIdentity(component) {
   return typeof component.values?.opaqueFingerprint === 'string' ? component.values.opaqueFingerprint : null
 }
 
+const LOCATOR_COLLATOR = new Intl.Collator('en', { numeric: true, sensitivity: 'base' })
+
+function compareComponentLocators(first, second) {
+  return LOCATOR_COLLATOR.compare(first.locator.trim(), second.locator.trim())
+}
+
+function isOpaqueManufacturer(value) {
+  if (typeof value !== 'string') return false
+  const normalized = value.trim()
+  return /^(?:0x)?[0-9a-f]{4,}$/i.test(normalized)
+    || /^(?:unknown|not specified|not provided|none)$/i.test(normalized)
+}
+
+function detectedFieldValue(component, detectedField) {
+  const value = component.values?.[detectedField]
+  if (component.kind !== 'memory' || detectedField !== 'manufacturer') return value
+  const resolved = resolveJedecManufacturer(component.values?.moduleManufacturerId)
+  if (resolved) return resolved
+  return isOpaqueManufacturer(value) ? null : value
+}
+
 function matchComponents(snapshot, inventory, project) {
   const host = { hostType: snapshot.host.type, hostId: snapshot.host.id }
   const matches = []
@@ -56,7 +79,10 @@ function matchComponents(snapshot, inventory, project) {
     result.set(component.kind, collection)
     return result
   }, new Map())
-  for (const [kind, components] of grouped) {
+  for (const [kind, groupedComponents] of grouped) {
+    const components = kind === 'memory'
+      ? [...groupedComponents].sort(compareComponentLocators)
+      : groupedComponents
     if (['system', 'chassis', 'bios'].includes(kind)) {
       const item = hostItem(inventory, host)
       for (const component of components) matches.push({ component, itemType: host.hostType, item, method: 'host', confidence: 'high' })
@@ -103,7 +129,7 @@ export function buildHardwareSuggestions({ snapshot, inventory, project, now = D
     if (!match.item || match.confidence === 'none') continue
     const mapping = FIELD_MAP[match.component.kind] ?? {}
     for (const [detectedField, fieldPath] of Object.entries(mapping)) {
-      const detectedValue = match.component.values?.[detectedField]
+      const detectedValue = detectedFieldValue(match.component, detectedField)
       if (detectedValue === undefined || detectedValue === null || detectedValue === '') continue
       suggestions.push({
         id: `${snapshot.id}:${match.itemType}:${match.item.id}:${fieldPath}`,

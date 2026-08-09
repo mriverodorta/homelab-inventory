@@ -1675,6 +1675,7 @@ describe('InspectorPanel', () => {
 
     await user.click(await screen.findByRole('button', { name: 'Use detected Manufacturer' }))
     expect(screen.getByRole('alertdialog')).toHaveTextContent('The current value “Crucial” will be replaced')
+    expect(screen.getByRole('alertdialog')).toHaveTextContent('DIMM 0')
     await user.click(screen.getByRole('button', { name: 'Use detected value' }))
 
     expect(screen.getByLabelText('Manufacturer')).toHaveValue('Micron')
@@ -1725,6 +1726,10 @@ describe('InspectorPanel', () => {
     expect(dialog).toHaveTextContent('PRIVATE-SERIAL-123')
     expect(dialog).toHaveTextContent('baseboard:0')
     expect(within(dialog).getByRole('button', { name: 'Copy JSON' })).toBeInTheDocument()
+    expect(dialog).toHaveClass('h-[min(82vh,48rem)]', 'min-w-0', 'grid-rows-[auto_minmax(0,1fr)_auto]', 'overflow-hidden')
+    const json = within(dialog).getByTestId('agent-scan-json')
+    expect(json).toHaveClass('min-w-0', 'whitespace-pre-wrap', 'break-all')
+    expect(json).not.toHaveClass('min-w-max')
   })
 
   it('corrects a CPU number after 500ms and preserves unrelated specs', async () => {

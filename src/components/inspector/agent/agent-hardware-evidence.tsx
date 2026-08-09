@@ -82,15 +82,15 @@ export function AgentHardwareEvidence({ host }: { host: InventoryItem }) {
                 <DialogTrigger asChild>
                   <Button type="button" variant="outline">View scan data</Button>
                 </DialogTrigger>
-                <DialogContent className="max-h-[min(82vh,48rem)] sm:max-w-3xl">
+                <DialogContent className="h-[min(82vh,48rem)] min-w-0 grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden sm:max-w-3xl">
                   <DialogHeader>
                     <DialogTitle>Agent scan data</DialogTitle>
                     <DialogDescription>
                       Complete locally stored scan evidence. It may contain serial numbers, hardware fingerprints, and other private identifiers. Opening this viewer does not transmit the data.
                     </DialogDescription>
                   </DialogHeader>
-                  <ScrollArea className="h-[min(58vh,34rem)] rounded-md border border-[#d6ccbd] bg-[#17191d]">
-                    <pre className="min-w-max p-4 font-mono text-xs leading-5 text-[#f5f1e8]">{rawJson}</pre>
+                  <ScrollArea className="h-full min-h-0 min-w-0 rounded-md border border-[#d6ccbd] bg-[#17191d]">
+                    <pre data-testid="agent-scan-json" className="min-w-0 whitespace-pre-wrap break-all p-4 font-mono text-xs leading-5 text-[#f5f1e8]">{rawJson}</pre>
                   </ScrollArea>
                   <DialogFooter>
                     <Button type="button" variant="outline" onClick={() => void copyText(rawJson, setCopiedJson)}>

@@ -23,11 +23,13 @@ export function AgentFieldSuggestionButton({
   label,
   currentValue,
   detectedValue,
+  sourceLocator,
   onApply,
 }: {
   label: string
   currentValue: string
   detectedValue: unknown
+  sourceLocator: string
   onApply: () => void
 }) {
   const [confirming, setConfirming] = useState(false)
@@ -62,7 +64,7 @@ export function AgentFieldSuggestionButton({
               <ScanSearch />
             </Button>
           </TooltipTrigger>
-          <TooltipContent side="top">Use detected value: {detected}</TooltipContent>
+          <TooltipContent side="top">Use detected value from {sourceLocator}: {detected}</TooltipContent>
         </Tooltip>
       </TooltipProvider>
 
@@ -71,7 +73,7 @@ export function AgentFieldSuggestionButton({
           <AlertDialogHeader>
             <AlertDialogTitle>Replace {label.toLowerCase()}?</AlertDialogTitle>
             <AlertDialogDescription>
-              The current value “{currentValue}” will be replaced with the agent-detected value “{detected}”. You can undo this change from the workspace history.
+              The current value “{currentValue}” will be replaced with “{detected}”, detected from {sourceLocator}. You can undo this change from the workspace history.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
