@@ -101,6 +101,12 @@ const RELEASE_0_3_0_DETAILS: UnreleasedReleaseNotes = {
 }
 
 export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
+  highlights: [],
+  fixes: [],
+  notes: [],
+}
+
+const RELEASE_0_10_0_DETAILS: UnreleasedReleaseNotes = {
   highlights: [
     'Retail motherboards can now be imported from catalog contract v7 with complete CPU, memory, storage, expansion, fixed-I/O, and board-power topology, then edited through dedicated motherboard tabs.',
     'Assigned motherboard topology now drives custom PC compatibility, including PSU lead requirements, and unsafe registry revisions are blocked until incompatible installed parts are resolved.',
@@ -589,9 +595,16 @@ const RELEASE_0_2_1_DETAILS: UnreleasedReleaseNotes = {
 
 export const RELEASE_NOTES: ReleaseNoteEntry[] = [
   {
+    version: '0.10.0',
+    date: '2026-08-09',
+    channel: 'latest',
+    title: 'Motherboard catalogs and storage telemetry',
+    ...RELEASE_0_10_0_DETAILS,
+  },
+  {
     version: '0.9.9',
     date: '2026-08-08',
-    channel: 'latest',
+    channel: 'release',
     title: 'Reliable DIMM hardware evidence',
     ...RELEASE_0_9_9_DETAILS,
   },

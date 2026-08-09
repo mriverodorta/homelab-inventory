@@ -6,6 +6,8 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 
 ## Unreleased
 
+## [0.10.0] - 2026-08-09
+
 ### Added
 
 - Added catalog contract v7 support for retail motherboards, including exact registry import and contribution identity for aliases, board revisions, chipset and form factor, fixed I/O, CPU and memory limits, storage and expansion topology, and internal board-power requirements.
