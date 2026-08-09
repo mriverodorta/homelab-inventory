@@ -16,6 +16,7 @@ import type {
 import {
   FINGERPRINT_VERSION,
   LEGACY_FINGERPRINT_VERSION,
+  MOTHERBOARD_FINGERPRINT_VERSION,
   OEM_FINGERPRINT_VERSION,
   SERVER_FINGERPRINT_VERSION,
   SUPPORTED_FINGERPRINT_VERSIONS,
@@ -79,6 +80,9 @@ function canonicalName(item: CatalogTemplateItem): string {
 }
 
 function canonicalNameForFingerprint(item: CatalogTemplateItem, fingerprintVersion: FingerprintVersion): string {
+  if (fingerprintVersion === MOTHERBOARD_FINGERPRINT_VERSION && item.type === 'motherboard') {
+    return text(item.name) ?? canonicalName(item)
+  }
   if ((fingerprintVersion === OEM_FINGERPRINT_VERSION
     || fingerprintVersion === WORKSTATION_FINGERPRINT_VERSION
     || fingerprintVersion === SERVER_FINGERPRINT_VERSION)
@@ -243,6 +247,26 @@ function extractServerMaterialTopology(item: CatalogTemplateItem): Record<string
     ['coolingProfiles', host.coolingProfiles],
     ['management', host.management],
     ['constraintGroups', host.constraintGroups],
+    ['fixedPorts', fixedPorts],
+  ])
+  return Object.keys(topology).length > 0 ? topology : undefined
+}
+
+function extractMotherboardMaterialTopology(item: CatalogTemplateItem): Record<string, JsonValue> | undefined {
+  const host = asObject(item.compatibility?.host)
+  if (!host) return undefined
+  const fixedPorts = item.ports?.filter((port) => port.origin === 'fixed')
+  const topology = identityObject([
+    ['chipset', item.specs?.chipset],
+    ['formFactor', item.specs?.formFactor],
+    ['boardRevision', item.specs?.boardRevision],
+    ['wifiGeneration', item.specs?.wifiGeneration],
+    ['wireless', item.specs?.wireless],
+    ['cpu', host.cpu],
+    ['memory', host.memory],
+    ['storageSlots', host.storageSlots],
+    ['expansionSlots', host.expansionSlots],
+    ['powerConnectors', host.powerConnectors],
     ['fixedPorts', fixedPorts],
   ])
   return Object.keys(topology).length > 0 ? topology : undefined
@@ -549,6 +573,43 @@ async function serverVariantIdentity(item: CatalogTemplateItem): Promise<{
   }
 }
 
+async function motherboardVariantIdentity(item: CatalogTemplateItem): Promise<{
+  identityPayload: Record<string, JsonValue>
+  productFamily: CatalogProductFamily
+  variantEvidence: CatalogVariantEvidence
+} | CatalogEligibilityReason> {
+  if (item.type !== 'motherboard') return 'unsupported-type'
+  const manufacturer = text(item.manufacturer)
+  const model = text(item.model)
+  if (!manufacturer || !model) return 'insufficient-identity'
+
+  const topology = extractMotherboardMaterialTopology(item)
+  if (!topology) return 'insufficient-identity'
+  const productFamily: CatalogProductFamily = { manufacturer, model, physicalClass: item.type }
+  const boardRevision = text(item.specs?.boardRevision)
+  const topologySignature = await sha256Hex(
+    `hli:topology:v${MOTHERBOARD_FINGERPRINT_VERSION}:${canonicalJson(topology)}`,
+  )
+  const structuralSummary = topologySummary(topology)
+
+  return {
+    productFamily,
+    variantEvidence: {
+      source: 'topology',
+      completeness: 'complete',
+      label: boardRevision ? `Board revision ${boardRevision}` : 'Topology-defined variant',
+      ...(boardRevision ? { motherboardRevision: normalizeText(boardRevision) } : {}),
+      topologySignature,
+      ...(structuralSummary ? { structuralSummary } : {}),
+    },
+    identityPayload: identityObject([
+      ['productFamily', productFamily],
+      ['boardRevision', boardRevision ? normalizeText(boardRevision) : undefined],
+      ['topologySignature', topologySignature],
+    ]),
+  }
+}
+
 export async function projectCatalogItem(
   value: unknown,
   options: { fingerprintVersion?: FingerprintVersion } = {},
@@ -604,6 +665,12 @@ export async function projectCatalogItem(
     identityPayload = variant.identityPayload
     productFamily = variant.productFamily
     variantEvidence = variant.variantEvidence
+  } else if (fingerprintVersion === MOTHERBOARD_FINGERPRINT_VERSION) {
+    const variant = await motherboardVariantIdentity(item)
+    if (typeof variant === 'string') return { status: 'ineligible', source: sourceRef, reason: variant }
+    identityPayload = variant.identityPayload
+    productFamily = variant.productFamily
+    variantEvidence = variant.variantEvidence
   } else {
     const variant = await variantIdentity(item)
     if (typeof variant === 'string') return { status: 'ineligible', source: sourceRef, reason: variant }
@@ -642,5 +709,6 @@ export async function digestCatalogTemplate(
 
 export function catalogItemMeetsEligibility(item: CatalogTemplateItem): boolean {
   if (item.type === 'workstation') return Boolean(text(item.manufacturer) && text(item.model))
+  if (item.type === 'motherboard') return Boolean(text(item.manufacturer) && text(item.model))
   return typeof legacyProductIdentity(item) !== 'string'
 }

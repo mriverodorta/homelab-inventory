@@ -207,6 +207,10 @@ export function normalizeHostCapabilities(item) {
     normalizeNumericField(port, 'id')
     normalizeNumericField(port, 'slotNumber')
   }
+  for (const group of Array.isArray(normalized.powerConnectors) ? normalized.powerConnectors : []) {
+    normalizeNumericField(group, 'id')
+    normalizeNumericField(group, 'count')
+  }
   if (Array.isArray(normalized.power?.supportedWattagesWatts)) {
     normalized.power.supportedWattagesWatts = normalized.power.supportedWattagesWatts
       .map(optionalNumber)
@@ -364,10 +368,18 @@ export function normalizeComponentRequirements(item) {
   }
 
   if (item?.type === 'powerSupply') {
+    const connectors = (Array.isArray(specs.connectors) ? specs.connectors : [])
+      .flatMap((connector) => {
+        if (!connector || typeof connector !== 'object' || Array.isArray(connector)) return []
+        const name = optionalString(connector.connector)
+        const count = optionalNumber(connector.count)
+        return name && Number.isSafeInteger(count) && count > 0 ? [{ connector: name, count }] : []
+      })
     return {
       type: 'powerSupply',
       wattageWatts: optionalNumber(specs.wattageWatts ?? specs.wattage ?? specs.powerWatts),
       formFactor: optionalString(specs.formFactor),
+      connectors,
     }
   }
 
@@ -624,25 +636,51 @@ function evaluatePowerSupply(assignments, items, component, requirements, findin
 
   if (requirements.wattageWatts === undefined) {
     addMissing(findings, 'component.powerSupply.wattageWatts', 'Power-supply wattage is not recorded.')
+  } else {
+    if (knownDraw.length !== draws.length) {
+      addMissing(findings, 'pcBuild.powerDrawWatts', 'Power draw is missing for installed CPU or expansion hardware.')
+    }
+    if (totalDraw > requirements.wattageWatts) {
+      addFinding(findings, {
+        code: 'power.capacity.exceeded',
+        severity: 'error',
+        message: `${totalDraw}W known component draw exceeds the ${requirements.wattageWatts}W power supply.`,
+        field: 'component.powerSupply.wattageWatts',
+      })
+    } else if (totalDraw > requirements.wattageWatts * 0.8) {
+      addFinding(findings, {
+        code: 'power.headroom.low',
+        severity: 'warning',
+        message: `${totalDraw}W known component draw leaves less than 20% PSU headroom.`,
+        field: 'component.powerSupply.wattageWatts',
+      })
+    }
+  }
+
+  const motherboard = assignedItemOfType(assignments, items, 'motherboard', component)
+  const requiredConnectors = normalizeHostCapabilities(motherboard).powerConnectors
+    ?.filter((connector) => connector.required === true) ?? []
+  if (requiredConnectors.length === 0) return
+  if (!Array.isArray(requirements.connectors) || requirements.connectors.length === 0) {
+    addMissing(findings, 'component.powerSupply.connectors', 'Power-supply motherboard leads are not recorded.')
     return
   }
-  if (knownDraw.length !== draws.length) {
-    addMissing(findings, 'pcBuild.powerDrawWatts', 'Power draw is missing for installed CPU or expansion hardware.')
-  }
-  if (totalDraw > requirements.wattageWatts) {
-    addFinding(findings, {
-      code: 'power.capacity.exceeded',
-      severity: 'error',
-      message: `${totalDraw}W known component draw exceeds the ${requirements.wattageWatts}W power supply.`,
-      field: 'component.powerSupply.wattageWatts',
-    })
-  } else if (totalDraw > requirements.wattageWatts * 0.8) {
-    addFinding(findings, {
-      code: 'power.headroom.low',
-      severity: 'warning',
-      message: `${totalDraw}W known component draw leaves less than 20% PSU headroom.`,
-      field: 'component.powerSupply.wattageWatts',
-    })
+  const normalizeConnector = (value) => normalizedText(value)?.replace(/[^a-z0-9]+/g, '')
+  for (const required of requiredConnectors) {
+    const requiredName = normalizeConnector(required.connector)
+    const requiredCount = optionalNumber(required.count) ?? 0
+    const availableCount = requirements.connectors
+      .filter((connector) => normalizeConnector(connector.connector) === requiredName)
+      .reduce((total, connector) => total + (optionalNumber(connector.count) ?? 0), 0)
+    if (availableCount < requiredCount) {
+      addFinding(findings, {
+        code: 'power.connector.insufficient',
+        severity: 'error',
+        message: `${required.label ?? required.connector} requires ${requiredCount} ${required.connector} lead${requiredCount === 1 ? '' : 's'}, but this PSU provides ${availableCount}.`,
+        field: 'component.powerSupply.connectors',
+        resourceId: required.id,
+      })
+    }
   }
 }
 
@@ -1562,7 +1600,8 @@ function pcBuildResourceDefinition(component, motherboard, hostCapabilities) {
   if (component.type === 'powerSupply') return { resourceType: 'power', count: 1, size: 1 }
   if (component.type === 'case') return { resourceType: 'case', count: 1, size: 1 }
   if (component.type === 'cpu' || component.type === 'cpuCooler') {
-    const count = optionalNumber(motherboard?.specs?.cpuSocketCount ?? motherboard?.specs?.cpuSockets) ??
+    const count = optionalNumber(hostCapabilities.cpu?.socketCount) ??
+      optionalNumber(motherboard?.specs?.cpuSocketCount ?? motherboard?.specs?.cpuSockets) ??
       (hostCapabilities.cpu?.sockets?.length ? 1 : undefined)
     return {
       resourceType: component.type === 'cpu' ? 'cpu' : 'cooling',

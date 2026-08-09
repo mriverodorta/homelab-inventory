@@ -32,6 +32,10 @@ const motherboard = {
         maxSlotWidth: 3, maxPowerWatts: 300,
       }],
       maxExpansionPowerWatts: 300,
+      powerConnectors: [
+        { id: 1, key: 'atx-main', label: 'Main ATX power', kind: 'main-power', connector: '24-pin ATX', count: 1, required: true },
+        { id: 2, key: 'cpu-eps', label: 'CPU EPS power', kind: 'cpu-power', connector: '8-pin EPS', count: 2, required: true },
+      ],
     },
   },
 }
@@ -52,7 +56,10 @@ const compatibleCase = {
 }
 const psu = {
   id: 1, key: 'powerSupply:1', type: 'powerSupply', name: '650W PSU',
-  specs: { wattageWatts: 650, formFactor: 'ATX' },
+  specs: { wattageWatts: 650, formFactor: 'ATX', connectors: [
+    { connector: '24-pin ATX', count: 1 },
+    { connector: '8-pin EPS', count: 2 },
+  ] },
 }
 const gpu = {
   id: 1, key: 'gpu:1', type: 'gpu', name: 'GPU', specs: { lengthMm: 300 },
@@ -115,6 +122,28 @@ describe('PC Build compatibility', () => {
     const result = evaluate({ host: pcBuild, component: unknownCooler, assignments, items: allItems })
     expect(result.status).toBe('unknown')
     expect(result.findings.some((finding: any) => finding.code === 'compatibility.data.missing')).toBe(true)
+  })
+
+  it('validates required motherboard power connector counts against the assigned PSU', () => {
+    const missingCpuLead = {
+      ...psu,
+      specs: {
+        ...psu.specs,
+        connectors: [
+          { connector: '24 pin ATX', count: 1 },
+          { connector: '8 pin EPS', count: 1 },
+        ],
+      },
+    }
+    const allItems = items(motherboard, missingCpuLead)
+    const assignments = [assigned(motherboard, 1), assigned(missingCpuLead, 2)]
+    const result = evaluate({ host: pcBuild, component: missingCpuLead, assignments, items: allItems })
+
+    expect(result.status).toBe('incompatible')
+    expect(result.findings).toContainEqual(expect.objectContaining({
+      code: 'power.connector.insufficient',
+      resourceId: 2,
+    }))
   })
 
   it('enforces physical expansion capacity when compatibility policy is disabled', () => {

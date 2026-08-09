@@ -1,6 +1,7 @@
 import {
   FINGERPRINT_VERSION,
   LEGACY_FINGERPRINT_VERSION,
+  MOTHERBOARD_FINGERPRINT_VERSION,
   OEM_FINGERPRINT_VERSION,
   SERVER_FINGERPRINT_VERSION,
   WORKSTATION_FINGERPRINT_VERSION,
@@ -33,6 +34,7 @@ function fingerprintVersionForItem(item) {
   const catalogItem = projectLocalItemForCatalog(item, item.type)
   if (catalogItem.type === 'workstation') return WORKSTATION_FINGERPRINT_VERSION
   if (catalogItem.type === 'server') return SERVER_FINGERPRINT_VERSION
+  if (catalogItem.type === 'motherboard') return MOTHERBOARD_FINGERPRINT_VERSION
   return ['desktop', 'server', 'nas'].includes(catalogItem.type)
     && typeof catalogItem.manufacturer === 'string'
     && typeof catalogItem.model === 'string'
@@ -167,6 +169,7 @@ export async function discoverContributionCandidates(
       OEM_FINGERPRINT_VERSION,
       WORKSTATION_FINGERPRINT_VERSION,
       SERVER_FINGERPRINT_VERSION,
+      MOTHERBOARD_FINGERPRINT_VERSION,
     ].includes(group.fingerprintVersion)
       ? { outcome: 'none' }
       : matchOemVariant(group, publishedCandidates)

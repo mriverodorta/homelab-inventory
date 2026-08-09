@@ -21,6 +21,7 @@ import {
 } from './options'
 import {
   ExpansionSlotGroupsEditor,
+  MotherboardPowerConnectorsEditor,
   OptionalModuleSlotGroupsEditor,
   StorageSlotGroupsEditor,
 } from './resource-group-editor'
@@ -47,11 +48,13 @@ function MultiOptionField({
   selected: string[]
   onChange: (selected: string[]) => void
 }) {
+  const visibleOptions = [...options, ...selected.filter((option) => !options.includes(option))]
+
   return (
     <fieldset className="space-y-2 sm:col-span-full">
       <legend className="text-xs font-bold text-[#75695d]">{label}</legend>
       <div className="flex flex-wrap gap-2">
-        {options.map((option) => (
+        {visibleOptions.map((option) => (
           <label key={option} className="flex min-h-9 items-center gap-2 rounded-md border border-[#ded8ce] bg-[#fffdf8] px-3 text-xs font-semibold text-[#3d3832]">
             <Input
               aria-label={`${label}: ${option}`}
@@ -81,17 +84,18 @@ function SectionHeading({ icon: Icon, children }: { icon: typeof Cpu; children: 
   )
 }
 
-export function HostRequirementFields({
+export function HostTopologyCompletenessField({
   values,
-  errors = {},
   onChange,
 }: CompatibilityFieldsProps) {
+  return <SelectField label="Topology completeness" name="hostTopologyCompleteness" value={values.hostTopologyCompleteness} options={TOPOLOGY_COMPLETENESS_OPTIONS} emptyLabel="Not specified" onValueChange={(hostTopologyCompleteness) => onChange({ hostTopologyCompleteness: hostTopologyCompleteness as InventoryFormValues['hostTopologyCompleteness'] }, 'immediate')} />
+}
+
+export function HostCpuFields({ values, errors = {}, onChange }: CompatibilityFieldsProps) {
   return (
-    <div className="space-y-4">
-      <SelectField label="Topology completeness" name="hostTopologyCompleteness" value={values.hostTopologyCompleteness} options={TOPOLOGY_COMPLETENESS_OPTIONS} emptyLabel="Not specified" onValueChange={(hostTopologyCompleteness) => onChange({ hostTopologyCompleteness: hostTopologyCompleteness as InventoryFormValues['hostTopologyCompleteness'] }, 'immediate')} />
-      <section className="space-y-3">
-        <SectionHeading icon={Cpu}>Processor support</SectionHeading>
-        <div className="grid gap-3 sm:grid-cols-3">
+    <section className="space-y-3">
+      <SectionHeading icon={Cpu}>Processor support</SectionHeading>
+      <div className="grid gap-3 sm:grid-cols-3">
           <FieldLabel className="sm:col-span-2">
             <span>Supported CPU sockets</span>
             <Input
@@ -116,12 +120,16 @@ export function HostRequirementFields({
             {errors.hostCpuPopulationModes ? <span className="text-xs font-semibold text-red-700">{errors.hostCpuPopulationModes}</span> : null}
           </FieldLabel>
           <MultiOptionField label="Supported CPU generations" options={CPU_GENERATIONS} selected={values.hostCpuGenerations} onChange={(hostCpuGenerations) => onChange({ hostCpuGenerations }, 'immediate')} />
-        </div>
-      </section>
+      </div>
+    </section>
+  )
+}
 
-      <section className="space-y-3 border-t border-[#e4d9c9] pt-4">
-        <SectionHeading icon={MemoryStick}>Memory support</SectionHeading>
-        <div className="grid gap-3 sm:grid-cols-4">
+export function HostMemoryFields({ values, errors = {}, onChange }: CompatibilityFieldsProps) {
+  return (
+    <section className="space-y-3">
+      <SectionHeading icon={MemoryStick}>Memory support</SectionHeading>
+      <div className="grid gap-3 sm:grid-cols-4">
           <MultiOptionField label="Supported RAM generations" options={RAM_GENERATIONS} selected={values.hostMemoryGenerations} onChange={(hostMemoryGenerations) => onChange({ hostMemoryGenerations }, 'immediate')} />
           <TextField label="Memory slots" name="hostMemorySlots" value={values.hostMemorySlots} type="number" min={1} placeholder="2" error={errors.hostMemorySlots} onChange={(hostMemorySlots) => onChange({ hostMemorySlots })} />
           <TextField label="Maximum capacity (GB)" name="hostMemoryMaxCapacityGb" value={values.hostMemoryMaxCapacityGb} type="number" min={0} placeholder="64" error={errors.hostMemoryMaxCapacityGb} onChange={(hostMemoryMaxCapacityGb) => onChange({ hostMemoryMaxCapacityGb })} />
@@ -130,11 +138,38 @@ export function HostRequirementFields({
           <SelectField label="ECC behavior" name="hostMemoryEccSupport" value={values.hostMemoryEccSupport} options={ECC_SUPPORT_OPTIONS} emptyLabel="Not specified" onValueChange={(hostMemoryEccSupport) => onChange({ hostMemoryEccSupport: hostMemoryEccSupport as InventoryFormValues['hostMemoryEccSupport'] }, 'immediate')} />
           <TextField label="Slots per CPU" name="hostMemorySlotsPerCpu" value={values.hostMemorySlotsPerCpu} type="number" min={1} placeholder="12" error={errors.hostMemorySlotsPerCpu} onChange={(hostMemorySlotsPerCpu) => onChange({ hostMemorySlotsPerCpu })} />
           <MultiOptionField label="Supported module types" options={MEMORY_MODULE_TYPES} selected={values.hostMemoryModuleTypes} onChange={(hostMemoryModuleTypes) => onChange({ hostMemoryModuleTypes }, 'immediate')} />
-        </div>
-      </section>
+      </div>
+    </section>
+  )
+}
 
+export function HostRequirementFields(props: CompatibilityFieldsProps) {
+  return (
+    <div className="space-y-4">
+      <HostTopologyCompletenessField {...props} />
+      <HostCpuFields {...props} />
+      <div className="border-t border-[#e4d9c9] pt-4">
+        <HostMemoryFields {...props} />
+      </div>
     </div>
   )
+}
+
+export function HostStorageFields({ values, errors = {}, onChange, onSelectOpenChange }: CompatibilityFieldsProps) {
+  return <StorageSlotGroupsEditor groups={values.storageSlotGroups} error={errors.storageSlotGroups} onChange={(storageSlotGroups) => onChange({ storageSlotGroups }, 'immediate')} onSelectOpenChange={onSelectOpenChange} />
+}
+
+export function HostExpansionFields({ values, errors = {}, onChange, onSelectOpenChange }: CompatibilityFieldsProps) {
+  return (
+    <div className="space-y-3">
+      <ExpansionSlotGroupsEditor groups={values.expansionSlotGroups} error={errors.expansionSlotGroups} onChange={(expansionSlotGroups) => onChange({ expansionSlotGroups }, 'immediate')} onSelectOpenChange={onSelectOpenChange} />
+      <TextField label="Total expansion power (W)" name="hostMaxExpansionPowerWatts" value={values.hostMaxExpansionPowerWatts} type="number" min={0} placeholder="100" error={errors.hostMaxExpansionPowerWatts} onChange={(hostMaxExpansionPowerWatts) => onChange({ hostMaxExpansionPowerWatts })} />
+    </div>
+  )
+}
+
+export function MotherboardPowerFields({ values, errors = {}, onChange, onSelectOpenChange }: CompatibilityFieldsProps) {
+  return <MotherboardPowerConnectorsEditor groups={values.motherboardPowerConnectors} error={errors.motherboardPowerConnectors} onChange={(motherboardPowerConnectors) => onChange({ motherboardPowerConnectors }, 'immediate')} onSelectOpenChange={onSelectOpenChange} />
 }
 
 export function HostResourceFields({
@@ -145,10 +180,9 @@ export function HostResourceFields({
 }: CompatibilityFieldsProps) {
   return (
     <div className="space-y-3">
-      <StorageSlotGroupsEditor groups={values.storageSlotGroups} error={errors.storageSlotGroups} onChange={(storageSlotGroups) => onChange({ storageSlotGroups }, 'immediate')} onSelectOpenChange={onSelectOpenChange} />
-      <ExpansionSlotGroupsEditor groups={values.expansionSlotGroups} error={errors.expansionSlotGroups} onChange={(expansionSlotGroups) => onChange({ expansionSlotGroups }, 'immediate')} onSelectOpenChange={onSelectOpenChange} />
+      <HostStorageFields values={values} errors={errors} onChange={onChange} onSelectOpenChange={onSelectOpenChange} />
+      <HostExpansionFields values={values} errors={errors} onChange={onChange} onSelectOpenChange={onSelectOpenChange} />
       <OptionalModuleSlotGroupsEditor groups={values.optionalModuleSlotGroups} error={errors.optionalModuleSlotGroups} onChange={(optionalModuleSlotGroups) => onChange({ optionalModuleSlotGroups }, 'immediate')} />
-      <TextField label="Total expansion power (W)" name="hostMaxExpansionPowerWatts" value={values.hostMaxExpansionPowerWatts} type="number" min={0} placeholder="100" error={errors.hostMaxExpansionPowerWatts} onChange={(hostMaxExpansionPowerWatts) => onChange({ hostMaxExpansionPowerWatts })} />
       <section className="space-y-3 rounded-md border border-[#e4d9c9] bg-[#fbf8f2] p-3">
         <div>
           <h4 className="text-sm font-bold text-[#20242c]">Power compatibility</h4>

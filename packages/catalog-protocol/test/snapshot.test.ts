@@ -73,7 +73,7 @@ describe('signed catalog snapshots', () => {
     await expect(validateCatalogSnapshot(collision, { now: new Date('2026-07-27T00:00:00.000Z') })).rejects.toThrow(/collides/i)
   })
 
-  it('rejects templates that require a newer unsupported OEM contract', async () => {
+  it('rejects templates that require a newer unsupported catalog contract', async () => {
     const projection = await digestCatalogTemplate({
       type: 'server',
       name: 'Future Server',
@@ -88,7 +88,7 @@ describe('signed catalog snapshots', () => {
       templates: [{
         templateKey: 'future-server-v7',
         revision: 1,
-        fingerprintVersion: 7,
+      fingerprintVersion: 8,
         identityHash: projection.identityHash,
         contentHash: projection.contentHash,
         item: projection.item,

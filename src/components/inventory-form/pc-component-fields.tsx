@@ -1,5 +1,7 @@
+import { Plus, Trash2 } from 'lucide-react'
+import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { SelectField, TextField } from './field-primitives'
+import { FieldLabel, SelectField, TextField } from './field-primitives'
 import type { InventoryTypeFieldsProps } from './type-fields'
 import {
   COOLER_TYPES,
@@ -52,9 +54,24 @@ export function PcComponentFields(props: InventoryTypeFieldsProps) {
 
   if (type === 'motherboard') {
     return (
-      <div className="grid gap-3 sm:grid-cols-2">
+      <div className="grid gap-3 sm:grid-cols-3">
+        <TextField label="Family" name="family" value={values.family} placeholder="Prime" onChange={(family) => onChange({ family })} />
+        <TextField label="Chipset" name="chipset" value={values.chipset} placeholder="Intel Z690" onChange={(chipset) => onChange({ chipset })} />
         <SelectField label="Form Factor" name="formFactor" value={values.formFactor} placeholder="Select form factor" options={MOTHERBOARD_FORM_FACTORS} onOpenChange={onSelectOpenChange} onValueChange={(formFactor) => onChange({ formFactor }, 'immediate')} />
-        <TextField label="CPU Socket Count" name="cpuSocketCount" value={values.cpuSocketCount} placeholder="1" type="number" min={1} error={errors.cpuSocketCount} onChange={(cpuSocketCount) => onChange({ cpuSocketCount })} />
+        <TextField label="Board Revision" name="boardRevision" value={values.boardRevision} placeholder="1.0" onChange={(boardRevision) => onChange({ boardRevision })} />
+        <TextField label="Launch Date" name="launchDate" value={values.launchDate} type="date" onChange={(launchDate) => onChange({ launchDate })} />
+        <SelectField label="Discontinued" name="discontinued" value={values.discontinued} options={[{ value: 'no', label: 'No' }, { value: 'yes', label: 'Yes' }]} emptyLabel="Not specified" onOpenChange={onSelectOpenChange} onValueChange={(discontinued) => onChange({ discontinued: discontinued as typeof values.discontinued }, 'immediate')} />
+        <SelectField label="Wi-Fi Generation" name="wifiGeneration" value={values.wifiGeneration} placeholder="Select Wi-Fi generation" options={WIFI_GENERATIONS} emptyLabel="Not specified" onOpenChange={onSelectOpenChange} onValueChange={(wifiGeneration) => onChange({ wifiGeneration }, 'immediate')} />
+        <TextField label="Bluetooth" name="motherboardBluetooth" value={values.motherboardBluetooth} placeholder="Bluetooth 5.3" onChange={(motherboardBluetooth) => onChange({ motherboardBluetooth })} />
+        <FieldLabel className="sm:col-span-full">
+          <span>Aliases</span>
+          <Input
+            aria-label="Motherboard aliases"
+            value={values.aliases.join(',')}
+            placeholder="PRIME Z690-P D4-CSM"
+            onChange={(event) => onChange({ aliases: event.target.value.split(',') })}
+          />
+        </FieldLabel>
       </div>
     )
   }
@@ -67,10 +84,33 @@ export function PcComponentFields(props: InventoryTypeFieldsProps) {
 
   if (type === 'powerSupply') {
     return (
-      <div className="grid gap-3 sm:grid-cols-3">
-        <SelectField label="PSU Form Factor" name="psuFormFactor" value={values.psuFormFactor} placeholder="Select form factor" options={PSU_FORM_FACTORS} onOpenChange={onSelectOpenChange} onValueChange={(psuFormFactor) => onChange({ psuFormFactor }, 'immediate')} />
-        <TextField label="Rated Watts" name="ratedWatts" value={values.ratedWatts} placeholder="750" type="number" min={0} error={errors.ratedWatts} onChange={(ratedWatts) => onChange({ ratedWatts })} />
-        <SelectField label="Efficiency Rating" name="efficiencyRating" value={values.efficiencyRating} placeholder="Select efficiency" options={POWER_EFFICIENCY_RATINGS} onOpenChange={onSelectOpenChange} onValueChange={(efficiencyRating) => onChange({ efficiencyRating }, 'immediate')} />
+      <div className="space-y-4">
+        <div className="grid gap-3 sm:grid-cols-3">
+          <SelectField label="PSU Form Factor" name="psuFormFactor" value={values.psuFormFactor} placeholder="Select form factor" options={PSU_FORM_FACTORS} onOpenChange={onSelectOpenChange} onValueChange={(psuFormFactor) => onChange({ psuFormFactor }, 'immediate')} />
+          <TextField label="Rated Watts" name="ratedWatts" value={values.ratedWatts} placeholder="750" type="number" min={0} error={errors.ratedWatts} onChange={(ratedWatts) => onChange({ ratedWatts })} />
+          <SelectField label="Efficiency Rating" name="efficiencyRating" value={values.efficiencyRating} placeholder="Select efficiency" options={POWER_EFFICIENCY_RATINGS} onOpenChange={onSelectOpenChange} onValueChange={(efficiencyRating) => onChange({ efficiencyRating }, 'immediate')} />
+        </div>
+        <section className="space-y-3 rounded-md border border-[#e4d9c9] bg-[#fbf8f2] p-3">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <h4 className="text-sm font-bold text-[#20242c]">Motherboard power leads</h4>
+              <p className="text-xs text-[#75695d]">List the ATX and CPU power connectors available from this PSU.</p>
+            </div>
+            <Button type="button" variant="outline" size="sm" onClick={() => onChange({ powerSupplyConnectors: [...values.powerSupplyConnectors, { draftKey: `psu-${Date.now()}`, connector: '', count: '' }] }, 'immediate')}>
+              <Plus aria-hidden="true" className="size-4" />
+              Add lead
+            </Button>
+          </div>
+          {values.powerSupplyConnectors.map((lead, index) => (
+            <div key={lead.draftKey} className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_8rem_auto]">
+              <TextField label={`Connector ${index + 1}`} name={`psu-lead-${lead.draftKey}`} value={lead.connector} placeholder="8-pin EPS" onChange={(connector) => onChange({ powerSupplyConnectors: values.powerSupplyConnectors.map((candidate) => candidate.draftKey === lead.draftKey ? { ...candidate, connector } : candidate) })} />
+              <TextField label="Count" name={`psu-lead-${lead.draftKey}-count`} value={lead.count} type="number" min={1} placeholder="1" error={errors.powerSupplyConnectors} onChange={(count) => onChange({ powerSupplyConnectors: values.powerSupplyConnectors.map((candidate) => candidate.draftKey === lead.draftKey ? { ...candidate, count } : candidate) })} />
+              <Button type="button" variant="ghost" size="icon" className="self-end" aria-label={`Remove PSU lead ${index + 1}`} onClick={() => onChange({ powerSupplyConnectors: values.powerSupplyConnectors.filter((candidate) => candidate.draftKey !== lead.draftKey) }, 'immediate')}>
+                <Trash2 aria-hidden="true" className="size-4" />
+              </Button>
+            </div>
+          ))}
+        </section>
       </div>
     )
   }

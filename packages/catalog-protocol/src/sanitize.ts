@@ -19,6 +19,7 @@ const IDENTITY_FIELDS = [
 
 const MAX_TEXT_LENGTH = 256
 const MAX_PORTS = 256
+const MAX_ALIASES = 64
 const MAX_OBJECT_KEYS = 256
 const MAX_ARRAY_LENGTH = 256
 const MAX_JSON_DEPTH = 8
@@ -63,7 +64,7 @@ const SAFE_COMPATIBILITY_FIELDS = new Set([
   'acceptedDeviceKinds', 'controllerSlotId', 'psuBayCount', 'psuType', 'mixedPsuAllowed',
   'redundancyModes', 'coolingProfiles', 'fanCount', 'redundant', 'conditions', 'management',
   'controllerFamily', 'controllerGeneration', 'dedicatedPort', 'sharedNic', 'portType',
-  'speed',
+  'speed', 'powerConnectors', 'required',
 ])
 
 function looksSensitive(value: string): boolean {
@@ -160,6 +161,14 @@ export function sanitizeCatalogItem(value: unknown): CatalogTemplateItem {
     if (field === 'type' || field === 'name') continue
     const entry = nonEmptyString(source[field])
     if (entry) item[field] = entry
+  }
+
+  if (Array.isArray(source.aliases)) {
+    const aliases = source.aliases
+      .slice(0, MAX_ALIASES)
+      .map(nonEmptyString)
+      .filter((entry): entry is string => entry !== undefined)
+    if (aliases.length > 0) item.aliases = [...new Set(aliases)]
   }
 
   const specs = sanitizePrimitiveRecord(source.specs)

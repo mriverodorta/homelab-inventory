@@ -77,11 +77,29 @@ export type OptionalModuleSlotGroupDraft = {
   acceptedModuleKinds: string[]
 }
 
+export type MotherboardPowerConnectorDraft = {
+  draftKey: string
+  id?: number
+  key: string
+  label: string
+  kind: '' | 'main-power' | 'cpu-power'
+  connector: string
+  count: string
+  required: boolean
+}
+
+export type PowerSupplyConnectorDraft = {
+  draftKey: string
+  connector: string
+  count: string
+}
+
 export type InventoryFormValues = {
   type: InventoryType
   hardwareClass: HardwareClass
   usageRole: EquipmentUsageRole
   name: string
+  aliases: string[]
   manufacturer: string
   secondaryManufacturer: string
   model: string
@@ -89,6 +107,11 @@ export type InventoryFormValues = {
   number: string
   notes: string
   formFactor: string
+  chipset: string
+  boardRevision: string
+  launchDate: string
+  discontinued: '' | 'yes' | 'no'
+  motherboardBluetooth: string
   networkSlot: string
   wireless: string
   driveBays: string
@@ -166,6 +189,8 @@ export type InventoryFormValues = {
   storageSlotGroups: StorageSlotGroupDraft[]
   expansionSlotGroups: ExpansionSlotGroupDraft[]
   optionalModuleSlotGroups: OptionalModuleSlotGroupDraft[]
+  motherboardPowerConnectors: MotherboardPowerConnectorDraft[]
+  powerSupplyConnectors: PowerSupplyConnectorDraft[]
   hostMaxExpansionPowerWatts: string
   hostPowerConfiguration: string
   hostPowerConnector: string
@@ -214,10 +239,18 @@ const KNOWN_SPEC_KEYS: Partial<Record<InventoryType, string[]>> = {
   switch: ['management', 'switchingCapacityGbps', 'fanless'],
   patchPanel: ['rackUnits', 'mount'],
   pcBuild: ['operatingSystem', 'role'],
-  motherboard: ['formFactor', 'cpuSocketCount'],
+  motherboard: [
+    'chipset',
+    'formFactor',
+    'boardRevision',
+    'launchDate',
+    'discontinued',
+    'wifiGeneration',
+    'bluetooth',
+  ],
   cpuCooler: ['coolerType'],
   case: ['formFactors'],
-  powerSupply: ['formFactor', 'wattageWatts', 'efficiency'],
+  powerSupply: ['formFactor', 'wattageWatts', 'efficiency', 'connectors'],
   soundCard: ['interface'],
   wireless: ['interface', 'wifiGeneration', 'bluetooth'],
   powerAdapter: ['wattageWatts', 'connector'],
@@ -416,6 +449,7 @@ export function createInventoryFormValues(type: InventoryType): InventoryFormVal
     hardwareClass: 'desktop',
     usageRole: 'server',
     name: '',
+    aliases: [],
     manufacturer: '',
     secondaryManufacturer: '',
     model: '',
@@ -423,6 +457,11 @@ export function createInventoryFormValues(type: InventoryType): InventoryFormVal
     number: '',
     notes: '',
     formFactor: type === 'server' ? 'Mini' : '',
+    chipset: '',
+    boardRevision: '',
+    launchDate: '',
+    discontinued: '',
+    motherboardBluetooth: '',
     networkSlot: '',
     wireless: '',
     driveBays: '',
@@ -500,6 +539,8 @@ export function createInventoryFormValues(type: InventoryType): InventoryFormVal
     storageSlotGroups: [],
     expansionSlotGroups: [],
     optionalModuleSlotGroups: [],
+    motherboardPowerConnectors: [],
+    powerSupplyConnectors: [],
     hostMaxExpansionPowerWatts: '',
     hostPowerConfiguration: '',
     hostPowerConnector: '',
@@ -546,6 +587,7 @@ export function inventoryItemToFormValues(item: InventoryItem): InventoryFormVal
       ? item.usageRole as EquipmentUsageRole
       : 'server',
     name: item.name,
+    aliases: stringArray(item.aliases),
     manufacturer: item.manufacturer ?? '',
     secondaryManufacturer: item.secondaryManufacturer ?? '',
     model: item.model ?? '',
@@ -553,6 +595,11 @@ export function inventoryItemToFormValues(item: InventoryItem): InventoryFormVal
     number: item.number ?? '',
     notes: item.notes ?? '',
     formFactor: stringValue(specs.formFactor),
+    chipset: stringValue(specs.chipset),
+    boardRevision: stringValue(specs.boardRevision),
+    launchDate: stringValue(specs.launchDate),
+    discontinued: specs.discontinued === true ? 'yes' : specs.discontinued === false ? 'no' : '',
+    motherboardBluetooth: item.type === 'motherboard' ? stringValue(specs.bluetooth) : '',
     networkSlot: stringValue(specs.networkSlot),
     wireless: stringValue(specs.wireless),
     driveBays: stringValue(specs.driveBays),
@@ -673,6 +720,27 @@ export function inventoryItemToFormValues(item: InventoryItem): InventoryFormVal
       count: stringValue(group.count),
       acceptedModuleKinds: stringArray(group.acceptedModuleKinds),
     })) ?? [],
+    motherboardPowerConnectors: item.compatibility?.host?.powerConnectors?.map((group) => ({
+      draftKey: `motherboard-power:${group.id}`,
+      id: group.id,
+      key: group.key,
+      label: group.label,
+      kind: group.kind,
+      connector: group.connector,
+      count: stringValue(group.count),
+      required: group.required,
+    })) ?? [],
+    powerSupplyConnectors: item.type === 'powerSupply' && Array.isArray(specs.connectors)
+      ? specs.connectors.flatMap((connector, index) => {
+          if (!connector || typeof connector !== 'object' || Array.isArray(connector)) return []
+          const record = connector as Record<string, unknown>
+          return [{
+            draftKey: `psu-connector:${index + 1}`,
+            connector: stringValue(record.connector),
+            count: stringValue(record.count),
+          }]
+        })
+      : [],
     hostMaxExpansionPowerWatts: stringValue(item.compatibility?.host?.maxExpansionPowerWatts),
     hostPowerConfiguration: stringValue(item.compatibility?.host?.power?.configuration),
     hostPowerConnector: stringValue(item.compatibility?.host?.power?.connector),
@@ -845,8 +913,13 @@ export function inventoryFormValuesToInput(values: InventoryFormValues): Invento
     setSpec(specs, 'operatingSystem', cleanString(values.operatingSystem))
     setSpec(specs, 'role', cleanString(values.role))
   } else if (type === 'motherboard') {
+    setSpec(specs, 'chipset', cleanString(values.chipset))
     setSpec(specs, 'formFactor', cleanString(values.formFactor))
-    setSpec(specs, 'cpuSocketCount', numberValue(values.cpuSocketCount))
+    setSpec(specs, 'boardRevision', cleanString(values.boardRevision))
+    setSpec(specs, 'launchDate', cleanString(values.launchDate))
+    setSpec(specs, 'discontinued', values.discontinued === '' ? undefined : values.discontinued === 'yes')
+    setSpec(specs, 'wifiGeneration', cleanString(values.wifiGeneration))
+    setSpec(specs, 'bluetooth', cleanString(values.motherboardBluetooth))
   } else if (type === 'cpuCooler') {
     setSpec(specs, 'coolerType', cleanString(values.coolerType))
   } else if (type === 'case') {
@@ -855,6 +928,13 @@ export function inventoryFormValuesToInput(values: InventoryFormValues): Invento
     setSpec(specs, 'formFactor', cleanString(values.psuFormFactor))
     setSpec(specs, 'wattageWatts', numberValue(values.ratedWatts))
     setSpec(specs, 'efficiency', cleanString(values.efficiencyRating))
+    const connectors = values.powerSupplyConnectors.flatMap((connector) => {
+      const name = connector.connector.trim()
+      const count = numberValue(connector.count)
+      return name && count !== undefined ? [{ connector: name, count }] : []
+    })
+    if (connectors.length) specs.connectors = connectors
+    else delete specs.connectors
   } else if (type === 'soundCard') {
     setSpec(specs, 'interface', cleanString(values.interface))
   } else if (type === 'wireless') {
@@ -909,6 +989,9 @@ export function inventoryFormValuesToInput(values: InventoryFormValues): Invento
       usageRole: values.usageRole,
     } : {}),
     name: values.name.trim(),
+    ...(values.aliases.map((alias) => alias.trim()).filter(Boolean).length
+      ? { aliases: [...new Set(values.aliases.map((alias) => alias.trim()).filter(Boolean))] }
+      : {}),
     ...(cleanString(values.manufacturer) ? { manufacturer: values.manufacturer.trim() } : {}),
     ...(type !== 'ram' && cleanString(values.secondaryManufacturer) ? { secondaryManufacturer: values.secondaryManufacturer.trim() } : {}),
     ...(cleanString(values.model) ? { model: values.model.trim() } : {}),
@@ -938,7 +1021,11 @@ export function powerStripOutletPorts(values: Pick<
   }).filter((port) => port.type === 'ac-outlet')
 }
 
-type ResourceGroupDraft = StorageSlotGroupDraft | ExpansionSlotGroupDraft | OptionalModuleSlotGroupDraft
+type ResourceGroupDraft =
+  | StorageSlotGroupDraft
+  | ExpansionSlotGroupDraft
+  | OptionalModuleSlotGroupDraft
+  | MotherboardPowerConnectorDraft
 
 function assignResourceGroupIds(groups: ResourceGroupDraft[]): number[] {
   const used = new Set(
@@ -1122,6 +1209,33 @@ function buildCompatibility(values: InventoryFormValues): InventoryCompatibility
     })
     setOptional(hostRecord, 'optionalModuleSlots', optionalModuleSlots)
 
+    const originalPowerConnectorGroups = new Map(
+      (compatibility.host?.powerConnectors ?? []).map((group) => [group.id, group]),
+    )
+    const powerConnectorDrafts = values.motherboardPowerConnectors.filter((draft) => (
+      draft.label.trim() !== ''
+      || draft.kind !== ''
+      || draft.connector.trim() !== ''
+      || draft.count.trim() !== ''
+    ))
+    const powerConnectorIds = assignResourceGroupIds(powerConnectorDrafts)
+    const powerConnectorKeys = assignResourceGroupKeys(powerConnectorDrafts, 'power-connector')
+    const powerConnectors = powerConnectorDrafts.map((draft, index) => {
+      const originalGroup = draft.id === undefined
+        ? undefined
+        : originalPowerConnectorGroups.get(draft.id)
+      const group = structuredClone(originalGroup ?? {}) as Record<string, unknown>
+      group.id = powerConnectorIds[index]
+      group.key = powerConnectorKeys[index]
+      group.label = draft.label.trim()
+      setOptional(group, 'kind', cleanString(draft.kind))
+      setOptional(group, 'connector', cleanString(draft.connector))
+      setOptional(group, 'count', numberValue(draft.count))
+      group.required = draft.required
+      return group
+    })
+    setOptional(hostRecord, 'powerConnectors', powerConnectors)
+
     const power = host.power ? { ...host.power } : {}
     const powerRecord = asMutableRecord(power)
     setOptional(powerRecord, 'configuration', cleanString(values.hostPowerConfiguration))
@@ -1241,6 +1355,16 @@ export function getOptionalModuleSlotGroupValidationTarget(
   return index >= 0 ? { index, field: 'count' } : null
 }
 
+export function getMotherboardPowerConnectorValidationTarget(
+  groups: MotherboardPowerConnectorDraft[],
+): InventoryGroupValidationTarget | null {
+  const index = groups.findIndex((group) => (
+    group.count.trim() !== ''
+      && (!Number.isInteger(Number(group.count)) || Number(group.count) < 1)
+  ))
+  return index >= 0 ? { index, field: 'count' } : null
+}
+
 export function getPortGroupValidationTarget(
   type: InventoryType,
   groups: PortGroup[],
@@ -1320,6 +1444,17 @@ export function validateInventoryFormValues(values: InventoryFormValues): Invent
 
   if (getOptionalModuleSlotGroupValidationTarget(values.optionalModuleSlotGroups)) {
     errors.optionalModuleSlotGroups = 'Optional module slot counts must be whole numbers of at least 1.'
+  }
+
+  if (getMotherboardPowerConnectorValidationTarget(values.motherboardPowerConnectors)) {
+    errors.motherboardPowerConnectors = 'Power connector counts must be whole numbers of at least 1.'
+  }
+
+  if (values.powerSupplyConnectors.some((connector) => (
+    connector.count.trim() !== ''
+      && (!Number.isInteger(Number(connector.count)) || Number(connector.count) < 1)
+  ))) {
+    errors.powerSupplyConnectors = 'PSU connector counts must be whole numbers of at least 1.'
   }
 
   const invalidPortGroup = getPortGroupValidationTarget(values.type, values.portGroups)

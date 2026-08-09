@@ -77,7 +77,9 @@ function cloneExpansionGroup(group: ExpansionSlotGroup): ExpansionSlotGroup | un
 export function motherboardResources(item: InventoryItem): MotherboardResources {
   const host = item.compatibility?.host
   const sockets = stringArray(host?.cpu?.sockets)
-  const socketCount = positiveInteger(item.specs?.cpuSocketCount ?? item.specs?.cpuSockets) ?? 1
+  const socketCount = positiveInteger(host?.cpu?.socketCount)
+    ?? positiveInteger(item.specs?.cpuSocketCount ?? item.specs?.cpuSockets)
+    ?? 1
   const memoryCount = positiveInteger(host?.memory?.slots)
 
   return {

@@ -26,7 +26,14 @@ export type InventoryType =
   | 'ups'
   | 'powerStrip'
 
-export type InventorySpecs = Record<string, string | number | boolean | null>
+export type InventorySpecValue =
+  | string
+  | number
+  | boolean
+  | null
+  | InventorySpecValue[]
+  | { [key: string]: InventorySpecValue }
+export type InventorySpecs = Record<string, InventorySpecValue>
 export type InventoryProperties = Record<string, string>
 export type HardwareClass = 'desktop' | 'workstation' | 'server'
 export type EquipmentUsageRole = 'server' | 'desktop' | 'workstation' | 'other'
@@ -151,6 +158,7 @@ export type InventoryItem = {
   family?: string
   model?: string
   number?: string
+  aliases?: string[]
   specs?: InventorySpecs
   smart?: SmartPowerStripConfiguration
   properties?: InventoryProperties

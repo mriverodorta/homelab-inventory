@@ -39,7 +39,7 @@ const tableTypes = {
   upsSystems: 'ups',
   powerStrips: 'powerStrip',
 }
-const portKinds = new Set(['switch-port', 'keystone', 'server-port', 'power-port'])
+const portKinds = new Set(['switch-port', 'keystone', 'server-port', 'power-port', 'network', 'video'])
 const portTypes = new Set([
   'rj45',
   'sfp',
@@ -383,6 +383,30 @@ function assertConstraintGroups(value, fieldPath, options = {}) {
   assertCompatibilityGroupIds(value, fieldPath, options)
 }
 
+function assertMotherboardPowerConnectors(value, fieldPath, options = {}) {
+  if (value === undefined) return
+  if (!Array.isArray(value)) throw new Error(`${fieldPath} must be an array.`)
+  value.forEach((group, index) => {
+    const path = `${fieldPath}[${index}]`
+    assertOptionalObject(group, path)
+    if (options.allowLegacyIds) {
+      assertLegacyCompatibilityGroupId(group.id, `${path}.id`)
+      if (group.key !== undefined) assertRequiredString(group.key, `${path}.key`)
+    } else {
+      assertRelationalId(group.id, `${path}.id`)
+      assertRequiredString(group.key, `${path}.key`)
+    }
+    assertRequiredString(group.label, `${path}.label`)
+    assertOptionalEnum(group.kind, new Set(['main-power', 'cpu-power']), `${path}.kind`)
+    assertRequiredString(group.connector, `${path}.connector`)
+    if (!Number.isInteger(group.count) || group.count < 1) {
+      throw new Error(`${path}.count must be a positive integer.`)
+    }
+    if (typeof group.required !== 'boolean') throw new Error(`${path}.required must be a boolean.`)
+  })
+  assertCompatibilityGroupIds(value, fieldPath, options)
+}
+
 function assertHostTopologyReferences(host, root, options) {
   if (options.allowLegacyIds) return
   const resources = new Map()
@@ -462,6 +486,7 @@ function assertInventoryCompatibility(itemId, compatibility, options = {}) {
     }
     assertStorageSlots(host.storageSlots, `${root}.host.storageSlots`, options)
     assertExpansionSlots(host.expansionSlots, `${root}.host.expansionSlots`, options)
+    assertMotherboardPowerConnectors(host.powerConnectors, `${root}.host.powerConnectors`, options)
     assertCountedResourceGroups(
       host.optionalModuleSlots,
       `${root}.host.optionalModuleSlots`,
@@ -799,6 +824,11 @@ function assertInventoryItem(itemId, item, expectedType, options = {}) {
     if (typeof item.specs?.capacityGb !== 'number' || !Number.isFinite(item.specs.capacityGb) || item.specs.capacityGb <= 0) {
       throw new Error(`Inventory item ${itemId} RAM capacityGb must be a positive number per stick.`)
     }
+  }
+
+  if (item.aliases !== undefined) {
+    assertUniqueStringArray(item.aliases, `Inventory item ${itemId}.aliases`)
+    if (item.aliases.length > 64) throw new Error(`Inventory item ${itemId}.aliases cannot exceed 64 entries.`)
   }
 
   if (

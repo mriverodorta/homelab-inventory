@@ -17,6 +17,15 @@ function searchableText(template) {
     item.family,
     item.model,
     item.number,
+    ...(Array.isArray(item.aliases) ? item.aliases : []),
+    item.specs?.chipset,
+    item.specs?.boardRevision,
+    ...(Array.isArray(item.compatibility?.host?.cpu?.sockets)
+      ? item.compatibility.host.cpu.sockets
+      : []),
+    ...(Array.isArray(item.compatibility?.host?.cpu?.generations)
+      ? item.compatibility.host.cpu.generations
+      : []),
     template.productFamily?.physicalClass,
     template.variantEvidence?.label,
     template.variantEvidence?.motherboardPartNumber,

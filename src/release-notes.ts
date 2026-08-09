@@ -101,9 +101,15 @@ const RELEASE_0_3_0_DETAILS: UnreleasedReleaseNotes = {
 }
 
 export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
-  highlights: [],
+  highlights: [
+    'Retail motherboards can now be imported from catalog contract v7 with complete CPU, memory, storage, expansion, fixed-I/O, and board-power topology, then edited through dedicated motherboard tabs.',
+    'Assigned motherboard topology now drives custom PC compatibility, including PSU lead requirements, and unsafe registry revisions are blocked until incompatible installed parts are resolved.',
+  ],
   fixes: [],
-  notes: [],
+  notes: [
+    'Schema 27 validates motherboard resource relationships after a pre-migration backup while preserving existing inventory, assignments, canvas placements, cables, registry links, and route caches.',
+    'Motherboard catalog search includes aliases, chipset, socket, CPU generation, and board revision; contract versions newer than v7 remain explicitly unsupported.',
+  ],
 }
 
 const RELEASE_0_9_9_DETAILS: UnreleasedReleaseNotes = {

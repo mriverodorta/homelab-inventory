@@ -2,6 +2,7 @@ import { digestCatalogTemplate } from './projector'
 import {
   FINGERPRINT_VERSION,
   LEGACY_FINGERPRINT_VERSION,
+  MOTHERBOARD_FINGERPRINT_VERSION,
   OEM_FINGERPRINT_VERSION,
   SERVER_FINGERPRINT_VERSION,
   WORKSTATION_FINGERPRINT_VERSION,
@@ -304,10 +305,75 @@ const FINGERPRINT_V6_SERVER_VECTOR = {
   contentHash: 'a6cf6707ff6c0fdceee152b206465a390bbeab5d97cbf1bf8bec92962cdd625d',
 } as const
 
+const FINGERPRINT_V7_MOTHERBOARD_VECTOR = {
+  item: {
+    type: 'motherboard',
+    name: 'ASUS ROG Strix B650E-F Gaming WiFi',
+    manufacturer: 'ASUS',
+    family: 'ROG Strix',
+    model: 'B650E-F Gaming WiFi',
+    aliases: ['ROG STRIX B650E-F GAMING WIFI'],
+    specs: {
+      chipset: 'B650E',
+      formFactor: 'ATX',
+      wifiGeneration: 'Wi-Fi 6E',
+      boardRevision: '1.0',
+    },
+    ports: [{
+      id: 1,
+      kind: 'network',
+      type: 'rj45',
+      slotNumber: 1,
+      speed: '2.5G',
+      origin: 'fixed',
+    }],
+    compatibility: {
+      host: {
+        cpu: {
+          sockets: ['AM5'],
+          generations: ['Ryzen 7000', 'Ryzen 8000G', 'Ryzen 9000'],
+          socketCount: 1,
+        },
+        memory: {
+          slots: 4,
+          generations: ['DDR5'],
+          maxCapacityGb: 192,
+          maxSpeedMt: 8000,
+        },
+        storageSlots: [{
+          id: 1,
+          key: 'm2-1',
+          label: 'Primary M.2 slot',
+          count: 1,
+          interfaces: ['NVMe'],
+          formFactors: ['2280'],
+          pcieGeneration: 5,
+        }],
+        expansionSlots: [{
+          id: 1,
+          key: 'pcie-x16-1',
+          label: 'Primary PCIe x16 slot',
+          count: 1,
+          interfaceFamily: 'pcie',
+          mechanicalLanes: 16,
+          electricalLanes: 16,
+          pcieGeneration: 5,
+        }],
+        powerConnectors: [
+          { id: 1, key: 'atx-main', label: 'Main ATX power', kind: 'main-power', connector: '24-pin ATX', count: 1, required: true },
+          { id: 2, key: 'cpu-eps', label: 'CPU EPS power', kind: 'cpu-power', connector: '8-pin EPS', count: 2, required: true },
+        ],
+      },
+    },
+  },
+  identityHash: '03375b57b31472a44c01304e9f65850ab6157c006e9876734afcedeab563ae6e',
+  contentHash: '24299013e029df7b32b268f8d7233c1b6bc15bb69a9e4af44ccd5ae6aaf2a3d2',
+} as const
+
 export async function assertCatalogProtocolContract(): Promise<void> {
   if (FINGERPRINT_VERSION !== 3 || LEGACY_FINGERPRINT_VERSION !== 2
     || OEM_FINGERPRINT_VERSION !== 4 || WORKSTATION_FINGERPRINT_VERSION !== 5
-    || SERVER_FINGERPRINT_VERSION !== 6) {
+    || SERVER_FINGERPRINT_VERSION !== 6 || MOTHERBOARD_FINGERPRINT_VERSION !== 7) {
     throw new Error(`Catalog fingerprint version ${FINGERPRINT_VERSION} has no publication contract.`)
   }
 
@@ -359,5 +425,15 @@ export async function assertCatalogProtocolContract(): Promise<void> {
     || serverProjection.contentHash !== FINGERPRINT_V6_SERVER_VECTOR.contentHash
   ) {
     throw new Error('Catalog fingerprint-v6 server contract changed unexpectedly.')
+  }
+
+  const motherboardProjection = await digestCatalogTemplate(FINGERPRINT_V7_MOTHERBOARD_VECTOR.item, {
+    fingerprintVersion: MOTHERBOARD_FINGERPRINT_VERSION,
+  })
+  if (
+    motherboardProjection.identityHash !== FINGERPRINT_V7_MOTHERBOARD_VECTOR.identityHash
+    || motherboardProjection.contentHash !== FINGERPRINT_V7_MOTHERBOARD_VECTOR.contentHash
+  ) {
+    throw new Error('Catalog fingerprint-v7 motherboard contract changed unexpectedly.')
   }
 }

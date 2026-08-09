@@ -61,6 +61,33 @@ describe('catalog sqlite index', () => {
     expect(index.search({ query: 'no riser' })).toMatchObject({ total: 1, items: [{ templateKey: 'dell-7090-04frx5' }] })
   })
 
+  it('searches motherboard aliases, chipset, socket, CPU generation, and board revision', async () => {
+    const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'hli-catalog-motherboard-search-'))
+    const index = new CatalogIndex(path.join(directory, 'catalog.sqlite'))
+    await index.rebuild({ templates: [{
+      templateKey: 'motherboard-asus-z690-p-d4',
+      revision: 1,
+      fingerprintVersion: 7,
+      identityHash: '1'.repeat(64),
+      contentHash: '2'.repeat(64),
+      item: {
+        type: 'motherboard',
+        name: 'ASUS PRIME Z690-P D4',
+        manufacturer: 'ASUS',
+        aliases: ['PRIME Z690-P D4-CSM'],
+        specs: { chipset: 'Intel Z690', boardRevision: '1.1' },
+        compatibility: { host: { cpu: { sockets: ['LGA1700'], generations: ['14th Gen'] } } },
+      },
+    }] })
+
+    for (const query of ['d4-csm', 'z690', 'lga1700', '14th gen', '1.1']) {
+      expect(index.search({ query })).toMatchObject({
+        total: 1,
+        items: [{ templateKey: 'motherboard-asus-z690-p-d4' }],
+      })
+    }
+  })
+
   it('indexes signed facets and combines term, range, and pagination constraints locally', async () => {
     const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'hli-catalog-facets-'))
     const index = new CatalogIndex(path.join(directory, 'catalog.sqlite'))

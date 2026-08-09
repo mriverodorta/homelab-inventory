@@ -4,12 +4,14 @@ export const FINGERPRINT_VERSION = 3
 export const OEM_FINGERPRINT_VERSION = 4
 export const WORKSTATION_FINGERPRINT_VERSION = 5
 export const SERVER_FINGERPRINT_VERSION = 6
+export const MOTHERBOARD_FINGERPRINT_VERSION = 7
 export const SUPPORTED_FINGERPRINT_VERSIONS = [
   LEGACY_FINGERPRINT_VERSION,
   FINGERPRINT_VERSION,
   OEM_FINGERPRINT_VERSION,
   WORKSTATION_FINGERPRINT_VERSION,
   SERVER_FINGERPRINT_VERSION,
+  MOTHERBOARD_FINGERPRINT_VERSION,
 ] as const
 export const MANUFACTURER_ALIAS_VERSION = 1
 
@@ -97,6 +99,7 @@ export type CatalogTemplateItem = {
   family?: string
   model?: string
   number?: string
+  aliases?: string[]
   specs?: Record<string, JsonPrimitive>
   ports?: CatalogPort[]
   compatibility?: Record<string, JsonValue>

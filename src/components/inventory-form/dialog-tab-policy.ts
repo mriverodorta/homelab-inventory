@@ -3,9 +3,14 @@ import { inventoryTypeHasPorts, type InventoryFormErrors } from './model'
 
 export const INVENTORY_DIALOG_TAB_IDS = [
   'specs',
+  'cpu',
+  'memory',
+  'storage',
+  'expansion',
   'compatibility',
   'resources',
   'ports',
+  'power',
   'smart',
 ] as const
 
@@ -53,6 +58,7 @@ export const INVENTORY_DIALOG_ERROR_FIELDS: Readonly<
     'switchingCapacityGbps',
     'rackUnits',
     'ratedWatts',
+    'powerSupplyConnectors',
     'displaySizeInches',
     'refreshRateHz',
     'upsWatts',
@@ -64,6 +70,16 @@ export const INVENTORY_DIALOG_ERROR_FIELDS: Readonly<
     'cpuSocketCount',
     'quantity',
   ],
+  cpu: ['hostCpuMaxTdpWatts', 'hostCpuSocketCount', 'hostCpuPopulationModes'],
+  memory: [
+    'hostMemorySlots',
+    'hostMemoryMaxCapacityGb',
+    'hostMemoryMaxModuleCapacityGb',
+    'hostMemoryMaxSpeedMt',
+    'hostMemorySlotsPerCpu',
+  ],
+  storage: ['storageSlotGroups'],
+  expansion: ['expansionSlotGroups', 'hostMaxExpansionPowerWatts'],
   compatibility: [
     'capacityGb',
     'speedMt',
@@ -82,6 +98,7 @@ export const INVENTORY_DIALOG_ERROR_FIELDS: Readonly<
     'hostMaxExpansionPowerWatts',
   ],
   ports: ['portGroups'],
+  power: ['motherboardPowerConnectors'],
   smart: ['smartDisplayName', 'smartManagementIp', 'smartMacAddress', 'smartOutletNames'],
 }
 
@@ -93,7 +110,11 @@ function includesInventoryType(
 }
 
 export function getInventoryDialogTabs(type: InventoryType): InventoryDialogTabId[] {
+  if (type === 'motherboard') {
+    return ['specs', 'cpu', 'memory', 'storage', 'expansion', 'ports', 'power', 'compatibility']
+  }
   return INVENTORY_DIALOG_TAB_ORDER.filter((tab) => {
+    if (['cpu', 'memory', 'storage', 'expansion', 'power'].includes(tab)) return false
     if (tab === 'compatibility') {
       return includesInventoryType(INVENTORY_DIALOG_COMPATIBILITY_TYPES, type)
     }

@@ -35,6 +35,13 @@ function oemFixtureItems(fileName: string): CatalogTemplateItem[] {
   return fixture.platformCases.map(({ item }) => item)
 }
 
+function motherboardV7FixtureItems(): CatalogTemplateItem[] {
+  const fixture = JSON.parse(fs.readFileSync(path.resolve(
+    'packages/catalog-protocol/test/fixtures/motherboard/server-specs-inventory-motherboard-v7.json',
+  ), 'utf8')) as { cases: Array<{ item: CatalogTemplateItem }> }
+  return fixture.cases.map(({ item }) => item)
+}
+
 function fixtureFor(type: InventoryType): InventoryItem {
   const common = {
     id: 42,
@@ -464,6 +471,13 @@ describe('inventory form model', () => {
     expect(rebuilt.compatibility?.host?.storageSlots).toEqual(item.compatibility?.host?.storageSlots)
     expect(rebuilt.compatibility?.host?.expansionSlots).toEqual(item.compatibility?.host?.expansionSlots)
     expect(rebuilt.ports).toEqual(item.ports)
+  })
+
+  it.each(motherboardV7FixtureItems())('round trips motherboard v7 topology for $name', (item) => {
+    const localItem = { ...structuredClone(item), id: 99 } as InventoryItem
+    const rebuilt = inventoryFormValuesToInput(inventoryItemToFormValues(localItem))
+
+    expect(rebuilt).toEqual(item)
   })
 
   it('serializes power outlet classifications without assignment-only fields', () => {

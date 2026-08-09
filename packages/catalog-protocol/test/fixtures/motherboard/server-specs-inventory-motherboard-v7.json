@@ -1,0 +1,1354 @@
+{
+  "schemaVersion": 1,
+  "protocol": {
+    "catalogSchemaVersion": 1,
+    "fingerprintVersion": 7
+  },
+  "cases": [
+    {
+      "caseId": "asus-intel-ddr4-non-wifi",
+      "description": "ASUS PRIME Z690-P D4: Intel DDR4 non-Wi-Fi ATX board",
+      "sourceRecordKey": "asus:prime-z690-p-d4",
+      "fingerprintVersion": 7,
+      "productFamily": {
+        "manufacturer": "ASUS",
+        "model": "PRIME Z690-P D4",
+        "physicalClass": "motherboard"
+      },
+      "variantEvidence": {
+        "source": "topology",
+        "completeness": "complete",
+        "label": "Topology-defined variant",
+        "topologySignature": "ca0d38a9eaaed65c6659a787b22de5ce565bbb921e78fc4a2cbcfab95a1bf477",
+        "structuralSummary": "PCIe Gen3 x4 PCIe 3.0 x16 slot · PCIe Gen3 x1 PCIe 3.0 x1 slot"
+      },
+      "identityHash": "ebf34ec7e4bcbbcba81fa1807df20b247ac75ef8cc71148d5c95d7b7c6ec94f9",
+      "contentHash": "cba5ee117bcca169d7b2f5fb08befcfa0f6800b3ee7cad10f11a9d83f20bce5e",
+      "item": {
+        "type": "motherboard",
+        "name": "ASUS PRIME Z690-P D4",
+        "manufacturer": "ASUS",
+        "family": "Prime",
+        "model": "PRIME Z690-P D4",
+        "aliases": [
+          "PRIME Z690-P D4-CSM"
+        ],
+        "specs": {
+          "chipset": "Intel Z690",
+          "formFactor": "ATX"
+        },
+        "ports": [
+          {
+            "id": 1,
+            "kind": "network",
+            "type": "rj45",
+            "slotNumber": 1,
+            "key": "rj-45-1",
+            "speed": "2.5G",
+            "origin": "fixed"
+          },
+          {
+            "id": 2,
+            "kind": "video",
+            "type": "displayport",
+            "slotNumber": 2,
+            "key": "displayport-1",
+            "origin": "fixed"
+          },
+          {
+            "id": 3,
+            "kind": "video",
+            "type": "hdmi",
+            "slotNumber": 3,
+            "key": "hdmi-1",
+            "origin": "fixed"
+          }
+        ],
+        "compatibility": {
+          "host": {
+            "cpu": {
+              "socketCount": 1,
+              "sockets": [
+                "LGA1700"
+              ],
+              "generations": [
+                "12th Gen",
+                "13th Gen",
+                "14th Gen"
+              ]
+            },
+            "memory": {
+              "slots": 4,
+              "generations": [
+                "DDR4"
+              ],
+              "maxCapacityGb": 128,
+              "maxModuleCapacityGb": 32,
+              "maxSpeedMt": 5333,
+              "eccSupport": "unsupported",
+              "moduleTypes": [
+                "UDIMM"
+              ]
+            },
+            "storageSlots": [
+              {
+                "id": 1,
+                "key": "m2-1",
+                "label": "M.2 1 storage slot",
+                "count": 1,
+                "interfaces": [
+                  "SATA"
+                ],
+                "formFactors": [
+                  "2280"
+                ],
+                "location": "internal"
+              },
+              {
+                "id": 2,
+                "key": "m2-2",
+                "label": "M.2 2 storage slot",
+                "count": 1,
+                "interfaces": [
+                  "NVMe"
+                ],
+                "formFactors": [
+                  "2242",
+                  "2260",
+                  "2280"
+                ],
+                "pcieGeneration": 4,
+                "location": "internal"
+              },
+              {
+                "id": 3,
+                "key": "m2-3",
+                "label": "M.2 3 storage slot",
+                "count": 1,
+                "interfaces": [
+                  "NVMe",
+                  "SATA"
+                ],
+                "formFactors": [
+                  "2242",
+                  "2260",
+                  "2280"
+                ],
+                "pcieGeneration": 4,
+                "location": "internal"
+              },
+              {
+                "id": 4,
+                "key": "sata-ports",
+                "label": "SATA storage ports",
+                "count": 4,
+                "interfaces": [
+                  "SATA"
+                ],
+                "formFactors": [
+                  "2.5-inch",
+                  "3.5-inch"
+                ],
+                "location": "internal",
+                "directConnect": true
+              }
+            ],
+            "expansionSlots": [
+              {
+                "id": 1,
+                "key": "pcie-3-x16-1",
+                "label": "PCIe 3.0 x16 slot",
+                "count": 2,
+                "interfaceFamily": "pcie",
+                "pcieGeneration": 3,
+                "mechanicalLanes": 16,
+                "electricalLanes": 4
+              },
+              {
+                "id": 2,
+                "key": "pcie-3-x1-2",
+                "label": "PCIe 3.0 x1 slot",
+                "count": 1,
+                "interfaceFamily": "pcie",
+                "pcieGeneration": 3,
+                "mechanicalLanes": 1,
+                "electricalLanes": 1
+              }
+            ],
+            "powerConnectors": [
+              {
+                "id": 1,
+                "key": "atx-main",
+                "label": "Main ATX power",
+                "kind": "main-power",
+                "connector": "24-pin ATX",
+                "count": 1,
+                "required": true
+              },
+              {
+                "id": 2,
+                "key": "cpu-eps-2",
+                "label": "CPU EPS power",
+                "kind": "cpu-power",
+                "connector": "8-pin EPS",
+                "count": 1,
+                "required": true
+              },
+              {
+                "id": 3,
+                "key": "cpu-eps-3",
+                "label": "CPU EPS power",
+                "kind": "cpu-power",
+                "connector": "4-pin EPS",
+                "count": 1,
+                "required": true
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "caseId": "asus-intel-ddr5-wifi",
+      "description": "ASUS PRIME Z690-P WIFI: Intel DDR5 Wi-Fi ATX board",
+      "sourceRecordKey": "asus:prime-z690-p-wifi",
+      "fingerprintVersion": 7,
+      "productFamily": {
+        "manufacturer": "ASUS",
+        "model": "PRIME Z690-P WIFI",
+        "physicalClass": "motherboard"
+      },
+      "variantEvidence": {
+        "source": "topology",
+        "completeness": "complete",
+        "label": "Topology-defined variant",
+        "topologySignature": "05ff85bf1c92a5249a01c3aba69f87b8e4ffd1ce38ca9ee0382df823407baa3e",
+        "structuralSummary": "PCIe Gen3 x4 PCIe 3.0 x16 slot · PCIe Gen3 x1 PCIe 3.0 x1 slot"
+      },
+      "identityHash": "871543d62e40e9cbe842e135424686f3781476af8a4b76b8ea7de31b07a92cfd",
+      "contentHash": "9d9b646554795d13407ee9d16dd31ab8bb2b36072feb08749718c3fa2e14961c",
+      "item": {
+        "type": "motherboard",
+        "name": "ASUS PRIME Z690-P WIFI",
+        "manufacturer": "ASUS",
+        "family": "Prime",
+        "model": "PRIME Z690-P WIFI",
+        "aliases": [
+          "PRIME Z690-P WIFI-CSM"
+        ],
+        "specs": {
+          "chipset": "Intel Z690",
+          "formFactor": "ATX",
+          "wifiGeneration": "Wi-Fi 6",
+          "bluetooth": "Bluetooth 5.2"
+        },
+        "ports": [
+          {
+            "id": 1,
+            "kind": "network",
+            "type": "rj45",
+            "slotNumber": 1,
+            "key": "rj-45-1",
+            "speed": "2.5G",
+            "origin": "fixed"
+          },
+          {
+            "id": 2,
+            "kind": "video",
+            "type": "displayport",
+            "slotNumber": 2,
+            "key": "displayport-1",
+            "origin": "fixed"
+          },
+          {
+            "id": 3,
+            "kind": "video",
+            "type": "hdmi",
+            "slotNumber": 3,
+            "key": "hdmi-1",
+            "origin": "fixed"
+          }
+        ],
+        "compatibility": {
+          "host": {
+            "cpu": {
+              "socketCount": 1,
+              "sockets": [
+                "LGA1700"
+              ],
+              "generations": [
+                "12th Gen",
+                "13th Gen",
+                "14th Gen"
+              ]
+            },
+            "memory": {
+              "slots": 4,
+              "generations": [
+                "DDR5"
+              ],
+              "maxCapacityGb": 192,
+              "maxModuleCapacityGb": 48,
+              "maxSpeedMt": 6000,
+              "eccSupport": "unsupported",
+              "moduleTypes": [
+                "UDIMM"
+              ]
+            },
+            "storageSlots": [
+              {
+                "id": 1,
+                "key": "m2-1",
+                "label": "M.2 1 storage slot",
+                "count": 1,
+                "interfaces": [
+                  "SATA"
+                ],
+                "formFactors": [
+                  "2280"
+                ],
+                "location": "internal"
+              },
+              {
+                "id": 2,
+                "key": "m2-2",
+                "label": "M.2 2 storage slot",
+                "count": 1,
+                "interfaces": [
+                  "NVMe"
+                ],
+                "formFactors": [
+                  "2242",
+                  "2260",
+                  "2280"
+                ],
+                "pcieGeneration": 4,
+                "location": "internal"
+              },
+              {
+                "id": 3,
+                "key": "m2-3",
+                "label": "M.2 3 storage slot",
+                "count": 1,
+                "interfaces": [
+                  "NVMe",
+                  "SATA"
+                ],
+                "formFactors": [
+                  "2242",
+                  "2260",
+                  "2280"
+                ],
+                "pcieGeneration": 4,
+                "location": "internal"
+              },
+              {
+                "id": 4,
+                "key": "sata-ports",
+                "label": "SATA storage ports",
+                "count": 4,
+                "interfaces": [
+                  "SATA"
+                ],
+                "formFactors": [
+                  "2.5-inch",
+                  "3.5-inch"
+                ],
+                "location": "internal",
+                "directConnect": true
+              }
+            ],
+            "expansionSlots": [
+              {
+                "id": 1,
+                "key": "pcie-3-x16-1",
+                "label": "PCIe 3.0 x16 slot",
+                "count": 2,
+                "interfaceFamily": "pcie",
+                "pcieGeneration": 3,
+                "mechanicalLanes": 16,
+                "electricalLanes": 4
+              },
+              {
+                "id": 2,
+                "key": "pcie-3-x1-2",
+                "label": "PCIe 3.0 x1 slot",
+                "count": 1,
+                "interfaceFamily": "pcie",
+                "pcieGeneration": 3,
+                "mechanicalLanes": 1,
+                "electricalLanes": 1
+              }
+            ],
+            "powerConnectors": [
+              {
+                "id": 1,
+                "key": "atx-main",
+                "label": "Main ATX power",
+                "kind": "main-power",
+                "connector": "24-pin ATX",
+                "count": 1,
+                "required": true
+              },
+              {
+                "id": 2,
+                "key": "cpu-eps-2",
+                "label": "CPU EPS power",
+                "kind": "cpu-power",
+                "connector": "8-pin EPS",
+                "count": 1,
+                "required": true
+              },
+              {
+                "id": 3,
+                "key": "cpu-eps-3",
+                "label": "CPU EPS power",
+                "kind": "cpu-power",
+                "connector": "4-pin EPS",
+                "count": 1,
+                "required": true
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "caseId": "asrock-amd-mini-itx-wifi",
+      "description": "ASRock A620I Lightning WiFi: AMD DDR5 Mini-ITX Wi-Fi board",
+      "sourceRecordKey": "asrock:a620i-lightning-wifi",
+      "fingerprintVersion": 7,
+      "productFamily": {
+        "manufacturer": "ASRock",
+        "model": "A620I Lightning WiFi",
+        "physicalClass": "motherboard"
+      },
+      "variantEvidence": {
+        "source": "topology",
+        "completeness": "complete",
+        "label": "Topology-defined variant",
+        "topologySignature": "d9d19f86ecfc3cd332c3baf051d9bdad5d61f17b3ff6d1a8d44094b49c828200",
+        "structuralSummary": "PCIe Gen4 x16 PCIe 4.0 x16 slot"
+      },
+      "identityHash": "87d513df74d285a48f6ac06bf6f2b2cacf8b98d219a71f496cd90178406113bc",
+      "contentHash": "1684e4a11e2801426fbb306931df9de75920f1c820ad9c78e3f0a414cb94a92b",
+      "item": {
+        "type": "motherboard",
+        "name": "ASRock A620I Lightning WiFi",
+        "manufacturer": "ASRock",
+        "family": "Standard",
+        "model": "A620I Lightning WiFi",
+        "specs": {
+          "chipset": "AMD A620",
+          "formFactor": "Mini-ITX",
+          "wifiGeneration": "Wi-Fi 6E",
+          "bluetooth": "Bluetooth 5.2"
+        },
+        "ports": [
+          {
+            "id": 1,
+            "kind": "video",
+            "type": "hdmi",
+            "slotNumber": 1,
+            "key": "hdmi-1",
+            "origin": "fixed"
+          }
+        ],
+        "compatibility": {
+          "host": {
+            "cpu": {
+              "socketCount": 1,
+              "sockets": [
+                "AM5"
+              ],
+              "generations": [
+                "Ryzen 7000 Series"
+              ]
+            },
+            "memory": {
+              "slots": 2,
+              "generations": [
+                "DDR5"
+              ],
+              "maxCapacityGb": 96,
+              "maxModuleCapacityGb": 48,
+              "maxSpeedMt": 7200,
+              "eccSupport": "conditional",
+              "moduleTypes": [
+                "UDIMM"
+              ]
+            },
+            "storageSlots": [
+              {
+                "id": 1,
+                "key": "m2-1",
+                "label": "M.2 storage slot",
+                "count": 1,
+                "interfaces": [
+                  "NVMe"
+                ],
+                "formFactors": [
+                  "2280"
+                ],
+                "pcieGeneration": 4,
+                "location": "internal"
+              },
+              {
+                "id": 2,
+                "key": "m2-2",
+                "label": "M.2 storage slot",
+                "count": 1,
+                "interfaces": [
+                  "NVMe"
+                ],
+                "formFactors": [
+                  "2280"
+                ],
+                "pcieGeneration": 3,
+                "location": "internal"
+              },
+              {
+                "id": 3,
+                "key": "sata-ports",
+                "label": "SATA storage ports",
+                "count": 2,
+                "interfaces": [
+                  "SATA"
+                ],
+                "formFactors": [
+                  "2.5-inch",
+                  "3.5-inch"
+                ],
+                "location": "internal",
+                "directConnect": true
+              }
+            ],
+            "expansionSlots": [
+              {
+                "id": 1,
+                "key": "pcie-4-x16-1",
+                "label": "PCIe 4.0 x16 slot",
+                "count": 1,
+                "interfaceFamily": "pcie",
+                "pcieGeneration": 4,
+                "mechanicalLanes": 16,
+                "electricalLanes": 16
+              }
+            ],
+            "powerConnectors": [
+              {
+                "id": 1,
+                "key": "atx-main",
+                "label": "Main ATX power",
+                "kind": "main-power",
+                "connector": "24-pin ATX",
+                "count": 1,
+                "required": true
+              },
+              {
+                "id": 2,
+                "key": "cpu-eps-2",
+                "label": "CPU EPS power",
+                "kind": "cpu-power",
+                "connector": "8-pin EPS",
+                "count": 1,
+                "required": true
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "caseId": "msi-amd-atx-wifi",
+      "description": "MSI MAG B650 TOMAHAWK WIFI: AMD DDR5 ATX Wi-Fi board",
+      "sourceRecordKey": "msi:mag-b650-tomahawk-wifi",
+      "fingerprintVersion": 7,
+      "productFamily": {
+        "manufacturer": "MSI",
+        "model": "MAG B650 TOMAHAWK WIFI",
+        "physicalClass": "motherboard"
+      },
+      "variantEvidence": {
+        "source": "topology",
+        "completeness": "complete",
+        "label": "Topology-defined variant",
+        "topologySignature": "530993d8d5a29f277eb76437abad3e6b6f00970ee81e310752fb89205f5a0912",
+        "structuralSummary": "PCIe Gen4 x16 PCIe 4.0 x16 slot · PCIe Gen4 x2 PCIe 4.0 x16 slot · PCIe Gen3 x1 PCIe 3.0 x1 slot"
+      },
+      "identityHash": "bba184487410ee2e5b33048d4312b3c8155dc1eeaf3fb1e9b240f15a15deec49",
+      "contentHash": "bc0595892f23b346acfba2a8d4a0a4d4c5161e82be09e4711fbf037804b7b0c5",
+      "item": {
+        "type": "motherboard",
+        "name": "MSI MAG B650 TOMAHAWK WIFI",
+        "manufacturer": "MSI",
+        "family": "MAG",
+        "model": "MAG B650 TOMAHAWK WIFI",
+        "specs": {
+          "chipset": "AMD B650",
+          "formFactor": "ATX",
+          "wifiGeneration": "Wi-Fi 6E",
+          "bluetooth": "Bluetooth 5.3"
+        },
+        "ports": [
+          {
+            "id": 1,
+            "kind": "video",
+            "type": "hdmi",
+            "slotNumber": 1,
+            "key": "hdmi-1",
+            "origin": "fixed"
+          },
+          {
+            "id": 2,
+            "kind": "video",
+            "type": "displayport",
+            "slotNumber": 2,
+            "key": "displayport-2",
+            "origin": "fixed"
+          },
+          {
+            "id": 3,
+            "kind": "network",
+            "type": "rj45",
+            "slotNumber": 3,
+            "key": "rj-45-3",
+            "speed": "2.5G",
+            "origin": "fixed"
+          }
+        ],
+        "compatibility": {
+          "host": {
+            "cpu": {
+              "socketCount": 1,
+              "sockets": [
+                "AM5"
+              ],
+              "generations": [
+                "Ryzen 7000 Series",
+                "Ryzen 8000 Series",
+                "Ryzen 9000 Series"
+              ]
+            },
+            "memory": {
+              "slots": 4,
+              "generations": [
+                "DDR5"
+              ],
+              "maxCapacityGb": 256,
+              "maxModuleCapacityGb": 64,
+              "maxSpeedMt": 7600,
+              "eccSupport": "unsupported",
+              "moduleTypes": [
+                "UDIMM"
+              ]
+            },
+            "storageSlots": [
+              {
+                "id": 1,
+                "key": "m2-1",
+                "label": "M.2 storage slot",
+                "count": 1,
+                "interfaces": [
+                  "NVMe"
+                ],
+                "formFactors": [
+                  "22110",
+                  "2280"
+                ],
+                "pcieGeneration": 4,
+                "location": "internal"
+              },
+              {
+                "id": 2,
+                "key": "m2-2",
+                "label": "M.2 storage slot",
+                "count": 1,
+                "interfaces": [
+                  "NVMe"
+                ],
+                "formFactors": [
+                  "2260",
+                  "2280"
+                ],
+                "pcieGeneration": 4,
+                "location": "internal"
+              },
+              {
+                "id": 3,
+                "key": "m2-3",
+                "label": "M.2 storage slot",
+                "count": 1,
+                "interfaces": [
+                  "NVMe"
+                ],
+                "formFactors": [
+                  "2260",
+                  "2280"
+                ],
+                "pcieGeneration": 4,
+                "location": "internal"
+              },
+              {
+                "id": 4,
+                "key": "sata-ports",
+                "label": "SATA storage ports",
+                "count": 6,
+                "interfaces": [
+                  "SATA"
+                ],
+                "formFactors": [
+                  "2.5-inch",
+                  "3.5-inch"
+                ],
+                "location": "internal",
+                "directConnect": true
+              }
+            ],
+            "expansionSlots": [
+              {
+                "id": 1,
+                "key": "pcie-4-x16-1",
+                "label": "PCIe 4.0 x16 slot",
+                "count": 1,
+                "interfaceFamily": "pcie",
+                "pcieGeneration": 4,
+                "mechanicalLanes": 16,
+                "electricalLanes": 16
+              },
+              {
+                "id": 2,
+                "key": "pcie-4-x16-2",
+                "label": "PCIe 4.0 x16 slot",
+                "count": 1,
+                "interfaceFamily": "pcie",
+                "pcieGeneration": 4,
+                "mechanicalLanes": 16,
+                "electricalLanes": 2
+              },
+              {
+                "id": 3,
+                "key": "pcie-3-x1-3",
+                "label": "PCIe 3.0 x1 slot",
+                "count": 1,
+                "interfaceFamily": "pcie",
+                "pcieGeneration": 3,
+                "mechanicalLanes": 1,
+                "electricalLanes": 1
+              }
+            ],
+            "powerConnectors": [
+              {
+                "id": 1,
+                "key": "atx-main",
+                "label": "Main board power",
+                "kind": "main-power",
+                "connector": "ATX_PWR",
+                "count": 1,
+                "required": true
+              },
+              {
+                "id": 2,
+                "key": "cpu-eps",
+                "label": "CPU power",
+                "kind": "cpu-power",
+                "connector": "CPU_PWR",
+                "count": 2,
+                "required": true
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "caseId": "gigabyte-revision-1-0",
+      "description": "Gigabyte Z690 GAMING X DDR4 revision 1.0",
+      "sourceRecordKey": "gigabyte:z690-gaming-x-ddr4:1-0",
+      "fingerprintVersion": 7,
+      "productFamily": {
+        "manufacturer": "Gigabyte",
+        "model": "Z690 GAMING X DDR4",
+        "physicalClass": "motherboard"
+      },
+      "variantEvidence": {
+        "source": "topology",
+        "completeness": "complete",
+        "label": "Board revision 1.0",
+        "motherboardRevision": "1.0",
+        "topologySignature": "b0ae7d376073c4c24b7e8bda9210456876d2a199314d3907665155b55b471a78",
+        "structuralSummary": "x16 PCI Express x16 slot · x4 PCI Express x16 slot"
+      },
+      "identityHash": "665fe06d48cb6c4ca46bb3e5b0f64599ce67fc5b02206eca0cbbba718a27d951",
+      "contentHash": "052eab419b8a25b1a752f0aee9fe0af0f54211591df57031381f9d5eec25115f",
+      "item": {
+        "type": "motherboard",
+        "name": "Gigabyte Z690 GAMING X DDR4",
+        "manufacturer": "Gigabyte",
+        "family": "Gaming",
+        "model": "Z690 GAMING X DDR4",
+        "specs": {
+          "chipset": "Intel Z690",
+          "formFactor": "ATX",
+          "boardRevision": "1.0"
+        },
+        "ports": [
+          {
+            "id": 1,
+            "kind": "network",
+            "type": "rj45",
+            "slotNumber": 1,
+            "key": "rj-45-1",
+            "speed": "2.5G",
+            "origin": "fixed"
+          },
+          {
+            "id": 2,
+            "kind": "video",
+            "type": "displayport",
+            "slotNumber": 2,
+            "key": "displayport-2",
+            "origin": "fixed"
+          },
+          {
+            "id": 3,
+            "kind": "video",
+            "type": "hdmi",
+            "slotNumber": 3,
+            "key": "hdmi-3",
+            "origin": "fixed"
+          }
+        ],
+        "compatibility": {
+          "host": {
+            "cpu": {
+              "socketCount": 1,
+              "sockets": [
+                "LGA1700"
+              ],
+              "generations": [
+                "12th Gen",
+                "13th Gen",
+                "14th Gen"
+              ]
+            },
+            "memory": {
+              "slots": 4,
+              "generations": [
+                "DDR4"
+              ],
+              "maxCapacityGb": 128,
+              "maxModuleCapacityGb": 32,
+              "maxSpeedMt": 5333,
+              "eccSupport": "unsupported",
+              "moduleTypes": [
+                "UDIMM"
+              ]
+            },
+            "storageSlots": [
+              {
+                "id": 1,
+                "key": "m2-1",
+                "label": "M.2 storage slot",
+                "count": 1,
+                "interfaces": [
+                  "NVMe"
+                ],
+                "formFactors": [
+                  "2260",
+                  "2280"
+                ],
+                "pcieGeneration": 4,
+                "location": "internal"
+              },
+              {
+                "id": 2,
+                "key": "m2-2",
+                "label": "M.2 storage slot",
+                "count": 2,
+                "interfaces": [
+                  "NVMe"
+                ],
+                "formFactors": [
+                  "2260",
+                  "2280"
+                ],
+                "pcieGeneration": 4,
+                "location": "internal"
+              },
+              {
+                "id": 3,
+                "key": "m2-3",
+                "label": "M.2 storage slot",
+                "count": 1,
+                "interfaces": [
+                  "NVMe",
+                  "SATA"
+                ],
+                "formFactors": [
+                  "2260",
+                  "2280"
+                ],
+                "pcieGeneration": 4,
+                "location": "internal"
+              },
+              {
+                "id": 4,
+                "key": "sata-ports",
+                "label": "SATA storage ports",
+                "count": 6,
+                "interfaces": [
+                  "SATA"
+                ],
+                "formFactors": [
+                  "2.5-inch",
+                  "3.5-inch"
+                ],
+                "location": "internal",
+                "directConnect": true
+              }
+            ],
+            "expansionSlots": [
+              {
+                "id": 1,
+                "key": "pcie-unknown-x16-1",
+                "label": "PCI Express x16 slot",
+                "count": 1,
+                "interfaceFamily": "pcie",
+                "mechanicalLanes": 16,
+                "electricalLanes": 16
+              },
+              {
+                "id": 2,
+                "key": "pcie-unknown-x16-2",
+                "label": "PCI Express x16 slot",
+                "count": 2,
+                "interfaceFamily": "pcie",
+                "mechanicalLanes": 16,
+                "electricalLanes": 4
+              }
+            ],
+            "powerConnectors": [
+              {
+                "id": 1,
+                "key": "atx-main",
+                "label": "Main ATX power",
+                "kind": "main-power",
+                "connector": "24-pin ATX",
+                "count": 1,
+                "required": true
+              },
+              {
+                "id": 2,
+                "key": "cpu-eps-2",
+                "label": "CPU EPS power",
+                "kind": "cpu-power",
+                "connector": "8-pin EPS",
+                "count": 1,
+                "required": true
+              },
+              {
+                "id": 3,
+                "key": "cpu-eps-3",
+                "label": "CPU EPS power",
+                "kind": "cpu-power",
+                "connector": "4-pin EPS",
+                "count": 1,
+                "required": true
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "caseId": "gigabyte-revision-1-1",
+      "description": "Gigabyte Z690 GAMING X DDR4 revision 1.1",
+      "sourceRecordKey": "gigabyte:z690-gaming-x-ddr4:1-1",
+      "fingerprintVersion": 7,
+      "productFamily": {
+        "manufacturer": "Gigabyte",
+        "model": "Z690 GAMING X DDR4",
+        "physicalClass": "motherboard"
+      },
+      "variantEvidence": {
+        "source": "topology",
+        "completeness": "complete",
+        "label": "Board revision 1.1",
+        "motherboardRevision": "1.1",
+        "topologySignature": "50d4c435b4eeaa16e1290f7d6e7d5615031bcae3a44c58d88d0b72d931af186d",
+        "structuralSummary": "x16 PCI Express x16 slot · x4 PCI Express x16 slot"
+      },
+      "identityHash": "1675cb1020a37517ddd3f86202221cde9be819d5433c8a6521d103d361a594f4",
+      "contentHash": "b7914c56107686d0485df6b4922a880ce08e44383e2cd02a477319fb92e04593",
+      "item": {
+        "type": "motherboard",
+        "name": "Gigabyte Z690 GAMING X DDR4",
+        "manufacturer": "Gigabyte",
+        "family": "Gaming",
+        "model": "Z690 GAMING X DDR4",
+        "specs": {
+          "chipset": "Intel Z690",
+          "formFactor": "ATX",
+          "boardRevision": "1.1"
+        },
+        "ports": [
+          {
+            "id": 1,
+            "kind": "network",
+            "type": "rj45",
+            "slotNumber": 1,
+            "key": "rj-45-1",
+            "speed": "2.5G",
+            "origin": "fixed"
+          },
+          {
+            "id": 2,
+            "kind": "video",
+            "type": "displayport",
+            "slotNumber": 2,
+            "key": "displayport-2",
+            "origin": "fixed"
+          },
+          {
+            "id": 3,
+            "kind": "video",
+            "type": "hdmi",
+            "slotNumber": 3,
+            "key": "hdmi-3",
+            "origin": "fixed"
+          }
+        ],
+        "compatibility": {
+          "host": {
+            "cpu": {
+              "socketCount": 1,
+              "sockets": [
+                "LGA1700"
+              ],
+              "generations": [
+                "12th Gen",
+                "13th Gen",
+                "14th Gen"
+              ]
+            },
+            "memory": {
+              "slots": 4,
+              "generations": [
+                "DDR4"
+              ],
+              "maxCapacityGb": 128,
+              "maxModuleCapacityGb": 32,
+              "maxSpeedMt": 5333,
+              "eccSupport": "unsupported",
+              "moduleTypes": [
+                "UDIMM"
+              ]
+            },
+            "storageSlots": [
+              {
+                "id": 1,
+                "key": "m2-1",
+                "label": "M.2 storage slot",
+                "count": 1,
+                "interfaces": [
+                  "NVMe"
+                ],
+                "formFactors": [
+                  "2260",
+                  "2280"
+                ],
+                "pcieGeneration": 4,
+                "location": "internal"
+              },
+              {
+                "id": 2,
+                "key": "m2-2",
+                "label": "M.2 storage slot",
+                "count": 2,
+                "interfaces": [
+                  "NVMe"
+                ],
+                "formFactors": [
+                  "2260",
+                  "2280"
+                ],
+                "pcieGeneration": 4,
+                "location": "internal"
+              },
+              {
+                "id": 3,
+                "key": "m2-3",
+                "label": "M.2 storage slot",
+                "count": 1,
+                "interfaces": [
+                  "NVMe",
+                  "SATA"
+                ],
+                "formFactors": [
+                  "2260",
+                  "2280"
+                ],
+                "pcieGeneration": 4,
+                "location": "internal"
+              },
+              {
+                "id": 4,
+                "key": "sata-ports",
+                "label": "SATA storage ports",
+                "count": 6,
+                "interfaces": [
+                  "SATA"
+                ],
+                "formFactors": [
+                  "2.5-inch",
+                  "3.5-inch"
+                ],
+                "location": "internal",
+                "directConnect": true
+              }
+            ],
+            "expansionSlots": [
+              {
+                "id": 1,
+                "key": "pcie-unknown-x16-1",
+                "label": "PCI Express x16 slot",
+                "count": 1,
+                "interfaceFamily": "pcie",
+                "mechanicalLanes": 16,
+                "electricalLanes": 16
+              },
+              {
+                "id": 2,
+                "key": "pcie-unknown-x16-2",
+                "label": "PCI Express x16 slot",
+                "count": 2,
+                "interfaceFamily": "pcie",
+                "mechanicalLanes": 16,
+                "electricalLanes": 4
+              }
+            ],
+            "powerConnectors": [
+              {
+                "id": 1,
+                "key": "atx-main",
+                "label": "Main ATX power",
+                "kind": "main-power",
+                "connector": "24-pin ATX",
+                "count": 1,
+                "required": true
+              },
+              {
+                "id": 2,
+                "key": "cpu-eps-2",
+                "label": "CPU EPS power",
+                "kind": "cpu-power",
+                "connector": "8-pin EPS",
+                "count": 1,
+                "required": true
+              },
+              {
+                "id": 3,
+                "key": "cpu-eps-3",
+                "label": "CPU EPS power",
+                "kind": "cpu-power",
+                "connector": "4-pin EPS",
+                "count": 1,
+                "required": true
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "caseId": "gigabyte-amd-hedt",
+      "description": "Gigabyte TRX50 AERO D revision 1.0: AMD HEDT RDIMM board",
+      "sourceRecordKey": "gigabyte:trx50-aero-d:1-0",
+      "fingerprintVersion": 7,
+      "productFamily": {
+        "manufacturer": "Gigabyte",
+        "model": "TRX50 AERO D",
+        "physicalClass": "motherboard"
+      },
+      "variantEvidence": {
+        "source": "topology",
+        "completeness": "complete",
+        "label": "Board revision 1.0",
+        "motherboardRevision": "1.0",
+        "topologySignature": "a213e7573ea6d8eec136300aeec6796211dbe19be903cb63b676a426a63957ef",
+        "structuralSummary": "x16 PCI Express x16 slot · x16 PCI Express x16 slot"
+      },
+      "identityHash": "4eb40f0de1f0a34afb829bd88c835566114c7b048d97482657683e27353203b1",
+      "contentHash": "219ad919729e34a68e4583f99902ba85ca230c7b65944e12d41278b501093937",
+      "item": {
+        "type": "motherboard",
+        "name": "Gigabyte TRX50 AERO D",
+        "manufacturer": "Gigabyte",
+        "family": "AERO",
+        "model": "TRX50 AERO D",
+        "specs": {
+          "chipset": "AMD TRX50",
+          "formFactor": "E-ATX",
+          "boardRevision": "1.0",
+          "wifiGeneration": "Wi-Fi 7",
+          "bluetooth": "Bluetooth 5.3"
+        },
+        "ports": [
+          {
+            "id": 1,
+            "kind": "network",
+            "type": "rj45",
+            "slotNumber": 1,
+            "key": "rj-45-1",
+            "speed": "10G",
+            "origin": "fixed"
+          },
+          {
+            "id": 2,
+            "kind": "network",
+            "type": "rj45",
+            "slotNumber": 2,
+            "key": "rj-45-2",
+            "speed": "2.5G",
+            "origin": "fixed"
+          },
+          {
+            "id": 3,
+            "kind": "video",
+            "type": "displayport",
+            "slotNumber": 3,
+            "key": "displayport-3",
+            "origin": "fixed"
+          }
+        ],
+        "compatibility": {
+          "host": {
+            "cpu": {
+              "socketCount": 1,
+              "sockets": [
+                "sTR5"
+              ],
+              "generations": [
+                "Ryzen Threadripper 7000 Series",
+                "Ryzen Threadripper 9000 Series"
+              ]
+            },
+            "memory": {
+              "slots": 4,
+              "generations": [
+                "DDR5"
+              ],
+              "maxCapacityGb": 1024,
+              "maxModuleCapacityGb": 256,
+              "maxSpeedMt": 8000,
+              "eccSupport": "supported",
+              "moduleTypes": [
+                "RDIMM"
+              ]
+            },
+            "storageSlots": [
+              {
+                "id": 1,
+                "key": "m2-1",
+                "label": "M.2 storage slot",
+                "count": 1,
+                "interfaces": [
+                  "NVMe"
+                ],
+                "formFactors": [
+                  "2280"
+                ],
+                "pcieGeneration": 5,
+                "location": "internal"
+              },
+              {
+                "id": 2,
+                "key": "m2-2",
+                "label": "M.2 storage slot",
+                "count": 2,
+                "interfaces": [
+                  "NVMe"
+                ],
+                "formFactors": [
+                  "2280"
+                ],
+                "pcieGeneration": 5,
+                "location": "internal"
+              },
+              {
+                "id": 3,
+                "key": "m2-3",
+                "label": "M.2 storage slot",
+                "count": 1,
+                "interfaces": [
+                  "NVMe"
+                ],
+                "formFactors": [
+                  "2280"
+                ],
+                "pcieGeneration": 4,
+                "location": "internal"
+              },
+              {
+                "id": 4,
+                "key": "sata-ports",
+                "label": "SATA storage ports",
+                "count": 8,
+                "interfaces": [
+                  "SATA"
+                ],
+                "formFactors": [
+                  "2.5-inch",
+                  "3.5-inch"
+                ],
+                "location": "internal",
+                "directConnect": true
+              }
+            ],
+            "expansionSlots": [
+              {
+                "id": 1,
+                "key": "pcie-unknown-x16-1",
+                "label": "PCI Express x16 slot",
+                "count": 2,
+                "interfaceFamily": "pcie",
+                "mechanicalLanes": 16,
+                "electricalLanes": 16
+              },
+              {
+                "id": 2,
+                "key": "pcie-unknown-x16-2",
+                "label": "PCI Express x16 slot",
+                "count": 1,
+                "interfaceFamily": "pcie",
+                "mechanicalLanes": 16,
+                "electricalLanes": 16
+              }
+            ],
+            "powerConnectors": [
+              {
+                "id": 1,
+                "key": "atx-main",
+                "label": "Main ATX power",
+                "kind": "main-power",
+                "connector": "24-pin ATX",
+                "count": 1,
+                "required": true
+              },
+              {
+                "id": 2,
+                "key": "cpu-eps-2",
+                "label": "CPU EPS power",
+                "kind": "cpu-power",
+                "connector": "8-pin EPS",
+                "count": 2,
+                "required": true
+              }
+            ]
+          }
+        }
+      }
+    }
+  ]
+}

@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import { ArrowRight, RefreshCw, ShieldCheck } from 'lucide-react'
+import { AlertTriangle, ArrowRight, RefreshCw, ShieldCheck } from 'lucide-react'
 import { useState } from 'react'
 import { Button } from '@/components/ui/button'
 import {
@@ -131,6 +131,17 @@ export function CatalogUpdateReview({
                   </div>
                 </div>
               ))}
+              {preview.data.dependencyConflicts.length > 0 ? (
+                <div className="space-y-2 rounded-md border border-[#dfb3a5] bg-[#fff4ef] p-3 text-sm text-[#713325]">
+                  <div className="flex items-center gap-2 font-bold">
+                    <AlertTriangle className="size-4" />
+                    Resolve installed-component conflicts first
+                  </div>
+                  {preview.data.dependencyConflicts.flatMap((conflict) => conflict.findings.map((finding) => (
+                    <p key={`${conflict.assignmentId}:${finding.code}`}>{finding.message}</p>
+                  )))}
+                </div>
+              ) : null}
               <p className="text-xs text-[#746b60]">Preserved local fields: {preview.data.localFieldsPreserved.join(', ') || 'none'}.</p>
             </div>
           ) : null}
@@ -138,7 +149,7 @@ export function CatalogUpdateReview({
           {error ? <p className="text-sm font-semibold text-[#a33d31]" role="alert">{error}</p> : null}
           <DialogFooter>
             <Button type="button" variant="outline" disabled={pending} onClick={() => setSelectedLinkId(null)}>Later</Button>
-            <Button type="button" disabled={pending || !preview.data} onClick={() => void apply()}><RefreshCw className="size-4" />{pending ? 'Applying…' : 'Apply update'}</Button>
+            <Button type="button" disabled={pending || !preview.data || preview.data.dependencyConflicts.length > 0} onClick={() => void apply()}><RefreshCw className="size-4" />{pending ? 'Applying…' : 'Apply update'}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

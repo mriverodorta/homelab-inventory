@@ -48,6 +48,7 @@ import { migrateSchema22To23 } from './migrate-schema-23.mjs'
 import { migrateSchema23To24 } from './migrate-schema-24.mjs'
 import { migrateSchema24To25 } from './migrate-schema-25.mjs'
 import { migrateSchema25To26 } from './migrate-schema-26.mjs'
+import { migrateSchema26To27 } from './migrate-schema-27.mjs'
 import {
   applyNasPowerConfigurationChange,
   inspectNasPowerConfigurationChange,
@@ -94,7 +95,7 @@ import {
   setWalkthroughStepInDraft,
 } from '../onboarding/lifecycle.mjs'
 
-export const CURRENT_SCHEMA_VERSION = 26
+export const CURRENT_SCHEMA_VERSION = 27
 
 const DEFAULT_SAVE_DEBOUNCE_MS = 500
 const DEFAULT_FLUSH_RETRY_BASE_MS = 1_000
@@ -479,6 +480,42 @@ function itemKey(type, id) {
   return `${type}:${id}`
 }
 
+function motherboardCatalogUpdateConflicts(project, itemId, nextItem) {
+  const motherboardKey = itemKey('motherboard', itemId)
+  const hostIds = [...new Set(
+    (project.assignments ?? [])
+      .filter((assignment) => assignment.itemId === motherboardKey && assignment.type === 'motherboard')
+      .map((assignment) => assignment.serverId),
+  )]
+  if (hostIds.length === 0) return []
+
+  const nextProject = structuredClone(project)
+  nextProject.items[motherboardKey] = {
+    ...structuredClone(nextItem),
+    id: itemId,
+    key: motherboardKey,
+    type: 'motherboard',
+  }
+
+  return hostIds.flatMap((hostId) => {
+    const before = planHostAllocations(project, hostId)
+    const after = planHostAllocations(nextProject, hostId)
+    const previousByAssignment = new Map(
+      before.results.map((result) => [result.assignmentId, result]),
+    )
+    return after.results.flatMap((result) => {
+      const previous = previousByAssignment.get(result.assignmentId)
+      if (result.status !== 'incompatible' || previous?.status === 'incompatible') return []
+      return [{
+        hostId,
+        assignmentId: result.assignmentId,
+        itemId: result.itemId,
+        findings: result.findings.filter((finding) => finding.severity === 'error'),
+      }]
+    })
+  })
+}
+
 function compatibilityFindingIdentity(result, finding) {
   return JSON.stringify([
     String(result.hostId),
@@ -661,6 +698,10 @@ function normalizeInventoryPort(port, index, fallbackKind) {
     slotNumber,
   }
 
+  if (typeof port.key === 'string' && port.key.trim() !== '') {
+    normalized.key = port.key.trim()
+  }
+
   if (typeof port.label === 'string') {
     normalized.label = port.label.trim()
   }
@@ -828,6 +869,19 @@ function normalizeInventoryItemInput(input, id) {
     if (typeof input[field] === 'string' && input[field].trim() !== '') {
       item[field] = input[field].trim()
     }
+  }
+
+  if (Array.isArray(input.aliases)) {
+    const aliases = [...new Set(input.aliases
+      .filter((alias) => typeof alias === 'string')
+      .map((alias) => alias.trim())
+      .filter(Boolean))]
+    if (aliases.length > 64) {
+      throw new InventoryLifecycleError('Inventory item aliases cannot exceed 64 entries.', {
+        code: 'invalid-inventory-item', status: 400,
+      })
+    }
+    if (aliases.length > 0) item.aliases = aliases
   }
 
   const specs = cleanPlainObject(input.specs)
@@ -2188,6 +2242,25 @@ export class HomelabInventoryStore {
         continue
       }
 
+      if (currentVersion === 26) {
+        const migrated = migrateSchema26To27(
+          this.databases.inventory.data,
+          this.databases.project.data,
+          this.databases.registry.data,
+          this.databases.routingCache.data,
+        )
+        this.databases.meta.data.schemaVersion = 27
+        this.databases.meta.data.lastMigration = {
+          from: 26,
+          to: 27,
+          completedAt: new Date().toISOString(),
+          backupId: path.basename(this.activeMigrationBackupPath),
+          summary: migrated.summary,
+        }
+        currentVersion = 27
+        continue
+      }
+
       throw new Error(`No migration registered for schema version ${currentVersion}.`)
     }
 
@@ -2826,6 +2899,13 @@ export class HomelabInventoryStore {
     if (!item) throw new InventoryLifecycleError('Linked inventory item was not found.', {
       code: 'linked-inventory-not-found', status: 409,
     })
+    const nextItem = materializeCatalogItem(
+      mergeCatalogUpdate(projectLocalItemForCatalog(item, link.itemType), template.item),
+      { usageRole: item.usageRole },
+    )
+    const dependencyConflicts = link.itemType === 'motherboard'
+      ? motherboardCatalogUpdateConflicts(this.getProject(), link.itemId, nextItem)
+      : []
     return {
       linkId,
       itemType: link.itemType,
@@ -2836,6 +2916,7 @@ export class HomelabInventoryStore {
       availableRevision: template.revision,
       state: link.state,
       changes: catalogFieldDiff(projectLocalItemForCatalog(item, link.itemType), template.item),
+      dependencyConflicts,
       localFieldsPreserved: Object.keys(item).filter(
         (key) => key === 'name' || !['id', 'key', 'type', 'subtype', 'manufacturer', 'secondaryManufacturer', 'family', 'model', 'number', 'specs', 'ports', 'compatibility'].includes(key),
       ),
@@ -2859,15 +2940,29 @@ export class HomelabInventoryStore {
     if (!current) throw new InventoryLifecycleError('Linked inventory item was not found.', {
       code: 'linked-inventory-not-found', status: 409,
     })
+    const nextItem = materializeCatalogItem(
+      mergeCatalogUpdate(projectLocalItemForCatalog(current, link.itemType), template.item),
+      { usageRole: current.usageRole },
+    )
+    const dependencyConflicts = link.itemType === 'motherboard'
+      ? motherboardCatalogUpdateConflicts(this.getProject(), link.itemId, nextItem)
+      : []
+    if (dependencyConflicts.length > 0) {
+      throw new InventoryLifecycleError(
+        'Resolve incompatible PC Build assignments before applying this motherboard update.',
+        {
+          code: 'catalog-update-dependency-conflict',
+          status: 409,
+          details: { conflicts: dependencyConflicts },
+        },
+      )
+    }
     return this.withAtomicStoreMutation(['inventory', 'registry'], () => {
       const project = this.inventoryOnlyTransaction((draft) => {
         updateInventoryItemInDraft(
           draft,
           { type: link.itemType, id: link.itemId },
-          materializeCatalogItem(
-            mergeCatalogUpdate(projectLocalItemForCatalog(current, link.itemType), template.item),
-            { usageRole: current.usageRole },
-          ),
+          nextItem,
         )
       })
       this.registryTransaction((draft) => {

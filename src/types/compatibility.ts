@@ -131,6 +131,16 @@ export type HostPowerCompatibility = {
   redundancyModes?: string[]
 }
 
+export type MotherboardPowerConnectorGroup = {
+  id: number
+  key: string
+  label: string
+  kind: 'main-power' | 'cpu-power'
+  connector: string
+  count: number
+  required: boolean
+}
+
 export type FixedHostPort = {
   id: number
   key: string
@@ -169,6 +179,7 @@ export type HostCompatibility = {
   management?: ManagementControllerCompatibility
   constraintGroups?: CompatibilityConstraintGroup[]
   fixedPorts?: FixedHostPort[]
+  powerConnectors?: MotherboardPowerConnectorGroup[]
   power?: HostPowerCompatibility
   maxExpansionPowerWatts?: number
 }

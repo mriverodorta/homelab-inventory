@@ -9,9 +9,14 @@ describe('inventory dialog tab policy', () => {
   it('keeps the approved tab order', () => {
     expect(INVENTORY_DIALOG_TAB_ORDER).toEqual([
       'specs',
+      'cpu',
+      'memory',
+      'storage',
+      'expansion',
       'compatibility',
       'resources',
       'ports',
+      'power',
       'smart',
     ])
   })
@@ -19,7 +24,7 @@ describe('inventory dialog tab policy', () => {
   it.each([
     ['server', ['specs', 'compatibility', 'resources', 'ports']],
     ['nas', ['specs', 'compatibility', 'resources', 'ports']],
-    ['motherboard', ['specs', 'compatibility', 'resources', 'ports']],
+    ['motherboard', ['specs', 'cpu', 'memory', 'storage', 'expansion', 'ports', 'power', 'compatibility']],
     ['cpu', ['specs', 'compatibility']],
     ['ram', ['specs', 'compatibility']],
     ['gpu', ['specs', 'compatibility', 'ports']],
@@ -54,6 +59,15 @@ describe('inventory dialog tab policy', () => {
     expect(findFirstInventoryDialogErrorTab('server', {
       portGroups: 'A port group is invalid.',
     })).toBe('ports')
+
+    expect(findFirstInventoryDialogErrorTab('motherboard', {
+      hostMemorySlots: 'Memory slot count is invalid.',
+      expansionSlotGroups: 'An expansion group is invalid.',
+    })).toBe('memory')
+
+    expect(findFirstInventoryDialogErrorTab('motherboard', {
+      motherboardPowerConnectors: 'A power connector is invalid.',
+    })).toBe('power')
   })
 
   it('ignores errors owned by tabs that are unavailable for the type', () => {

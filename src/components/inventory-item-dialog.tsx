@@ -5,8 +5,14 @@ import { PrivateTemplatePanel } from '@/components/inventory/private-template-pa
 import {
   CpuCompatibilityFields,
   ExpansionCompatibilityFields,
+  HostCpuFields,
+  HostExpansionFields,
+  HostMemoryFields,
   HostRequirementFields,
   HostResourceFields,
+  HostStorageFields,
+  HostTopologyCompletenessField,
+  MotherboardPowerFields,
 } from '@/components/inventory-form/compatibility-fields'
 import {
   findFirstInventoryDialogErrorTab,
@@ -61,9 +67,14 @@ import {
 
 const DIALOG_TAB_LABELS: Record<InventoryDialogTabId, string> = {
   specs: 'Specs',
+  cpu: 'CPU',
+  memory: 'Memory',
+  storage: 'Storage',
+  expansion: 'Expansion',
   compatibility: 'Compatibility',
   resources: 'Resources',
   ports: 'Ports',
+  power: 'Power',
   smart: 'Smart',
 }
 
@@ -252,9 +263,21 @@ export function InventoryItemDialog({
   }
 
   let activeTabContent: ReactNode
-  if (activeTab === 'compatibility') {
-    if (values.type === 'server' || values.type === 'nas' || values.type === 'motherboard') {
+  if (activeTab === 'cpu') {
+    activeTabContent = <HostCpuFields {...sharedFieldProps} />
+  } else if (activeTab === 'memory') {
+    activeTabContent = <HostMemoryFields {...sharedFieldProps} />
+  } else if (activeTab === 'storage') {
+    activeTabContent = <HostStorageFields {...sharedFieldProps} />
+  } else if (activeTab === 'expansion') {
+    activeTabContent = <HostExpansionFields {...sharedFieldProps} />
+  } else if (activeTab === 'power') {
+    activeTabContent = <MotherboardPowerFields {...sharedFieldProps} />
+  } else if (activeTab === 'compatibility') {
+    if (values.type === 'server' || values.type === 'nas') {
       activeTabContent = <HostRequirementFields {...sharedFieldProps} />
+    } else if (values.type === 'motherboard') {
+      activeTabContent = <HostTopologyCompletenessField {...sharedFieldProps} />
     } else if (values.type === 'cpu') {
       activeTabContent = <CpuCompatibilityFields {...sharedFieldProps} />
     } else if (values.type === 'ram') {

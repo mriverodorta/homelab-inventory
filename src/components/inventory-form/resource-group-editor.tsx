@@ -4,11 +4,13 @@ import { Input } from '@/components/ui/input'
 import { FieldError, SelectField, TextField } from './field-primitives'
 import type {
   ExpansionSlotGroupDraft,
+  MotherboardPowerConnectorDraft,
   OptionalModuleSlotGroupDraft,
   StorageSlotGroupDraft,
 } from './model'
 import {
   getExpansionSlotGroupValidationTarget,
+  getMotherboardPowerConnectorValidationTarget,
   getOptionalModuleSlotGroupValidationTarget,
   getStorageSlotGroupValidationTarget,
 } from './model'
@@ -25,7 +27,7 @@ import {
 
 let resourceGroupSequence = 0
 
-function createResourceGroupDraftKey(kind: 'storage' | 'expansion' | 'optional-module'): string {
+function createResourceGroupDraftKey(kind: 'storage' | 'expansion' | 'optional-module' | 'power-connector'): string {
   resourceGroupSequence += 1
   return `${kind}-${Date.now().toString(36)}-${resourceGroupSequence.toString(36)}`
 }
@@ -309,6 +311,72 @@ export function OptionalModuleSlotGroupsEditor({
             </Button>
           </div>
           <CheckboxOptions label={`Optional module group ${index + 1} accepted kinds`} options={OPTIONAL_MODULE_KINDS} selected={group.acceptedModuleKinds} onChange={(acceptedModuleKinds) => updateGroup(group.draftKey, { acceptedModuleKinds })} />
+        </div>
+      ))}
+      {!validationTarget ? <FieldError message={error} /> : null}
+    </section>
+  )
+}
+
+export function MotherboardPowerConnectorsEditor({
+  groups,
+  error,
+  onChange,
+  onSelectOpenChange,
+}: {
+  groups: MotherboardPowerConnectorDraft[]
+  error?: string
+  onChange: (groups: MotherboardPowerConnectorDraft[]) => void
+  onSelectOpenChange?: (open: boolean) => void
+}) {
+  const validationTarget = error ? getMotherboardPowerConnectorValidationTarget(groups) : null
+  const updateGroup = (draftKey: string, patch: Partial<MotherboardPowerConnectorDraft>) => {
+    onChange(groups.map((group) => group.draftKey === draftKey ? { ...group, ...patch } : group))
+  }
+
+  return (
+    <section aria-labelledby="motherboard-power-connectors-heading" className="space-y-3 rounded-md border border-[#e4d9c9] bg-[#fbf8f2] p-3">
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <h4 id="motherboard-power-connectors-heading" className="text-sm font-bold text-[#20242c]">Board power connectors</h4>
+          <p className="text-xs text-[#75695d]">Define required PSU leads. These are internal PC Build resources, not canvas power endpoints.</p>
+        </div>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          aria-label="Add motherboard power connector"
+          onClick={() => onChange([...groups, {
+            draftKey: createResourceGroupDraftKey('power-connector'),
+            key: '',
+            label: '',
+            kind: '',
+            connector: '',
+            count: '',
+            required: true,
+          }])}
+        >
+          <Plus aria-hidden="true" className="size-4" />
+          Add connector
+        </Button>
+      </div>
+      {groups.map((group, index) => (
+        <div key={group.draftKey} className="space-y-3 rounded-md border border-[#ded8ce] bg-white p-3">
+          <div className="grid gap-3 sm:grid-cols-2">
+            <TextField label={`Power connector ${index + 1} label`} name={`power-connector-${group.draftKey}-label`} value={group.label} placeholder="Main ATX power" onChange={(label) => updateGroup(group.draftKey, { label })} />
+            <SelectField label="Purpose" name={`power-connector-${group.draftKey}-kind`} value={group.kind} options={[{ value: 'main-power', label: 'Main board power' }, { value: 'cpu-power', label: 'CPU power' }]} emptyLabel="Not specified" onOpenChange={onSelectOpenChange} onValueChange={(kind) => updateGroup(group.draftKey, { kind: kind as MotherboardPowerConnectorDraft['kind'] })} />
+            <TextField label="Connector" name={`power-connector-${group.draftKey}-connector`} value={group.connector} placeholder="24-pin ATX" onChange={(connector) => updateGroup(group.draftKey, { connector })} />
+            <div className="grid grid-cols-[minmax(0,1fr)_auto_auto] gap-2">
+              <TextField label="Count" ariaLabel={`Power connector ${index + 1} count`} name={`power-connector-${group.draftKey}-count`} value={group.count} type="number" min={1} placeholder="1" error={validationTarget?.index === index ? error : undefined} onChange={(count) => updateGroup(group.draftKey, { count })} />
+              <label className="flex items-end gap-2 pb-2 text-xs font-semibold text-[#3d3832]">
+                <Input type="checkbox" className="size-4 rounded-none" checked={group.required} onChange={(event) => updateGroup(group.draftKey, { required: event.target.checked })} />
+                Required
+              </label>
+              <Button type="button" variant="ghost" size="icon" className="self-end" aria-label={`Remove power connector ${index + 1}`} onClick={() => onChange(groups.filter((entry) => entry.draftKey !== group.draftKey))}>
+                <Trash2 aria-hidden="true" className="size-4" />
+              </Button>
+            </div>
+          </div>
         </div>
       ))}
       {!validationTarget ? <FieldError message={error} /> : null}

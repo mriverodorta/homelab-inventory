@@ -6,6 +6,20 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 
 ## Unreleased
 
+### Added
+
+- Added catalog contract v7 support for retail motherboards, including exact registry import and contribution identity for aliases, board revisions, chipset and form factor, fixed I/O, CPU and memory limits, storage and expansion topology, and internal board-power requirements.
+- Motherboard Add Hardware and inspector forms now share dedicated Specs, CPU, Memory, Storage, Expansion, Ports, Power, and Compatibility tabs, while power supplies can record the ATX and CPU leads they provide.
+
+### Changed
+
+- Assigned motherboards now authoritatively validate custom PC CPU, RAM, storage, expansion-card, and PSU compatibility. Registry topology updates are blocked when they would make installed parts incompatible, without changing assignments, canvas placement, cables, local labels, or project policy.
+- Catalog search now finds motherboards by alias, chipset, socket, CPU generation, and board revision, and assigned motherboard network and display ports remain available as PC Build connection endpoints.
+
+### Data migration
+
+- Schema 27 validates the v7 motherboard and numeric resource relationships after creating the standard pre-migration backup, preserving existing inventory, assignments, placements, cables, registry links, and route-cache entries unchanged.
+
 ## [0.9.9] - 2026-08-08
 
 ### Fixed

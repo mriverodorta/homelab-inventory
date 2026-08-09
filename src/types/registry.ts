@@ -39,6 +39,7 @@ export type RegistryState = {
   database: {
     schemaVersion: number | null
     applicationOemContractVersion: number
+    applicationCatalogContractVersion: number
     lastMigration: {
       from: number
       to: number
@@ -94,7 +95,7 @@ export type RegistryLink = {
   templateKey: string
   importedRevision: number
   importedContentHash: string
-  importedFingerprintVersion?: 2 | 3 | 4 | 5 | 6
+  importedFingerprintVersion?: 2 | 3 | 4 | 5 | 6 | 7
   productFamily?: CatalogProductFamily
   variantEvidence?: CatalogVariantEvidence
   identityAliases?: CatalogIdentityAlias[]
@@ -120,14 +121,14 @@ export type CatalogVariantEvidence = {
 }
 
 export type CatalogIdentityAlias = {
-  fingerprintVersion: 2 | 3 | 4 | 5 | 6
+  fingerprintVersion: 2 | 3 | 4 | 5 | 6 | 7
   identityHash: string
 }
 
 export type CatalogSearchItem = {
   templateKey: string
   revision: number
-  fingerprintVersion: 2 | 3 | 4 | 5 | 6
+  fingerprintVersion: 2 | 3 | 4 | 5 | 6 | 7
   identityHash: string
   identityAliases: CatalogIdentityAlias[]
   contentHash: string
@@ -203,7 +204,7 @@ export type CatalogVariantCandidate = {
   templateKey: string
   revision: number
   contentHash: string
-  fingerprintVersion: 2 | 3 | 4 | 5 | 6
+  fingerprintVersion: 2 | 3 | 4 | 5 | 6 | 7
   label: string
   structuralSummary?: string
 }
@@ -216,7 +217,7 @@ export type CatalogVariantMatch = {
   productFamily: CatalogProductFamily
   candidates: CatalogVariantCandidate[]
   localContentHash: string
-  fingerprintVersion: 4 | 5 | 6
+  fingerprintVersion: 4 | 5 | 6 | 7
   createdAt: string
 }
 
@@ -241,6 +242,12 @@ export type CatalogFieldChange = {
 export type CatalogUpdatePreview = CatalogUpdateSummary & {
   changes: CatalogFieldChange[]
   localFieldsPreserved: string[]
+  dependencyConflicts: Array<{
+    hostId: string
+    assignmentId: number
+    itemId: string
+    findings: Array<{ code: string; message: string; resourceId?: number }>
+  }>
 }
 
 export type PrivateTemplatePack = {
@@ -289,5 +296,10 @@ export const DEFAULT_REGISTRY_STATE: RegistryState = {
     tokenExpiresAt: null,
     lastError: null,
   },
-  database: { schemaVersion: null, applicationOemContractVersion: 6, lastMigration: null },
+  database: {
+    schemaVersion: null,
+    applicationOemContractVersion: 6,
+    applicationCatalogContractVersion: 7,
+    lastMigration: null,
+  },
 }

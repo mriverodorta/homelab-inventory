@@ -44,7 +44,7 @@ export function TextField({
   name: string
   value: string
   placeholder?: string
-  type?: 'text' | 'number'
+  type?: 'text' | 'number' | 'date'
   min?: number
   step?: number | string
   required?: boolean

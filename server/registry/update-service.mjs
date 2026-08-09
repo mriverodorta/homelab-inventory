@@ -8,6 +8,7 @@ const CATALOG_FIELDS = [
   'family',
   'model',
   'number',
+  'aliases',
   'specs',
   'ports',
   'compatibility',
