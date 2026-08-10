@@ -37,7 +37,7 @@ const SAFE_SPEC_FIELDS = new Set([
   'speedMt', 'supportedMotherboardFormFactors', 'supportedPsuFormFactors', 'supportedRadiatorSizesMm',
   'supportedSockets', 'surgeProtected', 'surgeProtectedOutlets', 'switchingCapacityGbps', 'tdpWatts',
   'threads', 'vramGb', 'wattage', 'wattageWatts', 'wifiGeneration', 'wireless', 'allowOutletFanOut',
-  'ecc', 'rank', 'hardwareRevision', 'boardRevision', 'partNumber', 'region',
+  'ecc', 'rank', 'moduleType', 'voltageVolts', 'hardwareRevision', 'boardRevision', 'partNumber', 'region',
   'topologyCompleteness', 'topologyComplete', 'variantKey',
   'oemGeneration',
   'cacheMb', 'memoryTypes', 'memorySpeedsMt', 'eccSupport', 'integratedGraphics',
@@ -64,7 +64,8 @@ const SAFE_COMPATIBILITY_FIELDS = new Set([
   'acceptedDeviceKinds', 'controllerSlotId', 'psuBayCount', 'psuType', 'mixedPsuAllowed',
   'redundancyModes', 'coolingProfiles', 'fanCount', 'redundant', 'conditions', 'management',
   'controllerFamily', 'controllerGeneration', 'dedicatedPort', 'sharedNic', 'portType',
-  'speed', 'powerConnectors', 'required',
+  'speed', 'capacityGb', 'speedMt', 'moduleType', 'ecc', 'rank', 'voltageVolts', 'formFactors',
+  'powerConnectors', 'required',
 ])
 
 function looksSensitive(value: string): boolean {

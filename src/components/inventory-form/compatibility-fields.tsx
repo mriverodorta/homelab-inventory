@@ -10,6 +10,7 @@ import {
   ECC_SUPPORT_OPTIONS,
   HOST_POWER_CONFIGURATIONS,
   MEMORY_MODULE_TYPES,
+  MEMORY_FORM_FACTORS,
   PCIE_GENERATIONS,
   PCIE_LANE_WIDTHS,
   POWER_REDUNDANCY_OPTIONS,
@@ -137,6 +138,7 @@ export function HostMemoryFields({ values, errors = {}, onChange }: Compatibilit
           <TextField label="Maximum speed (MT/s)" name="hostMemoryMaxSpeedMt" value={values.hostMemoryMaxSpeedMt} type="number" min={0} placeholder="3200" error={errors.hostMemoryMaxSpeedMt} onChange={(hostMemoryMaxSpeedMt) => onChange({ hostMemoryMaxSpeedMt })} />
           <SelectField label="ECC behavior" name="hostMemoryEccSupport" value={values.hostMemoryEccSupport} options={ECC_SUPPORT_OPTIONS} emptyLabel="Not specified" onValueChange={(hostMemoryEccSupport) => onChange({ hostMemoryEccSupport: hostMemoryEccSupport as InventoryFormValues['hostMemoryEccSupport'] }, 'immediate')} />
           <TextField label="Slots per CPU" name="hostMemorySlotsPerCpu" value={values.hostMemorySlotsPerCpu} type="number" min={1} placeholder="12" error={errors.hostMemorySlotsPerCpu} onChange={(hostMemorySlotsPerCpu) => onChange({ hostMemorySlotsPerCpu })} />
+          <MultiOptionField label="Supported physical form factors" options={MEMORY_FORM_FACTORS} selected={values.hostMemoryFormFactors} onChange={(hostMemoryFormFactors) => onChange({ hostMemoryFormFactors }, 'immediate')} />
           <MultiOptionField label="Supported module types" options={MEMORY_MODULE_TYPES} selected={values.hostMemoryModuleTypes} onChange={(hostMemoryModuleTypes) => onChange({ hostMemoryModuleTypes }, 'immediate')} />
       </div>
     </section>

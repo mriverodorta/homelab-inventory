@@ -34,6 +34,7 @@ export type NormalizedRamRequirements = {
   generation?: string
   speedMt?: number
   formFactor?: string
+  moduleType?: string
   ecc?: boolean
   rank?: string
 }

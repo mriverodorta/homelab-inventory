@@ -8,7 +8,6 @@ import {
   type FingerprintVersion,
 } from './types'
 import type {
-  CatalogFacetIndex,
   CatalogManifest,
   CatalogDigestIndex,
   CatalogSnapshot,
@@ -177,108 +176,6 @@ export function validateCatalogManifest(
     }
   }
   return value as CatalogManifest
-}
-
-export function validateCatalogFacetIndex(value: unknown): CatalogFacetIndex {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('Catalog facet index must be an object.')
-  const source = value as Record<string, unknown>
-  if (source.schemaVersion !== 1) throw new Error(`Catalog facet schema ${String(source.schemaVersion)} is unsupported.`)
-  assertPositiveInteger(source.catalogRevision, 'Catalog facet revision')
-  assertTimestamp(source.generatedAt, 'Catalog facet generatedAt')
-  if (!Array.isArray(source.categories) || source.categories.length > 100) {
-    throw new Error('Catalog facet categories are invalid or exceed the limit.')
-  }
-  const seenTypes = new Set<string>()
-  const categories = source.categories.map((rawCategory, categoryIndex) => {
-    if (!rawCategory || typeof rawCategory !== 'object' || Array.isArray(rawCategory)) {
-      throw new Error(`Catalog facet category ${categoryIndex} is invalid.`)
-    }
-    const category = rawCategory as Record<string, unknown>
-    if (typeof category.type !== 'string' || !/^[A-Za-z][A-Za-z0-9_-]{0,63}$/.test(category.type)) {
-      throw new Error(`Catalog facet category ${categoryIndex} type is invalid.`)
-    }
-    if (seenTypes.has(category.type)) throw new Error(`Catalog facet category ${category.type} is duplicated.`)
-    seenTypes.add(category.type)
-    if (typeof category.label !== 'string' || category.label.trim() === '' || category.label.length > 80) {
-      throw new Error(`Catalog facet category ${category.type} label is invalid.`)
-    }
-    if (!Number.isSafeInteger(category.count) || Number(category.count) < 0) {
-      throw new Error(`Catalog facet category ${category.type} count is invalid.`)
-    }
-    if (!Array.isArray(category.facets) || category.facets.length > 40) {
-      throw new Error(`Catalog facet category ${category.type} facets are invalid or exceed the limit.`)
-    }
-    const seenKeys = new Set<string>()
-    const facets = category.facets.map((rawFacet, facetIndex) => {
-      if (!rawFacet || typeof rawFacet !== 'object' || Array.isArray(rawFacet)) {
-        throw new Error(`Catalog facet ${category.type}.${facetIndex} is invalid.`)
-      }
-      const facet = rawFacet as Record<string, unknown>
-      if (typeof facet.key !== 'string' || !/^[A-Za-z][A-Za-z0-9_.-]{0,127}$/.test(facet.key)) {
-        throw new Error(`Catalog facet ${category.type}.${facetIndex} key is invalid.`)
-      }
-      if (seenKeys.has(facet.key)) throw new Error(`Catalog facet ${category.type}.${facet.key} is duplicated.`)
-      seenKeys.add(facet.key)
-      if (typeof facet.label !== 'string' || facet.label.trim() === '' || facet.label.length > 80) {
-        throw new Error(`Catalog facet ${category.type}.${facet.key} label is invalid.`)
-      }
-      if (facet.kind === 'terms') {
-        if (!Array.isArray(facet.values) || facet.values.length > 2_000) {
-          throw new Error(`Catalog term facet ${category.type}.${facet.key} values are invalid or exceed the limit.`)
-        }
-        const seenValues = new Set<string>()
-        const values = facet.values.map((rawValue, valueIndex) => {
-          if (!rawValue || typeof rawValue !== 'object' || Array.isArray(rawValue)) {
-            throw new Error(`Catalog term facet ${category.type}.${facet.key} value ${valueIndex} is invalid.`)
-          }
-          const term = rawValue as Record<string, unknown>
-          if (typeof term.value !== 'string' || term.value.trim() === '' || term.value.length > 200) {
-            throw new Error(`Catalog term facet ${category.type}.${facet.key} value ${valueIndex} is invalid.`)
-          }
-          if (seenValues.has(term.value)) throw new Error(`Catalog term facet ${category.type}.${facet.key} duplicates a value.`)
-          seenValues.add(term.value)
-          if (typeof term.label !== 'string' || term.label.trim() === '' || term.label.length > 200) {
-            throw new Error(`Catalog term facet ${category.type}.${facet.key} label ${valueIndex} is invalid.`)
-          }
-          if (!Number.isSafeInteger(term.count) || Number(term.count) < 0) {
-            throw new Error(`Catalog term facet ${category.type}.${facet.key} count ${valueIndex} is invalid.`)
-          }
-          return { value: term.value, label: term.label, count: Number(term.count) }
-        })
-        return { key: facet.key, label: facet.label, kind: 'terms' as const, values }
-      }
-      if (facet.kind === 'range') {
-        for (const field of ['minimum', 'maximum', 'step'] as const) {
-          if (typeof facet[field] !== 'number' || !Number.isFinite(facet[field])) {
-            throw new Error(`Catalog range facet ${category.type}.${facet.key} ${field} is invalid.`)
-          }
-        }
-        if (Number(facet.maximum) < Number(facet.minimum) || Number(facet.step) <= 0) {
-          throw new Error(`Catalog range facet ${category.type}.${facet.key} bounds are invalid.`)
-        }
-        if (facet.unit !== undefined && facet.unit !== null && (typeof facet.unit !== 'string' || facet.unit.length > 24)) {
-          throw new Error(`Catalog range facet ${category.type}.${facet.key} unit is invalid.`)
-        }
-        return {
-          key: facet.key,
-          label: facet.label,
-          kind: 'range' as const,
-          minimum: Number(facet.minimum),
-          maximum: Number(facet.maximum),
-          step: Number(facet.step),
-          ...(facet.unit === undefined ? {} : { unit: facet.unit as string | null }),
-        }
-      }
-      throw new Error(`Catalog facet ${category.type}.${facet.key} kind is invalid.`)
-    })
-    return { type: category.type, label: category.label, count: Number(category.count), facets }
-  })
-  return {
-    schemaVersion: 1,
-    catalogRevision: Number(source.catalogRevision),
-    generatedAt: source.generatedAt as string,
-    categories,
-  }
 }
 
 export function validateCatalogDigestIndex(value: unknown): CatalogDigestIndex {

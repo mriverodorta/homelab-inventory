@@ -19,4 +19,26 @@ describe('catalog update service', () => {
       notes: current.notes,
     })
   })
+
+  it('preserves structured RAM requirements during catalog updates', () => {
+    const current = {
+      type: 'ram', name: 'Micron RAM', manufacturer: 'Micron', number: 'MTA18ASF2G72AZ-3G2R',
+      specs: { capacityGb: 16, generation: 'DDR4', speedMt: 2933, formFactor: 'DIMM', moduleType: 'RDIMM', ecc: true },
+      compatibility: { requirements: { memory: {
+        capacityGb: 16, generation: 'DDR4', speedMt: 2933, formFactor: 'DIMM', moduleType: 'RDIMM', ecc: true,
+      } } },
+    }
+    expect(() => mergeCatalogUpdate(current, {
+      ...current,
+      compatibility: { requirements: { memory: {
+        capacityGb: 16, generation: 'DDR4', speedMt: 2933, formFactor: 'DIMM', moduleType: 'RDIMM',
+      } } },
+    })).toThrow('cannot remove memory requirement ecc')
+    expect(() => mergeCatalogUpdate(current, {
+      ...current,
+      compatibility: { requirements: { memory: {
+        capacityGb: 16, generation: 'DDR4', speedMt: 3200, formFactor: 'DIMM', moduleType: 'RDIMM', ecc: true,
+      } } },
+    })).toThrow('memory requirement speedMt contradicts its specification')
+  })
 })

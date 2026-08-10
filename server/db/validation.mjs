@@ -81,7 +81,8 @@ const groupedCompatibilityResourceTypes = new Set([
 const expansionInterfaceFamilies = new Set(['pcie', 'm2-ae', 'usb', 'onboard'])
 const cardHeights = new Set(['full-height', 'low-profile'])
 const eccSupportValues = new Set(['supported', 'unsupported', 'conditional', 'unknown'])
-const memoryModuleTypes = new Set(['SODIMM', 'UDIMM', 'RDIMM', 'LRDIMM'])
+const memoryFormFactors = new Set(['DIMM', 'SO-DIMM'])
+const memoryModuleTypes = new Set(['UDIMM', 'RDIMM', 'LRDIMM'])
 const powerRedundancyValues = new Set(['none', 'optional', 'required', 'supported'])
 const psuTypes = new Set(['fixed', 'cabled', 'hot-plug'])
 const constraintKinds = new Set(['mutually-exclusive'])
@@ -482,6 +483,7 @@ function assertInventoryCompatibility(itemId, compatibility, options = {}) {
       assertOptionalNonNegativeNumber(host.memory.maxSpeedMt, `${root}.host.memory.maxSpeedMt`)
       assertOptionalEnum(host.memory.eccSupport, eccSupportValues, `${root}.host.memory.eccSupport`)
       assertOptionalPositiveInteger(host.memory.slotsPerCpu, `${root}.host.memory.slotsPerCpu`)
+      assertOptionalEnumArray(host.memory.formFactors, memoryFormFactors, `${root}.host.memory.formFactors`)
       assertOptionalEnumArray(host.memory.moduleTypes, memoryModuleTypes, `${root}.host.memory.moduleTypes`)
     }
     assertStorageSlots(host.storageSlots, `${root}.host.storageSlots`, options)
@@ -565,6 +567,17 @@ function assertInventoryCompatibility(itemId, compatibility, options = {}) {
         requirements.cpu.tdpWatts,
         `${root}.requirements.cpu.tdpWatts`,
       )
+    }
+    if (requirements.memory !== undefined) {
+      const memory = requirements.memory
+      const path = `${root}.requirements.memory`
+      assertOptionalObject(memory, path)
+      assertOptionalPositiveNumber(memory.capacityGb, `${path}.capacityGb`)
+      assertOptionalString(memory.generation, `${path}.generation`)
+      assertOptionalPositiveNumber(memory.speedMt, `${path}.speedMt`)
+      assertOptionalEnum(memory.formFactor, memoryFormFactors, `${path}.formFactor`)
+      assertOptionalEnum(memory.moduleType, memoryModuleTypes, `${path}.moduleType`)
+      assertOptionalBoolean(memory.ecc, `${path}.ecc`)
     }
     if (requirements.expansion !== undefined) {
       const expansion = requirements.expansion
@@ -823,6 +836,34 @@ function assertInventoryItem(itemId, item, expectedType, options = {}) {
     }
     if (typeof item.specs?.capacityGb !== 'number' || !Number.isFinite(item.specs.capacityGb) || item.specs.capacityGb <= 0) {
       throw new Error(`Inventory item ${itemId} RAM capacityGb must be a positive number per stick.`)
+    }
+    if (item.specs.speed !== undefined) {
+      throw new Error(`Inventory item ${itemId} RAM specs.speed is legacy; use specs.speedMt.`)
+    }
+    assertOptionalPositiveNumber(item.specs.speedMt, `Inventory item ${itemId}.specs.speedMt`)
+    assertOptionalString(item.specs.generation, `Inventory item ${itemId}.specs.generation`)
+    assertOptionalString(item.specs.formFactor, `Inventory item ${itemId}.specs.formFactor`)
+    assertOptionalEnum(item.specs.moduleType, memoryModuleTypes, `Inventory item ${itemId}.specs.moduleType`)
+    assertOptionalBoolean(item.specs.ecc, `Inventory item ${itemId}.specs.ecc`)
+    assertOptionalString(item.specs.rank, `Inventory item ${itemId}.specs.rank`)
+    assertOptionalPositiveNumber(item.specs.voltageVolts, `Inventory item ${itemId}.specs.voltageVolts`)
+    if (
+      (item.specs.moduleType === 'RDIMM' || item.specs.moduleType === 'LRDIMM')
+      && item.specs.ecc === false
+    ) {
+      throw new Error(`Inventory item ${itemId} ${item.specs.moduleType} memory must use ECC.`)
+    }
+    const memoryRequirements = item.compatibility?.requirements?.memory
+    if (memoryRequirements) {
+      for (const field of ['capacityGb', 'generation', 'speedMt', 'formFactor', 'moduleType', 'ecc']) {
+        if (
+          memoryRequirements[field] !== undefined
+          && item.specs[field] !== undefined
+          && memoryRequirements[field] !== item.specs[field]
+        ) {
+          throw new Error(`Inventory item ${itemId} RAM ${field} contradicts its structured requirement.`)
+        }
+      }
     }
   }
 

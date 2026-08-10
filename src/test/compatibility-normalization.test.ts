@@ -27,6 +27,7 @@ describe('compatibility normalization', () => {
       generation: 'DDR4',
       speedMt: 3200,
       formFactor: undefined,
+      moduleType: undefined,
       ecc: undefined,
       rank: undefined,
     })
@@ -46,8 +47,35 @@ describe('compatibility normalization', () => {
       generation: 'DDR5',
       speedMt: undefined,
       formFactor: undefined,
+      moduleType: undefined,
       ecc: undefined,
       rank: undefined,
+    })
+  })
+
+  it('uses structured RAM v8 requirements ahead of legacy specs', () => {
+    expect(normalizeComponentRequirements({
+      id: 8,
+      type: 'ram',
+      name: 'Registry RAM',
+      specs: { capacityGb: 8, generation: 'DDR3', speedMt: 1600, formFactor: 'DIMM', moduleType: 'UDIMM', ecc: false },
+      compatibility: { requirements: { memory: {
+        capacityGb: 16,
+        generation: 'DDR4',
+        speedMt: 3200,
+        formFactor: 'SO-DIMM',
+        moduleType: 'RDIMM',
+        ecc: true,
+      } } },
+    })).toMatchObject({
+      type: 'ram',
+      capacityGb: 16,
+      moduleCapacityGb: 16,
+      generation: 'DDR4',
+      speedMt: 3200,
+      formFactor: 'SO-DIMM',
+      moduleType: 'RDIMM',
+      ecc: true,
     })
   })
 

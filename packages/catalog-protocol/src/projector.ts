@@ -18,6 +18,7 @@ import {
   LEGACY_FINGERPRINT_VERSION,
   MOTHERBOARD_FINGERPRINT_VERSION,
   OEM_FINGERPRINT_VERSION,
+  RAM_FINGERPRINT_VERSION,
   SERVER_FINGERPRINT_VERSION,
   SUPPORTED_FINGERPRINT_VERSIONS,
   WORKSTATION_FINGERPRINT_VERSION,
@@ -80,6 +81,9 @@ function canonicalName(item: CatalogTemplateItem): string {
 }
 
 function canonicalNameForFingerprint(item: CatalogTemplateItem, fingerprintVersion: FingerprintVersion): string {
+  if (fingerprintVersion === RAM_FINGERPRINT_VERSION && item.type === 'ram') {
+    return [text(item.manufacturer), text(item.number)].filter(Boolean).join(' ')
+  }
   if (fingerprintVersion === MOTHERBOARD_FINGERPRINT_VERSION && item.type === 'motherboard') {
     return text(item.name) ?? canonicalName(item)
   }
@@ -90,6 +94,29 @@ function canonicalNameForFingerprint(item: CatalogTemplateItem, fingerprintVersi
     return text(item.name) ?? canonicalName(item)
   }
   return canonicalName(item)
+}
+
+function ramProductIdentity(item: CatalogTemplateItem): Record<string, JsonValue> | CatalogEligibilityReason {
+  if (item.type !== 'ram') return 'unsupported-type'
+  const manufacturer = text(item.manufacturer)
+  const partNumber = text(item.number)
+  if (!manufacturer || !partNumber) return 'insufficient-identity'
+  const generation = text(item.specs?.generation)?.toUpperCase()
+  const formFactor = text(item.specs?.formFactor)?.toUpperCase()
+  if (
+    generation?.startsWith('LPDDR')
+    || formFactor === 'LP-DIMM'
+    || formFactor === 'ONBOARD'
+  ) {
+    return 'insufficient-identity'
+  }
+  const normalizedPartNumber = normalizeBoardIdentifier(partNumber)
+  if (!normalizedPartNumber) return 'insufficient-identity'
+  return {
+    type: 'ram',
+    manufacturer,
+    partNumber: normalizedPartNumber,
+  }
 }
 
 function hasAll(item: CatalogTemplateItem, fields: Array<'manufacturer' | 'model' | 'number'>): boolean {
@@ -617,8 +644,11 @@ export async function projectCatalogItem(
   const source = value as SourceItem
   const sourceType = text(source?.type) ?? ''
   const hardwareClass = text(source?.hardwareClass)
-  const type = sourceType === 'server'
-    && (hardwareClass === 'desktop' || hardwareClass === 'workstation' || hardwareClass === 'server')
+  const type = sourceType === 'server' && (
+    hardwareClass === 'desktop'
+    || hardwareClass === 'workstation'
+    || hardwareClass === 'server'
+  )
     ? hardwareClass
     : sourceType
   const itemId = Number(source?.id)
@@ -671,6 +701,10 @@ export async function projectCatalogItem(
     identityPayload = variant.identityPayload
     productFamily = variant.productFamily
     variantEvidence = variant.variantEvidence
+  } else if (fingerprintVersion === RAM_FINGERPRINT_VERSION) {
+    const identity = ramProductIdentity(item)
+    if (typeof identity === 'string') return { status: 'ineligible', source: sourceRef, reason: identity }
+    identityPayload = identity
   } else {
     const variant = await variantIdentity(item)
     if (typeof variant === 'string') return { status: 'ineligible', source: sourceRef, reason: variant }

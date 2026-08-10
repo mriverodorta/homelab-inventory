@@ -1,6 +1,7 @@
 export * from './canonicalize'
 export * from './contribution-auth'
 export * from './contract'
+export * from './facets'
 export * from './hash'
 export * from './normalization'
 export * from './projector'

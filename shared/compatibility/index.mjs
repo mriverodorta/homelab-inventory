@@ -277,17 +277,21 @@ export function normalizeComponentRequirements(item) {
   }
 
   if (item?.type === 'ram') {
-    const capacityGb = optionalNumber(specs.capacityGb)
+    const structured = item.compatibility?.requirements?.memory ?? {}
+    const capacityGb = optionalNumber(structured.capacityGb ?? specs.capacityGb)
 
     return {
       type: 'ram',
       capacityGb,
       moduleCount: 1,
       moduleCapacityGb: capacityGb,
-      generation: normalizeRamGeneration(specs.generation),
-      speedMt: optionalNumber(specs.speedMt),
-      formFactor: optionalString(specs.formFactor),
-      ecc: typeof specs.ecc === 'boolean' ? specs.ecc : undefined,
+      generation: normalizeRamGeneration(structured.generation ?? specs.generation),
+      speedMt: optionalNumber(structured.speedMt ?? specs.speedMt),
+      formFactor: optionalString(structured.formFactor ?? specs.formFactor),
+      moduleType: optionalString(structured.moduleType ?? specs.moduleType),
+      ecc: typeof structured.ecc === 'boolean'
+        ? structured.ecc
+        : typeof specs.ecc === 'boolean' ? specs.ecc : undefined,
       rank: optionalString(specs.rank),
     }
   }
@@ -831,18 +835,46 @@ function evaluateMemory(hostCapabilities, requirements, assignments, items, comp
     })
   }
 
-  if (Array.isArray(support?.moduleTypes) && support.moduleTypes.length > 0 && !requirements.formFactor) {
-    addMissing(findings, 'component.memory.formFactor', 'Memory module type is not recorded.')
+  if (Array.isArray(support?.formFactors) && support.formFactors.length > 0 && !requirements.formFactor) {
+    addMissing(findings, 'component.memory.formFactor', 'Memory physical form factor is not recorded.')
+  } else if (
+    Array.isArray(support?.formFactors) &&
+    support.formFactors.length > 0 &&
+    !includesNormalized(support.formFactors, requirements.formFactor)
+  ) {
+    addFinding(findings, {
+      code: 'memory.form-factor.mismatch',
+      severity: 'error',
+      message: `${requirements.formFactor} memory does not fit this host.`,
+      field: 'component.memory.formFactor',
+    })
+  }
+
+  if (Array.isArray(support?.moduleTypes) && support.moduleTypes.length > 0 && !requirements.moduleType) {
+    addMissing(findings, 'component.memory.moduleType', 'Memory electrical module type is not recorded.')
   } else if (
     Array.isArray(support?.moduleTypes) &&
     support.moduleTypes.length > 0 &&
-    !includesNormalized(support.moduleTypes, requirements.formFactor)
+    !includesNormalized(support.moduleTypes, requirements.moduleType)
   ) {
     addFinding(findings, {
       code: 'memory.module-type.mismatch',
       severity: 'error',
-      message: `${requirements.formFactor} memory is not supported by this host.`,
-      field: 'component.memory.formFactor',
+      message: `${requirements.moduleType} memory is not electrically supported by this host.`,
+      field: 'component.memory.moduleType',
+    })
+  }
+
+  if (
+    (normalizedText(requirements.moduleType) === 'rdimm'
+      || normalizedText(requirements.moduleType) === 'lrdimm')
+    && requirements.ecc === false
+  ) {
+    addFinding(findings, {
+      code: 'memory.registered-ecc.required',
+      severity: 'error',
+      message: `${requirements.moduleType} memory must use ECC.`,
+      field: 'component.memory.ecc',
     })
   }
 

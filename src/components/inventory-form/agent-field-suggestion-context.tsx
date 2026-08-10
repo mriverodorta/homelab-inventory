@@ -5,8 +5,15 @@ import type { InventoryFormValues } from './model'
 import type { InventoryFieldChangeMode } from './type-fields'
 
 function formFieldName(fieldPath: string): string | null {
-  if (['name', 'manufacturer', 'model'].includes(fieldPath)) return fieldPath
-  if (fieldPath === 'specs.speed') return 'speedMt'
+  if (['name', 'manufacturer', 'model', 'number'].includes(fieldPath)) return fieldPath
+  if (fieldPath === 'specs.capacityGb') return 'capacityGb'
+  if (fieldPath === 'specs.generation') return 'generation'
+  if (fieldPath === 'specs.speedMt') return 'speedMt'
+  if (fieldPath === 'specs.formFactor') return 'ramFormFactor'
+  if (fieldPath === 'specs.moduleType') return 'ramModuleType'
+  if (fieldPath === 'specs.ecc') return 'ramEcc'
+  if (fieldPath === 'specs.rank') return 'ramRank'
+  if (fieldPath === 'specs.voltageVolts') return 'ramVoltageVolts'
   if (fieldPath === 'specs.capacityBytes') return 'capacity'
   if (fieldPath === 'specs.serialNumber') return 'serialNumber'
   if (fieldPath === 'specs.interface') return 'interface'
@@ -30,7 +37,11 @@ function suggestionPatch(
   suggestion: AgentHardwareSuggestion,
 ): Partial<InventoryFormValues> | null {
   if (suggestion.fieldPath === 'specs.capacityBytes') return capacityPatch(suggestion.detectedValue)
-  if (fieldName === 'speedMt' || fieldName === 'ratedWatts') {
+  if (['capacityGb', 'speedMt', 'ramRank', 'ramVoltageVolts', 'ratedWatts'].includes(fieldName)) {
+    return { [fieldName]: String(suggestion.detectedValue) }
+  }
+  if (fieldName === 'ramEcc') return { ramEcc: suggestion.detectedValue === true ? 'yes' : 'no' }
+  if (['generation', 'ramFormFactor', 'ramModuleType'].includes(fieldName)) {
     return { [fieldName]: String(suggestion.detectedValue) }
   }
   if (fieldName === 'interface') {
@@ -41,7 +52,7 @@ function suggestionPatch(
     return { storagePartitionTable: String(suggestion.detectedValue).trim().toLowerCase() }
   }
   if (fieldName === 'serialNumber') return { serialNumber: String(suggestion.detectedValue) }
-  if (['name', 'manufacturer', 'model'].includes(fieldName)) {
+  if (['name', 'manufacturer', 'model', 'number'].includes(fieldName)) {
     return { [fieldName]: String(suggestion.detectedValue) }
   }
   return null

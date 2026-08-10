@@ -8,12 +8,16 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 
 ### Added
 
+- Added catalog contract v8 support for exact physical RAM sticks, including manufacturer part-number identity, capacity, DDR generation, MT/s speed, DIMM or SO-DIMM form factor, UDIMM/RDIMM/LRDIMM electrical type, ECC, rank, voltage, and structured memory requirements.
+- RAM add/edit and inspector workflows now expose the complete v8 specification, while host memory compatibility records physical form factors separately from electrical module types.
 - Added an opt-in notification system for agent host availability and selected service, container, and physical-storage health changes, with persisted incidents, transitions, acknowledgements, cooldowns, reminders, and delivery attempts.
 - Added reusable Ntfy and generic webhook contact points, workspace rules, severity overrides, quiet-hours schedules, per-host policies and temporary mutes, and a toolbar Notification Center for active and historical incidents.
 - Embedded Agent 0.3.0 receives and acknowledges a revisioned monitoring policy that increases service collection to one minute only when selected services require it and otherwise retains the ten-minute service cadence.
 
 ### Changed
 
+- Agent hardware suggestions now map exact DIMM part numbers to `number` and interpret SMBIOS capacity, generation, effective speed, physical form factor, module type, ECC, rank, and voltage as independent reviewable fields.
+- Registry contribution discovery uses RAM fingerprint v8, deduplicates identical physical sticks while retaining every local source reference, and keeps generic or unidentified RAM local and detached.
 - Host outages inhibit child service, container, and storage notifications; inhibited alerts resume after recovery, recovery messages are sent only to destinations that received the opening alert, and failed deliveries use bounded persisted retries before requiring manual action.
 - Notification evaluation now rejects replayed sequences and stale buffered evidence without treating agent clock offset as an outage, preventing reconnect backlogs or process restarts from duplicating incidents or falsely recovering hosts.
 - Agent contract negotiation remains backward-compatible during staggered app and Agent upgrades, so existing Agents keep reporting while newer Agents opt into revisioned monitoring acknowledgements.
@@ -25,6 +29,7 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 
 ### Data migration
 
+- Schema 29 migrates legacy RAM `speed` to `speedMt`, canonicalizes `SODIMM` as `SO-DIMM`, and separates host `formFactors` from `moduleTypes` after a verified pre-migration backup without changing inventory IDs, assignments, slot positions, placements, cables, registry links, or route caches.
 - Schema 28 grants the new static notification permissions to existing built-in roles while preserving custom roles, accounts, assignments, inventory, canvas placement, cables, agent identity, and telemetry.
 
 ## [0.10.0] - 2026-08-09

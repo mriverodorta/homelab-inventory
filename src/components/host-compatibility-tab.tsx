@@ -111,7 +111,7 @@ function HostTopologySummary({ host }: { host: HostCompatibility }) {
     host.memory?.slots
       ? {
           label: 'Memory topology',
-          value: `${host.memory.slots} slots${host.memory.slotsPerCpu ? ` · ${host.memory.slotsPerCpu}/CPU` : ''}${host.memory.moduleTypes?.length ? ` · ${host.memory.moduleTypes.join('/')}` : ''}${host.memory.eccSupport ? ` · ECC ${host.memory.eccSupport}` : ''}`,
+          value: `${host.memory.slots} slots${host.memory.slotsPerCpu ? ` · ${host.memory.slotsPerCpu}/CPU` : ''}${host.memory.formFactors?.length ? ` · ${host.memory.formFactors.join('/')}` : ''}${host.memory.moduleTypes?.length ? ` · ${host.memory.moduleTypes.join('/')}` : ''}${host.memory.eccSupport ? ` · ECC ${host.memory.eccSupport}` : ''}`,
         }
       : null,
     resourceCount(host.storageSlots) > 0

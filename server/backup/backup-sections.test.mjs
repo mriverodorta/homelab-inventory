@@ -38,6 +38,28 @@ function stores() {
 }
 
 describe('backup section ownership', () => {
+  it('round-trips every RAM v8 field through a selective inventory backup', async () => {
+    const dataDir = await fs.mkdtemp(path.join(os.tmpdir(), 'hli-ram-v8-sections-'))
+    const fixture = JSON.parse(await fs.readFile(path.resolve(
+      'packages/catalog-protocol/test/fixtures/ram/server-specs-inventory-ram-v8.json',
+    ), 'utf8'))
+    const { type: _type, ...storedItem } = fixture.item
+    const source = stores()
+    source.inventory.ram = [{ id: 1, ...storedItem }]
+    const result = await collectBackupSections({
+      store: { dataDir, snapshotStores: async () => source },
+      sections: ['inventory'],
+    })
+    const files = new Map(result.files.map((file) => [file.name, file.body]))
+    const replacements = materializeBackupSections({
+      files,
+      sections: ['inventory'],
+      currentStores: stores(),
+    })
+
+    expect(replacements.inventory.ram).toEqual([{ id: 1, ...storedItem }])
+  })
+
   it('does not include backup history in application metadata', async () => {
     const dataDir = await fs.mkdtemp(path.join(os.tmpdir(), 'hli-sections-'))
     const current = stores()

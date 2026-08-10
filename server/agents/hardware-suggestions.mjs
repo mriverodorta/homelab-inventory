@@ -15,7 +15,16 @@ const FIELD_MAP = Object.freeze({
   system: { manufacturer: 'manufacturer', productName: 'model' },
   motherboard: { manufacturer: 'manufacturer', productName: 'model', version: 'version' },
   cpu: { manufacturer: 'manufacturer', version: 'name' },
-  memory: { manufacturer: 'manufacturer', partNumber: 'model', speed: 'specs.speed' },
+  memory: {
+    manufacturer: 'manufacturer',
+    partNumber: 'number',
+    size: 'specs.capacityGb',
+    type: 'specs.generation',
+    speed: 'specs.speedMt',
+    formFactor: 'specs.formFactor',
+    rank: 'specs.rank',
+    configuredVoltage: 'specs.voltageVolts',
+  },
   storage: {
     vendor: 'manufacturer', model: 'model', size: 'specs.capacityBytes', serial: 'specs.serialNumber',
     tran: 'specs.interface', pttype: 'specs.partitionTable',
@@ -66,15 +75,84 @@ function isOpaqueManufacturer(value) {
     || /^(?:unknown|not specified|not provided|none)$/i.test(normalized)
 }
 
-function detectedFieldValue(component, detectedField) {
+function firstNumber(value) {
+  if (typeof value === 'number') return Number.isFinite(value) ? value : null
+  if (typeof value !== 'string') return null
+  const match = value.match(/\d+(?:\.\d+)?/)
+  return match ? Number(match[0]) : null
+}
+
+function memoryCapacityGb(value) {
+  const amount = firstNumber(value)
+  if (!amount || typeof value !== 'string') return null
+  if (/\bTB\b/i.test(value)) return amount * 1024
+  if (/\bMB\b/i.test(value)) return amount / 1024
+  return amount
+}
+
+function memoryModuleType(values) {
+  const detail = String(values?.typeDetail ?? '').toLowerCase()
+  if (detail.includes('load-reduced') || detail.includes('lrdimm')) return 'LRDIMM'
+  if (detail.includes('registered') && !detail.includes('unregistered')) return 'RDIMM'
+  if (detail.includes('unbuffered') || detail.includes('unregistered') || detail.includes('udimm')) return 'UDIMM'
+  return null
+}
+
+function memoryEcc(values, moduleType) {
+  if (moduleType === 'RDIMM' || moduleType === 'LRDIMM') return true
+  const totalWidth = firstNumber(values?.totalWidth)
+  const dataWidth = firstNumber(values?.dataWidth)
+  if (totalWidth && dataWidth) return totalWidth > dataWidth
+  const detail = String(values?.typeDetail ?? '')
+  if (/\becc\b/i.test(detail)) return true
+  return null
+}
+
+function memoryRank(value) {
+  if (typeof value !== 'string') return null
+  const normalized = value.trim().toUpperCase()
+  return /^(?:1RX8|1RX16|2RX8|2RX16|4RX4)$/.test(normalized)
+    ? normalized.replace('RX', 'Rx')
+    : null
+}
+
+function normalizeMemoryValue(component, detectedField, fieldPath, value) {
+  if (fieldPath === 'specs.capacityGb') return memoryCapacityGb(value)
+  if (fieldPath === 'specs.speedMt') return firstNumber(value)
+  if (fieldPath === 'specs.generation') {
+    const generation = String(value ?? '').trim().toUpperCase()
+    return /^DDR\d$/.test(generation) ? generation : null
+  }
+  if (fieldPath === 'specs.formFactor') {
+    const normalized = String(value ?? '').trim().toUpperCase().replaceAll('_', '-').replaceAll(' ', '-')
+    if (normalized === 'SODIMM' || normalized === 'SO-DIMM') return 'SO-DIMM'
+    return normalized === 'DIMM' ? 'DIMM' : null
+  }
+  if (fieldPath === 'specs.rank') return memoryRank(value)
+  if (fieldPath === 'specs.voltageVolts') return firstNumber(value)
+  return value
+}
+
+function detectedFieldValue(component, detectedField, fieldPath) {
   const value = component.values?.[detectedField]
   if (component.kind === 'storage' && detectedField === 'vendor') {
     return resolveStorageManufacturer(component.values)
   }
-  if (component.kind !== 'memory' || detectedField !== 'manufacturer') return value
+  if (component.kind !== 'memory') return value
+  if (detectedField !== 'manufacturer') return normalizeMemoryValue(component, detectedField, fieldPath, value)
   const resolved = resolveJedecManufacturer(component.values?.moduleManufacturerId)
   if (resolved) return resolved
   return isOpaqueManufacturer(value) ? null : value
+}
+
+function mappedFields(component) {
+  const fields = Object.entries(FIELD_MAP[component.kind] ?? {})
+  if (component.kind !== 'memory') return fields
+  const moduleType = memoryModuleType(component.values)
+  const ecc = memoryEcc(component.values, moduleType)
+  if (moduleType) fields.push(['typeDetail', 'specs.moduleType'])
+  if (ecc !== null) fields.push(['totalWidth', 'specs.ecc'])
+  return fields
 }
 
 function matchComponents(snapshot, inventory, project) {
@@ -134,9 +212,14 @@ export function buildHardwareSuggestions({ snapshot, inventory, project, now = D
   const suggestions = []
   for (const match of matches) {
     if (!match.item || match.confidence === 'none') continue
-    const mapping = FIELD_MAP[match.component.kind] ?? {}
-    for (const [detectedField, fieldPath] of Object.entries(mapping)) {
-      const detectedValue = detectedFieldValue(match.component, detectedField)
+    for (const [detectedField, fieldPath] of mappedFields(match.component)) {
+      let detectedValue = detectedFieldValue(match.component, detectedField, fieldPath)
+      if (match.component.kind === 'memory' && fieldPath === 'specs.moduleType') {
+        detectedValue = memoryModuleType(match.component.values)
+      }
+      if (match.component.kind === 'memory' && fieldPath === 'specs.ecc') {
+        detectedValue = memoryEcc(match.component.values, memoryModuleType(match.component.values))
+      }
       if (detectedValue === undefined || detectedValue === null || detectedValue === '') continue
       suggestions.push({
         id: `${snapshot.id}:${match.itemType}:${match.item.id}:${fieldPath}`,

@@ -17,6 +17,12 @@ sanitization, identity, and content-hash behavior for that version.
 - Fingerprint v3 separates product-family identity from motherboard or complete
   topology evidence. Fingerprint-v2 hashes remain valid aliases and must never
   be recomputed with v3 rules.
+- Fingerprint v8 identifies one physical RAM stick by canonical manufacturer
+  and exact manufacturer part number. Capacity, speed, rank, voltage, physical
+  form factor, electrical module type, and ECC state remain revisioned content.
+- RAM contract v8 keeps `formFactor` (`DIMM` or `SO-DIMM`) independent from
+  `moduleType` (`UDIMM`, `RDIMM`, or `LRDIMM`) and requires structured memory
+  requirements to remain consistent with known specifications.
 - Variant identity must not include installed components, local device names,
   assignments, topology relationships, or the role a user gives the machine.
 - Registry publication must use a fingerprint implementation already shipped

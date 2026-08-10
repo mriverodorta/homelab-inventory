@@ -3,6 +3,7 @@ import {
   LEGACY_FINGERPRINT_VERSION,
   MOTHERBOARD_FINGERPRINT_VERSION,
   OEM_FINGERPRINT_VERSION,
+  RAM_FINGERPRINT_VERSION,
   SERVER_FINGERPRINT_VERSION,
   WORKSTATION_FINGERPRINT_VERSION,
   projectCatalogItem,
@@ -35,6 +36,7 @@ function fingerprintVersionForItem(item) {
   if (catalogItem.type === 'workstation') return WORKSTATION_FINGERPRINT_VERSION
   if (catalogItem.type === 'server') return SERVER_FINGERPRINT_VERSION
   if (catalogItem.type === 'motherboard') return MOTHERBOARD_FINGERPRINT_VERSION
+  if (catalogItem.type === 'ram') return RAM_FINGERPRINT_VERSION
   return ['desktop', 'server', 'nas'].includes(catalogItem.type)
     && typeof catalogItem.manufacturer === 'string'
     && typeof catalogItem.model === 'string'

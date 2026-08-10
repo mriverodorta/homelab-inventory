@@ -51,6 +51,9 @@ function requirementRows(requirements: NormalizedComponentRequirements): Require
       requirements.moduleCapacityGb !== undefined && { label: 'Module capacity', value: `${requirements.moduleCapacityGb}GB` },
       requirements.generation ? { label: 'Memory generation', value: requirements.generation } : undefined,
       requirements.speedMt !== undefined && { label: 'Memory speed', value: `${requirements.speedMt}MT/s` },
+      requirements.formFactor ? { label: 'Physical form factor', value: requirements.formFactor } : undefined,
+      requirements.moduleType ? { label: 'Electrical module type', value: requirements.moduleType } : undefined,
+      requirements.ecc !== undefined && { label: 'ECC', value: requirements.ecc ? 'Yes' : 'No' },
     )
   } else if (requirements.type === 'storage') {
     const capacity = requirements.capacityTb !== undefined

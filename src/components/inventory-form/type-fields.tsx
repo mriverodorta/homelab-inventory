@@ -18,6 +18,7 @@ import {
   RAM_GENERATIONS,
   RAM_ECC_OPTIONS,
   RAM_FORM_FACTORS,
+  RAM_MODULE_TYPES,
   RAM_RANKS,
   RAM_SPEEDS,
   SERVER_FORM_FACTORS,
@@ -137,8 +138,10 @@ export function InventoryTypeFields({
         <SelectField label="Generation" name="generation" value={values.generation} placeholder="Select generation" options={RAM_GENERATIONS} onOpenChange={onSelectOpenChange} onValueChange={(generation) => onChange({ generation }, 'immediate')} />
         <SelectField label="Speed" name="speedMt" value={values.speedMt} placeholder="Select speed" options={RAM_SPEEDS} emptyLabel="Not specified" onOpenChange={onSelectOpenChange} onValueChange={(speedMt) => onChange({ speedMt }, 'immediate')} />
         <SelectField label="Form Factor" name="ramFormFactor" value={values.ramFormFactor} placeholder="Select form factor" options={RAM_FORM_FACTORS} emptyLabel="Not specified" onOpenChange={onSelectOpenChange} onValueChange={(ramFormFactor) => onChange({ ramFormFactor }, 'immediate')} />
+        <SelectField label="Module Type" name="ramModuleType" value={values.ramModuleType} placeholder="Select module type" options={RAM_MODULE_TYPES} emptyLabel="Not specified" onOpenChange={onSelectOpenChange} onValueChange={(ramModuleType) => onChange({ ramModuleType }, 'immediate')} />
         <SelectField label="ECC" name="ramEcc" value={values.ramEcc} placeholder="Select ECC" options={RAM_ECC_OPTIONS} emptyLabel="Not specified" onOpenChange={onSelectOpenChange} onValueChange={(ramEcc) => onChange({ ramEcc: ramEcc as InventoryFormValues['ramEcc'] }, 'immediate')} />
         <SelectField label="Rank" name="ramRank" value={values.ramRank} placeholder="Select rank" options={RAM_RANKS} emptyLabel="Not specified" onOpenChange={onSelectOpenChange} onValueChange={(ramRank) => onChange({ ramRank }, 'immediate')} />
+        <TextField label="Voltage (V)" name="ramVoltageVolts" value={values.ramVoltageVolts} placeholder="1.2" type="number" min={0} step="0.01" error={errors.ramVoltageVolts} onChange={(ramVoltageVolts) => onChange({ ramVoltageVolts })} />
       </div>
     )
   }

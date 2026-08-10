@@ -7,6 +7,7 @@ import {
   canonicalJson,
   digestCatalogTemplate,
   FINGERPRINT_VERSION,
+  RAM_FINGERPRINT_VERSION,
   sha256Hex,
 } from '../../packages/catalog-protocol/src/index.ts'
 import { createRegistryStore } from './model.mjs'
@@ -16,13 +17,15 @@ function base64UrlToBase64(value) {
   return `${value.replace(/-/g, '+').replace(/_/g, '/')}${'='.repeat((4 - value.length % 4) % 4)}`
 }
 
-async function fixture() {
+async function fixture({
+  item = { type: 'switch', name: 'Example Switch', manufacturer: 'Example', model: 'SW8' },
+  fingerprintVersion = FINGERPRINT_VERSION,
+} = {}) {
   const { privateKey, publicKey } = generateKeyPairSync('ed25519')
-  const item = { type: 'switch', name: 'Example Switch', manufacturer: 'Example', model: 'SW8' }
-  const { identityHash, contentHash } = await digestCatalogTemplate(item)
+  const { identityHash, contentHash } = await digestCatalogTemplate(item, { fingerprintVersion })
   const payload = {
     schemaVersion: 1,
-    fingerprintVersion: FINGERPRINT_VERSION,
+    fingerprintVersion,
     catalogRevision: 2,
     generatedAt: '2026-07-26T12:00:00.000Z',
     expiresAt: '2026-08-26T12:00:00.000Z',
@@ -30,7 +33,7 @@ async function fixture() {
     templates: [{
       templateKey: 'example-switch-01',
       revision: 1,
-      fingerprintVersion: FINGERPRINT_VERSION,
+      fingerprintVersion,
       identityHash,
       contentHash,
       item,
@@ -111,6 +114,35 @@ async function connectedArtifacts({ artifact, privateKey }) {
 }
 
 describe('catalog snapshot service', () => {
+  it('activates and searches a signed RAM v8 template without losing structured requirements', async () => {
+    const item = {
+      type: 'ram', name: 'Micron MTA18ASF2G72AZ-3G2R', manufacturer: 'Micron', number: 'MTA18ASF2G72AZ-3G2R',
+      specs: {
+        capacityGb: 16, generation: 'DDR4', speedMt: 3200, formFactor: 'DIMM', moduleType: 'RDIMM',
+        ecc: true, rank: 2, voltageVolts: 1.2,
+      },
+      compatibility: { requirements: { memory: {
+        capacityGb: 16, generation: 'DDR4', speedMt: 3200, formFactor: 'DIMM', moduleType: 'RDIMM',
+        ecc: true, rank: 2, voltageVolts: 1.2,
+      } } },
+    }
+    const { artifact, store, trustedKeys } = await fixture({ item, fingerprintVersion: RAM_FINGERPRINT_VERSION })
+    const service = new SnapshotService(store, { trustedKeys })
+
+    await service.activate(artifact, { mode: 'offline', now: new Date('2026-07-27T00:00:00.000Z') })
+
+    expect(store.getRegistryState().snapshot).toMatchObject({ revision: 2, templateCount: 1 })
+    const result = await service.search({ query: 'MTA18ASF2G72AZ-3G2R' })
+    expect(result.items[0]).toMatchObject({
+      fingerprintVersion: 8,
+      item: expect.objectContaining({
+        number: 'MTA18ASF2G72AZ-3G2R',
+        specs: expect.objectContaining({ moduleType: 'RDIMM', voltageVolts: 1.2 }),
+        compatibility: expect.objectContaining({ requirements: { memory: expect.objectContaining({ formFactor: 'DIMM', ecc: true }) } }),
+      }),
+    })
+  })
+
   it('activates only verified snapshots and rebuilds a missing cache', async () => {
     const { artifact, store, trustedKeys } = await fixture()
     const service = new SnapshotService(store, { trustedKeys })

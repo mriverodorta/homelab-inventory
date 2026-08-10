@@ -88,7 +88,7 @@ describe('hardware suggestions', () => {
       expect.objectContaining({ target: { itemType: 'ram', itemId: 2 }, detectedValue: 'Avant Technology', source: expect.objectContaining({ locator: 'DIMM1' }) }),
       expect.objectContaining({ target: { itemType: 'ram', itemId: 23 }, detectedValue: 'Avant Technology', source: expect.objectContaining({ locator: 'DIMM2' }) }),
     ])
-    expect(result.suggestions.filter(({ fieldPath }) => fieldPath === 'model')).toEqual([
+    expect(result.suggestions.filter(({ fieldPath }) => fieldPath === 'number')).toEqual([
       expect.objectContaining({ target: { itemType: 'ram', itemId: 2 }, detectedValue: 'J641GU49J2320NE' }),
       expect.objectContaining({ target: { itemType: 'ram', itemId: 23 }, detectedValue: 'J641GU49J2320NE' }),
     ])
@@ -109,7 +109,50 @@ describe('hardware suggestions', () => {
     })
 
     expect(result.suggestions.some(({ fieldPath }) => fieldPath === 'manufacturer')).toBe(false)
-    expect(result.suggestions).toContainEqual(expect.objectContaining({ fieldPath: 'model', detectedValue: 'KNOWN-PART' }))
+    expect(result.suggestions).toContainEqual(expect.objectContaining({ fieldPath: 'number', detectedValue: 'KNOWN-PART' }))
+  })
+
+  it('normalizes SMBIOS memory evidence into RAM v8 suggestions', () => {
+    const result = buildHardwareSuggestions({
+      snapshot: {
+        id: 11, host: { type: 'server', id: 1 }, collectedAt: '2026-08-10T00:00:00Z', receivedAt: '2026-08-10T00:00:00Z',
+        components: [{ kind: 'memory', locator: 'DIMM1', values: {
+          manufacturer: 'Micron', partNumber: 'MTA18ASF2G72AZ-3G2R', size: '16 GB', type: 'DDR4',
+          speed: '3200 MT/s', configuredMemorySpeed: '2933 MT/s', formFactor: 'DIMM',
+          typeDetail: 'Synchronous Registered (Buffered)', totalWidth: '72 bits', dataWidth: '64 bits',
+          rank: '2Rx8', configuredVoltage: '1.2 V',
+        } }],
+      },
+      inventory: { ram: [{ id: 1, name: 'RAM' }] },
+      project: { assignments: [{ id: 1, hostType: 'server', hostId: 1, itemType: 'ram', itemId: 1, allocation: { positions: [0] } }] },
+      now: Date.parse('2026-08-10T00:01:00Z'),
+    })
+
+    expect(result.suggestions).toEqual(expect.arrayContaining([
+      expect.objectContaining({ fieldPath: 'number', detectedValue: 'MTA18ASF2G72AZ-3G2R' }),
+      expect.objectContaining({ fieldPath: 'specs.capacityGb', detectedValue: 16 }),
+      expect.objectContaining({ fieldPath: 'specs.generation', detectedValue: 'DDR4' }),
+      expect.objectContaining({ fieldPath: 'specs.speedMt', detectedValue: 3200 }),
+      expect.objectContaining({ fieldPath: 'specs.formFactor', detectedValue: 'DIMM' }),
+      expect.objectContaining({ fieldPath: 'specs.moduleType', detectedValue: 'RDIMM' }),
+      expect.objectContaining({ fieldPath: 'specs.ecc', detectedValue: true }),
+      expect.objectContaining({ fieldPath: 'specs.rank', detectedValue: '2Rx8' }),
+      expect.objectContaining({ fieldPath: 'specs.voltageVolts', detectedValue: 1.2 }),
+    ]))
+  })
+
+  it('does not infer a rank organization from a numeric SMBIOS rank', () => {
+    const result = buildHardwareSuggestions({
+      snapshot: {
+        id: 12, host: { type: 'server', id: 1 }, collectedAt: '2026-08-10T00:00:00Z', receivedAt: '2026-08-10T00:00:00Z',
+        components: [{ kind: 'memory', locator: 'DIMM1', values: { manufacturer: 'Micron', partNumber: 'PART-1', rank: '2' } }],
+      },
+      inventory: { ram: [{ id: 1, name: 'RAM' }] },
+      project: { assignments: [{ id: 1, hostType: 'server', hostId: 1, itemType: 'ram', itemId: 1, allocation: { positions: [0] } }] },
+      now: Date.parse('2026-08-10T00:01:00Z'),
+    })
+
+    expect(result.suggestions.some(({ fieldPath }) => fieldPath === 'specs.rank')).toBe(false)
   })
 
   it('does not guess when detected and assigned component counts are ambiguous', () => {

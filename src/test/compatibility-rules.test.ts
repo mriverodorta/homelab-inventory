@@ -170,6 +170,36 @@ describe('compatibility rule evaluation', () => {
     )
   })
 
+  it('checks RAM physical fit and electrical type independently', () => {
+    const result = evaluate(
+      host({ host: { memory: {
+        generations: ['DDR4'],
+        formFactors: ['SO-DIMM'],
+        moduleTypes: ['UDIMM'],
+        slots: 2,
+        maxCapacityGb: 64,
+        maxModuleCapacityGb: 32,
+        maxSpeedMt: 3200,
+        eccSupport: 'unsupported',
+      } } }),
+      component('ram', { requirements: { memory: {
+        capacityGb: 16,
+        generation: 'DDR4',
+        speedMt: 3200,
+        formFactor: 'DIMM',
+        moduleType: 'RDIMM',
+        ecc: false,
+      } } }),
+    )
+
+    expect(result.status).toBe('incompatible')
+    expect(result.findings).toEqual(expect.arrayContaining([
+      expect.objectContaining({ code: 'memory.form-factor.mismatch', severity: 'error' }),
+      expect.objectContaining({ code: 'memory.module-type.mismatch', severity: 'error' }),
+      expect.objectContaining({ code: 'memory.registered-ecc.required', severity: 'error' }),
+    ]))
+  })
+
   it('treats malformed host memory numeric facts as missing instead of coercing them', () => {
     const result = evaluate(
       host({

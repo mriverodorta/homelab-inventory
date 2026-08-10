@@ -128,8 +128,10 @@ export type InventoryFormValues = {
   secondarySpeedMt: string
   moduleCount: string
   ramFormFactor: string
+  ramModuleType: string
   ramEcc: '' | 'yes' | 'no'
   ramRank: string
+  ramVoltageVolts: string
   capacity: string
   storageUnit: 'GB' | 'TB'
   interface: string
@@ -187,6 +189,7 @@ export type InventoryFormValues = {
   hostMemoryMaxSpeedMt: string
   hostMemoryEccSupport: '' | 'supported' | 'unsupported' | 'conditional' | 'unknown'
   hostMemorySlotsPerCpu: string
+  hostMemoryFormFactors: string[]
   hostMemoryModuleTypes: string[]
   storageSlotGroups: StorageSlotGroupDraft[]
   expansionSlotGroups: ExpansionSlotGroupDraft[]
@@ -234,7 +237,7 @@ const KNOWN_SPEC_KEYS: Partial<Record<InventoryType, string[]>> = {
   server: ['formFactor', 'networkSlot', 'wireless'],
   nas: ['driveBays', 'm2Slots', 'powerConfiguration'],
   cpu: ['cores', 'threads', 'baseClockGhz', 'boostClockGhz'],
-  ram: ['capacityGb', 'generation', 'speedMt', 'formFactor', 'ecc', 'rank'],
+  ram: ['capacityGb', 'generation', 'speedMt', 'formFactor', 'moduleType', 'ecc', 'rank', 'voltageVolts'],
   storage: ['capacityGb', 'capacityTb', 'interface', 'formFactor', 'serialNumber', 'partitionTable'],
   gpu: ['vramGb', 'formFactor', 'slotWidth', 'pcie'],
   network: ['ports', 'speedMbps', 'interface', 'formFactor'],
@@ -480,8 +483,10 @@ export function createInventoryFormValues(type: InventoryType): InventoryFormVal
     secondarySpeedMt: '',
     moduleCount: '',
     ramFormFactor: '',
+    ramModuleType: '',
     ramEcc: '',
     ramRank: '',
+    ramVoltageVolts: '',
     capacity: '',
     storageUnit: 'TB',
     interface: '',
@@ -539,6 +544,7 @@ export function createInventoryFormValues(type: InventoryType): InventoryFormVal
     hostMemoryMaxSpeedMt: '',
     hostMemoryEccSupport: '',
     hostMemorySlotsPerCpu: '',
+    hostMemoryFormFactors: [],
     hostMemoryModuleTypes: [],
     storageSlotGroups: [],
     expansionSlotGroups: [],
@@ -623,8 +629,10 @@ export function inventoryItemToFormValues(item: InventoryItem): InventoryFormVal
     secondarySpeedMt: stringValue(specs.secondarySpeedMt),
     moduleCount: stringValue(specs.moduleCount),
     ramFormFactor: item.type === 'ram' ? stringValue(specs.formFactor) : '',
+    ramModuleType: item.type === 'ram' ? stringValue(specs.moduleType) : '',
     ramEcc: item.type === 'ram' && typeof specs.ecc === 'boolean' ? (specs.ecc ? 'yes' : 'no') : '',
     ramRank: item.type === 'ram' ? stringValue(specs.rank) : '',
+    ramVoltageVolts: item.type === 'ram' ? stringValue(specs.voltageVolts) : '',
     capacity: stringValue(hasCapacityTb ? specs.capacityTb : specs.capacityGb),
     storageUnit: hasCapacityTb ? 'TB' : 'GB',
     interface: stringValue(specs.interface),
@@ -684,6 +692,7 @@ export function inventoryItemToFormValues(item: InventoryItem): InventoryFormVal
     hostMemoryMaxSpeedMt: stringValue(item.compatibility?.host?.memory?.maxSpeedMt),
     hostMemoryEccSupport: item.compatibility?.host?.memory?.eccSupport ?? '',
     hostMemorySlotsPerCpu: stringValue(item.compatibility?.host?.memory?.slotsPerCpu),
+    hostMemoryFormFactors: stringArray(item.compatibility?.host?.memory?.formFactors),
     hostMemoryModuleTypes: stringArray(item.compatibility?.host?.memory?.moduleTypes),
     storageSlotGroups: item.compatibility?.host?.storageSlots?.map((group) => ({
       draftKey: `storage:${group.id}`,
@@ -884,8 +893,10 @@ export function inventoryFormValuesToInput(values: InventoryFormValues): Invento
     setSpec(specs, 'generation', cleanString(values.generation))
     setSpec(specs, 'speedMt', numberValue(values.speedMt))
     setSpec(specs, 'formFactor', cleanString(values.ramFormFactor))
+    setSpec(specs, 'moduleType', cleanString(values.ramModuleType))
     setSpec(specs, 'ecc', values.ramEcc === '' ? undefined : values.ramEcc === 'yes')
     setSpec(specs, 'rank', cleanString(values.ramRank))
+    setSpec(specs, 'voltageVolts', numberValue(values.ramVoltageVolts))
     delete specs.secondarySpeedMt
     delete specs.moduleCount
     delete specs.module
@@ -1107,6 +1118,7 @@ function buildCompatibility(values: InventoryFormValues): InventoryCompatibility
     setOptional(memoryRecord, 'maxSpeedMt', numberValue(values.hostMemoryMaxSpeedMt))
     setOptional(memoryRecord, 'eccSupport', cleanString(values.hostMemoryEccSupport))
     setOptional(memoryRecord, 'slotsPerCpu', numberValue(values.hostMemorySlotsPerCpu))
+    setOptional(memoryRecord, 'formFactors', values.hostMemoryFormFactors)
     setOptional(memoryRecord, 'moduleTypes', values.hostMemoryModuleTypes)
     if (Object.keys(memoryRecord).length) host.memory = memory
     else delete host.memory
@@ -1303,6 +1315,22 @@ function buildCompatibility(values: InventoryFormValues): InventoryCompatibility
     removeEmptyObject(requirementsRecord, 'cpu')
     if (Object.keys(requirementsRecord).length) compatibility.requirements = requirements
     else delete compatibility.requirements
+  } else if (values.type === 'ram') {
+    const requirements = compatibility.requirements ? structuredClone(compatibility.requirements) : {}
+    const requirementsRecord = asMutableRecord(requirements)
+    const memory = requirements.memory ? { ...requirements.memory } : {}
+    const memoryRecord = asMutableRecord(memory)
+    setOptional(memoryRecord, 'capacityGb', numberValue(values.capacityGb))
+    setOptional(memoryRecord, 'generation', cleanString(values.generation))
+    setOptional(memoryRecord, 'speedMt', numberValue(values.speedMt))
+    setOptional(memoryRecord, 'formFactor', cleanString(values.ramFormFactor))
+    setOptional(memoryRecord, 'moduleType', cleanString(values.ramModuleType))
+    setOptional(memoryRecord, 'ecc', values.ramEcc === '' ? undefined : values.ramEcc === 'yes')
+    if (Object.keys(memoryRecord).length) requirements.memory = memory
+    else delete requirements.memory
+    removeEmptyObject(requirementsRecord, 'memory')
+    if (Object.keys(requirementsRecord).length) compatibility.requirements = requirements
+    else delete compatibility.requirements
   } else if (values.type === 'gpu' || values.type === 'network') {
     const requirements = compatibility.requirements ? structuredClone(compatibility.requirements) : {}
     const requirementsRecord = asMutableRecord(requirements)
@@ -1406,7 +1434,7 @@ export function validateInventoryFormValues(values: InventoryFormValues): Invent
     'hostCpuSocketCount', 'hostMemorySlotsPerCpu', 'hostPowerPsuBayCount',
   ]
   const nonNegativeFields: Array<keyof InventoryFormValues> = [
-    'baseClockGhz', 'boostClockGhz', 'driveBays', 'm2Slots', 'speedMt',
+    'baseClockGhz', 'boostClockGhz', 'driveBays', 'm2Slots', 'speedMt', 'ramVoltageVolts',
     'capacity', 'vramGb', 'switchingCapacityGbps', 'rackUnits',
     'hostCpuMaxTdpWatts', 'hostMemoryMaxCapacityGb', 'hostMemoryMaxModuleCapacityGb',
     'hostMemoryMaxSpeedMt', 'hostMaxExpansionPowerWatts', 'cpuTdpWatts',
@@ -1418,6 +1446,14 @@ export function validateInventoryFormValues(values: InventoryFormValues): Invent
   ]
   for (const key of positiveFields) validateNumber(errors, values, key, 1)
   for (const key of nonNegativeFields) validateNumber(errors, values, key)
+
+  if (
+    values.type === 'ram'
+    && (values.ramModuleType === 'RDIMM' || values.ramModuleType === 'LRDIMM')
+    && values.ramEcc === 'no'
+  ) {
+    errors.ramEcc = `${values.ramModuleType} modules must use ECC.`
+  }
 
   if (values.hostCpuPopulationModes.some((value) => (
     !Number.isSafeInteger(Number(value)) || Number(value) < 1

@@ -102,15 +102,21 @@ const RELEASE_0_3_0_DETAILS: UnreleasedReleaseNotes = {
 
 export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
   highlights: [
+    'Catalog contract v8 imports and preserves exact physical RAM sticks with manufacturer part-number identity, complete reusable specifications, and structured memory requirements.',
+    'RAM forms and inspectors now separate DIMM or SO-DIMM physical fit from UDIMM, RDIMM, or LRDIMM electrical type and validate ECC requirements independently.',
     'Opt-in agent notifications now support reusable Ntfy and generic webhook destinations, persisted incidents, quiet hours, per-host policies, selected service/container/storage monitoring, and a toolbar Notification Center.',
     'Notification rules can configure severity, debounce, per-resource and per-destination cooldowns, optional reminders, and bounded delivery retries without coupling incident detection to a specific provider.',
     'Embedded Agent 0.3.0 applies revisioned monitoring policies from outbound heartbeat responses and acknowledges the active revision on a later heartbeat.',
   ],
   fixes: [
+    'Agent hardware suggestions now map DIMM part numbers to the exact number field and expose independently reviewable capacity, DDR generation, MT/s speed, form factor, module type, ECC, rank, and voltage values.',
+    'Generic RAM without a reliable manufacturer part number stays local, while identical eligible sticks deduplicate into one sanitized registry candidate without losing their physical source references.',
     'Host outages now inhibit child-resource alerts and reminders, inhibited alerts resume after recovery, and recovery is sent only to destinations that received the opening alert.',
     'Persisted sequence cursors reject replayed or stale buffered evidence across restarts while tolerating stable agent clock offsets, preventing duplicate incidents and false host recovery during reconnects.',
   ],
   notes: [
+    'Schema 29 creates a verified backup, migrates RAM speed to speedMt, canonicalizes SO-DIMM spelling, and separates legacy host form factors from electrical module types while preserving numeric IDs and project topology.',
+    'The application now reports catalog contract 8; signed catalogs requiring a newer contract remain blocked.',
     'Notifications are disabled by default. Contact credentials and generic webhook destination URLs are encrypted with a local mode-0600 key, included only in encrypted dependency-complete backups, and unavailable in public demo sessions.',
     'Schema 28 adds notification permissions to existing built-in roles without changing custom roles, inventory, topology, cables, agent identity, or telemetry.',
   ],

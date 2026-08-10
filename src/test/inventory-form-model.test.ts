@@ -42,6 +42,13 @@ function motherboardV7FixtureItems(): CatalogTemplateItem[] {
   return fixture.cases.map(({ item }) => item)
 }
 
+function ramV8FixtureItem(): CatalogTemplateItem {
+  const fixture = JSON.parse(fs.readFileSync(path.resolve(
+    'packages/catalog-protocol/test/fixtures/ram/server-specs-inventory-ram-v8.json',
+  ), 'utf8')) as { item: CatalogTemplateItem }
+  return fixture.item
+}
+
 function fixtureFor(type: InventoryType): InventoryItem {
   const common = {
     id: 42,
@@ -388,6 +395,24 @@ describe('inventory form model', () => {
       capacityGb: 32,
       generation: 'DDR4',
     })
+  })
+
+  it('round-trips the frozen RAM v8 definition through the shared form model', () => {
+    const fixture = ramV8FixtureItem()
+    const values = inventoryItemToFormValues({ id: 9, ...fixture } as InventoryItem)
+    const rebuilt = inventoryFormValuesToInput(values)
+
+    expect(rebuilt).toMatchObject({
+      type: 'ram',
+      name: fixture.name,
+      manufacturer: fixture.manufacturer,
+      number: fixture.number,
+      specs: fixture.specs,
+      compatibility: fixture.compatibility,
+    })
+    expect(values.ramFormFactor).toBe('SO-DIMM')
+    expect(values.ramModuleType).toBe('UDIMM')
+    expect(values.ramVoltageVolts).toBe('1.2')
   })
 
   it('preserves unknown compatibility fields while editing known values', () => {

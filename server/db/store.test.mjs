@@ -331,6 +331,97 @@ afterEach(async () => {
 })
 
 describe('HomelabInventoryStore', () => {
+  it('automatically migrates schema 28 RAM data with a verified backup and stable topology', async () => {
+    const dataDir = await makeTempDir()
+    const options = {
+      appVersion: '0.10.0',
+      dataDir,
+      legacyProjectPath: path.join(dataDir, 'legacy.json'),
+      saveDebounceMs: 1,
+      seedEmptyData: false,
+      seedDir: path.join(dataDir, 'missing-seed'),
+    }
+    const initial = createStore(options)
+    await initial.init()
+    await initial.flush()
+
+    const inventory = structuredClone(initial.databases.inventory.data)
+    inventory.servers.push({
+      id: 1, name: 'Host', hardwareClass: 'desktop', usageRole: 'server',
+      compatibility: { host: { memory: {
+        slots: 2,
+        generations: ['DDR4'],
+        moduleTypes: ['SODIMM', 'UDIMM'],
+        maxCapacityGb: 64,
+        maxModuleCapacityGb: 32,
+        maxSpeedMt: 3200,
+        eccSupport: 'unsupported',
+      } } },
+    })
+    inventory.ram.push({ id: 1, name: 'Stick', specs: {
+      capacityGb: 16, generation: 'DDR4', speed: 3200, formFactor: 'SODIMM', moduleType: 'UDIMM', ecc: false,
+    } })
+    const project = structuredClone(initial.databases.project.data)
+    project.placements.push({ itemType: 'server', itemId: 1, x: 24, y: 48 })
+    project.assignments.push({
+      id: 1, hostType: 'server', hostId: 1, itemType: 'ram', itemId: 1, type: 'ram',
+      assignedAt: '2026-08-10T00:00:00.000Z', allocation: { resourceType: 'memory', positions: [0] },
+    })
+    const topology = structuredClone(project)
+    await writeJson(path.join(dataDir, 'meta.json'), {
+      ...initial.databases.meta.data,
+      schemaVersion: 28,
+    })
+    await writeJson(path.join(dataDir, 'stores', 'inventory.json'), inventory)
+    await writeJson(path.join(dataDir, 'stores', 'project.json'), project)
+
+    const restarted = createStore(options)
+    await restarted.init()
+    await restarted.flush()
+
+    expect(restarted.databases.meta.data).toMatchObject({
+      schemaVersion: CURRENT_SCHEMA_VERSION,
+      lastMigration: {
+        from: 28,
+        to: 29,
+        summary: expect.objectContaining({ preservedAssignments: 1, preservedPlacements: 1 }),
+      },
+    })
+    expect(restarted.databases.inventory.data.ram[0].specs).toEqual({
+      capacityGb: 16, generation: 'DDR4', speedMt: 3200, formFactor: 'SO-DIMM', moduleType: 'UDIMM', ecc: false,
+    })
+    expect(restarted.databases.inventory.data.servers[0].compatibility.host.memory).toEqual({
+      slots: 2,
+      generations: ['DDR4'],
+      formFactors: ['SO-DIMM'],
+      moduleTypes: ['UDIMM'],
+      maxCapacityGb: 64,
+      maxModuleCapacityGb: 32,
+      maxSpeedMt: 3200,
+      eccSupport: 'unsupported',
+    })
+    expect(restarted.databases.project.data).toEqual(topology)
+    const backupId = restarted.databases.meta.data.lastMigration.backupId
+    expect(JSON.parse(await fs.readFile(
+      path.join(dataDir, 'backups', backupId, 'stores', 'inventory.json'),
+      'utf8',
+    ))).toEqual(inventory)
+
+    const migrationMetadata = {
+      backupId: restarted.databases.meta.data.lastMigration.backupId,
+      completedAt: restarted.databases.meta.data.lastMigration.completedAt,
+    }
+    const secondRestart = createStore(options)
+    await secondRestart.init()
+    expect(secondRestart.databases.meta.data.lastMigration).toMatchObject({
+      from: 28,
+      to: 29,
+      ...migrationMetadata,
+      summary: expect.objectContaining({ migratedSpeeds: 1, preservedAssignments: 1 }),
+    })
+    expect(secondRestart.databases.inventory.data).toEqual(restarted.databases.inventory.data)
+  })
+
   it('rolls an interrupted multi-store transaction forward before opening stores', async () => {
     const dataDir = await makeTempDir()
     const options = {

@@ -78,6 +78,7 @@ export const PORT_ROLES: InventoryPortRole[] = [
 export const PORT_SPEEDS = ['', ...SWITCH_NETWORK_PORT_SPEEDS]
 export const RAM_SPEEDS = ['', '1600', '1866', '2133', '2400', '2666', '2933', '3200', '3600', '4800', '5600']
 export const RAM_FORM_FACTORS = ['SO-DIMM', 'DIMM', 'LP-DIMM', 'Onboard']
+export const RAM_MODULE_TYPES = ['UDIMM', 'RDIMM', 'LRDIMM']
 export const RAM_ECC_OPTIONS = [
   { value: 'no', label: 'Non-ECC' },
   { value: 'yes', label: 'ECC' },
@@ -150,7 +151,8 @@ export const CARD_HEIGHTS = ['full-height', 'low-profile']
 export const SLOT_WIDTHS = ['1', '2', '3', '4']
 export const TOPOLOGY_COMPLETENESS_OPTIONS = ['complete', 'partial', 'conflicting']
 export const ECC_SUPPORT_OPTIONS = ['supported', 'unsupported', 'conditional', 'unknown']
-export const MEMORY_MODULE_TYPES = ['SODIMM', 'UDIMM', 'RDIMM', 'LRDIMM']
+export const MEMORY_FORM_FACTORS = ['DIMM', 'SO-DIMM']
+export const MEMORY_MODULE_TYPES = ['UDIMM', 'RDIMM', 'LRDIMM']
 export const POWER_REDUNDANCY_OPTIONS = ['none', 'optional', 'required']
 export const PSU_TYPE_OPTIONS = ['fixed', 'cabled', 'hot-plug']
 export const OPTIONAL_MODULE_KINDS = [

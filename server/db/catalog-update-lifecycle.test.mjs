@@ -68,6 +68,48 @@ afterEach(async () => {
 })
 
 describe('catalog update lifecycle', () => {
+  it('imports each v8 RAM quantity as an independent linked physical stick and survives restart', async () => {
+    const store = await createStore()
+    const fixture = JSON.parse(await fs.readFile(path.resolve(
+      'packages/catalog-protocol/test/fixtures/ram/server-specs-inventory-ram-v8.json',
+    ), 'utf8'))
+    activateCatalog(store)
+
+    store.createCatalogInventoryItems({
+      templateKey: fixture.templateKey,
+      revision: 1,
+      fingerprintVersion: fixture.fingerprintVersion,
+      identityHash: fixture.identityHash,
+      contentHash: fixture.contentHash,
+      item: fixture.item,
+    }, 2)
+    await store.flush()
+    const { type: _type, ...storedItem } = fixture.item
+
+    expect(store.databases.inventory.data.ram).toEqual([
+      expect.objectContaining({ id: 1, ...storedItem }),
+      expect.objectContaining({ id: 2, ...storedItem }),
+    ])
+    expect(store.getRegistryState().links).toEqual([
+      expect.objectContaining({ id: 1, itemType: 'ram', itemId: 1, importedFingerprintVersion: 8, state: 'linked' }),
+      expect.objectContaining({ id: 2, itemType: 'ram', itemId: 2, importedFingerprintVersion: 8, state: 'linked' }),
+    ])
+
+    const restarted = new HomelabInventoryStore({
+      appVersion: '1.0.0',
+      dataDir: store.dataDir,
+      legacyProjectPath: path.join(store.dataDir, 'legacy.json'),
+      saveDebounceMs: 1,
+      seedEmptyData: false,
+      seedDir: path.join(store.dataDir, 'missing-seed'),
+    })
+    await restarted.init()
+    stores.push(restarted)
+
+    expect(restarted.databases.inventory.data.ram).toEqual(store.databases.inventory.data.ram)
+    expect(restarted.getRegistryState().links).toEqual(store.getRegistryState().links)
+  })
+
   it('imports and restarts every frozen v7 motherboard without changing its catalog identity', async () => {
     const store = await createStore()
     const fixture = JSON.parse(await fs.readFile(path.resolve(
@@ -110,13 +152,20 @@ describe('catalog update lifecycle', () => {
     stores.push(restarted)
 
     expect(restarted.databases.meta.data).toMatchObject({
-      schemaVersion: 28,
+      schemaVersion: 29,
       lastMigration: {
-        from: 27,
-        to: 28,
+        from: 28,
+        to: 29,
         summary: {
-          createdNotificationPermissionRelationships: 0,
-          preservedCustomRoles: 0,
+          migratedSpeeds: 0,
+          normalizedRamFormFactors: 0,
+          migratedHostMemoryDefinitions: 0,
+          preservedRamRecords: 0,
+          preservedAssignments: 0,
+          preservedPlacements: 0,
+          preservedConnections: 0,
+          preservedRegistryLinks: fixture.cases.length,
+          preservedRoutingEntries: 0,
         },
       },
     })
@@ -124,7 +173,7 @@ describe('catalog update lifecycle', () => {
       expect(await fs.readFile(restarted.paths[name], 'utf8')).toBe(contents)
     }
     const backupEntries = await fs.readdir(restarted.backupDir)
-    expect(backupEntries.filter((entry) => entry.endsWith('-schema-26-to-28'))).toHaveLength(1)
+    expect(backupEntries.filter((entry) => entry.endsWith('-schema-26-to-29'))).toHaveLength(1)
     expect(restarted.databases.inventory.data.motherboards).toHaveLength(fixture.cases.length)
     expect(restarted.getRegistryState().links).toHaveLength(fixture.cases.length)
     for (const [index, fixtureCase] of fixture.cases.entries()) {
@@ -159,7 +208,7 @@ describe('catalog update lifecycle', () => {
     await secondRestart.init()
     stores.push(secondRestart)
     expect((await fs.readdir(secondRestart.backupDir))
-      .filter((entry) => entry.endsWith('-schema-26-to-28'))).toHaveLength(1)
+      .filter((entry) => entry.endsWith('-schema-26-to-29'))).toHaveLength(1)
   })
 
   it('imports physical desktop templates as locally role-aware equipment and preserves that role on update', async () => {

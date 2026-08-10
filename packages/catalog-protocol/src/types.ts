@@ -5,6 +5,7 @@ export const OEM_FINGERPRINT_VERSION = 4
 export const WORKSTATION_FINGERPRINT_VERSION = 5
 export const SERVER_FINGERPRINT_VERSION = 6
 export const MOTHERBOARD_FINGERPRINT_VERSION = 7
+export const RAM_FINGERPRINT_VERSION = 8
 export const SUPPORTED_FINGERPRINT_VERSIONS = [
   LEGACY_FINGERPRINT_VERSION,
   FINGERPRINT_VERSION,
@@ -12,6 +13,7 @@ export const SUPPORTED_FINGERPRINT_VERSIONS = [
   WORKSTATION_FINGERPRINT_VERSION,
   SERVER_FINGERPRINT_VERSION,
   MOTHERBOARD_FINGERPRINT_VERSION,
+  RAM_FINGERPRINT_VERSION,
 ] as const
 export const MANUFACTURER_ALIAS_VERSION = 1
 
@@ -199,16 +201,16 @@ export type CatalogFacetTermValue = {
 }
 
 export type CatalogTermFacet = {
+  kind: 'terms'
   key: string
   label: string
-  kind: 'terms'
   values: CatalogFacetTermValue[]
 }
 
 export type CatalogRangeFacet = {
+  kind: 'range'
   key: string
   label: string
-  kind: 'range'
   minimum: number
   maximum: number
   step: number
@@ -216,6 +218,7 @@ export type CatalogRangeFacet = {
 }
 
 export type CatalogFacetDefinition = CatalogTermFacet | CatalogRangeFacet
+export type CatalogFacet = CatalogFacetDefinition
 
 export type CatalogFacetCategory = {
   type: string

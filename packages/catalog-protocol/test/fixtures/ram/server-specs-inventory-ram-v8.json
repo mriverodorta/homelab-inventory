@@ -1,0 +1,37 @@
+{
+  "schemaVersion": 1,
+  "requiredApplicationCatalogContractVersion": 8,
+  "fingerprintVersion": 8,
+  "templateKey": "ram-samsung-m471a2k43db1-cwe",
+  "identityHash": "82671223adf59660898f7b72eca2545bf594f0e12a6aca796043791dc0b6e947",
+  "contentHash": "5ccbe806d1d1ff63106dd1123079cc026a64661e06961ddbf888b3d7f631d7d3",
+  "item": {
+    "type": "ram",
+    "name": "Samsung M471A2K43DB1-CWE",
+    "manufacturer": "Samsung",
+    "family": "Samsung DDR4",
+    "number": "M471A2K43DB1-CWE",
+    "specs": {
+      "capacityGb": 16,
+      "generation": "DDR4",
+      "speedMt": 3200,
+      "formFactor": "SO-DIMM",
+      "moduleType": "UDIMM",
+      "ecc": false,
+      "rank": "2Rx8",
+      "voltageVolts": 1.2
+    },
+    "compatibility": {
+      "requirements": {
+        "memory": {
+          "capacityGb": 16,
+          "generation": "DDR4",
+          "speedMt": 3200,
+          "formFactor": "SO-DIMM",
+          "moduleType": "UDIMM",
+          "ecc": false
+        }
+      }
+    }
+  }
+}

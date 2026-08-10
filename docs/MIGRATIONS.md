@@ -11,6 +11,14 @@ Homelab Inventory upgrades its lowdb JSON stores automatically when the applicat
 
 The application creates its own timestamped backup under `/data/backups` before changing any store. That internal backup is a recovery aid, not a replacement for an external filesystem snapshot or NAS backup.
 
+## Schema 29: RAM Catalog Contract v8
+
+Schema 29 prepares existing inventories for exact physical RAM registry records. It renames a numeric legacy RAM `specs.speed` value to `specs.speedMt`, canonicalizes `SODIMM` as `SO-DIMM`, and separates host memory support into physical `formFactors` and electrical `moduleTypes`.
+
+Legacy host values `DIMM`, `SODIMM`, and `SO-DIMM` move to `formFactors`. Existing `UDIMM`, `RDIMM`, and `LRDIMM` values remain in `moduleTypes`. Missing electrical types remain unknown; the migration does not guess them. Ambiguous values or conflicting `speed` and `speedMt` values stop startup and restore the verified pre-migration backup.
+
+The migration preserves each physical RAM record, positive numeric ID, assignment, memory position, canvas placement, cable, registry link, and cached cable route. A second startup is idempotent and does not run the migration again. Generic RAM without a verified manufacturer part number remains valid local inventory and is not automatically contributed or linked.
+
 ## Schema 28: Notification Permissions
 
 Schema 28 adds the static `notifications.view` and `notifications.manage` permissions and grants them to the appropriate existing built-in roles. Custom roles and their permission relationships are preserved unchanged so an administrator can opt them into notification access deliberately after the upgrade.

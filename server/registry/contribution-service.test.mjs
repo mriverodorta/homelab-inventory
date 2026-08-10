@@ -417,4 +417,57 @@ describe('contribution discovery', () => {
     expect(await discoverContributionCandidates(store)).toMatchObject({ queued: 0 })
     expect(store.getRegistryState().contributionOutbox).toEqual([])
   })
+
+  it('deduplicates exact physical RAM sticks with the v8 fingerprint', async () => {
+    const sticks = [1, 2].map((id) => ({
+      id,
+      type: 'ram',
+      name: `Local DIMM ${String(id)}`,
+      manufacturer: 'Micron',
+      number: 'MTA18ASF2G72AZ-3G2R',
+      specs: {
+        capacityGb: 16,
+        generation: 'DDR4',
+        speedMt: 3200,
+        formFactor: 'DIMM',
+        moduleType: 'RDIMM',
+        ecc: true,
+        rank: 2,
+        voltageVolts: 1.2,
+      },
+      compatibility: { requirements: { memory: {
+        capacityGb: 16,
+        generation: 'DDR4',
+        speedMt: 3200,
+        formFactor: 'DIMM',
+        moduleType: 'RDIMM',
+        ecc: true,
+        rank: 2,
+        voltageVolts: 1.2,
+      } } },
+    }))
+    const store = fixture(sticks)
+
+    expect(await discoverContributionCandidates(store)).toMatchObject({ queued: 1 })
+    expect(store.getRegistryState().contributionOutbox).toEqual([
+      expect.objectContaining({
+        fingerprintVersion: 8,
+        sources: [{ itemType: 'ram', itemId: 1 }, { itemType: 'ram', itemId: 2 }],
+        payload: expect.objectContaining({ number: 'MTA18ASF2G72AZ-3G2R' }),
+      }),
+    ])
+  })
+
+  it('keeps generic RAM without an exact part number local', async () => {
+    const store = fixture({
+      id: 1,
+      type: 'ram',
+      name: 'Generic 16 GB DDR4 stick',
+      manufacturer: 'Micron',
+      specs: { capacityGb: 16, generation: 'DDR4', speedMt: 3200, formFactor: 'DIMM' },
+    })
+
+    expect(await discoverContributionCandidates(store)).toMatchObject({ queued: 0, skipped: 1 })
+    expect(store.getRegistryState().contributionOutbox).toEqual([])
+  })
 })

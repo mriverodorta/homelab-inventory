@@ -1623,6 +1623,17 @@ describe('InspectorPanel', () => {
         formFactor: 'SO-DIMM',
         ecc: false,
       },
+      compatibility: {
+        requirements: {
+          memory: {
+            capacityGb: 32,
+            generation: 'DDR4',
+            speedMt: 3200,
+            formFactor: 'SO-DIMM',
+            ecc: false,
+          },
+        },
+      },
     })
   })
 

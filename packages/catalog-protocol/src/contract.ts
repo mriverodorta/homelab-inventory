@@ -4,6 +4,7 @@ import {
   LEGACY_FINGERPRINT_VERSION,
   MOTHERBOARD_FINGERPRINT_VERSION,
   OEM_FINGERPRINT_VERSION,
+  RAM_FINGERPRINT_VERSION,
   SERVER_FINGERPRINT_VERSION,
   WORKSTATION_FINGERPRINT_VERSION,
 } from './types'
@@ -370,10 +371,45 @@ const FINGERPRINT_V7_MOTHERBOARD_VECTOR = {
   contentHash: '24299013e029df7b32b268f8d7233c1b6bc15bb69a9e4af44ccd5ae6aaf2a3d2',
 } as const
 
+const FINGERPRINT_V8_RAM_VECTOR = {
+  item: {
+    type: 'ram',
+    name: 'Samsung M471A2K43DB1-CWE',
+    manufacturer: 'Samsung',
+    family: 'Samsung DDR4',
+    number: 'M471A2K43DB1-CWE',
+    specs: {
+      capacityGb: 16,
+      generation: 'DDR4',
+      speedMt: 3200,
+      formFactor: 'SO-DIMM',
+      moduleType: 'UDIMM',
+      ecc: false,
+      rank: '2Rx8',
+      voltageVolts: 1.2,
+    },
+    compatibility: {
+      requirements: {
+        memory: {
+          capacityGb: 16,
+          generation: 'DDR4',
+          speedMt: 3200,
+          formFactor: 'SO-DIMM',
+          moduleType: 'UDIMM',
+          ecc: false,
+        },
+      },
+    },
+  },
+  identityHash: '82671223adf59660898f7b72eca2545bf594f0e12a6aca796043791dc0b6e947',
+  contentHash: '5ccbe806d1d1ff63106dd1123079cc026a64661e06961ddbf888b3d7f631d7d3',
+} as const
+
 export async function assertCatalogProtocolContract(): Promise<void> {
   if (FINGERPRINT_VERSION !== 3 || LEGACY_FINGERPRINT_VERSION !== 2
     || OEM_FINGERPRINT_VERSION !== 4 || WORKSTATION_FINGERPRINT_VERSION !== 5
-    || SERVER_FINGERPRINT_VERSION !== 6 || MOTHERBOARD_FINGERPRINT_VERSION !== 7) {
+    || SERVER_FINGERPRINT_VERSION !== 6 || MOTHERBOARD_FINGERPRINT_VERSION !== 7
+    || RAM_FINGERPRINT_VERSION !== 8) {
     throw new Error(`Catalog fingerprint version ${FINGERPRINT_VERSION} has no publication contract.`)
   }
 
@@ -435,5 +471,15 @@ export async function assertCatalogProtocolContract(): Promise<void> {
     || motherboardProjection.contentHash !== FINGERPRINT_V7_MOTHERBOARD_VECTOR.contentHash
   ) {
     throw new Error('Catalog fingerprint-v7 motherboard contract changed unexpectedly.')
+  }
+
+  const ramProjection = await digestCatalogTemplate(FINGERPRINT_V8_RAM_VECTOR.item, {
+    fingerprintVersion: RAM_FINGERPRINT_VERSION,
+  })
+  if (
+    ramProjection.identityHash !== FINGERPRINT_V8_RAM_VECTOR.identityHash
+    || ramProjection.contentHash !== FINGERPRINT_V8_RAM_VECTOR.contentHash
+  ) {
+    throw new Error('Catalog fingerprint-v8 RAM contract changed unexpectedly.')
   }
 }
