@@ -1,0 +1,34 @@
+name: Docker Hub Description
+
+on:
+  push:
+    branches:
+      - main
+      - stable
+    paths:
+      - DOCKERHUB.md
+      - .github/workflows/dockerhub-description.yml
+  workflow_dispatch:
+
+concurrency:
+  group: homelab-inventory-dockerhub-description
+  cancel-in-progress: false
+
+jobs:
+  publish-description:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Publish Docker Hub overview
+        uses: peter-evans/dockerhub-description@432a30c9e07499fd01da9f8a49f0faf9e0ca5b77 # v4
+        with:
+          username: mriverodorta
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+          repository: mriverodorta/homelab-inventory
+          readme-filepath: DOCKERHUB.md
