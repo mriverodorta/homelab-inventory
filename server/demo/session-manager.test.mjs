@@ -229,7 +229,14 @@ describe('demo data sanitizer', () => {
       devices: { secret: { tokenHash: 'hash' } },
     })
     await writeJson(path.join(sourceDir, 'stores', 'agent-status.json'), {
-      servers: { 1: { hostname: 'skywatch' } },
+      hosts: {
+        'server:1': {
+          hostType: 'server',
+          hostId: 1,
+          hostname: 'skywatch',
+          lastSeenAt: '2026-07-09T00:00:00.000Z',
+        },
+      },
     })
     await writeJson(path.join(sourceDir, 'backups', 'backup.json'), { private: true })
 
@@ -284,7 +291,7 @@ describe('demo data sanitizer', () => {
     expect(meta.skippedUpdateVersion).toBeNull()
     expect(meta.lastUpdateCheck).toBeNull()
     expect(agents).toEqual({ enrollments: {}, devices: {}, hardwareSnapshots: {}, hardwareEvents: {} })
-    expect(agentStatus).toEqual({ servers: {} })
+    expect(agentStatus).toEqual({ hosts: {} })
     await expect(fs.access(path.join(targetDir, 'backups'))).rejects.toThrow()
   })
 

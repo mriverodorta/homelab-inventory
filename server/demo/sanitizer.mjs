@@ -258,5 +258,5 @@ export async function sanitizeDemoStores({ sourceDir, targetDir, appVersion }) {
   await writeJson(path.join(targetDir, 'stores', 'agents.json'), {
     enrollments: {}, devices: {}, hardwareSnapshots: {}, hardwareEvents: {},
   })
-  await writeJson(path.join(targetDir, 'stores', 'agent-status.json'), { servers: {} })
+  await writeJson(path.join(targetDir, 'stores', 'agent-status.json'), { hosts: {} })
 }

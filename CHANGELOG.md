@@ -6,6 +6,12 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 
 ## Unreleased
 
+## [0.11.1] - 2026-08-10
+
+### Fixed
+
+- Fresh public demo sessions now initialize the current empty agent-status store shape, keeping registry catalog access available without exposing production host telemetry.
+
 ## [0.11.0] - 2026-08-10
 
 ### Added

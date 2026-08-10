@@ -106,6 +106,14 @@ export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
   notes: [],
 }
 
+const RELEASE_0_11_1_DETAILS: UnreleasedReleaseNotes = {
+  highlights: [],
+  fixes: [
+    'Fresh public demo sessions now initialize a valid empty agent-status store, so the connected registry catalog remains available without carrying production host telemetry into the sandbox.',
+  ],
+  notes: [],
+}
+
 const RELEASE_0_11_0_DETAILS: UnreleasedReleaseNotes = {
   highlights: [
     'Catalog contract v8 imports and preserves exact physical RAM sticks with manufacturer part-number identity, complete reusable specifications, and structured memory requirements.',
@@ -617,9 +625,16 @@ const RELEASE_0_2_1_DETAILS: UnreleasedReleaseNotes = {
 
 export const RELEASE_NOTES: ReleaseNoteEntry[] = [
   {
-    version: '0.11.0',
+    version: '0.11.1',
     date: '2026-08-10',
     channel: 'latest',
+    title: 'Reliable demo catalog startup',
+    ...RELEASE_0_11_1_DETAILS,
+  },
+  {
+    version: '0.11.0',
+    date: '2026-08-10',
+    channel: 'release',
     title: 'Agent notifications and exact RAM catalogs',
     ...RELEASE_0_11_0_DETAILS,
   },
