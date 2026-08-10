@@ -4,9 +4,9 @@
 [![Docker Image Version](https://img.shields.io/docker/v/mriverodorta/homelab-inventory?sort=semver&logo=docker)](https://hub.docker.com/r/mriverodorta/homelab-inventory/tags)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
-Homelab Inventory is a self-hosted visual workbench for documenting homelab hardware, component assignments, ports, patch panels, and cabling.
+Homelab Inventory is a self-hosted visual workbench for documenting, assembling, validating, and monitoring homelab hardware.
 
-It is built for people who want a practical map of what they own, what is installed where, and how network or display ports are connected.
+It gives you one practical view of what you own, what is installed in each machine, how network, display, and power paths are connected, and whether monitored hosts are healthy.
 
 ## Project Links
 
@@ -18,24 +18,43 @@ It is built for people who want a practical map of what they own, what is instal
 > [!WARNING]
 > Do not expose Homelab Inventory directly to the public internet without HTTPS and access controls. Built-in multi-user authentication is available but optional on upgraded installations, and it does not provide TLS. Use a trusted LAN, VPN, or TLS reverse proxy.
 
-## Features
+## What You Can Do
 
-- Infinite canvas for servers, NAS devices, custom PC builds, monitors, UPS systems, power strips, switches, patch panels, and cables.
-- Searchable inventory sidebar with in-app item creation.
-- Reusable private hardware templates with local search and checksummed JSON import/export.
-- Optional verified hardware catalog with automatic category-aware contribution deduplication and a fully offline signed-snapshot mode.
-- Drag components into compatible hosts, including CPU, cooling, motherboard, RAM, storage, GPU, network, wireless, sound, case, power supply, and OEM power adapters.
-- Validate known CPU, RAM, storage, and expansion-card incompatibilities before assignment.
-- Explain compatibility requirements, deterministic resource allocations, and unknown-data warnings in inspectors and Audit.
-- Individual port chips for servers, expansion cards, NAS devices, switches, and patch panels.
-- Color-coded cable routing for network and display connections, plus directional power connections between outlets and equipment inputs.
-- JSON database stored outside the app image under a persistent `/data` volume.
-- lowdb-backed split stores with schema migrations and automatic backups.
-- Portable complete or custom backups with protected partial restore, optional encryption, scheduling, and retention controls.
-- Optional multi-user authentication with local passwords, OpenID Connect, or both, plus invitations, custom roles, session management, and one-time owner recovery.
-- Optional embedded host agent for signed, outbound-only telemetry from Linux, FreeBSD, and OPNsense servers, NAS devices, and custom PC builds.
-- Reviewed one-time host hardware discovery through a privilege-separated local command; detected values remain private and never modify inventory automatically.
-- Mobile-friendly inventory drawer and long-press drag behavior for touch devices.
+### Document the physical lab
+
+- Place servers, NAS devices, custom PC builds, monitors, switches, patch panels, UPS systems, and power strips on an infinite canvas.
+- Assemble hosts from reusable CPUs, motherboards, cooling, RAM, storage, GPUs, network and wireless cards, sound cards, cases, power supplies, and OEM power adapters.
+- Connect individual network, display, and power endpoints with color-coded, orthogonally routed cables and inspect each connection from either endpoint.
+- Use the searchable desktop or mobile inventory drawer to create, duplicate, archive, restore, and safely remove equipment.
+
+### Validate hardware before changing it
+
+- Check CPU socket, generation, and power limits; memory generation, capacity, speed, ECC, and slot allocation; storage bays and interfaces; and expansion-slot fit.
+- See deterministic resource allocations, known incompatibilities, and incomplete-data warnings before an assignment changes project data.
+- Review or ignore individual audit findings, or disable compatibility checks for a specific host when documenting an intentional exception.
+- Import complete OEM systems and retail motherboards with their physical topology preserved instead of flattening them into generic machines.
+
+### Reuse trusted hardware definitions
+
+- Search the optional signed hardware catalog locally by category and hardware-specific filters, then import independent inventory records linked to a verified template revision.
+- Review catalog updates before applying them while preserving local names, assignments, canvas positions, cables, and instance-only fields.
+- Keep an installation fully offline with a signed catalog snapshot, or use reusable private templates with checksummed JSON import and export.
+- Optionally contribute sanitized, deduplicated hardware definitions without sending serials, addresses, labels, assignments, topology, or agent evidence.
+
+### Monitor compute hosts
+
+- Enroll an outbound-only Agent on Linux, FreeBSD, or OPNsense hosts and view one-minute health, heartbeat history, CPU, memory, uptime, and operating-system details.
+- Inspect local storage usage by physical device and mount point, including partition tables and LVM or RAID topology, without mixing in remote shares or container mounts.
+- Discover locally installed services and opt into bounded Docker or Podman container telemetry through a loopback proxy or reviewed direct socket access.
+- Run a separate reviewed hardware scan and apply detected motherboard, CPU, DIMM, storage, PCI, network, GPU, or power values one field at a time with normal Undo support.
+- Update agents manually through verified commands, unlink an agent without losing history, or explicitly remove only that host's retained telemetry.
+
+### Operate and share it safely
+
+- Enable local-password, OpenID Connect, or hybrid authentication with invitations, sessions, built-in roles, and custom permission groups.
+- Create complete or section-based portable backups, restore selected sections with dependency checks and rollback, and schedule encrypted backups with configurable retention.
+- Keep all application state outside the image in a persistent `/data` volume with ordered migrations and verified pre-migration backups.
+- Follow `stable`, test `latest`, or pin an immutable version tag; in-app update checks remain optional and anonymous.
 
 ## AI Development Notice
 
@@ -212,7 +231,7 @@ Compatibility rules help prevent known-invalid assignments while keeping partial
 
 Servers and NAS devices expose compatibility details in their inspectors. Component inspectors show requirements and the current host allocation, while Audit identifies assigned hardware that is incompatible or needs more data.
 
-Compatibility fields are entered when an inventory item is created or edited. Private templates can reuse local definitions, while verified official definitions can be imported from a signed offline snapshot or synchronized in Connected mode. Existing assignments are preserved when upgrading to schema 7, even if a current rule would block creating the same assignment today.
+Compatibility fields are entered when an inventory item is created or edited. Private templates can reuse local definitions, while verified official definitions can be imported from a signed offline snapshot or synchronized in Connected mode. Ordered migrations preserve existing assignments and report legacy combinations that would be blocked if newly created or changed.
 
 ## Registry And Private Templates
 
@@ -257,7 +276,7 @@ Release process details: [docs/RELEASES.md](docs/RELEASES.md)
 
 Before upgrading a Docker deployment across schema versions, back up the complete mounted `/data` directory. Schema migrations create an internal backup before changing data, but that does not replace an external copy or filesystem snapshot.
 
-Schema 16 converts legacy RAM kits into one inventory record and one assignment per physical stick. It preserves original slot positions and total capacity, refuses ambiguous conversions, and records a safe migration summary. See [docs/MIGRATIONS.md](docs/MIGRATIONS.md) before upgrading across this schema.
+The migration guide documents compatibility normalization, physical RAM records, registry identity, Agent relationships, and current motherboard-topology migrations. See [docs/MIGRATIONS.md](docs/MIGRATIONS.md) before upgrading across multiple schema versions.
 
 ## Update Notifications
 
@@ -269,15 +288,24 @@ When an update is available, the canvas toolbar shows an update notice with rele
 
 ## Agent
 
-The next-generation agent protocol is outbound-only and scopes one Ed25519 device identity to one server, NAS device, or custom PC build. Signed protocol-v1 heartbeats are stored independently under `/data/telemetry/telemetry.sqlite`; they do not create workspace history or change the project revision. Raw samples are retained for seven days by default. Set `AGENT_TELEMETRY_RETENTION_DAYS` to an integer from 1 through 365 to change that backend retention period.
+The optional Homelab Inventory Agent uses outbound-only HTTPS and scopes one Ed25519 device identity to one server, NAS device, or custom PC build. Signed protocol-v1 heartbeats are stored independently in `/data/telemetry/telemetry.sqlite`; they do not create workspace history or advance the project revision. Raw samples are retained for seven days by default. Set `AGENT_TELEMETRY_RETENTION_DAYS` to an integer from 1 through 365 to change that retention period.
 
-Open a compute host's **Agent** tab to create a one-time enrollment and copy the generated Linux or FreeBSD/OPNsense installation command. Each Docker image embeds a pinned, reproducibly built agent release for Linux AMD64, Linux ARM64, and FreeBSD AMD64; the server verifies every embedded byte before startup and serves versioned immutable downloads. Agent upgrades remain an explicit administrator action, and the inspector provides the command when a newer embedded agent is available.
+Open a compute host's **Agent** tab to create a one-time enrollment and copy the generated Linux or FreeBSD/OPNsense installation command. Each application image embeds a pinned, reproducibly built release for Linux AMD64, Linux ARM64, and FreeBSD AMD64. The server verifies every embedded artifact before startup and serves immutable versioned downloads from your own installation.
 
-Container telemetry is disabled by default. Setup can opt into a credential-free loopback Docker/Podman proxy or, with a clear warning, direct access to a local runtime socket. Only bounded operational fields are accepted; environment variables, labels, commands, arguments, mounts, secrets, and raw inspect payloads are excluded. A privileged `agent inventory` scan is separate from the unprivileged service and submits hardware evidence only after local review.
+An enrolled host can expose these capability-driven views:
 
-The independently maintained source is public at [mriverodorta/homelab-inventory-agent](https://github.com/mriverodorta/homelab-inventory-agent). The application pins an exact source revision, while normal users install the verified binary served by their own Homelab Inventory instance.
+- **Agent**: health state, 30-minute heartbeat history, operating-system version, host uptime, CPU and memory history, aggregate local-storage usage, enrollment details, and available updates.
+- **Services**: locally installed or system services with independent scope and runtime-state filters.
+- **Containers**: opt-in Docker or Podman state, health, uptime, Compose service, CPU, memory, published ports, and network metadata.
+- **Storage usage**: physical-device and mount-level capacity, partition tables, filesystems, and LVM or RAID topology for confidently mapped inventory drives.
 
-The agent is optional. Inventory, canvas layout, and cabling work without it.
+Container telemetry is disabled by default. Setup can use a credential-free Docker-compatible proxy bound to loopback or, after a clear warning, direct access to an allowlisted local runtime socket. The protocol excludes arbitrary labels, environment variables, commands, arguments, mounts, secrets, addresses, and raw inspect responses.
+
+The normal Linux or FreeBSD service is unprivileged. Complete hardware discovery is a separate, explicit `sudo homelab-inventory-agent inventory` command that previews a component summary and asks before sending. The application keeps the latest evidence private, shows the complete JSON for troubleshooting, and offers individual field suggestions with replacement confirmation and Undo. Raw serials and hardware fingerprints never enter registry contributions.
+
+Agent upgrades are always explicit. Older installations receive a one-time verified installer upgrade command; current releases use `sudo homelab-inventory-agent update`. Unlinking stops delivery and retains telemetry by default, with a separate unchecked option to delete only that host's history.
+
+The independently maintained source is public at [mriverodorta/homelab-inventory-agent](https://github.com/mriverodorta/homelab-inventory-agent). The application pins an exact source revision, while normal users install the verified binary served by their own Homelab Inventory instance. Inventory, canvas layout, compatibility, and cabling continue to work without an Agent.
 
 ## Security
 

@@ -1,6 +1,6 @@
 # Homelab Inventory
 
-Homelab Inventory is a self-hosted visual workbench for documenting homelab hardware. It is meant for people who want a practical map of what they own, what is installed where, and how network/display ports are connected.
+Homelab Inventory is a self-hosted visual workbench for documenting, assembling, validating, and monitoring homelab hardware. It gives you a practical map of what you own, what is installed in each machine, how network, display, and power paths are connected, and whether monitored hosts are healthy.
 
 You can model servers, NAS devices, free-form PC builds, monitors, UPS systems, power strips, components, physical ports, and network, display, or power cables on an infinite canvas.
 
@@ -18,6 +18,19 @@ The public source repository is available on GitHub:
 https://github.com/mriverodorta/homelab-inventory
 
 GitHub is the source of truth for CI/CD. Docker Hub images are built and published by GitHub Actions from the `main` and `stable` branches, with numbered releases created during stable promotion.
+
+## Features
+
+- **Visual inventory:** Arrange servers, NAS devices, PC builds, switches, patch panels, monitors, UPS systems, and power strips on an infinite canvas.
+- **Component assignments:** Build hosts from reusable CPUs, motherboards, RAM, storage, GPUs, network cards, cooling, cases, power supplies, and OEM adapters.
+- **Physical cabling:** Connect individual network, display, and power endpoints with inspectable color-coded cable routes.
+- **Compatibility and audit:** Block known-invalid CPU, memory, storage, and expansion assignments while explaining incomplete hardware data.
+- **Hardware catalog:** Search a signed verified catalog locally, review linked updates, use an offline snapshot, or keep reusable private templates.
+- **Host Agent:** Monitor Linux, FreeBSD, and OPNsense health, uptime, CPU, memory, local storage, services, and opt-in Docker or Podman containers.
+- **Hardware discovery:** Run a reviewed one-time scan and apply detected component values field by field without automatic inventory changes.
+- **Multi-user access:** Enable local passwords, OpenID Connect, or both with invitations, sessions, built-in roles, and custom permissions.
+- **Backup and restore:** Export complete or selected sections, schedule encrypted backups, and restore with dependency checks and automatic rollback.
+- **Safe upgrades:** Keep data in `/data`, use ordered startup migrations, follow `stable` or `latest`, or pin an immutable version tag.
 
 ## Security Notice
 
@@ -136,6 +149,7 @@ OIDC_CLIENT_SECRET_FILE=
 RATE_LIMIT_WINDOW_MS=60000
 RATE_LIMIT_MAX=600
 TRUST_PROXY=false
+AGENT_TELEMETRY_RETENTION_DAYS=7
 ```
 
 Connected registry mode refreshes the verified official catalog at startup and approximately every six hours. Set `REGISTRY_REFRESH_INTERVAL_MS=0` to disable automatic catalog refreshes while retaining the manual Refresh action.
@@ -199,9 +213,7 @@ New package versions promoted through `stable` publish `stable`, immutable `X.Y.
 
 The app tracks a database schema version in `/data/meta.json`. When schema changes are introduced, migrations run on startup and create backups before modifying data.
 
-Schema 7 normalizes hardware compatibility profiles and calculates deterministic allocations for compatible existing assignments. It preserves all existing assignments and reports incomplete or incompatible legacy data through inspectors and Audit rather than removing hardware.
-
-Schema 16 converts legacy RAM kits into one inventory record and assignment per physical stick. The migration preserves slot positions and total capacity, clears obsolete RAM catalog links, refuses ambiguous conversions, and records a safe migration summary. Review the full [migration guide](https://github.com/mriverodorta/homelab-inventory/blob/main/docs/MIGRATIONS.md) before upgrading across this schema.
+Ordered startup migrations cover compatibility profiles, physical RAM records, stable registry identity, typed Agent relationships, and current motherboard topology. They create verified backups and preserve inventory relationships before changing persisted data. Review the full [migration guide](https://github.com/mriverodorta/homelab-inventory/blob/main/docs/MIGRATIONS.md) before upgrading across multiple schema versions.
 
 Back up the complete mounted `/data` directory before upgrading across schema versions. The automatic migration backup is useful for recovery, but it should not be the only copy of operational inventory data.
 
@@ -215,13 +227,13 @@ When an update exists, the app provides **Check now**, **Skip this version**, an
 
 ## Agent
 
-The Agent tab on a server, NAS device, or custom PC build creates a one-time enrollment and generates the appropriate Linux or FreeBSD/OPNsense install command. Every application image embeds pinned, checksummed agent binaries for Linux AMD64, Linux ARM64, and FreeBSD AMD64. Downloads are served by your own Homelab Inventory instance and each device identity is permanently scoped to one host record.
+The Agent tab on a server, NAS device, or custom PC build creates a one-time enrollment and generates the appropriate Linux or FreeBSD/OPNsense install command. Every application image embeds pinned, checksummed binaries for Linux AMD64, Linux ARM64, and FreeBSD AMD64. Downloads are served by your own Homelab Inventory instance, and each Ed25519 device identity is permanently scoped to one host record.
 
-Telemetry is outbound-only and is stored independently under `/data/telemetry/telemetry.sqlite`, so it does not modify inventory, canvas history, assignments, or cables. Optional Docker/Podman collection is disabled by default and supports either a credential-free loopback proxy or advanced direct-socket access. Agent upgrades are manual; the inspector shows a copyable command when the embedded release is newer.
+Signed one-minute telemetry is outbound-only and stored independently under `/data/telemetry/telemetry.sqlite`, so it does not modify inventory, canvas history, assignments, or cables. Agent views can show health and heartbeat history, OS version, uptime, CPU, memory, local storage and mounts, filtered services, and opt-in Docker or Podman container details. Container telemetry supports a credential-free loopback proxy or reviewed direct-socket access and excludes secrets, commands, environment variables, mounts, addresses, and raw inspect payloads.
 
-Agent source is available for inspection at [github.com/mriverodorta/homelab-inventory-agent](https://github.com/mriverodorta/homelab-inventory-agent).
+Complete hardware discovery is a separate reviewed `sudo homelab-inventory-agent inventory` command. Detected data remains private and is offered as individual inventory-field suggestions rather than changing records automatically. Updates are explicit and verified, and unlinking retains telemetry unless the administrator selects the separate deletion option.
 
-The agent is optional. The inventory and canvas work without installing it.
+Agent source is available for inspection at [github.com/mriverodorta/homelab-inventory-agent](https://github.com/mriverodorta/homelab-inventory-agent). The Agent is optional; inventory, compatibility, canvas layout, and cabling work without it.
 
 ## Notes
 
