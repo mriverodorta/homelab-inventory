@@ -25,6 +25,7 @@ Never commit or publish a real `/data` directory.
 - Restrict filesystem permissions on the mounted data directory.
 - Keep only one running container writing to a data directory.
 - Encrypt portable authentication backups and configure `BACKUP_ENCRYPTION_PASSPHRASE` before enabling scheduled backups with authentication data.
+- Treat notification endpoint URLs and credentials as sensitive. The app encrypts contact secrets and generic webhook destination URLs at rest, but webhook and Ntfy delivery should use trusted HTTPS endpoints.
 
 ## Reporting A Vulnerability
 

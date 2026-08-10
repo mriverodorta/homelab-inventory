@@ -5,6 +5,8 @@ import { createPublicKey, generateKeyPairSync } from 'node:crypto'
 import { afterEach, describe, expect, it } from 'vitest'
 import { HomelabInventoryStore } from '../db/store.mjs'
 import { createOwnerAccount, ensureProtectedOwnerRole } from '../auth/model.mjs'
+import { NotificationSecretVault } from '../notifications/secret-vault.mjs'
+import { NotificationStore } from '../notifications/store.mjs'
 import { BackupService } from './backup-service.mjs'
 import { installationPublicKeyId } from '../../packages/catalog-protocol/src/index.ts'
 
@@ -37,6 +39,8 @@ async function createContext({ onRestoreApplied = null } = {}) {
   })
   await store.init()
   stores.push(store)
+  const notificationStore = await new NotificationStore({ dataDir }).init()
+  const notificationVault = await new NotificationSecretVault({ dataDir, store: notificationStore }).init()
   const telemetryRepository = {
     exportBackup: () => emptyTelemetryBackup(),
     replaceBackup: () => {},
@@ -46,9 +50,11 @@ async function createContext({ onRestoreApplied = null } = {}) {
     appVersion: '1.0.0',
     onRestoreApplied,
     telemetryRepository,
+    notificationStore,
+    notificationVault,
   })
   await service.init()
-  return { dataDir, service, store }
+  return { dataDir, notificationStore, notificationVault, service, store }
 }
 
 afterEach(async () => {
@@ -118,6 +124,44 @@ describe('portable backup service', () => {
     })
     await expect(service.verify(created.record.id, 'correct horse battery staple'))
       .resolves.toMatchObject({ ok: true, encrypted: true })
+  })
+
+  it('requires encryption for notification credentials and restores the encrypted vault', async () => {
+    const { service, notificationStore, notificationVault } = await createContext()
+    const secretId = await notificationVault.seal(JSON.stringify({ token: 'notification-secret' }))
+    await notificationStore.mutateConfig((draft) => {
+      draft.enabled = true
+      draft.contactPoints.push({
+        id: 1,
+        type: 'ntfy',
+        name: 'Primary',
+        enabled: true,
+        secretId,
+        config: { serverUrl: 'https://ntfy.example.test', topic: 'alerts' },
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      })
+      draft.counters.contactPoint = 2
+    })
+
+    await expect(service.create({ sections: ['notifications'] }))
+      .rejects.toMatchObject({ code: 'backup-passphrase-required' })
+    const created = await service.create({
+      sections: ['notifications', 'notificationHistory'],
+      passphrase: 'correct horse battery staple',
+    })
+    await notificationStore.mutateConfig((draft) => {
+      draft.enabled = false
+      draft.contactPoints = []
+    })
+    await notificationStore.mutateSecrets((draft) => { draft.secrets = [] })
+
+    const inspection = await service.inspect(created.archive, 'correct horse battery staple')
+    await service.restore(inspection.token, ['notifications', 'notificationHistory'])
+
+    expect(notificationStore.readConfig()).toMatchObject({ enabled: true, contactPoints: [{ id: 1, secretId: 1 }] })
+    expect(await notificationVault.open(1)).toContain('notification-secret')
+    expect((await fs.stat(notificationVault.keyPath)).mode & 0o777).toBe(0o600)
   })
 
   it('verifies encryption and restores selected inventory with a safety backup', async () => {

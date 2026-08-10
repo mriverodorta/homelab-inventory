@@ -7,6 +7,7 @@ import {
   EthernetPort,
   HdmiPort,
   LayoutGrid,
+  Bell,
   LoaderCircle,
   LocateFixed,
   PanelLeft,
@@ -39,6 +40,8 @@ export interface CanvasCommandBarProps {
   canEditCanvas: boolean
   canViewAudit: boolean
   canViewUpdates: boolean
+  canViewNotifications: boolean
+  notificationCount: number
   onInventory: () => void
   onUndo: () => void
   onRedo: () => void
@@ -50,6 +53,7 @@ export interface CanvasCommandBarProps {
   onTogglePowerCablesVisible: () => void
   onToggleDisplayCablesVisible: () => void
   onOpenSettings: () => void
+  onOpenNotifications: () => void
   className?: string
 }
 
@@ -157,6 +161,8 @@ export function CanvasCommandBar({
   canEditCanvas,
   canViewAudit,
   canViewUpdates,
+  canViewNotifications,
+  notificationCount,
   onInventory,
   onUndo,
   onRedo,
@@ -168,6 +174,7 @@ export function CanvasCommandBar({
   onTogglePowerCablesVisible,
   onToggleDisplayCablesVisible,
   onOpenSettings,
+  onOpenNotifications,
   className,
 }: CanvasCommandBarProps) {
   const inventoryLabel = desktopInventoryVisible ? 'Hide inventory' : 'Show inventory'
@@ -209,7 +216,7 @@ export function CanvasCommandBar({
             <Redo2 className="size-4" />
           </ToolbarButton>
 
-          {canViewUpdates || canViewAudit ? <ToolbarSeparator /> : null}
+          {canViewUpdates || canViewAudit || canViewNotifications ? <ToolbarSeparator /> : null}
 
           {canViewUpdates ? (
             <ToolbarButton
@@ -254,6 +261,15 @@ export function CanvasCommandBar({
               )}
             >
               <AlertTriangle className={cn('size-4', auditWarningCount > 0 && 'text-[#a66f1f]')} />
+            </ToolbarButton>
+          ) : null}
+          {canViewNotifications ? (
+            <ToolbarButton
+              label={notificationCount === 0 ? 'Open Notification Center, no active incidents' : `Open Notification Center, ${notificationCount} unacknowledged ${notificationCount === 1 ? 'incident' : 'incidents'}`}
+              onClick={onOpenNotifications}
+              indicator={notificationCount > 0 ? <span aria-hidden="true" className="absolute -right-0.5 -top-0.5 min-w-4 rounded-full bg-[#9b3f32] px-1 text-center text-[9px] font-black leading-4 text-white">{notificationCount > 99 ? '99+' : notificationCount}</span> : undefined}
+            >
+              <Bell className={cn('size-4', notificationCount > 0 && 'text-[#9b3f32]')} />
             </ToolbarButton>
           ) : null}
 

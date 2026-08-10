@@ -6,6 +6,15 @@ import { createRegistryStore, normalizeRegistryStore } from '../registry/model.m
 import { parseInstallationInstance } from '../registry/installation-instance.mjs'
 import { normalizeInstallationCredentials } from '../registry/installation-identity.mjs'
 import { AGENT_TELEMETRY_BACKUP_FILE, emptyTelemetryBackup } from '../telemetry/backup.mjs'
+import {
+  assertNotificationConfig,
+  assertNotificationSecrets,
+  assertNotificationState,
+  createNotificationSecrets,
+  normalizeNotificationConfig,
+  normalizeNotificationSecrets,
+  normalizeNotificationState,
+} from '../notifications/model.mjs'
 
 const JSON_SECTION_FILES = Object.freeze({
   inventory: 'sections/inventory.json',
@@ -17,8 +26,11 @@ const JSON_SECTION_FILES = Object.freeze({
   catalogState: 'sections/catalog-state.json',
   agents: 'sections/agents.json',
   agentTelemetry: 'sections/agent-telemetry.json',
+  notifications: 'sections/notifications.json',
+  notificationHistory: 'sections/notification-history.json',
   applicationMetadata: 'sections/application-metadata.json',
 })
+const NOTIFICATION_FILE_NAMES = new Set(['master-key', 'notification-secrets.json'])
 const ENROLLMENT_FILE_NAMES = new Set([
   'installation-instance.json',
   'installation-ed25519.pem',
@@ -50,7 +62,14 @@ function registryConfiguration(registry) {
   return { ...structuredClone(registry), installationIdentity: null }
 }
 
-export async function collectBackupSections({ store, sections, demo = false, telemetryRepository = null }) {
+export async function collectBackupSections({
+  store,
+  sections,
+  demo = false,
+  telemetryRepository = null,
+  notificationStore = null,
+  includeNotificationSecrets = false,
+}) {
   const selected = normalizeBackupSections(sections, { demo })
   const snapshot = await store.snapshotStores()
   const files = []
@@ -66,6 +85,30 @@ export async function collectBackupSections({ store, sections, demo = false, tel
         jsonEntry(JSON_SECTION_FILES.agentTelemetry, snapshot.agentStatus),
         jsonEntry(AGENT_TELEMETRY_BACKUP_FILE, telemetryRepository.exportBackup()),
       )
+    }
+    if (section === 'notifications') {
+      if (!notificationStore) throw new Error('Notification storage is unavailable for backup.')
+      const notificationConfig = notificationStore.readConfig()
+      const notificationSecrets = notificationStore.readSecrets()
+      const archivedConfig = includeNotificationSecrets
+        ? notificationConfig
+        : {
+            ...notificationConfig,
+            enabled: false,
+            contactPoints: notificationConfig.contactPoints.map((point) => ({ ...point, enabled: false, secretId: null })),
+          }
+      files.push(jsonEntry(JSON_SECTION_FILES.notifications, archivedConfig))
+      if (includeNotificationSecrets) {
+        files.push(jsonEntry('notifications/notification-secrets.json', notificationSecrets))
+        const keyPath = path.join(store.dataDir, 'notifications', 'master-key')
+        if (await pathExists(keyPath)) files.push({ name: 'notifications/master-key', body: await fs.readFile(keyPath) })
+      } else {
+        files.push(jsonEntry('notifications/notification-secrets.json', createNotificationSecrets()))
+      }
+    }
+    if (section === 'notificationHistory') {
+      if (!notificationStore) throw new Error('Notification storage is unavailable for backup.')
+      files.push(jsonEntry(JSON_SECTION_FILES.notificationHistory, notificationStore.readState()))
     }
     if (section === 'authentication') files.push(jsonEntry(JSON_SECTION_FILES.authentication, snapshot.authentication))
     if (section === 'applicationMetadata') {
@@ -155,6 +198,28 @@ export function telemetryBackupFromArchive(files) {
   return files.has(AGENT_TELEMETRY_BACKUP_FILE)
     ? parseJson(files, AGENT_TELEMETRY_BACKUP_FILE)
     : emptyTelemetryBackup()
+}
+
+export function notificationBackupFromArchive(files, sections) {
+  const result = {}
+  if (sections.includes('notifications')) {
+    result.config = normalizeNotificationConfig(parseJson(files, JSON_SECTION_FILES.notifications))
+    result.secrets = files.has('notifications/notification-secrets.json')
+      ? normalizeNotificationSecrets(parseJson(files, 'notifications/notification-secrets.json'))
+      : createNotificationSecrets()
+    assertNotificationConfig(result.config)
+    assertNotificationSecrets(result.secrets)
+    const unexpected = [...files.keys()].filter((name) => name.startsWith('notifications/') && !NOTIFICATION_FILE_NAMES.has(name.slice('notifications/'.length)))
+    if (unexpected.length > 0) throw new Error('Notification backup contains unsupported files.')
+    result.masterKey = files.get('notifications/master-key') ?? null
+    if (result.masterKey && result.masterKey.length !== 32) throw new Error('Notification backup master key is invalid.')
+    if (result.secrets.secrets.length > 0 && !result.masterKey) throw new Error('Notification credentials require the notification master key.')
+  }
+  if (sections.includes('notificationHistory')) {
+    result.state = normalizeNotificationState(parseJson(files, JSON_SECTION_FILES.notificationHistory))
+    assertNotificationState(result.state)
+  }
+  return result
 }
 
 export function validateEnrollmentFiles(files) {

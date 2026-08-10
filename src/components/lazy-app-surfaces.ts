@@ -103,6 +103,17 @@ export const SettingsDialog = createLazySurface(settingsLoader, {
   shouldRender: (props) => props.open,
 })
 
+const notificationCenterLoader = () => import('@/components/notifications/notification-center').then((module) => ({
+  default: module.NotificationCenter,
+}))
+export const NotificationCenter = createLazySurface(notificationCenterLoader, {
+  displayName: 'Notification Center',
+  loadingLabel: 'Loading notifications',
+  loadingClassName: 'fixed inset-y-0 right-0 z-50 w-full max-w-[480px] rounded-none',
+  getClose: (props) => () => props.onOpenChange(false),
+  shouldRender: (props) => props.open,
+})
+
 const demoSessionLoader = () => import('@/components/demo-session-dialog').then((module) => ({
   default: module.DemoSessionDialog,
 }))
@@ -158,5 +169,6 @@ export const prefetchAppSurface = {
   onboarding: FirstRunOnboardingDialog.prefetch,
   search: GlobalItemSearch.prefetch,
   settings: SettingsDialog.prefetch,
+  notifications: NotificationCenter.prefetch,
   update: UpdateDialog.prefetch,
 } as const

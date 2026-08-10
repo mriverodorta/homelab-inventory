@@ -43,7 +43,7 @@ function batchItems(request) {
   return request.body?.items
 }
 
-export function registerInventoryRoutes(app, { withStore }) {
+export function registerInventoryRoutes(app, { withStore, onHostsDeleted = null }) {
   app.post('/api/inventory/items', (request, response) => {
     runWithInventoryStore(withStore, request, response, 'Unable to create inventory items.', async (store) => {
       const wrapped = request.body?.item && typeof request.body.item === 'object'
@@ -110,7 +110,10 @@ export function registerInventoryRoutes(app, { withStore }) {
 
   app.delete('/api/inventory/items/:type/:id', (request, response) => {
     runWithInventoryStore(withStore, request, response, 'Unable to delete inventory item.', async (store) => {
-      response.json(store.deleteInventoryItems([itemRef(request)]))
+      const ref = itemRef(request)
+      const result = store.deleteInventoryItems([ref])
+      if (['server', 'nas', 'pcBuild'].includes(ref.type)) await onHostsDeleted?.([ref])
+      response.json(result)
     })
   })
 
@@ -121,7 +124,13 @@ export function registerInventoryRoutes(app, { withStore }) {
   ]) {
     app.post(`/api/inventory/batch/${action}`, (request, response) => {
       runWithInventoryStore(withStore, request, response, `Unable to ${action} inventory items.`, async (store) => {
-        response.json(store[method](batchItems(request)))
+        const items = batchItems(request)
+        const result = store[method](items)
+        if (action === 'delete') {
+          const hosts = (Array.isArray(items) ? items : []).filter((ref) => ['server', 'nas', 'pcBuild'].includes(ref?.type))
+          if (hosts.length > 0) await onHostsDeleted?.(hosts)
+        }
+        response.json(result)
       })
     })
   }

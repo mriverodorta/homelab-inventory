@@ -101,9 +101,19 @@ const RELEASE_0_3_0_DETAILS: UnreleasedReleaseNotes = {
 }
 
 export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
-  highlights: [],
-  fixes: [],
-  notes: [],
+  highlights: [
+    'Opt-in agent notifications now support reusable Ntfy and generic webhook destinations, persisted incidents, quiet hours, per-host policies, selected service/container/storage monitoring, and a toolbar Notification Center.',
+    'Notification rules can configure severity, debounce, per-resource and per-destination cooldowns, optional reminders, and bounded delivery retries without coupling incident detection to a specific provider.',
+    'Embedded Agent 0.3.0 applies revisioned monitoring policies from outbound heartbeat responses and acknowledges the active revision on a later heartbeat.',
+  ],
+  fixes: [
+    'Host outages now inhibit child-resource alerts and reminders, inhibited alerts resume after recovery, and recovery is sent only to destinations that received the opening alert.',
+    'Persisted sequence cursors reject replayed or stale buffered evidence across restarts while tolerating stable agent clock offsets, preventing duplicate incidents and false host recovery during reconnects.',
+  ],
+  notes: [
+    'Notifications are disabled by default. Contact credentials and generic webhook destination URLs are encrypted with a local mode-0600 key, included only in encrypted dependency-complete backups, and unavailable in public demo sessions.',
+    'Schema 28 adds notification permissions to existing built-in roles without changing custom roles, inventory, topology, cables, agent identity, or telemetry.',
+  ],
 }
 
 const RELEASE_0_10_0_DETAILS: UnreleasedReleaseNotes = {

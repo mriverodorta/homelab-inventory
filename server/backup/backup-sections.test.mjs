@@ -6,6 +6,7 @@ import { createBackupManagementStore } from './backup-model.mjs'
 import { collectBackupSections, materializeBackupSections, telemetryBackupFromArchive } from './backup-sections.mjs'
 import { createRegistryStore } from '../registry/model.mjs'
 import { createAuthenticationStore } from '../auth/model.mjs'
+import { createNotificationConfig, createNotificationSecrets, createNotificationState } from '../notifications/model.mjs'
 import { COMPLETE_BACKUP_SECTIONS } from '../../shared/backup/contract.mjs'
 
 const telemetryRepository = {
@@ -19,6 +20,12 @@ const telemetryRepository = {
       component_events: [],
     },
   }),
+}
+
+const notificationStore = {
+  readConfig: () => createNotificationConfig(),
+  readSecrets: () => createNotificationSecrets(),
+  readState: () => createNotificationState(),
 }
 
 function stores() {
@@ -105,6 +112,7 @@ describe('backup section ownership', () => {
       store: { dataDir, snapshotStores: async () => stores() },
       sections: COMPLETE_BACKUP_SECTIONS,
       telemetryRepository,
+      notificationStore,
     })
     expect(complete.files.map((file) => file.name)).toContain('registry/installation-instance.json')
   })

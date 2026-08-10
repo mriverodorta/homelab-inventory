@@ -84,6 +84,7 @@ export type AgentHostStatus = {
   metrics?: AgentMetrics
   storageHealth?: Array<Record<string, unknown>>
   droppedSamples?: number
+  monitoringRevision?: number
   upgradeCommands?: {
     linux: string
     freebsd: string
@@ -130,6 +131,7 @@ export type AgentTelemetrySample = {
     agentVersion: string
     hostname?: string
     droppedSamples?: number
+    monitoringRevision?: number
     capabilities: Record<string, AgentCapability>
     metrics: AgentMetrics
     services?: AgentService[]

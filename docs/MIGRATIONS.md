@@ -11,6 +11,12 @@ Homelab Inventory upgrades its lowdb JSON stores automatically when the applicat
 
 The application creates its own timestamped backup under `/data/backups` before changing any store. That internal backup is a recovery aid, not a replacement for an external filesystem snapshot or NAS backup.
 
+## Schema 28: Notification Permissions
+
+Schema 28 adds the static `notifications.view` and `notifications.manage` permissions and grants them to the appropriate existing built-in roles. Custom roles and their permission relationships are preserved unchanged so an administrator can opt them into notification access deliberately after the upgrade.
+
+The migration does not enable notifications, create contact credentials, or alter inventory, assignments, canvas placements, cables, agent enrollment, telemetry, registry identity, or catalog data. Notification stores and their local encryption key are initialized with mode `0600` only when the non-demo application starts; public demo sessions do not create them.
+
 ## Automatic Startup Process
 
 On startup, the server:

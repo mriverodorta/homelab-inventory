@@ -2,7 +2,7 @@ import express from 'express'
 import fs from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { canonicalPowerPorts } from '../shared/power-ports.mjs'
 import { HomelabInventoryStore } from './db/store.mjs'
 import { registerInventoryRoutes } from './inventory-routes.mjs'
@@ -10,7 +10,7 @@ import { registerInventoryRoutes } from './inventory-routes.mjs'
 const tempDirs = []
 const stores = []
 
-async function createTestContext() {
+async function createTestContext(options = {}) {
   const dataDir = await fs.mkdtemp(path.join(os.tmpdir(), 'inventory-api-'))
   tempDirs.push(dataDir)
   const store = new HomelabInventoryStore({
@@ -35,7 +35,7 @@ async function createTestContext() {
       })
     }
   }
-  registerInventoryRoutes(app, { withStore })
+  registerInventoryRoutes(app, { withStore, ...options })
 
   const server = await new Promise((resolve) => {
     const listener = app.listen(0, () => resolve(listener))
@@ -360,6 +360,21 @@ describe('inventory lifecycle routes', () => {
       expect((await jsonRequest(url, '/api/inventory/items/cpu/3/archive', { method: 'POST' })).response.status).toBe(200)
       expect((await jsonRequest(url, '/api/inventory/items/cpu/3', { method: 'DELETE' })).response.status).toBe(200)
       expect(store.getProject().items['cpu:3']).toBeUndefined()
+    } finally {
+      server.close()
+    }
+  })
+
+  it('notifies the notification lifecycle only after a host deletion succeeds', async () => {
+    const onHostsDeleted = vi.fn().mockResolvedValue(undefined)
+    const { store, server, url } = await createTestContext({ onHostsDeleted })
+    store.createInventoryItems({ type: 'server', name: 'Server' })
+    try {
+      expect((await jsonRequest(url, '/api/inventory/items/server/1', { method: 'DELETE' })).response.status).toBe(409)
+      expect(onHostsDeleted).not.toHaveBeenCalled()
+      expect((await jsonRequest(url, '/api/inventory/items/server/1/archive', { method: 'POST' })).response.status).toBe(200)
+      expect((await jsonRequest(url, '/api/inventory/items/server/1', { method: 'DELETE' })).response.status).toBe(200)
+      expect(onHostsDeleted).toHaveBeenCalledWith([{ type: 'server', id: 1 }])
     } finally {
       server.close()
     }

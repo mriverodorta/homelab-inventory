@@ -251,7 +251,7 @@ export function normalizeV1Heartbeat(payload, expectedHost) {
   const input = object(payload, 'heartbeat')
   assertAllowedFields(input, new Set([
     'protocolMajor', 'sequence', 'agentVersion', 'collectedAt', 'host', 'hostname',
-    'droppedSamples', 'capabilities', 'metrics', 'services', 'containers', 'storageHealth',
+    'droppedSamples', 'monitoringRevision', 'capabilities', 'metrics', 'services', 'containers', 'storageHealth',
   ]), 'heartbeat')
   if (input.protocolMajor !== AGENT_PROTOCOL_MAJOR) {
     throw protocolError(`Unsupported agent protocol major ${String(input.protocolMajor)}.`)
@@ -266,6 +266,9 @@ export function normalizeV1Heartbeat(payload, expectedHost) {
     droppedSamples: input.droppedSamples === undefined
       ? 0
       : nonNegativeInteger(input.droppedSamples, 'droppedSamples'),
+    monitoringRevision: input.monitoringRevision === undefined
+      ? 0
+      : nonNegativeInteger(input.monitoringRevision, 'monitoringRevision'),
     capabilities: normalizeCapabilities(input.capabilities),
     metrics: normalizeMetrics(input.metrics),
     services: normalizeServices(input.services),

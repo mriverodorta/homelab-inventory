@@ -5,6 +5,7 @@ import { AgentHardwareEvidence } from '@/components/inspector/agent/agent-hardwa
 import { AgentHeartbeatTimeline } from '@/components/inspector/agent/agent-heartbeat-timeline'
 import { AgentMetricsPanel } from '@/components/inspector/agent/agent-metrics-panel'
 import { AgentStorageSummary } from '@/components/inspector/agent/agent-storage-summary'
+import { HostNotificationSettings } from '@/components/inspector/agent/host-notification-settings'
 import { agentMetrics, metricNumber } from '@/components/inspector/agent/agent-status-utils'
 import { formatDuration, formatOperatingSystem } from '@/components/inspector/agent/agent-telemetry-formatters'
 import { useAgentTelemetry } from '@/components/inspector/agent/use-agent-telemetry'
@@ -180,6 +181,7 @@ export function AgentSetupPanel({
           ) : <AgentMetricsPanel samples={telemetry.data?.samples ?? []} />}
           <AgentStorageSummary storage={telemetry.data?.storage} />
           <AgentHardwareEvidence host={host} />
+          <HostNotificationSettings hostType={host.type as 'server' | 'nas' | 'pcBuild'} hostId={host.id} status={liveStatus} />
         </>
       ) : null}
 

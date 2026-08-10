@@ -13,6 +13,7 @@ import {
   MessageSquarePlus,
   MonitorCog,
   Network,
+  BellRing,
   Play,
   RefreshCw,
   ShieldCheck,
@@ -71,8 +72,9 @@ import {
 } from '@/types/registry'
 
 const AccessSettings = lazy(() => import('@/components/settings/access-settings').then((module) => ({ default: module.AccessSettings })))
+const NotificationSettings = lazy(() => import('@/components/settings/notifications/notification-settings').then((module) => ({ default: module.NotificationSettings })))
 
-type SettingsCategory = 'general' | 'project' | 'authentication' | 'access' | 'registry' | 'backup-restore' | 'updates' | 'feedback' | 'about'
+type SettingsCategory = 'general' | 'project' | 'authentication' | 'access' | 'registry' | 'notifications' | 'backup-restore' | 'updates' | 'feedback' | 'about'
 type SaveStatus = 'saved' | 'saving' | 'error'
 
 export type SettingsDialogProps = {
@@ -156,6 +158,7 @@ const categories: Array<{
   { id: 'authentication', label: 'Authentication', description: 'Login methods and identities', icon: ShieldCheck },
   { id: 'access', label: 'Access', description: 'Users, invitations, and roles', icon: UsersRound },
   { id: 'registry', label: 'Registry', description: 'Catalog and private templates', icon: Database },
+  { id: 'notifications', label: 'Notifications', description: 'Destinations, rules, and incidents', icon: BellRing },
   { id: 'backup-restore', label: 'Backup & Restore', description: 'Portable data protection', icon: ArchiveRestore },
   { id: 'updates', label: 'Updates', description: 'Image channel and status', icon: RefreshCw },
   { id: 'feedback', label: 'Feedback', description: 'Roadmap, ideas, and issues', icon: MessageSquarePlus },
@@ -171,6 +174,7 @@ export function visibleSettingsCategories(status: AuthStatus | null): typeof cat
     }
     if (category.id === 'project') return hasPermission(status, 'project.view')
     if (category.id === 'registry') return hasPermission(status, 'registry.view')
+    if (category.id === 'notifications') return hasPermission(status, 'notifications.view')
     if (category.id === 'backup-restore') return hasPermission(status, 'backups.view')
     if (category.id === 'updates') return hasPermission(status, 'updates.view')
     return false
@@ -897,6 +901,7 @@ export function SettingsDialog(props: SettingsDialogProps) {
               {activeCategory === 'authentication' ? <AuthenticationSettings /> : null}
               {activeCategory === 'access' ? <Suspense fallback={<div className="grid min-h-52 place-items-center text-sm font-bold text-[#756d62]">Loading access policy…</div>}><AccessSettings /></Suspense> : null}
               {activeCategory === 'registry' ? <RegistrySettingsPanel {...props} /> : null}
+              {activeCategory === 'notifications' ? <Suspense fallback={<div className="grid min-h-52 place-items-center text-sm font-bold text-[#756d62]">Loading notifications…</div>}><NotificationSettings /></Suspense> : null}
               {activeCategory === 'backup-restore' ? <BackupRestoreSettings /> : null}
               {activeCategory === 'updates' ? <UpdateSettings {...props} /> : null}
               {activeCategory === 'feedback' ? <FeedbackSettings {...props} /> : null}

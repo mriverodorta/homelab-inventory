@@ -34,7 +34,9 @@ describe('agent protocol v1 normalization', () => {
     expect(normalizeV1Heartbeat(heartbeat(), { hostType: 'server', hostId: 1 })).toMatchObject({
       sequence: 1,
       host: { type: 'server', id: 1 },
+      monitoringRevision: 0,
     })
+    expect(normalizeV1Heartbeat(heartbeat({ monitoringRevision: 7 }), { hostType: 'server', hostId: 1 })).toMatchObject({ monitoringRevision: 7 })
   })
 
   it('rejects unsupported protocols, cross-host payloads, and nonfinite metrics', () => {

@@ -309,6 +309,8 @@ export function registerAgentV1Routes(app, store, {
   heartbeatRateLimit = HEARTBEAT_RATE_LIMIT,
   heartbeatRateWindowMs = HEARTBEAT_RATE_WINDOW_MS,
   heartbeatSink = null,
+  monitoringConfigProvider = null,
+  notificationHostLifecycle = null,
   telemetryRepository = null,
   releaseService = null,
 } = {}) {
@@ -467,7 +469,14 @@ export function registerAgentV1Routes(app, store, {
         payload: heartbeat,
       })
       persistHeartbeat(store, device, host, authentication, heartbeat, receivedAt)
-      return response.json({ ok: true, receivedAt, sequence: authentication.sequence })
+      return response.json({
+        ok: true,
+        receivedAt,
+        sequence: authentication.sequence,
+        ...(monitoringConfigProvider
+          ? { monitoringConfig: monitoringConfigProvider(host.hostType, host.hostId) }
+          : {}),
+      })
     } catch (error) {
       if (!(error instanceof AgentAuthenticationError) && !Number.isInteger(error?.status)) throw error
       if (Number(error.status) >= 500) throw error
@@ -600,6 +609,7 @@ export function registerAgentV1Routes(app, store, {
     }
     if (revoked) store.scheduleFlush('agents')
     if (revoked || options.deleteTelemetry) await store.flush(['agents', 'agentStatus'])
+    if (revoked) await notificationHostLifecycle?.cancelHost(host.hostType, host.hostId, 'agent-unlinked')
     return response.json({ ok: true, ...host, revoked, revokedAt, deleteTelemetry: options.deleteTelemetry, telemetryDeleted })
   })
 

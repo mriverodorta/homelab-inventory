@@ -47,7 +47,10 @@ interface CreateWorkspaceSurfacePropsOptions {
   canvasOperationLabel: string | null
   updateAvailable: boolean
   updateStatusLoading: boolean
+  canViewNotifications: boolean
+  notificationCount: number
   settingsOpen: boolean
+  openNotifications(): void
   undo(): void
   redo(): void
   updateProject(nextProject: ProjectState): void
@@ -84,7 +87,10 @@ export function createWorkspaceSurfaceProps({
   canvasOperationLabel,
   updateAvailable,
   updateStatusLoading,
+  canViewNotifications,
+  notificationCount,
   settingsOpen,
+  openNotifications,
   undo,
   redo,
   updateProject,
@@ -184,6 +190,8 @@ export function createWorkspaceSurfaceProps({
       snapItemsToGrid: preferences.snapItemsToGrid,
       updateAvailable,
       updateStatusLoading,
+      canViewNotifications,
+      notificationCount,
       onSelect: selection.selectCanvasItem,
       onSelectConnection: selection.selectConnection,
       onRemoveAssignment: equipment.requestAssignedComponentRemoval,
@@ -209,6 +217,7 @@ export function createWorkspaceSurfaceProps({
       onAutoArrange: canvasActions.autoArrange,
       onOpenAudit: navigation.openAudit,
       onOpenSettings: navigation.openSettings,
+      onOpenNotifications: openNotifications,
       onOpenUpdate: navigation.openUpdate,
     },
     exampleGuide: onboarding.showExampleGuide && !settingsOpen ? {

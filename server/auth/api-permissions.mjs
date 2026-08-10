@@ -88,6 +88,14 @@ const PROTECTED_ROUTES = [
   ['DELETE', /^\/api\/agent\/servers\/[1-9]\d*\/(?:registration|status)\/?$/, 'agents.manage'],
   ['DELETE', /^\/api\/agent\/hosts\/(?:server|nas|pcBuild)\/[1-9]\d*\/(?:registration|status)\/?$/, 'agents.manage'],
 
+  ['GET', /^\/api\/notifications(?:\/.*)?$/, 'notifications.view'],
+  ['PATCH', /^\/api\/notifications\/settings\/?$/, 'notifications.manage'],
+  ['POST', /^\/api\/notifications\/(?:contact-points|quiet-hours)\/?$/, 'notifications.manage'],
+  ['PUT', /^\/api\/notifications\/(?:contact-points|rules|quiet-hours)\/[1-9]\d*\/?$/, 'notifications.manage'],
+  ['DELETE', /^\/api\/notifications\/(?:contact-points|quiet-hours)\/[1-9]\d*\/?$/, 'notifications.manage'],
+  ['PUT', /^\/api\/notifications\/hosts\/(?:server|nas|pcBuild)\/[1-9]\d*\/?$/, 'notifications.manage'],
+  ['POST', /^\/api\/notifications\/(?:contact-points\/[1-9]\d*\/test|incidents\/[1-9]\d*\/acknowledge|deliveries\/[1-9]\d*\/retry)\/?$/, 'notifications.manage'],
+
   ['GET', /^\/api\/onboarding(?:\/.*)?$/, 'workspace.view'],
   ['POST', /^\/api\/onboarding(?:\/.*)?$/, 'workspace.edit'],
   ['GET', /^\/api\/release-notes\/status\/?$/, 'workspace.view'],

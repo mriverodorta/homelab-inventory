@@ -6,6 +6,7 @@ import {
 import { useDomainEngine } from '@/hooks/use-domain-engine'
 import { usePermission } from '@/hooks/use-permission'
 import { useRegistryMutations, useRegistryQuery } from '@/hooks/use-registry'
+import { useNotificationSnapshot } from '@/hooks/use-notifications'
 import {
   useCompatibleTopologyDestinations,
   useTopologyQuery,
@@ -60,6 +61,7 @@ function App() {
   const canViewRegistry = usePermission('registry.view')
   const canViewUpdates = usePermission('updates.view')
   const canManageAudit = usePermission('audit.manage')
+  const canViewNotifications = usePermission('notifications.view')
   const [project, setProject] = useState<ProjectState | null>(null)
   const projectRef = useRef<ProjectState | null>(null)
   const topologyQuery = useTopologyQuery(project)
@@ -98,6 +100,7 @@ function App() {
   } = workspacePreferences
   const [mobileInventoryOpen, setMobileInventoryOpen] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const [notificationsOpen, setNotificationsOpen] = useState(false)
   const {
     query: demoSessionQuery,
     remainingSeconds: demoRemainingSeconds,
@@ -287,6 +290,7 @@ function App() {
     updateHighlighted,
   } = releaseUpdateController
   const registryQuery = useRegistryQuery(canViewRegistry)
+  const notificationQuery = useNotificationSnapshot(canViewNotifications)
   const registryMutations = useRegistryMutations()
   const inventoryLifecycle = useInventoryLifecycle({
     projectRef,
@@ -509,7 +513,10 @@ function App() {
     canvasOperationLabel,
     updateAvailable: updateHighlighted,
     updateStatusLoading: updateStatusQuery.isFetching && !updateStatusQuery.data,
+    canViewNotifications,
+    notificationCount: notificationQuery.data?.summary.unacknowledged ?? 0,
     settingsOpen,
+    openNotifications: () => setNotificationsOpen(true),
     undo: undoProjectChange,
     redo: redoProjectChange,
     updateProject,
@@ -559,6 +566,7 @@ function App() {
               onSelectItem: navigationActions.selectSearchItem,
             }}
             settings={settingsDialogProps}
+            notifications={canViewNotifications ? { open: notificationsOpen, onOpenChange: setNotificationsOpen } : undefined}
           />
     </AppShell>
   )

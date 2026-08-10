@@ -11,6 +11,7 @@ import {
   InspectorPanel,
   InventoryLifecycleDialog,
   NasPowerConfigurationDialog,
+  NotificationCenter,
   ReturnToInventoryDialog,
   SettingsDialog,
   UpdateDialog,
@@ -32,6 +33,7 @@ describe('lazy application surfaces', () => {
       InspectorPanel,
       InventoryLifecycleDialog,
       NasPowerConfigurationDialog,
+      NotificationCenter,
       ReturnToInventoryDialog,
       SettingsDialog,
       UpdateDialog,
@@ -51,6 +53,7 @@ describe('lazy application surfaces', () => {
       'onboarding',
       'search',
       'settings',
+      'notifications',
       'update',
     ])
   })

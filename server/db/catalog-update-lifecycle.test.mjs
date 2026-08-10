@@ -110,13 +110,13 @@ describe('catalog update lifecycle', () => {
     stores.push(restarted)
 
     expect(restarted.databases.meta.data).toMatchObject({
-      schemaVersion: 27,
+      schemaVersion: 28,
       lastMigration: {
-        from: 26,
-        to: 27,
+        from: 27,
+        to: 28,
         summary: {
-          preservedMotherboards: fixture.cases.length,
-          preservedRegistryLinks: fixture.cases.length,
+          createdNotificationPermissionRelationships: 0,
+          preservedCustomRoles: 0,
         },
       },
     })
@@ -124,7 +124,7 @@ describe('catalog update lifecycle', () => {
       expect(await fs.readFile(restarted.paths[name], 'utf8')).toBe(contents)
     }
     const backupEntries = await fs.readdir(restarted.backupDir)
-    expect(backupEntries.filter((entry) => entry.endsWith('-schema-26-to-27'))).toHaveLength(1)
+    expect(backupEntries.filter((entry) => entry.endsWith('-schema-26-to-28'))).toHaveLength(1)
     expect(restarted.databases.inventory.data.motherboards).toHaveLength(fixture.cases.length)
     expect(restarted.getRegistryState().links).toHaveLength(fixture.cases.length)
     for (const [index, fixtureCase] of fixture.cases.entries()) {
@@ -159,7 +159,7 @@ describe('catalog update lifecycle', () => {
     await secondRestart.init()
     stores.push(secondRestart)
     expect((await fs.readdir(secondRestart.backupDir))
-      .filter((entry) => entry.endsWith('-schema-26-to-27'))).toHaveLength(1)
+      .filter((entry) => entry.endsWith('-schema-26-to-28'))).toHaveLength(1)
   })
 
   it('imports physical desktop templates as locally role-aware equipment and preserves that role on update', async () => {

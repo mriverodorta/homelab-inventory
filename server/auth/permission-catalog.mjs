@@ -41,6 +41,8 @@ export const PERMISSIONS = Object.freeze([
   definePermission(1003, 'security.events.view', 'security', 'View authentication and authorization security events.', 'elevated'),
   definePermission(1101, 'updates.view', 'updates', 'View application update status.'),
   definePermission(1102, 'updates.manage', 'updates', 'Change update channel and update preferences.', 'elevated'),
+  definePermission(1201, 'notifications.view', 'notifications', 'View notification configuration, incidents, and delivery history.'),
+  definePermission(1202, 'notifications.manage', 'notifications', 'Configure notification policies, destinations, acknowledgements, and retries.', 'elevated'),
 ])
 
 export const PERMISSION_BY_ID = new Map(PERMISSIONS.map((permission) => [permission.id, permission]))
@@ -69,6 +71,7 @@ const EDITOR_KEYS = new Set([
   'agents.view', 'agents.manage',
   'audit.view', 'audit.manage',
   'updates.view',
+  'notifications.view',
 ])
 
 export const BUILT_IN_ROLE_DEFINITIONS = Object.freeze([

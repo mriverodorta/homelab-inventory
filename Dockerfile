@@ -12,8 +12,8 @@ FROM oven/bun:1-alpine AS bun-toolchain
 
 FROM golang:1.26.5-alpine AS agent-build
 WORKDIR /agent
-ARG AGENT_VERSION=0.2.0
-ARG AGENT_SOURCE_REVISION=3e3a3bfcba695e9d9689c89bfd0675ef7597ac01
+ARG AGENT_VERSION=0.3.0
+ARG AGENT_SOURCE_REVISION=8c5f3fa4b26748b459c2451efda90ab665418e8c
 COPY server/agent-release-pin.json /agent-release-pin.json
 COPY vendor/homelab-inventory-agent ./
 RUN grep -Fq "\"version\": \"${AGENT_VERSION}\"" /agent-release-pin.json \
@@ -81,6 +81,7 @@ COPY --chown=10001:10001 server/db/migrate-schema-*.mjs ./server/db/
 COPY --chown=10001:10001 server/registry ./server/registry
 COPY --chown=10001:10001 server/agents ./server/agents
 COPY --chown=10001:10001 server/telemetry ./server/telemetry
+COPY --chown=10001:10001 server/notifications ./server/notifications
 COPY --chown=10001:10001 server/agent-release-pin.json ./server/
 COPY --from=agent-build --chown=10001:10001 /agent-release ./server/agent-release
 RUN ["bun", "-e", "const fs = await import('node:fs/promises'); const { AgentReleaseService } = await import('./server/agents/release-service.mjs'); const pin = JSON.parse(await fs.readFile('./server/agent-release-pin.json', 'utf8')); await new AgentReleaseService({ expectedVersion: pin.version, expectedSourceRevision: pin.sourceRevision }).initialize();"]

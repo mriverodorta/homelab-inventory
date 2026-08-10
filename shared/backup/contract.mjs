@@ -48,6 +48,16 @@ export const BACKUP_SECTIONS = Object.freeze({
     description: 'Latest agent state, one-minute history, and service, container, and storage-health events.',
     sensitive: true,
   },
+  notifications: {
+    label: 'Notifications',
+    description: 'Notification destinations, rules, schedules, host overrides, and encrypted credentials.',
+    sensitive: true,
+  },
+  notificationHistory: {
+    label: 'Notification history',
+    description: 'Incidents, transitions, acknowledgements, and delivery attempts.',
+    sensitive: false,
+  },
   applicationMetadata: {
     label: 'Application metadata',
     description: 'Schema, onboarding, release state, and backup schedule.',
@@ -69,6 +79,8 @@ export const BACKUP_SECTION_DEPENDENCIES = Object.freeze({
   catalogState: [],
   agents: ['inventory'],
   agentTelemetry: ['agents'],
+  notifications: [],
+  notificationHistory: ['notifications'],
   applicationMetadata: [],
 })
 

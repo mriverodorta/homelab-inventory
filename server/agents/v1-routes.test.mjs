@@ -231,6 +231,23 @@ describe('agent protocol v1 routes', () => {
     }
   })
 
+  it('persists the applied monitoring revision and returns the desired policy revision', async () => {
+    const store = await createStore()
+    const monitoringConfig = { revision: 9, enabled: true, serviceIntervalSeconds: 60, selectedServices: ['docker.service'], selectedContainers: [] }
+    const { server, url } = await listen(createApp(store, { monitoringConfigProvider: () => monitoringConfig }))
+    try {
+      const enrolled = await enrollAndActivate(url, 'server', 1)
+      const heartbeat = await signedHeartbeat({
+        url, hostType: 'server', hostId: 1, deviceId: enrolled.activation.deviceId,
+        pair: enrolled.agentIdentity.pair, payload: { monitoringRevision: 8 },
+      })
+      expect(await heartbeat.json()).toMatchObject({ monitoringConfig })
+      expect(store.databases.agentStatus.data.hosts['server:1']).toMatchObject({ monitoringRevision: 8 })
+    } finally {
+      await close(server)
+    }
+  })
+
   it('rejects cross-host signatures, replay, unsafe containers, and invalid compression without advancing state', async () => {
     const store = await createStore()
     const { server, url } = await listen(createApp(store, { heartbeatRateLimit: 20 }))
@@ -426,7 +443,8 @@ describe('agent protocol v1 routes', () => {
     store.databases.agentStatus.data.hosts['server:1'] = { hostType: 'server', hostId: 1, lastSeenAt: new Date().toISOString() }
     const deleteHost = vi.fn().mockReturnValue({ telemetry_samples: 3, latest_host_state: 1 })
     const telemetryRepository = { listSamples: vi.fn().mockReturnValue([]), deleteHost }
-    const { server, url } = await listen(createApp(store, { telemetryRepository }))
+    const cancelHost = vi.fn().mockResolvedValue(undefined)
+    const { server, url } = await listen(createApp(store, { telemetryRepository, notificationHostLifecycle: { cancelHost } }))
     try {
       await enrollAndActivate(url, 'server', 1)
       const retained = await fetch(`${url}/api/agent/hosts/server/1/registration`, {
@@ -435,6 +453,7 @@ describe('agent protocol v1 routes', () => {
       expect(retained.status).toBe(200)
       expect((await retained.json()).deleteTelemetry).toBe(false)
       expect(deleteHost).not.toHaveBeenCalled()
+      expect(cancelHost).toHaveBeenCalledWith('server', 1, 'agent-unlinked')
       expect(store.databases.agentStatus.data.hosts['server:1']).toBeTruthy()
 
       await enrollAndActivate(url, 'server', 1)
@@ -444,6 +463,7 @@ describe('agent protocol v1 routes', () => {
       expect(removed.status).toBe(200)
       expect(await removed.json()).toMatchObject({ deleteTelemetry: true, telemetryDeleted: { telemetry_samples: 3 } })
       expect(deleteHost).toHaveBeenCalledWith('server', 1)
+      expect(cancelHost).toHaveBeenCalledTimes(2)
       expect(store.databases.agentStatus.data.hosts['server:1']).toBeUndefined()
       expect(store.databases.agentStatus.data.hosts['nas:1']).toBeUndefined()
     } finally {

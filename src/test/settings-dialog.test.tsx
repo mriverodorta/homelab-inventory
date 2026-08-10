@@ -244,12 +244,13 @@ describe('SettingsDialog', () => {
     expect(props.onClearSkippedUpdate).toHaveBeenCalledOnce()
   })
 
-  it('shows six focused categories without storage-scope pills', () => {
+  it('shows the focused settings categories without storage-scope pills', () => {
     renderSettings()
     const navigation = screen.getByRole('navigation', { name: 'Settings categories' })
     expect(navigation).toHaveTextContent('General')
     expect(navigation).toHaveTextContent('Project')
     expect(navigation).toHaveTextContent('Registry')
+    expect(navigation).toHaveTextContent('Notifications')
     expect(navigation).toHaveTextContent('Updates')
     expect(navigation).toHaveTextContent('Feedback')
     expect(navigation).toHaveTextContent('About')

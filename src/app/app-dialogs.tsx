@@ -10,6 +10,7 @@ import {
   NasPowerConfigurationDialog,
   ReturnToInventoryDialog,
   SettingsDialog,
+  NotificationCenter,
   UpdateDialog,
   WhatsNewDialog,
 } from '@/components/lazy-app-surfaces'
@@ -24,6 +25,7 @@ export interface AppDialogsProps {
   whatsNew?: ComponentProps<typeof WhatsNewDialog>
   update?: ComponentProps<typeof UpdateDialog>
   settings: ComponentProps<typeof SettingsDialog>
+  notifications?: ComponentProps<typeof NotificationCenter>
   demoSession: ComponentProps<typeof DemoSessionDialog>
   firstRun: ComponentProps<typeof FirstRunOnboardingDialog>
   exampleCompletion: ComponentProps<typeof ExampleCompletionDialog>
@@ -39,6 +41,7 @@ export function AppDialogs({
   whatsNew,
   update,
   settings,
+  notifications,
   demoSession,
   firstRun,
   exampleCompletion,
@@ -54,6 +57,7 @@ export function AppDialogs({
       {whatsNew ? <WhatsNewDialog {...whatsNew} /> : null}
       {update ? <UpdateDialog {...update} /> : null}
       <SettingsDialog {...settings} />
+      {notifications ? <NotificationCenter {...notifications} /> : null}
       <DemoSessionDialog {...demoSession} />
       <FirstRunOnboardingDialog {...firstRun} />
       <ExampleCompletionDialog {...exampleCompletion} />

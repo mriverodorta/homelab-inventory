@@ -4,6 +4,8 @@ import os from 'node:os'
 import path from 'node:path'
 import { BackupService } from '../backup/backup-service.mjs'
 import { HomelabInventoryStore } from '../db/store.mjs'
+import { NotificationSecretVault } from '../notifications/secret-vault.mjs'
+import { NotificationStore } from '../notifications/store.mjs'
 import { closeTelemetryDatabase, openTelemetryDatabase } from './database.mjs'
 import { TelemetryRepository } from './repository.mjs'
 
@@ -60,10 +62,14 @@ async function context() {
 
   const database = await openTelemetryDatabase({ dataDir })
   const repository = new TelemetryRepository(database)
+  const notificationStore = await new NotificationStore({ dataDir }).init()
+  const notificationVault = await new NotificationSecretVault({ dataDir, store: notificationStore }).init()
   const service = new BackupService({
     store,
     appVersion: '1.0.0',
     telemetryRepository: repository,
+    notificationStore,
+    notificationVault,
   })
   await service.init()
   const resource = { dataDir, database, repository, service, store }

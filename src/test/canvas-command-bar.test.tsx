@@ -9,6 +9,8 @@ function createProps(overrides: Partial<CanvasCommandBarProps> = {}): CanvasComm
     canEditCanvas: true,
     canViewAudit: true,
     canViewUpdates: true,
+    canViewNotifications: true,
+    notificationCount: 2,
     desktopInventoryVisible: true,
     saveStatus: 'saved',
     canUndo: true,
@@ -31,6 +33,7 @@ function createProps(overrides: Partial<CanvasCommandBarProps> = {}): CanvasComm
     onTogglePowerCablesVisible: vi.fn(),
     onToggleDisplayCablesVisible: vi.fn(),
     onOpenSettings: vi.fn(),
+    onOpenNotifications: vi.fn(),
     ...overrides,
   }
 }
@@ -62,6 +65,7 @@ describe('CanvasCommandBar', () => {
     expect(screen.getByRole('button', { name: 'Redo' })).toBeDisabled()
     expect(screen.getByRole('button', { name: 'Open update status' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Open audit, 3 warnings' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Open Notification Center, 2 unacknowledged incidents' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Disable selection centering' })).toHaveAttribute('aria-pressed', 'true')
     expect(screen.getByRole('button', { name: 'Auto arrange canvas' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Hide network cables' })).toHaveAttribute('aria-pressed', 'true')
@@ -81,6 +85,7 @@ describe('CanvasCommandBar', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Redo' }))
     fireEvent.click(screen.getByRole('button', { name: 'Open update status' }))
     fireEvent.click(screen.getByRole('button', { name: 'Open audit, 3 warnings' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Open Notification Center, 2 unacknowledged incidents' }))
     fireEvent.click(screen.getByRole('button', { name: 'Disable selection centering' }))
     fireEvent.click(screen.getByRole('button', { name: 'Auto arrange canvas' }))
     fireEvent.click(screen.getByRole('button', { name: 'Hide network cables' }))
@@ -93,6 +98,7 @@ describe('CanvasCommandBar', () => {
     expect(props.onRedo).toHaveBeenCalledOnce()
     expect(props.onOpenUpdate).toHaveBeenCalledOnce()
     expect(props.onOpenAudit).toHaveBeenCalledOnce()
+    expect(props.onOpenNotifications).toHaveBeenCalledOnce()
     expect(props.onToggleAutoCenterOnSelect).toHaveBeenCalledOnce()
     expect(props.onAutoArrange).toHaveBeenCalledOnce()
     expect(props.onToggleNetworkCablesVisible).toHaveBeenCalledOnce()

@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto'
 
-export const AGENT_SCHEMA_BUNDLE_DIGEST = '6991de825d245d5906d64a137f51fd52ed820c97c5f093a0935434a0130c06ec'
+export const AGENT_SCHEMA_BUNDLE_DIGEST = '97ea85ea215e8d35d2cf8c70c24d715d79e092391dd57f70b6b54ef9717e7495'
+export const AGENT_LEGACY_SCHEMA_BUNDLE_DIGEST = '6991de825d245d5906d64a137f51fd52ed820c97c5f093a0935434a0130c06ec'
 
 const BASE_CONTRACT = Object.freeze({
   protocolMajor: 1,
@@ -43,23 +44,44 @@ export class AgentContractService {
       limits: { ...BASE_CONTRACT.limits, ...policy.limits },
       privacy: { ...BASE_CONTRACT.privacy, ...policy.privacy },
     })
-    this.body = Buffer.from(`${canonicalJson(this.contract)}\n`, 'utf8')
-    this.etag = `"sha256-${createHash('sha256').update(this.body).digest('base64url')}"`
+    this.representations = new Map([
+      AGENT_SCHEMA_BUNDLE_DIGEST,
+      AGENT_LEGACY_SCHEMA_BUNDLE_DIGEST,
+    ].map((schemaBundleDigest) => {
+      const contract = { ...this.contract, schemaBundleDigest }
+      const body = Buffer.from(`${canonicalJson(contract)}\n`, 'utf8')
+      return [schemaBundleDigest, {
+        contract,
+        body,
+        etag: `"sha256-${createHash('sha256').update(body).digest('base64url')}"`,
+      }]
+    }))
   }
 
   current() {
-    return { contract: structuredClone(this.contract), body: Buffer.from(this.body), etag: this.etag }
+    const current = this.representations.get(AGENT_SCHEMA_BUNDLE_DIGEST)
+    return { contract: structuredClone(current.contract), body: Buffer.from(current.body), etag: current.etag }
   }
 
   respond(request, response) {
-    if (request.get('if-none-match') === this.etag) {
+    const requestedDigest = request.get('x-homelab-agent-schema-digest')
+      || AGENT_LEGACY_SCHEMA_BUNDLE_DIGEST
+    const representation = this.representations.get(requestedDigest)
+    if (!representation) {
+      response.status(409).json({
+        message: 'The agent schema bundle is not supported by this application version.',
+        code: 'agent-schema-bundle-unsupported',
+      })
+      return
+    }
+    if (request.get('if-none-match') === representation.etag) {
       response.status(304).end()
       return
     }
     response
       .set('Cache-Control', 'private, max-age=60, must-revalidate')
-      .set('ETag', this.etag)
+      .set('ETag', representation.etag)
       .type('application/json')
-      .send(this.body)
+      .send(representation.body)
   }
 }

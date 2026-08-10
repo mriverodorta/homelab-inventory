@@ -235,6 +235,12 @@ Complete hardware discovery is a separate reviewed `sudo homelab-inventory-agent
 
 Agent source is available for inspection at [github.com/mriverodorta/homelab-inventory-agent](https://github.com/mriverodorta/homelab-inventory-agent). The Agent is optional; inventory, compatibility, canvas layout, and cabling work without it.
 
+## Notifications
+
+Opt-in Agent notifications support reusable Ntfy and generic webhook destinations for host outages and selected service, container, and physical-storage health changes. Workspace rules provide severity, debounce, per-resource cooldown, optional reminders, quiet hours, and bounded retries; per-host Agent settings provide inheritance, custom resource selection, temporary mute, or disablement. Replay-safe evaluation, host-outage inhibition, recipient-specific recovery, and active/historical incidents are handled by the persisted server-side state machine and toolbar Notification Center.
+
+Contact credentials and generic webhook destination URLs are encrypted at rest with a local mode-`0600` key and remain redacted from APIs and logs. Public demo sessions cannot create notification credentials or deliver alerts. Notification state and secrets participate in dependency-aware encrypted backups.
+
 ## Notes
 
 - Local development can use fictional seeded sample data.

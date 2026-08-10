@@ -307,6 +307,16 @@ Agent upgrades are always explicit. Older installations receive a one-time verif
 
 The independently maintained source is public at [mriverodorta/homelab-inventory-agent](https://github.com/mriverodorta/homelab-inventory-agent). The application pins an exact source revision, while normal users install the verified binary served by their own Homelab Inventory instance. Inventory, canvas layout, compatibility, and cabling continue to work without an Agent.
 
+## Notifications
+
+Notifications are an explicit opt-in workspace feature built on Agent telemetry. Configure reusable **Ntfy** or generic **Webhook** contact points under **Settings > Notifications**, then assign them to rules for host outages and selected service, container, or physical-storage health changes.
+
+The server persists normalized states, debounce transitions, incidents, acknowledgements, per-resource cooldowns, reminders, delivery jobs, and redacted attempts. A host outage inhibits child-resource alerts, recovery is delivered only to destinations that received the opening alert, and failed HTTP delivery uses bounded backoff before appearing for manual retry in the toolbar **Notification Center**. Quiet hours and temporary host mutes suppress delivery without discarding incident history. Persisted sequence cursors reject replayed and stale buffered samples across restarts while accounting for stable agent clock offset.
+
+Per-host controls live in the compute host's **Agent** tab. A host can inherit workspace rules, select specific reported resources with custom overrides, or disable notifications. Selected services ask the agent for one-minute service collection; hosts without selected services retain the normal ten-minute service cadence. The app shows the desired policy revision as pending until a later outbound agent heartbeat acknowledges that it was applied.
+
+Contact credentials and generic webhook destination URLs are encrypted at rest under `/data/notifications` with a local key restricted to mode `0600`. Public APIs and logs redact these values, complete/custom backups enforce the key and encrypted store dependency, and demo sessions cannot create credentials or deliver notifications. Keep HTTPS and the normal trusted-network deployment boundary in place because webhook delivery leaves the application server.
+
 ## Security
 
 Built-in multi-user authentication can protect the UI and browser API, but it is optional on upgraded installations and does not terminate TLS. Keep the app behind a trusted network boundary, VPN, or HTTPS reverse proxy. Machine agent registration and heartbeat endpoints retain their separate scoped-token authentication.

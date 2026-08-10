@@ -6,6 +6,27 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 
 ## Unreleased
 
+### Added
+
+- Added an opt-in notification system for agent host availability and selected service, container, and physical-storage health changes, with persisted incidents, transitions, acknowledgements, cooldowns, reminders, and delivery attempts.
+- Added reusable Ntfy and generic webhook contact points, workspace rules, severity overrides, quiet-hours schedules, per-host policies and temporary mutes, and a toolbar Notification Center for active and historical incidents.
+- Embedded Agent 0.3.0 receives and acknowledges a revisioned monitoring policy that increases service collection to one minute only when selected services require it and otherwise retains the ten-minute service cadence.
+
+### Changed
+
+- Host outages inhibit child service, container, and storage notifications; inhibited alerts resume after recovery, recovery messages are sent only to destinations that received the opening alert, and failed deliveries use bounded persisted retries before requiring manual action.
+- Notification evaluation now rejects replayed sequences and stale buffered evidence without treating agent clock offset as an outage, preventing reconnect backlogs or process restarts from duplicating incidents or falsely recovering hosts.
+- Agent contract negotiation remains backward-compatible during staggered app and Agent upgrades, so existing Agents keep reporting while newer Agents opt into revisioned monitoring acknowledgements.
+- Complete and custom backups can include notification configuration, encrypted credentials, incident history, and the local encryption key as a validated dependency-aware section.
+
+### Security
+
+- Contact-point credentials and generic webhook destination URLs are encrypted at rest with a local mode-`0600` AES-256-GCM key, remain redacted from APIs and logs, and are never created or delivered in public demo sessions.
+
+### Data migration
+
+- Schema 28 grants the new static notification permissions to existing built-in roles while preserving custom roles, accounts, assignments, inventory, canvas placement, cables, agent identity, and telemetry.
+
 ## [0.10.0] - 2026-08-09
 
 ### Added

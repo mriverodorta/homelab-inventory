@@ -56,6 +56,8 @@ import { storeRequestError } from './store-request-error.mjs'
 import { closeTelemetryDatabase, openTelemetryDatabase } from './telemetry/database.mjs'
 import { TelemetryRepository } from './telemetry/repository.mjs'
 import { startTelemetryRetentionSchedule } from './telemetry/retention.mjs'
+import { createNotificationRuntime } from './notifications/runtime.mjs'
+import { registerNotificationRoutes } from './notifications/routes.mjs'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const root = path.resolve(__dirname, '..')
@@ -113,6 +115,7 @@ let demoManager = null
 let telemetryDatabase = null
 let telemetryRepository = null
 let telemetryRetentionSchedule = null
+let notificationRuntime = null
 
 if (isDemoMode) {
   const { DemoSessionManager, DEMO_COOKIE_NAME } = await import('./demo/session-manager.mjs')
@@ -145,6 +148,10 @@ if (isDemoMode) {
   telemetryDatabase = await openTelemetryDatabase({ dataDir })
   telemetryRepository = new TelemetryRepository(telemetryDatabase)
   telemetryRetentionSchedule = startTelemetryRetentionSchedule(telemetryDatabase)
+  notificationRuntime = await createNotificationRuntime({
+    dataDir,
+    workspaceStore: store,
+  })
 }
 
 const cspDirectives = {
@@ -222,10 +229,32 @@ registerAgentV1Routes(app, store, {
   disabled: isDemoMode,
   releaseService: agentReleaseService,
   heartbeatSink: telemetryRepository
-    ? (heartbeat) => telemetryRepository.recordHeartbeat(heartbeat)
+    ? async (heartbeat) => {
+        await telemetryRepository.recordHeartbeat(heartbeat)
+        if (!notificationRuntime) return
+        try {
+          const hostName = store.getProject().items?.[`${heartbeat.hostType}:${heartbeat.hostId}`]?.name
+          await notificationRuntime.evaluator.evaluateHeartbeat({ ...heartbeat, hostName })
+          void notificationRuntime.deliveryCoordinator.wake()
+        } catch (error) {
+          console.error('[notifications] Heartbeat evaluation failed.', error instanceof Error ? error.message : error)
+        }
+      }
     : null,
+  monitoringConfigProvider: notificationRuntime
+    ? (hostType, hostId) => notificationRuntime.monitoringConfig(hostType, hostId)
+    : null,
+  notificationHostLifecycle: notificationRuntime?.incidentManager ?? null,
   telemetryRepository,
 })
+registerNotificationRoutes(app, {
+  store: notificationRuntime?.store ?? null,
+  vault: notificationRuntime?.vault ?? null,
+  incidentManager: notificationRuntime?.incidentManager ?? null,
+  deliveryCoordinator: notificationRuntime?.deliveryCoordinator ?? null,
+  demo: isDemoMode,
+})
+notificationRuntime?.start()
 
 function parseCookie(header, name) {
   return (header ?? '')
@@ -297,12 +326,17 @@ const backupService = store
       environmentPassphrase: backupEnvironmentPassphrase,
       environmentTimezone: backupEnvironmentTimezone,
       telemetryRepository,
+      notificationStore: notificationRuntime?.store ?? null,
+      notificationVault: notificationRuntime?.vault ?? null,
       onRestoreApplied: async ({ sections }) => {
         if (sections.includes('authentication')) {
           await authorizationService.rebuild(store.getAuthenticationState())
         }
         if (sections.includes('registryEnrollment') || sections.includes('registryConfiguration')) {
           await installationIdentity?.initialize(store)
+        }
+        if (sections.includes('notifications') || sections.includes('notificationHistory')) {
+          await notificationRuntime?.incidentManager.reconcilePolicies({ reason: 'notification-backup-restored' })
         }
       },
     })
@@ -320,7 +354,14 @@ registerBackupRoutes(app, {
   appVersion: packageJson.version,
 })
 
-registerInventoryRoutes(app, { withStore })
+registerInventoryRoutes(app, {
+  withStore,
+  onHostsDeleted: notificationRuntime
+    ? async (hosts) => {
+        for (const host of hosts) await notificationRuntime.incidentManager.cancelHost(host.type, host.id, 'host-deleted')
+      }
+    : null,
+})
 registerRegistryRoutes(app, {
   withStore,
   officialOrigin: registryOrigin,
@@ -482,6 +523,7 @@ async function shutdown(signal) {
         () => catalogRefreshCoordinator?.stop(),
         () => contributionDelivery?.stop(store),
         () => telemetryRetentionSchedule?.stop(),
+        () => notificationRuntime?.stop(),
       ],
       flush: () => demoManager ? demoManager.flushAll() : store.flush(),
       closers: [() => closeTelemetryDatabase(telemetryDatabase)],

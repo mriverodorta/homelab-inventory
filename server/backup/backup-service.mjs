@@ -18,6 +18,7 @@ import {
   collectBackupSections,
   enrollmentFilesFromArchive,
   telemetryBackupFromArchive,
+  notificationBackupFromArchive,
 } from './backup-sections.mjs'
 import { preflightRestore } from './restore-preflight.mjs'
 import { RestoreJournal } from './restore-journal.mjs'
@@ -97,6 +98,8 @@ export class BackupService {
     environmentTimezone = null,
     onRestoreApplied = null,
     telemetryRepository = null,
+    notificationStore = null,
+    notificationVault = null,
   }) {
     this.store = store
     this.appVersion = appVersion
@@ -105,6 +108,8 @@ export class BackupService {
     this.environmentTimezone = environmentTimezone || null
     this.onRestoreApplied = onRestoreApplied
     this.telemetryRepository = telemetryRepository
+    this.notificationStore = notificationStore
+    this.notificationVault = notificationVault
     this.directory = path.join(store.dataDir, 'backups', 'user')
     this.stagingDirectory = path.join(this.directory, '.staging')
     this.journal = new RestoreJournal(store.dataDir)
@@ -188,10 +193,20 @@ export class BackupService {
       ) {
         validatePassphrase(passphrase, { required: true })
       }
+      if (selected.includes('notifications') && this.notificationStore?.readSecrets().secrets.length > 0) {
+        validatePassphrase(passphrase, { required: true })
+      }
       const management = this.store.getBackupManagementState()
       const id = management.nextBackupId
       const createdAt = nowIso()
-      const collected = await collectBackupSections({ store: this.store, sections: selected, demo, telemetryRepository: this.telemetryRepository })
+      const collected = await collectBackupSections({
+        store: this.store,
+        sections: selected,
+        demo,
+        telemetryRepository: this.telemetryRepository,
+        notificationStore: this.notificationStore,
+        includeNotificationSecrets: passphrase !== null,
+      })
       const manifest = {
         formatVersion: BACKUP_ARCHIVE_FORMAT_VERSION,
         backupId: randomUUID(),
@@ -384,6 +399,21 @@ export class BackupService {
       }
       await fs.rm(directory, { recursive: true, force: true })
       await fs.rename(temporary, directory)
+    }
+    if (sections.includes('notifications') || sections.includes('notificationHistory')) {
+      if (!this.notificationStore) throw new Error('Notification storage is unavailable for restore.')
+      const notification = notificationBackupFromArchive(parsed.files, sections)
+      if (notification.masterKey) {
+        const directory = path.join(this.store.dataDir, 'notifications')
+        await fs.mkdir(directory, { recursive: true, mode: 0o700 })
+        await writePrivate(path.join(directory, 'master-key'), notification.masterKey)
+      }
+      await this.notificationStore.replace({
+        config: notification.config,
+        state: notification.state,
+        secrets: notification.secrets,
+      })
+      if (notification.masterKey) await this.notificationVault?.reload()
     }
   }
 

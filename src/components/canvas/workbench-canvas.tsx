@@ -79,6 +79,8 @@ function CanvasViewport({
   snapItemsToGrid,
   updateAvailable,
   updateStatusLoading,
+  canViewNotifications,
+  notificationCount,
   desktopInventoryVisible,
   inspectorOpen,
   onUndo,
@@ -92,6 +94,7 @@ function CanvasViewport({
   onTogglePowerCablesVisible,
   onToggleDisplayCablesVisible,
   onOpenSettings,
+  onOpenNotifications,
 }: WorkbenchCanvasProps) {
   const canEditWorkspace = usePermission('workspace.edit')
   const canEditCanvas = usePermission('canvas.edit')
@@ -328,6 +331,8 @@ function CanvasViewport({
         canEditCanvas,
         canViewAudit,
         canViewUpdates,
+        canViewNotifications,
+        notificationCount,
         onInventory: onOpenInventory,
         onUndo,
         onRedo,
@@ -339,6 +344,7 @@ function CanvasViewport({
         onTogglePowerCablesVisible,
         onToggleDisplayCablesVisible,
         onOpenSettings,
+        onOpenNotifications,
       }}
     />
   )
