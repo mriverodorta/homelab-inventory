@@ -101,6 +101,12 @@ const RELEASE_0_3_0_DETAILS: UnreleasedReleaseNotes = {
 }
 
 export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
+  highlights: [],
+  fixes: [],
+  notes: [],
+}
+
+const RELEASE_0_11_0_DETAILS: UnreleasedReleaseNotes = {
   highlights: [
     'Catalog contract v8 imports and preserves exact physical RAM sticks with manufacturer part-number identity, complete reusable specifications, and structured memory requirements.',
     'RAM forms and inspectors now separate DIMM or SO-DIMM physical fit from UDIMM, RDIMM, or LRDIMM electrical type and validate ECC requirements independently.',
@@ -611,9 +617,16 @@ const RELEASE_0_2_1_DETAILS: UnreleasedReleaseNotes = {
 
 export const RELEASE_NOTES: ReleaseNoteEntry[] = [
   {
+    version: '0.11.0',
+    date: '2026-08-10',
+    channel: 'latest',
+    title: 'Agent notifications and exact RAM catalogs',
+    ...RELEASE_0_11_0_DETAILS,
+  },
+  {
     version: '0.10.0',
     date: '2026-08-09',
-    channel: 'latest',
+    channel: 'release',
     title: 'Motherboard catalogs and storage telemetry',
     ...RELEASE_0_10_0_DETAILS,
   },

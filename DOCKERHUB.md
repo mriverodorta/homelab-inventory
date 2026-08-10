@@ -24,9 +24,10 @@ GitHub is the source of truth for CI/CD. Docker Hub images are built and publish
 - **Visual inventory:** Arrange servers, NAS devices, PC builds, switches, patch panels, monitors, UPS systems, and power strips on an infinite canvas.
 - **Component assignments:** Build hosts from reusable CPUs, motherboards, RAM, storage, GPUs, network cards, cooling, cases, power supplies, and OEM adapters.
 - **Physical cabling:** Connect individual network, display, and power endpoints with inspectable color-coded cable routes.
-- **Compatibility and audit:** Block known-invalid CPU, memory, storage, and expansion assignments while explaining incomplete hardware data.
-- **Hardware catalog:** Search a signed verified catalog locally, review linked updates, use an offline snapshot, or keep reusable private templates.
+- **Compatibility and audit:** Block known-invalid CPU, memory, storage, and expansion assignments, including physical RAM form factor, electrical module type, ECC, and slot limits.
+- **Hardware catalog:** Search a signed verified catalog locally, import exact physical RAM by manufacturer part number, review linked updates, use an offline snapshot, or keep reusable private templates.
 - **Host Agent:** Monitor Linux, FreeBSD, and OPNsense health, uptime, CPU, memory, local storage, services, and opt-in Docker or Podman containers.
+- **Notifications:** Send opt-in host and selected resource alerts through reusable Ntfy or webhook destinations, with persisted incidents, quiet hours, reminders, and bounded retries.
 - **Hardware discovery:** Run a reviewed one-time scan and apply detected component values field by field without automatic inventory changes.
 - **Multi-user access:** Enable local passwords, OpenID Connect, or both with invitations, sessions, built-in roles, and custom permissions.
 - **Backup and restore:** Export complete or selected sections, schedule encrypted backups, and restore with dependency checks and automatic rollback.

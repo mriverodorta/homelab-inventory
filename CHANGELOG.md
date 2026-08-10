@@ -6,6 +6,8 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 
 ## Unreleased
 
+## [0.11.0] - 2026-08-10
+
 ### Added
 
 - Added catalog contract v8 support for exact physical RAM sticks, including manufacturer part-number identity, capacity, DDR generation, MT/s speed, DIMM or SO-DIMM form factor, UDIMM/RDIMM/LRDIMM electrical type, ECC, rank, voltage, and structured memory requirements.

@@ -29,14 +29,14 @@ It gives you one practical view of what you own, what is installed in each machi
 
 ### Validate hardware before changing it
 
-- Check CPU socket, generation, and power limits; memory generation, capacity, speed, ECC, and slot allocation; storage bays and interfaces; and expansion-slot fit.
+- Check CPU socket, generation, and power limits; memory generation, capacity, speed, ECC, physical DIMM or SO-DIMM fit, electrical module type, and slot allocation; storage bays and interfaces; and expansion-slot fit.
 - See deterministic resource allocations, known incompatibilities, and incomplete-data warnings before an assignment changes project data.
 - Review or ignore individual audit findings, or disable compatibility checks for a specific host when documenting an intentional exception.
 - Import complete OEM systems and retail motherboards with their physical topology preserved instead of flattening them into generic machines.
 
 ### Reuse trusted hardware definitions
 
-- Search the optional signed hardware catalog locally by category and hardware-specific filters, then import independent inventory records linked to a verified template revision.
+- Search the optional signed hardware catalog locally by category and hardware-specific filters, then import independent inventory records linked to a verified template revision, including exact physical RAM sticks identified by manufacturer part number.
 - Review catalog updates before applying them while preserving local names, assignments, canvas positions, cables, and instance-only fields.
 - Keep an installation fully offline with a signed catalog snapshot, or use reusable private templates with checksummed JSON import and export.
 - Optionally contribute sanitized, deduplicated hardware definitions without sending serials, addresses, labels, assignments, topology, or agent evidence.
@@ -48,6 +48,7 @@ It gives you one practical view of what you own, what is installed in each machi
 - Discover locally installed services and opt into bounded Docker or Podman container telemetry through a loopback proxy or reviewed direct socket access.
 - Run a separate reviewed hardware scan and apply detected motherboard, CPU, DIMM, storage, PCI, network, GPU, or power values one field at a time with normal Undo support.
 - Update agents manually through verified commands, unlink an agent without losing history, or explicitly remove only that host's retained telemetry.
+- Receive opt-in Ntfy or generic webhook alerts for host outages and selected service, container, or physical-storage changes, with quiet hours, reminders, retries, and persisted incident history.
 
 ### Operate and share it safely
 
