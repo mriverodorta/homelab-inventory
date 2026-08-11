@@ -24,7 +24,7 @@ function normalizedRegistryPolicy(policy) {
 }
 
 /** @param {import('./persistence/store-contract.ts').HomelabInventoryPersistence} store */
-function publicRegistryState(store, policy = DEFAULT_REGISTRY_POLICY) {
+export function publicRegistryState(store, policy = DEFAULT_REGISTRY_POLICY) {
   const registry = store.getRegistryState()
   const database = store.getDatabaseStatus()
   const lastMigration = database.lastMigration && typeof database.lastMigration === 'object'

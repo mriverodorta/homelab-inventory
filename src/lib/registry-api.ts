@@ -1,4 +1,5 @@
 import { apiRequest } from '@/lib/db'
+import { consumeInitialBootstrap } from '@/lib/bootstrap-api'
 import type { InventoryItemInput } from '@/lib/db'
 import type {
   PrivateTemplateImportPreview,
@@ -14,7 +15,7 @@ import type {
 import type { ProjectState } from '@/types/inventory'
 
 export function loadRegistryState(): Promise<RegistryState> {
-  return apiRequest<RegistryState>('/api/registry')
+  return consumeInitialBootstrap('registry', () => apiRequest<RegistryState>('/api/registry'))
 }
 
 export function updateRegistrySettings(

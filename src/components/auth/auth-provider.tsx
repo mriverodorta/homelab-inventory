@@ -2,6 +2,7 @@ import type { ReactNode } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { AUTH_QUERY_KEY, AuthContext, type AuthContextValue } from '@/auth/auth-context'
 import { fetchAuthStatus } from '@/lib/auth-status-api'
+import { resetInitialBootstrap } from '@/lib/bootstrap-api'
 import type { AuthStatus } from '@/types/auth'
 
 const loadAuthApi = () => import('@/lib/auth-api').then((module) => module.authApi)
@@ -25,6 +26,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     login: async (input) => { commitStatus(await (await loadAuthApi()).login(input)) },
     logout: async () => {
       await (await loadAuthApi()).logout()
+      resetInitialBootstrap()
       await queryClient.invalidateQueries({ queryKey: AUTH_QUERY_KEY })
     },
     recover: async (input) => { commitStatus(await (await loadAuthApi()).recover(input)) },

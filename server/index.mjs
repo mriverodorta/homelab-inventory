@@ -9,6 +9,7 @@ import { registerAgentRoutes } from './agent-routes.mjs'
 import { createAgentV1BodyMiddleware, registerAgentV1Routes } from './agents/v1-routes.mjs'
 import { AgentReleaseService, registerAgentReleaseRoutes } from './agents/release-service.mjs'
 import { registerBackupRoutes } from './backup-routes.mjs'
+import { registerBootstrapRoute } from './bootstrap-routes.mjs'
 import { AuthService } from './auth/auth-service.mjs'
 import { AccessService } from './auth/access-service.mjs'
 import { registerAccessRoutes } from './auth/access-routes.mjs'
@@ -426,6 +427,18 @@ const backupSchedule = backupScheduler?.start()
 registerProjectRoutes(app, { withStore })
 registerRoutingCacheRoutes(app, { withStore })
 registerOnboardingRoutes(app, { withStore, disabled: isDemoMode })
+
+registerBootstrapRoute(app, {
+  withStore,
+  authService,
+  authorization: authorizationService,
+  agentReleaseService,
+  notificationStore: notificationRuntime?.store ?? null,
+  updateChecker,
+  releaseNotes: RELEASE_NOTES,
+  demo: isDemoMode,
+  demoManager,
+})
 
 const engineRuntime = await ServerEngineRuntime.create()
 const sseHub = new EngineSseHub()

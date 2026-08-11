@@ -1,4 +1,5 @@
 import { fetchWithTimeout } from '@/lib/fetch-with-timeout'
+import { consumeInitialBootstrap } from '@/lib/bootstrap-api'
 import type { AgentHostType } from '@/types/agent'
 import type {
   NotificationContactPoint,
@@ -24,7 +25,7 @@ async function notificationRequest<T>(url: string, init?: RequestInit): Promise<
 }
 
 export function loadNotificationSnapshot(): Promise<NotificationSnapshot> {
-  return notificationRequest('/api/notifications')
+  return consumeInitialBootstrap('notifications', () => notificationRequest('/api/notifications'))
 }
 
 export function updateNotificationSettings(input: {

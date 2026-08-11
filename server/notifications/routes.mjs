@@ -41,7 +41,7 @@ function redactedConfig(config) {
   }
 }
 
-function publicSnapshot(store) {
+export function publicNotificationSnapshot(store) {
   const config = store.readConfig()
   const state = store.readState()
   const active = state.incidents.filter((incident) => incident.state === 'open')
@@ -137,7 +137,7 @@ export function registerNotificationRoutes(app, {
       response.json({ available: false, config: { enabled: false }, summary: { active: 0, unacknowledged: 0, exhaustedDeliveries: 0 } })
       return
     }
-    response.set('Cache-Control', 'no-store').json(publicSnapshot(store))
+    response.set('Cache-Control', 'no-store').json(publicNotificationSnapshot(store))
   })
 
   const requireRuntime = () => {
@@ -163,7 +163,7 @@ export function registerNotificationRoutes(app, {
       }
     })
     await incidentManager.reconcilePolicies()
-    response.json(publicSnapshot(store))
+    response.json(publicNotificationSnapshot(store))
   }))
 
   app.post('/api/notifications/contact-points', (request, response) => handle(response, async () => {
@@ -234,7 +234,7 @@ export function registerNotificationRoutes(app, {
       throw error
     }
     if (existing.secretId !== null && existing.secretId !== secretId) await vault.remove(existing.secretId)
-    response.json(publicSnapshot(store))
+    response.json(publicNotificationSnapshot(store))
   }))
 
   app.delete('/api/notifications/contact-points/:id', (request, response) => handle(response, async () => {
@@ -282,7 +282,7 @@ export function registerNotificationRoutes(app, {
       Object.assign(draft.rules.find((rule) => rule.id === id), normalized)
     })
     await incidentManager.reconcilePolicies()
-    response.json(publicSnapshot(store))
+    response.json(publicNotificationSnapshot(store))
   }))
 
   app.post('/api/notifications/quiet-hours', (request, response) => handle(response, async () => {
@@ -316,7 +316,7 @@ export function registerNotificationRoutes(app, {
       if (!quiet) throw new Error(`Quiet-hours schedule ${id} does not exist.`)
       Object.assign(quiet, request.body, { id })
     })
-    response.json(publicSnapshot(store))
+    response.json(publicNotificationSnapshot(store))
   }))
 
   app.delete('/api/notifications/quiet-hours/:id', (request, response) => handle(response, async () => {
@@ -390,7 +390,7 @@ export function registerNotificationRoutes(app, {
       })
     })
     await incidentManager.reconcilePolicies({ hostType, hostId })
-    response.json(publicSnapshot(store))
+    response.json(publicNotificationSnapshot(store))
   }))
 
   app.get('/api/notifications/incidents', (request, response) => {

@@ -1,4 +1,5 @@
 import { apiRequest } from '@/lib/db'
+import { consumeInitialBootstrap } from '@/lib/bootstrap-api'
 import type { ReleaseNoteEntry } from '@/release-notes'
 
 export type UpdateChannel = 'stable' | 'latest'
@@ -45,7 +46,7 @@ export function shouldHighlightUpdate(status: UpdateStatus | undefined): boolean
 }
 
 export async function loadUpdateStatus(): Promise<UpdateStatus> {
-  return apiRequest<UpdateStatus>('/api/update-status')
+  return consumeInitialBootstrap('updateStatus', () => apiRequest<UpdateStatus>('/api/update-status'))
 }
 
 export async function checkForUpdates(): Promise<UpdateStatus> {

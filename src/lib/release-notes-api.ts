@@ -1,4 +1,5 @@
 import { apiRequest } from '@/lib/db'
+import { consumeInitialBootstrap } from '@/lib/bootstrap-api'
 import type { ReleaseNoteEntry } from '@/release-notes'
 
 export type ReleaseNotesStatus = {
@@ -9,7 +10,7 @@ export type ReleaseNotesStatus = {
 }
 
 export async function loadReleaseNotesStatus(): Promise<ReleaseNotesStatus> {
-  return apiRequest<ReleaseNotesStatus>('/api/release-notes/status')
+  return consumeInitialBootstrap('releaseNotes', () => apiRequest<ReleaseNotesStatus>('/api/release-notes/status'))
 }
 
 export async function acknowledgeReleaseNotes(): Promise<ReleaseNotesStatus> {

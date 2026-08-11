@@ -58,6 +58,7 @@ const PROTECTED_ROUTES = [
   ['POST', /^\/api\/inventory\/batch\/delete\/?$/, 'inventory.delete'],
 
   ['GET', /^\/api\/project\/?$/, 'project.view'],
+  ['GET', /^\/api\/bootstrap\/?$/, 'workspace.view'],
   ['PUT', /^\/api\/project\/?$/, 'project.settings.manage'],
   ['GET', /^\/api\/engine\/(?:snapshot|events)\/?$/, 'canvas.view'],
   // The command body receives operation-specific authorization in engine-routes.

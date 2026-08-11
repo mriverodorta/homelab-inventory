@@ -1,4 +1,5 @@
 import { apiRequest } from '@/lib/db'
+import { consumeInitialBootstrap } from '@/lib/bootstrap-api'
 import type { InventoryType, ProjectState } from '@/types/inventory'
 
 export const ONBOARDING_QUERY_KEY = ['onboarding'] as const
@@ -49,7 +50,7 @@ export type OnboardingRemovalImpact = {
 }
 
 export function loadOnboardingStatus(): Promise<OnboardingStatus> {
-  return apiRequest<OnboardingStatus>('/api/onboarding/status')
+  return consumeInitialBootstrap('onboarding', () => apiRequest<OnboardingStatus>('/api/onboarding/status'))
 }
 
 export function loadOnboardingExample(): Promise<OnboardingMutationResult> {

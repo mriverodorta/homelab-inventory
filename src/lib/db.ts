@@ -1,5 +1,6 @@
 import { DEFAULT_PROJECT_ID } from '@/lib/project'
 import { fetchWithTimeout } from '@/lib/fetch-with-timeout'
+import { consumeInitialBootstrap } from '@/lib/bootstrap-api'
 import type { InventoryDependencyReport, InventoryRef } from '@/lib/inventory-lifecycle'
 import type {
   InventoryItem,
@@ -29,7 +30,7 @@ export async function apiRequest<T>(url: string, init?: RequestInit): Promise<T>
 }
 
 export async function loadProject(): Promise<ProjectState> {
-  return apiRequest<ProjectState>('/api/project')
+  return consumeInitialBootstrap('project', () => apiRequest<ProjectState>('/api/project'))
 }
 
 export async function saveProject(project: ProjectState): Promise<ProjectState> {

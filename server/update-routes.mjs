@@ -107,6 +107,11 @@ function buildStatus({ checker, result, store, releaseNotes }) {
   }
 }
 
+export async function publicUpdateStatus({ checker, store, releaseNotes }) {
+  const result = await resolveStatusResult({ checker, store, backgroundIfStale: true })
+  return buildStatus({ checker, result, store, releaseNotes })
+}
+
 async function saveSuccessfulResult(store, result) {
   if (isSuccessful(result)) {
     await store.saveUpdateCheck(result)

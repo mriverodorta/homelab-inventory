@@ -611,6 +611,32 @@ function disabledAgentRoute(_request, response) {
   response.status(403).json({ message: AGENT_DISABLED_MESSAGE })
 }
 
+export function publicAgentStatus(store, releaseService = null) {
+  const summary = store.getAgentStatusSummary()
+  if (releaseService) {
+    const enrollments = store.listAgentEnrollments()
+      .filter((enrollment) => typeof enrollment.endpoint === 'string')
+      .sort((first, second) => second.id - first.id)
+    for (const [hostKey, status] of Object.entries(summary.hosts ?? {})) {
+      const enrollment = enrollments.find((candidate) => recordMatchesHost(candidate, status.hostType, status.hostId))
+      if (!enrollment || !releaseService.updateAvailable(status.agentVersion)) continue
+      const native = status.capabilities?.['agent.native-update']?.state === 'available'
+      const upgradeCommands = releaseService.upgradeCommands(enrollment.endpoint, { native })
+      summary.hosts[hostKey] = { ...status, upgradeCommands }
+      if (status.hostType === 'server' && summary.servers[String(status.hostId)]) {
+        summary.servers[String(status.hostId)] = { ...summary.servers[String(status.hostId)], upgradeCommands }
+      }
+    }
+  }
+  return {
+    ...summary,
+    release: releaseService ? {
+      version: releaseService.current().version,
+      sourceRevision: releaseService.current().sourceRevision,
+    } : null,
+  }
+}
+
 /** @param {import('./persistence/store-contract.ts').HomelabInventoryPersistence} store */
 export function registerAgentRoutes(app, store, {
   disabled = false,
@@ -661,29 +687,7 @@ export function registerAgentRoutes(app, store, {
   })
 
   app.get('/api/agent/status', (_request, response) => {
-    const summary = store.getAgentStatusSummary()
-    if (releaseService) {
-      const enrollments = store.listAgentEnrollments()
-        .filter((enrollment) => typeof enrollment.endpoint === 'string')
-        .sort((first, second) => second.id - first.id)
-      for (const [hostKey, status] of Object.entries(summary.hosts ?? {})) {
-        const enrollment = enrollments.find((candidate) => recordMatchesHost(candidate, status.hostType, status.hostId))
-        if (!enrollment || !releaseService.updateAvailable(status.agentVersion)) continue
-        const native = status.capabilities?.['agent.native-update']?.state === 'available'
-        const upgradeCommands = releaseService.upgradeCommands(enrollment.endpoint, { native })
-        summary.hosts[hostKey] = { ...status, upgradeCommands }
-        if (status.hostType === 'server' && summary.servers[String(status.hostId)]) {
-          summary.servers[String(status.hostId)] = { ...summary.servers[String(status.hostId)], upgradeCommands }
-        }
-      }
-    }
-    response.json({
-      ...summary,
-      release: releaseService ? {
-        version: releaseService.current().version,
-        sourceRevision: releaseService.current().sourceRevision,
-      } : null,
-    })
+    response.json(publicAgentStatus(store, releaseService))
   })
 
   app.delete('/api/agent/servers/:serverId/registration', (request, response) => {

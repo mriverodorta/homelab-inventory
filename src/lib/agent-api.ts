@@ -6,6 +6,7 @@ import type {
   AgentTelemetryRange,
 } from '@/types/agent'
 import { fetchWithTimeout } from '@/lib/fetch-with-timeout'
+import { consumeInitialBootstrap } from '@/lib/bootstrap-api'
 
 async function agentRequest<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetchWithTimeout(url, {
@@ -25,7 +26,7 @@ async function agentRequest<T>(url: string, init?: RequestInit): Promise<T> {
 }
 
 export async function loadAgentStatus(): Promise<AgentStatusSummary> {
-  return agentRequest<AgentStatusSummary>('/api/agent/status')
+  return consumeInitialBootstrap('agentStatus', () => agentRequest<AgentStatusSummary>('/api/agent/status'))
 }
 
 export async function createAgentEnrollment(

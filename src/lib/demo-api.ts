@@ -1,4 +1,5 @@
 import { apiRequest } from '@/lib/db'
+import { consumeInitialBootstrap } from '@/lib/bootstrap-api'
 
 export type DemoSessionStatus =
   | {
@@ -11,7 +12,7 @@ export type DemoSessionStatus =
     }
 
 export async function loadDemoSession(): Promise<DemoSessionStatus> {
-  return apiRequest<DemoSessionStatus>('/api/demo/session')
+  return consumeInitialBootstrap('demoSession', () => apiRequest<DemoSessionStatus>('/api/demo/session'))
 }
 
 export async function extendDemoSession(): Promise<DemoSessionStatus> {
