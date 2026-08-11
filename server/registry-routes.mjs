@@ -23,16 +23,17 @@ function normalizedRegistryPolicy(policy) {
   }
 }
 
+/** @param {import('./persistence/store-contract.ts').HomelabInventoryPersistence} store */
 function publicRegistryState(store, policy = DEFAULT_REGISTRY_POLICY) {
   const registry = store.getRegistryState()
-  const meta = store.databases?.meta?.data ?? {}
-  const lastMigration = meta.lastMigration && typeof meta.lastMigration === 'object'
+  const database = store.getDatabaseStatus()
+  const lastMigration = database.lastMigration && typeof database.lastMigration === 'object'
     ? {
-        from: meta.lastMigration.from,
-        to: meta.lastMigration.to,
-        completedAt: meta.lastMigration.completedAt,
-        backupId: meta.lastMigration.backupId ?? null,
-        summary: meta.lastMigration.summary ?? null,
+        from: database.lastMigration.from,
+        to: database.lastMigration.to,
+        completedAt: database.lastMigration.completedAt,
+        backupId: database.lastMigration.backupId ?? null,
+        summary: database.lastMigration.summary ?? null,
       }
     : null
   return {
@@ -51,7 +52,7 @@ function publicRegistryState(store, policy = DEFAULT_REGISTRY_POLICY) {
       ...(!policy.contributionsAllowed ? { enabled: false } : {}),
     },
     database: {
-      schemaVersion: Number.isSafeInteger(meta.schemaVersion) ? meta.schemaVersion : null,
+      schemaVersion: database.schemaVersion,
       applicationOemContractVersion: APPLICATION_OEM_CONTRACT_VERSION,
       applicationCatalogContractVersion: APPLICATION_CATALOG_CONTRACT_VERSION,
       lastMigration,

@@ -86,6 +86,7 @@ import {
   createAuthenticationStore,
   normalizeAuthenticationStore,
 } from '../auth/model.mjs'
+import { createNumericId, timingSafeEqualString } from './agent-auth.mjs'
 import {
   finishExampleInDraft,
   loadExampleIntoDraft,
@@ -2441,6 +2442,18 @@ export class HomelabInventoryStore {
     )
   }
 
+  getDatabaseStatus() {
+    const lastMigration = this.databases.meta.data.lastMigration
+    return {
+      schemaVersion: Number.isSafeInteger(this.databases.meta.data.schemaVersion)
+        ? this.databases.meta.data.schemaVersion
+        : null,
+      lastMigration: lastMigration && typeof lastMigration === 'object'
+        ? structuredClone(lastMigration)
+        : null,
+    }
+  }
+
   getRoutingCache() {
     return structuredClone(this.databases.routingCache.data)
   }
@@ -3550,6 +3563,250 @@ export class HomelabInventoryStore {
       })
       return project
     })
+  }
+
+  listAgentEnrollments() {
+    return structuredClone(Object.values(this.databases.agents.data.enrollments ?? {}))
+  }
+
+  findAgentEnrollment({ hostType, hostId, protocolMajor, tokenHash, nowMs = Date.now() }) {
+    const record = Object.values(this.databases.agents.data.enrollments ?? {}).find((enrollment) =>
+      enrollment.hostType === hostType
+        && enrollment.hostId === hostId
+        && (protocolMajor === undefined || enrollment.protocolMajor === protocolMajor)
+        && !enrollment.usedAt
+        && !enrollment.revokedAt
+        && Date.parse(enrollment.expiresAt) > nowMs
+        && timingSafeEqualString(enrollment.tokenHash, tokenHash),
+    )
+    return record ? structuredClone(record) : null
+  }
+
+  findAgentDevice({ deviceId, hostType, hostId, protocolMajor, tokenHash, revoked = false }) {
+    const devices = this.databases.agents.data.devices ?? {}
+    const candidates = deviceId === undefined
+      ? Object.values(devices)
+      : [devices[String(deviceId)]].filter(Boolean)
+    const record = candidates.find((device) =>
+      device.hostType === hostType
+        && device.hostId === hostId
+        && (protocolMajor === undefined || device.protocolMajor === protocolMajor)
+        && (revoked ? Boolean(device.revokedAt) : !device.revokedAt)
+        && (tokenHash === undefined || timingSafeEqualString(device.tokenHash, tokenHash)),
+    )
+    return record ? structuredClone(record) : null
+  }
+
+  createAgentEnrollment(input) {
+    return this.withAtomicStoreMutation(['agents'], () => {
+      const hostId = parseLegacyRelationalId(input.hostId, 'Agent host id')
+      const enrollments = this.databases.agents.data.enrollments ?? {}
+      const id = createNumericId(Object.keys(enrollments))
+      for (const enrollment of Object.values(enrollments)) {
+        if (
+          enrollment.hostType === input.hostType
+          && enrollment.hostId === hostId
+          && !enrollment.usedAt
+          && !enrollment.revokedAt
+        ) {
+          enrollment.revokedAt = input.createdAt
+        }
+      }
+      enrollments[id] = { ...structuredClone(input), id, hostId }
+      this.databases.agents.data.enrollments = enrollments
+      this.scheduleFlush('agents')
+      return structuredClone(enrollments[id])
+    })
+  }
+
+  activateAgentEnrollment({ enrollmentId, device }) {
+    return this.withAtomicStoreMutation(['agents'], () => {
+      const enrollments = this.databases.agents.data.enrollments ?? {}
+      const enrollment = enrollments[String(enrollmentId)]
+      if (!enrollment || enrollment.usedAt || enrollment.revokedAt) {
+        throw new InventoryLifecycleError('Enrollment is no longer available.', {
+          code: 'agent-enrollment-unavailable',
+          status: 409,
+        })
+      }
+      if (
+        enrollment.hostType !== device.hostType
+        || enrollment.hostId !== device.hostId
+        || (enrollment.protocolMajor !== undefined && enrollment.protocolMajor !== device.protocolMajor)
+      ) {
+        throw new InventoryLifecycleError('Enrollment does not belong to this agent host.', {
+          code: 'agent-enrollment-host-mismatch',
+          status: 409,
+        })
+      }
+      const devices = this.databases.agents.data.devices ?? {}
+      const revokedDeviceIds = []
+      enrollment.usedAt = device.createdAt
+      for (const existing of Object.values(devices)) {
+        if (
+          existing.hostType === device.hostType
+          && existing.hostId === device.hostId
+          && !existing.revokedAt
+        ) {
+          existing.revokedAt = device.createdAt
+          revokedDeviceIds.push(existing.id)
+        }
+      }
+      const id = createNumericId(Object.keys(devices))
+      devices[id] = { ...structuredClone(device), id }
+      this.databases.agents.data.devices = devices
+      this.scheduleFlush('agents')
+      return { device: structuredClone(devices[id]), revokedDeviceIds }
+    })
+  }
+
+  recordAgentHeartbeat({ deviceId, host, sequence, status }) {
+    return this.withAtomicStoreMutation(['agents', 'agentStatus'], () => {
+      const device = this.databases.agents.data.devices?.[String(deviceId)]
+      if (!device || device.revokedAt) {
+        throw new InventoryLifecycleError('Agent device is not active.', {
+          code: 'agent-device-unavailable',
+          status: 409,
+        })
+      }
+      if (device.hostType !== host.hostType || device.hostId !== host.hostId) {
+        throw new InventoryLifecycleError('Agent device does not belong to this host.', {
+          code: 'agent-device-host-mismatch',
+          status: 409,
+        })
+      }
+      if (sequence !== undefined) device.lastSequence = sequence
+      device.lastSeenAt = status.lastSeenAt
+      device.agentVersion = status.agentVersion
+      if (status.capabilities !== undefined) device.capabilities = structuredClone(status.capabilities)
+      this.databases.agentStatus.data.hosts[`${host.hostType}:${host.hostId}`] = {
+        hostType: host.hostType,
+        hostId: host.hostId,
+        ...structuredClone(status),
+      }
+      this.scheduleFlush('agents')
+      this.scheduleFlush('agentStatus')
+      return {
+        device: structuredClone(device),
+        status: structuredClone(this.databases.agentStatus.data.hosts[`${host.hostType}:${host.hostId}`]),
+      }
+    })
+  }
+
+  async saveAgentHardwareSnapshot(input) {
+    const previousAgents = structuredClone(this.databases.agents.data)
+    const dirtyStores = new Set(this.dirtyStores)
+    try {
+      const device = this.databases.agents.data.devices?.[String(input.deviceId)]
+      if (!device || device.revokedAt) throw new Error('Agent device is not active.')
+      if (
+        device.hostType !== input.hostType
+        || device.hostId !== input.hostId
+        || device.protocolMajor !== input.protocolMajor
+      ) {
+        throw new Error('Agent device does not belong to this hardware snapshot host.')
+      }
+      const snapshots = this.databases.agents.data.hardwareSnapshots ?? {}
+      const events = this.databases.agents.data.hardwareEvents ?? {}
+      const previous = Object.values(snapshots).find((record) =>
+        record.hostType === input.hostType && record.hostId === input.hostId,
+      )
+      const snapshotId = previous?.id ?? createNumericId(Object.keys(snapshots))
+      const countKinds = (components) => Object.fromEntries([...components.reduce((counts, component) => {
+        counts.set(component.kind, (counts.get(component.kind) ?? 0) + 1)
+        return counts
+      }, new Map())].sort(([first], [second]) => first.localeCompare(second)))
+      const previousCounts = previous ? countKinds(previous.components) : {}
+      const nextCounts = countKinds(input.components)
+      const changedKinds = [...new Set([...Object.keys(previousCounts), ...Object.keys(nextCounts)])]
+        .filter((kind) => previousCounts[kind] !== nextCounts[kind])
+        .sort()
+      snapshots[snapshotId] = {
+        id: snapshotId,
+        deviceId: input.deviceId,
+        hostType: input.hostType,
+        hostId: input.hostId,
+        protocolMajor: input.protocolMajor,
+        collectedAt: input.collectedAt,
+        receivedAt: input.receivedAt,
+        host: structuredClone(input.host),
+        components: structuredClone(input.components),
+      }
+      if (previous) {
+        const eventId = createNumericId(Object.keys(events))
+        events[eventId] = {
+          id: eventId,
+          snapshotId,
+          deviceId: input.deviceId,
+          hostType: input.hostType,
+          hostId: input.hostId,
+          componentCountBefore: previous.components.length,
+          componentCountAfter: input.components.length,
+          changedKinds,
+          createdAt: input.receivedAt,
+        }
+        const hostEvents = Object.values(events)
+          .filter((event) => event.hostType === input.hostType && event.hostId === input.hostId)
+          .sort((first, second) => second.id - first.id)
+        for (const event of hostEvents.slice(256)) delete events[event.id]
+      }
+      device.lastSequence = input.sequence
+      this.databases.agents.data.hardwareSnapshots = snapshots
+      this.databases.agents.data.hardwareEvents = events
+      this.scheduleFlush('agents')
+      await this.flush(['agents'])
+      return structuredClone(snapshots[snapshotId])
+    } catch (error) {
+      this.databases.agents.data = previousAgents
+      this.dirtyStores = dirtyStores
+      this.scheduleFlush('agents')
+      throw error
+    }
+  }
+
+  getAgentHardwareContext(hostType, hostId) {
+    const snapshot = Object.values(this.databases.agents.data.hardwareSnapshots ?? {})
+      .find((record) => record.hostType === hostType && record.hostId === hostId) ?? null
+    return {
+      snapshot: snapshot ? structuredClone(snapshot) : null,
+      inventory: structuredClone(this.databases.inventory.data),
+      project: structuredClone(this.databases.project.data),
+    }
+  }
+
+  revokeAgentRegistration(hostType, hostId) {
+    return this.withAtomicStoreMutation(['agents'], () => {
+      const revokedAt = new Date().toISOString()
+      const revokedDeviceIds = []
+      let revoked = 0
+      for (const collection of [
+        this.databases.agents.data.enrollments ?? {},
+        this.databases.agents.data.devices ?? {},
+      ]) {
+        for (const record of Object.values(collection)) {
+          if (record.hostType !== hostType || record.hostId !== hostId || record.revokedAt) continue
+          record.revokedAt = revokedAt
+          if (collection === this.databases.agents.data.devices) revokedDeviceIds.push(record.id)
+          revoked += 1
+        }
+      }
+      if (revoked > 0) this.scheduleFlush('agents')
+      return { revoked, revokedAt, revokedDeviceIds }
+    })
+  }
+
+  hasActiveAgentRegistration(hostType, hostId, { pendingEnrollmentsOnly = false } = {}) {
+    const activeEnrollment = Object.values(this.databases.agents.data.enrollments ?? {}).some((record) =>
+      record.hostType === hostType
+        && record.hostId === hostId
+        && !record.revokedAt
+        && (!pendingEnrollmentsOnly || !record.usedAt)
+        && (!record.expiresAt || Date.parse(record.expiresAt) > Date.now()),
+    )
+    const activeDevice = Object.values(this.databases.agents.data.devices ?? {}).some((record) =>
+      record.hostType === hostType && record.hostId === hostId && !record.revokedAt,
+    )
+    return activeEnrollment || activeDevice
   }
 
   clearAgentRuntimeData(hostType, hostId) {

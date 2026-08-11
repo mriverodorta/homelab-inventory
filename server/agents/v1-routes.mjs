@@ -1,5 +1,5 @@
 import { gunzipSync } from 'node:zlib'
-import { createNumericId, createToken, hashToken, timingSafeEqualString } from '../db/agent-auth.mjs'
+import { createToken, hashToken } from '../db/agent-auth.mjs'
 import { isRelationalId } from '../db/relational-ids.mjs'
 import { normalizeAgentEndpoint } from '../agent-routes.mjs'
 import { AgentContractService } from './contract-service.mjs'
@@ -31,10 +31,6 @@ function parseHost(request) {
 
 function hostKey(host) {
   return `${host.hostType}:${host.hostId}`
-}
-
-function recordMatchesHost(record, host) {
-  return record.hostType === host.hostType && record.hostId === host.hostId
 }
 
 function telemetryQuery(request) {
@@ -83,15 +79,11 @@ function disabledRoute(_request, response) {
 }
 
 function findEnrollment(store, host, token) {
-  const tokenHash = hashToken(token)
-  return Object.values(store.databases.agents.data.enrollments ?? {}).find((record) =>
-    recordMatchesHost(record, host)
-      && record.protocolMajor === 1
-      && !record.usedAt
-      && !record.revokedAt
-      && Date.parse(record.expiresAt) > Date.now()
-      && timingSafeEqualString(record.tokenHash, tokenHash),
-  )
+  return store.findAgentEnrollment({
+    ...host,
+    protocolMajor: 1,
+    tokenHash: hashToken(token),
+  })
 }
 
 function parseDeviceId(request) {
@@ -103,17 +95,13 @@ function parseDeviceId(request) {
 
 function findDevice(store, host, request) {
   const deviceId = parseDeviceId(request)
-  const device = deviceId ? store.databases.agents.data.devices?.[String(deviceId)] : null
-  return device && recordMatchesHost(device, host) && device.protocolMajor === 1 && !device.revokedAt
-    ? device
-    : null
+  return deviceId ? store.findAgentDevice({ ...host, deviceId, protocolMajor: 1 }) : null
 }
 
 function findRevokedDevice(store, host, request) {
   const deviceId = parseDeviceId(request)
-  const device = deviceId ? store.databases.agents.data.devices?.[String(deviceId)] : null
-  return device && recordMatchesHost(device, host) && device.protocolMajor === 1 && device.revokedAt
-    ? device
+  return deviceId
+    ? store.findAgentDevice({ ...host, deviceId, protocolMajor: 1, revoked: true })
     : null
 }
 
@@ -186,86 +174,30 @@ function decodeHardwareSnapshot(request, device, host, rawBody) {
   return { authentication, snapshot: normalizeV1HardwareSnapshot(payload, host) }
 }
 
-function componentKindCounts(components) {
-  return Object.fromEntries([...components.reduce((counts, component) => {
-    counts.set(component.kind, (counts.get(component.kind) ?? 0) + 1)
-    return counts
-  }, new Map())].sort(([first], [second]) => first.localeCompare(second)))
-}
-
 async function persistHardwareSnapshot(store, device, host, authentication, snapshot, receivedAt) {
-  const collection = store.databases.agents.data.hardwareSnapshots
-  const events = store.databases.agents.data.hardwareEvents
-  const previousSequence = device.lastSequence
-  const previousSnapshots = structuredClone(collection)
-  const previousEvents = structuredClone(events)
-  const previous = Object.values(collection).find((record) => record.hostType === host.hostType && record.hostId === host.hostId)
-  const snapshotId = previous?.id ?? createNumericId(Object.keys(collection))
-  const previousCounts = previous ? componentKindCounts(previous.components) : {}
-  const nextCounts = componentKindCounts(snapshot.components)
-  const changedKinds = [...new Set([...Object.keys(previousCounts), ...Object.keys(nextCounts)])]
-    .filter((kind) => previousCounts[kind] !== nextCounts[kind])
-    .sort()
-  collection[snapshotId] = {
-    id: snapshotId,
+  return store.saveAgentHardwareSnapshot({
     deviceId: device.id,
-    hostType: host.hostType,
-    hostId: host.hostId,
+    ...host,
     protocolMajor: snapshot.protocolMajor,
     collectedAt: snapshot.collectedAt,
     receivedAt,
     host: snapshot.host,
     components: snapshot.components,
-  }
-  if (previous) {
-    const eventId = createNumericId(Object.keys(events))
-    events[eventId] = {
-      id: eventId,
-      snapshotId,
-      deviceId: device.id,
-      hostType: host.hostType,
-      hostId: host.hostId,
-      componentCountBefore: previous.components.length,
-      componentCountAfter: snapshot.components.length,
-      changedKinds,
-      createdAt: receivedAt,
-    }
-    const hostEvents = Object.values(events)
-      .filter((event) => event.hostType === host.hostType && event.hostId === host.hostId)
-      .sort((first, second) => second.id - first.id)
-    for (const event of hostEvents.slice(256)) delete events[event.id]
-  }
-  device.lastSequence = authentication.sequence
-  store.scheduleFlush('agents')
-  try {
-    await store.flush(['agents'])
-  } catch (error) {
-    device.lastSequence = previousSequence
-    store.databases.agents.data.hardwareSnapshots = previousSnapshots
-    store.databases.agents.data.hardwareEvents = previousEvents
-    store.scheduleFlush('agents')
-    throw error
-  }
-  return collection[snapshotId]
+    sequence: authentication.sequence,
+  })
 }
 
 function persistHeartbeat(store, device, host, authentication, heartbeat, receivedAt) {
-  device.lastSequence = authentication.sequence
-  device.lastSeenAt = receivedAt
-  device.agentVersion = heartbeat.agentVersion
-  device.capabilities = heartbeat.capabilities
   const statusPayload = { ...heartbeat }
   delete statusPayload.host
   delete statusPayload.sequence
   delete statusPayload.protocolMajor
-  store.databases.agentStatus.data.hosts[hostKey(host)] = {
-    hostType: host.hostType,
-    hostId: host.hostId,
-    lastSeenAt: receivedAt,
-    ...statusPayload,
-  }
-  store.scheduleFlush('agents')
-  store.scheduleFlush('agentStatus')
+  store.recordAgentHeartbeat({
+    deviceId: device.id,
+    host,
+    sequence: authentication.sequence,
+    status: { lastSeenAt: receivedAt, ...statusPayload },
+  })
 }
 
 export function createAgentV1BodyMiddleware({ maxBytes = MAX_COMPRESSED_BYTES, label = 'Agent heartbeat' } = {}) {
@@ -303,6 +235,7 @@ export function createAgentV1BodyMiddleware({ maxBytes = MAX_COMPRESSED_BYTES, l
   }
 }
 
+/** @param {import('../persistence/store-contract.ts').HomelabInventoryPersistence} store */
 export function registerAgentV1Routes(app, store, {
   disabled = false,
   contractService = new AgentContractService(),
@@ -378,24 +311,18 @@ export function registerAgentV1Routes(app, store, {
         containers: request.body?.containers,
       })
     }
-    const enrollmentId = createNumericId(Object.keys(store.databases.agents.data.enrollments))
     const createdAt = new Date().toISOString()
     const expiresAt = new Date(Date.now() + ENROLLMENT_TTL_MS).toISOString()
-    for (const enrollment of Object.values(store.databases.agents.data.enrollments ?? {})) {
-      if (recordMatchesHost(enrollment, host) && !enrollment.usedAt && !enrollment.revokedAt) enrollment.revokedAt = createdAt
-    }
-    store.databases.agents.data.enrollments[enrollmentId] = {
-      id: enrollmentId,
+    const enrollment = store.createAgentEnrollment({
       ...host,
       protocolMajor: 1,
       tokenHash: hashToken(token),
       endpoint,
       createdAt,
       expiresAt,
-    }
-    store.scheduleFlush('agents')
+    })
     return response.set('Cache-Control', 'no-store').json({
-      enrollmentId,
+      enrollmentId: enrollment.id,
       endpoint,
       expiresAt,
       activationToken: token,
@@ -422,28 +349,22 @@ export function registerAgentV1Routes(app, store, {
       return routeError(response, error)
     }
     const now = new Date().toISOString()
-    const deviceId = createNumericId(Object.keys(store.databases.agents.data.devices))
-    enrollment.usedAt = now
-    for (const device of Object.values(store.databases.agents.data.devices ?? {})) {
-      if (recordMatchesHost(device, host) && !device.revokedAt) {
-        device.revokedAt = now
-        heartbeatBuckets.delete(device.id)
-      }
-    }
-    store.databases.agents.data.devices[deviceId] = {
-      id: deviceId,
-      ...host,
-      protocolMajor: 1,
-      publicKey: activation.publicKey,
-      agentVersion: activation.agentVersion,
-      capabilities: activation.capabilities,
-      createdAt: now,
-      lastSeenAt: null,
-      lastSequence: 0,
-    }
-    store.scheduleFlush('agents')
+    const activated = store.activateAgentEnrollment({
+      enrollmentId: enrollment.id,
+      device: {
+        ...host,
+        protocolMajor: 1,
+        publicKey: activation.publicKey,
+        agentVersion: activation.agentVersion,
+        capabilities: activation.capabilities,
+        createdAt: now,
+        lastSeenAt: null,
+        lastSequence: 0,
+      },
+    })
+    for (const deviceId of activated.revokedDeviceIds) heartbeatBuckets.delete(deviceId)
     return response.set('Cache-Control', 'no-store').json({
-      deviceId,
+      deviceId: activated.device.id,
       protocolMajor: 1,
       contractUrl: '/api/agent/contracts/current',
       heartbeatUrl: `/api/agent/hosts/${host.hostType}/${host.hostId}/heartbeats`,
@@ -506,25 +427,15 @@ export function registerAgentV1Routes(app, store, {
   app.get('/api/agent/hosts/:hostType/:hostId/hardware-snapshot', (request, response) => {
     const host = parseHost(request)
     if (!host || !hostExists(store, host)) return response.status(404).json({ message: 'Compute host not found.' })
-    const snapshot = Object.values(store.databases.agents.data.hardwareSnapshots)
-      .find((record) => record.hostType === host.hostType && record.hostId === host.hostId) ?? null
-    return response.set('Cache-Control', 'no-store').json(buildHardwareSuggestions({
-      snapshot,
-      inventory: store.databases.inventory.data,
-      project: store.databases.project.data,
-    }))
+    return response.set('Cache-Control', 'no-store').json(buildHardwareSuggestions(
+      store.getAgentHardwareContext(host.hostType, host.hostId),
+    ))
   })
 
   app.get('/api/agent/hosts/:hostType/:hostId/hardware-suggestions', (request, response) => {
     const host = parseHost(request)
     if (!host || !hostExists(store, host)) return response.status(404).json({ message: 'Compute host not found.' })
-    const snapshot = Object.values(store.databases.agents.data.hardwareSnapshots)
-      .find((record) => record.hostType === host.hostType && record.hostId === host.hostId) ?? null
-    const result = buildHardwareSuggestions({
-      snapshot,
-      inventory: store.databases.inventory.data,
-      project: store.databases.project.data,
-    })
+    const result = buildHardwareSuggestions(store.getAgentHardwareContext(host.hostType, host.hostId))
     return response.set('Cache-Control', 'no-store').json({
       snapshotId: result.snapshot?.id ?? null,
       stale: result.stale,
@@ -557,8 +468,7 @@ export function registerAgentV1Routes(app, store, {
         ageMs: null,
       }
       const latest = telemetryRepository.getHostSummary?.(host.hostType, host.hostId) ?? null
-      const snapshot = Object.values(store.databases.agents.data.hardwareSnapshots)
-        .find((record) => record.hostType === host.hostType && record.hostId === host.hostId) ?? null
+      const hardware = store.getAgentHardwareContext(host.hostType, host.hostId)
       return response.set('Cache-Control', 'no-store').json({
         host,
         serverTime: serverTime.toISOString(),
@@ -569,9 +479,9 @@ export function registerAgentV1Routes(app, store, {
         samples: telemetryRepository.listSamples(host.hostType, host.hostId, range).map(compactTelemetrySample),
         storage: buildStorageTelemetry({
           heartbeat: latest?.payload ?? null,
-          snapshot,
-          inventory: store.databases.inventory.data,
-          project: store.databases.project.data,
+          snapshot: hardware.snapshot,
+          inventory: hardware.inventory,
+          project: hardware.project,
         }),
       })
     } catch (error) {
@@ -591,23 +501,13 @@ export function registerAgentV1Routes(app, store, {
     if (options.deleteTelemetry && !telemetryRepository) {
       return response.status(503).json({ message: 'Telemetry storage is unavailable.' })
     }
-    const revokedAt = new Date().toISOString()
     let telemetryDeleted = null
     if (options.deleteTelemetry) {
       telemetryDeleted = telemetryRepository.deleteHost(host.hostType, host.hostId)
       store.clearAgentRuntimeData(host.hostType, host.hostId)
     }
-    let revoked = 0
-    for (const collection of [store.databases.agents.data.enrollments ?? {}, store.databases.agents.data.devices ?? {}]) {
-      for (const record of Object.values(collection)) {
-        if (recordMatchesHost(record, host) && !record.revokedAt) {
-          record.revokedAt = revokedAt
-          heartbeatBuckets.delete(record.id)
-          revoked += 1
-        }
-      }
-    }
-    if (revoked) store.scheduleFlush('agents')
+    const { revoked, revokedAt, revokedDeviceIds } = store.revokeAgentRegistration(host.hostType, host.hostId)
+    for (const deviceId of revokedDeviceIds) heartbeatBuckets.delete(deviceId)
     if (revoked || options.deleteTelemetry) await store.flush(['agents', 'agentStatus'])
     if (revoked) await notificationHostLifecycle?.cancelHost(host.hostType, host.hostId, 'agent-unlinked')
     return response.json({ ok: true, ...host, revoked, revokedAt, deleteTelemetry: options.deleteTelemetry, telemetryDeleted })
@@ -616,11 +516,9 @@ export function registerAgentV1Routes(app, store, {
   app.delete('/api/agent/hosts/:hostType/:hostId/status', (request, response) => {
     const host = parseHost(request)
     if (!host || !hostExists(store, host)) return response.status(404).json({ message: 'Compute host not found.' })
-    const active = [
-      ...Object.values(store.databases.agents.data.enrollments ?? {}),
-      ...Object.values(store.databases.agents.data.devices ?? {}),
-    ].some((record) => recordMatchesHost(record, host) && !record.revokedAt && (!record.expiresAt || Date.parse(record.expiresAt) > Date.now()))
-    if (active) return response.status(409).json({ message: 'Revoke the active agent registration before clearing runtime status.' })
+    if (store.hasActiveAgentRegistration(host.hostType, host.hostId)) {
+      return response.status(409).json({ message: 'Revoke the active agent registration before clearing runtime status.' })
+    }
     return response.json(store.clearAgentRuntimeData(host.hostType, host.hostId))
   })
 }

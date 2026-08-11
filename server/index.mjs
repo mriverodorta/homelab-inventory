@@ -410,7 +410,7 @@ if (contributionDelivery && store) contributionDelivery.start(store)
 app.get('/api/health', (_request, response) => {
   const health = applicationHealth({
     mode: isDemoMode ? 'demo' : 'production',
-    schemaVersion: isDemoMode ? null : store.databases.meta.data.schemaVersion,
+    schemaVersion: isDemoMode ? null : store.getDatabaseStatus().schemaVersion,
     persistence: isDemoMode
       ? null
       : {

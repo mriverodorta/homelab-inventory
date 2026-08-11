@@ -1,4 +1,4 @@
-import { createNumericId, createToken, hashToken, timingSafeEqualString } from './db/agent-auth.mjs'
+import { createToken, hashToken } from './db/agent-auth.mjs'
 import { isRelationalId } from './db/relational-ids.mjs'
 
 const ENROLLMENT_TTL_MS = 24 * 60 * 60 * 1000
@@ -106,25 +106,11 @@ function recordMatchesHost(record, hostType, hostId) {
 }
 
 function findEnrollment(store, hostType, hostId, token) {
-  const tokenHash = hashToken(token)
-
-  return Object.values(store.databases.agents.data.enrollments ?? {}).find((enrollment) =>
-    recordMatchesHost(enrollment, hostType, hostId) &&
-    !enrollment.usedAt &&
-    !enrollment.revokedAt &&
-    Date.parse(enrollment.expiresAt) > Date.now() &&
-    timingSafeEqualString(enrollment.tokenHash, tokenHash),
-  )
+  return store.findAgentEnrollment({ hostType, hostId, tokenHash: hashToken(token) })
 }
 
 function findDevice(store, hostType, hostId, token) {
-  const tokenHash = hashToken(token)
-
-  return Object.values(store.databases.agents.data.devices ?? {}).find((device) =>
-    recordMatchesHost(device, hostType, hostId) &&
-    !device.revokedAt &&
-    timingSafeEqualString(device.tokenHash, tokenHash),
-  )
+  return store.findAgentDevice({ hostType, hostId, tokenHash: hashToken(token) })
 }
 
 function boundedHeartbeatValue(value, depth = 0) {
@@ -625,6 +611,7 @@ function disabledAgentRoute(_request, response) {
   response.status(403).json({ message: AGENT_DISABLED_MESSAGE })
 }
 
+/** @param {import('./persistence/store-contract.ts').HomelabInventoryPersistence} store */
 export function registerAgentRoutes(app, store, {
   disabled = false,
   heartbeatRateLimit = HEARTBEAT_RATE_LIMIT,
@@ -676,7 +663,7 @@ export function registerAgentRoutes(app, store, {
   app.get('/api/agent/status', (_request, response) => {
     const summary = store.getAgentStatusSummary()
     if (releaseService) {
-      const enrollments = Object.values(store.databases.agents.data.enrollments ?? {})
+      const enrollments = store.listAgentEnrollments()
         .filter((enrollment) => typeof enrollment.endpoint === 'string')
         .sort((first, second) => second.id - first.id)
       for (const [hostKey, status] of Object.entries(summary.hosts ?? {})) {
@@ -707,23 +694,8 @@ export function registerAgentRoutes(app, store, {
       return
     }
 
-    const revokedAt = new Date().toISOString()
-    let revoked = 0
-
-    for (const collection of [
-      store.databases.agents.data.enrollments ?? {},
-      store.databases.agents.data.devices ?? {},
-    ]) {
-      for (const record of Object.values(collection)) {
-        if (recordMatchesHost(record, 'server', serverId) && !record.revokedAt) {
-          record.revokedAt = revokedAt
-          if (collection === store.databases.agents.data.devices) heartbeatBuckets.delete(record.id)
-          revoked += 1
-        }
-      }
-    }
-
-    if (revoked > 0) store.scheduleFlush('agents')
+    const { revoked, revokedAt, revokedDeviceIds } = store.revokeAgentRegistration('server', serverId)
+    for (const deviceId of revokedDeviceIds) heartbeatBuckets.delete(deviceId)
     response.json({ ok: true, serverId, revoked, revokedAt })
   })
 
@@ -735,17 +707,7 @@ export function registerAgentRoutes(app, store, {
       return
     }
 
-    const activeEnrollment = Object.values(store.databases.agents.data.enrollments ?? {}).some((record) =>
-      recordMatchesHost(record, 'server', serverId)
-        && !record.revokedAt
-        && !record.usedAt
-        && (!record.expiresAt || Date.parse(record.expiresAt) > Date.now()),
-    )
-    const activeDevice = Object.values(store.databases.agents.data.devices ?? {}).some((record) =>
-      recordMatchesHost(record, 'server', serverId) && !record.revokedAt,
-    )
-
-    if (activeEnrollment || activeDevice) {
+    if (store.hasActiveAgentRegistration('server', serverId, { pendingEnrollmentsOnly: true })) {
       response.status(409).json({ message: 'Revoke the active agent registration before clearing runtime status.' })
       return
     }
@@ -771,30 +733,20 @@ export function registerAgentRoutes(app, store, {
       return
     }
     const token = createToken()
-    const enrollmentId = createNumericId(Object.keys(store.databases.agents.data.enrollments))
     const now = new Date()
     const createdAt = now.toISOString()
     const expiresAt = new Date(now.getTime() + ENROLLMENT_TTL_MS).toISOString()
-
-    for (const enrollment of Object.values(store.databases.agents.data.enrollments ?? {})) {
-      if (recordMatchesHost(enrollment, 'server', serverId) && !enrollment.usedAt && !enrollment.revokedAt) {
-        enrollment.revokedAt = createdAt
-      }
-    }
-
-    store.databases.agents.data.enrollments[enrollmentId] = {
-      id: enrollmentId,
+    const enrollment = store.createAgentEnrollment({
       hostType: 'server',
       hostId: serverId,
       tokenHash: hashToken(token),
       createdAt,
       expiresAt,
       endpoint,
-    }
-    store.scheduleFlush('agents')
+    })
 
     response.set('Cache-Control', 'no-store').json({
-      enrollmentId,
+      enrollmentId: enrollment.id,
       expiresAt,
       endpoint,
       installCommand: installCommand({ endpoint, serverId, token }),
@@ -831,29 +783,22 @@ export function registerAgentRoutes(app, store, {
     }
 
     const deviceToken = createToken()
-    const deviceId = createNumericId(Object.keys(store.databases.agents.data.devices))
     const now = new Date().toISOString()
-
-    enrollment.usedAt = now
-    for (const device of Object.values(store.databases.agents.data.devices ?? {})) {
-      if (recordMatchesHost(device, 'server', serverId) && !device.revokedAt) {
-        device.revokedAt = now
-        heartbeatBuckets.delete(device.id)
-      }
-    }
-    store.databases.agents.data.devices[deviceId] = {
-      id: deviceId,
-      hostType: 'server',
-      hostId: serverId,
-      tokenHash: hashToken(deviceToken),
-      createdAt: now,
-      lastSeenAt: null,
-      agentVersion,
-    }
-    store.scheduleFlush('agents')
+    const activated = store.activateAgentEnrollment({
+      enrollmentId: enrollment.id,
+      device: {
+        hostType: 'server',
+        hostId: serverId,
+        tokenHash: hashToken(deviceToken),
+        createdAt: now,
+        lastSeenAt: null,
+        agentVersion,
+      },
+    })
+    for (const deviceId of activated.revokedDeviceIds) heartbeatBuckets.delete(deviceId)
 
     response.set('Cache-Control', 'no-store').json({
-      deviceId,
+      deviceId: activated.device.id,
       deviceToken,
       heartbeatUrl: `/api/agent/servers/${serverId}/heartbeat`,
     })
@@ -889,16 +834,14 @@ export function registerAgentRoutes(app, store, {
       return
     }
 
-    device.lastSeenAt = now
-    device.agentVersion = heartbeat.agentVersion
-    store.databases.agentStatus.data.hosts[`server:${serverId}`] = {
-      hostType: 'server',
-      hostId: serverId,
-      lastSeenAt: now,
-      ...heartbeat,
-    }
-    store.scheduleFlush('agents')
-    store.scheduleFlush('agentStatus')
+    store.recordAgentHeartbeat({
+      deviceId: device.id,
+      host: { hostType: 'server', hostId: serverId },
+      status: {
+        lastSeenAt: now,
+        ...heartbeat,
+      },
+    })
 
     response.json({ ok: true, receivedAt: now })
   })
