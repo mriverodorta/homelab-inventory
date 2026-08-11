@@ -45,7 +45,7 @@
     "auth:reset-owner": "bun server/auth/reset-owner-cli.mjs",
     "test": "vitest run && bun run test:auth && bun run test:sqlite",
     "test:auth": "bun test server/auth/*.bun_spec.mjs",
-    "test:sqlite": "bun test scripts/verify-sqlite-runtime.bun_spec.mjs scripts/check-database-migrations.bun_spec.mjs server/persistence/**/*.bun_spec.{js,mjs,ts} server/registry/*.bun_spec.mjs server/telemetry/*.bun_spec.mjs",
+    "test:sqlite": "bun test scripts/verify-sqlite-runtime.bun_spec.mjs scripts/check-database-migrations.bun_spec.mjs server/persistence server/registry/*.bun_spec.mjs server/telemetry/*.bun_spec.mjs",
     "test:bundle": "bun test scripts/check-frontend-bundle.bun_spec.mjs",
     "test:watch": "vitest"
   },

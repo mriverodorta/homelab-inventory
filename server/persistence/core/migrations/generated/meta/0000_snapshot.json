@@ -1,0 +1,2451 @@
+{
+  "version": "6",
+  "dialect": "sqlite",
+  "id": "c5e81e40-9fce-4d33-8a0c-5d2bbecab82c",
+  "prevId": "00000000-0000-0000-0000-000000000000",
+  "tables": {
+    "inventory_identity_aliases": {
+      "name": "inventory_identity_aliases",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "item_id": {
+          "name": "item_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "legacy_type_key": {
+          "name": "legacy_type_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "legacy_id": {
+          "name": "legacy_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "created_at_ms": {
+          "name": "created_at_ms",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "inventory_identity_aliases_legacy_unique": {
+          "name": "inventory_identity_aliases_legacy_unique",
+          "columns": [
+            "legacy_type_key",
+            "legacy_id"
+          ],
+          "isUnique": true
+        },
+        "inventory_identity_aliases_item_unique": {
+          "name": "inventory_identity_aliases_item_unique",
+          "columns": [
+            "item_id"
+          ],
+          "isUnique": true
+        }
+      },
+      "foreignKeys": {
+        "inventory_identity_aliases_item_id_inventory_items_id_fk": {
+          "name": "inventory_identity_aliases_item_id_inventory_items_id_fk",
+          "tableFrom": "inventory_identity_aliases",
+          "tableTo": "inventory_items",
+          "columnsFrom": [
+            "item_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "inventory_identity_aliases_legacy_id_check": {
+          "name": "inventory_identity_aliases_legacy_id_check",
+          "value": "\"inventory_identity_aliases\".\"legacy_id\" > 0"
+        }
+      }
+    },
+    "inventory_item_types": {
+      "name": "inventory_item_types",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "key": {
+          "name": "key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "label": {
+          "name": "label",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "sort_order": {
+          "name": "sort_order",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "inventory_item_types_key_unique": {
+          "name": "inventory_item_types_key_unique",
+          "columns": [
+            "key"
+          ],
+          "isUnique": true
+        },
+        "inventory_item_types_sort_order_unique": {
+          "name": "inventory_item_types_sort_order_unique",
+          "columns": [
+            "sort_order"
+          ],
+          "isUnique": true
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "inventory_items": {
+      "name": "inventory_items",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "type_id": {
+          "name": "type_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "scope": {
+          "name": "scope",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "owner_project_id": {
+          "name": "owner_project_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "manufacturer_id": {
+          "name": "manufacturer_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "manufacturer_text": {
+          "name": "manufacturer_text",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "model": {
+          "name": "model",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "family": {
+          "name": "family",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "product_number": {
+          "name": "product_number",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "serial_number": {
+          "name": "serial_number",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "notes": {
+          "name": "notes",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "extensions_json": {
+          "name": "extensions_json",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'{}'"
+        },
+        "row_version": {
+          "name": "row_version",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 1
+        },
+        "archived_at_ms": {
+          "name": "archived_at_ms",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "created_at_ms": {
+          "name": "created_at_ms",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "updated_at_ms": {
+          "name": "updated_at_ms",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "inventory_items_type_index": {
+          "name": "inventory_items_type_index",
+          "columns": [
+            "type_id"
+          ],
+          "isUnique": false
+        },
+        "inventory_items_owner_project_index": {
+          "name": "inventory_items_owner_project_index",
+          "columns": [
+            "owner_project_id"
+          ],
+          "isUnique": false
+        },
+        "inventory_items_manufacturer_index": {
+          "name": "inventory_items_manufacturer_index",
+          "columns": [
+            "manufacturer_id"
+          ],
+          "isUnique": false
+        },
+        "inventory_items_archived_index": {
+          "name": "inventory_items_archived_index",
+          "columns": [
+            "archived_at_ms"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "inventory_items_type_id_inventory_item_types_id_fk": {
+          "name": "inventory_items_type_id_inventory_item_types_id_fk",
+          "tableFrom": "inventory_items",
+          "tableTo": "inventory_item_types",
+          "columnsFrom": [
+            "type_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "inventory_items_owner_project_id_projects_id_fk": {
+          "name": "inventory_items_owner_project_id_projects_id_fk",
+          "tableFrom": "inventory_items",
+          "tableTo": "projects",
+          "columnsFrom": [
+            "owner_project_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "inventory_items_manufacturer_id_manufacturers_id_fk": {
+          "name": "inventory_items_manufacturer_id_manufacturers_id_fk",
+          "tableFrom": "inventory_items",
+          "tableTo": "manufacturers",
+          "columnsFrom": [
+            "manufacturer_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "inventory_items_scope_check": {
+          "name": "inventory_items_scope_check",
+          "value": "\"inventory_items\".\"scope\" IN ('global', 'project')"
+        },
+        "inventory_items_scope_owner_check": {
+          "name": "inventory_items_scope_owner_check",
+          "value": "\n    (\"inventory_items\".\"scope\" = 'global' AND \"inventory_items\".\"owner_project_id\" IS NULL)\n    OR (\"inventory_items\".\"scope\" = 'project' AND \"inventory_items\".\"owner_project_id\" IS NOT NULL)\n  "
+        },
+        "inventory_items_name_check": {
+          "name": "inventory_items_name_check",
+          "value": "length(trim(\"inventory_items\".\"name\")) > 0"
+        },
+        "inventory_items_row_version_check": {
+          "name": "inventory_items_row_version_check",
+          "value": "\"inventory_items\".\"row_version\" > 0"
+        },
+        "inventory_items_extensions_json_check": {
+          "name": "inventory_items_extensions_json_check",
+          "value": "json_valid(\"inventory_items\".\"extensions_json\")"
+        }
+      }
+    },
+    "inventory_ports": {
+      "name": "inventory_ports",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "item_id": {
+          "name": "item_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "created_at_ms": {
+          "name": "created_at_ms",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "inventory_ports_item_index": {
+          "name": "inventory_ports_item_index",
+          "columns": [
+            "item_id"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "inventory_ports_item_id_inventory_items_id_fk": {
+          "name": "inventory_ports_item_id_inventory_items_id_fk",
+          "tableFrom": "inventory_ports",
+          "tableTo": "inventory_items",
+          "columnsFrom": [
+            "item_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "inventory_resources": {
+      "name": "inventory_resources",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "item_id": {
+          "name": "item_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "created_at_ms": {
+          "name": "created_at_ms",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "inventory_resources_item_index": {
+          "name": "inventory_resources_item_index",
+          "columns": [
+            "item_id"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "inventory_resources_item_id_inventory_items_id_fk": {
+          "name": "inventory_resources_item_id_inventory_items_id_fk",
+          "tableFrom": "inventory_resources",
+          "tableTo": "inventory_items",
+          "columnsFrom": [
+            "item_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "manufacturer_aliases": {
+      "name": "manufacturer_aliases",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "manufacturer_id": {
+          "name": "manufacturer_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "alias": {
+          "name": "alias",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "normalized_alias": {
+          "name": "normalized_alias",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "created_at_ms": {
+          "name": "created_at_ms",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "manufacturer_aliases_normalized_unique": {
+          "name": "manufacturer_aliases_normalized_unique",
+          "columns": [
+            "normalized_alias"
+          ],
+          "isUnique": true
+        },
+        "manufacturer_aliases_manufacturer_index": {
+          "name": "manufacturer_aliases_manufacturer_index",
+          "columns": [
+            "manufacturer_id"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "manufacturer_aliases_manufacturer_id_manufacturers_id_fk": {
+          "name": "manufacturer_aliases_manufacturer_id_manufacturers_id_fk",
+          "tableFrom": "manufacturer_aliases",
+          "tableTo": "manufacturers",
+          "columnsFrom": [
+            "manufacturer_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "manufacturer_aliases_normalized_check": {
+          "name": "manufacturer_aliases_normalized_check",
+          "value": "\n    \"manufacturer_aliases\".\"normalized_alias\" = lower(trim(\"manufacturer_aliases\".\"normalized_alias\"))\n    AND length(\"manufacturer_aliases\".\"normalized_alias\") > 0\n  "
+        }
+      }
+    },
+    "manufacturers": {
+      "name": "manufacturers",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "normalized_name": {
+          "name": "normalized_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "created_at_ms": {
+          "name": "created_at_ms",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "updated_at_ms": {
+          "name": "updated_at_ms",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "manufacturers_normalized_name_unique": {
+          "name": "manufacturers_normalized_name_unique",
+          "columns": [
+            "normalized_name"
+          ],
+          "isUnique": true
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "manufacturers_name_check": {
+          "name": "manufacturers_name_check",
+          "value": "length(trim(\"manufacturers\".\"name\")) > 0"
+        },
+        "manufacturers_normalized_name_check": {
+          "name": "manufacturers_normalized_name_check",
+          "value": "\n    \"manufacturers\".\"normalized_name\" = lower(trim(\"manufacturers\".\"normalized_name\"))\n    AND length(\"manufacturers\".\"normalized_name\") > 0\n  "
+        }
+      }
+    },
+    "port_identity_aliases": {
+      "name": "port_identity_aliases",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "port_id": {
+          "name": "port_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "legacy_item_type_key": {
+          "name": "legacy_item_type_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "legacy_item_id": {
+          "name": "legacy_item_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "legacy_port_id": {
+          "name": "legacy_port_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "created_at_ms": {
+          "name": "created_at_ms",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "port_identity_aliases_legacy_unique": {
+          "name": "port_identity_aliases_legacy_unique",
+          "columns": [
+            "legacy_item_type_key",
+            "legacy_item_id",
+            "legacy_port_id"
+          ],
+          "isUnique": true
+        },
+        "port_identity_aliases_port_unique": {
+          "name": "port_identity_aliases_port_unique",
+          "columns": [
+            "port_id"
+          ],
+          "isUnique": true
+        }
+      },
+      "foreignKeys": {
+        "port_identity_aliases_port_id_inventory_ports_id_fk": {
+          "name": "port_identity_aliases_port_id_inventory_ports_id_fk",
+          "tableFrom": "port_identity_aliases",
+          "tableTo": "inventory_ports",
+          "columnsFrom": [
+            "port_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "port_identity_aliases_ids_check": {
+          "name": "port_identity_aliases_ids_check",
+          "value": "\"port_identity_aliases\".\"legacy_item_id\" > 0 AND \"port_identity_aliases\".\"legacy_port_id\" > 0"
+        }
+      }
+    },
+    "resource_identity_aliases": {
+      "name": "resource_identity_aliases",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "resource_id": {
+          "name": "resource_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "legacy_item_type_key": {
+          "name": "legacy_item_type_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "legacy_item_id": {
+          "name": "legacy_item_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "legacy_resource_key": {
+          "name": "legacy_resource_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "created_at_ms": {
+          "name": "created_at_ms",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "resource_identity_aliases_legacy_unique": {
+          "name": "resource_identity_aliases_legacy_unique",
+          "columns": [
+            "legacy_item_type_key",
+            "legacy_item_id",
+            "legacy_resource_key"
+          ],
+          "isUnique": true
+        },
+        "resource_identity_aliases_resource_unique": {
+          "name": "resource_identity_aliases_resource_unique",
+          "columns": [
+            "resource_id"
+          ],
+          "isUnique": true
+        }
+      },
+      "foreignKeys": {
+        "resource_identity_aliases_resource_id_inventory_resources_id_fk": {
+          "name": "resource_identity_aliases_resource_id_inventory_resources_id_fk",
+          "tableFrom": "resource_identity_aliases",
+          "tableTo": "inventory_resources",
+          "columnsFrom": [
+            "resource_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "resource_identity_aliases_item_id_check": {
+          "name": "resource_identity_aliases_item_id_check",
+          "value": "\"resource_identity_aliases\".\"legacy_item_id\" > 0"
+        }
+      }
+    },
+    "projects": {
+      "name": "projects",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "description": {
+          "name": "description",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "icon_key": {
+          "name": "icon_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'folder'"
+        },
+        "revision": {
+          "name": "revision",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 1
+        },
+        "includes_global_inventory": {
+          "name": "includes_global_inventory",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": true
+        },
+        "archived_at_ms": {
+          "name": "archived_at_ms",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "created_at_ms": {
+          "name": "created_at_ms",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "updated_at_ms": {
+          "name": "updated_at_ms",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "projects_active_name_unique": {
+          "name": "projects_active_name_unique",
+          "columns": [
+            "lower(\"name\")"
+          ],
+          "isUnique": true,
+          "where": "\"projects\".\"archived_at_ms\" IS NULL"
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "projects_name_check": {
+          "name": "projects_name_check",
+          "value": "length(trim(\"projects\".\"name\")) > 0"
+        },
+        "projects_revision_check": {
+          "name": "projects_revision_check",
+          "value": "\"projects\".\"revision\" > 0"
+        }
+      }
+    },
+    "canvas_workspaces": {
+      "name": "canvas_workspaces",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "viewport_x": {
+          "name": "viewport_x",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
+        },
+        "viewport_y": {
+          "name": "viewport_y",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
+        },
+        "viewport_zoom_basis_points": {
+          "name": "viewport_zoom_basis_points",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 10000
+        },
+        "settings_json": {
+          "name": "settings_json",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'{}'"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "canvas_workspaces_id_workspaces_id_fk": {
+          "name": "canvas_workspaces_id_workspaces_id_fk",
+          "tableFrom": "canvas_workspaces",
+          "tableTo": "workspaces",
+          "columnsFrom": [
+            "id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "canvas_workspaces_zoom_check": {
+          "name": "canvas_workspaces_zoom_check",
+          "value": "\"canvas_workspaces\".\"viewport_zoom_basis_points\" > 0"
+        },
+        "canvas_workspaces_settings_json_check": {
+          "name": "canvas_workspaces_settings_json_check",
+          "value": "json_valid(\"canvas_workspaces\".\"settings_json\")"
+        }
+      }
+    },
+    "project_inventory_memberships": {
+      "name": "project_inventory_memberships",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "project_id": {
+          "name": "project_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "item_id": {
+          "name": "item_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "created_at_ms": {
+          "name": "created_at_ms",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "project_inventory_memberships_unique": {
+          "name": "project_inventory_memberships_unique",
+          "columns": [
+            "project_id",
+            "item_id"
+          ],
+          "isUnique": true
+        },
+        "project_inventory_memberships_item_index": {
+          "name": "project_inventory_memberships_item_index",
+          "columns": [
+            "item_id"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "project_inventory_memberships_project_id_projects_id_fk": {
+          "name": "project_inventory_memberships_project_id_projects_id_fk",
+          "tableFrom": "project_inventory_memberships",
+          "tableTo": "projects",
+          "columnsFrom": [
+            "project_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "project_inventory_memberships_item_id_inventory_items_id_fk": {
+          "name": "project_inventory_memberships_item_id_inventory_items_id_fk",
+          "tableFrom": "project_inventory_memberships",
+          "tableTo": "inventory_items",
+          "columnsFrom": [
+            "item_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "project_inventory_overrides": {
+      "name": "project_inventory_overrides",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "project_id": {
+          "name": "project_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "item_id": {
+          "name": "item_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "display_name": {
+          "name": "display_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "notes": {
+          "name": "notes",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "created_at_ms": {
+          "name": "created_at_ms",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "updated_at_ms": {
+          "name": "updated_at_ms",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "project_inventory_overrides_unique": {
+          "name": "project_inventory_overrides_unique",
+          "columns": [
+            "project_id",
+            "item_id"
+          ],
+          "isUnique": true
+        },
+        "project_inventory_overrides_item_index": {
+          "name": "project_inventory_overrides_item_index",
+          "columns": [
+            "item_id"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "project_inventory_overrides_project_id_projects_id_fk": {
+          "name": "project_inventory_overrides_project_id_projects_id_fk",
+          "tableFrom": "project_inventory_overrides",
+          "tableTo": "projects",
+          "columnsFrom": [
+            "project_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "project_inventory_overrides_item_id_inventory_items_id_fk": {
+          "name": "project_inventory_overrides_item_id_inventory_items_id_fk",
+          "tableFrom": "project_inventory_overrides",
+          "tableTo": "inventory_items",
+          "columnsFrom": [
+            "item_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "project_inventory_overrides_content_check": {
+          "name": "project_inventory_overrides_content_check",
+          "value": "\n    \"project_inventory_overrides\".\"display_name\" IS NOT NULL OR \"project_inventory_overrides\".\"notes\" IS NOT NULL\n  "
+        }
+      }
+    },
+    "project_preferences": {
+      "name": "project_preferences",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "project_id": {
+          "name": "project_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "default_workspace_id": {
+          "name": "default_workspace_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "updated_at_ms": {
+          "name": "updated_at_ms",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "project_preferences_project_unique": {
+          "name": "project_preferences_project_unique",
+          "columns": [
+            "project_id"
+          ],
+          "isUnique": true
+        },
+        "project_preferences_default_workspace_index": {
+          "name": "project_preferences_default_workspace_index",
+          "columns": [
+            "default_workspace_id"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "project_preferences_project_id_projects_id_fk": {
+          "name": "project_preferences_project_id_projects_id_fk",
+          "tableFrom": "project_preferences",
+          "tableTo": "projects",
+          "columnsFrom": [
+            "project_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "project_preferences_workspace_fk": {
+          "name": "project_preferences_workspace_fk",
+          "tableFrom": "project_preferences",
+          "tableTo": "workspaces",
+          "columnsFrom": [
+            "project_id",
+            "default_workspace_id"
+          ],
+          "columnsTo": [
+            "project_id",
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "workspaces": {
+      "name": "workspaces",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "project_id": {
+          "name": "project_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "type": {
+          "name": "type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "icon_key": {
+          "name": "icon_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "color_key": {
+          "name": "color_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "sort_order": {
+          "name": "sort_order",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "revision": {
+          "name": "revision",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 1
+        },
+        "system_key": {
+          "name": "system_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "archived_at_ms": {
+          "name": "archived_at_ms",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "created_at_ms": {
+          "name": "created_at_ms",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "updated_at_ms": {
+          "name": "updated_at_ms",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "workspaces_project_id_id_unique": {
+          "name": "workspaces_project_id_id_unique",
+          "columns": [
+            "project_id",
+            "id"
+          ],
+          "isUnique": true
+        },
+        "workspaces_project_sort_order_unique": {
+          "name": "workspaces_project_sort_order_unique",
+          "columns": [
+            "project_id",
+            "sort_order"
+          ],
+          "isUnique": true,
+          "where": "\"workspaces\".\"archived_at_ms\" IS NULL"
+        },
+        "workspaces_project_system_unique": {
+          "name": "workspaces_project_system_unique",
+          "columns": [
+            "project_id"
+          ],
+          "isUnique": true,
+          "where": "\"workspaces\".\"type\" = 'systems'"
+        },
+        "workspaces_project_id_index": {
+          "name": "workspaces_project_id_index",
+          "columns": [
+            "project_id"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "workspaces_project_id_projects_id_fk": {
+          "name": "workspaces_project_id_projects_id_fk",
+          "tableFrom": "workspaces",
+          "tableTo": "projects",
+          "columnsFrom": [
+            "project_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "workspaces_type_check": {
+          "name": "workspaces_type_check",
+          "value": "\"workspaces\".\"type\" IN ('systems', 'canvas', 'rack', 'diagram', 'vlan')"
+        },
+        "workspaces_name_check": {
+          "name": "workspaces_name_check",
+          "value": "length(trim(\"workspaces\".\"name\")) > 0"
+        },
+        "workspaces_sort_order_check": {
+          "name": "workspaces_sort_order_check",
+          "value": "\"workspaces\".\"sort_order\" >= 0"
+        },
+        "workspaces_revision_check": {
+          "name": "workspaces_revision_check",
+          "value": "\"workspaces\".\"revision\" > 0"
+        },
+        "workspaces_system_shape_check": {
+          "name": "workspaces_system_shape_check",
+          "value": "\n    (\"workspaces\".\"type\" <> 'systems') OR (\n      \"workspaces\".\"name\" = 'Systems'\n      AND \"workspaces\".\"icon_key\" = 'server'\n      AND \"workspaces\".\"color_key\" = 'neutral'\n      AND \"workspaces\".\"sort_order\" = 0\n      AND \"workspaces\".\"system_key\" = 'systems'\n      AND \"workspaces\".\"archived_at_ms\" IS NULL\n    )\n  "
+        },
+        "workspaces_non_system_key_check": {
+          "name": "workspaces_non_system_key_check",
+          "value": "\n    (\"workspaces\".\"type\" = 'systems') OR \"workspaces\".\"system_key\" IS NULL\n  "
+        }
+      }
+    },
+    "application_metadata": {
+      "name": "application_metadata",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "key": {
+          "name": "key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "value_json": {
+          "name": "value_json",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "updated_at_ms": {
+          "name": "updated_at_ms",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "application_metadata_key_unique": {
+          "name": "application_metadata_key_unique",
+          "columns": [
+            "key"
+          ],
+          "isUnique": true
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "application_metadata_value_json_check": {
+          "name": "application_metadata_value_json_check",
+          "value": "json_valid(\"application_metadata\".\"value_json\")"
+        }
+      }
+    },
+    "application_settings": {
+      "name": "application_settings",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "key": {
+          "name": "key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "value_json": {
+          "name": "value_json",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "source": {
+          "name": "source",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'database'"
+        },
+        "row_version": {
+          "name": "row_version",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 1
+        },
+        "updated_at_ms": {
+          "name": "updated_at_ms",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "application_settings_key_unique": {
+          "name": "application_settings_key_unique",
+          "columns": [
+            "key"
+          ],
+          "isUnique": true
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "application_settings_source_check": {
+          "name": "application_settings_source_check",
+          "value": "\"application_settings\".\"source\" IN ('database', 'environment', 'default')"
+        },
+        "application_settings_row_version_check": {
+          "name": "application_settings_row_version_check",
+          "value": "\"application_settings\".\"row_version\" > 0"
+        },
+        "application_settings_value_json_check": {
+          "name": "application_settings_value_json_check",
+          "value": "json_valid(\"application_settings\".\"value_json\")"
+        }
+      }
+    },
+    "cross_database_operations": {
+      "name": "cross_database_operations",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "operation_key": {
+          "name": "operation_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "operation_type": {
+          "name": "operation_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "state": {
+          "name": "state",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "core_revision": {
+          "name": "core_revision",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "telemetry_revision": {
+          "name": "telemetry_revision",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "catalog_revision": {
+          "name": "catalog_revision",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "details_json": {
+          "name": "details_json",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'{}'"
+        },
+        "started_at_ms": {
+          "name": "started_at_ms",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "completed_at_ms": {
+          "name": "completed_at_ms",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "cross_database_operations_key_unique": {
+          "name": "cross_database_operations_key_unique",
+          "columns": [
+            "operation_key"
+          ],
+          "isUnique": true
+        },
+        "cross_database_operations_state_index": {
+          "name": "cross_database_operations_state_index",
+          "columns": [
+            "state"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "cross_database_operations_state_check": {
+          "name": "cross_database_operations_state_check",
+          "value": "\"cross_database_operations\".\"state\" IN ('pending', 'running', 'completed', 'compensating', 'failed')"
+        },
+        "cross_database_operations_details_json_check": {
+          "name": "cross_database_operations_details_json_check",
+          "value": "json_valid(\"cross_database_operations\".\"details_json\")"
+        }
+      }
+    },
+    "migration_runs": {
+      "name": "migration_runs",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "migration_key": {
+          "name": "migration_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "source_engine": {
+          "name": "source_engine",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "target_engine": {
+          "name": "target_engine",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "state": {
+          "name": "state",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "backup_path": {
+          "name": "backup_path",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "source_digest": {
+          "name": "source_digest",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "target_digest": {
+          "name": "target_digest",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "error_code": {
+          "name": "error_code",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "started_at_ms": {
+          "name": "started_at_ms",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "completed_at_ms": {
+          "name": "completed_at_ms",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "migration_runs_migration_key_index": {
+          "name": "migration_runs_migration_key_index",
+          "columns": [
+            "migration_key"
+          ],
+          "isUnique": false
+        },
+        "migration_runs_state_index": {
+          "name": "migration_runs_state_index",
+          "columns": [
+            "state"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "migration_runs_state_check": {
+          "name": "migration_runs_state_check",
+          "value": "\"migration_runs\".\"state\" IN ('preparing', 'importing', 'verifying', 'activated', 'rolled-back', 'failed')"
+        }
+      }
+    },
+    "restore_runs": {
+      "name": "restore_runs",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "backup_format_version": {
+          "name": "backup_format_version",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "state": {
+          "name": "state",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "selected_sections_json": {
+          "name": "selected_sections_json",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "source_digest": {
+          "name": "source_digest",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "error_code": {
+          "name": "error_code",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "started_at_ms": {
+          "name": "started_at_ms",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "completed_at_ms": {
+          "name": "completed_at_ms",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "restore_runs_state_index": {
+          "name": "restore_runs_state_index",
+          "columns": [
+            "state"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "restore_runs_format_version_check": {
+          "name": "restore_runs_format_version_check",
+          "value": "\"restore_runs\".\"backup_format_version\" > 0"
+        },
+        "restore_runs_state_check": {
+          "name": "restore_runs_state_check",
+          "value": "\"restore_runs\".\"state\" IN ('preparing', 'validating', 'restoring', 'verified', 'rolled-back', 'failed')"
+        },
+        "restore_runs_sections_json_check": {
+          "name": "restore_runs_sections_json_check",
+          "value": "json_valid(\"restore_runs\".\"selected_sections_json\")"
+        }
+      }
+    },
+    "chassis_types": {
+      "name": "chassis_types",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "key": {
+          "name": "key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "label": {
+          "name": "label",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "sort_order": {
+          "name": "sort_order",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "chassis_types_key_unique": {
+          "name": "chassis_types_key_unique",
+          "columns": [
+            "key"
+          ],
+          "isUnique": true
+        },
+        "chassis_types_sort_order_unique": {
+          "name": "chassis_types_sort_order_unique",
+          "columns": [
+            "sort_order"
+          ],
+          "isUnique": true
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "chassis_types_key_format_check": {
+          "name": "chassis_types_key_format_check",
+          "value": "\"chassis_types\".\"key\" = lower(trim(\"chassis_types\".\"key\")) AND length(\"chassis_types\".\"key\") > 0"
+        },
+        "chassis_types_label_check": {
+          "name": "chassis_types_label_check",
+          "value": "length(trim(\"chassis_types\".\"label\")) > 0"
+        }
+      }
+    },
+    "connector_types": {
+      "name": "connector_types",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "key": {
+          "name": "key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "label": {
+          "name": "label",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "sort_order": {
+          "name": "sort_order",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "connector_types_key_unique": {
+          "name": "connector_types_key_unique",
+          "columns": [
+            "key"
+          ],
+          "isUnique": true
+        },
+        "connector_types_sort_order_unique": {
+          "name": "connector_types_sort_order_unique",
+          "columns": [
+            "sort_order"
+          ],
+          "isUnique": true
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "connector_types_key_format_check": {
+          "name": "connector_types_key_format_check",
+          "value": "\"connector_types\".\"key\" = lower(trim(\"connector_types\".\"key\")) AND length(\"connector_types\".\"key\") > 0"
+        },
+        "connector_types_label_check": {
+          "name": "connector_types_label_check",
+          "value": "length(trim(\"connector_types\".\"label\")) > 0"
+        }
+      }
+    },
+    "cpu_socket_types": {
+      "name": "cpu_socket_types",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "key": {
+          "name": "key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "label": {
+          "name": "label",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "sort_order": {
+          "name": "sort_order",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "cpu_socket_types_key_unique": {
+          "name": "cpu_socket_types_key_unique",
+          "columns": [
+            "key"
+          ],
+          "isUnique": true
+        },
+        "cpu_socket_types_sort_order_unique": {
+          "name": "cpu_socket_types_sort_order_unique",
+          "columns": [
+            "sort_order"
+          ],
+          "isUnique": true
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "cpu_socket_types_key_format_check": {
+          "name": "cpu_socket_types_key_format_check",
+          "value": "\"cpu_socket_types\".\"key\" = lower(trim(\"cpu_socket_types\".\"key\")) AND length(\"cpu_socket_types\".\"key\") > 0"
+        },
+        "cpu_socket_types_label_check": {
+          "name": "cpu_socket_types_label_check",
+          "value": "length(trim(\"cpu_socket_types\".\"label\")) > 0"
+        }
+      }
+    },
+    "expansion_slot_types": {
+      "name": "expansion_slot_types",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "key": {
+          "name": "key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "label": {
+          "name": "label",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "sort_order": {
+          "name": "sort_order",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "expansion_slot_types_key_unique": {
+          "name": "expansion_slot_types_key_unique",
+          "columns": [
+            "key"
+          ],
+          "isUnique": true
+        },
+        "expansion_slot_types_sort_order_unique": {
+          "name": "expansion_slot_types_sort_order_unique",
+          "columns": [
+            "sort_order"
+          ],
+          "isUnique": true
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "expansion_slot_types_key_format_check": {
+          "name": "expansion_slot_types_key_format_check",
+          "value": "\"expansion_slot_types\".\"key\" = lower(trim(\"expansion_slot_types\".\"key\")) AND length(\"expansion_slot_types\".\"key\") > 0"
+        },
+        "expansion_slot_types_label_check": {
+          "name": "expansion_slot_types_label_check",
+          "value": "length(trim(\"expansion_slot_types\".\"label\")) > 0"
+        }
+      }
+    },
+    "memory_generations": {
+      "name": "memory_generations",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "key": {
+          "name": "key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "label": {
+          "name": "label",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "sort_order": {
+          "name": "sort_order",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "memory_generations_key_unique": {
+          "name": "memory_generations_key_unique",
+          "columns": [
+            "key"
+          ],
+          "isUnique": true
+        },
+        "memory_generations_sort_order_unique": {
+          "name": "memory_generations_sort_order_unique",
+          "columns": [
+            "sort_order"
+          ],
+          "isUnique": true
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "memory_generations_key_format_check": {
+          "name": "memory_generations_key_format_check",
+          "value": "\"memory_generations\".\"key\" = lower(trim(\"memory_generations\".\"key\")) AND length(\"memory_generations\".\"key\") > 0"
+        },
+        "memory_generations_label_check": {
+          "name": "memory_generations_label_check",
+          "value": "length(trim(\"memory_generations\".\"label\")) > 0"
+        }
+      }
+    },
+    "memory_module_types": {
+      "name": "memory_module_types",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "key": {
+          "name": "key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "label": {
+          "name": "label",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "sort_order": {
+          "name": "sort_order",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "memory_module_types_key_unique": {
+          "name": "memory_module_types_key_unique",
+          "columns": [
+            "key"
+          ],
+          "isUnique": true
+        },
+        "memory_module_types_sort_order_unique": {
+          "name": "memory_module_types_sort_order_unique",
+          "columns": [
+            "sort_order"
+          ],
+          "isUnique": true
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "memory_module_types_key_format_check": {
+          "name": "memory_module_types_key_format_check",
+          "value": "\"memory_module_types\".\"key\" = lower(trim(\"memory_module_types\".\"key\")) AND length(\"memory_module_types\".\"key\") > 0"
+        },
+        "memory_module_types_label_check": {
+          "name": "memory_module_types_label_check",
+          "value": "length(trim(\"memory_module_types\".\"label\")) > 0"
+        }
+      }
+    },
+    "port_kinds": {
+      "name": "port_kinds",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "key": {
+          "name": "key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "label": {
+          "name": "label",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "sort_order": {
+          "name": "sort_order",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "port_kinds_key_unique": {
+          "name": "port_kinds_key_unique",
+          "columns": [
+            "key"
+          ],
+          "isUnique": true
+        },
+        "port_kinds_sort_order_unique": {
+          "name": "port_kinds_sort_order_unique",
+          "columns": [
+            "sort_order"
+          ],
+          "isUnique": true
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "port_kinds_key_format_check": {
+          "name": "port_kinds_key_format_check",
+          "value": "\"port_kinds\".\"key\" = lower(trim(\"port_kinds\".\"key\")) AND length(\"port_kinds\".\"key\") > 0"
+        },
+        "port_kinds_label_check": {
+          "name": "port_kinds_label_check",
+          "value": "length(trim(\"port_kinds\".\"label\")) > 0"
+        }
+      }
+    },
+    "power_connector_types": {
+      "name": "power_connector_types",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "key": {
+          "name": "key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "label": {
+          "name": "label",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "sort_order": {
+          "name": "sort_order",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "power_connector_types_key_unique": {
+          "name": "power_connector_types_key_unique",
+          "columns": [
+            "key"
+          ],
+          "isUnique": true
+        },
+        "power_connector_types_sort_order_unique": {
+          "name": "power_connector_types_sort_order_unique",
+          "columns": [
+            "sort_order"
+          ],
+          "isUnique": true
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "power_connector_types_key_format_check": {
+          "name": "power_connector_types_key_format_check",
+          "value": "\"power_connector_types\".\"key\" = lower(trim(\"power_connector_types\".\"key\")) AND length(\"power_connector_types\".\"key\") > 0"
+        },
+        "power_connector_types_label_check": {
+          "name": "power_connector_types_label_check",
+          "value": "length(trim(\"power_connector_types\".\"label\")) > 0"
+        }
+      }
+    },
+    "storage_form_factors": {
+      "name": "storage_form_factors",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "key": {
+          "name": "key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "label": {
+          "name": "label",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "sort_order": {
+          "name": "sort_order",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "storage_form_factors_key_unique": {
+          "name": "storage_form_factors_key_unique",
+          "columns": [
+            "key"
+          ],
+          "isUnique": true
+        },
+        "storage_form_factors_sort_order_unique": {
+          "name": "storage_form_factors_sort_order_unique",
+          "columns": [
+            "sort_order"
+          ],
+          "isUnique": true
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "storage_form_factors_key_format_check": {
+          "name": "storage_form_factors_key_format_check",
+          "value": "\"storage_form_factors\".\"key\" = lower(trim(\"storage_form_factors\".\"key\")) AND length(\"storage_form_factors\".\"key\") > 0"
+        },
+        "storage_form_factors_label_check": {
+          "name": "storage_form_factors_label_check",
+          "value": "length(trim(\"storage_form_factors\".\"label\")) > 0"
+        }
+      }
+    },
+    "storage_interfaces": {
+      "name": "storage_interfaces",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "key": {
+          "name": "key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "label": {
+          "name": "label",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "sort_order": {
+          "name": "sort_order",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "storage_interfaces_key_unique": {
+          "name": "storage_interfaces_key_unique",
+          "columns": [
+            "key"
+          ],
+          "isUnique": true
+        },
+        "storage_interfaces_sort_order_unique": {
+          "name": "storage_interfaces_sort_order_unique",
+          "columns": [
+            "sort_order"
+          ],
+          "isUnique": true
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "storage_interfaces_key_format_check": {
+          "name": "storage_interfaces_key_format_check",
+          "value": "\"storage_interfaces\".\"key\" = lower(trim(\"storage_interfaces\".\"key\")) AND length(\"storage_interfaces\".\"key\") > 0"
+        },
+        "storage_interfaces_label_check": {
+          "name": "storage_interfaces_label_check",
+          "value": "length(trim(\"storage_interfaces\".\"label\")) > 0"
+        }
+      }
+    }
+  },
+  "views": {},
+  "enums": {},
+  "_meta": {
+    "schemas": {},
+    "tables": {},
+    "columns": {}
+  },
+  "internal": {
+    "indexes": {
+      "projects_active_name_unique": {
+        "columns": {
+          "lower(\"name\")": {
+            "isExpression": true
+          }
+        }
+      }
+    }
+  }
+}
