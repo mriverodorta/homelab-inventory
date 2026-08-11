@@ -7,7 +7,9 @@ import {
   buildQuantityRecords,
   InventoryLifecycleError,
   normalizeInventoryRef,
+  referencedPortIds,
 } from '../db/inventory-lifecycle.mjs'
+import { cleanItemForStore, normalizeInventoryItemInput } from '../db/inventory-input.mjs'
 import { assertAuthenticationStoreShape, normalizeAuthenticationStore } from '../auth/model.mjs'
 import {
   agentStatusTiming,
@@ -16,6 +18,7 @@ import {
 } from '../agents/status-model.mjs'
 import { assertBackupManagementStoreShape, normalizeBackupManagementStore } from '../backup/backup-model.mjs'
 import { timingSafeEqualString } from '../db/agent-auth.mjs'
+import { inspectNasPowerConfigurationChange } from '../db/nas-power-configuration.mjs'
 import { createEngineSnapshot } from '../engine/snapshot.mjs'
 import { assertRegistryStoreShape } from '../registry/model.mjs'
 import { INVENTORY_TYPES, type InventoryType } from './core/inventory/field-contract.ts'
@@ -32,7 +35,7 @@ import {
 } from './core/projections/legacy-domains.ts'
 import { buildLegacyProjectProjection } from './core/projections/legacy-project.ts'
 import { createRepositoryContext } from './core/repositories/index.ts'
-import { insertLegacyInventoryItem } from './migration/core-importer.ts'
+import { insertLegacyInventoryItem, replaceLegacyInventoryItem } from './migration/core-importer.ts'
 import { LEGACY_TABLE_BY_TYPE } from './legacy/identity-plan.ts'
 import { databaseStatus, type ManagedDatabase } from './sqlite/database.ts'
 import { databaseQuickCheck } from './sqlite/integrity.ts'
@@ -449,6 +452,102 @@ export class SqliteHomelabInventoryStore {
       }
     })
     return this.getProject()
+  }
+
+  updateInventoryItem(rawRef: Row, input: Row) {
+    const ref = normalizeInventoryRef(rawRef)
+    const current = this.projectItem(ref.type, ref.id)
+    if (current.archivedAt) {
+      throw lifecycleError('Restore the item before editing it.', 'inventory-item-archived', 409)
+    }
+    const { item } = normalizeInventoryItemInput({ ...input, type: ref.type }, ref.id)
+    const record = cleanItemForStore(item)
+    if (
+      ref.type === 'nas'
+      && current.specs?.powerConfiguration !== record.specs?.powerConfiguration
+    ) {
+      throw lifecycleError(
+        'Use the NAS power configuration command to change power modes.',
+        'nas-power-configuration-command-required',
+        409,
+      )
+    }
+    const connectedPortIds = referencedPortIds(this.getProject(), ref)
+    for (const portId of connectedPortIds) {
+      const previousPort = current.ports?.find((port: Row) => port.id === portId)
+      const nextPort = record.ports?.find((port: Row) => port.id === portId)
+      if (
+        !previousPort
+        || !nextPort
+        || previousPort.kind !== nextPort.kind
+        || previousPort.type !== nextPort.type
+        || previousPort.speed !== nextPort.speed
+        || JSON.stringify(previousPort.endpoints ?? []) !== JSON.stringify(nextPort.endpoints ?? [])
+      ) {
+        throw new InventoryLifecycleError(`Connected port ${portId} cannot be removed or materially changed.`, {
+          code: 'connected-port-change',
+          status: 409,
+          details: { portId },
+        })
+      }
+    }
+    this.commitCanonicalMutation(() => {
+      replaceLegacyInventoryItem({
+        database: this.core.database,
+        projectId: this.projectId,
+        type: ref.type as InventoryType,
+        item: record,
+        itemId: this.resolveItem(ref.type, ref.id),
+        now: this.now(),
+      })
+    })
+    return this.getProject()
+  }
+
+  changeNasPowerConfiguration(rawRef: Row, target: unknown, confirmed = false) {
+    const ref = normalizeInventoryRef(rawRef)
+    const project = this.getProject()
+    const inventory = Object.fromEntries(
+      Object.values(LEGACY_TABLE_BY_TYPE).map((table) => [table, [] as Row[]]),
+    ) as Row
+    for (const item of Object.values(project.items) as Row[]) {
+      const table = LEGACY_TABLE_BY_TYPE[item.type as InventoryType]
+      if (table) inventory[table].push(cleanItemForStore(item))
+    }
+    const impact = inspectNasPowerConfigurationChange({ inventory, project }, ref, target)
+    if (impact.requiresConfirmation && !confirmed) {
+      return { status: 'confirmation-required', impact: impact.publicImpact }
+    }
+    if (impact.from === impact.to) return { status: 'applied', project }
+
+    const current = this.projectItem(ref.type, ref.id)
+    const migrated = withCanonicalPowerPorts({
+      ...current,
+      type: 'nas',
+      specs: { ...(current.specs ?? {}), powerConfiguration: impact.to },
+    })
+    const record = cleanItemForStore(migrated)
+    this.commitCanonicalMutation(() => {
+      for (const connectionId of impact.connectionIds) {
+        this.core.database.query(
+          'DELETE FROM project_connections WHERE project_id = ? AND id = ?',
+        ).run(this.projectId, connectionId)
+      }
+      if (impact.assignmentId !== null) {
+        this.core.database.query(
+          'DELETE FROM component_assignments WHERE project_id = ? AND id = ?',
+        ).run(this.projectId, impact.assignmentId)
+      }
+      replaceLegacyInventoryItem({
+        database: this.core.database,
+        projectId: this.projectId,
+        type: 'nas',
+        item: record,
+        itemId: this.resolveItem('nas', ref.id),
+        now: this.now(),
+      })
+    })
+    return { status: 'applied', project: this.getProject() }
   }
 
   updateInventoryItemProperties(rawRef: Row, rawProperties: unknown) {

@@ -24,6 +24,15 @@ export type InsertLegacyInventoryItemOptions = Readonly<{
   now?: number
 }>
 
+export type ReplaceLegacyInventoryItemOptions = Readonly<{
+  database: Database
+  projectId: number
+  type: InventoryType
+  item: LegacyRecord
+  itemId: number
+  now?: number
+}>
+
 function records(value: unknown): LegacyRecord[] {
   if (Array.isArray(value)) return value
   if (value && typeof value === 'object') return Object.values(value)
@@ -349,6 +358,123 @@ function insertInventoryItem(
     .run(itemId, typeRow.id, optionalText(item.name) ?? `${type} ${item.id}`, manufacturerId, manufacturerId ? null : optionalText(item.manufacturer), optionalText(item.model), optionalText(item.family), optionalText(item.number), optionalText(item.subtype), optionalText(item.serialNumber ?? item.specs?.serialNumber), optionalText(item.notes), json(extensionPayload(item)), timestamp(item.archivedAt, null as any), now, now)
   database.query('INSERT INTO inventory_identity_aliases (item_id, legacy_type_key, legacy_id, created_at_ms) VALUES (?, ?, ?, ?)').run(itemId, type, item.id, now)
   database.query('INSERT INTO project_inventory_memberships (project_id, item_id, created_at_ms) VALUES (?, ?, ?)').run(projectId, itemId, now)
+  insertInventoryItemDetails(database, type, item, itemId, plan, now)
+}
+
+const SUBTYPE_TABLE_BY_TYPE: Readonly<Record<InventoryType, string>> = {
+  server: 'servers',
+  nas: 'nas_systems',
+  pcBuild: 'pc_builds',
+  cpu: 'cpus',
+  ram: 'memory_modules',
+  storage: 'storage_devices',
+  gpu: 'graphics_cards',
+  network: 'network_cards',
+  motherboard: 'motherboards',
+  cpuCooler: 'cpu_coolers',
+  case: 'computer_cases',
+  powerSupply: 'power_supplies',
+  soundCard: 'sound_cards',
+  wireless: 'wireless_cards',
+  powerAdapter: 'power_adapters',
+  switch: 'network_switches',
+  patchPanel: 'patch_panels',
+  monitor: 'monitors',
+  ups: 'ups_systems',
+  powerStrip: 'power_strips',
+}
+
+function replacementIdentityPlan(
+  database: Database,
+  type: InventoryType,
+  item: LegacyRecord,
+  itemId: number,
+) {
+  const itemPrefix = `${type}:${item.id}`
+  const existingPorts = new Map<number, number>((database.query(`
+    SELECT a.legacy_port_id, p.id
+    FROM inventory_ports p
+    JOIN port_identity_aliases a ON a.port_id = p.id
+    WHERE p.item_id = ?
+  `).all(itemId) as Array<{ legacy_port_id: number; id: number }>).map((row) => [row.legacy_port_id, row.id]))
+  const existingFaces = new Map<string, number>((database.query(`
+    SELECT a.legacy_port_id, f.endpoint_number, f.id
+    FROM port_endpoint_faces f
+    JOIN inventory_ports p ON p.id = f.port_id
+    JOIN port_identity_aliases a ON a.port_id = p.id
+    WHERE p.item_id = ?
+  `).all(itemId) as Array<{ legacy_port_id: number; endpoint_number: number; id: number }>).map(
+    (row) => [`${row.legacy_port_id}:${row.endpoint_number}`, row.id],
+  ))
+  const existingResources = new Map<string, number>((database.query(`
+    SELECT a.legacy_resource_key, r.id
+    FROM inventory_resources r
+    JOIN resource_identity_aliases a ON a.resource_id = r.id
+    WHERE r.item_id = ?
+  `).all(itemId) as Array<{ legacy_resource_key: string; id: number }>).map(
+    (row) => [row.legacy_resource_key, row.id],
+  ))
+  const existingSlots = new Map<string, number>((database.query(`
+    SELECT a.legacy_resource_key, s.position, s.id
+    FROM host_resource_slots s
+    JOIN resource_identity_aliases a ON a.resource_id = s.resource_group_id
+    WHERE s.host_item_id = ?
+  `).all(itemId) as Array<{ legacy_resource_key: string; position: number; id: number }>).map(
+    (row) => [`${row.legacy_resource_key}:${row.position}`, row.id],
+  ))
+
+  let nextPortId = nextTableId(database, 'inventory_ports')
+  let nextFaceId = nextTableId(database, 'port_endpoint_faces')
+  let nextResourceId = nextTableId(database, 'inventory_resources')
+  let nextSlotId = nextTableId(database, 'host_resource_slots')
+  const ports = new Map<string, number>()
+  const endpointFaces = new Map<string, number>()
+  const resourceGroups = new Map<string, number>()
+  const resourceSlots = new Map<string, number>()
+
+  for (const port of records(item.ports).sort((left, right) => Number(left.id) - Number(right.id))) {
+    const key = `${itemPrefix}:port:${port.id}`
+    ports.set(key, existingPorts.get(Number(port.id)) ?? nextPortId++)
+    for (const [index, endpoint] of records(port.endpoints).entries()) {
+      const endpointNumber = Number(endpoint.id ?? index + 1)
+      endpointFaces.set(
+        `${key}:face:${endpointNumber}`,
+        existingFaces.get(`${port.id}:${endpointNumber}`) ?? nextFaceId++,
+      )
+    }
+  }
+  for (const definition of legacyResourceDefinitions(item)) {
+    const key = `${itemPrefix}:resource:${definition.key}`
+    resourceGroups.set(key, existingResources.get(definition.key) ?? nextResourceId++)
+    for (let position = 1; position <= definition.count; position += 1) {
+      resourceSlots.set(
+        `${key}:slot:${position}`,
+        existingSlots.get(`${definition.key}:${position}`) ?? nextSlotId++,
+      )
+    }
+  }
+  return Object.freeze({
+    items: new Map([[itemPrefix, itemId]]),
+    ports,
+    endpointFaces,
+    resourceGroups,
+    resourceSlots,
+    agents: new Map(),
+    registrySources: new Map(),
+    registryLinks: new Map(),
+    assignments: new Map(),
+    connections: new Map(),
+  }) satisfies CanonicalIdentityPlan
+}
+
+function insertInventoryItemDetails(
+  database: Database,
+  type: InventoryType,
+  item: LegacyRecord,
+  itemId: number,
+  plan: CanonicalIdentityPlan,
+  now: number,
+) {
   insertSubtype(database, type, itemId, item)
   for (const alias of records(item.aliases)) {
     const value = optionalText(alias)
@@ -359,7 +485,9 @@ function insertInventoryItem(
     const secondaryManufacturerId = ensureManufacturer(database, secondaryManufacturer, now)
     database.query('INSERT INTO inventory_secondary_manufacturers (item_id, manufacturer_id, manufacturer_text, created_at_ms, updated_at_ms) VALUES (?, ?, NULL, ?, ?)').run(itemId, secondaryManufacturerId, now, now)
   }
-  for (const [key, value] of Object.entries(item.properties ?? {})) database.query('INSERT INTO inventory_item_properties (item_id, key, value, created_at_ms, updated_at_ms) VALUES (?, ?, ?, ?, ?)').run(itemId, key, typeof value === 'string' ? value : json(value), now, now)
+  for (const [key, value] of Object.entries(item.properties ?? {})) {
+    database.query('INSERT INTO inventory_item_properties (item_id, key, value, created_at_ms, updated_at_ms) VALUES (?, ?, ?, ?, ?)').run(itemId, key, typeof value === 'string' ? value : json(value), now, now)
+  }
   importPorts(database, type, item, itemId, plan, now)
   if (type === 'powerStrip' && item.smart?.enabled === true) {
     const smart = database.query('INSERT INTO power_strip_smart_configurations (power_strip_id, enabled, display_name, management_ip, mac_address, created_at_ms, updated_at_ms) VALUES (?, 1, ?, ?, ?, ?, ?) RETURNING id').get(itemId, optionalText(item.smart.displayName), optionalText(item.smart.managementIp), optionalText(item.smart.macAddress), now, now) as { id: number }
@@ -429,6 +557,182 @@ export function insertLegacyInventoryItem({
   const plan = runtimeIdentityPlan(database, type, item)
   const itemId = canonicalItemId(plan, type, legacyId)
   insertInventoryItem(database, projectId, type, item, itemId, plan, now)
+  return { itemId, legacyId }
+}
+
+export function replaceLegacyInventoryItem({
+  database,
+  projectId,
+  type,
+  item,
+  itemId,
+  now = Date.now(),
+}: ReplaceLegacyInventoryItemOptions) {
+  const legacyId = positiveIntegerOrNull(item.id)
+  if (!legacyId) throw new Error('Inventory item ID must be a positive safe integer.')
+  const membership = database.query(
+    'SELECT 1 FROM project_inventory_memberships WHERE project_id = ? AND item_id = ?',
+  ).get(projectId, itemId)
+  if (!membership) throw new Error(`Inventory item ${type}:${legacyId} is not in project ${projectId}.`)
+
+  const plan = replacementIdentityPlan(database, type, item, itemId)
+  const endpoints = database.query(`
+    SELECT e.connection_id, e.role, a.legacy_port_id,
+           f.endpoint_number
+    FROM connection_endpoints e
+    JOIN inventory_ports p ON p.id = e.port_id
+    JOIN port_identity_aliases a ON a.port_id = p.id
+    LEFT JOIN port_endpoint_faces f ON f.id = e.endpoint_face_id
+    WHERE p.item_id = ?
+  `).all(itemId) as LegacyRecord[]
+  const internalLinks = database.query(`
+    SELECT l.id,
+           first_alias.legacy_port_id AS first_legacy_port_id,
+           first_face.endpoint_number AS first_endpoint_number,
+           second_alias.legacy_port_id AS second_legacy_port_id,
+           second_face.endpoint_number AS second_endpoint_number,
+           l.created_at_ms
+    FROM internal_port_links l
+    JOIN port_identity_aliases first_alias ON first_alias.port_id = l.first_port_id
+    JOIN port_identity_aliases second_alias ON second_alias.port_id = l.second_port_id
+    LEFT JOIN port_endpoint_faces first_face ON first_face.id = l.first_endpoint_face_id
+    LEFT JOIN port_endpoint_faces second_face ON second_face.id = l.second_endpoint_face_id
+    WHERE l.item_id = ?
+  `).all(itemId) as LegacyRecord[]
+  const assignmentSlots = database.query(`
+    SELECT a.assignment_id, a.position AS assignment_position,
+           r.legacy_resource_key, s.position AS resource_position,
+           CASE WHEN c.resource_slot_id = s.id THEN 1 ELSE 0 END AS is_primary
+    FROM component_assignment_slots a
+    JOIN component_assignments c ON c.id = a.assignment_id
+    JOIN host_resource_slots s ON s.id = a.resource_slot_id
+    JOIN resource_identity_aliases r ON r.resource_id = s.resource_group_id
+    WHERE a.project_id = ? AND a.host_item_id = ?
+    ORDER BY a.assignment_id, a.position
+  `).all(projectId, itemId) as LegacyRecord[]
+  const primaryOnlySlots = database.query(`
+    SELECT c.id AS assignment_id, r.legacy_resource_key,
+           s.position AS resource_position
+    FROM component_assignments c
+    JOIN host_resource_slots s ON s.id = c.resource_slot_id
+    JOIN resource_identity_aliases r ON r.resource_id = s.resource_group_id
+    WHERE c.project_id = ? AND c.host_item_id = ?
+      AND NOT EXISTS (
+        SELECT 1 FROM component_assignment_slots a
+        WHERE a.assignment_id = c.id AND a.resource_slot_id = c.resource_slot_id
+      )
+  `).all(projectId, itemId) as LegacyRecord[]
+
+  const portKey = (legacyPortId: number) => `${type}:${legacyId}:port:${legacyPortId}`
+  const faceId = (legacyPortId: number, endpointNumber: number | null) => endpointNumber == null
+    ? null
+    : plan.endpointFaces.get(`${portKey(legacyPortId)}:face:${endpointNumber}`) ?? null
+  for (const endpoint of endpoints) {
+    if (!plan.ports.has(portKey(endpoint.legacy_port_id))) {
+      throw new Error(`Connected port ${endpoint.legacy_port_id} cannot be removed.`)
+    }
+    if (endpoint.endpoint_number != null && faceId(endpoint.legacy_port_id, endpoint.endpoint_number) == null) {
+      throw new Error(`Connected port ${endpoint.legacy_port_id} endpoint ${endpoint.endpoint_number} cannot be removed.`)
+    }
+  }
+  for (const link of internalLinks) {
+    if (!plan.ports.has(portKey(link.first_legacy_port_id)) || !plan.ports.has(portKey(link.second_legacy_port_id))) {
+      throw new Error('Internally linked ports cannot be removed.')
+    }
+  }
+  const resourceSlot = (resourceKey: string, position: number) => plan.resourceSlots.get(
+    `${type}:${legacyId}:resource:${resourceKey}:slot:${position}`,
+  )
+  for (const slot of [...assignmentSlots, ...primaryOnlySlots]) {
+    if (!resourceSlot(slot.legacy_resource_key, slot.resource_position)) {
+      throw new Error(
+        `Assigned resource ${slot.legacy_resource_key} slot ${slot.resource_position} cannot be removed.`,
+      )
+    }
+  }
+
+  database.query('DELETE FROM connection_endpoints WHERE port_id IN (SELECT id FROM inventory_ports WHERE item_id = ?)').run(itemId)
+  database.query('DELETE FROM internal_port_links WHERE item_id = ?').run(itemId)
+  database.query('UPDATE component_assignments SET resource_slot_id = NULL WHERE project_id = ? AND host_item_id = ?').run(projectId, itemId)
+  database.query('DELETE FROM component_assignment_slots WHERE project_id = ? AND host_item_id = ?').run(projectId, itemId)
+  database.query('DELETE FROM power_strip_smart_configurations WHERE power_strip_id = ?').run(itemId)
+  database.query('DELETE FROM port_identity_aliases WHERE port_id IN (SELECT id FROM inventory_ports WHERE item_id = ?)').run(itemId)
+  database.query('DELETE FROM inventory_ports WHERE item_id = ?').run(itemId)
+
+  database.query('DELETE FROM compatibility_constraint_groups WHERE host_profile_id IN (SELECT id FROM host_compatibility_profiles WHERE host_item_id = ?)').run(itemId)
+  database.query('DELETE FROM storage_resource_controllers WHERE storage_resource_group_id IN (SELECT id FROM host_resource_groups WHERE host_item_id = ?) OR controller_resource_group_id IN (SELECT id FROM host_resource_groups WHERE host_item_id = ?)').run(itemId, itemId)
+  database.query('UPDATE boot_device_resource_groups SET controller_resource_group_id = NULL WHERE id IN (SELECT id FROM host_resource_groups WHERE host_item_id = ?)').run(itemId)
+  database.query('DELETE FROM resource_identity_aliases WHERE resource_id IN (SELECT id FROM inventory_resources WHERE item_id = ?)').run(itemId)
+  database.query('DELETE FROM host_resource_groups WHERE host_item_id = ?').run(itemId)
+  database.query('DELETE FROM inventory_resources WHERE item_id = ?').run(itemId)
+  database.query('DELETE FROM host_compatibility_profiles WHERE host_item_id = ?').run(itemId)
+
+  database.query('DELETE FROM inventory_item_aliases WHERE item_id = ?').run(itemId)
+  database.query('DELETE FROM inventory_secondary_manufacturers WHERE item_id = ?').run(itemId)
+  database.query('DELETE FROM inventory_item_properties WHERE item_id = ?').run(itemId)
+  database.query(`DELETE FROM ${SUBTYPE_TABLE_BY_TYPE[type]} WHERE id = ?`).run(itemId)
+
+  const manufacturerId = ensureManufacturer(database, item.manufacturer, now)
+  database.query(`
+    UPDATE inventory_items SET
+      name = ?, manufacturer_id = ?, manufacturer_text = ?, model = ?, family = ?,
+      product_number = ?, subtype = ?, serial_number = ?, notes = ?, extensions_json = ?,
+      row_version = row_version + 1, updated_at_ms = ?
+    WHERE id = ?
+  `).run(
+    optionalText(item.name) ?? `${type} ${legacyId}`,
+    manufacturerId,
+    manufacturerId ? null : optionalText(item.manufacturer),
+    optionalText(item.model),
+    optionalText(item.family),
+    optionalText(item.number),
+    optionalText(item.subtype),
+    optionalText(item.serialNumber ?? item.specs?.serialNumber),
+    optionalText(item.notes),
+    json(extensionPayload(item)),
+    now,
+    itemId,
+  )
+  insertInventoryItemDetails(database, type, item, itemId, plan, now)
+
+  for (const endpoint of endpoints) {
+    database.query('INSERT INTO connection_endpoints (connection_id, role, port_id, endpoint_face_id) VALUES (?, ?, ?, ?)').run(
+      endpoint.connection_id,
+      endpoint.role,
+      plan.ports.get(portKey(endpoint.legacy_port_id)),
+      faceId(endpoint.legacy_port_id, endpoint.endpoint_number),
+    )
+  }
+  for (const link of internalLinks) {
+    database.query('INSERT INTO internal_port_links (id, item_id, first_port_id, first_endpoint_face_id, second_port_id, second_endpoint_face_id, created_at_ms) VALUES (?, ?, ?, ?, ?, ?, ?)').run(
+      link.id,
+      itemId,
+      plan.ports.get(portKey(link.first_legacy_port_id)),
+      faceId(link.first_legacy_port_id, link.first_endpoint_number),
+      plan.ports.get(portKey(link.second_legacy_port_id)),
+      faceId(link.second_legacy_port_id, link.second_endpoint_number),
+      link.created_at_ms,
+    )
+  }
+  for (const slot of assignmentSlots) {
+    const slotId = resourceSlot(slot.legacy_resource_key, slot.resource_position)!
+    database.query('INSERT INTO component_assignment_slots (project_id, assignment_id, host_item_id, resource_slot_id, position) VALUES (?, ?, ?, ?, ?)').run(
+      projectId,
+      slot.assignment_id,
+      itemId,
+      slotId,
+      slot.assignment_position,
+    )
+    if (slot.is_primary) {
+      database.query('UPDATE component_assignments SET resource_slot_id = ? WHERE id = ?').run(slotId, slot.assignment_id)
+    }
+  }
+  for (const slot of primaryOnlySlots) {
+    database.query('UPDATE component_assignments SET resource_slot_id = ? WHERE id = ?').run(
+      resourceSlot(slot.legacy_resource_key, slot.resource_position),
+      slot.assignment_id,
+    )
+  }
   return { itemId, legacyId }
 }
 

@@ -50,7 +50,7 @@ describe('SQLite Homelab Inventory store facade', () => {
         group_id: 1,
         positions: [0],
       })
-      expect(store.getDatabaseStatus()).toMatchObject({ schemaVersion: 8 })
+      expect(store.getDatabaseStatus()).toMatchObject({ schemaVersion: 9 })
       expect(store.getPersistenceHealth()).toMatchObject({ ok: true, engine: 'sqlite' })
     } finally {
       store.close()
@@ -295,6 +295,121 @@ describe('SQLite Homelab Inventory store facade', () => {
       expect(report.blocked).toBe(true)
       expect(report.reasons.map(({ kind }) => kind)).toContain('canvas-placement')
       expect(() => store.archiveInventoryItems([{ type: 'server', id: 7 }])).toThrow(/dependencies/iu)
+    } finally {
+      store.close()
+    }
+  })
+
+  test('updates connected equipment while preserving relational port identities', async () => {
+    const store = await fixtureStore()
+    try {
+      const beforePort = store.core.database.query(`
+        SELECT p.id
+        FROM inventory_ports p
+        JOIN port_identity_aliases a ON a.port_id = p.id
+        WHERE a.legacy_item_type_key = 'switch'
+          AND a.legacy_item_id = 1
+          AND a.legacy_port_id = 1
+      `).get() as { id: number }
+      const beforeEndpoint = store.core.database.query(`
+        SELECT port_id FROM connection_endpoints
+        WHERE connection_id = 1 AND role = 'source'
+      `).get()
+
+      const project = store.updateInventoryItem({ type: 'switch', id: 1 }, {
+        name: 'Renamed Example Switch',
+        manufacturer: 'Example Networks',
+        specs: { management: 'Managed', switchingCapacityGbps: 20, fanless: true },
+        ports: [{
+          id: 1,
+          kind: 'switch-port',
+          type: 'rj45',
+          slotNumber: 1,
+          speed: '1G',
+          role: 'access',
+          label: 'LAN 1',
+          origin: 'fixed',
+        }],
+      })
+
+      expect(project.items['switch:1']).toMatchObject({
+        name: 'Renamed Example Switch',
+        ports: [{ id: 1, label: 'LAN 1', speed: '1G' }],
+      })
+      expect(store.core.database.query(`
+        SELECT p.id
+        FROM inventory_ports p
+        JOIN port_identity_aliases a ON a.port_id = p.id
+        WHERE a.legacy_item_type_key = 'switch'
+          AND a.legacy_item_id = 1
+          AND a.legacy_port_id = 1
+      `).get()).toEqual(beforePort)
+      expect(store.core.database.query(`
+        SELECT port_id FROM connection_endpoints
+        WHERE connection_id = 1 AND role = 'source'
+      `).get()).toEqual(beforeEndpoint)
+
+      expect(() => store.updateInventoryItem({ type: 'switch', id: 1 }, {
+        ...project.items['switch:1'],
+        ports: [{ ...project.items['switch:1'].ports![0], speed: '10G' }],
+      })).toThrow(/Connected port 1/iu)
+    } finally {
+      store.close()
+    }
+  })
+
+  test('updates host compatibility without orphaning assigned resource slots', async () => {
+    const store = await fixtureStore()
+    try {
+      const before = store.getProject()
+      const storageAssignment = before.assignments.find((assignment) => assignment.id === 3)!
+      const beforeSlot = store.core.database.query(
+        'SELECT resource_slot_id FROM component_assignments WHERE id = 3',
+      ).get()
+      const server = before.items['server:7']
+      const project = store.updateInventoryItem({ type: 'server', id: 7 }, {
+        ...server,
+        name: 'Updated Example Micro Host',
+        compatibility: {
+          ...server.compatibility,
+          host: {
+            ...server.compatibility?.host,
+            memory: { ...server.compatibility?.host?.memory, maxSpeedMt: 3200 },
+          },
+        },
+      })
+
+      expect(project.items['server:7'].name).toBe('Updated Example Micro Host')
+      expect(project.items['server:7'].compatibility?.host?.memory?.maxSpeedMt).toBe(3200)
+      expect(project.assignments.find((assignment) => assignment.id === 3)).toEqual(storageAssignment)
+      expect(store.core.database.query(
+        'SELECT resource_slot_id FROM component_assignments WHERE id = 3',
+      ).get()).toEqual(beforeSlot)
+    } finally {
+      store.close()
+    }
+  })
+
+  test('changes NAS power configuration through the dedicated atomic command', async () => {
+    const store = await fixtureStore()
+    try {
+      const created = store.createInventoryItems({
+        type: 'nas',
+        name: 'Internal NAS',
+        specs: { driveBays: 4, powerConfiguration: 'internal-psu' },
+      })
+      const nas = Object.values(created.items).find((item) => item.type === 'nas')!
+      expect(nas.ports?.some((port) => port.type === 'ac-input')).toBe(true)
+
+      const result = store.changeNasPowerConfiguration(
+        { type: 'nas', id: nas.id },
+        'external-adapter',
+      ) as any
+      expect(result.status).toBe('applied')
+      expect(result.project.items[`nas:${nas.id}`]).toMatchObject({
+        specs: { driveBays: 4, powerConfiguration: 'external-adapter' },
+      })
+      expect(result.project.items[`nas:${nas.id}`].ports ?? []).toEqual([])
     } finally {
       store.close()
     }
