@@ -209,4 +209,32 @@ describe('SQLite Homelab Inventory store facade', () => {
       store.close()
     }
   })
+
+  test('replaces a submitted project atomically with one invalidation revision', async () => {
+    const store = await fixtureStore()
+    const commits: unknown[] = []
+    store.subscribeToProjectCommits((event) => commits.push(event))
+    try {
+      const current = store.getProject()
+      const next = store.setProject({
+        ...current,
+        metadata: { ...current.metadata, name: 'Replanned Lab' },
+        placements: current.placements.map((placement) => (
+          placement.serverId === 'server:7' ? { ...placement, x: 168 } : placement
+        )),
+        compatibilityPolicy: { disabledHosts: [], ignoredWarningIds: [] },
+      })
+      expect(next.revision).toBe(9)
+      expect(next.metadata.name).toBe('Replanned Lab')
+      expect(next.placements.find(({ serverId }) => serverId === 'server:7')?.x).toBe(168)
+      expect(next.compatibilityPolicy).toEqual({ disabledHosts: [], ignoredWarningIds: [] })
+      expect(commits).toEqual([{
+        type: 'canonical-invalidated',
+        baseRevision: 8,
+        revision: 9,
+      }])
+    } finally {
+      store.close()
+    }
+  })
 })

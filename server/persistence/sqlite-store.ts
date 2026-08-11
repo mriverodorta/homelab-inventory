@@ -81,6 +81,19 @@ function hasWorkspacePatch(patch: ProjectPatch): boolean {
   return patch.kind === 'patch-placements' || patch.kind === 'set-connection-route'
 }
 
+function parseRuntimeItemKey(value: unknown, label: string) {
+  if (typeof value !== 'string') {
+    throw lifecycleError(`${label} is invalid.`, 'invalid-project', 400)
+  }
+  const separator = value.lastIndexOf(':')
+  const type = separator > 0 ? value.slice(0, separator) : ''
+  const id = separator > 0 ? Number(value.slice(separator + 1)) : Number.NaN
+  if (!type || !Number.isSafeInteger(id) || id <= 0) {
+    throw lifecycleError(`${label} is invalid.`, 'invalid-project', 400)
+  }
+  return { type, id }
+}
+
 function metadata(database: Database, key: string, fallback: unknown) {
   const row = database.query('SELECT value_json FROM application_metadata WHERE key = ?').get(key) as { value_json: string } | null
   return parseJson(row?.value_json, fallback)
@@ -132,6 +145,119 @@ export class SqliteHomelabInventoryStore {
     ).get(this.projectId) as { revision: number } | null
     if (!row) throw new Error(`Active project ${this.projectId} was not found.`)
     return row.revision
+  }
+
+  setProject(submitted: ProjectState) {
+    const baseRevision = this.getEngineRevision()
+    const submittedRevision = submitted.revision ?? baseRevision
+    if (submittedRevision !== baseRevision) {
+      throw lifecycleError(
+        `Project revision ${submittedRevision} is stale; current revision is ${baseRevision}.`,
+        'revision-conflict',
+        409,
+      )
+    }
+    const current = this.getProject()
+    if (JSON.stringify(Object.keys(submitted.items).sort()) !== JSON.stringify(Object.keys(current.items).sort())) {
+      throw lifecycleError(
+        'Inventory membership cannot be changed through the project endpoint.',
+        'invalid-project',
+        400,
+      )
+    }
+    const now = this.now()
+    const revision = baseRevision + 1
+    this.core.database.transaction(() => {
+      const name = submitted.metadata?.name?.trim() || 'Homelab Inventory'
+      this.core.database.query(`
+        UPDATE projects SET name = ?, revision = ?, updated_at_ms = ?
+        WHERE id = ? AND revision = ? AND archived_at_ms IS NULL
+      `).run(name, revision, now, this.projectId, baseRevision)
+      putMetadata(
+        this.core.database,
+        'legacy.project-metadata',
+        { ...submitted.metadata, name, updatedAt: new Date(now).toISOString() },
+        now,
+      )
+      putMetadata(
+        this.core.database,
+        'legacy.compatibility-policy',
+        submitted.compatibilityPolicy ?? { disabledHosts: [], ignoredWarningIds: [] },
+        now,
+      )
+
+      this.core.database.query(
+        'DELETE FROM workspace_placements WHERE project_id = ? AND workspace_id = ?',
+      ).run(this.projectId, this.workspaceId)
+      const insertPlacement = this.core.database.query(`
+        INSERT INTO workspace_placements (
+          project_id, workspace_id, item_id, x, y, orientation, z_index, created_at_ms, updated_at_ms
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `)
+      for (const placement of submitted.placements ?? []) {
+        const item = parseRuntimeItemKey(placement.serverId, 'Placement item')
+        insertPlacement.run(
+          this.projectId,
+          this.workspaceId,
+          this.resolveItem(item.type, item.id),
+          finiteCoordinate(placement.x, 'Placement x'),
+          finiteCoordinate(placement.y, 'Placement y'),
+          (placement as Row).orientation ?? null,
+          (placement as Row).zIndex ?? 0,
+          now,
+          now,
+        )
+      }
+
+      this.core.database.query('DELETE FROM component_assignments WHERE project_id = ?').run(this.projectId)
+      for (const assignment of submitted.assignments ?? []) {
+        const host = parseRuntimeItemKey(assignment.serverId, 'Assignment host')
+        const item = parseRuntimeItemKey(assignment.itemId, 'Assignment item')
+        this.upsertAssignment({
+          id: assignment.id,
+          host: { item_type: host.type, id: host.id },
+          item: { item_type: item.type, id: item.id },
+          component_type: assignment.type,
+          assigned_at: assignment.assignedAt,
+          allocation: assignment.allocation ? {
+            resource_type: assignment.allocation.resourceType,
+            group_id: assignment.allocation.groupId ?? null,
+            positions: assignment.allocation.positions,
+          } : null,
+        })
+      }
+
+      this.core.database.query('DELETE FROM project_connections WHERE project_id = ?').run(this.projectId)
+      for (const connection of submitted.connections ?? []) {
+        this.insertConnection({
+          id: connection.id,
+          from: this.runtimeEndpoint(connection.from),
+          to: this.runtimeEndpoint(connection.to),
+          connection_type: connection.type,
+          negotiated_speed_mbps: connection.negotiatedSpeedMbps ?? null,
+          label: connection.label ?? null,
+          route: connection.route ? {
+            source_side: connection.route.sourceSide ?? null,
+            target_side: connection.route.targetSide ?? null,
+            bend_points: connection.route.bendPoints ?? [],
+            avoid_cable_overlap: connection.route.avoidCableOverlap === true,
+          } : null,
+          created_at: connection.createdAt,
+        }, now)
+      }
+
+      this.core.database.query(`
+        UPDATE workspaces SET revision = revision + 1, updated_at_ms = ?
+        WHERE id = ? AND project_id = ?
+      `).run(now, this.workspaceId, this.projectId)
+    }).immediate()
+    const event: ProjectCommitEvent = {
+      type: 'canonical-invalidated',
+      baseRevision,
+      revision,
+    }
+    for (const listener of this.projectCommitListeners) listener(event)
+    return this.getProject()
   }
 
   getDatabaseStatus() {
@@ -418,6 +544,19 @@ export class SqliteHomelabInventoryStore {
       endpointFaceId = face.id
     }
     return { portId: row.port_id, endpointFaceId }
+  }
+
+  private runtimeEndpoint(endpoint: Row): TopologyEndpointRef {
+    const item = parseRuntimeItemKey(endpoint.itemId, 'Connection endpoint item')
+    const hosted = endpoint.hostedItemId
+      ? parseRuntimeItemKey(endpoint.hostedItemId, 'Hosted connection endpoint item')
+      : null
+    return {
+      item: { item_type: item.type, id: item.id },
+      port_id: positiveId(endpoint.portId, 'Connection endpoint port ID'),
+      endpoint_id: endpoint.endpointId == null ? null : positiveId(endpoint.endpointId, 'Connection endpoint face ID'),
+      hosted_item: hosted ? { item_type: hosted.type, id: hosted.id } : null,
+    }
   }
 
   private insertConnection(connection: any, now: number) {
