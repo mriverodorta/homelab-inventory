@@ -1,10 +1,18 @@
 import type { Database } from 'bun:sqlite'
 import type { ProjectPatch, TopologyEndpointRef } from '../../shared/engine/protocol.mjs'
+import { withCanonicalPowerPorts } from '../../shared/power-ports.mjs'
 import type { ProjectState } from '../../src/types/inventory.ts'
-import { InventoryLifecycleError } from '../db/inventory-lifecycle.mjs'
+import {
+  buildDuplicateRecord,
+  buildQuantityRecords,
+  InventoryLifecycleError,
+  normalizeInventoryRef,
+} from '../db/inventory-lifecycle.mjs'
 import { createEngineSnapshot } from '../engine/snapshot.mjs'
+import { INVENTORY_TYPES, type InventoryType } from './core/inventory/field-contract.ts'
 import { buildLegacyProjectProjection } from './core/projections/legacy-project.ts'
 import { createRepositoryContext } from './core/repositories/index.ts'
+import { insertLegacyInventoryItem } from './migration/core-importer.ts'
 import { databaseStatus, type ManagedDatabase } from './sqlite/database.ts'
 import { databaseQuickCheck } from './sqlite/integrity.ts'
 
@@ -38,6 +46,8 @@ const RESOURCE_TYPE_BY_ALLOCATION: Readonly<Record<string, string>> = {
   controllerSlot: 'controllerSlot',
   bootDeviceSlot: 'bootDeviceSlot',
 }
+
+const INVENTORY_TYPE_SET = new Set<string>(INVENTORY_TYPES)
 
 function lifecycleError(message: string, code: string, status: number) {
   return new InventoryLifecycleError(message, { code, status })
@@ -257,6 +267,192 @@ export class SqliteHomelabInventoryStore {
       revision,
     }
     for (const listener of this.projectCommitListeners) listener(event)
+    return this.getProject()
+  }
+
+  createInventoryItems(input: Row, quantity = 1) {
+    if (!Number.isInteger(quantity) || quantity < 1 || quantity > 100) {
+      throw lifecycleError('Quantity must be an integer between 1 and 100.', 'invalid-quantity', 400)
+    }
+    const type = String(input?.type ?? '').trim()
+    if (!INVENTORY_TYPE_SET.has(type)) {
+      throw lifecycleError('Inventory item type is not supported.', 'unsupported-inventory-type', 400)
+    }
+    const inventoryType = type as InventoryType
+    const currentItems = Object.values(this.getProject().items).filter((item) => item.type === inventoryType)
+    const startingId = this.nextLegacyInventoryId(inventoryType)
+    const records = buildQuantityRecords({
+      input,
+      type: inventoryType,
+      quantity,
+      startingId,
+      existingRecords: currentItems,
+    }).map((item: Row) => withCanonicalPowerPorts({ ...item, type: inventoryType }))
+    this.commitCanonicalMutation(() => {
+      for (const item of records) {
+        insertLegacyInventoryItem({
+          database: this.core.database,
+          projectId: this.projectId,
+          type: inventoryType,
+          item,
+          now: this.now(),
+        })
+      }
+    })
+    return this.getProject()
+  }
+
+  addInventoryItem(input: Row) {
+    return this.createInventoryItems(input, 1)
+  }
+
+  duplicateInventoryItem(rawRef: Row, quantity = 1) {
+    if (!Number.isInteger(quantity) || quantity < 1 || quantity > 100) {
+      throw lifecycleError('Quantity must be an integer between 1 and 100.', 'invalid-quantity', 400)
+    }
+    const ref = normalizeInventoryRef(rawRef)
+    const source = this.projectItem(ref.type, ref.id)
+    if (source.archivedAt) {
+      throw lifecycleError('Restore the item before duplicating it.', 'inventory-item-archived', 409)
+    }
+    const existingRecords = Object.values(this.getProject().items).filter((item) => item.type === ref.type)
+    let nextId = this.nextLegacyInventoryId(ref.type as InventoryType)
+    const records: Row[] = []
+    for (let index = 0; index < quantity; index += 1) {
+      const record = buildDuplicateRecord({ source, type: ref.type, nextId, existingRecords: [...existingRecords, ...records] })
+      records.push(withCanonicalPowerPorts({ ...record, type: ref.type }))
+      nextId += 1
+    }
+    this.commitCanonicalMutation(() => {
+      for (const item of records) {
+        insertLegacyInventoryItem({
+          database: this.core.database,
+          projectId: this.projectId,
+          type: ref.type as InventoryType,
+          item,
+          now: this.now(),
+        })
+      }
+    })
+    return this.getProject()
+  }
+
+  getInventoryDependencies(rawRef: Row) {
+    const ref = normalizeInventoryRef(rawRef)
+    const item = this.projectItem(ref.type, ref.id)
+    const itemId = this.resolveItem(ref.type, ref.id)
+    const reasons: Row[] = []
+    const related = (sql: string) => this.core.database.query(sql).all(this.projectId, itemId) as Row[]
+    const placements = related('SELECT workspace_id AS workspaceId FROM workspace_placements WHERE project_id = ? AND item_id = ?')
+    const assignments = related('SELECT id FROM component_assignments WHERE project_id = ? AND component_item_id = ?')
+    const hosted = related('SELECT id FROM component_assignments WHERE project_id = ? AND host_item_id = ?')
+    const connections = related(`
+      SELECT DISTINCT e.connection_id AS id
+      FROM connection_endpoints e
+      JOIN project_connections c ON c.id = e.connection_id
+      JOIN inventory_ports p ON p.id = e.port_id
+      WHERE c.project_id = ? AND p.item_id = ?
+    `)
+    const agents = this.core.database.query(`
+      SELECT b.agent_id AS id FROM agent_host_bindings b
+      JOIN agents a ON a.id = b.agent_id
+      WHERE b.host_item_id = ? AND b.state = 'active' AND a.revoked_at_ms IS NULL
+    `).all(itemId) as Row[]
+    if (placements.length) reasons.push({ kind: 'canvas-placement', count: placements.length, message: 'Item is placed on the canvas.', related: placements })
+    if (assignments.length) reasons.push({ kind: 'host-assignment', count: assignments.length, message: 'Item is assigned to a host.', related: assignments })
+    if (hosted.length) reasons.push({ kind: 'hosted-components', count: hosted.length, message: 'Host contains assigned components.', related: hosted })
+    if (connections.length) reasons.push({ kind: 'port-connections', count: connections.length, message: 'Item has connected ports.', related: connections })
+    if (agents.length) reasons.push({ kind: 'agent-registration', count: agents.length, message: 'Host has active agent registration data.', related: agents })
+    return { item: { type: ref.type, id: ref.id, name: item.name }, blocked: reasons.length > 0, reasons }
+  }
+
+  getInventoryDependencyReports(rawRefs: Row[]) {
+    return this.normalizeInventoryRefs(rawRefs).map((ref) => this.getInventoryDependencies(ref))
+  }
+
+  archiveInventoryItems(rawRefs: Row[]) {
+    const refs = this.normalizeInventoryRefs(rawRefs)
+    const reports = refs.map((ref) => this.getInventoryDependencies(ref))
+    this.assertDependencyFree(reports, 'archive')
+    const archivedAt = new Date(this.now()).toISOString()
+    this.commitCanonicalMutation(() => {
+      for (const ref of refs) {
+        this.core.database.query('UPDATE inventory_items SET archived_at_ms = ?, row_version = row_version + 1, updated_at_ms = ? WHERE id = ?')
+          .run(Date.parse(archivedAt), this.now(), this.resolveItem(ref.type, ref.id))
+      }
+    })
+    return this.getProject()
+  }
+
+  restoreInventoryItems(rawRefs: Row[]) {
+    const refs = this.normalizeInventoryRefs(rawRefs)
+    this.commitCanonicalMutation(() => {
+      for (const ref of refs) {
+        this.projectItem(ref.type, ref.id)
+        this.core.database.query('UPDATE inventory_items SET archived_at_ms = NULL, row_version = row_version + 1, updated_at_ms = ? WHERE id = ?')
+          .run(this.now(), this.resolveItem(ref.type, ref.id))
+      }
+    })
+    return this.getProject()
+  }
+
+  deleteInventoryItems(rawRefs: Row[]) {
+    const refs = this.normalizeInventoryRefs(rawRefs)
+    const active = refs.map((ref) => ({ ref, item: this.projectItem(ref.type, ref.id) })).filter(({ item }) => !item.archivedAt)
+    if (active.length) {
+      throw new InventoryLifecycleError('Archive inventory items before deleting them.', {
+        code: 'inventory-item-not-archived',
+        status: 409,
+        details: { items: active.map(({ ref, item }) => ({ ...ref, name: item.name })) },
+      })
+    }
+    const reports = refs.map((ref) => this.getInventoryDependencies(ref))
+    this.assertDependencyFree(reports, 'delete')
+    this.commitCanonicalMutation(() => {
+      const deletedHosts = new Set(refs.filter((ref) => ['server', 'nas', 'pcBuild'].includes(ref.type)).map((ref) => `${ref.type}:${ref.id}`))
+      if (deletedHosts.size) {
+        const policy = metadata(this.core.database, 'legacy.compatibility-policy', { disabledHosts: [], ignoredWarningIds: [] }) as Row
+        putMetadata(this.core.database, 'legacy.compatibility-policy', {
+          ...policy,
+          disabledHosts: (policy.disabledHosts ?? []).filter((host: Row) => !deletedHosts.has(`${host.hostType}:${host.hostId}`)),
+        }, this.now())
+      }
+      for (const ref of refs) {
+        const itemId = this.resolveItem(ref.type, ref.id)
+        this.core.database.query('DELETE FROM registry_links WHERE item_id = ?').run(itemId)
+        this.core.database.query('DELETE FROM project_inventory_memberships WHERE project_id = ? AND item_id = ?').run(this.projectId, itemId)
+        this.core.database.query('DELETE FROM port_identity_aliases WHERE port_id IN (SELECT id FROM inventory_ports WHERE item_id = ?)').run(itemId)
+        this.core.database.query('DELETE FROM resource_identity_aliases WHERE resource_id IN (SELECT id FROM inventory_resources WHERE item_id = ?)').run(itemId)
+        this.core.database.query('DELETE FROM inventory_identity_aliases WHERE item_id = ?').run(itemId)
+        this.core.database.query('DELETE FROM inventory_items WHERE id = ?').run(itemId)
+      }
+    })
+    return this.getProject()
+  }
+
+  updateInventoryItemProperties(rawRef: Row, rawProperties: unknown) {
+    const ref = normalizeInventoryRef(rawRef)
+    if (!rawProperties || typeof rawProperties !== 'object' || Array.isArray(rawProperties)) {
+      throw lifecycleError('Inventory item properties must be a plain object.', 'invalid-inventory-properties', 400)
+    }
+    const item = this.projectItem(ref.type, ref.id)
+    if (item.archivedAt) throw lifecycleError('Restore the item before editing it.', 'inventory-item-archived', 409)
+    const itemId = this.resolveItem(ref.type, ref.id)
+    this.commitCanonicalMutation(() => {
+      const insert = this.core.database.query(`
+        INSERT INTO inventory_item_properties (item_id, key, value, created_at_ms, updated_at_ms)
+        VALUES (?, ?, ?, ?, ?)
+        ON CONFLICT(item_id, key) DO UPDATE SET value = excluded.value, updated_at_ms = excluded.updated_at_ms
+      `)
+      for (const [key, value] of Object.entries(rawProperties as Row)) {
+        if (value === undefined || value === null || value === '') {
+          this.core.database.query('DELETE FROM inventory_item_properties WHERE item_id = ? AND key = ?').run(itemId, key)
+        } else {
+          insert.run(itemId, key, typeof value === 'string' ? value : JSON.stringify(value), this.now(), this.now())
+        }
+      }
+      this.core.database.query('UPDATE inventory_items SET row_version = row_version + 1, updated_at_ms = ? WHERE id = ?').run(this.now(), itemId)
+    })
     return this.getProject()
   }
 
@@ -513,6 +709,60 @@ export class SqliteHomelabInventoryStore {
 
     const exhaustive: never = patch
     throw lifecycleError(`Unsupported engine patch ${(exhaustive as ProjectPatch).kind}.`, 'unsupported-engine-patch', 500)
+  }
+
+  private projectItem(type: string, id: number) {
+    const item = this.getProject().items[`${type}:${positiveId(id, 'Inventory item ID')}`]
+    if (!item) throw lifecycleError(`Inventory item ${type}:${id} was not found.`, 'inventory-item-not-found', 404)
+    return item as Row
+  }
+
+  private nextLegacyInventoryId(type: InventoryType) {
+    const row = this.core.database.query(`
+      SELECT coalesce(max(legacy_id), 0) + 1 AS id
+      FROM inventory_identity_aliases
+      WHERE legacy_type_key = ?
+    `).get(type) as { id: number }
+    return positiveId(row.id, 'Next inventory item ID')
+  }
+
+  private normalizeInventoryRefs(rawRefs: Row[]) {
+    if (!Array.isArray(rawRefs) || rawRefs.length === 0) {
+      throw lifecycleError('At least one inventory item is required.', 'empty-inventory-selection', 400)
+    }
+    const refs = new Map<string, ReturnType<typeof normalizeInventoryRef>>()
+    for (const rawRef of rawRefs) {
+      const ref = normalizeInventoryRef(rawRef)
+      refs.set(`${ref.type}:${ref.id}`, ref)
+    }
+    return [...refs.values()]
+  }
+
+  private assertDependencyFree(reports: Row[], action: string) {
+    if (!reports.some((report) => report.blocked)) return
+    throw new InventoryLifecycleError(`Cannot ${action} inventory items with dependencies.`, {
+      code: 'inventory-dependencies',
+      status: 409,
+      details: { reports },
+    })
+  }
+
+  private commitCanonicalMutation(operation: () => void) {
+    const baseRevision = this.getEngineRevision()
+    const revision = baseRevision + 1
+    const now = this.now()
+    this.core.database.transaction(() => {
+      operation()
+      const result = this.core.database.query(`
+        UPDATE projects SET revision = ?, updated_at_ms = ?
+        WHERE id = ? AND revision = ? AND archived_at_ms IS NULL
+      `).run(revision, now, this.projectId, baseRevision)
+      if (result.changes !== 1) {
+        throw lifecycleError('Project changed while applying the inventory mutation.', 'revision-conflict', 409)
+      }
+    }).immediate()
+    const event: ProjectCommitEvent = { type: 'canonical-invalidated', baseRevision, revision }
+    for (const listener of this.projectCommitListeners) listener(event)
   }
 
   private resolveItem(type: string, legacyId: number) {

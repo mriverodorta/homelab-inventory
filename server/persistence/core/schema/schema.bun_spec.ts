@@ -42,7 +42,7 @@ describe('core SQLite foundation schema', () => {
       'inventoryIdentityAliases',
       'cpuSocketTypes',
     ]))
-    expect(CORE_MIGRATIONS).toHaveLength(6)
+    expect(CORE_MIGRATIONS).toHaveLength(7)
   })
 
   test('maps all 20 inventory categories to shared-primary-key subtype tables', () => {
@@ -187,6 +187,11 @@ describe('core SQLite foundation schema', () => {
       expect(() => handle.database.query(`
         DELETE FROM inventory_identity_aliases WHERE item_id = ?
       `).run(item.id)).toThrow(/immutable/iu)
+
+      handle.database.query('UPDATE inventory_items SET archived_at_ms = 2 WHERE id = ?').run(item.id)
+      expect(() => handle.database.query(`
+        DELETE FROM inventory_identity_aliases WHERE item_id = ?
+      `).run(item.id)).not.toThrow()
     } finally {
       closeManagedDatabase(handle)
     }

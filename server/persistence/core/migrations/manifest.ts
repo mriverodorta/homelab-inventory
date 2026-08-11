@@ -35,4 +35,9 @@ export const CORE_MIGRATIONS: readonly CoreMigration[] = [
     file: '0005_resource_group_aliases.sql',
     sha256: '766ea0fb299967da140d2d3057031bc460fde7c07952a88669fb5012681967b4',
   },
+  {
+    id: '0007_archived_identity_deletion',
+    file: '0006_archived_identity_deletion.sql',
+    sha256: 'e55b41b960679e9e99d00fa48b429d19a98cb179731f826803a8723deaae8ce6',
+  },
 ]

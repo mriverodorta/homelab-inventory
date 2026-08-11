@@ -16,6 +16,14 @@ export type ImportLegacyCoreOptions = Readonly<{
   identityPlan: CanonicalIdentityPlan
 }>
 
+export type InsertLegacyInventoryItemOptions = Readonly<{
+  database: Database
+  projectId: number
+  type: InventoryType
+  item: LegacyRecord
+  now?: number
+}>
+
 function records(value: unknown): LegacyRecord[] {
   if (Array.isArray(value)) return value
   if (value && typeof value === 'object') return Object.values(value)
@@ -325,37 +333,110 @@ function importPorts(database: Database, type: InventoryType, item: LegacyRecord
   }
 }
 
+function insertInventoryItem(
+  database: Database,
+  projectId: number,
+  type: InventoryType,
+  item: LegacyRecord,
+  itemId: number,
+  plan: CanonicalIdentityPlan,
+  now: number,
+) {
+  const typeRow = database.query('SELECT id FROM inventory_item_types WHERE key = ?').get(type) as { id: number } | null
+  if (!typeRow) throw new Error(`Inventory item type ${type} is not configured.`)
+  const manufacturerId = ensureManufacturer(database, item.manufacturer, now)
+  database.query(`INSERT INTO inventory_items (id, type_id, scope, owner_project_id, name, manufacturer_id, manufacturer_text, model, family, product_number, subtype, serial_number, notes, extensions_json, row_version, archived_at_ms, created_at_ms, updated_at_ms) VALUES (?, ?, 'global', NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?)`)
+    .run(itemId, typeRow.id, optionalText(item.name) ?? `${type} ${item.id}`, manufacturerId, manufacturerId ? null : optionalText(item.manufacturer), optionalText(item.model), optionalText(item.family), optionalText(item.number), optionalText(item.subtype), optionalText(item.serialNumber ?? item.specs?.serialNumber), optionalText(item.notes), json(extensionPayload(item)), timestamp(item.archivedAt, null as any), now, now)
+  database.query('INSERT INTO inventory_identity_aliases (item_id, legacy_type_key, legacy_id, created_at_ms) VALUES (?, ?, ?, ?)').run(itemId, type, item.id, now)
+  database.query('INSERT INTO project_inventory_memberships (project_id, item_id, created_at_ms) VALUES (?, ?, ?)').run(projectId, itemId, now)
+  insertSubtype(database, type, itemId, item)
+  for (const alias of records(item.aliases)) {
+    const value = optionalText(alias)
+    if (value) database.query('INSERT INTO inventory_item_aliases (item_id, alias, normalized_alias, created_at_ms) VALUES (?, ?, ?, ?)').run(itemId, value, value.toLocaleLowerCase('en-US').replace(/\s+/gu, ' '), now)
+  }
+  const secondaryManufacturer = optionalText(item.secondaryManufacturer)
+  if (secondaryManufacturer) {
+    const secondaryManufacturerId = ensureManufacturer(database, secondaryManufacturer, now)
+    database.query('INSERT INTO inventory_secondary_manufacturers (item_id, manufacturer_id, manufacturer_text, created_at_ms, updated_at_ms) VALUES (?, ?, NULL, ?, ?)').run(itemId, secondaryManufacturerId, now, now)
+  }
+  for (const [key, value] of Object.entries(item.properties ?? {})) database.query('INSERT INTO inventory_item_properties (item_id, key, value, created_at_ms, updated_at_ms) VALUES (?, ?, ?, ?, ?)').run(itemId, key, typeof value === 'string' ? value : json(value), now, now)
+  importPorts(database, type, item, itemId, plan, now)
+  if (type === 'powerStrip' && item.smart?.enabled === true) {
+    const smart = database.query('INSERT INTO power_strip_smart_configurations (power_strip_id, enabled, display_name, management_ip, mac_address, created_at_ms, updated_at_ms) VALUES (?, 1, ?, ?, ?, ?, ?) RETURNING id').get(itemId, optionalText(item.smart.displayName), optionalText(item.smart.managementIp), optionalText(item.smart.macAddress), now, now) as { id: number }
+    for (const outlet of records(item.smart.outlets)) {
+      const portId = plan.ports.get(`${type}:${item.id}:port:${outlet.portId}`)
+      if (!portId) throw new Error(`Smart outlet name references missing power strip port ${String(outlet.portId)}.`)
+      database.query('INSERT INTO power_strip_outlet_names (smart_configuration_id, port_id, name) VALUES (?, ?, ?)').run(smart.id, portId, outlet.name)
+    }
+  }
+  importCompatibility(database, itemId, item, now, plan, type)
+}
+
+function nextTableId(database: Database, table: string) {
+  return Number((database.query(`SELECT coalesce(max(id), 0) + 1 AS id FROM ${table}`).get() as { id: number }).id)
+}
+
+function runtimeIdentityPlan(database: Database, type: InventoryType, item: LegacyRecord): CanonicalIdentityPlan {
+  const itemIdentity = nextTableId(database, 'inventory_items')
+  const itemKey = `${type}:${item.id}`
+  const items = new Map([[itemKey, itemIdentity]])
+  const ports = new Map<string, number>()
+  const endpointFaces = new Map<string, number>()
+  const resourceGroups = new Map<string, number>()
+  const resourceSlots = new Map<string, number>()
+  let portId = nextTableId(database, 'inventory_ports')
+  let faceId = nextTableId(database, 'port_endpoint_faces')
+  let resourceId = nextTableId(database, 'inventory_resources')
+  let slotId = nextTableId(database, 'host_resource_slots')
+
+  for (const port of records(item.ports).sort((left, right) => Number(left.id) - Number(right.id))) {
+    const portKey = `${itemKey}:port:${port.id}`
+    ports.set(portKey, portId++)
+    for (const [index, endpoint] of records(port.endpoints).entries()) {
+      endpointFaces.set(`${portKey}:face:${endpoint.id ?? index + 1}`, faceId++)
+    }
+  }
+  for (const definition of legacyResourceDefinitions(item)) {
+    const groupKey = `${itemKey}:resource:${definition.key}`
+    resourceGroups.set(groupKey, resourceId++)
+    for (let position = 1; position <= definition.count; position += 1) {
+      resourceSlots.set(`${groupKey}:slot:${position}`, slotId++)
+    }
+  }
+  return Object.freeze({
+    items,
+    ports,
+    endpointFaces,
+    resourceGroups,
+    resourceSlots,
+    agents: new Map(),
+    registrySources: new Map(),
+    registryLinks: new Map(),
+    assignments: new Map(),
+    connections: new Map(),
+  })
+}
+
+export function insertLegacyInventoryItem({
+  database,
+  projectId,
+  type,
+  item,
+  now = Date.now(),
+}: InsertLegacyInventoryItemOptions) {
+  const legacyId = positiveIntegerOrNull(item.id)
+  if (!legacyId) throw new Error('Inventory item ID must be a positive safe integer.')
+  const plan = runtimeIdentityPlan(database, type, item)
+  const itemId = canonicalItemId(plan, type, legacyId)
+  insertInventoryItem(database, projectId, type, item, itemId, plan, now)
+  return { itemId, legacyId }
+}
+
 function importInventory(database: Database, snapshot: LegacySnapshot, plan: CanonicalIdentityPlan, now: number) {
   for (const type of INVENTORY_TYPES) {
-    const typeId = (database.query('SELECT id FROM inventory_item_types WHERE key = ?').get(type) as { id: number }).id
     for (const item of records(snapshot.inventory?.[LEGACY_TABLE_BY_TYPE[type]]).sort((a, b) => Number(a.id) - Number(b.id))) {
       const itemId = canonicalItemId(plan, type, item.id)
-      const manufacturerId = ensureManufacturer(database, item.manufacturer, now)
-      database.query(`INSERT INTO inventory_items (id, type_id, scope, owner_project_id, name, manufacturer_id, manufacturer_text, model, family, product_number, subtype, serial_number, notes, extensions_json, row_version, archived_at_ms, created_at_ms, updated_at_ms) VALUES (?, ?, 'global', NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?)`)
-        .run(itemId, typeId, optionalText(item.name) ?? `${type} ${item.id}`, manufacturerId, manufacturerId ? null : optionalText(item.manufacturer), optionalText(item.model), optionalText(item.family), optionalText(item.number), optionalText(item.subtype), optionalText(item.serialNumber ?? item.specs?.serialNumber), optionalText(item.notes), json(extensionPayload(item)), timestamp(item.archivedAt, null as any), now, now)
-      database.query('INSERT INTO inventory_identity_aliases (item_id, legacy_type_key, legacy_id, created_at_ms) VALUES (?, ?, ?, ?)').run(itemId, type, item.id, now)
-      database.query('INSERT INTO project_inventory_memberships (project_id, item_id, created_at_ms) VALUES (1, ?, ?)').run(itemId, now)
-      insertSubtype(database, type, itemId, item)
-      for (const alias of records(item.aliases)) {
-        const value = optionalText(alias)
-        if (value) database.query('INSERT INTO inventory_item_aliases (item_id, alias, normalized_alias, created_at_ms) VALUES (?, ?, ?, ?)').run(itemId, value, value.toLocaleLowerCase('en-US').replace(/\s+/gu, ' '), now)
-      }
-      const secondaryManufacturer = optionalText(item.secondaryManufacturer)
-      if (secondaryManufacturer) {
-        const secondaryManufacturerId = ensureManufacturer(database, secondaryManufacturer, now)
-        database.query('INSERT INTO inventory_secondary_manufacturers (item_id, manufacturer_id, manufacturer_text, created_at_ms, updated_at_ms) VALUES (?, ?, NULL, ?, ?)').run(itemId, secondaryManufacturerId, now, now)
-      }
-      for (const [key, value] of Object.entries(item.properties ?? {})) database.query('INSERT INTO inventory_item_properties (item_id, key, value, created_at_ms, updated_at_ms) VALUES (?, ?, ?, ?, ?)').run(itemId, key, typeof value === 'string' ? value : json(value), now, now)
-      importPorts(database, type, item, itemId, plan, now)
-      if (type === 'powerStrip' && item.smart?.enabled === true) {
-        const smart = database.query('INSERT INTO power_strip_smart_configurations (power_strip_id, enabled, display_name, management_ip, mac_address, created_at_ms, updated_at_ms) VALUES (?, 1, ?, ?, ?, ?, ?) RETURNING id').get(itemId, optionalText(item.smart.displayName), optionalText(item.smart.managementIp), optionalText(item.smart.macAddress), now, now) as { id: number }
-        for (const outlet of records(item.smart.outlets)) {
-          const portId = plan.ports.get(`${type}:${item.id}:port:${outlet.portId}`)
-          if (!portId) throw new Error(`Smart outlet name references missing power strip port ${String(outlet.portId)}.`)
-          database.query('INSERT INTO power_strip_outlet_names (smart_configuration_id, port_id, name) VALUES (?, ?, ?)').run(smart.id, portId, outlet.name)
-        }
-      }
-      importCompatibility(database, itemId, item, now, plan, type)
+      insertInventoryItem(database, 1, type, item, itemId, plan, now)
     }
   }
 }

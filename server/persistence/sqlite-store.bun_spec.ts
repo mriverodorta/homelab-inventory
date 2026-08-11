@@ -50,7 +50,7 @@ describe('SQLite Homelab Inventory store facade', () => {
         group_id: 1,
         positions: [0],
       })
-      expect(store.getDatabaseStatus()).toMatchObject({ schemaVersion: 6 })
+      expect(store.getDatabaseStatus()).toMatchObject({ schemaVersion: 7 })
       expect(store.getPersistenceHealth()).toMatchObject({ ok: true, engine: 'sqlite' })
     } finally {
       store.close()
@@ -233,6 +233,68 @@ describe('SQLite Homelab Inventory store facade', () => {
         baseRevision: 8,
         revision: 9,
       }])
+    } finally {
+      store.close()
+    }
+  })
+
+  test('creates quantities and duplicates clean records with relational identities', async () => {
+    const store = await fixtureStore()
+    try {
+      let project = store.createInventoryItems({ type: 'switch', name: 'Edge Switch' }, 2)
+      const createdSwitches = Object.values(project.items).filter((item) => item.type === 'switch' && item.name.startsWith('Edge Switch'))
+      expect(createdSwitches.map(({ name }) => name)).toEqual(['Edge Switch #1', 'Edge Switch #2'])
+
+      project = store.createInventoryItems({
+        type: 'powerAdapter',
+        name: 'OEM 90W',
+        specs: { wattageWatts: 90, connector: 'Slim tip' },
+      }, 2)
+      const adapters = Object.values(project.items).filter((item) => item.type === 'powerAdapter' && item.name === 'OEM 90W')
+      expect(adapters).toHaveLength(2)
+      expect(adapters.every((item) => item.ports?.[0]?.type === 'ac-input')).toBe(true)
+
+      const source = createdSwitches[0]
+      project = store.duplicateInventoryItem({ type: 'switch', id: source.id }, 1)
+      expect(Object.values(project.items).some((item) => item.type === 'switch' && item.name === 'Edge Switch #3')).toBe(true)
+      expect(store.core.database.query(`
+        SELECT count(*) AS count
+        FROM inventory_identity_aliases
+        WHERE legacy_type_key IN ('switch', 'powerAdapter')
+      `).get()).toMatchObject({ count: expect.any(Number) })
+    } finally {
+      store.close()
+    }
+  })
+
+  test('archives, restores, deletes, and updates properties atomically', async () => {
+    const store = await fixtureStore()
+    try {
+      let project = store.createInventoryItems({ type: 'cpu', name: 'Lifecycle CPU' })
+      const cpu = Object.values(project.items).find((item) => item.type === 'cpu' && item.name === 'Lifecycle CPU')!
+      project = store.updateInventoryItemProperties({ type: 'cpu', id: cpu.id }, { source: 'agent', nested: { value: 1 } })
+      expect(project.items[`cpu:${cpu.id}`].properties).toEqual({ source: 'agent', nested: '{"value":1}' })
+
+      project = store.archiveInventoryItems([{ type: 'cpu', id: cpu.id }])
+      expect(project.items[`cpu:${cpu.id}`].archivedAt).toBeTruthy()
+      project = store.restoreInventoryItems([{ type: 'cpu', id: cpu.id }])
+      expect(project.items[`cpu:${cpu.id}`].archivedAt).toBeUndefined()
+      expect(() => store.deleteInventoryItems([{ type: 'cpu', id: cpu.id }])).toThrow(/Archive/iu)
+      store.archiveInventoryItems([{ type: 'cpu', id: cpu.id }])
+      project = store.deleteInventoryItems([{ type: 'cpu', id: cpu.id }])
+      expect(project.items[`cpu:${cpu.id}`]).toBeUndefined()
+    } finally {
+      store.close()
+    }
+  })
+
+  test('blocks lifecycle changes while relational dependencies remain', async () => {
+    const store = await fixtureStore()
+    try {
+      const report = store.getInventoryDependencies({ type: 'server', id: 7 })
+      expect(report.blocked).toBe(true)
+      expect(report.reasons.map(({ kind }) => kind)).toContain('canvas-placement')
+      expect(() => store.archiveInventoryItems([{ type: 'server', id: 7 }])).toThrow(/dependencies/iu)
     } finally {
       store.close()
     }
