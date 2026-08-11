@@ -102,6 +102,12 @@ const RELEASE_0_3_0_DETAILS: UnreleasedReleaseNotes = {
 
 export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
   highlights: [],
+  fixes: [],
+  notes: [],
+}
+
+const RELEASE_0_11_2_DETAILS: UnreleasedReleaseNotes = {
+  highlights: [],
   fixes: [
     'Embedded Agent 0.3.1 keeps its supervised FreeBSD and OPNsense service running by tracking the correct supervisor process, and reports a sanitized service status before rolling back a genuine startup failure.',
   ],
@@ -627,9 +633,16 @@ const RELEASE_0_2_1_DETAILS: UnreleasedReleaseNotes = {
 
 export const RELEASE_NOTES: ReleaseNoteEntry[] = [
   {
+    version: '0.11.2',
+    date: '2026-08-11',
+    channel: 'latest',
+    title: 'Reliable FreeBSD agent service',
+    ...RELEASE_0_11_2_DETAILS,
+  },
+  {
     version: '0.11.1',
     date: '2026-08-10',
-    channel: 'latest',
+    channel: 'release',
     title: 'Reliable demo catalog startup',
     ...RELEASE_0_11_1_DETAILS,
   },
