@@ -43,6 +43,8 @@ import {
   setWalkthroughStepInDraft,
 } from '../onboarding/lifecycle.mjs'
 import { INVENTORY_TYPES, type InventoryType } from './core/inventory/field-contract.ts'
+import type { CacheStore } from './cache/cache-store.ts'
+import { MemoryCacheStore } from './cache/memory-cache.ts'
 import {
   persistAuthenticationState,
   persistBackupManagementState,
@@ -54,7 +56,7 @@ import {
   projectBackupManagementState,
   projectRegistryState,
 } from './core/projections/legacy-domains.ts'
-import { buildLegacyProjectProjection } from './core/projections/legacy-project.ts'
+import { buildWorkspaceReadModel } from './core/read-model/workspace-read-model.ts'
 import { createRepositoryContext } from './core/repositories/index.ts'
 import { insertLegacyInventoryItem, replaceLegacyInventoryItem } from './migration/core-importer.ts'
 import { LEGACY_TABLE_BY_TYPE } from './legacy/identity-plan.ts'
@@ -73,6 +75,7 @@ type SqliteStoreOptions = Readonly<{
   projectId?: number
   workspaceId?: number
   appVersion?: string
+  cache?: CacheStore
   now?: () => number
 }>
 
@@ -201,11 +204,19 @@ export class SqliteHomelabInventoryStore {
   readonly workspaceId: number
   readonly now: () => number
   readonly appVersion: string
+  readonly cache: CacheStore
   readonly context: ReturnType<typeof createRepositoryContext>
   private readonly projectCommitListeners = new Set<(event: ProjectCommitEvent) => void>()
   private registryMutationTail: Promise<void> = Promise.resolve()
 
-  constructor({ core, projectId = 1, workspaceId = 2, appVersion = '0.0.0', now = Date.now }: SqliteStoreOptions) {
+  constructor({
+    core,
+    projectId = 1,
+    workspaceId = 2,
+    appVersion = '0.0.0',
+    cache = new MemoryCacheStore(),
+    now = Date.now,
+  }: SqliteStoreOptions) {
     if (core.schemaName !== 'core') throw new Error('SQLite store requires the core database.')
     if (core.readonly) throw new Error('SQLite store requires a writable core database.')
     this.core = core
@@ -213,6 +224,7 @@ export class SqliteHomelabInventoryStore {
     this.workspaceId = positiveId(workspaceId, 'Workspace ID')
     this.now = now
     this.appVersion = appVersion
+    this.cache = cache
     this.context = createRepositoryContext(core.database, now)
   }
 
@@ -542,8 +554,9 @@ export class SqliteHomelabInventoryStore {
   }
 
   getProject(): ProjectState {
-    return buildLegacyProjectProjection({
+    return buildWorkspaceReadModel({
       database: this.core.database,
+      cache: this.cache,
       projectId: this.projectId,
       workspaceId: this.workspaceId,
     })
@@ -665,6 +678,7 @@ export class SqliteHomelabInventoryStore {
         WHERE id = ? AND project_id = ?
       `).run(now, this.workspaceId, this.projectId)
     }).immediate()
+    this.invalidateProjectReadModels()
     const event: ProjectCommitEvent = {
       type: 'canonical-invalidated',
       baseRevision,
@@ -995,6 +1009,7 @@ export class SqliteHomelabInventoryStore {
       ok: status.integrity === 'ok',
       engine: 'sqlite',
       database: status,
+      cache: this.cache.diagnostics(),
       lastError: null,
     }
   }
@@ -1754,6 +1769,8 @@ export class SqliteHomelabInventoryStore {
       }
     }).immediate()
 
+    this.invalidateProjectReadModels()
+
     const event: ProjectCommitEvent = {
       type: 'project-commit',
       baseRevision,
@@ -1772,6 +1789,7 @@ export class SqliteHomelabInventoryStore {
 
   close() {
     this.projectCommitListeners.clear()
+    this.cache.clear()
     this.core.close()
   }
 
@@ -1931,8 +1949,13 @@ export class SqliteHomelabInventoryStore {
         throw lifecycleError('Project changed while applying the inventory mutation.', 'revision-conflict', 409)
       }
     }).immediate()
+    this.invalidateProjectReadModels()
     const event: ProjectCommitEvent = { type: 'canonical-invalidated', baseRevision, revision }
     for (const listener of this.projectCommitListeners) listener(event)
+  }
+
+  private invalidateProjectReadModels() {
+    this.cache.invalidateTags([`project:${this.projectId}`, `workspace:${this.workspaceId}`])
   }
 
   private resolveItem(type: string, legacyId: number) {

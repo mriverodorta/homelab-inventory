@@ -166,6 +166,32 @@ describe('SQLite Homelab Inventory store facade', () => {
     }
   })
 
+  test('invalidates authoritative read models only for canonical mutations', async () => {
+    const store = await fixtureStore()
+    try {
+      store.getProject()
+      store.getProject()
+      const beforeRouteCache = store.cache.diagnostics()
+      store.setRoutingCache({
+        version: 1,
+        plannerVersion: 'planner-cache-test',
+        geometryFingerprint: 'geometry-cache-test',
+        obstacles: [],
+        failures: [],
+        entries: [],
+      })
+      store.getProject()
+      expect(store.cache.diagnostics().hits).toBe(beforeRouteCache.hits + 1)
+
+      const cpu = store.getProject().items['cpu:3']
+      store.updateInventoryItem({ type: 'cpu', id: 3 }, { ...cpu, name: 'Cache-invalidating CPU' })
+      expect(store.cache.diagnostics().entries).toBe(1)
+      expect(store.getProject().items['cpu:3'].name).toBe('Cache-invalidating CPU')
+    } finally {
+      store.close()
+    }
+  })
+
   test('updates one connection route without rebuilding unrelated topology', async () => {
     const store = await fixtureStore()
     try {
