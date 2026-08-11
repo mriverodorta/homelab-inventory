@@ -25,6 +25,33 @@ export const applicationSettings = sqliteTable('application_settings', {
   check('application_settings_value_json_check', sql`json_valid(${table.valueJson})`),
 ])
 
+export const applicationConfiguration = sqliteTable('application_configuration', {
+  id: integer('id').primaryKey(),
+  revision: integer('revision').notNull().default(1),
+  settingsJson: text('settings_json').notNull().default('{}'),
+  updatedAtMs: integer('updated_at_ms').notNull(),
+}, (table) => [
+  check('application_configuration_singleton_check', sql`${table.id} = 1`),
+  check('application_configuration_revision_check', sql`${table.revision} > 0`),
+  check('application_configuration_json_check', sql`json_valid(${table.settingsJson})`),
+])
+
+export const settingSourceMetadata = sqliteTable('setting_source_metadata', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  domain: text('domain').notNull(),
+  settingKey: text('setting_key').notNull(),
+  source: text('source').notNull(),
+  environmentVariable: text('environment_variable'),
+  updatedAtMs: integer('updated_at_ms').notNull(),
+}, (table) => [
+  uniqueIndex('setting_source_metadata_domain_key_unique').on(table.domain, table.settingKey),
+  check('setting_source_metadata_source_check', sql`${table.source} IN ('database', 'environment', 'default')`),
+  check('setting_source_metadata_environment_check', sql`
+    (${table.source} = 'environment' AND ${table.environmentVariable} IS NOT NULL)
+    OR (${table.source} <> 'environment' AND ${table.environmentVariable} IS NULL)
+  `),
+])
+
 export const migrationRuns = sqliteTable('migration_runs', {
   id: integer('id').primaryKey({ autoIncrement: true }),
   migrationKey: text('migration_key').notNull(),

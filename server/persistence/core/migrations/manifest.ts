@@ -20,4 +20,9 @@ export const CORE_MIGRATIONS: readonly CoreMigration[] = [
     file: '0002_hardware_topology.sql',
     sha256: '54fd554de003c606fca39b10b627c41796e7210b06814d2845e4982be6f1bc3a',
   },
+  {
+    id: '0004_application_domains',
+    file: '0003_application_domains.sql',
+    sha256: '860fe36c0043559cf82ec566fcd112fd01984e93b51ab84769f889ae9885df5a',
+  },
 ]
