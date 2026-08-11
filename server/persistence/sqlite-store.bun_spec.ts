@@ -299,4 +299,53 @@ describe('SQLite Homelab Inventory store facade', () => {
       store.close()
     }
   })
+
+  test('round-trips registry state and enforces optimistic settings updates', async () => {
+    const store = await fixtureStore()
+    try {
+      const before = store.getRegistryState()
+      expect(before).toMatchObject({
+        settings: { mode: 'connected', showRegistryLinkIndicators: true },
+        sources: [{ id: 1, displayName: 'Official Registry' }],
+        links: [{ id: 1, itemType: 'cpu', itemId: 3, templateKey: 'cpu-example-cpu-100' }],
+      })
+      const updated = store.updateRegistrySettings(
+        { mode: 'offline', defaultInventorySource: 'manual', automaticContributions: true },
+        before.settings.updatedAt,
+      )
+      expect(updated.settings).toMatchObject({
+        mode: 'offline',
+        defaultInventorySource: 'manual',
+        automaticContributions: false,
+      })
+      expect(() => store.updateRegistrySettings({}, before.settings.updatedAt)).toThrow(/another session/iu)
+      expect(updated.links).toEqual(before.links)
+    } finally {
+      store.close()
+    }
+  })
+
+  test('round-trips authentication and backup management transactions', async () => {
+    const store = await fixtureStore()
+    try {
+      const authentication = store.updateAuthentication((draft: any) => {
+        draft.configuration.localEnabled = true
+        draft.configuration.enabled = true
+        draft.configuration.updatedAt = '2026-08-12T01:00:00.000Z'
+      })
+      expect(authentication.configuration).toMatchObject({ enabled: true, localEnabled: true })
+      expect(authentication.accounts).toHaveLength(1)
+      expect(authentication.accounts[0]).toMatchObject({ id: 1, username: 'owner' })
+
+      const backups = store.updateBackupManagement((draft: any) => {
+        draft.schedule.time = '04:15'
+        draft.schedule.retention = 21
+      })
+      expect(backups.schedule).toMatchObject({ time: '04:15', retention: 21 })
+      expect(backups.backups).toHaveLength(1)
+      expect(backups.restores).toEqual([])
+    } finally {
+      store.close()
+    }
+  })
 })

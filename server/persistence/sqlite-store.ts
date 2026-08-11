@@ -8,8 +8,19 @@ import {
   InventoryLifecycleError,
   normalizeInventoryRef,
 } from '../db/inventory-lifecycle.mjs'
+import { assertAuthenticationStoreShape, normalizeAuthenticationStore } from '../auth/model.mjs'
+import { assertBackupManagementStoreShape, normalizeBackupManagementStore } from '../backup/backup-model.mjs'
 import { createEngineSnapshot } from '../engine/snapshot.mjs'
+import { assertRegistryStoreShape } from '../registry/model.mjs'
 import { INVENTORY_TYPES, type InventoryType } from './core/inventory/field-contract.ts'
+import {
+  persistAuthenticationState,
+  persistBackupManagementState,
+  persistRegistryState,
+  projectAuthenticationState,
+  projectBackupManagementState,
+  projectRegistryState,
+} from './core/projections/legacy-domains.ts'
 import { buildLegacyProjectProjection } from './core/projections/legacy-project.ts'
 import { createRepositoryContext } from './core/repositories/index.ts'
 import { insertLegacyInventoryItem } from './migration/core-importer.ts'
@@ -486,6 +497,80 @@ export class SqliteHomelabInventoryStore {
       database: status,
       lastError: null,
     }
+  }
+
+  getRegistryState() {
+    return structuredClone(projectRegistryState(this.core.database))
+  }
+
+  updateRegistrySettings(patch: Row, expectedUpdatedAt?: string) {
+    const current = this.getRegistryState() as Row
+    if (expectedUpdatedAt !== undefined && expectedUpdatedAt !== current.settings.updatedAt) {
+      throw lifecycleError('Registry settings changed in another session.', 'registry-settings-conflict', 409)
+    }
+    return this.registryTransaction((draft: Row) => {
+      const mode = patch?.mode ?? draft.settings.mode
+      const defaultInventorySource = patch?.defaultInventorySource ?? draft.settings.defaultInventorySource
+      if (!['disabled', 'offline', 'connected'].includes(mode)) {
+        throw lifecycleError('Registry mode is unsupported.', 'invalid-registry-settings', 400)
+      }
+      if (!['catalog', 'manual', 'private-templates'].includes(defaultInventorySource)) {
+        throw lifecycleError('Default inventory source is unsupported.', 'invalid-registry-settings', 400)
+      }
+      draft.settings = {
+        ...draft.settings,
+        mode,
+        defaultInventorySource,
+        showRegistryLinkIndicators: patch?.showRegistryLinkIndicators ?? draft.settings.showRegistryLinkIndicators,
+        automaticContributions: mode === 'connected'
+          ? patch?.automaticContributions ?? draft.settings.automaticContributions
+          : false,
+        updatedAt: new Date(this.now()).toISOString(),
+      }
+    })
+  }
+
+  registryTransaction(mutator: (draft: unknown) => void) {
+    const draft = this.getRegistryState() as Row
+    mutator(draft)
+    assertRegistryStoreShape(draft)
+    this.core.database.transaction(() => {
+      persistRegistryState(
+        this.core.database,
+        draft,
+        this.now(),
+        (type, id) => this.resolveItem(type, id),
+      )
+    }).immediate()
+    return this.getRegistryState()
+  }
+
+  getAuthenticationState() {
+    return structuredClone(normalizeAuthenticationStore(projectAuthenticationState(this.core.database)))
+  }
+
+  updateAuthentication(mutator: (draft: unknown) => void) {
+    const draft = this.getAuthenticationState() as Row
+    mutator(draft)
+    assertAuthenticationStoreShape(draft)
+    this.core.database.transaction(() => {
+      persistAuthenticationState(this.core.database, draft, this.now())
+    }).immediate()
+    return this.getAuthenticationState()
+  }
+
+  getBackupManagementState() {
+    return structuredClone(normalizeBackupManagementStore(projectBackupManagementState(this.core.database)))
+  }
+
+  updateBackupManagement(mutator: (draft: unknown) => void) {
+    const draft = this.getBackupManagementState() as Row
+    mutator(draft)
+    assertBackupManagementStoreShape(draft)
+    this.core.database.transaction(() => {
+      persistBackupManagementState(this.core.database, draft, this.now())
+    }).immediate()
+    return this.getBackupManagementState()
   }
 
   getRoutingCache() {
