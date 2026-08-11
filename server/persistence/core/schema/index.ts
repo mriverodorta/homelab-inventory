@@ -5,7 +5,11 @@ import * as inventoryNetwork from './inventory-network.ts'
 import * as inventoryPower from './inventory-power.ts'
 import * as projectBase from './project-base.ts'
 import * as projects from './projects.ts'
+import * as ports from './ports.ts'
+import * as resources from './resources.ts'
+import * as routing from './routing.ts'
 import * as system from './system.ts'
+import * as topology from './topology.ts'
 import * as vocabularies from './vocabularies.ts'
 
 export * from './inventory-base.ts'
@@ -15,13 +19,21 @@ export * from './inventory-network.ts'
 export * from './inventory-power.ts'
 export * from './project-base.ts'
 export * from './projects.ts'
+export * from './ports.ts'
+export * from './resources.ts'
+export * from './routing.ts'
 export * from './system.ts'
+export * from './topology.ts'
 export * from './vocabularies.ts'
 
 export const coreSchema = {
   ...system,
   ...projectBase,
   ...projects,
+  ...ports,
+  ...resources,
+  ...routing,
+  ...topology,
   ...inventoryBase,
   ...inventoryComponents,
   ...inventoryHosts,
