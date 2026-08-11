@@ -190,6 +190,12 @@ export function projectAuthenticationState(database: Database) {
   const settings = database.query('SELECT * FROM authentication_settings WHERE id = 1').get() as Row | null
   const extended = metadata(database, 'legacy.authentication-extended-state', {})
   const defaults = createAuthenticationStore({ setupRequired: Boolean(settings?.setup_required) })
+  const builtInTimestamp = iso(settings?.updated_at_ms) ?? '1970-01-01T00:00:00.000Z'
+  defaults.roles = defaults.roles.map((role: Row) => ({
+    ...role,
+    createdAt: builtInTimestamp,
+    updatedAt: builtInTimestamp,
+  }))
   const accounts = (database.query('SELECT * FROM users ORDER BY id').all() as Row[]).map((account) => defined({
     id: account.id,
     username: account.username,

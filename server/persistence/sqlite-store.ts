@@ -1,4 +1,5 @@
 import type { Database } from 'bun:sqlite'
+import { dirname } from 'node:path'
 import type { ProjectPatch, TopologyEndpointRef } from '../../shared/engine/protocol.mjs'
 import { withCanonicalPowerPorts } from '../../shared/power-ports.mjs'
 import { planHostAllocations } from '../../shared/compatibility/index.mjs'
@@ -62,6 +63,8 @@ import { insertLegacyInventoryItem, replaceLegacyInventoryItem } from './migrati
 import { LEGACY_TABLE_BY_TYPE } from './legacy/identity-plan.ts'
 import { databaseStatus, type ManagedDatabase } from './sqlite/database.ts'
 import { databaseQuickCheck } from './sqlite/integrity.ts'
+import { buildLogicalStoreSnapshot } from '../backup/sqlite-section-exporter.ts'
+import { stageAndActivateSqliteRestore } from '../backup/sqlite-restore-staging.ts'
 
 type ProjectCommitEvent = Readonly<{
   type: 'project-commit' | 'canonical-invalidated'
@@ -72,6 +75,7 @@ type ProjectCommitEvent = Readonly<{
 
 type SqliteStoreOptions = Readonly<{
   core: ManagedDatabase
+  dataDir?: string
   projectId?: number
   workspaceId?: number
   appVersion?: string
@@ -200,6 +204,7 @@ function motherboardCatalogUpdateConflicts(project: Row, itemId: number, nextIte
 
 export class SqliteHomelabInventoryStore {
   readonly core: ManagedDatabase
+  readonly dataDir: string
   readonly projectId: number
   readonly workspaceId: number
   readonly now: () => number
@@ -211,6 +216,7 @@ export class SqliteHomelabInventoryStore {
 
   constructor({
     core,
+    dataDir = dirname(core.filePath),
     projectId = 1,
     workspaceId = 2,
     appVersion = '0.0.0',
@@ -220,6 +226,7 @@ export class SqliteHomelabInventoryStore {
     if (core.schemaName !== 'core') throw new Error('SQLite store requires the core database.')
     if (core.readonly) throw new Error('SQLite store requires a writable core database.')
     this.core = core
+    this.dataDir = dataDir
     this.projectId = positiveId(projectId, 'Project ID')
     this.workspaceId = positiveId(workspaceId, 'Workspace ID')
     this.now = now
@@ -250,7 +257,7 @@ export class SqliteHomelabInventoryStore {
     ) as Row
     for (const item of Object.values(project.items) as Row[]) {
       const table = LEGACY_TABLE_BY_TYPE[item.type as InventoryType]
-      if (table) inventory[table].push(cleanItemForStore(item))
+      if (table) inventory[table].push(cleanItemForStore(withCanonicalPowerPorts(item)))
     }
     return inventory
   }
@@ -1719,7 +1726,7 @@ export class SqliteHomelabInventoryStore {
       const { entries: _entries, ...envelope } = cache
       putMetadata(this.core.database, 'legacy.routing-cache-envelope', {
         ...envelope,
-        updatedAt: new Date(now).toISOString(),
+        updatedAt: cache.updatedAt ?? new Date(now).toISOString(),
       }, now)
     }).immediate()
     return this.getRoutingCache()
@@ -1785,6 +1792,58 @@ export class SqliteHomelabInventoryStore {
     if (this.core.closed) return
     databaseQuickCheck(this.core.database)
     this.core.database.exec('PRAGMA wal_checkpoint(PASSIVE);')
+  }
+
+  async snapshotStores(storeNames?: string[]) {
+    await this.flush()
+    const applicationMeta = this.applicationMeta()
+    const snapshot = buildLogicalStoreSnapshot({
+      meta: {
+        ...applicationMeta,
+        schemaVersion: 29,
+        databaseSchemas: {
+          core: databaseStatus(this.core).schemaVersion,
+          telemetry: null,
+          catalog: null,
+        },
+      },
+      inventory: this.legacyInventory(),
+      project: this.getProject(),
+      routingCache: this.getRoutingCache(),
+      registry: this.getRegistryState(),
+      agents: projectAgentState(this.core.database),
+      agentStatus: projectAgentStatusState(this.core.database),
+      authentication: this.getAuthenticationState(),
+      backupManagement: this.getBackupManagementState(),
+    })
+    if (storeNames === undefined) return snapshot
+    const supported = new Set(Object.keys(snapshot))
+    if (storeNames.some((storeName) => !supported.has(storeName))) {
+      throw new Error('Backup snapshot references an unknown store.')
+    }
+    return Object.fromEntries(storeNames.map((storeName) => [storeName, structuredClone(snapshot[storeName as keyof typeof snapshot])]))
+  }
+
+  async replaceStoresAtomically(replacements: Row) {
+    const currentStores = await this.snapshotStores()
+    const supported = new Set(Object.keys(currentStores))
+    const names = Object.keys(replacements)
+    if (names.length === 0) return currentStores
+    if (names.some((storeName) => !supported.has(storeName))) {
+      throw new Error('Restore references an unknown store.')
+    }
+    await stageAndActivateSqliteRestore({
+      active: this.core,
+      replacements,
+      currentStores,
+      projectId: this.projectId,
+      workspaceId: this.workspaceId,
+      appVersion: this.appVersion,
+      dataDir: this.dataDir,
+      now: this.now,
+    })
+    this.cache.clear()
+    return this.snapshotStores(names)
   }
 
   close() {

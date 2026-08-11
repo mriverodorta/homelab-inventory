@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from 'bun:test'
-import { mkdtemp, readFile, rm } from 'node:fs/promises'
+import { mkdtemp, readFile, rm, stat } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { digestCatalogTemplate } from '../../packages/catalog-protocol/src/index.ts'
@@ -775,6 +775,125 @@ describe('SQLite Homelab Inventory store facade', () => {
       expect(store.getAgentStatusSummary({ now: Date.parse('2026-08-12T01:06:30.000Z') }).hosts['server:7']).toMatchObject({
         hostname: 'fixture-host', state: 'online', connected: true,
       })
+    } finally {
+      store.close()
+    }
+  })
+
+  test('exports logical backup sections without runtime relationship keys', async () => {
+    const store = await fixtureStore()
+    try {
+      const snapshot = await store.snapshotStores()
+      expect(snapshot.meta.schemaVersion).toBe(29)
+      expect(snapshot.project.placements[0]).toMatchObject({ itemType: 'server', itemId: 7 })
+      expect(snapshot.project.assignments[0]).toMatchObject({ hostType: 'server', hostId: 7 })
+      expect(snapshot.project.connections[0].from).toMatchObject({ itemType: 'switch', itemId: 1 })
+      expect(Number.isSafeInteger(snapshot.project.connections[0].to.itemId)).toBe(true)
+      expect(snapshot.project.placements.every((placement: any) => (
+        Number.isSafeInteger(placement.itemId) && typeof placement.itemType === 'string'
+      ))).toBe(true)
+    } finally {
+      store.close()
+    }
+  })
+
+  test('restores one inventory section through an isolated SQLite file swap', async () => {
+    const store = await fixtureStore()
+    try {
+      const before = await store.snapshotStores()
+      const projectBefore = structuredClone(before.project)
+      const server = store.getProject().items['server:7'] as any
+      store.updateInventoryItem({ type: 'server', id: 7 }, { ...server, name: 'Temporary name' })
+      const projectImmediatelyBeforeRestore = (await store.snapshotStores()).project
+
+      const restored = await store.replaceStoresAtomically({ inventory: before.inventory })
+
+      expect((store.getProject().items['server:7'] as any).name).toBe(server.name)
+      expect((await store.snapshotStores()).project).toEqual(projectImmediatelyBeforeRestore)
+      expect(projectImmediatelyBeforeRestore).not.toEqual(projectBefore)
+      expect(restored.inventory).toEqual(before.inventory)
+      expect((await stat(store.core.filePath)).mode & 0o777).toBe(0o600)
+      expect(store.getPersistenceHealth()).toMatchObject({ ok: true, engine: 'sqlite' })
+    } finally {
+      store.close()
+    }
+  })
+
+  test('restores routing cache without changing authoritative project state', async () => {
+    const store = await fixtureStore()
+    try {
+      const before = await store.snapshotStores()
+      store.setRoutingCache({ plannerVersion: 'temporary', geometryFingerprint: 'temporary', entries: [] })
+
+      await store.replaceStoresAtomically({ routingCache: before.routingCache })
+
+      expect(store.getRoutingCache()).toEqual(before.routingCache)
+      expect((await store.snapshotStores()).project).toEqual(before.project)
+    } finally {
+      store.close()
+    }
+  })
+
+  test('rejects a selective inventory restore that would orphan untouched relationships', async () => {
+    const store = await fixtureStore()
+    try {
+      const before = await store.snapshotStores()
+      const invalidInventory = structuredClone(before.inventory)
+      invalidInventory.servers = invalidInventory.servers.filter((server: any) => server.id !== 7)
+
+      await expect(store.replaceStoresAtomically({ inventory: invalidInventory })).rejects.toThrow()
+
+      expect(await store.snapshotStores()).toEqual(before)
+      expect(store.getPersistenceHealth()).toMatchObject({ ok: true })
+    } finally {
+      store.close()
+    }
+  })
+
+  test('round-trips a complete logical core snapshot with relational integrity', async () => {
+    const store = await fixtureStore()
+    try {
+      const before = await store.snapshotStores()
+
+      await store.replaceStoresAtomically(before)
+
+      expect(await store.snapshotStores()).toEqual(before)
+      expect(store.getPersistenceHealth()).toMatchObject({ ok: true })
+    } finally {
+      store.close()
+    }
+  })
+
+  test('rebuilds selected dependent domains before removing obsolete inventory hosts', async () => {
+    const store = await fixtureStore((snapshot) => {
+      snapshot.notificationState.incidents = []
+      snapshot.notificationState.deliveryJobs = []
+    })
+    try {
+      const replacement = await store.snapshotStores()
+      replacement.inventory.servers = replacement.inventory.servers.filter((server: any) => server.id !== 7)
+      replacement.project.placements = replacement.project.placements.filter((placement: any) => (
+        placement.itemType !== 'server' || placement.itemId !== 7
+      ))
+      replacement.project.assignments = replacement.project.assignments.filter((assignment: any) => (
+        assignment.hostType !== 'server' || assignment.hostId !== 7
+      ))
+      replacement.project.connections = replacement.project.connections.filter((connection: any) => (
+        ![connection.from, connection.to].some((endpoint: any) => (
+          (endpoint.itemType === 'server' && endpoint.itemId === 7)
+          || (endpoint.hostedItemType === 'server' && endpoint.hostedItemId === 7)
+        ))
+      ))
+      replacement.project.compatibilityPolicy = { disabledHosts: [], ignoredWarningIds: [] }
+      replacement.agents = { enrollments: {}, devices: {}, hardwareSnapshots: {}, hardwareEvents: {} }
+      replacement.agentStatus = { hosts: {} }
+
+      await store.replaceStoresAtomically(replacement)
+
+      expect(store.getProject().items['server:7']).toBeUndefined()
+      expect(store.getProject().assignments).toEqual([])
+      expect(store.getAgentStatusSummary().registeredHosts).toEqual([])
+      expect(store.getPersistenceHealth()).toMatchObject({ ok: true })
     } finally {
       store.close()
     }

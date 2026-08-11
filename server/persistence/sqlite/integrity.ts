@@ -25,6 +25,15 @@ export function databaseQuickCheck(database: Database) {
   return String(result?.quick_check ?? 'unknown')
 }
 
+export function foreignKeyViolations(database: Database) {
+  return database.query('PRAGMA foreign_key_check').all() as Array<{
+    table: string
+    rowid: number | null
+    parent: string
+    fkid: number
+  }>
+}
+
 export function assertDatabaseIntegrity(database: Database) {
   const integrity = databaseQuickCheck(database)
   if (integrity !== 'ok') {

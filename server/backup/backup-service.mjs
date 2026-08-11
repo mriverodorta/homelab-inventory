@@ -213,6 +213,7 @@ export class BackupService {
         createdAt,
         appVersion: this.appVersion,
         schemaVersion: CURRENT_SCHEMA_VERSION,
+        databaseSchemas: collected.databaseSchemas,
         mode: demo ? 'demo' : 'production',
         sections: selected,
         files: collected.files.map((entry) => ({ path: entry.name, sizeBytes: entry.body.length, sha256: sha256(entry.body) })),

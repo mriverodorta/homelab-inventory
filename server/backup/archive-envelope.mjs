@@ -4,6 +4,7 @@ import tar from 'tar-stream'
 import {
   BACKUP_ARCHIVE_FORMAT_VERSION,
   BACKUP_ARCHIVE_MAGIC,
+  SUPPORTED_BACKUP_ARCHIVE_FORMAT_VERSIONS,
 } from '../../shared/backup/contract.mjs'
 import { assertSafeArchivePath, createEncryptionSalt, deriveArchiveKey, sha256 } from './archive-security.mjs'
 
@@ -70,7 +71,7 @@ function decodeEnvelope(archive) {
   }
   let header
   try { header = JSON.parse(archive.subarray(prefixBytes, prefixBytes + headerBytes).toString('utf8')) } catch { throw new Error('Backup archive header is invalid.') }
-  if (header?.formatVersion !== BACKUP_ARCHIVE_FORMAT_VERSION || !['none', 'aes-256-gcm'].includes(header?.encryption)) {
+  if (!SUPPORTED_BACKUP_ARCHIVE_FORMAT_VERSIONS.includes(header?.formatVersion) || !['none', 'aes-256-gcm'].includes(header?.encryption)) {
     throw new Error('Backup archive format is unsupported.')
   }
   return { header, authenticatedHeader: archive.subarray(0, prefixBytes + headerBytes), body: archive.subarray(prefixBytes + headerBytes) }
@@ -83,14 +84,14 @@ export async function createArchiveBuffer({ manifest, files, passphrase = null }
   if (compressed.length > MAX_ARCHIVE_BYTES) throw new Error('Backup archive exceeds the allowed size.')
 
   if (passphrase === null) {
-    const header = encodeHeader({ formatVersion: BACKUP_ARCHIVE_FORMAT_VERSION, encryption: 'none', payloadBytes: compressed.length })
+    const header = encodeHeader({ formatVersion: manifest?.formatVersion ?? BACKUP_ARCHIVE_FORMAT_VERSION, encryption: 'none', payloadBytes: compressed.length })
     return Buffer.concat([header, compressed])
   }
 
   const salt = createEncryptionSalt()
   const iv = randomBytes(12)
   const header = encodeHeader({
-    formatVersion: BACKUP_ARCHIVE_FORMAT_VERSION,
+    formatVersion: manifest?.formatVersion ?? BACKUP_ARCHIVE_FORMAT_VERSION,
     encryption: 'aes-256-gcm',
     salt: salt.toString('base64'),
     iv: iv.toString('base64'),

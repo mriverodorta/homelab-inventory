@@ -12,8 +12,25 @@ import { materializeBackupSections, notificationBackupFromArchive, telemetryBack
 import { validateTelemetryBackup } from '../telemetry/backup.mjs'
 import { migrateSchema24To25 } from '../db/migrate-schema-25.mjs'
 import { migrateSchema25To26 } from '../db/migrate-schema-26.mjs'
-
 export function preflightRestore({ manifest, files, currentStores }) {
+  const backupCoreSchema = manifest.databaseSchemas?.core
+  const currentCoreSchema = currentStores.meta?.databaseSchemas?.core
+  if (
+    Number.isSafeInteger(backupCoreSchema)
+    && Number.isSafeInteger(currentCoreSchema)
+    && backupCoreSchema > currentCoreSchema
+  ) {
+    return {
+      ok: false,
+      sections: manifest.sections,
+      changes: [],
+      blockers: [{
+        code: 'newer-database-schema',
+        message: `This backup requires core database schema ${backupCoreSchema}; this app supports ${currentCoreSchema}.`,
+      }],
+      warnings: [],
+    }
+  }
   if (manifest.schemaVersion > CURRENT_SCHEMA_VERSION) {
     return {
       ok: false,
@@ -42,7 +59,10 @@ export function preflightRestore({ manifest, files, currentStores }) {
   try {
     if (manifest.sections.includes('registryEnrollment')) validateEnrollmentFiles(files)
     assertInventoryStoreShape(composed.inventory)
-    assertProjectStoreShape(composed.project, { requireRevision: true })
+    assertProjectStoreShape(composed.project, {
+      requireRevision: true,
+      runtimeReferences: Boolean(composed.project?.items),
+    })
     assertAgentsStoreShape(composed.agents)
     assertAgentStatusStoreShape(composed.agentStatus)
     assertRegistryStoreShape(composed.registry)

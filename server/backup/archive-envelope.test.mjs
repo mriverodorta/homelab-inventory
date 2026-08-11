@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { createArchiveBuffer, inspectArchiveBuffer } from './archive-envelope.mjs'
 import { sha256 } from './archive-security.mjs'
+import { assertBackupManifest } from '../../shared/backup/contract.mjs'
 
 function fixture() {
   const body = Buffer.from('{"servers":[]}\n')
@@ -25,7 +26,27 @@ describe('portable backup archive envelope', () => {
     const archive = await createArchiveBuffer(fixture())
     const inspected = await inspectArchiveBuffer(archive)
     expect(inspected.encrypted).toBe(false)
+    expect(inspected.manifest.formatVersion).toBe(1)
     expect(inspected.files.get('sections/inventory.json').toString()).toContain('servers')
+  })
+
+  it('validates independent database schemas for v2 while retaining v1 manifest compatibility', () => {
+    const common = {
+      backupId: '11111111-2222-4333-8444-555555555555',
+      createdAt: '2026-08-12T01:00:00.000Z',
+      appVersion: '0.12.0',
+      schemaVersion: 29,
+      mode: 'production',
+      sections: ['inventory'],
+      files: [{ path: 'sections/inventory.json', sizeBytes: 1, sha256: 'a'.repeat(64) }],
+    }
+    expect(() => assertBackupManifest({ ...common, formatVersion: 1 })).not.toThrow()
+    expect(() => assertBackupManifest({
+      ...common,
+      formatVersion: 2,
+      databaseSchemas: { core: 10, telemetry: 3, catalog: 2 },
+    })).not.toThrow()
+    expect(() => assertBackupManifest({ ...common, formatVersion: 2 })).toThrow('database schemas')
   })
 
   it('round trips AES-GCM and rejects wrong passphrases and tampering', async () => {

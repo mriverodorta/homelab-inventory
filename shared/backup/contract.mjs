@@ -1,4 +1,5 @@
-export const BACKUP_ARCHIVE_FORMAT_VERSION = 1
+export const BACKUP_ARCHIVE_FORMAT_VERSION = 2
+export const SUPPORTED_BACKUP_ARCHIVE_FORMAT_VERSIONS = Object.freeze([1, 2])
 export const BACKUP_ARCHIVE_EXTENSION = '.hlibackup'
 export const BACKUP_ARCHIVE_MAGIC = 'HLIBAK01'
 
@@ -100,11 +101,22 @@ export function normalizeBackupSections(sections, { demo = false } = {}) {
 
 export function assertBackupManifest(manifest) {
   if (!manifest || typeof manifest !== 'object' || Array.isArray(manifest)) throw new Error('Backup manifest must be an object.')
-  if (manifest.formatVersion !== BACKUP_ARCHIVE_FORMAT_VERSION) throw new Error('Backup manifest format is unsupported.')
+  if (!SUPPORTED_BACKUP_ARCHIVE_FORMAT_VERSIONS.includes(manifest.formatVersion)) throw new Error('Backup manifest format is unsupported.')
   if (typeof manifest.backupId !== 'string' || !/^[a-f0-9-]{16,64}$/i.test(manifest.backupId)) throw new Error('Backup manifest ID is invalid.')
   if (typeof manifest.createdAt !== 'string' || !Number.isFinite(Date.parse(manifest.createdAt))) throw new Error('Backup manifest timestamp is invalid.')
   if (typeof manifest.appVersion !== 'string' || manifest.appVersion.length === 0 || manifest.appVersion.length > 50) throw new Error('Backup manifest app version is invalid.')
   if (!Number.isSafeInteger(manifest.schemaVersion) || manifest.schemaVersion <= 0) throw new Error('Backup manifest schema version is invalid.')
+  if (manifest.formatVersion >= 2) {
+    if (!manifest.databaseSchemas || typeof manifest.databaseSchemas !== 'object' || Array.isArray(manifest.databaseSchemas)) {
+      throw new Error('Backup manifest database schemas are invalid.')
+    }
+    for (const name of ['core', 'telemetry', 'catalog']) {
+      const version = manifest.databaseSchemas[name]
+      if (version !== null && (!Number.isSafeInteger(version) || version < 0)) {
+        throw new Error(`Backup manifest ${name} database schema is invalid.`)
+      }
+    }
+  }
   normalizeBackupSections(manifest.sections, { demo: manifest.mode === 'demo' })
   if (!['production', 'demo'].includes(manifest.mode)) throw new Error('Backup manifest mode is invalid.')
   if (!Array.isArray(manifest.files) || manifest.files.length === 0) throw new Error('Backup manifest files are invalid.')

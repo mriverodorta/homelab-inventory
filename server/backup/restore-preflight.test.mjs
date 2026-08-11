@@ -6,6 +6,19 @@ import { createAuthenticationStore } from '../auth/model.mjs'
 import { CURRENT_SCHEMA_VERSION } from '../db/store.mjs'
 
 describe('restore preflight', () => {
+  it('blocks newer SQLite core schemas before materializing sections', () => {
+    const result = preflightRestore({
+      manifest: { schemaVersion: 29, databaseSchemas: { core: 11 }, sections: ['inventory'] },
+      files: new Map(),
+      currentStores: { meta: { databaseSchemas: { core: 10 } } },
+    })
+
+    expect(result).toMatchObject({
+      ok: false,
+      blockers: [{ code: 'newer-database-schema' }],
+    })
+  })
+
   it('rejects archives created by a newer schema', () => {
     const result = preflightRestore({ manifest: { schemaVersion: 999, sections: ['inventory'] }, files: new Map(), currentStores: {} })
     expect(result).toMatchObject({ ok: false, blockers: [{ code: 'newer-schema' }] })

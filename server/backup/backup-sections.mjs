@@ -72,6 +72,12 @@ export async function collectBackupSections({
 }) {
   const selected = normalizeBackupSections(sections, { demo })
   const snapshot = await store.snapshotStores()
+  const telemetrySchema = telemetryRepository?.exportBackup?.().schemaVersion ?? null
+  const databaseSchemas = {
+    core: snapshot.meta?.databaseSchemas?.core ?? null,
+    telemetry: snapshot.meta?.databaseSchemas?.telemetry ?? telemetrySchema,
+    catalog: snapshot.meta?.databaseSchemas?.catalog ?? null,
+  }
   const files = []
   for (const section of selected) {
     if (section === 'inventory') files.push(jsonEntry(JSON_SECTION_FILES.inventory, snapshot.inventory))
@@ -139,7 +145,7 @@ export async function collectBackupSections({
       }), ...catalogFiles)
     }
   }
-  return { sections: selected, files }
+  return { sections: selected, files, databaseSchemas }
 }
 
 function parseJson(files, name) {
