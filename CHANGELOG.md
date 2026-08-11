@@ -6,6 +6,11 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 
 ## Unreleased
 
+### Fixed
+
+- Embedded Agent 0.3.1 now keeps its supervised FreeBSD and OPNsense `rc.d` service running by validating the supervisor PID against `daemon(8)`, instead of incorrectly treating a healthy agent as stopped and rolling back the installation.
+- FreeBSD installation failures now include the final service status before rollback without exposing enrollment credentials or agent identity material.
+
 ## [0.11.1] - 2026-08-10
 
 ### Fixed

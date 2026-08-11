@@ -102,7 +102,9 @@ const RELEASE_0_3_0_DETAILS: UnreleasedReleaseNotes = {
 
 export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
   highlights: [],
-  fixes: [],
+  fixes: [
+    'Embedded Agent 0.3.1 keeps its supervised FreeBSD and OPNsense service running by tracking the correct supervisor process, and reports a sanitized service status before rolling back a genuine startup failure.',
+  ],
   notes: [],
 }
 
