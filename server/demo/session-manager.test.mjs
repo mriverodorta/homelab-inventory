@@ -102,7 +102,21 @@ async function createSourceData() {
 }
 
 function createManager(options) {
-  const manager = new DemoSessionManager(options)
+  const manager = new DemoSessionManager({
+    ...options,
+    storeFactory: async (session) => {
+      const store = new HomelabInventoryStore({
+        appVersion: options.appVersion,
+        dataDir: session.dataDir,
+        legacyProjectPath: path.join(session.dataDir, 'homelab-inventory-project.json'),
+        saveDebounceMs: options.saveDebounceMs,
+        seedEmptyData: false,
+        seedDir: path.join(session.dataDir, 'missing-seed'),
+      })
+      await store.init()
+      return { store, close: () => store.flush() }
+    },
+  })
   activeManagers.push(manager)
 
   return manager
@@ -110,7 +124,7 @@ function createManager(options) {
 
 afterEach(async () => {
   vi.unstubAllEnvs()
-  await Promise.all(activeManagers.splice(0).map((manager) => manager.flushAll().catch(() => {})))
+  await Promise.all(activeManagers.splice(0).map((manager) => manager.closeAll().catch(() => {})))
   await Promise.all(tempDirs.splice(0).map((dir) => fs.rm(dir, { recursive: true, force: true })))
 })
 

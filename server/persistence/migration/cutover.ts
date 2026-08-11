@@ -1,6 +1,6 @@
 import { Database } from 'bun:sqlite'
-import { randomBytes, randomUUID } from 'node:crypto'
-import { chmod, mkdir, open, readFile, rename, rm, stat, writeFile } from 'node:fs/promises'
+import { createHash, randomBytes, randomUUID } from 'node:crypto'
+import { chmod, copyFile, mkdir, open, readFile, rename, rm, stat, writeFile } from 'node:fs/promises'
 import { basename, dirname, join, resolve } from 'node:path'
 import { COMPLETE_BACKUP_SECTIONS } from '../../../shared/backup/contract.mjs'
 import { CatalogIndex, CATALOG_INDEX_SCHEMA_VERSION } from '../../registry/catalog-index.mjs'
@@ -155,12 +155,7 @@ async function createMigrationBackup({
 async function migrateCore(stagingPath: string, snapshot: Record<string, any>, appVersion: string) {
   const handle = await openManagedDatabase({ filePath: stagingPath, schemaName: 'core' })
   try {
-    const migrationsDir = resolve(import.meta.dir, '../core/migrations/generated')
-    await applyCommittedMigrations(handle, await Promise.all(CORE_MIGRATIONS.map(async (migration) => ({
-      id: migration.id,
-      sha256: migration.sha256,
-      sql: await readFile(join(migrationsDir, migration.file), 'utf8'),
-    }))), { applicationVersion: appVersion })
+    await applyCommittedMigrations(handle, await committedCoreMigrations(), { applicationVersion: appVersion })
     const identityPlan = buildCanonicalIdentityPlan(snapshot)
     importLegacyCore({ database: handle.database, snapshot, identityPlan })
     verifyImportedCore({ database: handle.database, expected: legacySemanticSnapshot(snapshot) })
@@ -168,6 +163,15 @@ async function migrateCore(stagingPath: string, snapshot: Record<string, any>, a
   } finally {
     closeManagedDatabase(handle)
   }
+}
+
+async function committedCoreMigrations() {
+  const migrationsDir = resolve(import.meta.dir, '../core/migrations/generated')
+  return Promise.all(CORE_MIGRATIONS.map(async (migration) => ({
+    id: migration.id,
+    sha256: migration.sha256,
+    sql: await readFile(join(migrationsDir, migration.file), 'utf8'),
+  })))
 }
 
 async function migrateTelemetry(dataDir: string, stagingPath: string, identityPlan: ReturnType<typeof buildCanonicalIdentityPlan>) {
@@ -205,6 +209,58 @@ function sqliteVersion(filePath: string) {
   } finally {
     database.exec('PRAGMA wal_checkpoint(TRUNCATE)')
     database.close(false)
+  }
+}
+
+function sha256(body: Uint8Array) {
+  return createHash('sha256').update(body).digest('hex')
+}
+
+async function createActivatedDatabaseBackup({
+  dataDir,
+  paths,
+  now,
+}: {
+  dataDir: string
+  paths: Record<'core' | 'telemetry' | 'catalog', string>
+  now: Date
+}) {
+  const stamp = now.toISOString().replaceAll(':', '-').replaceAll('.', '-')
+  const directory = join(dataDir, 'backups', 'migrations', `sqlite-upgrade-${stamp}`)
+  await mkdir(directory, { recursive: true, mode: 0o700 })
+  const files: Record<string, { file: string, sizeBytes: number, sha256: string }> = {}
+  try {
+    for (const name of ['core', 'telemetry', 'catalog'] as const) {
+      const checkpoint = new Database(paths[name], { strict: true })
+      try {
+        checkpoint.exec('PRAGMA wal_checkpoint(TRUNCATE)')
+      } finally {
+        checkpoint.close(false)
+      }
+      const file = `${name}.sqlite`
+      const target = join(directory, file)
+      await copyFile(paths[name], target)
+      await chmod(target, 0o600)
+      const body = await readFile(target)
+      files[name] = { file, sizeBytes: body.length, sha256: sha256(body) }
+    }
+    const manifestPath = join(directory, 'manifest.json')
+    await writeFile(manifestPath, `${JSON.stringify({
+      version: 1,
+      kind: 'sqlite-upgrade',
+      createdAt: now.toISOString(),
+      files,
+    }, null, 2)}\n`, { mode: 0o600 })
+    for (const entry of Object.values(files)) {
+      const body = await readFile(join(directory, entry.file))
+      if (body.length !== entry.sizeBytes || sha256(body) !== entry.sha256) {
+        throw new Error(`SQLite migration backup verification failed for ${entry.file}.`)
+      }
+    }
+    return { directory, manifestPath }
+  } catch (error) {
+    await rm(directory, { recursive: true, force: true }).catch(() => {})
+    throw error
   }
 }
 
@@ -257,14 +313,129 @@ async function verifyActiveMarker(dataDir: string, marker: PersistenceActivation
   return { paths, versions }
 }
 
+async function upgradeActivatedDatabases({
+  dataDir,
+  marker,
+  paths,
+  options,
+}: {
+  dataDir: string
+  marker: PersistenceActivationMarker
+  paths: Record<'core' | 'telemetry' | 'catalog', string>
+  options: EnsureSqlitePersistenceOptions
+}) {
+  const now = options.now?.() ?? new Date()
+  const current = {
+    core: sqliteVersion(paths.core),
+    telemetry: sqliteVersion(paths.telemetry),
+    catalog: sqliteVersion(paths.catalog),
+  }
+  const expected = {
+    core: CORE_MIGRATIONS.length,
+    telemetry: TELEMETRY_SCHEMA_VERSION,
+    catalog: CATALOG_INDEX_SCHEMA_VERSION,
+  }
+  for (const name of ['core', 'telemetry', 'catalog'] as const) {
+    if (current[name] > expected[name]) {
+      throw new Error(`${name} SQLite schema ${current[name]} is newer than supported schema ${expected[name]}.`)
+    }
+  }
+  if ((['core', 'telemetry', 'catalog'] as const).every((name) => current[name] === expected[name])) {
+    const markerMatches = (['core', 'telemetry', 'catalog'] as const)
+      .every((name) => marker.databases[name].schemaVersion === current[name])
+    if (markerMatches) {
+      const verified = await verifyActiveMarker(dataDir, marker)
+      await rm(join(dataDir, 'databases', 'persistence-migration-failure.json'), { force: true })
+      return { migrated: false, marker, ...verified }
+    }
+    const reconciledMarker: PersistenceActivationMarker = {
+      ...marker,
+      applicationVersion: options.appVersion,
+      databases: {
+        core: { ...marker.databases.core, schemaVersion: current.core },
+        telemetry: { ...marker.databases.telemetry, schemaVersion: current.telemetry },
+        catalog: { ...marker.databases.catalog, schemaVersion: current.catalog },
+      },
+    }
+    await writeActivationMarker(dataDir, reconciledMarker)
+    await rm(join(dataDir, 'databases', 'persistence-migration-failure.json'), { force: true })
+    return { migrated: false, markerReconciled: true, marker: reconciledMarker, paths, versions: current }
+  }
+
+  const lock = await acquireLock(dataDir, now)
+  const failurePath = join(dataDir, 'databases', 'persistence-migration-failure.json')
+  let backup: Awaited<ReturnType<typeof createActivatedDatabaseBackup>> | null = null
+  try {
+    backup = await createActivatedDatabaseBackup({ dataDir, paths, now })
+    const core = await openManagedDatabase({
+      filePath: paths.core,
+      schemaName: 'core',
+      maximumSchemaVersion: CORE_MIGRATIONS.length,
+    })
+    try {
+      await applyCommittedMigrations(core, await committedCoreMigrations(), {
+        applicationVersion: options.appVersion,
+      })
+    } finally {
+      closeManagedDatabase(core)
+    }
+
+    const telemetry = await openTelemetryDatabase({ dataDir, filePath: paths.telemetry })
+    closeTelemetryDatabase(telemetry)
+
+    if (current.catalog < expected.catalog) {
+      const temporaryCatalog = `${paths.catalog}.${randomUUID()}.upgrade`
+      try {
+        await rebuildCatalog(temporaryCatalog, options.snapshotService)
+        await prepareDatabaseForAtomicMove(temporaryCatalog)
+        await rm(paths.catalog, { force: true })
+        await rename(temporaryCatalog, paths.catalog)
+      } finally {
+        await rm(temporaryCatalog, { force: true }).catch(() => {})
+      }
+    }
+
+    const versions = await verifyDatabaseSet(paths)
+    const updatedMarker: PersistenceActivationMarker = {
+      ...marker,
+      applicationVersion: options.appVersion,
+      databases: {
+        core: { ...marker.databases.core, schemaVersion: versions.core },
+        telemetry: { ...marker.databases.telemetry, schemaVersion: versions.telemetry },
+        catalog: { ...marker.databases.catalog, schemaVersion: versions.catalog },
+      },
+    }
+    await writeActivationMarker(dataDir, updatedMarker)
+    await rm(failurePath, { force: true })
+    return {
+      migrated: true,
+      marker: updatedMarker,
+      paths,
+      versions,
+      upgradeBackup: backup.directory,
+    }
+  } catch (error) {
+    await mkdir(dirname(failurePath), { recursive: true, mode: 0o700 })
+    await writeFile(failurePath, `${JSON.stringify({
+      version: 1,
+      failedAt: new Date().toISOString(),
+      message: error instanceof Error ? error.message : String(error),
+      ...(backup ? { backupPath: relativeDataPath(dataDir, backup.directory) } : {}),
+    }, null, 2)}\n`, { mode: 0o600 })
+    throw error
+  } finally {
+    await lock.release()
+  }
+}
+
 export async function ensureSqlitePersistence(options: EnsureSqlitePersistenceOptions) {
   const dataDir = resolve(options.dataDir)
   const failurePath = join(dataDir, 'databases', 'persistence-migration-failure.json')
   const existing = await readActivationMarker(dataDir)
   if (existing) {
-    const verified = await verifyActiveMarker(dataDir, existing)
-    await rm(failurePath, { force: true })
-    return { ok: true, status: 'active', migrated: false, marker: existing, ...verified }
+    const paths = markerDatabasePaths(dataDir, existing)
+    const activated = await upgradeActivatedDatabases({ dataDir, marker: existing, paths, options })
+    return { ok: true, status: 'active', ...activated }
   }
 
   const now = options.now?.() ?? new Date()

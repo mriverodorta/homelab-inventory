@@ -78,6 +78,7 @@ COPY --chown=10001:10001 server/engine/command-service.mjs server/engine/runtime
 COPY --from=wasm-build --chown=10001:10001 /app/server/engine/generated/homelab_engine.wasm ./server/engine/generated/homelab_engine.wasm
 COPY --chown=10001:10001 server/db/agent-auth.mjs server/db/inventory-capabilities.mjs server/db/inventory-lifecycle.mjs server/db/legacy-network-normalization.ts server/db/nas-power-configuration.mjs server/db/relational-ids.mjs server/db/store.mjs server/db/validation.mjs ./server/db/
 COPY --chown=10001:10001 server/db/migrate-schema-*.mjs ./server/db/
+COPY --chown=10001:10001 server/persistence ./server/persistence
 COPY --chown=10001:10001 server/registry ./server/registry
 COPY --chown=10001:10001 server/agents ./server/agents
 COPY --chown=10001:10001 server/telemetry ./server/telemetry

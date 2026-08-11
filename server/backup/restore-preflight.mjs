@@ -1,4 +1,4 @@
-import { CURRENT_SCHEMA_VERSION } from '../db/store.mjs'
+import { LEGACY_SCHEMA_VERSION as CURRENT_SCHEMA_VERSION } from '../persistence/legacy/schema-version.mjs'
 import {
   assertAgentsStoreShape,
   assertAgentStatusStoreShape,

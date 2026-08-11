@@ -4,6 +4,7 @@ import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { TELEMETRY_MIGRATIONS } from '../../telemetry/schema.mjs'
+import { CORE_MIGRATIONS } from '../core/migrations/manifest.ts'
 import { schema29ProductionShapeFixture } from '../fixtures/schema-29-production-shape.ts'
 import { readActivationMarker } from './activation-marker.ts'
 import { CUTOVER_STAGES, ensureSqlitePersistence } from './cutover.ts'
@@ -92,7 +93,12 @@ describe('atomic SQLite persistence cutover', () => {
     await expect(ensureSqlitePersistence({ ...current.options, failAtStage: 'marker' })).rejects.toThrow('marker')
 
     const activated = await ensureSqlitePersistence(current.options)
-    expect(activated).toMatchObject({ ok: true, status: 'active', migrated: true, versions: { core: 6, telemetry: 2, catalog: 2 } })
+    expect(activated).toMatchObject({
+      ok: true,
+      status: 'active',
+      migrated: true,
+      versions: { core: CORE_MIGRATIONS.length, telemetry: 2, catalog: 2 },
+    })
     expect(await hashLegacyData(current.dataDir)).toEqual(before)
     expect(await readActivationMarker(current.dataDir)).not.toBeNull()
     expect((await stat(activated.paths.core)).mode & 0o777).toBe(0o600)
@@ -100,6 +106,28 @@ describe('atomic SQLite persistence cutover', () => {
     const reopened = await ensureSqlitePersistence(current.options)
     expect(reopened).toMatchObject({ ok: true, status: 'active', migrated: false })
     expect(current.backupCalls()).toBe(2)
+  })
+
+  test('reconciles an interrupted marker update after all database migrations committed', async () => {
+    const current = await context()
+    const activated = await ensureSqlitePersistence(current.options)
+    const markerPath = join(current.dataDir, 'databases', 'persistence-engine.json')
+    const staleMarker = structuredClone(activated.marker)
+    staleMarker.databases.core.schemaVersion -= 1
+    await writeFile(markerPath, `${JSON.stringify(staleMarker)}\n`, { mode: 0o600 })
+
+    const restarted = await ensureSqlitePersistence(current.options)
+
+    expect(restarted).toMatchObject({
+      ok: true,
+      status: 'active',
+      migrated: false,
+      markerReconciled: true,
+      versions: { core: CORE_MIGRATIONS.length },
+    })
+    expect((await readActivationMarker(current.dataDir))?.databases.core.schemaVersion)
+      .toBe(CORE_MIGRATIONS.length)
+    expect(current.backupCalls()).toBe(1)
   })
 
   test('reclaims stale locks but rejects a live migration lock', async () => {

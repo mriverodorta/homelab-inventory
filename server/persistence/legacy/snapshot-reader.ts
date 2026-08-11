@@ -6,10 +6,10 @@ import { createBackupManagementStore, normalizeBackupManagementStore } from '../
 import { createNotificationConfig, createNotificationSecrets, createNotificationState, normalizeNotificationConfig, normalizeNotificationSecrets, normalizeNotificationState } from '../../notifications/model.mjs'
 import { createRegistryStore, normalizeRegistryStore } from '../../registry/model.mjs'
 import { createRoutingCache, normalizeRoutingCache } from '../../routing-cache-model.mjs'
-import { HomelabInventoryStore } from '../../db/store.mjs'
 import { buildCanonicalIdentityPlan } from './identity-plan.ts'
+import { LEGACY_SCHEMA_VERSION } from './schema-version.mjs'
 
-export const LEGACY_SCHEMA_VERSION = 29
+export { LEGACY_SCHEMA_VERSION } from './schema-version.mjs'
 
 const OPTIONAL_FILES = {
   agents: ['agents.json', { enrollments: {}, devices: {}, hardwareSnapshots: {}, hardwareEvents: {} }],
@@ -76,6 +76,7 @@ async function readUpgradedLegacySnapshot(dataDir: string) {
   const stagingParent = await mkdtemp(join(tmpdir(), 'homelab-inventory-legacy-upgrade-'))
   const stagingDataDir = join(stagingParent, 'data')
   try {
+    const { HomelabInventoryStore } = await import('./legacy-store.mjs')
     await cp(dataDir, stagingDataDir, { recursive: true, force: false, errorOnExist: true })
     const store = new HomelabInventoryStore({
       appVersion: 'sqlite-import',

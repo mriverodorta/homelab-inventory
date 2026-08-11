@@ -35,27 +35,39 @@ async function writeJsonAtomic(filePath, value, mode = 0o600) {
 }
 
 export class NotificationStore {
-  constructor({ dataDir, now = () => Date.now() }) {
-    if (!dataDir) throw new Error('NotificationStore requires dataDir.')
+  constructor({ dataDir, now = () => Date.now(), persistence = null }) {
+    if (!dataDir && !persistence) throw new Error('NotificationStore requires dataDir or persistence.')
     this.dataDir = dataDir
     this.now = now
-    this.storesDir = path.join(dataDir, 'stores')
+    this.persistence = persistence
+    this.storesDir = dataDir ? path.join(dataDir, 'stores') : null
     this.paths = {
-      config: path.join(this.storesDir, 'notifications.json'),
-      state: path.join(this.storesDir, 'notification-state.json'),
-      secrets: path.join(this.storesDir, 'notification-secrets.json'),
+      config: this.storesDir ? path.join(this.storesDir, 'notifications.json') : null,
+      state: this.storesDir ? path.join(this.storesDir, 'notification-state.json') : null,
+      secrets: this.storesDir ? path.join(this.storesDir, 'notification-secrets.json') : null,
     }
     this.data = null
     this.queue = Promise.resolve()
   }
 
   async init() {
-    await fs.mkdir(this.storesDir, { recursive: true })
     const defaults = {
       config: createNotificationConfig(this.now()),
       state: createNotificationState(this.now()),
       secrets: createNotificationSecrets(this.now()),
     }
+    if (this.persistence) {
+      const persisted = this.persistence.read()
+      this.data = {
+        config: normalizeNotificationConfig(persisted?.config ?? defaults.config, this.now()),
+        state: normalizeNotificationState(persisted?.state ?? defaults.state, this.now()),
+        secrets: normalizeNotificationSecrets(persisted?.secrets ?? defaults.secrets, this.now()),
+      }
+      this.#validateAll()
+      await this.flush()
+      return this
+    }
+    await fs.mkdir(this.storesDir, { recursive: true })
     for (const [name, filePath] of Object.entries(this.paths)) {
       if (!(await exists(filePath))) await writeJsonAtomic(filePath, defaults[name])
     }
@@ -128,7 +140,8 @@ export class NotificationStore {
       } else {
         assertNotificationSecrets(draft)
       }
-      await writeJsonAtomic(this.paths[name], draft)
+      if (this.persistence) this.persistence.write({ ...this.data, [name]: draft })
+      else await writeJsonAtomic(this.paths[name], draft)
       this.data[name] = draft
       return result === undefined ? structuredClone(draft) : structuredClone(result)
     }
@@ -141,7 +154,8 @@ export class NotificationStore {
     this.#requireInitialized()
     await this.queue
     this.#validateAll()
-    await Promise.all(Object.entries(this.paths).map(([name, filePath]) => writeJsonAtomic(filePath, this.data[name])))
+    if (this.persistence) this.persistence.write(this.data)
+    else await Promise.all(Object.entries(this.paths).map(([name, filePath]) => writeJsonAtomic(filePath, this.data[name])))
   }
 
   async replace({ config, state, secrets }) {
@@ -161,12 +175,16 @@ export class NotificationStore {
       assertNotificationSecrets(next.secrets)
       const previous = structuredClone(this.data)
       try {
-        for (const [name, filePath] of Object.entries(this.paths)) {
-          if (next[name] !== this.data[name]) await writeJsonAtomic(filePath, next[name])
+        if (this.persistence) this.persistence.write(next)
+        else {
+          for (const [name, filePath] of Object.entries(this.paths)) {
+            if (next[name] !== this.data[name]) await writeJsonAtomic(filePath, next[name])
+          }
         }
         this.data = next
       } catch (error) {
-        await Promise.all(Object.entries(this.paths).map(([name, filePath]) => writeJsonAtomic(filePath, previous[name])))
+        if (this.persistence) this.persistence.write(previous)
+        else await Promise.all(Object.entries(this.paths).map(([name, filePath]) => writeJsonAtomic(filePath, previous[name])))
         this.data = previous
         throw error
       }

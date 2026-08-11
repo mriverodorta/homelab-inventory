@@ -5,17 +5,27 @@ describe('application health', () => {
   it('reports a healthy persistent store', () => {
     expect(applicationHealth({
       mode: 'production',
-      schemaVersion: 16,
-      persistence: { ok: true, dirtyStores: [], failure: null },
+      schemaVersion: 10,
+      persistence: {
+        ok: true,
+        engine: 'sqlite',
+        schemas: { core: 10, telemetry: 2, catalog: 2 },
+        database: { integrity: 'ok' },
+      },
     })).toEqual({
       status: 200,
       payload: {
         ok: true,
         mode: 'production',
-        schemaVersion: 16,
+        schemaVersion: 10,
         applicationOemContractVersion: 6,
         applicationCatalogContractVersion: 8,
-        persistence: { ok: true, dirtyStores: [], failure: null },
+        persistence: {
+          ok: true,
+          engine: 'sqlite',
+          schemas: { core: 10, telemetry: 2, catalog: 2 },
+          database: { integrity: 'ok' },
+        },
       },
     })
   })

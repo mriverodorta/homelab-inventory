@@ -1,7 +1,6 @@
 import crypto from 'node:crypto'
 import fs from 'node:fs/promises'
 import path from 'node:path'
-import { HomelabInventoryStore } from '../db/store.mjs'
 import { assertInventoryStoreShape, assertProjectStoreShape } from '../db/validation.mjs'
 import { sanitizeDemoStores } from './sanitizer.mjs'
 
@@ -116,6 +115,7 @@ export class DemoSessionManager {
     maxSessionCreationsGlobally = 50,
     sessionCreationWindowMs = 10 * 60 * 1000,
     saveDebounceMs = 500,
+    storeFactory = null,
   }) {
     this.appVersion = appVersion
     this.catalogBootstrap = catalogBootstrap
@@ -128,10 +128,12 @@ export class DemoSessionManager {
     this.maxSessionCreationsGlobally = maxSessionCreationsGlobally
     this.sessionCreationWindowMs = sessionCreationWindowMs
     this.saveDebounceMs = saveDebounceMs
+    this.storeFactory = storeFactory
     this.sessionsDir = path.join(dataDir, 'demo-sessions')
     this.indexPath = path.join(this.sessionsDir, INDEX_FILE)
     this.sessions = sessionIndex()
     this.stores = new Map()
+    this.runtimes = new Map()
     this.openingStores = new Map()
     this.sessionMutationQueue = Promise.resolve()
     this.sessionCreationsByClient = new Map()
@@ -310,16 +312,10 @@ export class DemoSessionManager {
   }
 
   async initializeStore(session) {
-    const store = new HomelabInventoryStore({
-      appVersion: this.appVersion,
-      dataDir: session.dataDir,
-      legacyProjectPath: path.join(session.dataDir, 'homelab-inventory-project.json'),
-      saveDebounceMs: this.saveDebounceMs,
-      seedEmptyData: false,
-      seedDir: path.join(session.dataDir, 'missing-seed'),
-    })
-
-    await store.init()
+    const runtime = this.storeFactory
+      ? await this.storeFactory(session)
+      : await this.createSqliteStore(session)
+    const { store } = runtime
     const registry = store.getRegistryState()
     if (registry.settings.mode !== 'connected' || registry.settings.automaticContributions) {
       store.updateRegistrySettings({ mode: 'connected', automaticContributions: false })
@@ -331,9 +327,31 @@ export class DemoSessionManager {
         this.logger.warn('Automatic demo catalog refresh failed; manual refresh remains available.')
       }
     }
+    this.runtimes.set(session.id, runtime)
     this.stores.set(session.id, store)
 
     return store
+  }
+
+  async createSqliteStore(session) {
+    const { activateSqliteRuntime } = await import('../persistence/runtime.ts')
+    const runtime = await activateSqliteRuntime({
+      appVersion: this.appVersion,
+      dataDir: session.dataDir,
+      legacyProjectPath: path.join(session.dataDir, 'homelab-inventory-project.json'),
+      seedDir: path.join(session.dataDir, 'missing-seed'),
+      backupServiceFactory: () => ({
+        async create() {
+          return { archive: Buffer.from('verified-ephemeral-demo-migration') }
+        },
+      }),
+    })
+    await Promise.all([
+      fs.rm(path.join(session.dataDir, 'meta.json'), { force: true }),
+      fs.rm(path.join(session.dataDir, 'stores'), { recursive: true, force: true }),
+      fs.rm(path.join(session.dataDir, 'telemetry'), { recursive: true, force: true }),
+    ])
+    return runtime
   }
 
   async extendSession(sessionId) {
@@ -369,6 +387,11 @@ export class DemoSessionManager {
     if (store) {
       await store.flush().catch(() => {})
       this.stores.delete(sessionId)
+    }
+    const runtime = this.runtimes.get(sessionId)
+    if (runtime) {
+      await runtime.close().catch(() => {})
+      this.runtimes.delete(sessionId)
     }
 
     delete this.sessions[sessionId]
@@ -414,5 +437,12 @@ export class DemoSessionManager {
   async flushAll() {
     await Promise.allSettled(this.openingStores.values())
     await Promise.all([...this.stores.values()].map((store) => store.flush().catch(() => {})))
+  }
+
+  async closeAll() {
+    await Promise.allSettled(this.openingStores.values())
+    await Promise.all([...this.runtimes.values()].map((runtime) => runtime.close().catch(() => {})))
+    this.runtimes.clear()
+    this.stores.clear()
   }
 }

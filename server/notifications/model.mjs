@@ -207,6 +207,9 @@ export function normalizeNotificationState(value, now = Date.now()) {
   ]
   const normalized = { ...fallback, ...clone(value), version: 1 }
   for (const key of collections) normalized[key] = Array.isArray(value[key]) ? clone(value[key]) : []
+  normalized.incidents = normalized.incidents.map((incident) => ({ resourceId: null, ...incident }))
+  normalized.normalizedStates = normalized.normalizedStates.map((state) => ({ resourceId: null, ...state }))
+  normalized.pendingTransitions = normalized.pendingTransitions.map((transition) => ({ resourceId: null, ...transition }))
   normalized.cooldowns = normalized.cooldowns.map((cooldown) => ({ resourceId: null, ...cooldown }))
   normalized.evaluationCursors = normalized.evaluationCursors.map((cursor) => ({
     candidateCollectedAt: null,

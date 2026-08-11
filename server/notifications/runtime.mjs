@@ -19,8 +19,8 @@ export function buildAgentMonitoringConfig(config, hostType, hostId) {
   }
 }
 
-export async function createNotificationRuntime({ dataDir, workspaceStore, log = console }) {
-  const store = await new NotificationStore({ dataDir }).init()
+export async function createNotificationRuntime({ dataDir, workspaceStore, persistence = null, log = console }) {
+  const store = await new NotificationStore({ dataDir, persistence }).init()
   const vault = await new NotificationSecretVault({ dataDir, store }).init()
   const incidentManager = new IncidentManager({ store })
   const evaluator = new NotificationEvaluator({ store, incidentManager })

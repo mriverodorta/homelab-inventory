@@ -24,7 +24,6 @@ import { BackupScheduler } from './backup/backup-scheduler.mjs'
 import { BackupService } from './backup/backup-service.mjs'
 import { apiErrorHandler } from './api-error-handler.mjs'
 import { applicationHealth } from './app-health.mjs'
-import { HomelabInventoryStore } from './db/store.mjs'
 import { EngineCommandService } from './engine/command-service.mjs'
 import { ServerEngineRuntime } from './engine/runtime.mjs'
 import { EngineSseHub } from './engine/sse-hub.mjs'
@@ -57,8 +56,9 @@ import { closeTelemetryDatabase, openTelemetryDatabase } from './telemetry/datab
 import { TelemetryRepository } from './telemetry/repository.mjs'
 import { startTelemetryRetentionSchedule } from './telemetry/retention.mjs'
 import { createNotificationRuntime } from './notifications/runtime.mjs'
+import { SqliteNotificationPersistence } from './notifications/sqlite-persistence.ts'
 import { registerNotificationRoutes } from './notifications/routes.mjs'
-import { ensureSqlitePersistence } from './persistence/migration/cutover.ts'
+import { activateSqliteRuntime } from './persistence/runtime.ts'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const root = path.resolve(__dirname, '..')
@@ -119,6 +119,7 @@ let telemetryRetentionSchedule = null
 let notificationRuntime = null
 let backupService = null
 let sqlitePersistence = null
+let sqliteRuntime = null
 
 if (isDemoMode) {
   const { DemoSessionManager, DEMO_COOKIE_NAME } = await import('./demo/session-manager.mjs')
@@ -138,22 +139,67 @@ if (isDemoMode) {
 
   app.locals.demoCookieName = DEMO_COOKIE_NAME
 } else {
-  store = new HomelabInventoryStore({
-    appVersion: packageJson.version,
-    dataDir,
-    legacyProjectPath,
-    saveDebounceMs,
-    seedEmptyData,
-    seedDir,
-  })
+  let legacyMigrationResources = null
+  const legacyBackupServiceFactory = async () => {
+    const { HomelabInventoryStore } = await import('./persistence/legacy/legacy-store.mjs')
+    const legacyStore = new HomelabInventoryStore({
+      appVersion: packageJson.version,
+      dataDir,
+      legacyProjectPath,
+      saveDebounceMs,
+      seedEmptyData,
+      seedDir,
+    })
+    await legacyStore.init()
+    const legacyTelemetryDatabase = await openTelemetryDatabase({ dataDir })
+    const legacyTelemetryRepository = new TelemetryRepository(legacyTelemetryDatabase)
+    const legacyNotificationRuntime = await createNotificationRuntime({
+      dataDir,
+      workspaceStore: legacyStore,
+    })
+    const service = new BackupService({
+      store: legacyStore,
+      appVersion: packageJson.version,
+      environmentPassphrase: backupEnvironmentPassphrase,
+      environmentTimezone: backupEnvironmentTimezone,
+      telemetryRepository: legacyTelemetryRepository,
+      notificationStore: legacyNotificationRuntime.store,
+      notificationVault: legacyNotificationRuntime.vault,
+    })
+    await service.init()
+    legacyMigrationResources = {
+      store: legacyStore,
+      telemetryDatabase: legacyTelemetryDatabase,
+      notificationRuntime: legacyNotificationRuntime,
+    }
+    return service
+  }
 
-  await store.init()
-  telemetryDatabase = await openTelemetryDatabase({ dataDir })
-  telemetryRepository = new TelemetryRepository(telemetryDatabase)
+  try {
+    sqliteRuntime = await activateSqliteRuntime({
+      dataDir,
+      appVersion: packageJson.version,
+      legacyProjectPath,
+      seedDir,
+      backupPassphrase: backupEnvironmentPassphrase,
+      backupServiceFactory: legacyBackupServiceFactory,
+    })
+  } finally {
+    if (legacyMigrationResources) {
+      await legacyMigrationResources.notificationRuntime.stop().catch(() => {})
+      closeTelemetryDatabase(legacyMigrationResources.telemetryDatabase)
+      await legacyMigrationResources.store.flush().catch(() => {})
+    }
+  }
+  store = sqliteRuntime.store
+  telemetryDatabase = sqliteRuntime.telemetryDatabase
+  telemetryRepository = sqliteRuntime.telemetryRepository
+  sqlitePersistence = sqliteRuntime.persistence
   telemetryRetentionSchedule = startTelemetryRetentionSchedule(telemetryDatabase)
   notificationRuntime = await createNotificationRuntime({
     dataDir,
     workspaceStore: store,
+    persistence: new SqliteNotificationPersistence({ database: store.core.database }),
   })
   backupService = new BackupService({
     store,
@@ -165,15 +211,6 @@ if (isDemoMode) {
     notificationVault: notificationRuntime?.vault ?? null,
   })
   await backupService.init()
-  sqlitePersistence = await ensureSqlitePersistence({
-    dataDir,
-    appVersion: packageJson.version,
-    legacyProjectPath,
-    seedDir,
-    backupPassphrase: backupEnvironmentPassphrase,
-    backupServiceFactory: () => backupService,
-    snapshotService: new SnapshotService(store, { officialOrigin: registryOrigin }),
-  })
 }
 
 const cspDirectives = {
@@ -415,11 +452,8 @@ app.get('/api/health', (_request, response) => {
       ? null
       : {
           ...store.getPersistenceHealth(),
-          sqlite: {
-            ok: sqlitePersistence?.ok === true,
-            status: sqlitePersistence?.status ?? 'unavailable',
-            schemas: sqlitePersistence?.versions ?? null,
-          },
+          status: sqlitePersistence?.status ?? 'unavailable',
+          schemas: sqlitePersistence?.versions ?? null,
         },
   })
   response.status(health.status).json(health.payload)
@@ -525,7 +559,7 @@ if (isProduction) {
 
 const server = app.listen(port, () => {
   console.log(`Homelab Inventory running at http://127.0.0.1:${port}`)
-  console.log(`Lowdb data directory: ${dataDir}`)
+  console.log(`SQLite data directory: ${dataDir}`)
 })
 
 let shuttingDown = false
@@ -533,7 +567,7 @@ let shuttingDown = false
 async function shutdown(signal) {
   if (shuttingDown) return
   shuttingDown = true
-  console.log(`${signal} received; flushing lowdb stores.`)
+  console.log(`${signal} received; checkpointing SQLite stores.`)
   try {
     await gracefullyStopServer({
       server,
@@ -547,7 +581,9 @@ async function shutdown(signal) {
         () => notificationRuntime?.stop(),
       ],
       flush: () => demoManager ? demoManager.flushAll() : store.flush(),
-      closers: [() => closeTelemetryDatabase(telemetryDatabase)],
+      closers: demoManager
+        ? [() => demoManager.closeAll()]
+        : [() => sqliteRuntime?.close()],
     })
     process.exit(0)
   } catch (error) {
