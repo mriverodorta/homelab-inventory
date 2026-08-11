@@ -79,7 +79,8 @@ src/
 server/
   index.mjs        Express server and API routes
   agent-routes.mjs Linux agent enrollment and ingest API
-  db/              lowdb stores, validation, token helpers
+  db/              API validation and legacy compatibility helpers
+  persistence/     SQLite schemas, migrations, repositories, and projections
   engine/          Bun WASM authority and committed-event transport
   seed/            fictional development seed data
 rust/

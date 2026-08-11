@@ -101,11 +101,19 @@ const RELEASE_0_3_0_DETAILS: UnreleasedReleaseNotes = {
 }
 
 export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
-  highlights: [],
+  highlights: [
+    'Core application state, Agent telemetry, and the local Registry catalog now use independent SQLite databases with typed relational data, numeric foreign keys, checksummed migrations, WAL mode, and bounded read caches.',
+    'Existing JSON installations migrate automatically after a verified complete backup, with semantic validation for inventory, topology, Registry identity, access control, notifications, telemetry, and catalog state before atomic activation.',
+  ],
   fixes: [
     'The production image now pins its Bun runtime and verifies the complete SQLite capability contract during distroless image construction and multi-architecture release preflight.',
+    'Journaled SQLite restores now checkpoint WAL state and recover interrupted file swaps without exposing partial data, while normalized authentication tables preserve every account, identity, role, invitation, and security record.',
   ],
-  notes: [],
+  notes: [
+    'Portable backups now use logical format 2 archives with independent database schema versions, retain supported format 1 imports, and preserve dependency-aware selective restore without copying uploaded SQLite files over active data.',
+    'Initial workspace loading now uses one permission-aware application bootstrap after authentication, keeping normal startup within two API requests before scheduled background refreshes.',
+    'The original JSON files remain byte-identical after successful migration but are no longer active stores; the SQLite migration guide documents verification and rollback.',
+  ],
 }
 
 const RELEASE_0_11_1_DETAILS: UnreleasedReleaseNotes = {

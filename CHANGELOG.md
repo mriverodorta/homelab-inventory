@@ -6,9 +6,21 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 
 ## Unreleased
 
+### Added
+
+- Replaced active LowDB persistence with normalized SQLite databases for core application state, telemetry, and the local catalog index, using typed relational tables, numeric foreign keys, WAL-mode connections, bounded read caches, and checksummed Drizzle migrations.
+- Added automatic first-start migration with a verified encrypted backup, semantic parity checks, protected Registry identity preservation, atomic activation, and explicit recovery from interrupted migration or restore stages.
+
+### Changed
+
+- Portable backups now export logical format 2 archives with independent core, telemetry, and catalog schema versions while retaining format 1 import compatibility and dependency-aware selective restore.
+- Initial workspace hydration now shares one permission-aware bootstrap response after authentication, reducing normal startup to two API requests before background polling.
+
 ### Fixed
 
 - Pinned every Bun Docker build stage to one immutable runtime and added executable SQLite capability checks to final distroless image construction and the amd64/arm64 release preflight.
+- Authentication users, credentials, OIDC identities, sessions, roles, permissions, invitations, and security history now round-trip through normalized relational tables instead of partial metadata projections.
+- Interrupted SQLite restores now checkpoint WAL state and complete or roll back their journaled file swap without exposing a partial database.
 
 ## [0.11.1] - 2026-08-10
 

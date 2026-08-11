@@ -152,27 +152,23 @@ The app keeps user data out of the application image. Runtime data lives in `/da
 
 ```txt
 /data
-  meta.json
-  stores/
-    inventory.json
-    project.json
-    agents.json
-    agent-status.json
-    registry.json
-    routing-cache.json
-    backup-management.json
-    authentication.json
+  databases/
+    homelab-inventory.sqlite
+    telemetry.sqlite
+    catalog.sqlite
+    persistence-engine.json
   backups/
   auth/
   registry/
     installation-instance.json
     installation-ed25519.pem
     installation-credentials.json
-  telemetry/
-    telemetry.sqlite
+  stores/                       # retained legacy migration sources
 ```
 
 Only one app container should write to a mounted data directory.
+
+Existing JSON installations migrate automatically on first startup after a verified complete backup. The original JSON files remain unchanged but stop being active stores after SQLite activation. See [docs/SQLITE_MIGRATION.md](docs/SQLITE_MIGRATION.md) for verification, backup compatibility, and rollback instructions.
 
 `agents.json` may contain private hardware evidence from a user-confirmed one-time agent scan, including raw serials used for local matching. It is excluded from demo data, treated as sensitive in portable backups, and never enters public registry contributions.
 
@@ -200,7 +196,7 @@ https://inventory.example.com/api/auth/oidc/callback
 
 The client secret can be entered in Settings and stored as a mode-`0600` backend file, or supplied through `OIDC_CLIENT_SECRET` / `OIDC_CLIENT_SECRET_FILE`. File values take precedence and environment-managed secrets are read-only in the UI. Set `AUTH_EXTERNAL_URL` when the externally visible URL cannot be inferred from the deployment.
 
-If the original owner is locked out, stop the application before creating a recovery grant so only one process writes the lowdb stores:
+If the original owner is locked out, stop the application before creating a recovery grant so only one process writes the SQLite databases:
 
 ```bash
 docker compose stop homelab-inventory
@@ -217,6 +213,8 @@ Open **Settings > Backup & Restore** to create a complete portable backup or cho
 Restore is replacement-only. Before changing live data, the app validates archive paths, sizes, checksums, schema compatibility, and section dependencies; creates a complete pre-restore recovery backup; enters maintenance mode; and records a durable restore journal. A failed or interrupted restore rolls back automatically. Connected browsers reload after a successful restore.
 
 Portable archives use the `.hlibackup` format. Registry-enrollment backups include the stable installation UUID, signing key, and credentials as one validated set. Backups containing registry enrollment or agent credentials require a passphrase before download. Stored copies may also be encrypted with scrypt and AES-256-GCM. Keep that passphrase outside the app because it cannot be recovered.
+
+SQLite deployments export format 2 logical archives with separate core, telemetry, and catalog schema versions, while supported format 1 archives remain importable. Restore stages selected logical sections in an isolated database and never replaces the active database with an untrusted uploaded SQLite file.
 
 Daily or weekly complete backups can run at a configurable time with a configurable retention count. Set `TZ` in Docker Compose to make the deployment timezone authoritative, or choose an IANA timezone in Settings. Set `BACKUP_ENCRYPTION_PASSPHRASE` to at least 12 characters to encrypt scheduled stored backups. It is mandatory for scheduled backups once owner-authentication material exists.
 
@@ -289,7 +287,7 @@ When an update is available, the canvas toolbar shows an update notice with rele
 
 ## Agent
 
-The optional Homelab Inventory Agent uses outbound-only HTTPS and scopes one Ed25519 device identity to one server, NAS device, or custom PC build. Signed protocol-v1 heartbeats are stored independently in `/data/telemetry/telemetry.sqlite`; they do not create workspace history or advance the project revision. Raw samples are retained for seven days by default. Set `AGENT_TELEMETRY_RETENTION_DAYS` to an integer from 1 through 365 to change that retention period.
+The optional Homelab Inventory Agent uses outbound-only HTTPS and scopes one Ed25519 device identity to one server, NAS device, or custom PC build. Signed protocol-v1 heartbeats are stored independently in `/data/databases/telemetry.sqlite`; they do not create workspace history or advance the project revision. Raw samples are retained for seven days by default. Set `AGENT_TELEMETRY_RETENTION_DAYS` to an integer from 1 through 365 to change that retention period.
 
 Open a compute host's **Agent** tab to create a one-time enrollment and copy the generated Linux or FreeBSD/OPNsense installation command. Each application image embeds a pinned, reproducibly built release for Linux AMD64, Linux ARM64, and FreeBSD AMD64. The server verifies every embedded artifact before startup and serves immutable versioned downloads from your own installation.
 

@@ -1,6 +1,8 @@
 # Data Migrations
 
-Homelab Inventory upgrades its lowdb JSON stores automatically when the application starts with an older schema. Migrations run in order, so an installation can skip application versions without manually applying each intermediate change.
+Homelab Inventory upgrades older JSON schemas in order, then imports them into its active SQLite persistence layer. Newer releases apply only committed, checksummed SQLite migrations. An installation can skip application versions without manually applying each intermediate change.
+
+For the one-time persistence cutover, database paths, verification, backup compatibility, and rollback procedure, read [SQLite Persistence Migration](SQLITE_MIGRATION.md).
 
 ## Before Upgrading
 
@@ -29,13 +31,13 @@ The migration does not enable notifications, create contact credentials, or alte
 
 On startup, the server:
 
-1. Reads the schema version from `/data/meta.json`.
-2. Acquires `/data/.schema-migration.lock` so two processes cannot migrate the same stores.
-3. Creates a complete pre-migration backup.
-4. Applies every required migration in order.
-5. Validates inventory, assignments, connections, relational IDs, and registry state.
-6. Writes the data stores before advancing the schema marker.
-7. Records a safe migration summary in `meta.json` and removes the lock.
+1. Upgrades any legacy JSON source to the latest supported import schema in an isolated copy.
+2. Acquires a private migration lock so two processes cannot migrate the same data.
+3. Creates and verifies a complete pre-migration backup.
+4. Applies every required checksummed migration in order.
+5. Validates inventory, assignments, connections, relational IDs, Registry state, database integrity, and foreign keys.
+6. Activates the staged databases atomically before writing the SQLite persistence marker.
+7. Removes the lock only after startup can reopen the complete database set.
 
 The first start after a schema upgrade can take longer than a normal restart. Do not stop the container while migration logs are active. If a migration or write fails, startup stops and restores the pre-migration stores rather than serving partially migrated data.
 

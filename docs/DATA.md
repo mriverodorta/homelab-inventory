@@ -1,21 +1,16 @@
 # Data Model And Persistence
 
-Homelab Inventory stores data in JSON files managed through lowdb.
+Homelab Inventory stores active runtime data in three SQLite databases. Legacy JSON stores are supported only as automatic migration sources.
 
 ## Runtime Layout
 
 ```txt
 /data
-  meta.json
-  stores/
-    inventory.json
-    project.json
-    agents.json
-    agent-status.json
-    registry.json
-    routing-cache.json
-    backup-management.json
-    authentication.json
+  databases/
+    homelab-inventory.sqlite
+    telemetry.sqlite
+    catalog.sqlite
+    persistence-engine.json
   backups/
   auth/
     oidc-client-secret
@@ -23,30 +18,25 @@ Homelab Inventory stores data in JSON files managed through lowdb.
     installation-instance.json
     installation-ed25519.pem
     installation-credentials.json
-  telemetry/
-    telemetry.sqlite
+  stores/                       # retained legacy migration sources
 ```
 
-## Stores
+## Databases
 
-- `inventory.json`: hardware records grouped by category.
-- `project.json`: canvas layout, assignments, cables, and project state.
-- `agents.json`: enrolled agent credentials and ownership.
-- `agent-status.json`: latest public agent status projection and retained reviewed hardware evidence.
-- `telemetry/telemetry.sqlite`: bounded raw heartbeat history and latest service, container, and storage-health projections. It is independent from workspace revision persistence.
-- `registry.json`: registry preferences, private templates, catalog links, contribution outbox/ledger records, and public enrollment metadata.
-- `routing-cache.json`: disposable generated cable routes; this can be rebuilt from canonical project data.
-- `backup-management.json`: scheduled-backup preferences and backup/restore history. Backup contents are never embedded in this store.
-- `authentication.json`: accounts, Argon2id credential hashes, OIDC identities, roles, permission relationships, invitations, identity-link requests, sessions, recovery grants, and bounded local security events.
-- `meta.json`: database schema version and metadata.
+- `databases/homelab-inventory.sqlite`: normalized inventory, projects, workspaces, assignments, connections, settings, authentication, authorization, Registry relationships, Agent enrollment, notifications, backup metadata, and disposable route cache.
+- `databases/telemetry.sqlite`: bounded raw heartbeat history and latest host, service, container, storage, and virtualization projections. It is independent from workspace revision persistence.
+- `databases/catalog.sqlite`: disposable local search index built from verified signed Registry artifacts.
+- `databases/persistence-engine.json`: private activation marker recording the active engine, independent database schema versions, migration backup, and activation time.
+
+SQLite relationships use positive numeric primary and foreign keys. Runtime identifiers such as `server:7` exist only at API and view boundaries. Core connections use WAL mode, enforce foreign keys, validate integrity on startup, and keep bounded in-process read caches rather than loading the complete database as a mutable object graph.
 
 ## Migrations
 
-The server checks `meta.json` on startup. When the schema version is older than the app expects, migrations run in order and create a backup before changing data.
+The server checks the activation marker and each database schema on startup. Committed, checksummed migrations run in order and create a verified backup before changing data.
 
 This lets a deployment skip app versions without manually applying every intermediate migration.
 
-See [MIGRATIONS.md](MIGRATIONS.md) for pre-upgrade, verification, Docker, interruption recovery, and rollback procedures.
+See [SQLITE_MIGRATION.md](SQLITE_MIGRATION.md) and [MIGRATIONS.md](MIGRATIONS.md) for pre-upgrade, verification, Docker, interruption recovery, and rollback procedures.
 
 ### Schema 7 Compatibility Data
 
@@ -62,11 +52,11 @@ The official catalog remains optional. Disabled registry mode performs no catalo
 
 ### Schema 15 Registry Data
 
-Schema 15 adds `stores/registry.json` as an independent lowdb store. Private templates, official sources, inventory links, and contribution records use positive numeric IDs and explicit foreign keys. Private templates and contribution payloads contain only reusable hardware identity, specifications, compatibility, and physical port structure. Device properties, addresses, notes, assignments, connections, canvas positions, agent data, and smart-device instance configuration are excluded.
+Schema 15 originally added `stores/registry.json` to legacy installations. Its data now imports into normalized SQLite Registry tables. Private templates, official sources, inventory links, and contribution records use positive numeric IDs and explicit foreign keys. Private templates and contribution payloads contain only reusable hardware identity, specifications, compatibility, and physical port structure. Device properties, addresses, notes, assignments, connections, canvas positions, agent data, and smart-device instance configuration are excluded.
 
 Verified signed artifacts are retained as immutable generations under `/data/catalog/generations`. Each generation keeps its signed snapshot, digest index, and disposable SQLite search index together, while `/data/catalog/active-generation.json` identifies the active generation. The backend can recover that pointer and rebuild a missing search index from the verified artifacts after an interrupted update. Catalog links never use names or UI keys as relationships.
 
-The app creates `/data/registry/installation-instance.json` with a random UUID v4 and mode `0600`, then retains it for the lifetime of that deployment. When automatic contributions are explicitly enabled, `/data/registry/installation-ed25519.pem` and `/data/registry/installation-credentials.json` are also created with mode `0600`. The UUID identifies the logical installation while Ed25519 keys authenticate it; it is never derived from a hostname, address, or hardware fingerprint. The private key and short-lived token never enter lowdb or browser API responses. Authenticated rotation changes the key without changing the installation UUID, and a missing key enters owner-reviewed recovery instead of enrolling a duplicate installation.
+The app creates `/data/registry/installation-instance.json` with a random UUID v4 and mode `0600`, then retains it for the lifetime of that deployment. When automatic contributions are explicitly enabled, `/data/registry/installation-ed25519.pem` and `/data/registry/installation-credentials.json` are also created with mode `0600`. The UUID identifies the logical installation while Ed25519 keys authenticate it; it is never derived from a hostname, address, or hardware fingerprint. The private key and short-lived token never enter SQLite or browser API responses. Authenticated rotation changes the key without changing the installation UUID, and a missing key enters owner-reviewed recovery instead of enrolling a duplicate installation.
 
 ### Schema 16 Physical RAM Records
 
@@ -76,13 +66,13 @@ The migration refuses ambiguous or inconsistent kit data instead of guessing. A 
 
 ### Schema 21 Owner Authentication
 
-Schema 21 adds `stores/authentication.json` with numeric primary and foreign keys. Existing installations migrate with authentication disabled so an unattended Docker update cannot lock out the owner. A genuinely fresh production data directory starts with one-time owner setup enabled. OIDC client secrets live outside lowdb under `/data/auth` with mode `0600`.
+Schema 21 originally added `stores/authentication.json` with numeric primary and foreign keys. Existing installations still migrate with authentication disabled so an unattended Docker update cannot lock out the owner. A genuinely fresh production data directory starts with one-time owner setup enabled. OIDC client secrets remain outside SQLite under `/data/auth` with mode `0600`.
 
 ### Schema 23 Multi-User Authorization
 
 Schema 23 upgrades the authentication store to relational accounts, local credentials, OIDC identities, global roles, role-permission relationships, account-role assignments, invitations, and identity-link requests. It creates built-in Owner, Administrator, Editor, and Viewer roles, preserves the existing authentication mode and original account, and assigns the protected Owner role to that account. The migration creates a backup first and retains positive numeric primary and foreign keys throughout.
 
-The application compiles those canonical LowDB relationships into an in-memory Casbin policy at startup and after access changes. LowDB remains the source of truth for backup and future database migration; Casbin policy is derived runtime state and is never persisted as a second authority.
+The application compiles canonical SQLite authorization relationships into an in-memory Casbin policy at startup and after access changes. SQLite remains the authority; Casbin policy is derived runtime state and is never persisted as a second authority.
 
 ## Backups
 
@@ -92,7 +82,7 @@ Portable user backups are written under:
 /data/backups/user
 ```
 
-Create and restore them from **Settings > Backup & Restore**. Complete archives contain every portable section; custom archives can contain selected stores, registry credentials, signed catalog state, agents, telemetry, metadata, or the routing cache. The Agent telemetry section includes both `agent-status.json` and a versioned export of every retained SQLite telemetry table. A complete archive can be partially restored later. Restore replaces selected sections and never merges records.
+Create and restore them from **Settings > Backup & Restore**. Complete archives contain every portable section; custom archives can contain selected logical domains, Registry credentials, signed catalog state, Agents, telemetry, metadata, or the routing cache. The Agent telemetry section includes the latest Agent projection and a versioned export of every retained telemetry table. A complete archive can be partially restored later. Restore replaces selected sections and never merges records.
 
 The restore preflight validates archive bounds, paths, hashes, schema compatibility, and dependencies before writes begin. The app then creates a complete pre-restore backup and uses maintenance mode plus a durable journal so failed or interrupted replacement can be rolled back. Backup history itself is excluded from archives to prevent recursion.
 

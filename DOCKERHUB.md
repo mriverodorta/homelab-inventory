@@ -68,7 +68,7 @@ The app has three main parts:
 
 - **Inventory**: hardware records such as servers, NAS devices, custom PC builds, reusable components, monitors, UPS systems, power strips, switches, and patch panels.
 - **Canvas**: a visual workspace where inventory items are placed, assigned, connected, moved, and inspected.
-- **JSON database**: lowdb-backed JSON stores under `/data`, kept separate from the container image.
+- **SQLite persistence**: independent core, telemetry, and local catalog databases under `/data`, kept separate from the container image.
 
 Inventory items can be created from the web interface. Once hardware exists in the inventory, you can place hosts and standalone equipment on the canvas, assemble custom PC builds from reusable components, and connect compatible network, display, and power endpoints directly.
 
@@ -169,33 +169,31 @@ The data layout is:
 
 ```txt
 /data
-  meta.json
-  stores/
-    inventory.json
-    project.json
-    agents.json
-    agent-status.json
-    registry.json
-    routing-cache.json
-    backup-management.json
-    authentication.json
+  databases/
+    homelab-inventory.sqlite
+    telemetry.sqlite
+    catalog.sqlite
+    persistence-engine.json
   backups/
   auth/
   registry/
     installation-instance.json
     installation-ed25519.pem
     installation-credentials.json
-  telemetry/
-    telemetry.sqlite
+  stores/                       # retained legacy migration sources
 ```
 
 Only one app container should write to the same mounted `/data` directory.
+
+Existing JSON installations migrate automatically on first startup after a verified complete backup. The original JSON files remain unchanged but stop being active stores after SQLite activation. Review the [SQLite migration guide](https://github.com/mriverodorta/homelab-inventory/blob/main/docs/SQLITE_MIGRATION.md) before upgrading.
 
 ## Backup And Restore
 
 **Settings > Backup & Restore** creates portable `.hlibackup` archives. Use a complete backup for every portable section or select only inventory, project topology, registry configuration and enrollment, catalog state, agents, telemetry, application metadata, or the disposable cable-routing cache. Agent telemetry includes the retained SQLite sample and service/container/storage-health history. Restore can replace the complete backup or only selected sections from it.
 
 Every restore performs bounded archive and checksum validation, a dependency-aware preflight, a complete pre-restore recovery backup, maintenance mode, and a journaled atomic replacement. Failed or interrupted restores roll back automatically. Registry-enrollment backups carry the stable installation UUID, signing key, and credentials as one validated set. Archives containing registry enrollment or agent credentials require a passphrase before download and use scrypt with AES-256-GCM when encrypted.
+
+SQLite deployments export format 2 logical archives with independent core, telemetry, and catalog schema versions. Supported format 1 archives remain importable, and uploaded SQLite files are never copied directly over the active database.
 
 Daily or weekly complete backups support a configurable time, weekday, timezone, and retention count. Docker `TZ` takes precedence over the UI timezone. Set `BACKUP_ENCRYPTION_PASSPHRASE` to at least 12 characters to encrypt scheduled stored backups. It is required for scheduled backups once owner-authentication material exists. Authentication is omitted from custom archives by default and can be exported only with archive encryption. Keep encryption passphrases outside the app.
 
@@ -212,7 +210,7 @@ The image is intended to work well with Watchtower:
 
 New package versions promoted through `stable` publish `stable`, immutable `X.Y.Z`, and moving `X.Y` tags. The matching Git tag and GitHub Release are created only after the multi-platform image is verified. Existing numbered images are never overwritten.
 
-The app tracks a database schema version in `/data/meta.json`. When schema changes are introduced, migrations run on startup and create backups before modifying data.
+The app tracks independent core, telemetry, and catalog schema versions in SQLite. Checksummed migrations run on startup and create verified backups before modifying data.
 
 Ordered startup migrations cover compatibility profiles, physical RAM records, stable registry identity, typed Agent relationships, and current motherboard topology. They create verified backups and preserve inventory relationships before changing persisted data. Review the full [migration guide](https://github.com/mriverodorta/homelab-inventory/blob/main/docs/MIGRATIONS.md) before upgrading across multiple schema versions.
 
@@ -230,7 +228,7 @@ When an update exists, the app provides **Check now**, **Skip this version**, an
 
 The Agent tab on a server, NAS device, or custom PC build creates a one-time enrollment and generates the appropriate Linux or FreeBSD/OPNsense install command. Every application image embeds pinned, checksummed binaries for Linux AMD64, Linux ARM64, and FreeBSD AMD64. Downloads are served by your own Homelab Inventory instance, and each Ed25519 device identity is permanently scoped to one host record.
 
-Signed one-minute telemetry is outbound-only and stored independently under `/data/telemetry/telemetry.sqlite`, so it does not modify inventory, canvas history, assignments, or cables. Agent views can show health and heartbeat history, OS version, uptime, CPU, memory, local storage and mounts, filtered services, and opt-in Docker or Podman container details. Container telemetry supports a credential-free loopback proxy or reviewed direct-socket access and excludes secrets, commands, environment variables, mounts, addresses, and raw inspect payloads.
+Signed one-minute telemetry is outbound-only and stored independently in `/data/databases/telemetry.sqlite`, so it does not modify inventory, canvas history, assignments, or cables. Agent views can show health and heartbeat history, OS version, uptime, CPU, memory, local storage and mounts, filtered services, and opt-in Docker or Podman container details. Container telemetry supports a credential-free loopback proxy or reviewed direct-socket access and excludes secrets, commands, environment variables, mounts, addresses, and raw inspect payloads.
 
 Complete hardware discovery is a separate reviewed `sudo homelab-inventory-agent inventory` command. Detected data remains private and is offered as individual inventory-field suggestions rather than changing records automatically. Updates are explicit and verified, and unlinking retains telemetry unless the administrator selects the separate deletion option.
 
