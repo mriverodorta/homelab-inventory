@@ -42,7 +42,7 @@ describe('core SQLite foundation schema', () => {
       'inventoryIdentityAliases',
       'cpuSocketTypes',
     ]))
-    expect(CORE_MIGRATIONS).toHaveLength(7)
+    expect(CORE_MIGRATIONS).toHaveLength(8)
   })
 
   test('maps all 20 inventory categories to shared-primary-key subtype tables', () => {

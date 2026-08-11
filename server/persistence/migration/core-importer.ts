@@ -539,9 +539,19 @@ function importAgents(database: Database, snapshot: LegacySnapshot, plan: Canoni
   for (const agent of records(snapshot.agents?.devices)) {
     const id = plan.agents.get(String(agent.id))
     database.query('INSERT INTO agents (id, public_key, protocol_major, agent_version, capabilities_json, last_sequence, last_seen_at_ms, revoked_at_ms, created_at_ms) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)').run(id, agent.publicKey ?? `legacy-agent-${agent.id}`, positiveIntegerOrNull(agent.protocolMajor) ?? 1, agent.version ?? agent.agentVersion ?? 'legacy', json(agent.capabilities ?? {}), integerOrNull(agent.lastSequence) ?? 0, timestamp(agent.lastSeenAt, null as any), timestamp(agent.revokedAt, null as any), timestamp(agent.createdAt, now))
+    database.query('INSERT INTO agent_identity_aliases (agent_id, legacy_id, created_at_ms) VALUES (?, ?, ?)').run(id, agent.id, now)
     database.query('INSERT INTO agent_host_bindings (agent_id, host_item_id, state, bound_at_ms, unbound_at_ms) VALUES (?, ?, ?, ?, ?)').run(id, canonicalItemId(plan, agent.hostType, agent.hostId), agent.state ?? 'active', timestamp(agent.boundAt ?? agent.createdAt, now), timestamp(agent.unboundAt, null as any))
   }
-  database.query('INSERT INTO application_metadata (key, value_json, updated_at_ms) VALUES (?, ?, ?)').run('legacy.agent-extended-state', json({ enrollments: snapshot.agents?.enrollments ?? {}, hardwareSnapshots: snapshot.agents?.hardwareSnapshots ?? {}, hardwareEvents: snapshot.agents?.hardwareEvents ?? {}, status: snapshot.agentStatus ?? {} }), now)
+  for (const enrollment of records(snapshot.agents?.enrollments)) {
+    database.query('INSERT INTO agent_enrollment_codes (id, host_item_id, token_hash, expires_at_ms, used_at_ms, revoked_at_ms, created_at_ms) VALUES (?, ?, ?, ?, ?, ?, ?)').run(enrollment.id, canonicalItemId(plan, enrollment.hostType, enrollment.hostId), enrollment.tokenHash, timestamp(enrollment.expiresAt), timestamp(enrollment.usedAt, null as any), timestamp(enrollment.revokedAt, null as any), timestamp(enrollment.createdAt, now))
+  }
+  database.query('INSERT INTO application_metadata (key, value_json, updated_at_ms) VALUES (?, ?, ?)').run('legacy.agent-extended-state', json({
+    enrollments: snapshot.agents?.enrollments ?? {},
+    deviceExtensions: Object.fromEntries(records(snapshot.agents?.devices).map((device) => [String(device.id), device])),
+    hardwareSnapshots: snapshot.agents?.hardwareSnapshots ?? {},
+    hardwareEvents: snapshot.agents?.hardwareEvents ?? {},
+    status: snapshot.agentStatus ?? {},
+  }), now)
 }
 
 function importAuthentication(database: Database, snapshot: LegacySnapshot, now: number) {

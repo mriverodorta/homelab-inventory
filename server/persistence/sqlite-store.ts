@@ -9,7 +9,13 @@ import {
   normalizeInventoryRef,
 } from '../db/inventory-lifecycle.mjs'
 import { assertAuthenticationStoreShape, normalizeAuthenticationStore } from '../auth/model.mjs'
+import {
+  agentStatusTiming,
+  DEFAULT_AGENT_HEARTBEAT_INTERVAL_SECONDS,
+  resolveAgentStatusState,
+} from '../agents/status-model.mjs'
 import { assertBackupManagementStoreShape, normalizeBackupManagementStore } from '../backup/backup-model.mjs'
+import { timingSafeEqualString } from '../db/agent-auth.mjs'
 import { createEngineSnapshot } from '../engine/snapshot.mjs'
 import { assertRegistryStoreShape } from '../registry/model.mjs'
 import { INVENTORY_TYPES, type InventoryType } from './core/inventory/field-contract.ts'
@@ -17,6 +23,9 @@ import {
   persistAuthenticationState,
   persistBackupManagementState,
   persistRegistryState,
+  persistAgentExtendedState,
+  projectAgentState,
+  projectAgentStatusState,
   projectAuthenticationState,
   projectBackupManagementState,
   projectRegistryState,
@@ -24,6 +33,7 @@ import {
 import { buildLegacyProjectProjection } from './core/projections/legacy-project.ts'
 import { createRepositoryContext } from './core/repositories/index.ts'
 import { insertLegacyInventoryItem } from './migration/core-importer.ts'
+import { LEGACY_TABLE_BY_TYPE } from './legacy/identity-plan.ts'
 import { databaseStatus, type ManagedDatabase } from './sqlite/database.ts'
 import { databaseQuickCheck } from './sqlite/integrity.ts'
 
@@ -573,6 +583,286 @@ export class SqliteHomelabInventoryStore {
     return this.getBackupManagementState()
   }
 
+  listAgentEnrollments() {
+    return structuredClone(Object.values((projectAgentState(this.core.database) as Row).enrollments ?? {}))
+  }
+
+  findAgentEnrollment({ hostType, hostId, protocolMajor, tokenHash, nowMs = Date.now() }: Row) {
+    const record = this.listAgentEnrollments().find((candidate: Row) =>
+      candidate.hostType === hostType
+      && candidate.hostId === hostId
+      && (protocolMajor === undefined || candidate.protocolMajor === protocolMajor)
+      && !candidate.usedAt
+      && !candidate.revokedAt
+      && Date.parse(candidate.expiresAt) > nowMs
+      && timingSafeEqualString(candidate.tokenHash, tokenHash),
+    ) as Row | undefined
+    return record ? structuredClone(record) : null
+  }
+
+  findAgentDevice({ deviceId, hostType, hostId, protocolMajor, tokenHash, revoked = false }: Row) {
+    const devices = (projectAgentState(this.core.database) as Row).devices ?? {}
+    const candidates = deviceId === undefined
+      ? Object.values(devices)
+      : [devices[String(deviceId)]].filter(Boolean)
+    const record = candidates.find((candidate: any) =>
+      candidate.hostType === hostType
+      && candidate.hostId === hostId
+      && (protocolMajor === undefined || candidate.protocolMajor === protocolMajor)
+      && (revoked ? Boolean(candidate.revokedAt) : !candidate.revokedAt)
+      && (tokenHash === undefined || timingSafeEqualString(candidate.tokenHash, tokenHash)),
+    ) as Row | undefined
+    return record ? structuredClone(record) : null
+  }
+
+  createAgentEnrollment(input: Row) {
+    const hostId = positiveId(input.hostId, 'Agent host ID')
+    const hostItemId = this.resolveItem(input.hostType, hostId)
+    const state = projectAgentState(this.core.database) as Row
+    const status = projectAgentStatusState(this.core.database) as Row
+    const ids = Object.values(state.enrollments ?? {}).map((record: any) => record.id)
+    const id = Math.max(0, ...ids) + 1
+    const record = { ...structuredClone(input), id, hostId }
+    this.core.database.transaction(() => {
+      for (const enrollment of Object.values(state.enrollments ?? {}) as Row[]) {
+        if (enrollment.hostType !== input.hostType || enrollment.hostId !== hostId || enrollment.usedAt || enrollment.revokedAt) continue
+        enrollment.revokedAt = input.createdAt
+        this.core.database.query('UPDATE agent_enrollment_codes SET revoked_at_ms = ? WHERE id = ?')
+          .run(toMilliseconds(input.createdAt, this.now()), enrollment.id)
+      }
+      state.enrollments[String(id)] = record
+      this.core.database.query(`
+        INSERT INTO agent_enrollment_codes (
+          id, host_item_id, token_hash, expires_at_ms, used_at_ms, revoked_at_ms, created_at_ms
+        ) VALUES (?, ?, ?, ?, NULL, NULL, ?)
+      `).run(id, hostItemId, input.tokenHash, toMilliseconds(input.expiresAt, this.now()), toMilliseconds(input.createdAt, this.now()))
+      persistAgentExtendedState(this.core.database, state, status, this.now())
+    }).immediate()
+    return structuredClone(record)
+  }
+
+  activateAgentEnrollment({ enrollmentId, device }: { enrollmentId: number; device: Row }) {
+    const state = projectAgentState(this.core.database) as Row
+    const status = projectAgentStatusState(this.core.database) as Row
+    const enrollment = state.enrollments?.[String(enrollmentId)]
+    if (!enrollment || enrollment.usedAt || enrollment.revokedAt) {
+      throw lifecycleError('Enrollment is no longer available.', 'agent-enrollment-unavailable', 409)
+    }
+    if (enrollment.hostType !== device.hostType || enrollment.hostId !== device.hostId || (enrollment.protocolMajor !== undefined && enrollment.protocolMajor !== device.protocolMajor)) {
+      throw lifecycleError('Enrollment does not belong to this agent host.', 'agent-enrollment-host-mismatch', 409)
+    }
+    const publicId = Math.max(0, ...Object.values(state.devices ?? {}).map((record: any) => record.id)) + 1
+    const created = { ...structuredClone(device), id: publicId }
+    const revokedDeviceIds: number[] = []
+    const now = toMilliseconds(device.createdAt, this.now())
+    this.core.database.transaction(() => {
+      enrollment.usedAt = device.createdAt
+      this.core.database.query('UPDATE agent_enrollment_codes SET used_at_ms = ? WHERE id = ?').run(now, enrollmentId)
+      const hostItemId = this.resolveItem(device.hostType, device.hostId)
+      const active = this.core.database.query(`
+        SELECT a.id, alias.legacy_id
+        FROM agents a
+        JOIN agent_identity_aliases alias ON alias.agent_id = a.id
+        JOIN agent_host_bindings binding ON binding.agent_id = a.id
+        WHERE binding.host_item_id = ? AND binding.state = 'active' AND a.revoked_at_ms IS NULL
+      `).all(hostItemId) as Row[]
+      for (const existing of active) {
+        revokedDeviceIds.push(existing.legacy_id)
+        this.core.database.query('UPDATE agents SET revoked_at_ms = ? WHERE id = ?').run(now, existing.id)
+        this.core.database.query("UPDATE agent_host_bindings SET state = 'replaced', unbound_at_ms = ? WHERE agent_id = ? AND state = 'active'").run(now, existing.id)
+      }
+      const inserted = this.core.database.query(`
+        INSERT INTO agents (
+          public_key, protocol_major, agent_version, capabilities_json,
+          last_sequence, last_seen_at_ms, revoked_at_ms, created_at_ms
+        ) VALUES (?, ?, ?, ?, ?, ?, NULL, ?) RETURNING id
+      `).get(
+        device.publicKey,
+        device.protocolMajor,
+        device.agentVersion ?? device.version,
+        JSON.stringify(device.capabilities ?? {}),
+        device.lastSequence ?? 0,
+        device.lastSeenAt ? toMilliseconds(device.lastSeenAt, now) : null,
+        now,
+      ) as { id: number }
+      this.core.database.query('INSERT INTO agent_identity_aliases (agent_id, legacy_id, created_at_ms) VALUES (?, ?, ?)').run(inserted.id, publicId, now)
+      this.core.database.query("INSERT INTO agent_host_bindings (agent_id, host_item_id, state, bound_at_ms, unbound_at_ms) VALUES (?, ?, 'active', ?, NULL)").run(inserted.id, hostItemId, now)
+      state.devices[String(publicId)] = created
+      persistAgentExtendedState(this.core.database, state, status, this.now())
+    }).immediate()
+    return { device: structuredClone(created), revokedDeviceIds }
+  }
+
+  recordAgentHeartbeat({ deviceId, host, sequence, status }: { deviceId: number; host: Row; sequence?: number; status: Row }) {
+    const state = projectAgentState(this.core.database) as Row
+    const statuses = projectAgentStatusState(this.core.database) as Row
+    const device = state.devices?.[String(deviceId)]
+    if (!device || device.revokedAt) throw lifecycleError('Agent device is not active.', 'agent-device-unavailable', 409)
+    if (device.hostType !== host.hostType || device.hostId !== host.hostId) {
+      throw lifecycleError('Agent device does not belong to this host.', 'agent-device-host-mismatch', 409)
+    }
+    this.core.database.transaction(() => {
+      const canonicalId = this.resolveAgent(deviceId)
+      if (sequence !== undefined) device.lastSequence = sequence
+      device.lastSeenAt = status.lastSeenAt
+      device.agentVersion = status.agentVersion
+      device.version = status.agentVersion
+      if (status.capabilities !== undefined) device.capabilities = structuredClone(status.capabilities)
+      this.core.database.query(`
+        UPDATE agents SET last_sequence = ?, last_seen_at_ms = ?, agent_version = ?,
+          capabilities_json = ? WHERE id = ?
+      `).run(
+        device.lastSequence ?? 0,
+        toMilliseconds(status.lastSeenAt, this.now()),
+        device.agentVersion,
+        JSON.stringify(device.capabilities ?? {}),
+        canonicalId,
+      )
+      statuses.hosts ??= {}
+      statuses.hosts[`${host.hostType}:${host.hostId}`] = { hostType: host.hostType, hostId: host.hostId, ...structuredClone(status) }
+      persistAgentExtendedState(this.core.database, state, statuses, this.now())
+    }).immediate()
+    return { device: structuredClone(device), status: structuredClone(statuses.hosts[`${host.hostType}:${host.hostId}`]) }
+  }
+
+  async saveAgentHardwareSnapshot(input: Row) {
+    const state = projectAgentState(this.core.database) as Row
+    const statuses = projectAgentStatusState(this.core.database) as Row
+    const device = state.devices?.[String(input.deviceId)]
+    if (!device || device.revokedAt) throw new Error('Agent device is not active.')
+    if (device.hostType !== input.hostType || device.hostId !== input.hostId || device.protocolMajor !== input.protocolMajor) {
+      throw new Error('Agent device does not belong to this hardware snapshot host.')
+    }
+    const snapshots = state.hardwareSnapshots ?? {}
+    const events = state.hardwareEvents ?? {}
+    const previous = Object.values(snapshots).find((record: any) => record.hostType === input.hostType && record.hostId === input.hostId) as Row | undefined
+    const snapshotId = previous?.id ?? Math.max(0, ...Object.values(snapshots).map((record: any) => record.id)) + 1
+    const snapshot = {
+      id: snapshotId,
+      deviceId: input.deviceId,
+      hostType: input.hostType,
+      hostId: input.hostId,
+      protocolMajor: input.protocolMajor,
+      collectedAt: input.collectedAt,
+      receivedAt: input.receivedAt,
+      host: structuredClone(input.host),
+      components: structuredClone(input.components),
+    }
+    this.core.database.transaction(() => {
+      snapshots[String(snapshotId)] = snapshot
+      if (previous) {
+        const eventId = Math.max(0, ...Object.values(events).map((record: any) => record.id)) + 1
+        events[String(eventId)] = {
+          id: eventId,
+          snapshotId,
+          deviceId: input.deviceId,
+          hostType: input.hostType,
+          hostId: input.hostId,
+          componentCountBefore: previous.components.length,
+          componentCountAfter: input.components.length,
+          changedKinds: [],
+          createdAt: input.receivedAt,
+        }
+      }
+      state.hardwareSnapshots = snapshots
+      state.hardwareEvents = events
+      const canonicalAgentId = this.resolveAgent(input.deviceId)
+      const hostItemId = this.resolveItem(input.hostType, input.hostId)
+      this.core.database.query(`
+        INSERT INTO agent_hardware_snapshots (
+          agent_id, host_item_id, sequence, payload_json, collected_at_ms, received_at_ms
+        ) VALUES (?, ?, ?, ?, ?, ?)
+      `).run(canonicalAgentId, hostItemId, input.sequence, JSON.stringify(snapshot), toMilliseconds(input.collectedAt, this.now()), toMilliseconds(input.receivedAt, this.now()))
+      this.core.database.query('UPDATE agents SET last_sequence = ? WHERE id = ?').run(input.sequence, canonicalAgentId)
+      persistAgentExtendedState(this.core.database, state, statuses, this.now())
+    }).immediate()
+    return structuredClone(snapshot)
+  }
+
+  getAgentHardwareContext(hostType: string, hostId: number) {
+    const state = projectAgentState(this.core.database) as Row
+    const snapshot = Object.values(state.hardwareSnapshots ?? {}).find((record: any) => record.hostType === hostType && record.hostId === hostId) ?? null
+    const project = this.getProject()
+    const inventory = Object.fromEntries(Object.values(LEGACY_TABLE_BY_TYPE).map((table) => [table, []])) as Row
+    for (const item of Object.values(project.items)) inventory[LEGACY_TABLE_BY_TYPE[item.type as InventoryType]].push(structuredClone(item))
+    return { snapshot: snapshot ? structuredClone(snapshot) : null, inventory, project: structuredClone(project) }
+  }
+
+  revokeAgentRegistration(hostType: string, hostId: number) {
+    const state = projectAgentState(this.core.database) as Row
+    const statuses = projectAgentStatusState(this.core.database) as Row
+    const revokedAt = new Date(this.now()).toISOString()
+    const revokedDeviceIds: number[] = []
+    let revoked = 0
+    this.core.database.transaction(() => {
+      for (const enrollment of Object.values(state.enrollments ?? {}) as Row[]) {
+        if (enrollment.hostType !== hostType || enrollment.hostId !== hostId || enrollment.revokedAt) continue
+        enrollment.revokedAt = revokedAt
+        this.core.database.query('UPDATE agent_enrollment_codes SET revoked_at_ms = ? WHERE id = ?').run(this.now(), enrollment.id)
+        revoked += 1
+      }
+      for (const device of Object.values(state.devices ?? {}) as Row[]) {
+        if (device.hostType !== hostType || device.hostId !== hostId || device.revokedAt) continue
+        device.revokedAt = revokedAt
+        const canonicalId = this.resolveAgent(device.id)
+        this.core.database.query('UPDATE agents SET revoked_at_ms = ? WHERE id = ?').run(this.now(), canonicalId)
+        this.core.database.query("UPDATE agent_host_bindings SET state = 'revoked', unbound_at_ms = ? WHERE agent_id = ? AND state = 'active'").run(this.now(), canonicalId)
+        revokedDeviceIds.push(device.id)
+        revoked += 1
+      }
+      persistAgentExtendedState(this.core.database, state, statuses, this.now())
+    }).immediate()
+    return { revoked, revokedAt, revokedDeviceIds }
+  }
+
+  hasActiveAgentRegistration(hostType: string, hostId: number, { pendingEnrollmentsOnly = false } = {}) {
+    const state = projectAgentState(this.core.database) as Row
+    const activeEnrollment = Object.values(state.enrollments ?? {}).some((record: any) => record.hostType === hostType && record.hostId === hostId && !record.revokedAt && (!pendingEnrollmentsOnly || !record.usedAt) && (!record.expiresAt || Date.parse(record.expiresAt) > Date.now()))
+    const activeDevice = Object.values(state.devices ?? {}).some((record: any) => record.hostType === hostType && record.hostId === hostId && !record.revokedAt)
+    return activeEnrollment || activeDevice
+  }
+
+  clearAgentRuntimeData(hostType: string, hostId: number) {
+    const state = projectAgentState(this.core.database) as Row
+    const statuses = projectAgentStatusState(this.core.database) as Row
+    delete statuses.hosts?.[`${hostType}:${hostId}`]
+    const snapshotIds = new Set<number>()
+    for (const [key, snapshot] of Object.entries(state.hardwareSnapshots ?? {}) as Array<[string, Row]>) {
+      if (snapshot.hostType === hostType && snapshot.hostId === hostId) {
+        snapshotIds.add(snapshot.id)
+        delete state.hardwareSnapshots[key]
+      }
+    }
+    for (const [key, event] of Object.entries(state.hardwareEvents ?? {}) as Array<[string, Row]>) {
+      if ((event.hostType === hostType && event.hostId === hostId) || snapshotIds.has(event.snapshotId)) delete state.hardwareEvents[key]
+    }
+    this.core.database.transaction(() => {
+      const itemId = this.resolveItem(hostType, hostId)
+      this.core.database.query('DELETE FROM agent_hardware_snapshots WHERE host_item_id = ?').run(itemId)
+      persistAgentExtendedState(this.core.database, state, statuses, this.now())
+    }).immediate()
+    return this.getAgentStatusSummary()
+  }
+
+  getAgentStatusSummary({ heartbeatIntervalSeconds = DEFAULT_AGENT_HEARTBEAT_INTERVAL_SECONDS, now = Date.now() }: Row = {}) {
+    const timing = agentStatusTiming(heartbeatIntervalSeconds)
+    const devices = (projectAgentState(this.core.database) as Row).devices ?? {}
+    const statuses = (projectAgentStatusState(this.core.database) as Row).hosts ?? {}
+    const hosts = Object.fromEntries(Object.entries(statuses).map(([hostKey, raw]) => {
+      const status = raw as Row
+      const connected = Object.values(devices).some((device: any) => device.hostType === status.hostType && device.hostId === status.hostId && !device.revokedAt)
+      const { state, ageMs } = resolveAgentStatusState({ connected, lastSeenAt: status.lastSeenAt, now, timing })
+      return [hostKey, { ...status, state, ageMs, connected }]
+    }))
+    const registeredHosts = [...new Map(Object.values(devices).filter((device: any) => !device.revokedAt).map((device: any) => [`${device.hostType}:${device.hostId}`, { hostType: device.hostType, hostId: device.hostId }])).values()]
+    return {
+      hosts,
+      registeredHosts,
+      servers: Object.fromEntries(Object.values(hosts).filter((status: any) => status.hostType === 'server').map((status: any) => [String(status.hostId), { ...status, serverId: status.hostId }])),
+      registeredServerIds: registeredHosts.filter((host: any) => host.hostType === 'server').map((host: any) => host.hostId),
+    }
+  }
+
   getRoutingCache() {
     const envelope = metadata(this.core.database, 'legacy.routing-cache-envelope', {}) as Row
     const entries = this.core.database.query(`
@@ -857,6 +1147,14 @@ export class SqliteHomelabInventoryStore {
     `).get(type, positiveId(legacyId, 'Inventory item ID')) as { item_id: number } | null
     if (!row) throw lifecycleError(`Inventory item ${type}:${legacyId} does not exist.`, 'invalid-engine-patch', 500)
     return row.item_id
+  }
+
+  private resolveAgent(legacyId: number) {
+    const row = this.core.database.query(
+      'SELECT agent_id FROM agent_identity_aliases WHERE legacy_id = ?',
+    ).get(positiveId(legacyId, 'Agent device ID')) as { agent_id: number } | null
+    if (!row) throw lifecycleError(`Agent device ${legacyId} does not exist.`, 'agent-device-unavailable', 409)
+    return row.agent_id
   }
 
   private resolvePort(endpoint: TopologyEndpointRef) {

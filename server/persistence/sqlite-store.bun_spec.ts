@@ -50,7 +50,7 @@ describe('SQLite Homelab Inventory store facade', () => {
         group_id: 1,
         positions: [0],
       })
-      expect(store.getDatabaseStatus()).toMatchObject({ schemaVersion: 7 })
+      expect(store.getDatabaseStatus()).toMatchObject({ schemaVersion: 8 })
       expect(store.getPersistenceHealth()).toMatchObject({ ok: true, engine: 'sqlite' })
     } finally {
       store.close()
@@ -344,6 +344,64 @@ describe('SQLite Homelab Inventory store facade', () => {
       expect(backups.schedule).toMatchObject({ time: '04:15', retention: 21 })
       expect(backups.backups).toHaveLength(1)
       expect(backups.restores).toEqual([])
+    } finally {
+      store.close()
+    }
+  })
+
+  test('preserves public agent IDs and supports enrollment through heartbeat', async () => {
+    const store = await fixtureStore()
+    try {
+      expect(store.findAgentDevice({ deviceId: 4, hostType: 'server', hostId: 7, protocolMajor: 1 })).toMatchObject({
+        id: 4,
+        hostType: 'server',
+        hostId: 7,
+      })
+      const tokenHash = 'a'.repeat(64)
+      const enrollment = store.createAgentEnrollment({
+        hostType: 'server',
+        hostId: 7,
+        protocolMajor: 1,
+        tokenHash,
+        endpoint: 'https://inventory.example.test',
+        createdAt: '2026-08-12T01:00:00.000Z',
+        expiresAt: '2026-08-12T02:00:00.000Z',
+      })
+      expect(store.findAgentEnrollment({
+        hostType: 'server', hostId: 7, protocolMajor: 1, tokenHash,
+        nowMs: Date.parse('2026-08-12T01:30:00.000Z'),
+      })).toMatchObject({ id: enrollment.id })
+
+      const activated = store.activateAgentEnrollment({
+        enrollmentId: enrollment.id,
+        device: {
+          hostType: 'server',
+          hostId: 7,
+          protocolMajor: 1,
+          publicKey: 'replacement-agent-public-key',
+          agentVersion: '0.2.0',
+          capabilities: { hardware: true },
+          createdAt: '2026-08-12T01:05:00.000Z',
+          lastSeenAt: null,
+          lastSequence: 0,
+        },
+      })
+      expect(activated.revokedDeviceIds).toEqual([4])
+      expect(activated.device.id).toBe(5)
+      const heartbeat = store.recordAgentHeartbeat({
+        deviceId: 5,
+        host: { hostType: 'server', hostId: 7 },
+        sequence: 1,
+        status: {
+          lastSeenAt: '2026-08-12T01:06:00.000Z',
+          agentVersion: '0.2.0',
+          hostname: 'fixture-host',
+        },
+      })
+      expect(heartbeat.device.lastSequence).toBe(1)
+      expect(store.getAgentStatusSummary({ now: Date.parse('2026-08-12T01:06:30.000Z') }).hosts['server:7']).toMatchObject({
+        hostname: 'fixture-host', state: 'online', connected: true,
+      })
     } finally {
       store.close()
     }

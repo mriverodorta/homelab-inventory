@@ -373,6 +373,68 @@ export function projectBackupManagementState(database: Database) {
   }
 }
 
+export function projectAgentState(database: Database) {
+  const extended = metadata(database, 'legacy.agent-extended-state', {})
+  const devices = Object.fromEntries((database.query(`
+    SELECT a.*, identity.legacy_id, binding.state, binding.bound_at_ms,
+           binding.unbound_at_ms, item_alias.legacy_type_key,
+           item_alias.legacy_id AS legacy_host_id
+    FROM agents a
+    JOIN agent_identity_aliases identity ON identity.agent_id = a.id
+    JOIN agent_host_bindings binding ON binding.agent_id = a.id
+    JOIN inventory_identity_aliases item_alias ON item_alias.item_id = binding.host_item_id
+    ORDER BY identity.legacy_id
+  `).all() as Row[]).map((device) => {
+    const legacyId = device.legacy_id
+    return [String(legacyId), defined({
+      ...(extended.deviceExtensions?.[String(legacyId)] ?? {}),
+      id: legacyId,
+      hostType: device.legacy_type_key,
+      hostId: device.legacy_host_id,
+      publicKey: device.public_key,
+      protocolMajor: device.protocol_major,
+      agentVersion: device.agent_version,
+      version: device.agent_version,
+      capabilities: parse(device.capabilities_json, {}),
+      lastSequence: device.last_sequence,
+      lastSeenAt: iso(device.last_seen_at_ms) ?? null,
+      revokedAt: iso(device.revoked_at_ms),
+      state: device.state,
+      boundAt: iso(device.bound_at_ms),
+      unboundAt: iso(device.unbound_at_ms),
+      createdAt: iso(device.created_at_ms),
+    })]
+  }))
+  return {
+    enrollments: extended.enrollments ?? {},
+    devices,
+    hardwareSnapshots: extended.hardwareSnapshots ?? {},
+    hardwareEvents: extended.hardwareEvents ?? {},
+  }
+}
+
+export function projectAgentStatusState(database: Database) {
+  const extended = metadata(database, 'legacy.agent-extended-state', {})
+  return structuredClone(extended.status ?? { hosts: {} })
+}
+
+export function persistAgentExtendedState(
+  database: Database,
+  state: Row,
+  status: Row,
+  now: number,
+) {
+  putMetadata(database, 'legacy.agent-extended-state', {
+    enrollments: state.enrollments ?? {},
+    deviceExtensions: state.deviceExtensions ?? Object.fromEntries(
+      Object.entries(state.devices ?? {}).map(([id, device]) => [id, device]),
+    ),
+    hardwareSnapshots: state.hardwareSnapshots ?? {},
+    hardwareEvents: state.hardwareEvents ?? {},
+    status,
+  }, now)
+}
+
 export function persistBackupManagementState(database: Database, state: Row, now: number) {
   const schedule = state.schedule ?? {}
   database.query(`

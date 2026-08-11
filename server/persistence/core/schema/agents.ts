@@ -18,6 +18,17 @@ export const agents = sqliteTable('agents', {
   check('agents_capabilities_json_check', sql`json_valid(${table.capabilitiesJson})`),
 ])
 
+export const agentIdentityAliases = sqliteTable('agent_identity_aliases', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  agentId: integer('agent_id').notNull().references(() => agents.id, { onDelete: 'restrict' }),
+  legacyId: integer('legacy_id').notNull(),
+  createdAtMs: integer('created_at_ms').notNull(),
+}, (table) => [
+  uniqueIndex('agent_identity_aliases_agent_unique').on(table.agentId),
+  uniqueIndex('agent_identity_aliases_legacy_unique').on(table.legacyId),
+  check('agent_identity_aliases_legacy_id_check', sql`${table.legacyId} > 0`),
+])
+
 export const agentHostBindings = sqliteTable('agent_host_bindings', {
   id: integer('id').primaryKey({ autoIncrement: true }),
   agentId: integer('agent_id').notNull().references(() => agents.id, { onDelete: 'restrict' }),
