@@ -46,8 +46,8 @@ export function resetInitialBootstrap(): void {
 
 export async function consumeInitialBootstrap<K extends BootstrapKey>(
   key: K,
-  fallback: () => Promise<ApplicationBootstrap[K]>,
-): Promise<ApplicationBootstrap[K]> {
+  fallback: () => Promise<NonNullable<ApplicationBootstrap[K]>>,
+): Promise<NonNullable<ApplicationBootstrap[K]>> {
   if (!active || consumed.has(key)) return fallback()
 
   consumed.add(key)
@@ -55,7 +55,9 @@ export async function consumeInitialBootstrap<K extends BootstrapKey>(
 
   try {
     const value = (await request)[key]
-    return value ?? fallback()
+    return value === null || value === undefined
+      ? fallback()
+      : value as NonNullable<ApplicationBootstrap[K]>
   } catch {
     return fallback()
   }
