@@ -127,6 +127,7 @@ export const resourceIdentityAliases = sqliteTable('resource_identity_aliases', 
   legacyItemTypeKey: text('legacy_item_type_key').notNull(),
   legacyItemId: integer('legacy_item_id').notNull(),
   legacyResourceKey: text('legacy_resource_key').notNull(),
+  legacyResourceGroupId: integer('legacy_resource_group_id'),
   createdAtMs: integer('created_at_ms').notNull(),
 }, (table) => [
   uniqueIndex('resource_identity_aliases_legacy_unique').on(
@@ -136,4 +137,7 @@ export const resourceIdentityAliases = sqliteTable('resource_identity_aliases', 
   ),
   uniqueIndex('resource_identity_aliases_resource_unique').on(table.resourceId),
   check('resource_identity_aliases_item_id_check', sql`${table.legacyItemId} > 0`),
+  check('resource_identity_aliases_group_id_check', sql`
+    ${table.legacyResourceGroupId} IS NULL OR ${table.legacyResourceGroupId} > 0
+  `),
 ])

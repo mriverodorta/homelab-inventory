@@ -137,7 +137,8 @@ function hostCompatibility(database: Database, itemId: number) {
     moduleTypes: all(database, 'SELECT v.label FROM host_memory_module_type_support s JOIN memory_module_types v ON v.id = s.module_type_id WHERE s.memory_profile_id = ? ORDER BY s.id', memory.id).map((row) => row.label),
   })
   const groups = all(database, `
-    SELECT g.*, a.legacy_resource_key, s.pcie_generation, s.hot_swap, s.backplane, s.direct_connect,
+    SELECT g.*, a.legacy_resource_key, a.legacy_resource_group_id,
+           s.pcie_generation, s.hot_swap, s.backplane, s.direct_connect,
            e.interface_family, e.mechanical_lanes, e.electrical_lanes, e.max_slot_width,
            e.max_power_mw, e.proprietary_riser, e.riser_capability, e.riser_group
     FROM host_resource_groups g
@@ -154,8 +155,8 @@ function hostCompatibility(database: Database, itemId: number) {
     const collection = collectionByType[group.resource_type]
     if (!collection) continue
     host[collection] ??= []
-    const id = (collectionCounts.get(collection) ?? 0) + 1
-    collectionCounts.set(collection, id)
+    const id = group.legacy_resource_group_id ?? ((collectionCounts.get(collection) ?? 0) + 1)
+    collectionCounts.set(collection, Math.max(collectionCounts.get(collection) ?? 0, id))
     groupIds.set(group.id, id)
     const entry: Row = defined({ id, key: group.semantic_key, label: group.label, count: group.slot_count, requiredCpuSockets: group.required_cpu_sockets, location: group.location })
     const acceptedKinds = all(database, 'SELECT kind FROM resource_accepted_kinds WHERE resource_group_id = ? ORDER BY id', group.id).map((row) => row.kind)
@@ -317,21 +318,37 @@ export function buildLegacyProjectProjection({
   const assignments = all(database, `
     SELECT a.*, ha.legacy_type_key AS host_type, ha.legacy_id AS host_legacy_id,
            ca.legacy_type_key AS component_type, ca.legacy_id AS component_legacy_id,
-           g.resource_type, g.semantic_key, s.position
+           g.resource_type, g.semantic_key, s.position,
+           ra.legacy_resource_group_id AS legacy_group_id
     FROM component_assignments a
     JOIN inventory_identity_aliases ha ON ha.item_id = a.host_item_id
     JOIN inventory_identity_aliases ca ON ca.item_id = a.component_item_id
     LEFT JOIN host_resource_slots s ON s.id = a.resource_slot_id
     LEFT JOIN host_resource_groups g ON g.id = s.resource_group_id
+    LEFT JOIN resource_identity_aliases ra ON ra.resource_id = g.resource_identity_id
     WHERE a.project_id = ? ORDER BY a.id
-  `, projectId).map((row) => defined({
-    id: row.id,
-    serverId: `${row.host_type}:${row.host_legacy_id}`,
-    itemId: `${row.component_type}:${row.component_legacy_id}`,
-    type: row.component_type,
-    assignedAt: new Date(row.assigned_at_ms).toISOString(),
-    allocation: row.resource_type ? { resourceType: row.resource_type, resourceKey: row.semantic_key, positions: [row.position - 1] } : undefined,
-  }))
+  `, projectId).map((row) => {
+    const positions = all(database, `
+      SELECT s.position
+      FROM component_assignment_slots assigned
+      JOIN host_resource_slots s ON s.id = assigned.resource_slot_id
+      WHERE assigned.assignment_id = ?
+      ORDER BY assigned.position
+    `, row.id).map((slot) => slot.position - 1)
+    return defined({
+      id: row.id,
+      serverId: `${row.host_type}:${row.host_legacy_id}`,
+      itemId: `${row.component_type}:${row.component_legacy_id}`,
+      type: row.component_type,
+      assignedAt: new Date(row.assigned_at_ms).toISOString(),
+      allocation: row.resource_type ? defined({
+        resourceType: row.resource_type,
+        resourceKey: row.semantic_key,
+        groupId: row.legacy_group_id,
+        positions: positions.length ? positions : [row.position - 1],
+      }) : undefined,
+    })
+  })
   const connections = all(database, 'SELECT * FROM project_connections WHERE project_id = ? ORDER BY id', projectId).map((connection) => {
     const endpoints = all(database, `
       SELECT e.role, ip.item_id AS owner_item_id, ia.legacy_type_key AS owner_type,

@@ -92,7 +92,7 @@ describe('atomic SQLite persistence cutover', () => {
     await expect(ensureSqlitePersistence({ ...current.options, failAtStage: 'marker' })).rejects.toThrow('marker')
 
     const activated = await ensureSqlitePersistence(current.options)
-    expect(activated).toMatchObject({ ok: true, status: 'active', migrated: true, versions: { core: 4, telemetry: 2, catalog: 2 } })
+    expect(activated).toMatchObject({ ok: true, status: 'active', migrated: true, versions: { core: 6, telemetry: 2, catalog: 2 } })
     expect(await hashLegacyData(current.dataDir)).toEqual(before)
     expect(await readActivationMarker(current.dataDir)).not.toBeNull()
     expect((await stat(activated.paths.core)).mode & 0o777).toBe(0o600)

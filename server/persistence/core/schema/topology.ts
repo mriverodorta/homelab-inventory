@@ -22,6 +22,7 @@ export const componentAssignments = sqliteTable('component_assignments', {
   assignedAtMs: integer('assigned_at_ms').notNull(),
 }, (table) => [
   uniqueIndex('component_assignments_project_component_unique').on(table.projectId, table.componentItemId),
+  uniqueIndex('component_assignments_project_id_unique').on(table.projectId, table.id),
   uniqueIndex('component_assignments_project_slot_unique')
     .on(table.projectId, table.resourceSlotId)
     .where(sql`${table.resourceSlotId} IS NOT NULL`),
@@ -32,6 +33,30 @@ export const componentAssignments = sqliteTable('component_assignments', {
     foreignColumns: [hostResourceSlots.hostItemId, hostResourceSlots.id],
   }).onDelete('restrict'),
   check('component_assignments_distinct_items_check', sql`${table.hostItemId} <> ${table.componentItemId}`),
+])
+
+export const componentAssignmentSlots = sqliteTable('component_assignment_slots', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  projectId: integer('project_id').notNull(),
+  assignmentId: integer('assignment_id').notNull(),
+  hostItemId: integer('host_item_id').notNull(),
+  resourceSlotId: integer('resource_slot_id').notNull(),
+  position: integer('position').notNull(),
+}, (table) => [
+  uniqueIndex('component_assignment_slots_assignment_position_unique').on(table.assignmentId, table.position),
+  uniqueIndex('component_assignment_slots_assignment_slot_unique').on(table.assignmentId, table.resourceSlotId),
+  uniqueIndex('component_assignment_slots_project_slot_unique').on(table.projectId, table.resourceSlotId),
+  foreignKey({
+    name: 'component_assignment_slots_assignment_fk',
+    columns: [table.projectId, table.assignmentId],
+    foreignColumns: [componentAssignments.projectId, componentAssignments.id],
+  }).onDelete('cascade'),
+  foreignKey({
+    name: 'component_assignment_slots_host_slot_fk',
+    columns: [table.hostItemId, table.resourceSlotId],
+    foreignColumns: [hostResourceSlots.hostItemId, hostResourceSlots.id],
+  }).onDelete('restrict'),
+  check('component_assignment_slots_position_check', sql`${table.position} >= 0`),
 ])
 
 export const projectConnections = sqliteTable('project_connections', {

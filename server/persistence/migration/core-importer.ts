@@ -236,9 +236,9 @@ function importCompatibility(database: Database, itemId: number, item: LegacyRec
     const resourceIdentityId = plan.resourceGroups.get(groupKey)
     if (!resourceIdentityId) throw new Error(`Missing resource identity ${groupKey}.`)
     database.query('INSERT INTO inventory_resources (id, item_id, created_at_ms) VALUES (?, ?, ?)').run(resourceIdentityId, itemId, now)
-    database.query('INSERT INTO resource_identity_aliases (resource_id, legacy_item_type_key, legacy_item_id, legacy_resource_key, created_at_ms) VALUES (?, ?, ?, ?, ?)').run(resourceIdentityId, type, item.id, definition.key, now)
     const typed = typedCollections.get(definition.key)
     const entry = typed?.entry ?? {}
+    database.query('INSERT INTO resource_identity_aliases (resource_id, legacy_item_type_key, legacy_item_id, legacy_resource_key, legacy_resource_group_id, created_at_ms) VALUES (?, ?, ?, ?, ?, ?)').run(resourceIdentityId, type, item.id, definition.key, positiveIntegerOrNull(entry.id), now)
     const resourceType = definition.key === 'cpu' ? 'cpu' : definition.key === 'memory' ? 'memory' : definition.key === 'power-adapter' ? 'powerAdapter' : definition.key === 'psu' ? 'psuBay' : typed?.resourceType ?? 'optionalModule'
     database.query('INSERT INTO host_resource_groups (id, resource_identity_id, host_item_id, resource_type, semantic_key, label, slot_count, required_cpu_sockets, location, created_at_ms) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)').run(resourceIdentityId, resourceIdentityId, itemId, resourceType, definition.key, optionalText(entry.label) ?? definition.key, definition.count, positiveIntegerOrNull(entry.requiredCpuSockets), optionalText(entry.location), now)
     if (resourceType === 'storage') {
@@ -396,7 +396,19 @@ function importProject(database: Database, snapshot: LegacySnapshot, plan: Canon
   }
   for (const assignment of records(project.assignments)) {
     const id = plan.assignments.get(String(assignment.id))
-    database.query('INSERT INTO component_assignments (id, project_id, host_item_id, component_item_id, resource_slot_id, assigned_at_ms) VALUES (?, 1, ?, ?, ?, ?)').run(id, canonicalItemId(plan, assignment.hostType, assignment.hostId), canonicalItemId(plan, assignment.itemType, assignment.itemId), assignmentSlot(snapshot, plan, assignment), timestamp(assignment.assignedAt, now))
+    const hostItemId = canonicalItemId(plan, assignment.hostType, assignment.hostId)
+    const componentItemId = canonicalItemId(plan, assignment.itemType, assignment.itemId)
+    const primarySlotId = assignmentSlot(snapshot, plan, assignment)
+    database.query('INSERT INTO component_assignments (id, project_id, host_item_id, component_item_id, resource_slot_id, assigned_at_ms) VALUES (?, 1, ?, ?, ?, ?)').run(id, hostItemId, componentItemId, primarySlotId, timestamp(assignment.assignedAt, now))
+    const allocationPositions = records(assignment.allocation?.positions)
+    for (const [position, legacyPosition] of allocationPositions.entries()) {
+      const slotId = assignmentSlot(snapshot, plan, {
+        ...assignment,
+        allocation: { ...assignment.allocation, positions: [legacyPosition] },
+      })
+      if (slotId == null) continue
+      database.query('INSERT INTO component_assignment_slots (project_id, assignment_id, host_item_id, resource_slot_id, position) VALUES (1, ?, ?, ?, ?)').run(id, hostItemId, slotId, position)
+    }
   }
   for (const connection of records(project.connections)) {
     const id = plan.connections.get(String(connection.id))
@@ -419,6 +431,12 @@ function importProject(database: Database, snapshot: LegacySnapshot, plan: Canon
 
 function importRoutingCache(database: Database, snapshot: LegacySnapshot, plan: CanonicalIdentityPlan, now: number) {
   const cache = snapshot.routingCache ?? {}
+  const { entries: _entries, ...cacheEnvelope } = cache
+  database.query('INSERT INTO application_metadata (key, value_json, updated_at_ms) VALUES (?, ?, ?)').run(
+    'legacy.routing-cache-envelope',
+    json(cacheEnvelope),
+    now,
+  )
   for (const entry of records(cache.entries)) {
     const legacyId = entry.input?.request?.definition?.connection_id
     const connectionId = plan.connections.get(String(legacyId))

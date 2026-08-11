@@ -25,4 +25,14 @@ export const CORE_MIGRATIONS: readonly CoreMigration[] = [
     file: '0003_application_domains.sql',
     sha256: '860fe36c0043559cf82ec566fcd112fd01984e93b51ab84769f889ae9885df5a',
   },
+  {
+    id: '0005_assignment_slots',
+    file: '0004_assignment_slots.sql',
+    sha256: '57f98fa68b42c97321af0fc0bde06c5a23d98eef024e59cb04033811f39da7ad',
+  },
+  {
+    id: '0006_resource_group_aliases',
+    file: '0005_resource_group_aliases.sql',
+    sha256: '766ea0fb299967da140d2d3057031bc460fde7c07952a88669fb5012681967b4',
+  },
 ]

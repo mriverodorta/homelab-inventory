@@ -18,6 +18,20 @@ export type AgentDeviceLookup = AgentHostReference & {
 
 export interface HomelabInventoryPersistence {
   getProject(): unknown
+  getEngineSnapshot(): unknown
+  getEngineRevision(): number
+  applyEnginePatch(input: {
+    baseRevision: number
+    patchSet: {
+      revision: number
+      forward: unknown
+      inverse?: unknown
+    }
+    responseBytes: Uint8Array
+  }): Promise<unknown>
+  subscribeToProjectCommits(listener: (event: unknown) => void): () => void
+  getRoutingCache(): unknown
+  setRoutingCache(cache: unknown): unknown
   getDatabaseStatus(): {
     schemaVersion: number | null
     lastMigration: unknown
@@ -66,4 +80,6 @@ export interface HomelabInventoryPersistence {
   updateBackupManagement(mutator: (draft: unknown) => void): unknown
   snapshotStores(storeNames?: string[]): Promise<Record<string, unknown>>
   replaceStoresAtomically(replacements: Record<string, unknown>): Promise<Record<string, unknown>>
+  flush(storeNames?: string[]): Promise<void>
+  close?(): void
 }
