@@ -9,6 +9,7 @@ import { NotificationSecretVault } from '../notifications/secret-vault.mjs'
 import { NotificationStore } from '../notifications/store.mjs'
 import { BackupService } from './backup-service.mjs'
 import { installationPublicKeyId } from '../../packages/catalog-protocol/src/index.ts'
+import { TELEMETRY_SCHEMA_VERSION } from '../telemetry/schema.mjs'
 
 const tempDirs = []
 const stores = []
@@ -16,7 +17,7 @@ const stores = []
 function emptyTelemetryBackup() {
   return {
     formatVersion: 1,
-    schemaVersion: 1,
+    schemaVersion: TELEMETRY_SCHEMA_VERSION,
     tables: {
       telemetry_samples: [],
       latest_host_state: [],

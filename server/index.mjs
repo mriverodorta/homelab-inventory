@@ -58,6 +58,7 @@ import { TelemetryRepository } from './telemetry/repository.mjs'
 import { startTelemetryRetentionSchedule } from './telemetry/retention.mjs'
 import { createNotificationRuntime } from './notifications/runtime.mjs'
 import { registerNotificationRoutes } from './notifications/routes.mjs'
+import { ensureSqlitePersistence } from './persistence/migration/cutover.ts'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const root = path.resolve(__dirname, '..')
@@ -116,6 +117,8 @@ let telemetryDatabase = null
 let telemetryRepository = null
 let telemetryRetentionSchedule = null
 let notificationRuntime = null
+let backupService = null
+let sqlitePersistence = null
 
 if (isDemoMode) {
   const { DemoSessionManager, DEMO_COOKIE_NAME } = await import('./demo/session-manager.mjs')
@@ -151,6 +154,25 @@ if (isDemoMode) {
   notificationRuntime = await createNotificationRuntime({
     dataDir,
     workspaceStore: store,
+  })
+  backupService = new BackupService({
+    store,
+    appVersion: packageJson.version,
+    environmentPassphrase: backupEnvironmentPassphrase,
+    environmentTimezone: backupEnvironmentTimezone,
+    telemetryRepository,
+    notificationStore: notificationRuntime?.store ?? null,
+    notificationVault: notificationRuntime?.vault ?? null,
+  })
+  await backupService.init()
+  sqlitePersistence = await ensureSqlitePersistence({
+    dataDir,
+    appVersion: packageJson.version,
+    legacyProjectPath,
+    seedDir,
+    backupPassphrase: backupEnvironmentPassphrase,
+    backupServiceFactory: () => backupService,
+    snapshotService: new SnapshotService(store, { officialOrigin: registryOrigin }),
   })
 }
 
@@ -319,29 +341,19 @@ const catalogRefreshCoordinator = store
       intervalMs: registryRefreshIntervalMs,
     })
   : null
-const backupService = store
-  ? new BackupService({
-      store,
-      appVersion: packageJson.version,
-      environmentPassphrase: backupEnvironmentPassphrase,
-      environmentTimezone: backupEnvironmentTimezone,
-      telemetryRepository,
-      notificationStore: notificationRuntime?.store ?? null,
-      notificationVault: notificationRuntime?.vault ?? null,
-      onRestoreApplied: async ({ sections }) => {
-        if (sections.includes('authentication')) {
-          await authorizationService.rebuild(store.getAuthenticationState())
-        }
-        if (sections.includes('registryEnrollment') || sections.includes('registryConfiguration')) {
-          await installationIdentity?.initialize(store)
-        }
-        if (sections.includes('notifications') || sections.includes('notificationHistory')) {
-          await notificationRuntime?.incidentManager.reconcilePolicies({ reason: 'notification-backup-restored' })
-        }
-      },
-    })
-  : null
-await backupService?.init()
+if (backupService) {
+  backupService.onRestoreApplied = async ({ sections }) => {
+    if (sections.includes('authentication')) {
+      await authorizationService.rebuild(store.getAuthenticationState())
+    }
+    if (sections.includes('registryEnrollment') || sections.includes('registryConfiguration')) {
+      await installationIdentity?.initialize(store)
+    }
+    if (sections.includes('notifications') || sections.includes('notificationHistory')) {
+      await notificationRuntime?.incidentManager.reconcilePolicies({ reason: 'notification-backup-restored' })
+    }
+  }
+}
 const backupScheduler = backupService
   ? new BackupScheduler({ store, service: backupService, environmentTimezone: backupEnvironmentTimezone })
   : null
@@ -399,7 +411,16 @@ app.get('/api/health', (_request, response) => {
   const health = applicationHealth({
     mode: isDemoMode ? 'demo' : 'production',
     schemaVersion: isDemoMode ? null : store.databases.meta.data.schemaVersion,
-    persistence: isDemoMode ? null : store.getPersistenceHealth(),
+    persistence: isDemoMode
+      ? null
+      : {
+          ...store.getPersistenceHealth(),
+          sqlite: {
+            ok: sqlitePersistence?.ok === true,
+            status: sqlitePersistence?.status ?? 'unavailable',
+            schemas: sqlitePersistence?.versions ?? null,
+          },
+        },
   })
   response.status(health.status).json(health.payload)
 })

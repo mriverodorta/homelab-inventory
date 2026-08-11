@@ -8,11 +8,12 @@ import { createRegistryStore } from '../registry/model.mjs'
 import { createAuthenticationStore } from '../auth/model.mjs'
 import { createNotificationConfig, createNotificationSecrets, createNotificationState } from '../notifications/model.mjs'
 import { COMPLETE_BACKUP_SECTIONS } from '../../shared/backup/contract.mjs'
+import { TELEMETRY_SCHEMA_VERSION } from '../telemetry/schema.mjs'
 
 const telemetryRepository = {
   exportBackup: () => ({
     formatVersion: 1,
-    schemaVersion: 1,
+    schemaVersion: TELEMETRY_SCHEMA_VERSION,
     tables: {
       telemetry_samples: [],
       latest_host_state: [],
