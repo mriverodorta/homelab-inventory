@@ -1,6 +1,6 @@
-import type { Database } from 'bun:sqlite'
-import { chmod, rename, rm, writeFile } from 'node:fs/promises'
-import { dirname, join } from 'node:path'
+import { Database } from 'bun:sqlite'
+import { chmod, readFile, rename, rm, stat, writeFile } from 'node:fs/promises'
+import { basename, dirname, join } from 'node:path'
 import { cleanItemForStore } from '../db/inventory-input.mjs'
 import { LEGACY_TABLE_BY_TYPE } from '../persistence/legacy/identity-plan.ts'
 import { insertLegacyInventoryItem, replaceLegacyInventoryItem } from '../persistence/migration/core-importer.ts'
@@ -15,6 +15,128 @@ import type { InventoryType } from '../persistence/core/inventory/field-contract
 import { runtimeProjectFromLogical } from './sqlite-section-exporter.ts'
 
 type Row = Record<string, any>
+
+const RESTORE_ACTIVATION_JOURNAL = '.core-restore-activation.json'
+
+type RestoreActivationStage = 'prepared' | 'active-moved' | 'staging-active'
+
+type RestoreActivationJournal = Readonly<{
+  version: 1
+  stage: RestoreActivationStage
+  activeFile: string
+  stagingFile: string
+  rollbackFile: string
+}>
+
+async function exists(filePath: string) {
+  try {
+    await stat(filePath)
+    return true
+  } catch (error: any) {
+    if (error?.code === 'ENOENT') return false
+    throw error
+  }
+}
+
+function assertLocalDatabaseFile(value: unknown, label: string) {
+  if (typeof value !== 'string' || !value || basename(value) !== value || value.includes('..')) {
+    throw new Error(`${label} is invalid.`)
+  }
+  return value
+}
+
+async function writeRestoreActivationJournal(
+  directory: string,
+  journal: RestoreActivationJournal,
+) {
+  const filePath = join(directory, RESTORE_ACTIVATION_JOURNAL)
+  const temporaryPath = `${filePath}.${process.pid}.tmp`
+  await writeFile(temporaryPath, `${JSON.stringify(journal, null, 2)}\n`, { mode: 0o600 })
+  await rename(temporaryPath, filePath)
+  await chmod(filePath, 0o600)
+}
+
+function validCoreDatabase(filePath: string) {
+  let database: Database | null = null
+  try {
+    database = new Database(filePath, { create: false, strict: true })
+    const valid = databaseQuickCheck(database) === 'ok' && foreignKeyViolations(database).length === 0
+    if (valid) {
+      database.exec('PRAGMA wal_checkpoint(TRUNCATE);')
+      database.exec('PRAGMA journal_mode = DELETE;')
+    }
+    return valid
+  } catch {
+    return false
+  } finally {
+    database?.close(false)
+  }
+}
+
+async function removeSqliteSidecars(filePath: string) {
+  await Promise.all([
+    rm(`${filePath}-wal`, { force: true }),
+    rm(`${filePath}-shm`, { force: true }),
+  ])
+}
+
+export async function recoverInterruptedSqliteRestore(dataDir: string) {
+  const directory = join(dataDir, 'databases')
+  const journalPath = join(directory, RESTORE_ACTIVATION_JOURNAL)
+  let journal: RestoreActivationJournal
+  try {
+    journal = JSON.parse(await readFile(journalPath, 'utf8'))
+  } catch (error: any) {
+    if (error?.code === 'ENOENT') return { recovered: false as const }
+    throw new Error('SQLite restore activation journal is invalid.', { cause: error })
+  }
+  if (journal.version !== 1 || !['prepared', 'active-moved', 'staging-active'].includes(journal.stage)) {
+    throw new Error('SQLite restore activation journal uses an unsupported format.')
+  }
+  const active = join(directory, assertLocalDatabaseFile(journal.activeFile, 'Restore active database'))
+  const staging = join(directory, assertLocalDatabaseFile(journal.stagingFile, 'Restore staging database'))
+  const rollback = join(directory, assertLocalDatabaseFile(journal.rollbackFile, 'Restore rollback database'))
+  const activeExists = await exists(active)
+  const stagingExists = await exists(staging)
+  const rollbackExists = await exists(rollback)
+
+  if (activeExists && validCoreDatabase(active)) {
+    await Promise.all([
+      rm(staging, { force: true }),
+      rm(rollback, { force: true }),
+      removeSqliteSidecars(active),
+      removeSqliteSidecars(staging),
+      removeSqliteSidecars(rollback),
+      rm(journalPath, { force: true }),
+    ])
+    return { recovered: true as const, action: journal.stage === 'prepared' ? 'kept-active' : 'completed-activation' }
+  }
+  if (journal.stage === 'active-moved' && stagingExists && validCoreDatabase(staging)) {
+    await rm(active, { force: true })
+    await Promise.all([removeSqliteSidecars(active), removeSqliteSidecars(staging)])
+    await rename(staging, active)
+    await chmod(active, 0o600)
+    await Promise.all([
+      rm(rollback, { force: true }),
+      removeSqliteSidecars(rollback),
+      rm(journalPath, { force: true }),
+    ])
+    return { recovered: true as const, action: 'completed-activation' }
+  }
+  if (rollbackExists && validCoreDatabase(rollback)) {
+    await rm(active, { force: true })
+    await Promise.all([removeSqliteSidecars(active), removeSqliteSidecars(rollback)])
+    await rename(rollback, active)
+    await chmod(active, 0o600)
+    await Promise.all([
+      rm(staging, { force: true }),
+      removeSqliteSidecars(staging),
+      rm(journalPath, { force: true }),
+    ])
+    return { recovered: true as const, action: 'restored-rollback' }
+  }
+  throw new Error('Interrupted SQLite restore has no valid active or rollback database.')
+}
 
 function json(value: unknown) {
   return JSON.stringify(value)
@@ -166,6 +288,7 @@ export async function stageAndActivateSqliteRestore({
   appVersion,
   dataDir,
   now,
+  failAtActivationStage = null,
 }: {
   active: ManagedDatabase
   replacements: Row
@@ -175,6 +298,7 @@ export async function stageAndActivateSqliteRestore({
   appVersion: string
   dataDir: string
   now: () => number
+  failAtActivationStage?: RestoreActivationStage | null
 }) {
   const directory = dirname(active.filePath)
   const stagingPath = join(directory, `.core-restore-${process.pid}-${Date.now()}.sqlite`)
@@ -259,24 +383,42 @@ export async function stageAndActivateSqliteRestore({
     if (violations.length > 0) throw new Error(`SQLite restore staging has ${violations.length} foreign-key violation(s).`)
     if (databaseQuickCheck(staged.database) !== 'ok') throw new Error('SQLite restore staging failed its integrity check.')
     await store.flush()
+    staged.database.exec('PRAGMA wal_checkpoint(TRUNCATE);')
+    staged.database.exec('PRAGMA journal_mode = DELETE;')
     store.close()
+    const journal = {
+      version: 1 as const,
+      stage: 'prepared' as RestoreActivationStage,
+      activeFile: basename(active.filePath),
+      stagingFile: basename(stagingPath),
+      rollbackFile: basename(rollbackPath),
+    }
+    await writeRestoreActivationJournal(directory, journal)
+    if (failAtActivationStage === 'prepared') throw new Error('Injected SQLite restore failure at prepared.')
 
+    active.database.exec('PRAGMA wal_checkpoint(TRUNCATE);')
+    active.database.exec('PRAGMA journal_mode = DELETE;')
     active.close()
     try {
+      await Promise.all([
+        removeSqliteSidecars(active.filePath),
+        removeSqliteSidecars(stagingPath),
+        removeSqliteSidecars(rollbackPath),
+      ])
       await rename(active.filePath, rollbackPath)
-    } catch (error) {
-      const reopened = await openManagedDatabase({ filePath: active.filePath, schemaName: 'core' })
-      activateReopenedHandle(active, reopened)
-      throw error
-    }
-    try {
+      await writeRestoreActivationJournal(directory, { ...journal, stage: 'active-moved' })
+      if (failAtActivationStage === 'active-moved') throw new Error('Injected SQLite restore failure at active-moved.')
       await rename(stagingPath, active.filePath)
+      await writeRestoreActivationJournal(directory, { ...journal, stage: 'staging-active' })
+      if (failAtActivationStage === 'staging-active') throw new Error('Injected SQLite restore failure at staging-active.')
       const reopened = await openManagedDatabase({ filePath: active.filePath, schemaName: 'core' })
       activateReopenedHandle(active, reopened)
-      await rm(rollbackPath, { force: true })
+      await Promise.all([
+        rm(rollbackPath, { force: true }),
+        rm(join(directory, RESTORE_ACTIVATION_JOURNAL), { force: true }),
+      ])
     } catch (error) {
-      await rm(active.filePath, { force: true })
-      await rename(rollbackPath, active.filePath)
+      await recoverInterruptedSqliteRestore(dataDir)
       const reopened = await openManagedDatabase({ filePath: active.filePath, schemaName: 'core' })
       activateReopenedHandle(active, reopened)
       throw error

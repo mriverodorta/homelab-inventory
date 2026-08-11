@@ -5,6 +5,7 @@ import {
   telemetryDatabaseStatus,
 } from '../telemetry/database.mjs'
 import { TelemetryRepository } from '../telemetry/repository.mjs'
+import { recoverInterruptedSqliteRestore } from '../backup/sqlite-restore-staging.ts'
 import { CORE_MIGRATIONS } from './core/migrations/manifest.ts'
 import { ensureSqlitePersistence, type EnsureSqlitePersistenceOptions } from './migration/cutover.ts'
 import { SqliteHomelabInventoryStore } from './sqlite-store.ts'
@@ -16,6 +17,7 @@ type RuntimeOptions = EnsureSqlitePersistenceOptions & Readonly<{
 }>
 
 export async function activateSqliteRuntime(options: RuntimeOptions) {
+  await recoverInterruptedSqliteRestore(options.dataDir)
   const persistence = await ensureSqlitePersistence(options)
   const core = await openManagedDatabase({
     filePath: persistence.paths.core,

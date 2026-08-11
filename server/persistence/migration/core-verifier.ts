@@ -13,7 +13,7 @@ function metadata(database: Database, key: string) {
   return row ? JSON.parse(row.value_json) : null
 }
 
-function importedSemanticSnapshot(database: Database) {
+export function sqliteSemanticSnapshot(database: Database) {
   const byType: Record<string, number> = {}
   for (const type of INVENTORY_TYPES) {
     const row = database.query(`
@@ -88,10 +88,9 @@ export function verifyImportedCore({ database, expected }: Readonly<{ database: 
   const quickCheck = database.query('PRAGMA quick_check').get() as Record<string, string>
   if (String(Object.values(quickCheck)[0]) !== 'ok') throw new Error('Imported core database failed SQLite quick_check.')
   assertNoSupportedExtensions(database)
-  const actual = importedSemanticSnapshot(database)
+  const actual = sqliteSemanticSnapshot(database)
   if (JSON.stringify(actual) !== JSON.stringify(expected)) {
     throw new Error(`Imported core semantic snapshot differs from legacy source.\nExpected: ${JSON.stringify(expected)}\nActual: ${JSON.stringify(actual)}`)
   }
   return { ok: true as const }
 }
-

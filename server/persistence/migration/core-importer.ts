@@ -6,6 +6,7 @@ import {
   legacyResourceDefinitions,
   type CanonicalIdentityPlan,
 } from '../legacy/identity-plan.ts'
+import { persistAuthenticationState } from '../core/projections/legacy-domains.ts'
 
 type LegacySnapshot = Record<string, any>
 type LegacyRecord = Record<string, any>
@@ -859,13 +860,7 @@ function importAgents(database: Database, snapshot: LegacySnapshot, plan: Canoni
 }
 
 function importAuthentication(database: Database, snapshot: LegacySnapshot, now: number) {
-  const auth = snapshot.authentication ?? {}
-  const settings = auth.configuration ?? auth.settings ?? {}
-  const oidc = settings.oidc ?? settings
-  const bootstrap = auth.bootstrapState ?? settings
-  database.query('INSERT INTO authentication_settings (id, enabled, local_enabled, oidc_enabled, oidc_issuer, oidc_client_id, oidc_scopes_json, oidc_external_url, oidc_client_secret_configured, setup_required, setup_completed_at_ms, updated_at_ms) VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)').run(Number(settings.enabled === true), Number(settings.localEnabled === true), Number(settings.oidcEnabled === true), optionalText(oidc.issuer ?? settings.oidcIssuer), optionalText(oidc.clientId ?? settings.oidcClientId), json(oidc.scopes ?? settings.oidcScopes ?? ['openid', 'profile', 'email']), optionalText(oidc.externalUrl ?? settings.oidcExternalUrl), Number((oidc.clientSecretConfigured ?? settings.oidcClientSecretConfigured) === true), Number((bootstrap.setupRequired ?? bootstrap.required) === true), timestamp(bootstrap.completedAt ?? settings.setupCompletedAt, null as any), timestamp(settings.updatedAt, now))
-  for (const account of records(auth.accounts)) database.query('INSERT INTO users (id, username, email, display_name, protected_owner, active, created_at_ms, updated_at_ms) VALUES (?, ?, ?, ?, ?, ?, ?, ?)').run(account.id, account.username, optionalText(account.email), account.displayName ?? account.username, Number(account.protectedOwner === true), Number(account.active !== false), timestamp(account.createdAt, now), timestamp(account.updatedAt, now))
-  database.query('INSERT INTO application_metadata (key, value_json, updated_at_ms) VALUES (?, ?, ?)').run('legacy.authentication-extended-state', json(Object.fromEntries(Object.entries(auth).filter(([key]) => !['settings', 'configuration', 'bootstrapState', 'accounts'].includes(key)))), now)
+  persistAuthenticationState(database, snapshot.authentication ?? {}, now)
 }
 
 function importNotifications(database: Database, snapshot: LegacySnapshot, plan: CanonicalIdentityPlan, now: number) {

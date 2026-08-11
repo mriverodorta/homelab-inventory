@@ -10,6 +10,8 @@ import { closeManagedDatabase, openManagedDatabase } from '../sqlite/database.ts
 import { applyCommittedMigrations } from '../sqlite/migrator.ts'
 import { importLegacyCore } from './core-importer.ts'
 import { verifyImportedCore } from './core-verifier.ts'
+import { createAuthenticationStore, createOwnerAccount, ensureProtectedOwnerRole } from '../../auth/model.mjs'
+import { projectAuthenticationState } from '../core/projections/legacy-domains.ts'
 
 const temporaryDirectories: string[] = []
 
@@ -65,6 +67,46 @@ describe('schema-29 core import', () => {
       expect(() => importLegacyCore({ database: handle.database, snapshot, identityPlan })).toThrow()
       expect(handle.database.query('SELECT count(*) AS count FROM inventory_items').get()).toEqual({ count: 0 })
       expect(handle.database.query('SELECT count(*) AS count FROM registry_sources').get()).toEqual({ count: 0 })
+    } finally {
+      closeManagedDatabase(handle)
+    }
+  })
+
+  test('normalizes every authentication entity and preserves numeric relationships', async () => {
+    const handle = await migratedDatabase()
+    const snapshot = schema29ProductionShapeFixture()
+    const timestamp = '2026-08-11T12:00:00.000Z'
+    const authentication = createAuthenticationStore()
+    authentication.accounts.push(createOwnerAccount(1, 'owner', 'Owner'))
+    authentication.nextAccountId = 2
+    ensureProtectedOwnerRole(authentication, 1)
+    authentication.localCredentials.push({ id: 1, accountId: 1, passwordHash: '$argon2id$fixture-password-hash', createdAt: timestamp, updatedAt: timestamp })
+    authentication.oidcIdentities.push({ id: 1, accountId: 1, issuer: 'https://identity.example', subject: 'owner-subject', email: 'owner@example.com', createdAt: timestamp, lastLoginAt: timestamp })
+    authentication.sessions.push({ id: 1, accountId: 1, tokenHash: 'b'.repeat(64), remember: true, createdAt: timestamp, lastSeenAt: timestamp, idleExpiresAt: '2026-08-12T12:00:00.000Z', absoluteExpiresAt: '2026-09-10T12:00:00.000Z', revokedAt: null, userAgent: 'fixture-agent', ip: 'fixture-ip' })
+    authentication.recoveryTokens.push({ id: 1, accountId: 1, tokenHash: 'c'.repeat(64), createdAt: timestamp, expiresAt: '2026-08-12T12:00:00.000Z', usedAt: null })
+    authentication.securityEvents.push({ id: 1, accountId: 1, type: 'fixture-event', detail: 'fixture', ip: null, userAgent: null, createdAt: timestamp })
+    authentication.oidcTransactions.push({ id: 1, accountId: 1, purpose: 'link-identity', invitationId: null, tokenHash: 'd'.repeat(64), state: 'state-value-long-enough', nonce: 'nonce-value-long-enough', codeVerifier: 'verifier-value-long-enough', returnTo: '/', createdAt: timestamp, expiresAt: '2026-08-12T12:00:00.000Z', usedAt: null })
+    authentication.invitations.push({ id: 1, email: 'invitee@example.com', identityType: 'local', roleIds: [4], tokenHash: 'e'.repeat(64), status: 'pending', createdByAccountId: 1, accountId: null, createdAt: timestamp, expiresAt: '2026-08-12T12:00:00.000Z', acceptedAt: null, revokedAt: null })
+    authentication.identityLinkRequests.push({ id: 1, accountId: 1, identityType: 'oidc', status: 'pending', tokenHash: 'f'.repeat(64), issuer: 'https://identity.example', createdAt: timestamp, expiresAt: '2026-08-12T12:00:00.000Z', confirmedAt: null })
+    for (const [counter, value] of Object.entries({ nextLocalCredentialId: 2, nextOidcIdentityId: 2, nextSessionId: 2, nextRecoveryTokenId: 2, nextSecurityEventId: 2, nextOidcTransactionId: 2, nextInvitationId: 2, nextIdentityLinkRequestId: 2 })) authentication[counter] = value
+    snapshot.authentication = authentication
+    try {
+      importLegacyCore({ database: handle.database, snapshot, identityPlan: buildCanonicalIdentityPlan(snapshot) })
+      expect(handle.database.query('SELECT count(*) AS count FROM permissions').get()).toEqual({ count: 36 })
+      expect(handle.database.query('SELECT user_id, role_id FROM user_roles').get()).toEqual({ user_id: 1, role_id: 1 })
+      expect(handle.database.query('SELECT invitation_id, role_id FROM invitation_roles').get()).toEqual({ invitation_id: 1, role_id: 4 })
+      const projected = projectAuthenticationState(handle.database)
+      expect(projected).toMatchObject({
+        localCredentials: [{ id: 1, accountId: 1, passwordHash: '$argon2id$fixture-password-hash' }],
+        oidcIdentities: [{ id: 1, accountId: 1, subject: 'owner-subject' }],
+        sessions: [{ id: 1, accountId: 1, tokenHash: 'b'.repeat(64) }],
+        recoveryTokens: [{ id: 1, accountId: 1, tokenHash: 'c'.repeat(64) }],
+        securityEvents: [{ id: 1, accountId: 1, type: 'fixture-event', detail: 'fixture' }],
+        oidcTransactions: [{ id: 1, accountId: 1, purpose: 'link-identity' }],
+        invitations: [{ id: 1, createdByAccountId: 1, roleIds: [4] }],
+        identityLinkRequests: [{ id: 1, accountId: 1, issuer: 'https://identity.example' }],
+      })
+      expect(projected.recordExtensions).toBeUndefined()
     } finally {
       closeManagedDatabase(handle)
     }
