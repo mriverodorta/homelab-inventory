@@ -1,14 +1,14 @@
-FROM oven/bun:1-alpine AS deps
+FROM oven/bun:1.3.14-alpine@sha256:5acc90a93e91ff07bf72aa90a7c9f0fa189765aec90b47bdbf2152d2196383c0 AS deps
 WORKDIR /app
 COPY package.json bun.lock ./
 RUN bun install --frozen-lockfile
 
-FROM oven/bun:1-slim AS prod-deps
+FROM oven/bun:1.3.14-slim@sha256:d56a2534ffd262e92c12fd3249d3924d296d97086da773f821d7d0477435ea04 AS prod-deps
 WORKDIR /app
 COPY package.json bun.lock ./
 RUN bun install --frozen-lockfile --production
 
-FROM oven/bun:1-alpine AS bun-toolchain
+FROM oven/bun:1.3.14-alpine@sha256:5acc90a93e91ff07bf72aa90a7c9f0fa189765aec90b47bdbf2152d2196383c0 AS bun-toolchain
 
 FROM golang:1.26.5-alpine AS agent-build
 WORKDIR /agent
@@ -31,7 +31,7 @@ COPY scripts/build-wasm.mjs ./scripts/
 ENV WASM_OPTIMIZE=1
 RUN bun scripts/build-wasm.mjs
 
-FROM oven/bun:1-alpine AS build
+FROM oven/bun:1.3.14-alpine@sha256:5acc90a93e91ff07bf72aa90a7c9f0fa189765aec90b47bdbf2152d2196383c0 AS build
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
@@ -90,8 +90,10 @@ COPY --chown=10001:10001 packages/catalog-protocol/src ./packages/catalog-protoc
 COPY --chown=10001:10001 server/demo/session-manager.mjs server/demo/sanitizer.mjs ./server/demo/
 COPY --chown=10001:10001 server/onboarding/example-workspace.mjs server/onboarding/lifecycle.mjs server/onboarding/model.mjs ./server/onboarding/
 COPY --chown=10001:10001 scripts/verify-wasm-runtime.mjs ./scripts/
+COPY --chown=10001:10001 scripts/verify-sqlite-runtime.mjs ./scripts/
 COPY --from=build --chown=10001:10001 /tmp/runtime-data /data
 RUN ["bun", "scripts/verify-wasm-runtime.mjs"]
+RUN ["bun", "scripts/verify-sqlite-runtime.mjs"]
 RUN ["bun", "-e", "await import('./server/auth/auth-service.mjs'); await import('./server/auth/routes.mjs')"]
 
 VOLUME ["/data"]

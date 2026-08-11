@@ -6,6 +6,10 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 
 ## Unreleased
 
+### Fixed
+
+- Pinned every Bun Docker build stage to one immutable runtime and added executable SQLite capability checks to final distroless image construction and the amd64/arm64 release preflight.
+
 ## [0.11.1] - 2026-08-10
 
 ### Fixed

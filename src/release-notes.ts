@@ -102,7 +102,9 @@ const RELEASE_0_3_0_DETAILS: UnreleasedReleaseNotes = {
 
 export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
   highlights: [],
-  fixes: [],
+  fixes: [
+    'The production image now pins its Bun runtime and verifies the complete SQLite capability contract during distroless image construction and multi-architecture release preflight.',
+  ],
   notes: [],
 }
 

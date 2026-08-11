@@ -63,6 +63,10 @@ async function smokeTest(image, platform) {
       image,
     ])
     await waitForHealth(containerName)
+    await run([
+      'docker', 'exec', containerName,
+      'bun', 'scripts/verify-sqlite-runtime.mjs',
+    ])
   } finally {
     const cleanup = Bun.spawn(['docker', 'rm', '--force', containerName], {
       cwd: ROOT,
