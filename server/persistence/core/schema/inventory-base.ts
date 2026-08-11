@@ -53,6 +53,7 @@ export const inventoryItems = sqliteTable('inventory_items', {
   model: text('model'),
   family: text('family'),
   productNumber: text('product_number'),
+  subtype: text('subtype'),
   serialNumber: text('serial_number'),
   notes: text('notes'),
   extensionsJson: text('extensions_json').notNull().default('{}'),

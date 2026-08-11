@@ -3,7 +3,7 @@ import { readFile, mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { CORE_MIGRATIONS } from '../migrations/manifest.ts'
-import { coreSchema } from './index.ts'
+import { coreSchema, inventorySubtypeTables } from './index.ts'
 import { closeManagedDatabase, openManagedDatabase } from '../../sqlite/database.ts'
 import { applyCommittedMigrations } from '../../sqlite/migrator.ts'
 
@@ -42,7 +42,62 @@ describe('core SQLite foundation schema', () => {
       'inventoryIdentityAliases',
       'cpuSocketTypes',
     ]))
-    expect(CORE_MIGRATIONS).toHaveLength(1)
+    expect(CORE_MIGRATIONS).toHaveLength(2)
+  })
+
+  test('maps all 20 inventory categories to shared-primary-key subtype tables', () => {
+    expect(Object.keys(inventorySubtypeTables).sort()).toEqual([
+      'case',
+      'cpu',
+      'cpuCooler',
+      'gpu',
+      'monitor',
+      'motherboard',
+      'nas',
+      'network',
+      'patchPanel',
+      'pcBuild',
+      'powerAdapter',
+      'powerStrip',
+      'powerSupply',
+      'ram',
+      'server',
+      'soundCard',
+      'storage',
+      'switch',
+      'ups',
+      'wireless',
+    ])
+  })
+
+  test('enforces subtype identity and canonical measurement constraints', async () => {
+    const handle = await createMigratedDatabase()
+    try {
+      const cpuItem = handle.database.query(`
+        INSERT INTO inventory_items (
+          type_id, scope, owner_project_id, name, row_version, created_at_ms, updated_at_ms
+        ) VALUES (9, 'global', NULL, 'CPU', 1, 1, 1)
+        RETURNING id
+      `).get() as { id: number }
+      const memoryItem = handle.database.query(`
+        INSERT INTO inventory_items (
+          type_id, scope, owner_project_id, name, row_version, created_at_ms, updated_at_ms
+        ) VALUES (10, 'global', NULL, 'Memory', 1, 1, 1)
+        RETURNING id
+      `).get() as { id: number }
+
+      expect(() => handle.database.query(`
+        INSERT INTO cpus (id, core_count, base_clock_mhz) VALUES (?, 6, 2300)
+      `).run(cpuItem.id)).not.toThrow()
+      expect(() => handle.database.query(`
+        INSERT INTO cpus (id, core_count) VALUES (?, 8)
+      `).run(memoryItem.id)).toThrow(/CPU subtype/iu)
+      expect(() => handle.database.query(`
+        INSERT INTO memory_modules (id, capacity_mib) VALUES (?, -1)
+      `).run(memoryItem.id)).toThrow()
+    } finally {
+      closeManagedDatabase(handle)
+    }
   })
 
   test('creates only strict application tables', async () => {
