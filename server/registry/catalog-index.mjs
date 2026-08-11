@@ -5,6 +5,8 @@ import path from 'node:path'
 const sqliteModule = ['bun', 'sqlite'].join(':')
 const { Database } = await import(sqliteModule)
 
+export const CATALOG_INDEX_SCHEMA_VERSION = 2
+
 function escapeLike(value) {
   return value.replace(/[\\%_]/g, '\\$&')
 }
@@ -127,7 +129,7 @@ export class CatalogIndex {
           FOREIGN KEY (template_key) REFERENCES templates(template_key) ON DELETE CASCADE
         );
         CREATE INDEX facet_numbers_lookup_index ON facet_numbers(type, facet_key, value, template_key);
-        PRAGMA user_version = 2;
+        PRAGMA user_version = ${CATALOG_INDEX_SCHEMA_VERSION};
       `)
       const insert = database.prepare(`
         INSERT INTO templates (
@@ -190,9 +192,50 @@ export class CatalogIndex {
   isCurrent() {
     const database = new Database(this.filePath, { readonly: true })
     try {
-      return Number(database.query('PRAGMA user_version').get().user_version) === 2
+      return Number(database.query('PRAGMA user_version').get().user_version) === CATALOG_INDEX_SCHEMA_VERSION
     } finally {
       database.close()
+    }
+  }
+
+  verify(snapshot, facets = null) {
+    const database = new Database(this.filePath, { readonly: true, strict: true })
+    try {
+      const integrity = database.query('PRAGMA quick_check').get().quick_check
+      if (integrity !== 'ok') throw new Error(`Catalog index integrity check failed: ${String(integrity)}`)
+      if (Number(database.query('PRAGMA user_version').get().user_version) !== CATALOG_INDEX_SCHEMA_VERSION) {
+        throw new Error('Catalog index schema version is invalid.')
+      }
+      const foreignKeys = database.query('PRAGMA foreign_key_check').all()
+      if (foreignKeys.length !== 0) throw new Error('Catalog index contains invalid foreign-key relationships.')
+      const templates = database.query('SELECT template_key, content_hash, searchable FROM templates ORDER BY template_key').all()
+      const expected = [...snapshot.templates]
+        .sort((left, right) => left.templateKey.localeCompare(right.templateKey))
+        .map((template) => ({ template_key: template.templateKey, content_hash: template.contentHash }))
+      if (templates.length !== expected.length) throw new Error('Catalog index template count does not match its snapshot.')
+      for (const [index, row] of templates.entries()) {
+        if (row.template_key !== expected[index].template_key || row.content_hash !== expected[index].content_hash) {
+          throw new Error(`Catalog index template ${String(row.template_key)} does not match its snapshot.`)
+        }
+        if (typeof row.searchable !== 'string' || !row.searchable.trim()) {
+          throw new Error(`Catalog index template ${String(row.template_key)} is not searchable.`)
+        }
+      }
+      const facetRow = database.query('SELECT payload_json FROM facet_metadata WHERE id = 1').get()
+      if (facets) {
+        if (!facetRow || facetRow.payload_json !== JSON.stringify(facets)) {
+          throw new Error('Catalog index facet metadata does not match its signed artifact.')
+        }
+      } else if (facetRow) {
+        throw new Error('Catalog index contains unexpected facet metadata.')
+      }
+      return {
+        schemaVersion: CATALOG_INDEX_SCHEMA_VERSION,
+        templateCount: templates.length,
+        facetCategoryCount: facets?.categories?.length ?? 0,
+      }
+    } finally {
+      database.close(false)
     }
   }
 

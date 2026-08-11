@@ -48,7 +48,7 @@ function assertKeys(row, columns, field) {
 export function exportTelemetryBackup(database) {
   return {
     ...emptyTelemetryBackup(),
-    tables: Object.fromEntries(Object.entries(TABLES).map(([table, columns]) => [table, database.query(`SELECT * FROM ${table} ORDER BY ${columns.join(', ')}`).all()])),
+    tables: Object.fromEntries(Object.entries(TABLES).map(([table, columns]) => [table, database.query(`SELECT ${columns.join(', ')} FROM ${table} ORDER BY ${columns.join(', ')}`).all()])),
   }
 }
 

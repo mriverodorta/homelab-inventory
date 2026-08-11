@@ -104,6 +104,51 @@ describe('telemetry repository', () => {
     expect(database.query('SELECT COUNT(*) AS count FROM telemetry_samples').get().count).toBe(1)
   })
 
+  test('writes canonical metric projections when canonical identities are supplied', async () => {
+    const { database, repository } = await context()
+    repository.recordHeartbeat({
+      deviceId: 7,
+      agentId: 70,
+      hostType: 'server',
+      hostId: 1,
+      hostItemId: 101,
+      receivedAt: receivedAt(1),
+      payload: heartbeat(1, { metrics: {
+        uptimeSeconds: 90,
+        loadAverage: [0.1, 0.2, 0.3],
+        cpu: { percent: 25 },
+        memory: { usedBytes: 2048, totalBytes: 8192 },
+        network: [{ name: 'eno1', rxBytes: 10 }],
+        diskIo: [{ device: 'nvme0n1', readBytes: 11 }],
+        filesystems: [{ mountPoint: '/', type: 'ext4', totalBytes: 100, usedBytes: 40, availableBytes: 60 }],
+      } }),
+    })
+
+    expect(repository.getHostSummary('server', 1)).toMatchObject({ agentId: 70, hostItemId: 101 })
+    expect(database.query('SELECT host_item_id, uptime_seconds, cpu_percent FROM host_metric_samples').get())
+      .toEqual({ host_item_id: 101, uptime_seconds: 90, cpu_percent: 25 })
+    expect(database.query('SELECT count(*) AS count FROM network_interface_samples').get()).toEqual({ count: 1 })
+    expect(database.query('SELECT count(*) AS count FROM storage_device_samples').get()).toEqual({ count: 1 })
+    expect(database.query('SELECT count(*) AS count FROM filesystem_samples').get()).toEqual({ count: 1 })
+  })
+
+  test('stores complete manual inventory reports and applies the five-report retention policy', async () => {
+    const { database, repository } = await context()
+    for (let sequence = 1; sequence <= 6; sequence += 1) {
+      repository.recordManualInventoryReport({
+        agentId: 70,
+        hostItemId: 101,
+        sequence,
+        collectedAt: receivedAt(sequence),
+        receivedAt: receivedAt(sequence),
+        payload: { components: [{ kind: 'memory', locator: 'DIMM A1', values: { manufacturer: 'Micron' } }] },
+      })
+    }
+    expect(database.query('SELECT sequence FROM manual_inventory_reports ORDER BY sequence').all())
+      .toEqual([{ sequence: 2 }, { sequence: 3 }, { sequence: 4 }, { sequence: 5 }, { sequence: 6 }])
+    expect(database.query('SELECT count(*) AS count FROM manual_inventory_components').get()).toEqual({ count: 5 })
+  })
+
   test('returns bounded chronological ranges and never touches the project store', async () => {
     const { dataDir, repository } = await context()
     const projectPath = path.join(dataDir, 'stores', 'project.json')

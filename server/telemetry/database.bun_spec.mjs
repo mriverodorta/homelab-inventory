@@ -8,6 +8,7 @@ import {
   TELEMETRY_DATABASE_RELATIVE_PATH,
   telemetryDatabaseStatus,
 } from './database.mjs'
+import { TELEMETRY_SCHEMA_VERSION } from './schema.mjs'
 
 const directories = []
 
@@ -26,12 +27,16 @@ describe('telemetry database', () => {
     const dataDir = await temporaryDirectory()
     const filePath = path.join(dataDir, TELEMETRY_DATABASE_RELATIVE_PATH)
     const first = await openTelemetryDatabase({ dataDir })
-    expect(telemetryDatabaseStatus(first)).toEqual({ schemaVersion: 1, journalMode: 'wal', expectedSchemaVersion: 1 })
+    expect(telemetryDatabaseStatus(first)).toEqual({
+      schemaVersion: TELEMETRY_SCHEMA_VERSION,
+      journalMode: 'wal',
+      expectedSchemaVersion: TELEMETRY_SCHEMA_VERSION,
+    })
     expect((await fs.stat(filePath)).mode & 0o777).toBe(0o600)
     closeTelemetryDatabase(first)
 
     const second = await openTelemetryDatabase({ dataDir })
-    expect(telemetryDatabaseStatus(second).schemaVersion).toBe(1)
+    expect(telemetryDatabaseStatus(second).schemaVersion).toBe(TELEMETRY_SCHEMA_VERSION)
     closeTelemetryDatabase(second)
   })
 
