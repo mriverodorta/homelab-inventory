@@ -41,14 +41,22 @@ export const registryLinks = sqliteTable('registry_links', {
   importedContentHash: text('imported_content_hash').notNull(),
   importedFingerprintVersion: integer('imported_fingerprint_version').notNull().default(1),
   availableRevision: integer('available_revision'),
+  availableContentHash: text('available_content_hash'),
+  productFamilyJson: text('product_family_json'),
+  variantEvidenceJson: text('variant_evidence_json'),
+  identityAliasesJson: text('identity_aliases_json'),
   state: text('state').notNull(),
   linkedAtMs: integer('linked_at_ms').notNull(),
   updatedAtMs: integer('updated_at_ms').notNull(),
+  detachedAtMs: integer('detached_at_ms'),
 }, (table) => [
   uniqueIndex('registry_links_item_unique').on(table.itemId),
   index('registry_links_template_index').on(table.sourceId, table.templateKey),
   check('registry_links_revision_check', sql`${table.importedRevision} > 0 AND (${table.availableRevision} IS NULL OR ${table.availableRevision} > 0)`),
-  check('registry_links_hash_check', sql`length(${table.importedContentHash}) = 64`),
+  check('registry_links_hash_check', sql`length(${table.importedContentHash}) = 64 AND (${table.availableContentHash} IS NULL OR length(${table.availableContentHash}) = 64)`),
+  check('registry_links_product_family_json_check', sql`${table.productFamilyJson} IS NULL OR json_valid(${table.productFamilyJson})`),
+  check('registry_links_variant_evidence_json_check', sql`${table.variantEvidenceJson} IS NULL OR json_valid(${table.variantEvidenceJson})`),
+  check('registry_links_identity_aliases_json_check', sql`${table.identityAliasesJson} IS NULL OR json_valid(${table.identityAliasesJson})`),
   check('registry_links_state_check', sql`${table.state} IN ('linked', 'update-available', 'adoption-available', 'detached', 'contribution-pending')`),
 ])
 

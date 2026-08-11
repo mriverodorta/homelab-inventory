@@ -79,9 +79,14 @@ export function projectRegistryState(database: Database) {
       importedContentHash: link.imported_content_hash,
       importedFingerprintVersion: link.imported_fingerprint_version,
       availableRevision: link.available_revision,
+      availableContentHash: link.available_content_hash,
+      productFamily: parse(link.product_family_json, null),
+      variantEvidence: parse(link.variant_evidence_json, null),
+      identityAliases: parse(link.identity_aliases_json, null),
       state: link.state,
       linkedAt: iso(link.linked_at_ms),
       updatedAt: iso(link.updated_at_ms),
+      detachedAt: iso(link.detached_at_ms),
     })),
     variantMatches: extended.variantMatches ?? [],
     contributionOutbox: extended.contributionOutbox ?? [],
@@ -145,8 +150,9 @@ export function persistRegistryState(
     INSERT INTO registry_links (
       id, item_id, source_id, template_key, imported_revision,
       imported_content_hash, imported_fingerprint_version, available_revision,
-      state, linked_at_ms, updated_at_ms
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      available_content_hash, product_family_json, variant_evidence_json,
+      identity_aliases_json, state, linked_at_ms, updated_at_ms, detached_at_ms
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `)
   for (const link of state.links ?? []) {
     insertLink.run(
@@ -158,9 +164,14 @@ export function persistRegistryState(
       link.importedContentHash,
       link.importedFingerprintVersion ?? 1,
       link.availableRevision ?? null,
+      link.availableContentHash ?? null,
+      link.productFamily ? JSON.stringify(link.productFamily) : null,
+      link.variantEvidence ? JSON.stringify(link.variantEvidence) : null,
+      link.identityAliases ? JSON.stringify(link.identityAliases) : null,
       link.state,
       milliseconds(link.linkedAt, now),
       milliseconds(link.updatedAt, now),
+      milliseconds(link.detachedAt),
     )
   }
   putMetadata(database, 'legacy.registry-extended-state', {

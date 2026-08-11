@@ -50,4 +50,9 @@ export const CORE_MIGRATIONS: readonly CoreMigration[] = [
     file: '0008_mutable_unreferenced_identities.sql',
     sha256: 'd9838996c54ccd55af74de4f68603c30d351d33046637235a6ca52910ee52cb5',
   },
+  {
+    id: '0010_registry_link_reconciliation',
+    file: '0009_registry_link_reconciliation.sql',
+    sha256: '4f73bd5407caf55b52c2f5c4ec1ef16bd9479f6e922cc888a5c3ec861ed27c49',
+  },
 ]

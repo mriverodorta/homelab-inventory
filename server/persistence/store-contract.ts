@@ -17,6 +17,15 @@ export type AgentDeviceLookup = AgentHostReference & {
 }
 
 export interface HomelabInventoryPersistence {
+  markAppOpened(): Promise<void>
+  getReleaseNotesStatus(releaseNotes: unknown[]): unknown
+  acknowledgeReleaseNotes(): Promise<unknown>
+  getUpdateMetadata(): unknown
+  isUpdateVersionSkipped(version: string): boolean
+  saveUpdateCheck(result: unknown): Promise<void>
+  skipUpdateVersion(version: string): Promise<void>
+  clearSkippedUpdateVersion(): Promise<void>
+
   getProject(): unknown
   getEngineSnapshot(): unknown
   getEngineRevision(): number
@@ -37,6 +46,31 @@ export interface HomelabInventoryPersistence {
     lastMigration: unknown
   }
   getPersistenceHealth(): unknown
+
+  createInventoryItems(input: Record<string, unknown>, quantity?: number): unknown
+  duplicateInventoryItem(reference: Record<string, unknown>, quantity?: number): unknown
+  updateInventoryItem(reference: Record<string, unknown>, input: Record<string, unknown>): unknown
+  updateInventoryItemAndReconcileCatalog(
+    reference: Record<string, unknown>,
+    input: Record<string, unknown>,
+    contentHash: string,
+  ): unknown
+  updateInventoryItemProperties(reference: Record<string, unknown>, properties: unknown): unknown
+  changeNasPowerConfiguration(reference: Record<string, unknown>, target: unknown, confirmed?: boolean): unknown
+  getInventoryDependencies(reference: Record<string, unknown>): unknown
+  getInventoryDependencyReports(references: Record<string, unknown>[]): unknown
+  archiveInventoryItems(references: Record<string, unknown>[]): unknown
+  restoreInventoryItems(references: Record<string, unknown>[]): unknown
+  deleteInventoryItems(references: Record<string, unknown>[]): unknown
+
+  getOnboardingStatus(options?: { enabled?: boolean }): unknown
+  loadOnboardingExample(): Promise<unknown>
+  startOnboardingEmpty(): unknown
+  getOnboardingRemovalImpact(): unknown
+  finishOnboardingExample(action: string): Promise<unknown>
+  dismissOnboarding(): unknown
+  restartOnboardingChecklist(): unknown
+  setOnboardingWalkthroughStep(step: number): unknown
 
   listAgentEnrollments(): unknown[]
   findAgentEnrollment(input: AgentEnrollmentLookup): unknown | null
@@ -74,6 +108,18 @@ export interface HomelabInventoryPersistence {
   getRegistryState(): unknown
   updateRegistrySettings(patch: unknown, expectedUpdatedAt?: string): unknown
   registryTransaction(mutator: (draft: unknown) => void): unknown
+  createPrivateTemplate(input: Record<string, unknown>): Promise<unknown>
+  duplicatePrivateTemplate(id: number): Promise<unknown>
+  deletePrivateTemplate(id: number): unknown
+  exportPrivateTemplates(ids?: number[]): Promise<unknown>
+  previewPrivateTemplateImport(pack: unknown): Promise<unknown>
+  importPrivateTemplates(pack: unknown): Promise<unknown>
+  createCatalogInventoryItems(template: Record<string, unknown>, quantity?: number, options?: Record<string, unknown>): unknown
+  reconcileCatalogLink(reference: Record<string, unknown>, contentHash: string): unknown
+  getCatalogUpdates(): unknown[]
+  selectCatalogVariant(variantMatchId: number, template: Record<string, unknown>): unknown
+  getCatalogUpdatePreview(linkId: number, template: Record<string, unknown>): unknown
+  applyCatalogUpdate(linkId: number, template: Record<string, unknown>): unknown
   getAuthenticationState(): unknown
   updateAuthentication(mutator: (draft: unknown) => void): unknown
   getBackupManagementState(): unknown

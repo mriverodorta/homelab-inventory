@@ -1,7 +1,9 @@
 import type { Database } from 'bun:sqlite'
 import type { ProjectPatch, TopologyEndpointRef } from '../../shared/engine/protocol.mjs'
 import { withCanonicalPowerPorts } from '../../shared/power-ports.mjs'
+import { planHostAllocations } from '../../shared/compatibility/index.mjs'
 import type { ProjectState } from '../../src/types/inventory.ts'
+import { getReleaseNotesBetween } from '../../src/release-notes.ts'
 import {
   buildDuplicateRecord,
   buildQuantityRecords,
@@ -20,7 +22,26 @@ import { assertBackupManagementStoreShape, normalizeBackupManagementStore } from
 import { timingSafeEqualString } from '../db/agent-auth.mjs'
 import { inspectNasPowerConfigurationChange } from '../db/nas-power-configuration.mjs'
 import { createEngineSnapshot } from '../engine/snapshot.mjs'
-import { assertRegistryStoreShape } from '../registry/model.mjs'
+import {
+  assertRegistryStoreShape,
+  createPrivateTemplatePack,
+  createPrivateTemplateRecord,
+  previewPrivateTemplatePack,
+} from '../registry/model.mjs'
+import {
+  materializeCatalogItem,
+  projectLocalItemForCatalog,
+} from '../registry/local-catalog-mapping.mjs'
+import { catalogFieldDiff, mergeCatalogUpdate } from '../registry/update-service.mjs'
+import { assertOnboardingState, createOnboardingState } from '../onboarding/model.mjs'
+import {
+  finishExampleInDraft,
+  loadExampleIntoDraft,
+  publicOnboardingStatus,
+  sampleRemovalImpact,
+  setOnboardingStatusInDraft,
+  setWalkthroughStepInDraft,
+} from '../onboarding/lifecycle.mjs'
 import { INVENTORY_TYPES, type InventoryType } from './core/inventory/field-contract.ts'
 import {
   persistAuthenticationState,
@@ -51,6 +72,7 @@ type SqliteStoreOptions = Readonly<{
   core: ManagedDatabase
   projectId?: number
   workspaceId?: number
+  appVersion?: string
   now?: () => number
 }>
 
@@ -143,22 +165,380 @@ function putMetadata(database: Database, key: string, value: unknown, now: numbe
   `).run(key, JSON.stringify(value), now)
 }
 
+function nextPublicId(records: Row[]) {
+  return records.reduce((maximum, record) => Math.max(maximum, Number(record.id) || 0), 0) + 1
+}
+
+function motherboardCatalogUpdateConflicts(project: Row, itemId: number, nextItem: Row) {
+  const motherboardKey = `motherboard:${itemId}`
+  const hostIds = [...new Set(
+    (project.assignments ?? [])
+      .filter((assignment: Row) => assignment.itemId === motherboardKey && assignment.type === 'motherboard')
+      .map((assignment: Row) => assignment.serverId),
+  )]
+  if (hostIds.length === 0) return []
+  const nextProject = structuredClone(project)
+  nextProject.items[motherboardKey] = { ...structuredClone(nextItem), id: itemId, key: motherboardKey, type: 'motherboard' }
+  return hostIds.flatMap((hostId) => {
+    const before = planHostAllocations(project, hostId as string)
+    const after = planHostAllocations(nextProject, hostId as string)
+    const previous = new Map(before.results.map((result: Row) => [result.assignmentId, result]))
+    return after.results.flatMap((result: Row) => {
+      if (result.status !== 'incompatible' || previous.get(result.assignmentId)?.status === 'incompatible') return []
+      return [{
+        hostId,
+        assignmentId: result.assignmentId,
+        itemId: result.itemId,
+        findings: result.findings.filter((finding: Row) => finding.severity === 'error'),
+      }]
+    })
+  })
+}
+
 export class SqliteHomelabInventoryStore {
   readonly core: ManagedDatabase
   readonly projectId: number
   readonly workspaceId: number
   readonly now: () => number
+  readonly appVersion: string
   readonly context: ReturnType<typeof createRepositoryContext>
   private readonly projectCommitListeners = new Set<(event: ProjectCommitEvent) => void>()
+  private registryMutationTail: Promise<void> = Promise.resolve()
 
-  constructor({ core, projectId = 1, workspaceId = 2, now = Date.now }: SqliteStoreOptions) {
+  constructor({ core, projectId = 1, workspaceId = 2, appVersion = '0.0.0', now = Date.now }: SqliteStoreOptions) {
     if (core.schemaName !== 'core') throw new Error('SQLite store requires the core database.')
     if (core.readonly) throw new Error('SQLite store requires a writable core database.')
     this.core = core
     this.projectId = positiveId(projectId, 'Project ID')
     this.workspaceId = positiveId(workspaceId, 'Workspace ID')
     this.now = now
+    this.appVersion = appVersion
     this.context = createRepositoryContext(core.database, now)
+  }
+
+  private applicationMeta() {
+    const value = metadata(this.core.database, 'legacy.application-meta', {}) as Row
+    return {
+      ...value,
+      onboarding: value.onboarding ?? createOnboardingState('dismissed'),
+    }
+  }
+
+  private updateApplicationMeta(mutator: (draft: Row) => void) {
+    const draft = this.applicationMeta()
+    mutator(draft)
+    assertOnboardingState(draft.onboarding)
+    putMetadata(this.core.database, 'legacy.application-meta', draft, this.now())
+    return draft
+  }
+
+  private legacyInventory(project = this.getProject()) {
+    const inventory = Object.fromEntries(
+      Object.values(LEGACY_TABLE_BY_TYPE).map((table) => [table, [] as Row[]]),
+    ) as Row
+    for (const item of Object.values(project.items) as Row[]) {
+      const table = LEGACY_TABLE_BY_TYPE[item.type as InventoryType]
+      if (table) inventory[table].push(cleanItemForStore(item))
+    }
+    return inventory
+  }
+
+  private legacyDomainDraft() {
+    const project = this.getProject()
+    const persistedEndpoint = (endpoint: Row) => {
+      const item = parseRuntimeItemKey(endpoint.itemId, 'Connection endpoint item')
+      const hosted = endpoint.hostedItemId
+        ? parseRuntimeItemKey(endpoint.hostedItemId, 'Hosted connection endpoint item')
+        : null
+      return {
+        itemType: item.type,
+        itemId: item.id,
+        portId: endpoint.portId,
+        ...(endpoint.endpointId === undefined ? {} : { endpointId: endpoint.endpointId }),
+        ...(hosted ? { hostedItemType: hosted.type, hostedItemId: hosted.id } : {}),
+      }
+    }
+    return {
+      meta: { onboarding: structuredClone(this.applicationMeta().onboarding) },
+      inventory: this.legacyInventory(project),
+      project: {
+        id: project.id,
+        revision: project.revision,
+        metadata: structuredClone(project.metadata),
+        placements: project.placements.map((placement: Row) => {
+          const item = parseRuntimeItemKey(placement.serverId, 'Placement item')
+          return { itemType: item.type, itemId: item.id, x: placement.x, y: placement.y }
+        }),
+        assignments: project.assignments.map((assignment: Row) => {
+          const host = parseRuntimeItemKey(assignment.serverId, 'Assignment host')
+          const item = parseRuntimeItemKey(assignment.itemId, 'Assignment item')
+          return {
+            id: assignment.id,
+            hostType: host.type,
+            hostId: host.id,
+            itemType: item.type,
+            itemId: item.id,
+            type: assignment.type,
+            assignedAt: assignment.assignedAt,
+            ...(assignment.allocation ? { allocation: structuredClone(assignment.allocation) } : {}),
+          }
+        }),
+        connections: project.connections.map((connection: Row) => ({
+          ...structuredClone(connection),
+          from: persistedEndpoint(connection.from),
+          to: persistedEndpoint(connection.to),
+        })),
+        compatibilityPolicy: structuredClone(project.compatibilityPolicy),
+      },
+      agents: projectAgentState(this.core.database),
+      agentStatus: projectAgentStatusState(this.core.database),
+    }
+  }
+
+  private serializeRegistryMutation<T>(operation: () => Promise<T> | T): Promise<T> {
+    const result = this.registryMutationTail.then(operation, operation)
+    this.registryMutationTail = result.then(() => undefined, () => undefined)
+    return result
+  }
+
+  async markAppOpened() {
+    this.updateApplicationMeta((draft) => {
+      draft.appLastOpenedWith = this.appVersion
+    })
+  }
+
+  getReleaseNotesStatus(releaseNotes: unknown[]) {
+    const current = this.applicationMeta()
+    const lastSeenVersion = current.lastSeenReleaseNotesVersion ?? this.appVersion
+    const entries = getReleaseNotesBetween(releaseNotes as any, lastSeenVersion, this.appVersion)
+    return { currentVersion: this.appVersion, lastSeenVersion, hasUnseen: entries.length > 0, entries }
+  }
+
+  async acknowledgeReleaseNotes() {
+    this.updateApplicationMeta((draft) => {
+      draft.lastSeenReleaseNotesVersion = this.appVersion
+    })
+    return { currentVersion: this.appVersion, lastSeenVersion: this.appVersion, hasUnseen: false, entries: [] }
+  }
+
+  getUpdateMetadata() {
+    const current = this.applicationMeta()
+    return {
+      skippedUpdateVersion: current.skippedUpdateVersion ?? null,
+      lastUpdateCheck: current.lastUpdateCheck ? structuredClone(current.lastUpdateCheck) : null,
+    }
+  }
+
+  isUpdateVersionSkipped(version: string) {
+    return this.applicationMeta().skippedUpdateVersion === version
+  }
+
+  async saveUpdateCheck(result: unknown) {
+    this.updateApplicationMeta((draft) => {
+      draft.lastUpdateCheck = structuredClone(result)
+    })
+  }
+
+  async skipUpdateVersion(version: string) {
+    this.updateApplicationMeta((draft) => {
+      draft.skippedUpdateVersion = version
+    })
+  }
+
+  async clearSkippedUpdateVersion() {
+    this.updateApplicationMeta((draft) => {
+      draft.skippedUpdateVersion = null
+    })
+  }
+
+  getOnboardingStatus({ enabled = true } = {}) {
+    const project = this.getProject()
+    return publicOnboardingStatus({
+      meta: { onboarding: this.applicationMeta().onboarding },
+      inventory: this.legacyInventory(project),
+      project,
+      agents: projectAgentState(this.core.database),
+      enabled,
+    })
+  }
+
+  private updateOnboardingMetadata(mutator: (draft: Row) => void) {
+    this.updateApplicationMeta((meta) => {
+      const draft = this.legacyDomainDraft()
+      draft.meta.onboarding = structuredClone(meta.onboarding)
+      mutator(draft)
+      meta.onboarding = draft.meta.onboarding
+    })
+    return this.getOnboardingStatus()
+  }
+
+  startOnboardingEmpty() {
+    if (this.applicationMeta().onboarding.status === 'sample_active') {
+      throw lifecycleError('Keep or remove the active example before starting empty.', 'onboarding-sample-active', 409)
+    }
+    return this.updateOnboardingMetadata((draft) => setOnboardingStatusInDraft(draft, 'checklist_active'))
+  }
+
+  async loadOnboardingExample() {
+    const current = this.applicationMeta().onboarding
+    if (current.status === 'sample_active') {
+      return { status: this.getOnboardingStatus(), project: this.getProject() }
+    }
+    const draft = this.legacyDomainDraft()
+    loadExampleIntoDraft(draft, new Date(this.now()).toISOString())
+    const records = (Object.entries(LEGACY_TABLE_BY_TYPE) as [InventoryType, string][])
+      .flatMap(([type, table]) => (draft.inventory[table] ?? []).map((item: Row) => ({ type, item })))
+    this.commitCanonicalMutation(() => {
+      for (const { type, item } of records) {
+        insertLegacyInventoryItem({
+          database: this.core.database,
+          projectId: this.projectId,
+          type,
+          item: withCanonicalPowerPorts({ ...item, type }),
+          now: this.now(),
+        })
+      }
+      const insertPlacement = this.core.database.query(`
+        INSERT INTO workspace_placements (
+          project_id, workspace_id, item_id, x, y, orientation, z_index, created_at_ms, updated_at_ms
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `)
+      for (const placement of draft.project.placements) {
+        insertPlacement.run(
+          this.projectId,
+          this.workspaceId,
+          this.resolveItem(placement.itemType, placement.itemId),
+          placement.x,
+          placement.y,
+          placement.orientation ?? null,
+          placement.zIndex ?? 0,
+          this.now(),
+          this.now(),
+        )
+      }
+      for (const assignment of draft.project.assignments) {
+        this.upsertAssignment({
+          id: assignment.id,
+          host: { item_type: assignment.hostType, id: assignment.hostId },
+          item: { item_type: assignment.itemType, id: assignment.itemId },
+          component_type: assignment.type,
+          assigned_at: assignment.assignedAt,
+          allocation: assignment.allocation ? {
+            resource_type: assignment.allocation.resourceType,
+            group_id: assignment.allocation.groupId ?? null,
+            positions: assignment.allocation.positions,
+          } : null,
+        })
+      }
+      for (const connection of draft.project.connections) {
+        this.insertConnection({
+          id: connection.id,
+          from: {
+            item: { item_type: connection.from.itemType, id: connection.from.itemId },
+            port_id: connection.from.portId,
+            endpoint_id: connection.from.endpointId ?? null,
+            hosted_item: connection.from.hostedItemType ? {
+              item_type: connection.from.hostedItemType,
+              id: connection.from.hostedItemId,
+            } : null,
+          },
+          to: {
+            item: { item_type: connection.to.itemType, id: connection.to.itemId },
+            port_id: connection.to.portId,
+            endpoint_id: connection.to.endpointId ?? null,
+            hosted_item: connection.to.hostedItemType ? {
+              item_type: connection.to.hostedItemType,
+              id: connection.to.hostedItemId,
+            } : null,
+          },
+          connection_type: connection.type,
+          negotiated_speed_mbps: connection.negotiatedSpeedMbps ?? null,
+          label: connection.label ?? null,
+          route: connection.route ? {
+            source_side: connection.route.sourceSide ?? null,
+            target_side: connection.route.targetSide ?? null,
+            bend_points: connection.route.bendPoints ?? [],
+            avoid_cable_overlap: connection.route.avoidCableOverlap === true,
+          } : null,
+          created_at: connection.createdAt,
+        }, this.now())
+      }
+      putMetadata(this.core.database, 'legacy.application-meta', {
+        ...this.applicationMeta(),
+        onboarding: draft.meta.onboarding,
+      }, this.now())
+    })
+    return { status: this.getOnboardingStatus(), project: this.getProject() }
+  }
+
+  getOnboardingRemovalImpact() {
+    return sampleRemovalImpact(this.legacyDomainDraft())
+  }
+
+  async finishOnboardingExample(action: string) {
+    const draft = this.legacyDomainDraft()
+    const sampleRefs = structuredClone(draft.meta.onboarding.sampleInventoryRefs ?? []) as Row[]
+    finishExampleInDraft(draft, action, new Date(this.now()).toISOString())
+    if (action === 'keep') {
+      const status = this.updateOnboardingMetadata((currentDraft) => {
+        currentDraft.meta.onboarding = draft.meta.onboarding
+      })
+      return { status, project: this.getProject() }
+    }
+    const canonicalIds = sampleRefs.map((ref) => this.resolveItem(ref.type, ref.id))
+    this.commitCanonicalMutation(() => {
+      for (const itemId of canonicalIds) {
+        this.core.database.query(`
+          DELETE FROM project_connections
+          WHERE project_id = ? AND id IN (
+            SELECT DISTINCT e.connection_id FROM connection_endpoints e
+            JOIN inventory_ports p ON p.id = e.port_id
+            WHERE p.item_id = ?
+          )
+        `).run(this.projectId, itemId)
+        this.core.database.query(
+          'DELETE FROM component_assignments WHERE project_id = ? AND (host_item_id = ? OR component_item_id = ?)',
+        ).run(this.projectId, itemId, itemId)
+        this.core.database.query(
+          'DELETE FROM workspace_placements WHERE project_id = ? AND item_id = ?',
+        ).run(this.projectId, itemId)
+        this.core.database.query('DELETE FROM registry_links WHERE item_id = ?').run(itemId)
+        this.core.database.query('DELETE FROM project_inventory_memberships WHERE project_id = ? AND item_id = ?')
+          .run(this.projectId, itemId)
+        this.core.database.query('UPDATE inventory_items SET archived_at_ms = ?, updated_at_ms = ? WHERE id = ?')
+          .run(this.now(), this.now(), itemId)
+        this.core.database.query('DELETE FROM port_identity_aliases WHERE port_id IN (SELECT id FROM inventory_ports WHERE item_id = ?)')
+          .run(itemId)
+        this.core.database.query('DELETE FROM resource_identity_aliases WHERE resource_id IN (SELECT id FROM inventory_resources WHERE item_id = ?)')
+          .run(itemId)
+        this.core.database.query('DELETE FROM inventory_identity_aliases WHERE item_id = ?').run(itemId)
+        this.core.database.query('DELETE FROM inventory_items WHERE id = ?').run(itemId)
+      }
+      putMetadata(this.core.database, 'legacy.compatibility-policy', draft.project.compatibilityPolicy, this.now())
+      putMetadata(this.core.database, 'legacy.application-meta', {
+        ...this.applicationMeta(),
+        onboarding: draft.meta.onboarding,
+      }, this.now())
+    })
+    return { status: this.getOnboardingStatus(), project: this.getProject() }
+  }
+
+  dismissOnboarding() {
+    if (this.applicationMeta().onboarding.status === 'sample_active') {
+      throw lifecycleError('Keep or remove the active example before dismissing onboarding.', 'onboarding-sample-active', 409)
+    }
+    return this.updateOnboardingMetadata((draft) => setOnboardingStatusInDraft(draft, 'dismissed'))
+  }
+
+  restartOnboardingChecklist() {
+    if (this.applicationMeta().onboarding.status === 'sample_active') {
+      throw lifecycleError('Finish the active example before restarting the checklist.', 'onboarding-sample-active', 409)
+    }
+    return this.updateOnboardingMetadata((draft) => setOnboardingStatusInDraft(draft, 'checklist_active'))
+  }
+
+  setOnboardingWalkthroughStep(step: number) {
+    return this.updateOnboardingMetadata((draft) => setWalkthroughStepInDraft(draft, step))
   }
 
   getProject(): ProjectState {
@@ -295,6 +675,12 @@ export class SqliteHomelabInventoryStore {
   }
 
   createInventoryItems(input: Row, quantity = 1) {
+    const { type, records } = this.prepareInventoryCreation(input, quantity)
+    this.commitCanonicalMutation(() => this.insertInventoryRecords(type, records))
+    return this.getProject()
+  }
+
+  private prepareInventoryCreation(input: Row, quantity: number) {
     if (!Number.isInteger(quantity) || quantity < 1 || quantity > 100) {
       throw lifecycleError('Quantity must be an integer between 1 and 100.', 'invalid-quantity', 400)
     }
@@ -312,18 +698,19 @@ export class SqliteHomelabInventoryStore {
       startingId,
       existingRecords: currentItems,
     }).map((item: Row) => withCanonicalPowerPorts({ ...item, type: inventoryType }))
-    this.commitCanonicalMutation(() => {
-      for (const item of records) {
-        insertLegacyInventoryItem({
-          database: this.core.database,
-          projectId: this.projectId,
-          type: inventoryType,
-          item,
-          now: this.now(),
-        })
-      }
-    })
-    return this.getProject()
+    return { type: inventoryType, records }
+  }
+
+  private insertInventoryRecords(type: InventoryType, records: Row[]) {
+    for (const item of records) {
+      insertLegacyInventoryItem({
+        database: this.core.database,
+        projectId: this.projectId,
+        type,
+        item,
+        now: this.now(),
+      })
+    }
   }
 
   addInventoryItem(input: Row) {
@@ -455,6 +842,14 @@ export class SqliteHomelabInventoryStore {
   }
 
   updateInventoryItem(rawRef: Row, input: Row) {
+    const { ref, record } = this.prepareInventoryUpdate(rawRef, input)
+    this.commitCanonicalMutation(() => {
+      this.replaceInventoryRecord(ref, record)
+    })
+    return this.getProject()
+  }
+
+  private prepareInventoryUpdate(rawRef: Row, input: Row) {
     const ref = normalizeInventoryRef(rawRef)
     const current = this.projectItem(ref.type, ref.id)
     if (current.archivedAt) {
@@ -462,10 +857,7 @@ export class SqliteHomelabInventoryStore {
     }
     const { item } = normalizeInventoryItemInput({ ...input, type: ref.type }, ref.id)
     const record = cleanItemForStore(item)
-    if (
-      ref.type === 'nas'
-      && current.specs?.powerConfiguration !== record.specs?.powerConfiguration
-    ) {
+    if (ref.type === 'nas' && current.specs?.powerConfiguration !== record.specs?.powerConfiguration) {
       throw lifecycleError(
         'Use the NAS power configuration command to change power modes.',
         'nas-power-configuration-command-required',
@@ -485,23 +877,22 @@ export class SqliteHomelabInventoryStore {
         || JSON.stringify(previousPort.endpoints ?? []) !== JSON.stringify(nextPort.endpoints ?? [])
       ) {
         throw new InventoryLifecycleError(`Connected port ${portId} cannot be removed or materially changed.`, {
-          code: 'connected-port-change',
-          status: 409,
-          details: { portId },
+          code: 'connected-port-change', status: 409, details: { portId },
         })
       }
     }
-    this.commitCanonicalMutation(() => {
-      replaceLegacyInventoryItem({
-        database: this.core.database,
-        projectId: this.projectId,
-        type: ref.type as InventoryType,
-        item: record,
-        itemId: this.resolveItem(ref.type, ref.id),
-        now: this.now(),
-      })
+    return { ref, record }
+  }
+
+  private replaceInventoryRecord(ref: { type: string; id: number }, record: Row) {
+    replaceLegacyInventoryItem({
+      database: this.core.database,
+      projectId: this.projectId,
+      type: ref.type as InventoryType,
+      item: record,
+      itemId: this.resolveItem(ref.type, ref.id),
+      now: this.now(),
     })
-    return this.getProject()
   }
 
   changeNasPowerConfiguration(rawRef: Row, target: unknown, confirmed = false) {
@@ -652,6 +1043,311 @@ export class SqliteHomelabInventoryStore {
       )
     }).immediate()
     return this.getRegistryState()
+  }
+
+  async createPrivateTemplate(input: Row) {
+    return this.serializeRegistryMutation(async () => {
+      let record
+      try {
+        record = await createPrivateTemplateRecord((this.getRegistryState() as Row).privateTemplates, input)
+      } catch (error) {
+        throw lifecycleError(
+          error instanceof Error ? error.message : 'Private template is invalid.',
+          'invalid-private-template',
+          400,
+        )
+      }
+      return this.registryTransaction((draft: any) => {
+        draft.privateTemplates.push(record)
+      })
+    })
+  }
+
+  async duplicatePrivateTemplate(id: number) {
+    return this.serializeRegistryMutation(async () => {
+      const registry = this.getRegistryState() as Row
+      const source = registry.privateTemplates.find((template: Row) => template.id === id)
+      if (!source) throw lifecycleError('Private template was not found.', 'private-template-not-found', 404)
+      const record = await createPrivateTemplateRecord(registry.privateTemplates, {
+        name: `${source.name} copy`, description: source.description, item: source.item,
+      })
+      return this.registryTransaction((draft: any) => {
+        draft.privateTemplates.push(record)
+      })
+    })
+  }
+
+  deletePrivateTemplate(id: number) {
+    const registry = this.getRegistryState() as Row
+    if (!registry.privateTemplates.some((template: Row) => template.id === id)) {
+      throw lifecycleError('Private template was not found.', 'private-template-not-found', 404)
+    }
+    return this.registryTransaction((draft: any) => {
+      draft.privateTemplates = draft.privateTemplates.filter((template: Row) => template.id !== id)
+    })
+  }
+
+  async exportPrivateTemplates(ids?: number[]) {
+    const registry = this.getRegistryState() as Row
+    const selectedIds = Array.isArray(ids) && ids.length > 0 ? new Set(ids) : null
+    const templates = registry.privateTemplates.filter(
+      (template: Row) => selectedIds === null || selectedIds.has(template.id),
+    )
+    if (selectedIds && templates.length !== selectedIds.size) {
+      throw lifecycleError('One or more private templates were not found.', 'private-template-not-found', 404)
+    }
+    return createPrivateTemplatePack(templates)
+  }
+
+  async previewPrivateTemplateImport(pack: unknown) {
+    return previewPrivateTemplatePack(pack)
+  }
+
+  async importPrivateTemplates(pack: unknown) {
+    return this.serializeRegistryMutation(async () => {
+      const preview = await previewPrivateTemplatePack(pack) as Row
+      if (!preview.valid) {
+        throw new InventoryLifecycleError('Private template pack is invalid.', {
+          code: 'invalid-private-template-pack', status: 400, details: preview.errors,
+        })
+      }
+      const registry = this.getRegistryState() as Row
+      const existingChecksums = new Set(registry.privateTemplates.map((template: Row) => template.checksum))
+      const imported: Row[] = []
+      let records = registry.privateTemplates
+      for (const template of preview.templates) {
+        if (existingChecksums.has(template.checksum)) continue
+        const record = await createPrivateTemplateRecord(records, template)
+        imported.push(record)
+        records = [...records, record]
+        existingChecksums.add(record.checksum)
+      }
+      const nextRegistry = this.registryTransaction((draft: any) => {
+        draft.privateTemplates.push(...imported)
+      })
+      return { registry: nextRegistry, imported: imported.length, skipped: preview.templates.length - imported.length }
+    })
+  }
+
+  createCatalogInventoryItems(template: Row, quantity = 1, options: Row = {}) {
+    const registry = this.getRegistryState() as Row
+    const sourceId = registry.snapshot?.sourceId
+    if (!Number.isSafeInteger(sourceId) || sourceId < 1) {
+      throw lifecycleError('A verified catalog snapshot must be active before importing hardware.', 'catalog-unavailable', 409)
+    }
+    const prepared = this.prepareInventoryCreation(
+      materializeCatalogItem(template.item, { usageRole: options.usageRole }),
+      quantity,
+    )
+    const draft = structuredClone(registry)
+    let linkId = nextPublicId(draft.links)
+    for (const item of prepared.records) {
+      draft.links.push({
+          id: linkId,
+          itemType: prepared.type,
+          itemId: item.id,
+          sourceId,
+          templateKey: template.templateKey,
+          importedRevision: template.revision,
+          importedContentHash: template.contentHash,
+          importedFingerprintVersion: template.fingerprintVersion,
+          ...(template.productFamily ? { productFamily: template.productFamily } : {}),
+          ...(template.variantEvidence ? { variantEvidence: template.variantEvidence } : {}),
+          ...(template.identityAliases ? { identityAliases: template.identityAliases } : {}),
+          state: 'linked',
+          linkedAt: new Date(this.now()).toISOString(),
+      })
+      linkId += 1
+    }
+    assertRegistryStoreShape(draft)
+    this.commitCanonicalMutation(() => {
+      this.insertInventoryRecords(prepared.type, prepared.records)
+      persistRegistryState(
+        this.core.database,
+        draft,
+        this.now(),
+        (type, id) => this.resolveItem(type, id),
+      )
+    })
+    return this.getProject()
+  }
+
+  reconcileCatalogLink(rawRef: Row, contentHash: string) {
+    const ref = normalizeInventoryRef(rawRef)
+    const registry = this.getRegistryState() as Row
+    const link = registry.links.find((candidate: Row) => candidate.itemType === ref.type && candidate.itemId === ref.id)
+    if (!link) return registry
+    return this.registryTransaction((draft: any) => {
+      const current = draft.links.find((candidate: Row) => candidate.id === link.id)
+      if (!current || current.importedContentHash === contentHash) return
+      current.state = 'detached'
+      current.detachedAt = new Date(this.now()).toISOString()
+      delete current.availableRevision
+      delete current.availableContentHash
+    })
+  }
+
+  updateInventoryItemAndReconcileCatalog(rawRef: Row, input: Row, contentHash: string) {
+    const { ref, record } = this.prepareInventoryUpdate(rawRef, input)
+    const draft = this.getRegistryState() as Row
+    const link = draft.links.find((candidate: Row) => candidate.itemType === ref.type && candidate.itemId === ref.id)
+    if (link && link.importedContentHash !== contentHash) {
+      link.state = 'detached'
+      link.detachedAt = new Date(this.now()).toISOString()
+      delete link.availableRevision
+      delete link.availableContentHash
+    }
+    assertRegistryStoreShape(draft)
+    this.commitCanonicalMutation(() => {
+      this.replaceInventoryRecord(ref, record)
+      persistRegistryState(
+        this.core.database,
+        draft,
+        this.now(),
+        (type, id) => this.resolveItem(type, id),
+      )
+    })
+    return this.getProject()
+  }
+
+  getCatalogUpdates() {
+    const registry = this.getRegistryState() as Row
+    const project = this.getProject()
+    const linked = registry.links
+      .filter((link: Row) => ['update-available', 'adoption-available'].includes(link.state))
+      .map((link: Row) => ({
+        linkId: link.id,
+        itemType: link.itemType,
+        itemId: link.itemId,
+        itemName: project.items[`${link.itemType}:${link.itemId}`]?.name ?? 'Missing inventory item',
+        templateKey: link.templateKey,
+        importedRevision: link.importedRevision,
+        availableRevision: link.availableRevision,
+        state: link.state,
+      }))
+    const variants = (registry.variantMatches ?? []).map((match: Row) => ({
+      variantMatchId: match.id,
+      itemType: match.itemType,
+      itemId: match.itemId,
+      itemName: project.items[`${match.itemType}:${match.itemId}`]?.name ?? 'Missing inventory item',
+      state: 'variant-selection-required',
+      productFamily: match.productFamily,
+      candidates: match.candidates,
+    }))
+    return [...variants, ...linked]
+  }
+
+  selectCatalogVariant(variantMatchId: number, template: Row) {
+    const registry = this.getRegistryState() as Row
+    const match = (registry.variantMatches ?? []).find((candidate: Row) => candidate.id === variantMatchId)
+    if (!match) throw lifecycleError('Catalog variant selection was not found.', 'catalog-variant-selection-not-found', 404)
+    if (!match.candidates.some((candidate: Row) => candidate.templateKey === template.templateKey)) {
+      throw lifecycleError('The selected template is not a candidate for this hardware variant.', 'catalog-variant-selection-invalid', 409)
+    }
+    return this.registryTransaction((draft: any) => {
+      if (draft.links.some((link: Row) => link.itemType === match.itemType && link.itemId === match.itemId)) {
+        throw lifecycleError('This inventory item already has a registry link.', 'catalog-link-already-exists', 409)
+      }
+      draft.links.push({
+        id: nextPublicId(draft.links), itemType: match.itemType, itemId: match.itemId,
+        sourceId: match.sourceId, templateKey: template.templateKey,
+        importedRevision: template.revision, importedContentHash: match.localContentHash,
+        importedFingerprintVersion: template.fingerprintVersion,
+        ...(template.productFamily ? { productFamily: template.productFamily } : {}),
+        ...(template.variantEvidence ? { variantEvidence: template.variantEvidence } : {}),
+        ...(template.identityAliases ? { identityAliases: template.identityAliases } : {}),
+        state: 'adoption-available', linkedAt: new Date(this.now()).toISOString(),
+        availableRevision: template.revision, availableContentHash: template.contentHash,
+      })
+      draft.variantMatches = draft.variantMatches.filter((candidate: Row) => candidate.id !== variantMatchId)
+    })
+  }
+
+  getCatalogUpdatePreview(linkId: number, template: Row) {
+    const registry = this.getRegistryState() as Row
+    const link = registry.links.find((candidate: Row) => candidate.id === linkId)
+    if (!link || !['update-available', 'adoption-available'].includes(link.state)) {
+      throw lifecycleError('Catalog update was not found.', 'catalog-update-not-found', 404)
+    }
+    const item = this.getProject().items[`${link.itemType}:${link.itemId}`] as Row | undefined
+    if (!item) throw lifecycleError('Linked inventory item was not found.', 'linked-inventory-not-found', 409)
+    const nextItem = materializeCatalogItem(
+      mergeCatalogUpdate(projectLocalItemForCatalog(item, link.itemType), template.item),
+      { usageRole: item.usageRole },
+    )
+    const dependencyConflicts = link.itemType === 'motherboard'
+      ? motherboardCatalogUpdateConflicts(this.getProject(), link.itemId, nextItem)
+      : []
+    return {
+      linkId,
+      itemType: link.itemType,
+      itemId: link.itemId,
+      itemName: item.name,
+      templateKey: link.templateKey,
+      importedRevision: link.importedRevision,
+      availableRevision: template.revision,
+      state: link.state,
+      changes: catalogFieldDiff(projectLocalItemForCatalog(item, link.itemType), template.item),
+      dependencyConflicts,
+      localFieldsPreserved: Object.keys(item).filter(
+        (key) => key === 'name' || !['id', 'key', 'type', 'subtype', 'manufacturer', 'secondaryManufacturer', 'family', 'model', 'number', 'specs', 'ports', 'compatibility'].includes(key),
+      ),
+    }
+  }
+
+  applyCatalogUpdate(linkId: number, template: Row) {
+    const registry = this.getRegistryState() as Row
+    const link = registry.links.find((candidate: Row) => candidate.id === linkId)
+    if (!link || !['update-available', 'adoption-available'].includes(link.state)) {
+      throw lifecycleError('Catalog update was not found.', 'catalog-update-not-found', 404)
+    }
+    if (link.templateKey !== template.templateKey || link.availableContentHash !== template.contentHash) {
+      throw lifecycleError('Catalog update changed; review the latest revision before applying it.', 'catalog-update-stale', 409)
+    }
+    const current = this.getProject().items[`${link.itemType}:${link.itemId}`] as Row | undefined
+    if (!current) throw lifecycleError('Linked inventory item was not found.', 'linked-inventory-not-found', 409)
+    const nextItem = materializeCatalogItem(
+      mergeCatalogUpdate(projectLocalItemForCatalog(current, link.itemType), template.item),
+      { usageRole: current.usageRole },
+    )
+    const dependencyConflicts = link.itemType === 'motherboard'
+      ? motherboardCatalogUpdateConflicts(this.getProject(), link.itemId, nextItem)
+      : []
+    if (dependencyConflicts.length > 0) {
+      throw new InventoryLifecycleError(
+        'Resolve incompatible PC Build assignments before applying this motherboard update.',
+        { code: 'catalog-update-dependency-conflict', status: 409, details: { conflicts: dependencyConflicts } },
+      )
+    }
+    const prepared = this.prepareInventoryUpdate({ type: link.itemType, id: link.itemId }, nextItem)
+    const draft = structuredClone(registry)
+    const currentLink = draft.links.find((candidate: Row) => candidate.id === linkId)
+    if (!currentLink) throw new Error('Catalog link disappeared during update.')
+    currentLink.importedRevision = template.revision
+    currentLink.importedContentHash = template.contentHash
+    currentLink.importedFingerprintVersion = template.fingerprintVersion
+    if (template.productFamily) currentLink.productFamily = template.productFamily
+    else delete currentLink.productFamily
+    if (template.variantEvidence) currentLink.variantEvidence = template.variantEvidence
+    else delete currentLink.variantEvidence
+    if (template.identityAliases) currentLink.identityAliases = template.identityAliases
+    else delete currentLink.identityAliases
+    currentLink.state = 'linked'
+    currentLink.updatedAt = new Date(this.now()).toISOString()
+    delete currentLink.availableRevision
+    delete currentLink.availableContentHash
+    delete currentLink.detachedAt
+    assertRegistryStoreShape(draft)
+    this.commitCanonicalMutation(() => {
+      this.replaceInventoryRecord(prepared.ref, prepared.record)
+      persistRegistryState(
+        this.core.database,
+        draft,
+        this.now(),
+        (type, id) => this.resolveItem(type, id),
+      )
+    })
+    return this.getProject()
   }
 
   getAuthenticationState() {

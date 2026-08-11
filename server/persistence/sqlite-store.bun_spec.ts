@@ -2,6 +2,7 @@ import { afterEach, describe, expect, test } from 'bun:test'
 import { mkdtemp, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
+import { digestCatalogTemplate } from '../../packages/catalog-protocol/src/index.ts'
 import { CORE_MIGRATIONS } from './core/migrations/manifest.ts'
 import { schema29ProductionShapeFixture } from './fixtures/schema-29-production-shape.ts'
 import { buildCanonicalIdentityPlan } from './legacy/identity-plan.ts'
@@ -16,7 +17,7 @@ afterEach(async () => {
   await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })))
 })
 
-async function fixtureStore() {
+async function fixtureStore(configure?: (snapshot: ReturnType<typeof schema29ProductionShapeFixture>) => void) {
   const root = await mkdtemp(join(tmpdir(), 'homelab-inventory-sqlite-store-'))
   roots.push(root)
   const handle = await openManagedDatabase({ filePath: join(root, 'core.sqlite'), schemaName: 'core' })
@@ -26,11 +27,50 @@ async function fixtureStore() {
     sql: await readFile(resolve(import.meta.dir, 'core/migrations/generated', migration.file), 'utf8'),
   }))))
   const snapshot = schema29ProductionShapeFixture()
+  configure?.(snapshot)
   importLegacyCore({ database: handle.database, snapshot, identityPlan: buildCanonicalIdentityPlan(snapshot) })
   return new SqliteHomelabInventoryStore({
     core: handle,
+    appVersion: '0.12.0',
     now: () => Date.parse('2026-08-12T01:00:00.000Z'),
   })
+}
+
+async function emptyFixtureStore() {
+  return fixtureStore((snapshot) => {
+    for (const table of Object.keys(snapshot.inventory) as (keyof typeof snapshot.inventory)[]) {
+      snapshot.inventory[table] = [] as never
+    }
+    snapshot.project.placements = []
+    snapshot.project.assignments = []
+    snapshot.project.connections = []
+    snapshot.project.compatibilityPolicy = { disabledHosts: [], ignoredWarningIds: [] }
+    snapshot.registry.links = []
+    snapshot.routingCache.entries = []
+    snapshot.agents.devices = {}
+    snapshot.notificationState.incidents = []
+    snapshot.notificationState.deliveryJobs = []
+    snapshot.meta.onboarding = {
+      status: 'available',
+      walkthroughStep: 0,
+      sampleBatchId: 0,
+      sampleInventoryRefs: [],
+      sampleAssignmentIds: [],
+      sampleConnectionIds: [],
+    }
+  })
+}
+
+async function catalogTemplate(item: Record<string, unknown>, revision = 1, templateKey = 'cpu-example-cpu-200') {
+  const projection = await digestCatalogTemplate(item)
+  return {
+    templateKey,
+    revision,
+    fingerprintVersion: projection.fingerprintVersion,
+    identityHash: projection.identityHash,
+    contentHash: projection.contentHash,
+    item: projection.item,
+  }
 }
 
 describe('SQLite Homelab Inventory store facade', () => {
@@ -50,7 +90,7 @@ describe('SQLite Homelab Inventory store facade', () => {
         group_id: 1,
         positions: [0],
       })
-      expect(store.getDatabaseStatus()).toMatchObject({ schemaVersion: 9 })
+      expect(store.getDatabaseStatus()).toMatchObject({ schemaVersion: 10 })
       expect(store.getPersistenceHealth()).toMatchObject({ ok: true, engine: 'sqlite' })
     } finally {
       store.close()
@@ -435,6 +475,198 @@ describe('SQLite Homelab Inventory store facade', () => {
       })
       expect(() => store.updateRegistrySettings({}, before.settings.updatedAt)).toThrow(/another session/iu)
       expect(updated.links).toEqual(before.links)
+    } finally {
+      store.close()
+    }
+  })
+
+  test('persists release and update metadata in SQLite', async () => {
+    const store = await fixtureStore()
+    try {
+      expect(store.getUpdateMetadata()).toEqual({ skippedUpdateVersion: null, lastUpdateCheck: null })
+      await store.skipUpdateVersion('0.13.0')
+      await store.saveUpdateCheck({ currentVersion: '0.12.0', availableVersion: '0.13.0' })
+      await store.markAppOpened()
+
+      expect(store.getUpdateMetadata()).toEqual({
+        skippedUpdateVersion: '0.13.0',
+        lastUpdateCheck: { currentVersion: '0.12.0', availableVersion: '0.13.0' },
+      })
+      expect(store.isUpdateVersionSkipped('0.13.0')).toBe(true)
+      expect(store.core.database.query(
+        "SELECT value_json FROM application_metadata WHERE key = 'legacy.application-meta'",
+      ).get()).toMatchObject({ value_json: expect.stringContaining('"appLastOpenedWith":"0.12.0"') })
+
+      await store.clearSkippedUpdateVersion()
+      expect(store.isUpdateVersionSkipped('0.13.0')).toBe(false)
+    } finally {
+      store.close()
+    }
+  })
+
+  test('persists onboarding preferences without changing project topology', async () => {
+    const store = await fixtureStore()
+    try {
+      const before = store.getProject()
+      expect(store.getOnboardingStatus()).toMatchObject({ enabled: true, status: 'dismissed' })
+      expect(store.restartOnboardingChecklist()).toMatchObject({ status: 'checklist_active' })
+      expect(store.dismissOnboarding()).toMatchObject({ status: 'dismissed' })
+      expect(store.getProject()).toEqual(before)
+    } finally {
+      store.close()
+    }
+  })
+
+  test('loads and removes the onboarding example as one relational graph', async () => {
+    const store = await emptyFixtureStore()
+    try {
+      expect(store.getOnboardingStatus()).toMatchObject({ status: 'available', eligibleForExample: true })
+      const loaded = await store.loadOnboardingExample()
+      expect(loaded.status).toMatchObject({ status: 'sample_active', walkthroughStep: 0 })
+      expect(Object.keys(loaded.project.items).length).toBeGreaterThan(0)
+      expect(loaded.project.assignments.length).toBeGreaterThan(0)
+      expect(loaded.project.connections.length).toBeGreaterThan(0)
+      expect(store.getOnboardingRemovalImpact()).toMatchObject({
+        inventoryRecords: Object.keys(loaded.project.items).length,
+        assignments: loaded.project.assignments.length,
+        connections: loaded.project.connections.length,
+        additionalRelationships: 0,
+      })
+
+      const removed = await store.finishOnboardingExample('remove')
+      expect(removed.status).toMatchObject({ status: 'checklist_active', eligibleForExample: true })
+      expect(removed.project.items).toEqual({})
+      expect(removed.project.assignments).toEqual([])
+      expect(removed.project.connections).toEqual([])
+      expect(removed.project.placements).toEqual([])
+    } finally {
+      store.close()
+    }
+  })
+
+  test('creates, sanitizes, exports, deletes, and imports private templates', async () => {
+    const store = await fixtureStore()
+    try {
+      const created = await store.createPrivateTemplate({
+        name: 'Reusable server',
+        item: {
+          type: 'server',
+          name: 'Example server',
+          manufacturer: 'Example',
+          properties: { lanIp: '192.168.1.10' },
+        },
+      }) as any
+      expect(created.privateTemplates[0]).toMatchObject({ id: 1, name: 'Reusable server' })
+      expect(JSON.stringify(created)).not.toContain('192.168.1.10')
+
+      const pack = await store.exportPrivateTemplates([1])
+      expect(pack.checksum).toMatch(/^[a-f0-9]{64}$/)
+      store.deletePrivateTemplate(1)
+      expect((store.getRegistryState() as any).privateTemplates).toEqual([])
+      expect(await store.previewPrivateTemplateImport(pack)).toMatchObject({ valid: true, errors: [] })
+      expect(await store.importPrivateTemplates(pack)).toMatchObject({ imported: 1, skipped: 0 })
+      expect((store.getRegistryState() as any).privateTemplates[0]).toMatchObject({ id: 1, name: 'Reusable server' })
+    } finally {
+      store.close()
+    }
+  })
+
+  test('serializes concurrent private-template creation with unique numeric IDs', async () => {
+    const store = await fixtureStore()
+    try {
+      await Promise.all(Array.from({ length: 8 }, (_, index) => store.createPrivateTemplate({
+        name: `Template ${index + 1}`,
+        item: { type: 'cpu', name: `CPU ${index + 1}`, manufacturer: 'Example', model: `C-${index + 1}` },
+      })))
+      expect((store.getRegistryState() as any).privateTemplates.map((template: any) => template.id)).toEqual([
+        1, 2, 3, 4, 5, 6, 7, 8,
+      ])
+    } finally {
+      store.close()
+    }
+  })
+
+  test('imports catalog items with links and applies reviewed updates', async () => {
+    const store = await fixtureStore()
+    try {
+      store.registryTransaction((draft: any) => {
+        draft.snapshot = {
+          sourceId: 1,
+          revision: 1,
+          generatedAt: '2026-08-12T00:00:00.000Z',
+          expiresAt: null,
+          activatedAt: '2026-08-12T00:00:00.000Z',
+          digest: 'b'.repeat(64),
+          templateCount: 1,
+          keyId: 'test-key',
+        }
+      })
+      const revision1 = await catalogTemplate({
+        type: 'cpu', name: 'Example CPU 200', manufacturer: 'Example Silicon', model: 'CPU-200',
+        specs: { cores: 8, threads: 16, socket: 'LGA1200' },
+      })
+      const project = store.createCatalogInventoryItems(revision1)
+      const created = Object.values(project.items).find((item) => item.type === 'cpu' && item.model === 'CPU-200')!
+      const link = (store.getRegistryState() as any).links.find((candidate: any) => candidate.itemId === created.id)
+      expect(link).toMatchObject({ itemType: 'cpu', state: 'linked', importedRevision: 1 })
+
+      const revision2 = await catalogTemplate({
+        ...revision1.item,
+        specs: { ...revision1.item.specs, boostClockGhz: 4.7 },
+      }, 2)
+      store.registryTransaction((draft: any) => {
+        const target = draft.links.find((candidate: any) => candidate.id === link.id)
+        target.state = 'update-available'
+        target.availableRevision = revision2.revision
+        target.availableContentHash = revision2.contentHash
+      })
+      expect(store.getCatalogUpdatePreview(link.id, revision2)).toMatchObject({
+        linkId: link.id,
+        availableRevision: 2,
+        dependencyConflicts: [],
+      })
+      const updated = store.applyCatalogUpdate(link.id, revision2)
+      expect(updated.items[`cpu:${created.id}`].specs?.boostClockGhz).toBe(4.7)
+      expect((store.getRegistryState() as any).links.find((candidate: any) => candidate.id === link.id)).toMatchObject({
+        state: 'linked', importedRevision: 2,
+      })
+    } finally {
+      store.close()
+    }
+  })
+
+  test('rolls back a catalog import when its registry link cannot persist', async () => {
+    const store = await fixtureStore()
+    try {
+      store.registryTransaction((draft: any) => {
+        draft.snapshot = {
+          sourceId: 1,
+          revision: 1,
+          generatedAt: '2026-08-12T00:00:00.000Z',
+          expiresAt: null,
+          activatedAt: '2026-08-12T00:00:00.000Z',
+          digest: 'b'.repeat(64),
+          templateCount: 1,
+          keyId: 'test-key',
+        }
+      })
+      const template = await catalogTemplate({
+        type: 'cpu', name: 'Rollback CPU', manufacturer: 'Example', model: 'ROLLBACK-1',
+        specs: { cores: 4, threads: 8, socket: 'LGA1200' },
+      })
+      const beforeProject = store.getProject()
+      const beforeRegistry = store.getRegistryState()
+      store.core.database.exec(`
+        CREATE TEMP TRIGGER reject_catalog_link
+        BEFORE INSERT ON registry_links
+        BEGIN
+          SELECT RAISE(ABORT, 'injected registry failure');
+        END;
+      `)
+
+      expect(() => store.createCatalogInventoryItems(template)).toThrow(/injected registry failure/iu)
+      expect(store.getProject()).toEqual(beforeProject)
+      expect(store.getRegistryState()).toEqual(beforeRegistry)
     } finally {
       store.close()
     }
