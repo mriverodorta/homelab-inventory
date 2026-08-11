@@ -1,0 +1,386 @@
+import type { Database } from 'bun:sqlite'
+import { INVENTORY_TYPES, type InventoryType } from '../core/inventory/field-contract.ts'
+import { toBitsPerSecond, toBytes, toMhz, toMib, toMillimeters, toMilliwatts, toMillivolts } from '../core/inventory/units.ts'
+import {
+  LEGACY_TABLE_BY_TYPE,
+  legacyResourceDefinitions,
+  type CanonicalIdentityPlan,
+} from '../legacy/identity-plan.ts'
+
+type LegacySnapshot = Record<string, any>
+type LegacyRecord = Record<string, any>
+
+export type ImportLegacyCoreOptions = Readonly<{
+  database: Database
+  snapshot: LegacySnapshot
+  identityPlan: CanonicalIdentityPlan
+}>
+
+function records(value: unknown): LegacyRecord[] {
+  if (Array.isArray(value)) return value
+  if (value && typeof value === 'object') return Object.values(value)
+  return []
+}
+
+function timestamp(value: unknown, fallback = 0) {
+  if (typeof value === 'number' && Number.isSafeInteger(value) && value >= 0) return value
+  if (typeof value !== 'string') return fallback
+  const parsed = Date.parse(value)
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback
+}
+
+function optionalText(value: unknown) {
+  if (typeof value !== 'string') return null
+  const trimmed = value.trim()
+  return trimmed ? trimmed : null
+}
+
+function booleanOrNull(value: unknown) {
+  return typeof value === 'boolean' ? Number(value) : null
+}
+
+function integerOrNull(value: unknown) {
+  return Number.isSafeInteger(value) && Number(value) >= 0 ? Number(value) : null
+}
+
+function positiveIntegerOrNull(value: unknown) {
+  return Number.isSafeInteger(value) && Number(value) > 0 ? Number(value) : null
+}
+
+function json(value: unknown) {
+  return JSON.stringify(value ?? {})
+}
+
+function normalizeKey(value: unknown) {
+  return String(value ?? '').trim().toLowerCase().replace(/[\s_]+/gu, '-').replace(/[^a-z0-9.+-]/gu, '')
+}
+
+function itemKey(type: unknown, id: unknown) {
+  if (typeof type !== 'string' || !Number.isSafeInteger(id) || Number(id) <= 0) {
+    throw new Error('Legacy inventory reference is invalid.')
+  }
+  return `${type}:${Number(id)}`
+}
+
+function canonicalItemId(plan: CanonicalIdentityPlan, type: unknown, id: unknown) {
+  const key = itemKey(type, id)
+  const result = plan.items.get(key)
+  if (!result) throw new Error(`Legacy inventory reference ${key} has no canonical identity.`)
+  return result
+}
+
+function vocabularyId(database: Database, table: string, value: unknown) {
+  const key = normalizeKey(value)
+  if (!key) return null
+  const aliases: Record<string, string> = {
+    'ddr3l': 'ddr3', 'so-dimm': 'sodimm', 'm.2-2230': 'm2-2230', '2230': 'm2-2230',
+    'm.2-2242': 'm2-2242', '2242': 'm2-2242', 'm.2-2260': 'm2-2260', '2260': 'm2-2260',
+    'm.2-2280': 'm2-2280', '2280': 'm2-2280', 'm.2-22110': 'm2-22110', '22110': 'm2-22110',
+    '2.5': '2.5-inch', '2.5-inch': '2.5-inch', '3.5': '3.5-inch', '3.5-inch': '3.5-inch',
+    'slim-tip': 'slim-tip', 'slimtip': 'slim-tip',
+  }
+  const canonicalKey = aliases[key] ?? key
+  const existing = database.query(`SELECT id FROM ${table} WHERE key = ?`).get(canonicalKey) as { id: number } | null
+  if (existing) return existing.id
+  const nextSortOrder = Number((database.query(`SELECT coalesce(max(sort_order), 0) + 1 AS value FROM ${table}`).get() as { value: number }).value)
+  return Number((database.query(`INSERT INTO ${table} (key, label, sort_order) VALUES (?, ?, ?) RETURNING id`).get(
+    canonicalKey,
+    optionalText(value) ?? canonicalKey,
+    nextSortOrder,
+  ) as { id: number }).id)
+}
+
+function speedBps(value: unknown) {
+  if (typeof value === 'number') return toBitsPerSecond({ value, unit: 'Mbps' })
+  if (typeof value !== 'string') return null
+  const match = value.trim().match(/^(\d+(?:\.\d+)?)\s*(G|M)?(?:BPS)?$/iu)
+  if (!match) return null
+  return toBitsPerSecond({ value: Number(match[1]), unit: match[2]?.toUpperCase() === 'G' ? 'Gbps' : 'Mbps' })
+}
+
+function connectionType(value: unknown): 'network' | 'display' | 'power' | 'other' {
+  return value === 'network' || value === 'display' || value === 'power' ? value : 'other'
+}
+
+function portKind(port: LegacyRecord) {
+  const connector = normalizeKey(port.type)
+  if (connector === 'ac-input') return 'power-input'
+  if (connector === 'ac-outlet') return 'power-output'
+  if (connector === 'displayport' || connector === 'hdmi') return 'video'
+  if (normalizeKey(port.kind).includes('management')) return 'management'
+  return 'network'
+}
+
+function connectorType(port: LegacyRecord) {
+  const key = normalizeKey(port.type)
+  if (key === 'ac-input') return 'iec-c14'
+  if (key === 'ac-outlet') return 'iec-c13'
+  return key
+}
+
+function extensionPayload(item: LegacyRecord) {
+  const common = new Set(['id', 'type', 'name', 'aliases', 'manufacturer', 'secondaryManufacturer', 'model', 'family', 'number', 'subtype', 'properties', 'compatibility', 'notes', 'archivedAt', 'ports', 'specs', 'hardwareClass', 'usageRole', 'smart'])
+  const unknown = Object.fromEntries(Object.entries(item).filter(([key]) => !common.has(key)))
+  const payload: Record<string, unknown> = {}
+  if (Object.keys(unknown).length) payload.legacyFields = unknown
+  if (item.compatibility?.requirements) payload.compatibilityRequirements = item.compatibility.requirements
+  return payload
+}
+
+function ensureManufacturer(database: Database, value: unknown, now: number) {
+  const name = optionalText(value)
+  if (!name) return null
+  const normalized = name.toLocaleLowerCase('en-US').replace(/\s+/gu, ' ')
+  const existing = database.query('SELECT id FROM manufacturers WHERE normalized_name = ?').get(normalized) as { id: number } | null
+  if (existing) return existing.id
+  return Number((database.query(`
+    INSERT INTO manufacturers (name, normalized_name, created_at_ms, updated_at_ms)
+    VALUES (?, ?, ?, ?) RETURNING id
+  `).get(name, normalized, now, now) as { id: number }).id)
+}
+
+function insertSubtype(database: Database, type: InventoryType, itemId: number, item: LegacyRecord) {
+  const specs = item.specs ?? {}
+  switch (type) {
+    case 'server': {
+      const chassisId = vocabularyId(database, 'chassis_types', specs.formFactor)
+      database.query(`INSERT INTO servers (id, hardware_class, usage_role, chassis_type_id, form_factor_text, network_slot, wireless) VALUES (?, ?, ?, ?, ?, ?, ?)`)
+        .run(itemId, item.hardwareClass ?? 'server', item.usageRole ?? 'server', chassisId, chassisId ? null : optionalText(specs.formFactor), optionalText(specs.networkSlot), optionalText(specs.wireless))
+      break
+    }
+    case 'nas': database.query('INSERT INTO nas_systems (id, drive_bay_count, m2_slot_count, power_configuration) VALUES (?, ?, ?, ?)').run(itemId, integerOrNull(specs.driveBays), integerOrNull(specs.m2Slots), specs.powerConfiguration === 'external-adapter' ? 'external-adapter' : 'internal-psu'); break
+    case 'pcBuild': database.query('INSERT INTO pc_builds (id, operating_system, usage_role) VALUES (?, ?, ?)').run(itemId, optionalText(specs.operatingSystem), optionalText(specs.role)); break
+    case 'cpu': database.query('INSERT INTO cpus (id, core_count, thread_count, base_clock_mhz, boost_clock_mhz) VALUES (?, ?, ?, ?, ?)').run(itemId, positiveIntegerOrNull(specs.cores), positiveIntegerOrNull(specs.threads), specs.baseClockGhz == null ? null : toMhz({ value: specs.baseClockGhz, unit: 'GHz' }), specs.boostClockGhz == null ? null : toMhz({ value: specs.boostClockGhz, unit: 'GHz' })); break
+    case 'ram': database.query('INSERT INTO memory_modules (id, capacity_mib, memory_generation_id, speed_mtps, form_factor, module_type_id, ecc, rank, voltage_mv) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)').run(itemId, specs.capacityGb == null ? null : toMib({ value: specs.capacityGb, unit: 'GiB' }), vocabularyId(database, 'memory_generations', specs.generation), integerOrNull(specs.speedMt), optionalText(specs.formFactor), vocabularyId(database, 'memory_module_types', specs.moduleType), booleanOrNull(specs.ecc), optionalText(specs.rank), specs.voltageVolts == null ? null : toMillivolts({ value: specs.voltageVolts, unit: 'V' })); break
+    case 'storage': {
+      const interfaceId = vocabularyId(database, 'storage_interfaces', specs.interface)
+      const formFactorId = vocabularyId(database, 'storage_form_factors', specs.formFactor)
+      const capacityBytes = specs.capacityBytes != null ? toBytes({ value: specs.capacityBytes, unit: 'bytes' }) : specs.capacityTb != null ? toBytes({ value: specs.capacityTb, unit: 'TB' }) : specs.capacityGb != null ? toBytes({ value: specs.capacityGb, unit: 'GB' }) : null
+      database.query('INSERT INTO storage_devices (id, capacity_bytes, interface_id, form_factor_id, interface_text, form_factor_text, partition_table) VALUES (?, ?, ?, ?, ?, ?, ?)').run(itemId, capacityBytes, interfaceId, formFactorId, interfaceId ? null : optionalText(specs.interface), formFactorId ? null : optionalText(specs.formFactor), optionalText(specs.partitionTable))
+      break
+    }
+    case 'gpu': database.query('INSERT INTO graphics_cards (id, vram_mib, form_factor, slot_width, pcie) VALUES (?, ?, ?, ?, ?)').run(itemId, specs.vramGb == null ? null : toMib({ value: specs.vramGb, unit: 'GiB' }), optionalText(specs.formFactor), optionalText(specs.slotWidth), optionalText(specs.pcie)); break
+    case 'network': database.query('INSERT INTO network_cards (id, port_count, max_speed_bps, interface, form_factor) VALUES (?, ?, ?, ?, ?)').run(itemId, integerOrNull(specs.ports), specs.speedMbps == null ? null : toBitsPerSecond({ value: specs.speedMbps, unit: 'Mbps' }), optionalText(specs.interface), optionalText(specs.formFactor)); break
+    case 'motherboard': database.query('INSERT INTO motherboards (id, chipset, form_factor, board_revision, launch_date_text, discontinued, wifi_generation, bluetooth) VALUES (?, ?, ?, ?, ?, ?, ?, ?)').run(itemId, optionalText(specs.chipset), optionalText(specs.formFactor), optionalText(specs.boardRevision), optionalText(specs.launchDate), booleanOrNull(specs.discontinued), optionalText(specs.wifiGeneration), optionalText(specs.bluetooth)); break
+    case 'cpuCooler': database.query('INSERT INTO cpu_coolers (id, cooler_type) VALUES (?, ?)').run(itemId, optionalText(specs.coolerType)); break
+    case 'case': database.query('INSERT INTO computer_cases (id) VALUES (?)').run(itemId); for (const factor of records(specs.formFactors)) database.query('INSERT INTO case_form_factor_support (case_id, form_factor) VALUES (?, ?)').run(itemId, String(factor)); break
+    case 'powerSupply': database.query('INSERT INTO power_supplies (id, form_factor, rated_power_mw, efficiency_rating) VALUES (?, ?, ?, ?)').run(itemId, optionalText(specs.formFactor), specs.wattageWatts == null ? null : toMilliwatts({ value: specs.wattageWatts, unit: 'W' }), optionalText(specs.efficiency)); break
+    case 'soundCard': database.query('INSERT INTO sound_cards (id, interface) VALUES (?, ?)').run(itemId, optionalText(specs.interface)); break
+    case 'wireless': database.query('INSERT INTO wireless_cards (id, interface, wifi_generation, bluetooth) VALUES (?, ?, ?, ?)').run(itemId, optionalText(specs.interface), optionalText(specs.wifiGeneration), booleanOrNull(specs.bluetooth)); break
+    case 'powerAdapter': database.query('INSERT INTO power_adapters (id, rated_power_mw, connector_type_id, connector_text) VALUES (?, ?, ?, ?)').run(itemId, specs.wattageWatts == null ? null : toMilliwatts({ value: specs.wattageWatts, unit: 'W' }), vocabularyId(database, 'power_connector_types', specs.connector), vocabularyId(database, 'power_connector_types', specs.connector) ? null : optionalText(specs.connector)); break
+    case 'switch': database.query('INSERT INTO network_switches (id, management_type, switching_capacity_bps, fanless) VALUES (?, ?, ?, ?)').run(itemId, optionalText(specs.management), specs.switchingCapacityGbps == null ? null : toBitsPerSecond({ value: specs.switchingCapacityGbps, unit: 'Gbps' }), Number(specs.fanless === true)); break
+    case 'patchPanel': database.query('INSERT INTO patch_panels (id, rack_units, mount) VALUES (?, ?, ?)').run(itemId, integerOrNull(specs.rackUnits), optionalText(specs.mount)); break
+    case 'monitor': database.query('INSERT INTO monitors (id, diagonal_mm, diagonal_source_text, resolution, refresh_rate_millihz) VALUES (?, ?, ?, ?, ?)').run(itemId, specs.sizeInches == null ? null : toMillimeters({ value: specs.sizeInches, unit: 'in' }), specs.sizeInches == null ? null : `${specs.sizeInches} in`, optionalText(specs.resolution), specs.refreshRateHz == null ? null : Math.round(specs.refreshRateHz * 1000)); break
+    case 'ups': database.query('INSERT INTO ups_systems (id, rated_power_mw, capacity_millivolt_amps, battery_outlet_count, surge_outlet_count, outlet_count) VALUES (?, ?, ?, ?, ?, ?)').run(itemId, specs.wattageWatts == null ? null : toMilliwatts({ value: specs.wattageWatts, unit: 'W' }), specs.capacityVa == null ? null : Math.round(specs.capacityVa * 1000), integerOrNull(specs.batteryBackupOutlets), integerOrNull(specs.surgeProtectedOutlets), integerOrNull(specs.outlets)); break
+    case 'powerStrip': database.query('INSERT INTO power_strips (id, outlet_count, surge_protected, surge_outlet_count) VALUES (?, ?, ?, ?)').run(itemId, integerOrNull(specs.outlets), booleanOrNull(specs.surgeProtected), integerOrNull(specs.surgeProtectedOutlets)); break
+  }
+}
+
+function importCompatibility(database: Database, itemId: number, item: LegacyRecord, now: number, plan: CanonicalIdentityPlan, type: InventoryType) {
+  const host = item.compatibility?.host
+  if (!host || typeof host !== 'object') return
+  const profile = database.query(`INSERT INTO host_compatibility_profiles (host_item_id, topology_completeness, max_expansion_power_mw, created_at_ms, updated_at_ms) VALUES (?, ?, ?, ?, ?) RETURNING id`)
+    .get(itemId, optionalText(host.topologyCompleteness), host.maxExpansionPowerWatts == null ? null : toMilliwatts({ value: host.maxExpansionPowerWatts, unit: 'W' }), now, now) as { id: number }
+  if (host.cpu) {
+    const cpu = database.query('INSERT INTO host_cpu_profiles (host_profile_id, socket_count, max_tdp_mw) VALUES (?, ?, ?) RETURNING id').get(profile.id, positiveIntegerOrNull(host.cpu.socketCount ?? host.cpu.socketsCount), host.cpu.maxTdpWatts == null ? null : toMilliwatts({ value: host.cpu.maxTdpWatts, unit: 'W' })) as { id: number }
+    for (const socket of records(host.cpu.sockets)) { const id = vocabularyId(database, 'cpu_socket_types', socket); if (id) database.query('INSERT INTO host_cpu_socket_support (cpu_profile_id, socket_type_id) VALUES (?, ?)').run(cpu.id, id) }
+    for (const generation of records(host.cpu.generations)) database.query('INSERT INTO host_cpu_generation_support (cpu_profile_id, generation) VALUES (?, ?)').run(cpu.id, String(generation))
+  }
+  if (host.memory) {
+    const memory = database.query('INSERT INTO host_memory_profiles (host_profile_id, slot_count, slots_per_cpu, max_capacity_mib, max_module_capacity_mib, max_speed_mtps, ecc_support) VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING id').get(profile.id, integerOrNull(host.memory.slots), integerOrNull(host.memory.slotsPerCpu), host.memory.maxCapacityGb == null ? null : toMib({ value: host.memory.maxCapacityGb, unit: 'GiB' }), host.memory.maxModuleCapacityGb == null ? null : toMib({ value: host.memory.maxModuleCapacityGb, unit: 'GiB' }), integerOrNull(host.memory.maxSpeedMt), optionalText(host.memory.eccSupport)) as { id: number }
+    for (const generation of records(host.memory.generations)) { const id = vocabularyId(database, 'memory_generations', generation); if (id) database.query('INSERT INTO host_memory_generation_support (memory_profile_id, generation_id) VALUES (?, ?)').run(memory.id, id) }
+  }
+  const definitions = legacyResourceDefinitions(item)
+  const typedCollections = new Map<string, LegacyRecord>()
+  for (const [prefix, collection] of [['storage', host.storageSlots], ['expansion', host.expansionSlots], ['optional', host.optionalModuleSlots], ['controller', host.controllerSlots], ['boot', host.bootDeviceSlots]] as const) {
+    records(collection).forEach((entry, index) => typedCollections.set(String(entry.key ?? `${prefix}-${index + 1}`), entry))
+  }
+  for (const definition of definitions) {
+    const groupKey = `${type}:${item.id}:resource:${definition.key}`
+    const resourceIdentityId = plan.resourceGroups.get(groupKey)
+    if (!resourceIdentityId) throw new Error(`Missing resource identity ${groupKey}.`)
+    database.query('INSERT INTO inventory_resources (id, item_id, created_at_ms) VALUES (?, ?, ?)').run(resourceIdentityId, itemId, now)
+    database.query('INSERT INTO resource_identity_aliases (resource_id, legacy_item_type_key, legacy_item_id, legacy_resource_key, created_at_ms) VALUES (?, ?, ?, ?, ?)').run(resourceIdentityId, type, item.id, definition.key, now)
+    const entry = typedCollections.get(definition.key) ?? {}
+    const resourceType = definition.key === 'cpu' ? 'cpu' : definition.key === 'memory' ? 'memory' : definition.key === 'power-adapter' ? 'powerAdapter' : definition.key === 'psu' ? 'psuBay' : host.storageSlots?.includes(entry) ? 'storage' : host.expansionSlots?.includes(entry) ? 'expansion' : host.optionalModuleSlots?.includes(entry) ? 'optionalModule' : host.controllerSlots?.includes(entry) ? 'controllerSlot' : 'bootDeviceSlot'
+    database.query('INSERT INTO host_resource_groups (id, resource_identity_id, host_item_id, resource_type, semantic_key, label, slot_count, required_cpu_sockets, location, created_at_ms) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)').run(resourceIdentityId, resourceIdentityId, itemId, resourceType, definition.key, optionalText(entry.label) ?? definition.key, definition.count, positiveIntegerOrNull(entry.requiredCpuSockets), optionalText(entry.location), now)
+    if (resourceType === 'storage') database.query('INSERT INTO storage_resource_groups (id, pcie_generation, hot_swap, backplane, direct_connect) VALUES (?, ?, ?, ?, ?)').run(resourceIdentityId, positiveIntegerOrNull(entry.pcieGeneration), booleanOrNull(entry.hotSwap), optionalText(entry.backplane), booleanOrNull(entry.directConnect))
+    if (resourceType === 'expansion') database.query('INSERT INTO expansion_resource_groups (id, interface_family, pcie_generation, mechanical_lanes, electrical_lanes, max_slot_width, max_power_mw, proprietary_riser, riser_capability, riser_group) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)').run(resourceIdentityId, ['pcie', 'm2-ae', 'usb', 'onboard'].includes(entry.interfaceFamily) ? entry.interfaceFamily : 'pcie', positiveIntegerOrNull(entry.pcieGeneration), positiveIntegerOrNull(entry.mechanicalLanes), positiveIntegerOrNull(entry.electricalLanes), positiveIntegerOrNull(entry.maxSlotWidth), entry.maxPowerWatts == null ? null : toMilliwatts({ value: entry.maxPowerWatts, unit: 'W' }), booleanOrNull(entry.proprietaryRiser), optionalText(entry.riserCapability), optionalText(entry.riserGroup))
+    const slotTable: Record<string, string> = { cpu: 'cpu_socket_slots', memory: 'memory_slots', storage: 'storage_slots', expansion: 'expansion_slots', optionalModule: 'optional_module_slots', controllerSlot: 'controller_slots', bootDeviceSlot: 'boot_device_slots', psuBay: 'psu_bays', powerAdapter: 'power_adapter_slots' }
+    for (let position = 1; position <= definition.count; position += 1) {
+      const slotKey = `${groupKey}:slot:${position}`
+      const slotId = plan.resourceSlots.get(slotKey)
+      if (!slotId) throw new Error(`Missing resource slot identity ${slotKey}.`)
+      database.query('INSERT INTO host_resource_slots (id, resource_group_id, host_item_id, position, label, single_capacity, created_at_ms) VALUES (?, ?, ?, ?, ?, 1, ?)').run(slotId, resourceIdentityId, itemId, position, `${optionalText(entry.label) ?? definition.key} ${position}`, now)
+      database.query(`INSERT INTO ${slotTable[resourceType]} (id) VALUES (?)`).run(slotId)
+    }
+  }
+}
+
+function importPorts(database: Database, type: InventoryType, item: LegacyRecord, itemId: number, plan: CanonicalIdentityPlan, now: number) {
+  const usedSlots = new Set<number>()
+  for (const port of records(item.ports).sort((a, b) => Number(a.id) - Number(b.id))) {
+    const key = `${type}:${item.id}:port:${port.id}`
+    const portId = plan.ports.get(key)
+    if (!portId) throw new Error(`Missing port identity ${key}.`)
+    let slotNumber = positiveIntegerOrNull(port.slotNumber) ?? Number(port.id)
+    while (usedSlots.has(slotNumber)) slotNumber += 1
+    usedSlots.add(slotNumber)
+    const kindId = vocabularyId(database, 'port_kinds', portKind(port))
+    const connectorId = vocabularyId(database, 'connector_types', connectorType(port))
+    if (!kindId || !connectorId) throw new Error(`Port ${key} uses an unsupported kind or connector.`)
+    database.query('INSERT INTO inventory_ports (id, item_id, created_at_ms) VALUES (?, ?, ?)').run(portId, itemId, now)
+    database.query('INSERT INTO port_identity_aliases (port_id, legacy_item_type_key, legacy_item_id, legacy_port_id, created_at_ms) VALUES (?, ?, ?, ?, ?)').run(portId, type, item.id, port.id, now)
+    database.query('INSERT INTO item_port_details (port_id, kind_id, connector_type_id, semantic_key, slot_number, label, notes, ip_address, role, speed_bps, poe, origin) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)').run(portId, kindId, connectorId, optionalText(port.key), slotNumber, optionalText(port.label), optionalText(port.notes), optionalText(port.ipAddress), optionalText(port.role), speedBps(port.speed), booleanOrNull(port.poe), port.origin === 'module' ? 'module' : 'fixed')
+    for (const endpoint of records(port.endpoints)) {
+      const faceId = plan.endpointFaces.get(`${key}:face:${endpoint.id}`)
+      if (!faceId) throw new Error(`Missing endpoint-face identity for ${key}.`)
+      database.query('INSERT INTO port_endpoint_faces (id, port_id, endpoint_number, side) VALUES (?, ?, ?, ?)').run(faceId, portId, endpoint.id, endpoint.side)
+    }
+  }
+}
+
+function importInventory(database: Database, snapshot: LegacySnapshot, plan: CanonicalIdentityPlan, now: number) {
+  for (const type of INVENTORY_TYPES) {
+    const typeId = (database.query('SELECT id FROM inventory_item_types WHERE key = ?').get(type) as { id: number }).id
+    for (const item of records(snapshot.inventory?.[LEGACY_TABLE_BY_TYPE[type]]).sort((a, b) => Number(a.id) - Number(b.id))) {
+      const itemId = canonicalItemId(plan, type, item.id)
+      const manufacturerId = ensureManufacturer(database, item.manufacturer, now)
+      database.query(`INSERT INTO inventory_items (id, type_id, scope, owner_project_id, name, manufacturer_id, manufacturer_text, model, family, product_number, subtype, serial_number, notes, extensions_json, row_version, archived_at_ms, created_at_ms, updated_at_ms) VALUES (?, ?, 'global', NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?)`)
+        .run(itemId, typeId, optionalText(item.name) ?? `${type} ${item.id}`, manufacturerId, manufacturerId ? null : optionalText(item.manufacturer), optionalText(item.model), optionalText(item.family), optionalText(item.number), optionalText(item.subtype), optionalText(item.serialNumber ?? item.specs?.serialNumber), optionalText(item.notes), json(extensionPayload(item)), timestamp(item.archivedAt, null as any), now, now)
+      database.query('INSERT INTO inventory_identity_aliases (item_id, legacy_type_key, legacy_id, created_at_ms) VALUES (?, ?, ?, ?)').run(itemId, type, item.id, now)
+      database.query('INSERT INTO project_inventory_memberships (project_id, item_id, created_at_ms) VALUES (1, ?, ?)').run(itemId, now)
+      insertSubtype(database, type, itemId, item)
+      for (const [key, value] of Object.entries(item.properties ?? {})) database.query('INSERT INTO inventory_item_properties (item_id, key, value, created_at_ms, updated_at_ms) VALUES (?, ?, ?, ?, ?)').run(itemId, key, typeof value === 'string' ? value : json(value), now, now)
+      importPorts(database, type, item, itemId, plan, now)
+      importCompatibility(database, itemId, item, now, plan, type)
+    }
+  }
+}
+
+function findLegacyItem(snapshot: LegacySnapshot, type: InventoryType, id: number) {
+  return records(snapshot.inventory?.[LEGACY_TABLE_BY_TYPE[type]]).find((item) => item.id === id)
+}
+
+function assignmentSlot(snapshot: LegacySnapshot, plan: CanonicalIdentityPlan, assignment: LegacyRecord) {
+  const position = records(assignment.allocation?.positions)[0]
+  if (!Number.isSafeInteger(position)) return null
+  const resourceType = assignment.allocation?.resourceType ?? assignment.type
+  let resourceKey = assignment.allocation?.resourceKey ?? resourceType
+  if (assignment.allocation?.groupId != null) {
+    const host = findLegacyItem(snapshot, assignment.hostType, assignment.hostId)
+    const collectionKey: Record<string, string> = {
+      storage: 'storageSlots',
+      expansion: 'expansionSlots',
+      optionalModule: 'optionalModuleSlots',
+      controllerSlot: 'controllerSlots',
+      bootDeviceSlot: 'bootDeviceSlots',
+    }
+    const collection = records(host?.compatibility?.host?.[collectionKey[resourceType]])
+    const group = collection.find((entry) => entry.id === assignment.allocation.groupId)
+    if (!group) throw new Error(`Assignment ${assignment.id} references missing ${resourceType} group ${assignment.allocation.groupId}.`)
+    resourceKey = group.key ?? `${resourceType}-${collection.indexOf(group) + 1}`
+  }
+  return plan.resourceSlots.get(`${assignment.hostType}:${assignment.hostId}:resource:${resourceKey}:slot:${Number(position) + 1}`) ?? null
+}
+
+function importProject(database: Database, snapshot: LegacySnapshot, plan: CanonicalIdentityPlan, now: number) {
+  const project = snapshot.project ?? {}
+  database.query('UPDATE projects SET name = ?, revision = ?, updated_at_ms = ? WHERE id = 1').run(optionalText(project.metadata?.name) ?? 'Default Project', positiveIntegerOrNull(project.revision) ?? 1, timestamp(project.metadata?.updatedAt, now))
+  const viewport = project.viewport ?? project.metadata?.viewport ?? {}
+  database.query('UPDATE canvas_workspaces SET viewport_x = ?, viewport_y = ?, viewport_zoom_basis_points = ?, settings_json = ? WHERE id = 2').run(Math.round(viewport.x ?? 0), Math.round(viewport.y ?? 0), Math.max(1, Math.round((viewport.zoom ?? 1) * 10000)), json(project.canvasSettings ?? {}))
+  for (const placement of records(project.placements)) {
+    database.query('INSERT INTO workspace_placements (project_id, workspace_id, item_id, x, y, orientation, z_index, created_at_ms, updated_at_ms) VALUES (1, 2, ?, ?, ?, ?, ?, ?, ?)').run(canonicalItemId(plan, placement.itemType, placement.itemId), placement.x, placement.y, optionalText(placement.orientation), integerOrNull(placement.zIndex) ?? 0, now, now)
+  }
+  for (const assignment of records(project.assignments)) {
+    const id = plan.assignments.get(String(assignment.id))
+    database.query('INSERT INTO component_assignments (id, project_id, host_item_id, component_item_id, resource_slot_id, assigned_at_ms) VALUES (?, 1, ?, ?, ?, ?)').run(id, canonicalItemId(plan, assignment.hostType, assignment.hostId), canonicalItemId(plan, assignment.itemType, assignment.itemId), assignmentSlot(snapshot, plan, assignment), timestamp(assignment.assignedAt, now))
+  }
+  for (const connection of records(project.connections)) {
+    const id = plan.connections.get(String(connection.id))
+    const route = connection.route ?? {}
+    database.query('INSERT INTO project_connections (id, project_id, connection_type, negotiated_speed_bps, label, source_side, target_side, avoid_cable_overlap, created_at_ms, updated_at_ms) VALUES (?, 1, ?, ?, ?, ?, ?, ?, ?, ?)').run(id, connectionType(connection.type), connection.negotiatedSpeedMbps == null ? null : toBitsPerSecond({ value: connection.negotiatedSpeedMbps, unit: 'Mbps' }), optionalText(connection.label), ['left', 'right', 'top', 'bottom'].includes(route.sourceSide) ? route.sourceSide : 'right', ['left', 'right', 'top', 'bottom'].includes(route.targetSide) ? route.targetSide : 'left', Number(route.avoidCableOverlap === true), timestamp(connection.createdAt, now), timestamp(connection.updatedAt, now))
+    for (const [role, endpoint] of [['source', connection.from], ['target', connection.to]] as const) {
+      const endpointItemType = endpoint.hostedItemType ?? endpoint.itemType
+      const endpointItemId = endpoint.hostedItemId ?? endpoint.itemId
+      const portKey = `${endpointItemType}:${endpointItemId}:port:${endpoint.portId}`
+      const portId = plan.ports.get(portKey)
+      if (!portId) throw new Error(`Connection ${connection.id} references missing port ${portKey}.`)
+      const endpointFaceId = endpoint.endpointId == null ? null : plan.endpointFaces.get(`${portKey}:face:${endpoint.endpointId}`) ?? null
+      database.query('INSERT INTO connection_endpoints (connection_id, role, port_id, endpoint_face_id) VALUES (?, ?, ?, ?)').run(id, role, portId, endpointFaceId)
+    }
+    for (const [position, point] of records(route.bendPoints).entries()) database.query('INSERT INTO workspace_manual_bend_points (project_id, workspace_id, connection_id, position, x, y) VALUES (1, 2, ?, ?, ?, ?)').run(id, position, point.x, point.y)
+  }
+  database.query('INSERT INTO application_metadata (key, value_json, updated_at_ms) VALUES (?, ?, ?)').run('legacy.compatibility-policy', json(project.compatibilityPolicy ?? {}), now)
+}
+
+function importRoutingCache(database: Database, snapshot: LegacySnapshot, plan: CanonicalIdentityPlan, now: number) {
+  const cache = snapshot.routingCache ?? {}
+  for (const entry of records(cache.entries)) {
+    const legacyId = entry.input?.request?.definition?.connection_id
+    const connectionId = plan.connections.get(String(legacyId))
+    if (!connectionId) throw new Error(`Route cache references missing connection ${String(legacyId)}.`)
+    database.query('INSERT INTO workspace_route_cache (project_id, workspace_id, connection_id, engine_version, layout_fingerprint, route_fingerprint, route_payload_json, calculated_at_ms) VALUES (1, 2, ?, ?, ?, ?, ?, ?)').run(connectionId, optionalText(cache.plannerVersion) ?? 'legacy', optionalText(cache.geometryFingerprint) ?? 'legacy', `legacy:${legacyId}`, json(entry), timestamp(cache.updatedAt, now))
+  }
+}
+
+function importRegistry(database: Database, snapshot: LegacySnapshot, plan: CanonicalIdentityPlan, now: number) {
+  const registry = snapshot.registry ?? {}
+  const settings = registry.settings ?? {}
+  database.query('INSERT INTO registry_settings (id, mode, default_inventory_source, automatic_contributions, show_link_indicators, updated_at_ms) VALUES (1, ?, ?, ?, ?, ?)').run(settings.mode ?? 'disabled', settings.defaultInventorySource ?? 'catalog', Number(settings.automaticContributions === true), Number(settings.showRegistryLinkIndicators === true), timestamp(settings.updatedAt, now))
+  for (const source of records(registry.sources)) database.query('INSERT INTO registry_sources (id, kind, display_name, endpoint, trusted_key_id, enabled, last_checked_at_ms, last_success_at_ms, last_error, created_at_ms) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)').run(plan.registrySources.get(String(source.id)), source.kind, source.displayName, optionalText(source.endpoint), optionalText(source.trustedKeyId), Number(source.enabled !== false), timestamp(source.lastCheckedAt, null as any), timestamp(source.lastSuccessAt, null as any), optionalText(source.lastError), timestamp(source.createdAt, now))
+  for (const link of records(registry.links)) database.query('INSERT INTO registry_links (id, item_id, source_id, template_key, imported_revision, imported_content_hash, imported_fingerprint_version, available_revision, state, linked_at_ms, updated_at_ms) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)').run(plan.registryLinks.get(String(link.id)), canonicalItemId(plan, link.itemType, link.itemId), plan.registrySources.get(String(link.sourceId)), link.templateKey, link.importedRevision, link.importedContentHash, link.importedFingerprintVersion ?? 1, positiveIntegerOrNull(link.availableRevision), link.state, timestamp(link.linkedAt, now), timestamp(link.updatedAt, now))
+  database.query('INSERT INTO application_metadata (key, value_json, updated_at_ms) VALUES (?, ?, ?)').run('legacy.registry-extended-state', json({ variantMatches: registry.variantMatches ?? [], contributionOutbox: registry.contributionOutbox ?? [], contributionLedger: registry.contributionLedger ?? [], contributionGroups: registry.contributionGroups ?? [], projectionCache: registry.projectionCache ?? [], privateTemplates: registry.privateTemplates ?? [], snapshot: registry.snapshot ?? null, installationIdentity: registry.installationIdentity ?? null }), now)
+}
+
+function importAgents(database: Database, snapshot: LegacySnapshot, plan: CanonicalIdentityPlan, now: number) {
+  for (const agent of records(snapshot.agents?.devices)) {
+    const id = plan.agents.get(String(agent.id))
+    database.query('INSERT INTO agents (id, public_key, protocol_major, agent_version, capabilities_json, last_sequence, last_seen_at_ms, revoked_at_ms, created_at_ms) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)').run(id, agent.publicKey ?? `legacy-agent-${agent.id}`, positiveIntegerOrNull(agent.protocolMajor) ?? 1, agent.version ?? agent.agentVersion ?? 'legacy', json(agent.capabilities ?? {}), integerOrNull(agent.lastSequence) ?? 0, timestamp(agent.lastSeenAt, null as any), timestamp(agent.revokedAt, null as any), timestamp(agent.createdAt, now))
+    database.query('INSERT INTO agent_host_bindings (agent_id, host_item_id, state, bound_at_ms, unbound_at_ms) VALUES (?, ?, ?, ?, ?)').run(id, canonicalItemId(plan, agent.hostType, agent.hostId), agent.state ?? 'active', timestamp(agent.boundAt ?? agent.createdAt, now), timestamp(agent.unboundAt, null as any))
+  }
+  database.query('INSERT INTO application_metadata (key, value_json, updated_at_ms) VALUES (?, ?, ?)').run('legacy.agent-extended-state', json({ enrollments: snapshot.agents?.enrollments ?? {}, hardwareSnapshots: snapshot.agents?.hardwareSnapshots ?? {}, hardwareEvents: snapshot.agents?.hardwareEvents ?? {}, status: snapshot.agentStatus ?? {} }), now)
+}
+
+function importAuthentication(database: Database, snapshot: LegacySnapshot, now: number) {
+  const auth = snapshot.authentication ?? {}
+  const settings = auth.settings ?? {}
+  database.query('INSERT INTO authentication_settings (id, enabled, local_enabled, oidc_enabled, oidc_issuer, oidc_client_id, oidc_scopes_json, oidc_external_url, oidc_client_secret_configured, setup_required, setup_completed_at_ms, updated_at_ms) VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)').run(Number(settings.enabled === true), Number(settings.localEnabled === true), Number(settings.oidcEnabled === true), optionalText(settings.oidcIssuer), optionalText(settings.oidcClientId), json(settings.oidcScopes ?? ['openid', 'profile', 'email']), optionalText(settings.oidcExternalUrl), Number(settings.oidcClientSecretConfigured === true), Number(settings.setupRequired === true), timestamp(settings.setupCompletedAt, null as any), timestamp(settings.updatedAt, now))
+  for (const account of records(auth.accounts)) database.query('INSERT INTO users (id, username, email, display_name, protected_owner, active, created_at_ms, updated_at_ms) VALUES (?, ?, ?, ?, ?, ?, ?, ?)').run(account.id, account.username, optionalText(account.email), account.displayName ?? account.username, Number(account.protectedOwner === true), Number(account.active !== false), timestamp(account.createdAt, now), timestamp(account.updatedAt, now))
+  database.query('INSERT INTO application_metadata (key, value_json, updated_at_ms) VALUES (?, ?, ?)').run('legacy.authentication-extended-state', json(Object.fromEntries(Object.entries(auth).filter(([key]) => !['settings', 'accounts'].includes(key)))), now)
+}
+
+function importNotifications(database: Database, snapshot: LegacySnapshot, plan: CanonicalIdentityPlan, now: number) {
+  const config = snapshot.notifications ?? {}
+  database.query('INSERT INTO notification_settings (id, revision, enabled, incident_retention_days, delivery_attempt_retention_days, last_evaluated_at_ms, created_at_ms, updated_at_ms) VALUES (1, ?, ?, ?, ?, ?, ?, ?)').run(positiveIntegerOrNull(config.revision) ?? 1, Number(config.enabled === true), positiveIntegerOrNull(config.incidentRetentionDays) ?? 90, positiveIntegerOrNull(config.deliveryAttemptRetentionDays) ?? 30, timestamp(config.lastEvaluatedAt, null as any), now, timestamp(config.updatedAt, now))
+  for (const point of records(config.contactPoints)) database.query('INSERT INTO notification_contact_points (id, type, name, enabled, secret_id, config_json, created_at_ms, updated_at_ms) VALUES (?, ?, ?, ?, NULL, ?, ?, ?)').run(point.id, point.type, point.name, Number(point.enabled !== false), json(point.config ?? {}), timestamp(point.createdAt, now), timestamp(point.updatedAt, now))
+  for (const incident of records(snapshot.notificationState?.incidents)) database.query('INSERT INTO incidents (id, host_item_id, event_key, event_type, severity, title, summary, state, opened_at_ms, resolved_at_ms, notification_delivered_at_ms, last_reminder_at_ms, created_at_ms, updated_at_ms) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)').run(incident.id, canonicalItemId(plan, incident.hostType, incident.hostId), incident.eventKey, incident.eventType, incident.severity, incident.title, incident.summary, incident.state, timestamp(incident.openedAt, now), timestamp(incident.resolvedAt, null as any), timestamp(incident.notificationDeliveredAt, null as any), timestamp(incident.lastReminderAt, null as any), timestamp(incident.createdAt, now), timestamp(incident.updatedAt, now))
+  for (const delivery of records(snapshot.notificationState?.deliveryJobs)) database.query('INSERT INTO notification_deliveries (id, incident_id, contact_point_id, kind, state, idempotency_key, attempt_count, available_at_ms, delivered_at_ms, last_error, created_at_ms, updated_at_ms) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)').run(delivery.id, delivery.incidentId, delivery.contactPointId, delivery.kind, delivery.state, delivery.idempotencyKey, integerOrNull(delivery.attemptCount) ?? 0, timestamp(delivery.availableAt, now), timestamp(delivery.deliveredAt, null as any), optionalText(delivery.lastError), timestamp(delivery.createdAt, now), timestamp(delivery.updatedAt, now))
+  database.query('INSERT INTO application_metadata (key, value_json, updated_at_ms) VALUES (?, ?, ?)').run('legacy.notification-extended-state', json({ config: Object.fromEntries(Object.entries(config).filter(([key]) => !['revision', 'enabled', 'incidentRetentionDays', 'deliveryAttemptRetentionDays', 'contactPoints', 'updatedAt'].includes(key))), state: Object.fromEntries(Object.entries(snapshot.notificationState ?? {}).filter(([key]) => !['incidents', 'deliveryJobs'].includes(key))), secrets: snapshot.notificationSecrets ?? {} }), now)
+}
+
+function importBackups(database: Database, snapshot: LegacySnapshot, now: number) {
+  const backups = snapshot.backupManagement ?? {}
+  const schedule = backups.schedule ?? {}
+  database.query('INSERT INTO backup_schedules (id, enabled, frequency, local_time, weekday, timezone, retention_count, next_run_at_ms, last_run_at_ms, last_result, updated_at_ms) VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)').run(Number(schedule.enabled === true), schedule.frequency ?? 'daily', schedule.localTime ?? '02:00', integerOrNull(schedule.weekday) ?? 0, optionalText(schedule.timezone), positiveIntegerOrNull(schedule.retentionCount) ?? 7, timestamp(schedule.nextRunAt, null as any), timestamp(schedule.lastRunAt, null as any), optionalText(schedule.lastResult), timestamp(schedule.updatedAt, now))
+  for (const backup of records(backups.backups)) database.query('INSERT INTO backup_runs (id, kind, label, state, format_version, selected_sections_json, path, size_bytes, digest, error_code, started_at_ms, completed_at_ms) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)').run(backup.id, backup.kind, backup.label, backup.state, positiveIntegerOrNull(backup.formatVersion) ?? 1, json(backup.selectedSections ?? []), optionalText(backup.path), integerOrNull(backup.sizeBytes), optionalText(backup.digest), optionalText(backup.errorCode), timestamp(backup.startedAt, now), timestamp(backup.completedAt, null as any))
+}
+
+export function importLegacyCore({ database, snapshot, identityPlan }: ImportLegacyCoreOptions) {
+  if (snapshot.meta?.schemaVersion !== 29) throw new Error('Core import requires a normalized schema-29 legacy snapshot.')
+  if ((database.query('SELECT count(*) AS count FROM inventory_items').get() as { count: number }).count !== 0) throw new Error('Core import target must not contain inventory records.')
+  const now = timestamp(snapshot.meta?.updatedAt, Date.now())
+  const migrate = database.transaction(() => {
+    importInventory(database, snapshot, identityPlan, now)
+    importProject(database, snapshot, identityPlan, now)
+    importRoutingCache(database, snapshot, identityPlan, now)
+    importRegistry(database, snapshot, identityPlan, now)
+    importAgents(database, snapshot, identityPlan, now)
+    importAuthentication(database, snapshot, now)
+    importNotifications(database, snapshot, identityPlan, now)
+    importBackups(database, snapshot, now)
+    database.query('INSERT INTO application_metadata (key, value_json, updated_at_ms) VALUES (?, ?, ?)').run('legacy.schema-version', json(29), now)
+  })
+  migrate.immediate()
+  return { projectId: 1, systemsWorkspaceId: 1, canvasWorkspaceId: 2 }
+}

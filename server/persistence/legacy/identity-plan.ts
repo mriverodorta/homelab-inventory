@@ -1,6 +1,6 @@
 import { INVENTORY_TYPES, type InventoryType } from '../core/inventory/field-contract.ts'
 
-const TABLE_BY_TYPE: Readonly<Record<InventoryType, string>> = {
+export const LEGACY_TABLE_BY_TYPE: Readonly<Record<InventoryType, string>> = {
   server: 'servers',
   nas: 'nas',
   pcBuild: 'pcBuilds',
@@ -63,11 +63,11 @@ function allocate(records: LegacyRecord[], keyOf: (record: LegacyRecord) => stri
   return result
 }
 
-function resourceDefinitions(item: LegacyRecord): Array<{ key: string, count: number }> {
+export function legacyResourceDefinitions(item: LegacyRecord): Array<{ key: string, count: number }> {
   const host = (item.compatibility as any)?.host ?? {}
   const definitions: Array<{ key: string, count: number }> = []
   const scalar = [
-    ['cpu', host.cpu?.socketCount ?? host.cpu?.socketsCount ?? 0],
+    ['cpu', host.cpu?.socketCount ?? host.cpu?.socketsCount ?? (host.cpu ? 1 : 0)],
     ['memory', host.memory?.slots ?? 0],
     ['power-adapter', host.powerAdapterSlots ?? 0],
     ['psu', host.power?.psuBays ?? host.power?.bayCount ?? 0],
@@ -103,7 +103,7 @@ function itemReference(record: LegacyRecord, prefix: string): string {
 export function buildCanonicalIdentityPlan(snapshot: LegacySnapshot): CanonicalIdentityPlan {
   const itemRecords: Array<LegacyRecord & { __type: InventoryType }> = []
   for (const type of INVENTORY_TYPES) {
-    for (const record of sortedRecords(snapshot.inventory?.[TABLE_BY_TYPE[type]], `inventory.${TABLE_BY_TYPE[type]}`)) {
+    for (const record of sortedRecords(snapshot.inventory?.[LEGACY_TABLE_BY_TYPE[type]], `inventory.${LEGACY_TABLE_BY_TYPE[type]}`)) {
       itemRecords.push({ ...record, __type: type })
     }
   }
@@ -125,7 +125,7 @@ export function buildCanonicalIdentityPlan(snapshot: LegacySnapshot): CanonicalI
       const endpoints = Array.isArray(port.endpoints) ? port.endpoints as LegacyRecord[] : []
       endpoints.forEach((endpoint, index) => endpointRecords.push({ ...endpoint, id: endpoint.id ?? index + 1, __portKey: portKey }))
     }
-    for (const definition of resourceDefinitions(item)) {
+    for (const definition of legacyResourceDefinitions(item)) {
       groupRecords.push({ id: groupRecords.length + 1, key: definition.key, __itemKey: itemKey, __count: definition.count })
     }
   }
@@ -154,6 +154,12 @@ export function buildCanonicalIdentityPlan(snapshot: LegacySnapshot): CanonicalI
       if (!endpoint) throw new Error(`Connection ${String(connection.id)} is missing ${endpointName}.`)
       const key = itemReference(endpoint, 'item')
       if (!items.has(key)) throw new Error(`Connection references missing endpoint item ${key}.`)
+      const portOwnerKey = endpoint.hostedItemType === undefined
+        ? key
+        : `${String(endpoint.hostedItemType)}:${positiveId(endpoint.hostedItemId, 'hosted endpoint item ID')}`
+      if (!items.has(portOwnerKey)) throw new Error(`Connection references missing hosted endpoint item ${portOwnerKey}.`)
+      const portKey = `${portOwnerKey}:port:${positiveId(endpoint.portId, 'connection endpoint port ID')}`
+      if (!ports.has(portKey)) throw new Error(`Connection references missing endpoint port ${portKey}.`)
     }
   }
   const connections = allocate(connectionRecords, (record) => String(positiveId(record.id, 'connection.id')), 'connection')

@@ -1,4 +1,5 @@
 import { INVENTORY_TYPES, type InventoryType } from '../core/inventory/field-contract.ts'
+import { toBytes, toMib } from '../core/inventory/units.ts'
 
 const TABLE_BY_TYPE: Readonly<Record<InventoryType, string>> = {
   server: 'servers', nas: 'nas', pcBuild: 'pcBuilds', cpu: 'cpus', ram: 'ram',
@@ -14,10 +15,6 @@ function values(value: unknown): any[] {
   return []
 }
 
-function whole(value: unknown): number {
-  return Number.isSafeInteger(value) && Number(value) >= 0 ? Number(value) : 0
-}
-
 export function legacySemanticSnapshot(snapshot: Record<string, any>) {
   const byType: Record<string, number> = {}
   let total = 0
@@ -28,13 +25,18 @@ export function legacySemanticSnapshot(snapshot: Record<string, any>) {
     if (records.length) byType[type] = records.length
     total += records.length
     if (type === 'ram') {
-      memoryCapacityMiB += records.reduce((sum, item) => sum + whole(item.specs?.capacityGb) * 1024, 0)
+      memoryCapacityMiB += records.reduce((sum, item) => (
+        item.specs?.capacityGb == null
+          ? sum
+          : sum + toMib({ value: item.specs.capacityGb, unit: 'GiB' })
+      ), 0)
     }
     if (type === 'storage') {
       storageCapacityBytes += records.reduce((sum, item) => {
-        if (whole(item.specs?.capacityBytes)) return sum + whole(item.specs.capacityBytes)
-        if (whole(item.specs?.capacityTb)) return sum + whole(item.specs.capacityTb) * 1_000_000_000_000
-        return sum + whole(item.specs?.capacityGb) * 1_000_000_000
+        if (item.specs?.capacityBytes != null) return sum + toBytes({ value: item.specs.capacityBytes, unit: 'bytes' })
+        if (item.specs?.capacityTb != null) return sum + toBytes({ value: item.specs.capacityTb, unit: 'TB' })
+        if (item.specs?.capacityGb != null) return sum + toBytes({ value: item.specs.capacityGb, unit: 'GB' })
+        return sum
       }, 0)
     }
   }
