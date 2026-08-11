@@ -70,7 +70,7 @@ export function legacyResourceDefinitions(item: LegacyRecord): Array<{ key: stri
     ['cpu', host.cpu?.socketCount ?? host.cpu?.socketsCount ?? (host.cpu ? 1 : 0)],
     ['memory', host.memory?.slots ?? 0],
     ['power-adapter', host.powerAdapterSlots ?? 0],
-    ['psu', host.power?.psuBays ?? host.power?.bayCount ?? 0],
+    ['psu', host.power?.psuBays ?? host.power?.bayCount ?? host.power?.psuBayCount ?? 0],
   ] as const
   for (const [key, count] of scalar) {
     if (Number.isSafeInteger(count) && count > 0) definitions.push({ key, count })
@@ -81,6 +81,8 @@ export function legacyResourceDefinitions(item: LegacyRecord): Array<{ key: stri
     ['optional', host.optionalModuleSlots],
     ['controller', host.controllerSlots],
     ['boot', host.bootDeviceSlots],
+    ['cooling', host.coolingProfiles],
+    ['power-connector', host.powerConnectors],
   ] as const
   for (const [prefix, value] of collections) {
     if (!Array.isArray(value)) continue

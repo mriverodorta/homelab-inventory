@@ -118,11 +118,17 @@ function connectorType(port: LegacyRecord) {
   return key
 }
 
+function portRole(value: unknown) {
+  if (['access', 'trunk', 'uplink', 'management', 'disabled'].includes(String(value))) return value
+  return String(value).includes('management') ? 'management' : null
+}
+
 function extensionPayload(item: LegacyRecord) {
   const common = new Set(['id', 'type', 'name', 'aliases', 'manufacturer', 'secondaryManufacturer', 'model', 'family', 'number', 'subtype', 'properties', 'compatibility', 'notes', 'archivedAt', 'ports', 'specs', 'hardwareClass', 'usageRole', 'smart'])
   const unknown = Object.fromEntries(Object.entries(item).filter(([key]) => !common.has(key)))
   const payload: Record<string, unknown> = {}
   if (Object.keys(unknown).length) payload.legacyFields = unknown
+  if (item.specs && Object.keys(item.specs).length) payload.legacySpecs = item.specs
   if (item.compatibility?.requirements) payload.compatibilityRequirements = item.compatibility.requirements
   return payload
 }
@@ -164,7 +170,11 @@ function insertSubtype(database: Database, type: InventoryType, itemId: number, 
     case 'motherboard': database.query('INSERT INTO motherboards (id, chipset, form_factor, board_revision, launch_date_text, discontinued, wifi_generation, bluetooth) VALUES (?, ?, ?, ?, ?, ?, ?, ?)').run(itemId, optionalText(specs.chipset), optionalText(specs.formFactor), optionalText(specs.boardRevision), optionalText(specs.launchDate), booleanOrNull(specs.discontinued), optionalText(specs.wifiGeneration), optionalText(specs.bluetooth)); break
     case 'cpuCooler': database.query('INSERT INTO cpu_coolers (id, cooler_type) VALUES (?, ?)').run(itemId, optionalText(specs.coolerType)); break
     case 'case': database.query('INSERT INTO computer_cases (id) VALUES (?)').run(itemId); for (const factor of records(specs.formFactors)) database.query('INSERT INTO case_form_factor_support (case_id, form_factor) VALUES (?, ?)').run(itemId, String(factor)); break
-    case 'powerSupply': database.query('INSERT INTO power_supplies (id, form_factor, rated_power_mw, efficiency_rating) VALUES (?, ?, ?, ?)').run(itemId, optionalText(specs.formFactor), specs.wattageWatts == null ? null : toMilliwatts({ value: specs.wattageWatts, unit: 'W' }), optionalText(specs.efficiency)); break
+    case 'powerSupply': {
+      database.query('INSERT INTO power_supplies (id, form_factor, rated_power_mw, efficiency_rating) VALUES (?, ?, ?, ?)').run(itemId, optionalText(specs.formFactor), specs.wattageWatts == null ? null : toMilliwatts({ value: specs.wattageWatts, unit: 'W' }), optionalText(specs.efficiency))
+      for (const connector of records(specs.connectors)) database.query('INSERT INTO power_supply_connectors (power_supply_id, connector_type_id, connector_text, count) VALUES (?, ?, ?, ?)').run(itemId, vocabularyId(database, 'power_connector_types', connector.type ?? connector.connector), vocabularyId(database, 'power_connector_types', connector.type ?? connector.connector) ? null : optionalText(connector.type ?? connector.connector), positiveIntegerOrNull(connector.count) ?? 1)
+      break
+    }
     case 'soundCard': database.query('INSERT INTO sound_cards (id, interface) VALUES (?, ?)').run(itemId, optionalText(specs.interface)); break
     case 'wireless': database.query('INSERT INTO wireless_cards (id, interface, wifi_generation, bluetooth) VALUES (?, ?, ?, ?)').run(itemId, optionalText(specs.interface), optionalText(specs.wifiGeneration), booleanOrNull(specs.bluetooth)); break
     case 'powerAdapter': database.query('INSERT INTO power_adapters (id, rated_power_mw, connector_type_id, connector_text) VALUES (?, ?, ?, ?)').run(itemId, specs.wattageWatts == null ? null : toMilliwatts({ value: specs.wattageWatts, unit: 'W' }), vocabularyId(database, 'power_connector_types', specs.connector), vocabularyId(database, 'power_connector_types', specs.connector) ? null : optionalText(specs.connector)); break
@@ -185,34 +195,109 @@ function importCompatibility(database: Database, itemId: number, item: LegacyRec
     const cpu = database.query('INSERT INTO host_cpu_profiles (host_profile_id, socket_count, max_tdp_mw) VALUES (?, ?, ?) RETURNING id').get(profile.id, positiveIntegerOrNull(host.cpu.socketCount ?? host.cpu.socketsCount), host.cpu.maxTdpWatts == null ? null : toMilliwatts({ value: host.cpu.maxTdpWatts, unit: 'W' })) as { id: number }
     for (const socket of records(host.cpu.sockets)) { const id = vocabularyId(database, 'cpu_socket_types', socket); if (id) database.query('INSERT INTO host_cpu_socket_support (cpu_profile_id, socket_type_id) VALUES (?, ?)').run(cpu.id, id) }
     for (const generation of records(host.cpu.generations)) database.query('INSERT INTO host_cpu_generation_support (cpu_profile_id, generation) VALUES (?, ?)').run(cpu.id, String(generation))
+    for (const count of records(host.cpu.populationModes)) {
+      const populatedSocketCount = positiveIntegerOrNull(count)
+      if (populatedSocketCount) database.query('INSERT INTO host_cpu_population_modes (cpu_profile_id, populated_socket_count) VALUES (?, ?)').run(cpu.id, populatedSocketCount)
+    }
   }
   if (host.memory) {
     const memory = database.query('INSERT INTO host_memory_profiles (host_profile_id, slot_count, slots_per_cpu, max_capacity_mib, max_module_capacity_mib, max_speed_mtps, ecc_support) VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING id').get(profile.id, integerOrNull(host.memory.slots), integerOrNull(host.memory.slotsPerCpu), host.memory.maxCapacityGb == null ? null : toMib({ value: host.memory.maxCapacityGb, unit: 'GiB' }), host.memory.maxModuleCapacityGb == null ? null : toMib({ value: host.memory.maxModuleCapacityGb, unit: 'GiB' }), integerOrNull(host.memory.maxSpeedMt), optionalText(host.memory.eccSupport)) as { id: number }
     for (const generation of records(host.memory.generations)) { const id = vocabularyId(database, 'memory_generations', generation); if (id) database.query('INSERT INTO host_memory_generation_support (memory_profile_id, generation_id) VALUES (?, ?)').run(memory.id, id) }
+    for (const formFactor of records(host.memory.formFactors)) database.query('INSERT INTO host_memory_form_factor_support (memory_profile_id, form_factor) VALUES (?, ?)').run(memory.id, String(formFactor))
+    for (const moduleType of records(host.memory.moduleTypes)) { const id = vocabularyId(database, 'memory_module_types', moduleType); if (id) database.query('INSERT INTO host_memory_module_type_support (memory_profile_id, module_type_id) VALUES (?, ?)').run(memory.id, id) }
   }
   const definitions = legacyResourceDefinitions(item)
-  const typedCollections = new Map<string, LegacyRecord>()
-  for (const [prefix, collection] of [['storage', host.storageSlots], ['expansion', host.expansionSlots], ['optional', host.optionalModuleSlots], ['controller', host.controllerSlots], ['boot', host.bootDeviceSlots]] as const) {
-    records(collection).forEach((entry, index) => typedCollections.set(String(entry.key ?? `${prefix}-${index + 1}`), entry))
+  const typedCollections = new Map<string, { entry: LegacyRecord; resourceType: string }>()
+  for (const [prefix, collection, resourceType] of [
+    ['storage', host.storageSlots, 'storage'],
+    ['expansion', host.expansionSlots, 'expansion'],
+    ['optional', host.optionalModuleSlots, 'optionalModule'],
+    ['controller', host.controllerSlots, 'controllerSlot'],
+    ['boot', host.bootDeviceSlots, 'bootDeviceSlot'],
+    ['cooling', host.coolingProfiles, 'coolingProfile'],
+    ['power-connector', host.powerConnectors, 'power'],
+  ] as const) {
+    records(collection).forEach((entry, index) => typedCollections.set(
+      String(entry.key ?? `${prefix}-${index + 1}`),
+      { entry, resourceType },
+    ))
   }
+  const groupByTypedId = new Map<string, number>()
+  for (const definition of definitions) {
+    const typed = typedCollections.get(definition.key)
+    if (!typed || !Number.isSafeInteger(typed.entry.id)) continue
+    const resourceIdentityId = plan.resourceGroups.get(`${type}:${item.id}:resource:${definition.key}`)
+    if (resourceIdentityId) groupByTypedId.set(`${typed.resourceType}:${typed.entry.id}`, resourceIdentityId)
+  }
+  const storageControllerRelations: Array<{ storageId: number; controllerId: number }> = []
+  const bootControllerRelations: Array<{ bootId: number; controllerId: number }> = []
   for (const definition of definitions) {
     const groupKey = `${type}:${item.id}:resource:${definition.key}`
     const resourceIdentityId = plan.resourceGroups.get(groupKey)
     if (!resourceIdentityId) throw new Error(`Missing resource identity ${groupKey}.`)
     database.query('INSERT INTO inventory_resources (id, item_id, created_at_ms) VALUES (?, ?, ?)').run(resourceIdentityId, itemId, now)
     database.query('INSERT INTO resource_identity_aliases (resource_id, legacy_item_type_key, legacy_item_id, legacy_resource_key, created_at_ms) VALUES (?, ?, ?, ?, ?)').run(resourceIdentityId, type, item.id, definition.key, now)
-    const entry = typedCollections.get(definition.key) ?? {}
-    const resourceType = definition.key === 'cpu' ? 'cpu' : definition.key === 'memory' ? 'memory' : definition.key === 'power-adapter' ? 'powerAdapter' : definition.key === 'psu' ? 'psuBay' : host.storageSlots?.includes(entry) ? 'storage' : host.expansionSlots?.includes(entry) ? 'expansion' : host.optionalModuleSlots?.includes(entry) ? 'optionalModule' : host.controllerSlots?.includes(entry) ? 'controllerSlot' : 'bootDeviceSlot'
+    const typed = typedCollections.get(definition.key)
+    const entry = typed?.entry ?? {}
+    const resourceType = definition.key === 'cpu' ? 'cpu' : definition.key === 'memory' ? 'memory' : definition.key === 'power-adapter' ? 'powerAdapter' : definition.key === 'psu' ? 'psuBay' : typed?.resourceType ?? 'optionalModule'
     database.query('INSERT INTO host_resource_groups (id, resource_identity_id, host_item_id, resource_type, semantic_key, label, slot_count, required_cpu_sockets, location, created_at_ms) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)').run(resourceIdentityId, resourceIdentityId, itemId, resourceType, definition.key, optionalText(entry.label) ?? definition.key, definition.count, positiveIntegerOrNull(entry.requiredCpuSockets), optionalText(entry.location), now)
-    if (resourceType === 'storage') database.query('INSERT INTO storage_resource_groups (id, pcie_generation, hot_swap, backplane, direct_connect) VALUES (?, ?, ?, ?, ?)').run(resourceIdentityId, positiveIntegerOrNull(entry.pcieGeneration), booleanOrNull(entry.hotSwap), optionalText(entry.backplane), booleanOrNull(entry.directConnect))
-    if (resourceType === 'expansion') database.query('INSERT INTO expansion_resource_groups (id, interface_family, pcie_generation, mechanical_lanes, electrical_lanes, max_slot_width, max_power_mw, proprietary_riser, riser_capability, riser_group) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)').run(resourceIdentityId, ['pcie', 'm2-ae', 'usb', 'onboard'].includes(entry.interfaceFamily) ? entry.interfaceFamily : 'pcie', positiveIntegerOrNull(entry.pcieGeneration), positiveIntegerOrNull(entry.mechanicalLanes), positiveIntegerOrNull(entry.electricalLanes), positiveIntegerOrNull(entry.maxSlotWidth), entry.maxPowerWatts == null ? null : toMilliwatts({ value: entry.maxPowerWatts, unit: 'W' }), booleanOrNull(entry.proprietaryRiser), optionalText(entry.riserCapability), optionalText(entry.riserGroup))
+    if (resourceType === 'storage') {
+      database.query('INSERT INTO storage_resource_groups (id, pcie_generation, hot_swap, backplane, direct_connect) VALUES (?, ?, ?, ?, ?)').run(resourceIdentityId, positiveIntegerOrNull(entry.pcieGeneration), booleanOrNull(entry.hotSwap), optionalText(entry.backplane), booleanOrNull(entry.directConnect))
+      for (const value of records(entry.interfaces)) { const id = vocabularyId(database, 'storage_interfaces', value); if (id) database.query('INSERT INTO storage_resource_interfaces (resource_group_id, interface_id) VALUES (?, ?)').run(resourceIdentityId, id) }
+      for (const value of records(entry.formFactors)) { const id = vocabularyId(database, 'storage_form_factors', value); if (id) database.query('INSERT INTO storage_resource_form_factors (resource_group_id, form_factor_id) VALUES (?, ?)').run(resourceIdentityId, id) }
+      for (const controllerId of records(entry.controllerSlotIds)) {
+        if (Number.isSafeInteger(controllerId)) storageControllerRelations.push({ storageId: resourceIdentityId, controllerId: Number(controllerId) })
+      }
+    }
+    if (resourceType === 'expansion') {
+      database.query('INSERT INTO expansion_resource_groups (id, interface_family, expansion_slot_type_id, pcie_generation, mechanical_lanes, electrical_lanes, max_slot_width, max_power_mw, proprietary_riser, riser_capability, riser_group) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)').run(resourceIdentityId, ['pcie', 'm2-ae', 'usb', 'onboard'].includes(entry.interfaceFamily) ? entry.interfaceFamily : 'pcie', vocabularyId(database, 'expansion_slot_types', entry.slotType), positiveIntegerOrNull(entry.pcieGeneration), positiveIntegerOrNull(entry.mechanicalLanes), positiveIntegerOrNull(entry.electricalLanes), positiveIntegerOrNull(entry.maxSlotWidth), entry.maxPowerWatts == null ? null : toMilliwatts({ value: entry.maxPowerWatts, unit: 'W' }), booleanOrNull(entry.proprietaryRiser), optionalText(entry.riserCapability), optionalText(entry.riserGroup))
+      for (const height of records(entry.acceptedHeights)) database.query('INSERT INTO expansion_accepted_heights (resource_group_id, height) VALUES (?, ?)').run(resourceIdentityId, String(height))
+    }
+    for (const kind of records(entry.acceptedKinds ?? entry.acceptedModuleKinds ?? entry.acceptedControllerKinds ?? entry.acceptedDeviceKinds)) database.query('INSERT INTO resource_accepted_kinds (resource_group_id, kind) VALUES (?, ?)').run(resourceIdentityId, String(kind))
+    if (resourceType === 'controllerSlot') database.query('INSERT INTO controller_resource_groups (id, interface_family, dedicated) VALUES (?, ?, ?)').run(resourceIdentityId, optionalText(entry.interfaceFamily), booleanOrNull(entry.dedicated))
+    if (resourceType === 'bootDeviceSlot') {
+      database.query('INSERT INTO boot_device_resource_groups (id) VALUES (?)').run(resourceIdentityId)
+      for (const value of records(entry.interfaces)) { const id = vocabularyId(database, 'storage_interfaces', value); if (id) database.query('INSERT INTO boot_device_resource_interfaces (boot_device_resource_group_id, interface_id) VALUES (?, ?)').run(resourceIdentityId, id) }
+      for (const value of records(entry.formFactors)) { const id = vocabularyId(database, 'storage_form_factors', value); if (id) database.query('INSERT INTO boot_device_resource_form_factors (boot_device_resource_group_id, form_factor_id) VALUES (?, ?)').run(resourceIdentityId, id) }
+      if (Number.isSafeInteger(entry.controllerSlotId)) bootControllerRelations.push({ bootId: resourceIdentityId, controllerId: Number(entry.controllerSlotId) })
+    }
+    if (resourceType === 'coolingProfile') {
+      database.query('INSERT INTO cooling_resource_groups (id, fan_count, redundant) VALUES (?, ?, ?)').run(resourceIdentityId, integerOrNull(entry.fanCount), booleanOrNull(entry.redundant))
+      for (const condition of records(entry.conditions)) database.query('INSERT INTO cooling_conditions (resource_group_id, condition) VALUES (?, ?)').run(resourceIdentityId, String(condition))
+    }
+    if (resourceType === 'power') database.query('INSERT INTO host_power_connector_groups (id, kind, connector, count, required) VALUES (?, ?, ?, ?, ?)').run(resourceIdentityId, entry.kind, entry.connector, positiveIntegerOrNull(entry.count) ?? 1, Number(entry.required === true))
     const slotTable: Record<string, string> = { cpu: 'cpu_socket_slots', memory: 'memory_slots', storage: 'storage_slots', expansion: 'expansion_slots', optionalModule: 'optional_module_slots', controllerSlot: 'controller_slots', bootDeviceSlot: 'boot_device_slots', psuBay: 'psu_bays', powerAdapter: 'power_adapter_slots' }
     for (let position = 1; position <= definition.count; position += 1) {
       const slotKey = `${groupKey}:slot:${position}`
       const slotId = plan.resourceSlots.get(slotKey)
       if (!slotId) throw new Error(`Missing resource slot identity ${slotKey}.`)
       database.query('INSERT INTO host_resource_slots (id, resource_group_id, host_item_id, position, label, single_capacity, created_at_ms) VALUES (?, ?, ?, ?, ?, 1, ?)').run(slotId, resourceIdentityId, itemId, position, `${optionalText(entry.label) ?? definition.key} ${position}`, now)
-      database.query(`INSERT INTO ${slotTable[resourceType]} (id) VALUES (?)`).run(slotId)
+      if (slotTable[resourceType]) database.query(`INSERT INTO ${slotTable[resourceType]} (id) VALUES (?)`).run(slotId)
+    }
+  }
+  for (const relation of storageControllerRelations) {
+    const controllerResourceGroupId = groupByTypedId.get(`controllerSlot:${relation.controllerId}`)
+    if (!controllerResourceGroupId) throw new Error(`Storage resource references missing controller slot ${relation.controllerId}.`)
+    database.query('INSERT INTO storage_resource_controllers (storage_resource_group_id, controller_resource_group_id) VALUES (?, ?)').run(relation.storageId, controllerResourceGroupId)
+  }
+  for (const relation of bootControllerRelations) {
+    const controllerResourceGroupId = groupByTypedId.get(`controllerSlot:${relation.controllerId}`)
+    if (!controllerResourceGroupId) throw new Error(`Boot resource references missing controller slot ${relation.controllerId}.`)
+    database.query('UPDATE boot_device_resource_groups SET controller_resource_group_id = ? WHERE id = ?').run(controllerResourceGroupId, relation.bootId)
+  }
+  if (host.management) database.query('INSERT INTO management_controllers (host_profile_id, controller_family, controller_generation, dedicated_port, shared_nic, port_type, speed_bps) VALUES (?, ?, ?, ?, ?, ?, ?)').run(profile.id, optionalText(host.management.controllerFamily), optionalText(host.management.controllerGeneration), booleanOrNull(host.management.dedicatedPort), booleanOrNull(host.management.sharedNic), optionalText(host.management.portType), speedBps(host.management.speed))
+  if (host.power) {
+    const power = database.query('INSERT INTO host_power_profiles (host_profile_id, configuration, connector, adapter_required, adapter_type, redundancy, max_graphics_power_mw, psu_bay_count, psu_type, mixed_psu_allowed) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id').get(profile.id, optionalText(host.power.configuration), optionalText(host.power.connector), booleanOrNull(host.power.adapterRequired), optionalText(host.power.adapterType), optionalText(host.power.redundancy), host.power.maxGraphicsPowerWatts == null ? null : toMilliwatts({ value: host.power.maxGraphicsPowerWatts, unit: 'W' }), integerOrNull(host.power.psuBayCount), optionalText(host.power.psuType), booleanOrNull(host.power.mixedPsuAllowed)) as { id: number }
+    for (const watts of records(host.power.supportedWattagesWatts)) if (typeof watts === 'number') database.query('INSERT INTO host_power_supported_wattages (power_profile_id, power_mw) VALUES (?, ?)').run(power.id, toMilliwatts({ value: watts, unit: 'W' }))
+    for (const mode of records(host.power.redundancyModes)) database.query('INSERT INTO host_power_redundancy_modes (power_profile_id, mode) VALUES (?, ?)').run(power.id, String(mode))
+  }
+  for (const constraint of records(host.constraintGroups)) {
+    const inserted = database.query('INSERT INTO compatibility_constraint_groups (host_profile_id, semantic_key, label, kind) VALUES (?, ?, ?, ?) RETURNING id').get(profile.id, constraint.key, constraint.label, constraint.kind) as { id: number }
+    const resourceTypeMap: Record<string, string> = { 'storage-slot': 'storage', 'expansion-slot': 'expansion', 'optional-module-slot': 'optionalModule', 'controller-slot': 'controllerSlot', 'boot-device-slot': 'bootDeviceSlot', 'cooling-profile': 'coolingProfile' }
+    for (const member of records(constraint.members)) {
+      const resourceGroupId = groupByTypedId.get(`${resourceTypeMap[member.resourceType]}:${member.resourceId}`)
+      if (!resourceGroupId) throw new Error(`Compatibility constraint references missing resource ${String(member.resourceType)}:${String(member.resourceId)}.`)
+      database.query('INSERT INTO compatibility_constraint_members (constraint_group_id, resource_group_id) VALUES (?, ?)').run(inserted.id, resourceGroupId)
     }
   }
 }
@@ -231,7 +316,7 @@ function importPorts(database: Database, type: InventoryType, item: LegacyRecord
     if (!kindId || !connectorId) throw new Error(`Port ${key} uses an unsupported kind or connector.`)
     database.query('INSERT INTO inventory_ports (id, item_id, created_at_ms) VALUES (?, ?, ?)').run(portId, itemId, now)
     database.query('INSERT INTO port_identity_aliases (port_id, legacy_item_type_key, legacy_item_id, legacy_port_id, created_at_ms) VALUES (?, ?, ?, ?, ?)').run(portId, type, item.id, port.id, now)
-    database.query('INSERT INTO item_port_details (port_id, kind_id, connector_type_id, semantic_key, slot_number, label, notes, ip_address, role, speed_bps, poe, origin) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)').run(portId, kindId, connectorId, optionalText(port.key), slotNumber, optionalText(port.label), optionalText(port.notes), optionalText(port.ipAddress), optionalText(port.role), speedBps(port.speed), booleanOrNull(port.poe), port.origin === 'module' ? 'module' : 'fixed')
+    database.query('INSERT INTO item_port_details (port_id, kind_id, connector_type_id, semantic_key, slot_number, label, notes, ip_address, role, speed_bps, poe, origin) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)').run(portId, kindId, connectorId, optionalText(port.key), slotNumber, optionalText(port.label), optionalText(port.notes), optionalText(port.ipAddress), portRole(port.role), speedBps(port.speed), booleanOrNull(port.poe), port.origin === 'module' ? 'module' : 'fixed')
     for (const endpoint of records(port.endpoints)) {
       const faceId = plan.endpointFaces.get(`${key}:face:${endpoint.id}`)
       if (!faceId) throw new Error(`Missing endpoint-face identity for ${key}.`)
@@ -251,8 +336,25 @@ function importInventory(database: Database, snapshot: LegacySnapshot, plan: Can
       database.query('INSERT INTO inventory_identity_aliases (item_id, legacy_type_key, legacy_id, created_at_ms) VALUES (?, ?, ?, ?)').run(itemId, type, item.id, now)
       database.query('INSERT INTO project_inventory_memberships (project_id, item_id, created_at_ms) VALUES (1, ?, ?)').run(itemId, now)
       insertSubtype(database, type, itemId, item)
+      for (const alias of records(item.aliases)) {
+        const value = optionalText(alias)
+        if (value) database.query('INSERT INTO inventory_item_aliases (item_id, alias, normalized_alias, created_at_ms) VALUES (?, ?, ?, ?)').run(itemId, value, value.toLocaleLowerCase('en-US').replace(/\s+/gu, ' '), now)
+      }
+      const secondaryManufacturer = optionalText(item.secondaryManufacturer)
+      if (secondaryManufacturer) {
+        const secondaryManufacturerId = ensureManufacturer(database, secondaryManufacturer, now)
+        database.query('INSERT INTO inventory_secondary_manufacturers (item_id, manufacturer_id, manufacturer_text, created_at_ms, updated_at_ms) VALUES (?, ?, NULL, ?, ?)').run(itemId, secondaryManufacturerId, now, now)
+      }
       for (const [key, value] of Object.entries(item.properties ?? {})) database.query('INSERT INTO inventory_item_properties (item_id, key, value, created_at_ms, updated_at_ms) VALUES (?, ?, ?, ?, ?)').run(itemId, key, typeof value === 'string' ? value : json(value), now, now)
       importPorts(database, type, item, itemId, plan, now)
+      if (type === 'powerStrip' && item.smart?.enabled === true) {
+        const smart = database.query('INSERT INTO power_strip_smart_configurations (power_strip_id, enabled, display_name, management_ip, mac_address, created_at_ms, updated_at_ms) VALUES (?, 1, ?, ?, ?, ?, ?) RETURNING id').get(itemId, optionalText(item.smart.displayName), optionalText(item.smart.managementIp), optionalText(item.smart.macAddress), now, now) as { id: number }
+        for (const outlet of records(item.smart.outlets)) {
+          const portId = plan.ports.get(`${type}:${item.id}:port:${outlet.portId}`)
+          if (!portId) throw new Error(`Smart outlet name references missing power strip port ${String(outlet.portId)}.`)
+          database.query('INSERT INTO power_strip_outlet_names (smart_configuration_id, port_id, name) VALUES (?, ?, ?)').run(smart.id, portId, outlet.name)
+        }
+      }
       importCompatibility(database, itemId, item, now, plan, type)
     }
   }
@@ -312,6 +414,7 @@ function importProject(database: Database, snapshot: LegacySnapshot, plan: Canon
     for (const [position, point] of records(route.bendPoints).entries()) database.query('INSERT INTO workspace_manual_bend_points (project_id, workspace_id, connection_id, position, x, y) VALUES (1, 2, ?, ?, ?, ?)').run(id, position, point.x, point.y)
   }
   database.query('INSERT INTO application_metadata (key, value_json, updated_at_ms) VALUES (?, ?, ?)').run('legacy.compatibility-policy', json(project.compatibilityPolicy ?? {}), now)
+  database.query('INSERT INTO application_metadata (key, value_json, updated_at_ms) VALUES (?, ?, ?)').run('legacy.project-metadata', json(project.metadata ?? {}), now)
 }
 
 function importRoutingCache(database: Database, snapshot: LegacySnapshot, plan: CanonicalIdentityPlan, now: number) {
