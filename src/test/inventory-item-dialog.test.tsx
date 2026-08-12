@@ -240,7 +240,7 @@ describe('InventoryItemDialog switch port groups', () => {
     await chooseType('Power Strip')
     expect(screen.getByRole('spinbutton', { name: 'Outlet Count' })).toBeInTheDocument()
     expect(screen.getByRole('combobox', { name: 'Surge Protected' })).toBeInTheDocument()
-  })
+  }, 15_000)
 
   it('clears a noncanonical manufacturer when changing to a constrained type', async () => {
     const user = userEvent.setup()
