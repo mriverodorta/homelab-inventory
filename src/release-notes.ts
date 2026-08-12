@@ -138,11 +138,17 @@ const RELEASE_0_12_1_DETAILS: UnreleasedReleaseNotes = {
   notes: [],
 }
 
-export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
+const RELEASE_0_12_2_DETAILS: UnreleasedReleaseNotes = {
   highlights: [],
   fixes: [
     'Agent container views now collapse duplicate IPv4/IPv6 port bindings and show each unique host-to-container mapping with its protocol in one compact chip.',
   ],
+  notes: [],
+}
+
+export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
+  highlights: [],
+  fixes: [],
   notes: [],
 }
 
@@ -672,6 +678,13 @@ const RELEASE_0_2_1_DETAILS: UnreleasedReleaseNotes = {
 }
 
 export const RELEASE_NOTES: ReleaseNoteEntry[] = [
+  {
+    version: '0.12.2',
+    date: '2026-08-12',
+    channel: 'latest',
+    title: 'Clear container port mappings',
+    ...RELEASE_0_12_2_DETAILS,
+  },
   {
     version: '0.12.1',
     date: '2026-08-12',
