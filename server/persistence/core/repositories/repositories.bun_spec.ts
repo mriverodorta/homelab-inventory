@@ -45,6 +45,7 @@ describe('relational persistence repositories', () => {
     const { handle, context } = await fixtureContext()
     try {
       const repository = createProjectRepository(context)
+      expect(() => repository.update(1, { includesGlobalInventory: false })).toThrow(/global membership/iu)
       expect(repository.getWorkbook(1)).toMatchObject({
         project: { id: 1, name: 'Default Project' },
         defaultWorkspaceId: 2,

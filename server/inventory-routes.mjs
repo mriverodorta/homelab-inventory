@@ -43,7 +43,65 @@ function batchItems(request) {
   return request.body?.items
 }
 
+function projectId(request) {
+  const parsed = Number(request.params.projectId)
+  if (!isRelationalId(parsed)) {
+    throw new InventoryLifecycleError('Project ID must be a positive safe integer.', {
+      code: 'invalid-project-id',
+      status: 400,
+    })
+  }
+  return parsed
+}
+
+function submittedProjectId(value, label) {
+  if (!isRelationalId(value)) {
+    throw new InventoryLifecycleError(`${label} must be a positive safe integer.`, {
+      code: 'invalid-project-id',
+      status: 400,
+    })
+  }
+  return value
+}
+
 export function registerInventoryRoutes(app, { withStore, onHostsDeleted = null }) {
+  app.post('/api/projects/:projectId/inventory/items', (request, response) => {
+    runWithInventoryStore(withStore, request, response, 'Unable to create project inventory items.', async (store) => {
+      const wrapped = request.body?.item && typeof request.body.item === 'object'
+      const item = wrapped ? request.body.item : request.body
+      const quantity = wrapped ? (request.body.quantity ?? 1) : 1
+      response.status(201).json(store.createInventoryItemsForProject(projectId(request), item, quantity))
+    })
+  })
+
+  app.post('/api/inventory/items/:type/:id/scope', (request, response) => {
+    runWithInventoryStore(withStore, request, response, 'Unable to change inventory scope.', async (store) => {
+      response.json(store.setInventoryScope(itemRef(request), request.body ?? {}))
+    })
+  })
+
+  app.post('/api/projects/:projectId/inventory/:type/:id/membership', (request, response) => {
+    runWithInventoryStore(withStore, request, response, 'Unable to add global inventory to the project.', async (store) => {
+      response.status(201).json(store.addGlobalInventoryMembership(projectId(request), itemRef(request)))
+    })
+  })
+
+  app.delete('/api/projects/:projectId/inventory/:type/:id/membership', (request, response) => {
+    runWithInventoryStore(withStore, request, response, 'Unable to remove global inventory from the project.', async (store) => {
+      response.json(store.removeGlobalInventoryMembership(projectId(request), itemRef(request)))
+    })
+  })
+
+  app.post('/api/projects/:projectId/inventory/:type/:id/duplicate', (request, response) => {
+    runWithInventoryStore(withStore, request, response, 'Unable to duplicate inventory into the project.', async (store) => {
+      response.status(201).json(store.duplicateInventoryToProject(
+        submittedProjectId(request.body?.sourceProjectId, 'Source project ID'),
+        projectId(request),
+        itemRef(request),
+      ))
+    })
+  })
+
   app.post('/api/inventory/items', (request, response) => {
     runWithInventoryStore(withStore, request, response, 'Unable to create inventory items.', async (store) => {
       const wrapped = request.body?.item && typeof request.body.item === 'object'

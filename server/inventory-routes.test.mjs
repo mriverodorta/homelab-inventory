@@ -59,6 +59,51 @@ afterEach(async () => {
 })
 
 describe('inventory lifecycle routes', () => {
+  it('routes inventory scope, membership, and cross-project duplication commands', async () => {
+    const store = {
+      createInventoryItemsForProject: vi.fn(() => ({ items: {} })),
+      setInventoryScope: vi.fn(() => ({ item: { scope: 'global' }, memberships: [1] })),
+      addGlobalInventoryMembership: vi.fn(() => ({ memberships: [1, 2], project: {} })),
+      removeGlobalInventoryMembership: vi.fn(() => ({ memberships: [1], project: {} })),
+      duplicateInventoryToProject: vi.fn(() => ({ item: { type: 'cpu', id: 9 }, project: {} })),
+    }
+    const app = express()
+    app.use(express.json())
+    registerInventoryRoutes(app, {
+      withStore: async (_request, response, handler) => {
+        try { await handler(store) } catch (error) { response.status(500).json({ message: error.message }) }
+      },
+    })
+    const server = await new Promise((resolve) => {
+      const listener = app.listen(0, () => resolve(listener))
+    })
+    const url = `http://127.0.0.1:${server.address().port}`
+
+    try {
+      expect((await jsonRequest(url, '/api/projects/2/inventory/items', {
+        method: 'POST', body: JSON.stringify({ item: { type: 'cpu', name: 'CPU' }, quantity: 2 }),
+      })).response.status).toBe(201)
+      expect((await jsonRequest(url, '/api/inventory/items/cpu/3/scope', {
+        method: 'POST', body: JSON.stringify({ scope: 'global' }),
+      })).response.status).toBe(200)
+      expect((await jsonRequest(url, '/api/projects/2/inventory/cpu/3/membership', {
+        method: 'POST',
+      })).response.status).toBe(201)
+      expect((await jsonRequest(url, '/api/projects/2/inventory/cpu/3/membership', {
+        method: 'DELETE',
+      })).response.status).toBe(200)
+      expect((await jsonRequest(url, '/api/projects/2/inventory/cpu/3/duplicate', {
+        method: 'POST', body: JSON.stringify({ sourceProjectId: 1 }),
+      })).response.status).toBe(201)
+
+      expect(store.addGlobalInventoryMembership).toHaveBeenCalledWith(2, { type: 'cpu', id: 3 })
+      expect(store.createInventoryItemsForProject).toHaveBeenCalledWith(2, { type: 'cpu', name: 'CPU' }, 2)
+      expect(store.duplicateInventoryToProject).toHaveBeenCalledWith(1, 2, { type: 'cpu', id: 3 })
+    } finally {
+      server.close()
+    }
+  })
+
   it('creates quantities and retains backward-compatible single-item payloads', async () => {
     const { store, server, url } = await createTestContext()
 

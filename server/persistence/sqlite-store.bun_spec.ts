@@ -107,6 +107,71 @@ describe('SQLite Homelab Inventory store facade', () => {
     }
   })
 
+  test('duplicates a clean project-bound inventory record without copying instance relationships', async () => {
+    const store = await fixtureStore()
+    try {
+      const target = store.createProject({ name: 'Downsize plan' })
+      const duplicated = store.duplicateInventoryToProject(
+        1,
+        target.project.id,
+        { type: 'server', id: 7 },
+      )
+      const duplicate = duplicated.project.items[`server:${duplicated.item.id}`] as any
+      expect(duplicate).toMatchObject({
+        type: 'server',
+        scope: 'project',
+        ownerProjectId: target.project.id,
+      })
+      expect(duplicate.serialNumber).toBeUndefined()
+
+      const canonical = store.core.database.query(`
+        SELECT a.item_id AS itemId, item.serial_number AS serialNumber
+        FROM inventory_identity_aliases a
+        JOIN inventory_items item ON item.id = a.item_id
+        WHERE a.legacy_type_key = ? AND a.legacy_id = ?
+      `).get('server', duplicated.item.id) as { itemId: number; serialNumber: string | null }
+      expect(canonical.serialNumber).toBeNull()
+      expect(store.core.database.query('SELECT project_id FROM project_inventory_memberships WHERE item_id = ?').all(canonical.itemId))
+        .toEqual([{ project_id: target.project.id }])
+      expect(store.core.database.query('SELECT count(*) AS count FROM agent_host_bindings WHERE host_item_id = ?').get(canonical.itemId))
+        .toEqual({ count: 0 })
+      expect(store.core.database.query('SELECT count(*) AS count FROM registry_links WHERE item_id = ?').get(canonical.itemId))
+        .toEqual({ count: 0 })
+      expect(store.core.database.query('SELECT count(*) AS count FROM component_assignments WHERE project_id = ? AND (host_item_id = ? OR component_item_id = ?)').get(target.project.id, canonical.itemId, canonical.itemId))
+        .toEqual({ count: 0 })
+      expect(store.core.database.query('SELECT count(*) AS count FROM workspace_placements WHERE project_id = ? AND item_id = ?').get(target.project.id, canonical.itemId))
+        .toEqual({ count: 0 })
+    } finally {
+      store.close()
+    }
+  })
+
+  test('creates project-bound inventory by default through the scoped facade', async () => {
+    const store = await emptyFixtureStore()
+    try {
+      const target = store.createProject({ name: 'New lab' })
+      const project = store.createInventoryItemsForProject(target.project.id, {
+        type: 'cpu',
+        name: 'Planning CPU',
+        serialNumber: 'local-only',
+      })
+      expect(project.items['cpu:1']).toMatchObject({
+        name: 'Planning CPU',
+        scope: 'project',
+        ownerProjectId: target.project.id,
+      })
+      const row = store.core.database.query(`
+        SELECT scope, owner_project_id AS ownerProjectId
+        FROM inventory_items item
+        JOIN inventory_identity_aliases alias ON alias.item_id = item.id
+        WHERE alias.legacy_type_key = 'cpu' AND alias.legacy_id = 1
+      `).get()
+      expect(row).toEqual({ scope: 'project', ownerProjectId: target.project.id })
+    } finally {
+      store.close()
+    }
+  })
+
   test('projects relational state into the current engine contract', async () => {
     const store = await fixtureStore()
     try {

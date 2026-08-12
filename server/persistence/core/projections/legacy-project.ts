@@ -244,6 +244,8 @@ function inventoryItem(database: Database, row: Row): InventoryItem {
     key: aliasKey(row),
     name: row.name,
     type: row.type_key,
+    scope: row.scope,
+    ownerProjectId: row.owner_project_id,
     ...(subtype.fields ?? {}),
     subtype: row.subtype,
     manufacturer: row.manufacturer_name ?? row.manufacturer_text,
@@ -302,9 +304,9 @@ export function buildLegacyProjectProjection({
     JOIN inventory_identity_aliases a ON a.item_id = i.id
     LEFT JOIN manufacturers m ON m.id = i.manufacturer_id
     LEFT JOIN project_inventory_memberships pm ON pm.item_id = i.id AND pm.project_id = ?
-    WHERE (i.owner_project_id = ? OR pm.id IS NOT NULL OR (i.scope = 'global' AND ? = 1))
+    WHERE (i.owner_project_id = ? OR pm.id IS NOT NULL)
     ORDER BY t.sort_order, a.legacy_id
-  `, projectId, projectId, project.includes_global_inventory)
+  `, projectId, projectId)
   const items = Object.fromEntries(itemRows.map((row) => {
     const item = inventoryItem(database, row)
     return [item.key!, item]

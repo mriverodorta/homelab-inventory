@@ -44,6 +44,7 @@ import {
   setWalkthroughStepInDraft,
 } from '../onboarding/lifecycle.mjs'
 import { INVENTORY_TYPES, type InventoryType } from './core/inventory/field-contract.ts'
+import { createInventoryScopeService } from './core/inventory/inventory-scope-service.ts'
 import type { CacheStore } from './cache/cache-store.ts'
 import { MemoryCacheStore } from './cache/memory-cache.ts'
 import {
@@ -58,7 +59,11 @@ import {
   projectRegistryState,
 } from './core/projections/legacy-domains.ts'
 import { buildWorkspaceReadModel } from './core/read-model/workspace-read-model.ts'
-import { createProjectRepository, createRepositoryContext } from './core/repositories/index.ts'
+import {
+  bumpProjectRevision,
+  createProjectRepository,
+  createRepositoryContext,
+} from './core/repositories/index.ts'
 import { insertLegacyInventoryItem, replaceLegacyInventoryItem } from './migration/core-importer.ts'
 import { LEGACY_TABLE_BY_TYPE } from './legacy/identity-plan.ts'
 import { databaseStatus, type ManagedDatabase } from './sqlite/database.ts'
@@ -212,6 +217,7 @@ export class SqliteHomelabInventoryStore {
   readonly cache: CacheStore
   readonly context: ReturnType<typeof createRepositoryContext>
   readonly projects: ReturnType<typeof createProjectRepository>
+  readonly inventoryScope: ReturnType<typeof createInventoryScopeService>
   private readonly projectCommitListeners = new Set<(event: ProjectCommitEvent) => void>()
   private registryMutationTail: Promise<void> = Promise.resolve()
 
@@ -235,6 +241,7 @@ export class SqliteHomelabInventoryStore {
     this.cache = cache
     this.context = createRepositoryContext(core.database, now)
     this.projects = createProjectRepository(this.context)
+    this.inventoryScope = createInventoryScopeService(this.context)
   }
 
   private applicationMeta() {
@@ -799,12 +806,121 @@ export class SqliteHomelabInventoryStore {
   }
 
   createInventoryItems(input: Row, quantity = 1) {
-    const { type, records } = this.prepareInventoryCreation(input, quantity)
-    this.commitCanonicalMutation(() => this.insertInventoryRecords(type, records))
+    const { type, records } = this.prepareInventoryCreation(input, quantity, this.projectId)
+    this.commitCanonicalMutation(() => this.insertInventoryRecords(type, records, this.projectId, 'global'))
     return this.getProject()
   }
 
-  private prepareInventoryCreation(input: Row, quantity: number) {
+  createInventoryItemsForProject(projectId: number, input: Row, quantity = 1) {
+    const workbook = this.projects.getWorkbook(projectId)
+    const scope = input?.scope === 'global' ? 'global' : 'project'
+    if (scope === 'global' && !workbook.project.includesGlobalInventory) {
+      throw lifecycleError(
+        `Project ${projectId} does not allow global inventory.`,
+        'inventory-scope-conflict',
+        409,
+      )
+    }
+    const { type, records } = this.prepareInventoryCreation(input, quantity, projectId)
+    const at = this.now()
+    this.core.database.transaction(() => {
+      this.insertInventoryRecords(type, records, projectId, scope)
+      bumpProjectRevision(this.context, projectId, at)
+    }).immediate()
+    this.invalidateProjectReadModels(projectId)
+    return this.getWorkspace(projectId, workbook.defaultWorkspaceId)
+  }
+
+  setInventoryScope(ref: Row, target: { scope: 'global' | 'project'; projectId?: number }) {
+    const normalized = normalizeInventoryRef(ref)
+    const itemId = this.inventoryScope.resolve(normalized.type as InventoryType, normalized.id)
+    try {
+      const item = this.inventoryScope.setScope(itemId, target)
+      this.cache.clear()
+      return { item, memberships: this.inventoryScope.memberships(itemId) }
+    } catch (error) {
+      throw lifecycleError(
+        error instanceof Error ? error.message : 'Unable to change inventory scope.',
+        'inventory-scope-conflict',
+        409,
+      )
+    }
+  }
+
+  addGlobalInventoryMembership(projectId: number, ref: Row) {
+    const normalized = normalizeInventoryRef(ref)
+    const itemId = this.inventoryScope.resolve(normalized.type as InventoryType, normalized.id)
+    try {
+      const memberships = this.inventoryScope.addGlobalMembership(itemId, projectId)
+      this.invalidateProjectReadModels(projectId)
+      return { memberships, project: this.getWorkspace(projectId, this.projects.getWorkbook(projectId).defaultWorkspaceId) }
+    } catch (error) {
+      throw lifecycleError(
+        error instanceof Error ? error.message : 'Unable to add global inventory to the project.',
+        'inventory-membership-conflict',
+        409,
+      )
+    }
+  }
+
+  removeGlobalInventoryMembership(projectId: number, ref: Row) {
+    const normalized = normalizeInventoryRef(ref)
+    const itemId = this.inventoryScope.resolve(normalized.type as InventoryType, normalized.id)
+    try {
+      const memberships = this.inventoryScope.removeGlobalMembership(itemId, projectId)
+      this.invalidateProjectReadModels(projectId)
+      return { memberships, project: this.getWorkspace(projectId, this.projects.getWorkbook(projectId).defaultWorkspaceId) }
+    } catch (error) {
+      throw lifecycleError(
+        error instanceof Error ? error.message : 'Unable to remove global inventory from the project.',
+        'inventory-membership-conflict',
+        409,
+      )
+    }
+  }
+
+  duplicateInventoryToProject(sourceProjectId: number, targetProjectId: number, ref: Row) {
+    const normalized = normalizeInventoryRef(ref)
+    const type = normalized.type as InventoryType
+    if (!INVENTORY_TYPE_SET.has(type)) {
+      throw lifecycleError('Inventory item type is not supported.', 'unsupported-inventory-type', 400)
+    }
+    const sourceWorkbook = this.projects.getWorkbook(sourceProjectId)
+    const targetWorkbook = this.projects.getWorkbook(targetProjectId)
+    const source = this.getWorkspace(sourceProjectId, sourceWorkbook.defaultWorkspaceId)
+      .items[`${type}:${normalized.id}`] as Row | undefined
+    if (!source) {
+      throw lifecycleError(
+        `Inventory item ${type}:${normalized.id} is not available in project ${sourceProjectId}.`,
+        'inventory-item-not-found',
+        404,
+      )
+    }
+    const target = this.getWorkspace(targetProjectId, targetWorkbook.defaultWorkspaceId)
+    const existingRecords = Object.values(target.items).filter((item) => item.type === type)
+    const nextId = this.nextLegacyInventoryId(type)
+    const duplicate = buildDuplicateRecord({ source, type, nextId, existingRecords })
+    const at = this.now()
+    this.core.database.transaction(() => {
+      insertLegacyInventoryItem({
+        database: this.core.database,
+        projectId: targetProjectId,
+        type,
+        item: duplicate,
+        scope: 'project',
+        ownerProjectId: targetProjectId,
+        now: at,
+      })
+      bumpProjectRevision(this.context, targetProjectId, at)
+    }).immediate()
+    this.invalidateProjectReadModels(targetProjectId)
+    return {
+      item: { type, id: nextId },
+      project: this.getWorkspace(targetProjectId, targetWorkbook.defaultWorkspaceId),
+    }
+  }
+
+  private prepareInventoryCreation(input: Row, quantity: number, projectId = this.projectId) {
     if (!Number.isInteger(quantity) || quantity < 1 || quantity > 100) {
       throw lifecycleError('Quantity must be an integer between 1 and 100.', 'invalid-quantity', 400)
     }
@@ -813,7 +929,9 @@ export class SqliteHomelabInventoryStore {
       throw lifecycleError('Inventory item type is not supported.', 'unsupported-inventory-type', 400)
     }
     const inventoryType = type as InventoryType
-    const currentItems = Object.values(this.getProject().items).filter((item) => item.type === inventoryType)
+    const workbook = this.projects.getWorkbook(projectId)
+    const currentItems = Object.values(this.getWorkspace(projectId, workbook.defaultWorkspaceId).items)
+      .filter((item) => item.type === inventoryType)
     const startingId = this.nextLegacyInventoryId(inventoryType)
     const records = buildQuantityRecords({
       input,
@@ -825,13 +943,20 @@ export class SqliteHomelabInventoryStore {
     return { type: inventoryType, records }
   }
 
-  private insertInventoryRecords(type: InventoryType, records: Row[]) {
+  private insertInventoryRecords(
+    type: InventoryType,
+    records: Row[],
+    projectId = this.projectId,
+    scope: 'global' | 'project' = 'global',
+  ) {
     for (const item of records) {
       insertLegacyInventoryItem({
         database: this.core.database,
-        projectId: this.projectId,
+        projectId,
         type,
         item,
+        scope,
+        ownerProjectId: scope === 'project' ? projectId : null,
         now: this.now(),
       })
     }

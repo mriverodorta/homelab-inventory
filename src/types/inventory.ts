@@ -150,6 +150,8 @@ export type InventoryItem = {
   key?: string
   name: string
   type: InventoryType
+  scope?: 'global' | 'project'
+  ownerProjectId?: number
   hardwareClass?: HardwareClass
   usageRole?: EquipmentUsageRole
   subtype?: string

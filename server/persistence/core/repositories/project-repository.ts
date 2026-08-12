@@ -142,6 +142,17 @@ export function createProjectRepository(context: RepositoryContext) {
     if (!name) throw new Error('Project name is required.')
     const iconKey = changes.iconKey ?? current.iconKey
     assertProjectIconKey(iconKey)
+    if (changes.includesGlobalInventory === false && current.includesGlobalInventory) {
+      const globalMemberships = sqlite.query(`
+        SELECT count(*) AS count
+        FROM project_inventory_memberships membership
+        JOIN inventory_items item ON item.id = membership.item_id
+        WHERE membership.project_id = ? AND item.scope = 'global'
+      `).get(projectId) as { count: number }
+      if (globalMemberships.count > 0) {
+        throw new Error(`Project ${projectId} cannot disable global inventory while ${globalMemberships.count} global membership(s) remain.`)
+      }
+    }
     const at = now()
     db.update(projects).set({
       name,

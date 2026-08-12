@@ -22,6 +22,8 @@ export type InsertLegacyInventoryItemOptions = Readonly<{
   projectId: number
   type: InventoryType
   item: LegacyRecord
+  scope?: 'global' | 'project'
+  ownerProjectId?: number | null
   now?: number
 }>
 
@@ -351,12 +353,14 @@ function insertInventoryItem(
   itemId: number,
   plan: CanonicalIdentityPlan,
   now: number,
+  scope: 'global' | 'project' = 'global',
+  ownerProjectId: number | null = null,
 ) {
   const typeRow = database.query('SELECT id FROM inventory_item_types WHERE key = ?').get(type) as { id: number } | null
   if (!typeRow) throw new Error(`Inventory item type ${type} is not configured.`)
   const manufacturerId = ensureManufacturer(database, item.manufacturer, now)
-  database.query(`INSERT INTO inventory_items (id, type_id, scope, owner_project_id, name, manufacturer_id, manufacturer_text, model, family, product_number, subtype, serial_number, notes, extensions_json, row_version, archived_at_ms, created_at_ms, updated_at_ms) VALUES (?, ?, 'global', NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?)`)
-    .run(itemId, typeRow.id, optionalText(item.name) ?? `${type} ${item.id}`, manufacturerId, manufacturerId ? null : optionalText(item.manufacturer), optionalText(item.model), optionalText(item.family), optionalText(item.number), optionalText(item.subtype), optionalText(item.serialNumber ?? item.specs?.serialNumber), optionalText(item.notes), json(extensionPayload(item)), timestamp(item.archivedAt, null as any), now, now)
+  database.query(`INSERT INTO inventory_items (id, type_id, scope, owner_project_id, name, manufacturer_id, manufacturer_text, model, family, product_number, subtype, serial_number, notes, extensions_json, row_version, archived_at_ms, created_at_ms, updated_at_ms) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?)`)
+    .run(itemId, typeRow.id, scope, ownerProjectId, optionalText(item.name) ?? `${type} ${item.id}`, manufacturerId, manufacturerId ? null : optionalText(item.manufacturer), optionalText(item.model), optionalText(item.family), optionalText(item.number), optionalText(item.subtype), optionalText(item.serialNumber ?? item.specs?.serialNumber), optionalText(item.notes), json(extensionPayload(item)), timestamp(item.archivedAt, null as any), now, now)
   database.query('INSERT INTO inventory_identity_aliases (item_id, legacy_type_key, legacy_id, created_at_ms) VALUES (?, ?, ?, ?)').run(itemId, type, item.id, now)
   database.query('INSERT INTO project_inventory_memberships (project_id, item_id, created_at_ms) VALUES (?, ?, ?)').run(projectId, itemId, now)
   insertInventoryItemDetails(database, type, item, itemId, plan, now)
@@ -551,13 +555,21 @@ export function insertLegacyInventoryItem({
   projectId,
   type,
   item,
+  scope = 'global',
+  ownerProjectId = null,
   now = Date.now(),
 }: InsertLegacyInventoryItemOptions) {
   const legacyId = positiveIntegerOrNull(item.id)
   if (!legacyId) throw new Error('Inventory item ID must be a positive safe integer.')
   const plan = runtimeIdentityPlan(database, type, item)
   const itemId = canonicalItemId(plan, type, legacyId)
-  insertInventoryItem(database, projectId, type, item, itemId, plan, now)
+  if (scope === 'project' && ownerProjectId !== projectId) {
+    throw new Error('Project-bound inventory must be owned by its membership project.')
+  }
+  if (scope === 'global' && ownerProjectId !== null) {
+    throw new Error('Global inventory cannot have an owner project.')
+  }
+  insertInventoryItem(database, projectId, type, item, itemId, plan, now, scope, ownerProjectId)
   return { itemId, legacyId }
 }
 

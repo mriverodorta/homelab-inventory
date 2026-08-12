@@ -49,6 +49,11 @@ const PROTECTED_ROUTES = [
 
   ['GET', /^\/api\/inventory(?:\/.*)?$/, 'inventory.view'],
   ['POST', /^\/api\/inventory\/items\/?$/, 'inventory.create'],
+  ['POST', /^\/api\/projects\/[1-9]\d*\/inventory\/items\/?$/, 'inventory.create'],
+  ['POST', /^\/api\/inventory\/items\/[^/]+\/[1-9]\d*\/scope\/?$/, 'inventory.edit'],
+  ['POST', /^\/api\/projects\/[1-9]\d*\/inventory\/[^/]+\/[1-9]\d*\/membership\/?$/, 'inventory.edit'],
+  ['DELETE', /^\/api\/projects\/[1-9]\d*\/inventory\/[^/]+\/[1-9]\d*\/membership\/?$/, 'inventory.edit'],
+  ['POST', /^\/api\/projects\/[1-9]\d*\/inventory\/[^/]+\/[1-9]\d*\/duplicate\/?$/, 'inventory.create'],
   ['POST', /^\/api\/inventory\/items\/[^/]+\/[1-9]\d*\/duplicate\/?$/, 'inventory.create'],
   ['POST', /^\/api\/inventory\/(?:dependencies|items\/nas\/[1-9]\d*\/power-configuration)\/?$/, 'inventory.edit'],
   ['PUT', /^\/api\/inventory\/items\/[^/]+\/[1-9]\d*\/?$/, 'inventory.edit'],
