@@ -33,7 +33,7 @@ describe('initial application bootstrap', () => {
     expect(registry).toEqual(payload.registry)
     expect(fetchMock).toHaveBeenCalledTimes(1)
     expect(fetchMock).toHaveBeenCalledWith('/api/bootstrap', expect.any(Object))
-    expect(INITIAL_APPLICATION_REQUEST_COUNT).toBe(2)
+    expect(INITIAL_APPLICATION_REQUEST_COUNT).toBe(3)
     expect(INITIAL_APPLICATION_REQUEST_COUNT).toBeLessThanOrEqual(INITIAL_APPLICATION_REQUEST_BUDGET)
   })
 

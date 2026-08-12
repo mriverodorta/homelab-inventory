@@ -41,9 +41,15 @@ export function registerBootstrapRoute(app, {
         can('notifications.view'),
         can('updates.view'),
       ])
+      const projects = store.listProjects().map((project) => store.getProjectWorkbook(project.id))
+      const initialProject = projects[0]
 
       response.set('Cache-Control', 'no-store').json({
         project: store.getProject(),
+        projects,
+        activeProjectPreference: initialProject
+          ? { projectId: initialProject.project.id, workspaceId: initialProject.defaultWorkspaceId }
+          : null,
         agentStatus: agents ? publicAgentStatus(store, demo ? null : agentReleaseService) : null,
         registry: registry ? publicRegistryState(store, demo ? DEMO_REGISTRY_POLICY : undefined) : null,
         notifications: notifications

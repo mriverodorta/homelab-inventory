@@ -7,9 +7,12 @@ import type { AgentStatusSummary } from '@/types/agent'
 import type { ProjectState } from '@/types/inventory'
 import type { NotificationSnapshot } from '@/types/notifications'
 import type { RegistryState } from '@/types/registry'
+import type { ProjectWorkbook } from '@/lib/workbook-api'
 
 export type ApplicationBootstrap = {
   project: ProjectState
+  projects: ProjectWorkbook[]
+  activeProjectPreference: { projectId: number; workspaceId: number } | null
   agentStatus: AgentStatusSummary | null
   registry: RegistryState | null
   notifications: NotificationSnapshot | null

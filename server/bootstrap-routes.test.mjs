@@ -29,6 +29,12 @@ describe('application bootstrap route', () => {
     const releaseNotesStatus = { currentVersion: '0.11.1', entries: [] }
     const store = {
       getProject: () => project,
+      listProjects: () => [{ id: 1, name: 'Default Project' }],
+      getProjectWorkbook: () => ({
+        project: { id: 1, name: 'Default Project' },
+        defaultWorkspaceId: 2,
+        workspaces: [{ id: 1, type: 'systems' }, { id: 2, type: 'canvas' }],
+      }),
       getOnboardingStatus: () => onboarding,
       getReleaseNotesStatus: () => releaseNotesStatus,
     }
@@ -67,6 +73,12 @@ describe('application bootstrap route', () => {
     expect(response.headers['Cache-Control']).toBe('no-store')
     expect(response.body).toEqual({
       project,
+      projects: [{
+        project: { id: 1, name: 'Default Project' },
+        defaultWorkspaceId: 2,
+        workspaces: [{ id: 1, type: 'systems' }, { id: 2, type: 'canvas' }],
+      }],
+      activeProjectPreference: { projectId: 1, workspaceId: 2 },
       agentStatus: null,
       registry: null,
       notifications: null,

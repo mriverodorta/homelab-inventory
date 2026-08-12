@@ -34,6 +34,14 @@ export async function loadProject(): Promise<ProjectState> {
 }
 
 export async function saveProject(project: ProjectState): Promise<ProjectState> {
+  const projectId = project.metadata.projectId
+  const workspaceId = project.metadata.workspaceId
+  if (projectId && workspaceId) {
+    return apiRequest<ProjectState>(`/api/projects/${projectId}/workspaces/${workspaceId}`, {
+      method: 'PUT',
+      body: JSON.stringify(project),
+    })
+  }
   return apiRequest<ProjectState>('/api/project', {
     method: 'PUT',
     body: JSON.stringify({
