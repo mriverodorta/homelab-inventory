@@ -130,6 +130,7 @@ const RELEASE_0_12_1_DETAILS: UnreleasedReleaseNotes = {
     'First-start SQLite migration now preserves large Agent telemetry databases in a separate verified SQLite snapshot and transforms their history in bounded batches, preventing mature installations from exceeding portable-backup limits or exhausting memory.',
     'The migration backup path no longer opens or upgrades telemetry before its rollback set is complete, and records the archive, telemetry snapshot, hashes, permissions, and schema in one private manifest.',
     'Revoked Agent identities now remain historical host bindings when a replacement Agent is active on the same host.',
+    'Failed first-start retries now retain only the newest verified rollback set instead of accumulating duplicate telemetry snapshots.',
   ],
   notes: [],
 }

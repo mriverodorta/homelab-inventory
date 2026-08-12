@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test } from 'bun:test'
 import { Database } from 'bun:sqlite'
-import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { TELEMETRY_MIGRATIONS } from '../../telemetry/schema.mjs'
@@ -104,6 +104,8 @@ describe('atomic SQLite persistence cutover', () => {
     expect(await hashLegacyData(current.dataDir)).toEqual(before)
     expect(await readActivationMarker(current.dataDir)).not.toBeNull()
     expect((await stat(activated.paths.core)).mode & 0o777).toBe(0o600)
+    expect((await readdir(join(current.dataDir, 'backups', 'migrations')))
+      .filter((name) => name.startsWith('pre-sqlite-'))).toHaveLength(4)
 
     const reopened = await ensureSqlitePersistence(current.options)
     expect(reopened).toMatchObject({ ok: true, status: 'active', migrated: false })

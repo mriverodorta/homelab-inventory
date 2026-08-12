@@ -1,7 +1,7 @@
 import { Database } from 'bun:sqlite'
 import { createHash, randomBytes, randomUUID } from 'node:crypto'
 import { createReadStream } from 'node:fs'
-import { chmod, copyFile, mkdir, open, readFile, rename, rm, stat, writeFile } from 'node:fs/promises'
+import { chmod, copyFile, mkdir, open, readFile, readdir, rename, rm, stat, writeFile } from 'node:fs/promises'
 import { basename, dirname, join, resolve } from 'node:path'
 import { COMPLETE_BACKUP_SECTIONS } from '../../../shared/backup/contract.mjs'
 import { CatalogIndex, CATALOG_INDEX_SCHEMA_VERSION } from '../../registry/catalog-index.mjs'
@@ -173,6 +173,7 @@ async function createMigrationBackup({
       telemetry,
     }, null, 2)}\n`, { mode: 0o600 })
     await chmod(manifestPath, 0o600)
+    await pruneSupersededMigrationBackups(directory, filePath)
     return {
       filePath,
       keyPath,
@@ -187,6 +188,25 @@ async function createMigrationBackup({
       rm(manifestPath, { force: true }),
     ])
     throw error
+  }
+}
+
+async function pruneSupersededMigrationBackups(directory: string, currentFilePath: string) {
+  const currentName = basename(currentFilePath)
+  const names = await readdir(directory)
+  const backupNames = new Set(
+    names
+      .filter((name) => name.startsWith('pre-sqlite-'))
+      .map((name) => name.match(/^(pre-sqlite-.+?\.hlibackup)(?:\.key|\.manifest\.json|\.telemetry\.sqlite)?$/)?.[1])
+      .filter((name): name is string => Boolean(name) && name !== currentName),
+  )
+  for (const backupName of backupNames) {
+    await Promise.all([
+      rm(join(directory, backupName), { force: true }),
+      rm(join(directory, `${backupName}.key`), { force: true }),
+      rm(join(directory, `${backupName}.manifest.json`), { force: true }),
+      rm(join(directory, `${backupName}.telemetry.sqlite`), { force: true }),
+    ])
   }
 }
 
