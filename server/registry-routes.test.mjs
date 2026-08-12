@@ -5,6 +5,7 @@ import express from 'express'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { HomelabInventoryStore } from './db/store.mjs'
 import { registerRegistryRoutes } from './registry-routes.mjs'
+import { CatalogAvailabilityError } from './registry/catalog-availability.mjs'
 
 const resources = []
 
@@ -266,6 +267,26 @@ describe('registry routes', () => {
     expect(JSON.stringify(payload)).not.toContain('/private/path')
     expect(errorLog).toHaveBeenCalled()
     errorLog.mockRestore()
+  })
+
+  it('returns a stable 503 while the catalog is being verified', async () => {
+    const { baseUrl } = await createServer({
+      snapshotServiceFactory: () => ({
+        search: () => {
+          throw new CatalogAvailabilityError('Catalog is being verified. Try again shortly.', {
+            code: 'catalog-initializing',
+          })
+        },
+      }),
+    })
+
+    const response = await fetch(`${baseUrl}/api/registry/catalog/search?type=cpu`)
+
+    expect(response.status).toBe(503)
+    expect(await response.json()).toEqual({
+      message: 'Catalog is being verified. Try again shortly.',
+      code: 'catalog-initializing',
+    })
   })
 
   it('serves signed facet metadata and forwards validated local facet filters', async () => {

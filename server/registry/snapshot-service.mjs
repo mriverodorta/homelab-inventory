@@ -4,6 +4,8 @@ import path from 'node:path'
 import {
   catalogSnapshotDigest,
   FINGERPRINT_VERSION,
+  LEGACY_FINGERPRINT_VERSION,
+  SUPPORTED_FINGERPRINT_VERSIONS,
   sha256Hex,
   validateCatalogManifest,
   validateCatalogFacetIndex,
@@ -11,6 +13,11 @@ import {
   validateCatalogSnapshot,
   verifySignedCatalogArtifact,
 } from '../../packages/catalog-protocol/src/index.ts'
+import { APPLICATION_CATALOG_CONTRACT_VERSION } from '../app-health.mjs'
+import {
+  verifyCatalogGenerationReceipt,
+  writeCatalogGenerationReceipt,
+} from './catalog-generation-receipt.mjs'
 import { trustedCatalogKeys } from './trusted-keys.mjs'
 import { discoverContributionCandidates } from './contribution-service.mjs'
 
@@ -27,7 +34,8 @@ const MAX_MANIFEST_BYTES = 1 * 1024 * 1024
 const MAX_SNAPSHOT_BYTES = 64 * 1024 * 1024
 const MAX_DIGEST_BYTES = 32 * 1024 * 1024
 const MAX_FACET_BYTES = 8 * 1024 * 1024
-const CATALOG_GENERATION_VERSION = 1
+const CATALOG_POINTER_VERSION = 1
+const CATALOG_GENERATION_VERSION = 2
 
 function byteLength(value) {
   return new TextEncoder().encode(value).byteLength
@@ -174,13 +182,40 @@ export class SnapshotService {
       facets: path.join(directory, 'facets.json'),
       index: path.join(directory, 'catalog.sqlite'),
       metadata: path.join(directory, 'generation.json'),
+      receipt: path.join(directory, 'verification.json'),
+    }
+  }
+
+  generationIdentity(activeSnapshot, snapshot, facets, fingerprintVersion = snapshot.fingerprintVersion) {
+    return {
+      revision: activeSnapshot.revision,
+      digest: activeSnapshot.digest,
+      catalogContractVersion: APPLICATION_CATALOG_CONTRACT_VERSION,
+      fingerprintVersion,
+      templateCount: snapshot.templates.length,
+      facetCategoryCount: facets?.categories?.length ?? 0,
+    }
+  }
+
+  async writeGenerationMetadata(paths, identity) {
+    const contents = `${JSON.stringify({
+      version: CATALOG_GENERATION_VERSION,
+      ...identity,
+    }, null, 2)}\n`
+    const temporary = `${paths.metadata}.${process.pid}-${randomUUID()}.tmp`
+    try {
+      await fs.writeFile(temporary, contents, { mode: 0o600 })
+      await fs.rename(temporary, paths.metadata)
+      await fs.chmod(paths.metadata, 0o600)
+    } finally {
+      await fs.rm(temporary, { force: true }).catch(() => {})
     }
   }
 
   async writeActivePointer(paths, activeSnapshot) {
     await fs.mkdir(this.catalogDir, { recursive: true })
     const contents = `${JSON.stringify({
-      version: CATALOG_GENERATION_VERSION,
+      version: CATALOG_POINTER_VERSION,
       generation: paths.generation,
       revision: activeSnapshot.revision,
       digest: activeSnapshot.digest,
@@ -200,14 +235,28 @@ export class SnapshotService {
     }
   }
 
-  async validateStoredGeneration(paths, activeSnapshot) {
-    const metadata = JSON.parse(await fs.readFile(paths.metadata, 'utf8'))
+  async verifyActivePointer(paths, activeSnapshot) {
+    const pointer = JSON.parse(await fs.readFile(this.activePointerPath, 'utf8'))
     if (
-      metadata.version !== CATALOG_GENERATION_VERSION
-      || metadata.revision !== activeSnapshot.revision
-      || metadata.digest !== activeSnapshot.digest
+      pointer.version !== CATALOG_POINTER_VERSION
+      || pointer.generation !== paths.generation
+      || pointer.revision !== activeSnapshot.revision
+      || pointer.digest !== activeSnapshot.digest
     ) {
-      throw new Error('Catalog generation metadata does not match the active snapshot.')
+      throw new Error('Catalog active pointer does not match the active snapshot.')
+    }
+  }
+
+  async validateStoredGeneration(paths, activeSnapshot, { ignoreMetadata = false } = {}) {
+    if (!ignoreMetadata) {
+      const metadata = JSON.parse(await fs.readFile(paths.metadata, 'utf8'))
+      if (
+        ![1, CATALOG_GENERATION_VERSION].includes(metadata.version)
+        || metadata.revision !== activeSnapshot.revision
+        || metadata.digest !== activeSnapshot.digest
+      ) {
+        throw new Error('Catalog generation metadata does not match the active snapshot.')
+      }
     }
     const artifact = JSON.parse(await fs.readFile(paths.snapshot, 'utf8'))
     const payload = await verifySignedCatalogArtifact(artifact, this.trustedKeys)
@@ -235,13 +284,47 @@ export class SnapshotService {
       }
     }
     const index = await openCatalogIndex(paths.index)
-    if (!await pathExists(paths.index) || !index.isCurrent()) {
-      await index.rebuild(snapshot, paths.index, facets)
+    let indexValid = false
+    try {
+      indexValid = await pathExists(paths.index) && index.isCurrent()
+      if (indexValid) index.verify(snapshot, facets)
+    } catch {
+      indexValid = false
     }
+    if (!indexValid) {
+      await index.rebuild(snapshot, paths.index, facets)
+      index.verify(snapshot, facets)
+    }
+    const identity = this.generationIdentity(
+      activeSnapshot,
+      snapshot,
+      facets,
+      payload.fingerprintVersion ?? LEGACY_FINGERPRINT_VERSION,
+    )
+    await this.writeGenerationMetadata(paths, identity)
+    await writeCatalogGenerationReceipt(paths, identity)
     return paths
   }
 
-  async resolveActivePaths() {
+  async verifyStoredGeneration(paths, activeSnapshot) {
+    const metadata = JSON.parse(await fs.readFile(paths.metadata, 'utf8'))
+    if (
+      metadata.version !== CATALOG_GENERATION_VERSION
+      || metadata.revision !== activeSnapshot.revision
+      || metadata.digest !== activeSnapshot.digest
+      || metadata.catalogContractVersion !== APPLICATION_CATALOG_CONTRACT_VERSION
+      || !SUPPORTED_FINGERPRINT_VERSIONS.includes(metadata.fingerprintVersion)
+      || metadata.templateCount !== activeSnapshot.templateCount
+      || !Number.isSafeInteger(metadata.facetCategoryCount)
+      || metadata.facetCategoryCount < 0
+    ) {
+      throw new Error('Catalog generation metadata does not match the active snapshot.')
+    }
+    await verifyCatalogGenerationReceipt(paths, metadata)
+    return paths
+  }
+
+  async resolveActivePaths({ allowRecovery = true } = {}) {
     const activeSnapshot = this.store.getRegistryState().snapshot
     if (!activeSnapshot) return null
     if (
@@ -252,7 +335,20 @@ export class SnapshotService {
     const generation = this.generationName(activeSnapshot.revision, activeSnapshot.digest)
     const paths = this.generationPaths(generation)
     if (await pathExists(paths.directory)) {
-      await this.validateStoredGeneration(paths, activeSnapshot)
+      const metadata = JSON.parse(await fs.readFile(paths.metadata, 'utf8'))
+      const pointerExists = await pathExists(this.activePointerPath)
+      const legacy = metadata.version !== CATALOG_GENERATION_VERSION || !await pathExists(paths.receipt)
+      if (legacy) {
+        await this.validateStoredGeneration(paths, activeSnapshot)
+      } else {
+        try {
+          if (pointerExists) await this.verifyActivePointer(paths, activeSnapshot)
+          await this.verifyStoredGeneration(paths, activeSnapshot)
+        } catch (error) {
+          if (!allowRecovery) throw error
+          await this.validateStoredGeneration(paths, activeSnapshot)
+        }
+      }
       await this.writeActivePointer(paths, activeSnapshot)
       this.resolvedPaths = { ...paths, revision: activeSnapshot.revision, digestValue: activeSnapshot.digest }
       return this.resolvedPaths
@@ -270,6 +366,7 @@ export class SnapshotService {
         facets: null,
         index: this.legacyIndexPath,
         metadata: null,
+        receipt: null,
         revision: activeSnapshot.revision,
         digestValue: activeSnapshot.digest,
       }
@@ -338,6 +435,7 @@ export class SnapshotService {
       facets: path.join(temporaryDirectory, 'facets.json'),
       index: path.join(temporaryDirectory, 'catalog.sqlite'),
       metadata: path.join(temporaryDirectory, 'generation.json'),
+      receipt: path.join(temporaryDirectory, 'verification.json'),
     }
     try {
       await fs.mkdir(temporaryDirectory, { mode: 0o700 })
@@ -346,12 +444,15 @@ export class SnapshotService {
         ? { signed: true, artifact: digestArtifact }
         : { signed: false, payload: digestIndex }), { mode: 0o600 })
       if (facetArtifact) await fs.writeFile(temporaryPaths.facets, JSON.stringify(facetArtifact), { mode: 0o600 })
-      await (await openCatalogIndex(temporaryPaths.index)).rebuild(snapshot, temporaryPaths.index, facetIndex)
-      await fs.writeFile(temporaryPaths.metadata, `${JSON.stringify({
-        version: CATALOG_GENERATION_VERSION,
+      const temporaryIndex = await openCatalogIndex(temporaryPaths.index)
+      await temporaryIndex.rebuild(snapshot, temporaryPaths.index, facetIndex)
+      temporaryIndex.verify(snapshot, facetIndex)
+      const generationIdentity = this.generationIdentity({
         revision: snapshot.catalogRevision,
         digest,
-      }, null, 2)}\n`, { mode: 0o600 })
+      }, snapshot, facetIndex, payload.fingerprintVersion ?? LEGACY_FINGERPRINT_VERSION)
+      await this.writeGenerationMetadata(temporaryPaths, generationIdentity)
+      await writeCatalogGenerationReceipt(temporaryPaths, generationIdentity)
 
       if (await pathExists(finalPaths.directory)) {
         try {
@@ -458,8 +559,8 @@ export class SnapshotService {
     return this.store.getRegistryState()
   }
 
-  async initializeIndex() {
-    const paths = await this.resolveActivePaths()
+  async initializeIndex({ allowRecovery = true } = {}) {
+    const paths = await this.resolveActivePaths({ allowRecovery })
     if (!paths) return null
     try {
       await fs.access(paths.index)
@@ -479,12 +580,12 @@ export class SnapshotService {
     return paths
   }
 
-  async ensureIndex() {
+  async ensureIndex({ allowRecovery = true } = {}) {
     const key = this.activeSnapshotKey()
     if (!key) return null
     if (this.indexInitialization?.key === key) return this.indexInitialization.promise
 
-    const promise = this.initializeIndex()
+    const promise = this.initializeIndex({ allowRecovery })
     this.indexInitialization = { key, promise }
     try {
       return await promise
@@ -493,14 +594,14 @@ export class SnapshotService {
     }
   }
 
-  async warm() {
+  async warm({ allowRecovery = true } = {}) {
     const key = this.activeSnapshotKey()
     if (!key) return { available: false, categories: [] }
     if (this.facetCache?.key === key) return this.facetCache.value
     if (this.facetInitialization?.key === key) return this.facetInitialization.promise
 
     const promise = (async () => {
-      const paths = await this.ensureIndex()
+      const paths = await this.ensureIndex({ allowRecovery })
       const value = paths
         ? (await openCatalogIndex(paths.index)).facets()
         : { available: false, categories: [] }
@@ -513,6 +614,19 @@ export class SnapshotService {
     } finally {
       if (this.facetInitialization?.promise === promise) this.facetInitialization = null
     }
+  }
+
+  async recover() {
+    const activeSnapshot = this.store.getRegistryState().snapshot
+    if (!activeSnapshot) return { available: false, categories: [] }
+    const paths = this.generationPaths(this.generationName(activeSnapshot.revision, activeSnapshot.digest))
+    this.resolvedPaths = null
+    this.indexInitialization = null
+    this.facetInitialization = null
+    this.facetCache = null
+    await this.validateStoredGeneration(paths, activeSnapshot, { ignoreMetadata: true })
+    await this.writeActivePointer(paths, activeSnapshot)
+    return this.warm({ allowRecovery: false })
   }
 
   async search(parameters) {

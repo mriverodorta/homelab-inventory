@@ -3,6 +3,7 @@ import { isRelationalId } from './db/relational-ids.mjs'
 import { SnapshotService } from './registry/snapshot-service.mjs'
 import { contributionStatus } from './registry/contribution-service.mjs'
 import { InstallationRecoveryError } from './registry/installation-identity.mjs'
+import { CatalogAvailabilityError } from './registry/catalog-availability.mjs'
 import {
   APPLICATION_CATALOG_CONTRACT_VERSION,
   APPLICATION_OEM_CONTRACT_VERSION,
@@ -105,6 +106,10 @@ function parseFacetSearch(query) {
 }
 
 function respondError(response, error, fallback) {
+  if (error instanceof CatalogAvailabilityError) {
+    response.status(error.status).json({ message: error.message, code: error.code })
+    return
+  }
   if (error instanceof InventoryLifecycleError) {
     response.status(error.status).json({
       message: error.message,

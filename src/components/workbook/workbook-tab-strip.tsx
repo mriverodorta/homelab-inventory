@@ -75,10 +75,14 @@ function WorkbookTab({
         draggable.setNodeRef(node)
         droppable.setNodeRef(node)
       }}
-      style={{ transform, zIndex: draggable.isDragging ? 10 : undefined }}
+      style={{
+        backgroundColor: active ? color.active : undefined,
+        transform,
+        zIndex: draggable.isDragging ? 10 : undefined,
+      }}
       className={cn(
         'group/tab relative flex h-9 min-w-[112px] max-w-[220px] shrink-0 items-center border-r border-[#c9c1b6] border-t bg-[#ebe7df] text-[#4d4b47]',
-        active && 'bg-[#fffdf8] text-[#20242c]',
+        active && 'text-[#20242c]',
         droppable.isOver && !draggable.isDragging && 'bg-[#e3ded4]',
       )}
       role="presentation"
@@ -91,8 +95,7 @@ function WorkbookTab({
         role="tab"
         aria-selected={active}
         title={workspace.name}
-        className="flex h-full min-w-0 flex-1 items-center gap-2 px-3 text-left text-xs font-semibold outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#6d655d]"
-        style={{ backgroundColor: active ? color.active : undefined }}
+        className="flex h-full min-w-0 flex-1 items-center gap-2 bg-transparent px-3 text-left text-xs font-semibold outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#6d655d]"
         onClick={onSelect}
       >
         <WorkspaceIcon iconKey={workspace.iconKey} className="size-3.5 shrink-0" />
@@ -104,7 +107,7 @@ function WorkbookTab({
             <Button
               variant="ghost"
               size="icon-sm"
-              className="mr-1 size-6 shrink-0 opacity-0 group-hover/tab:opacity-100 focus-visible:opacity-100 data-[state=open]:opacity-100"
+              className="mr-1 size-6 shrink-0 bg-transparent opacity-0 hover:bg-black/5 group-hover/tab:opacity-100 focus-visible:opacity-100 data-[state=open]:bg-black/5 data-[state=open]:opacity-100"
               aria-label={`${workspace.name} actions`}
             >
               <MoreHorizontal />

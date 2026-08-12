@@ -171,7 +171,7 @@ describe('catalog snapshot service', () => {
     })
   })
 
-  it('coalesces concurrent cold facet warmups and caches the result by snapshot revision', async () => {
+  it('uses the receipt fast path, coalesces concurrent cold facet warmups, and caches the result', async () => {
     const { artifact, store, trustedKeys } = await fixture()
     await new SnapshotService(store, { trustedKeys }).activate(artifact, {
       mode: 'offline',
@@ -192,10 +192,33 @@ describe('catalog snapshot service', () => {
       restarted.warm(),
     ])
 
-    expect(validations).toBe(1)
+    expect(validations).toBe(0)
     expect(second).toBe(first)
     expect(third).toBe(first)
     expect(await restarted.facets()).toBe(first)
+  })
+
+  it('repairs a damaged receipt and active pointer only after full signed validation', async () => {
+    const { artifact, dataDir, store, trustedKeys } = await fixture()
+    const activated = new SnapshotService(store, { trustedKeys })
+    await activated.activate(artifact, {
+      mode: 'offline',
+      now: new Date('2026-07-27T00:00:00.000Z'),
+    })
+    const active = store.getRegistryState().snapshot
+    const paths = activated.generationPaths(activated.generationName(active.revision, active.digest))
+    await fs.writeFile(paths.receipt, '{"version":99}')
+    await fs.writeFile(path.join(dataDir, 'catalog', 'active-generation.json'), '{"generation":"wrong"}')
+
+    const restarted = new SnapshotService(store, { trustedKeys })
+    await expect(restarted.warm({ allowRecovery: false })).rejects.toThrow()
+    await expect(restarted.recover()).resolves.toMatchObject({ available: false, categories: [] })
+    expect(JSON.parse(await fs.readFile(paths.receipt, 'utf8')).version).toBe(1)
+    expect(JSON.parse(await fs.readFile(path.join(dataDir, 'catalog', 'active-generation.json'), 'utf8'))).toMatchObject({
+      generation: paths.generation,
+      revision: active.revision,
+      digest: active.digest,
+    })
   })
 
   it('allows a failed cold warmup to be retried', async () => {
@@ -205,6 +228,8 @@ describe('catalog snapshot service', () => {
       now: new Date('2026-07-27T00:00:00.000Z'),
     })
     const restarted = new SnapshotService(store, { trustedKeys })
+    const active = store.getRegistryState().snapshot
+    await fs.rm(restarted.generationPaths(restarted.generationName(active.revision, active.digest)).receipt)
     const validateStoredGeneration = restarted.validateStoredGeneration.bind(restarted)
     let attempts = 0
     restarted.validateStoredGeneration = async (...parameters) => {

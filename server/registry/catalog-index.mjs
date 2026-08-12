@@ -1,11 +1,12 @@
 import fs from 'node:fs/promises'
 import path from 'node:path'
+import { CATALOG_INDEX_SCHEMA_VERSION } from './catalog-index-contract.mjs'
 
 // Keep Vite's test transformer from trying to bundle Bun's runtime-only module.
 const sqliteModule = ['bun', 'sqlite'].join(':')
 const { Database } = await import(sqliteModule)
 
-export const CATALOG_INDEX_SCHEMA_VERSION = 2
+export { CATALOG_INDEX_SCHEMA_VERSION } from './catalog-index-contract.mjs'
 
 function escapeLike(value) {
   return value.replace(/[\\%_]/g, '\\$&')
@@ -195,6 +196,38 @@ export class CatalogIndex {
       return Number(database.query('PRAGMA user_version').get().user_version) === CATALOG_INDEX_SCHEMA_VERSION
     } finally {
       database.close()
+    }
+  }
+
+  verifyRuntime({ templateCount, facetCategoryCount = 0 } = {}) {
+    const database = new Database(this.filePath, { readonly: true, strict: true })
+    try {
+      const integrity = database.query('PRAGMA quick_check').get().quick_check
+      if (integrity !== 'ok') throw new Error(`Catalog index integrity check failed: ${String(integrity)}`)
+      const schemaVersion = Number(database.query('PRAGMA user_version').get().user_version)
+      if (schemaVersion !== CATALOG_INDEX_SCHEMA_VERSION) {
+        throw new Error('Catalog index schema version is invalid.')
+      }
+      const foreignKeys = database.query('PRAGMA foreign_key_check').all()
+      if (foreignKeys.length !== 0) throw new Error('Catalog index contains invalid foreign-key relationships.')
+      const actualTemplateCount = Number(database.query('SELECT COUNT(*) AS count FROM templates').get().count)
+      if (Number.isSafeInteger(templateCount) && actualTemplateCount !== templateCount) {
+        throw new Error('Catalog index template count does not match its receipt.')
+      }
+      const facetRow = database.query('SELECT payload_json FROM facet_metadata WHERE id = 1').get()
+      const actualFacetCategoryCount = facetRow
+        ? JSON.parse(facetRow.payload_json).categories?.length ?? 0
+        : 0
+      if (actualFacetCategoryCount !== facetCategoryCount) {
+        throw new Error('Catalog index facet count does not match its receipt.')
+      }
+      return {
+        schemaVersion,
+        templateCount: actualTemplateCount,
+        facetCategoryCount: actualFacetCategoryCount,
+      }
+    } finally {
+      database.close(false)
     }
   }
 

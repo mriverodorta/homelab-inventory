@@ -156,7 +156,10 @@ const RELEASE_0_12_3_DETAILS: UnreleasedReleaseNotes = {
 
 export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
   highlights: [],
-  fixes: [],
+  fixes: [
+    'Unchanged catalog generations now start through a verified receipt and SQLite integrity fast path instead of re-parsing the complete signed catalog, while isolated background recovery keeps the rest of the app available if catalog artifacts need repair.',
+    'Selected workbook tabs now keep their chosen color across the full tab, including the workspace action area, without a white block appearing at rest or on hover.',
+  ],
   notes: [],
 }
 

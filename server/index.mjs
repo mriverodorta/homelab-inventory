@@ -62,11 +62,13 @@ import { createNotificationRuntime } from './notifications/runtime.mjs'
 import { SqliteNotificationPersistence } from './notifications/sqlite-persistence.ts'
 import { registerNotificationRoutes } from './notifications/routes.mjs'
 import { activateSqliteRuntime } from './persistence/runtime.ts'
+import { StartupProfiler } from './startup/startup-profiler.mjs'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const root = path.resolve(__dirname, '..')
 const isProduction = process.env.NODE_ENV === 'production'
 const runtimeConfig = readRuntimeConfig()
+const startupProfiler = new StartupProfiler({ enabled: process.env.STARTUP_PROFILE === '1' })
 const appMode = runtimeConfig.appMode
 const isDemoMode = appMode === 'demo'
 const port = runtimeConfig.port
@@ -85,6 +87,7 @@ const agentReleaseService = new AgentReleaseService({
   expectedSourceRevision: agentReleasePin.sourceRevision,
 })
 await agentReleaseService.initialize()
+startupProfiler.mark('agent-release')
 const configuredUpdateChannel = process.env.UPDATE_CHANNEL ?? (isDemoMode ? 'latest' : 'stable')
 const updateChannel = ['stable', 'latest'].includes(configuredUpdateChannel)
   ? configuredUpdateChannel
@@ -133,7 +136,7 @@ if (isDemoMode) {
     catalogBootstrap: async (currentStore) => {
       const snapshotService = catalogRuntime.forStore(currentStore)
       await snapshotService.refreshConnected()
-      await snapshotService.warm()
+      await catalogRuntime.start(currentStore)
     },
     dataDir,
     sourceDir: demoSourceDir,
@@ -218,6 +221,7 @@ if (isDemoMode) {
   })
   await backupService.init()
 }
+startupProfiler.mark('persistence')
 
 const cspDirectives = {
   defaultSrc: ["'self'"],
@@ -273,6 +277,7 @@ const authService = store ? new AuthService({ store, sessionService, authorizati
 const accessService = store ? new AccessService({ store, authorization: authorizationService, sessions: sessionService }) : null
 const invitationService = accessService ? new InvitationService({ accessService, sessionService }) : null
 const oidcService = store ? new OidcService({ store, authService, invitationService, runtime: authRuntime }) : null
+startupProfiler.mark('identity-auth')
 
 registerAuthenticationRoutes(app, {
   service: authService,
@@ -385,8 +390,9 @@ const catalogStatusService = installationIdentity && store
       applicationCatalogContractVersion: APPLICATION_CATALOG_CONTRACT_VERSION,
     })
   : null
-const catalogSnapshotService = store ? catalogRuntime.forStore(store) : null
-await catalogSnapshotService?.warm()
+const catalogSnapshotService = store ? catalogRuntime.forRequest(store) : null
+if (store) await catalogRuntime.start(store)
+startupProfiler.mark('catalog')
 const catalogRefreshCoordinator = store
   ? new CatalogRefreshCoordinator({
       store,
@@ -434,7 +440,7 @@ registerRegistryRoutes(app, {
   officialOrigin: registryOrigin,
   identityService: installationIdentity,
   deliveryService: contributionDelivery,
-  snapshotServiceFactory: (currentStore) => catalogRuntime.forStore(currentStore),
+  snapshotServiceFactory: (currentStore) => catalogRuntime.forRequest(currentStore),
   catalogRefreshCoordinator,
   catalogStatusService,
   registryPolicy: isDemoMode
@@ -594,6 +600,9 @@ if (isProduction) {
 const server = app.listen(port, () => {
   console.log(`Homelab Inventory running at http://127.0.0.1:${port}`)
   console.log(`SQLite data directory: ${dataDir}`)
+  startupProfiler.mark('http-listener')
+  startupProfiler.complete()
+  if (store) catalogRuntime.resumeRecovery(store)
 })
 
 let shuttingDown = false

@@ -1,0 +1,1 @@
+export const CATALOG_INDEX_SCHEMA_VERSION = 2

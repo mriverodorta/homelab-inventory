@@ -84,6 +84,7 @@ COPY --chown=10001:10001 server/registry ./server/registry
 COPY --chown=10001:10001 server/agents ./server/agents
 COPY --chown=10001:10001 server/telemetry ./server/telemetry
 COPY --chown=10001:10001 server/notifications ./server/notifications
+COPY --chown=10001:10001 server/startup ./server/startup
 COPY --chown=10001:10001 server/agent-release-pin.json ./server/
 COPY --from=agent-build --chown=10001:10001 /agent-release ./server/agent-release
 RUN ["bun", "-e", "const fs = await import('node:fs/promises'); const { AgentReleaseService } = await import('./server/agents/release-service.mjs'); const pin = JSON.parse(await fs.readFile('./server/agent-release-pin.json', 'utf8')); await new AgentReleaseService({ expectedVersion: pin.version, expectedSourceRevision: pin.sourceRevision }).initialize();"]

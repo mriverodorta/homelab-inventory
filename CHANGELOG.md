@@ -6,6 +6,15 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 
 ## Unreleased
 
+### Changed
+
+- Unchanged catalog generations now use a versioned verification receipt, streaming artifact hashes, and bounded SQLite integrity checks at startup instead of re-parsing the complete signed catalog. Full signature and topology validation still runs on activation and one-time legacy upgrades.
+- Catalog corruption is isolated behind a catalog-only recovery state after the HTTP listener starts, keeping inventory, canvas, authentication, agents, telemetry, and settings available while a trusted local index is rebuilt.
+
+### Fixed
+
+- Selected workbook tabs now apply their configured color to the complete tab surface, including the reserved action-menu area, without a white block at rest or on hover.
+
 ## [0.12.3] - 2026-08-12
 
 ### Changed
