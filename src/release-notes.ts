@@ -100,7 +100,7 @@ const RELEASE_0_3_0_DETAILS: UnreleasedReleaseNotes = {
   ],
 }
 
-export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
+const RELEASE_0_12_0_DETAILS: UnreleasedReleaseNotes = {
   highlights: [
     'Core application state, Agent telemetry, and the local Registry catalog now use independent SQLite databases with typed relational data, numeric foreign keys, checksummed migrations, WAL mode, and bounded read caches.',
     'Existing JSON installations migrate automatically after a verified complete backup, with semantic validation for inventory, topology, Registry identity, access control, notifications, telemetry, and catalog state before atomic activation.',
@@ -122,6 +122,12 @@ export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
     'Connected enrolled installations now send a signed six-hour catalog adoption check-in containing only the application version, catalog contract version, active catalog revision, and request timestamp; failures never block startup, inventory work, or catalog browsing.',
     'The application reports catalog contract 9; Registry publication remains owner-controlled and catalogs requiring a newer contract are rejected explicitly.',
   ],
+}
+
+export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
+  highlights: [],
+  fixes: [],
+  notes: [],
 }
 
 const RELEASE_0_11_2_DETAILS: UnreleasedReleaseNotes = {
@@ -651,9 +657,16 @@ const RELEASE_0_2_1_DETAILS: UnreleasedReleaseNotes = {
 
 export const RELEASE_NOTES: ReleaseNoteEntry[] = [
   {
+    version: '0.12.0',
+    date: '2026-08-12',
+    channel: 'latest',
+    title: 'SQLite project workbooks and canonical catalogs',
+    ...RELEASE_0_12_0_DETAILS,
+  },
+  {
     version: '0.11.2',
     date: '2026-08-11',
-    channel: 'latest',
+    channel: 'release',
     title: 'Reliable FreeBSD agent service',
     ...RELEASE_0_11_2_DETAILS,
   },

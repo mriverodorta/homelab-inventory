@@ -104,15 +104,15 @@ describe('release notes helpers', () => {
     const previousRelease = RELEASE_NOTES.find((entry) => entry.version === '0.2.1')!
     const engineRelease = RELEASE_NOTES.find((entry) => entry.version === '0.2.0')!
 
-    expect(hasReleaseNoteForVersion(RELEASE_NOTES, '0.11.2')).toBe(true)
+    expect(hasReleaseNoteForVersion(RELEASE_NOTES, '0.12.0')).toBe(true)
     expect(RELEASE_NOTES[0]).toEqual(
       expect.objectContaining({
-        version: '0.11.2',
-        title: 'Reliable FreeBSD agent service',
+        version: '0.12.0',
+        title: 'SQLite project workbooks and canonical catalogs',
       }),
     )
     expect(RELEASE_NOTES.filter((entry) => entry.channel === 'latest')).toEqual([
-      expect.objectContaining({ version: '0.11.2' }),
+      expect.objectContaining({ version: '0.12.0' }),
     ])
     expect(RELEASE_NOTES.find((entry) => entry.version === '0.1.38')).toEqual(
       expect.objectContaining({ channel: 'release' }),

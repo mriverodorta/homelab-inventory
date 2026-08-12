@@ -6,6 +6,8 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 
 ## Unreleased
 
+## [0.12.0] - 2026-08-12
+
 ### Added
 
 - Replaced active LowDB persistence with normalized SQLite databases for core application state, telemetry, and the local catalog index, using typed relational tables, numeric foreign keys, WAL-mode connections, bounded read caches, and checksummed Drizzle migrations.
