@@ -6,6 +6,8 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 
 ## Unreleased
 
+## [0.12.4] - 2026-08-12
+
 ### Changed
 
 - Unchanged catalog generations now use a versioned verification receipt, streaming artifact hashes, and bounded SQLite integrity checks at startup instead of re-parsing the complete signed catalog. Full signature and topology validation still runs on activation and one-time legacy upgrades.

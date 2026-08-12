@@ -104,15 +104,15 @@ describe('release notes helpers', () => {
     const previousRelease = RELEASE_NOTES.find((entry) => entry.version === '0.2.1')!
     const engineRelease = RELEASE_NOTES.find((entry) => entry.version === '0.2.0')!
 
-    expect(hasReleaseNoteForVersion(RELEASE_NOTES, '0.12.3')).toBe(true)
+    expect(hasReleaseNoteForVersion(RELEASE_NOTES, '0.12.4')).toBe(true)
     expect(RELEASE_NOTES[0]).toEqual(
       expect.objectContaining({
-        version: '0.12.3',
-        title: 'Faster catalog category loading',
+        version: '0.12.4',
+        title: 'Reliable repeat catalog startup',
       }),
     )
     expect(RELEASE_NOTES.filter((entry) => entry.channel === 'latest')).toEqual([
-      expect.objectContaining({ version: '0.12.3' }),
+      expect.objectContaining({ version: '0.12.4' }),
     ])
     expect(RELEASE_NOTES.find((entry) => entry.version === '0.1.38')).toEqual(
       expect.objectContaining({ channel: 'release' }),

@@ -154,12 +154,18 @@ const RELEASE_0_12_3_DETAILS: UnreleasedReleaseNotes = {
   notes: [],
 }
 
-export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
+const RELEASE_0_12_4_DETAILS: UnreleasedReleaseNotes = {
   highlights: [],
   fixes: [
     'Unchanged catalog generations now start through a verified receipt and SQLite integrity fast path instead of re-parsing the complete signed catalog, while isolated background recovery keeps the rest of the app available if catalog artifacts need repair.',
     'Selected workbook tabs now keep their chosen color across the full tab, including the workspace action area, without a white block appearing at rest or on hover.',
   ],
+  notes: [],
+}
+
+export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
+  highlights: [],
+  fixes: [],
   notes: [],
 }
 
@@ -690,9 +696,16 @@ const RELEASE_0_2_1_DETAILS: UnreleasedReleaseNotes = {
 
 export const RELEASE_NOTES: ReleaseNoteEntry[] = [
   {
-    version: '0.12.3',
+    version: '0.12.4',
     date: '2026-08-12',
     channel: 'latest',
+    title: 'Reliable repeat catalog startup',
+    ...RELEASE_0_12_4_DETAILS,
+  },
+  {
+    version: '0.12.3',
+    date: '2026-08-12',
+    channel: 'release',
     title: 'Faster catalog category loading',
     ...RELEASE_0_12_3_DETAILS,
   },
