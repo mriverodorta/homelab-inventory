@@ -19,6 +19,7 @@ import {
   updateInventoryItem,
   updateInventoryItemProperties,
   type InventoryItemInput,
+  type WorkspaceMutationScope,
 } from '@/lib/db'
 import type { InventoryDependencyReport } from '@/lib/inventory-lifecycle'
 import { runtimeItemKey } from '@/lib/item-keys'
@@ -48,6 +49,7 @@ type ApplyInventorySnapshot = (
 ) => Promise<ProjectState>
 
 type UseInventoryLifecycleOptions = {
+  scope: WorkspaceMutationScope | null
   projectRef: MutableRefObject<ProjectState | null>
   applyInventorySnapshot: ApplyInventorySnapshot
   validateCanvasPlacement: (
@@ -62,6 +64,7 @@ type UseInventoryLifecycleOptions = {
 }
 
 export function useInventoryLifecycle({
+  scope,
   projectRef,
   applyInventorySnapshot,
   validateCanvasPlacement,
@@ -82,7 +85,7 @@ export function useInventoryLifecycle({
 
   async function createItem(item: InventoryItemInput, quantity: number) {
     const currentProject = projectRef.current
-    const nextProject = await createInventoryItems(item, quantity)
+    const nextProject = await createInventoryItems(item, quantity, scope)
     const previousItemIds = new Set(Object.keys(currentProject?.items ?? {}))
     const createdItemId = Object.keys(nextProject.items).find((itemId) => !previousItemIds.has(itemId))
 
@@ -96,7 +99,7 @@ export function useInventoryLifecycle({
     usageRole: 'server' | 'desktop' | 'workstation' | 'other' = 'server',
   ) {
     const currentProject = projectRef.current
-    const nextProject = await createInventoryFromCatalog(templateKey, quantity, usageRole)
+    const nextProject = await createInventoryFromCatalog(templateKey, quantity, usageRole, scope)
     const previousItemIds = new Set(Object.keys(currentProject?.items ?? {}))
     const createdItemId = Object.keys(nextProject.items).find((itemId) => !previousItemIds.has(itemId))
 
@@ -121,6 +124,7 @@ export function useInventoryLifecycle({
     const nextProject = await updateInventoryItem(
       { type: currentItem.type, id: currentItem.id },
       input,
+      scope,
     )
     await applyInventorySnapshot(nextProject, { historySnapshot: currentProject })
   }
@@ -152,6 +156,7 @@ export function useInventoryLifecycle({
     const nextProject = await updateInventoryItemProperties(
       { type: currentItem.type, id: currentItem.id },
       properties,
+      scope,
     )
     await applyInventorySnapshot(nextProject, { historySnapshot: currentProject })
   }
@@ -166,7 +171,7 @@ export function useInventoryLifecycle({
     setNasPowerChangeBusy(true)
     setNasPowerChangeError(null)
     try {
-      const result = await changeNasPowerConfiguration(item.id, target, false)
+      const result = await changeNasPowerConfiguration(item.id, target, false, scope)
       if (result.status === 'confirmation-required') {
         setPendingNasPowerChange({ nasId: item.id, target, impact: result.impact })
         return
@@ -191,7 +196,7 @@ export function useInventoryLifecycle({
     setNasPowerChangeBusy(true)
     setNasPowerChangeError(null)
     try {
-      const result = await changeNasPowerConfiguration(pending.nasId, pending.target, true)
+      const result = await changeNasPowerConfiguration(pending.nasId, pending.target, true, scope)
       if (result.status !== 'applied') {
         setPendingNasPowerChange({ ...pending, impact: result.impact })
         return
@@ -214,7 +219,7 @@ export function useInventoryLifecycle({
     setError(null)
     try {
       const currentItemIds = new Set(Object.keys(projectRef.current?.items ?? {}))
-      const nextProject = await duplicateInventoryItem(inventoryRef(item))
+      const nextProject = await duplicateInventoryItem(inventoryRef(item), scope)
       const duplicatedItemId = Object.keys(nextProject.items).find((itemId) => !currentItemIds.has(itemId))
 
       await applyInventorySnapshot(nextProject)
@@ -237,7 +242,7 @@ export function useInventoryLifecycle({
     setError(null)
     setBusy(true)
     try {
-      const reports = await loadInventoryDependencyReports(items.map(inventoryRef))
+      const reports = await loadInventoryDependencyReports(items.map(inventoryRef), scope)
       setDependencyReport(aggregateDependencyReports(reports))
     } catch (caughtError) {
       setError(
@@ -258,8 +263,8 @@ export function useInventoryLifecycle({
     try {
       const refs = request.items.map(inventoryRef)
       const nextProject = request.action === 'archive'
-        ? await archiveInventoryItems(refs)
-        : await deleteInventoryItems(refs)
+        ? await archiveInventoryItems(refs, scope)
+        : await deleteInventoryItems(refs, scope)
       const affectedIds = new Set(request.items.map(runtimeItemKey))
 
       await applyInventorySnapshot(nextProject)
@@ -284,7 +289,7 @@ export function useInventoryLifecycle({
     setBusy(true)
     setError(null)
     try {
-      const nextProject = await restoreInventoryItems(items.map(inventoryRef))
+      const nextProject = await restoreInventoryItems(items.map(inventoryRef), scope)
       await applyInventorySnapshot(nextProject)
       setRevision((current) => current + 1)
     } catch (caughtError) {
@@ -298,7 +303,7 @@ export function useInventoryLifecycle({
 
   async function applyUpdate(linkId: number) {
     const currentProject = projectRef.current
-    const nextProject = await applyCatalogUpdate(linkId)
+    const nextProject = await applyCatalogUpdate(linkId, scope)
     await applyInventorySnapshot(nextProject, { historySnapshot: currentProject ?? undefined })
   }
 

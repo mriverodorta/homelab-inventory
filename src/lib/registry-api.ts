@@ -1,4 +1,4 @@
-import { apiRequest } from '@/lib/db'
+import { apiRequest, withWorkspaceScope, type WorkspaceMutationScope } from '@/lib/db'
 import { consumeInitialBootstrap } from '@/lib/bootstrap-api'
 import type { InventoryItemInput } from '@/lib/db'
 import type {
@@ -135,8 +135,9 @@ export function createInventoryFromCatalog(
   templateKey: string,
   quantity = 1,
   usageRole: 'server' | 'desktop' | 'workstation' | 'other' = 'server',
+  scope?: WorkspaceMutationScope | null,
 ): Promise<ProjectState> {
-  return apiRequest(`/api/registry/catalog/templates/${encodeURIComponent(templateKey)}/create`, {
+  return apiRequest(withWorkspaceScope(`/api/registry/catalog/templates/${encodeURIComponent(templateKey)}/create`, scope), {
     method: 'POST',
     body: JSON.stringify({ quantity, usageRole }),
   })
@@ -157,6 +158,6 @@ export function loadCatalogUpdatePreview(linkId: number): Promise<CatalogUpdateP
   return apiRequest(`/api/registry/links/${linkId}/update-preview`)
 }
 
-export function applyCatalogUpdate(linkId: number): Promise<ProjectState> {
-  return apiRequest(`/api/registry/links/${linkId}/apply-update`, { method: 'POST' })
+export function applyCatalogUpdate(linkId: number, scope?: WorkspaceMutationScope | null): Promise<ProjectState> {
+  return apiRequest(withWorkspaceScope(`/api/registry/links/${linkId}/apply-update`, scope), { method: 'POST' })
 }

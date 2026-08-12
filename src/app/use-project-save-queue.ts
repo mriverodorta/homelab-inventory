@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, type RefObject } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useDomainEngine } from '@/hooks/use-domain-engine'
 import { saveProject } from '@/lib/db'
+import { cacheProjectState } from '@/lib/project-query-key'
 import { ProjectPersistenceCoordinator } from '@/lib/project-persistence-coordinator'
 import type { ProjectState } from '@/types/inventory'
 
@@ -68,7 +69,7 @@ export function useProjectSaveQueue({
             lastPersistedProjectRef.current = savedProject
             if (!queuedSaveProjectRef.current && projectRef.current === queuedSave.project) {
               projectRef.current = savedProject
-              queryClient.setQueryData(['project'], savedProject)
+              cacheProjectState(queryClient, savedProject)
               setProject(savedProject)
               setPersistenceWarning(null)
               setSaveStatus('saved')

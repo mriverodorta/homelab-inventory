@@ -15,12 +15,55 @@ function respondWithLifecycleError(response, error) {
   })
 }
 
+function positiveScopeId(value, label) {
+  if (typeof value !== 'string' || !/^[1-9]\d*$/u.test(value)) {
+    throw new InventoryLifecycleError(`${label} must be a positive safe integer.`, {
+      code: 'invalid-engine-scope',
+      status: 400,
+    })
+  }
+  const parsed = Number(value)
+  if (!Number.isSafeInteger(parsed)) {
+    throw new InventoryLifecycleError(`${label} must be a positive safe integer.`, {
+      code: 'invalid-engine-scope',
+      status: 400,
+    })
+  }
+  return parsed
+}
+
+function scopedStore(store, request) {
+  const hasProject = request.query.projectId !== undefined
+  const hasWorkspace = request.query.workspaceId !== undefined
+  if (!hasProject && !hasWorkspace) return store
+  if (!hasProject || !hasWorkspace) {
+    throw new InventoryLifecycleError('Engine project and workspace scope must be provided together.', {
+      code: 'invalid-engine-scope',
+      status: 400,
+    })
+  }
+  if (typeof store.forWorkspace !== 'function') {
+    throw new InventoryLifecycleError('Scoped engine workspaces are unavailable.', {
+      code: 'engine-scope-unavailable',
+      status: 409,
+    })
+  }
+  return store.forWorkspace(
+    positiveScopeId(request.query.projectId, 'Project ID'),
+    positiveScopeId(request.query.workspaceId, 'Workspace ID'),
+  )
+}
+
 export function registerEngineRoutes(app, { withStore, commandService, sseHub, authService = null, authorization = null, demo = false }) {
   app.get('/api/engine/snapshot', (request, response) => {
     void withStore(request, response, async (store) => {
-      const bytes = encodeEngineSnapshot(store.getEngineSnapshot())
-      response.set('Cache-Control', 'no-store')
-      response.type(ENGINE_MEDIA_TYPE).send(Buffer.from(bytes))
+      try {
+        const bytes = encodeEngineSnapshot(scopedStore(store, request).getEngineSnapshot())
+        response.set('Cache-Control', 'no-store')
+        response.type(ENGINE_MEDIA_TYPE).send(Buffer.from(bytes))
+      } catch (error) {
+        respondWithLifecycleError(response, error)
+      }
     }, { message: 'Unable to load engine snapshot.' })
   })
 
@@ -55,7 +98,7 @@ export function registerEngineRoutes(app, { withStore, commandService, sseHub, a
               })
             }
           }
-          const result = await commandService.execute(store, request.body)
+          const result = await commandService.execute(scopedStore(store, request), request.body)
           response.set('Cache-Control', 'no-store')
           response.type(ENGINE_MEDIA_TYPE).send(Buffer.from(result.responseBytes))
         } catch (error) {
@@ -67,7 +110,11 @@ export function registerEngineRoutes(app, { withStore, commandService, sseHub, a
 
   app.get('/api/engine/events', (request, response) => {
     void withStore(request, response, async (store) => {
-      sseHub.connect(store, request, response)
+      try {
+        sseHub.connect(scopedStore(store, request), request, response)
+      } catch (error) {
+        respondWithLifecycleError(response, error)
+      }
     }, { message: 'Unable to open engine event stream.' })
   })
 }

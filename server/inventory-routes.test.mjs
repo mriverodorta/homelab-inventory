@@ -59,6 +59,45 @@ afterEach(async () => {
 })
 
 describe('inventory lifecycle routes', () => {
+  it('scopes legacy inventory mutations to the selected project workspace', async () => {
+    const scoped = {
+      createScopedInventoryItems: vi.fn(() => ({ metadata: { projectId: 2, workspaceId: 7 } })),
+      updateInventoryItemProperties: vi.fn(() => ({ metadata: { projectId: 2, workspaceId: 7 } })),
+    }
+    const store = { forWorkspace: vi.fn(() => scoped) }
+    const app = express()
+    app.use(express.json())
+    registerInventoryRoutes(app, {
+      withStore: async (_request, response, handler) => {
+        try { await handler(store) } catch (error) { response.status(500).json({ message: error.message }) }
+      },
+    })
+    const server = await new Promise((resolve) => {
+      const listener = app.listen(0, () => resolve(listener))
+    })
+    const url = `http://127.0.0.1:${server.address().port}`
+
+    try {
+      const create = await jsonRequest(url, '/api/inventory/items?projectId=2&workspaceId=7', {
+        method: 'POST', body: JSON.stringify({ item: { type: 'cpu', name: 'CPU' }, quantity: 1 }),
+      })
+      const update = await jsonRequest(url, '/api/inventory/items/server/3/properties?projectId=2&workspaceId=7', {
+        method: 'PATCH', body: JSON.stringify({ properties: { orientation: 'vertical' } }),
+      })
+
+      expect(create.response.status).toBe(201)
+      expect(update.response.status).toBe(200)
+      expect(store.forWorkspace).toHaveBeenCalledWith(2, 7)
+      expect(scoped.createScopedInventoryItems).toHaveBeenCalledWith({ type: 'cpu', name: 'CPU' }, 1)
+      expect(scoped.updateInventoryItemProperties).toHaveBeenCalledWith(
+        { type: 'server', id: 3 },
+        { orientation: 'vertical' },
+      )
+    } finally {
+      server.close()
+    }
+  })
+
   it('routes inventory scope, membership, and cross-project duplication commands', async () => {
     const store = {
       createInventoryItemsForProject: vi.fn(() => ({ items: {} })),

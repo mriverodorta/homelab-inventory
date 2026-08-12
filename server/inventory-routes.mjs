@@ -12,10 +12,39 @@ function lifecycleErrorResponse(response, error) {
   })
 }
 
+function inventoryStoreScope(store, request) {
+  const rawProjectId = request.query?.projectId
+  const rawWorkspaceId = request.query?.workspaceId
+  if (rawProjectId === undefined && rawWorkspaceId === undefined) return { store, scoped: false }
+  if (rawProjectId === undefined || rawWorkspaceId === undefined) {
+    throw new InventoryLifecycleError('Inventory project and workspace scope must be provided together.', {
+      code: 'invalid-inventory-scope',
+      status: 400,
+    })
+  }
+  const scopedProjectId = Number(rawProjectId)
+  const scopedWorkspaceId = Number(rawWorkspaceId)
+  if (!isRelationalId(scopedProjectId) || !isRelationalId(scopedWorkspaceId)) {
+    throw new InventoryLifecycleError('Inventory project and workspace IDs must be positive safe integers.', {
+      code: 'invalid-inventory-scope',
+      status: 400,
+    })
+  }
+  try {
+    return { store: store.forWorkspace(scopedProjectId, scopedWorkspaceId), scoped: true }
+  } catch (error) {
+    throw new InventoryLifecycleError(
+      error instanceof Error ? error.message : 'Inventory workspace scope was not found.',
+      { code: 'inventory-scope-not-found', status: 404 },
+    )
+  }
+}
+
 function runWithInventoryStore(withStore, request, response, message, handler) {
   void withStore(request, response, async (store) => {
     try {
-      await handler(store)
+      const scope = inventoryStoreScope(store, request)
+      await handler(scope.store, scope.scoped)
     } catch (error) {
       lifecycleErrorResponse(response, error)
     }
@@ -103,11 +132,13 @@ export function registerInventoryRoutes(app, { withStore, onHostsDeleted = null 
   })
 
   app.post('/api/inventory/items', (request, response) => {
-    runWithInventoryStore(withStore, request, response, 'Unable to create inventory items.', async (store) => {
+    runWithInventoryStore(withStore, request, response, 'Unable to create inventory items.', async (store, scoped) => {
       const wrapped = request.body?.item && typeof request.body.item === 'object'
       const item = wrapped ? request.body.item : request.body
       const quantity = wrapped ? (request.body.quantity ?? 1) : 1
-      response.status(201).json(store.createInventoryItems(item, quantity))
+      response.status(201).json(scoped
+        ? store.createScopedInventoryItems(item, quantity)
+        : store.createInventoryItems(item, quantity))
     })
   })
 

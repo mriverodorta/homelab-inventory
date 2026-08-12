@@ -6,6 +6,7 @@ import {
 } from '../../shared/engine/protocol.mjs'
 import type { DomainEngineApi } from './types'
 import { fetchWithTimeout } from '@/lib/fetch-with-timeout'
+import { parseWorkspaceRoute } from '@/lib/workspace-route'
 
 export const ENGINE_MEDIA_TYPE = 'application/vnd.homelab-engine+msgpack'
 
@@ -34,11 +35,22 @@ async function responseError(response: Response) {
   )
 }
 
+export function scopedEngineUrl(path: string) {
+  if (typeof window === 'undefined') return path
+  const route = parseWorkspaceRoute(window.location.pathname)
+  if (!route) return path
+  const query = new URLSearchParams({
+    projectId: String(route.projectId),
+    workspaceId: String(route.workspaceId),
+  })
+  return `${path}?${query.toString()}`
+}
+
 export function createDomainEngineApi(fetchImpl: typeof fetch = fetch): DomainEngineApi {
   return {
     async fetchSnapshot(): Promise<{ snapshot: EngineSnapshot; bytes: Uint8Array }> {
       const response = await fetchWithTimeout(
-        '/api/engine/snapshot',
+        scopedEngineUrl('/api/engine/snapshot'),
         { cache: 'no-store' },
         { fetchImpl },
       )
@@ -50,7 +62,7 @@ export function createDomainEngineApi(fetchImpl: typeof fetch = fetch): DomainEn
     async postCommand(commandBytes): Promise<{ response: EngineResponse; bytes: Uint8Array }> {
       const body = Uint8Array.from(commandBytes).buffer
       const response = await fetchWithTimeout(
-        '/api/engine/commands',
+        scopedEngineUrl('/api/engine/commands'),
         {
           method: 'POST',
           headers: { 'Content-Type': ENGINE_MEDIA_TYPE },

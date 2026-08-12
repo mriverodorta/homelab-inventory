@@ -57,6 +57,60 @@ describe('engine routes', () => {
     })
   })
 
+  it('scopes snapshots and commands to the requested project workspace', async () => {
+    const scoped = {
+      getEngineSnapshot: () => ({
+        revision: 12,
+        project_name: 'Downsize Plan',
+        topology: EMPTY_ENGINE_TOPOLOGY,
+      }),
+    }
+    const store = { forWorkspace: vi.fn(() => scoped) }
+    const responseBytes = encodeEngineResponse({
+      protocol_version: 1,
+      request_id: 2,
+      base_revision: 12,
+      result: { kind: 'status', payload: { revision: 12, project_name: 'Downsize Plan' } },
+    })
+    const commandService = { execute: vi.fn(async () => ({ responseBytes })) }
+    const url = await startApp({ store, commandService })
+
+    const snapshotResponse = await fetch(`${url}/api/engine/snapshot?projectId=2&workspaceId=7`)
+    expect(snapshotResponse.status).toBe(200)
+    expect(decodeEngineSnapshot(await snapshotResponse.arrayBuffer()).project_name).toBe('Downsize Plan')
+
+    const requestBytes = encodeEngineRequest({
+      protocol_version: 1,
+      request_id: 2,
+      base_revision: 12,
+      operation: { kind: 'status' },
+    })
+    const commandResponse = await fetch(`${url}/api/engine/commands?projectId=2&workspaceId=7`, {
+      method: 'POST',
+      headers: { 'Content-Type': ENGINE_MEDIA_TYPE },
+      body: requestBytes,
+    })
+
+    expect(commandResponse.status).toBe(200)
+    expect(store.forWorkspace).toHaveBeenCalledWith(2, 7)
+    expect(commandService.execute).toHaveBeenCalledWith(scoped, expect.any(Buffer))
+  })
+
+  it('rejects partial or malformed engine scope', async () => {
+    const url = await startApp({
+      store: { forWorkspace: vi.fn() },
+      commandService: {},
+    })
+
+    const partial = await fetch(`${url}/api/engine/snapshot?projectId=2`)
+    expect(partial.status).toBe(400)
+    expect(await partial.json()).toMatchObject({ code: 'invalid-engine-scope' })
+
+    const malformed = await fetch(`${url}/api/engine/snapshot?projectId=2&workspaceId=no`)
+    expect(malformed.status).toBe(400)
+    expect(await malformed.json()).toMatchObject({ code: 'invalid-engine-scope' })
+  })
+
   it('accepts and returns binary engine commands', async () => {
     const responseBytes = encodeEngineResponse({
       protocol_version: 1,

@@ -11,9 +11,11 @@ import { updateProjectPlacements } from '@/engine/placements'
 import { applyEngineResponsePatch } from '@/engine/project-patches'
 import type { useDomainEngine } from '@/hooks/use-domain-engine'
 import { loadProject } from '@/lib/db'
+import { loadWorkspace } from '@/lib/workbook-api'
 import { createEmptyHistory, pushHistory, type HistoryState } from '@/lib/history'
 import type { ProjectPersistenceCoordinator } from '@/lib/project-persistence-coordinator'
 import { upsertPlacements } from '@/lib/project'
+import { cacheProjectState } from '@/lib/project-query-key'
 import type { ProjectState } from '@/types/inventory'
 
 const SAVE_DEBOUNCE_MS = 500
@@ -58,6 +60,15 @@ export function useProjectCommands({
   setValidationMessage,
 }: ProjectCommandsOptions) {
   const projectNameTimerRef = useRef<number | null>(null)
+
+  async function reloadCurrentProject() {
+    const current = projectRef.current
+    const projectId = current?.metadata.projectId
+    const workspaceId = current?.metadata.workspaceId
+    return projectId && workspaceId
+      ? loadWorkspace(projectId, workspaceId)
+      : loadProject()
+  }
 
   useEffect(() => () => {
     if (projectNameTimerRef.current !== null) {
@@ -174,7 +185,7 @@ export function useProjectCommands({
       )
 
       if (synchronizedRevision !== expectedRevision) {
-        synchronizedProject = await loadProject()
+        synchronizedProject = await reloadCurrentProject()
         const latestRevision = synchronizedProject.revision
         if (typeof latestRevision === 'number' && latestRevision !== synchronizedRevision) {
           await domainEngine.client.synchronizeCanonicalRevision(
@@ -188,7 +199,7 @@ export function useProjectCommands({
     resetPendingSaves()
     projectRef.current = synchronizedProject
     lastPersistedProjectRef.current = synchronizedProject
-    queryClient.setQueryData(['project'], synchronizedProject)
+    cacheProjectState(queryClient, synchronizedProject)
     setProject(synchronizedProject)
     setHistory((currentHistory) => (
       options.historySnapshot
@@ -260,7 +271,7 @@ export function useProjectCommands({
         : applyEngineResponsePatch(activeProject, response)
       projectRef.current = committedProject
       lastPersistedProjectRef.current = committedProject
-      queryClient.setQueryData(['project'], committedProject)
+      cacheProjectState(queryClient, committedProject)
       setProject(committedProject)
       if (historySnapshot) {
         setHistory((currentHistory) => pushHistory(currentHistory, historySnapshot))
@@ -321,7 +332,7 @@ export function useProjectCommands({
     setSaveStatus('error')
     setValidationMessage(error instanceof Error ? error.message : fallbackMessage)
     void loadProject().then(async (canonicalProject) => {
-      queryClient.setQueryData(['project'], canonicalProject)
+      cacheProjectState(queryClient, canonicalProject)
       await applyInventoryCommandSnapshot(canonicalProject)
     }).catch((reloadError) => {
       setPersistenceWarning(

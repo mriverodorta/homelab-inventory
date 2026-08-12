@@ -11,6 +11,7 @@ import {
 } from '@/lib/compatibility-policy'
 import { clampInventoryWidth } from '@/lib/ui-preferences'
 import type { ProjectState } from '@/types/inventory'
+import type { useWorkbookController } from '@/app/use-workbook-controller'
 
 type SaveStatus = 'saved' | 'saving' | 'error'
 
@@ -28,6 +29,7 @@ interface CreateSettingsDialogPropsOptions {
   updateProject(nextProject: ProjectState): void
   updateProjectName(name: string): void
   setOpen(open: boolean): void
+  workbook?: ReturnType<typeof useWorkbookController>
 }
 
 export function createSettingsDialogProps({
@@ -44,10 +46,16 @@ export function createSettingsDialogProps({
   updateProject,
   updateProjectName,
   setOpen,
+  workbook,
 }: CreateSettingsDialogPropsOptions): SettingsDialogProps {
+  const activeWorkbook = workbook?.activeWorkbook
   return {
     open,
-    projectName: project.metadata.name,
+    projectName: activeWorkbook?.project.name ?? project.metadata.name,
+    projectWorkspaces: activeWorkbook ? [...activeWorkbook.workspaces] : undefined,
+    defaultWorkspaceId: activeWorkbook?.defaultWorkspaceId,
+    includesGlobalInventory: activeWorkbook?.project.includesGlobalInventory,
+    useLastActiveWorkspace: workbook?.useLastActiveWorkspace,
     saveStatus,
     inventoryVisible: preferences.desktopInventoryVisible,
     inventoryWidth: preferences.inventoryWidth,
@@ -82,7 +90,26 @@ export function createSettingsDialogProps({
       || registryMutations.resumeContributionRecovery.isPending
       || registryMutations.resetContributionRecovery.isPending,
     onOpenChange: setOpen,
-    onProjectNameChange: updateProjectName,
+    onProjectNameChange: activeWorkbook && workbook
+      ? (name) => void workbook.updateProject(activeWorkbook.project.id, {
+          name,
+          description: activeWorkbook.project.description,
+          iconKey: activeWorkbook.project.iconKey,
+          includesGlobalInventory: activeWorkbook.project.includesGlobalInventory,
+        })
+      : updateProjectName,
+    onDefaultWorkspaceChange: workbook
+      ? (workspaceId) => void workbook.setDefaultWorkspace(workspaceId)
+      : undefined,
+    onIncludesGlobalInventoryChange: activeWorkbook && workbook
+      ? (enabled) => void workbook.updateProject(activeWorkbook.project.id, {
+          name: activeWorkbook.project.name,
+          description: activeWorkbook.project.description,
+          iconKey: activeWorkbook.project.iconKey,
+          includesGlobalInventory: enabled,
+        })
+      : undefined,
+    onUseLastActiveWorkspaceChange: workbook?.setUseLastActiveWorkspace,
     onInventoryVisibleChange: preferences.setDesktopInventoryVisible,
     onInventoryWidthChange: (width) => preferences.setInventoryWidth(clampInventoryWidth(width)),
     onAutoCenterOnSelectChange: preferences.setAutoCenterOnSelect,

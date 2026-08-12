@@ -63,6 +63,7 @@ import {
 import type { UpdateStatus } from '@/lib/update-api'
 import type { OnboardingStatus } from '@/lib/onboarding-api'
 import type { AuthStatus } from '@/types/auth'
+import type { WorkspaceSummary } from '@/lib/workbook-api'
 import { cn } from '@/lib/utils'
 import {
   DEFAULT_REGISTRY_STATE,
@@ -80,6 +81,10 @@ type SaveStatus = 'saved' | 'saving' | 'error'
 export type SettingsDialogProps = {
   open: boolean
   projectName: string
+  projectWorkspaces?: WorkspaceSummary[]
+  defaultWorkspaceId?: number
+  includesGlobalInventory?: boolean
+  useLastActiveWorkspace?: boolean
   saveStatus: SaveStatus
   inventoryVisible: boolean
   inventoryWidth: number
@@ -108,6 +113,9 @@ export type SettingsDialogProps = {
   registrySaving?: boolean
   onOpenChange: (open: boolean) => void
   onProjectNameChange: (name: string) => void
+  onDefaultWorkspaceChange?: (workspaceId: number) => void
+  onIncludesGlobalInventoryChange?: (enabled: boolean) => void
+  onUseLastActiveWorkspaceChange?: (enabled: boolean) => void
   onInventoryVisibleChange: (visible: boolean) => void
   onInventoryWidthChange: (width: number) => void
   onAutoCenterOnSelectChange: (enabled: boolean) => void
@@ -401,6 +409,41 @@ function ProjectSettings(props: SettingsDialogProps) {
           className="w-full sm:w-[320px]"
         />
       </SettingRow>
+      {props.projectWorkspaces?.length ? (
+        <SettingRow label="Default tab" description="Opened when this project is selected unless this browser uses its last active tab.">
+          <Select
+            value={String(props.defaultWorkspaceId ?? props.projectWorkspaces[0].id)}
+            disabled={!canManageProject}
+            onValueChange={(value) => props.onDefaultWorkspaceChange?.(Number(value))}
+          >
+            <SelectTrigger className="w-full bg-white sm:w-[260px]" aria-label="Default project tab"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              {props.projectWorkspaces.map((workspace) => (
+                <SelectItem key={workspace.id} value={String(workspace.id)}>{workspace.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </SettingRow>
+      ) : null}
+      {props.onIncludesGlobalInventoryChange ? (
+        <SettingRow label="Include global inventory" description="Allow explicitly shared equipment to appear in this project.">
+          <Switch
+            aria-label="Include global inventory"
+            checked={props.includesGlobalInventory ?? true}
+            disabled={!canManageProject}
+            onCheckedChange={props.onIncludesGlobalInventoryChange}
+          />
+        </SettingRow>
+      ) : null}
+      {props.onUseLastActiveWorkspaceChange ? (
+        <SettingRow label="Use last active tab" description="Browser-only. Reopen the last tab used in each project instead of its configured default.">
+          <Switch
+            aria-label="Use last active tab"
+            checked={props.useLastActiveWorkspace ?? false}
+            onCheckedChange={props.onUseLastActiveWorkspaceChange}
+          />
+        </SettingRow>
+      ) : null}
       {onboarding ? (
         <SettingRow label="Getting started" description={`${onboardingLabel}. Progress is stored with this project.`}>
           <div className="flex max-w-full flex-wrap justify-end gap-2">

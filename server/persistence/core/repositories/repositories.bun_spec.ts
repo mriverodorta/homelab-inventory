@@ -90,6 +90,65 @@ describe('relational persistence repositories', () => {
     }
   })
 
+  test('previews and permanently deletes only archived projects without removing global inventory', async () => {
+    const { handle, context } = await fixtureContext()
+    try {
+      const projects = createProjectRepository(context)
+      const inventory = createInventoryRepository(context)
+      const created = projects.create({ name: 'Disposable plan' })
+      const projectId = created.project.id
+      const projectItem = inventory.create({
+        type: 'server',
+        name: 'Planning host',
+        scope: 'project',
+        ownerProjectId: projectId,
+        projectIds: [projectId],
+      })
+      const globalItem = inventory.create({
+        type: 'cpu',
+        name: 'Shared CPU',
+        scope: 'global',
+        projectIds: [projectId],
+      })
+      const agent = handle.database.query(`
+        INSERT INTO agents (public_key, protocol_major, agent_version, capabilities_json, created_at_ms)
+        VALUES ('project-delete-agent', 1, '0.1.0', '{}', 1)
+        RETURNING id
+      `).get() as { id: number }
+      handle.database.query(`
+        INSERT INTO agent_host_bindings (agent_id, host_item_id, state, bound_at_ms)
+        VALUES (?, ?, 'active', 1)
+      `).run(agent.id, projectItem.id)
+
+      projects.archive(projectId)
+      expect(projects.listArchived().map(({ id }) => id)).toContain(projectId)
+      expect(projects.deletionImpact(projectId)).toMatchObject({
+        projectBoundItems: 1,
+        globalMemberships: 1,
+        activeAgentBindings: 1,
+        externalProjectDependencies: 0,
+      })
+      expect(() => projects.removeArchived(projectId)).toThrow(/agent.*remain linked/iu)
+
+      handle.database.query(`
+        UPDATE agent_host_bindings
+        SET state = 'unlinked', unbound_at_ms = 2
+        WHERE agent_id = ?
+      `).run(agent.id)
+      expect(projects.removeArchived(projectId)).toMatchObject({
+        projectId,
+        projectBoundItems: 1,
+        historicalAgentBindings: 1,
+      })
+      expect(projects.get(projectId)).toBeNull()
+      expect(inventory.get(projectItem.id)).toBeNull()
+      expect(inventory.get(globalItem.id)?.scope).toBe('global')
+      expect(() => projects.removeArchived(1)).toThrow(/default project/iu)
+    } finally {
+      closeManagedDatabase(handle)
+    }
+  })
+
   test('supports typed inventory CRUD, optimistic versions, aliases, and dependency-aware removal', async () => {
     const { handle, context } = await fixtureContext()
     try {

@@ -14,7 +14,7 @@ function positiveId(value, label) {
 function projectError(error) {
   if (error instanceof InventoryLifecycleError) return error
   const message = error instanceof Error ? error.message : 'Project request failed.'
-  const conflict = /unique constraint|already exists|cannot be archived|at least one canvas/iu.test(message)
+  const conflict = /unique constraint|already exists|cannot be archived|cannot be deleted|at least one canvas|remain linked|cross-project dependency/iu.test(message)
   const missing = /was not found/iu.test(message)
   return new InventoryLifecycleError(message, {
     code: missing ? 'project-not-found' : conflict ? 'project-conflict' : 'invalid-project',
@@ -37,6 +37,12 @@ export function registerProjectRoutes(app, { withStore }) {
     void withStore(request, response, async (store) => {
       response.json({ projects: store.listProjects() })
     }, { message: 'Unable to load projects.' })
+  })
+
+  app.get('/api/projects/archived', (request, response) => {
+    void withStore(request, response, async (store) => {
+      response.json({ projects: store.listArchivedProjects() })
+    }, { message: 'Unable to load archived projects.' })
   })
 
   app.post('/api/projects', (request, response) => {
@@ -92,6 +98,27 @@ export function registerProjectRoutes(app, { withStore }) {
         lifecycleErrorResponse(response, projectError(error))
       }
     }, { status: 400, message: 'Unable to restore project.' })
+  })
+
+  app.get('/api/projects/:projectId/deletion-impact', (request, response) => {
+    void withStore(request, response, async (store) => {
+      try {
+        response.json(store.getProjectDeletionImpact(positiveId(request.params.projectId, 'Project ID')))
+      } catch (error) {
+        lifecycleErrorResponse(response, projectError(error))
+      }
+    }, { message: 'Unable to inspect project deletion.' })
+  })
+
+  app.delete('/api/projects/:projectId/permanent', (request, response) => {
+    void withStore(request, response, async (store) => {
+      try {
+        const projectId = positiveId(request.params.projectId, 'Project ID')
+        response.json({ ok: true, impact: store.deleteArchivedProject(projectId) })
+      } catch (error) {
+        lifecycleErrorResponse(response, projectError(error))
+      }
+    }, { status: 400, message: 'Unable to permanently delete project.' })
   })
 
   app.get('/api/projects/:projectId/workbook', (request, response) => {

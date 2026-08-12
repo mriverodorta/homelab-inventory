@@ -7,6 +7,7 @@ import {
 } from 'react'
 import { decodeEngineResponse } from '../../shared/engine/protocol.mjs'
 import { DomainEngineClient } from '@/engine/client'
+import { scopedEngineUrl } from '@/engine/api'
 import {
   DomainEngineContext,
   type DomainEngineContextValue,
@@ -55,7 +56,7 @@ export function DomainEngineProvider({
 
   useEffect(() => {
     if (!enabled || state.phase !== 'ready') return
-    const source = eventSourceFactory('/api/engine/events')
+    const source = eventSourceFactory(scopedEngineUrl('/api/engine/events'))
     const onPatch = (event: Event) => {
       const message = event as MessageEvent<string>
       void (async () => {

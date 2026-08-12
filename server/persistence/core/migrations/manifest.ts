@@ -55,4 +55,9 @@ export const CORE_MIGRATIONS: readonly CoreMigration[] = [
     file: '0009_registry_link_reconciliation.sql',
     sha256: '4f73bd5407caf55b52c2f5c4ec1ef16bd9479f6e922cc888a5c3ec861ed27c49',
   },
+  {
+    id: '0011_archived_project_deletion',
+    file: '0010_archived_project_deletion.sql',
+    sha256: '384f6463286ed5428c7d574d8294f7c3e7e97d1cfc0bdc51351deb805f7bfec3',
+  },
 ]

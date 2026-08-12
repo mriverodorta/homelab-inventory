@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   type CanvasController,
 } from '@/components/workbench-canvas-contract'
@@ -13,9 +13,8 @@ import {
 } from '@/hooks/use-topology-query'
 import { setAuditWarningIgnored } from '@/lib/compatibility-policy'
 import { loadAgentStatus } from '@/lib/agent-api'
-import {
-  loadProject,
-} from '@/lib/db'
+import { loadProject } from '@/lib/db'
+import { loadWorkspace } from '@/lib/workbook-api'
 import { buildVisibleRegistryLinkKeys } from '@/lib/registry-links'
 import { ErrorScreen, LoadingScreen } from '@/app/app-status-screens'
 import { AppDialogs } from '@/app/app-dialogs'
@@ -23,6 +22,8 @@ import { AppInventoryPanels } from '@/app/app-inventory-panels'
 import { AppShell } from '@/app/app-shell'
 import { AppWorkspaceSurface } from '@/app/app-workspace-surface'
 import { InventoryDragPreview } from '@/app/inventory-drag-preview'
+import { ProjectSwitcher } from '@/components/workbook/project-switcher'
+import { WorkbookTabStrip } from '@/components/workbook/workbook-tab-strip'
 import { useWorkspacePreferences } from '@/app/use-workspace-preferences'
 import { useInventoryPanelResize } from '@/app/use-inventory-panel-resize'
 import { useDemoSessionLifecycle } from '@/app/use-demo-session-lifecycle'
@@ -42,6 +43,7 @@ import { useProjectCommands } from '@/app/use-project-commands'
 import { useCanvasWorkspaceActions } from '@/app/use-canvas-workspace-actions'
 import { useRegistrySettingsActions } from '@/app/use-registry-settings-actions'
 import { useAppNavigationActions } from '@/app/use-app-navigation-actions'
+import { useWorkbookController } from '@/app/use-workbook-controller'
 import { createSettingsDialogProps } from '@/app/create-settings-dialog-props'
 import { createInventoryPanelProps } from '@/app/create-inventory-panel-props'
 import { createLifecycleDialogProps } from '@/app/create-lifecycle-dialog-props'
@@ -64,24 +66,8 @@ function App() {
   const canViewNotifications = usePermission('notifications.view')
   const [project, setProject] = useState<ProjectState | null>(null)
   const projectRef = useRef<ProjectState | null>(null)
-  const topologyQuery = useTopologyQuery(project)
   const [validationMessage, setValidationMessageValue] = useState<string | null>(null)
   const [validationSeverity, setValidationSeverity] = useState<ValidationSeverity>('error')
-  const topologyStatus = project && !topologyQuery.data
-    ? domainEngine.state.phase === 'failed'
-      || domainEngine.state.phase === 'unsupported'
-      || topologyQuery.isError
-      ? {
-          message: topologyQuery.error instanceof Error
-            ? topologyQuery.error.message
-            : 'Connection topology is unavailable. Retry the workspace engine before editing cables.',
-          severity: 'error' as const,
-        }
-      : {
-          message: 'Loading connection topology...',
-          severity: 'unknown' as const,
-        }
-    : null
   const [persistenceWarning, setPersistenceWarning] = useState<string | null>(null)
   const [auditOpen, setAuditOpen] = useState(false)
   const [searchOpen, setSearchOpen] = useState(false)
@@ -110,6 +96,42 @@ function App() {
     finalizeExpiration: finalizeDemoExpiration,
   } = useDemoSessionLifecycle()
   const canvasControllerRef = useRef<CanvasController | null>(null)
+  const {
+    lastPersistedProjectRef,
+    coordinator: persistenceCoordinator,
+    scheduleProjectSave,
+    settleLegacyProjectPersistence,
+    resetPendingSaves,
+  } = useProjectSaveQueue({
+    projectRef,
+    setProject,
+    setSaveStatus,
+    setPersistenceWarning,
+    setCanonicalMutationBusy,
+  })
+  const workbookController = useWorkbookController({
+    beforeNavigate: settleLegacyProjectPersistence,
+  })
+  const topologyQuery = useTopologyQuery(
+    workbookController.activeWorkspace?.type === 'canvas' ? project : null,
+  )
+  const topologyStatus = project
+    && workbookController.activeWorkspace?.type === 'canvas'
+    && !topologyQuery.data
+    ? domainEngine.state.phase === 'failed'
+      || domainEngine.state.phase === 'unsupported'
+      || topologyQuery.isError
+      ? {
+          message: topologyQuery.error instanceof Error
+            ? topologyQuery.error.message
+            : 'Connection topology is unavailable. Retry the workspace engine before editing cables.',
+          severity: 'error' as const,
+        }
+      : {
+          message: 'Loading connection topology...',
+          severity: 'unknown' as const,
+        }
+    : null
   const canvasSelectionController = useCanvasSelectionController({
     project,
     projectRef,
@@ -129,18 +151,19 @@ function App() {
     selectInventoryItem,
     focusExampleTarget,
   } = canvasSelectionController
-  const {
-    lastPersistedProjectRef,
-    coordinator: persistenceCoordinator,
-    scheduleProjectSave,
-    settleLegacyProjectPersistence,
-    resetPendingSaves,
-  } = useProjectSaveQueue({
-    projectRef,
-    setProject,
-    setSaveStatus,
-    setPersistenceWarning,
-    setCanonicalMutationBusy,
+  const sourceProjectId = workbookController.activeWorkbook?.project.id ?? null
+  const sourceWorkspaceId = workbookController.sourceCanvasWorkspace?.id ?? null
+  const defaultWorkspaceActive = sourceProjectId === 1 && sourceWorkspaceId === 2
+  const activeProjectQueryKey = defaultWorkspaceActive
+    ? ['project'] as const
+    : ['project', sourceProjectId, sourceWorkspaceId] as const
+  const loadActiveProject = () => defaultWorkspaceActive
+    ? loadProject()
+    : loadWorkspace(sourceProjectId!, sourceWorkspaceId!)
+  const projectQuery = useQuery({
+    queryKey: activeProjectQueryKey,
+    queryFn: loadActiveProject,
+    enabled: sourceProjectId !== null && sourceWorkspaceId !== null,
   })
   const {
     history,
@@ -156,6 +179,37 @@ function App() {
     scheduleProjectSave,
   })
   const hasHydratedProjectRef = useRef(false)
+  const hydratedWorkspaceKeyRef = useRef<string | null>(null)
+  const activeWorkspaceKey = sourceProjectId && sourceWorkspaceId
+    ? `${sourceProjectId}:${sourceWorkspaceId}`
+    : null
+  useEffect(() => {
+    if (!activeWorkspaceKey) return
+    if (hydratedWorkspaceKeyRef.current === null) {
+      hydratedWorkspaceKeyRef.current = activeWorkspaceKey
+      return
+    }
+    if (hydratedWorkspaceKeyRef.current === activeWorkspaceKey) return
+    hydratedWorkspaceKeyRef.current = activeWorkspaceKey
+    hasHydratedProjectRef.current = false
+    resetPendingSaves()
+    projectRef.current = null
+    lastPersistedProjectRef.current = null
+    setProject(null)
+    setSelectedItemId(null)
+    setSelectedConnectionId(null)
+    setActiveNetworkTraceEndpoint(null)
+    canvasControllerRef.current = null
+  }, [
+    activeWorkspaceKey,
+    hasHydratedProjectRef,
+    lastPersistedProjectRef,
+    projectRef,
+    resetPendingSaves,
+    setActiveNetworkTraceEndpoint,
+    setSelectedConnectionId,
+    setSelectedItemId,
+  ])
   const applyInventoryCommandSnapshotRef = useRef<(
     project: ProjectState,
     options?: { historySnapshot?: ProjectState },
@@ -273,10 +327,6 @@ function App() {
     width: inventoryWidth,
     onWidthChange: setInventoryWidth,
   })
-  const projectQuery = useQuery({
-    queryKey: ['project'],
-    queryFn: loadProject,
-  })
   const agentStatusQuery = useQuery({
     queryKey: ['agent-status'],
     queryFn: loadAgentStatus,
@@ -293,6 +343,9 @@ function App() {
   const notificationQuery = useNotificationSnapshot(canViewNotifications)
   const registryMutations = useRegistryMutations()
   const inventoryLifecycle = useInventoryLifecycle({
+    scope: sourceProjectId && sourceWorkspaceId
+      ? { projectId: sourceProjectId, workspaceId: sourceWorkspaceId }
+      : null,
     projectRef,
     applyInventorySnapshot: applyInventoryCommandSnapshot,
     validateCanvasPlacement,
@@ -353,6 +406,8 @@ function App() {
     setPersistenceWarning,
     setSaveStatus,
     applyInventorySnapshot: (canonicalProject) => applyInventoryCommandSnapshotRef.current(canonicalProject),
+    reloadProject: loadActiveProject,
+    queryKey: activeProjectQueryKey,
   })
   useProjectGeometrySync({ project, domainEngine, setPersistenceWarning })
 
@@ -402,8 +457,8 @@ function App() {
     focusExampleTarget(currentExampleTarget)
   }
 
-  if (projectQuery.isError) {
-    const error = projectQuery.error
+  if (projectQuery.isError || workbookController.loadError) {
+    const error = projectQuery.error ?? workbookController.loadError
 
     return (
       <ErrorScreen
@@ -416,7 +471,15 @@ function App() {
     )
   }
 
-  if (projectQuery.isLoading || !project) {
+  const projectMatchesActiveWorkspace = Boolean(
+    project
+    && (
+      (project.metadata.projectId === sourceProjectId && project.metadata.workspaceId === sourceWorkspaceId)
+      || (defaultWorkspaceActive && !project.metadata.projectId && !project.metadata.workspaceId)
+    ),
+  )
+
+  if (projectQuery.isLoading || workbookController.loading || !project || !projectMatchesActiveWorkspace || !workbookController.activeWorkspace || !workbookController.activeWorkbook) {
     return <LoadingScreen />
   }
 
@@ -434,6 +497,7 @@ function App() {
     updateProject,
     updateProjectName,
     setOpen: setSettingsOpen,
+    workbook: workbookController,
   })
   const inventoryPanelProps = createInventoryPanelProps({
     desktop: {
@@ -484,7 +548,8 @@ function App() {
       onExpire: finalizeDemoExpiration,
     },
   })
-  const workspaceSurfaceProps = createWorkspaceSurfaceProps({
+  const workspaceSurfaceProps = {
+    ...createWorkspaceSurfaceProps({
     project,
     topologyData: topologyQuery.data,
     topologyStatus,
@@ -521,8 +586,16 @@ function App() {
     redo: redoProjectChange,
     updateProject,
     setValidationMessage,
-    showCurrentExampleStep,
-  })
+      showCurrentExampleStep,
+    }),
+    workbook: {
+      workspace: workbookController.activeWorkspace,
+      project,
+      agentStatus: agentStatusQuery.data ?? null,
+      registryLinkedItemKeys,
+      onSelectItem: canvasSelectionController.selectInventoryItem,
+    },
+  }
 
   return (
     <AppShell
@@ -540,6 +613,38 @@ function App() {
           />
         ),
       }}
+      projectControlOffset={desktopInventoryVisible ? inventoryWidth + 12 : 12}
+      projectControl={(
+        <ProjectSwitcher
+          projects={workbookController.workbooks.map((workbook) => workbook.project)}
+          activeProjectId={workbookController.activeWorkbook.project.id}
+          busy={workbookController.busy}
+          error={workbookController.error}
+          onSelect={(projectId) => void workbookController.selectProject(projectId)}
+          onCreate={workbookController.createProject}
+          onUpdate={workbookController.updateProject}
+          onArchive={workbookController.archiveProject}
+          onRestored={workbookController.registerRestoredProject}
+          onDeleted={workbookController.forgetDeletedProject}
+        />
+      )}
+      workbookTabs={(
+        <WorkbookTabStrip
+          workspaces={[...workbookController.activeWorkbook.workspaces]}
+          activeWorkspaceId={workbookController.activeWorkspace.id}
+          busy={workbookController.busy}
+          error={workbookController.error}
+          onSelect={(workspaceId) => void workbookController.navigate({
+            projectId: workbookController.activeWorkbook!.project.id,
+            workspaceId,
+          })}
+          onCreate={workbookController.createWorkspace}
+          onUpdate={workbookController.updateWorkspace}
+          onArchive={workbookController.archiveWorkspace}
+          onReorder={workbookController.reorderWorkspaces}
+          onOpenProjectSettings={() => setSettingsOpen(true)}
+        />
+      )}
     >
           <AppInventoryPanels {...inventoryPanelProps} />
           <AppWorkspaceSurface {...workspaceSurfaceProps} />

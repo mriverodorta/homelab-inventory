@@ -578,8 +578,31 @@ export class SqliteHomelabInventoryStore {
     })
   }
 
+  forWorkspace(projectId: number, workspaceId: number) {
+    this.projects.getWorkbook(projectId)
+    const workspace = this.projects.listWorkspaces(projectId)
+      .find((candidate) => candidate.id === workspaceId)
+    if (!workspace) throw new Error(`Active workspace ${workspaceId} was not found in project ${projectId}.`)
+    if (workspace.type !== 'canvas') {
+      throw new Error(`Workspace ${workspaceId} does not provide Canvas project state.`)
+    }
+    return new SqliteHomelabInventoryStore({
+      core: this.core,
+      dataDir: this.dataDir,
+      projectId,
+      workspaceId,
+      appVersion: this.appVersion,
+      cache: this.cache,
+      now: this.now,
+    })
+  }
+
   listProjects() {
     return this.projects.listActive()
+  }
+
+  listArchivedProjects() {
+    return this.projects.listArchived()
   }
 
   getProjectWorkbook(projectId: number) {
@@ -606,6 +629,16 @@ export class SqliteHomelabInventoryStore {
   restoreProject(projectId: number) {
     this.projects.restore(projectId)
     return this.projects.getWorkbook(projectId)
+  }
+
+  getProjectDeletionImpact(projectId: number) {
+    return this.projects.deletionImpact(projectId)
+  }
+
+  deleteArchivedProject(projectId: number) {
+    const impact = this.projects.removeArchived(projectId)
+    this.invalidateProjectReadModels(projectId)
+    return impact
   }
 
   createWorkspace(projectId: number, input: Parameters<typeof this.projects.createWorkspace>[1]) {
@@ -829,6 +862,23 @@ export class SqliteHomelabInventoryStore {
     }).immediate()
     this.invalidateProjectReadModels(projectId)
     return this.getWorkspace(projectId, workbook.defaultWorkspaceId)
+  }
+
+  createScopedInventoryItems(input: Row, quantity = 1) {
+    const scope = input?.scope === 'global' ? 'global' : 'project'
+    const workbook = this.projects.getWorkbook(this.projectId)
+    if (scope === 'global' && !workbook.project.includesGlobalInventory) {
+      throw lifecycleError(
+        `Project ${this.projectId} does not allow global inventory.`,
+        'inventory-scope-conflict',
+        409,
+      )
+    }
+    const { type, records } = this.prepareInventoryCreation(input, quantity, this.projectId)
+    this.commitCanonicalMutation(() => {
+      this.insertInventoryRecords(type, records, this.projectId, scope)
+    })
+    return this.getProject()
   }
 
   setInventoryScope(ref: Row, target: { scope: 'global' | 'project'; projectId?: number }) {
@@ -1410,8 +1460,16 @@ export class SqliteHomelabInventoryStore {
       linkId += 1
     }
     assertRegistryStoreShape(draft)
+    const scope = options.scope === 'project' ? 'project' : 'global'
+    if (scope === 'global' && !this.projects.getWorkbook(this.projectId).project.includesGlobalInventory) {
+      throw lifecycleError(
+        `Project ${this.projectId} does not allow global inventory.`,
+        'inventory-scope-conflict',
+        409,
+      )
+    }
     this.commitCanonicalMutation(() => {
-      this.insertInventoryRecords(prepared.type, prepared.records)
+      this.insertInventoryRecords(prepared.type, prepared.records, this.projectId, scope)
       persistRegistryState(
         this.core.database,
         draft,

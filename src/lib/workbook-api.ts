@@ -1,4 +1,5 @@
 import { apiRequest } from '@/lib/db'
+import { consumeInitialBootstrap } from '@/lib/bootstrap-api'
 import type { ProjectState } from '@/types/inventory'
 
 export type ProjectIconKey =
@@ -34,6 +35,22 @@ export type ProjectSummary = {
   iconKey: ProjectIconKey
   revision: number
   includesGlobalInventory: boolean
+  archivedAtMs?: number | null
+}
+
+export type ProjectDeletionImpact = {
+  projectId: number
+  projectName: string
+  workspaces: number
+  projectBoundItems: number
+  globalMemberships: number
+  placements: number
+  assignments: number
+  connections: number
+  activeAgentBindings: number
+  historicalAgentBindings: number
+  incidents: number
+  externalProjectDependencies: number
 }
 
 export type WorkspaceSummary = {
@@ -72,6 +89,17 @@ export async function loadProjects(): Promise<ProjectSummary[]> {
   return (await apiRequest<{ projects: ProjectSummary[] }>('/api/projects')).projects
 }
 
+export async function loadArchivedProjects(): Promise<ProjectSummary[]> {
+  return (await apiRequest<{ projects: ProjectSummary[] }>('/api/projects/archived')).projects
+}
+
+export async function loadProjectWorkbooks(): Promise<ProjectWorkbook[]> {
+  return consumeInitialBootstrap('projects', async () => {
+    const projects = await loadProjects()
+    return Promise.all(projects.map((project) => loadProjectWorkbook(project.id)))
+  })
+}
+
 export function loadProjectWorkbook(projectId: number): Promise<ProjectWorkbook> {
   return apiRequest<ProjectWorkbook>(`/api/projects/${projectId}/workbook`)
 }
@@ -94,6 +122,18 @@ export function archiveProject(projectId: number): Promise<{ ok: true; projectId
   return apiRequest(`/api/projects/${projectId}`, { method: 'DELETE' })
 }
 
+export function restoreProject(projectId: number): Promise<ProjectWorkbook> {
+  return apiRequest<ProjectWorkbook>(`/api/projects/${projectId}/restore`, { method: 'POST' })
+}
+
+export function loadProjectDeletionImpact(projectId: number): Promise<ProjectDeletionImpact> {
+  return apiRequest<ProjectDeletionImpact>(`/api/projects/${projectId}/deletion-impact`)
+}
+
+export function deleteArchivedProject(projectId: number): Promise<{ ok: true; impact: ProjectDeletionImpact }> {
+  return apiRequest(`/api/projects/${projectId}/permanent`, { method: 'DELETE' })
+}
+
 export function createWorkspace(projectId: number, input: WorkspaceInput): Promise<ProjectWorkbook> {
   return apiRequest<ProjectWorkbook>(`/api/projects/${projectId}/workspaces`, {
     method: 'POST',
@@ -109,6 +149,15 @@ export function updateWorkspace(
   return apiRequest<ProjectWorkbook>(`/api/projects/${projectId}/workspaces/${workspaceId}`, {
     method: 'PATCH',
     body: JSON.stringify(input),
+  })
+}
+
+export function archiveWorkspace(
+  projectId: number,
+  workspaceId: number,
+): Promise<ProjectWorkbook> {
+  return apiRequest<ProjectWorkbook>(`/api/projects/${projectId}/workspaces/${workspaceId}`, {
+    method: 'DELETE',
   })
 }
 

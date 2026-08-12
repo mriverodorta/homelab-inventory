@@ -35,6 +35,21 @@ export type UpdateWorkspaceInput = Readonly<{
   colorKey?: string
 }>
 
+export type ProjectDeletionImpact = Readonly<{
+  projectId: number
+  projectName: string
+  workspaces: number
+  projectBoundItems: number
+  globalMemberships: number
+  placements: number
+  assignments: number
+  connections: number
+  activeAgentBindings: number
+  historicalAgentBindings: number
+  incidents: number
+  externalProjectDependencies: number
+}>
+
 export function createProjectRepository(context: RepositoryContext) {
   const { db, sqlite, now } = context
 
@@ -45,6 +60,10 @@ export function createProjectRepository(context: RepositoryContext) {
 
   function listActive(): ProjectSummary[] {
     return db.select().from(projects).where(isNull(projects.archivedAtMs)).orderBy(asc(projects.id)).all() as ProjectSummary[]
+  }
+
+  function listArchived(): ProjectSummary[] {
+    return db.select().from(projects).where(isNotNull(projects.archivedAtMs)).orderBy(asc(projects.id)).all() as ProjectSummary[]
   }
 
   function listWorkspaces(projectId: number): WorkspaceSummary[] {
@@ -186,6 +205,104 @@ export function createProjectRepository(context: RepositoryContext) {
     return get(projectId)
   }
 
+
+  function deletionImpact(projectId: number): ProjectDeletionImpact {
+    assertPositiveId(projectId, 'Project ID')
+    const project = get(projectId)
+    if (!project || project.archivedAtMs == null) throw new Error(`Archived project ${projectId} was not found.`)
+
+    const count = (query: string, ...values: unknown[]) => Number((sqlite.query(query).get(...values) as { count: number }).count)
+    const ownedItemFilter = 'SELECT id FROM inventory_items WHERE scope = \'project\' AND owner_project_id = ?'
+    return {
+      projectId,
+      projectName: project.name,
+      workspaces: count('SELECT count(*) AS count FROM workspaces WHERE project_id = ?', projectId),
+      projectBoundItems: count(`SELECT count(*) AS count FROM inventory_items WHERE scope = 'project' AND owner_project_id = ?`, projectId),
+      globalMemberships: count(`
+        SELECT count(*) AS count
+        FROM project_inventory_memberships membership
+        JOIN inventory_items item ON item.id = membership.item_id
+        WHERE membership.project_id = ? AND item.scope = 'global'
+      `, projectId),
+      placements: count('SELECT count(*) AS count FROM workspace_placements WHERE project_id = ?', projectId),
+      assignments: count('SELECT count(*) AS count FROM component_assignments WHERE project_id = ?', projectId),
+      connections: count('SELECT count(*) AS count FROM project_connections WHERE project_id = ?', projectId),
+      activeAgentBindings: count(`
+        SELECT count(*) AS count
+        FROM agent_host_bindings binding
+        JOIN agents agent ON agent.id = binding.agent_id
+        WHERE binding.host_item_id IN (${ownedItemFilter})
+          AND binding.state = 'active'
+          AND agent.revoked_at_ms IS NULL
+      `, projectId),
+      historicalAgentBindings: count(`
+        SELECT count(*) AS count
+        FROM agent_host_bindings
+        WHERE host_item_id IN (${ownedItemFilter}) AND state <> 'active'
+      `, projectId),
+      incidents: count(`SELECT count(*) AS count FROM incidents WHERE host_item_id IN (${ownedItemFilter})`, projectId),
+      externalProjectDependencies: count(`
+        SELECT count(*) AS count FROM (
+          SELECT assignment.id
+          FROM component_assignments assignment
+          WHERE assignment.project_id <> ? AND (
+            assignment.host_item_id IN (${ownedItemFilter})
+            OR assignment.component_item_id IN (${ownedItemFilter})
+          )
+          UNION ALL
+          SELECT placement.id
+          FROM workspace_placements placement
+          WHERE placement.project_id <> ? AND placement.item_id IN (${ownedItemFilter})
+          UNION ALL
+          SELECT endpoint.id
+          FROM connection_endpoints endpoint
+          JOIN inventory_ports port ON port.id = endpoint.port_id
+          JOIN project_connections connection ON connection.id = endpoint.connection_id
+          WHERE connection.project_id <> ? AND port.item_id IN (${ownedItemFilter})
+        ) dependencies
+      `, projectId, projectId, projectId, projectId, projectId, projectId, projectId),
+    }
+  }
+
+  function removeArchived(projectId: number) {
+    if (projectId === 1) throw new Error('The default project cannot be permanently deleted.')
+    const impact = deletionImpact(projectId)
+    if (impact.activeAgentBindings > 0) {
+      throw new Error(`Project ${projectId} cannot be deleted while ${impact.activeAgentBindings} project-bound host agent(s) remain linked.`)
+    }
+    if (impact.externalProjectDependencies > 0) {
+      throw new Error(`Project ${projectId} cannot be deleted while ${impact.externalProjectDependencies} cross-project dependency record(s) remain.`)
+    }
+
+    sqlite.transaction(() => {
+      const ownedItemFilter = `SELECT id FROM inventory_items WHERE scope = 'project' AND owner_project_id = ?`
+      sqlite.query('DELETE FROM project_connections WHERE project_id = ?').run(projectId)
+      sqlite.query('DELETE FROM component_assignments WHERE project_id = ?').run(projectId)
+      sqlite.query(`DELETE FROM incidents WHERE host_item_id IN (${ownedItemFilter})`).run(projectId)
+      sqlite.query(`DELETE FROM agent_host_bindings WHERE host_item_id IN (${ownedItemFilter})`).run(projectId)
+      sqlite.query(`
+        DELETE FROM port_identity_aliases
+        WHERE port_id IN (
+          SELECT port.id FROM inventory_ports port
+          WHERE port.item_id IN (${ownedItemFilter})
+        )
+      `).run(projectId)
+      sqlite.query(`
+        DELETE FROM resource_identity_aliases
+        WHERE resource_id IN (
+          SELECT resource.id FROM inventory_resources resource
+          WHERE resource.item_id IN (${ownedItemFilter})
+        )
+      `).run(projectId)
+      sqlite.query(`DELETE FROM inventory_identity_aliases WHERE item_id IN (${ownedItemFilter})`).run(projectId)
+      sqlite.query(`DELETE FROM inventory_items WHERE id IN (${ownedItemFilter})`).run(projectId)
+      const deleted = sqlite.query('DELETE FROM projects WHERE id = ? AND archived_at_ms IS NOT NULL RETURNING id')
+        .get(projectId) as { id: number } | null
+      if (!deleted) throw new Error(`Archived project ${projectId} was not found.`)
+    }).immediate()
+    return impact
+  }
+
   function createWorkspace(projectId: number, input: CreateWorkspaceInput) {
     assertPositiveId(projectId, 'Project ID')
     if (input.type !== 'canvas') throw new Error('Only Canvas workspaces can be created in this release.')
@@ -323,11 +440,14 @@ export function createProjectRepository(context: RepositoryContext) {
     get,
     getWorkbook,
     listActive,
+    listArchived,
     listWorkspaces,
     create,
     update,
     archive,
     restore,
+    deletionImpact,
+    removeArchived,
     createWorkspace,
     updateWorkspace,
     reorderWorkspaces,

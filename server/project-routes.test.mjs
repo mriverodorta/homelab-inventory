@@ -68,6 +68,7 @@ describe('project routes', () => {
     }]])
     const store = {
       listProjects: () => [...workbooks.values()].map(({ project }) => project),
+      listArchivedProjects: () => [{ id: 3, name: 'Archived plan' }],
       getProjectWorkbook: (id) => {
         const workbook = workbooks.get(id)
         if (!workbook) throw new Error(`Active project ${id} was not found.`)
@@ -85,6 +86,8 @@ describe('project routes', () => {
       },
       archiveProject: (id) => workbooks.delete(id),
       restoreProject: (id) => ({ project: { id, name: 'Restored' }, defaultWorkspaceId: 4, workspaces: [] }),
+      getProjectDeletionImpact: (id) => ({ projectId: id, projectBoundItems: 2, activeAgentBindings: 0 }),
+      deleteArchivedProject: (id) => ({ projectId: id, projectBoundItems: 2, activeAgentBindings: 0 }),
       getProject: () => ({ id: 'default' }),
       setProject: (project) => project,
     }
@@ -102,6 +105,7 @@ describe('project routes', () => {
     const url = `http://127.0.0.1:${server.address().port}`
 
     expect((await requestJson(`${url}/api/projects`)).body.projects).toEqual([{ id: 1, name: 'Default Project' }])
+    expect((await requestJson(`${url}/api/projects/archived`)).body.projects).toEqual([{ id: 3, name: 'Archived plan' }])
     const created = await requestJson(`${url}/api/projects`, 'POST', { name: 'Downsize plan' })
     expect(created.response.status).toBe(201)
     expect(created.body.project).toEqual({ id: 2, name: 'Downsize plan' })
@@ -109,6 +113,11 @@ describe('project routes', () => {
     expect((await requestJson(`${url}/api/projects/nope`)).response.status).toBe(400)
     expect((await requestJson(`${url}/api/projects/2`, 'DELETE')).body).toEqual({ ok: true, projectId: 2 })
     expect((await requestJson(`${url}/api/projects/2/restore`, 'POST')).body.project.name).toBe('Restored')
+    expect((await requestJson(`${url}/api/projects/3/deletion-impact`)).body.projectBoundItems).toBe(2)
+    expect((await requestJson(`${url}/api/projects/3/permanent`, 'DELETE')).body).toMatchObject({
+      ok: true,
+      impact: { projectId: 3, projectBoundItems: 2 },
+    })
   })
 
   it('round trips compatibility profiles and valid deterministic allocations through PUT and GET', async () => {

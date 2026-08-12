@@ -6,6 +6,10 @@ import {
 } from '@/components/lazy-app-surfaces'
 import { WorkbenchCanvas } from '@/components/lazy-workbench-canvas'
 import { PortConnectionPreviewOverlay } from '@/app/port-connection-preview-overlay'
+import { SystemsWorkspace } from '@/components/workbook/systems-workspace'
+import type { WorkspaceSummary } from '@/lib/workbook-api'
+import type { AgentStatusSummary } from '@/types/agent'
+import type { ProjectState } from '@/types/inventory'
 
 type ExampleGuideProps = ComponentProps<typeof ExampleWorkspaceGuide>
 type GettingStartedProps = ComponentProps<typeof GettingStartedChecklist>
@@ -19,6 +23,15 @@ export interface AppWorkspaceSurfaceProps {
   exampleGuide?: ExampleGuideProps
   gettingStarted?: GettingStartedProps
   portPreview?: PortPreviewProps
+  workbook?: WorkbookSurfaceProps
+}
+
+export interface WorkbookSurfaceProps {
+  workspace: WorkspaceSummary
+  project: ProjectState
+  agentStatus: AgentStatusSummary | null
+  registryLinkedItemKeys: ReadonlySet<string>
+  onSelectItem(itemId: string): void
 }
 
 export function AppWorkspaceSurface({
@@ -27,7 +40,22 @@ export function AppWorkspaceSurface({
   exampleGuide,
   gettingStarted,
   portPreview,
+  workbook,
 }: AppWorkspaceSurfaceProps) {
+  if (workbook?.workspace.type === 'systems') {
+    return (
+      <>
+        <SystemsWorkspace
+          project={workbook.project}
+          agentStatus={workbook.agentStatus}
+          registryLinkedItemKeys={workbook.registryLinkedItemKeys}
+          onSelectItem={workbook.onSelectItem}
+        />
+        <InspectorPanel {...inspector} />
+      </>
+    )
+  }
+
   return (
     <>
       <WorkbenchCanvas {...canvas} />

@@ -138,6 +138,27 @@ function run(withStore, request, response, handler) {
   }, { message: 'Unable to access registry data.' })
 }
 
+function scopedRegistryStore(store, request) {
+  const rawProjectId = request.query?.projectId
+  const rawWorkspaceId = request.query?.workspaceId
+  if (rawProjectId === undefined && rawWorkspaceId === undefined) return { store, scoped: false }
+  const projectId = parseId(String(rawProjectId ?? ''))
+  const workspaceId = parseId(String(rawWorkspaceId ?? ''))
+  if (projectId === null || workspaceId === null) {
+    throw new InventoryLifecycleError('Registry project and workspace scope must use positive safe integers.', {
+      code: 'invalid-registry-workspace-scope', status: 400,
+    })
+  }
+  try {
+    return { store: store.forWorkspace(projectId, workspaceId), scoped: true }
+  } catch (error) {
+    throw new InventoryLifecycleError(
+      error instanceof Error ? error.message : 'Registry workspace scope was not found.',
+      { code: 'registry-workspace-scope-not-found', status: 404 },
+    )
+  }
+}
+
 export function registerRegistryRoutes(app, {
   withStore,
   trustedKeys,
@@ -331,6 +352,7 @@ export function registerRegistryRoutes(app, {
 
   app.post('/api/registry/catalog/templates/:templateKey/create', (request, response) => {
     run(withStore, request, response, async (store) => {
+      const target = scopedRegistryStore(store, request)
       const templateKey = request.params.templateKey
       if (typeof templateKey !== 'string' || !/^[A-Za-z0-9_-]{8,128}$/.test(templateKey)) {
         throw new InventoryLifecycleError('Catalog template key is invalid.', {
@@ -341,10 +363,10 @@ export function registerRegistryRoutes(app, {
       if (!template) throw new InventoryLifecycleError('Catalog template was not found.', {
         code: 'catalog-template-not-found', status: 404,
       })
-      response.status(201).json(store.createCatalogInventoryItems(
+      response.status(201).json(target.store.createCatalogInventoryItems(
         template,
         request.body?.quantity ?? 1,
-        { usageRole: request.body?.usageRole },
+        { usageRole: request.body?.usageRole, scope: target.scoped ? 'project' : 'global' },
       ))
     })
   })
@@ -393,6 +415,7 @@ export function registerRegistryRoutes(app, {
 
   app.post('/api/registry/links/:id/apply-update', (request, response) => {
     run(withStore, request, response, async (store) => {
+      const target = scopedRegistryStore(store, request)
       const id = parseId(request.params.id)
       if (id === null) throw new InventoryLifecycleError('Catalog link ID is invalid.', {
         code: 'invalid-catalog-link-id', status: 400,
@@ -405,7 +428,7 @@ export function registerRegistryRoutes(app, {
       if (!template) throw new InventoryLifecycleError('Updated catalog template is unavailable.', {
         code: 'catalog-template-not-found', status: 409,
       })
-      response.json(store.applyCatalogUpdate(id, template))
+      response.json(target.store.applyCatalogUpdate(id, template))
     })
   })
 

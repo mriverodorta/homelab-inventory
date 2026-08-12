@@ -11,6 +11,16 @@ import type {
 } from '@/types/inventory'
 
 export type InventoryItemInput = Omit<InventoryItem, 'id' | 'key'>
+export type WorkspaceMutationScope = Readonly<{ projectId: number; workspaceId: number }>
+
+export function withWorkspaceScope(url: string, scope?: WorkspaceMutationScope | null) {
+  if (!scope) return url
+  const separator = url.includes('?') ? '&' : '?'
+  return `${url}${separator}${new URLSearchParams({
+    projectId: String(scope.projectId),
+    workspaceId: String(scope.workspaceId),
+  }).toString()}`
+}
 
 export async function apiRequest<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetchWithTimeout(url, {
@@ -54,8 +64,9 @@ export async function saveProject(project: ProjectState): Promise<ProjectState> 
 export async function createInventoryItems(
   item: InventoryItemInput,
   quantity = 1,
+  scope?: WorkspaceMutationScope | null,
 ): Promise<ProjectState> {
-  return apiRequest<ProjectState>('/api/inventory/items', {
+  return apiRequest<ProjectState>(withWorkspaceScope('/api/inventory/items', scope), {
     method: 'POST',
     body: JSON.stringify({ item, quantity }),
   })
@@ -64,8 +75,9 @@ export async function createInventoryItems(
 export async function updateInventoryItem(
   ref: InventoryRef,
   item: InventoryItemInput,
+  scope?: WorkspaceMutationScope | null,
 ): Promise<ProjectState> {
-  return apiRequest<ProjectState>(`/api/inventory/items/${ref.type}/${ref.id}`, {
+  return apiRequest<ProjectState>(withWorkspaceScope(`/api/inventory/items/${ref.type}/${ref.id}`, scope), {
     method: 'PUT',
     body: JSON.stringify(item),
   })
@@ -75,9 +87,10 @@ export async function changeNasPowerConfiguration(
   id: number,
   powerConfiguration: NasPowerConfiguration,
   confirmed = false,
+  scope?: WorkspaceMutationScope | null,
 ): Promise<NasPowerConfigurationChangeResult> {
   return apiRequest<NasPowerConfigurationChangeResult>(
-    `/api/inventory/items/nas/${id}/power-configuration`,
+    withWorkspaceScope(`/api/inventory/items/nas/${id}/power-configuration`, scope),
     {
       method: 'POST',
       body: JSON.stringify({ powerConfiguration, confirmed }),
@@ -88,32 +101,35 @@ export async function changeNasPowerConfiguration(
 export async function updateInventoryItemProperties(
   ref: InventoryRef,
   properties: InventoryProperties,
+  scope?: WorkspaceMutationScope | null,
 ): Promise<ProjectState> {
-  return apiRequest<ProjectState>(`/api/inventory/items/${ref.type}/${ref.id}/properties`, {
+  return apiRequest<ProjectState>(withWorkspaceScope(`/api/inventory/items/${ref.type}/${ref.id}/properties`, scope), {
     method: 'PATCH',
     body: JSON.stringify({ properties }),
   })
 }
 
-export async function duplicateInventoryItem(ref: InventoryRef): Promise<ProjectState> {
-  return apiRequest<ProjectState>(`/api/inventory/items/${ref.type}/${ref.id}/duplicate`, {
+export async function duplicateInventoryItem(ref: InventoryRef, scope?: WorkspaceMutationScope | null): Promise<ProjectState> {
+  return apiRequest<ProjectState>(withWorkspaceScope(`/api/inventory/items/${ref.type}/${ref.id}/duplicate`, scope), {
     method: 'POST',
   })
 }
 
 export async function loadInventoryDependencies(
   ref: InventoryRef,
+  scope?: WorkspaceMutationScope | null,
 ): Promise<InventoryDependencyReport> {
   return apiRequest<InventoryDependencyReport>(
-    `/api/inventory/items/${ref.type}/${ref.id}/dependencies`,
+    withWorkspaceScope(`/api/inventory/items/${ref.type}/${ref.id}/dependencies`, scope),
   )
 }
 
 export async function loadInventoryDependencyReports(
   items: InventoryRef[],
+  scope?: WorkspaceMutationScope | null,
 ): Promise<InventoryDependencyReport[]> {
   const response = await apiRequest<{ reports: InventoryDependencyReport[] }>(
-    '/api/inventory/dependencies',
+    withWorkspaceScope('/api/inventory/dependencies', scope),
     {
       method: 'POST',
       body: JSON.stringify({ items }),
@@ -126,28 +142,29 @@ export async function loadInventoryDependencyReports(
 async function mutateInventoryItems(
   action: 'archive' | 'restore' | 'delete',
   items: InventoryRef[],
+  scope?: WorkspaceMutationScope | null,
 ): Promise<ProjectState> {
   if (items.length === 1) {
     const [item] = items
-    return apiRequest<ProjectState>(`/api/inventory/items/${item.type}/${item.id}${action === 'delete' ? '' : `/${action}`}`, {
+    return apiRequest<ProjectState>(withWorkspaceScope(`/api/inventory/items/${item.type}/${item.id}${action === 'delete' ? '' : `/${action}`}`, scope), {
       method: action === 'delete' ? 'DELETE' : 'POST',
     })
   }
 
-  return apiRequest<ProjectState>(`/api/inventory/batch/${action}`, {
+  return apiRequest<ProjectState>(withWorkspaceScope(`/api/inventory/batch/${action}`, scope), {
     method: 'POST',
     body: JSON.stringify({ items }),
   })
 }
 
-export function archiveInventoryItems(items: InventoryRef[]): Promise<ProjectState> {
-  return mutateInventoryItems('archive', items)
+export function archiveInventoryItems(items: InventoryRef[], scope?: WorkspaceMutationScope | null): Promise<ProjectState> {
+  return mutateInventoryItems('archive', items, scope)
 }
 
-export function restoreInventoryItems(items: InventoryRef[]): Promise<ProjectState> {
-  return mutateInventoryItems('restore', items)
+export function restoreInventoryItems(items: InventoryRef[], scope?: WorkspaceMutationScope | null): Promise<ProjectState> {
+  return mutateInventoryItems('restore', items, scope)
 }
 
-export function deleteInventoryItems(items: InventoryRef[]): Promise<ProjectState> {
-  return mutateInventoryItems('delete', items)
+export function deleteInventoryItems(items: InventoryRef[], scope?: WorkspaceMutationScope | null): Promise<ProjectState> {
+  return mutateInventoryItems('delete', items, scope)
 }

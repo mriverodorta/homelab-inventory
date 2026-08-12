@@ -2,7 +2,6 @@ import { useEffect, useRef, type Dispatch, type MutableRefObject, type SetStateA
 import type { QueryClient } from '@tanstack/react-query'
 import { applyEngineResponsePatch } from '@/engine/project-patches'
 import type { useDomainEngine } from '@/hooks/use-domain-engine'
-import { loadProject } from '@/lib/db'
 import { createEmptyHistory, type HistoryState } from '@/lib/history'
 import type { ProjectState } from '@/types/inventory'
 
@@ -25,6 +24,8 @@ type ProjectHydrationOptions = {
   setPersistenceWarning(message: string | null): void
   setSaveStatus(status: 'saved' | 'saving' | 'error'): void
   applyInventorySnapshot(project: ProjectState): Promise<ProjectState>
+  reloadProject(): Promise<ProjectState>
+  queryKey: readonly unknown[]
 }
 
 export function useProjectHydration({
@@ -44,16 +45,20 @@ export function useProjectHydration({
   setPersistenceWarning,
   setSaveStatus,
   applyInventorySnapshot,
+  reloadProject,
+  queryKey,
 }: ProjectHydrationOptions) {
   const callbacksRef = useRef({
     clearPendingConnection,
     clearNetworkTrace,
     applyInventorySnapshot,
+    reloadProject,
   })
   callbacksRef.current = {
     clearPendingConnection,
     clearNetworkTrace,
     applyInventorySnapshot,
+    reloadProject,
   }
 
   useEffect(() => {
@@ -107,7 +112,7 @@ export function useProjectHydration({
       return
     }
 
-    void loadProject()
+    void callbacksRef.current.reloadProject()
       .then(async (canonicalProject) => {
         const activeProject = projectRef.current
         const canonicalRevision = canonicalProject.revision
@@ -117,7 +122,7 @@ export function useProjectHydration({
           && typeof activeRevision === 'number'
           && canonicalRevision < activeRevision
         ) return
-        queryClient.setQueryData(['project'], canonicalProject)
+        queryClient.setQueryData(queryKey, canonicalProject)
         await callbacksRef.current.applyInventorySnapshot(canonicalProject)
       })
       .catch((error) => {
@@ -132,6 +137,7 @@ export function useProjectHydration({
     lastPersistedProjectRef,
     projectRef,
     queryClient,
+    queryKey,
     setHistory,
     setPersistenceWarning,
     setProject,

@@ -437,6 +437,7 @@ describe('App project persistence', () => {
     expect(updateInventoryItemPropertiesMock).toHaveBeenCalledWith(
       { type: 'server', id: 1 },
       { canvasOrientation: 'vertical' },
+      { projectId: 1, workspaceId: 2 },
     )
     expect(updateInventoryItemMock).not.toHaveBeenCalled()
     expect(screen.getByRole('button', { name: 'Undo' })).toBeEnabled()

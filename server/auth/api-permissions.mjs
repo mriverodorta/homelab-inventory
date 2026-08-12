@@ -63,10 +63,13 @@ const PROTECTED_ROUTES = [
   ['POST', /^\/api\/inventory\/batch\/delete\/?$/, 'inventory.delete'],
 
   ['GET', /^\/api\/project\/?$/, 'project.view'],
+  ['GET', /^\/api\/projects\/archived\/?$/, 'project.view'],
+  ['GET', /^\/api\/projects\/[1-9]\d*\/deletion-impact\/?$/, 'project.settings.manage'],
   ['GET', /^\/api\/projects(?:\/[1-9]\d*(?:\/workbook)?)?\/?$/, 'project.view'],
   ['POST', /^\/api\/projects\/?$/, 'project.settings.manage'],
   ['PATCH', /^\/api\/projects\/[1-9]\d*\/?$/, 'project.settings.manage'],
   ['DELETE', /^\/api\/projects\/[1-9]\d*\/?$/, 'project.settings.manage'],
+  ['DELETE', /^\/api\/projects\/[1-9]\d*\/permanent\/?$/, 'project.settings.manage'],
   ['POST', /^\/api\/projects\/[1-9]\d*\/restore\/?$/, 'project.settings.manage'],
   ['GET', /^\/api\/projects\/[1-9]\d*\/workspaces\/[1-9]\d*\/?$/, 'canvas.view'],
   ['PUT', /^\/api\/projects\/[1-9]\d*\/workspaces\/[1-9]\d*\/?$/, 'workspace.edit'],

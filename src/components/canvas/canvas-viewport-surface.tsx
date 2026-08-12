@@ -79,7 +79,7 @@ export function CanvasViewportSurface({
       <div
         ref={droppableRef}
         className={cn(
-          'relative h-dvh overflow-hidden bg-[#fbf8f1] transition',
+          'relative h-full overflow-hidden bg-[#fbf8f1] transition',
           isDropTarget && 'ring-2 ring-inset ring-[#ddb668]',
         )}
       >
