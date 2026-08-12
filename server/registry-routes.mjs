@@ -168,6 +168,7 @@ export function registerRegistryRoutes(app, {
   deliveryService,
   snapshotServiceFactory,
   catalogRefreshCoordinator,
+  catalogStatusService,
   registryPolicy,
 } = {}) {
   const policy = normalizedRegistryPolicy(registryPolicy)
@@ -232,6 +233,7 @@ export function registerRegistryRoutes(app, {
       catalogRefreshCoordinator?.reconcileSchedule()
       if (store.getRegistryState().settings.automaticContributions) {
         void deliveryService.trigger(store)
+        void catalogStatusService?.trigger('enrollment-ready')
       } else if (settings?.automaticContributions === false) {
         await deliveryService?.waitForIdle?.()
       }

@@ -43,6 +43,7 @@ import {
   readCatalogRefreshInterval,
 } from './registry/catalog-refresh-coordinator.mjs'
 import { ContributionDeliveryService } from './registry/contribution-delivery.mjs'
+import { CatalogStatusService } from './registry/catalog-status-service.mjs'
 import { InstallationIdentityService } from './registry/installation-identity.mjs'
 import { SnapshotService } from './registry/snapshot-service.mjs'
 import {
@@ -373,11 +374,19 @@ const contributionDelivery = installationIdentity
     })
   : null
 await installationIdentity?.initialize(store)
+const catalogStatusService = installationIdentity && store
+  ? new CatalogStatusService({
+      store,
+      identityService: installationIdentity,
+      applicationVersion: packageJson.version,
+    })
+  : null
 const catalogRefreshCoordinator = store
   ? new CatalogRefreshCoordinator({
       store,
       snapshotService: new SnapshotService(store, { officialOrigin: registryOrigin }),
       intervalMs: registryRefreshIntervalMs,
+      onRefresh: () => { void catalogStatusService?.trigger('catalog-activated') },
     })
   : null
 if (backupService) {
@@ -387,6 +396,7 @@ if (backupService) {
     }
     if (sections.includes('registryEnrollment') || sections.includes('registryConfiguration')) {
       await installationIdentity?.initialize(store)
+      void catalogStatusService?.trigger('enrollment-restored')
     }
     if (sections.includes('notifications') || sections.includes('notificationHistory')) {
       await notificationRuntime?.incidentManager.reconcilePolicies({ reason: 'notification-backup-restored' })
@@ -419,11 +429,13 @@ registerRegistryRoutes(app, {
   identityService: installationIdentity,
   deliveryService: contributionDelivery,
   catalogRefreshCoordinator,
+  catalogStatusService,
   registryPolicy: isDemoMode
     ? { forcedMode: 'connected', contributionsAllowed: false }
     : undefined,
 })
 catalogRefreshCoordinator?.start()
+catalogStatusService?.start()
 const backupSchedule = backupScheduler?.start()
 registerProjectRoutes(app, { withStore })
 registerWorkspaceRoutes(app, { withStore })
@@ -591,6 +603,7 @@ async function shutdown(signal) {
         () => updateCheckSchedule.stop(),
         () => backupSchedule?.stop(),
         () => catalogRefreshCoordinator?.stop(),
+        () => catalogStatusService?.stop(),
         () => contributionDelivery?.stop(store),
         () => telemetryRetentionSchedule?.stop(),
         () => notificationRuntime?.stop(),

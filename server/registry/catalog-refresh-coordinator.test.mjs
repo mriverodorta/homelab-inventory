@@ -10,6 +10,7 @@ function coordinatorFixture({
   intervalMs = DEFAULT_CATALOG_REFRESH_INTERVAL_MS,
   random = 0.5,
   refreshConnected = vi.fn(async () => ({ ok: true })),
+  onRefresh = vi.fn(),
 } = {}) {
   let registryMode = mode
   const timers = []
@@ -31,6 +32,7 @@ function coordinatorFixture({
     setTimeoutFn,
     clearTimeoutFn,
     logger,
+    onRefresh,
   })
 
   return {
@@ -45,6 +47,7 @@ function coordinatorFixture({
     cleared,
     timer,
     logger,
+    onRefresh,
   }
 }
 
@@ -120,6 +123,8 @@ describe('CatalogRefreshCoordinator', () => {
     expect(refreshConnected).toHaveBeenCalledOnce()
     release({ revision: 3 })
     await expect(manual).resolves.toEqual({ revision: 3 })
+    expect(fixture.onRefresh).toHaveBeenCalledOnce()
+    expect(fixture.onRefresh).toHaveBeenCalledWith({ revision: 3 })
   })
 
   it('starts immediately on a transition to connected and cancels on departure', async () => {
@@ -154,6 +159,7 @@ describe('CatalogRefreshCoordinator', () => {
     await vi.waitFor(() => expect(fixture.setTimeoutFn).toHaveBeenCalledOnce())
     expect(fixture.logger.warn).toHaveBeenCalledOnce()
     expect(fixture.logger.warn).toHaveBeenCalledWith('Automatic catalog refresh failed: Catalog unavailable')
+    expect(fixture.onRefresh).not.toHaveBeenCalled()
   })
 
   it('cancels future work and waits for an active refresh during shutdown', async () => {

@@ -23,6 +23,7 @@ export class CatalogRefreshCoordinator {
     setTimeoutFn = setTimeout,
     clearTimeoutFn = clearTimeout,
     logger = console,
+    onRefresh = null,
   }) {
     if (!store || !snapshotService) throw new Error('Catalog refresh coordinator requires a store and snapshot service.')
     if (!Number.isSafeInteger(intervalMs) || intervalMs < 0) {
@@ -35,6 +36,7 @@ export class CatalogRefreshCoordinator {
     this.setTimeoutFn = setTimeoutFn
     this.clearTimeoutFn = clearTimeoutFn
     this.logger = logger
+    this.onRefresh = onRefresh
     this.automaticActive = false
     this.inFlight = null
     this.timer = null
@@ -82,7 +84,10 @@ export class CatalogRefreshCoordinator {
     }
     this.inFlight = operation
     operation.then(
-      () => this.finishRefresh(operation),
+      (result) => {
+        this.finishRefresh(operation)
+        this.onRefresh?.(result)
+      },
       () => this.finishRefresh(operation),
     )
     return operation
