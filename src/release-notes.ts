@@ -114,7 +114,7 @@ export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
   ],
   notes: [
     'Portable backups now use logical format 2 archives with independent database schema versions, retain supported format 1 imports, and preserve dependency-aware selective restore without copying uploaded SQLite files over active data.',
-    'Initial workspace loading now uses one permission-aware application bootstrap after authentication, keeping normal startup within two API requests before scheduled background refreshes.',
+    'Initial workspace loading now uses permission-aware application and workbook bootstraps after authentication, keeping normal multi-project startup within three API requests before scheduled background refreshes.',
     'The original JSON files remain byte-identical after successful migration but are no longer active stores; the SQLite migration guide documents verification and rollback.',
     'Connected enrolled installations now send a signed six-hour catalog adoption check-in containing only the application version, active catalog revision, and request timestamp; failures never block startup, inventory work, or catalog browsing.',
   ],

@@ -59,6 +59,9 @@ export async function runSqlitePersistenceBenchmark({ source, output }) {
     throw new Error('Benchmark output must be separate from the source data directory.')
   }
   if (await pathExists(outputPath)) throw new Error('Benchmark output directory must not already exist.')
+  if (await pathExists(join(sourcePath, 'databases', 'persistence-engine.json'))) {
+    throw new Error('Benchmark source has already activated SQLite; use an untouched legacy data snapshot.')
+  }
 
   const sourceHashesBefore = await hashLegacyData(sourcePath)
   const sourceSnapshot = await readLatestLegacySnapshot(sourcePath)

@@ -58,7 +58,7 @@ describe('SQLite persistence benchmark', () => {
 
     expect(report.ok).toBe(true)
     expect(report.semantic.topology).toEqual({ assignments: 4, placements: 4, connections: 2 })
-    expect(report.performance.initialApiBootstrapRequests).toBe(2)
+    expect(report.performance.initialApiBootstrapRequests).toBe(3)
     expect(report.performance.initialApiBootstrapRequestBudget).toBe(3)
     expect(report.performance.routeRecomputationsOnHydration).toBe(0)
     expect(report.performance.cache.bytes).toBeLessThanOrEqual(64 * 1024 * 1024)

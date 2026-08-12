@@ -15,6 +15,12 @@ async function hasCurrentLegacyData() {
       stat(join(source, 'stores', 'inventory.json')),
       stat(join(source, 'stores', 'project.json')),
     ])
+    try {
+      await stat(join(source, 'databases', 'persistence-engine.json'))
+      return false
+    } catch (error: any) {
+      if (error?.code !== 'ENOENT') throw error
+    }
     return true
   } catch {
     return false

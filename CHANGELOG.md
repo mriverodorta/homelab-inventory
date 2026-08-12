@@ -17,7 +17,7 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 ### Changed
 
 - Portable backups now export logical format 2 archives with independent core, telemetry, and catalog schema versions while retaining format 1 import compatibility and dependency-aware selective restore.
-- Initial workspace hydration now shares one permission-aware bootstrap response after authentication, reducing normal startup to two API requests before background polling.
+- Initial workspace hydration now shares permission-aware application and workbook bootstrap responses after authentication, keeping normal multi-project startup within three API requests before background polling.
 - Project compatibility policy, Canvas viewport and preferences, memberships, placements, assignments, connections, audits, manual cable bends, and route caches now belong to their numeric project and workspace records.
 
 ### Fixed
