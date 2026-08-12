@@ -187,6 +187,8 @@ export type ProjectMetadata = {
   name: string
   version: number
   updatedAt: string
+  projectId?: number
+  workspaceId?: number
 }
 
 export type CompatibilityHostRef = {

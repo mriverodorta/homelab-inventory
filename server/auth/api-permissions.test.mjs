@@ -17,6 +17,11 @@ describe('API permission classification', () => {
     expect(classifyApiRequest('GET', '/api/notifications/incidents')).toEqual({ access: 'protected', permission: 'notifications.view' })
     expect(classifyApiRequest('POST', '/api/notifications/contact-points/1/test')).toEqual({ access: 'protected', permission: 'notifications.manage' })
     expect(classifyApiRequest('DELETE', '/api/inventory/items/cpu/1')).toEqual({ access: 'protected', permission: 'inventory.delete' })
+    expect(classifyApiRequest('GET', '/api/projects')).toEqual({ access: 'protected', permission: 'project.view' })
+    expect(classifyApiRequest('POST', '/api/projects')).toEqual({ access: 'protected', permission: 'project.settings.manage' })
+    expect(classifyApiRequest('GET', '/api/projects/2/workspaces/7')).toEqual({ access: 'protected', permission: 'canvas.view' })
+    expect(classifyApiRequest('PUT', '/api/projects/2/workspaces/7')).toEqual({ access: 'protected', permission: 'workspace.edit' })
+    expect(classifyApiRequest('PUT', '/api/projects/2/workspaces/reorder')).toEqual({ access: 'protected', permission: 'project.settings.manage' })
     expect(classifyApiRequest('GET', '/api/new-unclassified-route')).toEqual({ access: 'denied' })
   })
 

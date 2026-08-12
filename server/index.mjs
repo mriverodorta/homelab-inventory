@@ -32,6 +32,7 @@ import { registerEngineRoutes } from './engine-routes.mjs'
 import { registerInventoryRoutes } from './inventory-routes.mjs'
 import { registerOnboardingRoutes } from './onboarding-routes.mjs'
 import { registerProjectRoutes } from './project-routes.mjs'
+import { registerWorkspaceRoutes } from './workspace-routes.mjs'
 import { registerRegistryRoutes } from './registry-routes.mjs'
 import { registerRoutingCacheRoutes } from './routing-cache-routes.mjs'
 import { browserMutationGuard } from './request-security.mjs'
@@ -425,6 +426,7 @@ registerRegistryRoutes(app, {
 catalogRefreshCoordinator?.start()
 const backupSchedule = backupScheduler?.start()
 registerProjectRoutes(app, { withStore })
+registerWorkspaceRoutes(app, { withStore })
 registerRoutingCacheRoutes(app, { withStore })
 registerOnboardingRoutes(app, { withStore, disabled: isDemoMode })
 

@@ -60,6 +60,57 @@ afterEach(async () => {
 })
 
 describe('project routes', () => {
+  it('lists, creates, updates, archives, and restores project workbooks', async () => {
+    const workbooks = new Map([[1, {
+      project: { id: 1, name: 'Default Project' },
+      defaultWorkspaceId: 2,
+      workspaces: [{ id: 1, type: 'systems' }, { id: 2, type: 'canvas' }],
+    }]])
+    const store = {
+      listProjects: () => [...workbooks.values()].map(({ project }) => project),
+      getProjectWorkbook: (id) => {
+        const workbook = workbooks.get(id)
+        if (!workbook) throw new Error(`Active project ${id} was not found.`)
+        return workbook
+      },
+      createProject: ({ name }) => {
+        const workbook = { project: { id: 2, name }, defaultWorkspaceId: 4, workspaces: [] }
+        workbooks.set(2, workbook)
+        return workbook
+      },
+      updateProject: (id, changes) => {
+        const workbook = store.getProjectWorkbook(id)
+        workbook.project = { ...workbook.project, ...changes }
+        return workbook
+      },
+      archiveProject: (id) => workbooks.delete(id),
+      restoreProject: (id) => ({ project: { id, name: 'Restored' }, defaultWorkspaceId: 4, workspaces: [] }),
+      getProject: () => ({ id: 'default' }),
+      setProject: (project) => project,
+    }
+    const app = express()
+    app.use(express.json())
+    registerProjectRoutes(app, {
+      withStore: async (_request, response, handler) => {
+        try { await handler(store) } catch (error) { response.status(500).json({ message: error.message }) }
+      },
+    })
+    const server = await new Promise((resolve) => {
+      const listener = app.listen(0, () => resolve(listener))
+    })
+    servers.push(server)
+    const url = `http://127.0.0.1:${server.address().port}`
+
+    expect((await requestJson(`${url}/api/projects`)).body.projects).toEqual([{ id: 1, name: 'Default Project' }])
+    const created = await requestJson(`${url}/api/projects`, 'POST', { name: 'Downsize plan' })
+    expect(created.response.status).toBe(201)
+    expect(created.body.project).toEqual({ id: 2, name: 'Downsize plan' })
+    expect((await requestJson(`${url}/api/projects/2`, 'PATCH', { name: 'Compact lab' })).body.project.name).toBe('Compact lab')
+    expect((await requestJson(`${url}/api/projects/nope`)).response.status).toBe(400)
+    expect((await requestJson(`${url}/api/projects/2`, 'DELETE')).body).toEqual({ ok: true, projectId: 2 })
+    expect((await requestJson(`${url}/api/projects/2/restore`, 'POST')).body.project.name).toBe('Restored')
+  })
+
   it('round trips compatibility profiles and valid deterministic allocations through PUT and GET', async () => {
     const { store, url } = await createContext()
     store.createInventoryItems({

@@ -74,6 +74,39 @@ async function catalogTemplate(item: Record<string, unknown>, revision = 1, temp
 }
 
 describe('SQLite Homelab Inventory store facade', () => {
+  test('opens and saves project-scoped workspaces without changing the default store identity', async () => {
+    const store = await emptyFixtureStore()
+    try {
+      const created = store.createProject({ name: 'Downsize plan' })
+      const projectId = created.project.id
+      const canvasId = created.defaultWorkspaceId
+
+      expect(store.projectId).toBe(1)
+      expect(store.workspaceId).toBe(2)
+      expect(store.listProjects().map(({ id }) => id)).toEqual([1, projectId])
+      expect(store.getWorkspace(projectId, canvasId)).toMatchObject({
+        id: String(projectId),
+        metadata: { projectId, workspaceId: canvasId },
+        placements: [],
+      })
+
+      const scoped = store.getWorkspace(projectId, canvasId)
+      const saved = store.setWorkspace(projectId, canvasId, {
+        ...scoped,
+        metadata: { ...scoped.metadata, name: 'Compact topology' },
+      })
+      expect(saved.metadata).toMatchObject({
+        name: 'Compact topology',
+        projectId,
+        workspaceId: canvasId,
+      })
+      expect(store.getProject().metadata.name).not.toBe('Compact topology')
+      expect(() => store.getWorkspace(1, canvasId)).toThrow(/not found/iu)
+    } finally {
+      store.close()
+    }
+  })
+
   test('projects relational state into the current engine contract', async () => {
     const store = await fixtureStore()
     try {

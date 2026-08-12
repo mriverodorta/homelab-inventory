@@ -58,7 +58,7 @@ import {
   projectRegistryState,
 } from './core/projections/legacy-domains.ts'
 import { buildWorkspaceReadModel } from './core/read-model/workspace-read-model.ts'
-import { createRepositoryContext } from './core/repositories/index.ts'
+import { createProjectRepository, createRepositoryContext } from './core/repositories/index.ts'
 import { insertLegacyInventoryItem, replaceLegacyInventoryItem } from './migration/core-importer.ts'
 import { LEGACY_TABLE_BY_TYPE } from './legacy/identity-plan.ts'
 import { databaseStatus, type ManagedDatabase } from './sqlite/database.ts'
@@ -211,6 +211,7 @@ export class SqliteHomelabInventoryStore {
   readonly appVersion: string
   readonly cache: CacheStore
   readonly context: ReturnType<typeof createRepositoryContext>
+  readonly projects: ReturnType<typeof createProjectRepository>
   private readonly projectCommitListeners = new Set<(event: ProjectCommitEvent) => void>()
   private registryMutationTail: Promise<void> = Promise.resolve()
 
@@ -233,6 +234,7 @@ export class SqliteHomelabInventoryStore {
     this.appVersion = appVersion
     this.cache = cache
     this.context = createRepositoryContext(core.database, now)
+    this.projects = createProjectRepository(this.context)
   }
 
   private applicationMeta() {
@@ -567,6 +569,107 @@ export class SqliteHomelabInventoryStore {
       projectId: this.projectId,
       workspaceId: this.workspaceId,
     })
+  }
+
+  listProjects() {
+    return this.projects.listActive()
+  }
+
+  getProjectWorkbook(projectId: number) {
+    return this.projects.getWorkbook(projectId)
+  }
+
+  createProject(input: Parameters<typeof this.projects.create>[0]) {
+    const created = this.projects.create(input)
+    this.invalidateProjectReadModels(created.project.id, created.canvasWorkspaceId)
+    return this.projects.getWorkbook(created.project.id)
+  }
+
+  updateProject(projectId: number, changes: Parameters<typeof this.projects.update>[1]) {
+    this.projects.update(projectId, changes)
+    this.invalidateProjectReadModels(projectId)
+    return this.projects.getWorkbook(projectId)
+  }
+
+  archiveProject(projectId: number) {
+    this.projects.archive(projectId)
+    this.invalidateProjectReadModels(projectId)
+  }
+
+  restoreProject(projectId: number) {
+    this.projects.restore(projectId)
+    return this.projects.getWorkbook(projectId)
+  }
+
+  createWorkspace(projectId: number, input: Parameters<typeof this.projects.createWorkspace>[1]) {
+    const workspace = this.projects.createWorkspace(projectId, input)
+    this.invalidateProjectReadModels(projectId, workspace.id)
+    return this.projects.getWorkbook(projectId)
+  }
+
+  updateWorkspaceMetadata(
+    projectId: number,
+    workspaceId: number,
+    changes: Parameters<typeof this.projects.updateWorkspace>[2],
+  ) {
+    this.projects.updateWorkspace(projectId, workspaceId, changes)
+    this.invalidateProjectReadModels(projectId, workspaceId)
+    return this.projects.getWorkbook(projectId)
+  }
+
+  reorderWorkspaces(projectId: number, workspaceIds: readonly number[]) {
+    this.projects.reorderWorkspaces(projectId, workspaceIds)
+    return this.projects.getWorkbook(projectId)
+  }
+
+  archiveWorkspace(projectId: number, workspaceId: number) {
+    const workbook = this.projects.archiveWorkspace(projectId, workspaceId)
+    this.invalidateProjectReadModels(projectId, workspaceId)
+    return workbook
+  }
+
+  setDefaultWorkspace(projectId: number, workspaceId: number) {
+    this.projects.setDefaultWorkspace(projectId, workspaceId)
+    return this.projects.getWorkbook(projectId)
+  }
+
+  getWorkspace(projectId: number, workspaceId: number): ProjectState {
+    const workbook = this.projects.getWorkbook(projectId)
+    const workspace = workbook.workspaces.find((candidate) => candidate.id === workspaceId)
+    if (!workspace) {
+      throw new Error(`Active workspace ${workspaceId} was not found in project ${projectId}.`)
+    }
+    if (workspace.type !== 'canvas') {
+      throw new Error(`Workspace ${workspaceId} does not provide Canvas project state.`)
+    }
+    const project = buildWorkspaceReadModel({
+      database: this.core.database,
+      cache: this.cache,
+      projectId,
+      workspaceId,
+    })
+    return {
+      ...project,
+      metadata: { ...project.metadata, projectId, workspaceId },
+    }
+  }
+
+  setWorkspace(projectId: number, workspaceId: number, submitted: ProjectState): ProjectState {
+    const workspace = this.projects.getWorkbook(projectId).workspaces
+      .find((candidate) => candidate.id === workspaceId)
+    if (!workspace) throw new Error(`Active workspace ${workspaceId} was not found in project ${projectId}.`)
+    if (workspace.type !== 'canvas') throw new Error(`Workspace ${workspaceId} does not provide Canvas project state.`)
+    const scopedStore = new SqliteHomelabInventoryStore({
+      core: this.core,
+      dataDir: this.dataDir,
+      projectId,
+      workspaceId,
+      appVersion: this.appVersion,
+      cache: this.cache,
+      now: this.now,
+    })
+    scopedStore.setProject(submitted)
+    return this.getWorkspace(projectId, workspaceId)
   }
 
   getEngineSnapshot() {
@@ -2013,8 +2116,11 @@ export class SqliteHomelabInventoryStore {
     for (const listener of this.projectCommitListeners) listener(event)
   }
 
-  private invalidateProjectReadModels() {
-    this.cache.invalidateTags([`project:${this.projectId}`, `workspace:${this.workspaceId}`])
+  private invalidateProjectReadModels(projectId = this.projectId, workspaceId?: number) {
+    this.cache.invalidateTags([
+      `project:${projectId}`,
+      `workspace:${workspaceId ?? this.workspaceId}`,
+    ])
   }
 
   private resolveItem(type: string, legacyId: number) {
