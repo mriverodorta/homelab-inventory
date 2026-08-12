@@ -45,16 +45,44 @@ describe('relational persistence repositories', () => {
     const { handle, context } = await fixtureContext()
     try {
       const repository = createProjectRepository(context)
+      expect(repository.getWorkbook(1)).toMatchObject({
+        project: { id: 1, name: 'Default Project' },
+        defaultWorkspaceId: 2,
+        workspaces: [
+          { id: 1, type: 'systems', name: 'Systems', sortOrder: 0 },
+          { id: 2, type: 'canvas', name: 'Canvas', sortOrder: 1 },
+        ],
+      })
       const created = repository.create({ name: 'Downsize plan', includesGlobalInventory: false })
       expect(created.project.id).toBe(2)
       expect(repository.listWorkspaces(2).map(({ type }) => type)).toEqual(['systems', 'canvas'])
-      const diagram = repository.createWorkspace(2, { type: 'diagram', name: 'Network', iconKey: 'network', colorKey: 'green' })
-      repository.setDefaultWorkspace(2, diagram.id)
+      const secondary = repository.createWorkspace(2, { type: 'canvas', name: 'Network', iconKey: 'network', colorKey: 'green' })
+      repository.setDefaultWorkspace(2, secondary.id)
       expect(repository.get(2)?.revision).toBe(3)
+      expect(() => repository.updateWorkspace(2, created.systemsWorkspaceId, { name: 'Hosts' })).toThrow(/Systems/iu)
+      repository.updateWorkspace(2, secondary.id, { name: 'Network plan', iconKey: 'route', colorKey: 'cyan' })
+      expect(repository.getWorkbook(2).workspaces.at(-1)).toMatchObject({
+        id: secondary.id,
+        name: 'Network plan',
+        iconKey: 'route',
+        colorKey: 'cyan',
+      })
+      repository.reorderWorkspaces(2, [secondary.id, created.canvasWorkspaceId])
+      expect(repository.listWorkspaces(2).map(({ id, sortOrder }) => ({ id, sortOrder }))).toEqual([
+        { id: created.systemsWorkspaceId, sortOrder: 0 },
+        { id: secondary.id, sortOrder: 1 },
+        { id: created.canvasWorkspaceId, sortOrder: 2 },
+      ])
+      repository.archiveWorkspace(2, secondary.id)
+      expect(repository.getWorkbook(2).defaultWorkspaceId).toBe(created.canvasWorkspaceId)
+      expect(() => repository.archiveWorkspace(2, created.canvasWorkspaceId)).toThrow(/at least one Canvas/iu)
+      expect(() => repository.archiveWorkspace(2, created.systemsWorkspaceId)).toThrow(/Systems/iu)
       repository.update(2, { name: 'Compact homelab' })
       expect(repository.get(2)?.name).toBe('Compact homelab')
       repository.archive(2)
       expect(repository.listActive().map(({ id }) => id)).toEqual([1])
+      repository.restore(2)
+      expect(repository.listActive().map(({ id }) => id)).toEqual([1, 2])
       expect(() => repository.archive(1)).toThrow(/default project/iu)
     } finally {
       closeManagedDatabase(handle)
