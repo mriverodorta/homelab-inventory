@@ -62,12 +62,26 @@ describe('relational persistence repositories', () => {
       expect(repository.get(2)?.revision).toBe(3)
       expect(() => repository.updateWorkspace(2, created.systemsWorkspaceId, { name: 'Hosts' })).toThrow(/Systems/iu)
       repository.updateWorkspace(2, secondary.id, { name: 'Network plan', iconKey: 'route', colorKey: 'cyan' })
+      repository.updateCanvasConfiguration(2, secondary.id, {
+        settings: { snapItemsToGrid: true, networkCablesVisible: false },
+        viewport: { x: 12.4, y: -25.6, zoom: 0.75 },
+      })
       expect(repository.getWorkbook(2).workspaces.at(-1)).toMatchObject({
         id: secondary.id,
         name: 'Network plan',
         iconKey: 'route',
         colorKey: 'cyan',
+        settings: { snapItemsToGrid: true, networkCablesVisible: false },
+        viewportX: 12,
+        viewportY: -26,
+        viewportZoomBasisPoints: 7500,
       })
+      expect(() => repository.updateCanvasConfiguration(2, created.systemsWorkspaceId, {
+        settings: { snapItemsToGrid: true },
+      })).toThrow(/Only Canvas/iu)
+      expect(() => repository.updateCanvasConfiguration(2, secondary.id, {
+        viewport: { x: 0, y: 0, zoom: 3 },
+      })).toThrow(/viewport/iu)
       repository.reorderWorkspaces(2, [secondary.id, created.canvasWorkspaceId])
       expect(repository.listWorkspaces(2).map(({ id, sortOrder }) => ({ id, sortOrder }))).toEqual([
         { id: created.systemsWorkspaceId, sortOrder: 0 },

@@ -64,6 +64,7 @@ function CanvasViewport({
   onResolveConnectionRouteSides,
   onCanonicalizeConnectionRoutes,
   onViewportReady,
+  onViewportChange,
   onCanvasClick,
   canUndo,
   canRedo,
@@ -77,6 +78,7 @@ function CanvasViewport({
   snapCablesToGrid,
   avoidCableCollisionsGlobally,
   snapItemsToGrid,
+  initialViewport,
   updateAvailable,
   updateStatusLoading,
   canViewNotifications,
@@ -308,6 +310,8 @@ function CanvasViewport({
       }}
       nodeDragThreshold={nodeDragThreshold}
       snapItemsToGrid={snapItemsToGrid}
+      initialViewport={initialViewport}
+      onViewportChange={onViewportChange}
       forceRenderAllNodes={forceRenderAllNodes}
       nodesDraggable={canEditCanvas}
       activity={canvasActivity}

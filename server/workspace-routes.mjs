@@ -90,6 +90,17 @@ export function registerWorkspaceRoutes(app, { withStore }) {
     }, { status: 400, message: 'Unable to update workspace.' })
   })
 
+  app.patch('/api/projects/:projectId/workspaces/:workspaceId/configuration', (request, response) => {
+    void withStore(request, response, async (store) => {
+      try {
+        const { projectId, workspaceId } = ids(request)
+        response.json(store.updateCanvasWorkspaceConfiguration(projectId, workspaceId, request.body ?? {}))
+      } catch (error) {
+        respond(response, error)
+      }
+    }, { status: 400, message: 'Unable to update Canvas configuration.' })
+  })
+
   app.delete('/api/projects/:projectId/workspaces/:workspaceId', (request, response) => {
     void withStore(request, response, async (store) => {
       try {

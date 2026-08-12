@@ -74,16 +74,6 @@ function App() {
   const [saveStatus, setSaveStatus] = useState<SaveStatus>('saved')
   const [canonicalMutationBusy, setCanonicalMutationBusy] = useState(false)
   const [canvasOperationLabel, setCanvasOperationLabel] = useState<string | null>(null)
-  const workspacePreferences = useWorkspacePreferences()
-  const {
-    inventoryWidth,
-    setInventoryWidth,
-    desktopInventoryVisible,
-    setDesktopInventoryVisible,
-    autoCenterOnSelect,
-    openCreatedConnectionInspector,
-    snapItemsToGrid,
-  } = workspacePreferences
   const [mobileInventoryOpen, setMobileInventoryOpen] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [notificationsOpen, setNotificationsOpen] = useState(false)
@@ -112,6 +102,20 @@ function App() {
   const workbookController = useWorkbookController({
     beforeNavigate: settleLegacyProjectPersistence,
   })
+  const workspacePreferences = useWorkspacePreferences({
+    workspace: workbookController.sourceCanvasWorkspace,
+    onWorkspaceSettingsChange: (settings) => workbookController.updateCanvasConfiguration({ settings }),
+    onWorkspaceViewportChange: (viewport) => workbookController.updateCanvasConfiguration({ viewport }),
+  })
+  const {
+    inventoryWidth,
+    setInventoryWidth,
+    desktopInventoryVisible,
+    setDesktopInventoryVisible,
+    autoCenterOnSelect,
+    openCreatedConnectionInspector,
+    snapItemsToGrid,
+  } = workspacePreferences
   const topologyQuery = useTopologyQuery(
     workbookController.activeWorkspace?.type === 'canvas' ? project : null,
   )

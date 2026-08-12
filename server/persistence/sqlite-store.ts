@@ -657,6 +657,16 @@ export class SqliteHomelabInventoryStore {
     return this.projects.getWorkbook(projectId)
   }
 
+  updateCanvasWorkspaceConfiguration(
+    projectId: number,
+    workspaceId: number,
+    input: Parameters<typeof this.projects.updateCanvasConfiguration>[2],
+  ) {
+    const workbook = this.projects.updateCanvasConfiguration(projectId, workspaceId, input)
+    this.invalidateProjectReadModels(projectId, workspaceId)
+    return workbook
+  }
+
   reorderWorkspaces(projectId: number, workspaceIds: readonly number[]) {
     this.projects.reorderWorkspaces(projectId, workspaceIds)
     return this.projects.getWorkbook(projectId)

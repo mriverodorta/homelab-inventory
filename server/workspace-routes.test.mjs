@@ -17,6 +17,7 @@ async function fixture() {
       if (workspaceId === 1) throw new Error('The Systems workspace name, icon, and color are fixed.')
       return { workspaceId, changes }
     }),
+    updateCanvasWorkspaceConfiguration: vi.fn((_projectId, workspaceId, input) => ({ workspaceId, configuration: input })),
     archiveWorkspace: vi.fn((_projectId, workspaceId) => ({ archivedWorkspaceId: workspaceId })),
     getWorkspace: vi.fn((projectId, workspaceId) => {
       if (projectId !== 1 || workspaceId !== 2) {
@@ -78,5 +79,15 @@ describe('workspace routes', () => {
     const reordered = await requestJson(`${url}/api/projects/1/workspaces/reorder`, 'PUT', { workspaceIds: [3, 2] })
     expect(reordered.response.status).toBe(200)
     expect(store.reorderWorkspaces).toHaveBeenCalledWith(1, [3, 2])
+
+    const configured = await requestJson(`${url}/api/projects/1/workspaces/2/configuration`, 'PATCH', {
+      settings: { snapItemsToGrid: true },
+      viewport: { x: 24, y: 36, zoom: 0.8 },
+    })
+    expect(configured.response.status).toBe(200)
+    expect(store.updateCanvasWorkspaceConfiguration).toHaveBeenCalledWith(1, 2, {
+      settings: { snapItemsToGrid: true },
+      viewport: { x: 24, y: 36, zoom: 0.8 },
+    })
   })
 })

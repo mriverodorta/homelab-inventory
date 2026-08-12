@@ -277,7 +277,7 @@ function GeneralSettings(props: SettingsDialogProps) {
   const canEditConnections = usePermission('connections.edit')
 
   return (
-    <SettingsSection title="General" description="Workspace preferences stored only in this browser.">
+    <SettingsSection title="General" description="Browser controls and shared settings for this Canvas workspace.">
       <SettingRow label="Show inventory at startup" description="Keep the inventory rail open when this browser loads the workbench.">
         <Switch aria-label="Show inventory at startup" checked={props.inventoryVisible} onCheckedChange={props.onInventoryVisibleChange} />
       </SettingRow>
@@ -371,10 +371,10 @@ function GeneralSettings(props: SettingsDialogProps) {
           disabled={!canEditConnections || props.manualCableRouteCount === 0 || props.restoringAutomaticCableRoutes}
         />
       </SettingRow>
-      <SettingRow label="Reset browser preferences" description="Restore only this browser's workspace controls to their defaults.">
+      <SettingRow label="Reset workspace preferences" description="Restore this browser's controls and the current Canvas workspace settings to their defaults.">
         <ConfirmSettingsAction
-          title="Reset browser preferences?"
-          description="Inventory layout, selection, cable display, connection Inspector, collision avoidance, and grid snapping preferences will return to their defaults in this browser. Project data is not changed."
+          title="Reset workspace preferences?"
+          description="Browser layout controls and shared settings for this Canvas workspace will return to their defaults. Inventory and topology are not changed."
           actionLabel="Reset preferences"
           onConfirm={props.onResetBrowserPreferences}
         />

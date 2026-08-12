@@ -35,6 +35,29 @@ export type UpdateWorkspaceInput = Readonly<{
   colorKey?: string
 }>
 
+export type CanvasWorkspaceSettings = Readonly<{
+  networkCablesVisible?: boolean
+  powerCablesVisible?: boolean
+  displayCablesVisible?: boolean
+  snapCablesToGrid?: boolean
+  avoidCableCollisionsGlobally?: boolean
+  snapItemsToGrid?: boolean
+}>
+
+export type UpdateCanvasConfigurationInput = Readonly<{
+  settings?: CanvasWorkspaceSettings
+  viewport?: Readonly<{ x: number; y: number; zoom: number }>
+}>
+
+const CANVAS_SETTING_KEYS = new Set([
+  'networkCablesVisible',
+  'powerCablesVisible',
+  'displayCablesVisible',
+  'snapCablesToGrid',
+  'avoidCableCollisionsGlobally',
+  'snapItemsToGrid',
+])
+
 export type ProjectDeletionImpact = Readonly<{
   projectId: number
   projectName: string
@@ -359,6 +382,54 @@ export function createProjectRepository(context: RepositoryContext) {
     return listWorkspaces(projectId).find((workspace) => workspace.id === workspaceId)!
   }
 
+  function updateCanvasConfiguration(
+    projectId: number,
+    workspaceId: number,
+    input: UpdateCanvasConfigurationInput,
+  ) {
+    const workspace = activeWorkspace(projectId, workspaceId)
+    if (workspace.type !== 'canvas') throw new Error('Only Canvas workspaces have Canvas configuration.')
+    const current = db.select().from(canvasWorkspaces).where(eq(canvasWorkspaces.id, workspaceId)).get()
+    if (!current) throw new Error(`Canvas configuration for workspace ${workspaceId} was not found.`)
+    const currentSettings = parseJson(current.settingsJson, {} as Record<string, unknown>)
+    const settings = input.settings ?? {}
+    for (const [key, value] of Object.entries(settings)) {
+      if (!CANVAS_SETTING_KEYS.has(key) || typeof value !== 'boolean') {
+        throw new Error(`Canvas setting ${key} is invalid.`)
+      }
+    }
+    const viewport = input.viewport
+    if (viewport && (
+      !Number.isFinite(viewport.x)
+      || !Number.isFinite(viewport.y)
+      || !Number.isFinite(viewport.zoom)
+      || viewport.zoom < 0.25
+      || viewport.zoom > 1.8
+    )) {
+      throw new Error('Canvas viewport is invalid.')
+    }
+    if (!viewport && Object.keys(settings).length === 0) return getWorkbook(projectId)
+
+    const at = now()
+    db.update(canvasWorkspaces).set({
+      settingsJson: JSON.stringify({
+        ...currentSettings,
+        ...settings,
+        ...(viewport ? { viewportPersisted: true } : {}),
+      }),
+      ...(viewport ? {
+        viewportX: Math.round(viewport.x),
+        viewportY: Math.round(viewport.y),
+        viewportZoomBasisPoints: Math.round(viewport.zoom * 10_000),
+      } : {}),
+    }).where(eq(canvasWorkspaces.id, workspaceId)).run()
+    db.update(workspaces).set({
+      revision: workspace.revision + 1,
+      updatedAtMs: at,
+    }).where(and(eq(workspaces.projectId, projectId), eq(workspaces.id, workspaceId))).run()
+    return getWorkbook(projectId)
+  }
+
   function reorderWorkspaces(projectId: number, orderedWorkspaceIds: readonly number[]) {
     assertPositiveId(projectId, 'Project ID')
     if (new Set(orderedWorkspaceIds).size !== orderedWorkspaceIds.length) {
@@ -450,6 +521,7 @@ export function createProjectRepository(context: RepositoryContext) {
     removeArchived,
     createWorkspace,
     updateWorkspace,
+    updateCanvasConfiguration,
     reorderWorkspaces,
     archiveWorkspace,
     setDefaultWorkspace,

@@ -103,6 +103,7 @@ export type WorkbenchCanvasProps = {
   snapCablesToGrid: boolean
   avoidCableCollisionsGlobally: boolean
   snapItemsToGrid: boolean
+  initialViewport: { x: number; y: number; zoom: number } | null
   updateAvailable: boolean
   updateStatusLoading: boolean
   canViewNotifications: boolean
@@ -128,6 +129,7 @@ export type WorkbenchCanvasProps = {
   }>) => Promise<void>
   onCanonicalizeConnectionRoutes: (changes: CableRouteCanonicalRepair[]) => Promise<void>
   onViewportReady: (canvasController: CanvasController) => void
+  onViewportChange: (viewport: { x: number; y: number; zoom: number }) => void
   onCanvasClick: () => void
   onUndo: () => void
   onRedo: () => void

@@ -9,7 +9,9 @@ import {
   reorderWorkspaces,
   setDefaultWorkspace,
   updateProject,
+  updateCanvasWorkspaceConfiguration,
   updateWorkspace,
+  type CanvasWorkspaceConfigurationInput,
   type ProjectInput,
   type ProjectWorkbook,
   type WorkspaceInput,
@@ -193,6 +195,13 @@ export function useWorkbookController({ beforeNavigate }: WorkbookControllerOpti
   const updateWorkspaceMutation = useMutation({
     mutationFn: ({ projectId, workspaceId, input }: { projectId: number; workspaceId: number; input: Omit<WorkspaceInput, 'type'> }) => updateWorkspace(projectId, workspaceId, input),
   })
+  const updateCanvasConfigurationMutation = useMutation({
+    mutationFn: ({ projectId, workspaceId, input }: {
+      projectId: number
+      workspaceId: number
+      input: CanvasWorkspaceConfigurationInput
+    }) => updateCanvasWorkspaceConfiguration(projectId, workspaceId, input),
+  })
   const archiveWorkspaceMutation = useMutation({
     mutationFn: ({ projectId, workspaceId }: { projectId: number; workspaceId: number }) => archiveWorkspace(projectId, workspaceId),
   })
@@ -293,6 +302,15 @@ export function useWorkbookController({ beforeNavigate }: WorkbookControllerOpti
     updateWorkspace: (workspaceId: number, input: Omit<WorkspaceInput, 'type'>) => execute(async () => {
       if (!activeWorkbook) return
       const workbook = await updateWorkspaceMutation.mutateAsync({ projectId: activeWorkbook.project.id, workspaceId, input })
+      writeWorkbook(workbook)
+    }),
+    updateCanvasConfiguration: (input: CanvasWorkspaceConfigurationInput) => execute(async () => {
+      if (!activeWorkbook || !sourceCanvasWorkspace) return
+      const workbook = await updateCanvasConfigurationMutation.mutateAsync({
+        projectId: activeWorkbook.project.id,
+        workspaceId: sourceCanvasWorkspace.id,
+        input,
+      })
       writeWorkbook(workbook)
     }),
     archiveWorkspace: (workspaceId: number) => execute(async () => {

@@ -75,6 +75,7 @@ const PROTECTED_ROUTES = [
   ['PUT', /^\/api\/projects\/[1-9]\d*\/workspaces\/[1-9]\d*\/?$/, 'workspace.edit'],
   ['POST', /^\/api\/projects\/[1-9]\d*\/workspaces\/?$/, 'project.settings.manage'],
   ['PATCH', /^\/api\/projects\/[1-9]\d*\/workspaces\/[1-9]\d*\/?$/, 'project.settings.manage'],
+  ['PATCH', /^\/api\/projects\/[1-9]\d*\/workspaces\/[1-9]\d*\/configuration\/?$/, 'workspace.edit'],
   ['DELETE', /^\/api\/projects\/[1-9]\d*\/workspaces\/[1-9]\d*\/?$/, 'project.settings.manage'],
   ['PUT', /^\/api\/projects\/[1-9]\d*\/(?:workspaces\/reorder|default-workspace)\/?$/, 'project.settings.manage'],
   ['GET', /^\/api\/bootstrap\/?$/, 'workspace.view'],

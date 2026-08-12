@@ -27,6 +27,7 @@ describe('API permission classification', () => {
     expect(classifyApiRequest('DELETE', '/api/projects/2/permanent')).toEqual({ access: 'protected', permission: 'project.settings.manage' })
     expect(classifyApiRequest('GET', '/api/projects/2/workspaces/7')).toEqual({ access: 'protected', permission: 'canvas.view' })
     expect(classifyApiRequest('PUT', '/api/projects/2/workspaces/7')).toEqual({ access: 'protected', permission: 'workspace.edit' })
+    expect(classifyApiRequest('PATCH', '/api/projects/2/workspaces/7/configuration')).toEqual({ access: 'protected', permission: 'workspace.edit' })
     expect(classifyApiRequest('PUT', '/api/projects/2/workspaces/reorder')).toEqual({ access: 'protected', permission: 'project.settings.manage' })
     expect(classifyApiRequest('GET', '/api/new-unclassified-route')).toEqual({ access: 'denied' })
   })

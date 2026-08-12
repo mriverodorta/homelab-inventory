@@ -188,6 +188,7 @@ export function createWorkspaceSurfaceProps({
       snapCablesToGrid: preferences.snapCablesToGrid,
       avoidCableCollisionsGlobally: preferences.avoidCableCollisionsGlobally,
       snapItemsToGrid: preferences.snapItemsToGrid,
+      initialViewport: preferences.initialViewport,
       updateAvailable,
       updateStatusLoading,
       canViewNotifications,
@@ -206,6 +207,7 @@ export function createWorkspaceSurfaceProps({
       onViewportReady: (controller) => {
         canvasControllerRef.current = controller
       },
+      onViewportChange: preferences.persistViewport,
       onCanvasClick: navigation.clearCanvasSelection,
       onUndo: undo,
       onRedo: redo,

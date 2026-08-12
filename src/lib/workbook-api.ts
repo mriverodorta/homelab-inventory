@@ -63,6 +63,24 @@ export type WorkspaceSummary = {
   sortOrder: number
   revision: number
   systemKey: string | null
+  viewportX?: number | null
+  viewportY?: number | null
+  viewportZoomBasisPoints?: number | null
+  settings?: Record<string, unknown>
+}
+
+export type CanvasWorkspaceSettings = {
+  networkCablesVisible: boolean
+  powerCablesVisible: boolean
+  displayCablesVisible: boolean
+  snapCablesToGrid: boolean
+  avoidCableCollisionsGlobally: boolean
+  snapItemsToGrid: boolean
+}
+
+export type CanvasWorkspaceConfigurationInput = {
+  settings?: Partial<CanvasWorkspaceSettings>
+  viewport?: { x: number; y: number; zoom: number }
 }
 
 export type ProjectWorkbook = {
@@ -147,6 +165,17 @@ export function updateWorkspace(
   input: Partial<Omit<WorkspaceInput, 'type'>>,
 ): Promise<ProjectWorkbook> {
   return apiRequest<ProjectWorkbook>(`/api/projects/${projectId}/workspaces/${workspaceId}`, {
+    method: 'PATCH',
+    body: JSON.stringify(input),
+  })
+}
+
+export function updateCanvasWorkspaceConfiguration(
+  projectId: number,
+  workspaceId: number,
+  input: CanvasWorkspaceConfigurationInput,
+): Promise<ProjectWorkbook> {
+  return apiRequest<ProjectWorkbook>(`/api/projects/${projectId}/workspaces/${workspaceId}/configuration`, {
     method: 'PATCH',
     body: JSON.stringify(input),
   })

@@ -5,6 +5,7 @@ import {
   MiniMap,
   ReactFlow,
   type ReactFlowProps,
+  type Viewport,
 } from '@xyflow/react'
 import type { ComponentProps, RefObject } from 'react'
 import type { CableFlowEdge } from '@/components/cable-edge'
@@ -47,6 +48,8 @@ interface CanvasViewportSurfaceProps {
   flowEvents: CanvasFlowProps
   nodeDragThreshold: number
   snapItemsToGrid: boolean
+  initialViewport: Viewport | null
+  onViewportChange(viewport: Viewport): void
   forceRenderAllNodes: boolean
   nodesDraggable: boolean
   activity: CanvasActivity | null
@@ -66,6 +69,8 @@ export function CanvasViewportSurface({
   flowEvents,
   nodeDragThreshold,
   snapItemsToGrid,
+  initialViewport,
+  onViewportChange,
   forceRenderAllNodes,
   nodesDraggable,
   activity,
@@ -124,6 +129,8 @@ export function CanvasViewportSurface({
           nodesDraggable={nodesDraggable}
           snapToGrid={snapItemsToGrid}
           snapGrid={[GRID_SIZE, GRID_SIZE]}
+          defaultViewport={initialViewport ?? { x: 0, y: 0, zoom: 1 }}
+          onMoveEnd={(_event, viewport) => onViewportChange(viewport)}
           panOnDrag
           zoomOnScroll
           zoomOnPinch
@@ -133,7 +140,7 @@ export function CanvasViewportSurface({
           elevateEdgesOnSelect={false}
           onlyRenderVisibleElements={!forceRenderAllNodes}
           proOptions={{ hideAttribution: true }}
-          fitView={hasPlacements}
+          fitView={hasPlacements && initialViewport === null}
           className="homelab-inventory-flow bg-[#fbf8f1]"
         >
           <Background
