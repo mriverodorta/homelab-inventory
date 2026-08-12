@@ -109,6 +109,10 @@ describe('telemetry reference migration', () => {
           metrics: { cpu: { percent: id / 10 }, memory: { usedBytes: id, totalBytes: 4096 } },
         }))
       }
+      const insertEvent = source.query(`INSERT INTO component_events (id, host_type, host_id, family, entity_key, event_kind, observed_at_ms, state_hash, state_json) VALUES (?, 'server', 7, 'service', ?, 'observed', ?, ?, '{"active":true}')`)
+      for (let id = 2; id <= 600; id += 1) {
+        insertEvent.run(id, `service-${id}`, id + 1000, String(id).padStart(64, '0'))
+      }
     }).immediate()
     source.close(false)
 
@@ -119,6 +123,7 @@ describe('telemetry reference migration', () => {
     expect(migrated.query('SELECT count(*) AS count FROM telemetry_samples WHERE agent_id = 13 AND host_item_id = 41').get())
       .toEqual({ count: 80 })
     expect(migrated.query('SELECT count(*) AS count FROM host_metric_samples').get()).toEqual({ count: 80 })
+    expect(migrated.query('SELECT count(*) AS count FROM component_events WHERE host_item_id = 41').get()).toEqual({ count: 600 })
     migrated.close(false)
   })
 

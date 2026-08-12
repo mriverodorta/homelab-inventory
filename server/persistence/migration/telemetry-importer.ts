@@ -27,6 +27,7 @@ const ROW_IDENTIFIERS = Object.freeze({
   component_events: ['id'],
 } as const)
 const MIGRATION_BATCH_SIZE = 32
+const EVENT_MIGRATION_BATCH_SIZE = 256
 
 function sqlString(value: string) {
   return `'${value.replaceAll("'", "''")}'`
@@ -117,16 +118,26 @@ function projectSample(database: Database, row: TelemetryRow) {
 
 function sourceSummary(database: Database) {
   const sequenceHash = createHash('sha256')
-  const query = database.query(`
+  const firstPage = database.query(`
     SELECT id, device_id, host_type, host_id, sequence,
       received_at_ms, collected_at_ms, payload_json
     FROM telemetry_samples
     ORDER BY id
-    LIMIT ? OFFSET ?
+    LIMIT ?
   `)
-  let offset = 0
+  const nextPage = database.query(`
+    SELECT id, device_id, host_type, host_id, sequence,
+      received_at_ms, collected_at_ms, payload_json
+    FROM telemetry_samples
+    WHERE id > ?
+    ORDER BY id
+    LIMIT ?
+  `)
+  let lastId: unknown = null
   while (true) {
-    const rows = query.all(MIGRATION_BATCH_SIZE, offset) as TelemetryRow[]
+    const rows = (lastId === null
+      ? firstPage.all(MIGRATION_BATCH_SIZE)
+      : nextPage.all(lastId, MIGRATION_BATCH_SIZE)) as TelemetryRow[]
     if (rows.length === 0) break
     for (const row of rows) {
       sequenceHash.update(JSON.stringify([
@@ -136,7 +147,7 @@ function sourceSummary(database: Database) {
       ]))
       sequenceHash.update('\n')
     }
-    offset += rows.length
+    lastId = rows.at(-1)?.id
   }
   return {
     counts: Object.fromEntries(REFERENCED_TABLES.map((table) => [table, count(database, table)])),
@@ -144,14 +155,26 @@ function sourceSummary(database: Database) {
   }
 }
 
-function forEachBatch(database: Database, table: string, order: readonly string[], callback: (rows: TelemetryRow[]) => void) {
-  const query = database.query(`SELECT * FROM ${table} ORDER BY ${order.join(', ')} LIMIT ? OFFSET ?`)
-  let offset = 0
+function forEachBatch(
+  database: Database,
+  table: string,
+  order: readonly string[],
+  callback: (rows: TelemetryRow[]) => void,
+  batchSize = MIGRATION_BATCH_SIZE,
+) {
+  const columns = order.join(', ')
+  const placeholders = order.map(() => '?').join(', ')
+  const firstPage = database.query(`SELECT * FROM ${table} ORDER BY ${columns} LIMIT ?`)
+  const nextPage = database.query(`SELECT * FROM ${table} WHERE (${columns}) > (${placeholders}) ORDER BY ${columns} LIMIT ?`)
+  let cursor: unknown[] | null = null
   while (true) {
-    const rows = query.all(MIGRATION_BATCH_SIZE, offset) as TelemetryRow[]
+    const rows = (cursor === null
+      ? firstPage.all(batchSize)
+      : nextPage.all(...cursor, batchSize)) as TelemetryRow[]
     if (rows.length === 0) break
     callback(rows)
-    offset += rows.length
+    const last = rows.at(-1) as TelemetryRow
+    cursor = order.map((column) => last[column])
   }
 }
 
@@ -203,7 +226,7 @@ export async function migrateTelemetryReferences({ sourcePath, targetPath, ident
             }
           }
         }).immediate()
-      })
+      }, table === 'component_events' ? EVENT_MIGRATION_BATCH_SIZE : MIGRATION_BATCH_SIZE)
     }
     targetDatabase.exec(`
         DELETE FROM filesystem_samples;

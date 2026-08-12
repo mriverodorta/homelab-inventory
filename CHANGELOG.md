@@ -14,6 +14,7 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 - The pre-migration backup path no longer opens or upgrades telemetry before the complete rollback set exists, and telemetry rekeying now runs in bounded batches instead of loading the full history into memory.
 - Revoked Agent identities now remain historical host bindings when a replacement Agent is active on the same host during SQLite cutover.
 - Failed first-start retries now retain only the newest verified pre-SQLite rollback set instead of accumulating another telemetry snapshot after every restart.
+- Large telemetry migrations now use indexed keyset batches for historical samples and component events, avoiding progressively slower offset scans during first startup.
 
 ## [0.12.0] - 2026-08-12
 
