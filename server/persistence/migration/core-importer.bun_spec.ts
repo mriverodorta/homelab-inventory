@@ -82,6 +82,39 @@ describe('schema-29 core import', () => {
     }
   })
 
+  test('preserves revoked agent history when a replacement is active on the same host', async () => {
+    const handle = await migratedDatabase()
+    const snapshot = schema29ProductionShapeFixture()
+    snapshot.agents.devices[3] = {
+      id: 3,
+      hostType: 'server',
+      hostId: 7,
+      publicKey: 'fixture-revoked-agent-key',
+      protocolMajor: 1,
+      version: '0.1.0',
+      revokedAt: '2026-08-10T12:00:00.000Z',
+      createdAt: '2026-08-09T12:00:00.000Z',
+    }
+    try {
+      importLegacyCore({
+        database: handle.database,
+        snapshot,
+        identityPlan: buildCanonicalIdentityPlan(snapshot),
+      })
+      expect(handle.database.query(`
+        SELECT alias.legacy_id, binding.state, binding.unbound_at_ms
+        FROM agent_host_bindings binding
+        JOIN agent_identity_aliases alias ON alias.agent_id = binding.agent_id
+        ORDER BY alias.legacy_id
+      `).all()).toEqual([
+        { legacy_id: 3, state: 'revoked', unbound_at_ms: Date.parse('2026-08-10T12:00:00.000Z') },
+        { legacy_id: 4, state: 'active', unbound_at_ms: null },
+      ])
+    } finally {
+      closeManagedDatabase(handle)
+    }
+  })
+
   test('normalizes every authentication entity and preserves numeric relationships', async () => {
     const handle = await migratedDatabase()
     const snapshot = schema29ProductionShapeFixture()

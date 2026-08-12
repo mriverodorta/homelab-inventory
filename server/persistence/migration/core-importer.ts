@@ -887,12 +887,32 @@ function importRegistry(database: Database, snapshot: LegacySnapshot, plan: Cano
   database.query('INSERT INTO application_metadata (key, value_json, updated_at_ms) VALUES (?, ?, ?)').run('legacy.registry-extended-state', json({ variantMatches: registry.variantMatches ?? [], contributionOutbox: registry.contributionOutbox ?? [], contributionLedger: registry.contributionLedger ?? [], contributionGroups: registry.contributionGroups ?? [], projectionCache: registry.projectionCache ?? [], privateTemplates: registry.privateTemplates ?? [], snapshot: registry.snapshot ?? null, installationIdentity: registry.installationIdentity ?? null }), now)
 }
 
+function legacyAgentBinding(agent: LegacyRecord, now: number) {
+  const explicitState = ['active', 'revoked', 'replaced', 'unlinked'].includes(agent.state)
+    ? agent.state
+    : null
+  const state = agent.revokedAt
+    ? 'revoked'
+    : agent.unboundAt
+      ? explicitState === 'replaced' ? 'replaced' : 'unlinked'
+      : explicitState ?? 'active'
+
+  return {
+    state,
+    boundAt: timestamp(agent.boundAt ?? agent.createdAt, now),
+    unboundAt: state === 'active'
+      ? null
+      : timestamp(agent.unboundAt ?? agent.revokedAt, null as any),
+  }
+}
+
 function importAgents(database: Database, snapshot: LegacySnapshot, plan: CanonicalIdentityPlan, now: number) {
   for (const agent of records(snapshot.agents?.devices)) {
     const id = plan.agents.get(String(agent.id))
+    const binding = legacyAgentBinding(agent, now)
     database.query('INSERT INTO agents (id, public_key, protocol_major, agent_version, capabilities_json, last_sequence, last_seen_at_ms, revoked_at_ms, created_at_ms) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)').run(id, agent.publicKey ?? `legacy-agent-${agent.id}`, positiveIntegerOrNull(agent.protocolMajor) ?? 1, agent.version ?? agent.agentVersion ?? 'legacy', json(agent.capabilities ?? {}), integerOrNull(agent.lastSequence) ?? 0, timestamp(agent.lastSeenAt, null as any), timestamp(agent.revokedAt, null as any), timestamp(agent.createdAt, now))
     database.query('INSERT INTO agent_identity_aliases (agent_id, legacy_id, created_at_ms) VALUES (?, ?, ?)').run(id, agent.id, now)
-    database.query('INSERT INTO agent_host_bindings (agent_id, host_item_id, state, bound_at_ms, unbound_at_ms) VALUES (?, ?, ?, ?, ?)').run(id, canonicalItemId(plan, agent.hostType, agent.hostId), agent.state ?? 'active', timestamp(agent.boundAt ?? agent.createdAt, now), timestamp(agent.unboundAt, null as any))
+    database.query('INSERT INTO agent_host_bindings (agent_id, host_item_id, state, bound_at_ms, unbound_at_ms) VALUES (?, ?, ?, ?, ?)').run(id, canonicalItemId(plan, agent.hostType, agent.hostId), binding.state, binding.boundAt, binding.unboundAt)
   }
   for (const enrollment of records(snapshot.agents?.enrollments)) {
     database.query('INSERT INTO agent_enrollment_codes (id, host_item_id, token_hash, expires_at_ms, used_at_ms, revoked_at_ms, created_at_ms) VALUES (?, ?, ?, ?, ?, ?, ?)').run(enrollment.id, canonicalItemId(plan, enrollment.hostType, enrollment.hostId), enrollment.tokenHash, timestamp(enrollment.expiresAt), timestamp(enrollment.usedAt, null as any), timestamp(enrollment.revokedAt, null as any), timestamp(enrollment.createdAt, now))
