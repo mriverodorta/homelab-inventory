@@ -141,9 +141,19 @@ describe('atomic SQLite persistence cutover', () => {
     }))
     await expect(ensureSqlitePersistence(stale.options)).resolves.toMatchObject({ migrated: true })
 
+    const reusedContainerPid = await context()
+    await writeFile(join(reusedContainerPid.dataDir, '.sqlite-migration.lock'), JSON.stringify({
+      version: 1, token: 'prior-container', pid: process.pid, startedAt: new Date().toISOString(),
+    }))
+    await expect(ensureSqlitePersistence(reusedContainerPid.options)).resolves.toMatchObject({ migrated: true })
+
     const active = await context()
     await writeFile(join(active.dataDir, '.sqlite-migration.lock'), JSON.stringify({
-      version: 1, token: 'active', pid: process.pid, startedAt: new Date().toISOString(),
+      version: 2,
+      token: 'active',
+      pid: process.pid,
+      processStartedAtMs: Math.round(Date.now() - process.uptime() * 1000),
+      startedAt: new Date().toISOString(),
     }))
     await expect(ensureSqlitePersistence(active.options)).rejects.toThrow('already running')
   })

@@ -15,6 +15,7 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 - Revoked Agent identities now remain historical host bindings when a replacement Agent is active on the same host during SQLite cutover.
 - Failed first-start retries now retain only the newest verified pre-SQLite rollback set instead of accumulating another telemetry snapshot after every restart.
 - Large telemetry migrations now use indexed keyset batches for historical samples and component events, avoiding progressively slower offset scans during first startup.
+- Interrupted container migrations now distinguish process instances instead of trusting PID 1 alone, allowing an immediate safe retry after container recreation.
 
 ## [0.12.0] - 2026-08-12
 

@@ -113,6 +113,7 @@ const RELEASE_0_12_0_DETAILS: UnreleasedReleaseNotes = {
     'Journaled SQLite restores now checkpoint WAL state and recover interrupted file swaps without exposing partial data, while normalized authentication tables preserve every account, identity, role, invitation, and security record.',
     'Project compatibility rules, Canvas preferences, topology, audits, manual cable bends, and route caches now remain isolated by numeric project and workspace IDs across navigation, restart, backup, restore, and disposable demo sessions.',
     'Large Agent histories migrate through indexed, memory-bounded keyset batches so mature installations do not stall during first-start SQLite conversion.',
+    'Interrupted first-start migrations now reclaim locks from a previous container instance even when the replacement process also runs as PID 1.',
     'Canonical Registry values import directly into SQLite without scaling, conflicting or precision-losing representations are rejected, and familiar units remain available through display-only adapters.',
     'Registry contributions no longer expose local adapter keys or project scope while unknown public product fields remain available for forward-compatible catalog records.',
   ],

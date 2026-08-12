@@ -65,6 +65,7 @@ export type EnsureSqlitePersistenceOptions = Readonly<{
 }>
 
 const LOCK_MAX_AGE_MS = 30 * 60 * 1000
+const PROCESS_STARTED_AT_MS = Math.round(Date.now() - process.uptime() * 1000)
 const MIGRATION_ARCHIVE_SECTIONS = Object.freeze(
   COMPLETE_BACKUP_SECTIONS.filter((section) => section !== 'agentTelemetry'),
 )
@@ -88,7 +89,13 @@ async function acquireLock(dataDir: string, now: Date) {
   await mkdir(dataDir, { recursive: true, mode: 0o700 })
   try {
     const handle = await open(lockPath, 'wx', 0o600)
-    await handle.writeFile(`${JSON.stringify({ version: 1, token, pid: process.pid, startedAt: now.toISOString() })}\n`)
+    await handle.writeFile(`${JSON.stringify({
+      version: 2,
+      token,
+      pid: process.pid,
+      processStartedAtMs: PROCESS_STARTED_AT_MS,
+      startedAt: now.toISOString(),
+    })}\n`)
     await handle.close()
   } catch (error: any) {
     if (error?.code !== 'EEXIST') throw error
@@ -96,10 +103,14 @@ async function acquireLock(dataDir: string, now: Date) {
     try {
       const existing = JSON.parse(await readFile(lockPath, 'utf8'))
       const startedAt = Date.parse(existing.startedAt)
+      const sameProcessInstance = existing.pid !== process.pid
+        || (Number.isSafeInteger(existing.processStartedAtMs)
+          && Math.abs(existing.processStartedAtMs - PROCESS_STARTED_AT_MS) < 1_000)
       stale = !Number.isSafeInteger(existing.pid)
         || !Number.isFinite(startedAt)
         || now.getTime() - startedAt > LOCK_MAX_AGE_MS
         || !processExists(existing.pid)
+        || !sameProcessInstance
     } catch {
       stale = true
     }
