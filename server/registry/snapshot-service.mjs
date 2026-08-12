@@ -150,6 +150,14 @@ export class SnapshotService {
     this.legacyDigestPath = path.join(this.catalogDir, 'active-digests.json')
     this.legacyIndexPath = path.join(this.cacheDir, 'catalog.sqlite')
     this.resolvedPaths = null
+    this.indexInitialization = null
+    this.facetInitialization = null
+    this.facetCache = null
+  }
+
+  activeSnapshotKey() {
+    const snapshot = this.store.getRegistryState().snapshot
+    return snapshot ? `${snapshot.revision}:${snapshot.digest}` : null
   }
 
   generationName(revision, digest) {
@@ -426,10 +434,19 @@ export class SnapshotService {
     })
     await this.store.flush?.(['registry'])
     await this.writeActivePointer(finalPaths, registry.snapshot)
+    this.indexInitialization = null
+    this.facetInitialization = null
+    this.facetCache = null
     this.resolvedPaths = {
       ...finalPaths,
       revision: registry.snapshot.revision,
       digestValue: registry.snapshot.digest,
+    }
+    if (facetIndex) {
+      this.facetCache = {
+        key: this.activeSnapshotKey(),
+        value: { available: true, ...facetIndex },
+      }
     }
     await discoverContributionCandidates(
       this.store,
@@ -441,7 +458,7 @@ export class SnapshotService {
     return this.store.getRegistryState()
   }
 
-  async ensureIndex() {
+  async initializeIndex() {
     const paths = await this.resolveActivePaths()
     if (!paths) return null
     try {
@@ -462,6 +479,42 @@ export class SnapshotService {
     return paths
   }
 
+  async ensureIndex() {
+    const key = this.activeSnapshotKey()
+    if (!key) return null
+    if (this.indexInitialization?.key === key) return this.indexInitialization.promise
+
+    const promise = this.initializeIndex()
+    this.indexInitialization = { key, promise }
+    try {
+      return await promise
+    } finally {
+      if (this.indexInitialization?.promise === promise) this.indexInitialization = null
+    }
+  }
+
+  async warm() {
+    const key = this.activeSnapshotKey()
+    if (!key) return { available: false, categories: [] }
+    if (this.facetCache?.key === key) return this.facetCache.value
+    if (this.facetInitialization?.key === key) return this.facetInitialization.promise
+
+    const promise = (async () => {
+      const paths = await this.ensureIndex()
+      const value = paths
+        ? (await openCatalogIndex(paths.index)).facets()
+        : { available: false, categories: [] }
+      if (this.activeSnapshotKey() === key) this.facetCache = { key, value }
+      return value
+    })()
+    this.facetInitialization = { key, promise }
+    try {
+      return await promise
+    } finally {
+      if (this.facetInitialization?.promise === promise) this.facetInitialization = null
+    }
+  }
+
   async search(parameters) {
     const registry = this.store.getRegistryState()
     if (!registry.snapshot) return { total: 0, limit: 30, offset: 0, hasMore: false, nextOffset: null, items: [] }
@@ -470,10 +523,7 @@ export class SnapshotService {
   }
 
   async facets() {
-    const registry = this.store.getRegistryState()
-    if (!registry.snapshot) return { available: false, categories: [] }
-    const paths = await this.ensureIndex()
-    return (await openCatalogIndex(paths.index)).facets()
+    return this.warm()
   }
 
   async template(templateKey) {

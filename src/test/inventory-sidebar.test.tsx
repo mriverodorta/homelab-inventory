@@ -1,8 +1,17 @@
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { fireEvent, screen } from '@testing-library/react'
+import type { ReactElement } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 import { InventorySidebar } from '@/components/inventory-sidebar'
-import { renderWithOpenAuth as render } from '@/test/open-auth-test-render'
+import { renderWithOpenAuth } from '@/test/open-auth-test-render'
 import type { InventoryItem, InventoryType, ProjectState } from '@/types/inventory'
+
+function render(element: ReactElement) {
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  return renderWithOpenAuth(
+    <QueryClientProvider client={queryClient}>{element}</QueryClientProvider>,
+  )
+}
 
 const project: ProjectState = {
   id: 'default',

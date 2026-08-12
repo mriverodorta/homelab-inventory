@@ -5,7 +5,11 @@ import {
 } from '@/components/workbench-canvas-contract'
 import { useDomainEngine } from '@/hooks/use-domain-engine'
 import { usePermission } from '@/hooks/use-permission'
-import { useRegistryMutations, useRegistryQuery } from '@/hooks/use-registry'
+import {
+  useCatalogFacetPrefetch,
+  useRegistryMutations,
+  useRegistryQuery,
+} from '@/hooks/use-registry'
 import { useNotificationSnapshot } from '@/hooks/use-notifications'
 import {
   useCompatibleTopologyDestinations,
@@ -344,6 +348,10 @@ function App() {
     updateHighlighted,
   } = releaseUpdateController
   const registryQuery = useRegistryQuery(canViewRegistry)
+  useCatalogFacetPrefetch(
+    registryQuery.data?.snapshot,
+    canViewRegistry && Boolean(project),
+  )
   const notificationQuery = useNotificationSnapshot(canViewNotifications)
   const registryMutations = useRegistryMutations()
   const inventoryLifecycle = useInventoryLifecycle({

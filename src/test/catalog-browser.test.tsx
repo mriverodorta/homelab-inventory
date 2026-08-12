@@ -30,6 +30,8 @@ const cpu: CatalogSearchItem = {
   },
 }
 
+const snapshot = { revision: 4, digest: 'c'.repeat(64) }
+
 describe('CatalogBrowser', () => {
   beforeEach(() => {
     registryHooks.useCatalogFacets.mockReturnValue({
@@ -69,7 +71,7 @@ describe('CatalogBrowser', () => {
 
   it('opens with categories and does not query results until one is chosen', async () => {
     const user = userEvent.setup()
-    render(<CatalogBrowser onCreate={vi.fn()} />)
+    render(<CatalogBrowser onCreate={vi.fn()} snapshot={snapshot} />)
 
     expect(screen.getByRole('heading', { name: 'What hardware are you adding?' })).toBeInTheDocument()
     expect(registryHooks.useInfiniteCatalogSearch).toHaveBeenLastCalledWith(expect.any(Object), false)
@@ -86,7 +88,7 @@ describe('CatalogBrowser', () => {
 
   it('forwards multi-select filter values into the local catalog query', async () => {
     const user = userEvent.setup()
-    render(<CatalogBrowser onCreate={vi.fn()} />)
+    render(<CatalogBrowser onCreate={vi.fn()} snapshot={snapshot} />)
     await user.click(screen.getByRole('button', { name: /Processors/ }))
 
     const manufacturer = screen.getAllByRole('checkbox').find((checkbox) => checkbox.parentElement?.textContent?.includes('Intel'))
@@ -101,7 +103,7 @@ describe('CatalogBrowser', () => {
 
   it('gives each desktop catalog pane independent vertical overflow', async () => {
     const user = userEvent.setup()
-    render(<CatalogBrowser onCreate={vi.fn()} />)
+    render(<CatalogBrowser onCreate={vi.fn()} snapshot={snapshot} />)
 
     await user.click(screen.getByRole('button', { name: /Processors/ }))
 

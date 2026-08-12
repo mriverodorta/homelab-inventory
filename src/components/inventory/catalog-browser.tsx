@@ -21,12 +21,14 @@ import {
   SheetTitle,
 } from '@/components/ui/sheet'
 import { useCatalogFacets, useInfiniteCatalogSearch } from '@/hooks/use-registry'
-import type { CatalogFacetCategory } from '@/types/registry'
+import type { CatalogFacetCategory, RegistrySnapshot } from '@/types/registry'
 
 export function CatalogBrowser({
   onCreate,
+  snapshot,
 }: {
   onCreate: (templateKey: string, quantity: number, usageRole?: 'server' | 'desktop' | 'workstation' | 'other') => Promise<void>
+  snapshot: Pick<RegistrySnapshot, 'revision' | 'digest'>
 }) {
   const [category, setCategory] = useState<CatalogFacetCategory | null>(null)
   const [query, setQuery] = useState('')
@@ -36,7 +38,7 @@ export function CatalogBrowser({
   const [rangeFilters, setRangeFilters] = useState<CatalogRangeFilterState>({})
   const [filterSheetOpen, setFilterSheetOpen] = useState(false)
   const [pending, setPending] = useState(false)
-  const facets = useCatalogFacets()
+  const facets = useCatalogFacets(snapshot)
   const categories = useMemo(
     () => (facets.data?.categories ?? []).filter((candidate) => candidate.count > 0),
     [facets.data?.categories],

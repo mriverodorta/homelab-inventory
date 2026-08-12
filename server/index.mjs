@@ -44,8 +44,8 @@ import {
 } from './registry/catalog-refresh-coordinator.mjs'
 import { ContributionDeliveryService } from './registry/contribution-delivery.mjs'
 import { CatalogStatusService } from './registry/catalog-status-service.mjs'
+import { CatalogRuntime } from './registry/catalog-runtime.mjs'
 import { InstallationIdentityService } from './registry/installation-identity.mjs'
-import { SnapshotService } from './registry/snapshot-service.mjs'
 import {
   createRateLimitOptions,
   readRateLimitConfig,
@@ -92,6 +92,7 @@ const updateChannel = ['stable', 'latest'].includes(configuredUpdateChannel)
 const updateCheckEnabled = runtimeConfig.updateCheckEnabled
 const runningRevision = process.env.APP_REVISION ?? 'unknown'
 const registryOrigin = 'https://registry.homelabinventory.com'
+const catalogRuntime = new CatalogRuntime({ officialOrigin: registryOrigin })
 const registryRefreshIntervalMs = isDemoMode
   ? 0
   : readCatalogRefreshInterval()
@@ -129,9 +130,11 @@ if (isDemoMode) {
 
   demoManager = new DemoSessionManager({
     appVersion: packageJson.version,
-    catalogBootstrap: (currentStore) => new SnapshotService(currentStore, {
-      officialOrigin: registryOrigin,
-    }).refreshConnected(),
+    catalogBootstrap: async (currentStore) => {
+      const snapshotService = catalogRuntime.forStore(currentStore)
+      await snapshotService.refreshConnected()
+      await snapshotService.warm()
+    },
     dataDir,
     sourceDir: demoSourceDir,
     sessionMinutes: demoSessionMinutes,
@@ -370,7 +373,7 @@ const installationIdentity = !isDemoMode
 const contributionDelivery = installationIdentity
   ? new ContributionDeliveryService({
       identityService: installationIdentity,
-      digestHashes: (currentStore) => new SnapshotService(currentStore, { officialOrigin: registryOrigin }).knownContributionHashes(),
+      digestHashes: (currentStore) => catalogRuntime.forStore(currentStore).knownContributionHashes(),
     })
   : null
 await installationIdentity?.initialize(store)
@@ -382,10 +385,12 @@ const catalogStatusService = installationIdentity && store
       applicationCatalogContractVersion: APPLICATION_CATALOG_CONTRACT_VERSION,
     })
   : null
+const catalogSnapshotService = store ? catalogRuntime.forStore(store) : null
+await catalogSnapshotService?.warm()
 const catalogRefreshCoordinator = store
   ? new CatalogRefreshCoordinator({
       store,
-      snapshotService: new SnapshotService(store, { officialOrigin: registryOrigin }),
+      snapshotService: catalogSnapshotService,
       intervalMs: registryRefreshIntervalMs,
       onRefresh: () => { void catalogStatusService?.trigger('catalog-activated') },
     })
@@ -429,6 +434,7 @@ registerRegistryRoutes(app, {
   officialOrigin: registryOrigin,
   identityService: installationIdentity,
   deliveryService: contributionDelivery,
+  snapshotServiceFactory: (currentStore) => catalogRuntime.forStore(currentStore),
   catalogRefreshCoordinator,
   catalogStatusService,
   registryPolicy: isDemoMode

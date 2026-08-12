@@ -26,7 +26,7 @@ export function CatalogSourcePanel({
       ? 'Import a signed official catalog snapshot in Settings. Search remains entirely local after verification.'
       : 'Refresh the official signed catalog in Settings. Search runs against the local index and never sends your query.'
 
-  if (registry.snapshot && onCreate) return <CatalogBrowser onCreate={onCreate} />
+  if (registry.snapshot && onCreate) return <CatalogBrowser onCreate={onCreate} snapshot={registry.snapshot} />
 
   return (
     <div className="flex min-h-72 items-center justify-center p-6">

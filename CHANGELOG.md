@@ -6,6 +6,10 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 
 ## Unreleased
 
+### Changed
+
+- Catalog categories are now verified and warmed once during application startup, shared across Registry consumers, and prefetched in the browser before the Add Hardware dialog opens, removing the long first-open delay without retaining the full catalog in memory.
+
 ## [0.12.2] - 2026-08-12
 
 ### Fixed

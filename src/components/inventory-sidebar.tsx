@@ -1,5 +1,6 @@
 import { useDraggable } from '@dnd-kit/core'
 import { CSS } from '@dnd-kit/utilities'
+import { useQueryClient } from '@tanstack/react-query'
 import {
   Archive,
   AudioLines,
@@ -55,6 +56,7 @@ import type { InventoryFilters, InventoryStatusFilter } from '@/lib/sort'
 import type { InventoryItem, InventoryType, ProjectState } from '@/types/inventory'
 import { DEFAULT_REGISTRY_STATE, type RegistryState } from '@/types/registry'
 import { usePermission } from '@/hooks/use-permission'
+import { prefetchCatalogFacets } from '@/hooks/use-registry'
 
 const TYPE_COLORS: Record<InventoryType, string> = {
   server: 'border-l-[#adc19b]',
@@ -288,6 +290,7 @@ export function InventorySidebar({
   width,
   className,
 }: InventorySidebarProps) {
+  const queryClient = useQueryClient()
   const canCreate = usePermission('inventory.create')
   const canEdit = usePermission('inventory.edit')
   const canArchive = usePermission('inventory.archive')
@@ -321,6 +324,11 @@ export function InventorySidebar({
       })).filter((group) => group.items.length > 0),
     [items],
   )
+
+  function prefetchAddInventory() {
+    void InventoryItemDialog.prefetch()
+    void prefetchCatalogFacets(queryClient, registry.snapshot)
+  }
 
   useEffect(() => {
     setSelectedItemIds(new Set())
@@ -400,9 +408,12 @@ export function InventorySidebar({
               type="button"
               size="sm"
               className="h-8 shrink-0 bg-[#f7f1e8] text-[#20242c] hover:bg-[#e9dcc8]"
-              onPointerEnter={() => void InventoryItemDialog.prefetch()}
-              onFocus={() => void InventoryItemDialog.prefetch()}
-              onClick={() => setAddDialogOpen(true)}
+              onPointerEnter={prefetchAddInventory}
+              onFocus={prefetchAddInventory}
+              onClick={() => {
+                prefetchAddInventory()
+                setAddDialogOpen(true)
+              }}
             >
               <Plus className="size-3.5" />
               Add

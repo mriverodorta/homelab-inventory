@@ -1,4 +1,11 @@
-import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import {
+  type QueryClient,
+  useInfiniteQuery,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from '@tanstack/react-query'
+import { useEffect } from 'react'
 import {
   createPrivateTemplate,
   deletePrivateTemplate,
@@ -16,6 +23,7 @@ import {
   searchOfficialCatalog,
   updateRegistrySettings,
 } from '@/lib/registry-api'
+import type { RegistrySnapshot } from '@/types/registry'
 
 export const REGISTRY_QUERY_KEY = ['registry'] as const
 
@@ -83,12 +91,53 @@ export function useCatalogSearch(parameters: Parameters<typeof searchOfficialCat
   })
 }
 
-export function useCatalogFacets(enabled = true) {
-  return useQuery({
-    queryKey: ['registry', 'catalog-facets'],
+export type CatalogSnapshotIdentity = Pick<RegistrySnapshot, 'revision' | 'digest'>
+
+export function catalogFacetQueryKey(snapshot: CatalogSnapshotIdentity | null | undefined) {
+  return ['registry', 'catalog-facets', snapshot?.revision ?? null, snapshot?.digest ?? null] as const
+}
+
+function catalogFacetQueryOptions(snapshot: CatalogSnapshotIdentity | null | undefined) {
+  return {
+    queryKey: catalogFacetQueryKey(snapshot),
     queryFn: loadCatalogFacets,
-    enabled,
-    staleTime: 5 * 60_000,
+    staleTime: Number.POSITIVE_INFINITY,
+  }
+}
+
+export function prefetchCatalogFacets(
+  queryClient: QueryClient,
+  snapshot: CatalogSnapshotIdentity | null | undefined,
+) {
+  if (!snapshot) return Promise.resolve()
+  return queryClient.prefetchQuery(catalogFacetQueryOptions(snapshot))
+}
+
+export function useCatalogFacetPrefetch(
+  snapshot: CatalogSnapshotIdentity | null | undefined,
+  enabled = true,
+) {
+  const queryClient = useQueryClient()
+
+  useEffect(() => {
+    if (!enabled || !snapshot) return
+    const prefetch = () => { void prefetchCatalogFacets(queryClient, snapshot) }
+    if (typeof globalThis.requestIdleCallback === 'function') {
+      const handle = globalThis.requestIdleCallback(prefetch, { timeout: 2_000 })
+      return () => globalThis.cancelIdleCallback(handle)
+    }
+    const handle = globalThis.setTimeout(prefetch, 0)
+    return () => globalThis.clearTimeout(handle)
+  }, [enabled, queryClient, snapshot])
+}
+
+export function useCatalogFacets(
+  snapshot: CatalogSnapshotIdentity | null | undefined,
+  enabled = true,
+) {
+  return useQuery({
+    ...catalogFacetQueryOptions(snapshot),
+    enabled: enabled && Boolean(snapshot),
   })
 }
 

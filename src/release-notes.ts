@@ -148,7 +148,9 @@ const RELEASE_0_12_2_DETAILS: UnreleasedReleaseNotes = {
 
 export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
   highlights: [],
-  fixes: [],
+  fixes: [
+    'Catalog categories now open without the previous cold-start delay by sharing one verified local catalog runtime, warming its compact filter index at startup, and prefetching revision-specific category data before the Add Hardware dialog opens.',
+  ],
   notes: [],
 }
 

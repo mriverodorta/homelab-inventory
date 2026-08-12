@@ -171,6 +171,73 @@ describe('catalog snapshot service', () => {
     })
   })
 
+  it('coalesces concurrent cold facet warmups and caches the result by snapshot revision', async () => {
+    const { artifact, store, trustedKeys } = await fixture()
+    await new SnapshotService(store, { trustedKeys }).activate(artifact, {
+      mode: 'offline',
+      now: new Date('2026-07-27T00:00:00.000Z'),
+    })
+    const restarted = new SnapshotService(store, { trustedKeys })
+    const validateStoredGeneration = restarted.validateStoredGeneration.bind(restarted)
+    let validations = 0
+    restarted.validateStoredGeneration = async (...parameters) => {
+      validations += 1
+      await new Promise((resolve) => setTimeout(resolve, 10))
+      return validateStoredGeneration(...parameters)
+    }
+
+    const [first, second, third] = await Promise.all([
+      restarted.warm(),
+      restarted.warm(),
+      restarted.warm(),
+    ])
+
+    expect(validations).toBe(1)
+    expect(second).toBe(first)
+    expect(third).toBe(first)
+    expect(await restarted.facets()).toBe(first)
+  })
+
+  it('allows a failed cold warmup to be retried', async () => {
+    const { artifact, store, trustedKeys } = await fixture()
+    await new SnapshotService(store, { trustedKeys }).activate(artifact, {
+      mode: 'offline',
+      now: new Date('2026-07-27T00:00:00.000Z'),
+    })
+    const restarted = new SnapshotService(store, { trustedKeys })
+    const validateStoredGeneration = restarted.validateStoredGeneration.bind(restarted)
+    let attempts = 0
+    restarted.validateStoredGeneration = async (...parameters) => {
+      attempts += 1
+      if (attempts === 1) throw new Error('temporary catalog read failure')
+      return validateStoredGeneration(...parameters)
+    }
+
+    await expect(restarted.warm()).rejects.toThrow('temporary catalog read failure')
+    await expect(restarted.warm()).resolves.toMatchObject({ available: false, categories: [] })
+    expect(attempts).toBe(2)
+  })
+
+  it('replaces the facet cache after activating a newer revision', async () => {
+    const { artifact, privateKey, store, trustedKeys } = await fixture()
+    const service = new SnapshotService(store, { trustedKeys })
+    const now = new Date('2026-07-27T00:00:00.000Z')
+    await service.activate(artifact, { mode: 'offline', now })
+    const previousFacets = await service.warm()
+    expect(await service.warm()).toBe(previousFacets)
+
+    const nextArtifact = signedArtifact({
+      ...artifact.payload,
+      catalogRevision: 3,
+      generatedAt: '2026-07-27T12:00:00.000Z',
+    }, privateKey)
+    await service.activate(nextArtifact, { mode: 'offline', now: new Date('2026-07-28T00:00:00.000Z') })
+
+    const nextFacets = await service.warm()
+    expect(nextFacets).not.toBe(previousFacets)
+    expect(await service.warm()).toBe(nextFacets)
+  })
+
   it('writes the active catalog pointer safely when first reads overlap', async () => {
     const { artifact, dataDir, store, trustedKeys } = await fixture()
     const service = new SnapshotService(store, { trustedKeys })
