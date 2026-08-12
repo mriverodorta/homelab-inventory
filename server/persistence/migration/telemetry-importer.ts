@@ -85,18 +85,27 @@ function projectSample(database: Database, row: TelemetryRow) {
     optionalNumber(load[1]),
     optionalNumber(load[2]),
   )
+  const projectedNetworkKeys = new Set<string>()
   for (const [index, network] of (metrics.network ?? []).entries()) {
     const key = network.name ?? network.interface ?? network.device ?? `network-${index + 1}`
+    if (projectedNetworkKeys.has(String(key))) continue
+    projectedNetworkKeys.add(String(key))
     database.query('INSERT INTO network_interface_samples (sample_id, host_item_id, interface_key, metrics_json) VALUES (?, ?, ?, ?)')
       .run(row.id, hostItemId, String(key), canonicalJson(network))
   }
+  const projectedStorageKeys = new Set<string>()
   for (const [index, storage] of (metrics.diskIo ?? []).entries()) {
     const key = storage.deviceId ?? storage.device ?? storage.name ?? `storage-${index + 1}`
+    if (projectedStorageKeys.has(String(key))) continue
+    projectedStorageKeys.add(String(key))
     database.query('INSERT INTO storage_device_samples (sample_id, host_item_id, device_key, metrics_json) VALUES (?, ?, ?, ?)')
       .run(row.id, hostItemId, String(key), canonicalJson(storage))
   }
+  const projectedFilesystemKeys = new Set<string>()
   for (const [index, filesystem] of (metrics.filesystems ?? []).entries()) {
     const key = filesystem.mountPoint ?? filesystem.mount ?? `filesystem-${index + 1}`
+    if (projectedFilesystemKeys.has(String(key))) continue
+    projectedFilesystemKeys.add(String(key))
     database.query(`
       INSERT INTO filesystem_samples (
         sample_id, host_item_id, mount_key, device_key, filesystem_type,

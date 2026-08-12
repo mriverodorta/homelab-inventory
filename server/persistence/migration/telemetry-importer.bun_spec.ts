@@ -46,9 +46,12 @@ async function legacyTelemetry() {
       loadAverage: [0.1, 0.2, 0.3],
       cpu: { percent: 12.5 },
       memory: { usedBytes: 1024, totalBytes: 4096 },
-      network: [{ name: 'eno1', rxBytes: 20 }],
-      diskIo: [{ device: 'nvme0n1', readBytes: 30 }],
-      filesystems: [{ mountPoint: '/', device: '/dev/nvme0n1p2', type: 'ext4', totalBytes: 1000, usedBytes: 400, availableBytes: 600 }],
+      network: [{ name: 'eno1', rxBytes: 20 }, { name: 'eno1', rxBytes: 40 }],
+      diskIo: [{ device: 'nvme0n1', readBytes: 30 }, { device: 'nvme0n1', readBytes: 60 }],
+      filesystems: [
+        { mountPoint: '/', device: '/dev/nvme0n1p2', type: 'ext4', totalBytes: 1000, usedBytes: 400, availableBytes: 600 },
+        { mountPoint: '/', device: '/dev/nvme0n1p2', type: 'ext4', totalBytes: 1000, usedBytes: 450, availableBytes: 550 },
+      ],
     },
     services: [], containers: [], storageHealth: [],
   })
@@ -83,6 +86,9 @@ describe('telemetry reference migration', () => {
       expect(migrated.query('SELECT interface_key FROM network_interface_samples').get()).toEqual({ interface_key: 'eno1' })
       expect(migrated.query('SELECT device_key FROM storage_device_samples').get()).toEqual({ device_key: 'nvme0n1' })
       expect(migrated.query('SELECT mount_key, filesystem_type FROM filesystem_samples').get()).toEqual({ mount_key: '/', filesystem_type: 'ext4' })
+      expect(migrated.query('SELECT count(*) AS count FROM network_interface_samples').get()).toEqual({ count: 1 })
+      expect(migrated.query('SELECT count(*) AS count FROM storage_device_samples').get()).toEqual({ count: 1 })
+      expect(migrated.query('SELECT count(*) AS count FROM filesystem_samples').get()).toEqual({ count: 1 })
     } finally {
       migrated.close(false)
     }
