@@ -688,7 +688,7 @@ export const RELEASE_NOTES: ReleaseNoteEntry[] = [
   {
     version: '0.12.1',
     date: '2026-08-12',
-    channel: 'latest',
+    channel: 'release',
     title: 'Reliable large-telemetry SQLite migration',
     ...RELEASE_0_12_1_DETAILS,
   },
