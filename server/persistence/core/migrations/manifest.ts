@@ -63,6 +63,6 @@ export const CORE_MIGRATIONS: readonly CoreMigration[] = [
   {
     id: '0012_project_compatibility_policies',
     file: '0011_project_compatibility_policies.sql',
-    sha256: '69184ab00ac8cb61fea37324394c72522ad089da84ddbe3fd05c8a90e529f11b',
+    sha256: '65b2842e5be1e2a4987d9ae340392b9c10bac2440fea261ca9273fdf6d2ea26a',
   },
 ]

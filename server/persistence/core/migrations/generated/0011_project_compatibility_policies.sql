@@ -4,7 +4,7 @@ CREATE TABLE `project_compatibility_policies` (
   `updated_at_ms` integer NOT NULL,
   FOREIGN KEY (`project_id`) REFERENCES `projects`(`id`) ON UPDATE no action ON DELETE cascade,
   CONSTRAINT "project_compatibility_policies_json_check" CHECK(json_valid(`policy_json`))
-);
+) STRICT;
 --> statement-breakpoint
 INSERT INTO `project_compatibility_policies` (`project_id`, `policy_json`, `updated_at_ms`)
 SELECT

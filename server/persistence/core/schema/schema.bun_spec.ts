@@ -42,8 +42,8 @@ describe('core SQLite foundation schema', () => {
       'inventoryIdentityAliases',
       'cpuSocketTypes',
     ]))
-    expect(CORE_MIGRATIONS).toHaveLength(10)
-    expect(CORE_MIGRATIONS.at(-1)?.id).toBe('0010_registry_link_reconciliation')
+    expect(CORE_MIGRATIONS).toHaveLength(12)
+    expect(CORE_MIGRATIONS.at(-1)?.id).toBe('0012_project_compatibility_policies')
   })
 
   test('maps all 20 inventory categories to shared-primary-key subtype tables', () => {
