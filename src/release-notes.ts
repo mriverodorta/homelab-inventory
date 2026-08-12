@@ -146,11 +146,17 @@ const RELEASE_0_12_2_DETAILS: UnreleasedReleaseNotes = {
   notes: [],
 }
 
-export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
+const RELEASE_0_12_3_DETAILS: UnreleasedReleaseNotes = {
   highlights: [],
   fixes: [
     'Catalog categories now open without the previous cold-start delay by sharing one verified local catalog runtime, warming its compact filter index at startup, and prefetching revision-specific category data before the Add Hardware dialog opens.',
   ],
+  notes: [],
+}
+
+export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
+  highlights: [],
+  fixes: [],
   notes: [],
 }
 
@@ -681,9 +687,16 @@ const RELEASE_0_2_1_DETAILS: UnreleasedReleaseNotes = {
 
 export const RELEASE_NOTES: ReleaseNoteEntry[] = [
   {
-    version: '0.12.2',
+    version: '0.12.3',
     date: '2026-08-12',
     channel: 'latest',
+    title: 'Faster catalog category loading',
+    ...RELEASE_0_12_3_DETAILS,
+  },
+  {
+    version: '0.12.2',
+    date: '2026-08-12',
+    channel: 'release',
     title: 'Clear container port mappings',
     ...RELEASE_0_12_2_DETAILS,
   },
