@@ -133,6 +133,14 @@ export function createWorkspaceSurfaceProps({
     },
     onUpdateItemProperties: inventory.updateItemProperties,
     onDuplicateItem: inventory.duplicateItem,
+    onDuplicateItemToProject: inventory.projects.length > 1
+      ? (item) => inventory.requestScopeAction('duplicate-to-project', item)
+      : undefined,
+    onChangeItemScope: (item, scope) => inventory.requestScopeAction(
+      scope === 'global' ? 'make-global' : 'make-project-bound',
+      item,
+    ),
+    onRemoveGlobalItemFromProject: (item) => inventory.requestScopeAction('remove-from-project', item),
     onArchiveItem: (item) => void inventory.requestAction('archive', [item]),
     onReturnItemToInventory: equipment.requestReturnToInventory,
     lifecycleBusy: inventory.busy,

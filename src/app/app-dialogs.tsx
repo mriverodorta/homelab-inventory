@@ -7,6 +7,7 @@ import {
   FirstRunOnboardingDialog,
   GlobalItemSearch,
   InventoryLifecycleDialog,
+  InventoryScopeDialog,
   NasPowerConfigurationDialog,
   ReturnToInventoryDialog,
   SettingsDialog,
@@ -19,6 +20,7 @@ export interface AppDialogsProps {
   audit: ComponentProps<typeof AuditDrawer>
   search: ComponentProps<typeof GlobalItemSearch>
   inventoryLifecycle: ComponentProps<typeof InventoryLifecycleDialog>
+  inventoryScope: ComponentProps<typeof InventoryScopeDialog>
   returnToInventory: ComponentProps<typeof ReturnToInventoryDialog>
   nasPower: ComponentProps<typeof NasPowerConfigurationDialog>
   assignmentRemoval: ComponentProps<typeof AssignedComponentRemovalDialog>
@@ -35,6 +37,7 @@ export function AppDialogs({
   audit,
   search,
   inventoryLifecycle,
+  inventoryScope,
   returnToInventory,
   nasPower,
   assignmentRemoval,
@@ -51,6 +54,7 @@ export function AppDialogs({
       <AuditDrawer {...audit} />
       <GlobalItemSearch {...search} />
       <InventoryLifecycleDialog {...inventoryLifecycle} />
+      <InventoryScopeDialog {...inventoryScope} />
       <ReturnToInventoryDialog {...returnToInventory} />
       <NasPowerConfigurationDialog {...nasPower} />
       <AssignedComponentRemovalDialog {...assignmentRemoval} />

@@ -50,7 +50,7 @@ import { runtimeItemKey } from '@/lib/item-keys'
 import { isArchivedItem } from '@/lib/project'
 import { cn } from '@/lib/utils'
 import { filterAndSortInventory, isItemAssigned } from '@/lib/sort'
-import type { InventoryItemInput } from '@/lib/db'
+import type { AvailableGlobalInventoryItem, InventoryItemInput } from '@/lib/db'
 import type { InventoryFilters, InventoryStatusFilter } from '@/lib/sort'
 import type { InventoryItem, InventoryType, ProjectState } from '@/types/inventory'
 import { DEFAULT_REGISTRY_STATE, type RegistryState } from '@/types/registry'
@@ -115,6 +115,9 @@ function DraggableInventoryItem({
   onSelect,
   onToggleSelected,
   onDuplicate,
+  onDuplicateToProject,
+  onChangeScope,
+  onRemoveFromProject,
   onArchive,
   onSaveAsTemplate,
   onRestore,
@@ -133,6 +136,9 @@ function DraggableInventoryItem({
   onSelect: (itemId: string) => void
   onToggleSelected: (itemId: string) => void
   onDuplicate: (item: InventoryItem) => void
+  onDuplicateToProject: (item: InventoryItem) => void
+  onChangeScope: (item: InventoryItem, scope: 'global' | 'project') => void
+  onRemoveFromProject: (item: InventoryItem) => void
   onArchive: (item: InventoryItem) => void
   onSaveAsTemplate?: (item: InventoryItem) => void
   onRestore: (item: InventoryItem) => void
@@ -219,6 +225,10 @@ function DraggableInventoryItem({
           className="absolute right-2 top-1/2 -translate-y-1/2 text-[#f7f1e8]"
           onEdit={canEdit ? () => onSelect(itemRuntimeKey) : undefined}
           onDuplicate={canDuplicate ? () => onDuplicate(item) : undefined}
+          onDuplicateToProject={canDuplicate ? () => onDuplicateToProject(item) : undefined}
+          onMakeGlobal={canEdit && item.scope === 'project' ? () => onChangeScope(item, 'global') : undefined}
+          onMakeProjectBound={canEdit && item.scope === 'global' ? () => onChangeScope(item, 'project') : undefined}
+          onRemoveFromProject={canEdit && item.scope === 'global' ? () => onRemoveFromProject(item) : undefined}
           onSaveAsTemplate={canEdit && onSaveAsTemplate ? () => onSaveAsTemplate(item) : undefined}
           onArchive={canArchive ? () => onArchive(item) : undefined}
         />
@@ -232,6 +242,9 @@ export type InventorySidebarProps = {
   onSelect: (itemId: string) => void
   onCreateItem: (item: InventoryItemInput, quantity: number) => Promise<void>
   onDuplicateItem?: (item: InventoryItem) => void
+  onDuplicateItemToProject?: (item: InventoryItem) => void
+  onChangeItemScope?: (item: InventoryItem, scope: 'global' | 'project') => void
+  onRemoveGlobalItemFromProject?: (item: InventoryItem) => void
   onArchiveItems?: (items: InventoryItem[]) => void
   onRestoreItems?: (items: InventoryItem[]) => void
   onDeleteItems?: (items: InventoryItem[]) => void
@@ -241,6 +254,8 @@ export type InventorySidebarProps = {
   onDeletePrivateTemplate?: (id: number) => Promise<void>
   onOpenRegistrySettings?: () => void
   onCreateCatalogItem?: (templateKey: string, quantity: number, usageRole?: 'server' | 'desktop' | 'workstation' | 'other') => Promise<void>
+  onAddGlobalInventory?: (item: AvailableGlobalInventoryItem) => Promise<void>
+  globalInventoryEnabled?: boolean
   lifecycleRevision?: number
   lifecycleBusy?: boolean
   onClose?: () => void
@@ -253,6 +268,9 @@ export function InventorySidebar({
   onSelect,
   onCreateItem,
   onDuplicateItem = () => undefined,
+  onDuplicateItemToProject = () => undefined,
+  onChangeItemScope = () => undefined,
+  onRemoveGlobalItemFromProject = () => undefined,
   onArchiveItems = () => undefined,
   onRestoreItems = () => undefined,
   onDeleteItems = () => undefined,
@@ -262,6 +280,8 @@ export function InventorySidebar({
   onDeletePrivateTemplate,
   onOpenRegistrySettings,
   onCreateCatalogItem,
+  onAddGlobalInventory,
+  globalInventoryEnabled = true,
   lifecycleRevision = 0,
   lifecycleBusy = false,
   onClose,
@@ -542,6 +562,9 @@ export function InventorySidebar({
                       onSelect={onSelect}
                       onToggleSelected={toggleSelected}
                       onDuplicate={onDuplicateItem}
+                      onDuplicateToProject={onDuplicateItemToProject}
+                      onChangeScope={onChangeItemScope}
+                      onRemoveFromProject={onRemoveGlobalItemFromProject}
                       onArchive={(selectedItem) => onArchiveItems([selectedItem])}
                       onSaveAsTemplate={canManageRegistry ? onSaveAsTemplate : undefined}
                       onRestore={(selectedItem) => onRestoreItems([selectedItem])}
@@ -569,6 +592,9 @@ export function InventorySidebar({
         open={addDialogOpen}
         onOpenChange={setAddDialogOpen}
         onCreate={onCreateItem}
+        projectId={project.metadata.projectId ?? 1}
+        globalInventoryEnabled={globalInventoryEnabled}
+        onAddGlobalInventory={onAddGlobalInventory}
         registry={registry}
         onDuplicatePrivateTemplate={onDuplicatePrivateTemplate}
         onDeletePrivateTemplate={onDeletePrivateTemplate}

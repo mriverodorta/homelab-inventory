@@ -897,7 +897,11 @@ export class SqliteHomelabInventoryStore {
     try {
       const item = this.inventoryScope.setScope(itemId, target)
       this.cache.clear()
-      return { item, memberships: this.inventoryScope.memberships(itemId) }
+      return {
+        item,
+        memberships: this.inventoryScope.memberships(itemId),
+        project: this.getProject(),
+      }
     } catch (error) {
       throw lifecycleError(
         error instanceof Error ? error.message : 'Unable to change inventory scope.',
@@ -907,13 +911,22 @@ export class SqliteHomelabInventoryStore {
     }
   }
 
+  listAvailableGlobalInventory(projectId: number) {
+    return this.inventoryScope.listAvailableGlobal(projectId)
+  }
+
   addGlobalInventoryMembership(projectId: number, ref: Row) {
     const normalized = normalizeInventoryRef(ref)
     const itemId = this.inventoryScope.resolve(normalized.type as InventoryType, normalized.id)
     try {
       const memberships = this.inventoryScope.addGlobalMembership(itemId, projectId)
       this.invalidateProjectReadModels(projectId)
-      return { memberships, project: this.getWorkspace(projectId, this.projects.getWorkbook(projectId).defaultWorkspaceId) }
+      return {
+        memberships,
+        project: projectId === this.projectId
+          ? this.getProject()
+          : this.getWorkspace(projectId, this.projects.getWorkbook(projectId).defaultWorkspaceId),
+      }
     } catch (error) {
       throw lifecycleError(
         error instanceof Error ? error.message : 'Unable to add global inventory to the project.',
@@ -929,7 +942,12 @@ export class SqliteHomelabInventoryStore {
     try {
       const memberships = this.inventoryScope.removeGlobalMembership(itemId, projectId)
       this.invalidateProjectReadModels(projectId)
-      return { memberships, project: this.getWorkspace(projectId, this.projects.getWorkbook(projectId).defaultWorkspaceId) }
+      return {
+        memberships,
+        project: projectId === this.projectId
+          ? this.getProject()
+          : this.getWorkspace(projectId, this.projects.getWorkbook(projectId).defaultWorkspaceId),
+      }
     } catch (error) {
       throw lifecycleError(
         error instanceof Error ? error.message : 'Unable to remove global inventory from the project.',

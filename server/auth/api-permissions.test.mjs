@@ -19,6 +19,7 @@ describe('API permission classification', () => {
     expect(classifyApiRequest('DELETE', '/api/inventory/items/cpu/1')).toEqual({ access: 'protected', permission: 'inventory.delete' })
     expect(classifyApiRequest('POST', '/api/inventory/items/cpu/1/scope')).toEqual({ access: 'protected', permission: 'inventory.edit' })
     expect(classifyApiRequest('POST', '/api/projects/2/inventory/items')).toEqual({ access: 'protected', permission: 'inventory.create' })
+    expect(classifyApiRequest('GET', '/api/projects/2/inventory/global-available')).toEqual({ access: 'protected', permission: 'inventory.view' })
     expect(classifyApiRequest('POST', '/api/projects/2/inventory/cpu/1/duplicate')).toEqual({ access: 'protected', permission: 'inventory.create' })
     expect(classifyApiRequest('GET', '/api/projects')).toEqual({ access: 'protected', permission: 'project.view' })
     expect(classifyApiRequest('GET', '/api/projects/archived')).toEqual({ access: 'protected', permission: 'project.view' })

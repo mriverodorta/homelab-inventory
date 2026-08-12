@@ -34,6 +34,9 @@ export type InspectorPanelProps = {
     properties: InventoryProperties,
   ) => void | Promise<void>
   onDuplicateItem?: (item: InventoryItem) => void
+  onDuplicateItemToProject?: (item: InventoryItem) => void
+  onChangeItemScope?: (item: InventoryItem, scope: 'global' | 'project') => void
+  onRemoveGlobalItemFromProject?: (item: InventoryItem) => void
   onArchiveItem?: (item: InventoryItem) => void
   onReturnItemToInventory?: (runtimeItemId: string) => void
   lifecycleBusy?: boolean

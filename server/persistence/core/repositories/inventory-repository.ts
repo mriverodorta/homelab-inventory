@@ -110,9 +110,10 @@ export function createInventoryRepository(context: RepositoryContext) {
     assertPositiveId(projectId, 'Project ID')
     const project = sqlite.query('SELECT includes_global_inventory FROM projects WHERE id = ? AND archived_at_ms IS NULL').get(projectId) as { includes_global_inventory: number } | null
     if (!project) throw new Error(`Active project ${projectId} was not found.`)
-    const visible = project.includes_global_inventory
-      ? or(eq(inventoryItems.scope, 'global'), eq(projectInventoryMemberships.projectId, projectId), eq(inventoryItems.ownerProjectId, projectId))
-      : or(eq(projectInventoryMemberships.projectId, projectId), eq(inventoryItems.ownerProjectId, projectId))
+    const visible = or(
+      eq(projectInventoryMemberships.projectId, projectId),
+      eq(inventoryItems.ownerProjectId, projectId),
+    )
     const condition = options.includeArchived ? visible : and(visible, isNull(inventoryItems.archivedAtMs))
     const rows = db.selectDistinct({ id: inventoryItems.id }).from(inventoryItems)
       .leftJoin(projectInventoryMemberships, eq(projectInventoryMemberships.itemId, inventoryItems.id))

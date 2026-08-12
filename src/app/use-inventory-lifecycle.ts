@@ -13,14 +13,18 @@ import {
   changeNasPowerConfiguration,
   createInventoryItems,
   deleteInventoryItems,
+  duplicateInventoryToProject,
   duplicateInventoryItem,
   loadInventoryDependencyReports,
+  removeGlobalInventoryFromProject,
   restoreInventoryItems,
+  setInventoryItemScope,
   updateInventoryItem,
   updateInventoryItemProperties,
   type InventoryItemInput,
   type WorkspaceMutationScope,
 } from '@/lib/db'
+import type { ProjectSummary } from '@/lib/workbook-api'
 import type { InventoryDependencyReport } from '@/lib/inventory-lifecycle'
 import { runtimeItemKey } from '@/lib/item-keys'
 import { getPowerEquipmentOrientation } from '@/lib/power-equipment-layout'
@@ -43,6 +47,13 @@ type PendingNasPowerChange = {
   impact: NasPowerConfigurationImpact
 }
 
+export type InventoryScopeAction = 'make-global' | 'make-project-bound' | 'remove-from-project' | 'duplicate-to-project'
+
+type PendingInventoryScopeAction = {
+  action: InventoryScopeAction
+  item: InventoryItem
+}
+
 type ApplyInventorySnapshot = (
   nextProject: ProjectState,
   options?: { historySnapshot?: ProjectState },
@@ -61,6 +72,8 @@ type UseInventoryLifecycleOptions = {
   setPersistenceWarning: Dispatch<SetStateAction<string | null>>
   showMessage: (message: string) => void
   showSuccessMessage: (message: string) => void
+  activeProjectId: number
+  projects: ProjectSummary[]
 }
 
 export function useInventoryLifecycle({
@@ -73,6 +86,8 @@ export function useInventoryLifecycle({
   setPersistenceWarning,
   showMessage,
   showSuccessMessage,
+  activeProjectId,
+  projects,
 }: UseInventoryLifecycleOptions) {
   const [request, setRequest] = useState<InventoryLifecycleRequest | null>(null)
   const [dependencyReport, setDependencyReport] = useState<InventoryDependencyReport | null>(null)
@@ -82,6 +97,9 @@ export function useInventoryLifecycle({
   const [pendingNasPowerChange, setPendingNasPowerChange] = useState<PendingNasPowerChange | null>(null)
   const [nasPowerChangeBusy, setNasPowerChangeBusy] = useState(false)
   const [nasPowerChangeError, setNasPowerChangeError] = useState<string | null>(null)
+  const [pendingScopeAction, setPendingScopeAction] = useState<PendingInventoryScopeAction | null>(null)
+  const [scopeActionBusy, setScopeActionBusy] = useState(false)
+  const [scopeActionError, setScopeActionError] = useState<string | null>(null)
 
   async function createItem(item: InventoryItemInput, quantity: number) {
     const currentProject = projectRef.current
@@ -307,7 +325,56 @@ export function useInventoryLifecycle({
     await applyInventorySnapshot(nextProject, { historySnapshot: currentProject ?? undefined })
   }
 
+  function requestScopeAction(action: InventoryScopeAction, item: InventoryItem) {
+    setScopeActionError(null)
+    setPendingScopeAction({ action, item })
+  }
+
+  async function confirmScopeAction(targetProjectId?: number) {
+    const pending = pendingScopeAction
+    const currentProject = projectRef.current
+    if (!pending || !currentProject) return
+    setScopeActionBusy(true)
+    setScopeActionError(null)
+    try {
+      const ref = inventoryRef(pending.item)
+      if (pending.action === 'duplicate-to-project') {
+        if (!targetProjectId || targetProjectId === activeProjectId) {
+          throw new Error('Choose another active project for the duplicate.')
+        }
+        const target = projects.find((project) => project.id === targetProjectId)
+        if (!target) throw new Error('The target project is not available.')
+        await duplicateInventoryToProject(targetProjectId, activeProjectId, ref)
+        showSuccessMessage(`Duplicated ${pending.item.name} to ${target.name}.`)
+      } else if (pending.action === 'remove-from-project') {
+        const result = await removeGlobalInventoryFromProject(activeProjectId, ref)
+        await applyInventorySnapshot(result.project, { historySnapshot: currentProject })
+        setSelectedItemId((selected) => selected === runtimeItemKey(pending.item) ? null : selected)
+        showSuccessMessage(`Removed ${pending.item.name} from this project.`)
+      } else {
+        const result = await setInventoryItemScope(ref, {
+          scope: pending.action === 'make-global' ? 'global' : 'project',
+          ...(pending.action === 'make-project-bound' ? { projectId: activeProjectId } : {}),
+        })
+        await applyInventorySnapshot(result.project, { historySnapshot: currentProject })
+        showSuccessMessage(
+          pending.action === 'make-global'
+            ? `${pending.item.name} is now global inventory.`
+            : `${pending.item.name} is now bound to this project.`,
+        )
+      }
+      setPendingScopeAction(null)
+      setRevision((current) => current + 1)
+    } catch (caughtError) {
+      setScopeActionError(caughtError instanceof Error ? caughtError.message : 'Inventory scope could not be changed.')
+    } finally {
+      setScopeActionBusy(false)
+    }
+  }
+
   return {
+    activeProjectId,
+    projects,
     request,
     dependencyReport,
     busy,
@@ -328,6 +395,16 @@ export function useInventoryLifecycle({
     confirmAction,
     restoreItems,
     applyUpdate,
+    pendingScopeAction,
+    scopeActionBusy,
+    scopeActionError,
+    requestScopeAction,
+    confirmScopeAction,
+    dismissScopeAction: () => {
+      if (scopeActionBusy) return
+      setPendingScopeAction(null)
+      setScopeActionError(null)
+    },
     dismissAction: () => {
       setRequest(null)
       setDependencyReport(null)

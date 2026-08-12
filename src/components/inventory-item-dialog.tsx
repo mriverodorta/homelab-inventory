@@ -1,6 +1,7 @@
 import { AlertTriangle } from 'lucide-react'
 import { useEffect, useId, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import { CatalogSourcePanel } from '@/components/inventory/catalog-source-panel'
+import { GlobalInventoryPanel } from '@/components/inventory/global-inventory-panel'
 import { PrivateTemplatePanel } from '@/components/inventory/private-template-panel'
 import {
   CpuCompatibilityFields,
@@ -57,6 +58,7 @@ import {
 } from '@/components/ui/select'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import type { InventoryItemInput } from '@/lib/db'
+import type { AvailableGlobalInventoryItem } from '@/lib/db'
 import { cn } from '@/lib/utils'
 import type { InventoryType } from '@/types/inventory'
 import {
@@ -93,6 +95,9 @@ export function InventoryItemDialog({
   onDeletePrivateTemplate,
   onOpenRegistrySettings,
   onCreateCatalogItem,
+  projectId = 1,
+  globalInventoryEnabled = true,
+  onAddGlobalInventory,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
@@ -102,6 +107,9 @@ export function InventoryItemDialog({
   onDeletePrivateTemplate?: (id: number) => Promise<void>
   onOpenRegistrySettings?: () => void
   onCreateCatalogItem?: (templateKey: string, quantity: number, usageRole?: 'server' | 'desktop' | 'workstation' | 'other') => Promise<void>
+  projectId?: number
+  globalInventoryEnabled?: boolean
+  onAddGlobalInventory?: (item: AvailableGlobalInventoryItem) => Promise<void>
 }) {
   const [activeSource, setActiveSource] = useState<InventorySourceTab>(() => availableDefaultSource(registry))
   const [values, setValues] = useState<InventoryFormValues>(() => createInventoryFormValues('server'))
@@ -367,6 +375,8 @@ export function InventoryItemDialog({
             '!flex max-h-[calc(100dvh-2rem)] !flex-col gap-0 overflow-hidden bg-[#fffdf8] p-0 text-[#20242c]',
             activeSource === 'catalog'
               ? 'h-[calc(100dvh-2rem)] sm:h-[min(52rem,calc(100dvh-2rem))] sm:max-w-[min(96vw,88rem)]'
+              : activeSource === 'global-inventory'
+                ? 'h-[min(42rem,calc(100dvh-2rem))] sm:max-w-3xl'
               : 'sm:max-w-3xl',
           )}
         >
@@ -378,6 +388,7 @@ export function InventoryItemDialog({
               <TabsList variant="line" className="h-12 min-w-max justify-start gap-6 p-0">
                 <TabsTrigger value="catalog" className="h-12 flex-none px-1">Catalog</TabsTrigger>
                 <TabsTrigger value="manual" className="h-12 flex-none px-1">Manual</TabsTrigger>
+                <TabsTrigger value="global-inventory" className="h-12 flex-none px-1">Global inventory</TabsTrigger>
                 <TabsTrigger value="private-templates" className="h-12 flex-none px-1">Private templates</TabsTrigger>
               </TabsList>
             </div>
@@ -408,6 +419,29 @@ export function InventoryItemDialog({
                   onOpenRegistrySettings()
                 } : undefined}
               />
+            </TabsContent>
+            <TabsContent value="global-inventory" className="m-0 min-h-0 flex-1 overflow-hidden">
+              <GlobalInventoryPanel
+                projectId={projectId}
+                enabled={globalInventoryEnabled}
+                pending={pending}
+                onAdd={async (item) => {
+                  if (!onAddGlobalInventory) return
+                  setPending(true)
+                  setError(null)
+                  try {
+                    await onAddGlobalInventory(item)
+                    resetDraft()
+                    onOpenChange(false)
+                  } catch (addError) {
+                    setError(addError instanceof Error ? addError.message : 'Global inventory could not be added.')
+                    throw addError
+                  } finally {
+                    setPending(false)
+                  }
+                }}
+              />
+              {error ? <div className="mx-4 mb-4 rounded-md border border-[#dfb3a5] bg-[#fff4ef] px-3 py-2 text-sm text-[#8b3322]">{error}</div> : null}
             </TabsContent>
             <TabsContent value="private-templates" className="m-0 min-h-0 flex-1 overflow-hidden">
               <PrivateTemplatePanel

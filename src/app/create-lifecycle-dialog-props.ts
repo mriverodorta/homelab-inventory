@@ -5,7 +5,7 @@ import type { ProjectState } from '@/types/inventory'
 
 type LifecycleDialogProps = Pick<
   AppDialogsProps,
-  'inventoryLifecycle' | 'returnToInventory' | 'nasPower' | 'assignmentRemoval'
+  'inventoryLifecycle' | 'inventoryScope' | 'returnToInventory' | 'nasPower' | 'assignmentRemoval'
 >
 
 interface CreateLifecycleDialogPropsOptions {
@@ -31,6 +31,19 @@ export function createLifecycleDialogProps({
         if (!open) inventory.dismissAction()
       },
       onConfirm: () => void inventory.confirmAction(),
+    },
+    inventoryScope: {
+      open: inventory.pendingScopeAction !== null,
+      action: inventory.pendingScopeAction?.action ?? 'make-global',
+      itemName: inventory.pendingScopeAction?.item.name ?? 'Inventory item',
+      activeProjectId: inventory.activeProjectId,
+      projects: inventory.projects,
+      busy: inventory.scopeActionBusy,
+      error: inventory.scopeActionError,
+      onOpenChange: (open) => {
+        if (!open) inventory.dismissScopeAction()
+      },
+      onConfirm: (targetProjectId) => void inventory.confirmScopeAction(targetProjectId),
     },
     returnToInventory: {
       open: equipment.returnToInventoryItemId !== null,

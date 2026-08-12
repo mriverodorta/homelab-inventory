@@ -13,7 +13,7 @@ import {
 } from '@/hooks/use-topology-query'
 import { setAuditWarningIgnored } from '@/lib/compatibility-policy'
 import { loadAgentStatus } from '@/lib/agent-api'
-import { loadProject } from '@/lib/db'
+import { addGlobalInventoryToProject, loadProject } from '@/lib/db'
 import { loadWorkspace } from '@/lib/workbook-api'
 import { buildVisibleRegistryLinkKeys } from '@/lib/registry-links'
 import { ErrorScreen, LoadingScreen } from '@/app/app-status-screens'
@@ -361,6 +361,8 @@ function App() {
     setPersistenceWarning,
     showMessage,
     showSuccessMessage: (message) => setValidationMessage(message, 'unknown'),
+    activeProjectId: sourceProjectId ?? 1,
+    projects: workbookController.workbooks.map((workbook) => workbook.project),
   })
   const onboardingController = useOnboardingController({
     project,
@@ -519,6 +521,22 @@ function App() {
       onCreateItem: handleCreateInventoryItem,
       onCreateCatalogItem: handleCreateCatalogInventoryItem,
       onDuplicateItem: handleDuplicateInventoryItem,
+      onDuplicateItemToProject: inventoryLifecycle.projects.length > 1
+        ? (item) => inventoryLifecycle.requestScopeAction('duplicate-to-project', item)
+        : undefined,
+      onChangeItemScope: (item, scope) => inventoryLifecycle.requestScopeAction(
+        scope === 'global' ? 'make-global' : 'make-project-bound',
+        item,
+      ),
+      onRemoveGlobalItemFromProject: (item) => inventoryLifecycle.requestScopeAction('remove-from-project', item),
+      globalInventoryEnabled: workbookController.activeWorkbook.project.includesGlobalInventory,
+      onAddGlobalInventory: async (item) => {
+        const previousProject = projectRef.current
+        const result = await addGlobalInventoryToProject(sourceProjectId!, { type: item.type, id: item.id })
+        await applyInventoryCommandSnapshot(result.project, { historySnapshot: previousProject ?? undefined })
+        setSelectedItemId(`${item.type}:${item.id}`)
+        await queryClient.invalidateQueries({ queryKey: ['global-inventory-available', sourceProjectId] })
+      },
       onArchiveItems: (items) => void requestInventoryLifecycle('archive', items),
       onRestoreItems: (items) => void handleRestoreInventoryItems(items),
       onDeleteItems: (items) => void requestInventoryLifecycle('delete', items),

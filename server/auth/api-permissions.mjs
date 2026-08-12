@@ -51,6 +51,7 @@ const PROTECTED_ROUTES = [
   ['POST', /^\/api\/inventory\/items\/?$/, 'inventory.create'],
   ['POST', /^\/api\/projects\/[1-9]\d*\/inventory\/items\/?$/, 'inventory.create'],
   ['POST', /^\/api\/inventory\/items\/[^/]+\/[1-9]\d*\/scope\/?$/, 'inventory.edit'],
+  ['GET', /^\/api\/projects\/[1-9]\d*\/inventory\/global-available\/?$/, 'inventory.view'],
   ['POST', /^\/api\/projects\/[1-9]\d*\/inventory\/[^/]+\/[1-9]\d*\/membership\/?$/, 'inventory.edit'],
   ['DELETE', /^\/api\/projects\/[1-9]\d*\/inventory\/[^/]+\/[1-9]\d*\/membership\/?$/, 'inventory.edit'],
   ['POST', /^\/api\/projects\/[1-9]\d*\/inventory\/[^/]+\/[1-9]\d*\/duplicate\/?$/, 'inventory.create'],

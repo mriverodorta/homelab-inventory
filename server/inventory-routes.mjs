@@ -94,6 +94,12 @@ function submittedProjectId(value, label) {
 }
 
 export function registerInventoryRoutes(app, { withStore, onHostsDeleted = null }) {
+  app.get('/api/projects/:projectId/inventory/global-available', (request, response) => {
+    runWithInventoryStore(withStore, request, response, 'Unable to list available global inventory.', async (store) => {
+      response.json({ items: store.listAvailableGlobalInventory(projectId(request)) })
+    })
+  })
+
   app.post('/api/projects/:projectId/inventory/items', (request, response) => {
     runWithInventoryStore(withStore, request, response, 'Unable to create project inventory items.', async (store) => {
       const wrapped = request.body?.item && typeof request.body.item === 'object'

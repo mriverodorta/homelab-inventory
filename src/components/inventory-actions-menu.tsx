@@ -1,4 +1,4 @@
-import { Archive, BookmarkPlus, Copy, EllipsisVertical, PackageOpen, Pencil, RotateCcw, Trash2 } from 'lucide-react'
+import { Archive, BookmarkPlus, Copy, EllipsisVertical, Globe2, PackageOpen, Pencil, RotateCcw, Trash2, Unlink } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
@@ -17,6 +17,10 @@ export type InventoryActionsMenuProps = {
   archived?: boolean
   onEdit?: () => void
   onDuplicate?: () => void
+  onDuplicateToProject?: () => void
+  onMakeGlobal?: () => void
+  onMakeProjectBound?: () => void
+  onRemoveFromProject?: () => void
   onSaveAsTemplate?: () => void
   onReturnToInventory?: () => void
   onArchive?: () => void
@@ -46,7 +50,17 @@ export function InventoryActionsMenu(props: InventoryActionsMenuProps) {
 
   const hasActions = props.archived
     ? Boolean(props.onRestore || props.onDelete)
-    : Boolean(props.onEdit || props.onDuplicate || props.onSaveAsTemplate || props.onReturnToInventory || props.onArchive)
+    : Boolean(
+        props.onEdit
+        || props.onDuplicate
+        || props.onDuplicateToProject
+        || props.onMakeGlobal
+        || props.onMakeProjectBound
+        || props.onRemoveFromProject
+        || props.onSaveAsTemplate
+        || props.onReturnToInventory
+        || props.onArchive,
+      )
   if (!hasActions) return null
 
   return (
@@ -91,6 +105,18 @@ export function InventoryActionsMenu(props: InventoryActionsMenuProps) {
               ) : null}
               {props.onDuplicate ? <DropdownMenuItem onSelect={(event) => invokeAction(event, props.onDuplicate)}>
                 <Copy aria-hidden="true" />Duplicate
+              </DropdownMenuItem> : null}
+              {props.onDuplicateToProject ? <DropdownMenuItem onSelect={(event) => invokeAction(event, props.onDuplicateToProject)}>
+                <Copy aria-hidden="true" />Duplicate to project
+              </DropdownMenuItem> : null}
+              {props.onMakeGlobal ? <DropdownMenuItem onSelect={(event) => invokeAction(event, props.onMakeGlobal)}>
+                <Globe2 aria-hidden="true" />Make global
+              </DropdownMenuItem> : null}
+              {props.onMakeProjectBound ? <DropdownMenuItem onSelect={(event) => invokeAction(event, props.onMakeProjectBound)}>
+                <Unlink aria-hidden="true" />Bind to project
+              </DropdownMenuItem> : null}
+              {props.onRemoveFromProject ? <DropdownMenuItem onSelect={(event) => invokeAction(event, props.onRemoveFromProject)}>
+                <Unlink aria-hidden="true" />Remove from project
               </DropdownMenuItem> : null}
               {props.onSaveAsTemplate ? (
                 <DropdownMenuItem onSelect={(event) => invokeAction(event, props.onSaveAsTemplate)}>

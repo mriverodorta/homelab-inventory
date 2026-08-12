@@ -1,7 +1,7 @@
 import type { InventoryItemInput } from '@/lib/db'
 
 export type RegistryMode = 'disabled' | 'offline' | 'connected'
-export type InventorySourceTab = 'catalog' | 'manual' | 'private-templates'
+export type InventorySourceTab = 'catalog' | 'manual' | 'private-templates' | 'global-inventory'
 
 export type RegistrySettings = {
   mode: RegistryMode

@@ -42,6 +42,16 @@ export const InventoryLifecycleDialog = createLazySurface(lifecycleLoader, {
   shouldRender: (props) => props.open,
 })
 
+const inventoryScopeLoader = () => import('@/components/inventory-scope-dialog').then((module) => ({
+  default: module.InventoryScopeDialog,
+}))
+export const InventoryScopeDialog = createLazySurface(inventoryScopeLoader, {
+  displayName: 'Inventory scope',
+  loadingLabel: 'Loading inventory scope',
+  getClose: (props) => () => props.onOpenChange(false),
+  shouldRender: (props) => props.open,
+})
+
 const returnLoader = () => import('@/components/return-to-inventory-dialog').then((module) => ({
   default: module.ReturnToInventoryDialog,
 }))

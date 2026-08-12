@@ -53,6 +53,9 @@ export function InspectorPanel({
   onUpdateItem,
   onUpdateItemProperties = () => undefined,
   onDuplicateItem = () => undefined,
+  onDuplicateItemToProject,
+  onChangeItemScope,
+  onRemoveGlobalItemFromProject,
   onArchiveItem = () => undefined,
   onReturnItemToInventory,
   lifecycleBusy = false,
@@ -157,6 +160,16 @@ export function InspectorPanel({
               itemName={selectedItem.name}
               busy={lifecycleBusy}
               onDuplicate={canCreateInventory ? () => onDuplicateItem(selectedItem) : undefined}
+              onDuplicateToProject={canCreateInventory && onDuplicateItemToProject ? () => onDuplicateItemToProject(selectedItem) : undefined}
+              onMakeGlobal={canEditInventory && selectedItem.scope === 'project' && onChangeItemScope
+                ? () => onChangeItemScope(selectedItem, 'global')
+                : undefined}
+              onMakeProjectBound={canEditInventory && selectedItem.scope === 'global' && onChangeItemScope
+                ? () => onChangeItemScope(selectedItem, 'project')
+                : undefined}
+              onRemoveFromProject={canEditInventory && selectedItem.scope === 'global' && onRemoveGlobalItemFromProject
+                ? () => onRemoveGlobalItemFromProject(selectedItem)
+                : undefined}
               onArchive={canArchiveInventory ? () => onArchiveItem(selectedItem) : undefined}
               onReturnToInventory={canEditCanvas && selectedItemIsPlaced && selectedItemRuntimeKey && onReturnItemToInventory
                 ? () => onReturnItemToInventory(selectedItemRuntimeKey)

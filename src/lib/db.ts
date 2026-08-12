@@ -12,6 +12,10 @@ import type {
 
 export type InventoryItemInput = Omit<InventoryItem, 'id' | 'key'>
 export type WorkspaceMutationScope = Readonly<{ projectId: number; workspaceId: number }>
+export type AvailableGlobalInventoryItem = Pick<
+  InventoryItem,
+  'id' | 'type' | 'name' | 'manufacturer' | 'model' | 'family' | 'number' | 'subtype' | 'scope'
+>
 
 export function withWorkspaceScope(url: string, scope?: WorkspaceMutationScope | null) {
   if (!scope) return url
@@ -112,6 +116,55 @@ export async function updateInventoryItemProperties(
 export async function duplicateInventoryItem(ref: InventoryRef, scope?: WorkspaceMutationScope | null): Promise<ProjectState> {
   return apiRequest<ProjectState>(withWorkspaceScope(`/api/inventory/items/${ref.type}/${ref.id}/duplicate`, scope), {
     method: 'POST',
+  })
+}
+
+export async function setInventoryItemScope(
+  ref: InventoryRef,
+  target: { scope: 'global' | 'project'; projectId?: number },
+): Promise<{
+  item: { scope: 'global' | 'project'; ownerProjectId?: number | null }
+  memberships: number[]
+  project: ProjectState
+}> {
+  return apiRequest(`/api/inventory/items/${ref.type}/${ref.id}/scope`, {
+    method: 'POST',
+    body: JSON.stringify(target),
+  })
+}
+
+export async function loadAvailableGlobalInventory(projectId: number): Promise<AvailableGlobalInventoryItem[]> {
+  return (await apiRequest<{ items: AvailableGlobalInventoryItem[] }>(
+    `/api/projects/${projectId}/inventory/global-available`,
+  )).items
+}
+
+export async function addGlobalInventoryToProject(
+  projectId: number,
+  ref: InventoryRef,
+): Promise<{ memberships: number[]; project: ProjectState }> {
+  return apiRequest(`/api/projects/${projectId}/inventory/${ref.type}/${ref.id}/membership`, {
+    method: 'POST',
+  })
+}
+
+export async function removeGlobalInventoryFromProject(
+  projectId: number,
+  ref: InventoryRef,
+): Promise<{ memberships: number[]; project: ProjectState }> {
+  return apiRequest(`/api/projects/${projectId}/inventory/${ref.type}/${ref.id}/membership`, {
+    method: 'DELETE',
+  })
+}
+
+export async function duplicateInventoryToProject(
+  targetProjectId: number,
+  sourceProjectId: number,
+  ref: InventoryRef,
+): Promise<{ item: InventoryRef; project: ProjectState }> {
+  return apiRequest(`/api/projects/${targetProjectId}/inventory/${ref.type}/${ref.id}/duplicate`, {
+    method: 'POST',
+    body: JSON.stringify({ sourceProjectId }),
   })
 }
 

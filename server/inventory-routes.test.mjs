@@ -100,6 +100,7 @@ describe('inventory lifecycle routes', () => {
 
   it('routes inventory scope, membership, and cross-project duplication commands', async () => {
     const store = {
+      listAvailableGlobalInventory: vi.fn(() => [{ type: 'cpu', id: 4, name: 'Shared CPU' }]),
       createInventoryItemsForProject: vi.fn(() => ({ items: {} })),
       setInventoryScope: vi.fn(() => ({ item: { scope: 'global' }, memberships: [1] })),
       addGlobalInventoryMembership: vi.fn(() => ({ memberships: [1, 2], project: {} })),
@@ -119,6 +120,7 @@ describe('inventory lifecycle routes', () => {
     const url = `http://127.0.0.1:${server.address().port}`
 
     try {
+      expect((await jsonRequest(url, '/api/projects/2/inventory/global-available')).body.items).toHaveLength(1)
       expect((await jsonRequest(url, '/api/projects/2/inventory/items', {
         method: 'POST', body: JSON.stringify({ item: { type: 'cpu', name: 'CPU' }, quantity: 2 }),
       })).response.status).toBe(201)
@@ -136,6 +138,7 @@ describe('inventory lifecycle routes', () => {
       })).response.status).toBe(201)
 
       expect(store.addGlobalInventoryMembership).toHaveBeenCalledWith(2, { type: 'cpu', id: 3 })
+      expect(store.listAvailableGlobalInventory).toHaveBeenCalledWith(2)
       expect(store.createInventoryItemsForProject).toHaveBeenCalledWith(2, { type: 'cpu', name: 'CPU' }, 2)
       expect(store.duplicateInventoryToProject).toHaveBeenCalledWith(1, 2, { type: 'cpu', id: 3 })
     } finally {

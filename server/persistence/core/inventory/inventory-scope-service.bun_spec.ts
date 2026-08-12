@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { CORE_MIGRATIONS } from '../migrations/manifest.ts'
 import { createProjectRepository } from '../repositories/project-repository.ts'
+import { createInventoryRepository } from '../repositories/inventory-repository.ts'
 import { createRepositoryContext } from '../repositories/repository-context.ts'
 import { schema29ProductionShapeFixture } from '../../fixtures/schema-29-production-shape.ts'
 import { buildCanonicalIdentityPlan } from '../../legacy/identity-plan.ts'
@@ -38,9 +39,14 @@ describe('inventory scope service', () => {
     const { handle, context, service } = await fixture()
     try {
       const project = createProjectRepository(context).create({ name: 'Downsize plan' })
+      const inventory = createInventoryRepository(context)
       const cpuId = service.resolve('cpu', 3)
+      expect(inventory.listForProject(project.project.id).some((item) => item.legacyType === 'cpu' && item.legacyId === 3)).toBeFalse()
+      expect(service.listAvailableGlobal(project.project.id).some((item) => item.type === 'cpu' && item.id === 3)).toBeTrue()
       expect(service.memberships(cpuId)).toEqual([1])
       service.addGlobalMembership(cpuId, project.project.id)
+      expect(inventory.listForProject(project.project.id).some((item) => item.legacyType === 'cpu' && item.legacyId === 3)).toBeTrue()
+      expect(service.listAvailableGlobal(project.project.id).some((item) => item.type === 'cpu' && item.id === 3)).toBeFalse()
       expect(service.memberships(cpuId)).toEqual([1, project.project.id])
       expect(() => service.setScope(cpuId, { scope: 'project', projectId: 1 })).toThrow(/exactly one/iu)
       service.removeGlobalMembership(cpuId, project.project.id)

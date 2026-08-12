@@ -25,6 +25,37 @@ export function createInventoryScopeService(context: RepositoryContext) {
     `).all(itemId) as Array<{ projectId: number }>).map(({ projectId }) => projectId)
   }
 
+  function listAvailableGlobal(projectId: number) {
+    const project = activeProject(projectId)
+    if (!project.includesGlobalInventory) return []
+    const itemIds = (sqlite.query(`
+      SELECT item.id
+      FROM inventory_items item
+      WHERE item.scope = 'global'
+        AND item.archived_at_ms IS NULL
+        AND NOT EXISTS (
+          SELECT 1
+          FROM project_inventory_memberships membership
+          WHERE membership.project_id = ? AND membership.item_id = item.id
+        )
+      ORDER BY item.name COLLATE NOCASE, item.id
+    `).all(projectId) as Array<{ id: number }>).map(({ id }) => id)
+    return itemIds.map((itemId) => {
+      const item = inventory.get(itemId)!
+      return {
+        id: item.legacyId,
+        type: item.legacyType,
+        name: item.name,
+        manufacturer: item.manufacturer,
+        model: item.model,
+        family: item.family,
+        number: item.productNumber,
+        subtype: item.subtype,
+        scope: 'global' as const,
+      }
+    })
+  }
+
   function activeProject(projectId: number) {
     assertPositiveId(projectId, 'Project ID')
     const project = sqlite.query(`
@@ -140,6 +171,7 @@ export function createInventoryScopeService(context: RepositoryContext) {
 
   return {
     memberships,
+    listAvailableGlobal,
     setScope,
     addGlobalMembership,
     removeGlobalMembership,
