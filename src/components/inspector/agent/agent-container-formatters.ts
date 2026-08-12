@@ -18,10 +18,16 @@ export type ContainerChip = { key: string; label: string }
 export function containerChips(container: AgentContainer): ContainerChip[] {
   const chips: ContainerChip[] = []
   if (container.composeService) chips.push({ key: 'service', label: `Service ${container.composeService}` })
-  for (const [index, port] of (container.ports ?? []).entries()) {
-    chips.push({ key: `port-${index}-host`, label: `H ${port.hostPort}` })
-    chips.push({ key: `port-${index}-container`, label: `C ${port.containerPort}` })
-    chips.push({ key: `port-${index}-protocol`, label: port.protocol.toUpperCase() })
+  const seenPortMappings = new Set<string>()
+  for (const port of container.ports ?? []) {
+    const protocol = port.protocol.toLowerCase()
+    const mappingKey = `${port.hostPort}:${port.containerPort}:${protocol}`
+    if (seenPortMappings.has(mappingKey)) continue
+    seenPortMappings.add(mappingKey)
+    chips.push({
+      key: `port-${mappingKey}`,
+      label: `H ${port.hostPort} → C ${port.containerPort} · ${protocol.toUpperCase()}`,
+    })
   }
   switch (container.networkMode) {
     case 'host':

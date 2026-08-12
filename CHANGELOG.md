@@ -6,6 +6,10 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 
 ## Unreleased
 
+### Fixed
+
+- Agent container views now collapse duplicate IPv4/IPv6 port bindings and show each unique mapping in one directional chip with its protocol instead of separate host, container, and protocol chips.
+
 ## [0.12.1] - 2026-08-12
 
 ### Fixed

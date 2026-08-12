@@ -55,13 +55,24 @@ describe('agent telemetry presentation', () => {
     render(<AgentContainersPanel containers={[{
       runtime: 'docker', runtimeId: 'abc', name: 'homarr', image: 'ghcr.io/homarr-labs/homarr:latest', state: 'running',
       cpuPercent: 6.25, memoryBytes: 167 * 1024 * 1024, uptime: '2 hours', composeService: 'homarr',
-      networkMode: 'custom', networkNames: ['internal_net'], ports: [{ hostPort: 7575, containerPort: 7575, protocol: 'tcp' }],
+      networkMode: 'custom', networkNames: ['internal_net'], ports: [
+        { hostPort: 7575, containerPort: 7575, protocol: 'tcp' },
+        { hostPort: 7575, containerPort: 7575, protocol: 'tcp' },
+        { hostPort: 7575, containerPort: 7575, protocol: 'udp' },
+        { hostPort: 8089, containerPort: 8080, protocol: 'tcp' },
+      ],
     }]} />)
     expect(screen.getByText(/CPU 6.3%/)).toBeInTheDocument()
     expect(screen.getByText(/Memory 167MB/)).toBeInTheDocument()
     expect(screen.getByText(/Up 2 hours/)).toBeInTheDocument()
-    for (const label of ['Service homarr', 'H 7575', 'C 7575', 'TCP', 'Network internal_net']) {
+    for (const label of ['Service homarr', 'Network internal_net']) {
       expect(screen.getByText(label)).toBeInTheDocument()
+    }
+    expect(screen.getAllByText('H 7575 → C 7575 · TCP')).toHaveLength(1)
+    expect(screen.getAllByText('H 7575 → C 7575 · UDP')).toHaveLength(1)
+    expect(screen.getAllByText('H 8089 → C 8080 · TCP')).toHaveLength(1)
+    for (const oldLabel of ['H 7575', 'C 7575', 'TCP', 'UDP']) {
+      expect(screen.queryByText(oldLabel)).not.toBeInTheDocument()
     }
   })
 

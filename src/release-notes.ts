@@ -140,7 +140,9 @@ const RELEASE_0_12_1_DETAILS: UnreleasedReleaseNotes = {
 
 export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
   highlights: [],
-  fixes: [],
+  fixes: [
+    'Agent container views now collapse duplicate IPv4/IPv6 port bindings and show each unique host-to-container mapping with its protocol in one compact chip.',
+  ],
   notes: [],
 }
 
