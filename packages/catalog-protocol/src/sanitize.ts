@@ -44,6 +44,12 @@ const SAFE_SPEC_FIELDS = new Set([
   'pcieGeneration', 'pcieLanes', 'maxTemperatureC', 'launchDate', 'discontinued',
   'performanceCores', 'efficiencyCores', 'configurableTdpMinWatts', 'configurableTdpMaxWatts',
 ])
+const PRIVATE_FIELD_NAMES = new Set([
+  'agent', 'agentData', 'assignments', 'credentials', 'customLabel', 'customName', 'displayName',
+  'hostname', 'ip', 'ipAddress', 'lanIp', 'location', 'mac', 'macAddress', 'notes', 'password',
+  'placement', 'placements', 'room', 'serial', 'serialNumber', 'serviceData', 'services', 'tailscaleIp',
+  'token', 'topologyPlacement',
+])
 const SAFE_COMPATIBILITY_FIELDS = new Set([
   'host', 'requirements', 'cpu', 'memory', 'storageSlots', 'expansionSlots', 'motherboard', 'cooling',
   'power', 'case', 'sockets', 'generations', 'maxTdpWatts', 'slots', 'maxCapacityGb',
@@ -112,6 +118,29 @@ function sanitizeJson(value: unknown, depth = 0): JsonValue | undefined {
   return undefined
 }
 
+function sanitizePublicJson(value: unknown, depth = 0): JsonValue | undefined {
+  if (depth > MAX_JSON_DEPTH) return undefined
+  if (value === null || typeof value === 'boolean') return value
+  if (typeof value === 'number') return Number.isFinite(value) ? value : undefined
+  if (typeof value === 'string') return nonEmptyString(value)
+  if (Array.isArray(value)) {
+    return value
+      .slice(0, MAX_ARRAY_LENGTH)
+      .map((entry) => sanitizePublicJson(entry, depth + 1))
+      .filter((entry): entry is JsonValue => entry !== undefined)
+  }
+  if (value && typeof value === 'object') {
+    const output: Record<string, JsonValue> = {}
+    for (const [key, entry] of Object.entries(value).slice(0, MAX_OBJECT_KEYS)) {
+      if (PRIVATE_FIELD_NAMES.has(key)) continue
+      const sanitized = sanitizePublicJson(entry, depth + 1)
+      if (sanitized !== undefined) output[key] = sanitized
+    }
+    return Object.keys(output).length > 0 ? output : undefined
+  }
+  return undefined
+}
+
 function sanitizeEndpoint(value: unknown): CatalogPortEndpoint | undefined {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined
   const endpoint = value as Record<string, unknown>
@@ -136,6 +165,7 @@ function sanitizePort(value: unknown): CatalogPort | undefined {
     const entry = nonEmptyString(port[key])
     if (entry) sanitized[key] = entry
   }
+  if (Number.isSafeInteger(port.speedBps) && Number(port.speedBps) >= 0) sanitized.speedBps = Number(port.speedBps)
   if (typeof port.poe === 'boolean') sanitized.poe = port.poe
   if (port.origin === 'fixed' || port.origin === 'module') sanitized.origin = port.origin
   if (Array.isArray(port.endpoints)) {
@@ -144,6 +174,14 @@ function sanitizePort(value: unknown): CatalogPort | undefined {
       .filter((entry): entry is CatalogPortEndpoint => entry !== undefined)
     if (endpoints.length > 0) sanitized.endpoints = endpoints
   }
+  return sanitized
+}
+
+function sanitizePortV9(value: unknown): CatalogPort | undefined {
+  const sanitized = sanitizePort(value)
+  if (!sanitized || !value || typeof value !== 'object' || Array.isArray(value)) return sanitized
+  const speedBps = (value as Record<string, unknown>).speedBps
+  if (typeof speedBps === 'number' && Number.isFinite(speedBps)) sanitized.speedBps = speedBps
   return sanitized
 }
 
@@ -183,6 +221,67 @@ export function sanitizeCatalogItem(value: unknown): CatalogTemplateItem {
   const compatibility = sanitizeJson(source.compatibility)
   if (compatibility && !Array.isArray(compatibility) && typeof compatibility === 'object') {
     item.compatibility = compatibility
+  }
+
+  return item
+}
+
+export function sanitizeCatalogItemV9(value: unknown): CatalogTemplateItem {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw new Error('Catalog item must be an object.')
+  }
+
+  const source = value as Record<string, unknown>
+  const type = nonEmptyString(source.type)
+  const name = nonEmptyString(source.name)
+  if (!type || !name) throw new Error('Catalog item requires non-empty type and name fields.')
+
+  const item = { type, name } as CatalogTemplateItem
+  for (const field of IDENTITY_FIELDS) {
+    if (field === 'type' || field === 'name') continue
+    const entry = nonEmptyString(source[field])
+    if (entry) item[field] = entry
+  }
+
+  if (Array.isArray(source.aliases)) {
+    const aliases = source.aliases
+      .slice(0, MAX_ALIASES)
+      .map(nonEmptyString)
+      .filter((entry): entry is string => entry !== undefined)
+    if (aliases.length > 0) item.aliases = [...new Set(aliases)]
+  }
+
+  const specs = sanitizePublicJson(source.specs)
+  if (specs && !Array.isArray(specs) && typeof specs === 'object') item.specs = specs
+
+  if (Array.isArray(source.ports)) {
+    const ports = source.ports.slice(0, MAX_PORTS).map(sanitizePortV9).filter((entry): entry is CatalogPort => entry !== undefined)
+    if (ports.length > 0) item.ports = ports
+  }
+
+  const compatibility = sanitizePublicJson(source.compatibility)
+  if (compatibility && !Array.isArray(compatibility) && typeof compatibility === 'object') {
+    item.compatibility = compatibility
+  }
+
+  const knownTopLevel = new Set([
+    ...IDENTITY_FIELDS,
+    'aliases',
+    'specs',
+    'ports',
+    'compatibility',
+    'id',
+    'key',
+    'hardwareClass',
+    'usageRole',
+    'scope',
+    'ownerProjectId',
+    'archivedAt',
+  ])
+  for (const [key, raw] of Object.entries(source).slice(0, MAX_OBJECT_KEYS)) {
+    if (knownTopLevel.has(key) || PRIVATE_FIELD_NAMES.has(key)) continue
+    const sanitized = sanitizePublicJson(raw, 1)
+    if (sanitized !== undefined) (item as unknown as Record<string, JsonValue>)[key] = sanitized
   }
 
   return item

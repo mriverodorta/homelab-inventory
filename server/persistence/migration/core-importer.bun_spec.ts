@@ -12,6 +12,7 @@ import { importLegacyCore } from './core-importer.ts'
 import { verifyImportedCore } from './core-verifier.ts'
 import { createAuthenticationStore, createOwnerAccount, ensureProtectedOwnerRole } from '../../auth/model.mjs'
 import { projectAuthenticationState } from '../core/projections/legacy-domains.ts'
+import { buildLegacyInventoryProjection } from '../core/projections/legacy-project.ts'
 
 const temporaryDirectories: string[] = []
 
@@ -131,6 +132,46 @@ describe('schema-29 core import', () => {
       const valid = schema29ProductionShapeFixture()
       importLegacyCore({ database: handle.database, snapshot: valid, identityPlan: buildCanonicalIdentityPlan(valid) })
       expect(() => importLegacyCore({ database: handle.database, snapshot: valid, identityPlan: buildCanonicalIdentityPlan(valid) })).toThrow(/must not contain inventory/iu)
+    } finally {
+      closeManagedDatabase(handle)
+    }
+  })
+
+  test('stores v9 canonical integers directly and projects friendly inventory units', async () => {
+    const handle = await migratedDatabase()
+    const snapshot = schema29ProductionShapeFixture()
+    const cpu = snapshot.inventory.cpus[0]
+    cpu.specs = { cores: 6, threads: 12, baseClockMhz: 2_300, boostClockMhz: 3_800, vendorFeature: { tier: 'public' } }
+    const ram = snapshot.inventory.ram[0]
+    ram.specs = { capacityMib: 16_384, generation: 'DDR4', speedMt: 3_200, voltageMv: 1_200 }
+    const storage = snapshot.inventory.storage[0]
+    storage.specs = { capacityBytes: 1_000_000_000_000, interface: 'NVMe', formFactor: '2280' }
+    const adapter = snapshot.inventory.powerAdapters[0]
+    adapter.specs = { ratedPowerMw: 90_000, connector: 'Slim tip' }
+    const server = snapshot.inventory.servers[0]
+    server.compatibility.host.maxExpansionPowerMw = 75_000
+    delete server.compatibility.host.maxExpansionPowerWatts
+    server.compatibility.host.cpu.maxTdpMw = 65_000
+    delete server.compatibility.host.cpu.maxTdpWatts
+    server.compatibility.host.memory.maxCapacityMib = 65_536
+    delete server.compatibility.host.memory.maxCapacityGb
+    server.compatibility.host.experimentalPublicField = { retained: true }
+    try {
+      importLegacyCore({ database: handle.database, snapshot, identityPlan: buildCanonicalIdentityPlan(snapshot) })
+      expect(handle.database.query('SELECT base_clock_mhz, boost_clock_mhz FROM cpus').get()).toEqual({ base_clock_mhz: 2_300, boost_clock_mhz: 3_800 })
+      expect(handle.database.query('SELECT capacity_mib, voltage_mv FROM memory_modules').get()).toEqual({ capacity_mib: 16_384, voltage_mv: 1_200 })
+      expect(handle.database.query('SELECT capacity_bytes FROM storage_devices').get()).toEqual({ capacity_bytes: 1_000_000_000_000 })
+      expect(handle.database.query('SELECT rated_power_mw FROM power_adapters').get()).toEqual({ rated_power_mw: 90_000 })
+      expect(handle.database.query('SELECT max_expansion_power_mw FROM host_compatibility_profiles').get()).toEqual({ max_expansion_power_mw: 75_000 })
+      const projected = buildLegacyInventoryProjection(handle.database)
+      expect(projected.cpus[0].specs).toMatchObject({ baseClockGhz: 2.3, boostClockGhz: 3.8, vendorFeature: { tier: 'public' } })
+      expect(projected.ram[0].specs).toMatchObject({ capacityGb: 16, voltageVolts: 1.2 })
+      expect(projected.storage[0].specs).toMatchObject({ capacityGb: 1_000 })
+      expect(projected.powerAdapters[0].specs).toMatchObject({ wattageWatts: 90 })
+      expect(projected.servers[0].compatibility.host).toMatchObject({
+        maxExpansionPowerWatts: 75,
+        experimentalPublicField: { retained: true },
+      })
     } finally {
       closeManagedDatabase(handle)
     }

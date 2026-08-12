@@ -19,7 +19,7 @@ describe('application health', () => {
         mode: 'production',
         schemaVersion: 10,
         applicationOemContractVersion: 6,
-        applicationCatalogContractVersion: 8,
+        applicationCatalogContractVersion: 9,
         persistence: {
           ok: true,
           engine: 'sqlite',
@@ -49,7 +49,7 @@ describe('application health', () => {
         mode: 'demo',
         schemaVersion: null,
         applicationOemContractVersion: 6,
-        applicationCatalogContractVersion: 8,
+        applicationCatalogContractVersion: 9,
         persistence: null,
       },
     })

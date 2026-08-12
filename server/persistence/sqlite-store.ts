@@ -1648,7 +1648,7 @@ export class SqliteHomelabInventoryStore {
     const item = this.getProject().items[`${link.itemType}:${link.itemId}`] as Row | undefined
     if (!item) throw lifecycleError('Linked inventory item was not found.', 'linked-inventory-not-found', 409)
     const nextItem = materializeCatalogItem(
-      mergeCatalogUpdate(projectLocalItemForCatalog(item, link.itemType), template.item),
+      mergeCatalogUpdate(projectLocalItemForCatalog(item, link.itemType), template.item, template.fingerprintVersion),
       { usageRole: item.usageRole },
     )
     const dependencyConflicts = link.itemType === 'motherboard'
@@ -1663,7 +1663,7 @@ export class SqliteHomelabInventoryStore {
       importedRevision: link.importedRevision,
       availableRevision: template.revision,
       state: link.state,
-      changes: catalogFieldDiff(projectLocalItemForCatalog(item, link.itemType), template.item),
+      changes: catalogFieldDiff(projectLocalItemForCatalog(item, link.itemType), template.item, template.fingerprintVersion),
       dependencyConflicts,
       localFieldsPreserved: Object.keys(item).filter(
         (key) => key === 'name' || !['id', 'key', 'type', 'subtype', 'manufacturer', 'secondaryManufacturer', 'family', 'model', 'number', 'specs', 'ports', 'compatibility'].includes(key),
@@ -1683,7 +1683,7 @@ export class SqliteHomelabInventoryStore {
     const current = this.getProject().items[`${link.itemType}:${link.itemId}`] as Row | undefined
     if (!current) throw lifecycleError('Linked inventory item was not found.', 'linked-inventory-not-found', 409)
     const nextItem = materializeCatalogItem(
-      mergeCatalogUpdate(projectLocalItemForCatalog(current, link.itemType), template.item),
+      mergeCatalogUpdate(projectLocalItemForCatalog(current, link.itemType), template.item, template.fingerprintVersion),
       { usageRole: current.usageRole },
     )
     const dependencyConflicts = link.itemType === 'motherboard'

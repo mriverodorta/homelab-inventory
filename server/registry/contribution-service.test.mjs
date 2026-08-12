@@ -62,7 +62,7 @@ describe('contribution discovery', () => {
   it('does not queue content already present in the signed registry digest index', async () => {
     const store = fixture({ id: 1, type: 'cpu', name: 'Example CPU', manufacturer: 'Example', model: 'C1' })
     const { contentHash } = await import('../../packages/catalog-protocol/src/index.ts')
-      .then(({ projectCatalogItem }) => projectCatalogItem(store.getProject().items['cpu:1']))
+      .then(({ projectCatalogItem }) => projectCatalogItem(store.getProject().items['cpu:1'], { fingerprintVersion: 9 }))
     expect(await discoverContributionCandidates(store, new Date(), new Set([contentHash]))).toMatchObject({ queued: 0 })
   })
 
@@ -135,7 +135,7 @@ describe('contribution discovery', () => {
       draft.snapshot = { sourceId: 1, revision: 4 }
     })
     const projection = await import('../../packages/catalog-protocol/src/index.ts')
-      .then(({ projectCatalogItem }) => projectCatalogItem(switches[0]))
+      .then(({ projectCatalogItem }) => projectCatalogItem(switches[0], { fingerprintVersion: 9 }))
     const known = new Map([[projection.contentHash, {
       identityHash: projection.identityHash,
       templateKey: 'netgear-gs108t',
@@ -350,7 +350,7 @@ describe('contribution discovery', () => {
       })
     })
     const projection = await import('../../packages/catalog-protocol/src/index.ts')
-      .then(({ projectCatalogItem }) => projectCatalogItem(cpu))
+      .then(({ projectCatalogItem }) => projectCatalogItem(cpu, { fingerprintVersion: 9 }))
     const known = new Map([[projection.contentHash, {
       identityHash: projection.identityHash,
       templateKey: 'example-cpu-c1',
@@ -394,7 +394,7 @@ describe('contribution discovery', () => {
       })
     })
     const projection = await import('../../packages/catalog-protocol/src/index.ts')
-      .then(({ projectCatalogItem }) => projectCatalogItem(cpu))
+      .then(({ projectCatalogItem }) => projectCatalogItem(cpu, { fingerprintVersion: 9 }))
     const known = new Map([[projection.contentHash, {
       identityHash: projection.identityHash,
       templateKey: 'example-cpu-c1',
@@ -418,7 +418,7 @@ describe('contribution discovery', () => {
     expect(store.getRegistryState().contributionOutbox).toEqual([])
   })
 
-  it('deduplicates exact physical RAM sticks with the v8 fingerprint', async () => {
+  it('deduplicates exact physical RAM sticks with the v9 fingerprint', async () => {
     const sticks = [1, 2].map((id) => ({
       id,
       type: 'ram',
@@ -451,7 +451,7 @@ describe('contribution discovery', () => {
     expect(await discoverContributionCandidates(store)).toMatchObject({ queued: 1 })
     expect(store.getRegistryState().contributionOutbox).toEqual([
       expect.objectContaining({
-        fingerprintVersion: 8,
+        fingerprintVersion: 9,
         sources: [{ itemType: 'ram', itemId: 1 }, { itemType: 'ram', itemId: 2 }],
         payload: expect.objectContaining({ number: 'MTA18ASF2G72AZ-3G2R' }),
       }),

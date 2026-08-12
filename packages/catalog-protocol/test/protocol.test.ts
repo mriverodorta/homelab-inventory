@@ -48,6 +48,8 @@ describe('catalog protocol sanitizer', () => {
       'pcieLanes', 'maxTemperatureC', 'launchDate', 'discontinued',
       'performanceCores', 'efficiencyCores', 'configurableTdpMinWatts',
       'configurableTdpMaxWatts',
+      'baseClockMhz', 'boostClockMhz', 'tdpMw', 'cacheMib',
+      'maxTemperatureMilliCelsius', 'configurableTdpMinMw', 'configurableTdpMaxMw',
     ])
 
     const item = {

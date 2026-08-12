@@ -6,6 +6,7 @@ export const WORKSTATION_FINGERPRINT_VERSION = 5
 export const SERVER_FINGERPRINT_VERSION = 6
 export const MOTHERBOARD_FINGERPRINT_VERSION = 7
 export const RAM_FINGERPRINT_VERSION = 8
+export const CANONICAL_UNITS_FINGERPRINT_VERSION = 9
 export const SUPPORTED_FINGERPRINT_VERSIONS = [
   LEGACY_FINGERPRINT_VERSION,
   FINGERPRINT_VERSION,
@@ -14,6 +15,7 @@ export const SUPPORTED_FINGERPRINT_VERSIONS = [
   SERVER_FINGERPRINT_VERSION,
   MOTHERBOARD_FINGERPRINT_VERSION,
   RAM_FINGERPRINT_VERSION,
+  CANONICAL_UNITS_FINGERPRINT_VERSION,
 ] as const
 export const MANUFACTURER_ALIAS_VERSION = 1
 
@@ -40,6 +42,13 @@ export const CPU_SPEC_KEYS = [
   'efficiencyCores',
   'configurableTdpMinWatts',
   'configurableTdpMaxWatts',
+  'baseClockMhz',
+  'boostClockMhz',
+  'tdpMw',
+  'cacheMib',
+  'maxTemperatureMilliCelsius',
+  'configurableTdpMinMw',
+  'configurableTdpMaxMw',
 ] as const
 
 export type CpuCatalogSpecKey = typeof CPU_SPEC_KEYS[number]
@@ -87,6 +96,7 @@ export type CatalogPort = {
   slotNumber: number
   role?: string
   speed?: string
+  speedBps?: number
   poe?: boolean
   origin?: CatalogPortOrigin
   endpoints?: CatalogPortEndpoint[]
@@ -102,7 +112,7 @@ export type CatalogTemplateItem = {
   model?: string
   number?: string
   aliases?: string[]
-  specs?: Record<string, JsonPrimitive>
+  specs?: Record<string, JsonValue>
   ports?: CatalogPort[]
   compatibility?: Record<string, JsonValue>
 }

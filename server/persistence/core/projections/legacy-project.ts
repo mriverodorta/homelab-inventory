@@ -22,6 +22,19 @@ function defined<T extends Record<string, unknown>>(value: T) {
   return Object.fromEntries(Object.entries(value).filter(([, entry]) => entry !== null && entry !== undefined)) as T
 }
 
+function mergeRecords(base: unknown, override: unknown): Row | undefined {
+  const left = base && typeof base === 'object' && !Array.isArray(base) ? base as Row : undefined
+  const right = override && typeof override === 'object' && !Array.isArray(override) ? override as Row : undefined
+  if (!left && !right) return undefined
+  const result: Row = structuredClone(left ?? {})
+  for (const [key, value] of Object.entries(right ?? {})) {
+    result[key] = value && typeof value === 'object' && !Array.isArray(value)
+      ? mergeRecords(result[key], value)
+      : structuredClone(value)
+  }
+  return result
+}
+
 function aliasKey(row: Row) {
   return `${row.legacy_type_key}:${row.legacy_id}`
 }
@@ -237,8 +250,9 @@ function inventoryItem(database: Database, row: Row): InventoryItem {
   const secondaryManufacturer = one(database, `SELECT coalesce(m.name, s.manufacturer_text) AS name FROM inventory_secondary_manufacturers s LEFT JOIN manufacturers m ON m.id = s.manufacturer_id WHERE s.item_id = ?`, row.id)?.name
   const smartRow = row.type_key === 'powerStrip' ? one(database, 'SELECT * FROM power_strip_smart_configurations WHERE power_strip_id = ? AND enabled = 1', row.id) : null
   const smart = smartRow ? defined({ enabled: true, displayName: smartRow.display_name, managementIp: smartRow.management_ip, macAddress: smartRow.mac_address, outlets: all(database, `SELECT pia.legacy_port_id AS portId, n.name FROM power_strip_outlet_names n JOIN port_identity_aliases pia ON pia.port_id = n.port_id WHERE n.smart_configuration_id = ? ORDER BY n.id`, smartRow.id) }) : undefined
-  const requirements = extension.compatibilityRequirements ? { requirements: extension.compatibilityRequirements } : undefined
-  const compatibility = hostCompatibility(database, row.id) ?? requirements
+  const legacyCompatibility = extension.catalogCompatibility
+    ?? (extension.compatibilityRequirements ? { requirements: extension.compatibilityRequirements } : undefined)
+  const compatibility = mergeRecords(legacyCompatibility, hostCompatibility(database, row.id))
   const ports = itemPorts(database, row.id, row.type_key)
   return defined({
     ...(extension.legacyFields ?? {}),

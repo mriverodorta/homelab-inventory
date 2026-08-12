@@ -84,3 +84,11 @@ export function toMilliCelsius(input: UnitValue<'mC' | 'C'>) {
 export function toBasisPoints(input: UnitValue<'basis-points' | 'percent'>) {
   return convert(input, { 'basis-points': 1, percent: 100 }, 'basis points')
 }
+
+export function toMillihertz(input: UnitValue<'mHz' | 'Hz'>) {
+  return convert(input, { mHz: 1, Hz: 1000 }, 'millihertz')
+}
+
+export function toMillivoltAmps(input: UnitValue<'mVA' | 'VA'>) {
+  return convert(input, { mVA: 1, VA: 1000 }, 'millivolt-amperes')
+}

@@ -5,14 +5,10 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { Separator } from '@/components/ui/separator'
 import { Slider } from '@/components/ui/slider'
 import type { CatalogRangeFilterState, CatalogTermFilterState } from '@/components/inventory/catalog-browser-model'
-import { toggleCatalogTerm } from '@/components/inventory/catalog-browser-model'
+import { formatCatalogRangeValue, toggleCatalogTerm } from '@/components/inventory/catalog-browser-model'
 import type { CatalogFacetCategory } from '@/types/registry'
 
 const COLLAPSED_TERM_COUNT = 6
-
-function formatRangeValue(value: number, unit?: string | null): string {
-  return `${value.toLocaleString()}${unit ? ` ${unit}` : ''}`
-}
 
 export function CatalogFilterPanel({
   category,
@@ -103,8 +99,8 @@ export function CatalogFilterPanel({
               ) : (
                 <div className="mt-4">
                   <div className="flex items-center justify-between gap-3 text-xs font-bold tabular-nums text-[#514940]">
-                    <span>{formatRangeValue(ranges[facet.key]?.[0] ?? facet.minimum, facet.unit)}</span>
-                    <span>{formatRangeValue(ranges[facet.key]?.[1] ?? facet.maximum, facet.unit)}</span>
+                    <span>{formatCatalogRangeValue(ranges[facet.key]?.[0] ?? facet.minimum, facet.unit)}</span>
+                    <span>{formatCatalogRangeValue(ranges[facet.key]?.[1] ?? facet.maximum, facet.unit)}</span>
                   </div>
                   <Slider
                     className="mt-4"

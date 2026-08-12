@@ -2652,7 +2652,7 @@ export class HomelabInventoryStore {
       code: 'linked-inventory-not-found', status: 409,
     })
     const nextItem = materializeCatalogItem(
-      mergeCatalogUpdate(projectLocalItemForCatalog(item, link.itemType), template.item),
+      mergeCatalogUpdate(projectLocalItemForCatalog(item, link.itemType), template.item, template.fingerprintVersion),
       { usageRole: item.usageRole },
     )
     const dependencyConflicts = link.itemType === 'motherboard'
@@ -2667,7 +2667,7 @@ export class HomelabInventoryStore {
       importedRevision: link.importedRevision,
       availableRevision: template.revision,
       state: link.state,
-      changes: catalogFieldDiff(projectLocalItemForCatalog(item, link.itemType), template.item),
+      changes: catalogFieldDiff(projectLocalItemForCatalog(item, link.itemType), template.item, template.fingerprintVersion),
       dependencyConflicts,
       localFieldsPreserved: Object.keys(item).filter(
         (key) => key === 'name' || !['id', 'key', 'type', 'subtype', 'manufacturer', 'secondaryManufacturer', 'family', 'model', 'number', 'specs', 'ports', 'compatibility'].includes(key),
@@ -2693,7 +2693,7 @@ export class HomelabInventoryStore {
       code: 'linked-inventory-not-found', status: 409,
     })
     const nextItem = materializeCatalogItem(
-      mergeCatalogUpdate(projectLocalItemForCatalog(current, link.itemType), template.item),
+      mergeCatalogUpdate(projectLocalItemForCatalog(current, link.itemType), template.item, template.fingerprintVersion),
       { usageRole: current.usageRole },
     )
     const dependencyConflicts = link.itemType === 'motherboard'

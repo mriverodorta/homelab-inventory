@@ -3,6 +3,7 @@ import {
   buildCatalogSearchFilters,
   countActiveCatalogFilters,
   createRangeFilterState,
+  formatCatalogRangeValue,
   toggleCatalogTerm,
 } from '@/components/inventory/catalog-browser-model'
 import type { CatalogFacetCategory } from '@/types/registry'
@@ -42,5 +43,13 @@ describe('catalog browser filters', () => {
   it('toggles independent multi-select values without replacing siblings', () => {
     expect(toggleCatalogTerm(['AMD'], 'Intel')).toEqual(['AMD', 'Intel'])
     expect(toggleCatalogTerm(['AMD', 'Intel'], 'AMD')).toEqual(['Intel'])
+  })
+
+  it('formats canonical v9 facet integers into friendly display units', () => {
+    expect(formatCatalogRangeValue(2_300, 'MHz')).toBe('2.3 GHz')
+    expect(formatCatalogRangeValue(16_384, 'MiB')).toBe('16 GiB')
+    expect(formatCatalogRangeValue(1_000_000_000_000, 'bytes')).toBe('1 TB')
+    expect(formatCatalogRangeValue(10_000_000_000, 'bps')).toBe('10 Gbps')
+    expect(formatCatalogRangeValue(130_000, 'mW')).toBe('130 W')
   })
 })

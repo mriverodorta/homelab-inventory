@@ -3,6 +3,33 @@ import type { CatalogFacetCategory, CatalogSearchFilters } from '@/types/registr
 export type CatalogTermFilterState = Record<string, string[]>
 export type CatalogRangeFilterState = Record<string, [number, number]>
 
+function scaled(value: number, divisor: number, suffix: string) {
+  return `${(value / divisor).toLocaleString(undefined, { maximumFractionDigits: 2 })} ${suffix}`
+}
+
+export function formatCatalogRangeValue(value: number, unit?: string | null): string {
+  switch (unit) {
+    case 'MHz': return value >= 1_000 ? scaled(value, 1_000, 'GHz') : `${value.toLocaleString()} MHz`
+    case 'MiB': return value >= 1_024 ? scaled(value, 1_024, 'GiB') : `${value.toLocaleString()} MiB`
+    case 'bytes':
+      if (value >= 1_000_000_000_000) return scaled(value, 1_000_000_000_000, 'TB')
+      if (value >= 1_000_000_000) return scaled(value, 1_000_000_000, 'GB')
+      return `${value.toLocaleString()} bytes`
+    case 'bps':
+      if (value >= 1_000_000_000) return scaled(value, 1_000_000_000, 'Gbps')
+      if (value >= 1_000_000) return scaled(value, 1_000_000, 'Mbps')
+      return `${value.toLocaleString()} bps`
+    case 'mW': return scaled(value, 1_000, 'W')
+    case 'mV': return scaled(value, 1_000, 'V')
+    case 'mA': return scaled(value, 1_000, 'A')
+    case 'mC': return scaled(value, 1_000, 'deg C')
+    case 'mHz': return scaled(value, 1_000, 'Hz')
+    case 'mVA': return scaled(value, 1_000, 'VA')
+    case 'basis-points': return scaled(value, 100, '%')
+    default: return `${value.toLocaleString()}${unit ? ` ${unit}` : ''}`
+  }
+}
+
 export function createRangeFilterState(category: CatalogFacetCategory): CatalogRangeFilterState {
   return Object.fromEntries(
     category.facets

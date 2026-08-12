@@ -1,4 +1,5 @@
 export * from './canonicalize'
+export * from './canonical-units'
 export * from './contribution-auth'
 export * from './contract'
 export * from './facets'

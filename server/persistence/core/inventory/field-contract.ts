@@ -71,10 +71,13 @@ const TYPE_FIELD_MAPPINGS: Readonly<Record<InventoryType, Readonly<Record<string
   cpu: {
     'specs.cores': { storage: 'column', target: 'cpus.core_count' },
     'specs.threads': { storage: 'column', target: 'cpus.thread_count' },
+    'specs.baseClockMhz': { storage: 'column', target: 'cpus.base_clock_mhz' },
     'specs.baseClockGhz': { storage: 'column', target: 'cpus.base_clock_mhz' },
+    'specs.boostClockMhz': { storage: 'column', target: 'cpus.boost_clock_mhz' },
     'specs.boostClockGhz': { storage: 'column', target: 'cpus.boost_clock_mhz' },
   },
   ram: {
+    'specs.capacityMib': { storage: 'column', target: 'memory_modules.capacity_mib' },
     'specs.capacityGb': { storage: 'column', target: 'memory_modules.capacity_mib' },
     'specs.generation': { storage: 'relation', target: 'memory_modules.memory_generation_id' },
     'specs.speedMt': { storage: 'column', target: 'memory_modules.speed_mtps' },
@@ -82,9 +85,11 @@ const TYPE_FIELD_MAPPINGS: Readonly<Record<InventoryType, Readonly<Record<string
     'specs.moduleType': { storage: 'relation', target: 'memory_modules.module_type_id' },
     'specs.ecc': { storage: 'column', target: 'memory_modules.ecc' },
     'specs.rank': { storage: 'column', target: 'memory_modules.rank' },
+    'specs.voltageMv': { storage: 'column', target: 'memory_modules.voltage_mv' },
     'specs.voltageVolts': { storage: 'column', target: 'memory_modules.voltage_mv' },
   },
   storage: {
+    'specs.capacityBytes': { storage: 'column', target: 'storage_devices.capacity_bytes' },
     'specs.capacityGb': { storage: 'column', target: 'storage_devices.capacity_bytes' },
     'specs.capacityTb': { storage: 'column', target: 'storage_devices.capacity_bytes' },
     'specs.interface': { storage: 'relation', target: 'storage_devices.interface_id' },
@@ -93,6 +98,7 @@ const TYPE_FIELD_MAPPINGS: Readonly<Record<InventoryType, Readonly<Record<string
     'specs.partitionTable': { storage: 'column', target: 'storage_devices.partition_table' },
   },
   gpu: {
+    'specs.vramMib': { storage: 'column', target: 'graphics_cards.vram_mib' },
     'specs.vramGb': { storage: 'column', target: 'graphics_cards.vram_mib' },
     'specs.formFactor': { storage: 'column', target: 'graphics_cards.form_factor' },
     'specs.slotWidth': { storage: 'column', target: 'graphics_cards.slot_width' },
@@ -101,6 +107,7 @@ const TYPE_FIELD_MAPPINGS: Readonly<Record<InventoryType, Readonly<Record<string
   },
   network: {
     'specs.ports': { storage: 'column', target: 'network_cards.port_count' },
+    'specs.maxSpeedBps': { storage: 'column', target: 'network_cards.max_speed_bps' },
     'specs.speedMbps': { storage: 'column', target: 'network_cards.max_speed_bps' },
     'specs.interface': { storage: 'column', target: 'network_cards.interface' },
     'specs.formFactor': { storage: 'column', target: 'network_cards.form_factor' },
@@ -124,6 +131,7 @@ const TYPE_FIELD_MAPPINGS: Readonly<Record<InventoryType, Readonly<Record<string
   },
   powerSupply: {
     'specs.formFactor': { storage: 'column', target: 'power_supplies.form_factor' },
+    'specs.ratedPowerMw': { storage: 'column', target: 'power_supplies.rated_power_mw' },
     'specs.wattageWatts': { storage: 'column', target: 'power_supplies.rated_power_mw' },
     'specs.efficiency': { storage: 'column', target: 'power_supplies.efficiency_rating' },
     'specs.connectors': { storage: 'relation', target: 'power_supply_connectors' },
@@ -137,11 +145,13 @@ const TYPE_FIELD_MAPPINGS: Readonly<Record<InventoryType, Readonly<Record<string
     'specs.bluetooth': { storage: 'column', target: 'wireless_cards.bluetooth' },
   },
   powerAdapter: {
+    'specs.ratedPowerMw': { storage: 'column', target: 'power_adapters.rated_power_mw' },
     'specs.wattageWatts': { storage: 'column', target: 'power_adapters.rated_power_mw' },
     'specs.connector': { storage: 'relation', target: 'power_adapters.connector_type_id' },
   },
   switch: {
     'specs.management': { storage: 'column', target: 'network_switches.management_type' },
+    'specs.switchingCapacityBps': { storage: 'column', target: 'network_switches.switching_capacity_bps' },
     'specs.switchingCapacityGbps': { storage: 'column', target: 'network_switches.switching_capacity_bps' },
     'specs.fanless': { storage: 'column', target: 'network_switches.fanless' },
     ports: { storage: 'relation', target: 'inventory_ports' },
@@ -152,12 +162,17 @@ const TYPE_FIELD_MAPPINGS: Readonly<Record<InventoryType, Readonly<Record<string
     ports: { storage: 'relation', target: 'inventory_ports' },
   },
   monitor: {
+    'specs.diagonalMm': { storage: 'column', target: 'monitors.diagonal_mm' },
+    'specs.diagonalSourceText': { storage: 'column', target: 'monitors.diagonal_source_text' },
     'specs.sizeInches': { storage: 'column', target: 'monitors.diagonal_mm' },
     'specs.resolution': { storage: 'column', target: 'monitors.resolution' },
+    'specs.refreshRateMillihz': { storage: 'column', target: 'monitors.refresh_rate_millihz' },
     'specs.refreshRateHz': { storage: 'column', target: 'monitors.refresh_rate_millihz' },
   },
   ups: {
+    'specs.ratedPowerMw': { storage: 'column', target: 'ups_systems.rated_power_mw' },
     'specs.wattageWatts': { storage: 'column', target: 'ups_systems.rated_power_mw' },
+    'specs.capacityMillivoltAmps': { storage: 'column', target: 'ups_systems.capacity_millivolt_amps' },
     'specs.capacityVa': { storage: 'column', target: 'ups_systems.capacity_millivolt_amps' },
     'specs.batteryBackupOutlets': { storage: 'column', target: 'ups_systems.battery_outlet_count' },
     'specs.surgeProtectedOutlets': { storage: 'column', target: 'ups_systems.surge_outlet_count' },

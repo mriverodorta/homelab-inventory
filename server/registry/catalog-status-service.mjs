@@ -20,6 +20,7 @@ export class CatalogStatusService {
     store,
     identityService,
     applicationVersion,
+    applicationCatalogContractVersion,
     intervalMs = DEFAULT_CATALOG_STATUS_INTERVAL_MS,
     now = () => new Date(),
     waitFn = wait,
@@ -31,12 +32,16 @@ export class CatalogStatusService {
     if (typeof applicationVersion !== 'string' || applicationVersion.trim().length === 0 || applicationVersion.length > 80) {
       throw new Error('Catalog status service requires a valid application version.')
     }
+    if (!positiveSafeInteger(applicationCatalogContractVersion)) {
+      throw new Error('Catalog status service requires a valid application catalog contract version.')
+    }
     if (!Number.isSafeInteger(intervalMs) || intervalMs <= 0) {
       throw new Error('Catalog status interval must be a positive safe integer.')
     }
     this.store = store
     this.identityService = identityService
     this.applicationVersion = applicationVersion.trim()
+    this.applicationCatalogContractVersion = applicationCatalogContractVersion
     this.intervalMs = intervalMs
     this.now = now
     this.waitFn = waitFn
@@ -84,6 +89,7 @@ export class CatalogStatusService {
       if (!positiveSafeInteger(revision)) return null
       const body = {
         applicationVersion: this.applicationVersion,
+        applicationCatalogContractVersion: this.applicationCatalogContractVersion,
         activeCatalogRevision: revision,
         reportedAt: now.toISOString(),
       }

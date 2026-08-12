@@ -13,12 +13,15 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 - Added multi-project workbooks with a compact project switcher, a fixed Systems workspace, multiple reorderable Canvas workspaces, per-project defaults, browser-local last-active workspace restoration, and Excel-style tabs at the bottom of the viewport.
 - Added project-bound and global inventory scopes, explicit global-library membership, and clean cross-project duplication that omits serials, Registry links, Agent identity, telemetry, assignments, placement, and cabling.
 - Connected installations now report only their application version and active catalog revision through a signed six-hour Registry adoption check-in.
+- Added Registry catalog contract v9 with exact integer units for clocks, memory, storage, networking, power, voltage, dimensions, temperature, percentages, display refresh, and apparent power.
 
 ### Changed
 
 - Portable backups now export logical format 2 archives with independent core, telemetry, and catalog schema versions while retaining format 1 import compatibility and dependency-aware selective restore.
 - Initial workspace hydration now shares permission-aware application and workbook bootstrap responses after authentication, keeping normal multi-project startup within three API requests before background polling.
 - Project compatibility policy, Canvas viewport and preferences, memberships, placements, assignments, connections, audits, manual cable bends, and route caches now belong to their numeric project and workspace records.
+- New Registry contributions use fingerprint v9 while existing v2-v8 templates, links, identity aliases, and signed catalog revisions remain readable and reconcilable.
+- Catalog filters and inventory forms format canonical values into familiar units without changing their exact persisted or comparison values.
 
 ### Fixed
 
@@ -26,6 +29,7 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 - Authentication users, credentials, OIDC identities, sessions, roles, permissions, invitations, and security history now round-trip through normalized relational tables instead of partial metadata projections.
 - Interrupted SQLite restores now checkpoint WAL state and complete or roll back their journaled file swap without exposing a partial database.
 - Multi-project restore remaps relational inventory, port, endpoint-face, and resource-slot identities through stable typed aliases, rejects malformed workbook columns, and preserves all project topology without copying internal SQLite pages.
+- Registry v9 imports write canonical integers directly into SQLite, reject conflicting or precision-losing dual representations, preserve unknown public fields, and keep private installation identifiers out of contribution payloads.
 
 ## [0.11.1] - 2026-08-10
 

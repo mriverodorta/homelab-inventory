@@ -24,7 +24,7 @@ import { SessionService } from './auth/session-service.mjs'
 import { BackupScheduler } from './backup/backup-scheduler.mjs'
 import { BackupService } from './backup/backup-service.mjs'
 import { apiErrorHandler } from './api-error-handler.mjs'
-import { applicationHealth } from './app-health.mjs'
+import { APPLICATION_CATALOG_CONTRACT_VERSION, applicationHealth } from './app-health.mjs'
 import { EngineCommandService } from './engine/command-service.mjs'
 import { ServerEngineRuntime } from './engine/runtime.mjs'
 import { EngineSseHub } from './engine/sse-hub.mjs'
@@ -379,6 +379,7 @@ const catalogStatusService = installationIdentity && store
       store,
       identityService: installationIdentity,
       applicationVersion: packageJson.version,
+      applicationCatalogContractVersion: APPLICATION_CATALOG_CONTRACT_VERSION,
     })
   : null
 const catalogRefreshCoordinator = store

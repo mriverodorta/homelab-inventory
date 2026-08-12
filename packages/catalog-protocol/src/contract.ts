@@ -1,5 +1,6 @@
 import { digestCatalogTemplate } from './projector'
 import {
+  CANONICAL_UNITS_FINGERPRINT_VERSION,
   FINGERPRINT_VERSION,
   LEGACY_FINGERPRINT_VERSION,
   MOTHERBOARD_FINGERPRINT_VERSION,
@@ -405,11 +406,38 @@ const FINGERPRINT_V8_RAM_VECTOR = {
   contentHash: '5ccbe806d1d1ff63106dd1123079cc026a64661e06961ddbf888b3d7f631d7d3',
 } as const
 
+const FINGERPRINT_V9_CANONICAL_CPU_VECTOR = {
+  item: {
+    type: 'cpu',
+    name: 'Intel Core i5-10500T',
+    manufacturer: 'Intel',
+    family: 'Core i5',
+    model: 'i5-10500T',
+    number: 'i5-10500T',
+    specs: {
+      cores: 6,
+      threads: 12,
+      socket: 'LGA1200',
+      tdpMw: 35_000,
+      generation: '10th Gen',
+      baseClockMhz: 2_300,
+      boostClockMhz: 3_800,
+    },
+    compatibility: {
+      requirements: {
+        cpu: { socket: 'LGA1200', tdpMw: 35_000, generation: '10th Gen' },
+      },
+    },
+  },
+  identityHash: '7824f7d31ca90f943af8a81427dadcd89ced2d82593fb201ba965c4f272892db',
+  contentHash: '3e7e2b9873d1b9df474d51c14a4d376047fdf8cb8558c7645569d34768796b25',
+} as const
+
 export async function assertCatalogProtocolContract(): Promise<void> {
   if (FINGERPRINT_VERSION !== 3 || LEGACY_FINGERPRINT_VERSION !== 2
     || OEM_FINGERPRINT_VERSION !== 4 || WORKSTATION_FINGERPRINT_VERSION !== 5
     || SERVER_FINGERPRINT_VERSION !== 6 || MOTHERBOARD_FINGERPRINT_VERSION !== 7
-    || RAM_FINGERPRINT_VERSION !== 8) {
+    || RAM_FINGERPRINT_VERSION !== 8 || CANONICAL_UNITS_FINGERPRINT_VERSION !== 9) {
     throw new Error(`Catalog fingerprint version ${FINGERPRINT_VERSION} has no publication contract.`)
   }
 
@@ -481,5 +509,15 @@ export async function assertCatalogProtocolContract(): Promise<void> {
     || ramProjection.contentHash !== FINGERPRINT_V8_RAM_VECTOR.contentHash
   ) {
     throw new Error('Catalog fingerprint-v8 RAM contract changed unexpectedly.')
+  }
+
+  const canonicalUnitsProjection = await digestCatalogTemplate(FINGERPRINT_V9_CANONICAL_CPU_VECTOR.item, {
+    fingerprintVersion: CANONICAL_UNITS_FINGERPRINT_VERSION,
+  })
+  if (
+    canonicalUnitsProjection.identityHash !== FINGERPRINT_V9_CANONICAL_CPU_VECTOR.identityHash
+    || canonicalUnitsProjection.contentHash !== FINGERPRINT_V9_CANONICAL_CPU_VECTOR.contentHash
+  ) {
+    throw new Error('Catalog fingerprint-v9 canonical-unit contract changed unexpectedly.')
   }
 }

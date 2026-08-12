@@ -106,17 +106,21 @@ export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
     'Existing JSON installations migrate automatically after a verified complete backup, with semantic validation for inventory, topology, Registry identity, access control, notifications, telemetry, and catalog state before atomic activation.',
     'Multiple projects now share one workbook shell with a compact project switcher, a fixed Systems workspace, multiple reorderable Canvas workspaces, per-project defaults, and bottom tabs that preserve the familiar canvas workflow.',
     'Inventory can remain project-bound or be promoted into the global library for explicit reuse, while clean cross-project duplication creates an independent record without copying instance identity, assignments, placement, cables, or telemetry.',
+    'Registry catalog contract v9 uses exact canonical integers for measurable hardware specifications while retaining v2-v8 catalog compatibility, identity aliases, and linked-item continuity.',
   ],
   fixes: [
     'The production image now pins its Bun runtime and verifies the complete SQLite capability contract during distroless image construction and multi-architecture release preflight.',
     'Journaled SQLite restores now checkpoint WAL state and recover interrupted file swaps without exposing partial data, while normalized authentication tables preserve every account, identity, role, invitation, and security record.',
     'Project compatibility rules, Canvas preferences, topology, audits, manual cable bends, and route caches now remain isolated by numeric project and workspace IDs across navigation, restart, backup, restore, and disposable demo sessions.',
+    'Canonical Registry values import directly into SQLite without scaling, conflicting or precision-losing representations are rejected, and familiar units remain available through display-only adapters.',
+    'Registry contributions no longer expose local adapter keys or project scope while unknown public product fields remain available for forward-compatible catalog records.',
   ],
   notes: [
     'Portable backups now use logical format 2 archives with independent database schema versions, retain supported format 1 imports, and preserve dependency-aware selective restore without copying uploaded SQLite files over active data.',
     'Initial workspace loading now uses permission-aware application and workbook bootstraps after authentication, keeping normal multi-project startup within three API requests before scheduled background refreshes.',
     'The original JSON files remain byte-identical after successful migration but are no longer active stores; the SQLite migration guide documents verification and rollback.',
-    'Connected enrolled installations now send a signed six-hour catalog adoption check-in containing only the application version, active catalog revision, and request timestamp; failures never block startup, inventory work, or catalog browsing.',
+    'Connected enrolled installations now send a signed six-hour catalog adoption check-in containing only the application version, catalog contract version, active catalog revision, and request timestamp; failures never block startup, inventory work, or catalog browsing.',
+    'The application reports catalog contract 9; Registry publication remains owner-controlled and catalogs requiring a newer contract are rejected explicitly.',
   ],
 }
 

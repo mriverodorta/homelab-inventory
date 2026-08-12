@@ -74,6 +74,14 @@ function normalizeInventoryPort(port, index, fallbackKind) {
   if (typeof port.notes === 'string' && port.notes.trim() !== '') normalized.notes = port.notes.trim()
   if (typeof port.role === 'string' && port.role.trim() !== '') normalized.role = port.role.trim()
   if (typeof port.speed === 'string' && port.speed.trim() !== '') normalized.speed = port.speed.trim()
+  if (port.speedBps !== undefined) {
+    if (!Number.isSafeInteger(port.speedBps) || port.speedBps < 0) {
+      throw new InventoryLifecycleError(`ports[${index}].speedBps must be a non-negative safe integer.`, {
+        code: 'invalid-inventory-port', status: 400,
+      })
+    }
+    normalized.speedBps = port.speedBps
+  }
   if (typeof port.poe === 'boolean') normalized.poe = port.poe
   if (port.origin === 'fixed' || port.origin === 'module') normalized.origin = port.origin
   if (Array.isArray(port.endpoints)) {

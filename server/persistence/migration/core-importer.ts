@@ -1,6 +1,7 @@
 import type { Database } from 'bun:sqlite'
 import { INVENTORY_TYPES, type InventoryType } from '../core/inventory/field-contract.ts'
-import { toBitsPerSecond, toBytes, toMhz, toMib, toMillimeters, toMilliwatts, toMillivolts } from '../core/inventory/units.ts'
+import { catalogItemForLegacyView } from '../core/inventory/catalog-view.ts'
+import { toBitsPerSecond, toBytes, toMhz, toMib, toMillihertz, toMillimeters, toMillivoltAmps, toMilliwatts, toMillivolts } from '../core/inventory/units.ts'
 import {
   LEGACY_TABLE_BY_TYPE,
   legacyResourceDefinitions,
@@ -65,6 +66,21 @@ function integerOrNull(value: unknown) {
 
 function positiveIntegerOrNull(value: unknown) {
   return Number.isSafeInteger(value) && Number(value) > 0 ? Number(value) : null
+}
+
+function canonicalMeasurement(
+  canonical: unknown,
+  legacy: unknown,
+  convertLegacy: (value: number) => number,
+  path: string,
+) {
+  const canonicalValue = canonical == null ? null : integerOrNull(canonical)
+  if (canonical != null && canonicalValue === null) throw new Error(`${path} must be a non-negative safe integer.`)
+  const legacyValue = legacy == null ? null : convertLegacy(Number(legacy))
+  if (canonicalValue !== null && legacyValue !== null && canonicalValue !== legacyValue) {
+    throw new Error(`${path} conflicts with its legacy representation.`)
+  }
+  return canonicalValue ?? legacyValue
 }
 
 function json(value: unknown) {
@@ -144,12 +160,13 @@ function portRole(value: unknown) {
 }
 
 function extensionPayload(item: LegacyRecord) {
+  const legacyView = catalogItemForLegacyView(item)
   const common = new Set(['id', 'type', 'name', 'aliases', 'manufacturer', 'secondaryManufacturer', 'model', 'family', 'number', 'subtype', 'properties', 'compatibility', 'notes', 'archivedAt', 'ports', 'specs', 'hardwareClass', 'usageRole', 'smart'])
   const unknown = Object.fromEntries(Object.entries(item).filter(([key]) => !common.has(key)))
   const payload: Record<string, unknown> = {}
   if (Object.keys(unknown).length) payload.legacyFields = unknown
-  if (item.specs && Object.keys(item.specs).length) payload.legacySpecs = item.specs
-  if (item.compatibility?.requirements) payload.compatibilityRequirements = item.compatibility.requirements
+  if (legacyView.specs && Object.keys(legacyView.specs).length) payload.legacySpecs = legacyView.specs
+  if (legacyView.compatibility && Object.keys(legacyView.compatibility).length) payload.catalogCompatibility = legacyView.compatibility
   return payload
 }
 
@@ -176,32 +193,33 @@ function insertSubtype(database: Database, type: InventoryType, itemId: number, 
     }
     case 'nas': database.query('INSERT INTO nas_systems (id, drive_bay_count, m2_slot_count, power_configuration) VALUES (?, ?, ?, ?)').run(itemId, integerOrNull(specs.driveBays), integerOrNull(specs.m2Slots), specs.powerConfiguration === 'external-adapter' ? 'external-adapter' : 'internal-psu'); break
     case 'pcBuild': database.query('INSERT INTO pc_builds (id, operating_system, usage_role) VALUES (?, ?, ?)').run(itemId, optionalText(specs.operatingSystem), optionalText(specs.role)); break
-    case 'cpu': database.query('INSERT INTO cpus (id, core_count, thread_count, base_clock_mhz, boost_clock_mhz) VALUES (?, ?, ?, ?, ?)').run(itemId, positiveIntegerOrNull(specs.cores), positiveIntegerOrNull(specs.threads), specs.baseClockGhz == null ? null : toMhz({ value: specs.baseClockGhz, unit: 'GHz' }), specs.boostClockGhz == null ? null : toMhz({ value: specs.boostClockGhz, unit: 'GHz' })); break
-    case 'ram': database.query('INSERT INTO memory_modules (id, capacity_mib, memory_generation_id, speed_mtps, form_factor, module_type_id, ecc, rank, voltage_mv) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)').run(itemId, specs.capacityGb == null ? null : toMib({ value: specs.capacityGb, unit: 'GiB' }), vocabularyId(database, 'memory_generations', specs.generation), integerOrNull(specs.speedMt), optionalText(specs.formFactor), vocabularyId(database, 'memory_module_types', specs.moduleType), booleanOrNull(specs.ecc), optionalText(specs.rank), specs.voltageVolts == null ? null : toMillivolts({ value: specs.voltageVolts, unit: 'V' })); break
+    case 'cpu': database.query('INSERT INTO cpus (id, core_count, thread_count, base_clock_mhz, boost_clock_mhz) VALUES (?, ?, ?, ?, ?)').run(itemId, positiveIntegerOrNull(specs.cores), positiveIntegerOrNull(specs.threads), canonicalMeasurement(specs.baseClockMhz, specs.baseClockGhz, (value) => toMhz({ value, unit: 'GHz' }), 'specs.baseClockMhz'), canonicalMeasurement(specs.boostClockMhz, specs.boostClockGhz, (value) => toMhz({ value, unit: 'GHz' }), 'specs.boostClockMhz')); break
+    case 'ram': database.query('INSERT INTO memory_modules (id, capacity_mib, memory_generation_id, speed_mtps, form_factor, module_type_id, ecc, rank, voltage_mv) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)').run(itemId, canonicalMeasurement(specs.capacityMib, specs.capacityGb, (value) => toMib({ value, unit: 'GiB' }), 'specs.capacityMib'), vocabularyId(database, 'memory_generations', specs.generation), integerOrNull(specs.speedMt), optionalText(specs.formFactor), vocabularyId(database, 'memory_module_types', specs.moduleType), booleanOrNull(specs.ecc), optionalText(specs.rank), canonicalMeasurement(specs.voltageMv, specs.voltageVolts, (value) => toMillivolts({ value, unit: 'V' }), 'specs.voltageMv')); break
     case 'storage': {
       const interfaceId = vocabularyId(database, 'storage_interfaces', specs.interface)
       const formFactorId = vocabularyId(database, 'storage_form_factors', specs.formFactor)
-      const capacityBytes = specs.capacityBytes != null ? toBytes({ value: specs.capacityBytes, unit: 'bytes' }) : specs.capacityTb != null ? toBytes({ value: specs.capacityTb, unit: 'TB' }) : specs.capacityGb != null ? toBytes({ value: specs.capacityGb, unit: 'GB' }) : null
+      const legacyCapacity = specs.capacityTb != null ? toBytes({ value: specs.capacityTb, unit: 'TB' }) : specs.capacityGb != null ? toBytes({ value: specs.capacityGb, unit: 'GB' }) : null
+      const capacityBytes = canonicalMeasurement(specs.capacityBytes, legacyCapacity, (value) => value, 'specs.capacityBytes')
       database.query('INSERT INTO storage_devices (id, capacity_bytes, interface_id, form_factor_id, interface_text, form_factor_text, partition_table) VALUES (?, ?, ?, ?, ?, ?, ?)').run(itemId, capacityBytes, interfaceId, formFactorId, interfaceId ? null : optionalText(specs.interface), formFactorId ? null : optionalText(specs.formFactor), optionalText(specs.partitionTable))
       break
     }
-    case 'gpu': database.query('INSERT INTO graphics_cards (id, vram_mib, form_factor, slot_width, pcie) VALUES (?, ?, ?, ?, ?)').run(itemId, specs.vramGb == null ? null : toMib({ value: specs.vramGb, unit: 'GiB' }), optionalText(specs.formFactor), optionalText(specs.slotWidth), optionalText(specs.pcie)); break
-    case 'network': database.query('INSERT INTO network_cards (id, port_count, max_speed_bps, interface, form_factor) VALUES (?, ?, ?, ?, ?)').run(itemId, integerOrNull(specs.ports), specs.speedMbps == null ? null : toBitsPerSecond({ value: specs.speedMbps, unit: 'Mbps' }), optionalText(specs.interface), optionalText(specs.formFactor)); break
+    case 'gpu': database.query('INSERT INTO graphics_cards (id, vram_mib, form_factor, slot_width, pcie) VALUES (?, ?, ?, ?, ?)').run(itemId, canonicalMeasurement(specs.vramMib, specs.vramGb, (value) => toMib({ value, unit: 'GiB' }), 'specs.vramMib'), optionalText(specs.formFactor), optionalText(specs.slotWidth), optionalText(specs.pcie)); break
+    case 'network': database.query('INSERT INTO network_cards (id, port_count, max_speed_bps, interface, form_factor) VALUES (?, ?, ?, ?, ?)').run(itemId, integerOrNull(specs.ports), canonicalMeasurement(specs.maxSpeedBps, specs.speedMbps, (value) => toBitsPerSecond({ value, unit: 'Mbps' }), 'specs.maxSpeedBps'), optionalText(specs.interface), optionalText(specs.formFactor)); break
     case 'motherboard': database.query('INSERT INTO motherboards (id, chipset, form_factor, board_revision, launch_date_text, discontinued, wifi_generation, bluetooth) VALUES (?, ?, ?, ?, ?, ?, ?, ?)').run(itemId, optionalText(specs.chipset), optionalText(specs.formFactor), optionalText(specs.boardRevision), optionalText(specs.launchDate), booleanOrNull(specs.discontinued), optionalText(specs.wifiGeneration), optionalText(specs.bluetooth)); break
     case 'cpuCooler': database.query('INSERT INTO cpu_coolers (id, cooler_type) VALUES (?, ?)').run(itemId, optionalText(specs.coolerType)); break
     case 'case': database.query('INSERT INTO computer_cases (id) VALUES (?)').run(itemId); for (const factor of records(specs.formFactors)) database.query('INSERT INTO case_form_factor_support (case_id, form_factor) VALUES (?, ?)').run(itemId, String(factor)); break
     case 'powerSupply': {
-      database.query('INSERT INTO power_supplies (id, form_factor, rated_power_mw, efficiency_rating) VALUES (?, ?, ?, ?)').run(itemId, optionalText(specs.formFactor), specs.wattageWatts == null ? null : toMilliwatts({ value: specs.wattageWatts, unit: 'W' }), optionalText(specs.efficiency))
+      database.query('INSERT INTO power_supplies (id, form_factor, rated_power_mw, efficiency_rating) VALUES (?, ?, ?, ?)').run(itemId, optionalText(specs.formFactor), canonicalMeasurement(specs.ratedPowerMw, specs.wattageWatts, (value) => toMilliwatts({ value, unit: 'W' }), 'specs.ratedPowerMw'), optionalText(specs.efficiency))
       for (const connector of records(specs.connectors)) database.query('INSERT INTO power_supply_connectors (power_supply_id, connector_type_id, connector_text, count) VALUES (?, ?, ?, ?)').run(itemId, vocabularyId(database, 'power_connector_types', connector.type ?? connector.connector), vocabularyId(database, 'power_connector_types', connector.type ?? connector.connector) ? null : optionalText(connector.type ?? connector.connector), positiveIntegerOrNull(connector.count) ?? 1)
       break
     }
     case 'soundCard': database.query('INSERT INTO sound_cards (id, interface) VALUES (?, ?)').run(itemId, optionalText(specs.interface)); break
     case 'wireless': database.query('INSERT INTO wireless_cards (id, interface, wifi_generation, bluetooth) VALUES (?, ?, ?, ?)').run(itemId, optionalText(specs.interface), optionalText(specs.wifiGeneration), booleanOrNull(specs.bluetooth)); break
-    case 'powerAdapter': database.query('INSERT INTO power_adapters (id, rated_power_mw, connector_type_id, connector_text) VALUES (?, ?, ?, ?)').run(itemId, specs.wattageWatts == null ? null : toMilliwatts({ value: specs.wattageWatts, unit: 'W' }), vocabularyId(database, 'power_connector_types', specs.connector), vocabularyId(database, 'power_connector_types', specs.connector) ? null : optionalText(specs.connector)); break
-    case 'switch': database.query('INSERT INTO network_switches (id, management_type, switching_capacity_bps, fanless) VALUES (?, ?, ?, ?)').run(itemId, optionalText(specs.management), specs.switchingCapacityGbps == null ? null : toBitsPerSecond({ value: specs.switchingCapacityGbps, unit: 'Gbps' }), Number(specs.fanless === true)); break
+    case 'powerAdapter': database.query('INSERT INTO power_adapters (id, rated_power_mw, connector_type_id, connector_text) VALUES (?, ?, ?, ?)').run(itemId, canonicalMeasurement(specs.ratedPowerMw, specs.wattageWatts, (value) => toMilliwatts({ value, unit: 'W' }), 'specs.ratedPowerMw'), vocabularyId(database, 'power_connector_types', specs.connector), vocabularyId(database, 'power_connector_types', specs.connector) ? null : optionalText(specs.connector)); break
+    case 'switch': database.query('INSERT INTO network_switches (id, management_type, switching_capacity_bps, fanless) VALUES (?, ?, ?, ?)').run(itemId, optionalText(specs.management), canonicalMeasurement(specs.switchingCapacityBps, specs.switchingCapacityGbps, (value) => toBitsPerSecond({ value, unit: 'Gbps' }), 'specs.switchingCapacityBps'), Number(specs.fanless === true)); break
     case 'patchPanel': database.query('INSERT INTO patch_panels (id, rack_units, mount) VALUES (?, ?, ?)').run(itemId, integerOrNull(specs.rackUnits), optionalText(specs.mount)); break
-    case 'monitor': database.query('INSERT INTO monitors (id, diagonal_mm, diagonal_source_text, resolution, refresh_rate_millihz) VALUES (?, ?, ?, ?, ?)').run(itemId, specs.sizeInches == null ? null : toMillimeters({ value: specs.sizeInches, unit: 'in' }), specs.sizeInches == null ? null : `${specs.sizeInches} in`, optionalText(specs.resolution), specs.refreshRateHz == null ? null : Math.round(specs.refreshRateHz * 1000)); break
-    case 'ups': database.query('INSERT INTO ups_systems (id, rated_power_mw, capacity_millivolt_amps, battery_outlet_count, surge_outlet_count, outlet_count) VALUES (?, ?, ?, ?, ?, ?)').run(itemId, specs.wattageWatts == null ? null : toMilliwatts({ value: specs.wattageWatts, unit: 'W' }), specs.capacityVa == null ? null : Math.round(specs.capacityVa * 1000), integerOrNull(specs.batteryBackupOutlets), integerOrNull(specs.surgeProtectedOutlets), integerOrNull(specs.outlets)); break
+    case 'monitor': database.query('INSERT INTO monitors (id, diagonal_mm, diagonal_source_text, resolution, refresh_rate_millihz) VALUES (?, ?, ?, ?, ?)').run(itemId, canonicalMeasurement(specs.diagonalMm, specs.sizeInches, (value) => toMillimeters({ value, unit: 'in' }), 'specs.diagonalMm'), optionalText(specs.diagonalSourceText) ?? (specs.sizeInches == null ? null : `${specs.sizeInches} in`), optionalText(specs.resolution), canonicalMeasurement(specs.refreshRateMillihz, specs.refreshRateHz, (value) => toMillihertz({ value, unit: 'Hz' }), 'specs.refreshRateMillihz')); break
+    case 'ups': database.query('INSERT INTO ups_systems (id, rated_power_mw, capacity_millivolt_amps, battery_outlet_count, surge_outlet_count, outlet_count) VALUES (?, ?, ?, ?, ?, ?)').run(itemId, canonicalMeasurement(specs.ratedPowerMw, specs.wattageWatts, (value) => toMilliwatts({ value, unit: 'W' }), 'specs.ratedPowerMw'), canonicalMeasurement(specs.capacityMillivoltAmps, specs.capacityVa, (value) => toMillivoltAmps({ value, unit: 'VA' }), 'specs.capacityMillivoltAmps'), integerOrNull(specs.batteryBackupOutlets), integerOrNull(specs.surgeProtectedOutlets), integerOrNull(specs.outlets)); break
     case 'powerStrip': database.query('INSERT INTO power_strips (id, outlet_count, surge_protected, surge_outlet_count) VALUES (?, ?, ?, ?)').run(itemId, integerOrNull(specs.outlets), booleanOrNull(specs.surgeProtected), integerOrNull(specs.surgeProtectedOutlets)); break
   }
 }
@@ -210,9 +228,9 @@ function importCompatibility(database: Database, itemId: number, item: LegacyRec
   const host = item.compatibility?.host
   if (!host || typeof host !== 'object') return
   const profile = database.query(`INSERT INTO host_compatibility_profiles (host_item_id, topology_completeness, max_expansion_power_mw, created_at_ms, updated_at_ms) VALUES (?, ?, ?, ?, ?) RETURNING id`)
-    .get(itemId, optionalText(host.topologyCompleteness), host.maxExpansionPowerWatts == null ? null : toMilliwatts({ value: host.maxExpansionPowerWatts, unit: 'W' }), now, now) as { id: number }
+    .get(itemId, optionalText(host.topologyCompleteness), canonicalMeasurement(host.maxExpansionPowerMw, host.maxExpansionPowerWatts, (value) => toMilliwatts({ value, unit: 'W' }), 'compatibility.host.maxExpansionPowerMw'), now, now) as { id: number }
   if (host.cpu) {
-    const cpu = database.query('INSERT INTO host_cpu_profiles (host_profile_id, socket_count, max_tdp_mw) VALUES (?, ?, ?) RETURNING id').get(profile.id, positiveIntegerOrNull(host.cpu.socketCount ?? host.cpu.socketsCount), host.cpu.maxTdpWatts == null ? null : toMilliwatts({ value: host.cpu.maxTdpWatts, unit: 'W' })) as { id: number }
+    const cpu = database.query('INSERT INTO host_cpu_profiles (host_profile_id, socket_count, max_tdp_mw) VALUES (?, ?, ?) RETURNING id').get(profile.id, positiveIntegerOrNull(host.cpu.socketCount ?? host.cpu.socketsCount), canonicalMeasurement(host.cpu.maxTdpMw, host.cpu.maxTdpWatts, (value) => toMilliwatts({ value, unit: 'W' }), 'compatibility.host.cpu.maxTdpMw')) as { id: number }
     for (const socket of records(host.cpu.sockets)) { const id = vocabularyId(database, 'cpu_socket_types', socket); if (id) database.query('INSERT INTO host_cpu_socket_support (cpu_profile_id, socket_type_id) VALUES (?, ?)').run(cpu.id, id) }
     for (const generation of records(host.cpu.generations)) database.query('INSERT INTO host_cpu_generation_support (cpu_profile_id, generation) VALUES (?, ?)').run(cpu.id, String(generation))
     for (const count of records(host.cpu.populationModes)) {
@@ -221,7 +239,7 @@ function importCompatibility(database: Database, itemId: number, item: LegacyRec
     }
   }
   if (host.memory) {
-    const memory = database.query('INSERT INTO host_memory_profiles (host_profile_id, slot_count, slots_per_cpu, max_capacity_mib, max_module_capacity_mib, max_speed_mtps, ecc_support) VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING id').get(profile.id, integerOrNull(host.memory.slots), integerOrNull(host.memory.slotsPerCpu), host.memory.maxCapacityGb == null ? null : toMib({ value: host.memory.maxCapacityGb, unit: 'GiB' }), host.memory.maxModuleCapacityGb == null ? null : toMib({ value: host.memory.maxModuleCapacityGb, unit: 'GiB' }), integerOrNull(host.memory.maxSpeedMt), optionalText(host.memory.eccSupport)) as { id: number }
+    const memory = database.query('INSERT INTO host_memory_profiles (host_profile_id, slot_count, slots_per_cpu, max_capacity_mib, max_module_capacity_mib, max_speed_mtps, ecc_support) VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING id').get(profile.id, integerOrNull(host.memory.slots), integerOrNull(host.memory.slotsPerCpu), canonicalMeasurement(host.memory.maxCapacityMib, host.memory.maxCapacityGb, (value) => toMib({ value, unit: 'GiB' }), 'compatibility.host.memory.maxCapacityMib'), canonicalMeasurement(host.memory.maxModuleCapacityMib, host.memory.maxModuleCapacityGb, (value) => toMib({ value, unit: 'GiB' }), 'compatibility.host.memory.maxModuleCapacityMib'), integerOrNull(host.memory.maxSpeedMt), optionalText(host.memory.eccSupport)) as { id: number }
     for (const generation of records(host.memory.generations)) { const id = vocabularyId(database, 'memory_generations', generation); if (id) database.query('INSERT INTO host_memory_generation_support (memory_profile_id, generation_id) VALUES (?, ?)').run(memory.id, id) }
     for (const formFactor of records(host.memory.formFactors)) database.query('INSERT INTO host_memory_form_factor_support (memory_profile_id, form_factor) VALUES (?, ?)').run(memory.id, String(formFactor))
     for (const moduleType of records(host.memory.moduleTypes)) { const id = vocabularyId(database, 'memory_module_types', moduleType); if (id) database.query('INSERT INTO host_memory_module_type_support (memory_profile_id, module_type_id) VALUES (?, ?)').run(memory.id, id) }
@@ -270,7 +288,7 @@ function importCompatibility(database: Database, itemId: number, item: LegacyRec
       }
     }
     if (resourceType === 'expansion') {
-      database.query('INSERT INTO expansion_resource_groups (id, interface_family, expansion_slot_type_id, pcie_generation, mechanical_lanes, electrical_lanes, max_slot_width, max_power_mw, proprietary_riser, riser_capability, riser_group) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)').run(resourceIdentityId, ['pcie', 'm2-ae', 'usb', 'onboard'].includes(entry.interfaceFamily) ? entry.interfaceFamily : 'pcie', vocabularyId(database, 'expansion_slot_types', entry.slotType), positiveIntegerOrNull(entry.pcieGeneration), positiveIntegerOrNull(entry.mechanicalLanes), positiveIntegerOrNull(entry.electricalLanes), positiveIntegerOrNull(entry.maxSlotWidth), entry.maxPowerWatts == null ? null : toMilliwatts({ value: entry.maxPowerWatts, unit: 'W' }), booleanOrNull(entry.proprietaryRiser), optionalText(entry.riserCapability), optionalText(entry.riserGroup))
+      database.query('INSERT INTO expansion_resource_groups (id, interface_family, expansion_slot_type_id, pcie_generation, mechanical_lanes, electrical_lanes, max_slot_width, max_power_mw, proprietary_riser, riser_capability, riser_group) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)').run(resourceIdentityId, ['pcie', 'm2-ae', 'usb', 'onboard'].includes(entry.interfaceFamily) ? entry.interfaceFamily : 'pcie', vocabularyId(database, 'expansion_slot_types', entry.slotType), positiveIntegerOrNull(entry.pcieGeneration), positiveIntegerOrNull(entry.mechanicalLanes), positiveIntegerOrNull(entry.electricalLanes), positiveIntegerOrNull(entry.maxSlotWidth), canonicalMeasurement(entry.maxPowerMw, entry.maxPowerWatts, (value) => toMilliwatts({ value, unit: 'W' }), `compatibility.host.expansionSlots.${definition.key}.maxPowerMw`), booleanOrNull(entry.proprietaryRiser), optionalText(entry.riserCapability), optionalText(entry.riserGroup))
       for (const height of records(entry.acceptedHeights)) database.query('INSERT INTO expansion_accepted_heights (resource_group_id, height) VALUES (?, ?)').run(resourceIdentityId, String(height))
     }
     for (const kind of records(entry.acceptedKinds ?? entry.acceptedModuleKinds ?? entry.acceptedControllerKinds ?? entry.acceptedDeviceKinds)) database.query('INSERT INTO resource_accepted_kinds (resource_group_id, kind) VALUES (?, ?)').run(resourceIdentityId, String(kind))
@@ -305,10 +323,18 @@ function importCompatibility(database: Database, itemId: number, item: LegacyRec
     if (!controllerResourceGroupId) throw new Error(`Boot resource references missing controller slot ${relation.controllerId}.`)
     database.query('UPDATE boot_device_resource_groups SET controller_resource_group_id = ? WHERE id = ?').run(controllerResourceGroupId, relation.bootId)
   }
-  if (host.management) database.query('INSERT INTO management_controllers (host_profile_id, controller_family, controller_generation, dedicated_port, shared_nic, port_type, speed_bps) VALUES (?, ?, ?, ?, ?, ?, ?)').run(profile.id, optionalText(host.management.controllerFamily), optionalText(host.management.controllerGeneration), booleanOrNull(host.management.dedicatedPort), booleanOrNull(host.management.sharedNic), optionalText(host.management.portType), speedBps(host.management.speed))
+  if (host.management) database.query('INSERT INTO management_controllers (host_profile_id, controller_family, controller_generation, dedicated_port, shared_nic, port_type, speed_bps) VALUES (?, ?, ?, ?, ?, ?, ?)').run(profile.id, optionalText(host.management.controllerFamily), optionalText(host.management.controllerGeneration), booleanOrNull(host.management.dedicatedPort), booleanOrNull(host.management.sharedNic), optionalText(host.management.portType), canonicalMeasurement(host.management.speedBps, speedBps(host.management.speed), (value) => value, 'compatibility.host.management.speedBps'))
   if (host.power) {
-    const power = database.query('INSERT INTO host_power_profiles (host_profile_id, configuration, connector, adapter_required, adapter_type, redundancy, max_graphics_power_mw, psu_bay_count, psu_type, mixed_psu_allowed) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id').get(profile.id, optionalText(host.power.configuration), optionalText(host.power.connector), booleanOrNull(host.power.adapterRequired), optionalText(host.power.adapterType), optionalText(host.power.redundancy), host.power.maxGraphicsPowerWatts == null ? null : toMilliwatts({ value: host.power.maxGraphicsPowerWatts, unit: 'W' }), integerOrNull(host.power.psuBayCount), optionalText(host.power.psuType), booleanOrNull(host.power.mixedPsuAllowed)) as { id: number }
-    for (const watts of records(host.power.supportedWattagesWatts)) if (typeof watts === 'number') database.query('INSERT INTO host_power_supported_wattages (power_profile_id, power_mw) VALUES (?, ?)').run(power.id, toMilliwatts({ value: watts, unit: 'W' }))
+    const power = database.query('INSERT INTO host_power_profiles (host_profile_id, configuration, connector, adapter_required, adapter_type, redundancy, max_graphics_power_mw, psu_bay_count, psu_type, mixed_psu_allowed) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id').get(profile.id, optionalText(host.power.configuration), optionalText(host.power.connector), booleanOrNull(host.power.adapterRequired), optionalText(host.power.adapterType), optionalText(host.power.redundancy), canonicalMeasurement(host.power.maxGraphicsPowerMw, host.power.maxGraphicsPowerWatts, (value) => toMilliwatts({ value, unit: 'W' }), 'compatibility.host.power.maxGraphicsPowerMw'), integerOrNull(host.power.psuBayCount), optionalText(host.power.psuType), booleanOrNull(host.power.mixedPsuAllowed)) as { id: number }
+    const canonicalPower = records(host.power.supportedPowerMw)
+    const legacyPower = records(host.power.supportedWattagesWatts)
+    if (canonicalPower.length > 0 && legacyPower.length > 0 && canonicalPower.length !== legacyPower.length) {
+      throw new Error('compatibility.host.power supported power representations have different lengths.')
+    }
+    const supportedPower = canonicalPower.length > 0
+      ? canonicalPower.map((value, index) => canonicalMeasurement(value, legacyPower[index], (watts) => toMilliwatts({ value: watts, unit: 'W' }), `compatibility.host.power.supportedPowerMw.${index}`))
+      : legacyPower.map((value) => canonicalMeasurement(null, value, (watts) => toMilliwatts({ value: watts, unit: 'W' }), 'compatibility.host.power.supportedPowerMw'))
+    for (const powerMw of supportedPower) if (powerMw !== null) database.query('INSERT INTO host_power_supported_wattages (power_profile_id, power_mw) VALUES (?, ?)').run(power.id, powerMw)
     for (const mode of records(host.power.redundancyModes)) database.query('INSERT INTO host_power_redundancy_modes (power_profile_id, mode) VALUES (?, ?)').run(power.id, String(mode))
   }
   for (const constraint of records(host.constraintGroups)) {
@@ -336,7 +362,7 @@ function importPorts(database: Database, type: InventoryType, item: LegacyRecord
     if (!kindId || !connectorId) throw new Error(`Port ${key} uses an unsupported kind or connector.`)
     database.query('INSERT INTO inventory_ports (id, item_id, created_at_ms) VALUES (?, ?, ?)').run(portId, itemId, now)
     database.query('INSERT INTO port_identity_aliases (port_id, legacy_item_type_key, legacy_item_id, legacy_port_id, created_at_ms) VALUES (?, ?, ?, ?, ?)').run(portId, type, item.id, port.id, now)
-    database.query('INSERT INTO item_port_details (port_id, kind_id, connector_type_id, semantic_key, slot_number, label, notes, ip_address, role, speed_bps, poe, origin) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)').run(portId, kindId, connectorId, optionalText(port.key), slotNumber, optionalText(port.label), optionalText(port.notes), optionalText(port.ipAddress), portRole(port.role), speedBps(port.speed), booleanOrNull(port.poe), port.origin === 'module' ? 'module' : 'fixed')
+    database.query('INSERT INTO item_port_details (port_id, kind_id, connector_type_id, semantic_key, slot_number, label, notes, ip_address, role, speed_bps, poe, origin) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)').run(portId, kindId, connectorId, optionalText(port.key), slotNumber, optionalText(port.label), optionalText(port.notes), optionalText(port.ipAddress), portRole(port.role), canonicalMeasurement(port.speedBps, speedBps(port.speed), (value) => value, `ports.${port.id}.speedBps`), booleanOrNull(port.poe), port.origin === 'module' ? 'module' : 'fixed')
     for (const endpoint of records(port.endpoints)) {
       const faceId = plan.endpointFaces.get(`${key}:face:${endpoint.id}`)
       if (!faceId) throw new Error(`Missing endpoint-face identity for ${key}.`)

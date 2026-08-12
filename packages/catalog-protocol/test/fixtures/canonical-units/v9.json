@@ -1,0 +1,1011 @@
+{
+  "schemaVersion": 1,
+  "fingerprintVersion": 9,
+  "fixtures": [
+    {
+      "key": "cpu-exact",
+      "sourceFingerprintVersion": 3,
+      "requiredApplicationCatalogContractVersion": 9,
+      "source": {
+        "type": "cpu",
+        "name": "Intel Core i5-10500T",
+        "manufacturer": "Intel",
+        "family": "Core i5",
+        "number": "i5-10500T",
+        "specs": {
+          "cores": 6,
+          "threads": 12,
+          "baseClockGhz": 2.3,
+          "boostClockGhz": 3.8,
+          "tdpWatts": 35,
+          "maxTemperatureC": 100
+        },
+        "compatibility": {
+          "requirements": {
+            "cpu": {
+              "socket": "LGA1200",
+              "generation": "10th Gen",
+              "tdpWatts": 35
+            }
+          }
+        }
+      },
+      "canonical": {
+        "type": "cpu",
+        "name": "Intel Core i5-10500T",
+        "manufacturer": "Intel",
+        "family": "Core i5",
+        "number": "i5-10500T",
+        "specs": {
+          "cores": 6,
+          "threads": 12,
+          "baseClockMhz": 2300,
+          "boostClockMhz": 3800,
+          "tdpMw": 35000,
+          "maxTemperatureMilliCelsius": 100000
+        },
+        "compatibility": {
+          "requirements": {
+            "cpu": {
+              "socket": "LGA1200",
+              "generation": "10th Gen",
+              "tdpMw": 35000
+            }
+          }
+        }
+      },
+      "identityPayload": {
+        "type": "cpu",
+        "manufacturer": "Intel",
+        "family": "Core i5",
+        "number": "i5-10500T"
+      },
+      "identityHash": "7824f7d31ca90f943af8a81427dadcd89ced2d82593fb201ba965c4f272892db",
+      "contentHash": "eeaf4f4cb55496b937fdf873335c0936642b0a813c78b1cef08247aff0b9490f",
+      "historicalIdentityAliases": [
+        {
+          "fingerprintVersion": 3,
+          "identityHash": "99e20ecdc2fb9cf637643ab3c05942ac017193365e62eba46ae21bc7ca53438d"
+        }
+      ]
+    },
+    {
+      "key": "ram-exact",
+      "sourceFingerprintVersion": 8,
+      "requiredApplicationCatalogContractVersion": 9,
+      "source": {
+        "type": "ram",
+        "name": "Samsung M471A2K43DB1-CWE",
+        "manufacturer": "Samsung",
+        "number": "M471A2K43DB1-CWE",
+        "specs": {
+          "capacityGb": 16,
+          "generation": "DDR4",
+          "speedMt": 3200,
+          "formFactor": "SO-DIMM",
+          "moduleType": "UDIMM",
+          "ecc": false,
+          "voltageVolts": 1.2
+        },
+        "compatibility": {
+          "requirements": {
+            "memory": {
+              "capacityGb": 16,
+              "generation": "DDR4",
+              "speedMt": 3200,
+              "formFactor": "SO-DIMM",
+              "moduleType": "UDIMM",
+              "ecc": false
+            }
+          }
+        }
+      },
+      "canonical": {
+        "type": "ram",
+        "name": "Samsung M471A2K43DB1-CWE",
+        "manufacturer": "Samsung",
+        "number": "M471A2K43DB1-CWE",
+        "specs": {
+          "generation": "DDR4",
+          "speedMt": 3200,
+          "formFactor": "SO-DIMM",
+          "moduleType": "UDIMM",
+          "ecc": false,
+          "capacityMib": 16384,
+          "voltageMv": 1200
+        },
+        "compatibility": {
+          "requirements": {
+            "memory": {
+              "generation": "DDR4",
+              "speedMt": 3200,
+              "formFactor": "SO-DIMM",
+              "moduleType": "UDIMM",
+              "ecc": false,
+              "capacityMib": 16384
+            }
+          }
+        }
+      },
+      "identityPayload": {
+        "type": "ram",
+        "manufacturer": "Samsung",
+        "partNumber": "M471A2K43DB1CWE"
+      },
+      "identityHash": "12ed5e1e2194ed4051d997a9173a0d357928090f733206cd21d24785fbb5546d",
+      "contentHash": "78c35df823067e8c42d00c7b769cafc938f244b455d143020c4baf27c47a2288",
+      "historicalIdentityAliases": [
+        {
+          "fingerprintVersion": 8,
+          "identityHash": "82671223adf59660898f7b72eca2545bf594f0e12a6aca796043791dc0b6e947"
+        }
+      ]
+    },
+    {
+      "key": "storage-decimal-tb",
+      "sourceFingerprintVersion": 3,
+      "requiredApplicationCatalogContractVersion": 9,
+      "source": {
+        "type": "storage",
+        "name": "Example NVMe 1TB",
+        "manufacturer": "Example",
+        "model": "NV1",
+        "specs": {
+          "capacityTb": 1,
+          "interface": "NVMe",
+          "formFactor": "2280"
+        }
+      },
+      "canonical": {
+        "type": "storage",
+        "name": "Example NV1",
+        "manufacturer": "Example",
+        "model": "NV1",
+        "specs": {
+          "interface": "NVMe",
+          "formFactor": "2280",
+          "capacityBytes": 1000000000000
+        }
+      },
+      "identityPayload": {
+        "type": "storage",
+        "manufacturer": "Example",
+        "model": "NV1",
+        "interface": "NVMe",
+        "capacityBytes": 1000000000000
+      },
+      "identityHash": "0357ab20014302fb55128aa1310ceb222468aecf3863f21c636df9380f5f593e",
+      "contentHash": "549501106a1bf1ecb313fd6d4611c59af1654997150a2a6ee414637c0db3388c",
+      "historicalIdentityAliases": [
+        {
+          "fingerprintVersion": 3,
+          "identityHash": "c07b3b878e87ff5e8096f6e5a9ebe2481788b4257e74353f58eb5a3f502145ca"
+        }
+      ]
+    },
+    {
+      "key": "switch-and-ports",
+      "sourceFingerprintVersion": 3,
+      "requiredApplicationCatalogContractVersion": 9,
+      "source": {
+        "type": "switch",
+        "name": "Example Switch",
+        "manufacturer": "Example",
+        "model": "SW10",
+        "specs": {
+          "switchingCapacityGbps": 20
+        },
+        "ports": [
+          {
+            "id": 1,
+            "kind": "network",
+            "type": "rj45",
+            "slotNumber": 1,
+            "speed": "2.5G"
+          },
+          {
+            "id": 2,
+            "kind": "network",
+            "type": "sfp+",
+            "slotNumber": 2,
+            "speed": "10 Gbps"
+          }
+        ]
+      },
+      "canonical": {
+        "type": "switch",
+        "name": "Example SW10",
+        "manufacturer": "Example",
+        "model": "SW10",
+        "specs": {
+          "switchingCapacityBps": 20000000000
+        },
+        "ports": [
+          {
+            "id": 1,
+            "kind": "network",
+            "type": "rj45",
+            "slotNumber": 1,
+            "speedBps": 2500000000
+          },
+          {
+            "id": 2,
+            "kind": "network",
+            "type": "sfp+",
+            "slotNumber": 2,
+            "speedBps": 10000000000
+          }
+        ]
+      },
+      "identityPayload": {
+        "type": "switch",
+        "manufacturer": "Example",
+        "model": "SW10"
+      },
+      "identityHash": "291d89dc944968ab59e146a2b20e0d2e4090bc98379de149564f90f5e33f3819",
+      "contentHash": "a142fe3ec73ac91a58f096d4c1564010346b63f2348c0cf4d0a27ecc4890f73a",
+      "historicalIdentityAliases": [
+        {
+          "fingerprintVersion": 3,
+          "identityHash": "e426525a179205b76a7cf7b8b0edeafec20a359403261ab2517912e33396640e"
+        }
+      ]
+    },
+    {
+      "key": "power-adapter",
+      "sourceFingerprintVersion": 3,
+      "requiredApplicationCatalogContractVersion": 9,
+      "source": {
+        "type": "powerAdapter",
+        "name": "Dell 130W",
+        "manufacturer": "Dell",
+        "model": "LA130PM190",
+        "specs": {
+          "wattageWatts": 130,
+          "connector": "Slim tip"
+        }
+      },
+      "canonical": {
+        "type": "powerAdapter",
+        "name": "Dell LA130PM190",
+        "manufacturer": "Dell",
+        "model": "LA130PM190",
+        "specs": {
+          "connector": "Slim tip",
+          "ratedPowerMw": 130000
+        }
+      },
+      "identityPayload": {
+        "type": "powerAdapter",
+        "manufacturer": "Dell",
+        "model": "LA130PM190",
+        "connector": "Slim tip",
+        "ratedPowerMw": 130000
+      },
+      "identityHash": "50337593140423f9e33fbb01bfa22a9adf13b82e6d03a31601893a32d0770470",
+      "contentHash": "ce89976e6b5449e79046a99ae92755436eabe96d6f9445dfe0546c857e772a84",
+      "historicalIdentityAliases": [
+        {
+          "fingerprintVersion": 3,
+          "identityHash": "dd07fffe2f65c7a4dac15129024597431ff712f7953abd60b970443a25c65cf3"
+        }
+      ]
+    },
+    {
+      "key": "ups-power",
+      "sourceFingerprintVersion": 3,
+      "requiredApplicationCatalogContractVersion": 9,
+      "source": {
+        "type": "ups",
+        "name": "Example UPS",
+        "manufacturer": "Example",
+        "model": "UPS1500",
+        "specs": {
+          "wattageWatts": 1000,
+          "capacityVa": 1500,
+          "outlets": 8
+        }
+      },
+      "canonical": {
+        "type": "ups",
+        "name": "Example UPS1500",
+        "manufacturer": "Example",
+        "model": "UPS1500",
+        "specs": {
+          "outlets": 8,
+          "ratedPowerMw": 1000000,
+          "capacityMillivoltAmps": 1500000
+        }
+      },
+      "identityPayload": {
+        "type": "ups",
+        "manufacturer": "Example",
+        "model": "UPS1500",
+        "capacityMillivoltAmps": 1500000
+      },
+      "identityHash": "48e4d04e4639e7ed4c627d8a77e5c0b8ca675dd2092c9bb9076e574b4a1070ff",
+      "contentHash": "446f00a7fb1d90743c115a08e07bf9dccf6aa0527dfd220ffc52df247e80b514",
+      "historicalIdentityAliases": [
+        {
+          "fingerprintVersion": 3,
+          "identityHash": "4be767513e9ae4fed52886bbafa73ef64e24557bdfb587b5180a2a65078e8f4e"
+        }
+      ]
+    },
+    {
+      "key": "monitor-exact-inch",
+      "sourceFingerprintVersion": 3,
+      "requiredApplicationCatalogContractVersion": 9,
+      "source": {
+        "type": "monitor",
+        "name": "Example 20 Display",
+        "manufacturer": "Example",
+        "model": "D20",
+        "specs": {
+          "sizeInches": 20,
+          "refreshRateHz": 60,
+          "resolution": "1920x1080"
+        }
+      },
+      "canonical": {
+        "type": "monitor",
+        "name": "Example D20",
+        "manufacturer": "Example",
+        "model": "D20",
+        "specs": {
+          "resolution": "1920x1080",
+          "refreshRateMillihz": 60000,
+          "diagonalMm": 508
+        }
+      },
+      "identityPayload": {
+        "type": "monitor",
+        "manufacturer": "Example",
+        "model": "D20",
+        "resolution": "1920x1080",
+        "diagonalMm": 508
+      },
+      "identityHash": "6cccab9596a3370a429ad90f471b0ef30b5240f980a5cb27f9647e2af7d5ee04",
+      "contentHash": "e0322c319e305654ae8ef47710418b7755a2999b9de0316a6aa20f0ee2a1cae6",
+      "historicalIdentityAliases": [
+        {
+          "fingerprintVersion": 3,
+          "identityHash": "d7743422b29aec583734cd644e4c80e4ae7f77e76a0fe3f0b358834a7f6ec5d1"
+        }
+      ]
+    },
+    {
+      "key": "monitor-source-only-inch",
+      "sourceFingerprintVersion": 3,
+      "requiredApplicationCatalogContractVersion": 9,
+      "source": {
+        "type": "monitor",
+        "name": "Example 27 Display",
+        "manufacturer": "Example",
+        "model": "D27",
+        "specs": {
+          "sizeInches": 27,
+          "refreshRateHz": 60,
+          "resolution": "2560x1440"
+        }
+      },
+      "canonical": {
+        "type": "monitor",
+        "name": "Example D27",
+        "manufacturer": "Example",
+        "model": "D27",
+        "specs": {
+          "resolution": "2560x1440",
+          "refreshRateMillihz": 60000,
+          "diagonalSourceText": "27 in"
+        }
+      },
+      "identityPayload": {
+        "type": "monitor",
+        "manufacturer": "Example",
+        "model": "D27",
+        "resolution": "2560x1440"
+      },
+      "identityHash": "1d70937fa1d45032beef4f24ccfd2243a7793004a3a40de4fc82faa5ef5353a3",
+      "contentHash": "8cd3c73a6b8e498fc26db3ea2e1964e1c81fd9259a1b4785fa5691c24e24133c",
+      "historicalIdentityAliases": [
+        {
+          "fingerprintVersion": 3,
+          "identityHash": "da593371292b47a45f1b82dfe556223efd01befb5140d2778474b1b56d4f7258"
+        }
+      ]
+    },
+    {
+      "key": "oem-desktop-topology",
+      "sourceFingerprintVersion": 4,
+      "requiredApplicationCatalogContractVersion": 9,
+      "source": {
+        "type": "desktop",
+        "name": "Dell OptiPlex Micro 7090",
+        "manufacturer": "Dell",
+        "model": "OptiPlex Micro 7090",
+        "specs": {
+          "formFactor": "Micro",
+          "motherboardPartNumber": "0X8VY5",
+          "topologyCompleteness": "complete"
+        },
+        "compatibility": {
+          "host": {
+            "maxExpansionPowerWatts": 50,
+            "expansionSlots": [
+              {
+                "id": 1,
+                "key": "pcie-riser",
+                "count": 1,
+                "interfaceFamily": "PCIe",
+                "electricalLanes": 8,
+                "maxPowerWatts": 50
+              }
+            ],
+            "power": {
+              "adapterRequired": true,
+              "supportedWattagesWatts": [
+                130,
+                180
+              ]
+            }
+          }
+        }
+      },
+      "canonical": {
+        "type": "desktop",
+        "name": "Dell OptiPlex Micro 7090",
+        "manufacturer": "Dell",
+        "model": "OptiPlex Micro 7090",
+        "specs": {
+          "formFactor": "Micro",
+          "motherboardPartNumber": "0X8VY5",
+          "topologyCompleteness": "complete"
+        },
+        "compatibility": {
+          "host": {
+            "expansionSlots": [
+              {
+                "id": 1,
+                "key": "pcie-riser",
+                "count": 1,
+                "interfaceFamily": "PCIe",
+                "electricalLanes": 8,
+                "maxPowerMw": 50000
+              }
+            ],
+            "power": {
+              "adapterRequired": true,
+              "supportedPowerMw": [
+                130000,
+                180000
+              ]
+            },
+            "maxExpansionPowerMw": 50000
+          }
+        }
+      },
+      "identityPayload": {
+        "productFamily": {
+          "manufacturer": "Dell",
+          "model": "OptiPlex Micro 7090",
+          "physicalClass": "desktop"
+        },
+        "motherboardPartNumber": "0X8VY5"
+      },
+      "identityHash": "81397ec4dd137ce486f4e4832dfbaef664c67f040488d6ebb88cfb0e7485a3a3",
+      "contentHash": "2fe61360d0aedfa8017fafaf222d79dc59a4b5072f78cba4e37a15ffd742cb45",
+      "historicalIdentityAliases": [
+        {
+          "fingerprintVersion": 4,
+          "identityHash": "cdd15e5f0906b9ec54cd099bc2d9edf0ebc9d61aab74e3846d3ada3114b945ac"
+        }
+      ]
+    },
+    {
+      "key": "workstation-topology",
+      "sourceFingerprintVersion": 5,
+      "requiredApplicationCatalogContractVersion": 9,
+      "source": {
+        "type": "workstation",
+        "name": "Example Workstation",
+        "manufacturer": "Example",
+        "model": "WS2",
+        "specs": {
+          "formFactor": "Tower",
+          "topologyCompleteness": "complete"
+        },
+        "compatibility": {
+          "host": {
+            "cpu": {
+              "socketCount": 2,
+              "sockets": [
+                "LGA4677"
+              ],
+              "maxTdpWatts": 350
+            },
+            "memory": {
+              "slotsPerCpu": 8,
+              "maxCapacityGb": 2048,
+              "maxModuleCapacityGb": 128
+            },
+            "expansionSlots": [
+              {
+                "id": 1,
+                "key": "gpu",
+                "count": 2,
+                "interfaceFamily": "PCIe",
+                "electricalLanes": 16,
+                "maxPowerWatts": 300
+              }
+            ],
+            "power": {
+              "maxGraphicsPowerWatts": 600
+            }
+          }
+        }
+      },
+      "canonical": {
+        "type": "workstation",
+        "name": "Example Workstation",
+        "manufacturer": "Example",
+        "model": "WS2",
+        "specs": {
+          "formFactor": "Tower",
+          "topologyCompleteness": "complete"
+        },
+        "compatibility": {
+          "host": {
+            "cpu": {
+              "socketCount": 2,
+              "sockets": [
+                "LGA4677"
+              ],
+              "maxTdpMw": 350000
+            },
+            "memory": {
+              "slotsPerCpu": 8,
+              "maxCapacityMib": 2097152,
+              "maxModuleCapacityMib": 131072
+            },
+            "expansionSlots": [
+              {
+                "id": 1,
+                "key": "gpu",
+                "count": 2,
+                "interfaceFamily": "PCIe",
+                "electricalLanes": 16,
+                "maxPowerMw": 300000
+              }
+            ],
+            "power": {
+              "maxGraphicsPowerMw": 600000
+            }
+          }
+        }
+      },
+      "identityPayload": {
+        "productFamily": {
+          "manufacturer": "Example",
+          "model": "WS2",
+          "physicalClass": "workstation"
+        },
+        "topologySignature": "b3791b1be1659f639437b49f1a7b9722213ecbd160746056e62716b8aad0797e"
+      },
+      "identityHash": "711bf6f000f11c2726264fbe0abafc8798fdd4abdd1286f5243b790a8284a901",
+      "contentHash": "e8a003c13e4d72527efa19e2aca802b44510bf372642254718e52ed6c713b94a",
+      "historicalIdentityAliases": [
+        {
+          "fingerprintVersion": 5,
+          "identityHash": "0532885b216502715cbb9951bc341797830b817b1fb05ce3a117b3ee2be076f6"
+        }
+      ]
+    },
+    {
+      "key": "server-topology",
+      "sourceFingerprintVersion": 6,
+      "requiredApplicationCatalogContractVersion": 9,
+      "source": {
+        "type": "server",
+        "name": "Example Rack Server",
+        "manufacturer": "Example",
+        "model": "R2",
+        "specs": {
+          "formFactor": "Rack",
+          "rackUnits": 2,
+          "topologyCompleteness": "complete"
+        },
+        "compatibility": {
+          "host": {
+            "cpu": {
+              "socketCount": 2,
+              "sockets": [
+                "LGA4677"
+              ],
+              "maxTdpWatts": 350
+            },
+            "memory": {
+              "slots": 32,
+              "slotsPerCpu": 16,
+              "maxCapacityGb": 4096
+            },
+            "storageSlots": [
+              {
+                "id": 1,
+                "key": "front-bays",
+                "count": 12,
+                "interfaces": [
+                  "SAS",
+                  "SATA"
+                ],
+                "formFactors": [
+                  "3.5-inch"
+                ],
+                "controllerSlotId": 1
+              }
+            ],
+            "controllerSlots": [
+              {
+                "id": 1,
+                "key": "storage-controller",
+                "count": 1,
+                "acceptedControllerKinds": [
+                  "RAID",
+                  "HBA"
+                ]
+              }
+            ],
+            "power": {
+              "psuBayCount": 2,
+              "redundancyModes": [
+                "1+1"
+              ],
+              "supportedWattagesWatts": [
+                800,
+                1100
+              ]
+            },
+            "coolingProfiles": [
+              {
+                "id": 1,
+                "key": "standard",
+                "fanCount": 6,
+                "redundant": true
+              }
+            ],
+            "management": {
+              "controllerFamily": "BMC",
+              "dedicatedPort": true,
+              "speed": "1G"
+            }
+          }
+        }
+      },
+      "canonical": {
+        "type": "server",
+        "name": "Example Rack Server",
+        "manufacturer": "Example",
+        "model": "R2",
+        "specs": {
+          "formFactor": "Rack",
+          "rackUnits": 2,
+          "topologyCompleteness": "complete"
+        },
+        "compatibility": {
+          "host": {
+            "cpu": {
+              "socketCount": 2,
+              "sockets": [
+                "LGA4677"
+              ],
+              "maxTdpMw": 350000
+            },
+            "memory": {
+              "slots": 32,
+              "slotsPerCpu": 16,
+              "maxCapacityMib": 4194304
+            },
+            "storageSlots": [
+              {
+                "id": 1,
+                "key": "front-bays",
+                "count": 12,
+                "interfaces": [
+                  "SAS",
+                  "SATA"
+                ],
+                "formFactors": [
+                  "3.5-inch"
+                ],
+                "controllerSlotId": 1
+              }
+            ],
+            "controllerSlots": [
+              {
+                "id": 1,
+                "key": "storage-controller",
+                "count": 1,
+                "acceptedControllerKinds": [
+                  "RAID",
+                  "HBA"
+                ]
+              }
+            ],
+            "power": {
+              "psuBayCount": 2,
+              "redundancyModes": [
+                "1+1"
+              ],
+              "supportedPowerMw": [
+                800000,
+                1100000
+              ]
+            },
+            "coolingProfiles": [
+              {
+                "id": 1,
+                "key": "standard",
+                "fanCount": 6,
+                "redundant": true
+              }
+            ],
+            "management": {
+              "controllerFamily": "BMC",
+              "dedicatedPort": true,
+              "speedBps": 1000000000
+            }
+          }
+        }
+      },
+      "identityPayload": {
+        "productFamily": {
+          "manufacturer": "Example",
+          "model": "R2",
+          "physicalClass": "server"
+        },
+        "topologySignature": "84504b351dd4bc9963614d477ee44142f6ae0439d78665cb808fddb42411ecac"
+      },
+      "identityHash": "e6f3f0de4080a59759ff5969963ead4ab8dbffea19e632f73570cd2f106268bf",
+      "contentHash": "108419a390ccca66df09d3fd808996709be41e5675c7602b2d203d0789188328",
+      "historicalIdentityAliases": [
+        {
+          "fingerprintVersion": 6,
+          "identityHash": "83ae2ffd8f593cac3afa729d79b76b7f5d8abaeffc9cd56536c73615d6671280"
+        }
+      ]
+    },
+    {
+      "key": "motherboard-topology",
+      "sourceFingerprintVersion": 7,
+      "requiredApplicationCatalogContractVersion": 9,
+      "source": {
+        "type": "motherboard",
+        "name": "Example X670E Board",
+        "manufacturer": "Example",
+        "model": "X670E Board",
+        "specs": {
+          "chipset": "X670E",
+          "formFactor": "ATX"
+        },
+        "compatibility": {
+          "host": {
+            "cpu": {
+              "sockets": [
+                "AM5"
+              ],
+              "generations": [
+                "Zen 4",
+                "Zen 5"
+              ],
+              "maxTdpWatts": 170
+            },
+            "memory": {
+              "slots": 4,
+              "generations": [
+                "DDR5"
+              ],
+              "maxCapacityGb": 192
+            },
+            "storageSlots": [
+              {
+                "id": 1,
+                "key": "m2",
+                "count": 4,
+                "interfaces": [
+                  "NVMe"
+                ],
+                "formFactors": [
+                  "2280"
+                ]
+              }
+            ],
+            "expansionSlots": [
+              {
+                "id": 1,
+                "key": "pcie-x16",
+                "count": 1,
+                "interfaceFamily": "PCIe",
+                "electricalLanes": 16
+              }
+            ]
+          }
+        }
+      },
+      "canonical": {
+        "type": "motherboard",
+        "name": "Example X670E Board",
+        "manufacturer": "Example",
+        "model": "X670E Board",
+        "specs": {
+          "chipset": "X670E",
+          "formFactor": "ATX"
+        },
+        "compatibility": {
+          "host": {
+            "cpu": {
+              "sockets": [
+                "AM5"
+              ],
+              "generations": [
+                "Zen 4",
+                "Zen 5"
+              ],
+              "maxTdpMw": 170000
+            },
+            "memory": {
+              "slots": 4,
+              "generations": [
+                "DDR5"
+              ],
+              "maxCapacityMib": 196608
+            },
+            "storageSlots": [
+              {
+                "id": 1,
+                "key": "m2",
+                "count": 4,
+                "interfaces": [
+                  "NVMe"
+                ],
+                "formFactors": [
+                  "2280"
+                ]
+              }
+            ],
+            "expansionSlots": [
+              {
+                "id": 1,
+                "key": "pcie-x16",
+                "count": 1,
+                "interfaceFamily": "PCIe",
+                "electricalLanes": 16
+              }
+            ]
+          }
+        }
+      },
+      "identityPayload": {
+        "productFamily": {
+          "manufacturer": "Example",
+          "model": "X670E Board",
+          "physicalClass": "motherboard"
+        },
+        "topologySignature": "cceff43b485bc9c96f572cc401320fdcd4974ee9021dafaa67a36c81495312b1"
+      },
+      "identityHash": "ca325924fefbf8a3c44416495ca9e999bae97613167364c60b61f9a4a3883215",
+      "contentHash": "ee87185144490421a0196336c8bcd8b23c593aab10fdfb19e2c7a923137142c3",
+      "historicalIdentityAliases": [
+        {
+          "fingerprintVersion": 7,
+          "identityHash": "c0d1cef8d2a85fd2aff9ee39bd709bca1bba35e118a2b780dd8c7f079c001244"
+        }
+      ]
+    },
+    {
+      "key": "dual-representation-conflict",
+      "sourceFingerprintVersion": 3,
+      "requiredApplicationCatalogContractVersion": 9,
+      "source": {
+        "type": "storage",
+        "name": "Conflict Drive",
+        "manufacturer": "Example",
+        "model": "Conflict",
+        "specs": {
+          "capacityTb": 1,
+          "capacityBytes": 999000000000
+        }
+      },
+      "error": {
+        "code": "canonical-measurement-conflict",
+        "path": "specs.capacityBytes"
+      }
+    },
+    {
+      "key": "unknown-public-fields",
+      "sourceFingerprintVersion": 3,
+      "requiredApplicationCatalogContractVersion": 9,
+      "source": {
+        "type": "cpu",
+        "name": "Example CPU",
+        "manufacturer": "Example",
+        "number": "Unknown-1",
+        "lifecycle": {
+          "status": "active"
+        },
+        "specs": {
+          "socket": "LGA1",
+          "vendorExtension": {
+            "steppingFamily": "A"
+          }
+        }
+      },
+      "canonical": {
+        "type": "cpu",
+        "name": "Example Unknown-1",
+        "manufacturer": "Example",
+        "number": "Unknown-1",
+        "specs": {
+          "socket": "LGA1",
+          "vendorExtension": {
+            "steppingFamily": "A"
+          }
+        },
+        "lifecycle": {
+          "status": "active"
+        }
+      },
+      "identityPayload": {
+        "type": "cpu",
+        "manufacturer": "Example",
+        "number": "Unknown-1"
+      },
+      "identityHash": "b5871d673579de770ac6045f71b5567a45446cba111acd541b92f2397739a993",
+      "contentHash": "b8f67b54049c96db9892211320585d97bf8348bb170fe24bf74d0cce533eed17",
+      "historicalIdentityAliases": [
+        {
+          "fingerprintVersion": 3,
+          "identityHash": "4951de5dfc9d5dc32698069e6bc4d9f64306fa671665614dcfad0ae9ec14d567"
+        }
+      ]
+    },
+    {
+      "key": "forbidden-private-fields",
+      "sourceFingerprintVersion": 3,
+      "requiredApplicationCatalogContractVersion": 9,
+      "source": {
+        "type": "cpu",
+        "name": "Private-safe CPU",
+        "manufacturer": "Example",
+        "number": "Private-1",
+        "serialNumber": "SERIAL-1",
+        "specs": {
+          "socket": "LGA1",
+          "ipAddress": "10.0.0.2"
+        },
+        "location": "Rack A"
+      },
+      "canonical": {
+        "type": "cpu",
+        "name": "Example Private-1",
+        "manufacturer": "Example",
+        "number": "Private-1",
+        "specs": {
+          "socket": "LGA1"
+        }
+      },
+      "identityPayload": {
+        "type": "cpu",
+        "manufacturer": "Example",
+        "number": "Private-1"
+      },
+      "identityHash": "6856f10cb11f85cc6f070de9c9824e30443580468b63438ee9c7559e0007d2c3",
+      "contentHash": "f938342f6e769749f0a896b0743803332ca90284b8874383b9c6723f351585ea",
+      "historicalIdentityAliases": [
+        {
+          "fingerprintVersion": 3,
+          "identityHash": "fa48fcd812fe12e6ec0a59218254f4df92188fc8e9a445dadd4fad2d0501917c"
+        }
+      ]
+    }
+  ]
+}

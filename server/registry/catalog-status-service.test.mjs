@@ -28,7 +28,7 @@ describe('CatalogStatusService', () => {
     }
     const now = new Date('2026-08-12T12:00:00.000Z')
     const service = new CatalogStatusService({
-      store, identityService, applicationVersion: '0.11.1', now: () => now,
+      store, identityService, applicationVersion: '0.11.1', applicationCatalogContractVersion: 9, now: () => now,
     })
 
     await service.trigger()
@@ -38,13 +38,14 @@ describe('CatalogStatusService', () => {
       '/v1/installations/catalog-status',
       {
         applicationVersion: '0.11.1',
+        applicationCatalogContractVersion: 9,
         activeCatalogRevision: 12,
         reportedAt: now.toISOString(),
       },
       now,
     )
     expect(Object.keys(identityService.signedPost.mock.calls[0][2])).toEqual([
-      'applicationVersion', 'activeCatalogRevision', 'reportedAt',
+      'applicationVersion', 'applicationCatalogContractVersion', 'activeCatalogRevision', 'reportedAt',
     ])
   })
 
@@ -57,7 +58,7 @@ describe('CatalogStatusService', () => {
   ])('does no identity or network work when ineligible', async (options) => {
     const { store } = fixture(options)
     const identityService = { signedPost: vi.fn() }
-    const service = new CatalogStatusService({ store, identityService, applicationVersion: '0.11.1' })
+    const service = new CatalogStatusService({ store, identityService, applicationVersion: '0.11.1', applicationCatalogContractVersion: 9 })
     await expect(service.trigger()).resolves.toBeNull()
     expect(identityService.signedPost).not.toHaveBeenCalled()
   })
@@ -82,6 +83,7 @@ describe('CatalogStatusService', () => {
       store,
       identityService,
       applicationVersion: '0.11.1',
+      applicationCatalogContractVersion: 9,
       now: () => times.shift(),
       waitFn,
     })
@@ -102,7 +104,7 @@ describe('CatalogStatusService', () => {
     const identityService = { signedPost: vi.fn(async () => new Response('{}', { status: 429 })) }
     const waitFn = vi.fn()
     const service = new CatalogStatusService({
-      store, identityService, applicationVersion: '0.11.1', waitFn,
+      store, identityService, applicationVersion: '0.11.1', applicationCatalogContractVersion: 9, waitFn,
     })
 
     await expect(service.trigger()).resolves.toEqual({ deferred: true })
@@ -115,7 +117,7 @@ describe('CatalogStatusService', () => {
     const logger = { warn: vi.fn() }
     const identityService = { signedPost: vi.fn(async () => new Response('{}', { status: 401 })) }
     const service = new CatalogStatusService({
-      store, identityService, applicationVersion: '0.11.1', logger,
+      store, identityService, applicationVersion: '0.11.1', applicationCatalogContractVersion: 9, logger,
       now: () => new Date('2026-08-12T12:00:00.000Z'),
     })
 
@@ -138,7 +140,7 @@ describe('CatalogStatusService', () => {
       state: 'current', currentCatalogRevision: 12, recorded: false,
     }), { status: 200 })) }
     const service = new CatalogStatusService({
-      store, identityService, applicationVersion: '0.11.1', setTimeoutFn, clearTimeoutFn,
+      store, identityService, applicationVersion: '0.11.1', applicationCatalogContractVersion: 9, setTimeoutFn, clearTimeoutFn,
     })
 
     service.start()

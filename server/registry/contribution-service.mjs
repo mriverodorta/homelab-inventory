@@ -1,4 +1,5 @@
 import {
+  CANONICAL_UNITS_FINGERPRINT_VERSION,
   FINGERPRINT_VERSION,
   LEGACY_FINGERPRINT_VERSION,
   MOTHERBOARD_FINGERPRINT_VERSION,
@@ -31,7 +32,7 @@ function contributionKey(fingerprintVersion, identityHash, contentHash) {
   return `${identityKey(fingerprintVersion, identityHash)}:${contentHash}`
 }
 
-function fingerprintVersionForItem(item) {
+function legacyFingerprintVersionForItem(item) {
   const catalogItem = projectLocalItemForCatalog(item, item.type)
   if (catalogItem.type === 'workstation') return WORKSTATION_FINGERPRINT_VERSION
   if (catalogItem.type === 'server') return SERVER_FINGERPRINT_VERSION
@@ -42,6 +43,10 @@ function fingerprintVersionForItem(item) {
     && typeof catalogItem.model === 'string'
     ? OEM_FINGERPRINT_VERSION
     : FINGERPRINT_VERSION
+}
+
+function fingerprintVersionForItem() {
+  return CANONICAL_UNITS_FINGERPRINT_VERSION
 }
 
 async function projectLocalInventoryItem(item, fingerprintVersion) {
@@ -111,6 +116,7 @@ export async function discoverContributionCandidates(
     }
     const fingerprintVersion = fingerprintVersionForItem(item)
     const compatibilityVersions = [...new Set([
+      legacyFingerprintVersionForItem(item),
       FINGERPRINT_VERSION,
       LEGACY_FINGERPRINT_VERSION,
     ].filter((version) => version !== fingerprintVersion))]
@@ -158,7 +164,10 @@ export async function discoverContributionCandidates(
     const exact = externalEntries.get(group.contentHash)
     const canonicalMatch = publishedByIdentity.get(identityKey(group.fingerprintVersion, group.identityHash))
     const compatibilityMatches = []
-    for (const fingerprintVersion of [FINGERPRINT_VERSION, LEGACY_FINGERPRINT_VERSION]) {
+    const compatibilityFingerprintVersions = [...new Set(group.sources
+      .flatMap((source) => compatibilityIdentitiesByItem.get(itemKey(source.itemType, source.itemId)) ?? [])
+      .map((identity) => identity.fingerprintVersion))]
+    for (const fingerprintVersion of compatibilityFingerprintVersions) {
       const identities = new Set(group.sources
         .flatMap((source) => compatibilityIdentitiesByItem.get(itemKey(source.itemType, source.itemId)) ?? [])
         .filter((identity) => identity.fingerprintVersion === fingerprintVersion)

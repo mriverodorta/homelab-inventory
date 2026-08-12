@@ -1,4 +1,9 @@
-import { canonicalJson, sanitizeCatalogItem } from '../../packages/catalog-protocol/src/index.ts'
+import {
+  CANONICAL_UNITS_FINGERPRINT_VERSION,
+  canonicalJson,
+  sanitizeCatalogItem,
+  sanitizeCatalogItemV9,
+} from '../../packages/catalog-protocol/src/index.ts'
 
 const CATALOG_FIELDS = [
   'name',
@@ -18,11 +23,20 @@ function valueAt(item, field) {
   return Object.hasOwn(item, field) ? item[field] : undefined
 }
 
-function assertRamMemoryRequirements(currentValue, nextValue) {
+function sanitizeForFingerprint(value, fingerprintVersion) {
+  return fingerprintVersion === CANONICAL_UNITS_FINGERPRINT_VERSION
+    ? sanitizeCatalogItemV9(value)
+    : sanitizeCatalogItem(value)
+}
+
+function assertRamMemoryRequirements(currentValue, nextValue, fingerprintVersion) {
   if (nextValue?.type !== 'ram') return
   const current = currentValue?.compatibility?.requirements?.memory
   const next = nextValue?.compatibility?.requirements?.memory
-  const requiredFields = ['capacityGb', 'generation', 'speedMt', 'formFactor', 'moduleType', 'ecc']
+  const requiredFields = [
+    fingerprintVersion === CANONICAL_UNITS_FINGERPRINT_VERSION ? 'capacityMib' : 'capacityGb',
+    'generation', 'speedMt', 'formFactor', 'moduleType', 'ecc',
+  ]
   if (current && !next) {
     throw new Error('RAM catalog updates cannot remove structured memory requirements.')
   }
@@ -41,9 +55,9 @@ function assertRamMemoryRequirements(currentValue, nextValue) {
   }
 }
 
-export function catalogFieldDiff(currentValue, nextValue) {
-  const current = sanitizeCatalogItem(currentValue)
-  const next = sanitizeCatalogItem(nextValue)
+export function catalogFieldDiff(currentValue, nextValue, fingerprintVersion) {
+  const current = sanitizeForFingerprint(currentValue, fingerprintVersion)
+  const next = sanitizeForFingerprint(nextValue, fingerprintVersion)
   return CATALOG_FIELDS.flatMap((field) => (
     canonicalJson(valueAt(current, field)) === canonicalJson(valueAt(next, field))
       ? []
@@ -51,10 +65,10 @@ export function catalogFieldDiff(currentValue, nextValue) {
   ))
 }
 
-export function mergeCatalogUpdate(currentValue, nextValue) {
+export function mergeCatalogUpdate(currentValue, nextValue, fingerprintVersion) {
   const current = structuredClone(currentValue)
-  const next = sanitizeCatalogItem(nextValue)
-  assertRamMemoryRequirements(current, next)
+  const next = sanitizeForFingerprint(nextValue, fingerprintVersion)
+  assertRamMemoryRequirements(sanitizeForFingerprint(current, fingerprintVersion), next, fingerprintVersion)
   const result = { ...next, ...(current.name ? { name: current.name } : {}) }
   for (const [key, value] of Object.entries(current)) {
     if (key === 'id' || key === 'key' || key === 'type' || CATALOG_FIELDS.includes(key)) continue
