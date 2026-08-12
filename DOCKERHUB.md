@@ -22,6 +22,8 @@ GitHub is the source of truth for CI/CD. Docker Hub images are built and publish
 ## Features
 
 - **Visual inventory:** Arrange servers, NAS devices, PC builds, switches, patch panels, monitors, UPS systems, and power strips on an infinite canvas.
+- **Projects and workspaces:** Keep multiple lab plans in one installation with a fixed Systems view, reorderable Canvas tabs, per-project defaults, and browser-local last-active restoration.
+- **Reusable inventory:** Keep equipment project-bound, add selected global records to other projects, or make clean independent cross-project copies.
 - **Component assignments:** Build hosts from reusable CPUs, motherboards, RAM, storage, GPUs, network cards, cooling, cases, power supplies, and OEM adapters.
 - **Physical cabling:** Connect individual network, display, and power endpoints with inspectable color-coded cable routes.
 - **Compatibility and audit:** Block known-invalid CPU, memory, storage, and expansion assignments, including physical RAM form factor, electrical module type, ECC, and slot limits.
@@ -64,10 +66,11 @@ It is designed for local/home infrastructure documentation, planning, rebuilds, 
 
 ## How It Works
 
-The app has three main parts:
+The app has four main parts:
 
-- **Inventory**: hardware records such as servers, NAS devices, custom PC builds, reusable components, monitors, UPS systems, power strips, switches, and patch panels.
-- **Canvas**: a visual workspace where inventory items are placed, assigned, connected, moved, and inspected.
+- **Projects**: independent lab plans selected from the header, each with its own workspaces, compatibility policy, topology, and inventory memberships.
+- **Inventory**: project-bound hardware plus explicitly reusable global records.
+- **Workspaces**: a fixed Systems view and one or more reorderable Canvas tabs where equipment is placed, assigned, connected, moved, and inspected.
 - **SQLite persistence**: independent core, telemetry, and local catalog databases under `/data`, kept separate from the container image.
 
 Inventory items can be created from the web interface. Once hardware exists in the inventory, you can place hosts and standalone equipment on the canvas, assemble custom PC builds from reusable components, and connect compatible network, display, and power endpoints directly.
@@ -95,6 +98,8 @@ Eligible opt-in contributions are normalized by hardware category and deduplicat
 Registry mode defaults to **Disabled**. **Offline file** mode verifies a signed immutable catalog without making outbound requests. **Connected** mode communicates only with the fixed official registry endpoint, keeps catalog search local, and retains the last-known-good catalog if verification fails. Automatic contributions require separate explicit consent and never block an inventory save.
 
 Each deployment keeps a random stable UUID, Ed25519 signing key, and short-lived credentials as mode-`0600` backend files under `/data/registry`. The UUID is not derived from the host or inventory. Authenticated key rotation preserves the logical installation, while a missing key stops delivery until registry-owner recovery approval. Private keys and tokens are never returned to the browser.
+
+Connected enrolled installations send a signed catalog-adoption check-in at startup, after catalog activation, and every six hours. It contains only the application version, active catalog revision, and request timestamp. It never contains inventory, topology, labels, addresses, hardware identifiers, Agent data, or host identity, and failure does not block the app.
 
 ## Normal Production
 

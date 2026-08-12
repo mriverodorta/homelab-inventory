@@ -32,7 +32,8 @@ On the first startup with SQLite support, the application:
 4. Imports core, telemetry, and catalog data into a private staging directory.
 5. Validates semantic counts, capacities, numeric relationships, topology, authentication, notifications, Registry identity, database integrity, and foreign keys.
 6. Atomically activates all three databases and writes `/data/databases/persistence-engine.json` only after validation succeeds.
-7. Opens the databases in WAL mode and begins serving requests.
+7. Creates numeric project `1` as **Default Project**, fixed Systems workspace `1`, Canvas workspace `2`, and makes Canvas the project default while preserving existing placements, assignments, cables, compatibility policy, and route cache.
+8. Opens the databases in WAL mode and begins serving requests.
 
 The generated migration archive is mode `0600`. When no deployment backup passphrase is configured, the migration creates a separate mode-`0600` `.key` file beside the archive and records both relative paths in the activation marker. Preserve the archive and key together.
 
@@ -81,6 +82,8 @@ Portable `.hlibackup` archives remain logical and database-independent:
 - SQLite deployments export format 2 archives with independent core, telemetry, and catalog schema versions.
 - Complete and custom exports preserve the existing dependency-aware section model.
 - A complete archive can still restore only selected compatible sections.
+- The Project section carries every project, workspace, membership, placement, assignment, connection, compatibility audit, and manual bend; the optional route-cache section carries every workspace cache independently.
+- Restore remaps inventory, port, endpoint-face, and resource-slot relationships through stable typed aliases instead of assuming internal SQLite row IDs match.
 - Registry enrollment includes the stable installation UUID, Ed25519 key, and credentials as one protected unit.
 - Agent and authentication secrets retain their existing encryption requirements.
 - Route cache remains optional and disposable.

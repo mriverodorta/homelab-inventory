@@ -22,10 +22,12 @@ It gives you one practical view of what you own, what is installed in each machi
 
 ### Document the physical lab
 
+- Organize one installation into multiple projects, each with a fixed Systems view and one or more reorderable, named, color-coded Canvas workspaces.
 - Place servers, NAS devices, custom PC builds, monitors, switches, patch panels, UPS systems, and power strips on an infinite canvas.
 - Assemble hosts from reusable CPUs, motherboards, cooling, RAM, storage, GPUs, network and wireless cards, sound cards, cases, power supplies, and OEM power adapters.
 - Connect individual network, display, and power endpoints with color-coded, orthogonally routed cables and inspect each connection from either endpoint.
 - Use the searchable desktop or mobile inventory drawer to create, duplicate, archive, restore, and safely remove equipment.
+- Keep equipment project-bound, expose selected records through the global inventory library, or create a clean independent copy in another project.
 
 ### Validate hardware before changing it
 
@@ -249,6 +251,16 @@ Automatic catalog contributions are a separate explicit opt-in available only in
 Before delivery, eligible inventory is projected by hardware category and grouped by normalized product identity. Case, whitespace, manufacturer aliases, and private display names do not create duplicate candidates. Identical physical copies remain separate inventory records but produce one contribution candidate, while different board variants and RAM speeds remain distinct. Unidentified generic storage and ambiguous records are withheld locally. Exact matches to a published catalog definition link every matching local copy without asking the user to merge physical inventory.
 
 Each deployment keeps a random stable UUID in `/data/registry/installation-instance.json` beside its Ed25519 private key and short-lived contribution credentials. All three files are backend-only mode-`0600` enrollment state. The UUID is not derived from the host or inventory, key rotation preserves the same logical installation, and lost keys require registry-owner approval before contributions resume. Private keys and tokens are never stored in `registry.json`, returned to the browser, or included in catalog searches. The registry intake quarantines submissions behind deterministic validation and rate limits; intake does not invoke an AI model synchronously and no contribution is published without the registry moderation workflow.
+
+An enrolled Connected installation also reports catalog adoption at startup, after catalog activation, and every six hours. This signed operational check-in contains only the application version, active catalog revision, and request timestamp. It never includes inventory, topology, labels, addresses, hardware identifiers, Agent data, or host identity, and a failed check-in does not block the application.
+
+## Projects And Workspaces
+
+The project switcher in the header selects the active project. Every project starts with a fixed **Systems** workspace and a **Canvas** workspace. Systems remains first and provides a structured compute-host view; Canvas workspaces retain the visual equipment, assignment, and cabling workbench. Additional Canvas workspaces can be renamed, assigned a curated icon and color, and reordered from the bottom workbook bar.
+
+Each project can choose its default workspace. An optional browser preference instead reopens the last workspace used in that project. Navigation uses project/workspace URLs, so refresh and browser history preserve the selected workbook context.
+
+New projects include global inventory by default, but global records appear only after an explicit project membership is added. Project-bound records remain owned by one project. Promoting a record makes it reusable; duplicating it to another project creates a clean independent item and intentionally omits serials, Registry links, Agent identity, telemetry, assignments, Canvas placement, and cables.
 
 ## Docker Tags And Release Channels
 
