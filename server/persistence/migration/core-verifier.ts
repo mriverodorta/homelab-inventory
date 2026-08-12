@@ -26,7 +26,10 @@ export function sqliteSemanticSnapshot(database: Database) {
   }
   const memoryCapacityMiB = Number((database.query('SELECT sum(capacity_mib) AS total FROM memory_modules').get() as SumRow).total ?? 0)
   const storageCapacityBytes = Number((database.query('SELECT sum(capacity_bytes) AS total FROM storage_devices').get() as SumRow).total ?? 0)
-  const policy = metadata(database, 'legacy.compatibility-policy') ?? {}
+  const policyRow = database.query(
+    'SELECT policy_json FROM project_compatibility_policies WHERE project_id = 1',
+  ).get() as { policy_json: string } | null
+  const policy = policyRow ? JSON.parse(policyRow.policy_json) : metadata(database, 'legacy.compatibility-policy') ?? {}
 
   return {
     schemaVersion: metadata(database, 'legacy.schema-version'),

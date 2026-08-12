@@ -60,4 +60,9 @@ export const CORE_MIGRATIONS: readonly CoreMigration[] = [
     file: '0010_archived_project_deletion.sql',
     sha256: '384f6463286ed5428c7d574d8294f7c3e7e97d1cfc0bdc51351deb805f7bfec3',
   },
+  {
+    id: '0012_project_compatibility_policies',
+    file: '0011_project_compatibility_policies.sql',
+    sha256: '69184ab00ac8cb61fea37324394c72522ad089da84ddbe3fd05c8a90e529f11b',
+  },
 ]

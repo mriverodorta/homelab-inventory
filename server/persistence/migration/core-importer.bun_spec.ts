@@ -53,6 +53,15 @@ describe('schema-29 core import', () => {
       expect(handle.database.query('SELECT imported_revision FROM registry_links WHERE id = 1').get()).toEqual({ imported_revision: 1 })
       expect(handle.database.query('SELECT state FROM agent_host_bindings').get()).toEqual({ state: 'active' })
       expect(handle.database.query('SELECT local_time, retention_count FROM backup_schedules').get()).toEqual({ local_time: '03:30', retention_count: 14 })
+      expect(handle.database.query('SELECT id, name FROM projects').all()).toEqual([{ id: 1, name: 'Default Project' }])
+      expect(handle.database.query('SELECT id, type, sort_order FROM workspaces ORDER BY id').all()).toEqual([
+        { id: 1, type: 'systems', sort_order: 0 },
+        { id: 2, type: 'canvas', sort_order: 1 },
+      ])
+      expect(handle.database.query('SELECT default_workspace_id FROM project_preferences WHERE project_id = 1').get())
+        .toEqual({ default_workspace_id: 2 })
+      expect(handle.database.query('SELECT policy_json FROM project_compatibility_policies WHERE project_id = 1').get())
+        .toEqual({ policy_json: JSON.stringify(snapshot.project.compatibilityPolicy) })
     } finally {
       closeManagedDatabase(handle)
     }

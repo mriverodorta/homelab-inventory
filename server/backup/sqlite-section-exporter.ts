@@ -1,6 +1,82 @@
+import type { Database } from 'bun:sqlite'
 import type { ProjectState } from '../../src/types/inventory.ts'
 
 type Row = Record<string, any>
+
+const PROJECT_WORKBOOK_TABLES = [
+  'projects',
+  'workspaces',
+  'canvas_workspaces',
+  'project_preferences',
+  'project_compatibility_policies',
+  'project_inventory_memberships',
+  'project_inventory_overrides',
+  'workspace_placements',
+  'workspace_connection_visibility',
+  'workspace_manual_bend_points',
+  'component_assignments',
+  'component_assignment_slots',
+  'project_connections',
+  'connection_endpoints',
+  'compatibility_audits',
+  'compatibility_audit_findings',
+  'compatibility_audit_ignores',
+] as const
+
+function tableRows(database: Database, table: string) {
+  return database.query(`SELECT * FROM ${table} ORDER BY 1`).all() as Row[]
+}
+
+export function logicalProjectWorkbooks(database: Database) {
+  return {
+    contractVersion: 1,
+    tables: Object.fromEntries(PROJECT_WORKBOOK_TABLES.map((table) => [table, tableRows(database, table)])),
+    identities: {
+      items: database.query(`
+        SELECT i.id AS canonical_id, a.legacy_type_key AS item_type, a.legacy_id AS item_id,
+               i.scope, i.owner_project_id
+        FROM inventory_items i
+        JOIN inventory_identity_aliases a ON a.item_id = i.id
+        ORDER BY i.id
+      `).all(),
+      ports: database.query(`
+        SELECT p.id AS canonical_id, a.legacy_type_key AS item_type,
+               a.legacy_id AS item_id, pa.legacy_port_id AS port_id
+        FROM inventory_ports p
+        JOIN inventory_identity_aliases a ON a.item_id = p.item_id
+        JOIN port_identity_aliases pa ON pa.port_id = p.id
+        ORDER BY p.id
+      `).all(),
+      endpointFaces: database.query(`
+        SELECT f.id AS canonical_id, a.legacy_type_key AS item_type,
+               a.legacy_id AS item_id, pa.legacy_port_id AS port_id,
+               f.endpoint_number
+        FROM port_endpoint_faces f
+        JOIN inventory_ports p ON p.id = f.port_id
+        JOIN inventory_identity_aliases a ON a.item_id = p.item_id
+        JOIN port_identity_aliases pa ON pa.port_id = p.id
+        ORDER BY f.id
+      `).all(),
+      resourceSlots: database.query(`
+        SELECT s.id AS canonical_id, a.legacy_type_key AS item_type,
+               a.legacy_id AS item_id, ra.legacy_resource_key,
+               s.position
+        FROM host_resource_slots s
+        JOIN host_resource_groups g ON g.id = s.resource_group_id
+        JOIN inventory_identity_aliases a ON a.item_id = g.host_item_id
+        JOIN resource_identity_aliases ra ON ra.resource_id = g.resource_identity_id
+        ORDER BY s.id
+      `).all(),
+    },
+  }
+}
+
+export function logicalWorkspaceRouteCache(database: Database) {
+  return {
+    contractVersion: 1,
+    rows: tableRows(database, 'workspace_route_cache'),
+  }
+}
 
 function parseItemKey(value: string) {
   const separator = value.lastIndexOf(':')
@@ -94,6 +170,7 @@ export function runtimeProjectFromLogical(section: Row, items: ProjectState['ite
 }
 
 export function buildLogicalStoreSnapshot(input: {
+  database: Database
   meta: Row
   inventory: Row
   project: ProjectState
@@ -107,8 +184,14 @@ export function buildLogicalStoreSnapshot(input: {
   return {
     meta: structuredClone(input.meta),
     inventory: structuredClone(input.inventory),
-    project: logicalProjectSection(input.project),
-    routingCache: structuredClone(input.routingCache),
+    project: {
+      ...logicalProjectSection(input.project),
+      workbooks: logicalProjectWorkbooks(input.database),
+    },
+    routingCache: {
+      ...structuredClone(input.routingCache),
+      workspaces: logicalWorkspaceRouteCache(input.database),
+    },
     registry: structuredClone(input.registry),
     agents: structuredClone(input.agents),
     agentStatus: structuredClone(input.agentStatus),

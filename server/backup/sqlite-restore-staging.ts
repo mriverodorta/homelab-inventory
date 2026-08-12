@@ -155,6 +155,240 @@ function clearProjectTopology(database: Database, projectId: number, workspaceId
   database.query('DELETE FROM workspace_placements WHERE project_id = ? AND workspace_id = ?').run(projectId, workspaceId)
 }
 
+const PROJECT_DOMAIN_DELETE_ORDER = [
+  'compatibility_audit_ignores',
+  'compatibility_audit_findings',
+  'compatibility_audits',
+  'workspace_route_cache',
+  'workspace_manual_bend_points',
+  'workspace_connection_visibility',
+  'connection_endpoints',
+  'component_assignment_slots',
+  'component_assignments',
+  'project_connections',
+  'workspace_placements',
+  'project_inventory_overrides',
+  'project_inventory_memberships',
+] as const
+
+const PROJECT_WORKBOOK_INSERT_ORDER = [
+  'projects',
+  'workspaces',
+  'canvas_workspaces',
+  'project_preferences',
+  'project_compatibility_policies',
+  'project_inventory_memberships',
+  'project_inventory_overrides',
+  'workspace_placements',
+  'component_assignments',
+  'component_assignment_slots',
+  'project_connections',
+  'connection_endpoints',
+  'workspace_connection_visibility',
+  'workspace_manual_bend_points',
+  'compatibility_audits',
+  'compatibility_audit_findings',
+  'compatibility_audit_ignores',
+] as const
+
+function insertRows(database: Database, table: string, rows: Row[]) {
+  const allowedColumns = new Set((database.query(`PRAGMA table_info(\`${table}\`)`).all() as Row[])
+    .map((column) => String(column.name)))
+  if (allowedColumns.size === 0) throw new Error(`Restore table ${table} is unavailable.`)
+  for (const row of rows) {
+    const entries = Object.entries(row)
+    if (entries.length === 0) throw new Error(`Restore table ${table} contains an empty row.`)
+    for (const [column] of entries) {
+      if (!allowedColumns.has(column)) {
+        throw new Error(`Restore table ${table} contains unsupported column ${column}.`)
+      }
+    }
+    const columns = entries.map(([column]) => `\`${column}\``).join(', ')
+    const placeholders = entries.map(() => '?').join(', ')
+    try {
+      database.query(`INSERT INTO \`${table}\` (${columns}) VALUES (${placeholders})`)
+        .run(...entries.map(([, value]) => value))
+    } catch (error) {
+      throw new Error(`Restore failed while inserting ${table} row ${JSON.stringify(row)}.`, { cause: error })
+    }
+  }
+}
+
+function identityLookup(rows: Row[], key: (row: Row) => string) {
+  return new Map(rows.map((row) => [Number(row.canonical_id), key(row)]))
+}
+
+function currentIdentityMaps(database: Database) {
+  const items = new Map((database.query(`
+    SELECT a.legacy_type_key AS item_type, a.legacy_id AS item_id, a.item_id AS canonical_id
+    FROM inventory_identity_aliases a
+  `).all() as Row[]).map((row) => [`${row.item_type}:${row.item_id}`, Number(row.canonical_id)]))
+  const ports = new Map((database.query(`
+    SELECT a.legacy_type_key AS item_type, a.legacy_id AS item_id,
+           pa.legacy_port_id AS port_id, pa.port_id AS canonical_id
+    FROM port_identity_aliases pa
+    JOIN inventory_ports p ON p.id = pa.port_id
+    JOIN inventory_identity_aliases a ON a.item_id = p.item_id
+  `).all() as Row[]).map((row) => [`${row.item_type}:${row.item_id}:${row.port_id}`, Number(row.canonical_id)]))
+  const faces = new Map((database.query(`
+    SELECT a.legacy_type_key AS item_type, a.legacy_id AS item_id,
+           pa.legacy_port_id AS port_id, f.endpoint_number, f.id AS canonical_id
+    FROM port_endpoint_faces f
+    JOIN inventory_ports p ON p.id = f.port_id
+    JOIN port_identity_aliases pa ON pa.port_id = p.id
+    JOIN inventory_identity_aliases a ON a.item_id = p.item_id
+  `).all() as Row[]).map((row) => [
+    `${row.item_type}:${row.item_id}:${row.port_id}:${row.endpoint_number}`,
+    Number(row.canonical_id),
+  ]))
+  const slots = new Map((database.query(`
+    SELECT a.legacy_type_key AS item_type, a.legacy_id AS item_id,
+           ra.legacy_resource_key, s.position,
+           s.id AS canonical_id
+    FROM host_resource_slots s
+    JOIN host_resource_groups g ON g.id = s.resource_group_id
+    JOIN inventory_identity_aliases a ON a.item_id = g.host_item_id
+    JOIN resource_identity_aliases ra ON ra.resource_id = g.resource_identity_id
+  `).all() as Row[]).map((row) => [
+    `${row.item_type}:${row.item_id}:${row.legacy_resource_key}:${row.position}`,
+    Number(row.canonical_id),
+  ]))
+  return { items, ports, faces, slots }
+}
+
+function prepareProjectWorkbookRestore(database: Database) {
+  for (const table of PROJECT_DOMAIN_DELETE_ORDER) {
+    if (table !== 'project_inventory_memberships') database.query(`DELETE FROM ${table}`).run()
+  }
+}
+
+function replaceProjectWorkbooks(database: Database, workbooks: Row, legacyProject: Row, now: number) {
+  if (workbooks?.contractVersion !== 1) {
+    throw new Error('Project workbook backup contract is unsupported.')
+  }
+  const tables = workbooks.tables
+  const identities = workbooks.identities
+  if (!tables || typeof tables !== 'object' || !identities || typeof identities !== 'object') {
+    throw new Error('Project workbook backup is invalid.')
+  }
+  for (const table of PROJECT_WORKBOOK_INSERT_ORDER) {
+    if (!Array.isArray(tables[table])) throw new Error(`Project workbook table ${table} is missing.`)
+  }
+
+  database.query("UPDATE inventory_items SET scope = 'global', owner_project_id = NULL").run()
+  database.query('DELETE FROM projects').run()
+  const current = currentIdentityMaps(database)
+  const archivedItems = identityLookup(identities.items ?? [], (row) => `${row.item_type}:${row.item_id}`)
+  const archivedPorts = identityLookup(
+    identities.ports ?? [],
+    (row) => `${row.item_type}:${row.item_id}:${row.port_id}`,
+  )
+  const archivedFaces = identityLookup(
+    identities.endpointFaces ?? [],
+    (row) => `${row.item_type}:${row.item_id}:${row.port_id}:${row.endpoint_number}`,
+  )
+  const archivedSlots = identityLookup(
+    identities.resourceSlots ?? [],
+    (row) => `${row.item_type}:${row.item_id}:${row.legacy_resource_key}:${row.position}`,
+  )
+  const mapRequired = (source: Map<number, string>, target: Map<string, number>, value: unknown, label: string) => {
+    const key = source.get(Number(value))
+    const mapped = key ? target.get(key) : undefined
+    if (!mapped) throw new Error(`${label} cannot be resolved during project restore.`)
+    return mapped
+  }
+  const mapOptional = (source: Map<number, string>, target: Map<string, number>, value: unknown, label: string) => (
+    value == null ? null : mapRequired(source, target, value, label)
+  )
+
+  const transformed = structuredClone(tables) as Record<string, Row[]>
+  for (const row of transformed.project_inventory_memberships) {
+    row.item_id = mapRequired(archivedItems, current.items, row.item_id, 'Project inventory membership')
+  }
+  for (const row of transformed.project_inventory_overrides) {
+    row.item_id = mapRequired(archivedItems, current.items, row.item_id, 'Project inventory override')
+  }
+  for (const row of transformed.workspace_placements) {
+    row.item_id = mapRequired(archivedItems, current.items, row.item_id, 'Workspace placement')
+  }
+  for (const row of transformed.component_assignments) {
+    row.host_item_id = mapRequired(archivedItems, current.items, row.host_item_id, 'Assignment host')
+    row.component_item_id = mapRequired(archivedItems, current.items, row.component_item_id, 'Assignment component')
+    row.resource_slot_id = mapOptional(archivedSlots, current.slots, row.resource_slot_id, 'Assignment resource slot')
+  }
+  for (const row of transformed.component_assignment_slots) {
+    row.host_item_id = mapRequired(archivedItems, current.items, row.host_item_id, 'Assignment slot host')
+    row.resource_slot_id = mapRequired(archivedSlots, current.slots, row.resource_slot_id, 'Assignment slot resource')
+  }
+  for (const row of transformed.connection_endpoints) {
+    row.port_id = mapRequired(archivedPorts, current.ports, row.port_id, 'Connection endpoint port')
+    row.endpoint_face_id = mapOptional(archivedFaces, current.faces, row.endpoint_face_id, 'Connection endpoint face')
+  }
+  for (const row of transformed.compatibility_audit_findings) {
+    row.host_item_id = mapRequired(archivedItems, current.items, row.host_item_id, 'Compatibility finding host')
+    row.component_item_id = mapOptional(archivedItems, current.items, row.component_item_id, 'Compatibility finding component')
+  }
+  for (const row of transformed.compatibility_audit_ignores) {
+    if (row.ignored_by_user_id != null && !database.query('SELECT 1 FROM users WHERE id = ?').get(row.ignored_by_user_id)) {
+      row.ignored_by_user_id = null
+    }
+  }
+
+  for (const table of PROJECT_WORKBOOK_INSERT_ORDER) insertRows(database, table, transformed[table])
+  for (const identity of identities.items ?? []) {
+    const itemId = current.items.get(`${identity.item_type}:${identity.item_id}`)
+    if (!itemId) continue
+    const scope = identity.scope === 'project' ? 'project' : 'global'
+    const ownerProjectId = scope === 'project' ? identity.owner_project_id : null
+    if (scope === 'project' && !database.query('SELECT 1 FROM projects WHERE id = ?').get(ownerProjectId)) {
+      throw new Error(`Project-bound inventory owner ${ownerProjectId} is missing from the backup.`)
+    }
+    database.query('UPDATE inventory_items SET scope = ?, owner_project_id = ?, updated_at_ms = ? WHERE id = ?')
+      .run(scope, ownerProjectId, now, itemId)
+  }
+
+  const firstProject = database.query('SELECT id, name, updated_at_ms FROM projects WHERE id = 1').get() as Row | null
+  if (firstProject) {
+    const policy = database.query('SELECT policy_json FROM project_compatibility_policies WHERE project_id = 1').get() as Row | null
+    database.query(`
+      INSERT INTO application_metadata (key, value_json, updated_at_ms)
+      VALUES ('legacy.project-metadata', ?, ?)
+      ON CONFLICT(key) DO UPDATE SET value_json = excluded.value_json, updated_at_ms = excluded.updated_at_ms
+    `).run(json({
+      ...structuredClone(legacyProject.metadata ?? {}),
+      name: firstProject.name,
+      updatedAt: new Date(firstProject.updated_at_ms).toISOString(),
+    }), firstProject.updated_at_ms)
+    database.query(`
+      INSERT INTO application_metadata (key, value_json, updated_at_ms)
+      VALUES ('legacy.compatibility-policy', ?, ?)
+      ON CONFLICT(key) DO UPDATE SET value_json = excluded.value_json, updated_at_ms = excluded.updated_at_ms
+    `).run(policy?.policy_json ?? json({ disabledHosts: [], ignoredWarningIds: [] }), firstProject.updated_at_ms)
+  }
+}
+
+function replaceWorkspaceRouteCache(database: Database, routeCache: Row, now: number) {
+  const workspaces = routeCache?.workspaces
+  if (!workspaces) return false
+  if (workspaces.contractVersion !== 1 || !Array.isArray(workspaces.rows)) {
+    throw new Error('Workspace route-cache backup contract is unsupported.')
+  }
+  database.query('DELETE FROM workspace_route_cache').run()
+  insertRows(database, 'workspace_route_cache', workspaces.rows)
+  const { entries: _entries, workspaces: _workspaces, ...envelope } = routeCache
+  database.query(`
+    INSERT INTO application_metadata (key, value_json, updated_at_ms)
+    VALUES ('legacy.routing-cache-envelope', ?, ?)
+    ON CONFLICT(key) DO UPDATE SET value_json = excluded.value_json, updated_at_ms = excluded.updated_at_ms
+  `).run(json(envelope), now)
+  return true
+}
+
+function legacyProjectSection(project: Row) {
+  const { workbooks: _workbooks, ...legacy } = project
+  return legacy
+}
+
 function replaceInventory(database: Database, inventory: Row, projectId: number, now: number) {
   const current = itemAliases(database)
   const target = new Map<string, { type: InventoryType; item: Row }>()
@@ -172,14 +406,33 @@ function replaceInventory(database: Database, inventory: Row, projectId: number,
   for (const [key, entry] of target) {
     const existingId = current.get(key)
     if (existingId) {
+      const membership = database.query(`
+        SELECT project_id FROM project_inventory_memberships
+        WHERE item_id = ? ORDER BY project_id LIMIT 1
+      `).get(existingId) as { project_id: number } | null
+      const owner = database.query(
+        'SELECT owner_project_id FROM inventory_items WHERE id = ?',
+      ).get(existingId) as { owner_project_id: number | null } | null
+      const replacementProjectId = owner?.owner_project_id ?? membership?.project_id ?? projectId
+      const temporaryMembership = membership == null && owner?.owner_project_id == null
+      if (temporaryMembership) {
+        database.query(`
+          INSERT OR IGNORE INTO project_inventory_memberships (project_id, item_id, created_at_ms)
+          VALUES (?, ?, ?)
+        `).run(replacementProjectId, existingId, now)
+      }
       replaceLegacyInventoryItem({
         database,
-        projectId,
+        projectId: replacementProjectId,
         type: entry.type,
         item: cleanItemForStore(entry.item),
         itemId: existingId,
         now,
       })
+      if (temporaryMembership) {
+        database.query('DELETE FROM project_inventory_memberships WHERE project_id = ? AND item_id = ?')
+          .run(replacementProjectId, existingId)
+      }
     } else {
       insertLegacyInventoryItem({
         database,
@@ -323,11 +576,15 @@ export async function stageAndActivateSqliteRestore({
     const beforeAgents = structuredClone(currentStores.agents)
     const beforeAgentStatus = structuredClone(currentStores.agentStatus)
 
-    if (replacements.project) clearProjectTopology(staged.database, projectId, workspaceId)
+    const workbookRestore = replacements.project?.workbooks
+    if (workbookRestore) prepareProjectWorkbookRestore(staged.database)
+    else if (replacements.project) clearProjectTopology(staged.database, projectId, workspaceId)
     if (replacements.registry) staged.database.query('DELETE FROM registry_links').run()
     if (replacements.agents) clearAgents(staged.database)
     if (replacements.inventory) replaceInventory(staged.database, replacements.inventory, projectId, now())
-    if (replacements.project) {
+    if (workbookRestore) {
+      replaceProjectWorkbooks(staged.database, workbookRestore, replacements.project, now())
+    } else if (replacements.project) {
       const current = store.getProject()
       const submitted = runtimeProjectFromLogical(replacements.project, current.items)
       submitted.revision = current.revision
@@ -345,7 +602,11 @@ export async function stageAndActivateSqliteRestore({
     if (replacements.registry) store.registryTransaction((draft: Row) => Object.assign(draft, structuredClone(replacements.registry)))
     if (replacements.authentication) store.updateAuthentication((draft: Row) => Object.assign(draft, structuredClone(replacements.authentication)))
     if (replacements.backupManagement) store.updateBackupManagement((draft: Row) => Object.assign(draft, structuredClone(replacements.backupManagement)))
-    if (replacements.routingCache) store.setRoutingCache(replacements.routingCache)
+    if (replacements.routingCache) {
+      if (!replaceWorkspaceRouteCache(staged.database, replacements.routingCache, now())) {
+        store.setRoutingCache(replacements.routingCache)
+      }
+    }
     if (replacements.agents || replacements.agentStatus) {
       replaceAgents(
         staged.database,
@@ -367,7 +628,11 @@ export async function stageAndActivateSqliteRestore({
       `).run(json(applicationMeta), now())
     }
 
-    if (!replacements.project && JSON.stringify((await store.snapshotStores()).project) !== JSON.stringify(beforeProject)) {
+    if (
+      !replacements.project
+      && JSON.stringify(legacyProjectSection((await store.snapshotStores()).project))
+        !== JSON.stringify(legacyProjectSection(beforeProject))
+    ) {
       throw new Error('Selected restore would change project relationships without the Project section.')
     }
     if (!replacements.registry && JSON.stringify(store.getRegistryState()) !== JSON.stringify(beforeRegistry)) {

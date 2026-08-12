@@ -1,5 +1,7 @@
 import type { Database } from 'bun:sqlite'
 import type { InventoryItem, InventoryPort, ProjectState } from '../../../../src/types/inventory.ts'
+import { withCanonicalPowerPorts } from '../../../../shared/power-ports.mjs'
+import { LEGACY_TABLE_BY_TYPE } from '../../legacy/identity-plan.ts'
 
 type Row = Record<string, any>
 
@@ -264,6 +266,27 @@ function inventoryItem(database: Database, row: Row): InventoryItem {
   }) as InventoryItem
 }
 
+export function buildLegacyInventoryProjection(database: Database) {
+  const inventory = Object.fromEntries(
+    Object.values(LEGACY_TABLE_BY_TYPE).map((table) => [table, [] as InventoryItem[]]),
+  ) as Record<string, InventoryItem[]>
+  const rows = all(database, `
+    SELECT i.*, t.key AS type_key, m.name AS manufacturer_name,
+           a.legacy_type_key, a.legacy_id
+    FROM inventory_items i
+    JOIN inventory_item_types t ON t.id = i.type_id
+    JOIN inventory_identity_aliases a ON a.item_id = i.id
+    LEFT JOIN manufacturers m ON m.id = i.manufacturer_id
+    ORDER BY t.sort_order, a.legacy_id
+  `)
+  for (const row of rows) {
+    const item = withCanonicalPowerPorts(inventoryItem(database, row)) as InventoryItem
+    const table = LEGACY_TABLE_BY_TYPE[row.type_key as keyof typeof LEGACY_TABLE_BY_TYPE]
+    if (table) inventory[table].push(item)
+  }
+  return inventory
+}
+
 function endpoint(database: Database, projectId: number, row: Row) {
   const ownerKey = `${row.owner_type}:${row.owner_legacy_id}`
   const host = one(database, `
@@ -374,7 +397,13 @@ export function buildLegacyProjectProjection({
       createdAt: new Date(connection.created_at_ms).toISOString(),
     })
   })
-  const policy = parse(one(database, `SELECT value_json FROM application_metadata WHERE key = 'legacy.compatibility-policy'`)?.value_json, { disabledHosts: [], ignoredWarningIds: [] })
+  const policy = parse(
+    one(database, 'SELECT policy_json FROM project_compatibility_policies WHERE project_id = ?', projectId)?.policy_json
+      ?? (projectId === 1
+        ? one(database, `SELECT value_json FROM application_metadata WHERE key = 'legacy.compatibility-policy'`)?.value_json
+        : null),
+    { disabledHosts: [], ignoredWarningIds: [] },
+  )
   const legacyMetadata = parse<Row>(one(database, `SELECT value_json FROM application_metadata WHERE key = 'legacy.project-metadata'`)?.value_json, {})
   return {
     id: projectId === 1 ? 'default' : String(projectId),

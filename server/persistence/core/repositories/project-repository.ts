@@ -1,5 +1,11 @@
 import { and, asc, eq, isNotNull, isNull } from 'drizzle-orm'
-import { canvasWorkspaces, projectPreferences, projects, workspaces } from '../schema/index.ts'
+import {
+  canvasWorkspaces,
+  projectCompatibilityPolicies,
+  projectPreferences,
+  projects,
+  workspaces,
+} from '../schema/index.ts'
 import {
   assertProjectIconKey,
   assertWorkspaceAppearance,
@@ -173,6 +179,7 @@ export function createProjectRepository(context: RepositoryContext) {
       }).returning().get()
       db.insert(canvasWorkspaces).values({ id: canvas.id }).run()
       db.insert(projectPreferences).values({ projectId: project.id, defaultWorkspaceId: canvas.id, updatedAtMs: at }).run()
+      db.insert(projectCompatibilityPolicies).values({ projectId: project.id, updatedAtMs: at }).run()
       return { project, systemsWorkspaceId: systems.id, canvasWorkspaceId: canvas.id }
     }).immediate()
   }

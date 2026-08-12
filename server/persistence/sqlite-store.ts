@@ -59,6 +59,7 @@ import {
   projectRegistryState,
 } from './core/projections/legacy-domains.ts'
 import { buildWorkspaceReadModel } from './core/read-model/workspace-read-model.ts'
+import { buildLegacyInventoryProjection } from './core/projections/legacy-project.ts'
 import {
   bumpProjectRevision,
   createProjectRepository,
@@ -177,6 +178,34 @@ function putMetadata(database: Database, key: string, value: unknown, now: numbe
   `).run(key, JSON.stringify(value), now)
 }
 
+function projectCompatibilityPolicy(database: Database, projectId: number) {
+  const row = database.query(
+    'SELECT policy_json FROM project_compatibility_policies WHERE project_id = ?',
+  ).get(projectId) as { policy_json: string } | null
+  return parseJson(
+    row?.policy_json ?? (projectId === 1
+      ? JSON.stringify(metadata(database, 'legacy.compatibility-policy', { disabledHosts: [], ignoredWarningIds: [] }))
+      : null),
+    { disabledHosts: [], ignoredWarningIds: [] },
+  ) as Row
+}
+
+function putProjectCompatibilityPolicy(
+  database: Database,
+  projectId: number,
+  policy: unknown,
+  now: number,
+) {
+  database.query(`
+    INSERT INTO project_compatibility_policies (project_id, policy_json, updated_at_ms)
+    VALUES (?, ?, ?)
+    ON CONFLICT(project_id) DO UPDATE SET
+      policy_json = excluded.policy_json,
+      updated_at_ms = excluded.updated_at_ms
+  `).run(projectId, JSON.stringify(policy), now)
+  if (projectId === 1) putMetadata(database, 'legacy.compatibility-policy', policy, now)
+}
+
 function nextPublicId(records: Row[]) {
   return records.reduce((maximum, record) => Math.max(maximum, Number(record.id) || 0), 0) + 1
 }
@@ -215,9 +244,9 @@ export class SqliteHomelabInventoryStore {
   readonly now: () => number
   readonly appVersion: string
   readonly cache: CacheStore
-  readonly context: ReturnType<typeof createRepositoryContext>
-  readonly projects: ReturnType<typeof createProjectRepository>
-  readonly inventoryScope: ReturnType<typeof createInventoryScopeService>
+  context: ReturnType<typeof createRepositoryContext>
+  projects: ReturnType<typeof createProjectRepository>
+  inventoryScope: ReturnType<typeof createInventoryScopeService>
   private readonly projectCommitListeners = new Set<(event: ProjectCommitEvent) => void>()
   private registryMutationTail: Promise<void> = Promise.resolve()
 
@@ -240,6 +269,12 @@ export class SqliteHomelabInventoryStore {
     this.appVersion = appVersion
     this.cache = cache
     this.context = createRepositoryContext(core.database, now)
+    this.projects = createProjectRepository(this.context)
+    this.inventoryScope = createInventoryScopeService(this.context)
+  }
+
+  private rebindRepositories() {
+    this.context = createRepositoryContext(this.core.database, this.now)
     this.projects = createProjectRepository(this.context)
     this.inventoryScope = createInventoryScopeService(this.context)
   }
@@ -542,7 +577,12 @@ export class SqliteHomelabInventoryStore {
         this.core.database.query('DELETE FROM inventory_identity_aliases WHERE item_id = ?').run(itemId)
         this.core.database.query('DELETE FROM inventory_items WHERE id = ?').run(itemId)
       }
-      putMetadata(this.core.database, 'legacy.compatibility-policy', draft.project.compatibilityPolicy, this.now())
+      putProjectCompatibilityPolicy(
+        this.core.database,
+        this.projectId,
+        draft.project.compatibilityPolicy,
+        this.now(),
+      )
       putMetadata(this.core.database, 'legacy.application-meta', {
         ...this.applicationMeta(),
         onboarding: draft.meta.onboarding,
@@ -766,9 +806,9 @@ export class SqliteHomelabInventoryStore {
         { ...submitted.metadata, name, updatedAt: new Date(now).toISOString() },
         now,
       )
-      putMetadata(
+      putProjectCompatibilityPolicy(
         this.core.database,
-        'legacy.compatibility-policy',
+        this.projectId,
         submitted.compatibilityPolicy ?? { disabledHosts: [], ignoredWarningIds: [] },
         now,
       )
@@ -1149,8 +1189,8 @@ export class SqliteHomelabInventoryStore {
     this.commitCanonicalMutation(() => {
       const deletedHosts = new Set(refs.filter((ref) => ['server', 'nas', 'pcBuild'].includes(ref.type)).map((ref) => `${ref.type}:${ref.id}`))
       if (deletedHosts.size) {
-        const policy = metadata(this.core.database, 'legacy.compatibility-policy', { disabledHosts: [], ignoredWarningIds: [] }) as Row
-        putMetadata(this.core.database, 'legacy.compatibility-policy', {
+        const policy = projectCompatibilityPolicy(this.core.database, this.projectId)
+        putProjectCompatibilityPolicy(this.core.database, this.projectId, {
           ...policy,
           disabledHosts: (policy.disabledHosts ?? []).filter((host: Row) => !deletedHosts.has(`${host.hostType}:${host.hostId}`)),
         }, this.now())
@@ -2112,6 +2152,7 @@ export class SqliteHomelabInventoryStore {
     await this.flush()
     const applicationMeta = this.applicationMeta()
     const snapshot = buildLogicalStoreSnapshot({
+      database: this.core.database,
       meta: {
         ...applicationMeta,
         schemaVersion: 29,
@@ -2121,7 +2162,7 @@ export class SqliteHomelabInventoryStore {
           catalog: null,
         },
       },
-      inventory: this.legacyInventory(),
+      inventory: buildLegacyInventoryProjection(this.core.database),
       project: this.getProject(),
       routingCache: this.getRoutingCache(),
       registry: this.getRegistryState(),
@@ -2156,6 +2197,7 @@ export class SqliteHomelabInventoryStore {
       dataDir: this.dataDir,
       now: this.now,
     })
+    this.rebindRepositories()
     this.cache.clear()
     return this.snapshotStores(names)
   }

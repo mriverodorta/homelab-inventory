@@ -590,7 +590,7 @@ export function replaceLegacyInventoryItem({
 
   const plan = replacementIdentityPlan(database, type, item, itemId)
   const endpoints = database.query(`
-    SELECT e.connection_id, e.role, a.legacy_port_id,
+    SELECT e.id AS endpoint_id, e.connection_id, e.role, a.legacy_port_id,
            f.endpoint_number
     FROM connection_endpoints e
     JOIN inventory_ports p ON p.id = e.port_id
@@ -613,7 +613,7 @@ export function replaceLegacyInventoryItem({
     WHERE l.item_id = ?
   `).all(itemId) as LegacyRecord[]
   const assignmentSlots = database.query(`
-    SELECT a.assignment_id, a.position AS assignment_position,
+    SELECT a.id AS assignment_slot_id, a.assignment_id, a.position AS assignment_position,
            r.legacy_resource_key, s.position AS resource_position,
            CASE WHEN c.resource_slot_id = s.id THEN 1 ELSE 0 END AS is_primary
     FROM component_assignment_slots a
@@ -709,7 +709,8 @@ export function replaceLegacyInventoryItem({
   insertInventoryItemDetails(database, type, item, itemId, plan, now)
 
   for (const endpoint of endpoints) {
-    database.query('INSERT INTO connection_endpoints (connection_id, role, port_id, endpoint_face_id) VALUES (?, ?, ?, ?)').run(
+    database.query('INSERT INTO connection_endpoints (id, connection_id, role, port_id, endpoint_face_id) VALUES (?, ?, ?, ?, ?)').run(
+      endpoint.endpoint_id,
       endpoint.connection_id,
       endpoint.role,
       plan.ports.get(portKey(endpoint.legacy_port_id)),
@@ -729,7 +730,8 @@ export function replaceLegacyInventoryItem({
   }
   for (const slot of assignmentSlots) {
     const slotId = resourceSlot(slot.legacy_resource_key, slot.resource_position)!
-    database.query('INSERT INTO component_assignment_slots (project_id, assignment_id, host_item_id, resource_slot_id, position) VALUES (?, ?, ?, ?, ?)').run(
+    database.query('INSERT INTO component_assignment_slots (id, project_id, assignment_id, host_item_id, resource_slot_id, position) VALUES (?, ?, ?, ?, ?, ?)').run(
+      slot.assignment_slot_id,
       projectId,
       slot.assignment_id,
       itemId,
@@ -824,6 +826,13 @@ function importProject(database: Database, snapshot: LegacySnapshot, plan: Canon
     for (const [position, point] of records(route.bendPoints).entries()) database.query('INSERT INTO workspace_manual_bend_points (project_id, workspace_id, connection_id, position, x, y) VALUES (1, 2, ?, ?, ?, ?)').run(id, position, point.x, point.y)
   }
   database.query('INSERT INTO application_metadata (key, value_json, updated_at_ms) VALUES (?, ?, ?)').run('legacy.compatibility-policy', json(project.compatibilityPolicy ?? {}), now)
+  database.query(`
+    INSERT INTO project_compatibility_policies (project_id, policy_json, updated_at_ms)
+    VALUES (1, ?, ?)
+    ON CONFLICT(project_id) DO UPDATE SET
+      policy_json = excluded.policy_json,
+      updated_at_ms = excluded.updated_at_ms
+  `).run(json(project.compatibilityPolicy ?? { disabledHosts: [], ignoredWarningIds: [] }), now)
   database.query('INSERT INTO application_metadata (key, value_json, updated_at_ms) VALUES (?, ?, ?)').run('legacy.project-metadata', json(project.metadata ?? {}), now)
 }
 

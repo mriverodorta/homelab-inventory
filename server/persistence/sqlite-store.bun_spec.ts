@@ -188,7 +188,7 @@ describe('SQLite Homelab Inventory store facade', () => {
         group_id: 1,
         positions: [0],
       })
-      expect(store.getDatabaseStatus()).toMatchObject({ schemaVersion: 11 })
+      expect(store.getDatabaseStatus()).toMatchObject({ schemaVersion: 12 })
       expect(store.getPersistenceHealth()).toMatchObject({ ok: true, engine: 'sqlite' })
     } finally {
       store.close()
@@ -925,7 +925,8 @@ describe('SQLite Homelab Inventory store facade', () => {
 
       await store.replaceStoresAtomically({ routingCache: before.routingCache })
 
-      expect(store.getRoutingCache()).toEqual(before.routingCache)
+      const { workspaces: _workspaces, ...activeCache } = before.routingCache
+      expect(store.getRoutingCache()).toEqual(activeCache)
       expect((await store.snapshotStores()).project).toEqual(before.project)
     } finally {
       store.close()
@@ -983,6 +984,7 @@ describe('SQLite Homelab Inventory store facade', () => {
         ))
       ))
       replacement.project.compatibilityPolicy = { disabledHosts: [], ignoredWarningIds: [] }
+      delete replacement.project.workbooks
       replacement.agents = { enrollments: {}, devices: {}, hardwareSnapshots: {}, hardwareEvents: {} }
       replacement.agentStatus = { hosts: {} }
 

@@ -66,6 +66,14 @@ describe('SQLite demo sessions', () => {
     })
     await expect(stat(join(first.session.dataDir, 'stores', 'project.json'))).rejects.toMatchObject({ code: 'ENOENT' })
     expect((await stat(join(first.session.dataDir, 'databases', 'homelab-inventory.sqlite'))).mode & 0o777).toBe(0o600)
+    expect(first.store.getProjectWorkbook(1)).toMatchObject({
+      project: { id: 1 },
+      defaultWorkspaceId: 2,
+      workspaces: [
+        { id: 1, type: 'systems', name: 'Systems' },
+        { id: 2, type: 'canvas', name: 'Canvas' },
+      ],
+    })
 
     const secondName = second.store.getProject().metadata.name
     first.store.setProject({
@@ -73,6 +81,9 @@ describe('SQLite demo sessions', () => {
       metadata: { ...first.store.getProject().metadata, name: 'First isolated demo' },
     })
     expect(second.store.getProject().metadata.name).toBe(secondName)
+    first.store.createProject({ name: 'First session only' })
+    expect(first.store.listProjects()).toHaveLength(2)
+    expect(second.store.listProjects()).toHaveLength(1)
 
     await manager.closeAll()
     expect(await readFile(join(sourceDir, 'stores', 'project.json'), 'utf8')).toContain('Default Project')
