@@ -27,15 +27,16 @@ The migration is automatic. Do not create the SQLite files manually and do not r
 On the first startup with SQLite support, the application:
 
 1. Acquires a private migration lock so two processes cannot migrate the same data.
-2. Creates and rereads a complete `.hlibackup` archive under `/data/backups/migrations`.
-3. Reads the latest supported legacy JSON state without modifying it.
-4. Imports core, telemetry, and catalog data into a private staging directory.
-5. Validates semantic counts, capacities, numeric relationships, topology, authentication, notifications, Registry identity, database integrity, and foreign keys.
-6. Atomically activates all three databases and writes `/data/databases/persistence-engine.json` only after validation succeeds.
-7. Creates numeric project `1` as **Default Project**, fixed Systems workspace `1`, Canvas workspace `2`, and makes Canvas the project default while preserving existing placements, assignments, cables, compatibility policy, and route cache.
-8. Opens the databases in WAL mode and begins serving requests.
+2. Creates and rereads the portable sections of the rollback set as an encrypted `.hlibackup` archive under `/data/backups/migrations`.
+3. Snapshots legacy Agent telemetry separately with SQLite `VACUUM INTO`, verifies its integrity, permissions, size, schema, and SHA-256, and records both artifacts in a private backup-set manifest. This avoids buffering a mature multi-gigabyte telemetry history into memory.
+4. Reads the latest supported legacy JSON state without modifying it.
+5. Imports core, telemetry, and catalog data into a private staging directory. Telemetry rows are transformed in bounded batches.
+6. Validates semantic counts, capacities, numeric relationships, topology, authentication, notifications, Registry identity, database integrity, and foreign keys.
+7. Atomically activates all three databases and writes `/data/databases/persistence-engine.json` only after validation succeeds.
+8. Creates numeric project `1` as **Default Project**, fixed Systems workspace `1`, Canvas workspace `2`, and makes Canvas the project default while preserving existing placements, assignments, cables, compatibility policy, and route cache.
+9. Opens the databases in WAL mode and begins serving requests.
 
-The generated migration archive is mode `0600`. When no deployment backup passphrase is configured, the migration creates a separate mode-`0600` `.key` file beside the archive and records both relative paths in the activation marker. Preserve the archive and key together.
+The generated migration archive, telemetry snapshot, and backup-set manifest are mode `0600`. When no deployment backup passphrase is configured, the migration creates a separate mode-`0600` `.key` file beside the archive and records every relative path in the activation marker. Preserve the complete set together.
 
 Migration is ordered and idempotent. A restart after successful activation opens the existing databases and applies only newer checksummed SQL migrations. A failed initial migration leaves the legacy files authoritative and records a private diagnostic at `/data/databases/persistence-migration-failure.json`.
 
@@ -104,4 +105,4 @@ The safest rollback is a complete filesystem rollback:
 
 Immediately after migration and before any user mutation, the untouched legacy files also represent the pre-migration state. After any SQLite-backed change, they do not contain the new data and must not be treated as a current rollback source.
 
-Keep `/data/backups/migrations/pre-sqlite-*.hlibackup` and its optional `.key` file until the migration and normal backup/restore workflows have both been verified. Never merge SQLite tables, JSON files, or database sidecars by hand.
+Keep `/data/backups/migrations/pre-sqlite-*.hlibackup`, its `.manifest.json` and `.telemetry.sqlite` companions, and its optional `.key` file until the migration and normal backup/restore workflows have both been verified. Never merge SQLite tables, JSON files, or database sidecars by hand.

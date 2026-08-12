@@ -104,15 +104,15 @@ describe('release notes helpers', () => {
     const previousRelease = RELEASE_NOTES.find((entry) => entry.version === '0.2.1')!
     const engineRelease = RELEASE_NOTES.find((entry) => entry.version === '0.2.0')!
 
-    expect(hasReleaseNoteForVersion(RELEASE_NOTES, '0.12.0')).toBe(true)
+    expect(hasReleaseNoteForVersion(RELEASE_NOTES, '0.12.1')).toBe(true)
     expect(RELEASE_NOTES[0]).toEqual(
       expect.objectContaining({
-        version: '0.12.0',
-        title: 'SQLite project workbooks and canonical catalogs',
+        version: '0.12.1',
+        title: 'Reliable large-telemetry SQLite migration',
       }),
     )
     expect(RELEASE_NOTES.filter((entry) => entry.channel === 'latest')).toEqual([
-      expect.objectContaining({ version: '0.12.0' }),
+      expect.objectContaining({ version: '0.12.1' }),
     ])
     expect(RELEASE_NOTES.find((entry) => entry.version === '0.1.38')).toEqual(
       expect.objectContaining({ channel: 'release' }),

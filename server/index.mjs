@@ -143,7 +143,7 @@ if (isDemoMode) {
   app.locals.demoCookieName = DEMO_COOKIE_NAME
 } else {
   let legacyMigrationResources = null
-  const legacyBackupServiceFactory = async () => {
+  const legacyBackupServiceFactory = async ({ includeTelemetry = true } = {}) => {
     const { HomelabInventoryStore } = await import('./persistence/legacy/legacy-store.mjs')
     const legacyStore = new HomelabInventoryStore({
       appVersion: packageJson.version,
@@ -154,8 +154,8 @@ if (isDemoMode) {
       seedDir,
     })
     await legacyStore.init()
-    const legacyTelemetryDatabase = await openTelemetryDatabase({ dataDir })
-    const legacyTelemetryRepository = new TelemetryRepository(legacyTelemetryDatabase)
+    const legacyTelemetryDatabase = includeTelemetry ? await openTelemetryDatabase({ dataDir }) : null
+    const legacyTelemetryRepository = legacyTelemetryDatabase ? new TelemetryRepository(legacyTelemetryDatabase) : null
     const legacyNotificationRuntime = await createNotificationRuntime({
       dataDir,
       workspaceStore: legacyStore,

@@ -14,6 +14,8 @@ export type PersistenceActivationMarker = Readonly<{
   sourceSchemaVersion: number
   backupPath: string
   backupKeyPath?: string
+  backupSetManifestPath?: string
+  backupTelemetryPath?: string
   databases: Readonly<{
     core: Readonly<{ path: string, schemaVersion: number }>
     telemetry: Readonly<{ path: string, schemaVersion: number }>
@@ -40,6 +42,12 @@ export function validateActivationMarker(value: unknown): PersistenceActivationM
   if (!validRelativePath(marker.backupPath)) throw new Error('Persistence activation marker backup path is invalid.')
   if (marker.backupKeyPath !== undefined && !validRelativePath(marker.backupKeyPath)) {
     throw new Error('Persistence activation marker backup key path is invalid.')
+  }
+  if (marker.backupSetManifestPath !== undefined && !validRelativePath(marker.backupSetManifestPath)) {
+    throw new Error('Persistence activation marker backup set manifest path is invalid.')
+  }
+  if (marker.backupTelemetryPath !== undefined && !validRelativePath(marker.backupTelemetryPath)) {
+    throw new Error('Persistence activation marker telemetry backup path is invalid.')
   }
   for (const name of ['core', 'telemetry', 'catalog']) {
     const database = marker.databases?.[name]

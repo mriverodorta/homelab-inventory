@@ -26,6 +26,7 @@ const ROW_IDENTIFIERS = Object.freeze({
   latest_component_state: ['host_type', 'host_id', 'family', 'entity_key'],
   component_events: ['id'],
 } as const)
+const MIGRATION_BATCH_SIZE = 32
 
 function sqlString(value: string) {
   return `'${value.replaceAll("'", "''")}'`
@@ -115,19 +116,42 @@ function projectSample(database: Database, row: TelemetryRow) {
 }
 
 function sourceSummary(database: Database) {
-  const rows = database.query(`
+  const sequenceHash = createHash('sha256')
+  const query = database.query(`
     SELECT id, device_id, host_type, host_id, sequence,
       received_at_ms, collected_at_ms, payload_json
     FROM telemetry_samples
     ORDER BY id
-  `).all() as TelemetryRow[]
+    LIMIT ? OFFSET ?
+  `)
+  let offset = 0
+  while (true) {
+    const rows = query.all(MIGRATION_BATCH_SIZE, offset) as TelemetryRow[]
+    if (rows.length === 0) break
+    for (const row of rows) {
+      sequenceHash.update(JSON.stringify([
+        row.id, row.device_id, row.host_type, row.host_id, row.sequence,
+        row.received_at_ms, row.collected_at_ms,
+        createHash('sha256').update(String(row.payload_json)).digest('hex'),
+      ]))
+      sequenceHash.update('\n')
+    }
+    offset += rows.length
+  }
   return {
     counts: Object.fromEntries(REFERENCED_TABLES.map((table) => [table, count(database, table)])),
-    sequenceHash: createHash('sha256').update(rows.map((row) => [
-      row.id, row.device_id, row.host_type, row.host_id, row.sequence,
-      row.received_at_ms, row.collected_at_ms,
-      createHash('sha256').update(String(row.payload_json)).digest('hex'),
-    ]).map((entry) => JSON.stringify(entry)).join('\n')).digest('hex'),
+    sequenceHash: sequenceHash.digest('hex'),
+  }
+}
+
+function forEachBatch(database: Database, table: string, order: readonly string[], callback: (rows: TelemetryRow[]) => void) {
+  const query = database.query(`SELECT * FROM ${table} ORDER BY ${order.join(', ')} LIMIT ? OFFSET ?`)
+  let offset = 0
+  while (true) {
+    const rows = query.all(MIGRATION_BATCH_SIZE, offset) as TelemetryRow[]
+    if (rows.length === 0) break
+    callback(rows)
+    offset += rows.length
   }
 }
 
@@ -163,31 +187,35 @@ export async function migrateTelemetryReferences({ sourcePath, targetPath, ident
     const before = sourceSummary(sourceDatabase)
     sourceDatabase.exec(`VACUUM INTO ${sqlString(target)}`)
     targetDatabase = await openTelemetryDatabase({ dataDir: dirname(dirname(target)), filePath: target })
-    targetDatabase.transaction(() => {
-      for (const table of REFERENCED_TABLES) {
-        const rows = targetDatabase?.query(`SELECT * FROM ${table}`).all() as TelemetryRow[]
-        for (const row of rows) {
-          const { hostItemId, agentId } = canonicalIds(row, identityPlan)
-          const identifiers = ROW_IDENTIFIERS[table as keyof typeof ROW_IDENTIFIERS]
-          const where = identifiers.map((column) => `${column} = ?`).join(' AND ')
-          const values = identifiers.map((column) => row[column])
-          if (table === 'telemetry_samples' || table === 'latest_host_state') {
-            targetDatabase?.query(`UPDATE ${table} SET host_item_id = ?, agent_id = ? WHERE ${where}`)
-              .run(hostItemId, agentId, ...values)
-          } else {
-            targetDatabase?.query(`UPDATE ${table} SET host_item_id = ? WHERE ${where}`).run(hostItemId, ...values)
+    for (const table of REFERENCED_TABLES) {
+      const identifiers = ROW_IDENTIFIERS[table as keyof typeof ROW_IDENTIFIERS]
+      forEachBatch(targetDatabase, table, identifiers, (rows) => {
+        targetDatabase?.transaction(() => {
+          for (const row of rows) {
+            const { hostItemId, agentId } = canonicalIds(row, identityPlan)
+            const where = identifiers.map((column) => `${column} = ?`).join(' AND ')
+            const values = identifiers.map((column) => row[column])
+            if (table === 'telemetry_samples' || table === 'latest_host_state') {
+              targetDatabase?.query(`UPDATE ${table} SET host_item_id = ?, agent_id = ? WHERE ${where}`)
+                .run(hostItemId, agentId, ...values)
+            } else {
+              targetDatabase?.query(`UPDATE ${table} SET host_item_id = ? WHERE ${where}`).run(hostItemId, ...values)
+            }
           }
-        }
-      }
-      targetDatabase?.exec(`
+        }).immediate()
+      })
+    }
+    targetDatabase.exec(`
         DELETE FROM filesystem_samples;
         DELETE FROM storage_device_samples;
         DELETE FROM network_interface_samples;
         DELETE FROM host_metric_samples;
-      `)
-      const samples = targetDatabase?.query('SELECT id, host_item_id, payload_json FROM telemetry_samples ORDER BY id').all() as TelemetryRow[]
-      for (const sample of samples) projectSample(targetDatabase as Database, sample)
-    }).immediate()
+    `)
+    forEachBatch(targetDatabase, 'telemetry_samples', ['id'], (samples) => {
+      targetDatabase?.transaction(() => {
+        for (const sample of samples) projectSample(targetDatabase as Database, sample)
+      }).immediate()
+    })
     verifyMigratedTelemetry(targetDatabase, before)
     closeTelemetryDatabase(targetDatabase)
     targetDatabase = null

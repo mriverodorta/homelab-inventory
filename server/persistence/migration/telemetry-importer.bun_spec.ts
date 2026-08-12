@@ -98,6 +98,30 @@ describe('telemetry reference migration', () => {
     expect(await Bun.file(targetPath).exists()).toBe(false)
   })
 
+  test('migrates telemetry histories larger than one processing batch', async () => {
+    const { sourcePath, targetPath } = await legacyTelemetry()
+    const source = new Database(sourcePath, { strict: true })
+    const insert = source.query(`INSERT INTO telemetry_samples (id, device_id, host_type, host_id, sequence, received_at_ms, collected_at_ms, agent_version, payload_json) VALUES (?, 9, 'server', 7, ?, ?, ?, '0.1.6', ?)`)
+    source.transaction(() => {
+      for (let id = 2; id <= 80; id += 1) {
+        insert.run(id, id + 3, id + 1000, id + 999, JSON.stringify({
+          sequence: id + 3,
+          metrics: { cpu: { percent: id / 10 }, memory: { usedBytes: id, totalBytes: 4096 } },
+        }))
+      }
+    }).immediate()
+    source.close(false)
+
+    await expect(migrateTelemetryReferences({ sourcePath, targetPath, identityPlan: identityPlan() }))
+      .resolves.toMatchObject({ telemetry_samples: 80 })
+
+    const migrated = new Database(targetPath, { readonly: true, strict: true })
+    expect(migrated.query('SELECT count(*) AS count FROM telemetry_samples WHERE agent_id = 13 AND host_item_id = 41').get())
+      .toEqual({ count: 80 })
+    expect(migrated.query('SELECT count(*) AS count FROM host_metric_samples').get()).toEqual({ count: 80 })
+    migrated.close(false)
+  })
+
   test('retains only the latest five complete manual inventory reports per host', async () => {
     const { sourcePath, targetPath } = await legacyTelemetry()
     await migrateTelemetryReferences({ sourcePath, targetPath, identityPlan: identityPlan() })

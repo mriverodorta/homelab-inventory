@@ -1,5 +1,6 @@
 import { Database } from 'bun:sqlite'
 import { createHash, randomBytes, randomUUID } from 'node:crypto'
+import { createReadStream } from 'node:fs'
 import { chmod, copyFile, mkdir, open, readFile, rename, rm, stat, writeFile } from 'node:fs/promises'
 import { basename, dirname, join, resolve } from 'node:path'
 import { COMPLETE_BACKUP_SECTIONS } from '../../../shared/backup/contract.mjs'
@@ -45,6 +46,7 @@ type BackupResult = Readonly<{ archive: Uint8Array, manifest?: unknown }>
 type BackupService = Readonly<{
   create(options: Record<string, unknown>): Promise<BackupResult>
 }>
+type BackupServiceFactoryOptions = Readonly<{ includeTelemetry: boolean }>
 type SnapshotService = Readonly<{
   trustedKeys: readonly unknown[]
   resolveActivePaths(): Promise<null | { snapshot: string, facets?: string | null }>
@@ -55,7 +57,7 @@ export type EnsureSqlitePersistenceOptions = Readonly<{
   appVersion: string
   legacyProjectPath?: string | null
   seedDir?: string | null
-  backupServiceFactory: () => BackupService | Promise<BackupService>
+  backupServiceFactory: (options?: BackupServiceFactoryOptions) => BackupService | Promise<BackupService>
   backupPassphrase?: string | null
   snapshotService?: SnapshotService | null
   failAtStage?: CutoverStage | null
@@ -63,6 +65,9 @@ export type EnsureSqlitePersistenceOptions = Readonly<{
 }>
 
 const LOCK_MAX_AGE_MS = 30 * 60 * 1000
+const MIGRATION_ARCHIVE_SECTIONS = Object.freeze(
+  COMPLETE_BACKUP_SECTIONS.filter((section) => section !== 'agentTelemetry'),
+)
 
 function stageFailure(stage: CutoverStage, configured?: CutoverStage | null) {
   if (configured === stage) throw new Error(`Injected persistence migration failure at ${stage}.`)
@@ -122,34 +127,117 @@ async function createMigrationBackup({
   backupPassphrase,
   now,
 }: Pick<EnsureSqlitePersistenceOptions, 'dataDir' | 'appVersion' | 'backupServiceFactory' | 'backupPassphrase'> & { now: Date }) {
-  const service = await backupServiceFactory()
-  const generatedPassphrase = backupPassphrase ? null : randomBytes(32).toString('base64url')
-  const effectivePassphrase = backupPassphrase ?? generatedPassphrase
-  const result = await service.create({
-    sections: COMPLETE_BACKUP_SECTIONS,
-    label: `Pre-SQLite migration ${appVersion}`,
-    kind: 'migration',
-    passphrase: effectivePassphrase,
-    persist: false,
-  })
-  if (!(result.archive instanceof Uint8Array) || result.archive.byteLength === 0) {
-    throw new Error('Pre-migration backup service returned an invalid archive.')
-  }
   const directory = join(dataDir, 'backups', 'migrations')
   await mkdir(directory, { recursive: true, mode: 0o700 })
   const timestamp = now.toISOString().replaceAll(':', '-').replaceAll('.', '-')
   const filePath = join(directory, `pre-sqlite-${timestamp}.hlibackup`)
-  await writeFile(filePath, result.archive, { mode: 0o600 })
-  await chmod(filePath, 0o600)
-  const written = await readFile(filePath)
-  if (!written.equals(Buffer.from(result.archive))) throw new Error('Pre-migration backup verification failed after writing.')
-  let keyPath = null
-  if (generatedPassphrase) {
-    keyPath = `${filePath}.key`
-    await writeFile(keyPath, `${generatedPassphrase}\n`, { mode: 0o600 })
-    await chmod(keyPath, 0o600)
+  const telemetryPath = `${filePath}.telemetry.sqlite`
+  const manifestPath = `${filePath}.manifest.json`
+  let keyPath: string | null = null
+  try {
+    const telemetry = await createTelemetryMigrationSnapshot({ dataDir, targetPath: telemetryPath })
+    const service = await backupServiceFactory({ includeTelemetry: false })
+    const generatedPassphrase = backupPassphrase ? null : randomBytes(32).toString('base64url')
+    const effectivePassphrase = backupPassphrase ?? generatedPassphrase
+    const result = await service.create({
+      sections: MIGRATION_ARCHIVE_SECTIONS,
+      label: `Pre-SQLite migration ${appVersion}`,
+      kind: 'migration',
+      passphrase: effectivePassphrase,
+      persist: false,
+    })
+    if (!(result.archive instanceof Uint8Array) || result.archive.byteLength === 0) {
+      throw new Error('Pre-migration backup service returned an invalid archive.')
+    }
+    await writeFile(filePath, result.archive, { mode: 0o600 })
+    await chmod(filePath, 0o600)
+    const written = await readFile(filePath)
+    if (!written.equals(Buffer.from(result.archive))) throw new Error('Pre-migration backup verification failed after writing.')
+    if (generatedPassphrase) {
+      keyPath = `${filePath}.key`
+      await writeFile(keyPath, `${generatedPassphrase}\n`, { mode: 0o600 })
+      await chmod(keyPath, 0o600)
+    }
+    const archiveStat = await stat(filePath)
+    await writeFile(manifestPath, `${JSON.stringify({
+      version: 1,
+      kind: 'pre-sqlite-migration-set',
+      createdAt: now.toISOString(),
+      applicationVersion: appVersion,
+      archive: {
+        file: basename(filePath),
+        sizeBytes: archiveStat.size,
+        sha256: await hashFile(filePath),
+        sections: MIGRATION_ARCHIVE_SECTIONS,
+      },
+      telemetry,
+    }, null, 2)}\n`, { mode: 0o600 })
+    await chmod(manifestPath, 0o600)
+    return {
+      filePath,
+      keyPath,
+      manifestPath,
+      telemetryPath: telemetry ? telemetryPath : null,
+    }
+  } catch (error) {
+    await Promise.all([
+      rm(filePath, { force: true }),
+      rm(`${filePath}.key`, { force: true }),
+      rm(telemetryPath, { force: true }),
+      rm(manifestPath, { force: true }),
+    ])
+    throw error
   }
-  return { filePath, keyPath }
+}
+
+function sqlString(value: string) {
+  return `'${value.replaceAll("'", "''")}'`
+}
+
+function hashFile(filePath: string) {
+  return new Promise<string>((resolveHash, rejectHash) => {
+    const hash = createHash('sha256')
+    const stream = createReadStream(filePath)
+    stream.on('data', (chunk) => hash.update(chunk))
+    stream.on('error', rejectHash)
+    stream.on('end', () => resolveHash(hash.digest('hex')))
+  })
+}
+
+async function createTelemetryMigrationSnapshot({ dataDir, targetPath }: { dataDir: string, targetPath: string }) {
+  const sourcePath = join(dataDir, TELEMETRY_DATABASE_RELATIVE_PATH)
+  try {
+    await stat(sourcePath)
+  } catch (error: any) {
+    if (error?.code === 'ENOENT') return null
+    throw error
+  }
+  await rm(targetPath, { force: true })
+  const source = new Database(sourcePath, { readonly: true, strict: true })
+  try {
+    const integrity = source.query('PRAGMA quick_check').get() as { quick_check: string }
+    if (integrity.quick_check !== 'ok') throw new Error(`Telemetry backup source integrity check failed: ${integrity.quick_check}`)
+    source.exec(`VACUUM INTO ${sqlString(targetPath)}`)
+  } finally {
+    source.close(false)
+  }
+  await chmod(targetPath, 0o600)
+  const snapshot = new Database(targetPath, { readonly: true, strict: true })
+  let schemaVersion = 0
+  try {
+    const integrity = snapshot.query('PRAGMA quick_check').get() as { quick_check: string }
+    if (integrity.quick_check !== 'ok') throw new Error(`Telemetry backup integrity check failed: ${integrity.quick_check}`)
+    schemaVersion = Number((snapshot.query('PRAGMA user_version').get() as { user_version: number }).user_version)
+  } finally {
+    snapshot.close(false)
+  }
+  const snapshotStat = await stat(targetPath)
+  return {
+    file: basename(targetPath),
+    sizeBytes: snapshotStat.size,
+    sha256: await hashFile(targetPath),
+    schemaVersion,
+  }
 }
 
 async function migrateCore(stagingPath: string, snapshot: Record<string, any>, appVersion: string) {
@@ -489,6 +577,8 @@ export async function ensureSqlitePersistence(options: EnsureSqlitePersistenceOp
       sourceSchemaVersion: Number(snapshot.meta?.schemaVersion ?? LEGACY_SCHEMA_VERSION),
       backupPath: relativeDataPath(dataDir, backup.filePath),
       ...(backup.keyPath ? { backupKeyPath: relativeDataPath(dataDir, backup.keyPath) } : {}),
+      backupSetManifestPath: relativeDataPath(dataDir, backup.manifestPath),
+      ...(backup.telemetryPath ? { backupTelemetryPath: relativeDataPath(dataDir, backup.telemetryPath) } : {}),
       databases: {
         core: { path: relativeDataPath(dataDir, active.core), schemaVersion: versions.core },
         telemetry: { path: relativeDataPath(dataDir, active.telemetry), schemaVersion: versions.telemetry },

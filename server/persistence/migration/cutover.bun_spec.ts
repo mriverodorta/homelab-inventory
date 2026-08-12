@@ -60,10 +60,12 @@ async function context() {
   telemetry.close(false)
 
   let backupCalls = 0
-  const backupServiceFactory = () => ({
+  const backupServiceFactory = (factoryOptions?: { includeTelemetry: boolean }) => ({
     async create(options: Record<string, unknown>) {
       backupCalls += 1
+      expect(factoryOptions).toEqual({ includeTelemetry: false })
       expect(options).toMatchObject({ persist: false, kind: 'migration' })
+      expect(options.sections).not.toContain('agentTelemetry')
       return { archive: Buffer.from('HLIBAK01-verified-fixture') }
     },
   })
@@ -144,6 +146,14 @@ describe('atomic SQLite persistence cutover', () => {
     await expect(ensureSqlitePersistence(active.options)).rejects.toThrow('already running')
   })
 
+  test('does not upgrade legacy telemetry while producing the rollback set', async () => {
+    const current = await context()
+    await expect(ensureSqlitePersistence({ ...current.options, failAtStage: 'backup' })).rejects.toThrow('backup')
+    const telemetry = new Database(join(current.dataDir, 'telemetry', 'telemetry.sqlite'), { readonly: true, strict: true })
+    expect(telemetry.query('PRAGMA user_version').get()).toEqual({ user_version: 1 })
+    telemetry.close(false)
+  })
+
   test('refuses a database schema newer than the application supports', async () => {
     const current = await context()
     const activated = await ensureSqlitePersistence(current.options)
@@ -162,5 +172,22 @@ describe('atomic SQLite persistence cutover', () => {
     expect(activated.marker.backupPath.endsWith('.hlibackup')).toBe(true)
     expect((await stat(backupPath)).mode & 0o777).toBe(0o600)
     expect(await readFile(backupPath, 'utf8')).toBe('HLIBAK01-verified-fixture')
+    expect(activated.marker.backupSetManifestPath).toBe(`${activated.marker.backupPath}.manifest.json`)
+    expect(activated.marker.backupTelemetryPath).toBe(`${activated.marker.backupPath}.telemetry.sqlite`)
+    if (!activated.marker.backupTelemetryPath || !activated.marker.backupSetManifestPath) {
+      throw new Error('Migration backup set paths were not recorded.')
+    }
+    const telemetryBackupPath = join(current.dataDir, activated.marker.backupTelemetryPath)
+    expect((await stat(telemetryBackupPath)).mode & 0o777).toBe(0o600)
+    const telemetry = new Database(telemetryBackupPath, { readonly: true, strict: true })
+    expect(telemetry.query('PRAGMA quick_check').get()).toEqual({ quick_check: 'ok' })
+    telemetry.close(false)
+    const manifest = JSON.parse(await readFile(join(current.dataDir, activated.marker.backupSetManifestPath), 'utf8'))
+    expect(manifest).toMatchObject({
+      version: 1,
+      kind: 'pre-sqlite-migration-set',
+      telemetry: { schemaVersion: 1 },
+    })
+    expect(manifest.telemetry.file.endsWith('.telemetry.sqlite')).toBe(true)
   })
 })

@@ -124,6 +124,15 @@ const RELEASE_0_12_0_DETAILS: UnreleasedReleaseNotes = {
   ],
 }
 
+const RELEASE_0_12_1_DETAILS: UnreleasedReleaseNotes = {
+  highlights: [],
+  fixes: [
+    'First-start SQLite migration now preserves large Agent telemetry databases in a separate verified SQLite snapshot and transforms their history in bounded batches, preventing mature installations from exceeding portable-backup limits or exhausting memory.',
+    'The migration backup path no longer opens or upgrades telemetry before its rollback set is complete, and records the archive, telemetry snapshot, hashes, permissions, and schema in one private manifest.',
+  ],
+  notes: [],
+}
+
 export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
   highlights: [],
   fixes: [],
@@ -657,9 +666,16 @@ const RELEASE_0_2_1_DETAILS: UnreleasedReleaseNotes = {
 
 export const RELEASE_NOTES: ReleaseNoteEntry[] = [
   {
-    version: '0.12.0',
+    version: '0.12.1',
     date: '2026-08-12',
     channel: 'latest',
+    title: 'Reliable large-telemetry SQLite migration',
+    ...RELEASE_0_12_1_DETAILS,
+  },
+  {
+    version: '0.12.0',
+    date: '2026-08-12',
+    channel: 'release',
     title: 'SQLite project workbooks and canonical catalogs',
     ...RELEASE_0_12_0_DETAILS,
   },
