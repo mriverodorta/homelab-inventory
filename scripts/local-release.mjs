@@ -2,6 +2,7 @@
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { releasePaths, releaseRemoteConfig } from './local-release/config.mjs'
+import { parseLocalReleaseCommand } from './local-release/cli.mjs'
 import { warmReleaseCache } from './local-release/cache.mjs'
 import { buildOciCandidate, loadOciCandidate, validateCandidateArtifact } from './local-release/oci.mjs'
 import { publishCandidate } from './local-release/publish.mjs'
@@ -134,8 +135,8 @@ async function verifyPush() {
   console.log(`Verified current local release receipt for ${identity.revision}.`)
 }
 
-const command = process.argv[2]
-if (!command || ['help', '--help', '-h'].includes(command)) {
+const { command } = parseLocalReleaseCommand(process.argv.slice(2))
+if (command === 'help') {
   usage()
 } else if (command === 'status') {
   await status()

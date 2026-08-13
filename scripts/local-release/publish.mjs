@@ -62,12 +62,19 @@ export function indexCreateCommand(plan, { dryRun = false } = {}) {
 
 async function ensureImmutableTagAvailable(tag, identity) {
   const inspect = await run(['docker', 'buildx', 'imagetools', 'inspect', tag], { capture: true, allowFailure: true, log: false })
-  if (inspect.exitCode !== 0) return
+  if (inspect.exitCode !== 0) return false
   const verification = await run([
     'bun', 'scripts/verify-published-image.mjs', '--tag', tag.split(':').at(-1),
     '--version', identity.version, '--revision', identity.revision, '--channel', 'release',
   ], { capture: true, allowFailure: true })
   if (verification.exitCode !== 0) throw new Error(`Immutable Docker tag ${tag} already exists with different release metadata.`)
+  return true
+}
+
+export function publicationWritePlan(plan, { immutableTagExists = false } = {}) {
+  if (!immutableTagExists || plan.channel !== 'stable') return plan
+  const immutableTag = `${plan.destination}:${plan.release.exactTag}`
+  return { ...plan, finalTags: plan.finalTags.filter((tag) => tag !== immutableTag) }
 }
 
 async function verifyIndex(plan) {
@@ -127,11 +134,14 @@ export async function publishCandidate({ root, paths, state, identity, channel, 
     await Promise.all(publicationPlan({ channel, identity }).finalTags.map((tag) => (
       run(['docker', 'buildx', 'imagetools', 'inspect', tag], { capture: true, allowFailure: true, log: false })
     )))
-    if (!dryRun && channel === 'stable') await ensureImmutableTagAvailable(plan.finalTags[1], identity)
+    const immutableTagExists = !dryRun && channel === 'stable'
+      ? await ensureImmutableTagAvailable(`${plan.destination}:${plan.release.exactTag}`, identity)
+      : false
+    const writePlan = publicationWritePlan(plan, { immutableTagExists })
     await run(candidateUploadCommand({ oras, candidate: state.candidates.arm64, destination: plan.arm64, plainHttp: dryRun }))
     await run(candidateUploadCommand({ oras, candidate: amd64, destination: plan.amd64, plainHttp: dryRun }))
-    await run(indexCreateCommand(plan))
-    const index = await verifyIndex(plan)
+    await run(indexCreateCommand(writePlan))
+    const index = await verifyIndex(writePlan)
     if (!dryRun) {
       await run(['git', 'push', 'origin', `${identity.revision}:refs/heads/${plan.branch}`])
     }
@@ -140,6 +150,7 @@ export async function publishCandidate({ root, paths, state, identity, channel, 
       channel,
       dryRun,
       tags: plan.finalTags,
+      immutableTagReused: immutableTagExists,
       index,
       github,
       publishedAt: new Date().toISOString(),

@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import { assertPublicationReady, candidateUploadCommand, indexCreateCommand, publicationPlan } from './publish.mjs'
+import { assertPublicationReady, candidateUploadCommand, indexCreateCommand, publicationPlan, publicationWritePlan } from './publish.mjs'
 
 const identity = { branch: 'main', revision: 'a'.repeat(40), version: '0.12.4', sourceFingerprint: 'b'.repeat(64), trackedClean: true }
 const candidate = { archive: '/candidate.oci.tar', digest: `sha256:${'c'.repeat(64)}` }
@@ -31,6 +31,17 @@ describe('exact artifact publication', () => {
     expect(command.at(-2)).toBe(plan.arm64)
     expect(command.at(-1)).toBe(plan.amd64)
     expect(command).not.toContain('build')
+  })
+
+  test('does not rewrite an existing matching immutable stable tag', () => {
+    const plan = publicationPlan({ channel: 'stable', identity })
+    const writePlan = publicationWritePlan(plan, { immutableTagExists: true })
+
+    expect(writePlan.finalTags).toEqual([
+      'docker.io/mriverodorta/homelab-inventory:stable',
+      'docker.io/mriverodorta/homelab-inventory:0.12',
+    ])
+    expect(indexCreateCommand(writePlan)).not.toContain('docker.io/mriverodorta/homelab-inventory:0.12.4')
   })
 
   test('requires approval bound to the current ARM64 digest', () => {
