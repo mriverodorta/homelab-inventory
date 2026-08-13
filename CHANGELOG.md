@@ -6,6 +6,15 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 
 ## Unreleased
 
+### Changed
+
+- Docker releases now use an ARM64-first local staging pipeline that refreshes and sanitizes a consistent live-data snapshot, runs the exact distroless candidate at `127.0.0.1:8799`, requires explicit digest-bound approval, and postpones AMD64 construction until approval.
+- Docker Hub publication now promotes the exact locally smoke-tested and zero-vulnerability OCI candidates without rebuilding; GitHub Actions retains source CI and scheduled published-image monitoring but no longer writes release images.
+
+### Security
+
+- Production-shaped staging strips authentication, identities, credentials, Agent bindings, Registry delivery state, notification secrets, and backup archives, and disables every outbound side effect before the candidate can start.
+
 ## [0.12.4] - 2026-08-12
 
 ### Changed

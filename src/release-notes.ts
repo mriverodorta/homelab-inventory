@@ -164,9 +164,15 @@ const RELEASE_0_12_4_DETAILS: UnreleasedReleaseNotes = {
 }
 
 export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
-  highlights: [],
-  fixes: [],
-  notes: [],
+  highlights: [
+    'Docker releases now pass through an ARM64-first local staging environment built from a fresh sanitized production-shaped snapshot before the AMD64 candidate is constructed.',
+  ],
+  fixes: [
+    'Docker Hub now receives the exact locally smoke-tested and zero-vulnerability OCI candidates without a second release build changing the published bytes.',
+  ],
+  notes: [
+    'GitHub Actions continues source validation and scheduled published-image security monitoring, while image construction and publication are owned by the digest-bound local release workflow.',
+  ],
 }
 
 const RELEASE_0_11_2_DETAILS: UnreleasedReleaseNotes = {

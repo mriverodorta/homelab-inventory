@@ -64,7 +64,39 @@ Install the versioned Git hooks once per checkout:
 bun run hooks:install
 ```
 
-Pushes to `main` or `stable` run `bun run security:container` automatically. The preflight builds the actual distroless production image for `linux/amd64` and `linux/arm64`, boots both images, and requires Docker Scout and Trivy to report zero known vulnerabilities at every severity. Docker Desktop must be running and Docker Scout must be available.
+Pushes to `main` or `stable` require a current local release receipt. When no receipt matches the exact revision, the pre-push hook falls back to `bun run security:container`. Both paths boot the distroless production image for `linux/amd64` and `linux/arm64` and require Docker Scout and Trivy to report zero known vulnerabilities at every severity. Docker Desktop must be running and Docker Scout must be available.
+
+## Local Staged Releases
+
+Docker release construction and publication run on the maintainer's Mac. GitHub Actions still validates source and monitors published images, but it does not build or write Docker tags.
+
+```bash
+bun run release:local warm-cache
+bun run release:local prepare
+```
+
+`prepare` obtains a consistent read-only snapshot from `bolt`, incrementally transfers it with rsync into private state outside the repository, removes authentication, identities, credentials, Agent bindings, notification delivery, Registry contribution state, backup archives, and every outbound side effect, then builds and scans only the native ARM64 candidate. The exact candidate runs at `http://127.0.0.1:8799` as `homelab-inventory-staging` with `APP_MODE=staging` and a loopback-only port.
+
+After testing the staging app:
+
+```bash
+bun run release:local approve
+bun run release:local publish --channel latest --dry-run
+bun run release:local publish --channel latest
+```
+
+Approval binds the Git revision, source fingerprint, sanitized snapshot, ARM64 OCI digest, running container, and post-start data fingerprint. Publication then builds and scans AMD64 once, uploads the exact tested OCI archives without rebuilding, assembles the multi-platform index, and moves only `latest`. Run from `stable` with `--channel stable` to move `stable`, create immutable `X.Y.Z`, update `X.Y`, and finalize the matching Git tag and GitHub Release.
+
+Useful recovery commands:
+
+```bash
+bun run release:local status
+bun run release:local logs
+bun run release:local stop
+bun run release:local reset
+```
+
+Release state, staging data, OCI archives, receipts, and tools live under `~/Library/Application Support/Homelab Inventory Release`. Reusable BuildKit cache lives under `~/Library/Caches/homelab-inventory-release`. Both survive `~/bin/dclaim`; Docker images and the dedicated builder can be restored with `warm-cache`. None of these paths may be committed.
 
 ## Project Shape
 

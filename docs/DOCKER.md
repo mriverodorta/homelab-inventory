@@ -114,22 +114,15 @@ Use a semver tag when you want to lock the version:
 image: mriverodorta/homelab-inventory:0.1.9
 ```
 
-## CI/CD Release Channels
+## Release Channels
 
-GitHub is the source of truth for builds:
+GitHub remains the source of truth for source validation. Release images are built, staged against sanitized production-shaped data, scanned, and published from the maintainer's local release pipeline:
 
 - Pull requests run lint, tests, and a production build.
-- Pushes to `main` publish `mriverodorta/homelab-inventory:latest`.
-- Pushes to `stable` publish `mriverodorta/homelab-inventory:stable`.
-- Tags like `v0.2.0` publish `mriverodorta/homelab-inventory:0.2.0` and `mriverodorta/homelab-inventory:0.2`.
-
-The Docker publish workflow requires this GitHub repository secret:
-
-```txt
-DOCKERHUB_TOKEN
-```
-
-The token should be a Docker Hub access token for `mriverodorta` with permission to push `mriverodorta/homelab-inventory`.
+- Approved releases from `main` move `mriverodorta/homelab-inventory:latest`.
+- Approved promotions from `stable` move `stable` and publish immutable `X.Y.Z` plus the moving `X.Y` alias.
+- The exact ARM64 and AMD64 OCI candidates that pass smoke tests and zero-vulnerability scans are uploaded without rebuilding.
+- GitHub Actions continues source CI and scheduled scans of already-published `latest` and `stable` images.
 
 See [RELEASES.md](RELEASES.md) for the full release process.
 

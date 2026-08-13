@@ -17,7 +17,7 @@ The public source repository is available on GitHub:
 
 https://github.com/mriverodorta/homelab-inventory
 
-GitHub is the source of truth for CI/CD. Docker Hub images are built and published by GitHub Actions from the `main` and `stable` branches, with numbered releases created during stable promotion.
+GitHub is the source of truth for source and CI. Docker Hub images are built on the maintainer's Apple Silicon staging system, tested against sanitized production-shaped data, scanned for both supported architectures, and uploaded from the exact validated OCI artifacts without rebuilding. Numbered releases are created during stable promotion.
 
 ## Features
 

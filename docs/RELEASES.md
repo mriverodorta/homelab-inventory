@@ -1,6 +1,6 @@
 # Release Process
 
-GitHub is the source of truth for CI/CD. Docker Hub receives images from GitHub Actions.
+GitHub is the source of truth for source history and CI. Docker Hub receives exact locally staged OCI candidates from the maintainer's Mac; GitHub Actions does not build or publish release images.
 
 ## Channels
 
@@ -8,19 +8,17 @@ GitHub is the source of truth for CI/CD. Docker Hub receives images from GitHub 
 | --- | --- | --- |
 | `main` branch | `latest` | Fast-moving development image. Can be unstable. |
 | `stable` branch | `stable`, `X.Y.Z`, `X.Y` | Recommended channel plus immutable and minor-series release images. |
-| Manual backfill | `X.Y.Z`, `X.Y` | Guarded restoration of a historical release from its original commit. |
+| Local guarded backfill | `X.Y.Z`, `X.Y` | Guarded restoration from an exact locally validated historical candidate. |
 
 ## Normal Flow
 
-1. Open pull requests into `main`.
-2. Run `bun run security:container` locally. It builds, boots, and scans the distroless amd64 and arm64 runtime images with Docker Scout and Trivy. Any known vulnerability blocks the release.
-3. CI repeats lint, tests, production build, runtime smoke tests, and both vulnerability scanners for both target architectures.
-4. Merge into `main` when ready.
-5. GitHub Actions publishes `mriverodorta/homelab-inventory:latest`.
-6. When `main` is considered safe, merge or fast-forward it into `stable`.
-7. GitHub Actions publishes `mriverodorta/homelab-inventory:stable`.
-8. When the package version has not been released before, the same verified build also publishes immutable `X.Y.Z` and moving `X.Y` tags.
-9. After both Docker architectures and metadata are verified, automation creates `vX.Y.Z` and the matching GitHub Release.
+1. Finalize the version, changelog, and structured release notes on `main`.
+2. Run `bun run release:local prepare`. This obtains a fresh consistent live snapshot, sanitizes it, builds only ARM64, performs zero-vulnerability scans and smoke tests, and starts staging at `127.0.0.1:8799`.
+3. Test the production-shaped staging app and run `bun run release:local approve`.
+4. Run `bun run release:local publish --channel latest --dry-run` to build and validate AMD64 and assemble the exact two-platform index in a disposable local registry.
+5. Run `bun run release:local publish --channel latest` to upload those same OCI candidates, move `latest`, and push the approved `main` revision.
+6. When that commit is ready for stable promotion, check out `stable`, fast-forward it to the approved revision, and reuse the retained candidate state.
+7. Run `bun run release:local publish --channel stable`; it moves `stable`, publishes immutable `X.Y.Z`, updates `X.Y`, and creates the verified Git tag and GitHub Release.
 
 The final runtime is pinned to a reviewed Bun distroless multi-architecture digest. Build stages may use larger toolchain images, but their operating-system packages are not copied into the published runtime.
 
@@ -33,23 +31,9 @@ The final runtime is pinned to a reviewed Bun distroless multi-architecture dige
 
 ## Historical Backfill
 
-The manual `Docker Backfill` workflow accepts a strict `X.Y.Z` version and the full original Git revision. The pair must match the repository's bounded historical release map. It validates the structured release note, builds that historical source with current OCI metadata, publishes only `X.Y.Z` and `X.Y`, verifies amd64 and arm64, and then creates the Git tag and GitHub Release. It never changes `latest` or `stable`.
+The previous GitHub Docker Backfill writer is disabled. A historical release must be checked out locally, validated against the bounded historical release map, and run through the same ARM64-first exact-artifact pipeline. It must never move `latest` or `stable` unless that is a separately approved channel operation.
 
-## Required GitHub Secret
-
-The Docker publishing workflow requires this repository secret:
-
-```txt
-DOCKERHUB_TOKEN
-```
-
-Create a Docker Hub access token for `mriverodorta`, then add it:
-
-```bash
-gh secret set DOCKERHUB_TOKEN --repo mriverodorta/homelab-inventory
-```
-
-Paste the token when prompted.
+Docker Hub authentication comes from Docker Desktop's credential store. GitHub tag and release operations use the authenticated `gh` CLI. Tokens are not accepted as release-command arguments or stored in receipts.
 
 ## Recommended Deployment Tag
 

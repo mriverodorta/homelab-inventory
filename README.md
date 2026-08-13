@@ -264,8 +264,8 @@ New projects include global inventory by default, but global records appear only
 
 ## Docker Tags And Release Channels
 
-- `mriverodorta/homelab-inventory:stable` is built from the `stable` branch. Use this for regular homelab deployments and Watchtower.
-- `mriverodorta/homelab-inventory:latest` is built from the `main` branch. It is the newest development image and can be unstable.
+- `mriverodorta/homelab-inventory:stable` is promoted from the `stable` branch after local production-shaped staging. Use this for regular homelab deployments and Watchtower.
+- `mriverodorta/homelab-inventory:latest` is promoted from the `main` branch after local staging. It is the newest development image and can be unstable.
 - `mriverodorta/homelab-inventory:<X.Y.Z>` is an immutable stable release image for pinned deployments.
 - `mriverodorta/homelab-inventory:<X.Y>` follows the newest stable patch in that minor series.
 
@@ -275,13 +275,14 @@ Recommended Compose image:
 image: mriverodorta/homelab-inventory:stable
 ```
 
-CI/CD uses GitHub as the source of truth:
+GitHub is the source of truth for source and CI; release construction is local and exact-artifact based:
 
 - Pull requests validate lint, tests, and production build.
-- Merges to `main` publish the `latest` Docker image.
-- A new package version merged to `stable` publishes `stable`, immutable `X.Y.Z`, and the moving `X.Y` series alias.
+- Approved releases from `main` move the `latest` Docker image after ARM64 staging and two-platform vulnerability verification.
+- Approved promotions from `stable` publish `stable`, immutable `X.Y.Z`, and the moving `X.Y` series alias.
+- Docker Hub receives the exact ARM64 and AMD64 OCI manifests that passed local smoke and zero-vulnerability checks; publication does not rebuild them.
 - Stable promotion creates the matching `vX.Y.Z` Git tag and GitHub Release only after both Docker architectures are verified.
-- Existing numbered Docker images are never overwritten; historical restoration uses a guarded manual backfill workflow.
+- Existing numbered Docker images are never overwritten; historical restoration must use the same guarded local pipeline.
 
 Release process details: [docs/RELEASES.md](docs/RELEASES.md)
 
