@@ -189,6 +189,19 @@ afterEach(() => {
 })
 
 describe('AuditDrawer', () => {
+  it('uses the shared responsive right-drawer width', () => {
+    render(
+      <AuditDrawer
+        project={project}
+        open
+        onClose={vi.fn()}
+        onSelectItem={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByTestId('audit-drawer')).toHaveClass('w-[min(96vw,680px)]')
+  })
+
   it('renders grouped audit warnings and selects an item from a warning', () => {
     const onSelectItem = vi.fn()
 

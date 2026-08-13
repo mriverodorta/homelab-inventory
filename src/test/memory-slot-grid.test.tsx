@@ -10,11 +10,19 @@ const assignment = (id: number, position: number): ComponentAssignment => ({
 
 describe('MemorySlotGrid', () => {
   it('renders fixed two-column physical slots and positions sticks', () => {
-    render(<MemorySlotGrid hostId="server:1" slotCount={4} assignments={[assignment(2, 1), assignment(1, 0)]} renderAssignment={(value) => <span>RAM {value.id}</span>} />)
+    const { container } = render(<MemorySlotGrid hostId="server:1" slotCount={4} assignments={[assignment(2, 1), assignment(1, 0)]} renderAssignment={(value) => <span>RAM {value.id}</span>} />)
+    expect(container.querySelector('[data-memory-slot-count="4"]')).toHaveClass('grid-cols-2')
     expect(screen.getByText('RAM 1')).toBeInTheDocument()
     expect(screen.getByText('RAM 2')).toBeInTheDocument()
     expect(screen.getByText('Slot 3')).toBeInTheDocument()
     expect(screen.getByText('Slot 4')).toBeInTheDocument()
+  })
+
+  it('uses the full row for a host with one physical memory slot', () => {
+    const { container } = render(<MemorySlotGrid hostId="server:1" slotCount={1} assignments={[assignment(1, 0)]} renderAssignment={() => <span>Installed RAM</span>} />)
+
+    expect(container.querySelector('[data-memory-slot-count="1"]')).toHaveClass('grid-cols-1')
+    expect(screen.getByText('Installed RAM')).toBeInTheDocument()
   })
 
   it('does not invent slots when host metadata is unknown', () => {

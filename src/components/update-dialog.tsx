@@ -150,12 +150,8 @@ export function UpdateDialog({
   const availableRevision = status.availableRevision ?? 'Revision unavailable'
   const channelName = status.channel === 'latest' ? 'Latest' : 'Stable'
   const isAvailable = status.state === 'available' && status.updateAvailable
-  const isRevisionOnlyUpdate = isAvailable
-    && status.availableVersion === status.runningVersion
-    && status.availableRevision !== null
-    && status.availableRevision !== status.runningRevision
   const showUpdateActions = isAvailable
-  const showReleaseNotes = isAvailable && (!isRevisionOnlyUpdate || status.entries.length > 0)
+  const showReleaseNotes = isAvailable
   const title = status.state === 'disabled'
     ? 'Update checks disabled'
     : status.state === 'unknown'
@@ -171,10 +167,8 @@ export function UpdateDialog({
       ? 'Docker Hub could not be reached. The last confirmed result is shown when available.'
       : status.state === 'ahead'
         ? `The running version is newer than the current ${status.channel} image.`
-        : isRevisionOnlyUpdate
-          ? `The ${status.channel} image was rebuilt from a newer commit at the same version.`
-          : isAvailable
-            ? `A newer ${status.channel} image is available on Docker Hub.`
+        : isAvailable
+          ? `A newer ${status.channel} image is available on Docker Hub.`
         : `This installation matches the current ${status.channel} image.`
 
   async function copyCommands() {

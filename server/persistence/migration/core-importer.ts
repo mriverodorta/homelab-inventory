@@ -109,7 +109,7 @@ function vocabularyId(database: Database, table: string, value: unknown) {
   const key = normalizeKey(value)
   if (!key) return null
   const aliases: Record<string, string> = {
-    'ddr3l': 'ddr3', 'so-dimm': 'sodimm', 'm.2-2230': 'm2-2230', '2230': 'm2-2230',
+    'so-dimm': 'sodimm', 'm.2-2230': 'm2-2230', '2230': 'm2-2230',
     'm.2-2242': 'm2-2242', '2242': 'm2-2242', 'm.2-2260': 'm2-2260', '2260': 'm2-2260',
     'm.2-2280': 'm2-2280', '2280': 'm2-2280', 'm.2-22110': 'm2-22110', '22110': 'm2-22110',
     '2.5': '2.5-inch', '2.5-inch': '2.5-inch', '3.5': '3.5-inch', '3.5-inch': '3.5-inch',

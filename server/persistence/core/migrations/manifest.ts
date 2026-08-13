@@ -65,4 +65,9 @@ export const CORE_MIGRATIONS: readonly CoreMigration[] = [
     file: '0011_project_compatibility_policies.sql',
     sha256: '65b2842e5be1e2a4987d9ae340392b9c10bac2440fea261ca9273fdf6d2ea26a',
   },
+  {
+    id: '0013_distinct_ddr3l_memory',
+    file: '0012_distinct_ddr3l_memory.sql',
+    sha256: 'bdb7f6c20b7f0b3227cc7789f9348907c102546cea8ddae1ba31117c6f65e364',
+  },
 ]

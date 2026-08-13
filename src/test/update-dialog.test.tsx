@@ -213,6 +213,27 @@ describe('UpdateDialog', () => {
     expect(screen.queryByRole('button', { name: /check now/i })).not.toBeInTheDocument()
   })
 
+  it('shows differing revisions at the same version as current diagnostics', () => {
+    renderDialog({
+      status: {
+        ...availableStatus,
+        state: 'current',
+        updateAvailable: false,
+        runningVersion: '0.12.4',
+        availableVersion: '0.12.4',
+        runningRevision: 'running-revision',
+        availableRevision: 'other-revision',
+        entries: [],
+      },
+    })
+
+    expect(screen.getByRole('dialog', { name: /up to date/i })).toBeInTheDocument()
+    expect(screen.getByText(/matches the current stable image/i)).toBeInTheDocument()
+    expect(screen.queryByTestId('update-commands')).not.toBeInTheDocument()
+    expect(screen.getByText('running-revision')).toBeInTheDocument()
+    expect(screen.getByText('other-revision')).toBeInTheDocument()
+  })
+
   it('shows an ahead state without presenting the older channel image as an update', () => {
     renderDialog({
       status: {
@@ -236,7 +257,7 @@ describe('UpdateDialog', () => {
     expect(within(dialog).queryByRole('button', { name: /skip this version/i })).not.toBeInTheDocument()
   })
 
-  it('explains a same-version rebuild and still shows update actions', () => {
+  it('keeps a same-version revision difference diagnostic and non-actionable', () => {
     renderDialog({
       status: {
         ...availableStatus,
@@ -245,18 +266,18 @@ describe('UpdateDialog', () => {
         runningRevision: 'older-running-revision',
         availableVersion: '0.1.19',
         availableRevision: 'newer-published-revision',
-        updateAvailable: true,
-        state: 'available',
+        updateAvailable: false,
+        state: 'current',
         entries: [],
       },
     })
 
-    const dialog = screen.getByRole('dialog', { name: /update available/i })
+    const dialog = screen.getByRole('dialog', { name: /up to date/i })
     expect(within(dialog).getByText('Latest image')).toBeInTheDocument()
-    expect(within(dialog).getByText(/rebuilt from a newer commit/i)).toBeInTheDocument()
+    expect(within(dialog).getByText(/matches the current latest image/i)).toBeInTheDocument()
     expect(within(dialog).queryByText(/release details are not available/i)).not.toBeInTheDocument()
-    expect(within(dialog).getByTestId('update-commands')).toBeInTheDocument()
-    expect(within(dialog).getByRole('button', { name: /skip this version/i })).toBeInTheDocument()
+    expect(within(dialog).queryByTestId('update-commands')).not.toBeInTheDocument()
+    expect(within(dialog).queryByRole('button', { name: /skip this version/i })).not.toBeInTheDocument()
   })
 
   it('keeps diagnostic states free of update instructions', () => {

@@ -1,6 +1,7 @@
 import { AlertTriangle, Info, X } from 'lucide-react'
 import { InventoryActionsMenu } from '@/components/inventory-actions-menu'
 import { Button } from '@/components/ui/button'
+import { RIGHT_DRAWER_LAYOUT_CLASS_NAME } from '@/components/right-drawer-layout'
 import { describeConnectionEndpoint } from '@/lib/cables'
 import { getItemAuditWarnings } from '@/lib/audit'
 import { cn } from '@/lib/utils'
@@ -139,7 +140,7 @@ export function InspectorPanel({
       data-testid="inspector-drawer"
       role="dialog"
       aria-label={`${drawerTitle} inspector`}
-      className={`fixed bottom-0 right-0 top-0 z-40 flex min-h-0 w-[min(96vw,680px)] flex-col overflow-x-hidden border-l border-[#d6ccbd] bg-[radial-gradient(circle_at_top_left,#fffdf8_0%,#fbf7ef_44%,#f3ede4_100%)] shadow-[-22px_0_46px_rgba(32,36,44,0.18)] transition-transform duration-200 ease-out ${
+      className={`${RIGHT_DRAWER_LAYOUT_CLASS_NAME} z-40 flex min-h-0 flex-col overflow-x-hidden border-l border-[#d6ccbd] bg-[radial-gradient(circle_at_top_left,#fffdf8_0%,#fbf7ef_44%,#f3ede4_100%)] shadow-[-22px_0_46px_rgba(32,36,44,0.18)] transition-transform duration-200 ease-out ${
         open ? 'translate-x-0' : 'translate-x-full'
       }`}
       aria-hidden={!open}

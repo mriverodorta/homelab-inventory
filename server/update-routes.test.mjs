@@ -126,7 +126,7 @@ describe('update status routes', () => {
     }
   })
 
-  it('returns a revision-only rebuild as available without semantic release notes', async () => {
+  it('returns a revision-only rebuild as current', async () => {
     const rebuiltResult = {
       ...AVAILABLE_RESULT,
       runningVersion: '0.1.16',
@@ -147,14 +147,14 @@ describe('update status routes', () => {
 
     try {
       const { body } = await requestJson(`${url}/api/update-status`)
-      expect(body).toMatchObject({ state: 'available', updateAvailable: true })
+      expect(body).toMatchObject({ state: 'current', updateAvailable: false, skipped: false })
       expect(body.entries).toEqual([])
     } finally {
       await close(server)
     }
   })
 
-  it('uses a revision-aware skip key for equal-version rebuilds', async () => {
+  it('does not allow an equal-version rebuild to be skipped as an update', async () => {
     const rebuiltResult = {
       ...AVAILABLE_RESULT,
       runningVersion: '0.1.16',
@@ -175,10 +175,9 @@ describe('update status routes', () => {
 
     try {
       const skipped = await requestJson(`${url}/api/update-status/skip`, { method: 'POST' })
-      expect(skipped.response.status).toBe(200)
-      expect(skipped.body.skipped).toBe(true)
-      expect(store.skipUpdateVersion).toHaveBeenCalledWith('0.1.16@rebuilt-sha')
-      expect(store.isUpdateVersionSkipped).toHaveBeenCalledWith('0.1.16@rebuilt-sha')
+      expect(skipped.response.status).toBe(409)
+      expect(skipped.body).toMatchObject({ message: 'No update is available to skip.' })
+      expect(store.skipUpdateVersion).not.toHaveBeenCalled()
     } finally {
       await close(server)
     }

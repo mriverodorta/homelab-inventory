@@ -55,14 +55,8 @@ function isNonEmptyString(value) {
   return typeof value === 'string' && value.trim().length > 0
 }
 
-function isKnownRevision(value) {
-  return isNonEmptyString(value) && value.trim().toLowerCase() !== 'unknown'
-}
-
 export function determineImageRelationship({
-  availableRevision,
   availableVersion,
-  runningRevision,
   runningVersion,
 }) {
   const comparison = compareVersions(availableVersion, runningVersion)
@@ -70,11 +64,7 @@ export function determineImageRelationship({
   if (comparison > 0) return 'available'
   if (comparison < 0) return 'ahead'
 
-  return isKnownRevision(availableRevision)
-    && isKnownRevision(runningRevision)
-    && availableRevision.trim() !== runningRevision.trim()
-    ? 'available'
-    : 'current'
+  return 'current'
 }
 
 function validateDigest(value) {

@@ -20,7 +20,7 @@ afterEach(async () => {
   await Promise.all(temporaryDirectories.splice(0).map((directory) => rm(directory, { recursive: true, force: true })))
 })
 
-async function migratedDatabase() {
+async function migratedDatabase(migrationCount = CORE_MIGRATIONS.length) {
   const root = await mkdtemp(join(tmpdir(), 'homelab-inventory-core-import-'))
   temporaryDirectories.push(root)
   const handle = await openManagedDatabase({
@@ -28,7 +28,7 @@ async function migratedDatabase() {
     schemaName: 'core',
   })
   const migrationsDir = resolve(import.meta.dir, '../core/migrations/generated')
-  await applyCommittedMigrations(handle, await Promise.all(CORE_MIGRATIONS.map(async (migration) => ({
+  await applyCommittedMigrations(handle, await Promise.all(CORE_MIGRATIONS.slice(0, migrationCount).map(async (migration) => ({
     id: migration.id,
     sha256: migration.sha256,
     sql: await readFile(join(migrationsDir, migration.file), 'utf8'),
@@ -37,6 +37,64 @@ async function migratedDatabase() {
 }
 
 describe('schema-29 core import', () => {
+  test('preserves DDR3L as a distinct host and module generation', async () => {
+    const handle = await migratedDatabase()
+    const snapshot = schema29ProductionShapeFixture()
+    snapshot.inventory.servers[0].compatibility.host.memory.generations = ['DDR3L']
+    snapshot.inventory.ram[0].specs.generation = 'DDR3L'
+    try {
+      importLegacyCore({ database: handle.database, snapshot, identityPlan: buildCanonicalIdentityPlan(snapshot) })
+      const projected = buildLegacyInventoryProjection(handle.database)
+
+      expect(projected.servers[0].compatibility.host.memory.generations).toEqual(['DDR3L'])
+      expect(projected.ram[0].specs.generation).toBe('DDR3L')
+    } finally {
+      closeManagedDatabase(handle)
+    }
+  })
+
+  test('repairs collapsed DDR3L rows without changing the registry link', async () => {
+    const handle = await migratedDatabase(CORE_MIGRATIONS.length - 1)
+    const snapshot = schema29ProductionShapeFixture()
+    snapshot.inventory.servers[0].compatibility.host.memory.generations = ['DDR3L']
+    snapshot.inventory.ram[0].specs.generation = 'DDR3L'
+    snapshot.registry.links.push({
+      id: 2,
+      itemType: 'server',
+      itemId: 7,
+      sourceId: 1,
+      templateKey: 'desktop-example-micro-host',
+      importedRevision: 4,
+      importedContentHash: 'b'.repeat(64),
+      importedFingerprintVersion: 9,
+      state: 'linked',
+      linkedAt: '2026-08-11T12:00:00.000Z',
+      updatedAt: '2026-08-11T12:00:00.000Z',
+    })
+    try {
+      importLegacyCore({ database: handle.database, snapshot, identityPlan: buildCanonicalIdentityPlan(snapshot) })
+      const ddr3Id = (handle.database.query("SELECT id FROM memory_generations WHERE key = 'ddr3'").get() as { id: number }).id
+      const ddr3lId = (handle.database.query("SELECT id FROM memory_generations WHERE key = 'ddr3l'").get() as { id: number }).id
+      handle.database.query('UPDATE memory_modules SET memory_generation_id = ? WHERE memory_generation_id = ?').run(ddr3Id, ddr3lId)
+      handle.database.query('UPDATE host_memory_generation_support SET generation_id = ? WHERE generation_id = ?').run(ddr3Id, ddr3lId)
+      handle.database.query("DELETE FROM memory_generations WHERE key = 'ddr3l'").run()
+      const linkBefore = handle.database.query('SELECT * FROM registry_links WHERE id = 2').get()
+      const migrationsDir = resolve(import.meta.dir, '../core/migrations/generated')
+      await applyCommittedMigrations(handle, await Promise.all(CORE_MIGRATIONS.map(async (migration) => ({
+        id: migration.id,
+        sha256: migration.sha256,
+        sql: await readFile(join(migrationsDir, migration.file), 'utf8'),
+      }))))
+      const projected = buildLegacyInventoryProjection(handle.database)
+
+      expect(projected.servers[0].compatibility.host.memory.generations).toEqual(['DDR3L'])
+      expect(projected.ram[0].specs.generation).toBe('DDR3L')
+      expect(handle.database.query('SELECT * FROM registry_links WHERE id = 2').get()).toEqual(linkBefore)
+    } finally {
+      closeManagedDatabase(handle)
+    }
+  })
+
   test('imports a production-shaped snapshot in one verified relational graph', async () => {
     const handle = await migratedDatabase()
     const snapshot = schema29ProductionShapeFixture()

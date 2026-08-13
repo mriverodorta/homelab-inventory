@@ -1,4 +1,5 @@
 import { createLazySurface } from '@/components/lazy-surface'
+import { RIGHT_DRAWER_LAYOUT_CLASS_NAME } from '@/components/right-drawer-layout'
 
 const inspectorLoader = () => import('@/components/inspector-panel').then((module) => ({
   default: module.InspectorPanel,
@@ -6,7 +7,7 @@ const inspectorLoader = () => import('@/components/inspector-panel').then((modul
 export const InspectorPanel = createLazySurface(inspectorLoader, {
   displayName: 'Inspector',
   loadingLabel: 'Loading inspector',
-  loadingClassName: 'fixed inset-y-0 right-0 z-50 w-full max-w-[640px] rounded-none',
+  loadingClassName: `${RIGHT_DRAWER_LAYOUT_CLASS_NAME} z-50 rounded-none`,
   getClose: (props) => props.onClose,
   shouldRender: (props) => props.open,
 })
@@ -17,7 +18,7 @@ const auditLoader = () => import('@/components/audit-drawer').then((module) => (
 export const AuditDrawer = createLazySurface(auditLoader, {
   displayName: 'Audit',
   loadingLabel: 'Loading audit',
-  loadingClassName: 'fixed inset-y-0 right-0 z-50 w-full max-w-[560px] rounded-none',
+  loadingClassName: `${RIGHT_DRAWER_LAYOUT_CLASS_NAME} z-50 rounded-none`,
   getClose: (props) => props.onClose,
   shouldRender: (props) => props.open,
 })

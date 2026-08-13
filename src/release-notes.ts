@@ -163,16 +163,26 @@ const RELEASE_0_12_4_DETAILS: UnreleasedReleaseNotes = {
   notes: [],
 }
 
-export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
+const RELEASE_0_12_5_DETAILS: UnreleasedReleaseNotes = {
   highlights: [
     'Docker releases now pass through an ARM64-first local staging environment built from a fresh sanitized production-shaped snapshot before the AMD64 candidate is constructed.',
   ],
   fixes: [
     'Docker Hub now receives the exact locally smoke-tested and zero-vulnerability OCI candidates without a second release build changing the published bytes.',
+    'Registry-linked DDR3L memory remains distinct through SQLite persistence, and existing collapsed host and module records repair automatically without changing their Registry links.',
+    'Single-slot hosts now use the full canvas-card width for their installed memory module.',
+    'Equal application versions no longer appear as an available update solely because their image revision labels differ.',
+    'Audit and Inspector now use the same responsive drawer width and replace each other instead of opening simultaneously.',
   ],
   notes: [
     'GitHub Actions continues source validation and scheduled published-image security monitoring, while image construction and publication are owned by the digest-bound local release workflow.',
   ],
+}
+
+export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
+  highlights: [],
+  fixes: [],
+  notes: [],
 }
 
 const RELEASE_0_11_2_DETAILS: UnreleasedReleaseNotes = {
@@ -702,9 +712,16 @@ const RELEASE_0_2_1_DETAILS: UnreleasedReleaseNotes = {
 
 export const RELEASE_NOTES: ReleaseNoteEntry[] = [
   {
+    version: '0.12.5',
+    date: '2026-08-13',
+    channel: 'latest',
+    title: 'Reliable local releases and compatibility repairs',
+    ...RELEASE_0_12_5_DETAILS,
+  },
+  {
     version: '0.12.4',
     date: '2026-08-12',
-    channel: 'latest',
+    channel: 'release',
     title: 'Reliable repeat catalog startup',
     ...RELEASE_0_12_4_DETAILS,
   },

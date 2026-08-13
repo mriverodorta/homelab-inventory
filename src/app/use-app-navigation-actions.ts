@@ -66,7 +66,11 @@ export function useAppNavigationActions({
     })
   }, [refreshUpdateStatus, setUpdateDialogOpen, updateStatusAvailable])
 
-  const openAudit = useCallback(() => setAuditOpen(true), [setAuditOpen])
+  const openAudit = useCallback(() => {
+    clearCanvasSelection()
+    clearNetworkTrace()
+    setAuditOpen(true)
+  }, [clearCanvasSelection, clearNetworkTrace, setAuditOpen])
   const openSettings = useCallback(() => setSettingsOpen(true), [setSettingsOpen])
 
   return {

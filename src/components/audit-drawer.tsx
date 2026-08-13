@@ -1,6 +1,7 @@
 import { AlertCircle, AlertTriangle, CircleHelp, X } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { Button } from '@/components/ui/button'
+import { RIGHT_DRAWER_LAYOUT_CLASS_NAME } from '@/components/right-drawer-layout'
 import { getProjectAuditWarnings, type ProjectAuditGroup } from '@/lib/audit'
 import { runtimeItemKey } from '@/lib/item-keys'
 import type { TopologyQueryData } from '@/hooks/use-topology-query'
@@ -108,10 +109,11 @@ export function AuditDrawer({
 
   return (
     <aside
-      className={`fixed bottom-0 right-0 top-0 z-50 flex min-h-0 w-[390px] flex-col border-l border-[#d6ccbd] bg-[#fffdf8] shadow-[-18px_0_36px_rgba(32,36,44,0.18)] transition-transform duration-200 ease-out ${
+      className={`${RIGHT_DRAWER_LAYOUT_CLASS_NAME} z-50 flex min-h-0 flex-col border-l border-[#d6ccbd] bg-[#fffdf8] shadow-[-18px_0_36px_rgba(32,36,44,0.18)] transition-transform duration-200 ease-out ${
         open ? 'translate-x-0' : 'translate-x-full'
       }`}
       aria-hidden={!open}
+      inert={!open}
       data-testid="audit-drawer"
     >
       <div className="flex items-start justify-between gap-3 border-b border-[#e5dccf] p-4">

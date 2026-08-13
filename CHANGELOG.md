@@ -6,10 +6,19 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 
 ## Unreleased
 
+## [0.12.5] - 2026-08-13
+
 ### Changed
 
 - Docker releases now use an ARM64-first local staging pipeline that refreshes and sanitizes a consistent live-data snapshot, runs the exact distroless candidate at `127.0.0.1:8799`, requires explicit digest-bound approval, and postpones AMD64 construction until approval.
 - Docker Hub publication now promotes the exact locally smoke-tested and zero-vulnerability OCI candidates without rebuilding; GitHub Actions retains source CI and scheduled published-image monitoring but no longer writes release images.
+
+### Fixed
+
+- Registry-linked DDR3L memory now survives SQLite import and restart without being collapsed to DDR3; existing affected hosts and modules repair automatically while preserving their Registry links.
+- Single-slot hosts now render their installed memory across the full canvas-card width.
+- Equal semantic versions no longer present an update solely because their image revision labels differ.
+- Audit and Inspector now share one responsive drawer width and close each other when opened.
 
 ### Security
 

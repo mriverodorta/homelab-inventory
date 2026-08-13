@@ -156,7 +156,7 @@ describe('DockerHubUpdateChecker', () => {
   it.each([
     ['newer semantic version', '0.1.16', 'published-sha', '0.1.15', 'running-sha', 'available'],
     ['exact image match', '0.1.15', 'same-sha', '0.1.15', 'same-sha', 'current'],
-    ['same version rebuilt', '0.1.15', 'published-sha', '0.1.15', 'running-sha', 'available'],
+    ['same version rebuilt', '0.1.15', 'published-sha', '0.1.15', 'running-sha', 'current'],
     ['running image ahead', '0.1.14', 'published-sha', '0.1.15', 'running-sha', 'ahead'],
     ['unknown running revision', '0.1.15', 'published-sha', '0.1.15', 'unknown', 'current'],
     ['missing running revision', '0.1.15', 'published-sha', '0.1.15', null, 'current'],
@@ -295,7 +295,7 @@ describe('DockerHubUpdateChecker', () => {
   it.each([
     ['0.1.16', 'published-sha', '0.1.15', 'running-sha', 'available', true],
     ['0.1.15', 'same-sha', '0.1.15', 'same-sha', 'current', false],
-    ['0.1.15', 'published-sha', '0.1.15', 'running-sha', 'available', true],
+    ['0.1.15', 'published-sha', '0.1.15', 'running-sha', 'current', false],
     ['0.1.14', 'published-sha', '0.1.15', 'running-sha', 'ahead', false],
     ['0.1.15', 'published-sha', '0.1.15', 'unknown', 'current', false],
   ])('compares published image %s@%s with running %s@%s', async (

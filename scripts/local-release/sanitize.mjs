@@ -10,6 +10,11 @@ const FORBIDDEN_PATHS = [
   'stores/notification-secrets.json',
 ]
 const FORBIDDEN_CONTENT_DIRECTORIES = ['backups']
+const MIGRATION_BACKUP_DATABASES = Object.freeze({
+  core: 'core.sqlite',
+  telemetry: 'telemetry.sqlite',
+  catalog: 'catalog.sqlite',
+})
 
 const EMPTY_TABLES = [
   'agent_enrollment_codes',
@@ -105,14 +110,61 @@ async function directoryContainsFiles(directory) {
   return false
 }
 
-export async function validateStagingData(dataDir) {
+async function sha256File(file) {
+  return createHash('sha256').update(await fs.readFile(file)).digest('hex')
+}
+
+async function validateGeneratedMigrationBackups(backupsDir) {
+  if (!await exists(backupsDir)) return
+  const rootEntries = await fs.readdir(backupsDir, { withFileTypes: true })
+  if (rootEntries.length === 0) return
+  for (const entry of rootEntries) {
+    if (entry.name === 'migrations' && entry.isDirectory()) continue
+    if (entry.isDirectory() && !await directoryContainsFiles(path.join(backupsDir, entry.name))) continue
+    throw new Error('Staging data retains forbidden content in backups.')
+  }
+  const migrationsDir = path.join(backupsDir, 'migrations')
+  if (!await exists(migrationsDir)) return
+  for (const entry of await fs.readdir(migrationsDir, { withFileTypes: true })) {
+    if (!entry.isDirectory() || !/^sqlite-upgrade-[0-9TZ-]+$/.test(entry.name)) {
+      throw new Error('Staging data retains forbidden content in backups.')
+    }
+    const directory = path.join(migrationsDir, entry.name)
+    const names = (await fs.readdir(directory)).sort()
+    const expectedNames = [...Object.values(MIGRATION_BACKUP_DATABASES), 'manifest.json'].sort()
+    if (JSON.stringify(names) !== JSON.stringify(expectedNames)) {
+      throw new Error(`Staging migration backup ${entry.name} contains unexpected files.`)
+    }
+    const manifest = JSON.parse(await fs.readFile(path.join(directory, 'manifest.json'), 'utf8'))
+    if (manifest?.version !== 1 || manifest?.kind !== 'sqlite-upgrade' || Number.isNaN(Date.parse(manifest?.createdAt))) {
+      throw new Error(`Staging migration backup ${entry.name} has an invalid manifest.`)
+    }
+    if (JSON.stringify(Object.keys(manifest.files ?? {}).sort()) !== JSON.stringify(Object.keys(MIGRATION_BACKUP_DATABASES).sort())) {
+      throw new Error(`Staging migration backup ${entry.name} has an invalid database set.`)
+    }
+    for (const [database, file] of Object.entries(MIGRATION_BACKUP_DATABASES)) {
+      const target = path.join(directory, file)
+      const fileEntry = manifest.files[database]
+      const metadata = await fs.lstat(target)
+      if (!metadata.isFile() || fileEntry?.file !== file || fileEntry?.sizeBytes !== metadata.size
+        || !/^[0-9a-f]{64}$/.test(fileEntry?.sha256) || fileEntry.sha256 !== await sha256File(target)) {
+        throw new Error(`Staging migration backup ${entry.name} failed verification for ${file}.`)
+      }
+    }
+  }
+}
+
+export async function validateStagingData(dataDir, { allowGeneratedMigrationBackups = false } = {}) {
   const corePath = path.join(dataDir, 'databases', 'homelab-inventory.sqlite')
   if (!await exists(corePath)) throw new Error('Staging core database is missing.')
   for (const relative of FORBIDDEN_PATHS) {
     if (await exists(path.join(dataDir, relative))) throw new Error(`Staging data retains forbidden path ${relative}.`)
   }
   for (const relative of FORBIDDEN_CONTENT_DIRECTORIES) {
-    if (await directoryContainsFiles(path.join(dataDir, relative))) {
+    const directory = path.join(dataDir, relative)
+    if (allowGeneratedMigrationBackups) {
+      await validateGeneratedMigrationBackups(directory)
+    } else if (await directoryContainsFiles(directory)) {
       throw new Error(`Staging data retains forbidden content in ${relative}.`)
     }
   }

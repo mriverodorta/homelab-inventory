@@ -65,7 +65,10 @@ export function MemorySlotGrid({
   }
 
   return (
-    <div className="grid grid-cols-2 gap-1.5" data-memory-slot-count={slotCount}>
+    <div
+      className={`grid gap-1.5 ${slotCount === 1 ? 'grid-cols-1' : 'grid-cols-2'}`}
+      data-memory-slot-count={slotCount}
+    >
       {Array.from({ length: slotCount }, (_, position) => {
         const assignment = byPosition.get(position)
         return (

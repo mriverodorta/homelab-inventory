@@ -67,4 +67,37 @@ describe('staging sanitization', () => {
     await fs.writeFile(path.join(root, 'backups', 'user', 'leaked.hli'), 'private')
     await expect(validateStagingData(root)).rejects.toThrow('forbidden content in backups')
   })
+
+  test('allows only verified migration backups during the post-start staging check', async () => {
+    const root = await fixture()
+    await sanitizeStagingData(root)
+    const directory = path.join(root, 'backups', 'migrations', 'sqlite-upgrade-2026-08-13T20-51-36-953Z')
+    await fs.mkdir(directory, { recursive: true })
+    const files = {}
+    for (const [name, file] of Object.entries({ core: 'core.sqlite', telemetry: 'telemetry.sqlite', catalog: 'catalog.sqlite' })) {
+      const body = Buffer.from(`${name}-database`)
+      await fs.writeFile(path.join(directory, file), body)
+      files[name] = {
+        file,
+        sizeBytes: body.length,
+        sha256: new Bun.CryptoHasher('sha256').update(body).digest('hex'),
+      }
+    }
+    await fs.writeFile(path.join(directory, 'manifest.json'), JSON.stringify({
+      version: 1,
+      kind: 'sqlite-upgrade',
+      createdAt: '2026-08-13T20:51:36.953Z',
+      files,
+    }))
+    await fs.mkdir(path.join(root, 'backups', 'user', '.restore'), { recursive: true })
+
+    await expect(validateStagingData(root)).rejects.toThrow('forbidden content in backups')
+    await expect(validateStagingData(root, { allowGeneratedMigrationBackups: true })).resolves.toMatchObject({
+      fingerprint: expect.any(String),
+    })
+
+    await fs.writeFile(path.join(directory, 'core.sqlite'), 'tampered')
+    await expect(validateStagingData(root, { allowGeneratedMigrationBackups: true }))
+      .rejects.toThrow('failed verification for core.sqlite')
+  })
 })

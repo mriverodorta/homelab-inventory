@@ -70,7 +70,7 @@ export async function checkStaging(candidate, paths) {
     if (environment[name] !== expected) throw new Error(`Staging environment ${name} is not isolated.`)
   }
   const health = await waitForStagingHealth({ timeoutMs: 5_000 })
-  const data = await validateStagingData(paths.currentDataDir)
+  const data = await validateStagingData(paths.currentDataDir, { allowGeneratedMigrationBackups: true })
   const image = await run([
     'docker', 'image', 'inspect', '--format', '{{json .Config.Labels}}', candidate.image,
   ], { capture: true, log: false })
