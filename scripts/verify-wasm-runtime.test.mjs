@@ -20,6 +20,12 @@ async function runtimeFixture() {
 }
 
 describe('WASM runtime verifier', () => {
+  it('packages the staging policy imported by the production server', async () => {
+    const dockerfile = await fs.readFile(new URL('../Dockerfile', import.meta.url), 'utf8')
+
+    expect(dockerfile).toContain('server/staging-policy.mjs')
+  })
+
   it('accepts the minimal generated runtime', async () => {
     const root = await runtimeFixture()
     await expect(verifyWasmRuntime(root)).resolves.toMatchObject({ ok: true })
