@@ -3,6 +3,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { releasePaths, releaseRemoteConfig } from './local-release/config.mjs'
 import { buildOciCandidate, loadOciCandidate } from './local-release/oci.mjs'
+import { publishCandidate } from './local-release/publish.mjs'
 import { sanitizeStagingData } from './local-release/sanitize.mjs'
 import { activateIncomingData, createRemoteSnapshot } from './local-release/snapshot.mjs'
 import {
@@ -102,6 +103,21 @@ async function reset() {
   })
 }
 
+function option(name) {
+  const index = process.argv.indexOf(`--${name}`)
+  return index === -1 ? null : process.argv[index + 1]
+}
+
+async function publish() {
+  const channel = option('channel')
+  const dryRun = process.argv.includes('--dry-run')
+  if (!channel) throw new Error('publish requires --channel latest or --channel stable.')
+  await withReleaseLock(paths, async () => {
+    const [state, identity] = await Promise.all([readReleaseState(paths), currentReleaseIdentity(root)])
+    await publishCandidate({ root, paths, state, identity, channel, dryRun })
+  })
+}
+
 const command = process.argv[2]
 if (!command || ['help', '--help', '-h'].includes(command)) {
   usage()
@@ -117,7 +133,9 @@ if (!command || ['help', '--help', '-h'].includes(command)) {
   await stopStaging()
 } else if (command === 'reset') {
   await reset()
-} else if (['publish', 'warm-cache'].includes(command)) {
+} else if (command === 'publish') {
+  await publish()
+} else if (command === 'warm-cache') {
   throw new Error(`${command} is not available until its local release phase is installed.`)
 } else {
   usage()

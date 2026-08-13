@@ -79,8 +79,9 @@ async function hashFiles(root, files) {
 }
 
 export async function currentReleaseIdentity(root) {
-  const [{ stdout: revision }, { stdout: trackedStatus }, { stdout: submoduleStatus }] = await Promise.all([
+  const [{ stdout: revision }, { stdout: branch }, { stdout: trackedStatus }, { stdout: submoduleStatus }] = await Promise.all([
     run(['git', 'rev-parse', 'HEAD'], { cwd: root, capture: true, log: false }),
+    run(['git', 'branch', '--show-current'], { cwd: root, capture: true, log: false }),
     run(['git', 'status', '--porcelain', '--untracked-files=no'], { cwd: root, capture: true, log: false }),
     run(['git', 'submodule', 'status', '--recursive'], { cwd: root, capture: true, log: false }),
   ])
@@ -90,6 +91,7 @@ export async function currentReleaseIdentity(root) {
     .digest('hex')
   return {
     revision,
+    branch,
     version: packageJson.version,
     trackedClean: trackedStatus === '',
     trackedStatus,

@@ -1,5 +1,6 @@
 import fs from 'node:fs/promises'
 import path from 'node:path'
+import { createHash } from 'node:crypto'
 import { run } from './process.mjs'
 
 export const RELEASE_BUILDER = 'homelab-release'
@@ -61,7 +62,14 @@ export async function buildOciCandidate({ root, paths, identity, architecture })
     version: identity.version,
     builtAt: new Date().toISOString(),
   }
+  candidate.archiveSha256 = createHash('sha256').update(await fs.readFile(build.archive)).digest('hex')
   await fs.writeFile(path.join(build.directory, 'receipt.json'), `${JSON.stringify(candidate, null, 2)}\n`, { mode: 0o600 })
+  return candidate
+}
+
+export async function validateCandidateArtifact(candidate) {
+  const digest = createHash('sha256').update(await fs.readFile(candidate.archive)).digest('hex')
+  if (digest !== candidate.archiveSha256) throw new Error(`The ${candidate.architecture} OCI candidate archive changed after validation.`)
   return candidate
 }
 
