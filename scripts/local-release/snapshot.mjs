@@ -46,7 +46,7 @@ export async function createRemoteSnapshot(config, paths, { root } = {}) {
       `docker cp ${JSON.stringify(remoteHelper)} "$cid:/tmp/${REMOTE_HELPER}"`,
       `docker exec "$cid" bun "/tmp/${REMOTE_HELPER}" /data /tmp/release-snapshot`,
       `docker cp "$cid:/tmp/release-snapshot/." ${JSON.stringify(`${remoteRoot}/snapshot`)}`,
-      `docker exec "$cid" bun -e 'const fs=await import("node:fs/promises"); await fs.rm("/tmp/release-snapshot",{recursive:true,force:true})'`,
+      `docker exec "$cid" bun -e 'const fs=await import("node:fs/promises"); await Promise.all([fs.rm("/tmp/release-snapshot",{recursive:true,force:true}),fs.rm("/tmp/${REMOTE_HELPER}",{force:true})])'`,
       `chmod -R u+rwX,go-rwx ${JSON.stringify(`${remoteRoot}/snapshot`)}`,
     ].join('; ')
     await run(['ssh', config.host, command])

@@ -1,8 +1,20 @@
 #!/usr/bin/env bun
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { releasePaths } from './local-release/config.mjs'
-import { currentReleaseIdentity, readReleaseState } from './local-release/state.mjs'
+import { releasePaths, releaseRemoteConfig } from './local-release/config.mjs'
+import { buildOciCandidate, loadOciCandidate } from './local-release/oci.mjs'
+import { sanitizeStagingData } from './local-release/sanitize.mjs'
+import { activateIncomingData, createRemoteSnapshot } from './local-release/snapshot.mjs'
+import {
+  assertIdentityMatches,
+  currentReleaseIdentity,
+  emptyReleaseState,
+  readReleaseState,
+  withReleaseLock,
+  writeReleaseState,
+} from './local-release/state.mjs'
+import { checkStaging, createApproval, deployStaging, stagingLogs, stopStaging } from './local-release/staging.mjs'
+import { validateLoadedCandidate } from './local-release/validate-image.mjs'
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const paths = releasePaths()
@@ -37,12 +49,75 @@ async function status() {
   }, null, 2))
 }
 
+async function prepare() {
+  await withReleaseLock(paths, async () => {
+    const identity = await currentReleaseIdentity(root)
+    if (!identity.trackedClean) throw new Error(`Tracked worktree changes prevent release:\n${identity.trackedStatus}`)
+    let state = { ...emptyReleaseState(), phase: 'snapshotting', identity }
+    state = await writeReleaseState(paths, state)
+    const snapshot = await createRemoteSnapshot(releaseRemoteConfig(), paths, { root })
+    state = await writeReleaseState(paths, { ...state, phase: 'sanitizing', snapshot })
+    const sanitizedData = await sanitizeStagingData(paths.incomingDataDir)
+    await activateIncomingData(paths)
+    state = await writeReleaseState(paths, { ...state, phase: 'building-arm64', sanitizedData })
+    const built = await buildOciCandidate({ root, paths, identity, architecture: 'arm64' })
+    await loadOciCandidate(built)
+    const arm64 = await validateLoadedCandidate(built)
+    state = await writeReleaseState(paths, {
+      ...state,
+      phase: 'staging',
+      candidates: { ...state.candidates, arm64 },
+    })
+    await deployStaging(arm64, paths)
+    const staging = await checkStaging(arm64, paths)
+    await writeReleaseState(paths, { ...state, phase: 'awaiting-approval', staging })
+    console.log(`\nARM64 staging is ready at http://127.0.0.1:8799 for revision ${identity.revision}.`)
+  })
+}
+
+async function approve() {
+  await withReleaseLock(paths, async () => {
+    const [state, identity] = await Promise.all([readReleaseState(paths), currentReleaseIdentity(root)])
+    assertIdentityMatches(state.identity, identity)
+    if (state.phase !== 'awaiting-approval' || !state.candidates.arm64) {
+      throw new Error('No ARM64 staging candidate is awaiting approval.')
+    }
+    const staging = await checkStaging(state.candidates.arm64, paths)
+    const approval = createApproval({
+      identity,
+      candidate: state.candidates.arm64,
+      snapshot: state.snapshot,
+      sanitizedData: state.sanitizedData,
+      check: staging,
+    })
+    await writeReleaseState(paths, { ...state, phase: 'approved', staging, approval })
+    console.log(`Approved ARM64 candidate ${state.candidates.arm64.digest}.`)
+  })
+}
+
+async function reset() {
+  await withReleaseLock(paths, async () => {
+    await stopStaging()
+    await writeReleaseState(paths, emptyReleaseState())
+  })
+}
+
 const command = process.argv[2]
 if (!command || ['help', '--help', '-h'].includes(command)) {
   usage()
 } else if (command === 'status') {
   await status()
-} else if (['prepare', 'approve', 'publish', 'logs', 'stop', 'reset', 'warm-cache'].includes(command)) {
+} else if (command === 'prepare') {
+  await prepare()
+} else if (command === 'approve') {
+  await approve()
+} else if (command === 'logs') {
+  await stagingLogs()
+} else if (command === 'stop') {
+  await stopStaging()
+} else if (command === 'reset') {
+  await reset()
+} else if (['publish', 'warm-cache'].includes(command)) {
   throw new Error(`${command} is not available until its local release phase is installed.`)
 } else {
   usage()
