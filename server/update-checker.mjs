@@ -137,7 +137,7 @@ function validateLabels(labels, channel) {
     || !isNonEmptyString(version)
     || !isNonEmptyString(revision)
     || source !== SOURCE
-    || publishedChannel !== channel
+    || ![channel, 'release'].includes(publishedChannel)
   ) {
     throw new UpdateCheckError('image-metadata-invalid')
   }

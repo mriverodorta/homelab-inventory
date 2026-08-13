@@ -48,7 +48,7 @@ COPY --from=bun-toolchain /usr/lib/libstdc++.so.6 /usr/lib/libgcc_s.so.1 /usr/li
 WORKDIR /app
 ARG APP_VERSION=development
 ARG APP_REVISION=unknown
-ARG APP_CHANNEL=stable
+ARG APP_CHANNEL=release
 ENV NODE_ENV=production
 ENV PORT=8798
 ENV DATA_DIR=/data

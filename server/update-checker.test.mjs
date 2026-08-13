@@ -29,6 +29,18 @@ function requiredLabels({
   }
 }
 
+it('accepts channel-neutral release metadata for mutable channels', async () => {
+  const fetchImpl = createRegistryFetch({ labels: requiredLabels({ channel: 'release' }) })
+  const checker = new DockerHubUpdateChecker({
+    channel: 'latest',
+    tag: 'latest',
+    runningVersion: '0.1.15',
+    runningRevision: 'older',
+    fetchImpl,
+  })
+  await expect(checker.check({ force: true })).resolves.toMatchObject({ errorCode: null, channel: 'latest' })
+})
+
 function jsonResponse(payload, {
   contentType = 'application/json',
   headers = {},
