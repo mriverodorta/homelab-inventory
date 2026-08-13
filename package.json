@@ -35,6 +35,7 @@
     "db:migrations:check": "bun scripts/check-database-migrations.mjs",
     "hooks:install": "bun scripts/install-git-hooks.mjs",
     "security:container": "bun scripts/check-container-security.mjs",
+    "release:local": "bun scripts/local-release.mjs",
     "benchmark:engine": "bun scripts/benchmark-engine.mjs",
     "benchmark:sqlite": "bun scripts/benchmark-sqlite-persistence.mjs",
     "lint": "oxlint",
