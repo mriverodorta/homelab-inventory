@@ -39,6 +39,13 @@ describe('runtime configuration', () => {
     })
   })
 
+  it('forces update checks off in staging mode', () => {
+    expect(readRuntimeConfig({ APP_MODE: 'staging', UPDATE_CHECK_ENABLED: 'true' })).toMatchObject({
+      appMode: 'staging',
+      updateCheckEnabled: false,
+    })
+  })
+
   it.each([
     [{ APP_MODE: 'preview' }, 'APP_MODE'],
     [{ PORT: '0' }, 'PORT'],

@@ -13,6 +13,7 @@ const DEFAULT_REGISTRY_POLICY = Object.freeze({
   modeLocked: false,
   forcedMode: null,
   contributionsAllowed: true,
+  networkRefreshAllowed: true,
 })
 
 function normalizedRegistryPolicy(policy) {
@@ -21,6 +22,7 @@ function normalizedRegistryPolicy(policy) {
     modeLocked: typeof policy.forcedMode === 'string',
     forcedMode: policy.forcedMode ?? null,
     contributionsAllowed: policy.contributionsAllowed !== false,
+    networkRefreshAllowed: policy.networkRefreshAllowed !== false,
   }
 }
 
@@ -341,6 +343,7 @@ export function registerRegistryRoutes(app, {
 
   app.post('/api/registry/catalog/refresh', (request, response) => {
     run(withStore, request, response, async (store) => {
+      if (!policy.networkRefreshAllowed) throw demoPolicyError()
       try {
         if (catalogRefreshCoordinator) {
           await catalogRefreshCoordinator.refresh('manual')

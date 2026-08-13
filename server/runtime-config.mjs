@@ -40,8 +40,8 @@ export function readBooleanSetting(environment, name, fallback) {
 
 export function readRuntimeConfig(environment = process.env) {
   const appMode = configuredValue(environment, 'APP_MODE') ?? 'production'
-  if (!['production', 'demo'].includes(appMode)) {
-    throw new Error('APP_MODE must be production or demo.')
+  if (!['production', 'demo', 'staging'].includes(appMode)) {
+    throw new Error('APP_MODE must be production, demo, or staging.')
   }
 
   return {
@@ -60,6 +60,8 @@ export function readRuntimeConfig(environment = process.env) {
       maximum: 60_000,
     }),
     seedEmptyData: readBooleanSetting(environment, 'SEED_EMPTY_DATA', environment.NODE_ENV !== 'production'),
-    updateCheckEnabled: readBooleanSetting(environment, 'UPDATE_CHECK_ENABLED', true),
+    updateCheckEnabled: appMode === 'staging'
+      ? false
+      : readBooleanSetting(environment, 'UPDATE_CHECK_ENABLED', true),
   }
 }

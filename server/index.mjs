@@ -63,6 +63,7 @@ import { SqliteNotificationPersistence } from './notifications/sqlite-persistenc
 import { registerNotificationRoutes } from './notifications/routes.mjs'
 import { activateSqliteRuntime } from './persistence/runtime.ts'
 import { StartupProfiler } from './startup/startup-profiler.mjs'
+import { createStagingPolicy, stagingRegistryPolicy } from './staging-policy.mjs'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const root = path.resolve(__dirname, '..')
@@ -71,6 +72,7 @@ const runtimeConfig = readRuntimeConfig()
 const startupProfiler = new StartupProfiler({ enabled: process.env.STARTUP_PROFILE === '1' })
 const appMode = runtimeConfig.appMode
 const isDemoMode = appMode === 'demo'
+const stagingPolicy = createStagingPolicy(appMode)
 const port = runtimeConfig.port
 const dataDir = process.env.DATA_DIR ?? path.join(root, 'data')
 const demoSourceDir = process.env.DEMO_SOURCE_DIR ?? '/read-only-data'
@@ -205,11 +207,13 @@ if (isDemoMode) {
   telemetryRepository = sqliteRuntime.telemetryRepository
   sqlitePersistence = sqliteRuntime.persistence
   telemetryRetentionSchedule = startTelemetryRetentionSchedule(telemetryDatabase)
-  notificationRuntime = await createNotificationRuntime({
-    dataDir,
-    workspaceStore: store,
-    persistence: new SqliteNotificationPersistence({ database: store.core.database }),
-  })
+  notificationRuntime = stagingPolicy.notificationsDisabled
+    ? null
+    : await createNotificationRuntime({
+        dataDir,
+        workspaceStore: store,
+        persistence: new SqliteNotificationPersistence({ database: store.core.database }),
+      })
   backupService = new BackupService({
     store,
     appVersion: packageJson.version,
@@ -266,14 +270,18 @@ app.use('/api/agent/hosts/:hostType/:hostId/hardware-snapshots', createAgentV1Bo
 }))
 app.use(express.json({ limit: '10mb' }))
 
-const authRuntime = store ? await readAuthRuntimeConfig({
+const authRuntime = store && !stagingPolicy.authenticationDisabled ? await readAuthRuntimeConfig({
   dataDir,
   log: store.getAuthenticationState().bootstrapState.setupRequired ? console.log : () => {},
 }) : null
 if (authRuntime) authRuntime.backupEncryptionConfigured = Boolean(backupEnvironmentPassphrase)
-const sessionService = store ? new SessionService({ store, externalUrl: authRuntime.externalUrl }) : null
-const authorizationService = store ? await AuthorizationService.create({ readState: () => store.getAuthenticationState() }) : null
-const authService = store ? new AuthService({ store, sessionService, authorization: authorizationService, runtime: authRuntime }) : null
+const sessionService = store && authRuntime ? new SessionService({ store, externalUrl: authRuntime.externalUrl }) : null
+const authorizationService = store && authRuntime
+  ? await AuthorizationService.create({ readState: () => store.getAuthenticationState() })
+  : null
+const authService = store && authRuntime
+  ? new AuthService({ store, sessionService, authorization: authorizationService, runtime: authRuntime })
+  : null
 const accessService = store ? new AccessService({ store, authorization: authorizationService, sessions: sessionService }) : null
 const invitationService = accessService ? new InvitationService({ accessService, sessionService }) : null
 const oidcService = store ? new OidcService({ store, authService, invitationService, runtime: authRuntime }) : null
@@ -283,20 +291,20 @@ registerAuthenticationRoutes(app, {
   service: authService,
   oidcService,
   authorization: authorizationService,
-  demo: isDemoMode,
+  demo: isDemoMode || stagingPolicy.authenticationDisabled,
 })
-app.use(createAuthenticationGuard({ service: authService, demo: isDemoMode }))
-app.use(createAuthorizationGuard({ service: authService, authorization: authorizationService, demo: isDemoMode }))
+app.use(createAuthenticationGuard({ service: authService, demo: isDemoMode || stagingPolicy.authenticationDisabled }))
+app.use(createAuthorizationGuard({ service: authService, authorization: authorizationService, demo: isDemoMode || stagingPolicy.authenticationDisabled }))
 registerAccessRoutes(app, {
   access: accessService,
   invitations: invitationService,
   sessions: sessionService,
-  demo: isDemoMode,
+  demo: isDemoMode || stagingPolicy.authenticationDisabled,
 })
-registerAgentReleaseRoutes(app, agentReleaseService, { disabled: isDemoMode })
-registerAgentRoutes(app, store, { disabled: isDemoMode, releaseService: agentReleaseService })
+registerAgentReleaseRoutes(app, agentReleaseService, { disabled: isDemoMode || stagingPolicy.agentsDisabled })
+registerAgentRoutes(app, store, { disabled: isDemoMode || stagingPolicy.agentsDisabled, releaseService: agentReleaseService })
 registerAgentV1Routes(app, store, {
-  disabled: isDemoMode,
+  disabled: isDemoMode || stagingPolicy.agentsDisabled,
   releaseService: agentReleaseService,
   heartbeatSink: telemetryRepository
     ? async (heartbeat) => {
@@ -322,7 +330,7 @@ registerNotificationRoutes(app, {
   vault: notificationRuntime?.vault ?? null,
   incidentManager: notificationRuntime?.incidentManager ?? null,
   deliveryCoordinator: notificationRuntime?.deliveryCoordinator ?? null,
-  demo: isDemoMode,
+  demo: isDemoMode || stagingPolicy.notificationsDisabled,
 })
 notificationRuntime?.start()
 
@@ -372,7 +380,7 @@ registerUpdateRoutes(app, {
   releaseNotes: RELEASE_NOTES,
 })
 
-const installationIdentity = !isDemoMode
+const installationIdentity = !isDemoMode && !stagingPolicy.registryIdentityDisabled
   ? new InstallationIdentityService({ dataDir, officialOrigin: registryOrigin })
   : null
 const contributionDelivery = installationIdentity
@@ -445,11 +453,11 @@ registerRegistryRoutes(app, {
   catalogStatusService,
   registryPolicy: isDemoMode
     ? { forcedMode: 'connected', contributionsAllowed: false }
-    : undefined,
+    : stagingRegistryPolicy(stagingPolicy),
 })
-catalogRefreshCoordinator?.start()
+if (!stagingPolicy.registryNetworkRefreshDisabled) catalogRefreshCoordinator?.start()
 catalogStatusService?.start()
-const backupSchedule = backupScheduler?.start()
+const backupSchedule = stagingPolicy.scheduledBackupsDisabled ? null : backupScheduler?.start()
 registerProjectRoutes(app, { withStore })
 registerWorkspaceRoutes(app, { withStore })
 registerRoutingCacheRoutes(app, { withStore })
@@ -482,11 +490,11 @@ const updateCheckSchedule = startUpdateCheckSchedule({
   checker: updateChecker,
   store,
 })
-if (contributionDelivery && store) contributionDelivery.start(store)
+if (contributionDelivery && store && !stagingPolicy.registryContributionsDisabled) contributionDelivery.start(store)
 
 app.get('/api/health', (_request, response) => {
   const health = applicationHealth({
-    mode: isDemoMode ? 'demo' : 'production',
+    mode: appMode,
     schemaVersion: isDemoMode ? null : store.getDatabaseStatus().schemaVersion,
     persistence: isDemoMode
       ? null

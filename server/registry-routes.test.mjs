@@ -56,6 +56,7 @@ describe('registry routes', () => {
       modeLocked: true,
       forcedMode: 'connected',
       contributionsAllowed: false,
+      networkRefreshAllowed: true,
     })
 
     const preference = await fetch(`${baseUrl}/api/registry/settings`, {
@@ -89,6 +90,21 @@ describe('registry routes', () => {
       expect(response.status).toBe(403)
       expect(await response.json()).toMatchObject({ code: 'demo-registry-policy' })
     }
+  })
+
+  it('keeps local catalog reads but blocks registry network refresh in staging', async () => {
+    const refresh = vi.fn(async () => ({ revision: 4 }))
+    const { baseUrl } = await createServer({
+      registryPolicy: { contributionsAllowed: false, networkRefreshAllowed: false },
+      catalogRefreshCoordinator: { refresh },
+    })
+
+    const state = await fetch(`${baseUrl}/api/registry`).then((response) => response.json())
+    expect(state.policy).toMatchObject({ contributionsAllowed: false, networkRefreshAllowed: false })
+
+    const response = await fetch(`${baseUrl}/api/registry/catalog/refresh`, { method: 'POST' })
+    expect(response.status).toBe(403)
+    expect(refresh).not.toHaveBeenCalled()
   })
 
   it('updates local registry preferences without changing the project revision', async () => {
