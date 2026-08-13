@@ -1,7 +1,9 @@
 import fs from 'node:fs/promises'
 import path from 'node:path'
 import { createHash } from 'node:crypto'
+import { startLocalRegistry, stopLocalRegistry } from './local-registry.mjs'
 import { run } from './process.mjs'
+import { ensurePinnedOras } from './tools.mjs'
 
 export const RELEASE_BUILDER = 'homelab-release'
 
@@ -73,8 +75,28 @@ export async function validateCandidateArtifact(candidate) {
   return candidate
 }
 
-export async function loadOciCandidate(candidate) {
-  await run(['docker', 'load', '--input', candidate.archive])
+export function localCandidateImportCommand({ oras, candidate, destination }) {
+  return [
+    oras, 'cp', '--from-oci-layout', '--to-plain-http', '--no-tty',
+    `${candidate.archive}@${candidate.digest}`, destination,
+  ]
+}
+
+export async function loadOciCandidate(candidate, paths) {
+  const oras = await ensurePinnedOras(paths)
+  const registry = await startLocalRegistry('homelab-inventory-candidate-registry')
+  const destination = `${registry.repository}:candidate-${candidate.revision.slice(0, 12)}-${candidate.architecture}`
+  try {
+    await run(localCandidateImportCommand({ oras, candidate, destination }))
+    const remote = await run(['docker', 'buildx', 'imagetools', 'inspect', destination], { capture: true, log: false })
+    if (!remote.stdout.includes(candidate.digest)) {
+      throw new Error('The local candidate registry did not retain the immutable OCI digest.')
+    }
+    await run(['docker', 'pull', '--platform', candidate.platform, destination])
+    await run(['docker', 'tag', destination, candidate.image])
+  } finally {
+    await stopLocalRegistry(registry)
+  }
   const { stdout } = await run(['docker', 'image', 'inspect', '--format', '{{json .Config.Labels}}', candidate.image], { capture: true })
   const labels = JSON.parse(stdout)
   if (

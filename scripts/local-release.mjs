@@ -64,7 +64,7 @@ async function prepare() {
     await activateIncomingData(paths)
     state = await writeReleaseState(paths, { ...state, phase: 'building-arm64', sanitizedData })
     const built = await buildOciCandidate({ root, paths, identity, architecture: 'arm64' })
-    await loadOciCandidate(built)
+    await loadOciCandidate(built, paths)
     const arm64 = await validateLoadedCandidate(built)
     state = await writeReleaseState(paths, {
       ...state,

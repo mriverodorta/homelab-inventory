@@ -1,6 +1,7 @@
 import fs from 'node:fs/promises'
 import path from 'node:path'
 import { createBranchReleasePlan } from '../release-plan.mjs'
+import { startLocalRegistry, stopLocalRegistry } from './local-registry.mjs'
 import { buildOciCandidate, loadOciCandidate, validateCandidateArtifact } from './oci.mjs'
 import { run } from './process.mjs'
 import { assertIdentityMatches, writeReleaseState } from './state.mjs'
@@ -8,7 +9,6 @@ import { ensurePinnedOras } from './tools.mjs'
 import { validateLoadedCandidate } from './validate-image.mjs'
 
 export const IMAGE_REPOSITORY = 'docker.io/mriverodorta/homelab-inventory'
-const LOCAL_REGISTRY_IMAGE = 'registry:2.8.3@sha256:a3d8aaa63ed8681a604f1dea0aa03f100d5895b6a58ace528858a7b332415373'
 
 function candidateTag(identity, architecture) {
   return `candidate-${identity.revision.slice(0, 12)}-${architecture}`
@@ -70,22 +70,6 @@ async function ensureImmutableTagAvailable(tag, identity) {
   if (verification.exitCode !== 0) throw new Error(`Immutable Docker tag ${tag} already exists with different release metadata.`)
 }
 
-async function startLocalRegistry() {
-  const name = `homelab-inventory-release-registry-${Date.now()}`
-  await run(['docker', 'run', '--detach', '--name', name, '--publish', '127.0.0.1::5000', LOCAL_REGISTRY_IMAGE])
-  const { stdout } = await run(['docker', 'port', name, '5000/tcp'], { capture: true, log: false })
-  const port = stdout.match(/:(\d+)$/)?.[1]
-  if (!port) throw new Error('Could not determine local release registry port.')
-  for (let attempt = 0; attempt < 30; attempt += 1) {
-    try {
-      const response = await fetch(`http://127.0.0.1:${port}/v2/`)
-      if (response.ok) return { name, repository: `127.0.0.1:${port}/homelab-inventory` }
-    } catch {}
-    await Bun.sleep(500)
-  }
-  throw new Error('Local dry-run registry did not become ready.')
-}
-
 async function verifyIndex(plan) {
   const { stdout } = await run(['docker', 'buildx', 'imagetools', 'inspect', '--raw', plan.finalTags[0]], { capture: true })
   const manifest = JSON.parse(stdout)
@@ -120,7 +104,7 @@ export async function publishCandidate({ root, paths, state, identity, channel, 
   let amd64 = state.candidates.amd64
   if (!amd64) {
     const built = await buildOciCandidate({ root, paths, identity, architecture: 'amd64' })
-    await loadOciCandidate(built)
+    await loadOciCandidate(built, paths)
     amd64 = await validateLoadedCandidate(built)
     next = await writeReleaseState(paths, {
       ...next,
@@ -173,6 +157,6 @@ export async function publishCandidate({ root, paths, state, identity, channel, 
       publication,
     })
   } finally {
-    if (local) await run(['docker', 'rm', '--force', local.name], { allowFailure: true, log: false })
+    await stopLocalRegistry(local)
   }
 }
