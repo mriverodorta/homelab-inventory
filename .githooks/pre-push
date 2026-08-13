@@ -12,6 +12,9 @@ while read -r local_ref local_sha remote_ref remote_sha; do
 done
 
 if [ "$scan_required" = true ]; then
-  echo "Running mandatory multi-architecture container security preflight..."
-  bun run security:container
+  echo "Verifying the mandatory local staged-release security receipt..."
+  if ! bun run release:local verify-push; then
+    echo "No current local release receipt was available; running the full security preflight..."
+    bun run security:container
+  fi
 fi

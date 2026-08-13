@@ -2,7 +2,8 @@
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { releasePaths, releaseRemoteConfig } from './local-release/config.mjs'
-import { buildOciCandidate, loadOciCandidate } from './local-release/oci.mjs'
+import { warmReleaseCache } from './local-release/cache.mjs'
+import { buildOciCandidate, loadOciCandidate, validateCandidateArtifact } from './local-release/oci.mjs'
 import { publishCandidate } from './local-release/publish.mjs'
 import { sanitizeStagingData } from './local-release/sanitize.mjs'
 import { activateIncomingData, createRemoteSnapshot } from './local-release/snapshot.mjs'
@@ -31,7 +32,8 @@ Commands:
   logs                     Show staging container logs
   stop                     Stop the staging container
   reset                    Remove incomplete local release state
-  warm-cache               Restore release build and scanner caches`)
+  warm-cache               Restore release build and scanner caches
+  verify-push              Verify the current two-platform security receipt`)
 }
 
 async function status() {
@@ -118,6 +120,20 @@ async function publish() {
   })
 }
 
+async function verifyPush() {
+  const [state, identity] = await Promise.all([readReleaseState(paths), currentReleaseIdentity(root)])
+  assertIdentityMatches(state.identity, identity)
+  if (!state.approval) throw new Error('No staging approval exists for this revision.')
+  for (const architecture of ['arm64', 'amd64']) {
+    const candidate = state.candidates[architecture]
+    if (!candidate || candidate.security !== 'passed' || candidate.smoke !== 'passed' || !candidate.validatedAt) {
+      throw new Error(`The ${architecture} zero-vulnerability validation receipt is missing.`)
+    }
+    await validateCandidateArtifact(candidate)
+  }
+  console.log(`Verified current local release receipt for ${identity.revision}.`)
+}
+
 const command = process.argv[2]
 if (!command || ['help', '--help', '-h'].includes(command)) {
   usage()
@@ -136,7 +152,9 @@ if (!command || ['help', '--help', '-h'].includes(command)) {
 } else if (command === 'publish') {
   await publish()
 } else if (command === 'warm-cache') {
-  throw new Error(`${command} is not available until its local release phase is installed.`)
+  await withReleaseLock(paths, async () => warmReleaseCache(paths))
+} else if (command === 'verify-push') {
+  await verifyPush()
 } else {
   usage()
   process.exitCode = 2
