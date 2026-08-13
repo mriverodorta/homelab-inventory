@@ -14,6 +14,7 @@ async function fixture() {
   await fs.mkdir(path.join(root, 'databases'), { recursive: true })
   await fs.mkdir(path.join(root, 'registry'), { recursive: true })
   await fs.mkdir(path.join(root, 'notifications'), { recursive: true })
+  await fs.mkdir(path.join(root, 'backups'), { recursive: true })
   const database = new Database(path.join(root, 'databases', 'homelab-inventory.sqlite'))
   database.exec(`
     PRAGMA foreign_keys=ON;
@@ -37,6 +38,7 @@ async function fixture() {
   database.close(false)
   await fs.writeFile(path.join(root, 'registry', 'installation-ed25519.pem'), 'private')
   await fs.writeFile(path.join(root, 'notifications', 'master-key'), 'private')
+  await fs.writeFile(path.join(root, 'backups', 'private-backup.hli'), 'private')
   return root
 }
 
@@ -53,5 +55,16 @@ describe('staging sanitization', () => {
     database.close(false)
     await expect(fs.stat(path.join(root, 'registry'))).rejects.toMatchObject({ code: 'ENOENT' })
     await expect(validateStagingData(root)).resolves.toMatchObject({ fingerprint: result.fingerprint })
+  })
+
+  test('allows empty runtime backup directories but rejects backup files', async () => {
+    const root = await fixture()
+    await sanitizeStagingData(root)
+    await fs.mkdir(path.join(root, 'backups', 'user', '.staging'), { recursive: true })
+
+    await expect(validateStagingData(root)).resolves.toMatchObject({ fingerprint: expect.any(String) })
+
+    await fs.writeFile(path.join(root, 'backups', 'user', 'leaked.hli'), 'private')
+    await expect(validateStagingData(root)).rejects.toThrow('forbidden content in backups')
   })
 })

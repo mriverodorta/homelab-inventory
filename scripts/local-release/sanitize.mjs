@@ -7,9 +7,9 @@ const FORBIDDEN_PATHS = [
   'registry',
   'notifications',
   'credentials',
-  'backups',
   'stores/notification-secrets.json',
 ]
+const FORBIDDEN_CONTENT_DIRECTORIES = ['backups']
 
 const EMPTY_TABLES = [
   'agent_enrollment_codes',
@@ -96,11 +96,25 @@ async function fingerprintDirectory(directory) {
   return hash.digest('hex')
 }
 
+async function directoryContainsFiles(directory) {
+  if (!await exists(directory)) return false
+  for (const entry of await fs.readdir(directory, { withFileTypes: true })) {
+    if (entry.isFile() || entry.isSymbolicLink()) return true
+    if (entry.isDirectory() && await directoryContainsFiles(path.join(directory, entry.name))) return true
+  }
+  return false
+}
+
 export async function validateStagingData(dataDir) {
   const corePath = path.join(dataDir, 'databases', 'homelab-inventory.sqlite')
   if (!await exists(corePath)) throw new Error('Staging core database is missing.')
   for (const relative of FORBIDDEN_PATHS) {
     if (await exists(path.join(dataDir, relative))) throw new Error(`Staging data retains forbidden path ${relative}.`)
+  }
+  for (const relative of FORBIDDEN_CONTENT_DIRECTORIES) {
+    if (await directoryContainsFiles(path.join(dataDir, relative))) {
+      throw new Error(`Staging data retains forbidden content in ${relative}.`)
+    }
   }
   const database = new Database(corePath)
   try {
@@ -125,6 +139,7 @@ export async function sanitizeStagingData(dataDir) {
   const database = new Database(corePath)
   try { sanitizeCore(database) } finally { database.close(false) }
   for (const relative of FORBIDDEN_PATHS) await fs.rm(path.join(dataDir, relative), { recursive: true, force: true })
+  for (const relative of FORBIDDEN_CONTENT_DIRECTORIES) await fs.rm(path.join(dataDir, relative), { recursive: true, force: true })
   for (const name of await fs.readdir(path.join(dataDir, 'stores')).catch(() => [])) {
     if (name.endsWith('.tmp')) await fs.rm(path.join(dataDir, 'stores', name), { force: true })
   }
