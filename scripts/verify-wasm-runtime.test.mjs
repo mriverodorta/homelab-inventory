@@ -21,7 +21,7 @@ async function runtimeFixture() {
 
 describe('WASM runtime verifier', () => {
   it('packages the staging policy imported by the production server', async () => {
-    const dockerfile = await fs.readFile(new URL('../Dockerfile', import.meta.url), 'utf8')
+    const dockerfile = await fs.readFile(path.resolve('Dockerfile'), 'utf8')
 
     expect(dockerfile).toContain('server/staging-policy.mjs')
   })
