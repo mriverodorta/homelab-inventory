@@ -189,11 +189,17 @@ const RELEASE_0_12_6_DETAILS: UnreleasedReleaseNotes = {
   ],
 }
 
-export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
+const RELEASE_0_12_7_DETAILS: UnreleasedReleaseNotes = {
   highlights: [],
   fixes: [
     'Assigned components and cable connections can now be removed when SQLite cascades their dependent topology rows, without a false missing-record error rolling back the change.',
   ],
+  notes: [],
+}
+
+export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
+  highlights: [],
+  fixes: [],
   notes: [],
 }
 
@@ -724,9 +730,16 @@ const RELEASE_0_2_1_DETAILS: UnreleasedReleaseNotes = {
 
 export const RELEASE_NOTES: ReleaseNoteEntry[] = [
   {
+    version: '0.12.7',
+    date: '2026-08-14',
+    channel: 'latest',
+    title: 'Reliable component and cable removal',
+    ...RELEASE_0_12_7_DETAILS,
+  },
+  {
     version: '0.12.6',
     date: '2026-08-13',
-    channel: 'latest',
+    channel: 'release',
     title: 'Patched Agent runtime and stricter release security',
     ...RELEASE_0_12_6_DETAILS,
   },
