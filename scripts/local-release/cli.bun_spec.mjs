@@ -18,4 +18,11 @@ describe('local release CLI', () => {
       options: ['--channel', 'latest', '--dry-run'],
     })
   })
+
+  test('recognizes candidate cleanup as a side-effecting command', () => {
+    expect(parseLocalReleaseCommand(['cleanup-candidates'])).toEqual({
+      command: 'cleanup-candidates',
+      options: [],
+    })
+  })
 })

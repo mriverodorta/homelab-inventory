@@ -85,7 +85,7 @@ bun run release:local publish --channel latest --dry-run
 bun run release:local publish --channel latest
 ```
 
-Approval binds the Git revision, source fingerprint, sanitized snapshot, ARM64 OCI digest, running container, and post-start data fingerprint. Publication then builds and scans AMD64 once, uploads the exact tested OCI archives without rebuilding, assembles the multi-platform index, and moves only `latest`. Run from `stable` with `--channel stable` to move `stable`, create immutable `X.Y.Z`, update `X.Y`, and finalize the matching Git tag and GitHub Release.
+Approval binds the Git revision, source fingerprint, sanitized snapshot, ARM64 OCI digest, running container, and post-start data fingerprint. Publication then builds and scans AMD64 once, uploads the exact tested OCI archives without rebuilding, assembles the multi-platform index, verifies it, and removes the temporary architecture candidate tags. Run from `stable` with `--channel stable` to move `stable`, create immutable `X.Y.Z`, update `X.Y`, and finalize the matching Git tag and GitHub Release.
 
 Useful recovery commands:
 
@@ -94,6 +94,7 @@ bun run release:local status
 bun run release:local logs
 bun run release:local stop
 bun run release:local reset
+bun run release:local cleanup-candidates
 ```
 
 Release state, staging data, OCI archives, receipts, and tools live under `~/Library/Application Support/Homelab Inventory Release`. Reusable BuildKit cache lives under `~/Library/Caches/homelab-inventory-release`. Both survive `~/bin/dclaim`; Docker images and the dedicated builder can be restored with `warm-cache`. None of these paths may be committed.

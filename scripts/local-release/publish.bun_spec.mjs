@@ -1,5 +1,12 @@
 import { describe, expect, test } from 'bun:test'
-import { assertPublicationReady, candidateUploadCommand, indexCreateCommand, publicationPlan, publicationWritePlan } from './publish.mjs'
+import {
+  assertPublicationReady,
+  candidateCleanupTags,
+  candidateUploadCommand,
+  indexCreateCommand,
+  publicationPlan,
+  publicationWritePlan,
+} from './publish.mjs'
 
 const identity = { branch: 'main', revision: 'a'.repeat(40), version: '0.12.4', sourceFingerprint: 'b'.repeat(64), trackedClean: true }
 const candidate = { archive: '/candidate.oci.tar', digest: `sha256:${'c'.repeat(64)}` }
@@ -31,6 +38,15 @@ describe('exact artifact publication', () => {
     expect(command.at(-2)).toBe(plan.arm64)
     expect(command.at(-1)).toBe(plan.amd64)
     expect(command).not.toContain('build')
+  })
+
+  test('cleans remote candidates after publication but skips disposable dry runs', () => {
+    const plan = publicationPlan({ channel: 'latest', identity })
+    expect(candidateCleanupTags(plan, { dryRun: false })).toEqual([
+      'candidate-aaaaaaaaaaaa-arm64',
+      'candidate-aaaaaaaaaaaa-amd64',
+    ])
+    expect(candidateCleanupTags(plan, { dryRun: true })).toEqual([])
   })
 
   test('does not rewrite an existing matching immutable stable tag', () => {

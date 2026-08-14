@@ -1,6 +1,7 @@
 import fs from 'node:fs/promises'
 import path from 'node:path'
 import { createBranchReleasePlan } from '../release-plan.mjs'
+import { cleanupDockerHubCandidateTags } from './docker-hub.mjs'
 import { startLocalRegistry, stopLocalRegistry } from './local-registry.mjs'
 import { buildOciCandidate, loadOciCandidate, validateCandidateArtifact } from './oci.mjs'
 import { run } from './process.mjs'
@@ -49,6 +50,11 @@ export function candidateUploadCommand({ oras, candidate, destination, plainHttp
     ...(plainHttp ? ['--to-plain-http'] : []),
     `${candidate.archive}@${candidate.digest}`, destination,
   ]
+}
+
+export function candidateCleanupTags(plan, { dryRun = false } = {}) {
+  if (dryRun) return []
+  return [plan.arm64, plan.amd64].map((reference) => reference.slice(reference.lastIndexOf(':') + 1))
 }
 
 export function indexCreateCommand(plan, { dryRun = false } = {}) {
@@ -142,6 +148,11 @@ export async function publishCandidate({ root, paths, state, identity, channel, 
     await run(candidateUploadCommand({ oras, candidate: amd64, destination: plan.amd64, plainHttp: dryRun }))
     await run(indexCreateCommand(writePlan))
     const index = await verifyIndex(writePlan)
+    const cleanupTags = candidateCleanupTags(plan, { dryRun })
+    const candidateCleanup = cleanupTags.length === 0
+      ? { skipped: true, deleted: [], remaining: [] }
+      : { skipped: false, ...await cleanupDockerHubCandidateTags({ tags: cleanupTags }) }
+    if (!dryRun) await verifyIndex(writePlan)
     if (!dryRun) {
       await run(['git', 'push', 'origin', `${identity.revision}:refs/heads/${plan.branch}`])
     }
@@ -153,6 +164,7 @@ export async function publishCandidate({ root, paths, state, identity, channel, 
       immutableTagReused: immutableTagExists,
       index,
       github,
+      candidateCleanup,
       publishedAt: new Date().toISOString(),
     }
     await fs.mkdir(paths.receiptsDir, { recursive: true, mode: 0o700 })

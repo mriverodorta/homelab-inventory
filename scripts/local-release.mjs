@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url'
 import { releasePaths, releaseRemoteConfig } from './local-release/config.mjs'
 import { parseLocalReleaseCommand } from './local-release/cli.mjs'
 import { warmReleaseCache } from './local-release/cache.mjs'
+import { cleanupDockerHubCandidateTags } from './local-release/docker-hub.mjs'
 import { buildOciCandidate, loadOciCandidate, validateCandidateArtifact } from './local-release/oci.mjs'
 import { publishCandidate } from './local-release/publish.mjs'
 import { sanitizeStagingData } from './local-release/sanitize.mjs'
@@ -34,7 +35,8 @@ Commands:
   stop                     Stop the staging container
   reset                    Remove incomplete local release state
   warm-cache               Restore release build and scanner caches
-  verify-push              Verify the current two-platform security receipt`)
+  verify-push              Verify the current two-platform security receipt
+  cleanup-candidates       Remove all temporary candidate tags from Docker Hub`)
 }
 
 async function status() {
@@ -135,6 +137,13 @@ async function verifyPush() {
   console.log(`Verified current local release receipt for ${identity.revision}.`)
 }
 
+async function cleanupCandidates() {
+  await withReleaseLock(paths, async () => {
+    const result = await cleanupDockerHubCandidateTags()
+    console.log(`Removed ${result.deleted.length} Docker Hub candidate tag(s).`)
+  })
+}
+
 const { command } = parseLocalReleaseCommand(process.argv.slice(2))
 if (command === 'help') {
   usage()
@@ -156,6 +165,8 @@ if (command === 'help') {
   await withReleaseLock(paths, async () => warmReleaseCache(paths))
 } else if (command === 'verify-push') {
   await verifyPush()
+} else if (command === 'cleanup-candidates') {
+  await cleanupCandidates()
 } else {
   usage()
   process.exitCode = 2
