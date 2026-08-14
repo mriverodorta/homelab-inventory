@@ -320,13 +320,22 @@ describe('legacy project projection', () => {
       }))))
       const corpus = JSON.parse(await readFile(resolve(import.meta.dir, '../../../../test/fixtures/catalog-import/oem/server-specs-inventory-server-v6.json'), 'utf8'))
       const snapshot = schema29ProductionShapeFixture()
-      snapshot.inventory.servers.push({ ...corpus.platformCases[0].item, id: 8 })
+      const server = structuredClone(corpus.platformCases[0].item)
+      server.compatibility.host.storageSlots[0].pcieGeneration = 4
+      server.compatibility.host.expansionSlots[0].slotType = 'PCIe x16'
+      snapshot.inventory.servers.push({ ...server, id: 8 })
       importLegacyCore({ database: handle.database, snapshot, identityPlan: buildCanonicalIdentityPlan(snapshot) })
 
       const host = buildLegacyProjectProjection({ database: handle.database, projectId: 1 }).items['server:8'].compatibility?.host
       expect(host?.cpu).toMatchObject({ socketCount: 2, populationModes: [1, 2] })
       expect(host?.memory).toMatchObject({ slots: 24, slotsPerCpu: 12, moduleTypes: ['LRDIMM', 'RDIMM'] })
-      expect(host?.storageSlots?.[0]).toMatchObject({ hotSwap: true, controllerSlotIds: [1], directConnect: false })
+      expect(host?.storageSlots?.[0]).toMatchObject({ pcieGeneration: 4, hotSwap: true, controllerSlotIds: [1], directConnect: false })
+      expect(host?.expansionSlots?.[0]).toMatchObject({
+        slotType: 'PCIe x16',
+        pcieGeneration: 3,
+        mechanicalLanes: 16,
+        electricalLanes: 16,
+      })
       expect(host?.controllerSlots?.[0]).toMatchObject({ id: 1, acceptedControllerKinds: ['hba', 'raid-controller'], dedicated: true })
       expect(host?.bootDeviceSlots?.[0]).toMatchObject({ controllerSlotId: 1, acceptedDeviceKinds: ['boot-controller', 'boot-storage'] })
       expect(host?.power).toMatchObject({ psuBayCount: 2, supportedWattagesWatts: [750, 1100], redundancyModes: ['1+0', '1+1'] })

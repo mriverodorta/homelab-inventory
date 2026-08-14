@@ -57,6 +57,7 @@ export type ExpansionSlotGroup = {
   label: string
   count: number
   interfaceFamily: ExpansionInterfaceFamily
+  slotType?: string
   pcieGeneration?: number
   mechanicalLanes?: number
   electricalLanes?: number

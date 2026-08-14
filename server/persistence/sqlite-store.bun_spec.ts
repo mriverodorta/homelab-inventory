@@ -3,6 +3,7 @@ import { mkdtemp, readFile, rm, stat } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { digestCatalogTemplate } from '../../packages/catalog-protocol/src/index.ts'
+import { planHostAllocations } from '../../shared/compatibility/index.mjs'
 import { CORE_MIGRATIONS } from './core/migrations/manifest.ts'
 import { schema29ProductionShapeFixture } from './fixtures/schema-29-production-shape.ts'
 import { buildCanonicalIdentityPlan } from './legacy/identity-plan.ts'
@@ -369,6 +370,147 @@ describe('SQLite Homelab Inventory store facade', () => {
       expect(database.query(`
         SELECT count(*) AS count FROM component_assignment_slots WHERE assignment_id = 3
       `).get()).toEqual({ count: 2 })
+    } finally {
+      store.close()
+    }
+  })
+
+  test('persists a compatible expansion slot when a GPU is removed and assigned again', async () => {
+    const store = await fixtureStore((snapshot) => {
+      snapshot.inventory.servers[0].compatibility.host.maxExpansionPowerWatts = 75
+      snapshot.inventory.servers[0].compatibility.host.expansionSlots = [{
+        id: 1,
+        key: 'pcie-slot',
+        label: 'PCIe slot',
+        count: 1,
+        interfaceFamily: 'pcie',
+        pcieGeneration: 3,
+        mechanicalLanes: 8,
+        electricalLanes: 8,
+        acceptedHeights: ['low-profile'],
+        maxSlotWidth: 1,
+        maxPowerWatts: 75,
+      }]
+      snapshot.inventory.gpus.push({
+        id: 1,
+        name: 'AMD Radeon RX 640',
+        manufacturer: 'AMD',
+        specs: { formFactor: 'Low Profile', slotWidth: 1, pcie: 'PCIe 3.0 x8' },
+        compatibility: {
+          requirements: {
+            expansion: {
+              interfaceFamily: 'pcie',
+              pcieGeneration: 3,
+              connectorLanes: 8,
+              minimumElectricalLanes: 8,
+              height: 'low-profile',
+              slotWidth: 1,
+              powerWatts: 50,
+            },
+          },
+        },
+      })
+      snapshot.project.compatibilityPolicy = { disabledHosts: [], ignoredWarningIds: [] }
+    })
+    try {
+      const assignedAt = '2026-08-14T12:00:00.000Z'
+      const candidate = {
+        id: 5,
+        serverId: 'server:7',
+        itemId: 'gpu:1',
+        type: 'gpu' as const,
+        assignedAt,
+      }
+      const plan = planHostAllocations({
+        ...store.getProject(),
+        assignments: [...store.getProject().assignments, candidate],
+      }, candidate.serverId)
+      const planned = plan.assignments.find((assignment) => assignment.id === candidate.id)!
+      expect(plan.results.find((result) => result.assignmentId === candidate.id)).toMatchObject({
+        status: 'compatible',
+        findings: [],
+      })
+      expect(planned.allocation).toEqual({
+        resourceType: 'expansion',
+        groupId: 1,
+        positions: [0],
+      })
+
+      const engineAssignment = {
+        id: candidate.id,
+        host: { item_type: 'server', id: 7 },
+        item: { item_type: 'gpu', id: 1 },
+        component_type: 'gpu',
+        assigned_at: assignedAt,
+        allocation: {
+          resource_type: planned.allocation!.resourceType,
+          group_id: planned.allocation!.groupId ?? null,
+          positions: planned.allocation!.positions,
+        },
+      }
+      let revision = store.getEngineRevision()
+      await store.applyEnginePatch({
+        baseRevision: revision,
+        patchSet: {
+          revision: ++revision,
+          forward: {
+            kind: 'patch-assignments',
+            payload: { upsert: [engineAssignment], remove_assignment_ids: [] },
+          },
+        },
+        responseBytes: Uint8Array.from([8]),
+      })
+
+      const persistedAllocation = () => store.core.database.query(`
+        SELECT assignment.resource_slot_id AS resourceSlotId,
+               slot.resource_slot_id AS assignedSlotId,
+               slot.host_item_id AS hostItemId,
+               resource.position
+        FROM component_assignments assignment
+        JOIN component_assignment_slots slot ON slot.assignment_id = assignment.id
+        JOIN host_resource_slots resource ON resource.id = slot.resource_slot_id
+        WHERE assignment.id = ?
+      `).get(candidate.id) as {
+        resourceSlotId: number
+        assignedSlotId: number
+        hostItemId: number
+        position: number
+      } | null
+      expect(persistedAllocation()).toMatchObject({
+        resourceSlotId: expect.any(Number),
+        assignedSlotId: expect.any(Number),
+        hostItemId: 1,
+        position: 1,
+      })
+      expect(persistedAllocation()!.resourceSlotId).toBe(persistedAllocation()!.assignedSlotId)
+
+      await store.applyEnginePatch({
+        baseRevision: revision,
+        patchSet: {
+          revision: ++revision,
+          forward: {
+            kind: 'patch-assignments',
+            payload: { upsert: [], remove_assignment_ids: [candidate.id] },
+          },
+        },
+        responseBytes: Uint8Array.from([9]),
+      })
+      expect(persistedAllocation()).toBeNull()
+
+      await store.applyEnginePatch({
+        baseRevision: revision,
+        patchSet: {
+          revision: ++revision,
+          forward: {
+            kind: 'patch-assignments',
+            payload: { upsert: [engineAssignment], remove_assignment_ids: [] },
+          },
+        },
+        responseBytes: Uint8Array.from([10]),
+      })
+      expect(persistedAllocation()).toMatchObject({ hostItemId: 1, position: 1 })
+      expect(store.getProject().assignments.find((assignment) => assignment.id === candidate.id)?.allocation)
+        .toEqual({ resourceType: 'expansion', resourceKey: 'pcie-slot', groupId: 1, positions: [0] })
     } finally {
       store.close()
     }

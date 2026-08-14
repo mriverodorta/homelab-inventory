@@ -153,13 +153,17 @@ function hostCompatibility(database: Database, itemId: number) {
   })
   const groups = all(database, `
     SELECT g.*, a.legacy_resource_key, a.legacy_resource_group_id,
-           s.pcie_generation, s.hot_swap, s.backplane, s.direct_connect,
-           e.interface_family, e.mechanical_lanes, e.electrical_lanes, e.max_slot_width,
+           s.pcie_generation AS storage_pcie_generation,
+           s.hot_swap, s.backplane, s.direct_connect,
+           e.pcie_generation AS expansion_pcie_generation,
+           e.interface_family, est.label AS expansion_slot_type,
+           e.mechanical_lanes, e.electrical_lanes, e.max_slot_width,
            e.max_power_mw, e.proprietary_riser, e.riser_capability, e.riser_group
     FROM host_resource_groups g
     JOIN resource_identity_aliases a ON a.resource_id = g.resource_identity_id
     LEFT JOIN storage_resource_groups s ON s.id = g.id
     LEFT JOIN expansion_resource_groups e ON e.id = g.id
+    LEFT JOIN expansion_slot_types est ON est.id = e.expansion_slot_type_id
     WHERE g.host_item_id = ? AND g.resource_type NOT IN ('cpu', 'memory', 'powerAdapter', 'psuBay', 'power')
     ORDER BY g.id
   `, itemId)
@@ -178,9 +182,9 @@ function hostCompatibility(database: Database, itemId: number) {
     if (group.resource_type === 'storage') {
       entry.interfaces = all(database, 'SELECT v.label FROM storage_resource_interfaces r JOIN storage_interfaces v ON v.id = r.interface_id WHERE r.resource_group_id = ? ORDER BY r.id', group.id).map((row) => row.label)
       entry.formFactors = all(database, `SELECT CASE WHEN v.key LIKE 'm2-%' THEN substr(v.key, 4) ELSE v.label END AS value FROM storage_resource_form_factors r JOIN storage_form_factors v ON v.id = r.form_factor_id WHERE r.resource_group_id = ? ORDER BY r.id`, group.id).map((row) => row.value)
-      Object.assign(entry, defined({ pcieGeneration: group.pcie_generation, hotSwap: group.hot_swap == null ? undefined : Boolean(group.hot_swap), backplane: group.backplane, directConnect: group.direct_connect == null ? undefined : Boolean(group.direct_connect) }))
+      Object.assign(entry, defined({ pcieGeneration: group.storage_pcie_generation, hotSwap: group.hot_swap == null ? undefined : Boolean(group.hot_swap), backplane: group.backplane, directConnect: group.direct_connect == null ? undefined : Boolean(group.direct_connect) }))
     }
-    if (group.resource_type === 'expansion') Object.assign(entry, defined({ interfaceFamily: group.interface_family, pcieGeneration: group.pcie_generation, mechanicalLanes: group.mechanical_lanes, electricalLanes: group.electrical_lanes, acceptedHeights: all(database, 'SELECT height FROM expansion_accepted_heights WHERE resource_group_id = ? ORDER BY id', group.id).map((row) => row.height), maxSlotWidth: group.max_slot_width, maxPowerWatts: group.max_power_mw == null ? undefined : group.max_power_mw / 1000, proprietaryRiser: group.proprietary_riser == null ? undefined : Boolean(group.proprietary_riser), riserCapability: group.riser_capability, riserGroup: group.riser_group }))
+    if (group.resource_type === 'expansion') Object.assign(entry, defined({ interfaceFamily: group.interface_family, slotType: group.expansion_slot_type, pcieGeneration: group.expansion_pcie_generation, mechanicalLanes: group.mechanical_lanes, electricalLanes: group.electrical_lanes, acceptedHeights: all(database, 'SELECT height FROM expansion_accepted_heights WHERE resource_group_id = ? ORDER BY id', group.id).map((row) => row.height), maxSlotWidth: group.max_slot_width, maxPowerWatts: group.max_power_mw == null ? undefined : group.max_power_mw / 1000, proprietaryRiser: group.proprietary_riser == null ? undefined : Boolean(group.proprietary_riser), riserCapability: group.riser_capability, riserGroup: group.riser_group }))
     if (group.resource_type === 'optionalModule' && acceptedKinds.length) entry.acceptedModuleKinds = acceptedKinds
     if (group.resource_type === 'controllerSlot') {
       const controller = one(database, 'SELECT * FROM controller_resource_groups WHERE id = ?', group.id)

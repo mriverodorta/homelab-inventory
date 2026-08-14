@@ -199,7 +199,9 @@ const RELEASE_0_12_7_DETAILS: UnreleasedReleaseNotes = {
 
 export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
   highlights: [],
-  fixes: [],
+  fixes: [
+    'SQLite compatibility projection now keeps storage and expansion PCIe generations distinct, so compatible GPUs, network cards, sound cards, and wireless cards use their recorded numeric slots instead of reporting that slot generation is missing.',
+  ],
   notes: [],
 }
 
