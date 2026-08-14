@@ -118,7 +118,7 @@ describe('CatalogUpdateCoordinator', () => {
       getRegistryUpdateGroups: vi.fn(() => [{ id: 'review:cpu-example:2' }]),
       getCatalogUpdates: vi.fn(() => [{ linkId: 1, templateKey: template.templateKey, availableRevision: 2 }]),
       evaluateCatalogUpdates: vi.fn(() => ({ projectRevisions: { 1: 7 }, evaluations: [{ linkId: 1 }] })),
-      commitCatalogUpdateRun: vi.fn(() => ({ applied: 1 })),
+      commitCatalogUpdateRun: vi.fn((input) => ({ applied: input.evaluations.length })),
     }
     const snapshotService = { templates: vi.fn(async () => [template]) }
     const coordinator = new CatalogUpdateCoordinator({
@@ -131,5 +131,41 @@ describe('CatalogUpdateCoordinator', () => {
     expect(snapshotService.templates).not.toHaveBeenCalled()
     await expect(coordinator.run({ force: true })).resolves.toEqual({ applied: 1 })
     expect(snapshotService.templates).toHaveBeenCalledOnce()
+  })
+
+  it('reuses a completed current-revision evaluation until links or revisions change', async () => {
+    const template = { templateKey: 'cpu-example', revision: 2, contentHash: 'a'.repeat(64) }
+    const updates = [{ linkId: 1, templateKey: template.templateKey, availableRevision: 2 }]
+    const groups = [{
+      id: 'review:cpu-example:2',
+      toRevision: 2,
+      items: [{ linkId: 1 }],
+    }]
+    const store = {
+      getRegistryState: () => ({
+        settings: { automaticSafeUpdates: true },
+        snapshot: { sourceId: 1, revision: 18 },
+        sources: [{ id: 1, kind: 'official-connected' }],
+      }),
+      getRegistryUpdateStatus: vi.fn(() => ({
+        state: 'completed', catalogRevision: 18, reviewCount: 1, blockedCount: 0, skippedCount: 0,
+      })),
+      getRegistryUpdateGroups: vi.fn(() => groups),
+      getCatalogUpdates: vi.fn(() => updates),
+      evaluateCatalogUpdates: vi.fn(() => ({ projectRevisions: { 1: 7 }, evaluations: updates })),
+      commitCatalogUpdateRun: vi.fn((input) => ({ applied: input.evaluations.length })),
+    }
+    const snapshotService = { templates: vi.fn(async () => [template]) }
+    const coordinator = new CatalogUpdateCoordinator({ store, snapshotService })
+
+    await expect(coordinator.run()).resolves.toMatchObject({ applied: 0, review: 1, groups })
+    expect(snapshotService.templates).not.toHaveBeenCalled()
+    expect(store.evaluateCatalogUpdates).not.toHaveBeenCalled()
+    expect(store.commitCatalogUpdateRun).not.toHaveBeenCalled()
+
+    updates.push({ linkId: 2, templateKey: template.templateKey, availableRevision: 2 })
+    await expect(coordinator.run()).resolves.toEqual({ applied: 2 })
+    expect(snapshotService.templates).toHaveBeenCalledOnce()
+    expect(store.commitCatalogUpdateRun).toHaveBeenCalledOnce()
   })
 })

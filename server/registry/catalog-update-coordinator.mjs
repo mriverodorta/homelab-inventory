@@ -43,6 +43,22 @@ export class CatalogUpdateCoordinator {
     }
     const updates = this.store.getCatalogUpdates().filter((update) => update.linkId)
     if (updates.length === 0) return { applied: 0, review: 0, blocked: 0, skipped: 0, groups: this.store.getRegistryUpdateGroups() }
+    if (!force && previousRun?.state === 'completed' && previousRun.catalogRevision === snapshot.revision) {
+      const groups = this.store.getRegistryUpdateGroups()
+      const evaluated = new Set(groups.flatMap((group) => (
+        group.items.map((item) => `${item.linkId}:${group.toRevision}`)
+      )))
+      if (updates.every((update) => evaluated.has(`${update.linkId}:${update.availableRevision}`))) {
+        return {
+          applied: 0,
+          review: previousRun.reviewCount,
+          blocked: previousRun.blockedCount,
+          skipped: previousRun.skippedCount,
+          groups,
+          run: previousRun,
+        }
+      }
+    }
     const templateKeys = [...new Set(updates.map((update) => update.templateKey))]
     const templates = typeof this.snapshotService.templates === 'function'
       ? await this.snapshotService.templates(templateKeys)
