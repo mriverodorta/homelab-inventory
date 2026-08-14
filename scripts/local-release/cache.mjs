@@ -3,7 +3,7 @@ import path from 'node:path'
 import { ensureReleaseBuilder } from './oci.mjs'
 import { run } from './process.mjs'
 import { ensurePinnedOras } from './tools.mjs'
-import { TRIVY_IMAGE } from './validate-image.mjs'
+import { refreshTrivyDatabase, TRIVY_IMAGE } from '../container-security/trivy.mjs'
 
 const PINNED_WARM_IMAGES = Object.freeze([
   'oven/bun:1.3.14-alpine@sha256:5acc90a93e91ff07bf72aa90a7c9f0fa189765aec90b47bdbf2152d2196383c0',
@@ -31,11 +31,7 @@ export async function warmReleaseCache(paths) {
   await ensurePinnedOras(paths)
   await ensureReleaseBuilder()
   for (const image of PINNED_WARM_IMAGES) await run(['docker', 'pull', '--quiet', image])
-  await run([
-    'docker', 'run', '--rm',
-    '--volume', 'homelab-inventory-trivy-cache:/root/.cache/',
-    TRIVY_IMAGE, 'image', '--download-db-only',
-  ])
+  await refreshTrivyDatabase(run)
   return { warmedAt: new Date().toISOString(), images: [...PINNED_WARM_IMAGES] }
 }
 

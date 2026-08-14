@@ -1,7 +1,9 @@
 #!/usr/bin/env bun
 
+import { verifyCurrentGoToolchain } from './container-security/go-toolchain-policy.mjs'
+import { refreshTrivyDatabase, trivyCommand } from './container-security/trivy.mjs'
+
 const ROOT = new URL('../', import.meta.url).pathname
-const TRIVY_IMAGE = 'aquasec/trivy:0.73.0@sha256:7cced7cae583819fc7806d4cbc0dbbc7cad18b99f7d3e235192e6da8c091045c'
 const PLATFORMS = ['linux/amd64', 'linux/arm64']
 const SEVERITIES = 'critical,high,medium,low,unspecified'
 
@@ -87,11 +89,7 @@ async function scanWithScout(image) {
 }
 
 async function scanWithTrivy(image) {
-  await run([
-    'docker', 'run', '--rm',
-    '--volume', '/var/run/docker.sock:/var/run/docker.sock',
-    '--volume', 'homelab-inventory-trivy-cache:/root/.cache/',
-    TRIVY_IMAGE,
+  await run(trivyCommand([
     'image',
     '--image-src', 'docker',
     '--scanners', 'vuln',
@@ -101,7 +99,7 @@ async function scanWithTrivy(image) {
     '--exit-code', '1',
     '--timeout', '15m',
     image,
-  ])
+  ], { dockerSocket: true }))
 }
 
 async function main() {
@@ -116,6 +114,9 @@ async function main() {
   if (!(await commandAvailable(['docker', 'scout', 'version']))) {
     throw new Error('Docker Scout is unavailable. Install or enable Docker Scout before pushing a release branch.')
   }
+
+  await verifyCurrentGoToolchain()
+  await refreshTrivyDatabase(run)
 
   const version = JSON.parse(await Bun.file(new URL('../package.json', import.meta.url)).text()).version
   const agentPin = JSON.parse(await Bun.file(new URL('../server/agent-release-pin.json', import.meta.url)).text())

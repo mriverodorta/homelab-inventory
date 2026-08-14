@@ -6,6 +6,16 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 
 ## Unreleased
 
+## [0.12.6] - 2026-08-13
+
+### Fixed
+
+- Rebuilt all embedded Agent binaries with Go 1.26.6, removing eight newly disclosed Go standard-library vulnerabilities from the production image.
+
+### Security
+
+- Release preflight now rejects a superseded pinned Go patch and refreshes Trivy vulnerability data before scanning exact ARM64 and AMD64 OCI candidates.
+
 ## [0.12.5] - 2026-08-13
 
 ### Changed

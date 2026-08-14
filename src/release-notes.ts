@@ -179,6 +179,16 @@ const RELEASE_0_12_5_DETAILS: UnreleasedReleaseNotes = {
   ],
 }
 
+const RELEASE_0_12_6_DETAILS: UnreleasedReleaseNotes = {
+  highlights: [],
+  fixes: [
+    'Embedded Linux and FreeBSD Agents are rebuilt with Go 1.26.6, removing eight newly disclosed Go standard-library vulnerabilities from the production image.',
+  ],
+  notes: [
+    'Release preflight now rejects a superseded Go patch and refreshes Trivy vulnerability data before scanning each exact OCI candidate.',
+  ],
+}
+
 export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
   highlights: [],
   fixes: [],
@@ -712,9 +722,16 @@ const RELEASE_0_2_1_DETAILS: UnreleasedReleaseNotes = {
 
 export const RELEASE_NOTES: ReleaseNoteEntry[] = [
   {
-    version: '0.12.5',
+    version: '0.12.6',
     date: '2026-08-13',
     channel: 'latest',
+    title: 'Patched Agent runtime and stricter release security',
+    ...RELEASE_0_12_6_DETAILS,
+  },
+  {
+    version: '0.12.5',
+    date: '2026-08-13',
+    channel: 'release',
     title: 'Reliable local releases and compatibility repairs',
     ...RELEASE_0_12_5_DETAILS,
   },
