@@ -15,9 +15,13 @@ function candidateTag(identity, architecture) {
   return `candidate-${identity.revision.slice(0, 12)}-${architecture}`
 }
 
-export function assertPublicationReady({ state, identity }) {
+export function assertPublicationReady({ state, identity, channel }) {
   assertIdentityMatches(state.identity, identity)
-  if (!state.approval || !['approved', 'building-amd64', 'publishing'].includes(state.phase)) {
+  const promotesPublishedLatest = channel === 'stable'
+    && state.phase === 'published'
+    && state.publication?.channel === 'latest'
+    && state.publication?.dryRun === false
+  if (!state.approval || (!['approved', 'building-amd64', 'publishing'].includes(state.phase) && !promotesPublishedLatest)) {
     throw new Error('The ARM64 staging candidate has not been approved.')
   }
   if (state.approval.candidateDigest !== state.candidates.arm64?.digest) {
@@ -111,7 +115,7 @@ async function finalizeGitHubRelease(plan, identity, { dryRun }) {
 }
 
 export async function publishCandidate({ root, paths, state, identity, channel, dryRun = false }) {
-  assertPublicationReady({ state, identity })
+  assertPublicationReady({ state, identity, channel })
   await validateCandidateArtifact(state.candidates.arm64)
   let next = await writeReleaseState(paths, { ...state, phase: 'building-amd64' })
   let amd64 = state.candidates.amd64

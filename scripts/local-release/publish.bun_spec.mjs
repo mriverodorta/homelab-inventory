@@ -66,9 +66,27 @@ describe('exact artifact publication', () => {
       candidates: { arm64: { digest: candidate.digest } },
       approval: { candidateDigest: candidate.digest },
     }
-    expect(() => assertPublicationReady({ state, identity })).not.toThrow()
+    expect(() => assertPublicationReady({ state, identity, channel: 'latest' })).not.toThrow()
     expect(() => assertPublicationReady({
-      state: { ...state, approval: { candidateDigest: 'different' } }, identity,
+      state: { ...state, approval: { candidateDigest: 'different' } }, identity, channel: 'latest',
     })).toThrow('no longer matches')
+  })
+
+  test('allows stable to promote an already published latest candidate only', () => {
+    const state = {
+      phase: 'published', identity,
+      candidates: { arm64: { digest: candidate.digest } },
+      approval: { candidateDigest: candidate.digest },
+      publication: { channel: 'latest', dryRun: false },
+    }
+
+    expect(() => assertPublicationReady({ state, identity, channel: 'stable' })).not.toThrow()
+    expect(() => assertPublicationReady({ state, identity, channel: 'latest' })).toThrow('has not been approved')
+    expect(() => assertPublicationReady({
+      state: { ...state, publication: { channel: 'latest', dryRun: true } }, identity, channel: 'stable',
+    })).toThrow('has not been approved')
+    expect(() => assertPublicationReady({
+      state: { ...state, publication: { channel: 'stable', dryRun: false } }, identity, channel: 'stable',
+    })).toThrow('has not been approved')
   })
 })
