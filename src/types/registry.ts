@@ -7,6 +7,7 @@ export type RegistrySettings = {
   mode: RegistryMode
   defaultInventorySource: InventorySourceTab
   automaticContributions: boolean
+  automaticSafeUpdates: boolean
   showRegistryLinkIndicators: boolean
   updatedAt: string | null
 }
@@ -15,6 +16,7 @@ export type RegistryPolicy = {
   modeLocked: boolean
   forcedMode: RegistryMode | null
   contributionsAllowed: boolean
+  automaticSafeUpdatesForced?: boolean
 }
 
 export type PrivateTemplate = {
@@ -233,6 +235,41 @@ export type CatalogVariantUpdateSummary = {
 
 export type CatalogReviewSummary = CatalogUpdateSummary | CatalogVariantUpdateSummary
 
+export type CatalogUpdateGroup = {
+  id: string
+  status: 'review' | 'applied' | 'declined'
+  templateKey: string
+  fromRevision: number
+  toRevision: number
+  classification: 'safe' | 'review-required' | 'blocked' | 'skipped'
+  reasons: string[]
+  changes: CatalogFieldChange[]
+  evaluatedAt: string
+  projects: Array<{ id: number; name: string }>
+  items: Array<{
+    linkId: number
+    itemType: string
+    itemId: number
+    itemName: string
+    projects: Array<{ id: number; name: string }>
+  }>
+}
+
+export type CatalogUpdateRunStatus = {
+  id: number
+  catalogRevision: number
+  state: 'running' | 'completed' | 'failed'
+  automatic: boolean
+  appliedCount: number
+  reviewCount: number
+  blockedCount: number
+  skippedCount: number
+  attemptCount: number
+  retryAfter: string | null
+  error: string | null
+  completedAt: string | null
+}
+
 export type CatalogFieldChange = {
   field: string
   current?: unknown
@@ -274,6 +311,7 @@ export const DEFAULT_REGISTRY_STATE: RegistryState = {
     mode: 'disabled',
     defaultInventorySource: 'catalog',
     automaticContributions: false,
+    automaticSafeUpdates: true,
     showRegistryLinkIndicators: false,
     updatedAt: null,
   },

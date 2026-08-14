@@ -206,9 +206,14 @@ const RELEASE_0_12_8_DETAILS: UnreleasedReleaseNotes = {
 }
 
 export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
-  highlights: [],
+  highlights: [
+    'Verified official catalog updates now apply automatically when compatibility, occupied slots, connected ports, assignments, and topology remain valid.',
+    'A permanent Registry updates toolbar action groups changes into Review, Applied, and Declined views for scalable catalog maintenance, with the latest run summarized in the Notification Center.',
+  ],
   fixes: [],
-  notes: [],
+  notes: [
+    'Automatic safe official updates are enabled by default and can be disabled from Registry settings. Updates are validated across every affected project; risky, blocked, or unprovable changes remain available for explicit group review.',
+  ],
 }
 
 const RELEASE_0_11_2_DETAILS: UnreleasedReleaseNotes = {

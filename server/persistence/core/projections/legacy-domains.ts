@@ -50,6 +50,7 @@ export function projectRegistryState(database: Database) {
       mode: settings?.mode ?? 'disabled',
       defaultInventorySource: settings?.default_inventory_source ?? 'catalog',
       automaticContributions: Boolean(settings?.automatic_contributions),
+      automaticSafeUpdates: settings?.automatic_safe_updates !== 0,
       showRegistryLinkIndicators: Boolean(settings?.show_link_indicators),
       updatedAt: iso(settings?.updated_at_ms),
     }),
@@ -89,6 +90,37 @@ export function projectRegistryState(database: Database) {
       updatedAt: iso(link.updated_at_ms),
       detachedAt: iso(link.detached_at_ms),
     })),
+    updateRuns: (database.query('SELECT * FROM registry_update_runs ORDER BY id').all() as Row[]).map((run) => defined({
+      id: run.id,
+      sourceId: run.source_id,
+      catalogRevision: run.catalog_revision,
+      state: run.state,
+      automatic: Boolean(run.automatic),
+      appliedCount: run.applied_count,
+      reviewCount: run.review_count,
+      blockedCount: run.blocked_count,
+      skippedCount: run.skipped_count,
+      attemptCount: run.attempt_count,
+      retryAfter: iso(run.retry_after_ms),
+      error: run.error,
+      startedAt: iso(run.started_at_ms),
+      completedAt: iso(run.completed_at_ms),
+    })),
+    updateEvaluations: (database.query('SELECT * FROM registry_update_evaluations ORDER BY id').all() as Row[]).map((evaluation) => defined({
+      id: evaluation.id,
+      runId: evaluation.run_id,
+      linkId: evaluation.link_id,
+      fromRevision: evaluation.from_revision,
+      toRevision: evaluation.to_revision,
+      targetContentHash: evaluation.target_content_hash,
+      classification: evaluation.classification,
+      decision: evaluation.decision,
+      reasons: parse(evaluation.reasons_json, []),
+      changes: parse(evaluation.changes_json, []),
+      decidedByUserId: evaluation.decided_by_user_id,
+      evaluatedAt: iso(evaluation.evaluated_at_ms),
+      decidedAt: iso(evaluation.decided_at_ms),
+    })),
     variantMatches: extended.variantMatches ?? [],
     contributionOutbox: extended.contributionOutbox ?? [],
     contributionLedger: extended.contributionLedger ?? [],
@@ -110,28 +142,34 @@ export function persistRegistryState(
   database.query(`
     INSERT INTO registry_settings (
       id, mode, default_inventory_source, automatic_contributions,
-      show_link_indicators, updated_at_ms
-    ) VALUES (1, ?, ?, ?, ?, ?)
+      automatic_safe_updates, show_link_indicators, updated_at_ms
+    ) VALUES (1, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(id) DO UPDATE SET
       mode = excluded.mode,
       default_inventory_source = excluded.default_inventory_source,
       automatic_contributions = excluded.automatic_contributions,
+      automatic_safe_updates = excluded.automatic_safe_updates,
       show_link_indicators = excluded.show_link_indicators,
       updated_at_ms = excluded.updated_at_ms
   `).run(
     settings.mode ?? 'disabled',
     settings.defaultInventorySource ?? 'catalog',
     Number(settings.mode === 'connected' && settings.automaticContributions === true),
+    Number(settings.automaticSafeUpdates !== false),
     Number(settings.showRegistryLinkIndicators === true),
     milliseconds(settings.updatedAt, now),
   )
-  database.query('DELETE FROM registry_links').run()
-  database.query('DELETE FROM registry_sources').run()
   const insertSource = database.query(`
     INSERT INTO registry_sources (
       id, kind, display_name, endpoint, trusted_key_id, enabled,
       last_checked_at_ms, last_success_at_ms, last_error, created_at_ms
     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(id) DO UPDATE SET
+      kind = excluded.kind, display_name = excluded.display_name,
+      endpoint = excluded.endpoint, trusted_key_id = excluded.trusted_key_id,
+      enabled = excluded.enabled, last_checked_at_ms = excluded.last_checked_at_ms,
+      last_success_at_ms = excluded.last_success_at_ms, last_error = excluded.last_error,
+      created_at_ms = excluded.created_at_ms
   `)
   for (const source of state.sources ?? []) {
     insertSource.run(
@@ -154,6 +192,16 @@ export function persistRegistryState(
       available_content_hash, product_family_json, variant_evidence_json,
       identity_aliases_json, state, linked_at_ms, updated_at_ms, detached_at_ms
     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(id) DO UPDATE SET
+      item_id = excluded.item_id, source_id = excluded.source_id,
+      template_key = excluded.template_key, imported_revision = excluded.imported_revision,
+      imported_content_hash = excluded.imported_content_hash,
+      imported_fingerprint_version = excluded.imported_fingerprint_version,
+      available_revision = excluded.available_revision, available_content_hash = excluded.available_content_hash,
+      product_family_json = excluded.product_family_json, variant_evidence_json = excluded.variant_evidence_json,
+      identity_aliases_json = excluded.identity_aliases_json, state = excluded.state,
+      linked_at_ms = excluded.linked_at_ms, updated_at_ms = excluded.updated_at_ms,
+      detached_at_ms = excluded.detached_at_ms
   `)
   for (const link of state.links ?? []) {
     insertLink.run(
@@ -174,6 +222,56 @@ export function persistRegistryState(
       milliseconds(link.updatedAt, now),
       milliseconds(link.detachedAt),
     )
+  }
+  const upsertRun = database.query(`
+    INSERT INTO registry_update_runs (id, source_id, catalog_revision, state, automatic, applied_count, review_count, blocked_count, skipped_count, attempt_count, retry_after_ms, error, started_at_ms, completed_at_ms)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(id) DO UPDATE SET source_id = excluded.source_id, catalog_revision = excluded.catalog_revision,
+      state = excluded.state, automatic = excluded.automatic, applied_count = excluded.applied_count,
+      review_count = excluded.review_count, blocked_count = excluded.blocked_count, skipped_count = excluded.skipped_count,
+      attempt_count = excluded.attempt_count, retry_after_ms = excluded.retry_after_ms,
+      error = excluded.error, started_at_ms = excluded.started_at_ms, completed_at_ms = excluded.completed_at_ms
+  `)
+  for (const run of state.updateRuns ?? []) upsertRun.run(
+    run.id, run.sourceId, run.catalogRevision, run.state, Number(run.automatic !== false),
+    run.appliedCount ?? 0, run.reviewCount ?? 0, run.blockedCount ?? 0, run.skippedCount ?? 0,
+    run.attemptCount ?? 0, milliseconds(run.retryAfter), run.error ?? null,
+    milliseconds(run.startedAt, now), milliseconds(run.completedAt),
+  )
+  const upsertEvaluation = database.query(`
+    INSERT INTO registry_update_evaluations (id, run_id, link_id, from_revision, to_revision, target_content_hash, classification, decision, reasons_json, changes_json, decided_by_user_id, evaluated_at_ms, decided_at_ms)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(id) DO UPDATE SET run_id = excluded.run_id, link_id = excluded.link_id,
+      from_revision = excluded.from_revision, to_revision = excluded.to_revision,
+      target_content_hash = excluded.target_content_hash, classification = excluded.classification,
+      decision = excluded.decision, reasons_json = excluded.reasons_json, changes_json = excluded.changes_json,
+      decided_by_user_id = excluded.decided_by_user_id, evaluated_at_ms = excluded.evaluated_at_ms,
+      decided_at_ms = excluded.decided_at_ms
+  `)
+  for (const evaluation of state.updateEvaluations ?? []) upsertEvaluation.run(
+    evaluation.id, evaluation.runId, evaluation.linkId, evaluation.fromRevision, evaluation.toRevision,
+    evaluation.targetContentHash, evaluation.classification, evaluation.decision,
+    JSON.stringify(evaluation.reasons ?? []), JSON.stringify(evaluation.changes ?? []),
+    evaluation.decidedByUserId && database.query('SELECT 1 FROM users WHERE id = ?').get(evaluation.decidedByUserId)
+      ? evaluation.decidedByUserId
+      : null,
+    milliseconds(evaluation.evaluatedAt, now), milliseconds(evaluation.decidedAt),
+  )
+  const evaluationIds = new Set((state.updateEvaluations ?? []).map((evaluation: Row) => evaluation.id))
+  for (const row of database.query('SELECT id FROM registry_update_evaluations').all() as Row[]) {
+    if (!evaluationIds.has(row.id)) database.query('DELETE FROM registry_update_evaluations WHERE id = ?').run(row.id)
+  }
+  const runIds = new Set((state.updateRuns ?? []).map((run: Row) => run.id))
+  for (const row of database.query('SELECT id FROM registry_update_runs').all() as Row[]) {
+    if (!runIds.has(row.id)) database.query('DELETE FROM registry_update_runs WHERE id = ?').run(row.id)
+  }
+  const linkIds = new Set((state.links ?? []).map((link: Row) => link.id))
+  for (const row of database.query('SELECT id FROM registry_links').all() as Row[]) {
+    if (!linkIds.has(row.id)) database.query('DELETE FROM registry_links WHERE id = ?').run(row.id)
+  }
+  const sourceIds = new Set((state.sources ?? []).map((source: Row) => source.id))
+  for (const row of database.query('SELECT id FROM registry_sources').all() as Row[]) {
+    if (!sourceIds.has(row.id)) database.query('DELETE FROM registry_sources WHERE id = ?').run(row.id)
   }
   putMetadata(database, 'legacy.registry-extended-state', {
     variantMatches: state.variantMatches ?? [],

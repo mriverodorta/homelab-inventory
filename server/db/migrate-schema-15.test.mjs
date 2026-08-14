@@ -26,6 +26,7 @@ describe('schema 14 to 15 registry migration', () => {
       mode: 'offline',
       defaultInventorySource: 'manual',
       automaticContributions: false,
+      automaticSafeUpdates: true,
       showRegistryLinkIndicators: false,
       updatedAt: '2026-07-26T12:00:00.000Z',
     })

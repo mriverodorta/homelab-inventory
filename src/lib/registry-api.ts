@@ -9,6 +9,8 @@ import type {
   CatalogSearchFilters,
   CatalogUpdatePreview,
   CatalogReviewSummary,
+  CatalogUpdateGroup,
+  CatalogUpdateRunStatus,
   RegistrySettings,
   RegistryState,
 } from '@/types/registry'
@@ -19,7 +21,7 @@ export function loadRegistryState(): Promise<RegistryState> {
 }
 
 export function updateRegistrySettings(
-  settings: Partial<Pick<RegistrySettings, 'mode' | 'defaultInventorySource' | 'automaticContributions' | 'showRegistryLinkIndicators'>>,
+  settings: Partial<Pick<RegistrySettings, 'mode' | 'defaultInventorySource' | 'automaticContributions' | 'automaticSafeUpdates' | 'showRegistryLinkIndicators'>>,
   expectedUpdatedAt?: string | null,
 ): Promise<RegistryState> {
   return apiRequest<RegistryState>('/api/registry/settings', {
@@ -143,8 +145,22 @@ export function createInventoryFromCatalog(
   })
 }
 
-export function loadCatalogUpdates(): Promise<{ updates: CatalogReviewSummary[] }> {
+export function loadCatalogUpdates(): Promise<{ updates: CatalogReviewSummary[]; groups: CatalogUpdateGroup[]; run: CatalogUpdateRunStatus | null }> {
   return apiRequest('/api/registry/updates')
+}
+
+export function retryCatalogUpdates(): Promise<{ groups: CatalogUpdateGroup[]; run: CatalogUpdateRunStatus | null }> {
+  return apiRequest('/api/registry/updates/retry', { method: 'POST', body: '{}' })
+}
+
+export function decideCatalogUpdateGroups(input: {
+  groups: Array<{ templateKey: string; toRevision: number }>
+  decision: 'applied' | 'declined' | 'reconsider'
+}): Promise<{ groups: CatalogUpdateGroup[] }> {
+  return apiRequest('/api/registry/update-groups/decision', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  })
 }
 
 export function selectCatalogVariant(variantMatchId: number, templateKey: string): Promise<{ updates: CatalogReviewSummary[] }> {

@@ -20,6 +20,13 @@ describe('catalog update service', () => {
     })
   })
 
+  it('includes physical type changes in the catalog diff', () => {
+    expect(catalogFieldDiff(
+      { type: 'server', name: 'Example host' },
+      { type: 'desktop', name: 'Example host' },
+    )).toEqual([{ field: 'type', current: 'server', next: 'desktop' }])
+  })
+
   it('preserves structured RAM requirements during catalog updates', () => {
     const current = {
       type: 'ram', name: 'Micron RAM', manufacturer: 'Micron', number: 'MTA18ASF2G72AZ-3G2R',

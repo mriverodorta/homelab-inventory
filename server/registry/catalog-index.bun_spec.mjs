@@ -14,6 +14,10 @@ describe('catalog sqlite index', () => {
     ] })
     expect(index.search({ query: 'core', type: 'cpu' })).toMatchObject({ total: 1, items: [{ templateKey: 'cpu-one-01' }] })
     expect(index.search({ manufacturer: 'kingston' })).toMatchObject({ total: 1, items: [{ type: 'ram' }] })
+    expect(index.getByKeys(['ram-one-01', 'missing', 'cpu-one-01', 'ram-one-01'])).toMatchObject([
+      { templateKey: 'ram-one-01' },
+      { templateKey: 'cpu-one-01' },
+    ])
   })
 
   it('stores and searches variant metadata independently for sibling hardware', async () => {

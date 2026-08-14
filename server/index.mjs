@@ -42,6 +42,7 @@ import {
   CatalogRefreshCoordinator,
   readCatalogRefreshInterval,
 } from './registry/catalog-refresh-coordinator.mjs'
+import { CatalogUpdateCoordinator } from './registry/catalog-update-coordinator.mjs'
 import { ContributionDeliveryService } from './registry/contribution-delivery.mjs'
 import { CatalogStatusService } from './registry/catalog-status-service.mjs'
 import { CatalogRuntime } from './registry/catalog-runtime.mjs'
@@ -401,12 +402,22 @@ const catalogStatusService = installationIdentity && store
 const catalogSnapshotService = store ? catalogRuntime.forRequest(store) : null
 if (store) await catalogRuntime.start(store)
 startupProfiler.mark('catalog')
+const catalogUpdateCoordinator = store
+  ? new CatalogUpdateCoordinator({
+      store,
+      snapshotService: catalogSnapshotService,
+      forceAutomatic: isDemoMode,
+    })
+  : null
 const catalogRefreshCoordinator = store
   ? new CatalogRefreshCoordinator({
       store,
       snapshotService: catalogSnapshotService,
       intervalMs: registryRefreshIntervalMs,
-      onRefresh: () => { void catalogStatusService?.trigger('catalog-activated') },
+      onRefresh: () => {
+        void catalogStatusService?.trigger('catalog-activated')
+        void catalogUpdateCoordinator?.run().catch(() => {})
+      },
     })
   : null
 if (backupService) {
@@ -450,12 +461,14 @@ registerRegistryRoutes(app, {
   deliveryService: contributionDelivery,
   snapshotServiceFactory: (currentStore) => catalogRuntime.forRequest(currentStore),
   catalogRefreshCoordinator,
+  catalogUpdateCoordinator,
   catalogStatusService,
   registryPolicy: isDemoMode
-    ? { forcedMode: 'connected', contributionsAllowed: false }
+    ? { forcedMode: 'connected', contributionsAllowed: false, automaticSafeUpdatesForced: true }
     : stagingRegistryPolicy(stagingPolicy),
 })
 if (!stagingPolicy.registryNetworkRefreshDisabled) catalogRefreshCoordinator?.start()
+void catalogUpdateCoordinator?.run().catch(() => {})
 catalogStatusService?.start()
 const backupSchedule = stagingPolicy.scheduledBackupsDisabled ? null : backupScheduler?.start()
 registerProjectRoutes(app, { withStore })

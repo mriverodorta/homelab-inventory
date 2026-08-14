@@ -108,6 +108,9 @@ export type WorkbenchCanvasProps = {
   updateStatusLoading: boolean
   canViewNotifications: boolean
   notificationCount: number
+  registryUpdateCount: number
+  registryUpdateSummary?: string
+  canViewRegistryUpdates: boolean
   desktopInventoryVisible: boolean
   inspectorOpen: boolean
   onSelect: (itemId: string) => void
@@ -143,6 +146,7 @@ export type WorkbenchCanvasProps = {
   onToggleDisplayCablesVisible: () => void
   onOpenSettings: () => void
   onOpenNotifications: () => void
+  onOpenRegistryUpdates: () => void
 }
 
 export function snapToGrid(value: number): number {

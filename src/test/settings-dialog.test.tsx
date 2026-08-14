@@ -266,6 +266,7 @@ describe('SettingsDialog', () => {
           mode: 'disabled',
           defaultInventorySource: 'catalog',
           automaticContributions: false,
+          automaticSafeUpdates: true,
           showRegistryLinkIndicators: false,
           updatedAt: null,
         },

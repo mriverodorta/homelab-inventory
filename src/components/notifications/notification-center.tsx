@@ -1,4 +1,5 @@
-import { Bell, Check, RefreshCw, TriangleAlert } from 'lucide-react'
+import { useQuery } from '@tanstack/react-query'
+import { Bell, Check, CloudDownload, RefreshCw, TriangleAlert } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
@@ -6,6 +7,7 @@ import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useNotificationIncidents, useNotificationMutations } from '@/hooks/use-notifications'
 import { usePermission } from '@/hooks/use-permission'
+import { loadCatalogUpdates } from '@/lib/registry-api'
 import type { NotificationIncidentPage } from '@/types/notifications'
 
 function relativeTime(value: string) {
@@ -50,11 +52,24 @@ function IncidentQueryResult({
   return <div><IncidentList data={data} active={active} canManage={canManage} />{query.hasNextPage ? <div className="border-t border-[#e8e1d6] p-4"><Button className="w-full" variant="outline" disabled={query.isFetchingNextPage} onClick={() => void query.fetchNextPage()}>{query.isFetchingNextPage ? <RefreshCw className="animate-spin" /> : null}{query.isFetchingNextPage ? 'Loading incidents' : 'Load more'}</Button></div> : null}</div>
 }
 
+function RegistryUpdateSummary({ enabled }: { enabled: boolean }) {
+  const query = useQuery({ queryKey: ['registry', 'updates'], queryFn: loadCatalogUpdates, enabled })
+  const run = query.data?.run
+  if (!run || (run.state === 'completed' && run.appliedCount + run.reviewCount + run.blockedCount + run.skippedCount === 0)) return null
+  const summary = run.state === 'failed'
+    ? `Catalog revision ${run.catalogRevision} could not be evaluated. Review the Registry updates dialog to retry.`
+    : `Applied ${run.appliedCount} verified ${run.appliedCount === 1 ? 'update' : 'updates'}. ${run.reviewCount + run.blockedCount} ${run.reviewCount + run.blockedCount === 1 ? 'update group requires' : 'update groups require'} review.`
+  return <div className="border-b border-[#e2dbcf] bg-[#f3f8f7] px-4 py-3">
+    <div className="flex items-start gap-3"><span className="flex size-8 shrink-0 items-center justify-center rounded-md bg-[#dcece8] text-[#315f55]"><CloudDownload className="size-4" /></span><div className="min-w-0"><p className="text-xs font-black text-[#20242c]">Registry catalog revision {run.catalogRevision}</p><p className="mt-1 text-xs leading-5 text-[#66716e]">{summary}</p></div></div>
+  </div>
+}
+
 export function NotificationCenter({ open, onOpenChange }: { open: boolean; onOpenChange(open: boolean): void }) {
   const canManage = usePermission('notifications.manage')
   const activeQuery = useNotificationIncidents(open, 'open')
   const historyQuery = useNotificationIncidents(open, 'history')
-  return <Sheet open={open} onOpenChange={onOpenChange}><SheetContent side="right" className="w-full gap-0 sm:max-w-[480px]"><SheetHeader className="border-b border-[#e2dbcf] pr-14"><SheetTitle className="text-lg font-black text-[#20242c]">Notification Center</SheetTitle><SheetDescription>Agent availability and selected resource incidents.</SheetDescription></SheetHeader>
+  return <Sheet open={open} onOpenChange={onOpenChange}><SheetContent side="right" className="w-full gap-0 sm:max-w-[480px]"><SheetHeader className="border-b border-[#e2dbcf] pr-14"><SheetTitle className="text-lg font-black text-[#20242c]">Notification Center</SheetTitle><SheetDescription>Agent incidents and the latest registry update run.</SheetDescription></SheetHeader>
+    <RegistryUpdateSummary enabled={open} />
     <Tabs defaultValue="active" className="min-h-0 flex-1 gap-0"><TabsList variant="line" className="mx-4 mt-2"><TabsTrigger value="active">Active</TabsTrigger><TabsTrigger value="history">History</TabsTrigger></TabsList><TabsContent value="active" className="min-h-0"><ScrollArea className="h-[calc(100dvh-6.75rem)]"><IncidentQueryResult query={activeQuery} active canManage={canManage} /></ScrollArea></TabsContent><TabsContent value="history" className="min-h-0"><ScrollArea className="h-[calc(100dvh-6.75rem)]"><IncidentQueryResult query={historyQuery} active={false} canManage={canManage} /></ScrollArea></TabsContent></Tabs>
   </SheetContent></Sheet>
 }

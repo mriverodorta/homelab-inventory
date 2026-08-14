@@ -54,7 +54,8 @@ describe('schema-29 core import', () => {
   })
 
   test('repairs collapsed DDR3L rows without changing the registry link', async () => {
-    const handle = await migratedDatabase(CORE_MIGRATIONS.length - 1)
+    const distinctDdr3lMigrationIndex = CORE_MIGRATIONS.findIndex((migration) => migration.id === '0013_distinct_ddr3l_memory')
+    const handle = await migratedDatabase(distinctDdr3lMigrationIndex)
     const snapshot = schema29ProductionShapeFixture()
     snapshot.inventory.servers[0].compatibility.host.memory.generations = ['DDR3L']
     snapshot.inventory.ram[0].specs.generation = 'DDR3L'

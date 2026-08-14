@@ -2,7 +2,7 @@ import type { Database } from 'bun:sqlite'
 import { dirname } from 'node:path'
 import type { ProjectPatch, TopologyEndpointRef } from '../../shared/engine/protocol.mjs'
 import { withCanonicalPowerPorts } from '../../shared/power-ports.mjs'
-import { planHostAllocations } from '../../shared/compatibility/index.mjs'
+import { evaluateProjectCompatibility, planHostAllocations } from '../../shared/compatibility/index.mjs'
 import type { ProjectState } from '../../src/types/inventory.ts'
 import { getReleaseNotesBetween } from '../../src/release-notes.ts'
 import {
@@ -34,6 +34,7 @@ import {
   projectLocalItemForCatalog,
 } from '../registry/local-catalog-mapping.mjs'
 import { catalogFieldDiff, mergeCatalogUpdate } from '../registry/update-service.mjs'
+import { classifyCatalogUpdate } from '../registry/catalog-update-policy.mjs'
 import { assertOnboardingState, createOnboardingState } from '../onboarding/model.mjs'
 import {
   finishExampleInDraft,
@@ -1216,9 +1217,10 @@ export class SqliteHomelabInventoryStore {
     return this.getProject()
   }
 
-  private prepareInventoryUpdate(rawRef: Row, input: Row) {
+  private prepareInventoryUpdate(rawRef: Row, input: Row, project: ProjectState = this.getProject()) {
     const ref = normalizeInventoryRef(rawRef)
-    const current = this.projectItem(ref.type, ref.id)
+    const current = project.items[`${ref.type}:${ref.id}`] as Row | undefined
+    if (!current) throw lifecycleError(`Inventory item ${ref.type}:${ref.id} was not found.`, 'inventory-item-not-found', 404)
     if (current.archivedAt) {
       throw lifecycleError('Restore the item before editing it.', 'inventory-item-archived', 409)
     }
@@ -1231,7 +1233,7 @@ export class SqliteHomelabInventoryStore {
         409,
       )
     }
-    const connectedPortIds = referencedPortIds(this.getProject(), ref)
+    const connectedPortIds = referencedPortIds(project, ref)
     for (const portId of connectedPortIds) {
       const previousPort = current.ports?.find((port: Row) => port.id === portId)
       const nextPort = record.ports?.find((port: Row) => port.id === portId)
@@ -1251,10 +1253,10 @@ export class SqliteHomelabInventoryStore {
     return { ref, record }
   }
 
-  private replaceInventoryRecord(ref: { type: string; id: number }, record: Row) {
+  private replaceInventoryRecord(ref: { type: string; id: number }, record: Row, projectId = this.projectId) {
     replaceLegacyInventoryItem({
       database: this.core.database,
-      projectId: this.projectId,
+      projectId,
       type: ref.type as InventoryType,
       item: record,
       itemId: this.resolveItem(ref.type, ref.id),
@@ -1390,6 +1392,7 @@ export class SqliteHomelabInventoryStore {
         mode,
         defaultInventorySource,
         showRegistryLinkIndicators: patch?.showRegistryLinkIndicators ?? draft.settings.showRegistryLinkIndicators,
+        automaticSafeUpdates: patch?.automaticSafeUpdates ?? draft.settings.automaticSafeUpdates,
         automaticContributions: mode === 'connected'
           ? patch?.automaticContributions ?? draft.settings.automaticContributions
           : false,
@@ -1669,6 +1672,461 @@ export class SqliteHomelabInventoryStore {
         (key) => key === 'name' || !['id', 'key', 'type', 'subtype', 'manufacturer', 'secondaryManufacturer', 'family', 'model', 'number', 'specs', 'ports', 'compatibility'].includes(key),
       ),
     }
+  }
+
+  evaluateCatalogUpdate(linkId: number, template: Row) {
+    const batch = this.evaluateCatalogUpdates([{ linkId, templateKey: template.templateKey }], [template])
+    if (batch.evaluations.length === 0) throw lifecycleError('Catalog update was not found.', 'catalog-update-not-found', 404)
+    return batch.evaluations[0]
+  }
+
+  private catalogUpdateProjectContexts(links: Row[]) {
+    const projectIdsByLinkId = new Map<number, number[]>()
+    const projectIds = new Set<number>()
+    for (const link of links) {
+      const itemId = this.resolveItem(link.itemType, link.itemId)
+      const rows = this.core.database.query(`
+        SELECT p.id
+        FROM projects p
+        JOIN inventory_items i ON i.id = ?
+        WHERE p.archived_at_ms IS NULL AND (
+          i.owner_project_id = p.id OR EXISTS (
+            SELECT 1 FROM project_inventory_memberships m
+            WHERE m.project_id = p.id AND m.item_id = i.id
+          )
+        )
+        ORDER BY p.id
+      `).all(itemId) as Array<{ id: number }>
+      const ids = rows.map((row) => row.id)
+      projectIdsByLinkId.set(link.id, ids)
+      for (const projectId of ids) projectIds.add(projectId)
+    }
+    const projects = new Map<number, ProjectState>()
+    for (const projectId of projectIds) {
+      const workbook = this.projects.getWorkbook(projectId)
+      const canvas = workbook.workspaces.find((workspace) => (
+        workspace.id === workbook.defaultWorkspaceId && workspace.type === 'canvas'
+      )) ?? workbook.workspaces.find((workspace) => workspace.type === 'canvas')
+      if (!canvas) throw lifecycleError(`Project ${projectId} has no active Canvas workspace.`, 'project-canvas-not-found', 409)
+      projects.set(projectId, this.getWorkspace(projectId, canvas.id))
+    }
+    return { projectIdsByLinkId, projects }
+  }
+
+  evaluateCatalogUpdates(updates: Row[], templates: Row[]) {
+    const registry = this.getRegistryState() as Row
+    const templateByKey = new Map(templates.map((template: Row) => [template.templateKey, template]))
+    const updateLinkIds = new Set(updates.map((update: Row) => update.linkId))
+    const links = registry.links.filter((link: Row) => updateLinkIds.has(link.id))
+    const { projectIdsByLinkId, projects } = this.catalogUpdateProjectContexts(links)
+    const proposals = links.flatMap((link: Row) => {
+      if (!updateLinkIds.has(link.id)) return []
+      const template = templateByKey.get(link.templateKey)
+      const itemKey = `${link.itemType}:${link.itemId}`
+      const projectIds = projectIdsByLinkId.get(link.id) ?? []
+      const current = projectIds.map((projectId) => projects.get(projectId)?.items[itemKey] as Row | undefined).find(Boolean)
+      if (!template || !current || template.revision !== link.availableRevision) return []
+      const nextItem = materializeCatalogItem(
+        mergeCatalogUpdate(projectLocalItemForCatalog(current, link.itemType), template.item, template.fingerprintVersion),
+        { usageRole: current.usageRole },
+      )
+      let validationError = null
+      const dependencyConflicts = []
+      for (const projectId of projectIds) {
+        const project = projects.get(projectId)!
+        try {
+          this.prepareInventoryUpdate({ type: link.itemType, id: link.itemId }, nextItem, project)
+        } catch (error) {
+          validationError ??= { code: error instanceof InventoryLifecycleError ? error.code : 'validation-failed' }
+        }
+        if (link.itemType === 'motherboard') {
+          dependencyConflicts.push(...motherboardCatalogUpdateConflicts(project, link.itemId, nextItem))
+        }
+      }
+      return [{
+        link,
+        template,
+        current,
+        nextItem,
+        projectIds,
+        validationError,
+        dependencyConflicts,
+        changes: catalogFieldDiff(projectLocalItemForCatalog(current, link.itemType), template.item, template.fingerprintVersion),
+      }]
+    })
+    const findingsByProject = new Map<number, { before: Row[]; after: Row[] }>()
+    for (const [projectId, project] of projects) {
+      const nextProject = structuredClone(project)
+      for (const proposal of proposals) {
+        if (proposal.projectIds.includes(projectId)) {
+          nextProject.items[`${proposal.link.itemType}:${proposal.link.itemId}`] = proposal.nextItem
+        }
+      }
+      findingsByProject.set(projectId, {
+        before: evaluateProjectCompatibility(project),
+        after: evaluateProjectCompatibility(nextProject),
+      })
+    }
+    const evaluations = proposals.map((proposal) => {
+      const itemKey = `${proposal.link.itemType}:${proposal.link.itemId}`
+      const beforeFindings = []
+      const afterFindings = []
+      for (const projectId of proposal.projectIds) {
+        const project = projects.get(projectId)!
+        const affectedHostIds = new Set((project.assignments ?? []).flatMap((assignment: Row) => {
+          if (assignment.serverId === itemKey) return [assignment.serverId]
+          return assignment.itemId === itemKey ? [assignment.serverId] : []
+        }))
+        const relevant = (result: Row) => result.itemId === itemKey || result.hostId === itemKey || affectedHostIds.has(result.hostId)
+        const findings = findingsByProject.get(projectId)!
+        beforeFindings.push(...findings.before.filter(relevant))
+        afterFindings.push(...findings.after.filter(relevant))
+      }
+      return {
+        linkId: proposal.link.id,
+        itemType: proposal.link.itemType,
+        itemId: proposal.link.itemId,
+        itemName: proposal.current.name,
+        templateKey: proposal.link.templateKey,
+        importedRevision: proposal.link.importedRevision,
+        availableRevision: proposal.template.revision,
+        state: proposal.link.state,
+        changes: proposal.changes,
+        dependencyConflicts: proposal.dependencyConflicts,
+        localFieldsPreserved: Object.keys(proposal.current).filter(
+          (key) => key === 'name' || !['id', 'key', 'type', 'subtype', 'manufacturer', 'secondaryManufacturer', 'family', 'model', 'number', 'specs', 'ports', 'compatibility'].includes(key),
+        ),
+        ...classifyCatalogUpdate({
+          changes: proposal.changes,
+          dependencyConflicts: proposal.dependencyConflicts,
+          beforeFindings,
+          afterFindings,
+          validationError: proposal.validationError,
+        }),
+        nextItem: proposal.nextItem,
+        targetContentHash: proposal.template.contentHash,
+      }
+    })
+    return {
+      projectRevision: projects.get(this.projectId)?.revision ?? this.getEngineRevision(),
+      projectRevisions: Object.fromEntries([...projects].map(([projectId, project]) => [projectId, project.revision])),
+      evaluations,
+    }
+  }
+
+  commitCatalogUpdateRun({ sourceId, catalogRevision, evaluations, templates, automatic = true, forceLinkIds = [], decidedByUserId = null, expectedProjectRevision = null, expectedProjectRevisions = null }: Row) {
+    const registry = this.getRegistryState() as Row
+    const expectedRevisions = expectedProjectRevisions
+      ? new Map(Object.entries(expectedProjectRevisions).map(([projectId, revision]) => [Number(projectId), Number(revision)]))
+      : expectedProjectRevision !== null ? new Map([[this.projectId, Number(expectedProjectRevision)]]) : new Map<number, number>()
+    for (const [projectId, revision] of expectedRevisions) {
+      const current = this.core.database.query('SELECT revision FROM projects WHERE id = ? AND archived_at_ms IS NULL').get(projectId) as Row | null
+      if (!current || current.revision !== revision) {
+        throw lifecycleError('Project changed while evaluating registry updates.', 'revision-conflict', 409)
+      }
+    }
+    const now = this.now()
+    const templateByKey = new Map((templates as Row[]).map((template) => [template.templateKey, template]))
+    const priorDecisions = new Map((this.core.database.query(`
+      SELECT e.link_id, e.to_revision, e.target_content_hash, e.decision
+      FROM registry_update_evaluations e
+      WHERE e.decision = 'declined'
+    `).all() as Row[]).map((row) => [`${row.link_id}:${row.to_revision}:${row.target_content_hash}`, row.decision]))
+    const forced = new Set(forceLinkIds as number[])
+    const applicable = (evaluations as Row[]).map((evaluation) => ({
+      ...evaluation,
+      decision: priorDecisions.has(`${evaluation.linkId}:${evaluation.availableRevision}:${evaluation.targetContentHash}`)
+        ? 'declined'
+        : forced.has(evaluation.linkId) && evaluation.classification !== 'blocked'
+          ? 'applied'
+          : evaluation.classification === 'safe' && automatic ? 'applied' : 'pending',
+    }))
+    const prepared = applicable.filter((entry) => entry.decision === 'applied').map((entry) => {
+      const link = registry.links.find((candidate: Row) => candidate.id === entry.linkId)
+      const template = templateByKey.get(link?.templateKey)
+      if (!link || !template || link.availableContentHash !== template.contentHash) {
+        throw lifecycleError('Catalog update changed during evaluation.', 'catalog-update-stale', 409)
+      }
+      const { projects } = this.catalogUpdateProjectContexts([link])
+      const currentProject = [...projects.values()][0]
+      const current = currentProject?.items[`${link.itemType}:${link.itemId}`] as Row | undefined
+      if (!current) throw lifecycleError('Linked inventory item was not found.', 'linked-inventory-not-found', 409)
+      const nextItem = materializeCatalogItem(
+        mergeCatalogUpdate(projectLocalItemForCatalog(current, link.itemType), template.item, template.fingerprintVersion),
+        { usageRole: current.usageRole },
+      )
+      for (const project of projects.values()) this.prepareInventoryUpdate({ type: link.itemType, id: link.itemId }, nextItem, project)
+      return {
+        entry,
+        link,
+        template,
+        projectId: Number(currentProject.metadata?.projectId ?? this.projectId),
+        prepared: this.prepareInventoryUpdate({ type: link.itemType, id: link.itemId }, nextItem, currentProject),
+      }
+    })
+    const draft = structuredClone(registry)
+    for (const { link, template } of prepared) {
+      const target = draft.links.find((candidate: Row) => candidate.id === link.id)
+      Object.assign(target, {
+        importedRevision: template.revision,
+        importedContentHash: template.contentHash,
+        importedFingerprintVersion: template.fingerprintVersion,
+        state: 'linked',
+        updatedAt: new Date(now).toISOString(),
+      })
+      if (template.productFamily) target.productFamily = template.productFamily
+      else delete target.productFamily
+      if (template.variantEvidence) target.variantEvidence = template.variantEvidence
+      else delete target.variantEvidence
+      if (template.identityAliases) target.identityAliases = template.identityAliases
+      else delete target.identityAliases
+      delete target.availableRevision
+      delete target.availableContentHash
+      delete target.detachedAt
+    }
+    let counts = {
+      applied: applicable.filter((entry) => entry.decision === 'applied').length,
+      review: applicable.filter((entry) => entry.decision === 'pending' && entry.classification !== 'blocked').length,
+      blocked: applicable.filter((entry) => entry.decision === 'pending' && entry.classification === 'blocked').length,
+      skipped: applicable.filter((entry) => ['declined', 'superseded'].includes(entry.decision)).length,
+    }
+    const operation = () => {
+      for (const record of prepared) this.replaceInventoryRecord(record.prepared.ref, record.prepared.record, record.projectId)
+      persistRegistryState(this.core.database, draft, now, (type, id) => this.resolveItem(type, id))
+      this.core.database.query(`
+        INSERT INTO registry_update_runs (source_id, catalog_revision, state, automatic, applied_count, review_count, blocked_count, skipped_count, started_at_ms, completed_at_ms)
+        VALUES (?, ?, 'completed', ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(source_id, catalog_revision) DO UPDATE SET
+          state = 'completed', automatic = excluded.automatic,
+          applied_count = excluded.applied_count, review_count = excluded.review_count,
+          blocked_count = excluded.blocked_count, skipped_count = excluded.skipped_count,
+          attempt_count = 0, retry_after_ms = NULL, error = NULL,
+          completed_at_ms = excluded.completed_at_ms
+      `).run(sourceId, catalogRevision, Number(automatic), counts.applied, counts.review, counts.blocked, counts.skipped, now, now)
+      const run = this.core.database.query('SELECT id FROM registry_update_runs WHERE source_id = ? AND catalog_revision = ?').get(sourceId, catalogRevision) as Row
+      for (const entry of applicable) {
+        this.core.database.query(`
+          INSERT INTO registry_update_evaluations (run_id, link_id, from_revision, to_revision, target_content_hash, classification, decision, reasons_json, changes_json, decided_by_user_id, evaluated_at_ms, decided_at_ms)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          ON CONFLICT(run_id, link_id) DO UPDATE SET
+            classification = excluded.classification,
+            decision = CASE WHEN registry_update_evaluations.decision = 'declined' THEN 'declined' ELSE excluded.decision END,
+            reasons_json = excluded.reasons_json, changes_json = excluded.changes_json,
+            decided_by_user_id = CASE WHEN registry_update_evaluations.decision = 'declined' THEN registry_update_evaluations.decided_by_user_id ELSE excluded.decided_by_user_id END,
+            evaluated_at_ms = excluded.evaluated_at_ms,
+            decided_at_ms = CASE WHEN registry_update_evaluations.decision = 'declined' THEN registry_update_evaluations.decided_at_ms ELSE excluded.decided_at_ms END
+        `).run(run.id, entry.linkId, entry.importedRevision, entry.availableRevision, entry.targetContentHash,
+          entry.classification, entry.decision, JSON.stringify(entry.reasons), JSON.stringify(entry.changes),
+          entry.decision === 'applied' ? decidedByUserId : null, now,
+          entry.decision === 'applied' ? now : null)
+      }
+      const totals = this.core.database.query(`
+        SELECT
+          SUM(CASE WHEN decision = 'applied' THEN 1 ELSE 0 END) AS applied,
+          SUM(CASE WHEN decision = 'pending' AND classification != 'blocked' THEN 1 ELSE 0 END) AS review,
+          SUM(CASE WHEN decision = 'pending' AND classification = 'blocked' THEN 1 ELSE 0 END) AS blocked,
+          SUM(CASE WHEN decision IN ('declined', 'superseded') THEN 1 ELSE 0 END) AS skipped
+        FROM registry_update_evaluations WHERE run_id = ?
+      `).get(run.id) as Row
+      counts = {
+        applied: Number(totals.applied ?? 0),
+        review: Number(totals.review ?? 0),
+        blocked: Number(totals.blocked ?? 0),
+        skipped: Number(totals.skipped ?? 0),
+      }
+      this.core.database.query(`
+        UPDATE registry_update_runs SET applied_count = ?, review_count = ?, blocked_count = ?, skipped_count = ? WHERE id = ?
+      `).run(counts.applied, counts.review, counts.blocked, counts.skipped, run.id)
+    }
+    if (prepared.length > 0) {
+      const preparedLinks = prepared.map((record) => record.link)
+      const { projectIdsByLinkId } = this.catalogUpdateProjectContexts(preparedLinks)
+      const affectedProjectIds = [...new Set(preparedLinks.flatMap((link) => projectIdsByLinkId.get(link.id) ?? []))]
+      this.commitCanonicalMutationAcrossProjects(operation, affectedProjectIds, expectedRevisions)
+    }
+    else this.core.database.transaction(operation).immediate()
+    return { ...counts, groups: this.getRegistryUpdateGroups() }
+  }
+
+  getRegistryUpdateGroups() {
+    const project = this.getProject()
+    const rows = this.core.database.query(`
+      SELECT e.*, l.template_key, l.item_id, a.legacy_type_key, a.legacy_id, i.name AS inventory_name
+      FROM registry_update_evaluations e
+      JOIN registry_links l ON l.id = e.link_id
+      JOIN inventory_items i ON i.id = l.item_id
+      JOIN inventory_identity_aliases a ON a.item_id = l.item_id
+      ORDER BY e.evaluated_at_ms DESC, e.id
+    `).all() as Row[]
+    const itemProjects = new Map<number, Row[]>()
+    for (const row of this.core.database.query(`
+      SELECT m.item_id, p.id, p.name FROM project_inventory_memberships m
+      JOIN projects p ON p.id = m.project_id AND p.archived_at_ms IS NULL
+      UNION
+      SELECT i.id AS item_id, p.id, p.name FROM inventory_items i
+      JOIN projects p ON p.id = i.owner_project_id AND p.archived_at_ms IS NULL
+    `).all() as Row[]) {
+      const projects = itemProjects.get(row.item_id) ?? []
+      projects.push({ id: row.id, name: row.name })
+      itemProjects.set(row.item_id, projects)
+    }
+    const groups = new Map<string, Row>()
+    for (const row of rows) {
+      const status = row.decision === 'applied' ? 'applied' : row.decision === 'declined' ? 'declined' : 'review'
+      const key = `${status}:${row.template_key}:${row.to_revision}`
+      const group = groups.get(key) ?? {
+        id: key, status, templateKey: row.template_key, fromRevision: row.from_revision,
+        toRevision: row.to_revision, classification: row.classification,
+        reasons: JSON.parse(row.reasons_json), changes: JSON.parse(row.changes_json), items: [], projects: [],
+        evaluatedAt: new Date(row.evaluated_at_ms).toISOString(),
+      }
+      const projects = itemProjects.get(row.item_id) ?? []
+      group.items.push({
+        linkId: row.link_id, itemType: row.legacy_type_key, itemId: row.legacy_id,
+        itemName: project.items[`${row.legacy_type_key}:${row.legacy_id}`]?.name ?? row.inventory_name,
+        projects,
+      })
+      for (const candidate of projects) {
+        if (!group.projects.some((project: Row) => project.id === candidate.id)) group.projects.push(candidate)
+      }
+      if (row.classification === 'blocked') group.classification = 'blocked'
+      groups.set(key, group)
+    }
+    return [...groups.values()]
+  }
+
+  getRegistryUpdateStatus() {
+    const row = this.core.database.query('SELECT * FROM registry_update_runs ORDER BY catalog_revision DESC, id DESC LIMIT 1').get() as Row | null
+    if (!row) return null
+    return {
+      id: row.id,
+      catalogRevision: row.catalog_revision,
+      state: row.state,
+      automatic: Boolean(row.automatic),
+      appliedCount: row.applied_count,
+      reviewCount: row.review_count,
+      blockedCount: row.blocked_count,
+      skippedCount: row.skipped_count,
+      attemptCount: row.attempt_count,
+      retryAfter: row.retry_after_ms ? new Date(row.retry_after_ms).toISOString() : null,
+      error: row.error,
+      completedAt: row.completed_at_ms ? new Date(row.completed_at_ms).toISOString() : null,
+    }
+  }
+
+  recordCatalogUpdateFailure({ sourceId, catalogRevision, automatic = true, error }: Row) {
+    const now = this.now()
+    const current = this.core.database.query(`
+      SELECT attempt_count FROM registry_update_runs WHERE source_id = ? AND catalog_revision = ?
+    `).get(sourceId, catalogRevision) as Row | null
+    const attemptCount = Number(current?.attempt_count ?? 0) + 1
+    const retryAfter = now + Math.min(60 * 60_000, 60_000 * (2 ** Math.min(5, attemptCount - 1)))
+    const message = String(error instanceof Error ? error.message : error ?? 'Catalog update evaluation failed.').slice(0, 500)
+    this.core.database.transaction(() => {
+      this.core.database.query(`
+        INSERT INTO registry_update_runs (
+          source_id, catalog_revision, state, automatic, applied_count, review_count,
+          blocked_count, skipped_count, attempt_count, retry_after_ms, error, started_at_ms, completed_at_ms
+        ) VALUES (?, ?, 'failed', ?, 0, 0, 0, 0, ?, ?, ?, ?, ?)
+        ON CONFLICT(source_id, catalog_revision) DO UPDATE SET
+          state = 'failed', automatic = excluded.automatic, attempt_count = excluded.attempt_count,
+          retry_after_ms = excluded.retry_after_ms, error = excluded.error, completed_at_ms = excluded.completed_at_ms
+      `).run(sourceId, catalogRevision, Number(automatic), attemptCount, retryAfter, message, now, now)
+    }).immediate()
+    return this.getRegistryUpdateStatus()
+  }
+
+  decideRegistryUpdateGroup({ templateKey, toRevision, decision, userId = null }: Row) {
+    if (!['applied', 'declined', 'pending'].includes(decision)) {
+      throw lifecycleError('Registry update decision is invalid.', 'invalid-registry-update-decision', 400)
+    }
+    const rows = this.core.database.query(`
+      SELECT e.id, e.classification FROM registry_update_evaluations e
+      JOIN registry_links l ON l.id = e.link_id
+      WHERE l.template_key = ? AND e.to_revision = ? AND e.decision IN ('pending', 'declined')
+    `).all(templateKey, toRevision) as Row[]
+    if (rows.length === 0) throw lifecycleError('Registry update group was not found.', 'registry-update-group-not-found', 404)
+    if (decision === 'applied' && rows.some((row) => row.classification === 'blocked')) {
+      throw lifecycleError('Blocked registry updates cannot be applied.', 'registry-update-blocked', 409)
+    }
+    const now = this.now()
+    this.core.database.transaction(() => {
+      for (const row of rows) this.core.database.query(`
+        UPDATE registry_update_evaluations SET decision = ?, decided_by_user_id = ?, decided_at_ms = ? WHERE id = ?
+      `).run(decision, decision === 'pending' ? null : userId, decision === 'pending' ? null : now, row.id)
+      this.refreshRegistryUpdateRunCounts()
+    }).immediate()
+    return this.getRegistryUpdateGroups()
+  }
+
+  applyRegistryUpdateGroup(template: Row, userId: number | null = null) {
+    return this.applyRegistryUpdateGroups([template], userId)
+  }
+
+  applyRegistryUpdateGroups(templates: Row[], userId: number | null = null) {
+    const registry = this.getRegistryState() as Row
+    const snapshot = registry.snapshot
+    const templateByIdentity = new Map(templates.map((template: Row) => [`${template.templateKey}:${template.revision}`, template]))
+    const links = registry.links.filter((link: Row) => (
+      templateByIdentity.has(`${link.templateKey}:${link.availableRevision}`)
+      && ['update-available', 'adoption-available'].includes(link.state)
+    ))
+    const requestedIdentities = new Set(templateByIdentity.keys())
+    const matchedIdentities = new Set(links.map((link: Row) => `${link.templateKey}:${link.availableRevision}`))
+    if (links.length === 0 || [...requestedIdentities].some((identity) => !matchedIdentities.has(identity))) {
+      throw lifecycleError('One or more registry update groups were not found.', 'registry-update-group-not-found', 404)
+    }
+    const batch = this.evaluateCatalogUpdates(links, templates)
+    const evaluations = batch.evaluations
+    if (evaluations.some((evaluation: Row) => evaluation.classification === 'blocked')) {
+      throw lifecycleError('Blocked registry updates cannot be applied.', 'registry-update-blocked', 409)
+    }
+    const result = this.commitCatalogUpdateRun({
+      sourceId: snapshot.sourceId,
+      catalogRevision: snapshot.revision,
+      evaluations,
+      templates,
+      automatic: false,
+      forceLinkIds: links.map((link: Row) => link.id),
+      decidedByUserId: userId,
+      expectedProjectRevision: batch.projectRevision,
+      expectedProjectRevisions: batch.projectRevisions,
+    })
+    return result
+  }
+
+  decideRegistryUpdateGroups({ groups, decision, userId = null }: Row) {
+    if (!['declined', 'pending'].includes(decision) || !Array.isArray(groups) || groups.length === 0) {
+      throw lifecycleError('Registry update decision is invalid.', 'invalid-registry-update-decision', 400)
+    }
+    const now = this.now()
+    let changed = 0
+    this.core.database.transaction(() => {
+      for (const group of groups) {
+        const result = this.core.database.query(`
+          UPDATE registry_update_evaluations SET decision = ?, decided_by_user_id = ?, decided_at_ms = ?
+          WHERE id IN (
+            SELECT e.id FROM registry_update_evaluations e
+            JOIN registry_links l ON l.id = e.link_id
+            WHERE l.template_key = ? AND e.to_revision = ? AND e.decision IN ('pending', 'declined')
+          )
+        `).run(decision, decision === 'pending' ? null : userId, decision === 'pending' ? null : now, group.templateKey, group.toRevision)
+        changed += result.changes
+      }
+      if (changed === 0) throw lifecycleError('Registry update groups were not found.', 'registry-update-group-not-found', 404)
+      this.refreshRegistryUpdateRunCounts()
+    }).immediate()
+    return this.getRegistryUpdateGroups()
+  }
+
+  refreshRegistryUpdateRunCounts() {
+    this.core.database.query(`
+      UPDATE registry_update_runs SET
+        applied_count = (SELECT COUNT(*) FROM registry_update_evaluations WHERE run_id = registry_update_runs.id AND decision = 'applied'),
+        review_count = (SELECT COUNT(*) FROM registry_update_evaluations WHERE run_id = registry_update_runs.id AND decision = 'pending' AND classification != 'blocked'),
+        blocked_count = (SELECT COUNT(*) FROM registry_update_evaluations WHERE run_id = registry_update_runs.id AND decision = 'pending' AND classification = 'blocked'),
+        skipped_count = (SELECT COUNT(*) FROM registry_update_evaluations WHERE run_id = registry_update_runs.id AND decision IN ('declined', 'superseded'))
+    `).run()
   }
 
   applyCatalogUpdate(linkId: number, template: Row) {
@@ -2367,6 +2825,48 @@ export class SqliteHomelabInventoryStore {
     this.invalidateProjectReadModels()
     const event: ProjectCommitEvent = { type: 'canonical-invalidated', baseRevision, revision }
     for (const listener of this.projectCommitListeners) listener(event)
+  }
+
+  private commitCanonicalMutationAcrossProjects(
+    operation: () => void,
+    projectIds: number[],
+    expectedRevisions: Map<number, number>,
+  ) {
+    const ids = [...new Set(projectIds)].sort((left, right) => left - right)
+    if (ids.length === 0) throw lifecycleError('Registry update has no active project scope.', 'registry-update-project-scope-missing', 409)
+    const revisions = new Map<number, number>()
+    for (const projectId of ids) {
+      const row = this.core.database.query('SELECT revision FROM projects WHERE id = ? AND archived_at_ms IS NULL').get(projectId) as Row | null
+      if (!row) throw lifecycleError(`Active project ${projectId} was not found.`, 'project-not-found', 404)
+      const expected = expectedRevisions.get(projectId)
+      if (expected !== undefined && row.revision !== expected) {
+        throw lifecycleError('Project changed while evaluating registry updates.', 'revision-conflict', 409)
+      }
+      revisions.set(projectId, row.revision)
+    }
+    const now = this.now()
+    this.core.database.transaction(() => {
+      operation()
+      for (const [projectId, revision] of revisions) {
+        const result = this.core.database.query(`
+          UPDATE projects SET revision = ?, updated_at_ms = ?
+          WHERE id = ? AND revision = ? AND archived_at_ms IS NULL
+        `).run(revision + 1, now, projectId, revision)
+        if (result.changes !== 1) {
+          throw lifecycleError('Project changed while applying registry updates.', 'revision-conflict', 409)
+        }
+      }
+    }).immediate()
+    for (const projectId of ids) this.invalidateProjectReadModels(projectId)
+    const currentRevision = revisions.get(this.projectId)
+    if (currentRevision !== undefined) {
+      const event: ProjectCommitEvent = {
+        type: 'canonical-invalidated',
+        baseRevision: currentRevision,
+        revision: currentRevision + 1,
+      }
+      for (const listener of this.projectCommitListeners) listener(event)
+    }
   }
 
   private invalidateProjectReadModels(projectId = this.projectId, workspaceId?: number) {

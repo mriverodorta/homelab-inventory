@@ -125,6 +125,17 @@ export const NotificationCenter = createLazySurface(notificationCenterLoader, {
   shouldRender: (props) => props.open,
 })
 
+const registryUpdatesLoader = () => import('@/components/inventory/registry-updates-dialog').then((module) => ({
+  default: module.RegistryUpdatesDialog,
+}))
+export const RegistryUpdatesDialog = createLazySurface(registryUpdatesLoader, {
+  displayName: 'Registry updates',
+  loadingLabel: 'Loading registry updates',
+  loadingClassName: 'fixed inset-4 z-50 rounded-lg sm:inset-8',
+  getClose: (props) => () => props.onOpenChange(false),
+  shouldRender: (props) => props.open,
+})
+
 const demoSessionLoader = () => import('@/components/demo-session-dialog').then((module) => ({
   default: module.DemoSessionDialog,
 }))

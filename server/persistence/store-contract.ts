@@ -120,6 +120,16 @@ export interface HomelabInventoryPersistence {
   selectCatalogVariant(variantMatchId: number, template: Record<string, unknown>): unknown
   getCatalogUpdatePreview(linkId: number, template: Record<string, unknown>): unknown
   applyCatalogUpdate(linkId: number, template: Record<string, unknown>): unknown
+  evaluateCatalogUpdate(linkId: number, template: Record<string, unknown>): unknown
+  evaluateCatalogUpdates(updates: Record<string, unknown>[], templates: Record<string, unknown>[]): unknown
+  commitCatalogUpdateRun(input: Record<string, unknown>): unknown
+  getRegistryUpdateGroups(): unknown[]
+  getRegistryUpdateStatus(): unknown
+  recordCatalogUpdateFailure(input: Record<string, unknown>): unknown
+  decideRegistryUpdateGroup(input: Record<string, unknown>): unknown
+  applyRegistryUpdateGroup(template: Record<string, unknown>, userId?: number | null): unknown
+  applyRegistryUpdateGroups(templates: Record<string, unknown>[], userId?: number | null): unknown
+  decideRegistryUpdateGroups(input: Record<string, unknown>): unknown
   getAuthenticationState(): unknown
   updateAuthentication(mutator: (draft: unknown) => void): unknown
   getBackupManagementState(): unknown

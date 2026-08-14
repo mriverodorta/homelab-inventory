@@ -33,7 +33,6 @@ import { BackupRestoreSettings } from '@/components/settings/backup-restore-sett
 import { AuthenticationSettings } from '@/components/settings/authentication-settings'
 import { useAuth } from '@/hooks/use-auth'
 import { hasPermission, usePermission } from '@/hooks/use-permission'
-import { CatalogUpdateReview } from '@/components/inventory/catalog-update-review'
 import {
   Dialog,
   DialogContent,
@@ -139,7 +138,7 @@ export type SettingsDialogProps = {
   onRestartOnboarding: () => void
   onDismissOnboarding: () => void
   onRegistrySettingsChange?: (
-    settings: Partial<Pick<RegistrySettings, 'mode' | 'defaultInventorySource' | 'automaticContributions' | 'showRegistryLinkIndicators'>>,
+    settings: Partial<Pick<RegistrySettings, 'mode' | 'defaultInventorySource' | 'automaticContributions' | 'automaticSafeUpdates' | 'showRegistryLinkIndicators'>>,
     expectedUpdatedAt: string | null,
   ) => void | Promise<void>
   onDeletePrivateTemplate?: (id: number) => void | Promise<void>
@@ -643,6 +642,17 @@ function RegistrySettingsPanel(props: SettingsDialogProps) {
         </Select>
       </SettingRow>
       <SettingRow
+        label="Automatically apply safe official updates"
+        description="Apply signed official catalog changes only when compatibility, occupied slots, ports, assignments, and connections remain valid. Other updates stay available for review."
+      >
+        <Switch
+          aria-label="Automatically apply safe official updates"
+          checked={registry.settings.automaticSafeUpdates}
+          disabled={busy || effectiveMode !== 'connected' || policy.automaticSafeUpdatesForced || !canManageRegistry}
+          onCheckedChange={(automaticSafeUpdates) => void update({ automaticSafeUpdates })}
+        />
+      </SettingRow>
+      <SettingRow
         label="Show registry link indicators"
         description="Mark registry-linked equipment and assigned components on the canvas. Hidden by default."
       >
@@ -785,7 +795,6 @@ function RegistrySettingsPanel(props: SettingsDialogProps) {
         </div>
       </SettingRow>
       {transferStatus ? <div className="border-t border-[#e8e1d6] bg-[#f7f2e9] px-4 py-3 text-sm text-[#554b40]">{transferStatus}</div> : null}
-      {canManageRegistry && props.onApplyCatalogUpdate ? <CatalogUpdateReview onApply={props.onApplyCatalogUpdate} /> : null}
       {registry.privateTemplates.map((template) => (
         <SettingRow key={template.id} label={template.name} description={`${template.item.name} · ${template.item.type}`}>
           {canManageRegistry && props.onDeletePrivateTemplate ? (

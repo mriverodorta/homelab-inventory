@@ -12,6 +12,7 @@ import {
   ReturnToInventoryDialog,
   SettingsDialog,
   NotificationCenter,
+  RegistryUpdatesDialog,
   UpdateDialog,
   WhatsNewDialog,
 } from '@/components/lazy-app-surfaces'
@@ -28,6 +29,7 @@ export interface AppDialogsProps {
   update?: ComponentProps<typeof UpdateDialog>
   settings: ComponentProps<typeof SettingsDialog>
   notifications?: ComponentProps<typeof NotificationCenter>
+  registryUpdates?: ComponentProps<typeof RegistryUpdatesDialog>
   demoSession: ComponentProps<typeof DemoSessionDialog>
   firstRun: ComponentProps<typeof FirstRunOnboardingDialog>
   exampleCompletion: ComponentProps<typeof ExampleCompletionDialog>
@@ -45,6 +47,7 @@ export function AppDialogs({
   update,
   settings,
   notifications,
+  registryUpdates,
   demoSession,
   firstRun,
   exampleCompletion,
@@ -62,6 +65,7 @@ export function AppDialogs({
       {update ? <UpdateDialog {...update} /> : null}
       <SettingsDialog {...settings} />
       {notifications ? <NotificationCenter {...notifications} /> : null}
+      {registryUpdates ? <RegistryUpdatesDialog {...registryUpdates} /> : null}
       <DemoSessionDialog {...demoSession} />
       <FirstRunOnboardingDialog {...firstRun} />
       <ExampleCompletionDialog {...exampleCompletion} />

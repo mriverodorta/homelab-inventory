@@ -25,11 +25,14 @@ export function createRegistryStore() {
       mode: 'disabled',
       defaultInventorySource: 'catalog',
       automaticContributions: false,
+      automaticSafeUpdates: true,
       showRegistryLinkIndicators: false,
       updatedAt: null,
     },
     sources: [],
     links: [],
+    updateRuns: [],
+    updateEvaluations: [],
     variantMatches: [],
     contributionOutbox: [],
     contributionLedger: [],
@@ -61,11 +64,14 @@ export function normalizeRegistryStore(value) {
         ? rawSettings.defaultInventorySource
         : defaults.settings.defaultInventorySource,
       automaticContributions: rawSettings.mode === 'connected' && rawSettings.automaticContributions === true,
+      automaticSafeUpdates: rawSettings.automaticSafeUpdates !== false,
       showRegistryLinkIndicators: rawSettings.showRegistryLinkIndicators === true,
       updatedAt: typeof rawSettings.updatedAt === 'string' ? rawSettings.updatedAt : null,
     },
     sources: Array.isArray(source.sources) ? source.sources : [],
     links: Array.isArray(source.links) ? source.links : [],
+    updateRuns: Array.isArray(source.updateRuns) ? source.updateRuns : [],
+    updateEvaluations: Array.isArray(source.updateEvaluations) ? source.updateEvaluations : [],
     variantMatches: Array.isArray(source.variantMatches) ? source.variantMatches : [],
     contributionOutbox: Array.isArray(source.contributionOutbox)
       ? source.contributionOutbox.map((record) => ({
@@ -124,6 +130,9 @@ export function assertRegistryStoreShape(store) {
   if (typeof store.settings.automaticContributions !== 'boolean') {
     throw new Error('registry.settings.automaticContributions must be boolean.')
   }
+  if (typeof store.settings.automaticSafeUpdates !== 'boolean') {
+    throw new Error('registry.settings.automaticSafeUpdates must be boolean.')
+  }
   if (typeof store.settings.showRegistryLinkIndicators !== 'boolean') {
     throw new Error('registry.settings.showRegistryLinkIndicators must be boolean.')
   }
@@ -137,6 +146,8 @@ export function assertRegistryStoreShape(store) {
   for (const collection of [
     'sources',
     'links',
+    'updateRuns',
+    'updateEvaluations',
     'variantMatches',
     'contributionOutbox',
     'contributionLedger',
@@ -150,6 +161,8 @@ export function assertRegistryStoreShape(store) {
   assertUniqueNumericIds(store.privateTemplates, 'registry.privateTemplates')
   assertUniqueNumericIds(store.sources, 'registry.sources')
   assertUniqueNumericIds(store.links, 'registry.links')
+  assertUniqueNumericIds(store.updateRuns, 'registry.updateRuns')
+  assertUniqueNumericIds(store.updateEvaluations, 'registry.updateEvaluations')
   assertUniqueNumericIds(store.variantMatches, 'registry.variantMatches')
   assertUniqueNumericIds(store.contributionOutbox, 'registry.contributionOutbox')
   assertUniqueNumericIds(store.contributionLedger, 'registry.contributionLedger')

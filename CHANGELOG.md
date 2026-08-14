@@ -6,6 +6,16 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 
 ## Unreleased
 
+### Added
+
+- Verified official catalog updates can now apply automatically when compatibility, occupied slots, connected ports, assignments, and topology remain valid.
+- A permanent Registry updates toolbar action groups changes by catalog template revision and provides Review, Applied, and Declined views with group approval, decline, and reconsider actions; the Notification Center summarizes the latest persisted run.
+
+### Changed
+
+- Automatic safe official updates are enabled by default, forced on in demo sessions, and can be disabled from Registry settings on regular installations.
+- Registry update runs and decisions are persisted in SQLite and included in registry configuration backups so update processing is atomic across every affected project, idempotent, and restart-safe.
+
 ## [0.12.8] - 2026-08-14
 
 ### Fixed

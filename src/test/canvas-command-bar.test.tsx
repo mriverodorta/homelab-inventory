@@ -11,6 +11,8 @@ function createProps(overrides: Partial<CanvasCommandBarProps> = {}): CanvasComm
     canViewUpdates: true,
     canViewNotifications: true,
     notificationCount: 2,
+    registryUpdateCount: 0,
+    canViewRegistryUpdates: true,
     desktopInventoryVisible: true,
     saveStatus: 'saved',
     canUndo: true,
@@ -34,6 +36,7 @@ function createProps(overrides: Partial<CanvasCommandBarProps> = {}): CanvasComm
     onToggleDisplayCablesVisible: vi.fn(),
     onOpenSettings: vi.fn(),
     onOpenNotifications: vi.fn(),
+    onOpenRegistryUpdates: vi.fn(),
     ...overrides,
   }
 }
@@ -174,7 +177,7 @@ describe('CanvasCommandBar', () => {
   })
 
   it('omits audit and update commands when the account cannot view them', () => {
-    renderToolbar({ canViewAudit: false, canViewUpdates: false })
+    renderToolbar({ canViewAudit: false, canViewUpdates: false, canViewRegistryUpdates: false })
 
     expect(screen.queryByRole('button', { name: /update/i })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /audit/i })).not.toBeInTheDocument()

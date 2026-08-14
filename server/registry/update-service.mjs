@@ -6,6 +6,7 @@ import {
 } from '../../packages/catalog-protocol/src/index.ts'
 
 const CATALOG_FIELDS = [
+  'type',
   'name',
   'subtype',
   'manufacturer',

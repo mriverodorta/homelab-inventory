@@ -14,6 +14,7 @@ describe('registry store model', () => {
       mode: 'disabled',
       defaultInventorySource: 'catalog',
       automaticContributions: false,
+      automaticSafeUpdates: true,
       showRegistryLinkIndicators: false,
       updatedAt: null,
     })

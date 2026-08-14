@@ -49,8 +49,12 @@ interface CreateWorkspaceSurfacePropsOptions {
   updateStatusLoading: boolean
   canViewNotifications: boolean
   notificationCount: number
+  registryUpdateCount: number
+  registryUpdateSummary?: string
+  canViewRegistryUpdates: boolean
   settingsOpen: boolean
   openNotifications(): void
+  openRegistryUpdates(): void
   undo(): void
   redo(): void
   updateProject(nextProject: ProjectState): void
@@ -89,8 +93,12 @@ export function createWorkspaceSurfaceProps({
   updateStatusLoading,
   canViewNotifications,
   notificationCount,
+  registryUpdateCount,
+  registryUpdateSummary,
+  canViewRegistryUpdates,
   settingsOpen,
   openNotifications,
+  openRegistryUpdates,
   undo,
   redo,
   updateProject,
@@ -201,6 +209,9 @@ export function createWorkspaceSurfaceProps({
       updateStatusLoading,
       canViewNotifications,
       notificationCount,
+      registryUpdateCount,
+      registryUpdateSummary,
+      canViewRegistryUpdates,
       onSelect: selection.selectCanvasItem,
       onSelectConnection: selection.selectConnection,
       onRemoveAssignment: equipment.requestAssignedComponentRemoval,
@@ -228,6 +239,7 @@ export function createWorkspaceSurfaceProps({
       onOpenAudit: navigation.openAudit,
       onOpenSettings: navigation.openSettings,
       onOpenNotifications: openNotifications,
+      onOpenRegistryUpdates: openRegistryUpdates,
       onOpenUpdate: navigation.openUpdate,
     },
     exampleGuide: onboarding.showExampleGuide && !settingsOpen ? {

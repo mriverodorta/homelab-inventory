@@ -647,6 +647,13 @@ export class SnapshotService {
     return (await openCatalogIndex(paths.index)).getByKey(templateKey)
   }
 
+  async templates(templateKeys) {
+    const registry = this.store.getRegistryState()
+    if (!registry.snapshot) return []
+    const paths = await this.ensureIndex()
+    return (await openCatalogIndex(paths.index)).getByKeys(templateKeys)
+  }
+
   async knownContributionHashes() {
     try {
       const paths = await this.resolveActivePaths()

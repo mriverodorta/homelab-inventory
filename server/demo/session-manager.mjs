@@ -317,8 +317,8 @@ export class DemoSessionManager {
       : await this.createSqliteStore(session)
     const { store } = runtime
     const registry = store.getRegistryState()
-    if (registry.settings.mode !== 'connected' || registry.settings.automaticContributions) {
-      store.updateRegistrySettings({ mode: 'connected', automaticContributions: false })
+    if (registry.settings.mode !== 'connected' || registry.settings.automaticContributions || registry.settings.automaticSafeUpdates !== true) {
+      store.updateRegistrySettings({ mode: 'connected', automaticContributions: false, automaticSafeUpdates: true })
     }
     if (!store.getRegistryState().snapshot && this.catalogBootstrap) {
       try {

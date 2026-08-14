@@ -23,6 +23,7 @@ function normalizedRegistryPolicy(policy) {
     forcedMode: policy.forcedMode ?? null,
     contributionsAllowed: policy.contributionsAllowed !== false,
     networkRefreshAllowed: policy.networkRefreshAllowed !== false,
+    ...(policy.automaticSafeUpdatesForced === true ? { automaticSafeUpdatesForced: true } : {}),
   }
 }
 
@@ -45,6 +46,7 @@ export function publicRegistryState(store, policy = DEFAULT_REGISTRY_POLICY) {
       ...registry.settings,
       ...(policy.forcedMode ? { mode: policy.forcedMode } : {}),
       ...(!policy.contributionsAllowed ? { automaticContributions: false } : {}),
+      ...(policy.automaticSafeUpdatesForced ? { automaticSafeUpdates: true } : {}),
     },
     sources: registry.sources,
     links: registry.links,
@@ -175,6 +177,7 @@ export function registerRegistryRoutes(app, {
   deliveryService,
   snapshotServiceFactory,
   catalogRefreshCoordinator,
+  catalogUpdateCoordinator,
   catalogStatusService,
   registryPolicy,
 } = {}) {
@@ -211,6 +214,7 @@ export function registerRegistryRoutes(app, {
       if (!policy.contributionsAllowed && settings?.automaticContributions === true) {
         throw demoPolicyError()
       }
+      if (policy.automaticSafeUpdatesForced && settings?.automaticSafeUpdates === false) throw demoPolicyError()
       if (settings?.automaticContributions === true) {
         const requestedMode = settings?.mode ?? store.getRegistryState().settings.mode
         if (requestedMode !== 'connected') {
@@ -236,8 +240,10 @@ export function registerRegistryRoutes(app, {
         ...settings,
         ...(policy.forcedMode ? { mode: policy.forcedMode } : {}),
         ...(!policy.contributionsAllowed ? { automaticContributions: false } : {}),
+        ...(policy.automaticSafeUpdatesForced ? { automaticSafeUpdates: true } : {}),
       }, request.body?.expectedUpdatedAt)
       catalogRefreshCoordinator?.reconcileSchedule()
+      if (settings?.automaticSafeUpdates === true) void catalogUpdateCoordinator?.run().catch(() => {})
       if (store.getRegistryState().settings.automaticContributions) {
         void deliveryService.trigger(store)
         void catalogStatusService?.trigger('enrollment-ready')
@@ -350,6 +356,7 @@ export function registerRegistryRoutes(app, {
         } else {
           await snapshotService(store).refreshConnected()
         }
+        await catalogUpdateCoordinator?.run()
       } catch (error) {
         throw new InventoryLifecycleError(
           error instanceof Error ? error.message : 'Official catalog refresh failed.',
@@ -382,7 +389,55 @@ export function registerRegistryRoutes(app, {
   })
 
   app.get('/api/registry/updates', (request, response) => {
-    run(withStore, request, response, async (store) => response.json({ updates: store.getCatalogUpdates() }))
+    run(withStore, request, response, async (store) => {
+      response.json({
+        updates: store.getCatalogUpdates(),
+        groups: typeof store.getRegistryUpdateGroups === 'function' ? store.getRegistryUpdateGroups() : [],
+        run: typeof store.getRegistryUpdateStatus === 'function' ? store.getRegistryUpdateStatus() : null,
+      })
+    })
+  })
+
+  app.post('/api/registry/updates/retry', (request, response) => {
+    run(withStore, request, response, async (store) => {
+      await catalogUpdateCoordinator?.run({ force: true })
+      response.json({
+        groups: store.getRegistryUpdateGroups(),
+        run: store.getRegistryUpdateStatus(),
+      })
+    })
+  })
+
+  app.post('/api/registry/update-groups/decision', (request, response) => {
+    run(withStore, request, response, async (store) => {
+      const requestedGroups = Array.isArray(request.body?.groups)
+        ? request.body.groups
+        : [{ templateKey: request.body?.templateKey, toRevision: request.body?.toRevision }]
+      const decision = request.body?.decision
+      const groups = requestedGroups.map((group) => ({ templateKey: group?.templateKey, toRevision: Number(group?.toRevision) }))
+      const groupKeys = new Set(groups.map((group) => `${group.templateKey}:${group.toRevision}`))
+      if (groups.length === 0 || groups.length > 100 || groupKeys.size !== groups.length || groups.some((group) => typeof group.templateKey !== 'string' || !Number.isSafeInteger(group.toRevision) || group.toRevision < 1)) {
+        throw new InventoryLifecycleError('Registry update group is invalid.', {
+          code: 'invalid-registry-update-group', status: 400,
+        })
+      }
+      if (!['applied', 'declined', 'reconsider'].includes(decision)) throw new InventoryLifecycleError('Registry update decision is invalid.', {
+        code: 'invalid-registry-update-decision', status: 400,
+      })
+      if (decision === 'applied') {
+        const templates = await Promise.all(groups.map((group) => snapshotService(store).template(group.templateKey)))
+        if (templates.some((template, index) => !template || template.revision !== groups[index].toRevision)) throw new InventoryLifecycleError('Updated catalog template is unavailable.', {
+          code: 'catalog-template-not-found', status: 409,
+        })
+        response.json(store.applyRegistryUpdateGroups(templates, request.authentication?.account?.id ?? null))
+        return
+      }
+      response.json({ groups: store.decideRegistryUpdateGroups({
+        groups,
+        decision: decision === 'reconsider' ? 'pending' : decision,
+        userId: request.authentication?.account?.id ?? null,
+      }) })
+    })
   })
 
   app.post('/api/registry/variant-matches/:id/select', (request, response) => {

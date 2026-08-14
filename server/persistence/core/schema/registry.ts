@@ -1,12 +1,14 @@
 import { sql } from 'drizzle-orm'
 import { check, index, integer, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core'
 import { inventoryItems } from './inventory-base.ts'
+import { users } from './authentication.ts'
 
 export const registrySettings = sqliteTable('registry_settings', {
   id: integer('id').primaryKey(),
   mode: text('mode').notNull().default('disabled'),
   defaultInventorySource: text('default_inventory_source').notNull().default('catalog'),
   automaticContributions: integer('automatic_contributions', { mode: 'boolean' }).notNull().default(false),
+  automaticSafeUpdates: integer('automatic_safe_updates', { mode: 'boolean' }).notNull().default(true),
   showLinkIndicators: integer('show_link_indicators', { mode: 'boolean' }).notNull().default(false),
   updatedAtMs: integer('updated_at_ms'),
 }, (table) => [
@@ -58,6 +60,53 @@ export const registryLinks = sqliteTable('registry_links', {
   check('registry_links_variant_evidence_json_check', sql`${table.variantEvidenceJson} IS NULL OR json_valid(${table.variantEvidenceJson})`),
   check('registry_links_identity_aliases_json_check', sql`${table.identityAliasesJson} IS NULL OR json_valid(${table.identityAliasesJson})`),
   check('registry_links_state_check', sql`${table.state} IN ('linked', 'update-available', 'adoption-available', 'detached', 'contribution-pending')`),
+])
+
+export const registryUpdateRuns = sqliteTable('registry_update_runs', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  sourceId: integer('source_id').notNull().references(() => registrySources.id, { onDelete: 'cascade' }),
+  catalogRevision: integer('catalog_revision').notNull(),
+  state: text('state').notNull(),
+  automatic: integer('automatic', { mode: 'boolean' }).notNull().default(true),
+  appliedCount: integer('applied_count').notNull().default(0),
+  reviewCount: integer('review_count').notNull().default(0),
+  blockedCount: integer('blocked_count').notNull().default(0),
+  skippedCount: integer('skipped_count').notNull().default(0),
+  attemptCount: integer('attempt_count').notNull().default(0),
+  retryAfterMs: integer('retry_after_ms'),
+  error: text('error'),
+  startedAtMs: integer('started_at_ms').notNull(),
+  completedAtMs: integer('completed_at_ms'),
+}, (table) => [
+  uniqueIndex('registry_update_runs_source_revision_unique').on(table.sourceId, table.catalogRevision),
+  check('registry_update_runs_revision_check', sql`${table.catalogRevision} > 0`),
+  check('registry_update_runs_state_check', sql`${table.state} IN ('running', 'completed', 'failed')`),
+  check('registry_update_runs_counts_check', sql`${table.appliedCount} >= 0 AND ${table.reviewCount} >= 0 AND ${table.blockedCount} >= 0 AND ${table.skippedCount} >= 0 AND ${table.attemptCount} >= 0`),
+])
+
+export const registryUpdateEvaluations = sqliteTable('registry_update_evaluations', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  runId: integer('run_id').notNull().references(() => registryUpdateRuns.id, { onDelete: 'cascade' }),
+  linkId: integer('link_id').notNull().references(() => registryLinks.id, { onDelete: 'cascade' }),
+  fromRevision: integer('from_revision').notNull(),
+  toRevision: integer('to_revision').notNull(),
+  targetContentHash: text('target_content_hash').notNull(),
+  classification: text('classification').notNull(),
+  decision: text('decision').notNull(),
+  reasonsJson: text('reasons_json').notNull().default('[]'),
+  changesJson: text('changes_json').notNull().default('[]'),
+  decidedByUserId: integer('decided_by_user_id').references(() => users.id, { onDelete: 'set null' }),
+  evaluatedAtMs: integer('evaluated_at_ms').notNull(),
+  decidedAtMs: integer('decided_at_ms'),
+}, (table) => [
+  uniqueIndex('registry_update_evaluations_run_link_unique').on(table.runId, table.linkId),
+  index('registry_update_evaluations_review_index').on(table.decision, table.classification),
+  check('registry_update_evaluations_revision_check', sql`${table.fromRevision} > 0 AND ${table.toRevision} > ${table.fromRevision}`),
+  check('registry_update_evaluations_hash_check', sql`length(${table.targetContentHash}) = 64`),
+  check('registry_update_evaluations_classification_check', sql`${table.classification} IN ('safe', 'review-required', 'blocked', 'skipped')`),
+  check('registry_update_evaluations_decision_check', sql`${table.decision} IN ('pending', 'applied', 'declined', 'superseded', 'failed')`),
+  check('registry_update_evaluations_reasons_json_check', sql`json_valid(${table.reasonsJson}) AND json_array_length(${table.reasonsJson}) >= 0`),
+  check('registry_update_evaluations_changes_json_check', sql`json_valid(${table.changesJson}) AND json_array_length(${table.changesJson}) >= 0`),
 ])
 
 export const registryInstallationProjection = sqliteTable('registry_installation_projection', {

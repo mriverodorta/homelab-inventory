@@ -20,6 +20,7 @@ import { loadAgentStatus } from '@/lib/agent-api'
 import { addGlobalInventoryToProject, loadProject } from '@/lib/db'
 import { loadWorkspace } from '@/lib/workbook-api'
 import { buildVisibleRegistryLinkKeys } from '@/lib/registry-links'
+import { loadCatalogUpdates } from '@/lib/registry-api'
 import { ErrorScreen, LoadingScreen } from '@/app/app-status-screens'
 import { AppDialogs } from '@/app/app-dialogs'
 import { AppInventoryPanels } from '@/app/app-inventory-panels'
@@ -81,6 +82,7 @@ function App() {
   const [mobileInventoryOpen, setMobileInventoryOpen] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [notificationsOpen, setNotificationsOpen] = useState(false)
+  const [registryUpdatesOpen, setRegistryUpdatesOpen] = useState(false)
   const {
     query: demoSessionQuery,
     remainingSeconds: demoRemainingSeconds,
@@ -90,6 +92,12 @@ function App() {
     finalizeExpiration: finalizeDemoExpiration,
   } = useDemoSessionLifecycle()
   const canvasControllerRef = useRef<CanvasController | null>(null)
+  const registryUpdatesQuery = useQuery({
+    queryKey: ['registry', 'updates'],
+    queryFn: loadCatalogUpdates,
+    enabled: canViewRegistry,
+    staleTime: 60_000,
+  })
   const {
     lastPersistedProjectRef,
     coordinator: persistenceCoordinator,
@@ -610,8 +618,16 @@ function App() {
     updateStatusLoading: updateStatusQuery.isFetching && !updateStatusQuery.data,
     canViewNotifications,
     notificationCount: notificationQuery.data?.summary.unacknowledged ?? 0,
+    registryUpdateCount: registryUpdatesQuery.data?.groups.filter((group) => group.status === 'review').length ?? 0,
+    registryUpdateSummary: registryUpdatesQuery.data?.run
+      ? registryUpdatesQuery.data.run.state === 'failed'
+        ? `Catalog revision ${registryUpdatesQuery.data.run.catalogRevision} evaluation failed`
+        : `Latest run applied ${registryUpdatesQuery.data.run.appliedCount} updates and left ${registryUpdatesQuery.data.run.reviewCount + registryUpdatesQuery.data.run.blockedCount} for review`
+      : 'No registry update run has completed yet',
+    canViewRegistryUpdates: canViewRegistry,
     settingsOpen,
     openNotifications: () => setNotificationsOpen(true),
+    openRegistryUpdates: () => setRegistryUpdatesOpen(true),
     undo: undoProjectChange,
     redo: redoProjectChange,
     updateProject,
@@ -702,6 +718,7 @@ function App() {
             }}
             settings={settingsDialogProps}
             notifications={canViewNotifications ? { open: notificationsOpen, onOpenChange: setNotificationsOpen } : undefined}
+            registryUpdates={canViewRegistry ? { open: registryUpdatesOpen, onOpenChange: setRegistryUpdatesOpen } : undefined}
           />
     </AppShell>
   )

@@ -9,6 +9,15 @@ import { CatalogAvailabilityError } from './registry/catalog-availability.mjs'
 
 const resources = []
 
+async function waitForCondition(condition, message, timeoutMs = 1_000) {
+  const deadline = Date.now() + timeoutMs
+  while (Date.now() < deadline) {
+    if (condition()) return
+    await new Promise((resolve) => setTimeout(resolve, 5))
+  }
+  throw new Error(message)
+}
+
 async function createServer(registryRouteOptions = {}) {
   const dataDir = await fs.mkdtemp(path.join(os.tmpdir(), 'registry-routes-'))
   const store = new HomelabInventoryStore({
@@ -46,17 +55,19 @@ describe('registry routes', () => {
       registryPolicy: {
         forcedMode: 'connected',
         contributionsAllowed: false,
+        automaticSafeUpdatesForced: true,
       },
       snapshotServiceFactory: () => ({ refreshConnected }),
     })
 
     const state = await fetch(`${baseUrl}/api/registry`).then((response) => response.json())
-    expect(state.settings).toMatchObject({ mode: 'connected', automaticContributions: false })
+    expect(state.settings).toMatchObject({ mode: 'connected', automaticContributions: false, automaticSafeUpdates: true })
     expect(state.policy).toEqual({
       modeLocked: true,
       forcedMode: 'connected',
       contributionsAllowed: false,
       networkRefreshAllowed: true,
+      automaticSafeUpdatesForced: true,
     })
 
     const preference = await fetch(`${baseUrl}/api/registry/settings`, {
@@ -69,9 +80,10 @@ describe('registry routes', () => {
       mode: 'connected',
       defaultInventorySource: 'manual',
       automaticContributions: false,
+      automaticSafeUpdates: true,
     })
 
-    for (const settings of [{ mode: 'offline' }, { automaticContributions: true }]) {
+    for (const settings of [{ mode: 'offline' }, { automaticContributions: true }, { automaticSafeUpdates: false }]) {
       const response = await fetch(`${baseUrl}/api/registry/settings`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
@@ -141,6 +153,28 @@ describe('registry routes', () => {
 
     expect(response.status).toBe(200)
     expect(catalogRefreshCoordinator.reconcileSchedule).toHaveBeenCalledOnce()
+  })
+
+  it('evaluates catalog updates after enabling automatic updates and after manual refresh', async () => {
+    const catalogRefreshCoordinator = { reconcileSchedule: vi.fn(), refresh: vi.fn(async () => ({ revision: 2 })) }
+    const catalogUpdateCoordinator = { run: vi.fn(async () => ({ applied: 0, review: 0, blocked: 0, skipped: 0 })) }
+    const { baseUrl } = await createServer({ catalogRefreshCoordinator, catalogUpdateCoordinator })
+
+    const settings = await fetch(`${baseUrl}/api/registry/settings`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ settings: { mode: 'connected', automaticSafeUpdates: true } }),
+    })
+    expect(settings.status).toBe(200)
+    await waitForCondition(
+      () => catalogUpdateCoordinator.run.mock.calls.length === 1,
+      'Automatic catalog update evaluation did not start.',
+    )
+
+    const refresh = await fetch(`${baseUrl}/api/registry/catalog/refresh`, { method: 'POST' })
+    expect(refresh.status).toBe(200)
+    expect(catalogRefreshCoordinator.refresh).toHaveBeenCalledWith('manual')
+    expect(catalogUpdateCoordinator.run).toHaveBeenCalledTimes(2)
   })
 
   it('routes Send now as an explicit one-shot delivery while automatic delivery is disabled', async () => {
@@ -222,7 +256,10 @@ describe('registry routes', () => {
       return response
     })
 
-    await vi.waitFor(() => expect(deliveryService.waitForIdle).toHaveBeenCalledOnce())
+    await waitForCondition(
+      () => deliveryService.waitForIdle.mock.calls.length === 1,
+      'Contribution delivery did not begin settling.',
+    )
     expect(settled).toBe(false)
     release()
 
@@ -248,6 +285,38 @@ describe('registry routes', () => {
     expect(response.status).toBe(200)
     expect(catalogRefreshCoordinator.refresh).toHaveBeenCalledOnce()
     expect(catalogRefreshCoordinator.refresh).toHaveBeenCalledWith('manual')
+  })
+
+  it('forces one registry update evaluation retry from the review surface', async () => {
+    const catalogUpdateCoordinator = { run: vi.fn(async () => ({ applied: 1 })) }
+    const { baseUrl, store } = await createServer({ catalogUpdateCoordinator })
+    store.getRegistryUpdateGroups = vi.fn(() => [{ id: 'applied:cpu-example:2' }])
+    store.getRegistryUpdateStatus = vi.fn(() => ({ state: 'completed', catalogRevision: 2 }))
+
+    const response = await fetch(`${baseUrl}/api/registry/updates/retry`, { method: 'POST' })
+
+    expect(response.status).toBe(200)
+    expect(catalogUpdateCoordinator.run).toHaveBeenCalledWith({ force: true })
+    expect(await response.json()).toMatchObject({
+      groups: [{ id: 'applied:cpu-example:2' }],
+      run: { state: 'completed', catalogRevision: 2 },
+    })
+  })
+
+  it('reads persisted registry update status without running catalog evaluation', async () => {
+    const catalogUpdateCoordinator = { run: vi.fn(async () => ({ applied: 1 })) }
+    const { baseUrl, store } = await createServer({ catalogUpdateCoordinator })
+    store.getRegistryUpdateGroups = vi.fn(() => [{ id: 'review:cpu-example:2' }])
+    store.getRegistryUpdateStatus = vi.fn(() => ({ state: 'completed', catalogRevision: 2 }))
+
+    const response = await fetch(`${baseUrl}/api/registry/updates`)
+
+    expect(response.status).toBe(200)
+    expect(catalogUpdateCoordinator.run).not.toHaveBeenCalled()
+    expect(await response.json()).toMatchObject({
+      groups: [{ id: 'review:cpu-example:2' }],
+      run: { state: 'completed', catalogRevision: 2 },
+    })
   })
 
   it('returns a gateway error for a failed official catalog refresh', async () => {

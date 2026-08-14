@@ -189,7 +189,7 @@ describe('SQLite Homelab Inventory store facade', () => {
         group_id: 1,
         positions: [0],
       })
-      expect(store.getDatabaseStatus()).toMatchObject({ schemaVersion: 13 })
+      expect(store.getDatabaseStatus()).toMatchObject({ schemaVersion: 14 })
       expect(store.getPersistenceHealth()).toMatchObject({ ok: true, engine: 'sqlite' })
     } finally {
       store.close()
@@ -1003,6 +1003,232 @@ describe('SQLite Homelab Inventory store facade', () => {
       expect((store.getRegistryState() as any).links.find((candidate: any) => candidate.id === link.id)).toMatchObject({
         state: 'linked', importedRevision: 2,
       })
+    } finally {
+      store.close()
+    }
+  })
+
+  test('applies safe catalog updates to multiple links in one atomic project mutation', async () => {
+    const store = await emptyFixtureStore()
+    try {
+      store.registryTransaction((draft: any) => {
+        draft.sources = [{ id: 1, kind: 'official-connected', displayName: 'Official Catalog', enabled: true, createdAt: '2026-08-12T00:00:00.000Z' }]
+        draft.snapshot = { sourceId: 1, revision: 1, generatedAt: '2026-08-12T00:00:00.000Z', expiresAt: null, activatedAt: '2026-08-12T00:00:00.000Z', digest: 'b'.repeat(64), templateCount: 1, keyId: 'test-key' }
+      })
+      const revision1 = await catalogTemplate({
+        type: 'cpu', name: 'Example CPU 200', manufacturer: 'Example Silicon', model: 'CPU-200',
+        specs: { cores: 8, threads: 16 },
+      })
+      const revision2 = await catalogTemplate({
+        ...revision1.item,
+        compatibility: { requirements: { cpu: { socket: 'LGA1200', generation: '10th Gen', tdpWatts: 35 } } },
+      }, 2)
+      store.createCatalogInventoryItems(revision1, 2)
+      const beforeRevision = store.getProject().revision
+      store.registryTransaction((draft: any) => {
+        draft.snapshot.revision = 2
+        for (const link of draft.links) {
+          link.state = 'update-available'
+          link.availableRevision = 2
+          link.availableContentHash = revision2.contentHash
+        }
+      })
+      const evaluations = (store.getRegistryState() as any).links.map((link: any) => ({
+        ...store.evaluateCatalogUpdate(link.id, revision2),
+        targetContentHash: revision2.contentHash,
+      }))
+      const result = store.commitCatalogUpdateRun({ sourceId: 1, catalogRevision: 2, evaluations, templates: [revision2], automatic: true })
+
+      expect(result.applied).toBe(2)
+      expect(store.getProject().revision).toBe(beforeRevision + 1)
+      expect((store.getRegistryState() as any).links).toEqual([
+        expect.objectContaining({ importedRevision: 2, state: 'linked' }),
+        expect.objectContaining({ importedRevision: 2, state: 'linked' }),
+      ])
+      expect(store.getRegistryUpdateGroups()).toEqual([
+        expect.objectContaining({ status: 'applied', toRevision: 2, items: expect.arrayContaining([expect.any(Object), expect.any(Object)]) }),
+      ])
+      const backupSnapshot = await store.snapshotStores()
+      expect((backupSnapshot.registry as any).updateRuns).toEqual([
+        expect.objectContaining({ catalogRevision: 2, appliedCount: 2, state: 'completed' }),
+      ])
+      expect((backupSnapshot.registry as any).updateEvaluations).toHaveLength(2)
+      await store.replaceStoresAtomically({ registry: backupSnapshot.registry })
+      expect((await store.snapshotStores()).registry).toEqual(backupSnapshot.registry)
+    } finally {
+      store.close()
+    }
+  })
+
+  test('evaluates and advances every project containing a shared registry item', async () => {
+    const store = await emptyFixtureStore()
+    try {
+      store.registryTransaction((draft: any) => {
+        draft.sources = [{ id: 1, kind: 'official-connected', displayName: 'Official Catalog', enabled: true, createdAt: '2026-08-12T00:00:00.000Z' }]
+        draft.snapshot = { sourceId: 1, revision: 2, generatedAt: '2026-08-12T00:00:00.000Z', expiresAt: null, activatedAt: '2026-08-12T00:00:00.000Z', digest: 'b'.repeat(64), templateCount: 1, keyId: 'test-key' }
+      })
+      const revision1 = await catalogTemplate({
+        type: 'cpu', name: 'Shared CPU', manufacturer: 'Example', model: 'CPU-SHARED', specs: { cores: 4 },
+      })
+      const revision2 = await catalogTemplate({
+        ...revision1.item, specs: { ...revision1.item.specs, threads: 8 },
+      }, 2)
+      store.createCatalogInventoryItems(revision1)
+      const link = (store.getRegistryState() as any).links[0]
+      const second = store.createProject({ name: 'Secondary lab' })
+      store.addGlobalInventoryMembership(second.project.id, { type: link.itemType, id: link.itemId })
+      store.registryTransaction((draft: any) => Object.assign(draft.links[0], {
+        state: 'update-available',
+        availableRevision: 2,
+        availableContentHash: revision2.contentHash,
+      }))
+      const before = new Map(store.listProjects().map((project) => [project.id, project.revision]))
+      const batch = store.evaluateCatalogUpdates([{ linkId: link.id, templateKey: link.templateKey }], [revision2])
+
+      expect(batch.projectRevisions).toEqual({
+        1: before.get(1),
+        [second.project.id]: before.get(second.project.id),
+      })
+      store.commitCatalogUpdateRun({
+        sourceId: 1,
+        catalogRevision: 2,
+        evaluations: batch.evaluations,
+        templates: [revision2],
+        automatic: true,
+        expectedProjectRevisions: batch.projectRevisions,
+      })
+
+      const after = new Map(store.listProjects().map((project) => [project.id, project.revision]))
+      expect(after.get(1)).toBe(before.get(1)! + 1)
+      expect(after.get(second.project.id)).toBe(before.get(second.project.id)! + 1)
+      expect(store.getWorkspace(second.project.id, second.defaultWorkspaceId).items[`cpu:${link.itemId}`].specs?.threads).toBe(8)
+    } finally {
+      store.close()
+    }
+  })
+
+  test('updates a registry-linked item owned only by a non-default project', async () => {
+    const store = await emptyFixtureStore()
+    try {
+      store.registryTransaction((draft: any) => {
+        draft.sources = [{ id: 1, kind: 'official-connected', displayName: 'Official Catalog', enabled: true, createdAt: '2026-08-12T00:00:00.000Z' }]
+        draft.snapshot = { sourceId: 1, revision: 2, generatedAt: '2026-08-12T00:00:00.000Z', expiresAt: null, activatedAt: '2026-08-12T00:00:00.000Z', digest: 'b'.repeat(64), templateCount: 1, keyId: 'test-key' }
+      })
+      const second = store.createProject({ name: 'Secondary lab' })
+      const scoped = store.forWorkspace(second.project.id, second.defaultWorkspaceId)
+      const revision1 = await catalogTemplate({
+        type: 'cpu', name: 'Project CPU', manufacturer: 'Example', model: 'CPU-PROJECT', specs: { cores: 4 },
+      })
+      const revision2 = await catalogTemplate({ ...revision1.item, specs: { ...revision1.item.specs, threads: 8 } }, 2)
+      scoped.createCatalogInventoryItems(revision1, 1, { scope: 'project' })
+      const link = (store.getRegistryState() as any).links[0]
+      store.registryTransaction((draft: any) => Object.assign(draft.links[0], {
+        state: 'update-available', availableRevision: 2, availableContentHash: revision2.contentHash,
+      }))
+      const rootRevision = store.getProject().revision
+      const secondaryRevision = store.getWorkspace(second.project.id, second.defaultWorkspaceId).revision
+      const batch = store.evaluateCatalogUpdates([{ linkId: link.id, templateKey: link.templateKey }], [revision2])
+
+      store.commitCatalogUpdateRun({
+        sourceId: 1, catalogRevision: 2, evaluations: batch.evaluations, templates: [revision2], automatic: true,
+        expectedProjectRevisions: batch.projectRevisions,
+      })
+
+      expect(store.getProject().revision).toBe(rootRevision)
+      expect(store.getWorkspace(second.project.id, second.defaultWorkspaceId)).toMatchObject({
+        revision: secondaryRevision + 1,
+        items: { [`cpu:${link.itemId}`]: expect.objectContaining({ specs: expect.objectContaining({ threads: 8 }) }) },
+      })
+    } finally {
+      store.close()
+    }
+  })
+
+  test('declines only the current catalog revision and reoffers a newer revision', async () => {
+    const store = await emptyFixtureStore()
+    try {
+      store.registryTransaction((draft: any) => {
+        draft.sources = [{ id: 1, kind: 'official-connected', displayName: 'Official Catalog', enabled: true, createdAt: '2026-08-12T00:00:00.000Z' }]
+        draft.snapshot = { sourceId: 1, revision: 2, generatedAt: '2026-08-12T00:00:00.000Z', expiresAt: null, activatedAt: '2026-08-12T00:00:00.000Z', digest: 'b'.repeat(64), templateCount: 1, keyId: 'test-key' }
+      })
+      const revision1 = await catalogTemplate({ type: 'cpu', name: 'Example CPU 200', manufacturer: 'Example', model: 'CPU-200', specs: { cores: 4 } })
+      const revision2 = await catalogTemplate({ ...revision1.item, specs: { cores: 6 } }, 2)
+      const revision3 = await catalogTemplate({ ...revision1.item, specs: { cores: 8 } }, 3)
+      store.createCatalogInventoryItems(revision1)
+      const link = (store.getRegistryState() as any).links[0]
+      store.registryTransaction((draft: any) => Object.assign(draft.links[0], { state: 'update-available', availableRevision: 2, availableContentHash: revision2.contentHash }))
+      const evaluate = (template: any) => [{ ...store.evaluateCatalogUpdate(link.id, template), targetContentHash: template.contentHash }]
+      store.commitCatalogUpdateRun({ sourceId: 1, catalogRevision: 2, evaluations: evaluate(revision2), templates: [revision2], automatic: false })
+      expect((store.getRegistryState() as any).updateRuns[0]).toMatchObject({ appliedCount: 0, reviewCount: 1, skippedCount: 0 })
+      store.decideRegistryUpdateGroups({
+        groups: [{ templateKey: revision2.templateKey, toRevision: 2 }],
+        decision: 'declined',
+      })
+      expect((store.getRegistryState() as any).updateRuns[0]).toMatchObject({ appliedCount: 0, reviewCount: 0, skippedCount: 1 })
+      store.commitCatalogUpdateRun({ sourceId: 1, catalogRevision: 2, evaluations: evaluate(revision2), templates: [revision2], automatic: true })
+      expect(store.getRegistryUpdateGroups()).toEqual([expect.objectContaining({ status: 'declined', toRevision: 2 })])
+
+      store.registryTransaction((draft: any) => {
+        draft.snapshot.revision = 3
+        Object.assign(draft.links[0], { state: 'update-available', availableRevision: 3, availableContentHash: revision3.contentHash })
+      })
+      store.commitCatalogUpdateRun({ sourceId: 1, catalogRevision: 3, evaluations: evaluate(revision3), templates: [revision3], automatic: false })
+      expect(store.getRegistryUpdateGroups()).toEqual(expect.arrayContaining([
+        expect.objectContaining({ status: 'declined', toRevision: 2 }),
+        expect.objectContaining({ status: 'review', toRevision: 3 }),
+      ]))
+    } finally {
+      store.close()
+    }
+  })
+
+  test('persists bounded retry state for failed catalog evaluation runs', async () => {
+    const store = await emptyFixtureStore()
+    try {
+      store.registryTransaction((draft: any) => {
+        draft.sources = [{ id: 1, kind: 'official-connected', displayName: 'Official Catalog', enabled: true, createdAt: '2026-08-12T00:00:00.000Z' }]
+      })
+      store.recordCatalogUpdateFailure({ sourceId: 1, catalogRevision: 4, error: new Error('temporary catalog failure') })
+      expect(store.getRegistryUpdateStatus()).toMatchObject({
+        catalogRevision: 4,
+        state: 'failed',
+        attemptCount: 1,
+        retryAfter: '2026-08-12T01:01:00.000Z',
+        error: 'temporary catalog failure',
+      })
+      store.recordCatalogUpdateFailure({ sourceId: 1, catalogRevision: 4, error: new Error('still unavailable') })
+      expect(store.getRegistryUpdateStatus()).toMatchObject({
+        state: 'failed',
+        attemptCount: 2,
+        retryAfter: '2026-08-12T01:02:00.000Z',
+        error: 'still unavailable',
+      })
+    } finally {
+      store.close()
+    }
+  })
+
+  test('rejects a mixed catalog update batch without partially applying valid groups', async () => {
+    const store = await emptyFixtureStore()
+    try {
+      store.registryTransaction((draft: any) => {
+        draft.sources = [{ id: 1, kind: 'official-connected', displayName: 'Official Catalog', enabled: true, createdAt: '2026-08-12T00:00:00.000Z' }]
+        draft.snapshot = { sourceId: 1, revision: 2, generatedAt: '2026-08-12T00:00:00.000Z', expiresAt: null, activatedAt: '2026-08-12T00:00:00.000Z', digest: 'b'.repeat(64), templateCount: 1, keyId: 'test-key' }
+      })
+      const revision1 = await catalogTemplate({ type: 'cpu', name: 'Example CPU 200', manufacturer: 'Example', model: 'CPU-200', specs: { cores: 4 } })
+      const revision2 = await catalogTemplate({ ...revision1.item, specs: { cores: 6 } }, 2)
+      const unavailableRevision = await catalogTemplate({ ...revision1.item, specs: { cores: 8 } }, 3)
+      store.createCatalogInventoryItems(revision1)
+      store.registryTransaction((draft: any) => Object.assign(draft.links[0], {
+        state: 'update-available',
+        availableRevision: 2,
+        availableContentHash: revision2.contentHash,
+      }))
+      const beforeRevision = store.getProject().revision
+
+      expect(() => store.applyRegistryUpdateGroups([revision2, unavailableRevision])).toThrow('One or more registry update groups were not found.')
+      expect(store.getProject().revision).toBe(beforeRevision)
+      expect((store.getRegistryState() as any).links[0]).toMatchObject({ state: 'update-available', importedRevision: 1, availableRevision: 2 })
     } finally {
       store.close()
     }

@@ -1,9 +1,11 @@
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { fireEvent, screen } from '@testing-library/react'
+import type { ReactElement } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { HostNotificationSettings } from '@/components/inspector/agent/host-notification-settings'
 import { NotificationCenter } from '@/components/notifications/notification-center'
 import { NotificationSettings } from '@/components/settings/notifications/notification-settings'
-import { renderWithOpenAuth as render } from '@/test/open-auth-test-render'
+import { renderWithOpenAuth } from '@/test/open-auth-test-render'
 import type { AgentHostStatus } from '@/types/agent'
 import type { NotificationSnapshot } from '@/types/notifications'
 
@@ -16,6 +18,7 @@ const mocks = vi.hoisted(() => ({
   retry: vi.fn(),
   fetchNextPage: vi.fn(),
   hasNextPage: false,
+  registryUpdates: { groups: [], run: null } as unknown,
 }))
 
 function mutation(mutate = vi.fn()) {
@@ -49,6 +52,18 @@ vi.mock('@/hooks/use-notifications', () => ({
   }),
 }))
 
+vi.mock('@/lib/registry-api', () => ({
+  loadCatalogUpdates: () => Promise.resolve(mocks.registryUpdates),
+}))
+
+function render(ui: ReactElement) {
+  return renderWithOpenAuth(
+    <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+      {ui}
+    </QueryClientProvider>,
+  )
+}
+
 function snapshot(overrides: Partial<NotificationSnapshot['config']> = {}): NotificationSnapshot {
   return {
     available: true,
@@ -76,6 +91,7 @@ beforeEach(() => {
   mocks.retry.mockReset()
   mocks.fetchNextPage.mockReset()
   mocks.hasNextPage = false
+  mocks.registryUpdates = { groups: [], run: null }
 })
 
 describe('notification UI', () => {
@@ -136,6 +152,20 @@ describe('notification UI', () => {
     fireEvent.click(screen.getAllByRole('button', { name: 'Load more' })[0])
 
     expect(mocks.fetchNextPage).toHaveBeenCalledTimes(1)
+  })
+
+  it('summarizes the latest persisted registry update run', async () => {
+    mocks.registryUpdates = {
+      groups: [],
+      run: {
+        id: 1, catalogRevision: 17, state: 'completed', automatic: true,
+        appliedCount: 847, reviewCount: 2, blockedCount: 1, skippedCount: 0,
+        attemptCount: 0, retryAfter: null, error: null, completedAt: '2026-08-14T13:00:00.000Z',
+      },
+    }
+    render(<NotificationCenter open onOpenChange={vi.fn()} />)
+
+    expect(await screen.findByText('Applied 847 verified updates. 3 update groups require review.')).toBeInTheDocument()
   })
 
   it('preserves selected resources that are absent from the latest heartbeat', () => {

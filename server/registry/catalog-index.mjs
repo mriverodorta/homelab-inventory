@@ -368,4 +368,26 @@ export class CatalogIndex {
       database.close()
     }
   }
+
+  getByKeys(templateKeys) {
+    const keys = [...new Set(templateKeys.map(String).filter(Boolean))]
+    if (keys.length === 0) return []
+    const database = new Database(this.filePath, { readonly: true })
+    try {
+      const rows = []
+      for (let offset = 0; offset < keys.length; offset += 500) {
+        const chunk = keys.slice(offset, offset + 500)
+        rows.push(...database.query(`
+          SELECT template_key, revision, fingerprint_version, identity_hash, identity_aliases_json,
+            content_hash, type, manufacturer, name, product_family_json, variant_evidence_json, item_json
+          FROM templates
+          WHERE template_key IN (${chunk.map(() => '?').join(', ')})
+        `).all(...chunk))
+      }
+      const byKey = new Map(rows.map((row) => [row.template_key, catalogRow(row)]))
+      return keys.flatMap((key) => byKey.has(key) ? [byKey.get(key)] : [])
+    } finally {
+      database.close()
+    }
+  }
 }

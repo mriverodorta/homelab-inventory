@@ -83,6 +83,9 @@ function CanvasViewport({
   updateStatusLoading,
   canViewNotifications,
   notificationCount,
+  registryUpdateCount,
+  registryUpdateSummary,
+  canViewRegistryUpdates,
   desktopInventoryVisible,
   inspectorOpen,
   onUndo,
@@ -97,6 +100,7 @@ function CanvasViewport({
   onToggleDisplayCablesVisible,
   onOpenSettings,
   onOpenNotifications,
+  onOpenRegistryUpdates,
 }: WorkbenchCanvasProps) {
   const canEditWorkspace = usePermission('workspace.edit')
   const canEditCanvas = usePermission('canvas.edit')
@@ -337,6 +341,9 @@ function CanvasViewport({
         canViewUpdates,
         canViewNotifications,
         notificationCount,
+        registryUpdateCount,
+        registryUpdateSummary,
+        canViewRegistryUpdates,
         onInventory: onOpenInventory,
         onUndo,
         onRedo,
@@ -349,6 +356,7 @@ function CanvasViewport({
         onToggleDisplayCablesVisible,
         onOpenSettings,
         onOpenNotifications,
+        onOpenRegistryUpdates,
       }}
     />
   )

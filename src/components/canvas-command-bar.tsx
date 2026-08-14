@@ -3,6 +3,7 @@ import {
   Cable,
   Cloud,
   CloudAlert,
+  CloudDownload,
   Download,
   EthernetPort,
   HdmiPort,
@@ -42,6 +43,9 @@ export interface CanvasCommandBarProps {
   canViewUpdates: boolean
   canViewNotifications: boolean
   notificationCount: number
+  registryUpdateCount: number
+  registryUpdateSummary?: string
+  canViewRegistryUpdates: boolean
   onInventory: () => void
   onUndo: () => void
   onRedo: () => void
@@ -54,6 +58,7 @@ export interface CanvasCommandBarProps {
   onToggleDisplayCablesVisible: () => void
   onOpenSettings: () => void
   onOpenNotifications: () => void
+  onOpenRegistryUpdates: () => void
   className?: string
 }
 
@@ -163,6 +168,8 @@ export function CanvasCommandBar({
   canViewUpdates,
   canViewNotifications,
   notificationCount,
+  registryUpdateCount,
+  registryUpdateSummary,
   onInventory,
   onUndo,
   onRedo,
@@ -175,6 +182,8 @@ export function CanvasCommandBar({
   onToggleDisplayCablesVisible,
   onOpenSettings,
   onOpenNotifications,
+  canViewRegistryUpdates,
+  onOpenRegistryUpdates,
   className,
 }: CanvasCommandBarProps) {
   const inventoryLabel = desktopInventoryVisible ? 'Hide inventory' : 'Show inventory'
@@ -216,7 +225,17 @@ export function CanvasCommandBar({
             <Redo2 className="size-4" />
           </ToolbarButton>
 
-          {canViewUpdates || canViewAudit || canViewNotifications ? <ToolbarSeparator /> : null}
+          {canViewUpdates || canViewAudit || canViewNotifications || canViewRegistryUpdates ? <ToolbarSeparator /> : null}
+
+          {canViewRegistryUpdates ? (
+            <ToolbarButton
+              label={`${registryUpdateSummary ? `${registryUpdateSummary}. ` : ''}${registryUpdateCount === 0 ? 'Registry updates, none require review' : `Registry updates, ${registryUpdateCount} groups require review`}`}
+              onClick={onOpenRegistryUpdates}
+              indicator={<span aria-hidden="true" className="absolute -right-0.5 -top-0.5 min-w-4 rounded-full bg-[#e7f1ed] px-1 text-center text-[9px] font-black leading-4 text-[#285c52]">{registryUpdateCount}</span>}
+            >
+              <CloudDownload className="size-4" />
+            </ToolbarButton>
+          ) : null}
 
           {canViewUpdates ? (
             <ToolbarButton
