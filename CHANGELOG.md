@@ -6,6 +6,8 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 
 ## Unreleased
 
+## [0.12.9] - 2026-08-14
+
 ### Added
 
 - Verified official catalog updates can now apply automatically when compatibility, occupied slots, connected ports, assignments, and topology remain valid.

@@ -205,7 +205,7 @@ const RELEASE_0_12_8_DETAILS: UnreleasedReleaseNotes = {
   notes: [],
 }
 
-export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
+const RELEASE_0_12_9_DETAILS: UnreleasedReleaseNotes = {
   highlights: [
     'Verified official catalog updates now apply automatically when compatibility, occupied slots, connected ports, assignments, and topology remain valid.',
     'A permanent Registry updates toolbar action groups changes into Review, Applied, and Declined views for scalable catalog maintenance, with the latest run summarized in the Notification Center.',
@@ -214,6 +214,12 @@ export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
   notes: [
     'Automatic safe official updates are enabled by default and can be disabled from Registry settings. Updates are validated across every affected project; risky, blocked, or unprovable changes remain available for explicit group review.',
   ],
+}
+
+export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
+  highlights: [],
+  fixes: [],
+  notes: [],
 }
 
 const RELEASE_0_11_2_DETAILS: UnreleasedReleaseNotes = {
@@ -743,9 +749,16 @@ const RELEASE_0_2_1_DETAILS: UnreleasedReleaseNotes = {
 
 export const RELEASE_NOTES: ReleaseNoteEntry[] = [
   {
-    version: '0.12.8',
+    version: '0.12.9',
     date: '2026-08-14',
     channel: 'latest',
+    title: 'Automatic trusted catalog updates',
+    ...RELEASE_0_12_9_DETAILS,
+  },
+  {
+    version: '0.12.8',
+    date: '2026-08-14',
+    channel: 'release',
     title: 'Accurate PCIe compatibility projection',
     ...RELEASE_0_12_8_DETAILS,
   },
