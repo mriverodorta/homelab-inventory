@@ -6,6 +6,8 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 
 ## Unreleased
 
+## [0.12.8] - 2026-08-14
+
 ### Fixed
 
 - SQLite compatibility projection now keeps storage and expansion PCIe generations distinct, so compatible GPUs, network cards, sound cards, and wireless cards use their recorded numeric slots instead of reporting that slot generation is missing.

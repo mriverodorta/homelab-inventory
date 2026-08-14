@@ -197,11 +197,17 @@ const RELEASE_0_12_7_DETAILS: UnreleasedReleaseNotes = {
   notes: [],
 }
 
-export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
+const RELEASE_0_12_8_DETAILS: UnreleasedReleaseNotes = {
   highlights: [],
   fixes: [
     'SQLite compatibility projection now keeps storage and expansion PCIe generations distinct, so compatible GPUs, network cards, sound cards, and wireless cards use their recorded numeric slots instead of reporting that slot generation is missing.',
   ],
+  notes: [],
+}
+
+export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
+  highlights: [],
+  fixes: [],
   notes: [],
 }
 
@@ -732,9 +738,16 @@ const RELEASE_0_2_1_DETAILS: UnreleasedReleaseNotes = {
 
 export const RELEASE_NOTES: ReleaseNoteEntry[] = [
   {
-    version: '0.12.7',
+    version: '0.12.8',
     date: '2026-08-14',
     channel: 'latest',
+    title: 'Accurate PCIe compatibility projection',
+    ...RELEASE_0_12_8_DETAILS,
+  },
+  {
+    version: '0.12.7',
+    date: '2026-08-14',
+    channel: 'release',
     title: 'Reliable component and cable removal',
     ...RELEASE_0_12_7_DETAILS,
   },
