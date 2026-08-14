@@ -90,7 +90,7 @@ describe('release notes helpers', () => {
     expect(entries.map((entry) => entry.version)).toEqual(['0.1.10'])
   })
 
-  it('has structured notes for the package version under development', () => {
+  it('keeps one current latest entry and the structured release history', () => {
     const identityRelease = RELEASE_NOTES.find((entry) => entry.version === '0.8.6')!
     const hardenedRelease = RELEASE_NOTES.find((entry) => entry.version === '0.8.5')!
     const layoutRelease = RELEASE_NOTES.find((entry) => entry.version === '0.8.4')!
@@ -104,16 +104,21 @@ describe('release notes helpers', () => {
     const previousRelease = RELEASE_NOTES.find((entry) => entry.version === '0.2.1')!
     const engineRelease = RELEASE_NOTES.find((entry) => entry.version === '0.2.0')!
 
-    expect(hasReleaseNoteForVersion(RELEASE_NOTES, '0.12.6')).toBe(true)
-    expect(RELEASE_NOTES[0]).toEqual(
+    const latestReleases = RELEASE_NOTES.filter((entry) => entry.channel === 'latest')
+
+    expect(latestReleases).toHaveLength(1)
+    expect(RELEASE_NOTES[0]).toBe(latestReleases[0])
+    expect(RELEASE_NOTES.map((entry) => entry.version)).toEqual(
+      [...RELEASE_NOTES]
+        .sort((left, right) => compareVersions(right.version, left.version))
+        .map((entry) => entry.version),
+    )
+    expect(RELEASE_NOTES.find((entry) => entry.version === '0.12.6')).toEqual(
       expect.objectContaining({
-        version: '0.12.6',
+        channel: 'release',
         title: 'Patched Agent runtime and stricter release security',
       }),
     )
-    expect(RELEASE_NOTES.filter((entry) => entry.channel === 'latest')).toEqual([
-      expect.objectContaining({ version: '0.12.6' }),
-    ])
     expect(RELEASE_NOTES.find((entry) => entry.version === '0.1.38')).toEqual(
       expect.objectContaining({ channel: 'release' }),
     )
