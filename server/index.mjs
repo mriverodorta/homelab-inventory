@@ -43,6 +43,7 @@ import {
   readCatalogRefreshInterval,
 } from './registry/catalog-refresh-coordinator.mjs'
 import { CatalogUpdateCoordinator } from './registry/catalog-update-coordinator.mjs'
+import { runCatalogUpdatesAfterStartup } from './registry/catalog-update-startup.mjs'
 import { ContributionDeliveryService } from './registry/contribution-delivery.mjs'
 import { CatalogStatusService } from './registry/catalog-status-service.mjs'
 import { CatalogRuntime } from './registry/catalog-runtime.mjs'
@@ -468,7 +469,6 @@ registerRegistryRoutes(app, {
     : stagingRegistryPolicy(stagingPolicy),
 })
 if (!stagingPolicy.registryNetworkRefreshDisabled) catalogRefreshCoordinator?.start()
-void catalogUpdateCoordinator?.run().catch(() => {})
 catalogStatusService?.start()
 const backupSchedule = stagingPolicy.scheduledBackupsDisabled ? null : backupScheduler?.start()
 registerProjectRoutes(app, { withStore })
@@ -623,7 +623,15 @@ const server = app.listen(port, () => {
   console.log(`SQLite data directory: ${dataDir}`)
   startupProfiler.mark('http-listener')
   startupProfiler.complete()
-  if (store) catalogRuntime.resumeRecovery(store)
+  if (store) {
+    void runCatalogUpdatesAfterStartup({
+      runtime: catalogRuntime,
+      store,
+      coordinator: catalogUpdateCoordinator,
+    }).catch((error) => {
+      console.error('[registry-updates] Catalog startup recovery failed.', error instanceof Error ? error.message : error)
+    })
+  }
 })
 
 let shuttingDown = false
