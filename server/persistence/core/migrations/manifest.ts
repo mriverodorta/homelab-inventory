@@ -73,6 +73,6 @@ export const CORE_MIGRATIONS: readonly CoreMigration[] = [
   {
     id: '0014_automatic_registry_updates',
     file: '0013_automatic_registry_updates.sql',
-    sha256: 'a54204c150681ea274c7c053075765bc8b9d5451acb3545b3d19fed235de67c3',
+    sha256: '51894551751fd3854be2cf5fac10081a408953d9c6f956eee60f0eb4a8e7f076',
   },
 ]

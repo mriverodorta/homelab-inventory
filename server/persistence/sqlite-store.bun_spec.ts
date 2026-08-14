@@ -1060,6 +1060,45 @@ describe('SQLite Homelab Inventory store facade', () => {
     }
   })
 
+  test('persists a same-revision catalog adoption without treating it as a rollback', async () => {
+    const store = await emptyFixtureStore()
+    try {
+      store.registryTransaction((draft: any) => {
+        draft.sources = [{ id: 1, kind: 'official-connected', displayName: 'Official Catalog', enabled: true, createdAt: '2026-08-12T00:00:00.000Z' }]
+        draft.snapshot = { sourceId: 1, revision: 17, generatedAt: '2026-08-12T00:00:00.000Z', expiresAt: null, activatedAt: '2026-08-12T00:00:00.000Z', digest: 'b'.repeat(64), templateCount: 1, keyId: 'test-key' }
+      })
+      const template = await catalogTemplate({
+        type: 'cpu', name: 'Adopted CPU', manufacturer: 'Example', model: 'CPU-ADOPT', specs: { cores: 4 },
+      })
+      store.createCatalogInventoryItems(template)
+      const link = (store.getRegistryState() as any).links[0]
+      store.registryTransaction((draft: any) => Object.assign(draft.links[0], {
+        state: 'adoption-available',
+        availableRevision: 1,
+        availableContentHash: template.contentHash,
+      }))
+      const batch = store.evaluateCatalogUpdates([{ linkId: link.id, templateKey: link.templateKey }], [template])
+      const result = store.commitCatalogUpdateRun({
+        sourceId: 1,
+        catalogRevision: 17,
+        evaluations: batch.evaluations,
+        templates: [template],
+        automatic: true,
+        expectedProjectRevisions: batch.projectRevisions,
+      })
+
+      expect(result.applied).toBe(1)
+      expect((store.getRegistryState() as any).links[0]).toMatchObject({
+        state: 'linked', importedRevision: 1,
+      })
+      expect(store.getRegistryUpdateGroups()).toEqual([
+        expect.objectContaining({ status: 'applied', fromRevision: 1, toRevision: 1 }),
+      ])
+    } finally {
+      store.close()
+    }
+  })
+
   test('evaluates and advances every project containing a shared registry item', async () => {
     const store = await emptyFixtureStore()
     try {

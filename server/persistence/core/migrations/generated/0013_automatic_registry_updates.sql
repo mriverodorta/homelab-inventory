@@ -40,7 +40,7 @@ CREATE TABLE `registry_update_evaluations` (
 	FOREIGN KEY (`run_id`) REFERENCES `registry_update_runs`(`id`) ON UPDATE no action ON DELETE cascade,
 	FOREIGN KEY (`link_id`) REFERENCES `registry_links`(`id`) ON UPDATE no action ON DELETE cascade,
 	FOREIGN KEY (`decided_by_user_id`) REFERENCES `users`(`id`) ON UPDATE no action ON DELETE set null,
-	CONSTRAINT "registry_update_evaluations_revision_check" CHECK("registry_update_evaluations"."from_revision" > 0 AND "registry_update_evaluations"."to_revision" > "registry_update_evaluations"."from_revision"),
+	CONSTRAINT "registry_update_evaluations_revision_check" CHECK("registry_update_evaluations"."from_revision" > 0 AND "registry_update_evaluations"."to_revision" >= "registry_update_evaluations"."from_revision"),
 	CONSTRAINT "registry_update_evaluations_hash_check" CHECK(length("registry_update_evaluations"."target_content_hash") = 64),
 	CONSTRAINT "registry_update_evaluations_classification_check" CHECK("registry_update_evaluations"."classification" IN ('safe', 'review-required', 'blocked', 'skipped')),
 	CONSTRAINT "registry_update_evaluations_decision_check" CHECK("registry_update_evaluations"."decision" IN ('pending', 'applied', 'declined', 'superseded', 'failed')),
