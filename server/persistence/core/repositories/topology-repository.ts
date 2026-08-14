@@ -61,11 +61,14 @@ export function createTopologyRepository(context: RepositoryContext) {
   function unassignComponent(projectId: number, assignmentId: number) {
     const at = now()
     return sqlite.transaction(() => {
-      const result = db.delete(componentAssignments).where(and(
-        eq(componentAssignments.projectId, assertPositiveId(projectId, 'Project ID')),
-        eq(componentAssignments.id, assertPositiveId(assignmentId, 'Assignment ID')),
-      )).run()
-      if (result.changes !== 1) throw new Error(`Assignment ${assignmentId} was not found in project ${projectId}.`)
+      const deleted = db.delete(componentAssignments)
+        .where(and(
+          eq(componentAssignments.projectId, assertPositiveId(projectId, 'Project ID')),
+          eq(componentAssignments.id, assertPositiveId(assignmentId, 'Assignment ID')),
+        ))
+        .returning({ id: componentAssignments.id })
+        .all()
+      if (deleted.length !== 1) throw new Error(`Assignment ${assignmentId} was not found in project ${projectId}.`)
       bumpProjectRevision(context, projectId, at)
     }).immediate()
   }
@@ -126,11 +129,14 @@ export function createTopologyRepository(context: RepositoryContext) {
   function removeConnection(projectId: number, connectionId: number) {
     const at = now()
     return sqlite.transaction(() => {
-      const result = db.delete(projectConnections).where(and(
-        eq(projectConnections.projectId, assertPositiveId(projectId, 'Project ID')),
-        eq(projectConnections.id, assertPositiveId(connectionId, 'Connection ID')),
-      )).run()
-      if (result.changes !== 1) throw new Error(`Connection ${connectionId} was not found in project ${projectId}.`)
+      const deleted = db.delete(projectConnections)
+        .where(and(
+          eq(projectConnections.projectId, assertPositiveId(projectId, 'Project ID')),
+          eq(projectConnections.id, assertPositiveId(connectionId, 'Connection ID')),
+        ))
+        .returning({ id: projectConnections.id })
+        .all()
+      if (deleted.length !== 1) throw new Error(`Connection ${connectionId} was not found in project ${projectId}.`)
       bumpProjectRevision(context, projectId, at)
     }).immediate()
   }

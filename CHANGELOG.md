@@ -6,6 +6,10 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 
 ## Unreleased
 
+### Fixed
+
+- Assigned components and cable connections can now be removed when SQLite also cascades dependent slot, endpoint, or bend-point rows, without reporting a false missing-record error or rolling back the change.
+
 ## [0.12.6] - 2026-08-13
 
 ### Fixed

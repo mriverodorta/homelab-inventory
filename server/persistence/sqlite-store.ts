@@ -2231,10 +2231,10 @@ export class SqliteHomelabInventoryStore {
 
     if (patch.kind === 'remove-connection') {
       const connectionId = positiveId(patch.payload.connection.id, 'Connection ID')
-      const result = this.core.database.query(
-        'DELETE FROM project_connections WHERE project_id = ? AND id = ?',
-      ).run(this.projectId, connectionId)
-      if (result.changes !== 1) {
+      const deleted = this.core.database.query(
+        'DELETE FROM project_connections WHERE project_id = ? AND id = ? RETURNING id',
+      ).all(this.projectId, connectionId)
+      if (deleted.length !== 1) {
         throw lifecycleError(`Connection ${connectionId} does not exist.`, 'invalid-engine-patch', 500)
       }
       return
@@ -2299,10 +2299,10 @@ export class SqliteHomelabInventoryStore {
 
     if (patch.kind === 'patch-assignments') {
       for (const assignmentId of patch.payload.remove_assignment_ids) {
-        const result = this.core.database.query(
-          'DELETE FROM component_assignments WHERE project_id = ? AND id = ?',
-        ).run(this.projectId, positiveId(assignmentId, 'Assignment ID'))
-        if (result.changes !== 1) {
+        const deleted = this.core.database.query(
+          'DELETE FROM component_assignments WHERE project_id = ? AND id = ? RETURNING id',
+        ).all(this.projectId, positiveId(assignmentId, 'Assignment ID'))
+        if (deleted.length !== 1) {
           throw lifecycleError(`Assignment ${assignmentId} does not exist.`, 'invalid-engine-patch', 500)
         }
       }

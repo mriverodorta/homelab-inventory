@@ -374,6 +374,113 @@ describe('SQLite Homelab Inventory store facade', () => {
     }
   })
 
+  test('removes assigned components without mistaking cascaded slot rows for missing assignments', async () => {
+    const store = await fixtureStore()
+    try {
+      const database = store.core.database
+      const assignmentId = 3
+      const baseRevision = store.getEngineRevision()
+      database.query(`
+        UPDATE host_resource_groups SET slot_count = 2
+        WHERE host_item_id = 1 AND resource_type = 'storage'
+      `).run()
+      const group = database.query(`
+        SELECT id FROM host_resource_groups
+        WHERE host_item_id = 1 AND resource_type = 'storage'
+      `).get() as { id: number }
+      const secondSlotId = 10_001
+      database.query(`
+        INSERT INTO host_resource_slots (
+          id, resource_group_id, host_item_id, position, label, single_capacity, created_at_ms
+        ) VALUES (?, ?, 1, 2, 'M.2 storage 2', 1, ?)
+      `).run(secondSlotId, group.id, Date.parse('2026-08-12T01:00:00.000Z'))
+      database.query('INSERT INTO storage_slots (id) VALUES (?)').run(secondSlotId)
+      database.query(`
+        INSERT INTO component_assignment_slots (
+          project_id, assignment_id, host_item_id, resource_slot_id, position
+        ) VALUES (1, ?, 1, ?, 1)
+      `).run(assignmentId, secondSlotId)
+      expect(database.query(`
+        SELECT count(*) AS count FROM component_assignment_slots WHERE assignment_id = ?
+      `).get(assignmentId)).toEqual({ count: 2 })
+
+      await store.applyEnginePatch({
+        baseRevision,
+        patchSet: {
+          revision: baseRevision + 1,
+          forward: {
+            kind: 'patch-assignments',
+            payload: { upsert: [], remove_assignment_ids: [assignmentId] },
+          },
+        },
+        responseBytes: Uint8Array.from([6]),
+      })
+
+      expect(store.getProject().assignments.some((assignment) => assignment.id === assignmentId)).toBe(false)
+      expect(database.query(`
+        SELECT count(*) AS count FROM component_assignment_slots WHERE assignment_id = ?
+      `).get(assignmentId)).toEqual({ count: 0 })
+      expect(store.getEngineRevision()).toBe(baseRevision + 1)
+
+      await expect(store.applyEnginePatch({
+        baseRevision: baseRevision + 1,
+        patchSet: {
+          revision: baseRevision + 2,
+          forward: {
+            kind: 'patch-assignments',
+            payload: { upsert: [], remove_assignment_ids: [assignmentId] },
+          },
+        },
+        responseBytes: Uint8Array.from([7]),
+      })).rejects.toThrow(`Assignment ${assignmentId} does not exist.`)
+      expect(store.getEngineRevision()).toBe(baseRevision + 1)
+    } finally {
+      store.close()
+    }
+  })
+
+  test('removes connections without mistaking cascaded topology rows for missing connections', async () => {
+    const store = await fixtureStore()
+    try {
+      const database = store.core.database
+      const connectionId = 1
+      const baseRevision = store.getEngineRevision()
+      const connection = store.getEngineSnapshot().topology.connections
+        .find((candidate) => candidate.id === connectionId)
+      expect(connection).toBeDefined()
+      expect(database.query(`
+        SELECT count(*) AS count FROM connection_endpoints WHERE connection_id = ?
+      `).get(connectionId)).toEqual({ count: 2 })
+
+      await store.applyEnginePatch({
+        baseRevision,
+        patchSet: {
+          revision: baseRevision + 1,
+          forward: { kind: 'remove-connection', payload: { connection: connection! } },
+        },
+        responseBytes: Uint8Array.from([8]),
+      })
+
+      expect(store.getProject().connections.some((candidate) => candidate.id === connectionId)).toBe(false)
+      expect(database.query(`
+        SELECT count(*) AS count FROM connection_endpoints WHERE connection_id = ?
+      `).get(connectionId)).toEqual({ count: 0 })
+      expect(store.getEngineRevision()).toBe(baseRevision + 1)
+
+      await expect(store.applyEnginePatch({
+        baseRevision: baseRevision + 1,
+        patchSet: {
+          revision: baseRevision + 2,
+          forward: { kind: 'remove-connection', payload: { connection: connection! } },
+        },
+        responseBytes: Uint8Array.from([9]),
+      })).rejects.toThrow(`Connection ${connectionId} does not exist.`)
+      expect(store.getEngineRevision()).toBe(baseRevision + 1)
+    } finally {
+      store.close()
+    }
+  })
+
   test('replaces a submitted project atomically with one invalidation revision', async () => {
     const store = await fixtureStore()
     const commits: unknown[] = []

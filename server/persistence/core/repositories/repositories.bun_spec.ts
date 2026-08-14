@@ -207,6 +207,45 @@ describe('relational persistence repositories', () => {
     }
   })
 
+  test('removes topology parents with dependent rows and keeps missing-record checks strict', async () => {
+    const { handle, context } = await fixtureContext()
+    try {
+      const topology = createTopologyRepository(context)
+      const projectRevision = () => (
+        handle.database.query('SELECT revision FROM projects WHERE id = 1').get() as { revision: number }
+      ).revision
+
+      const assignmentId = 3
+      const assignmentRevision = projectRevision()
+      expect(handle.database.query(`
+        SELECT count(*) AS count FROM component_assignment_slots WHERE assignment_id = ?
+      `).get(assignmentId)).toEqual({ count: 1 })
+      topology.unassignComponent(1, assignmentId)
+      expect(topology.listAssignments(1).some((assignment) => assignment.id === assignmentId)).toBe(false)
+      expect(handle.database.query(`
+        SELECT count(*) AS count FROM component_assignment_slots WHERE assignment_id = ?
+      `).get(assignmentId)).toEqual({ count: 0 })
+      expect(projectRevision()).toBe(assignmentRevision + 1)
+      expect(() => topology.unassignComponent(1, assignmentId)).toThrow(/was not found/iu)
+      expect(projectRevision()).toBe(assignmentRevision + 1)
+
+      const connectionId = 1
+      const connectionRevision = projectRevision()
+      expect(handle.database.query(`
+        SELECT count(*) AS count FROM connection_endpoints WHERE connection_id = ?
+      `).get(connectionId)).toEqual({ count: 2 })
+      topology.removeConnection(1, connectionId)
+      expect(handle.database.query(`
+        SELECT count(*) AS count FROM connection_endpoints WHERE connection_id = ?
+      `).get(connectionId)).toEqual({ count: 0 })
+      expect(projectRevision()).toBe(connectionRevision + 1)
+      expect(() => topology.removeConnection(1, connectionId)).toThrow(/was not found/iu)
+      expect(projectRevision()).toBe(connectionRevision + 1)
+    } finally {
+      closeManagedDatabase(handle)
+    }
+  })
+
   test('keeps route-cache writes outside project and workspace revisions', async () => {
     const { handle, context } = await fixtureContext()
     try {

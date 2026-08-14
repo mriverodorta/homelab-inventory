@@ -191,7 +191,9 @@ const RELEASE_0_12_6_DETAILS: UnreleasedReleaseNotes = {
 
 export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
   highlights: [],
-  fixes: [],
+  fixes: [
+    'Assigned components and cable connections can now be removed when SQLite cascades their dependent topology rows, without a false missing-record error rolling back the change.',
+  ],
   notes: [],
 }
 
