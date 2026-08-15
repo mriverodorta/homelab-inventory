@@ -32,6 +32,7 @@ export type TopologyItem = {
   item: TopologyItemRef
   archived: boolean
   power_configuration: string | null
+  power_adapter_disposition?: string | null
   allow_outlet_fan_out: boolean
   ports: TopologyPort[]
 }

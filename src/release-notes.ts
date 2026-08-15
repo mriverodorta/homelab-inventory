@@ -233,6 +233,14 @@ const RELEASE_0_12_10_DETAILS: UnreleasedReleaseNotes = {
   ],
 }
 
+const RELEASE_0_12_11_DETAILS: UnreleasedReleaseNotes = {
+  highlights: [],
+  fixes: [
+    'Fixed external NAS adapters are now recognized as host-owned power inputs without requiring a separate assigned adapter.',
+  ],
+  notes: [],
+}
+
 export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
   highlights: [],
   fixes: [],
@@ -766,9 +774,16 @@ const RELEASE_0_2_1_DETAILS: UnreleasedReleaseNotes = {
 
 export const RELEASE_NOTES: ReleaseNoteEntry[] = [
   {
-    version: '0.12.10',
+    version: '0.12.11',
     date: '2026-08-15',
     channel: 'latest',
+    title: 'Correct fixed NAS power audits',
+    ...RELEASE_0_12_11_DETAILS,
+  },
+  {
+    version: '0.12.10',
+    date: '2026-08-15',
+    channel: 'release',
     title: 'Complete NAS catalog topology',
     ...RELEASE_0_12_10_DETAILS,
   },

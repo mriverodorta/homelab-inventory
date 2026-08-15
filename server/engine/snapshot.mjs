@@ -1,3 +1,5 @@
+import { nasPowerTopology } from '../../shared/power-ports.mjs'
+
 function itemRef(project, runtimeKey, label) {
   const item = project.items[runtimeKey]
   if (!item || !Number.isSafeInteger(item.id) || item.id <= 0 || typeof item.type !== 'string') {
@@ -32,25 +34,30 @@ export function createEngineSnapshot(project) {
     revision: project.revision,
     project_name: project.metadata.name,
     topology: {
-      items: Object.values(project.items).map((item) => ({
-        item: { item_type: item.type, id: item.id },
-        archived: typeof item.archivedAt === 'string' && item.archivedAt.length > 0,
-        power_configuration: typeof item.specs?.powerConfiguration === 'string'
-          ? item.specs.powerConfiguration
-          : null,
-        allow_outlet_fan_out: item.specs?.allowOutletFanOut === true,
-        ports: (item.ports ?? []).map((port) => ({
-          id: port.id,
-          key: port.key ?? null,
-          port_type: port.type,
-          slot_number: port.slotNumber,
-          speed: port.speed ?? null,
-          endpoints: (port.endpoints ?? []).map((endpoint) => ({
-            id: endpoint.id,
-            side: endpoint.side,
+      items: Object.values(project.items).map((item) => {
+        const power = item.type === 'nas' ? nasPowerTopology(item) : null
+        return {
+          item: { item_type: item.type, id: item.id },
+          archived: typeof item.archivedAt === 'string' && item.archivedAt.length > 0,
+          power_configuration: power?.configuration
+            ?? (typeof item.specs?.powerConfiguration === 'string'
+              ? item.specs.powerConfiguration
+              : null),
+          power_adapter_disposition: power?.adapterDisposition ?? null,
+          allow_outlet_fan_out: item.specs?.allowOutletFanOut === true,
+          ports: (item.ports ?? []).map((port) => ({
+            id: port.id,
+            key: port.key ?? null,
+            port_type: port.type,
+            slot_number: port.slotNumber,
+            speed: port.speed ?? null,
+            endpoints: (port.endpoints ?? []).map((endpoint) => ({
+              id: endpoint.id,
+              side: endpoint.side,
+            })),
           })),
-        })),
-      })),
+        }
+      }),
       assignments: project.assignments.map((assignment, index) => ({
         id: assignment.id,
         host: itemRef(project, assignment.serverId, `assignments[${String(index)}].serverId`),

@@ -94,6 +94,8 @@ pub struct TopologyItem {
     pub item: ItemRef,
     pub archived: bool,
     pub power_configuration: Option<String>,
+    #[serde(default)]
+    pub power_adapter_disposition: Option<String>,
     pub allow_outlet_fan_out: bool,
     pub ports: Vec<TopologyPort>,
 }
@@ -1004,6 +1006,12 @@ fn power_endpoint(
             "nas" if owner.power_configuration.as_deref() == Some("internal-psu") => {
                 Some("nas-internal-input")
             }
+            "nas"
+                if owner.power_configuration.as_deref() == Some("external-adapter")
+                    && owner.power_adapter_disposition.as_deref() == Some("fixed") =>
+            {
+                Some("oem-power-adapter-input")
+            }
             _ => None,
         }
     } else {
@@ -1171,6 +1179,7 @@ mod tests {
             },
             archived: false,
             power_configuration: None,
+            power_adapter_disposition: None,
             allow_outlet_fan_out: false,
             ports: vec![TopologyPort {
                 id: port_id,
@@ -1191,6 +1200,7 @@ mod tests {
             },
             archived: false,
             power_configuration: None,
+            power_adapter_disposition: None,
             allow_outlet_fan_out: false,
             ports: vec![TopologyPort {
                 id: port_id,
@@ -1926,6 +1936,7 @@ mod tests {
             },
             archived: false,
             power_configuration: None,
+            power_adapter_disposition: None,
             allow_outlet_fan_out: false,
             ports: vec![],
         };
@@ -1980,6 +1991,45 @@ mod tests {
                 .endpoints
                 .iter()
                 .any(|endpoint| endpoint.endpoint == server_input)
+        );
+    }
+
+    #[test]
+    fn treats_fixed_external_nas_adapter_as_host_owned_power_input() {
+        let mut nas = power_item("nas", 1, 1, "ac-input");
+        nas.power_configuration = Some("external-adapter".into());
+        nas.power_adapter_disposition = Some("fixed".into());
+        let input = EndpointRef {
+            item: nas.item.clone(),
+            hosted_item: None,
+            port_id: 1,
+            endpoint_id: None,
+        };
+        let index = TopologyIndex::build(TopologySnapshot {
+            items: vec![nas.clone()],
+            assignments: vec![],
+            connections: vec![],
+            placements: vec![nas.item],
+        })
+        .unwrap();
+        let topology = index.power_topology();
+
+        assert_eq!(topology.endpoints.len(), 1);
+        assert_eq!(topology.endpoints[0].endpoint, input);
+        assert_eq!(
+            topology.endpoints[0]
+                .power
+                .as_ref()
+                .map(|power| (power.kind.as_str(), power.direction.as_str())),
+            Some(("oem-power-adapter-input", "input"))
+        );
+        assert_eq!(
+            topology
+                .findings
+                .iter()
+                .map(|finding| finding.code.as_str())
+                .collect::<Vec<_>>(),
+            vec!["power.host.unpowered"]
         );
     }
 
@@ -2065,6 +2115,7 @@ mod tests {
             },
             archived: false,
             power_configuration: None,
+            power_adapter_disposition: None,
             allow_outlet_fan_out: false,
             ports: vec![],
         };

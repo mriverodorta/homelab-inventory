@@ -31,6 +31,17 @@ function project() {
           endpoints: [{ id: 1, side: 'front' }, { id: 2, side: 'back' }],
         }],
       },
+      'nas:1': {
+        id: 1,
+        type: 'nas',
+        name: 'Fixed adapter NAS',
+        specs: { powerConfiguration: 'external-adapter' },
+        compatibility: { host: { power: {
+          configuration: 'external-adapter',
+          adapterDisposition: 'fixed',
+        } } },
+        ports: [{ id: 1, key: 'ac-input', kind: 'power-port', type: 'ac-input', slotNumber: 1 }],
+      },
     },
     assignments: [{
       id: 1,
@@ -100,6 +111,12 @@ describe('engine topology snapshot', () => {
     expect(snapshot.topology.items.find(
       (item) => item.item.item_type === 'server',
     )?.power_configuration).toBe('external-adapter')
+    expect(snapshot.topology.items.find(
+      (item) => item.item.item_type === 'nas',
+    )).toMatchObject({
+      power_configuration: 'external-adapter',
+      power_adapter_disposition: 'fixed',
+    })
   })
 
   it('rejects relationships whose runtime key does not resolve', () => {

@@ -6,6 +6,12 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 
 ## Unreleased
 
+## [0.12.11] - 2026-08-15
+
+### Fixed
+
+- Fixed external NAS adapters are now recognized by the topology engine as host-owned power inputs, preventing false assigned-adapter audit warnings.
+
 ## [0.12.10] - 2026-08-15
 
 ### Added
