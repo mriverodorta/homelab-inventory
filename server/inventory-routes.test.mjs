@@ -53,6 +53,13 @@ async function jsonRequest(url, pathName, options = {}) {
   return { response, body: await response.json() }
 }
 
+async function close(server) {
+  server.closeIdleConnections?.()
+  await new Promise((resolve, reject) => {
+    server.close((error) => error ? reject(error) : resolve())
+  })
+}
+
 afterEach(async () => {
   await Promise.all(stores.splice(0).map((store) => store.flush().catch(() => {})))
   await Promise.all(tempDirs.splice(0).map((directory) => fs.rm(directory, { recursive: true, force: true })))
@@ -94,7 +101,7 @@ describe('inventory lifecycle routes', () => {
         { orientation: 'vertical' },
       )
     } finally {
-      server.close()
+      await close(server)
     }
   })
 
@@ -142,7 +149,7 @@ describe('inventory lifecycle routes', () => {
       expect(store.createInventoryItemsForProject).toHaveBeenCalledWith(2, { type: 'cpu', name: 'CPU' }, 2)
       expect(store.duplicateInventoryToProject).toHaveBeenCalledWith(1, 2, { type: 'cpu', id: 3 })
     } finally {
-      server.close()
+      await close(server)
     }
   })
 
@@ -165,7 +172,7 @@ describe('inventory lifecycle routes', () => {
       expect(legacy.body.items['ram:1'].name).toBe('RAM')
       expect(store.databases.inventory.data.cpus).toHaveLength(2)
     } finally {
-      server.close()
+      await close(server)
     }
   })
 
@@ -217,7 +224,7 @@ describe('inventory lifecycle routes', () => {
       })
       expect(store.getProject().items['server:1'].compatibility).toEqual(compatibility)
     } finally {
-      server.close()
+      await close(server)
     }
   })
 
@@ -244,7 +251,7 @@ describe('inventory lifecycle routes', () => {
         'Inventory item server:1 compatibility.host.storageSlots[0].count must be a positive integer.',
       )
     } finally {
-      server.close()
+      await close(server)
     }
   })
 
@@ -263,7 +270,7 @@ describe('inventory lifecycle routes', () => {
       expect(missing.response.status).toBe(404)
       expect(missing.body.code).toBe('inventory-item-not-found')
     } finally {
-      server.close()
+      await close(server)
     }
   })
 
@@ -317,7 +324,7 @@ describe('inventory lifecycle routes', () => {
       expect(restored.body.items['server:2'].archivedAt).toBeUndefined()
       expect(restored.body.items['server:3'].archivedAt).toBeUndefined()
     } finally {
-      server.close()
+      await close(server)
     }
   })
 
@@ -344,7 +351,7 @@ describe('inventory lifecycle routes', () => {
       expect(updated.body.connections).toEqual(before.connections)
       expect(updated.body.compatibilityPolicy).toEqual(before.compatibilityPolicy)
     } finally {
-      server.close()
+      await close(server)
     }
   })
 
@@ -392,7 +399,7 @@ describe('inventory lifecycle routes', () => {
       expect(updated.body.items['ups:1'].ports).toEqual(portsBefore)
       expect(updated.body.connections).toEqual(store.getProject().connections)
     } finally {
-      server.close()
+      await close(server)
     }
   })
 
@@ -412,7 +419,7 @@ describe('inventory lifecycle routes', () => {
       expect(archive.body.details.reports[0].reasons[0].kind).toBe('canvas-placement')
       expect(store.getProject().items['server:1'].archivedAt).toBeUndefined()
     } finally {
-      server.close()
+      await close(server)
     }
   })
 
@@ -448,7 +455,7 @@ describe('inventory lifecycle routes', () => {
       expect((await jsonRequest(url, '/api/inventory/items/cpu/3', { method: 'DELETE' })).response.status).toBe(200)
       expect(store.getProject().items['cpu:3']).toBeUndefined()
     } finally {
-      server.close()
+      await close(server)
     }
   })
 
@@ -463,7 +470,7 @@ describe('inventory lifecycle routes', () => {
       expect((await jsonRequest(url, '/api/inventory/items/server/1', { method: 'DELETE' })).response.status).toBe(200)
       expect(onHostsDeleted).toHaveBeenCalledWith([{ type: 'server', id: 1 }])
     } finally {
-      server.close()
+      await close(server)
     }
   })
 
@@ -514,7 +521,7 @@ describe('inventory lifecycle routes', () => {
       expect(applied.body.project.items['nas:1'].specs.powerConfiguration).toBe('internal-psu')
       expect(applied.body.project.assignments).toEqual([])
     } finally {
-      server.close()
+      await close(server)
     }
   })
 })

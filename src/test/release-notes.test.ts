@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import packageJson from '../../package.json' with { type: 'json' }
 import {
   RELEASE_NOTES,
   UNRELEASED_RELEASE_NOTES,
@@ -105,8 +106,11 @@ describe('release notes helpers', () => {
     const engineRelease = RELEASE_NOTES.find((entry) => entry.version === '0.2.0')!
 
     const latestReleases = RELEASE_NOTES.filter((entry) => entry.channel === 'latest')
+    const currentRelease = RELEASE_NOTES.filter((entry) => entry.version === packageJson.version)
 
     expect(latestReleases).toHaveLength(1)
+    expect(currentRelease).toHaveLength(1)
+    expect(latestReleases[0]).toBe(currentRelease[0])
     expect(RELEASE_NOTES[0]).toBe(latestReleases[0])
     expect(RELEASE_NOTES.map((entry) => entry.version)).toEqual(
       [...RELEASE_NOTES]

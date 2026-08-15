@@ -1,20 +1,32 @@
 #!/bin/sh
 set -eu
 
-scan_required=false
+protected_shas=
 
 while read -r local_ref local_sha remote_ref remote_sha; do
   case "$remote_ref" in
     refs/heads/main|refs/heads/stable)
-      scan_required=true
+      case "$local_sha" in
+        0000000000000000000000000000000000000000) ;;
+        *) protected_shas="$protected_shas $local_sha" ;;
+      esac
       ;;
   esac
 done
 
-if [ "$scan_required" = true ]; then
-  echo "Verifying the mandatory local staged-release security receipt..."
+for protected_sha in $protected_shas; do
+  echo "Verifying local CI parity for $protected_sha..."
+  if ! bun run ci:verify-receipt -- "$protected_sha"; then
+    echo "Protected pushes require a current local CI receipt. Run: bun run ci:verify" >&2
+    exit 1
+  fi
+done
+
+if [ -n "$protected_shas" ]; then
+  echo "Verifying the mandatory two-platform staged-release security receipt..."
   if ! bun run release:local verify-push; then
-    echo "No current local release receipt was available; running the full security preflight..."
-    bun run security:container
+    echo "Protected pushes require the exact locally staged ARM64 and AMD64 release candidates." >&2
+    echo "Run the documented release:local prepare, approve, and publish dry-run flow." >&2
+    exit 1
   fi
 fi

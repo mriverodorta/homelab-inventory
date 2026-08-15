@@ -21,6 +21,7 @@ export function releasePaths(environment = process.env) {
     stateFile: path.join(supportRoot, 'state.json'),
     lockFile: path.join(supportRoot, 'lock'),
     receiptsDir: path.join(supportRoot, 'receipts'),
+    ciReceiptFile: path.join(supportRoot, 'receipts', 'ci.json'),
     candidatesDir: path.join(supportRoot, 'candidates'),
     logsDir: path.join(supportRoot, 'logs'),
     toolsDir: path.join(supportRoot, 'tools'),

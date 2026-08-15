@@ -19,6 +19,7 @@ import {
 } from './local-release/state.mjs'
 import { checkStaging, createApproval, deployStaging, stagingLogs, stopStaging } from './local-release/staging.mjs'
 import { validateLoadedCandidate } from './local-release/validate-image.mjs'
+import { runCiVerification } from './ci/run.mjs'
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const paths = releasePaths()
@@ -59,6 +60,7 @@ async function prepare() {
   await withReleaseLock(paths, async () => {
     const identity = await currentReleaseIdentity(root)
     if (!identity.trackedClean) throw new Error(`Tracked worktree changes prevent release:\n${identity.trackedStatus}`)
+    await runCiVerification({ root, receiptFile: paths.ciReceiptFile })
     let state = { ...emptyReleaseState(), phase: 'snapshotting', identity }
     state = await writeReleaseState(paths, state)
     const snapshot = await createRemoteSnapshot(releaseRemoteConfig(), paths, { root })

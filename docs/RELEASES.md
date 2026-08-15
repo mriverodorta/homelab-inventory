@@ -13,7 +13,7 @@ GitHub is the source of truth for source history and CI. Docker Hub receives exa
 ## Normal Flow
 
 1. Finalize the version, changelog, and structured release notes on `main`.
-2. Run `bun run release:local prepare`. This obtains a fresh consistent live snapshot, sanitizes it, builds only ARM64, performs zero-vulnerability scans and smoke tests, and starts staging at `127.0.0.1:8799`.
+2. Run `bun run release:local prepare`. Before contacting the live server, it runs the same pinned `bun run ci:verify` contract used by GitHub and writes a receipt bound to the exact clean commit. It then obtains a fresh consistent live snapshot, sanitizes it, builds only ARM64, performs zero-vulnerability scans and smoke tests, and starts staging at `127.0.0.1:8799`.
 3. Test the production-shaped staging app and run `bun run release:local approve`.
 4. Run `bun run release:local publish --channel latest --dry-run` to build and validate AMD64 and assemble the exact two-platform index in a disposable local registry.
 5. Run `bun run release:local publish --channel latest` to upload those same OCI candidates, move `latest`, remove the temporary candidate tags, and push the approved `main` revision.
@@ -21,6 +21,15 @@ GitHub is the source of truth for source history and CI. Docker Hub receives exa
 7. Run `bun run release:local publish --channel stable`; it moves `stable`, publishes immutable `X.Y.Z`, updates `X.Y`, and creates the verified Git tag and GitHub Release.
 
 The final runtime is pinned to a reviewed Bun distroless multi-architecture digest. Build stages may use larger toolchain images, but their operating-system packages are not copied into the published runtime.
+
+## Protected Push Gate
+
+Every push to `main` or `stable` must carry two local proofs for the exact commit:
+
+1. `bun run ci:verify` passed the shared GitHub/local validation contract with Bun 1.3.14 and Rust 1.94.1.
+2. The retained ARM64 and AMD64 release candidates passed runtime and zero-vulnerability validation.
+
+The pre-push hook rejects missing or stale receipts. It does not substitute a container scan for an incomplete CI run. Ordinary feature branches remain unaffected, and GitHub pull requests rerun the same repository-owned CI command as an independent confirmation.
 
 ## Immutability Guards
 
