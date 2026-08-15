@@ -6,6 +6,11 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 
 ## Unreleased
 
+### Fixed
+
+- Blocked Registry updates now identify each changed field and impact, explain the exact blocking reason, and show the complete relationship migration before Resolve and apply is confirmed.
+- Registry resource-key renames preserve assignments when the resource type and numeric ID are unchanged; fixed-power transitions move existing cables to the host endpoint and return obsolete adapters to inventory in the same atomic update.
+
 ## [0.12.12] - 2026-08-15
 
 ### Added

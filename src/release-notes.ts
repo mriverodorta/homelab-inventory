@@ -258,7 +258,10 @@ const RELEASE_0_12_12_DETAILS: UnreleasedReleaseNotes = {
 
 export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
   highlights: [],
-  fixes: [],
+  fixes: [
+    'Blocked Registry updates now name each changed field and impact, explain the exact blocking reason, and preview the complete relationship migration before Resolve and apply.',
+    'Registry resource-key renames preserve assignments by resource type and numeric ID, while fixed-power transitions atomically move cables to the host endpoint and return obsolete adapters to inventory.',
+  ],
   notes: [],
 }
 
