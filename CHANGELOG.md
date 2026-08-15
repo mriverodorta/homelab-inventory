@@ -21,6 +21,7 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 
 ### Fixed
 
+- Compatibility checks now recognize equivalent storage form-factor labels and only alert on PCIe electrical lanes when a card's declared minimum is not met.
 - Registry update decisions are retry-safe, show progress only on the selected group, remove completed groups immediately, refresh only affected projects, and avoid returning or refetching the complete update payload after every decision.
 
 ## [0.12.9] - 2026-08-14

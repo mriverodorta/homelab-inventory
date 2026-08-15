@@ -181,6 +181,37 @@ function normalizeStorageInterface(value) {
   return canonicalInterfaces.get(normalized.toLowerCase()) ?? normalized
 }
 
+const STORAGE_FORM_FACTOR_ALIASES = new Map([
+  ['2.5', '2.5-inch'],
+  ['2.5-inch', '2.5-inch'],
+  ['3.5', '3.5-inch'],
+  ['3.5-inch', '3.5-inch'],
+  ['m.2-2230', '2230'],
+  ['m2-2230', '2230'],
+  ['m.2-2242', '2242'],
+  ['m2-2242', '2242'],
+  ['m.2-2260', '2260'],
+  ['m2-2260', '2260'],
+  ['m.2-2280', '2280'],
+  ['m2-2280', '2280'],
+  ['m.2-22110', '22110'],
+  ['m2-22110', '22110'],
+])
+
+function normalizeStorageFormFactor(value) {
+  const normalized = optionalString(value)?.toLowerCase()
+  if (!normalized) {
+    return undefined
+  }
+
+  const compact = normalized
+    .replace(/["']/g, '')
+    .replace(/\binches?\b/g, 'inch')
+    .replace(/[\s_-]+/g, '-')
+
+  return STORAGE_FORM_FACTOR_ALIASES.get(compact) ?? compact
+}
+
 function normalizeNumericField(target, field) {
   if (!target || !Object.prototype.hasOwnProperty.call(target, field)) {
     return
@@ -1030,10 +1061,13 @@ function evaluateStorage(hostCapabilities, requirements, findings) {
     return
   }
 
+  const expectedFormFactor = normalizeStorageFormFactor(requirements.formFactor)
   const group = interfaceGroups.find(
     (candidate) =>
       Array.isArray(candidate.formFactors) &&
-      includesNormalized(candidate.formFactors, requirements.formFactor),
+      candidate.formFactors.some(
+        (value) => normalizeStorageFormFactor(value) === expectedFormFactor,
+      ),
   )
   if (!group) {
     const unknownFormFactorGroups = interfaceGroups.filter(
@@ -1138,6 +1172,7 @@ function evaluateExpansionGroup(group, requirements, populatedCpuSockets) {
         resourceId: group.id,
       })
     } else if (
+      requirements.minimumElectricalLanes === undefined &&
       requirements.connectorLanes !== undefined &&
       group.electricalLanes < requirements.connectorLanes
     ) {

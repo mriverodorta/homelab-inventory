@@ -316,6 +316,33 @@ describe('compatibility rule evaluation', () => {
     )
   })
 
+  it.each([
+    ['2.5 inch', '2.5-inch'],
+    ['2.5-inch', '2.5"'],
+    ['3.5 inch', '3.5-inch'],
+  ])('matches equivalent storage form factors %s and %s', (hostFormFactor, componentFormFactor) => {
+    const result = evaluate(
+      host({
+        host: {
+          storageSlots: [{
+            id: 1,
+            key: 'bay',
+            label: 'SATA bay',
+            count: 1,
+            interfaces: ['SATA'],
+            formFactors: [hostFormFactor],
+          }],
+        },
+      }),
+      component('storage', undefined, {
+        interface: 'SATA',
+        formFactor: componentFormFactor,
+      }),
+    )
+
+    expect(result).toEqual({ status: 'compatible', findings: [] })
+  })
+
   it('reports storage interface mismatches and newer NVMe negotiation', () => {
     const mismatch = evaluate(
       host({
@@ -481,7 +508,7 @@ describe('compatibility rule evaluation', () => {
     )
   })
 
-  it('warns for reduced electrical lanes unless a hard minimum is missed', () => {
+  it('alerts for electrical lanes only when the declared minimum is missed', () => {
     const baseHost = host({
       host: {
         expansionSlots: [
@@ -501,13 +528,36 @@ describe('compatibility rule evaluation', () => {
         maxExpansionPowerWatts: 100,
       },
     })
-    const warning = evaluate(
+    const supported = evaluate(
       baseHost,
       component('network', {
         requirements: {
           expansion: {
             interfaceFamily: 'pcie',
             pcieGeneration: 4,
+            connectorLanes: 8,
+            minimumElectricalLanes: 4,
+            height: 'low-profile',
+            slotWidth: 1,
+            powerWatts: 20,
+          },
+        },
+      }),
+    )
+    expect(supported.status).toBe('compatible')
+    expect(supported.findings).toContainEqual(
+      expect.objectContaining({ code: 'expansion.pcie-generation.negotiated', severity: 'warning' }),
+    )
+    expect(supported.findings).not.toContainEqual(
+      expect.objectContaining({ code: 'expansion.electrical-lanes.reduced' }),
+    )
+
+    const unverified = evaluate(
+      baseHost,
+      component('network', {
+        requirements: {
+          expansion: {
+            interfaceFamily: 'pcie',
             connectorLanes: 8,
             height: 'low-profile',
             slotWidth: 1,
@@ -516,12 +566,8 @@ describe('compatibility rule evaluation', () => {
         },
       }),
     )
-    expect(warning.status).toBe('compatible')
-    expect(warning.findings).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ code: 'expansion.electrical-lanes.reduced', severity: 'warning' }),
-        expect.objectContaining({ code: 'expansion.pcie-generation.negotiated', severity: 'warning' }),
-      ]),
+    expect(unverified.findings).toContainEqual(
+      expect.objectContaining({ code: 'expansion.electrical-lanes.reduced', severity: 'warning' }),
     )
 
     const blocked = evaluate(

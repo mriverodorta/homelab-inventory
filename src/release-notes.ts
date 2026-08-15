@@ -222,6 +222,7 @@ export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
     'NAS canvas cards and inspectors now distinguish locked built-in components from user-replaceable slots while preserving the familiar CPU, memory, storage, and power layout.',
   ],
   fixes: [
+    'Compatibility checks now recognize equivalent storage form-factor labels and only alert on PCIe electrical lanes when a card\'s declared minimum is not met.',
     'Fixed external power adapters expose the NAS power endpoint directly, while replaceable adapters continue using independent inventory assignments and their own power connector.',
     'NAS memory compatibility now separates OEM-supported capacity from independently verified capacity, with verified limits requiring an explicit project policy opt-in.',
     'Registry update approvals are retry-safe, affect only the selected group, remove successful decisions immediately, and refresh only projects changed by the approved revision.',
