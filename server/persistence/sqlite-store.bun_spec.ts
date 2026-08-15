@@ -907,21 +907,36 @@ describe('SQLite Homelab Inventory store facade', () => {
       const revision1 = await catalogTemplate({
         type: 'nas', name: 'Example NAS', manufacturer: 'Example', family: 'Example NAS', model: 'NAS-1',
         specs: { powerConfiguration: 'external-adapter', variantKey: 'standard', topologyCompleteness: 'complete' },
-        compatibility: { host: { power: { configuration: 'external-adapter', adapterDisposition: 'replaceable', connector: 'barrel' } } },
+        compatibility: { host: {
+          power: { configuration: 'external-adapter', adapterDisposition: 'replaceable', connector: 'barrel' },
+          storageSlots: [{ id: 1, key: 'drive-bays', count: 6, interfaces: ['SATA'], formFactors: ['2.5-inch'] }],
+        } },
         ports: [],
       }, 1, 'nas-example-nas-1', NAS_FINGERPRINT_VERSION)
       let project = store.createCatalogInventoryItems(revision1)
       const nas = Object.values(project.items).find((item) => item.type === 'nas')!
       project = store.createInventoryItems({ type: 'powerAdapter', name: 'OEM adapter', specs: { wattageWatts: 65, connector: 'barrel' } })
       const adapter = Object.values(project.items).find((item) => item.type === 'powerAdapter')!
+      project = store.createInventoryItems({
+        type: 'storage', name: 'NAS SSD', manufacturer: 'Example', model: 'SSD-1',
+        specs: { capacityGb: 1000, interface: 'SATA', formFactor: '2.5-inch' },
+      })
+      const storage = Object.values(project.items).find((item) => item.type === 'storage')!
       project = store.createInventoryItems({ type: 'powerStrip', name: 'Power strip', specs: { outlets: 2 } })
       const strip = Object.values(project.items).find((item) => item.type === 'powerStrip')!
       project = store.setProject({
         ...project,
-        assignments: [{
-          id: 1, serverId: `nas:${nas.id}`, itemId: `powerAdapter:${adapter.id}`,
-          type: 'powerAdapter', assignedAt: '2026-08-14T00:00:00.000Z',
-        }],
+        assignments: [
+          {
+            id: 1, serverId: `nas:${nas.id}`, itemId: `powerAdapter:${adapter.id}`,
+            type: 'powerAdapter', assignedAt: '2026-08-14T00:00:00.000Z',
+          },
+          {
+            id: 2, serverId: `nas:${nas.id}`, itemId: `storage:${storage.id}`,
+            type: 'storage', assignedAt: '2026-08-14T00:00:00.000Z',
+            allocation: { resourceType: 'storage', resourceKey: 'drive-bays', groupId: 1, positions: [0] },
+          },
+        ],
         connections: [{
           id: 1, type: 'power', createdAt: '2026-08-14T00:00:00.000Z',
           from: { itemId: `powerStrip:${strip.id}`, portId: 2 },
@@ -931,8 +946,10 @@ describe('SQLite Homelab Inventory store facade', () => {
       const link = (store.getRegistryState() as any).links[0]
       const revision2 = await catalogTemplate({
         ...revision1.item,
-        ports: [{ id: 1, key: 'ac-input', kind: 'power-port', type: 'ac-input', slotNumber: 1 }],
-        compatibility: { host: { power: { configuration: 'external-adapter', adapterDisposition: 'fixed', connector: 'barrel' } } },
+        compatibility: { host: {
+          power: { configuration: 'external-adapter', adapterDisposition: 'fixed', connector: 'barrel' },
+          storageSlots: [{ id: 1, key: 'sata-bays', count: 6, interfaces: ['SATA'], formFactors: ['2.5-inch'] }],
+        } },
       }, 2, revision1.templateKey, NAS_FINGERPRINT_VERSION)
       store.registryTransaction((draft: any) => {
         draft.snapshot.revision = 2
@@ -945,6 +962,13 @@ describe('SQLite Homelab Inventory store facade', () => {
       })
       const beforeResolve = store.getProject()
 
+      expect(() => store.resolveAndApplyRegistryUpdateGroup({
+        linkId: link.id,
+        template: revision2,
+        expectedProjectRevisions: { 1: beforeResolve.revision - 1 },
+      })).toThrow(/project changed/iu)
+      expect(store.getProject()).toEqual(beforeResolve)
+
       const result = store.resolveAndApplyRegistryUpdateGroup({
         linkId: link.id,
         template: revision2,
@@ -952,8 +976,17 @@ describe('SQLite Homelab Inventory store facade', () => {
       }) as any
 
       const resolved = store.getProject()
-      expect(result.affectedRelationships).toEqual({ connectionIds: [1], assignmentIds: [1] })
-      expect(resolved.assignments).toEqual([])
+      expect(result.affectedRelationships).toEqual({ connectionIds: [1], assignmentIds: [1, 2] })
+      expect(resolved.assignments).toEqual([expect.objectContaining({
+        id: 2,
+        itemId: `storage:${storage.id}`,
+        allocation: expect.objectContaining({
+          resourceType: 'storage',
+          resourceKey: 'sata-bays',
+          groupId: 1,
+          positions: [0],
+        }),
+      })])
       expect(resolved.connections).toEqual([expect.objectContaining({
         id: 1,
         from: { itemId: `powerStrip:${strip.id}`, portId: 2 },

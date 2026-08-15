@@ -1298,13 +1298,19 @@ export class SqliteHomelabInventoryStore {
     return { ref, record }
   }
 
-  private replaceInventoryRecord(ref: { type: string; id: number }, record: Row, projectId = this.projectId) {
+  private replaceInventoryRecord(
+    ref: { type: string; id: number },
+    record: Row,
+    projectId = this.projectId,
+    options: { resourceKeyRemaps?: Row[] } = {},
+  ) {
     replaceLegacyInventoryItem({
       database: this.core.database,
       projectId,
       type: ref.type as InventoryType,
       item: record,
       itemId: this.resolveItem(ref.type, ref.id),
+      resourceKeyRemaps: options.resourceKeyRemaps,
       now: this.now(),
     })
   }
@@ -2474,6 +2480,21 @@ export class SqliteHomelabInventoryStore {
         movedEndpoints.push({ ...row, projectId, operation })
       }
     }
+    const resourceKeyRemapsByIdentity = new Map<string, Row>()
+    for (const { plan } of plans) {
+      for (const planned of plan.operations) {
+        if (planned.kind !== 'remap-resource-key') continue
+        const identity = `${planned.resourceType}:${planned.resourceId}:${planned.fromKey}:${planned.toKey}`
+        const existing = resourceKeyRemapsByIdentity.get(identity)
+        if (existing) {
+          existing.assignmentIds = [...new Set([...existing.assignmentIds, ...planned.assignmentIds])]
+            .sort((left, right) => left - right)
+        } else {
+          resourceKeyRemapsByIdentity.set(identity, structuredClone(planned))
+        }
+      }
+    }
+    const resourceKeyRemaps = [...resourceKeyRemapsByIdentity.values()]
 
     const draft = structuredClone(registry)
     const targetLink = draft.links.find((candidate: Row) => candidate.id === link.id)
@@ -2515,6 +2536,7 @@ export class SqliteHomelabInventoryStore {
         { type: link.itemType, id: link.itemId },
         cleanItemForStore(nextItem),
         projectIds[0],
+        { resourceKeyRemaps },
       )
       for (const endpoint of movedEndpoints) {
         const target = endpoint.operation.to
