@@ -51,7 +51,12 @@ export function catalogCompatibilityFindingKeys(results) {
 
 export function classifyCatalogUpdate({ itemType, changes, dependencyConflicts = [], beforeFindings, afterFindings, validationError }) {
   const reasons = []
-  if (changes.some((change) => IDENTITY_FIELDS.has(change.field))) reasons.push('identity-change')
+  const semanticChanges = changes.flatMap((change) => change.semanticChanges ?? [change])
+  if (semanticChanges.some((change) => (
+    change.impact === 'identity-conflict'
+    || change.impact === 'identity-replacement'
+    || (!change.impact && IDENTITY_FIELDS.has(change.field))
+  ))) reasons.push('identity-change')
   if (itemType === 'nas' && nasMaterialTopologyChanged(changes)) reasons.push('material-topology-change')
   if (dependencyConflicts.length > 0) reasons.push('assignment-conflict')
   if (validationError?.code === 'connected-port-change') reasons.push('connected-port-change')

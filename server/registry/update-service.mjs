@@ -1,28 +1,12 @@
 import {
   CANONICAL_UNITS_FINGERPRINT_VERSION,
   NAS_FINGERPRINT_VERSION,
-  canonicalJson,
   canonicalizeCatalogItemV10,
   canonicalizeCatalogItemV9,
   sanitizeCatalogItem,
   sanitizeCatalogItemV9,
 } from '../../packages/catalog-protocol/src/index.ts'
-
-const CATALOG_FIELDS = [
-  'type',
-  'name',
-  'subtype',
-  'manufacturer',
-  'secondaryManufacturer',
-  'family',
-  'model',
-  'number',
-  'aliases',
-  'specs',
-  'ports',
-  'compatibility',
-  'fixedComponents',
-]
+import { planCatalogUpdate } from './catalog-update-semantics.mjs'
 
 function valueAt(item, field) {
   return Object.hasOwn(item, field) ? item[field] : undefined
@@ -68,23 +52,24 @@ function assertRamMemoryRequirements(currentValue, nextValue, fingerprintVersion
 }
 
 export function catalogFieldDiff(currentValue, nextValue, fingerprintVersion) {
+  const semantic = planCatalogUpdate(currentValue, nextValue, fingerprintVersion).changes
   const current = sanitizeCurrentForFingerprint(currentValue, fingerprintVersion)
   const next = sanitizeForFingerprint(nextValue, fingerprintVersion)
-  return CATALOG_FIELDS.flatMap((field) => (
-    canonicalJson(valueAt(current, field)) === canonicalJson(valueAt(next, field))
-      ? []
-      : [{ field, current: valueAt(current, field), next: valueAt(next, field) }]
-  ))
+  const changedFields = [...new Set(semantic.map((change) => change.path.match(/^[^.[\]]+/)?.[0]).filter(Boolean))]
+  return changedFields.map((field) => {
+    const result = { field, current: valueAt(current, field), next: valueAt(next, field) }
+    Object.defineProperty(result, 'semanticChanges', {
+      configurable: false,
+      enumerable: false,
+      value: semantic.filter((change) => change.path === field || change.path.startsWith(`${field}.`) || change.path.startsWith(`${field}[`)),
+    })
+    return result
+  })
 }
 
 export function mergeCatalogUpdate(currentValue, nextValue, fingerprintVersion) {
-  const current = structuredClone(currentValue)
+  const current = sanitizeCurrentForFingerprint(currentValue, fingerprintVersion)
   const next = sanitizeForFingerprint(nextValue, fingerprintVersion)
-  assertRamMemoryRequirements(sanitizeCurrentForFingerprint(current, fingerprintVersion), next, fingerprintVersion)
-  const result = { ...next, ...(current.name ? { name: current.name } : {}) }
-  for (const [key, value] of Object.entries(current)) {
-    if (key === 'id' || key === 'key' || key === 'type' || CATALOG_FIELDS.includes(key)) continue
-    result[key] = value
-  }
-  return result
+  assertRamMemoryRequirements(current, next, fingerprintVersion)
+  return planCatalogUpdate(currentValue, nextValue, fingerprintVersion).nextItem
 }
