@@ -8,6 +8,7 @@ import {
   isAgentHostRegistered,
 } from '@/components/inspector/agent/server-agent-status'
 import { agentSectionAvailable } from '@/components/inspector/agent/agent-status-utils'
+import { useAgentTelemetry } from '@/components/inspector/agent/use-agent-telemetry'
 import type { InspectorAuditWarning } from '@/components/inspector/audit/audit-section'
 import { PortTabsEditor } from '@/components/inspector/connections/connection-editor'
 import { ServerNetworkTab } from '@/components/inspector/network/server-network-tab'
@@ -68,10 +69,18 @@ export function ServerInspectorTabs({
   const status = getAgentHostStatus(agentStatus, 'server', server.id)
   const registered = isAgentHostRegistered(agentStatus, 'server', server.id)
   const hasSavedStatus = hasAgentHostStatus(agentStatus, 'server', server.id)
+  const telemetry = useAgentTelemetry({
+    hostType: 'server',
+    hostId: server.id,
+    enabled: canViewAgents && !demoMode && (registered || hasSavedStatus),
+  })
+  const liveStatus = telemetry.data?.status
+    ? { ...status, ...telemetry.data.status, details: status.details, upgradeCommands: status.upgradeCommands }
+    : status
   const showServices = (registered || hasSavedStatus)
-    && agentSectionAvailable(status, 'host.services', status.services)
+    && (status.details?.services ?? agentSectionAvailable(liveStatus, 'host.services', liveStatus.services))
   const showContainers = (registered || hasSavedStatus)
-    && agentSectionAvailable(status, 'containers', status.containers)
+    && (status.details?.containers ?? agentSectionAvailable(liveStatus, 'containers', liveStatus.containers))
   const handlePortsUpdate = (ports: InventoryPort[]) => updateEditorPorts(editor, ports)
 
   return (
@@ -131,7 +140,7 @@ export function ServerInspectorTabs({
             <ServerNetworkTab
               project={project}
               server={draftServer}
-              status={status}
+              status={liveStatus}
               activeNetworkTraceKey={activeNetworkTraceKey}
               onUpdateServerPorts={handlePortsUpdate}
               onUpdateItem={onUpdateItem}
@@ -142,12 +151,12 @@ export function ServerInspectorTabs({
         ...(showServices ? [{
           value: 'services',
           label: 'Services',
-          content: <AgentServicesPanel services={status.services ?? []} />,
+          content: <AgentServicesPanel services={liveStatus.services ?? []} />,
         }] : []),
         ...(showContainers ? [{
           value: 'containers',
           label: 'Containers',
-          content: <AgentContainersPanel containers={status.containers ?? []} />,
+          content: <AgentContainersPanel containers={liveStatus.containers ?? []} />,
         }] : []),
         ...(canViewAgents ? [{
           value: 'agent',
@@ -155,7 +164,7 @@ export function ServerInspectorTabs({
           content: (
             <AgentInspectorTab
               host={draftServer}
-              status={status}
+              status={liveStatus}
               registered={registered}
               hasSavedStatus={hasSavedStatus}
               demoMode={demoMode}

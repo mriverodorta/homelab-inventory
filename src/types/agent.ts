@@ -85,6 +85,14 @@ export type AgentHostStatus = {
   storageHealth?: Array<Record<string, unknown>>
   droppedSamples?: number
   monitoringRevision?: number
+  details?: {
+    metrics: boolean
+    services: boolean
+    containers: boolean
+    storage: boolean
+    network: boolean
+    hardware: boolean
+  }
   upgradeCommands?: {
     linux: string
     freebsd: string
@@ -96,8 +104,8 @@ export type AgentServerStatus = AgentHostStatus
 export type AgentStatusSummary = {
   hosts?: Record<string, AgentHostStatus>
   registeredHosts?: Array<{ hostType: AgentHostType; hostId: number }>
-  servers: Record<string, AgentServerStatus>
-  registeredServerIds: number[]
+  servers?: Record<string, AgentServerStatus>
+  registeredServerIds?: number[]
   release?: {
     version: string
     sourceRevision: string

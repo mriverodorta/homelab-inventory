@@ -18,7 +18,7 @@ const mocks = vi.hoisted(() => ({
   retry: vi.fn(),
   fetchNextPage: vi.fn(),
   hasNextPage: false,
-  registryUpdates: { groups: [], run: null } as unknown,
+  registryUpdates: { counts: { review: 0, blocked: 0, applied: 0, declined: 0 }, run: null } as unknown,
 }))
 
 function mutation(mutate = vi.fn()) {
@@ -53,7 +53,7 @@ vi.mock('@/hooks/use-notifications', () => ({
 }))
 
 vi.mock('@/lib/registry-api', () => ({
-  loadCatalogUpdates: () => Promise.resolve(mocks.registryUpdates),
+  loadCatalogUpdateSummary: () => Promise.resolve(mocks.registryUpdates),
 }))
 
 function render(ui: ReactElement) {
@@ -91,7 +91,7 @@ beforeEach(() => {
   mocks.retry.mockReset()
   mocks.fetchNextPage.mockReset()
   mocks.hasNextPage = false
-  mocks.registryUpdates = { groups: [], run: null }
+  mocks.registryUpdates = { counts: { review: 0, blocked: 0, applied: 0, declined: 0 }, run: null }
 })
 
 describe('notification UI', () => {
@@ -156,7 +156,7 @@ describe('notification UI', () => {
 
   it('summarizes the latest persisted registry update run', async () => {
     mocks.registryUpdates = {
-      groups: [],
+      counts: { review: 2, blocked: 1, applied: 847, declined: 0 },
       run: {
         id: 1, catalogRevision: 17, state: 'completed', automatic: true,
         appliedCount: 847, reviewCount: 2, blockedCount: 1, skippedCount: 0,

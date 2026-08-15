@@ -17,6 +17,11 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 - Fixed external NAS adapters now expose a host-owned AC endpoint, while replaceable adapters retain the existing inventory assignment and adapter-owned endpoint workflow.
 - Existing NAS adapter assignments migrate as replaceable, and topology-changing catalog updates require review or are blocked when they would orphan assigned hardware.
 - Portable selective and complete backups preserve every NAS v10 field and relational reference.
+- Global Agent status polling now follows the one-minute heartbeat cadence and transfers only compact host state; detailed telemetry loads only for the host currently open in the Inspector.
+
+### Fixed
+
+- Registry update decisions now show progress only on the selected group, remove completed groups immediately, refresh only affected projects, and avoid returning or refetching the complete update payload after every decision.
 
 ## [0.12.9] - 2026-08-14
 

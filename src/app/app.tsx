@@ -16,11 +16,11 @@ import {
   useTopologyQuery,
 } from '@/hooks/use-topology-query'
 import { setAuditWarningIgnored } from '@/lib/compatibility-policy'
-import { loadAgentStatus } from '@/lib/agent-api'
+import { AGENT_STATUS_REFRESH_INTERVAL_MS, loadAgentStatus } from '@/lib/agent-api'
 import { addGlobalInventoryToProject, loadProject } from '@/lib/db'
 import { loadWorkspace } from '@/lib/workbook-api'
 import { buildVisibleRegistryLinkKeys } from '@/lib/registry-links'
-import { loadCatalogUpdates } from '@/lib/registry-api'
+import { loadCatalogUpdateSummary } from '@/lib/registry-api'
 import { ErrorScreen, LoadingScreen } from '@/app/app-status-screens'
 import { AppDialogs } from '@/app/app-dialogs'
 import { AppInventoryPanels } from '@/app/app-inventory-panels'
@@ -93,8 +93,8 @@ function App() {
   } = useDemoSessionLifecycle()
   const canvasControllerRef = useRef<CanvasController | null>(null)
   const registryUpdatesQuery = useQuery({
-    queryKey: ['registry', 'updates'],
-    queryFn: loadCatalogUpdates,
+    queryKey: ['registry', 'update-summary'],
+    queryFn: loadCatalogUpdateSummary,
     enabled: canViewRegistry,
     staleTime: 60_000,
   })
@@ -347,7 +347,8 @@ function App() {
     queryKey: ['agent-status'],
     queryFn: loadAgentStatus,
     enabled: canViewAgents,
-    refetchInterval: canViewAgents ? 30_000 : false,
+    refetchInterval: canViewAgents ? AGENT_STATUS_REFRESH_INTERVAL_MS : false,
+    refetchIntervalInBackground: false,
   })
   const {
     updateStatusQuery,
@@ -618,7 +619,9 @@ function App() {
     updateStatusLoading: updateStatusQuery.isFetching && !updateStatusQuery.data,
     canViewNotifications,
     notificationCount: notificationQuery.data?.summary.unacknowledged ?? 0,
-    registryUpdateCount: registryUpdatesQuery.data?.groups.filter((group) => group.status === 'review').length ?? 0,
+    registryUpdateCount: registryUpdatesQuery.data
+      ? registryUpdatesQuery.data.counts.review + registryUpdatesQuery.data.counts.blocked
+      : 0,
     registryUpdateSummary: registryUpdatesQuery.data?.run
       ? registryUpdatesQuery.data.run.state === 'failed'
         ? `Catalog revision ${registryUpdatesQuery.data.run.catalogRevision} evaluation failed`
@@ -718,7 +721,17 @@ function App() {
             }}
             settings={settingsDialogProps}
             notifications={canViewNotifications ? { open: notificationsOpen, onOpenChange: setNotificationsOpen } : undefined}
-            registryUpdates={canViewRegistry ? { open: registryUpdatesOpen, onOpenChange: setRegistryUpdatesOpen } : undefined}
+            registryUpdates={canViewRegistry ? {
+              open: registryUpdatesOpen,
+              onOpenChange: setRegistryUpdatesOpen,
+              onApplied: async (result) => {
+                await queryClient.invalidateQueries({ queryKey: ['registry'], exact: true })
+                if (sourceProjectId === null || !result.affectedProjectIds.includes(sourceProjectId)) return
+                const canonicalProject = await loadActiveProject()
+                queryClient.setQueryData(activeProjectQueryKey, canonicalProject)
+                await applyInventoryCommandSnapshot(canonicalProject)
+              },
+            } : undefined}
           />
     </AppShell>
   )

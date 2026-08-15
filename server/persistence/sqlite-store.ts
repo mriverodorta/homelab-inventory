@@ -1967,14 +1967,26 @@ export class SqliteHomelabInventoryStore {
         UPDATE registry_update_runs SET applied_count = ?, review_count = ?, blocked_count = ?, skipped_count = ? WHERE id = ?
       `).run(counts.applied, counts.review, counts.blocked, counts.skipped, run.id)
     }
+    const preparedLinks = prepared.map((record) => record.link)
+    const { projectIdsByLinkId } = preparedLinks.length > 0
+      ? this.catalogUpdateProjectContexts(preparedLinks)
+      : { projectIdsByLinkId: new Map<number, number[]>() }
+    const affectedProjectIds = [...new Set(preparedLinks.flatMap((link) => projectIdsByLinkId.get(link.id) ?? []))]
     if (prepared.length > 0) {
-      const preparedLinks = prepared.map((record) => record.link)
-      const { projectIdsByLinkId } = this.catalogUpdateProjectContexts(preparedLinks)
-      const affectedProjectIds = [...new Set(preparedLinks.flatMap((link) => projectIdsByLinkId.get(link.id) ?? []))]
       this.commitCanonicalMutationAcrossProjects(operation, affectedProjectIds, expectedRevisions)
     }
     else this.core.database.transaction(operation).immediate()
-    return { ...counts, groups: this.getRegistryUpdateGroups() }
+    return {
+      ...counts,
+      decisions: (templates as Row[]).map((template) => ({
+        templateKey: template.templateKey,
+        toRevision: template.revision,
+        status: 'applied',
+      })),
+      summary: this.getRegistryUpdateSummary(),
+      affectedProjectIds,
+      affectedLinkIds: preparedLinks.map((link) => link.id),
+    }
   }
 
   getRegistryUpdateGroups() {
@@ -2022,6 +2034,24 @@ export class SqliteHomelabInventoryStore {
       groups.set(key, group)
     }
     return [...groups.values()]
+  }
+
+  getRegistryUpdateSummary() {
+    const rows = this.core.database.query(`
+      SELECT e.decision, l.template_key, e.to_revision,
+        MAX(CASE WHEN e.classification = 'blocked' THEN 1 ELSE 0 END) AS blocked
+      FROM registry_update_evaluations e
+      JOIN registry_links l ON l.id = e.link_id
+      GROUP BY e.decision, l.template_key, e.to_revision
+    `).all() as Row[]
+    const counts = { review: 0, blocked: 0, applied: 0, declined: 0 }
+    for (const row of rows) {
+      if (row.decision === 'applied') counts.applied += 1
+      else if (row.decision === 'declined') counts.declined += 1
+      else if (row.decision === 'pending' && row.blocked) counts.blocked += 1
+      else if (row.decision === 'pending') counts.review += 1
+    }
+    return { run: this.getRegistryUpdateStatus(), counts }
   }
 
   getRegistryUpdateStatus() {
@@ -2085,7 +2115,16 @@ export class SqliteHomelabInventoryStore {
       `).run(decision, decision === 'pending' ? null : userId, decision === 'pending' ? null : now, row.id)
       this.refreshRegistryUpdateRunCounts()
     }).immediate()
-    return this.getRegistryUpdateGroups()
+    return {
+      decisions: [{
+        templateKey,
+        toRevision,
+        status: decision === 'declined' ? 'declined' : 'review',
+      }],
+      summary: this.getRegistryUpdateSummary(),
+      affectedProjectIds: [],
+      affectedLinkIds: [],
+    }
   }
 
   applyRegistryUpdateGroup(template: Row, userId: number | null = null) {
@@ -2145,7 +2184,16 @@ export class SqliteHomelabInventoryStore {
       if (changed === 0) throw lifecycleError('Registry update groups were not found.', 'registry-update-group-not-found', 404)
       this.refreshRegistryUpdateRunCounts()
     }).immediate()
-    return this.getRegistryUpdateGroups()
+    return {
+      decisions: groups.map((group: Row) => ({
+        templateKey: group.templateKey,
+        toRevision: group.toRevision,
+        status: decision === 'declined' ? 'declined' : 'review',
+      })),
+      summary: this.getRegistryUpdateSummary(),
+      affectedProjectIds: [],
+      affectedLinkIds: [],
+    }
   }
 
   refreshRegistryUpdateRunCounts() {

@@ -10,7 +10,10 @@ import type {
   CatalogUpdatePreview,
   CatalogReviewSummary,
   CatalogUpdateGroup,
+  CatalogUpdateDecisionResult,
+  CatalogUpdateGroupsResponse,
   CatalogUpdateRunStatus,
+  CatalogUpdateSummaryResponse,
   RegistrySettings,
   RegistryState,
 } from '@/types/registry'
@@ -149,6 +152,14 @@ export function loadCatalogUpdates(): Promise<{ updates: CatalogReviewSummary[];
   return apiRequest('/api/registry/updates')
 }
 
+export function loadCatalogUpdateSummary(): Promise<CatalogUpdateSummaryResponse> {
+  return apiRequest('/api/registry/updates?view=summary')
+}
+
+export function loadCatalogUpdateGroups(): Promise<CatalogUpdateGroupsResponse> {
+  return apiRequest('/api/registry/updates?view=groups')
+}
+
 export function retryCatalogUpdates(): Promise<{ groups: CatalogUpdateGroup[]; run: CatalogUpdateRunStatus | null }> {
   return apiRequest('/api/registry/updates/retry', { method: 'POST', body: '{}' })
 }
@@ -156,7 +167,7 @@ export function retryCatalogUpdates(): Promise<{ groups: CatalogUpdateGroup[]; r
 export function decideCatalogUpdateGroups(input: {
   groups: Array<{ templateKey: string; toRevision: number }>
   decision: 'applied' | 'declined' | 'reconsider'
-}): Promise<{ groups: CatalogUpdateGroup[] }> {
+}): Promise<CatalogUpdateDecisionResult> {
   return apiRequest('/api/registry/update-groups/decision', {
     method: 'POST',
     body: JSON.stringify(input),

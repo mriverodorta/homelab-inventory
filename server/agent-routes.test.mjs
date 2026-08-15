@@ -3,7 +3,7 @@ import fs from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
-import { normalizeAgentEndpoint, normalizeHeartbeat, registerAgentRoutes } from './agent-routes.mjs'
+import { normalizeAgentEndpoint, normalizeHeartbeat, publicAgentStatus, registerAgentRoutes } from './agent-routes.mjs'
 import { HomelabInventoryStore } from './db/store.mjs'
 
 const tempDirs = []
@@ -112,6 +112,34 @@ afterEach(async () => {
 })
 
 describe('agent routes', () => {
+  it('projects a compact public status without duplicating telemetry-heavy server data', () => {
+    const status = {
+      hostType: 'server', hostId: 7, state: 'online', connected: true, ageMs: 1000,
+      lastSeenAt: '2026-08-14T20:00:00.000Z', agentVersion: '0.2.0', hostname: 'lab-node',
+      metrics: { cpu: { percent: 10 }, filesystems: [{ path: '/' }], network: [{ name: 'eth0' }] },
+      containers: [{ name: 'app', image: 'example:latest' }],
+      services: [{ unit: 'docker.service' }], disks: [{ name: 'nvme0n1' }],
+      network: [{ name: 'eth0' }], storageHealth: [{ name: 'nvme0n1' }], motherboard: { model: 'Board' },
+    }
+    const payload = publicAgentStatus({
+      getAgentStatusSummary: () => ({
+        hosts: { 'server:7': status }, servers: { 7: status },
+        registeredHosts: [{ hostType: 'server', hostId: 7 }], registeredServerIds: [7],
+      }),
+    })
+
+    expect(payload.servers).toBeUndefined()
+    expect(payload.registeredServerIds).toBeUndefined()
+    expect(payload.hosts['server:7']).toMatchObject({
+      hostType: 'server', hostId: 7, state: 'online', hostname: 'lab-node',
+      details: { metrics: true, services: true, containers: true, storage: true, network: true, hardware: true },
+    })
+    for (const field of ['metrics', 'containers', 'services', 'disks', 'network', 'storageHealth', 'motherboard']) {
+      expect(payload.hosts['server:7']).not.toHaveProperty(field)
+    }
+    expect(Buffer.byteLength(JSON.stringify(payload))).toBeLessThan(2048)
+  })
+
   it('accepts only origin-only HTTP(S) agent endpoints', () => {
     expect(normalizeAgentEndpoint('https://inventory.example.test/')).toBe('https://inventory.example.test')
     expect(normalizeAgentEndpoint('http://192.0.2.10:8798')).toBe('http://192.0.2.10:8798')

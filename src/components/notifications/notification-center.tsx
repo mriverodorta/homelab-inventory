@@ -7,7 +7,7 @@ import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useNotificationIncidents, useNotificationMutations } from '@/hooks/use-notifications'
 import { usePermission } from '@/hooks/use-permission'
-import { loadCatalogUpdates } from '@/lib/registry-api'
+import { loadCatalogUpdateSummary } from '@/lib/registry-api'
 import type { NotificationIncidentPage } from '@/types/notifications'
 
 function relativeTime(value: string) {
@@ -53,7 +53,7 @@ function IncidentQueryResult({
 }
 
 function RegistryUpdateSummary({ enabled }: { enabled: boolean }) {
-  const query = useQuery({ queryKey: ['registry', 'updates'], queryFn: loadCatalogUpdates, enabled })
+  const query = useQuery({ queryKey: ['registry', 'update-summary'], queryFn: loadCatalogUpdateSummary, enabled })
   const run = query.data?.run
   if (!run || (run.state === 'completed' && run.appliedCount + run.reviewCount + run.blockedCount + run.skippedCount === 0)) return null
   const summary = run.state === 'failed'

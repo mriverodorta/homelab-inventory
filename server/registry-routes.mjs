@@ -76,6 +76,20 @@ function queryValues(value) {
   return (Array.isArray(value) ? value : [value]).map(String)
 }
 
+function registryUpdateSummary(store) {
+  if (typeof store.getRegistryUpdateSummary === 'function') return store.getRegistryUpdateSummary()
+  const groups = typeof store.getRegistryUpdateGroups === 'function' ? store.getRegistryUpdateGroups() : []
+  return {
+    run: typeof store.getRegistryUpdateStatus === 'function' ? store.getRegistryUpdateStatus() : null,
+    counts: {
+      review: groups.filter((group) => group.status === 'review' && group.classification !== 'blocked').length,
+      blocked: groups.filter((group) => group.status === 'review' && group.classification === 'blocked').length,
+      applied: groups.filter((group) => group.status === 'applied').length,
+      declined: groups.filter((group) => group.status === 'declined').length,
+    },
+  }
+}
+
 function parseFacetSearch(query) {
   const terms = {}
   const ranges = {}
@@ -390,6 +404,17 @@ export function registerRegistryRoutes(app, {
 
   app.get('/api/registry/updates', (request, response) => {
     run(withStore, request, response, async (store) => {
+      if (request.query.view === 'summary') {
+        response.json(registryUpdateSummary(store))
+        return
+      }
+      if (request.query.view === 'groups') {
+        response.json({
+          groups: typeof store.getRegistryUpdateGroups === 'function' ? store.getRegistryUpdateGroups() : [],
+          run: typeof store.getRegistryUpdateStatus === 'function' ? store.getRegistryUpdateStatus() : null,
+        })
+        return
+      }
       response.json({
         updates: store.getCatalogUpdates(),
         groups: typeof store.getRegistryUpdateGroups === 'function' ? store.getRegistryUpdateGroups() : [],
@@ -432,11 +457,11 @@ export function registerRegistryRoutes(app, {
         response.json(store.applyRegistryUpdateGroups(templates, request.authentication?.account?.id ?? null))
         return
       }
-      response.json({ groups: store.decideRegistryUpdateGroups({
+      response.json(store.decideRegistryUpdateGroups({
         groups,
         decision: decision === 'reconsider' ? 'pending' : decision,
         userId: request.authentication?.account?.id ?? null,
-      }) })
+      }))
     })
   })
 

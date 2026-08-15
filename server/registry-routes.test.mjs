@@ -319,6 +319,69 @@ describe('registry routes', () => {
     })
   })
 
+  it('serves compact update summary and group-only views', async () => {
+    const { baseUrl, store } = await createServer()
+    store.getRegistryUpdateSummary = vi.fn(() => ({
+      counts: { review: 2, blocked: 1, applied: 4, declined: 3 },
+      run: { state: 'completed', catalogRevision: 17 },
+    }))
+    store.getRegistryUpdateGroups = vi.fn(() => [{
+      id: 'review:cpu-example:2', changes: [{ field: 'compatibility', next: { socket: 'LGA1200' } }],
+    }])
+    store.getRegistryUpdateStatus = vi.fn(() => ({ state: 'completed', catalogRevision: 17 }))
+
+    const summaryResponse = await fetch(`${baseUrl}/api/registry/updates?view=summary`)
+    const summary = await summaryResponse.json()
+    expect(summary).toEqual({
+      counts: { review: 2, blocked: 1, applied: 4, declined: 3 },
+      run: { state: 'completed', catalogRevision: 17 },
+    })
+    expect(summary).not.toHaveProperty('groups')
+    expect(summary).not.toHaveProperty('updates')
+
+    const groupsResponse = await fetch(`${baseUrl}/api/registry/updates?view=groups`)
+    const groups = await groupsResponse.json()
+    expect(groups).toMatchObject({ groups: [{ id: 'review:cpu-example:2' }] })
+    expect(groups).not.toHaveProperty('updates')
+  })
+
+  it('returns a compact decision receipt after approving an update group', async () => {
+    const template = { templateKey: 'cpu-example', revision: 2 }
+    const result = {
+      applied: 1,
+      review: 0,
+      blocked: 0,
+      skipped: 0,
+      decisions: [{ templateKey: 'cpu-example', toRevision: 2, status: 'applied' }],
+      summary: {
+        counts: { review: 0, blocked: 0, applied: 1, declined: 0 },
+        run: { state: 'completed', catalogRevision: 2 },
+      },
+      affectedProjectIds: [1],
+      affectedLinkIds: [7],
+    }
+    const { baseUrl, store } = await createServer({
+      snapshotServiceFactory: () => ({ template: vi.fn(async () => template) }),
+    })
+    store.applyRegistryUpdateGroups = vi.fn(() => result)
+
+    const response = await fetch(`${baseUrl}/api/registry/update-groups/decision`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        groups: [{ templateKey: 'cpu-example', toRevision: 2 }],
+        decision: 'applied',
+      }),
+    })
+    const payload = await response.json()
+
+    expect(response.status).toBe(200)
+    expect(payload).toEqual(result)
+    expect(payload).not.toHaveProperty('groups')
+    expect(payload).not.toHaveProperty('updates')
+    expect(JSON.stringify(payload).length).toBeLessThan(1_000)
+  })
+
   it('returns a gateway error for a failed official catalog refresh', async () => {
     const { baseUrl } = await createServer({
       catalogRefreshCoordinator: {

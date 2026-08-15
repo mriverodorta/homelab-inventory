@@ -270,6 +270,34 @@ export type CatalogUpdateRunStatus = {
   completedAt: string | null
 }
 
+export type CatalogUpdateGroupCounts = {
+  review: number
+  blocked: number
+  applied: number
+  declined: number
+}
+
+export type CatalogUpdateSummaryResponse = {
+  run: CatalogUpdateRunStatus | null
+  counts: CatalogUpdateGroupCounts
+}
+
+export type CatalogUpdateGroupsResponse = {
+  groups: CatalogUpdateGroup[]
+  run: CatalogUpdateRunStatus | null
+}
+
+export type CatalogUpdateDecisionResult = {
+  decisions: Array<{
+    templateKey: string
+    toRevision: number
+    status: 'review' | 'applied' | 'declined'
+  }>
+  summary: CatalogUpdateSummaryResponse
+  affectedProjectIds: number[]
+  affectedLinkIds: number[]
+}
+
 export type CatalogFieldChange = {
   field: string
   current?: unknown

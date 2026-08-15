@@ -611,25 +611,56 @@ function disabledAgentRoute(_request, response) {
   response.status(403).json({ message: AGENT_DISABLED_MESSAGE })
 }
 
+function compactAgentHostStatus(status) {
+  const metrics = status.metrics ?? {}
+  return {
+    hostType: status.hostType,
+    hostId: status.hostId,
+    ...(status.hostType === 'server' ? { serverId: status.hostId } : {}),
+    state: status.state,
+    connected: status.connected,
+    ageMs: status.ageMs,
+    lastSeenAt: status.lastSeenAt,
+    collectedAt: status.collectedAt ?? null,
+    agentVersion: status.agentVersion,
+    hostname: status.hostname ?? null,
+    droppedSamples: status.droppedSamples,
+    monitoringRevision: status.monitoringRevision,
+    details: {
+      metrics: Boolean(status.metrics || status.cpu || status.memory || status.uptimeSeconds !== undefined),
+      services: Array.isArray(status.services) && status.services.length > 0,
+      containers: Array.isArray(status.containers) && status.containers.length > 0,
+      storage: (Array.isArray(status.storageHealth) && status.storageHealth.length > 0)
+        || (Array.isArray(status.disks) && status.disks.length > 0)
+        || (Array.isArray(metrics.filesystems) && metrics.filesystems.length > 0),
+      network: (Array.isArray(status.network) && status.network.length > 0)
+        || (Array.isArray(metrics.network) && metrics.network.length > 0),
+      hardware: Boolean(status.motherboard),
+    },
+  }
+}
+
 export function publicAgentStatus(store, releaseService = null) {
-  const summary = store.getAgentStatusSummary()
+  const fullSummary = store.getAgentStatusSummary()
+  const hosts = Object.fromEntries(Object.entries(fullSummary.hosts ?? {}).map(([hostKey, status]) => [
+    hostKey,
+    compactAgentHostStatus(status),
+  ]))
   if (releaseService) {
     const enrollments = store.listAgentEnrollments()
       .filter((enrollment) => typeof enrollment.endpoint === 'string')
       .sort((first, second) => second.id - first.id)
-    for (const [hostKey, status] of Object.entries(summary.hosts ?? {})) {
+    for (const [hostKey, status] of Object.entries(fullSummary.hosts ?? {})) {
       const enrollment = enrollments.find((candidate) => recordMatchesHost(candidate, status.hostType, status.hostId))
       if (!enrollment || !releaseService.updateAvailable(status.agentVersion)) continue
       const native = status.capabilities?.['agent.native-update']?.state === 'available'
       const upgradeCommands = releaseService.upgradeCommands(enrollment.endpoint, { native })
-      summary.hosts[hostKey] = { ...status, upgradeCommands }
-      if (status.hostType === 'server' && summary.servers[String(status.hostId)]) {
-        summary.servers[String(status.hostId)] = { ...summary.servers[String(status.hostId)], upgradeCommands }
-      }
+      hosts[hostKey] = { ...hosts[hostKey], upgradeCommands }
     }
   }
   return {
-    ...summary,
+    hosts,
+    registeredHosts: fullSummary.registeredHosts ?? [],
     release: releaseService ? {
       version: releaseService.current().version,
       sourceRevision: releaseService.current().sourceRevision,

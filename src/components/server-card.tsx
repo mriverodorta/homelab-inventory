@@ -415,13 +415,14 @@ function getServerAgentStatus(
   summary: AgentStatusSummary | null,
   serverId: number,
 ): AgentServerStatus {
-  const existing = summary?.servers[String(serverId)]
+  const existing = summary?.hosts?.[`server:${serverId}`] ?? summary?.servers?.[String(serverId)]
 
   if (existing) {
     return existing
   }
 
-  if (summary?.registeredServerIds.includes(serverId)) {
+  if (summary?.registeredHosts?.some((host) => host.hostType === 'server' && host.hostId === serverId)
+    || summary?.registeredServerIds?.includes(serverId)) {
     return {
       serverId,
       state: 'unknown',

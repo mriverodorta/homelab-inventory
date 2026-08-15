@@ -6,13 +6,13 @@ export function getAgentHostStatus(
   hostId: number,
 ): AgentHostStatus {
   const existing = summary?.hosts?.[`${hostType}:${hostId}`]
-    ?? (hostType === 'server' ? summary?.servers[String(hostId)] : undefined)
+    ?? (hostType === 'server' ? summary?.servers?.[String(hostId)] : undefined)
 
   if (existing) return { ...existing, hostType, hostId }
 
   const registered = summary?.registeredHosts?.some(
     (host) => host.hostType === hostType && host.hostId === hostId,
-  ) ?? (hostType === 'server' && summary?.registeredServerIds.includes(hostId))
+  ) ?? (hostType === 'server' && summary?.registeredServerIds?.includes(hostId))
 
   return {
     hostType,
@@ -31,7 +31,7 @@ export function isAgentHostRegistered(
 ): boolean {
   return Boolean(summary?.registeredHosts?.some(
     (host) => host.hostType === hostType && host.hostId === hostId,
-  ) ?? (hostType === 'server' && summary?.registeredServerIds.includes(hostId)))
+  ) ?? (hostType === 'server' && summary?.registeredServerIds?.includes(hostId)))
 }
 
 export function hasAgentHostStatus(
@@ -41,7 +41,7 @@ export function hasAgentHostStatus(
 ): boolean {
   return Boolean(
     summary?.hosts?.[`${hostType}:${hostId}`]
-      ?? (hostType === 'server' ? summary?.servers[String(hostId)] : undefined),
+      ?? (hostType === 'server' ? summary?.servers?.[String(hostId)] : undefined),
   )
 }
 

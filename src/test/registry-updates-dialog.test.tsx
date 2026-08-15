@@ -5,7 +5,7 @@ import { RegistryUpdatesDialog } from '@/components/inventory/registry-updates-d
 import { renderWithOpenAuth as render } from '@/test/open-auth-test-render'
 
 const api = vi.hoisted(() => ({
-  loadCatalogUpdates: vi.fn(),
+  loadCatalogUpdateGroups: vi.fn(),
   decideCatalogUpdateGroups: vi.fn(),
   retryCatalogUpdates: vi.fn(),
 }))
@@ -27,8 +27,38 @@ afterEach(() => {
 })
 
 describe('RegistryUpdatesDialog', () => {
+  it('shows pending state only on the group being approved', async () => {
+    let resolveDecision!: (value: unknown) => void
+    api.loadCatalogUpdateGroups.mockResolvedValue({
+      run: null,
+      groups: ['cpu', 'gpu'].map((type, index) => ({
+        id: `review:${type}-example:2`, status: 'review', templateKey: `${type}-example`, fromRevision: 1, toRevision: 2,
+        classification: 'review-required', reasons: [], changes: [], evaluatedAt: '2026-08-14T13:00:00.000Z', projects: [],
+        items: [{ linkId: index + 1, itemType: type, itemId: index + 1, itemName: `Example ${type.toUpperCase()}`, projects: [] }],
+      })),
+    })
+    api.decideCatalogUpdateGroups.mockImplementation(() => new Promise((resolve) => { resolveDecision = resolve }))
+    renderDialog()
+
+    const cpuCard = (await screen.findAllByText('Example CPU'))[0].closest('section')!
+    const gpuCard = screen.getAllByText('Example GPU')[0].closest('section')!
+    fireEvent.click(within(cpuCard).getByRole('button', { name: 'Approve group' }))
+
+    await waitFor(() => expect(api.decideCatalogUpdateGroups).toHaveBeenCalledOnce())
+    expect(within(cpuCard).getByRole('button', { name: 'Approve group' })).toBeDisabled()
+    expect(within(gpuCard).getByRole('button', { name: 'Approve group' })).not.toBeDisabled()
+
+    resolveDecision({
+      decisions: [{ templateKey: 'cpu-example', toRevision: 2, status: 'applied' }],
+      summary: { run: null, counts: { review: 1, blocked: 0, applied: 1, declined: 0 } },
+      affectedProjectIds: [],
+      affectedLinkIds: [1],
+    })
+    await waitFor(() => expect(screen.getByRole('tab', { name: 'Review 1' })).toBeInTheDocument())
+  })
+
   it('approves reviewable groups and prevents blocked groups from being applied', async () => {
-    api.loadCatalogUpdates.mockResolvedValue({
+    api.loadCatalogUpdateGroups.mockResolvedValue({
       run: null,
       groups: [
         {
@@ -46,7 +76,12 @@ describe('RegistryUpdatesDialog', () => {
         },
       ],
     })
-    api.decideCatalogUpdateGroups.mockResolvedValue({ groups: [], run: null })
+    api.decideCatalogUpdateGroups.mockResolvedValue({
+      decisions: [{ templateKey: 'cpu-example', toRevision: 2, status: 'applied' }],
+      summary: { run: null, counts: { review: 0, blocked: 1, applied: 1, declined: 0 } },
+      affectedProjectIds: [1],
+      affectedLinkIds: [1],
+    })
     renderDialog()
 
     const [cpu] = await screen.findAllByText('Example CPU')
@@ -56,6 +91,8 @@ describe('RegistryUpdatesDialog', () => {
       groups: [{ templateKey: 'cpu-example', toRevision: 2 }],
       decision: 'applied',
     }))
+    await waitFor(() => expect(screen.getByRole('tab', { name: 'Review 1' })).toBeInTheDocument())
+    expect(api.loadCatalogUpdateGroups).toHaveBeenCalledOnce()
 
     const [blocked] = screen.getAllByText('Example Switch')
     const blockedCard = blocked.closest('section')!
@@ -63,7 +100,7 @@ describe('RegistryUpdatesDialog', () => {
   })
 
   it('shows a persisted evaluation failure and provides an explicit retry', async () => {
-    api.loadCatalogUpdates.mockResolvedValue({
+    api.loadCatalogUpdateGroups.mockResolvedValue({
       groups: [],
       run: {
         id: 1, catalogRevision: 17, state: 'failed', automatic: true,

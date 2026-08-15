@@ -8,6 +8,7 @@ import {
   isAgentHostRegistered,
 } from '@/components/inspector/agent/server-agent-status'
 import { agentSectionAvailable } from '@/components/inspector/agent/agent-status-utils'
+import { useAgentTelemetry } from '@/components/inspector/agent/use-agent-telemetry'
 import type { InspectorAuditWarning } from '@/components/inspector/audit/audit-section'
 import {
   ConnectionEditor,
@@ -90,11 +91,19 @@ export function NasInspectorTabs({
   const status = getAgentHostStatus(agentStatus, 'nas', item.id)
   const registered = isAgentHostRegistered(agentStatus, 'nas', item.id)
   const hasSavedStatus = hasAgentHostStatus(agentStatus, 'nas', item.id)
+  const telemetry = useAgentTelemetry({
+    hostType: 'nas',
+    hostId: item.id,
+    enabled: canViewAgents && !demoMode && (registered || hasSavedStatus),
+  })
+  const liveStatus = telemetry.data?.status
+    ? { ...status, ...telemetry.data.status, details: status.details, upgradeCommands: status.upgradeCommands }
+    : status
   const powerTopology = nasPowerTopology(item)
   const showServices = (registered || hasSavedStatus)
-    && agentSectionAvailable(status, 'host.services', status.services)
+    && (status.details?.services ?? agentSectionAvailable(liveStatus, 'host.services', liveStatus.services))
   const showContainers = (registered || hasSavedStatus)
-    && agentSectionAvailable(status, 'containers', status.containers)
+    && (status.details?.containers ?? agentSectionAvailable(liveStatus, 'containers', liveStatus.containers))
   const systemPowerPorts = (draftItem.ports ?? []).filter((port) => port.kind === 'power-port')
   const editableNasItem = {
     ...draftItem,
@@ -187,15 +196,15 @@ export function NasInspectorTabs({
             />
           ),
         },
-        ...(showServices ? [{ value: 'services', label: 'Services', content: <AgentServicesPanel services={status.services ?? []} /> }] : []),
-        ...(showContainers ? [{ value: 'containers', label: 'Containers', content: <AgentContainersPanel containers={status.containers ?? []} /> }] : []),
+        ...(showServices ? [{ value: 'services', label: 'Services', content: <AgentServicesPanel services={liveStatus.services ?? []} /> }] : []),
+        ...(showContainers ? [{ value: 'containers', label: 'Containers', content: <AgentContainersPanel containers={liveStatus.containers ?? []} /> }] : []),
         ...(canViewAgents ? [{
           value: 'agent',
           label: 'Agent',
           content: (
             <AgentInspectorTab
               host={draftItem}
-              status={status}
+              status={liveStatus}
               registered={registered}
               hasSavedStatus={hasSavedStatus}
               demoMode={demoMode}

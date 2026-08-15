@@ -9,8 +9,8 @@ import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { usePermission } from '@/hooks/use-permission'
-import { decideCatalogUpdateGroups, loadCatalogUpdates, retryCatalogUpdates } from '@/lib/registry-api'
-import type { CatalogUpdateGroup } from '@/types/registry'
+import { decideCatalogUpdateGroups, loadCatalogUpdateGroups, retryCatalogUpdates } from '@/lib/registry-api'
+import type { CatalogUpdateDecisionResult, CatalogUpdateGroup, CatalogUpdateGroupsResponse } from '@/types/registry'
 
 const EMPTY_GROUPS: CatalogUpdateGroup[] = []
 const REASON_LABELS: Record<string, string> = {
@@ -28,9 +28,10 @@ function formatChangeValue(value: unknown) {
   return JSON.stringify(value, null, 2)
 }
 
-function UpdateGroupCard({ group, busy, canManage, selected, onSelectedChange, onDecision }: {
+function UpdateGroupCard({ group, pendingDecision, error, canManage, selected, onSelectedChange, onDecision }: {
   group: CatalogUpdateGroup
-  busy: boolean
+  pendingDecision: 'applied' | 'declined' | 'reconsider' | null
+  error: string | null
   canManage: boolean
   selected: boolean
   onSelectedChange: (selected: boolean) => void
@@ -44,7 +45,7 @@ function UpdateGroupCard({ group, busy, canManage, selected, onSelectedChange, o
             <Checkbox
               className="mt-0.5"
               checked={selected}
-              disabled={busy}
+              disabled={pendingDecision !== null}
               onCheckedChange={(checked) => onSelectedChange(checked === true)}
               aria-label={`Select ${group.items[0]?.itemName ?? group.templateKey}`}
             />
@@ -84,21 +85,26 @@ function UpdateGroupCard({ group, busy, canManage, selected, onSelectedChange, o
           ))}
         </div>
       </details>
+      {error ? <p role="alert" className="mt-3 text-xs font-semibold text-[#a33d31]">{error}</p> : null}
       {canManage ? <div className="mt-4 flex flex-wrap justify-end gap-2">
         {group.status === 'review' ? (
           <>
-            <Button type="button" variant="outline" disabled={busy} onClick={() => onDecision('declined')}><XCircle className="size-4" />Decline revision</Button>
-            <Button type="button" disabled={busy || group.classification === 'blocked'} onClick={() => onDecision('applied')}><CheckCircle2 className="size-4" />Approve group</Button>
+            <Button type="button" variant="outline" disabled={pendingDecision !== null} onClick={() => onDecision('declined')}>{pendingDecision === 'declined' ? <LoaderCircle className="size-4 animate-spin" /> : <XCircle className="size-4" />}Decline revision</Button>
+            <Button type="button" disabled={pendingDecision !== null || group.classification === 'blocked'} onClick={() => onDecision('applied')}>{pendingDecision === 'applied' ? <LoaderCircle className="size-4 animate-spin" /> : <CheckCircle2 className="size-4" />}Approve group</Button>
           </>
         ) : group.status === 'declined' ? (
-          <Button type="button" variant="outline" disabled={busy} onClick={() => onDecision('reconsider')}>Reconsider</Button>
+          <Button type="button" variant="outline" disabled={pendingDecision !== null} onClick={() => onDecision('reconsider')}>{pendingDecision === 'reconsider' ? <LoaderCircle className="size-4 animate-spin" /> : null}Reconsider</Button>
         ) : null}
       </div> : null}
     </section>
   )
 }
 
-export function RegistryUpdatesDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
+export function RegistryUpdatesDialog({ open, onOpenChange, onApplied }: {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  onApplied?: (result: CatalogUpdateDecisionResult) => Promise<void>
+}) {
   const queryClient = useQueryClient()
   const canManageRegistry = usePermission('registry.manage')
   const [search, setSearch] = useState('')
@@ -106,22 +112,14 @@ export function RegistryUpdatesDialog({ open, onOpenChange }: { open: boolean; o
   const [project, setProject] = useState('all')
   const [reason, setReason] = useState('all')
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
-  const query = useQuery({ queryKey: ['registry', 'updates'], queryFn: loadCatalogUpdates, enabled: open })
-  const decision = useMutation({
-    mutationFn: decideCatalogUpdateGroups,
-    onSuccess: async () => {
-      setSelectedIds(new Set())
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ['registry', 'updates'] }),
-        queryClient.invalidateQueries({ queryKey: ['registry'] }),
-        queryClient.invalidateQueries({ queryKey: ['project'] }),
-      ])
-    },
-  })
+  const [pendingDecisions, setPendingDecisions] = useState<Map<string, 'applied' | 'declined' | 'reconsider'>>(new Map())
+  const [groupErrors, setGroupErrors] = useState<Map<string, string>>(new Map())
+  const query = useQuery({ queryKey: ['registry', 'update-groups'], queryFn: loadCatalogUpdateGroups, enabled: open })
+  const decision = useMutation({ mutationFn: decideCatalogUpdateGroups })
   const retry = useMutation({
     mutationFn: retryCatalogUpdates,
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ['registry', 'updates'] })
+      await queryClient.invalidateQueries({ queryKey: ['registry', 'update-groups'] })
     },
   })
   const groups = query.data?.groups ?? EMPTY_GROUPS
@@ -141,11 +139,54 @@ export function RegistryUpdatesDialog({ open, onOpenChange }: { open: boolean; o
   const reviewGroups = filtered.filter((group) => group.status === 'review')
   const selectedGroups = reviewGroups.filter((group) => selectedIds.has(group.id))
   const selectedHasBlocked = selectedGroups.some((group) => group.classification === 'blocked')
-  const decide = (selected: CatalogUpdateGroup[], nextDecision: 'applied' | 'declined' | 'reconsider') => {
-    decision.mutate({
-      groups: selected.map((group) => ({ templateKey: group.templateKey, toRevision: group.toRevision })),
-      decision: nextDecision,
+  const decide = async (selected: CatalogUpdateGroup[], nextDecision: 'applied' | 'declined' | 'reconsider') => {
+    const selectedGroupIds = selected.map((group) => group.id)
+    if (selectedGroupIds.some((id) => pendingDecisions.has(id))) return
+    setPendingDecisions((current) => {
+      const next = new Map(current)
+      for (const id of selectedGroupIds) next.set(id, nextDecision)
+      return next
     })
+    setGroupErrors((current) => {
+      const next = new Map(current)
+      for (const id of selectedGroupIds) next.delete(id)
+      return next
+    })
+    try {
+      const result = await decision.mutateAsync({
+        groups: selected.map((group) => ({ templateKey: group.templateKey, toRevision: group.toRevision })),
+        decision: nextDecision,
+      })
+      const statuses = new Map(result.decisions.map((entry) => [`${entry.templateKey}:${entry.toRevision}`, entry.status]))
+      queryClient.setQueryData<CatalogUpdateGroupsResponse>(['registry', 'update-groups'], (current) => current ? {
+        ...current,
+        run: result.summary.run,
+        groups: current.groups.map((group) => {
+          const status = statuses.get(`${group.templateKey}:${group.toRevision}`)
+          return status ? { ...group, id: `${status}:${group.templateKey}:${group.toRevision}`, status } : group
+        }),
+      } : current)
+      queryClient.setQueryData(['registry', 'update-summary'], result.summary)
+      setSelectedIds((current) => {
+        const next = new Set(current)
+        for (const id of selectedGroupIds) next.delete(id)
+        return next
+      })
+      if (result.affectedProjectIds.length > 0) await onApplied?.(result)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Update decision failed.'
+      setGroupErrors((current) => {
+        const next = new Map(current)
+        for (const id of selectedGroupIds) next.set(id, message)
+        return next
+      })
+    } finally {
+      setPendingDecisions((current) => {
+        const next = new Map(current)
+        for (const id of selectedGroupIds) next.delete(id)
+        return next
+      })
+    }
   }
   const selectGroup = (id: string, selected: boolean) => {
     setSelectedIds((current) => {
@@ -168,7 +209,6 @@ export function RegistryUpdatesDialog({ open, onOpenChange }: { open: boolean; o
           <Select value={project} onValueChange={setProject}><SelectTrigger aria-label="Filter by project"><SelectValue placeholder="All projects" /></SelectTrigger><SelectContent><SelectItem value="all">All projects</SelectItem>{projects.map((value) => <SelectItem key={value.id} value={String(value.id)}>{value.name}</SelectItem>)}</SelectContent></Select>
           <Select value={reason} onValueChange={setReason}><SelectTrigger aria-label="Filter by reason"><SelectValue placeholder="All reasons" /></SelectTrigger><SelectContent><SelectItem value="all">All reasons</SelectItem>{reasons.map((value) => <SelectItem key={value} value={value}>{REASON_LABELS[value] ?? value}</SelectItem>)}</SelectContent></Select>
         </div>
-        {decision.error ? <p role="alert" className="text-sm font-semibold text-[#a33d31]">{decision.error instanceof Error ? decision.error.message : 'Update decision failed.'}</p> : null}
         {query.error ? <p role="alert" className="text-sm font-semibold text-[#a33d31]">{query.error instanceof Error ? query.error.message : 'Registry updates could not be loaded.'}</p> : null}
         {retry.error ? <p role="alert" className="text-sm font-semibold text-[#a33d31]">{retry.error instanceof Error ? retry.error.message : 'Registry update retry failed.'}</p> : null}
         {query.data?.run?.state === 'failed' ? (
@@ -181,11 +221,11 @@ export function RegistryUpdatesDialog({ open, onOpenChange }: { open: boolean; o
         {canManageRegistry && selectedGroups.length > 0 ? (
           <div className="flex flex-wrap items-center gap-2 rounded-md border border-[#d8d1c6] bg-[#f7f2e9] px-3 py-2">
             <span className="mr-auto text-xs font-bold text-[#554d45]">{selectedGroups.length} selected</span>
-            <Button type="button" size="sm" variant="outline" disabled={decision.isPending} onClick={() => decide(selectedGroups, 'declined')}>
+            <Button type="button" size="sm" variant="outline" disabled={selectedGroups.some((group) => pendingDecisions.has(group.id))} onClick={() => void decide(selectedGroups, 'declined')}>
               <XCircle className="size-4" />Decline selected
             </Button>
-            <Button type="button" size="sm" disabled={decision.isPending || selectedHasBlocked} onClick={() => decide(selectedGroups, 'applied')}>
-              {decision.isPending ? <LoaderCircle className="size-4 animate-spin" /> : <CheckCircle2 className="size-4" />}Approve selected
+            <Button type="button" size="sm" disabled={selectedGroups.some((group) => pendingDecisions.has(group.id)) || selectedHasBlocked} onClick={() => void decide(selectedGroups, 'applied')}>
+              <CheckCircle2 className="size-4" />Approve selected
             </Button>
           </div>
         ) : null}
@@ -202,7 +242,7 @@ export function RegistryUpdatesDialog({ open, onOpenChange }: { open: boolean; o
                   <label className="flex w-fit items-center gap-2 px-1 text-xs font-bold text-[#554d45]">
                     <Checkbox
                       checked={reviewGroups.every((group) => selectedIds.has(group.id))}
-                      disabled={decision.isPending}
+                      disabled={reviewGroups.some((group) => pendingDecisions.has(group.id))}
                       onCheckedChange={(checked) => {
                         const selected = checked === true
                         setSelectedIds((current) => {
@@ -226,11 +266,12 @@ export function RegistryUpdatesDialog({ open, onOpenChange }: { open: boolean; o
                   <UpdateGroupCard
                     key={group.id}
                     group={group}
-                    busy={decision.isPending}
+                    pendingDecision={pendingDecisions.get(group.id) ?? null}
+                    error={groupErrors.get(group.id) ?? null}
                     canManage={canManageRegistry}
                     selected={selectedIds.has(group.id)}
                     onSelectedChange={(selected) => selectGroup(group.id, selected)}
-                    onDecision={(nextDecision) => decide([group], nextDecision)}
+                    onDecision={(nextDecision) => void decide([group], nextDecision)}
                   />
                 ))}
               </div>
