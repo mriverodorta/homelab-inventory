@@ -1543,6 +1543,7 @@ mod tests {
                         item: server.clone(),
                         archived: false,
                         power_configuration: None,
+                        power_adapter_disposition: None,
                         allow_outlet_fan_out: false,
                         ports: vec![port(1)],
                     },
@@ -1550,6 +1551,7 @@ mod tests {
                         item: switch.clone(),
                         archived: false,
                         power_configuration: None,
+                        power_adapter_disposition: None,
                         allow_outlet_fan_out: false,
                         ports: vec![port(1)],
                     },
@@ -1591,6 +1593,7 @@ mod tests {
             item,
             archived: false,
             power_configuration: None,
+            power_adapter_disposition: None,
             allow_outlet_fan_out: false,
             ports: vec![],
         };
@@ -1661,6 +1664,7 @@ mod tests {
             item,
             archived: false,
             power_configuration: None,
+            power_adapter_disposition: None,
             allow_outlet_fan_out: false,
             ports: vec![homelab_engine_protocol::TopologyPort {
                 id: 1,
