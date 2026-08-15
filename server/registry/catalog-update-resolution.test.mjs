@@ -123,6 +123,126 @@ describe('catalog topology update resolution', () => {
     expect(resolved.assignments).toEqual([input.assignments[1]])
   })
 
+  it('preserves assigned storage when a stable numeric resource ID receives a new semantic key', () => {
+    const current = {
+      type: 'nas',
+      compatibility: { host: { storageSlots: [{ id: 1, key: 'drive-bays', count: 6 }] } },
+    }
+    const next = {
+      type: 'nas',
+      compatibility: { host: { storageSlots: [{ id: 1, key: 'sata-bays', count: 6 }] } },
+    }
+    const assignments = Array.from({ length: 5 }, (_, index) => ({
+      id: 14 + index,
+      serverId: 'nas:1',
+      itemId: `storage:${index + 1}`,
+      type: 'storage',
+      allocation: {
+        resourceType: 'storage',
+        resourceKey: 'drive-bays',
+        groupId: 1,
+        positions: [index],
+      },
+    }))
+    const input = project({
+      items: {
+        ...project().items,
+        ...Object.fromEntries(assignments.map((assignment, index) => [
+          assignment.itemId,
+          { id: index + 1, type: 'storage', name: `Disk ${index + 1}` },
+        ])),
+      },
+      assignments,
+    })
+
+    const plan = buildCatalogResolutionPlan({ current, next, project: input, link })
+
+    expect(plan.operations).toEqual([
+      expect.objectContaining({
+        kind: 'remap-resource-key',
+        resourceType: 'storage',
+        resourceId: 1,
+        fromKey: 'drive-bays',
+        toKey: 'sata-bays',
+        assignmentIds: [14, 15, 16, 17, 18],
+      }),
+    ])
+    expect(plan.operations).not.toEqual(expect.arrayContaining([
+      expect.objectContaining({ kind: 'unassign-item' }),
+    ]))
+    const resolved = applyCatalogResolutionPlan(input, plan)
+    expect(resolved.assignments.map((assignment) => ({
+      id: assignment.id,
+      resourceKey: assignment.allocation.resourceKey,
+      groupId: assignment.allocation.groupId,
+      positions: assignment.allocation.positions,
+    }))).toEqual(assignments.map((assignment) => ({
+      id: assignment.id,
+      resourceKey: 'sata-bays',
+      groupId: 1,
+      positions: assignment.allocation.positions,
+    })))
+  })
+
+  it('refuses a stable resource rename when occupied positions exceed the proposed count', () => {
+    const current = {
+      type: 'nas',
+      compatibility: { host: { storageSlots: [{ id: 1, key: 'drive-bays', count: 6 }] } },
+    }
+    const next = {
+      type: 'nas',
+      compatibility: { host: { storageSlots: [{ id: 1, key: 'sata-bays', count: 4 }] } },
+    }
+    const input = project({
+      items: { ...project().items, 'storage:1': { id: 1, type: 'storage', name: 'Disk' } },
+      assignments: [{
+        id: 18,
+        serverId: 'nas:1',
+        itemId: 'storage:1',
+        type: 'storage',
+        allocation: { resourceType: 'storage', resourceKey: 'drive-bays', groupId: 1, positions: [4] },
+      }],
+    })
+
+    expect(buildCatalogResolutionPlan({ current, next, project: input, link })).toMatchObject({
+      available: false,
+      operations: [],
+      reason: 'Assigned resource storage:1 uses position 5, but the proposed resource has 4 slots.',
+    })
+  })
+
+  it('distinguishes overlapping numeric IDs in different resource types', () => {
+    const current = {
+      type: 'nas',
+      compatibility: { host: {
+        storageSlots: [{ id: 1, key: 'drive-bays', count: 2 }],
+        expansionSlots: [{ id: 1, key: 'pcie-slot', count: 1 }],
+      } },
+    }
+    const next = {
+      type: 'nas',
+      compatibility: { host: {
+        storageSlots: [{ id: 1, key: 'sata-bays', count: 2 }],
+        expansionSlots: [{ id: 1, key: 'pcie-slot', count: 1 }],
+      } },
+    }
+    const input = project({
+      items: {
+        ...project().items,
+        'storage:1': { id: 1, type: 'storage', name: 'Disk' },
+        'network:1': { id: 1, type: 'network', name: 'NIC' },
+      },
+      assignments: [
+        { id: 1, serverId: 'nas:1', itemId: 'storage:1', type: 'storage', allocation: { resourceType: 'storage', resourceKey: 'drive-bays', groupId: 1, positions: [0] } },
+        { id: 2, serverId: 'nas:1', itemId: 'network:1', type: 'network', allocation: { resourceType: 'expansion', resourceKey: 'pcie-slot', groupId: 1, positions: [0] } },
+      ],
+    })
+
+    expect(buildCatalogResolutionPlan({ current, next, project: input, link }).operations).toEqual([
+      expect.objectContaining({ kind: 'remap-resource-key', resourceType: 'storage', assignmentIds: [1] }),
+    ])
+  })
+
   it('does not partially mutate a project when an operation is stale', () => {
     const input = project({
       assignments: [{ id: 95, serverId: 'nas:1', itemId: 'powerAdapter:22', type: 'powerAdapter' }],

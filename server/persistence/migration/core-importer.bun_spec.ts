@@ -8,7 +8,7 @@ import { buildCanonicalIdentityPlan } from '../legacy/identity-plan.ts'
 import { legacySemanticSnapshot } from '../legacy/semantic-snapshot.ts'
 import { closeManagedDatabase, openManagedDatabase } from '../sqlite/database.ts'
 import { applyCommittedMigrations } from '../sqlite/migrator.ts'
-import { importLegacyCore } from './core-importer.ts'
+import { importLegacyCore, replaceLegacyInventoryItem } from './core-importer.ts'
 import { verifyImportedCore } from './core-verifier.ts'
 import { createAuthenticationStore, createOwnerAccount, ensureProtectedOwnerRole } from '../../auth/model.mjs'
 import { projectAuthenticationState } from '../core/projections/legacy-domains.ts'
@@ -95,6 +95,93 @@ describe('schema-29 core import', () => {
           AND aliases.legacy_item_id = ?
           AND aliases.legacy_port_id = ?
       `).get(powerStrip.id, powerStrip.ports[0].id)).toEqual({ slot_number: 0 })
+    } finally {
+      closeManagedDatabase(handle)
+    }
+  })
+
+  test('preserves assignment identity and position across an explicit stable-ID resource-key remap', async () => {
+    const handle = await migratedDatabase()
+    const snapshot = schema29ProductionShapeFixture()
+    try {
+      importLegacyCore({ database: handle.database, snapshot, identityPlan: buildCanonicalIdentityPlan(snapshot) })
+      const serverItemId = (handle.database.query(`
+        SELECT item_id
+        FROM inventory_identity_aliases
+        WHERE legacy_type_key = 'server' AND legacy_id = 7
+      `).get() as { item_id: number }).item_id
+      const before = handle.database.query(`
+        SELECT assignment.id, assignment.resource_slot_id, alias.legacy_resource_group_id,
+               alias.legacy_resource_key, slot.position
+        FROM component_assignments assignment
+        JOIN host_resource_slots slot ON slot.id = assignment.resource_slot_id
+        JOIN resource_identity_aliases alias ON alias.resource_id = slot.resource_group_id
+        WHERE assignment.id = 3
+      `).get()
+      const replacement = structuredClone(snapshot.inventory.servers[0])
+      replacement.compatibility.host.storageSlots[0].key = 'nvme-storage'
+
+      expect(() => replaceLegacyInventoryItem({
+        database: handle.database,
+        projectId: 1,
+        type: 'server',
+        item: replacement,
+        itemId: serverItemId,
+        resourceKeyRemaps: [{
+          resourceType: 'storage',
+          resourceId: 2,
+          fromKey: 'm2-storage',
+          toKey: 'nvme-storage',
+          assignmentIds: [3],
+        }],
+      })).toThrow('Resource-key remap source storage:2:m2-storage does not exist.')
+
+      expect(() => replaceLegacyInventoryItem({
+        database: handle.database,
+        projectId: 1,
+        type: 'server',
+        item: replacement,
+        itemId: serverItemId,
+        resourceKeyRemaps: [{
+          resourceType: 'storage',
+          resourceId: 1,
+          fromKey: 'm2-storage',
+          toKey: 'nvme-storage',
+          assignmentIds: [],
+        }],
+      })).toThrow('Resource-key remap m2-storage does not cover its current assignments.')
+
+      replaceLegacyInventoryItem({
+        database: handle.database,
+        projectId: 1,
+        type: 'server',
+        item: replacement,
+        itemId: serverItemId,
+        resourceKeyRemaps: [{
+          resourceType: 'storage',
+          resourceId: 1,
+          fromKey: 'm2-storage',
+          toKey: 'nvme-storage',
+          assignmentIds: [3],
+        }],
+      })
+
+      const after = handle.database.query(`
+        SELECT assignment.id, assignment.resource_slot_id, alias.legacy_resource_group_id,
+               alias.legacy_resource_key, slot.position
+        FROM component_assignments assignment
+        JOIN host_resource_slots slot ON slot.id = assignment.resource_slot_id
+        JOIN resource_identity_aliases alias ON alias.resource_id = slot.resource_group_id
+        WHERE assignment.id = 3
+      `).get() as Record<string, unknown>
+      expect(after).toMatchObject({
+        id: 3,
+        legacy_resource_group_id: 1,
+        legacy_resource_key: 'nvme-storage',
+        position: 1,
+      })
+      expect(after.id).toBe((before as Record<string, unknown>).id)
+      expect(after.position).toBe((before as Record<string, unknown>).position)
     } finally {
       closeManagedDatabase(handle)
     }

@@ -65,8 +65,10 @@ use different materialization paths.
 
 ### Stable numeric ID
 
-When a current and proposed resource group share the same positive numeric ID,
-they are the same relationship resource even if their semantic keys differ.
+When a current and proposed resource group share the same resource type and
+positive numeric ID, they are the same relationship resource even if their
+semantic keys differ. Numeric IDs may overlap between different resource types;
+for example, storage resource 1 and expansion resource 1 are distinct.
 
 The planner emits an explicit remap operation:
 
@@ -90,7 +92,7 @@ A stable-ID remap is deterministic only when:
 
 - the proposed resource contains every occupied slot;
 - each assigned item remains representable by the proposed resource;
-- no second resource claims the same numeric ID;
+- no second resource of the same type claims the same numeric ID;
 - the proposed resource type can carry the current assignment category;
 - the final project passes relational and compatibility validation.
 

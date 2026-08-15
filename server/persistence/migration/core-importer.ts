@@ -34,7 +34,22 @@ export type ReplaceLegacyInventoryItemOptions = Readonly<{
   type: InventoryType
   item: LegacyRecord
   itemId: number
+  resourceKeyRemaps?: ReadonlyArray<Readonly<{
+    resourceType: string
+    resourceId: number
+    fromKey: string
+    toKey: string
+    assignmentIds: readonly number[]
+  }>>
   now?: number
+}>
+
+type ResourceKeyRemap = Readonly<{
+  resourceType: string
+  resourceId: number
+  fromKey: string
+  toKey: string
+  assignmentIds: ReadonlySet<number>
 }>
 
 function records(value: unknown): LegacyRecord[] {
@@ -487,6 +502,7 @@ function replacementIdentityPlan(
   type: InventoryType,
   item: LegacyRecord,
   itemId: number,
+  resourceKeyRemaps = new Map<string, ResourceKeyRemap>(),
 ) {
   const itemPrefix = `${type}:${item.id}`
   const existingPorts = new Map<number, number>((database.query(`
@@ -520,6 +536,9 @@ function replacementIdentityPlan(
   `).all(itemId) as Array<{ legacy_resource_key: string; position: number; id: number }>).map(
     (row) => [`${row.legacy_resource_key}:${row.position}`, row.id],
   ))
+  const remapByTargetKey = new Map(
+    [...resourceKeyRemaps.values()].map((remap) => [remap.toKey, remap]),
+  )
 
   let nextPortId = nextTableId(database, 'inventory_ports')
   let nextFaceId = nextTableId(database, 'port_endpoint_faces')
@@ -543,11 +562,13 @@ function replacementIdentityPlan(
   }
   for (const definition of legacyResourceDefinitions(item)) {
     const key = `${itemPrefix}:resource:${definition.key}`
-    resourceGroups.set(key, existingResources.get(definition.key) ?? nextResourceId++)
+    const remap = remapByTargetKey.get(definition.key)
+    const existingKey = remap?.fromKey ?? definition.key
+    resourceGroups.set(key, existingResources.get(definition.key) ?? existingResources.get(existingKey) ?? nextResourceId++)
     for (let position = 1; position <= definition.count; position += 1) {
       resourceSlots.set(
         `${key}:slot:${position}`,
-        existingSlots.get(`${definition.key}:${position}`) ?? nextSlotId++,
+        existingSlots.get(`${definition.key}:${position}`) ?? existingSlots.get(`${existingKey}:${position}`) ?? nextSlotId++,
       )
     }
   }
@@ -563,6 +584,84 @@ function replacementIdentityPlan(
     assignments: new Map(),
     connections: new Map(),
   }) satisfies CanonicalIdentityPlan
+}
+
+function typedResourceDefinitions(item: LegacyRecord) {
+  const host = item.compatibility?.host ?? {}
+  return [
+    ['storageSlots', 'storage'],
+    ['expansionSlots', 'expansion'],
+    ['optionalModuleSlots', 'optionalModule'],
+    ['controllerSlots', 'controllerSlot'],
+    ['bootDeviceSlots', 'bootDeviceSlot'],
+    ['coolingProfiles', 'coolingProfile'],
+    ['powerConnectors', 'power'],
+  ].flatMap(([collection, resourceType]) => records(host[collection]).map((resource) => ({
+    resourceType,
+    resourceId: positiveIntegerOrNull(resource.id),
+    key: optionalText(resource.key),
+  })))
+}
+
+function validatedResourceKeyRemaps(
+  database: Database,
+  type: InventoryType,
+  item: LegacyRecord,
+  itemId: number,
+  input: ReplaceLegacyInventoryItemOptions['resourceKeyRemaps'],
+) {
+  const result = new Map<string, ResourceKeyRemap>()
+  if (!input?.length) return result
+  const current = new Map((database.query(`
+    SELECT alias.legacy_resource_key, alias.legacy_resource_group_id,
+           group_row.resource_type
+    FROM inventory_resources resource
+    JOIN resource_identity_aliases alias ON alias.resource_id = resource.id
+    JOIN host_resource_groups group_row ON group_row.resource_identity_id = resource.id
+    WHERE resource.item_id = ?
+  `).all(itemId) as Array<{
+    legacy_resource_key: string
+    legacy_resource_group_id: number | null
+    resource_type: string
+  }>).map((row) => [row.legacy_resource_key, row]))
+  const proposed = typedResourceDefinitions(item)
+
+  for (const candidate of input) {
+    const resourceId = positiveIntegerOrNull(candidate.resourceId)
+    const fromKey = optionalText(candidate.fromKey)
+    const toKey = optionalText(candidate.toKey)
+    const resourceType = optionalText(candidate.resourceType)
+    if (!resourceId || !fromKey || !toKey || !resourceType || fromKey === toKey) {
+      throw new Error('Resource-key remap is invalid.')
+    }
+    if (result.has(fromKey) || [...result.values()].some((entry) => entry.toKey === toKey)) {
+      throw new Error('Resource-key remap is duplicated.')
+    }
+    const currentResource = current.get(fromKey)
+    if (
+      !currentResource
+      || currentResource.legacy_resource_group_id !== resourceId
+      || currentResource.resource_type !== resourceType
+    ) throw new Error(`Resource-key remap source ${resourceType}:${resourceId}:${fromKey} does not exist.`)
+    const targets = proposed.filter((entry) => (
+      entry.resourceType === resourceType
+      && entry.resourceId === resourceId
+      && entry.key === toKey
+    ))
+    if (targets.length !== 1) {
+      throw new Error(`Resource-key remap target ${resourceType}:${resourceId}:${toKey} is not unique.`)
+    }
+    const assignmentIds = new Set(candidate.assignmentIds.map((id) => {
+      const normalized = positiveIntegerOrNull(id)
+      if (!normalized) throw new Error('Resource-key remap assignment ID is invalid.')
+      return normalized
+    }))
+    if (assignmentIds.size !== candidate.assignmentIds.length) {
+      throw new Error('Resource-key remap assignment IDs are duplicated.')
+    }
+    result.set(fromKey, { resourceType, resourceId, fromKey, toKey, assignmentIds })
+  }
+  return result
 }
 
 function insertInventoryItemDetails(
@@ -707,6 +806,7 @@ export function replaceLegacyInventoryItem({
   type,
   item,
   itemId,
+  resourceKeyRemaps: rawResourceKeyRemaps,
   now = Date.now(),
 }: ReplaceLegacyInventoryItemOptions) {
   const legacyId = positiveIntegerOrNull(item.id)
@@ -716,7 +816,14 @@ export function replaceLegacyInventoryItem({
   ).get(projectId, itemId)
   if (!membership) throw new Error(`Inventory item ${type}:${legacyId} is not in project ${projectId}.`)
 
-  const plan = replacementIdentityPlan(database, type, item, itemId)
+  const resourceKeyRemaps = validatedResourceKeyRemaps(
+    database,
+    type,
+    item,
+    itemId,
+    rawResourceKeyRemaps,
+  )
+  const plan = replacementIdentityPlan(database, type, item, itemId, resourceKeyRemaps)
   const endpoints = database.query(`
     SELECT e.id AS endpoint_id, e.connection_id, e.role, a.legacy_port_id,
            f.endpoint_number
@@ -742,21 +849,24 @@ export function replaceLegacyInventoryItem({
   `).all(itemId) as LegacyRecord[]
   const assignmentSlots = database.query(`
     SELECT a.id AS assignment_slot_id, a.project_id, a.assignment_id, a.position AS assignment_position,
-           r.legacy_resource_key, s.position AS resource_position,
+           r.legacy_resource_key, r.legacy_resource_group_id,
+           g.resource_type, s.position AS resource_position,
            CASE WHEN c.resource_slot_id = s.id THEN 1 ELSE 0 END AS is_primary
     FROM component_assignment_slots a
     JOIN component_assignments c ON c.id = a.assignment_id
     JOIN host_resource_slots s ON s.id = a.resource_slot_id
     JOIN resource_identity_aliases r ON r.resource_id = s.resource_group_id
+    JOIN host_resource_groups g ON g.resource_identity_id = s.resource_group_id
     WHERE a.host_item_id = ?
     ORDER BY a.assignment_id, a.position
   `).all(itemId) as LegacyRecord[]
   const primaryOnlySlots = database.query(`
     SELECT c.id AS assignment_id, c.project_id, r.legacy_resource_key,
-           s.position AS resource_position
+           r.legacy_resource_group_id, g.resource_type, s.position AS resource_position
     FROM component_assignments c
     JOIN host_resource_slots s ON s.id = c.resource_slot_id
     JOIN resource_identity_aliases r ON r.resource_id = s.resource_group_id
+    JOIN host_resource_groups g ON g.resource_identity_id = s.resource_group_id
     WHERE c.host_item_id = ?
       AND NOT EXISTS (
         SELECT 1 FROM component_assignment_slots a
@@ -784,10 +894,36 @@ export function replaceLegacyInventoryItem({
   const resourceSlot = (resourceKey: string, position: number) => plan.resourceSlots.get(
     `${type}:${legacyId}:resource:${resourceKey}:slot:${position}`,
   )
+  const targetResourceKey = (slot: LegacyRecord) => {
+    const remap = resourceKeyRemaps.get(slot.legacy_resource_key)
+    if (!remap) return slot.legacy_resource_key
+    if (
+      remap.resourceType !== slot.resource_type
+      || remap.resourceId !== slot.legacy_resource_group_id
+      || !remap.assignmentIds.has(slot.assignment_id)
+    ) throw new Error(`Assignment ${slot.assignment_id} is not covered by its resource-key remap.`)
+    return remap.toKey
+  }
+  const actualAssignmentsByRemap = new Map<string, Set<number>>()
   for (const slot of [...assignmentSlots, ...primaryOnlySlots]) {
-    if (!resourceSlot(slot.legacy_resource_key, slot.resource_position)) {
+    const remap = resourceKeyRemaps.get(slot.legacy_resource_key)
+    if (!remap) continue
+    const ids = actualAssignmentsByRemap.get(remap.fromKey) ?? new Set<number>()
+    ids.add(slot.assignment_id)
+    actualAssignmentsByRemap.set(remap.fromKey, ids)
+  }
+  for (const remap of resourceKeyRemaps.values()) {
+    const actual = actualAssignmentsByRemap.get(remap.fromKey) ?? new Set<number>()
+    if (
+      actual.size !== remap.assignmentIds.size
+      || [...actual].some((assignmentId) => !remap.assignmentIds.has(assignmentId))
+    ) throw new Error(`Resource-key remap ${remap.fromKey} does not cover its current assignments.`)
+  }
+  for (const slot of [...assignmentSlots, ...primaryOnlySlots]) {
+    const targetKey = targetResourceKey(slot)
+    if (!resourceSlot(targetKey, slot.resource_position)) {
       throw new Error(
-        `Assigned resource ${slot.legacy_resource_key} slot ${slot.resource_position} cannot be removed.`,
+        `Assigned resource ${targetKey} slot ${slot.resource_position} cannot be removed.`,
       )
     }
   }
@@ -858,7 +994,7 @@ export function replaceLegacyInventoryItem({
     )
   }
   for (const slot of assignmentSlots) {
-    const slotId = resourceSlot(slot.legacy_resource_key, slot.resource_position)!
+    const slotId = resourceSlot(targetResourceKey(slot), slot.resource_position)!
     database.query('INSERT INTO component_assignment_slots (id, project_id, assignment_id, host_item_id, resource_slot_id, position) VALUES (?, ?, ?, ?, ?, ?)').run(
       slot.assignment_slot_id,
       slot.project_id,
@@ -873,7 +1009,7 @@ export function replaceLegacyInventoryItem({
   }
   for (const slot of primaryOnlySlots) {
     database.query('UPDATE component_assignments SET resource_slot_id = ? WHERE id = ?').run(
-      resourceSlot(slot.legacy_resource_key, slot.resource_position),
+      resourceSlot(targetResourceKey(slot), slot.resource_position),
       slot.assignment_id,
     )
   }

@@ -11,7 +11,7 @@
 ## Global Constraints
 
 - Positive numeric IDs are persisted relationship identity.
-- A semantic resource-key rename with the same numeric ID preserves assignment IDs and slot positions.
+- A semantic resource-key rename with the same resource type and numeric ID preserves assignment IDs and slot positions.
 - Automatic safe Registry updates never execute topology-resolution operations.
 - Preview is read-only; resolution requires explicit confirmation and one atomic transaction.
 - Unknown supported Registry fields survive canonicalization and persistence.
@@ -115,7 +115,7 @@ remap operation and no `unassign-item` operations.
 Also test:
 
 - a proposed count below the highest occupied slot is unavailable;
-- duplicate numeric resource IDs are unavailable;
+- duplicate numeric resource IDs within one resource type are unavailable;
 - incompatible resource type/category remains unavailable;
 - a genuinely removed resource still emits explicit releases where safe.
 

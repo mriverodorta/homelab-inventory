@@ -78,36 +78,105 @@ function fixedComponentOperations({ current, next, project, hostKey }) {
   return { available: true, operations }
 }
 
-function missingResourceAssignmentOperations({ current, next, project, hostKey }) {
-  const nextHost = next.compatibility?.host ?? {}
-  const nextKeys = new Set([
-    ...(nextHost.storageSlots ?? []),
-    ...(nextHost.expansionSlots ?? []),
-    ...(nextHost.optionalModuleSlots ?? []),
-    ...(nextHost.controllerSlots ?? []),
-    ...(nextHost.bootDeviceSlots ?? []),
-  ].map((resource) => resource.key).filter(Boolean))
-  const currentHost = current.compatibility?.host ?? {}
-  const currentKeys = new Set([
-    ...(currentHost.storageSlots ?? []),
-    ...(currentHost.expansionSlots ?? []),
-    ...(currentHost.optionalModuleSlots ?? []),
-    ...(currentHost.controllerSlots ?? []),
-    ...(currentHost.bootDeviceSlots ?? []),
-  ].map((resource) => resource.key).filter(Boolean))
-  if (currentKeys.size === 0 || nextKeys.size === 0) return []
+const RESOURCE_COLLECTIONS = Object.freeze([
+  ['storageSlots', 'storage'],
+  ['expansionSlots', 'expansion'],
+  ['optionalModuleSlots', 'optionalModule'],
+  ['controllerSlots', 'controllerSlot'],
+  ['bootDeviceSlots', 'bootDeviceSlot'],
+])
+
+function hostResources(item) {
+  const host = item.compatibility?.host ?? {}
+  return RESOURCE_COLLECTIONS.flatMap(([collection, resourceType]) => (
+    Array.isArray(host[collection])
+      ? host[collection].map((resource) => ({ ...resource, collection, resourceType }))
+      : []
+  ))
+}
+
+function resourceIdentity(resource) {
+  return Number.isSafeInteger(resource?.id) && resource.id > 0
+    ? `${resource.resourceType}:${resource.id}`
+    : null
+}
+
+function resourceAssignments(project, hostKey, resource) {
   return project.assignments.filter((assignment) => (
     assignment.serverId === hostKey
-    && assignment.allocation?.resourceKey
-    && currentKeys.has(assignment.allocation.resourceKey)
-    && !nextKeys.has(assignment.allocation.resourceKey)
-  )).map((assignment) => ({
+    && assignment.allocation?.resourceType === resource.resourceType
+    && (
+      assignment.allocation?.groupId === resource.id
+      || (
+        assignment.allocation?.groupId == null
+        && assignment.allocation?.resourceKey === resource.key
+      )
+    )
+  ))
+}
+
+function releaseAssignment(project, assignment) {
+  return {
     kind: 'unassign-item',
     assignmentId: assignment.id,
     itemType: project.items[assignment.itemId]?.type ?? assignment.type,
     itemId: project.items[assignment.itemId]?.id,
     returnToInventory: true,
-  }))
+  }
+}
+
+function resourceRelationshipOperations({ current, next, project, hostKey }) {
+  const currentResources = hostResources(current)
+  const nextResources = hostResources(next)
+  if (currentResources.length === 0 || nextResources.length === 0) {
+    return { available: true, operations: [] }
+  }
+  const nextByIdentity = new Map()
+  for (const resource of nextResources) {
+    const identity = resourceIdentity(resource)
+    if (!identity) continue
+    if (nextByIdentity.has(identity)) {
+      return { available: false, reason: `The proposed topology contains duplicate resource identity ${identity}.` }
+    }
+    nextByIdentity.set(identity, resource)
+  }
+
+  const operations = []
+  for (const resource of currentResources) {
+    const assignments = resourceAssignments(project, hostKey, resource)
+    if (assignments.length === 0) continue
+    const identity = resourceIdentity(resource)
+    const sameIdentity = identity ? nextByIdentity.get(identity) : null
+    if (sameIdentity) {
+      if (sameIdentity.key === resource.key) continue
+      const count = Number.isSafeInteger(sameIdentity.count) && sameIdentity.count > 0 ? sameIdentity.count : 1
+      for (const assignment of assignments) {
+        for (const position of assignment.allocation?.positions ?? []) {
+          if (!Number.isSafeInteger(position) || position < 0 || position >= count) {
+            return {
+              available: false,
+              reason: `Assigned resource ${identity} uses position ${Number(position) + 1}, but the proposed resource has ${count} slots.`,
+            }
+          }
+        }
+      }
+      operations.push({
+        kind: 'remap-resource-key',
+        resourceType: resource.resourceType,
+        resourceId: resource.id,
+        fromKey: resource.key,
+        toKey: sameIdentity.key,
+        assignmentIds: assignments.map((assignment) => assignment.id).sort((left, right) => left - right),
+      })
+      continue
+    }
+    const sameKeyTargets = nextResources.filter((candidate) => (
+      candidate.resourceType === resource.resourceType && candidate.key === resource.key
+    ))
+    if (sameKeyTargets.length === 1) continue
+    operations.push(...assignments.map((assignment) => releaseAssignment(project, assignment)))
+  }
+  return { available: true, operations }
 }
 
 function portRemapOperations({ current, next, project, link, hostKey }) {
@@ -190,7 +259,9 @@ function deduplicateOperations(operations) {
   return operations.filter((operation) => {
     const key = operation.kind === 'unassign-item'
       ? `assignment:${operation.assignmentId}`
-      : `connection:${operation.connectionId}:${operation.endpointRole}`
+      : operation.kind === 'remap-resource-key'
+        ? `resource:${operation.resourceType}:${operation.resourceId}:${operation.fromKey}:${operation.toKey}`
+        : `connection:${operation.connectionId}:${operation.endpointRole}`
     if (seen.has(key)) return false
     seen.add(key)
     return true
@@ -203,6 +274,7 @@ export function buildCatalogResolutionPlan({ current, next, project, link }) {
     portRemapOperations({ current, next, project, link, hostKey }),
     powerAdapterOperations({ current, next, project, link, hostKey }),
     fixedComponentOperations({ current, next, project, hostKey }),
+    resourceRelationshipOperations({ current, next, project, hostKey }),
   ]
   const unavailable = partials.find((partial) => !partial.available)
   if (unavailable) {
@@ -215,14 +287,17 @@ export function buildCatalogResolutionPlan({ current, next, project, link }) {
   }
   const operations = deduplicateOperations([
     ...partials.flatMap((partial) => partial.operations),
-    ...missingResourceAssignmentOperations({ current, next, project, hostKey }),
   ])
   return {
     available: operations.length > 0,
     operations,
     affectedRelationships: {
       connectionIds: [...new Set(operations.filter((entry) => entry.kind === 'move-connection-endpoint').map((entry) => entry.connectionId))],
-      assignmentIds: [...new Set(operations.filter((entry) => entry.kind === 'unassign-item').map((entry) => entry.assignmentId))],
+      assignmentIds: [...new Set(operations.flatMap((entry) => (
+        entry.kind === 'unassign-item' ? [entry.assignmentId]
+          : entry.kind === 'remap-resource-key' ? entry.assignmentIds
+            : []
+      )))],
     },
     reason: operations.length > 0 ? 'A deterministic relationship migration is available.' : 'No relationship migration is required.',
   }
@@ -232,6 +307,19 @@ export function applyCatalogResolutionPlan(project, plan) {
   if (!plan.available) throw new Error(plan.reason || 'Catalog update resolution is unavailable.')
   const draft = structuredClone(project)
   for (const operation of plan.operations) {
+    if (operation.kind === 'remap-resource-key') {
+      for (const assignmentId of operation.assignmentIds) {
+        const assignment = draft.assignments.find((entry) => entry.id === assignmentId)
+        if (!assignment) throw new Error(`Assignment ${assignmentId} does not exist.`)
+        if (
+          assignment.allocation?.resourceType !== operation.resourceType
+          || assignment.allocation?.resourceKey !== operation.fromKey
+          || assignment.allocation?.groupId !== operation.resourceId
+        ) throw new Error(`Assignment ${assignmentId} changed after the resource remap was planned.`)
+        assignment.allocation.resourceKey = operation.toKey
+      }
+      continue
+    }
     if (operation.kind === 'unassign-item') {
       const index = draft.assignments.findIndex((assignment) => assignment.id === operation.assignmentId)
       if (index < 0) throw new Error(`Assignment ${operation.assignmentId} does not exist.`)
