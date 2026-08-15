@@ -9,6 +9,7 @@ export function setHostCompatibilityEnabled(
   const policy = normalizeCompatibilityPolicy(project.compatibilityPolicy)
   const match = hostId.match(/^([^:]+):([1-9]\d*)$/)
   if (!match) return project
+  if (!['server', 'nas', 'pcBuild'].includes(match[1])) return project
   const hostType = match[1] as 'server' | 'nas' | 'pcBuild'
   const numericHostId = Number(match[2])
   const disabledHosts = policy.disabledHosts.filter(
@@ -48,6 +49,28 @@ export function setAuditWarningIgnored(
       ...policy,
       ignoredWarningIds: [...ignoredWarningIds],
     },
+  }
+}
+
+export function setVerifiedMemoryLimitEnabled(
+  project: ProjectState,
+  hostId: string,
+  enabled: boolean,
+): ProjectState {
+  const policy = normalizeCompatibilityPolicy(project.compatibilityPolicy)
+  const match = hostId.match(/^([^:]+):([1-9]\d*)$/)
+  if (!match) return project
+  const hostType = match[1] as 'server' | 'nas' | 'pcBuild'
+  const hostIdNumber = Number(match[2])
+  const verifiedMemoryHosts = (policy.verifiedMemoryHosts ?? []).filter(
+    (entry) => !(entry.hostType === hostType && entry.hostId === hostIdNumber),
+  )
+
+  if (enabled) verifiedMemoryHosts.push({ hostType, hostId: hostIdNumber })
+
+  return {
+    ...project,
+    compatibilityPolicy: { ...policy, verifiedMemoryHosts },
   }
 }
 

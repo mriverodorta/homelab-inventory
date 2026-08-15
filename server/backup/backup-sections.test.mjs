@@ -61,6 +61,33 @@ describe('backup section ownership', () => {
     expect(replacements.inventory.ram).toEqual([{ id: 1, ...storedItem }])
   })
 
+  it('round-trips every NAS v10 field through selective and complete backups', async () => {
+    const dataDir = await fs.mkdtemp(path.join(os.tmpdir(), 'hli-nas-v10-sections-'))
+    const fixture = JSON.parse(await fs.readFile(path.resolve(
+      'packages/catalog-protocol/test/fixtures/server-specs-inventory-nas-v10.json',
+    ), 'utf8'))
+    const { type: _type, ...storedItem } = fixture.item
+    const source = stores()
+    source.inventory.nas = [{ id: 1, ...storedItem }]
+
+    for (const sections of [['inventory'], COMPLETE_BACKUP_SECTIONS]) {
+      const result = await collectBackupSections({
+        store: { dataDir, snapshotStores: async () => source },
+        sections,
+        telemetryRepository,
+        notificationStore,
+      })
+      const files = new Map(result.files.map((file) => [file.name, file.body]))
+      const replacements = materializeBackupSections({
+        files,
+        sections: ['inventory'],
+        currentStores: stores(),
+      })
+
+      expect(replacements.inventory.nas).toEqual([{ id: 1, ...storedItem }])
+    }
+  })
+
   it('does not include backup history in application metadata', async () => {
     const dataDir = await fs.mkdtemp(path.join(os.tmpdir(), 'hli-sections-'))
     const current = stores()

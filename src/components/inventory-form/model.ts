@@ -7,12 +7,16 @@ import {
 import type {
   CardHeight,
   ExpansionInterfaceFamily,
+  ExpansionSlotGroup,
   InventoryCompatibility,
+  OptionalModuleSlotGroup,
+  StorageSlotGroup,
 } from '@/types/compatibility'
 import type {
   EquipmentUsageRole,
   HardwareClass,
   InventoryItem,
+  InventoryFixedComponent,
   InventoryPort,
   InventoryPortRole,
   InventoryPortType,
@@ -118,6 +122,14 @@ export type InventoryFormValues = {
   driveBays: string
   m2Slots: string
   powerConfiguration: '' | 'internal-psu' | 'external-adapter'
+  nasPlatformFamily: string
+  nasVariantKey: string
+  nasHardwareRevision: string
+  nasReleaseDate: string
+  nasWidthMm: string
+  nasHeightMm: string
+  nasDepthMm: string
+  nasMassGrams: string
   cores: string
   threads: string
   baseClockGhz: string
@@ -186,6 +198,10 @@ export type InventoryFormValues = {
   hostMemorySlots: string
   hostMemoryMaxCapacityGb: string
   hostMemoryMaxModuleCapacityGb: string
+  hostMemoryOemMaxCapacityMib: string
+  hostMemoryOemMaxModuleCapacityMib: string
+  hostMemoryVerifiedMaxCapacityMib: string
+  hostMemoryVerifiedMaxModuleCapacityMib: string
   hostMemoryMaxSpeedMt: string
   hostMemoryEccSupport: '' | 'supported' | 'unsupported' | 'conditional' | 'unknown'
   hostMemorySlotsPerCpu: string
@@ -198,8 +214,10 @@ export type InventoryFormValues = {
   powerSupplyConnectors: PowerSupplyConnectorDraft[]
   hostMaxExpansionPowerWatts: string
   hostPowerConfiguration: string
+  hostPowerAdapterDisposition: '' | 'fixed' | 'replaceable'
   hostPowerConnector: string
   hostPowerSupportedWattagesWatts: string
+  hostPowerSupportedPowerMw: string
   hostPowerAdapterRequired: '' | 'yes' | 'no'
   hostPowerAdapterType: string
   hostPowerRedundancy: string
@@ -220,6 +238,7 @@ export type InventoryFormValues = {
   expansionSlotWidth: string
   expansionPowerWatts: string
   preservedCompatibility: InventoryCompatibility
+  fixedComponents?: InventoryFixedComponent[]
   subtype?: string
   properties?: InventoryProperties
 }
@@ -235,7 +254,11 @@ export const MAX_PORT_GROUP_COUNT = 128
 
 const KNOWN_SPEC_KEYS: Partial<Record<InventoryType, string[]>> = {
   server: ['formFactor', 'networkSlot', 'wireless'],
-  nas: ['driveBays', 'm2Slots', 'powerConfiguration'],
+  nas: [
+    'driveBays', 'm2Slots', 'powerConfiguration', 'formFactor', 'platformFamily',
+    'variantKey', 'hardwareRevision', 'boardRevision', 'releaseDate', 'discontinued',
+    'widthMm', 'heightMm', 'depthMm', 'massGrams', 'rackUnits',
+  ],
   cpu: ['cores', 'threads', 'baseClockGhz', 'boostClockGhz'],
   ram: ['capacityGb', 'generation', 'speedMt', 'formFactor', 'moduleType', 'ecc', 'rank', 'voltageVolts'],
   storage: ['capacityGb', 'capacityTb', 'interface', 'formFactor', 'serialNumber', 'partitionTable'],
@@ -473,6 +496,14 @@ export function createInventoryFormValues(type: InventoryType): InventoryFormVal
     driveBays: '',
     m2Slots: '',
     powerConfiguration: '',
+    nasPlatformFamily: '',
+    nasVariantKey: '',
+    nasHardwareRevision: '',
+    nasReleaseDate: '',
+    nasWidthMm: '',
+    nasHeightMm: '',
+    nasDepthMm: '',
+    nasMassGrams: '',
     cores: '',
     threads: '',
     baseClockGhz: '',
@@ -541,6 +572,10 @@ export function createInventoryFormValues(type: InventoryType): InventoryFormVal
     hostMemorySlots: '',
     hostMemoryMaxCapacityGb: '',
     hostMemoryMaxModuleCapacityGb: '',
+    hostMemoryOemMaxCapacityMib: '',
+    hostMemoryOemMaxModuleCapacityMib: '',
+    hostMemoryVerifiedMaxCapacityMib: '',
+    hostMemoryVerifiedMaxModuleCapacityMib: '',
     hostMemoryMaxSpeedMt: '',
     hostMemoryEccSupport: '',
     hostMemorySlotsPerCpu: '',
@@ -553,8 +588,10 @@ export function createInventoryFormValues(type: InventoryType): InventoryFormVal
     powerSupplyConnectors: [],
     hostMaxExpansionPowerWatts: '',
     hostPowerConfiguration: '',
+    hostPowerAdapterDisposition: '',
     hostPowerConnector: '',
     hostPowerSupportedWattagesWatts: '',
+    hostPowerSupportedPowerMw: '',
     hostPowerAdapterRequired: '',
     hostPowerAdapterType: '',
     hostPowerRedundancy: '',
@@ -575,6 +612,7 @@ export function createInventoryFormValues(type: InventoryType): InventoryFormVal
     expansionSlotWidth: '',
     expansionPowerWatts: '',
     preservedCompatibility: {},
+    fixedComponents: undefined,
   }
 }
 
@@ -619,6 +657,14 @@ export function inventoryItemToFormValues(item: InventoryItem): InventoryFormVal
       || specs.powerConfiguration === 'external-adapter'
       ? specs.powerConfiguration
       : '',
+    nasPlatformFamily: item.type === 'nas' ? stringValue(specs.platformFamily) : '',
+    nasVariantKey: item.type === 'nas' ? stringValue(specs.variantKey) : '',
+    nasHardwareRevision: item.type === 'nas' ? stringValue(specs.hardwareRevision) : '',
+    nasReleaseDate: item.type === 'nas' ? stringValue(specs.releaseDate) : '',
+    nasWidthMm: item.type === 'nas' ? stringValue(specs.widthMm) : '',
+    nasHeightMm: item.type === 'nas' ? stringValue(specs.heightMm) : '',
+    nasDepthMm: item.type === 'nas' ? stringValue(specs.depthMm) : '',
+    nasMassGrams: item.type === 'nas' ? stringValue(specs.massGrams) : '',
     cores: stringValue(specs.cores),
     threads: stringValue(specs.threads),
     baseClockGhz: stringValue(specs.baseClockGhz),
@@ -689,6 +735,10 @@ export function inventoryItemToFormValues(item: InventoryItem): InventoryFormVal
     hostMemorySlots: stringValue(item.compatibility?.host?.memory?.slots),
     hostMemoryMaxCapacityGb: stringValue(item.compatibility?.host?.memory?.maxCapacityGb),
     hostMemoryMaxModuleCapacityGb: stringValue(item.compatibility?.host?.memory?.maxModuleCapacityGb),
+    hostMemoryOemMaxCapacityMib: stringValue(item.compatibility?.host?.memory?.oemMaxCapacityMib),
+    hostMemoryOemMaxModuleCapacityMib: stringValue(item.compatibility?.host?.memory?.oemMaxModuleCapacityMib),
+    hostMemoryVerifiedMaxCapacityMib: stringValue(item.compatibility?.host?.memory?.verifiedMaxCapacityMib),
+    hostMemoryVerifiedMaxModuleCapacityMib: stringValue(item.compatibility?.host?.memory?.verifiedMaxModuleCapacityMib),
     hostMemoryMaxSpeedMt: stringValue(item.compatibility?.host?.memory?.maxSpeedMt),
     hostMemoryEccSupport: item.compatibility?.host?.memory?.eccSupport ?? '',
     hostMemorySlotsPerCpu: stringValue(item.compatibility?.host?.memory?.slotsPerCpu),
@@ -758,8 +808,10 @@ export function inventoryItemToFormValues(item: InventoryItem): InventoryFormVal
       : [],
     hostMaxExpansionPowerWatts: stringValue(item.compatibility?.host?.maxExpansionPowerWatts),
     hostPowerConfiguration: stringValue(item.compatibility?.host?.power?.configuration),
+    hostPowerAdapterDisposition: item.compatibility?.host?.power?.adapterDisposition ?? '',
     hostPowerConnector: stringValue(item.compatibility?.host?.power?.connector),
     hostPowerSupportedWattagesWatts: (item.compatibility?.host?.power?.supportedWattagesWatts ?? []).join(', '),
+    hostPowerSupportedPowerMw: (item.compatibility?.host?.power?.supportedPowerMw ?? []).join(', '),
     hostPowerAdapterRequired: item.compatibility?.host?.power?.adapterRequired === true
       ? 'yes'
       : item.compatibility?.host?.power?.adapterRequired === false ? 'no' : '',
@@ -784,6 +836,7 @@ export function inventoryItemToFormValues(item: InventoryItem): InventoryFormVal
     expansionSlotWidth: stringValue(item.compatibility?.requirements?.expansion?.slotWidth),
     expansionPowerWatts: stringValue(item.compatibility?.requirements?.expansion?.powerWatts),
     preservedCompatibility: cloneCompatibility(item.compatibility),
+    fixedComponents: item.fixedComponents ? structuredClone(item.fixedComponents) : undefined,
     subtype: item.subtype,
     properties: item.properties ? { ...item.properties } : undefined,
   }
@@ -883,6 +936,18 @@ export function inventoryFormValuesToInput(values: InventoryFormValues): Invento
     setSpec(specs, 'driveBays', numberValue(values.driveBays))
     setSpec(specs, 'm2Slots', numberValue(values.m2Slots))
     setSpec(specs, 'powerConfiguration', cleanString(values.powerConfiguration))
+    setSpec(specs, 'formFactor', cleanString(values.formFactor))
+    setSpec(specs, 'platformFamily', cleanString(values.nasPlatformFamily))
+    setSpec(specs, 'variantKey', cleanString(values.nasVariantKey))
+    setSpec(specs, 'hardwareRevision', cleanString(values.nasHardwareRevision))
+    setSpec(specs, 'boardRevision', cleanString(values.boardRevision))
+    setSpec(specs, 'releaseDate', cleanString(values.nasReleaseDate))
+    setSpec(specs, 'discontinued', values.discontinued === '' ? undefined : values.discontinued === 'yes')
+    setSpec(specs, 'widthMm', numberValue(values.nasWidthMm))
+    setSpec(specs, 'heightMm', numberValue(values.nasHeightMm))
+    setSpec(specs, 'depthMm', numberValue(values.nasDepthMm))
+    setSpec(specs, 'massGrams', numberValue(values.nasMassGrams))
+    setSpec(specs, 'rackUnits', numberValue(values.rackUnits))
   } else if (type === 'cpu') {
     setSpec(specs, 'cores', numberValue(values.cores))
     setSpec(specs, 'threads', numberValue(values.threads))
@@ -1019,6 +1084,7 @@ export function inventoryFormValuesToInput(values: InventoryFormValues): Invento
     ...(values.subtype ? { subtype: values.subtype } : {}),
     ...(Object.keys(specs).length ? { specs } : {}),
     ...(compatibility ? { compatibility } : {}),
+    ...(values.fixedComponents?.length ? { fixedComponents: structuredClone(values.fixedComponents) } : {}),
     ...(values.properties ? { properties: { ...values.properties } } : {}),
     ...(ports ? { ports } : {}),
     ...(smart ? { smart } : {}),
@@ -1115,6 +1181,10 @@ function buildCompatibility(values: InventoryFormValues): InventoryCompatibility
     setOptional(memoryRecord, 'slots', numberValue(values.hostMemorySlots))
     setOptional(memoryRecord, 'maxCapacityGb', numberValue(values.hostMemoryMaxCapacityGb))
     setOptional(memoryRecord, 'maxModuleCapacityGb', numberValue(values.hostMemoryMaxModuleCapacityGb))
+    setOptional(memoryRecord, 'oemMaxCapacityMib', numberValue(values.hostMemoryOemMaxCapacityMib))
+    setOptional(memoryRecord, 'oemMaxModuleCapacityMib', numberValue(values.hostMemoryOemMaxModuleCapacityMib))
+    setOptional(memoryRecord, 'verifiedMaxCapacityMib', numberValue(values.hostMemoryVerifiedMaxCapacityMib))
+    setOptional(memoryRecord, 'verifiedMaxModuleCapacityMib', numberValue(values.hostMemoryVerifiedMaxModuleCapacityMib))
     setOptional(memoryRecord, 'maxSpeedMt', numberValue(values.hostMemoryMaxSpeedMt))
     setOptional(memoryRecord, 'eccSupport', cleanString(values.hostMemoryEccSupport))
     setOptional(memoryRecord, 'slotsPerCpu', numberValue(values.hostMemorySlotsPerCpu))
@@ -1140,7 +1210,7 @@ function buildCompatibility(values: InventoryFormValues): InventoryCompatibility
     ))
     const storageIds = assignResourceGroupIds(storageDrafts)
     const storageKeys = assignResourceGroupKeys(storageDrafts, 'storage')
-    const storageSlots = storageDrafts.map((draft, index) => {
+    const storageSlots: StorageSlotGroup[] = storageDrafts.map((draft, index) => {
       const originalGroup = draft.id === undefined ? undefined : originalStorageGroups.get(draft.id)
       const group = structuredClone(originalGroup ?? {}) as Record<string, unknown>
       group.id = storageIds[index]
@@ -1161,9 +1231,10 @@ function buildCompatibility(values: InventoryFormValues): InventoryCompatibility
           .filter((value): value is number => value !== undefined),
       )
       setOptional(group, 'directConnect', draft.directConnect)
-      return group
+      return group as StorageSlotGroup
     })
-    setOptional(hostRecord, 'storageSlots', storageSlots)
+    if (storageSlots.length || compatibility.host?.storageSlots !== undefined) host.storageSlots = storageSlots
+    else delete host.storageSlots
 
     const originalExpansionGroups = new Map(
       (compatibility.host?.expansionSlots ?? []).map((group) => [group.id, group]),
@@ -1185,7 +1256,7 @@ function buildCompatibility(values: InventoryFormValues): InventoryCompatibility
     ))
     const expansionIds = assignResourceGroupIds(expansionDrafts)
     const expansionKeys = assignResourceGroupKeys(expansionDrafts, 'expansion')
-    const expansionSlots = expansionDrafts.map((draft, index) => {
+    const expansionSlots: ExpansionSlotGroup[] = expansionDrafts.map((draft, index) => {
       const originalGroup = draft.id === undefined ? undefined : originalExpansionGroups.get(draft.id)
       const group = structuredClone(originalGroup ?? {}) as Record<string, unknown>
       group.id = expansionIds[index]
@@ -1203,9 +1274,10 @@ function buildCompatibility(values: InventoryFormValues): InventoryCompatibility
       setOptional(group, 'riserCapability', cleanString(draft.riserCapability))
       setOptional(group, 'requiredCpuSockets', numberValue(draft.requiredCpuSockets))
       setOptional(group, 'riserGroup', cleanString(draft.riserGroup))
-      return group
+      return group as ExpansionSlotGroup
     })
-    setOptional(hostRecord, 'expansionSlots', expansionSlots)
+    if (expansionSlots.length || compatibility.host?.expansionSlots !== undefined) host.expansionSlots = expansionSlots
+    else delete host.expansionSlots
 
     const originalOptionalModuleGroups = new Map(
       (compatibility.host?.optionalModuleSlots ?? []).map((group) => [group.id, group]),
@@ -1217,7 +1289,7 @@ function buildCompatibility(values: InventoryFormValues): InventoryCompatibility
     ))
     const optionalModuleIds = assignResourceGroupIds(optionalModuleDrafts)
     const optionalModuleKeys = assignResourceGroupKeys(optionalModuleDrafts, 'optional-module')
-    const optionalModuleSlots = optionalModuleDrafts.map((draft, index) => {
+    const optionalModuleSlots: OptionalModuleSlotGroup[] = optionalModuleDrafts.map((draft, index) => {
       const originalGroup = draft.id === undefined ? undefined : originalOptionalModuleGroups.get(draft.id)
       const group = structuredClone(originalGroup ?? {}) as Record<string, unknown>
       group.id = optionalModuleIds[index]
@@ -1225,9 +1297,11 @@ function buildCompatibility(values: InventoryFormValues): InventoryCompatibility
       group.label = draft.label.trim()
       setOptional(group, 'count', numberValue(draft.count))
       setOptional(group, 'acceptedModuleKinds', draft.acceptedModuleKinds)
-      return group
+      return group as OptionalModuleSlotGroup
     })
-    setOptional(hostRecord, 'optionalModuleSlots', optionalModuleSlots)
+    if (optionalModuleSlots.length || compatibility.host?.optionalModuleSlots !== undefined) {
+      host.optionalModuleSlots = optionalModuleSlots
+    } else delete host.optionalModuleSlots
 
     const originalPowerConnectorGroups = new Map(
       (compatibility.host?.powerConnectors ?? []).map((group) => [group.id, group]),
@@ -1259,11 +1333,26 @@ function buildCompatibility(values: InventoryFormValues): InventoryCompatibility
     const power = host.power ? { ...host.power } : {}
     const powerRecord = asMutableRecord(power)
     setOptional(powerRecord, 'configuration', cleanString(values.hostPowerConfiguration))
+    setOptional(
+      powerRecord,
+      'adapterDisposition',
+      values.hostPowerConfiguration === 'external-adapter'
+        ? cleanString(values.hostPowerAdapterDisposition)
+        : undefined,
+    )
     setOptional(powerRecord, 'connector', cleanString(values.hostPowerConnector))
     setOptional(
       powerRecord,
       'supportedWattagesWatts',
       values.hostPowerSupportedWattagesWatts
+        .split(',')
+        .map((entry) => numberValue(entry))
+        .filter((entry): entry is number => entry !== undefined),
+    )
+    setOptional(
+      powerRecord,
+      'supportedPowerMw',
+      values.hostPowerSupportedPowerMw
         .split(',')
         .map((entry) => numberValue(entry))
         .filter((entry): entry is number => entry !== undefined),
@@ -1430,7 +1519,7 @@ export function validateInventoryFormValues(values: InventoryFormValues): Invent
   }
 
   const positiveFields: Array<keyof InventoryFormValues> = [
-    'cores', 'threads', 'capacityGb', 'hostMemorySlots', 'cpuSocketCount',
+    'cores', 'threads', 'capacityGb', 'cpuSocketCount',
     'hostCpuSocketCount', 'hostMemorySlotsPerCpu', 'hostPowerPsuBayCount',
   ]
   const nonNegativeFields: Array<keyof InventoryFormValues> = [
@@ -1439,6 +1528,9 @@ export function validateInventoryFormValues(values: InventoryFormValues): Invent
     'hostCpuMaxTdpWatts', 'hostMemoryMaxCapacityGb', 'hostMemoryMaxModuleCapacityGb',
     'hostMemoryMaxSpeedMt', 'hostMaxExpansionPowerWatts', 'cpuTdpWatts',
     'hostPowerMaxGraphicsPowerWatts',
+    'hostMemorySlots', 'hostMemoryOemMaxCapacityMib', 'hostMemoryOemMaxModuleCapacityMib',
+    'hostMemoryVerifiedMaxCapacityMib', 'hostMemoryVerifiedMaxModuleCapacityMib',
+    'nasWidthMm', 'nasHeightMm', 'nasDepthMm', 'nasMassGrams',
     'expansionPowerWatts',
     'ratedWatts', 'displaySizeInches', 'refreshRateHz', 'upsWatts',
     'upsVoltAmps', 'batteryOutletCount', 'surgeOutletCount', 'outletCount',

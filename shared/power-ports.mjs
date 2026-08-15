@@ -9,6 +9,53 @@ export function isNasPowerConfiguration(value) {
   return NAS_POWER_CONFIGURATIONS.includes(value)
 }
 
+export function nasPowerTopology(item) {
+  const configured = item?.compatibility?.host?.power?.configuration
+  const configuration = isNasPowerConfiguration(configured)
+    ? configured
+    : isNasPowerConfiguration(item?.specs?.powerConfiguration)
+      ? item.specs.powerConfiguration
+      : 'internal-psu'
+  const declaredDisposition = item?.compatibility?.host?.power?.adapterDisposition
+  const adapterDisposition = configuration === 'external-adapter'
+    ? declaredDisposition === 'fixed' ? 'fixed' : 'replaceable'
+    : undefined
+  return { configuration, adapterDisposition }
+}
+
+export function nasOwnsPowerEndpoint(item) {
+  const topology = nasPowerTopology(item)
+  return topology.configuration === 'internal-psu' || topology.adapterDisposition === 'fixed'
+}
+
+export function withNasPowerConfiguration(item, configuration) {
+  const currentPower = item?.compatibility?.host?.power ?? {}
+  const power = {
+    ...currentPower,
+    configuration,
+    ...(configuration === 'external-adapter'
+      ? {
+          adapterDisposition: currentPower.adapterDisposition === 'fixed'
+            ? 'fixed'
+            : 'replaceable',
+        }
+      : {}),
+  }
+  if (configuration === 'internal-psu') delete power.adapterDisposition
+
+  return {
+    ...item,
+    specs: { ...(item?.specs ?? {}), powerConfiguration: configuration },
+    compatibility: {
+      ...(item?.compatibility ?? {}),
+      host: {
+        ...(item?.compatibility?.host ?? {}),
+        power,
+      },
+    },
+  }
+}
+
 function positiveInteger(value) {
   return Number.isSafeInteger(value) && value > 0 ? value : 0
 }
@@ -28,7 +75,7 @@ function canonicalPowerPortTemplates(item) {
   if (!POWER_ITEM_TYPES.has(item?.type)) return item?.ports ?? []
 
   if (item.type === 'nas') {
-    return item.specs?.powerConfiguration === 'internal-psu'
+    return nasOwnsPowerEndpoint(item)
       ? [powerPort(1, 'ac-input', 'ac-input', 1, 'AC input')]
       : []
   }

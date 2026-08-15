@@ -83,31 +83,48 @@ export function normalizeCompatibilityPolicy(policy) {
       .filter(Boolean),
   )]
 
-  const disabledHosts = []
-  for (const value of Array.isArray(policy?.disabledHosts) ? policy.disabledHosts : []) {
-    if (
-      HOST_TYPES.has(value?.hostType)
-      && Number.isSafeInteger(value?.hostId)
-      && value.hostId > 0
-      && !disabledHosts.some((entry) => entry.hostType === value.hostType && entry.hostId === value.hostId)
-    ) {
-      disabledHosts.push({ hostType: value.hostType, hostId: value.hostId })
+  const normalizeHostRefs = (values) => {
+    const refs = []
+    for (const value of Array.isArray(values) ? values : []) {
+      if (
+        HOST_TYPES.has(value?.hostType)
+        && Number.isSafeInteger(value?.hostId)
+        && value.hostId > 0
+        && !refs.some((entry) => entry.hostType === value.hostType && entry.hostId === value.hostId)
+      ) {
+        refs.push({ hostType: value.hostType, hostId: value.hostId })
+      }
     }
+    return refs
   }
+
+  const disabledHosts = normalizeHostRefs(policy?.disabledHosts)
+  const verifiedMemoryHosts = normalizeHostRefs(policy?.verifiedMemoryHosts)
 
   return {
     disabledHosts,
+    ...(verifiedMemoryHosts.length > 0 ? { verifiedMemoryHosts } : {}),
     ignoredWarningIds: uniqueStrings(policy?.ignoredWarningIds),
   }
 }
 
-export function isHostCompatibilityEnabled(project, hostId) {
+function hostReference(hostId) {
   const match = typeof hostId === 'string' ? hostId.match(/^([^:]+):([1-9]\d*)$/) : null
-  if (!match) return true
-  const hostType = match[1]
-  const numericHostId = Number(match[2])
+  return match ? { hostType: match[1], hostId: Number(match[2]) } : undefined
+}
+
+export function isHostCompatibilityEnabled(project, hostId) {
+  const reference = hostReference(hostId)
+  if (!reference) return true
   return !normalizeCompatibilityPolicy(project?.compatibilityPolicy).disabledHosts
-    .some((entry) => entry.hostType === hostType && entry.hostId === numericHostId)
+    .some((entry) => entry.hostType === reference.hostType && entry.hostId === reference.hostId)
+}
+
+export function isVerifiedMemoryLimitEnabled(project, hostId) {
+  const reference = hostReference(hostId)
+  if (!reference) return false
+  return (normalizeCompatibilityPolicy(project?.compatibilityPolicy).verifiedMemoryHosts ?? [])
+    .some((entry) => entry.hostType === reference.hostType && entry.hostId === reference.hostId)
 }
 
 export function normalizeProjectCompatibilityPolicy(project) {
@@ -116,10 +133,18 @@ export function normalizeProjectCompatibilityPolicy(project) {
     const item = project?.items?.[`${hostType}:${hostId}`]
     return isHost(item)
   })
+  const verifiedMemoryHosts = (policy.verifiedMemoryHosts ?? []).filter(({ hostType, hostId }) => {
+    const item = project?.items?.[`${hostType}:${hostId}`]
+    return isHost(item)
+  })
 
   return {
     ...project,
-    compatibilityPolicy: { ...policy, disabledHosts },
+    compatibilityPolicy: {
+      ...policy,
+      disabledHosts,
+      ...(verifiedMemoryHosts.length > 0 ? { verifiedMemoryHosts } : {}),
+    },
   }
 }
 
@@ -187,7 +212,17 @@ export function normalizeHostCapabilities(item) {
       .map(optionalNumber)
       .filter((value) => Number.isSafeInteger(value) && value > 0)
   }
-  for (const field of ['slots', 'slotsPerCpu', 'maxCapacityGb', 'maxModuleCapacityGb', 'maxSpeedMt']) {
+  for (const field of [
+    'slots',
+    'slotsPerCpu',
+    'maxCapacityGb',
+    'maxModuleCapacityGb',
+    'oemMaxCapacityMib',
+    'oemMaxModuleCapacityMib',
+    'verifiedMaxCapacityMib',
+    'verifiedMaxModuleCapacityMib',
+    'maxSpeedMt',
+  ]) {
     normalizeNumericField(normalized.memory, field)
   }
   for (const group of Array.isArray(normalized.storageSlots) ? normalized.storageSlots : []) {
@@ -213,6 +248,11 @@ export function normalizeHostCapabilities(item) {
   }
   if (Array.isArray(normalized.power?.supportedWattagesWatts)) {
     normalized.power.supportedWattagesWatts = normalized.power.supportedWattagesWatts
+      .map(optionalNumber)
+      .filter((value) => value !== undefined)
+  }
+  if (Array.isArray(normalized.power?.supportedPowerMw)) {
+    normalized.power.supportedPowerMw = normalized.power.supportedPowerMw
       .map(optionalNumber)
       .filter((value) => value !== undefined)
   }
@@ -749,10 +789,56 @@ function evaluateCpu(hostCapabilities, requirements, assignments, items, compone
   }
 }
 
-function evaluateMemory(hostCapabilities, requirements, assignments, items, component, findings) {
-  const support = hostCapabilities.memory
+function fixedMemoryRequirements(host) {
+  return (Array.isArray(host?.fixedComponents) ? host.fixedComponents : [])
+    .filter((component) => (
+      component?.componentType === 'ram'
+      || component?.componentType === 'memory'
+      || component?.item?.type === 'ram'
+    ))
+    .map((component) => {
+      const item = component.item ?? {}
+      const capacityMib = optionalNumber(item.specs?.capacityMib)
+      return {
+        ...normalizeComponentRequirements(item),
+        capacityGb: capacityMib === undefined
+          ? optionalNumber(item.specs?.capacityGb)
+          : capacityMib / 1024,
+      }
+    })
+}
+
+function effectiveMemorySupport(support, useVerifiedMemoryLimits) {
+  if (!support) return support
+  const totalMib = useVerifiedMemoryLimits && support.verifiedMaxCapacityMib !== undefined
+    ? support.verifiedMaxCapacityMib
+    : support.oemMaxCapacityMib
+  const moduleMib = useVerifiedMemoryLimits && support.verifiedMaxModuleCapacityMib !== undefined
+    ? support.verifiedMaxModuleCapacityMib
+    : support.oemMaxModuleCapacityMib
+  return {
+    ...support,
+    maxCapacityGb: totalMib === undefined ? support.maxCapacityGb : totalMib / 1024,
+    maxModuleCapacityGb: moduleMib === undefined
+      ? support.maxModuleCapacityGb
+      : moduleMib / 1024,
+  }
+}
+
+function evaluateMemory(
+  hostCapabilities,
+  requirements,
+  assignments,
+  items,
+  component,
+  host,
+  useVerifiedMemoryLimits,
+  findings,
+) {
+  const support = effectiveMemorySupport(hostCapabilities.memory, useVerifiedMemoryLimits)
   const ramItems = assignedComponents(assignments, items, component).filter((item) => item.type === 'ram')
   const normalized = ramItems.map(normalizeComponentRequirements)
+  const fixedMemory = fixedMemoryRequirements(host)
 
   if (!Array.isArray(support?.generations) || support.generations.length === 0) {
     addMissing(findings, 'host.memory.generations', 'Host memory generations are not recorded.')
@@ -784,11 +870,12 @@ function evaluateMemory(hostCapabilities, requirements, assignments, items, comp
   if (support?.maxCapacityGb === undefined) {
     addMissing(findings, 'host.memory.maxCapacityGb', 'Host memory capacity limit is not recorded.')
   } else {
-    const knownCapacities = normalized
+    const capacityEntries = [...normalized, ...fixedMemory]
+    const knownCapacities = capacityEntries
       .map((entry) => entry.capacityGb)
       .filter((value) => value !== undefined)
     const capacity = knownCapacities.reduce((total, value) => total + value, 0)
-    if (knownCapacities.length !== normalized.length) {
+    if (knownCapacities.length !== capacityEntries.length) {
       addMissing(findings, 'component.memory.capacityGb', 'Memory capacity is not recorded.')
     }
     if (capacity > support.maxCapacityGb) {
@@ -1209,7 +1296,13 @@ function evaluateOptionalModule(hostCapabilities, component, findings) {
   }
 }
 
-export function evaluateAssignmentCompatibility({ host, component, assignments = [], items = {} }) {
+export function evaluateAssignmentCompatibility({
+  host,
+  component,
+  assignments = [],
+  items = {},
+  useVerifiedMemoryLimits = false,
+}) {
   const findings = []
   const effectiveHost = effectiveHostForAssignment(host, assignments, items, component)
   const hostCapabilities = normalizeHostCapabilities(effectiveHost)
@@ -1219,7 +1312,16 @@ export function evaluateAssignmentCompatibility({ host, component, assignments =
   if (requirements.type === 'cpu') {
     evaluateCpu(hostCapabilities, requirements, assignments, items, component, findings)
   } else if (requirements.type === 'ram') {
-    evaluateMemory(hostCapabilities, requirements, assignments, items, component, findings)
+    evaluateMemory(
+      hostCapabilities,
+      requirements,
+      assignments,
+      items,
+      component,
+      effectiveHost,
+      useVerifiedMemoryLimits,
+      findings,
+    )
   } else if (requirements.type === 'storage') {
     evaluateStorage(hostCapabilities, requirements, findings)
   } else if (optionalGroups.length > 0) {
@@ -1298,6 +1400,7 @@ export function evaluateProjectCompatibility(project) {
         (entry) => String(entry.serverId) === String(assignment.serverId),
       ),
       items: project.items,
+      useVerifiedMemoryLimits: isVerifiedMemoryLimitEnabled(project, assignment.serverId),
     })
 
     if (isExpansion(component)) {
@@ -1470,12 +1573,14 @@ function evaluateResourceCandidate({
   items,
   resourceType,
   group,
+  useVerifiedMemoryLimits,
 }) {
   return evaluateAssignmentCompatibility({
     host: group ? candidateHost(host, resourceType, group) : host,
     component,
     assignments,
     items,
+    useVerifiedMemoryLimits,
   })
 }
 
@@ -1688,6 +1793,7 @@ function planPcBuildAllocations(project, hostId) {
   const effectiveHost = effectiveHostForAssignment(host, assignments, project.items, motherboard)
   const hostCapabilities = normalizeHostCapabilities(effectiveHost)
   const compatibilityEnabled = isHostCompatibilityEnabled(project, hostId)
+  const useVerifiedMemoryLimits = isVerifiedMemoryLimitEnabled(project, hostId)
   const occupancy = new Map()
   const plannedAssignments = []
   const results = []
@@ -1709,6 +1815,7 @@ function planPcBuildAllocations(project, hostId) {
       component,
       assignments: processedAssignments,
       items: project.items,
+      useVerifiedMemoryLimits,
     })
     const resource = pcBuildResourceDefinition(component, motherboard, hostCapabilities)
     if (!resource) {
@@ -1784,6 +1891,7 @@ export function planHostAllocations(project, hostId) {
     .map((assignment) => ({ ...assignment }))
     .sort((left, right) => compareHostAllocationAssignments(project.items, left, right))
   const compatibilityEnabled = isHostCompatibilityEnabled(project, hostId)
+  const useVerifiedMemoryLimits = isVerifiedMemoryLimitEnabled(project, hostId)
   const hostCapabilities = normalizeHostCapabilities(host)
   const occupancy = new Map()
   const preserved = new Map()
@@ -1811,6 +1919,7 @@ export function planHostAllocations(project, hostId) {
         assignments: priorAssignments,
         items: project.items,
         resourceType,
+        useVerifiedMemoryLimits,
       })
       const capacity = scalarCapacity(hostCapabilities, resourceType)
       if (
@@ -1838,6 +1947,7 @@ export function planHostAllocations(project, hostId) {
           items: project.items,
           resourceType,
           group,
+          useVerifiedMemoryLimits,
         })
         if (
           resultCanOccupyResource(result, compatibilityEnabled) &&
@@ -1893,6 +2003,7 @@ export function planHostAllocations(project, hostId) {
         component,
         assignments: processedAssignments,
         items: project.items,
+        useVerifiedMemoryLimits,
       })
       plannedAssignments.push(cleanAssignment)
       results.push(planResult(assignment, result))
@@ -1907,6 +2018,7 @@ export function planHostAllocations(project, hostId) {
           component,
           assignments: processedAssignments,
           items: project.items,
+          useVerifiedMemoryLimits,
         }),
         resourceType,
       )
@@ -1923,6 +2035,7 @@ export function planHostAllocations(project, hostId) {
         assignments: processedAssignments,
         items: project.items,
         resourceType,
+        useVerifiedMemoryLimits,
       })
       const capacity = scalarCapacity(hostCapabilities, resourceType)
       const canOccupy = resultCanOccupyResource(result, compatibilityEnabled) || (
@@ -1975,6 +2088,7 @@ export function planHostAllocations(project, hostId) {
         items: project.items,
         resourceType,
         group,
+        useVerifiedMemoryLimits,
       })
       if (result.status === 'compatible') {
         const positions = firstConsecutivePositions(
@@ -2042,6 +2156,7 @@ export function planHostAllocations(project, hostId) {
         component,
         assignments: processedAssignments,
         items: project.items,
+        useVerifiedMemoryLimits,
       })
       const result =
         unknownResult ??

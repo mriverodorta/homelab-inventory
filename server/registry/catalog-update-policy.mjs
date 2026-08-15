@@ -1,4 +1,45 @@
 const IDENTITY_FIELDS = new Set(['type', 'manufacturer', 'secondaryManufacturer', 'family', 'model', 'number'])
+const NAS_MATERIAL_SPEC_FIELDS = new Set([
+  'formFactor', 'rackUnits', 'hardwareRevision', 'boardRevision', 'variantKey',
+  'topologyCompleteness', 'powerConfiguration',
+])
+
+function changedJson(left, right) {
+  return JSON.stringify(left) !== JSON.stringify(right)
+}
+
+function nasMaterialTopologyChanged(changes) {
+  for (const change of changes) {
+    if (change.field === 'fixedComponents' || change.field === 'ports') return true
+    if (change.field === 'specs') {
+      if ([...NAS_MATERIAL_SPEC_FIELDS].some((key) => changedJson(change.current?.[key], change.next?.[key]))) {
+        return true
+      }
+    }
+    if (change.field === 'compatibility') {
+      const current = change.current?.host ?? {}
+      const next = change.next?.host ?? {}
+      const currentMemory = current.memory ?? {}
+      const nextMemory = next.memory ?? {}
+      if ([
+        'slots', 'generations', 'formFactors', 'moduleTypes', 'eccSupport',
+        'oemMaxCapacityMib', 'oemMaxModuleCapacityMib',
+        'verifiedMaxCapacityMib', 'verifiedMaxModuleCapacityMib',
+      ].some(
+        (key) => changedJson(currentMemory[key], nextMemory[key]),
+      )) return true
+      for (const key of ['storageSlots', 'expansionSlots', 'optionalModuleSlots', 'controllerSlots']) {
+        if (changedJson(current[key], next[key])) return true
+      }
+      const currentPower = current.power ?? {}
+      const nextPower = next.power ?? {}
+      if (['configuration', 'adapterDisposition', 'connector', 'psuBayCount', 'psuType'].some(
+        (key) => changedJson(currentPower[key], nextPower[key]),
+      )) return true
+    }
+  }
+  return false
+}
 
 function findingKey(result, finding) {
   return `${result.assignmentId}:${finding.code}:${finding.severity ?? 'warning'}:${finding.resourceId ?? ''}`
@@ -8,9 +49,10 @@ export function catalogCompatibilityFindingKeys(results) {
   return new Set(results.flatMap((result) => result.findings.map((finding) => findingKey(result, finding))))
 }
 
-export function classifyCatalogUpdate({ changes, dependencyConflicts = [], beforeFindings, afterFindings, validationError }) {
+export function classifyCatalogUpdate({ itemType, changes, dependencyConflicts = [], beforeFindings, afterFindings, validationError }) {
   const reasons = []
   if (changes.some((change) => IDENTITY_FIELDS.has(change.field))) reasons.push('identity-change')
+  if (itemType === 'nas' && nasMaterialTopologyChanged(changes)) reasons.push('material-topology-change')
   if (dependencyConflicts.length > 0) reasons.push('assignment-conflict')
   if (validationError?.code === 'connected-port-change') reasons.push('connected-port-change')
   else if (validationError) reasons.push('structural-validation-failed')

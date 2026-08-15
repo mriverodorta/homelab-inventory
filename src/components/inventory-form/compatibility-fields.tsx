@@ -9,6 +9,7 @@ import {
   EXPANSION_INTERFACE_FAMILIES,
   ECC_SUPPORT_OPTIONS,
   HOST_POWER_CONFIGURATIONS,
+  NAS_ADAPTER_DISPOSITIONS,
   MEMORY_MODULE_TYPES,
   MEMORY_FORM_FACTORS,
   PCIE_GENERATIONS,
@@ -132,9 +133,13 @@ export function HostMemoryFields({ values, errors = {}, onChange }: Compatibilit
       <SectionHeading icon={MemoryStick}>Memory support</SectionHeading>
       <div className="grid gap-3 sm:grid-cols-4">
           <MultiOptionField label="Supported RAM generations" options={RAM_GENERATIONS} selected={values.hostMemoryGenerations} onChange={(hostMemoryGenerations) => onChange({ hostMemoryGenerations }, 'immediate')} />
-          <TextField label="Memory slots" name="hostMemorySlots" value={values.hostMemorySlots} type="number" min={1} placeholder="2" error={errors.hostMemorySlots} onChange={(hostMemorySlots) => onChange({ hostMemorySlots })} />
+          <TextField label="Replaceable memory slots" name="hostMemorySlots" value={values.hostMemorySlots} type="number" min={0} placeholder="2" error={errors.hostMemorySlots} onChange={(hostMemorySlots) => onChange({ hostMemorySlots })} />
           <TextField label="Maximum capacity (GB)" name="hostMemoryMaxCapacityGb" value={values.hostMemoryMaxCapacityGb} type="number" min={0} placeholder="64" error={errors.hostMemoryMaxCapacityGb} onChange={(hostMemoryMaxCapacityGb) => onChange({ hostMemoryMaxCapacityGb })} />
           <TextField label="Maximum module (GB)" name="hostMemoryMaxModuleCapacityGb" value={values.hostMemoryMaxModuleCapacityGb} type="number" min={0} placeholder="32" error={errors.hostMemoryMaxModuleCapacityGb} onChange={(hostMemoryMaxModuleCapacityGb) => onChange({ hostMemoryMaxModuleCapacityGb })} />
+          <TextField label="OEM maximum capacity (MiB)" name="hostMemoryOemMaxCapacityMib" value={values.hostMemoryOemMaxCapacityMib} type="number" min={0} placeholder="6144" error={errors.hostMemoryOemMaxCapacityMib} onChange={(hostMemoryOemMaxCapacityMib) => onChange({ hostMemoryOemMaxCapacityMib })} />
+          <TextField label="OEM maximum module (MiB)" name="hostMemoryOemMaxModuleCapacityMib" value={values.hostMemoryOemMaxModuleCapacityMib} type="number" min={0} placeholder="4096" error={errors.hostMemoryOemMaxModuleCapacityMib} onChange={(hostMemoryOemMaxModuleCapacityMib) => onChange({ hostMemoryOemMaxModuleCapacityMib })} />
+          <TextField label="Verified maximum capacity (MiB)" name="hostMemoryVerifiedMaxCapacityMib" value={values.hostMemoryVerifiedMaxCapacityMib} type="number" min={0} placeholder="16384" error={errors.hostMemoryVerifiedMaxCapacityMib} onChange={(hostMemoryVerifiedMaxCapacityMib) => onChange({ hostMemoryVerifiedMaxCapacityMib })} />
+          <TextField label="Verified maximum module (MiB)" name="hostMemoryVerifiedMaxModuleCapacityMib" value={values.hostMemoryVerifiedMaxModuleCapacityMib} type="number" min={0} placeholder="8192" error={errors.hostMemoryVerifiedMaxModuleCapacityMib} onChange={(hostMemoryVerifiedMaxModuleCapacityMib) => onChange({ hostMemoryVerifiedMaxModuleCapacityMib })} />
           <TextField label="Maximum speed (MT/s)" name="hostMemoryMaxSpeedMt" value={values.hostMemoryMaxSpeedMt} type="number" min={0} placeholder="3200" error={errors.hostMemoryMaxSpeedMt} onChange={(hostMemoryMaxSpeedMt) => onChange({ hostMemoryMaxSpeedMt })} />
           <SelectField label="ECC behavior" name="hostMemoryEccSupport" value={values.hostMemoryEccSupport} options={ECC_SUPPORT_OPTIONS} emptyLabel="Not specified" onValueChange={(hostMemoryEccSupport) => onChange({ hostMemoryEccSupport: hostMemoryEccSupport as InventoryFormValues['hostMemoryEccSupport'] }, 'immediate')} />
           <TextField label="Slots per CPU" name="hostMemorySlotsPerCpu" value={values.hostMemorySlotsPerCpu} type="number" min={1} placeholder="12" error={errors.hostMemorySlotsPerCpu} onChange={(hostMemorySlotsPerCpu) => onChange({ hostMemorySlotsPerCpu })} />
@@ -191,9 +196,18 @@ export function HostResourceFields({
           <p className="text-xs text-[#75695d]">Describe the OEM power source without assigning an installed adapter.</p>
         </div>
         <div className="grid gap-3 sm:grid-cols-2">
-          <SelectField label="Configuration" name="hostPowerConfiguration" value={values.hostPowerConfiguration} options={HOST_POWER_CONFIGURATIONS} emptyLabel="Not specified" onOpenChange={onSelectOpenChange} onValueChange={(hostPowerConfiguration) => onChange({ hostPowerConfiguration }, 'immediate')} />
+          <SelectField label="Configuration" name="hostPowerConfiguration" value={values.hostPowerConfiguration} options={HOST_POWER_CONFIGURATIONS} emptyLabel="Not specified" onOpenChange={onSelectOpenChange} onValueChange={(hostPowerConfiguration) => onChange({
+            hostPowerConfiguration,
+            hostPowerAdapterDisposition: hostPowerConfiguration === 'external-adapter'
+              ? values.hostPowerAdapterDisposition || 'replaceable'
+              : '',
+          }, 'immediate')} />
+          {values.hostPowerConfiguration === 'external-adapter' ? (
+            <SelectField label="Adapter disposition" name="hostPowerAdapterDisposition" value={values.hostPowerAdapterDisposition} options={NAS_ADAPTER_DISPOSITIONS} onOpenChange={onSelectOpenChange} onValueChange={(hostPowerAdapterDisposition) => onChange({ hostPowerAdapterDisposition: hostPowerAdapterDisposition as InventoryFormValues['hostPowerAdapterDisposition'] }, 'immediate')} />
+          ) : null}
           <TextField label="Connector" name="hostPowerConnector" value={values.hostPowerConnector} placeholder="Dell 4.5mm barrel" onChange={(hostPowerConnector) => onChange({ hostPowerConnector })} />
           <TextField label="Supported wattages" name="hostPowerSupportedWattagesWatts" value={values.hostPowerSupportedWattagesWatts} placeholder="65, 90, 130" onChange={(hostPowerSupportedWattagesWatts) => onChange({ hostPowerSupportedWattagesWatts })} />
+          <TextField label="Supported power (mW)" name="hostPowerSupportedPowerMw" value={values.hostPowerSupportedPowerMw} placeholder="65000, 90000" onChange={(hostPowerSupportedPowerMw) => onChange({ hostPowerSupportedPowerMw })} />
           <SelectField label="Adapter required" name="hostPowerAdapterRequired" value={values.hostPowerAdapterRequired} options={['yes', 'no']} emptyLabel="Not specified" onOpenChange={onSelectOpenChange} onValueChange={(hostPowerAdapterRequired) => onChange({ hostPowerAdapterRequired: hostPowerAdapterRequired as InventoryFormValues['hostPowerAdapterRequired'] }, 'immediate')} />
           <TextField label="Adapter type" name="hostPowerAdapterType" value={values.hostPowerAdapterType} placeholder="Dell OEM external adapter" onChange={(hostPowerAdapterType) => onChange({ hostPowerAdapterType })} />
           <SelectField label="Redundancy policy" name="hostPowerRedundancy" value={values.hostPowerRedundancy} options={POWER_REDUNDANCY_OPTIONS} emptyLabel="Not specified" onOpenChange={onSelectOpenChange} onValueChange={(hostPowerRedundancy) => onChange({ hostPowerRedundancy }, 'immediate')} />

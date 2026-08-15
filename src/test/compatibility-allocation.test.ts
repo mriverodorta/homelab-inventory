@@ -317,6 +317,64 @@ describe('deterministic compatibility allocation', () => {
     expect(planned.results.filter((entry) => entry.status === 'incompatible')).toHaveLength(3)
   })
 
+  it('uses OEM memory limits until the project opts into independently verified limits', () => {
+    const server = host('server:1', {
+      host: { memory: {
+        generations: ['DDR3L'],
+        formFactors: ['SO-DIMM'],
+        moduleTypes: ['UDIMM'],
+        slots: 1,
+        oemMaxCapacityMib: 6_144,
+        oemMaxModuleCapacityMib: 4_096,
+        verifiedMaxCapacityMib: 16_384,
+        verifiedMaxModuleCapacityMib: 8_192,
+        maxSpeedMt: 1_600,
+      } },
+    })
+    server.fixedComponents = [{
+      id: 1,
+      componentType: 'ram',
+      disposition: 'soldered',
+      label: 'Onboard memory',
+      item: { type: 'ram', name: '2GB onboard', specs: { capacityMib: 2_048 } },
+    }]
+    const module = ram(1)
+    module.specs = {
+      capacityGb: 8,
+      generation: 'DDR3L',
+      formFactor: 'SO-DIMM',
+      moduleType: 'UDIMM',
+      speedMt: 1_600,
+    }
+    module.compatibility = { requirements: { memory: {
+      capacityGb: 8,
+      generation: 'DDR3L',
+      formFactor: 'SO-DIMM',
+      moduleType: 'UDIMM',
+      speedMt: 1_600,
+    } } }
+    const input = project(
+      [server],
+      [module],
+      [assignment(1, server.key!, module, '2026-01-01T00:00:00Z')],
+    )
+
+    const oem = planHostAllocations(input, server.key!).results[0]
+    expect(oem.findings.map((finding) => finding.code)).toEqual(expect.arrayContaining([
+      'memory.capacity.exceeded',
+      'memory.module-capacity.exceeded',
+    ]))
+
+    input.compatibilityPolicy = {
+      disabledHosts: [],
+      verifiedMemoryHosts: [{ hostType: 'server', hostId: server.id }],
+      ignoredWarningIds: [],
+    }
+    const verified = planHostAllocations(input, server.key!).results[0]
+    expect(verified.findings.map((finding) => finding.code)).not.toContain('memory.capacity.exceeded')
+    expect(verified.findings.map((finding) => finding.code)).not.toContain('memory.module-capacity.exceeded')
+  })
+
   it('does not allocate duplicate group IDs or groups with non-positive counts', () => {
     const server = host('server:1', {
       host: {

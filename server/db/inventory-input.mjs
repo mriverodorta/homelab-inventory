@@ -4,6 +4,7 @@ import { isRelationalId } from './relational-ids.mjs'
 
 const SERVER_HARDWARE_CLASSES = new Set(['desktop', 'workstation', 'server'])
 const SERVER_USAGE_ROLES = new Set(['server', 'desktop', 'workstation', 'other'])
+const FIXED_COMPONENT_DISPOSITIONS = new Set(['fixed', 'soldered'])
 
 export const TABLE_BY_TYPE = {
   server: 'servers',
@@ -50,6 +51,63 @@ export function cleanPlainObject(value) {
     .filter(Boolean)
 
   return entries.length > 0 ? Object.fromEntries(entries) : undefined
+}
+
+function normalizeFixedComponents(value) {
+  if (value === undefined) return undefined
+  if (!Array.isArray(value)) {
+    throw new InventoryLifecycleError('fixedComponents must be an array.', {
+      code: 'invalid-fixed-components', status: 400,
+    })
+  }
+  const ids = new Set()
+  return value.map((raw, index) => {
+    const path = `fixedComponents[${index}]`
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw) || !isRelationalId(raw.id)) {
+      throw new InventoryLifecycleError(`${path}.id must be a positive numeric relationship ID.`, {
+        code: 'invalid-fixed-components', status: 400,
+      })
+    }
+    if (ids.has(raw.id)) {
+      throw new InventoryLifecycleError(`${path}.id must be unique within the host.`, {
+        code: 'invalid-fixed-components', status: 400,
+      })
+    }
+    ids.add(raw.id)
+    const componentType = typeof raw.componentType === 'string' ? raw.componentType.trim() : ''
+    const label = typeof raw.label === 'string' ? raw.label.trim() : ''
+    if (!componentType || !label || !FIXED_COMPONENT_DISPOSITIONS.has(raw.disposition)) {
+      throw new InventoryLifecycleError(`${path} has an invalid component type, label, or disposition.`, {
+        code: 'invalid-fixed-components', status: 400,
+      })
+    }
+    if (!raw.item || typeof raw.item !== 'object' || Array.isArray(raw.item)) {
+      throw new InventoryLifecycleError(`${path}.item must be an object.`, {
+        code: 'invalid-fixed-components', status: 400,
+      })
+    }
+    const item = structuredClone(raw.item)
+    if (item.type !== componentType || typeof item.name !== 'string' || !item.name.trim()) {
+      throw new InventoryLifecycleError(`${path}.item must match componentType and include a name.`, {
+        code: 'invalid-fixed-components', status: 400,
+      })
+    }
+    delete item.id
+    delete item.key
+    delete item.fixedComponents
+    delete item.archivedAt
+    return {
+      id: raw.id,
+      componentType,
+      disposition: raw.disposition,
+      label,
+      item,
+      ...(typeof raw.templateKey === 'string' && raw.templateKey.trim()
+        ? { templateKey: raw.templateKey.trim() }
+        : {}),
+      ...(isRelationalId(raw.templateRevision) ? { templateRevision: raw.templateRevision } : {}),
+    }
+  })
 }
 
 function normalizeInventoryPort(port, index, fallbackKind) {
@@ -216,6 +274,14 @@ export function normalizeInventoryItemInput(input, id) {
   if (properties) item.properties = properties
   if (input.compatibility && typeof input.compatibility === 'object' && !Array.isArray(input.compatibility)) {
     item.compatibility = structuredClone(input.compatibility)
+  }
+  const fixedComponents = normalizeFixedComponents(input.fixedComponents)
+  if (fixedComponents?.length) item.fixedComponents = fixedComponents
+  if (type === 'nas') {
+    const catalogPowerConfiguration = item.compatibility?.host?.power?.configuration
+    if (catalogPowerConfiguration === 'internal-psu' || catalogPowerConfiguration === 'external-adapter') {
+      item.specs = { ...(item.specs ?? {}), powerConfiguration: catalogPowerConfiguration }
+    }
   }
   if (Array.isArray(input.ports)) {
     const fallbackKind = type === 'switch' ? 'switch-port' : type === 'patchPanel' ? 'keystone' : 'server-port'

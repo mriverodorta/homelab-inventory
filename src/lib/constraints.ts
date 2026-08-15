@@ -4,6 +4,7 @@ import type { ProjectCompatibilityResult } from '@/lib/compatibility'
 import { nextNumericId } from '@/lib/ids'
 import { isArchivedItem, touchProject } from '@/lib/project'
 import { hostCpuSocketCount } from '@/components/cpu-slot-model'
+import { nasPowerTopology } from '../../shared/power-ports.mjs'
 import {
   allocatePcBuildAssignment,
   canRemovePcBuildAssignment,
@@ -260,10 +261,17 @@ function validateAssignmentBasics(
   }
 
   if (host.type === 'nas' && item.type === 'powerAdapter') {
-    if (host.specs?.powerConfiguration !== 'external-adapter') {
+    const power = nasPowerTopology(host)
+    if (power.configuration !== 'external-adapter') {
       return {
         ok: false,
         message: 'This NAS uses an internal PSU. Change it to External power adapter before assigning an adapter.',
+      }
+    }
+    if (power.adapterDisposition === 'fixed') {
+      return {
+        ok: false,
+        message: 'This NAS includes a fixed OEM power adapter and does not accept an assigned adapter.',
       }
     }
 

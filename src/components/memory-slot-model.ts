@@ -2,7 +2,7 @@ import type { ComponentAssignment, InventoryItem } from '@/types/inventory'
 
 export function hostMemorySlotCount(host: InventoryItem | undefined): number | null {
   const slots = host?.compatibility?.host?.memory?.slots
-  return Number.isSafeInteger(slots) && Number(slots) > 0 ? Number(slots) : null
+  return Number.isSafeInteger(slots) && Number(slots) >= 0 ? Number(slots) : null
 }
 
 export function assignmentMemoryPosition(assignment: ComponentAssignment): number | null {

@@ -1,5 +1,5 @@
 import { canonicalJson } from './canonicalize'
-import { canonicalizeCatalogItemV9 } from './canonical-units'
+import { canonicalizeCatalogItemV10, canonicalizeCatalogItemV9 } from './canonical-units'
 import { computeCatalogDigestsWithIdentity, sha256Hex } from './hash'
 import { normalizeBoardIdentifier, normalizeText, normalizeVariantKey } from './normalization'
 import { sanitizeCatalogItem } from './sanitize'
@@ -17,6 +17,7 @@ import {
   FINGERPRINT_VERSION,
   LEGACY_FINGERPRINT_VERSION,
   MOTHERBOARD_FINGERPRINT_VERSION,
+  NAS_FINGERPRINT_VERSION,
   OEM_FINGERPRINT_VERSION,
   RAM_FINGERPRINT_VERSION,
   CANONICAL_UNITS_FINGERPRINT_VERSION,
@@ -91,7 +92,8 @@ function canonicalNameForFingerprint(item: CatalogTemplateItem, fingerprintVersi
   if ((fingerprintVersion === OEM_FINGERPRINT_VERSION
     || fingerprintVersion === WORKSTATION_FINGERPRINT_VERSION
     || fingerprintVersion === SERVER_FINGERPRINT_VERSION
-    || fingerprintVersion === CANONICAL_UNITS_FINGERPRINT_VERSION)
+    || fingerprintVersion === CANONICAL_UNITS_FINGERPRINT_VERSION
+    || fingerprintVersion === NAS_FINGERPRINT_VERSION)
     && (item.type === 'desktop' || item.type === 'workstation' || item.type === 'server' || item.type === 'nas')) {
     return text(item.name) ?? canonicalName(item)
   }
@@ -307,6 +309,82 @@ function extractServerMaterialTopology(item: CatalogTemplateItem): Record<string
     ['management', host.management],
     ['constraintGroups', host.constraintGroups],
     ['fixedPorts', fixedPorts],
+  ])
+  return Object.keys(topology).length > 0 ? topology : undefined
+}
+
+function extractNasMaterialTopology(item: CatalogTemplateItem): Record<string, JsonValue> | undefined {
+  const host = asObject(item.compatibility?.host)
+  if (!host) return undefined
+  const memory = asObject(host.memory)
+  const fixedPorts = item.ports?.filter((port) => port.origin === 'fixed').map((port) => identityObject([
+    ['kind', port.kind],
+    ['type', port.type],
+    ['slotNumber', port.slotNumber],
+    ['speedBps', port.speedBps],
+    ['origin', port.origin],
+  ]))
+  const fixedComponents = item.fixedComponents?.map((component) => identityObject([
+    ['componentType', component.componentType],
+    ['disposition', component.disposition],
+    ['manufacturer', component.item.manufacturer],
+    ['model', component.item.model],
+    ['number', component.item.number],
+    ['capacityMib', component.item.specs?.capacityMib],
+    ['generation', component.item.specs?.generation],
+  ]))
+  const storageSlots = Array.isArray(host.storageSlots) ? host.storageSlots.map((entry) => {
+    const slot = asObject(entry)
+    return identityObject([
+      ['key', slot?.key],
+      ['count', slot?.count],
+      ['interfaces', slot?.interfaces],
+      ['formFactors', slot?.formFactors],
+      ['pcieGeneration', slot?.pcieGeneration],
+      ['location', slot?.location],
+      ['hotSwap', slot?.hotSwap],
+      ['controllerSlotIds', slot?.controllerSlotIds],
+    ])
+  }) : undefined
+  const expansionSlots = Array.isArray(host.expansionSlots) ? host.expansionSlots.map((entry) => {
+    const slot = asObject(entry)
+    return identityObject([
+      ['key', slot?.key],
+      ['count', slot?.count],
+      ['interfaceFamily', slot?.interfaceFamily],
+      ['pcieGeneration', slot?.pcieGeneration],
+      ['mechanicalLanes', slot?.mechanicalLanes],
+      ['electricalLanes', slot?.electricalLanes],
+      ['acceptedHeights', slot?.acceptedHeights],
+      ['maxSlotWidth', slot?.maxSlotWidth],
+      ['acceptedModuleKinds', slot?.acceptedModuleKinds],
+    ])
+  }) : undefined
+  const power = asObject(host.power)
+  const topology = identityObject([
+    ['formFactor', item.specs?.formFactor],
+    ['rackUnits', item.specs?.rackUnits],
+    ['hardwareRevision', item.specs?.hardwareRevision],
+    ['boardRevision', item.specs?.boardRevision],
+    ['fixedComponents', fixedComponents as unknown as JsonValue],
+    ['memory', memory ? identityObject([
+      ['slots', memory.slots],
+      ['generations', memory.generations],
+      ['moduleTypes', memory.moduleTypes],
+      ['eccSupport', memory.eccSupport],
+    ]) : undefined],
+    ['storageSlots', storageSlots as JsonValue | undefined],
+    ['expansionSlots', expansionSlots as JsonValue | undefined],
+    ['optionalModuleSlots', host.optionalModuleSlots],
+    ['controllerSlots', host.controllerSlots],
+    ['power', power ? identityObject([
+      ['configuration', power.configuration],
+      ['adapterDisposition', power.adapterDisposition],
+      ['connector', power.connector],
+      ['psuBayCount', power.psuBayCount],
+      ['psuType', power.psuType],
+    ]) : undefined],
+    ['fixedPorts', fixedPorts as unknown as JsonValue],
   ])
   return Object.keys(topology).length > 0 ? topology : undefined
 }
@@ -632,6 +710,52 @@ async function serverVariantIdentity(item: CatalogTemplateItem): Promise<{
   }
 }
 
+async function nasVariantIdentity(item: CatalogTemplateItem): Promise<{
+  identityPayload: Record<string, JsonValue>
+  productFamily: CatalogProductFamily
+  variantEvidence: CatalogVariantEvidence
+} | CatalogEligibilityReason> {
+  if (item.type !== 'nas') return 'unsupported-type'
+  const manufacturer = text(item.manufacturer)
+  const model = text(item.model)
+  if (!manufacturer || !model) return 'insufficient-identity'
+
+  const productFamily: CatalogProductFamily = { manufacturer, model, physicalClass: item.type }
+  const identityProductFamily: CatalogProductFamily = {
+    manufacturer: normalizeText(manufacturer).toLowerCase(),
+    model: normalizeText(model).toLowerCase(),
+    physicalClass: item.type,
+  }
+  const topology = extractNasMaterialTopology(item)
+  const completeness = topologyCompleteness(item)
+  const hardwareRevision = text(item.specs?.hardwareRevision)
+  const boardRevision = text(item.specs?.boardRevision)
+  const explicitVariant = text(item.specs?.variantKey)
+  const topologySignature = topology
+    ? await sha256Hex(`hli:topology:v${NAS_FINGERPRINT_VERSION}:${canonicalJson(topology)}`)
+    : undefined
+  if (!topology || !topologySignature || completeness !== 'complete') return 'insufficient-identity'
+
+  return {
+    productFamily,
+    variantEvidence: {
+      source: boardRevision || hardwareRevision ? 'motherboard' : 'topology',
+      completeness,
+      label: explicitVariant ?? hardwareRevision ?? boardRevision ?? 'Topology-defined variant',
+      ...(boardRevision ? { motherboardRevision: normalizeBoardIdentifier(boardRevision) } : {}),
+      ...(explicitVariant ? { variantKey: normalizeVariantKey(explicitVariant) } : {}),
+      topologySignature,
+      ...(topologySummary(topology) ? { structuralSummary: topologySummary(topology) } : {}),
+    },
+    identityPayload: identityObject([
+      ['productFamily', identityProductFamily],
+      ['hardwareRevision', hardwareRevision ? normalizeText(hardwareRevision) : undefined],
+      ['boardRevision', boardRevision ? normalizeText(boardRevision) : undefined],
+      ['topologySignature', topologySignature],
+    ]),
+  }
+}
+
 async function motherboardVariantIdentity(item: CatalogTemplateItem): Promise<{
   identityPayload: Record<string, JsonValue>
   productFamily: CatalogProductFamily
@@ -701,13 +825,21 @@ export async function projectCatalogItem(
   if (!SUPPORTED_FINGERPRINT_VERSIONS.includes(fingerprintVersion)) {
     throw new Error(`Unsupported catalog fingerprint version ${fingerprintVersion}.`)
   }
-  const item = fingerprintVersion === CANONICAL_UNITS_FINGERPRINT_VERSION
-    ? canonicalizeCatalogItemV9({ ...source, type })
-    : sanitizeCatalogItem({ ...source, type })
+  const item = fingerprintVersion === NAS_FINGERPRINT_VERSION
+    ? canonicalizeCatalogItemV10({ ...source, type })
+    : fingerprintVersion === CANONICAL_UNITS_FINGERPRINT_VERSION
+      ? canonicalizeCatalogItemV9({ ...source, type })
+      : sanitizeCatalogItem({ ...source, type })
   let identityPayload: Record<string, JsonValue>
   let productFamily: CatalogProductFamily | undefined
   let variantEvidence: CatalogVariantEvidence | undefined
-  if (fingerprintVersion === CANONICAL_UNITS_FINGERPRINT_VERSION) {
+  if (fingerprintVersion === NAS_FINGERPRINT_VERSION) {
+    const variant = await nasVariantIdentity(item)
+    if (typeof variant === 'string') return { status: 'ineligible', source: sourceRef, reason: variant }
+    identityPayload = variant.identityPayload
+    productFamily = variant.productFamily
+    variantEvidence = variant.variantEvidence
+  } else if (fingerprintVersion === CANONICAL_UNITS_FINGERPRINT_VERSION) {
     if (item.type === 'ram') {
       const identity = ramProductIdentity(item)
       if (typeof identity === 'string') return { status: 'ineligible', source: sourceRef, reason: identity }

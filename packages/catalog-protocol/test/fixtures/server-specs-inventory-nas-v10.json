@@ -1,0 +1,81 @@
+{
+  "fingerprintVersion": 10,
+  "identityHash": "6be58801c83b9eef076dc5837ffbfebccdeb614bcc733f5cd5edc6e17564fc80",
+  "contentHash": "0de06c28c9070b423e2c4b060aa194ca044de8482da461f157d01b428b31c15d",
+  "item": {
+    "type": "nas",
+    "name": "Synology DS620slim",
+    "manufacturer": "Synology",
+    "family": "DiskStation",
+    "model": "DS620slim",
+    "aliases": ["DiskStation DS620slim"],
+    "specs": {
+      "formFactor": "Desktop",
+      "platformFamily": "DSM",
+      "variantKey": "standard",
+      "topologyCompleteness": "complete",
+      "powerConfiguration": "external-adapter",
+      "discontinued": true,
+      "releaseDate": "2019-07-18",
+      "widthMm": 151,
+      "heightMm": 121,
+      "depthMm": 175,
+      "massGrams": 1400
+    },
+    "ports": [
+      { "id": 1, "kind": "network", "type": "rj45", "slotNumber": 1, "key": "lan-1", "speedBps": 1000000000, "origin": "fixed" },
+      { "id": 2, "kind": "network", "type": "rj45", "slotNumber": 2, "key": "lan-2", "speedBps": 1000000000, "origin": "fixed" }
+    ],
+    "compatibility": {
+      "host": {
+        "memory": {
+          "slots": 2,
+          "generations": ["DDR3L"],
+          "formFactors": ["SO-DIMM"],
+          "moduleTypes": ["UDIMM"],
+          "oemMaxCapacityMib": 6144,
+          "verifiedMaxCapacityMib": 16384,
+          "oemMaxModuleCapacityMib": 4096,
+          "verifiedMaxModuleCapacityMib": 8192
+        },
+        "storageSlots": [
+          {
+            "id": 1,
+            "key": "sata-bays",
+            "label": "2.5-inch SATA drive bays",
+            "count": 6,
+            "interfaces": ["SATA"],
+            "formFactors": ["2.5-inch"],
+            "hotSwap": true
+          }
+        ],
+        "expansionSlots": [],
+        "optionalModuleSlots": [],
+        "power": {
+          "configuration": "external-adapter",
+          "adapterDisposition": "fixed",
+          "connector": "4-pin DIN",
+          "supportedPowerMw": [65000],
+          "adapterRequired": true
+        },
+        "topologyCompleteness": "complete"
+      }
+    },
+    "fixedComponents": [
+      {
+        "id": 1,
+        "componentType": "cpu",
+        "disposition": "soldered",
+        "label": "Soldered processor",
+        "item": {
+          "type": "cpu",
+          "name": "Intel Celeron J3355",
+          "manufacturer": "Intel",
+          "model": "Celeron J3355",
+          "number": "J3355",
+          "specs": { "cores": 2, "threads": 2, "baseClockMhz": 2000, "boostClockMhz": 2500 }
+        }
+      }
+    ]
+  }
+}

@@ -3,6 +3,7 @@ import { Handle, Position, type Node, type NodeProps } from '@xyflow/react'
 import { AlertTriangle, Grip, X } from 'lucide-react'
 import type { CSSProperties } from 'react'
 import { AssignedPowerAdapterRow } from '@/components/assigned-power-adapter-row'
+import { FixedComponentCard } from '@/components/fixed-component-card'
 import { AssignedExpansionHeading } from '@/components/assigned-expansion-heading'
 import { AssignedItemCornerActions } from '@/components/assigned-item-corner-actions'
 import { RegistryLinkIndicator } from '@/components/registry-link-indicator'
@@ -31,6 +32,7 @@ import { useTapSelection } from '@/lib/tap-selection'
 import { endpointKey, NAS_CARD_WIDTH } from '@/lib/project'
 import { startSelectedPortDrag } from '@/lib/port-interactions'
 import { POWER_INPUT_PORT_KEY } from '@/lib/power-endpoints'
+import { nasOwnsPowerEndpoint, nasPowerTopology } from '../../shared/power-ports.mjs'
 import type {
   ComponentAssignment,
   ConnectionEndpoint,
@@ -41,6 +43,7 @@ import type {
 } from '@/types/inventory'
 import type { CanvasPortDragPoint } from '@/types/canvas'
 import type { CompatibilityStatus } from '@/types/compatibility'
+import type { StorageSlotGroup } from '@/types/compatibility'
 
 export type NasNodeData = {
   project: ProjectState
@@ -291,11 +294,52 @@ function bayTone(item: InventoryItem | null, selected: boolean): string {
   return 'border border-dashed border-[#766e63] bg-[#2a2f39] text-[#cfc6b8]'
 }
 
-function storageFitsM2(item: InventoryItem | undefined): boolean {
-  const storageInterface = String(item?.specs?.interface ?? '').toLowerCase()
-  const formFactor = String(item?.specs?.formFactor ?? '').toLowerCase()
+function storageFitsGroup(item: InventoryItem | undefined, group: StorageSlotGroup): boolean {
+  if (!item) return false
+  const itemInterface = String(item.specs?.interface ?? '').trim().toLowerCase()
+  const itemFormFactor = String(item.specs?.formFactor ?? '').trim().toLowerCase()
+  const interfaces = (group.interfaces ?? []).map((value) => value.trim().toLowerCase())
+  const formFactors = (group.formFactors ?? []).map((value) => value.trim().toLowerCase())
 
-  return storageInterface.includes('nvme') || formFactor.includes('22')
+  return (interfaces.length === 0 || interfaces.some((value) => itemInterface.includes(value) || value.includes(itemInterface)))
+    && (formFactors.length === 0 || formFactors.some((value) => itemFormFactor.includes(value) || value.includes(itemFormFactor)))
+}
+
+function groupedStorageAssignments(
+  assignments: readonly ComponentAssignment[],
+  groups: readonly StorageSlotGroup[],
+  project: ProjectState,
+): Map<number, ComponentAssignment[]> {
+  const grouped = new Map(groups.map((group) => [group.id, [] as ComponentAssignment[]]))
+  const unallocated: ComponentAssignment[] = []
+
+  for (const assignment of assignments) {
+    const groupId = assignment.allocation?.resourceType === 'storage'
+      ? assignment.allocation.groupId
+      : undefined
+    const target = groupId === undefined ? undefined : grouped.get(groupId)
+    if (target) target.push(assignment)
+    else unallocated.push(assignment)
+  }
+
+  for (const assignment of unallocated) {
+    const item = project.items[assignment.itemId]
+    const target = groups.find((group) => (
+      storageFitsGroup(item, group)
+      && (grouped.get(group.id)?.length ?? 0) < group.count
+    )) ?? groups.find((group) => (grouped.get(group.id)?.length ?? 0) < group.count)
+    if (target) grouped.get(target.id)?.push(assignment)
+  }
+
+  return grouped
+}
+
+function storageGroupType(group: StorageSlotGroup): 'drive' | 'm2' {
+  const values = [...(group.interfaces ?? []), ...(group.formFactors ?? [])]
+    .map((value) => value.toLowerCase())
+  return values.some((value) => value.includes('nvme') || value.includes('m.2') || value.startsWith('22'))
+    ? 'm2'
+    : 'drive'
 }
 
 function StorageBayCell({
@@ -345,6 +389,8 @@ function StorageBayCell({
     <button
       ref={draggable.setNodeRef}
       type="button"
+      data-storage-slot-position={index + 1}
+      data-storage-slot-type={type}
       className={`group relative h-[30px] min-w-[34px] rounded px-1 text-[10px] font-black leading-none ${bayTone(
         item,
         selected,
@@ -404,8 +450,24 @@ function StorageBayRow({
   selectedItemId: string | null
   type: 'drive' | 'm2'
 }) {
+  const byPosition = new Map<number, ComponentAssignment>()
+  const unpositioned: ComponentAssignment[] = []
+  for (const assignment of assignments) {
+    const positions = assignment.allocation?.resourceType === 'storage'
+      ? assignment.allocation.positions
+      : []
+    const position = positions.find((candidate) => (
+      Number.isSafeInteger(candidate) && candidate >= 0 && candidate < bayCount && !byPosition.has(candidate)
+    ))
+    if (position === undefined) unpositioned.push(assignment)
+    else byPosition.set(position, assignment)
+  }
+  for (let position = 0; position < bayCount && unpositioned.length > 0; position += 1) {
+    if (!byPosition.has(position)) byPosition.set(position, unpositioned.shift()!)
+  }
+
   const bays = Array.from({ length: bayCount }, (_, index) => {
-    const assignment = assignments[index]
+    const assignment = byPosition.get(index)
     const item = assignment ? project.items[assignment.itemId] : null
     const selected = Boolean(item && selectedItemId === runtimeItemKey(item))
 
@@ -713,16 +775,32 @@ export function NasNode({ data }: NodeProps<NasFlowNode>) {
   const storageAssignments = assignments.filter((assignment) => assignment.type === 'storage')
   const ramAssignments = assignments.filter((assignment) => assignment.type === 'ram')
   const cpuAssignment = assignments.find((assignment) => assignment.type === 'cpu')
-  const m2Assignments = storageAssignments.filter((assignment) => storageFitsM2(project.items[assignment.itemId]))
-  const driveAssignments = storageAssignments.filter((assignment) => !storageFitsM2(project.items[assignment.itemId]))
   const networkAssignment = assignments.find((assignment) => assignment.type === 'network')
   const powerAdapterAssignment = assignments.find((assignment) => assignment.type === 'powerAdapter')
+  const fixedComponents = nas.fixedComponents ?? []
+  const fixedCpu = fixedComponents.filter((component) => component.componentType === 'cpu')
+  const fixedMemory = fixedComponents.filter((component) => (
+    component.componentType === 'ram' || component.componentType === 'memory'
+  ))
+  const fixedStorage = fixedComponents.filter((component) => component.componentType === 'storage')
+  const otherFixedComponents = fixedComponents.filter((component) => ![
+    'cpu', 'ram', 'memory', 'storage', 'powerAdapter',
+  ].includes(component.componentType))
+  const powerTopology = nasPowerTopology(nas)
   const networkPorts = sortPorts(nas.ports).filter((port) => port.kind !== 'power-port')
-  const internalPowerPort = nas.specs?.powerConfiguration === 'internal-psu'
+  const hostPowerPort = nasOwnsPowerEndpoint(nas)
     ? nas.ports?.find((port) => port.key === POWER_INPUT_PORT_KEY && port.type === 'ac-input')
     : undefined
   const bayCount = typeof nas.specs?.driveBays === 'number' ? nas.specs.driveBays : 0
   const m2SlotCount = typeof nas.specs?.m2Slots === 'number' ? nas.specs.m2Slots : 0
+  const catalogStorageGroups = nas.compatibility?.host?.storageSlots ?? []
+  const storageGroups = catalogStorageGroups.length > 0
+    ? catalogStorageGroups
+    : [
+        ...(bayCount > 0 ? [{ id: 1, key: 'legacy-drive-bays', label: 'Drive Bays', count: bayCount }] : []),
+        ...(m2SlotCount > 0 ? [{ id: 2, key: 'legacy-m2-slots', label: 'M.2 Slots', count: m2SlotCount, interfaces: ['NVMe'] }] : []),
+      ] satisfies StorageSlotGroup[]
+  const storageAssignmentsByGroup = groupedStorageAssignments(storageAssignments, storageGroups, project)
   const auditCount = canvasAuditWarningCount(canvasIndex, nasRuntimeKey)
   const focused = focusedItemIds.includes(nasRuntimeKey)
   const dimmed = focusActive && !focused
@@ -755,22 +833,31 @@ export function NasNode({ data }: NodeProps<NasFlowNode>) {
           <div className="truncate text-[11px] text-[#cfc6b8]">{nas.model ?? nas.name}</div>
         </div>
         <RegistryLinkIndicator visible={registryLinkedItemKeys.has(nasRuntimeKey)} />
-        {internalPowerPort ? (
-          <div data-testid="nas-internal-power-port" className="shrink-0">
+        {hostPowerPort ? (
+          <div
+            data-testid={powerTopology.configuration === 'internal-psu'
+              ? 'nas-internal-power-port'
+              : 'nas-fixed-power-port'}
+            className="shrink-0"
+          >
             <PortChip
               canvasIndex={canvasIndex}
               draggingEndpoint={draggingEndpoint}
-              endpoint={{ itemId: nasRuntimeKey, portId: internalPowerPort.id }}
+              endpoint={{ itemId: nasRuntimeKey, portId: hostPowerPort.id }}
               onEndpointClick={onEndpointClick}
               onEndpointDragStart={onEndpointDragStart}
               onEndpointDrop={onEndpointDrop}
               pendingEndpoint={pendingEndpoint}
-              port={internalPowerPort}
+              port={hostPowerPort}
               requiredHandleIds={requiredHandleIds}
             />
           </div>
         ) : null}
       </div>
+
+      {fixedCpu.map((component) => (
+        <FixedComponentCard key={component.id} component={component} compact className="mt-2" />
+      ))}
 
       <div className="mt-2 flex flex-wrap gap-1.5 rounded-md bg-[#171b22] p-1.5">
         {networkPorts.length ? (
@@ -804,7 +891,15 @@ export function NasNode({ data }: NodeProps<NasFlowNode>) {
         </div>
       ) : null}
 
-      <div className="mt-2">
+      {fixedMemory.length > 0 ? (
+        <div className={`mt-2 grid gap-1.5 ${fixedMemory.length === 1 ? 'grid-cols-1' : 'grid-cols-2'}`}>
+          {fixedMemory.map((component) => (
+            <FixedComponentCard key={component.id} component={component} compact />
+          ))}
+        </div>
+      ) : null}
+
+      {hostMemorySlotCount(nas) !== 0 ? <div className="mt-2">
         <MemorySlotGrid
           assignments={ramAssignments}
           hostId={nasRuntimeKey}
@@ -824,7 +919,7 @@ export function NasNode({ data }: NodeProps<NasFlowNode>) {
             ) : null
           }}
         />
-      </div>
+      </div> : null}
 
       {networkPorts.length ? (
         <div className="mt-2 rounded-md bg-black/10 p-2">
@@ -850,33 +945,35 @@ export function NasNode({ data }: NodeProps<NasFlowNode>) {
         </div>
       ) : null}
 
-      {bayCount > 0 ? (
+      {storageGroups.map((group) => (
         <StorageBayRow
-          assignments={driveAssignments}
-          bayCount={bayCount}
-          label="Drive Bays"
+          key={group.id}
+          assignments={storageAssignmentsByGroup.get(group.id) ?? []}
+          bayCount={group.count}
+          label={group.label}
           onRemoveAssignment={onRemoveAssignment}
           onSelect={onSelect}
           project={project}
           registryLinkedItemKeys={registryLinkedItemKeys}
           selectedItemId={selectedItemId}
-          type="drive"
+          type={storageGroupType(group)}
         />
+      ))}
+
+      {fixedStorage.length > 0 ? (
+        <div className="mt-2 grid gap-1.5 rounded-md bg-black/10 p-2">
+          <div className="text-[9px] font-black uppercase tracking-[0.16em] opacity-75">
+            Fixed storage
+          </div>
+          {fixedStorage.map((component) => (
+            <FixedComponentCard key={component.id} component={component} compact />
+          ))}
+        </div>
       ) : null}
 
-      {m2SlotCount > 0 ? (
-        <StorageBayRow
-          assignments={m2Assignments}
-          bayCount={m2SlotCount}
-          label="M.2 Slots"
-          onRemoveAssignment={onRemoveAssignment}
-          onSelect={onSelect}
-          project={project}
-          registryLinkedItemKeys={registryLinkedItemKeys}
-          selectedItemId={selectedItemId}
-          type="m2"
-        />
-      ) : null}
+      {otherFixedComponents.map((component) => (
+        <FixedComponentCard key={component.id} component={component} compact className="mt-2" />
+      ))}
 
       <NetworkCardRow
         assignment={networkAssignment}
@@ -894,7 +991,7 @@ export function NasNode({ data }: NodeProps<NasFlowNode>) {
         requiredHandleIds={requiredHandleIds}
         selectedItemId={selectedItemId}
       />
-      {nas.specs?.powerConfiguration === 'external-adapter' ? (
+      {powerTopology.configuration === 'external-adapter' && powerTopology.adapterDisposition === 'replaceable' ? (
         <PowerAdapterRow
           assignment={powerAdapterAssignment}
           canvasIndex={canvasIndex}
@@ -911,6 +1008,19 @@ export function NasNode({ data }: NodeProps<NasFlowNode>) {
           requiredHandleIds={requiredHandleIds}
           selectedItemId={selectedItemId}
         />
+      ) : null}
+      {powerTopology.configuration === 'external-adapter' && powerTopology.adapterDisposition === 'fixed' ? (
+        <div data-testid="nas-fixed-power-adapter" className="mt-2 rounded-md border border-[#c6ad8b] bg-[#eee0cb] p-2 text-[#3d3022]">
+          <div className="flex items-center justify-between gap-2">
+            <div>
+              <div className="text-[9px] font-black uppercase opacity-70">Fixed power adapter</div>
+              <div className="text-xs font-black">Bundled OEM adapter</div>
+            </div>
+            <span className="rounded bg-white/55 px-1.5 py-0.5 text-[9px] font-bold">
+              {nas.compatibility?.host?.power?.connector ?? 'OEM connector'}
+            </span>
+          </div>
+        </div>
       ) : null}
     </div>
   )

@@ -72,6 +72,7 @@ export type AssignmentCompatibilityInput = {
   component: InventoryItem
   assignments?: ComponentAssignment[]
   items?: Record<string, InventoryItem> | InventoryItem[] | Map<string | number, InventoryItem>
+  useVerifiedMemoryLimits?: boolean
 }
 
 export type ProjectCompatibilityResult = CompatibilityResult & {
@@ -90,6 +91,10 @@ export function normalizeCompatibilityPolicy(
   policy?: Partial<CompatibilityPolicy> | null,
 ): CompatibilityPolicy
 export function isHostCompatibilityEnabled(
+  project: ProjectState | null | undefined,
+  hostId: string | number,
+): boolean
+export function isVerifiedMemoryLimitEnabled(
   project: ProjectState | null | undefined,
   hostId: string | number,
 ): boolean

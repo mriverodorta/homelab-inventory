@@ -27,7 +27,7 @@ const LEGACY_MEASUREMENT_KEYS = new Set([
   'configurableTdpMaxWatts', 'configurableTdpMinWatts', 'maxCapacityGb', 'maxExpansionPowerWatts',
   'maxGraphicsPowerWatts', 'maxModuleCapacityGb', 'maxPowerWatts', 'maxTdpWatts', 'maxTemperatureC',
   'efficiencyPercent', 'memoryGb', 'powerWatts', 'ratedWatts', 'refreshRateHz', 'sizeInches', 'speedMbps', 'switchingCapacityGbps',
-  'tdpWatts', 'voltageVolts', 'vramGb', 'wattageWatts',
+  'supportedWattagesWatts', 'tdpWatts', 'voltageVolts', 'vramGb', 'wattageWatts',
 ])
 
 function object(value: unknown): JsonObject | undefined {
@@ -237,6 +237,114 @@ export function assertCanonicalCatalogItemV9(value: unknown): void {
   canonicalizeCatalogItemV9(value)
 }
 
+function assertFixedComponentsV10(item: CatalogTemplateItem): void {
+  if (item.fixedComponents === undefined) return
+  if (!Array.isArray(item.fixedComponents)) {
+    throw new CanonicalMeasurementError(
+      CANONICAL_MEASUREMENT_INVALID,
+      'fixedComponents',
+      'fixedComponents must be an array.',
+    )
+  }
+
+  const ids = new Set<number>()
+  item.fixedComponents.forEach((component, index) => {
+    const path = `fixedComponents[${index}]`
+    if (!component || typeof component !== 'object' || Array.isArray(component)) {
+      throw new CanonicalMeasurementError(CANONICAL_MEASUREMENT_INVALID, path, `${path} must be an object.`)
+    }
+    if (!Number.isSafeInteger(component.id) || component.id < 1 || ids.has(component.id)) {
+      throw new CanonicalMeasurementError(
+        CANONICAL_MEASUREMENT_INVALID,
+        `${path}.id`,
+        `${path}.id must be a unique positive safe integer.`,
+      )
+    }
+    ids.add(component.id)
+    if (typeof component.componentType !== 'string' || component.componentType.trim() === '') {
+      throw new CanonicalMeasurementError(
+        CANONICAL_MEASUREMENT_INVALID,
+        `${path}.componentType`,
+        `${path}.componentType is required.`,
+      )
+    }
+    if (component.disposition !== 'fixed' && component.disposition !== 'soldered') {
+      throw new CanonicalMeasurementError(
+        CANONICAL_MEASUREMENT_INVALID,
+        `${path}.disposition`,
+        `${path}.disposition must be fixed or soldered.`,
+      )
+    }
+    if (typeof component.label !== 'string' || component.label.trim() === '') {
+      throw new CanonicalMeasurementError(CANONICAL_MEASUREMENT_INVALID, `${path}.label`, `${path}.label is required.`)
+    }
+    if (!component.item || component.item.type !== component.componentType) {
+      throw new CanonicalMeasurementError(
+        CANONICAL_MEASUREMENT_INVALID,
+        `${path}.item.type`,
+        `${path}.item.type must match componentType.`,
+      )
+    }
+    if (typeof component.item.name !== 'string' || component.item.name.trim() === '') {
+      throw new CanonicalMeasurementError(CANONICAL_MEASUREMENT_INVALID, `${path}.item.name`, `${path}.item.name is required.`)
+    }
+    if (component.templateKey !== undefined && (typeof component.templateKey !== 'string' || component.templateKey.trim() === '')) {
+      throw new CanonicalMeasurementError(
+        CANONICAL_MEASUREMENT_INVALID,
+        `${path}.templateKey`,
+        `${path}.templateKey must be non-empty.`,
+      )
+    }
+    if (component.templateRevision !== undefined && (!Number.isSafeInteger(component.templateRevision) || component.templateRevision < 1)) {
+      throw new CanonicalMeasurementError(
+        CANONICAL_MEASUREMENT_INVALID,
+        `${path}.templateRevision`,
+        `${path}.templateRevision must be a positive safe integer.`,
+      )
+    }
+    if (component.templateRevision !== undefined && component.templateKey === undefined) {
+      throw new CanonicalMeasurementError(
+        CANONICAL_MEASUREMENT_INVALID,
+        `${path}.templateRevision`,
+        `${path}.templateRevision requires templateKey.`,
+      )
+    }
+  })
+}
+
+function assertPowerOwnershipV10(item: CatalogTemplateItem): void {
+  const compatibility = object(item.compatibility)
+  const host = object(compatibility?.host)
+  const power = object(host?.power)
+  if (!power) return
+
+  const path = 'compatibility.host.power'
+  const configuration = power.configuration
+  const adapterDisposition = power.adapterDisposition
+  if (configuration !== 'external-adapter' && configuration !== 'internal-psu') {
+    throw new CanonicalMeasurementError(
+      CANONICAL_MEASUREMENT_INVALID,
+      `${path}.configuration`,
+      `${path}.configuration must be external-adapter or internal-psu.`,
+    )
+  }
+  if (configuration === 'external-adapter') {
+    if (adapterDisposition !== 'fixed' && adapterDisposition !== 'replaceable') {
+      throw new CanonicalMeasurementError(
+        CANONICAL_MEASUREMENT_INVALID,
+        `${path}.adapterDisposition`,
+        `${path}.adapterDisposition must be fixed or replaceable for an external adapter.`,
+      )
+    }
+  } else if (adapterDisposition !== undefined) {
+    throw new CanonicalMeasurementError(
+      CANONICAL_MEASUREMENT_INVALID,
+      `${path}.adapterDisposition`,
+      `${path}.adapterDisposition must be omitted for an internal PSU.`,
+    )
+  }
+}
+
 function convertSpeedField(target: JsonObject, legacyKey: string, canonicalKey: string, path: string) {
   const legacy = target[legacyKey]
   const canonical = target[canonicalKey]
@@ -428,4 +536,24 @@ export function canonicalizeCatalogItemV9(value: unknown): CatalogTemplateItem {
   }
   validateCanonicalMeasurements(canonical)
   return canonical
+}
+
+export function canonicalizeCatalogItemV10(value: unknown): CatalogTemplateItem {
+  const item = sanitizeCatalogItemV9(value)
+  const remainingLegacy = legacyMeasurementPathsV9(item)
+  if (remainingLegacy.length > 0) {
+    throw new CanonicalMeasurementError(
+      CANONICAL_MEASUREMENT_INVALID,
+      remainingLegacy[0],
+      `Fingerprint-v10 item contains legacy measurement field ${remainingLegacy[0]}.`,
+    )
+  }
+  assertFixedComponentsV10(item)
+  assertPowerOwnershipV10(item)
+  validateCanonicalMeasurements(item)
+  return item
+}
+
+export function assertCanonicalCatalogItemV10(value: unknown): void {
+  canonicalizeCatalogItemV10(value)
 }

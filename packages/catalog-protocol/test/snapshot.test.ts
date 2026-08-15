@@ -4,6 +4,7 @@ import {
   CATALOG_SCHEMA_VERSION,
   FINGERPRINT_VERSION,
   LEGACY_FINGERPRINT_VERSION,
+  NAS_FINGERPRINT_VERSION,
   canonicalJson,
   digestCatalogTemplate,
   validateCatalogFacetIndex,
@@ -11,6 +12,7 @@ import {
   validateCatalogSnapshot,
   verifySignedCatalogArtifact,
 } from '../src/index'
+import nasV10Fixture from './fixtures/server-specs-inventory-nas-v10.json'
 
 function base64UrlToBase64(value: string): string {
   return `${value.replace(/-/g, '+').replace(/_/g, '/')}${'='.repeat((4 - value.length % 4) % 4)}`
@@ -42,6 +44,31 @@ describe('signed catalog snapshots', () => {
     await expect(validateCatalogSnapshot(snapshot, { now: new Date('2026-07-27T00:00:00.000Z') })).resolves.toMatchObject({ catalogRevision: 1 })
     await expect(validateCatalogSnapshot({ ...snapshot, templates: [{ ...snapshot.templates[0], contentHash: 'a'.repeat(64) }] }, { now: new Date('2026-07-27T00:00:00.000Z') })).rejects.toThrow(/declared hashes/i)
     await expect(validateCatalogSnapshot(snapshot, { now: new Date('2026-09-01T00:00:00.000Z') })).rejects.toThrow(/expired/i)
+  })
+
+  it('validates the frozen NAS v10 fixture in a signed catalog snapshot', async () => {
+    const snapshot = {
+      schemaVersion: CATALOG_SCHEMA_VERSION,
+      catalogRevision: 10,
+      generatedAt: '2026-08-14T12:00:00.000Z',
+      expiresAt: '2026-09-14T12:00:00.000Z',
+      manufacturerAliases: {},
+      templates: [{
+        templateKey: 'nas-synology-diskstation-ds620slim',
+        revision: 1,
+        fingerprintVersion: NAS_FINGERPRINT_VERSION,
+        identityHash: nasV10Fixture.identityHash,
+        contentHash: nasV10Fixture.contentHash,
+        item: nasV10Fixture.item,
+      }],
+    }
+
+    await expect(validateCatalogSnapshot(snapshot, {
+      now: new Date('2026-08-15T00:00:00.000Z'),
+    })).resolves.toMatchObject({
+      catalogRevision: 10,
+      templates: [{ fingerprintVersion: NAS_FINGERPRINT_VERSION, item: nasV10Fixture.item }],
+    })
   })
 
   it('accepts legacy v2 templates and rejects canonical or alias collisions', async () => {
@@ -88,7 +115,7 @@ describe('signed catalog snapshots', () => {
       templates: [{
         templateKey: 'future-server-v7',
         revision: 1,
-        fingerprintVersion: 10,
+        fingerprintVersion: 11,
         identityHash: projection.identityHash,
         contentHash: projection.contentHash,
         item: projection.item,

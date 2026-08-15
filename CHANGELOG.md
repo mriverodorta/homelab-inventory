@@ -6,6 +6,18 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 
 ## Unreleased
 
+### Added
+
+- Catalog contract v10 imports complete NAS topology with fixed or soldered components, relational replaceable storage resources, canonical dimensions and mass, lifecycle metadata, and explicit external-adapter ownership.
+- NAS canvas cards and inspectors show locked built-in CPU, memory, storage, and bundled power hardware separately from replaceable slots.
+- NAS memory compatibility records OEM-supported and independently verified capacity limits separately, with a per-project opt-in for verified limits.
+
+### Changed
+
+- Fixed external NAS adapters now expose a host-owned AC endpoint, while replaceable adapters retain the existing inventory assignment and adapter-owned endpoint workflow.
+- Existing NAS adapter assignments migrate as replaceable, and topology-changing catalog updates require review or are blocked when they would orphan assigned hardware.
+- Portable selective and complete backups preserve every NAS v10 field and relational reference.
+
 ## [0.12.9] - 2026-08-14
 
 ### Added

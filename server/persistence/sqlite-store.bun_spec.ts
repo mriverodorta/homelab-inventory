@@ -2,7 +2,11 @@ import { afterEach, describe, expect, test } from 'bun:test'
 import { mkdtemp, readFile, rm, stat } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
-import { digestCatalogTemplate } from '../../packages/catalog-protocol/src/index.ts'
+import {
+  NAS_FINGERPRINT_VERSION,
+  digestCatalogTemplate,
+  type FingerprintVersion,
+} from '../../packages/catalog-protocol/src/index.ts'
 import { planHostAllocations } from '../../shared/compatibility/index.mjs'
 import { CORE_MIGRATIONS } from './core/migrations/manifest.ts'
 import { schema29ProductionShapeFixture } from './fixtures/schema-29-production-shape.ts'
@@ -11,6 +15,7 @@ import { importLegacyCore } from './migration/core-importer.ts'
 import { openManagedDatabase } from './sqlite/database.ts'
 import { applyCommittedMigrations } from './sqlite/migrator.ts'
 import { SqliteHomelabInventoryStore } from './sqlite-store.ts'
+import nasV10Fixture from '../../packages/catalog-protocol/test/fixtures/server-specs-inventory-nas-v10.json'
 
 const roots: string[] = []
 
@@ -62,8 +67,13 @@ async function emptyFixtureStore() {
   })
 }
 
-async function catalogTemplate(item: Record<string, unknown>, revision = 1, templateKey = 'cpu-example-cpu-200') {
-  const projection = await digestCatalogTemplate(item)
+async function catalogTemplate(
+  item: Record<string, unknown>,
+  revision = 1,
+  templateKey = 'cpu-example-cpu-200',
+  fingerprintVersion?: FingerprintVersion,
+) {
+  const projection = await digestCatalogTemplate(item, { fingerprintVersion })
   return {
     templateKey,
     revision,
@@ -189,7 +199,7 @@ describe('SQLite Homelab Inventory store facade', () => {
         group_id: 1,
         positions: [0],
       })
-      expect(store.getDatabaseStatus()).toMatchObject({ schemaVersion: 14 })
+      expect(store.getDatabaseStatus()).toMatchObject({ schemaVersion: 15 })
       expect(store.getPersistenceHealth()).toMatchObject({ ok: true, engine: 'sqlite' })
     } finally {
       store.close()
@@ -828,6 +838,53 @@ describe('SQLite Homelab Inventory store facade', () => {
     }
   })
 
+  test('blocks a fixed-adapter topology update while a replaceable adapter is assigned', async () => {
+    const store = await emptyFixtureStore()
+    try {
+      let project = store.createInventoryItems({
+        type: 'nas',
+        name: 'Replaceable adapter NAS',
+        specs: { powerConfiguration: 'external-adapter' },
+        compatibility: { host: { power: {
+          configuration: 'external-adapter',
+          adapterDisposition: 'replaceable',
+          connector: 'barrel',
+          adapterRequired: true,
+        } } },
+      })
+      const nas = Object.values(project.items).find((item) => item.type === 'nas')!
+      project = store.createInventoryItems({
+        type: 'powerAdapter',
+        name: 'NAS adapter',
+        specs: { wattageWatts: 65, connector: 'barrel' },
+      })
+      const adapter = Object.values(project.items).find((item) => item.type === 'powerAdapter')!
+      project = store.setProject({
+        ...project,
+        assignments: [{
+          id: 1,
+          serverId: `nas:${nas.id}`,
+          itemId: `powerAdapter:${adapter.id}`,
+          type: 'powerAdapter',
+          assignedAt: '2026-08-14T00:00:00.000Z',
+        }],
+      })
+      const current = project.items[`nas:${nas.id}`]
+
+      expect(() => store.updateInventoryItem({ type: 'nas', id: nas.id }, {
+        ...current,
+        compatibility: { host: { ...current.compatibility?.host, power: {
+          ...current.compatibility?.host?.power,
+          configuration: 'external-adapter',
+          adapterDisposition: 'fixed',
+        } } },
+      })).toThrow(/orphan.*assigned NAS power adapter/iu)
+      expect(store.getProject().assignments).toHaveLength(1)
+    } finally {
+      store.close()
+    }
+  })
+
   test('round-trips registry state and enforces optimistic settings updates', async () => {
     const store = await fixtureStore()
     try {
@@ -1003,6 +1060,150 @@ describe('SQLite Homelab Inventory store facade', () => {
       expect((store.getRegistryState() as any).links.find((candidate: any) => candidate.id === link.id)).toMatchObject({
         state: 'linked', importedRevision: 2,
       })
+    } finally {
+      store.close()
+    }
+  })
+
+  test('round-trips v10 fixed NAS topology without creating component inventory or assignments', async () => {
+    const store = await emptyFixtureStore()
+    try {
+      store.registryTransaction((draft: any) => {
+        draft.snapshot = {
+          sourceId: 1, revision: 1, generatedAt: '2026-08-14T00:00:00.000Z',
+          expiresAt: null, activatedAt: '2026-08-14T00:00:00.000Z',
+          digest: 'c'.repeat(64), templateCount: 1, keyId: 'test-key',
+        }
+      })
+      const template = await catalogTemplate({
+        type: 'nas',
+        name: 'Example Fixed NAS',
+        manufacturer: 'Example',
+        model: 'NAS-10',
+        specs: {
+          formFactor: 'Desktop',
+          powerConfiguration: 'external-adapter',
+          topologyCompleteness: 'complete',
+        },
+        fixedComponents: [{
+          id: 1,
+          componentType: 'cpu',
+          disposition: 'soldered',
+          label: 'Soldered processor',
+          item: { type: 'cpu', name: 'Embedded CPU', model: 'E-1' },
+        }],
+        compatibility: { host: {
+          memory: { slots: 0, generations: ['DDR4'], formFactors: ['Onboard'], moduleTypes: ['Onboard'], oemMaxCapacityMib: 2_048 },
+          storageSlots: [], expansionSlots: [], optionalModuleSlots: [],
+          power: { configuration: 'external-adapter', adapterDisposition: 'fixed', connector: 'barrel', supportedPowerMw: [36_000] },
+        } },
+      }, 1, 'nas-example-nas-10', NAS_FINGERPRINT_VERSION)
+
+      const project = store.createCatalogInventoryItems(template)
+      const nas = Object.values(project.items).find((item) => item.type === 'nas') as any
+      expect(nas).toMatchObject({
+        fixedComponents: [{ id: 1, componentType: 'cpu', disposition: 'soldered' }],
+        compatibility: { host: { power: { adapterDisposition: 'fixed' } } },
+      })
+      expect(nas.ports).toEqual(expect.arrayContaining([
+        expect.objectContaining({ key: 'ac-input', type: 'ac-input' }),
+      ]))
+      expect(project.assignments).toEqual([])
+      expect(store.core.database.query('SELECT count(*) AS count FROM host_fixed_components').get()).toEqual({ count: 1 })
+      expect(store.core.database.query("SELECT count(*) AS count FROM inventory_identity_aliases WHERE legacy_type_key = 'cpu'").get()).toEqual({ count: 0 })
+
+      const before = await store.snapshotStores()
+      await store.replaceStoresAtomically(before)
+      const restoredNas = Object.values(store.getProject().items).find((item) => item.type === 'nas') as any
+      expect(restoredNas.fixedComponents).toEqual(nas.fixedComponents)
+      expect(restoredNas.compatibility.host.power).toEqual(nas.compatibility.host.power)
+    } finally {
+      store.close()
+    }
+  })
+
+  test('imports the frozen NAS v10 fixture into canonical relational columns', async () => {
+    const store = await emptyFixtureStore()
+    try {
+      store.registryTransaction((draft: any) => {
+        draft.snapshot = {
+          sourceId: 1, revision: 1, generatedAt: '2026-08-14T00:00:00.000Z',
+          expiresAt: null, activatedAt: '2026-08-14T00:00:00.000Z',
+          digest: 'd'.repeat(64), templateCount: 1, keyId: 'test-key',
+        }
+      })
+      const template = await catalogTemplate(
+        nasV10Fixture.item,
+        1,
+        'nas-synology-ds620slim',
+        NAS_FINGERPRINT_VERSION,
+      )
+      expect(template).toMatchObject({
+        identityHash: nasV10Fixture.identityHash,
+        contentHash: nasV10Fixture.contentHash,
+      })
+
+      const project = store.createCatalogInventoryItems(template)
+      const nas = Object.values(project.items).find((item) => item.type === 'nas') as any
+      const canonicalId = store.core.database.query(`
+        SELECT item_id FROM inventory_identity_aliases
+        WHERE legacy_type_key = 'nas' AND legacy_id = ?
+      `).get(nas.id) as { item_id: number }
+
+      expect(store.core.database.query(`
+        SELECT platform_family, release_date_text, width_mm, height_mm, depth_mm, mass_grams
+        FROM nas_systems WHERE id = ?
+      `).get(canonicalId.item_id)).toEqual({
+        platform_family: 'DSM',
+        release_date_text: '2019-07-18',
+        width_mm: 151,
+        height_mm: 121,
+        depth_mm: 175,
+        mass_grams: 1_400,
+      })
+      expect(store.core.database.query(`
+        SELECT slot_count, oem_max_capacity_mib, oem_max_module_capacity_mib,
+               verified_max_capacity_mib, verified_max_module_capacity_mib
+        FROM host_memory_profiles mp
+        JOIN host_compatibility_profiles hp ON hp.id = mp.host_profile_id
+        WHERE hp.host_item_id = ?
+      `).get(canonicalId.item_id)).toEqual({
+        slot_count: 2,
+        oem_max_capacity_mib: 6_144,
+        oem_max_module_capacity_mib: 4_096,
+        verified_max_capacity_mib: 16_384,
+        verified_max_module_capacity_mib: 8_192,
+      })
+      expect(store.core.database.query(`
+        SELECT configuration, adapter_disposition, connector
+        FROM host_power_profiles pp
+        JOIN host_compatibility_profiles hp ON hp.id = pp.host_profile_id
+        WHERE hp.host_item_id = ?
+      `).get(canonicalId.item_id)).toEqual({
+        configuration: 'external-adapter',
+        adapter_disposition: 'fixed',
+        connector: '4-pin DIN',
+      })
+      expect(store.core.database.query(`
+        SELECT power_mw FROM host_power_supported_wattages
+        WHERE power_profile_id = (
+          SELECT pp.id FROM host_power_profiles pp
+          JOIN host_compatibility_profiles hp ON hp.id = pp.host_profile_id
+          WHERE hp.host_item_id = ?
+        )
+      `).all(canonicalId.item_id)).toEqual([{ power_mw: 65_000 }])
+      expect(store.core.database.query(`
+        SELECT slot_count FROM host_resource_groups
+        WHERE host_item_id = ? AND resource_type = 'storage'
+      `).get(canonicalId.item_id)).toEqual({ slot_count: 6 })
+      expect(nas.fixedComponents).toEqual(nasV10Fixture.item.fixedComponents)
+      expect(project.assignments).toEqual([])
+
+      const backup = await store.snapshotStores()
+      await store.replaceStoresAtomically(backup)
+      const restored = Object.values(store.getProject().items).find((item) => item.type === 'nas') as any
+      expect(restored.fixedComponents).toEqual(nas.fixedComponents)
+      expect(restored.compatibility.host.storageSlots).toEqual(nas.compatibility.host.storageSlots)
     } finally {
       store.close()
     }

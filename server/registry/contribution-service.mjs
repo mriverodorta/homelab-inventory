@@ -3,10 +3,12 @@ import {
   FINGERPRINT_VERSION,
   LEGACY_FINGERPRINT_VERSION,
   MOTHERBOARD_FINGERPRINT_VERSION,
+  NAS_FINGERPRINT_VERSION,
   OEM_FINGERPRINT_VERSION,
   RAM_FINGERPRINT_VERSION,
   SERVER_FINGERPRINT_VERSION,
   WORKSTATION_FINGERPRINT_VERSION,
+  canonicalizeCatalogItemV9,
   projectCatalogItem,
   reconcileCatalogProjections,
   sha256Hex,
@@ -45,12 +47,17 @@ function legacyFingerprintVersionForItem(item) {
     : FINGERPRINT_VERSION
 }
 
-function fingerprintVersionForItem() {
-  return CANONICAL_UNITS_FINGERPRINT_VERSION
+function fingerprintVersionForItem(item) {
+  return item?.type === 'nas'
+    ? NAS_FINGERPRINT_VERSION
+    : CANONICAL_UNITS_FINGERPRINT_VERSION
 }
 
 async function projectLocalInventoryItem(item, fingerprintVersion) {
-  const catalogItem = projectLocalItemForCatalog(item, item.type)
+  const projectedItem = projectLocalItemForCatalog(item, item.type)
+  const catalogItem = fingerprintVersion === NAS_FINGERPRINT_VERSION
+    ? { ...canonicalizeCatalogItemV9(projectedItem), id: item.id }
+    : projectedItem
   const projection = await projectCatalogItem(catalogItem, { fingerprintVersion })
   return { ...projection, source: { itemType: item.type, itemId: item.id } }
 }

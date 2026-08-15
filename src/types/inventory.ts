@@ -112,6 +112,35 @@ export type InventoryPort = {
   endpoints?: InventoryPortEndpoint[]
 }
 
+export type FixedComponentDisposition = 'fixed' | 'soldered'
+
+export type InventoryFixedComponentItem = {
+  type: InventoryType
+  name: string
+  subtype?: string
+  manufacturer?: string
+  secondaryManufacturer?: string
+  family?: string
+  model?: string
+  number?: string
+  aliases?: string[]
+  specs?: InventorySpecs
+  properties?: InventoryProperties
+  ports?: InventoryPort[]
+  compatibility?: InventoryCompatibility
+  notes?: string
+}
+
+export type InventoryFixedComponent = {
+  id: number
+  componentType: string
+  disposition: FixedComponentDisposition
+  label: string
+  item: InventoryFixedComponentItem
+  templateKey?: string
+  templateRevision?: number
+}
+
 export type ConnectionEndpoint = {
   itemId: string
   portId: number
@@ -166,6 +195,7 @@ export type InventoryItem = {
   properties?: InventoryProperties
   ports?: InventoryPort[]
   compatibility?: InventoryCompatibility
+  fixedComponents?: InventoryFixedComponent[]
   notes?: string
   archivedAt?: string
 }
@@ -200,6 +230,7 @@ export type CompatibilityHostRef = {
 
 export type CompatibilityPolicy = {
   disabledHosts: CompatibilityHostRef[]
+  verifiedMemoryHosts?: CompatibilityHostRef[]
   ignoredWarningIds: string[]
 }
 

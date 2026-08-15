@@ -2,6 +2,7 @@ export {
   evaluateAssignmentCompatibility,
   evaluateProjectCompatibility,
   isHostCompatibilityEnabled,
+  isVerifiedMemoryLimitEnabled,
   normalizeCompatibilityPolicy,
   normalizeCompatibilityProject,
   normalizeComponentRequirements,

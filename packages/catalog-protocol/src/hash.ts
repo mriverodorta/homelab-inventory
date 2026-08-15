@@ -1,5 +1,5 @@
 import { canonicalJson } from './canonicalize'
-import { canonicalizeCatalogItemV9 } from './canonical-units'
+import { canonicalizeCatalogItemV10, canonicalizeCatalogItemV9 } from './canonical-units'
 import { sanitizeCatalogItem } from './sanitize'
 import {
   CATALOG_SCHEMA_VERSION,
@@ -7,6 +7,7 @@ import {
   LEGACY_FINGERPRINT_VERSION,
   CANONICAL_UNITS_FINGERPRINT_VERSION,
   MANUFACTURER_ALIAS_VERSION,
+  NAS_FINGERPRINT_VERSION,
   type CatalogDigests,
   type CatalogTemplateItem,
 } from './types'
@@ -58,9 +59,11 @@ export async function computeCatalogDigestsWithIdentity(
   identityPayload: Record<string, unknown>,
   fingerprintVersion = FINGERPRINT_VERSION,
 ): Promise<CatalogDigests> {
-  const item = fingerprintVersion === CANONICAL_UNITS_FINGERPRINT_VERSION
-    ? canonicalizeCatalogItemV9(value)
-    : sanitizeCatalogItem(value)
+  const item = fingerprintVersion === NAS_FINGERPRINT_VERSION
+    ? canonicalizeCatalogItemV10(value)
+    : fingerprintVersion === CANONICAL_UNITS_FINGERPRINT_VERSION
+      ? canonicalizeCatalogItemV9(value)
+      : sanitizeCatalogItem(value)
   const versionedIdentity = {
     schemaVersion: CATALOG_SCHEMA_VERSION,
     fingerprintVersion,

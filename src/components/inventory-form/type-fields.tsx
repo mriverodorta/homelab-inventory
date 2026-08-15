@@ -13,6 +13,7 @@ import {
   NETWORK_FORM_FACTORS,
   NETWORK_INTERFACES,
   NETWORK_SLOTS,
+  NAS_PLATFORM_FAMILIES,
   NAS_POWER_CONFIGURATION_OPTIONS,
   PCIE_OPTIONS,
   RAM_GENERATIONS,
@@ -171,9 +172,21 @@ export function InventoryTypeFields({
 
   if (type === 'nas') {
     return (
-      <div className="grid gap-3 sm:grid-cols-3">
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <TextField label="Form factor" name="formFactor" value={values.formFactor} placeholder="Desktop" onChange={(formFactor) => onChange({ formFactor })} />
+        <SelectField label="Platform" name="nasPlatformFamily" value={values.nasPlatformFamily} options={NAS_PLATFORM_FAMILIES} emptyLabel="Not specified" onOpenChange={onSelectOpenChange} onValueChange={(nasPlatformFamily) => onChange({ nasPlatformFamily }, 'immediate')} />
+        <TextField label="Variant" name="nasVariantKey" value={values.nasVariantKey} placeholder="standard" onChange={(nasVariantKey) => onChange({ nasVariantKey })} />
+        <TextField label="Hardware revision" name="nasHardwareRevision" value={values.nasHardwareRevision} onChange={(nasHardwareRevision) => onChange({ nasHardwareRevision })} />
+        <TextField label="Board revision" name="boardRevision" value={values.boardRevision} onChange={(boardRevision) => onChange({ boardRevision })} />
+        <TextField label="Release date" name="nasReleaseDate" value={values.nasReleaseDate} type="date" onChange={(nasReleaseDate) => onChange({ nasReleaseDate })} />
+        <SelectField label="Lifecycle" name="discontinued" value={values.discontinued} options={[{ value: 'no', label: 'Current' }, { value: 'yes', label: 'Discontinued' }]} emptyLabel="Not specified" onOpenChange={onSelectOpenChange} onValueChange={(discontinued) => onChange({ discontinued: discontinued as InventoryFormValues['discontinued'] }, 'immediate')} />
         <TextField label="Drive Bays" name="driveBays" value={values.driveBays} placeholder={placeholders.driveBays} type="number" min={0} error={errors.driveBays} onChange={(driveBays) => onChange({ driveBays })} />
         <TextField label="M.2 Slots" name="m2Slots" value={values.m2Slots} placeholder={placeholders.m2Slots} type="number" min={0} error={errors.m2Slots} onChange={(m2Slots) => onChange({ m2Slots })} />
+        <TextField label="Width (mm)" name="nasWidthMm" value={values.nasWidthMm} type="number" min={0} error={errors.nasWidthMm} onChange={(nasWidthMm) => onChange({ nasWidthMm })} />
+        <TextField label="Height (mm)" name="nasHeightMm" value={values.nasHeightMm} type="number" min={0} error={errors.nasHeightMm} onChange={(nasHeightMm) => onChange({ nasHeightMm })} />
+        <TextField label="Depth (mm)" name="nasDepthMm" value={values.nasDepthMm} type="number" min={0} error={errors.nasDepthMm} onChange={(nasDepthMm) => onChange({ nasDepthMm })} />
+        <TextField label="Mass (g)" name="nasMassGrams" value={values.nasMassGrams} type="number" min={0} error={errors.nasMassGrams} onChange={(nasMassGrams) => onChange({ nasMassGrams })} />
+        <TextField label="Rack units" name="rackUnits" value={values.rackUnits} type="number" min={0} step="0.5" error={errors.rackUnits} onChange={(rackUnits) => onChange({ rackUnits })} />
         <SelectField
           label="Power configuration"
           name="powerConfiguration"
@@ -184,6 +197,10 @@ export function InventoryTypeFields({
           onOpenChange={onSelectOpenChange}
           onValueChange={(powerConfiguration) => onChange({
             powerConfiguration: powerConfiguration as InventoryFormValues['powerConfiguration'],
+            hostPowerConfiguration: powerConfiguration,
+            hostPowerAdapterDisposition: powerConfiguration === 'external-adapter'
+              ? values.hostPowerAdapterDisposition || 'replaceable'
+              : '',
           }, 'immediate')}
         />
       </div>

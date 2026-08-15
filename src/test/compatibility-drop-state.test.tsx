@@ -13,6 +13,7 @@ import {
   type ComponentDragData,
 } from '@/components/workbench-canvas-contract'
 import type { ComponentAssignment, InventoryItem, ProjectState } from '@/types/inventory'
+import { withCanonicalPowerPorts } from '../../shared/power-ports.mjs'
 
 vi.mock('@dnd-kit/core', () => ({
   useDraggable: () => ({
@@ -449,6 +450,64 @@ describe('host card compatibility drop-state styling', () => {
     expect(internalRender.container.querySelector('[data-testid="nas-power-adapter-slot"]')).not.toBeInTheDocument()
     expect(externalRender.container.querySelector('[data-testid="nas-power-adapter-slot"]')).toHaveTextContent('Empty')
     expect(externalRender.container.querySelector('[data-testid="nas-internal-power-port"]')).not.toBeInTheDocument()
+  })
+
+  it('renders a fixed external adapter as host-owned power without a replaceable slot', () => {
+    const nas = withCanonicalPowerPorts({
+      ...host('nas:3', 'nas'),
+      specs: { powerConfiguration: 'external-adapter' },
+      compatibility: { host: { power: {
+        configuration: 'external-adapter',
+        adapterDisposition: 'fixed',
+        connector: '4-pin DIN',
+      } } },
+    })
+
+    const { container } = render(<NasNode {...nasNodeProps(nodeData(project([nas]), nas.key!))} />)
+
+    expect(container.querySelector('[data-testid="nas-fixed-power-port"]')).toBeInTheDocument()
+    expect(container.querySelector('[data-testid="nas-fixed-power-adapter"]')).toHaveTextContent('4-pin DIN')
+    expect(container.querySelector('[data-testid="nas-power-adapter-slot"]')).not.toBeInTheDocument()
+  })
+
+  it('shows fixed components without rendering a replaceable zero-slot RAM target', () => {
+    const nas = {
+      ...host('nas:4', 'nas'),
+      compatibility: { host: { memory: { slots: 0 } } },
+      fixedComponents: [{
+        id: 1,
+        componentType: 'ram',
+        disposition: 'soldered' as const,
+        label: 'Onboard memory',
+        item: { type: 'ram' as const, name: '2GB onboard', specs: { capacityMib: 2_048 } },
+      }],
+    }
+
+    const { container } = render(<NasNode {...nasNodeProps(nodeData(project([nas]), nas.key!))} />)
+
+    expect(container.querySelector('[data-fixed-component-id="1"]')).toHaveTextContent('2GB onboard')
+    expect(container.querySelector('[data-memory-slot-count]')).not.toBeInTheDocument()
+    expect(container).not.toHaveTextContent('RAM drop slot')
+  })
+
+  it('renders replaceable NAS storage positions from numeric compatibility groups', () => {
+    const nas = {
+      ...host('nas:5', 'nas'),
+      compatibility: { host: { storageSlots: [{
+        id: 7,
+        key: 'sata-bays',
+        label: '2.5-inch SATA drive bays',
+        count: 6,
+        interfaces: ['SATA'],
+        formFactors: ['2.5-inch'],
+      }] } },
+    }
+
+    const { container } = render(<NasNode {...nasNodeProps(nodeData(project([nas]), nas.key!))} />)
+
+    expect(container).toHaveTextContent('2.5-inch SATA drive bays')
+    expect(container.querySelectorAll('[data-storage-slot-type="drive"]')).toHaveLength(6)
+    expect(container.querySelector('[data-storage-slot-position="6"]')).toBeInTheDocument()
   })
 
   it('uses the shared power row for an assigned external NAS adapter', () => {

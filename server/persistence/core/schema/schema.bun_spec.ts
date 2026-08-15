@@ -15,7 +15,7 @@ afterEach(async () => {
   )))
 })
 
-async function createMigratedDatabase() {
+async function createMigratedDatabase(migrationCount = CORE_MIGRATIONS.length) {
   const root = await mkdtemp(join(tmpdir(), 'homelab-inventory-core-schema-'))
   temporaryDirectories.push(root)
   const handle = await openManagedDatabase({
@@ -23,7 +23,7 @@ async function createMigratedDatabase() {
     schemaName: 'core',
   })
   const migrationsDir = resolve(import.meta.dir, '../migrations/generated')
-  const migrations = await Promise.all(CORE_MIGRATIONS.map(async (migration) => ({
+  const migrations = await Promise.all(CORE_MIGRATIONS.slice(0, migrationCount).map(async (migration) => ({
     id: migration.id,
     sha256: migration.sha256,
     sql: await readFile(join(migrationsDir, migration.file), 'utf8'),
@@ -42,8 +42,8 @@ describe('core SQLite foundation schema', () => {
       'inventoryIdentityAliases',
       'cpuSocketTypes',
     ]))
-    expect(CORE_MIGRATIONS).toHaveLength(14)
-    expect(CORE_MIGRATIONS.at(-1)?.id).toBe('0014_automatic_registry_updates')
+    expect(CORE_MIGRATIONS).toHaveLength(15)
+    expect(CORE_MIGRATIONS.at(-1)?.id).toBe('0015_nas_contract_v10')
   })
 
   test('maps all 20 inventory categories to shared-primary-key subtype tables', () => {
@@ -69,6 +69,85 @@ describe('core SQLite foundation schema', () => {
       'ups',
       'wireless',
     ])
+  })
+
+  test('migrates v10 NAS topology without changing existing relational identities', async () => {
+    const handle = await createMigratedDatabase(CORE_MIGRATIONS.length - 1)
+    try {
+      const type = handle.database.query("SELECT id FROM inventory_item_types WHERE key = 'nas'").get() as { id: number }
+      const item = handle.database.query(`
+        INSERT INTO inventory_items (
+          type_id, scope, owner_project_id, name, row_version, created_at_ms, updated_at_ms
+        ) VALUES (?, 'global', NULL, 'Legacy NAS', 1, 1, 1)
+        RETURNING id
+      `).get(type.id) as { id: number }
+      handle.database.query(`
+        INSERT INTO nas_systems (id, power_configuration)
+        VALUES (?, 'external-adapter')
+      `).run(item.id)
+      const profile = handle.database.query(`
+        INSERT INTO host_compatibility_profiles (host_item_id, created_at_ms, updated_at_ms)
+        VALUES (?, 1, 1)
+        RETURNING id
+      `).get(item.id) as { id: number }
+      handle.database.query(`
+        INSERT INTO host_power_profiles (host_profile_id, configuration, connector)
+        VALUES (?, 'external-adapter', 'OEM')
+      `).run(profile.id)
+
+      const migrationsDir = resolve(import.meta.dir, '../migrations/generated')
+      const migrations = await Promise.all(CORE_MIGRATIONS.map(async (migration) => ({
+        id: migration.id,
+        sha256: migration.sha256,
+        sql: await readFile(join(migrationsDir, migration.file), 'utf8'),
+      })))
+      await expect(applyCommittedMigrations(handle, migrations)).resolves.toEqual({ applied: 1, currentVersion: 15 })
+      expect(handle.database.query(`
+        SELECT adapter_disposition FROM host_power_profiles WHERE host_profile_id = ?
+      `).get(profile.id)).toEqual({ adapter_disposition: 'replaceable' })
+      expect(handle.database.query('SELECT id, power_configuration FROM nas_systems WHERE id = ?').get(item.id)).toEqual({
+        id: item.id,
+        power_configuration: 'external-adapter',
+      })
+      await expect(applyCommittedMigrations(handle, migrations)).resolves.toEqual({ applied: 0, currentVersion: 15 })
+    } finally {
+      closeManagedDatabase(handle)
+    }
+  })
+
+  test('enforces fixed-component ownership and numeric catalog identities', async () => {
+    const handle = await createMigratedDatabase()
+    try {
+      const type = handle.database.query("SELECT id FROM inventory_item_types WHERE key = 'nas'").get() as { id: number }
+      const item = handle.database.query(`
+        INSERT INTO inventory_items (
+          type_id, scope, owner_project_id, name, row_version, created_at_ms, updated_at_ms
+        ) VALUES (?, 'global', NULL, 'NAS', 1, 1, 1)
+        RETURNING id
+      `).get(type.id) as { id: number }
+      handle.database.query("INSERT INTO nas_systems (id, power_configuration) VALUES (?, 'internal-psu')").run(item.id)
+
+      expect(() => handle.database.query(`
+        INSERT INTO host_fixed_components (
+          host_item_id, catalog_component_id, component_type, disposition, label,
+          item_json, extensions_json, created_at_ms, updated_at_ms
+        ) VALUES (?, 1, 'cpu', 'soldered', 'CPU', '{"type":"cpu","name":"CPU"}', '{}', 1, 1)
+      `).run(item.id)).not.toThrow()
+      expect(() => handle.database.query(`
+        INSERT INTO host_fixed_components (
+          host_item_id, catalog_component_id, component_type, disposition, label,
+          item_json, extensions_json, created_at_ms, updated_at_ms
+        ) VALUES (?, 1, 'cpu', 'fixed', 'Duplicate', '{"type":"cpu","name":"CPU"}', '{}', 1, 1)
+      `).run(item.id)).toThrow()
+      expect(() => handle.database.query(`
+        INSERT INTO host_fixed_components (
+          host_item_id, catalog_component_id, component_type, disposition, label,
+          item_json, extensions_json, created_at_ms, updated_at_ms
+        ) VALUES (?, 2, 'cpu', 'removable', 'Invalid', '{}', '{}', 1, 1)
+      `).run(item.id)).toThrow()
+    } finally {
+      closeManagedDatabase(handle)
+    }
   })
 
   test('enforces subtype identity and canonical measurement constraints', async () => {

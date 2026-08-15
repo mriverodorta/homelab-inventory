@@ -7,6 +7,7 @@ export const SERVER_FINGERPRINT_VERSION = 6
 export const MOTHERBOARD_FINGERPRINT_VERSION = 7
 export const RAM_FINGERPRINT_VERSION = 8
 export const CANONICAL_UNITS_FINGERPRINT_VERSION = 9
+export const NAS_FINGERPRINT_VERSION = 10
 export const SUPPORTED_FINGERPRINT_VERSIONS = [
   LEGACY_FINGERPRINT_VERSION,
   FINGERPRINT_VERSION,
@@ -16,6 +17,7 @@ export const SUPPORTED_FINGERPRINT_VERSIONS = [
   MOTHERBOARD_FINGERPRINT_VERSION,
   RAM_FINGERPRINT_VERSION,
   CANONICAL_UNITS_FINGERPRINT_VERSION,
+  NAS_FINGERPRINT_VERSION,
 ] as const
 export const MANUFACTURER_ALIAS_VERSION = 1
 
@@ -102,6 +104,20 @@ export type CatalogPort = {
   endpoints?: CatalogPortEndpoint[]
 }
 
+export type CatalogFixedComponentDisposition = 'fixed' | 'soldered'
+
+export type CatalogExternalAdapterDisposition = 'fixed' | 'replaceable'
+
+export type CatalogFixedComponent = {
+  id: number
+  componentType: string
+  disposition: CatalogFixedComponentDisposition
+  label: string
+  item: CatalogTemplateItem
+  templateKey?: string
+  templateRevision?: number
+}
+
 export type CatalogTemplateItem = {
   type: string
   name: string
@@ -115,6 +131,7 @@ export type CatalogTemplateItem = {
   specs?: Record<string, JsonValue>
   ports?: CatalogPort[]
   compatibility?: Record<string, JsonValue>
+  fixedComponents?: CatalogFixedComponent[]
 }
 
 export type CatalogSourceRef = {

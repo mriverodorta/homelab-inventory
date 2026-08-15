@@ -1,7 +1,11 @@
 import type { Database } from 'bun:sqlite'
 import { dirname } from 'node:path'
 import type { ProjectPatch, TopologyEndpointRef } from '../../shared/engine/protocol.mjs'
-import { withCanonicalPowerPorts } from '../../shared/power-ports.mjs'
+import {
+  nasPowerTopology,
+  withCanonicalPowerPorts,
+  withNasPowerConfiguration,
+} from '../../shared/power-ports.mjs'
 import { evaluateProjectCompatibility, planHostAllocations } from '../../shared/compatibility/index.mjs'
 import type { ProjectState } from '../../src/types/inventory.ts'
 import { getReleaseNotesBetween } from '../../src/release-notes.ts'
@@ -1233,6 +1237,31 @@ export class SqliteHomelabInventoryStore {
         409,
       )
     }
+    if (ref.type === 'nas') {
+      const previousPower = nasPowerTopology(current)
+      const nextPower = nasPowerTopology(record)
+      const releasesAssignedAdapter = previousPower.configuration === 'external-adapter'
+        && previousPower.adapterDisposition === 'replaceable'
+        && (
+          nextPower.configuration !== 'external-adapter'
+          || nextPower.adapterDisposition !== 'replaceable'
+        )
+      if (releasesAssignedAdapter) {
+        const assignedAdapter = project.assignments.find((assignment) => (
+          assignment.serverId === `${ref.type}:${ref.id}` && assignment.type === 'powerAdapter'
+        ))
+        if (assignedAdapter) {
+          throw new InventoryLifecycleError(
+            'This update would orphan the assigned NAS power adapter. Remove or release the adapter before applying it.',
+            {
+              code: 'nas-power-adapter-orphan',
+              status: 409,
+              details: { assignmentId: assignedAdapter.id },
+            },
+          )
+        }
+      }
+    }
     const connectedPortIds = referencedPortIds(project, ref)
     for (const portId of connectedPortIds) {
       const previousPort = current.ports?.find((port: Row) => port.id === portId)
@@ -1281,11 +1310,10 @@ export class SqliteHomelabInventoryStore {
     if (impact.from === impact.to) return { status: 'applied', project }
 
     const current = this.projectItem(ref.type, ref.id)
-    const migrated = withCanonicalPowerPorts({
+    const migrated = withCanonicalPowerPorts(withNasPowerConfiguration({
       ...current,
       type: 'nas',
-      specs: { ...(current.specs ?? {}), powerConfiguration: impact.to },
-    })
+    }, impact.to))
     const record = cleanItemForStore(migrated)
     this.commitCanonicalMutation(() => {
       for (const connectionId of impact.connectionIds) {
@@ -1797,6 +1825,7 @@ export class SqliteHomelabInventoryStore {
           (key) => key === 'name' || !['id', 'key', 'type', 'subtype', 'manufacturer', 'secondaryManufacturer', 'family', 'model', 'number', 'specs', 'ports', 'compatibility'].includes(key),
         ),
         ...classifyCatalogUpdate({
+          itemType: proposal.link.itemType,
           changes: proposal.changes,
           dependencyConflicts: proposal.dependencyConflicts,
           beforeFindings,

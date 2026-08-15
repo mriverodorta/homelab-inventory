@@ -27,7 +27,10 @@ import { InventoryFormStatus } from '@/components/inventory-form/specs-tab-conte
 import { useInventoryItemEditor } from '@/hooks/use-inventory-item-editor'
 import { usePermission } from '@/hooks/use-permission'
 import { isHostCompatibilityEnabled } from '@/lib/compatibility'
-import { setHostCompatibilityEnabled } from '@/lib/compatibility-policy'
+import {
+  setHostCompatibilityEnabled,
+  setVerifiedMemoryLimitEnabled,
+} from '@/lib/compatibility-policy'
 import type { InventoryItemInput } from '@/lib/db'
 import { runtimeItemKey } from '@/lib/item-keys'
 import type { AgentHardwareSuggestion, AgentStatusSummary } from '@/types/agent'
@@ -38,6 +41,7 @@ import type {
   NasPowerConfiguration,
   ProjectState,
 } from '@/types/inventory'
+import { nasPowerTopology } from '../../../../shared/power-ports.mjs'
 
 export function NasInspectorTabs({
   project,
@@ -86,6 +90,7 @@ export function NasInspectorTabs({
   const status = getAgentHostStatus(agentStatus, 'nas', item.id)
   const registered = isAgentHostRegistered(agentStatus, 'nas', item.id)
   const hasSavedStatus = hasAgentHostStatus(agentStatus, 'nas', item.id)
+  const powerTopology = nasPowerTopology(item)
   const showServices = (registered || hasSavedStatus)
     && agentSectionAvailable(status, 'host.services', status.services)
   const showContainers = (registered || hasSavedStatus)
@@ -137,7 +142,7 @@ export function NasInspectorTabs({
               project={project}
               host={draftItem}
               title="NAS Slots"
-              allowedTypes={item.specs?.powerConfiguration === 'external-adapter'
+              allowedTypes={powerTopology.configuration === 'external-adapter' && powerTopology.adapterDisposition === 'replaceable'
                 ? ['storage', 'network', 'powerAdapter']
                 : ['storage', 'network']}
             />
@@ -211,6 +216,9 @@ export function NasInspectorTabs({
               enabled={isHostCompatibilityEnabled(project, runtimeItemKey(item))}
               onEnabledChange={(enabled) => onUpdateProject(
                 setHostCompatibilityEnabled(project, runtimeItemKey(item), enabled),
+              )}
+              onVerifiedMemoryLimitsChange={(enabled) => onUpdateProject(
+                setVerifiedMemoryLimitEnabled(project, runtimeItemKey(item), enabled),
               )}
             />
           ),

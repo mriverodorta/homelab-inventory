@@ -125,6 +125,41 @@ describe('slot constraints', () => {
     ])
   })
 
+  it('does not create replaceable targets for fixed NAS hardware', () => {
+    const project = mergeInventoryWithProject(items, null)
+    project.items['nas:1'] = {
+      ...project.items['nas:1'],
+      fixedComponents: [{
+        id: 1,
+        componentType: 'cpu',
+        disposition: 'soldered',
+        label: 'Soldered processor',
+        item: { type: 'cpu', name: 'Embedded CPU' },
+      }],
+      compatibility: { host: { memory: { slots: 0 } } },
+    }
+
+    expect(validateAssignment(project, 'nas:1', 'cpu:1')).toMatchObject({ ok: false })
+    expect(validateAssignment(project, 'nas:1', 'ram:1')).toMatchObject({ ok: false })
+  })
+
+  it('rejects assigned adapters for fixed external NAS power topology', () => {
+    const project = mergeInventoryWithProject(items, null)
+    project.items['nas:1'] = {
+      ...project.items['nas:1'],
+      specs: { powerConfiguration: 'external-adapter' },
+      compatibility: { host: { power: {
+        configuration: 'external-adapter',
+        adapterDisposition: 'fixed',
+      } } },
+    }
+
+    expect(validateAssignment(project, 'nas:1', 'powerAdapter:1')).toEqual({
+      ok: false,
+      message: 'This NAS includes a fixed OEM power adapter and does not accept an assigned adapter.',
+    })
+  })
+
   it('rejects assigning an archived component', () => {
     const project = mergeInventoryWithProject([
       ...items,

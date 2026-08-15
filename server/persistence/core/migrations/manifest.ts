@@ -75,4 +75,9 @@ export const CORE_MIGRATIONS: readonly CoreMigration[] = [
     file: '0013_automatic_registry_updates.sql',
     sha256: '51894551751fd3854be2cf5fac10081a408953d9c6f956eee60f0eb4a8e7f076',
   },
+  {
+    id: '0015_nas_contract_v10',
+    file: '0014_nas_contract_v10.sql',
+    sha256: 'a32dc9cbe731d7249b516ff24c6df9666c2ff66530375153f4d0672efb44735f',
+  },
 ]

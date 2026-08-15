@@ -1,5 +1,5 @@
 export const APPLICATION_OEM_CONTRACT_VERSION = 6
-export const APPLICATION_CATALOG_CONTRACT_VERSION = 9
+export const APPLICATION_CATALOG_CONTRACT_VERSION = 10
 
 export function applicationHealth({ mode, schemaVersion = null, persistence = null }) {
   const persistenceHealthy = persistence === null || persistence.ok === true

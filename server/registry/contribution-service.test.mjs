@@ -458,6 +458,50 @@ describe('contribution discovery', () => {
     ])
   })
 
+  it('projects NAS contributions with v10 fixed topology and adapter ownership', async () => {
+    const store = fixture({
+      id: 1,
+      type: 'nas',
+      name: 'Example NAS',
+      manufacturer: 'Example',
+      model: 'NAS-10',
+      specs: { topologyCompleteness: 'complete', powerConfiguration: 'external-adapter' },
+      fixedComponents: [{
+        id: 1,
+        componentType: 'cpu',
+        disposition: 'soldered',
+        label: 'Soldered processor',
+        item: { type: 'cpu', name: 'Example CPU', model: 'E-1' },
+      }],
+      compatibility: { host: {
+        storageSlots: [], expansionSlots: [], optionalModuleSlots: [],
+        power: {
+          configuration: 'external-adapter',
+          adapterDisposition: 'fixed',
+          connector: 'barrel',
+          supportedWattagesWatts: [65],
+          supportedPowerMw: [65_000],
+        },
+        topologyCompleteness: 'complete',
+      } },
+    })
+
+    expect(await discoverContributionCandidates(store)).toMatchObject({ queued: 1 })
+    expect(store.getRegistryState().contributionOutbox).toEqual([
+      expect.objectContaining({
+        fingerprintVersion: 10,
+        payload: expect.objectContaining({
+          fixedComponents: [expect.objectContaining({ id: 1, disposition: 'soldered' })],
+          compatibility: expect.objectContaining({ host: expect.objectContaining({
+            power: expect.objectContaining({ adapterDisposition: 'fixed' }),
+          }) }),
+        }),
+      }),
+    ])
+    expect(store.getRegistryState().contributionOutbox[0].payload.compatibility.host.power)
+      .not.toHaveProperty('supportedWattagesWatts')
+  })
+
   it('keeps generic RAM without an exact part number local', async () => {
     const store = fixture({
       id: 1,

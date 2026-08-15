@@ -1,4 +1,5 @@
 import { Layers3 } from 'lucide-react'
+import { FixedComponentCard } from '@/components/fixed-component-card'
 import { InspectorSection } from '@/components/inspector/inspector-section'
 import { StatusBadge } from '@/components/inspector/inspector-status'
 import { slotTone } from '@/components/inspector/slots/equipment-slot-model'
@@ -101,6 +102,19 @@ export function EquipmentSlotsTab({
       badge={<StatusBadge>{slotStatus.length}</StatusBadge>}
     >
       <div className="grid gap-2">
+        {host.fixedComponents?.length ? (
+          <div className="grid gap-2 rounded-lg border border-[#d6ccbd] bg-[#f8f3eb] p-3">
+            <div className="flex items-center justify-between gap-2">
+              <div className={cn(labelClass, 'text-[10px]')}>Fixed hardware</div>
+              <StatusBadge tone="neutral">{host.fixedComponents.length} locked</StatusBadge>
+            </div>
+            <div className="grid gap-2">
+              {host.fixedComponents.map((component) => (
+                <FixedComponentCard key={component.id} component={component} />
+              ))}
+            </div>
+          </div>
+        ) : null}
         {slotStatus.map((slot) => {
           const matches = assignments.filter((assignment) => assignment.type === slot.type)
 

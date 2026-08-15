@@ -81,8 +81,9 @@ const groupedCompatibilityResourceTypes = new Set([
 const expansionInterfaceFamilies = new Set(['pcie', 'm2-ae', 'usb', 'onboard'])
 const cardHeights = new Set(['full-height', 'low-profile'])
 const eccSupportValues = new Set(['supported', 'unsupported', 'conditional', 'unknown'])
-const memoryFormFactors = new Set(['DIMM', 'SO-DIMM'])
-const memoryModuleTypes = new Set(['UDIMM', 'RDIMM', 'LRDIMM'])
+const memoryFormFactors = new Set(['DIMM', 'SO-DIMM', 'Onboard'])
+const memoryModuleTypes = new Set(['UDIMM', 'RDIMM', 'LRDIMM', 'Onboard'])
+const adapterDispositions = new Set(['fixed', 'replaceable'])
 const powerRedundancyValues = new Set(['none', 'optional', 'required', 'supported'])
 const psuTypes = new Set(['fixed', 'cabled', 'hot-plug'])
 const constraintKinds = new Set(['mutually-exclusive'])
@@ -209,6 +210,13 @@ function assertOptionalPositiveInteger(value, fieldPath) {
   if (value === undefined) return
   if (!Number.isInteger(value) || value < 1) {
     throw new Error(`${fieldPath} must be a positive integer.`)
+  }
+}
+
+function assertOptionalNonNegativeInteger(value, fieldPath) {
+  if (value === undefined) return
+  if (!Number.isSafeInteger(value) || value < 0) {
+    throw new Error(`${fieldPath} must be a non-negative safe integer.`)
   }
 }
 
@@ -474,12 +482,27 @@ function assertInventoryCompatibility(itemId, compatibility, options = {}) {
     if (host.memory !== undefined) {
       assertOptionalObject(host.memory, `${root}.host.memory`)
       assertOptionalStringArray(host.memory.generations, `${root}.host.memory.generations`)
-      assertOptionalPositiveInteger(host.memory.slots, `${root}.host.memory.slots`)
+      assertOptionalNonNegativeInteger(host.memory.slots, `${root}.host.memory.slots`)
       assertOptionalNonNegativeNumber(host.memory.maxCapacityGb, `${root}.host.memory.maxCapacityGb`)
       assertOptionalNonNegativeNumber(
         host.memory.maxModuleCapacityGb,
         `${root}.host.memory.maxModuleCapacityGb`,
       )
+      for (const field of [
+        'oemMaxCapacityMib',
+        'oemMaxModuleCapacityMib',
+        'verifiedMaxCapacityMib',
+        'verifiedMaxModuleCapacityMib',
+      ]) {
+        assertOptionalNonNegativeInteger(host.memory[field], `${root}.host.memory.${field}`)
+      }
+      if (host.memory.slots === 0 && (
+        host.memory.maxModuleCapacityGb !== undefined
+        || host.memory.oemMaxModuleCapacityMib !== undefined
+        || host.memory.verifiedMaxModuleCapacityMib !== undefined
+      )) {
+        throw new Error(`${root}.host.memory cannot declare module capacity limits with zero replaceable slots.`)
+      }
       assertOptionalNonNegativeNumber(host.memory.maxSpeedMt, `${root}.host.memory.maxSpeedMt`)
       assertOptionalEnum(host.memory.eccSupport, eccSupportValues, `${root}.host.memory.eccSupport`)
       assertOptionalPositiveInteger(host.memory.slotsPerCpu, `${root}.host.memory.slotsPerCpu`)
@@ -542,6 +565,21 @@ function assertInventoryCompatibility(itemId, compatibility, options = {}) {
     if (host.power !== undefined) {
       const path = `${root}.host.power`
       assertOptionalObject(host.power, path)
+      assertOptionalEnum(host.power.adapterDisposition, adapterDispositions, `${path}.adapterDisposition`)
+      if (host.power.supportedPowerMw !== undefined) {
+        if (!Array.isArray(host.power.supportedPowerMw)) {
+          throw new Error(`${path}.supportedPowerMw must be an array.`)
+        }
+        host.power.supportedPowerMw.forEach((value, index) => (
+          assertOptionalPositiveInteger(value, `${path}.supportedPowerMw[${index}]`)
+        ))
+      }
+      if (host.power.configuration === 'external-adapter' && !adapterDispositions.has(host.power.adapterDisposition)) {
+        throw new Error(`${path}.adapterDisposition is required for an external adapter.`)
+      }
+      if (host.power.configuration === 'internal-psu' && host.power.adapterDisposition !== undefined) {
+        throw new Error(`${path}.adapterDisposition must be omitted for an internal PSU.`)
+      }
       assertOptionalEnum(host.power.redundancy, powerRedundancyValues, `${path}.redundancy`)
       assertOptionalNonNegativeNumber(host.power.maxGraphicsPowerWatts, `${path}.maxGraphicsPowerWatts`)
       assertOptionalPositiveInteger(host.power.psuBayCount, `${path}.psuBayCount`)
@@ -872,6 +910,40 @@ function assertInventoryItem(itemId, item, expectedType, options = {}) {
     if (item.aliases.length > 64) throw new Error(`Inventory item ${itemId}.aliases cannot exceed 64 entries.`)
   }
 
+  if (item.fixedComponents !== undefined) {
+    if (!Array.isArray(item.fixedComponents)) {
+      throw new Error(`Inventory item ${itemId}.fixedComponents must be an array.`)
+    }
+    const fixedIds = new Set()
+    item.fixedComponents.forEach((component, index) => {
+      const path = `Inventory item ${itemId}.fixedComponents[${index}]`
+      if (!component || typeof component !== 'object' || Array.isArray(component)) {
+        throw new Error(`${path} must be an object.`)
+      }
+      assertRelationalId(component.id, `${path}.id`)
+      if (fixedIds.has(component.id)) throw new Error(`${path}.id must be unique within the host.`)
+      fixedIds.add(component.id)
+      assertOptionalEnum(component.disposition, new Set(['fixed', 'soldered']), `${path}.disposition`)
+      if (!component.disposition) throw new Error(`${path}.disposition is required.`)
+      assertOptionalString(component.componentType, `${path}.componentType`)
+      assertOptionalString(component.label, `${path}.label`)
+      if (!component.componentType || !component.label) {
+        throw new Error(`${path} requires componentType and label.`)
+      }
+      if (!component.item || typeof component.item !== 'object' || Array.isArray(component.item)) {
+        throw new Error(`${path}.item must be an object.`)
+      }
+      if (!inventoryTypes.has(component.item.type) || component.item.type !== component.componentType) {
+        throw new Error(`${path}.item.type must match componentType.`)
+      }
+      if (typeof component.item.name !== 'string' || !component.item.name.trim()) {
+        throw new Error(`${path}.item.name is required.`)
+      }
+      if (component.templateKey !== undefined) assertOptionalString(component.templateKey, `${path}.templateKey`)
+      assertOptionalPositiveInteger(component.templateRevision, `${path}.templateRevision`)
+    })
+  }
+
   if (
     !options.allowLegacyIds
     && type === 'nas'
@@ -1038,21 +1110,21 @@ export function assertProjectStoreShape(store, options = {}) {
         'compatibilityPolicy.disabledHostIds',
       )
     } else {
-      const disabledHosts = store.compatibilityPolicy.disabledHosts ?? []
-      if (!Array.isArray(disabledHosts)) {
-        throw new Error('compatibilityPolicy.disabledHosts must be an array.')
+      for (const field of ['disabledHosts', 'verifiedMemoryHosts']) {
+        const hosts = store.compatibilityPolicy[field] ?? []
+        if (!Array.isArray(hosts)) throw new Error(`compatibilityPolicy.${field} must be an array.`)
+        const seenHosts = new Set()
+        hosts.forEach((host, index) => {
+          const path = `compatibilityPolicy.${field}[${index}]`
+          if (!host || !inventoryTypes.has(host.hostType)) {
+            throw new Error(`${path}.hostType has an unsupported value.`)
+          }
+          assertRelationalId(host.hostId, `${path}.hostId`)
+          const key = `${host.hostType}:${host.hostId}`
+          if (seenHosts.has(key)) throw new Error(`${path} duplicates host ${key}.`)
+          seenHosts.add(key)
+        })
       }
-      const seenHosts = new Set()
-      disabledHosts.forEach((host, index) => {
-        const path = `compatibilityPolicy.disabledHosts[${index}]`
-        if (!host || !inventoryTypes.has(host.hostType)) {
-          throw new Error(`${path}.hostType has an unsupported value.`)
-        }
-        assertRelationalId(host.hostId, `${path}.hostId`)
-        const key = `${host.hostType}:${host.hostId}`
-        if (seenHosts.has(key)) throw new Error(`${path} duplicates host ${key}.`)
-        seenHosts.add(key)
-      })
     }
     assertUniqueStringArray(
       store.compatibilityPolicy.ignoredWarningIds,
@@ -1325,6 +1397,14 @@ function assertProjectPlacementReferences(project) {
     if (!project.items?.[reference]) {
       throw new Error(
         `Project compatibilityPolicy.disabledHosts[${index}] references missing host ${reference}.`,
+      )
+    }
+  }
+  for (const [index, host] of (project.compatibilityPolicy?.verifiedMemoryHosts ?? []).entries()) {
+    const reference = `${host.hostType}:${host.hostId}`
+    if (!project.items?.[reference]) {
+      throw new Error(
+        `Project compatibilityPolicy.verifiedMemoryHosts[${index}] references missing host ${reference}.`,
       )
     }
   }

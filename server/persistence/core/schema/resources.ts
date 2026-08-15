@@ -162,6 +162,10 @@ export const hostMemoryProfiles = sqliteTable('host_memory_profiles', {
   slotsPerCpu: integer('slots_per_cpu'),
   maxCapacityMib: integer('max_capacity_mib'),
   maxModuleCapacityMib: integer('max_module_capacity_mib'),
+  oemMaxCapacityMib: integer('oem_max_capacity_mib'),
+  oemMaxModuleCapacityMib: integer('oem_max_module_capacity_mib'),
+  verifiedMaxCapacityMib: integer('verified_max_capacity_mib'),
+  verifiedMaxModuleCapacityMib: integer('verified_max_module_capacity_mib'),
   maxSpeedMtps: integer('max_speed_mtps'),
   eccSupport: text('ecc_support'),
 }, (table) => [
@@ -171,6 +175,20 @@ export const hostMemoryProfiles = sqliteTable('host_memory_profiles', {
   check('host_memory_profiles_capacity_check', sql`${table.maxCapacityMib} IS NULL OR ${table.maxCapacityMib} >= 0`),
   check('host_memory_profiles_module_capacity_check', sql`
     ${table.maxModuleCapacityMib} IS NULL OR ${table.maxModuleCapacityMib} >= 0
+  `),
+  check('host_memory_profiles_oem_capacity_check', sql`
+    (${table.oemMaxCapacityMib} IS NULL OR ${table.oemMaxCapacityMib} >= 0)
+    AND (${table.oemMaxModuleCapacityMib} IS NULL OR ${table.oemMaxModuleCapacityMib} >= 0)
+  `),
+  check('host_memory_profiles_verified_capacity_check', sql`
+    (${table.verifiedMaxCapacityMib} IS NULL OR ${table.verifiedMaxCapacityMib} >= 0)
+    AND (${table.verifiedMaxModuleCapacityMib} IS NULL OR ${table.verifiedMaxModuleCapacityMib} >= 0)
+  `),
+  check('host_memory_profiles_zero_slot_module_capacity_check', sql`
+    ${table.slotCount} IS NULL OR ${table.slotCount} > 0
+    OR (${table.maxModuleCapacityMib} IS NULL
+      AND ${table.oemMaxModuleCapacityMib} IS NULL
+      AND ${table.verifiedMaxModuleCapacityMib} IS NULL)
   `),
   check('host_memory_profiles_speed_check', sql`${table.maxSpeedMtps} IS NULL OR ${table.maxSpeedMtps} >= 0`),
   check('host_memory_profiles_ecc_check', sql`
@@ -427,6 +445,7 @@ export const hostPowerProfiles = sqliteTable('host_power_profiles', {
     { onDelete: 'cascade' },
   ),
   configuration: text('configuration'),
+  adapterDisposition: text('adapter_disposition'),
   connector: text('connector'),
   adapterRequired: integer('adapter_required', { mode: 'boolean' }),
   adapterType: text('adapter_type'),
@@ -437,6 +456,14 @@ export const hostPowerProfiles = sqliteTable('host_power_profiles', {
   mixedPsuAllowed: integer('mixed_psu_allowed', { mode: 'boolean' }),
 }, (table) => [
   uniqueIndex('host_power_profiles_host_profile_unique').on(table.hostProfileId),
+  check('host_power_profiles_configuration_check', sql`
+    ${table.configuration} IS NULL OR ${table.configuration} IN ('internal-psu', 'external-adapter')
+  `),
+  check('host_power_profiles_adapter_disposition_check', sql`
+    (${table.configuration} = 'external-adapter' AND ${table.adapterDisposition} IN ('fixed', 'replaceable'))
+    OR (${table.configuration} IS NULL AND ${table.adapterDisposition} IS NULL)
+    OR (${table.configuration} = 'internal-psu' AND ${table.adapterDisposition} IS NULL)
+  `),
   check('host_power_profiles_adapter_required_check', sql`${table.adapterRequired} IS NULL OR ${table.adapterRequired} IN (0, 1)`),
   check('host_power_profiles_redundancy_check', sql`
     ${table.redundancy} IS NULL OR ${table.redundancy} IN ('none', 'optional', 'required', 'supported')

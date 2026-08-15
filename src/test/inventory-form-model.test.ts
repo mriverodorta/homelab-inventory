@@ -49,6 +49,13 @@ function ramV8FixtureItem(): CatalogTemplateItem {
   return fixture.item
 }
 
+function nasV10FixtureItem(): CatalogTemplateItem {
+  const fixture = JSON.parse(fs.readFileSync(path.resolve(
+    'packages/catalog-protocol/test/fixtures/server-specs-inventory-nas-v10.json',
+  ), 'utf8')) as { item: CatalogTemplateItem }
+  return fixture.item
+}
+
 function fixtureFor(type: InventoryType): InventoryItem {
   const common = {
     id: 42,
@@ -332,6 +339,19 @@ describe('inventory form model', () => {
       expect(output.hardwareClass).toBe(catalogItem.type)
       expect(output.usageRole).toBe('server')
     }
+  })
+
+  it('round trips the complete NAS v10 fixture through the shared add/edit model', () => {
+    const catalogItem = nasV10FixtureItem()
+    const localItem = { ...structuredClone(catalogItem), id: 1 } as InventoryItem
+    const values = inventoryItemToFormValues(localItem)
+    const output = inventoryFormValuesToInput(values)
+
+    expect(values.hostMemorySlots).toBe('2')
+    expect(values.hostMemoryOemMaxCapacityMib).toBe('6144')
+    expect(values.hostMemoryVerifiedMaxCapacityMib).toBe('16384')
+    expect(values.hostPowerAdapterDisposition).toBe('fixed')
+    expect(output).toEqual(catalogItem)
   })
 
   it('round trips CPU and expansion requirements and omits cleared values', () => {

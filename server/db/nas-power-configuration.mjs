@@ -1,6 +1,9 @@
 import {
   isNasPowerConfiguration,
+  nasOwnsPowerEndpoint,
+  nasPowerTopology,
   withCanonicalPowerPorts,
+  withNasPowerConfiguration,
 } from '../../shared/power-ports.mjs'
 import { InventoryLifecycleError } from './inventory-lifecycle.mjs'
 
@@ -72,7 +75,7 @@ function assignedAdapter(inventory, project, nasId) {
 }
 
 function activeInput(inventory, project, nas) {
-  if (nas.specs?.powerConfiguration === 'internal-psu') {
+  if (nasOwnsPowerEndpoint(nas)) {
     const port = nas.ports?.find((candidate) => (
       candidate.key === 'ac-input' && candidate.type === 'ac-input'
     ))
@@ -95,7 +98,8 @@ function activeInput(inventory, project, nas) {
 export function inspectNasPowerConfigurationChange(context, ref, rawTarget) {
   const target = requireTarget(rawTarget)
   const { record: nas } = requireNas(context.inventory, ref)
-  const from = nas.specs?.powerConfiguration
+  const topology = nasPowerTopology(nas)
+  const from = topology.configuration
 
   if (!isNasPowerConfiguration(from)) {
     throw new InventoryLifecycleError('The NAS does not have a valid current power configuration.', {
@@ -110,7 +114,7 @@ export function inspectNasPowerConfigurationChange(context, ref, rawTarget) {
         endpointMatches(connection.from, input) || endpointMatches(connection.to, input)
       ))
     : []
-  const adapter = from === 'external-adapter'
+  const adapter = from === 'external-adapter' && topology.adapterDisposition === 'replaceable'
     ? assignedAdapter(context.inventory, context.project, nas.id)
     : null
   const releasedAdapter = adapter
@@ -152,14 +156,10 @@ export function applyNasPowerConfigurationChange(draft, ref, rawTarget) {
   }
 
   const { index, record } = requireNas(draft.inventory, ref)
-  const migrated = withCanonicalPowerPorts({
+  const migrated = withCanonicalPowerPorts(withNasPowerConfiguration({
     ...record,
     type: 'nas',
-    specs: {
-      ...(record.specs ?? {}),
-      powerConfiguration: target,
-    },
-  })
+  }, target))
   delete migrated.type
   delete migrated.key
   draft.inventory.nas[index] = migrated

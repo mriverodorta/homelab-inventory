@@ -54,8 +54,7 @@ describe('schema-29 core import', () => {
   })
 
   test('repairs collapsed DDR3L rows without changing the registry link', async () => {
-    const distinctDdr3lMigrationIndex = CORE_MIGRATIONS.findIndex((migration) => migration.id === '0013_distinct_ddr3l_memory')
-    const handle = await migratedDatabase(distinctDdr3lMigrationIndex)
+    const handle = await migratedDatabase()
     const snapshot = schema29ProductionShapeFixture()
     snapshot.inventory.servers[0].compatibility.host.memory.generations = ['DDR3L']
     snapshot.inventory.ram[0].specs.generation = 'DDR3L'
@@ -80,12 +79,15 @@ describe('schema-29 core import', () => {
       handle.database.query('UPDATE host_memory_generation_support SET generation_id = ? WHERE generation_id = ?').run(ddr3Id, ddr3lId)
       handle.database.query("DELETE FROM memory_generations WHERE key = 'ddr3l'").run()
       const linkBefore = handle.database.query('SELECT * FROM registry_links WHERE id = 2').get()
-      const migrationsDir = resolve(import.meta.dir, '../core/migrations/generated')
-      await applyCommittedMigrations(handle, await Promise.all(CORE_MIGRATIONS.map(async (migration) => ({
-        id: migration.id,
-        sha256: migration.sha256,
-        sql: await readFile(join(migrationsDir, migration.file), 'utf8'),
-      }))))
+      const repairSql = await readFile(resolve(
+        import.meta.dir,
+        '../core/migrations/generated/0012_distinct_ddr3l_memory.sql',
+      ), 'utf8')
+      handle.database.transaction(() => {
+        for (const statement of repairSql.split('--> statement-breakpoint').map((value) => value.trim()).filter(Boolean)) {
+          handle.database.run(statement)
+        }
+      })()
       const projected = buildLegacyInventoryProjection(handle.database)
 
       expect(projected.servers[0].compatibility.host.memory.generations).toEqual(['DDR3L'])

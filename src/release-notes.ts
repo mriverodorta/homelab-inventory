@@ -217,9 +217,17 @@ const RELEASE_0_12_9_DETAILS: UnreleasedReleaseNotes = {
 }
 
 export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
-  highlights: [],
-  fixes: [],
-  notes: [],
+  highlights: [
+    'Catalog contract v10 imports complete NAS topology, including fixed or soldered hardware, replaceable storage resources, canonical physical measurements, and explicit power ownership.',
+    'NAS canvas cards and inspectors now distinguish locked built-in components from user-replaceable slots while preserving the familiar CPU, memory, storage, and power layout.',
+  ],
+  fixes: [
+    'Fixed external power adapters expose the NAS power endpoint directly, while replaceable adapters continue using independent inventory assignments and their own power connector.',
+    'NAS memory compatibility now separates OEM-supported capacity from independently verified capacity, with verified limits requiring an explicit project policy opt-in.',
+  ],
+  notes: [
+    'Existing NAS adapter assignments remain replaceable during migration. Catalog updates that change fixed topology or power ownership require review and cannot orphan assigned hardware.',
+  ],
 }
 
 const RELEASE_0_11_2_DETAILS: UnreleasedReleaseNotes = {

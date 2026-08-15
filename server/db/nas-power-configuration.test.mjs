@@ -101,6 +101,43 @@ describe('NAS power configuration transitions', () => {
     expect(draft.inventory.nas[0].ports).toEqual([
       { id: 1, kind: 'server-port', type: 'rj45', slotNumber: 1 },
     ])
+    expect(draft.inventory.nas[0].compatibility.host.power).toEqual({
+      configuration: 'external-adapter',
+      adapterDisposition: 'replaceable',
+    })
+  })
+
+  it('synchronizes fixed-adapter topology when changing to an internal PSU', () => {
+    const draft = context()
+    draft.inventory.nas[0] = persisted({
+      ...draft.inventory.nas[0],
+      type: 'nas',
+      compatibility: { host: { power: {
+        configuration: 'external-adapter',
+        adapterDisposition: 'fixed',
+      } } },
+    })
+    draft.project.assignments = []
+    const input = draft.inventory.nas[0].ports.find((port) => port.key === 'ac-input')
+    draft.project.connections = [{
+      id: 1,
+      from: { itemType: 'ups', itemId: 1, portId: 1 },
+      to: { itemType: 'nas', itemId: 1, portId: input.id },
+      type: 'power',
+      createdAt: CREATED_AT,
+    }]
+
+    const impact = inspectNasPowerConfigurationChange(
+      draft,
+      { type: 'nas', id: 1 },
+      'internal-psu',
+    )
+    expect(impact.requiresConfirmation).toBe(true)
+    expect(impact.connectionIds).toEqual([1])
+
+    applyNasPowerConfigurationChange(draft, { type: 'nas', id: 1 }, 'internal-psu')
+    expect(draft.project.connections).toHaveLength(0)
+    expect(draft.inventory.nas[0].compatibility.host.power).toEqual({ configuration: 'internal-psu' })
   })
 
   it('applies dependency-free changes immediately and rejects invalid targets', () => {

@@ -104,7 +104,26 @@ function subtypeSpecs(database: Database, item: Row) {
       const row = one(database, `SELECT s.*, c.label AS chassis FROM servers s LEFT JOIN chassis_types c ON c.id = s.chassis_type_id WHERE s.id = ?`, id)!
       return { fields: defined({ hardwareClass: row.hardware_class, usageRole: row.usage_role }), specs: defined({ formFactor: row.chassis ?? row.form_factor_text, networkSlot: row.network_slot, wireless: row.wireless }) }
     }
-    case 'nas': { const row = one(database, 'SELECT * FROM nas_systems WHERE id = ?', id)!; return { specs: defined({ driveBays: row.drive_bay_count, m2Slots: row.m2_slot_count, powerConfiguration: row.power_configuration }) } }
+    case 'nas': {
+      const row = one(database, 'SELECT * FROM nas_systems WHERE id = ?', id)!
+      return { specs: defined({
+        driveBays: row.drive_bay_count,
+        m2Slots: row.m2_slot_count,
+        powerConfiguration: row.power_configuration,
+        formFactor: row.form_factor_text,
+        platformFamily: row.platform_family,
+        variantKey: row.variant_key,
+        hardwareRevision: row.hardware_revision,
+        boardRevision: row.board_revision,
+        releaseDate: row.release_date_text,
+        discontinued: row.discontinued == null ? undefined : Boolean(row.discontinued),
+        widthMm: row.width_mm,
+        heightMm: row.height_mm,
+        depthMm: row.depth_mm,
+        massGrams: row.mass_grams,
+        rackUnits: row.rack_units,
+      }) }
+    }
     case 'pcBuild': { const row = one(database, 'SELECT * FROM pc_builds WHERE id = ?', id)!; return { fields: defined({ usageRole: row.usage_role }), specs: defined({ operatingSystem: row.operating_system }) } }
     case 'cpu': { const row = one(database, 'SELECT * FROM cpus WHERE id = ?', id)!; return { specs: defined({ cores: row.core_count, threads: row.thread_count, baseClockGhz: row.base_clock_mhz == null ? undefined : row.base_clock_mhz / 1000, boostClockGhz: row.boost_clock_mhz == null ? undefined : row.boost_clock_mhz / 1000 }) } }
     case 'ram': { const row = one(database, 'SELECT * FROM memory_modules WHERE id = ?', id)!; return { specs: defined({ capacityGb: row.capacity_mib == null ? undefined : row.capacity_mib / 1024, generation: vocabulary(database, 'memory_generations', row.memory_generation_id), speedMt: row.speed_mtps, formFactor: row.form_factor, moduleType: vocabulary(database, 'memory_module_types', row.module_type_id), ecc: row.ecc == null ? undefined : Boolean(row.ecc), rank: row.rank, voltageVolts: row.voltage_mv == null ? undefined : row.voltage_mv / 1000 }) } }
@@ -145,6 +164,10 @@ function hostCompatibility(database: Database, itemId: number) {
     slotsPerCpu: memory.slots_per_cpu,
     maxCapacityGb: memory.max_capacity_mib == null ? undefined : memory.max_capacity_mib / 1024,
     maxModuleCapacityGb: memory.max_module_capacity_mib == null ? undefined : memory.max_module_capacity_mib / 1024,
+    oemMaxCapacityMib: memory.oem_max_capacity_mib,
+    oemMaxModuleCapacityMib: memory.oem_max_module_capacity_mib,
+    verifiedMaxCapacityMib: memory.verified_max_capacity_mib,
+    verifiedMaxModuleCapacityMib: memory.verified_max_module_capacity_mib,
     maxSpeedMt: memory.max_speed_mtps,
     eccSupport: memory.ecc_support,
     generations: all(database, 'SELECT v.label FROM host_memory_generation_support s JOIN memory_generations v ON v.id = s.generation_id WHERE s.memory_profile_id = ? ORDER BY s.id', memory.id).map((row) => row.label),
@@ -217,7 +240,9 @@ function hostCompatibility(database: Database, itemId: number) {
   const power = one(database, 'SELECT * FROM host_power_profiles WHERE host_profile_id = ?', profile.id)
   if (power) host.power = defined({
     configuration: power.configuration,
+    adapterDisposition: power.adapter_disposition,
     connector: power.connector,
+    supportedPowerMw: all(database, 'SELECT power_mw FROM host_power_supported_wattages WHERE power_profile_id = ? ORDER BY power_mw', power.id).map((row) => row.power_mw),
     supportedWattagesWatts: all(database, 'SELECT power_mw FROM host_power_supported_wattages WHERE power_profile_id = ? ORDER BY power_mw', power.id).map((row) => row.power_mw / 1000),
     adapterRequired: power.adapter_required == null ? undefined : Boolean(power.adapter_required),
     adapterType: power.adapter_type,
@@ -258,6 +283,20 @@ function inventoryItem(database: Database, row: Row): InventoryItem {
     ?? (extension.compatibilityRequirements ? { requirements: extension.compatibilityRequirements } : undefined)
   const compatibility = mergeRecords(legacyCompatibility, hostCompatibility(database, row.id))
   const ports = itemPorts(database, row.id, row.type_key)
+  const fixedComponents = all(database, `
+    SELECT * FROM host_fixed_components
+    WHERE host_item_id = ?
+    ORDER BY catalog_component_id
+  `, row.id).map((component) => defined({
+    ...parse<Row>(component.extensions_json, {}),
+    id: component.catalog_component_id,
+    componentType: component.component_type,
+    disposition: component.disposition,
+    label: component.label,
+    templateKey: component.template_key,
+    templateRevision: component.template_revision,
+    item: parse<Row>(component.item_json, {}),
+  }))
   return defined({
     ...(extension.legacyFields ?? {}),
     id: row.legacy_id,
@@ -277,6 +316,7 @@ function inventoryItem(database: Database, row: Row): InventoryItem {
     specs: extension.legacySpecs ?? (Object.keys(subtype.specs ?? {}).length ? subtype.specs : undefined),
     properties: Object.keys(properties).length ? properties : undefined,
     ports: ports.length ? ports : undefined,
+    fixedComponents: fixedComponents.length ? fixedComponents : undefined,
     smart,
     compatibility,
     notes: row.notes,

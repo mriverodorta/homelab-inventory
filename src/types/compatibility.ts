@@ -17,8 +17,8 @@ export type ExpansionInterfaceFamily = 'pcie' | 'm2-ae' | 'usb' | 'onboard'
 export type CardHeight = 'full-height' | 'low-profile'
 export type TopologyCompleteness = 'complete' | 'partial' | 'conflicting'
 export type EccSupport = 'supported' | 'unsupported' | 'conditional' | 'unknown'
-export type MemoryFormFactor = 'DIMM' | 'SO-DIMM'
-export type MemoryModuleType = 'UDIMM' | 'RDIMM' | 'LRDIMM'
+export type MemoryFormFactor = 'DIMM' | 'SO-DIMM' | 'Onboard'
+export type MemoryModuleType = 'UDIMM' | 'RDIMM' | 'LRDIMM' | 'Onboard'
 export type PowerRedundancy = 'none' | 'optional' | 'required' | 'supported'
 export type PsuType = 'fixed' | 'cabled' | 'hot-plug'
 
@@ -121,8 +121,10 @@ export type ManagementControllerCompatibility = {
 
 export type HostPowerCompatibility = {
   configuration?: string
+  adapterDisposition?: 'fixed' | 'replaceable'
   connector?: string
   supportedWattagesWatts?: number[]
+  supportedPowerMw?: number[]
   adapterRequired?: boolean
   adapterType?: string
   redundancy?: PowerRedundancy
@@ -168,6 +170,10 @@ export type HostCompatibility = {
     slots?: number
     maxCapacityGb?: number
     maxModuleCapacityGb?: number
+    oemMaxCapacityMib?: number
+    oemMaxModuleCapacityMib?: number
+    verifiedMaxCapacityMib?: number
+    verifiedMaxModuleCapacityMib?: number
     maxSpeedMt?: number
     eccSupport?: EccSupport
     slotsPerCpu?: number

@@ -14,6 +14,7 @@ import {
 } from '@/components/inventory-form/compatibility-fields'
 import { Checkbox } from '@/components/ui/checkbox'
 import {
+  isVerifiedMemoryLimitEnabled,
   normalizeHostCapabilities,
   planHostAllocations,
   type ProjectCompatibilityResult,
@@ -203,6 +204,7 @@ export function HostCompatibilityTab({
   host,
   enabled,
   onEnabledChange,
+  onVerifiedMemoryLimitsChange,
   values,
   errors,
   onChange,
@@ -212,6 +214,7 @@ export function HostCompatibilityTab({
   host: InventoryItem
   enabled: boolean
   onEnabledChange: (enabled: boolean) => void
+  onVerifiedMemoryLimitsChange?: (enabled: boolean) => void
 }) {
   const evaluationProject = normalizeCompatibilityViewProject(project, [host])
   const hostReference = runtimeItemKey(host)
@@ -238,6 +241,11 @@ export function HostCompatibilityTab({
     .reduce((total, group) => total + Math.max(0, group.count), 0)
   const expansionTotal = (capabilities.expansionSlots ?? [])
     .reduce((total, group) => total + Math.max(0, group.count), 0)
+  const verifiedMemoryEnabled = isVerifiedMemoryLimitEnabled(project, hostReference)
+  const oemMemoryMib = capabilities.memory?.oemMaxCapacityMib
+  const verifiedMemoryMib = capabilities.memory?.verifiedMaxCapacityMib
+  const hasExtendedMemoryLimit = typeof verifiedMemoryMib === 'number'
+    && verifiedMemoryMib > (oemMemoryMib ?? 0)
 
   return (
     <div className="space-y-4">
@@ -265,6 +273,26 @@ export function HostCompatibilityTab({
           </span>
         </div>
       </section>
+
+      {hasExtendedMemoryLimit && onVerifiedMemoryLimitsChange ? (
+        <section className="rounded-md border border-[#ded8ce] bg-[#fffdfa] px-3 py-3">
+          <div className="flex items-start gap-3">
+            <Checkbox
+              id="host-verified-memory-limit"
+              checked={verifiedMemoryEnabled}
+              onCheckedChange={(checked) => onVerifiedMemoryLimitsChange(checked === true)}
+            />
+            <span className="min-w-0">
+              <label htmlFor="host-verified-memory-limit" className="block cursor-pointer text-sm font-black text-[#20242c]">
+                Allow independently verified memory limit
+              </label>
+              <span className="mt-0.5 block text-xs font-semibold leading-5 text-[#75695d]">
+                OEM limit: {((oemMemoryMib ?? 0) / 1024).toLocaleString()}GB. Verified working limit: {(verifiedMemoryMib / 1024).toLocaleString()}GB. This applies only to this host in this project.
+              </span>
+            </span>
+          </div>
+        </section>
+      ) : null}
 
       <CompatibilityFields
         values={values}
