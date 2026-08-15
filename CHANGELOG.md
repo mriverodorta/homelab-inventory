@@ -6,6 +6,8 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 
 ## Unreleased
 
+## [0.12.10] - 2026-08-15
+
 ### Added
 
 - Catalog contract v10 imports complete NAS topology with fixed or soldered components, relational replaceable storage resources, canonical dimensions and mass, lifecycle metadata, and explicit external-adapter ownership.

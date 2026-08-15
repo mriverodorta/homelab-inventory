@@ -216,7 +216,7 @@ const RELEASE_0_12_9_DETAILS: UnreleasedReleaseNotes = {
   ],
 }
 
-export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
+const RELEASE_0_12_10_DETAILS: UnreleasedReleaseNotes = {
   highlights: [
     'Catalog contract v10 imports complete NAS topology, including fixed or soldered hardware, replaceable storage resources, canonical physical measurements, and explicit power ownership.',
     'NAS canvas cards and inspectors now distinguish locked built-in components from user-replaceable slots while preserving the familiar CPU, memory, storage, and power layout.',
@@ -231,6 +231,12 @@ export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
   notes: [
     'Existing NAS adapter assignments remain replaceable during migration. Catalog updates that change fixed topology or power ownership require review and cannot orphan assigned hardware.',
   ],
+}
+
+export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
+  highlights: [],
+  fixes: [],
+  notes: [],
 }
 
 const RELEASE_0_11_2_DETAILS: UnreleasedReleaseNotes = {
@@ -760,9 +766,16 @@ const RELEASE_0_2_1_DETAILS: UnreleasedReleaseNotes = {
 
 export const RELEASE_NOTES: ReleaseNoteEntry[] = [
   {
+    version: '0.12.10',
+    date: '2026-08-15',
+    channel: 'latest',
+    title: 'Complete NAS catalog topology',
+    ...RELEASE_0_12_10_DETAILS,
+  },
+  {
     version: '0.12.9',
     date: '2026-08-14',
-    channel: 'latest',
+    channel: 'release',
     title: 'Automatic trusted catalog updates',
     ...RELEASE_0_12_9_DETAILS,
   },
