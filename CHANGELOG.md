@@ -6,6 +6,8 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 
 ## Unreleased
 
+## [0.12.13] - 2026-08-15
+
 ### Fixed
 
 - Blocked Registry updates now identify each changed field and impact, explain the exact blocking reason, and show the complete relationship migration before Resolve and apply is confirmed.

@@ -256,12 +256,18 @@ const RELEASE_0_12_12_DETAILS: UnreleasedReleaseNotes = {
   ],
 }
 
-export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
+const RELEASE_0_12_13_DETAILS: UnreleasedReleaseNotes = {
   highlights: [],
   fixes: [
     'Blocked Registry updates now name each changed field and impact, explain the exact blocking reason, and preview the complete relationship migration before Resolve and apply.',
     'Registry resource-key renames preserve assignments by resource type and numeric ID, while fixed-power transitions atomically move cables to the host endpoint and return obsolete adapters to inventory.',
   ],
+  notes: [],
+}
+
+export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
+  highlights: [],
+  fixes: [],
   notes: [],
 }
 
@@ -792,9 +798,16 @@ const RELEASE_0_2_1_DETAILS: UnreleasedReleaseNotes = {
 
 export const RELEASE_NOTES: ReleaseNoteEntry[] = [
   {
-    version: '0.12.12',
+    version: '0.12.13',
     date: '2026-08-15',
     channel: 'latest',
+    title: 'Resolve blocked Registry topology safely',
+    ...RELEASE_0_12_13_DETAILS,
+  },
+  {
+    version: '0.12.12',
+    date: '2026-08-15',
+    channel: 'release',
     title: 'Make Registry updates reliable at scale',
     ...RELEASE_0_12_12_DETAILS,
   },
