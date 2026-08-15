@@ -358,6 +358,7 @@ describe('registry routes', () => {
         run: { state: 'completed', catalogRevision: 2 },
       },
       affectedProjectIds: [1],
+      affectedProjectRevisions: { 1: 13 },
       affectedLinkIds: [7],
     }
     const { baseUrl, store } = await createServer({

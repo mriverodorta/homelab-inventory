@@ -196,6 +196,22 @@ describe('compatibility drop-state evaluation', () => {
     }, server.key!)).toBe('unknown')
   })
 
+  it('renders the canvas agent badge from the compact canonical host map', () => {
+    const server = host('server:1')
+    const currentProject = project([server])
+    const data = nodeData(currentProject, server.key!)
+    data.agentStatus = {
+      hosts: {
+        'server:1': { hostType: 'server', hostId: 1, state: 'online', connected: true, ageMs: 1_000 },
+      },
+      registeredHosts: [{ hostType: 'server', hostId: 1 }],
+    }
+
+    const rendered = render(<ServerNode {...serverNodeProps(data)} />)
+
+    expect(rendered.getByTitle('Agent: online')).toBeInTheDocument()
+  })
+
   it('resolves assigned drags by assignment ID and treats same-host drops as compatible no-ops', () => {
     const server = host('server:1')
     const component = cpu('cpu:1', 'LGA1200')

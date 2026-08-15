@@ -9,6 +9,7 @@ import {
   clearAgentStatus,
   createAgentEnrollment,
   loadAgentHardwareSnapshot,
+  loadAgentTelemetry,
   revokeAgentRegistration,
 } from '@/lib/agent-api'
 import type { AgentStatusSummary } from '@/types/agent'
@@ -2014,6 +2015,43 @@ describe('InspectorPanel', () => {
 
     await user.click(screen.getByRole('tab', { name: 'Services' }))
     expect(screen.getByText('docker')).toBeInTheDocument()
+  })
+
+  it('uses compact availability flags and one selected-host telemetry response for dynamic tabs', async () => {
+    const user = userEvent.setup()
+    vi.mocked(loadAgentTelemetry).mockResolvedValueOnce({
+      host: { hostType: 'server', hostId: 1 },
+      serverTime: '2026-08-14T20:00:00.000Z',
+      status: {
+        hostType: 'server', hostId: 1, state: 'online', connected: true, ageMs: 1_000,
+        services: [{ name: 'docker', description: 'Docker', activeState: 'active', classification: 'user-installed' }],
+        containers: [{ name: 'uptime-kuma', image: 'louislam/uptime-kuma:1', state: 'running' }],
+      },
+      timing: { heartbeatIntervalMs: 60_000, onlineMaxAgeMs: 90_000, staleMaxAgeMs: 300_000 },
+      from: '2026-08-14T19:30:00.000Z',
+      to: '2026-08-14T20:00:00.000Z',
+      samples: [],
+    })
+    renderInspector({
+      selectedItemId: 'server:1',
+      agentStatus: {
+        hosts: {
+          'server:1': {
+            hostType: 'server', hostId: 1, state: 'online', connected: true, ageMs: 1_000,
+            details: { metrics: true, services: true, containers: true, storage: false, network: false, hardware: false },
+          },
+        },
+        registeredHosts: [{ hostType: 'server', hostId: 1 }],
+      },
+    })
+
+    expect(await screen.findByRole('tab', { name: 'Services' })).toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: 'Containers' })).toBeInTheDocument()
+    await user.click(screen.getByRole('tab', { name: 'Services' }))
+    expect(await screen.findByText('docker')).toBeInTheDocument()
+    await user.click(screen.getByRole('tab', { name: 'Containers' }))
+    expect(screen.getByText('uptime-kuma')).toBeInTheDocument()
+    expect(loadAgentTelemetry).toHaveBeenCalledOnce()
   })
 
   it('allows registered agents to be revoked from the Agent tab', async () => {

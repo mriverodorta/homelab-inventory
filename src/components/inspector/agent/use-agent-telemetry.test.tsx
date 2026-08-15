@@ -19,6 +19,7 @@ vi.mock('@/lib/agent-api', () => ({
 
 afterEach(() => {
   vi.clearAllMocks()
+  vi.restoreAllMocks()
   vi.useRealTimers()
 })
 
@@ -56,5 +57,33 @@ describe('useAgentTelemetry', () => {
     renderHook(() => useAgentTelemetry({ hostType: 'server', hostId: 1, enabled: false }), { wrapper: createWrapper() })
     await act(async () => vi.advanceTimersByTimeAsync(AGENT_TELEMETRY_REFRESH_INTERVAL_MS))
     expect(loadAgentTelemetry).not.toHaveBeenCalled()
+  })
+
+  it('shares one selected-host request across multiple inspector consumers', async () => {
+    vi.useFakeTimers()
+    renderHook(() => ({
+      agent: useAgentTelemetry({ hostType: 'server', hostId: 1, enabled: true }),
+      services: useAgentTelemetry({ hostType: 'server', hostId: 1, enabled: true }),
+      containers: useAgentTelemetry({ hostType: 'server', hostId: 1, enabled: true }),
+    }), { wrapper: createWrapper() })
+
+    await act(async () => vi.advanceTimersByTimeAsync(0))
+    expect(loadAgentTelemetry).toHaveBeenCalledOnce()
+  })
+
+  it('pauses selected-host telemetry polling while the document is hidden', async () => {
+    vi.useFakeTimers()
+    let visibility: DocumentVisibilityState = 'visible'
+    vi.spyOn(document, 'visibilityState', 'get').mockImplementation(() => visibility)
+    const rendered = renderHook(() => useAgentTelemetry({ hostType: 'server', hostId: 1, enabled: true }), { wrapper: createWrapper() })
+
+    await act(async () => vi.advanceTimersByTimeAsync(0))
+    expect(loadAgentTelemetry).toHaveBeenCalledOnce()
+    visibility = 'hidden'
+    document.dispatchEvent(new Event('visibilitychange'))
+    await act(async () => vi.advanceTimersByTimeAsync(AGENT_TELEMETRY_REFRESH_INTERVAL_MS * 2))
+    expect(loadAgentTelemetry).toHaveBeenCalledOnce()
+
+    rendered.unmount()
   })
 })

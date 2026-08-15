@@ -140,6 +140,38 @@ describe('agent routes', () => {
     expect(Buffer.byteLength(JSON.stringify(payload))).toBeLessThan(2048)
   })
 
+  it('keeps a multi-host fleet summary compact when internal telemetry arrays are large', () => {
+    const services = Array.from({ length: 512 }, (_, index) => ({ unit: `service-${index}.service`, state: 'active' }))
+    const containers = Array.from({ length: 512 }, (_, index) => ({ name: `container-${index}`, image: `example/image:${index}` }))
+    const hosts = Object.fromEntries(Array.from({ length: 24 }, (_, index) => {
+      const hostId = index + 1
+      return [`server:${hostId}`, {
+        hostType: 'server', hostId, state: 'online', connected: true, ageMs: 1_000,
+        lastSeenAt: '2026-08-14T20:00:00.000Z', agentVersion: '0.2.0', hostname: `host-${hostId}`,
+        metrics: { cpu: { percent: 10 }, memory: { percent: 20 } }, services, containers,
+        storageHealth: Array.from({ length: 32 }, (_, disk) => ({ name: `disk-${disk}` })),
+      }]
+    }))
+    const payload = publicAgentStatus({
+      getAgentStatusSummary: () => ({
+        hosts,
+        servers: Object.fromEntries(Object.entries(hosts).map(([key, value]) => [key.split(':')[1], value])),
+        registeredHosts: Array.from({ length: 24 }, (_, index) => ({ hostType: 'server', hostId: index + 1 })),
+        registeredServerIds: Array.from({ length: 24 }, (_, index) => index + 1),
+      }),
+    })
+
+    expect(Object.keys(payload.hosts)).toHaveLength(24)
+    expect(payload.servers).toBeUndefined()
+    for (const status of Object.values(payload.hosts)) {
+      expect(status).not.toHaveProperty('services')
+      expect(status).not.toHaveProperty('containers')
+      expect(status).not.toHaveProperty('metrics')
+      expect(status).not.toHaveProperty('storageHealth')
+    }
+    expect(Buffer.byteLength(JSON.stringify(payload))).toBeLessThan(16 * 1024)
+  })
+
   it('accepts only origin-only HTTP(S) agent endpoints', () => {
     expect(normalizeAgentEndpoint('https://inventory.example.test/')).toBe('https://inventory.example.test')
     expect(normalizeAgentEndpoint('http://192.0.2.10:8798')).toBe('http://192.0.2.10:8798')

@@ -8,8 +8,6 @@ import type {
 import { fetchWithTimeout } from '@/lib/fetch-with-timeout'
 import { consumeInitialBootstrap } from '@/lib/bootstrap-api'
 
-export const AGENT_STATUS_REFRESH_INTERVAL_MS = 60_000
-
 async function agentRequest<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetchWithTimeout(url, {
     ...init,

@@ -34,4 +34,22 @@ describe('SystemsWorkspace', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Open Synology DS620slim' }))
     expect(onSelectItem).toHaveBeenCalledWith('nas:1')
   })
+
+  it('renders agent availability from the compact canonical host map', () => {
+    render(<SystemsWorkspace
+      project={project}
+      agentStatus={{
+        hosts: {
+          'server:1': { hostType: 'server', hostId: 1, state: 'online', connected: true, ageMs: 1_000 },
+          'nas:1': { hostType: 'nas', hostId: 1, state: 'stale', connected: true, ageMs: 120_000 },
+        },
+        registeredHosts: [{ hostType: 'server', hostId: 1 }, { hostType: 'nas', hostId: 1 }],
+      }}
+      registryLinkedItemKeys={new Set()}
+      onSelectItem={() => {}}
+    />)
+
+    expect(screen.getByText('online')).toBeVisible()
+    expect(screen.getByText('stale')).toBeVisible()
+  })
 })

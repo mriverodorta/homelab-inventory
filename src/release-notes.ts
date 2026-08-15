@@ -224,7 +224,7 @@ export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
   fixes: [
     'Fixed external power adapters expose the NAS power endpoint directly, while replaceable adapters continue using independent inventory assignments and their own power connector.',
     'NAS memory compatibility now separates OEM-supported capacity from independently verified capacity, with verified limits requiring an explicit project policy opt-in.',
-    'Registry update approvals now affect only the selected group, remove successful decisions immediately, and refresh only projects changed by the approved revision.',
+    'Registry update approvals are retry-safe, affect only the selected group, remove successful decisions immediately, and refresh only projects changed by the approved revision.',
     'Agent fleet polling now transfers compact availability state once per minute while detailed telemetry is loaded only for the host open in the Inspector.',
   ],
   notes: [

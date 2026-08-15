@@ -1972,8 +1972,9 @@ export class SqliteHomelabInventoryStore {
       ? this.catalogUpdateProjectContexts(preparedLinks)
       : { projectIdsByLinkId: new Map<number, number[]>() }
     const affectedProjectIds = [...new Set(preparedLinks.flatMap((link) => projectIdsByLinkId.get(link.id) ?? []))]
+    let affectedProjectRevisions: Record<number, number> = {}
     if (prepared.length > 0) {
-      this.commitCanonicalMutationAcrossProjects(operation, affectedProjectIds, expectedRevisions)
+      affectedProjectRevisions = this.commitCanonicalMutationAcrossProjects(operation, affectedProjectIds, expectedRevisions)
     }
     else this.core.database.transaction(operation).immediate()
     return {
@@ -1985,6 +1986,7 @@ export class SqliteHomelabInventoryStore {
       })),
       summary: this.getRegistryUpdateSummary(),
       affectedProjectIds,
+      affectedProjectRevisions,
       affectedLinkIds: preparedLinks.map((link) => link.id),
     }
   }
@@ -2100,7 +2102,7 @@ export class SqliteHomelabInventoryStore {
       throw lifecycleError('Registry update decision is invalid.', 'invalid-registry-update-decision', 400)
     }
     const rows = this.core.database.query(`
-      SELECT e.id, e.classification FROM registry_update_evaluations e
+      SELECT e.id, e.classification, e.decision FROM registry_update_evaluations e
       JOIN registry_links l ON l.id = e.link_id
       WHERE l.template_key = ? AND e.to_revision = ? AND e.decision IN ('pending', 'declined')
     `).all(templateKey, toRevision) as Row[]
@@ -2108,9 +2110,10 @@ export class SqliteHomelabInventoryStore {
     if (decision === 'applied' && rows.some((row) => row.classification === 'blocked')) {
       throw lifecycleError('Blocked registry updates cannot be applied.', 'registry-update-blocked', 409)
     }
-    const now = this.now()
-    this.core.database.transaction(() => {
-      for (const row of rows) this.core.database.query(`
+    const changedRows = rows.filter((row) => row.decision !== decision)
+    if (changedRows.length > 0) this.core.database.transaction(() => {
+      const now = this.now()
+      for (const row of changedRows) this.core.database.query(`
         UPDATE registry_update_evaluations SET decision = ?, decided_by_user_id = ?, decided_at_ms = ? WHERE id = ?
       `).run(decision, decision === 'pending' ? null : userId, decision === 'pending' ? null : now, row.id)
       this.refreshRegistryUpdateRunCounts()
@@ -2123,6 +2126,7 @@ export class SqliteHomelabInventoryStore {
       }],
       summary: this.getRegistryUpdateSummary(),
       affectedProjectIds: [],
+      affectedProjectRevisions: {},
       affectedLinkIds: [],
     }
   }
@@ -2141,8 +2145,36 @@ export class SqliteHomelabInventoryStore {
     ))
     const requestedIdentities = new Set(templateByIdentity.keys())
     const matchedIdentities = new Set(links.map((link: Row) => `${link.templateKey}:${link.availableRevision}`))
-    if (links.length === 0 || [...requestedIdentities].some((identity) => !matchedIdentities.has(identity))) {
+    const appliedLinkIds = new Map<string, number[]>()
+    const appliedRows = this.core.database.query(`
+      SELECT DISTINCT l.id, l.template_key, e.to_revision, e.target_content_hash
+      FROM registry_update_evaluations e
+      JOIN registry_links l ON l.id = e.link_id
+      WHERE e.decision = 'applied' AND l.state = 'linked'
+        AND l.imported_revision = e.to_revision AND l.imported_content_hash = e.target_content_hash
+    `).all() as Row[]
+    for (const row of appliedRows) {
+      const identity = `${row.template_key}:${row.to_revision}`
+      if (!requestedIdentities.has(identity) || templateByIdentity.get(identity)?.contentHash !== row.target_content_hash) continue
+      appliedLinkIds.set(identity, [...(appliedLinkIds.get(identity) ?? []), row.id])
+    }
+    if ([...requestedIdentities].some((identity) => !matchedIdentities.has(identity) && !appliedLinkIds.has(identity))) {
       throw lifecycleError('One or more registry update groups were not found.', 'registry-update-group-not-found', 404)
+    }
+    if (links.length === 0) return {
+      applied: 0,
+      review: 0,
+      blocked: 0,
+      skipped: 0,
+      decisions: templates.map((template: Row) => ({
+        templateKey: template.templateKey,
+        toRevision: template.revision,
+        status: 'applied',
+      })),
+      summary: this.getRegistryUpdateSummary(),
+      affectedProjectIds: [],
+      affectedProjectRevisions: {},
+      affectedLinkIds: [...new Set([...appliedLinkIds.values()].flat())],
     }
     const batch = this.evaluateCatalogUpdates(links, templates)
     const evaluations = batch.evaluations
@@ -2160,29 +2192,39 @@ export class SqliteHomelabInventoryStore {
       expectedProjectRevision: batch.projectRevision,
       expectedProjectRevisions: batch.projectRevisions,
     })
-    return result
+    return {
+      ...result,
+      affectedLinkIds: [...new Set([...result.affectedLinkIds, ...[...appliedLinkIds.values()].flat()])],
+    }
   }
 
   decideRegistryUpdateGroups({ groups, decision, userId = null }: Row) {
     if (!['declined', 'pending'].includes(decision) || !Array.isArray(groups) || groups.length === 0) {
       throw lifecycleError('Registry update decision is invalid.', 'invalid-registry-update-decision', 400)
     }
-    const now = this.now()
     let changed = 0
     this.core.database.transaction(() => {
       for (const group of groups) {
+        const existing = this.core.database.query(`
+          SELECT COUNT(*) AS count FROM registry_update_evaluations e
+          JOIN registry_links l ON l.id = e.link_id
+          WHERE l.template_key = ? AND e.to_revision = ? AND e.decision IN ('pending', 'declined')
+        `).get(group.templateKey, group.toRevision) as Row
+        if (Number(existing.count) === 0) {
+          throw lifecycleError('Registry update groups were not found.', 'registry-update-group-not-found', 404)
+        }
+        const now = this.now()
         const result = this.core.database.query(`
           UPDATE registry_update_evaluations SET decision = ?, decided_by_user_id = ?, decided_at_ms = ?
           WHERE id IN (
             SELECT e.id FROM registry_update_evaluations e
             JOIN registry_links l ON l.id = e.link_id
-            WHERE l.template_key = ? AND e.to_revision = ? AND e.decision IN ('pending', 'declined')
+            WHERE l.template_key = ? AND e.to_revision = ? AND e.decision IN ('pending', 'declined') AND e.decision != ?
           )
-        `).run(decision, decision === 'pending' ? null : userId, decision === 'pending' ? null : now, group.templateKey, group.toRevision)
+        `).run(decision, decision === 'pending' ? null : userId, decision === 'pending' ? null : now, group.templateKey, group.toRevision, decision)
         changed += result.changes
       }
-      if (changed === 0) throw lifecycleError('Registry update groups were not found.', 'registry-update-group-not-found', 404)
-      this.refreshRegistryUpdateRunCounts()
+      if (changed > 0) this.refreshRegistryUpdateRunCounts()
     }).immediate()
     return {
       decisions: groups.map((group: Row) => ({
@@ -2192,6 +2234,7 @@ export class SqliteHomelabInventoryStore {
       })),
       summary: this.getRegistryUpdateSummary(),
       affectedProjectIds: [],
+      affectedProjectRevisions: {},
       affectedLinkIds: [],
     }
   }
@@ -2944,6 +2987,7 @@ export class SqliteHomelabInventoryStore {
       }
       for (const listener of this.projectCommitListeners) listener(event)
     }
+    return Object.fromEntries([...revisions].map(([projectId, revision]) => [projectId, revision + 1]))
   }
 
   private invalidateProjectReadModels(projectId = this.projectId, workspaceId?: number) {

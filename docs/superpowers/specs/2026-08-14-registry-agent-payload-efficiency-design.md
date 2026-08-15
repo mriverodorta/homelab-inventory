@@ -128,3 +128,15 @@ Tests cover:
 - hidden-page polling remains paused;
 - response-size budgets hold for fixtures containing many services and containers.
 
+## Implementation Status
+
+Completed on 2026-08-14.
+
+- Registry summary, detailed-group, and compact decision contracts are separate and covered by route and UI tests.
+- Decision receipts include resulting statuses, summary counts, affected link IDs, and atomic affected-project revision mappings.
+- Approve, decline, reconsider, and bulk decisions are idempotent at the SQLite boundary.
+- Pending and error state is scoped to the requested groups, with immediate TanStack Query cache reconciliation and no detailed-group refetch.
+- Bootstrap and global Agent status use one compact canonical host projection without full telemetry arrays or duplicate server records.
+- Global and selected-host polling use the one-minute heartbeat cadence and pause while the document is hidden.
+- Dynamic Inspector sections use compact availability flags and share one selected-host telemetry query.
+- Multi-host, large-resource fixtures enforce compact payload budgets, and compact status drives both canvas and Systems availability indicators.

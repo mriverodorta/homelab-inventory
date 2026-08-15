@@ -1242,6 +1242,8 @@ describe('SQLite Homelab Inventory store facade', () => {
 
       expect(result.applied).toBe(2)
       expect(store.getProject().revision).toBe(beforeRevision + 1)
+      expect(result.affectedProjectIds).toEqual([1])
+      expect(result.affectedProjectRevisions).toEqual({ 1: beforeRevision + 1 })
       expect((store.getRegistryState() as any).links).toEqual([
         expect.objectContaining({ importedRevision: 2, state: 'linked' }),
         expect.objectContaining({ importedRevision: 2, state: 'linked' }),
@@ -1249,6 +1251,11 @@ describe('SQLite Homelab Inventory store facade', () => {
       expect(store.getRegistryUpdateGroups()).toEqual([
         expect.objectContaining({ status: 'applied', toRevision: 2, items: expect.arrayContaining([expect.any(Object), expect.any(Object)]) }),
       ])
+      const revisionAfterApply = store.getProject().revision
+      const repeated = store.applyRegistryUpdateGroups([revision2])
+      expect(repeated.decisions).toEqual([{ templateKey: revision2.templateKey, toRevision: 2, status: 'applied' }])
+      expect(repeated.affectedProjectIds).toEqual([])
+      expect(store.getProject().revision).toBe(revisionAfterApply)
       const backupSnapshot = await store.snapshotStores()
       expect((backupSnapshot.registry as any).updateRuns).toEqual([
         expect.objectContaining({ catalogRevision: 2, appliedCount: 2, state: 'completed' }),
@@ -1405,6 +1412,12 @@ describe('SQLite Homelab Inventory store facade', () => {
         decision: 'declined',
       })
       expect((store.getRegistryState() as any).updateRuns[0]).toMatchObject({ appliedCount: 0, reviewCount: 0, skippedCount: 1 })
+      const declinedState = await store.snapshotStores()
+      store.decideRegistryUpdateGroups({
+        groups: [{ templateKey: revision2.templateKey, toRevision: 2 }],
+        decision: 'declined',
+      })
+      expect((await store.snapshotStores()).registry).toEqual(declinedState.registry)
       store.commitCatalogUpdateRun({ sourceId: 1, catalogRevision: 2, evaluations: evaluate(revision2), templates: [revision2], automatic: true })
       expect(store.getRegistryUpdateGroups()).toEqual([expect.objectContaining({ status: 'declined', toRevision: 2 })])
 
@@ -1417,6 +1430,16 @@ describe('SQLite Homelab Inventory store facade', () => {
         expect.objectContaining({ status: 'declined', toRevision: 2 }),
         expect.objectContaining({ status: 'review', toRevision: 3 }),
       ]))
+      store.decideRegistryUpdateGroups({
+        groups: [{ templateKey: revision2.templateKey, toRevision: 2 }],
+        decision: 'pending',
+      })
+      const reconsideredState = await store.snapshotStores()
+      store.decideRegistryUpdateGroups({
+        groups: [{ templateKey: revision2.templateKey, toRevision: 2 }],
+        decision: 'pending',
+      })
+      expect((await store.snapshotStores()).registry).toEqual(reconsideredState.registry)
     } finally {
       store.close()
     }

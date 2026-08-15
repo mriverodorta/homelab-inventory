@@ -21,7 +21,7 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 
 ### Fixed
 
-- Registry update decisions now show progress only on the selected group, remove completed groups immediately, refresh only affected projects, and avoid returning or refetching the complete update payload after every decision.
+- Registry update decisions are retry-safe, show progress only on the selected group, remove completed groups immediately, refresh only affected projects, and avoid returning or refetching the complete update payload after every decision.
 
 ## [0.12.9] - 2026-08-14
 

@@ -295,6 +295,7 @@ export type CatalogUpdateDecisionResult = {
   }>
   summary: CatalogUpdateSummaryResponse
   affectedProjectIds: number[]
+  affectedProjectRevisions: Record<number, number>
   affectedLinkIds: number[]
 }
 

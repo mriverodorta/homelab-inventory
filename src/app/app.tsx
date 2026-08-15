@@ -11,12 +11,12 @@ import {
   useRegistryQuery,
 } from '@/hooks/use-registry'
 import { useNotificationSnapshot } from '@/hooks/use-notifications'
+import { useAgentStatus } from '@/hooks/use-agent-status'
 import {
   useCompatibleTopologyDestinations,
   useTopologyQuery,
 } from '@/hooks/use-topology-query'
 import { setAuditWarningIgnored } from '@/lib/compatibility-policy'
-import { AGENT_STATUS_REFRESH_INTERVAL_MS, loadAgentStatus } from '@/lib/agent-api'
 import { addGlobalInventoryToProject, loadProject } from '@/lib/db'
 import { loadWorkspace } from '@/lib/workbook-api'
 import { buildVisibleRegistryLinkKeys } from '@/lib/registry-links'
@@ -343,13 +343,7 @@ function App() {
     width: inventoryWidth,
     onWidthChange: setInventoryWidth,
   })
-  const agentStatusQuery = useQuery({
-    queryKey: ['agent-status'],
-    queryFn: loadAgentStatus,
-    enabled: canViewAgents,
-    refetchInterval: canViewAgents ? AGENT_STATUS_REFRESH_INTERVAL_MS : false,
-    refetchIntervalInBackground: false,
-  })
+  const agentStatusQuery = useAgentStatus(canViewAgents)
   const {
     updateStatusQuery,
     setUpdateDialogOpen,
