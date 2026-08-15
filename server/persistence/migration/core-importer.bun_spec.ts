@@ -37,6 +37,68 @@ async function migratedDatabase(migrationCount = CORE_MIGRATIONS.length) {
 }
 
 describe('schema-29 core import', () => {
+  test('migrates an existing port table to non-negative slot numbers without losing constraints', async () => {
+    const handle = await migratedDatabase(CORE_MIGRATIONS.length - 1)
+    try {
+      const itemId = (handle.database.query(`
+        INSERT INTO inventory_items (type_id, scope, name, extensions_json, created_at_ms, updated_at_ms)
+        SELECT id, 'global', 'Power strip', '{}', 0, 0 FROM inventory_item_types WHERE key = 'powerStrip'
+        RETURNING id
+      `).get() as { id: number }).id
+      const portId = (handle.database.query(`
+        INSERT INTO inventory_ports (item_id, created_at_ms) VALUES (?, 0) RETURNING id
+      `).get(itemId) as { id: number }).id
+      const kindId = (handle.database.query("SELECT id FROM port_kinds WHERE key = 'power-input'").get() as { id: number }).id
+      const connectorId = (handle.database.query("SELECT id FROM connector_types WHERE key = 'iec-c14'").get() as { id: number }).id
+
+      expect(() => handle.database.query(`
+        INSERT INTO item_port_details (port_id, kind_id, connector_type_id, slot_number)
+        VALUES (?, ?, ?, 0)
+      `).run(portId, kindId, connectorId)).toThrow()
+
+      await applyCommittedMigrations(handle, await Promise.all(CORE_MIGRATIONS.map(async (migration) => ({
+        ...migration,
+        sql: await readFile(resolve(import.meta.dir, '../core/migrations/generated', migration.file), 'utf8'),
+      }))))
+      handle.database.query(`
+        INSERT INTO item_port_details (port_id, kind_id, connector_type_id, slot_number)
+        VALUES (?, ?, ?, 0)
+      `).run(portId, kindId, connectorId)
+
+      expect(handle.database.query('SELECT slot_number FROM item_port_details WHERE port_id = ?').get(portId))
+        .toEqual({ slot_number: 0 })
+      expect(handle.database.query('PRAGMA foreign_key_check').all()).toEqual([])
+    } finally {
+      closeManagedDatabase(handle)
+    }
+  })
+
+  test('preserves canonical slot zero for a power-strip AC input', async () => {
+    const handle = await migratedDatabase()
+    const snapshot = schema29ProductionShapeFixture()
+    const powerStrip = snapshot.inventory.powerStrips[0]
+    powerStrip.ports[0].slotNumber = 0
+    try {
+      importLegacyCore({ database: handle.database, snapshot, identityPlan: buildCanonicalIdentityPlan(snapshot) })
+      const projected = buildLegacyInventoryProjection(handle.database)
+
+      expect(projected.powerStrips[0].ports[0]).toMatchObject({
+        id: powerStrip.ports[0].id,
+        slotNumber: 0,
+      })
+      expect(handle.database.query(`
+        SELECT details.slot_number
+        FROM item_port_details details
+        JOIN port_identity_aliases aliases ON aliases.port_id = details.port_id
+        WHERE aliases.legacy_item_type_key = 'powerStrip'
+          AND aliases.legacy_item_id = ?
+          AND aliases.legacy_port_id = ?
+      `).get(powerStrip.id, powerStrip.ports[0].id)).toEqual({ slot_number: 0 })
+    } finally {
+      closeManagedDatabase(handle)
+    }
+  })
+
   test('preserves DDR3L as a distinct host and module generation', async () => {
     const handle = await migratedDatabase()
     const snapshot = schema29ProductionShapeFixture()

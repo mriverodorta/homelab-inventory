@@ -80,4 +80,9 @@ export const CORE_MIGRATIONS: readonly CoreMigration[] = [
     file: '0014_nas_contract_v10.sql',
     sha256: 'a32dc9cbe731d7249b516ff24c6df9666c2ff66530375153f4d0672efb44735f',
   },
+  {
+    id: '0016_nonnegative_port_slots',
+    file: '0015_nonnegative_port_slots.sql',
+    sha256: 'b6db8f99c3e126ead69de48324d292a27540299087413d9d0bf2afe18fb2ce67',
+  },
 ]

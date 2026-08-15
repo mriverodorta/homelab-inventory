@@ -421,7 +421,7 @@ function importPorts(database: Database, type: InventoryType, item: LegacyRecord
     const key = `${type}:${item.id}:port:${port.id}`
     const portId = plan.ports.get(key)
     if (!portId) throw new Error(`Missing port identity ${key}.`)
-    let slotNumber = positiveIntegerOrNull(port.slotNumber) ?? Number(port.id)
+    let slotNumber = integerOrNull(port.slotNumber) ?? Number(port.id)
     while (usedSlots.has(slotNumber)) slotNumber += 1
     usedSlots.add(slotNumber)
     const kindId = vocabularyId(database, 'port_kinds', portKind(port))

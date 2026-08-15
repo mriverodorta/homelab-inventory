@@ -119,9 +119,9 @@ function normalizeInventoryPort(port, index, fallbackKind) {
 
   const slotNumber = port.slotNumber ?? index + 1
   const id = port.id ?? slotNumber
-  if (!isRelationalId(slotNumber) || !isRelationalId(id)) {
+  if (!Number.isSafeInteger(slotNumber) || slotNumber < 0 || !isRelationalId(id)) {
     throw new InventoryLifecycleError(
-      `ports[${index}] id and slotNumber must be positive safe-integer relational IDs.`,
+      `ports[${index}] id must be a positive safe-integer relational ID and slotNumber must be non-negative.`,
       { code: 'invalid-inventory-port', status: 400 },
     )
   }

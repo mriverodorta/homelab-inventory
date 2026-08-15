@@ -130,8 +130,8 @@ function cleanEndpoint(endpoint, index) {
 
 function cleanPort(port, index, fallbackKind) {
   const slotNumber = port.slotNumber ?? index + 1
-  if (!Number.isInteger(slotNumber) || slotNumber < 1) {
-    throw new InventoryLifecycleError(`Port ${index + 1} must have a positive integer slot number.`, {
+  if (!Number.isSafeInteger(slotNumber) || slotNumber < 0) {
+    throw new InventoryLifecycleError(`Port ${index + 1} must have a non-negative safe integer slot number.`, {
       code: 'invalid-inventory-port',
       status: 400,
     })
@@ -267,7 +267,7 @@ export function buildQuantityRecords({ input, type, quantity, startingId, existi
         ...port,
         id: portIndex + 1,
         kind: port.kind ?? fallbackKind,
-        slotNumber: Number.isInteger(port.slotNumber) && port.slotNumber > 0
+        slotNumber: Number.isSafeInteger(port.slotNumber) && port.slotNumber >= 0
           ? port.slotNumber
           : portIndex + 1,
         ...(Array.isArray(port.endpoints)

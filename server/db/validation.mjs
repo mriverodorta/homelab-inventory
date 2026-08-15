@@ -1017,7 +1017,7 @@ function assertInventoryItem(itemId, item, expectedType, options = {}) {
         : isRelationalId(port.id)) ||
       !portKinds.has(port.kind) ||
       !portTypes.has(port.type) ||
-      typeof port.slotNumber !== 'number'
+      !Number.isSafeInteger(port.slotNumber) || port.slotNumber < 0
     ) {
       throw new Error(`Inventory item ${itemId} has an invalid port.`)
     }

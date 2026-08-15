@@ -44,7 +44,7 @@ export const itemPortDetails = sqliteTable('item_port_details', {
   index('item_port_details_group_index').on(table.portGroupId),
   index('item_port_details_kind_index').on(table.kindId),
   index('item_port_details_connector_index').on(table.connectorTypeId),
-  check('item_port_details_slot_check', sql`${table.slotNumber} > 0`),
+  check('item_port_details_slot_check', sql`${table.slotNumber} >= 0`),
   check('item_port_details_role_check', sql`
     ${table.role} IS NULL OR ${table.role} IN ('access', 'trunk', 'uplink', 'management', 'disabled')
   `),
