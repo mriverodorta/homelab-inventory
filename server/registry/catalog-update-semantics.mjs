@@ -212,6 +212,12 @@ function planPorts(currentPorts = [], incomingPorts = []) {
       representationChanges.push(change)
     }
 
+    if (!semanticEqual(normalizeValue(current.endpoints ?? []), normalizeValue(incoming.endpoints ?? []))) {
+      const change = portChange(`ports[${id}].endpoints`, current.endpoints, incoming.endpoints, 'attachment')
+      changes.push(change)
+      attachmentChanges.push(change)
+    }
+
     const representationFields = [
       ['slotNumber', current.slotNumber, incoming.slotNumber],
       ['kind', normalizedPortKind(current), normalizedPortKind(incoming)],

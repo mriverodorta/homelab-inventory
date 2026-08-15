@@ -199,7 +199,7 @@ describe('SQLite Homelab Inventory store facade', () => {
         group_id: 1,
         positions: [0],
       })
-      expect(store.getDatabaseStatus()).toMatchObject({ schemaVersion: 15 })
+      expect(store.getDatabaseStatus()).toMatchObject({ schemaVersion: 16 })
       expect(store.getPersistenceHealth()).toMatchObject({ ok: true, engine: 'sqlite' })
     } finally {
       store.close()
@@ -880,6 +880,80 @@ describe('SQLite Homelab Inventory store facade', () => {
         } } },
       })).toThrow(/orphan.*assigned NAS power adapter/iu)
       expect(store.getProject().assignments).toHaveLength(1)
+    } finally {
+      store.close()
+    }
+  })
+
+  test('atomically resolves a fixed-adapter Registry update without deleting its power cable', async () => {
+    const store = await emptyFixtureStore()
+    try {
+      store.registryTransaction((draft: any) => {
+        draft.sources = [{ id: 1, kind: 'official-connected', displayName: 'Official Catalog', enabled: true, createdAt: '2026-08-14T00:00:00.000Z' }]
+        draft.snapshot = { sourceId: 1, revision: 1, generatedAt: '2026-08-14T00:00:00.000Z', expiresAt: null, activatedAt: '2026-08-14T00:00:00.000Z', digest: 'a'.repeat(64), templateCount: 1, keyId: 'test-key' }
+      })
+      const revision1 = await catalogTemplate({
+        type: 'nas', name: 'Example NAS', manufacturer: 'Example', family: 'Example NAS', model: 'NAS-1',
+        specs: { powerConfiguration: 'external-adapter', variantKey: 'standard', topologyCompleteness: 'complete' },
+        compatibility: { host: { power: { configuration: 'external-adapter', adapterDisposition: 'replaceable', connector: 'barrel' } } },
+        ports: [],
+      }, 1, 'nas-example-nas-1', NAS_FINGERPRINT_VERSION)
+      let project = store.createCatalogInventoryItems(revision1)
+      const nas = Object.values(project.items).find((item) => item.type === 'nas')!
+      project = store.createInventoryItems({ type: 'powerAdapter', name: 'OEM adapter', specs: { wattageWatts: 65, connector: 'barrel' } })
+      const adapter = Object.values(project.items).find((item) => item.type === 'powerAdapter')!
+      project = store.createInventoryItems({ type: 'powerStrip', name: 'Power strip', specs: { outlets: 2 } })
+      const strip = Object.values(project.items).find((item) => item.type === 'powerStrip')!
+      project = store.setProject({
+        ...project,
+        assignments: [{
+          id: 1, serverId: `nas:${nas.id}`, itemId: `powerAdapter:${adapter.id}`,
+          type: 'powerAdapter', assignedAt: '2026-08-14T00:00:00.000Z',
+        }],
+        connections: [{
+          id: 1, type: 'power', createdAt: '2026-08-14T00:00:00.000Z',
+          from: { itemId: `powerStrip:${strip.id}`, portId: 2 },
+          to: { itemId: `nas:${nas.id}`, hostedItemId: `powerAdapter:${adapter.id}`, portId: 1 },
+        }],
+      })
+      const link = (store.getRegistryState() as any).links[0]
+      const revision2 = await catalogTemplate({
+        ...revision1.item,
+        ports: [{ id: 1, key: 'ac-input', kind: 'power-port', type: 'ac-input', slotNumber: 1 }],
+        compatibility: { host: { power: { configuration: 'external-adapter', adapterDisposition: 'fixed', connector: 'barrel' } } },
+      }, 2, revision1.templateKey, NAS_FINGERPRINT_VERSION)
+      store.registryTransaction((draft: any) => {
+        draft.snapshot.revision = 2
+        Object.assign(draft.links[0], { state: 'update-available', availableRevision: 2, availableContentHash: revision2.contentHash })
+      })
+      const batch = store.evaluateCatalogUpdates([{ linkId: link.id, templateKey: link.templateKey }], [revision2])
+      store.commitCatalogUpdateRun({
+        sourceId: 1, catalogRevision: 2, evaluations: batch.evaluations, templates: [revision2], automatic: false,
+        expectedProjectRevisions: batch.projectRevisions,
+      })
+      const beforeResolve = store.getProject()
+
+      const result = store.resolveAndApplyRegistryUpdateGroup({
+        linkId: link.id,
+        template: revision2,
+        expectedProjectRevisions: { 1: beforeResolve.revision },
+      }) as any
+
+      const resolved = store.getProject()
+      expect(result.affectedRelationships).toEqual({ connectionIds: [1], assignmentIds: [1] })
+      expect(resolved.assignments).toEqual([])
+      expect(resolved.connections).toEqual([expect.objectContaining({
+        id: 1,
+        from: { itemId: `powerStrip:${strip.id}`, portId: 2 },
+        to: { itemId: `nas:${nas.id}`, portId: 1 },
+      })])
+      expect(resolved.items[`powerAdapter:${adapter.id}`]).toBeDefined()
+      expect((store.getRegistryState() as any).links[0]).toMatchObject({ state: 'linked', importedRevision: 2 })
+      expect(() => store.resolveAndApplyRegistryUpdateGroup({
+        linkId: link.id,
+        template: revision2,
+        expectedProjectRevisions: { 1: beforeResolve.revision },
+      })).toThrow(/refresh/iu)
     } finally {
       store.close()
     }

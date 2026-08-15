@@ -49,6 +49,12 @@ export function catalogCompatibilityFindingKeys(results) {
   return new Set(results.flatMap((result) => result.findings.map((finding) => findingKey(result, finding))))
 }
 
+function confirmedCompatibilityFindingKeys(results) {
+  return new Set(results.flatMap((result) => result.findings
+    .filter((finding) => finding.severity !== 'unknown')
+    .map((finding) => findingKey(result, finding))))
+}
+
 export function classifyCatalogUpdate({ itemType, changes, dependencyConflicts = [], beforeFindings, afterFindings, validationError }) {
   const reasons = []
   const semanticChanges = changes.flatMap((change) => change.semanticChanges ?? [change])
@@ -62,8 +68,8 @@ export function classifyCatalogUpdate({ itemType, changes, dependencyConflicts =
   if (validationError?.code === 'connected-port-change') reasons.push('connected-port-change')
   else if (validationError) reasons.push('structural-validation-failed')
 
-  const before = catalogCompatibilityFindingKeys(beforeFindings)
-  const introduced = [...catalogCompatibilityFindingKeys(afterFindings)].filter((key) => !before.has(key))
+  const before = confirmedCompatibilityFindingKeys(beforeFindings)
+  const introduced = [...confirmedCompatibilityFindingKeys(afterFindings)].filter((key) => !before.has(key))
   if (introduced.length > 0) reasons.push('new-compatibility-findings')
 
   if (reasons.some((reason) => ['connected-port-change', 'assignment-conflict', 'structural-validation-failed'].includes(reason))) {

@@ -38,7 +38,12 @@ import {
   projectLocalItemForCatalog,
 } from '../registry/local-catalog-mapping.mjs'
 import { catalogFieldDiff, mergeCatalogUpdate } from '../registry/update-service.mjs'
+import { planCatalogUpdate } from '../registry/catalog-update-semantics.mjs'
 import { classifyCatalogUpdate } from '../registry/catalog-update-policy.mjs'
+import {
+  applyCatalogResolutionPlan,
+  buildCatalogResolutionPlan,
+} from '../registry/catalog-update-resolution.mjs'
 import { assertOnboardingState, createOnboardingState } from '../onboarding/model.mjs'
 import {
   finishExampleInDraft,
@@ -1221,7 +1226,12 @@ export class SqliteHomelabInventoryStore {
     return this.getProject()
   }
 
-  private prepareInventoryUpdate(rawRef: Row, input: Row, project: ProjectState = this.getProject()) {
+  private prepareInventoryUpdate(
+    rawRef: Row,
+    input: Row,
+    project: ProjectState = this.getProject(),
+    options: { allowNasPowerTopologyChange?: boolean; allowConnectedPortTopologyChange?: boolean } = {},
+  ) {
     const ref = normalizeInventoryRef(rawRef)
     const current = project.items[`${ref.type}:${ref.id}`] as Row | undefined
     if (!current) throw lifecycleError(`Inventory item ${ref.type}:${ref.id} was not found.`, 'inventory-item-not-found', 404)
@@ -1230,7 +1240,11 @@ export class SqliteHomelabInventoryStore {
     }
     const { item } = normalizeInventoryItemInput({ ...input, type: ref.type }, ref.id)
     const record = cleanItemForStore(item)
-    if (ref.type === 'nas' && current.specs?.powerConfiguration !== record.specs?.powerConfiguration) {
+    if (
+      ref.type === 'nas'
+      && current.specs?.powerConfiguration !== record.specs?.powerConfiguration
+      && !options.allowNasPowerTopologyChange
+    ) {
       throw lifecycleError(
         'Use the NAS power configuration command to change power modes.',
         'nas-power-configuration-command-required',
@@ -1246,7 +1260,7 @@ export class SqliteHomelabInventoryStore {
           nextPower.configuration !== 'external-adapter'
           || nextPower.adapterDisposition !== 'replaceable'
         )
-      if (releasesAssignedAdapter) {
+      if (releasesAssignedAdapter && !options.allowNasPowerTopologyChange) {
         const assignedAdapter = project.assignments.find((assignment) => (
           assignment.serverId === `${ref.type}:${ref.id}` && assignment.type === 'powerAdapter'
         ))
@@ -1262,21 +1276,18 @@ export class SqliteHomelabInventoryStore {
         }
       }
     }
-    const connectedPortIds = referencedPortIds(project, ref)
-    for (const portId of connectedPortIds) {
-      const previousPort = current.ports?.find((port: Row) => port.id === portId)
-      const nextPort = record.ports?.find((port: Row) => port.id === portId)
-      if (
-        !previousPort
-        || !nextPort
-        || previousPort.kind !== nextPort.kind
-        || previousPort.type !== nextPort.type
-        || previousPort.speed !== nextPort.speed
-        || JSON.stringify(previousPort.endpoints ?? []) !== JSON.stringify(nextPort.endpoints ?? [])
-      ) {
-        throw new InventoryLifecycleError(`Connected port ${portId} cannot be removed or materially changed.`, {
-          code: 'connected-port-change', status: 409, details: { portId },
-        })
+    if (!options.allowConnectedPortTopologyChange) {
+      const connectedPortIds = referencedPortIds(project, ref)
+      const portPlan = planCatalogUpdate(current, { ...record, type: ref.type }).portPlan
+      const materialPortChanges = [...portPlan.attachmentChanges, ...portPlan.capabilityChanges]
+      for (const portId of connectedPortIds) {
+        if (materialPortChanges.some((change: Row) => (
+          change.path === `ports[${portId}]` || change.path.startsWith(`ports[${portId}].`)
+        ))) {
+          throw new InventoryLifecycleError(`Connected port ${portId} cannot be removed or materially changed.`, {
+            code: 'connected-port-change', status: 409, details: { portId },
+          })
+        }
       }
     }
     return { ref, record }
@@ -1780,6 +1791,10 @@ export class SqliteHomelabInventoryStore {
         validationError,
         dependencyConflicts,
         changes: catalogFieldDiff(projectLocalItemForCatalog(current, link.itemType), template.item, template.fingerprintVersion),
+        resolutionPlans: projectIds.map((projectId) => ({
+          projectId,
+          ...buildCatalogResolutionPlan({ current, next: nextItem, project: projects.get(projectId), link }),
+        })),
       }]
     })
     const findingsByProject = new Map<number, { before: Row[]; after: Row[] }>()
@@ -1821,6 +1836,11 @@ export class SqliteHomelabInventoryStore {
         state: proposal.link.state,
         changes: proposal.changes,
         dependencyConflicts: proposal.dependencyConflicts,
+        resolution: {
+          available: proposal.resolutionPlans.some((plan) => plan.available)
+            && proposal.resolutionPlans.every((plan) => plan.available || plan.operations.length === 0),
+          projects: proposal.resolutionPlans,
+        },
         localFieldsPreserved: Object.keys(proposal.current).filter(
           (key) => key === 'name' || !['id', 'key', 'type', 'subtype', 'manufacturer', 'secondaryManufacturer', 'family', 'model', 'number', 'specs', 'ports', 'compatibility'].includes(key),
         ),
@@ -2133,6 +2153,148 @@ export class SqliteHomelabInventoryStore {
 
   applyRegistryUpdateGroup(template: Row, userId: number | null = null) {
     return this.applyRegistryUpdateGroups([template], userId)
+  }
+
+  resolveAndApplyRegistryUpdateGroup({ linkId, template, expectedProjectRevisions = null }: Row, userId: number | null = null) {
+    const registry = this.getRegistryState() as Row
+    const link = registry.links.find((candidate: Row) => candidate.id === linkId)
+    if (
+      !link
+      || !['update-available', 'adoption-available'].includes(link.state)
+      || link.templateKey !== template?.templateKey
+      || link.availableRevision !== template?.revision
+      || link.availableContentHash !== template?.contentHash
+    ) {
+      throw lifecycleError('Catalog update changed; refresh before resolving it.', 'catalog-update-stale', 409)
+    }
+
+    const { projectIdsByLinkId, projects } = this.catalogUpdateProjectContexts([link])
+    const projectIds = projectIdsByLinkId.get(link.id) ?? []
+    const current = projectIds.map((projectId) => projects.get(projectId)?.items[`${link.itemType}:${link.itemId}`] as Row | undefined).find(Boolean)
+    if (!current) throw lifecycleError('Linked inventory item was not found.', 'linked-inventory-not-found', 409)
+    const nextItem = materializeCatalogItem(
+      mergeCatalogUpdate(projectLocalItemForCatalog(current, link.itemType), template.item, template.fingerprintVersion),
+      { usageRole: current.usageRole },
+    )
+    const plans = projectIds.map((projectId) => {
+      const project = projects.get(projectId)!
+      const plan = buildCatalogResolutionPlan({ current, next: nextItem, project, link })
+      if (!plan.available && plan.reason !== 'No relationship migration is required.') {
+        throw lifecycleError(plan.reason, 'catalog-update-resolution-ambiguous', 409)
+      }
+      const resolvedProject = plan.available ? applyCatalogResolutionPlan(project, plan) : project
+      this.prepareInventoryUpdate(
+        { type: link.itemType, id: link.itemId },
+        nextItem,
+        resolvedProject,
+        { allowNasPowerTopologyChange: true, allowConnectedPortTopologyChange: true },
+      )
+      return { projectId, plan }
+    })
+    if (!plans.some(({ plan }) => plan.available)) {
+      throw lifecycleError('This update has no deterministic topology resolution to apply.', 'catalog-update-resolution-unavailable', 409)
+    }
+    const expected = expectedProjectRevisions
+      ? new Map(Object.entries(expectedProjectRevisions).map(([projectId, revision]) => [Number(projectId), Number(revision)]))
+      : new Map(projectIds.map((projectId) => [projectId, projects.get(projectId)!.revision]))
+    const movedEndpoints = [] as Row[]
+    for (const { projectId, plan } of plans) {
+      for (const operation of plan.operations) {
+        if (operation.kind !== 'move-connection-endpoint') continue
+        const role = operation.endpointRole === 'from' ? 'source' : 'target'
+        const row = this.core.database.query(`
+          SELECT endpoint.id, endpoint.connection_id, endpoint.role
+          FROM connection_endpoints endpoint
+          JOIN project_connections connection ON connection.id = endpoint.connection_id
+          WHERE connection.project_id = ? AND connection.id = ? AND endpoint.role = ?
+        `).get(projectId, operation.connectionId, role) as Row | null
+        if (!row) throw lifecycleError('A cable endpoint changed after the resolution was planned.', 'catalog-update-resolution-stale', 409)
+        movedEndpoints.push({ ...row, projectId, operation })
+      }
+    }
+
+    const draft = structuredClone(registry)
+    const targetLink = draft.links.find((candidate: Row) => candidate.id === link.id)
+    Object.assign(targetLink, {
+      importedRevision: template.revision,
+      importedContentHash: template.contentHash,
+      importedFingerprintVersion: template.fingerprintVersion,
+      state: 'linked',
+      updatedAt: new Date(this.now()).toISOString(),
+    })
+    for (const field of ['productFamily', 'variantEvidence', 'identityAliases']) {
+      if (template[field] !== undefined) targetLink[field] = structuredClone(template[field])
+      else delete targetLink[field]
+    }
+    delete targetLink.availableRevision
+    delete targetLink.availableContentHash
+    delete targetLink.detachedAt
+
+    const operation = () => {
+      for (const endpoint of movedEndpoints) {
+        this.core.database.query('DELETE FROM connection_endpoints WHERE id = ?').run(endpoint.id)
+        this.core.database.query('DELETE FROM workspace_route_cache WHERE project_id = ? AND connection_id = ?')
+          .run(endpoint.projectId, endpoint.connection_id)
+        this.core.database.query('DELETE FROM workspace_manual_bend_points WHERE project_id = ? AND connection_id = ?')
+          .run(endpoint.projectId, endpoint.connection_id)
+      }
+      for (const { projectId, plan } of plans) {
+        for (const planned of plan.operations) {
+          if (planned.kind !== 'unassign-item') continue
+          const deleted = this.core.database.query(
+            'DELETE FROM component_assignments WHERE project_id = ? AND id = ? RETURNING id',
+          ).all(projectId, planned.assignmentId)
+          if (deleted.length !== 1) {
+            throw lifecycleError(`Assignment ${planned.assignmentId} changed after the resolution was planned.`, 'catalog-update-resolution-stale', 409)
+          }
+        }
+      }
+      this.replaceInventoryRecord(
+        { type: link.itemType, id: link.itemId },
+        cleanItemForStore(nextItem),
+        projectIds[0],
+      )
+      for (const endpoint of movedEndpoints) {
+        const target = endpoint.operation.to
+        const itemId = this.resolveItem(target.itemType, target.itemId)
+        const port = this.core.database.query(`
+          SELECT port.id
+          FROM inventory_ports port
+          JOIN port_identity_aliases aliases ON aliases.port_id = port.id
+          WHERE port.item_id = ?
+            AND aliases.legacy_item_type_key = ?
+            AND aliases.legacy_item_id = ?
+            AND aliases.legacy_port_id = ?
+        `).get(itemId, target.itemType, target.itemId, target.portId) as Row | null
+        if (!port) throw lifecycleError('The resolved cable target no longer exists.', 'catalog-update-resolution-stale', 409)
+        this.core.database.query(`
+          INSERT INTO connection_endpoints (id, connection_id, role, port_id, endpoint_face_id)
+          VALUES (?, ?, ?, ?, NULL)
+        `).run(endpoint.id, endpoint.connection_id, endpoint.role, port.id)
+      }
+      persistRegistryState(this.core.database, draft, this.now(), (type, id) => this.resolveItem(type, id))
+      const updated = this.core.database.query(`
+        UPDATE registry_update_evaluations
+        SET decision = 'applied', decided_by_user_id = ?, decided_at_ms = ?
+        WHERE link_id = ? AND to_revision = ? AND target_content_hash = ? AND decision = 'pending'
+      `).run(userId, this.now(), link.id, template.revision, template.contentHash)
+      if (updated.changes === 0) {
+        throw lifecycleError('The reviewed Registry update is no longer pending.', 'catalog-update-resolution-stale', 409)
+      }
+      this.refreshRegistryUpdateRunCounts()
+    }
+    const affectedProjectRevisions = this.commitCanonicalMutationAcrossProjects(operation, projectIds, expected)
+    return {
+      decision: { templateKey: template.templateKey, toRevision: template.revision, status: 'applied' },
+      affectedLinkIds: [link.id],
+      affectedProjectIds: projectIds,
+      affectedProjectRevisions,
+      affectedRelationships: {
+        connectionIds: [...new Set(plans.flatMap(({ plan }) => plan.affectedRelationships.connectionIds))],
+        assignmentIds: [...new Set(plans.flatMap(({ plan }) => plan.affectedRelationships.assignmentIds))],
+      },
+      summary: this.getRegistryUpdateSummary(),
+    }
   }
 
   applyRegistryUpdateGroups(templates: Row[], userId: number | null = null) {

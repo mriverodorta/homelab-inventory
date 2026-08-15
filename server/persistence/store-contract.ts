@@ -129,6 +129,7 @@ export interface HomelabInventoryPersistence {
   decideRegistryUpdateGroup(input: Record<string, unknown>): unknown
   applyRegistryUpdateGroup(template: Record<string, unknown>, userId?: number | null): unknown
   applyRegistryUpdateGroups(templates: Record<string, unknown>[], userId?: number | null): unknown
+  resolveAndApplyRegistryUpdateGroup(input: Record<string, unknown>, userId?: number | null): unknown
   decideRegistryUpdateGroups(input: Record<string, unknown>): unknown
   getAuthenticationState(): unknown
   updateAuthentication(mutator: (draft: unknown) => void): unknown

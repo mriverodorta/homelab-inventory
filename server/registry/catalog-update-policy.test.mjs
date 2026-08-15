@@ -62,4 +62,15 @@ describe('catalog update safety policy', () => {
       afterFindings: [],
     })).toEqual({ classification: 'safe', reasons: ['verified-compatible'], introducedFindings: [] })
   })
+
+  it('does not turn missing compatibility evidence into a confirmed conflict', () => {
+    expect(classifyCatalogUpdate({
+      changes: [{ field: 'compatibility' }],
+      beforeFindings: [],
+      afterFindings: [{
+        assignmentId: 1,
+        findings: [{ code: 'cpu.socket.missing', severity: 'unknown', field: 'component.cpu.socket' }],
+      }],
+    })).toEqual({ classification: 'safe', reasons: ['verified-compatible'], introducedFindings: [] })
+  })
 })

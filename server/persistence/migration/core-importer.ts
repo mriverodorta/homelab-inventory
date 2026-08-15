@@ -741,28 +741,28 @@ export function replaceLegacyInventoryItem({
     WHERE l.item_id = ?
   `).all(itemId) as LegacyRecord[]
   const assignmentSlots = database.query(`
-    SELECT a.id AS assignment_slot_id, a.assignment_id, a.position AS assignment_position,
+    SELECT a.id AS assignment_slot_id, a.project_id, a.assignment_id, a.position AS assignment_position,
            r.legacy_resource_key, s.position AS resource_position,
            CASE WHEN c.resource_slot_id = s.id THEN 1 ELSE 0 END AS is_primary
     FROM component_assignment_slots a
     JOIN component_assignments c ON c.id = a.assignment_id
     JOIN host_resource_slots s ON s.id = a.resource_slot_id
     JOIN resource_identity_aliases r ON r.resource_id = s.resource_group_id
-    WHERE a.project_id = ? AND a.host_item_id = ?
+    WHERE a.host_item_id = ?
     ORDER BY a.assignment_id, a.position
-  `).all(projectId, itemId) as LegacyRecord[]
+  `).all(itemId) as LegacyRecord[]
   const primaryOnlySlots = database.query(`
-    SELECT c.id AS assignment_id, r.legacy_resource_key,
+    SELECT c.id AS assignment_id, c.project_id, r.legacy_resource_key,
            s.position AS resource_position
     FROM component_assignments c
     JOIN host_resource_slots s ON s.id = c.resource_slot_id
     JOIN resource_identity_aliases r ON r.resource_id = s.resource_group_id
-    WHERE c.project_id = ? AND c.host_item_id = ?
+    WHERE c.host_item_id = ?
       AND NOT EXISTS (
         SELECT 1 FROM component_assignment_slots a
         WHERE a.assignment_id = c.id AND a.resource_slot_id = c.resource_slot_id
       )
-  `).all(projectId, itemId) as LegacyRecord[]
+  `).all(itemId) as LegacyRecord[]
 
   const portKey = (legacyPortId: number) => `${type}:${legacyId}:port:${legacyPortId}`
   const faceId = (legacyPortId: number, endpointNumber: number | null) => endpointNumber == null
@@ -794,8 +794,8 @@ export function replaceLegacyInventoryItem({
 
   database.query('DELETE FROM connection_endpoints WHERE port_id IN (SELECT id FROM inventory_ports WHERE item_id = ?)').run(itemId)
   database.query('DELETE FROM internal_port_links WHERE item_id = ?').run(itemId)
-  database.query('UPDATE component_assignments SET resource_slot_id = NULL WHERE project_id = ? AND host_item_id = ?').run(projectId, itemId)
-  database.query('DELETE FROM component_assignment_slots WHERE project_id = ? AND host_item_id = ?').run(projectId, itemId)
+  database.query('UPDATE component_assignments SET resource_slot_id = NULL WHERE host_item_id = ?').run(itemId)
+  database.query('DELETE FROM component_assignment_slots WHERE host_item_id = ?').run(itemId)
   database.query('DELETE FROM power_strip_smart_configurations WHERE power_strip_id = ?').run(itemId)
   database.query('DELETE FROM port_identity_aliases WHERE port_id IN (SELECT id FROM inventory_ports WHERE item_id = ?)').run(itemId)
   database.query('DELETE FROM inventory_ports WHERE item_id = ?').run(itemId)
@@ -861,7 +861,7 @@ export function replaceLegacyInventoryItem({
     const slotId = resourceSlot(slot.legacy_resource_key, slot.resource_position)!
     database.query('INSERT INTO component_assignment_slots (id, project_id, assignment_id, host_item_id, resource_slot_id, position) VALUES (?, ?, ?, ?, ?, ?)').run(
       slot.assignment_slot_id,
-      projectId,
+      slot.project_id,
       slot.assignment_id,
       itemId,
       slotId,
