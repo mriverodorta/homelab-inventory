@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  canonicalCatalogFieldChange,
   currentRegistryUpdateEvaluations,
   registryUpdateCounts,
   registryUpdateGroups,
@@ -111,5 +112,47 @@ describe('current Registry update projection', () => {
     const unrelated = registryUpdateGroups({ links: [link], evaluations: [evaluation()], projectIdsByLinkId, projectRevisions: { 1: 60, 2: 21 } })[0]
 
     expect(unrelated.concurrencyToken).toBe(first.concurrencyToken)
+  })
+
+  it('normalizes historical and semantic changes to one path-based contract', () => {
+    expect(canonicalCatalogFieldChange({
+      field: 'compatibility.host.storageSlots[0].key',
+      current: 'drive-bays',
+      next: 'sata-bays',
+    })).toEqual({
+      path: 'compatibility.host.storageSlots[0].key',
+      kind: 'changed',
+      impact: 'assignment',
+      current: 'drive-bays',
+      next: 'sata-bays',
+    })
+
+    expect(canonicalCatalogFieldChange({
+      path: 'ports[1].speed',
+      kind: 'changed',
+      impact: 'cable',
+      current: '1G',
+      next: '2.5G',
+    })).toEqual({
+      path: 'ports[1].speed',
+      kind: 'changed',
+      impact: 'cable',
+      current: '1G',
+      next: '2.5G',
+    })
+  })
+
+  it('projects group and member changes through the canonical contract', () => {
+    const groups = registryUpdateGroups({
+      links: [link],
+      evaluations: [evaluation({
+        changes: [{ field: 'model', current: undefined, next: 'i7-10700T' }],
+      })],
+    })
+
+    expect(groups[0].changes).toEqual([
+      expect.objectContaining({ path: 'model', kind: 'added', impact: 'metadata' }),
+    ])
+    expect(groups[0].members[0].changes).toEqual(groups[0].changes)
   })
 })

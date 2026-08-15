@@ -52,4 +52,43 @@ describe('local catalog equipment mapping', () => {
     expect(projectLocalItemForCatalog(cpu)).toEqual(cpu)
     expect(materializeCatalogItem(cpu)).toEqual(cpu)
   })
+
+  it('materializes the host-owned input for a fixed external NAS adapter', () => {
+    const materialized = materializeCatalogItem({
+      type: 'nas',
+      name: 'Fixed adapter NAS',
+      specs: { powerConfiguration: 'external-adapter' },
+      compatibility: {
+        host: {
+          power: {
+            configuration: 'external-adapter',
+            adapterDisposition: 'fixed',
+            connector: '4-pin DIN',
+          },
+        },
+      },
+    })
+
+    expect(materialized.ports).toEqual([
+      expect.objectContaining({ key: 'ac-input', type: 'ac-input' }),
+    ])
+  })
+
+  it('does not create a host-owned input for a replaceable NAS adapter', () => {
+    const materialized = materializeCatalogItem({
+      type: 'nas',
+      name: 'Replaceable adapter NAS',
+      specs: { powerConfiguration: 'external-adapter' },
+      compatibility: {
+        host: {
+          power: {
+            configuration: 'external-adapter',
+            adapterDisposition: 'replaceable',
+          },
+        },
+      },
+    })
+
+    expect(materialized.ports ?? []).toEqual([])
+  })
 })

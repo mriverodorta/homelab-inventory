@@ -333,7 +333,9 @@ export type CatalogUpdateDecisionResult = {
 }
 
 export type CatalogFieldChange = {
-  field: string
+  path: string
+  kind: 'added' | 'removed' | 'changed'
+  impact: 'metadata' | 'compatibility' | 'assignment' | 'cable' | 'topology'
   current?: unknown
   next?: unknown
 }

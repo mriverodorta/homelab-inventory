@@ -44,6 +44,40 @@ function latestRows(rows, identity) {
   return [...latest.values()]
 }
 
+function changeKind(change) {
+  if (['added', 'removed', 'changed'].includes(change?.kind)) return change.kind
+  if (change?.current === undefined && change?.next !== undefined) return 'added'
+  if (change?.current !== undefined && change?.next === undefined) return 'removed'
+  return 'changed'
+}
+
+function changeImpact(path, impact) {
+  if (['metadata', 'compatibility', 'assignment', 'cable', 'topology'].includes(impact)) return impact
+  if (/^ports(?:\[|\.)/u.test(path)) return 'cable'
+  if (/^fixedComponents(?:\[|\.)/u.test(path)) return 'topology'
+  if (/^compatibility\.host\.(?:storageSlots|expansionSlots|optionalModuleSlots|controllerSlots|bootDeviceSlots)/u.test(path)) return 'assignment'
+  if (/^compatibility\.host\.power/u.test(path) || path === 'specs.powerConfiguration') return 'topology'
+  if (/^compatibility(?:\[|\.)/u.test(path)) return 'compatibility'
+  return 'metadata'
+}
+
+export function canonicalCatalogFieldChange(change) {
+  const path = typeof change?.path === 'string' && change.path
+    ? change.path
+    : typeof change?.field === 'string' ? change.field : ''
+  return {
+    path,
+    kind: changeKind(change),
+    impact: changeImpact(path, change?.impact),
+    ...(change && Object.hasOwn(change, 'current') ? { current: change.current } : {}),
+    ...(change && Object.hasOwn(change, 'next') ? { next: change.next } : {}),
+  }
+}
+
+export function canonicalCatalogFieldChanges(changes) {
+  return Array.isArray(changes) ? changes.map(canonicalCatalogFieldChange) : []
+}
+
 export function currentRegistryUpdateEvaluations(evaluations, links) {
   const linksById = new Map(links.map((link) => [link.id, link]))
   return latestRows(evaluations, (row) => row.linkId).filter((row) => {
@@ -79,7 +113,7 @@ function groupRows(rows, links, status) {
       targetContentHash: row.targetContentHash,
       classification: row.classification,
       reasons: [],
-      changes: row.changes ?? [],
+      changes: canonicalCatalogFieldChanges(row.changes),
       members: [],
       evaluatedAtMs: row.evaluatedAtMs,
     }
@@ -96,7 +130,7 @@ function groupRows(rows, links, status) {
       classification: row.classification,
       evaluationId: row.id,
       reasons: row.reasons ?? [],
-      changes: row.changes ?? [],
+      changes: canonicalCatalogFieldChanges(row.changes),
     })
     if (row.classification === 'blocked') group.classification = 'blocked'
     groups.set(key, group)

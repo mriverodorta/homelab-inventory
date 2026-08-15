@@ -45,6 +45,7 @@ import {
   buildCatalogResolutionPlan,
 } from '../registry/catalog-update-resolution.mjs'
 import {
+  canonicalCatalogFieldChanges,
   registryUpdateCounts,
   registryUpdateGroups as projectRegistryUpdateGroups,
 } from '../registry/catalog-update-projection.mjs'
@@ -2187,7 +2188,7 @@ export class SqliteHomelabInventoryStore {
         ...member,
         current: projectLocalItemForCatalog(current, link.itemType),
         proposed: next,
-        changes: plan.changes,
+        changes: canonicalCatalogFieldChanges(plan.changes),
         resolution: availablePlans.length > 0
           ? {
               available: true,

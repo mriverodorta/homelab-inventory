@@ -1,3 +1,5 @@
+import { withCanonicalPowerPorts } from '../../shared/power-ports.mjs'
+
 const PHYSICAL_EQUIPMENT_CLASSES = new Set(['desktop', 'workstation', 'server'])
 const USAGE_ROLES = new Set(['server', 'desktop', 'workstation', 'other'])
 
@@ -25,11 +27,12 @@ export function projectLocalItemForCatalog(item, localType = item.type) {
 
 export function materializeCatalogItem(item, options = {}) {
   const materialized = structuredClone(item)
-  if (!PHYSICAL_EQUIPMENT_CLASSES.has(materialized.type)) return materialized
-  const usageRole = USAGE_ROLES.has(options.usageRole) ? options.usageRole : 'server'
-  const hardwareClass = materialized.type
-  materialized.type = 'server'
-  materialized.hardwareClass = hardwareClass
-  materialized.usageRole = usageRole
-  return materialized
+  if (PHYSICAL_EQUIPMENT_CLASSES.has(materialized.type)) {
+    const usageRole = USAGE_ROLES.has(options.usageRole) ? options.usageRole : 'server'
+    const hardwareClass = materialized.type
+    materialized.type = 'server'
+    materialized.hardwareClass = hardwareClass
+    materialized.usageRole = usageRole
+  }
+  return withCanonicalPowerPorts(materialized)
 }
