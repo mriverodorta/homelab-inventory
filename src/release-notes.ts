@@ -241,7 +241,7 @@ const RELEASE_0_12_11_DETAILS: UnreleasedReleaseNotes = {
   notes: [],
 }
 
-export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
+const RELEASE_0_12_12_DETAILS: UnreleasedReleaseNotes = {
   highlights: [
     'Registry updates with a deterministic topology migration can now be resolved from a confirmed preview that identifies cable remaps, assignment changes, and components returned to inventory before one atomic commit.',
   ],
@@ -254,6 +254,12 @@ export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
   notes: [
     'The first startup after this schema update performs one restart-safe semantic reevaluation. Trusted safe enrichment follows the existing automatic-update preference, while relationship-changing updates remain blocked until confirmed through Resolve and apply.',
   ],
+}
+
+export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
+  highlights: [],
+  fixes: [],
+  notes: [],
 }
 
 const RELEASE_0_11_2_DETAILS: UnreleasedReleaseNotes = {
@@ -783,9 +789,16 @@ const RELEASE_0_2_1_DETAILS: UnreleasedReleaseNotes = {
 
 export const RELEASE_NOTES: ReleaseNoteEntry[] = [
   {
-    version: '0.12.11',
+    version: '0.12.12',
     date: '2026-08-15',
     channel: 'latest',
+    title: 'Make Registry updates reliable at scale',
+    ...RELEASE_0_12_12_DETAILS,
+  },
+  {
+    version: '0.12.11',
+    date: '2026-08-15',
+    channel: 'release',
     title: 'Correct fixed NAS power audits',
     ...RELEASE_0_12_11_DETAILS,
   },

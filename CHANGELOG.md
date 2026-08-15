@@ -6,6 +6,8 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 
 ## Unreleased
 
+## [0.12.12] - 2026-08-15
+
 ### Added
 
 - Blocked Registry updates with a deterministic topology migration now offer a confirmed Resolve and apply workflow that previews cable remaps, assignment changes, and components returned to inventory before committing atomically.
