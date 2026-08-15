@@ -6,6 +6,22 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 
 ## Unreleased
 
+### Added
+
+- Blocked Registry updates with a deterministic topology migration now offer a confirmed Resolve and apply workflow that previews cable remaps, assignment changes, and components returned to inventory before committing atomically.
+
+### Changed
+
+- Registry update review now uses compact paginated group lists, server-side filters, and lazy per-group details instead of transferring every current and proposed definition when the dialog opens.
+- Catalog updates now compare canonical units, enums, identity enrichment, nested compatibility, fixed components, and ports semantically while preserving local instance fields and unknown supported Registry fields.
+
+### Fixed
+
+- Registry update counts and tabs now derive from one authoritative current projection, so historical evaluations no longer duplicate pending work and successful approvals remain Applied after closing, reopening, refreshing, or restarting.
+- Approval and decline actions now use exact group membership, catalog hashes, and project revisions; only the clicked item shows progress, stale decisions fail explicitly, and an Applied receipt is returned only after every linked item proves the target revision was committed.
+- Port slot zero is preserved as ordering metadata for canonical power inputs without weakening positive numeric ID and foreign-key validation.
+- The first startup after this change performs one restart-safe semantic reevaluation, automatically applies newly safe trusted updates, and keeps relationship-changing updates blocked until they are explicitly resolved.
+
 ## [0.12.11] - 2026-08-15
 
 ### Fixed

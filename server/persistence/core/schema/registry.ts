@@ -101,6 +101,16 @@ export const registryUpdateEvaluations = sqliteTable('registry_update_evaluation
 }, (table) => [
   uniqueIndex('registry_update_evaluations_run_link_unique').on(table.runId, table.linkId),
   index('registry_update_evaluations_review_index').on(table.decision, table.classification),
+  index('registry_update_evaluations_link_target_index').on(
+    table.linkId,
+    table.toRevision,
+    table.targetContentHash,
+  ),
+  index('registry_update_evaluations_link_latest_index').on(
+    table.linkId,
+    table.evaluatedAtMs,
+    table.id,
+  ),
   check('registry_update_evaluations_revision_check', sql`${table.fromRevision} > 0 AND ${table.toRevision} >= ${table.fromRevision}`),
   check('registry_update_evaluations_hash_check', sql`length(${table.targetContentHash}) = 64`),
   check('registry_update_evaluations_classification_check', sql`${table.classification} IN ('safe', 'review-required', 'blocked', 'skipped')`),

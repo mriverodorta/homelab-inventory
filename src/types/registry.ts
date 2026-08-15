@@ -237,13 +237,15 @@ export type CatalogReviewSummary = CatalogUpdateSummary | CatalogVariantUpdateSu
 
 export type CatalogUpdateGroup = {
   id: string
-  status: 'review' | 'applied' | 'declined'
+  status: 'review' | 'blocked' | 'applied' | 'declined'
   templateKey: string
   fromRevision: number
   toRevision: number
+  targetContentHash?: string
+  concurrencyToken: string
+  reconsiderable: boolean
   classification: 'safe' | 'review-required' | 'blocked' | 'skipped'
   reasons: string[]
-  changes: CatalogFieldChange[]
   evaluatedAt: string
   projects: Array<{ id: number; name: string }>
   items: Array<{
@@ -252,6 +254,32 @@ export type CatalogUpdateGroup = {
     itemId: number
     itemName: string
     projects: Array<{ id: number; name: string }>
+    classification?: 'safe' | 'review-required' | 'blocked' | 'skipped'
+    fromRevision?: number
+  }>
+}
+
+export type CatalogUpdateResolution = {
+  available: boolean
+  reason: string | null
+  operations: Array<Record<string, unknown>>
+  affectedRelationships: {
+    connectionIds: number[]
+    assignmentIds: number[]
+  }
+}
+
+export type CatalogUpdateGroupDetail = CatalogUpdateGroup & {
+  changes?: CatalogFieldChange[]
+  proposed?: unknown
+  members: Array<{
+    linkId: number
+    itemId: number
+    itemType: string
+    current: unknown
+    proposed: unknown
+    changes: CatalogFieldChange[]
+    resolution: CatalogUpdateResolution
   }>
 }
 
@@ -285,13 +313,18 @@ export type CatalogUpdateSummaryResponse = {
 export type CatalogUpdateGroupsResponse = {
   groups: CatalogUpdateGroup[]
   run: CatalogUpdateRunStatus | null
+  nextCursor: string | null
+  total: number
 }
 
 export type CatalogUpdateDecisionResult = {
   decisions: Array<{
+    groupId: string
+    previousGroupId: string
+    concurrencyToken: string | null
     templateKey: string
     toRevision: number
-    status: 'review' | 'applied' | 'declined'
+    status: 'review' | 'blocked' | 'applied' | 'declined'
   }>
   summary: CatalogUpdateSummaryResponse
   affectedProjectIds: number[]

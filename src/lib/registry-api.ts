@@ -10,6 +10,7 @@ import type {
   CatalogUpdatePreview,
   CatalogReviewSummary,
   CatalogUpdateGroup,
+  CatalogUpdateGroupDetail,
   CatalogUpdateDecisionResult,
   CatalogUpdateGroupsResponse,
   CatalogUpdateRunStatus,
@@ -156,8 +157,27 @@ export function loadCatalogUpdateSummary(): Promise<CatalogUpdateSummaryResponse
   return apiRequest('/api/registry/updates?view=summary')
 }
 
-export function loadCatalogUpdateGroups(): Promise<CatalogUpdateGroupsResponse> {
-  return apiRequest('/api/registry/updates?view=groups')
+export function loadCatalogUpdateGroups(parameters: {
+  status: 'review' | 'blocked' | 'applied' | 'declined'
+  query?: string
+  category?: string
+  projectId?: number
+  reason?: string
+  cursor?: string
+  limit?: number
+}): Promise<CatalogUpdateGroupsResponse> {
+  const query = new URLSearchParams({ status: parameters.status })
+  if (parameters.query) query.set('q', parameters.query)
+  if (parameters.category) query.set('category', parameters.category)
+  if (parameters.projectId) query.set('projectId', String(parameters.projectId))
+  if (parameters.reason) query.set('reason', parameters.reason)
+  if (parameters.cursor) query.set('cursor', parameters.cursor)
+  if (parameters.limit) query.set('limit', String(parameters.limit))
+  return apiRequest(`/api/registry/update-groups?${query}`)
+}
+
+export function loadCatalogUpdateGroup(groupId: string, concurrencyToken: string): Promise<CatalogUpdateGroupDetail> {
+  return apiRequest(`/api/registry/update-groups/${encodeURIComponent(groupId)}?token=${encodeURIComponent(concurrencyToken)}`)
 }
 
 export function retryCatalogUpdates(): Promise<{ groups: CatalogUpdateGroup[]; run: CatalogUpdateRunStatus | null }> {
@@ -165,12 +185,28 @@ export function retryCatalogUpdates(): Promise<{ groups: CatalogUpdateGroup[]; r
 }
 
 export function decideCatalogUpdateGroups(input: {
-  groups: Array<{ templateKey: string; toRevision: number }>
+  groups: Array<{ groupId: string; concurrencyToken: string }>
   decision: 'applied' | 'declined' | 'reconsider'
 }): Promise<CatalogUpdateDecisionResult> {
   return apiRequest('/api/registry/update-groups/decision', {
     method: 'POST',
     body: JSON.stringify(input),
+  })
+}
+
+export function resolveAndApplyCatalogUpdateGroup(input: {
+  groupId: string
+  concurrencyToken: string
+  linkId: number
+  expectedProjectRevisions?: Record<number, number>
+}): Promise<CatalogUpdateDecisionResult & { affectedRelationships?: { connectionIds: number[]; assignmentIds: number[] } }> {
+  return apiRequest(`/api/registry/update-groups/${encodeURIComponent(input.groupId)}/resolve-and-apply`, {
+    method: 'POST',
+    body: JSON.stringify({
+      concurrencyToken: input.concurrencyToken,
+      linkId: input.linkId,
+      expectedProjectRevisions: input.expectedProjectRevisions,
+    }),
   })
 }
 

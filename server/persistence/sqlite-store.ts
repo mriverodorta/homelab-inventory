@@ -44,6 +44,10 @@ import {
   applyCatalogResolutionPlan,
   buildCatalogResolutionPlan,
 } from '../registry/catalog-update-resolution.mjs'
+import {
+  registryUpdateCounts,
+  registryUpdateGroups as projectRegistryUpdateGroups,
+} from '../registry/catalog-update-projection.mjs'
 import { assertOnboardingState, createOnboardingState } from '../onboarding/model.mjs'
 import {
   finishExampleInDraft,
@@ -2012,15 +2016,56 @@ export class SqliteHomelabInventoryStore {
   }
 
   getRegistryUpdateGroups() {
-    const project = this.getProject()
-    const rows = this.core.database.query(`
-      SELECT e.*, l.template_key, l.item_id, a.legacy_type_key, a.legacy_id, i.name AS inventory_name
-      FROM registry_update_evaluations e
-      JOIN registry_links l ON l.id = e.link_id
+    const links = (this.core.database.query(`
+      SELECT l.id, l.item_id AS canonical_item_id, l.template_key, l.imported_revision,
+        l.imported_content_hash, l.available_revision, l.available_content_hash, l.state,
+        a.legacy_type_key, a.legacy_id, i.name AS inventory_name
+      FROM registry_links l
       JOIN inventory_items i ON i.id = l.item_id
       JOIN inventory_identity_aliases a ON a.item_id = l.item_id
-      ORDER BY e.evaluated_at_ms DESC, e.id
+    `).all() as Row[]).map((row) => ({
+      id: row.id,
+      canonicalItemId: row.canonical_item_id,
+      itemId: row.legacy_id,
+      itemType: row.legacy_type_key,
+      templateKey: row.template_key,
+      importedRevision: row.imported_revision,
+      importedContentHash: row.imported_content_hash,
+      availableRevision: row.available_revision,
+      availableContentHash: row.available_content_hash,
+      state: row.state,
+      inventoryName: row.inventory_name,
+    }))
+    const evaluationRows = this.core.database.query(`
+      SELECT * FROM registry_current_update_evaluations
+      UNION ALL
+      SELECT evaluation.*
+      FROM registry_update_evaluations evaluation
+      WHERE evaluation.decision IN ('applied', 'declined')
+        AND NOT EXISTS (
+          SELECT 1 FROM registry_update_evaluations newer
+          WHERE newer.link_id = evaluation.link_id
+            AND newer.to_revision = evaluation.to_revision
+            AND newer.target_content_hash = evaluation.target_content_hash
+            AND newer.decision = evaluation.decision
+            AND (
+              newer.evaluated_at_ms > evaluation.evaluated_at_ms
+              OR (newer.evaluated_at_ms = evaluation.evaluated_at_ms AND newer.id > evaluation.id)
+            )
+        )
     `).all() as Row[]
+    const evaluations = evaluationRows.map((row) => ({
+      id: row.id,
+      linkId: row.link_id,
+      fromRevision: row.from_revision,
+      toRevision: row.to_revision,
+      targetContentHash: row.target_content_hash,
+      classification: row.classification,
+      decision: row.decision,
+      reasons: JSON.parse(row.reasons_json),
+      changes: JSON.parse(row.changes_json),
+      evaluatedAtMs: row.evaluated_at_ms,
+    }))
     const itemProjects = new Map<number, Row[]>()
     for (const row of this.core.database.query(`
       SELECT m.item_id, p.id, p.name FROM project_inventory_memberships m
@@ -2033,47 +2078,263 @@ export class SqliteHomelabInventoryStore {
       projects.push({ id: row.id, name: row.name })
       itemProjects.set(row.item_id, projects)
     }
-    const groups = new Map<string, Row>()
-    for (const row of rows) {
-      const status = row.decision === 'applied' ? 'applied' : row.decision === 'declined' ? 'declined' : 'review'
-      const key = `${status}:${row.template_key}:${row.to_revision}`
-      const group = groups.get(key) ?? {
-        id: key, status, templateKey: row.template_key, fromRevision: row.from_revision,
-        toRevision: row.to_revision, classification: row.classification,
-        reasons: JSON.parse(row.reasons_json), changes: JSON.parse(row.changes_json), items: [], projects: [],
-        evaluatedAt: new Date(row.evaluated_at_ms).toISOString(),
-      }
-      const projects = itemProjects.get(row.item_id) ?? []
-      group.items.push({
-        linkId: row.link_id, itemType: row.legacy_type_key, itemId: row.legacy_id,
-        itemName: project.items[`${row.legacy_type_key}:${row.legacy_id}`]?.name ?? row.inventory_name,
-        projects,
+    const projectRevisions = Object.fromEntries(
+      (this.core.database.query('SELECT id, revision FROM projects WHERE archived_at_ms IS NULL').all() as Row[])
+        .map((row) => [row.id, row.revision]),
+    )
+    const snapshot = this.core.database.query(
+      'SELECT revision FROM registry_snapshots ORDER BY revision DESC, id DESC LIMIT 1',
+    ).get() as Row | null
+    const linkById = new Map(links.map((link) => [link.id, link]))
+    const projectIdsByLinkId = new Map(links.map((link) => [
+      link.id,
+      (itemProjects.get(link.canonicalItemId) ?? []).map((project: Row) => project.id),
+    ]))
+    return projectRegistryUpdateGroups({
+      evaluations,
+      links,
+      projectRevisions,
+      projectIdsByLinkId,
+      catalogRevision: snapshot?.revision ?? null,
+    }).map((group) => {
+      const items = group.members.map((member: Row) => {
+        const link = linkById.get(member.linkId)!
+        const projects = itemProjects.get(link.canonicalItemId) ?? []
+        return {
+          linkId: member.linkId,
+          itemType: link.itemType,
+          itemId: link.itemId,
+          itemName: link.inventoryName,
+          projects,
+          classification: member.classification,
+          fromRevision: member.fromRevision,
+        }
       })
-      for (const candidate of projects) {
-        if (!group.projects.some((project: Row) => project.id === candidate.id)) group.projects.push(candidate)
+      return {
+        ...group,
+        items,
+        projects: [...new Map(items.flatMap((item: Row) => item.projects).map((project: Row) => [project.id, project])).values()],
+        evaluatedAt: new Date(group.evaluatedAtMs).toISOString(),
       }
-      if (row.classification === 'blocked') group.classification = 'blocked'
-      groups.set(key, group)
-    }
-    return [...groups.values()]
+    })
   }
 
   getRegistryUpdateSummary() {
-    const rows = this.core.database.query(`
-      SELECT e.decision, l.template_key, e.to_revision,
-        MAX(CASE WHEN e.classification = 'blocked' THEN 1 ELSE 0 END) AS blocked
-      FROM registry_update_evaluations e
-      JOIN registry_links l ON l.id = e.link_id
-      GROUP BY e.decision, l.template_key, e.to_revision
-    `).all() as Row[]
-    const counts = { review: 0, blocked: 0, applied: 0, declined: 0 }
-    for (const row of rows) {
-      if (row.decision === 'applied') counts.applied += 1
-      else if (row.decision === 'declined') counts.declined += 1
-      else if (row.decision === 'pending' && row.blocked) counts.blocked += 1
-      else if (row.decision === 'pending') counts.review += 1
+    return { run: this.getRegistryUpdateStatus(), counts: registryUpdateCounts(this.getRegistryUpdateGroups()) }
+  }
+
+  getCatalogUpdateReconciliationVersion() {
+    const version = Number(metadata(this.core.database, 'registry.update-reconciliation-version', 0))
+    return Number.isSafeInteger(version) && version >= 0 ? version : 0
+  }
+
+  markCatalogUpdateReconciliationComplete(version: number) {
+    if (!Number.isSafeInteger(version) || version <= 0) {
+      throw lifecycleError('Registry update reconciliation version is invalid.', 'invalid-registry-update-reconciliation-version', 500)
     }
-    return { run: this.getRegistryUpdateStatus(), counts }
+    putMetadata(this.core.database, 'registry.update-reconciliation-version', version, this.now())
+  }
+
+  getRegistryUpdateGroup(groupId: string, concurrencyToken?: string | null) {
+    const group = this.getRegistryUpdateGroups().find((candidate: Row) => candidate.id === groupId)
+    if (!group) throw lifecycleError('Registry update group was not found.', 'registry-update-group-not-found', 404)
+    if (concurrencyToken && group.concurrencyToken !== concurrencyToken) {
+      throw lifecycleError('Registry update state changed; refresh before continuing.', 'registry-update-refresh-required', 409)
+    }
+    return group
+  }
+
+  getRegistryUpdateGroupDetail(groupId: string, concurrencyToken: string, template?: Row | null) {
+    const group = this.getRegistryUpdateGroup(groupId, concurrencyToken)
+    if (['applied', 'declined'].includes(group.status)) {
+      return { ...group, members: group.members.map((member: Row) => ({ ...member, resolution: null })) }
+    }
+    if (
+      template?.templateKey !== group.templateKey
+      || template?.revision !== group.toRevision
+      || template?.contentHash !== group.targetContentHash
+    ) {
+      throw lifecycleError('Registry update state changed; refresh before continuing.', 'registry-update-refresh-required', 409)
+    }
+    if (!['review', 'blocked'].includes(group.status)) return { ...group, proposed: template.item, resolutions: [] }
+
+    const registry = this.getRegistryState() as Row
+    const links = group.members.map((member: Row) => (
+      registry.links.find((candidate: Row) => candidate.id === member.linkId)
+    )).filter(Boolean)
+    const { projectIdsByLinkId, projects } = this.catalogUpdateProjectContexts(links)
+    const members = group.members.map((member: Row) => {
+      const link = links.find((candidate: Row) => candidate.id === member.linkId)
+      const projectIds = projectIdsByLinkId.get(member.linkId) ?? []
+      const current = projectIds
+        .map((projectId) => projects.get(projectId)?.items[`${link.itemType}:${link.itemId}`] as Row | undefined)
+        .find(Boolean)
+      if (!current) throw lifecycleError('Linked inventory item was not found.', 'linked-inventory-not-found', 409)
+      const plan = planCatalogUpdate(
+        projectLocalItemForCatalog(current, link.itemType),
+        template.item,
+        template.fingerprintVersion,
+      )
+      const next = materializeCatalogItem(plan.nextItem, { usageRole: current.usageRole })
+      const resolutionPlans = projectIds.map((projectId) => buildCatalogResolutionPlan({
+        current,
+        next,
+        project: projects.get(projectId),
+        link,
+      }))
+      const availablePlans = resolutionPlans.filter((resolution: Row) => resolution.available)
+      return {
+        ...member,
+        current: projectLocalItemForCatalog(current, link.itemType),
+        proposed: next,
+        changes: plan.changes,
+        resolution: availablePlans.length > 0
+          ? {
+              available: true,
+              operations: availablePlans.flatMap((resolution: Row) => resolution.operations),
+              affectedRelationships: {
+                connectionIds: [...new Set(availablePlans.flatMap((resolution: Row) => resolution.affectedRelationships.connectionIds))],
+                assignmentIds: [...new Set(availablePlans.flatMap((resolution: Row) => resolution.affectedRelationships.assignmentIds))],
+              },
+              reason: availablePlans.map((resolution: Row) => resolution.reason).find(Boolean) ?? null,
+            }
+          : { available: false, operations: [], affectedRelationships: { connectionIds: [], assignmentIds: [] }, reason: resolutionPlans[0]?.reason ?? 'No deterministic resolution is available.' },
+      }
+    })
+    return { ...group, members }
+  }
+
+  decideRegistryUpdateGroupById({ groupId, concurrencyToken, decision, userId = null }: Row) {
+    if (!['declined', 'pending'].includes(decision)) {
+      throw lifecycleError('Registry update decision is invalid.', 'invalid-registry-update-decision', 400)
+    }
+    const group = this.getRegistryUpdateGroup(groupId, concurrencyToken)
+    if (decision === 'declined' && !['review', 'blocked'].includes(group.status)) {
+      throw lifecycleError('Only current Registry updates can be declined.', 'registry-update-group-not-actionable', 409)
+    }
+    if (decision === 'pending' && group.status !== 'declined') {
+      throw lifecycleError('Only declined Registry updates can be reconsidered.', 'registry-update-group-not-actionable', 409)
+    }
+    if (decision === 'pending' && group.reconsiderable !== true) {
+      throw lifecycleError('This Registry update has been superseded and cannot be reconsidered.', 'registry-update-group-not-actionable', 409)
+    }
+    const evaluationIds = group.members.map((member: Row) => member.evaluationId)
+    const placeholders = evaluationIds.map(() => '?').join(', ')
+    this.core.database.transaction(() => {
+      const now = this.now()
+      const changed = this.core.database.query(`
+        UPDATE registry_update_evaluations
+        SET decision = ?, decided_by_user_id = ?, decided_at_ms = ?
+        WHERE id IN (${placeholders}) AND decision = ?
+      `).run(
+        decision,
+        decision === 'pending' ? null : userId,
+        decision === 'pending' ? null : now,
+        ...evaluationIds,
+        decision === 'pending' ? 'declined' : 'pending',
+      )
+      if (changed.changes !== evaluationIds.length) {
+        throw lifecycleError('Registry update state changed; refresh before continuing.', 'registry-update-refresh-required', 409)
+      }
+      this.refreshRegistryUpdateRunCounts()
+    }).immediate()
+    const nextStatus = decision === 'declined' ? 'declined' : group.classification === 'blocked' ? 'blocked' : 'review'
+    const refreshed = this.getRegistryUpdateGroups().find((candidate: Row) => (
+      candidate.status === nextStatus
+      && candidate.templateKey === group.templateKey
+      && candidate.toRevision === group.toRevision
+      && candidate.targetContentHash === group.targetContentHash
+    ))
+    return {
+      decisions: [{
+        groupId: refreshed?.id ?? group.id,
+        previousGroupId: group.id,
+        concurrencyToken: refreshed?.concurrencyToken ?? null,
+        templateKey: group.templateKey,
+        toRevision: group.toRevision,
+        status: nextStatus,
+      }],
+      summary: this.getRegistryUpdateSummary(),
+      affectedProjectIds: [],
+      affectedProjectRevisions: {},
+      affectedLinkIds: [],
+    }
+  }
+
+  applyRegistryUpdateGroupById({ groupId, concurrencyToken, template, userId = null }: Row) {
+    const group = this.getRegistryUpdateGroup(groupId, concurrencyToken)
+    if (group.status !== 'review' || group.classification === 'blocked') {
+      throw lifecycleError('This Registry update cannot be applied without resolution.', 'registry-update-blocked', 409)
+    }
+    if (
+      template?.templateKey !== group.templateKey
+      || template?.revision !== group.toRevision
+      || template?.contentHash !== group.targetContentHash
+    ) {
+      throw lifecycleError('Registry update state changed; refresh before continuing.', 'registry-update-refresh-required', 409)
+    }
+    const result = this.applyRegistryUpdateGroups(
+      [template],
+      userId,
+      { linkIds: group.members.map((member: Row) => member.linkId) },
+    )
+    const linked = this.core.database.query(`
+      SELECT id FROM registry_links
+      WHERE id IN (${group.members.map(() => '?').join(', ')})
+        AND state = 'linked' AND imported_revision = ? AND imported_content_hash = ?
+    `).all(...group.members.map((member: Row) => member.linkId), group.toRevision, group.targetContentHash) as Row[]
+    if (linked.length !== group.members.length) {
+      throw lifecycleError('Registry update could not be proven after commit.', 'registry-update-commit-unverified', 500)
+    }
+    const appliedGroup = this.getRegistryUpdateGroups().find((candidate: Row) => (
+      candidate.status === 'applied'
+      && candidate.templateKey === group.templateKey
+      && candidate.toRevision === group.toRevision
+      && candidate.targetContentHash === group.targetContentHash
+    ))
+    if (!appliedGroup) {
+      throw lifecycleError('Registry update receipt could not be verified.', 'registry-update-commit-unverified', 500)
+    }
+    return {
+      ...result,
+      decisions: [{
+        groupId: appliedGroup.id,
+        previousGroupId: group.id,
+        concurrencyToken: appliedGroup.concurrencyToken,
+        templateKey: group.templateKey,
+        toRevision: group.toRevision,
+        status: 'applied',
+      }],
+      affectedLinkIds: group.members.map((member: Row) => member.linkId),
+    }
+  }
+
+  resolveAndApplyRegistryUpdateGroupById({ groupId, concurrencyToken, linkId, template, expectedProjectRevisions = null, userId = null }: Row) {
+    const group = this.getRegistryUpdateGroup(groupId, concurrencyToken)
+    if (group.status !== 'blocked' || !group.members.some((member: Row) => member.linkId === linkId)) {
+      throw lifecycleError('Registry topology resolution is not available for this group.', 'catalog-update-resolution-unavailable', 409)
+    }
+    const result = this.resolveAndApplyRegistryUpdateGroup(
+      { linkId, template, expectedProjectRevisions },
+      userId,
+    )
+    const appliedGroup = this.getRegistryUpdateGroups().find((candidate: Row) => (
+      candidate.status === 'applied'
+      && candidate.templateKey === group.templateKey
+      && candidate.toRevision === group.toRevision
+      && candidate.targetContentHash === group.targetContentHash
+    ))
+    return {
+      ...result,
+      decisions: [{
+        groupId: appliedGroup?.id ?? group.id,
+        previousGroupId: group.id,
+        concurrencyToken: appliedGroup?.concurrencyToken ?? null,
+        templateKey: group.templateKey,
+        toRevision: group.toRevision,
+        status: 'applied',
+      }],
+    }
   }
 
   getRegistryUpdateStatus() {
@@ -2297,12 +2558,20 @@ export class SqliteHomelabInventoryStore {
     }
   }
 
-  applyRegistryUpdateGroups(templates: Row[], userId: number | null = null) {
+  applyRegistryUpdateGroups(
+    templates: Row[],
+    userId: number | null = null,
+    scope: { linkIds?: number[] } | null = null,
+  ) {
     const registry = this.getRegistryState() as Row
     const snapshot = registry.snapshot
     const templateByIdentity = new Map(templates.map((template: Row) => [`${template.templateKey}:${template.revision}`, template]))
+    const exactLinkIds = scope?.linkIds ? new Set(scope.linkIds.map((id) => positiveId(id, 'Registry link ID'))) : null
     const links = registry.links.filter((link: Row) => (
+      (!exactLinkIds || exactLinkIds.has(link.id))
+      &&
       templateByIdentity.has(`${link.templateKey}:${link.availableRevision}`)
+      && templateByIdentity.get(`${link.templateKey}:${link.availableRevision}`)?.contentHash === link.availableContentHash
       && ['update-available', 'adoption-available'].includes(link.state)
     ))
     const requestedIdentities = new Set(templateByIdentity.keys())
@@ -2316,12 +2585,19 @@ export class SqliteHomelabInventoryStore {
         AND l.imported_revision = e.to_revision AND l.imported_content_hash = e.target_content_hash
     `).all() as Row[]
     for (const row of appliedRows) {
+      if (exactLinkIds && !exactLinkIds.has(row.id)) continue
       const identity = `${row.template_key}:${row.to_revision}`
       if (!requestedIdentities.has(identity) || templateByIdentity.get(identity)?.contentHash !== row.target_content_hash) continue
       appliedLinkIds.set(identity, [...(appliedLinkIds.get(identity) ?? []), row.id])
     }
     if ([...requestedIdentities].some((identity) => !matchedIdentities.has(identity) && !appliedLinkIds.has(identity))) {
       throw lifecycleError('One or more registry update groups were not found.', 'registry-update-group-not-found', 404)
+    }
+    if (exactLinkIds) {
+      const provenLinkIds = new Set([...links.map((link: Row) => link.id), ...[...appliedLinkIds.values()].flat()])
+      if ([...exactLinkIds].some((linkId) => !provenLinkIds.has(linkId))) {
+        throw lifecycleError('Registry update group membership changed; refresh before continuing.', 'registry-update-refresh-required', 409)
+      }
     }
     if (links.length === 0) return {
       applied: 0,
@@ -2338,7 +2614,10 @@ export class SqliteHomelabInventoryStore {
       affectedProjectRevisions: {},
       affectedLinkIds: [...new Set([...appliedLinkIds.values()].flat())],
     }
-    const batch = this.evaluateCatalogUpdates(links, templates)
+    const batch = this.evaluateCatalogUpdates(
+      links.map((link: Row) => ({ ...link, linkId: link.id })),
+      templates,
+    )
     const evaluations = batch.evaluations
     if (evaluations.some((evaluation: Row) => evaluation.classification === 'blocked')) {
       throw lifecycleError('Blocked registry updates cannot be applied.', 'registry-update-blocked', 409)

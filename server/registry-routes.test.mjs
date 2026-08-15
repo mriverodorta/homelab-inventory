@@ -345,6 +345,75 @@ describe('registry routes', () => {
     expect(groups).not.toHaveProperty('updates')
   })
 
+  it('paginates compact update groups without serializing definitions', async () => {
+    const { baseUrl, store } = await createServer()
+    store.getRegistryUpdateGroups = vi.fn(() => Array.from({ length: 25 }, (_, index) => ({
+      id: `review:cpu-${index}:2:${'a'.repeat(64)}`,
+      status: 'review',
+      templateKey: `cpu-${index}`,
+      fromRevision: 1,
+      toRevision: 2,
+      classification: 'review-required',
+      reasons: ['identity-change'],
+      concurrencyToken: 'b'.repeat(64),
+      evaluatedAt: '2026-08-15T00:00:00.000Z',
+      changes: [{ field: 'specs', current: { payload: 'x'.repeat(20_000) }, next: {} }],
+      members: [{ current: { payload: 'x'.repeat(20_000) }, proposed: {} }],
+      projects: [{ id: 1, name: 'Default project' }],
+      items: [{ linkId: index + 1, itemType: 'cpu', itemId: index + 1, itemName: `CPU ${index}`, projects: [{ id: 1, name: 'Default project' }] }],
+    })))
+
+    const firstResponse = await fetch(`${baseUrl}/api/registry/update-groups?status=review&limit=10`)
+    const first = await firstResponse.json()
+    expect(first.groups).toHaveLength(10)
+    expect(first.total).toBe(25)
+    expect(first.nextCursor).toEqual(expect.any(String))
+    expect(first.groups[0]).not.toHaveProperty('changes')
+    expect(first.groups[0]).not.toHaveProperty('members')
+    expect(Number(firstResponse.headers.get('content-length') ?? JSON.stringify(first).length)).toBeLessThan(20_000)
+
+    const second = await fetch(`${baseUrl}/api/registry/update-groups?status=review&limit=10&cursor=${first.nextCursor}`).then((response) => response.json())
+    expect(second.groups[0].templateKey).toBe('cpu-10')
+    expect(second.groups).toHaveLength(10)
+
+    const invalid = await fetch(`${baseUrl}/api/registry/update-groups?cursor=not-a-cursor`)
+    expect(invalid.status).toBe(400)
+    expect(await invalid.json()).toMatchObject({ code: 'invalid-registry-update-cursor' })
+  })
+
+  it('loads one concurrency-bound update detail', async () => {
+    const token = 'c'.repeat(64)
+    const group = { id: `blocked:nas-example:2:${'d'.repeat(64)}`, templateKey: 'nas-example', toRevision: 2, targetContentHash: 'e'.repeat(64) }
+    const template = { templateKey: 'nas-example', revision: 2, contentHash: 'e'.repeat(64) }
+    const detail = { ...group, concurrencyToken: token, members: [{ linkId: 7, resolution: { available: true } }] }
+    const { baseUrl, store } = await createServer({ snapshotServiceFactory: () => ({ template: vi.fn(async () => template) }) })
+    store.getRegistryUpdateGroup = vi.fn(() => group)
+    store.getRegistryUpdateGroupDetail = vi.fn(() => detail)
+
+    const response = await fetch(`${baseUrl}/api/registry/update-groups/${encodeURIComponent(group.id)}?token=${token}`)
+    expect(response.status).toBe(200)
+    expect(await response.json()).toEqual(detail)
+    expect(store.getRegistryUpdateGroup).toHaveBeenCalledWith(group.id, token)
+    expect(store.getRegistryUpdateGroupDetail).toHaveBeenCalledWith(group.id, token, template)
+  })
+
+  it('loads persisted audit detail without requesting an obsolete catalog template', async () => {
+    const token = 'f'.repeat(64)
+    const group = { id: `applied:cpu-example:1:${'a'.repeat(64)}`, status: 'applied', templateKey: 'cpu-example', toRevision: 1 }
+    const detail = { ...group, concurrencyToken: token, members: [{ linkId: 7, changes: [{ field: 'specs.cores', current: 4, next: 6 }] }] }
+    const template = vi.fn()
+    const { baseUrl, store } = await createServer({ snapshotServiceFactory: () => ({ template }) })
+    store.getRegistryUpdateGroup = vi.fn(() => group)
+    store.getRegistryUpdateGroupDetail = vi.fn(() => detail)
+
+    const response = await fetch(`${baseUrl}/api/registry/update-groups/${encodeURIComponent(group.id)}?token=${token}`)
+
+    expect(response.status).toBe(200)
+    expect(await response.json()).toEqual(detail)
+    expect(template).not.toHaveBeenCalled()
+    expect(store.getRegistryUpdateGroupDetail).toHaveBeenCalledWith(group.id, token, null)
+  })
+
   it('returns a compact decision receipt after approving an update group', async () => {
     const template = { templateKey: 'cpu-example', revision: 2 }
     const result = {

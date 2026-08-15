@@ -242,9 +242,18 @@ const RELEASE_0_12_11_DETAILS: UnreleasedReleaseNotes = {
 }
 
 export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
-  highlights: [],
-  fixes: [],
-  notes: [],
+  highlights: [
+    'Registry updates with a deterministic topology migration can now be resolved from a confirmed preview that identifies cable remaps, assignment changes, and components returned to inventory before one atomic commit.',
+  ],
+  fixes: [
+    'Registry update review now loads compact paginated groups and fetches detailed definitions only when opened, while per-item progress and exact decision receipts keep the dialog responsive and authoritative.',
+    'Semantic catalog comparison treats equivalent units, enums, default port metadata, identity enrichment, and nested compatibility consistently while preserving local instance fields and unknown supported Registry data.',
+    'Historical evaluations no longer duplicate current work; approvals persist in Applied across refreshes and restarts, stale decisions fail explicitly, and successful receipts require exact linked revision and content-hash proof.',
+    'Canonical power-input slot zero now survives SQLite migration and round trips as ordering metadata without changing positive relational-ID requirements.',
+  ],
+  notes: [
+    'The first startup after this schema update performs one restart-safe semantic reevaluation. Trusted safe enrichment follows the existing automatic-update preference, while relationship-changing updates remain blocked until confirmed through Resolve and apply.',
+  ],
 }
 
 const RELEASE_0_11_2_DETAILS: UnreleasedReleaseNotes = {

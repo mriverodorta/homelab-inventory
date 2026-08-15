@@ -83,10 +83,93 @@ function registryUpdateSummary(store) {
     run: typeof store.getRegistryUpdateStatus === 'function' ? store.getRegistryUpdateStatus() : null,
     counts: {
       review: groups.filter((group) => group.status === 'review' && group.classification !== 'blocked').length,
-      blocked: groups.filter((group) => group.status === 'review' && group.classification === 'blocked').length,
+      blocked: groups.filter((group) => group.status === 'blocked' || (group.status === 'review' && group.classification === 'blocked')).length,
       applied: groups.filter((group) => group.status === 'applied').length,
       declined: groups.filter((group) => group.status === 'declined').length,
     },
+  }
+}
+
+function compactRegistryUpdateGroup(group) {
+  return {
+    id: group.id,
+    status: group.status,
+    templateKey: group.templateKey,
+    fromRevision: group.fromRevision,
+    toRevision: group.toRevision,
+    classification: group.classification,
+    reasons: group.reasons,
+    concurrencyToken: group.concurrencyToken,
+    reconsiderable: group.reconsiderable === true,
+    evaluatedAt: group.evaluatedAt,
+    items: group.items.map((item) => ({
+      linkId: item.linkId,
+      itemType: item.itemType,
+      itemId: item.itemId,
+      itemName: item.itemName,
+      projects: item.projects,
+      classification: item.classification,
+      fromRevision: item.fromRevision,
+    })),
+    projects: group.projects,
+  }
+}
+
+function registryUpdateListQuery(query) {
+  const limit = query.limit === undefined ? 20 : Number(query.limit)
+  if (!Number.isSafeInteger(limit) || limit < 1 || limit > 100) {
+    throw new InventoryLifecycleError('Registry update page size is invalid.', {
+      code: 'invalid-registry-update-page', status: 400,
+    })
+  }
+  let offset = 0
+  if (query.cursor !== undefined) {
+    try {
+      const decoded = JSON.parse(Buffer.from(String(query.cursor), 'base64url').toString('utf8'))
+      if (!Number.isSafeInteger(decoded.offset) || decoded.offset < 0) throw new Error('invalid')
+      offset = decoded.offset
+    } catch {
+      throw new InventoryLifecycleError('Registry update cursor is invalid.', {
+        code: 'invalid-registry-update-cursor', status: 400,
+      })
+    }
+  }
+  const status = typeof query.status === 'string' ? query.status : 'review'
+  if (!['review', 'blocked', 'applied', 'declined'].includes(status)) {
+    throw new InventoryLifecycleError('Registry update status is invalid.', {
+      code: 'invalid-registry-update-filter', status: 400,
+    })
+  }
+  const q = typeof query.q === 'string' ? query.q.trim().slice(0, 120).toLowerCase() : ''
+  const category = typeof query.category === 'string' ? query.category : null
+  const reason = typeof query.reason === 'string' ? query.reason : null
+  const projectId = query.projectId === undefined ? null : parseId(String(query.projectId))
+  if (query.projectId !== undefined && projectId === null) {
+    throw new InventoryLifecycleError('Registry update project filter is invalid.', {
+      code: 'invalid-registry-update-filter', status: 400,
+    })
+  }
+  return { limit, offset, status, q, category, reason, projectId }
+}
+
+function listRegistryUpdateGroups(store, query) {
+  const filters = registryUpdateListQuery(query)
+  const filtered = store.getRegistryUpdateGroups().filter((group) => (
+    group.status === filters.status
+    && (!filters.q || `${group.templateKey} ${group.items.map((item) => item.itemName).join(' ')}`.toLowerCase().includes(filters.q))
+    && (!filters.category || group.items.some((item) => item.itemType === filters.category))
+    && (!filters.reason || group.reasons.includes(filters.reason))
+    && (!filters.projectId || group.projects.some((project) => project.id === filters.projectId))
+  ))
+  const page = filtered.slice(filters.offset, filters.offset + filters.limit)
+  const nextOffset = filters.offset + page.length
+  return {
+    groups: page.map(compactRegistryUpdateGroup),
+    nextCursor: nextOffset < filtered.length
+      ? Buffer.from(JSON.stringify({ offset: nextOffset })).toString('base64url')
+      : null,
+    total: filtered.length,
+    run: typeof store.getRegistryUpdateStatus === 'function' ? store.getRegistryUpdateStatus() : null,
   }
 }
 
@@ -423,6 +506,33 @@ export function registerRegistryRoutes(app, {
     })
   })
 
+  app.get('/api/registry/update-groups', (request, response) => {
+    run(withStore, request, response, async (store) => {
+      response.json(listRegistryUpdateGroups(store, request.query))
+    })
+  })
+
+  app.get('/api/registry/update-groups/:groupId', (request, response) => {
+    run(withStore, request, response, async (store) => {
+      const token = typeof request.query.token === 'string' ? request.query.token : ''
+      if (!/^[a-f0-9]{64}$/.test(token)) throw new InventoryLifecycleError('Registry update token is invalid.', {
+        code: 'invalid-registry-update-token', status: 400,
+      })
+      const group = store.getRegistryUpdateGroup(request.params.groupId, token)
+      if (group.status === 'applied' || group.status === 'declined') {
+        response.json(store.getRegistryUpdateGroupDetail(group.id, token, null))
+        return
+      }
+      const template = await snapshotService(store).template(group.templateKey)
+      if (!template || template.revision !== group.toRevision || template.contentHash !== group.targetContentHash) {
+        throw new InventoryLifecycleError('Updated catalog template is unavailable.', {
+          code: 'catalog-template-not-found', status: 409,
+        })
+      }
+      response.json(store.getRegistryUpdateGroupDetail(group.id, token, template))
+    })
+  })
+
   app.post('/api/registry/updates/retry', (request, response) => {
     run(withStore, request, response, async (store) => {
       await catalogUpdateCoordinator?.run({ force: true })
@@ -435,6 +545,50 @@ export function registerRegistryRoutes(app, {
 
   app.post('/api/registry/update-groups/decision', (request, response) => {
     run(withStore, request, response, async (store) => {
+      if (Array.isArray(request.body?.groups) && request.body.groups.every((group) => typeof group?.groupId === 'string')) {
+        const groups = request.body.groups
+        const decision = request.body?.decision
+        if (
+          groups.length === 0
+          || groups.length > 100
+          || !['applied', 'declined', 'reconsider'].includes(decision)
+          || groups.some((group) => !/^[a-f0-9]{64}$/.test(group.concurrencyToken ?? ''))
+        ) throw new InventoryLifecycleError('Registry update decision is invalid.', {
+          code: 'invalid-registry-update-decision', status: 400,
+        })
+        const results = []
+        for (const requested of groups) {
+          if (decision === 'applied') {
+            const group = store.getRegistryUpdateGroup(requested.groupId, requested.concurrencyToken)
+            const template = await snapshotService(store).template(group.templateKey)
+            if (!template) throw new InventoryLifecycleError('Updated catalog template is unavailable.', {
+              code: 'catalog-template-not-found', status: 409,
+            })
+            results.push(store.applyRegistryUpdateGroupById({
+              groupId: requested.groupId,
+              concurrencyToken: requested.concurrencyToken,
+              template,
+              userId: request.authentication?.account?.id ?? null,
+            }))
+          } else {
+            results.push(store.decideRegistryUpdateGroupById({
+              groupId: requested.groupId,
+              concurrencyToken: requested.concurrencyToken,
+              decision: decision === 'reconsider' ? 'pending' : decision,
+              userId: request.authentication?.account?.id ?? null,
+            }))
+          }
+        }
+        const last = results.at(-1)
+        response.json({
+          decisions: results.flatMap((result) => result.decisions),
+          summary: last?.summary ?? registryUpdateSummary(store),
+          affectedProjectIds: [...new Set(results.flatMap((result) => result.affectedProjectIds ?? []))],
+          affectedProjectRevisions: Object.assign({}, ...results.map((result) => result.affectedProjectRevisions ?? {})),
+          affectedLinkIds: [...new Set(results.flatMap((result) => result.affectedLinkIds ?? []))],
+        })
+        return
+      }
       const requestedGroups = Array.isArray(request.body?.groups)
         ? request.body.groups
         : [{ templateKey: request.body?.templateKey, toRevision: request.body?.toRevision }]
@@ -460,6 +614,31 @@ export function registerRegistryRoutes(app, {
       response.json(store.decideRegistryUpdateGroups({
         groups,
         decision: decision === 'reconsider' ? 'pending' : decision,
+        userId: request.authentication?.account?.id ?? null,
+      }))
+    })
+  })
+
+  app.post('/api/registry/update-groups/:groupId/resolve-and-apply', (request, response) => {
+    run(withStore, request, response, async (store) => {
+      const token = request.body?.concurrencyToken
+      const linkId = Number(request.body?.linkId)
+      if (!/^[a-f0-9]{64}$/.test(token ?? '') || !isRelationalId(linkId)) {
+        throw new InventoryLifecycleError('Registry topology resolution request is invalid.', {
+          code: 'invalid-registry-update-resolution', status: 400,
+        })
+      }
+      const group = store.getRegistryUpdateGroup(request.params.groupId, token)
+      const template = await snapshotService(store).template(group.templateKey)
+      if (!template) throw new InventoryLifecycleError('Updated catalog template is unavailable.', {
+        code: 'catalog-template-not-found', status: 409,
+      })
+      response.json(store.resolveAndApplyRegistryUpdateGroupById({
+        groupId: group.id,
+        concurrencyToken: token,
+        linkId,
+        template,
+        expectedProjectRevisions: request.body?.expectedProjectRevisions ?? null,
         userId: request.authentication?.account?.id ?? null,
       }))
     })

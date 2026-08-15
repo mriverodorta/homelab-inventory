@@ -85,4 +85,9 @@ export const CORE_MIGRATIONS: readonly CoreMigration[] = [
     file: '0015_nonnegative_port_slots.sql',
     sha256: 'b6db8f99c3e126ead69de48324d292a27540299087413d9d0bf2afe18fb2ce67',
   },
+  {
+    id: '0017_registry_update_reconciliation',
+    file: '0016_registry_update_reconciliation.sql',
+    sha256: '67399cdff32dcc6ebfa0bbdb929cd505254c7467c98fa54596b8b861c5afc1d1',
+  },
 ]

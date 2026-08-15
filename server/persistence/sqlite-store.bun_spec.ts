@@ -85,6 +85,18 @@ async function catalogTemplate(
 }
 
 describe('SQLite Homelab Inventory store facade', () => {
+  test('persists the Registry update reconciliation marker across store instances', async () => {
+    const store = await emptyFixtureStore()
+    try {
+      expect(store.getCatalogUpdateReconciliationVersion()).toBe(0)
+      store.markCatalogUpdateReconciliationComplete(1)
+      expect(store.getCatalogUpdateReconciliationVersion()).toBe(1)
+      expect(() => store.markCatalogUpdateReconciliationComplete(0)).toThrow(/version is invalid/iu)
+    } finally {
+      store.close()
+    }
+  })
+
   test('opens and saves project-scoped workspaces without changing the default store identity', async () => {
     const store = await emptyFixtureStore()
     try {
@@ -199,7 +211,7 @@ describe('SQLite Homelab Inventory store facade', () => {
         group_id: 1,
         positions: [0],
       })
-      expect(store.getDatabaseStatus()).toMatchObject({ schemaVersion: 16 })
+      expect(store.getDatabaseStatus()).toMatchObject({ schemaVersion: 17 })
       expect(store.getPersistenceHealth()).toMatchObject({ ok: true, engine: 'sqlite' })
     } finally {
       store.close()
@@ -1342,6 +1354,61 @@ describe('SQLite Homelab Inventory store facade', () => {
     }
   })
 
+  test('applies only the exact review members when one template also has blocked links', async () => {
+    const store = await emptyFixtureStore()
+    try {
+      store.registryTransaction((draft: any) => {
+        draft.sources = [{ id: 1, kind: 'official-connected', displayName: 'Official Catalog', enabled: true, createdAt: '2026-08-12T00:00:00.000Z' }]
+        draft.snapshot = { sourceId: 1, revision: 2, generatedAt: '2026-08-12T00:00:00.000Z', expiresAt: null, activatedAt: '2026-08-12T00:00:00.000Z', digest: 'b'.repeat(64), templateCount: 1, keyId: 'test-key' }
+      })
+      const revision1 = await catalogTemplate({
+        type: 'cpu', name: 'Example CPU 300', manufacturer: 'Example Silicon', model: 'CPU-300', specs: { cores: 4 },
+      }, 1, 'cpu-example-cpu-300')
+      const revision2 = await catalogTemplate({
+        ...revision1.item, specs: { cores: 6 },
+      }, 2, revision1.templateKey)
+      store.createCatalogInventoryItems(revision1, 2)
+      const links = (store.getRegistryState() as any).links
+      store.registryTransaction((draft: any) => {
+        for (const link of draft.links) Object.assign(link, {
+          state: 'update-available', availableRevision: 2, availableContentHash: revision2.contentHash,
+        })
+      })
+      const batch = store.evaluateCatalogUpdates(
+        links.map((link: any) => ({ linkId: link.id, templateKey: link.templateKey })),
+        [revision2],
+      )
+      batch.evaluations[0].classification = 'review-required'
+      batch.evaluations[0].reasons = ['identity-change']
+      batch.evaluations[1].classification = 'blocked'
+      batch.evaluations[1].reasons = ['connected-port-change']
+      store.commitCatalogUpdateRun({
+        sourceId: 1, catalogRevision: 2, evaluations: batch.evaluations, templates: [revision2], automatic: false,
+      })
+      const reviewGroup = store.getRegistryUpdateGroups().find((group: any) => group.status === 'review') as any
+      const blockedGroup = store.getRegistryUpdateGroups().find((group: any) => group.status === 'blocked') as any
+
+      expect(reviewGroup.members.map((member: any) => member.linkId)).toEqual([links[0].id])
+      expect(blockedGroup.members.map((member: any) => member.linkId)).toEqual([links[1].id])
+      store.applyRegistryUpdateGroupById({
+        groupId: reviewGroup.id,
+        concurrencyToken: reviewGroup.concurrencyToken,
+        template: revision2,
+      })
+
+      expect((store.getRegistryState() as any).links).toEqual([
+        expect.objectContaining({ id: links[0].id, state: 'linked', importedRevision: 2 }),
+        expect.objectContaining({ id: links[1].id, state: 'update-available', importedRevision: 1, availableRevision: 2 }),
+      ])
+      expect(store.getRegistryUpdateGroups()).toEqual(expect.arrayContaining([
+        expect.objectContaining({ status: 'applied', members: [expect.objectContaining({ linkId: links[0].id })] }),
+        expect.objectContaining({ status: 'blocked', members: [expect.objectContaining({ linkId: links[1].id })] }),
+      ]))
+    } finally {
+      store.close()
+    }
+  })
+
   test('persists a same-revision catalog adoption without treating it as a rollback', async () => {
     const store = await emptyFixtureStore()
     try {
@@ -1481,9 +1548,22 @@ describe('SQLite Homelab Inventory store facade', () => {
       const evaluate = (template: any) => [{ ...store.evaluateCatalogUpdate(link.id, template), targetContentHash: template.contentHash }]
       store.commitCatalogUpdateRun({ sourceId: 1, catalogRevision: 2, evaluations: evaluate(revision2), templates: [revision2], automatic: false })
       expect((store.getRegistryState() as any).updateRuns[0]).toMatchObject({ appliedCount: 0, reviewCount: 1, skippedCount: 0 })
-      store.decideRegistryUpdateGroups({
-        groups: [{ templateKey: revision2.templateKey, toRevision: 2 }],
+      const reviewGroup = store.getRegistryUpdateGroups().find((group: any) => group.status === 'review') as any
+      store.updateInventoryItemProperties({ type: link.itemType, id: link.itemId }, { localNote: 'keep local' })
+      expect(() => store.decideRegistryUpdateGroupById({
+        groupId: reviewGroup.id,
+        concurrencyToken: reviewGroup.concurrencyToken,
         decision: 'declined',
+      })).toThrow(/refresh before continuing/iu)
+      const refreshedGroup = store.getRegistryUpdateGroups().find((group: any) => group.status === 'review') as any
+      const receipt = store.decideRegistryUpdateGroupById({
+        groupId: refreshedGroup.id,
+        concurrencyToken: refreshedGroup.concurrencyToken,
+        decision: 'declined',
+      })
+      expect(receipt).toMatchObject({
+        decisions: [{ previousGroupId: refreshedGroup.id, status: 'declined' }],
+        affectedProjectIds: [],
       })
       expect((store.getRegistryState() as any).updateRuns[0]).toMatchObject({ appliedCount: 0, reviewCount: 0, skippedCount: 1 })
       const declinedState = await store.snapshotStores()

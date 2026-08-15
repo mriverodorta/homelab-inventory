@@ -6,7 +6,6 @@ import {
   canonicalizeCatalogItemV9,
   parseLegacySpeedBps,
   sanitizeCatalogItem,
-  sanitizeCatalogItemV9,
 } from '../../packages/catalog-protocol/src/index.ts'
 
 const IDENTITY_FIELDS = ['type', 'manufacturer', 'secondaryManufacturer', 'family', 'model', 'number']

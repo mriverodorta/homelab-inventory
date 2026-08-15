@@ -124,12 +124,20 @@ export interface HomelabInventoryPersistence {
   evaluateCatalogUpdates(updates: Record<string, unknown>[], templates: Record<string, unknown>[]): unknown
   commitCatalogUpdateRun(input: Record<string, unknown>): unknown
   getRegistryUpdateGroups(): unknown[]
+  getRegistryUpdateGroup(groupId: string, concurrencyToken?: string | null): unknown
+  getRegistryUpdateGroupDetail(groupId: string, concurrencyToken: string, template?: Record<string, unknown> | null): unknown
+  getRegistryUpdateSummary(): unknown
   getRegistryUpdateStatus(): unknown
+  getCatalogUpdateReconciliationVersion(): number
+  markCatalogUpdateReconciliationComplete(version: number): void
   recordCatalogUpdateFailure(input: Record<string, unknown>): unknown
   decideRegistryUpdateGroup(input: Record<string, unknown>): unknown
+  decideRegistryUpdateGroupById(input: Record<string, unknown>): unknown
   applyRegistryUpdateGroup(template: Record<string, unknown>, userId?: number | null): unknown
+  applyRegistryUpdateGroupById(input: Record<string, unknown>): unknown
   applyRegistryUpdateGroups(templates: Record<string, unknown>[], userId?: number | null): unknown
   resolveAndApplyRegistryUpdateGroup(input: Record<string, unknown>, userId?: number | null): unknown
+  resolveAndApplyRegistryUpdateGroupById(input: Record<string, unknown>): unknown
   decideRegistryUpdateGroups(input: Record<string, unknown>): unknown
   getAuthenticationState(): unknown
   updateAuthentication(mutator: (draft: unknown) => void): unknown

@@ -38,7 +38,8 @@ async function migratedDatabase(migrationCount = CORE_MIGRATIONS.length) {
 
 describe('schema-29 core import', () => {
   test('migrates an existing port table to non-negative slot numbers without losing constraints', async () => {
-    const handle = await migratedDatabase(CORE_MIGRATIONS.length - 1)
+    const migrationIndex = CORE_MIGRATIONS.findIndex((migration) => migration.id === '0016_nonnegative_port_slots')
+    const handle = await migratedDatabase(migrationIndex)
     try {
       const itemId = (handle.database.query(`
         INSERT INTO inventory_items (type_id, scope, name, extensions_json, created_at_ms, updated_at_ms)

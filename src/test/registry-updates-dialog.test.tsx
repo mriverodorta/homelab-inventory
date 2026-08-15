@@ -1,34 +1,55 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import type { ComponentProps } from 'react'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { RegistryUpdatesDialog } from '@/components/inventory/registry-updates-dialog'
 import { renderWithOpenAuth as render } from '@/test/open-auth-test-render'
+import type { CatalogUpdateGroup } from '@/types/registry'
 
 const api = vi.hoisted(() => ({
+  loadCatalogUpdateSummary: vi.fn(),
   loadCatalogUpdateGroups: vi.fn(),
+  loadCatalogUpdateGroup: vi.fn(),
   decideCatalogUpdateGroups: vi.fn(),
+  resolveAndApplyCatalogUpdateGroup: vi.fn(),
   retryCatalogUpdates: vi.fn(),
 }))
 
 vi.mock('@/lib/registry-api', () => api)
 
+const counts = { review: 2, blocked: 0, applied: 0, declined: 0 }
+
 function renderDialog(onApplied?: ComponentProps<typeof RegistryUpdatesDialog>['onApplied']) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } })
-  return render(
-    <QueryClientProvider client={queryClient}>
-      <RegistryUpdatesDialog open onOpenChange={vi.fn()} onApplied={onApplied} />
-    </QueryClientProvider>,
-  )
+  return render(<QueryClientProvider client={queryClient}><RegistryUpdatesDialog open onOpenChange={vi.fn()} onApplied={onApplied} /></QueryClientProvider>)
 }
 
-function reviewGroup(type: string, index: number) {
+function reviewGroup(type: string, index: number): CatalogUpdateGroup {
   return {
-    id: `review:${type}-example:2`, status: 'review' as const, templateKey: `${type}-example`, fromRevision: 1, toRevision: 2,
-    classification: 'review-required' as const, reasons: [], changes: [], evaluatedAt: '2026-08-14T13:00:00.000Z', projects: [],
+    id: `review:${type}-example:2:${'a'.repeat(64)}`,
+    concurrencyToken: String(index).repeat(64).slice(0, 64),
+    status: 'review' as const,
+    templateKey: `${type}-example`,
+    fromRevision: 1,
+    toRevision: 2,
+    classification: 'review-required' as const,
+    reasons: [],
+    reconsiderable: false,
+    evaluatedAt: '2026-08-14T13:00:00.000Z',
+    projects: [],
     items: [{ linkId: index, itemType: type, itemId: index, itemName: `Example ${type.toUpperCase()}`, projects: [] }],
   }
 }
+
+function page(groups: CatalogUpdateGroup[]) {
+  return { groups, run: null, nextCursor: null, total: groups.length }
+}
+
+beforeEach(() => {
+  api.loadCatalogUpdateSummary.mockResolvedValue({ run: null, counts })
+  api.loadCatalogUpdateGroups.mockResolvedValue(page([reviewGroup('cpu', 1), reviewGroup('gpu', 2)]))
+})
 
 afterEach(() => {
   cleanup()
@@ -36,161 +57,118 @@ afterEach(() => {
 })
 
 describe('RegistryUpdatesDialog', () => {
-  it('shows pending state only on the group being approved', async () => {
-    let resolveDecision!: (value: unknown) => void
-    api.loadCatalogUpdateGroups.mockResolvedValue({
-      run: null,
-      groups: ['cpu', 'gpu'].map((type, index) => ({
-        id: `review:${type}-example:2`, status: 'review', templateKey: `${type}-example`, fromRevision: 1, toRevision: 2,
-        classification: 'review-required', reasons: [], changes: [], evaluatedAt: '2026-08-14T13:00:00.000Z', projects: [],
-        items: [{ linkId: index + 1, itemType: type, itemId: index + 1, itemName: `Example ${type.toUpperCase()}`, projects: [] }],
-      })),
+  it('loads compact groups and fetches definition changes only after expansion', async () => {
+    api.loadCatalogUpdateGroup.mockResolvedValue({
+      ...reviewGroup('cpu', 1),
+      members: [{
+        linkId: 1,
+        itemId: 1,
+        itemType: 'cpu',
+        current: { specs: { cores: 4 } },
+        proposed: { specs: { cores: 6 } },
+        changes: [{ field: 'specs.cores', current: 4, next: 6 }],
+        resolution: { available: false, reason: null, operations: [], affectedRelationships: { connectionIds: [], assignmentIds: [] } },
+      }],
     })
+    renderDialog()
+
+    const cpuCard = (await screen.findAllByText('Example CPU'))[0].closest('section')!
+    expect(api.loadCatalogUpdateGroup).not.toHaveBeenCalled()
+    fireEvent.click(within(cpuCard).getByRole('button', { name: 'Review catalog changes' }))
+
+    expect(await within(cpuCard).findByText('specs.cores')).toBeInTheDocument()
+    expect(api.loadCatalogUpdateGroup).toHaveBeenCalledOnce()
+  })
+
+  it('shows pending state only on the clicked group and submits stable identity', async () => {
+    let resolveDecision!: (value: unknown) => void
     api.decideCatalogUpdateGroups.mockImplementation(() => new Promise((resolve) => { resolveDecision = resolve }))
     renderDialog()
 
+    const cpuGroup = reviewGroup('cpu', 1)
     const cpuCard = (await screen.findAllByText('Example CPU'))[0].closest('section')!
     const gpuCard = screen.getAllByText('Example GPU')[0].closest('section')!
     fireEvent.click(within(cpuCard).getByRole('button', { name: 'Approve group' }))
 
-    await waitFor(() => expect(api.decideCatalogUpdateGroups).toHaveBeenCalledOnce())
+    await waitFor(() => expect(api.decideCatalogUpdateGroups.mock.calls[0]?.[0]).toEqual({
+      groups: [{ groupId: cpuGroup.id, concurrencyToken: cpuGroup.concurrencyToken }],
+      decision: 'applied',
+    }))
     expect(within(cpuCard).getByRole('button', { name: 'Approve group' })).toBeDisabled()
     expect(within(gpuCard).getByRole('button', { name: 'Approve group' })).not.toBeDisabled()
 
     resolveDecision({
-      decisions: [{ templateKey: 'cpu-example', toRevision: 2, status: 'applied' }],
+      decisions: [{ groupId: 'applied', previousGroupId: cpuGroup.id, concurrencyToken: 'a'.repeat(64), templateKey: 'cpu-example', toRevision: 2, status: 'applied' }],
       summary: { run: null, counts: { review: 1, blocked: 0, applied: 1, declined: 0 } },
-      affectedProjectIds: [],
-      affectedProjectRevisions: {},
-      affectedLinkIds: [1],
+      affectedProjectIds: [], affectedProjectRevisions: {}, affectedLinkIds: [1],
     })
     await waitFor(() => expect(screen.getByRole('tab', { name: 'Review 1' })).toBeInTheDocument())
   })
 
-  it('declines only the requested group and moves it out of Review without refetching details', async () => {
-    api.loadCatalogUpdateGroups.mockResolvedValue({ run: null, groups: [reviewGroup('cpu', 1), reviewGroup('gpu', 2)] })
+  it('moves an authoritative decision to Applied and does not reappear after refetch', async () => {
+    const cpu = reviewGroup('cpu', 1)
+    api.loadCatalogUpdateGroups
+      .mockResolvedValueOnce(page([cpu, reviewGroup('gpu', 2)]))
+      .mockResolvedValue(page([reviewGroup('gpu', 2)]))
     api.decideCatalogUpdateGroups.mockResolvedValue({
-      decisions: [{ templateKey: 'cpu-example', toRevision: 2, status: 'declined' }],
-      summary: { run: null, counts: { review: 1, blocked: 0, applied: 0, declined: 1 } },
-      affectedProjectIds: [], affectedProjectRevisions: {}, affectedLinkIds: [],
+      decisions: [{ groupId: 'applied', previousGroupId: cpu.id, concurrencyToken: 'a'.repeat(64), templateKey: cpu.templateKey, toRevision: 2, status: 'applied' }],
+      summary: { run: null, counts: { review: 1, blocked: 0, applied: 1, declined: 0 } },
+      affectedProjectIds: [], affectedProjectRevisions: {}, affectedLinkIds: [1],
     })
     renderDialog()
 
-    const cpuCard = (await screen.findAllByText('Example CPU'))[0].closest('section')!
-    fireEvent.click(within(cpuCard).getByRole('button', { name: 'Decline revision' }))
-
-    await waitFor(() => expect(screen.getByRole('tab', { name: 'Review 1' })).toBeInTheDocument())
-    expect(screen.getByRole('tab', { name: 'Declined 1' })).toBeInTheDocument()
-    expect(api.decideCatalogUpdateGroups).toHaveBeenCalledOnce()
-    expect(api.loadCatalogUpdateGroups).toHaveBeenCalledOnce()
+    fireEvent.click(within((await screen.findAllByText('Example CPU'))[0].closest('section')!).getByRole('button', { name: 'Approve group' }))
+    await waitFor(() => expect(screen.queryByText('Example CPU')).not.toBeInTheDocument())
+    expect(screen.getByRole('tab', { name: 'Applied 1' })).toBeInTheDocument()
+    expect(api.loadCatalogUpdateGroups).toHaveBeenCalledTimes(2)
   })
 
-  it('marks only selected bulk groups pending and applies them in one request', async () => {
-    let resolveDecision!: (value: unknown) => void
-    api.loadCatalogUpdateGroups.mockResolvedValue({
-      run: null,
-      groups: [reviewGroup('cpu', 1), reviewGroup('gpu', 2), reviewGroup('storage', 3)],
-    })
-    api.decideCatalogUpdateGroups.mockImplementation(() => new Promise((resolve) => { resolveDecision = resolve }))
-    const onApplied = vi.fn(async () => undefined)
-    renderDialog(onApplied)
-
-    await screen.findAllByText('Example CPU')
-    fireEvent.click(screen.getByRole('checkbox', { name: 'Select Example CPU' }))
-    fireEvent.click(screen.getByRole('checkbox', { name: 'Select Example GPU' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Approve selected' }))
-
-    await waitFor(() => expect(api.decideCatalogUpdateGroups).toHaveBeenCalledOnce())
-    const storageCard = screen.getAllByText('Example STORAGE')[0].closest('section')!
-    expect(within(storageCard).getByRole('button', { name: 'Approve group' })).not.toBeDisabled()
-    expect(api.decideCatalogUpdateGroups.mock.calls[0]?.[0]).toEqual({
-      groups: [
-        { templateKey: 'cpu-example', toRevision: 2 },
-        { templateKey: 'gpu-example', toRevision: 2 },
-      ],
-      decision: 'applied',
-    })
-
-    resolveDecision({
-      decisions: [
-        { templateKey: 'cpu-example', toRevision: 2, status: 'applied' },
-        { templateKey: 'gpu-example', toRevision: 2, status: 'applied' },
-      ],
-      summary: { run: null, counts: { review: 1, blocked: 0, applied: 2, declined: 0 } },
-      affectedProjectIds: [1], affectedProjectRevisions: { 1: 4 }, affectedLinkIds: [1, 2],
-    })
-    await waitFor(() => expect(screen.getByRole('tab', { name: 'Review 1' })).toBeInTheDocument())
-    expect(onApplied).toHaveBeenCalledOnce()
-    expect(api.loadCatalogUpdateGroups).toHaveBeenCalledOnce()
-  })
-
-  it('keeps a failed decision on its original card and leaves unrelated cards unchanged', async () => {
-    api.loadCatalogUpdateGroups.mockResolvedValue({ run: null, groups: [reviewGroup('cpu', 1), reviewGroup('gpu', 2)] })
-    api.decideCatalogUpdateGroups.mockRejectedValue(new Error('Project changed while applying registry updates.'))
+  it('keeps a failed decision on the original card', async () => {
+    api.decideCatalogUpdateGroups.mockRejectedValue(new Error('Registry update state changed; refresh before continuing.'))
     renderDialog()
-
     const cpuCard = (await screen.findAllByText('Example CPU'))[0].closest('section')!
-    const gpuCard = screen.getAllByText('Example GPU')[0].closest('section')!
     fireEvent.click(within(cpuCard).getByRole('button', { name: 'Approve group' }))
 
-    expect(await within(cpuCard).findByRole('alert')).toHaveTextContent('Project changed while applying registry updates.')
-    expect(within(gpuCard).queryByRole('alert')).not.toBeInTheDocument()
-    expect(screen.getByRole('tab', { name: 'Review 2' })).toBeInTheDocument()
-    expect(api.decideCatalogUpdateGroups).toHaveBeenCalledOnce()
+    expect(await within(cpuCard).findByRole('alert')).toHaveTextContent('refresh before continuing')
+    expect(screen.getAllByText('Example GPU')[0]).toBeInTheDocument()
   })
 
-  it('approves reviewable groups and prevents blocked groups from being applied', async () => {
-    api.loadCatalogUpdateGroups.mockResolvedValue({
-      run: null,
-      groups: [
-        {
-          id: 'review:cpu-example:2', status: 'review', templateKey: 'cpu-example', fromRevision: 1, toRevision: 2,
-          classification: 'review-required', reasons: ['new-compatibility-findings'], evaluatedAt: '2026-08-14T13:00:00.000Z',
-          changes: [{ field: 'compatibility', current: {}, next: { requirements: { cpu: { socket: 'LGA1200' } } } }],
-          projects: [{ id: 1, name: 'Default project' }],
-          items: [{ linkId: 1, itemType: 'cpu', itemId: 7, itemName: 'Example CPU', projects: [{ id: 1, name: 'Default project' }] }],
-        },
-        {
-          id: 'review:switch-example:3', status: 'review', templateKey: 'switch-example', fromRevision: 2, toRevision: 3,
-          classification: 'blocked', reasons: ['connected-port-change'], evaluatedAt: '2026-08-14T13:00:00.000Z', changes: [],
-          projects: [{ id: 2, name: 'Network plan' }],
-          items: [{ linkId: 2, itemType: 'switch', itemId: 3, itemName: 'Example Switch', projects: [{ id: 2, name: 'Network plan' }] }],
-        },
-      ],
+  it('loads blocked groups separately and confirms deterministic resolution', async () => {
+    const user = userEvent.setup()
+    const blocked = { ...reviewGroup('nas', 3), id: `blocked:nas-example:2:${'b'.repeat(64)}`, status: 'blocked' as const, classification: 'blocked' as const }
+    api.loadCatalogUpdateGroups.mockImplementation(({ status }: { status: string }) => Promise.resolve(page(status === 'blocked' ? [blocked] : [])))
+    api.loadCatalogUpdateSummary.mockResolvedValue({ run: null, counts: { review: 0, blocked: 1, applied: 0, declined: 0 } })
+    api.loadCatalogUpdateGroup.mockResolvedValue({
+      ...blocked,
+      members: [{
+        linkId: 3, itemId: 3, itemType: 'nas', current: {}, proposed: {}, changes: [],
+        resolution: { available: true, reason: 'Move the cable to the fixed endpoint.', operations: [{ kind: 'move-connection-endpoint', connectionId: 65 }], affectedRelationships: { connectionIds: [65], assignmentIds: [] } },
+      }],
     })
-    api.decideCatalogUpdateGroups.mockResolvedValue({
-      decisions: [{ templateKey: 'cpu-example', toRevision: 2, status: 'applied' }],
-      summary: { run: null, counts: { review: 0, blocked: 1, applied: 1, declined: 0 } },
-      affectedProjectIds: [1],
-      affectedProjectRevisions: { 1: 2 },
-      affectedLinkIds: [1],
+    api.resolveAndApplyCatalogUpdateGroup.mockResolvedValue({
+      decisions: [{ groupId: 'applied', previousGroupId: blocked.id, concurrencyToken: 'c'.repeat(64), templateKey: blocked.templateKey, toRevision: 2, status: 'applied' }],
+      summary: { run: null, counts: { review: 0, blocked: 0, applied: 1, declined: 0 } },
+      affectedProjectIds: [1], affectedProjectRevisions: { 1: 2 }, affectedLinkIds: [3],
     })
     renderDialog()
 
-    const [cpu] = await screen.findAllByText('Example CPU')
-    const cpuCard = cpu.closest('section')!
-    fireEvent.click(within(cpuCard).getByRole('button', { name: 'Approve group' }))
-    await waitFor(() => expect(api.decideCatalogUpdateGroups.mock.calls[0]?.[0]).toEqual({
-      groups: [{ templateKey: 'cpu-example', toRevision: 2 }],
-      decision: 'applied',
-    }))
-    await waitFor(() => expect(screen.getByRole('tab', { name: 'Review 1' })).toBeInTheDocument())
-    expect(api.loadCatalogUpdateGroups).toHaveBeenCalledOnce()
-
-    const [blocked] = screen.getAllByText('Example Switch')
-    const blockedCard = blocked.closest('section')!
-    expect(within(blockedCard).getByRole('button', { name: 'Approve group' })).toBeDisabled()
+    const blockedTab = await screen.findByRole('tab', { name: 'Blocked 1' })
+    await user.click(blockedTab)
+    await waitFor(() => expect(api.loadCatalogUpdateGroups).toHaveBeenCalledWith(expect.objectContaining({ status: 'blocked' })))
+    const card = (await screen.findAllByText('Example NAS'))[0].closest('section')!
+    fireEvent.click(within(card).getByRole('button', { name: 'Review catalog changes' }))
+    fireEvent.click(await within(card).findByRole('button', { name: 'Resolve and apply' }))
+    expect(await screen.findByText(/Move cable 65/)).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Resolve and apply' }))
+    await waitFor(() => expect(api.resolveAndApplyCatalogUpdateGroup.mock.calls[0]?.[0]).toEqual({ groupId: blocked.id, concurrencyToken: blocked.concurrencyToken, linkId: 3 }))
   })
 
   it('shows a persisted evaluation failure and provides an explicit retry', async () => {
-    api.loadCatalogUpdateGroups.mockResolvedValue({
-      groups: [],
-      run: {
-        id: 1, catalogRevision: 17, state: 'failed', automatic: true,
-        appliedCount: 0, reviewCount: 0, blockedCount: 0, skippedCount: 0,
-        attemptCount: 1, retryAfter: '2026-08-14T13:01:00.000Z', error: 'Catalog unavailable.', completedAt: null,
-      },
+    api.loadCatalogUpdateSummary.mockResolvedValue({
+      counts: { review: 0, blocked: 0, applied: 0, declined: 0 },
+      run: { id: 1, catalogRevision: 17, state: 'failed', automatic: true, appliedCount: 0, reviewCount: 0, blockedCount: 0, skippedCount: 0, attemptCount: 1, retryAfter: null, error: 'Catalog unavailable.', completedAt: null },
     })
+    api.loadCatalogUpdateGroups.mockResolvedValue(page([]))
     api.retryCatalogUpdates.mockResolvedValue({ groups: [], run: null })
     renderDialog()
 

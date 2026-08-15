@@ -42,8 +42,8 @@ describe('core SQLite foundation schema', () => {
       'inventoryIdentityAliases',
       'cpuSocketTypes',
     ]))
-    expect(CORE_MIGRATIONS).toHaveLength(15)
-    expect(CORE_MIGRATIONS.at(-1)?.id).toBe('0015_nas_contract_v10')
+    expect(CORE_MIGRATIONS).toHaveLength(17)
+    expect(CORE_MIGRATIONS.at(-1)?.id).toBe('0017_registry_update_reconciliation')
   })
 
   test('maps all 20 inventory categories to shared-primary-key subtype tables', () => {
@@ -72,7 +72,8 @@ describe('core SQLite foundation schema', () => {
   })
 
   test('migrates v10 NAS topology without changing existing relational identities', async () => {
-    const handle = await createMigratedDatabase(CORE_MIGRATIONS.length - 1)
+    const nasMigrationIndex = CORE_MIGRATIONS.findIndex((migration) => migration.id === '0015_nas_contract_v10')
+    const handle = await createMigratedDatabase(nasMigrationIndex)
     try {
       const type = handle.database.query("SELECT id FROM inventory_item_types WHERE key = 'nas'").get() as { id: number }
       const item = handle.database.query(`
@@ -101,7 +102,7 @@ describe('core SQLite foundation schema', () => {
         sha256: migration.sha256,
         sql: await readFile(join(migrationsDir, migration.file), 'utf8'),
       })))
-      await expect(applyCommittedMigrations(handle, migrations)).resolves.toEqual({ applied: 1, currentVersion: 15 })
+      await expect(applyCommittedMigrations(handle, migrations)).resolves.toEqual({ applied: 3, currentVersion: 17 })
       expect(handle.database.query(`
         SELECT adapter_disposition FROM host_power_profiles WHERE host_profile_id = ?
       `).get(profile.id)).toEqual({ adapter_disposition: 'replaceable' })
@@ -109,7 +110,7 @@ describe('core SQLite foundation schema', () => {
         id: item.id,
         power_configuration: 'external-adapter',
       })
-      await expect(applyCommittedMigrations(handle, migrations)).resolves.toEqual({ applied: 0, currentVersion: 15 })
+      await expect(applyCommittedMigrations(handle, migrations)).resolves.toEqual({ applied: 0, currentVersion: 17 })
     } finally {
       closeManagedDatabase(handle)
     }
@@ -187,6 +188,7 @@ describe('core SQLite foundation schema', () => {
         SELECT name, strict
         FROM pragma_table_list
         WHERE schema = 'main'
+          AND type = 'table'
           AND name NOT LIKE 'sqlite_%'
       `).all() as Array<{ name: string, strict: number }>
 
