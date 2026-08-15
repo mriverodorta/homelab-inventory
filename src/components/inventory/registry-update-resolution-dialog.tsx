@@ -2,15 +2,7 @@ import { LoaderCircle, Wrench } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import type { CatalogUpdateGroupDetail } from '@/types/registry'
-
-function operationLabel(operation: Record<string, unknown>) {
-  switch (operation.kind) {
-    case 'move-connection-endpoint': return `Move cable ${operation.connectionId} to the fixed replacement endpoint.`
-    case 'unassign-item': return `Return assigned item for assignment ${operation.assignmentId} to inventory.`
-    case 'release-resource-assignment': return `Release assignment ${operation.assignmentId} from the removed resource.`
-    default: return String(operation.kind ?? 'Apply relationship update')
-  }
-}
+import { RegistryUpdateResolutionPreview } from './registry-update-resolution-preview'
 
 export function RegistryUpdateResolutionDialog({ detail, linkId, pending, error, onOpenChange, onConfirm }: {
   detail: CatalogUpdateGroupDetail | null
@@ -29,11 +21,7 @@ export function RegistryUpdateResolutionDialog({ detail, linkId, pending, error,
           <DialogTitle className="flex items-center gap-2"><Wrench className="size-5" />Resolve Registry topology update</DialogTitle>
           <DialogDescription>Review the exact relationship changes. They are committed atomically with the catalog definition.</DialogDescription>
         </DialogHeader>
-        <div className="grid gap-2 text-sm">
-          {resolution?.operations.map((operation, index) => (
-            <div key={index} className="rounded-md border border-[#ded8ce] bg-[#faf7f1] p-3">{operationLabel(operation)}</div>
-          ))}
-        </div>
+        {resolution ? <RegistryUpdateResolutionPreview resolution={resolution} /> : null}
         {error ? <p role="alert" className="text-sm font-semibold text-[#a33d31]">{error}</p> : null}
         <DialogFooter>
           <Button type="button" variant="outline" disabled={pending} onClick={() => onOpenChange(false)}>Cancel</Button>

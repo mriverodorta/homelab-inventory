@@ -262,10 +262,13 @@ export type CatalogUpdateGroup = {
 export type CatalogUpdateResolution = {
   available: boolean
   reason: string | null
+  reasonCode?: string | null
   operations: Array<Record<string, unknown>>
   affectedRelationships: {
     connectionIds: number[]
     assignmentIds: number[]
+    inventoryItems?: Array<{ itemType: string; itemId: number }>
+    projectIds?: number[]
   }
 }
 

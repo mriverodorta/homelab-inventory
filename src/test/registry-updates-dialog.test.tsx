@@ -66,7 +66,7 @@ describe('RegistryUpdatesDialog', () => {
         itemType: 'cpu',
         current: { specs: { cores: 4 } },
         proposed: { specs: { cores: 6 } },
-        changes: [{ field: 'specs.cores', current: 4, next: 6 }],
+        changes: [{ path: 'specs.cores', kind: 'changed', impact: 'metadata', current: 4, next: 6 }],
         resolution: { available: false, reason: null, operations: [], affectedRelationships: { connectionIds: [], assignmentIds: [] } },
       }],
     })
@@ -141,8 +141,28 @@ describe('RegistryUpdatesDialog', () => {
     api.loadCatalogUpdateGroup.mockResolvedValue({
       ...blocked,
       members: [{
-        linkId: 3, itemId: 3, itemType: 'nas', current: {}, proposed: {}, changes: [],
-        resolution: { available: true, reason: 'Move the cable to the fixed endpoint.', operations: [{ kind: 'move-connection-endpoint', connectionId: 65 }], affectedRelationships: { connectionIds: [65], assignmentIds: [] } },
+        linkId: 3,
+        itemId: 3,
+        itemType: 'nas',
+        current: {},
+        proposed: {},
+        changes: [{
+          path: 'compatibility.host.storageSlots[0].key',
+          kind: 'changed',
+          impact: 'assignment',
+          current: 'drive-bays',
+          next: 'sata-bays',
+        }],
+        resolution: {
+          available: true,
+          reason: 'A deterministic relationship migration is available.',
+          operations: [
+            { kind: 'remap-resource-key', resourceType: 'storage', resourceId: 1, fromKey: 'drive-bays', toKey: 'sata-bays', assignmentIds: [14, 15, 16, 17, 18] },
+            { kind: 'move-connection-endpoint', connectionId: 65 },
+            { kind: 'unassign-item', assignmentId: 95, itemType: 'powerAdapter', itemId: 151, returnToInventory: true },
+          ],
+          affectedRelationships: { connectionIds: [65], assignmentIds: [14, 15, 16, 17, 18, 95] },
+        },
       }],
     })
     api.resolveAndApplyCatalogUpdateGroup.mockResolvedValue({
@@ -157,10 +177,49 @@ describe('RegistryUpdatesDialog', () => {
     await waitFor(() => expect(api.loadCatalogUpdateGroups).toHaveBeenCalledWith(expect.objectContaining({ status: 'blocked' })))
     const card = (await screen.findAllByText('Example NAS'))[0].closest('section')!
     fireEvent.click(within(card).getByRole('button', { name: 'Review catalog changes' }))
+    expect(await within(card).findByText('Storage slot key')).toBeInTheDocument()
+    expect(within(card).getByText('compatibility.host.storageSlots[0].key')).toBeInTheDocument()
+    expect(within(card).getByText('Assignment')).toBeInTheDocument()
+    expect(within(card).getByText('A deterministic relationship migration is available.')).toBeInTheDocument()
     fireEvent.click(await within(card).findByRole('button', { name: 'Resolve and apply' }))
-    expect(await screen.findByText(/Move cable 65/)).toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: 'Resolve and apply' }))
+    const resolutionDialog = (await screen.findByRole('heading', { name: 'Resolve Registry topology update' })).closest<HTMLElement>('[role="dialog"]')!
+    expect(within(resolutionDialog).getByText(/Move cable 65/)).toBeInTheDocument()
+    expect(within(resolutionDialog).getByText(/Preserve assignments 14, 15, 16, 17, and 18/)).toBeInTheDocument()
+    expect(within(resolutionDialog).getByText(/Return powerAdapter 151/)).toBeInTheDocument()
+    fireEvent.click(within(resolutionDialog).getByRole('button', { name: 'Resolve and apply' }))
     await waitFor(() => expect(api.resolveAndApplyCatalogUpdateGroup.mock.calls[0]?.[0]).toEqual({ groupId: blocked.id, concurrencyToken: blocked.concurrencyToken, linkId: 3 }))
+  })
+
+  it('shows the exact backend reason when a blocked update has no deterministic resolution', async () => {
+    const user = userEvent.setup()
+    const blocked = { ...reviewGroup('nas', 3), id: `blocked:nas-example:2:${'b'.repeat(64)}`, status: 'blocked' as const, classification: 'blocked' as const }
+    api.loadCatalogUpdateGroups.mockImplementation(({ status }: { status: string }) => Promise.resolve(page(status === 'blocked' ? [blocked] : [])))
+    api.loadCatalogUpdateSummary.mockResolvedValue({ run: null, counts: { review: 0, blocked: 1, applied: 0, declined: 0 } })
+    api.loadCatalogUpdateGroup.mockResolvedValue({
+      ...blocked,
+      members: [{
+        linkId: 3,
+        itemId: 3,
+        itemType: 'nas',
+        current: {},
+        proposed: {},
+        changes: [],
+        resolution: {
+          available: false,
+          reason: 'Connected port 7 has no unique target in the Registry definition.',
+          operations: [],
+          affectedRelationships: { connectionIds: [], assignmentIds: [] },
+        },
+      }],
+    })
+    renderDialog()
+
+    await user.click(await screen.findByRole('tab', { name: 'Blocked 1' }))
+    const card = (await screen.findAllByText('Example NAS'))[0].closest('section')!
+    fireEvent.click(within(card).getByRole('button', { name: 'Review catalog changes' }))
+
+    expect(await within(card).findByText('Connected port 7 has no unique target in the Registry definition.')).toBeInTheDocument()
+    expect(within(card).queryByRole('button', { name: 'Resolve and apply' })).not.toBeInTheDocument()
   })
 
   it('shows a persisted evaluation failure and provides an explicit retry', async () => {

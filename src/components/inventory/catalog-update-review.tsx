@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import { AlertTriangle, ArrowRight, RefreshCw, ShieldCheck } from 'lucide-react'
+import { AlertTriangle, RefreshCw, ShieldCheck } from 'lucide-react'
 import { useState } from 'react'
 import { Button } from '@/components/ui/button'
 import {
@@ -12,12 +12,7 @@ import {
 } from '@/components/ui/dialog'
 import { loadCatalogUpdatePreview, loadCatalogUpdates, selectCatalogVariant } from '@/lib/registry-api'
 import type { CatalogVariantUpdateSummary } from '@/types/registry'
-
-function display(value: unknown) {
-  if (value === undefined) return 'Not set'
-  if (typeof value === 'object') return JSON.stringify(value, null, 2)
-  return String(value)
-}
+import { RegistryUpdateChange } from './registry-update-change'
 
 export function CatalogUpdateReview({
   onApply,
@@ -122,14 +117,7 @@ export function CatalogUpdateReview({
                 </div>
               </div>
               {preview.data.changes.map((change) => (
-                <div key={change.field} className="rounded-md border border-[#ded8ce] bg-white p-3">
-                  <div className="mb-2 text-xs font-black uppercase text-[#756d62]">{change.field}</div>
-                  <div className="grid items-start gap-2 sm:grid-cols-[1fr_auto_1fr]">
-                    <pre className="min-w-0 overflow-auto whitespace-pre-wrap rounded bg-[#f4eee5] p-2 text-xs">{display(change.current)}</pre>
-                    <ArrowRight className="mt-2 hidden size-4 text-[#80776d] sm:block" />
-                    <pre className="min-w-0 overflow-auto whitespace-pre-wrap rounded bg-[#e7f1ed] p-2 text-xs">{display(change.next)}</pre>
-                  </div>
-                </div>
+                <RegistryUpdateChange key={change.path} change={change} />
               ))}
               {preview.data.dependencyConflicts.length > 0 ? (
                 <div className="space-y-2 rounded-md border border-[#dfb3a5] bg-[#fff4ef] p-3 text-sm text-[#713325]">
