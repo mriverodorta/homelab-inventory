@@ -639,7 +639,7 @@ describe('InventoryItemDialog switch port groups', () => {
 })
 
 describe('shared inventory select fields', () => {
-  it('shows a persisted nonstandard value as a legacy option', async () => {
+  it('shows a persisted nonstandard value without marking it as legacy', async () => {
     const user = userEvent.setup()
 
     render(
@@ -653,6 +653,7 @@ describe('shared inventory select fields', () => {
 
     expect(screen.getByRole('combobox', { name: 'Management' })).toHaveTextContent('Omada managed')
     await user.click(screen.getByRole('combobox', { name: 'Management' }))
-    expect(screen.getByRole('option', { name: 'Omada managed (Legacy)' })).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: 'Omada managed' })).toBeInTheDocument()
+    expect(screen.queryByText(/legacy/i)).not.toBeInTheDocument()
   })
 })

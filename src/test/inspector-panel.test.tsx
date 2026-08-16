@@ -1263,13 +1263,13 @@ describe('InspectorPanel', () => {
     })
   })
 
-  it('uses canonical switch management choices while preserving a legacy value', async () => {
+  it('uses canonical switch management choices while preserving a nonstandard value', async () => {
     const user = userEvent.setup()
     const { onUpdateItem } = renderInspector({ selectedItemId: 'switch:1' })
 
-    expect(screen.getByRole('combobox', { name: 'Management' })).toHaveTextContent('Omada managed (Legacy)')
+    expect(screen.getByRole('combobox', { name: 'Management' })).toHaveTextContent('Omada managed')
     await user.click(screen.getByRole('combobox', { name: 'Management' }))
-    expect(screen.getByRole('option', { name: 'Omada managed (Legacy)' })).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: 'Omada managed' })).toBeInTheDocument()
     await user.click(screen.getByRole('option', { name: 'Layer 2 Managed' }))
 
     expect(onUpdateItem).toHaveBeenCalledWith('switch:1', expect.objectContaining({

@@ -141,9 +141,7 @@ export function SelectField({
             {emptyLabel ? <SelectItem value="none">{emptyLabel}</SelectItem> : null}
             {selectableOptions.filter(Boolean).map((option) => (
               <SelectItem key={option} value={option}>
-                {option === value && !optionValues.includes(option)
-                  ? `${option} (Legacy)`
-                  : labels.get(option) ?? option}
+                {labels.get(option) ?? option}
               </SelectItem>
             ))}
           </SelectContent>
