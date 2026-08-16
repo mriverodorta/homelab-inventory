@@ -1,5 +1,5 @@
 import { sanitizeCatalogItemV9 } from './sanitize'
-import type { CatalogTemplateItem, JsonValue } from './types'
+import type { CatalogNetworkTechnology, CatalogPort, CatalogTemplateItem, JsonValue } from './types'
 
 export const CANONICAL_MEASUREMENT_CONFLICT = 'canonical-measurement-conflict'
 export const CANONICAL_MEASUREMENT_INVALID = 'canonical-measurement-invalid'
@@ -556,4 +556,244 @@ export function canonicalizeCatalogItemV10(value: unknown): CatalogTemplateItem 
 
 export function assertCanonicalCatalogItemV10(value: unknown): void {
   canonicalizeCatalogItemV10(value)
+}
+const NETWORK_TECHNOLOGIES = new Set<CatalogNetworkTechnology>([
+  'ethernet', 'wifi', 'fibre-channel', 'infiniband', 'converged', 'cellular', 'other',
+])
+const NETWORK_HOST_INTERFACE_FAMILIES = new Set([
+  'pcie', 'm2-ae', 'm2-bm', 'mini-pcie', 'usb', 'ocp', 'mezzanine', 'onboard', 'proprietary',
+])
+const NETWORK_CONNECTORS = new Set([
+  'rj45', 'sfp', 'sfp-plus', 'sfp28', 'qsfp-plus', 'qsfp28', 'qsfp56', 'osfp',
+  'bnc', 'usb-a', 'usb-c', 'proprietary',
+])
+const NETWORK_MEDIA = new Set([
+  'dac', 'aoc', 'optical-transceiver', 'copper-transceiver', 'active-copper', 'passive-copper',
+])
+const HOST_INTERFACE_FIELDS = new Set([
+  'family', 'pcieGeneration', 'connectorLanes', 'minimumElectricalLanes', 'key', 'moduleSize',
+  'usbGeneration', 'connector', 'ocpVersion', 'interfaceKey',
+])
+const HOST_INTERFACE_ALLOWED_FIELDS: Record<string, Set<string>> = {
+  pcie: new Set(['family', 'pcieGeneration', 'connectorLanes', 'minimumElectricalLanes']),
+  'm2-ae': new Set(['family', 'key', 'moduleSize']),
+  'm2-bm': new Set(['family', 'key', 'moduleSize']),
+  'mini-pcie': new Set(['family']),
+  usb: new Set(['family', 'usbGeneration', 'connector']),
+  ocp: new Set(['family', 'ocpVersion']),
+  mezzanine: new Set(['family', 'interfaceKey']),
+  onboard: new Set(['family']),
+  proprietary: new Set(['family', 'interfaceKey']),
+}
+
+function networkError(path: string, message: string): never {
+  throw new CanonicalMeasurementError(CANONICAL_MEASUREMENT_INVALID, path, message)
+}
+
+function requiredText(value: unknown, path: string): string {
+  if (typeof value !== 'string' || value.trim() === '') networkError(path, `${path} is required.`)
+  return value.normalize('NFKC').trim().replace(/\s+/g, ' ')
+}
+
+function positiveInteger(value: unknown, path: string): number {
+  const result = canonicalInteger(value, path)
+  if (result < 1) networkError(path, `${path} must be a positive safe integer.`)
+  return result
+}
+
+function sortedStrings(value: unknown, path: string, allowed?: Set<string>): string[] {
+  if (!Array.isArray(value) || value.length === 0) networkError(path, `${path} must be a non-empty array.`)
+  const values = value.map((entry, index) => requiredText(entry, `${path}[${index}]`))
+  if (allowed) values.forEach((entry, index) => {
+    if (!allowed.has(entry)) networkError(`${path}[${index}]`, `${path}[${index}] has unsupported value ${entry}.`)
+  })
+  return [...new Set(values)].sort((left, right) => left.localeCompare(right, 'en-US'))
+}
+
+function sortedNumbers(value: unknown, path: string): number[] {
+  if (!Array.isArray(value) || value.length === 0) networkError(path, `${path} must be a non-empty array.`)
+  return [...new Set(value.map((entry, index) => positiveInteger(entry, `${path}[${index}]`)))]
+    .sort((left, right) => left - right)
+}
+
+function sortedPositiveNumbers(value: unknown, path: string): number[] {
+  if (!Array.isArray(value) || value.length === 0) networkError(path, `${path} must be a non-empty array.`)
+  const values = value.map((entry, index) => {
+    if (typeof entry !== 'number' || !Number.isFinite(entry) || entry <= 0) {
+      networkError(`${path}[${index}]`, `${path}[${index}] must be a positive finite number.`)
+    }
+    return entry
+  })
+  return [...new Set(values)].sort((left, right) => left - right)
+}
+
+function optionalSortedStrings(target: JsonObject, key: string, path: string, allowed?: Set<string>) {
+  if (target[key] === undefined) return
+  const value = target[key]
+  if (!Array.isArray(value)) networkError(`${path}.${key}`, `${path}.${key} must be an array.`)
+  const values = value.map((entry, index) => requiredText(entry, `${path}.${key}[${index}]`))
+  if (allowed) values.forEach((entry, index) => {
+    if (!allowed.has(entry)) networkError(`${path}.${key}[${index}]`, `${path}.${key}[${index}] has unsupported value ${entry}.`)
+  })
+  target[key] = [...new Set(values)].sort((left, right) => left.localeCompare(right, 'en-US'))
+}
+
+function validateNetworkHostInterface(specs: JsonObject): JsonObject {
+  const path = 'specs.hostInterface'
+  const hostInterface = object(specs.hostInterface)
+  if (!hostInterface) networkError(path, `${path} is required.`)
+  const family = requiredText(hostInterface.family, `${path}.family`)
+  if (!NETWORK_HOST_INTERFACE_FAMILIES.has(family)) networkError(`${path}.family`, `${path}.family is unsupported.`)
+  const allowed = HOST_INTERFACE_ALLOWED_FIELDS[family]!
+  for (const key of Object.keys(hostInterface)) {
+    if (HOST_INTERFACE_FIELDS.has(key) && !allowed.has(key)) {
+      networkError(`${path}.${key}`, `${path}.${key} contradicts host-interface family ${family}.`)
+    }
+  }
+  if (family === 'pcie') {
+    hostInterface.pcieGeneration = positiveInteger(hostInterface.pcieGeneration, `${path}.pcieGeneration`)
+    hostInterface.connectorLanes = positiveInteger(hostInterface.connectorLanes, `${path}.connectorLanes`)
+    hostInterface.minimumElectricalLanes = positiveInteger(hostInterface.minimumElectricalLanes, `${path}.minimumElectricalLanes`)
+    if (Number(hostInterface.minimumElectricalLanes) > Number(hostInterface.connectorLanes)) {
+      networkError(`${path}.minimumElectricalLanes`, 'Minimum electrical lanes cannot exceed connector lanes.')
+    }
+  }
+  if (family === 'm2-ae' || family === 'm2-bm') {
+    hostInterface.key = requiredText(hostInterface.key, `${path}.key`)
+    hostInterface.moduleSize = requiredText(hostInterface.moduleSize, `${path}.moduleSize`)
+  }
+  if (family === 'usb') {
+    hostInterface.usbGeneration = requiredText(hostInterface.usbGeneration, `${path}.usbGeneration`)
+    hostInterface.connector = requiredText(hostInterface.connector, `${path}.connector`)
+  }
+  if (family === 'ocp') hostInterface.ocpVersion = requiredText(hostInterface.ocpVersion, `${path}.ocpVersion`)
+  if (family === 'mezzanine' || family === 'proprietary') {
+    hostInterface.interfaceKey = requiredText(hostInterface.interfaceKey, `${path}.interfaceKey`)
+  }
+  return hostInterface
+}
+
+function canonicalExpansionRequirement(item: CatalogTemplateItem, hostInterface: JsonObject) {
+  const compatibility = object(item.compatibility) ?? {}
+  const requirements = object(compatibility.requirements) ?? {}
+  const existing = object(requirements.expansion) ?? {}
+  const derived: JsonObject = {
+    ...existing,
+    interfaceFamily: hostInterface.family,
+  }
+  for (const key of [
+    'pcieGeneration', 'connectorLanes', 'minimumElectricalLanes', 'key', 'moduleSize',
+    'usbGeneration', 'connector', 'ocpVersion', 'interfaceKey',
+  ]) {
+    const source = hostInterface[key]
+    if (source === undefined) continue
+    if (existing[key] !== undefined && existing[key] !== source) {
+      networkError(`compatibility.requirements.expansion.${key}`, `Expansion requirement ${key} conflicts with specs.hostInterface.${key}.`)
+    }
+    derived[key] = source
+  }
+  if (existing.interfaceFamily !== undefined && existing.interfaceFamily !== hostInterface.family) {
+    networkError('compatibility.requirements.expansion.interfaceFamily', 'Expansion interface family conflicts with specs.hostInterface.family.')
+  }
+  requirements.expansion = derived
+  compatibility.requirements = requirements
+  item.compatibility = compatibility
+}
+
+function canonicalNetworkPorts(item: CatalogTemplateItem, technology: CatalogNetworkTechnology): CatalogPort[] | undefined {
+  if (technology === 'wifi' || technology === 'cellular') {
+    if (item.ports?.length) networkError('ports', 'A radio-only network adapter must not expose cable endpoints.')
+    return undefined
+  }
+  if (!item.ports?.length && technology !== 'other') networkError('ports', 'A wired or fabric adapter requires physical ports.')
+  if (!item.ports?.length) return undefined
+
+  const ids = new Set<number>()
+  const keys = new Set<string>()
+  const slots = new Set<number>()
+  for (const [index, port] of item.ports.entries()) {
+    const path = `ports[${index}]`
+    port.id = positiveInteger(port.id, `${path}.id`)
+    if (ids.has(port.id)) networkError(`${path}.id`, `Duplicate port id ${port.id}.`)
+    ids.add(port.id)
+    port.key = requiredText(port.key, `${path}.key`)
+    if (keys.has(port.key)) networkError(`${path}.key`, `Duplicate port key ${port.key}.`)
+    keys.add(port.key)
+    if (port.kind !== 'network') networkError(`${path}.kind`, `${path}.kind must be network.`)
+    if (!NETWORK_CONNECTORS.has(port.type)) networkError(`${path}.type`, `${path}.type is not a supported connector.`)
+    port.slotNumber = positiveInteger(port.slotNumber, `${path}.slotNumber`)
+    if (slots.has(port.slotNumber)) networkError(`${path}.slotNumber`, `Duplicate port slotNumber ${port.slotNumber}.`)
+    slots.add(port.slotNumber)
+    port.speedBps = positiveInteger(port.speedBps, `${path}.speedBps`)
+    port.supportedSpeedsBps = sortedNumbers(port.supportedSpeedsBps, `${path}.supportedSpeedsBps`)
+    if (!port.supportedSpeedsBps.includes(port.speedBps)
+      || port.supportedSpeedsBps.some((speed) => speed > port.speedBps!)) {
+      networkError(`${path}.supportedSpeedsBps`, `${path}.supportedSpeedsBps must contain and not exceed speedBps.`)
+    }
+    if (!NETWORK_TECHNOLOGIES.has(port.networkTechnology!)) {
+      networkError(`${path}.networkTechnology`, `${path}.networkTechnology is unsupported.`)
+    }
+    port.operatingModes = sortedStrings(port.operatingModes, `${path}.operatingModes`)
+    if (port.media !== undefined) port.media = sortedStrings(port.media, `${path}.media`, NETWORK_MEDIA)
+    if (port.origin !== 'module') networkError(`${path}.origin`, `${path}.origin must be module.`)
+  }
+  return item.ports
+}
+
+function canonicalNetworkCapabilities(specs: JsonObject) {
+  const capabilities = object(specs.capabilities)
+  if (!capabilities) return
+  const allowed = new Set(['sriov', 'ptp', 'pxe', 'uefiBoot', 'wakeOnLan', 'rdmaModes', 'offloads'])
+  for (const key of Object.keys(capabilities)) {
+    if (!allowed.has(key)) networkError(`specs.capabilities.${key}`, `Unsupported network capability ${key}.`)
+  }
+  for (const key of ['sriov', 'ptp', 'pxe', 'uefiBoot', 'wakeOnLan']) {
+    if (capabilities[key] !== undefined && typeof capabilities[key] !== 'boolean') {
+      networkError(`specs.capabilities.${key}`, `specs.capabilities.${key} must be boolean.`)
+    }
+  }
+  optionalSortedStrings(capabilities, 'rdmaModes', 'specs.capabilities')
+  optionalSortedStrings(capabilities, 'offloads', 'specs.capabilities')
+}
+
+export function canonicalizeCatalogItemV11(value: unknown): CatalogTemplateItem {
+  const item = sanitizeCatalogItemV9(value)
+  if (item.type !== 'network') networkError('type', 'Fingerprint-v11 is supported only for network templates.')
+  const remainingLegacy = legacyMeasurementPathsV9(item)
+  if (remainingLegacy.length > 0) {
+    networkError(remainingLegacy[0], `Fingerprint-v11 item contains legacy measurement field ${remainingLegacy[0]}.`)
+  }
+  const specs = object(item.specs)
+  if (!specs) networkError('specs', 'Network template specs are required.')
+  const technology = requiredText(specs.networkTechnology, 'specs.networkTechnology') as CatalogNetworkTechnology
+  if (!NETWORK_TECHNOLOGIES.has(technology)) networkError('specs.networkTechnology', 'Unsupported network technology.')
+  specs.networkTechnology = technology
+  specs.formFactor = requiredText(specs.formFactor, 'specs.formFactor')
+  specs.operatingModes = sortedStrings(specs.operatingModes, 'specs.operatingModes')
+  optionalSortedStrings(specs, 'wifiGenerations', 'specs')
+  if (specs.frequencyBandsGhz !== undefined) {
+    specs.frequencyBandsGhz = sortedPositiveNumbers(specs.frequencyBandsGhz, 'specs.frequencyBandsGhz')
+  }
+  const hostInterface = validateNetworkHostInterface(specs)
+  canonicalExpansionRequirement(item, hostInterface)
+  const ports = canonicalNetworkPorts(item, technology)
+  if (ports) {
+    const maximum = Math.max(...ports.map((port) => port.speedBps!))
+    if (specs.maxSpeedBps !== undefined && positiveInteger(specs.maxSpeedBps, 'specs.maxSpeedBps') !== maximum) {
+      networkError('specs.maxSpeedBps', 'specs.maxSpeedBps must equal the maximum physical port speed.')
+    }
+    specs.maxSpeedBps = maximum
+  } else {
+    if (specs.maxSpeedBps !== undefined) networkError('specs.maxSpeedBps', 'Radio-only adapters must omit maxSpeedBps.')
+    if (specs.maxPhyRateBps !== undefined) specs.maxPhyRateBps = positiveInteger(specs.maxPhyRateBps, 'specs.maxPhyRateBps')
+  }
+  if (specs.spatialStreams !== undefined) specs.spatialStreams = positiveInteger(specs.spatialStreams, 'specs.spatialStreams')
+  canonicalNetworkCapabilities(specs)
+  item.specs = specs
+  validateCanonicalMeasurements(item)
+  return sanitizeCatalogItemV9(item)
+}
+
+export function assertCanonicalCatalogItemV11(value: unknown): void {
+  canonicalizeCatalogItemV11(value)
 }

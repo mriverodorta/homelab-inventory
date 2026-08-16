@@ -166,6 +166,22 @@ function sanitizePort(value: unknown): CatalogPort | undefined {
     if (entry) sanitized[key] = entry
   }
   if (Number.isSafeInteger(port.speedBps) && Number(port.speedBps) >= 0) sanitized.speedBps = Number(port.speedBps)
+  if (Array.isArray(port.supportedSpeedsBps)) {
+    const speeds = port.supportedSpeedsBps
+      .filter((entry): entry is number => Number.isSafeInteger(entry) && Number(entry) >= 0)
+      .map(Number)
+    if (speeds.length > 0) sanitized.supportedSpeedsBps = speeds
+  }
+  const networkTechnology = nonEmptyString(port.networkTechnology)
+  if (networkTechnology) sanitized.networkTechnology = networkTechnology as CatalogPort['networkTechnology']
+  for (const key of ['operatingModes', 'media'] as const) {
+    if (!Array.isArray(port[key])) continue
+    const values = port[key]
+      .map(nonEmptyString)
+      .filter((entry): entry is string => entry !== undefined)
+    if (values.length > 0) sanitized[key] = values
+  }
+  if (typeof port.vendorLock === 'boolean') sanitized.vendorLock = port.vendorLock
   if (typeof port.poe === 'boolean') sanitized.poe = port.poe
   if (port.origin === 'fixed' || port.origin === 'module') sanitized.origin = port.origin
   if (Array.isArray(port.endpoints)) {

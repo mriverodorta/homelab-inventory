@@ -1,5 +1,5 @@
 import { canonicalJson } from './canonicalize'
-import { canonicalizeCatalogItemV10, canonicalizeCatalogItemV9 } from './canonical-units'
+import { canonicalizeCatalogItemV10, canonicalizeCatalogItemV11, canonicalizeCatalogItemV9 } from './canonical-units'
 import { computeCatalogDigestsWithIdentity, sha256Hex } from './hash'
 import { normalizeBoardIdentifier, normalizeText, normalizeVariantKey } from './normalization'
 import { sanitizeCatalogItem } from './sanitize'
@@ -18,6 +18,7 @@ import {
   LEGACY_FINGERPRINT_VERSION,
   MOTHERBOARD_FINGERPRINT_VERSION,
   NAS_FINGERPRINT_VERSION,
+  NETWORK_FINGERPRINT_VERSION,
   OEM_FINGERPRINT_VERSION,
   RAM_FINGERPRINT_VERSION,
   CANONICAL_UNITS_FINGERPRINT_VERSION,
@@ -151,6 +152,46 @@ function ramProductIdentity(item: CatalogTemplateItem): Record<string, JsonValue
     manufacturer,
     partNumber: normalizedPartNumber,
   }
+}
+
+function networkProductIdentity(item: CatalogTemplateItem): Record<string, JsonValue> | CatalogEligibilityReason {
+  if (item.type !== 'network') return 'unsupported-type'
+  const manufacturer = text(item.manufacturer)
+  const model = text(item.model)
+  const specs = item.specs
+  const technology = text(specs?.networkTechnology)
+  const hostInterface = specs?.hostInterface && typeof specs.hostInterface === 'object' && !Array.isArray(specs.hostInterface)
+    ? specs.hostInterface
+    : undefined
+  const formFactor = text(specs?.formFactor)
+  if (!manufacturer || !model || !technology || !hostInterface || !formFactor) return 'insufficient-identity'
+
+  const portTopology = item.ports?.map((port) => identityObject([
+    ['slotNumber', port.slotNumber],
+    ['connector', port.type],
+    ['networkTechnology', port.networkTechnology],
+    ['operatingModes', port.operatingModes],
+  ]))
+  const radioTopology = technology === 'wifi' || technology === 'cellular'
+    ? identityObject([
+        ['wifiGenerations', specs?.wifiGenerations],
+        ['radioGenerations', specs?.radioGenerations],
+        ['frequencyBandsGhz', specs?.frequencyBandsGhz],
+        ['spatialStreams', specs?.spatialStreams],
+      ])
+    : undefined
+
+  return identityObject([
+    ['type', 'network'],
+    ['manufacturer', manufacturer],
+    ['model', model],
+    ['hardwareRevision', specs?.hardwareRevision],
+    ['networkTechnology', technology],
+    ['hostInterface', hostInterface],
+    ['formFactor', formFactor],
+    ['portTopology', portTopology as JsonValue | undefined],
+    ['radioTopology', radioTopology && Object.keys(radioTopology).length > 0 ? radioTopology : undefined],
+  ])
 }
 
 function hasAll(item: CatalogTemplateItem, fields: Array<'manufacturer' | 'model' | 'number'>): boolean {
@@ -825,15 +866,21 @@ export async function projectCatalogItem(
   if (!SUPPORTED_FINGERPRINT_VERSIONS.includes(fingerprintVersion)) {
     throw new Error(`Unsupported catalog fingerprint version ${fingerprintVersion}.`)
   }
-  const item = fingerprintVersion === NAS_FINGERPRINT_VERSION
-    ? canonicalizeCatalogItemV10({ ...source, type })
+  const item = fingerprintVersion === NETWORK_FINGERPRINT_VERSION
+    ? canonicalizeCatalogItemV11({ ...source, type })
+    : fingerprintVersion === NAS_FINGERPRINT_VERSION
+      ? canonicalizeCatalogItemV10({ ...source, type })
     : fingerprintVersion === CANONICAL_UNITS_FINGERPRINT_VERSION
       ? canonicalizeCatalogItemV9({ ...source, type })
       : sanitizeCatalogItem({ ...source, type })
   let identityPayload: Record<string, JsonValue>
   let productFamily: CatalogProductFamily | undefined
   let variantEvidence: CatalogVariantEvidence | undefined
-  if (fingerprintVersion === NAS_FINGERPRINT_VERSION) {
+  if (fingerprintVersion === NETWORK_FINGERPRINT_VERSION) {
+    const identity = networkProductIdentity(item)
+    if (typeof identity === 'string') return { status: 'ineligible', source: sourceRef, reason: identity }
+    identityPayload = identity
+  } else if (fingerprintVersion === NAS_FINGERPRINT_VERSION) {
     const variant = await nasVariantIdentity(item)
     if (typeof variant === 'string') return { status: 'ineligible', source: sourceRef, reason: variant }
     identityPayload = variant.identityPayload

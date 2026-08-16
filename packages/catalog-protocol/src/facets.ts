@@ -23,6 +23,28 @@ export const MOTHERBOARD_CATALOG_FACET_KEYS = [
   'specs.discontinued',
 ] as const
 
+export const NETWORK_CATALOG_FACET_KEYS = [
+  'manufacturer',
+  'family',
+  'model',
+  'specs.networkTechnology',
+  'specs.hostInterface.family',
+  'specs.formFactor',
+  'ports[].type',
+  'specs.maxSpeedBps',
+  'ports[].supportedSpeedsBps',
+  'specs.operatingModes',
+  'ports.length',
+  'ports[].media',
+  'specs.capabilities.sriov',
+  'specs.capabilities.rdmaModes',
+  'specs.capabilities.ptp',
+  'specs.capabilities.pxe',
+  'specs.capabilities.uefiBoot',
+  'specs.capabilities.wakeOnLan',
+  'specs.discontinued',
+] as const
+
 function nonEmptyString(value: unknown, label: string, maxLength: number): string {
   if (typeof value !== 'string' || value.trim() === '' || value.length > maxLength) {
     throw new Error(`${label} must be a non-empty string no longer than ${maxLength} characters.`)

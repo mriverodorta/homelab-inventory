@@ -1,0 +1,114 @@
+{
+  "schemaVersion": 1,
+  "requiredApplicationCatalogContractVersion": 11,
+  "fingerprintVersion": 11,
+  "templates": [
+    {
+      "templateKey": "network-intel-x710-da2",
+      "identityHash": "4d31d779f7ac3e92193b85a4532c5eaea20c58273a86ed89aa649581c3488df4",
+      "contentHash": "beae60950b946298b6125bec0c5d9a73d6b940b3b59979eb82f0a969d6c404c6",
+      "item": {
+        "type": "network",
+        "name": "Intel X710-DA2",
+        "manufacturer": "Intel",
+        "family": "Ethernet 700 Series",
+        "model": "X710-DA2",
+        "specs": {
+          "networkTechnology": "ethernet",
+          "controller": "Intel X710",
+          "formFactor": "low-profile",
+          "hostInterface": {
+            "family": "pcie",
+            "pcieGeneration": 3,
+            "connectorLanes": 8,
+            "minimumElectricalLanes": 8
+          },
+          "maxSpeedBps": 10000000000,
+          "operatingModes": ["ethernet"],
+          "capabilities": {
+            "sriov": true,
+            "ptp": true,
+            "pxe": true,
+            "uefiBoot": true,
+            "wakeOnLan": false,
+            "rdmaModes": [],
+            "offloads": ["checksum", "rss"]
+          },
+          "discontinued": false
+        },
+        "ports": [
+          {
+            "id": 1,
+            "key": "port-1",
+            "kind": "network",
+            "type": "sfp-plus",
+            "slotNumber": 1,
+            "speedBps": 10000000000,
+            "supportedSpeedsBps": [1000000000, 10000000000],
+            "networkTechnology": "ethernet",
+            "operatingModes": ["ethernet"],
+            "media": ["dac", "optical-transceiver"],
+            "origin": "module"
+          },
+          {
+            "id": 2,
+            "key": "port-2",
+            "kind": "network",
+            "type": "sfp-plus",
+            "slotNumber": 2,
+            "speedBps": 10000000000,
+            "supportedSpeedsBps": [1000000000, 10000000000],
+            "networkTechnology": "ethernet",
+            "operatingModes": ["ethernet"],
+            "media": ["dac", "optical-transceiver"],
+            "origin": "module"
+          }
+        ],
+        "compatibility": {
+          "requirements": {
+            "expansion": {
+              "interfaceFamily": "pcie",
+              "pcieGeneration": 3,
+              "connectorLanes": 8,
+              "minimumElectricalLanes": 8,
+              "height": "low-profile",
+              "slotWidth": 1,
+              "powerMw": 7000
+            }
+          }
+        }
+      }
+    },
+    {
+      "templateKey": "network-intel-ax210-ngwg",
+      "identityHash": "57298d0705e4c642b57bb40085bef193330778396eb54b50934418e93c8762e9",
+      "contentHash": "db577935d26e7625763b10dea3b701d0a8e258d82da9c66c2f486f8ca4dcf280",
+      "item": {
+        "type": "network",
+        "name": "Intel AX210.NGWG",
+        "manufacturer": "Intel",
+        "family": "Intel Wi-Fi 6E",
+        "model": "AX210.NGWG",
+        "specs": {
+          "networkTechnology": "wifi",
+          "controller": "Intel AX210",
+          "formFactor": "m2-2230",
+          "hostInterface": { "family": "m2-ae", "key": "A+E", "moduleSize": "2230" },
+          "operatingModes": ["wifi"],
+          "wifiGenerations": ["Wi-Fi 6", "Wi-Fi 6E"],
+          "frequencyBandsGhz": [2.4, 5, 6],
+          "spatialStreams": 2,
+          "maxPhyRateBps": 2400000000,
+          "bluetoothVersion": "5.3",
+          "antennaTopology": "2x2",
+          "discontinued": false
+        },
+        "compatibility": {
+          "requirements": {
+            "expansion": { "interfaceFamily": "m2-ae", "key": "A+E", "moduleSize": "2230" }
+          }
+        }
+      }
+    }
+  ]
+}

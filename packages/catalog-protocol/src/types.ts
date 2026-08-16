@@ -8,6 +8,7 @@ export const MOTHERBOARD_FINGERPRINT_VERSION = 7
 export const RAM_FINGERPRINT_VERSION = 8
 export const CANONICAL_UNITS_FINGERPRINT_VERSION = 9
 export const NAS_FINGERPRINT_VERSION = 10
+export const NETWORK_FINGERPRINT_VERSION = 11
 export const SUPPORTED_FINGERPRINT_VERSIONS = [
   LEGACY_FINGERPRINT_VERSION,
   FINGERPRINT_VERSION,
@@ -18,6 +19,7 @@ export const SUPPORTED_FINGERPRINT_VERSIONS = [
   RAM_FINGERPRINT_VERSION,
   CANONICAL_UNITS_FINGERPRINT_VERSION,
   NAS_FINGERPRINT_VERSION,
+  NETWORK_FINGERPRINT_VERSION,
 ] as const
 export const MANUFACTURER_ALIAS_VERSION = 1
 
@@ -90,6 +92,49 @@ export type CatalogPortEndpoint = {
 
 export type CatalogPortOrigin = 'fixed' | 'module'
 
+export type CatalogNetworkTechnology =
+  | 'ethernet'
+  | 'wifi'
+  | 'fibre-channel'
+  | 'infiniband'
+  | 'converged'
+  | 'cellular'
+  | 'other'
+
+export type CatalogNetworkHostInterfaceFamily =
+  | 'pcie'
+  | 'm2-ae'
+  | 'm2-bm'
+  | 'mini-pcie'
+  | 'usb'
+  | 'ocp'
+  | 'mezzanine'
+  | 'onboard'
+  | 'proprietary'
+
+export type CatalogNetworkHostInterface = {
+  family: CatalogNetworkHostInterfaceFamily
+  pcieGeneration?: number
+  connectorLanes?: number
+  minimumElectricalLanes?: number
+  key?: string
+  moduleSize?: string
+  usbGeneration?: string
+  connector?: string
+  ocpVersion?: string
+  interfaceKey?: string
+}
+
+export type CatalogNetworkCapabilities = {
+  sriov?: boolean
+  ptp?: boolean
+  pxe?: boolean
+  uefiBoot?: boolean
+  wakeOnLan?: boolean
+  rdmaModes?: string[]
+  offloads?: string[]
+}
+
 export type CatalogPort = {
   id: number
   key?: string
@@ -99,6 +144,11 @@ export type CatalogPort = {
   role?: string
   speed?: string
   speedBps?: number
+  supportedSpeedsBps?: number[]
+  networkTechnology?: CatalogNetworkTechnology
+  operatingModes?: string[]
+  media?: string[]
+  vendorLock?: boolean
   poe?: boolean
   origin?: CatalogPortOrigin
   endpoints?: CatalogPortEndpoint[]
