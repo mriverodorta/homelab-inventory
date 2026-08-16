@@ -1,4 +1,4 @@
-export const TELEMETRY_SCHEMA_VERSION = 2
+export const TELEMETRY_SCHEMA_VERSION = 3
 
 const HOST_TYPE_CHECK = "CHECK (host_type IN ('server', 'nas', 'pcBuild'))"
 
@@ -219,6 +219,153 @@ export const TELEMETRY_MIGRATIONS = Object.freeze([
           LIMIT -1 OFFSET 5
         );
       END;
+    `,
+  }),
+  Object.freeze({
+    version: 3,
+    sql: `
+      DROP TABLE IF EXISTS network_interface_samples;
+      DROP TABLE IF EXISTS storage_device_samples;
+      DROP TABLE IF EXISTS filesystem_samples;
+      DROP TABLE IF EXISTS host_metric_samples;
+      DROP TABLE IF EXISTS component_events;
+      DROP TABLE IF EXISTS latest_component_state;
+      DROP TABLE IF EXISTS latest_host_state;
+      DROP TABLE IF EXISTS telemetry_samples;
+
+      CREATE TABLE heartbeat_receipts (
+        id INTEGER PRIMARY KEY,
+        agent_id INTEGER NOT NULL CHECK (agent_id > 0),
+        host_item_id INTEGER NOT NULL CHECK (host_item_id > 0),
+        host_type TEXT NOT NULL ${HOST_TYPE_CHECK},
+        host_id INTEGER NOT NULL CHECK (host_id > 0),
+        sequence INTEGER NOT NULL CHECK (sequence > 0),
+        collected_at_ms INTEGER NOT NULL CHECK (collected_at_ms >= 0),
+        received_at_ms INTEGER NOT NULL CHECK (received_at_ms >= 0),
+        dropped_samples INTEGER NOT NULL DEFAULT 0 CHECK (dropped_samples >= 0),
+        agent_version TEXT NOT NULL,
+        monitoring_revision INTEGER NOT NULL DEFAULT 0 CHECK (monitoring_revision >= 0),
+        UNIQUE (agent_id, sequence)
+      ) STRICT;
+      CREATE INDEX heartbeat_receipts_host_time_index
+        ON heartbeat_receipts(host_item_id, received_at_ms DESC);
+
+      CREATE TABLE host_metric_samples (
+        host_item_id INTEGER NOT NULL CHECK (host_item_id > 0),
+        minute_bucket_ms INTEGER NOT NULL CHECK (minute_bucket_ms >= 0),
+        cpu_percent REAL CHECK (cpu_percent IS NULL OR cpu_percent BETWEEN 0 AND 100),
+        cpu_idle_percent REAL CHECK (cpu_idle_percent IS NULL OR cpu_idle_percent BETWEEN 0 AND 100),
+        cpu_iowait_percent REAL CHECK (cpu_iowait_percent IS NULL OR cpu_iowait_percent BETWEEN 0 AND 100),
+        cpu_steal_percent REAL CHECK (cpu_steal_percent IS NULL OR cpu_steal_percent BETWEEN 0 AND 100),
+        cpu_system_percent REAL CHECK (cpu_system_percent IS NULL OR cpu_system_percent BETWEEN 0 AND 100),
+        cpu_user_percent REAL CHECK (cpu_user_percent IS NULL OR cpu_user_percent BETWEEN 0 AND 100),
+        memory_used_bytes INTEGER CHECK (memory_used_bytes IS NULL OR memory_used_bytes >= 0),
+        memory_used_percent REAL CHECK (memory_used_percent IS NULL OR memory_used_percent BETWEEN 0 AND 100),
+        PRIMARY KEY (host_item_id, minute_bucket_ms)
+      ) STRICT, WITHOUT ROWID;
+
+      CREATE TABLE agent_capabilities (
+        agent_id INTEGER PRIMARY KEY CHECK (agent_id > 0),
+        capabilities_hash TEXT NOT NULL CHECK (length(capabilities_hash) = 64),
+        capabilities_json TEXT NOT NULL CHECK (json_valid(capabilities_json)),
+        updated_at_ms INTEGER NOT NULL CHECK (updated_at_ms >= 0)
+      ) STRICT;
+
+      CREATE TABLE host_system_facts (
+        host_item_id INTEGER PRIMARY KEY CHECK (host_item_id > 0),
+        facts_json TEXT NOT NULL CHECK (json_valid(facts_json)),
+        updated_at_ms INTEGER NOT NULL CHECK (updated_at_ms >= 0)
+      ) STRICT;
+
+      CREATE TABLE host_runtime_state (
+        host_item_id INTEGER PRIMARY KEY CHECK (host_item_id > 0),
+        uptime_seconds INTEGER CHECK (uptime_seconds IS NULL OR uptime_seconds >= 0),
+        load_1 REAL, load_5 REAL, load_15 REAL,
+        memory_json TEXT NOT NULL CHECK (json_valid(memory_json)),
+        updated_at_ms INTEGER NOT NULL CHECK (updated_at_ms >= 0)
+      ) STRICT;
+
+      CREATE TABLE telemetry_family_revisions (
+        host_item_id INTEGER NOT NULL CHECK (host_item_id > 0),
+        family TEXT NOT NULL,
+        revision INTEGER NOT NULL CHECK (revision > 0),
+        reconciled_at_ms INTEGER NOT NULL CHECK (reconciled_at_ms >= 0),
+        PRIMARY KEY (host_item_id, family)
+      ) STRICT, WITHOUT ROWID;
+
+      CREATE TABLE service_states (
+        host_item_id INTEGER NOT NULL CHECK (host_item_id > 0),
+        service_manager TEXT NOT NULL,
+        service_key TEXT NOT NULL,
+        lifecycle_hash TEXT NOT NULL CHECK (length(lifecycle_hash) = 64),
+        state_json TEXT NOT NULL CHECK (json_valid(state_json)),
+        updated_at_ms INTEGER NOT NULL CHECK (updated_at_ms >= 0),
+        PRIMARY KEY (host_item_id, service_manager, service_key)
+      ) STRICT, WITHOUT ROWID;
+
+      CREATE TABLE container_states (
+        host_item_id INTEGER NOT NULL CHECK (host_item_id > 0),
+        runtime TEXT NOT NULL,
+        runtime_id TEXT NOT NULL,
+        lifecycle_hash TEXT NOT NULL CHECK (length(lifecycle_hash) = 64),
+        state_json TEXT NOT NULL CHECK (json_valid(state_json)),
+        updated_at_ms INTEGER NOT NULL CHECK (updated_at_ms >= 0),
+        PRIMARY KEY (host_item_id, runtime, runtime_id)
+      ) STRICT, WITHOUT ROWID;
+
+      CREATE TABLE storage_device_states (
+        host_item_id INTEGER NOT NULL CHECK (host_item_id > 0),
+        device_key TEXT NOT NULL,
+        state_json TEXT NOT NULL CHECK (json_valid(state_json)),
+        updated_at_ms INTEGER NOT NULL CHECK (updated_at_ms >= 0),
+        PRIMARY KEY (host_item_id, device_key)
+      ) STRICT, WITHOUT ROWID;
+
+      CREATE TABLE filesystem_mount_states (
+        host_item_id INTEGER NOT NULL CHECK (host_item_id > 0),
+        mount_key TEXT NOT NULL,
+        state_json TEXT NOT NULL CHECK (json_valid(state_json)),
+        updated_at_ms INTEGER NOT NULL CHECK (updated_at_ms >= 0),
+        PRIMARY KEY (host_item_id, mount_key)
+      ) STRICT, WITHOUT ROWID;
+
+      CREATE TABLE gpu_states (
+        host_item_id INTEGER NOT NULL CHECK (host_item_id > 0),
+        gpu_key TEXT NOT NULL,
+        state_json TEXT NOT NULL CHECK (json_valid(state_json)),
+        updated_at_ms INTEGER NOT NULL CHECK (updated_at_ms >= 0),
+        PRIMARY KEY (host_item_id, gpu_key)
+      ) STRICT, WITHOUT ROWID;
+
+      CREATE TABLE sensor_states (
+        host_item_id INTEGER NOT NULL CHECK (host_item_id > 0),
+        sensor_key TEXT NOT NULL,
+        state_json TEXT NOT NULL CHECK (json_valid(state_json)),
+        updated_at_ms INTEGER NOT NULL CHECK (updated_at_ms >= 0),
+        PRIMARY KEY (host_item_id, sensor_key)
+      ) STRICT, WITHOUT ROWID;
+
+      CREATE TABLE storage_health_states (
+        host_item_id INTEGER NOT NULL CHECK (host_item_id > 0),
+        device_key TEXT NOT NULL,
+        lifecycle_hash TEXT NOT NULL CHECK (length(lifecycle_hash) = 64),
+        state_json TEXT NOT NULL CHECK (json_valid(state_json)),
+        updated_at_ms INTEGER NOT NULL CHECK (updated_at_ms >= 0),
+        PRIMARY KEY (host_item_id, device_key)
+      ) STRICT, WITHOUT ROWID;
+
+      CREATE TABLE component_events (
+        id INTEGER PRIMARY KEY,
+        host_item_id INTEGER NOT NULL CHECK (host_item_id > 0),
+        family TEXT NOT NULL CHECK (family IN ('service', 'container', 'storage-health')),
+        entity_key TEXT NOT NULL,
+        event_kind TEXT NOT NULL CHECK (event_kind IN ('observed', 'changed', 'removed', 'checkpoint')),
+        observed_at_ms INTEGER NOT NULL CHECK (observed_at_ms >= 0),
+        state_hash TEXT,
+        state_json TEXT CHECK (state_json IS NULL OR json_valid(state_json))
+      ) STRICT;
+      CREATE INDEX component_events_host_time_index
+        ON component_events(host_item_id, family, observed_at_ms DESC);
     `,
   }),
 ])

@@ -131,12 +131,11 @@ describe('backup section ownership', () => {
   })
 
   it('restores pre-SQLite agent telemetry archives with an empty history', () => {
-    expect(telemetryBackupFromArchive(new Map()).tables).toEqual({
-      telemetry_samples: [],
-      latest_host_state: [],
-      latest_component_state: [],
-      component_events: [],
-    })
+    const backup = telemetryBackupFromArchive(new Map())
+    expect(backup.schemaVersion).toBe(3)
+    expect(Object.values(backup.tables).every((rows) => rows.length === 0)).toBe(true)
+    expect(backup.tables).toHaveProperty('heartbeat_receipts')
+    expect(backup.tables).toHaveProperty('service_states')
   })
 
   it('includes the stable installation instance in enrollment backups', async () => {

@@ -46,7 +46,7 @@ describe('telemetry retention', () => {
 
     const first = pruneTelemetry(database, { samplesBefore: '2026-08-05T12:03:00.000Z', limit: 1 })
     expect(first.samples).toBe(1)
-    expect(database.query('SELECT COUNT(*) AS count FROM telemetry_samples').get().count).toBe(2)
+    expect(database.query('SELECT COUNT(*) AS count FROM heartbeat_receipts').get().count).toBe(2)
     expect(repository.getHostSummary('server', 1).sequence).toBe(3)
 
     const second = pruneTelemetry(database, { samplesBefore: '2026-08-05T12:03:00.000Z', limit: 10 })

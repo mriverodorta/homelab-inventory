@@ -1,32 +1,16 @@
 import { Activity } from 'lucide-react'
 import { InspectorSection } from '@/components/inspector/inspector-section'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
-import type { AgentTelemetrySample } from '@/types/agent'
 import { cn } from '@/lib/utils'
-import {
-  AGENT_HEARTBEAT_WINDOW_MINUTES,
-  buildHeartbeatBuckets,
-} from './agent-heartbeat-model'
+import { AGENT_HEARTBEAT_WINDOW_MINUTES } from './agent-heartbeat-model'
 
 export function AgentHeartbeatTimeline({
-  samples,
+  buckets,
   expected,
-  serverTime,
-  heartbeatIntervalMs,
-  onlineMaxAgeMs,
 }: {
-  samples: AgentTelemetrySample[]
+  buckets: Array<{ at: string; received: boolean }>
   expected: boolean
-  serverTime?: string
-  heartbeatIntervalMs?: number
-  onlineMaxAgeMs?: number
 }) {
-  const parsedServerTime = serverTime ? Date.parse(serverTime) : Number.NaN
-  const buckets = buildHeartbeatBuckets(samples, {
-    now: Number.isFinite(parsedServerTime) ? parsedServerTime : Date.now(),
-    heartbeatIntervalMs,
-    onlineMaxAgeMs,
-  })
   const received = buckets.filter((bucket) => bucket.received).length
 
   return (
@@ -37,8 +21,10 @@ export function AgentHeartbeatTimeline({
     >
       <TooltipProvider>
         <div className="grid grid-cols-[repeat(15,minmax(0,1fr))] gap-1 sm:grid-cols-[repeat(30,minmax(0,1fr))]" aria-label={`${received} of the last ${AGENT_HEARTBEAT_WINDOW_MINUTES} expected heartbeats received`}>
-          {buckets.map((bucket) => (
-            <Tooltip key={bucket.minute}>
+          {buckets.map((bucket) => {
+            const at = Date.parse(bucket.at)
+            const label = Number.isFinite(at) ? new Date(at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : 'Unknown time'
+            return <Tooltip key={bucket.at}>
               <TooltipTrigger asChild>
                 <span
                   className={cn(
@@ -49,12 +35,12 @@ export function AgentHeartbeatTimeline({
                         ? 'bg-[#cb6b57]'
                         : 'bg-[#d8d1c6]',
                   )}
-                  aria-label={`${bucket.label}: ${bucket.received ? 'heartbeat received' : expected ? 'heartbeat missed' : 'not expected'}`}
+                  aria-label={`${label}: ${bucket.received ? 'heartbeat received' : expected ? 'heartbeat missed' : 'not expected'}`}
                 />
               </TooltipTrigger>
-              <TooltipContent>{bucket.label}: {bucket.received ? 'Received' : expected ? 'Missed' : 'Not expected'}</TooltipContent>
+              <TooltipContent>{label}: {bucket.received ? 'Received' : expected ? 'Missed' : 'Not expected'}</TooltipContent>
             </Tooltip>
-          ))}
+          })}
         </div>
       </TooltipProvider>
       <div className="mt-2 flex justify-between text-[11px] font-semibold text-[#75695d]">

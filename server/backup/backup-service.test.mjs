@@ -9,22 +9,13 @@ import { NotificationSecretVault } from '../notifications/secret-vault.mjs'
 import { NotificationStore } from '../notifications/store.mjs'
 import { BackupService } from './backup-service.mjs'
 import { installationPublicKeyId } from '../../packages/catalog-protocol/src/index.ts'
-import { TELEMETRY_SCHEMA_VERSION } from '../telemetry/schema.mjs'
+import { emptyTelemetryBackup as createEmptyTelemetryBackup } from '../telemetry/backup.mjs'
 
 const tempDirs = []
 const stores = []
 
 function emptyTelemetryBackup() {
-  return {
-    formatVersion: 1,
-    schemaVersion: TELEMETRY_SCHEMA_VERSION,
-    tables: {
-      telemetry_samples: [],
-      latest_host_state: [],
-      latest_component_state: [],
-      component_events: [],
-    },
-  }
+  return createEmptyTelemetryBackup()
 }
 
 async function createContext({ onRestoreApplied = null } = {}) {

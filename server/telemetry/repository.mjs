@@ -1,32 +1,12 @@
 import { createHash } from 'node:crypto'
 import { isRelationalId } from '../db/relational-ids.mjs'
 import { AGENT_HOST_TYPES } from '../agents/protocol-v1.mjs'
+import { normalizeTelemetryEnvelope } from '../agents/telemetry-envelope.mjs'
+import { containerKey, deviceKey, gpuKey, mountKey, sensorKey, serviceKey } from './entity-keys.mjs'
 import { exportTelemetryBackup, replaceTelemetryBackup } from './backup.mjs'
 
 const HOST_TYPE_SET = new Set(AGENT_HOST_TYPES)
-const DEFAULT_QUERY_LIMIT = 1_440
-const MAX_QUERY_LIMIT = 10_080
-const STORAGE_CHECKPOINT_MS = 24 * 60 * 60 * 1000
-
-function timestampMs(value, field) {
-  const parsed = typeof value === 'number' ? value : Date.parse(value)
-  if (!Number.isSafeInteger(parsed) || parsed < 0) throw new Error(`${field} must be a valid timestamp.`)
-  return parsed
-}
-
-function hostReference(hostType, hostId) {
-  if (!HOST_TYPE_SET.has(hostType) || !isRelationalId(hostId)) {
-    throw new Error('Telemetry host reference is invalid.')
-  }
-  return { hostType, hostId }
-}
-
-function boundedLimit(value) {
-  const parsed = Number(value)
-  return Number.isSafeInteger(parsed) && parsed > 0
-    ? Math.min(parsed, MAX_QUERY_LIMIT)
-    : DEFAULT_QUERY_LIMIT
-}
+const METRIC_WINDOW = 30
 
 function canonicalJson(value) {
   if (Array.isArray(value)) return `[${value.map(canonicalJson).join(',')}]`
@@ -36,323 +16,406 @@ function canonicalJson(value) {
   return JSON.stringify(value)
 }
 
-function state(value) {
-  const json = canonicalJson(value)
-  return { json, hash: createHash('sha256').update(json).digest('hex') }
+function hash(value) {
+  return createHash('sha256').update(canonicalJson(value)).digest('hex')
 }
 
-function componentKey(family, component) {
-  if (family === 'service') return component.name
-  if (family === 'container') return `${component.runtime}\u0000${component.runtimeId}`
-  return `${component.kind}\u0000${component.deviceId}`
+function timestampMs(value, field) {
+  const parsed = typeof value === 'number' ? value : Date.parse(value)
+  if (!Number.isSafeInteger(parsed) || parsed < 0) throw new Error(`${field} must be a valid timestamp.`)
+  return parsed
 }
 
-function decodeSample(row) {
+function hostReference(hostType, hostId) {
+  if (!HOST_TYPE_SET.has(hostType) || !isRelationalId(hostId)) throw new Error('Telemetry host reference is invalid.')
+}
+
+function parseJson(value, fallback = {}) {
+  return typeof value === 'string' ? JSON.parse(value) : fallback
+}
+
+function lifecycleState(family, value) {
+  if (family === 'service') {
+    return {
+      name: value.name ?? value.key,
+      manager: value.manager ?? value.serviceManager ?? 'systemd',
+      activeState: value.activeState ?? value.state ?? null,
+      subState: value.subState ?? null,
+      enabled: value.enabled ?? null,
+      classification: value.classification ?? value.scope ?? null,
+    }
+  }
+  if (family === 'container') {
+    return {
+      runtime: value.runtime,
+      runtimeId: value.runtimeId ?? value.id,
+      name: value.name ?? null,
+      image: value.image ?? null,
+      state: value.state ?? null,
+      health: value.health ?? null,
+      ports: value.ports ?? [],
+      networks: value.networks ?? value.network ?? [],
+      serviceName: value.serviceName ?? value.composeService ?? null,
+    }
+  }
   return {
-    id: row.id,
-    deviceId: row.device_id,
-    agentId: row.agent_id ?? null,
-    hostType: row.host_type,
-    hostId: row.host_id,
-    hostItemId: row.host_item_id ?? null,
-    sequence: row.sequence,
-    receivedAt: new Date(row.received_at_ms).toISOString(),
-    collectedAt: new Date(row.collected_at_ms).toISOString(),
-    agentVersion: row.agent_version,
-    payload: JSON.parse(row.payload_json),
+    deviceId: value.deviceId ?? value.device ?? value.key,
+    kind: value.kind ?? null,
+    state: value.state ?? value.health ?? null,
+    warnings: value.warnings ?? [],
   }
 }
 
-function decodeComponent(row) {
-  return {
-    family: row.family,
-    key: row.entity_key,
-    observedAt: new Date(row.observed_at_ms).toISOString(),
-    state: JSON.parse(row.state_json),
-  }
+const FAMILY_CONFIG = Object.freeze({
+  services: { table: 'service_states', family: 'service', key: serviceKey },
+  containers: { table: 'container_states', family: 'container', key: containerKey },
+  filesystems: { table: 'filesystem_mount_states', family: null, key: mountKey },
+  gpus: { table: 'gpu_states', family: null, key: gpuKey },
+  sensors: { table: 'sensor_states', family: null, key: sensorKey },
+  storageHealth: { table: 'storage_health_states', family: 'storage-health', key: deviceKey },
+})
+
+function tableKeyParts(name, value) {
+  if (name === 'services') return [value.manager ?? value.serviceManager ?? 'systemd', value.name ?? value.key]
+  if (name === 'containers') return [value.runtime, value.runtimeId ?? value.id]
+  return [FAMILY_CONFIG[name].key(value)]
+}
+
+function keyColumns(name) {
+  if (name === 'services') return ['service_manager', 'service_key']
+  if (name === 'containers') return ['runtime', 'runtime_id']
+  return [{ filesystems: 'mount_key', gpus: 'gpu_key', sensors: 'sensor_key', storageHealth: 'device_key' }[name]]
 }
 
 export class TelemetryRepository {
-  constructor(database, { storageCheckpointMs = STORAGE_CHECKPOINT_MS } = {}) {
+  constructor(database) {
     this.database = database
-    this.storageCheckpointMs = storageCheckpointMs
-    this.insertSample = database.prepare(`
-      INSERT INTO telemetry_samples (
-        device_id, host_type, host_id, sequence, received_at_ms,
-        collected_at_ms, agent_version, payload_json, agent_id, host_item_id
+    this.recordTransaction = database.transaction((envelope) => this.#recordEnvelope(envelope))
+    this.manualReportTransaction = database.transaction((input) => this.#recordManualInventoryReport(input))
+  }
+
+  #upsertLatest(table, columns, values, state, observedAtMs, lifecycleHash = null) {
+    const names = ['host_item_id', ...columns, ...(lifecycleHash ? ['lifecycle_hash'] : []), 'state_json', 'updated_at_ms']
+    const conflict = ['host_item_id', ...columns].join(', ')
+    const updates = [...(lifecycleHash ? ['lifecycle_hash = excluded.lifecycle_hash'] : []), 'state_json = excluded.state_json', 'updated_at_ms = excluded.updated_at_ms']
+    this.database.query(`
+      INSERT INTO ${table} (${names.join(', ')}) VALUES (${names.map(() => '?').join(', ')})
+      ON CONFLICT (${conflict}) DO UPDATE SET ${updates.join(', ')}
+    `).run(...values, ...(lifecycleHash ? [lifecycleHash] : []), canonicalJson(state), observedAtMs)
+  }
+
+  #removeState(name, hostItemId, rawKey, observedAtMs) {
+    const config = FAMILY_CONFIG[name]
+    const columns = keyColumns(name)
+    const parts = String(rawKey).split('\0')
+    const where = ['host_item_id = ?', ...columns.map((column) => `${column} = ?`)].join(' AND ')
+    const row = this.database.query(`SELECT * FROM ${config.table} WHERE ${where}`).get(hostItemId, ...parts)
+    if (!row) return
+    if (config.family) {
+      this.database.query(`
+        INSERT INTO component_events (host_item_id, family, entity_key, event_kind, observed_at_ms, state_hash, state_json)
+        VALUES (?, ?, ?, 'removed', ?, ?, NULL)
+      `).run(hostItemId, config.family, rawKey, observedAtMs, row.lifecycle_hash)
+    }
+    this.database.query(`DELETE FROM ${config.table} WHERE ${where}`).run(hostItemId, ...parts)
+  }
+
+  #applyFamily(name, hostItemId, delta, observedAtMs) {
+    const config = FAMILY_CONFIG[name]
+    if (!config || !delta) return { accepted: null, reconcile: false }
+    const previous = this.database.query(`
+      SELECT revision FROM telemetry_family_revisions WHERE host_item_id = ? AND family = ?
+    `).get(hostItemId, name)?.revision ?? 0
+    if (delta.revision <= previous) return { accepted: previous, reconcile: false }
+    if (!delta.full && delta.revision !== previous + 1) return { accepted: previous, reconcile: true }
+
+    const columns = keyColumns(name)
+    const incoming = new Set()
+    for (const value of delta.changed) {
+      const entityKey = config.key(value)
+      const parts = tableKeyParts(name, value)
+      incoming.add(entityKey)
+      const current = this.database.query(`SELECT ${config.family ? 'lifecycle_hash' : 'NULL AS lifecycle_hash'}, state_json FROM ${config.table} WHERE ${[
+        'host_item_id = ?', ...columns.map((column) => `${column} = ?`),
+      ].join(' AND ')}`).get(hostItemId, ...parts)
+      const semanticHash = config.family ? hash(lifecycleState(config.family, value)) : null
+      if (config.family && (!current || current.lifecycle_hash !== semanticHash)) {
+        this.database.query(`
+          INSERT INTO component_events (host_item_id, family, entity_key, event_kind, observed_at_ms, state_hash, state_json)
+          VALUES (?, ?, ?, ?, ?, ?, ?)
+        `).run(hostItemId, config.family, entityKey, current ? 'changed' : 'observed', observedAtMs, semanticHash, canonicalJson(value))
+      }
+      this.#upsertLatest(config.table, columns, [hostItemId, ...parts], value, observedAtMs, semanticHash)
+    }
+    for (const removed of delta.removed) this.#removeState(name, hostItemId, removed, observedAtMs)
+
+    if (delta.full) {
+      const rows = this.database.query(`SELECT ${columns.join(', ')} FROM ${config.table} WHERE host_item_id = ?`).all(hostItemId)
+      for (const row of rows) {
+        const persistedKey = columns.map((column) => row[column]).join('\0')
+        if (!incoming.has(persistedKey)) this.#removeState(name, hostItemId, persistedKey, observedAtMs)
+      }
+    }
+    this.database.query(`
+      INSERT INTO telemetry_family_revisions (host_item_id, family, revision, reconciled_at_ms)
+      VALUES (?, ?, ?, ?)
+      ON CONFLICT (host_item_id, family) DO UPDATE SET revision = excluded.revision, reconciled_at_ms = excluded.reconciled_at_ms
+    `).run(hostItemId, name, delta.revision, observedAtMs)
+    return { accepted: delta.revision, reconcile: false }
+  }
+
+  #recordEnvelope(envelope) {
+    const { receipt, metricSample, latest } = envelope
+    const storedCapabilityHash = this.database.query('SELECT capabilities_hash FROM agent_capabilities WHERE agent_id = ?').get(receipt.agentId)?.capabilities_hash
+    const requestCapabilities = !envelope.capabilities && storedCapabilityHash !== envelope.capabilitiesHash
+    const result = this.database.query(`
+      INSERT INTO heartbeat_receipts (
+        agent_id, host_item_id, host_type, host_id, sequence, collected_at_ms, received_at_ms,
+        dropped_samples, agent_version, monitoring_revision
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `)
-    this.upsertLatestHost = database.prepare(`
-      INSERT INTO latest_host_state (
-        host_type, host_id, device_id, sequence, received_at_ms,
-        collected_at_ms, agent_version, payload_json, agent_id, host_item_id
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      ON CONFLICT(host_type, host_id) DO UPDATE SET
-        device_id = excluded.device_id,
-        sequence = excluded.sequence,
-        received_at_ms = excluded.received_at_ms,
-        collected_at_ms = excluded.collected_at_ms,
-        agent_version = excluded.agent_version,
-        payload_json = excluded.payload_json,
-        agent_id = excluded.agent_id,
-        host_item_id = excluded.host_item_id
-    `)
-    this.listLatestComponents = database.prepare(`
-      SELECT family, entity_key, state_hash, observed_at_ms, state_json
-      FROM latest_component_state
-      WHERE host_type = ? AND host_id = ? AND family = ?
-    `)
-    this.lastComponentEvent = database.prepare(`
-      SELECT observed_at_ms
-      FROM component_events
-      WHERE host_type = ? AND host_id = ? AND family = ? AND entity_key = ?
-      ORDER BY id DESC
-      LIMIT 1
-    `)
-    this.upsertLatestComponent = database.prepare(`
-      INSERT INTO latest_component_state (
-        host_type, host_id, family, entity_key, state_hash, observed_at_ms, state_json, host_item_id
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-      ON CONFLICT(host_type, host_id, family, entity_key) DO UPDATE SET
-        state_hash = excluded.state_hash,
-        observed_at_ms = excluded.observed_at_ms,
-        state_json = excluded.state_json,
-        host_item_id = excluded.host_item_id
-    `)
-    this.deleteLatestComponent = database.prepare(`
-      DELETE FROM latest_component_state
-      WHERE host_type = ? AND host_id = ? AND family = ? AND entity_key = ?
-    `)
-    this.insertComponentEvent = database.prepare(`
-      INSERT INTO component_events (
-        host_type, host_id, family, entity_key, event_kind, observed_at_ms, state_hash, state_json, host_item_id
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `)
-    this.insertHostMetrics = database.prepare(`
+      ON CONFLICT (agent_id, sequence) DO NOTHING
+    `).run(
+      receipt.agentId, receipt.hostItemId, receipt.hostType, receipt.hostId, receipt.sequence,
+      receipt.collectedAtMs, receipt.receivedAtMs, receipt.droppedSamples, receipt.agentVersion,
+      receipt.monitoringRevision,
+    )
+    if (result.changes === 0) return { duplicate: true, acceptedRevisions: {}, reconcile: [], requestCapabilities }
+    this.database.query(`
+      DELETE FROM heartbeat_receipts WHERE host_item_id = ? AND id NOT IN (
+        SELECT id FROM heartbeat_receipts WHERE host_item_id = ?
+        ORDER BY received_at_ms DESC, id DESC LIMIT ${METRIC_WINDOW}
+      )
+    `).run(receipt.hostItemId, receipt.hostItemId)
+
+    this.database.query(`
       INSERT INTO host_metric_samples (
-        sample_id, host_item_id, uptime_seconds, cpu_percent,
-        memory_used_bytes, memory_total_bytes, load_1, load_5, load_15
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `)
-    this.insertNetworkSample = database.prepare(`
-      INSERT INTO network_interface_samples (
-        sample_id, host_item_id, interface_key, metrics_json
-      ) VALUES (?, ?, ?, ?)
-    `)
-    this.insertStorageSample = database.prepare(`
-      INSERT INTO storage_device_samples (
-        sample_id, host_item_id, device_key, metrics_json
-      ) VALUES (?, ?, ?, ?)
-    `)
-    this.insertFilesystemSample = database.prepare(`
-      INSERT INTO filesystem_samples (
-        sample_id, host_item_id, mount_key, device_key, filesystem_type,
-        total_bytes, used_bytes, available_bytes, details_json
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `)
-    this.insertManualReport = database.prepare(`
-      INSERT INTO manual_inventory_reports (
-        agent_id, host_item_id, sequence, collected_at_ms, received_at_ms,
-        payload_hash, payload_json, complete
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, 1)
-    `)
-    this.insertManualComponent = database.prepare(`
-      INSERT INTO manual_inventory_components (
-        report_id, host_item_id, kind, locator, values_json
-      ) VALUES (?, ?, ?, ?, ?)
-    `)
-    this.recordTransaction = database.transaction((input) => this.#recordHeartbeat(input))
-    this.deleteHostTransaction = database.transaction((hostType, hostId) => {
-      const counts = {}
-      const canonical = this.database.query(`
-        SELECT host_item_id
-        FROM latest_host_state
-        WHERE host_type = ? AND host_id = ?
-      `).get(hostType, hostId)?.host_item_id
-      if (isRelationalId(canonical)) {
-        for (const table of ['agent_field_suggestions', 'manual_inventory_reports', 'virtualization_events', 'latest_virtualization_state']) {
-          counts[table] = this.database.query(`DELETE FROM ${table} WHERE host_item_id = ?`).run(canonical).changes
+        host_item_id, minute_bucket_ms, cpu_percent, cpu_idle_percent, cpu_iowait_percent,
+        cpu_steal_percent, cpu_system_percent, cpu_user_percent, memory_used_bytes, memory_used_percent
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT (host_item_id, minute_bucket_ms) DO UPDATE SET
+        cpu_percent = excluded.cpu_percent, cpu_idle_percent = excluded.cpu_idle_percent,
+        cpu_iowait_percent = excluded.cpu_iowait_percent, cpu_steal_percent = excluded.cpu_steal_percent,
+        cpu_system_percent = excluded.cpu_system_percent, cpu_user_percent = excluded.cpu_user_percent,
+        memory_used_bytes = excluded.memory_used_bytes, memory_used_percent = excluded.memory_used_percent
+    `).run(
+      metricSample.hostItemId, metricSample.minuteBucketMs, metricSample.cpu.percent,
+      metricSample.cpu.idlePercent, metricSample.cpu.ioWaitPercent, metricSample.cpu.stealPercent,
+      metricSample.cpu.systemPercent, metricSample.cpu.userPercent, metricSample.memory.usedBytes,
+      metricSample.memory.usedPercent,
+    )
+    this.database.query(`
+      DELETE FROM host_metric_samples WHERE host_item_id = ? AND minute_bucket_ms NOT IN (
+        SELECT minute_bucket_ms FROM host_metric_samples WHERE host_item_id = ?
+        ORDER BY minute_bucket_ms DESC LIMIT ${METRIC_WINDOW}
+      )
+    `).run(receipt.hostItemId, receipt.hostItemId)
+
+    if (envelope.capabilities) {
+      this.database.query(`
+        INSERT INTO agent_capabilities (agent_id, capabilities_hash, capabilities_json, updated_at_ms)
+        VALUES (?, ?, ?, ?)
+        ON CONFLICT (agent_id) DO UPDATE SET capabilities_hash = excluded.capabilities_hash,
+          capabilities_json = excluded.capabilities_json, updated_at_ms = excluded.updated_at_ms
+      `).run(receipt.agentId, envelope.capabilitiesHash, canonicalJson(envelope.capabilities), receipt.receivedAtMs)
+    }
+    if (latest.system) {
+      this.database.query(`
+        INSERT INTO host_system_facts (host_item_id, facts_json, updated_at_ms) VALUES (?, ?, ?)
+        ON CONFLICT (host_item_id) DO UPDATE SET facts_json = excluded.facts_json, updated_at_ms = excluded.updated_at_ms
+      `).run(receipt.hostItemId, canonicalJson(latest.system), receipt.receivedAtMs)
+      if (Array.isArray(latest.system.storageDevices)) {
+        const keys = new Set()
+        for (const device of latest.system.storageDevices) {
+          const key = deviceKey(device)
+          keys.add(key)
+          this.#upsertLatest('storage_device_states', ['device_key'], [receipt.hostItemId, key], device, receipt.receivedAtMs)
+        }
+        for (const row of this.database.query('SELECT device_key FROM storage_device_states WHERE host_item_id = ?').all(receipt.hostItemId)) {
+          if (!keys.has(row.device_key)) this.database.query('DELETE FROM storage_device_states WHERE host_item_id = ? AND device_key = ?').run(receipt.hostItemId, row.device_key)
         }
       }
-      for (const table of ['component_events', 'latest_component_state', 'latest_host_state', 'telemetry_samples']) {
-        counts[table] = this.database.query(`DELETE FROM ${table} WHERE host_type = ? AND host_id = ?`).run(hostType, hostId).changes
-      }
-      return counts
-    })
+    }
+    const load = latest.runtime.loadAverage ?? []
+    this.database.query(`
+      INSERT INTO host_runtime_state (host_item_id, uptime_seconds, load_1, load_5, load_15, memory_json, updated_at_ms)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT (host_item_id) DO UPDATE SET uptime_seconds = excluded.uptime_seconds,
+        load_1 = excluded.load_1, load_5 = excluded.load_5, load_15 = excluded.load_15,
+        memory_json = excluded.memory_json, updated_at_ms = excluded.updated_at_ms
+    `).run(receipt.hostItemId, latest.runtime.uptimeSeconds, load[0] ?? null, load[1] ?? null, load[2] ?? null, canonicalJson(latest.runtime.memory), receipt.receivedAtMs)
+
+    const acceptedRevisions = {}
+    const reconcile = []
+    for (const [name, delta] of Object.entries(envelope.deltas)) {
+      if (name === 'system') continue
+      const applied = this.#applyFamily(name, receipt.hostItemId, delta, receipt.receivedAtMs)
+      if (applied.accepted !== null) acceptedRevisions[name] = applied.accepted
+      if (applied.reconcile) reconcile.push(name)
+    }
+    return { duplicate: false, acceptedRevisions, reconcile, requestCapabilities }
   }
 
-  #reconcileComponents({ hostType, hostId, hostItemId, family, components, observedAtMs }) {
-    const existing = new Map(this.listLatestComponents.all(hostType, hostId, family).map((row) => [row.entity_key, row]))
-    const nextKeys = new Set()
-    for (const component of components) {
-      const key = componentKey(family, component)
-      const next = state(component)
-      const previous = existing.get(key)
-      const lastEventAt = family === 'storage-health' && previous
-        ? this.lastComponentEvent.get(hostType, hostId, family, key)?.observed_at_ms
-        : null
-      const checkpoint = family === 'storage-health'
-        && previous
-        && Number.isSafeInteger(lastEventAt)
-        && observedAtMs - lastEventAt >= this.storageCheckpointMs
-      const eventKind = !previous ? 'observed' : previous.state_hash !== next.hash ? 'changed' : checkpoint ? 'checkpoint' : null
-      if (eventKind) {
-        this.insertComponentEvent.run(hostType, hostId, family, key, eventKind, observedAtMs, next.hash, next.json, hostItemId ?? null)
-      }
-      this.upsertLatestComponent.run(hostType, hostId, family, key, next.hash, observedAtMs, next.json, hostItemId ?? null)
-      nextKeys.add(key)
-    }
-    for (const [key, previous] of existing) {
-      if (nextKeys.has(key)) continue
-      this.insertComponentEvent.run(hostType, hostId, family, key, 'removed', observedAtMs, previous.state_hash, null, hostItemId ?? null)
-      this.deleteLatestComponent.run(hostType, hostId, family, key)
-    }
+  recordEnvelope(envelope) {
+    return this.recordTransaction(envelope)
   }
 
-  #recordMetricProjections(sampleId, hostItemId, metrics) {
-    if (!isRelationalId(hostItemId)) return
-    const load = Array.isArray(metrics.loadAverage) ? metrics.loadAverage : []
-    this.insertHostMetrics.run(
-      sampleId,
-      hostItemId,
-      Number.isSafeInteger(metrics.uptimeSeconds) ? metrics.uptimeSeconds : null,
-      Number.isFinite(metrics.cpu?.percent) ? metrics.cpu.percent : null,
-      Number.isSafeInteger(metrics.memory?.usedBytes) ? metrics.memory.usedBytes : null,
-      Number.isSafeInteger(metrics.memory?.totalBytes) ? metrics.memory.totalBytes : null,
-      Number.isFinite(load[0]) ? load[0] : null,
-      Number.isFinite(load[1]) ? load[1] : null,
-      Number.isFinite(load[2]) ? load[2] : null,
-    )
-    for (const [index, network] of (metrics.network ?? []).entries()) {
-      const key = network.name ?? network.interface ?? network.device ?? `network-${index + 1}`
-      this.insertNetworkSample.run(sampleId, hostItemId, String(key), canonicalJson(network))
-    }
-    for (const [index, disk] of (metrics.diskIo ?? []).entries()) {
-      const key = disk.deviceId ?? disk.device ?? disk.name ?? `storage-${index + 1}`
-      this.insertStorageSample.run(sampleId, hostItemId, String(key), canonicalJson(disk))
-    }
-    for (const [index, filesystem] of (metrics.filesystems ?? []).entries()) {
-      const mountKey = filesystem.mountPoint ?? filesystem.mount ?? `filesystem-${index + 1}`
-      this.insertFilesystemSample.run(
-        sampleId,
-        hostItemId,
-        String(mountKey),
-        filesystem.deviceId ?? filesystem.device ?? null,
-        filesystem.filesystemType ?? filesystem.type ?? null,
-        Number.isSafeInteger(filesystem.totalBytes) ? filesystem.totalBytes : null,
-        Number.isSafeInteger(filesystem.usedBytes) ? filesystem.usedBytes : null,
-        Number.isSafeInteger(filesystem.availableBytes) ? filesystem.availableBytes : null,
-        canonicalJson(filesystem),
-      )
-    }
-  }
-
-  #recordHeartbeat({ deviceId, agentId, hostType, hostId, hostItemId, receivedAt, payload }) {
+  recordHeartbeat({ deviceId, agentId, hostType, hostId, hostItemId, receivedAt, payload }) {
     hostReference(hostType, hostId)
-    if (!isRelationalId(deviceId)) throw new Error('Telemetry device id is invalid.')
-    if (!payload || typeof payload !== 'object' || Array.isArray(payload)) throw new Error('Telemetry payload is invalid.')
-    if (!isRelationalId(payload.sequence)) throw new Error('Telemetry sequence is invalid.')
-    const receivedAtMs = timestampMs(receivedAt, 'receivedAt')
-    const collectedAtMs = timestampMs(payload.collectedAt, 'payload.collectedAt')
-    const payloadJson = canonicalJson(payload)
-    if (agentId !== undefined && agentId !== null && !isRelationalId(agentId)) throw new Error('Canonical telemetry agent id is invalid.')
-    if (hostItemId !== undefined && hostItemId !== null && !isRelationalId(hostItemId)) throw new Error('Canonical telemetry host id is invalid.')
-    const sample = this.insertSample.run(
-      deviceId, hostType, hostId, payload.sequence, receivedAtMs,
-      collectedAtMs, payload.agentVersion, payloadJson, agentId ?? null, hostItemId ?? null,
-    )
-    this.upsertLatestHost.run(
-      hostType, hostId, deviceId, payload.sequence, receivedAtMs,
-      collectedAtMs, payload.agentVersion, payloadJson, agentId ?? null, hostItemId ?? null,
-    )
-    const sampleId = Number(sample.lastInsertRowid)
-    this.#recordMetricProjections(sampleId, hostItemId, payload.metrics ?? {})
-    this.#reconcileComponents({ hostType, hostId, hostItemId, family: 'service', components: payload.services ?? [], observedAtMs: receivedAtMs })
-    this.#reconcileComponents({ hostType, hostId, hostItemId, family: 'container', components: payload.containers ?? [], observedAtMs: receivedAtMs })
-    this.#reconcileComponents({ hostType, hostId, hostItemId, family: 'storage-health', components: payload.storageHealth ?? [], observedAtMs: receivedAtMs })
+    const envelope = normalizeTelemetryEnvelope(payload, {
+      agentId: agentId ?? deviceId,
+      hostItemId: hostItemId ?? hostId,
+      receivedAt,
+    })
+    envelope.receipt.hostType = hostType
+    envelope.receipt.hostId = hostId
+    return this.recordEnvelope(envelope)
   }
 
-  recordHeartbeat(input) {
-    this.recordTransaction(input)
+  #recordManualInventoryReport({ agentId, hostItemId, sequence, collectedAt, receivedAt, payload }) {
+    if (!isRelationalId(agentId) || !isRelationalId(hostItemId) || !isRelationalId(sequence)) throw new Error('Manual inventory report identity is invalid.')
+    if (!payload || typeof payload !== 'object' || Array.isArray(payload) || !Array.isArray(payload.components)) throw new Error('Manual inventory report payload is invalid.')
+    const payloadJson = canonicalJson(payload)
+    const result = this.database.query(`
+      INSERT INTO manual_inventory_reports (
+        agent_id, host_item_id, sequence, collected_at_ms, received_at_ms, payload_hash, payload_json, complete
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, 1)
+    `).run(agentId, hostItemId, sequence, timestampMs(collectedAt, 'collectedAt'), timestampMs(receivedAt, 'receivedAt'), hash(payload), payloadJson)
+    const reportId = Number(result.lastInsertRowid)
+    const statement = this.database.prepare(`
+      INSERT INTO manual_inventory_components (report_id, host_item_id, kind, locator, values_json)
+      VALUES (?, ?, ?, ?, ?)
+    `)
+    for (const component of payload.components) {
+      statement.run(reportId, hostItemId, String(component.kind), String(component.locator), canonicalJson(component.values ?? {}))
+    }
+    return { id: reportId, componentCount: payload.components.length }
   }
 
-  recordManualInventoryReport({ agentId, hostItemId, sequence, collectedAt, receivedAt, payload }) {
-    if (!isRelationalId(agentId) || !isRelationalId(hostItemId) || !isRelationalId(sequence)) {
-      throw new Error('Manual inventory report identity is invalid.')
-    }
-    if (!payload || typeof payload !== 'object' || Array.isArray(payload) || !Array.isArray(payload.components)) {
-      throw new Error('Manual inventory report payload is invalid.')
-    }
-    const payloadJson = canonicalJson(payload)
-    return this.database.transaction(() => {
-      const result = this.insertManualReport.run(
-        agentId,
-        hostItemId,
-        sequence,
-        timestampMs(collectedAt, 'collectedAt'),
-        timestampMs(receivedAt, 'receivedAt'),
-        createHash('sha256').update(payloadJson).digest('hex'),
-        payloadJson,
-      )
-      const reportId = Number(result.lastInsertRowid)
-      for (const component of payload.components) {
-        this.insertManualComponent.run(
-          reportId,
-          hostItemId,
-          String(component.kind),
-          String(component.locator),
-          canonicalJson(component.values ?? {}),
-        )
-      }
-      return { id: reportId, componentCount: payload.components.length }
-    }).immediate()
+  recordManualInventoryReport(input) {
+    return this.manualReportTransaction(input)
+  }
+
+  #latestReceipt(hostType, hostId) {
+    return this.database.query(`
+      SELECT * FROM heartbeat_receipts WHERE host_type = ? AND host_id = ?
+      ORDER BY received_at_ms DESC, id DESC LIMIT 1
+    `).get(hostType, hostId)
+  }
+
+  #states(table, hostItemId) {
+    return this.database.query(`SELECT state_json FROM ${table} WHERE host_item_id = ? ORDER BY state_json`).all(hostItemId).map((row) => parseJson(row.state_json))
   }
 
   getHostSummary(hostType, hostId) {
     hostReference(hostType, hostId)
-    const row = this.database.query(`
-      SELECT device_id, agent_id, host_type, host_id, host_item_id, sequence, received_at_ms,
-        collected_at_ms, agent_version, payload_json
-      FROM latest_host_state
-      WHERE host_type = ? AND host_id = ?
-    `).get(hostType, hostId)
-    if (!row) return null
-    const components = this.database.query(`
-      SELECT family, entity_key, observed_at_ms, state_json
-      FROM latest_component_state
-      WHERE host_type = ? AND host_id = ?
-      ORDER BY family, entity_key
-    `).all(hostType, hostId).map(decodeComponent)
+    const receipt = this.#latestReceipt(hostType, hostId)
+    if (!receipt) return null
+    const facts = this.database.query('SELECT * FROM host_system_facts WHERE host_item_id = ?').get(receipt.host_item_id)
+    const runtime = this.database.query('SELECT * FROM host_runtime_state WHERE host_item_id = ?').get(receipt.host_item_id)
+    const metrics = this.database.query('SELECT * FROM host_metric_samples WHERE host_item_id = ? ORDER BY minute_bucket_ms DESC LIMIT 1').get(receipt.host_item_id)
+    const payload = {
+      protocolMajor: 1,
+      sequence: receipt.sequence,
+      agentVersion: receipt.agent_version,
+      collectedAt: new Date(receipt.collected_at_ms).toISOString(),
+      metrics: {
+        uptimeSeconds: runtime?.uptime_seconds ?? null,
+        loadAverage: [runtime?.load_1, runtime?.load_5, runtime?.load_15],
+        cpu: { percent: metrics?.cpu_percent ?? null },
+        memory: { ...parseJson(runtime?.memory_json), usedBytes: metrics?.memory_used_bytes ?? null, usedPercent: metrics?.memory_used_percent ?? null },
+        system: parseJson(facts?.facts_json),
+        filesystems: this.#states('filesystem_mount_states', receipt.host_item_id),
+        gpus: this.#states('gpu_states', receipt.host_item_id),
+        sensors: this.#states('sensor_states', receipt.host_item_id),
+      },
+      services: this.#states('service_states', receipt.host_item_id),
+      containers: this.#states('container_states', receipt.host_item_id),
+      storageHealth: this.#states('storage_health_states', receipt.host_item_id),
+    }
     return {
-      ...decodeSample(row),
-      services: components.filter((entry) => entry.family === 'service'),
-      containers: components.filter((entry) => entry.family === 'container'),
-      storageHealth: components.filter((entry) => entry.family === 'storage-health'),
+      id: receipt.id,
+      deviceId: receipt.agent_id,
+      agentId: receipt.agent_id,
+      hostType,
+      hostId,
+      hostItemId: receipt.host_item_id,
+      sequence: receipt.sequence,
+      receivedAt: new Date(receipt.received_at_ms).toISOString(),
+      collectedAt: new Date(receipt.collected_at_ms).toISOString(),
+      agentVersion: receipt.agent_version,
+      payload,
+      services: payload.services.map((state) => ({ family: 'service', state })),
+      containers: payload.containers.map((state) => ({ family: 'container', state })),
+      storageHealth: payload.storageHealth.map((state) => ({ family: 'storage-health', state })),
     }
   }
 
-  listSamples(hostType, hostId, { from = 0, to = Date.now(), limit = DEFAULT_QUERY_LIMIT } = {}) {
+  listSamples(hostType, hostId, { from = 0, to = Date.now(), limit = METRIC_WINDOW } = {}) {
     hostReference(hostType, hostId)
     const fromMs = timestampMs(from, 'from')
     const toMs = timestampMs(to, 'to')
     if (fromMs > toMs) throw new Error('Telemetry query start must not be after its end.')
+    const receipt = this.#latestReceipt(hostType, hostId)
+    if (!receipt) return []
     return this.database.query(`
-      SELECT * FROM (
-        SELECT id, device_id, agent_id, host_type, host_id, host_item_id, sequence, received_at_ms,
-          collected_at_ms, agent_version, payload_json
-        FROM telemetry_samples
-        WHERE host_type = ? AND host_id = ?
-          AND received_at_ms BETWEEN ? AND ?
-        ORDER BY received_at_ms DESC, id DESC
-        LIMIT ?
-      ) recent_samples
-      ORDER BY received_at_ms, id
-    `).all(hostType, hostId, fromMs, toMs, boundedLimit(limit)).map(decodeSample)
+      SELECT * FROM host_metric_samples WHERE host_item_id = ? AND minute_bucket_ms BETWEEN ? AND ?
+      ORDER BY minute_bucket_ms DESC LIMIT ?
+    `).all(receipt.host_item_id, fromMs, toMs, Math.min(Math.max(Number(limit) || METRIC_WINDOW, 1), METRIC_WINDOW)).reverse().map((row) => ({
+      id: row.minute_bucket_ms,
+      agentId: receipt.agent_id,
+      hostType,
+      hostId,
+      hostItemId: receipt.host_item_id,
+      sequence: receipt.sequence,
+      receivedAt: new Date(row.minute_bucket_ms).toISOString(),
+      collectedAt: new Date(row.minute_bucket_ms).toISOString(),
+      agentVersion: receipt.agent_version,
+      payload: { metrics: {
+        cpu: {
+          percent: row.cpu_percent,
+          idlePercent: row.cpu_idle_percent,
+          ioWaitPercent: row.cpu_iowait_percent,
+          stealPercent: row.cpu_steal_percent,
+          systemPercent: row.cpu_system_percent,
+          userPercent: row.cpu_user_percent,
+        },
+        memory: { usedBytes: row.memory_used_bytes, usedPercent: row.memory_used_percent },
+      } },
+    }))
+  }
+
+  getTelemetryView(hostType, hostId, { now = Date.now(), minutes = METRIC_WINDOW } = {}) {
+    const boundedMinutes = Math.min(Math.max(Number(minutes) || METRIC_WINDOW, 1), METRIC_WINDOW)
+    const end = Math.floor(now / 60_000) * 60_000
+    const rows = new Map(this.listSamples(hostType, hostId, { from: end - ((boundedMinutes - 1) * 60_000), to: end, limit: boundedMinutes })
+      .map((sample) => [Date.parse(sample.receivedAt), sample]))
+    let previous = null
+    const buckets = []
+    for (let index = boundedMinutes - 1; index >= 0; index -= 1) {
+      const at = end - (index * 60_000)
+      const sample = rows.get(at)
+      if (sample) previous = sample.payload.metrics
+      buckets.push({ at: new Date(at).toISOString(), received: Boolean(sample), metrics: sample?.payload.metrics ?? previous })
+    }
+    return { buckets, latest: this.getHostSummary(hostType, hostId) }
   }
 
   deleteHost(hostType, hostId) {
     hostReference(hostType, hostId)
-    return this.deleteHostTransaction(hostType, hostId)
+    const receipt = this.#latestReceipt(hostType, hostId)
+    if (!receipt) return {}
+    const counts = {}
+    this.database.transaction(() => {
+      for (const table of [
+        'agent_field_suggestions', 'manual_inventory_reports', 'virtualization_events', 'latest_virtualization_state',
+        'component_events', 'telemetry_family_revisions', 'service_states', 'container_states', 'storage_device_states',
+        'filesystem_mount_states', 'gpu_states', 'sensor_states', 'storage_health_states', 'host_metric_samples',
+        'host_runtime_state', 'host_system_facts',
+      ]) counts[table] = this.database.query(`DELETE FROM ${table} WHERE host_item_id = ?`).run(receipt.host_item_id).changes
+      counts.heartbeat_receipts = this.database.query('DELETE FROM heartbeat_receipts WHERE host_item_id = ?').run(receipt.host_item_id).changes
+      counts.agent_capabilities = this.database.query('DELETE FROM agent_capabilities WHERE agent_id = ?').run(receipt.agent_id).changes
+    })()
+    return counts
   }
 
   exportBackup() {

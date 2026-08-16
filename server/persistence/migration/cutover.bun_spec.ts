@@ -100,7 +100,7 @@ describe('atomic SQLite persistence cutover', () => {
       ok: true,
       status: 'active',
       migrated: true,
-      versions: { core: CORE_MIGRATIONS.length, telemetry: 2, catalog: CATALOG_INDEX_SCHEMA_VERSION },
+      versions: { core: CORE_MIGRATIONS.length, telemetry: TELEMETRY_MIGRATIONS.length, catalog: CATALOG_INDEX_SCHEMA_VERSION },
     })
     expect(await hashLegacyData(current.dataDir)).toEqual(before)
     expect(await readActivationMarker(current.dataDir)).not.toBeNull()

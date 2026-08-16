@@ -135,9 +135,10 @@ export function authenticationCountsFromSqlite(database: Database) {
 export function telemetryCounts(filePath: string) {
   const database = new Database(filePath, { readonly: true, strict: true })
   const tables = [
-    'telemetry_samples', 'latest_host_state', 'latest_component_state', 'component_events',
-    'host_metric_samples', 'network_interface_samples', 'storage_device_samples',
-    'filesystem_samples', 'latest_virtualization_state', 'virtualization_events',
+    'heartbeat_receipts', 'host_metric_samples', 'agent_capabilities', 'host_system_facts',
+    'host_runtime_state', 'telemetry_family_revisions', 'service_states', 'container_states',
+    'storage_device_states', 'filesystem_mount_states', 'gpu_states', 'sensor_states',
+    'storage_health_states', 'component_events', 'latest_virtualization_state', 'virtualization_events',
     'manual_inventory_reports', 'manual_inventory_components', 'agent_field_suggestions',
   ]
   try {

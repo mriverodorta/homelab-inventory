@@ -47,12 +47,6 @@ function telemetryQuery(request) {
   return { from, to, limit }
 }
 
-function compactTelemetrySample(sample) {
-  const metrics = { ...(sample.payload?.metrics ?? {}) }
-  delete metrics.filesystems
-  return { ...sample, payload: { ...sample.payload, metrics } }
-}
-
 function hostExists(store, host) {
   return store.getProject().items[hostKey(host)]?.type === host.hostType
 }
@@ -382,10 +376,17 @@ export function registerAgentV1Routes(app, store, {
     try {
       const { authentication, heartbeat } = decodeHeartbeat(request, device, host, request.body)
       const receivedAt = new Date().toISOString()
-      await heartbeatSink?.({
+      const identity = store.resolveAgentTelemetryIdentity({
         deviceId: device.id,
         hostType: host.hostType,
         hostId: host.hostId,
+      })
+      const telemetry = await heartbeatSink?.({
+        deviceId: device.id,
+        agentId: identity.agentId,
+        hostType: host.hostType,
+        hostId: host.hostId,
+        hostItemId: identity.hostItemId,
         receivedAt,
         payload: heartbeat,
       })
@@ -394,6 +395,7 @@ export function registerAgentV1Routes(app, store, {
         ok: true,
         receivedAt,
         sequence: authentication.sequence,
+        ...(telemetry ? { telemetry } : {}),
         ...(monitoringConfigProvider
           ? { monitoringConfig: monitoringConfigProvider(host.hostType, host.hostId) }
           : {}),
@@ -467,8 +469,17 @@ export function registerAgentV1Routes(app, store, {
         connected,
         ageMs: null,
       }
-      const latest = telemetryRepository.getHostSummary?.(host.hostType, host.hostId) ?? null
+      const telemetryView = telemetryRepository.getTelemetryView?.(host.hostType, host.hostId, { now: serverTime.getTime(), minutes: 30 })
+      const latest = telemetryView?.latest ?? telemetryRepository.getHostSummary?.(host.hostType, host.hostId) ?? null
       const hardware = store.getAgentHardwareContext(host.hostType, host.hostId)
+      const metricBuckets = telemetryView?.buckets ?? []
+      const reconstructed = latest ? {
+        source: 'reconstructed-latest-state',
+        observedAt: latest.receivedAt,
+        agentVersion: latest.agentVersion,
+        sequence: latest.sequence,
+        ...latest.payload,
+      } : null
       return response.set('Cache-Control', 'no-store').json({
         host,
         serverTime: serverTime.toISOString(),
@@ -476,7 +487,9 @@ export function registerAgentV1Routes(app, store, {
         timing,
         from: new Date(range.from).toISOString(),
         to: new Date(range.to).toISOString(),
-        samples: telemetryRepository.listSamples(host.hostType, host.hostId, range).map(compactTelemetrySample),
+        heartbeatBuckets: metricBuckets.map(({ at, received }) => ({ at, received })),
+        metricBuckets,
+        latest: reconstructed,
         storage: buildStorageTelemetry({
           heartbeat: latest?.payload ?? null,
           snapshot: hardware.snapshot,

@@ -300,7 +300,7 @@ When an update is available, the canvas toolbar shows an update notice with rele
 
 ## Agent
 
-The optional Homelab Inventory Agent uses outbound-only HTTPS and scopes one Ed25519 device identity to one server, NAS device, or custom PC build. Signed protocol-v1 heartbeats are stored independently in `/data/databases/telemetry.sqlite`; they do not create workspace history or advance the project revision. Raw samples are retained for seven days by default. Set `AGENT_TELEMETRY_RETENTION_DAYS` to an integer from 1 through 365 to change that retention period.
+The optional Homelab Inventory Agent uses outbound-only HTTPS and scopes one Ed25519 device identity to one server, NAS device, or custom PC build. Signed protocol-v1 heartbeats are stored independently in `/data/databases/telemetry.sqlite`; they do not create workspace history or advance the project revision. CPU and memory retain exactly 30 one-minute slots. Services, containers, filesystems, GPUs, sensors, system facts, load, uptime, and storage health are kept as current state, while meaningful lifecycle and health transitions remain available to notifications. Network and disk-I/O history are not retained.
 
 Open a compute host's **Agent** tab to create a one-time enrollment and copy the generated Linux or FreeBSD/OPNsense installation command. Each application image embeds a pinned, reproducibly built release for Linux AMD64, Linux ARM64, and FreeBSD AMD64. The server verifies every embedded artifact before startup and serves immutable versioned downloads from your own installation.
 
@@ -312,6 +312,8 @@ An enrolled host can expose these capability-driven views:
 - **Storage usage**: physical-device and mount-level capacity, partition tables, filesystems, and LVM or RAID topology for confidently mapped inventory drives.
 
 Container telemetry is disabled by default. Setup can use a credential-free Docker-compatible proxy bound to loopback or, after a clear warning, direct access to an allowlisted local runtime socket. The protocol excludes arbitrary labels, environment variables, commands, arguments, mounts, secrets, addresses, and raw inspect responses.
+
+Updated agents hash capabilities, send only changed state between six-hour reconciliations, and receive acknowledgements only in responses to their own outbound requests. Existing full-heartbeat agents remain compatible and are compacted at the application boundary. Upgrading an existing installation automatically replaces legacy telemetry history with the bounded schema after integrity verification; no operator migration is required.
 
 The normal Linux or FreeBSD service is unprivileged. Complete hardware discovery is a separate, explicit `sudo homelab-inventory-agent inventory` command that previews a component summary and asks before sending. The application keeps the latest evidence private, shows the complete JSON for troubleshooting, and offers individual field suggestions with replacement confirmation and Undo. Raw serials and hardware fingerprints never enter registry contributions.
 

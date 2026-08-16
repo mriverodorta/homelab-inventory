@@ -2828,6 +2828,15 @@ export class SqliteHomelabInventoryStore {
     return record ? structuredClone(record) : null
   }
 
+  resolveAgentTelemetryIdentity({ deviceId, hostType, hostId }: { deviceId: number; hostType: string; hostId: number }) {
+    const device = this.findAgentDevice({ deviceId, hostType, hostId }) as Row | null
+    if (!device) throw lifecycleError('Agent device is not active.', 'agent-device-unavailable', 409)
+    return {
+      agentId: this.resolveAgent(deviceId),
+      hostItemId: this.resolveItem(hostType, hostId),
+    }
+  }
+
   createAgentEnrollment(input: Row) {
     const hostId = positiveId(input.hostId, 'Agent host ID')
     const hostItemId = this.resolveItem(input.hostType, hostId)

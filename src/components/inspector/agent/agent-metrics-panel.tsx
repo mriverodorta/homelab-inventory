@@ -2,8 +2,7 @@ import { Cpu, MemoryStick } from 'lucide-react'
 import { Area, AreaChart, CartesianGrid, XAxis, YAxis } from 'recharts'
 import { InspectorSection } from '@/components/inspector/inspector-section'
 import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from '@/components/ui/chart'
-import type { AgentTelemetrySample } from '@/types/agent'
-import { sampleMetricNumber } from './agent-status-utils'
+import type { AgentMetrics } from '@/types/agent'
 import { AGENT_PERCENTAGE_TICKS } from './agent-telemetry-formatters'
 
 const chartConfig = {
@@ -11,16 +10,12 @@ const chartConfig = {
   memory: { label: 'Memory', color: '#c58a32' },
 } satisfies ChartConfig
 
-function chartRows(samples: AgentTelemetrySample[]) {
-  return samples.map((sample) => {
-    const used = sampleMetricNumber(sample, 'memory', 'usedBytes')
-    const total = sampleMetricNumber(sample, 'memory', 'totalBytes')
-    return {
-      time: new Date(sample.receivedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }),
-      cpu: sampleMetricNumber(sample, 'cpu', 'percent'),
-      memory: used !== null && total !== null && total > 0 ? (used / total) * 100 : null,
-    }
-  })
+function bucketRows(buckets: Array<{ at: string; metrics: AgentMetrics | null }>) {
+  return buckets.map((bucket) => ({
+    time: new Date(bucket.at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }),
+    cpu: typeof bucket.metrics?.cpu?.percent === 'number' ? bucket.metrics.cpu.percent : null,
+    memory: typeof bucket.metrics?.memory?.usedPercent === 'number' ? bucket.metrics.memory.usedPercent : null,
+  }))
 }
 
 function MetricChart({
@@ -28,7 +23,7 @@ function MetricChart({
   dataKey,
   color,
 }: {
-  rows: ReturnType<typeof chartRows>
+  rows: ReturnType<typeof bucketRows>
   dataKey: 'cpu' | 'memory'
   color: string
 }) {
@@ -45,8 +40,8 @@ function MetricChart({
   )
 }
 
-export function AgentMetricsPanel({ samples }: { samples: AgentTelemetrySample[] }) {
-  const rows = chartRows(samples)
+export function AgentMetricsPanel({ metricBuckets }: { metricBuckets: Array<{ at: string; metrics: AgentMetrics | null }> }) {
+  const rows = bucketRows(metricBuckets)
   const hasCpu = rows.some((row) => row.cpu !== null)
   const hasMemory = rows.some((row) => row.memory !== null)
 

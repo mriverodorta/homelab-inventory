@@ -302,9 +302,16 @@ const RELEASE_0_13_1_DETAILS: UnreleasedReleaseNotes = {
 }
 
 export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
-  highlights: [],
-  fixes: [],
-  notes: [],
+  highlights: [
+    'Agent telemetry now keeps exactly 30 one-minute CPU and memory slots while services, containers, filesystems, GPUs, sensors, system facts, load, uptime, and storage health use compact current-state records.',
+  ],
+  fixes: [
+    'Existing telemetry databases compact automatically on startup, eliminating repeated full heartbeat payloads, unused network and disk-I/O history, per-core samples, and metric-only component events.',
+    'The Agent inspector now transfers fixed heartbeat and metric buckets plus an explicitly reconstructed latest-state view instead of repeatedly downloading historical payload objects.',
+  ],
+  notes: [
+    'Updated agents send capability hashes and changed state between six-hour reconciliations; existing full-heartbeat agents remain compatible and every request remains agent-initiated.',
+  ],
 }
 
 const RELEASE_0_11_2_DETAILS: UnreleasedReleaseNotes = {

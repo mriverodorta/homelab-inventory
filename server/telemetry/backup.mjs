@@ -1,18 +1,39 @@
 import { isRelationalId } from '../db/relational-ids.mjs'
 import { TELEMETRY_SCHEMA_VERSION } from './schema.mjs'
 
-const HOST_TABLES = Object.freeze({ server: 'servers', nas: 'nas', pcBuild: 'pcBuilds' })
 const TABLES = Object.freeze({
-  telemetry_samples: ['id', 'device_id', 'host_type', 'host_id', 'sequence', 'received_at_ms', 'collected_at_ms', 'agent_version', 'payload_json'],
-  latest_host_state: ['host_type', 'host_id', 'device_id', 'sequence', 'received_at_ms', 'collected_at_ms', 'agent_version', 'payload_json'],
-  latest_component_state: ['host_type', 'host_id', 'family', 'entity_key', 'state_hash', 'observed_at_ms', 'state_json'],
-  component_events: ['id', 'host_type', 'host_id', 'family', 'entity_key', 'event_kind', 'observed_at_ms', 'state_hash', 'state_json'],
+  heartbeat_receipts: ['id', 'agent_id', 'host_item_id', 'host_type', 'host_id', 'sequence', 'collected_at_ms', 'received_at_ms', 'dropped_samples', 'agent_version', 'monitoring_revision'],
+  host_metric_samples: ['host_item_id', 'minute_bucket_ms', 'cpu_percent', 'cpu_idle_percent', 'cpu_iowait_percent', 'cpu_steal_percent', 'cpu_system_percent', 'cpu_user_percent', 'memory_used_bytes', 'memory_used_percent'],
+  agent_capabilities: ['agent_id', 'capabilities_hash', 'capabilities_json', 'updated_at_ms'],
+  host_system_facts: ['host_item_id', 'facts_json', 'updated_at_ms'],
+  host_runtime_state: ['host_item_id', 'uptime_seconds', 'load_1', 'load_5', 'load_15', 'memory_json', 'updated_at_ms'],
+  telemetry_family_revisions: ['host_item_id', 'family', 'revision', 'reconciled_at_ms'],
+  service_states: ['host_item_id', 'service_manager', 'service_key', 'lifecycle_hash', 'state_json', 'updated_at_ms'],
+  container_states: ['host_item_id', 'runtime', 'runtime_id', 'lifecycle_hash', 'state_json', 'updated_at_ms'],
+  storage_device_states: ['host_item_id', 'device_key', 'state_json', 'updated_at_ms'],
+  filesystem_mount_states: ['host_item_id', 'mount_key', 'state_json', 'updated_at_ms'],
+  gpu_states: ['host_item_id', 'gpu_key', 'state_json', 'updated_at_ms'],
+  sensor_states: ['host_item_id', 'sensor_key', 'state_json', 'updated_at_ms'],
+  storage_health_states: ['host_item_id', 'device_key', 'lifecycle_hash', 'state_json', 'updated_at_ms'],
+  component_events: ['id', 'host_item_id', 'family', 'entity_key', 'event_kind', 'observed_at_ms', 'state_hash', 'state_json'],
+  latest_virtualization_state: ['host_item_id', 'entity_key', 'state_hash', 'observed_at_ms', 'state_json'],
+  virtualization_events: ['id', 'host_item_id', 'entity_key', 'event_kind', 'observed_at_ms', 'state_hash', 'state_json'],
+  manual_inventory_reports: ['id', 'agent_id', 'host_item_id', 'sequence', 'collected_at_ms', 'received_at_ms', 'payload_hash', 'payload_json', 'complete'],
+  manual_inventory_components: ['id', 'report_id', 'host_item_id', 'kind', 'locator', 'values_json'],
+  agent_field_suggestions: ['id', 'host_item_id', 'report_id', 'component_id', 'target_item_id', 'field_path', 'value_json', 'state', 'created_at_ms', 'updated_at_ms'],
 })
-const MAX_ROWS = 2_000_000
+const DELETE_ORDER = Object.freeze([
+  'agent_field_suggestions', 'manual_inventory_components', 'manual_inventory_reports',
+  'virtualization_events', 'latest_virtualization_state', 'component_events',
+  'telemetry_family_revisions', 'service_states', 'container_states', 'storage_device_states',
+  'filesystem_mount_states', 'gpu_states', 'sensor_states', 'storage_health_states',
+  'host_metric_samples', 'host_runtime_state', 'host_system_facts', 'agent_capabilities', 'heartbeat_receipts',
+])
+const MAX_ROWS = 250_000
 
 export function emptyTelemetryBackup() {
   return {
-    formatVersion: 1,
+    formatVersion: 2,
     schemaVersion: TELEMETRY_SCHEMA_VERSION,
     tables: Object.fromEntries(Object.keys(TABLES).map((table) => [table, []])),
   }
@@ -28,68 +49,61 @@ function assertJson(value, field, nullable = false) {
   try { JSON.parse(value) } catch { invalid(`${field} contains invalid JSON.`) }
 }
 
-function assertHost(row, currentStores, field) {
-  const table = HOST_TABLES[row.host_type]
-  if (!table || !isRelationalId(row.host_id)) invalid(`${field} has an invalid host reference.`)
-  if (!currentStores.inventory[table]?.some((item) => item.id === row.host_id)) invalid(`${field} references a missing host.`)
-  const device = currentStores.agents.devices?.[String(row.device_id)]
-  if ('device_id' in row && (!isRelationalId(row.device_id) || !device || device.hostType !== row.host_type || device.hostId !== row.host_id)) {
-    invalid(`${field} references a missing or different agent device.`)
-  }
-}
-
 function assertKeys(row, columns, field) {
   if (!row || typeof row !== 'object' || Array.isArray(row)) invalid(`${field} is invalid.`)
-  const actual = Object.keys(row).sort()
-  const expected = [...columns].sort()
-  if (JSON.stringify(actual) !== JSON.stringify(expected)) invalid(`${field} has unsupported fields.`)
+  if (JSON.stringify(Object.keys(row).sort()) !== JSON.stringify([...columns].sort())) invalid(`${field} has unsupported fields.`)
 }
 
 export function exportTelemetryBackup(database) {
   return {
     ...emptyTelemetryBackup(),
-    tables: Object.fromEntries(Object.entries(TABLES).map(([table, columns]) => [table, database.query(`SELECT ${columns.join(', ')} FROM ${table} ORDER BY ${columns.join(', ')}`).all()])),
+    tables: Object.fromEntries(Object.entries(TABLES).map(([table, columns]) => [
+      table,
+      database.query(`SELECT ${columns.join(', ')} FROM ${table} ORDER BY ${columns.join(', ')}`).all(),
+    ])),
   }
 }
 
-export function validateTelemetryBackup(value, currentStores) {
-  if (!value || typeof value !== 'object' || value.formatVersion !== 1 || value.schemaVersion !== TELEMETRY_SCHEMA_VERSION || !value.tables || typeof value.tables !== 'object') {
+function normalizeBackup(value) {
+  if (value?.formatVersion === 1 && value?.schemaVersion < TELEMETRY_SCHEMA_VERSION) return emptyTelemetryBackup()
+  return value
+}
+
+export function validateTelemetryBackup(input) {
+  const value = normalizeBackup(input)
+  if (!value || typeof value !== 'object' || value.formatVersion !== 2 || value.schemaVersion !== TELEMETRY_SCHEMA_VERSION || !value.tables || typeof value.tables !== 'object') {
     invalid('format is unsupported.')
   }
-  const tableNames = Object.keys(value.tables).sort()
-  if (JSON.stringify(tableNames) !== JSON.stringify(Object.keys(TABLES).sort())) invalid('table set is invalid.')
+  if (JSON.stringify(Object.keys(value.tables).sort()) !== JSON.stringify(Object.keys(TABLES).sort())) invalid('table set is invalid.')
   let rows = 0
   for (const [table, columns] of Object.entries(TABLES)) {
-    const tableRows = value.tables[table]
-    if (!Array.isArray(tableRows)) invalid(`${table} must be an array.`)
-    rows += tableRows.length
+    if (!Array.isArray(value.tables[table])) invalid(`${table} must be an array.`)
+    rows += value.tables[table].length
     if (rows > MAX_ROWS) invalid('contains too many rows.')
-    for (const [index, row] of tableRows.entries()) {
+    for (const [index, row] of value.tables[table].entries()) {
       const field = `${table}[${index}]`
       assertKeys(row, columns, field)
-      assertHost(row, currentStores, field)
-      if ('id' in row && !isRelationalId(row.id)) invalid(`${field}.id is invalid.`)
-      if ('sequence' in row && !isRelationalId(row.sequence)) invalid(`${field}.sequence is invalid.`)
-      for (const timestamp of ['received_at_ms', 'collected_at_ms', 'observed_at_ms']) {
-        if (timestamp in row && (!Number.isSafeInteger(row[timestamp]) || row[timestamp] < 0)) invalid(`${field}.${timestamp} is invalid.`)
+      for (const key of ['id', 'agent_id', 'host_item_id', 'host_id', 'sequence', 'report_id']) {
+        if (key in row && row[key] !== null && !isRelationalId(row[key])) invalid(`${field}.${key} is invalid.`)
       }
-      if ('payload_json' in row) assertJson(row.payload_json, `${field}.payload_json`)
-      if ('state_json' in row) assertJson(row.state_json, `${field}.state_json`, table === 'component_events')
+      for (const key of Object.keys(row).filter((name) => name.endsWith('_at_ms') || name === 'minute_bucket_ms')) {
+        if (!Number.isSafeInteger(row[key]) || row[key] < 0) invalid(`${field}.${key} is invalid.`)
+      }
+      for (const key of Object.keys(row).filter((name) => name.endsWith('_json'))) assertJson(row[key], `${field}.${key}`, key === 'state_json')
     }
   }
   return value
 }
 
-export function replaceTelemetryBackup(database, value, currentStores) {
-  validateTelemetryBackup(value, currentStores)
+export function replaceTelemetryBackup(database, input) {
+  const value = validateTelemetryBackup(input)
   database.transaction(() => {
-    database.exec('DELETE FROM component_events; DELETE FROM latest_component_state; DELETE FROM latest_host_state; DELETE FROM telemetry_samples;')
+    for (const table of DELETE_ORDER) database.exec(`DELETE FROM ${table};`)
     for (const [table, columns] of Object.entries(TABLES)) {
-      const placeholders = columns.map(() => '?').join(', ')
-      const statement = database.prepare(`INSERT INTO ${table} (${columns.join(', ')}) VALUES (${placeholders})`)
+      const statement = database.prepare(`INSERT INTO ${table} (${columns.join(', ')}) VALUES (${columns.map(() => '?').join(', ')})`)
       for (const row of value.tables[table]) statement.run(...columns.map((column) => row[column]))
     }
   })()
 }
 
-export const AGENT_TELEMETRY_BACKUP_FILE = 'telemetry/telemetry-v1.json'
+export const AGENT_TELEMETRY_BACKUP_FILE = 'telemetry/telemetry-v2.json'

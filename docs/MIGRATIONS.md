@@ -41,6 +41,12 @@ On startup, the server:
 
 The first start after a schema upgrade can take longer than a normal restart. Do not stop the container while migration logs are active. If a migration or write fails, startup stops and restores the pre-migration stores rather than serving partially migrated data.
 
+## Telemetry Schema 3: Compact Agent State
+
+Telemetry schema 3 replaces complete minute heartbeat payloads and metric-generated component events with exactly 30 CPU/memory and receipt slots per host, typed current-state tables, family revisions, and meaningful component transitions. Capabilities are stored once per acknowledged hash. Network, disk-I/O, per-core CPU, and repeated unchanged component snapshots are not copied into the active schema.
+
+When schema 2 is detected, startup builds a new database beside the original, preserves manual hardware reports, field suggestions, and virtualization state, runs SQLite integrity checks, records source and target hashes, and atomically activates schema 3. The original database remains the rollback source until the replacement reopens successfully. Interrupted activation is recovered deterministically on the next start; operators do not need to run a command or edit the volume.
+
 ## Schema 20: Backup Management
 
 Schema 20 adds `/data/stores/backup-management.json` for scheduled-backup preferences and backup/restore history. Existing inventory, project topology, registry relationships, agents, catalog state, and routing data are not changed. Startup creates the new store through the normal backup-first migration chain.

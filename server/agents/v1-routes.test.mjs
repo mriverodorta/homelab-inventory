@@ -386,12 +386,20 @@ describe('agent protocol v1 routes', () => {
 
   it('returns a bounded host telemetry range without exposing another host', async () => {
     const store = await createStore()
-    const listSamples = vi.fn().mockReturnValue([{ id: 1, sequence: 7 }])
-    const { server, url } = await listen(createApp(store, { telemetryRepository: { listSamples } }))
+    const getTelemetryView = vi.fn().mockReturnValue({
+      buckets: Array.from({ length: 30 }, (_, index) => ({
+        at: new Date(1_000 + (index * 60_000)).toISOString(),
+        received: index !== 10,
+        metrics: { cpu: { percent: 12 }, memory: { usedPercent: 34 } },
+      })),
+      latest: null,
+    })
+    const { server, url } = await listen(createApp(store, { telemetryRepository: { getTelemetryView } }))
     try {
       const response = await fetch(`${url}/api/agent/hosts/server/1/telemetry?from=1000&to=2000&limit=30`)
       expect(response.status).toBe(200)
-      expect(await response.json()).toMatchObject({
+      const body = await response.json()
+      expect(body).toMatchObject({
         host: { hostType: 'server', hostId: 1 },
         serverTime: expect.stringMatching(/Z$/),
         status: {
@@ -406,9 +414,17 @@ describe('agent protocol v1 routes', () => {
           onlineMaxAgeMs: 90_000,
           staleMaxAgeMs: 300_000,
         },
-        samples: [{ id: 1, sequence: 7 }],
+        heartbeatBuckets: expect.any(Array),
+        metricBuckets: expect.any(Array),
+        latest: null,
       })
-      expect(listSamples).toHaveBeenCalledWith('server', 1, { from: 1000, to: 2000, limit: 30 })
+      expect(body.heartbeatBuckets).toHaveLength(30)
+      expect(body.metricBuckets).toHaveLength(30)
+      expect(body).not.toHaveProperty('samples')
+      expect(JSON.stringify(body)).not.toContain('diskIo')
+      expect(JSON.stringify(body)).not.toContain('network')
+      expect(Buffer.byteLength(JSON.stringify(body))).toBeLessThan(100_000)
+      expect(getTelemetryView).toHaveBeenCalled()
       expect((await fetch(`${url}/api/agent/hosts/server/1/telemetry?limit=9999`)).status).toBe(400)
       expect((await fetch(`${url}/api/agent/hosts/server/99/telemetry`)).status).toBe(404)
     } finally {
@@ -418,8 +434,8 @@ describe('agent protocol v1 routes', () => {
 
   it('reports an activated host as unknown before its first heartbeat', async () => {
     const store = await createStore()
-    const listSamples = vi.fn().mockReturnValue([])
-    const { server, url } = await listen(createApp(store, { telemetryRepository: { listSamples } }))
+    const getTelemetryView = vi.fn().mockReturnValue({ buckets: [], latest: null })
+    const { server, url } = await listen(createApp(store, { telemetryRepository: { getTelemetryView } }))
     try {
       await enrollAndActivate(url, 'server', 1)
       const response = await fetch(`${url}/api/agent/hosts/server/1/telemetry`)

@@ -75,6 +75,11 @@ export interface HomelabInventoryPersistence {
   listAgentEnrollments(): unknown[]
   findAgentEnrollment(input: AgentEnrollmentLookup): unknown | null
   findAgentDevice(input: AgentDeviceLookup): unknown | null
+  resolveAgentTelemetryIdentity(input: {
+    deviceId: number
+    hostType: string
+    hostId: number
+  }): { agentId: number; hostItemId: number }
   createAgentEnrollment(input: Record<string, unknown>): unknown
   activateAgentEnrollment(input: {
     enrollmentId: number

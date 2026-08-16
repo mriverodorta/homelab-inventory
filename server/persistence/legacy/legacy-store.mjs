@@ -3301,6 +3301,17 @@ export class HomelabInventoryStore {
     return record ? structuredClone(record) : null
   }
 
+  resolveAgentTelemetryIdentity({ deviceId, hostType, hostId }) {
+    const device = this.findAgentDevice({ deviceId, hostType, hostId })
+    if (!device) {
+      throw new InventoryLifecycleError('Agent device is not active.', {
+        code: 'agent-device-unavailable',
+        status: 409,
+      })
+    }
+    return { agentId: deviceId, hostItemId: hostId }
+  }
+
   createAgentEnrollment(input) {
     return this.withAtomicStoreMutation(['agents'], () => {
       const hostId = parseLegacyRelationalId(input.hostId, 'Agent host id')

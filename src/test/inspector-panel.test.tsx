@@ -44,7 +44,9 @@ vi.mock('@/lib/agent-api', () => ({
     timing: { heartbeatIntervalMs: 60_000, onlineMaxAgeMs: 90_000, staleMaxAgeMs: 300_000 },
     from: '2026-08-05T00:00:00.000Z',
     to: '2026-08-05T00:30:00.000Z',
-    samples: [],
+    heartbeatBuckets: [],
+    metricBuckets: [],
+    latest: null,
   })),
   revokeAgentRegistration: vi.fn(),
 }))
@@ -2032,7 +2034,9 @@ describe('InspectorPanel', () => {
       timing: { heartbeatIntervalMs: 60_000, onlineMaxAgeMs: 90_000, staleMaxAgeMs: 300_000 },
       from: '2026-08-14T19:30:00.000Z',
       to: '2026-08-14T20:00:00.000Z',
-      samples: [],
+      heartbeatBuckets: [],
+      metricBuckets: [],
+      latest: null,
     })
     renderInspector({
       selectedItemId: 'server:1',

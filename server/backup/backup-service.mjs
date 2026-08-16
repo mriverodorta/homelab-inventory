@@ -424,7 +424,7 @@ export class BackupService {
       files: parsed.files,
       currentStores: await this.store.snapshotStores(),
     })
-    if (!result.ok) throw new BackupServiceError('Restore dependencies are not satisfied.', { code: 'restore-blocked', details: result.blockers })
+    if (!result.ok) throw new BackupServiceError(`Restore dependencies are not satisfied: ${result.blockers.map((blocker) => blocker.message).join(' ')}`, { code: 'restore-blocked', details: result.blockers })
     await this.store.replaceStoresAtomically(result.replacements)
     await this.replaceExternalFiles(parsed, sections)
     await this.onRestoreApplied?.({ sections, phase })
@@ -442,7 +442,7 @@ export class BackupService {
       const inspection = this.inspection(token)
       selected = normalizeBackupSections(sections)
       const preflight = await this.preflight(token, selected)
-      if (!preflight.ok) throw new BackupServiceError('Restore dependencies are not satisfied.', { code: 'restore-blocked', details: preflight.blockers })
+      if (!preflight.ok) throw new BackupServiceError(`Restore dependencies are not satisfied: ${preflight.blockers.map((blocker) => blocker.message).join(' ')}`, { code: 'restore-blocked', details: preflight.blockers })
       this.finishOperation()
       preRestore = await this.create({
         sections: COMPLETE_BACKUP_SECTIONS,

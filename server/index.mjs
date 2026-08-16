@@ -310,8 +310,8 @@ registerAgentV1Routes(app, store, {
   releaseService: agentReleaseService,
   heartbeatSink: telemetryRepository
     ? async (heartbeat) => {
-        await telemetryRepository.recordHeartbeat(heartbeat)
-        if (!notificationRuntime) return
+        const telemetry = await telemetryRepository.recordHeartbeat(heartbeat)
+        if (!notificationRuntime) return telemetry
         try {
           const hostName = store.getProject().items?.[`${heartbeat.hostType}:${heartbeat.hostId}`]?.name
           await notificationRuntime.evaluator.evaluateHeartbeat({ ...heartbeat, hostName })
@@ -319,6 +319,7 @@ registerAgentV1Routes(app, store, {
         } catch (error) {
           console.error('[notifications] Heartbeat evaluation failed.', error instanceof Error ? error.message : error)
         }
+        return telemetry
       }
     : null,
   monitoringConfigProvider: notificationRuntime

@@ -5,6 +5,7 @@ import { AgentHardwareEvidence } from '@/components/inspector/agent/agent-hardwa
 import { AgentHeartbeatTimeline } from '@/components/inspector/agent/agent-heartbeat-timeline'
 import { AgentMetricsPanel } from '@/components/inspector/agent/agent-metrics-panel'
 import { AgentStorageSummary } from '@/components/inspector/agent/agent-storage-summary'
+import { AgentTelemetryDebugDialog } from '@/components/inspector/agent/agent-telemetry-debug-dialog'
 import { HostNotificationSettings } from '@/components/inspector/agent/host-notification-settings'
 import { agentMetrics, metricNumber } from '@/components/inspector/agent/agent-status-utils'
 import { formatDuration, formatOperatingSystem } from '@/components/inspector/agent/agent-telemetry-formatters'
@@ -163,22 +164,20 @@ export function AgentSetupPanel({
           {loadAverage ? <DetailRow label="Load average" value={loadAverage} /> : null}
           {typeof liveStatus.droppedSamples === 'number' && liveStatus.droppedSamples > 0 ? <DetailRow label="Dropped samples" value={String(liveStatus.droppedSamples)} /> : null}
         </dl>
+        <AgentTelemetryDebugDialog latest={telemetry.data?.latest ?? null} />
       </InspectorSection>
 
       {(registered || hasSavedStatus) ? (
         <>
           <AgentHeartbeatTimeline
-            samples={telemetry.data?.samples ?? []}
+            buckets={telemetry.data?.heartbeatBuckets ?? []}
             expected={liveStatus.connected}
-            serverTime={telemetry.data?.serverTime}
-            heartbeatIntervalMs={telemetry.data?.timing.heartbeatIntervalMs}
-            onlineMaxAgeMs={telemetry.data?.timing.onlineMaxAgeMs}
           />
           {telemetry.isError ? (
             <div className="rounded-md border border-[#dfb3a5] bg-[#fff4ee] p-3 text-sm font-semibold text-[#7a2c1d]">
               {telemetry.error instanceof Error ? telemetry.error.message : 'Telemetry history could not be loaded.'}
             </div>
-          ) : <AgentMetricsPanel samples={telemetry.data?.samples ?? []} />}
+          ) : <AgentMetricsPanel metricBuckets={telemetry.data?.metricBuckets ?? []} />}
           <AgentStorageSummary storage={telemetry.data?.storage} />
           <AgentHardwareEvidence host={host} />
           <HostNotificationSettings hostType={host.type as 'server' | 'nas' | 'pcBuild'} hostId={host.id} status={liveStatus} />

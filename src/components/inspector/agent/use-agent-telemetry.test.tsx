@@ -13,7 +13,9 @@ vi.mock('@/lib/agent-api', () => ({
     timing: { heartbeatIntervalMs: 60_000, onlineMaxAgeMs: 90_000, staleMaxAgeMs: 300_000 },
     from: '2026-08-07T11:30:00.000Z',
     to: '2026-08-07T12:00:00.000Z',
-    samples: [],
+    heartbeatBuckets: [],
+    metricBuckets: [],
+    latest: null,
   })),
 }))
 

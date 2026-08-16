@@ -111,6 +111,13 @@ function normalizeCapabilities(value) {
   }))
 }
 
+function normalizeCapabilitiesHash(value) {
+  if (typeof value !== 'string' || !/^[a-f0-9]{64}$/.test(value)) {
+    throw protocolError('capabilitiesHash must be a lowercase SHA-256 digest.')
+  }
+  return value
+}
+
 function normalizeHost(value, expectedHost) {
   const host = object(value, 'host')
   if (!HOST_TYPE_SET.has(host.type) || !isRelationalId(host.id)) {
@@ -146,7 +153,7 @@ function normalizeServices(value = []) {
   return value.map((input, index) => {
     const service = boundedValue(object(input, `services[${index}]`), `services[${index}]`)
     const allowed = new Set([
-      'name', 'description', 'activeState', 'classification', 'subState', 'enabled', 'memoryCurrentBytes',
+      'manager', 'name', 'description', 'activeState', 'classification', 'subState', 'enabled', 'memoryCurrentBytes',
       'memoryPeakBytes', 'cpuPercent', 'restartCount', 'taskCount', 'taskLimit',
       'lastResult', 'activeEnteredAt', 'inactiveEnteredAt',
     ])
@@ -154,6 +161,9 @@ function normalizeServices(value = []) {
     if (unknown) throw protocolError(`services[${index}] contains unsupported field ${unknown}.`)
     if (service.classification !== undefined && !SERVICE_CLASSIFICATIONS.has(service.classification)) {
       throw protocolError(`services[${index}].classification is invalid.`)
+    }
+    if (service.manager !== undefined && !['systemd', 'rcd'].includes(service.manager)) {
+      throw protocolError(`services[${index}].manager is invalid.`)
     }
     return {
       ...service,
@@ -231,6 +241,46 @@ function normalizeStorageHealth(value = []) {
   })
 }
 
+function normalizeStateRecords(value, field, limit = 256) {
+  if (!Array.isArray(value) || value.length > limit) throw protocolError(`${field} cannot exceed ${limit} items.`)
+  return value.map((entry, index) => boundedValue(object(entry, `${field}[${index}]`), `${field}[${index}]`))
+}
+
+function normalizeRemovedKeys(value, field) {
+  if (!Array.isArray(value) || value.length > 512) throw protocolError(`${field} cannot exceed 512 items.`)
+  return value.map((entry, index) => string(entry, `${field}[${index}]`, { max: 512 }))
+}
+
+function normalizeStateFamily(value, field, normalizeChanged) {
+  const family = object(value, field)
+  assertAllowedFields(family, new Set(['revision', 'full', 'changed', 'removed']), field)
+  if (typeof family.full !== 'boolean') throw protocolError(`${field}.full must be a boolean.`)
+  return {
+    revision: positiveInteger(family.revision, `${field}.revision`),
+    full: family.full,
+    changed: normalizeChanged(family.changed ?? []),
+    removed: normalizeRemovedKeys(family.removed ?? [], `${field}.removed`),
+  }
+}
+
+function normalizeHeartbeatState(value) {
+  const state = object(value, 'state')
+  const normalizers = {
+    services: (changed) => normalizeServices(changed),
+    containers: (changed) => normalizeContainers(changed),
+    filesystems: (changed) => normalizeStateRecords(changed, 'state.filesystems.changed'),
+    gpus: (changed) => normalizeStateRecords(changed, 'state.gpus.changed', 16),
+    sensors: (changed) => normalizeStateRecords(changed, 'state.sensors.changed'),
+    system: (changed) => normalizeStateRecords(changed, 'state.system.changed', 1),
+    storageHealth: (changed) => normalizeStorageHealth(changed),
+  }
+  assertAllowedFields(state, new Set(Object.keys(normalizers)), 'state')
+  return Object.fromEntries(Object.entries(state).map(([name, family]) => [
+    name,
+    normalizeStateFamily(family, `state.${name}`, normalizers[name]),
+  ]))
+}
+
 export function normalizeV1Activation(payload) {
   const input = object(payload, 'activation')
   assertAllowedFields(input, new Set(['protocolMajor', 'agentVersion', 'publicKey', 'capabilities']), 'activation')
@@ -251,10 +301,14 @@ export function normalizeV1Heartbeat(payload, expectedHost) {
   const input = object(payload, 'heartbeat')
   assertAllowedFields(input, new Set([
     'protocolMajor', 'sequence', 'agentVersion', 'collectedAt', 'host', 'hostname',
-    'droppedSamples', 'monitoringRevision', 'capabilities', 'metrics', 'services', 'containers', 'storageHealth',
+    'droppedSamples', 'monitoringRevision', 'capabilities', 'capabilitiesHash', 'metrics',
+    'services', 'containers', 'storageHealth', 'state',
   ]), 'heartbeat')
   if (input.protocolMajor !== AGENT_PROTOCOL_MAJOR) {
     throw protocolError(`Unsupported agent protocol major ${String(input.protocolMajor)}.`)
+  }
+  if (input.capabilities === undefined && input.capabilitiesHash === undefined) {
+    throw protocolError('heartbeat must include capabilities or capabilitiesHash.')
   }
   return {
     protocolMajor: AGENT_PROTOCOL_MAJOR,
@@ -269,11 +323,14 @@ export function normalizeV1Heartbeat(payload, expectedHost) {
     monitoringRevision: input.monitoringRevision === undefined
       ? 0
       : nonNegativeInteger(input.monitoringRevision, 'monitoringRevision'),
-    capabilities: normalizeCapabilities(input.capabilities),
-    metrics: normalizeMetrics(input.metrics),
-    services: normalizeServices(input.services),
-    containers: normalizeContainers(input.containers),
-    storageHealth: normalizeStorageHealth(input.storageHealth),
+    ...(input.capabilities !== undefined ? { capabilities: normalizeCapabilities(input.capabilities) } : {}),
+    ...(input.capabilitiesHash !== undefined ? { capabilitiesHash: normalizeCapabilitiesHash(input.capabilitiesHash) } : {}),
+    metrics: input.metrics === undefined ? {} : normalizeMetrics(input.metrics),
+    ...(input.state !== undefined ? { state: normalizeHeartbeatState(input.state) } : {
+      services: normalizeServices(input.services),
+      containers: normalizeContainers(input.containers),
+      storageHealth: normalizeStorageHealth(input.storageHealth),
+    }),
   }
 }
 

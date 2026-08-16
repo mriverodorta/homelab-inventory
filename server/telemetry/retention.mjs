@@ -25,8 +25,8 @@ export function pruneTelemetry(database, {
   const bounded = batchSize(limit)
   return database.transaction(() => {
     const samples = database.prepare(`
-      DELETE FROM telemetry_samples WHERE id IN (
-        SELECT id FROM telemetry_samples WHERE received_at_ms < ? ORDER BY id LIMIT ?
+      DELETE FROM heartbeat_receipts WHERE id IN (
+        SELECT id FROM heartbeat_receipts WHERE received_at_ms < ? ORDER BY id LIMIT ?
       )
     `).run(sampleCutoff, bounded).changes
     const events = database.prepare(`

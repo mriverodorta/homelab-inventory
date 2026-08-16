@@ -7,12 +7,11 @@ import { Database } from 'bun:sqlite'
 const [sourceDir, outputDir] = process.argv.slice(2)
 if (!sourceDir || !outputDir) throw new Error('Usage: bun remote-snapshot.mjs <source-data-dir> <output-dir>')
 
-const SQLITE_FILES = [
+const CORE_SQLITE_FILES = [
   'databases/homelab-inventory.sqlite',
   'databases/catalog.sqlite',
-  'databases/telemetry.sqlite',
-  'telemetry/telemetry.sqlite',
 ]
+const TELEMETRY_SQLITE_FILES = ['databases/telemetry.sqlite', 'telemetry/telemetry.sqlite']
 const SUPPORT_FILES = [
   'meta.json',
   'server-specs-project.json',
@@ -80,7 +79,14 @@ async function digest(relative) {
 
 await fs.rm(outputDir, { recursive: true, force: true })
 await fs.mkdir(outputDir, { recursive: true, mode: 0o700 })
-const files = (await Promise.all(SQLITE_FILES.map(writeDatabase))).filter(Boolean)
+const files = (await Promise.all(CORE_SQLITE_FILES.map(writeDatabase))).filter(Boolean)
+for (const relative of TELEMETRY_SQLITE_FILES) {
+  const copied = await writeDatabase(relative)
+  if (copied) {
+    files.push(copied)
+    break
+  }
+}
 files.push(...(await Promise.all(SUPPORT_FILES.map(copyFile))).filter(Boolean))
 for (const directory of SUPPORT_DIRECTORIES) files.push(...await copyDirectory(directory))
 files.sort()

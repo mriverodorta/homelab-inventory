@@ -99,6 +99,25 @@ describe('agent protocol v1 normalization', () => {
       metrics: {},
     })
   })
+
+  it('accepts compact delta heartbeats with a capability digest', () => {
+    expect(normalizeV1Heartbeat(heartbeat({
+      capabilities: undefined,
+      capabilitiesHash: 'a'.repeat(64),
+      metrics: { cpu: { percent: 10 }, memory: { usedBytes: 20, totalBytes: 100 } },
+      state: {
+        containers: {
+          revision: 4,
+          full: false,
+          changed: [{ runtime: 'docker', runtimeId: 'abc', name: 'web', image: 'web:1', state: 'running' }],
+          removed: ['docker\0old'],
+        },
+      },
+    }))).toMatchObject({
+      capabilitiesHash: 'a'.repeat(64),
+      state: { containers: { revision: 4, full: false, removed: ['docker\0old'] } },
+    })
+  })
 })
 
 describe('hardware snapshot normalization', () => {

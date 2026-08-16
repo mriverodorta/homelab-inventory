@@ -6,6 +6,20 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 
 ## Unreleased
 
+### Added
+
+- Agent telemetry now uses acknowledged capability hashes, per-family state revisions, changed-record delivery, and six-hour full reconciliation while preserving outbound-only communication and compatibility with existing agents.
+
+### Changed
+
+- CPU and memory history is bounded to exactly 30 one-minute slots per host; services, containers, filesystems, GPUs, sensors, system facts, load, uptime, and storage health now update compact current-state records instead of repeating complete heartbeat payloads.
+- Existing telemetry databases migrate automatically to verified schema 3 storage on startup, retaining manual hardware evidence and virtualization state while removing obsolete network, disk-I/O, per-core, and repeated snapshot history.
+
+### Fixed
+
+- Agent telemetry APIs now return fixed heartbeat and metric buckets plus an explicitly reconstructed current-state view instead of transferring historical payload objects on every inspector refresh.
+- Service and container metric changes no longer create false lifecycle events, and canonical host relationships are resolved before telemetry persistence.
+
 ## [0.13.1] - 2026-08-16
 
 ### Fixed

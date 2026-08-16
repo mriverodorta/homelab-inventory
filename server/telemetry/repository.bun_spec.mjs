@@ -56,8 +56,10 @@ describe('telemetry repository', () => {
     const { database, repository } = await context()
     repository.recordHeartbeat({
       deviceId: 7,
+      agentId: 70,
       hostType: 'server',
       hostId: 1,
+      hostItemId: 101,
       receivedAt: receivedAt(1),
       payload: heartbeat(1, {
         services: [{ name: 'docker', activeState: 'active', enabled: true }],
@@ -76,8 +78,10 @@ describe('telemetry repository', () => {
 
     repository.recordHeartbeat({
       deviceId: 7,
+      agentId: 70,
       hostType: 'server',
       hostId: 1,
+      hostItemId: 101,
       receivedAt: receivedAt(2),
       payload: heartbeat(2, {
         services: [{ name: 'docker', activeState: 'failed', enabled: true }],
@@ -88,20 +92,20 @@ describe('telemetry repository', () => {
     expect(database.query("SELECT COUNT(*) AS count FROM component_events WHERE event_kind = 'removed'").get().count).toBe(2)
   })
 
-  test('rolls back every projection when a duplicate device sequence fails', async () => {
+  test('treats a repeated device sequence as an idempotent delivery', async () => {
     const { database, repository } = await context()
     repository.recordHeartbeat({ deviceId: 7, hostType: 'server', hostId: 1, receivedAt: receivedAt(1), payload: heartbeat(1) })
 
-    expect(() => repository.recordHeartbeat({
+    expect(repository.recordHeartbeat({
       deviceId: 7,
       hostType: 'server',
       hostId: 1,
       receivedAt: receivedAt(2),
       payload: heartbeat(1, { metrics: { cpu: { percent: 99 } } }),
-    })).toThrow()
+    })).toMatchObject({ duplicate: true })
 
     expect(repository.getHostSummary('server', 1).payload.metrics.cpu.percent).toBe(10)
-    expect(database.query('SELECT COUNT(*) AS count FROM telemetry_samples').get().count).toBe(1)
+    expect(database.query('SELECT COUNT(*) AS count FROM heartbeat_receipts').get().count).toBe(1)
   })
 
   test('writes canonical metric projections when canonical identities are supplied', async () => {
@@ -125,11 +129,11 @@ describe('telemetry repository', () => {
     })
 
     expect(repository.getHostSummary('server', 1)).toMatchObject({ agentId: 70, hostItemId: 101 })
-    expect(database.query('SELECT host_item_id, uptime_seconds, cpu_percent FROM host_metric_samples').get())
-      .toEqual({ host_item_id: 101, uptime_seconds: 90, cpu_percent: 25 })
-    expect(database.query('SELECT count(*) AS count FROM network_interface_samples').get()).toEqual({ count: 1 })
-    expect(database.query('SELECT count(*) AS count FROM storage_device_samples').get()).toEqual({ count: 1 })
-    expect(database.query('SELECT count(*) AS count FROM filesystem_samples').get()).toEqual({ count: 1 })
+    expect(database.query('SELECT host_item_id, cpu_percent FROM host_metric_samples').get())
+      .toEqual({ host_item_id: 101, cpu_percent: 25 })
+    expect(database.query('SELECT uptime_seconds FROM host_runtime_state').get()).toEqual({ uptime_seconds: 90 })
+    expect(database.query("SELECT count(*) AS count FROM sqlite_master WHERE name IN ('network_interface_samples', 'storage_device_samples')").get()).toEqual({ count: 0 })
+    expect(database.query('SELECT count(*) AS count FROM filesystem_mount_states').get()).toEqual({ count: 0 })
   })
 
   test('stores complete manual inventory reports and applies the five-report retention policy', async () => {
@@ -164,35 +168,107 @@ describe('telemetry repository', () => {
       to: receivedAt(4),
       limit: 2,
     })
-    expect(samples.map((sample) => sample.sequence)).toEqual([3, 4])
+    expect(samples.map((sample) => sample.payload.metrics.cpu.percent)).toEqual([30, 40])
     expect(createHash('sha256').update(await fs.readFile(projectPath)).digest('hex')).toBe(before)
+  })
+
+  test('keeps exactly 30 minute buckets and carries metrics across a missed slot', async () => {
+    const { database, repository } = await context()
+    for (let sequence = 1; sequence <= 35; sequence += 1) {
+      repository.recordHeartbeat({
+        deviceId: 7,
+        agentId: 70,
+        hostType: 'server',
+        hostId: 1,
+        hostItemId: 101,
+        receivedAt: receivedAt(sequence),
+        payload: heartbeat(sequence, { metrics: { cpu: { percent: sequence }, memory: { usedBytes: sequence, totalBytes: 100 } } }),
+      })
+    }
+    expect(database.query('SELECT COUNT(*) AS count FROM heartbeat_receipts').get().count).toBe(30)
+    expect(database.query('SELECT COUNT(*) AS count FROM host_metric_samples').get().count).toBe(30)
+    database.query('DELETE FROM host_metric_samples WHERE minute_bucket_ms = ?').run(Date.parse('2026-08-05T12:33:00.000Z'))
+    const view = repository.getTelemetryView('server', 1, { now: Date.parse('2026-08-05T12:35:30.000Z') })
+    const missed = view.buckets.find((bucket) => bucket.at === '2026-08-05T12:33:00.000Z')
+    expect(view.buckets).toHaveLength(30)
+    expect(missed).toMatchObject({ received: false, metrics: { cpu: { percent: 32 } } })
+  })
+
+  test('stays compact under production-shaped metric-only updates', async () => {
+    const { database, repository } = await context()
+    const services = Array.from({ length: 200 }, (_, index) => ({
+      manager: 'systemd',
+      name: `service-${index}.service`,
+      activeState: 'active',
+      enabled: true,
+      cpuPercent: 0,
+      memoryCurrentBytes: 1024,
+    }))
+    const containers = Array.from({ length: 128 }, (_, index) => ({
+      runtime: 'docker',
+      runtimeId: `container-${index}`,
+      name: `container-${index}`,
+      image: 'example:latest',
+      state: 'running',
+      cpuPercent: 0,
+      memoryBytes: 2048,
+    }))
+
+    for (let sequence = 1; sequence <= 120; sequence += 1) {
+      repository.recordHeartbeat({
+        deviceId: 7,
+        agentId: 70,
+        hostType: 'server',
+        hostId: 1,
+        hostItemId: 101,
+        receivedAt: receivedAt(sequence),
+        payload: heartbeat(sequence, {
+          metrics: { cpu: { percent: sequence % 100 }, memory: { usedBytes: sequence * 1024, usedPercent: sequence % 100 } },
+          services: services.map((service) => ({ ...service, cpuPercent: sequence % 100, memoryCurrentBytes: sequence * 1024 })),
+          containers: containers.map((container) => ({ ...container, cpuPercent: sequence % 100, memoryBytes: sequence * 2048, uptime: `${sequence}m` })),
+        }),
+      })
+    }
+
+    expect(database.query('SELECT COUNT(*) AS count FROM heartbeat_receipts').get().count).toBe(30)
+    expect(database.query('SELECT COUNT(*) AS count FROM host_metric_samples').get().count).toBe(30)
+    expect(database.query('SELECT COUNT(*) AS count FROM service_states').get().count).toBe(200)
+    expect(database.query('SELECT COUNT(*) AS count FROM container_states').get().count).toBe(128)
+    expect(database.query('SELECT COUNT(*) AS count FROM component_events').get().count).toBe(328)
+    const pageCount = Number(database.query('PRAGMA page_count').get().page_count)
+    const pageSize = Number(database.query('PRAGMA page_size').get().page_size)
+    expect(pageCount * pageSize).toBeLessThan(20 * 1024 * 1024)
   })
 
   test('deletes every telemetry projection for one host without touching another host', async () => {
     const { database, repository } = await context()
     repository.recordHeartbeat({
       deviceId: 7,
+      agentId: 70,
       hostType: 'server',
       hostId: 1,
+      hostItemId: 101,
       receivedAt: receivedAt(1),
       payload: heartbeat(1, { services: [{ name: 'docker', activeState: 'active' }] }),
     })
     repository.recordHeartbeat({
       deviceId: 8,
+      agentId: 80,
       hostType: 'nas',
       hostId: 1,
+      hostItemId: 102,
       receivedAt: receivedAt(2),
       payload: heartbeat(2, { host: { type: 'nas', id: 1 }, containers: [{ runtime: 'docker', runtimeId: 'nas', name: 'nas', image: 'nas:1', state: 'running' }] }),
     })
 
     const deleted = repository.deleteHost('server', 1)
-    expect(deleted).toMatchObject({ telemetry_samples: 1, latest_host_state: 1, latest_component_state: 1 })
+    expect(deleted).toMatchObject({ heartbeat_receipts: 1, host_metric_samples: 1, service_states: 1 })
     expect(repository.getHostSummary('server', 1)).toBeNull()
     expect(repository.getHostSummary('nas', 1)?.sequence).toBe(2)
-    expect(database.query("SELECT COUNT(*) AS count FROM telemetry_samples WHERE host_type = 'nas'").get().count).toBe(1)
+    expect(database.query("SELECT COUNT(*) AS count FROM heartbeat_receipts WHERE host_type = 'nas'").get().count).toBe(1)
   })
 
-  test('checkpoints unchanged storage health without duplicating every heartbeat', async () => {
+  test('keeps latest storage health without duplicating unchanged events', async () => {
     const { database, repository } = await context({ storageCheckpointMs: 60_000 })
     const disk = { deviceId: 'disk-a', kind: 'smart', state: 'healthy', collectedAt: receivedAt(1), metrics: { temperatureC: 30 } }
     repository.recordHeartbeat({ deviceId: 7, hostType: 'nas', hostId: 1, receivedAt: receivedAt(1), payload: heartbeat(1, { host: { type: 'nas', id: 1 }, storageHealth: [disk] }) })
@@ -200,7 +276,7 @@ describe('telemetry repository', () => {
     repository.recordHeartbeat({ deviceId: 7, hostType: 'nas', hostId: 1, receivedAt: receivedAt(3), payload: heartbeat(3, { host: { type: 'nas', id: 1 }, storageHealth: [disk] }) })
 
     const kinds = database.query("SELECT event_kind FROM component_events WHERE family = 'storage-health' ORDER BY id").all().map((row) => row.event_kind)
-    expect(kinds).toEqual(['observed', 'checkpoint', 'checkpoint'])
+    expect(kinds).toEqual(['observed'])
   })
 
   test('exports and restores complete telemetry history and projections', async () => {
@@ -236,10 +312,10 @@ describe('telemetry repository', () => {
     repository.recordHeartbeat({ deviceId: 7, hostType: 'server', hostId: 1, receivedAt: receivedAt(1), payload: heartbeat(1) })
     const before = repository.exportBackup()
     const invalid = structuredClone(before)
-    invalid.tables.telemetry_samples.push(structuredClone(invalid.tables.telemetry_samples[0]))
+    invalid.tables.heartbeat_receipts.push(structuredClone(invalid.tables.heartbeat_receipts[0]))
 
     expect(() => repository.replaceBackup(invalid, currentStores())).toThrow()
-    expect(database.query('SELECT COUNT(*) AS count FROM telemetry_samples').get().count).toBe(1)
+    expect(database.query('SELECT COUNT(*) AS count FROM heartbeat_receipts').get().count).toBe(1)
     expect(repository.exportBackup()).toEqual(before)
   })
 })

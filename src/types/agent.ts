@@ -159,7 +159,25 @@ export type AgentTelemetryRange = {
   }
   from: string
   to: string
-  samples: AgentTelemetrySample[]
+  heartbeatBuckets: Array<{
+    at: string
+    received: boolean
+  }>
+  metricBuckets: Array<{
+    at: string
+    received: boolean
+    metrics: AgentMetrics | null
+  }>
+  latest: ({
+    source: 'reconstructed-latest-state'
+    observedAt: string
+    agentVersion: string
+    sequence: number
+    metrics: AgentMetrics
+    services: AgentService[]
+    containers: AgentContainer[]
+    storageHealth: Array<Record<string, unknown>>
+  } & Record<string, unknown>) | null
   storage?: AgentStorageTelemetry
 }
 

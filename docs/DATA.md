@@ -24,7 +24,7 @@ Homelab Inventory stores active runtime data in three SQLite databases. Legacy J
 ## Databases
 
 - `databases/homelab-inventory.sqlite`: normalized inventory, projects, workspaces, assignments, connections, settings, authentication, authorization, Registry relationships, Agent enrollment, notifications, backup metadata, and disposable route cache.
-- `databases/telemetry.sqlite`: bounded raw heartbeat history and latest host, service, container, storage, and virtualization projections. It is independent from workspace revision persistence.
+- `databases/telemetry.sqlite`: exactly 30 one-minute CPU/memory and heartbeat slots per host, plus compact latest host, service, container, storage, GPU, sensor, health, and virtualization state. It is independent from workspace revision persistence and stores no network or disk-I/O history.
 - `databases/catalog.sqlite`: disposable local search index built from verified signed Registry artifacts.
 - `databases/persistence-engine.json`: private activation marker recording the active engine, independent database schema versions, migration backup, and activation time.
 
