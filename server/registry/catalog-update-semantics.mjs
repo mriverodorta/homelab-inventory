@@ -29,7 +29,7 @@ function sanitizeForFingerprint(value, fingerprintVersion) {
 }
 
 function sanitizeCurrentForFingerprint(value, fingerprintVersion) {
-  if (fingerprintVersion === NETWORK_FINGERPRINT_VERSION) return canonicalizeCatalogItemV11(value)
+  if (fingerprintVersion === NETWORK_FINGERPRINT_VERSION) return canonicalizeCatalogItemV9(value)
   if (fingerprintVersion !== NAS_FINGERPRINT_VERSION) return sanitizeForFingerprint(value, fingerprintVersion)
   return canonicalizeCatalogItemV10(canonicalizeCatalogItemV9(value))
 }
@@ -105,11 +105,14 @@ function normalizePort(port) {
   return normalized
 }
 
-export function normalizeCatalogUpdateItem(value, fingerprintVersion) {
-  const item = sanitizeForFingerprint(value, fingerprintVersion)
+function normalizeSanitizedCatalogUpdateItem(item) {
   const normalized = normalizeValue(item)
   if (Array.isArray(item.ports)) normalized.ports = item.ports.map(normalizePort).sort((left, right) => left.id - right.id)
   return normalized
+}
+
+export function normalizeCatalogUpdateItem(value, fingerprintVersion) {
+  return normalizeSanitizedCatalogUpdateItem(sanitizeForFingerprint(value, fingerprintVersion))
 }
 
 function deepMerge(current, incoming) {
@@ -253,8 +256,8 @@ function planPorts(currentPorts = [], incomingPorts = []) {
 export function planCatalogUpdate(currentValue, incomingValue, fingerprintVersion) {
   const current = sanitizeCurrentForFingerprint(currentValue, fingerprintVersion)
   const incoming = sanitizeForFingerprint(incomingValue, fingerprintVersion)
-  const normalizedCurrent = normalizeCatalogUpdateItem(current, fingerprintVersion)
-  const normalizedIncoming = normalizeCatalogUpdateItem(incoming, fingerprintVersion)
+  const normalizedCurrent = normalizeSanitizedCatalogUpdateItem(current)
+  const normalizedIncoming = normalizeSanitizedCatalogUpdateItem(incoming)
   const identity = identityImpact(normalizedCurrent, normalizedIncoming)
   const changes = []
 

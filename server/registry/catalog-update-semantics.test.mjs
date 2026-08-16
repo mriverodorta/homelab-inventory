@@ -37,6 +37,59 @@ describe('catalog update semantic planning', () => {
     expect(plan.nextItem.name).toBe('Local switch name')
   })
 
+  it('canonicalizes the local runtime view before evaluating v11 Network Adapter updates', () => {
+    const incoming = {
+      type: 'network',
+      name: 'Intel X710-DA2',
+      manufacturer: 'Intel',
+      model: 'X710-DA2',
+      specs: {
+        networkTechnology: 'ethernet',
+        formFactor: 'low-profile',
+        hostInterface: {
+          family: 'pcie', pcieGeneration: 3, connectorLanes: 8, minimumElectricalLanes: 8,
+        },
+        maxSpeedBps: 10_000_000_000,
+        operatingModes: ['ethernet'],
+      },
+      ports: [{
+        id: 1,
+        key: 'port-1',
+        kind: 'network',
+        type: 'sfp-plus',
+        slotNumber: 1,
+        speedBps: 10_000_000_000,
+        supportedSpeedsBps: [1_000_000_000, 10_000_000_000],
+        networkTechnology: 'ethernet',
+        operatingModes: ['ethernet'],
+        origin: 'module',
+      }],
+      compatibility: { requirements: { expansion: {
+        interfaceFamily: 'pcie', pcieGeneration: 3, connectorLanes: 8, minimumElectricalLanes: 8,
+      } } },
+    }
+    const current = structuredClone(incoming)
+    current.specs.speedMbps = 10_000
+    delete current.specs.maxSpeedBps
+    delete current.specs.networkTechnology
+    delete current.specs.formFactor
+    delete current.specs.hostInterface
+    delete current.compatibility
+    current.ports[0].speed = '10G'
+    delete current.ports[0].speedBps
+
+    const plan = planCatalogUpdate(current, incoming, 11)
+
+    expect(plan.changes).toEqual(expect.arrayContaining([
+      expect.objectContaining({ path: 'specs.networkTechnology', kind: 'added' }),
+      expect.objectContaining({ path: 'specs.hostInterface', kind: 'added' }),
+      expect.objectContaining({ path: 'compatibility', kind: 'added' }),
+    ]))
+    expect(plan.nextItem.specs.speedMbps).toBe(10_000)
+    expect(plan.nextItem.ports[0].speed).toBe('10G')
+    expect(plan.nextItem.specs.networkTechnology).toBe('ethernet')
+  })
+
   it('treats compatible port kind and slot renumbering as representation changes', () => {
     const current = {
       type: 'powerStrip',

@@ -301,17 +301,24 @@ const RELEASE_0_13_1_DETAILS: UnreleasedReleaseNotes = {
   notes: [],
 }
 
-export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
+const RELEASE_0_13_2_DETAILS: UnreleasedReleaseNotes = {
   highlights: [
     'Agent telemetry now keeps exactly 30 one-minute CPU and memory slots while services, containers, filesystems, GPUs, sensors, system facts, load, uptime, and storage health use compact current-state records.',
   ],
   fixes: [
     'Existing telemetry databases compact automatically on startup, eliminating repeated full heartbeat payloads, unused network and disk-I/O history, per-core samples, and metric-only component events.',
     'The Agent inspector now transfers fixed heartbeat and metric buckets plus an explicitly reconstructed latest-state view instead of repeatedly downloading historical payload objects.',
+    'Registry update evaluation now canonicalizes linked Network Adapters from the app runtime view before applying v11 validation, preventing legacy speed fields from blocking catalog startup recovery.',
   ],
   notes: [
-    'Updated agents send capability hashes and changed state between six-hour reconciliations; existing full-heartbeat agents remain compatible and every request remains agent-initiated.',
+    'Embedded Agent 0.3.2 sends capability hashes and changed state between six-hour reconciliations; existing full-heartbeat agents remain compatible and every request remains agent-initiated.',
   ],
+}
+
+export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
+  highlights: [],
+  fixes: [],
+  notes: [],
 }
 
 const RELEASE_0_11_2_DETAILS: UnreleasedReleaseNotes = {
@@ -841,9 +848,16 @@ const RELEASE_0_2_1_DETAILS: UnreleasedReleaseNotes = {
 
 export const RELEASE_NOTES: ReleaseNoteEntry[] = [
   {
-    version: '0.13.1',
+    version: '0.13.2',
     date: '2026-08-16',
     channel: 'latest',
+    title: 'Compact Agent telemetry storage',
+    ...RELEASE_0_13_2_DETAILS,
+  },
+  {
+    version: '0.13.1',
+    date: '2026-08-16',
+    channel: 'release',
     title: 'Repair M.2 compatibility metadata',
     ...RELEASE_0_13_1_DETAILS,
   },

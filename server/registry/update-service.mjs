@@ -25,7 +25,7 @@ function sanitizeForFingerprint(value, fingerprintVersion) {
 }
 
 function sanitizeCurrentForFingerprint(value, fingerprintVersion) {
-  if (fingerprintVersion === NETWORK_FINGERPRINT_VERSION) return canonicalizeCatalogItemV11(value)
+  if (fingerprintVersion === NETWORK_FINGERPRINT_VERSION) return canonicalizeCatalogItemV9(value)
   if (fingerprintVersion !== NAS_FINGERPRINT_VERSION) return sanitizeForFingerprint(value, fingerprintVersion)
   return canonicalizeCatalogItemV10(canonicalizeCatalogItemV9(value))
 }
