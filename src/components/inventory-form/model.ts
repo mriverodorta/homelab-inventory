@@ -21,6 +21,7 @@ import type {
   InventoryPortRole,
   InventoryPortType,
   InventoryProperties,
+  InventorySpecValue,
   InventorySpecs,
   InventoryType,
   SmartPowerStripOutletName,
@@ -60,6 +61,12 @@ export type ExpansionSlotGroupDraft = {
   label: string
   count: string
   interfaceFamily: string
+  interfaceKey: string
+  keying: string
+  moduleSize: string
+  usbGeneration: string
+  connector: string
+  ocpVersion: string
   pcieGeneration: string
   mechanicalLanes: string
   electricalLanes: string
@@ -154,6 +161,25 @@ export type InventoryFormValues = {
   slotWidth: string
   pcie: string
   networkFormFactor: string
+  networkTechnology: string
+  networkController: string
+  networkHostInterfaceFamily: string
+  networkPcieGeneration: string
+  networkConnectorLanes: string
+  networkMinimumElectricalLanes: string
+  networkInterfaceKey: string
+  networkModuleSize: string
+  networkUsbGeneration: string
+  networkConnector: string
+  networkOcpVersion: string
+  networkMaxSpeedGbps: string
+  networkMaxPhyRateGbps: string
+  networkSpatialStreams: string
+  networkBluetoothVersion: string
+  networkAntennaTopology: string
+  networkOperatingModes: string
+  networkWifiGenerations: string
+  networkFrequencyBandsGhz: string
   management: string
   switchingCapacityGbps: string
   fanless: boolean
@@ -263,7 +289,11 @@ const KNOWN_SPEC_KEYS: Partial<Record<InventoryType, string[]>> = {
   ram: ['capacityGb', 'generation', 'speedMt', 'formFactor', 'moduleType', 'ecc', 'rank', 'voltageVolts'],
   storage: ['capacityGb', 'capacityTb', 'interface', 'formFactor', 'serialNumber', 'partitionTable'],
   gpu: ['vramGb', 'formFactor', 'slotWidth', 'pcie'],
-  network: ['ports', 'speedMbps', 'interface', 'formFactor'],
+  network: [
+    'networkTechnology', 'controller', 'formFactor', 'hostInterface', 'maxSpeedBps',
+    'maxPhyRateBps', 'spatialStreams', 'bluetoothVersion', 'antennaTopology',
+    'operatingModes', 'wifiGenerations', 'frequencyBandsGhz', 'capabilities',
+  ],
   switch: ['management', 'switchingCapacityGbps', 'fanless'],
   patchPanel: ['rackUnits', 'mount'],
   pcBuild: ['operatingSystem', 'role'],
@@ -280,7 +310,6 @@ const KNOWN_SPEC_KEYS: Partial<Record<InventoryType, string[]>> = {
   case: ['formFactors'],
   powerSupply: ['formFactor', 'wattageWatts', 'efficiency', 'connectors'],
   soundCard: ['interface'],
-  wireless: ['interface', 'wifiGeneration', 'bluetooth'],
   powerAdapter: ['wattageWatts', 'connector'],
   monitor: ['sizeInches', 'resolution', 'refreshRateHz'],
   ups: ['wattageWatts', 'capacityVa', 'batteryBackupOutlets', 'surgeProtectedOutlets', 'outlets'],
@@ -366,16 +395,6 @@ function removeEmptyObject(target: Record<string, unknown>, key: string): void {
   }
 }
 
-function speedMbps(speed: string): number | undefined {
-  const values: Record<string, number> = {
-    '1G': 1000,
-    '2.5G': 2500,
-    '5G': 5000,
-    '10G': 10000,
-  }
-  return values[speed]
-}
-
 function clonePort(port: InventoryPort): InventoryPort {
   return {
     ...port,
@@ -435,8 +454,13 @@ export function defaultPortGroups(type: InventoryType): PortGroup[] {
   return []
 }
 
-export function inventoryTypeHasPorts(type: InventoryType): boolean {
-  return ['server', 'nas', 'motherboard', 'gpu', 'network', 'switch', 'patchPanel'].includes(type)
+export function networkTechnologyHasPhysicalPorts(technology: string | undefined): boolean {
+  return technology !== 'wifi' && technology !== 'cellular'
+}
+
+export function inventoryTypeHasPorts(type: InventoryType, networkTechnology?: string): boolean {
+  if (type === 'network') return networkTechnologyHasPhysicalPorts(networkTechnology)
+  return ['server', 'nas', 'motherboard', 'gpu', 'switch', 'patchPanel'].includes(type)
 }
 
 export function inventoryPortsToPortGroups(ports: InventoryPort[] | undefined): PortGroup[] {
@@ -528,6 +552,25 @@ export function createInventoryFormValues(type: InventoryType): InventoryFormVal
     slotWidth: '',
     pcie: '',
     networkFormFactor: '',
+    networkTechnology: 'ethernet',
+    networkController: '',
+    networkHostInterfaceFamily: 'pcie',
+    networkPcieGeneration: '',
+    networkConnectorLanes: '',
+    networkMinimumElectricalLanes: '',
+    networkInterfaceKey: '',
+    networkModuleSize: '',
+    networkUsbGeneration: '',
+    networkConnector: '',
+    networkOcpVersion: '',
+    networkMaxSpeedGbps: '',
+    networkMaxPhyRateGbps: '',
+    networkSpatialStreams: '',
+    networkBluetoothVersion: '',
+    networkAntennaTopology: '',
+    networkOperatingModes: '',
+    networkWifiGenerations: '',
+    networkFrequencyBandsGhz: '',
     management: '',
     switchingCapacityGbps: '',
     fanless: false,
@@ -689,6 +732,25 @@ export function inventoryItemToFormValues(item: InventoryItem): InventoryFormVal
     slotWidth: stringValue(specs.slotWidth),
     pcie: stringValue(specs.pcie),
     networkFormFactor: item.type === 'network' ? stringValue(specs.formFactor) : '',
+    networkTechnology: item.type === 'network' ? stringValue(specs.networkTechnology) || 'ethernet' : 'ethernet',
+    networkController: item.type === 'network' ? stringValue(specs.controller) : '',
+    networkHostInterfaceFamily: item.type === 'network' ? stringValue((specs.hostInterface as Record<string, unknown> | undefined)?.family) || 'pcie' : 'pcie',
+    networkPcieGeneration: item.type === 'network' ? stringValue((specs.hostInterface as Record<string, unknown> | undefined)?.pcieGeneration) : '',
+    networkConnectorLanes: item.type === 'network' ? stringValue((specs.hostInterface as Record<string, unknown> | undefined)?.connectorLanes) : '',
+    networkMinimumElectricalLanes: item.type === 'network' ? stringValue((specs.hostInterface as Record<string, unknown> | undefined)?.minimumElectricalLanes) : '',
+    networkInterfaceKey: item.type === 'network' ? stringValue((specs.hostInterface as Record<string, unknown> | undefined)?.interfaceKey ?? (specs.hostInterface as Record<string, unknown> | undefined)?.key) : '',
+    networkModuleSize: item.type === 'network' ? stringValue((specs.hostInterface as Record<string, unknown> | undefined)?.moduleSize) : '',
+    networkUsbGeneration: item.type === 'network' ? stringValue((specs.hostInterface as Record<string, unknown> | undefined)?.usbGeneration) : '',
+    networkConnector: item.type === 'network' ? stringValue((specs.hostInterface as Record<string, unknown> | undefined)?.connector) : '',
+    networkOcpVersion: item.type === 'network' ? stringValue((specs.hostInterface as Record<string, unknown> | undefined)?.ocpVersion) : '',
+    networkMaxSpeedGbps: item.type === 'network' && typeof specs.maxSpeedBps === 'number' ? String(specs.maxSpeedBps / 1_000_000_000) : '',
+    networkMaxPhyRateGbps: item.type === 'network' && typeof specs.maxPhyRateBps === 'number' ? String(specs.maxPhyRateBps / 1_000_000_000) : '',
+    networkSpatialStreams: item.type === 'network' ? stringValue(specs.spatialStreams) : '',
+    networkBluetoothVersion: item.type === 'network' ? stringValue(specs.bluetoothVersion) : '',
+    networkAntennaTopology: item.type === 'network' ? stringValue(specs.antennaTopology) : '',
+    networkOperatingModes: item.type === 'network' ? stringArray(specs.operatingModes).join(', ') : '',
+    networkWifiGenerations: item.type === 'network' ? stringArray(specs.wifiGenerations).join(', ') : '',
+    networkFrequencyBandsGhz: item.type === 'network' && Array.isArray(specs.frequencyBandsGhz) ? specs.frequencyBandsGhz.join(', ') : '',
     management: stringValue(specs.management),
     switchingCapacityGbps: stringValue(specs.switchingCapacityGbps),
     fanless: specs.fanless === true,
@@ -766,6 +828,12 @@ export function inventoryItemToFormValues(item: InventoryItem): InventoryFormVal
       label: group.label,
       count: stringValue(group.count),
       interfaceFamily: stringValue(group.interfaceFamily),
+      interfaceKey: stringValue(group.interfaceKey),
+      keying: stringValue(group.keying),
+      moduleSize: stringValue(group.moduleSize),
+      usbGeneration: stringValue(group.usbGeneration),
+      connector: stringValue(group.connector),
+      ocpVersion: stringValue(group.ocpVersion),
       pcieGeneration: stringValue(group.pcieGeneration),
       mechanicalLanes: stringValue(group.mechanicalLanes),
       electricalLanes: stringValue(group.electricalLanes),
@@ -834,7 +902,12 @@ export function inventoryItemToFormValues(item: InventoryItem): InventoryFormVal
     expansionMinimumElectricalLanes: stringValue(item.compatibility?.requirements?.expansion?.minimumElectricalLanes),
     expansionHeight: stringValue(item.compatibility?.requirements?.expansion?.height),
     expansionSlotWidth: stringValue(item.compatibility?.requirements?.expansion?.slotWidth),
-    expansionPowerWatts: stringValue(item.compatibility?.requirements?.expansion?.powerWatts),
+    expansionPowerWatts: stringValue(
+      item.compatibility?.requirements?.expansion?.powerWatts
+      ?? (item.compatibility?.requirements?.expansion?.powerMw === undefined
+        ? undefined
+        : item.compatibility.requirements.expansion.powerMw / 1000),
+    ),
     preservedCompatibility: cloneCompatibility(item.compatibility),
     fixedComponents: item.fixedComponents ? structuredClone(item.fixedComponents) : undefined,
     subtype: item.subtype,
@@ -980,12 +1053,45 @@ export function inventoryFormValuesToInput(values: InventoryFormValues): Invento
     setSpec(specs, 'slotWidth', cleanString(values.slotWidth))
     setSpec(specs, 'pcie', cleanString(values.pcie))
   } else if (type === 'network') {
-    const firstSpeed = values.portGroups.map((group) => speedMbps(group.speed)).find(Boolean)
-    const totalPorts = values.portGroups.reduce((sum, group) => sum + Math.max(0, Number(group.count) || 0), 0)
-    setSpec(specs, 'ports', totalPorts || undefined)
-    setSpec(specs, 'speedMbps', firstSpeed)
-    setSpec(specs, 'interface', cleanString(values.interface))
+    delete specs.ports
+    delete specs.speedMbps
+    delete specs.interface
+    setSpec(specs, 'networkTechnology', cleanString(values.networkTechnology) ?? 'ethernet')
+    setSpec(specs, 'controller', cleanString(values.networkController))
     setSpec(specs, 'formFactor', cleanString(values.networkFormFactor))
+    const hostInterface: Record<string, InventorySpecValue> = {
+      family: cleanString(values.networkHostInterfaceFamily) ?? 'pcie',
+    }
+    const optionalHostInterfaceFields = {
+      pcieGeneration: numberValue(values.networkPcieGeneration),
+      connectorLanes: numberValue(values.networkConnectorLanes),
+      minimumElectricalLanes: numberValue(values.networkMinimumElectricalLanes),
+      moduleSize: cleanString(values.networkModuleSize),
+      usbGeneration: cleanString(values.networkUsbGeneration),
+      connector: cleanString(values.networkConnector),
+      ocpVersion: cleanString(values.networkOcpVersion),
+    }
+    for (const [key, value] of Object.entries(optionalHostInterfaceFields)) {
+      if (value !== undefined) hostInterface[key] = value
+    }
+    const interfaceKey = cleanString(values.networkInterfaceKey)
+    if (interfaceKey) {
+      const key = ['m2-ae', 'm2-bm'].includes(values.networkHostInterfaceFamily)
+        ? 'key'
+        : 'interfaceKey'
+      hostInterface[key] = interfaceKey
+    }
+    specs.hostInterface = hostInterface
+    const maxSpeedGbps = numberValue(values.networkMaxSpeedGbps)
+    const maxPhyRateGbps = numberValue(values.networkMaxPhyRateGbps)
+    setSpec(specs, 'maxSpeedBps', maxSpeedGbps === undefined ? undefined : Math.round(maxSpeedGbps * 1_000_000_000))
+    setSpec(specs, 'maxPhyRateBps', maxPhyRateGbps === undefined ? undefined : Math.round(maxPhyRateGbps * 1_000_000_000))
+    setSpec(specs, 'spatialStreams', numberValue(values.networkSpatialStreams))
+    setSpec(specs, 'bluetoothVersion', cleanString(values.networkBluetoothVersion))
+    setSpec(specs, 'antennaTopology', cleanString(values.networkAntennaTopology))
+    setOptional(specs, 'operatingModes', commaSeparatedStringArray(values.networkOperatingModes))
+    setOptional(specs, 'wifiGenerations', commaSeparatedStringArray(values.networkWifiGenerations))
+    setOptional(specs, 'frequencyBandsGhz', values.networkFrequencyBandsGhz.split(',').map((entry) => Number(entry.trim())).filter((entry) => Number.isFinite(entry) && entry > 0))
   } else if (type === 'switch') {
     setSpec(specs, 'management', cleanString(values.management))
     setSpec(specs, 'switchingCapacityGbps', numberValue(values.switchingCapacityGbps))
@@ -1021,10 +1127,6 @@ export function inventoryFormValuesToInput(values: InventoryFormValues): Invento
     else delete specs.connectors
   } else if (type === 'soundCard') {
     setSpec(specs, 'interface', cleanString(values.interface))
-  } else if (type === 'wireless') {
-    setSpec(specs, 'interface', cleanString(values.interface))
-    setSpec(specs, 'wifiGeneration', cleanString(values.wifiGeneration))
-    setSpec(specs, 'bluetooth', values.bluetooth === '' ? undefined : values.bluetooth === 'yes')
   } else if (type === 'powerAdapter') {
     setSpec(specs, 'wattageWatts', numberValue(values.adapterOutputWatts))
     setSpec(specs, 'connector', cleanString(values.dcConnector))
@@ -1051,7 +1153,7 @@ export function inventoryFormValuesToInput(values: InventoryFormValues): Invento
   }
 
   const compatibility = buildCompatibility(values)
-  const ports = inventoryTypeHasPorts(type)
+  const ports = inventoryTypeHasPorts(type, values.networkTechnology)
     ? reconcilePorts(type, values.portGroups, values.originalPorts)
     : undefined
   const smartOutletPortIds = new Set(powerStripOutletPorts(values).map((port) => port.id))
@@ -1243,6 +1345,12 @@ function buildCompatibility(values: InventoryFormValues): InventoryCompatibility
       draft.label.trim() !== ''
       || draft.count.trim() !== ''
       || draft.interfaceFamily.trim() !== ''
+      || draft.interfaceKey.trim() !== ''
+      || draft.keying.trim() !== ''
+      || draft.moduleSize.trim() !== ''
+      || draft.usbGeneration.trim() !== ''
+      || draft.connector.trim() !== ''
+      || draft.ocpVersion.trim() !== ''
       || draft.pcieGeneration.trim() !== ''
       || draft.mechanicalLanes.trim() !== ''
       || draft.electricalLanes.trim() !== ''
@@ -1264,6 +1372,12 @@ function buildCompatibility(values: InventoryFormValues): InventoryCompatibility
       group.label = draft.label.trim()
       setOptional(group, 'count', numberValue(draft.count))
       setOptional(group, 'interfaceFamily', cleanString(draft.interfaceFamily))
+      setOptional(group, 'interfaceKey', cleanString(draft.interfaceKey))
+      setOptional(group, 'keying', cleanString(draft.keying))
+      setOptional(group, 'moduleSize', cleanString(draft.moduleSize))
+      setOptional(group, 'usbGeneration', cleanString(draft.usbGeneration))
+      setOptional(group, 'connector', cleanString(draft.connector))
+      setOptional(group, 'ocpVersion', cleanString(draft.ocpVersion))
       setOptional(group, 'pcieGeneration', numberValue(draft.pcieGeneration))
       setOptional(group, 'mechanicalLanes', numberValue(draft.mechanicalLanes))
       setOptional(group, 'electricalLanes', numberValue(draft.electricalLanes))
@@ -1426,12 +1540,33 @@ function buildCompatibility(values: InventoryFormValues): InventoryCompatibility
     const expansion = requirements.expansion ? { ...requirements.expansion } : {}
     const expansionRecord = asMutableRecord(expansion)
     setOptional(expansionRecord, 'interfaceFamily', cleanString(values.expansionInterfaceFamily) as ExpansionInterfaceFamily | undefined)
+    if (values.type === 'network') {
+      const family = cleanString(values.networkHostInterfaceFamily)
+      setOptional(expansionRecord, 'interfaceFamily', family as ExpansionInterfaceFamily | undefined)
+      if (family === 'm2-ae' || family === 'm2-bm') {
+        setOptional(expansionRecord, 'key', cleanString(values.networkInterfaceKey))
+        delete expansionRecord.interfaceKey
+      } else {
+        setOptional(expansionRecord, 'interfaceKey', cleanString(values.networkInterfaceKey))
+        delete expansionRecord.key
+      }
+      setOptional(expansionRecord, 'moduleSize', cleanString(values.networkModuleSize))
+      setOptional(expansionRecord, 'usbGeneration', cleanString(values.networkUsbGeneration))
+      setOptional(expansionRecord, 'connector', cleanString(values.networkConnector))
+      setOptional(expansionRecord, 'ocpVersion', cleanString(values.networkOcpVersion))
+    }
     setOptional(expansionRecord, 'pcieGeneration', numberValue(values.expansionPcieGeneration))
     setOptional(expansionRecord, 'connectorLanes', numberValue(values.expansionConnectorLanes))
     setOptional(expansionRecord, 'minimumElectricalLanes', numberValue(values.expansionMinimumElectricalLanes))
     setOptional(expansionRecord, 'height', cleanString(values.expansionHeight) as CardHeight | undefined)
     setOptional(expansionRecord, 'slotWidth', numberValue(values.expansionSlotWidth))
-    setOptional(expansionRecord, 'powerWatts', numberValue(values.expansionPowerWatts))
+    if (values.type === 'network') {
+      const powerWatts = numberValue(values.expansionPowerWatts)
+      setOptional(expansionRecord, 'powerMw', powerWatts === undefined ? undefined : Math.round(powerWatts * 1000))
+      delete expansionRecord.powerWatts
+    } else {
+      setOptional(expansionRecord, 'powerWatts', numberValue(values.expansionPowerWatts))
+    }
     if (Object.keys(expansionRecord).length) requirements.expansion = expansion
     else delete requirements.expansion
     if (Object.keys(requirementsRecord).length) compatibility.requirements = requirements

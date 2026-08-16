@@ -16,7 +16,6 @@ import {
   PlugZap,
   Server,
   Speaker,
-  Wifi,
   Zap,
 } from 'lucide-react'
 import type { CatalogFacetCategory } from '@/types/registry'
@@ -32,7 +31,6 @@ const CATEGORY_ICONS: Record<string, ComponentType<{ className?: string; 'aria-h
   storage: HardDrive,
   gpu: CircuitBoard,
   network: EthernetPort,
-  wireless: Wifi,
   motherboard: PanelsTopLeft,
   cpuCooler: Fan,
   case: Boxes,

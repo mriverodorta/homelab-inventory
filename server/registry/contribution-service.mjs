@@ -4,6 +4,7 @@ import {
   LEGACY_FINGERPRINT_VERSION,
   MOTHERBOARD_FINGERPRINT_VERSION,
   NAS_FINGERPRINT_VERSION,
+  NETWORK_FINGERPRINT_VERSION,
   OEM_FINGERPRINT_VERSION,
   RAM_FINGERPRINT_VERSION,
   SERVER_FINGERPRINT_VERSION,
@@ -48,13 +49,24 @@ function legacyFingerprintVersionForItem(item) {
 }
 
 function fingerprintVersionForItem(item) {
-  return item?.type === 'nas'
+  return item?.type === 'network'
+    ? NETWORK_FINGERPRINT_VERSION
+    : item?.type === 'nas'
     ? NAS_FINGERPRINT_VERSION
     : CANONICAL_UNITS_FINGERPRINT_VERSION
 }
 
 async function projectLocalInventoryItem(item, fingerprintVersion) {
   const projectedItem = projectLocalItemForCatalog(item, item.type)
+  if (fingerprintVersion === NETWORK_FINGERPRINT_VERSION && Array.isArray(projectedItem.ports)) {
+    projectedItem.ports = projectedItem.ports.map((port) => {
+      const projectedPort = { ...port }
+      for (const field of ['label', 'notes', 'ipAddress', 'macAddress', 'role', 'adminState']) {
+        delete projectedPort[field]
+      }
+      return projectedPort
+    })
+  }
   const catalogItem = fingerprintVersion === NAS_FINGERPRINT_VERSION
     ? { ...canonicalizeCatalogItemV9(projectedItem), id: item.id }
     : projectedItem

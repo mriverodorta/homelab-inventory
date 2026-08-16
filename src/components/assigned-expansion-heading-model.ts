@@ -1,6 +1,6 @@
 import type { InventoryItem } from '@/types/inventory'
 
-const EXPANSION_TYPES = new Set(['gpu', 'network', 'soundCard', 'wireless'])
+const EXPANSION_TYPES = new Set(['gpu', 'network', 'soundCard'])
 
 export function isExpansionItem(item: InventoryItem): boolean {
   return EXPANSION_TYPES.has(item.type)

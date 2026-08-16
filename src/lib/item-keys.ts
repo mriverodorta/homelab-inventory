@@ -14,7 +14,6 @@ export type InventoryTableKey =
   | 'cases'
   | 'powerSupplies'
   | 'soundCards'
-  | 'wirelessCards'
   | 'powerAdapters'
   | 'nas'
   | 'switches'
@@ -36,7 +35,6 @@ export const INVENTORY_TABLE_BY_TYPE: Partial<Record<InventoryType, InventoryTab
   case: 'cases',
   powerSupply: 'powerSupplies',
   soundCard: 'soundCards',
-  wireless: 'wirelessCards',
   powerAdapter: 'powerAdapters',
   nas: 'nas',
   switch: 'switches',
@@ -59,7 +57,6 @@ export const INVENTORY_TYPE_BY_TABLE: Record<InventoryTableKey, InventoryType> =
   cases: 'case',
   powerSupplies: 'powerSupply',
   soundCards: 'soundCard',
-  wirelessCards: 'wireless',
   powerAdapters: 'powerAdapter',
   nas: 'nas',
   switches: 'switch',
@@ -82,7 +79,6 @@ export const INVENTORY_TABLE_KEYS: InventoryTableKey[] = [
   'cases',
   'powerSupplies',
   'soundCards',
-  'wirelessCards',
   'powerAdapters',
   'nas',
   'switches',

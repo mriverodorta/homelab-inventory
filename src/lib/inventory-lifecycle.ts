@@ -19,7 +19,6 @@ const INVENTORY_TYPE_LABELS: Record<InventoryType, string> = {
   case: 'case',
   powerSupply: 'power supply',
   soundCard: 'sound card',
-  wireless: 'wireless card',
   powerAdapter: 'power adapter',
 }
 

@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import {
   NAS_FINGERPRINT_VERSION,
+  NETWORK_FINGERPRINT_VERSION,
   digestCatalogTemplate,
   type FingerprintVersion,
 } from '../../packages/catalog-protocol/src/index.ts'
@@ -16,6 +17,7 @@ import { openManagedDatabase } from './sqlite/database.ts'
 import { applyCommittedMigrations } from './sqlite/migrator.ts'
 import { SqliteHomelabInventoryStore } from './sqlite-store.ts'
 import nasV10Fixture from '../../packages/catalog-protocol/test/fixtures/server-specs-inventory-nas-v10.json'
+import networkV11Fixture from '../../packages/catalog-protocol/test/fixtures/network/server-specs-inventory-network-v11.json'
 
 const roots: string[] = []
 
@@ -211,7 +213,7 @@ describe('SQLite Homelab Inventory store facade', () => {
         group_id: 1,
         positions: [0],
       })
-      expect(store.getDatabaseStatus()).toMatchObject({ schemaVersion: 17 })
+      expect(store.getDatabaseStatus()).toMatchObject({ schemaVersion: 18 })
       expect(store.getPersistenceHealth()).toMatchObject({ ok: true, engine: 'sqlite' })
     } finally {
       store.close()
@@ -1323,6 +1325,97 @@ describe('SQLite Homelab Inventory store facade', () => {
       const restored = Object.values(store.getProject().items).find((item) => item.type === 'nas') as any
       expect(restored.fixedComponents).toEqual(nas.fixedComponents)
       expect(restored.compatibility.host.storageSlots).toEqual(nas.compatibility.host.storageSlots)
+    } finally {
+      store.close()
+    }
+  })
+
+  test('round-trips the frozen network v11 wired and radio fixtures through relational tables', async () => {
+    const store = await emptyFixtureStore()
+    try {
+      store.registryTransaction((draft: any) => {
+        draft.snapshot = {
+          sourceId: 1, revision: 1, generatedAt: '2026-08-16T00:00:00.000Z',
+          expiresAt: null, activatedAt: '2026-08-16T00:00:00.000Z',
+          digest: 'e'.repeat(64), templateCount: 2, keyId: 'test-key',
+        }
+      })
+      for (const fixture of networkV11Fixture.templates) {
+        const template = await catalogTemplate(
+          fixture.item,
+          1,
+          fixture.templateKey,
+          NETWORK_FINGERPRINT_VERSION,
+        )
+        expect(template).toMatchObject({
+          identityHash: fixture.identityHash,
+          contentHash: fixture.contentHash,
+        })
+        store.createCatalogInventoryItems(template)
+      }
+
+      const adapters = Object.values(store.getProject().items)
+        .filter((item) => item.type === 'network') as any[]
+      const wired = adapters.find((item) => item.model === 'X710-DA2')
+      const radio = adapters.find((item) => item.model === 'AX210.NGWG')
+      expect(wired).toMatchObject(networkV11Fixture.templates[0].item)
+      expect(radio).toMatchObject(networkV11Fixture.templates[1].item)
+      expect(wired.ports).toHaveLength(2)
+      expect(radio.ports).toBeUndefined()
+      expect(store.core.database.query('SELECT count(*) AS count FROM network_adapter_ports').get()).toEqual({ count: 2 })
+      expect(store.core.database.query('SELECT count(*) AS count FROM network_adapter_frequency_bands').get()).toEqual({ count: 3 })
+      expect(store.core.database.query(`
+        SELECT count(*) AS count FROM inventory_items WHERE extensions_json <> '{}'
+      `).get()).toEqual({ count: 0 })
+
+      const snapshot = await store.snapshotStores()
+      await store.replaceStoresAtomically(snapshot)
+      const restored = Object.values(store.getProject().items)
+        .filter((item) => item.type === 'network') as any[]
+      expect(restored.find((item) => item.model === 'X710-DA2')).toMatchObject(networkV11Fixture.templates[0].item)
+      expect(restored.find((item) => item.model === 'AX210.NGWG')).toMatchObject(networkV11Fixture.templates[1].item)
+    } finally {
+      store.close()
+    }
+  })
+
+  test('preserves unknown signed network v11 fields in typed relational extension rows', async () => {
+    const store = await emptyFixtureStore()
+    try {
+      store.registryTransaction((draft: any) => {
+        draft.snapshot = {
+          sourceId: 1, revision: 1, generatedAt: '2026-08-16T00:00:00.000Z',
+          expiresAt: null, activatedAt: '2026-08-16T00:00:00.000Z',
+          digest: 'f'.repeat(64), templateCount: 1, keyId: 'test-key',
+        }
+      })
+      const item = structuredClone(networkV11Fixture.templates[0].item) as any
+      item.futureVendor = { certification: 'v-next' }
+      item.specs.hostInterface.futureLink = { lanes: [1, 2], profiles: [] }
+      item.ports[0].futureOptics = { profile: 'extended' }
+      const template = await catalogTemplate(
+        item,
+        1,
+        'network-intel-x710-da2-future',
+        NETWORK_FINGERPRINT_VERSION,
+      )
+      const project = store.createCatalogInventoryItems(template)
+      const adapter = Object.values(project.items).find((entry) => entry.type === 'network') as any
+
+      expect(adapter.futureVendor).toEqual({ certification: 'v-next' })
+      expect(adapter.specs.hostInterface.futureLink).toEqual({ lanes: [1, 2], profiles: [] })
+      expect(adapter.ports[0].futureOptics).toEqual({ profile: 'extended' })
+      const extensionContainerCount = store.core.database.query(`
+        SELECT count(*) AS count FROM network_adapter_extension_values
+        WHERE value_type IN ('object', 'array')
+      `).get() as { count: number }
+      expect(extensionContainerCount.count).toBeGreaterThan(0)
+      expect(store.core.database.query(`
+        SELECT count(*) AS count
+        FROM inventory_items item
+        JOIN network_adapters adapter ON adapter.id = item.id
+        WHERE item.extensions_json <> '{}'
+      `).get()).toEqual({ count: 0 })
     } finally {
       store.close()
     }

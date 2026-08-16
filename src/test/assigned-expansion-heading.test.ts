@@ -9,7 +9,7 @@ function item(type: InventoryItem['type'], specs: InventoryItem['specs']): Inven
 describe('assigned expansion heading model', () => {
   it('normalizes supported expansion interfaces to compact pills', () => {
     expect(assignedExpansionInterfaceLabel(item('network', { interface: 'PCIe 3.0 x8' }))).toBe('PCIE')
-    expect(assignedExpansionInterfaceLabel(item('wireless', { interface: 'M.2 A+E' }))).toBe('M.2')
+    expect(assignedExpansionInterfaceLabel(item('network', { interface: 'M.2 A+E', networkTechnology: 'wifi' }))).toBe('M.2')
     expect(assignedExpansionInterfaceLabel(item('soundCard', { interface: 'USB' }))).toBe('USB')
   })
 

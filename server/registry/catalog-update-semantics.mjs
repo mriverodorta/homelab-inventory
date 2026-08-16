@@ -1,8 +1,10 @@
 import {
   CANONICAL_UNITS_FINGERPRINT_VERSION,
   NAS_FINGERPRINT_VERSION,
+  NETWORK_FINGERPRINT_VERSION,
   canonicalJson,
   canonicalizeCatalogItemV10,
+  canonicalizeCatalogItemV11,
   canonicalizeCatalogItemV9,
   parseLegacySpeedBps,
   sanitizeCatalogItem,
@@ -13,16 +15,21 @@ const LOCAL_TOP_LEVEL_FIELDS = new Set([
   'id', 'key', 'name', 'scope', 'ownerProjectId', 'archivedAt', 'serialNumber',
   'smart', 'properties', 'notes', 'hardwareClass', 'usageRole',
 ])
-const LOCAL_PORT_FIELDS = ['label', 'notes', 'ipAddress']
-const NETWORK_CONNECTORS = new Set(['rj45', 'sfp', 'sfp-plus'])
+const LOCAL_PORT_FIELDS = ['label', 'notes', 'ipAddress', 'macAddress', 'role', 'adminState']
+const NETWORK_CONNECTORS = new Set([
+  'rj45', 'sfp', 'sfp-plus', 'sfp28', 'qsfp', 'qsfp-plus', 'qsfp28',
+  'qsfp56', 'qsfp-dd', 'osfp', 'fc', 'infiniband',
+])
 
 function sanitizeForFingerprint(value, fingerprintVersion) {
+  if (fingerprintVersion === NETWORK_FINGERPRINT_VERSION) return canonicalizeCatalogItemV11(value)
   if (fingerprintVersion === NAS_FINGERPRINT_VERSION) return canonicalizeCatalogItemV10(value)
   if (fingerprintVersion === CANONICAL_UNITS_FINGERPRINT_VERSION) return canonicalizeCatalogItemV9(value)
   return sanitizeCatalogItem(value)
 }
 
 function sanitizeCurrentForFingerprint(value, fingerprintVersion) {
+  if (fingerprintVersion === NETWORK_FINGERPRINT_VERSION) return canonicalizeCatalogItemV11(value)
   if (fingerprintVersion !== NAS_FINGERPRINT_VERSION) return sanitizeForFingerprint(value, fingerprintVersion)
   return canonicalizeCatalogItemV10(canonicalizeCatalogItemV9(value))
 }
@@ -231,7 +238,6 @@ function planPorts(currentPorts = [], incomingPorts = []) {
 
     const capabilities = [
       ['speedBps', normalizedPortSpeed(current), normalizedPortSpeed(incoming)],
-      ['role', current.role, incoming.role],
       ['poe', current.poe, incoming.poe],
     ]
     for (const [field, before, after] of capabilities) {

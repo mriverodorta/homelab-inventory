@@ -14,13 +14,19 @@ export const LEGACY_TABLE_BY_TYPE: Readonly<Record<InventoryType, string>> = {
   case: 'cases',
   powerSupply: 'powerSupplies',
   soundCard: 'soundCards',
-  wireless: 'wirelessCards',
   powerAdapter: 'powerAdapters',
   switch: 'switches',
   patchPanel: 'patchPanels',
   monitor: 'monitors',
   ups: 'upsSystems',
   powerStrip: 'powerStrips',
+}
+
+export type LegacyInventoryType = InventoryType | 'wireless'
+
+export const LEGACY_IMPORT_TABLE_BY_TYPE: Readonly<Record<LegacyInventoryType, string>> = {
+  ...LEGACY_TABLE_BY_TYPE,
+  wireless: 'wirelessCards',
 }
 
 type LegacyRecord = Record<string, unknown>
@@ -103,9 +109,9 @@ function itemReference(record: LegacyRecord, prefix: string): string {
 }
 
 export function buildCanonicalIdentityPlan(snapshot: LegacySnapshot): CanonicalIdentityPlan {
-  const itemRecords: Array<LegacyRecord & { __type: InventoryType }> = []
-  for (const type of INVENTORY_TYPES) {
-    for (const record of sortedRecords(snapshot.inventory?.[LEGACY_TABLE_BY_TYPE[type]], `inventory.${LEGACY_TABLE_BY_TYPE[type]}`)) {
+  const itemRecords: Array<LegacyRecord & { __type: LegacyInventoryType }> = []
+  for (const type of [...INVENTORY_TYPES, 'wireless'] as const) {
+    for (const record of sortedRecords(snapshot.inventory?.[LEGACY_IMPORT_TABLE_BY_TYPE[type]], `inventory.${LEGACY_IMPORT_TABLE_BY_TYPE[type]}`)) {
       itemRecords.push({ ...record, __type: type })
     }
   }

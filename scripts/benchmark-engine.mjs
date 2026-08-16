@@ -95,6 +95,16 @@ function port(id, portType, speed = null) {
   }
 }
 
+function addedConnectionId(patch) {
+  if (patch?.kind === 'add-connection') return patch.payload.connection.id
+  if (patch?.kind !== 'batch') return null
+  for (const child of patch.payload.patches) {
+    const connectionId = addedConnectionId(child)
+    if (connectionId !== null) return connectionId
+  }
+  return null
+}
+
 function topologyFixture() {
   const items = []
   const assignments = []
@@ -305,8 +315,7 @@ export async function benchmarkEngine() {
       ? created.result.payload.revision
       : topologyRevision
     const connectionId = created.result.kind === 'patch'
-      && created.result.payload.forward.kind === 'add-connection'
-      ? created.result.payload.forward.payload.connection.id
+      ? addedConnectionId(created.result.payload.forward)
       : null
     if (connectionId === null) throw new Error('Topology command benchmark could not create a connection.')
     const removed = decodeEngineResponse(runtime.dispatch(

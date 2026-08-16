@@ -3,8 +3,10 @@ import {
   CANONICAL_UNITS_FINGERPRINT_VERSION,
   CanonicalMeasurementError,
   NAS_FINGERPRINT_VERSION,
+  NETWORK_FINGERPRINT_VERSION,
   SUPPORTED_FINGERPRINT_VERSIONS,
   canonicalizeCatalogItemV10,
+  canonicalizeCatalogItemV11,
   canonicalizeCatalogItemV9,
   legacyMeasurementPathsV9,
 } from '../../packages/catalog-protocol/src/index.ts'
@@ -67,7 +69,9 @@ export function projectCatalogTemplateForRuntime(template) {
     throw new Error(`Catalog template ${String(template.templateKey)} uses an unsupported fingerprint version.`)
   }
 
-  const item = template.fingerprintVersion === NAS_FINGERPRINT_VERSION
+  const item = template.fingerprintVersion === NETWORK_FINGERPRINT_VERSION
+    ? canonicalizeCatalogItemV11(template.item)
+    : template.fingerprintVersion === NAS_FINGERPRINT_VERSION
     ? canonicalizeCatalogItemV10(template.item)
     : template.fingerprintVersion === CANONICAL_UNITS_FINGERPRINT_VERSION
       ? canonicalizeCatalogItemV9(template.item)
@@ -76,8 +80,9 @@ export function projectCatalogTemplateForRuntime(template) {
   return {
     ...template,
     item,
-    runtimeCanonicalVersion: template.fingerprintVersion === NAS_FINGERPRINT_VERSION
-      ? NAS_FINGERPRINT_VERSION
+    runtimeCanonicalVersion: template.fingerprintVersion === NETWORK_FINGERPRINT_VERSION
+      ? NETWORK_FINGERPRINT_VERSION
+      : template.fingerprintVersion === NAS_FINGERPRINT_VERSION ? NAS_FINGERPRINT_VERSION
       : CANONICAL_UNITS_FINGERPRINT_VERSION,
   }
 }

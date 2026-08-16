@@ -144,12 +144,3 @@ export const soundCards = sqliteTable('sound_cards', {
   id: integer('id').primaryKey().references(() => inventoryItems.id, { onDelete: 'cascade' }),
   interface: text('interface'),
 })
-
-export const wirelessCards = sqliteTable('wireless_cards', {
-  id: integer('id').primaryKey().references(() => inventoryItems.id, { onDelete: 'cascade' }),
-  interface: text('interface'),
-  wifiGeneration: text('wifi_generation'),
-  bluetooth: integer('bluetooth', { mode: 'boolean' }),
-}, (table) => [
-  check('wireless_cards_bluetooth_check', sql`${table.bluetooth} IS NULL OR ${table.bluetooth} IN (0, 1)`),
-])

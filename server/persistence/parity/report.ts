@@ -16,6 +16,16 @@ function values(value: unknown): any[] {
   return []
 }
 
+function canonicalInventoryType(value: unknown) {
+  return value === 'wireless' ? 'network' : value
+}
+
+function canonicalItemReference(value: unknown) {
+  return typeof value === 'string' && value.startsWith('wireless:')
+    ? `network:${value.slice('wireless:'.length)}`
+    : value
+}
+
 export function canonicalJson(value: unknown): string {
   if (Array.isArray(value)) return `[${value.map(canonicalJson).join(',')}]`
   if (value && typeof value === 'object') {
@@ -26,16 +36,20 @@ export function canonicalJson(value: unknown): string {
 }
 
 function itemKey(record: Record<string, any>, prefix: 'host' | 'item' | 'endpoint') {
-  if (prefix === 'host') return record.serverId ?? `${record.hostType}:${record.hostId}`
-  if (prefix === 'endpoint') return record.itemId ?? `${record.itemType}:${record.legacyItemId}`
-  return typeof record.itemId === 'string' ? record.itemId : `${record.itemType}:${record.itemId}`
+  if (prefix === 'host') return canonicalItemReference(record.serverId ?? `${record.hostType}:${record.hostId}`)
+  if (prefix === 'endpoint') {
+    return canonicalItemReference(record.itemId ?? `${canonicalInventoryType(record.itemType)}:${record.legacyItemId}`)
+  }
+  return canonicalItemReference(typeof record.itemId === 'string'
+    ? record.itemId
+    : `${canonicalInventoryType(record.itemType)}:${record.itemId}`)
 }
 
 export function normalizedTopology(project: Record<string, any>) {
   const assignments = values(project.assignments).map((assignment) => ({
     host: itemKey(assignment, 'host'),
     item: itemKey(assignment, 'item'),
-    type: assignment.type ?? assignment.itemType,
+    type: canonicalInventoryType(assignment.type ?? assignment.itemType),
     assignedAt: assignment.assignedAt ?? null,
     allocation: assignment.allocation ? {
       resourceType: assignment.allocation.resourceType ?? null,
@@ -44,7 +58,7 @@ export function normalizedTopology(project: Record<string, any>) {
     } : null,
   })).sort((left, right) => canonicalJson(left).localeCompare(canonicalJson(right)))
   const placements = values(project.placements).map((placement) => ({
-    item: placement.serverId ?? `${placement.itemType}:${placement.itemId}`,
+    item: canonicalItemReference(placement.serverId ?? `${canonicalInventoryType(placement.itemType)}:${placement.itemId}`),
     x: placement.x,
     y: placement.y,
     orientation: placement.orientation ?? null,
@@ -53,18 +67,17 @@ export function normalizedTopology(project: Record<string, any>) {
   const connections = values(project.connections).map((connection) => ({
     from: {
       item: typeof connection.from?.itemId === 'string'
-        ? connection.from.itemId
-        : `${connection.from?.itemType}:${connection.from?.itemId}`,
+        ? canonicalItemReference(connection.from.itemId)
+        : `${canonicalInventoryType(connection.from?.itemType)}:${connection.from?.itemId}`,
       portId: connection.from?.portId,
     },
     to: {
       item: typeof connection.to?.itemId === 'string'
-        ? connection.to.itemId
-        : `${connection.to?.itemType}:${connection.to?.itemId}`,
+        ? canonicalItemReference(connection.to.itemId)
+        : `${canonicalInventoryType(connection.to?.itemType)}:${connection.to?.itemId}`,
       portId: connection.to?.portId,
     },
     type: connection.type,
-    negotiatedSpeedBps: connection.negotiatedSpeedBps ?? null,
     createdAt: connection.createdAt ?? null,
     route: connection.route ? {
       sourceSide: connection.route.sourceSide ?? null,

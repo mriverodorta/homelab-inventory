@@ -12,7 +12,7 @@ describe('PC Build slots', () => {
   it('uses the approved component order and required rows', () => {
     expect(PC_BUILD_COMPONENT_ORDER).toEqual([
       'motherboard', 'cpu', 'cpuCooler', 'ram', 'storage', 'gpu', 'soundCard',
-      'network', 'wireless', 'case', 'powerSupply',
+      'network', 'case', 'powerSupply',
     ])
 
     const project = mergeInventoryWithProject([

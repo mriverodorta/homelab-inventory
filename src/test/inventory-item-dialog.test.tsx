@@ -169,8 +169,9 @@ describe('InventoryItemDialog switch port groups', () => {
     expect(screen.getByRole('combobox', { name: 'PCIe' })).toBeInTheDocument()
 
     await user.click(screen.getByRole('combobox', { name: 'Inventory type' }))
-    await user.click(screen.getByRole('option', { name: 'Network Card' }))
-    expect(screen.getByRole('combobox', { name: 'Interface' })).toBeInTheDocument()
+    await user.click(screen.getByRole('option', { name: 'Network Adapter' }))
+    expect(screen.getByRole('combobox', { name: 'Technology' })).toBeInTheDocument()
+    expect(screen.getByRole('combobox', { name: 'Host interface' })).toBeInTheDocument()
 
     await user.click(screen.getByRole('combobox', { name: 'Inventory type' }))
     await user.click(screen.getByRole('option', { name: 'Switch' }))
@@ -222,9 +223,11 @@ describe('InventoryItemDialog switch port groups', () => {
     await chooseType('Sound Card')
     expect(screen.getByRole('combobox', { name: 'Interface' })).toBeInTheDocument()
 
-    await chooseType('Wireless Card')
-    expect(screen.getByRole('combobox', { name: 'Wi-Fi Generation' })).toBeInTheDocument()
-    expect(screen.getByRole('combobox', { name: 'Bluetooth' })).toBeInTheDocument()
+    await chooseType('Network Adapter')
+    await user.click(screen.getByRole('combobox', { name: 'Technology' }))
+    await user.click(screen.getByRole('option', { name: 'Wi-Fi' }))
+    expect(screen.getByRole('textbox', { name: 'Wi-Fi generations' })).toBeInTheDocument()
+    expect(screen.getByRole('textbox', { name: 'Bluetooth version' })).toBeInTheDocument()
 
     await chooseType('Power Adapter')
     expect(screen.getByRole('combobox', { name: 'DC Connector' })).toBeInTheDocument()
@@ -270,7 +273,7 @@ describe('InventoryItemDialog switch port groups', () => {
     expect(screen.queryByRole('combobox', { name: 'Port group 1 role' })).not.toBeInTheDocument()
 
     await user.click(screen.getByRole('combobox', { name: 'Inventory type' }))
-    await user.click(screen.getByRole('option', { name: 'Network Card' }))
+    await user.click(screen.getByRole('option', { name: 'Network Adapter' }))
     await user.click(screen.getByRole('tab', { name: 'Ports' }))
     expect(screen.getByRole('combobox', { name: 'Port group 1 role' })).toBeInTheDocument()
 

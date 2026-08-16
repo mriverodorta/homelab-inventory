@@ -289,6 +289,12 @@ export const storageResourceControllers = sqliteTable('storage_resource_controll
 export const expansionResourceGroups = sqliteTable('expansion_resource_groups', {
   id: integer('id').primaryKey().references(() => hostResourceGroups.id, { onDelete: 'cascade' }),
   interfaceFamily: text('interface_family').notNull(),
+  interfaceKey: text('interface_key'),
+  keying: text('keying'),
+  moduleSize: text('module_size'),
+  usbGeneration: text('usb_generation'),
+  connector: text('connector'),
+  ocpVersion: text('ocp_version'),
   expansionSlotTypeId: integer('expansion_slot_type_id').references(
     () => expansionSlotTypes.id,
     { onDelete: 'restrict' },
@@ -304,7 +310,9 @@ export const expansionResourceGroups = sqliteTable('expansion_resource_groups', 
 }, (table) => [
   index('expansion_resource_groups_slot_type_index').on(table.expansionSlotTypeId),
   check('expansion_resource_groups_family_check', sql`
-    ${table.interfaceFamily} IN ('pcie', 'm2-ae', 'usb', 'onboard')
+    ${table.interfaceFamily} IN (
+      'pcie', 'm2-ae', 'm2-bm', 'mini-pcie', 'usb', 'ocp', 'mezzanine', 'onboard', 'proprietary'
+    )
   `),
   check('expansion_resource_groups_generation_check', sql`${table.pcieGeneration} IS NULL OR ${table.pcieGeneration} > 0`),
   check('expansion_resource_groups_mechanical_check', sql`${table.mechanicalLanes} IS NULL OR ${table.mechanicalLanes} > 0`),

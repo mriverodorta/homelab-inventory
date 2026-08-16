@@ -35,6 +35,51 @@ function mergeRecords(base: unknown, override: unknown): Row | undefined {
   return result
 }
 
+function pointerSegments(path: string) {
+  return path.split('/').slice(1).map((segment) => segment.replaceAll('~1', '/').replaceAll('~0', '~'))
+}
+
+function extensionRowValue(row: Row) {
+  switch (row.value_type) {
+    case 'text': return row.text_value
+    case 'integer': return row.integer_value
+    case 'real': return row.real_value
+    case 'boolean': return Boolean(row.boolean_value)
+    case 'null': return null
+    case 'array': return []
+    case 'object': return {}
+    default: throw new Error(`Unknown network extension value type ${String(row.value_type)}.`)
+  }
+}
+
+function setPointerValue(root: Row, path: string, value: unknown) {
+  const segments = pointerSegments(path)
+  if (!segments.length) return
+  let target: Row | unknown[] = root
+  for (const [index, segment] of segments.entries()) {
+    const final = index === segments.length - 1
+    const key = Array.isArray(target) ? Number(segment) : segment
+    if (final) {
+      ;(target as any)[key] = value
+      return
+    }
+    const nextIsArray = /^\d+$/u.test(segments[index + 1])
+    if ((target as any)[key] == null) (target as any)[key] = nextIsArray ? [] : {}
+    target = (target as any)[key]
+  }
+}
+
+function networkExtensions(database: Database, adapterId: number) {
+  const result: Row = {}
+  const rows = all(database, `
+    SELECT * FROM network_adapter_extension_values
+    WHERE adapter_id = ?
+    ORDER BY length(field_path), field_path
+  `, adapterId)
+  for (const row of rows) setPointerValue(result, row.field_path, extensionRowValue(row))
+  return result
+}
+
 function aliasKey(row: Row) {
   return `${row.legacy_type_key}:${row.legacy_id}`
 }
@@ -94,7 +139,28 @@ function itemPorts(database: Database, itemId: number, itemType: string) {
     JOIN connector_types ct ON ct.id = d.connector_type_id
     WHERE ip.item_id = ?
     ORDER BY d.slot_number, pia.legacy_port_id
-  `, itemId).map((row) => legacyPort(database, row, itemType))
+  `, itemId).map((row) => {
+    const port = legacyPort(database, row, itemType) as Row
+    if (itemType !== 'network') return port as InventoryPort
+    const network = one(database, 'SELECT * FROM network_adapter_ports WHERE port_id = ?', row.port_id)
+    if (!network) return port as InventoryPort
+    const local = one(database, 'SELECT * FROM network_port_local_overrides WHERE port_id = ?', row.port_id)
+    return defined({
+      ...port,
+      speed: undefined,
+      label: local?.label ?? port.label,
+      ipAddress: local?.ip_address ?? port.ipAddress,
+      macAddress: local?.mac_address,
+      role: local?.role ?? port.role,
+      adminState: local?.admin_state,
+      speedBps: row.speed_bps,
+      networkTechnology: network.network_technology,
+      vendorLock: network.vendor_lock == null ? undefined : Boolean(network.vendor_lock),
+      supportedSpeedsBps: all(database, 'SELECT speed_bps FROM network_adapter_port_supported_speeds WHERE port_id = ? ORDER BY speed_bps', row.port_id).map((entry) => entry.speed_bps),
+      operatingModes: all(database, 'SELECT mode FROM network_adapter_port_operating_modes WHERE port_id = ? ORDER BY mode', row.port_id).map((entry) => entry.mode),
+      media: all(database, 'SELECT medium FROM network_adapter_port_media WHERE port_id = ? ORDER BY medium', row.port_id).map((entry) => entry.medium),
+    }) as InventoryPort
+  })
 }
 
 function subtypeSpecs(database: Database, item: Row) {
@@ -129,13 +195,70 @@ function subtypeSpecs(database: Database, item: Row) {
     case 'ram': { const row = one(database, 'SELECT * FROM memory_modules WHERE id = ?', id)!; return { specs: defined({ capacityGb: row.capacity_mib == null ? undefined : row.capacity_mib / 1024, generation: vocabulary(database, 'memory_generations', row.memory_generation_id), speedMt: row.speed_mtps, formFactor: row.form_factor, moduleType: vocabulary(database, 'memory_module_types', row.module_type_id), ecc: row.ecc == null ? undefined : Boolean(row.ecc), rank: row.rank, voltageVolts: row.voltage_mv == null ? undefined : row.voltage_mv / 1000 }) } }
     case 'storage': { const row = one(database, 'SELECT * FROM storage_devices WHERE id = ?', id)!; return { specs: defined({ capacityGb: row.capacity_bytes == null ? undefined : row.capacity_bytes / 1_000_000_000, interface: vocabulary(database, 'storage_interfaces', row.interface_id) ?? row.interface_text, formFactor: vocabulary(database, 'storage_form_factors', row.form_factor_id) ?? row.form_factor_text, partitionTable: row.partition_table }) } }
     case 'gpu': { const row = one(database, 'SELECT * FROM graphics_cards WHERE id = ?', id)!; return { specs: defined({ vramGb: row.vram_mib == null ? undefined : row.vram_mib / 1024, formFactor: row.form_factor, slotWidth: row.slot_width, pcie: row.pcie }) } }
-    case 'network': { const row = one(database, 'SELECT * FROM network_cards WHERE id = ?', id)!; return { specs: defined({ ports: row.port_count, speedMbps: row.max_speed_bps == null ? undefined : row.max_speed_bps / 1_000_000, interface: row.interface, formFactor: row.form_factor }) } }
+    case 'network': {
+      const row = one(database, 'SELECT * FROM network_adapters WHERE id = ?', id)!
+      const hostInterface = one(database, 'SELECT * FROM network_adapter_host_interfaces WHERE adapter_id = ?', id)
+      const capabilities = one(database, 'SELECT * FROM network_adapter_capabilities WHERE adapter_id = ?', id)
+      const operatingModes = all(database, 'SELECT mode FROM network_adapter_operating_modes WHERE adapter_id = ? ORDER BY mode', id).map((entry) => entry.mode)
+      const wifiGenerations = all(database, 'SELECT generation FROM network_adapter_wifi_generations WHERE adapter_id = ? ORDER BY generation', id).map((entry) => entry.generation)
+      const frequencyBandsGhz = all(database, 'SELECT frequency_mhz FROM network_adapter_frequency_bands WHERE adapter_id = ? ORDER BY frequency_mhz', id).map((entry) => entry.frequency_mhz / 1000)
+      const requirements = defined({
+        interfaceFamily: hostInterface?.family,
+        interfaceKey: hostInterface?.interface_key,
+        key: hostInterface?.key,
+        moduleSize: hostInterface?.module_size,
+        usbGeneration: hostInterface?.usb_generation,
+        connector: hostInterface?.connector,
+        ocpVersion: hostInterface?.ocp_version,
+        pcieGeneration: hostInterface?.pcie_generation,
+        connectorLanes: hostInterface?.connector_lanes,
+        minimumElectricalLanes: hostInterface?.minimum_electrical_lanes,
+        height: row.card_height,
+        slotWidth: row.slot_width,
+        powerMw: row.power_mw,
+      })
+      return { specs: defined({
+        networkTechnology: row.network_technology,
+        controller: row.controller,
+        formFactor: row.form_factor,
+        maxSpeedBps: row.max_speed_bps,
+        maxPhyRateBps: row.max_phy_rate_bps,
+        spatialStreams: row.spatial_streams,
+        bluetoothVersion: row.bluetooth_version,
+        antennaTopology: row.antenna_topology,
+        hardwareRevision: row.hardware_revision,
+        discontinued: row.discontinued == null ? undefined : Boolean(row.discontinued),
+        hostInterface: hostInterface ? defined({
+          family: hostInterface.family,
+          pcieGeneration: hostInterface.pcie_generation,
+          connectorLanes: hostInterface.connector_lanes,
+          minimumElectricalLanes: hostInterface.minimum_electrical_lanes,
+          key: hostInterface.key,
+          moduleSize: hostInterface.module_size,
+          usbGeneration: hostInterface.usb_generation,
+          connector: hostInterface.connector,
+          ocpVersion: hostInterface.ocp_version,
+          interfaceKey: hostInterface.interface_key,
+        }) : undefined,
+        operatingModes: operatingModes.length > 0 ? operatingModes : undefined,
+        wifiGenerations: wifiGenerations.length > 0 ? wifiGenerations : undefined,
+        frequencyBandsGhz: frequencyBandsGhz.length > 0 ? frequencyBandsGhz : undefined,
+        capabilities: capabilities ? defined({
+          sriov: capabilities.sriov == null ? undefined : Boolean(capabilities.sriov),
+          ptp: capabilities.ptp == null ? undefined : Boolean(capabilities.ptp),
+          pxe: capabilities.pxe == null ? undefined : Boolean(capabilities.pxe),
+          uefiBoot: capabilities.uefi_boot == null ? undefined : Boolean(capabilities.uefi_boot),
+          wakeOnLan: capabilities.wake_on_lan == null ? undefined : Boolean(capabilities.wake_on_lan),
+          rdmaModes: all(database, 'SELECT mode FROM network_adapter_rdma_modes WHERE adapter_id = ? ORDER BY mode', id).map((entry) => entry.mode),
+          offloads: all(database, 'SELECT offload FROM network_adapter_offloads WHERE adapter_id = ? ORDER BY offload', id).map((entry) => entry.offload),
+        }) : undefined,
+      }), compatibility: Object.keys(requirements).length ? { requirements: { expansion: requirements } } : undefined }
+    }
     case 'motherboard': { const row = one(database, 'SELECT * FROM motherboards WHERE id = ?', id)!; return { specs: defined({ chipset: row.chipset, formFactor: row.form_factor, boardRevision: row.board_revision, launchDate: row.launch_date_text, discontinued: row.discontinued == null ? undefined : Boolean(row.discontinued), wifiGeneration: row.wifi_generation, bluetooth: row.bluetooth }) } }
     case 'cpuCooler': { const row = one(database, 'SELECT * FROM cpu_coolers WHERE id = ?', id)!; return { specs: defined({ coolerType: row.cooler_type }) } }
     case 'case': return { specs: defined({ formFactors: all(database, 'SELECT form_factor FROM case_form_factor_support WHERE case_id = ? ORDER BY id', id).map((row) => row.form_factor) }) }
     case 'powerSupply': { const row = one(database, 'SELECT * FROM power_supplies WHERE id = ?', id)!; const connectors = all(database, `SELECT coalesce(v.label, c.connector_text) AS type, c.count FROM power_supply_connectors c LEFT JOIN power_connector_types v ON v.id = c.connector_type_id WHERE c.power_supply_id = ? ORDER BY c.id`, id); return { specs: defined({ formFactor: row.form_factor, wattageWatts: row.rated_power_mw == null ? undefined : row.rated_power_mw / 1000, efficiency: row.efficiency_rating, connectors: connectors.length ? connectors : undefined }) } }
     case 'soundCard': { const row = one(database, 'SELECT * FROM sound_cards WHERE id = ?', id)!; return { specs: defined({ interface: row.interface }) } }
-    case 'wireless': { const row = one(database, 'SELECT * FROM wireless_cards WHERE id = ?', id)!; return { specs: defined({ interface: row.interface, wifiGeneration: row.wifi_generation, bluetooth: row.bluetooth == null ? undefined : Boolean(row.bluetooth) }) } }
     case 'powerAdapter': { const row = one(database, 'SELECT * FROM power_adapters WHERE id = ?', id)!; return { specs: defined({ wattageWatts: row.rated_power_mw == null ? undefined : row.rated_power_mw / 1000, connector: vocabulary(database, 'power_connector_types', row.connector_type_id) ?? row.connector_text }) } }
     case 'switch': { const row = one(database, 'SELECT * FROM network_switches WHERE id = ?', id)!; return { specs: defined({ management: row.management_type, switchingCapacityGbps: row.switching_capacity_bps == null ? undefined : row.switching_capacity_bps / 1_000_000_000, fanless: Boolean(row.fanless) }) } }
     case 'patchPanel': { const row = one(database, 'SELECT * FROM patch_panels WHERE id = ?', id)!; return { specs: defined({ rackUnits: row.rack_units, mount: row.mount }) } }
@@ -179,7 +302,9 @@ function hostCompatibility(database: Database, itemId: number) {
            s.pcie_generation AS storage_pcie_generation,
            s.hot_swap, s.backplane, s.direct_connect,
            e.pcie_generation AS expansion_pcie_generation,
-           e.interface_family, est.label AS expansion_slot_type,
+           e.interface_family, e.interface_key, e.keying, e.module_size,
+           e.usb_generation, e.connector, e.ocp_version,
+           est.label AS expansion_slot_type,
            e.mechanical_lanes, e.electrical_lanes, e.max_slot_width,
            e.max_power_mw, e.proprietary_riser, e.riser_capability, e.riser_group
     FROM host_resource_groups g
@@ -207,7 +332,7 @@ function hostCompatibility(database: Database, itemId: number) {
       entry.formFactors = all(database, `SELECT CASE WHEN v.key LIKE 'm2-%' THEN substr(v.key, 4) ELSE v.label END AS value FROM storage_resource_form_factors r JOIN storage_form_factors v ON v.id = r.form_factor_id WHERE r.resource_group_id = ? ORDER BY r.id`, group.id).map((row) => row.value)
       Object.assign(entry, defined({ pcieGeneration: group.storage_pcie_generation, hotSwap: group.hot_swap == null ? undefined : Boolean(group.hot_swap), backplane: group.backplane, directConnect: group.direct_connect == null ? undefined : Boolean(group.direct_connect) }))
     }
-    if (group.resource_type === 'expansion') Object.assign(entry, defined({ interfaceFamily: group.interface_family, slotType: group.expansion_slot_type, pcieGeneration: group.expansion_pcie_generation, mechanicalLanes: group.mechanical_lanes, electricalLanes: group.electrical_lanes, acceptedHeights: all(database, 'SELECT height FROM expansion_accepted_heights WHERE resource_group_id = ? ORDER BY id', group.id).map((row) => row.height), maxSlotWidth: group.max_slot_width, maxPowerWatts: group.max_power_mw == null ? undefined : group.max_power_mw / 1000, proprietaryRiser: group.proprietary_riser == null ? undefined : Boolean(group.proprietary_riser), riserCapability: group.riser_capability, riserGroup: group.riser_group }))
+    if (group.resource_type === 'expansion') Object.assign(entry, defined({ interfaceFamily: group.interface_family, interfaceKey: group.interface_key, keying: group.keying, moduleSize: group.module_size, usbGeneration: group.usb_generation, connector: group.connector, ocpVersion: group.ocp_version, slotType: group.expansion_slot_type, pcieGeneration: group.expansion_pcie_generation, mechanicalLanes: group.mechanical_lanes, electricalLanes: group.electrical_lanes, acceptedHeights: all(database, 'SELECT height FROM expansion_accepted_heights WHERE resource_group_id = ? ORDER BY id', group.id).map((row) => row.height), maxSlotWidth: group.max_slot_width, maxPowerWatts: group.max_power_mw == null ? undefined : group.max_power_mw / 1000, proprietaryRiser: group.proprietary_riser == null ? undefined : Boolean(group.proprietary_riser), riserCapability: group.riser_capability, riserGroup: group.riser_group }))
     if (group.resource_type === 'optionalModule' && acceptedKinds.length) entry.acceptedModuleKinds = acceptedKinds
     if (group.resource_type === 'controllerSlot') {
       const controller = one(database, 'SELECT * FROM controller_resource_groups WHERE id = ?', group.id)
@@ -274,6 +399,7 @@ function hostCompatibility(database: Database, itemId: number) {
 function inventoryItem(database: Database, row: Row): InventoryItem {
   const extension = parse<Row>(row.extensions_json, {})
   const subtype = subtypeSpecs(database, row)
+  const relationalExtension = row.type_key === 'network' ? networkExtensions(database, row.id) : undefined
   const properties = Object.fromEntries(all(database, 'SELECT key, value FROM inventory_item_properties WHERE item_id = ? ORDER BY id', row.id).map((entry) => [entry.key, entry.value]))
   const aliases = all(database, 'SELECT alias FROM inventory_item_aliases WHERE item_id = ? ORDER BY id', row.id).map((entry) => entry.alias)
   const secondaryManufacturer = one(database, `SELECT coalesce(m.name, s.manufacturer_text) AS name FROM inventory_secondary_manufacturers s LEFT JOIN manufacturers m ON m.id = s.manufacturer_id WHERE s.item_id = ?`, row.id)?.name
@@ -281,8 +407,16 @@ function inventoryItem(database: Database, row: Row): InventoryItem {
   const smart = smartRow ? defined({ enabled: true, displayName: smartRow.display_name, managementIp: smartRow.management_ip, macAddress: smartRow.mac_address, outlets: all(database, `SELECT pia.legacy_port_id AS portId, n.name FROM power_strip_outlet_names n JOIN port_identity_aliases pia ON pia.port_id = n.port_id WHERE n.smart_configuration_id = ? ORDER BY n.id`, smartRow.id) }) : undefined
   const legacyCompatibility = extension.catalogCompatibility
     ?? (extension.compatibilityRequirements ? { requirements: extension.compatibilityRequirements } : undefined)
-  const compatibility = mergeRecords(legacyCompatibility, hostCompatibility(database, row.id))
-  const ports = itemPorts(database, row.id, row.type_key)
+  const compatibility = mergeRecords(
+    mergeRecords(mergeRecords(legacyCompatibility, subtype.compatibility), relationalExtension?.compatibility),
+    hostCompatibility(database, row.id),
+  )
+  const portExtensions = relationalExtension?.ports && typeof relationalExtension.ports === 'object'
+    ? relationalExtension.ports as Row
+    : {}
+  const ports = itemPorts(database, row.id, row.type_key).map((port) => (
+    mergeRecords(port, portExtensions[String(port.id)]) ?? port
+  ))
   const fixedComponents = all(database, `
     SELECT * FROM host_fixed_components
     WHERE host_item_id = ?
@@ -299,6 +433,7 @@ function inventoryItem(database: Database, row: Row): InventoryItem {
   }))
   return defined({
     ...(extension.legacyFields ?? {}),
+    ...Object.fromEntries(Object.entries(relationalExtension ?? {}).filter(([key]) => !['specs', 'compatibility', 'ports'].includes(key))),
     id: row.legacy_id,
     key: aliasKey(row),
     name: row.name,
@@ -313,7 +448,7 @@ function inventoryItem(database: Database, row: Row): InventoryItem {
     model: row.model,
     number: row.product_number,
     aliases: aliases.length ? aliases : undefined,
-    specs: extension.legacySpecs ?? (Object.keys(subtype.specs ?? {}).length ? subtype.specs : undefined),
+    specs: extension.legacySpecs ?? mergeRecords(subtype.specs, relationalExtension?.specs),
     properties: Object.keys(properties).length ? properties : undefined,
     ports: ports.length ? ports : undefined,
     fixedComponents: fixedComponents.length ? fixedComponents : undefined,

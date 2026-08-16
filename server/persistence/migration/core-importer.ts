@@ -4,8 +4,10 @@ import { catalogItemForLegacyView } from '../core/inventory/catalog-view.ts'
 import { toBitsPerSecond, toBytes, toMhz, toMib, toMillihertz, toMillimeters, toMillivoltAmps, toMilliwatts, toMillivolts } from '../core/inventory/units.ts'
 import {
   LEGACY_TABLE_BY_TYPE,
+  LEGACY_IMPORT_TABLE_BY_TYPE,
   legacyResourceDefinitions,
   type CanonicalIdentityPlan,
+  type LegacyInventoryType,
 } from '../legacy/identity-plan.ts'
 import { persistAuthenticationState } from '../core/projections/legacy-domains.ts'
 
@@ -174,15 +176,255 @@ function portRole(value: unknown) {
   return String(value).includes('management') ? 'management' : null
 }
 
-function extensionPayload(item: LegacyRecord) {
+function extensionPayload(item: LegacyRecord, type: InventoryType) {
   const legacyView = catalogItemForLegacyView(item)
   const common = new Set(['id', 'type', 'name', 'aliases', 'manufacturer', 'secondaryManufacturer', 'model', 'family', 'number', 'subtype', 'properties', 'compatibility', 'fixedComponents', 'notes', 'archivedAt', 'ports', 'specs', 'hardwareClass', 'usageRole', 'smart'])
   const unknown = Object.fromEntries(Object.entries(item).filter(([key]) => !common.has(key)))
   const payload: Record<string, unknown> = {}
-  if (Object.keys(unknown).length) payload.legacyFields = unknown
-  if (legacyView.specs && Object.keys(legacyView.specs).length) payload.legacySpecs = legacyView.specs
-  if (legacyView.compatibility && Object.keys(legacyView.compatibility).length) payload.catalogCompatibility = legacyView.compatibility
+  if (type !== 'network' && Object.keys(unknown).length) payload.legacyFields = unknown
+  if (type !== 'network' && legacyView.specs && Object.keys(legacyView.specs).length) payload.legacySpecs = legacyView.specs
+  if (type !== 'network' && legacyView.compatibility && Object.keys(legacyView.compatibility).length) {
+    payload.catalogCompatibility = legacyView.compatibility
+  }
   return payload
+}
+
+const NETWORK_TECHNOLOGIES = new Set([
+  'ethernet', 'wifi', 'fibre-channel', 'infiniband', 'converged', 'cellular', 'other',
+])
+
+function legacyHostInterface(value: unknown) {
+  const source = optionalText(value)
+  const normalized = source?.toLocaleLowerCase('en-US') ?? ''
+  if (!source) return undefined
+  if (normalized.includes('m.2') || normalized.includes('m2')) {
+    return { family: 'm2-ae', key: 'A+E', moduleSize: '2230' }
+  }
+  if (normalized.includes('mini') && (normalized.includes('pcie') || normalized.includes('pci-e'))) {
+    return { family: 'mini-pcie' }
+  }
+  if (normalized.includes('pcie') || normalized.includes('pci-e')) return { family: 'pcie' }
+  if (normalized.includes('usb')) return { family: 'usb' }
+  if (normalized.includes('onboard')) return { family: 'onboard' }
+  return { family: 'proprietary', interfaceKey: source }
+}
+
+function normalizedNetworkItem(item: LegacyRecord, sourceType: LegacyInventoryType): LegacyRecord {
+  const sourceSpecs = item.specs && typeof item.specs === 'object' && !Array.isArray(item.specs)
+    ? item.specs as LegacyRecord
+    : {}
+  const technology = NETWORK_TECHNOLOGIES.has(String(sourceSpecs.networkTechnology))
+    ? String(sourceSpecs.networkTechnology)
+    : sourceType === 'wireless' ? 'wifi' : 'ethernet'
+  const hostInterface = sourceSpecs.hostInterface && typeof sourceSpecs.hostInterface === 'object' && !Array.isArray(sourceSpecs.hostInterface)
+    ? sourceSpecs.hostInterface
+    : legacyHostInterface(sourceSpecs.interface)
+  const maxSpeedBps = canonicalMeasurement(
+    sourceSpecs.maxSpeedBps,
+    sourceSpecs.speedMbps,
+    (value) => toBitsPerSecond({ value, unit: 'Mbps' }),
+    'specs.maxSpeedBps',
+  )
+  const wifiGenerations = records(sourceSpecs.wifiGenerations)
+  const legacyWifiGeneration = optionalText(sourceSpecs.wifiGeneration)
+  if (legacyWifiGeneration && !wifiGenerations.includes(legacyWifiGeneration)) wifiGenerations.push(legacyWifiGeneration)
+  const operatingModes = records(sourceSpecs.operatingModes)
+  if (!operatingModes.length) operatingModes.push(technology)
+  return {
+    ...item,
+    type: 'network',
+    specs: {
+      ...sourceSpecs,
+      networkTechnology: technology,
+      formFactor: optionalText(sourceSpecs.formFactor)
+        ?? (technology === 'wifi' && hostInterface?.family === 'm2-ae' ? 'm2-2230' : 'unknown'),
+      hostInterface,
+      maxSpeedBps: technology === 'wifi' || technology === 'cellular' ? undefined : maxSpeedBps ?? undefined,
+      operatingModes,
+      wifiGenerations: wifiGenerations.length ? wifiGenerations : undefined,
+      bluetoothVersion: optionalText(sourceSpecs.bluetoothVersion)
+        ?? (sourceSpecs.bluetooth === true ? 'supported' : undefined),
+    },
+  }
+}
+
+function insertTextValues(database: Database, table: string, adapterId: number, column: string, values: unknown) {
+  for (const value of [...new Set(records(values).map(optionalText).filter(Boolean) as string[])]) {
+    database.query(`INSERT INTO ${table} (adapter_id, ${column}) VALUES (?, ?)`).run(adapterId, value)
+  }
+}
+
+const NETWORK_ROOT_FIELDS = new Set([
+  'id', 'type', 'name', 'aliases', 'manufacturer', 'secondaryManufacturer', 'model', 'family',
+  'number', 'subtype', 'properties', 'compatibility', 'fixedComponents', 'notes', 'archivedAt',
+  'ports', 'specs', 'scope', 'ownerProjectId', 'key',
+])
+const NETWORK_SPEC_FIELDS = new Set([
+  'networkTechnology', 'controller', 'formFactor', 'hostInterface', 'maxSpeedBps', 'maxPhyRateBps',
+  'operatingModes', 'wifiGenerations', 'frequencyBandsGhz', 'spatialStreams', 'bluetoothVersion',
+  'antennaTopology', 'capabilities', 'hardwareRevision', 'discontinued',
+  'interface', 'speedMbps', 'wifiGeneration', 'bluetooth', 'ports',
+])
+const NETWORK_HOST_INTERFACE_FIELDS = new Set([
+  'family', 'pcieGeneration', 'connectorLanes', 'minimumElectricalLanes', 'key', 'moduleSize',
+  'usbGeneration', 'connector', 'ocpVersion', 'interfaceKey',
+])
+const NETWORK_CAPABILITY_FIELDS = new Set([
+  'sriov', 'ptp', 'pxe', 'uefiBoot', 'wakeOnLan', 'rdmaModes', 'offloads',
+])
+const NETWORK_PORT_FIELDS = new Set([
+  'id', 'key', 'kind', 'type', 'slotNumber', 'label', 'notes', 'ipAddress', 'macAddress', 'role',
+  'adminState', 'speed', 'speedBps', 'supportedSpeedsBps', 'networkTechnology', 'operatingModes',
+  'media', 'vendorLock', 'poe', 'origin', 'endpoints',
+])
+const NETWORK_EXPANSION_REQUIREMENT_FIELDS = new Set([
+  'interfaceFamily', 'interfaceKey', 'key', 'moduleSize', 'usbGeneration', 'connector', 'ocpVersion',
+  'pcieGeneration', 'connectorLanes', 'minimumElectricalLanes', 'height', 'slotWidth', 'powerMw',
+  'powerWatts',
+])
+
+function unknownObjectFields(value: unknown, known: ReadonlySet<string>) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {}
+  return Object.fromEntries(Object.entries(value).filter(([key]) => !known.has(key)))
+}
+
+function removeEmptyTree(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(removeEmptyTree)
+  if (!value || typeof value !== 'object') return value
+  const entries = Object.entries(value)
+    .map(([key, entry]) => [key, removeEmptyTree(entry)] as const)
+    .filter(([, entry]) => entry !== undefined && (
+      !entry || typeof entry !== 'object' || Array.isArray(entry) || Object.keys(entry).length > 0
+    ))
+  return entries.length ? Object.fromEntries(entries) : undefined
+}
+
+function networkExtensionTree(item: LegacyRecord) {
+  const specs = item.specs && typeof item.specs === 'object' && !Array.isArray(item.specs) ? item.specs : {}
+  const compatibility = structuredClone(item.compatibility ?? {}) as LegacyRecord
+  const expansion = compatibility.requirements?.expansion
+  if (expansion && typeof expansion === 'object' && !Array.isArray(expansion)) {
+    compatibility.requirements.expansion = unknownObjectFields(expansion, NETWORK_EXPANSION_REQUIREMENT_FIELDS)
+  }
+  const ports = Object.fromEntries(records(item.ports).flatMap((port) => {
+    const unknown = unknownObjectFields(port, NETWORK_PORT_FIELDS)
+    return Object.keys(unknown).length ? [[String(port.id), unknown]] : []
+  }))
+  return removeEmptyTree({
+    ...unknownObjectFields(item, NETWORK_ROOT_FIELDS),
+    specs: {
+      ...unknownObjectFields(specs, NETWORK_SPEC_FIELDS),
+      hostInterface: unknownObjectFields(specs.hostInterface, NETWORK_HOST_INTERFACE_FIELDS),
+      capabilities: unknownObjectFields(specs.capabilities, NETWORK_CAPABILITY_FIELDS),
+    },
+    compatibility,
+    ports,
+  }) as LegacyRecord | undefined
+}
+
+function pointerSegment(value: string) {
+  return value.replaceAll('~', '~0').replaceAll('/', '~1')
+}
+
+function insertNetworkExtensionValue(database: Database, adapterId: number, path: string, value: unknown) {
+  const columns: [string, string | null, number | null, number | null, number | null, number | null] =
+    value === null ? ['null', null, null, null, null, 1]
+      : Array.isArray(value) ? ['array', null, null, null, null, null]
+        : typeof value === 'object' ? ['object', null, null, null, null, null]
+          : typeof value === 'string' ? ['text', value, null, null, null, null]
+            : typeof value === 'boolean' ? ['boolean', null, null, null, Number(value), null]
+              : Number.isSafeInteger(value) ? ['integer', null, Number(value), null, null, null]
+                : typeof value === 'number' && Number.isFinite(value) ? ['real', null, null, value, null, null]
+                  : (() => { throw new Error(`Network extension ${path} has an unsupported value.`) })()
+  if (path) {
+    database.query(`
+      INSERT INTO network_adapter_extension_values (
+        adapter_id, field_path, value_type, text_value, integer_value, real_value, boolean_value, null_value
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(adapterId, path, ...columns)
+  }
+  if (value && typeof value === 'object') {
+    for (const [key, entry] of Object.entries(value)) {
+      insertNetworkExtensionValue(database, adapterId, `${path}/${pointerSegment(key)}`, entry)
+    }
+  }
+}
+
+function insertNetworkAdapter(database: Database, itemId: number, item: LegacyRecord) {
+  const specs = item.specs ?? {}
+  const technology = String(specs.networkTechnology)
+  database.query(`
+    INSERT INTO network_adapters (
+      id, network_technology, controller, form_factor, card_height, slot_width, power_mw,
+      max_speed_bps, max_phy_rate_bps,
+      spatial_streams, bluetooth_version, antenna_topology, hardware_revision, discontinued
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    itemId,
+    technology,
+    optionalText(specs.controller),
+    optionalText(specs.formFactor) ?? 'unknown',
+    optionalText(item.compatibility?.requirements?.expansion?.height),
+    positiveIntegerOrNull(item.compatibility?.requirements?.expansion?.slotWidth),
+    canonicalMeasurement(
+      item.compatibility?.requirements?.expansion?.powerMw,
+      item.compatibility?.requirements?.expansion?.powerWatts,
+      (value) => toMilliwatts({ value, unit: 'W' }),
+      'compatibility.requirements.expansion.powerMw',
+    ),
+    integerOrNull(specs.maxSpeedBps),
+    integerOrNull(specs.maxPhyRateBps),
+    positiveIntegerOrNull(specs.spatialStreams),
+    optionalText(specs.bluetoothVersion),
+    optionalText(specs.antennaTopology),
+    optionalText(specs.hardwareRevision),
+    booleanOrNull(specs.discontinued),
+  )
+  const host = specs.hostInterface
+  if (host && typeof host === 'object' && !Array.isArray(host)) {
+    database.query(`
+      INSERT INTO network_adapter_host_interfaces (
+        adapter_id, family, pcie_generation, connector_lanes, minimum_electrical_lanes,
+        key, module_size, usb_generation, connector, ocp_version, interface_key
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      itemId,
+      host.family,
+      positiveIntegerOrNull(host.pcieGeneration),
+      positiveIntegerOrNull(host.connectorLanes),
+      positiveIntegerOrNull(host.minimumElectricalLanes),
+      optionalText(host.key),
+      optionalText(host.moduleSize),
+      optionalText(host.usbGeneration),
+      optionalText(host.connector),
+      optionalText(host.ocpVersion),
+      optionalText(host.interfaceKey),
+    )
+  }
+  insertTextValues(database, 'network_adapter_operating_modes', itemId, 'mode', specs.operatingModes)
+  insertTextValues(database, 'network_adapter_wifi_generations', itemId, 'generation', specs.wifiGenerations)
+  for (const band of [...new Set(records(specs.frequencyBandsGhz).map(Number))]) {
+    if (!Number.isFinite(band) || band <= 0) throw new Error('Network adapter frequency bands must be positive numbers.')
+    database.query('INSERT INTO network_adapter_frequency_bands (adapter_id, frequency_mhz) VALUES (?, ?)').run(itemId, Math.round(band * 1000))
+  }
+  const capabilities = specs.capabilities
+  if (capabilities && typeof capabilities === 'object' && !Array.isArray(capabilities)) {
+    database.query(`
+      INSERT INTO network_adapter_capabilities (adapter_id, sriov, ptp, pxe, uefi_boot, wake_on_lan)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `).run(
+      itemId,
+      booleanOrNull(capabilities.sriov),
+      booleanOrNull(capabilities.ptp),
+      booleanOrNull(capabilities.pxe),
+      booleanOrNull(capabilities.uefiBoot),
+      booleanOrNull(capabilities.wakeOnLan),
+    )
+    insertTextValues(database, 'network_adapter_rdma_modes', itemId, 'mode', capabilities.rdmaModes)
+    insertTextValues(database, 'network_adapter_offloads', itemId, 'offload', capabilities.offloads)
+  }
+  const extension = networkExtensionTree(item)
+  if (extension) insertNetworkExtensionValue(database, itemId, '', extension)
 }
 
 function ensureManufacturer(database: Database, value: unknown, now: number) {
@@ -246,7 +488,7 @@ function insertSubtype(database: Database, type: InventoryType, itemId: number, 
       break
     }
     case 'gpu': database.query('INSERT INTO graphics_cards (id, vram_mib, form_factor, slot_width, pcie) VALUES (?, ?, ?, ?, ?)').run(itemId, canonicalMeasurement(specs.vramMib, specs.vramGb, (value) => toMib({ value, unit: 'GiB' }), 'specs.vramMib'), optionalText(specs.formFactor), optionalText(specs.slotWidth), optionalText(specs.pcie)); break
-    case 'network': database.query('INSERT INTO network_cards (id, port_count, max_speed_bps, interface, form_factor) VALUES (?, ?, ?, ?, ?)').run(itemId, integerOrNull(specs.ports), canonicalMeasurement(specs.maxSpeedBps, specs.speedMbps, (value) => toBitsPerSecond({ value, unit: 'Mbps' }), 'specs.maxSpeedBps'), optionalText(specs.interface), optionalText(specs.formFactor)); break
+    case 'network': insertNetworkAdapter(database, itemId, normalizedNetworkItem(item, 'network')); break
     case 'motherboard': database.query('INSERT INTO motherboards (id, chipset, form_factor, board_revision, launch_date_text, discontinued, wifi_generation, bluetooth) VALUES (?, ?, ?, ?, ?, ?, ?, ?)').run(itemId, optionalText(specs.chipset), optionalText(specs.formFactor), optionalText(specs.boardRevision), optionalText(specs.launchDate), booleanOrNull(specs.discontinued), optionalText(specs.wifiGeneration), optionalText(specs.bluetooth)); break
     case 'cpuCooler': database.query('INSERT INTO cpu_coolers (id, cooler_type) VALUES (?, ?)').run(itemId, optionalText(specs.coolerType)); break
     case 'case': database.query('INSERT INTO computer_cases (id) VALUES (?)').run(itemId); for (const factor of records(specs.formFactors)) database.query('INSERT INTO case_form_factor_support (case_id, form_factor) VALUES (?, ?)').run(itemId, String(factor)); break
@@ -256,7 +498,6 @@ function insertSubtype(database: Database, type: InventoryType, itemId: number, 
       break
     }
     case 'soundCard': database.query('INSERT INTO sound_cards (id, interface) VALUES (?, ?)').run(itemId, optionalText(specs.interface)); break
-    case 'wireless': database.query('INSERT INTO wireless_cards (id, interface, wifi_generation, bluetooth) VALUES (?, ?, ?, ?)').run(itemId, optionalText(specs.interface), optionalText(specs.wifiGeneration), booleanOrNull(specs.bluetooth)); break
     case 'powerAdapter': database.query('INSERT INTO power_adapters (id, rated_power_mw, connector_type_id, connector_text) VALUES (?, ?, ?, ?)').run(itemId, canonicalMeasurement(specs.ratedPowerMw, specs.wattageWatts, (value) => toMilliwatts({ value, unit: 'W' }), 'specs.ratedPowerMw'), vocabularyId(database, 'power_connector_types', specs.connector), vocabularyId(database, 'power_connector_types', specs.connector) ? null : optionalText(specs.connector)); break
     case 'switch': database.query('INSERT INTO network_switches (id, management_type, switching_capacity_bps, fanless) VALUES (?, ?, ?, ?)').run(itemId, optionalText(specs.management), canonicalMeasurement(specs.switchingCapacityBps, specs.switchingCapacityGbps, (value) => toBitsPerSecond({ value, unit: 'Gbps' }), 'specs.switchingCapacityBps'), Number(specs.fanless === true)); break
     case 'patchPanel': database.query('INSERT INTO patch_panels (id, rack_units, mount) VALUES (?, ?, ?)').run(itemId, integerOrNull(specs.rackUnits), optionalText(specs.mount)); break
@@ -349,7 +590,32 @@ function importCompatibility(database: Database, itemId: number, item: LegacyRec
       }
     }
     if (resourceType === 'expansion') {
-      database.query('INSERT INTO expansion_resource_groups (id, interface_family, expansion_slot_type_id, pcie_generation, mechanical_lanes, electrical_lanes, max_slot_width, max_power_mw, proprietary_riser, riser_capability, riser_group) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)').run(resourceIdentityId, ['pcie', 'm2-ae', 'usb', 'onboard'].includes(entry.interfaceFamily) ? entry.interfaceFamily : 'pcie', vocabularyId(database, 'expansion_slot_types', entry.slotType), positiveIntegerOrNull(entry.pcieGeneration), positiveIntegerOrNull(entry.mechanicalLanes), positiveIntegerOrNull(entry.electricalLanes), positiveIntegerOrNull(entry.maxSlotWidth), canonicalMeasurement(entry.maxPowerMw, entry.maxPowerWatts, (value) => toMilliwatts({ value, unit: 'W' }), `compatibility.host.expansionSlots.${definition.key}.maxPowerMw`), booleanOrNull(entry.proprietaryRiser), optionalText(entry.riserCapability), optionalText(entry.riserGroup))
+      const interfaceFamily = [
+        'pcie',
+        'm2-ae',
+        'm2-bm',
+        'mini-pcie',
+        'usb',
+        'ocp',
+        'mezzanine',
+        'onboard',
+        'proprietary',
+      ].includes(entry.interfaceFamily) ? entry.interfaceFamily : 'proprietary'
+      database.query(`
+        INSERT INTO expansion_resource_groups (
+          id, interface_family, interface_key, keying, module_size, usb_generation, connector,
+          ocp_version, expansion_slot_type_id, pcie_generation, mechanical_lanes, electrical_lanes,
+          max_slot_width, max_power_mw, proprietary_riser, riser_capability, riser_group
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        resourceIdentityId, interfaceFamily, optionalText(entry.interfaceKey), optionalText(entry.key),
+        optionalText(entry.moduleSize), optionalText(entry.usbGeneration), optionalText(entry.connector),
+        optionalText(entry.ocpVersion), vocabularyId(database, 'expansion_slot_types', entry.slotType),
+        positiveIntegerOrNull(entry.pcieGeneration), positiveIntegerOrNull(entry.mechanicalLanes),
+        positiveIntegerOrNull(entry.electricalLanes), positiveIntegerOrNull(entry.maxSlotWidth),
+        canonicalMeasurement(entry.maxPowerMw, entry.maxPowerWatts, (value) => toMilliwatts({ value, unit: 'W' }), `compatibility.host.expansionSlots.${definition.key}.maxPowerMw`),
+        booleanOrNull(entry.proprietaryRiser), optionalText(entry.riserCapability), optionalText(entry.riserGroup),
+      )
       for (const height of records(entry.acceptedHeights)) database.query('INSERT INTO expansion_accepted_heights (resource_group_id, height) VALUES (?, ?)').run(resourceIdentityId, String(height))
     }
     for (const kind of records(entry.acceptedKinds ?? entry.acceptedModuleKinds ?? entry.acceptedControllerKinds ?? entry.acceptedDeviceKinds)) database.query('INSERT INTO resource_accepted_kinds (resource_group_id, kind) VALUES (?, ?)').run(resourceIdentityId, String(kind))
@@ -430,10 +696,18 @@ function importCompatibility(database: Database, itemId: number, item: LegacyRec
   }
 }
 
-function importPorts(database: Database, type: InventoryType, item: LegacyRecord, itemId: number, plan: CanonicalIdentityPlan, now: number) {
+function importPorts(
+  database: Database,
+  type: InventoryType,
+  item: LegacyRecord,
+  itemId: number,
+  plan: CanonicalIdentityPlan,
+  now: number,
+  identityType: LegacyInventoryType = type,
+) {
   const usedSlots = new Set<number>()
   for (const port of records(item.ports).sort((a, b) => Number(a.id) - Number(b.id))) {
-    const key = `${type}:${item.id}:port:${port.id}`
+    const key = `${identityType}:${item.id}:port:${port.id}`
     const portId = plan.ports.get(key)
     if (!portId) throw new Error(`Missing port identity ${key}.`)
     let slotNumber = integerOrNull(port.slotNumber) ?? Number(port.id)
@@ -443,8 +717,63 @@ function importPorts(database: Database, type: InventoryType, item: LegacyRecord
     const connectorId = vocabularyId(database, 'connector_types', connectorType(port))
     if (!kindId || !connectorId) throw new Error(`Port ${key} uses an unsupported kind or connector.`)
     database.query('INSERT INTO inventory_ports (id, item_id, created_at_ms) VALUES (?, ?, ?)').run(portId, itemId, now)
-    database.query('INSERT INTO port_identity_aliases (port_id, legacy_item_type_key, legacy_item_id, legacy_port_id, created_at_ms) VALUES (?, ?, ?, ?, ?)').run(portId, type, item.id, port.id, now)
+    const activeAlias = database.query(`
+      SELECT legacy_type_key, legacy_id FROM inventory_identity_aliases WHERE item_id = ?
+    `).get(itemId) as { legacy_type_key: string; legacy_id: number }
+    database.query('INSERT INTO port_identity_aliases (port_id, legacy_item_type_key, legacy_item_id, legacy_port_id, created_at_ms) VALUES (?, ?, ?, ?, ?)').run(portId, activeAlias.legacy_type_key, activeAlias.legacy_id, port.id, now)
+    if (identityType === 'wireless') {
+      database.query(`
+        INSERT INTO port_compatibility_aliases (
+          port_id, legacy_item_type_key, legacy_item_id, legacy_port_id, created_at_ms
+        ) VALUES (?, 'wireless', ?, ?, ?)
+      `).run(portId, item.id, port.id, now)
+    }
     database.query('INSERT INTO item_port_details (port_id, kind_id, connector_type_id, semantic_key, slot_number, label, notes, ip_address, role, speed_bps, poe, origin) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)').run(portId, kindId, connectorId, optionalText(port.key), slotNumber, optionalText(port.label), optionalText(port.notes), optionalText(port.ipAddress), portRole(port.role), canonicalMeasurement(port.speedBps, speedBps(port.speed), (value) => value, `ports.${port.id}.speedBps`), booleanOrNull(port.poe), port.origin === 'module' ? 'module' : 'fixed')
+    if (type === 'network') {
+      const adapterTechnology = optionalText(item.specs?.networkTechnology) ?? 'ethernet'
+      const portTechnology = optionalText(port.networkTechnology) ?? adapterTechnology
+      if (portTechnology === 'wifi' || portTechnology === 'cellular') {
+        throw new Error(`Radio adapter port ${key} cannot expose a physical cable endpoint.`)
+      }
+      database.query(`
+        INSERT INTO network_adapter_ports (port_id, adapter_id, network_technology, vendor_lock)
+        VALUES (?, ?, ?, ?)
+      `).run(portId, itemId, portTechnology, booleanOrNull(port.vendorLock))
+      const canonicalPortSpeed = canonicalMeasurement(
+        port.speedBps,
+        speedBps(port.speed),
+        (value) => value,
+        `ports.${port.id}.speedBps`,
+      )
+      const supportedSpeeds = records(port.supportedSpeedsBps)
+      if (!supportedSpeeds.length && canonicalPortSpeed != null) supportedSpeeds.push(canonicalPortSpeed)
+      for (const supportedSpeed of [...new Set(supportedSpeeds.map(integerOrNull).filter((value): value is number => value != null && value > 0))]) {
+        database.query('INSERT INTO network_adapter_port_supported_speeds (port_id, speed_bps) VALUES (?, ?)').run(portId, supportedSpeed)
+      }
+      const modes = records(port.operatingModes)
+      if (!modes.length) modes.push(portTechnology)
+      for (const mode of [...new Set(modes.map(optionalText).filter(Boolean) as string[])]) {
+        database.query('INSERT INTO network_adapter_port_operating_modes (port_id, mode) VALUES (?, ?)').run(portId, mode)
+      }
+      for (const medium of [...new Set(records(port.media).map(optionalText).filter(Boolean) as string[])]) {
+        database.query('INSERT INTO network_adapter_port_media (port_id, medium) VALUES (?, ?)').run(portId, medium)
+      }
+      if (port.label != null || port.ipAddress != null || port.macAddress != null || port.role != null || port.adminState != null) {
+        database.query(`
+          INSERT INTO network_port_local_overrides (
+            port_id, label, ip_address, mac_address, role, admin_state, updated_at_ms
+          ) VALUES (?, ?, ?, ?, ?, ?, ?)
+        `).run(
+          portId,
+          optionalText(port.label),
+          optionalText(port.ipAddress),
+          optionalText(port.macAddress),
+          portRole(port.role),
+          port.adminState === 'enabled' || port.adminState === 'disabled' ? port.adminState : null,
+          now,
+        )
+      }
+    }
     for (const endpoint of records(port.endpoints)) {
       const faceId = plan.endpointFaces.get(`${key}:face:${endpoint.id}`)
       if (!faceId) throw new Error(`Missing endpoint-face identity for ${key}.`)
@@ -463,15 +792,28 @@ function insertInventoryItem(
   now: number,
   scope: 'global' | 'project' = 'global',
   ownerProjectId: number | null = null,
+  legacyType: LegacyInventoryType = type,
 ) {
   const typeRow = database.query('SELECT id FROM inventory_item_types WHERE key = ?').get(type) as { id: number } | null
   if (!typeRow) throw new Error(`Inventory item type ${type} is not configured.`)
   const manufacturerId = ensureManufacturer(database, item.manufacturer, now)
   database.query(`INSERT INTO inventory_items (id, type_id, scope, owner_project_id, name, manufacturer_id, manufacturer_text, model, family, product_number, subtype, serial_number, notes, extensions_json, row_version, archived_at_ms, created_at_ms, updated_at_ms) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?)`)
-    .run(itemId, typeRow.id, scope, ownerProjectId, optionalText(item.name) ?? `${type} ${item.id}`, manufacturerId, manufacturerId ? null : optionalText(item.manufacturer), optionalText(item.model), optionalText(item.family), optionalText(item.number), optionalText(item.subtype), optionalText(item.serialNumber ?? item.specs?.serialNumber), optionalText(item.notes), json(extensionPayload(item)), timestamp(item.archivedAt, null as any), now, now)
-  database.query('INSERT INTO inventory_identity_aliases (item_id, legacy_type_key, legacy_id, created_at_ms) VALUES (?, ?, ?, ?)').run(itemId, type, item.id, now)
+    .run(itemId, typeRow.id, scope, ownerProjectId, optionalText(item.name) ?? `${type} ${item.id}`, manufacturerId, manufacturerId ? null : optionalText(item.manufacturer), optionalText(item.model), optionalText(item.family), optionalText(item.number), optionalText(item.subtype), optionalText(item.serialNumber ?? item.specs?.serialNumber), optionalText(item.notes), json(extensionPayload(item, type)), timestamp(item.archivedAt, null as any), now, now)
+  const activeLegacyId = legacyType === 'wireless'
+    ? Number((database.query(`
+        SELECT coalesce(max(legacy_id), 0) + 1 AS id
+        FROM inventory_identity_aliases WHERE legacy_type_key = 'network'
+      `).get() as { id: number }).id)
+    : Number(item.id)
+  database.query('INSERT INTO inventory_identity_aliases (item_id, legacy_type_key, legacy_id, created_at_ms) VALUES (?, ?, ?, ?)').run(itemId, type, activeLegacyId, now)
+  if (legacyType === 'wireless') {
+    database.query(`
+      INSERT INTO inventory_compatibility_aliases (item_id, legacy_type_key, legacy_id, created_at_ms)
+      VALUES (?, 'wireless', ?, ?)
+    `).run(itemId, item.id, now)
+  }
   database.query('INSERT INTO project_inventory_memberships (project_id, item_id, created_at_ms) VALUES (?, ?, ?)').run(projectId, itemId, now)
-  insertInventoryItemDetails(database, type, item, itemId, plan, now)
+  insertInventoryItemDetails(database, type, item, itemId, plan, now, legacyType)
 }
 
 const SUBTYPE_TABLE_BY_TYPE: Readonly<Record<InventoryType, string>> = {
@@ -482,13 +824,12 @@ const SUBTYPE_TABLE_BY_TYPE: Readonly<Record<InventoryType, string>> = {
   ram: 'memory_modules',
   storage: 'storage_devices',
   gpu: 'graphics_cards',
-  network: 'network_cards',
+  network: 'network_adapters',
   motherboard: 'motherboards',
   cpuCooler: 'cpu_coolers',
   case: 'computer_cases',
   powerSupply: 'power_supplies',
   soundCard: 'sound_cards',
-  wireless: 'wireless_cards',
   powerAdapter: 'power_adapters',
   switch: 'network_switches',
   patchPanel: 'patch_panels',
@@ -671,6 +1012,7 @@ function insertInventoryItemDetails(
   itemId: number,
   plan: CanonicalIdentityPlan,
   now: number,
+  legacyType: LegacyInventoryType = type,
 ) {
   insertSubtype(database, type, itemId, item)
   for (const component of records(item.fixedComponents)) {
@@ -720,7 +1062,7 @@ function insertInventoryItemDetails(
   for (const [key, value] of Object.entries(item.properties ?? {})) {
     database.query('INSERT INTO inventory_item_properties (item_id, key, value, created_at_ms, updated_at_ms) VALUES (?, ?, ?, ?, ?)').run(itemId, key, typeof value === 'string' ? value : json(value), now, now)
   }
-  importPorts(database, type, item, itemId, plan, now)
+  importPorts(database, type, item, itemId, plan, now, legacyType)
   if (type === 'powerStrip' && item.smart?.enabled === true) {
     const smart = database.query('INSERT INTO power_strip_smart_configurations (power_strip_id, enabled, display_name, management_ip, mac_address, created_at_ms, updated_at_ms) VALUES (?, 1, ?, ?, ?, ?, ?) RETURNING id').get(itemId, optionalText(item.smart.displayName), optionalText(item.smart.managementIp), optionalText(item.smart.macAddress), now, now) as { id: number }
     for (const outlet of records(item.smart.outlets)) {
@@ -967,7 +1309,7 @@ export function replaceLegacyInventoryItem({
     optionalText(item.subtype),
     optionalText(item.serialNumber ?? item.specs?.serialNumber),
     optionalText(item.notes),
-    json(extensionPayload(item)),
+    json(extensionPayload(item, type)),
     now,
     itemId,
   )
@@ -1020,13 +1362,29 @@ function importInventory(database: Database, snapshot: LegacySnapshot, plan: Can
   for (const type of INVENTORY_TYPES) {
     for (const item of records(snapshot.inventory?.[LEGACY_TABLE_BY_TYPE[type]]).sort((a, b) => Number(a.id) - Number(b.id))) {
       const itemId = canonicalItemId(plan, type, item.id)
-      insertInventoryItem(database, 1, type, item, itemId, plan, now)
+      const normalized = type === 'network' ? normalizedNetworkItem(item, type) : item
+      insertInventoryItem(database, 1, type, normalized, itemId, plan, now)
     }
+  }
+  for (const item of records(snapshot.inventory?.[LEGACY_IMPORT_TABLE_BY_TYPE.wireless]).sort((a, b) => Number(a.id) - Number(b.id))) {
+    const itemId = canonicalItemId(plan, 'wireless', item.id)
+    insertInventoryItem(
+      database,
+      1,
+      'network',
+      normalizedNetworkItem(item, 'wireless'),
+      itemId,
+      plan,
+      now,
+      'global',
+      null,
+      'wireless',
+    )
   }
 }
 
-function findLegacyItem(snapshot: LegacySnapshot, type: InventoryType, id: number) {
-  return records(snapshot.inventory?.[LEGACY_TABLE_BY_TYPE[type]]).find((item) => item.id === id)
+function findLegacyItem(snapshot: LegacySnapshot, type: LegacyInventoryType, id: number) {
+  return records(snapshot.inventory?.[LEGACY_IMPORT_TABLE_BY_TYPE[type]]).find((item) => item.id === id)
 }
 
 function assignmentSlot(snapshot: LegacySnapshot, plan: CanonicalIdentityPlan, assignment: LegacyRecord) {

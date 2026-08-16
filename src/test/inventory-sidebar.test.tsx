@@ -50,13 +50,13 @@ const projectWithInventory: ProjectState = {
 
 const orderedTypes: InventoryType[] = [
   'server', 'pcBuild', 'cpu', 'cpuCooler', 'motherboard', 'ram', 'storage', 'gpu',
-  'network', 'wireless', 'soundCard', 'case', 'powerSupply', 'powerAdapter', 'nas',
+  'network', 'soundCard', 'case', 'powerSupply', 'powerAdapter', 'nas',
   'switch', 'patchPanel', 'monitor', 'ups', 'powerStrip',
 ]
 
 const orderedLabels = [
   'Server', 'PC Build', 'CPU', 'CPU Cooler', 'Motherboard', 'RAM', 'Storage', 'GPU',
-  'Network', 'Wireless', 'Sound Card', 'Case', 'Power Supply', 'Power Adapter', 'NAS',
+  'Network Adapter', 'Sound Card', 'Case', 'Power Supply', 'Power Adapter', 'NAS',
   'Switch', 'Patch Panel', 'Monitor', 'UPS', 'Power Strip',
 ]
 
@@ -178,7 +178,7 @@ describe('InventorySidebar', () => {
       expect(dragRole(type as InventoryType)).toHaveAttribute('data-inventory-drag-role', 'equipment')
     }
 
-    for (const type of ['cpu', 'cpuCooler', 'motherboard', 'wireless', 'powerSupply', 'powerAdapter']) {
+    for (const type of ['cpu', 'cpuCooler', 'motherboard', 'network', 'powerSupply', 'powerAdapter']) {
       expect(dragRole(type as InventoryType)).toHaveAttribute('data-inventory-drag-role', 'component')
     }
   })

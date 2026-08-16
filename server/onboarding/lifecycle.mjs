@@ -14,7 +14,7 @@ const TABLE_BY_TYPE = {
 const refKey = (type, id) => `${type}:${id}`
 
 function nextId(records) {
-  return records.reduce((maximum, record) => Math.max(maximum, Number(record.id) || 0), 0) + 1
+  return (records ?? []).reduce((maximum, record) => Math.max(maximum, Number(record.id) || 0), 0) + 1
 }
 
 function nextProjectId(records) {
@@ -59,6 +59,7 @@ export function loadExampleIntoDraft(draft, now = new Date().toISOString()) {
   const sampleInventoryRefs = []
   for (const type of INVENTORY_TYPES) {
     const table = TABLE_BY_TYPE[type]
+    draft.inventory[table] ??= []
     let id = nextId(draft.inventory[table])
     for (const item of template.inventory.filter((entry) => entry.type === type)) {
       mappedIds.set(refKey(type, item.id), id)

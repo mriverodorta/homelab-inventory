@@ -1,4 +1,7 @@
-import type { InventoryFormValues } from '@/components/inventory-form/model'
+import {
+  inventoryTypeHasPorts,
+  type InventoryFormValues,
+} from '@/components/inventory-form/model'
 import { ComponentCompatibilityTab } from '@/components/component-compatibility-tab'
 import { PortGroupsEditor } from '@/components/inventory-form/port-groups-editor'
 import {
@@ -44,7 +47,7 @@ export function ComponentInspectorTabs({
 }: ComponentInspectorTabsProps) {
   if (!componentTypes.has(values.type)) return null
 
-  const hasPortsTab = values.type === 'gpu' || values.type === 'network'
+  const hasPortsTab = inventoryTypeHasPorts(values.type, values.networkTechnology)
 
   return (
     <Tabs defaultValue="specs" className="min-w-0 gap-3">

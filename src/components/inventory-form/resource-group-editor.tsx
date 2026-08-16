@@ -2,6 +2,7 @@ import { Plus, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { FieldError, SelectField, TextField } from './field-primitives'
+import { ExpansionInterfaceFields } from './expansion-interface-fields'
 import type {
   ExpansionSlotGroupDraft,
   MotherboardPowerConnectorDraft,
@@ -187,6 +188,12 @@ export function ExpansionSlotGroupsEditor({
             label: '',
             count: '',
             interfaceFamily: '',
+            interfaceKey: '',
+            keying: '',
+            moduleSize: '',
+            usbGeneration: '',
+            connector: '',
+            ocpVersion: '',
             pcieGeneration: '',
             mechanicalLanes: '',
             electricalLanes: '',
@@ -230,6 +237,7 @@ export function ExpansionSlotGroupsEditor({
             <SelectField label="Maximum slot width" name={`expansion-group-${group.draftKey}-slot-width`} value={group.maxSlotWidth} options={SLOT_WIDTHS} emptyLabel="Not specified" onOpenChange={onSelectOpenChange} onValueChange={(maxSlotWidth) => updateGroup(group.draftKey, { maxSlotWidth })} />
             <TextField label="Maximum power (W)" name={`expansion-group-${group.draftKey}-power`} value={group.maxPowerWatts} type="number" min={0} placeholder="75" onChange={(maxPowerWatts) => updateGroup(group.draftKey, { maxPowerWatts })} />
           </div>
+          <ExpansionInterfaceFields group={group} onChange={(patch) => updateGroup(group.draftKey, patch)} />
           <CheckboxOptions label={`Expansion group ${index + 1} accepted heights`} options={CARD_HEIGHTS} selected={group.acceptedHeights} onChange={(acceptedHeights) => updateGroup(group.draftKey, { acceptedHeights })} />
           <div className="grid gap-3 sm:grid-cols-3">
             <label className="flex min-h-10 items-center gap-2 rounded-md border border-[#ded8ce] bg-[#fffdf8] px-3 text-xs font-semibold text-[#3d3832]">

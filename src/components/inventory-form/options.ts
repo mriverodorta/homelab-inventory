@@ -25,7 +25,6 @@ export const INVENTORY_TYPES: InventoryType[] = [
   'case',
   'powerSupply',
   'soundCard',
-  'wireless',
   'powerAdapter',
   'switch',
   'patchPanel',
@@ -42,13 +41,12 @@ export const TYPE_LABELS: Partial<Record<InventoryType, string>> = {
   ram: 'RAM',
   storage: 'Storage',
   gpu: 'GPU',
-  network: 'Network Card',
+  network: 'Network Adapter',
   motherboard: 'Motherboard',
   cpuCooler: 'CPU Cooler',
   case: 'Case',
   powerSupply: 'Power Supply',
   soundCard: 'Sound Card',
-  wireless: 'Wireless Card',
   powerAdapter: 'Power Adapter',
   switch: 'Switch',
   patchPanel: 'Patch Panel',
@@ -142,8 +140,27 @@ export const GPU_MANUFACTURERS = ['AMD', 'Nvidia', 'Intel']
 export const GPU_FORM_FACTORS = ['Low profile', 'Full height', 'Half height', 'Single slot', 'Dual slot']
 export const GPU_SLOT_WIDTHS = ['Single slot', 'Dual slot', 'Triple slot']
 export const PCIE_OPTIONS = ['PCIe 2.0 x1', 'PCIe 2.0 x4', 'PCIe 2.0 x8', 'PCIe 3.0 x4', 'PCIe 3.0 x8', 'PCIe 3.0 x16', 'PCIe 4.0 x4', 'PCIe 4.0 x8', 'PCIe 4.0 x16', 'PCIe 5.0 x16']
-export const NETWORK_INTERFACES = ['PCIe 2.0 x1', 'PCIe 2.0 x4', 'PCIe 2.0 x8', 'PCIe 3.0 x1', 'PCIe 3.0 x4', 'PCIe 3.0 x8', 'M.2 A+E', 'USB']
-export const NETWORK_FORM_FACTORS = ['Low profile', 'Full height', 'M.2 2230 A+E', 'USB dongle', 'Onboard']
+export const NETWORK_TECHNOLOGIES = [
+  { value: 'ethernet', label: 'Ethernet' },
+  { value: 'wifi', label: 'Wi-Fi' },
+  { value: 'fibre-channel', label: 'Fibre Channel' },
+  { value: 'infiniband', label: 'InfiniBand' },
+  { value: 'converged', label: 'Converged network' },
+  { value: 'cellular', label: 'Cellular' },
+  { value: 'other', label: 'Other' },
+]
+export const NETWORK_HOST_INTERFACE_FAMILIES = [
+  { value: 'pcie', label: 'PCIe' },
+  { value: 'm2-ae', label: 'M.2 A/E' },
+  { value: 'm2-bm', label: 'M.2 B/M' },
+  { value: 'mini-pcie', label: 'Mini PCIe' },
+  { value: 'usb', label: 'USB' },
+  { value: 'ocp', label: 'OCP NIC' },
+  { value: 'mezzanine', label: 'Mezzanine' },
+  { value: 'onboard', label: 'Onboard' },
+  { value: 'proprietary', label: 'Proprietary' },
+]
+export const NETWORK_FORM_FACTORS = ['low-profile', 'full-height', 'm2-2230', 'usb-dongle', 'onboard', 'mezzanine', 'ocp']
 export const PCIE_GENERATIONS = ['1', '2', '3', '4', '5', '6']
 export const PCIE_LANE_WIDTHS = ['1', '2', '4', '8', '16']
 export const EXPANSION_INTERFACE_FAMILIES = ['pcie', 'm2-ae', 'usb', 'onboard']

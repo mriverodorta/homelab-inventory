@@ -11,7 +11,6 @@ const EDITABLE_COMPONENT_TYPES: ReadonlySet<ComponentType> = new Set([
   'case',
   'powerSupply',
   'soundCard',
-  'wireless',
   'powerAdapter',
 ])
 

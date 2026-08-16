@@ -404,7 +404,7 @@ export const DEFAULT_REGISTRY_STATE: RegistryState = {
   database: {
     schemaVersion: null,
     applicationOemContractVersion: 6,
-    applicationCatalogContractVersion: 10,
+    applicationCatalogContractVersion: 11,
     lastMigration: null,
   },
 }

@@ -88,6 +88,18 @@ export const inventoryIdentityAliases = sqliteTable('inventory_identity_aliases'
   check('inventory_identity_aliases_legacy_id_check', sql`${table.legacyId} > 0`),
 ])
 
+export const inventoryCompatibilityAliases = sqliteTable('inventory_compatibility_aliases', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  itemId: integer('item_id').notNull().references(() => inventoryItems.id, { onDelete: 'cascade' }),
+  legacyTypeKey: text('legacy_type_key').notNull(),
+  legacyId: integer('legacy_id').notNull(),
+  createdAtMs: integer('created_at_ms').notNull(),
+}, (table) => [
+  uniqueIndex('inventory_compatibility_aliases_legacy_unique').on(table.legacyTypeKey, table.legacyId),
+  index('inventory_compatibility_aliases_item_index').on(table.itemId),
+  check('inventory_compatibility_aliases_legacy_id_check', sql`${table.legacyId} > 0`),
+])
+
 export const inventoryPorts = sqliteTable('inventory_ports', {
   id: integer('id').primaryKey({ autoIncrement: true }),
   itemId: integer('item_id').notNull().references(() => inventoryItems.id, { onDelete: 'cascade' }),
@@ -111,6 +123,24 @@ export const portIdentityAliases = sqliteTable('port_identity_aliases', {
   ),
   uniqueIndex('port_identity_aliases_port_unique').on(table.portId),
   check('port_identity_aliases_ids_check', sql`${table.legacyItemId} > 0 AND ${table.legacyPortId} > 0`),
+])
+
+export const portCompatibilityAliases = sqliteTable('port_compatibility_aliases', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  portId: integer('port_id').notNull().references(() => inventoryPorts.id, { onDelete: 'cascade' }),
+  legacyItemTypeKey: text('legacy_item_type_key').notNull(),
+  legacyItemId: integer('legacy_item_id').notNull(),
+  legacyPortId: integer('legacy_port_id').notNull(),
+  createdAtMs: integer('created_at_ms').notNull(),
+}, (table) => [
+  uniqueIndex('port_compatibility_aliases_legacy_unique').on(
+    table.legacyItemTypeKey,
+    table.legacyItemId,
+    table.legacyPortId,
+  ),
+  index('port_compatibility_aliases_port_index').on(table.portId),
+  check('port_compatibility_aliases_item_id_check', sql`${table.legacyItemId} > 0`),
+  check('port_compatibility_aliases_port_id_check', sql`${table.legacyPortId} > 0`),
 ])
 
 export const inventoryResources = sqliteTable('inventory_resources', {

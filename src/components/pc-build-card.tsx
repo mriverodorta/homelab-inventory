@@ -28,6 +28,7 @@ import {
   formatStorageCanvasParts,
 } from '@/lib/format'
 import { runtimeItemKey } from '@/lib/item-keys'
+import { physicalNetworkAdapterPorts } from '@/lib/network-adapter-ports'
 import { EMPTY_REGISTRY_LINK_KEYS } from '@/lib/registry-links'
 import { visiblePcBuildSlotTypes } from '@/lib/pc-build'
 import { startSelectedPortDrag } from '@/lib/port-interactions'
@@ -324,7 +325,9 @@ function AssignedComponentRow({
   selected: boolean
 }) {
   const itemRuntimeKey = runtimeItemKey(item)
-  const ports = assignment.type === 'motherboard' ? [] : sortPorts(item.ports)
+  const ports = assignment.type === 'motherboard'
+    ? []
+    : sortPorts(assignment.type === 'network' ? physicalNetworkAdapterPorts(item.ports) : item.ports)
   const draggable = useDraggable({
     id: `assignment:${assignment.id}`,
     data: {

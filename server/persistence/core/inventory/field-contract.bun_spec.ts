@@ -75,11 +75,21 @@ describe('inventory persistence field contract', () => {
       ],
       gpu: ['specs.vramMib', 'specs.vramGb', 'specs.formFactor', 'specs.slotWidth', 'specs.pcie', 'ports'],
       network: [
-        'specs.ports',
+        'specs.networkTechnology',
+        'specs.controller',
+        'specs.hostInterface',
         'specs.maxSpeedBps',
-        'specs.speedMbps',
-        'specs.interface',
+        'specs.maxPhyRateBps',
         'specs.formFactor',
+        'specs.operatingModes',
+        'specs.wifiGenerations',
+        'specs.frequencyBandsGhz',
+        'specs.spatialStreams',
+        'specs.bluetoothVersion',
+        'specs.antennaTopology',
+        'specs.capabilities',
+        'specs.hardwareRevision',
+        'specs.discontinued',
         'ports',
       ],
       motherboard: [
@@ -102,7 +112,6 @@ describe('inventory persistence field contract', () => {
         'specs.connectors',
       ],
       soundCard: ['specs.interface'],
-      wireless: ['specs.interface', 'specs.wifiGeneration', 'specs.bluetooth'],
       powerAdapter: ['specs.ratedPowerMw', 'specs.wattageWatts', 'specs.connector'],
       switch: [
         'specs.management',
@@ -164,7 +173,6 @@ describe('inventory persistence field contract', () => {
       'storage',
       'switch',
       'ups',
-      'wireless',
     ])
   })
 

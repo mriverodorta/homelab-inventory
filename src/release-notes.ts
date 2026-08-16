@@ -278,6 +278,21 @@ const RELEASE_0_12_14_DETAILS: UnreleasedReleaseNotes = {
   ],
 }
 
+const RELEASE_0_13_0_DETAILS: UnreleasedReleaseNotes = {
+  highlights: [
+    'Catalog contract v11 adds one unified Network Adapter inventory category for Ethernet, Wi-Fi, cellular, Fibre Channel, InfiniBand, and converged adapters with complete host-interface, physical-port, radio, and capability data.',
+    'Network cable negotiation now selects a compatible connector family, shared operating mode, and greatest common canonical speed in bits per second.',
+  ],
+  fixes: [
+    'Historical network and wireless records migrate into normalized relational Network Adapter tables while preserving assignments, canvas placement, cable connections, Registry links, and legacy identity aliases.',
+    'Wi-Fi and cellular adapters remain assignable without exposing invalid cable endpoints, while wired and fabric adapters expose only declared physical ports.',
+    'Registry updates preserve local port labels, addresses, notes, roles, and administrative state; contributions never include that instance-specific metadata.',
+  ],
+  notes: [
+    'The application reports catalog contract 11 and rejects newer signed contracts explicitly; negotiated Mbps values remain accepted only at historical import boundaries.',
+  ],
+}
+
 export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
   highlights: [],
   fixes: [],
@@ -811,9 +826,16 @@ const RELEASE_0_2_1_DETAILS: UnreleasedReleaseNotes = {
 
 export const RELEASE_NOTES: ReleaseNoteEntry[] = [
   {
+    version: '0.13.0',
+    date: '2026-08-16',
+    channel: 'latest',
+    title: 'Unify wired and wireless Network Adapters',
+    ...RELEASE_0_13_0_DETAILS,
+  },
+  {
     version: '0.12.14',
     date: '2026-08-15',
-    channel: 'latest',
+    channel: 'release',
     title: 'Canonicalize catalog filters and NAS power',
     ...RELEASE_0_12_14_DETAILS,
   },

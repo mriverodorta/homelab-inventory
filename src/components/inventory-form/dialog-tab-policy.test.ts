@@ -37,6 +37,11 @@ describe('inventory dialog tab policy', () => {
     expect(getInventoryDialogTabs(type)).toEqual(tabs)
   })
 
+  it('does not expose physical port editing for radio-only adapters', () => {
+    expect(getInventoryDialogTabs('network', 'wifi')).toEqual(['specs', 'compatibility'])
+    expect(getInventoryDialogTabs('network', 'cellular')).toEqual(['specs', 'compatibility'])
+  })
+
   it('routes to the first available tab containing an error', () => {
     expect(findFirstInventoryDialogErrorTab('server', {
       quantity: 'Quantity is required.',

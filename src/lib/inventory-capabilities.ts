@@ -31,7 +31,6 @@ export const ASSIGNABLE_COMPONENT_TYPES = [
   'case',
   'powerSupply',
   'soundCard',
-  'wireless',
   'powerAdapter',
 ] as const satisfies readonly ComponentType[]
 

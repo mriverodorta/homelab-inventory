@@ -1870,9 +1870,11 @@ describe('InspectorPanel', () => {
           type: 'network',
           manufacturer: 'Intel',
           specs: {
-            interface: 'PCIe 3.0 x4',
+            networkTechnology: 'ethernet',
             formFactor: 'Low profile',
+            hostInterface: { family: 'pcie' },
           },
+          compatibility: { requirements: { expansion: { interfaceFamily: 'pcie' } } },
           ports: [
             {
               id: 1,
@@ -1919,11 +1921,11 @@ describe('InspectorPanel', () => {
       name: 'Intel I350-T4',
       manufacturer: 'Intel',
       specs: {
-        ports: 1,
-        speedMbps: 1000,
-        interface: 'PCIe 3.0 x4',
+        networkTechnology: 'ethernet',
         formFactor: 'Low profile',
+        hostInterface: { family: 'pcie' },
       },
+      compatibility: { requirements: { expansion: { interfaceFamily: 'pcie' } } },
       ports: [expect.objectContaining({
         id: 1,
         ipAddress: '10.0.0.15',

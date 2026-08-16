@@ -104,10 +104,21 @@ function fixtureFor(type: InventoryType): InventoryItem {
     case 'network':
       return {
         ...common,
-        specs: { ports: 2, speedMbps: 10000, interface: 'PCIe 3.0 x8', formFactor: 'Low profile' },
+        specs: {
+          networkTechnology: 'ethernet',
+          hostInterface: {
+            family: 'pcie',
+            pcieGeneration: 3,
+            connectorLanes: 8,
+            minimumElectricalLanes: 8,
+          },
+          maxSpeedBps: 10_000_000_000,
+          operatingModes: ['ethernet'],
+          formFactor: 'Low profile',
+        },
         ports: [
-          { id: 1, kind: 'server-port', type: 'sfp-plus', slotNumber: 1, speed: '10G', role: 'access' },
-          { id: 2, kind: 'server-port', type: 'sfp-plus', slotNumber: 2, speed: '10G', role: 'access' },
+          { id: 1, kind: 'server-port', type: 'sfp-plus', slotNumber: 1, speed: '10G', role: 'access', origin: 'module' },
+          { id: 2, kind: 'server-port', type: 'sfp-plus', slotNumber: 2, speed: '10G', role: 'access', origin: 'module' },
         ],
       }
     case 'switch':
@@ -219,9 +230,10 @@ const newTypeFixtures: InventoryItem[] = [
   },
   {
     id: 107,
-    type: 'wireless',
+    type: 'network',
     name: 'Intel AX210',
-    specs: { interface: 'M.2 A+E', wifiGeneration: 'Wi-Fi 6E', bluetooth: true },
+    specs: { networkTechnology: 'wifi', formFactor: 'm2-2230', hostInterface: { family: 'm2-ae' }, wifiGenerations: ['Wi-Fi 6E'], bluetoothVersion: '5.3' },
+    compatibility: { requirements: { expansion: { interfaceFamily: 'm2-ae' } } },
   },
   {
     id: 108,
@@ -378,7 +390,7 @@ describe('inventory form model', () => {
             minimumElectricalLanes: 4,
             height: 'low-profile',
             slotWidth: 1,
-            powerWatts: 12,
+            powerMw: 12000,
           },
         },
       },
@@ -392,14 +404,14 @@ describe('inventory form model', () => {
           minimumElectricalLanes: 4,
           height: 'low-profile',
           slotWidth: 1,
-          powerWatts: 12,
+          powerMw: 12000,
         },
       },
     })
 
     network.expansionPowerWatts = ''
     expect(inventoryFormValuesToInput(network).compatibility?.requirements?.expansion)
-      .not.toHaveProperty('powerWatts')
+      .not.toHaveProperty('powerMw')
   })
 
   it('removes legacy RAM kit fields from canonical output', () => {

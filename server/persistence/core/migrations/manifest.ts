@@ -90,4 +90,9 @@ export const CORE_MIGRATIONS: readonly CoreMigration[] = [
     file: '0016_registry_update_reconciliation.sql',
     sha256: '67399cdff32dcc6ebfa0bbdb929cd505254c7467c98fa54596b8b861c5afc1d1',
   },
+  {
+    id: '0018_network_adapter_v11',
+    file: '0017_network_adapter_v11.sql',
+    sha256: '816835c4442aa749cdcfe367ac33af9fe63b1c257e0eeec06a28c43e53e8eaaf',
+  },
 ]

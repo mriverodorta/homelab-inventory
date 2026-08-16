@@ -190,6 +190,17 @@ function sanitizePort(value: unknown): CatalogPort | undefined {
       .filter((entry): entry is CatalogPortEndpoint => entry !== undefined)
     if (endpoints.length > 0) sanitized.endpoints = endpoints
   }
+
+  const knownFields = new Set([
+    'id', 'kind', 'type', 'slotNumber', 'key', 'role', 'speed', 'speedBps',
+    'supportedSpeedsBps', 'networkTechnology', 'operatingModes', 'media',
+    'vendorLock', 'poe', 'origin', 'endpoints',
+  ])
+  for (const [key, entry] of Object.entries(port).slice(0, MAX_OBJECT_KEYS)) {
+    if (key === 'label' || knownFields.has(key) || PRIVATE_FIELD_NAMES.has(key)) continue
+    const publicValue = sanitizePublicJson(entry)
+    if (publicValue !== undefined) (sanitized as Record<string, unknown>)[key] = publicValue
+  }
   return sanitized
 }
 

@@ -11,7 +11,6 @@ export const PC_BUILD_COMPONENT_ORDER: ComponentType[] = [
   'gpu',
   'soundCard',
   'network',
-  'wireless',
   'case',
   'powerSupply',
 ]
@@ -57,7 +56,7 @@ export function pcBuildRequirements(item: InventoryItem & { type: ComponentType 
     }
   }
 
-  if (['gpu', 'network', 'soundCard', 'wireless'].includes(item.type)) {
+  if (['gpu', 'network', 'soundCard'].includes(item.type)) {
     const structured = item.compatibility?.requirements?.expansion ?? {}
     return {
       ...normalized,

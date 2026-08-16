@@ -73,4 +73,31 @@ describe('catalog update safety policy', () => {
       }],
     })).toEqual({ classification: 'safe', reasons: ['verified-compatible'], introducedFindings: [] })
   })
+
+  it('keeps network capability and speed enrichment eligible for automatic updates', () => {
+    expect(classifyCatalogUpdate({
+      itemType: 'network',
+      changes: [
+        { path: 'ports[1].speedBps', impact: 'capability', current: 1_000_000_000, next: 10_000_000_000 },
+        { path: 'specs.capabilities.ptp', impact: 'product-definition', current: undefined, next: true },
+      ],
+      beforeFindings: [],
+      afterFindings: [],
+    })).toEqual({ classification: 'safe', reasons: ['verified-compatible'], introducedFindings: [] })
+  })
+
+  it('requires review for network attachment, host-interface, and radio changes', () => {
+    for (const changes of [
+      [{ path: 'ports[1].type', impact: 'attachment', current: 'sfp-plus', next: 'sfp28' }],
+      [{ path: 'specs.hostInterface.family', impact: 'product-definition', current: 'pcie', next: 'ocp' }],
+      [{ path: 'specs.frequencyBandsGhz', impact: 'product-definition', current: [2.4], next: [2.4, 5] }],
+    ]) {
+      expect(classifyCatalogUpdate({
+        itemType: 'network',
+        changes,
+        beforeFindings: [],
+        afterFindings: [],
+      })).toMatchObject({ classification: 'review-required' })
+    }
+  })
 })

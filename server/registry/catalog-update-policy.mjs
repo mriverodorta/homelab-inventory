@@ -3,6 +3,21 @@ const NAS_MATERIAL_SPEC_FIELDS = new Set([
   'formFactor', 'rackUnits', 'hardwareRevision', 'boardRevision', 'variantKey',
   'topologyCompleteness', 'powerConfiguration',
 ])
+const NETWORK_HOST_INTERFACE_PATHS = [
+  'specs.networkTechnology',
+  'specs.formFactor',
+  'specs.hostInterface',
+  'compatibility.requirements.expansion',
+]
+const NETWORK_RADIO_PATHS = [
+  'specs.wifiGenerations',
+  'specs.frequencyBandsGhz',
+  'specs.spatialStreams',
+  'specs.antennaTopology',
+  'specs.maxPhyRateBps',
+  'specs.bluetoothVersion',
+  'specs.bluetoothProfiles',
+]
 
 function changedJson(left, right) {
   return JSON.stringify(left) !== JSON.stringify(right)
@@ -41,6 +56,25 @@ function nasMaterialTopologyChanged(changes) {
   return false
 }
 
+function changedPath(change) {
+  return change.path ?? change.field ?? ''
+}
+
+function pathMatches(path, prefix) {
+  return path === prefix || path.startsWith(`${prefix}.`) || path.startsWith(`${prefix}[`)
+}
+
+function networkChangeReason(semanticChanges) {
+  if (semanticChanges.some((change) => (
+    change.impact === 'attachment'
+    || NETWORK_HOST_INTERFACE_PATHS.some((path) => pathMatches(changedPath(change), path))
+  ))) return 'network-host-interface-change'
+  if (semanticChanges.some((change) => (
+    NETWORK_RADIO_PATHS.some((path) => pathMatches(changedPath(change), path))
+  ))) return 'network-radio-change'
+  return null
+}
+
 function findingKey(result, finding) {
   return `${result.assignmentId}:${finding.code}:${finding.severity ?? 'warning'}:${finding.resourceId ?? ''}`
 }
@@ -64,6 +98,10 @@ export function classifyCatalogUpdate({ itemType, changes, dependencyConflicts =
     || (!change.impact && IDENTITY_FIELDS.has(change.field))
   ))) reasons.push('identity-change')
   if (itemType === 'nas' && nasMaterialTopologyChanged(changes)) reasons.push('material-topology-change')
+  if (itemType === 'network') {
+    const networkReason = networkChangeReason(semanticChanges)
+    if (networkReason) reasons.push(networkReason)
+  }
   if (dependencyConflicts.length > 0) reasons.push('assignment-conflict')
   if (validationError?.code === 'connected-port-change') reasons.push('connected-port-change')
   else if (validationError) reasons.push('structural-validation-failed')

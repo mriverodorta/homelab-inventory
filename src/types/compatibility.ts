@@ -13,7 +13,16 @@ export type CompatibilityResourceType =
   | 'cooling'
   | 'power'
   | 'case'
-export type ExpansionInterfaceFamily = 'pcie' | 'm2-ae' | 'usb' | 'onboard'
+export type ExpansionInterfaceFamily =
+  | 'pcie'
+  | 'm2-ae'
+  | 'm2-bm'
+  | 'mini-pcie'
+  | 'usb'
+  | 'ocp'
+  | 'mezzanine'
+  | 'onboard'
+  | 'proprietary'
 export type CardHeight = 'full-height' | 'low-profile'
 export type TopologyCompleteness = 'complete' | 'partial' | 'conflicting'
 export type EccSupport = 'supported' | 'unsupported' | 'conditional' | 'unknown'
@@ -57,6 +66,12 @@ export type ExpansionSlotGroup = {
   label: string
   count: number
   interfaceFamily: ExpansionInterfaceFamily
+  interfaceKey?: string
+  keying?: string
+  moduleSize?: string
+  usbGeneration?: string
+  connector?: string
+  ocpVersion?: string
   slotType?: string
   pcieGeneration?: number
   mechanicalLanes?: number
@@ -205,12 +220,19 @@ export type ComponentCompatibilityRequirements = {
   }
   expansion?: {
     interfaceFamily?: ExpansionInterfaceFamily
+    interfaceKey?: string
+    key?: string
+    moduleSize?: string
+    usbGeneration?: string
+    connector?: string
+    ocpVersion?: string
     pcieGeneration?: number
     connectorLanes?: number
     minimumElectricalLanes?: number
     height?: CardHeight
     slotWidth?: number
     powerWatts?: number
+    powerMw?: number
   }
 }
 

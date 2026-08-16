@@ -18,7 +18,6 @@ const inventoryTypes: InventoryType[] = [
   'case',
   'powerSupply',
   'soundCard',
-  'wireless',
   'powerAdapter',
   'monitor',
   'ups',

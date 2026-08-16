@@ -117,7 +117,7 @@ function includesInventoryType(
   return types.includes(type)
 }
 
-export function getInventoryDialogTabs(type: InventoryType): InventoryDialogTabId[] {
+export function getInventoryDialogTabs(type: InventoryType, networkTechnology?: string): InventoryDialogTabId[] {
   if (type === 'motherboard') {
     return ['specs', 'cpu', 'memory', 'storage', 'expansion', 'ports', 'power', 'compatibility']
   }
@@ -129,7 +129,7 @@ export function getInventoryDialogTabs(type: InventoryType): InventoryDialogTabI
     if (tab === 'resources') {
       return includesInventoryType(INVENTORY_DIALOG_RESOURCE_TYPES, type)
     }
-    if (tab === 'ports') return inventoryTypeHasPorts(type)
+    if (tab === 'ports') return inventoryTypeHasPorts(type, networkTechnology)
     if (tab === 'smart') return type === 'powerStrip'
     return true
   })
@@ -138,8 +138,9 @@ export function getInventoryDialogTabs(type: InventoryType): InventoryDialogTabI
 export function findFirstInventoryDialogErrorTab(
   type: InventoryType,
   errors: InventoryDialogFormErrors,
+  networkTechnology?: string,
 ): InventoryDialogTabId | null {
-  return getInventoryDialogTabs(type).find((tab) =>
+  return getInventoryDialogTabs(type, networkTechnology).find((tab) =>
     INVENTORY_DIALOG_ERROR_FIELDS[tab].some((field) => Boolean(errors[field])),
   ) ?? null
 }

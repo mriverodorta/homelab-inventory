@@ -574,6 +574,7 @@ describe('recalculateNegotiatedSpeeds', () => {
 
   it('treats an sfp-plus active port without an explicit speed as 10G', () => {
     const server = activeItem('server', 'server', '10G')
+    server.ports = [networkPort('server-port', '10G', { type: 'sfp-plus' })]
     const switchItem: InventoryItem = {
       id: 1,
       key: 'switch:1',

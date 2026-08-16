@@ -6,6 +6,24 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 
 ## Unreleased
 
+## [0.13.0] - 2026-08-16
+
+### Added
+
+- Catalog contract v11 imports Ethernet, Wi-Fi, cellular, Fibre Channel, InfiniBand, and converged Network Adapters with canonical host-interface topology, physical port capabilities, radio specifications, and typed forward-compatible fields.
+- Network cable negotiation now uses compatible connector families, shared operating modes, and the greatest common canonical speed in bits per second.
+
+### Changed
+
+- Network cards and historical wireless cards now share one Network Adapter inventory category; startup migration preserves assignments, placements, cable connections, Registry links, and backward-compatible `wireless:<id>` aliases while emitting only `network:<id>` references.
+- PCIe, M.2 A/E, M.2 B/M, Mini PCIe, USB, OCP, mezzanine, onboard, and proprietary adapter interfaces use dedicated compatibility fields and relational SQLite records instead of opaque JSON.
+- Wi-Fi and cellular adapters remain assignable hardware but do not expose physical cable endpoints; wired and fabric adapters expose only their declared physical ports.
+
+### Fixed
+
+- Registry contributions exclude local Network Adapter labels, addresses, roles, notes, and administrative state, while linked updates preserve those local overrides and require review for attachment, host-interface, or radio-topology changes.
+- Negotiated network speeds now use canonical `negotiatedSpeedBps` at the application boundary and `negotiated_speed_bps` in the engine, with Mbps accepted only when importing historical data.
+
 ## [0.12.14] - 2026-08-15
 
 ### Fixed

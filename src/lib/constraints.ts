@@ -45,7 +45,6 @@ export const SLOT_LABELS: Record<ComponentType, string> = {
   case: 'Case',
   powerSupply: 'Power Supply',
   soundCard: 'Sound Card',
-  wireless: 'Wireless',
   powerAdapter: 'Power Adapter',
 }
 

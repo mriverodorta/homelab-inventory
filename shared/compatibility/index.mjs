@@ -42,7 +42,7 @@ function optionalStringArray(value) {
 }
 
 const HOST_TYPES = new Set(['server', 'nas', 'pcBuild'])
-const EXPANSION_TYPES = new Set(['gpu', 'network', 'soundCard', 'wireless'])
+const EXPANSION_TYPES = new Set(['gpu', 'network', 'soundCard'])
 
 function isHost(item) {
   return HOST_TYPES.has(item?.type)
@@ -58,7 +58,9 @@ function optionalModuleKinds(component) {
     component?.compatibility?.requirements?.optionalModule?.kind,
   ])
   if (explicit.length > 0) return explicit
-  if (component?.type === 'wireless') return ['wireless-card']
+  if (component?.type === 'network' && component?.specs?.networkTechnology === 'wifi') {
+    return ['network-adapter', 'wireless-card']
+  }
   if (component?.type === 'soundCard') return ['sound-card']
   if (component?.type === 'network') {
     const descriptor = `${component?.subtype ?? ''} ${component?.specs?.formFactor ?? ''}`.toLowerCase()
@@ -390,7 +392,7 @@ export function normalizeComponentRequirements(item) {
       return fallback
     }
     const legacyInterface = optionalString(specs.interface ?? specs.slot ?? specs.pcie)
-    const inferredInterfaceFamily = (item.type === 'soundCard' || item.type === 'wireless') && legacyInterface
+    const inferredInterfaceFamily = item.type === 'soundCard' && legacyInterface
       ? /m\.?2|a\+e/i.test(legacyInterface)
         ? 'm2-ae'
         : /usb/i.test(legacyInterface)
@@ -402,16 +404,32 @@ export function normalizeComponentRequirements(item) {
               : undefined
       : undefined
     const interfaceFamily = optionalString(structured?.interfaceFamily ?? inferredInterfaceFamily)
+    const interfaceKey = optionalString(structured?.interfaceKey)
+    const key = optionalString(structured?.key)
+    const moduleSize = optionalString(structured?.moduleSize)
+    const usbGeneration = optionalString(structured?.usbGeneration)
+    const connector = optionalString(structured?.connector)
+    const ocpVersion = optionalString(structured?.ocpVersion)
     const height = optionalString(structured?.height)
     const pcieGeneration = structuredNumber('pcieGeneration', legacy.pcieGeneration)
     const connectorLanes = structuredNumber('connectorLanes', legacy.connectorLanes)
     const minimumElectricalLanes = structuredNumber('minimumElectricalLanes', undefined)
     const slotWidth = structuredNumber('slotWidth', undefined)
-    const powerWatts = structuredNumber('powerWatts', optionalNumber(specs.powerWatts))
+    const powerMw = structuredNumber('powerMw', undefined)
+    const powerWatts = structuredNumber(
+      'powerWatts',
+      powerMw === undefined ? optionalNumber(specs.powerWatts) : powerMw / 1000,
+    )
     const lengthMm = structuredNumber('lengthMm', optionalNumber(specs.lengthMm))
     const heightMm = structuredNumber('heightMm', optionalNumber(specs.heightMm))
 
     if (interfaceFamily !== undefined) normalized.interfaceFamily = interfaceFamily
+    if (interfaceKey !== undefined) normalized.interfaceKey = interfaceKey
+    if (key !== undefined) normalized.key = key
+    if (moduleSize !== undefined) normalized.moduleSize = moduleSize
+    if (usbGeneration !== undefined) normalized.usbGeneration = usbGeneration
+    if (connector !== undefined) normalized.connector = connector
+    if (ocpVersion !== undefined) normalized.ocpVersion = ocpVersion
     if (pcieGeneration !== undefined) normalized.pcieGeneration = pcieGeneration
     if (connectorLanes !== undefined) normalized.connectorLanes = connectorLanes
     if (minimumElectricalLanes !== undefined) {
@@ -1214,18 +1232,47 @@ function evaluateExpansionGroup(group, requirements, populatedCpuSockets) {
     }
   }
 
-  if (requirements.powerWatts === undefined) {
-    addMissing(findings, 'component.expansion.powerWatts', 'Expansion-card power draw is not recorded.', group.id)
-  } else if (group.maxPowerWatts === undefined) {
-    addMissing(findings, 'host.expansionSlots.maxPowerWatts', 'Per-slot power limit is not recorded.', group.id)
-  } else if (requirements.powerWatts > group.maxPowerWatts) {
-    addFinding(findings, {
-      code: 'expansion.slot-power.exceeded',
-      severity: 'error',
-      message: `${requirements.powerWatts}W card draw exceeds the slot limit of ${group.maxPowerWatts}W.`,
-      field: 'component.expansion.powerWatts',
-      resourceId: group.id,
-    })
+  const exactFieldsByFamily = {
+    'm2-ae': [['key', 'keying', 'M.2 key'], ['moduleSize', 'moduleSize', 'module size']],
+    'm2-bm': [['key', 'keying', 'M.2 key'], ['moduleSize', 'moduleSize', 'module size']],
+    usb: [['usbGeneration', 'usbGeneration', 'USB generation'], ['connector', 'connector', 'USB connector']],
+    ocp: [['ocpVersion', 'ocpVersion', 'OCP version']],
+    mezzanine: [['interfaceKey', 'interfaceKey', 'mezzanine interface']],
+    proprietary: [['interfaceKey', 'interfaceKey', 'proprietary interface']],
+  }
+  for (const [requirementField, groupField, label] of exactFieldsByFamily[requirements.interfaceFamily] ?? []) {
+    if (!requirements[requirementField]) {
+      addMissing(findings, `component.expansion.${requirementField}`, `${label} is not recorded.`, group.id)
+    } else if (!group[groupField]) {
+      addMissing(findings, `host.expansionSlots.${groupField}`, `Host ${label} support is not recorded.`, group.id)
+    } else if (normalizedText(requirements[requirementField]) !== normalizedText(group[groupField])) {
+      addFinding(findings, {
+        code: `expansion.${requirementField}.mismatch`,
+        severity: 'error',
+        message: `${requirements[requirementField]} does not match the slot's ${group[groupField]} ${label}.`,
+        field: `component.expansion.${requirementField}`,
+        resourceId: group.id,
+      })
+    }
+  }
+
+  const powerRelevant = requirements.interfaceFamily === 'pcie'
+    || requirements.powerWatts !== undefined
+    || group.maxPowerWatts !== undefined
+  if (powerRelevant) {
+    if (requirements.powerWatts === undefined) {
+      addMissing(findings, 'component.expansion.powerWatts', 'Expansion-card power draw is not recorded.', group.id)
+    } else if (group.maxPowerWatts === undefined) {
+      addMissing(findings, 'host.expansionSlots.maxPowerWatts', 'Per-slot power limit is not recorded.', group.id)
+    } else if (requirements.powerWatts > group.maxPowerWatts) {
+      addFinding(findings, {
+        code: 'expansion.slot-power.exceeded',
+        severity: 'error',
+        message: `${requirements.powerWatts}W card draw exceeds the slot limit of ${group.maxPowerWatts}W.`,
+        field: 'component.expansion.powerWatts',
+        resourceId: group.id,
+      })
+    }
   }
 
   return findings
@@ -1251,7 +1298,10 @@ function compareCandidateRank(left, right) {
 
 function evaluateExpansionPower(hostCapabilities, assignments, items, component, findings) {
   const powerItems = expansionPowerItems(assignments, items, component)
-  const powerRequirements = powerItems.map(normalizeComponentRequirements)
+  const powerRequirements = powerItems
+    .map(normalizeComponentRequirements)
+    .filter((requirements) => requirements.interfaceFamily === 'pcie' || requirements.powerWatts !== undefined)
+  if (powerRequirements.length === 0) return
   const knownPower = powerRequirements
     .map((entry) => entry.powerWatts)
     .filter((value) => value !== undefined)

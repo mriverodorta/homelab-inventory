@@ -23,6 +23,7 @@ import {
 } from '@/lib/canvas-project-index'
 import { getCanvasAssignmentTone } from '@/lib/canvas-quality'
 import { runtimeItemKey } from '@/lib/item-keys'
+import { physicalNetworkAdapterPorts } from '@/lib/network-adapter-ports'
 import { equipmentUsageRoleLabel, hardwareClassLabel } from '@/lib/equipment-classification'
 import { EMPTY_REGISTRY_LINK_KEYS } from '@/lib/registry-links'
 import { useTapSelection } from '@/lib/tap-selection'
@@ -583,7 +584,7 @@ function AssignedComponentRow({
 }) {
   const itemRuntimeKey = runtimeItemKey(item)
   const connectablePorts = (assignment.type === 'network' || assignment.type === 'gpu')
-    ? sortPorts(item.ports)
+    ? sortPorts(assignment.type === 'network' ? physicalNetworkAdapterPorts(item.ports) : item.ports)
     : []
   const draggable = useDraggable({
     id: `assignment:${assignment.id}`,

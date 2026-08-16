@@ -89,7 +89,7 @@ describe('inventory lifecycle status filtering', () => {
 describe('expanded inventory sorting and assignment semantics', () => {
   const types: InventoryItem['type'][] = [
     'server', 'pcBuild', 'cpu', 'cpuCooler', 'motherboard', 'ram', 'storage', 'gpu',
-    'network', 'wireless', 'soundCard', 'case', 'powerSupply', 'powerAdapter', 'nas',
+    'network', 'soundCard', 'case', 'powerSupply', 'powerAdapter', 'nas',
     'switch', 'patchPanel', 'monitor', 'ups', 'powerStrip',
   ]
 

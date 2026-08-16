@@ -24,14 +24,14 @@ It gives you one practical view of what you own, what is installed in each machi
 
 - Organize one installation into multiple projects, each with a fixed Systems view and one or more reorderable, named, color-coded Canvas workspaces.
 - Place servers, NAS devices, custom PC builds, monitors, switches, patch panels, UPS systems, and power strips on an infinite canvas.
-- Assemble hosts from reusable CPUs, motherboards, cooling, RAM, storage, GPUs, network and wireless cards, sound cards, cases, power supplies, and OEM power adapters.
+- Assemble hosts from reusable CPUs, motherboards, cooling, RAM, storage, GPUs, wired or radio Network Adapters, sound cards, cases, power supplies, and OEM power adapters.
 - Connect individual network, display, and power endpoints with color-coded, orthogonally routed cables and inspect each connection from either endpoint.
 - Use the searchable desktop or mobile inventory drawer to create, duplicate, archive, restore, and safely remove equipment.
 - Keep equipment project-bound, expose selected records through the global inventory library, or create a clean independent copy in another project.
 
 ### Validate hardware before changing it
 
-- Check CPU socket, generation, and power limits; memory generation, capacity, speed, ECC, physical DIMM or SO-DIMM fit, electrical module type, and slot allocation; storage bays and interfaces; and expansion-slot fit.
+- Check CPU socket, generation, and power limits; memory generation, capacity, speed, ECC, physical DIMM or SO-DIMM fit, electrical module type, and slot allocation; storage bays and interfaces; and expansion-slot fit across PCIe, M.2, Mini PCIe, USB, OCP, mezzanine, onboard, and proprietary Network Adapter interfaces.
 - See deterministic resource allocations, known incompatibilities, and incomplete-data warnings before an assignment changes project data.
 - Review or ignore individual audit findings, or disable compatibility checks for a specific host when documenting an intentional exception.
 - Import complete OEM systems and retail motherboards with their physical topology preserved instead of flattening them into generic machines.

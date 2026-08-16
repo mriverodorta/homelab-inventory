@@ -24,7 +24,6 @@ export const ASSIGNABLE_COMPONENT_TYPES = Object.freeze([
   'case',
   'powerSupply',
   'soundCard',
-  'wireless',
   'powerAdapter',
 ])
 

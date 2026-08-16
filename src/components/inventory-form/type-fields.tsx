@@ -4,14 +4,13 @@ import { FieldError, FieldLabel, SelectField, TextField } from './field-primitiv
 import type { InventoryFormErrors, InventoryFormValues } from './model'
 import { PcComponentFields } from './pc-component-fields'
 import { PowerEquipmentFields } from './power-equipment-fields'
+import { NetworkAdapterFields } from './network-adapter-fields'
 import { getInventoryFormPlaceholders } from './placeholders'
 import {
   CPU_MANUFACTURERS,
   GPU_FORM_FACTORS,
   GPU_MANUFACTURERS,
   GPU_SLOT_WIDTHS,
-  NETWORK_FORM_FACTORS,
-  NETWORK_INTERFACES,
   NETWORK_SLOTS,
   NAS_PLATFORM_FAMILIES,
   NAS_POWER_CONFIGURATION_OPTIONS,
@@ -111,7 +110,7 @@ export function InventoryTypeFields({
 }: InventoryTypeFieldsProps) {
   const placeholders = getInventoryFormPlaceholders(type)
 
-  if (['pcBuild', 'motherboard', 'cpuCooler', 'case', 'powerSupply', 'soundCard', 'wireless'].includes(type)) {
+  if (['pcBuild', 'motherboard', 'cpuCooler', 'case', 'powerSupply', 'soundCard'].includes(type)) {
     return <PcComponentFields type={type} values={values} errors={errors} onChange={onChange} onSelectOpenChange={onSelectOpenChange} />
   }
 
@@ -219,12 +218,7 @@ export function InventoryTypeFields({
   }
 
   if (type === 'network') {
-    return (
-      <div className="grid gap-3 sm:grid-cols-2">
-        <SelectField label="Interface" name="interface" value={values.interface} placeholder="Select interface" options={NETWORK_INTERFACES} onOpenChange={onSelectOpenChange} onValueChange={(interfaceName) => onChange({ interface: interfaceName }, 'immediate')} />
-        <SelectField label="Form Factor" name="networkFormFactor" value={values.networkFormFactor} placeholder="Select form factor" options={NETWORK_FORM_FACTORS} onOpenChange={onSelectOpenChange} onValueChange={(networkFormFactor) => onChange({ networkFormFactor }, 'immediate')} />
-      </div>
-    )
+    return <NetworkAdapterFields type={type} values={values} errors={errors} onChange={onChange} onSelectOpenChange={onSelectOpenChange} />
   }
 
   if (type === 'switch') {

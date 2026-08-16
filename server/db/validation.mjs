@@ -15,8 +15,8 @@ import {
 } from '../../shared/power-ports.mjs'
 export { assertRegistryStoreShape } from '../registry/model.mjs'
 
-const componentTypes = ASSIGNABLE_COMPONENT_TYPE_SET
-const inventoryTypes = INVENTORY_TYPE_SET
+const componentTypes = new Set([...ASSIGNABLE_COMPONENT_TYPE_SET, 'wireless'])
+const inventoryTypes = new Set([...INVENTORY_TYPE_SET, 'wireless'])
 const tableTypes = {
   servers: 'server',
   pcBuilds: 'pcBuild',

@@ -97,11 +97,6 @@ export const INVENTORY_FORM_PLACEHOLDERS: Record<InventoryType, InventoryFormPla
     manufacturer: 'Creative',
     model: 'Sound Blaster AE-7',
   },
-  wireless: {
-    name: 'Intel AX210 Wi-Fi 6E',
-    manufacturer: 'Intel',
-    model: 'AX210',
-  },
   powerAdapter: {
     name: 'Dell 90W AC Adapter',
     manufacturer: 'Dell',

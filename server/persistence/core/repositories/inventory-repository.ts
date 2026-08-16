@@ -2,6 +2,7 @@ import { and, asc, eq, isNull, or } from 'drizzle-orm'
 import type { InventoryType } from '../inventory/field-contract.ts'
 import {
   inventoryIdentityAliases,
+  inventoryCompatibilityAliases,
   inventoryItems,
   inventoryItemTypes,
   manufacturers,
@@ -22,13 +23,12 @@ const subtypeTableNames: Readonly<Record<InventoryType, string>> = {
   ram: 'memory_modules',
   storage: 'storage_devices',
   gpu: 'graphics_cards',
-  network: 'network_cards',
+  network: 'network_adapters',
   motherboard: 'motherboards',
   cpuCooler: 'cpu_coolers',
   case: 'computer_cases',
   powerSupply: 'power_supplies',
   soundCard: 'sound_cards',
-  wireless: 'wireless_cards',
   powerAdapter: 'power_adapters',
   switch: 'network_switches',
   patchPanel: 'patch_panels',
@@ -60,13 +60,20 @@ function normalizeManufacturer(value: string) {
 export function createInventoryRepository(context: RepositoryContext) {
   const { db, sqlite, now } = context
 
-  function resolveAlias(type: InventoryType, legacyId: number) {
+  function resolveAlias(type: InventoryType | 'wireless', legacyId: number) {
     assertPositiveId(legacyId, 'Legacy inventory ID')
-    return db.select({ itemId: inventoryIdentityAliases.itemId })
+    const canonical = db.select({ itemId: inventoryIdentityAliases.itemId })
       .from(inventoryIdentityAliases)
       .where(and(
         eq(inventoryIdentityAliases.legacyTypeKey, type),
         eq(inventoryIdentityAliases.legacyId, legacyId),
+      )).get()?.itemId
+    if (canonical != null) return canonical
+    return db.select({ itemId: inventoryCompatibilityAliases.itemId })
+      .from(inventoryCompatibilityAliases)
+      .where(and(
+        eq(inventoryCompatibilityAliases.legacyTypeKey, type),
+        eq(inventoryCompatibilityAliases.legacyId, legacyId),
       )).get()?.itemId ?? null
   }
 

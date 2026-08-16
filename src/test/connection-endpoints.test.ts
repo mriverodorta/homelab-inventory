@@ -151,6 +151,21 @@ describe('connection endpoint catalog', () => {
     expect(groupLabels).not.toContain('Loose GPU')
   })
 
+  it('keeps assigned radio adapters visible without exposing cable endpoints', () => {
+    const project = makeProject()
+    project.items['network:1'] = {
+      ...project.items['network:1'],
+      specs: { networkTechnology: 'wifi' },
+      ports: [{ ...port(1, 'rj45', 1, '2.5G'), networkTechnology: 'wifi' }],
+    }
+
+    expect(getEndpointGroupForHost(project, server)?.options.map((option) => option.owner.name)).toEqual([
+      'Server A',
+      'Server A',
+      'AMD Radeon RX 640',
+    ])
+  })
+
   it('excludes archived hosts and archived assigned cards from endpoint groups', () => {
     const project = makeProject()
     project.items['switch:1'] = archived(project.items['switch:1'])

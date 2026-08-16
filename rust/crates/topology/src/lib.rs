@@ -773,7 +773,8 @@ impl TopologyIndex {
             return None;
         }
         parse_advertised_speed(descriptor.speed.as_deref()).or_else(|| {
-            (descriptor.port_type == "sfp-plus" && descriptor.speed.is_none()).then_some(10_000_000_000)
+            (descriptor.port_type == "sfp-plus" && descriptor.speed.is_none())
+                .then_some(10_000_000_000)
         })
     }
 
@@ -1236,8 +1237,14 @@ mod tests {
     #[test]
     fn parses_only_supported_advertised_network_speeds() {
         assert_eq!(parse_advertised_speed(Some("1G")), Some(1_000_000_000));
-        assert_eq!(parse_advertised_speed(Some("2.5 Gbps")), Some(2_500_000_000));
-        assert_eq!(parse_advertised_speed(Some("5000 Mbps")), Some(5_000_000_000));
+        assert_eq!(
+            parse_advertised_speed(Some("2.5 Gbps")),
+            Some(2_500_000_000)
+        );
+        assert_eq!(
+            parse_advertised_speed(Some("5000 Mbps")),
+            Some(5_000_000_000)
+        );
         assert_eq!(parse_advertised_speed(Some("10GbE")), Some(10_000_000_000));
         assert_eq!(parse_advertised_speed(Some("40G")), None);
         assert_eq!(parse_advertised_speed(Some("unknown")), None);

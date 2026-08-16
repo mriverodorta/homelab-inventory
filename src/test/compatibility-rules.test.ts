@@ -60,7 +60,6 @@ describe('compatibility rule evaluation', () => {
       | 'case'
       | 'powerSupply'
       | 'soundCard'
-      | 'wireless'
       | 'powerAdapter'
       | undefined
     >()
@@ -777,6 +776,50 @@ describe('compatibility rule evaluation', () => {
       )
     },
   )
+
+  it.each([
+    ['m2-ae', { keying: 'A+E', moduleSize: '2230' }, { key: 'A+E', moduleSize: '2230' }],
+    ['m2-bm', { keying: 'B+M', moduleSize: '2280' }, { key: 'B+M', moduleSize: '2280' }],
+    ['mini-pcie', {}, {}],
+    ['usb', { usbGeneration: 'USB 3.2 Gen 2', connector: 'USB-C' }, { usbGeneration: 'USB 3.2 Gen 2', connector: 'USB-C' }],
+    ['ocp', { ocpVersion: '3.0' }, { ocpVersion: '3.0' }],
+    ['mezzanine', { interfaceKey: 'Dell-mezz-2' }, { interfaceKey: 'Dell-mezz-2' }],
+    ['onboard', {}, {}],
+    ['proprietary', { interfaceKey: 'OEM-riser-A' }, { interfaceKey: 'OEM-riser-A' }],
+  ] as const)('matches complete %s host-interface requirements', (interfaceFamily, groupFields, requirementFields) => {
+    const result = evaluate(
+      host({ host: { expansionSlots: [{
+        id: 41,
+        key: `slot-${interfaceFamily}`,
+        label: `${interfaceFamily} slot`,
+        count: 1,
+        interfaceFamily,
+        ...groupFields,
+      }] } }),
+      component('network', { requirements: { expansion: {
+        interfaceFamily,
+        ...requirementFields,
+      } } }),
+    )
+    expect(result).toEqual({ status: 'compatible', findings: [] })
+  })
+
+  it('rejects family-specific host-interface mismatches', () => {
+    const result = evaluate(
+      host({ host: { expansionSlots: [{
+        id: 42, key: 'wlan', label: 'WLAN', count: 1,
+        interfaceFamily: 'm2-ae', keying: 'A+E', moduleSize: '2230',
+      }] } }),
+      component('network', { requirements: { expansion: {
+        interfaceFamily: 'm2-ae', key: 'B+M', moduleSize: '2280',
+      } } }),
+    )
+    expect(result.status).toBe('incompatible')
+    expect(result.findings).toEqual(expect.arrayContaining([
+      expect.objectContaining({ code: 'expansion.key.mismatch', severity: 'error' }),
+      expect.objectContaining({ code: 'expansion.moduleSize.mismatch', severity: 'error' }),
+    ]))
+  })
 
   it('calculates total expansion power from the complete assignment state', () => {
     const first = component(

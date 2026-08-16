@@ -20,7 +20,6 @@ const itemTypeLabels: Partial<Record<InventoryItem['type'], string>> = {
   storage: 'Storage',
   switch: 'Switch',
   ups: 'UPS',
-  wireless: 'Wireless Card',
 }
 
 export function itemTypeLabel(type: InventoryItem['type']): string {

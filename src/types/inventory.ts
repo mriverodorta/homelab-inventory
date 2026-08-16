@@ -18,7 +18,6 @@ export type InventoryType =
   | 'case'
   | 'powerSupply'
   | 'soundCard'
-  | 'wireless'
   | 'powerAdapter'
   | 'switch'
   | 'patchPanel'
@@ -68,7 +67,6 @@ export type ComponentType =
   | 'case'
   | 'powerSupply'
   | 'soundCard'
-  | 'wireless'
   | 'powerAdapter'
 export type InventoryPortKind =
   | 'switch-port'
@@ -81,6 +79,15 @@ export type InventoryPortType =
   | 'rj45'
   | 'sfp'
   | 'sfp-plus'
+  | 'sfp28'
+  | 'qsfp'
+  | 'qsfp-plus'
+  | 'qsfp28'
+  | 'qsfp56'
+  | 'qsfp-dd'
+  | 'osfp'
+  | 'fc'
+  | 'infiniband'
   | 'hdmi'
   | 'displayport'
   | 'mini-displayport'
@@ -105,8 +112,16 @@ export type InventoryPort = {
   label?: string
   notes?: string
   ipAddress?: string
+  macAddress?: string
   role?: InventoryPortRole
+  adminState?: 'enabled' | 'disabled'
   speed?: string
+  speedBps?: number
+  supportedSpeedsBps?: number[]
+  networkTechnology?: 'ethernet' | 'wifi' | 'fibre-channel' | 'infiniband' | 'converged' | 'cellular' | 'other'
+  operatingModes?: string[]
+  media?: Array<'dac' | 'aoc' | 'optical-transceiver' | 'copper-transceiver' | 'active-copper' | 'passive-copper'>
+  vendorLock?: boolean
   poe?: boolean
   origin?: InventoryPortOrigin
   endpoints?: InventoryPortEndpoint[]

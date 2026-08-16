@@ -42,11 +42,11 @@ describe('core SQLite foundation schema', () => {
       'inventoryIdentityAliases',
       'cpuSocketTypes',
     ]))
-    expect(CORE_MIGRATIONS).toHaveLength(17)
-    expect(CORE_MIGRATIONS.at(-1)?.id).toBe('0017_registry_update_reconciliation')
+    expect(CORE_MIGRATIONS).toHaveLength(18)
+    expect(CORE_MIGRATIONS.at(-1)?.id).toBe('0018_network_adapter_v11')
   })
 
-  test('maps all 20 inventory categories to shared-primary-key subtype tables', () => {
+  test('maps every active inventory category to a shared-primary-key subtype table', () => {
     expect(Object.keys(inventorySubtypeTables).sort()).toEqual([
       'case',
       'cpu',
@@ -67,8 +67,93 @@ describe('core SQLite foundation schema', () => {
       'storage',
       'switch',
       'ups',
-      'wireless',
     ])
+  })
+
+  test('migrates network and wireless records into one relational adapter model', async () => {
+    const networkMigrationIndex = CORE_MIGRATIONS.findIndex((migration) => migration.id === '0018_network_adapter_v11')
+    const handle = await createMigratedDatabase(networkMigrationIndex)
+    try {
+      const networkType = handle.database.query("SELECT id FROM inventory_item_types WHERE key = 'network'").get() as { id: number }
+      const wirelessType = handle.database.query("SELECT id FROM inventory_item_types WHERE key = 'wireless'").get() as { id: number }
+      const networkItem = handle.database.query(`
+        INSERT INTO inventory_items (
+          type_id, scope, owner_project_id, name, row_version, created_at_ms, updated_at_ms
+        ) VALUES (?, 'global', NULL, 'Legacy Ethernet', 1, 1, 1)
+        RETURNING id
+      `).get(networkType.id) as { id: number }
+      const wirelessItem = handle.database.query(`
+        INSERT INTO inventory_items (
+          type_id, scope, owner_project_id, name, row_version, created_at_ms, updated_at_ms
+        ) VALUES (?, 'global', NULL, 'Legacy Wi-Fi', 1, 1, 1)
+        RETURNING id
+      `).get(wirelessType.id) as { id: number }
+      handle.database.query(`
+        INSERT INTO network_cards (id, port_count, max_speed_bps, interface, form_factor)
+        VALUES (?, 2, 10000000000, 'PCIe 3.0 x8', 'low-profile')
+      `).run(networkItem.id)
+      handle.database.query(`
+        INSERT INTO wireless_cards (id, interface, wifi_generation, bluetooth)
+        VALUES (?, 'M.2 2230 A/E', 'Wi-Fi 6E', 1)
+      `).run(wirelessItem.id)
+      handle.database.query(`
+        INSERT INTO inventory_identity_aliases (item_id, legacy_type_key, legacy_id, created_at_ms)
+        VALUES (?, 'wireless', 7, 1)
+      `).run(wirelessItem.id)
+      const source = handle.database.query(`
+        INSERT INTO registry_sources (kind, display_name, endpoint, enabled, created_at_ms)
+        VALUES ('official-connected', 'Registry', 'https://registry.example.test', 1, 1)
+        RETURNING id
+      `).get() as { id: number }
+      handle.database.query(`
+        INSERT INTO registry_links (
+          item_id, source_id, template_key, imported_revision, imported_content_hash,
+          imported_fingerprint_version, state, linked_at_ms, updated_at_ms
+        ) VALUES (?, ?, 'network-intel-legacy', 1, ?, 9, 'linked', 1, 1)
+      `).run(wirelessItem.id, source.id, 'a'.repeat(64))
+
+      const migrationsDir = resolve(import.meta.dir, '../migrations/generated')
+      const migrations = await Promise.all(CORE_MIGRATIONS.map(async (migration) => ({
+        id: migration.id,
+        sha256: migration.sha256,
+        sql: await readFile(join(migrationsDir, migration.file), 'utf8'),
+      })))
+      await expect(applyCommittedMigrations(handle, migrations)).resolves.toEqual({ applied: 1, currentVersion: 18 })
+
+      expect(handle.database.query(`
+        SELECT id, network_technology, form_factor, max_speed_bps
+        FROM network_adapters ORDER BY id
+      `).all()).toEqual([
+        { id: networkItem.id, network_technology: 'ethernet', form_factor: 'low-profile', max_speed_bps: 10_000_000_000 },
+        { id: wirelessItem.id, network_technology: 'wifi', form_factor: 'm2-2230', max_speed_bps: null },
+      ])
+      expect(handle.database.query(`
+        SELECT family, key, module_size
+        FROM network_adapter_host_interfaces WHERE adapter_id = ?
+      `).get(wirelessItem.id)).toEqual({ family: 'm2-ae', key: 'A+E', module_size: '2230' })
+      expect(handle.database.query(`
+        SELECT inventory_item_types.key AS type_key, inventory_identity_aliases.legacy_type_key,
+          registry_links.item_id AS linked_item_id
+        FROM inventory_items
+        JOIN inventory_item_types ON inventory_item_types.id = inventory_items.type_id
+        JOIN inventory_identity_aliases ON inventory_identity_aliases.item_id = inventory_items.id
+        JOIN registry_links ON registry_links.item_id = inventory_items.id
+        WHERE inventory_items.id = ?
+      `).get(wirelessItem.id)).toEqual({
+        type_key: 'network',
+        legacy_type_key: 'network',
+        linked_item_id: wirelessItem.id,
+      })
+      expect(handle.database.query(`
+        SELECT legacy_type_key, legacy_id FROM inventory_compatibility_aliases WHERE item_id = ?
+      `).get(wirelessItem.id)).toEqual({ legacy_type_key: 'wireless', legacy_id: 7 })
+      expect(handle.database.query(`
+        SELECT name FROM sqlite_schema WHERE type = 'table' AND name IN ('network_cards', 'wireless_cards')
+      `).all()).toEqual([])
+      await expect(applyCommittedMigrations(handle, migrations)).resolves.toEqual({ applied: 0, currentVersion: 18 })
+    } finally {
+      closeManagedDatabase(handle)
+    }
   })
 
   test('migrates v10 NAS topology without changing existing relational identities', async () => {
@@ -102,7 +187,7 @@ describe('core SQLite foundation schema', () => {
         sha256: migration.sha256,
         sql: await readFile(join(migrationsDir, migration.file), 'utf8'),
       })))
-      await expect(applyCommittedMigrations(handle, migrations)).resolves.toEqual({ applied: 3, currentVersion: 17 })
+      await expect(applyCommittedMigrations(handle, migrations)).resolves.toEqual({ applied: 4, currentVersion: 18 })
       expect(handle.database.query(`
         SELECT adapter_disposition FROM host_power_profiles WHERE host_profile_id = ?
       `).get(profile.id)).toEqual({ adapter_disposition: 'replaceable' })
@@ -110,7 +195,7 @@ describe('core SQLite foundation schema', () => {
         id: item.id,
         power_configuration: 'external-adapter',
       })
-      await expect(applyCommittedMigrations(handle, migrations)).resolves.toEqual({ applied: 0, currentVersion: 17 })
+      await expect(applyCommittedMigrations(handle, migrations)).resolves.toEqual({ applied: 0, currentVersion: 18 })
     } finally {
       closeManagedDatabase(handle)
     }

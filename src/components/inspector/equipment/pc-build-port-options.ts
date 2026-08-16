@@ -32,7 +32,6 @@ export function getPcBuildPortOptions(
     'gpu',
     'network',
     'soundCard',
-    'wireless',
   ])
 
   return sortAssignmentsForDisplay(project, hostKey)

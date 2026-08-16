@@ -305,11 +305,13 @@ export function formatInventoryCompactSpec(item: InventoryItem): string | null {
     return compactParts(vram === undefined ? undefined : `${vram}GB VRAM`, specText(item, 'formFactor'))
   }
   if (item.type === 'network') {
-    const speed = specNumber(item, 'speedMbps')
-    return compactParts(speed === undefined ? undefined : `${speed}Mbps`, specText(item, 'formFactor', 'interface'))
-  }
-  if (item.type === 'wireless') {
-    return compactParts(specText(item, 'wifiGeneration', 'standard'), specText(item, 'interface', 'formFactor'))
+    const speedBps = specNumber(item, 'maxSpeedBps', 'maxPhyRateBps')
+    const legacySpeed = specNumber(item, 'speedMbps')
+    const technology = specText(item, 'networkTechnology')
+    const speed = speedBps !== undefined
+      ? speedBps >= 1_000_000_000 ? `${speedBps / 1_000_000_000}Gbps` : `${speedBps / 1_000_000}Mbps`
+      : legacySpeed === undefined ? undefined : `${legacySpeed}Mbps`
+    return compactParts(technology, speed, specText(item, 'formFactor', 'interface'))
   }
   if (item.type === 'motherboard') {
     return compactParts(specText(item, 'formFactor'), specText(item, 'socket'), specText(item, 'chipset'))

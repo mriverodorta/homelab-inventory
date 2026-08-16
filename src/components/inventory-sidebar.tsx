@@ -24,7 +24,6 @@ import {
   Search,
   Server,
   Trash2,
-  Wifi,
   X,
 } from 'lucide-react'
 import { useEffect, useMemo, useState, type CSSProperties } from 'react'
@@ -68,7 +67,6 @@ const TYPE_COLORS: Record<InventoryType, string> = {
   storage: 'border-l-[#b5a58f]',
   gpu: 'border-l-[#d57b69]',
   network: 'border-l-[#86a989]',
-  wireless: 'border-l-[#77a8a2]',
   soundCard: 'border-l-[#b29ac7]',
   case: 'border-l-[#9ca3af]',
   powerSupply: 'border-l-[#d3a45f]',
@@ -96,7 +94,6 @@ function TypeIcon({ type }: { type: InventoryType }) {
   if (type === 'storage') return <HardDrive className={className} />
   if (type === 'gpu') return <MonitorUp className={className} />
   if (type === 'network' || type === 'switch') return <Network className={className} />
-  if (type === 'wireless') return <Wifi className={className} />
   if (type === 'soundCard') return <AudioLines className={className} />
   if (type === 'case') return <Box className={className} />
   if (type === 'powerSupply') return <Power className={className} />

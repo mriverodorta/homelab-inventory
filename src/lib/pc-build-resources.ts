@@ -147,7 +147,7 @@ function resourceTypeFor(componentType: ComponentType): CompatibilityResourceTyp
   if (componentType === 'cpuCooler') return 'cooling'
   if (componentType === 'ram') return 'memory'
   if (componentType === 'storage') return 'storage'
-  if (['gpu', 'network', 'soundCard', 'wireless'].includes(componentType)) return 'expansion'
+  if (['gpu', 'network', 'soundCard'].includes(componentType)) return 'expansion'
   return LOGICAL_RESOURCE_TYPES.get(componentType)
 }
 
@@ -159,7 +159,7 @@ function groupsFor(
   if (componentType === 'cpuCooler') return resources.cpuSockets
   if (componentType === 'ram') return resources.memorySlots
   if (componentType === 'storage') return resources.storageSlots
-  if (['gpu', 'network', 'soundCard', 'wireless'].includes(componentType)) {
+  if (['gpu', 'network', 'soundCard'].includes(componentType)) {
     return resources.expansionSlots
   }
   return []

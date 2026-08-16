@@ -78,13 +78,17 @@ function items(...values: any[]) {
 }
 
 describe('PC Build compatibility', () => {
-  it('normalizes sound and wireless cards as expansion hardware', () => {
-    for (const type of ['soundCard', 'wireless']) {
-      expect(normalize({
-        type,
-        specs: { interface: 'PCIe 3.0 x1', powerWatts: 8 },
-      })).toMatchObject({ type, interfaceFamily: 'pcie', pcieGeneration: 3, connectorLanes: 1 })
-    }
+  it('normalizes legacy sound cards and canonical network adapters as expansion hardware', () => {
+    expect(normalize({
+      type: 'soundCard',
+      specs: { interface: 'PCIe 3.0 x1', powerWatts: 8 },
+    })).toMatchObject({ type: 'soundCard', interfaceFamily: 'pcie', pcieGeneration: 3, connectorLanes: 1 })
+    expect(normalize({
+      type: 'network',
+      compatibility: { requirements: { expansion: {
+        interfaceFamily: 'm2-ae', key: 'A+E', moduleSize: '2230',
+      } } },
+    })).toMatchObject({ type: 'network', interfaceFamily: 'm2-ae', key: 'A+E', moduleSize: '2230' })
   })
 
   it('uses the assigned motherboard capabilities for compatible CPU and cooler checks', () => {

@@ -53,6 +53,51 @@ describe('contribution discovery', () => {
     expect(payload.specs).not.toHaveProperty('serialNumber')
   })
 
+  it('uses fingerprint v11 and strips local network port state from contributions', async () => {
+    const store = fixture({
+      id: 1,
+      type: 'network',
+      name: 'Intel X710-DA2',
+      manufacturer: 'Intel',
+      model: 'X710-DA2',
+      specs: {
+        networkTechnology: 'ethernet',
+        formFactor: 'low-profile',
+        hostInterface: { family: 'pcie', pcieGeneration: 3, connectorLanes: 8, minimumElectricalLanes: 8 },
+        operatingModes: ['ethernet'],
+      },
+      ports: [{
+        id: 1,
+        key: 'port-1',
+        kind: 'network',
+        type: 'sfp-plus',
+        slotNumber: 1,
+        speedBps: 10_000_000_000,
+        supportedSpeedsBps: [1_000_000_000, 10_000_000_000],
+        networkTechnology: 'ethernet',
+        operatingModes: ['ethernet'],
+        origin: 'module',
+        label: 'WAN uplink',
+        ipAddress: '192.168.1.2',
+        macAddress: 'aa:bb:cc:dd:ee:ff',
+        role: 'management',
+        adminState: 'disabled',
+      }],
+      compatibility: { requirements: { expansion: {
+        interfaceFamily: 'pcie', pcieGeneration: 3, connectorLanes: 8, minimumElectricalLanes: 8,
+      } } },
+    })
+
+    expect(await discoverContributionCandidates(store)).toMatchObject({ queued: 1 })
+    const record = store.getRegistryState().contributionOutbox[0]
+    expect(record.fingerprintVersion).toBe(11)
+    expect(record.payload.ports[0]).not.toHaveProperty('label')
+    expect(record.payload.ports[0]).not.toHaveProperty('ipAddress')
+    expect(record.payload.ports[0]).not.toHaveProperty('macAddress')
+    expect(record.payload.ports[0]).not.toHaveProperty('role')
+    expect(record.payload.ports[0]).not.toHaveProperty('adminState')
+  })
+
   it('does nothing when explicit connected contribution consent is absent', async () => {
     const store = fixture({ id: 1, type: 'cpu', name: 'Example CPU' })
     store.registryTransaction((draft) => { draft.settings.automaticContributions = false })

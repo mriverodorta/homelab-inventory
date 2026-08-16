@@ -226,7 +226,7 @@ export function InventoryItemDialog({
     setErrors(nextErrors)
 
     if (Object.keys(nextErrors).length) {
-      const errorTab = findFirstInventoryDialogErrorTab(values.type, nextErrors) ?? 'specs'
+      const errorTab = findFirstInventoryDialogErrorTab(values.type, nextErrors, values.networkTechnology) ?? 'specs'
       setActiveTab(errorTab)
       setError('Correct the highlighted fields.')
       requestAnimationFrame(() => {
@@ -262,7 +262,13 @@ export function InventoryItemDialog({
     }
   }
 
-  const tabs = getInventoryDialogTabs(values.type)
+  useEffect(() => {
+    if (!getInventoryDialogTabs(values.type, values.networkTechnology).includes(activeTab)) {
+      setActiveTab('specs')
+    }
+  }, [activeTab, values.networkTechnology, values.type])
+
+  const tabs = getInventoryDialogTabs(values.type, values.networkTechnology)
   const sharedFieldProps = {
     values,
     errors,

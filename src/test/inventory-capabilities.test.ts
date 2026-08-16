@@ -25,8 +25,8 @@ describe('inventory capabilities', () => {
   it('publishes complete, non-overlapping capability collections', () => {
     expect(HOST_TYPES).toHaveLength(3)
     expect(CANVAS_EQUIPMENT_TYPES).toHaveLength(8)
-    expect(ASSIGNABLE_COMPONENT_TYPES).toHaveLength(12)
-    expect(INVENTORY_TYPES).toHaveLength(20)
+    expect(ASSIGNABLE_COMPONENT_TYPES).toHaveLength(11)
+    expect(INVENTORY_TYPES).toHaveLength(19)
     expect(new Set(INVENTORY_TYPES).size).toBe(INVENTORY_TYPES.length)
     expect(INVENTORY_TYPES.every(isInventoryType)).toBe(true)
   })

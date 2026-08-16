@@ -5,6 +5,11 @@ import type {
   InventoryPortType,
   ProjectState,
 } from '@/types/inventory'
+import {
+  isPhysicalNetworkAdapterPort,
+  negotiateNetworkPath,
+  supportedNetworkPortSpeedsBps,
+} from '../../shared/network-adapter-ports'
 
 // Frozen migration support for schemas that predate Rust-owned topology.
 
@@ -16,7 +21,7 @@ export const SWITCH_NETWORK_PORT_TYPES = new Set<InventoryPortType>([
 ])
 export const SUPPORTED_SWITCH_PORT_SPEEDS = ['1G', '2.5G', '5G', '10G'] as const
 
-const ACTIVE_NETWORK_ITEM_TYPES = new Set(['server', 'nas', 'switch'])
+const ACTIVE_NETWORK_ITEM_TYPES = new Set(['server', 'nas', 'pcBuild', 'switch'])
 
 export type SupportedSwitchPortSpeed = (typeof SUPPORTED_SWITCH_PORT_SPEEDS)[number]
 
@@ -145,15 +150,13 @@ function resolveActivePort(project: ProjectState, endpoint: ConnectionEndpoint):
   return resolveEndpointPort(project, endpoint)
 }
 
-function endpointAdvertisedSpeed(project: ProjectState, endpoint: ConnectionEndpoint): number | null {
+function endpointActivePort(project: ProjectState, endpoint: ConnectionEndpoint): InventoryPort | null {
   const port = resolveActivePort(project, endpoint)
-
-  if (!port || !SWITCH_NETWORK_PORT_TYPES.has(port.type)) {
-    return null
-  }
-
-  const speedMbps = advertisedSpeedMbps(port.speed) ?? (port.type === 'sfp-plus' ? 10000 : null)
-  return speedMbps === null ? null : speedMbps * 1_000_000
+  if (!port || !isPhysicalNetworkAdapterPort(port)) return null
+  const speeds = supportedNetworkPortSpeedsBps(port)
+  if (speeds.length > 0) return port
+  if (port.type !== 'sfp-plus') return null
+  return { ...port, supportedSpeedsBps: [10_000_000_000] }
 }
 
 function withoutNegotiatedSpeed(connection: InventoryConnection): InventoryConnection {
@@ -226,7 +229,7 @@ export function recalculateNegotiatedSpeeds(project: ProjectState): ProjectState
     }
 
     const component: string[] = []
-    const knownSpeeds: number[] = []
+    const activePorts: InventoryPort[] = []
     const pending = [startKey]
     visited.add(startKey)
 
@@ -239,11 +242,8 @@ export function recalculateNegotiatedSpeeds(project: ProjectState): ProjectState
 
       component.push(currentKey)
       const endpoint = endpoints.get(currentKey)
-      const speed = endpoint ? endpointAdvertisedSpeed(project, endpoint) : null
-
-      if (speed !== null) {
-        knownSpeeds.push(speed)
-      }
+      const port = endpoint ? endpointActivePort(project, endpoint) : null
+      if (port) activePorts.push(port)
 
       for (const neighbor of adjacency.get(currentKey) ?? []) {
         if (!visited.has(neighbor)) {
@@ -253,7 +253,9 @@ export function recalculateNegotiatedSpeeds(project: ProjectState): ProjectState
       }
     }
 
-    const negotiatedSpeed = knownSpeeds.length > 0 ? Math.min(...knownSpeeds) : undefined
+    const negotiatedSpeed = activePorts.length > 0
+      ? negotiateNetworkPath(activePorts)?.speedBps
+      : undefined
 
     for (const nodeKey of component) {
       negotiatedSpeedByNode.set(nodeKey, negotiatedSpeed)
@@ -350,8 +352,8 @@ function normalizeLegacyNetworkConnections(project: ProjectState): ProjectState 
     if (
       !fromPort ||
       !toPort ||
-      !SWITCH_NETWORK_PORT_TYPES.has(fromPort.type) ||
-      !SWITCH_NETWORK_PORT_TYPES.has(toPort.type)
+      !isPhysicalNetworkAdapterPort(fromPort) ||
+      !isPhysicalNetworkAdapterPort(toPort)
     ) {
       return connection
     }

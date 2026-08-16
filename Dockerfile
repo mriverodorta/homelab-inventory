@@ -71,6 +71,7 @@ COPY --chown=10001:10001 src/types ./src/types
 COPY --chown=10001:10001 shared/compatibility ./shared/compatibility
 COPY --chown=10001:10001 shared/backup/contract.mjs ./shared/backup/
 COPY --chown=10001:10001 shared/power-ports.mjs ./shared/
+COPY --chown=10001:10001 shared/network-adapter-ports.ts ./shared/
 COPY --chown=10001:10001 shared/engine ./shared/engine
 COPY --chown=10001:10001 server/index.mjs server/agent-routes.mjs server/api-error-handler.mjs server/app-health.mjs server/backup-routes.mjs server/bootstrap-routes.mjs server/engine-routes.mjs server/inventory-routes.mjs server/onboarding-routes.mjs server/project-routes.mjs server/workspace-routes.mjs server/registry-routes.mjs server/rate-limit.mjs server/request-security.mjs server/routing-cache-model.mjs server/routing-cache-routes.mjs server/runtime-config.mjs server/server-lifecycle.mjs server/staging-policy.mjs server/store-request-error.mjs server/update-checker.mjs server/update-routes.mjs server/update-scheduler.mjs ./server/
 COPY --chown=10001:10001 server/backup/archive-envelope.mjs server/backup/archive-security.mjs server/backup/backup-model.mjs server/backup/backup-scheduler.mjs server/backup/backup-sections.mjs server/backup/backup-service.mjs server/backup/restore-journal.mjs server/backup/restore-preflight.mjs server/backup/sqlite-restore-staging.ts server/backup/sqlite-section-exporter.ts ./server/backup/

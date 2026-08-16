@@ -214,7 +214,7 @@ describe('formatting helpers', () => {
     [{ id: 1, type: 'cpuCooler', name: 'Cooler', specs: { coolerType: 'AIO', radiatorSizeMm: 240 } }, 'AIO / 240mm'],
     [{ id: 1, type: 'motherboard', name: 'Board', specs: { formFactor: 'ATX', socket: 'AM5', chipset: 'B650' } }, 'ATX / AM5 / B650'],
     [{ id: 1, type: 'network', name: 'NIC', specs: { speedMbps: 2500, interface: 'PCIe' } }, '2500Mbps / PCIe'],
-    [{ id: 1, type: 'wireless', name: 'Wi-Fi', specs: { wifiGeneration: 'Wi-Fi 6E', interface: 'M.2 A+E' } }, 'Wi-Fi 6E / M.2 A+E'],
+    [{ id: 2, type: 'network', name: 'Wi-Fi', specs: { networkTechnology: 'wifi', maxPhyRateBps: 2_400_000_000, formFactor: 'm2-2230' } }, 'wifi / 2.4Gbps / m2-2230'],
     [{ id: 1, type: 'soundCard', name: 'Sound', specs: { interface: 'PCIe', channels: '7.1' } }, 'PCIe / 7.1'],
     [{ id: 1, type: 'case', name: 'Case', specs: { formFactor: 'ATX' } }, 'ATX'],
     [{ id: 1, type: 'powerSupply', name: 'PSU', specs: { wattageWatts: 850, formFactor: 'ATX', efficiency: '80 Plus Gold' } }, '850W / ATX / 80 Plus Gold'],

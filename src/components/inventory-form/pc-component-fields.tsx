@@ -10,8 +10,6 @@ import {
   PSU_FORM_FACTORS,
   SOUND_CARD_INTERFACES,
   WIFI_GENERATIONS,
-  WIRELESS_INTERFACES,
-  YES_NO_OPTIONS,
 } from './options'
 
 function CaseFormFactorFields({ values, onChange }: InventoryTypeFieldsProps) {
@@ -117,16 +115,6 @@ export function PcComponentFields(props: InventoryTypeFieldsProps) {
 
   if (type === 'soundCard') {
     return <SelectField label="Interface" name="interface" value={values.interface} placeholder="Select interface" options={SOUND_CARD_INTERFACES} onOpenChange={onSelectOpenChange} onValueChange={(interfaceName) => onChange({ interface: interfaceName }, 'immediate')} />
-  }
-
-  if (type === 'wireless') {
-    return (
-      <div className="grid gap-3 sm:grid-cols-3">
-        <SelectField label="Interface" name="interface" value={values.interface} placeholder="Select interface" options={WIRELESS_INTERFACES} onOpenChange={onSelectOpenChange} onValueChange={(interfaceName) => onChange({ interface: interfaceName }, 'immediate')} />
-        <SelectField label="Wi-Fi Generation" name="wifiGeneration" value={values.wifiGeneration} placeholder="Select Wi-Fi generation" options={WIFI_GENERATIONS} onOpenChange={onSelectOpenChange} onValueChange={(wifiGeneration) => onChange({ wifiGeneration }, 'immediate')} />
-        <SelectField label="Bluetooth" name="bluetooth" value={values.bluetooth === 'yes' ? 'Yes' : values.bluetooth === 'no' ? 'No' : ''} placeholder="Select" options={YES_NO_OPTIONS} onOpenChange={onSelectOpenChange} onValueChange={(bluetooth) => onChange({ bluetooth: bluetooth.toLowerCase() as typeof values.bluetooth }, 'immediate')} />
-      </div>
-    )
   }
 
   return null

@@ -1,6 +1,7 @@
 import { formatPortType } from '@/lib/format'
 import type { RuntimePowerEndpoint } from '@/engine/topology'
 import { runtimeItemKey } from '@/lib/item-keys'
+import { physicalNetworkAdapterPorts } from '@/lib/network-adapter-ports'
 import {
   endpointKey,
   isArchivedItem,
@@ -136,7 +137,10 @@ function hostedEndpointOptions(
         return []
       }
 
-      return (owner.ports ?? []).flatMap((port) => {
+      const ports = owner.type === 'network'
+        ? physicalNetworkAdapterPorts(owner.ports)
+        : owner.ports ?? []
+      return ports.flatMap((port) => {
         if (port.endpoints?.length) {
           return port.endpoints.map((portEndpoint) => {
             const endpoint: ConnectionEndpoint = {

@@ -50,6 +50,12 @@ export type NormalizedStorageRequirements = PcieDescriptor & {
 export type NormalizedExpansionRequirements = PcieDescriptor & {
   type: 'gpu' | 'network'
   interfaceFamily?: ExpansionInterfaceFamily
+  interfaceKey?: string
+  key?: string
+  moduleSize?: string
+  usbGeneration?: string
+  connector?: string
+  ocpVersion?: string
   minimumElectricalLanes?: number
   height?: CardHeight
   slotWidth?: number
