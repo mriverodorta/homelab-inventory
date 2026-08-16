@@ -6,6 +6,8 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 
 ## Unreleased
 
+## [0.12.14] - 2026-08-15
+
 ### Fixed
 
 - Catalog range filters now index exact canonical measurements from historical signed templates, so RAM capacity and other numeric filters return the correct inclusive results after an automatic local index rebuild.

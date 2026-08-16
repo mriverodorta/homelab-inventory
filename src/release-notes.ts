@@ -265,7 +265,7 @@ const RELEASE_0_12_13_DETAILS: UnreleasedReleaseNotes = {
   notes: [],
 }
 
-export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
+const RELEASE_0_12_14_DETAILS: UnreleasedReleaseNotes = {
   highlights: [],
   fixes: [
     'Catalog capacity, performance, speed, and power filters now index exact canonical measurements from historical signed templates after an automatic local catalog rebuild.',
@@ -275,6 +275,12 @@ export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
   notes: [
     'Historical source artifacts remain signature-verifiable and unchanged; only the disposable local search projection is canonicalized.',
   ],
+}
+
+export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
+  highlights: [],
+  fixes: [],
+  notes: [],
 }
 
 const RELEASE_0_11_2_DETAILS: UnreleasedReleaseNotes = {
@@ -804,9 +810,16 @@ const RELEASE_0_2_1_DETAILS: UnreleasedReleaseNotes = {
 
 export const RELEASE_NOTES: ReleaseNoteEntry[] = [
   {
-    version: '0.12.13',
+    version: '0.12.14',
     date: '2026-08-15',
     channel: 'latest',
+    title: 'Canonicalize catalog filters and NAS power',
+    ...RELEASE_0_12_14_DETAILS,
+  },
+  {
+    version: '0.12.13',
+    date: '2026-08-15',
+    channel: 'release',
     title: 'Resolve blocked Registry topology safely',
     ...RELEASE_0_12_13_DETAILS,
   },
