@@ -134,4 +134,88 @@ describe('catalog sqlite index', () => {
       items: [{ templateKey: 'cpu-amd-01' }],
     })
   })
+
+  it('indexes historical measurements under canonical range facet keys', async () => {
+    const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'hli-catalog-canonical-facets-'))
+    const index = new CatalogIndex(path.join(directory, 'catalog.sqlite'))
+    const templates = [
+      {
+        templateKey: 'ram-ddr3l-8gb', revision: 1, fingerprintVersion: 8,
+        identityHash: '1'.repeat(64), contentHash: '2'.repeat(64),
+        item: { type: 'ram', name: '8GB DDR3L', specs: { capacityGb: 8, generation: 'DDR3L' } },
+      },
+      {
+        templateKey: 'ram-ddr4-16gb', revision: 1, fingerprintVersion: 8,
+        identityHash: '3'.repeat(64), contentHash: '4'.repeat(64),
+        item: { type: 'ram', name: '16GB DDR4', specs: { capacityGb: 16, generation: 'DDR4' } },
+      },
+    ]
+    const facets = {
+      schemaVersion: 1,
+      catalogRevision: 18,
+      generatedAt: '2026-08-15T12:00:00.000Z',
+      categories: [{
+        type: 'ram', label: 'Memory', count: 2,
+        facets: [{ key: 'specs.capacityMib', label: 'Capacity', kind: 'range', minimum: 8192, maximum: 16384, step: 1024 }],
+      }],
+    }
+
+    await index.rebuild({ templates }, index.filePath, facets)
+
+    expect(index.search({
+      type: 'ram',
+      ranges: { 'specs.capacityMib': { minimum: 8192, maximum: 16384 } },
+    })).toMatchObject({ total: 2 })
+    expect(index.search({
+      type: 'ram',
+      ranges: { 'specs.capacityMib': { minimum: 8192, maximum: 8192 } },
+    })).toMatchObject({ total: 1, items: [{ templateKey: 'ram-ddr3l-8gb', item: { specs: { capacityMib: 8192 } } }] })
+    expect(index.getByKey('ram-ddr3l-8gb')).toMatchObject({
+      fingerprintVersion: 8,
+      contentHash: '2'.repeat(64),
+      item: { specs: { capacityMib: 8192 } },
+    })
+  })
+
+  it('projects every historical measurement-backed catalog range into canonical units', async () => {
+    const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'hli-catalog-all-canonical-ranges-'))
+    const index = new CatalogIndex(path.join(directory, 'catalog.sqlite'))
+    const fixtures = [
+      { type: 'cpu', specs: { tdpWatts: 35, baseClockGhz: 2.3 }, key: 'specs.tdpMw', value: 35_000 },
+      { type: 'gpu', specs: { vramGb: 8 }, key: 'specs.vramMib', value: 8192 },
+      { type: 'storage', specs: { capacityTb: 2 }, key: 'specs.capacityBytes', value: 2_000_000_000_000 },
+      { type: 'network', specs: { speedMbps: 10_000 }, key: 'specs.maxSpeedBps', value: 10_000_000_000 },
+      { type: 'switch', specs: { switchingCapacityGbps: 80 }, key: 'specs.switchingCapacityBps', value: 80_000_000_000 },
+      { type: 'ups', specs: { wattageWatts: 1000 }, key: 'specs.ratedPowerMw', value: 1_000_000 },
+      { type: 'powerSupply', specs: { wattageWatts: 750 }, key: 'specs.ratedPowerMw', value: 750_000 },
+    ]
+    const templates = fixtures.map((fixture, index) => ({
+      templateKey: `${fixture.type}-${index}`,
+      revision: 1,
+      fingerprintVersion: 3,
+      identityHash: `${String(index + 1)}`.repeat(64),
+      contentHash: `${String(index + 2)}`.repeat(64),
+      item: { type: fixture.type, name: `${fixture.type} fixture`, specs: fixture.specs },
+    }))
+    const categories = fixtures.map((fixture) => ({
+      type: fixture.type,
+      label: fixture.type,
+      count: 1,
+      facets: [{ key: fixture.key, label: fixture.key, kind: 'range', minimum: fixture.value, maximum: fixture.value, step: 1 }],
+    }))
+
+    await index.rebuild({ templates }, index.filePath, {
+      schemaVersion: 1,
+      catalogRevision: 18,
+      generatedAt: '2026-08-15T12:00:00.000Z',
+      categories,
+    })
+
+    for (const fixture of fixtures) {
+      expect(index.search({
+        type: fixture.type,
+        ranges: { [fixture.key]: { minimum: fixture.value, maximum: fixture.value } },
+      })).toMatchObject({ total: 1, items: [{ item: { specs: { [fixture.key.split('.').at(-1)]: fixture.value } } }] })
+    }
+  })
 })

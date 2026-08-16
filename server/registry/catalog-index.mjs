@@ -1,6 +1,7 @@
 import fs from 'node:fs/promises'
 import path from 'node:path'
 import { CATALOG_INDEX_SCHEMA_VERSION } from './catalog-index-contract.mjs'
+import { projectCatalogTemplateForRuntime } from './catalog-runtime-projection.mjs'
 
 // Keep Vite's test transformer from trying to bundle Bun's runtime-only module.
 const sqliteModule = ['bun', 'sqlite'].join(':')
@@ -159,7 +160,8 @@ export class CatalogIndex {
           )
         }
       })
-      transaction(snapshot.templates)
+      const runtimeTemplates = snapshot.templates.map(projectCatalogTemplateForRuntime)
+      transaction(runtimeTemplates)
       if (facets) {
         database.prepare('INSERT INTO facet_metadata (id, payload_json) VALUES (1, ?)').run(JSON.stringify(facets))
         const categories = new Map(facets.categories.map((category) => [category.type, category]))
@@ -182,7 +184,7 @@ export class CatalogIndex {
             }
           }
         })
-        facetTransaction(snapshot.templates)
+        facetTransaction(runtimeTemplates)
       }
       database.exec('PRAGMA optimize;')
     } finally {
