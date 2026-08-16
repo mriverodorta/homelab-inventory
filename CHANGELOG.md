@@ -6,6 +6,12 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 
 ## Unreleased
 
+## [0.13.3] - 2026-08-16
+
+### Fixed
+
+- Fractional Linux host uptime is now normalized to whole seconds at the telemetry ingestion boundary, preventing strict SQLite storage from rejecting otherwise valid Agent heartbeats.
+
 ## [0.13.2] - 2026-08-16
 
 ### Added

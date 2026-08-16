@@ -315,6 +315,14 @@ const RELEASE_0_13_2_DETAILS: UnreleasedReleaseNotes = {
   ],
 }
 
+const RELEASE_0_13_3_DETAILS: UnreleasedReleaseNotes = {
+  highlights: [],
+  fixes: [
+    'Fractional Linux host uptime is now normalized to whole seconds at the telemetry ingestion boundary, preventing strict SQLite storage from rejecting otherwise valid Agent heartbeats.',
+  ],
+  notes: [],
+}
+
 export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
   highlights: [],
   fixes: [],
@@ -848,9 +856,16 @@ const RELEASE_0_2_1_DETAILS: UnreleasedReleaseNotes = {
 
 export const RELEASE_NOTES: ReleaseNoteEntry[] = [
   {
-    version: '0.13.2',
+    version: '0.13.3',
     date: '2026-08-16',
     channel: 'latest',
+    title: 'Accept fractional Agent uptime',
+    ...RELEASE_0_13_3_DETAILS,
+  },
+  {
+    version: '0.13.2',
+    date: '2026-08-16',
+    channel: 'release',
     title: 'Compact Agent telemetry storage',
     ...RELEASE_0_13_2_DETAILS,
   },

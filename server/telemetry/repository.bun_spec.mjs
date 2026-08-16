@@ -118,7 +118,7 @@ describe('telemetry repository', () => {
       hostItemId: 101,
       receivedAt: receivedAt(1),
       payload: heartbeat(1, { metrics: {
-        uptimeSeconds: 90,
+        uptimeSeconds: 90.875,
         loadAverage: [0.1, 0.2, 0.3],
         cpu: { percent: 25 },
         memory: { usedBytes: 2048, totalBytes: 8192 },

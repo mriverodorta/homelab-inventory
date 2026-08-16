@@ -23,6 +23,11 @@ function finite(record, key) {
   return typeof value === 'number' && Number.isFinite(value) ? value : null
 }
 
+function wholeSeconds(record, key) {
+  const value = finite(record, key)
+  return value === null ? null : Math.max(0, Math.floor(value))
+}
+
 function cpuMetrics(cpu = {}) {
   return Object.fromEntries(CPU_FIELDS.map((field) => [field, finite(cpu, field)]))
 }
@@ -62,7 +67,7 @@ function latestState(metrics = {}, hostname) {
   return {
     system: metrics.system || hostname ? { ...(metrics.system ?? {}), ...(hostname ? { hostname } : {}) } : null,
     runtime: {
-      uptimeSeconds: finite(metrics, 'uptimeSeconds'),
+      uptimeSeconds: wholeSeconds(metrics, 'uptimeSeconds'),
       loadAverage: Array.isArray(metrics.loadAverage) ? metrics.loadAverage.slice(0, 3) : [],
       memory: {
         totalBytes: finite(metrics.memory, 'totalBytes'),
