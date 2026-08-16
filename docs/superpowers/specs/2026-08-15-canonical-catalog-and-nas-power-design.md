@@ -21,7 +21,7 @@ Signed snapshots remain byte-for-byte immutable and continue to be verified agai
 - Fingerprint v9 records are validated and canonicalized with the v9 canonical-unit contract.
 - Fingerprint v10 records are validated with the v10 NAS contract and retain all fixed-component and power-ownership topology.
 - Fingerprint v1-v8 records are translated exactly to v9 canonical measurement fields before they enter the local runtime index.
-- A translation conflict, unsafe number, or inexact conversion fails catalog activation instead of silently dropping a facet value.
+- A translation conflict or unsafe numeric conversion fails catalog activation instead of silently dropping a facet value. Historical fields whose units are genuinely ambiguous, such as old `cacheMb` values without binary-unit evidence, remain unchanged while exact canonical measurements are still projected.
 
 The local index stores the projected item JSON and builds numeric facets from that projection. The signed template key, revision, fingerprint version, identity hash, and content hash remain those of the verified source record. This separation fixes range filtering without invalidating registry signatures.
 

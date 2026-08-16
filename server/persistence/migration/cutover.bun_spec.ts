@@ -4,6 +4,7 @@ import { mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile } from 'node:fs/
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { TELEMETRY_MIGRATIONS } from '../../telemetry/schema.mjs'
+import { CATALOG_INDEX_SCHEMA_VERSION } from '../../registry/catalog-index-contract.mjs'
 import { CORE_MIGRATIONS } from '../core/migrations/manifest.ts'
 import { schema29ProductionShapeFixture } from '../fixtures/schema-29-production-shape.ts'
 import { readActivationMarker } from './activation-marker.ts'
@@ -99,7 +100,7 @@ describe('atomic SQLite persistence cutover', () => {
       ok: true,
       status: 'active',
       migrated: true,
-      versions: { core: CORE_MIGRATIONS.length, telemetry: 2, catalog: 2 },
+      versions: { core: CORE_MIGRATIONS.length, telemetry: 2, catalog: CATALOG_INDEX_SCHEMA_VERSION },
     })
     expect(await hashLegacyData(current.dataDir)).toEqual(before)
     expect(await readActivationMarker(current.dataDir)).not.toBeNull()
@@ -131,6 +132,34 @@ describe('atomic SQLite persistence cutover', () => {
     })
     expect((await readActivationMarker(current.dataDir))?.databases.core.schemaVersion)
       .toBe(CORE_MIGRATIONS.length)
+    expect(current.backupCalls()).toBe(1)
+  })
+
+  test('backs up and rebuilds an older catalog index exactly once', async () => {
+    const current = await context()
+    const activated = await ensureSqlitePersistence(current.options)
+    const markerPath = join(current.dataDir, 'databases', 'persistence-engine.json')
+    const staleMarker = structuredClone(activated.marker)
+    staleMarker.databases.catalog.schemaVersion = CATALOG_INDEX_SCHEMA_VERSION - 1
+    await writeFile(markerPath, `${JSON.stringify(staleMarker)}\n`, { mode: 0o600 })
+
+    const catalog = new Database(activated.paths.catalog, { strict: true })
+    catalog.exec(`PRAGMA user_version = ${CATALOG_INDEX_SCHEMA_VERSION - 1}`)
+    catalog.close(false)
+
+    const upgraded = await ensureSqlitePersistence(current.options)
+
+    expect(upgraded).toMatchObject({
+      ok: true,
+      status: 'active',
+      migrated: true,
+      versions: { catalog: CATALOG_INDEX_SCHEMA_VERSION },
+    })
+    expect(typeof upgraded.upgradeBackup).toBe('string')
+    expect((await stat(join(upgraded.upgradeBackup, 'catalog.sqlite'))).mode & 0o777).toBe(0o600)
+
+    const reopened = await ensureSqlitePersistence(current.options)
+    expect(reopened).toMatchObject({ ok: true, status: 'active', migrated: false })
     expect(current.backupCalls()).toBe(1)
   })
 

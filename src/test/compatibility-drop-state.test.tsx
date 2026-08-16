@@ -438,17 +438,17 @@ describe('host card compatibility drop-state styling', () => {
   })
 
   it('renders exactly one NAS power representation for each mode', () => {
-    const internal = {
+    const internal: InventoryItem = {
       ...host('nas:1', 'nas'),
       ports: [
-        { id: 1, kind: 'server-port' as const, type: 'rj45' as const, slotNumber: 1 },
-        { id: 2, kind: 'server-port' as const, type: 'rj45' as const, slotNumber: 2 },
-        { id: 3, kind: 'server-port' as const, type: 'usb' as const, slotNumber: 3 },
-        { id: 4, kind: 'server-port' as const, type: 'usb' as const, slotNumber: 4 },
-        { id: 5, key: 'ac-input', kind: 'power-port' as const, type: 'ac-input' as const, slotNumber: 5 },
+        { id: 1, kind: 'server-port', type: 'rj45', slotNumber: 1 },
+        { id: 2, kind: 'server-port', type: 'rj45', slotNumber: 2 },
+        { id: 3, kind: 'video', type: 'hdmi', slotNumber: 3 },
+        { id: 4, kind: 'video', type: 'displayport', slotNumber: 4 },
+        { id: 5, key: 'ac-input', kind: 'power-port', type: 'ac-input', slotNumber: 5 },
       ],
     }
-    const external = {
+    const external: InventoryItem = {
       ...host('nas:2', 'nas'),
       specs: { powerConfiguration: 'external-adapter' },
       ports: [],
@@ -469,13 +469,13 @@ describe('host card compatibility drop-state styling', () => {
   })
 
   it('renders a fixed external adapter as host-owned power without a replaceable slot', () => {
-    const nas = {
+    const nas: InventoryItem = {
       ...host('nas:3', 'nas'),
       specs: { powerConfiguration: 'external-adapter' },
       ports: [
-        { id: 1, kind: 'server-port' as const, type: 'rj45' as const, slotNumber: 1 },
-        { id: 2, kind: 'server-port' as const, type: 'rj45' as const, slotNumber: 2 },
-        { id: 3, key: 'ac-input', kind: 'power-port' as const, type: 'ac-input' as const, slotNumber: 3 },
+        { id: 1, kind: 'server-port', type: 'rj45', slotNumber: 1 },
+        { id: 2, kind: 'server-port', type: 'rj45', slotNumber: 2 },
+        { id: 3, key: 'ac-input', kind: 'power-port', type: 'ac-input', slotNumber: 3 },
       ],
       compatibility: { host: { power: {
         configuration: 'external-adapter',

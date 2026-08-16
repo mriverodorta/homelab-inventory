@@ -137,10 +137,16 @@ describe('catalog snapshot service', () => {
       fingerprintVersion: 8,
       item: expect.objectContaining({
         number: 'MTA18ASF2G72AZ-3G2R',
-        specs: expect.objectContaining({ moduleType: 'RDIMM', voltageVolts: 1.2 }),
-        compatibility: expect.objectContaining({ requirements: { memory: expect.objectContaining({ formFactor: 'DIMM', ecc: true }) } }),
+        specs: expect.objectContaining({ capacityMib: 16384, moduleType: 'RDIMM', voltageMv: 1200 }),
+        compatibility: expect.objectContaining({ requirements: { memory: expect.objectContaining({
+          capacityMib: 16384,
+          formFactor: 'DIMM',
+          ecc: true,
+          voltageMv: 1200,
+        }) } }),
       }),
     })
+    expect(item.specs).toMatchObject({ capacityGb: 16, voltageVolts: 1.2 })
   })
 
   it('activates only verified snapshots and rebuilds a missing cache', async () => {

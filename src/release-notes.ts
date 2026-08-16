@@ -267,8 +267,14 @@ const RELEASE_0_12_13_DETAILS: UnreleasedReleaseNotes = {
 
 export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
   highlights: [],
-  fixes: [],
-  notes: [],
+  fixes: [
+    'Catalog capacity, performance, speed, and power filters now index exact canonical measurements from historical signed templates after an automatic local catalog rebuild.',
+    'Persisted inventory values keep their original current-facing labels instead of receiving an artificial Legacy suffix when a curated choice list changes.',
+    'Internal and fixed-adapter NAS devices now show one AC 01 header endpoint without a duplicate power row while retaining existing cable identities.',
+  ],
+  notes: [
+    'Historical source artifacts remain signature-verifiable and unchanged; only the disposable local search projection is canonicalized.',
+  ],
 }
 
 const RELEASE_0_11_2_DETAILS: UnreleasedReleaseNotes = {
