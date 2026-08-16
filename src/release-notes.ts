@@ -293,6 +293,14 @@ const RELEASE_0_13_0_DETAILS: UnreleasedReleaseNotes = {
   ],
 }
 
+const RELEASE_0_13_1_DETAILS: UnreleasedReleaseNotes = {
+  highlights: [],
+  fixes: [
+    'Startup now repairs unambiguous M.2 keying and module-size metadata omitted from upgraded wired Network Adapters and host expansion slots, preventing false compatibility alerts without overwriting curated values.',
+  ],
+  notes: [],
+}
+
 export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
   highlights: [],
   fixes: [],
@@ -826,9 +834,16 @@ const RELEASE_0_2_1_DETAILS: UnreleasedReleaseNotes = {
 
 export const RELEASE_NOTES: ReleaseNoteEntry[] = [
   {
-    version: '0.13.0',
+    version: '0.13.1',
     date: '2026-08-16',
     channel: 'latest',
+    title: 'Repair M.2 compatibility metadata',
+    ...RELEASE_0_13_1_DETAILS,
+  },
+  {
+    version: '0.13.0',
+    date: '2026-08-16',
+    channel: 'release',
     title: 'Unify wired and wireless Network Adapters',
     ...RELEASE_0_13_0_DETAILS,
   },

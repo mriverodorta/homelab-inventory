@@ -6,6 +6,12 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 
 ## Unreleased
 
+## [0.13.1] - 2026-08-16
+
+### Fixed
+
+- Startup now repairs unambiguous M.2 keying and module-size metadata omitted from upgraded wired Network Adapters and host expansion slots, preventing false compatibility alerts without overwriting curated values.
+
 ## [0.13.0] - 2026-08-16
 
 ### Added

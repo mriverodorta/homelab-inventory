@@ -95,4 +95,9 @@ export const CORE_MIGRATIONS: readonly CoreMigration[] = [
     file: '0017_network_adapter_v11.sql',
     sha256: '816835c4442aa749cdcfe367ac33af9fe63b1c257e0eeec06a28c43e53e8eaaf',
   },
+  {
+    id: '0019_m2_metadata_repair',
+    file: '0018_m2_metadata_repair.sql',
+    sha256: '6942beaa6f35b7c1616f667c0950032a9acf63163c8b78a5e85262968e921100',
+  },
 ]

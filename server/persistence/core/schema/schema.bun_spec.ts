@@ -42,8 +42,8 @@ describe('core SQLite foundation schema', () => {
       'inventoryIdentityAliases',
       'cpuSocketTypes',
     ]))
-    expect(CORE_MIGRATIONS).toHaveLength(18)
-    expect(CORE_MIGRATIONS.at(-1)?.id).toBe('0018_network_adapter_v11')
+    expect(CORE_MIGRATIONS).toHaveLength(19)
+    expect(CORE_MIGRATIONS.at(-1)?.id).toBe('0019_m2_metadata_repair')
   })
 
   test('maps every active inventory category to a shared-primary-key subtype table', () => {
@@ -118,7 +118,7 @@ describe('core SQLite foundation schema', () => {
         sha256: migration.sha256,
         sql: await readFile(join(migrationsDir, migration.file), 'utf8'),
       })))
-      await expect(applyCommittedMigrations(handle, migrations)).resolves.toEqual({ applied: 1, currentVersion: 18 })
+      await expect(applyCommittedMigrations(handle, migrations)).resolves.toEqual({ applied: 2, currentVersion: 19 })
 
       expect(handle.database.query(`
         SELECT id, network_technology, form_factor, max_speed_bps
@@ -150,7 +150,94 @@ describe('core SQLite foundation schema', () => {
       expect(handle.database.query(`
         SELECT name FROM sqlite_schema WHERE type = 'table' AND name IN ('network_cards', 'wireless_cards')
       `).all()).toEqual([])
-      await expect(applyCommittedMigrations(handle, migrations)).resolves.toEqual({ applied: 0, currentVersion: 18 })
+      await expect(applyCommittedMigrations(handle, migrations)).resolves.toEqual({ applied: 0, currentVersion: 19 })
+    } finally {
+      closeManagedDatabase(handle)
+    }
+  })
+
+  test('repairs unambiguous missing M.2 metadata without overwriting or guessing', async () => {
+    const repairMigrationIndex = CORE_MIGRATIONS.findIndex((migration) => migration.id === '0019_m2_metadata_repair')
+    const handle = await createMigratedDatabase(repairMigrationIndex)
+    try {
+      const networkType = handle.database.query("SELECT id FROM inventory_item_types WHERE key = 'network'").get() as { id: number }
+      const serverType = handle.database.query("SELECT id FROM inventory_item_types WHERE key = 'server'").get() as { id: number }
+      const insertItem = handle.database.query(`
+        INSERT INTO inventory_items (
+          type_id, scope, owner_project_id, name, row_version, created_at_ms, updated_at_ms
+        ) VALUES (?, 'global', NULL, ?, 1, 1, 1)
+        RETURNING id
+      `)
+      const insertAdapter = handle.database.query(`
+        INSERT INTO network_adapters (id, network_technology, form_factor)
+        VALUES (?, 'ethernet', ?)
+      `)
+      const insertInterface = handle.database.query(`
+        INSERT INTO network_adapter_host_interfaces (adapter_id, family, key, module_size)
+        VALUES (?, ?, ?, ?)
+      `)
+      const insertLegacyInterface = handle.database.query(`
+        INSERT INTO network_adapter_extension_values (adapter_id, field_path, value_type, text_value)
+        VALUES (?, 'legacy.interface', 'text', ?)
+      `)
+
+      const i210 = insertItem.get(networkType.id, 'Intel I210AT 1G NIC') as { id: number }
+      insertAdapter.run(i210.id, 'M.2 2230 A+E')
+      insertInterface.run(i210.id, 'm2-ae', null, null)
+      insertLegacyInterface.run(i210.id, 'M.2 A+E')
+
+      const bmAdapter = insertItem.get(networkType.id, 'M.2 B+M adapter') as { id: number }
+      insertAdapter.run(bmAdapter.id, 'M.2 2280 B/M')
+      insertInterface.run(bmAdapter.id, 'm2-bm', null, null)
+
+      const ambiguousAdapter = insertItem.get(networkType.id, 'Ambiguous M.2 adapter') as { id: number }
+      insertAdapter.run(ambiguousAdapter.id, 'M.2 2230 or 2280 A+E')
+      insertInterface.run(ambiguousAdapter.id, 'm2-ae', null, null)
+
+      const populatedAdapter = insertItem.get(networkType.id, 'Curated M.2 adapter') as { id: number }
+      insertAdapter.run(populatedAdapter.id, 'M.2 2230 A+E')
+      insertInterface.run(populatedAdapter.id, 'm2-ae', 'curated-key', '2242')
+
+      const host = insertItem.get(serverType.id, 'Lenovo ThinkCentre M720q') as { id: number }
+      handle.database.query('INSERT INTO servers (id) VALUES (?)').run(host.id)
+      const resource = handle.database.query(`
+        INSERT INTO inventory_resources (item_id, created_at_ms) VALUES (?, 1) RETURNING id
+      `).get(host.id) as { id: number }
+      const group = handle.database.query(`
+        INSERT INTO host_resource_groups (
+          resource_identity_id, host_item_id, resource_type, semantic_key, label, slot_count, created_at_ms
+        ) VALUES (?, ?, 'expansion', 'm2-ae-slot', 'M.2 2230 A/E network slot', 1, 1)
+        RETURNING id
+      `).get(resource.id, host.id) as { id: number }
+      handle.database.query(`
+        INSERT INTO expansion_resource_groups (id, interface_family)
+        VALUES (?, 'm2-ae')
+      `).run(group.id)
+
+      const migrationsDir = resolve(import.meta.dir, '../migrations/generated')
+      const migrations = await Promise.all(CORE_MIGRATIONS.map(async (migration) => ({
+        id: migration.id,
+        sha256: migration.sha256,
+        sql: await readFile(join(migrationsDir, migration.file), 'utf8'),
+      })))
+      await expect(applyCommittedMigrations(handle, migrations)).resolves.toEqual({ applied: 1, currentVersion: 19 })
+
+      expect(handle.database.query(`
+        SELECT family, key, module_size FROM network_adapter_host_interfaces WHERE adapter_id = ?
+      `).get(i210.id)).toEqual({ family: 'm2-ae', key: 'A+E', module_size: '2230' })
+      expect(handle.database.query(`
+        SELECT family, key, module_size FROM network_adapter_host_interfaces WHERE adapter_id = ?
+      `).get(bmAdapter.id)).toEqual({ family: 'm2-bm', key: 'B+M', module_size: '2280' })
+      expect(handle.database.query(`
+        SELECT key, module_size FROM network_adapter_host_interfaces WHERE adapter_id = ?
+      `).get(ambiguousAdapter.id)).toEqual({ key: 'A+E', module_size: null })
+      expect(handle.database.query(`
+        SELECT key, module_size FROM network_adapter_host_interfaces WHERE adapter_id = ?
+      `).get(populatedAdapter.id)).toEqual({ key: 'curated-key', module_size: '2242' })
+      expect(handle.database.query(`
+        SELECT keying, module_size FROM expansion_resource_groups WHERE id = ?
+      `).get(group.id)).toEqual({ keying: 'A+E', module_size: '2230' })
+      await expect(applyCommittedMigrations(handle, migrations)).resolves.toEqual({ applied: 0, currentVersion: 19 })
     } finally {
       closeManagedDatabase(handle)
     }
@@ -187,7 +274,7 @@ describe('core SQLite foundation schema', () => {
         sha256: migration.sha256,
         sql: await readFile(join(migrationsDir, migration.file), 'utf8'),
       })))
-      await expect(applyCommittedMigrations(handle, migrations)).resolves.toEqual({ applied: 4, currentVersion: 18 })
+      await expect(applyCommittedMigrations(handle, migrations)).resolves.toEqual({ applied: 5, currentVersion: 19 })
       expect(handle.database.query(`
         SELECT adapter_disposition FROM host_power_profiles WHERE host_profile_id = ?
       `).get(profile.id)).toEqual({ adapter_disposition: 'replaceable' })
@@ -195,7 +282,7 @@ describe('core SQLite foundation schema', () => {
         id: item.id,
         power_configuration: 'external-adapter',
       })
-      await expect(applyCommittedMigrations(handle, migrations)).resolves.toEqual({ applied: 0, currentVersion: 18 })
+      await expect(applyCommittedMigrations(handle, migrations)).resolves.toEqual({ applied: 0, currentVersion: 19 })
     } finally {
       closeManagedDatabase(handle)
     }
