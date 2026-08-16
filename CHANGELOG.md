@@ -11,6 +11,7 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 ### Fixed
 
 - Catalog range filters now index exact canonical measurements from historical signed templates, so RAM capacity and other numeric filters return the correct inclusive results after an automatic local index rebuild.
+- Ambiguous historical measurement text remains available for display without making the verified catalog unavailable; only exact values participate in canonical range filters.
 - Persisted inventory values that remain valid but are not in a curated option list are shown with their original name instead of an artificial `(Legacy)` suffix.
 - NAS devices with internal power or fixed external adapters now show one `AC 01` header endpoint without a duplicate body power row, regardless of the endpoint's relational port position.
 

@@ -269,6 +269,7 @@ const RELEASE_0_12_14_DETAILS: UnreleasedReleaseNotes = {
   highlights: [],
   fixes: [
     'Catalog capacity, performance, speed, and power filters now index exact canonical measurements from historical signed templates after an automatic local catalog rebuild.',
+    'Ambiguous historical measurement text no longer makes the verified catalog unavailable; exact canonical fields remain searchable while the original text remains visible.',
     'Persisted inventory values keep their original current-facing labels instead of receiving an artificial Legacy suffix when a curated choice list changes.',
     'Internal and fixed-adapter NAS devices now show one AC 01 header endpoint without a duplicate power row while retaining existing cable identities.',
   ],

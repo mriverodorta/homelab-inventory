@@ -63,6 +63,18 @@ describe('catalog runtime projection', () => {
     expect(projected.item.specs.cacheMib).toBeUndefined()
   })
 
+  it('preserves ambiguous historical measurement text while indexing exact related values', () => {
+    const projected = projectCatalogTemplateForRuntime(template({
+      type: 'gpu',
+      name: 'Historical GPU',
+      specs: { vramGb: 4, powerWatts: '40-75W' },
+      compatibility: { requirements: { expansion: { powerWatts: 75 } } },
+    }, 3))
+
+    expect(projected.item.specs).toEqual({ vramMib: 4096, powerWatts: '40-75W' })
+    expect(projected.item.compatibility.requirements.expansion).toEqual({ powerMw: 75_000 })
+  })
+
   it('validates v9 records and preserves canonical measurements', () => {
     const projected = projectCatalogTemplateForRuntime(template({
       type: 'cpu',
@@ -113,5 +125,13 @@ describe('catalog runtime projection', () => {
       name: 'Conflicting RAM',
       specs: { capacityGb: 8, capacityMib: 4096 },
     }, 8))).toThrow('conflicts')
+  })
+
+  it('rejects malformed canonical measurements in historical records', () => {
+    expect(() => projectCatalogTemplateForRuntime(template({
+      type: 'ram',
+      name: 'Malformed canonical RAM',
+      specs: { capacityMib: '8192' },
+    }, 8))).toThrow('finite non-negative number')
   })
 })
