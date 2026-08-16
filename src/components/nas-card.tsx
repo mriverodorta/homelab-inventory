@@ -192,6 +192,7 @@ function PortChip({
   onEndpointDrop,
   pendingEndpoint,
   port,
+  displaySlotNumber,
   canvasIndex,
   requiredHandleIds,
 }: {
@@ -203,6 +204,7 @@ function PortChip({
   onEndpointDrop: (endpoint: ConnectionEndpoint) => void
   pendingEndpoint: ConnectionEndpoint | null
   port: InventoryPort
+  displaySlotNumber?: number
   requiredHandleIds: ReadonlySet<string>
 }) {
   const connected = canvasEndpointConnected(canvasIndex, endpoint)
@@ -215,6 +217,7 @@ function PortChip({
   const canStartDrag = open && selected
   const canDrop = Boolean(draggingEndpoint && !dragSource && open && compatible)
   const tooltipLabel = nicSpeedTooltipLabel(port)
+  const visibleSlotNumber = displaySlotNumber ?? port.slotNumber
 
   const chip = (
     <div
@@ -227,7 +230,7 @@ function PortChip({
       } ${activeDropTarget && canDrop ? 'ring-2 ring-[#86a989]' : ''} ${
         activeDropTarget && !canDrop ? 'opacity-35 grayscale' : ''
       }`}
-      title={tooltipLabel ? undefined : `${String(port.slotNumber).padStart(2, '0')} ${port.speed ?? formatPortType(port.type)}`}
+      title={tooltipLabel ? undefined : `${String(visibleSlotNumber).padStart(2, '0')} ${port.speed ?? formatPortType(port.type)}`}
       onPointerDown={(event) => {
         event.preventDefault()
         event.stopPropagation()
@@ -264,7 +267,7 @@ function PortChip({
     >
       <PortChipHandles endpoint={endpoint} requiredHandleIds={requiredHandleIds} />
       <span className="text-[8px] font-black uppercase leading-none opacity-80">{portTypeChipLabel(port.type)}</span>
-      <span className="text-[11px] font-black">{String(port.slotNumber).padStart(2, '0')}</span>
+      <span className="text-[11px] font-black">{String(visibleSlotNumber).padStart(2, '0')}</span>
     </div>
   )
 
@@ -849,6 +852,7 @@ export function NasNode({ data }: NodeProps<NasFlowNode>) {
               onEndpointDrop={onEndpointDrop}
               pendingEndpoint={pendingEndpoint}
               port={hostPowerPort}
+              displaySlotNumber={1}
               requiredHandleIds={requiredHandleIds}
             />
           </div>
@@ -1008,19 +1012,6 @@ export function NasNode({ data }: NodeProps<NasFlowNode>) {
           requiredHandleIds={requiredHandleIds}
           selectedItemId={selectedItemId}
         />
-      ) : null}
-      {powerTopology.configuration === 'external-adapter' && powerTopology.adapterDisposition === 'fixed' ? (
-        <div data-testid="nas-fixed-power-adapter" className="mt-2 rounded-md border border-[#c6ad8b] bg-[#eee0cb] p-2 text-[#3d3022]">
-          <div className="flex items-center justify-between gap-2">
-            <div>
-              <div className="text-[9px] font-black uppercase opacity-70">Fixed power adapter</div>
-              <div className="text-xs font-black">Bundled OEM adapter</div>
-            </div>
-            <span className="rounded bg-white/55 px-1.5 py-0.5 text-[9px] font-bold">
-              {nas.compatibility?.host?.power?.connector ?? 'OEM connector'}
-            </span>
-          </div>
-        </div>
       ) : null}
     </div>
   )

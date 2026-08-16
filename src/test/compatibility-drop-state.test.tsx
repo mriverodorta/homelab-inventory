@@ -13,7 +13,6 @@ import {
   type ComponentDragData,
 } from '@/components/workbench-canvas-contract'
 import type { ComponentAssignment, InventoryItem, ProjectState } from '@/types/inventory'
-import { withCanonicalPowerPorts } from '../../shared/power-ports.mjs'
 
 vi.mock('@dnd-kit/core', () => ({
   useDraggable: () => ({
@@ -441,13 +440,13 @@ describe('host card compatibility drop-state styling', () => {
   it('renders exactly one NAS power representation for each mode', () => {
     const internal = {
       ...host('nas:1', 'nas'),
-      ports: [{
-        id: 1,
-        key: 'ac-input',
-        kind: 'power-port' as const,
-        type: 'ac-input' as const,
-        slotNumber: 1,
-      }],
+      ports: [
+        { id: 1, kind: 'server-port' as const, type: 'rj45' as const, slotNumber: 1 },
+        { id: 2, kind: 'server-port' as const, type: 'rj45' as const, slotNumber: 2 },
+        { id: 3, kind: 'server-port' as const, type: 'usb' as const, slotNumber: 3 },
+        { id: 4, kind: 'server-port' as const, type: 'usb' as const, slotNumber: 4 },
+        { id: 5, key: 'ac-input', kind: 'power-port' as const, type: 'ac-input' as const, slotNumber: 5 },
+      ],
     }
     const external = {
       ...host('nas:2', 'nas'),
@@ -463,26 +462,39 @@ describe('host card compatibility drop-state styling', () => {
     )
 
     expect(internalRender.container.querySelector('[data-testid="nas-internal-power-port"]')).toBeInTheDocument()
+    expect(internalRender.container.querySelector('[data-testid="nas-internal-power-port"]')).toHaveTextContent('AC01')
     expect(internalRender.container.querySelector('[data-testid="nas-power-adapter-slot"]')).not.toBeInTheDocument()
     expect(externalRender.container.querySelector('[data-testid="nas-power-adapter-slot"]')).toHaveTextContent('Empty')
     expect(externalRender.container.querySelector('[data-testid="nas-internal-power-port"]')).not.toBeInTheDocument()
   })
 
   it('renders a fixed external adapter as host-owned power without a replaceable slot', () => {
-    const nas = withCanonicalPowerPorts({
+    const nas = {
       ...host('nas:3', 'nas'),
       specs: { powerConfiguration: 'external-adapter' },
+      ports: [
+        { id: 1, kind: 'server-port' as const, type: 'rj45' as const, slotNumber: 1 },
+        { id: 2, kind: 'server-port' as const, type: 'rj45' as const, slotNumber: 2 },
+        { id: 3, key: 'ac-input', kind: 'power-port' as const, type: 'ac-input' as const, slotNumber: 3 },
+      ],
       compatibility: { host: { power: {
         configuration: 'external-adapter',
         adapterDisposition: 'fixed',
         connector: '4-pin DIN',
       } } },
-    })
+    }
 
-    const { container } = render(<NasNode {...nasNodeProps(nodeData(project([nas]), nas.key!))} />)
+    const currentProject = project([nas])
+    const node = nodeData(currentProject, nas.key!)
+    const endpoint = { itemId: nas.key!, portId: 3 }
+    const handleId = getEndpointHandleId('target', 'left', endpoint)
+    node.requiredHandleIds = new Set([handleId])
+    const { container } = render(<NasNode {...nasNodeProps(node)} />)
 
-    expect(container.querySelector('[data-testid="nas-fixed-power-port"]')).toBeInTheDocument()
-    expect(container.querySelector('[data-testid="nas-fixed-power-adapter"]')).toHaveTextContent('4-pin DIN')
+    expect(container.querySelector('[data-testid="nas-fixed-power-port"]')).toHaveTextContent('AC01')
+    expect(container.querySelector(`[data-testid="handle-${handleId}"]`)).toBeInTheDocument()
+    expect(container.querySelector('[data-testid="nas-fixed-power-adapter"]')).not.toBeInTheDocument()
+    expect(container).not.toHaveTextContent('Bundled OEM adapter')
     expect(container.querySelector('[data-testid="nas-power-adapter-slot"]')).not.toBeInTheDocument()
   })
 
