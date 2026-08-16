@@ -55,7 +55,7 @@ export type TopologyConnection = {
   from: TopologyEndpointRef
   to: TopologyEndpointRef
   connection_type: string
-  negotiated_speed_mbps: number | null
+  negotiated_speed_bps: number | null
   label: string | null
   route: TopologyConnectionRoute | null
   created_at: string
@@ -84,7 +84,7 @@ export type AssignmentChange = {
 export type ConnectionDerivedState = {
   connection_id: number
   connection_type: string
-  negotiated_speed_mbps: number | null
+  negotiated_speed_bps: number | null
 }
 
 export type TopologyNetworkTrace = {

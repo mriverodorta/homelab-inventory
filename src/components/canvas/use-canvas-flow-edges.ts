@@ -71,7 +71,7 @@ export function useCanvasFlowEdges({
         const effectiveConnection = derived ? {
           ...connection,
           type: derived.connectionType as InventoryConnection['type'],
-          negotiatedSpeedMbps: derived.negotiatedSpeedMbps ?? undefined,
+          negotiatedSpeedBps: derived.negotiatedSpeedBps ?? undefined,
         } : connection
         if (!isCableTypeVisible(effectiveConnection.type, cableVisibility)) return []
 

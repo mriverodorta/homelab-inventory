@@ -24,10 +24,10 @@ export type CableAppearance = {
 }
 
 const NEGOTIATED_SPEED_APPEARANCES: Partial<Record<number, CableAppearance>> = {
-  1000: { color: CABLE_COLORS.oneGig, label: '1G' },
-  2500: { color: CABLE_COLORS.twoPointFiveGig, label: '2.5G' },
-  5000: { color: CABLE_COLORS.fiveGig, label: '5G' },
-  10000: { color: CABLE_COLORS.tenGig, label: '10G' },
+  1_000_000_000: { color: CABLE_COLORS.oneGig, label: '1G' },
+  2_500_000_000: { color: CABLE_COLORS.twoPointFiveGig, label: '2.5G' },
+  5_000_000_000: { color: CABLE_COLORS.fiveGig, label: '5G' },
+  10_000_000_000: { color: CABLE_COLORS.tenGig, label: '10G' },
 }
 
 function formatPortTypeLabel(type: InventoryPort['type']): string {
@@ -75,9 +75,9 @@ export function getCableAppearance(
     }
   }
 
-  const negotiatedSpeedMbps = connection.negotiatedSpeedMbps
-  const negotiatedAppearance = negotiatedSpeedMbps
-    ? NEGOTIATED_SPEED_APPEARANCES[negotiatedSpeedMbps]
+  const negotiatedSpeedBps = connection.negotiatedSpeedBps
+  const negotiatedAppearance = negotiatedSpeedBps
+    ? NEGOTIATED_SPEED_APPEARANCES[negotiatedSpeedBps]
     : undefined
 
   if (negotiatedAppearance) {

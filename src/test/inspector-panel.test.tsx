@@ -2245,7 +2245,7 @@ describe('InspectorPanel', () => {
         {
           id: 1,
           type: 'network',
-          negotiatedSpeedMbps: 1000,
+          negotiatedSpeedBps: 1_000_000_000,
           createdAt: '2026-06-26T00:00:00.000Z',
           from: { itemId: 'server:1', portId: 1 },
           to: { itemId: 'patchPanel:1', portId: 1, endpointId: 2 },

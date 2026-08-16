@@ -745,7 +745,7 @@ impl Engine {
             from,
             to,
             connection_type: connection_type.into(),
-            negotiated_speed_mbps: None,
+            negotiated_speed_bps: None,
             label: None,
             route: None,
             created_at,
@@ -1418,7 +1418,7 @@ fn normalize_connection_derived(snapshot: &mut TopologySnapshot) -> Result<(), T
             connection
                 .connection_type
                 .clone_from(&state.connection_type);
-            connection.negotiated_speed_mbps = state.negotiated_speed_mbps;
+            connection.negotiated_speed_bps = state.negotiated_speed_bps;
         }
     }
     Ok(())
@@ -1443,19 +1443,19 @@ fn connection_derived_changes(
             continue;
         };
         if previous.connection_type == connection.connection_type
-            && previous.negotiated_speed_mbps == connection.negotiated_speed_mbps
+            && previous.negotiated_speed_bps == connection.negotiated_speed_bps
         {
             continue;
         }
         forward.push(homelab_engine_protocol::ConnectionDerivedState {
             connection_id: connection.id,
             connection_type: connection.connection_type.clone(),
-            negotiated_speed_mbps: connection.negotiated_speed_mbps,
+            negotiated_speed_bps: connection.negotiated_speed_bps,
         });
         inverse.push(homelab_engine_protocol::ConnectionDerivedState {
             connection_id: previous.id,
             connection_type: previous.connection_type.clone(),
-            negotiated_speed_mbps: previous.negotiated_speed_mbps,
+            negotiated_speed_bps: previous.negotiated_speed_bps,
         });
     }
     (forward, inverse)
@@ -1703,7 +1703,7 @@ mod tests {
                     from: switch_endpoint,
                     to: panel_front,
                     connection_type: "network".into(),
-                    negotiated_speed_mbps: Some(2_500),
+                    negotiated_speed_bps: Some(2_500_000_000),
                     label: None,
                     route: None,
                     created_at: "2026-07-23T00:00:00.000Z".into(),
@@ -2432,21 +2432,21 @@ mod tests {
                 .topology()
                 .connections
                 .iter()
-                .map(|connection| connection.negotiated_speed_mbps)
+                .map(|connection| connection.negotiated_speed_bps)
                 .collect::<Vec<_>>(),
-            vec![Some(1_000), Some(1_000)]
+            vec![Some(1_000_000_000), Some(1_000_000_000)]
         );
         assert!(matches!(
             response.result,
             ResponseBody::Patch(ref patch)
                 if matches!(&patch.forward,
                     ProjectPatch::Batch { patches }
-                    if matches!(&patches[0], ProjectPatch::AddConnection { connection } if connection.negotiated_speed_mbps == Some(1_000))
-                        && matches!(&patches[1], ProjectPatch::SetConnectionDerived { states } if states[0].connection_id == 1 && states[0].negotiated_speed_mbps == Some(1_000))
+                    if matches!(&patches[0], ProjectPatch::AddConnection { connection } if connection.negotiated_speed_bps == Some(1_000_000_000))
+                        && matches!(&patches[1], ProjectPatch::SetConnectionDerived { states } if states[0].connection_id == 1 && states[0].negotiated_speed_bps == Some(1_000_000_000))
                 )
                 && matches!(&patch.inverse,
                     ProjectPatch::Batch { patches }
-                    if matches!(&patches[0], ProjectPatch::SetConnectionDerived { states } if states[0].negotiated_speed_mbps == Some(2_500))
+                    if matches!(&patches[0], ProjectPatch::SetConnectionDerived { states } if states[0].negotiated_speed_bps == Some(2_500_000_000))
                 )
         ));
 
@@ -2457,15 +2457,15 @@ mod tests {
             operation: Operation::RemoveConnection { connection_id: 2 },
         });
         assert_eq!(
-            engine.topology().connections[0].negotiated_speed_mbps,
-            Some(2_500)
+            engine.topology().connections[0].negotiated_speed_bps,
+            Some(2_500_000_000)
         );
         assert!(matches!(
             removed.result,
             ResponseBody::Patch(ref patch)
                 if matches!(&patch.forward,
                     ProjectPatch::Batch { patches }
-                    if matches!(&patches[1], ProjectPatch::SetConnectionDerived { states } if states[0].connection_id == 1 && states[0].negotiated_speed_mbps == Some(2_500))
+                    if matches!(&patches[1], ProjectPatch::SetConnectionDerived { states } if states[0].connection_id == 1 && states[0].negotiated_speed_bps == Some(2_500_000_000))
                 )
         ));
     }

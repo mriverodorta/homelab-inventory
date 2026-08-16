@@ -143,7 +143,7 @@ export function topologyQueryFixture(project: ProjectState): TopologyQueryData {
     endpoints: descriptors,
     connectionDerivedById: new Map(project.connections.map((connection) => [connection.id, {
       connectionType: connection.type,
-      negotiatedSpeedMbps: connection.negotiatedSpeedMbps ?? null,
+      negotiatedSpeedBps: connection.negotiatedSpeedBps ?? null,
     }])),
     power: { endpoints: powerEndpoints, findings: [] },
     networkTraces: [],

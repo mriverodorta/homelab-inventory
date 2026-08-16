@@ -77,7 +77,7 @@ export function createEngineSnapshot(project) {
         from: endpointRef(project, connection.from, `connections[${String(index)}].from`),
         to: endpointRef(project, connection.to, `connections[${String(index)}].to`),
         connection_type: connection.type,
-        negotiated_speed_mbps: connection.negotiatedSpeedMbps ?? null,
+        negotiated_speed_bps: connection.negotiatedSpeedBps ?? null,
         label: connection.label ?? null,
         route: topologyRoute(connection.route),
         created_at: connection.createdAt,

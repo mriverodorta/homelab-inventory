@@ -152,12 +152,12 @@ function toMilliseconds(value: unknown, fallback: number) {
   return Number.isFinite(parsed) ? parsed : fallback
 }
 
-function toBitsPerSecond(value: unknown) {
+function canonicalBitsPerSecond(value: unknown) {
   if (value === null || value === undefined) return null
-  if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) {
+  if (!Number.isSafeInteger(value) || Number(value) < 0) {
     throw lifecycleError('Negotiated speed is invalid.', 'invalid-engine-patch', 500)
   }
-  return Math.round(value * 1_000_000)
+  return Number(value)
 }
 
 function hasWorkspacePatch(patch: ProjectPatch): boolean {
@@ -530,7 +530,7 @@ export class SqliteHomelabInventoryStore {
             } : null,
           },
           connection_type: connection.type,
-          negotiated_speed_mbps: connection.negotiatedSpeedMbps ?? null,
+          negotiated_speed_bps: connection.negotiatedSpeedBps ?? null,
           label: connection.label ?? null,
           route: connection.route ? {
             source_side: connection.route.sourceSide ?? null,
@@ -876,7 +876,7 @@ export class SqliteHomelabInventoryStore {
           from: this.runtimeEndpoint(connection.from),
           to: this.runtimeEndpoint(connection.to),
           connection_type: connection.type,
-          negotiated_speed_mbps: connection.negotiatedSpeedMbps ?? null,
+          negotiated_speed_bps: connection.negotiatedSpeedBps ?? null,
           label: connection.label ?? null,
           route: connection.route ? {
             source_side: connection.route.sourceSide ?? null,
@@ -3305,7 +3305,7 @@ export class SqliteHomelabInventoryStore {
       for (const state of patch.payload.states) {
         this.updateConnection(state.connection_id, 'connection_type = ?, negotiated_speed_bps = ?, updated_at_ms = ?', [
           state.connection_type,
-          toBitsPerSecond(state.negotiated_speed_mbps),
+          canonicalBitsPerSecond(state.negotiated_speed_bps),
           now,
         ])
       }
@@ -3525,7 +3525,7 @@ export class SqliteHomelabInventoryStore {
       connectionId,
       this.projectId,
       connection.connection_type,
-      toBitsPerSecond(connection.negotiated_speed_mbps),
+      canonicalBitsPerSecond(connection.negotiated_speed_bps),
       connection.label,
       route?.source_side ?? 'right',
       route?.target_side ?? 'left',

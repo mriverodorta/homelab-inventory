@@ -54,9 +54,9 @@ function runtimeConnection(connection: TopologyConnection): InventoryConnection 
     from: fromTopologyEndpointRef(connection.from),
     to: fromTopologyEndpointRef(connection.to),
     type: connection.connection_type as InventoryConnectionType,
-    ...(connection.negotiated_speed_mbps === null
+    ...(connection.negotiated_speed_bps === null
       ? {}
-      : { negotiatedSpeedMbps: connection.negotiated_speed_mbps }),
+      : { negotiatedSpeedBps: connection.negotiated_speed_bps }),
     ...(connection.label === null ? {} : { label: connection.label }),
     ...(route ? { route } : {}),
     createdAt: connection.created_at,
@@ -135,13 +135,13 @@ export function applyProjectPatch(
       connections: project.connections.map((connection) => {
         const state = states.get(connection.id)
         if (!state) return connection
-        const { negotiatedSpeedMbps: _speed, ...withoutSpeed } = connection
+        const { negotiatedSpeedBps: _speed, ...withoutSpeed } = connection
         return {
           ...withoutSpeed,
           type: state.connection_type as InventoryConnectionType,
-          ...(state.negotiated_speed_mbps === null
+          ...(state.negotiated_speed_bps === null
             ? {}
-            : { negotiatedSpeedMbps: state.negotiated_speed_mbps }),
+            : { negotiatedSpeedBps: state.negotiated_speed_bps }),
         }
       }),
     }

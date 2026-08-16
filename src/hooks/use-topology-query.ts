@@ -28,7 +28,7 @@ export type TopologyQueryData = {
   endpoints: RuntimeTopologyEndpointDescriptor[]
   connectionDerivedById: ReadonlyMap<number, {
     connectionType: string
-    negotiatedSpeedMbps: number | null
+    negotiatedSpeedBps: number | null
   }>
   power: RuntimePowerTopology
   networkTraces: PresentedNetworkTrace[]
@@ -65,7 +65,7 @@ export function createTopologyQueryFingerprint(project: ProjectState): string {
       from: connection.from,
       to: connection.to,
       type: connection.type,
-      negotiatedSpeedMbps: connection.negotiatedSpeedMbps ?? null,
+      negotiatedSpeedBps: connection.negotiatedSpeedBps ?? null,
     })),
     placedItemIds: project.placements.map((placement) => placement.serverId),
   })
@@ -162,7 +162,7 @@ export function useTopologyQuery(project: ProjectState | null) {
     const connectionDerivedById = new Map(
       query.data.connectionDerivedStates.map((state) => [state.connection_id, {
         connectionType: state.connection_type,
-        negotiatedSpeedMbps: state.negotiated_speed_mbps,
+        negotiatedSpeedBps: state.negotiated_speed_bps,
       }]),
     )
     for (const trace of networkTraces) {

@@ -1205,11 +1205,18 @@ export function assertProjectStoreShape(store, options = {}) {
       throw new Error('Each connection must include id, from, to, type, and createdAt.')
     }
 
-    if (
-      connection.negotiatedSpeedMbps !== undefined &&
-      ![1000, 2500, 5000, 10000].includes(connection.negotiatedSpeedMbps)
-    ) {
-      throw new Error('Connection negotiated speed must be 1000, 2500, 5000, or 10000 Mbps.')
+    if (connection.negotiatedSpeedBps !== undefined && (
+      !Number.isSafeInteger(connection.negotiatedSpeedBps) || connection.negotiatedSpeedBps <= 0
+    )) {
+      throw new Error('Connection negotiated speed must be a positive integer in bits per second.')
+    }
+    if (connection.negotiatedSpeedMbps !== undefined && (
+      !Number.isSafeInteger(connection.negotiatedSpeedMbps) || connection.negotiatedSpeedMbps <= 0
+    )) {
+      throw new Error('Legacy connection negotiated speed must be a positive integer in megabits per second.')
+    }
+    if (connection.negotiatedSpeedBps !== undefined && connection.negotiatedSpeedMbps !== undefined) {
+      throw new Error('Connection negotiated speed cannot use both BPS and legacy Mbps fields.')
     }
   }
 }

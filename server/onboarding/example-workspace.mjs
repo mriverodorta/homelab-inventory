@@ -155,14 +155,14 @@ export const EXAMPLE_WORKSPACE_TEMPLATE = Object.freeze({
       id: 1,
       from: { itemType: 'server', itemId: 1, portId: 1 },
       to: { itemType: 'patchPanel', itemId: 1, portId: 1, endpointId: 2 },
-      type: 'network', negotiatedSpeedMbps: 1000, createdAt: assignedAt,
+      type: 'network', negotiatedSpeedBps: 1_000_000_000, createdAt: assignedAt,
       route: { sourceSide: 'top', targetSide: 'bottom' },
     },
     {
       id: 2,
       from: { itemType: 'patchPanel', itemId: 1, portId: 1, endpointId: 1 },
       to: { itemType: 'switch', itemId: 1, portId: 1 },
-      type: 'network', negotiatedSpeedMbps: 1000, createdAt: assignedAt,
+      type: 'network', negotiatedSpeedBps: 1_000_000_000, createdAt: assignedAt,
       route: { sourceSide: 'right', targetSide: 'left' },
     },
     {

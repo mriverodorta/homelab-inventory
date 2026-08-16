@@ -152,11 +152,16 @@ function endpointAdvertisedSpeed(project: ProjectState, endpoint: ConnectionEndp
     return null
   }
 
-  return advertisedSpeedMbps(port.speed) ?? (port.type === 'sfp-plus' ? 10000 : null)
+  const speedMbps = advertisedSpeedMbps(port.speed) ?? (port.type === 'sfp-plus' ? 10000 : null)
+  return speedMbps === null ? null : speedMbps * 1_000_000
 }
 
 function withoutNegotiatedSpeed(connection: InventoryConnection): InventoryConnection {
-  const { negotiatedSpeedMbps: _negotiatedSpeedMbps, ...rest } = connection
+  const {
+    negotiatedSpeedBps: _negotiatedSpeedBps,
+    negotiatedSpeedMbps: _legacyNegotiatedSpeedMbps,
+    ...rest
+  } = connection as InventoryConnection & { negotiatedSpeedMbps?: number }
   return rest
 }
 
@@ -262,6 +267,9 @@ export function recalculateNegotiatedSpeeds(project: ProjectState): ProjectState
       : undefined
     const hasStoredSpeed = Object.prototype.hasOwnProperty.call(
       connection,
+      'negotiatedSpeedBps',
+    ) || Object.prototype.hasOwnProperty.call(
+      connection,
       'negotiatedSpeedMbps',
     )
 
@@ -274,14 +282,14 @@ export function recalculateNegotiatedSpeeds(project: ProjectState): ProjectState
       return withoutNegotiatedSpeed(connection)
     }
 
-    if (connection.negotiatedSpeedMbps === desiredSpeed) {
+    if (connection.negotiatedSpeedBps === desiredSpeed) {
       return connection
     }
 
     changed = true
     return {
       ...connection,
-      negotiatedSpeedMbps: desiredSpeed,
+      negotiatedSpeedBps: desiredSpeed,
     }
   })
 

@@ -149,14 +149,14 @@ function connection(
   from: ConnectionEndpoint,
   to: ConnectionEndpoint,
   type: InventoryConnection['type'] = 'network',
-  negotiatedSpeedMbps?: number,
+  negotiatedSpeedBps?: number,
 ): InventoryConnection {
   return {
     id: CONNECTION_IDS[id],
     from,
     to,
     type,
-    ...(negotiatedSpeedMbps === undefined ? {} : { negotiatedSpeedMbps }),
+    ...(negotiatedSpeedBps === undefined ? {} : { negotiatedSpeedBps }),
     createdAt: CREATED_AT,
   }
 }
@@ -295,10 +295,10 @@ describe('normalizeNetworkProject', () => {
     expect(result.connections[0]).toEqual({
       ...legacyConnection,
       type: 'network',
-      negotiatedSpeedMbps: 10000,
+      negotiatedSpeedBps: 10_000_000_000,
     })
     expect(input.connections[0]).toBe(legacyConnection)
-    expect(input.connections[0]).not.toHaveProperty('negotiatedSpeedMbps')
+    expect(input.connections[0]).not.toHaveProperty('negotiatedSpeedBps')
   })
 
   it('repairs network cables through a patch-panel keystone', () => {
@@ -329,9 +329,9 @@ describe('normalizeNetworkProject', () => {
       'network',
       'network',
     ])
-    expect(result.connections.map((candidate) => candidate.negotiatedSpeedMbps)).toEqual([
-      1000,
-      1000,
+    expect(result.connections.map((candidate) => candidate.negotiatedSpeedBps)).toEqual([
+      1_000_000_000,
+      1_000_000_000,
     ])
   })
 
@@ -373,7 +373,7 @@ describe('normalizeNetworkProject', () => {
 
     expect(normalizeNetworkProject(input).connections[0]).toMatchObject({
       type: 'network',
-      negotiatedSpeedMbps: 2500,
+      negotiatedSpeedBps: 2_500_000_000,
     })
   })
 
@@ -414,7 +414,7 @@ describe('normalizeNetworkProject', () => {
           endpoint('server', 'server-port'),
           endpoint('switch', 'switch-port'),
           'network',
-          1000,
+          1_000_000_000,
         ),
       ],
     )
@@ -426,7 +426,7 @@ describe('normalizeNetworkProject', () => {
       connections: normalized.connections.map((candidate) => ({
         ...candidate,
         type: 'other' as const,
-        negotiatedSpeedMbps: undefined,
+        negotiatedSpeedBps: undefined,
       })),
     }
     const first = normalizeNetworkProject(legacy)
@@ -460,7 +460,7 @@ describe('recalculateNegotiatedSpeeds', () => {
       ],
     )
 
-    expect(recalculateNegotiatedSpeeds(input).connections[0].negotiatedSpeedMbps).toBe(1000)
+    expect(recalculateNegotiatedSpeeds(input).connections[0].negotiatedSpeedBps).toBe(1_000_000_000)
   })
 
   it('keeps the known switch speed on an open one-sided patch-panel segment', () => {
@@ -477,7 +477,7 @@ describe('recalculateNegotiatedSpeeds', () => {
       ],
     )
 
-    expect(recalculateNegotiatedSpeeds(input).connections[0].negotiatedSpeedMbps).toBe(2500)
+    expect(recalculateNegotiatedSpeeds(input).connections[0].negotiatedSpeedBps).toBe(2_500_000_000)
   })
 
   it('negotiates every cable across a transparent patch panel at the lowest speed', () => {
@@ -502,9 +502,9 @@ describe('recalculateNegotiatedSpeeds', () => {
 
     expect(
       recalculateNegotiatedSpeeds(input).connections.map(
-        (candidate) => candidate.negotiatedSpeedMbps,
+        (candidate) => candidate.negotiatedSpeedBps,
       ),
-    ).toEqual([1000, 1000])
+    ).toEqual([1_000_000_000, 1_000_000_000])
   })
 
   it('includes NAS speeds and negotiates 5G across a passive path', () => {
@@ -529,9 +529,9 @@ describe('recalculateNegotiatedSpeeds', () => {
 
     expect(
       recalculateNegotiatedSpeeds(input).connections.map(
-        (candidate) => candidate.negotiatedSpeedMbps,
+        (candidate) => candidate.negotiatedSpeedBps,
       ),
-    ).toEqual([5000, 5000])
+    ).toEqual([5_000_000_000, 5_000_000_000])
   })
 
   it('resolves an assigned hosted NIC port through its server endpoint', () => {
@@ -569,7 +569,7 @@ describe('recalculateNegotiatedSpeeds', () => {
       ],
     )
 
-    expect(recalculateNegotiatedSpeeds(input).connections[0].negotiatedSpeedMbps).toBe(2500)
+    expect(recalculateNegotiatedSpeeds(input).connections[0].negotiatedSpeedBps).toBe(2_500_000_000)
   })
 
   it('treats an sfp-plus active port without an explicit speed as 10G', () => {
@@ -597,7 +597,7 @@ describe('recalculateNegotiatedSpeeds', () => {
       ],
     )
 
-    expect(recalculateNegotiatedSpeeds(input).connections[0].negotiatedSpeedMbps).toBe(10000)
+    expect(recalculateNegotiatedSpeeds(input).connections[0].negotiatedSpeedBps).toBe(10_000_000_000)
   })
 
   it('omits speed for passive-only and unknown network segments', () => {
@@ -611,13 +611,13 @@ describe('recalculateNegotiatedSpeeds', () => {
           endpoint('patch-a', 'patch-a-port', 'patch-a-front'),
           endpoint('patch-b', 'patch-b-port', 'patch-b-front'),
           'network',
-          10000,
+          10_000_000_000,
         ),
       ],
     )
 
     expect(recalculateNegotiatedSpeeds(input).connections[0]).not.toHaveProperty(
-      'negotiatedSpeedMbps',
+      'negotiatedSpeedBps',
     )
   })
 
@@ -640,22 +640,22 @@ describe('recalculateNegotiatedSpeeds', () => {
           endpoint('server', 'dp'),
           endpoint('server', 'dp'),
           'display',
-          2500,
+          2_500_000_000,
         ),
         connection(
           'other',
           endpoint('server', 'barrel'),
           endpoint('server', 'barrel'),
           'other',
-          5000,
+          5_000_000_000,
         ),
       ],
     )
 
     const result = recalculateNegotiatedSpeeds(input)
 
-    expect(result.connections[0]).not.toHaveProperty('negotiatedSpeedMbps')
-    expect(result.connections[1]).not.toHaveProperty('negotiatedSpeedMbps')
+    expect(result.connections[0]).not.toHaveProperty('negotiatedSpeedBps')
+    expect(result.connections[1]).not.toHaveProperty('negotiatedSpeedBps')
   })
 
   it('does not mutate input and preserves references once values are current', () => {
@@ -672,7 +672,7 @@ describe('recalculateNegotiatedSpeeds', () => {
     const second = recalculateNegotiatedSpeeds(first)
 
     expect(input.connections[0]).toBe(originalConnection)
-    expect(input.connections[0]).not.toHaveProperty('negotiatedSpeedMbps')
+    expect(input.connections[0]).not.toHaveProperty('negotiatedSpeedBps')
     expect(first).not.toBe(input)
     expect(first.connections[0]).not.toBe(originalConnection)
     expect(second).toBe(first)

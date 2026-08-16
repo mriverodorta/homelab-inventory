@@ -154,7 +154,7 @@ describe('WASM topology adapter', () => {
             states: [{
               connection_id: 8,
               connection_type: 'network',
-              negotiated_speed_mbps: 1000,
+              negotiated_speed_bps: 1_000_000_000,
             }],
           },
         },
@@ -164,7 +164,7 @@ describe('WASM topology adapter', () => {
     await expect(getConnectionDerivedStates(client)).resolves.toEqual([{
       connection_id: 8,
       connection_type: 'network',
-      negotiated_speed_mbps: 1000,
+      negotiated_speed_bps: 1_000_000_000,
     }])
   })
 

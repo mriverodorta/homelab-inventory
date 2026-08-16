@@ -57,7 +57,7 @@ function project() {
       from: { itemId: 'server:1', hostedItemId: 'network:1', portId: 4 },
       to: { itemId: 'patchPanel:1', portId: 9, endpointId: 2 },
       type: 'network',
-      negotiatedSpeedMbps: 2500,
+      negotiatedSpeedBps: 2_500_000_000,
       createdAt: '2026-01-01T00:00:00.000Z',
       route: {
         sourceSide: 'right',
@@ -98,7 +98,7 @@ describe('engine topology snapshot', () => {
             endpoint_id: 2,
             port_id: 9,
           },
-          negotiated_speed_mbps: 2500,
+          negotiated_speed_bps: 2_500_000_000,
           route: {
             source_side: 'right',
             target_side: 'bottom',

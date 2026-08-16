@@ -1081,9 +1081,9 @@ function persistedConnectionFromEngine(connection) {
     from: persistedEndpointFromEngine(connection?.from, 'connection.from'),
     to: persistedEndpointFromEngine(connection?.to, 'connection.to'),
     type: connectionType,
-    ...(connection.negotiated_speed_mbps === null || connection.negotiated_speed_mbps === undefined
+    ...(connection.negotiated_speed_bps === null || connection.negotiated_speed_bps === undefined
       ? {}
-      : { negotiatedSpeedMbps: connection.negotiated_speed_mbps }),
+      : { negotiatedSpeedBps: connection.negotiated_speed_bps }),
     ...(connection.label === null || connection.label === undefined
       ? {}
       : { label: connection.label }),
@@ -1196,8 +1196,8 @@ function applyEngineForwardPatch(project, forward) {
         })
       }
       if (
-        state.negotiated_speed_mbps !== null &&
-        ![1000, 2500, 5000, 10000].includes(state.negotiated_speed_mbps)
+        state.negotiated_speed_bps !== null &&
+        ![1_000_000_000, 2_500_000_000, 5_000_000_000, 10_000_000_000].includes(state.negotiated_speed_bps)
       ) {
         throw new InventoryLifecycleError('Engine connection uses an unsupported negotiated speed.', {
           code: 'invalid-engine-patch',
@@ -1211,13 +1211,13 @@ function applyEngineForwardPatch(project, forward) {
       const state = states.get(connection.id)
       if (!state) return connection
       found.add(connection.id)
-      const { negotiatedSpeedMbps: _speed, ...withoutSpeed } = connection
+      const { negotiatedSpeedBps: _speed, ...withoutSpeed } = connection
       return {
         ...withoutSpeed,
         type: state.connection_type,
-        ...(state.negotiated_speed_mbps === null
+        ...(state.negotiated_speed_bps === null
           ? {}
-          : { negotiatedSpeedMbps: state.negotiated_speed_mbps }),
+          : { negotiatedSpeedBps: state.negotiated_speed_bps }),
       }
     })
     if (found.size !== states.size) {

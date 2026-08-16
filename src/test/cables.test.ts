@@ -92,10 +92,10 @@ const basePorts: InventoryItem[] = [
 ]
 
 describe('cable appearance', () => {
-  const networkConnection = (negotiatedSpeedMbps?: number) => ({
-    id: ({ 1000: 1, 2500: 2, 5000: 3, 10000: 4 }[negotiatedSpeedMbps ?? 0] ?? 5),
+  const networkConnection = (negotiatedSpeedBps?: number) => ({
+    id: ({ 1_000_000_000: 1, 2_500_000_000: 2, 5_000_000_000: 3, 10_000_000_000: 4 }[negotiatedSpeedBps ?? 0] ?? 5),
     type: 'network' as const,
-    negotiatedSpeedMbps,
+    negotiatedSpeedBps,
     createdAt: '2026-06-26T00:00:00.000Z',
     from: { itemId: 'server:1', portId: 1 },
     to: { itemId: 'switch:1', portId: 1 },
@@ -104,28 +104,28 @@ describe('cable appearance', () => {
   const project = projectWithPorts([basePorts[0], basePorts[1], basePorts[2]])
 
   it('colors persisted 1g negotiated connections orange', () => {
-    expect(getCableAppearance(project, networkConnection(1000))).toEqual({
+    expect(getCableAppearance(project, networkConnection(1_000_000_000))).toEqual({
       color: CABLE_COLORS.oneGig,
       label: '1G',
     })
   })
 
   it('colors persisted 2.5g negotiated connections green', () => {
-    expect(getCableAppearance(project, networkConnection(2500))).toEqual({
+    expect(getCableAppearance(project, networkConnection(2_500_000_000))).toEqual({
       color: CABLE_COLORS.twoPointFiveGig,
       label: '2.5G',
     })
   })
 
   it('colors persisted 5g negotiated connections light purple', () => {
-    expect(getCableAppearance(project, networkConnection(5000))).toEqual({
+    expect(getCableAppearance(project, networkConnection(5_000_000_000))).toEqual({
       color: CABLE_COLORS.fiveGig,
       label: '5G',
     })
   })
 
   it('colors persisted 10g negotiated connections blue', () => {
-    expect(getCableAppearance(project, networkConnection(10000))).toEqual({
+    expect(getCableAppearance(project, networkConnection(10_000_000_000))).toEqual({
       color: CABLE_COLORS.tenGig,
       label: '10G',
     })

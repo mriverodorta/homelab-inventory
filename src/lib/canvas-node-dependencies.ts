@@ -43,7 +43,7 @@ function connectionsEqualForCanvasNodes(
   second: InventoryConnection,
 ): boolean {
   return first.type === second.type
-    && first.negotiatedSpeedMbps === second.negotiatedSpeedMbps
+    && first.negotiatedSpeedBps === second.negotiatedSpeedBps
     && first.label === second.label
     && first.createdAt === second.createdAt
     && endpointsEqual(first.from, second.from)

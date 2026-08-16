@@ -38,7 +38,7 @@ describe('project engine patches', () => {
         hosted_item: null,
       },
       connection_type: 'network',
-      negotiated_speed_mbps: null,
+      negotiated_speed_bps: null,
       label: null,
       route: null,
       created_at: '2026-07-23T00:00:00.000Z',
@@ -57,7 +57,7 @@ describe('project engine patches', () => {
                 states: [{
                   connection_id: 1,
                   connection_type: 'network',
-                  negotiated_speed_mbps: 1000,
+                  negotiated_speed_bps: 1_000_000_000,
                 }],
               },
             },
@@ -71,7 +71,7 @@ describe('project engine patches', () => {
       from: { itemId: 'server:1', portId: 1 },
       to: { itemId: 'switch:1', portId: 2 },
       type: 'network',
-      negotiatedSpeedMbps: 1000,
+      negotiatedSpeedBps: 1_000_000_000,
       createdAt: '2026-07-23T00:00:00.000Z',
     }])
 

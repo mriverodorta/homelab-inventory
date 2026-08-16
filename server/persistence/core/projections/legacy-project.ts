@@ -449,7 +449,7 @@ export function buildLegacyProjectProjection({
       from: endpoint(database, projectId, endpoints[0]),
       to: endpoint(database, projectId, endpoints[1]),
       type: connection.connection_type,
-      negotiatedSpeedMbps: connection.negotiated_speed_bps == null ? undefined : connection.negotiated_speed_bps / 1_000_000,
+      negotiatedSpeedBps: connection.negotiated_speed_bps ?? undefined,
       label: connection.label,
       route: defined({ sourceSide: connection.source_side, targetSide: connection.target_side, bendPoints: bends.length ? bends : undefined, avoidCableOverlap: Boolean(connection.avoid_cable_overlap) }),
       createdAt: new Date(connection.created_at_ms).toISOString(),

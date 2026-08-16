@@ -64,7 +64,7 @@ export function normalizedTopology(project: Record<string, any>) {
       portId: connection.to?.portId,
     },
     type: connection.type,
-    negotiatedSpeedMbps: connection.negotiatedSpeedMbps ?? null,
+    negotiatedSpeedBps: connection.negotiatedSpeedBps ?? null,
     createdAt: connection.createdAt ?? null,
     route: connection.route ? {
       sourceSide: connection.route.sourceSide ?? null,

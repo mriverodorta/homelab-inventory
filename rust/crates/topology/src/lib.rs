@@ -131,7 +131,7 @@ pub struct TopologyConnection {
     pub from: EndpointRef,
     pub to: EndpointRef,
     pub connection_type: String,
-    pub negotiated_speed_mbps: Option<u32>,
+    pub negotiated_speed_bps: Option<u64>,
     pub label: Option<String>,
     pub route: Option<ConnectionRoute>,
     pub created_at: String,
@@ -178,7 +178,7 @@ pub struct ConnectionValidation {
 pub struct ConnectionDerivedState {
     pub connection_id: u32,
     pub connection_type: String,
-    pub negotiated_speed_mbps: Option<u32>,
+    pub negotiated_speed_bps: Option<u64>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -458,7 +458,7 @@ impl TopologyIndex {
             }
         }
 
-        let mut speed_by_endpoint = BTreeMap::<EndpointRef, Option<u32>>::new();
+        let mut speed_by_endpoint = BTreeMap::<EndpointRef, Option<u64>>::new();
         let mut visited = BTreeSet::new();
         for start in adjacency.keys() {
             if !visited.insert(start.clone()) {
@@ -489,13 +489,13 @@ impl TopologyIndex {
             .iter()
             .map(|connection| {
                 let connection_type = self.classify_connection(&connection.from, &connection.to);
-                let negotiated_speed_mbps = (connection_type == "network")
+                let negotiated_speed_bps = (connection_type == "network")
                     .then(|| speed_by_endpoint.get(&connection.from).copied().flatten())
                     .flatten();
                 ConnectionDerivedState {
                     connection_id: connection.id,
                     connection_type,
-                    negotiated_speed_mbps,
+                    negotiated_speed_bps,
                 }
             })
             .collect()
@@ -763,7 +763,7 @@ impl TopologyIndex {
         .into()
     }
 
-    fn endpoint_advertised_speed(&self, endpoint: &EndpointRef) -> Option<u32> {
+    fn endpoint_advertised_speed(&self, endpoint: &EndpointRef) -> Option<u64> {
         let descriptor = self.endpoint(endpoint)?;
         if !matches!(
             descriptor.host.item_type.as_str(),
@@ -773,7 +773,7 @@ impl TopologyIndex {
             return None;
         }
         parse_advertised_speed(descriptor.speed.as_deref()).or_else(|| {
-            (descriptor.port_type == "sfp-plus" && descriptor.speed.is_none()).then_some(10_000)
+            (descriptor.port_type == "sfp-plus" && descriptor.speed.is_none()).then_some(10_000_000_000)
         })
     }
 
@@ -892,13 +892,13 @@ fn add_graph_edge(
         .insert(first.clone());
 }
 
-fn parse_advertised_speed(speed: Option<&str>) -> Option<u32> {
+fn parse_advertised_speed(speed: Option<&str>) -> Option<u64> {
     let normalized = speed?.trim().to_ascii_uppercase().replace(' ', "");
     match normalized.as_str() {
-        "1G" | "1GBPS" | "1GBE" | "1000M" | "1000MBPS" | "1000MB/S" => Some(1_000),
-        "2.5G" | "2.5GBPS" | "2.5GBE" | "2500M" | "2500MBPS" | "2500MB/S" => Some(2_500),
-        "5G" | "5GBPS" | "5GBE" | "5000M" | "5000MBPS" | "5000MB/S" => Some(5_000),
-        "10G" | "10GBPS" | "10GBE" | "10000M" | "10000MBPS" | "10000MB/S" => Some(10_000),
+        "1G" | "1GBPS" | "1GBE" | "1000M" | "1000MBPS" | "1000MB/S" => Some(1_000_000_000),
+        "2.5G" | "2.5GBPS" | "2.5GBE" | "2500M" | "2500MBPS" | "2500MB/S" => Some(2_500_000_000),
+        "5G" | "5GBPS" | "5GBE" | "5000M" | "5000MBPS" | "5000MB/S" => Some(5_000_000_000),
+        "10G" | "10GBPS" | "10GBE" | "10000M" | "10000MBPS" | "10000MB/S" => Some(10_000_000_000),
         _ => None,
     }
 }
@@ -1226,7 +1226,7 @@ mod tests {
             from,
             to,
             connection_type: "power".into(),
-            negotiated_speed_mbps: None,
+            negotiated_speed_bps: None,
             label: None,
             route: None,
             created_at: String::new(),
@@ -1235,10 +1235,10 @@ mod tests {
 
     #[test]
     fn parses_only_supported_advertised_network_speeds() {
-        assert_eq!(parse_advertised_speed(Some("1G")), Some(1_000));
-        assert_eq!(parse_advertised_speed(Some("2.5 Gbps")), Some(2_500));
-        assert_eq!(parse_advertised_speed(Some("5000 Mbps")), Some(5_000));
-        assert_eq!(parse_advertised_speed(Some("10GbE")), Some(10_000));
+        assert_eq!(parse_advertised_speed(Some("1G")), Some(1_000_000_000));
+        assert_eq!(parse_advertised_speed(Some("2.5 Gbps")), Some(2_500_000_000));
+        assert_eq!(parse_advertised_speed(Some("5000 Mbps")), Some(5_000_000_000));
+        assert_eq!(parse_advertised_speed(Some("10GbE")), Some(10_000_000_000));
         assert_eq!(parse_advertised_speed(Some("40G")), None);
         assert_eq!(parse_advertised_speed(Some("unknown")), None);
         assert_eq!(parse_advertised_speed(None), None);
@@ -1302,7 +1302,7 @@ mod tests {
                     endpoint_id: None,
                 },
                 connection_type: "network".into(),
-                negotiated_speed_mbps: Some(1000),
+                negotiated_speed_bps: Some(1000),
                 label: None,
                 route: None,
                 created_at: "2026-01-01T00:00:00.000Z".into(),
@@ -1337,7 +1337,7 @@ mod tests {
                     endpoint_id: None,
                 },
                 connection_type: "network".into(),
-                negotiated_speed_mbps: None,
+                negotiated_speed_bps: None,
                 label: None,
                 route: None,
                 created_at: String::new(),
@@ -1389,7 +1389,7 @@ mod tests {
                 from: hosted_endpoint.clone(),
                 to: panel_endpoint.clone(),
                 connection_type: "network".into(),
-                negotiated_speed_mbps: Some(1000),
+                negotiated_speed_bps: Some(1000),
                 label: None,
                 route: None,
                 created_at: String::new(),
@@ -1452,7 +1452,7 @@ mod tests {
                     endpoint_id: None,
                 },
                 connection_type: "network".into(),
-                negotiated_speed_mbps: None,
+                negotiated_speed_bps: None,
                 label: None,
                 route: None,
                 created_at: String::new(),
@@ -1493,7 +1493,7 @@ mod tests {
                     endpoint_id: None,
                 },
                 connection_type: "network".into(),
-                negotiated_speed_mbps: Some(1000),
+                negotiated_speed_bps: Some(1000),
                 label: None,
                 route: None,
                 created_at: String::new(),
@@ -1565,7 +1565,7 @@ mod tests {
                     endpoint_id: None,
                 },
                 connection_type: "other".into(),
-                negotiated_speed_mbps: None,
+                negotiated_speed_bps: None,
                 label: None,
                 route: None,
                 created_at: String::new(),
@@ -1625,7 +1625,7 @@ mod tests {
                 from: output.clone(),
                 to: strip_input.clone(),
                 connection_type: "power".into(),
-                negotiated_speed_mbps: None,
+                negotiated_speed_bps: None,
                 label: None,
                 route: None,
                 created_at: String::new(),
@@ -1700,7 +1700,7 @@ mod tests {
             from,
             to,
             connection_type: "other".into(),
-            negotiated_speed_mbps: Some(10_000),
+            negotiated_speed_bps: Some(10_000_000_000),
             label: None,
             route: None,
             created_at: String::new(),
@@ -1723,12 +1723,12 @@ mod tests {
                 ConnectionDerivedState {
                     connection_id: 1,
                     connection_type: "network".into(),
-                    negotiated_speed_mbps: Some(1_000),
+                    negotiated_speed_bps: Some(1_000_000_000),
                 },
                 ConnectionDerivedState {
                     connection_id: 2,
                     connection_type: "network".into(),
-                    negotiated_speed_mbps: Some(1_000),
+                    negotiated_speed_bps: Some(1_000_000_000),
                 },
             ]
         );
@@ -1800,7 +1800,7 @@ mod tests {
                     from: endpoint(&switch, None),
                     to: endpoint(&first_panel, Some(1)),
                     connection_type: "network".into(),
-                    negotiated_speed_mbps: None,
+                    negotiated_speed_bps: None,
                     label: None,
                     route: None,
                     created_at: String::new(),
@@ -1810,7 +1810,7 @@ mod tests {
                     from: endpoint(&first_panel, Some(2)),
                     to: endpoint(&second_panel, Some(1)),
                     connection_type: "network".into(),
-                    negotiated_speed_mbps: Some(10_000),
+                    negotiated_speed_bps: Some(10_000_000_000),
                     label: None,
                     route: None,
                     created_at: String::new(),
@@ -1820,7 +1820,7 @@ mod tests {
                     from: endpoint(&third_panel, Some(1)),
                     to: endpoint(&fourth_panel, Some(1)),
                     connection_type: "network".into(),
-                    negotiated_speed_mbps: Some(10_000),
+                    negotiated_speed_bps: Some(10_000_000_000),
                     label: None,
                     route: None,
                     created_at: String::new(),
@@ -1838,9 +1838,9 @@ mod tests {
             .unwrap()
             .connection_derived_states();
 
-        assert_eq!(states[0].negotiated_speed_mbps, Some(10_000));
-        assert_eq!(states[1].negotiated_speed_mbps, Some(10_000));
-        assert_eq!(states[2].negotiated_speed_mbps, None);
+        assert_eq!(states[0].negotiated_speed_bps, Some(10_000_000_000));
+        assert_eq!(states[1].negotiated_speed_bps, Some(10_000_000_000));
+        assert_eq!(states[2].negotiated_speed_bps, None);
     }
 
     #[test]
@@ -1877,7 +1877,7 @@ mod tests {
                 from: hosted,
                 to: switch_endpoint,
                 connection_type: "network".into(),
-                negotiated_speed_mbps: None,
+                negotiated_speed_bps: None,
                 label: None,
                 route: None,
                 created_at: String::new(),
@@ -1889,8 +1889,8 @@ mod tests {
             TopologyIndex::build(snapshot)
                 .unwrap()
                 .connection_derived_states()[0]
-                .negotiated_speed_mbps,
-            Some(5_000)
+                .negotiated_speed_bps,
+            Some(5_000_000_000)
         );
     }
 
