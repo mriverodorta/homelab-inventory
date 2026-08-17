@@ -98,10 +98,34 @@ describe('SystemsWorkspace', () => {
   it('renders dense operational columns and host states', () => {
     renderWorkspace()
     expect(screen.getByRole('heading', { name: 'Systems' })).toBeVisible()
+    expect(screen.queryByText('Compute hosts available to this project.')).not.toBeInTheDocument()
     expect(screen.getByText('Intel i5-10500T')).toBeVisible()
     expect(screen.getByLabelText('Agent online')).toBeVisible()
     expect(screen.getByLabelText('Synology DS620slim is not linked to the registry')).toBeVisible()
     expect(screen.queryByText('Physical class')).not.toBeInTheDocument()
+  })
+
+  it('keeps controls together and rows in a separate scroll region below the header', () => {
+    renderWorkspace()
+    const search = screen.getByPlaceholderText('Search systems')
+    const controls = search.parentElement?.parentElement
+    expect(controls).toContainElement(screen.getByRole('button', { name: 'System type' }))
+    expect(controls).toContainElement(screen.getByRole('button', { name: 'Agent' }))
+    expect(controls).toContainElement(screen.getByRole('button', { name: 'Registry' }))
+
+    const header = screen.getByTestId('systems-table-header')
+    const body = screen.getByTestId('systems-table-body')
+    expect(header).not.toContainElement(body)
+    Object.defineProperty(body, 'scrollLeft', { configurable: true, value: 72, writable: true })
+    fireEvent.scroll(body)
+    expect(header.scrollLeft).toBe(72)
+  })
+
+  it('centers compact type and status columns', () => {
+    renderWorkspace()
+    expect(screen.getByLabelText('Agent online').closest('td')).toHaveClass('text-center')
+    expect(screen.getByLabelText('HP EliteDesk 800 G6 is linked to the registry').closest('td')).toHaveClass('text-center')
+    expect(screen.getByLabelText('Agent online').parentElement).toHaveClass('justify-center')
   })
 
   it('searches hosts and opens the inspector from the full row', () => {

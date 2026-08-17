@@ -11,6 +11,7 @@ import type {
 } from '@/types/inventory'
 
 export type InspectorPanelProps = {
+  layout?: 'overlay' | 'systems-split'
   project: ProjectState
   topologyData?: TopologyQueryData | null
   compatibleEndpointKeys?: ReadonlySet<string> | null

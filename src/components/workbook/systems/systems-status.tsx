@@ -17,7 +17,7 @@ export function SystemsAgentStatus({ system }: { system: SystemsHostRow }) {
   const { Icon } = presentation
   const versionClass = system.agentUpdateAvailable ? 'text-[#a66c0d]' : 'text-[#39765c]'
   return (
-    <div className="flex min-w-0 items-center gap-1.5 whitespace-nowrap">
+    <div className="flex min-w-0 items-center justify-center gap-1.5 whitespace-nowrap">
       <Tooltip>
         <TooltipTrigger asChild>
           <span className={cn('inline-flex', presentation.className)} aria-label={presentation.label}>

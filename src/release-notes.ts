@@ -344,9 +344,11 @@ export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
   highlights: [
     'The Systems workspace now provides a dense operational table with sortable and filterable host hardware, Agent and Registry status, current utilization, Agent update commands, and whole-row Inspector access.',
     'Systems live data uses compact project-scoped conditional responses and refreshes only while the visible Systems workspace needs it; Inventory sidebar state is retained independently for each Canvas workspace.',
+    'Opening a Systems host now slides the Inspector into a responsive desktop split view, with aligned page gutters, a unified filter and search toolbar, and a table header that stays outside the scrolling rows.',
   ],
   fixes: [
     'Reloading Systems no longer starts the Canvas domain engine, and telemetry cannot appear on a host unless that host has an active Agent binding.',
+    'System type, Agent, and Registry status content now remains centered while the Systems table contracts around the Inspector.',
   ],
   notes: [],
 }

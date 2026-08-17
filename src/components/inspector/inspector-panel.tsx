@@ -34,6 +34,7 @@ import { useAssignedItemAgentTelemetry } from '@/components/inspector/agent/use-
 const labelClass = 'text-[11px] font-black uppercase tracking-[0.12em] text-[#75695d]'
 
 export function InspectorPanel({
+  layout = 'overlay',
   project,
   topologyData = null,
   compatibleEndpointKeys = null,
@@ -140,9 +141,9 @@ export function InspectorPanel({
       data-testid="inspector-drawer"
       role="dialog"
       aria-label={`${drawerTitle} inspector`}
-      className={`${RIGHT_DRAWER_LAYOUT_CLASS_NAME} z-40 flex min-h-0 flex-col overflow-x-hidden border-l border-[#d6ccbd] bg-[radial-gradient(circle_at_top_left,#fffdf8_0%,#fbf7ef_44%,#f3ede4_100%)] shadow-[-22px_0_46px_rgba(32,36,44,0.18)] transition-transform duration-200 ease-out ${
+      className={cn(`${RIGHT_DRAWER_LAYOUT_CLASS_NAME} z-40 flex min-h-0 flex-col overflow-x-hidden border-l border-[#d6ccbd] bg-[radial-gradient(circle_at_top_left,#fffdf8_0%,#fbf7ef_44%,#f3ede4_100%)] shadow-[-22px_0_46px_rgba(32,36,44,0.18)] transition-transform duration-200 ease-out`, layout === 'systems-split' && 'lg:absolute lg:inset-y-0 lg:right-0 lg:w-full lg:shadow-[-10px_0_24px_rgba(32,36,44,0.12)]',
         open ? 'translate-x-0' : 'translate-x-full'
-      }`}
+      )}
       aria-hidden={!open}
       inert={!open}
     >

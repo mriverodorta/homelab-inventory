@@ -1,3 +1,4 @@
+import { useRef } from 'react'
 import { ArrowDown, ArrowUp, ArrowUpDown, Link, Server, type LucideIcon } from 'lucide-react'
 import { ComputeHostIcon } from '@/components/compute-host-icon'
 import { Button } from '@/components/ui/button'
@@ -18,8 +19,9 @@ function SortButton({
   column,
   label,
   compactIcon: CompactIcon,
+  centered = false,
   ...sort
-}: SortProps & { column: SystemsSortKey; label: string; compactIcon?: LucideIcon }) {
+}: SortProps & { column: SystemsSortKey; label: string; compactIcon?: LucideIcon; centered?: boolean }) {
   const active = sort.sortKey === column
   const Icon = !active ? ArrowUpDown : sort.sortDirection === 'ascending' ? ArrowUp : ArrowDown
   const compact = Boolean(CompactIcon)
@@ -28,7 +30,7 @@ function SortButton({
       type="button"
       variant="ghost"
       size={compact ? 'icon-sm' : 'sm'}
-      className={cn('h-7 text-[11px] font-semibold uppercase text-[#665f57] hover:bg-[#e2ddd5]', compact ? 'w-10 gap-0.5' : '-ml-2 gap-1')}
+      className={cn('h-7 text-[11px] font-semibold uppercase text-[#665f57] hover:bg-[#e2ddd5]', compact ? 'w-10 gap-0.5' : centered ? 'gap-1' : '-ml-2 gap-1')}
       aria-label={`Sort by ${label}`}
       onClick={() => sort.onSort(column)}
     >
@@ -49,6 +51,21 @@ function MetricCell({ label, value, kind }: { label: string | null; value: numbe
   )
 }
 
+function SystemsTableColumns() {
+  return (
+    <colgroup>
+      <col className="w-12" />
+      <col className="w-[19%]" />
+      <col className="w-[18%]" />
+      <col className="w-[14%]" />
+      <col className="w-[14%]" />
+      <col className="w-[13%]" />
+      <col className="w-32" />
+      <col className="w-12" />
+    </colgroup>
+  )
+}
+
 export function SystemsTable({
   systems,
   selectedItemId,
@@ -59,6 +76,8 @@ export function SystemsTable({
   selectedItemId: string | null
   onSelect(itemId: string): void
 } & SortProps) {
+  const headerScrollRef = useRef<HTMLDivElement>(null)
+
   if (!systems.length) {
     return (
       <div className="grid h-full min-h-64 place-items-center px-6 text-center">
@@ -72,21 +91,34 @@ export function SystemsTable({
   }
 
   return (
-    <div className="h-full overflow-auto">
-      <table className="w-full min-w-[1040px] table-auto border-collapse text-left text-sm">
-        <thead className="sticky top-0 z-10 bg-[#eeeae3]">
+    <div className="flex h-full min-h-0 flex-col overflow-hidden" data-testid="systems-table-shell">
+      <div ref={headerScrollRef} className="shrink-0 overflow-hidden" data-testid="systems-table-header">
+        <table className="w-full min-w-[1040px] table-fixed border-collapse text-left text-sm">
+          <SystemsTableColumns />
+          <thead className="bg-[#eeeae3]">
           <tr>
-            <th className="w-px border-b border-[#d3cbc0] px-2 py-1.5"><SortButton column="type" label="type" compactIcon={Server} {...sort} /></th>
+            <th className="border-b border-[#d3cbc0] px-1 py-1.5 text-center"><SortButton column="type" label="type" compactIcon={Server} {...sort} /></th>
             <th className="border-b border-[#d3cbc0] px-3 py-1.5"><SortButton column="name" label="Name" {...sort} /></th>
             <th className="border-b border-[#d3cbc0] px-3 py-1.5"><SortButton column="manufacturer" label="Manufacturer / model" {...sort} /></th>
             <th className="border-b border-[#d3cbc0] px-3 py-1.5"><SortButton column="cpu" label="CPU" {...sort} /></th>
             <th className="border-b border-[#d3cbc0] px-3 py-1.5"><SortButton column="memory" label="RAM" {...sort} /></th>
             <th className="border-b border-[#d3cbc0] px-3 py-1.5"><SortButton column="storage" label="Storage" {...sort} /></th>
-            <th className="w-px border-b border-[#d3cbc0] px-3 py-1.5"><SortButton column="agent" label="Agent" {...sort} /></th>
-            <th className="w-px border-b border-[#d3cbc0] px-2 py-1.5"><SortButton column="registry" label="registry" compactIcon={Link} {...sort} /></th>
+            <th className="border-b border-[#d3cbc0] px-2 py-1.5 text-center"><SortButton column="agent" label="Agent" centered {...sort} /></th>
+            <th className="border-b border-[#d3cbc0] px-1 py-1.5 text-center"><SortButton column="registry" label="registry" compactIcon={Link} {...sort} /></th>
           </tr>
-        </thead>
-        <tbody>
+          </thead>
+        </table>
+      </div>
+      <div
+        className="min-h-0 flex-1 overflow-auto"
+        data-testid="systems-table-body"
+        onScroll={(event) => {
+          if (headerScrollRef.current) headerScrollRef.current.scrollLeft = event.currentTarget.scrollLeft
+        }}
+      >
+        <table className="w-full min-w-[1040px] table-fixed border-collapse text-left text-sm">
+          <SystemsTableColumns />
+          <tbody>
           {systems.map((system) => (
             <tr
               key={system.itemId}
@@ -100,7 +132,7 @@ export function SystemsTable({
                 onSelect(system.itemKey)
               }}
             >
-              <td className="w-px overflow-hidden px-3 py-2.5">
+              <td className="overflow-hidden px-2 py-2.5 text-center">
                 <Tooltip><TooltipTrigger asChild><span className="inline-flex text-[#554d44]"><ComputeHostIcon host={{ type: system.type, hardwareClass: system.hardwareClass ?? undefined, usageRole: system.usageRole ?? undefined }} className="size-4" /></span></TooltipTrigger><TooltipContent>{system.type === 'nas' ? 'NAS' : system.hardwareClass === 'desktop' && system.usageRole !== 'server' ? 'PC' : 'Server'}</TooltipContent></Tooltip>
               </td>
               <td className="max-w-72 overflow-hidden px-3 py-2.5"><div className="truncate font-semibold text-[#20242c]" title={system.name}>{system.name}</div></td>
@@ -111,12 +143,13 @@ export function SystemsTable({
               <td className="overflow-hidden px-3 py-2.5"><MetricCell label={system.cpuLabel} value={system.cpuPercent} kind="cpu" /></td>
               <td className="overflow-hidden px-3 py-2.5"><MetricCell label={system.memoryLabel} value={system.memoryPercent} kind="memory" /></td>
               <td className="overflow-hidden px-3 py-2.5"><MetricCell label={system.storageLabel} value={system.storagePercent} kind="storage" /></td>
-              <td className="w-px overflow-hidden px-3 py-2.5"><SystemsAgentStatus system={system} /></td>
-              <td className="w-px overflow-hidden px-3 py-2.5"><SystemsRegistryStatus linked={system.registryLinked} name={system.name} /></td>
+              <td className="overflow-hidden px-2 py-2.5 text-center"><SystemsAgentStatus system={system} /></td>
+              <td className="overflow-hidden px-2 py-2.5 text-center"><SystemsRegistryStatus linked={system.registryLinked} name={system.name} /></td>
             </tr>
           ))}
-        </tbody>
-      </table>
+          </tbody>
+        </table>
+      </div>
     </div>
   )
 }

@@ -3,6 +3,7 @@ import {
   ExampleWorkspaceGuide,
   GettingStartedChecklist,
   InspectorPanel,
+  SystemsInspectorPanel,
 } from '@/components/lazy-app-surfaces'
 import { WorkbenchCanvas } from '@/components/lazy-workbench-canvas'
 import { PortConnectionPreviewOverlay } from '@/app/port-connection-preview-overlay'
@@ -43,15 +44,23 @@ export function AppWorkspaceSurface({
 }: AppWorkspaceSurfaceProps) {
   if (workbook?.workspace.type === 'systems') {
     return (
-      <>
+      <div className="flex min-w-0 flex-1 overflow-hidden">
         <SystemsWorkspace
           project={workbook.project}
           selectedItemId={workbook.selectedItemId}
           onSelectItem={workbook.onSelectItem}
           onCloseInspector={workbook.onCloseInspector}
         />
-        <InspectorPanel {...inspector} />
-      </>
+        <div
+          data-testid="systems-inspector-region"
+          data-open={inspector.open}
+          className={`contents lg:relative lg:block lg:h-full lg:shrink-0 lg:overflow-hidden lg:transition-[width] lg:duration-200 lg:ease-out ${
+            inspector.open ? 'lg:w-[min(42vw,680px)]' : 'lg:w-0'
+          }`}
+        >
+          <SystemsInspectorPanel {...inspector} layout="systems-split" />
+        </div>
+      </div>
     )
   }
 

@@ -12,6 +12,14 @@ export const InspectorPanel = createLazySurface(inspectorLoader, {
   shouldRender: (props) => props.open,
 })
 
+export const SystemsInspectorPanel = createLazySurface(inspectorLoader, {
+  displayName: 'Inspector',
+  loadingLabel: 'Loading inspector',
+  loadingClassName: 'absolute inset-y-0 right-0 z-40 w-full rounded-none',
+  getClose: (props) => props.onClose,
+  shouldRender: (props) => props.open,
+})
+
 const auditLoader = () => import('@/components/audit-drawer').then((module) => ({
   default: module.AuditDrawer,
 }))

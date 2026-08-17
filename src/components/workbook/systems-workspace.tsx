@@ -87,24 +87,10 @@ function ScopedSystemsWorkspace({
 
   return (
     <main className="relative min-w-0 flex-1 overflow-hidden bg-[#f8f6f1]">
-      <div className="flex h-full min-h-0 flex-col">
-        <header className="border-b border-[#d8d0c5] bg-[#fffdf8] px-5 pb-3 pt-16 lg:px-7">
-          <div className="flex flex-wrap items-end justify-between gap-3">
-            <div>
-              <h1 className="text-xl font-semibold text-[#20242c]">Systems</h1>
-              <p className="mt-0.5 text-sm text-[#756d62]">Compute hosts available to this project.</p>
-            </div>
-            <div className="relative">
-              <Search className="pointer-events-none absolute left-2.5 top-2.5 size-4 text-[#81786e]" />
-              <Input
-                value={preferences.query}
-                className="h-9 w-[min(300px,75vw)] bg-white pl-8"
-                placeholder="Search systems"
-                onChange={(event) => updatePreferences({ query: event.target.value })}
-              />
-            </div>
-          </div>
-          <div className="mt-3 flex flex-wrap gap-2">
+      <div className="flex h-full min-h-0 flex-col px-3">
+        <header className="shrink-0 pb-3 pt-16">
+          <h1 className="text-xl font-semibold text-[#20242c]">Systems</h1>
+          <div className="mt-3 flex flex-wrap items-center gap-2">
             <SystemsFilterMenu label="System type" options={typeOptions} selected={preferences.types} onChange={(types) => updatePreferences({ types })} />
             <SystemsFilterMenu
               label="Agent"
@@ -118,10 +104,19 @@ function ScopedSystemsWorkspace({
               selected={preferences.registryStates}
               onChange={(registryStates) => updatePreferences({ registryStates })}
             />
+            <div className="relative ml-auto">
+              <Search className="pointer-events-none absolute left-2.5 top-2.5 size-4 text-[#81786e]" />
+              <Input
+                value={preferences.query}
+                className="h-9 w-[min(300px,75vw)] bg-white pl-8"
+                placeholder="Search systems"
+                onChange={(event) => updatePreferences({ query: event.target.value })}
+              />
+            </div>
           </div>
         </header>
 
-        <div className="min-h-0 flex-1">
+        <div className="min-h-0 flex-1 overflow-hidden rounded-t-md border-x border-t border-[#d8d0c5] bg-[#fffdf8]">
           {systems.initial.isPending ? (
             <div className="grid h-full place-items-center text-sm text-[#756d62]">Loading systems...</div>
           ) : systems.initial.isError ? (

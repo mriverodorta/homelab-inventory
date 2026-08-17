@@ -14,11 +14,14 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 
 - Systems live state now uses compact project-scoped endpoints with conditional ETag responses and refreshes every 30 seconds only while the Systems workspace is active, visible, and online; Agent enrollment and unlinking appear without a page reload.
 - The Inventory sidebar is available only on Canvas workspaces, with its open state and width retained independently per user, browser, project, and Canvas workspace.
+- Opening a host from Systems now slides the Inspector into a responsive desktop split view that shrinks the table instead of covering it, while smaller screens retain the full overlay drawer.
+- Systems title, filters, search, and table now share one consistent page gutter; filters and search occupy one toolbar row, and the table header remains outside the independently scrolling rows.
 
 ### Fixed
 
 - Reloading a Systems workspace no longer starts or blocks on the Canvas domain engine, and switching back to Canvas starts a fresh workspace-scoped engine normally.
 - Systems telemetry is attached only to hosts with an active Agent binding; unregistered, unknown, stale, and offline hosts keep single-line hardware summaries without misleading utilization bars.
+- Compact system type, Agent, and Registry columns now keep their icon-led content centered as the table responds to the Inspector width.
 
 ## [0.13.5] - 2026-08-17
 
