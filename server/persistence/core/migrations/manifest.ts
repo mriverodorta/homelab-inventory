@@ -100,4 +100,9 @@ export const CORE_MIGRATIONS: readonly CoreMigration[] = [
     file: '0018_m2_metadata_repair.sql',
     sha256: '6942beaa6f35b7c1616f667c0950032a9acf63163c8b78a5e85262968e921100',
   },
+  {
+    id: '0020_systems_workspace_operations',
+    file: '0019_systems_workspace_operations.sql',
+    sha256: '0ba9da14a422a8dd66f9aa1e7603fc21dfe5b271cee42d0c4d17506a8af3360e',
+  },
 ]
