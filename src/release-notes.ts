@@ -315,6 +315,15 @@ const RELEASE_0_13_2_DETAILS: UnreleasedReleaseNotes = {
   ],
 }
 
+const RELEASE_0_13_4_DETAILS: UnreleasedReleaseNotes = {
+  highlights: [],
+  fixes: [
+    'Registry catalog revision 21 now imports Network Adapters with optional PCIe functional minimums, without treating physical connector width as an electrical requirement.',
+    'PCIe compatibility audits now accept the Intel X520-DA2 in the Synology DS1621+ x8-mechanical/x4-electrical slot while retaining strict checks for evidenced minimums.',
+  ],
+  notes: [],
+}
+
 const RELEASE_0_13_3_DETAILS: UnreleasedReleaseNotes = {
   highlights: [],
   fixes: [
@@ -325,10 +334,7 @@ const RELEASE_0_13_3_DETAILS: UnreleasedReleaseNotes = {
 
 export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
   highlights: [],
-  fixes: [
-    'Registry catalog revision 21 now imports Network Adapters with optional PCIe functional minimums, without treating physical connector width as an electrical requirement.',
-    'PCIe compatibility audits now accept the Intel X520-DA2 in the Synology DS1621+ x8-mechanical/x4-electrical slot while retaining strict checks for evidenced minimums.',
-  ],
+  fixes: [],
   notes: [],
 }
 
@@ -859,9 +865,16 @@ const RELEASE_0_2_1_DETAILS: UnreleasedReleaseNotes = {
 
 export const RELEASE_NOTES: ReleaseNoteEntry[] = [
   {
-    version: '0.13.3',
+    version: '0.13.4',
     date: '2026-08-16',
     channel: 'latest',
+    title: 'Correct PCIe functional lane checks',
+    ...RELEASE_0_13_4_DETAILS,
+  },
+  {
+    version: '0.13.3',
+    date: '2026-08-16',
+    channel: 'release',
     title: 'Accept fractional Agent uptime',
     ...RELEASE_0_13_3_DETAILS,
   },

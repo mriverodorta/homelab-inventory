@@ -6,6 +6,8 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 
 ## Unreleased
 
+## [0.13.4] - 2026-08-16
+
 ### Fixed
 
 - Registry catalog revision 21 now imports PCIe network adapters whose functional electrical minimum is unknown, without inferring that their full connector width is required.
