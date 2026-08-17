@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { filterAndSortSystems, mergeSystemsLive } from '@/components/workbook/systems/systems-table-model'
+import { filterAndSortSystems, mergeSystemsLive, shouldVirtualizeSystems, systemsViewConfigurationsEqual } from '@/components/workbook/systems/systems-table-model'
 import { DEFAULT_SYSTEMS_TABLE_PREFERENCES } from '@/lib/systems-preferences'
 import type { SystemsHostRow } from '@/types/systems'
 
@@ -16,6 +16,8 @@ const base: SystemsHostRow = {
   cpuLabel: 'Intel i5',
   memoryLabel: '16GB DDR4 3200MHz',
   storageLabel: '1TB NVMe',
+  operatingSystem: 'Ubuntu 24.04',
+  lanIp: '192.0.2.10',
   agentRegistered: true,
   agentState: 'online',
   agentVersion: '0.1.0',
@@ -24,6 +26,10 @@ const base: SystemsHostRow = {
   cpuPercent: 20,
   memoryPercent: 40,
   storagePercent: 60,
+  uptimeSeconds: 3600,
+  attentionCount: 0,
+  attentionState: 'current',
+  attentionRevision: 1,
 }
 
 describe('Systems table model', () => {
@@ -58,5 +64,22 @@ describe('Systems table model', () => {
       cpuPercent: 75,
       agentState: 'stale',
     })
+  })
+
+  it('compares synchronized columns independently of object property insertion order', () => {
+    const local = {
+      ...DEFAULT_SYSTEMS_TABLE_PREFERENCES,
+      columns: DEFAULT_SYSTEMS_TABLE_PREFERENCES.columns.map(({ key, order, visible }) => ({ key, order, visible })),
+    }
+    const server = {
+      ...DEFAULT_SYSTEMS_TABLE_PREFERENCES,
+      columns: DEFAULT_SYSTEMS_TABLE_PREFERENCES.columns.map(({ key, visible, order }) => ({ key, visible, order })),
+    }
+    expect(systemsViewConfigurationsEqual(local, server)).toBe(true)
+  })
+
+  it('virtualizes only fleets larger than 100 filtered rows', () => {
+    expect(shouldVirtualizeSystems(100)).toBe(false)
+    expect(shouldVirtualizeSystems(101)).toBe(true)
   })
 })

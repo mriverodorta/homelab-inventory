@@ -9,6 +9,9 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 ### Added
 
 - The Systems workspace now provides a dense sortable and filterable host table with dedicated system, Agent, and Registry status icons; assigned CPU, memory, and storage summaries; current utilization; Agent version awareness; and whole-row Inspector access.
+- Systems saved views now synchronize per account and project, with installation-wide ownership when authentication is disabled; views preserve filters, sorting, column visibility and order, density, and an optional default without synchronizing search text or browser-specific widths.
+- Systems now includes an immutable Needs Attention view, configurable columns, Dense and Comfortable layouts, pinned Type and Name columns, keyboard row navigation, and virtualized rendering for fleets larger than 100 hosts.
+- A cached per-host Attention projection combines pending Registry updates, compatibility and audit findings, and active notification incidents without reevaluating every system during table rendering; positive counts open a dedicated Inspector Attention tab.
 
 ### Changed
 
@@ -22,6 +25,7 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 - Reloading a Systems workspace no longer starts or blocks on the Canvas domain engine, and switching back to Canvas starts a fresh workspace-scoped engine normally.
 - Systems telemetry is attached only to hosts with an active Agent binding; unregistered, unknown, stale, and offline hosts keep single-line hardware summaries without misleading utilization bars.
 - Compact system type, Agent, and Registry columns now keep their icon-led content centered as the table responds to the Inspector width.
+- Systems headers and rows now share one column layout, keeping sortable labels aligned with compact and content columns while custom widths and pinned columns remain stable.
 
 ## [0.13.5] - 2026-08-17
 

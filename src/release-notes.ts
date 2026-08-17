@@ -345,10 +345,14 @@ export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
     'The Systems workspace now provides a dense operational table with sortable and filterable host hardware, Agent and Registry status, current utilization, Agent update commands, and whole-row Inspector access.',
     'Systems live data uses compact project-scoped conditional responses and refreshes only while the visible Systems workspace needs it; Inventory sidebar state is retained independently for each Canvas workspace.',
     'Opening a Systems host now slides the Inspector into a responsive desktop split view, with aligned page gutters, a unified filter and search toolbar, and a table header that stays outside the scrolling rows.',
+    'Private Systems saved views synchronize filters, sorting, columns, and density per project, while an installation without authentication shares its views across browsers and keeps search text and pixel widths local.',
+    'Needs Attention and the Inspector Attention tab use cached host projections for Registry updates, compatibility findings, and notification incidents, avoiding repeated assembly evaluation during fleet rendering.',
+    'Systems columns can be reordered, hidden, resized, pinned, and rendered in Dense or Comfortable layouts, with keyboard navigation and virtualization for fleets larger than 100 hosts.',
   ],
   fixes: [
     'Reloading Systems no longer starts the Canvas domain engine, and telemetry cannot appear on a host unless that host has an active Agent binding.',
     'System type, Agent, and Registry status content now remains centered while the Systems table contracts around the Inspector.',
+    'Systems sortable headers and body cells now use the same column layout, preserving exact alignment for compact, pinned, and browser-resized columns.',
   ],
   notes: [],
 }

@@ -19,6 +19,9 @@ describe('Systems table preferences', () => {
       registryStates: ['unlinked'] as const,
       sortKey: 'cpu' as const,
       sortDirection: 'descending' as const,
+      density: 'comfortable' as const,
+      columns: DEFAULT_SYSTEMS_TABLE_PREFERENCES.columns,
+      activeViewId: 3,
     }
     writeSystemsTablePreferences('account:7:project:2', preference, storage)
     expect(readSystemsTablePreferences('account:7:project:2', storage)).toEqual(preference)

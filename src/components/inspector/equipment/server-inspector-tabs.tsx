@@ -2,6 +2,8 @@ import { HostCompatibilityTab } from '@/components/host-compatibility-tab'
 import { AgentContainersPanel } from '@/components/inspector/agent/agent-containers-panel'
 import { AgentInspectorTab } from '@/components/inspector/agent/agent-inspector-tab'
 import { AgentServicesPanel } from '@/components/inspector/agent/agent-services-panel'
+import { AttentionTab, type AttentionActions } from '@/components/inspector/attention/attention-tab'
+import { useAttentionTabVisibility } from '@/components/inspector/attention/attention-tab-visibility'
 import {
   getAgentHostStatus,
   hasAgentHostStatus,
@@ -46,6 +48,8 @@ export function ServerInspectorTabs({
   onUpdateItem,
   onSelectNetworkTrace,
   onEndpointConnectionClick,
+  attentionActions,
+  requestedTab,
 }: {
   project: ProjectState
   server: InventoryItem
@@ -59,8 +63,12 @@ export function ServerInspectorTabs({
   onUpdateItem: (itemId: string, input: InventoryItemInput) => void
   onSelectNetworkTrace: (endpoint: ConnectionEndpoint) => void
   onEndpointConnectionClick: (endpoint: ConnectionEndpoint) => void
+  attentionActions: AttentionActions
+  requestedTab?: string | null
 }) {
   const canViewAgents = usePermission('agents.view')
+  const projectId = project.metadata.projectId ?? 1
+  const showAttention = useAttentionTabVisibility({ projectId, hostType: 'server', hostId: server.id, requestedTab })
   const editor = useInventoryItemEditor({
     item: server,
     onSave: (input) => onUpdateItem(runtimeItemKey(server), input),
@@ -86,6 +94,7 @@ export function ServerInspectorTabs({
   return (
     <InspectorTabs
       defaultValue="specs"
+      requestedValue={requestedTab}
       status={<InventoryFormStatus saveError={editor.saveError} />}
       tabs={[
         {
@@ -189,6 +198,11 @@ export function ServerInspectorTabs({
             />
           ),
         },
+        ...(showAttention ? [{
+          value: 'attention',
+          label: 'Attention',
+          content: <AttentionTab projectId={projectId} hostType="server" hostId={server.id} actions={attentionActions} />,
+        }] : []),
       ]}
     />
   )

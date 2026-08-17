@@ -8,12 +8,14 @@ import type { ProjectState } from '@/types/inventory'
 import type { SystemsHostRow } from '@/types/systems'
 
 const useSystemsMock = vi.fn()
+const useSystemsViewsMock = vi.fn()
 
 vi.mock('@/hooks/use-auth', () => ({
   useAuth: () => ({ status: { account: { id: 7 } } }),
 }))
 vi.mock('@/hooks/use-systems', () => ({
   useSystems: (...args: unknown[]) => useSystemsMock(...args),
+  useSystemsViews: (...args: unknown[]) => useSystemsViewsMock(...args),
 }))
 
 const project: ProjectState = {
@@ -39,6 +41,8 @@ const systems: SystemsHostRow[] = [
     cpuLabel: 'Intel i5-10500T',
     memoryLabel: '32GB DDR4 2933MHz',
     storageLabel: '1TB NVMe',
+    operatingSystem: 'Ubuntu 24.04',
+    lanIp: '192.0.2.10',
     agentRegistered: true,
     agentState: 'online',
     agentVersion: '0.1.0',
@@ -47,6 +51,10 @@ const systems: SystemsHostRow[] = [
     cpuPercent: 20,
     memoryPercent: 40,
     storagePercent: 60,
+    uptimeSeconds: 3600,
+    attentionCount: 2,
+    attentionState: 'current',
+    attentionRevision: 1,
   },
   {
     itemId: 2,
@@ -61,6 +69,8 @@ const systems: SystemsHostRow[] = [
     cpuLabel: null,
     memoryLabel: '8GB DDR3L 1600MHz',
     storageLabel: '4TB SATA',
+    operatingSystem: null,
+    lanIp: null,
     agentRegistered: false,
     agentState: 'unregistered',
     agentVersion: null,
@@ -69,6 +79,10 @@ const systems: SystemsHostRow[] = [
     cpuPercent: null,
     memoryPercent: null,
     storagePercent: null,
+    uptimeSeconds: null,
+    attentionCount: 0,
+    attentionState: 'current',
+    attentionRevision: 1,
   },
 ]
 
@@ -91,6 +105,13 @@ beforeEach(() => {
   useSystemsMock.mockReturnValue({
     initial: { data: { systems }, isPending: false, isError: false },
     live: { data: null },
+  })
+  useSystemsViewsMock.mockReturnValue({
+    views: { data: [], isSuccess: true },
+    create: { mutateAsync: vi.fn(), isPending: false },
+    replace: { mutateAsync: vi.fn(), isPending: false },
+    remove: { mutateAsync: vi.fn(), isPending: false },
+    setDefault: { mutateAsync: vi.fn(), isPending: false },
   })
 })
 
@@ -123,8 +144,8 @@ describe('SystemsWorkspace', () => {
 
   it('centers compact type and status columns', () => {
     renderWorkspace()
-    expect(screen.getByLabelText('Agent online').closest('td')).toHaveClass('text-center')
-    expect(screen.getByLabelText('HP EliteDesk 800 G6 is linked to the registry').closest('td')).toHaveClass('text-center')
+    expect(screen.getByLabelText('Agent online').closest('[role="cell"]')).toHaveClass('text-center')
+    expect(screen.getByLabelText('HP EliteDesk 800 G6 is linked to the registry').closest('[role="cell"]')).toHaveClass('text-center')
     expect(screen.getByLabelText('Agent online').parentElement).toHaveClass('justify-center')
   })
 
@@ -142,5 +163,30 @@ describe('SystemsWorkspace', () => {
     renderWorkspace({ selectedItemId: 'server:1', onCloseInspector })
     fireEvent.keyDown(window, { key: 'Escape' })
     expect(onCloseInspector).toHaveBeenCalledOnce()
+  })
+
+  it('filters the built-in attention view without treating an unregistered agent as an issue', () => {
+    renderWorkspace()
+    fireEvent.pointerDown(screen.getByRole('button', { name: /All Systems/ }), { button: 0, ctrlKey: false })
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Needs Attention' }))
+    expect(screen.getByText('HP EliteDesk 800 G6')).toBeVisible()
+    expect(screen.queryByText('Synology DS620slim')).not.toBeInTheDocument()
+  })
+
+  it('opens the host attention tab from a nonzero count', () => {
+    const onSelectItem = vi.fn()
+    const dispatch = vi.spyOn(window, 'dispatchEvent')
+    renderWorkspace({ onSelectItem })
+    fireEvent.click(screen.getByRole('button', { name: 'Open 2 attention items for HP EliteDesk 800 G6' }))
+    expect(onSelectItem).toHaveBeenCalledWith('server:1')
+    return Promise.resolve().then(() => {
+      expect(dispatch.mock.calls.some(([event]) => event.type === 'homelab-inventory:inspector-tab')).toBe(true)
+    })
+  })
+
+  it('focuses search with slash outside editable controls', () => {
+    renderWorkspace()
+    fireEvent.keyDown(window, { key: '/' })
+    expect(screen.getByPlaceholderText('Search systems')).toHaveFocus()
   })
 })

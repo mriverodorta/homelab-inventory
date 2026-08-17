@@ -28,6 +28,9 @@ export type InspectorPanelProps = {
   persistenceWarning: string | null
   open: boolean
   onClose: () => void
+  onOpenAudit?: () => void
+  onOpenNotifications?: () => void
+  onOpenRegistryUpdates?: () => void
   onUpdateProject: (project: ProjectState) => void
   onUpdateItem: (itemId: string, input: InventoryItemInput) => void
   onUpdateItemProperties?: (

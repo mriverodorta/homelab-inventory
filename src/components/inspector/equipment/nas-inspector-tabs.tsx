@@ -2,6 +2,8 @@ import { HostCompatibilityTab } from '@/components/host-compatibility-tab'
 import { AgentContainersPanel } from '@/components/inspector/agent/agent-containers-panel'
 import { AgentInspectorTab } from '@/components/inspector/agent/agent-inspector-tab'
 import { AgentServicesPanel } from '@/components/inspector/agent/agent-services-panel'
+import { AttentionTab, type AttentionActions } from '@/components/inspector/attention/attention-tab'
+import { useAttentionTabVisibility } from '@/components/inspector/attention/attention-tab-visibility'
 import {
   getAgentHostStatus,
   hasAgentHostStatus,
@@ -61,6 +63,8 @@ export function NasInspectorTabs({
   onUpdateConnectionLabel,
   onRemoveConnection,
   onRequestPowerConfigurationChange,
+  attentionActions,
+  requestedTab,
 }: {
   project: ProjectState
   item: InventoryItem
@@ -81,8 +85,12 @@ export function NasInspectorTabs({
     item: InventoryItem,
     powerConfiguration: NasPowerConfiguration,
   ) => void
+  attentionActions: AttentionActions
+  requestedTab?: string | null
 }) {
   const canViewAgents = usePermission('agents.view')
+  const projectId = project.metadata.projectId ?? 1
+  const showAttention = useAttentionTabVisibility({ projectId, hostType: 'nas', hostId: item.id, requestedTab })
   const editor = useInventoryItemEditor({
     item,
     onSave: (input) => onUpdateItem(runtimeItemKey(item), input),
@@ -128,6 +136,7 @@ export function NasInspectorTabs({
   return (
     <InspectorTabs
       defaultValue="specs"
+      requestedValue={requestedTab}
       status={<InventoryFormStatus saveError={editor.saveError} />}
       tabs={[
         {
@@ -232,6 +241,11 @@ export function NasInspectorTabs({
             />
           ),
         },
+        ...(showAttention ? [{
+          value: 'attention',
+          label: 'Attention',
+          content: <AttentionTab projectId={projectId} hostType="nas" hostId={item.id} actions={attentionActions} />,
+        }] : []),
       ]}
     />
   )

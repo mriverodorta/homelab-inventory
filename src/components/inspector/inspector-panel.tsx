@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react'
 import { AlertTriangle, Info, X } from 'lucide-react'
 import { InventoryActionsMenu } from '@/components/inventory-actions-menu'
 import { Button } from '@/components/ui/button'
@@ -51,6 +52,9 @@ export function InspectorPanel({
   persistenceWarning,
   open,
   onClose,
+  onOpenAudit,
+  onOpenNotifications,
+  onOpenRegistryUpdates,
   onUpdateProject,
   onUpdateItem,
   onUpdateItemProperties = () => undefined,
@@ -72,6 +76,19 @@ export function InspectorPanel({
   onRequestNasPowerConfigurationChange = () => undefined,
   onSetWarningIgnored = () => undefined,
 }: InspectorPanelProps) {
+  const [requestedItemTab, setRequestedItemTab] = useState<{ itemId: string; tab: string } | null>(null)
+  useEffect(() => {
+    const requestTab = (event: Event) => {
+      const detail = (event as CustomEvent<{ itemId?: unknown; tab?: unknown }>).detail
+      if (typeof detail?.itemId !== 'string' || typeof detail.tab !== 'string') return
+      setRequestedItemTab({ itemId: detail.itemId, tab: detail.tab })
+    }
+    window.addEventListener('homelab-inventory:inspector-tab', requestTab)
+    return () => window.removeEventListener('homelab-inventory:inspector-tab', requestTab)
+  }, [])
+  useEffect(() => {
+    if (!open) setRequestedItemTab(null)
+  }, [open])
   const canCreateInventory = usePermission('inventory.create')
   const canEditInventory = usePermission('inventory.edit')
   const canArchiveInventory = usePermission('inventory.archive')
@@ -106,6 +123,7 @@ export function InspectorPanel({
     ? project.connections.find((connection) => String(connection.id) === String(selectedConnectionId)) ?? null
     : null
   const selectedItemRuntimeKey = selectedItem ? runtimeItemKey(selectedItem) : null
+  const requestedTab = requestedItemTab?.itemId === selectedItemRuntimeKey ? requestedItemTab.tab : null
   const selectedItemIsPlaced = selectedItemRuntimeKey
     ? project.placements.some((placement) => placement.serverId === selectedItemRuntimeKey)
     : false
@@ -273,6 +291,8 @@ export function InspectorPanel({
                   onUpdateItem={updateItem}
                   onSelectNetworkTrace={onSelectNetworkTrace}
                   onEndpointConnectionClick={onEndpointConnectionClick}
+                  attentionActions={{ onOpenAudit, onOpenNotifications, onOpenRegistryUpdates }}
+                  requestedTab={requestedTab}
                 />
               ) : selectedItem.type === 'switch' ? (
                 <SwitchInspectorTabs
@@ -304,6 +324,8 @@ export function InspectorPanel({
                   onUpdateConnectionLabel={updateConnectionLabel}
                   onRemoveConnection={removeConnection}
                   onRequestPowerConfigurationChange={requestNasPowerConfigurationChange}
+                  attentionActions={{ onOpenAudit, onOpenNotifications, onOpenRegistryUpdates }}
+                  requestedTab={requestedTab}
                 />
               ) : selectedItem.type === 'patchPanel' ? (
                 <PatchPanelInspectorTabs
@@ -335,6 +357,8 @@ export function InspectorPanel({
                   onEndpointConnectionClick={onEndpointConnectionClick}
                   onUpdateConnectionLabel={updateConnectionLabel}
                   onRemoveConnection={removeConnection}
+                  attentionActions={{ onOpenAudit, onOpenNotifications, onOpenRegistryUpdates }}
+                  requestedTab={requestedTab}
                 />
               ) : selectedItem.type === 'monitor'
                 || selectedItem.type === 'ups'

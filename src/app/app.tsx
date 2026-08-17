@@ -72,6 +72,7 @@ function App() {
   const canViewRegistry = usePermission('registry.view')
   const canViewUpdates = usePermission('updates.view')
   const canManageAudit = usePermission('audit.manage')
+  const canViewAudit = usePermission('audit.view')
   const canViewNotifications = usePermission('notifications.view')
   const [project, setProject] = useState<ProjectState | null>(null)
   const projectRef = useRef<ProjectState | null>(null)
@@ -632,6 +633,7 @@ function App() {
     updateAvailable: updateHighlighted,
     updateStatusLoading: updateStatusQuery.isFetching && !updateStatusQuery.data,
     canViewNotifications,
+    canViewAudit,
     notificationCount: notificationQuery.data?.summary.unacknowledged ?? 0,
     registryUpdateCount: registryUpdatesQuery.data
       ? registryUpdatesQuery.data.counts.review + registryUpdatesQuery.data.counts.blocked

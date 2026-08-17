@@ -48,6 +48,7 @@ interface CreateWorkspaceSurfacePropsOptions {
   updateAvailable: boolean
   updateStatusLoading: boolean
   canViewNotifications: boolean
+  canViewAudit: boolean
   notificationCount: number
   registryUpdateCount: number
   registryUpdateSummary?: string
@@ -92,6 +93,7 @@ export function createWorkspaceSurfaceProps({
   updateAvailable,
   updateStatusLoading,
   canViewNotifications,
+  canViewAudit,
   notificationCount,
   registryUpdateCount,
   registryUpdateSummary,
@@ -131,6 +133,9 @@ export function createWorkspaceSurfaceProps({
     persistenceWarning,
     open: inspectorOpen,
     onClose: navigation.clearCanvasSelection,
+    onOpenAudit: canViewAudit ? navigation.openAudit : undefined,
+    onOpenNotifications: canViewNotifications ? openNotifications : undefined,
+    onOpenRegistryUpdates: canViewRegistryUpdates ? openRegistryUpdates : undefined,
     onUpdateProject: updateProject,
     onUpdateItem: inventory.updateItem,
     onRequestNasPowerConfigurationChange: (item, powerConfiguration) => {

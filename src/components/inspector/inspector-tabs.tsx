@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import {
   Tabs,
   TabsContent,
@@ -15,18 +15,25 @@ export type InspectorTab = {
 export function InspectorTabs({
   tabs,
   defaultValue,
+  requestedValue,
   status,
 }: {
   tabs: InspectorTab[]
   defaultValue?: string
+  requestedValue?: string | null
   status?: ReactNode
 }) {
+  const [value, setValue] = useState(defaultValue ?? tabs[0]?.value ?? '')
+  useEffect(() => {
+    if (requestedValue && tabs.some((tab) => tab.value === requestedValue)) setValue(requestedValue)
+  }, [requestedValue, tabs])
+
   if (tabs.length === 0) {
     return null
   }
 
   return (
-    <Tabs defaultValue={defaultValue ?? tabs[0].value} className="min-w-0 gap-4">
+    <Tabs value={value} onValueChange={setValue} className="min-w-0 gap-4">
       <TabsList
         variant="line"
         className="sticky top-[-1.25rem] z-10 flex !h-auto w-full justify-start gap-2 overflow-x-auto overflow-y-hidden border-b border-[#e5dccf] bg-[#fbf7ef]/95 px-0 py-1 backdrop-blur [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
