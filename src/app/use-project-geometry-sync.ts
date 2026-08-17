@@ -34,11 +34,11 @@ export function useProjectGeometrySync({
 
   useEffect(() => {
     const snapshot = projectGeometrySnapshotRef.current
-    if (!snapshot || domainEngine.state.phase !== 'ready') return
+    if (!domainEngine.enabled || !snapshot || domainEngine.state.phase !== 'ready') return
     void syncProjectGeometry(domainEngine.client, snapshot).catch((error) => {
       setPersistenceWarning(
         error instanceof Error ? error.message : 'Canvas geometry synchronization failed.',
       )
     })
-  }, [domainEngine.client, domainEngine.state.phase, projectGeometrySnapshot?.fingerprint, setPersistenceWarning])
+  }, [domainEngine.client, domainEngine.enabled, domainEngine.state.phase, projectGeometrySnapshot?.fingerprint, setPersistenceWarning])
 }

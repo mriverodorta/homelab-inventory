@@ -353,6 +353,7 @@ export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
     'Reloading Systems no longer starts the Canvas domain engine, and telemetry cannot appear on a host unless that host has an active Agent binding.',
     'System type, Agent, and Registry status content now remains centered while the Systems table contracts around the Inspector.',
     'Systems sortable headers and body cells now use the same column layout, preserving exact alignment for compact, pinned, and browser-resized columns.',
+    'Opening a Systems Inspector no longer triggers Canvas geometry synchronization or reports that the intentionally disabled workspace engine is unavailable.',
   ],
   notes: [],
 }
