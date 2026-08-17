@@ -177,12 +177,39 @@ export class SystemsReadService {
     `).all(projectId, ...hostItemIds)
   }
 
+  #liveHostRows(database, projectId) {
+    const project = database.query(`
+      SELECT id FROM projects WHERE id = ? AND archived_at_ms IS NULL
+    `).get(projectId)
+    if (!project) throw new Error(`Active project ${projectId} was not found.`)
+    return database.query(`
+      SELECT item.id AS item_id,
+        agent.id AS agent_id,
+        agent.agent_version,
+        agent.last_seen_at_ms,
+        agent.capabilities_json
+      FROM inventory_items item
+      JOIN inventory_item_types type ON type.id = item.type_id
+      LEFT JOIN agent_host_bindings binding
+        ON binding.host_item_id = item.id AND binding.state = 'active'
+      LEFT JOIN agents agent
+        ON agent.id = binding.agent_id AND agent.revoked_at_ms IS NULL
+      LEFT JOIN project_inventory_memberships membership
+        ON membership.item_id = item.id AND membership.project_id = ?
+      WHERE item.archived_at_ms IS NULL
+        AND type.key IN ('server', 'nas', 'pcBuild')
+        AND (membership.id IS NOT NULL OR item.owner_project_id = ?)
+      ORDER BY item.id
+    `).all(projectId, projectId)
+  }
+
   #snapshot(store, projectId, endpoint) {
     const id = positiveId(projectId, 'Project ID')
     const hosts = this.#hostRows(store.core.database, id)
     const hostItemIds = hosts.map((host) => host.item_id)
+    const boundHostItemIds = hosts.filter((host) => host.agent_id != null).map((host) => host.item_id)
     const components = this.#componentRows(store.core.database, id, hostItemIds)
-    const telemetryByHost = this.telemetryRepository?.getSystemsSnapshot(hostItemIds) ?? new Map()
+    const telemetryByHost = this.telemetryRepository?.getSystemsSnapshot(boundHostItemIds) ?? new Map()
     const componentsByHost = new Map()
     for (const component of components) {
       const existing = componentsByHost.get(component.host_item_id) ?? []
@@ -198,8 +225,8 @@ export class SystemsReadService {
       currentAgentVersion,
       systems: hosts.map((host) => {
         if (!HOST_TYPES.has(host.type)) throw new Error(`Unsupported Systems host type ${host.type}.`)
-        const telemetry = telemetryByHost.get(host.item_id) ?? null
         const registered = host.agent_id != null
+        const telemetry = registered ? telemetryByHost.get(host.item_id) ?? null : null
         const lastSeenAt = telemetry?.receivedAt
           ?? (host.last_seen_at_ms == null ? null : new Date(host.last_seen_at_ms).toISOString())
         const { state } = resolveAgentStatusState({
@@ -220,6 +247,7 @@ export class SystemsReadService {
             }).linux
           : undefined
         const assigned = componentsByHost.get(host.item_id) ?? []
+        const liveTelemetry = state === 'online' ? telemetry : null
         const legacyId = Number(host.legacy_id ?? host.item_id)
         return {
           itemId: host.item_id,
@@ -233,16 +261,16 @@ export class SystemsReadService {
           usageRole: host.usage_role ?? null,
           cpuLabel: cpuLabel(assigned),
           memoryLabel: memoryLabel(assigned),
-          storageLabel: storageLabel(assigned, telemetry),
+          storageLabel: storageLabel(assigned, liveTelemetry),
           agentRegistered: registered,
           agentState: state,
           agentVersion,
           agentUpdateAvailable: updateAvailable,
           ...(updateCommand ? { agentUpdateCommand: updateCommand } : {}),
           registryLinked: ACTIVE_REGISTRY_STATES.has(host.registry_state),
-          cpuPercent: finitePercent(telemetry?.cpuPercent),
-          memoryPercent: finitePercent(telemetry?.memoryPercent),
-          storagePercent: storagePercent(telemetry),
+          cpuPercent: finitePercent(liveTelemetry?.cpuPercent),
+          memoryPercent: finitePercent(liveTelemetry?.memoryPercent),
+          storagePercent: storagePercent(liveTelemetry),
         }
       }),
     }
@@ -253,20 +281,40 @@ export class SystemsReadService {
   }
 
   live(store, projectId, endpoint) {
-    const snapshot = this.#snapshot(store, projectId, endpoint)
+    const id = positiveId(projectId, 'Project ID')
+    const hosts = this.#liveHostRows(store.core.database, id)
+    const boundHostItemIds = hosts.filter((host) => host.agent_id != null).map((host) => host.item_id)
+    const telemetryByHost = this.telemetryRepository?.getSystemsSnapshot(boundHostItemIds) ?? new Map()
+    const timing = agentStatusTiming()
     return {
-      projectId: snapshot.projectId,
-      generatedAt: snapshot.generatedAt,
-      systems: snapshot.systems.filter((system) => system.agentRegistered).map((system) => ({
-        itemId: system.itemId,
-        agentState: system.agentState,
-        agentVersion: system.agentVersion,
-        agentUpdateAvailable: system.agentUpdateAvailable,
-        ...(system.agentUpdateCommand ? { agentUpdateCommand: system.agentUpdateCommand } : {}),
-        cpuPercent: system.cpuPercent,
-        memoryPercent: system.memoryPercent,
-        storagePercent: system.storagePercent,
-      })),
+      projectId: id,
+      generatedAt: new Date(this.now()).toISOString(),
+      systems: hosts.map((host) => {
+        const registered = host.agent_id != null
+        const telemetry = registered ? telemetryByHost.get(host.item_id) ?? null : null
+        const lastSeenAt = telemetry?.receivedAt
+          ?? (host.last_seen_at_ms == null ? null : new Date(host.last_seen_at_ms).toISOString())
+        const { state } = resolveAgentStatusState({ connected: registered, lastSeenAt, now: this.now(), timing })
+        const agentVersion = telemetry?.agentVersion ?? host.agent_version ?? null
+        const updateAvailable = Boolean(registered && agentVersion && this.releaseService?.updateAvailable(agentVersion))
+        const updateCommand = updateAvailable && endpoint
+          ? this.releaseService.upgradeCommands(endpoint, {
+              native: nativeUpdateAvailable(host.capabilities_json),
+            }).linux
+          : undefined
+        const liveTelemetry = state === 'online' ? telemetry : null
+        return {
+          itemId: host.item_id,
+          agentRegistered: registered,
+          agentState: state,
+          agentVersion,
+          agentUpdateAvailable: updateAvailable,
+          ...(updateCommand ? { agentUpdateCommand: updateCommand } : {}),
+          cpuPercent: finitePercent(liveTelemetry?.cpuPercent),
+          memoryPercent: finitePercent(liveTelemetry?.memoryPercent),
+          storagePercent: storagePercent(liveTelemetry),
+        }
+      }),
     }
   }
 }

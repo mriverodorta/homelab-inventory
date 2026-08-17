@@ -4,6 +4,7 @@ export type SystemsHostType = 'server' | 'nas' | 'pcBuild'
 
 export type SystemsHostLive = Readonly<{
   itemId: number
+  agentRegistered: boolean
   agentState: SystemsAgentState
   agentVersion: string | null
   agentUpdateAvailable: boolean
@@ -20,12 +21,11 @@ export type SystemsHostRow = SystemsHostLive & Readonly<{
   name: string
   manufacturer: string | null
   model: string | null
-  hardwareClass: string | null
-  usageRole: string | null
+  hardwareClass: 'desktop' | 'workstation' | 'server' | null
+  usageRole: 'server' | 'desktop' | 'workstation' | 'other' | null
   cpuLabel: string | null
   memoryLabel: string | null
   storageLabel: string | null
-  agentRegistered: boolean
   registryLinked: boolean
 }>
 

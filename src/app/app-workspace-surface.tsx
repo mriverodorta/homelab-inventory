@@ -8,7 +8,6 @@ import { WorkbenchCanvas } from '@/components/lazy-workbench-canvas'
 import { PortConnectionPreviewOverlay } from '@/app/port-connection-preview-overlay'
 import { SystemsWorkspace } from '@/components/workbook/systems-workspace'
 import type { WorkspaceSummary } from '@/lib/workbook-api'
-import type { AgentStatusSummary } from '@/types/agent'
 import type { ProjectState } from '@/types/inventory'
 
 type ExampleGuideProps = ComponentProps<typeof ExampleWorkspaceGuide>
@@ -29,9 +28,9 @@ export interface AppWorkspaceSurfaceProps {
 export interface WorkbookSurfaceProps {
   workspace: WorkspaceSummary
   project: ProjectState
-  agentStatus: AgentStatusSummary | null
-  registryLinkedItemKeys: ReadonlySet<string>
+  selectedItemId: string | null
   onSelectItem(itemId: string): void
+  onCloseInspector(): void
 }
 
 export function AppWorkspaceSurface({
@@ -47,9 +46,9 @@ export function AppWorkspaceSurface({
       <>
         <SystemsWorkspace
           project={workbook.project}
-          agentStatus={workbook.agentStatus}
-          registryLinkedItemKeys={workbook.registryLinkedItemKeys}
+          selectedItemId={workbook.selectedItemId}
           onSelectItem={workbook.onSelectItem}
+          onCloseInspector={workbook.onCloseInspector}
         />
         <InspectorPanel {...inspector} />
       </>

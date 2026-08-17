@@ -73,6 +73,7 @@ describe('topology query coordinator', () => {
             client,
             state: { phase: 'ready', revision: 7 },
             syncEvent: null,
+            setEnabled: () => {},
             retry: async () => {},
           }}>
             {children}

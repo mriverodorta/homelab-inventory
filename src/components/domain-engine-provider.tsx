@@ -1,5 +1,6 @@
 import {
   type ReactNode,
+  useCallback,
   useEffect,
   useMemo,
   useRef,
@@ -35,27 +36,51 @@ export function DomainEngineProvider({
   client?: DomainEngineClient
   eventSourceFactory?: (url: string) => EventSource
 }) {
-  const client = useMemo(() => providedClient ?? new DomainEngineClient(), [providedClient])
+  const [active, setActive] = useState(enabled)
+  const activeRef = useRef(active)
+  const [client, setClient] = useState(() => providedClient ?? new DomainEngineClient())
   const [state, setState] = useState<DomainEngineState>(() => (
-    enabled ? client.status() : { phase: 'ready', revision: null }
+    active ? client.status() : { phase: 'ready', revision: null }
   ))
   const [syncEvent, setSyncEvent] = useState<DomainEngineSyncEvent | null>(null)
   const sequenceRef = useRef(0)
-  const disposeTimerRef = useRef<number | null>(null)
+  const disposeTimerRef = useRef<{ client: DomainEngineClient; timer: number } | null>(null)
+  const setEnabled = useCallback((nextEnabled: boolean) => {
+    if (activeRef.current === nextEnabled) return
+    activeRef.current = nextEnabled
+    if (nextEnabled && !providedClient) setClient(new DomainEngineClient())
+    setActive(nextEnabled)
+  }, [providedClient])
+
+  useEffect(() => setEnabled(enabled), [enabled, setEnabled])
+  useEffect(() => {
+    if (providedClient) setClient(providedClient)
+  }, [providedClient])
 
   useEffect(() => {
-    if (!enabled) return
-    if (disposeTimerRef.current !== null) window.clearTimeout(disposeTimerRef.current)
+    if (!active) {
+      setState({ phase: 'ready', revision: null })
+      setSyncEvent(null)
+      return
+    }
+    if (disposeTimerRef.current?.client === client) {
+      window.clearTimeout(disposeTimerRef.current.timer)
+      disposeTimerRef.current = null
+    }
     const unsubscribe = client.subscribe(setState)
     void client.start().catch(() => {})
     return () => {
       unsubscribe()
-      disposeTimerRef.current = window.setTimeout(() => client.dispose(), 0)
+      const timer = window.setTimeout(() => {
+        client.dispose()
+        if (disposeTimerRef.current?.timer === timer) disposeTimerRef.current = null
+      }, 0)
+      disposeTimerRef.current = { client, timer }
     }
-  }, [client, enabled])
+  }, [active, client])
 
   useEffect(() => {
-    if (!enabled || state.phase !== 'ready') return
+    if (!active || state.phase !== 'ready') return
     const source = eventSourceFactory(scopedEngineUrl('/api/engine/events'))
     const onPatch = (event: Event) => {
       const message = event as MessageEvent<string>
@@ -109,15 +134,16 @@ export function DomainEngineProvider({
     source.addEventListener('project-patch', onPatch)
     source.addEventListener('project-invalidated', onInvalidation)
     return () => source.close()
-  }, [client, enabled, eventSourceFactory, state.phase])
+  }, [active, client, eventSourceFactory, state.phase])
 
   const value = useMemo<DomainEngineContextValue>(() => ({
-    enabled,
+    enabled: active,
     client,
     state,
     syncEvent,
+    setEnabled,
     retry: () => client.start(),
-  }), [client, enabled, state, syncEvent])
+  }), [active, client, setEnabled, state, syncEvent])
 
   return <DomainEngineContext.Provider value={value}>{children}</DomainEngineContext.Provider>
 }

@@ -67,6 +67,7 @@ function App() {
   const queryClient = useQueryClient()
   const auth = useAuth()
   const domainEngine = useDomainEngine()
+  const setDomainEngineEnabled = domainEngine.setEnabled
   const canViewAgents = usePermission('agents.view')
   const canViewRegistry = usePermission('registry.view')
   const canViewUpdates = usePermission('updates.view')
@@ -117,6 +118,10 @@ function App() {
   const workbookController = useWorkbookController({
     beforeNavigate: settleLegacyProjectPersistence,
   })
+  const canvasWorkspaceActive = workbookController.activeWorkspace?.type === 'canvas'
+  useEffect(() => {
+    setDomainEngineEnabled(canvasWorkspaceActive)
+  }, [canvasWorkspaceActive, setDomainEngineEnabled])
   const sidebarPreferenceScope = workbookController.activeWorkbook && workbookController.sourceCanvasWorkspace
     ? browserPreferenceScope(
         auth.status?.account?.id ?? null,
@@ -140,10 +145,10 @@ function App() {
     snapItemsToGrid,
   } = workspacePreferences
   const topologyQuery = useTopologyQuery(
-    workbookController.activeWorkspace?.type === 'canvas' ? project : null,
+    canvasWorkspaceActive ? project : null,
   )
   const topologyStatus = project
-    && workbookController.activeWorkspace?.type === 'canvas'
+    && canvasWorkspaceActive
     && !topologyQuery.data
     ? domainEngine.state.phase === 'failed'
       || domainEngine.state.phase === 'unsupported'
@@ -354,7 +359,8 @@ function App() {
     width: inventoryWidth,
     onWidthChange: setInventoryWidth,
   })
-  const agentStatusQuery = useAgentStatus(canViewAgents)
+  const systemsWorkspaceActive = workbookController.activeWorkspace?.type === 'systems'
+  const agentStatusQuery = useAgentStatus(canViewAgents && (!systemsWorkspaceActive || Boolean(selectedItemId)))
   const {
     updateStatusQuery,
     setUpdateDialogOpen,
@@ -648,9 +654,9 @@ function App() {
     workbook: {
       workspace: workbookController.activeWorkspace,
       project,
-      agentStatus: agentStatusQuery.data ?? null,
-      registryLinkedItemKeys,
+      selectedItemId,
       onSelectItem: canvasSelectionController.selectInventoryItem,
+      onCloseInspector: navigationActions.clearCanvasSelection,
     },
   }
 

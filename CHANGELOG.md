@@ -6,6 +6,20 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 
 ## Unreleased
 
+### Added
+
+- The Systems workspace now provides a dense sortable and filterable host table with dedicated system, Agent, and Registry status icons; assigned CPU, memory, and storage summaries; current utilization; Agent version awareness; and whole-row Inspector access.
+
+### Changed
+
+- Systems live state now uses compact project-scoped endpoints with conditional ETag responses and refreshes every 30 seconds only while the Systems workspace is active, visible, and online; Agent enrollment and unlinking appear without a page reload.
+- The Inventory sidebar is available only on Canvas workspaces, with its open state and width retained independently per user, browser, project, and Canvas workspace.
+
+### Fixed
+
+- Reloading a Systems workspace no longer starts or blocks on the Canvas domain engine, and switching back to Canvas starts a fresh workspace-scoped engine normally.
+- Systems telemetry is attached only to hosts with an active Agent binding; unregistered, unknown, stale, and offline hosts keep single-line hardware summaries without misleading utilization bars.
+
 ## [0.13.5] - 2026-08-17
 
 ### Fixed

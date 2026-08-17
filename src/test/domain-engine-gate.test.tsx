@@ -1,10 +1,11 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import { DomainEngineGate } from '@/components/domain-engine-gate'
 import { DomainEngineProvider } from '@/components/domain-engine-provider'
 import { DomainEngineContext } from '@/engine/react-context'
 import type { DomainEngineClient } from '@/engine/client'
 import type { DomainEngineState } from '@/engine/types'
+import { useDomainEngine } from '@/hooks/use-domain-engine'
 
 const eventSourceFactory = () => ({
   addEventListener: vi.fn(),
@@ -27,12 +28,12 @@ function stubClient({
       listener(state)
       return () => listeners.delete(listener)
     },
-    async start() {
+    start: vi.fn(async () => {
       if (afterStart) {
         state = afterStart
         for (const listener of listeners) listener(state)
       }
-    },
+    }),
     rebuild: vi.fn(async () => {}),
     applyCommittedResponse: vi.fn(),
     dispose: vi.fn(),
@@ -41,6 +42,34 @@ function stubClient({
 }
 
 describe('DomainEngineGate', () => {
+  it('starts on demand for Canvas and remains inactive for Systems', async () => {
+    const client = stubClient({
+      initial: { phase: 'loading', revision: null },
+      afterStart: { phase: 'ready', revision: 3 },
+    })
+    function Harness() {
+      const engine = useDomainEngine()
+      return (
+        <>
+          <button onClick={() => engine.setEnabled(true)}>Open Canvas</button>
+          <DomainEngineGate><div>Workspace content</div></DomainEngineGate>
+        </>
+      )
+    }
+
+    render(
+      <DomainEngineProvider enabled={false} client={client} eventSourceFactory={eventSourceFactory}>
+        <Harness />
+      </DomainEngineProvider>,
+    )
+
+    expect(screen.getByText('Workspace content')).toBeInTheDocument()
+    expect(client.start).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByRole('button', { name: 'Open Canvas' }))
+    await waitFor(() => expect(client.start).toHaveBeenCalledOnce())
+    expect(screen.getByText('Workspace content')).toBeInTheDocument()
+  })
+
   it('blocks the workbench while the worker is loading', () => {
     const client = stubClient({ initial: { phase: 'loading', revision: null } })
     render(
@@ -89,6 +118,7 @@ describe('DomainEngineGate', () => {
         client,
         state: { phase: 'ready', revision: 3 },
         syncEvent: null,
+        setEnabled: () => {},
         retry: async () => {},
       }}>
         <DomainEngineGate><div>Canvas workbench</div></DomainEngineGate>
@@ -101,6 +131,7 @@ describe('DomainEngineGate', () => {
         client,
         state: { phase: 'rebuilding', revision: 3, reason: 'External update' },
         syncEvent: null,
+        setEnabled: () => {},
         retry: async () => {},
       }}>
         <DomainEngineGate><div>Canvas workbench</div></DomainEngineGate>

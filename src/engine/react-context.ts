@@ -12,6 +12,7 @@ export type DomainEngineContextValue = {
   client: DomainEngineClient
   state: DomainEngineState
   syncEvent: DomainEngineSyncEvent | null
+  setEnabled(enabled: boolean): void
   retry(): Promise<void>
 }
 

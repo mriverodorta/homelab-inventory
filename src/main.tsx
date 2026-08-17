@@ -14,7 +14,7 @@ createRoot(document.getElementById('root')!).render(
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
         <AuthGate>
-          <DomainEngineProvider enabled>
+          <DomainEngineProvider enabled={false}>
             <DomainEngineGate>
               <LazyWorkspaceApp />
             </DomainEngineGate>

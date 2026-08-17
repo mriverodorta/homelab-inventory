@@ -6,6 +6,7 @@ const disabledDomainEngine = {
   client: null as never,
   state: { phase: 'ready' as const, revision: null },
   syncEvent: null,
+  setEnabled: () => {},
   retry: async () => {},
 }
 

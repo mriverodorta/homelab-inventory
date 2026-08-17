@@ -77,6 +77,7 @@ describe('Systems read service', () => {
 
     expect(service.live(store, 1, 'https://inventory.example').systems).toEqual([{
       itemId: initial.systems[0].itemId,
+      agentRegistered: true,
       agentState: 'online',
       agentVersion: '0.1.8',
       agentUpdateAvailable: true,
@@ -87,18 +88,58 @@ describe('Systems read service', () => {
     }])
   })
 
-  test('keeps hosts without agents in the initial response and out of live polling', async () => {
+  test('keeps hosts without agents in initial and minimal live projections', async () => {
     const store = await fixtureStore()
     store.core.database.query("UPDATE agent_host_bindings SET state = 'unlinked', unbound_at_ms = ?").run(Date.now())
     const service = new SystemsReadService({
-      telemetryRepository: { getSystemsSnapshot: () => new Map() },
+      telemetryRepository: { getSystemsSnapshot: () => new Map([[1, {
+        hostItemId: 1,
+        receivedAt: '2026-08-17T16:40:00.000Z',
+        cpuPercent: 75,
+        memoryPercent: 80,
+        rootFilesystem: { totalBytes: 100, usedBytes: 90 },
+      }]]) },
       now: () => Date.parse('2026-08-17T16:40:30.000Z'),
     })
 
     expect(service.initial(store, 1, 'https://inventory.example').systems[0]).toMatchObject({
       agentRegistered: false,
       agentState: 'unregistered',
+      cpuPercent: null,
+      memoryPercent: null,
+      storagePercent: null,
     })
-    expect(service.live(store, 1, 'https://inventory.example').systems).toEqual([])
+    expect(service.live(store, 1, 'https://inventory.example').systems).toEqual([{
+      itemId: service.initial(store, 1, 'https://inventory.example').systems[0].itemId,
+      agentRegistered: false,
+      agentState: 'unregistered',
+      agentVersion: null,
+      agentUpdateAvailable: false,
+      cpuPercent: null,
+      memoryPercent: null,
+      storagePercent: null,
+    }])
+  })
+
+  test('omits stale metrics and falls back to the first assigned storage device', async () => {
+    const store = await fixtureStore()
+    const service = new SystemsReadService({
+      telemetryRepository: { getSystemsSnapshot: () => new Map([[1, {
+        hostItemId: 1,
+        receivedAt: '2026-08-17T16:30:00.000Z',
+        cpuPercent: 75,
+        memoryPercent: 80,
+        rootFilesystem: { totalBytes: 100, usedBytes: 90 },
+      }]]) },
+      now: () => Date.parse('2026-08-17T16:40:30.000Z'),
+    })
+
+    expect(service.initial(store, 1, 'https://inventory.example').systems[0]).toMatchObject({
+      agentState: 'offline',
+      storageLabel: '1TB NVMe',
+      cpuPercent: null,
+      memoryPercent: null,
+      storagePercent: null,
+    })
   })
 })
