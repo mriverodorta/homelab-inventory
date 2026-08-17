@@ -6,6 +6,11 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 
 ## Unreleased
 
+### Fixed
+
+- Registry catalog revision 21 now imports PCIe network adapters whose functional electrical minimum is unknown, without inferring that their full connector width is required.
+- PCIe compatibility audits now enforce only evidenced `minimumElectricalLanes` values, so the Intel X520-DA2 is correctly accepted in the Synology DS1621+ x8-mechanical/x4-electrical slot.
+
 ## [0.13.3] - 2026-08-16
 
 ### Fixed

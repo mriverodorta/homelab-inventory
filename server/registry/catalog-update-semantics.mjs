@@ -144,6 +144,13 @@ function mergeCatalogItem(currentValue, incomingValue, fingerprintVersion) {
     if (current[field] !== undefined) result[field] = structuredClone(current[field])
   }
   if (Array.isArray(incoming.ports)) result.ports = mergePorts(current.ports, incoming.ports)
+  if (fingerprintVersion === NETWORK_FINGERPRINT_VERSION) {
+    const incomingMinimum = incoming.specs?.hostInterface?.minimumElectricalLanes
+    if (incomingMinimum === undefined) {
+      delete result.specs?.hostInterface?.minimumElectricalLanes
+      delete result.compatibility?.requirements?.expansion?.minimumElectricalLanes
+    }
+  }
   return result
 }
 

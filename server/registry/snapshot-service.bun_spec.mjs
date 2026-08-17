@@ -7,6 +7,7 @@ import {
   canonicalJson,
   digestCatalogTemplate,
   FINGERPRINT_VERSION,
+  NETWORK_FINGERPRINT_VERSION,
   RAM_FINGERPRINT_VERSION,
   sha256Hex,
 } from '../../packages/catalog-protocol/src/index.ts'
@@ -114,6 +115,40 @@ async function connectedArtifacts({ artifact, privateKey }) {
 }
 
 describe('catalog snapshot service', () => {
+  it('preserves an optional PCIe minimum in signed offline catalog storage', async () => {
+    const item = {
+      type: 'network', name: 'Example PCIe adapter', manufacturer: 'Example', model: 'NIC-8',
+      specs: {
+        networkTechnology: 'ethernet', formFactor: 'low-profile', operatingModes: ['ethernet'],
+        hostInterface: { family: 'pcie', pcieGeneration: 3, connectorLanes: 8 },
+      },
+      ports: [{
+        id: 1, key: 'port-1', kind: 'network', type: 'sfp-plus', slotNumber: 1,
+        speedBps: 10_000_000_000, supportedSpeedsBps: [10_000_000_000],
+        networkTechnology: 'ethernet', operatingModes: ['ethernet'], origin: 'module',
+      }],
+      compatibility: { requirements: { expansion: {
+        interfaceFamily: 'pcie', pcieGeneration: 3, connectorLanes: 8,
+      } } },
+    }
+    const { artifact, store, trustedKeys } = await fixture({
+      item,
+      fingerprintVersion: NETWORK_FINGERPRINT_VERSION,
+    })
+    const service = new SnapshotService(store, { trustedKeys })
+
+    await service.activate(artifact, { mode: 'offline', now: new Date('2026-07-27T00:00:00.000Z') })
+
+    const stored = await service.search({ query: 'NIC-8' })
+    expect(stored).toMatchObject({ total: 1 })
+    expect(stored.items[0].item.specs.hostInterface).toEqual({
+      family: 'pcie', pcieGeneration: 3, connectorLanes: 8,
+    })
+    expect(stored.items[0].item.compatibility.requirements.expansion).toEqual({
+      interfaceFamily: 'pcie', pcieGeneration: 3, connectorLanes: 8,
+    })
+  })
+
   it('activates and searches a signed RAM v8 template without losing structured requirements', async () => {
     const item = {
       type: 'ram', name: 'Micron MTA18ASF2G72AZ-3G2R', manufacturer: 'Micron', number: 'MTA18ASF2G72AZ-3G2R',

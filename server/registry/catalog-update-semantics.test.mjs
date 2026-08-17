@@ -90,6 +90,36 @@ describe('catalog update semantic planning', () => {
     expect(plan.nextItem.specs.networkTechnology).toBe('ethernet')
   })
 
+  it('removes an unproven PCIe minimum instead of retaining it through deep merge', () => {
+    const current = {
+      type: 'network', name: 'Adapter', manufacturer: 'Intel', model: 'Adapter',
+      specs: {
+        networkTechnology: 'ethernet', formFactor: 'low-profile', operatingModes: ['ethernet'],
+        hostInterface: { family: 'pcie', pcieGeneration: 3, connectorLanes: 8, minimumElectricalLanes: 8 },
+      },
+      ports: [{
+        id: 1, key: 'port-1', kind: 'network', type: 'sfp-plus', slotNumber: 1,
+        speedBps: 10_000_000_000, supportedSpeedsBps: [10_000_000_000],
+        networkTechnology: 'ethernet', operatingModes: ['ethernet'], origin: 'module',
+      }],
+      compatibility: { requirements: { expansion: {
+        interfaceFamily: 'pcie', pcieGeneration: 3, connectorLanes: 8, minimumElectricalLanes: 8,
+      } } },
+    }
+    const incoming = structuredClone(current)
+    delete incoming.specs.hostInterface.minimumElectricalLanes
+    delete incoming.compatibility.requirements.expansion.minimumElectricalLanes
+
+    const plan = planCatalogUpdate(current, incoming, 11)
+
+    expect(plan.nextItem.specs.hostInterface.minimumElectricalLanes).toBeUndefined()
+    expect(plan.nextItem.compatibility.requirements.expansion.minimumElectricalLanes).toBeUndefined()
+    expect(plan.changes).toEqual(expect.arrayContaining([
+      expect.objectContaining({ path: 'specs.hostInterface.minimumElectricalLanes', kind: 'removed' }),
+      expect.objectContaining({ path: 'compatibility.requirements.expansion.minimumElectricalLanes', kind: 'removed' }),
+    ]))
+  })
+
   it('treats compatible port kind and slot renumbering as representation changes', () => {
     const current = {
       type: 'powerStrip',

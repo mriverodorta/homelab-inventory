@@ -72,6 +72,45 @@ const ax210 = {
   } } },
 } as const
 
+const x520da2 = {
+  type: 'network',
+  name: 'Intel X520-DA2',
+  manufacturer: 'Intel',
+  family: 'X Series',
+  model: 'X520-DA2',
+  specs: {
+    controller: 'Intel 82599',
+    formFactor: 'low-profile',
+    maxSpeedBps: 10_000_000_000,
+    capabilities: {
+      ptp: true, pxe: true, sriov: true, offloads: ['checksum', 'rss'], uefiBoot: true,
+    },
+    discontinued: true,
+    hostInterface: {
+      family: 'pcie', pcieGeneration: 2, connectorLanes: 8, minimumElectricalLanes: 4,
+    },
+    operatingModes: ['ethernet'],
+    networkTechnology: 'ethernet',
+  },
+  ports: [1, 2].map((slotNumber) => ({
+    id: slotNumber,
+    key: `port-${slotNumber}`,
+    kind: 'network',
+    type: 'sfp-plus',
+    slotNumber,
+    speedBps: 10_000_000_000,
+    supportedSpeedsBps: [1_000_000_000, 10_000_000_000],
+    networkTechnology: 'ethernet',
+    operatingModes: ['ethernet'],
+    media: ['aoc', 'dac', 'optical-transceiver'],
+    origin: 'module',
+  })),
+  compatibility: { requirements: { expansion: {
+    interfaceFamily: 'pcie', pcieGeneration: 2, connectorLanes: 8,
+    minimumElectricalLanes: 4, height: 'low-profile', slotWidth: 1, powerMw: 6_200,
+  } } },
+} as const
+
 describe('network catalog protocol v11', () => {
   it('consumes the frozen registry fixture without changing its contract hashes', async () => {
     expect(fixture).toMatchObject({
@@ -152,6 +191,63 @@ describe('network catalog protocol v11', () => {
     expect(connector.identityHash).not.toBe(base.identityHash)
     expect(alias.identityHash).toBe(base.identityHash)
     expect(alias.contentHash).toBe(base.contentHash)
+  })
+
+  it('keeps connector width and evidenced functional minimum independent', async () => {
+    const minimumX4 = structuredClone(x710da2) as any
+    minimumX4.specs.hostInterface.minimumElectricalLanes = 4
+    minimumX4.compatibility.requirements.expansion.minimumElectricalLanes = 4
+    const withoutMinimum = structuredClone(x710da2) as any
+    delete withoutMinimum.specs.hostInterface.minimumElectricalLanes
+    delete withoutMinimum.compatibility.requirements.expansion.minimumElectricalLanes
+
+    const original = await digestCatalogTemplate(x710da2, { fingerprintVersion: NETWORK_FINGERPRINT_VERSION })
+    const relaxed = await digestCatalogTemplate(minimumX4, { fingerprintVersion: NETWORK_FINGERPRINT_VERSION })
+    const unknown = await digestCatalogTemplate(withoutMinimum, { fingerprintVersion: NETWORK_FINGERPRINT_VERSION })
+
+    expect(relaxed.item.specs?.hostInterface).toEqual(expect.objectContaining({
+      family: 'pcie', connectorLanes: 8, minimumElectricalLanes: 4,
+    }))
+    expect((relaxed.item.compatibility?.requirements as Record<string, unknown>)?.expansion).toEqual(expect.objectContaining({
+      interfaceFamily: 'pcie', connectorLanes: 8, minimumElectricalLanes: 4,
+    }))
+    expect(relaxed.identityHash).toBe(original.identityHash)
+    expect(unknown.identityHash).toBe(original.identityHash)
+    expect(relaxed.contentHash).not.toBe(original.contentHash)
+    expect(unknown.contentHash).not.toBe(original.contentHash)
+  })
+
+  it('matches the published revision 21 X520-DA2 vector', async () => {
+    const digest = await digestCatalogTemplate(x520da2, { fingerprintVersion: NETWORK_FINGERPRINT_VERSION })
+
+    expect(digest).toMatchObject({
+      status: 'eligible',
+      identityHash: 'fb3c7567a7f3ae819a99714891dfb11a555c1bfc40e6f74aededb9082f666206',
+      contentHash: '1ef66acdafaaf647871f0a2f5a330eaf91f7bce61a9fd75ea469cb8bbd7b9860',
+      item: x520da2,
+    })
+  })
+
+  it('rejects unsupported or contradictory electrical lane values', () => {
+    const tooWide = structuredClone(x710da2) as any
+    tooWide.specs.hostInterface.minimumElectricalLanes = 16
+    tooWide.compatibility.requirements.expansion.minimumElectricalLanes = 16
+    expect(() => canonicalizeCatalogItemV11(tooWide)).toThrow(/cannot exceed connector lanes/i)
+
+    for (const invalid of [0, 1.5, Number.POSITIVE_INFINITY, '4']) {
+      const item = structuredClone(x710da2) as any
+      item.specs.hostInterface.minimumElectricalLanes = invalid
+      item.compatibility.requirements.expansion.minimumElectricalLanes = invalid
+      expect(() => canonicalizeCatalogItemV11(item)).toThrow(/positive safe integer|finite|non-negative safe integer/i)
+    }
+
+    const mismatch = structuredClone(x710da2) as any
+    mismatch.specs.hostInterface.minimumElectricalLanes = 4
+    expect(() => canonicalizeCatalogItemV11(mismatch)).toThrow(/conflicts with specs\.hostInterface/i)
+
+    const requirementOnly = structuredClone(x710da2) as any
+    delete requirementOnly.specs.hostInterface.minimumElectricalLanes
+    expect(() => canonicalizeCatalogItemV11(requirementOnly)).toThrow(/requires the same value/i)
   })
 
   it('is deterministic and idempotent', async () => {

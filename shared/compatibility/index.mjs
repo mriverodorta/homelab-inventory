@@ -1189,18 +1189,6 @@ function evaluateExpansionGroup(group, requirements, populatedCpuSockets) {
         field: 'component.expansion.minimumElectricalLanes',
         resourceId: group.id,
       })
-    } else if (
-      requirements.minimumElectricalLanes === undefined &&
-      requirements.connectorLanes !== undefined &&
-      group.electricalLanes < requirements.connectorLanes
-    ) {
-      addFinding(findings, {
-        code: 'expansion.electrical-lanes.reduced',
-        severity: 'warning',
-        message: `The card will operate with x${group.electricalLanes} electrical lanes instead of x${requirements.connectorLanes}.`,
-        field: 'component.expansion.connectorLanes',
-        resourceId: group.id,
-      })
     }
 
     if (!requirements.height) {

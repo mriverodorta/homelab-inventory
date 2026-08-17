@@ -100,4 +100,37 @@ describe('catalog update safety policy', () => {
       })).toMatchObject({ classification: 'review-required' })
     }
   })
+
+  it('treats lowering or omitting an electrical minimum as a safe relaxation', () => {
+    for (const next of [4, undefined]) {
+      expect(classifyCatalogUpdate({
+        itemType: 'network',
+        changes: [
+          { path: 'specs.hostInterface.minimumElectricalLanes', impact: 'product-definition', current: 8, next },
+          { path: 'compatibility.requirements.expansion.minimumElectricalLanes', impact: 'product-definition', current: 8, next },
+        ],
+        beforeFindings: [{
+          assignmentId: 1,
+          findings: [{ code: 'expansion.minimum-lanes.insufficient', severity: 'error' }],
+        }],
+        afterFindings: [],
+      })).toEqual({ classification: 'safe', reasons: ['verified-compatible'], introducedFindings: [] })
+    }
+  })
+
+  it('still requires review when an electrical minimum is added or increased', () => {
+    for (const [current, next] of [[undefined, 4], [4, 8]]) {
+      expect(classifyCatalogUpdate({
+        itemType: 'network',
+        changes: [{
+          path: 'specs.hostInterface.minimumElectricalLanes',
+          impact: 'product-definition',
+          current,
+          next,
+        }],
+        beforeFindings: [],
+        afterFindings: [],
+      })).toMatchObject({ classification: 'review-required', reasons: ['network-host-interface-change'] })
+    }
+  })
 })

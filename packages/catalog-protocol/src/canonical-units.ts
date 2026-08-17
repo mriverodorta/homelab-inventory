@@ -653,9 +653,11 @@ function validateNetworkHostInterface(specs: JsonObject): JsonObject {
   if (family === 'pcie') {
     hostInterface.pcieGeneration = positiveInteger(hostInterface.pcieGeneration, `${path}.pcieGeneration`)
     hostInterface.connectorLanes = positiveInteger(hostInterface.connectorLanes, `${path}.connectorLanes`)
-    hostInterface.minimumElectricalLanes = positiveInteger(hostInterface.minimumElectricalLanes, `${path}.minimumElectricalLanes`)
-    if (Number(hostInterface.minimumElectricalLanes) > Number(hostInterface.connectorLanes)) {
-      networkError(`${path}.minimumElectricalLanes`, 'Minimum electrical lanes cannot exceed connector lanes.')
+    if (hostInterface.minimumElectricalLanes !== undefined) {
+      hostInterface.minimumElectricalLanes = positiveInteger(hostInterface.minimumElectricalLanes, `${path}.minimumElectricalLanes`)
+      if (Number(hostInterface.minimumElectricalLanes) > Number(hostInterface.connectorLanes)) {
+        networkError(`${path}.minimumElectricalLanes`, 'Minimum electrical lanes cannot exceed connector lanes.')
+      }
     }
   }
   if (family === 'm2-ae' || family === 'm2-bm') {
@@ -686,6 +688,12 @@ function canonicalExpansionRequirement(item: CatalogTemplateItem, hostInterface:
     'usbGeneration', 'connector', 'ocpVersion', 'interfaceKey',
   ]) {
     const source = hostInterface[key]
+    if (key === 'minimumElectricalLanes' && source === undefined && existing[key] !== undefined) {
+      networkError(
+        'compatibility.requirements.expansion.minimumElectricalLanes',
+        'Expansion minimumElectricalLanes requires the same value in specs.hostInterface.',
+      )
+    }
     if (source === undefined) continue
     if (existing[key] !== undefined && existing[key] !== source) {
       networkError(`compatibility.requirements.expansion.${key}`, `Expansion requirement ${key} conflicts with specs.hostInterface.${key}.`)
@@ -757,6 +765,10 @@ function canonicalNetworkCapabilities(specs: JsonObject) {
 }
 
 export function canonicalizeCatalogItemV11(value: unknown): CatalogTemplateItem {
+  const rawMinimum = object(object(object(value)?.specs)?.hostInterface)?.minimumElectricalLanes
+  if (rawMinimum !== undefined) {
+    positiveInteger(rawMinimum, 'specs.hostInterface.minimumElectricalLanes')
+  }
   const item = sanitizeCatalogItemV9(value)
   if (item.type !== 'network') networkError('type', 'Fingerprint-v11 is supported only for network templates.')
   const remainingLegacy = legacyMeasurementPathsV9(item)

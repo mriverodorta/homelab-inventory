@@ -565,8 +565,8 @@ describe('compatibility rule evaluation', () => {
         },
       }),
     )
-    expect(unverified.findings).toContainEqual(
-      expect.objectContaining({ code: 'expansion.electrical-lanes.reduced', severity: 'warning' }),
+    expect(unverified.findings).not.toContainEqual(
+      expect.objectContaining({ code: 'expansion.electrical-lanes.reduced' }),
     )
 
     const blocked = evaluate(
@@ -587,6 +587,45 @@ describe('compatibility rule evaluation', () => {
     expect(blocked.findings).toContainEqual(
       expect.objectContaining({ code: 'expansion.minimum-lanes.insufficient', severity: 'error' }),
     )
+  })
+
+  it('accepts an X520-DA2 in the DS1621+ x8-mechanical x4-electrical slot', () => {
+    const result = evaluate(
+      host({
+        host: {
+          maxExpansionPowerWatts: 25,
+          expansionSlots: [{
+            id: 112,
+            key: 'pcie-slot',
+            label: 'Low-profile PCIe slot',
+            count: 1,
+            interfaceFamily: 'pcie',
+            pcieGeneration: 3,
+            mechanicalLanes: 8,
+            electricalLanes: 4,
+            acceptedHeights: ['low-profile'],
+            maxSlotWidth: 1,
+            maxPowerWatts: 25,
+          }],
+        },
+      }),
+      component('network', {
+        requirements: {
+          expansion: {
+            interfaceFamily: 'pcie',
+            pcieGeneration: 2,
+            connectorLanes: 8,
+            minimumElectricalLanes: 4,
+            height: 'low-profile',
+            slotWidth: 1,
+            powerWatts: 6.2,
+          },
+        },
+      }),
+    )
+
+    expect(result.status).toBe('compatible')
+    expect(result.findings).toEqual([])
   })
 
   it('selects the first fully fitting expansion group without leaking rejected-group errors', () => {

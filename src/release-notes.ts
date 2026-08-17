@@ -325,7 +325,10 @@ const RELEASE_0_13_3_DETAILS: UnreleasedReleaseNotes = {
 
 export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
   highlights: [],
-  fixes: [],
+  fixes: [
+    'Registry catalog revision 21 now imports Network Adapters with optional PCIe functional minimums, without treating physical connector width as an electrical requirement.',
+    'PCIe compatibility audits now accept the Intel X520-DA2 in the Synology DS1621+ x8-mechanical/x4-electrical slot while retaining strict checks for evidenced minimums.',
+  ],
   notes: [],
 }
 

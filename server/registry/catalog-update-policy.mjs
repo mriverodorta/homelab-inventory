@@ -18,6 +18,10 @@ const NETWORK_RADIO_PATHS = [
   'specs.bluetoothVersion',
   'specs.bluetoothProfiles',
 ]
+const NETWORK_MINIMUM_LANE_PATHS = new Set([
+  'specs.hostInterface.minimumElectricalLanes',
+  'compatibility.requirements.expansion.minimumElectricalLanes',
+])
 
 function changedJson(left, right) {
   return JSON.stringify(left) !== JSON.stringify(right)
@@ -65,10 +69,21 @@ function pathMatches(path, prefix) {
 }
 
 function networkChangeReason(semanticChanges) {
-  if (semanticChanges.some((change) => (
+  const hostInterfaceChanges = semanticChanges.filter((change) => (
     change.impact === 'attachment'
     || NETWORK_HOST_INTERFACE_PATHS.some((path) => pathMatches(changedPath(change), path))
-  ))) return 'network-host-interface-change'
+  ))
+  const isMinimumRelaxation = (change) => {
+    if (!NETWORK_MINIMUM_LANE_PATHS.has(changedPath(change))) return false
+    return Number.isSafeInteger(change.current)
+      && change.current > 0
+      && (change.next === undefined || (
+        Number.isSafeInteger(change.next) && change.next > 0 && change.next < change.current
+      ))
+  }
+  if (hostInterfaceChanges.length > 0 && !hostInterfaceChanges.every(isMinimumRelaxation)) {
+    return 'network-host-interface-change'
+  }
   if (semanticChanges.some((change) => (
     NETWORK_RADIO_PATHS.some((path) => pathMatches(changedPath(change), path))
   ))) return 'network-radio-change'

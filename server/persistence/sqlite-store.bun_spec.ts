@@ -1379,6 +1379,47 @@ describe('SQLite Homelab Inventory store facade', () => {
     }
   })
 
+  test('round-trips an unknown PCIe electrical minimum without inferring connector width', async () => {
+    const store = await emptyFixtureStore()
+    try {
+      store.registryTransaction((draft: any) => {
+        draft.snapshot = {
+          sourceId: 1, revision: 21, generatedAt: '2026-08-16T00:00:00.000Z',
+          expiresAt: null, activatedAt: '2026-08-16T00:00:00.000Z',
+          digest: '2'.repeat(64), templateCount: 1, keyId: 'test-key',
+        }
+      })
+      const item = structuredClone(networkV11Fixture.templates[0].item) as any
+      delete item.specs.hostInterface.minimumElectricalLanes
+      delete item.compatibility.requirements.expansion.minimumElectricalLanes
+      const template = await catalogTemplate(
+        item,
+        3,
+        'network-intel-x710-da2',
+        NETWORK_FINGERPRINT_VERSION,
+      )
+
+      store.createCatalogInventoryItems(template)
+      const snapshot = await store.snapshotStores()
+      await store.replaceStoresAtomically(snapshot)
+
+      const restored = Object.values(store.getProject().items)
+        .find((entry) => entry.type === 'network') as any
+      expect(restored.specs.hostInterface).toEqual(expect.objectContaining({
+        family: 'pcie', connectorLanes: 8,
+      }))
+      expect(restored.specs.hostInterface).not.toHaveProperty('minimumElectricalLanes')
+      expect(restored.compatibility.requirements.expansion)
+        .not.toHaveProperty('minimumElectricalLanes')
+      expect(store.core.database.query(`
+        SELECT minimum_electrical_lanes AS minimumElectricalLanes
+        FROM network_adapter_host_interfaces
+      `).get()).toEqual({ minimumElectricalLanes: null })
+    } finally {
+      store.close()
+    }
+  })
+
   test('preserves unknown signed network v11 fields in typed relational extension rows', async () => {
     const store = await emptyFixtureStore()
     try {

@@ -181,13 +181,20 @@ function networkProductIdentity(item: CatalogTemplateItem): Record<string, JsonV
       ])
     : undefined
 
+  const identityHostInterface = { ...hostInterface }
+  if (identityHostInterface.family === 'pcie') {
+    // Fingerprint v11 originally received only inferred minimums equal to connector width.
+    // Preserve that identity representation while functional minima evolve as content.
+    identityHostInterface.minimumElectricalLanes = identityHostInterface.connectorLanes
+  }
+
   return identityObject([
     ['type', 'network'],
     ['manufacturer', manufacturer],
     ['model', model],
     ['hardwareRevision', specs?.hardwareRevision],
     ['networkTechnology', technology],
-    ['hostInterface', hostInterface],
+    ['hostInterface', identityHostInterface],
     ['formFactor', formFactor],
     ['portTopology', portTopology as JsonValue | undefined],
     ['radioTopology', radioTopology && Object.keys(radioTopology).length > 0 ? radioTopology : undefined],
