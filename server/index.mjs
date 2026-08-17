@@ -34,6 +34,7 @@ import { registerOnboardingRoutes } from './onboarding-routes.mjs'
 import { registerProjectRoutes } from './project-routes.mjs'
 import { registerWorkspaceRoutes } from './workspace-routes.mjs'
 import { registerSystemsRoutes } from './systems/routes.mjs'
+import { SystemsSavedViewService } from './systems/saved-view-service.mjs'
 import { SystemsReadService } from './systems/read-service.mjs'
 import { registerRegistryRoutes } from './registry-routes.mjs'
 import { registerRoutingCacheRoutes } from './routing-cache-routes.mjs'
@@ -283,8 +284,9 @@ const sessionService = store && authRuntime ? new SessionService({ store, extern
 const authorizationService = store && authRuntime
   ? await AuthorizationService.create({ readState: () => store.getAuthenticationState() })
   : null
+const systemsSavedViews = store ? new SystemsSavedViewService() : null
 const authService = store && authRuntime
-  ? new AuthService({ store, sessionService, authorization: authorizationService, runtime: authRuntime })
+  ? new AuthService({ store, sessionService, authorization: authorizationService, savedViews: systemsSavedViews, runtime: authRuntime })
   : null
 const accessService = store ? new AccessService({ store, authorization: authorizationService, sessions: sessionService }) : null
 const invitationService = accessService ? new InvitationService({ accessService, sessionService }) : null
@@ -478,6 +480,7 @@ registerProjectRoutes(app, { withStore })
 registerSystemsRoutes(app, {
   withStore,
   service: new SystemsReadService({ telemetryRepository, releaseService: agentReleaseService }),
+  savedViews: systemsSavedViews,
   authorization: authorizationService,
 })
 registerWorkspaceRoutes(app, { withStore })

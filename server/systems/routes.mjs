@@ -21,9 +21,27 @@ async function requireAgentView(request, response, authorization) {
   return false
 }
 
+function accountId(request) {
+  return request.authentication?.account?.id ?? null
+}
+
+function handleSystemsViewError(response, error) {
+  const status = Number(error?.status)
+  if (Number.isSafeInteger(status) && status >= 400 && status < 600) {
+    response.status(status).json({ message: error.message, code: error.code })
+    return true
+  }
+  return false
+}
+
+function viewEtag(views) {
+  return etag(views.map((view) => ({ id: view.id, revision: view.revision, isDefault: view.isDefault })))
+}
+
 export function registerSystemsRoutes(app, {
   withStore,
   service,
+  savedViews = null,
   authorization = null,
 }) {
   app.get('/api/projects/:projectId/systems', (request, response) => {
@@ -44,5 +62,76 @@ export function registerSystemsRoutes(app, {
       if (request.get('if-none-match') === responseEtag) return response.status(304).end()
       return response.json(payload)
     }, { message: 'Unable to refresh systems.' })
+  })
+
+  if (!savedViews) return
+
+  app.get('/api/projects/:projectId/systems/views', (request, response) => {
+    void withStore(request, response, async (store) => {
+      const views = savedViews.list(store, { projectId: request.params.projectId, accountId: accountId(request) })
+      const responseEtag = viewEtag(views)
+      response.set('Cache-Control', 'private, no-cache').set('ETag', responseEtag)
+      if (request.get('if-none-match') === responseEtag) return response.status(304).end()
+      return response.json({ views })
+    }, { message: 'Unable to load saved Systems views.' })
+  })
+
+  app.post('/api/projects/:projectId/systems/views', (request, response) => {
+    void withStore(request, response, async (store) => {
+      try {
+        const view = savedViews.create(store, { projectId: request.params.projectId, accountId: accountId(request), input: request.body })
+        return response.status(201).json({ view })
+      } catch (error) {
+        if (!handleSystemsViewError(response, error)) throw error
+      }
+    }, { message: 'Unable to create the saved Systems view.' })
+  })
+
+  app.patch('/api/projects/:projectId/systems/views/:viewId', (request, response) => {
+    void withStore(request, response, async (store) => {
+      try {
+        const view = savedViews.replace(store, {
+          projectId: request.params.projectId,
+          accountId: accountId(request),
+          viewId: request.params.viewId,
+          expectedRevision: request.body?.expectedRevision,
+          input: request.body,
+        })
+        return response.json({ view })
+      } catch (error) {
+        if (!handleSystemsViewError(response, error)) throw error
+      }
+    }, { message: 'Unable to update the saved Systems view.' })
+  })
+
+  app.delete('/api/projects/:projectId/systems/views/:viewId', (request, response) => {
+    void withStore(request, response, async (store) => {
+      try {
+        return response.json(savedViews.delete(store, {
+          projectId: request.params.projectId,
+          accountId: accountId(request),
+          viewId: request.params.viewId,
+          expectedRevision: request.body?.expectedRevision,
+        }))
+      } catch (error) {
+        if (!handleSystemsViewError(response, error)) throw error
+      }
+    }, { message: 'Unable to delete the saved Systems view.' })
+  })
+
+  app.post('/api/projects/:projectId/systems/views/:viewId/default', (request, response) => {
+    void withStore(request, response, async (store) => {
+      try {
+        const view = savedViews.setDefault(store, {
+          projectId: request.params.projectId,
+          accountId: accountId(request),
+          viewId: request.params.viewId,
+          expectedRevision: request.body?.expectedRevision,
+        })
+        return response.json({ view })
+      } catch (error) {
+        if (!handleSystemsViewError(response, error)) throw error
+      }
+    }, { message: 'Unable to set the default Systems view.' })
   })
 }

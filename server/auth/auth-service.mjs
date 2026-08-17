@@ -43,11 +43,12 @@ function requestMetadata(request) {
 }
 
 export class AuthService {
-  constructor({ store, sessionService, authorization = null, runtime, now = () => new Date() }) {
+  constructor({ store, sessionService, authorization = null, savedViews = null, runtime, now = () => new Date() }) {
     this.store = store
     this.sessions = sessionService
     this.runtime = runtime
     this.authorization = authorization
+    this.savedViews = savedViews
     this.now = now
   }
 
@@ -303,6 +304,9 @@ export class AuthService {
         }
         draft.configuration.oidc.clientSecretConfigured = Boolean(this.runtime.oidcClientSecret)
       }, { rebuildAuthorization: true })
+      if (existingMode === 'disabled' && enabled && ownerId && this.savedViews) {
+        this.savedViews.transferOpenViewsToAccount(this.store, ownerId)
+      }
     } catch (error) {
       await Promise.allSettled([restoreSecret(), restoreState()])
       throw error

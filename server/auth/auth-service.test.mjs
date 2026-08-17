@@ -206,4 +206,31 @@ describe('authentication settings service', () => {
     const status = await service.updateMethods(oidcSettings())
     expect(status.mode).toBe('oidc')
   })
+
+  it('transfers open-mode Systems views when authentication is first enabled', async () => {
+    const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'hli-auth-service-'))
+    directories.push(directory)
+    const secretFile = path.join(directory, 'oidc-secret')
+    const state = createAuthenticationStore()
+    state.accounts.push(createOwnerAccount(1, 'owner', 'Owner'))
+    state.nextAccountId = 2
+    ensureProtectedOwnerRole(state, 1)
+    state.oidcIdentities.push({
+      id: state.nextOidcIdentityId++, accountId: 1,
+      issuer: 'https://identity.example/application/o/inventory', subject: 'owner-subject',
+      email: 'owner@example.com', createdAt: '2026-08-02T00:00:00.000Z', lastLoginAt: '2026-08-02T00:00:00.000Z',
+    })
+    const store = fakeStore({ initialState: state })
+    const savedViews = { transferOpenViewsToAccount: vi.fn(() => ({ transferred: 2 })) }
+    const service = new AuthService({
+      store,
+      savedViews,
+      sessionService: { externalUrl: null },
+      runtime: runtime(secretFile),
+    })
+
+    await service.updateMethods(oidcSettings())
+    expect(savedViews.transferOpenViewsToAccount).toHaveBeenCalledOnce()
+    expect(savedViews.transferOpenViewsToAccount).toHaveBeenCalledWith(store, 1)
+  })
 })
