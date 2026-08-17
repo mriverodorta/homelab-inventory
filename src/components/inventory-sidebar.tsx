@@ -9,7 +9,6 @@ import {
   ChevronDown,
   CircuitBoard,
   Cpu,
-  Database,
   Fan,
   HardDrive,
   ListChecks,
@@ -56,6 +55,7 @@ import type { InventoryItem, InventoryType, ProjectState } from '@/types/invento
 import { DEFAULT_REGISTRY_STATE, type RegistryState } from '@/types/registry'
 import { usePermission } from '@/hooks/use-permission'
 import { prefetchCatalogFacets } from '@/hooks/use-registry'
+import { ComputeHostIcon } from '@/components/compute-host-icon'
 
 const TYPE_COLORS: Record<InventoryType, string> = {
   server: 'border-l-[#adc19b]',
@@ -79,14 +79,12 @@ const TYPE_COLORS: Record<InventoryType, string> = {
   powerStrip: 'border-l-[#b18a6b]',
 }
 
-function TypeIcon({ type }: { type: InventoryType }) {
+function TypeIcon({ type, item }: { type: InventoryType; item?: InventoryItem }) {
   const className = 'size-4'
 
-  if (type === 'server') {
-    return <Server className={className} />
+  if (type === 'server' || type === 'pcBuild' || type === 'nas') {
+    return <ComputeHostIcon host={item ?? { type }} className={className} />
   }
-
-  if (type === 'pcBuild') return <Monitor className={className} />
   if (type === 'cpu') return <Cpu className={className} />
   if (type === 'cpuCooler') return <Fan className={className} />
   if (type === 'motherboard') return <CircuitBoard className={className} />
@@ -98,7 +96,6 @@ function TypeIcon({ type }: { type: InventoryType }) {
   if (type === 'case') return <Box className={className} />
   if (type === 'powerSupply') return <Power className={className} />
   if (type === 'powerAdapter' || type === 'powerStrip') return <Plug className={className} />
-  if (type === 'nas') return <Database className={className} />
   if (type === 'patchPanel') return <Server className={className} />
   if (type === 'monitor') return <Monitor className={className} />
   if (type === 'ups') return <BatteryCharging className={className} />
@@ -192,7 +189,7 @@ function DraggableInventoryItem({
             <div className="truncate text-sm font-semibold">{item.name}</div>
             {itemSpec ? <div className="mt-0.5 truncate text-xs text-[#cfc6b8]">{itemSpec}</div> : null}
           </div>
-          <TypeIcon type={item.type} />
+          <TypeIcon type={item.type} item={item} />
         </div>
         {assigned || archived ? (
           <Badge variant="outline" className="mt-2 border-white/20 text-[10px] text-[#d8d0c5]">

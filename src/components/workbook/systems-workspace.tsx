@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { Box, ExternalLink, Search, Server, Share2 } from 'lucide-react'
+import { ExternalLink, Search, Server, Share2 } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -13,6 +13,7 @@ import { runtimeItemKey } from '@/lib/item-keys'
 import type { AgentState, AgentStatusSummary } from '@/types/agent'
 import type { InventoryItem, ProjectState } from '@/types/inventory'
 import { cn } from '@/lib/utils'
+import { ComputeHostIcon } from '@/components/compute-host-icon'
 
 const HOST_TYPES = new Set(['server', 'nas', 'pcBuild'])
 
@@ -154,7 +155,7 @@ function SystemRow({
       <td className="px-5 py-3">
         <button type="button" className="flex min-w-0 items-center gap-3 text-left" onClick={onSelect}>
           <span className="grid size-8 shrink-0 place-items-center rounded-md bg-[#e8e2d8] text-[#554d44]">
-            {host.type === 'pcBuild' ? <Box className="size-4" /> : <Server className="size-4" />}
+            <ComputeHostIcon host={host} className="size-4" />
           </span>
           <span className="min-w-0">
             <span className="block max-w-[320px] truncate font-semibold text-[#20242c]">{host.name}</span>
