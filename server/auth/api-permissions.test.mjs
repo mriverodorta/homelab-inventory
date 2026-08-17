@@ -24,6 +24,8 @@ describe('API permission classification', () => {
     expect(classifyApiRequest('GET', '/api/projects')).toEqual({ access: 'protected', permission: 'project.view' })
     expect(classifyApiRequest('GET', '/api/projects/archived')).toEqual({ access: 'protected', permission: 'project.view' })
     expect(classifyApiRequest('GET', '/api/projects/2/deletion-impact')).toEqual({ access: 'protected', permission: 'project.settings.manage' })
+    expect(classifyApiRequest('GET', '/api/projects/2/systems')).toEqual({ access: 'protected', permission: 'project.view' })
+    expect(classifyApiRequest('GET', '/api/projects/2/systems/live')).toEqual({ access: 'protected', permission: 'project.view' })
     expect(classifyApiRequest('POST', '/api/projects')).toEqual({ access: 'protected', permission: 'project.settings.manage' })
     expect(classifyApiRequest('DELETE', '/api/projects/2/permanent')).toEqual({ access: 'protected', permission: 'project.settings.manage' })
     expect(classifyApiRequest('GET', '/api/projects/2/workspaces/7')).toEqual({ access: 'protected', permission: 'canvas.view' })

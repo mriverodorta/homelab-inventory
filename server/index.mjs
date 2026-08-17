@@ -33,6 +33,8 @@ import { registerInventoryRoutes } from './inventory-routes.mjs'
 import { registerOnboardingRoutes } from './onboarding-routes.mjs'
 import { registerProjectRoutes } from './project-routes.mjs'
 import { registerWorkspaceRoutes } from './workspace-routes.mjs'
+import { registerSystemsRoutes } from './systems/routes.mjs'
+import { SystemsReadService } from './systems/read-service.mjs'
 import { registerRegistryRoutes } from './registry-routes.mjs'
 import { registerRoutingCacheRoutes } from './routing-cache-routes.mjs'
 import { browserMutationGuard } from './request-security.mjs'
@@ -473,6 +475,11 @@ if (!stagingPolicy.registryNetworkRefreshDisabled) catalogRefreshCoordinator?.st
 catalogStatusService?.start()
 const backupSchedule = stagingPolicy.scheduledBackupsDisabled ? null : backupScheduler?.start()
 registerProjectRoutes(app, { withStore })
+registerSystemsRoutes(app, {
+  withStore,
+  service: new SystemsReadService({ telemetryRepository, releaseService: agentReleaseService }),
+  authorization: authorizationService,
+})
 registerWorkspaceRoutes(app, { withStore })
 registerRoutingCacheRoutes(app, { withStore })
 registerOnboardingRoutes(app, { withStore, disabled: isDemoMode })

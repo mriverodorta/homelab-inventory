@@ -136,6 +136,37 @@ describe('telemetry repository', () => {
     expect(database.query('SELECT count(*) AS count FROM filesystem_mount_states').get()).toEqual({ count: 0 })
   })
 
+  test('reads latest Systems metrics for multiple hosts in one bounded projection', async () => {
+    const { database, repository } = await context()
+    database.query(`
+      INSERT INTO heartbeat_receipts (
+        agent_id, host_item_id, host_type, host_id, sequence, collected_at_ms,
+        received_at_ms, dropped_samples, agent_version, monitoring_revision
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, 0)
+    `).run(70, 101, 'server', 1, 1, Date.parse(receivedAt(1)), Date.parse(receivedAt(1)), '0.1.0')
+    database.query(`
+      INSERT INTO host_metric_samples (
+        host_item_id, minute_bucket_ms, cpu_percent, memory_used_percent
+      ) VALUES (?, ?, ?, ?)
+    `).run(101, Date.parse(receivedAt(1)), 42, 63)
+    database.query(`
+      INSERT INTO filesystem_mount_states (
+        host_item_id, mount_key, state_json, updated_at_ms
+      ) VALUES (?, ?, ?, ?)
+    `).run(101, '/', JSON.stringify({ mountPoint: '/', totalBytes: 100, usedBytes: 80 }), Date.parse(receivedAt(1)))
+
+    expect(repository.getSystemsSnapshot([101, 202])).toEqual(new Map([
+      [101, expect.objectContaining({
+        hostItemId: 101,
+        agentVersion: '0.1.0',
+        cpuPercent: 42,
+        memoryPercent: 63,
+        rootFilesystem: { mountPoint: '/', totalBytes: 100, usedBytes: 80 },
+      })],
+      [202, expect.objectContaining({ hostItemId: 202, agentId: null, cpuPercent: null })],
+    ]))
+  })
+
   test('stores complete manual inventory reports and applies the five-report retention policy', async () => {
     const { database, repository } = await context()
     for (let sequence = 1; sequence <= 6; sequence += 1) {

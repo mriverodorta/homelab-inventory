@@ -67,6 +67,7 @@ const PROTECTED_ROUTES = [
   ['GET', /^\/api\/projects\/archived\/?$/, 'project.view'],
   ['GET', /^\/api\/projects\/[1-9]\d*\/deletion-impact\/?$/, 'project.settings.manage'],
   ['GET', /^\/api\/projects(?:\/[1-9]\d*(?:\/workbook)?)?\/?$/, 'project.view'],
+  ['GET', /^\/api\/projects\/[1-9]\d*\/systems(?:\/live)?\/?$/, 'project.view'],
   ['POST', /^\/api\/projects\/?$/, 'project.settings.manage'],
   ['PATCH', /^\/api\/projects\/[1-9]\d*\/?$/, 'project.settings.manage'],
   ['DELETE', /^\/api\/projects\/[1-9]\d*\/?$/, 'project.settings.manage'],

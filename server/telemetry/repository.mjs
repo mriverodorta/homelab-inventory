@@ -356,6 +356,84 @@ export class TelemetryRepository {
     }
   }
 
+  getSystemsSnapshot(hostItemIds) {
+    const ids = [...new Set(hostItemIds)]
+      .map(Number)
+      .filter((id) => Number.isSafeInteger(id) && id > 0)
+    if (!ids.length) return new Map()
+    const requested = ids.map(() => '(?)').join(', ')
+    const rows = this.database.query(`
+      WITH requested(host_item_id) AS (VALUES ${requested}),
+      latest_receipts AS (
+        SELECT receipt.*,
+          row_number() OVER (
+            PARTITION BY receipt.host_item_id
+            ORDER BY receipt.received_at_ms DESC, receipt.id DESC
+          ) AS position
+        FROM heartbeat_receipts receipt
+        JOIN requested ON requested.host_item_id = receipt.host_item_id
+      ),
+      latest_metrics AS (
+        SELECT metrics.*,
+          row_number() OVER (
+            PARTITION BY metrics.host_item_id
+            ORDER BY metrics.minute_bucket_ms DESC
+          ) AS position
+        FROM host_metric_samples metrics
+        JOIN requested ON requested.host_item_id = metrics.host_item_id
+      ),
+      root_filesystems AS (
+        SELECT filesystem.host_item_id, filesystem.state_json,
+          row_number() OVER (
+            PARTITION BY filesystem.host_item_id
+            ORDER BY filesystem.updated_at_ms DESC, filesystem.mount_key
+          ) AS position
+        FROM filesystem_mount_states filesystem
+        JOIN requested ON requested.host_item_id = filesystem.host_item_id
+        WHERE json_extract(filesystem.state_json, '$.mountPoint') = '/'
+      )
+      SELECT requested.host_item_id,
+        receipt.agent_id,
+        receipt.host_type,
+        receipt.host_id,
+        receipt.sequence,
+        receipt.received_at_ms,
+        receipt.agent_version,
+        metrics.cpu_percent,
+        metrics.memory_used_percent,
+        runtime.uptime_seconds,
+        facts.facts_json,
+        filesystem.state_json AS root_filesystem_json
+      FROM requested
+      LEFT JOIN latest_receipts receipt
+        ON receipt.host_item_id = requested.host_item_id AND receipt.position = 1
+      LEFT JOIN latest_metrics metrics
+        ON metrics.host_item_id = requested.host_item_id AND metrics.position = 1
+      LEFT JOIN host_runtime_state runtime
+        ON runtime.host_item_id = requested.host_item_id
+      LEFT JOIN host_system_facts facts
+        ON facts.host_item_id = requested.host_item_id
+      LEFT JOIN root_filesystems filesystem
+        ON filesystem.host_item_id = requested.host_item_id AND filesystem.position = 1
+      ORDER BY requested.host_item_id
+    `).all(...ids)
+
+    return new Map(rows.map((row) => [row.host_item_id, {
+      hostItemId: row.host_item_id,
+      agentId: row.agent_id ?? null,
+      hostType: row.host_type ?? null,
+      hostId: row.host_id ?? null,
+      sequence: row.sequence ?? null,
+      receivedAt: row.received_at_ms == null ? null : new Date(row.received_at_ms).toISOString(),
+      agentVersion: row.agent_version ?? null,
+      cpuPercent: row.cpu_percent ?? null,
+      memoryPercent: row.memory_used_percent ?? null,
+      uptimeSeconds: row.uptime_seconds ?? null,
+      system: parseJson(row.facts_json),
+      rootFilesystem: parseJson(row.root_filesystem_json),
+    }]))
+  }
+
   listSamples(hostType, hostId, { from = 0, to = Date.now(), limit = METRIC_WINDOW } = {}) {
     hostReference(hostType, hostId)
     const fromMs = timestampMs(from, 'from')
