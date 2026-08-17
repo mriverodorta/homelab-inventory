@@ -6,6 +6,8 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 
 ## Unreleased
 
+## [0.13.5] - 2026-08-17
+
 ### Fixed
 
 - Agent heartbeat history now keeps the latest successful minute green throughout the configured online grace period and adds a missed slot only after the next heartbeat is genuinely overdue.

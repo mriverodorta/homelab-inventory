@@ -324,6 +324,14 @@ const RELEASE_0_13_4_DETAILS: UnreleasedReleaseNotes = {
   notes: [],
 }
 
+const RELEASE_0_13_5_DETAILS: UnreleasedReleaseNotes = {
+  highlights: [],
+  fixes: [
+    'Agent heartbeat history no longer shows a speculative red newest slot while the latest successful report is still within the configured online grace period.',
+  ],
+  notes: [],
+}
+
 const RELEASE_0_13_3_DETAILS: UnreleasedReleaseNotes = {
   highlights: [],
   fixes: [
@@ -334,9 +342,7 @@ const RELEASE_0_13_3_DETAILS: UnreleasedReleaseNotes = {
 
 export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
   highlights: [],
-  fixes: [
-    'Agent heartbeat history no longer shows a speculative red newest slot while the latest successful report is still within the configured online grace period.',
-  ],
+  fixes: [],
   notes: [],
 }
 
@@ -867,9 +873,16 @@ const RELEASE_0_2_1_DETAILS: UnreleasedReleaseNotes = {
 
 export const RELEASE_NOTES: ReleaseNoteEntry[] = [
   {
+    version: '0.13.5',
+    date: '2026-08-17',
+    channel: 'latest',
+    title: 'Accurate Agent heartbeat history',
+    ...RELEASE_0_13_5_DETAILS,
+  },
+  {
     version: '0.13.4',
     date: '2026-08-16',
-    channel: 'latest',
+    channel: 'release',
     title: 'Correct PCIe functional lane checks',
     ...RELEASE_0_13_4_DETAILS,
   },
