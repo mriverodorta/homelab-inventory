@@ -2980,6 +2980,8 @@ export class HomelabInventoryStore {
       type: 'project-commit',
       baseRevision,
       revision: patchSet.revision,
+      forward: structuredClone(patchSet.forward),
+      inverse: patchSet.inverse ? structuredClone(patchSet.inverse) : null,
       responseBytes: Uint8Array.from(responseBytes),
     }
     this.queueProjectCommit(commitEvent)

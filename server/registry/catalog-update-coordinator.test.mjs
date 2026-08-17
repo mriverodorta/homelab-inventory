@@ -23,10 +23,12 @@ describe('CatalogUpdateCoordinator', () => {
       getRegistryUpdateGroups: vi.fn(() => []),
     }
     const snapshotService = { templates: vi.fn(async () => [template]) }
-    const coordinator = new CatalogUpdateCoordinator({ store, snapshotService })
+    const onChanged = vi.fn()
+    const coordinator = new CatalogUpdateCoordinator({ store, snapshotService, onChanged })
 
     await expect(coordinator.run()).resolves.toEqual({ applied: 2 })
     expect(snapshotService.templates).toHaveBeenCalledOnce()
+    expect(onChanged).toHaveBeenCalledWith({ applied: 2 })
     expect(store.commitCatalogUpdateRun).toHaveBeenCalledWith(expect.objectContaining({
       sourceId: 1,
       catalogRevision: 17,

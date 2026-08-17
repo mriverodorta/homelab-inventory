@@ -48,6 +48,7 @@ export class NotificationStore {
     }
     this.data = null
     this.queue = Promise.resolve()
+    this.listeners = new Set()
   }
 
   async init() {
@@ -111,6 +112,21 @@ export class NotificationStore {
     return structuredClone(this.data.secrets)
   }
 
+  subscribe(listener) {
+    this.listeners.add(listener)
+    return () => this.listeners.delete(listener)
+  }
+
+  #publish(event) {
+    for (const listener of this.listeners) {
+      try {
+        listener(event)
+      } catch (error) {
+        console.error('Notification store listener failed.', error)
+      }
+    }
+  }
+
   mutateConfig(mutator) {
     return this.#mutate('config', mutator)
   }
@@ -131,6 +147,7 @@ export class NotificationStore {
       if (isDeepStrictEqual(draft, this.data[name])) {
         return result === undefined ? structuredClone(this.data[name]) : structuredClone(result)
       }
+      const previous = structuredClone(this.data[name])
       draft.updatedAt = new Date(this.now()).toISOString()
       if (name === 'config') {
         draft.revision += 1
@@ -143,6 +160,7 @@ export class NotificationStore {
       if (this.persistence) this.persistence.write({ ...this.data, [name]: draft })
       else await writeJsonAtomic(this.paths[name], draft)
       this.data[name] = draft
+      this.#publish({ section: name, previous, current: structuredClone(draft) })
       return result === undefined ? structuredClone(draft) : structuredClone(result)
     }
     const next = this.queue.then(operation, operation)
@@ -182,6 +200,11 @@ export class NotificationStore {
           }
         }
         this.data = next
+        for (const section of ['config', 'state', 'secrets']) {
+          if (!isDeepStrictEqual(previous[section], next[section])) {
+            this.#publish({ section, previous: previous[section], current: structuredClone(next[section]) })
+          }
+        }
       } catch (error) {
         if (this.persistence) this.persistence.write(previous)
         else await Promise.all(Object.entries(this.paths).map(([name, filePath]) => writeJsonAtomic(filePath, previous[name])))

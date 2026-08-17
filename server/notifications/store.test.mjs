@@ -48,6 +48,17 @@ describe('NotificationStore', () => {
     expect(store.readConfig()).toMatchObject({ enabled: true, revision: 3, retention: { incidentDays: 30 } })
   })
 
+  it('publishes persisted changes to subscribers but skips no-op mutations', async () => {
+    const store = await createStore()
+    const events = []
+    const unsubscribe = store.subscribe((event) => events.push(event))
+    await store.mutateConfig((draft) => { draft.enabled = true })
+    await store.mutateConfig(() => 'unchanged')
+    unsubscribe()
+    expect(events).toHaveLength(1)
+    expect(events[0]).toMatchObject({ section: 'config', previous: { enabled: false }, current: { enabled: true } })
+  })
+
   it('keeps monitoring policy revisions monotonic when restoring older configuration', async () => {
     const store = await createStore()
     await store.mutateConfig((draft) => { draft.enabled = true })

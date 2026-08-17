@@ -2934,6 +2934,8 @@ describe('HomelabInventoryStore', () => {
           type: 'project-commit',
           baseRevision: 1,
           revision: 2,
+          forward: { kind: 'set-project-name', payload: { name: 'Committed name' } },
+          inverse: null,
           responseBytes,
         },
         persistedRevision: 2,

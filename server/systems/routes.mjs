@@ -21,6 +21,21 @@ async function requireAgentView(request, response, authorization) {
   return false
 }
 
+async function attentionCategories(request, authorization) {
+  const id = request.authentication?.account?.id
+  if (!id || !authorization) return null
+  const permissions = [
+    ['registry', 'registry.view'],
+    ['audit', 'audit.view'],
+    ['notification', 'notifications.view'],
+  ]
+  const decisions = await Promise.all(permissions.map(async ([category, permission]) => ({
+    category,
+    allowed: (await authorization.authorize(id, permission)).allowed,
+  })))
+  return new Set(decisions.filter((decision) => decision.allowed).map((decision) => decision.category))
+}
+
 function accountId(request) {
   return request.authentication?.account?.id ?? null
 }
@@ -42,26 +57,41 @@ export function registerSystemsRoutes(app, {
   withStore,
   service,
   savedViews = null,
+  attention = null,
   authorization = null,
 }) {
   app.get('/api/projects/:projectId/systems', (request, response) => {
     void withStore(request, response, async (store) => {
       if (!await requireAgentView(request, response, authorization)) return
+      const categories = await attentionCategories(request, authorization)
       response
         .set('Cache-Control', 'no-store')
-        .json(service.initial(store, request.params.projectId, requestOrigin(request)))
+        .json(service.initial(store, request.params.projectId, requestOrigin(request), { attentionCategories: categories }))
     }, { message: 'Unable to load systems.' })
   })
 
   app.get('/api/projects/:projectId/systems/live', (request, response) => {
     void withStore(request, response, async (store) => {
       if (!await requireAgentView(request, response, authorization)) return
-      const payload = service.live(store, request.params.projectId, requestOrigin(request))
+      const categories = await attentionCategories(request, authorization)
+      const payload = service.live(store, request.params.projectId, requestOrigin(request), { attentionCategories: categories })
       const responseEtag = etag({ projectId: payload.projectId, systems: payload.systems })
       response.set('Cache-Control', 'no-store').set('ETag', responseEtag)
       if (request.get('if-none-match') === responseEtag) return response.status(304).end()
       return response.json(payload)
     }, { message: 'Unable to refresh systems.' })
+  })
+
+  if (attention) app.get('/api/projects/:projectId/systems/:hostType/:hostId/attention', (request, response) => {
+    void withStore(request, response, async (store) => {
+      if (!await requireAgentView(request, response, authorization)) return
+      const categories = await attentionCategories(request, authorization)
+      const payload = attention.details(store, request.params.projectId, request.params.hostType, request.params.hostId, categories)
+      const responseEtag = etag(payload)
+      response.set('Cache-Control', 'private, no-cache').set('ETag', responseEtag)
+      if (request.get('if-none-match') === responseEtag) return response.status(304).end()
+      return response.json(payload)
+    }, { message: 'Unable to load system attention.' })
   })
 
   if (!savedViews) return

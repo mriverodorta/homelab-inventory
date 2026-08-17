@@ -96,10 +96,23 @@ function nativeUpdateAvailable(capabilitiesJson) {
   return capabilities?.['agent.native-update']?.state === 'available'
 }
 
+function operatingSystem(system) {
+  const name = system?.operatingSystem ?? system?.os ?? null
+  const version = system?.osVersion ?? system?.version ?? null
+  if (!name) return null
+  return compactParts([name, version && !String(name).includes(String(version)) ? version : null])
+}
+
+function lanIp(system) {
+  const value = system?.lanIp ?? system?.ipAddress ?? null
+  return typeof value === 'string' && value.trim() ? value.trim() : null
+}
+
 export class SystemsReadService {
-  constructor({ telemetryRepository, releaseService = null, now = () => Date.now() } = {}) {
+  constructor({ telemetryRepository, releaseService = null, attentionProjector = null, now = () => Date.now() } = {}) {
     this.telemetryRepository = telemetryRepository
     this.releaseService = releaseService
+    this.attentionProjector = attentionProjector
     this.now = now
   }
 
@@ -203,7 +216,7 @@ export class SystemsReadService {
     `).all(projectId, projectId)
   }
 
-  #snapshot(store, projectId, endpoint) {
+  #snapshot(store, projectId, endpoint, attentionCategories) {
     const id = positiveId(projectId, 'Project ID')
     const hosts = this.#hostRows(store.core.database, id)
     const hostItemIds = hosts.map((host) => host.item_id)
@@ -218,6 +231,7 @@ export class SystemsReadService {
     }
     const timing = agentStatusTiming()
     const currentAgentVersion = this.releaseService?.current().version ?? null
+    const attentionByHost = this.attentionProjector?.summaries(store, id, attentionCategories) ?? new Map()
 
     return {
       projectId: id,
@@ -249,6 +263,7 @@ export class SystemsReadService {
         const assigned = componentsByHost.get(host.item_id) ?? []
         const liveTelemetry = state === 'online' ? telemetry : null
         const legacyId = Number(host.legacy_id ?? host.item_id)
+        const attention = attentionByHost.get(host.item_id) ?? null
         return {
           itemId: host.item_id,
           itemKey: `${host.type}:${legacyId}`,
@@ -262,6 +277,8 @@ export class SystemsReadService {
           cpuLabel: cpuLabel(assigned),
           memoryLabel: memoryLabel(assigned),
           storageLabel: storageLabel(assigned, liveTelemetry),
+          operatingSystem: operatingSystem(telemetry?.system),
+          lanIp: lanIp(telemetry?.system),
           agentRegistered: registered,
           agentState: state,
           agentVersion,
@@ -271,21 +288,26 @@ export class SystemsReadService {
           cpuPercent: finitePercent(liveTelemetry?.cpuPercent),
           memoryPercent: finitePercent(liveTelemetry?.memoryPercent),
           storagePercent: storagePercent(liveTelemetry),
+          uptimeSeconds: Number.isFinite(liveTelemetry?.uptimeSeconds) ? liveTelemetry.uptimeSeconds : null,
+          attentionCount: attention?.totalCount ?? 0,
+          attentionState: attention?.state ?? 'refreshing',
+          attentionRevision: attention?.revision ?? 0,
         }
       }),
     }
   }
 
-  initial(store, projectId, endpoint) {
-    return this.#snapshot(store, projectId, endpoint)
+  initial(store, projectId, endpoint, { attentionCategories = null } = {}) {
+    return this.#snapshot(store, projectId, endpoint, attentionCategories)
   }
 
-  live(store, projectId, endpoint) {
+  live(store, projectId, endpoint, { attentionCategories = null } = {}) {
     const id = positiveId(projectId, 'Project ID')
     const hosts = this.#liveHostRows(store.core.database, id)
     const boundHostItemIds = hosts.filter((host) => host.agent_id != null).map((host) => host.item_id)
     const telemetryByHost = this.telemetryRepository?.getSystemsSnapshot(boundHostItemIds) ?? new Map()
     const timing = agentStatusTiming()
+    const attentionByHost = this.attentionProjector?.summaries(store, id, attentionCategories) ?? new Map()
     return {
       projectId: id,
       generatedAt: new Date(this.now()).toISOString(),
@@ -303,6 +325,7 @@ export class SystemsReadService {
             }).linux
           : undefined
         const liveTelemetry = state === 'online' ? telemetry : null
+        const attention = attentionByHost.get(host.item_id) ?? null
         return {
           itemId: host.item_id,
           agentRegistered: registered,
@@ -313,6 +336,10 @@ export class SystemsReadService {
           cpuPercent: finitePercent(liveTelemetry?.cpuPercent),
           memoryPercent: finitePercent(liveTelemetry?.memoryPercent),
           storagePercent: storagePercent(liveTelemetry),
+          uptimeSeconds: Number.isFinite(liveTelemetry?.uptimeSeconds) ? liveTelemetry.uptimeSeconds : null,
+          attentionCount: attention?.totalCount ?? 0,
+          attentionState: attention?.state ?? 'refreshing',
+          attentionRevision: attention?.revision ?? 0,
         }
       }),
     }

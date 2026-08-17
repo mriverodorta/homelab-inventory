@@ -35,6 +35,7 @@ import { registerProjectRoutes } from './project-routes.mjs'
 import { registerWorkspaceRoutes } from './workspace-routes.mjs'
 import { registerSystemsRoutes } from './systems/routes.mjs'
 import { SystemsSavedViewService } from './systems/saved-view-service.mjs'
+import { SystemAttentionProjector } from './systems/attention-projector.mjs'
 import { SystemsReadService } from './systems/read-service.mjs'
 import { registerRegistryRoutes } from './registry-routes.mjs'
 import { registerRoutingCacheRoutes } from './routing-cache-routes.mjs'
@@ -93,6 +94,32 @@ const agentReleaseService = new AgentReleaseService({
   expectedVersion: agentReleasePin.version,
   expectedSourceRevision: agentReleasePin.sourceRevision,
 })
+
+function assignmentHostsFromPatch(patch, hosts = new Map()) {
+  if (patch?.kind === 'batch') {
+    for (const child of patch.payload?.patches ?? []) assignmentHostsFromPatch(child, hosts)
+    return hosts
+  }
+  if (patch?.kind !== 'patch-assignments') return hosts
+  for (const assignment of patch.payload?.upsert ?? []) {
+    const type = assignment?.host?.item_type
+    const id = Number(assignment?.host?.id)
+    if (['server', 'nas', 'pcBuild'].includes(type) && Number.isSafeInteger(id) && id > 0) hosts.set(`${type}:${id}`, { type, id })
+  }
+  return hosts
+}
+
+function incidentHosts(...states) {
+  const hosts = new Map()
+  for (const state of states) {
+    for (const incident of state?.incidents ?? []) {
+      const type = incident?.hostType
+      const id = Number(incident?.hostId)
+      if (['server', 'nas', 'pcBuild'].includes(type) && Number.isSafeInteger(id) && id > 0) hosts.set(`${type}:${id}`, { type, id })
+    }
+  }
+  return hosts.values()
+}
 await agentReleaseService.initialize()
 startupProfiler.mark('agent-release')
 const configuredUpdateChannel = process.env.UPDATE_CHANNEL ?? (isDemoMode ? 'latest' : 'stable')
@@ -285,6 +312,27 @@ const authorizationService = store && authRuntime
   ? await AuthorizationService.create({ readState: () => store.getAuthenticationState() })
   : null
 const systemsSavedViews = store ? new SystemsSavedViewService() : null
+const systemsAttention = store ? new SystemAttentionProjector() : null
+if (store) {
+  systemsAttention?.start(store)
+  store.subscribeToProjectCommits((commit) => {
+    if (commit.type === 'canonical-invalidated') {
+      systemsAttention?.markProjectDirty(store, store.projectId, 'canonical-invalidated')
+      return
+    }
+    const hosts = assignmentHostsFromPatch(commit.forward)
+    assignmentHostsFromPatch(commit.inverse, hosts)
+    for (const host of hosts.values()) systemsAttention?.markHostDirty(store, { projectId: store.projectId, hostType: host.type, hostId: host.id, reason: 'assignment-changed' })
+    const kinds = [commit.forward?.kind, commit.inverse?.kind]
+    if (kinds.some((kind) => kind === 'add-connection' || kind === 'remove-connection' || kind === 'batch')) {
+      systemsAttention?.markProjectDirty(store, store.projectId, 'topology-changed')
+    }
+  })
+  notificationRuntime?.store.subscribe((event) => {
+    if (event.section !== 'state') return
+    for (const host of incidentHosts(event.previous, event.current)) systemsAttention?.markHostDirty(store, { projectId: store.projectId, hostType: host.type, hostId: host.id, reason: 'notification-changed' })
+  })
+}
 const authService = store && authRuntime
   ? new AuthService({ store, sessionService, authorization: authorizationService, savedViews: systemsSavedViews, runtime: authRuntime })
   : null
@@ -413,6 +461,7 @@ const catalogUpdateCoordinator = store
       store,
       snapshotService: catalogSnapshotService,
       forceAutomatic: isDemoMode,
+      onChanged: () => systemsAttention?.markProjectDirty(store, store.projectId, 'registry-updates-changed'),
     })
   : null
 const catalogRefreshCoordinator = store
@@ -469,6 +518,7 @@ registerRegistryRoutes(app, {
   catalogRefreshCoordinator,
   catalogUpdateCoordinator,
   catalogStatusService,
+  onUpdatesChanged: () => systemsAttention?.markProjectDirty(store, store.projectId, 'registry-decision-changed'),
   registryPolicy: isDemoMode
     ? { forcedMode: 'connected', contributionsAllowed: false, automaticSafeUpdatesForced: true }
     : stagingRegistryPolicy(stagingPolicy),
@@ -479,8 +529,9 @@ const backupSchedule = stagingPolicy.scheduledBackupsDisabled ? null : backupSch
 registerProjectRoutes(app, { withStore })
 registerSystemsRoutes(app, {
   withStore,
-  service: new SystemsReadService({ telemetryRepository, releaseService: agentReleaseService }),
+  service: new SystemsReadService({ telemetryRepository, releaseService: agentReleaseService, attentionProjector: systemsAttention }),
   savedViews: systemsSavedViews,
+  attention: systemsAttention,
   authorization: authorizationService,
 })
 registerWorkspaceRoutes(app, { withStore })
@@ -663,6 +714,7 @@ async function shutdown(signal) {
         () => contributionDelivery?.stop(store),
         () => telemetryRetentionSchedule?.stop(),
         () => notificationRuntime?.stop(),
+        () => systemsAttention?.stop(),
       ],
       flush: () => demoManager ? demoManager.flushAll() : store.flush(),
       closers: demoManager

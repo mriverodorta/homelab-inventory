@@ -1,10 +1,11 @@
 export class CatalogUpdateCoordinator {
-  constructor({ store, snapshotService, logger = console, forceAutomatic = false, now = Date.now }) {
+  constructor({ store, snapshotService, logger = console, forceAutomatic = false, now = Date.now, onChanged = null }) {
     this.store = store
     this.snapshotService = snapshotService
     this.logger = logger
     this.forceAutomatic = forceAutomatic
     this.now = now
+    this.onChanged = onChanged
     this.inFlight = null
   }
 
@@ -66,7 +67,7 @@ export class CatalogUpdateCoordinator {
     const templateByKey = new Map(templates.map((template) => [template.templateKey, template]))
     const eligibleUpdates = updates.filter((update) => templateByKey.get(update.templateKey)?.revision === update.availableRevision)
     const batch = this.store.evaluateCatalogUpdates(eligibleUpdates, templates)
-    return this.store.commitCatalogUpdateRun({
+    const result = this.store.commitCatalogUpdateRun({
       sourceId: snapshot.sourceId,
       catalogRevision: snapshot.revision,
       evaluations: batch.evaluations,
@@ -75,5 +76,7 @@ export class CatalogUpdateCoordinator {
       expectedProjectRevision: batch.projectRevision,
       expectedProjectRevisions: batch.projectRevisions,
     })
+    this.onChanged?.(result)
+    return result
   }
 }

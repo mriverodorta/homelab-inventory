@@ -44,6 +44,8 @@ describe('Systems read service', () => {
       agentVersion: '0.1.8',
       cpuPercent: 25,
       memoryPercent: 50,
+      uptimeSeconds: 3_600,
+      system: { operatingSystem: 'Ubuntu', osVersion: '24.04', lanIp: '192.0.2.10' },
       rootFilesystem: { totalBytes: 100_000_000_000, usedBytes: 90_000_000_000 },
     }]])
     const releaseService = {
@@ -66,6 +68,8 @@ describe('Systems read service', () => {
       cpuLabel: 'Example CPU',
       memoryLabel: '16GB DDR4 3200MHz',
       storageLabel: '1TB NVMe',
+      operatingSystem: 'Ubuntu 24.04',
+      lanIp: '192.0.2.10',
       agentRegistered: true,
       agentState: 'online',
       agentUpdateAvailable: true,
@@ -73,6 +77,10 @@ describe('Systems read service', () => {
       cpuPercent: 25,
       memoryPercent: 50,
       storagePercent: 90,
+      uptimeSeconds: 3_600,
+      attentionCount: 0,
+      attentionState: 'refreshing',
+      attentionRevision: 0,
     })
 
     expect(service.live(store, 1, 'https://inventory.example').systems).toEqual([{
@@ -85,6 +93,10 @@ describe('Systems read service', () => {
       cpuPercent: 25,
       memoryPercent: 50,
       storagePercent: 90,
+      uptimeSeconds: 3_600,
+      attentionCount: 0,
+      attentionState: 'refreshing',
+      attentionRevision: 0,
     }])
   })
 
@@ -108,6 +120,10 @@ describe('Systems read service', () => {
       cpuPercent: null,
       memoryPercent: null,
       storagePercent: null,
+      uptimeSeconds: null,
+      attentionCount: 0,
+      attentionState: 'refreshing',
+      attentionRevision: 0,
     })
     expect(service.live(store, 1, 'https://inventory.example').systems).toEqual([{
       itemId: service.initial(store, 1, 'https://inventory.example').systems[0].itemId,
@@ -118,6 +134,10 @@ describe('Systems read service', () => {
       cpuPercent: null,
       memoryPercent: null,
       storagePercent: null,
+      uptimeSeconds: null,
+      attentionCount: 0,
+      attentionState: 'refreshing',
+      attentionRevision: 0,
     }])
   })
 

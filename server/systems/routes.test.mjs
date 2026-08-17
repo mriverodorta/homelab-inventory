@@ -8,7 +8,7 @@ afterEach(async () => {
   await Promise.all(servers.splice(0).map((server) => new Promise((resolve) => server.close(resolve))))
 })
 
-async function fixture({ authorization = null, savedViews = null } = {}) {
+async function fixture({ authorization = null, savedViews = null, attention = null } = {}) {
   const service = {
     initial: vi.fn(() => ({ projectId: 1, generatedAt: 'now', currentAgentVersion: '0.2.0', systems: [] })),
     live: vi.fn(() => ({ projectId: 1, generatedAt: 'now', systems: [{ itemId: 4, agentState: 'online' }] })),
@@ -22,6 +22,7 @@ async function fixture({ authorization = null, savedViews = null } = {}) {
   registerSystemsRoutes(app, {
     service,
     savedViews,
+    attention,
     authorization,
     withStore: async (_request, response, handler) => {
       try { await handler({}) } catch (error) { response.status(500).json({ message: error.message }) }
@@ -100,5 +101,33 @@ describe('Systems routes', () => {
     })
     expect(response.status).toBe(409)
     expect(await response.json()).toMatchObject({ code: 'systems-view-conflict' })
+  })
+
+  it('returns ETag-aware materialized Attention details without evaluating them', async () => {
+    const attention = { details: vi.fn(() => ({ summary: { totalCount: 1, revision: 2 }, findings: [{ key: 'audit:1' }] })) }
+    const { url } = await fixture({ attention })
+    const first = await fetch(`${url}/api/projects/1/systems/server/7/attention`)
+    expect(first.status).toBe(200)
+    expect(await first.json()).toMatchObject({ summary: { totalCount: 1 }, findings: [{ key: 'audit:1' }] })
+    const second = await fetch(`${url}/api/projects/1/systems/server/7/attention`, {
+      headers: { 'If-None-Match': first.headers.get('etag') },
+    })
+    expect(second.status).toBe(304)
+    expect(attention.details).toHaveBeenCalledTimes(2)
+  })
+
+  it('limits Attention summaries and details to independently authorized domains', async () => {
+    const authorization = {
+      authorize: vi.fn(async (_accountId, permission) => ({
+        allowed: permission === 'agents.view' || permission === 'audit.view',
+      })),
+    }
+    const attention = { details: vi.fn(() => ({ summary: { totalCount: 1 }, findings: [] })) }
+    const { service, url } = await fixture({ authorization, attention })
+    expect((await fetch(`${url}/api/projects/1/systems`)).status).toBe(200)
+    const initialOptions = service.initial.mock.calls[0][3]
+    expect([...initialOptions.attentionCategories]).toEqual(['audit'])
+    expect((await fetch(`${url}/api/projects/1/systems/server/7/attention`)).status).toBe(200)
+    expect([...attention.details.mock.calls[0][4]]).toEqual(['audit'])
   })
 })

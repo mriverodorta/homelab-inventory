@@ -276,6 +276,7 @@ export function registerRegistryRoutes(app, {
   catalogRefreshCoordinator,
   catalogUpdateCoordinator,
   catalogStatusService,
+  onUpdatesChanged,
   registryPolicy,
 } = {}) {
   const policy = normalizedRegistryPolicy(registryPolicy)
@@ -580,6 +581,7 @@ export function registerRegistryRoutes(app, {
           }
         }
         const last = results.at(-1)
+        onUpdatesChanged?.()
         response.json({
           decisions: results.flatMap((result) => result.decisions),
           summary: last?.summary ?? registryUpdateSummary(store),
@@ -608,14 +610,18 @@ export function registerRegistryRoutes(app, {
         if (templates.some((template, index) => !template || template.revision !== groups[index].toRevision)) throw new InventoryLifecycleError('Updated catalog template is unavailable.', {
           code: 'catalog-template-not-found', status: 409,
         })
-        response.json(store.applyRegistryUpdateGroups(templates, request.authentication?.account?.id ?? null))
+        const result = store.applyRegistryUpdateGroups(templates, request.authentication?.account?.id ?? null)
+        onUpdatesChanged?.()
+        response.json(result)
         return
       }
-      response.json(store.decideRegistryUpdateGroups({
+      const result = store.decideRegistryUpdateGroups({
         groups,
         decision: decision === 'reconsider' ? 'pending' : decision,
         userId: request.authentication?.account?.id ?? null,
-      }))
+      })
+      onUpdatesChanged?.()
+      response.json(result)
     })
   })
 
@@ -633,14 +639,16 @@ export function registerRegistryRoutes(app, {
       if (!template) throw new InventoryLifecycleError('Updated catalog template is unavailable.', {
         code: 'catalog-template-not-found', status: 409,
       })
-      response.json(store.resolveAndApplyRegistryUpdateGroupById({
+      const result = store.resolveAndApplyRegistryUpdateGroupById({
         groupId: group.id,
         concurrencyToken: token,
         linkId,
         template,
         expectedProjectRevisions: request.body?.expectedProjectRevisions ?? null,
         userId: request.authentication?.account?.id ?? null,
-      }))
+      })
+      onUpdatesChanged?.()
+      response.json(result)
     })
   })
 
