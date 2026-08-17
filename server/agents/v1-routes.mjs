@@ -469,7 +469,12 @@ export function registerAgentV1Routes(app, store, {
         connected,
         ageMs: null,
       }
-      const telemetryView = telemetryRepository.getTelemetryView?.(host.hostType, host.hostId, { now: serverTime.getTime(), minutes: 30 })
+      const telemetryView = telemetryRepository.getTelemetryView?.(host.hostType, host.hostId, {
+        now: serverTime.getTime(),
+        minutes: 30,
+        heartbeatIntervalMs: timing.heartbeatIntervalMs,
+        onlineMaxAgeMs: timing.onlineMaxAgeMs,
+      })
       const latest = telemetryView?.latest ?? telemetryRepository.getHostSummary?.(host.hostType, host.hostId) ?? null
       const hardware = store.getAgentHardwareContext(host.hostType, host.hostId)
       const metricBuckets = telemetryView?.buckets ?? []

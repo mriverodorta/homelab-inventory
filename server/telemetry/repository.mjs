@@ -7,6 +7,8 @@ import { exportTelemetryBackup, replaceTelemetryBackup } from './backup.mjs'
 
 const HOST_TYPE_SET = new Set(AGENT_HOST_TYPES)
 const METRIC_WINDOW = 30
+const DEFAULT_HEARTBEAT_INTERVAL_MS = 60_000
+const DEFAULT_ONLINE_MAX_AGE_MS = 90_000
 
 function canonicalJson(value) {
   if (Array.isArray(value)) return `[${value.map(canonicalJson).join(',')}]`
@@ -24,6 +26,10 @@ function timestampMs(value, field) {
   const parsed = typeof value === 'number' ? value : Date.parse(value)
   if (!Number.isSafeInteger(parsed) || parsed < 0) throw new Error(`${field} must be a valid timestamp.`)
   return parsed
+}
+
+function positiveDuration(value, fallback) {
+  return typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : fallback
 }
 
 function hostReference(hostType, hostId) {
@@ -384,20 +390,34 @@ export class TelemetryRepository {
     }))
   }
 
-  getTelemetryView(hostType, hostId, { now = Date.now(), minutes = METRIC_WINDOW } = {}) {
+  getTelemetryView(hostType, hostId, {
+    now = Date.now(),
+    minutes = METRIC_WINDOW,
+    heartbeatIntervalMs = DEFAULT_HEARTBEAT_INTERVAL_MS,
+    onlineMaxAgeMs = DEFAULT_ONLINE_MAX_AGE_MS,
+  } = {}) {
     const boundedMinutes = Math.min(Math.max(Number(minutes) || METRIC_WINDOW, 1), METRIC_WINDOW)
-    const end = Math.floor(now / 60_000) * 60_000
-    const rows = new Map(this.listSamples(hostType, hostId, { from: end - ((boundedMinutes - 1) * 60_000), to: end, limit: boundedMinutes })
+    const interval = positiveDuration(heartbeatIntervalMs, DEFAULT_HEARTBEAT_INTERVAL_MS)
+    const grace = positiveDuration(onlineMaxAgeMs, DEFAULT_ONLINE_MAX_AGE_MS)
+    const latest = this.getHostSummary(hostType, hostId)
+    const latestReceivedAt = latest ? Date.parse(latest.receivedAt) : null
+    const overdueSlots = latestReceivedAt !== null && now - latestReceivedAt > grace
+      ? Math.ceil((now - latestReceivedAt - grace) / interval)
+      : 0
+    const end = latestReceivedAt === null
+      ? Math.floor(now / interval) * interval
+      : (Math.floor(latestReceivedAt / interval) * interval) + (overdueSlots * interval)
+    const rows = new Map(this.listSamples(hostType, hostId, { from: end - ((boundedMinutes - 1) * interval), to: end, limit: boundedMinutes })
       .map((sample) => [Date.parse(sample.receivedAt), sample]))
     let previous = null
     const buckets = []
     for (let index = boundedMinutes - 1; index >= 0; index -= 1) {
-      const at = end - (index * 60_000)
+      const at = end - (index * interval)
       const sample = rows.get(at)
       if (sample) previous = sample.payload.metrics
       buckets.push({ at: new Date(at).toISOString(), received: Boolean(sample), metrics: sample?.payload.metrics ?? previous })
     }
-    return { buckets, latest: this.getHostSummary(hostType, hostId) }
+    return { buckets, latest }
   }
 
   deleteHost(hostType, hostId) {

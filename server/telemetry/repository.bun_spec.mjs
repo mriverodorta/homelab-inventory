@@ -194,6 +194,60 @@ describe('telemetry repository', () => {
     expect(missed).toMatchObject({ received: false, metrics: { cpu: { percent: 32 } } })
   })
 
+  test('keeps the latest successful heartbeat green until its cadence is genuinely overdue', async () => {
+    const { repository } = await context()
+    for (const [sequence, receivedAt, percent] of [
+      [1, '2026-08-17T16:40:52.959Z', 40],
+      [2, '2026-08-17T16:41:52.959Z', 41],
+    ]) {
+      repository.recordHeartbeat({
+        deviceId: 7,
+        agentId: 70,
+        hostType: 'server',
+        hostId: 1,
+        hostItemId: 101,
+        receivedAt,
+        payload: heartbeat(sequence, {
+          collectedAt: receivedAt,
+          metrics: { cpu: { percent }, memory: { usedBytes: percent, totalBytes: 100 } },
+        }),
+      })
+    }
+
+    const online = repository.getTelemetryView('server', 1, {
+      now: Date.parse('2026-08-17T16:42:30.252Z'),
+      heartbeatIntervalMs: 60_000,
+      onlineMaxAgeMs: 90_000,
+    })
+    expect(online.buckets).toHaveLength(30)
+    expect(online.buckets.at(-1)).toMatchObject({
+      at: '2026-08-17T16:41:00.000Z',
+      received: true,
+      metrics: { cpu: { percent: 41 } },
+    })
+
+    const atGraceBoundary = repository.getTelemetryView('server', 1, {
+      now: Date.parse('2026-08-17T16:43:22.959Z'),
+      heartbeatIntervalMs: 60_000,
+      onlineMaxAgeMs: 90_000,
+    })
+    expect(atGraceBoundary.buckets.at(-1)).toMatchObject({
+      at: '2026-08-17T16:41:00.000Z',
+      received: true,
+    })
+
+    const overdue = repository.getTelemetryView('server', 1, {
+      now: Date.parse('2026-08-17T16:43:23.000Z'),
+      heartbeatIntervalMs: 60_000,
+      onlineMaxAgeMs: 90_000,
+    })
+    expect(overdue.buckets.at(-1)).toMatchObject({
+      at: '2026-08-17T16:42:00.000Z',
+      received: false,
+      metrics: { cpu: { percent: 41 } },
+    })
+  })
+
   test('stays compact under production-shaped metric-only updates', async () => {
     const { database, repository } = await context()
     const services = Array.from({ length: 200 }, (_, index) => ({

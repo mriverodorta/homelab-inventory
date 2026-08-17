@@ -334,7 +334,9 @@ const RELEASE_0_13_3_DETAILS: UnreleasedReleaseNotes = {
 
 export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
   highlights: [],
-  fixes: [],
+  fixes: [
+    'Agent heartbeat history no longer shows a speculative red newest slot while the latest successful report is still within the configured online grace period.',
+  ],
   notes: [],
 }
 

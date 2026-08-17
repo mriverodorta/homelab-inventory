@@ -424,7 +424,12 @@ describe('agent protocol v1 routes', () => {
       expect(JSON.stringify(body)).not.toContain('diskIo')
       expect(JSON.stringify(body)).not.toContain('network')
       expect(Buffer.byteLength(JSON.stringify(body))).toBeLessThan(100_000)
-      expect(getTelemetryView).toHaveBeenCalled()
+      expect(getTelemetryView).toHaveBeenCalledWith('server', 1, expect.objectContaining({
+        now: expect.any(Number),
+        minutes: 30,
+        heartbeatIntervalMs: 60_000,
+        onlineMaxAgeMs: 90_000,
+      }))
       expect((await fetch(`${url}/api/agent/hosts/server/1/telemetry?limit=9999`)).status).toBe(400)
       expect((await fetch(`${url}/api/agent/hosts/server/99/telemetry`)).status).toBe(404)
     } finally {
