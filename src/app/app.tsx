@@ -5,6 +5,7 @@ import {
 } from '@/components/workbench-canvas-contract'
 import { useDomainEngine } from '@/hooks/use-domain-engine'
 import { usePermission } from '@/hooks/use-permission'
+import { useAuth } from '@/hooks/use-auth'
 import {
   useCatalogFacetPrefetch,
   useRegistryMutations,
@@ -57,12 +58,14 @@ import { createReleaseDialogProps } from '@/app/create-release-dialog-props'
 import { createWorkspaceSurfaceProps } from '@/app/create-workspace-surface-props'
 import { pushHistory } from '@/lib/history'
 import type { ProjectState } from '@/types/inventory'
+import { browserPreferenceScope } from '@/lib/browser-preference-scope'
 
 type SaveStatus = 'saved' | 'saving' | 'error'
 type ValidationSeverity = 'error' | 'unknown'
 
 function App() {
   const queryClient = useQueryClient()
+  const auth = useAuth()
   const domainEngine = useDomainEngine()
   const canViewAgents = usePermission('agents.view')
   const canViewRegistry = usePermission('registry.view')
@@ -114,8 +117,16 @@ function App() {
   const workbookController = useWorkbookController({
     beforeNavigate: settleLegacyProjectPersistence,
   })
+  const sidebarPreferenceScope = workbookController.activeWorkbook && workbookController.sourceCanvasWorkspace
+    ? browserPreferenceScope(
+        auth.status?.account?.id ?? null,
+        workbookController.activeWorkbook.project.id,
+        workbookController.sourceCanvasWorkspace.id,
+      )
+    : null
   const workspacePreferences = useWorkspacePreferences({
     workspace: workbookController.sourceCanvasWorkspace,
+    browserScope: sidebarPreferenceScope,
     onWorkspaceSettingsChange: (settings) => workbookController.updateCanvasConfiguration({ settings }),
     onWorkspaceViewportChange: (viewport) => workbookController.updateCanvasConfiguration({ viewport }),
   })
@@ -500,6 +511,9 @@ function App() {
     return <LoadingScreen />
   }
 
+  const inventorySidebarAvailable = workbookController.activeWorkspace.type === 'canvas'
+  const effectiveDesktopInventoryVisible = inventorySidebarAvailable && desktopInventoryVisible
+
   const settingsDialogProps = createSettingsDialogProps({
     open: settingsOpen,
     project,
@@ -656,7 +670,7 @@ function App() {
           />
         ),
       }}
-      projectControlOffset={desktopInventoryVisible ? inventoryWidth + 12 : 12}
+      projectControlOffset={effectiveDesktopInventoryVisible ? inventoryWidth + 12 : 12}
       projectControl={(
         <ProjectSwitcher
           projects={workbookController.workbooks.map((workbook) => workbook.project)}
@@ -689,7 +703,7 @@ function App() {
         />
       )}
     >
-          <AppInventoryPanels {...inventoryPanelProps} />
+          {inventorySidebarAvailable ? <AppInventoryPanels {...inventoryPanelProps} /> : null}
           <AppWorkspaceSurface {...workspaceSurfaceProps} />
           <AppDialogs
             {...lifecycleDialogProps}

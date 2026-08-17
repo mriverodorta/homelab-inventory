@@ -67,6 +67,21 @@ describe('inventory UI preferences', () => {
     expect(getStoredInventoryWidth()).toBe(430)
   })
 
+  it('keeps inventory visibility and width independent by browser scope', () => {
+    const first = 'account:7:project:2:workspace:11'
+    const second = 'account:7:project:2:workspace:12'
+
+    storeInventoryVisible(false, first)
+    storeInventoryWidth(420, first)
+    storeInventoryVisible(true, second)
+    storeInventoryWidth(450, second)
+
+    expect(getStoredInventoryVisible(first)).toBe(false)
+    expect(getStoredInventoryWidth(first)).toBe(420)
+    expect(getStoredInventoryVisible(second)).toBe(true)
+    expect(getStoredInventoryWidth(second)).toBe(450)
+  })
+
   it('persists auto-centering and cable-type visibility independently', () => {
     storeAutoCenterOnSelect(false)
     storeNetworkCablesVisible(false)

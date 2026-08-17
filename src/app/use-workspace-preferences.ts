@@ -36,6 +36,7 @@ export const DEFAULT_CANVAS_WORKSPACE_SETTINGS: CanvasWorkspaceSettings = {
 
 type UseWorkspacePreferencesOptions = {
   workspace?: WorkspaceSummary | null
+  browserScope?: string | null
   onWorkspaceSettingsChange?(settings: Partial<CanvasWorkspaceSettings>): Promise<unknown> | void
   onWorkspaceViewportChange?(viewport: { x: number; y: number; zoom: number }): Promise<unknown> | void
 }
@@ -66,12 +67,13 @@ function settingsForWorkspace(workspace?: WorkspaceSummary | null): CanvasWorksp
 
 export function useWorkspacePreferences({
   workspace = null,
+  browserScope = null,
   onWorkspaceSettingsChange,
   onWorkspaceViewportChange,
 }: UseWorkspacePreferencesOptions = {}) {
   const scoped = Boolean(workspace && onWorkspaceSettingsChange)
-  const [inventoryWidth, setInventoryWidth] = useState(getStoredInventoryWidth)
-  const [desktopInventoryVisible, setDesktopInventoryVisible] = useState(getStoredInventoryVisible)
+  const [inventoryWidth, setInventoryWidthState] = useState(() => getStoredInventoryWidth(browserScope))
+  const [desktopInventoryVisible, setDesktopInventoryVisibleState] = useState(() => getStoredInventoryVisible(browserScope))
   const [autoCenterOnSelect, setAutoCenterOnSelect] = useState(getStoredAutoCenterOnSelect)
   const [openCreatedConnectionInspector, setOpenCreatedConnectionInspector] = useState(
     getStoredOpenCreatedConnectionInspector,
@@ -92,8 +94,10 @@ export function useWorkspacePreferences({
     () => storeOpenCreatedConnectionInspector(openCreatedConnectionInspector),
     [openCreatedConnectionInspector],
   )
-  useEffect(() => storeInventoryVisible(desktopInventoryVisible), [desktopInventoryVisible])
-  useEffect(() => storeInventoryWidth(inventoryWidth), [inventoryWidth])
+  useEffect(() => {
+    setDesktopInventoryVisibleState(getStoredInventoryVisible(browserScope))
+    setInventoryWidthState(getStoredInventoryWidth(browserScope))
+  }, [browserScope])
   useEffect(() => {
     if (scoped) return
     storeNetworkCablesVisible(canvasSettings.networkCablesVisible)
@@ -137,6 +141,26 @@ export function useWorkspacePreferences({
     }
   }, [scoped])
 
+  const setDesktopInventoryVisible = useCallback((action: SetStateAction<boolean>) => {
+    setDesktopInventoryVisibleState((current) => {
+      const next = typeof action === 'function'
+        ? (action as (value: boolean) => boolean)(current)
+        : action
+      storeInventoryVisible(next, browserScope)
+      return next
+    })
+  }, [browserScope])
+
+  const setInventoryWidth = useCallback((action: SetStateAction<number>) => {
+    setInventoryWidthState((current) => {
+      const next = typeof action === 'function'
+        ? (action as (value: number) => number)(current)
+        : action
+      storeInventoryWidth(next, browserScope)
+      return next
+    })
+  }, [browserScope])
+
   const resetWorkspacePreferences = useCallback(() => {
     resetStoredUiPreferences()
     setDesktopInventoryVisible(DEFAULT_UI_PREFERENCES.inventoryVisible)
@@ -148,7 +172,7 @@ export function useWorkspacePreferences({
     if (scoped) {
       void Promise.resolve(onWorkspaceSettingsChangeRef.current?.(DEFAULT_CANVAS_WORKSPACE_SETTINGS)).catch(() => {})
     }
-  }, [scoped])
+  }, [scoped, setDesktopInventoryVisible, setInventoryWidth])
 
   return {
     inventoryWidth,

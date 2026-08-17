@@ -14,6 +14,10 @@ const SNAP_CABLES_TO_GRID_KEY = 'homelab-inventory:snap-cables-to-grid'
 const AVOID_CABLE_COLLISIONS_GLOBALLY_KEY = 'homelab-inventory:avoid-cable-collisions-globally'
 const SNAP_ITEMS_TO_GRID_KEY = 'homelab-inventory:snap-items-to-grid'
 
+function scopedPreferenceKey(key: string, scope?: string | null): string {
+  return scope ? `${key}:${scope}` : key
+}
+
 const UI_PREFERENCE_KEYS = [
   INVENTORY_VISIBLE_KEY,
   INVENTORY_WIDTH_KEY,
@@ -60,31 +64,34 @@ export function clampInventoryWidth(width: number): number {
   return Math.min(MAX_INVENTORY_WIDTH, Math.max(MIN_INVENTORY_WIDTH, width))
 }
 
-export function getStoredInventoryVisible(): boolean {
+export function getStoredInventoryVisible(scope?: string | null): boolean {
   if (typeof window === 'undefined') return true
 
   try {
+    const stored = window.localStorage.getItem(scopedPreferenceKey(INVENTORY_VISIBLE_KEY, scope))
+    if (stored !== null) return stored !== 'false'
     return window.localStorage.getItem(INVENTORY_VISIBLE_KEY) !== 'false'
   } catch {
     return true
   }
 }
 
-export function storeInventoryVisible(visible: boolean): void {
+export function storeInventoryVisible(visible: boolean, scope?: string | null): void {
   if (typeof window === 'undefined') return
 
   try {
-    window.localStorage.setItem(INVENTORY_VISIBLE_KEY, String(visible))
+    window.localStorage.setItem(scopedPreferenceKey(INVENTORY_VISIBLE_KEY, scope), String(visible))
   } catch {
     // Storage may be unavailable in privacy-restricted browser contexts.
   }
 }
 
-export function getStoredInventoryWidth(): number {
+export function getStoredInventoryWidth(scope?: string | null): number {
   if (typeof window === 'undefined') return DEFAULT_INVENTORY_WIDTH
 
   try {
-    const storedWidth = window.localStorage.getItem(INVENTORY_WIDTH_KEY)
+    const scopedWidth = window.localStorage.getItem(scopedPreferenceKey(INVENTORY_WIDTH_KEY, scope))
+    const storedWidth = scopedWidth ?? window.localStorage.getItem(INVENTORY_WIDTH_KEY)
     if (storedWidth === null || storedWidth.trim() === '') {
       return DEFAULT_INVENTORY_WIDTH
     }
@@ -98,12 +105,12 @@ export function getStoredInventoryWidth(): number {
   }
 }
 
-export function storeInventoryWidth(width: number): void {
+export function storeInventoryWidth(width: number, scope?: string | null): void {
   if (typeof window === 'undefined') return
 
   try {
     window.localStorage.setItem(
-      INVENTORY_WIDTH_KEY,
+      scopedPreferenceKey(INVENTORY_WIDTH_KEY, scope),
       String(clampInventoryWidth(width)),
     )
   } catch {
