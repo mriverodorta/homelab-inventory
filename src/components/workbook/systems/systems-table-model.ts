@@ -1,6 +1,8 @@
 import type { SystemsTablePreferences } from '@/lib/systems-preferences'
 import type { SystemsHostRow, SystemsViewConfiguration } from '@/types/systems'
 
+const COMPACT_SYSTEMS_COLUMNS = new Set(['type', 'attention', 'agent', 'registry'])
+
 const AGENT_ORDER = Object.freeze({
   online: 0,
   stale: 1,
@@ -61,6 +63,11 @@ export function systemsViewConfigurationsEqual(
 
 export function shouldVirtualizeSystems(rowCount: number) {
   return rowCount > 100
+}
+
+export function systemsColumnTrack(key: string, width: number, customized: boolean) {
+  if (customized || COMPACT_SYSTEMS_COLUMNS.has(key)) return `${width}px`
+  return `minmax(${width}px, ${key === 'name' ? 1.25 : 1}fr)`
 }
 
 export function filterAndSortSystems(

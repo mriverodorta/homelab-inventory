@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { filterAndSortSystems, mergeSystemsLive, shouldVirtualizeSystems, systemsViewConfigurationsEqual } from '@/components/workbook/systems/systems-table-model'
+import { filterAndSortSystems, mergeSystemsLive, shouldVirtualizeSystems, systemsColumnTrack, systemsViewConfigurationsEqual } from '@/components/workbook/systems/systems-table-model'
 import { DEFAULT_SYSTEMS_TABLE_PREFERENCES } from '@/lib/systems-preferences'
 import type { SystemsHostRow } from '@/types/systems'
 
@@ -81,5 +81,11 @@ describe('Systems table model', () => {
   it('virtualizes only fleets larger than 100 filtered rows', () => {
     expect(shouldVirtualizeSystems(100)).toBe(false)
     expect(shouldVirtualizeSystems(101)).toBe(true)
+  })
+
+  it('fixes user-resized tracks while untouched content columns remain responsive', () => {
+    expect(systemsColumnTrack('name', 260, true)).toBe('260px')
+    expect(systemsColumnTrack('name', 220, false)).toBe('minmax(220px, 1.25fr)')
+    expect(systemsColumnTrack('registry', 52, false)).toBe('52px')
   })
 })

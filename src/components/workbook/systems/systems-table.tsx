@@ -7,7 +7,7 @@ import { ComputeHostIcon } from '@/components/compute-host-icon'
 import { Button } from '@/components/ui/button'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { SYSTEMS_COLUMN_LABELS } from '@/components/workbook/systems/systems-columns'
-import { shouldVirtualizeSystems } from '@/components/workbook/systems/systems-table-model'
+import { shouldVirtualizeSystems, systemsColumnTrack } from '@/components/workbook/systems/systems-table-model'
 import type { SystemsSortDirection, SystemsSortKey } from '@/lib/systems-preferences'
 import { cn } from '@/lib/utils'
 import type { SystemsColumnKey, SystemsDensity, SystemsHostRow, SystemsViewColumn } from '@/types/systems'
@@ -174,9 +174,11 @@ export function SystemsTable({
   const previousSelectedItem = useRef(selectedItemId)
   const orderedColumns = useMemo(() => [...columns].filter((column) => column.visible).sort((left, right) => left.order - right.order), [columns])
   const widths = useMemo(() => ({ ...DEFAULT_WIDTHS, ...customWidths }), [customWidths])
-  const gridTemplate = orderedColumns.map((column) => COMPACT_COLUMNS.has(column.key)
-    ? `${widths[column.key]}px`
-    : `minmax(${widths[column.key]}px, ${column.key === 'name' ? 1.25 : 1}fr)`).join(' ')
+  const gridTemplate = orderedColumns.map((column) => systemsColumnTrack(
+    column.key,
+    widths[column.key],
+    customWidths[column.key] !== undefined,
+  )).join(' ')
   const totalWidth = orderedColumns.reduce((total, column) => total + widths[column.key], 0)
   const definitions = useMemo(() => tableColumns(orderedColumns, onAttention), [onAttention, orderedColumns])
   const table = useLegacyTable({ data: [...systems], columns: definitions, getCoreRowModel: getCoreRowModel() })
@@ -215,9 +217,14 @@ export function SystemsTable({
     const startX = event.clientX
     const startWidth = widths[key]
     const move = (moveEvent: PointerEvent) => onWidthsChange({ ...customWidths, [key]: Math.max(80, Math.min(800, startWidth + moveEvent.clientX - startX)) })
-    const up = () => { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up) }
+    const up = () => {
+      window.removeEventListener('pointermove', move)
+      window.removeEventListener('pointerup', up)
+      window.removeEventListener('pointercancel', up)
+    }
     window.addEventListener('pointermove', move)
     window.addEventListener('pointerup', up)
+    window.addEventListener('pointercancel', up)
   }
 
   if (!systems.length) {
