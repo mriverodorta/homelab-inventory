@@ -6,6 +6,8 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 
 ## Unreleased
 
+## [0.13.10] - 2026-08-18
+
 ### Changed
 
 - Systems and an open Agent Inspector now receive committed host rows, minute samples, and changed telemetry entities directly through the authenticated SSE stream; full REST snapshots are limited to initial load and recovery.

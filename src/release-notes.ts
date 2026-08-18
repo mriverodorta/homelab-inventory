@@ -394,7 +394,7 @@ const RELEASE_0_13_9_DETAILS: UnreleasedReleaseNotes = {
   notes: [],
 }
 
-export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
+const RELEASE_0_13_10_DETAILS: UnreleasedReleaseNotes = {
   highlights: [
     'Systems and an open Agent Inspector now receive compact live host and telemetry updates directly through the authenticated event stream instead of reloading complete snapshots after every heartbeat.',
     'Registry update reviews now use the projected runtime canonical contract and show the exact final item that would be applied.',
@@ -405,6 +405,12 @@ export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
     'Historical OEM updates no longer report canonical CPU, memory, or power fields as removed when the non-destructive merge preserves them.',
     'Unambiguous legacy M.2 A/E WLAN assignments migrate atomically to the canonical WLAN module slot without losing inventory, Canvas, cable, route-cache, private, or Registry-link state.',
   ],
+  notes: [],
+}
+
+export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
+  highlights: [],
+  fixes: [],
   notes: [],
 }
 
@@ -935,9 +941,16 @@ const RELEASE_0_2_1_DETAILS: UnreleasedReleaseNotes = {
 
 export const RELEASE_NOTES: ReleaseNoteEntry[] = [
   {
-    version: '0.13.9',
+    version: '0.13.10',
     date: '2026-08-18',
     channel: 'latest',
+    title: 'Safe canonical Registry updates',
+    ...RELEASE_0_13_10_DETAILS,
+  },
+  {
+    version: '0.13.9',
+    date: '2026-08-18',
+    channel: 'release',
     title: 'Accurate system memory pressure',
     ...RELEASE_0_13_9_DETAILS,
   },
