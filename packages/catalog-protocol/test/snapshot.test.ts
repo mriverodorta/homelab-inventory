@@ -4,6 +4,7 @@ import {
   CATALOG_SCHEMA_VERSION,
   FINGERPRINT_VERSION,
   LEGACY_FINGERPRINT_VERSION,
+  M2_AE_FINGERPRINT_VERSION,
   NAS_FINGERPRINT_VERSION,
   canonicalJson,
   digestCatalogTemplate,
@@ -71,6 +72,45 @@ describe('signed catalog snapshots', () => {
     })
   })
 
+  it('preserves absent, empty, and populated M.2 A/E bus evidence in signed snapshots', async () => {
+    const items = ['absent', 'empty', 'populated'].map((state) => {
+      const resource: Record<string, unknown> = {
+        id: 1, key: 'm2-ae-slot', keyAliases: ['wlan-m2'], count: 1,
+        label: 'M.2 Key E slot', interfaceFamily: 'm2-ae', socketKeys: ['E'], moduleSizes: ['2230'],
+      }
+      if (state === 'empty') resource.availableBuses = []
+      if (state === 'populated') resource.availableBuses = [{ family: 'pcie', lanes: 1, pcieGeneration: 3 }]
+      return {
+        type: 'desktop', name: `Example ${state}`, manufacturer: 'Example', model: state,
+        specs: { topologyCompleteness: 'complete', motherboardPartNumber: `BOARD-${state}` },
+        compatibility: { host: { optionalModuleSlots: [resource] } },
+      }
+    })
+    const projections = await Promise.all(items.map((item) => (
+      digestCatalogTemplate(item, { fingerprintVersion: M2_AE_FINGERPRINT_VERSION })
+    )))
+    const snapshot = {
+      schemaVersion: CATALOG_SCHEMA_VERSION,
+      catalogRevision: 12,
+      generatedAt: '2026-08-18T12:00:00.000Z',
+      manufacturerAliases: {},
+      templates: projections.map((projection, index) => ({
+        templateKey: `example-m2-${index}`,
+        revision: 1,
+        fingerprintVersion: M2_AE_FINGERPRINT_VERSION,
+        identityHash: projection.identityHash,
+        contentHash: projection.contentHash,
+        item: projection.item,
+      })),
+    }
+
+    const validated = await validateCatalogSnapshot(snapshot, { now: new Date('2026-08-18T12:00:00.000Z') })
+    const resources = validated.templates.map((template) => template.item.compatibility?.host?.optionalModuleSlots?.[0])
+    expect(resources[0]).not.toHaveProperty('availableBuses')
+    expect(resources[1]).toHaveProperty('availableBuses', [])
+    expect(resources[2]).toHaveProperty('availableBuses', [{ family: 'pcie', lanes: 1, pcieGeneration: 3 }])
+  })
+
   it('accepts legacy v2 templates and rejects canonical or alias collisions', async () => {
     const item = { type: 'cpu', name: 'Example CPU', manufacturer: 'Example', model: 'C1' }
     const legacy = await digestCatalogTemplate(item, { fingerprintVersion: LEGACY_FINGERPRINT_VERSION })
@@ -115,7 +155,7 @@ describe('signed catalog snapshots', () => {
       templates: [{
         templateKey: 'future-server-v7',
         revision: 1,
-        fingerprintVersion: 12,
+        fingerprintVersion: 13,
         identityHash: projection.identityHash,
         contentHash: projection.contentHash,
         item: projection.item,

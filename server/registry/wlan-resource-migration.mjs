@@ -30,9 +30,15 @@ export function isLegacyWlanExpansionResource(resource) {
 }
 
 export function isCanonicalWlanModuleResource(resource) {
-  return normalizedKey(resource?.key) === 'wlan-m2'
+  const key = normalizedKey(resource?.key)
+  const aliases = Array.isArray(resource?.keyAliases) ? resource.keyAliases.map(normalizedKey) : []
+  const legacyWlan = key === 'wlan-m2'
     && Array.isArray(resource?.acceptedModuleKinds)
     && resource.acceptedModuleKinds.some((kind) => normalizedKey(kind) === 'wireless-card')
+  const canonicalV12 = key === 'm2-ae-slot'
+    && aliases.includes('wlan-m2')
+    && normalizedKey(resource?.interfaceFamily) === 'm2-ae'
+  return legacyWlan || canonicalV12
 }
 
 function constraintReferences(host, resourceType, resourceId) {
@@ -87,7 +93,7 @@ export function planWlanResourceMigration(currentItem, nextItem) {
     return { status: 'ambiguous', reason: `Expected one legacy M.2 A/E WLAN resource, found ${sources.length}.` }
   }
   if (destinations.length !== 1) {
-    return { status: 'ambiguous', reason: `Expected one optionalModuleSlots.wlan-m2 destination, found ${destinations.length}.` }
+    return { status: 'ambiguous', reason: `Expected one canonical optionalModuleSlots.m2-ae-slot destination, found ${destinations.length}.` }
   }
   const source = sources[0]
   const destination = destinations[0]

@@ -2,6 +2,10 @@ import {
   canonicalCpuGenerationTokens,
   inferCpuProductGenerationTokens,
 } from './cpu-generation-aliases.mjs'
+import {
+  moduleKeyFitsSocket,
+  usbGenerationAtLeastV12,
+} from '../../packages/catalog-protocol/src/m2-ae-compatibility.ts'
 
 function optionalNumber(value) {
   if (
@@ -291,12 +295,15 @@ export function normalizeHostCapabilities(item) {
   for (const group of Array.isArray(normalized.optionalModuleSlots) ? normalized.optionalModuleSlots : []) {
     normalizeNumericField(group, 'id')
     normalizeNumericField(group, 'count')
-    group.aliases = optionalStringArray(group.aliases)
-    group.acceptedKeys = optionalStringArray(group.acceptedKeys)
+    group.keyAliases = optionalStringArray(group.keyAliases ?? group.aliases)
+    group.socketKeys = optionalStringArray(group.socketKeys ?? group.acceptedKeys)
+    delete group.aliases
+    delete group.acceptedKeys
     group.moduleSizes = optionalStringArray(group.moduleSizes)
     group.intendedModuleKinds = optionalStringArray(group.intendedModuleKinds)
-    group.availableBuses = (Array.isArray(group.availableBuses) ? group.availableBuses : [])
-      .flatMap((bus) => {
+    if (Object.hasOwn(group, 'availableBuses')) {
+      group.availableBuses = (Array.isArray(group.availableBuses) ? group.availableBuses : [])
+        .flatMap((bus) => {
         const family = normalizedText(bus?.family)
         if (family !== 'pcie' && family !== 'usb') return []
         const next = { family }
@@ -307,7 +314,8 @@ export function normalizeHostCapabilities(item) {
         if (pcieGeneration !== undefined) next.pcieGeneration = pcieGeneration
         if (usbGeneration !== undefined) next.usbGeneration = usbGeneration
         return [next]
-      })
+        })
+    }
   }
   for (const port of Array.isArray(normalized.fixedPorts) ? normalized.fixedPorts : []) {
     normalizeNumericField(port, 'id')
@@ -447,7 +455,25 @@ export function normalizeComponentRequirements(item) {
     const moduleSize = optionalString(structured?.moduleSize)
     const usbGeneration = optionalString(structured?.usbGeneration)
     const connector = optionalString(structured?.connector)
-    const busFamily = optionalString(structured?.busFamily)
+    const requiredBuses = (Array.isArray(structured?.requiredBuses)
+      ? structured.requiredBuses
+      : Array.isArray(specs.hostInterface?.requiredBuses)
+        ? specs.hostInterface.requiredBuses
+        : structured?.busFamily
+          ? [{ family: structured.busFamily }]
+          : [])
+      .flatMap((bus) => {
+        const family = normalizedText(bus?.family)
+        if (family !== 'pcie' && family !== 'usb') return []
+        const normalized = { family }
+        const minimumLanes = optionalNumber(bus.minimumLanes)
+        const minimumPcieGeneration = optionalNumber(bus.minimumPcieGeneration)
+        const minimumUsbGeneration = optionalString(bus.minimumUsbGeneration)
+        if (minimumLanes !== undefined) normalized.minimumLanes = minimumLanes
+        if (minimumPcieGeneration !== undefined) normalized.minimumPcieGeneration = minimumPcieGeneration
+        if (minimumUsbGeneration !== undefined) normalized.minimumUsbGeneration = minimumUsbGeneration
+        return [normalized]
+      })
     const ocpVersion = optionalString(structured?.ocpVersion)
     const height = optionalString(structured?.height)
     const pcieGeneration = structuredNumber('pcieGeneration', legacy.pcieGeneration)
@@ -468,7 +494,7 @@ export function normalizeComponentRequirements(item) {
     if (moduleSize !== undefined) normalized.moduleSize = moduleSize
     if (usbGeneration !== undefined) normalized.usbGeneration = usbGeneration
     if (connector !== undefined) normalized.connector = connector
-    if (busFamily !== undefined) normalized.busFamily = busFamily
+    if (requiredBuses.length > 0) normalized.requiredBuses = requiredBuses
     if (ocpVersion !== undefined) normalized.ocpVersion = ocpVersion
     if (pcieGeneration !== undefined) normalized.pcieGeneration = pcieGeneration
     if (connectorLanes !== undefined) normalized.connectorLanes = connectorLanes
@@ -1431,6 +1457,110 @@ function evaluateExpansion(hostCapabilities, requirements, assignments, items, c
   evaluateExpansionPower(hostCapabilities, assignments, items, component, findings)
 }
 
+function evaluateRequiredBus(group, requirement, findings) {
+  if (!Object.hasOwn(group, 'availableBuses')) {
+    addMissing(
+      findings,
+      'host.optionalModuleSlots.availableBuses',
+      `The slot's ${requirement.family.toUpperCase()} bus availability is not recorded.`,
+      group.id,
+    )
+    return
+  }
+  const bus = group.availableBuses.find((candidate) => (
+    normalizedText(candidate.family) === normalizedText(requirement.family)
+  ))
+  if (!bus) {
+    addFinding(findings, {
+      code: 'optional-module.bus.missing',
+      severity: 'error',
+      message: `The slot does not expose the required ${requirement.family.toUpperCase()} bus.`,
+      field: 'host.optionalModuleSlots.availableBuses',
+      resourceId: group.id,
+    })
+    return
+  }
+  if (requirement.family === 'pcie') {
+    if (requirement.minimumLanes !== undefined) {
+      if (bus.lanes === undefined) {
+        addMissing(findings, 'host.optionalModuleSlots.availableBuses.lanes', 'PCIe lane evidence is not recorded for this slot.', group.id)
+      } else if (bus.lanes < requirement.minimumLanes) {
+        addFinding(findings, {
+          code: 'optional-module.bus.pcie-lanes.insufficient',
+          severity: 'error',
+          message: `The slot provides x${bus.lanes}, below the module's required x${requirement.minimumLanes}.`,
+          field: 'host.optionalModuleSlots.availableBuses.lanes',
+          resourceId: group.id,
+        })
+      }
+    }
+    if (requirement.minimumPcieGeneration !== undefined) {
+      if (bus.pcieGeneration === undefined) {
+        addMissing(findings, 'host.optionalModuleSlots.availableBuses.pcieGeneration', 'PCIe generation evidence is not recorded for this slot.', group.id)
+      } else if (bus.pcieGeneration < requirement.minimumPcieGeneration) {
+        addFinding(findings, {
+          code: 'optional-module.bus.pcie-generation.insufficient',
+          severity: 'error',
+          message: `The slot provides PCIe Gen${bus.pcieGeneration}, below the module's required Gen${requirement.minimumPcieGeneration}.`,
+          field: 'host.optionalModuleSlots.availableBuses.pcieGeneration',
+          resourceId: group.id,
+        })
+      }
+    }
+    return
+  }
+  if (requirement.minimumUsbGeneration !== undefined) {
+    const sufficient = usbGenerationAtLeastV12(bus.usbGeneration, requirement.minimumUsbGeneration)
+    if (sufficient === undefined) {
+      addMissing(findings, 'host.optionalModuleSlots.availableBuses.usbGeneration', 'USB generation evidence is not recorded for this slot.', group.id)
+    } else if (!sufficient) {
+      addFinding(findings, {
+        code: 'optional-module.bus.usb-generation.insufficient',
+        severity: 'error',
+        message: `The slot provides ${bus.usbGeneration}, below the module's required ${requirement.minimumUsbGeneration}.`,
+        field: 'host.optionalModuleSlots.availableBuses.usbGeneration',
+        resourceId: group.id,
+      })
+    }
+  }
+}
+
+function evaluateOptionalModuleGroup(group, requirements) {
+  const findings = []
+  const socketKeys = optionalStringArray(group.socketKeys)
+  const moduleSizes = optionalStringArray(group.moduleSizes)
+  if (requirements.key) {
+    if (socketKeys.length === 0) {
+      addMissing(findings, 'host.optionalModuleSlots.socketKeys', 'Physical socket keying is not recorded for this slot.', group.id)
+    } else if (!socketKeys.some((socketKey) => moduleKeyFitsSocket(requirements.key, socketKey))) {
+      addFinding(findings, {
+        code: 'optional-module.socket-key.mismatch',
+        severity: 'error',
+        message: `The ${requirements.key} module key does not fit this socket.`,
+        field: 'host.optionalModuleSlots.socketKeys',
+        resourceId: group.id,
+      })
+    }
+  }
+  if (requirements.moduleSize) {
+    if (moduleSizes.length === 0) {
+      addMissing(findings, 'host.optionalModuleSlots.moduleSizes', 'Supported module sizes are not recorded for this slot.', group.id)
+    } else if (!includesNormalized(moduleSizes, requirements.moduleSize)) {
+      addFinding(findings, {
+        code: 'optional-module.module-size.mismatch',
+        severity: 'error',
+        message: `The ${requirements.moduleSize} module size does not fit this slot.`,
+        field: 'host.optionalModuleSlots.moduleSizes',
+        resourceId: group.id,
+      })
+    }
+  }
+  for (const requirement of requirements.requiredBuses ?? []) {
+    evaluateRequiredBus(group, requirement, findings)
+  }
+  return findings
+}
+
 function evaluateOptionalModule(hostCapabilities, component, findings) {
   const kinds = optionalModuleKinds(component)
   const requirements = normalizeComponentRequirements(component)
@@ -1441,29 +1571,14 @@ function evaluateOptionalModule(hostCapabilities, component, findings) {
   }
   const physicalGroups = optionalModuleGroupsFor(hostCapabilities, component)
   if (physicalGroups.length > 0 && requirements.interfaceFamily) {
-    const matching = physicalGroups.some((group) => {
-      const acceptedKeys = optionalStringArray(group.acceptedKeys)
-      const moduleSizes = optionalStringArray(group.moduleSizes)
-      const keyMatches = acceptedKeys.length === 0 || !requirements.key
-        || includesNormalized(acceptedKeys, requirements.key)
-      const sizeMatches = moduleSizes.length === 0 || !requirements.moduleSize
-        || includesNormalized(moduleSizes, requirements.moduleSize)
-      const buses = Array.isArray(group.availableBuses) ? group.availableBuses : []
-      const busMatches = !requirements.busFamily
-        || buses.length === 0
-        || buses.some((bus) => (
-          normalizedText(bus.family) === normalizedText(requirements.busFamily)
-        ))
-      return keyMatches && sizeMatches && busMatches
-    })
-    if (!matching) {
-      addFinding(findings, {
-        code: 'optional-module.interface.mismatch',
-        severity: 'error',
-        message: 'The assigned module does not match the slot connector, size, or available bus.',
-        field: 'host.optionalModuleSlots',
-      })
-    }
+    const candidates = physicalGroups.map((group, index) => ({
+      index,
+      findings: evaluateOptionalModuleGroup(group, requirements),
+    }))
+    const selected = candidates.reduce((best, candidate) => (
+      compareCandidateRank(candidate, best) < 0 ? candidate : best
+    ))
+    for (const finding of selected.findings) addFinding(findings, finding)
     return
   }
   if (!groups.some((group) => optionalStringArray(group.acceptedModuleKinds).some((kind) => kinds.includes(kind)))) {

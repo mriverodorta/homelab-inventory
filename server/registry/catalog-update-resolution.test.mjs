@@ -311,7 +311,7 @@ describe('catalog topology update resolution', () => {
     expect(buildCatalogResolutionPlan({ current, next, project: input, link })).toMatchObject({
       available: false,
       operations: [],
-      reason: expect.stringContaining('optionalModuleSlots.wlan-m2'),
+      reason: expect.stringContaining('optionalModuleSlots.m2-ae-slot'),
     })
   })
 

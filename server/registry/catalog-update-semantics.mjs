@@ -2,9 +2,11 @@ import {
   CANONICAL_UNITS_FINGERPRINT_VERSION,
   NAS_FINGERPRINT_VERSION,
   NETWORK_FINGERPRINT_VERSION,
+  M2_AE_FINGERPRINT_VERSION,
   canonicalJson,
   canonicalizeCatalogItemV10,
   canonicalizeCatalogItemV11,
+  canonicalizeCatalogItemV12,
   canonicalizeCatalogItemV9,
   parseLegacySpeedBps,
   sanitizeCatalogItem,
@@ -28,6 +30,7 @@ const NETWORK_CONNECTORS = new Set([
 const HOST_RESOURCE_COLLECTIONS = ['storageSlots', 'expansionSlots', 'optionalModuleSlots', 'controllerSlots', 'bootDeviceSlots']
 
 function sanitizeForFingerprint(value, fingerprintVersion) {
+  if (fingerprintVersion === M2_AE_FINGERPRINT_VERSION) return canonicalizeCatalogItemV12(value)
   if (fingerprintVersion === NETWORK_FINGERPRINT_VERSION) return canonicalizeCatalogItemV11(value)
   if (fingerprintVersion === NAS_FINGERPRINT_VERSION) return canonicalizeCatalogItemV10(value)
   if (fingerprintVersion === CANONICAL_UNITS_FINGERPRINT_VERSION) return canonicalizeCatalogItemV9(value)
@@ -35,6 +38,7 @@ function sanitizeForFingerprint(value, fingerprintVersion) {
 }
 
 function sanitizeCurrentForFingerprint(value, fingerprintVersion) {
+  if (fingerprintVersion === M2_AE_FINGERPRINT_VERSION) return canonicalizeCatalogItemV12(value)
   if (fingerprintVersion === NETWORK_FINGERPRINT_VERSION) return canonicalizeCatalogItemV9(value)
   if (fingerprintVersion !== NAS_FINGERPRINT_VERSION) return sanitizeForFingerprint(value, fingerprintVersion)
   return canonicalizeCatalogItemV10(canonicalizeCatalogItemV9(value))
@@ -164,7 +168,7 @@ function mergeCatalogItem(currentValue, incomingValue, fingerprintVersion) {
   }
   if (Array.isArray(incoming.ports)) result.ports = mergePorts(current.ports, incoming.ports)
   result = removeSupersededWlanResource(current, incoming, result)
-  if (fingerprintVersion === NETWORK_FINGERPRINT_VERSION) {
+  if (fingerprintVersion === NETWORK_FINGERPRINT_VERSION || fingerprintVersion === M2_AE_FINGERPRINT_VERSION) {
     const incomingMinimum = incoming.specs?.hostInterface?.minimumElectricalLanes
     if (incomingMinimum === undefined) {
       delete result.specs?.hostInterface?.minimumElectricalLanes

@@ -46,8 +46,8 @@ describe('core SQLite foundation schema', () => {
       'optionalModuleResourceGroups',
       'compatibilityAuditDirtyHosts',
     ]))
-    expect(CORE_MIGRATIONS).toHaveLength(22)
-    expect(CORE_MIGRATIONS.at(-1)?.id).toBe('0022_canonical_compatibility_audit')
+    expect(CORE_MIGRATIONS).toHaveLength(23)
+    expect(CORE_MIGRATIONS.at(-1)?.id).toBe('0023_m2_ae_contract_v12')
   })
 
   test('maps every active inventory category to a shared-primary-key subtype table', () => {
@@ -122,7 +122,7 @@ describe('core SQLite foundation schema', () => {
         sha256: migration.sha256,
         sql: await readFile(join(migrationsDir, migration.file), 'utf8'),
       })))
-      await expect(applyCommittedMigrations(handle, migrations)).resolves.toEqual({ applied: 5, currentVersion: 22 })
+      await expect(applyCommittedMigrations(handle, migrations)).resolves.toEqual({ applied: 6, currentVersion: 23 })
 
       expect(handle.database.query(`
         SELECT id, network_technology, form_factor, max_speed_bps
@@ -154,7 +154,7 @@ describe('core SQLite foundation schema', () => {
       expect(handle.database.query(`
         SELECT name FROM sqlite_schema WHERE type = 'table' AND name IN ('network_cards', 'wireless_cards')
       `).all()).toEqual([])
-      await expect(applyCommittedMigrations(handle, migrations)).resolves.toEqual({ applied: 0, currentVersion: 22 })
+      await expect(applyCommittedMigrations(handle, migrations)).resolves.toEqual({ applied: 0, currentVersion: 23 })
     } finally {
       closeManagedDatabase(handle)
     }
@@ -224,7 +224,7 @@ describe('core SQLite foundation schema', () => {
         sha256: migration.sha256,
         sql: await readFile(join(migrationsDir, migration.file), 'utf8'),
       })))
-      await expect(applyCommittedMigrations(handle, migrations)).resolves.toEqual({ applied: 4, currentVersion: 22 })
+      await expect(applyCommittedMigrations(handle, migrations)).resolves.toEqual({ applied: 5, currentVersion: 23 })
 
       expect(handle.database.query(`
         SELECT family, key, module_size FROM network_adapter_host_interfaces WHERE adapter_id = ?
@@ -239,9 +239,81 @@ describe('core SQLite foundation schema', () => {
         SELECT key, module_size FROM network_adapter_host_interfaces WHERE adapter_id = ?
       `).get(populatedAdapter.id)).toEqual({ key: 'curated-key', module_size: '2242' })
       expect(handle.database.query(`
-        SELECT keying, module_size FROM expansion_resource_groups WHERE id = ?
-      `).get(group.id)).toEqual({ keying: 'A+E', module_size: '2230' })
-      await expect(applyCommittedMigrations(handle, migrations)).resolves.toEqual({ applied: 0, currentVersion: 22 })
+        SELECT group_row.resource_type, group_row.semantic_key, optional.interface_family
+        FROM host_resource_groups group_row
+        JOIN optional_module_resource_groups optional ON optional.id = group_row.id
+        WHERE group_row.id = ?
+      `).get(group.id)).toEqual({
+        resource_type: 'optionalModule',
+        semantic_key: 'm2-ae-slot',
+        interface_family: 'm2-ae',
+      })
+      await expect(applyCommittedMigrations(handle, migrations)).resolves.toEqual({ applied: 0, currentVersion: 23 })
+    } finally {
+      closeManagedDatabase(handle)
+    }
+  })
+
+  test('reclassifies an unambiguous M.2 A/E expansion resource without changing relational IDs', async () => {
+    const migrationIndex = CORE_MIGRATIONS.findIndex((migration) => migration.id === '0023_m2_ae_contract_v12')
+    const handle = await createMigratedDatabase(migrationIndex)
+    try {
+      const serverType = handle.database.query("SELECT id FROM inventory_item_types WHERE key = 'server'").get() as { id: number }
+      const networkType = handle.database.query("SELECT id FROM inventory_item_types WHERE key = 'network'").get() as { id: number }
+      const insertItem = handle.database.query(`
+        INSERT INTO inventory_items (
+          type_id, scope, owner_project_id, name, row_version, created_at_ms, updated_at_ms
+        ) VALUES (?, 'global', NULL, ?, 1, 1, 1) RETURNING id
+      `)
+      const host = insertItem.get(serverType.id, 'Legacy M.2 host') as { id: number }
+      const adapter = insertItem.get(networkType.id, 'A+E adapter') as { id: number }
+      handle.database.query('INSERT INTO servers (id) VALUES (?)').run(host.id)
+      handle.database.query("INSERT INTO network_adapters (id, network_technology, form_factor) VALUES (?, 'ethernet', 'm2-2230')").run(adapter.id)
+      const identity = handle.database.query(`
+        INSERT INTO inventory_resources (item_id, created_at_ms) VALUES (?, 1) RETURNING id
+      `).get(host.id) as { id: number }
+      const group = handle.database.query(`
+        INSERT INTO host_resource_groups (
+          resource_identity_id, host_item_id, resource_type, semantic_key, label, slot_count, created_at_ms
+        ) VALUES (?, ?, 'expansion', 'm2-ae-slot', 'M.2 2230 A/E WLAN slot', 1, 1) RETURNING id
+      `).get(identity.id, host.id) as { id: number }
+      handle.database.query(`
+        INSERT INTO expansion_resource_groups (
+          id, interface_family, interface_key, module_size, pcie_generation, electrical_lanes
+        ) VALUES (?, 'm2-ae', 'A+E', '2230', 3, 1)
+      `).run(group.id)
+      const slot = handle.database.query(`
+        INSERT INTO host_resource_slots (
+          resource_group_id, host_item_id, position, label, single_capacity, created_at_ms
+        ) VALUES (?, ?, 1, 'M.2 slot 1', 1, 1) RETURNING id
+      `).get(group.id, host.id) as { id: number }
+      handle.database.query('INSERT INTO expansion_slots (id) VALUES (?)').run(slot.id)
+      const assignment = handle.database.query(`
+        INSERT INTO component_assignments (
+          project_id, host_item_id, component_item_id, resource_slot_id, assigned_at_ms
+        ) VALUES (1, ?, ?, ?, 1) RETURNING id
+      `).get(host.id, adapter.id, slot.id) as { id: number }
+
+      const migrationsDir = resolve(import.meta.dir, '../migrations/generated')
+      const migrations = await Promise.all(CORE_MIGRATIONS.map(async (migration) => ({
+        id: migration.id,
+        sha256: migration.sha256,
+        sql: await readFile(join(migrationsDir, migration.file), 'utf8'),
+      })))
+      await expect(applyCommittedMigrations(handle, migrations)).resolves.toEqual({ applied: 1, currentVersion: 23 })
+
+      expect(handle.database.query(`
+        SELECT id, resource_type, semantic_key FROM host_resource_groups WHERE id = ?
+      `).get(group.id)).toEqual({ id: group.id, resource_type: 'optionalModule', semantic_key: 'm2-ae-slot' })
+      expect(handle.database.query('SELECT id FROM optional_module_slots WHERE id = ?').get(slot.id)).toEqual({ id: slot.id })
+      expect(handle.database.query('SELECT id FROM expansion_slots WHERE id = ?').get(slot.id)).toBeNull()
+      expect(handle.database.query(`
+        SELECT id, resource_slot_id FROM component_assignments WHERE id = ?
+      `).get(assignment.id)).toEqual({ id: assignment.id, resource_slot_id: slot.id })
+      expect(handle.database.query(`
+        SELECT alias FROM optional_module_resource_aliases WHERE resource_group_id = ?
+      `).get(group.id)).toEqual({ alias: 'wlan-m2' })
+      await expect(applyCommittedMigrations(handle, migrations)).resolves.toEqual({ applied: 0, currentVersion: 23 })
     } finally {
       closeManagedDatabase(handle)
     }
@@ -278,7 +350,7 @@ describe('core SQLite foundation schema', () => {
         sha256: migration.sha256,
         sql: await readFile(join(migrationsDir, migration.file), 'utf8'),
       })))
-      await expect(applyCommittedMigrations(handle, migrations)).resolves.toEqual({ applied: 8, currentVersion: 22 })
+      await expect(applyCommittedMigrations(handle, migrations)).resolves.toEqual({ applied: 9, currentVersion: 23 })
       expect(handle.database.query(`
         SELECT adapter_disposition FROM host_power_profiles WHERE host_profile_id = ?
       `).get(profile.id)).toEqual({ adapter_disposition: 'replaceable' })
@@ -286,7 +358,7 @@ describe('core SQLite foundation schema', () => {
         id: item.id,
         power_configuration: 'external-adapter',
       })
-      await expect(applyCommittedMigrations(handle, migrations)).resolves.toEqual({ applied: 0, currentVersion: 22 })
+      await expect(applyCommittedMigrations(handle, migrations)).resolves.toEqual({ applied: 0, currentVersion: 23 })
     } finally {
       closeManagedDatabase(handle)
     }

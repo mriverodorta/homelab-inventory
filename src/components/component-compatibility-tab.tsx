@@ -21,6 +21,7 @@ import {
 } from '@/lib/compatibility'
 import { runtimeItemKey } from '@/lib/item-keys'
 import type { InventoryItem, ProjectState } from '@/types/inventory'
+import { M2AeCompatibilitySummary } from '@/components/compatibility/m2-ae-compatibility-summary'
 
 type RequirementRow = {
   label: string
@@ -118,6 +119,15 @@ export function ComponentCompatibilityTab({
   const requirements = normalizeComponentRequirements(item)
   const rows = requirementRows(requirements)
   const hostCapabilities = host ? normalizeHostCapabilities(host) : {}
+  const assignedOptionalModule = plannedAssignment?.allocation?.resourceType === 'optionalModule'
+    ? hostCapabilities.optionalModuleSlots?.find((group) => (
+        group.id === plannedAssignment.allocation?.groupId
+      ))
+    : assignment?.allocation?.resourceType === 'optionalModule'
+      ? hostCapabilities.optionalModuleSlots?.find((group) => (
+          group.id === assignment.allocation?.groupId
+        ))
+      : undefined
   const handleFieldChange: CompatibilityFieldsProps['onChange'] = (
     patch,
     mode = 'debounced',
@@ -176,6 +186,15 @@ export function ComponentCompatibilityTab({
           </div>
         )}
       </section>
+
+      {(requirements.type === 'network' || requirements.type === 'gpu')
+        && requirements.interfaceFamily === 'm2-ae'
+        && assignedOptionalModule ? (
+          <M2AeCompatibilitySummary
+            resource={assignedOptionalModule}
+            requirements={requirements}
+          />
+        ) : null}
 
       {!assignment ? (
         <div className="rounded-md border border-dashed border-[#d6ccbd] bg-[#f8f3eb] px-3 py-3 text-sm font-semibold text-[#75695d]">

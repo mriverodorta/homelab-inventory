@@ -119,6 +119,31 @@ describe('catalog runtime projection', () => {
     })
   })
 
+  it('preserves v12 M.2 A/E socket semantics and tri-state bus evidence', () => {
+    const item = {
+      type: 'desktop',
+      name: 'Canonical M.2 host',
+      compatibility: { host: { optionalModuleSlots: [{
+        id: 1,
+        key: 'm2-ae-slot',
+        keyAliases: ['wlan-m2'],
+        count: 1,
+        label: 'M.2 Key E slot',
+        interfaceFamily: 'm2-ae',
+        socketKeys: ['E'],
+        moduleSizes: ['2230'],
+        availableBuses: [],
+        intendedModuleKinds: ['wireless-card'],
+      }] } },
+    }
+    const projected = projectCatalogTemplateForRuntime(template(item, 12))
+
+    expect(projected.runtimeCanonicalVersion).toBe(12)
+    expect(projected.item.compatibility.host.optionalModuleSlots[0]).toEqual(
+      item.compatibility.host.optionalModuleSlots[0],
+    )
+  })
+
   it('rejects conflicting historical measurements', () => {
     expect(() => projectCatalogTemplateForRuntime(template({
       type: 'ram',

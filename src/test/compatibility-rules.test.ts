@@ -5,6 +5,7 @@ import {
 } from '@/lib/compatibility'
 import type { NormalizedComponentRequirements } from '@/lib/compatibility'
 import type { InventoryItem, ProjectState } from '@/types/inventory'
+import type { OptionalModuleSlotGroup } from '@/types/compatibility'
 
 const host = (compatibility: InventoryItem['compatibility']): InventoryItem => ({
   id: 1,
@@ -1331,7 +1332,7 @@ describe('compatibility rule evaluation', () => {
         interfaceFamily: 'm2-ae',
         key: 'A+E',
         moduleSize: '2230',
-        busFamily: 'pcie',
+        requiredBuses: [{ family: 'pcie', minimumLanes: 1, minimumPcieGeneration: 2 }],
       } },
     })
     const result = evaluateAssignmentCompatibility({
@@ -1341,7 +1342,8 @@ describe('compatibility rule evaluation', () => {
         label: 'M.2 2230 A/E slot',
         count: 1,
         interfaceFamily: 'm2-ae',
-        acceptedKeys: ['A+E'],
+        keyAliases: ['wlan-m2'],
+        socketKeys: ['E'],
         moduleSizes: ['2230'],
         availableBuses: [{ family: 'pcie', lanes: 1 }],
         intendedModuleKinds: ['wireless-card'],
@@ -1354,8 +1356,99 @@ describe('compatibility rule evaluation', () => {
 
     expect(result.findings).not.toEqual(expect.arrayContaining([
       expect.objectContaining({ code: 'optional-module.kind.mismatch' }),
-      expect.objectContaining({ code: 'optional-module.interface.mismatch' }),
+      expect.objectContaining({ code: 'optional-module.socket-key.mismatch' }),
     ]))
+  })
+
+  it.each([
+    ['A+E', 'A', 'compatible'],
+    ['A+E', 'E', 'compatible'],
+    ['A', 'E', 'incompatible'],
+    ['E', 'A', 'incompatible'],
+    ['B+M', 'E', 'incompatible'],
+  ] as const)('evaluates module key %s against host socket key %s', (moduleKey, socketKey, expected) => {
+    const result = evaluateAssignmentCompatibility({
+      host: host({ host: { optionalModuleSlots: [{
+        id: 8, key: 'm2-ae-slot', label: 'M.2 socket', count: 1,
+        interfaceFamily: 'm2-ae', socketKeys: [socketKey], moduleSizes: ['2230'],
+      }] } }),
+      component: component('network', { requirements: { expansion: {
+        interfaceFamily: 'm2-ae', key: moduleKey, moduleSize: '2230',
+      } } }),
+      assignments: [],
+      assignedAllocation: { resourceType: 'optionalModule', groupId: 8, positions: [0] },
+    })
+    expect(result.status).toBe(expected)
+  })
+
+  it('requires every declared M.2 A/E bus while keeping absent evidence informational', () => {
+    const module = component('network', {
+      requirements: { expansion: {
+        interfaceFamily: 'm2-ae', key: 'A+E', moduleSize: '2230',
+        requiredBuses: [
+          { family: 'pcie', minimumLanes: 1, minimumPcieGeneration: 2 },
+          { family: 'usb', minimumUsbGeneration: 'USB 2.0' },
+        ],
+      } },
+    })
+    const resource: OptionalModuleSlotGroup = {
+      id: 8, key: 'm2-ae-slot', keyAliases: ['wlan-m2'], label: 'M.2 Key E slot', count: 1,
+      interfaceFamily: 'm2-ae', socketKeys: ['E'], moduleSizes: ['2230'],
+      intendedModuleKinds: ['wireless-card'],
+    }
+    const unknown = evaluateAssignmentCompatibility({
+      host: host({ host: { optionalModuleSlots: [resource] } }), component: module,
+      assignedAllocation: { resourceType: 'optionalModule', groupId: 8, positions: [0] },
+    })
+    expect(unknown.status).toBe('unknown')
+    expect(unknown.findings).toEqual(expect.arrayContaining([
+      expect.objectContaining({ classification: 'informational', field: 'host.optionalModuleSlots.availableBuses' }),
+    ]))
+
+    const provenAbsent = evaluateAssignmentCompatibility({
+      host: host({ host: { optionalModuleSlots: [{ ...resource, availableBuses: [] }] } }),
+      component: module,
+      assignedAllocation: { resourceType: 'optionalModule', groupId: 8, positions: [0] },
+    })
+    expect(provenAbsent.status).toBe('incompatible')
+
+    const incompatible = evaluateAssignmentCompatibility({
+      host: host({ host: { optionalModuleSlots: [{ ...resource, availableBuses: [
+        { family: 'pcie', lanes: 1, pcieGeneration: 3 },
+      ] }] } }), component: module,
+      assignedAllocation: { resourceType: 'optionalModule', groupId: 8, positions: [0] },
+    })
+    expect(incompatible.status).toBe('incompatible')
+    expect(incompatible.findings).toEqual(expect.arrayContaining([
+      expect.objectContaining({ code: 'optional-module.bus.missing' }),
+    ]))
+
+    const compatible = evaluateAssignmentCompatibility({
+      host: host({ host: { optionalModuleSlots: [{ ...resource, availableBuses: [
+        { family: 'pcie', lanes: 1, pcieGeneration: 3 },
+        { family: 'usb', usbGeneration: 'USB 2.0' },
+      ] }] } }), component: module,
+      assignedAllocation: { resourceType: 'optionalModule', groupId: 8, positions: [0] },
+    })
+    expect(compatible).toMatchObject({ status: 'compatible', findings: [] })
+  })
+
+  it('rejects proven insufficient M.2 bus lanes and generation', () => {
+    const result = evaluateAssignmentCompatibility({
+      host: host({ host: { optionalModuleSlots: [{
+        id: 8, key: 'm2-ae-slot', label: 'M.2 Key E slot', count: 1,
+        interfaceFamily: 'm2-ae', socketKeys: ['E'], moduleSizes: ['2230'],
+        availableBuses: [{ family: 'pcie', lanes: 1, pcieGeneration: 2 }],
+      }] } }),
+      component: component('network', { requirements: { expansion: {
+        interfaceFamily: 'm2-ae', key: 'A+E', moduleSize: '2230',
+        requiredBuses: [{ family: 'pcie', minimumLanes: 2, minimumPcieGeneration: 3 }],
+      } } }),
+      assignments: [],
+      assignedAllocation: { resourceType: 'optionalModule', groupId: 8, positions: [0] },
+    })
+    expect(result.status).toBe('incompatible')
+    expect(result.findings.filter((finding) => finding.classification === 'actionable')).toHaveLength(2)
   })
 
   it('evaluates storage against its assigned slot instead of a more permissive sibling slot', () => {

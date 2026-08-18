@@ -21,6 +21,56 @@ describe('OEM canonical catalog update safety', () => {
     })).toBe(true)
   })
 
+  it('plans one deterministic v12 resource reclassification even without an assignment', () => {
+    const current = {
+      type: 'desktop',
+      name: 'Legacy host',
+      compatibility: { host: { expansionSlots: [{
+        id: 7,
+        key: 'm2-ae-slot',
+        count: 1,
+        label: 'M.2 2230 A/E WLAN slot',
+        interfaceFamily: 'm2-ae',
+        keying: 'A+E',
+        moduleSize: '2230',
+      }] } },
+    }
+    const incoming = {
+      type: 'desktop',
+      name: 'Legacy host',
+      compatibility: { host: { optionalModuleSlots: [{
+        id: 1,
+        key: 'm2-ae-slot',
+        keyAliases: ['wlan-m2'],
+        count: 1,
+        label: 'M.2 Key E slot',
+        interfaceFamily: 'm2-ae',
+        socketKeys: ['E'],
+        moduleSizes: ['2230'],
+        availableBuses: [{ family: 'pcie', lanes: 1, pcieGeneration: 3 }],
+        intendedModuleKinds: ['wireless-card'],
+      }] } },
+    }
+
+    const plan = planCatalogUpdate(current, incoming, {
+      sourceFingerprintVersion: 12,
+      runtimeCanonicalVersion: 12,
+    })
+
+    expect(plan.changes.filter((change) => change.kind === 'reclassify-resource')).toEqual([
+      expect.objectContaining({
+        from: expect.objectContaining({ resourceId: 7, key: 'm2-ae-slot' }),
+        to: expect.objectContaining({ resourceId: 7, key: 'm2-ae-slot' }),
+      }),
+    ])
+    expect(plan.changes.some((change) => (
+      change.kind === 'removed' && change.path.includes('expansionSlots')
+    ))).toBe(false)
+    expect(plan.nextItem.compatibility.host.optionalModuleSlots).toEqual([
+      expect.objectContaining({ id: 7, key: 'm2-ae-slot', keyAliases: ['wlan-m2'] }),
+    ])
+  })
+
   for (const templateKey of AFFECTED_TEMPLATE_KEYS) {
     it(`compares ${templateKey} at runtime v9 without false removals or duplicate WLAN resources`, () => {
       const source = fixture.templates.find((template) => template.templateKey === templateKey)

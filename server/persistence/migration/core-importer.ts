@@ -10,6 +10,7 @@ import {
   type LegacyInventoryType,
 } from '../legacy/identity-plan.ts'
 import { persistAuthenticationState } from '../core/projections/legacy-domains.ts'
+import { normalizeUsbGenerationV12 } from '../../../packages/catalog-protocol/src/m2-ae-v12.ts'
 
 type LegacySnapshot = Record<string, any>
 type LegacyRecord = Record<string, any>
@@ -271,7 +272,7 @@ const NETWORK_SPEC_FIELDS = new Set([
 ])
 const NETWORK_HOST_INTERFACE_FIELDS = new Set([
   'family', 'pcieGeneration', 'connectorLanes', 'minimumElectricalLanes', 'key', 'moduleSize',
-  'usbGeneration', 'connector', 'ocpVersion', 'interfaceKey',
+  'usbGeneration', 'connector', 'ocpVersion', 'interfaceKey', 'requiredBuses',
 ])
 const NETWORK_CAPABILITY_FIELDS = new Set([
   'sriov', 'ptp', 'pxe', 'uefiBoot', 'wakeOnLan', 'rdmaModes', 'offloads',
@@ -284,7 +285,7 @@ const NETWORK_PORT_FIELDS = new Set([
 const NETWORK_EXPANSION_REQUIREMENT_FIELDS = new Set([
   'interfaceFamily', 'interfaceKey', 'key', 'moduleSize', 'usbGeneration', 'connector', 'ocpVersion',
   'pcieGeneration', 'connectorLanes', 'minimumElectricalLanes', 'height', 'slotWidth', 'powerMw',
-  'powerWatts',
+  'powerWatts', 'requiredBuses',
 ])
 
 function unknownObjectFields(value: unknown, known: ReadonlySet<string>) {
@@ -404,6 +405,20 @@ function insertNetworkAdapter(database: Database, itemId: number, item: LegacyRe
       optionalText(host.ocpVersion),
       optionalText(host.interfaceKey),
     )
+    for (const bus of records(host.requiredBuses)) {
+      if (!['pcie', 'usb'].includes(bus.family)) throw new Error('Network adapter required-bus family is invalid.')
+      database.query(`
+        INSERT INTO network_adapter_required_buses (
+          adapter_id, family, minimum_lanes, minimum_pcie_generation, minimum_usb_generation
+        ) VALUES (?, ?, ?, ?, ?)
+      `).run(
+        itemId,
+        bus.family,
+        positiveIntegerOrNull(bus.minimumLanes),
+        positiveIntegerOrNull(bus.minimumPcieGeneration),
+        optionalText(bus.minimumUsbGeneration),
+      )
+    }
   }
   insertTextValues(database, 'network_adapter_operating_modes', itemId, 'mode', specs.operatingModes)
   insertTextValues(database, 'network_adapter_wifi_generations', itemId, 'generation', specs.wifiGenerations)
@@ -631,13 +646,14 @@ function importCompatibility(database: Database, itemId: number, item: LegacyRec
         'proprietary',
       ].includes(entry.interfaceFamily) ? entry.interfaceFamily : null
       database.query(`
-        INSERT INTO optional_module_resource_groups (id, interface_family)
-        VALUES (?, ?)
-      `).run(resourceIdentityId, interfaceFamily)
-      const aliases = new Set([
-        definition.key,
-        ...records(entry.aliases).map(String),
-      ])
+        INSERT INTO optional_module_resource_groups (id, interface_family, bus_evidence_state)
+        VALUES (?, ?, ?)
+      `).run(
+        resourceIdentityId,
+        interfaceFamily,
+        Object.hasOwn(entry, 'availableBuses') ? 'recorded' : 'unknown',
+      )
+      const aliases = new Set(records(entry.keyAliases ?? entry.aliases).map(String))
       for (const alias of aliases) {
         const value = optionalText(alias)
         if (value) database.query(`
@@ -645,8 +661,11 @@ function importCompatibility(database: Database, itemId: number, item: LegacyRec
           VALUES (?, ?)
         `).run(resourceIdentityId, value)
       }
-      for (const key of records(entry.acceptedKeys)) {
-        const value = optionalText(key)
+      for (const key of records(entry.socketKeys ?? entry.acceptedKeys)) {
+        const legacySocketKey = interfaceFamily === 'm2-ae' && String(key).toUpperCase() === 'A+E'
+          ? 'E'
+          : key
+        const value = optionalText(legacySocketKey)
         if (value) database.query(`
           INSERT INTO optional_module_accepted_keys (resource_group_id, key)
           VALUES (?, ?)
@@ -663,6 +682,9 @@ function importCompatibility(database: Database, itemId: number, item: LegacyRec
         if (!['pcie', 'usb'].includes(bus.family)) {
           throw new Error('Optional-module bus family is invalid.')
         }
+        const usbGeneration = bus.family === 'usb' && bus.usbGeneration !== undefined
+          ? normalizeUsbGenerationV12(bus.usbGeneration, { legacyBoundary: true })
+          : undefined
         database.query(`
           INSERT INTO optional_module_available_buses (
             resource_group_id, family, lanes, pcie_generation, usb_generation
@@ -672,7 +694,7 @@ function importCompatibility(database: Database, itemId: number, item: LegacyRec
           bus.family,
           positiveIntegerOrNull(bus.lanes),
           positiveIntegerOrNull(bus.pcieGeneration),
-          optionalText(bus.usbGeneration),
+          usbGeneration ?? null,
         )
       }
       for (const kind of records(entry.intendedModuleKinds)) {

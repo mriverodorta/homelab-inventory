@@ -9,6 +9,7 @@ export const RAM_FINGERPRINT_VERSION = 8
 export const CANONICAL_UNITS_FINGERPRINT_VERSION = 9
 export const NAS_FINGERPRINT_VERSION = 10
 export const NETWORK_FINGERPRINT_VERSION = 11
+export const M2_AE_FINGERPRINT_VERSION = 12
 export const SUPPORTED_FINGERPRINT_VERSIONS = [
   LEGACY_FINGERPRINT_VERSION,
   FINGERPRINT_VERSION,
@@ -20,6 +21,7 @@ export const SUPPORTED_FINGERPRINT_VERSIONS = [
   CANONICAL_UNITS_FINGERPRINT_VERSION,
   NAS_FINGERPRINT_VERSION,
   NETWORK_FINGERPRINT_VERSION,
+  M2_AE_FINGERPRINT_VERSION,
 ] as const
 export const MANUFACTURER_ALIAS_VERSION = 1
 
@@ -123,6 +125,31 @@ export type CatalogNetworkHostInterface = {
   connector?: string
   ocpVersion?: string
   interfaceKey?: string
+  requiredBuses?: CatalogRequiredBus[]
+}
+
+export type CatalogUsbGeneration =
+  | 'USB 1.1'
+  | 'USB 2.0'
+  | 'USB 3.2 Gen 1'
+  | 'USB 3.2 Gen 2'
+  | 'USB 3.2 Gen 2x2'
+  | 'USB4 20Gbps'
+  | 'USB4 40Gbps'
+  | 'USB4 80Gbps'
+
+export type CatalogAvailableBus = {
+  family: 'pcie' | 'usb'
+  lanes?: number
+  pcieGeneration?: number
+  usbGeneration?: CatalogUsbGeneration
+}
+
+export type CatalogRequiredBus = {
+  family: 'pcie' | 'usb'
+  minimumLanes?: number
+  minimumPcieGeneration?: number
+  minimumUsbGeneration?: CatalogUsbGeneration
 }
 
 export type CatalogNetworkCapabilities = {

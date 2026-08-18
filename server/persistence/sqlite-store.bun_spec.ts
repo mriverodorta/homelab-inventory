@@ -5,6 +5,7 @@ import { join, resolve } from 'node:path'
 import {
   NAS_FINGERPRINT_VERSION,
   NETWORK_FINGERPRINT_VERSION,
+  M2_AE_FINGERPRINT_VERSION,
   digestCatalogTemplate,
   type FingerprintVersion,
 } from '../../packages/catalog-protocol/src/index.ts'
@@ -215,7 +216,7 @@ describe('SQLite Homelab Inventory store facade', () => {
         group_id: 1,
         positions: [0],
       })
-      expect(store.getDatabaseStatus()).toMatchObject({ schemaVersion: 22 })
+      expect(store.getDatabaseStatus()).toMatchObject({ schemaVersion: 23 })
       expect(store.getPersistenceHealth()).toMatchObject({ ok: true, engine: 'sqlite' })
     } finally {
       store.close()
@@ -1643,6 +1644,84 @@ describe('SQLite Homelab Inventory store facade', () => {
         SELECT minimum_electrical_lanes AS minimumElectricalLanes
         FROM network_adapter_host_interfaces
       `).get()).toEqual({ minimumElectricalLanes: null })
+    } finally {
+      store.close()
+    }
+  })
+
+  test('round-trips v12 socket keys, tri-state bus evidence, and component bus requirements relationally', async () => {
+    const store = await emptyFixtureStore()
+    try {
+      store.registryTransaction((draft: any) => {
+        draft.snapshot = {
+          sourceId: 1, revision: 24, generatedAt: '2026-08-18T00:00:00.000Z',
+          expiresAt: null, activatedAt: '2026-08-18T00:00:00.000Z',
+          digest: 'c'.repeat(64), templateCount: 3, keyId: 'test-key',
+        }
+      })
+      const hostBase = {
+        type: 'desktop', name: 'Example Micro', manufacturer: 'Example', model: 'Micro 1',
+        specs: { topologyCompleteness: 'complete', motherboardPartNumber: 'BOARD-1' },
+        compatibility: { host: { optionalModuleSlots: [{
+          id: 1, key: 'm2-ae-slot', keyAliases: ['wlan-m2'], count: 1,
+          label: 'M.2 Key E slot', interfaceFamily: 'm2-ae', socketKeys: ['E'],
+          moduleSizes: ['2230'], intendedModuleKinds: ['wireless-card'],
+        }] } },
+      }
+      const unknownHost = await catalogTemplate(
+        hostBase,
+        1,
+        'desktop-example-micro-unknown',
+        M2_AE_FINGERPRINT_VERSION,
+      )
+      const emptyHostSource = structuredClone(hostBase) as any
+      emptyHostSource.model = 'Micro 2'
+      emptyHostSource.specs.motherboardPartNumber = 'BOARD-2'
+      emptyHostSource.compatibility.host.optionalModuleSlots[0].availableBuses = []
+      const emptyHost = await catalogTemplate(
+        emptyHostSource,
+        1,
+        'desktop-example-micro-empty',
+        M2_AE_FINGERPRINT_VERSION,
+      )
+      const adapter = await catalogTemplate({
+        type: 'network', name: 'Example A+E Ethernet', manufacturer: 'Example', model: 'AE-1G',
+        specs: {
+          networkTechnology: 'ethernet', formFactor: 'm2-2230', operatingModes: ['ethernet'],
+          hostInterface: {
+            family: 'm2-ae', key: 'A+E', moduleSize: '2230',
+            requiredBuses: [{ family: 'pcie', minimumLanes: 1, minimumPcieGeneration: 2 }],
+          },
+        },
+        ports: [{
+          id: 1, key: 'port-1', kind: 'network', type: 'rj45', slotNumber: 1,
+          speedBps: 1_000_000_000, supportedSpeedsBps: [1_000_000_000],
+          networkTechnology: 'ethernet', operatingModes: ['ethernet'], origin: 'module',
+        }],
+      }, 1, 'network-example-ae-1g', M2_AE_FINGERPRINT_VERSION)
+
+      for (const template of [unknownHost, emptyHost, adapter]) store.createCatalogInventoryItems(template)
+      const snapshot = await store.snapshotStores()
+      await store.replaceStoresAtomically(snapshot)
+      const items = Object.values(store.getProject().items) as any[]
+      const unknown = items.find((item) => item.model === 'Micro 1')
+      const empty = items.find((item) => item.model === 'Micro 2')
+      const restoredAdapter = items.find((item) => item.model === 'AE-1G')
+
+      expect(unknown.compatibility.host.optionalModuleSlots[0]).not.toHaveProperty('availableBuses')
+      expect(empty.compatibility.host.optionalModuleSlots[0].availableBuses).toEqual([])
+      expect(unknown.compatibility.host.optionalModuleSlots[0]).toMatchObject({
+        key: 'm2-ae-slot', keyAliases: ['wlan-m2'], socketKeys: ['E'],
+      })
+      expect(restoredAdapter.specs.hostInterface.requiredBuses).toEqual([
+        { family: 'pcie', minimumLanes: 1, minimumPcieGeneration: 2 },
+      ])
+      expect(store.core.database.query(`
+        SELECT bus_evidence_state AS state, count(*) AS count
+        FROM optional_module_resource_groups GROUP BY bus_evidence_state ORDER BY state
+      `).all()).toEqual([{ state: 'recorded', count: 1 }, { state: 'unknown', count: 1 }])
+      expect(store.core.database.query('SELECT count(*) AS count FROM network_adapter_required_buses').get())
+        .toEqual({ count: 1 })
     } finally {
       store.close()
     }

@@ -61,6 +61,26 @@ export const networkAdapterHostInterfaces = sqliteTable('network_adapter_host_in
   `),
 ])
 
+export const networkAdapterRequiredBuses = sqliteTable('network_adapter_required_buses', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  adapterId: integer('adapter_id').notNull().references(() => networkAdapters.id, { onDelete: 'cascade' }),
+  family: text('family').notNull(),
+  minimumLanes: integer('minimum_lanes'),
+  minimumPcieGeneration: integer('minimum_pcie_generation'),
+  minimumUsbGeneration: text('minimum_usb_generation'),
+}, (table) => [
+  uniqueIndex('network_adapter_required_buses_family_unique').on(table.adapterId, table.family),
+  check('network_adapter_required_buses_family_check', sql`${table.family} IN ('pcie', 'usb')`),
+  check('network_adapter_required_buses_lanes_check', sql`${table.minimumLanes} IS NULL OR ${table.minimumLanes} > 0`),
+  check('network_adapter_required_buses_pcie_generation_check', sql`
+    ${table.minimumPcieGeneration} IS NULL OR ${table.minimumPcieGeneration} > 0
+  `),
+  check('network_adapter_required_buses_shape_check', sql`
+    (${table.family} = 'pcie' AND ${table.minimumUsbGeneration} IS NULL)
+    OR (${table.family} = 'usb' AND ${table.minimumLanes} IS NULL AND ${table.minimumPcieGeneration} IS NULL)
+  `),
+])
+
 export const networkAdapterOperatingModes = sqliteTable('network_adapter_operating_modes', {
   id: integer('id').primaryKey({ autoIncrement: true }),
   adapterId: integer('adapter_id').notNull().references(() => networkAdapters.id, { onDelete: 'cascade' }),

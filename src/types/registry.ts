@@ -97,7 +97,7 @@ export type RegistryLink = {
   templateKey: string
   importedRevision: number
   importedContentHash: string
-  importedFingerprintVersion?: 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10
+  importedFingerprintVersion?: 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12
   productFamily?: CatalogProductFamily
   variantEvidence?: CatalogVariantEvidence
   identityAliases?: CatalogIdentityAlias[]
@@ -123,14 +123,14 @@ export type CatalogVariantEvidence = {
 }
 
 export type CatalogIdentityAlias = {
-  fingerprintVersion: 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10
+  fingerprintVersion: 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12
   identityHash: string
 }
 
 export type CatalogSearchItem = {
   templateKey: string
   revision: number
-  fingerprintVersion: 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10
+  fingerprintVersion: 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12
   identityHash: string
   identityAliases: CatalogIdentityAlias[]
   contentHash: string
@@ -206,7 +206,7 @@ export type CatalogVariantCandidate = {
   templateKey: string
   revision: number
   contentHash: string
-  fingerprintVersion: 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10
+  fingerprintVersion: 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12
   label: string
   structuralSummary?: string
 }
@@ -414,7 +414,7 @@ export const DEFAULT_REGISTRY_STATE: RegistryState = {
   database: {
     schemaVersion: null,
     applicationOemContractVersion: 6,
-    applicationCatalogContractVersion: 11,
+    applicationCatalogContractVersion: 12,
     lastMigration: null,
   },
 }

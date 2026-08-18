@@ -28,6 +28,10 @@ import {
 
 let resourceGroupSequence = 0
 
+function commaSeparatedValues(value: string): string[] {
+  return [...new Set(value.split(',').map((entry) => entry.trim()).filter(Boolean))]
+}
+
 function createResourceGroupDraftKey(kind: 'storage' | 'expansion' | 'optional-module' | 'power-connector'): string {
   resourceGroupSequence += 1
   return `${kind}-${Date.now().toString(36)}-${resourceGroupSequence.toString(36)}`
@@ -293,6 +297,11 @@ export function OptionalModuleSlotGroupsEditor({
             label: '',
             count: '',
             acceptedModuleKinds: [],
+            interfaceFamily: '',
+            keyAliases: [],
+            socketKeys: [],
+            moduleSizes: [],
+            intendedModuleKinds: [],
           }])}
         >
           <Plus aria-hidden="true" className="size-4" />
@@ -318,7 +327,29 @@ export function OptionalModuleSlotGroupsEditor({
               <Trash2 aria-hidden="true" className="size-4" />
             </Button>
           </div>
-          <CheckboxOptions label={`Optional module group ${index + 1} accepted kinds`} options={OPTIONAL_MODULE_KINDS} selected={group.acceptedModuleKinds} onChange={(acceptedModuleKinds) => updateGroup(group.draftKey, { acceptedModuleKinds })} />
+          <div className="grid gap-3 sm:grid-cols-2">
+            <TextField label="Semantic key" name={`optional-module-group-${group.draftKey}-key`} value={group.key} placeholder="m2-ae-slot" onChange={(key) => updateGroup(group.draftKey, { key })} />
+            <SelectField
+              label="Interface family"
+              name={`optional-module-group-${group.draftKey}-interface-family`}
+              value={group.interfaceFamily}
+              options={['m2-ae', 'm2-bm', 'mini-pcie', 'usb', 'proprietary']}
+              emptyLabel="Not recorded"
+              onValueChange={(interfaceFamily) => updateGroup(group.draftKey, { interfaceFamily })}
+            />
+          </div>
+          {group.interfaceFamily === 'm2-ae' ? (
+            <div className="grid gap-3 sm:grid-cols-3">
+              <TextField label="Legacy key aliases" name={`optional-module-group-${group.draftKey}-key-aliases`} value={group.keyAliases.join(', ')} placeholder="wlan-m2" onChange={(value) => updateGroup(group.draftKey, { keyAliases: commaSeparatedValues(value) })} />
+              <TextField label="Host socket keys" name={`optional-module-group-${group.draftKey}-socket-keys`} value={group.socketKeys.join(', ')} placeholder="E" onChange={(value) => updateGroup(group.draftKey, { socketKeys: commaSeparatedValues(value) })} />
+              <TextField label="Module sizes" name={`optional-module-group-${group.draftKey}-module-sizes`} value={group.moduleSizes.join(', ')} placeholder="2230" onChange={(value) => updateGroup(group.draftKey, { moduleSizes: commaSeparatedValues(value) })} />
+              <div className="sm:col-span-3">
+                <CheckboxOptions label={`Optional module group ${index + 1} intended uses`} options={OPTIONAL_MODULE_KINDS} selected={group.intendedModuleKinds} onChange={(intendedModuleKinds) => updateGroup(group.draftKey, { intendedModuleKinds })} />
+              </div>
+            </div>
+          ) : (
+            <CheckboxOptions label={`Optional module group ${index + 1} accepted kinds`} options={OPTIONAL_MODULE_KINDS} selected={group.acceptedModuleKinds} onChange={(acceptedModuleKinds) => updateGroup(group.draftKey, { acceptedModuleKinds })} />
+          )}
         </div>
       ))}
       {!validationTarget ? <FieldError message={error} /> : null}

@@ -349,10 +349,14 @@ export const resourceAcceptedKinds = sqliteTable('resource_accepted_kinds', {
 export const optionalModuleResourceGroups = sqliteTable('optional_module_resource_groups', {
   id: integer('id').primaryKey().references(() => hostResourceGroups.id, { onDelete: 'cascade' }),
   interfaceFamily: text('interface_family'),
+  busEvidenceState: text('bus_evidence_state').notNull().default('unknown'),
 }, (table) => [
   check('optional_module_resource_groups_family_check', sql`
     ${table.interfaceFamily} IS NULL
     OR ${table.interfaceFamily} IN ('m2-ae', 'm2-bm', 'mini-pcie', 'usb', 'proprietary')
+  `),
+  check('optional_module_resource_groups_bus_evidence_check', sql`
+    ${table.busEvidenceState} IN ('unknown', 'recorded')
   `),
 ])
 

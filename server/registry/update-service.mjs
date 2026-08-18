@@ -2,8 +2,10 @@ import {
   CANONICAL_UNITS_FINGERPRINT_VERSION,
   NAS_FINGERPRINT_VERSION,
   NETWORK_FINGERPRINT_VERSION,
+  M2_AE_FINGERPRINT_VERSION,
   canonicalizeCatalogItemV10,
   canonicalizeCatalogItemV11,
+  canonicalizeCatalogItemV12,
   canonicalizeCatalogItemV9,
   sanitizeCatalogItem,
   sanitizeCatalogItemV9,
@@ -22,7 +24,9 @@ function valueAt(item, field) {
 }
 
 function sanitizeForFingerprint(value, fingerprintVersion) {
-  return fingerprintVersion === NETWORK_FINGERPRINT_VERSION
+  return fingerprintVersion === M2_AE_FINGERPRINT_VERSION
+    ? canonicalizeCatalogItemV12(value)
+    : fingerprintVersion === NETWORK_FINGERPRINT_VERSION
     ? canonicalizeCatalogItemV11(value)
     : fingerprintVersion === NAS_FINGERPRINT_VERSION
     ? canonicalizeCatalogItemV10(value)
@@ -32,6 +36,7 @@ function sanitizeForFingerprint(value, fingerprintVersion) {
 }
 
 function sanitizeCurrentForFingerprint(value, fingerprintVersion) {
+  if (fingerprintVersion === M2_AE_FINGERPRINT_VERSION) return canonicalizeCatalogItemV12(value)
   if (fingerprintVersion === NETWORK_FINGERPRINT_VERSION) return canonicalizeCatalogItemV9(value)
   if (fingerprintVersion !== NAS_FINGERPRINT_VERSION) return sanitizeForFingerprint(value, fingerprintVersion)
   return canonicalizeCatalogItemV10(canonicalizeCatalogItemV9(value))

@@ -92,9 +92,9 @@ export type OptionalModuleSlotGroup = {
   label: string
   count: number
   acceptedModuleKinds?: string[]
-  aliases?: string[]
+  keyAliases?: string[]
   interfaceFamily?: 'm2-ae' | 'm2-bm' | 'mini-pcie' | 'usb' | 'proprietary'
-  acceptedKeys?: string[]
+  socketKeys?: Array<'A' | 'E'>
   moduleSizes?: string[]
   availableBuses?: Array<{
     family: 'pcie' | 'usb'
@@ -103,6 +103,13 @@ export type OptionalModuleSlotGroup = {
     usbGeneration?: string
   }>
   intendedModuleKinds?: string[]
+}
+
+export type RequiredHostBus = {
+  family: 'pcie' | 'usb'
+  minimumLanes?: number
+  minimumPcieGeneration?: number
+  minimumUsbGeneration?: string
 }
 
 export type ControllerSlotGroup = {
@@ -237,7 +244,7 @@ export type ComponentCompatibilityRequirements = {
     moduleSize?: string
     usbGeneration?: string
     connector?: string
-    busFamily?: 'pcie' | 'usb'
+    requiredBuses?: RequiredHostBus[]
     ocpVersion?: string
     pcieGeneration?: number
     connectorLanes?: number

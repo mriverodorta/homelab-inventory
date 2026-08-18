@@ -427,9 +427,13 @@ const RELEASE_0_13_12_DETAILS: UnreleasedReleaseNotes = {
 
 export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
   highlights: [
+    'Catalog contract v12 models physical M.2 A/E socket keys, PCIe and USB bus evidence, component bus requirements, and OEM intended use without treating WLAN intent as a compatibility restriction.',
     'Systems, Inspector, Canvas, and Audit now share one persisted server-side compatibility projection with scoped live updates and a clear separation between actionable incompatibilities and missing metadata.',
   ],
   fixes: [
+    'The final distroless image now includes the server-side compatibility audit runtime used by Systems, Inspector, Canvas, and Audit.',
+    'Existing WLAN-labeled M.2 A/E resources migrate in place with their numeric resource, slot, assignment, workspace, cable, route-cache, private, and Registry-link identities preserved.',
+    'A+E modules now fit canonical A-key or E-key sockets when every declared bus requirement is satisfied; missing evidence remains informational while proven physical or electrical conflicts remain actionable.',
     'Compatibility checks now use assigned physical resources, canonical CPU-generation aliases, single-slot expansion budgets, and non-ECC defaults for ordinary memory without weakening registered-memory requirements.',
     'Canonical M.2 A/E slots support wired network, wireless, storage-adapter, and other valid module uses instead of being treated as WLAN-only resources.',
     'Unambiguous missing legacy allocations are restored automatically while ambiguous cases remain unchanged and actionable.',

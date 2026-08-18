@@ -55,7 +55,12 @@ export type NormalizedExpansionRequirements = PcieDescriptor & {
   moduleSize?: string
   usbGeneration?: string
   connector?: string
-  busFamily?: 'pcie' | 'usb'
+  requiredBuses?: Array<{
+    family: 'pcie' | 'usb'
+    minimumLanes?: number
+    minimumPcieGeneration?: number
+    minimumUsbGeneration?: string
+  }>
   ocpVersion?: string
   minimumElectricalLanes?: number
   height?: CardHeight

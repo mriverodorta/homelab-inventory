@@ -72,6 +72,9 @@ const SAFE_COMPATIBILITY_FIELDS = new Set([
   'controllerFamily', 'controllerGeneration', 'dedicatedPort', 'sharedNic', 'portType',
   'speed', 'capacityGb', 'speedMt', 'moduleType', 'ecc', 'rank', 'voltageVolts', 'formFactors',
   'powerConnectors', 'required',
+  'keyAliases', 'socketKeys', 'moduleSizes', 'availableBuses', 'intendedModuleKinds',
+  'requiredBuses', 'lanes', 'usbGeneration', 'minimumLanes', 'minimumPcieGeneration',
+  'minimumUsbGeneration',
 ])
 
 function looksSensitive(value: string): boolean {

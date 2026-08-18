@@ -86,6 +86,11 @@ export type OptionalModuleSlotGroupDraft = {
   label: string
   count: string
   acceptedModuleKinds: string[]
+  interfaceFamily: string
+  keyAliases: string[]
+  socketKeys: string[]
+  moduleSizes: string[]
+  intendedModuleKinds: string[]
 }
 
 export type MotherboardPowerConnectorDraft = {
@@ -852,6 +857,11 @@ export function inventoryItemToFormValues(item: InventoryItem): InventoryFormVal
       label: group.label,
       count: stringValue(group.count),
       acceptedModuleKinds: stringArray(group.acceptedModuleKinds),
+      interfaceFamily: stringValue(group.interfaceFamily),
+      keyAliases: stringArray(group.keyAliases),
+      socketKeys: stringArray(group.socketKeys),
+      moduleSizes: stringArray(group.moduleSizes),
+      intendedModuleKinds: stringArray(group.intendedModuleKinds),
     })) ?? [],
     motherboardPowerConnectors: item.compatibility?.host?.powerConnectors?.map((group) => ({
       draftKey: `motherboard-power:${group.id}`,
@@ -1400,6 +1410,11 @@ function buildCompatibility(values: InventoryFormValues): InventoryCompatibility
       draft.label.trim() !== ''
       || draft.count.trim() !== ''
       || draft.acceptedModuleKinds.length > 0
+      || draft.interfaceFamily.trim() !== ''
+      || draft.keyAliases.length > 0
+      || draft.socketKeys.length > 0
+      || draft.moduleSizes.length > 0
+      || draft.intendedModuleKinds.length > 0
     ))
     const optionalModuleIds = assignResourceGroupIds(optionalModuleDrafts)
     const optionalModuleKeys = assignResourceGroupKeys(optionalModuleDrafts, 'optional-module')
@@ -1410,7 +1425,13 @@ function buildCompatibility(values: InventoryFormValues): InventoryCompatibility
       group.key = optionalModuleKeys[index]
       group.label = draft.label.trim()
       setOptional(group, 'count', numberValue(draft.count))
-      setOptional(group, 'acceptedModuleKinds', draft.acceptedModuleKinds)
+      setOptional(group, 'interfaceFamily', cleanString(draft.interfaceFamily))
+      setOptional(group, 'keyAliases', draft.keyAliases)
+      setOptional(group, 'socketKeys', draft.socketKeys)
+      setOptional(group, 'moduleSizes', draft.moduleSizes)
+      setOptional(group, 'intendedModuleKinds', draft.intendedModuleKinds)
+      if (draft.interfaceFamily === 'm2-ae') delete group.acceptedModuleKinds
+      else setOptional(group, 'acceptedModuleKinds', draft.acceptedModuleKinds)
       return group as OptionalModuleSlotGroup
     })
     if (optionalModuleSlots.length || compatibility.host?.optionalModuleSlots !== undefined) {

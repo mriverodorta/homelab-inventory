@@ -1,5 +1,6 @@
 import { canonicalJson } from './canonicalize'
 import { canonicalizeCatalogItemV10, canonicalizeCatalogItemV11, canonicalizeCatalogItemV9 } from './canonical-units'
+import { canonicalizeCatalogItemV12 } from './m2-ae-v12'
 import { sanitizeCatalogItem } from './sanitize'
 import {
   CATALOG_SCHEMA_VERSION,
@@ -7,6 +8,7 @@ import {
   LEGACY_FINGERPRINT_VERSION,
   CANONICAL_UNITS_FINGERPRINT_VERSION,
   MANUFACTURER_ALIAS_VERSION,
+  M2_AE_FINGERPRINT_VERSION,
   NAS_FINGERPRINT_VERSION,
   NETWORK_FINGERPRINT_VERSION,
   type CatalogDigests,
@@ -60,7 +62,9 @@ export async function computeCatalogDigestsWithIdentity(
   identityPayload: Record<string, unknown>,
   fingerprintVersion = FINGERPRINT_VERSION,
 ): Promise<CatalogDigests> {
-  const item = fingerprintVersion === NETWORK_FINGERPRINT_VERSION
+  const item = fingerprintVersion === M2_AE_FINGERPRINT_VERSION
+    ? canonicalizeCatalogItemV12(value)
+    : fingerprintVersion === NETWORK_FINGERPRINT_VERSION
     ? canonicalizeCatalogItemV11(value)
     : fingerprintVersion === NAS_FINGERPRINT_VERSION
       ? canonicalizeCatalogItemV10(value)
@@ -69,6 +73,8 @@ export async function computeCatalogDigestsWithIdentity(
       : sanitizeCatalogItem(value)
   const contentItem = fingerprintVersion === NETWORK_FINGERPRINT_VERSION
     ? { ...item, aliases: undefined }
+    : fingerprintVersion === M2_AE_FINGERPRINT_VERSION
+      ? { ...item, aliases: undefined }
     : item
   const versionedIdentity = {
     schemaVersion: CATALOG_SCHEMA_VERSION,

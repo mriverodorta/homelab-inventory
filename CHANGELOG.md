@@ -8,16 +8,20 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 
 ### Added
 
+- Catalog contract v12 adds first-class physical M.2 A/E socket keying, tri-state PCIe and USB bus evidence, plural component bus requirements, and descriptive OEM intended use.
 - Systems, Inspector, Canvas, and the Audit drawer now share one persisted server-side compatibility projection that updates through scoped SSE invalidations instead of independently recalculating host findings.
 - Compatibility findings distinguish actionable incompatibilities from missing metadata, with informational findings available through Host Compatibility and the Audit drawer without inflating attention badges.
 
 ### Changed
 
+- Existing WLAN-labeled M.2 A/E resources migrate automatically to canonical `m2-ae-slot` resources while preserving numeric resource and slot identities; A+E modules can fit A-key or E-key sockets when all declared bus requirements are satisfied.
 - Compatibility checks now evaluate components against their assigned physical resource, understand canonical CPU-generation aliases, use a single-slot host expansion budget when appropriate, and treat unspecified ordinary memory ECC as non-ECC while retaining strict registered-memory checks.
 - Canonical M.2 A/E resources describe the physical slot, accepted keys, buses, sizes, and intended module kinds without reducing the slot to WLAN-only use.
 
 ### Fixed
 
+- The final distroless image now includes the canonical compatibility audit service and routes required by the shared Systems, Inspector, Canvas, and Audit projection.
+- M.2 A/E OEM intended use no longer blocks physically compatible wired adapters, while missing bus evidence remains informational and proven key, size, lane, generation, or bus conflicts remain actionable.
 - Unambiguous legacy component allocations are persisted automatically only when exactly one compatible destination exists; ambiguous allocations remain unchanged and actionable.
 - Project backups and selective restores preserve compatibility finding relationships through semantic resource-slot remapping, while the retired wireless collection remains present at the schema-29 archive boundary.
 

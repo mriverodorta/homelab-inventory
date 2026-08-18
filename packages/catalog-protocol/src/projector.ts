@@ -1,5 +1,6 @@
 import { canonicalJson } from './canonicalize'
 import { canonicalizeCatalogItemV10, canonicalizeCatalogItemV11, canonicalizeCatalogItemV9 } from './canonical-units'
+import { canonicalizeCatalogItemV12, withoutV12IdentityNeutralFields } from './m2-ae-v12'
 import { computeCatalogDigestsWithIdentity, sha256Hex } from './hash'
 import { normalizeBoardIdentifier, normalizeText, normalizeVariantKey } from './normalization'
 import { sanitizeCatalogItem } from './sanitize'
@@ -17,6 +18,7 @@ import {
   FINGERPRINT_VERSION,
   LEGACY_FINGERPRINT_VERSION,
   MOTHERBOARD_FINGERPRINT_VERSION,
+  M2_AE_FINGERPRINT_VERSION,
   NAS_FINGERPRINT_VERSION,
   NETWORK_FINGERPRINT_VERSION,
   OEM_FINGERPRINT_VERSION,
@@ -873,7 +875,9 @@ export async function projectCatalogItem(
   if (!SUPPORTED_FINGERPRINT_VERSIONS.includes(fingerprintVersion)) {
     throw new Error(`Unsupported catalog fingerprint version ${fingerprintVersion}.`)
   }
-  const item = fingerprintVersion === NETWORK_FINGERPRINT_VERSION
+  const item = fingerprintVersion === M2_AE_FINGERPRINT_VERSION
+    ? canonicalizeCatalogItemV12({ ...source, type })
+    : fingerprintVersion === NETWORK_FINGERPRINT_VERSION
     ? canonicalizeCatalogItemV11({ ...source, type })
     : fingerprintVersion === NAS_FINGERPRINT_VERSION
       ? canonicalizeCatalogItemV10({ ...source, type })
@@ -883,7 +887,52 @@ export async function projectCatalogItem(
   let identityPayload: Record<string, JsonValue>
   let productFamily: CatalogProductFamily | undefined
   let variantEvidence: CatalogVariantEvidence | undefined
-  if (fingerprintVersion === NETWORK_FINGERPRINT_VERSION) {
+  if (fingerprintVersion === M2_AE_FINGERPRINT_VERSION) {
+    const identityItem = withoutV12IdentityNeutralFields(item)
+    if (identityItem.type === 'network') {
+      const identity = networkProductIdentity(identityItem)
+      if (typeof identity === 'string') return { status: 'ineligible', source: sourceRef, reason: identity }
+      identityPayload = identity
+    } else if (identityItem.type === 'ram') {
+      const identity = ramProductIdentity(identityItem)
+      if (typeof identity === 'string') return { status: 'ineligible', source: sourceRef, reason: identity }
+      identityPayload = identity
+    } else if (identityItem.type === 'motherboard') {
+      const variant = await motherboardVariantIdentity(identityItem)
+      if (typeof variant === 'string') return { status: 'ineligible', source: sourceRef, reason: variant }
+      identityPayload = variant.identityPayload
+      productFamily = variant.productFamily
+      variantEvidence = variant.variantEvidence
+    } else if (identityItem.type === 'workstation') {
+      const variant = await workstationVariantIdentity(identityItem)
+      if (typeof variant === 'string') return { status: 'ineligible', source: sourceRef, reason: variant }
+      identityPayload = variant.identityPayload
+      productFamily = variant.productFamily
+      variantEvidence = variant.variantEvidence
+    } else if (identityItem.type === 'desktop') {
+      const variant = await oemVariantIdentity(identityItem)
+      if (typeof variant === 'string') return { status: 'ineligible', source: sourceRef, reason: variant }
+      identityPayload = variant.identityPayload
+      productFamily = variant.productFamily
+      variantEvidence = variant.variantEvidence
+    } else if (identityItem.type === 'server') {
+      const variant = await serverVariantIdentity(identityItem)
+      if (typeof variant === 'string') return { status: 'ineligible', source: sourceRef, reason: variant }
+      identityPayload = variant.identityPayload
+      productFamily = variant.productFamily
+      variantEvidence = variant.variantEvidence
+    } else if (identityItem.type === 'nas') {
+      const variant = await nasVariantIdentity(identityItem)
+      if (typeof variant === 'string') return { status: 'ineligible', source: sourceRef, reason: variant }
+      identityPayload = variant.identityPayload
+      productFamily = variant.productFamily
+      variantEvidence = variant.variantEvidence
+    } else {
+      const identity = canonicalV9StandardIdentity(identityItem)
+      if (typeof identity === 'string') return { status: 'ineligible', source: sourceRef, reason: identity }
+      identityPayload = identity
+    }
+  } else if (fingerprintVersion === NETWORK_FINGERPRINT_VERSION) {
     const identity = networkProductIdentity(item)
     if (typeof identity === 'string') return { status: 'ineligible', source: sourceRef, reason: identity }
     identityPayload = identity

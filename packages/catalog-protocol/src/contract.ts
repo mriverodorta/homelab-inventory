@@ -4,7 +4,9 @@ import {
   FINGERPRINT_VERSION,
   LEGACY_FINGERPRINT_VERSION,
   MOTHERBOARD_FINGERPRINT_VERSION,
+  M2_AE_FINGERPRINT_VERSION,
   NAS_FINGERPRINT_VERSION,
+  NETWORK_FINGERPRINT_VERSION,
   OEM_FINGERPRINT_VERSION,
   RAM_FINGERPRINT_VERSION,
   SERVER_FINGERPRINT_VERSION,
@@ -434,12 +436,40 @@ const FINGERPRINT_V9_CANONICAL_CPU_VECTOR = {
   contentHash: '3e7e2b9873d1b9df474d51c14a4d376047fdf8cb8558c7645569d34768796b25',
 } as const
 
+const FINGERPRINT_V12_M2_AE_VECTOR = {
+  item: {
+    type: 'desktop',
+    name: 'Example Micro',
+    manufacturer: 'Example',
+    model: 'Micro 1',
+    specs: { topologyCompleteness: 'complete', motherboardPartNumber: 'BOARD-1' },
+    compatibility: { host: { optionalModuleSlots: [{
+      id: 1,
+      key: 'm2-ae-slot',
+      keyAliases: ['wlan-m2'],
+      count: 1,
+      label: 'M.2 Key E slot',
+      interfaceFamily: 'm2-ae',
+      socketKeys: ['E'],
+      moduleSizes: ['2230'],
+      availableBuses: [
+        { family: 'pcie', lanes: 1, pcieGeneration: 3 },
+        { family: 'usb', usbGeneration: 'USB 2.0' },
+      ],
+      intendedModuleKinds: ['wireless-card'],
+    }] } },
+  },
+  identityHash: 'cf6d5dcbf3c8775b7f0b29d73c7ed5ec19fd59245204a3c75b58a31628641033',
+  contentHash: 'eb896d46b543afc2340ba145eca1d8e4d5588df2b653b97e7bb08a751bd69920',
+} as const
+
 export async function assertCatalogProtocolContract(): Promise<void> {
   if (FINGERPRINT_VERSION !== 3 || LEGACY_FINGERPRINT_VERSION !== 2
     || OEM_FINGERPRINT_VERSION !== 4 || WORKSTATION_FINGERPRINT_VERSION !== 5
     || SERVER_FINGERPRINT_VERSION !== 6 || MOTHERBOARD_FINGERPRINT_VERSION !== 7
     || RAM_FINGERPRINT_VERSION !== 8 || CANONICAL_UNITS_FINGERPRINT_VERSION !== 9
-    || NAS_FINGERPRINT_VERSION !== 10) {
+    || NAS_FINGERPRINT_VERSION !== 10 || NETWORK_FINGERPRINT_VERSION !== 11
+    || M2_AE_FINGERPRINT_VERSION !== 12) {
     throw new Error(`Catalog fingerprint version ${FINGERPRINT_VERSION} has no publication contract.`)
   }
 
@@ -521,5 +551,15 @@ export async function assertCatalogProtocolContract(): Promise<void> {
     || canonicalUnitsProjection.contentHash !== FINGERPRINT_V9_CANONICAL_CPU_VECTOR.contentHash
   ) {
     throw new Error('Catalog fingerprint-v9 canonical-unit contract changed unexpectedly.')
+  }
+
+  const m2AeProjection = await digestCatalogTemplate(FINGERPRINT_V12_M2_AE_VECTOR.item, {
+    fingerprintVersion: M2_AE_FINGERPRINT_VERSION,
+  })
+  if (
+    m2AeProjection.identityHash !== FINGERPRINT_V12_M2_AE_VECTOR.identityHash
+    || m2AeProjection.contentHash !== FINGERPRINT_V12_M2_AE_VECTOR.contentHash
+  ) {
+    throw new Error('Catalog fingerprint-v12 M.2 A/E contract changed unexpectedly.')
   }
 }

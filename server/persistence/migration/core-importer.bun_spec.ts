@@ -58,11 +58,11 @@ describe('schema-29 core import', () => {
       expect(server.compatibility?.host?.optionalModuleSlots).toEqual([{
         id: 8,
         key: 'm2-ae-slot',
-        aliases: ['wlan-m2'],
+        keyAliases: ['wlan-m2'],
         count: 1,
         label: 'M.2 2230 A/E slot',
         interfaceFamily: 'm2-ae',
-        acceptedKeys: ['A+E'],
+        socketKeys: ['E'],
         moduleSizes: ['2230'],
         availableBuses: [{ family: 'pcie', lanes: 1, pcieGeneration: 3 }],
         intendedModuleKinds: ['wireless-card'],

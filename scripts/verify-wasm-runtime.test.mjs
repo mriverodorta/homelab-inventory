@@ -40,6 +40,13 @@ describe('WASM runtime verifier', () => {
     }
   })
 
+  it('packages the canonical compatibility audit runtime', async () => {
+    const dockerfile = await fs.readFile(path.resolve('Dockerfile'), 'utf8')
+
+    expect(dockerfile).toContain('server/compatibility/audit-service.mjs')
+    expect(dockerfile).toContain('server/compatibility/routes.mjs')
+  })
+
   it('accepts the minimal generated runtime', async () => {
     const root = await runtimeFixture()
     await expect(verifyWasmRuntime(root)).resolves.toMatchObject({ ok: true })

@@ -115,4 +115,9 @@ export const CORE_MIGRATIONS: readonly CoreMigration[] = [
     file: '0021_canonical_compatibility_audit.sql',
     sha256: '10daf8ce5063ea3204b7375837caadd8393f8e7c91739c568861915f9a513b11',
   },
+  {
+    id: '0023_m2_ae_contract_v12',
+    file: '0022_m2_ae_contract_v12.sql',
+    sha256: '72dabd37787c6ea711996993fbbfb076b4ff0ea4390f7d13f3074f1a5b21d446',
+  },
 ]

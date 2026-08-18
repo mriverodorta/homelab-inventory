@@ -202,6 +202,15 @@ function subtypeSpecs(database: Database, item: Row) {
       const operatingModes = all(database, 'SELECT mode FROM network_adapter_operating_modes WHERE adapter_id = ? ORDER BY mode', id).map((entry) => entry.mode)
       const wifiGenerations = all(database, 'SELECT generation FROM network_adapter_wifi_generations WHERE adapter_id = ? ORDER BY generation', id).map((entry) => entry.generation)
       const frequencyBandsGhz = all(database, 'SELECT frequency_mhz FROM network_adapter_frequency_bands WHERE adapter_id = ? ORDER BY frequency_mhz', id).map((entry) => entry.frequency_mhz / 1000)
+      const requiredBuses = all(database, `
+        SELECT family, minimum_lanes, minimum_pcie_generation, minimum_usb_generation
+        FROM network_adapter_required_buses WHERE adapter_id = ? ORDER BY family
+      `, id).map((entry) => defined({
+        family: entry.family,
+        minimumLanes: entry.minimum_lanes,
+        minimumPcieGeneration: entry.minimum_pcie_generation,
+        minimumUsbGeneration: entry.minimum_usb_generation,
+      }))
       const requirements = defined({
         interfaceFamily: hostInterface?.family,
         interfaceKey: hostInterface?.interface_key,
@@ -213,6 +222,7 @@ function subtypeSpecs(database: Database, item: Row) {
         pcieGeneration: hostInterface?.pcie_generation,
         connectorLanes: hostInterface?.connector_lanes,
         minimumElectricalLanes: hostInterface?.minimum_electrical_lanes,
+        requiredBuses: requiredBuses.length ? requiredBuses : undefined,
         height: row.card_height,
         slotWidth: row.slot_width,
         powerMw: row.power_mw,
@@ -239,6 +249,7 @@ function subtypeSpecs(database: Database, item: Row) {
           connector: hostInterface.connector,
           ocpVersion: hostInterface.ocp_version,
           interfaceKey: hostInterface.interface_key,
+          requiredBuses: requiredBuses.length ? requiredBuses : undefined,
         }) : undefined,
         operatingModes: operatingModes.length > 0 ? operatingModes : undefined,
         wifiGenerations: wifiGenerations.length > 0 ? wifiGenerations : undefined,
@@ -307,7 +318,8 @@ function hostCompatibility(database: Database, itemId: number) {
            est.label AS expansion_slot_type,
            e.mechanical_lanes, e.electrical_lanes, e.max_slot_width,
            e.max_power_mw, e.proprietary_riser, e.riser_capability, e.riser_group,
-           om.interface_family AS optional_module_interface_family
+           om.interface_family AS optional_module_interface_family,
+           om.bus_evidence_state AS optional_module_bus_evidence_state
     FROM host_resource_groups g
     JOIN resource_identity_aliases a ON a.resource_id = g.resource_identity_id
     LEFT JOIN storage_resource_groups s ON s.id = g.id
@@ -340,7 +352,7 @@ function hostCompatibility(database: Database, itemId: number) {
         SELECT alias FROM optional_module_resource_aliases
         WHERE resource_group_id = ? ORDER BY id
       `, group.id).map((row) => row.alias).filter((alias) => alias !== group.semantic_key)
-      const acceptedKeys = all(database, `
+      const socketKeys = all(database, `
         SELECT key FROM optional_module_accepted_keys
         WHERE resource_group_id = ? ORDER BY id
       `, group.id).map((row) => row.key)
@@ -364,11 +376,13 @@ function hostCompatibility(database: Database, itemId: number) {
       `, group.id).map((row) => row.kind)
       Object.assign(entry, defined({
         acceptedModuleKinds: acceptedKinds.length ? acceptedKinds : undefined,
-        aliases: aliases.length ? aliases : undefined,
+        keyAliases: aliases.length ? aliases : undefined,
         interfaceFamily: group.optional_module_interface_family,
-        acceptedKeys: acceptedKeys.length ? acceptedKeys : undefined,
+        socketKeys: socketKeys.length ? socketKeys : undefined,
         moduleSizes: moduleSizes.length ? moduleSizes : undefined,
-        availableBuses: availableBuses.length ? availableBuses : undefined,
+        availableBuses: group.optional_module_bus_evidence_state === 'recorded'
+          ? availableBuses
+          : undefined,
         intendedModuleKinds: intendedModuleKinds.length ? intendedModuleKinds : undefined,
       }))
     }
