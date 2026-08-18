@@ -6,6 +6,8 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 
 ## Unreleased
 
+## [0.13.7] - 2026-08-17
+
 ### Added
 
 - One authenticated Server-Sent Events connection now carries scoped invalidation signals for Systems, Agent fleet and host telemetry, notification summaries and incidents, release status, and demo-session changes.

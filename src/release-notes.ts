@@ -360,7 +360,7 @@ const RELEASE_0_13_3_DETAILS: UnreleasedReleaseNotes = {
   notes: [],
 }
 
-export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
+const RELEASE_0_13_7_DETAILS: UnreleasedReleaseNotes = {
   highlights: [
     'Systems, Agent availability and telemetry, notification counts and incidents, release status, and demo-session changes now arrive through one authenticated application event stream instead of browser polling.',
   ],
@@ -373,6 +373,12 @@ export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
   notes: [
     'The application event stream reconnects after visibility and network changes, using per-topic cursors to resynchronize only affected queries after missed events or server restarts.',
   ],
+}
+
+export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
+  highlights: [],
+  fixes: [],
+  notes: [],
 }
 
 const RELEASE_0_11_2_DETAILS: UnreleasedReleaseNotes = {
@@ -902,9 +908,16 @@ const RELEASE_0_2_1_DETAILS: UnreleasedReleaseNotes = {
 
 export const RELEASE_NOTES: ReleaseNoteEntry[] = [
   {
-    version: '0.13.6',
+    version: '0.13.7',
     date: '2026-08-17',
     channel: 'latest',
+    title: 'Live application updates',
+    ...RELEASE_0_13_7_DETAILS,
+  },
+  {
+    version: '0.13.6',
+    date: '2026-08-17',
+    channel: 'release',
     title: 'Systems operations workspace',
     ...RELEASE_0_13_6_DETAILS,
   },
