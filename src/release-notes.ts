@@ -419,7 +419,9 @@ const RELEASE_0_13_11_DETAILS: UnreleasedReleaseNotes = {
 
 export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
   highlights: [],
-  fixes: [],
+  fixes: [
+    'Resolve and apply now completes deterministic Registry topology migrations shown in review-required updates instead of rejecting them as unavailable.',
+  ],
   notes: [],
 }
 

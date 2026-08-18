@@ -2324,7 +2324,7 @@ export class SqliteHomelabInventoryStore {
 
   resolveAndApplyRegistryUpdateGroupById({ groupId, concurrencyToken, linkId, template, expectedProjectRevisions = null, userId = null }: Row) {
     const group = this.getRegistryUpdateGroup(groupId, concurrencyToken)
-    if (group.status !== 'blocked' || !group.members.some((member: Row) => member.linkId === linkId)) {
+    if (!['review', 'blocked'].includes(group.status) || !group.members.some((member: Row) => member.linkId === linkId)) {
       throw lifecycleError('Registry topology resolution is not available for this group.', 'catalog-update-resolution-unavailable', 409)
     }
     const result = this.resolveAndApplyRegistryUpdateGroup(

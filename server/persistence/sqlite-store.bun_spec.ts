@@ -1095,6 +1095,8 @@ describe('SQLite Homelab Inventory store facade', () => {
         })
       })
       const evaluation = store.evaluateCatalogUpdates([{ linkId: 2, templateKey: template.templateKey }], [template])
+      evaluation.evaluations[0].classification = 'review-required'
+      evaluation.evaluations[0].reasons = ['identity-change']
       store.commitCatalogUpdateRun({
         sourceId: 1,
         catalogRevision: 2,
@@ -1106,8 +1108,11 @@ describe('SQLite Homelab Inventory store facade', () => {
       const beforeProject = store.getProject()
       const beforeRouteCache = store.getRoutingCache()
       const beforeLink = (store.getRegistryState() as any).links.find((link: any) => link.id === 2)
+      const group = store.getRegistryUpdateGroups().find((entry: any) => entry.status === 'review')!
 
-      const result = store.resolveAndApplyRegistryUpdateGroup({
+      const result = store.resolveAndApplyRegistryUpdateGroupById({
+        groupId: group.id,
+        concurrencyToken: group.concurrencyToken,
         linkId: 2,
         template,
         expectedProjectRevisions: { 1: beforeProject.revision },
@@ -1137,7 +1142,93 @@ describe('SQLite Homelab Inventory store facade', () => {
         state: 'linked',
         importedRevision: 2,
       })
+      expect(result.decisions).toEqual([expect.objectContaining({
+        previousGroupId: group.id,
+        status: 'applied',
+      })])
       expect(store.getCatalogUpdates().some((update: any) => update.linkId === 2)).toBe(false)
+      const appliedGroup = store.getRegistryUpdateGroups().find((entry: any) => entry.status === 'applied')!
+      expect(() => store.resolveAndApplyRegistryUpdateGroupById({
+        groupId: appliedGroup.id,
+        concurrencyToken: appliedGroup.concurrencyToken,
+        linkId: 2,
+        template,
+      })).toThrow(/not available for this group/iu)
+    } finally {
+      store.close()
+    }
+  })
+
+  test('rejects review-group topology resolution when no relationship migration exists', async () => {
+    const store = await emptyFixtureStore()
+    try {
+      store.registryTransaction((draft: any) => {
+        draft.sources = [{
+          id: 1,
+          kind: 'official-connected',
+          displayName: 'Official Catalog',
+          enabled: true,
+          createdAt: '2026-08-18T00:00:00.000Z',
+        }]
+        draft.snapshot = {
+          sourceId: 1,
+          revision: 1,
+          generatedAt: '2026-08-18T00:00:00.000Z',
+          expiresAt: null,
+          activatedAt: '2026-08-18T00:00:00.000Z',
+          digest: 'b'.repeat(64),
+          templateCount: 1,
+          keyId: 'test-key',
+        }
+      })
+      const revision1 = await catalogTemplate({
+        type: 'cpu',
+        name: 'Example CPU 400',
+        manufacturer: 'Example Silicon',
+        model: 'CPU-400',
+        specs: { cores: 4 },
+      }, 1, 'cpu-example-cpu-400')
+      const revision2 = await catalogTemplate({
+        ...revision1.item,
+        specs: { cores: 6 },
+      }, 2, revision1.templateKey)
+      store.createCatalogInventoryItems(revision1)
+      const link = (store.getRegistryState() as any).links[0]
+      store.registryTransaction((draft: any) => {
+        draft.snapshot.revision = 2
+        Object.assign(draft.links[0], {
+          state: 'update-available',
+          availableRevision: 2,
+          availableContentHash: revision2.contentHash,
+        })
+      })
+      const evaluation = store.evaluateCatalogUpdates([{ linkId: link.id, templateKey: link.templateKey }], [revision2])
+      evaluation.evaluations[0].classification = 'review-required'
+      evaluation.evaluations[0].reasons = ['identity-change']
+      store.commitCatalogUpdateRun({
+        sourceId: 1,
+        catalogRevision: 2,
+        evaluations: evaluation.evaluations,
+        templates: [revision2],
+        automatic: false,
+        expectedProjectRevisions: evaluation.projectRevisions,
+      })
+      const group = store.getRegistryUpdateGroups().find((entry: any) => entry.status === 'review')!
+      const beforeProject = store.getProject()
+
+      expect(() => store.resolveAndApplyRegistryUpdateGroupById({
+        groupId: group.id,
+        concurrencyToken: group.concurrencyToken,
+        linkId: link.id,
+        template: revision2,
+        expectedProjectRevisions: { 1: beforeProject.revision },
+      })).toThrow(/no deterministic topology resolution/iu)
+      expect(store.getProject()).toEqual(beforeProject)
+      expect((store.getRegistryState() as any).links[0]).toMatchObject({
+        state: 'update-available',
+        importedRevision: 1,
+        availableRevision: 2,
+      })
     } finally {
       store.close()
     }

@@ -397,6 +397,66 @@ describe('registry routes', () => {
     expect(store.getRegistryUpdateGroupDetail).toHaveBeenCalledWith(group.id, token, template)
   })
 
+  it('resolves a deterministic topology migration from a review group', async () => {
+    const token = 'c'.repeat(64)
+    const group = {
+      id: `review:desktop-example:2:${'d'.repeat(64)}`,
+      status: 'review',
+      templateKey: 'desktop-example',
+      toRevision: 2,
+      targetContentHash: 'e'.repeat(64),
+    }
+    const template = {
+      templateKey: group.templateKey,
+      revision: group.toRevision,
+      contentHash: group.targetContentHash,
+    }
+    const result = {
+      applied: 1,
+      review: 0,
+      blocked: 0,
+      skipped: 0,
+      decisions: [{
+        groupId: `applied:desktop-example:2:${'d'.repeat(64)}`,
+        previousGroupId: group.id,
+        concurrencyToken: 'f'.repeat(64),
+        templateKey: group.templateKey,
+        toRevision: group.toRevision,
+        status: 'applied',
+      }],
+      summary: { counts: { review: 0, blocked: 0, applied: 1, declined: 0 } },
+      affectedProjectIds: [1],
+      affectedProjectRevisions: { 1: 14 },
+      affectedLinkIds: [7],
+    }
+    const { baseUrl, store } = await createServer({
+      snapshotServiceFactory: () => ({ template: vi.fn(async () => template) }),
+    })
+    store.getRegistryUpdateGroup = vi.fn(() => group)
+    store.resolveAndApplyRegistryUpdateGroupById = vi.fn(() => result)
+
+    const response = await fetch(`${baseUrl}/api/registry/update-groups/${encodeURIComponent(group.id)}/resolve-and-apply`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        concurrencyToken: token,
+        linkId: 7,
+        expectedProjectRevisions: { 1: 13 },
+      }),
+    })
+
+    expect(response.status).toBe(200)
+    expect(await response.json()).toEqual(result)
+    expect(store.resolveAndApplyRegistryUpdateGroupById).toHaveBeenCalledWith({
+      groupId: group.id,
+      concurrencyToken: token,
+      linkId: 7,
+      template,
+      expectedProjectRevisions: { 1: 13 },
+      userId: null,
+    })
+  })
+
   it('loads persisted audit detail without requesting an obsolete catalog template', async () => {
     const token = 'f'.repeat(64)
     const group = { id: `applied:cpu-example:1:${'a'.repeat(64)}`, status: 'applied', templateKey: 'cpu-example', toRevision: 1 }
