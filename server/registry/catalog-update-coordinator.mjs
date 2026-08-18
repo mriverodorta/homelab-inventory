@@ -1,3 +1,5 @@
+export const CATALOG_UPDATE_EVALUATOR_VERSION = 2
+
 export class CatalogUpdateCoordinator {
   constructor({ store, snapshotService, logger = console, forceAutomatic = false, now = Date.now, onChanged = null }) {
     this.store = store
@@ -18,6 +20,7 @@ export class CatalogUpdateCoordinator {
           if (registry.snapshot) this.store.recordCatalogUpdateFailure?.({
             sourceId: registry.snapshot.sourceId,
             catalogRevision: registry.snapshot.revision,
+            evaluatorVersion: CATALOG_UPDATE_EVALUATOR_VERSION,
             automatic: this.forceAutomatic || registry.settings.automaticSafeUpdates !== false,
             error,
           })
@@ -37,14 +40,15 @@ export class CatalogUpdateCoordinator {
     const source = registry.sources.find((candidate) => candidate.id === snapshot?.sourceId)
     if (!snapshot || source?.kind !== 'official-connected') return { applied: 0, review: 0, blocked: 0, skipped: 0, groups: [] }
     const previousRun = this.store.getRegistryUpdateStatus?.()
-    if (!force && previousRun?.state === 'failed' && previousRun.catalogRevision === snapshot.revision) {
+    const currentEvaluator = previousRun?.evaluatorVersion === CATALOG_UPDATE_EVALUATOR_VERSION
+    if (!force && currentEvaluator && previousRun?.state === 'failed' && previousRun.catalogRevision === snapshot.revision) {
       if (previousRun.attemptCount >= 3 || (previousRun.retryAfter && Date.parse(previousRun.retryAfter) > this.now())) {
         return { applied: 0, review: 0, blocked: 0, skipped: 0, groups: this.store.getRegistryUpdateGroups(), run: previousRun }
       }
     }
     const updates = this.store.getCatalogUpdates().filter((update) => update.linkId)
     if (updates.length === 0) return { applied: 0, review: 0, blocked: 0, skipped: 0, groups: this.store.getRegistryUpdateGroups() }
-    if (!force && previousRun?.state === 'completed' && previousRun.catalogRevision === snapshot.revision) {
+    if (!force && currentEvaluator && previousRun?.state === 'completed' && previousRun.catalogRevision === snapshot.revision) {
       const groups = this.store.getRegistryUpdateGroups()
       const evaluated = new Set(groups.flatMap((group) => (
         group.items.map((item) => `${item.linkId}:${group.toRevision}`)
@@ -70,6 +74,7 @@ export class CatalogUpdateCoordinator {
     const result = this.store.commitCatalogUpdateRun({
       sourceId: snapshot.sourceId,
       catalogRevision: snapshot.revision,
+      evaluatorVersion: CATALOG_UPDATE_EVALUATOR_VERSION,
       evaluations: batch.evaluations,
       templates,
       automatic: this.forceAutomatic || registry.settings.automaticSafeUpdates !== false,

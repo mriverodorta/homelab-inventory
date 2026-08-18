@@ -105,4 +105,9 @@ export const CORE_MIGRATIONS: readonly CoreMigration[] = [
     file: '0019_systems_workspace_operations.sql',
     sha256: '0ba9da14a422a8dd66f9aa1e7603fc21dfe5b271cee42d0c4d17506a8af3360e',
   },
+  {
+    id: '0021_registry_update_evaluator_version',
+    file: '0020_registry_update_evaluator_version.sql',
+    sha256: 'a41df993402ae7197eb07b0623c80c86907e0bc6eb2bd825aee8b148a8cd734e',
+  },
 ]

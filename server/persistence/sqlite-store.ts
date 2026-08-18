@@ -1880,7 +1880,7 @@ export class SqliteHomelabInventoryStore {
     }
   }
 
-  commitCatalogUpdateRun({ sourceId, catalogRevision, evaluations, templates, automatic = true, forceLinkIds = [], decidedByUserId = null, expectedProjectRevision = null, expectedProjectRevisions = null }: Row) {
+  commitCatalogUpdateRun({ sourceId, catalogRevision, evaluatorVersion = 1, evaluations, templates, automatic = true, forceLinkIds = [], decidedByUserId = null, expectedProjectRevision = null, expectedProjectRevisions = null }: Row) {
     const registry = this.getRegistryState() as Row
     const expectedRevisions = expectedProjectRevisions
       ? new Map(Object.entries(expectedProjectRevisions).map(([projectId, revision]) => [Number(projectId), Number(revision)]))
@@ -1960,15 +1960,15 @@ export class SqliteHomelabInventoryStore {
       for (const record of prepared) this.replaceInventoryRecord(record.prepared.ref, record.prepared.record, record.projectId)
       persistRegistryState(this.core.database, draft, now, (type, id) => this.resolveItem(type, id))
       this.core.database.query(`
-        INSERT INTO registry_update_runs (source_id, catalog_revision, state, automatic, applied_count, review_count, blocked_count, skipped_count, started_at_ms, completed_at_ms)
-        VALUES (?, ?, 'completed', ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO registry_update_runs (source_id, catalog_revision, evaluator_version, state, automatic, applied_count, review_count, blocked_count, skipped_count, started_at_ms, completed_at_ms)
+        VALUES (?, ?, ?, 'completed', ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(source_id, catalog_revision) DO UPDATE SET
-          state = 'completed', automatic = excluded.automatic,
+          evaluator_version = excluded.evaluator_version, state = 'completed', automatic = excluded.automatic,
           applied_count = excluded.applied_count, review_count = excluded.review_count,
           blocked_count = excluded.blocked_count, skipped_count = excluded.skipped_count,
           attempt_count = 0, retry_after_ms = NULL, error = NULL,
           completed_at_ms = excluded.completed_at_ms
-      `).run(sourceId, catalogRevision, Number(automatic), counts.applied, counts.review, counts.blocked, counts.skipped, now, now)
+      `).run(sourceId, catalogRevision, evaluatorVersion, Number(automatic), counts.applied, counts.review, counts.blocked, counts.skipped, now, now)
       const run = this.core.database.query('SELECT id FROM registry_update_runs WHERE source_id = ? AND catalog_revision = ?').get(sourceId, catalogRevision) as Row
       for (const entry of applicable) {
         this.core.database.query(`
@@ -2356,6 +2356,7 @@ export class SqliteHomelabInventoryStore {
     return {
       id: row.id,
       catalogRevision: row.catalog_revision,
+      evaluatorVersion: row.evaluator_version,
       state: row.state,
       automatic: Boolean(row.automatic),
       appliedCount: row.applied_count,
@@ -2369,7 +2370,7 @@ export class SqliteHomelabInventoryStore {
     }
   }
 
-  recordCatalogUpdateFailure({ sourceId, catalogRevision, automatic = true, error }: Row) {
+  recordCatalogUpdateFailure({ sourceId, catalogRevision, evaluatorVersion = 1, automatic = true, error }: Row) {
     const now = this.now()
     const current = this.core.database.query(`
       SELECT attempt_count FROM registry_update_runs WHERE source_id = ? AND catalog_revision = ?
@@ -2380,13 +2381,13 @@ export class SqliteHomelabInventoryStore {
     this.core.database.transaction(() => {
       this.core.database.query(`
         INSERT INTO registry_update_runs (
-          source_id, catalog_revision, state, automatic, applied_count, review_count,
+          source_id, catalog_revision, evaluator_version, state, automatic, applied_count, review_count,
           blocked_count, skipped_count, attempt_count, retry_after_ms, error, started_at_ms, completed_at_ms
-        ) VALUES (?, ?, 'failed', ?, 0, 0, 0, 0, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, 'failed', ?, 0, 0, 0, 0, ?, ?, ?, ?, ?)
         ON CONFLICT(source_id, catalog_revision) DO UPDATE SET
-          state = 'failed', automatic = excluded.automatic, attempt_count = excluded.attempt_count,
+          evaluator_version = excluded.evaluator_version, state = 'failed', automatic = excluded.automatic, attempt_count = excluded.attempt_count,
           retry_after_ms = excluded.retry_after_ms, error = excluded.error, completed_at_ms = excluded.completed_at_ms
-      `).run(sourceId, catalogRevision, Number(automatic), attemptCount, retryAfter, message, now, now)
+      `).run(sourceId, catalogRevision, evaluatorVersion, Number(automatic), attemptCount, retryAfter, message, now, now)
     }).immediate()
     return this.getRegistryUpdateStatus()
   }

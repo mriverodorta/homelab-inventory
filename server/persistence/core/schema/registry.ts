@@ -66,6 +66,7 @@ export const registryUpdateRuns = sqliteTable('registry_update_runs', {
   id: integer('id').primaryKey({ autoIncrement: true }),
   sourceId: integer('source_id').notNull().references(() => registrySources.id, { onDelete: 'cascade' }),
   catalogRevision: integer('catalog_revision').notNull(),
+  evaluatorVersion: integer('evaluator_version').notNull().default(1),
   state: text('state').notNull(),
   automatic: integer('automatic', { mode: 'boolean' }).notNull().default(true),
   appliedCount: integer('applied_count').notNull().default(0),
@@ -79,7 +80,7 @@ export const registryUpdateRuns = sqliteTable('registry_update_runs', {
   completedAtMs: integer('completed_at_ms'),
 }, (table) => [
   uniqueIndex('registry_update_runs_source_revision_unique').on(table.sourceId, table.catalogRevision),
-  check('registry_update_runs_revision_check', sql`${table.catalogRevision} > 0`),
+  check('registry_update_runs_revision_check', sql`${table.catalogRevision} > 0 AND ${table.evaluatorVersion} > 0`),
   check('registry_update_runs_state_check', sql`${table.state} IN ('running', 'completed', 'failed')`),
   check('registry_update_runs_counts_check', sql`${table.appliedCount} >= 0 AND ${table.reviewCount} >= 0 AND ${table.blockedCount} >= 0 AND ${table.skippedCount} >= 0 AND ${table.attemptCount} >= 0`),
 ])

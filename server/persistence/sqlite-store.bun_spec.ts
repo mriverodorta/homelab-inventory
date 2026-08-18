@@ -215,7 +215,7 @@ describe('SQLite Homelab Inventory store facade', () => {
         group_id: 1,
         positions: [0],
       })
-      expect(store.getDatabaseStatus()).toMatchObject({ schemaVersion: 20 })
+      expect(store.getDatabaseStatus()).toMatchObject({ schemaVersion: 21 })
       expect(store.getPersistenceHealth()).toMatchObject({ ok: true, engine: 'sqlite' })
     } finally {
       store.close()

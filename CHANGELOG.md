@@ -9,6 +9,7 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 ### Fixed
 
 - Empty OEM WLAN slot migrations are now shown and applied as one deterministic resource reclassification instead of a misleading expansion-slot removal and unrelated optional-module addition; the original numeric resource identity is preserved with or without assignments.
+- Existing pending Registry reviews are reevaluated once after update semantics change, so Watchtower upgrades replace stale review payloads automatically without repeated work on later restarts.
 
 ## [0.13.10] - 2026-08-18
 

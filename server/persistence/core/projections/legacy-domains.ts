@@ -94,6 +94,7 @@ export function projectRegistryState(database: Database) {
       id: run.id,
       sourceId: run.source_id,
       catalogRevision: run.catalog_revision,
+      evaluatorVersion: run.evaluator_version,
       state: run.state,
       automatic: Boolean(run.automatic),
       appliedCount: run.applied_count,
@@ -224,16 +225,16 @@ export function persistRegistryState(
     )
   }
   const upsertRun = database.query(`
-    INSERT INTO registry_update_runs (id, source_id, catalog_revision, state, automatic, applied_count, review_count, blocked_count, skipped_count, attempt_count, retry_after_ms, error, started_at_ms, completed_at_ms)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO registry_update_runs (id, source_id, catalog_revision, evaluator_version, state, automatic, applied_count, review_count, blocked_count, skipped_count, attempt_count, retry_after_ms, error, started_at_ms, completed_at_ms)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(id) DO UPDATE SET source_id = excluded.source_id, catalog_revision = excluded.catalog_revision,
-      state = excluded.state, automatic = excluded.automatic, applied_count = excluded.applied_count,
+      evaluator_version = excluded.evaluator_version, state = excluded.state, automatic = excluded.automatic, applied_count = excluded.applied_count,
       review_count = excluded.review_count, blocked_count = excluded.blocked_count, skipped_count = excluded.skipped_count,
       attempt_count = excluded.attempt_count, retry_after_ms = excluded.retry_after_ms,
       error = excluded.error, started_at_ms = excluded.started_at_ms, completed_at_ms = excluded.completed_at_ms
   `)
   for (const run of state.updateRuns ?? []) upsertRun.run(
-    run.id, run.sourceId, run.catalogRevision, run.state, Number(run.automatic !== false),
+    run.id, run.sourceId, run.catalogRevision, run.evaluatorVersion ?? 1, run.state, Number(run.automatic !== false),
     run.appliedCount ?? 0, run.reviewCount ?? 0, run.blockedCount ?? 0, run.skippedCount ?? 0,
     run.attemptCount ?? 0, milliseconds(run.retryAfter), run.error ?? null,
     milliseconds(run.startedAt, now), milliseconds(run.completedAt),

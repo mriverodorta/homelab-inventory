@@ -412,6 +412,7 @@ export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
   highlights: [],
   fixes: [
     'Registry update reviews now present empty OEM WLAN slot moves as one deterministic reclassification and preserve the resource identity even when no component is assigned.',
+    'Watchtower upgrades automatically reevaluate pending Registry reviews once when the application evaluator changes, replacing stale review payloads without requiring a new catalog revision.',
   ],
   notes: [],
 }

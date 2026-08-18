@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { CatalogUpdateCoordinator } from './catalog-update-coordinator.mjs'
+import { CATALOG_UPDATE_EVALUATOR_VERSION, CatalogUpdateCoordinator } from './catalog-update-coordinator.mjs'
 
 describe('CatalogUpdateCoordinator', () => {
   it('evaluates each linked update and commits one grouped run', async () => {
@@ -115,7 +115,8 @@ describe('CatalogUpdateCoordinator', () => {
         sources: [{ id: 1, kind: 'official-connected' }],
       }),
       getRegistryUpdateStatus: vi.fn(() => ({
-        state: 'failed', catalogRevision: 18, attemptCount: 1, retryAfter: '2026-08-14T13:01:00.000Z',
+        state: 'failed', catalogRevision: 18, evaluatorVersion: CATALOG_UPDATE_EVALUATOR_VERSION,
+        attemptCount: 1, retryAfter: '2026-08-14T13:01:00.000Z',
       })),
       getRegistryUpdateGroups: vi.fn(() => [{ id: 'review:cpu-example:2' }]),
       getCatalogUpdates: vi.fn(() => [{ linkId: 1, templateKey: template.templateKey, availableRevision: 2 }]),
@@ -150,7 +151,8 @@ describe('CatalogUpdateCoordinator', () => {
         sources: [{ id: 1, kind: 'official-connected' }],
       }),
       getRegistryUpdateStatus: vi.fn(() => ({
-        state: 'completed', catalogRevision: 18, reviewCount: 1, blockedCount: 0, skippedCount: 0,
+        state: 'completed', catalogRevision: 18, evaluatorVersion: CATALOG_UPDATE_EVALUATOR_VERSION,
+        reviewCount: 1, blockedCount: 0, skippedCount: 0,
       })),
       getRegistryUpdateGroups: vi.fn(() => groups),
       getCatalogUpdates: vi.fn(() => updates),
@@ -168,6 +170,35 @@ describe('CatalogUpdateCoordinator', () => {
     updates.push({ linkId: 2, templateKey: template.templateKey, availableRevision: 2 })
     await expect(coordinator.run()).resolves.toEqual({ applied: 2 })
     expect(snapshotService.templates).toHaveBeenCalledOnce()
+    expect(store.commitCatalogUpdateRun).toHaveBeenCalledOnce()
+  })
+
+  it('reevaluates a completed current-revision run once when evaluator semantics advance', async () => {
+    const template = { templateKey: 'desktop-example', revision: 2, contentHash: 'a'.repeat(64) }
+    const updates = [{ linkId: 1, templateKey: template.templateKey, availableRevision: 2 }]
+    const store = {
+      getRegistryState: () => ({
+        settings: { automaticSafeUpdates: false },
+        snapshot: { sourceId: 1, revision: 23 },
+        sources: [{ id: 1, kind: 'official-connected' }],
+      }),
+      getRegistryUpdateStatus: vi.fn()
+        .mockReturnValueOnce({ state: 'completed', catalogRevision: 23, evaluatorVersion: 1 })
+        .mockReturnValue({ state: 'completed', catalogRevision: 23, evaluatorVersion: CATALOG_UPDATE_EVALUATOR_VERSION }),
+      getRegistryUpdateGroups: vi.fn(() => [{ id: 'review:desktop-example:2', toRevision: 2, items: [{ linkId: 1 }] }]),
+      getCatalogUpdates: vi.fn(() => updates),
+      evaluateCatalogUpdates: vi.fn(() => ({ projectRevisions: { 1: 7 }, evaluations: updates })),
+      commitCatalogUpdateRun: vi.fn((input) => ({ applied: 0, review: input.evaluations.length })),
+    }
+    const snapshotService = { templates: vi.fn(async () => [template]) }
+    const coordinator = new CatalogUpdateCoordinator({ store, snapshotService })
+
+    await expect(coordinator.run()).resolves.toEqual({ applied: 0, review: 1 })
+    expect(store.commitCatalogUpdateRun).toHaveBeenCalledWith(expect.objectContaining({
+      evaluatorVersion: CATALOG_UPDATE_EVALUATOR_VERSION,
+    }))
+
+    await expect(coordinator.run()).resolves.toMatchObject({ applied: 0 })
     expect(store.commitCatalogUpdateRun).toHaveBeenCalledOnce()
   })
 })
