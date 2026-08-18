@@ -8,8 +8,8 @@ export function SystemsUtilizationBar({ value, kind }: { value: number; kind: 'c
     ? normalized >= 90 ? 'bg-[#b34f43]' : normalized >= 80 ? 'bg-[#c1841a]' : 'bg-[#3f8f6f]'
     : 'bg-[#3f7f9f]'
   return (
-    <div className="flex min-w-0 items-center gap-1.5" role="img" aria-label={`${kind} utilization ${rounded} percent`}>
-      <span className="w-[2.5rem] shrink-0 text-right text-[10px] font-semibold leading-none tabular-nums text-[#665f57]">{label}</span>
+    <div className="grid min-w-0 grid-cols-[4ch_minmax(4rem,1fr)] items-center gap-1.5" role="img" aria-label={`${kind} utilization ${rounded} percent`}>
+      <span className="w-[4ch] shrink-0 text-left text-[10px] font-semibold leading-none tabular-nums text-[#665f57]">{label}</span>
       <div className="relative h-1.5 min-w-16 flex-1 overflow-hidden rounded-[2px] bg-[#ded8cf]">
         <div className={cn('absolute inset-y-0 left-0', tone)} style={{ width: `${normalized}%` }} />
         {[25, 50, 75].map((position) => (

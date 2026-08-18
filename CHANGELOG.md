@@ -6,6 +6,10 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 
 ## Unreleased
 
+### Fixed
+
+- Systems CPU, memory, and storage percentages now align with the hardware text above them while a fixed four-character label track keeps every utilization bar anchored.
+
 ## [0.13.7] - 2026-08-17
 
 ### Added

@@ -377,7 +377,9 @@ const RELEASE_0_13_7_DETAILS: UnreleasedReleaseNotes = {
 
 export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
   highlights: [],
-  fixes: [],
+  fixes: [
+    'Systems CPU, memory, and storage percentages now align with their hardware labels while a fixed four-character value track keeps every utilization bar anchored.',
+  ],
   notes: [],
 }
 
