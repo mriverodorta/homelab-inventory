@@ -6,6 +6,8 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 
 ## Unreleased
 
+## [0.13.11] - 2026-08-18
+
 ### Fixed
 
 - Empty OEM WLAN slot migrations are now shown and applied as one deterministic resource reclassification instead of a misleading expansion-slot removal and unrelated optional-module addition; the original numeric resource identity is preserved with or without assignments.

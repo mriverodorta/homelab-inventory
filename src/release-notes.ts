@@ -408,12 +408,18 @@ const RELEASE_0_13_10_DETAILS: UnreleasedReleaseNotes = {
   notes: [],
 }
 
-export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
+const RELEASE_0_13_11_DETAILS: UnreleasedReleaseNotes = {
   highlights: [],
   fixes: [
     'Registry update reviews now present empty OEM WLAN slot moves as one deterministic reclassification and preserve the resource identity even when no component is assigned.',
     'Watchtower upgrades automatically reevaluate pending Registry reviews once when the application evaluator changes, replacing stale review payloads without requiring a new catalog revision.',
   ],
+  notes: [],
+}
+
+export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
+  highlights: [],
+  fixes: [],
   notes: [],
 }
 
@@ -944,9 +950,16 @@ const RELEASE_0_2_1_DETAILS: UnreleasedReleaseNotes = {
 
 export const RELEASE_NOTES: ReleaseNoteEntry[] = [
   {
-    version: '0.13.10',
+    version: '0.13.11',
     date: '2026-08-18',
     channel: 'latest',
+    title: 'Clear OEM resource migrations',
+    ...RELEASE_0_13_11_DETAILS,
+  },
+  {
+    version: '0.13.10',
+    date: '2026-08-18',
+    channel: 'release',
     title: 'Safe canonical Registry updates',
     ...RELEASE_0_13_10_DETAILS,
   },
