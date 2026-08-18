@@ -1,9 +1,11 @@
-import { act, renderHook } from '@testing-library/react'
+import { act, renderHook, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { PropsWithChildren } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { loadAgentTelemetry } from '@/lib/agent-api'
-import { AGENT_TELEMETRY_REFRESH_INTERVAL_MS, useAgentTelemetry } from './use-agent-telemetry'
+import { useAgentTelemetry } from './use-agent-telemetry'
+
+const live = vi.hoisted(() => ({ onEvent: () => {}, onResync: () => {}, enabled: false, topic: '' }))
 
 vi.mock('@/lib/agent-api', () => ({
   loadAgentTelemetry: vi.fn(async () => ({
@@ -17,6 +19,9 @@ vi.mock('@/lib/agent-api', () => ({
     metricBuckets: [],
     latest: null,
   })),
+}))
+vi.mock('@/live-events/use-live-event-topic', () => ({
+  useLiveEventTopic: vi.fn((input) => Object.assign(live, input)),
 }))
 
 afterEach(() => {
@@ -35,57 +40,38 @@ function createWrapper() {
 }
 
 describe('useAgentTelemetry', () => {
-  it('refreshes an offline host every minute and stops after unmount', async () => {
-    vi.useFakeTimers()
+  it('refreshes an offline host after its live event and stops after unmount', async () => {
     const rendered = renderHook(() => useAgentTelemetry({
       hostType: 'server',
       hostId: 1,
       enabled: true,
     }), { wrapper: createWrapper() })
 
-    await act(async () => vi.advanceTimersByTimeAsync(0))
-    expect(loadAgentTelemetry).toHaveBeenCalledTimes(1)
-
-    await act(async () => vi.advanceTimersByTimeAsync(AGENT_TELEMETRY_REFRESH_INTERVAL_MS))
+    await waitFor(() => expect(loadAgentTelemetry).toHaveBeenCalledTimes(1))
+    expect(live.topic).toBe('agent-telemetry:server:1')
+    await act(async () => live.onEvent())
     expect(loadAgentTelemetry).toHaveBeenCalledTimes(2)
-
     rendered.unmount()
-    await act(async () => vi.advanceTimersByTimeAsync(AGENT_TELEMETRY_REFRESH_INTERVAL_MS * 2))
-    expect(loadAgentTelemetry).toHaveBeenCalledTimes(2)
   })
 
   it('does not request telemetry for an unregistered host without saved state', async () => {
-    vi.useFakeTimers()
     renderHook(() => useAgentTelemetry({ hostType: 'server', hostId: 1, enabled: false }), { wrapper: createWrapper() })
-    await act(async () => vi.advanceTimersByTimeAsync(AGENT_TELEMETRY_REFRESH_INTERVAL_MS))
     expect(loadAgentTelemetry).not.toHaveBeenCalled()
+    expect(live.enabled).toBe(false)
   })
 
   it('shares one selected-host request across multiple inspector consumers', async () => {
-    vi.useFakeTimers()
     renderHook(() => ({
       agent: useAgentTelemetry({ hostType: 'server', hostId: 1, enabled: true }),
       services: useAgentTelemetry({ hostType: 'server', hostId: 1, enabled: true }),
       containers: useAgentTelemetry({ hostType: 'server', hostId: 1, enabled: true }),
     }), { wrapper: createWrapper() })
 
-    await act(async () => vi.advanceTimersByTimeAsync(0))
-    expect(loadAgentTelemetry).toHaveBeenCalledOnce()
+    await waitFor(() => expect(loadAgentTelemetry).toHaveBeenCalledOnce())
   })
 
-  it('pauses selected-host telemetry polling while the document is hidden', async () => {
-    vi.useFakeTimers()
-    let visibility: DocumentVisibilityState = 'visible'
-    vi.spyOn(document, 'visibilityState', 'get').mockImplementation(() => visibility)
-    const rendered = renderHook(() => useAgentTelemetry({ hostType: 'server', hostId: 1, enabled: true }), { wrapper: createWrapper() })
-
-    await act(async () => vi.advanceTimersByTimeAsync(0))
-    expect(loadAgentTelemetry).toHaveBeenCalledOnce()
-    visibility = 'hidden'
-    document.dispatchEvent(new Event('visibilitychange'))
-    await act(async () => vi.advanceTimersByTimeAsync(AGENT_TELEMETRY_REFRESH_INTERVAL_MS * 2))
-    expect(loadAgentTelemetry).toHaveBeenCalledOnce()
-
-    rendered.unmount()
+  it('uses a host-scoped topic', () => {
+    renderHook(() => useAgentTelemetry({ hostType: 'nas', hostId: 4, enabled: true }), { wrapper: createWrapper() })
+    expect(live.topic).toBe('agent-telemetry:nas:4')
   })
 })

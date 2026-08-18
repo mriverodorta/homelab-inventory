@@ -89,7 +89,6 @@ describe('Systems read service', () => {
       agentState: 'online',
       agentVersion: '0.1.8',
       agentUpdateAvailable: true,
-      agentUpdateCommand: 'sudo homelab-inventory-agent update',
       cpuPercent: 25,
       memoryPercent: 50,
       storagePercent: 90,
@@ -125,20 +124,7 @@ describe('Systems read service', () => {
       attentionState: 'refreshing',
       attentionRevision: 0,
     })
-    expect(service.live(store, 1, 'https://inventory.example').systems).toEqual([{
-      itemId: service.initial(store, 1, 'https://inventory.example').systems[0].itemId,
-      agentRegistered: false,
-      agentState: 'unregistered',
-      agentVersion: null,
-      agentUpdateAvailable: false,
-      cpuPercent: null,
-      memoryPercent: null,
-      storagePercent: null,
-      uptimeSeconds: null,
-      attentionCount: 0,
-      attentionState: 'refreshing',
-      attentionRevision: 0,
-    }])
+    expect(service.live(store, 1, 'https://inventory.example').systems).toEqual([])
   })
 
   test('omits stale metrics and falls back to the first assigned storage device', async () => {

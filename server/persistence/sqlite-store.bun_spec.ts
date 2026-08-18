@@ -158,6 +158,7 @@ describe('SQLite Homelab Inventory store facade', () => {
       expect(canonical.serialNumber).toBeNull()
       expect(store.core.database.query('SELECT project_id FROM project_inventory_memberships WHERE item_id = ?').all(canonical.itemId))
         .toEqual([{ project_id: target.project.id }])
+      expect(store.listInventoryProjectIds({ type: 'server', id: duplicated.item.id })).toEqual([target.project.id])
       expect(store.core.database.query('SELECT count(*) AS count FROM agent_host_bindings WHERE host_item_id = ?').get(canonical.itemId))
         .toEqual({ count: 0 })
       expect(store.core.database.query('SELECT count(*) AS count FROM registry_links WHERE item_id = ?').get(canonical.itemId))

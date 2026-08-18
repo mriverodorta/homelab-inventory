@@ -13,10 +13,28 @@ describe('ApplicationLiveEventBus', () => {
     expect(first).toMatchObject({ generationId: 'generation', sequence: 1, topics: ['agents:fleet', 'systems:1'] })
     expect(second.sequence).toBe(2)
     expect(listener).toHaveBeenCalledTimes(2)
+    expect(bus.snapshot({ topics: ['agents:fleet', 'systems:1'] }).topicSequences).toEqual({
+      'agents:fleet': 2,
+      'systems:1': 1,
+    })
     expect(() => { first.payload.hostId = 9 }).toThrow()
     unsubscribe()
     bus.publish({ topics: 'agents:fleet', kind: 'agent.changed' })
     expect(listener).toHaveBeenCalledTimes(2)
+  })
+
+  it('tracks topic sequences independently for each application scope', () => {
+    const bus = new ApplicationLiveEventBus({ generationId: 'generation' })
+    const first = {}
+    const second = {}
+    bus.publish({ scope: first, topics: 'systems:1', kind: 'changed' })
+    bus.publish({ scope: second, topics: 'systems:1', kind: 'changed' })
+    bus.publish({ topics: 'updates:status', kind: 'changed' })
+    expect(bus.snapshot({ scope: first, topics: ['systems:1', 'updates:status'] }).topicSequences).toEqual({
+      'systems:1': 1,
+      'updates:status': 3,
+    })
+    expect(bus.snapshot({ scope: second, topics: ['systems:1'] }).topicSequences).toEqual({ 'systems:1': 2 })
   })
 
   it('rejects oversized payloads and closes cleanly', () => {
@@ -38,4 +56,3 @@ describe('parseApplicationLiveTopics', () => {
     expect(() => parseApplicationLiveTopics(topic)).toThrow()
   })
 })
-

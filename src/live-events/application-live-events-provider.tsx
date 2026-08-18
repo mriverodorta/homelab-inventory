@@ -11,7 +11,14 @@ const defaultEventSourceFactory = (url: string): EventSourceLike => new EventSou
 function parseReady(value: string): ApplicationStreamReady | null {
   try {
     const parsed = JSON.parse(value) as ApplicationStreamReady
-    return parsed?.version === 1 && typeof parsed.generationId === 'string' && Number.isSafeInteger(parsed.sequence) ? parsed : null
+    return parsed?.version === 1
+      && typeof parsed.generationId === 'string'
+      && Number.isSafeInteger(parsed.sequence)
+      && Array.isArray(parsed.topics)
+      && parsed.topicSequences !== null
+      && typeof parsed.topicSequences === 'object'
+      ? parsed
+      : null
   } catch { return null }
 }
 
@@ -22,6 +29,8 @@ function parseEvent(value: string): ApplicationLiveEvent | null {
       && typeof parsed.generationId === 'string'
       && Number.isSafeInteger(parsed.sequence)
       && typeof parsed.topic === 'string'
+      && Array.isArray(parsed.topics)
+      && parsed.topics.every((topic) => typeof topic === 'string')
       && typeof parsed.kind === 'string'
       ? parsed
       : null
@@ -39,7 +48,7 @@ export function ApplicationLiveEventsProvider({
   const [revision, setRevision] = useState(0)
   const [visible, setVisible] = useState(() => typeof document === 'undefined' || document.visibilityState !== 'hidden')
   const generation = useRef<string | null>(null)
-  const sequence = useRef<number | null>(null)
+  const topicSequences = useRef(new Map<string, number>())
 
   const subscribe = useCallback((subscription: ApplicationLiveSubscription) => {
     const id = Symbol(subscription.topic)
@@ -66,33 +75,41 @@ export function ApplicationLiveEventsProvider({
   useEffect(() => {
     if (!visible || !topicKey) return
     const source = eventSourceFactory(`/api/events?topics=${encodeURIComponent(topicKey)}`)
-    const resync = () => {
+    const resync = (resyncTopics = topics) => {
       for (const subscription of subscriptions.current.values()) {
-        if (topics.includes(subscription.topic)) subscription.onResync()
+        if (resyncTopics.includes(subscription.topic)) subscription.onResync()
       }
     }
     const onReady = (raw: Event) => {
       const ready = parseReady((raw as MessageEvent<string>).data)
       if (!ready) return
+      const changedGeneration = generation.current !== null && generation.current !== ready.generationId
+      const staleTopics = topics.filter((topic) => {
+        const previous = topicSequences.current.get(topic)
+        const current = ready.topicSequences[topic] ?? 0
+        return previous === undefined || changedGeneration || current > previous
+      })
       generation.current = ready.generationId
-      sequence.current = ready.sequence
-      resync()
+      for (const topic of topics) topicSequences.current.set(topic, ready.topicSequences[topic] ?? 0)
+      if (staleTopics.length > 0) resync(staleTopics)
     }
     const onEvent = (raw: Event) => {
       const event = parseEvent((raw as MessageEvent<string>).data)
-      if (!event || !topics.includes(event.topic)) return
+      if (!event) return
+      const matchingTopics = event.topics.filter((topic) => topics.includes(topic))
+      if (matchingTopics.length === 0) return
       if (generation.current !== null && event.generationId !== generation.current) {
         generation.current = event.generationId
-        sequence.current = event.sequence
-        resync()
+        for (const topic of matchingTopics) topicSequences.current.set(topic, event.sequence)
+        resync(matchingTopics)
         return
       }
-      if (sequence.current !== null && event.sequence <= sequence.current) return
-      if (sequence.current !== null && event.sequence > sequence.current + 1) resync()
       generation.current = event.generationId
-      sequence.current = event.sequence
+      const freshTopics = matchingTopics.filter((topic) => event.sequence > (topicSequences.current.get(topic) ?? 0))
+      if (freshTopics.length === 0) return
+      for (const topic of freshTopics) topicSequences.current.set(topic, event.sequence)
       for (const subscription of subscriptions.current.values()) {
-        if (subscription.topic === event.topic) subscription.onEvent(event)
+        if (freshTopics.includes(subscription.topic)) subscription.onEvent(event)
       }
     }
     source.addEventListener('stream-ready', onReady)

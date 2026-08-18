@@ -7,6 +7,7 @@ import {
   loadDemoSession,
   type DemoSessionStatus,
 } from '@/lib/demo-api'
+import { useLiveEventTopic } from '@/live-events/use-live-event-topic'
 
 const DEMO_EXTENSION_GRACE_SECONDS = 30
 const DEMO_SESSION_QUERY_KEY = ['demo-session'] as const
@@ -21,9 +22,13 @@ export function useDemoSessionLifecycle() {
   const query = useQuery({
     queryKey: DEMO_SESSION_QUERY_KEY,
     queryFn: loadDemoSession,
-    refetchInterval: (currentQuery) => (
-      currentQuery.state.data?.mode === 'demo' ? 60_000 : false
-    ),
+    staleTime: Infinity,
+  })
+  useLiveEventTopic({
+    topic: 'demo:session',
+    enabled: query.data?.mode === 'demo',
+    onEvent: () => void query.refetch(),
+    onResync: () => void query.refetch(),
   })
 
   const extendMutation = useMutation({

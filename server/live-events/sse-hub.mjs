@@ -55,7 +55,10 @@ export class ApplicationSseHub {
     try {
       response.flushHeaders?.()
       response.write('retry: 3000\n\n')
-      writeEvent(response, 'stream-ready', null, { ...this.bus.snapshot(), topics: [...topicValues] })
+      writeEvent(response, 'stream-ready', null, {
+        ...this.bus.snapshot({ scope, topics: [...topicValues] }),
+        topics: [...topicValues],
+      })
     } catch {
       close()
       return null
@@ -76,4 +79,3 @@ export class ApplicationSseHub {
     return count
   }
 }
-

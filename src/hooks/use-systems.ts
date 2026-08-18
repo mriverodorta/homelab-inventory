@@ -10,22 +10,33 @@ import {
   setDefaultSystemsView,
 } from '@/lib/systems-api'
 import type { SystemsHostType, SystemsSavedView, SystemsViewConfiguration } from '@/types/systems'
-
-export const SYSTEMS_LIVE_REFRESH_INTERVAL_MS = 30_000
+import { useLiveEventTopic } from '@/live-events/use-live-event-topic'
 
 export function useSystems(projectId: number, enabled: boolean) {
   const initial = useQuery({
     queryKey: ['projects', projectId, 'systems'],
     queryFn: () => loadSystems(projectId),
     enabled,
-    staleTime: 30_000,
+    staleTime: Number.POSITIVE_INFINITY,
+    refetchOnMount: false,
+    refetchOnReconnect: false,
   })
   const live = useQuery({
     queryKey: ['projects', projectId, 'systems', 'live'],
     queryFn: () => loadSystemsLive(projectId),
     enabled: enabled && initial.isSuccess,
-    refetchInterval: enabled && initial.isSuccess ? SYSTEMS_LIVE_REFRESH_INTERVAL_MS : false,
-    refetchIntervalInBackground: false,
+    staleTime: Number.POSITIVE_INFINITY,
+    refetchOnMount: false,
+    refetchOnReconnect: false,
+  })
+  useLiveEventTopic({
+    topic: `systems:${projectId}`,
+    enabled: enabled && initial.isSuccess,
+    onEvent: (event) => {
+      if (['agent.activation', 'agent.registration', 'agent.status'].includes(event.kind)) void initial.refetch()
+      void live.refetch()
+    },
+    onResync: () => { void initial.refetch(); void live.refetch() },
   })
   return { initial, live }
 }

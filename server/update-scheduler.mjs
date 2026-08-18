@@ -10,6 +10,7 @@ export function startUpdateCheckSchedule({
   intervalMs = UPDATE_CACHE_MS,
   setIntervalFn = setInterval,
   clearIntervalFn = clearInterval,
+  onChanged = null,
 }) {
   if (!checker.enabled) {
     return {
@@ -23,7 +24,10 @@ export function startUpdateCheckSchedule({
     if (stopped) return null
     try {
       const result = await checker.check({ force, persistedResult })
-      if (store && isSuccessful(result) && result !== persistedResult) await store.saveUpdateCheck(result)
+      if (isSuccessful(result) && result !== persistedResult) {
+        if (store) await store.saveUpdateCheck(result)
+        onChanged?.(store, result)
+      }
       return result
     } catch {
       return null

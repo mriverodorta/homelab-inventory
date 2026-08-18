@@ -42,6 +42,22 @@ async function json(url, pathname, options = {}) {
 }
 
 describe('notification routes', () => {
+  it('returns count-only notification summaries without configuration data', async () => {
+    const { store, url } = await setup()
+    await store.mutateState((draft) => {
+      const openedAt = new Date(0).toISOString()
+      draft.incidents.push({ id: 1, eventKey: 'server:1:0:host.offline', hostType: 'server', hostId: 1, resourceId: null, eventType: 'host.offline', severity: 'critical', title: 'Open', summary: '', state: 'open', openedAt, resolvedAt: null, acknowledgedAt: null, acknowledgedBy: null, notificationDeliveredAt: null, lastReminderAt: null, createdAt: openedAt, updatedAt: openedAt })
+      draft.counters.incident = 2
+    })
+
+    const result = await json(url, '/api/notifications/summary')
+    expect(result.body).toEqual({
+      available: true,
+      summary: { active: 1, unacknowledged: 1, exhaustedDeliveries: 0 },
+    })
+    expect(result.body.config).toBeUndefined()
+  })
+
   it('manages redacted contact points with optimistic revisions', async () => {
     const { store, vault, deliveryCoordinator, url } = await setup()
     const created = await json(url, '/api/notifications/contact-points', {

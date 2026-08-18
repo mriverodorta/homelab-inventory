@@ -240,6 +240,7 @@ export function registerAgentV1Routes(app, store, {
   notificationHostLifecycle = null,
   telemetryRepository = null,
   releaseService = null,
+  onAgentChanged = null,
 } = {}) {
   app.get('/api/agent/contracts/current', disabled
     ? disabledRoute
@@ -357,6 +358,7 @@ export function registerAgentV1Routes(app, store, {
       },
     })
     for (const deviceId of activated.revokedDeviceIds) heartbeatBuckets.delete(deviceId)
+    onAgentChanged?.({ store, host, kind: 'activation' })
     return response.set('Cache-Control', 'no-store').json({
       deviceId: activated.device.id,
       protocolMajor: 1,
@@ -391,6 +393,7 @@ export function registerAgentV1Routes(app, store, {
         payload: heartbeat,
       })
       persistHeartbeat(store, device, host, authentication, heartbeat, receivedAt)
+      onAgentChanged?.({ store, host, kind: 'heartbeat' })
       return response.json({
         ok: true,
         receivedAt,
@@ -418,6 +421,7 @@ export function registerAgentV1Routes(app, store, {
       const { authentication, snapshot } = decodeHardwareSnapshot(request, device, host, request.body)
       const receivedAt = new Date().toISOString()
       const persisted = await persistHardwareSnapshot(store, device, host, authentication, snapshot, receivedAt)
+      onAgentChanged?.({ store, host, kind: 'hardware' })
       return response.status(201).json({ ok: true, snapshotId: persisted.id, receivedAt, sequence: authentication.sequence })
     } catch (error) {
       if (!(error instanceof AgentAuthenticationError) && !Number.isInteger(error?.status)) throw error
@@ -528,6 +532,7 @@ export function registerAgentV1Routes(app, store, {
     for (const deviceId of revokedDeviceIds) heartbeatBuckets.delete(deviceId)
     if (revoked || options.deleteTelemetry) await store.flush(['agents', 'agentStatus'])
     if (revoked) await notificationHostLifecycle?.cancelHost(host.hostType, host.hostId, 'agent-unlinked')
+    if (revoked || options.deleteTelemetry) onAgentChanged?.({ store, host, kind: 'registration' })
     return response.json({ ok: true, ...host, revoked, revokedAt, deleteTelemetry: options.deleteTelemetry, telemetryDeleted })
   })
 
@@ -537,6 +542,8 @@ export function registerAgentV1Routes(app, store, {
     if (store.hasActiveAgentRegistration(host.hostType, host.hostId)) {
       return response.status(409).json({ message: 'Revoke the active agent registration before clearing runtime status.' })
     }
-    return response.json(store.clearAgentRuntimeData(host.hostType, host.hostId))
+    const result = store.clearAgentRuntimeData(host.hostType, host.hostId)
+    onAgentChanged?.({ store, host, kind: 'status' })
+    return response.json(result)
   })
 }

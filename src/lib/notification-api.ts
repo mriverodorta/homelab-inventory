@@ -10,6 +10,7 @@ import type {
   NotificationResourceInput,
   NotificationRule,
   NotificationSnapshot,
+  NotificationSummary,
 } from '@/types/notifications'
 
 async function notificationRequest<T>(url: string, init?: RequestInit): Promise<T> {
@@ -26,6 +27,10 @@ async function notificationRequest<T>(url: string, init?: RequestInit): Promise<
 
 export function loadNotificationSnapshot(): Promise<NotificationSnapshot> {
   return consumeInitialBootstrap('notifications', () => notificationRequest('/api/notifications'))
+}
+
+export function loadNotificationSummary(): Promise<NotificationSummary> {
+  return notificationRequest('/api/notifications/summary')
 }
 
 export function updateNotificationSettings(input: {

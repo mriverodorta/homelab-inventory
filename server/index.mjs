@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url'
 import { RELEASE_NOTES } from '../src/release-notes.ts'
 import { registerAgentRoutes } from './agent-routes.mjs'
 import { createAgentV1BodyMiddleware, registerAgentV1Routes } from './agents/v1-routes.mjs'
+import { AgentLifecycleScheduler } from './agents/lifecycle-scheduler.mjs'
 import { AgentReleaseService, registerAgentReleaseRoutes } from './agents/release-service.mjs'
 import { registerBackupRoutes } from './backup-routes.mjs'
 import { registerBootstrapRoute } from './bootstrap-routes.mjs'
@@ -163,6 +164,7 @@ let telemetryDatabase = null
 let telemetryRepository = null
 let telemetryRetentionSchedule = null
 let notificationRuntime = null
+let notificationEventUnsubscribe = null
 let backupService = null
 let sqlitePersistence = null
 let sqliteRuntime = null
@@ -360,8 +362,38 @@ registerAccessRoutes(app, {
   sessions: sessionService,
   demo: isDemoMode || stagingPolicy.authenticationDisabled,
 })
+let agentLifecycleScheduler = null
+function publishAgentChanged({ store: currentStore, host, kind }, { schedule = true } = {}) {
+  let projectIds = []
+  try {
+    projectIds = currentStore.listInventoryProjectIds({ type: host.hostType, id: host.hostId })
+  } catch {}
+  const topics = [
+    'agents:fleet',
+    `agent-telemetry:${host.hostType}:${host.hostId}`,
+    ...projectIds.map((projectId) => `systems:${projectId}`),
+  ]
+  if (kind === 'hardware') topics.push(`agent-hardware:${host.hostType}:${host.hostId}`)
+  applicationEventBus.publish({
+    scope: currentStore,
+    topics,
+    kind: `agent.${kind}`,
+    payload: { hostType: host.hostType, hostId: host.hostId },
+  })
+  if (schedule) agentLifecycleScheduler?.changed(host)
+}
+if (!isDemoMode && store && !stagingPolicy.agentsDisabled) {
+  agentLifecycleScheduler = new AgentLifecycleScheduler({
+    summary: (now) => store.getAgentStatusSummary({ now }),
+    onTransition: (host, status) => publishAgentChanged({ store, host, kind: `status-${status.state}` }, { schedule: false }),
+  })
+}
 registerAgentReleaseRoutes(app, agentReleaseService, { disabled: isDemoMode || stagingPolicy.agentsDisabled })
-registerAgentRoutes(app, store, { disabled: isDemoMode || stagingPolicy.agentsDisabled, releaseService: agentReleaseService })
+registerAgentRoutes(app, store, {
+  disabled: isDemoMode || stagingPolicy.agentsDisabled,
+  releaseService: agentReleaseService,
+  onAgentChanged: publishAgentChanged,
+})
 registerAgentV1Routes(app, store, {
   disabled: isDemoMode || stagingPolicy.agentsDisabled,
   releaseService: agentReleaseService,
@@ -384,6 +416,7 @@ registerAgentV1Routes(app, store, {
     : null,
   notificationHostLifecycle: notificationRuntime?.incidentManager ?? null,
   telemetryRepository,
+  onAgentChanged: publishAgentChanged,
 })
 registerNotificationRoutes(app, {
   store: notificationRuntime?.store ?? null,
@@ -392,7 +425,20 @@ registerNotificationRoutes(app, {
   deliveryCoordinator: notificationRuntime?.deliveryCoordinator ?? null,
   demo: isDemoMode || stagingPolicy.notificationsDisabled,
 })
+notificationEventUnsubscribe = notificationRuntime?.store.subscribe(({ section }) => {
+  if (section === 'secrets') return
+  const topics = section === 'state'
+    ? ['notifications:summary', 'notifications:incidents']
+    : ['notifications:summary']
+  applicationEventBus.publish({
+    scope: store,
+    topics,
+    kind: `notifications.${section}-changed`,
+    payload: { section },
+  })
+}) ?? null
 notificationRuntime?.start()
+agentLifecycleScheduler?.start()
 
 function parseCookie(header, name) {
   return (header ?? '')
@@ -445,6 +491,11 @@ registerUpdateRoutes(app, {
   withStore,
   checker: updateChecker,
   releaseNotes: RELEASE_NOTES,
+  onChanged: (currentStore) => applicationEventBus.publish({
+    scope: currentStore ?? null,
+    topics: ['updates:status'],
+    kind: 'updates.status-changed',
+  }),
 })
 
 const installationIdentity = !isDemoMode && !stagingPolicy.registryIdentityDisabled
@@ -576,6 +627,11 @@ registerEngineRoutes(app, {
 const updateCheckSchedule = startUpdateCheckSchedule({
   checker: updateChecker,
   store,
+  onChanged: (currentStore) => applicationEventBus.publish({
+    scope: currentStore ?? null,
+    topics: ['updates:status'],
+    kind: 'updates.status-changed',
+  }),
 })
 if (contributionDelivery && store && !stagingPolicy.registryContributionsDisabled) contributionDelivery.start(store)
 
@@ -634,7 +690,20 @@ app.post('/api/demo/session/extend', (request, response) => {
 
   void (async () => {
     try {
-      response.json(await demoManager.extendSession(sessionId))
+      const session = await demoManager.getSession(sessionId)
+      const currentStore = session
+        ? (await demoManager.getOrCreateSessionStore(sessionId, { clientKey: request.ip })).store
+        : null
+      const status = await demoManager.extendSession(sessionId)
+      if (currentStore) {
+        applicationEventBus.publish({
+          scope: currentStore,
+          topics: ['demo:session'],
+          kind: 'demo.session-extended',
+          payload: { expiresAt: status.expiresAt },
+        })
+      }
+      response.json(status)
     } catch (error) {
       response.status(410).json({ message: error instanceof Error ? error.message : 'Demo session is expired.' })
     }
@@ -652,6 +721,17 @@ app.post('/api/demo/session/expire', (request, response) => {
   void (async () => {
     try {
       if (sessionId) {
+        const session = await demoManager.getSession(sessionId)
+        const currentStore = session
+          ? (await demoManager.getOrCreateSessionStore(sessionId, { clientKey: request.ip })).store
+          : null
+        if (currentStore) {
+          applicationEventBus.publish({
+            scope: currentStore,
+            topics: ['demo:session'],
+            kind: 'demo.session-expired',
+          })
+        }
         await demoManager.expireSession(sessionId)
       }
 
@@ -731,8 +811,10 @@ async function shutdown(signal) {
         () => catalogStatusService?.stop(),
         () => contributionDelivery?.stop(store),
         () => telemetryRetentionSchedule?.stop(),
+        () => notificationEventUnsubscribe?.(),
         () => notificationRuntime?.stop(),
         () => systemsAttention?.stop(),
+        () => agentLifecycleScheduler?.stop(),
       ],
       flush: () => demoManager ? demoManager.flushAll() : store.flush(),
       closers: demoManager

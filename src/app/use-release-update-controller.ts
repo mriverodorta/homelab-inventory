@@ -8,13 +8,13 @@ import {
 import {
   checkForUpdates,
   clearSkippedUpdate,
-  getUpdateStatusRefetchInterval,
   loadUpdateStatus,
   shouldHighlightUpdate,
   skipAvailableUpdate,
   UPDATE_STATUS_QUERY_KEY,
   type UpdateStatus,
 } from '@/lib/update-api'
+import { useLiveEventTopic } from '@/live-events/use-live-event-topic'
 
 const RELEASE_NOTES_STATUS_QUERY_KEY = ['release-notes-status'] as const
 
@@ -29,10 +29,15 @@ export function useReleaseUpdateController({ canViewUpdates = true }: { canViewU
   const updateStatusQuery = useQuery({
     queryKey: UPDATE_STATUS_QUERY_KEY,
     queryFn: loadUpdateStatus,
-    staleTime: 6 * 60 * 60 * 1000,
-    refetchInterval: (query) => getUpdateStatusRefetchInterval(query.state.data),
+    staleTime: Infinity,
     retry: false,
     enabled: canViewUpdates,
+  })
+  useLiveEventTopic({
+    topic: 'updates:status',
+    enabled: canViewUpdates,
+    onEvent: () => void updateStatusQuery.refetch(),
+    onResync: () => void updateStatusQuery.refetch(),
   })
   const acknowledgeReleaseNotesMutation = useMutation({
     mutationFn: acknowledgeReleaseNotes,

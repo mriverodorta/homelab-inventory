@@ -966,6 +966,12 @@ export class SqliteHomelabInventoryStore {
     }
   }
 
+  listInventoryProjectIds(ref: Row) {
+    const normalized = normalizeInventoryRef(ref)
+    const itemId = this.inventoryScope.resolve(normalized.type as InventoryType, normalized.id)
+    return this.inventoryScope.memberships(itemId)
+  }
+
   listAvailableGlobalInventory(projectId: number) {
     return this.inventoryScope.listAvailableGlobal(projectId)
   }

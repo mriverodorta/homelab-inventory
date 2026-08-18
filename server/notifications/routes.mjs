@@ -43,11 +43,18 @@ function redactedConfig(config) {
 
 export function publicNotificationSnapshot(store) {
   const config = store.readConfig()
+  return {
+    available: true,
+    config: redactedConfig(config),
+    summary: publicNotificationSummary(store).summary,
+  }
+}
+
+export function publicNotificationSummary(store) {
   const state = store.readState()
   const active = state.incidents.filter((incident) => incident.state === 'open')
   return {
     available: true,
-    config: redactedConfig(config),
     summary: {
       active: active.length,
       unacknowledged: active.filter((incident) => !incident.acknowledgedAt).length,
@@ -138,6 +145,14 @@ export function registerNotificationRoutes(app, {
       return
     }
     response.set('Cache-Control', 'no-store').json(publicNotificationSnapshot(store))
+  })
+
+  app.get('/api/notifications/summary', (_request, response) => {
+    if (demo || !store) {
+      response.json({ available: false, summary: { active: 0, unacknowledged: 0, exhaustedDeliveries: 0 } })
+      return
+    }
+    response.set('Cache-Control', 'no-store').json(publicNotificationSummary(store))
   })
 
   const requireRuntime = () => {

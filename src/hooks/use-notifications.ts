@@ -1,20 +1,44 @@
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import * as api from '@/lib/notification-api'
+import { useLiveEventTopic } from '@/live-events/use-live-event-topic'
 
 export const NOTIFICATIONS_QUERY_KEY = ['notifications'] as const
 
 export function useNotificationSnapshot(enabled = true) {
-  return useQuery({
+  const query = useQuery({
     queryKey: NOTIFICATIONS_QUERY_KEY,
     queryFn: api.loadNotificationSnapshot,
     enabled,
-    refetchInterval: enabled ? 30_000 : false,
+    staleTime: Infinity,
   })
+  useLiveEventTopic({
+    topic: 'notifications:summary',
+    enabled,
+    onEvent: () => void query.refetch(),
+    onResync: () => void query.refetch(),
+  })
+  return query
+}
+
+export function useNotificationSummary(enabled = true) {
+  const query = useQuery({
+    queryKey: [...NOTIFICATIONS_QUERY_KEY, 'summary'],
+    queryFn: api.loadNotificationSummary,
+    enabled,
+    staleTime: Infinity,
+  })
+  useLiveEventTopic({
+    topic: 'notifications:summary',
+    enabled,
+    onEvent: () => void query.refetch(),
+    onResync: () => void query.refetch(),
+  })
+  return query
 }
 
 export function useNotificationIncidents(enabled = true, state = 'all') {
   const pageSize = 50
-  return useInfiniteQuery({
+  const query = useInfiniteQuery({
     queryKey: [...NOTIFICATIONS_QUERY_KEY, 'incidents', state],
     queryFn: ({ pageParam }) => api.loadNotificationIncidents(state, pageSize, pageParam),
     initialPageParam: 0,
@@ -23,8 +47,15 @@ export function useNotificationIncidents(enabled = true, state = 'all') {
       return loaded < lastPage.total ? loaded : undefined
     },
     enabled,
-    refetchInterval: enabled ? 60_000 : false,
+    staleTime: Infinity,
   })
+  useLiveEventTopic({
+    topic: 'notifications:incidents',
+    enabled,
+    onEvent: () => void query.refetch(),
+    onResync: () => void query.refetch(),
+  })
+  return query
 }
 
 export function useNotificationMutations() {

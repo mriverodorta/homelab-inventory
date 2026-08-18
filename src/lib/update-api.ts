@@ -22,22 +22,6 @@ export type UpdateStatus = {
 }
 
 export const UPDATE_STATUS_QUERY_KEY = ['update-status'] as const
-export const UPDATE_STATUS_FRESH_MS = 6 * 60 * 60 * 1000
-export const UPDATE_STATUS_REFRESH_FOLLOW_UP_MS = 30 * 1000
-
-export function getUpdateStatusRefetchInterval(
-  status: UpdateStatus | undefined,
-  now = Date.now(),
-): number | false {
-  if (status?.state === 'disabled') return false
-
-  const checkedAt = Date.parse(status?.checkedAt ?? '')
-  if (Number.isFinite(checkedAt) && now - checkedAt >= UPDATE_STATUS_FRESH_MS) {
-    return UPDATE_STATUS_REFRESH_FOLLOW_UP_MS
-  }
-
-  return UPDATE_STATUS_FRESH_MS
-}
 
 export function shouldHighlightUpdate(status: UpdateStatus | undefined): boolean {
   return status?.state === 'available'

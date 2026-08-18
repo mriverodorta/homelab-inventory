@@ -361,9 +361,18 @@ const RELEASE_0_13_3_DETAILS: UnreleasedReleaseNotes = {
 }
 
 export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
-  highlights: [],
-  fixes: [],
-  notes: [],
+  highlights: [
+    'Systems, Agent availability and telemetry, notification counts and incidents, release status, and demo-session changes now arrive through one authenticated application event stream instead of browser polling.',
+  ],
+  fixes: [
+    'Systems CPU, memory, and storage utilization bars now include stable whole-number percentage labels without shifting their graph tracks.',
+    'Systems live updates omit unchanged unregistered hosts and repeated Agent update commands, while Canvas requests only compact notification counts and detailed notification data loads only where it is displayed.',
+    'Agent online, stale, and offline transitions now use the nearest server-side lifecycle deadline, so status changes remain timely without periodic browser requests.',
+    'The distroless production image includes the application live-event runtime required to start the authenticated event stream.',
+  ],
+  notes: [
+    'The application event stream reconnects after visibility and network changes, using per-topic cursors to resynchronize only affected queries after missed events or server restarts.',
+  ],
 }
 
 const RELEASE_0_11_2_DETAILS: UnreleasedReleaseNotes = {

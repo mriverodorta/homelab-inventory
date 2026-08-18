@@ -674,6 +674,7 @@ export function registerAgentRoutes(app, store, {
   heartbeatRateLimit = HEARTBEAT_RATE_LIMIT,
   heartbeatRateWindowMs = HEARTBEAT_RATE_WINDOW_MS,
   releaseService = null,
+  onAgentChanged = null,
 } = {}) {
   if (disabled) {
     app.get('/api/agent/install.sh', disabledAgentRoute)
@@ -731,6 +732,7 @@ export function registerAgentRoutes(app, store, {
 
     const { revoked, revokedAt, revokedDeviceIds } = store.revokeAgentRegistration('server', serverId)
     for (const deviceId of revokedDeviceIds) heartbeatBuckets.delete(deviceId)
+    if (revoked) onAgentChanged?.({ store, host: { hostType: 'server', hostId: serverId }, kind: 'registration' })
     response.json({ ok: true, serverId, revoked, revokedAt })
   })
 
@@ -747,7 +749,9 @@ export function registerAgentRoutes(app, store, {
       return
     }
 
-    response.json(store.clearAgentRuntimeData('server', serverId))
+    const result = store.clearAgentRuntimeData('server', serverId)
+    onAgentChanged?.({ store, host: { hostType: 'server', hostId: serverId }, kind: 'status' })
+    response.json(result)
   })
 
   app.post('/api/agent/enrollments', (request, response) => {
@@ -831,6 +835,7 @@ export function registerAgentRoutes(app, store, {
       },
     })
     for (const deviceId of activated.revokedDeviceIds) heartbeatBuckets.delete(deviceId)
+    onAgentChanged?.({ store, host: { hostType: 'server', hostId: serverId }, kind: 'activation' })
 
     response.set('Cache-Control', 'no-store').json({
       deviceId: activated.device.id,
@@ -877,6 +882,7 @@ export function registerAgentRoutes(app, store, {
         ...heartbeat,
       },
     })
+    onAgentChanged?.({ store, host: { hostType: 'server', hostId: serverId }, kind: 'heartbeat' })
 
     response.json({ ok: true, receivedAt: now })
   })

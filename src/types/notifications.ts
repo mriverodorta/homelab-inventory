@@ -76,6 +76,11 @@ export type NotificationConfig = {
 export type NotificationSnapshot = {
   available: boolean
   config: NotificationConfig
+  summary: NotificationSummary['summary']
+}
+
+export type NotificationSummary = {
+  available: boolean
   summary: { active: number; unacknowledged: number; exhaustedDeliveries: number }
 }
 

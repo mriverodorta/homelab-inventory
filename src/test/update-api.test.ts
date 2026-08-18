@@ -1,11 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import {
-  getUpdateStatusRefetchInterval,
-  shouldHighlightUpdate,
-  UPDATE_STATUS_FRESH_MS,
-  UPDATE_STATUS_REFRESH_FOLLOW_UP_MS,
-  type UpdateStatus,
-} from '@/lib/update-api'
+import { shouldHighlightUpdate, type UpdateStatus } from '@/lib/update-api'
 
 const currentStatus: UpdateStatus = {
   enabled: true,
@@ -22,30 +16,7 @@ const currentStatus: UpdateStatus = {
   entries: [],
 }
 
-describe('update API polling', () => {
-  it('uses the normal six-hour interval for a fresh result', () => {
-    expect(getUpdateStatusRefetchInterval(
-      currentStatus,
-      Date.parse('2026-07-12T12:30:00.000Z'),
-    )).toBe(UPDATE_STATUS_FRESH_MS)
-  })
-
-  it('follows up quickly after receiving a stale persisted result', () => {
-    expect(getUpdateStatusRefetchInterval(
-      currentStatus,
-      Date.parse('2026-07-12T18:00:00.000Z'),
-    )).toBe(UPDATE_STATUS_REFRESH_FOLLOW_UP_MS)
-  })
-
-  it('stops polling when update checks are disabled', () => {
-    expect(getUpdateStatusRefetchInterval({
-      ...currentStatus,
-      enabled: false,
-      checkedAt: null,
-      state: 'disabled',
-    })).toBe(false)
-  })
-
+describe('update API state', () => {
   it('highlights only an available version that has not been skipped', () => {
     expect(shouldHighlightUpdate({ ...currentStatus, state: 'available', updateAvailable: true })).toBe(true)
     expect(shouldHighlightUpdate({ ...currentStatus, state: 'available', updateAvailable: true, skipped: true })).toBe(false)

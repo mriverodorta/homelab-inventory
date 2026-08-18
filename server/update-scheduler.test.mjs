@@ -21,12 +21,14 @@ describe('update check scheduler', () => {
       return timer
     })
     const clearIntervalFn = vi.fn()
+    const onChanged = vi.fn()
 
-    const schedule = startUpdateCheckSchedule({ checker, store, setIntervalFn, clearIntervalFn })
+    const schedule = startUpdateCheckSchedule({ checker, store, setIntervalFn, clearIntervalFn, onChanged })
     await schedule.initialCheck
 
     expect(checker.check).toHaveBeenCalledWith({ force: false, persistedResult: null })
     expect(store.saveUpdateCheck).toHaveBeenCalledWith(successfulResult)
+    expect(onChanged).toHaveBeenCalledWith(store, successfulResult)
     expect(setIntervalFn).toHaveBeenCalledWith(expect.any(Function), UPDATE_CACHE_MS)
     expect(timer.unref).toHaveBeenCalledTimes(1)
 

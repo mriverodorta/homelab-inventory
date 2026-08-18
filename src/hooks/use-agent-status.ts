@@ -1,14 +1,21 @@
 import { useQuery } from '@tanstack/react-query'
 import { loadAgentStatus } from '@/lib/agent-api'
-
-export const AGENT_STATUS_REFRESH_INTERVAL_MS = 60_000
+import { useLiveEventTopic } from '@/live-events/use-live-event-topic'
 
 export function useAgentStatus(enabled: boolean) {
-  return useQuery({
+  const query = useQuery({
     queryKey: ['agent-status'],
     queryFn: loadAgentStatus,
     enabled,
-    refetchInterval: enabled ? AGENT_STATUS_REFRESH_INTERVAL_MS : false,
-    refetchIntervalInBackground: false,
+    staleTime: Number.POSITIVE_INFINITY,
+    refetchOnMount: false,
+    refetchOnReconnect: false,
   })
+  useLiveEventTopic({
+    topic: 'agents:fleet',
+    enabled,
+    onEvent: () => { void query.refetch() },
+    onResync: () => { void query.refetch() },
+  })
+  return query
 }

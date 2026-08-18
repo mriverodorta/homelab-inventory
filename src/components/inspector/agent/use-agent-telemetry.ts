@@ -2,8 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import { loadAgentTelemetry } from '@/lib/agent-api'
 import type { AgentHostType } from '@/types/agent'
 import type { InventoryItem, ProjectState } from '@/types/inventory'
-
-export const AGENT_TELEMETRY_REFRESH_INTERVAL_MS = 60_000
+import { useLiveEventTopic } from '@/live-events/use-live-event-topic'
 
 export function useAgentTelemetry({
   hostType,
@@ -14,14 +13,22 @@ export function useAgentTelemetry({
   hostId: number
   enabled: boolean
 }) {
-  return useQuery({
+  const query = useQuery({
     queryKey: ['agent-telemetry', hostType, hostId, '30m'],
     queryFn: () => loadAgentTelemetry(hostType, hostId, { limit: 30 }),
     enabled,
     retry: 1,
-    refetchInterval: AGENT_TELEMETRY_REFRESH_INTERVAL_MS,
-    refetchIntervalInBackground: false,
+    staleTime: Number.POSITIVE_INFINITY,
+    refetchOnMount: false,
+    refetchOnReconnect: false,
   })
+  useLiveEventTopic({
+    topic: `agent-telemetry:${hostType}:${hostId}`,
+    enabled,
+    onEvent: () => { void query.refetch() },
+    onResync: () => { void query.refetch() },
+  })
+  return query
 }
 
 const HOST_TYPES = new Set<AgentHostType>(['server', 'nas', 'pcBuild'])

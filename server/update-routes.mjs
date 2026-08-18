@@ -119,7 +119,7 @@ async function saveSuccessfulResult(store, result) {
   return result
 }
 
-async function resolveStatusResult({ checker, store, force = false, backgroundIfStale = false }) {
+async function resolveStatusResult({ checker, store, force = false, backgroundIfStale = false, onBackgroundChanged = null }) {
   if (!checker.enabled) return disabledResult(checker)
 
   const metadata = store.getUpdateMetadata()
@@ -135,6 +135,7 @@ async function resolveStatusResult({ checker, store, force = false, backgroundIf
   if (!force && backgroundIfStale && stale) {
     void checker.check({ force: true, persistedResult })
       .then((result) => saveSuccessfulResult(store, result))
+      .then((result) => onBackgroundChanged?.(result))
       .catch(() => undefined)
     return persistedResult
   }
@@ -150,11 +151,22 @@ async function resolveStatusResult({ checker, store, force = false, backgroundIf
   }
 }
 
-export function registerUpdateRoutes(app, { withStore, checker, releaseNotes }) {
+export function registerUpdateRoutes(app, { withStore, checker, releaseNotes, onChanged = null }) {
   function respond(request, response, { force = false } = {}) {
     void withStore(request, response, async (store) => {
-      const result = await resolveStatusResult({ checker, store, force, backgroundIfStale: !force })
-      response.json(buildStatus({ checker, result, store, releaseNotes }))
+      const result = await resolveStatusResult({
+        checker,
+        store,
+        force,
+        backgroundIfStale: !force,
+        onBackgroundChanged: (backgroundResult) => onChanged?.(
+          store,
+          buildStatus({ checker, result: backgroundResult, store, releaseNotes }),
+        ),
+      })
+      const status = buildStatus({ checker, result, store, releaseNotes })
+      if (force) onChanged?.(store, status)
+      response.json(status)
     }, { message: 'Unable to check for updates.' })
   }
 
@@ -173,6 +185,7 @@ export function registerUpdateRoutes(app, { withStore, checker, releaseNotes }) 
 
       const skipIdentity = getSkipIdentity(status)
       await store.skipUpdateVersion(skipIdentity)
+      onChanged?.(store, { ...status, skipped: true })
       response.json({ ...status, skipped: true })
     }, { message: 'Unable to skip the available update.' })
   })
@@ -181,7 +194,9 @@ export function registerUpdateRoutes(app, { withStore, checker, releaseNotes }) 
     void withStore(request, response, async (store) => {
       await store.clearSkippedUpdateVersion()
       const result = await resolveStatusResult({ checker, store })
-      response.json(buildStatus({ checker, result, store, releaseNotes }))
+      const status = buildStatus({ checker, result, store, releaseNotes })
+      onChanged?.(store, status)
+      response.json(status)
     }, { message: 'Unable to clear the skipped update.' })
   })
 }

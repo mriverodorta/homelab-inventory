@@ -11,7 +11,7 @@ import {
   useRegistryMutations,
   useRegistryQuery,
 } from '@/hooks/use-registry'
-import { useNotificationSnapshot } from '@/hooks/use-notifications'
+import { useNotificationSummary } from '@/hooks/use-notifications'
 import { useAgentStatus } from '@/hooks/use-agent-status'
 import {
   useCompatibleTopologyDestinations,
@@ -373,7 +373,7 @@ function App() {
     registryQuery.data?.snapshot,
     canViewRegistry && Boolean(project),
   )
-  const notificationQuery = useNotificationSnapshot(canViewNotifications)
+  const notificationQuery = useNotificationSummary(canViewNotifications && canvasWorkspaceActive)
   const registryMutations = useRegistryMutations()
   const inventoryLifecycle = useInventoryLifecycle({
     scope: sourceProjectId && sourceWorkspaceId

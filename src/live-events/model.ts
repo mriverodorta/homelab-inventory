@@ -26,5 +26,5 @@ export type ApplicationStreamReady = Readonly<{
   generationId: string
   sequence: number
   topics: readonly ApplicationLiveTopic[]
+  topicSequences: Readonly<Partial<Record<ApplicationLiveTopic, number>>>
 }>
-

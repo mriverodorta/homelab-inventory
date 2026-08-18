@@ -14,12 +14,24 @@ export class ApplicationLiveEventBus {
     this.now = now
     this.maxPayloadBytes = maxPayloadBytes
     this.sequence = 0
+    this.globalTopicSequences = new Map()
+    this.scopedTopicSequences = new WeakMap()
     this.listeners = new Set()
     this.closed = false
   }
 
-  snapshot() {
-    return Object.freeze({ version: 1, generationId: this.generationId, sequence: this.sequence })
+  snapshot({ scope = null, topics = [] } = {}) {
+    const scoped = scope && typeof scope === 'object' ? this.scopedTopicSequences.get(scope) : null
+    const topicSequences = Object.fromEntries(topics.map((topic) => [
+      topic,
+      Math.max(this.globalTopicSequences.get(topic) ?? 0, scoped?.get(topic) ?? 0),
+    ]))
+    return Object.freeze({
+      version: 1,
+      generationId: this.generationId,
+      sequence: this.sequence,
+      topicSequences: Object.freeze(topicSequences),
+    })
   }
 
   subscribe(listener) {
@@ -37,6 +49,11 @@ export class ApplicationLiveEventBus {
     const payloadBytes = Buffer.byteLength(JSON.stringify(payload))
     if (payloadBytes > this.maxPayloadBytes) throw new Error('Application live event payload exceeds the size limit.')
     this.sequence += 1
+    const topicSequences = scope === null
+      ? this.globalTopicSequences
+      : this.scopedTopicSequences.get(scope) ?? new Map()
+    if (scope !== null && !this.scopedTopicSequences.has(scope)) this.scopedTopicSequences.set(scope, topicSequences)
+    for (const topic of normalizedTopics) topicSequences.set(topic, this.sequence)
     const event = Object.freeze({
       version: 1,
       generationId: this.generationId,

@@ -29,6 +29,7 @@ describe('ApplicationSseHub', () => {
     bus.publish({ scope: firstScope, topics: 'agents:fleet', kind: 'agent.changed', payload: { hostId: 7 } })
     const output = response.chunks.join('')
     expect(output).toContain('event: stream-ready')
+    expect(output).toContain('"topicSequences":{"agents:fleet":0}')
     expect(output).toContain('event: app-event')
     expect(output).toContain('agent.changed')
     expect(output).not.toContain('"kind":"ignored"')
@@ -44,4 +45,3 @@ describe('ApplicationSseHub', () => {
     expect(response.json).toHaveBeenCalledWith(expect.objectContaining({ code: 'event-stream-capacity' }))
   })
 })
-

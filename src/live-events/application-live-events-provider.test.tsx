@@ -39,7 +39,13 @@ describe('ApplicationLiveEventsProvider', () => {
     await act(async () => {})
     expect(sources).toHaveLength(1)
     expect(decodeURIComponent(sources[0].url)).toContain('agents:fleet,notifications:summary')
-    act(() => sources[0].emit('stream-ready', { version: 1, generationId: 'g1', sequence: 2, topics: ['agents:fleet', 'notifications:summary'] }))
+    act(() => sources[0].emit('stream-ready', {
+      version: 1,
+      generationId: 'g1',
+      sequence: 2,
+      topics: ['agents:fleet', 'notifications:summary'],
+      topicSequences: { 'agents:fleet': 2, 'notifications:summary': 0 },
+    }))
     expect(resync).toHaveBeenCalledTimes(2)
     act(() => sources[0].emit('app-event', { version: 1, generationId: 'g1', sequence: 3, topic: 'agents:fleet', topics: ['agents:fleet'], kind: 'changed', occurredAt: 'now', payload: {} }))
     expect(events).toHaveBeenCalledTimes(1)
@@ -49,5 +55,46 @@ describe('ApplicationLiveEventsProvider', () => {
     expect(sources[0].close).toHaveBeenCalledOnce()
     expect(sources).toHaveLength(2)
     expect(decodeURIComponent(sources[1].url)).toContain('agents:fleet')
+    act(() => sources[1].emit('stream-ready', {
+      version: 1,
+      generationId: 'g1',
+      sequence: 4,
+      topics: ['agents:fleet'],
+      topicSequences: { 'agents:fleet': 4 },
+    }))
+    expect(resync).toHaveBeenCalledTimes(3)
+  })
+
+  it('dispatches one multi-topic event to every matching subscription', async () => {
+    const sources: FakeEventSource[] = []
+    const agents = vi.fn()
+    const notifications = vi.fn()
+    const factory = (url: string) => { const source = new FakeEventSource(url); sources.push(source); return source }
+    render(
+      <ApplicationLiveEventsProvider eventSourceFactory={factory}>
+        <Consumer topic="agents:fleet" onEvent={agents} onResync={vi.fn()} />
+        <Consumer topic="notifications:summary" onEvent={notifications} onResync={vi.fn()} />
+      </ApplicationLiveEventsProvider>,
+    )
+    await act(async () => {})
+    act(() => sources[0].emit('stream-ready', {
+      version: 1,
+      generationId: 'g1',
+      sequence: 0,
+      topics: ['agents:fleet', 'notifications:summary'],
+      topicSequences: { 'agents:fleet': 0, 'notifications:summary': 0 },
+    }))
+    act(() => sources[0].emit('app-event', {
+      version: 1,
+      generationId: 'g1',
+      sequence: 1,
+      topic: 'agents:fleet',
+      topics: ['agents:fleet', 'notifications:summary'],
+      kind: 'changed',
+      occurredAt: 'now',
+      payload: {},
+    }))
+    expect(agents).toHaveBeenCalledOnce()
+    expect(notifications).toHaveBeenCalledOnce()
   })
 })

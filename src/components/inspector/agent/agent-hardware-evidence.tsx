@@ -17,8 +17,8 @@ import {
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { loadAgentHardwareSnapshot } from '@/lib/agent-api'
 import type { InventoryItem } from '@/types/inventory'
+import { useLiveEventTopic } from '@/live-events/use-live-event-topic'
 
-const HARDWARE_REFRESH_INTERVAL_MS = 60_000
 const INVENTORY_COMMAND = 'sudo homelab-inventory-agent inventory'
 
 export function AgentHardwareEvidence({ host }: { host: InventoryItem }) {
@@ -26,9 +26,15 @@ export function AgentHardwareEvidence({ host }: { host: InventoryItem }) {
     queryKey: ['agent-hardware-snapshot', host.type, host.id],
     queryFn: () => loadAgentHardwareSnapshot(host.type as 'server' | 'nas' | 'pcBuild', host.id),
     retry: 1,
-    staleTime: HARDWARE_REFRESH_INTERVAL_MS,
-    refetchInterval: HARDWARE_REFRESH_INTERVAL_MS,
-    refetchIntervalInBackground: false,
+    staleTime: Number.POSITIVE_INFINITY,
+    refetchOnMount: false,
+    refetchOnReconnect: false,
+  })
+  useLiveEventTopic({
+    topic: `agent-hardware:${host.type as 'server' | 'nas' | 'pcBuild'}:${host.id}`,
+    enabled: true,
+    onEvent: () => { void query.refetch() },
+    onResync: () => { void query.refetch() },
   })
   const [copiedCommand, setCopiedCommand] = useState(false)
   const [copiedJson, setCopiedJson] = useState(false)

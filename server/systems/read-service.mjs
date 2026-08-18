@@ -319,11 +319,6 @@ export class SystemsReadService {
         const { state } = resolveAgentStatusState({ connected: registered, lastSeenAt, now: this.now(), timing })
         const agentVersion = telemetry?.agentVersion ?? host.agent_version ?? null
         const updateAvailable = Boolean(registered && agentVersion && this.releaseService?.updateAvailable(agentVersion))
-        const updateCommand = updateAvailable && endpoint
-          ? this.releaseService.upgradeCommands(endpoint, {
-              native: nativeUpdateAvailable(host.capabilities_json),
-            }).linux
-          : undefined
         const liveTelemetry = state === 'online' ? telemetry : null
         const attention = attentionByHost.get(host.item_id) ?? null
         return {
@@ -332,7 +327,6 @@ export class SystemsReadService {
           agentState: state,
           agentVersion,
           agentUpdateAvailable: updateAvailable,
-          ...(updateCommand ? { agentUpdateCommand: updateCommand } : {}),
           cpuPercent: finitePercent(liveTelemetry?.cpuPercent),
           memoryPercent: finitePercent(liveTelemetry?.memoryPercent),
           storagePercent: storagePercent(liveTelemetry),
@@ -341,7 +335,7 @@ export class SystemsReadService {
           attentionState: attention?.state ?? 'refreshing',
           attentionRevision: attention?.revision ?? 0,
         }
-      }),
+      }).filter((host) => host.agentRegistered || host.attentionCount > 0),
     }
   }
 }

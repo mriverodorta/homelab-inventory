@@ -6,6 +6,21 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 
 ## Unreleased
 
+### Added
+
+- One authenticated Server-Sent Events connection now carries scoped invalidation signals for Systems, Agent fleet and host telemetry, notification summaries and incidents, release status, and demo-session changes.
+
+### Changed
+
+- Browser interval polling has been removed from application data flows; per-topic cursors resynchronize only affected queries after missed events, server restarts, and tab visibility changes.
+- Systems live responses omit unchanged unregistered hosts and repeated Agent update commands, and Canvas fetches only notification counts while full notification configuration and incident pages load on demand.
+- Agent online, stale, and offline transitions now follow the nearest server-side lifecycle deadline rather than waiting for a browser refresh interval.
+
+### Fixed
+
+- Systems CPU, memory, and storage utilization bars now show stable whole-number percentage labels without shifting the graph tracks.
+- The distroless production image now includes the application live-event runtime required by the authenticated SSE endpoint.
+
 ## [0.13.6] - 2026-08-17
 
 ### Added
