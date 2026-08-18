@@ -8,17 +8,20 @@ import { LazyWorkspaceApp } from './components/lazy-workspace-app.tsx'
 import { queryClient } from './lib/query-client.ts'
 import { AuthGate } from './components/auth/auth-gate.tsx'
 import { AuthProvider } from './components/auth/auth-provider.tsx'
+import { ApplicationLiveEventsProvider } from './live-events/application-live-events-provider.tsx'
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
         <AuthGate>
-          <DomainEngineProvider enabled={false}>
-            <DomainEngineGate>
-              <LazyWorkspaceApp />
-            </DomainEngineGate>
-          </DomainEngineProvider>
+          <ApplicationLiveEventsProvider>
+            <DomainEngineProvider enabled={false}>
+              <DomainEngineGate>
+                <LazyWorkspaceApp />
+              </DomainEngineGate>
+            </DomainEngineProvider>
+          </ApplicationLiveEventsProvider>
         </AuthGate>
       </AuthProvider>
     </QueryClientProvider>
