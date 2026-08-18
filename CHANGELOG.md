@@ -30,6 +30,7 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 - Systems headers and rows now share one column layout, keeping sortable labels aligned with compact and content columns while custom widths and pinned columns remain stable.
 - Opening a Systems Inspector no longer attempts Canvas geometry synchronization or shows a misleading "Workspace engine is not ready" warning while the Canvas engine is intentionally disabled.
 - Systems column resizing now changes the visible track width even when the Inspector is closed, while untouched columns continue distributing spare table width responsively.
+- The distroless production image now includes every Systems API module required by the application server.
 
 ## [0.13.5] - 2026-08-17
 

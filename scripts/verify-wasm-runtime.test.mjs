@@ -26,6 +26,19 @@ describe('WASM runtime verifier', () => {
     expect(dockerfile).toContain('server/staging-policy.mjs')
   })
 
+  it('packages every production Systems backend module', async () => {
+    const dockerfile = await fs.readFile(path.resolve('Dockerfile'), 'utf8')
+
+    for (const module of [
+      'server/systems/attention-projector.mjs',
+      'server/systems/read-service.mjs',
+      'server/systems/routes.mjs',
+      'server/systems/saved-view-service.mjs',
+    ]) {
+      expect(dockerfile).toContain(module)
+    }
+  })
+
   it('accepts the minimal generated runtime', async () => {
     const root = await runtimeFixture()
     await expect(verifyWasmRuntime(root)).resolves.toMatchObject({ ok: true })

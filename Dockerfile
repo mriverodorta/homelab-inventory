@@ -85,6 +85,7 @@ COPY --chown=10001:10001 server/registry ./server/registry
 COPY --chown=10001:10001 server/agents ./server/agents
 COPY --chown=10001:10001 server/telemetry ./server/telemetry
 COPY --chown=10001:10001 server/notifications ./server/notifications
+COPY --chown=10001:10001 server/systems/attention-projector.mjs server/systems/read-service.mjs server/systems/routes.mjs server/systems/saved-view-service.mjs ./server/systems/
 COPY --chown=10001:10001 server/startup ./server/startup
 COPY --chown=10001:10001 server/agent-release-pin.json ./server/
 COPY --from=agent-build --chown=10001:10001 /agent-release ./server/agent-release

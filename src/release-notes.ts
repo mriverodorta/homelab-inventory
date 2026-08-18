@@ -347,6 +347,7 @@ const RELEASE_0_13_6_DETAILS: UnreleasedReleaseNotes = {
     'Systems sortable headers and body cells now use the same column layout, preserving exact alignment for compact, pinned, and browser-resized columns.',
     'Opening a Systems Inspector no longer triggers Canvas geometry synchronization or reports that the intentionally disabled workspace engine is unavailable.',
     'Systems column resize handles now change the visible width with or without the Inspector open, and double-clicking a handle restores responsive sizing.',
+    'The distroless production image now includes every Systems API module required by the application server.',
   ],
   notes: [],
 }
