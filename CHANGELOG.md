@@ -6,6 +6,12 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 
 ## Unreleased
 
+### Fixed
+
+- Embedded Agent 0.3.3 now reports Linux availability counters and FreeBSD page-class plus ZFS ARC counters so every supported host can calculate the same reclaimable-aware memory pressure.
+- Systems memory utilization now reports kernel-estimated memory pressure consistently across Linux, FreeBSD, and OPNsense, keeping reclaimable cache, inactive pages, and ZFS ARC in available capacity instead of making healthy hosts appear full.
+- Systems utilization percentages now use an exact four-character label track with a compact two-pixel gap before the graph, removing the oversized empty space between each value and its bar.
+
 ## [0.13.8] - 2026-08-18
 
 ### Fixed

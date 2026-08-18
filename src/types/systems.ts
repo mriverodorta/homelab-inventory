@@ -5,14 +5,6 @@ export type SystemsAttentionState = 'current' | 'refreshing' | 'failed'
 export type SystemsColumnKey = 'type' | 'name' | 'manufacturer' | 'cpu' | 'memory' | 'storage' | 'attention' | 'agent' | 'registry' | 'operatingSystem' | 'uptime' | 'lanIp'
 export type SystemsDensity = 'dense' | 'comfortable'
 
-export type SystemsMemoryBreakdown = Readonly<{
-  totalBytes: number
-  availableBytes: number
-  cachedBytes: number
-  buffersBytes: number
-  sharedBytes: number | null
-}>
-
 export type SystemsHostLive = Readonly<{
   itemId: number
   agentRegistered: boolean
@@ -22,7 +14,6 @@ export type SystemsHostLive = Readonly<{
   agentUpdateCommand?: string
   cpuPercent: number | null
   memoryPercent: number | null
-  memoryBreakdown: SystemsMemoryBreakdown | null
   storagePercent: number | null
   uptimeSeconds: number | null
   attentionCount: number

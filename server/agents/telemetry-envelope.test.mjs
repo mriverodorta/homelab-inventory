@@ -48,6 +48,19 @@ describe('compact telemetry envelope', () => {
     expect(result.capabilities).toBeUndefined()
   })
 
+  it('preserves optional Linux and FreeBSD memory pressure counters in latest state', () => {
+    const latestMemory = {
+      totalBytes: 1_000, availableBytes: 720,
+      freeBytes: 230, buffersBytes: 40, cachedBytes: 450, reclaimableBytes: 20, sharedBytes: 5,
+      pageSizeBytes: 4_096, pageCount: 1_000, activePages: 100, inactivePages: 400,
+      cachePages: 0, laundryPages: 10, wiredPages: 300, freePages: 100, zfsArcBytes: 200,
+    }
+    const memory = { ...latestMemory, usedBytes: 280, usedPercent: 28 }
+    const result = normalizeTelemetryEnvelope(heartbeat({ metrics: { ...heartbeat().metrics, memory } }), identity)
+
+    expect(result.latest.runtime.memory).toEqual(expect.objectContaining(latestMemory))
+  })
+
   it('requires canonical identities', () => {
     expect(() => normalizeTelemetryEnvelope(heartbeat(), { ...identity, hostItemId: null })).toThrow('canonical agent and host ids')
   })

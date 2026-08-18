@@ -12,7 +12,7 @@ FROM oven/bun:1.3.14-alpine@sha256:5acc90a93e91ff07bf72aa90a7c9f0fa189765aec90b4
 
 FROM golang:1.26.6-alpine@sha256:af8d6740070b8906d12eae1c3e3ea0957fb63f492051ea05e354c38ef9fe88df AS agent-build
 WORKDIR /agent
-ARG AGENT_VERSION=0.3.2
+ARG AGENT_VERSION=0.3.3
 ARG AGENT_SOURCE_REVISION=11dcca8ee67adf7579669d8d817cdbc945665b4c
 COPY server/agent-release-pin.json /agent-release-pin.json
 COPY vendor/homelab-inventory-agent ./

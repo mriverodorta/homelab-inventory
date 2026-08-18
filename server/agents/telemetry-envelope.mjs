@@ -23,6 +23,13 @@ function finite(record, key) {
   return typeof value === 'number' && Number.isFinite(value) ? value : null
 }
 
+function optionalFinite(record, keys) {
+  return Object.fromEntries(keys.flatMap((key) => {
+    const value = finite(record, key)
+    return value === null ? [] : [[key, value]]
+  }))
+}
+
 function wholeSeconds(record, key) {
   const value = finite(record, key)
   return value === null ? null : Math.max(0, Math.floor(value))
@@ -76,6 +83,11 @@ function latestState(metrics = {}, hostname) {
         buffersBytes: finite(metrics.memory, 'buffersBytes'),
         swapTotalBytes: finite(metrics.memory, 'swapTotalBytes'),
         swapUsedBytes: finite(metrics.memory, 'swapUsedBytes'),
+        ...optionalFinite(metrics.memory, [
+          'freeBytes', 'reclaimableBytes', 'sharedBytes',
+          'pageSizeBytes', 'pageCount', 'activePages', 'inactivePages', 'cachePages',
+          'laundryPages', 'wiredPages', 'freePages', 'zfsArcBytes',
+        ]),
       },
     },
     storage,

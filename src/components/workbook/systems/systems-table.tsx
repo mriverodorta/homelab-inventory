@@ -10,7 +10,7 @@ import { SYSTEMS_COLUMN_LABELS } from '@/components/workbook/systems/systems-col
 import { shouldVirtualizeSystems, systemsColumnTrack } from '@/components/workbook/systems/systems-table-model'
 import type { SystemsSortDirection, SystemsSortKey } from '@/lib/systems-preferences'
 import { cn } from '@/lib/utils'
-import type { SystemsColumnKey, SystemsDensity, SystemsHostRow, SystemsMemoryBreakdown, SystemsViewColumn } from '@/types/systems'
+import type { SystemsColumnKey, SystemsDensity, SystemsHostRow, SystemsViewColumn } from '@/types/systems'
 import { SystemsAgentStatus, SystemsRegistryStatus } from './systems-status'
 import { SystemsUtilizationBar } from './systems-utilization-bar'
 
@@ -80,17 +80,15 @@ function MetricCell({
   label,
   value,
   kind,
-  memoryBreakdown,
 }: {
   label: string | null
   value: number | null
   kind: 'cpu' | 'memory' | 'storage'
-  memoryBreakdown?: SystemsMemoryBreakdown | null
 }) {
   return (
     <div className="min-w-0 overflow-hidden">
       <div className="truncate text-xs text-[#38342f]" title={label ?? undefined}>{label ?? 'Not assigned'}</div>
-      {value == null ? null : <div className="mt-1"><SystemsUtilizationBar value={value} kind={kind} memoryBreakdown={memoryBreakdown} /></div>}
+      {value == null ? null : <div className="mt-1"><SystemsUtilizationBar value={value} kind={kind} /></div>}
     </div>
   )
 }
@@ -140,7 +138,7 @@ function cellContent(key: SystemsColumnKey, system: SystemsHostRow, onAttention:
     case 'name': return <div className="truncate font-semibold text-[#20242c]" title={system.name}>{system.name}</div>
     case 'manufacturer': return <div className="min-w-0 text-xs text-[#4f4a44]"><div className="truncate" title={system.manufacturer ?? undefined}>{system.manufacturer ?? 'Unknown manufacturer'}</div>{system.model ? <div className="truncate text-[#81786e]" title={system.model}>{system.model}</div> : null}</div>
     case 'cpu': return <MetricCell label={system.cpuLabel} value={system.cpuPercent} kind="cpu" />
-    case 'memory': return <MetricCell label={system.memoryLabel} value={system.memoryPercent} kind="memory" memoryBreakdown={system.memoryBreakdown} />
+    case 'memory': return <MetricCell label={system.memoryLabel} value={system.memoryPercent} kind="memory" />
     case 'storage': return <MetricCell label={system.storageLabel} value={system.storagePercent} kind="storage" />
     case 'attention': return <AttentionCell system={system} onOpen={onAttention} />
     case 'agent': return <SystemsAgentStatus system={system} />

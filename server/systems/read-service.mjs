@@ -1,4 +1,5 @@
 import { agentStatusTiming, resolveAgentStatusState } from '../agents/status-model.mjs'
+import { memoryPressurePercent } from './memory-pressure.mjs'
 
 const HOST_TYPES = new Set(['server', 'nas', 'pcBuild'])
 const ACTIVE_REGISTRY_STATES = new Set(['linked', 'update-available', 'adoption-available', 'contribution-pending'])
@@ -82,22 +83,12 @@ function storagePercent(telemetry) {
   return finitePercent((used / total) * 100)
 }
 
-function memoryBreakdown(telemetry) {
-  const memory = telemetry?.memory
-  const totalBytes = memory?.totalBytes
-  const availableBytes = memory?.availableBytes
-  const cachedBytes = memory?.cachedBytes
-  const buffersBytes = memory?.buffersBytes
-  if (
-    !Number.isFinite(totalBytes) || totalBytes <= 0
-    || !Number.isFinite(availableBytes) || availableBytes < 0 || availableBytes > totalBytes
-    || !Number.isFinite(cachedBytes) || cachedBytes < 0
-    || !Number.isFinite(buffersBytes) || buffersBytes < 0
-  ) return null
-  const sharedValue = memory?.sharedBytes
-  const sharedBytes = sharedValue == null ? null : sharedValue
-  if (sharedBytes !== null && (!Number.isFinite(sharedBytes) || sharedBytes < 0)) return null
-  return { totalBytes, availableBytes, cachedBytes, buffersBytes, sharedBytes }
+function memoryPercent(telemetry) {
+  if (!telemetry) return null
+  return memoryPressurePercent({
+    ...(telemetry.memory ?? {}),
+    usedPercent: telemetry.memoryPercent,
+  })
 }
 
 function parseObject(value) {
@@ -304,8 +295,7 @@ export class SystemsReadService {
           ...(updateCommand ? { agentUpdateCommand: updateCommand } : {}),
           registryLinked: ACTIVE_REGISTRY_STATES.has(host.registry_state),
           cpuPercent: finitePercent(liveTelemetry?.cpuPercent),
-          memoryPercent: finitePercent(liveTelemetry?.memoryPercent),
-          memoryBreakdown: memoryBreakdown(liveTelemetry),
+          memoryPercent: memoryPercent(liveTelemetry),
           storagePercent: storagePercent(liveTelemetry),
           uptimeSeconds: Number.isFinite(liveTelemetry?.uptimeSeconds) ? liveTelemetry.uptimeSeconds : null,
           attentionCount: attention?.totalCount ?? 0,
@@ -347,8 +337,7 @@ export class SystemsReadService {
           agentVersion,
           agentUpdateAvailable: updateAvailable,
           cpuPercent: finitePercent(liveTelemetry?.cpuPercent),
-          memoryPercent: finitePercent(liveTelemetry?.memoryPercent),
-          memoryBreakdown: memoryBreakdown(liveTelemetry),
+          memoryPercent: memoryPercent(liveTelemetry),
           storagePercent: storagePercent(liveTelemetry),
           uptimeSeconds: Number.isFinite(liveTelemetry?.uptimeSeconds) ? liveTelemetry.uptimeSeconds : null,
           attentionCount: attention?.totalCount ?? 0,
