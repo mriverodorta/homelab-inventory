@@ -6,6 +6,21 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 
 ## Unreleased
 
+### Added
+
+- Systems, Inspector, Canvas, and the Audit drawer now share one persisted server-side compatibility projection that updates through scoped SSE invalidations instead of independently recalculating host findings.
+- Compatibility findings distinguish actionable incompatibilities from missing metadata, with informational findings available through Host Compatibility and the Audit drawer without inflating attention badges.
+
+### Changed
+
+- Compatibility checks now evaluate components against their assigned physical resource, understand canonical CPU-generation aliases, use a single-slot host expansion budget when appropriate, and treat unspecified ordinary memory ECC as non-ECC while retaining strict registered-memory checks.
+- Canonical M.2 A/E resources describe the physical slot, accepted keys, buses, sizes, and intended module kinds without reducing the slot to WLAN-only use.
+
+### Fixed
+
+- Unambiguous legacy component allocations are persisted automatically only when exactly one compatible destination exists; ambiguous allocations remain unchanged and actionable.
+- Project backups and selective restores preserve compatibility finding relationships through semantic resource-slot remapping, while the retired wireless collection remains present at the schema-29 archive boundary.
+
 ## [0.13.12] - 2026-08-18
 
 ### Fixed

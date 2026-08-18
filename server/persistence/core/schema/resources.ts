@@ -346,6 +346,89 @@ export const resourceAcceptedKinds = sqliteTable('resource_accepted_kinds', {
   check('resource_accepted_kinds_value_check', sql`length(trim(${table.kind})) > 0`),
 ])
 
+export const optionalModuleResourceGroups = sqliteTable('optional_module_resource_groups', {
+  id: integer('id').primaryKey().references(() => hostResourceGroups.id, { onDelete: 'cascade' }),
+  interfaceFamily: text('interface_family'),
+}, (table) => [
+  check('optional_module_resource_groups_family_check', sql`
+    ${table.interfaceFamily} IS NULL
+    OR ${table.interfaceFamily} IN ('m2-ae', 'm2-bm', 'mini-pcie', 'usb', 'proprietary')
+  `),
+])
+
+export const optionalModuleResourceAliases = sqliteTable('optional_module_resource_aliases', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  resourceGroupId: integer('resource_group_id').notNull().references(
+    () => optionalModuleResourceGroups.id,
+    { onDelete: 'cascade' },
+  ),
+  alias: text('alias').notNull(),
+}, (table) => [
+  uniqueIndex('optional_module_resource_aliases_unique').on(table.resourceGroupId, table.alias),
+  check('optional_module_resource_aliases_value_check', sql`length(trim(${table.alias})) > 0`),
+])
+
+export const optionalModuleAcceptedKeys = sqliteTable('optional_module_accepted_keys', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  resourceGroupId: integer('resource_group_id').notNull().references(
+    () => optionalModuleResourceGroups.id,
+    { onDelete: 'cascade' },
+  ),
+  key: text('key').notNull(),
+}, (table) => [
+  uniqueIndex('optional_module_accepted_keys_unique').on(table.resourceGroupId, table.key),
+  check('optional_module_accepted_keys_value_check', sql`length(trim(${table.key})) > 0`),
+])
+
+export const optionalModuleSizes = sqliteTable('optional_module_sizes', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  resourceGroupId: integer('resource_group_id').notNull().references(
+    () => optionalModuleResourceGroups.id,
+    { onDelete: 'cascade' },
+  ),
+  moduleSize: text('module_size').notNull(),
+}, (table) => [
+  uniqueIndex('optional_module_sizes_unique').on(table.resourceGroupId, table.moduleSize),
+  check('optional_module_sizes_value_check', sql`length(trim(${table.moduleSize})) > 0`),
+])
+
+export const optionalModuleAvailableBuses = sqliteTable('optional_module_available_buses', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  resourceGroupId: integer('resource_group_id').notNull().references(
+    () => optionalModuleResourceGroups.id,
+    { onDelete: 'cascade' },
+  ),
+  family: text('family').notNull(),
+  lanes: integer('lanes'),
+  pcieGeneration: integer('pcie_generation'),
+  usbGeneration: text('usb_generation'),
+}, (table) => [
+  uniqueIndex('optional_module_available_buses_unique').on(
+    table.resourceGroupId,
+    table.family,
+    table.lanes,
+    table.pcieGeneration,
+    table.usbGeneration,
+  ),
+  check('optional_module_available_buses_family_check', sql`${table.family} IN ('pcie', 'usb')`),
+  check('optional_module_available_buses_lanes_check', sql`${table.lanes} IS NULL OR ${table.lanes} > 0`),
+  check('optional_module_available_buses_pcie_check', sql`
+    ${table.pcieGeneration} IS NULL OR ${table.pcieGeneration} > 0
+  `),
+])
+
+export const optionalModuleIntendedKinds = sqliteTable('optional_module_intended_kinds', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  resourceGroupId: integer('resource_group_id').notNull().references(
+    () => optionalModuleResourceGroups.id,
+    { onDelete: 'cascade' },
+  ),
+  kind: text('kind').notNull(),
+}, (table) => [
+  uniqueIndex('optional_module_intended_kinds_unique').on(table.resourceGroupId, table.kind),
+  check('optional_module_intended_kinds_value_check', sql`length(trim(${table.kind})) > 0`),
+])
+
 export const controllerResourceGroups = sqliteTable('controller_resource_groups', {
   id: integer('id').primaryKey().references(() => hostResourceGroups.id, { onDelete: 'cascade' }),
   interfaceFamily: text('interface_family'),

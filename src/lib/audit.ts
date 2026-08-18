@@ -3,8 +3,6 @@ import {
   getConnectionPort,
 } from '@/lib/project'
 import {
-  evaluateProjectCompatibility,
-  isHostCompatibilityEnabled,
   normalizeCompatibilityPolicy,
 } from '@/lib/compatibility'
 import { runtimeItemKey } from '@/lib/item-keys'
@@ -14,7 +12,7 @@ import type {
   RuntimePowerFinding,
   RuntimeTopologyEndpointDescriptor,
 } from '@/engine/topology'
-import type { CompatibilityFinding, CompatibilitySeverity } from '@/types/compatibility'
+import type { CompatibilitySeverity } from '@/types/compatibility'
 import type {
   ConnectionEndpoint,
   InventoryItem,
@@ -49,7 +47,6 @@ export type AuditTopologySnapshot = {
 }
 
 type AuditEvaluationContext = {
-  compatibilityResults: ReturnType<typeof evaluateProjectCompatibility>
   placedItemIds: Set<string>
   endpointsByKey: ReadonlyMap<string, RuntimeTopologyEndpointDescriptor>
   networkTraces: readonly RuntimeNetworkTrace[]
@@ -62,7 +59,6 @@ function createAuditEvaluationContext(
   topology?: AuditTopologySnapshot,
 ): AuditEvaluationContext {
   return {
-    compatibilityResults: evaluateProjectCompatibility(project),
     placedItemIds: new Set(project.placements.map((placement) => placement.serverId)),
     endpointsByKey: new Map(
       (topology?.endpoints ?? []).map((endpoint) => [endpointKey(endpoint.endpoint), endpoint]),
@@ -335,69 +331,6 @@ function getSwitchAuditWarnings(
   return warnings
 }
 
-function compatibilityResourceKey(
-  finding: CompatibilityFinding,
-  componentKey: string,
-): string {
-  return String(finding.resourceId ?? finding.field ?? componentKey)
-}
-
-function compatibilityWarningId(
-  hostKey: string,
-  finding: CompatibilityFinding,
-  componentKey: string,
-): string {
-  return `compatibility:${JSON.stringify([
-    hostKey,
-    finding.code,
-    componentKey,
-    compatibilityResourceKey(finding, componentKey),
-  ])}`
-}
-
-function getCompatibilityAuditWarnings(
-  project: ProjectState,
-  host: InventoryItem,
-  context: AuditEvaluationContext,
-): AuditWarning[] {
-  if (host.type !== 'server' && host.type !== 'nas') {
-    return []
-  }
-
-  const hostKey = runtimeItemKey(host)
-  const seen = new Set<string>()
-  const warnings: AuditWarning[] = []
-
-  for (const result of context.compatibilityResults) {
-    if (String(result.hostId) !== hostKey) {
-      continue
-    }
-
-    const componentKey = String(result.itemId)
-    const component = project.items[componentKey]
-
-    for (const finding of result.findings) {
-      const resourceKey = compatibilityResourceKey(finding, componentKey)
-      const dedupeKey = JSON.stringify([hostKey, finding.code, resourceKey])
-
-      if (seen.has(dedupeKey)) {
-        continue
-      }
-
-      seen.add(dedupeKey)
-      warnings.push({
-        id: compatibilityWarningId(hostKey, finding, componentKey),
-        itemId: hostKey,
-        message: component ? `${component.name}: ${finding.message}` : finding.message,
-        code: finding.code,
-        severity: finding.severity,
-      })
-    }
-  }
-
-  return warnings
-}
-
 function getRawItemAuditWarnings(
   project: ProjectState,
   itemId: string,
@@ -417,10 +350,6 @@ function getRawItemAuditWarnings(
 
   if (item.type === 'switch') {
     warnings.push(...getSwitchAuditWarnings(item, context))
-  }
-
-  if (isHostCompatibilityEnabled(project, itemId)) {
-    warnings.push(...getCompatibilityAuditWarnings(project, item, context))
   }
 
   warnings.push(...getPowerAuditWarnings(project, itemId, context))

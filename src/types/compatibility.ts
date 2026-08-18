@@ -1,4 +1,5 @@
 export type CompatibilitySeverity = 'error' | 'warning' | 'unknown'
+export type CompatibilityFindingClassification = 'actionable' | 'informational'
 export type CompatibilityStatus = 'compatible' | 'incompatible' | 'unknown'
 export type CompatibilityResourceType =
   | 'cpu'
@@ -91,6 +92,17 @@ export type OptionalModuleSlotGroup = {
   label: string
   count: number
   acceptedModuleKinds?: string[]
+  aliases?: string[]
+  interfaceFamily?: 'm2-ae' | 'm2-bm' | 'mini-pcie' | 'usb' | 'proprietary'
+  acceptedKeys?: string[]
+  moduleSizes?: string[]
+  availableBuses?: Array<{
+    family: 'pcie' | 'usb'
+    lanes?: number
+    pcieGeneration?: number
+    usbGeneration?: string
+  }>
+  intendedModuleKinds?: string[]
 }
 
 export type ControllerSlotGroup = {
@@ -225,6 +237,7 @@ export type ComponentCompatibilityRequirements = {
     moduleSize?: string
     usbGeneration?: string
     connector?: string
+    busFamily?: 'pcie' | 'usb'
     ocpVersion?: string
     pcieGeneration?: number
     connectorLanes?: number
@@ -250,6 +263,7 @@ export type CompatibilityAllocation = {
 export type CompatibilityFinding = {
   code: string
   severity: CompatibilitySeverity
+  classification?: CompatibilityFindingClassification
   message: string
   field?: string
   resourceId?: number

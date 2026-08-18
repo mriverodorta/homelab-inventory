@@ -2,6 +2,7 @@ export type AgentLiveHostType = 'server' | 'nas' | 'pcBuild'
 
 export type ApplicationLiveTopic =
   | `systems:${number}`
+  | `compatibility:${number}`
   | 'agents:fleet'
   | `agent-telemetry:${AgentLiveHostType}:${number}`
   | `agent-hardware:${AgentLiveHostType}:${number}`

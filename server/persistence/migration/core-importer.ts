@@ -622,6 +622,67 @@ function importCompatibility(database: Database, itemId: number, item: LegacyRec
       )
       for (const height of records(entry.acceptedHeights)) database.query('INSERT INTO expansion_accepted_heights (resource_group_id, height) VALUES (?, ?)').run(resourceIdentityId, String(height))
     }
+    if (resourceType === 'optionalModule') {
+      const interfaceFamily = [
+        'm2-ae',
+        'm2-bm',
+        'mini-pcie',
+        'usb',
+        'proprietary',
+      ].includes(entry.interfaceFamily) ? entry.interfaceFamily : null
+      database.query(`
+        INSERT INTO optional_module_resource_groups (id, interface_family)
+        VALUES (?, ?)
+      `).run(resourceIdentityId, interfaceFamily)
+      const aliases = new Set([
+        definition.key,
+        ...records(entry.aliases).map(String),
+      ])
+      for (const alias of aliases) {
+        const value = optionalText(alias)
+        if (value) database.query(`
+          INSERT INTO optional_module_resource_aliases (resource_group_id, alias)
+          VALUES (?, ?)
+        `).run(resourceIdentityId, value)
+      }
+      for (const key of records(entry.acceptedKeys)) {
+        const value = optionalText(key)
+        if (value) database.query(`
+          INSERT INTO optional_module_accepted_keys (resource_group_id, key)
+          VALUES (?, ?)
+        `).run(resourceIdentityId, value)
+      }
+      for (const moduleSize of records(entry.moduleSizes)) {
+        const value = optionalText(moduleSize)
+        if (value) database.query(`
+          INSERT INTO optional_module_sizes (resource_group_id, module_size)
+          VALUES (?, ?)
+        `).run(resourceIdentityId, value)
+      }
+      for (const bus of records(entry.availableBuses)) {
+        if (!['pcie', 'usb'].includes(bus.family)) {
+          throw new Error('Optional-module bus family is invalid.')
+        }
+        database.query(`
+          INSERT INTO optional_module_available_buses (
+            resource_group_id, family, lanes, pcie_generation, usb_generation
+          ) VALUES (?, ?, ?, ?, ?)
+        `).run(
+          resourceIdentityId,
+          bus.family,
+          positiveIntegerOrNull(bus.lanes),
+          positiveIntegerOrNull(bus.pcieGeneration),
+          optionalText(bus.usbGeneration),
+        )
+      }
+      for (const kind of records(entry.intendedModuleKinds)) {
+        const value = optionalText(kind)
+        if (value) database.query(`
+          INSERT INTO optional_module_intended_kinds (resource_group_id, kind)
+          VALUES (?, ?)
+        `).run(resourceIdentityId, value)
+      }
+    }
     for (const kind of records(entry.acceptedKinds ?? entry.acceptedModuleKinds ?? entry.acceptedControllerKinds ?? entry.acceptedDeviceKinds)) database.query('INSERT INTO resource_accepted_kinds (resource_group_id, kind) VALUES (?, ?)').run(resourceIdentityId, String(kind))
     if (resourceType === 'controllerSlot') database.query('INSERT INTO controller_resource_groups (id, interface_family, dedicated) VALUES (?, ?, ?)').run(resourceIdentityId, optionalText(entry.interfaceFamily), booleanOrNull(entry.dedicated))
     if (resourceType === 'bootDeviceSlot') {

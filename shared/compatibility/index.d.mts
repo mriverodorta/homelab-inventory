@@ -55,6 +55,7 @@ export type NormalizedExpansionRequirements = PcieDescriptor & {
   moduleSize?: string
   usbGeneration?: string
   connector?: string
+  busFamily?: 'pcie' | 'usb'
   ocpVersion?: string
   minimumElectricalLanes?: number
   height?: CardHeight
@@ -79,6 +80,7 @@ export type AssignmentCompatibilityInput = {
   assignments?: ComponentAssignment[]
   items?: Record<string, InventoryItem> | InventoryItem[] | Map<string | number, InventoryItem>
   useVerifiedMemoryLimits?: boolean
+  assignedAllocation?: ComponentAssignment['allocation']
 }
 
 export type ProjectCompatibilityResult = CompatibilityResult & {

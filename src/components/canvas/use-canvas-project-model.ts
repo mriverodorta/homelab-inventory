@@ -1,5 +1,6 @@
 import { useMemo, useRef } from 'react'
 import type { TopologyQueryData } from '@/hooks/use-topology-query'
+import { useCompatibilitySummary } from '@/hooks/use-compatibility-audit'
 import { getFocusedCableItemIds } from '@/lib/cable-focus'
 import { buildCanvasHandleIndex } from '@/lib/canvas-handle-index'
 import {
@@ -9,6 +10,9 @@ import {
 } from '@/lib/canvas-node-dependencies'
 import { buildCanvasProjectIndex } from '@/lib/canvas-project-index'
 import type { ProjectState } from '@/types/inventory'
+import type { CompatibilityAuditHostSummary } from '@/types/compatibility-audit'
+
+const EMPTY_COMPATIBILITY_HOSTS: readonly CompatibilityAuditHostSummary[] = []
 
 interface CanvasProjectModelOptions {
   project: ProjectState
@@ -44,6 +48,8 @@ export function useCanvasProjectModel({
   activeNetworkTraceConnectionIds,
   activeNetworkTraceItemIds,
 }: CanvasProjectModelOptions) {
+  const compatibilitySummary = useCompatibilitySummary(project.metadata.projectId ?? 1, true)
+  const compatibilityHosts = compatibilitySummary.data?.hosts ?? EMPTY_COMPATIBILITY_HOSTS
   const nodeProjectTransitionRef = useRef<{
     project: ProjectState
     affectedItemIds: ReadonlySet<string>
@@ -104,8 +110,9 @@ export function useCanvasProjectModel({
       canvasIndexProject,
       topologyData,
       compatibleEndpointKeys,
+      compatibilityHosts,
     ),
-    [canvasIndexProject, compatibleEndpointKeys, topologyData],
+    [canvasIndexProject, compatibilityHosts, compatibleEndpointKeys, topologyData],
   )
   const canvasHandleIndex = useMemo(
     () => buildCanvasHandleIndex(canvasRoutingProject),
@@ -130,7 +137,7 @@ export function useCanvasProjectModel({
         continue
       }
 
-      const index = buildCanvasProjectIndex(nodeProject, topologyData, compatibleEndpointKeys)
+      const index = buildCanvasProjectIndex(nodeProject, topologyData, compatibleEndpointKeys, compatibilityHosts)
       nodeIndexCacheRef.current.set(nodeProject, {
         topologyData,
         compatibleEndpointKeys,
@@ -140,7 +147,7 @@ export function useCanvasProjectModel({
     }
 
     return indexes
-  }, [compatibleEndpointKeys, nodeProjectTransition.snapshots, topologyData])
+  }, [compatibilityHosts, compatibleEndpointKeys, nodeProjectTransition.snapshots, topologyData])
   const auditWarningCount = useMemo(
     () => [...canvasIndex.auditWarningCountByItemId.values()].reduce((count, value) => count + value, 0),
     [canvasIndex],

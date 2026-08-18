@@ -23,6 +23,15 @@ export function parseApplicationLiveTopic(value) {
     projectId: positiveId(systems[1], 'Systems project ID'),
   })
 
+  const compatibility = /^compatibility:([^:]+)$/.exec(value)
+  if (compatibility) return Object.freeze({
+    value,
+    permission: 'project.view',
+    permissions: Object.freeze(['project.view', 'audit.view']),
+    kind: 'compatibility',
+    projectId: positiveId(compatibility[1], 'Compatibility project ID'),
+  })
+
   const host = /^(agent-telemetry|agent-hardware):([^:]+):([^:]+)$/.exec(value)
   if (host) {
     if (!HOST_TYPES.has(host[2])) throw new Error('Agent topic host type is unsupported.')

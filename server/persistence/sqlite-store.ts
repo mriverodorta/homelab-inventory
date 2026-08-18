@@ -311,9 +311,13 @@ export class SqliteHomelabInventoryStore {
   }
 
   private legacyInventory(project = this.getProject()) {
-    const inventory = Object.fromEntries(
-      Object.values(LEGACY_TABLE_BY_TYPE).map((table) => [table, [] as Row[]]),
-    ) as Row
+    const inventory = {
+      ...Object.fromEntries(
+        Object.values(LEGACY_TABLE_BY_TYPE).map((table) => [table, [] as Row[]]),
+      ),
+      // Schema-29 archives still require the retired collection at the boundary.
+      wirelessCards: [] as Row[],
+    } as Row
     for (const item of Object.values(project.items) as Row[]) {
       const table = LEGACY_TABLE_BY_TYPE[item.type as InventoryType]
       if (table) inventory[table].push(cleanItemForStore(withCanonicalPowerPorts(item)))
@@ -3475,6 +3479,44 @@ export class SqliteHomelabInventoryStore {
       for (const listener of this.projectCommitListeners) listener(event)
     }
     return Object.fromEntries([...revisions].map(([projectId, revision]) => [projectId, revision + 1]))
+  }
+
+  persistDeterministicCompatibilityAllocations(allocations: Array<{
+    assignmentId: number
+    hostItemId: number
+    resourceType: string
+    groupId?: number
+    positions: number[]
+  }>) {
+    if (allocations.length === 0) return false
+    this.commitCanonicalMutation(() => {
+      const insertSlot = this.core.database.query(`
+        INSERT INTO component_assignment_slots (
+          project_id, assignment_id, host_item_id, resource_slot_id, position
+        ) VALUES (?, ?, ?, ?, ?)
+      `)
+      for (const allocation of allocations) {
+        const assignment = this.core.database.query(`
+          SELECT id FROM component_assignments
+          WHERE id = ? AND project_id = ? AND host_item_id = ? AND resource_slot_id IS NULL
+        `).get(allocation.assignmentId, this.projectId, allocation.hostItemId)
+        if (!assignment) continue
+        const slotIds = allocation.positions.map((position) => this.resolveResourceSlot(
+          allocation.hostItemId,
+          allocation.resourceType,
+          allocation.groupId ?? null,
+          position,
+        ))
+        this.core.database.query('DELETE FROM component_assignment_slots WHERE assignment_id = ?')
+          .run(allocation.assignmentId)
+        slotIds.forEach((slotId, position) => {
+          insertSlot.run(this.projectId, allocation.assignmentId, allocation.hostItemId, slotId, position)
+        })
+        this.core.database.query('UPDATE component_assignments SET resource_slot_id = ? WHERE id = ?')
+          .run(slotIds[0] ?? null, allocation.assignmentId)
+      }
+    })
+    return true
   }
 
   private invalidateProjectReadModels(projectId = this.projectId, workspaceId?: number) {

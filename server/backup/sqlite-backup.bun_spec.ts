@@ -77,4 +77,53 @@ describe('SQLite portable backup service', () => {
       store.close()
     }
   })
+
+  test('remaps persisted compatibility findings to restored semantic resource slots', async () => {
+    const { service, store } = await context()
+    try {
+      const database = store.core.database
+      database.query(`
+        INSERT INTO compatibility_audit_findings (
+          id, project_id, host_item_id, component_item_id, assignment_id,
+          resource_slot_id, finding_key, rule_key, severity, classification,
+          message, details_json, first_seen_at_ms, last_seen_at_ms, resolved_at_ms
+        ) VALUES (1, 1, 1, 4, 3, 4, 'finding:storage-slot', 'storage.form-factor',
+          'warning', 'actionable', 'Storage slot mismatch.', '{}', 1, 1, NULL)
+      `).run()
+
+      const created = await service.create({ sections: ['inventory', 'project'], persist: false })
+      const parsed = await inspectArchiveBuffer(created.archive)
+      const projectFile = 'sections/project.json'
+      const project = JSON.parse(parsed.files.get(projectFile)!.toString('utf8'))
+      const archivedSlot = project.workbooks.identities.resourceSlots
+        .find((identity: any) => identity.canonical_id === 4)
+      expect(archivedSlot).toBeDefined()
+      project.workbooks.identities.resourceSlots.push({ ...archivedSlot, canonical_id: 999 })
+      project.workbooks.tables.compatibility_audit_findings[0].resource_slot_id = 999
+      parsed.files.set(projectFile, Buffer.from(`${JSON.stringify(project, null, 2)}\n`))
+
+      await service.applyParsed(parsed, ['inventory', 'project'])
+
+      const finding = store.core.database.query(`
+        SELECT finding.resource_slot_id AS resourceSlotId,
+               assignment.resource_slot_id AS assignmentSlotId,
+               resource.position, resource_alias.legacy_resource_key AS resourceKey
+        FROM compatibility_audit_findings finding
+        JOIN component_assignments assignment ON assignment.id = finding.assignment_id
+        JOIN host_resource_slots resource ON resource.id = finding.resource_slot_id
+        JOIN host_resource_groups resource_group ON resource_group.id = resource.resource_group_id
+        JOIN resource_identity_aliases resource_alias
+          ON resource_alias.resource_id = resource_group.resource_identity_id
+        WHERE finding.finding_key = 'finding:storage-slot'
+      `).get() as any
+      expect(finding).toEqual({
+        resourceSlotId: finding.assignmentSlotId,
+        assignmentSlotId: finding.resourceSlotId,
+        position: 1,
+        resourceKey: 'm2-storage',
+      })
+    } finally {
+      store.close()
+    }
+  })
 })

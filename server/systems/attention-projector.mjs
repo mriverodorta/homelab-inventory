@@ -71,7 +71,9 @@ function sourceRows(database, projectId, hostId) {
     LEFT JOIN inventory_item_types component_type ON component_type.id = component.type_id
     LEFT JOIN compatibility_audit_ignores ignored ON ignored.finding_id = finding.id
     WHERE finding.project_id = ? AND finding.host_item_id = ?
-      AND finding.resolved_at_ms IS NULL AND ignored.id IS NULL
+      AND finding.resolved_at_ms IS NULL
+      AND finding.classification = 'actionable'
+      AND ignored.id IS NULL
     ORDER BY finding.id
   `).all(projectId, hostId)
   const notifications = database.query(`

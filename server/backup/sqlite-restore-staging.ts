@@ -327,6 +327,12 @@ function replaceProjectWorkbooks(database: Database, workbooks: Row, legacyProje
   for (const row of transformed.compatibility_audit_findings) {
     row.host_item_id = mapRequired(archivedItems, current.items, row.host_item_id, 'Compatibility finding host')
     row.component_item_id = mapOptional(archivedItems, current.items, row.component_item_id, 'Compatibility finding component')
+    row.resource_slot_id = mapOptional(
+      archivedSlots,
+      current.slots,
+      row.resource_slot_id,
+      'Compatibility finding resource slot',
+    )
   }
   for (const row of transformed.compatibility_audit_ignores) {
     if (row.ignored_by_user_id != null && !database.query('SELECT 1 FROM users WHERE id = ?').get(row.ignored_by_user_id)) {

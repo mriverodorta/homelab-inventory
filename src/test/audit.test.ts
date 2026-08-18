@@ -444,7 +444,7 @@ describe('item audit warnings', () => {
     ])
   })
 
-  it('audits only assigned hardware and preserves compatibility finding metadata', () => {
+  it('does not recompute canonical compatibility findings in the browser audit', () => {
     const host: InventoryItem = {
       id: 3,
       key: 'server:3',
@@ -558,13 +558,7 @@ describe('item audit warnings', () => {
 
     const warnings = getItemAuditWarnings(project, 'server:3')
 
-    expect(warnings).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ code: 'cpu.socket.mismatch', severity: 'error' }),
-        expect.objectContaining({ code: 'compatibility.data.missing', severity: 'unknown' }),
-        expect.objectContaining({ code: 'memory.speed.negotiated', severity: 'warning' }),
-      ]),
-    )
+    expect(warnings).toEqual([])
     expect(warnings.some((warning) => warning.message.includes('Unassigned Incompatible CPU'))).toBe(false)
     expect(getItemAuditWarnings(project, 'server:3')).toEqual(warnings)
   })
@@ -607,7 +601,7 @@ describe('item audit warnings', () => {
     ).toBe(false)
   })
 
-  it('deduplicates repeated host, code, and resource compatibility findings', () => {
+  it('leaves compatibility finding aggregation to the canonical projection', () => {
     const host: InventoryItem = {
       id: 5,
       key: 'server:5',
@@ -664,13 +658,7 @@ describe('item audit warnings', () => {
       (warning) => warning.code === 'memory.capacity.exceeded',
     )
 
-    expect(capacityWarnings).toHaveLength(1)
-    expect(capacityWarnings[0]).toEqual(
-      expect.objectContaining({
-        itemId: 'server:5',
-        severity: 'error',
-      }),
-    )
+    expect(capacityWarnings).toEqual([])
   })
 
   it('separates open and ignored audit warnings', () => {
@@ -713,7 +701,7 @@ describe('item audit warnings', () => {
     ])
   })
 
-  it('suppresses only compatibility warnings for a disabled NAS host', () => {
+  it('keeps topology warnings for a host disabled in compatibility policy', () => {
     const host: InventoryItem = {
       id: 1,
       key: 'nas:1',
@@ -757,11 +745,7 @@ describe('item audit warnings', () => {
         },
       ],
     }
-    const compatibilityWarning = getItemAuditWarnings(project, 'nas:1').find(
-      (warning) => warning.code === 'cpu.socket.mismatch',
-    )
-
-    expect(compatibilityWarning).toBeDefined()
+    expect(getItemAuditWarnings(project, 'nas:1')).toEqual([])
 
     const disabledProject: ProjectState = {
       ...project,
@@ -776,7 +760,7 @@ describe('item audit warnings', () => {
       ],
       compatibilityPolicy: {
         disabledHosts: [{ hostType: 'nas', hostId: 1 }],
-        ignoredWarningIds: [compatibilityWarning!.id],
+        ignoredWarningIds: [],
       },
     }
 

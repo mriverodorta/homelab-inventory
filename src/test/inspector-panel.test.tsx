@@ -23,9 +23,39 @@ import { renderWithOpenAuth as render } from '@/test/open-auth-test-render'
 const topologyHookMocks = vi.hoisted(() => ({
   useCompatibleTopologyDestinations: vi.fn(),
 }))
+const compatibilityAuditHookMocks = vi.hoisted(() => ({
+  useCompatibilityFindings: vi.fn(),
+}))
 
 vi.mock('@/hooks/use-topology-query', () => ({
   useCompatibleTopologyDestinations: topologyHookMocks.useCompatibleTopologyDestinations,
+}))
+
+vi.mock('@/hooks/use-compatibility-audit', () => ({
+  useCompatibilityFindings: compatibilityAuditHookMocks.useCompatibilityFindings,
+}))
+
+compatibilityAuditHookMocks.useCompatibilityFindings.mockImplementation((_projectId, filters) => ({
+  data: { findings: filters.hostType === 'server' && filters.hostId === 1 ? [
+    {
+      id: 1, findingKey: 'cpu', ruleKey: 'cpu.socket.mismatch', classification: 'actionable', severity: 'error',
+      message: 'CPU socket LGA1700 is not supported.', details: {},
+      host: { itemId: 1, type: 'server', legacyId: 1, name: 'Compatibility Host' },
+      component: { itemId: 2, type: 'cpu', legacyId: 1, name: 'Mismatch CPU' },
+    },
+    {
+      id: 2, findingKey: 'ram', ruleKey: 'memory.speed.reduced', classification: 'actionable', severity: 'warning',
+      message: 'Memory speed will be reduced.', details: {},
+      host: { itemId: 1, type: 'server', legacyId: 1, name: 'Compatibility Host' },
+      component: { itemId: 3, type: 'ram', legacyId: 1, name: '32GB RAM' },
+    },
+    {
+      id: 3, findingKey: 'storage', ruleKey: 'storage.form-factor.missing', classification: 'informational', severity: 'info',
+      message: 'Storage form factor is not recorded.', details: {},
+      host: { itemId: 1, type: 'server', legacyId: 1, name: 'Compatibility Host' },
+      component: { itemId: 4, type: 'storage', legacyId: 1, name: 'NVMe' },
+    },
+  ] : [] },
 }))
 
 vi.mock('@/lib/agent-api', () => ({

@@ -12,26 +12,20 @@ import {
   CompatibilityFields,
   type CompatibilityFieldsProps,
 } from '@/components/inventory-form/compatibility-fields'
+import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
+import { useCompatibilityFindings } from '@/hooks/use-compatibility-audit'
 import {
   isVerifiedMemoryLimitEnabled,
   normalizeHostCapabilities,
   planHostAllocations,
-  type ProjectCompatibilityResult,
 } from '@/lib/compatibility'
 import type {
   CompatibilityAllocation,
-  CompatibilityStatus,
   HostCompatibility,
 } from '@/types/compatibility'
-import type { InventoryItem, ProjectState } from '@/types/inventory'
+import type { HostType, InventoryItem, ProjectState } from '@/types/inventory'
 import { runtimeItemKey } from '@/lib/item-keys'
-
-function overallStatus(results: ProjectCompatibilityResult[]): CompatibilityStatus {
-  if (results.some((result) => result.status === 'incompatible')) return 'incompatible'
-  if (results.some((result) => result.status === 'unknown')) return 'unknown'
-  return 'compatible'
-}
 
 function occupiedPositionCount(
   allocations: Array<CompatibilityAllocation | undefined>,
@@ -218,6 +212,11 @@ export function HostCompatibilityTab({
 }) {
   const evaluationProject = normalizeCompatibilityViewProject(project, [host])
   const hostReference = runtimeItemKey(host)
+  const projectId = project.metadata.projectId ?? 1
+  const findingsQuery = useCompatibilityFindings(projectId, {
+    hostType: host.type as HostType,
+    hostId: host.id,
+  }, enabled)
   const plan = planHostAllocations(evaluationProject, hostReference)
   const capabilities = normalizeHostCapabilities(host)
   const persistedAssignments = new Map(
@@ -230,9 +229,21 @@ export function HostCompatibilityTab({
     allocation: assignment.allocation
       ?? persistedAssignments.get(compatibilityAssignmentIdentity(assignment.id))?.allocation,
   }))
-  const findings = plan.results.flatMap((result) => {
-    const item = evaluationProject.items[String(result.itemId)]
-    return result.findings.map((finding) => ({ finding, itemName: item?.name }))
+  const persistedFindings = findingsQuery.data?.findings ?? []
+  const actionableFindings = persistedFindings.filter((finding) => finding.classification === 'actionable')
+  const informationalFindings = persistedFindings.filter((finding) => finding.classification === 'informational')
+  const presentFinding = (finding: (typeof persistedFindings)[number]) => ({
+    itemName: finding.component?.name,
+    finding: {
+      code: finding.ruleKey,
+      severity: finding.classification === 'informational'
+        ? 'unknown' as const
+        : finding.severity === 'error' ? 'error' as const : 'warning' as const,
+      classification: finding.classification,
+      message: finding.message,
+      field: finding.details.field ?? undefined,
+      resourceId: finding.details.resourceId ?? undefined,
+    },
   })
   const allocations = visibleAssignments.map((assignment) => assignment.allocation)
   const cpuTotal = capabilities.cpu?.socketCount ?? 0
@@ -317,10 +328,25 @@ export function HostCompatibilityTab({
             Compatibility overview
           </h2>
         </div>
-        <CompatibilityStatusBand
-          status={overallStatus(plan.results)}
-          findings={findings.map(({ finding }) => finding)}
-        />
+        {findingsQuery.isPending ? (
+          <div role="status" className="rounded-md border border-[#e5dccf] bg-[#f8f3eb] px-3 py-3 text-sm font-semibold text-[#75695d]">
+            Loading compatibility findings...
+          </div>
+        ) : findingsQuery.isError ? (
+          <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-[#e4b4aa] bg-[#fff0ed] px-3 py-3 text-sm font-semibold text-[#742a20]">
+            <span>Compatibility findings could not be loaded.</span>
+            <Button type="button" variant="outline" size="sm" onClick={() => void findingsQuery.refetch()}>
+              Try again
+            </Button>
+          </div>
+        ) : (
+          <CompatibilityStatusBand
+            status={actionableFindings.length > 0
+              ? 'incompatible'
+              : informationalFindings.length > 0 ? 'unknown' : 'compatible'}
+            findings={persistedFindings.map((finding) => presentFinding(finding).finding)}
+          />
+        )}
           </section>
 
           <HostTopologySummary host={capabilities} />
@@ -406,10 +432,25 @@ export function HostCompatibilityTab({
         </section>
           ) : null}
 
-          {findings.length > 0 ? (
-        <section aria-label="Compatibility findings" className="border-t border-[#e5dccf] pt-4">
-          <CompatibilityFindingGroups findings={findings} />
-        </section>
+          {actionableFindings.length > 0 ? (
+            <section aria-label="Compatibility findings" className="border-t border-[#e5dccf] pt-4">
+              <h2 className="mb-2 text-[12px] font-black uppercase tracking-[0.09em] text-[#75695d]">
+                Needs attention
+              </h2>
+              <CompatibilityFindingGroups findings={actionableFindings.map(presentFinding)} />
+            </section>
+          ) : null}
+
+          {informationalFindings.length > 0 ? (
+            <section aria-label="Missing compatibility metadata" className="border-t border-[#e5dccf] pt-4">
+              <h2 className="mb-2 text-[12px] font-black uppercase tracking-[0.09em] text-[#75695d]">
+                Missing metadata
+              </h2>
+              <p className="mb-2 text-xs font-semibold leading-5 text-[#75695d]">
+                These details are not recorded, so the related checks could not be completed. They are informational and do not count as alerts.
+              </p>
+              <CompatibilityFindingGroups findings={informationalFindings.map(presentFinding)} />
+            </section>
           ) : null}
         </>
       )}

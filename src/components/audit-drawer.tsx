@@ -2,14 +2,19 @@ import { AlertCircle, AlertTriangle, CircleHelp, X } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { RIGHT_DRAWER_LAYOUT_CLASS_NAME } from '@/components/right-drawer-layout'
+import {
+  useCompatibilityFindings,
+  useSetCompatibilityFindingIgnored,
+} from '@/hooks/use-compatibility-audit'
 import { getProjectAuditWarnings, type ProjectAuditGroup } from '@/lib/audit'
 import { runtimeItemKey } from '@/lib/item-keys'
 import type { TopologyQueryData } from '@/hooks/use-topology-query'
 import type { CompatibilitySeverity } from '@/types/compatibility'
+import type { CompatibilityAuditFinding } from '@/types/compatibility-audit'
 import type { InventoryType, ProjectState } from '@/types/inventory'
 
-type AuditFilter = 'all' | 'server' | 'patchPanel' | 'switch' | 'stale' | 'ignored'
-type OpenAuditFilter = Exclude<AuditFilter, 'ignored'>
+type AuditFilter = 'all' | 'server' | 'patchPanel' | 'switch' | 'stale' | 'metadata' | 'ignored'
+type OpenAuditFilter = Exclude<AuditFilter, 'metadata' | 'ignored'>
 
 const FILTERS: Array<{ label: string; value: AuditFilter }> = [
   { label: 'All', value: 'all' },
@@ -17,8 +22,47 @@ const FILTERS: Array<{ label: string; value: AuditFilter }> = [
   { label: 'Patch Panels', value: 'patchPanel' },
   { label: 'Switches', value: 'switch' },
   { label: 'Stale', value: 'stale' },
+  { label: 'Missing metadata', value: 'metadata' },
   { label: 'Ignored', value: 'ignored' },
 ]
+
+function mergeAuditGroups(...collections: ProjectAuditGroup[][]): ProjectAuditGroup[] {
+  const groups = new Map<string, ProjectAuditGroup>()
+  for (const collection of collections) {
+    for (const group of collection) {
+      const key = runtimeItemKey(group.item)
+      const existing = groups.get(key)
+      groups.set(key, existing
+        ? { ...existing, warnings: [...existing.warnings, ...group.warnings] }
+        : group)
+    }
+  }
+  return [...groups.values()].sort((left, right) => left.item.name.localeCompare(right.item.name))
+}
+
+function compatibilityGroupsFor(
+  findings: readonly CompatibilityAuditFinding[],
+  project: ProjectState,
+): ProjectAuditGroup[] {
+  const grouped = new Map<string, ProjectAuditGroup>()
+  for (const finding of findings) {
+    const itemKey = `${finding.host.type}:${finding.host.legacyId}`
+    const item = project.items[itemKey]
+    if (!item) continue
+    const current = grouped.get(itemKey) ?? { item, warnings: [] }
+    current.warnings.push({
+      id: `compatibility-audit:${finding.id}`,
+      itemId: itemKey,
+      message: finding.component ? `${finding.component.name}: ${finding.message}` : finding.message,
+      code: finding.ruleKey,
+      severity: finding.classification === 'informational'
+        ? 'unknown'
+        : finding.severity === 'error' ? 'error' : 'warning',
+    })
+    grouped.set(itemKey, current)
+  }
+  return [...grouped.values()]
+}
 
 function itemTypeLabel(type: InventoryType): string {
   if (type === 'patchPanel') {
@@ -86,26 +130,56 @@ export function AuditDrawer({
   onSetWarningIgnored?: (warningId: string, ignored: boolean) => void
 }) {
   const [filter, setFilter] = useState<AuditFilter>('all')
+  const projectId = project.metadata.projectId ?? 1
+  const compatibility = useCompatibilityFindings(projectId, { visibility: 'open' }, open)
+  const ignoredCompatibility = useCompatibilityFindings(
+    projectId,
+    { visibility: 'ignored' },
+    open && filter === 'ignored',
+  )
+  const setCompatibilityIgnored = useSetCompatibilityFindingIgnored(projectId)
   const auditTopology = useMemo(() => topologyData ? {
     endpoints: topologyData.endpoints,
     networkTraces: topologyData.networkTraces,
     powerEndpoints: topologyData.power.endpoints,
     powerFindings: topologyData.power.findings,
   } : undefined, [topologyData])
-  const openGroups = useMemo(
-    () => getProjectAuditWarnings(project, {}, auditTopology),
-    [auditTopology, project],
+  const compatibilityGroups = useMemo(
+    () => compatibilityGroupsFor(compatibility.data?.findings ?? [], project),
+    [compatibility.data?.findings, project],
   )
+  const ignoredCompatibilityGroups = useMemo(
+    () => compatibilityGroupsFor(ignoredCompatibility.data?.findings ?? [], project),
+    [ignoredCompatibility.data?.findings, project],
+  )
+  const actionableCompatibilityGroups = useMemo(() => compatibilityGroups.map((group) => ({
+    ...group,
+    warnings: group.warnings.filter((warning) => warning.severity !== 'unknown'),
+  })).filter((group) => group.warnings.length > 0), [compatibilityGroups])
+  const informationalCompatibilityGroups = useMemo(() => compatibilityGroups.map((group) => ({
+    ...group,
+    warnings: group.warnings.filter((warning) => warning.severity === 'unknown'),
+  })).filter((group) => group.warnings.length > 0), [compatibilityGroups])
+  const openGroups = useMemo(() => mergeAuditGroups(
+    getProjectAuditWarnings(project, {}, auditTopology),
+    actionableCompatibilityGroups,
+  ), [actionableCompatibilityGroups, auditTopology, project])
   const filteredGroups = useMemo(
     () =>
       filter === 'ignored'
-        ? getProjectAuditWarnings(project, { visibility: 'ignored' }, auditTopology)
-        : filterGroups(openGroups, filter),
-    [auditTopology, filter, openGroups, project],
+        ? mergeAuditGroups(
+            getProjectAuditWarnings(project, { visibility: 'ignored' }, auditTopology),
+            ignoredCompatibilityGroups,
+          )
+        : filter === 'metadata'
+          ? informationalCompatibilityGroups
+          : filterGroups(openGroups, filter),
+    [auditTopology, filter, ignoredCompatibilityGroups, informationalCompatibilityGroups, openGroups, project],
   )
   const totalWarnings = openGroups.reduce((count, group) => count + group.warnings.length, 0)
   const filteredWarnings = filteredGroups.reduce((count, group) => count + group.warnings.length, 0)
   const showingIgnored = filter === 'ignored'
+  const activeCompatibilityQuery = showingIgnored ? ignoredCompatibility : compatibility
 
   return (
     <aside
@@ -162,6 +236,23 @@ export function AuditDrawer({
       </div>
 
       <div className="min-h-0 flex-1 overflow-auto p-4">
+        {activeCompatibilityQuery.isPending ? (
+          <div role="status" className="mb-3 rounded-md border border-[#e5dccf] bg-[#f8f3eb] px-3 py-2 text-xs font-semibold text-[#75695d]">
+            Loading compatibility findings...
+          </div>
+        ) : activeCompatibilityQuery.isError ? (
+          <div role="alert" className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-md border border-[#e4b4aa] bg-[#fff0ed] px-3 py-2 text-xs font-semibold text-[#742a20]">
+            <span>Compatibility findings could not be loaded.</span>
+            <Button type="button" variant="outline" size="xs" onClick={() => void activeCompatibilityQuery.refetch()}>
+              Try again
+            </Button>
+          </div>
+        ) : null}
+        {setCompatibilityIgnored.isError ? (
+          <div role="alert" className="mb-3 rounded-md border border-[#e4b4aa] bg-[#fff0ed] px-3 py-2 text-xs font-semibold text-[#742a20]">
+            The compatibility finding could not be updated. Try again.
+          </div>
+        ) : null}
         {filteredGroups.length === 0 ? (
           <div className="rounded-lg border border-dashed border-[#d6ccbd] bg-[#f8f3eb] p-4 text-sm font-semibold text-[#75695d]">
             No audit warnings in this filter.
@@ -199,7 +290,7 @@ export function AuditDrawer({
                           <WarningIcon className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
                           <span className="min-w-0">{warning.message}</span>
                         </button>
-                        {onSetWarningIgnored ? (
+                        {(onSetWarningIgnored || warning.id.startsWith('compatibility-audit:')) ? (
                           <Button
                             type="button"
                             variant="outline"
@@ -207,7 +298,12 @@ export function AuditDrawer({
                             className="mt-0.5 px-2 text-[11px]"
                             onClick={(event) => {
                               event.stopPropagation()
-                              onSetWarningIgnored(warning.id, !showingIgnored)
+                              if (warning.id.startsWith('compatibility-audit:')) {
+                                const findingId = Number(warning.id.slice('compatibility-audit:'.length))
+                                setCompatibilityIgnored.mutate({ findingId, ignored: !showingIgnored })
+                              } else {
+                                onSetWarningIgnored?.(warning.id, !showingIgnored)
+                              }
                             }}
                           >
                             {showingIgnored ? 'Unignore' : 'Ignore'}

@@ -34,6 +34,8 @@ import { registerInventoryRoutes } from './inventory-routes.mjs'
 import { registerOnboardingRoutes } from './onboarding-routes.mjs'
 import { registerProjectRoutes } from './project-routes.mjs'
 import { registerWorkspaceRoutes } from './workspace-routes.mjs'
+import { CompatibilityAuditService } from './compatibility/audit-service.mjs'
+import { registerCompatibilityRoutes } from './compatibility/routes.mjs'
 import { registerSystemsRoutes } from './systems/routes.mjs'
 import { SystemsSavedViewService } from './systems/saved-view-service.mjs'
 import { SystemAttentionProjector } from './systems/attention-projector.mjs'
@@ -321,16 +323,43 @@ const authorizationService = store && authRuntime
   : null
 const systemsSavedViews = store ? new SystemsSavedViewService() : null
 const systemsAttention = store ? new SystemAttentionProjector() : null
-const systemsReadService = store
+let systemsReadService = null
+const compatibilityAudit = new CompatibilityAuditService({
+  onChanged: (currentStore, event) => {
+    systemsAttention?.markHostDirty(currentStore, {
+      projectId: event.projectId,
+      hostType: event.hostType,
+      hostId: event.hostId,
+      reason: 'compatibility-changed',
+    })
+    systemsAttention?.reconcile(currentStore)
+    applicationEventBus.publish({
+      scope: currentStore,
+      topics: [`compatibility:${event.projectId}`, `systems:${event.projectId}`],
+      kind: 'compatibility.changed',
+      payload: {
+        projectId: event.projectId,
+        host: { hostType: event.hostType, hostId: event.hostId },
+        counts: event.counts,
+      },
+    })
+  },
+})
+systemsReadService = store
   ? new SystemsReadService({ telemetryRepository, releaseService: agentReleaseService, attentionProjector: systemsAttention })
   : null
 if (store) {
   systemsAttention?.start(store)
+  compatibilityAudit?.schedule(store)
   store.subscribeToProjectCommits((commit) => {
     if (commit.type === 'canonical-invalidated') {
+      compatibilityAudit?.markProjectDirty(store, store.projectId, 'canonical-invalidated')
+      compatibilityAudit?.schedule(store)
       systemsAttention?.markProjectDirty(store, store.projectId, 'canonical-invalidated')
       return
     }
+    compatibilityAudit?.markProjectDirty(store, store.projectId, 'project-commit')
+    compatibilityAudit?.schedule(store)
     const hosts = assignmentHostsFromPatch(commit.forward)
     assignmentHostsFromPatch(commit.inverse, hosts)
     for (const host of hosts.values()) systemsAttention?.markHostDirty(store, { projectId: store.projectId, hostType: host.type, hostId: host.id, reason: 'assignment-changed' })
@@ -611,6 +640,7 @@ if (!stagingPolicy.registryNetworkRefreshDisabled) catalogRefreshCoordinator?.st
 catalogStatusService?.start()
 const backupSchedule = stagingPolicy.scheduledBackupsDisabled ? null : backupScheduler?.start()
 registerProjectRoutes(app, { withStore })
+registerCompatibilityRoutes(app, { withStore, service: compatibilityAudit })
 registerSystemsRoutes(app, {
   withStore,
   service: systemsReadService,

@@ -37,6 +37,42 @@ async function migratedDatabase(migrationCount = CORE_MIGRATIONS.length) {
 }
 
 describe('schema-29 core import', () => {
+  test('round trips canonical M.2 A/E physical semantics without reducing the slot to WLAN', async () => {
+    const handle = await migratedDatabase()
+    const snapshot = schema29ProductionShapeFixture()
+    snapshot.inventory.servers[0].compatibility.host.optionalModuleSlots = [{
+      id: 8,
+      key: 'm2-ae-slot',
+      aliases: ['wlan-m2'],
+      count: 1,
+      label: 'M.2 2230 A/E slot',
+      interfaceFamily: 'm2-ae',
+      acceptedKeys: ['A+E'],
+      moduleSizes: ['2230'],
+      availableBuses: [{ family: 'pcie', lanes: 1, pcieGeneration: 3 }],
+      intendedModuleKinds: ['wireless-card'],
+    }]
+    try {
+      importLegacyCore({ database: handle.database, snapshot, identityPlan: buildCanonicalIdentityPlan(snapshot) })
+      const server = buildLegacyInventoryProjection(handle.database).servers[0]
+      expect(server.compatibility?.host?.optionalModuleSlots).toEqual([{
+        id: 8,
+        key: 'm2-ae-slot',
+        aliases: ['wlan-m2'],
+        count: 1,
+        label: 'M.2 2230 A/E slot',
+        interfaceFamily: 'm2-ae',
+        acceptedKeys: ['A+E'],
+        moduleSizes: ['2230'],
+        availableBuses: [{ family: 'pcie', lanes: 1, pcieGeneration: 3 }],
+        intendedModuleKinds: ['wireless-card'],
+      }])
+      expect(handle.database.query('PRAGMA foreign_key_check').all()).toEqual([])
+    } finally {
+      closeManagedDatabase(handle)
+    }
+  })
+
   test('migrates an existing port table to non-negative slot numbers without losing constraints', async () => {
     const migrationIndex = CORE_MIGRATIONS.findIndex((migration) => migration.id === '0016_nonnegative_port_slots')
     const handle = await migratedDatabase(migrationIndex)

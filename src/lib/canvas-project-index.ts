@@ -8,6 +8,7 @@ import type {
   ConnectionEndpoint,
   ProjectState,
 } from '@/types/inventory'
+import type { CompatibilityAuditHostSummary } from '@/types/compatibility-audit'
 
 export type CanvasProjectIndex = {
   assignmentsByHostId: ReadonlyMap<string, readonly ComponentAssignment[]>
@@ -23,6 +24,7 @@ export function buildCanvasProjectIndex(
   project: ProjectState,
   topology: TopologyQueryData | null = null,
   compatibleEndpointKeys: ReadonlySet<string> | null = null,
+  compatibilitySummaries: readonly CompatibilityAuditHostSummary[] = [],
 ): CanvasProjectIndex {
   const assignmentsByHostId = new Map<string, ComponentAssignment[]>()
   const assignedHostByItemId = new Map<string, string>()
@@ -43,6 +45,13 @@ export function buildCanvasProjectIndex(
   } : undefined
   for (const group of getProjectAuditWarnings(project, {}, auditTopology)) {
     auditWarningCountByItemId.set(runtimeItemKey(group.item), group.warnings.length)
+  }
+  for (const summary of compatibilitySummaries) {
+    const key = `${summary.hostType}:${summary.hostId}`
+    auditWarningCountByItemId.set(
+      key,
+      (auditWarningCountByItemId.get(key) ?? 0) + summary.actionable,
+    )
   }
 
   for (const connection of project.connections ?? []) {

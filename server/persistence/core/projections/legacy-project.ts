@@ -306,11 +306,13 @@ function hostCompatibility(database: Database, itemId: number) {
            e.usb_generation, e.connector, e.ocp_version,
            est.label AS expansion_slot_type,
            e.mechanical_lanes, e.electrical_lanes, e.max_slot_width,
-           e.max_power_mw, e.proprietary_riser, e.riser_capability, e.riser_group
+           e.max_power_mw, e.proprietary_riser, e.riser_capability, e.riser_group,
+           om.interface_family AS optional_module_interface_family
     FROM host_resource_groups g
     JOIN resource_identity_aliases a ON a.resource_id = g.resource_identity_id
     LEFT JOIN storage_resource_groups s ON s.id = g.id
     LEFT JOIN expansion_resource_groups e ON e.id = g.id
+    LEFT JOIN optional_module_resource_groups om ON om.id = g.id
     LEFT JOIN expansion_slot_types est ON est.id = e.expansion_slot_type_id
     WHERE g.host_item_id = ? AND g.resource_type NOT IN ('cpu', 'memory', 'powerAdapter', 'psuBay', 'power')
     ORDER BY g.id
@@ -333,7 +335,43 @@ function hostCompatibility(database: Database, itemId: number) {
       Object.assign(entry, defined({ pcieGeneration: group.storage_pcie_generation, hotSwap: group.hot_swap == null ? undefined : Boolean(group.hot_swap), backplane: group.backplane, directConnect: group.direct_connect == null ? undefined : Boolean(group.direct_connect) }))
     }
     if (group.resource_type === 'expansion') Object.assign(entry, defined({ interfaceFamily: group.interface_family, interfaceKey: group.interface_key, keying: group.keying, moduleSize: group.module_size, usbGeneration: group.usb_generation, connector: group.connector, ocpVersion: group.ocp_version, slotType: group.expansion_slot_type, pcieGeneration: group.expansion_pcie_generation, mechanicalLanes: group.mechanical_lanes, electricalLanes: group.electrical_lanes, acceptedHeights: all(database, 'SELECT height FROM expansion_accepted_heights WHERE resource_group_id = ? ORDER BY id', group.id).map((row) => row.height), maxSlotWidth: group.max_slot_width, maxPowerWatts: group.max_power_mw == null ? undefined : group.max_power_mw / 1000, proprietaryRiser: group.proprietary_riser == null ? undefined : Boolean(group.proprietary_riser), riserCapability: group.riser_capability, riserGroup: group.riser_group }))
-    if (group.resource_type === 'optionalModule' && acceptedKinds.length) entry.acceptedModuleKinds = acceptedKinds
+    if (group.resource_type === 'optionalModule') {
+      const aliases = all(database, `
+        SELECT alias FROM optional_module_resource_aliases
+        WHERE resource_group_id = ? ORDER BY id
+      `, group.id).map((row) => row.alias).filter((alias) => alias !== group.semantic_key)
+      const acceptedKeys = all(database, `
+        SELECT key FROM optional_module_accepted_keys
+        WHERE resource_group_id = ? ORDER BY id
+      `, group.id).map((row) => row.key)
+      const moduleSizes = all(database, `
+        SELECT module_size FROM optional_module_sizes
+        WHERE resource_group_id = ? ORDER BY id
+      `, group.id).map((row) => row.module_size)
+      const availableBuses = all(database, `
+        SELECT family, lanes, pcie_generation, usb_generation
+        FROM optional_module_available_buses
+        WHERE resource_group_id = ? ORDER BY id
+      `, group.id).map((row) => defined({
+        family: row.family,
+        lanes: row.lanes,
+        pcieGeneration: row.pcie_generation,
+        usbGeneration: row.usb_generation,
+      }))
+      const intendedModuleKinds = all(database, `
+        SELECT kind FROM optional_module_intended_kinds
+        WHERE resource_group_id = ? ORDER BY id
+      `, group.id).map((row) => row.kind)
+      Object.assign(entry, defined({
+        acceptedModuleKinds: acceptedKinds.length ? acceptedKinds : undefined,
+        aliases: aliases.length ? aliases : undefined,
+        interfaceFamily: group.optional_module_interface_family,
+        acceptedKeys: acceptedKeys.length ? acceptedKeys : undefined,
+        moduleSizes: moduleSizes.length ? moduleSizes : undefined,
+        availableBuses: availableBuses.length ? availableBuses : undefined,
+        intendedModuleKinds: intendedModuleKinds.length ? intendedModuleKinds : undefined,
+      }))
+    }
     if (group.resource_type === 'controllerSlot') {
       const controller = one(database, 'SELECT * FROM controller_resource_groups WHERE id = ?', group.id)
       Object.assign(entry, defined({ acceptedControllerKinds: acceptedKinds.length ? acceptedKinds : undefined, interfaceFamily: controller?.interface_family, dedicated: controller?.dedicated == null ? undefined : Boolean(controller.dedicated) }))
@@ -460,9 +498,13 @@ function inventoryItem(database: Database, row: Row): InventoryItem {
 }
 
 export function buildLegacyInventoryProjection(database: Database) {
-  const inventory = Object.fromEntries(
-    Object.values(LEGACY_TABLE_BY_TYPE).map((table) => [table, [] as InventoryItem[]]),
-  ) as Record<string, InventoryItem[]>
+  const inventory = {
+    ...Object.fromEntries(
+      Object.values(LEGACY_TABLE_BY_TYPE).map((table) => [table, [] as InventoryItem[]]),
+    ),
+    // Retain the schema-29 boundary collection after wireless hardware moved to network.
+    wirelessCards: [] as InventoryItem[],
+  } as Record<string, InventoryItem[]>
   const rows = all(database, `
     SELECT i.*, t.key AS type_key, m.name AS manufacturer_name,
            a.legacy_type_key, a.legacy_id

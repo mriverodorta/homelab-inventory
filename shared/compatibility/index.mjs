@@ -1,3 +1,8 @@
+import {
+  canonicalCpuGenerationTokens,
+  inferCpuProductGenerationTokens,
+} from './cpu-generation-aliases.mjs'
+
 function optionalNumber(value) {
   if (
     value === '' ||
@@ -70,6 +75,21 @@ function optionalModuleKinds(component) {
 }
 
 function optionalModuleGroupsFor(hostCapabilities, component) {
+  const requirements = normalizeComponentRequirements(component)
+  const physicalFamily = normalizedText(requirements.interfaceFamily)
+  if (physicalFamily) {
+    const physical = validResourceGroups(hostCapabilities.optionalModuleSlots).filter((group) => {
+      const groupFamily = normalizedText(group.interfaceFamily)
+      if (groupFamily) return groupFamily === physicalFamily
+      return physicalFamily === 'm2-ae' && (
+        normalizedText(group.key)?.includes('wlan-m2')
+        || normalizedText(group.key)?.includes('m2-ae')
+        || normalizedText(group.label)?.includes('m.2 wlan')
+        || normalizedText(group.label)?.includes('m.2 a/e')
+      )
+    })
+    if (physical.length > 0) return physical
+  }
   const acceptedKinds = optionalModuleKinds(component)
   if (acceptedKinds.length === 0) return []
   return validResourceGroups(hostCapabilities.optionalModuleSlots).filter((group) => (
@@ -269,7 +289,25 @@ export function normalizeHostCapabilities(item) {
     }
   }
   for (const group of Array.isArray(normalized.optionalModuleSlots) ? normalized.optionalModuleSlots : []) {
+    normalizeNumericField(group, 'id')
     normalizeNumericField(group, 'count')
+    group.aliases = optionalStringArray(group.aliases)
+    group.acceptedKeys = optionalStringArray(group.acceptedKeys)
+    group.moduleSizes = optionalStringArray(group.moduleSizes)
+    group.intendedModuleKinds = optionalStringArray(group.intendedModuleKinds)
+    group.availableBuses = (Array.isArray(group.availableBuses) ? group.availableBuses : [])
+      .flatMap((bus) => {
+        const family = normalizedText(bus?.family)
+        if (family !== 'pcie' && family !== 'usb') return []
+        const next = { family }
+        const lanes = optionalNumber(bus?.lanes)
+        const pcieGeneration = optionalNumber(bus?.pcieGeneration)
+        const usbGeneration = optionalString(bus?.usbGeneration)
+        if (lanes !== undefined) next.lanes = lanes
+        if (pcieGeneration !== undefined) next.pcieGeneration = pcieGeneration
+        if (usbGeneration !== undefined) next.usbGeneration = usbGeneration
+        return [next]
+      })
   }
   for (const port of Array.isArray(normalized.fixedPorts) ? normalized.fixedPorts : []) {
     normalizeNumericField(port, 'id')
@@ -409,6 +447,7 @@ export function normalizeComponentRequirements(item) {
     const moduleSize = optionalString(structured?.moduleSize)
     const usbGeneration = optionalString(structured?.usbGeneration)
     const connector = optionalString(structured?.connector)
+    const busFamily = optionalString(structured?.busFamily)
     const ocpVersion = optionalString(structured?.ocpVersion)
     const height = optionalString(structured?.height)
     const pcieGeneration = structuredNumber('pcieGeneration', legacy.pcieGeneration)
@@ -429,6 +468,7 @@ export function normalizeComponentRequirements(item) {
     if (moduleSize !== undefined) normalized.moduleSize = moduleSize
     if (usbGeneration !== undefined) normalized.usbGeneration = usbGeneration
     if (connector !== undefined) normalized.connector = connector
+    if (busFamily !== undefined) normalized.busFamily = busFamily
     if (ocpVersion !== undefined) normalized.ocpVersion = ocpVersion
     if (pcieGeneration !== undefined) normalized.pcieGeneration = pcieGeneration
     if (connectorLanes !== undefined) normalized.connectorLanes = connectorLanes
@@ -512,14 +552,19 @@ function includesNormalized(values, value) {
 }
 
 function addFinding(findings, finding) {
+  const normalizedFinding = {
+    classification: finding.classification
+      ?? (finding.severity === 'unknown' ? 'informational' : 'actionable'),
+    ...finding,
+  }
   const duplicate = findings.some(
     (entry) =>
-      entry.code === finding.code &&
-      entry.field === finding.field &&
-      entry.resourceId === finding.resourceId,
+      entry.code === normalizedFinding.code &&
+      entry.field === normalizedFinding.field &&
+      entry.resourceId === normalizedFinding.resourceId,
   )
   if (!duplicate) {
-    findings.push(finding)
+    findings.push(normalizedFinding)
   }
 }
 
@@ -527,6 +572,7 @@ function addMissing(findings, field, message, resourceId) {
   addFinding(findings, {
     code: 'compatibility.data.missing',
     severity: 'unknown',
+    classification: 'informational',
     message,
     field,
     ...(resourceId ? { resourceId } : {}),
@@ -779,10 +825,11 @@ function evaluatePowerSupply(assignments, items, component, requirements, findin
 
 function evaluateCpu(hostCapabilities, requirements, assignments, items, component, findings) {
   const support = hostCapabilities.cpu
-  const checks = [
-    ['socket', support?.sockets, requirements.socket, 'cpu.socket.mismatch'],
-    ['generation', support?.generations, requirements.generation, 'cpu.generation.unsupported'],
-  ]
+  const componentGenerationTokens = [...new Set([
+    ...canonicalCpuGenerationTokens(requirements.generation),
+    ...inferCpuProductGenerationTokens(component),
+  ])]
+  const checks = [['socket', support?.sockets, requirements.socket, 'cpu.socket.mismatch']]
 
   for (const [field, accepted, actual, code] of checks) {
     if (!Array.isArray(accepted) || accepted.length === 0) {
@@ -795,6 +842,30 @@ function evaluateCpu(hostCapabilities, requirements, assignments, items, compone
         severity: 'error',
         message: `CPU ${field} ${actual} is not supported by this host.`,
         field: `component.cpu.${field}`,
+      })
+    }
+  }
+
+  const acceptedGenerations = Array.isArray(support?.generations) ? support.generations : []
+  if (acceptedGenerations.length === 0) {
+    addMissing(findings, 'host.cpu.generations', 'Host CPU generation support is not recorded.')
+  } else if (!requirements.generation && componentGenerationTokens.length === 0) {
+    addMissing(findings, 'component.cpu.generation', 'CPU generation is not recorded.')
+  } else {
+    const acceptedTokens = new Set(acceptedGenerations.flatMap(canonicalCpuGenerationTokens))
+    const acceptedProductTokens = [...acceptedTokens].filter((token) => token.startsWith('product:'))
+    const componentProductTokens = componentGenerationTokens.filter((token) => token.startsWith('product:'))
+    const matches = componentProductTokens.some((token) => acceptedTokens.has(token))
+      || (
+        acceptedProductTokens.length === 0
+        && componentGenerationTokens.some((token) => acceptedTokens.has(token))
+      )
+    if (!matches) {
+      addFinding(findings, {
+        code: 'cpu.generation.unsupported',
+        severity: 'error',
+        message: `CPU generation ${requirements.generation ?? 'unknown'} is not supported by this host.`,
+        field: 'component.cpu.generation',
       })
     }
   }
@@ -1001,22 +1072,22 @@ function evaluateMemory(
     })
   }
 
-  if (
-    (normalizedText(requirements.moduleType) === 'rdimm'
-      || normalizedText(requirements.moduleType) === 'lrdimm')
-    && requirements.ecc === false
-  ) {
-    addFinding(findings, {
-      code: 'memory.registered-ecc.required',
-      severity: 'error',
-      message: `${requirements.moduleType} memory must use ECC.`,
-      field: 'component.memory.ecc',
-    })
+  const registered = ['rdimm', 'lrdimm'].includes(normalizedText(requirements.moduleType))
+  const effectiveEcc = requirements.ecc ?? (registered ? undefined : false)
+  if (registered && effectiveEcc !== true) {
+    if (effectiveEcc === undefined) {
+      addMissing(findings, 'component.memory.ecc', `${requirements.moduleType} ECC capability is not recorded.`)
+    } else {
+      addFinding(findings, {
+        code: 'memory.registered-ecc.required',
+        severity: 'error',
+        message: `${requirements.moduleType} memory must use ECC.`,
+        field: 'component.memory.ecc',
+      })
+    }
   }
 
-  if (support?.eccSupport && support.eccSupport !== 'unknown' && requirements.ecc === undefined) {
-    addMissing(findings, 'component.memory.ecc', 'Memory ECC capability is not recorded.')
-  } else if (requirements.ecc && support.eccSupport === 'unsupported') {
+  if (effectiveEcc && support.eccSupport === 'unsupported') {
     addFinding(findings, {
       code: 'memory.ecc.unsupported',
       severity: 'error',
@@ -1338,7 +1409,15 @@ function evaluateExpansion(hostCapabilities, requirements, assignments, items, c
         .filter((item) => item.type === 'cpu').length
       const candidates = matchingGroups.map((group, index) => ({
         index,
-        findings: evaluateExpansionGroup(group, requirements, populatedCpuSockets),
+        findings: evaluateExpansionGroup(
+          matchingGroups.length === 1
+            && group.maxPowerWatts === undefined
+            && hostCapabilities.maxExpansionPowerWatts !== undefined
+            ? { ...group, maxPowerWatts: hostCapabilities.maxExpansionPowerWatts }
+            : group,
+          requirements,
+          populatedCpuSockets,
+        ),
       }))
       const selected = candidates.reduce((best, candidate) =>
         compareCandidateRank(candidate, best) < 0 ? candidate : best,
@@ -1354,9 +1433,37 @@ function evaluateExpansion(hostCapabilities, requirements, assignments, items, c
 
 function evaluateOptionalModule(hostCapabilities, component, findings) {
   const kinds = optionalModuleKinds(component)
+  const requirements = normalizeComponentRequirements(component)
   const groups = validResourceGroups(hostCapabilities.optionalModuleSlots)
   if (groups.length === 0) {
     addMissing(findings, 'host.optionalModuleSlots', 'Host optional module capabilities are not recorded.')
+    return
+  }
+  const physicalGroups = optionalModuleGroupsFor(hostCapabilities, component)
+  if (physicalGroups.length > 0 && requirements.interfaceFamily) {
+    const matching = physicalGroups.some((group) => {
+      const acceptedKeys = optionalStringArray(group.acceptedKeys)
+      const moduleSizes = optionalStringArray(group.moduleSizes)
+      const keyMatches = acceptedKeys.length === 0 || !requirements.key
+        || includesNormalized(acceptedKeys, requirements.key)
+      const sizeMatches = moduleSizes.length === 0 || !requirements.moduleSize
+        || includesNormalized(moduleSizes, requirements.moduleSize)
+      const buses = Array.isArray(group.availableBuses) ? group.availableBuses : []
+      const busMatches = !requirements.busFamily
+        || buses.length === 0
+        || buses.some((bus) => (
+          normalizedText(bus.family) === normalizedText(requirements.busFamily)
+        ))
+      return keyMatches && sizeMatches && busMatches
+    })
+    if (!matching) {
+      addFinding(findings, {
+        code: 'optional-module.interface.mismatch',
+        severity: 'error',
+        message: 'The assigned module does not match the slot connector, size, or available bus.',
+        field: 'host.optionalModuleSlots',
+      })
+    }
     return
   }
   if (!groups.some((group) => optionalStringArray(group.acceptedModuleKinds).some((kind) => kinds.includes(kind)))) {
@@ -1375,10 +1482,33 @@ export function evaluateAssignmentCompatibility({
   assignments = [],
   items = {},
   useVerifiedMemoryLimits = false,
+  assignedAllocation,
 }) {
   const findings = []
   const effectiveHost = effectiveHostForAssignment(host, assignments, items, component)
-  const hostCapabilities = normalizeHostCapabilities(effectiveHost)
+  const initialCapabilities = normalizeHostCapabilities(effectiveHost)
+  const assignedGroups = assignedAllocation?.groupId
+    ? ({
+        storage: initialCapabilities.storageSlots,
+        expansion: initialCapabilities.expansionSlots,
+        optionalModule: initialCapabilities.optionalModuleSlots,
+      })[assignedAllocation.resourceType]
+    : undefined
+  const assignedGroup = assignedGroups?.find((group) => group.id === assignedAllocation.groupId)
+  if (assignedAllocation?.groupId && assignedGroups && !assignedGroup) {
+    addFinding(findings, {
+      code: 'compatibility.resource.invalid',
+      severity: 'error',
+      message: 'The assigned host resource no longer exists.',
+      field: `host.${assignedAllocation.resourceType}Resources`,
+      resourceId: assignedAllocation.groupId,
+    })
+    return { status: statusFor(findings), findings }
+  }
+  const narrowedHost = assignedGroup
+    ? candidateHost(effectiveHost, assignedAllocation.resourceType, assignedGroup)
+    : effectiveHost
+  const hostCapabilities = normalizeHostCapabilities(narrowedHost)
   const requirements = normalizeComponentRequirements(component)
   const optionalGroups = optionalModuleGroupsFor(hostCapabilities, component)
 
@@ -1474,6 +1604,7 @@ export function evaluateProjectCompatibility(project) {
       ),
       items: project.items,
       useVerifiedMemoryLimits: isVerifiedMemoryLimitEnabled(project, assignment.serverId),
+      assignedAllocation: assignment.allocation,
     })
 
     if (isExpansion(component)) {

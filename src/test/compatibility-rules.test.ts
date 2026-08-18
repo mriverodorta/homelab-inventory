@@ -103,6 +103,45 @@ describe('compatibility rule evaluation', () => {
     )
   })
 
+  it('matches canonical CPU product-generation aliases without equating architecture names', () => {
+    const intel = evaluate(
+      host({ host: { cpu: {
+        sockets: ['LGA1200'],
+        generations: ['10th Gen'],
+        maxTdpWatts: 65,
+      } } }),
+      component('cpu', {
+        requirements: {
+          cpu: { socket: 'LGA1200', generation: 'Products formerly Comet Lake', tdpWatts: 35 },
+        },
+      }),
+    )
+    const amdCpu = {
+      ...component('cpu', {
+        requirements: { cpu: { socket: 'AM4', generation: 'Zen 2', tdpWatts: 35 } },
+      }),
+      manufacturer: 'AMD',
+      family: 'Ryzen 5 PRO',
+      model: '4650GE',
+      name: 'AMD Ryzen 5 PRO 4650GE',
+    }
+    const amd = evaluate(
+      host({ host: { cpu: {
+        sockets: ['AM4'],
+        generations: ['Ryzen PRO 4000'],
+        maxTdpWatts: 65,
+      } } }),
+      amdCpu,
+    )
+
+    expect(intel.findings).not.toEqual(
+      expect.arrayContaining([expect.objectContaining({ code: 'cpu.generation.unsupported' })]),
+    )
+    expect(amd.findings).not.toEqual(
+      expect.arrayContaining([expect.objectContaining({ code: 'cpu.generation.unsupported' })]),
+    )
+  })
+
   it('reports missing CPU facts as unknown with the exact field', () => {
     const result = evaluate(
       host({ host: { cpu: { sockets: ['LGA1200'], generations: ['10'] } } }),
@@ -197,6 +236,54 @@ describe('compatibility rule evaluation', () => {
       expect.objectContaining({ code: 'memory.module-type.mismatch', severity: 'error' }),
       expect.objectContaining({ code: 'memory.registered-ecc.required', severity: 'error' }),
     ]))
+  })
+
+  it('defaults ordinary RAM without ECC metadata to non-ECC', () => {
+    const result = evaluate(
+      host({ host: { memory: {
+        generations: ['DDR4'],
+        slots: 2,
+        maxCapacityGb: 64,
+        maxModuleCapacityGb: 32,
+        maxSpeedMt: 3200,
+        eccSupport: 'unsupported',
+      } } }),
+      component('ram', { requirements: { memory: {
+        capacityGb: 8,
+        generation: 'DDR4',
+        speedMt: 3200,
+        moduleType: 'UDIMM',
+      } } }),
+    )
+
+    expect(result.findings).not.toEqual(expect.arrayContaining([
+      expect.objectContaining({ field: 'component.memory.ecc' }),
+      expect.objectContaining({ code: 'memory.ecc.unsupported' }),
+    ]))
+  })
+
+  it('keeps registered-memory ECC metadata strict', () => {
+    const result = evaluate(
+      host({ host: { memory: {
+        generations: ['DDR4'],
+        slots: 2,
+        maxCapacityGb: 128,
+        maxModuleCapacityGb: 64,
+        maxSpeedMt: 3200,
+        eccSupport: 'supported',
+      } } }),
+      component('ram', { requirements: { memory: {
+        capacityGb: 32,
+        generation: 'DDR4',
+        speedMt: 3200,
+        moduleType: 'RDIMM',
+      } } }),
+    )
+
+    expect(result.findings).toContainEqual(expect.objectContaining({
+      classification: 'informational',
+      field: 'component.memory.ecc',
+    }))
   })
 
   it('treats malformed host memory numeric facts as missing instead of coercing them', () => {
@@ -1236,5 +1323,71 @@ describe('compatibility rule evaluation', () => {
       expect.objectContaining({ assignmentId: 1, hostId: 'server:1', itemId: 'cpu:2' }),
     ])
     expect(project).toEqual(snapshot)
+  })
+
+  it('accepts a wired network module in a generic M.2 A/E optional-module slot', () => {
+    const nic = component('network', {
+      requirements: { expansion: {
+        interfaceFamily: 'm2-ae',
+        key: 'A+E',
+        moduleSize: '2230',
+        busFamily: 'pcie',
+      } },
+    })
+    const result = evaluateAssignmentCompatibility({
+      host: host({ host: { optionalModuleSlots: [{
+        id: 8,
+        key: 'm2-ae-slot',
+        label: 'M.2 2230 A/E slot',
+        count: 1,
+        interfaceFamily: 'm2-ae',
+        acceptedKeys: ['A+E'],
+        moduleSizes: ['2230'],
+        availableBuses: [{ family: 'pcie', lanes: 1 }],
+        intendedModuleKinds: ['wireless-card'],
+      }] } }),
+      component: nic,
+      assignments: [],
+      items: { 'network:2': nic },
+      assignedAllocation: { resourceType: 'optionalModule', groupId: 8, positions: [0] },
+    })
+
+    expect(result.findings).not.toEqual(expect.arrayContaining([
+      expect.objectContaining({ code: 'optional-module.kind.mismatch' }),
+      expect.objectContaining({ code: 'optional-module.interface.mismatch' }),
+    ]))
+  })
+
+  it('evaluates storage against its assigned slot instead of a more permissive sibling slot', () => {
+    const drive = component('storage', undefined, { interface: 'NVMe', formFactor: '2280' })
+    const result = evaluateAssignmentCompatibility({
+      host: host({ host: { storageSlots: [
+        {
+          id: 1,
+          key: 'sata-bay',
+          label: 'SATA bay',
+          count: 1,
+          interfaces: ['SATA'],
+          formFactors: ['2.5-inch'],
+        },
+        {
+          id: 2,
+          key: 'm2-storage',
+          label: 'M.2 storage',
+          count: 1,
+          interfaces: ['NVMe'],
+          formFactors: ['2280'],
+        },
+      ] } }),
+      component: drive,
+      assignments: [],
+      items: { 'storage:2': drive },
+      assignedAllocation: { resourceType: 'storage', groupId: 1, positions: [0] },
+    })
+
+    expect(result.findings).toContainEqual(expect.objectContaining({
+      code: 'storage.interface.mismatch',
+      severity: 'error',
+    }))
   })
 })

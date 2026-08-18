@@ -51,6 +51,9 @@ describe('parseApplicationLiveTopics', () => {
     expect(parseApplicationLiveTopics('systems:1,agents:fleet,systems:1').map((topic) => topic.value)).toEqual(['agents:fleet', 'systems:1'])
     expect(parseApplicationLiveTopics('agent-telemetry:nas:7')[0]).toMatchObject({ hostType: 'nas', hostId: 7, permission: 'agents.view' })
     expect(parseApplicationLiveTopics('systems:2')[0]).toMatchObject({ permissions: ['project.view', 'agents.view'] })
+    expect(parseApplicationLiveTopics('compatibility:2')[0]).toMatchObject({
+      permissions: ['project.view', 'audit.view'], projectId: 2,
+    })
   })
 
   it.each(['', 'systems:0', 'agent-telemetry:router:1', 'unknown'])('rejects invalid topic %s', (topic) => {

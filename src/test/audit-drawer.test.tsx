@@ -7,9 +7,50 @@ import { setAuditWarningIgnored } from '@/lib/compatibility-policy'
 import { topologyQueryFixture } from '@/test/topology-query-fixture'
 import type { ProjectState } from '@/types/inventory'
 
+function auditTopology(project: ProjectState) {
+  const topology = topologyQueryFixture(project)
+  return {
+    endpoints: topology.endpoints,
+    networkTraces: topology.networkTraces,
+    powerEndpoints: topology.power.endpoints,
+    powerFindings: topology.power.findings,
+  }
+}
+
+const compatibilityHook = vi.hoisted(() => ({ findings: vi.fn() }))
+
+vi.mock('@/hooks/use-compatibility-audit', () => ({
+  useCompatibilityFindings: compatibilityHook.findings,
+  useSetCompatibilityFindingIgnored: () => ({ mutate: vi.fn() }),
+}))
+
+compatibilityHook.findings.mockImplementation((projectId: number) => ({
+  data: { findings: projectId === 2 ? [
+    {
+      id: 1, findingKey: 'cpu', ruleKey: 'cpu.socket.mismatch', classification: 'actionable', severity: 'error',
+      message: 'CPU socket LGA1700 is not supported.', details: {},
+      host: { itemId: 1, type: 'server', legacyId: 1, name: 'Compatibility Host' },
+      component: { itemId: 2, type: 'cpu', legacyId: 1, name: 'Mismatch CPU' },
+    },
+    {
+      id: 2, findingKey: 'ram', ruleKey: 'memory.speed.reduced', classification: 'actionable', severity: 'warning',
+      message: 'Memory speed will be reduced.', details: {},
+      host: { itemId: 1, type: 'server', legacyId: 1, name: 'Compatibility Host' },
+      component: { itemId: 3, type: 'ram', legacyId: 1, name: 'Fast RAM' },
+    },
+    {
+      id: 3, findingKey: 'storage', ruleKey: 'storage.form-factor.missing', classification: 'informational', severity: 'info',
+      message: 'Storage form factor is not recorded.', details: {},
+      host: { itemId: 1, type: 'server', legacyId: 1, name: 'Compatibility Host' },
+      component: { itemId: 4, type: 'storage', legacyId: 1, name: 'Unknown Storage' },
+    },
+  ] : [] },
+}))
+
 const project: ProjectState = {
   id: 'test-project',
   metadata: {
+    projectId: 1,
     name: 'Test Project',
     version: 1,
     updatedAt: '2026-06-26T00:00:00.000Z',
@@ -74,6 +115,7 @@ const project: ProjectState = {
 const compatibilityProject: ProjectState = {
   id: 'compatibility-project',
   metadata: {
+    projectId: 2,
     name: 'Compatibility Project',
     version: 1,
     updatedAt: '2026-07-19T00:00:00.000Z',
@@ -173,6 +215,7 @@ function StatefulAuditDrawer({
   return (
     <AuditDrawer
       project={currentProject}
+      topologyData={topologyQueryFixture(currentProject)}
       open
       onClose={vi.fn()}
       onSelectItem={onSelectItem}
@@ -259,21 +302,21 @@ describe('AuditDrawer', () => {
 
     expect(container.querySelectorAll('[data-severity="error"]')).not.toHaveLength(0)
     expect(container.querySelectorAll('[data-severity="warning"]')).not.toHaveLength(0)
-    expect(container.querySelectorAll('[data-severity="unknown"]')).not.toHaveLength(0)
-
     fireEvent.click(screen.getByText(/CPU socket LGA1700 is not supported/))
-
     expect(onSelectItem).toHaveBeenCalledWith('server:1')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Missing metadata' }))
+    expect(container.querySelectorAll('[data-severity="unknown"]')).not.toHaveLength(0)
   })
 
   it('shows ignored warnings only in the Ignored filter and keeps the badge count open-only', () => {
-    const warnings = getProjectAuditWarnings(compatibilityProject).flatMap((group) => group.warnings)
-    const ignoredWarning = warnings.find((warning) => warning.code === 'cpu.socket.mismatch')
+    const warnings = getProjectAuditWarnings(project, {}, auditTopology(project)).flatMap((group) => group.warnings)
+    const ignoredWarning = warnings.find((warning) => warning.id.startsWith('switch-no-uplink-trunk-'))
 
     expect(ignoredWarning).toBeDefined()
 
     const ignoredProject: ProjectState = {
-      ...compatibilityProject,
+      ...project,
       compatibilityPolicy: {
         disabledHosts: [],
         ignoredWarningIds: [ignoredWarning!.id],
@@ -283,6 +326,7 @@ describe('AuditDrawer', () => {
     render(
       <AuditDrawer
         project={ignoredProject}
+        topologyData={topologyQueryFixture(ignoredProject)}
         open
         onClose={vi.fn()}
         onSelectItem={vi.fn()}
@@ -307,15 +351,15 @@ describe('AuditDrawer', () => {
   it('ignores and unignores warnings without selecting an item or closing the drawer', () => {
     const onSelectItem = vi.fn()
     const onSetWarningIgnored = vi.fn()
-    const targetWarning = getProjectAuditWarnings(compatibilityProject)
+    const targetWarning = getProjectAuditWarnings(project, {}, auditTopology(project))
       .flatMap((group) => group.warnings)
-      .find((warning) => warning.code === 'cpu.socket.mismatch')
+      .find((warning) => warning.id.startsWith('switch-no-uplink-trunk-'))
 
     expect(targetWarning).toBeDefined()
 
     render(
       <StatefulAuditDrawer
-        initialProject={compatibilityProject}
+        initialProject={project}
         onSelectItem={onSelectItem}
         onSetWarningIgnored={onSetWarningIgnored}
       />,

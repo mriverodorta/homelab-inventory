@@ -426,8 +426,15 @@ const RELEASE_0_13_12_DETAILS: UnreleasedReleaseNotes = {
 }
 
 export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
-  highlights: [],
-  fixes: [],
+  highlights: [
+    'Systems, Inspector, Canvas, and Audit now share one persisted server-side compatibility projection with scoped live updates and a clear separation between actionable incompatibilities and missing metadata.',
+  ],
+  fixes: [
+    'Compatibility checks now use assigned physical resources, canonical CPU-generation aliases, single-slot expansion budgets, and non-ECC defaults for ordinary memory without weakening registered-memory requirements.',
+    'Canonical M.2 A/E slots support wired network, wireless, storage-adapter, and other valid module uses instead of being treated as WLAN-only resources.',
+    'Unambiguous missing legacy allocations are restored automatically while ambiguous cases remain unchanged and actionable.',
+    'Portable project backups remap persisted compatibility findings to restored semantic resource slots without losing assignments or archived schema-29 inventory collections.',
+  ],
   notes: [],
 }
 
