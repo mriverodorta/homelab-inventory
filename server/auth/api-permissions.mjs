@@ -84,6 +84,7 @@ const PROTECTED_ROUTES = [
   ['DELETE', /^\/api\/projects\/[1-9]\d*\/workspaces\/[1-9]\d*\/?$/, 'project.settings.manage'],
   ['PUT', /^\/api\/projects\/[1-9]\d*\/(?:workspaces\/reorder|default-workspace)\/?$/, 'project.settings.manage'],
   ['GET', /^\/api\/bootstrap\/?$/, 'workspace.view'],
+  ['GET', /^\/api\/events\/?$/, 'workspace.view'],
   ['PUT', /^\/api\/project\/?$/, 'project.settings.manage'],
   ['GET', /^\/api\/engine\/(?:snapshot|events)\/?$/, 'canvas.view'],
   // The command body receives operation-specific authorization in engine-routes.

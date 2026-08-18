@@ -70,6 +70,9 @@ import { registerNotificationRoutes } from './notifications/routes.mjs'
 import { activateSqliteRuntime } from './persistence/runtime.ts'
 import { StartupProfiler } from './startup/startup-profiler.mjs'
 import { createStagingPolicy, stagingRegistryPolicy } from './staging-policy.mjs'
+import { ApplicationLiveEventBus } from './live-events/event-bus.mjs'
+import { ApplicationSseHub } from './live-events/sse-hub.mjs'
+import { registerApplicationEventRoutes } from './live-events/routes.mjs'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const root = path.resolve(__dirname, '..')
@@ -148,6 +151,8 @@ const updateChecker = new DockerHubUpdateChecker({
 })
 
 const app = express()
+const applicationEventBus = new ApplicationLiveEventBus()
+const applicationSseHub = new ApplicationSseHub({ bus: applicationEventBus })
 const rateLimitConfig = readRateLimitConfig()
 
 app.set('trust proxy', rateLimitConfig.trustProxy)
@@ -429,6 +434,13 @@ async function withStore(request, response, handler, options = {}) {
   }
 }
 
+registerApplicationEventRoutes(app, {
+  withStore,
+  hub: applicationSseHub,
+  authorization: authorizationService,
+  demo: isDemoMode || stagingPolicy.authenticationDisabled,
+})
+
 registerUpdateRoutes(app, {
   withStore,
   checker: updateChecker,
@@ -705,7 +717,13 @@ async function shutdown(signal) {
   try {
     await gracefullyStopServer({
       server,
-      sseHub,
+      sseHub: {
+        closeAll() {
+          sseHub.closeAll()
+          applicationSseHub.closeAll()
+          applicationEventBus.close()
+        },
+      },
       stoppers: [
         () => updateCheckSchedule.stop(),
         () => backupSchedule?.stop(),
