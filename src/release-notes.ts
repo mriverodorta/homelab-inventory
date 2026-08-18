@@ -332,15 +332,7 @@ const RELEASE_0_13_5_DETAILS: UnreleasedReleaseNotes = {
   notes: [],
 }
 
-const RELEASE_0_13_3_DETAILS: UnreleasedReleaseNotes = {
-  highlights: [],
-  fixes: [
-    'Fractional Linux host uptime is now normalized to whole seconds at the telemetry ingestion boundary, preventing strict SQLite storage from rejecting otherwise valid Agent heartbeats.',
-  ],
-  notes: [],
-}
-
-export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
+const RELEASE_0_13_6_DETAILS: UnreleasedReleaseNotes = {
   highlights: [
     'The Systems workspace now provides a dense operational table with sortable and filterable host hardware, Agent and Registry status, current utilization, Agent update commands, and whole-row Inspector access.',
     'Systems live data uses compact project-scoped conditional responses and refreshes only while the visible Systems workspace needs it; Inventory sidebar state is retained independently for each Canvas workspace.',
@@ -356,6 +348,20 @@ export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
     'Opening a Systems Inspector no longer triggers Canvas geometry synchronization or reports that the intentionally disabled workspace engine is unavailable.',
     'Systems column resize handles now change the visible width with or without the Inspector open, and double-clicking a handle restores responsive sizing.',
   ],
+  notes: [],
+}
+
+const RELEASE_0_13_3_DETAILS: UnreleasedReleaseNotes = {
+  highlights: [],
+  fixes: [
+    'Fractional Linux host uptime is now normalized to whole seconds at the telemetry ingestion boundary, preventing strict SQLite storage from rejecting otherwise valid Agent heartbeats.',
+  ],
+  notes: [],
+}
+
+export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
+  highlights: [],
+  fixes: [],
   notes: [],
 }
 
@@ -886,9 +892,16 @@ const RELEASE_0_2_1_DETAILS: UnreleasedReleaseNotes = {
 
 export const RELEASE_NOTES: ReleaseNoteEntry[] = [
   {
-    version: '0.13.5',
+    version: '0.13.6',
     date: '2026-08-17',
     channel: 'latest',
+    title: 'Systems operations workspace',
+    ...RELEASE_0_13_6_DETAILS,
+  },
+  {
+    version: '0.13.5',
+    date: '2026-08-17',
+    channel: 'release',
     title: 'Accurate Agent heartbeat history',
     ...RELEASE_0_13_5_DETAILS,
   },

@@ -6,6 +6,8 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 
 ## Unreleased
 
+## [0.13.6] - 2026-08-17
+
 ### Added
 
 - The Systems workspace now provides a dense sortable and filterable host table with dedicated system, Agent, and Registry status icons; assigned CPU, memory, and storage summaries; current utilization; Agent version awareness; and whole-row Inspector access.
