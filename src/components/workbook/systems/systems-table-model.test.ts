@@ -25,6 +25,7 @@ const base: SystemsHostRow = {
   registryLinked: true,
   cpuPercent: 20,
   memoryPercent: 40,
+  memoryBreakdown: null,
   storagePercent: 60,
   uptimeSeconds: 3600,
   attentionCount: 0,

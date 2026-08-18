@@ -379,6 +379,7 @@ export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
   highlights: [],
   fixes: [
     'Systems CPU, memory, and storage percentages now align with their hardware labels while a fixed four-character value track keeps every utilization bar anchored.',
+    'Systems memory bars now separate live Linux used memory, buffers, and cache into compact colored segments while FreeBSD, OPNsense, offline, and incomplete Agents retain the clear green-and-gray utilization bar.',
   ],
   notes: [],
 }

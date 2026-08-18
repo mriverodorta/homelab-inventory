@@ -402,6 +402,7 @@ export class TelemetryRepository {
         metrics.cpu_percent,
         metrics.memory_used_percent,
         runtime.uptime_seconds,
+        runtime.memory_json,
         facts.facts_json,
         filesystem.state_json AS root_filesystem_json
       FROM requested
@@ -428,6 +429,7 @@ export class TelemetryRepository {
       agentVersion: row.agent_version ?? null,
       cpuPercent: row.cpu_percent ?? null,
       memoryPercent: row.memory_used_percent ?? null,
+      memory: parseJson(row.memory_json),
       uptimeSeconds: row.uptime_seconds ?? null,
       system: parseJson(row.facts_json),
       rootFilesystem: parseJson(row.root_filesystem_json),

@@ -9,6 +9,7 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 ### Fixed
 
 - Systems CPU, memory, and storage percentages now align with the hardware text above them while a fixed four-character label track keeps every utilization bar anchored.
+- Systems memory bars now separate live Linux used memory, buffers, and cache into compact colored segments while FreeBSD, OPNsense, offline, and incomplete Agents retain the clear green-and-gray utilization bar.
 
 ## [0.13.7] - 2026-08-17
 

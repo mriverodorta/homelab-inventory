@@ -44,6 +44,13 @@ describe('Systems read service', () => {
       agentVersion: '0.1.8',
       cpuPercent: 25,
       memoryPercent: 50,
+      memory: {
+        totalBytes: 32_000,
+        availableBytes: 16_000,
+        cachedBytes: 8_000,
+        buffersBytes: 1_000,
+        sharedBytes: null,
+      },
       uptimeSeconds: 3_600,
       system: { operatingSystem: 'Ubuntu', osVersion: '24.04', lanIp: '192.0.2.10' },
       rootFilesystem: { totalBytes: 100_000_000_000, usedBytes: 90_000_000_000 },
@@ -76,6 +83,13 @@ describe('Systems read service', () => {
       agentUpdateCommand: 'sudo homelab-inventory-agent update',
       cpuPercent: 25,
       memoryPercent: 50,
+      memoryBreakdown: {
+        totalBytes: 32_000,
+        availableBytes: 16_000,
+        cachedBytes: 8_000,
+        buffersBytes: 1_000,
+        sharedBytes: null,
+      },
       storagePercent: 90,
       uptimeSeconds: 3_600,
       attentionCount: 0,
@@ -91,6 +105,13 @@ describe('Systems read service', () => {
       agentUpdateAvailable: true,
       cpuPercent: 25,
       memoryPercent: 50,
+      memoryBreakdown: {
+        totalBytes: 32_000,
+        availableBytes: 16_000,
+        cachedBytes: 8_000,
+        buffersBytes: 1_000,
+        sharedBytes: null,
+      },
       storagePercent: 90,
       uptimeSeconds: 3_600,
       attentionCount: 0,
@@ -118,6 +139,7 @@ describe('Systems read service', () => {
       agentState: 'unregistered',
       cpuPercent: null,
       memoryPercent: null,
+      memoryBreakdown: null,
       storagePercent: null,
       uptimeSeconds: null,
       attentionCount: 0,
@@ -145,7 +167,31 @@ describe('Systems read service', () => {
       storageLabel: '1TB NVMe',
       cpuPercent: null,
       memoryPercent: null,
+      memoryBreakdown: null,
       storagePercent: null,
+    })
+  })
+
+  test('omits incomplete memory breakdowns without hiding utilization', async () => {
+    const store = await fixtureStore()
+    const service = new SystemsReadService({
+      telemetryRepository: { getSystemsSnapshot: () => new Map([[1, {
+        hostItemId: 1,
+        receivedAt: '2026-08-17T16:40:00.000Z',
+        memoryPercent: 40,
+        memory: {
+          totalBytes: 16_000,
+          availableBytes: 9_600,
+          cachedBytes: null,
+          buffersBytes: null,
+        },
+      }]]) },
+      now: () => Date.parse('2026-08-17T16:40:30.000Z'),
+    })
+
+    expect(service.initial(store, 1, 'https://inventory.example').systems[0]).toMatchObject({
+      memoryPercent: 40,
+      memoryBreakdown: null,
     })
   })
 })

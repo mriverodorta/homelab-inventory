@@ -150,6 +150,17 @@ describe('telemetry repository', () => {
       ) VALUES (?, ?, ?, ?)
     `).run(101, Date.parse(receivedAt(1)), 42, 63)
     database.query(`
+      INSERT INTO host_runtime_state (
+        host_item_id, uptime_seconds, load_1, load_5, load_15, memory_json, updated_at_ms
+      ) VALUES (?, ?, ?, ?, ?, ?, ?)
+    `).run(101, 90, 0.1, 0.2, 0.3, JSON.stringify({
+      totalBytes: 1_000,
+      availableBytes: 600,
+      cachedBytes: 250,
+      buffersBytes: 50,
+      sharedBytes: null,
+    }), Date.parse(receivedAt(1)))
+    database.query(`
       INSERT INTO filesystem_mount_states (
         host_item_id, mount_key, state_json, updated_at_ms
       ) VALUES (?, ?, ?, ?)
@@ -161,6 +172,13 @@ describe('telemetry repository', () => {
         agentVersion: '0.1.0',
         cpuPercent: 42,
         memoryPercent: 63,
+        memory: {
+          totalBytes: 1_000,
+          availableBytes: 600,
+          cachedBytes: 250,
+          buffersBytes: 50,
+          sharedBytes: null,
+        },
         rootFilesystem: { mountPoint: '/', totalBytes: 100, usedBytes: 80 },
       })],
       [202, expect.objectContaining({ hostItemId: 202, agentId: null, cpuPercent: null })],
