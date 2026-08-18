@@ -230,7 +230,7 @@ describe('schema-29 core import', () => {
       const replacement = structuredClone(snapshot.inventory.servers[0])
       replacement.compatibility.host.expansionSlots = []
       replacement.compatibility.host.optionalModuleSlots = [{
-        id: 3,
+        id: 7,
         key: 'wlan-m2',
         count: 1,
         label: 'M.2 WLAN slot',
@@ -245,7 +245,7 @@ describe('schema-29 core import', () => {
         itemId: serverItemId,
         resourceKeyRemaps: [{
           from: { resourceType: 'expansion', resourceId: 7, key: 'm2-ae-slot' },
-          to: { resourceType: 'optionalModule', resourceId: 3, key: 'wlan-m2' },
+          to: { resourceType: 'optionalModule', resourceId: 7, key: 'wlan-m2' },
           assignmentIds: [5],
         }],
       })
@@ -267,7 +267,7 @@ describe('schema-29 core import', () => {
         item_type: 'network',
         item_id: 9,
         resource_type: 'optionalModule',
-        resource_id: 3,
+        resource_id: 7,
         resource_key: 'wlan-m2',
         position: 1,
       })

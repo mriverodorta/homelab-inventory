@@ -45,6 +45,35 @@ function constraintReferences(host, resourceType, resourceId) {
   ))
 }
 
+function destinationIdRelocations(currentHost, nextHost, source, destination) {
+  if (destination.id === source.id) return { status: 'ready', relocations: [] }
+  const collisions = (nextHost.optionalModuleSlots ?? []).filter((resource) => (
+    resource !== destination && resource.id === source.id
+  ))
+  if (collisions.length === 0) return { status: 'ready', relocations: [] }
+  if (collisions.length !== 1) {
+    return { status: 'ambiguous', reason: `Optional module resource ID ${source.id} is not unique.` }
+  }
+  const collision = collisions[0]
+  const existing = (currentHost.optionalModuleSlots ?? []).some((resource) => (
+    normalizedKey(resource.key) === normalizedKey(collision.key)
+  ))
+  if (existing) {
+    return {
+      status: 'ambiguous',
+      reason: `Optional module resource ID ${source.id} belongs to an existing local resource and cannot be reassigned.`,
+    }
+  }
+  const occupied = (nextHost.optionalModuleSlots ?? [])
+    .map((resource) => resource.id)
+    .filter((id) => Number.isSafeInteger(id) && id > 0)
+  const nextId = Math.max(0, ...occupied, source.id) + 1
+  return {
+    status: 'ready',
+    relocations: [{ key: collision.key, fromId: collision.id, toId: nextId }],
+  }
+}
+
 export function planWlanResourceMigration(currentItem, nextItem) {
   const currentHost = currentItem?.compatibility?.host ?? {}
   const nextHost = nextItem?.compatibility?.host ?? {}
@@ -73,13 +102,57 @@ export function planWlanResourceMigration(currentItem, nextItem) {
   if (sourceConstraints.length > 0 || destinationConstraints.length > 0) {
     return { status: 'ambiguous', reason: 'The WLAN resource is referenced by a constraint group and cannot be migrated automatically.' }
   }
-  return { status: 'ready', source, destination, count: resourceCount(source) }
+  const relocationPlan = destinationIdRelocations(currentHost, nextHost, source, destination)
+  if (relocationPlan.status === 'ambiguous') return relocationPlan
+  return {
+    status: 'ready',
+    source,
+    destination,
+    count: resourceCount(source),
+    destinationIdRelocations: relocationPlan.relocations,
+  }
+}
+
+export function wlanResourceReclassification(transition, assignmentIds = []) {
+  if (transition?.status !== 'ready') return null
+  return {
+    kind: 'reclassify-resource',
+    from: {
+      resourceType: 'expansion',
+      resourceId: transition.source.id,
+      key: transition.source.key,
+      label: transition.source.label,
+    },
+    to: {
+      resourceType: 'optionalModule',
+      resourceId: transition.source.id,
+      key: transition.destination.key,
+      label: transition.destination.label,
+    },
+    assignmentIds: [...assignmentIds].sort((left, right) => left - right),
+  }
 }
 
 export function removeSupersededWlanResource(currentItem, incomingItem, mergedItem) {
   const transition = planWlanResourceMigration(currentItem, incomingItem)
   if (transition.status !== 'ready') return mergedItem
   const result = structuredClone(mergedItem)
+  for (const relocation of transition.destinationIdRelocations) {
+    const resource = result.compatibility.host.optionalModuleSlots.find((candidate) => (
+      candidate.id === relocation.fromId && candidate.key === relocation.key
+    ))
+    resource.id = relocation.toId
+    for (const group of result.compatibility.host.constraintGroups ?? []) {
+      for (const member of group.members ?? []) {
+        if (member.resourceType === RESOURCE_TYPES.optionalModule && member.resourceId === relocation.fromId) {
+          member.resourceId = relocation.toId
+        }
+      }
+    }
+  }
+  const destination = result.compatibility.host.optionalModuleSlots
+    .find(isCanonicalWlanModuleResource)
+  destination.id = transition.source.id
   result.compatibility.host.expansionSlots = result.compatibility.host.expansionSlots
     .filter((resource) => !isLegacyWlanExpansionResource(resource))
   if (result.compatibility.host.expansionSlots.length === 0) {

@@ -241,17 +241,46 @@ describe('catalog topology update resolution', () => {
       available: true,
       affectedRelationships: { assignmentIds: [44] },
       operations: [{
-        kind: 'remap-resource',
+        kind: 'reclassify-resource',
         from: { resourceType: 'expansion', resourceId: 7, key: 'm2-ae-slot' },
-        to: { resourceType: 'optionalModule', resourceId: 3, key: 'wlan-m2' },
+        to: { resourceType: 'optionalModule', resourceId: 7, key: 'wlan-m2' },
         assignmentIds: [44],
       }],
     })
     expect(applyCatalogResolutionPlan(input, plan).assignments[0]).toMatchObject({
       id: 44,
       itemId: 'network:9',
-      allocation: { resourceType: 'optionalModule', resourceKey: 'wlan-m2', groupId: 3, positions: [0] },
+      allocation: { resourceType: 'optionalModule', resourceKey: 'wlan-m2', groupId: 7, positions: [0] },
     })
+  })
+
+  it('plans an unassigned WLAN resource reclassification as a semantic operation', () => {
+    const current = {
+      type: 'desktop',
+      compatibility: { host: { expansionSlots: [
+        { id: 7, key: 'm2-ae-slot', count: 1, label: 'M.2 2230 A/E WLAN slot' },
+      ] } },
+    }
+    const next = {
+      type: 'desktop',
+      compatibility: { host: { optionalModuleSlots: [
+        { id: 7, key: 'wlan-m2', count: 1, label: 'M.2 2230 WLAN slot', acceptedModuleKinds: ['wireless-card'] },
+      ] } },
+    }
+
+    const plan = buildCatalogResolutionPlan({ current, next, project: project(), link })
+
+    expect(plan).toMatchObject({
+      available: true,
+      affectedRelationships: { assignmentIds: [] },
+      operations: [{
+        kind: 'reclassify-resource',
+        from: { resourceType: 'expansion', resourceId: 7, key: 'm2-ae-slot' },
+        to: { resourceType: 'optionalModule', resourceId: 7, key: 'wlan-m2' },
+        assignmentIds: [],
+      }],
+    })
+    expect(applyCatalogResolutionPlan(project(), plan)).toEqual(project())
   })
 
   it.each([
@@ -283,6 +312,26 @@ describe('catalog topology update resolution', () => {
       available: false,
       operations: [],
       reason: expect.stringContaining('optionalModuleSlots.wlan-m2'),
+    })
+  })
+
+  it('blocks an ambiguous WLAN reclassification even when the resource is unassigned', () => {
+    const current = {
+      type: 'desktop',
+      compatibility: { host: { expansionSlots: [{ id: 7, key: 'm2-ae-slot', count: 1 }] } },
+    }
+    const next = {
+      type: 'desktop',
+      compatibility: { host: { optionalModuleSlots: [
+        { id: 3, key: 'wlan-m2', count: 1, acceptedModuleKinds: ['wireless-card'] },
+        { id: 4, key: 'wlan-m2', count: 1, acceptedModuleKinds: ['wireless-card'] },
+      ] } },
+    }
+
+    expect(buildCatalogResolutionPlan({ current, next, project: project(), link })).toMatchObject({
+      available: false,
+      operations: [],
+      reason: expect.stringContaining('found 2'),
     })
   })
 

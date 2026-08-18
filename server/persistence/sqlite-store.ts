@@ -2489,8 +2489,8 @@ export class SqliteHomelabInventoryStore {
     const resourceKeyRemapsByIdentity = new Map<string, Row>()
     for (const { plan } of plans) {
       for (const planned of plan.operations) {
-        if (!['remap-resource-key', 'remap-resource'].includes(planned.kind)) continue
-        const normalized = planned.kind === 'remap-resource'
+        if (!['remap-resource-key', 'remap-resource', 'reclassify-resource'].includes(planned.kind)) continue
+        const normalized = ['remap-resource', 'reclassify-resource'].includes(planned.kind)
           ? planned
           : {
               ...planned,

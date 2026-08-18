@@ -80,6 +80,50 @@ describe('RegistryUpdatesDialog', () => {
     expect(api.loadCatalogUpdateGroup).toHaveBeenCalledOnce()
   })
 
+  it('presents an empty WLAN cross-resource migration as one reclassification', async () => {
+    const group = reviewGroup('desktop', 1)
+    api.loadCatalogUpdateGroups.mockResolvedValue(page([group]))
+    api.loadCatalogUpdateGroup.mockResolvedValue({
+      ...group,
+      members: [{
+        linkId: 1,
+        itemId: 1,
+        itemType: 'desktop',
+        current: {},
+        proposed: {},
+        changes: [{
+          path: 'compatibility.host.resources',
+          kind: 'reclassify-resource',
+          impact: 'topology',
+          operation: 'reclassify-resource',
+          from: { resourceType: 'expansion', resourceId: 1, key: 'm2-ae-slot', label: 'M.2 2230 A/E WLAN slot' },
+          to: { resourceType: 'optionalModule', resourceId: 1, key: 'wlan-m2', label: 'M.2 2230 WLAN slot' },
+        }],
+        resolution: {
+          available: true,
+          reason: 'A deterministic relationship migration is available.',
+          operations: [{
+            kind: 'reclassify-resource',
+            from: { resourceType: 'expansion', resourceId: 1, key: 'm2-ae-slot', label: 'M.2 2230 A/E WLAN slot' },
+            to: { resourceType: 'optionalModule', resourceId: 1, key: 'wlan-m2', label: 'M.2 2230 WLAN slot' },
+            assignmentIds: [],
+          }],
+          affectedRelationships: { connectionIds: [], assignmentIds: [] },
+        },
+      }],
+    })
+    renderDialog()
+
+    const card = (await screen.findAllByText('Example DESKTOP'))[0].closest('section')!
+    fireEvent.click(within(card).getByRole('button', { name: 'Review catalog changes' }))
+
+    expect(await within(card).findByText('M.2 WLAN slot reclassified')).toBeInTheDocument()
+    expect(within(card).getByText('Expansion slot — M.2 2230 A/E')).toBeInTheDocument()
+    expect(within(card).getByText('Optional module slot — M.2 2230 WLAN')).toBeInTheDocument()
+    expect(within(card).queryByText('Not recorded')).not.toBeInTheDocument()
+    expect(within(card).getByRole('button', { name: 'Resolve and apply' })).toBeInTheDocument()
+  })
+
   it('shows pending state only on the clicked group and submits stable identity', async () => {
     let resolveDecision!: (value: unknown) => void
     api.decideCatalogUpdateGroups.mockImplementation(() => new Promise((resolve) => { resolveDecision = resolve }))

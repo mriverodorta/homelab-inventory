@@ -140,6 +140,26 @@ describe('current Registry update projection', () => {
       current: '1G',
       next: '2.5G',
     })
+
+    const reclassification = {
+      path: 'compatibility.host.resources',
+      kind: 'reclassify-resource',
+      impact: 'topology',
+      operation: 'reclassify-resource',
+      from: {
+        resourceType: 'expansion',
+        resourceId: 1,
+        key: 'm2-ae-slot',
+        label: 'M.2 2230 A/E WLAN slot',
+      },
+      to: {
+        resourceType: 'optionalModule',
+        resourceId: 1,
+        key: 'wlan-m2',
+        label: 'M.2 2230 WLAN slot',
+      },
+    }
+    expect(canonicalCatalogFieldChange(reclassification)).toEqual(reclassification)
   })
 
   it('projects group and member changes through the canonical contract', () => {

@@ -1051,7 +1051,7 @@ describe('SQLite Homelab Inventory store facade', () => {
       const proposed = projectLocalItemForCatalog(current, 'server')
       proposed.compatibility.host.expansionSlots = []
       proposed.compatibility.host.optionalModuleSlots = [{
-        id: 3,
+        id: 7,
         key: 'wlan-m2',
         count: 1,
         label: 'M.2 WLAN slot',
@@ -1118,7 +1118,7 @@ describe('SQLite Homelab Inventory store facade', () => {
       expect(result.affectedRelationships).toEqual({ connectionIds: [], assignmentIds: [5] })
       expect(afterProject.assignments.find((assignment) => assignment.id === 5)).toMatchObject({
         itemId: 'network:9',
-        allocation: { resourceType: 'optionalModule', groupId: 3, resourceKey: 'wlan-m2', positions: [0] },
+        allocation: { resourceType: 'optionalModule', groupId: 7, resourceKey: 'wlan-m2', positions: [0] },
       })
       expect(afterItem).toMatchObject({
         serialNumber: 'private-serial',

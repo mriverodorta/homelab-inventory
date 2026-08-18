@@ -45,7 +45,7 @@ function latestRows(rows, identity) {
 }
 
 function changeKind(change) {
-  if (['added', 'removed', 'changed'].includes(change?.kind)) return change.kind
+  if (['added', 'removed', 'changed', 'reclassify-resource'].includes(change?.kind)) return change.kind
   if (change?.current === undefined && change?.next !== undefined) return 'added'
   if (change?.current !== undefined && change?.next === undefined) return 'removed'
   return 'changed'
@@ -71,6 +71,9 @@ export function canonicalCatalogFieldChange(change) {
     impact: changeImpact(path, change?.impact),
     ...(change && Object.hasOwn(change, 'current') ? { current: change.current } : {}),
     ...(change && Object.hasOwn(change, 'next') ? { next: change.next } : {}),
+    ...(change?.operation === 'reclassify-resource' ? { operation: change.operation } : {}),
+    ...(change?.from && typeof change.from === 'object' ? { from: change.from } : {}),
+    ...(change?.to && typeof change.to === 'object' ? { to: change.to } : {}),
   }
 }
 

@@ -47,7 +47,33 @@ export function registryResolutionOperationLabel(operation: Record<string, unkno
         : `Return the item for assignment ${operation.assignmentId} to inventory.`
     case 'remap-resource-key':
       return `Preserve assignments ${naturalList(Array.isArray(operation.assignmentIds) ? operation.assignmentIds : [])} while ${operation.resourceType} resource ${operation.resourceId} changes from ${operation.fromKey} to ${operation.toKey}.`
+    case 'reclassify-resource': {
+      const from = operation.from as Record<string, unknown> | undefined
+      const to = operation.to as Record<string, unknown> | undefined
+      const assignmentIds = Array.isArray(operation.assignmentIds) ? operation.assignmentIds : []
+      const assignmentText = assignmentIds.length > 0
+        ? ` Preserve assignments ${naturalList(assignmentIds)}.`
+        : ''
+      return `Reclassify ${String(from?.key ?? 'resource')} as ${String(to?.key ?? 'the canonical resource')}.${assignmentText}`
+    }
     default:
       return String(operation.kind ?? 'Apply relationship update')
   }
+}
+
+export function registryResourceTypeLabel(resourceType: string) {
+  if (resourceType === 'expansion') return 'Expansion slot'
+  if (resourceType === 'optionalModule') return 'Optional module slot'
+  return humanize(resourceType).replace(/^./u, (character) => character.toUpperCase())
+}
+
+export function registryResourceDisplayLabel(resource: { key?: string; label?: string }) {
+  if (resource.key === 'm2-ae-slot') return 'M.2 2230 A/E'
+  if (resource.key === 'wlan-m2') return 'M.2 2230 WLAN'
+  return resource.label || resource.key || 'Resource'
+}
+
+export function registryReclassificationTitle(change: { to?: { key?: string; label?: string } }) {
+  if (change.to?.key === 'wlan-m2') return 'M.2 WLAN slot reclassified'
+  return `${change.to?.label || 'Resource'} reclassified`
 }

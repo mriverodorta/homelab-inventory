@@ -9,7 +9,11 @@ import {
   parseLegacySpeedBps,
   sanitizeCatalogItem,
 } from '../../packages/catalog-protocol/src/index.ts'
-import { removeSupersededWlanResource } from './wlan-resource-migration.mjs'
+import {
+  planWlanResourceMigration,
+  removeSupersededWlanResource,
+  wlanResourceReclassification,
+} from './wlan-resource-migration.mjs'
 
 const IDENTITY_FIELDS = ['type', 'manufacturer', 'secondaryManufacturer', 'family', 'model', 'number']
 const LOCAL_TOP_LEVEL_FIELDS = new Set([
@@ -21,6 +25,7 @@ const NETWORK_CONNECTORS = new Set([
   'rj45', 'sfp', 'sfp-plus', 'sfp28', 'qsfp', 'qsfp-plus', 'qsfp28',
   'qsfp56', 'qsfp-dd', 'osfp', 'fc', 'infiniband',
 ])
+const HOST_RESOURCE_COLLECTIONS = ['storageSlots', 'expansionSlots', 'optionalModuleSlots', 'controllerSlots', 'bootDeviceSlots']
 
 function sanitizeForFingerprint(value, fingerprintVersion) {
   if (fingerprintVersion === NETWORK_FINGERPRINT_VERSION) return canonicalizeCatalogItemV11(value)
@@ -189,6 +194,30 @@ function collectObjectChanges(current, next, path, impact, changes) {
   changes.push({ path, kind: changeKind(current, next), current, next, impact })
 }
 
+function resourcesWithoutReclassification(currentCompatibility, nextCompatibility, transition) {
+  const current = structuredClone(currentCompatibility)
+  const next = structuredClone(nextCompatibility)
+  const currentHost = current?.host ?? {}
+  const nextHost = next?.host ?? {}
+  currentHost.expansionSlots = (currentHost.expansionSlots ?? []).filter((resource) => !(
+    resource.id === transition.source.id && resource.key === transition.source.key
+  ))
+  nextHost.optionalModuleSlots = (nextHost.optionalModuleSlots ?? []).filter((resource) => !(
+    resource.id === transition.destination.id && resource.key === transition.destination.key
+  ))
+  for (const collection of HOST_RESOURCE_COLLECTIONS) {
+    const currentResources = currentHost[collection] ?? []
+    const nextResources = nextHost[collection] ?? []
+    if (currentResources.length === 0 && nextResources.length === 0) {
+      delete currentHost[collection]
+      delete nextHost[collection]
+    }
+  }
+  if (current) current.host = currentHost
+  if (next) next.host = nextHost
+  return { current, next }
+}
+
 function identityImpact(current, incoming) {
   let impact = 'none'
   for (const field of IDENTITY_FIELDS) {
@@ -284,6 +313,7 @@ export function planCatalogUpdate(currentValue, incomingValue, versionInput) {
   const normalizedNext = normalizeSanitizedCatalogUpdateItem(next)
   const identity = identityImpact(normalizedCurrent, normalizedNext)
   const changes = []
+  const resourceTransition = planWlanResourceMigration(current, next)
 
   for (const field of IDENTITY_FIELDS) {
     if (semanticEqual(normalizedCurrent[field], normalizedNext[field])) continue
@@ -299,8 +329,27 @@ export function planCatalogUpdate(currentValue, incomingValue, versionInput) {
     })
   }
 
-  for (const field of ['subtype', 'aliases', 'specs', 'compatibility', 'fixedComponents']) {
+  for (const field of ['subtype', 'aliases', 'specs', 'fixedComponents']) {
     collectObjectChanges(normalizedCurrent[field], normalizedNext[field], field, 'product-definition', changes)
+  }
+  if (resourceTransition.status === 'ready') {
+    const operation = wlanResourceReclassification(resourceTransition)
+    const comparison = resourcesWithoutReclassification(
+      normalizedCurrent.compatibility,
+      normalizedNext.compatibility,
+      resourceTransition,
+    )
+    changes.push({
+      path: 'compatibility.host.resources',
+      kind: 'reclassify-resource',
+      impact: 'topology',
+      operation: operation.kind,
+      from: operation.from,
+      to: operation.to,
+    })
+    collectObjectChanges(comparison.current, comparison.next, 'compatibility', 'product-definition', changes)
+  } else {
+    collectObjectChanges(normalizedCurrent.compatibility, normalizedNext.compatibility, 'compatibility', 'product-definition', changes)
   }
 
   const portPlan = planPorts(current.ports, next.ports)

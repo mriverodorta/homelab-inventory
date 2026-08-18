@@ -337,10 +337,20 @@ export type CatalogUpdateDecisionResult = {
 
 export type CatalogFieldChange = {
   path: string
-  kind: 'added' | 'removed' | 'changed'
+  kind: 'added' | 'removed' | 'changed' | 'reclassify-resource'
   impact: 'metadata' | 'compatibility' | 'assignment' | 'cable' | 'topology'
   current?: unknown
   next?: unknown
+  operation?: 'reclassify-resource'
+  from?: CatalogResourceReference
+  to?: CatalogResourceReference
+}
+
+export type CatalogResourceReference = {
+  resourceType: 'expansion' | 'optionalModule' | string
+  resourceId: number
+  key: string
+  label?: string
 }
 
 export type CatalogUpdatePreview = CatalogUpdateSummary & {

@@ -410,7 +410,9 @@ const RELEASE_0_13_10_DETAILS: UnreleasedReleaseNotes = {
 
 export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
   highlights: [],
-  fixes: [],
+  fixes: [
+    'Registry update reviews now present empty OEM WLAN slot moves as one deterministic reclassification and preserve the resource identity even when no component is assigned.',
+  ],
   notes: [],
 }
 

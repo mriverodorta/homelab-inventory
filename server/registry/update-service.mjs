@@ -71,16 +71,30 @@ export function catalogFieldDiff(currentValue, nextValue, versionInput) {
   const semantic = plan.changes
   const current = sanitizeCurrentForFingerprint(currentValue, runtimeCanonicalVersion)
   const next = sanitizeCurrentForFingerprint(plan.nextItem, runtimeCanonicalVersion)
-  const changedFields = [...new Set(semantic.map((change) => change.path.match(/^[^.[\]]+/)?.[0]).filter(Boolean))]
-  return changedFields.map((field) => {
-    const result = { field, current: valueAt(current, field), next: valueAt(next, field) }
+  const operations = semantic.filter((change) => change.kind === 'reclassify-resource')
+  const fieldChanges = semantic.filter((change) => change.kind !== 'reclassify-resource')
+  const semanticFields = new Set(operations.map((change) => change.path.match(/^[^.[\]]+/)?.[0]).filter(Boolean))
+  const detailed = fieldChanges.filter((change) => semanticFields.has(change.path.match(/^[^.[\]]+/)?.[0]))
+  const groupedChanges = fieldChanges.filter((change) => !semanticFields.has(change.path.match(/^[^.[\]]+/)?.[0]))
+  const changedFields = [...new Set(groupedChanges.map((change) => change.path.match(/^[^.[\]]+/)?.[0]).filter(Boolean))]
+  const grouped = changedFields.map((field) => {
+    const related = groupedChanges.filter((change) => (
+      change.path === field || change.path.startsWith(`${field}.`) || change.path.startsWith(`${field}[`)
+    ))
+    const direct = related.length === 1 && related[0].path === field ? related[0] : null
+    const result = {
+      field,
+      current: direct && Object.hasOwn(direct, 'current') ? direct.current : valueAt(current, field),
+      next: direct && Object.hasOwn(direct, 'next') ? direct.next : valueAt(next, field),
+    }
     Object.defineProperty(result, 'semanticChanges', {
       configurable: false,
       enumerable: false,
-      value: semantic.filter((change) => change.path === field || change.path.startsWith(`${field}.`) || change.path.startsWith(`${field}[`)),
+      value: related,
     })
     return result
   })
+  return [...grouped, ...operations, ...detailed]
 }
 
 export function mergeCatalogUpdate(currentValue, nextValue, versionInput) {
