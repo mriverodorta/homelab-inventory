@@ -375,12 +375,18 @@ const RELEASE_0_13_7_DETAILS: UnreleasedReleaseNotes = {
   ],
 }
 
-export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
+const RELEASE_0_13_8_DETAILS: UnreleasedReleaseNotes = {
   highlights: [],
   fixes: [
     'Systems CPU, memory, and storage percentages now align with their hardware labels while a fixed four-character value track keeps every utilization bar anchored.',
     'Systems memory bars now separate live Linux used memory, buffers, and cache into compact colored segments while FreeBSD, OPNsense, offline, and incomplete Agents retain the clear green-and-gray utilization bar.',
   ],
+  notes: [],
+}
+
+export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
+  highlights: [],
+  fixes: [],
   notes: [],
 }
 
@@ -911,9 +917,16 @@ const RELEASE_0_2_1_DETAILS: UnreleasedReleaseNotes = {
 
 export const RELEASE_NOTES: ReleaseNoteEntry[] = [
   {
+    version: '0.13.8',
+    date: '2026-08-18',
+    channel: 'latest',
+    title: 'Systems memory visualization',
+    ...RELEASE_0_13_8_DETAILS,
+  },
+  {
     version: '0.13.7',
     date: '2026-08-17',
-    channel: 'latest',
+    channel: 'release',
     title: 'Live application updates',
     ...RELEASE_0_13_7_DETAILS,
   },
