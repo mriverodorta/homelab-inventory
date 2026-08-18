@@ -63,7 +63,7 @@ import {
   normalizeRegistryStore,
   previewPrivateTemplatePack,
 } from '../../registry/model.mjs'
-import { catalogFieldDiff, mergeCatalogUpdate } from '../../registry/update-service.mjs'
+import { catalogFieldDiff, catalogUpdateVersionContext, mergeCatalogUpdate } from '../../registry/update-service.mjs'
 import {
   localInventoryTypeForCatalogType,
   materializeCatalogItem,
@@ -2654,7 +2654,7 @@ export class HomelabInventoryStore {
       code: 'linked-inventory-not-found', status: 409,
     })
     const nextItem = materializeCatalogItem(
-      mergeCatalogUpdate(projectLocalItemForCatalog(item, link.itemType), template.item, template.fingerprintVersion),
+      mergeCatalogUpdate(projectLocalItemForCatalog(item, link.itemType), template.item, catalogUpdateVersionContext(template)),
       { usageRole: item.usageRole },
     )
     const dependencyConflicts = link.itemType === 'motherboard'
@@ -2669,7 +2669,7 @@ export class HomelabInventoryStore {
       importedRevision: link.importedRevision,
       availableRevision: template.revision,
       state: link.state,
-      changes: catalogFieldDiff(projectLocalItemForCatalog(item, link.itemType), template.item, template.fingerprintVersion),
+      changes: catalogFieldDiff(projectLocalItemForCatalog(item, link.itemType), template.item, catalogUpdateVersionContext(template)),
       dependencyConflicts,
       localFieldsPreserved: Object.keys(item).filter(
         (key) => key === 'name' || !['id', 'key', 'type', 'subtype', 'manufacturer', 'secondaryManufacturer', 'family', 'model', 'number', 'specs', 'ports', 'compatibility'].includes(key),
@@ -2695,7 +2695,7 @@ export class HomelabInventoryStore {
       code: 'linked-inventory-not-found', status: 409,
     })
     const nextItem = materializeCatalogItem(
-      mergeCatalogUpdate(projectLocalItemForCatalog(current, link.itemType), template.item, template.fingerprintVersion),
+      mergeCatalogUpdate(projectLocalItemForCatalog(current, link.itemType), template.item, catalogUpdateVersionContext(template)),
       { usageRole: current.usageRole },
     )
     const dependencyConflicts = link.itemType === 'motherboard'

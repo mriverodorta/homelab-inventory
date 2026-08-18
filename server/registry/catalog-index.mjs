@@ -68,6 +68,7 @@ function catalogRow(row) {
     templateKey: row.template_key,
     revision: row.revision,
     fingerprintVersion: row.fingerprint_version,
+    runtimeCanonicalVersion: row.runtime_canonical_version,
     identityHash: row.identity_hash,
     identityAliases: parseOptionalJson(row.identity_aliases_json) ?? [],
     contentHash: row.content_hash,
@@ -96,6 +97,7 @@ export class CatalogIndex {
           template_key TEXT PRIMARY KEY,
           revision INTEGER NOT NULL,
           fingerprint_version INTEGER NOT NULL,
+          runtime_canonical_version INTEGER NOT NULL,
           identity_hash TEXT NOT NULL UNIQUE,
           identity_aliases_json TEXT,
           content_hash TEXT NOT NULL,
@@ -135,10 +137,10 @@ export class CatalogIndex {
       `)
       const insert = database.prepare(`
         INSERT INTO templates (
-          template_key, revision, fingerprint_version, identity_hash,
+          template_key, revision, fingerprint_version, runtime_canonical_version, identity_hash,
           identity_aliases_json, content_hash, type, manufacturer, name,
           product_family_json, variant_evidence_json, searchable, item_json
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `)
       const transaction = database.transaction((templates) => {
         for (const template of templates) {
@@ -147,6 +149,7 @@ export class CatalogIndex {
             template.templateKey,
             template.revision,
             template.fingerprintVersion,
+            template.runtimeCanonicalVersion,
             template.identityHash,
             template.identityAliases?.length ? JSON.stringify(template.identityAliases) : null,
             template.contentHash,
@@ -335,7 +338,7 @@ export class CatalogIndex {
       const boundedOffset = Math.max(0, Number(offset) || 0)
       const total = database.query(`SELECT COUNT(*) AS count FROM templates ${where}`).get(...parameters).count
       const rows = database.query(`
-        SELECT template_key, revision, fingerprint_version, identity_hash, identity_aliases_json,
+        SELECT template_key, revision, fingerprint_version, runtime_canonical_version, identity_hash, identity_aliases_json,
           content_hash, type, manufacturer, name, product_family_json, variant_evidence_json, item_json
         FROM templates
         ${where}
@@ -359,7 +362,7 @@ export class CatalogIndex {
     const database = new Database(this.filePath, { readonly: true })
     try {
       const row = database.query(`
-        SELECT template_key, revision, fingerprint_version, identity_hash, identity_aliases_json,
+        SELECT template_key, revision, fingerprint_version, runtime_canonical_version, identity_hash, identity_aliases_json,
           content_hash, type, manufacturer, name, product_family_json, variant_evidence_json, item_json
         FROM templates
         WHERE template_key = ?
@@ -380,7 +383,7 @@ export class CatalogIndex {
       for (let offset = 0; offset < keys.length; offset += 500) {
         const chunk = keys.slice(offset, offset + 500)
         rows.push(...database.query(`
-          SELECT template_key, revision, fingerprint_version, identity_hash, identity_aliases_json,
+          SELECT template_key, revision, fingerprint_version, runtime_canonical_version, identity_hash, identity_aliases_json,
             content_hash, type, manufacturer, name, product_family_json, variant_evidence_json, item_json
           FROM templates
           WHERE template_key IN (${chunk.map(() => '?').join(', ')})

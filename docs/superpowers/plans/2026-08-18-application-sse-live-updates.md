@@ -8,6 +8,12 @@
 
 **Tech Stack:** Bun, Express, React 19, TypeScript, TanStack Query, native `EventSource`, Vitest, Bun test.
 
+> **Amendment:** The data-bearing follow-up in
+> `2026-08-18-data-bearing-sse-updates.md` supersedes the invalidation-only
+> handling described below for Systems rows and selected Agent telemetry.
+> Normal heartbeats now patch client caches directly from bounded SSE payloads;
+> REST is reserved for initial snapshots and explicit recovery.
+
 ## Global Constraints
 
 - Keep Homelab Inventory Agent outbound-only; the application never opens an Agent connection.

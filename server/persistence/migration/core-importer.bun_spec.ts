@@ -187,6 +187,96 @@ describe('schema-29 core import', () => {
     }
   })
 
+  test('atomically migrates a legacy WLAN assignment across resource types', async () => {
+    const handle = await migratedDatabase()
+    const snapshot = schema29ProductionShapeFixture()
+    snapshot.inventory.servers[0].compatibility.host.expansionSlots = [{
+      id: 7,
+      key: 'm2-ae-slot',
+      count: 1,
+      label: 'M.2 2230 A/E WLAN slot',
+      interfaceFamily: 'm2-ae',
+      moduleSize: '2230',
+    }]
+    snapshot.inventory.networkCards.push({
+      id: 9,
+      type: 'network',
+      name: 'WLAN module',
+      manufacturer: 'Intel',
+      model: 'AX200',
+      specs: {
+        networkTechnology: 'wifi',
+        formFactor: 'm2-2230',
+        hostInterface: { family: 'm2-ae', keying: 'A+E', moduleSize: '2230' },
+      },
+      ports: [],
+    })
+    snapshot.project.assignments.push({
+      id: 5,
+      hostType: 'server',
+      hostId: 7,
+      itemType: 'network',
+      itemId: 9,
+      type: 'network',
+      assignedAt: '2026-08-11T12:00:00.000Z',
+      allocation: { resourceType: 'expansion', groupId: 7, resourceKey: 'm2-ae-slot', positions: [0] },
+    })
+    try {
+      importLegacyCore({ database: handle.database, snapshot, identityPlan: buildCanonicalIdentityPlan(snapshot) })
+      const serverItemId = (handle.database.query(`
+        SELECT item_id FROM inventory_identity_aliases
+        WHERE legacy_type_key = 'server' AND legacy_id = 7
+      `).get() as { item_id: number }).item_id
+      const replacement = structuredClone(snapshot.inventory.servers[0])
+      replacement.compatibility.host.expansionSlots = []
+      replacement.compatibility.host.optionalModuleSlots = [{
+        id: 3,
+        key: 'wlan-m2',
+        count: 1,
+        label: 'M.2 WLAN slot',
+        acceptedModuleKinds: ['wireless-card'],
+      }]
+
+      replaceLegacyInventoryItem({
+        database: handle.database,
+        projectId: 1,
+        type: 'server',
+        item: replacement,
+        itemId: serverItemId,
+        resourceKeyRemaps: [{
+          from: { resourceType: 'expansion', resourceId: 7, key: 'm2-ae-slot' },
+          to: { resourceType: 'optionalModule', resourceId: 3, key: 'wlan-m2' },
+          assignmentIds: [5],
+        }],
+      })
+
+      expect(handle.database.query(`
+        SELECT assignment.id, item_type.key AS item_type, item_alias.legacy_id AS item_id,
+               groups.resource_type, resource_alias.legacy_resource_group_id AS resource_id,
+               resource_alias.legacy_resource_key AS resource_key, slots.position
+        FROM component_assignments assignment
+        JOIN inventory_items item ON item.id = assignment.component_item_id
+        JOIN inventory_item_types item_type ON item_type.id = item.type_id
+        JOIN inventory_identity_aliases item_alias ON item_alias.item_id = item.id
+        JOIN host_resource_slots slots ON slots.id = assignment.resource_slot_id
+        JOIN host_resource_groups groups ON groups.resource_identity_id = slots.resource_group_id
+        JOIN resource_identity_aliases resource_alias ON resource_alias.resource_id = slots.resource_group_id
+        WHERE assignment.id = 5 AND item_alias.legacy_type_key = 'network'
+      `).get()).toMatchObject({
+        id: 5,
+        item_type: 'network',
+        item_id: 9,
+        resource_type: 'optionalModule',
+        resource_id: 3,
+        resource_key: 'wlan-m2',
+        position: 1,
+      })
+      expect(handle.database.query('PRAGMA foreign_key_check').all()).toEqual([])
+    } finally {
+      closeManagedDatabase(handle)
+    }
+  })
+
   test('preserves DDR3L as a distinct host and module generation', async () => {
     const handle = await migratedDatabase()
     const snapshot = schema29ProductionShapeFixture()

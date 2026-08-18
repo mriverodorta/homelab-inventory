@@ -7,6 +7,7 @@ export type SystemsDensity = 'dense' | 'comfortable'
 
 export type SystemsHostLive = Readonly<{
   itemId: number
+  itemKey?: string
   agentRegistered: boolean
   agentState: SystemsAgentState
   agentVersion: string | null

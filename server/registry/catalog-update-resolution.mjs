@@ -1,4 +1,8 @@
 import { nasOwnsPowerEndpoint, nasPowerTopology } from '../../shared/power-ports.mjs'
+import {
+  isLegacyWlanExpansionResource,
+  planWlanResourceMigration,
+} from './wlan-resource-migration.mjs'
 
 function runtimeKey(type, id) {
   return `${type}:${id}`
@@ -128,7 +132,7 @@ function releaseAssignment(project, assignment) {
 function resourceRelationshipOperations({ current, next, project, hostKey }) {
   const currentResources = hostResources(current)
   const nextResources = hostResources(next)
-  if (currentResources.length === 0 || nextResources.length === 0) {
+  if (currentResources.length === 0) {
     return { available: true, operations: [] }
   }
   const nextByIdentity = new Map()
@@ -142,7 +146,50 @@ function resourceRelationshipOperations({ current, next, project, hostKey }) {
   }
 
   const operations = []
+  const handledResources = new Set()
+  const wlanMigration = planWlanResourceMigration(current, next)
+  const legacyWlanResources = currentResources.filter((resource) => (
+    resource.resourceType === 'expansion' && isLegacyWlanExpansionResource(resource)
+  ))
+  const legacyWlanAssignments = legacyWlanResources.flatMap((resource) => (
+    resourceAssignments(project, hostKey, resource)
+  ))
+  if (wlanMigration.status === 'ambiguous' && legacyWlanAssignments.length > 0) {
+    return { available: false, reason: wlanMigration.reason }
+  }
+  if (wlanMigration.status === 'ready') {
+    const source = { ...wlanMigration.source, resourceType: 'expansion' }
+    const assignments = resourceAssignments(project, hostKey, source)
+    for (const assignment of assignments) {
+      for (const position of assignment.allocation?.positions ?? []) {
+        if (!Number.isSafeInteger(position) || position < 0 || position >= wlanMigration.count) {
+          return {
+            available: false,
+            reason: `Assigned WLAN resource uses position ${Number(position) + 1}, but the proposed resource has ${wlanMigration.count} slots.`,
+          }
+        }
+      }
+    }
+    if (assignments.length > 0) {
+      operations.push({
+        kind: 'remap-resource',
+        from: {
+          resourceType: 'expansion',
+          resourceId: wlanMigration.source.id,
+          key: wlanMigration.source.key,
+        },
+        to: {
+          resourceType: 'optionalModule',
+          resourceId: wlanMigration.destination.id,
+          key: wlanMigration.destination.key,
+        },
+        assignmentIds: assignments.map((assignment) => assignment.id).sort((left, right) => left - right),
+      })
+    }
+    handledResources.add(`expansion:${wlanMigration.source.id}:${wlanMigration.source.key}`)
+  }
   for (const resource of currentResources) {
+    if (handledResources.has(`${resource.resourceType}:${resource.id}:${resource.key}`)) continue
     const assignments = resourceAssignments(project, hostKey, resource)
     if (assignments.length === 0) continue
     const identity = resourceIdentity(resource)
@@ -261,6 +308,8 @@ function deduplicateOperations(operations) {
       ? `assignment:${operation.assignmentId}`
       : operation.kind === 'remap-resource-key'
         ? `resource:${operation.resourceType}:${operation.resourceId}:${operation.fromKey}:${operation.toKey}`
+        : operation.kind === 'remap-resource'
+          ? `resource:${operation.from.resourceType}:${operation.from.resourceId}:${operation.from.key}:${operation.to.resourceType}:${operation.to.resourceId}:${operation.to.key}`
         : `connection:${operation.connectionId}:${operation.endpointRole}`
     if (seen.has(key)) return false
     seen.add(key)
@@ -295,7 +344,7 @@ export function buildCatalogResolutionPlan({ current, next, project, link }) {
       connectionIds: [...new Set(operations.filter((entry) => entry.kind === 'move-connection-endpoint').map((entry) => entry.connectionId))],
       assignmentIds: [...new Set(operations.flatMap((entry) => (
         entry.kind === 'unassign-item' ? [entry.assignmentId]
-          : entry.kind === 'remap-resource-key' ? entry.assignmentIds
+          : ['remap-resource-key', 'remap-resource'].includes(entry.kind) ? entry.assignmentIds
             : []
       )))],
     },
@@ -317,6 +366,23 @@ export function applyCatalogResolutionPlan(project, plan) {
           || assignment.allocation?.groupId !== operation.resourceId
         ) throw new Error(`Assignment ${assignmentId} changed after the resource remap was planned.`)
         assignment.allocation.resourceKey = operation.toKey
+      }
+      continue
+    }
+    if (operation.kind === 'remap-resource') {
+      for (const assignmentId of operation.assignmentIds) {
+        const assignment = draft.assignments.find((entry) => entry.id === assignmentId)
+        if (!assignment) throw new Error(`Assignment ${assignmentId} does not exist.`)
+        if (
+          assignment.allocation?.resourceType !== operation.from.resourceType
+          || assignment.allocation?.resourceKey !== operation.from.key
+          || assignment.allocation?.groupId !== operation.from.resourceId
+        ) throw new Error(`Assignment ${assignmentId} changed after the resource migration was planned.`)
+        Object.assign(assignment.allocation, {
+          resourceType: operation.to.resourceType,
+          groupId: operation.to.resourceId,
+          resourceKey: operation.to.key,
+        })
       }
       continue
     }

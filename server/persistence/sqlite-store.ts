@@ -37,7 +37,7 @@ import {
   materializeCatalogItem,
   projectLocalItemForCatalog,
 } from '../registry/local-catalog-mapping.mjs'
-import { catalogFieldDiff, mergeCatalogUpdate } from '../registry/update-service.mjs'
+import { catalogFieldDiff, catalogUpdateVersionContext, mergeCatalogUpdate } from '../registry/update-service.mjs'
 import { planCatalogUpdate } from '../registry/catalog-update-semantics.mjs'
 import { classifyCatalogUpdate } from '../registry/catalog-update-policy.mjs'
 import {
@@ -1707,7 +1707,7 @@ export class SqliteHomelabInventoryStore {
     const item = this.getProject().items[`${link.itemType}:${link.itemId}`] as Row | undefined
     if (!item) throw lifecycleError('Linked inventory item was not found.', 'linked-inventory-not-found', 409)
     const nextItem = materializeCatalogItem(
-      mergeCatalogUpdate(projectLocalItemForCatalog(item, link.itemType), template.item, template.fingerprintVersion),
+      mergeCatalogUpdate(projectLocalItemForCatalog(item, link.itemType), template.item, catalogUpdateVersionContext(template)),
       { usageRole: item.usageRole },
     )
     const dependencyConflicts = link.itemType === 'motherboard'
@@ -1722,7 +1722,7 @@ export class SqliteHomelabInventoryStore {
       importedRevision: link.importedRevision,
       availableRevision: template.revision,
       state: link.state,
-      changes: catalogFieldDiff(projectLocalItemForCatalog(item, link.itemType), template.item, template.fingerprintVersion),
+      changes: catalogFieldDiff(projectLocalItemForCatalog(item, link.itemType), template.item, catalogUpdateVersionContext(template)),
       dependencyConflicts,
       localFieldsPreserved: Object.keys(item).filter(
         (key) => key === 'name' || !['id', 'key', 'type', 'subtype', 'manufacturer', 'secondaryManufacturer', 'family', 'model', 'number', 'specs', 'ports', 'compatibility'].includes(key),
@@ -1783,7 +1783,7 @@ export class SqliteHomelabInventoryStore {
       const current = projectIds.map((projectId) => projects.get(projectId)?.items[itemKey] as Row | undefined).find(Boolean)
       if (!template || !current || template.revision !== link.availableRevision) return []
       const nextItem = materializeCatalogItem(
-        mergeCatalogUpdate(projectLocalItemForCatalog(current, link.itemType), template.item, template.fingerprintVersion),
+        mergeCatalogUpdate(projectLocalItemForCatalog(current, link.itemType), template.item, catalogUpdateVersionContext(template)),
         { usageRole: current.usageRole },
       )
       let validationError = null
@@ -1807,7 +1807,7 @@ export class SqliteHomelabInventoryStore {
         projectIds,
         validationError,
         dependencyConflicts,
-        changes: catalogFieldDiff(projectLocalItemForCatalog(current, link.itemType), template.item, template.fingerprintVersion),
+        changes: catalogFieldDiff(projectLocalItemForCatalog(current, link.itemType), template.item, catalogUpdateVersionContext(template)),
         resolutionPlans: projectIds.map((projectId) => ({
           projectId,
           ...buildCatalogResolutionPlan({ current, next: nextItem, project: projects.get(projectId), link }),
@@ -1918,7 +1918,7 @@ export class SqliteHomelabInventoryStore {
       const current = currentProject?.items[`${link.itemType}:${link.itemId}`] as Row | undefined
       if (!current) throw lifecycleError('Linked inventory item was not found.', 'linked-inventory-not-found', 409)
       const nextItem = materializeCatalogItem(
-        mergeCatalogUpdate(projectLocalItemForCatalog(current, link.itemType), template.item, template.fingerprintVersion),
+        mergeCatalogUpdate(projectLocalItemForCatalog(current, link.itemType), template.item, catalogUpdateVersionContext(template)),
         { usageRole: current.usageRole },
       )
       for (const project of projects.values()) this.prepareInventoryUpdate({ type: link.itemType, id: link.itemId }, nextItem, project)
@@ -2186,7 +2186,7 @@ export class SqliteHomelabInventoryStore {
       const plan = planCatalogUpdate(
         projectLocalItemForCatalog(current, link.itemType),
         template.item,
-        template.fingerprintVersion,
+        catalogUpdateVersionContext(template),
       )
       const next = materializeCatalogItem(plan.nextItem, { usageRole: current.usageRole })
       const resolutionPlans = projectIds.map((projectId) => buildCatalogResolutionPlan({
@@ -2447,7 +2447,7 @@ export class SqliteHomelabInventoryStore {
     const current = projectIds.map((projectId) => projects.get(projectId)?.items[`${link.itemType}:${link.itemId}`] as Row | undefined).find(Boolean)
     if (!current) throw lifecycleError('Linked inventory item was not found.', 'linked-inventory-not-found', 409)
     const nextItem = materializeCatalogItem(
-      mergeCatalogUpdate(projectLocalItemForCatalog(current, link.itemType), template.item, template.fingerprintVersion),
+      mergeCatalogUpdate(projectLocalItemForCatalog(current, link.itemType), template.item, catalogUpdateVersionContext(template)),
       { usageRole: current.usageRole },
     )
     const plans = projectIds.map((projectId) => {
@@ -2489,14 +2489,21 @@ export class SqliteHomelabInventoryStore {
     const resourceKeyRemapsByIdentity = new Map<string, Row>()
     for (const { plan } of plans) {
       for (const planned of plan.operations) {
-        if (planned.kind !== 'remap-resource-key') continue
-        const identity = `${planned.resourceType}:${planned.resourceId}:${planned.fromKey}:${planned.toKey}`
+        if (!['remap-resource-key', 'remap-resource'].includes(planned.kind)) continue
+        const normalized = planned.kind === 'remap-resource'
+          ? planned
+          : {
+              ...planned,
+              from: { resourceType: planned.resourceType, resourceId: planned.resourceId, key: planned.fromKey },
+              to: { resourceType: planned.resourceType, resourceId: planned.resourceId, key: planned.toKey },
+            }
+        const identity = `${normalized.from.resourceType}:${normalized.from.resourceId}:${normalized.from.key}:${normalized.to.resourceType}:${normalized.to.resourceId}:${normalized.to.key}`
         const existing = resourceKeyRemapsByIdentity.get(identity)
         if (existing) {
-          existing.assignmentIds = [...new Set([...existing.assignmentIds, ...planned.assignmentIds])]
+          existing.assignmentIds = [...new Set([...existing.assignmentIds, ...normalized.assignmentIds])]
             .sort((left, right) => left - right)
         } else {
-          resourceKeyRemapsByIdentity.set(identity, structuredClone(planned))
+          resourceKeyRemapsByIdentity.set(identity, structuredClone(normalized))
         }
       }
     }
@@ -2731,7 +2738,7 @@ export class SqliteHomelabInventoryStore {
     const current = this.getProject().items[`${link.itemType}:${link.itemId}`] as Row | undefined
     if (!current) throw lifecycleError('Linked inventory item was not found.', 'linked-inventory-not-found', 409)
     const nextItem = materializeCatalogItem(
-      mergeCatalogUpdate(projectLocalItemForCatalog(current, link.itemType), template.item, template.fingerprintVersion),
+      mergeCatalogUpdate(projectLocalItemForCatalog(current, link.itemType), template.item, catalogUpdateVersionContext(template)),
       { usageRole: current.usageRole },
     )
     const dependencyConflicts = link.itemType === 'motherboard'

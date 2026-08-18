@@ -1,8 +1,9 @@
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { loadAgentTelemetry } from '@/lib/agent-api'
-import type { AgentHostType } from '@/types/agent'
+import type { AgentHostType, AgentTelemetryRange } from '@/types/agent'
 import type { InventoryItem, ProjectState } from '@/types/inventory'
 import { useLiveEventTopic } from '@/live-events/use-live-event-topic'
+import { mergeAgentTelemetryEvent } from './agent-telemetry-live'
 
 export function useAgentTelemetry({
   hostType,
@@ -13,8 +14,10 @@ export function useAgentTelemetry({
   hostId: number
   enabled: boolean
 }) {
+  const queryClient = useQueryClient()
+  const queryKey = ['agent-telemetry', hostType, hostId, '30m'] as const
   const query = useQuery({
-    queryKey: ['agent-telemetry', hostType, hostId, '30m'],
+    queryKey,
     queryFn: () => loadAgentTelemetry(hostType, hostId, { limit: 30 }),
     enabled,
     retry: 1,
@@ -25,7 +28,16 @@ export function useAgentTelemetry({
   useLiveEventTopic({
     topic: `agent-telemetry:${hostType}:${hostId}`,
     enabled,
-    onEvent: () => { void query.refetch() },
+    onEvent: (event) => {
+      let requiresResync = false
+      queryClient.setQueryData<AgentTelemetryRange>(queryKey, (current) => {
+        if (!current) return current
+        const merged = mergeAgentTelemetryEvent(current, event)
+        if (!merged) requiresResync = true
+        return merged ?? current
+      })
+      if (requiresResync) void query.refetch()
+    },
     onResync: () => { void query.refetch() },
   })
   return query

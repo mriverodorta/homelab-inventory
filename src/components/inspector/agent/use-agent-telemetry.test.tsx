@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { loadAgentTelemetry } from '@/lib/agent-api'
 import { useAgentTelemetry } from './use-agent-telemetry'
 
-const live = vi.hoisted(() => ({ onEvent: () => {}, onResync: () => {}, enabled: false, topic: '' }))
+const live = vi.hoisted(() => ({ onEvent: (_event?: unknown) => {}, onResync: () => {}, enabled: false, topic: '' }))
 
 vi.mock('@/lib/agent-api', () => ({
   loadAgentTelemetry: vi.fn(async () => ({
@@ -40,7 +40,7 @@ function createWrapper() {
 }
 
 describe('useAgentTelemetry', () => {
-  it('refreshes an offline host after its live event and stops after unmount', async () => {
+  it('merges a heartbeat event without reloading the telemetry snapshot', async () => {
     const rendered = renderHook(() => useAgentTelemetry({
       hostType: 'server',
       hostId: 1,
@@ -49,9 +49,34 @@ describe('useAgentTelemetry', () => {
 
     await waitFor(() => expect(loadAgentTelemetry).toHaveBeenCalledTimes(1))
     expect(live.topic).toBe('agent-telemetry:server:1')
-    await act(async () => live.onEvent())
-    expect(loadAgentTelemetry).toHaveBeenCalledTimes(2)
+    await act(async () => live.onEvent({
+      occurredAt: '2026-08-07T12:01:00.000Z',
+      payload: {
+        mode: 'delta',
+        status: { state: 'online', connected: true, ageMs: 0 },
+        telemetry: {
+          version: 1,
+          sequence: 2,
+          receivedAt: '2026-08-07T12:01:00.000Z',
+          collectedAt: '2026-08-07T12:00:59.000Z',
+          agentVersion: '0.3.3',
+          metricBucket: { at: '2026-08-07T12:01:00.000Z', received: true, metrics: { cpu: { percent: 14 }, memory: { usedPercent: 30 } } },
+          runtime: { uptimeSeconds: 60, loadAverage: [0.1, 0.2, 0.3], memory: { totalBytes: 100 } },
+          families: [],
+        },
+      },
+    }))
+    expect(loadAgentTelemetry).toHaveBeenCalledOnce()
+    await waitFor(() => expect(rendered.result.current.data?.status.state).toBe('online'))
+    expect(rendered.result.current.data?.metricBuckets.at(-1)?.metrics?.cpu?.percent).toBe(14)
     rendered.unmount()
+  })
+
+  it('reloads once when an SSE event explicitly requires recovery', async () => {
+    renderHook(() => useAgentTelemetry({ hostType: 'server', hostId: 1, enabled: true }), { wrapper: createWrapper() })
+    await waitFor(() => expect(loadAgentTelemetry).toHaveBeenCalledOnce())
+    await act(async () => live.onEvent({ occurredAt: 'now', payload: { mode: 'resync-required' } }))
+    expect(loadAgentTelemetry).toHaveBeenCalledTimes(2)
   })
 
   it('does not request telemetry for an unregistered host without saved state', async () => {

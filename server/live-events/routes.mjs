@@ -12,10 +12,12 @@ export function registerApplicationEventRoutes(app, { withStore, hub, authorizat
       if (!demo && authorization && request.authentication?.account?.id) {
         const accountId = request.authentication.account.id
         for (const topic of topics) {
-          const decision = await authorization.authorize(accountId, topic.permission)
-          if (!decision.allowed) {
-            response.status(403).json({ message: 'You do not have permission to subscribe to this live event topic.', code: 'permission-denied', permission: topic.permission })
-            return
+          for (const permission of topic.permissions ?? [topic.permission]) {
+            const decision = await authorization.authorize(accountId, permission)
+            if (!decision.allowed) {
+              response.status(403).json({ message: 'You do not have permission to subscribe to this live event topic.', code: 'permission-denied', permission })
+              return
+            }
           }
         }
       }
@@ -23,4 +25,3 @@ export function registerApplicationEventRoutes(app, { withStore, hub, authorizat
     }, { message: 'Unable to open the application event stream.' })
   })
 }
-

@@ -211,6 +211,81 @@ describe('catalog topology update resolution', () => {
     })
   })
 
+  it('migrates a legacy M.2 A/E WLAN assignment to the canonical optional module resource', () => {
+    const current = {
+      type: 'desktop',
+      compatibility: { host: { expansionSlots: [
+        { id: 7, key: 'm2-ae-slot', count: 1, label: 'M.2 2230 A/E WLAN slot' },
+      ] } },
+    }
+    const next = {
+      type: 'desktop',
+      compatibility: { host: { optionalModuleSlots: [
+        { id: 3, key: 'wlan-m2', count: 1, acceptedModuleKinds: ['wireless-card'] },
+      ] } },
+    }
+    const input = project({
+      items: { ...project().items, 'network:9': { id: 9, type: 'network', name: 'WLAN' } },
+      assignments: [{
+        id: 44,
+        serverId: 'nas:1',
+        itemId: 'network:9',
+        type: 'network',
+        allocation: { resourceType: 'expansion', resourceKey: 'm2-ae-slot', groupId: 7, positions: [0] },
+      }],
+    })
+
+    const plan = buildCatalogResolutionPlan({ current, next, project: input, link })
+
+    expect(plan).toMatchObject({
+      available: true,
+      affectedRelationships: { assignmentIds: [44] },
+      operations: [{
+        kind: 'remap-resource',
+        from: { resourceType: 'expansion', resourceId: 7, key: 'm2-ae-slot' },
+        to: { resourceType: 'optionalModule', resourceId: 3, key: 'wlan-m2' },
+        assignmentIds: [44],
+      }],
+    })
+    expect(applyCatalogResolutionPlan(input, plan).assignments[0]).toMatchObject({
+      id: 44,
+      itemId: 'network:9',
+      allocation: { resourceType: 'optionalModule', resourceKey: 'wlan-m2', groupId: 3, positions: [0] },
+    })
+  })
+
+  it.each([
+    ['zero', []],
+    ['multiple', [
+      { id: 3, key: 'wlan-m2', count: 1, acceptedModuleKinds: ['wireless-card'] },
+      { id: 4, key: 'wlan-m2', count: 1, acceptedModuleKinds: ['wireless-card'] },
+    ]],
+  ])('blocks a legacy WLAN assignment with %s canonical destinations', (_label, destinations) => {
+    const current = {
+      type: 'desktop',
+      compatibility: { host: { expansionSlots: [{ id: 7, key: 'm2-ae-slot', count: 1 }] } },
+    }
+    const next = {
+      type: 'desktop',
+      compatibility: { host: { expansionSlots: [], optionalModuleSlots: destinations } },
+    }
+    const input = project({
+      assignments: [{
+        id: 44,
+        serverId: 'nas:1',
+        itemId: 'network:9',
+        type: 'network',
+        allocation: { resourceType: 'expansion', resourceKey: 'm2-ae-slot', groupId: 7, positions: [0] },
+      }],
+    })
+
+    expect(buildCatalogResolutionPlan({ current, next, project: input, link })).toMatchObject({
+      available: false,
+      operations: [],
+      reason: expect.stringContaining('optionalModuleSlots.wlan-m2'),
+    })
+  })
+
   it('distinguishes overlapping numeric IDs in different resource types', () => {
     const current = {
       type: 'nas',

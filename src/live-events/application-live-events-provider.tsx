@@ -87,7 +87,7 @@ export function ApplicationLiveEventsProvider({
       const staleTopics = topics.filter((topic) => {
         const previous = topicSequences.current.get(topic)
         const current = ready.topicSequences[topic] ?? 0
-        return previous === undefined || changedGeneration || current > previous
+        return previous !== undefined && (changedGeneration || current > previous)
       })
       generation.current = ready.generationId
       for (const topic of topics) topicSequences.current.set(topic, ready.topicSequences[topic] ?? 0)

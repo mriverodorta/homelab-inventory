@@ -7,12 +7,13 @@ describe('SystemsUtilizationBar', () => {
     [2, '02%'],
     [20, '20%'],
     [100, '100%'],
-  ])('reserves a stable four-character label track for %s percent', (value, label) => {
+  ])('reserves a compact stable label track for %s percent', (value, label) => {
     render(<SystemsUtilizationBar value={value} kind="cpu" />)
 
     const percentage = screen.getByText(label)
-    expect(percentage).toHaveClass('w-[4ch]', 'text-left')
-    expect(percentage.parentElement).toHaveClass('grid-cols-[4ch_minmax(0,1fr)]', 'gap-0.5')
+    expect(percentage).toHaveClass('w-[3.5ch]', 'text-left')
+    expect(percentage.parentElement).toHaveClass('min-w-[125px]', 'grid-cols-[3.5ch_minmax(0,1fr)]')
+    expect(percentage.parentElement).not.toHaveClass('gap-0.5')
   })
 
   it('renders only effective memory pressure and reclaimable or available space', () => {

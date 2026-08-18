@@ -18,6 +18,7 @@ import { applyCommittedMigrations } from './sqlite/migrator.ts'
 import { SqliteHomelabInventoryStore } from './sqlite-store.ts'
 import nasV10Fixture from '../../packages/catalog-protocol/test/fixtures/server-specs-inventory-nas-v10.json'
 import networkV11Fixture from '../../packages/catalog-protocol/test/fixtures/network/server-specs-inventory-network-v11.json'
+import { projectLocalItemForCatalog } from '../registry/local-catalog-mapping.mjs'
 
 const roots: string[] = []
 
@@ -1002,6 +1003,141 @@ describe('SQLite Homelab Inventory store facade', () => {
         template: revision2,
         expectedProjectRevisions: { 1: beforeResolve.revision },
       })).toThrow(/refresh/iu)
+    } finally {
+      store.close()
+    }
+  })
+
+  test('atomically adopts canonical WLAN topology without changing private or workspace state', async () => {
+    const store = await fixtureStore((snapshot) => {
+      const server = snapshot.inventory.servers[0]
+      server.serialNumber = 'private-serial'
+      server.notes = 'private note'
+      server.managementAddress = '10.0.0.7'
+      server.compatibility.host.expansionSlots = [{
+        id: 7,
+        key: 'm2-ae-slot',
+        count: 1,
+        label: 'M.2 2230 A/E WLAN slot',
+        interfaceFamily: 'm2-ae',
+        moduleSize: '2230',
+      }]
+      snapshot.inventory.networkCards.push({
+        id: 9,
+        type: 'network',
+        name: 'WLAN module',
+        manufacturer: 'Intel',
+        model: 'AX200',
+        specs: {
+          networkTechnology: 'wifi',
+          formFactor: 'm2-2230',
+          hostInterface: { family: 'm2-ae', keying: 'A+E', moduleSize: '2230' },
+        },
+        ports: [],
+      })
+      snapshot.project.assignments.push({
+        id: 5,
+        hostType: 'server',
+        hostId: 7,
+        itemType: 'network',
+        itemId: 9,
+        type: 'network',
+        assignedAt: '2026-08-11T12:00:00.000Z',
+        allocation: { resourceType: 'expansion', groupId: 7, resourceKey: 'm2-ae-slot', positions: [0] },
+      })
+    })
+    try {
+      const current = store.getProject().items['server:7'] as any
+      const proposed = projectLocalItemForCatalog(current, 'server')
+      proposed.compatibility.host.expansionSlots = []
+      proposed.compatibility.host.optionalModuleSlots = [{
+        id: 3,
+        key: 'wlan-m2',
+        count: 1,
+        label: 'M.2 WLAN slot',
+        acceptedModuleKinds: ['wireless-card'],
+      }]
+      const template = {
+        ...await catalogTemplate(proposed, 2, 'desktop-example-canonical-wlan', 9),
+        runtimeCanonicalVersion: 9,
+      }
+      store.registryTransaction((draft: any) => {
+        draft.sources = [{
+          id: 1,
+          kind: 'official-connected',
+          displayName: 'Official Catalog',
+          enabled: true,
+          createdAt: '2026-08-11T12:00:00.000Z',
+        }]
+        draft.snapshot = {
+          sourceId: 1,
+          revision: 2,
+          generatedAt: '2026-08-11T12:00:00.000Z',
+          expiresAt: null,
+          activatedAt: '2026-08-11T12:00:00.000Z',
+          digest: 'b'.repeat(64),
+          templateCount: 1,
+          keyId: 'test-key',
+        }
+        draft.links.push({
+          id: 2,
+          itemType: 'server',
+          itemId: 7,
+          sourceId: draft.snapshot.sourceId,
+          templateKey: template.templateKey,
+          importedRevision: 1,
+          importedContentHash: 'a'.repeat(64),
+          importedFingerprintVersion: 4,
+          state: 'update-available',
+          linkedAt: '2026-08-11T12:00:00.000Z',
+          availableRevision: 2,
+          availableContentHash: template.contentHash,
+        })
+      })
+      const evaluation = store.evaluateCatalogUpdates([{ linkId: 2, templateKey: template.templateKey }], [template])
+      store.commitCatalogUpdateRun({
+        sourceId: 1,
+        catalogRevision: 2,
+        evaluations: evaluation.evaluations,
+        templates: [template],
+        automatic: false,
+        expectedProjectRevisions: evaluation.projectRevisions,
+      })
+      const beforeProject = store.getProject()
+      const beforeRouteCache = store.getRoutingCache()
+      const beforeLink = (store.getRegistryState() as any).links.find((link: any) => link.id === 2)
+
+      const result = store.resolveAndApplyRegistryUpdateGroup({
+        linkId: 2,
+        template,
+        expectedProjectRevisions: { 1: beforeProject.revision },
+      }) as any
+
+      const afterProject = store.getProject()
+      const afterItem = afterProject.items['server:7'] as any
+      expect(result.affectedRelationships).toEqual({ connectionIds: [], assignmentIds: [5] })
+      expect(afterProject.assignments.find((assignment) => assignment.id === 5)).toMatchObject({
+        itemId: 'network:9',
+        allocation: { resourceType: 'optionalModule', groupId: 3, resourceKey: 'wlan-m2', positions: [0] },
+      })
+      expect(afterItem).toMatchObject({
+        serialNumber: 'private-serial',
+        notes: 'private note',
+        managementAddress: '10.0.0.7',
+      })
+      expect(afterItem.compatibility.host.expansionSlots?.filter((slot) => slot.key === 'm2-ae-slot') ?? []).toEqual([])
+      expect(afterItem.compatibility.host.optionalModuleSlots.filter((slot) => slot.key === 'wlan-m2')).toHaveLength(1)
+      expect(afterProject.placements).toEqual(beforeProject.placements)
+      expect(afterProject.connections).toEqual(beforeProject.connections)
+      expect(store.getRoutingCache()).toEqual(beforeRouteCache)
+      expect((store.getRegistryState() as any).links.find((link: any) => link.id === 2)).toMatchObject({
+        id: beforeLink.id,
+        sourceId: beforeLink.sourceId,
+        templateKey: beforeLink.templateKey,
+        state: 'linked',
+        importedRevision: 2,
+      })
+      expect(store.getCatalogUpdates().some((update: any) => update.linkId === 2)).toBe(false)
     } finally {
       store.close()
     }

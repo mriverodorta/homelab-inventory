@@ -74,6 +74,7 @@ import { createStagingPolicy, stagingRegistryPolicy } from './staging-policy.mjs
 import { ApplicationLiveEventBus } from './live-events/event-bus.mjs'
 import { ApplicationSseHub } from './live-events/sse-hub.mjs'
 import { registerApplicationEventRoutes } from './live-events/routes.mjs'
+import { boundedTelemetryPayloads, compactAgentStatus } from './live-events/agent-payloads.mjs'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const root = path.resolve(__dirname, '..')
@@ -320,6 +321,9 @@ const authorizationService = store && authRuntime
   : null
 const systemsSavedViews = store ? new SystemsSavedViewService() : null
 const systemsAttention = store ? new SystemAttentionProjector() : null
+const systemsReadService = store
+  ? new SystemsReadService({ telemetryRepository, releaseService: agentReleaseService, attentionProjector: systemsAttention })
+  : null
 if (store) {
   systemsAttention?.start(store)
   store.subscribeToProjectCommits((commit) => {
@@ -363,23 +367,40 @@ registerAccessRoutes(app, {
   demo: isDemoMode || stagingPolicy.authenticationDisabled,
 })
 let agentLifecycleScheduler = null
-function publishAgentChanged({ store: currentStore, host, kind }, { schedule = true } = {}) {
+function publishAgentChanged({ store: currentStore, host, kind, liveTelemetry = null }, { schedule = true } = {}) {
   let projectIds = []
   try {
     projectIds = currentStore.listInventoryProjectIds({ type: host.hostType, id: host.hostId })
   } catch {}
-  const topics = [
-    'agents:fleet',
-    `agent-telemetry:${host.hostType}:${host.hostId}`,
-    ...projectIds.map((projectId) => `systems:${projectId}`),
-  ]
-  if (kind === 'hardware') topics.push(`agent-hardware:${host.hostType}:${host.hostId}`)
+  const status = compactAgentStatus(currentStore, host)
   applicationEventBus.publish({
     scope: currentStore,
-    topics,
+    topics: 'agents:fleet',
     kind: `agent.${kind}`,
-    payload: { hostType: host.hostType, hostId: host.hostId },
+    payload: { host, status },
   })
+  for (const payload of boundedTelemetryPayloads(host, status, liveTelemetry)) applicationEventBus.publish({
+    scope: currentStore,
+    topics: `agent-telemetry:${host.hostType}:${host.hostId}`,
+    kind: `agent.${kind}`,
+    payload,
+  })
+  if (kind === 'hardware') applicationEventBus.publish({
+    scope: currentStore,
+    topics: `agent-hardware:${host.hostType}:${host.hostId}`,
+    kind: 'agent.hardware',
+    payload: { host },
+  })
+  for (const projectId of projectIds) {
+    let system = null
+    try { system = systemsReadService?.liveHost(currentStore, projectId, host, null) ?? null } catch {}
+    applicationEventBus.publish({
+      scope: currentStore,
+      topics: `systems:${projectId}`,
+      kind: `agent.${kind}`,
+      payload: { projectId, host, system },
+    })
+  }
   if (schedule) agentLifecycleScheduler?.changed(host)
 }
 if (!isDemoMode && store && !stagingPolicy.agentsDisabled) {
@@ -592,7 +613,7 @@ const backupSchedule = stagingPolicy.scheduledBackupsDisabled ? null : backupSch
 registerProjectRoutes(app, { withStore })
 registerSystemsRoutes(app, {
   withStore,
-  service: new SystemsReadService({ telemetryRepository, releaseService: agentReleaseService, attentionProjector: systemsAttention }),
+  service: systemsReadService,
   savedViews: systemsSavedViews,
   attention: systemsAttention,
   authorization: authorizationService,

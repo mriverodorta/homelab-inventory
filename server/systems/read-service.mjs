@@ -206,12 +206,15 @@ export class SystemsReadService {
     if (!project) throw new Error(`Active project ${projectId} was not found.`)
     return database.query(`
       SELECT item.id AS item_id,
+        type.key AS type,
+        identity.legacy_id,
         agent.id AS agent_id,
         agent.agent_version,
         agent.last_seen_at_ms,
         agent.capabilities_json
       FROM inventory_items item
       JOIN inventory_item_types type ON type.id = item.type_id
+      LEFT JOIN inventory_identity_aliases identity ON identity.item_id = item.id
       LEFT JOIN agent_host_bindings binding
         ON binding.host_item_id = item.id AND binding.state = 'active'
       LEFT JOIN agents agent
@@ -332,6 +335,7 @@ export class SystemsReadService {
         const attention = attentionByHost.get(host.item_id) ?? null
         return {
           itemId: host.item_id,
+          itemKey: `${host.type}:${Number(host.legacy_id ?? host.item_id)}`,
           agentRegistered: registered,
           agentState: state,
           agentVersion,
@@ -346,5 +350,10 @@ export class SystemsReadService {
         }
       }).filter((host) => host.agentRegistered || host.attentionCount > 0),
     }
+  }
+
+  liveHost(store, projectId, host, endpoint, options = {}) {
+    const itemKey = `${host.hostType}:${positiveId(host.hostId, 'Host ID')}`
+    return this.live(store, projectId, endpoint, options).systems.find((system) => system.itemKey === itemKey) ?? null
   }
 }

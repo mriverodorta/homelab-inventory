@@ -40,6 +40,23 @@ function parseJson(value, fallback = {}) {
   return typeof value === 'string' ? JSON.parse(value) : fallback
 }
 
+function topLevelPatch(previous, next) {
+  if (!previous) return { set: next, unset: [] }
+  const set = {}
+  const unset = []
+  for (const [key, value] of Object.entries(next)) {
+    if (canonicalJson(previous[key]) !== canonicalJson(value)) set[key] = value
+  }
+  for (const key of Object.keys(previous)) {
+    if (!(key in next)) unset.push(key)
+  }
+  return { set, unset }
+}
+
+function hasPatch(patch) {
+  return Object.keys(patch.set).length > 0 || patch.unset.length > 0
+}
+
 function lifecycleState(family, value) {
   if (family === 'service') {
     return {
@@ -116,7 +133,7 @@ export class TelemetryRepository {
     const parts = String(rawKey).split('\0')
     const where = ['host_item_id = ?', ...columns.map((column) => `${column} = ?`)].join(' AND ')
     const row = this.database.query(`SELECT * FROM ${config.table} WHERE ${where}`).get(hostItemId, ...parts)
-    if (!row) return
+    if (!row) return false
     if (config.family) {
       this.database.query(`
         INSERT INTO component_events (host_item_id, family, entity_key, event_kind, observed_at_ms, state_hash, state_json)
@@ -124,19 +141,22 @@ export class TelemetryRepository {
       `).run(hostItemId, config.family, rawKey, observedAtMs, row.lifecycle_hash)
     }
     this.database.query(`DELETE FROM ${config.table} WHERE ${where}`).run(hostItemId, ...parts)
+    return true
   }
 
   #applyFamily(name, hostItemId, delta, observedAtMs) {
     const config = FAMILY_CONFIG[name]
-    if (!config || !delta) return { accepted: null, reconcile: false }
+    if (!config || !delta) return { accepted: null, reconcile: false, live: null }
     const previous = this.database.query(`
       SELECT revision FROM telemetry_family_revisions WHERE host_item_id = ? AND family = ?
     `).get(hostItemId, name)?.revision ?? 0
-    if (delta.revision <= previous) return { accepted: previous, reconcile: false }
-    if (!delta.full && delta.revision !== previous + 1) return { accepted: previous, reconcile: true }
+    if (delta.revision <= previous) return { accepted: previous, reconcile: false, live: null }
+    if (!delta.full && delta.revision !== previous + 1) return { accepted: previous, reconcile: true, live: null }
 
     const columns = keyColumns(name)
     const incoming = new Set()
+    const changes = []
+    const removedKeys = []
     for (const value of delta.changed) {
       const entityKey = config.key(value)
       const parts = tableKeyParts(name, value)
@@ -144,6 +164,9 @@ export class TelemetryRepository {
       const current = this.database.query(`SELECT ${config.family ? 'lifecycle_hash' : 'NULL AS lifecycle_hash'}, state_json FROM ${config.table} WHERE ${[
         'host_item_id = ?', ...columns.map((column) => `${column} = ?`),
       ].join(' AND ')}`).get(hostItemId, ...parts)
+      const previousState = current ? parseJson(current.state_json) : null
+      const patch = topLevelPatch(previousState, value)
+      if (hasPatch(patch)) changes.push({ key: entityKey, ...patch })
       const semanticHash = config.family ? hash(lifecycleState(config.family, value)) : null
       if (config.family && (!current || current.lifecycle_hash !== semanticHash)) {
         this.database.query(`
@@ -153,13 +176,15 @@ export class TelemetryRepository {
       }
       this.#upsertLatest(config.table, columns, [hostItemId, ...parts], value, observedAtMs, semanticHash)
     }
-    for (const removed of delta.removed) this.#removeState(name, hostItemId, removed, observedAtMs)
+    for (const removed of delta.removed) {
+      if (this.#removeState(name, hostItemId, removed, observedAtMs)) removedKeys.push(removed)
+    }
 
     if (delta.full) {
       const rows = this.database.query(`SELECT ${columns.join(', ')} FROM ${config.table} WHERE host_item_id = ?`).all(hostItemId)
       for (const row of rows) {
         const persistedKey = columns.map((column) => row[column]).join('\0')
-        if (!incoming.has(persistedKey)) this.#removeState(name, hostItemId, persistedKey, observedAtMs)
+        if (!incoming.has(persistedKey) && this.#removeState(name, hostItemId, persistedKey, observedAtMs)) removedKeys.push(persistedKey)
       }
     }
     this.database.query(`
@@ -167,7 +192,13 @@ export class TelemetryRepository {
       VALUES (?, ?, ?, ?)
       ON CONFLICT (host_item_id, family) DO UPDATE SET revision = excluded.revision, reconciled_at_ms = excluded.reconciled_at_ms
     `).run(hostItemId, name, delta.revision, observedAtMs)
-    return { accepted: delta.revision, reconcile: false }
+    return {
+      accepted: delta.revision,
+      reconcile: false,
+      live: changes.length > 0 || removedKeys.length > 0
+        ? { family: name, revision: delta.revision, changes, removed: removedKeys }
+        : null,
+    }
   }
 
   #recordEnvelope(envelope) {
@@ -185,7 +216,7 @@ export class TelemetryRepository {
       receipt.collectedAtMs, receipt.receivedAtMs, receipt.droppedSamples, receipt.agentVersion,
       receipt.monitoringRevision,
     )
-    if (result.changes === 0) return { duplicate: true, acceptedRevisions: {}, reconcile: [], requestCapabilities }
+    if (result.changes === 0) return { duplicate: true, acceptedRevisions: {}, reconcile: [], requestCapabilities, liveDelta: null }
     this.database.query(`
       DELETE FROM heartbeat_receipts WHERE host_item_id = ? AND id NOT IN (
         SELECT id FROM heartbeat_receipts WHERE host_item_id = ?
@@ -252,13 +283,35 @@ export class TelemetryRepository {
 
     const acceptedRevisions = {}
     const reconcile = []
+    const families = []
     for (const [name, delta] of Object.entries(envelope.deltas)) {
       if (name === 'system') continue
       const applied = this.#applyFamily(name, receipt.hostItemId, delta, receipt.receivedAtMs)
       if (applied.accepted !== null) acceptedRevisions[name] = applied.accepted
       if (applied.reconcile) reconcile.push(name)
+      if (applied.live) families.push(applied.live)
     }
-    return { duplicate: false, acceptedRevisions, reconcile, requestCapabilities }
+    return {
+      duplicate: false,
+      acceptedRevisions,
+      reconcile,
+      requestCapabilities,
+      liveDelta: {
+        version: 1,
+        sequence: receipt.sequence,
+        receivedAt: new Date(receipt.receivedAtMs).toISOString(),
+        collectedAt: new Date(receipt.collectedAtMs).toISOString(),
+        agentVersion: receipt.agentVersion,
+        metricBucket: {
+          at: new Date(metricSample.minuteBucketMs).toISOString(),
+          received: true,
+          metrics: { cpu: metricSample.cpu, memory: metricSample.memory },
+        },
+        runtime: latest.runtime,
+        ...(latest.system ? { system: latest.system } : {}),
+        families,
+      },
+    }
   }
 
   recordEnvelope(envelope) {

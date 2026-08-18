@@ -393,12 +393,27 @@ export function registerAgentV1Routes(app, store, {
         payload: heartbeat,
       })
       persistHeartbeat(store, device, host, authentication, heartbeat, receivedAt)
-      onAgentChanged?.({ store, host, kind: 'heartbeat' })
+      const { liveDelta = null, ...telemetryAcknowledgement } = telemetry ?? {}
+      let liveTelemetry = liveDelta
+      if (liveTelemetry?.families?.some((family) => family.family === 'filesystems')) {
+        const latest = telemetryRepository?.getHostSummary?.(host.hostType, host.hostId) ?? null
+        const hardware = store.getAgentHardwareContext(host.hostType, host.hostId)
+        liveTelemetry = {
+          ...liveTelemetry,
+          storage: buildStorageTelemetry({
+            heartbeat: latest?.payload ?? null,
+            snapshot: hardware.snapshot,
+            inventory: hardware.inventory,
+            project: hardware.project,
+          }),
+        }
+      }
+      onAgentChanged?.({ store, host, kind: 'heartbeat', liveTelemetry })
       return response.json({
         ok: true,
         receivedAt,
         sequence: authentication.sequence,
-        ...(telemetry ? { telemetry } : {}),
+        ...(telemetry ? { telemetry: telemetryAcknowledgement } : {}),
         ...(monitoringConfigProvider
           ? { monitoringConfig: monitoringConfigProvider(host.hostType, host.hostId) }
           : {}),

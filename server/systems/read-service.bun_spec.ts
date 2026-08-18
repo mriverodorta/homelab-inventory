@@ -92,6 +92,7 @@ describe('Systems read service', () => {
 
     expect(service.live(store, 1, 'https://inventory.example').systems).toEqual([{
       itemId: initial.systems[0].itemId,
+      itemKey: 'server:7',
       agentRegistered: true,
       agentState: 'online',
       agentVersion: '0.1.8',

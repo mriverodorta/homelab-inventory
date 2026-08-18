@@ -37,19 +37,23 @@ export type ReplaceLegacyInventoryItemOptions = Readonly<{
   item: LegacyRecord
   itemId: number
   resourceKeyRemaps?: ReadonlyArray<Readonly<{
-    resourceType: string
-    resourceId: number
-    fromKey: string
-    toKey: string
+    resourceType?: string
+    resourceId?: number
+    fromKey?: string
+    toKey?: string
+    from?: Readonly<{ resourceType: string; resourceId: number; key: string }>
+    to?: Readonly<{ resourceType: string; resourceId: number; key: string }>
     assignmentIds: readonly number[]
   }>>
   now?: number
 }>
 
 type ResourceKeyRemap = Readonly<{
-  resourceType: string
-  resourceId: number
+  fromResourceType: string
+  fromResourceId: number
   fromKey: string
+  toResourceType: string
+  toResourceId: number
   toKey: string
   assignmentIds: ReadonlySet<number>
 }>
@@ -968,11 +972,20 @@ function validatedResourceKeyRemaps(
   const proposed = typedResourceDefinitions(item)
 
   for (const candidate of input) {
-    const resourceId = positiveIntegerOrNull(candidate.resourceId)
-    const fromKey = optionalText(candidate.fromKey)
-    const toKey = optionalText(candidate.toKey)
-    const resourceType = optionalText(candidate.resourceType)
-    if (!resourceId || !fromKey || !toKey || !resourceType || fromKey === toKey) {
+    const fromResourceId = positiveIntegerOrNull(candidate.from?.resourceId ?? candidate.resourceId)
+    const toResourceId = positiveIntegerOrNull(candidate.to?.resourceId ?? candidate.resourceId)
+    const fromKey = optionalText(candidate.from?.key ?? candidate.fromKey)
+    const toKey = optionalText(candidate.to?.key ?? candidate.toKey)
+    const fromResourceType = optionalText(candidate.from?.resourceType ?? candidate.resourceType)
+    const toResourceType = optionalText(candidate.to?.resourceType ?? candidate.resourceType)
+    if (
+      !fromResourceId || !toResourceId || !fromKey || !toKey || !fromResourceType || !toResourceType
+      || (
+        fromResourceType === toResourceType
+        && fromResourceId === toResourceId
+        && fromKey === toKey
+      )
+    ) {
       throw new Error('Resource-key remap is invalid.')
     }
     if (result.has(fromKey) || [...result.values()].some((entry) => entry.toKey === toKey)) {
@@ -981,16 +994,16 @@ function validatedResourceKeyRemaps(
     const currentResource = current.get(fromKey)
     if (
       !currentResource
-      || currentResource.legacy_resource_group_id !== resourceId
-      || currentResource.resource_type !== resourceType
-    ) throw new Error(`Resource-key remap source ${resourceType}:${resourceId}:${fromKey} does not exist.`)
+      || currentResource.legacy_resource_group_id !== fromResourceId
+      || currentResource.resource_type !== fromResourceType
+    ) throw new Error(`Resource-key remap source ${fromResourceType}:${fromResourceId}:${fromKey} does not exist.`)
     const targets = proposed.filter((entry) => (
-      entry.resourceType === resourceType
-      && entry.resourceId === resourceId
+      entry.resourceType === toResourceType
+      && entry.resourceId === toResourceId
       && entry.key === toKey
     ))
     if (targets.length !== 1) {
-      throw new Error(`Resource-key remap target ${resourceType}:${resourceId}:${toKey} is not unique.`)
+      throw new Error(`Resource-key remap target ${toResourceType}:${toResourceId}:${toKey} is not unique.`)
     }
     const assignmentIds = new Set(candidate.assignmentIds.map((id) => {
       const normalized = positiveIntegerOrNull(id)
@@ -1000,7 +1013,15 @@ function validatedResourceKeyRemaps(
     if (assignmentIds.size !== candidate.assignmentIds.length) {
       throw new Error('Resource-key remap assignment IDs are duplicated.')
     }
-    result.set(fromKey, { resourceType, resourceId, fromKey, toKey, assignmentIds })
+    result.set(fromKey, {
+      fromResourceType,
+      fromResourceId,
+      fromKey,
+      toResourceType,
+      toResourceId,
+      toKey,
+      assignmentIds,
+    })
   }
   return result
 }
@@ -1240,8 +1261,8 @@ export function replaceLegacyInventoryItem({
     const remap = resourceKeyRemaps.get(slot.legacy_resource_key)
     if (!remap) return slot.legacy_resource_key
     if (
-      remap.resourceType !== slot.resource_type
-      || remap.resourceId !== slot.legacy_resource_group_id
+      remap.fromResourceType !== slot.resource_type
+      || remap.fromResourceId !== slot.legacy_resource_group_id
       || !remap.assignmentIds.has(slot.assignment_id)
     ) throw new Error(`Assignment ${slot.assignment_id} is not covered by its resource-key remap.`)
     return remap.toKey

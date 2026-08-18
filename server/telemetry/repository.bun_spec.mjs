@@ -67,7 +67,6 @@ describe('telemetry repository', () => {
         storageHealth: [{ deviceId: 'disk-a', kind: 'smart', state: 'healthy', collectedAt: receivedAt(1), metrics: {} }],
       }),
     })
-
     const summary = repository.getHostSummary('server', 1)
     expect(summary.sequence).toBe(1)
     expect(summary.payload.metrics.cpu.percent).toBe(10)
@@ -76,7 +75,7 @@ describe('telemetry repository', () => {
     expect(summary.storageHealth.map((entry) => entry.state.deviceId)).toEqual(['disk-a'])
     expect(database.query('SELECT COUNT(*) AS count FROM component_events').get().count).toBe(3)
 
-    repository.recordHeartbeat({
+    const changed = repository.recordHeartbeat({
       deviceId: 7,
       agentId: 70,
       hostType: 'server',
@@ -86,6 +85,17 @@ describe('telemetry repository', () => {
       payload: heartbeat(2, {
         services: [{ name: 'docker', activeState: 'failed', enabled: true }],
       }),
+    })
+    expect(changed.liveDelta).toMatchObject({
+      version: 1,
+      sequence: 2,
+      metricBucket: { received: true, metrics: { cpu: { percent: 20 } } },
+      families: expect.arrayContaining([
+        expect.objectContaining({
+          family: 'services',
+          changes: [expect.objectContaining({ key: 'systemd\0docker', set: { activeState: 'failed' } })],
+        }),
+      ]),
     })
     expect(repository.getHostSummary('server', 1).services[0].state.activeState).toBe('failed')
     expect(database.query("SELECT COUNT(*) AS count FROM component_events WHERE event_kind = 'changed'").get().count).toBe(1)
@@ -102,7 +112,7 @@ describe('telemetry repository', () => {
       hostId: 1,
       receivedAt: receivedAt(2),
       payload: heartbeat(1, { metrics: { cpu: { percent: 99 } } }),
-    })).toMatchObject({ duplicate: true })
+    })).toMatchObject({ duplicate: true, liveDelta: null })
 
     expect(repository.getHostSummary('server', 1).payload.metrics.cpu.percent).toBe(10)
     expect(database.query('SELECT COUNT(*) AS count FROM heartbeat_receipts').get().count).toBe(1)

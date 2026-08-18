@@ -395,8 +395,16 @@ const RELEASE_0_13_9_DETAILS: UnreleasedReleaseNotes = {
 }
 
 export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
-  highlights: [],
-  fixes: [],
+  highlights: [
+    'Systems and an open Agent Inspector now receive compact live host and telemetry updates directly through the authenticated event stream instead of reloading complete snapshots after every heartbeat.',
+    'Registry update reviews now use the projected runtime canonical contract and show the exact final item that would be applied.',
+  ],
+  fixes: [
+    'Systems utilization rows use a compact 3.5-character percentage track with no gap and a stable 125 px minimum width for short hardware labels.',
+    'New SSE topics no longer duplicate their initial data request, while reconnect and sequence-gap recovery still reload authoritative state once.',
+    'Historical OEM updates no longer report canonical CPU, memory, or power fields as removed when the non-destructive merge preserves them.',
+    'Unambiguous legacy M.2 A/E WLAN assignments migrate atomically to the canonical WLAN module slot without losing inventory, Canvas, cable, route-cache, private, or Registry-link state.',
+  ],
   notes: [],
 }
 

@@ -9,6 +9,7 @@ import {
   parseLegacySpeedBps,
   sanitizeCatalogItem,
 } from '../../packages/catalog-protocol/src/index.ts'
+import { removeSupersededWlanResource } from './wlan-resource-migration.mjs'
 
 const IDENTITY_FIELDS = ['type', 'manufacturer', 'secondaryManufacturer', 'family', 'model', 'number']
 const LOCAL_TOP_LEVEL_FIELDS = new Set([
@@ -115,6 +116,19 @@ export function normalizeCatalogUpdateItem(value, fingerprintVersion) {
   return normalizeSanitizedCatalogUpdateItem(sanitizeForFingerprint(value, fingerprintVersion))
 }
 
+function catalogUpdateVersions(input) {
+  if (typeof input === 'number') {
+    return { sourceFingerprintVersion: input, runtimeCanonicalVersion: input }
+  }
+  if (plainObject(input)) {
+    return {
+      sourceFingerprintVersion: input.sourceFingerprintVersion,
+      runtimeCanonicalVersion: input.runtimeCanonicalVersion ?? input.sourceFingerprintVersion,
+    }
+  }
+  return { sourceFingerprintVersion: undefined, runtimeCanonicalVersion: undefined }
+}
+
 function deepMerge(current, incoming) {
   if (incoming === undefined) return structuredClone(current)
   if (!plainObject(current) || !plainObject(incoming)) return structuredClone(incoming)
@@ -139,11 +153,12 @@ function mergePorts(currentPorts = [], incomingPorts = []) {
 function mergeCatalogItem(currentValue, incomingValue, fingerprintVersion) {
   const current = structuredClone(currentValue)
   const incoming = sanitizeForFingerprint(incomingValue, fingerprintVersion)
-  const result = deepMerge(current, incoming)
+  let result = deepMerge(current, incoming)
   for (const field of LOCAL_TOP_LEVEL_FIELDS) {
     if (current[field] !== undefined) result[field] = structuredClone(current[field])
   }
   if (Array.isArray(incoming.ports)) result.ports = mergePorts(current.ports, incoming.ports)
+  result = removeSupersededWlanResource(current, incoming, result)
   if (fingerprintVersion === NETWORK_FINGERPRINT_VERSION) {
     const incomingMinimum = incoming.specs?.hostInterface?.minimumElectricalLanes
     if (incomingMinimum === undefined) {
@@ -260,44 +275,49 @@ function planPorts(currentPorts = [], incomingPorts = []) {
   return { changes, representationChanges, capabilityChanges, attachmentChanges }
 }
 
-export function planCatalogUpdate(currentValue, incomingValue, fingerprintVersion) {
-  const current = sanitizeCurrentForFingerprint(currentValue, fingerprintVersion)
-  const incoming = sanitizeForFingerprint(incomingValue, fingerprintVersion)
+export function planCatalogUpdate(currentValue, incomingValue, versionInput) {
+  const { sourceFingerprintVersion, runtimeCanonicalVersion } = catalogUpdateVersions(versionInput)
+  const current = sanitizeCurrentForFingerprint(currentValue, runtimeCanonicalVersion)
+  const nextItem = mergeCatalogItem(currentValue, incomingValue, runtimeCanonicalVersion)
+  const next = sanitizeCurrentForFingerprint(nextItem, runtimeCanonicalVersion)
   const normalizedCurrent = normalizeSanitizedCatalogUpdateItem(current)
-  const normalizedIncoming = normalizeSanitizedCatalogUpdateItem(incoming)
-  const identity = identityImpact(normalizedCurrent, normalizedIncoming)
+  const normalizedNext = normalizeSanitizedCatalogUpdateItem(next)
+  const identity = identityImpact(normalizedCurrent, normalizedNext)
   const changes = []
 
   for (const field of IDENTITY_FIELDS) {
-    if (semanticEqual(normalizedCurrent[field], normalizedIncoming[field])) continue
+    if (semanticEqual(normalizedCurrent[field], normalizedNext[field])) continue
     const impact = normalizedCurrent[field] === undefined
       ? 'identity-enrichment'
       : field === 'type' ? 'identity-replacement' : 'identity-conflict'
     changes.push({
       path: field,
-      kind: changeKind(normalizedCurrent[field], normalizedIncoming[field]),
+      kind: changeKind(normalizedCurrent[field], normalizedNext[field]),
       current: current[field],
-      next: incoming[field],
+      next: next[field],
       impact,
     })
   }
 
   for (const field of ['subtype', 'aliases', 'specs', 'compatibility', 'fixedComponents']) {
-    collectObjectChanges(normalizedCurrent[field], normalizedIncoming[field], field, 'product-definition', changes)
+    collectObjectChanges(normalizedCurrent[field], normalizedNext[field], field, 'product-definition', changes)
   }
 
-  const portPlan = planPorts(current.ports, incoming.ports)
+  const portPlan = planPorts(current.ports, next.ports)
   changes.push(...portPlan.changes)
 
   const known = new Set([...IDENTITY_FIELDS, 'name', 'subtype', 'aliases', 'specs', 'ports', 'compatibility', 'fixedComponents'])
-  for (const field of Object.keys(normalizedIncoming).filter((key) => !known.has(key)).sort()) {
-    collectObjectChanges(normalizedCurrent[field], normalizedIncoming[field], field, 'product-definition', changes)
+  const remainingFields = [...new Set([...Object.keys(normalizedCurrent), ...Object.keys(normalizedNext)])]
+  for (const field of remainingFields.filter((key) => !known.has(key)).sort()) {
+    collectObjectChanges(normalizedCurrent[field], normalizedNext[field], field, 'product-definition', changes)
   }
 
   return {
-    nextItem: mergeCatalogItem(currentValue, incomingValue, fingerprintVersion),
+    nextItem,
     changes,
     portPlan,
     identityImpact: identity,
+    sourceFingerprintVersion,
+    runtimeCanonicalVersion,
   }
 }

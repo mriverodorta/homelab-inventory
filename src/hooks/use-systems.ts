@@ -1,3 +1,4 @@
+import { useEffect, useMemo } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   createSystemsView,
@@ -9,10 +10,12 @@ import {
   replaceSystemsView,
   setDefaultSystemsView,
 } from '@/lib/systems-api'
-import type { SystemsHostType, SystemsSavedView, SystemsViewConfiguration } from '@/types/systems'
+import type { SystemsHostLive, SystemsHostType, SystemsLiveResponse, SystemsSavedView, SystemsViewConfiguration } from '@/types/systems'
 import { useLiveEventTopic } from '@/live-events/use-live-event-topic'
 
 export function useSystems(projectId: number, enabled: boolean) {
+  const queryClient = useQueryClient()
+  const liveKey = useMemo(() => ['projects', projectId, 'systems', 'live'] as const, [projectId])
   const initial = useQuery({
     queryKey: ['projects', projectId, 'systems'],
     queryFn: () => loadSystems(projectId),
@@ -22,19 +25,39 @@ export function useSystems(projectId: number, enabled: boolean) {
     refetchOnReconnect: false,
   })
   const live = useQuery({
-    queryKey: ['projects', projectId, 'systems', 'live'],
+    queryKey: liveKey,
     queryFn: () => loadSystemsLive(projectId),
-    enabled: enabled && initial.isSuccess,
+    enabled: false,
     staleTime: Number.POSITIVE_INFINITY,
     refetchOnMount: false,
     refetchOnReconnect: false,
   })
+  useEffect(() => {
+    if (!enabled || !initial.data) return
+    queryClient.setQueryData<SystemsLiveResponse>(liveKey, {
+      projectId,
+      generatedAt: initial.data.generatedAt,
+      systems: initial.data.systems,
+    })
+  }, [enabled, initial.data, liveKey, projectId, queryClient])
   useLiveEventTopic({
     topic: `systems:${projectId}`,
     enabled: enabled && initial.isSuccess,
     onEvent: (event) => {
-      if (['agent.activation', 'agent.registration', 'agent.status'].includes(event.kind)) void initial.refetch()
-      void live.refetch()
+      const system = event.payload.system as SystemsHostLive | null | undefined
+      if (system && Number.isSafeInteger(system.itemId) && system.itemId > 0) {
+        queryClient.setQueryData<SystemsLiveResponse>(liveKey, (current) => {
+          const systems = current?.systems ?? initial.data?.systems ?? []
+          return {
+            projectId,
+            generatedAt: event.occurredAt,
+            systems: [...systems.filter((candidate) => candidate.itemId !== system.itemId), system],
+          }
+        })
+      } else if (!event.kind.startsWith('agent.')) {
+        void live.refetch()
+      }
+      if (['agent.activation', 'agent.registration'].includes(event.kind)) void initial.refetch()
     },
     onResync: () => { void initial.refetch(); void live.refetch() },
   })

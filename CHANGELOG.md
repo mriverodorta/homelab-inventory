@@ -6,6 +6,18 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 
 ## Unreleased
 
+### Changed
+
+- Systems and an open Agent Inspector now receive committed host rows, minute samples, and changed telemetry entities directly through the authenticated SSE stream; full REST snapshots are limited to initial load and recovery.
+- Registry update comparisons now retain the signed source fingerprint as provenance while using the projected runtime canonical version for merge, policy, and review calculations.
+
+### Fixed
+
+- Systems utilization rows now use a compact 3.5-character percentage track with no artificial gap and retain a 125 px minimum width so short hardware labels cannot collapse their graphs.
+- Opening a new SSE topic no longer immediately duplicates its initial REST request, while reconnects and missed stream generations still perform one authoritative resynchronization.
+- OEM Registry reviews now compare the current inventory item with the final non-destructively merged proposal, preventing retained canonical power, CPU, and memory fields from appearing as removed.
+- Legacy M.2 A/E WLAN assignments now move atomically to the canonical `optionalModuleSlots.wlan-m2` resource when the relationship is unambiguous, without changing the assigned component, workspace topology, route cache, private fields, or Registry link.
+
 ## [0.13.9] - 2026-08-18
 
 ### Fixed

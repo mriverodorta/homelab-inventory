@@ -46,7 +46,7 @@ describe('ApplicationLiveEventsProvider', () => {
       topics: ['agents:fleet', 'notifications:summary'],
       topicSequences: { 'agents:fleet': 2, 'notifications:summary': 0 },
     }))
-    expect(resync).toHaveBeenCalledTimes(2)
+    expect(resync).not.toHaveBeenCalled()
     act(() => sources[0].emit('app-event', { version: 1, generationId: 'g1', sequence: 3, topic: 'agents:fleet', topics: ['agents:fleet'], kind: 'changed', occurredAt: 'now', payload: {} }))
     expect(events).toHaveBeenCalledTimes(1)
     act(() => sources[0].emit('app-event', { version: 1, generationId: 'g1', sequence: 3, topic: 'agents:fleet', topics: ['agents:fleet'], kind: 'changed', occurredAt: 'now', payload: {} }))
@@ -62,7 +62,7 @@ describe('ApplicationLiveEventsProvider', () => {
       topics: ['agents:fleet'],
       topicSequences: { 'agents:fleet': 4 },
     }))
-    expect(resync).toHaveBeenCalledTimes(3)
+    expect(resync).toHaveBeenCalledOnce()
   })
 
   it('dispatches one multi-topic event to every matching subscription', async () => {

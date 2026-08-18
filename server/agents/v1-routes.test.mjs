@@ -4,7 +4,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { generateKeyPairSync, sign } from 'node:crypto'
 import { gzipSync } from 'node:zlib'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { HomelabInventoryStore } from '../db/store.mjs'
 import { createAgentV1BodyMiddleware, registerAgentV1Routes } from './v1-routes.mjs'
 import { AGENT_SIGNATURE_HEADERS, canonicalAgentRequest, sha256Hex } from './signature-auth.mjs'
@@ -226,6 +226,46 @@ describe('agent protocol v1 routes', () => {
         hostId: 1,
         metrics: { cpu: { percent: 12.5 } },
       })
+    } finally {
+      await close(server)
+    }
+  })
+
+  it('publishes the internal live delta without returning it to the Agent', async () => {
+    const store = await createStore()
+    const onAgentChanged = vi.fn()
+    const liveDelta = {
+      version: 1,
+      sequence: 1,
+      receivedAt: '2026-08-18T14:00:00.000Z',
+      collectedAt: '2026-08-18T14:00:00.000Z',
+      agentVersion: '0.3.3',
+      metricBucket: { at: '2026-08-18T14:00:00.000Z', received: true, metrics: { cpu: { percent: 12 } } },
+      runtime: { uptimeSeconds: 60, loadAverage: [], memory: {} },
+      families: [],
+    }
+    const heartbeatSink = vi.fn(async () => ({
+      duplicate: false,
+      acceptedRevisions: { services: 1 },
+      reconcile: [],
+      requestCapabilities: false,
+      liveDelta,
+    }))
+    const { server, url } = await listen(createApp(store, { heartbeatSink, onAgentChanged }))
+    try {
+      const enrolled = await enrollAndActivate(url, 'server', 1)
+      const response = await signedHeartbeat({
+        url, hostType: 'server', hostId: 1, deviceId: enrolled.activation.deviceId,
+        pair: enrolled.agentIdentity.pair,
+      })
+      const body = await response.json()
+      expect(response.status).toBe(200)
+      expect(body.telemetry).toMatchObject({ acceptedRevisions: { services: 1 } })
+      expect(body.telemetry).not.toHaveProperty('liveDelta')
+      expect(onAgentChanged).toHaveBeenLastCalledWith(expect.objectContaining({
+        kind: 'heartbeat',
+        liveTelemetry: liveDelta,
+      }))
     } finally {
       await close(server)
     }

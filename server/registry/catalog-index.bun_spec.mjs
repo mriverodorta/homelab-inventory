@@ -172,6 +172,7 @@ describe('catalog sqlite index', () => {
     })).toMatchObject({ total: 1, items: [{ templateKey: 'ram-ddr3l-8gb', item: { specs: { capacityMib: 8192 } } }] })
     expect(index.getByKey('ram-ddr3l-8gb')).toMatchObject({
       fingerprintVersion: 8,
+      runtimeCanonicalVersion: 9,
       contentHash: '2'.repeat(64),
       item: { specs: { capacityMib: 8192 } },
     })

@@ -14,8 +14,8 @@ export function SystemsUtilizationBar({
     ? normalized >= 90 ? 'bg-[#b34f43]' : normalized >= 80 ? 'bg-[#c1841a]' : 'bg-[#3f8f6f]'
     : kind === 'memory' ? 'bg-[#3f8f6f]' : 'bg-[#3f7f9f]'
   return (
-    <div className="grid min-w-0 grid-cols-[4ch_minmax(0,1fr)] items-center gap-0.5" role="img" aria-label={`${kind} utilization ${rounded} percent`}>
-      <span className="w-[4ch] shrink-0 text-left text-[10px] font-semibold leading-none tabular-nums text-[#665f57]">{label}</span>
+    <div className="grid min-w-[125px] grid-cols-[3.5ch_minmax(0,1fr)] items-center" role="img" aria-label={`${kind} utilization ${rounded} percent`}>
+      <span className="w-[3.5ch] shrink-0 text-left text-[10px] font-semibold leading-none tabular-nums text-[#665f57]">{label}</span>
       <div className="relative h-1.5 min-w-0 overflow-hidden rounded-[2px] bg-[#ded8cf]">
         <div className="absolute inset-0 flex">
           <div data-memory-segment={kind === 'memory' ? 'used' : undefined} className={cn('h-full', tone)} style={{ width: `${normalized}%` }} />

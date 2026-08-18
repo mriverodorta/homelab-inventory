@@ -10,6 +10,13 @@ import {
 } from '../../packages/catalog-protocol/src/index.ts'
 import { planCatalogUpdate } from './catalog-update-semantics.mjs'
 
+export function catalogUpdateVersionContext(template) {
+  return {
+    sourceFingerprintVersion: template.fingerprintVersion,
+    runtimeCanonicalVersion: template.runtimeCanonicalVersion ?? template.fingerprintVersion,
+  }
+}
+
 function valueAt(item, field) {
   return Object.hasOwn(item, field) ? item[field] : undefined
 }
@@ -56,10 +63,14 @@ function assertRamMemoryRequirements(currentValue, nextValue, fingerprintVersion
   }
 }
 
-export function catalogFieldDiff(currentValue, nextValue, fingerprintVersion) {
-  const semantic = planCatalogUpdate(currentValue, nextValue, fingerprintVersion).changes
-  const current = sanitizeCurrentForFingerprint(currentValue, fingerprintVersion)
-  const next = sanitizeForFingerprint(nextValue, fingerprintVersion)
+export function catalogFieldDiff(currentValue, nextValue, versionInput) {
+  const plan = planCatalogUpdate(currentValue, nextValue, versionInput)
+  const runtimeCanonicalVersion = typeof versionInput === 'object'
+    ? versionInput.runtimeCanonicalVersion ?? versionInput.sourceFingerprintVersion
+    : versionInput
+  const semantic = plan.changes
+  const current = sanitizeCurrentForFingerprint(currentValue, runtimeCanonicalVersion)
+  const next = sanitizeCurrentForFingerprint(plan.nextItem, runtimeCanonicalVersion)
   const changedFields = [...new Set(semantic.map((change) => change.path.match(/^[^.[\]]+/)?.[0]).filter(Boolean))]
   return changedFields.map((field) => {
     const result = { field, current: valueAt(current, field), next: valueAt(next, field) }
@@ -72,9 +83,12 @@ export function catalogFieldDiff(currentValue, nextValue, fingerprintVersion) {
   })
 }
 
-export function mergeCatalogUpdate(currentValue, nextValue, fingerprintVersion) {
-  const current = sanitizeCurrentForFingerprint(currentValue, fingerprintVersion)
-  const next = sanitizeForFingerprint(nextValue, fingerprintVersion)
-  assertRamMemoryRequirements(current, next, fingerprintVersion)
-  return planCatalogUpdate(currentValue, nextValue, fingerprintVersion).nextItem
+export function mergeCatalogUpdate(currentValue, nextValue, versionInput) {
+  const runtimeCanonicalVersion = typeof versionInput === 'object'
+    ? versionInput.runtimeCanonicalVersion ?? versionInput.sourceFingerprintVersion
+    : versionInput
+  const current = sanitizeCurrentForFingerprint(currentValue, runtimeCanonicalVersion)
+  const next = sanitizeForFingerprint(nextValue, runtimeCanonicalVersion)
+  assertRamMemoryRequirements(current, next, runtimeCanonicalVersion)
+  return planCatalogUpdate(currentValue, nextValue, versionInput).nextItem
 }

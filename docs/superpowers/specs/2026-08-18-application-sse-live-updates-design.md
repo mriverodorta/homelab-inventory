@@ -50,7 +50,7 @@ The following current browser polling paths move to SSE:
 | --- | --- | --- |
 | Systems live rows | `GET /systems/live` every 30 seconds | Active Systems topic; compact changed-host events |
 | Agent fleet status | `GET /api/agent/status` every 60 seconds | Compact host status events |
-| Selected-host telemetry | Host telemetry every 60 seconds | Host telemetry invalidation after committed heartbeat |
+| Selected-host telemetry | Host telemetry every 60 seconds | One committed minute sample and changed latest-state entities |
 | Agent hardware evidence | Hardware snapshot every 60 seconds | Host hardware invalidation after a new scan is committed |
 | Notification snapshot | Full config and summary every 30 seconds | Summary events only while its visible control is mounted |
 | Notification incidents | Incident pages every 60 seconds | Incident invalidation while Notification Center is open |
@@ -182,7 +182,6 @@ static fields and commands.
 
 Larger or independently paginated resources use an invalidation event:
 
-- selected-host 30-minute telemetry;
 - Agent hardware snapshot and suggestions;
 - notification incident pages;
 - full notification configuration.
@@ -190,6 +189,10 @@ Larger or independently paginated resources use an invalidation event:
 The client invalidates and reloads these queries only when their consumer is
 currently enabled. Multiple events for the same resource in a short interval
 are coalesced into one refresh. There is no repeating timer.
+
+Selected-host telemetry is not an invalidation-only resource. Its initial
+30-minute snapshot is patched directly with one new minute and changed entity
+fields. It reloads only for stream recovery or an explicitly oversized delta.
 
 ## Systems Payload
 

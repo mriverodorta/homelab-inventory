@@ -15,7 +15,13 @@ export function parseApplicationLiveTopic(value) {
   if (value === 'demo:session') return Object.freeze({ value, permission: 'workspace.view', kind: 'demo-session' })
 
   const systems = /^systems:([^:]+)$/.exec(value)
-  if (systems) return Object.freeze({ value, permission: 'project.view', kind: 'systems', projectId: positiveId(systems[1], 'Systems project ID') })
+  if (systems) return Object.freeze({
+    value,
+    permission: 'project.view',
+    permissions: Object.freeze(['project.view', 'agents.view']),
+    kind: 'systems',
+    projectId: positiveId(systems[1], 'Systems project ID'),
+  })
 
   const host = /^(agent-telemetry|agent-hardware):([^:]+):([^:]+)$/.exec(value)
   if (host) {
@@ -40,4 +46,3 @@ export function parseApplicationLiveTopics(input, { maximum = 12 } = {}) {
   if (values.length > maximum) throw new Error(`No more than ${maximum} application live event topics may be requested.`)
   return Object.freeze(values.map(parseApplicationLiveTopic))
 }
-
