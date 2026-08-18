@@ -6,6 +6,8 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 
 ## Unreleased
 
+## [0.13.12] - 2026-08-18
+
 ### Fixed
 
 - Deterministic Registry topology migrations shown in review-required groups can now be resolved and applied through the same atomic workflow as blocked updates.

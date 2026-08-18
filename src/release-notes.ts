@@ -417,11 +417,17 @@ const RELEASE_0_13_11_DETAILS: UnreleasedReleaseNotes = {
   notes: [],
 }
 
-export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
+const RELEASE_0_13_12_DETAILS: UnreleasedReleaseNotes = {
   highlights: [],
   fixes: [
     'Resolve and apply now completes deterministic Registry topology migrations shown in review-required updates instead of rejecting them as unavailable.',
   ],
+  notes: [],
+}
+
+export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
+  highlights: [],
+  fixes: [],
   notes: [],
 }
 
@@ -952,9 +958,16 @@ const RELEASE_0_2_1_DETAILS: UnreleasedReleaseNotes = {
 
 export const RELEASE_NOTES: ReleaseNoteEntry[] = [
   {
-    version: '0.13.11',
+    version: '0.13.12',
     date: '2026-08-18',
     channel: 'latest',
+    title: 'Resolve Registry topology updates',
+    ...RELEASE_0_13_12_DETAILS,
+  },
+  {
+    version: '0.13.11',
+    date: '2026-08-18',
+    channel: 'release',
     title: 'Clear OEM resource migrations',
     ...RELEASE_0_13_11_DETAILS,
   },
