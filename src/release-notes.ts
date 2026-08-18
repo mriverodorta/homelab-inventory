@@ -425,7 +425,7 @@ const RELEASE_0_13_12_DETAILS: UnreleasedReleaseNotes = {
   notes: [],
 }
 
-export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
+const RELEASE_0_13_13_DETAILS: UnreleasedReleaseNotes = {
   highlights: [
     'Catalog contract v12 models physical M.2 A/E socket keys, PCIe and USB bus evidence, component bus requirements, and OEM intended use without treating WLAN intent as a compatibility restriction.',
     'Systems, Inspector, Canvas, and Audit now share one persisted server-side compatibility projection with scoped live updates and a clear separation between actionable incompatibilities and missing metadata.',
@@ -439,6 +439,12 @@ export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
     'Unambiguous missing legacy allocations are restored automatically while ambiguous cases remain unchanged and actionable.',
     'Portable project backups remap persisted compatibility findings to restored semantic resource slots without losing assignments or archived schema-29 inventory collections.',
   ],
+  notes: [],
+}
+
+export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
+  highlights: [],
+  fixes: [],
   notes: [],
 }
 
@@ -969,9 +975,16 @@ const RELEASE_0_2_1_DETAILS: UnreleasedReleaseNotes = {
 
 export const RELEASE_NOTES: ReleaseNoteEntry[] = [
   {
-    version: '0.13.12',
+    version: '0.13.13',
     date: '2026-08-18',
     channel: 'latest',
+    title: 'Physical M.2 A/E compatibility',
+    ...RELEASE_0_13_13_DETAILS,
+  },
+  {
+    version: '0.13.12',
+    date: '2026-08-18',
+    channel: 'release',
     title: 'Resolve Registry topology updates',
     ...RELEASE_0_13_12_DETAILS,
   },

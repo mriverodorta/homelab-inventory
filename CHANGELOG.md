@@ -6,6 +6,8 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 
 ## Unreleased
 
+## [0.13.13] - 2026-08-18
+
 ### Added
 
 - Catalog contract v12 adds first-class physical M.2 A/E socket keying, tri-state PCIe and USB bus evidence, plural component bus requirements, and descriptive OEM intended use.
