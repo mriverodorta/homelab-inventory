@@ -6,6 +6,8 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 
 ## Unreleased
 
+## [0.13.9] - 2026-08-18
+
 ### Fixed
 
 - Embedded Agent 0.3.3 now reports Linux availability counters and FreeBSD page-class plus ZFS ARC counters so every supported host can calculate the same reclaimable-aware memory pressure.

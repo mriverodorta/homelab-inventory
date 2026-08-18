@@ -384,13 +384,19 @@ const RELEASE_0_13_8_DETAILS: UnreleasedReleaseNotes = {
   notes: [],
 }
 
-export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
+const RELEASE_0_13_9_DETAILS: UnreleasedReleaseNotes = {
   highlights: [],
   fixes: [
     'Embedded Agent 0.3.3 reports the Linux and FreeBSD counters required for consistent reclaimable-aware memory pressure.',
     'Systems memory utilization now reports kernel-estimated pressure consistently across Linux, FreeBSD, and OPNsense without counting reclaimable cache, inactive pages, or ZFS ARC as additional usage.',
     'Systems utilization percentages now keep an exact four-character label track and a compact gap before the graph.',
   ],
+  notes: [],
+}
+
+export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
+  highlights: [],
+  fixes: [],
   notes: [],
 }
 
@@ -921,9 +927,16 @@ const RELEASE_0_2_1_DETAILS: UnreleasedReleaseNotes = {
 
 export const RELEASE_NOTES: ReleaseNoteEntry[] = [
   {
-    version: '0.13.8',
+    version: '0.13.9',
     date: '2026-08-18',
     channel: 'latest',
+    title: 'Accurate system memory pressure',
+    ...RELEASE_0_13_9_DETAILS,
+  },
+  {
+    version: '0.13.8',
+    date: '2026-08-18',
+    channel: 'release',
     title: 'Systems memory visualization',
     ...RELEASE_0_13_8_DETAILS,
   },

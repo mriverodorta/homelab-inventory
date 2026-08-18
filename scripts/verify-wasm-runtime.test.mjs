@@ -31,6 +31,7 @@ describe('WASM runtime verifier', () => {
 
     for (const module of [
       'server/systems/attention-projector.mjs',
+      'server/systems/memory-pressure.mjs',
       'server/systems/read-service.mjs',
       'server/systems/routes.mjs',
       'server/systems/saved-view-service.mjs',
