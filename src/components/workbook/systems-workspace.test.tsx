@@ -142,6 +142,24 @@ describe('SystemsWorkspace', () => {
     expect(header.scrollLeft).toBe(72)
   })
 
+  it('pins identity columns only at the desktop breakpoint', () => {
+    renderWorkspace()
+    const nameCell = screen.getByText('HP EliteDesk 800 G6').closest('[role="cell"]')
+    const row = nameCell?.closest('[role="row"]')
+    const typeCell = row?.querySelectorAll('[role="cell"]')[0]
+    const typeHeader = screen.getByRole('button', { name: 'Sort by Type' }).closest('[role="columnheader"]')
+    const nameHeader = screen.getByRole('button', { name: 'Sort by Name' }).closest('[role="columnheader"]')
+    const manufacturerCell = screen.getByText('HP', { exact: true }).closest('[role="cell"]')
+
+    expect(typeCell).toHaveClass('md:sticky', 'md:z-[2]')
+    expect(typeHeader).toHaveClass('md:sticky', 'md:z-[2]')
+    expect(nameCell).toHaveClass('md:sticky', 'md:z-[2]')
+    expect(nameHeader).toHaveClass('md:sticky', 'md:z-[2]')
+    expect(typeCell).not.toHaveStyle({ position: 'sticky' })
+    expect(nameCell).not.toHaveStyle({ position: 'sticky' })
+    expect(manufacturerCell).not.toHaveClass('md:sticky')
+  })
+
   it('centers compact type and status columns', () => {
     renderWorkspace()
     expect(screen.getByLabelText('Agent online').closest('[role="cell"]')).toHaveClass('text-center')

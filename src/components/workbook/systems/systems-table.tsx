@@ -158,9 +158,13 @@ function tableColumns(orderedColumns: readonly SystemsViewColumn[], onAttention:
   }))
 }
 
-function stickyStyle(key: SystemsColumnKey, widths: Record<SystemsColumnKey, number>): CSSProperties | undefined {
-  if (key === 'type') return { position: 'sticky', left: 0, zIndex: 2 }
-  if (key === 'name') return { position: 'sticky', left: widths.type, zIndex: 2 }
+function isPinnedIdentityColumn(key: SystemsColumnKey) {
+  return key === 'type' || key === 'name'
+}
+
+function stickyOffsetStyle(key: SystemsColumnKey, widths: Record<SystemsColumnKey, number>): CSSProperties | undefined {
+  if (key === 'type') return { left: 0 }
+  if (key === 'name') return { left: widths.type }
   return undefined
 }
 
@@ -258,8 +262,8 @@ export function SystemsTable({
           <div
             key={cell.id}
             role="cell"
-            className={cn('flex min-w-0 items-center overflow-hidden px-3 py-2 text-sm', COMPACT_COLUMNS.has(key) && 'justify-center px-1 text-center', (key === 'type' || key === 'name') && (selectedItemId === row.original.itemKey ? 'bg-[#eee9f6]' : 'bg-[#fffdf8] group-hover:bg-[#f5f1ea]'))}
-            style={stickyStyle(key, widths)}
+            className={cn('flex min-w-0 items-center overflow-hidden px-3 py-2 text-sm', COMPACT_COLUMNS.has(key) && 'justify-center px-1 text-center', isPinnedIdentityColumn(key) && 'md:sticky md:z-[2]', isPinnedIdentityColumn(key) && (selectedItemId === row.original.itemKey ? 'bg-[#eee9f6]' : 'bg-[#fffdf8] group-hover:bg-[#f5f1ea]'))}
+            style={stickyOffsetStyle(key, widths)}
           >
             {flexRender(cell.column.columnDef.cell, cell.getContext())}
           </div>
@@ -277,7 +281,7 @@ export function SystemsTable({
             const key = header.column.id as SystemsColumnKey
             const CompactIcon = key === 'type' ? Server : key === 'attention' ? TriangleAlert : key === 'registry' ? Link : undefined
             return (
-              <div key={header.id} role="columnheader" className={cn('group relative flex min-w-0 items-center overflow-hidden px-3', COMPACT_COLUMNS.has(key) && 'justify-center px-1 text-center', (key === 'type' || key === 'name') && 'bg-[#eeeae3]')} style={stickyStyle(key, widths)}>
+              <div key={header.id} role="columnheader" className={cn('group relative flex min-w-0 items-center overflow-hidden px-3', COMPACT_COLUMNS.has(key) && 'justify-center px-1 text-center', isPinnedIdentityColumn(key) && 'bg-[#eeeae3] md:sticky md:z-[2]')} style={stickyOffsetStyle(key, widths)}>
                 <SortButton column={key} label={SYSTEMS_COLUMN_LABELS[key]} compactIcon={CompactIcon} {...sort} />
                 {COMPACT_COLUMNS.has(key) ? null : (
                   <button
