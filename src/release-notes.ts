@@ -442,11 +442,17 @@ const RELEASE_0_13_13_DETAILS: UnreleasedReleaseNotes = {
   notes: [],
 }
 
-export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
+const RELEASE_0_13_14_DETAILS: UnreleasedReleaseNotes = {
   highlights: [],
   fixes: [
     'Catalog revision 24 now activates with byte-exact Registry fingerprint-v12 projections while preserving OEM names, bus-evidence states, and signed historical aliases.',
   ],
+  notes: [],
+}
+
+export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
+  highlights: [],
+  fixes: [],
   notes: [],
 }
 
@@ -977,9 +983,16 @@ const RELEASE_0_2_1_DETAILS: UnreleasedReleaseNotes = {
 
 export const RELEASE_NOTES: ReleaseNoteEntry[] = [
   {
-    version: '0.13.13',
+    version: '0.13.14',
     date: '2026-08-18',
     channel: 'latest',
+    title: 'Registry v12 projection reconciliation',
+    ...RELEASE_0_13_14_DETAILS,
+  },
+  {
+    version: '0.13.13',
+    date: '2026-08-18',
+    channel: 'release',
     title: 'Physical M.2 A/E compatibility',
     ...RELEASE_0_13_13_DETAILS,
   },

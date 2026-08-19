@@ -6,6 +6,8 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 
 ## Unreleased
 
+## [0.13.14] - 2026-08-18
+
 ### Fixed
 
 - Catalog revision 24 now activates with byte-exact Registry fingerprint-v12 topology and content hashes while preserving canonical OEM names, tri-state bus evidence, and every signed historical identity alias.
