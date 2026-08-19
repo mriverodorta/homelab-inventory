@@ -1,6 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useLiveEventTopic } from '@/live-events/use-live-event-topic'
 import * as api from '@/lib/inventory-metadata-api'
+import { inventoryMetadataKeys } from '@/lib/inventory-metadata-keys'
+import {
+  applyInventoryMetadataItemChange,
+  commitInventoryMetadataMutation,
+  inventoryMetadataItemChangedPayloadSchema,
+} from '@/lib/inventory-metadata-live'
 import type {
   CustomFieldDefinitionInput,
   InventoryItemMetadataInput,
@@ -8,20 +14,32 @@ import type {
   InventoryTagInput,
 } from '@/types/inventory-metadata'
 
-export const inventoryMetadataKeys = Object.freeze({
-  root: ['inventory-metadata'] as const,
-  catalogs: () => [...inventoryMetadataKeys.root, 'catalog'] as const,
-  catalog: (includeArchived = false) => [...inventoryMetadataKeys.catalogs(), { includeArchived }] as const,
-  project: (projectId: number) => [...inventoryMetadataKeys.root, 'project', projectId] as const,
-  projectItems: (projectId: number) => [...inventoryMetadataKeys.root, 'project', projectId, 'items'] as const,
-  projectProjections: (projectId: number) => [...inventoryMetadataKeys.root, 'project', projectId, 'projections'] as const,
-  projectProjection: (projectId: number, query: api.InventoryMetadataProjectQuery) => (
-    [...inventoryMetadataKeys.projectProjections(projectId), query] as const
-  ),
-  item: (projectId: number, ref: InventoryMetadataItemRef) => (
-    [...inventoryMetadataKeys.projectItems(projectId), ref.type, ref.id] as const
-  ),
-})
+export { inventoryMetadataKeys } from '@/lib/inventory-metadata-keys'
+
+function applyProjectMetadataEvent(
+  queryClient: ReturnType<typeof useQueryClient>,
+  projectId: number,
+  event: Parameters<Parameters<typeof useLiveEventTopic>[0]['onEvent']>[0],
+) {
+  if (event.kind === 'inventory-metadata.item-changed') {
+    const parsed = inventoryMetadataItemChangedPayloadSchema.safeParse(event.payload)
+    if (!parsed.success || !parsed.data.projectIds.includes(projectId)) return
+    const changedProjectIds = applyInventoryMetadataItemChange(queryClient, parsed.data)
+    for (const changedProjectId of changedProjectIds) {
+      void queryClient.invalidateQueries({
+        queryKey: inventoryMetadataKeys.projectProjections(changedProjectId),
+      })
+    }
+    return
+  }
+  void queryClient.invalidateQueries({ queryKey: inventoryMetadataKeys.projectItems(projectId) })
+  void queryClient.invalidateQueries({ queryKey: inventoryMetadataKeys.projectProjections(projectId) })
+}
+
+function resyncProjectMetadata(queryClient: ReturnType<typeof useQueryClient>, projectId: number) {
+  void queryClient.invalidateQueries({ queryKey: inventoryMetadataKeys.projectItems(projectId) })
+  void queryClient.invalidateQueries({ queryKey: inventoryMetadataKeys.projectProjections(projectId) })
+}
 
 export function useInventoryMetadataProjectProjection(
   projectId: number,
@@ -38,8 +56,8 @@ export function useInventoryMetadataProjectProjection(
   useLiveEventTopic({
     topic: `inventory-metadata:${projectId}`,
     enabled,
-    onEvent: () => void queryClient.invalidateQueries({ queryKey: inventoryMetadataKeys.projectProjections(projectId) }),
-    onResync: () => void queryClient.invalidateQueries({ queryKey: inventoryMetadataKeys.projectProjections(projectId) }),
+    onEvent: (event) => applyProjectMetadataEvent(queryClient, projectId, event),
+    onResync: () => resyncProjectMetadata(queryClient, projectId),
   })
   return projection
 }
@@ -80,17 +98,17 @@ export function useInventoryItemMetadata(
   useLiveEventTopic({
     topic: `inventory-metadata:${projectId}`,
     enabled,
-    onEvent: () => void queryClient.invalidateQueries({ queryKey: projectKey }),
-    onResync: () => void queryClient.invalidateQueries({ queryKey: projectKey }),
+    onEvent: (event) => applyProjectMetadataEvent(queryClient, projectId, event),
+    onResync: () => resyncProjectMetadata(queryClient, projectId),
   })
   return query
 }
 
-export function useInventoryMetadataMutations(projectId?: number) {
+export function useInventoryMetadataMutations(_projectId?: number) {
   const queryClient = useQueryClient()
   const refreshCatalog = () => queryClient.invalidateQueries({ queryKey: inventoryMetadataKeys.catalogs() })
-  const refreshProjects = (projectIds: readonly number[]) => Promise.all(projectIds.map((id) => (
-    queryClient.invalidateQueries({ queryKey: inventoryMetadataKeys.projectItems(id) })
+  const refreshProjectProjections = (projectIds: readonly number[]) => Promise.all(projectIds.map((id) => (
+    queryClient.invalidateQueries({ queryKey: inventoryMetadataKeys.projectProjections(id) })
   )))
 
   return {
@@ -145,10 +163,8 @@ export function useInventoryMetadataMutations(projectId?: number) {
         api.updateInventoryItemMetadata(ref, input, expectedRevision)
       ),
       onSuccess: async (result, variables) => {
-        await refreshProjects(result.affectedProjectIds)
-        if (projectId !== undefined) {
-          queryClient.setQueryData(inventoryMetadataKeys.item(projectId, variables.ref), result.metadata)
-        }
+        const affectedProjectIds = commitInventoryMetadataMutation(queryClient, variables.ref, result)
+        await refreshProjectProjections(affectedProjectIds)
       },
     }),
   }

@@ -4,7 +4,7 @@ import {
   inventoryItemMetadataSchema,
   inventoryMetadataCatalogSchema,
 } from '@/types/inventory-metadata'
-import { inventoryMetadataKeys } from '@/lib/inventory-metadata-query'
+import { inventoryMetadataKeys } from '@/lib/inventory-metadata-keys'
 
 const timestamps = {
   archivedAt: null,
@@ -63,6 +63,9 @@ describe('inventory metadata client contracts', () => {
     expect(inventoryMetadataKeys.catalog()).toEqual(['inventory-metadata', 'catalog', { includeArchived: false }])
     expect(inventoryMetadataKeys.item(3, { type: 'server', id: 7 })).toEqual([
       'inventory-metadata', 'project', 3, 'items', 'server', 7,
+    ])
+    expect(inventoryMetadataKeys.itemRevision(3, 91)).toEqual([
+      'inventory-metadata', 'project', 3, 'item-revisions', 91,
     ])
   })
 })
