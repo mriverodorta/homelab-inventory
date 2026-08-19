@@ -121,7 +121,7 @@ function includesInventoryType(
 
 export function getInventoryDialogTabs(type: InventoryType, networkTechnology?: string): InventoryDialogTabId[] {
   if (type === 'motherboard') {
-    return ['specs', 'cpu', 'memory', 'storage', 'expansion', 'ports', 'power', 'compatibility']
+    return ['specs', 'cpu', 'memory', 'storage', 'expansion', 'ports', 'power', 'compatibility', 'metadata']
   }
   return INVENTORY_DIALOG_TAB_ORDER.filter((tab) => {
     if (['cpu', 'memory', 'storage', 'expansion', 'power'].includes(tab)) return false

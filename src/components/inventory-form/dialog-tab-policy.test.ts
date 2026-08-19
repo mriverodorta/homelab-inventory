@@ -18,28 +18,29 @@ describe('inventory dialog tab policy', () => {
       'ports',
       'power',
       'smart',
+      'metadata',
     ])
   })
 
   it.each([
-    ['server', ['specs', 'compatibility', 'resources', 'ports']],
-    ['nas', ['specs', 'compatibility', 'resources', 'ports']],
-    ['motherboard', ['specs', 'cpu', 'memory', 'storage', 'expansion', 'ports', 'power', 'compatibility']],
-    ['cpu', ['specs', 'compatibility']],
-    ['ram', ['specs', 'compatibility']],
-    ['gpu', ['specs', 'compatibility', 'ports']],
-    ['network', ['specs', 'compatibility', 'ports']],
-    ['switch', ['specs', 'ports']],
-    ['patchPanel', ['specs', 'ports']],
-    ['storage', ['specs']],
-    ['powerStrip', ['specs', 'smart']],
+    ['server', ['specs', 'compatibility', 'resources', 'ports', 'metadata']],
+    ['nas', ['specs', 'compatibility', 'resources', 'ports', 'metadata']],
+    ['motherboard', ['specs', 'cpu', 'memory', 'storage', 'expansion', 'ports', 'power', 'compatibility', 'metadata']],
+    ['cpu', ['specs', 'compatibility', 'metadata']],
+    ['ram', ['specs', 'compatibility', 'metadata']],
+    ['gpu', ['specs', 'compatibility', 'ports', 'metadata']],
+    ['network', ['specs', 'compatibility', 'ports', 'metadata']],
+    ['switch', ['specs', 'ports', 'metadata']],
+    ['patchPanel', ['specs', 'ports', 'metadata']],
+    ['storage', ['specs', 'metadata']],
+    ['powerStrip', ['specs', 'smart', 'metadata']],
   ] as const)('returns the available tabs for %s', (type, tabs) => {
     expect(getInventoryDialogTabs(type)).toEqual(tabs)
   })
 
   it('does not expose physical port editing for radio-only adapters', () => {
-    expect(getInventoryDialogTabs('network', 'wifi')).toEqual(['specs', 'compatibility'])
-    expect(getInventoryDialogTabs('network', 'cellular')).toEqual(['specs', 'compatibility'])
+    expect(getInventoryDialogTabs('network', 'wifi')).toEqual(['specs', 'compatibility', 'metadata'])
+    expect(getInventoryDialogTabs('network', 'cellular')).toEqual(['specs', 'compatibility', 'metadata'])
   })
 
   it('routes to the first available tab containing an error', () => {
