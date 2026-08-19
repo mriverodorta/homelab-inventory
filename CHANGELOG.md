@@ -25,6 +25,7 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 - Canvas placement Undo or Redo restores exact engine coordinates and reconciles the durable route cache without persisting transient empty geometry during remeasurement.
 - Registry catalog definition enrichment advances linked inventory row versions without advancing project topology when assignments, ports, placements, and connections are unchanged.
 - Embedded Agent binaries now build with the pinned Go 1.26.7 security patch before the zero-vulnerability container gate runs.
+- Inventory metadata autosave now reuses its authoritative response and data-bearing SSE event instead of issuing duplicate item reads after every tag or custom-field change.
 
 ## [0.13.19] - 2026-08-19
 

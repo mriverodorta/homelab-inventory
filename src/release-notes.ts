@@ -506,6 +506,7 @@ export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
     'Canvas placement Undo or Redo restores exact engine coordinates and reconciles the durable route cache without persisting transient empty geometry during remeasurement.',
     'Registry catalog definition enrichment updates linked inventory row versions without advancing project topology when assignments, ports, placements, and connections remain unchanged.',
     'Embedded Agent binaries now build with the pinned Go 1.26.7 security patch before the zero-vulnerability container gate runs.',
+    'Inventory metadata autosave now reuses its authoritative response and data-bearing SSE event instead of issuing duplicate item reads after every tag or custom-field change.',
   ],
   notes: [
     'Core schema 26 stores normalized custom-field definitions, options, typed values, tags, and item relationships; schema 27 stores Systems metadata columns and filters by numeric IDs.',
