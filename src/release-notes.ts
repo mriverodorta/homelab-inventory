@@ -497,14 +497,17 @@ export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
   highlights: [
     'Installation-wide custom fields and reusable colored tags now organize inventory with typed private metadata across item forms, Inspector, Inventory search, and Systems.',
     'Systems can show optional Tags and custom-field columns, combine metadata filters with existing host filters, and save those choices as account-synchronized views.',
-    'Metadata edits participate in project revisions and Undo or Redo while remaining excluded from Registry contributions, template identity, and catalog refresh merges.',
+    'Custom metadata and tags autosave after a short debounce and participate in application-wide Undo or Redo while remaining excluded from Registry contributions, template identity, and catalog refresh merges.',
   ],
   fixes: [
     'Archived metadata remains attached but hidden from ordinary editing, while confirmed permanent deletion removes values and saved-view references atomically.',
     'Metadata saved views refresh through SSE and date-time filters retain canonical UTC boundaries without losing local input presentation.',
+    'Project presentation, workspace presentation, compatibility policy, inventory metadata, and descriptive inventory edits use independent revisions without rebuilding the Rust/WASM workspace engine or recalculating unchanged cable routes.',
+    'Registry catalog definition enrichment updates linked inventory row versions without advancing project topology when assignments, ports, placements, and connections remain unchanged.',
   ],
   notes: [
     'Core schema 26 stores normalized custom-field definitions, options, typed values, tags, and item relationships; schema 27 stores Systems metadata columns and filters by numeric IDs.',
+    'Core schema 28 adds independent workbook, compatibility-policy, and item-metadata revisions while retaining the existing project revision as the engine topology revision.',
   ],
 }
 

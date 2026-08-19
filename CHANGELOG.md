@@ -14,12 +14,15 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 ### Changed
 
 - Systems saved views persist metadata filters and dynamic columns by numeric IDs, refresh through SSE, and keep tags below Name unless the dedicated Tags column is visible.
-- Custom metadata is private local data: it participates in transactional project revisions and Undo or Redo but never enters Registry contributions, template identity, or catalog refresh merges.
+- Custom metadata and tags autosave after a short debounce, participate in application-wide Undo or Redo, and remain excluded from Registry contributions, template identity, and catalog refresh merges.
+- Project presentation, workspace presentation, compatibility policy, inventory metadata, and descriptive inventory edits now use independent persistence revisions instead of advancing the workspace-engine topology revision.
 
 ### Fixed
 
 - Archiving metadata definitions or tags preserves assigned values, while confirmed permanent deletion removes their values and saved-view references atomically without leaving invalid filters or column order.
 - Date-time filters persist canonical UTC boundaries while retaining local browser input presentation.
+- Non-topology Inspector and settings changes no longer rebuild the Rust/WASM workspace engine, clear unrelated selection state, or recalculate unchanged cable routes.
+- Registry catalog definition enrichment advances linked inventory row versions without advancing project topology when assignments, ports, placements, and connections are unchanged.
 
 ## [0.13.19] - 2026-08-19
 
