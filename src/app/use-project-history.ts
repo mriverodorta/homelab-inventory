@@ -158,7 +158,7 @@ export function useProjectHistory({
           : inventoryProject
             ? inventoryProject
         : projectChanged
-          ? target.project
+          ? { ...target.project, revision: currentProject.revision }
           : currentProject
       const restoredWorkbook = workbookChanged && target.workbook && restoreWorkbookHistory
         ? await restoreWorkbookHistory(target.workbook)

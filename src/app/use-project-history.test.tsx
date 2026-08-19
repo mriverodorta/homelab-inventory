@@ -202,4 +202,44 @@ describe('useProjectHistory inventory metadata', () => {
     expect(projectRef.current.revision).toBe(12)
     expect(scheduleProjectSave).not.toHaveBeenCalled()
   })
+
+  it('rebases a topology snapshot onto the current canonical revision before saving', async () => {
+    const previous = {
+      ...createEmptyProject(),
+      revision: 6,
+      placements: [{ serverId: 'server:1', x: 24, y: 24 }],
+    }
+    const current = {
+      ...previous,
+      revision: 7,
+      placements: [{ serverId: 'server:1', x: 48, y: 48 }],
+    }
+    const projectRef = { current }
+    const metadataRef = { current: new Map() }
+    const scheduleProjectSave = vi.fn()
+
+    const { result } = renderHook(() => useProjectHistory({
+      projectRef,
+      inventoryMetadataHistoryRef: metadataRef,
+      setProject: vi.fn((value) => { projectRef.current = value }),
+      setSelectedItemId: vi.fn(),
+      setSelectedConnectionId: vi.fn(),
+      setValidationMessage: vi.fn(),
+      scheduleProjectSave,
+    }))
+    act(() => {
+      result.current.setHistory((history) => pushHistory(
+        history,
+        createProjectHistorySnapshot(previous, metadataRef.current),
+      ))
+    })
+    act(() => result.current.undoProjectChange())
+
+    await waitFor(() => expect(scheduleProjectSave).toHaveBeenCalledOnce())
+    expect(scheduleProjectSave).toHaveBeenCalledWith(expect.objectContaining({
+      revision: 7,
+      placements: previous.placements,
+    }))
+    expect(projectRef.current.revision).toBe(7)
+  })
 })
