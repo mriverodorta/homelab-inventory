@@ -1168,6 +1168,7 @@ function evaluateStorage(hostCapabilities, requirements, findings) {
       severity: 'error',
       message: `No storage slot accepts the ${requirements.interface} interface.`,
       field: 'component.storage.interface',
+      ...(groups.length === 1 ? { resourceId: groups[0].id } : {}),
     })
     if (!requirements.formFactor) {
       addMissing(findings, 'component.storage.formFactor', 'Storage form factor is not recorded.')
@@ -1208,6 +1209,7 @@ function evaluateStorage(hostCapabilities, requirements, findings) {
       severity: 'error',
       message: `No ${requirements.interface} storage slot accepts the ${requirements.formFactor} form factor.`,
       field: 'component.storage.formFactor',
+      ...(interfaceGroups.length === 1 ? { resourceId: interfaceGroups[0].id } : {}),
     })
     return
   }
