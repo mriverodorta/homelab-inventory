@@ -80,7 +80,11 @@ function publishCatalog(eventBus, store, { definitionIds = [], tagIds = [] } = {
 }
 
 function publishItem(eventBus, store, result) {
-  const payload = inventoryMetadataItemPayload({ itemId: result.itemId, projectIds: result.affectedProjectIds })
+  const payload = inventoryMetadataItemPayload({
+    itemId: result.itemId,
+    projectIds: result.affectedProjectIds,
+    metadata: publicItemMetadata(result.metadata),
+  })
   if (payload.projectIds.length === 0) return
   eventBus?.publish({
     scope: store,

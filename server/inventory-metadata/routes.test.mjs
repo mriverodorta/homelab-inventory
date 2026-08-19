@@ -11,8 +11,8 @@ afterEach(async () => {
 })
 
 async function fixture() {
-  const definition = { id: 1, name: 'Lifecycle', revision: 1, options: [] }
-  const tag = { id: 2, name: 'Production', revision: 1 }
+  const definition = { id: 1, name: 'Lifecycle', normalizedName: 'lifecycle', revision: 1, options: [] }
+  const tag = { id: 2, name: 'Production', normalizedName: 'production', revision: 1 }
   const repository = {
     listCatalog: vi.fn(() => ({ revision: 1, definitions: [definition], tags: [tag] })),
     createDefinition: vi.fn(() => definition),
@@ -141,7 +141,17 @@ describe('inventory metadata routes', () => {
     )
     expect(eventBus.publish).toHaveBeenCalledWith(expect.objectContaining({
       topics: ['inventory-metadata:1', 'inventory-metadata:3'],
-      payload: { itemId: 91, projectIds: [1, 3] },
+      payload: {
+        itemId: 91,
+        projectIds: [1, 3],
+        metadata: {
+          itemId: 91,
+          revision: 2,
+          definitions: [{ id: 1, name: 'Lifecycle', revision: 1, options: [] }],
+          values: [],
+          tags: [],
+        },
+      },
     }))
   })
 
