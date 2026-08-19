@@ -54,6 +54,7 @@ export function useProjectHydration({
   reloadProject,
   queryKey,
 }: ProjectHydrationOptions) {
+  const handledSyncSequenceRef = useRef(0)
   const callbacksRef = useRef({
     clearPendingConnection,
     clearNetworkTrace,
@@ -107,6 +108,8 @@ export function useProjectHydration({
   useEffect(() => {
     const event = domainEngine.syncEvent
     if (!domainEngine.enabled || !event || !hasHydratedProjectRef.current) return
+    if (event.sequence <= handledSyncSequenceRef.current) return
+    handledSyncSequenceRef.current = event.sequence
 
     if (event.kind === 'patch') {
       if (!event.external || !projectRef.current) return

@@ -700,8 +700,12 @@ function App() {
     validationMessage,
     validationSeverity,
     persistenceWarning,
-    canUndo: !historyBusy && history.past.length > 0,
-    canRedo: !historyBusy && history.future.length > 0,
+    canUndo: !historyBusy
+      && (!domainEngine.enabled || domainEngine.state.phase === 'ready')
+      && history.past.length > 0,
+    canRedo: !historyBusy
+      && (!domainEngine.enabled || domainEngine.state.phase === 'ready')
+      && history.future.length > 0,
     saveStatus,
     canonicalMutationBusy,
     canvasOperationLabel,
