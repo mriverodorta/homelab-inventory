@@ -9,13 +9,20 @@ import {
 import { useProjectHistory } from './use-project-history'
 
 const restoreHistory = vi.fn()
+const updatePolicy = vi.fn()
 
 vi.mock('@/lib/inventory-metadata-api', () => ({
   restoreInventoryItemMetadataHistory: (...args: unknown[]) => restoreHistory(...args),
 }))
+vi.mock('@/lib/compatibility-audit-api', () => ({
+  updateCompatibilityPolicy: (...args: unknown[]) => updatePolicy(...args),
+}))
 
 describe('useProjectHistory inventory metadata', () => {
-  beforeEach(() => restoreHistory.mockReset())
+  beforeEach(() => {
+    restoreHistory.mockReset()
+    updatePolicy.mockReset()
+  })
 
   it('restores metadata without rewriting unchanged canvas state', async () => {
     const project = { ...createEmptyProject(), revision: 2 }
@@ -69,5 +76,49 @@ describe('useProjectHistory inventory metadata', () => {
     expect(refreshInventoryMetadata).toHaveBeenCalledWith([1])
     expect(scheduleProjectSave).not.toHaveBeenCalled()
     expect(setValidationMessage).toHaveBeenLastCalledWith(null)
+  })
+
+  it('restores compatibility policy without scheduling a project or engine save', async () => {
+    const project = {
+      ...createEmptyProject(),
+      revision: 2,
+      metadata: { ...createEmptyProject().metadata, projectId: 1 },
+      compatibilityPolicy: { disabledHosts: [], ignoredWarningIds: [] },
+    }
+    const previous = {
+      ...project,
+      compatibilityPolicy: {
+        disabledHosts: [{ hostType: 'server' as const, hostId: 7 }],
+        ignoredWarningIds: [],
+      },
+    }
+    const projectRef = { current: project }
+    const metadataRef = { current: new Map() }
+    const scheduleProjectSave = vi.fn()
+    const setProject = vi.fn((value) => { projectRef.current = value })
+    updatePolicy.mockResolvedValue({ policy: previous.compatibilityPolicy, revision: 3 })
+
+    const { result } = renderHook(() => useProjectHistory({
+      projectRef,
+      inventoryMetadataHistoryRef: metadataRef,
+      setProject,
+      setSelectedItemId: vi.fn(),
+      setSelectedConnectionId: vi.fn(),
+      setValidationMessage: vi.fn(),
+      scheduleProjectSave,
+    }))
+    act(() => {
+      result.current.setHistory((history) => pushHistory(
+        history,
+        createProjectHistorySnapshot(previous, metadataRef.current),
+      ))
+    })
+    act(() => result.current.undoProjectChange())
+
+    await waitFor(() => expect(updatePolicy).toHaveBeenCalledWith(1, previous.compatibilityPolicy))
+    await waitFor(() => expect(result.current.historyBusy).toBe(false))
+    expect(projectRef.current.compatibilityPolicy).toEqual(previous.compatibilityPolicy)
+    expect(projectRef.current.revision).toBe(2)
+    expect(scheduleProjectSave).not.toHaveBeenCalled()
   })
 })

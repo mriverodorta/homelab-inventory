@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   clearIgnoredAuditWarnings,
+  compatibilityPolicyOnlyChanged,
   enableCompatibilityForAllHosts,
   setAuditWarningIgnored,
   setHostCompatibilityEnabled,
@@ -27,6 +28,16 @@ function project(): ProjectState {
 }
 
 describe('compatibility policy mutations', () => {
+  it('identifies policy-only changes without classifying topology changes as policy-only', () => {
+    const input = project()
+    const policy = setHostCompatibilityEnabled(input, 'server:1', false)
+    expect(compatibilityPolicyOnlyChanged(input, policy)).toBe(true)
+    expect(compatibilityPolicyOnlyChanged(input, {
+      ...policy,
+      connections: [{ id: 1 } as ProjectState['connections'][number]],
+    })).toBe(false)
+  })
+
   it('disables and re-enables host compatibility without mutating prior states', () => {
     const input = project()
     const disabled = setHostCompatibilityEnabled(input, 'server:1', false)

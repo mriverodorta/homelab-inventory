@@ -6,7 +6,11 @@ import {
   withCanonicalPowerPorts,
   withNasPowerConfiguration,
 } from '../../shared/power-ports.mjs'
-import { evaluateProjectCompatibility, planHostAllocations } from '../../shared/compatibility/index.mjs'
+import {
+  evaluateProjectCompatibility,
+  normalizeCompatibilityPolicy,
+  planHostAllocations,
+} from '../../shared/compatibility/index.mjs'
 import type { ProjectState } from '../../src/types/inventory.ts'
 import { getReleaseNotesBetween } from '../../src/release-notes.ts'
 import {
@@ -682,6 +686,36 @@ export class SqliteHomelabInventoryStore {
     this.projects.update(projectId, changes)
     this.invalidateProjectReadModels(projectId)
     return this.projects.getWorkbook(projectId)
+  }
+
+  getProjectCompatibilityPolicy(projectId: number) {
+    const row = this.core.database.query(`
+      SELECT policy_json, revision
+      FROM project_compatibility_policies
+      WHERE project_id = ?
+    `).get(projectId) as { policy_json: string; revision: number } | null
+    if (!row) throw lifecycleError(`Active project ${projectId} was not found.`, 'project-not-found', 404)
+    return { policy: normalizeCompatibilityPolicy(parseJson(row.policy_json, {})), revision: row.revision }
+  }
+
+  updateProjectCompatibilityPolicy(projectId: number, input: Row) {
+    const current = this.getProjectCompatibilityPolicy(projectId)
+    const expectedRevision = input?.expectedRevision ?? current.revision
+    const policy = normalizeCompatibilityPolicy(input?.policy)
+    const at = this.now()
+    this.core.database.transaction(() => {
+      const result = this.core.database.query(`
+        UPDATE project_compatibility_policies
+        SET policy_json = ?, revision = revision + 1, updated_at_ms = ?
+        WHERE project_id = ? AND revision = ?
+      `).run(JSON.stringify(policy), at, projectId, expectedRevision)
+      if (result.changes !== 1) {
+        throw lifecycleError('Compatibility policy changed while applying the update.', 'compatibility-policy-revision-conflict', 409)
+      }
+      if (projectId === 1) putMetadata(this.core.database, 'legacy.compatibility-policy', policy, at)
+    }).immediate()
+    this.invalidateProjectReadModels(projectId)
+    return { policy, revision: expectedRevision + 1 }
   }
 
   archiveProject(projectId: number) {

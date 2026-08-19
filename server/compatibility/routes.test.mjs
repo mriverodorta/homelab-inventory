@@ -15,19 +15,28 @@ async function fixture() {
     summaries: vi.fn(() => [{ hostType: 'server', hostId: 7, actionable: 1, informational: 2 }]),
     findings: vi.fn(() => [{ id: 3, classification: 'informational' }]),
     setIgnored: vi.fn((_store, input) => ({ findingId: Number(input.findingId), ignored: input.ignored })),
+    markProjectDirty: vi.fn(),
+    schedule: vi.fn(),
   }
+  const store = {
+    getProjectCompatibilityPolicy: vi.fn(() => ({ policy: { disabledHosts: [] }, revision: 2 })),
+    updateProjectCompatibilityPolicy: vi.fn(() => ({ policy: { disabledHosts: [{ hostType: 'server', hostId: 7 }] }, revision: 3 })),
+  }
+  const eventBus = { publish: vi.fn() }
   const app = express()
+  app.use(express.json())
   registerCompatibilityRoutes(app, {
     service,
+    eventBus,
     withStore: async (_request, response, handler) => {
-      try { await handler({}) } catch (error) { response.status(500).json({ message: error.message }) }
+      try { await handler(store) } catch (error) { response.status(500).json({ message: error.message }) }
     },
   })
   const server = await new Promise((resolve) => {
     const listener = app.listen(0, () => resolve(listener))
   })
   servers.push(server)
-  return { service, url: `http://127.0.0.1:${server.address().port}` }
+  return { service, store, eventBus, url: `http://127.0.0.1:${server.address().port}` }
 }
 
 describe('compatibility audit routes', () => {
@@ -49,9 +58,29 @@ describe('compatibility audit routes', () => {
     const { service, url } = await fixture()
     const response = await fetch(`${url}/api/projects/1/compatibility/findings?classification=informational&hostType=nas&hostId=4`)
     expect(response.status).toBe(200)
-    expect(service.findings).toHaveBeenCalledWith({}, {
+    expect(service.findings).toHaveBeenCalledWith(expect.any(Object), {
       projectId: '1', classification: 'informational', hostType: 'nas', hostId: '4', visibility: 'open',
     })
+  })
+
+  it('persists policy changes without using project mutation routes', async () => {
+    const { url, store, service, eventBus } = await fixture()
+    expect((await fetch(`${url}/api/projects/1/compatibility/policy`)).status).toBe(200)
+    const response = await fetch(`${url}/api/projects/1/compatibility/policy`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ policy: { disabledHosts: [{ hostType: 'server', hostId: 7 }] } }),
+    })
+    expect(response.status).toBe(200)
+    expect(store.updateProjectCompatibilityPolicy).toHaveBeenCalledWith(1, {
+      policy: { disabledHosts: [{ hostType: 'server', hostId: 7 }] },
+    })
+    expect(service.markProjectDirty).toHaveBeenCalledWith(store, 1, 'compatibility-policy-changed')
+    expect(service.schedule).toHaveBeenCalledWith(store)
+    expect(eventBus.publish).toHaveBeenCalledWith(expect.objectContaining({
+      topics: ['compatibility:1', 'systems:1'],
+      kind: 'compatibility.policy-changed',
+    }))
   })
 
   it('persists ignore decisions through dedicated mutation routes', async () => {

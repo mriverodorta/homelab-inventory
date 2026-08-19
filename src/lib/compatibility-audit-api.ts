@@ -1,5 +1,6 @@
 import { fetchWithTimeout } from '@/lib/fetch-with-timeout'
 import type { HostType } from '@/types/inventory'
+import type { CompatibilityPolicy } from '@/types/inventory'
 import type {
   CompatibilityAuditClassification,
   CompatibilityAuditFindingsResponse,
@@ -59,6 +60,20 @@ export async function setCompatibilityFindingIgnored(projectId: number, findingI
   }
   resetCompatibilityAuditCache(projectId)
   return await response.json() as { findingId: number; ignored: boolean }
+}
+
+export async function updateCompatibilityPolicy(projectId: number, policy: CompatibilityPolicy | undefined) {
+  const response = await fetchWithTimeout(`/api/projects/${projectId}/compatibility/policy`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ policy }),
+  })
+  if (!response.ok) {
+    const payload = await response.json().catch(() => null) as { message?: string } | null
+    throw new Error(payload?.message ?? `Compatibility policy request failed with status ${response.status}.`)
+  }
+  resetCompatibilityAuditCache(projectId)
+  return await response.json() as { policy: CompatibilityPolicy; revision: number }
 }
 
 export function resetCompatibilityAuditCache(projectId?: number) {

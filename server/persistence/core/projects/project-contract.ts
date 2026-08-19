@@ -38,6 +38,7 @@ export type ProjectSummary = Readonly<{
   description: string | null
   iconKey: ProjectIconKey
   revision: number
+  workbookRevision: number
   includesGlobalInventory: boolean
   archivedAtMs: number | null
   createdAtMs: number

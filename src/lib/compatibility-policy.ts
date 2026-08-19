@@ -1,6 +1,16 @@
 import { normalizeCompatibilityPolicy } from '@/lib/compatibility'
 import type { ProjectState } from '@/types/inventory'
 
+function withoutPolicy(project: ProjectState) {
+  const { compatibilityPolicy: _policy, revision: _revision, ...rest } = project
+  return rest
+}
+
+export function compatibilityPolicyOnlyChanged(left: ProjectState, right: ProjectState) {
+  return JSON.stringify(left.compatibilityPolicy) !== JSON.stringify(right.compatibilityPolicy)
+    && JSON.stringify(withoutPolicy(left)) === JSON.stringify(withoutPolicy(right))
+}
+
 export function setHostCompatibilityEnabled(
   project: ProjectState,
   hostId: string,

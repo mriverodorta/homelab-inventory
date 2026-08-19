@@ -38,6 +38,16 @@ export function bumpProjectRevision(context: RepositoryContext, projectId: numbe
   if (result.changes !== 1) throw new Error(`Active project ${projectId} was not found.`)
 }
 
+export function bumpWorkbookRevision(context: RepositoryContext, projectId: number, at = context.now()) {
+  assertPositiveId(projectId, 'Project ID')
+  const result = context.sqlite.query(`
+    UPDATE projects
+    SET workbook_revision = workbook_revision + 1, updated_at_ms = ?
+    WHERE id = ? AND archived_at_ms IS NULL
+  `).run(at, projectId)
+  if (result.changes !== 1) throw new Error(`Active project ${projectId} was not found.`)
+}
+
 export function bumpWorkspaceRevision(
   context: RepositoryContext,
   projectId: number,

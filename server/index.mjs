@@ -645,7 +645,7 @@ if (!stagingPolicy.registryNetworkRefreshDisabled) catalogRefreshCoordinator?.st
 catalogStatusService?.start()
 const backupSchedule = stagingPolicy.scheduledBackupsDisabled ? null : backupScheduler?.start()
 registerProjectRoutes(app, { withStore })
-registerCompatibilityRoutes(app, { withStore, service: compatibilityAudit })
+registerCompatibilityRoutes(app, { withStore, service: compatibilityAudit, eventBus: applicationEventBus })
 registerSystemsRoutes(app, {
   withStore,
   service: systemsReadService,

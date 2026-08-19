@@ -11,6 +11,8 @@ import { updateProjectPlacements } from '@/engine/placements'
 import { applyEngineResponsePatch } from '@/engine/project-patches'
 import type { useDomainEngine } from '@/hooks/use-domain-engine'
 import { loadProject } from '@/lib/db'
+import { updateCompatibilityPolicy } from '@/lib/compatibility-audit-api'
+import { compatibilityPolicyOnlyChanged } from '@/lib/compatibility-policy'
 import { loadWorkspace } from '@/lib/workbook-api'
 import { createEmptyHistory, pushHistory, type HistoryState } from '@/lib/history'
 import {
@@ -99,6 +101,28 @@ export function useProjectCommands({
 
     projectRef.current = nextProject
     setProject(nextProject)
+
+    if (currentProject && compatibilityPolicyOnlyChanged(currentProject, nextProject)) {
+      const projectId = currentProject.metadata.projectId ?? 1
+      void updateCompatibilityPolicy(projectId, nextProject.compatibilityPolicy)
+        .then((result) => {
+          const active = projectRef.current
+          if (!active) return
+          const persisted = { ...active, compatibilityPolicy: result.policy }
+          projectRef.current = persisted
+          lastPersistedProjectRef.current = persisted
+          cacheProjectState(queryClient, persisted)
+          setProject(persisted)
+          setSaveStatus('saved')
+        })
+        .catch((error) => {
+          projectRef.current = currentProject
+          setProject(currentProject)
+          setSaveStatus('error')
+          setPersistenceWarning(error instanceof Error ? error.message : 'Compatibility policy could not be saved.')
+        })
+      return
+    }
 
     if (nextProject !== currentProject) scheduleProjectSave(nextProject)
   }

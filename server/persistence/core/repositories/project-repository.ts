@@ -16,6 +16,7 @@ import {
 import {
   assertPositiveId,
   bumpProjectRevision,
+  bumpWorkbookRevision,
   createRepositoryContext,
   parseJson,
   type RepositoryContext,
@@ -203,12 +204,17 @@ export function createProjectRepository(context: RepositoryContext) {
       }
     }
     const at = now()
+    const presentationChanged = name !== current.name
+      || (changes.description === undefined ? current.description : changes.description?.trim() || null) !== current.description
+      || iconKey !== current.iconKey
+    const scopeChanged = (changes.includesGlobalInventory ?? current.includesGlobalInventory) !== current.includesGlobalInventory
     db.update(projects).set({
       name,
       description: changes.description === undefined ? current.description : changes.description?.trim() || null,
       iconKey,
       includesGlobalInventory: changes.includesGlobalInventory ?? current.includesGlobalInventory,
-      revision: current.revision + 1,
+      revision: current.revision + Number(scopeChanged),
+      workbookRevision: current.workbookRevision + Number(presentationChanged),
       updatedAtMs: at,
     }).where(eq(projects.id, projectId)).run()
     return get(projectId)
@@ -353,7 +359,7 @@ export function createProjectRepository(context: RepositoryContext) {
         updatedAtMs: at,
       }).returning().get()
       if (input.type === 'canvas') db.insert(canvasWorkspaces).values({ id: workspace.id }).run()
-      bumpProjectRevision(context, projectId, at)
+      bumpWorkbookRevision(context, projectId, at)
       return workspace
     }).immediate()
   }
@@ -386,6 +392,9 @@ export function createProjectRepository(context: RepositoryContext) {
       revision: current.revision + 1,
       updatedAtMs: at,
     }).where(and(eq(workspaces.projectId, projectId), eq(workspaces.id, workspaceId))).run()
+    if (name !== current.name || iconKey !== current.iconKey || colorKey !== current.colorKey) {
+      bumpWorkbookRevision(context, projectId, at)
+    }
     return listWorkspaces(projectId).find((workspace) => workspace.id === workspaceId)!
   }
 
@@ -459,6 +468,9 @@ export function createProjectRepository(context: RepositoryContext) {
         sqlite.query('UPDATE workspaces SET sort_order = ? WHERE project_id = ? AND id = ?')
           .run(stagingStart + index, projectId, workspaceId)
       })
+      if (orderedWorkspaceIds.some((workspaceId, index) => (
+        current.find((workspace) => workspace.id === workspaceId)?.sortOrder !== index + 1
+      ))) bumpWorkbookRevision(context, projectId, at)
       orderedWorkspaceIds.forEach((workspaceId, index) => {
         const previous = current.find((workspace) => workspace.id === workspaceId)!
         const sortOrder = index + 1
@@ -499,6 +511,7 @@ export function createProjectRepository(context: RepositoryContext) {
           .run(fallback.id, at, projectId)
       }
       bumpProjectRevision(context, projectId, at)
+      bumpWorkbookRevision(context, projectId, at)
     }).immediate()
     return getWorkbook(projectId)
   }
@@ -511,7 +524,7 @@ export function createProjectRepository(context: RepositoryContext) {
     const at = now()
     db.insert(projectPreferences).values({ projectId, defaultWorkspaceId: workspaceId, updatedAtMs: at })
       .onConflictDoUpdate({ target: projectPreferences.projectId, set: { defaultWorkspaceId: workspaceId, updatedAtMs: at } }).run()
-    bumpProjectRevision(context, projectId, at)
+    bumpWorkbookRevision(context, projectId, at)
   }
 
   return {

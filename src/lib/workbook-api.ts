@@ -34,6 +34,7 @@ export type ProjectSummary = {
   description: string | null
   iconKey: ProjectIconKey
   revision: number
+  workbookRevision?: number
   includesGlobalInventory: boolean
   archivedAtMs?: number | null
 }

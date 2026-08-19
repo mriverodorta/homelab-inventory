@@ -36,6 +36,8 @@ describe('API permission classification', () => {
     expect(classifyApiRequest('GET', '/api/projects/1/compatibility/findings')).toEqual({ access: 'protected', permission: 'audit.view' })
     expect(classifyApiRequest('PUT', '/api/projects/1/compatibility/findings/3/ignore')).toEqual({ access: 'protected', permission: 'audit.manage' })
     expect(classifyApiRequest('DELETE', '/api/projects/1/compatibility/findings/3/ignore')).toEqual({ access: 'protected', permission: 'audit.manage' })
+    expect(classifyApiRequest('GET', '/api/projects/1/compatibility/policy')).toEqual({ access: 'protected', permission: 'audit.view' })
+    expect(classifyApiRequest('PUT', '/api/projects/1/compatibility/policy')).toEqual({ access: 'protected', permission: 'audit.manage' })
     expect(classifyApiRequest('POST', '/api/projects')).toEqual({ access: 'protected', permission: 'project.settings.manage' })
     expect(classifyApiRequest('DELETE', '/api/projects/2/permanent')).toEqual({ access: 'protected', permission: 'project.settings.manage' })
     expect(classifyApiRequest('GET', '/api/projects/2/workspaces/7')).toEqual({ access: 'protected', permission: 'canvas.view' })

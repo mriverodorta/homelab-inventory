@@ -267,6 +267,31 @@ describe('SQLite Homelab Inventory store facade', () => {
     }
   })
 
+  test('updates compatibility policy without changing topology or route cache', async () => {
+    const store = await fixtureStore()
+    const commits: unknown[] = []
+    store.subscribeToProjectCommits((event) => commits.push(event))
+    try {
+      const beforeEngine = store.getEngineSnapshot()
+      const beforeRoutes = store.core.database.query('SELECT * FROM workspace_route_cache ORDER BY id').all()
+      const current = store.getProjectCompatibilityPolicy(1)
+      const result = store.updateProjectCompatibilityPolicy(1, {
+        expectedRevision: current.revision,
+        policy: { disabledHosts: [{ hostType: 'server', hostId: 7 }], ignoredWarningIds: [] },
+      })
+      expect(result).toMatchObject({ revision: current.revision + 1 })
+      expect(store.getProject().compatibilityPolicy).toEqual({
+        disabledHosts: [{ hostType: 'server', hostId: 7 }],
+        ignoredWarningIds: [],
+      })
+      expect(store.getEngineSnapshot()).toEqual(beforeEngine)
+      expect(store.core.database.query('SELECT * FROM workspace_route_cache ORDER BY id').all()).toEqual(beforeRoutes)
+      expect(commits).toEqual([])
+    } finally {
+      store.close()
+    }
+  })
+
   test('creates multiple inventory records with private metadata atomically', async () => {
     const store = await emptyFixtureStore()
     try {

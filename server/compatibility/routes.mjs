@@ -11,7 +11,29 @@ function sendCached(request, response, payload) {
   return response.json(payload)
 }
 
-export function registerCompatibilityRoutes(app, { withStore, service }) {
+export function registerCompatibilityRoutes(app, { withStore, service, eventBus = null }) {
+  app.get('/api/projects/:projectId/compatibility/policy', (request, response) => {
+    void withStore(request, response, async (store) => {
+      response.json(store.getProjectCompatibilityPolicy(Number(request.params.projectId)))
+    }, { message: 'Unable to load compatibility policy.' })
+  })
+
+  app.put('/api/projects/:projectId/compatibility/policy', (request, response) => {
+    void withStore(request, response, async (store) => {
+      const projectId = Number(request.params.projectId)
+      const result = store.updateProjectCompatibilityPolicy(projectId, request.body ?? {})
+      service.markProjectDirty(store, projectId, 'compatibility-policy-changed')
+      service.schedule(store)
+      eventBus?.publish({
+        scope: store,
+        topics: [`compatibility:${projectId}`, `systems:${projectId}`],
+        kind: 'compatibility.policy-changed',
+        payload: { projectId, revision: result.revision },
+      })
+      response.json(result)
+    }, { message: 'Unable to update compatibility policy.' })
+  })
+
   app.get('/api/projects/:projectId/compatibility/summary', (request, response) => {
     void withStore(request, response, async (store) => {
       service.reconcile(store)

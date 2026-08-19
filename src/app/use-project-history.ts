@@ -7,6 +7,8 @@ import {
   type HistoryState,
 } from '@/lib/history'
 import { restoreInventoryItemMetadataHistory } from '@/lib/inventory-metadata-api'
+import { updateCompatibilityPolicy } from '@/lib/compatibility-audit-api'
+import { compatibilityPolicyOnlyChanged } from '@/lib/compatibility-policy'
 import {
   createProjectHistorySnapshot,
   metadataHistoryChanges,
@@ -79,15 +81,25 @@ export function useProjectHistory({
       }
 
       const projectChanged = !projectHistoryContentEqual(target.project, currentProject)
-      const rebasedProject = projectChanged
-        ? target.project
-        : currentProject
+      const policyOnlyChanged = projectChanged
+        && compatibilityPolicyOnlyChanged(currentProject, target.project)
+      const policyResult = policyOnlyChanged
+        ? await updateCompatibilityPolicy(
+            currentProject.metadata.projectId ?? 1,
+            target.project.compatibilityPolicy,
+          )
+        : null
+      const rebasedProject = policyResult
+        ? { ...currentProject, compatibilityPolicy: policyResult.policy }
+        : projectChanged
+          ? target.project
+          : currentProject
       projectRef.current = rebasedProject
       setProject(rebasedProject)
       historyRef.current = result.history
       setHistoryState(result.history)
 
-      if (projectChanged) scheduleLegacyProjectSave(rebasedProject)
+      if (projectChanged && !policyOnlyChanged) scheduleLegacyProjectSave(rebasedProject)
       setSelectedItemId((current) => (current && rebasedProject.items[current] ? current : null))
       setSelectedConnectionId((current) =>
         current && rebasedProject.connections.some((connection) => connection.id === current)

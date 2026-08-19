@@ -59,7 +59,13 @@ describe('relational persistence repositories', () => {
       expect(repository.listWorkspaces(2).map(({ type }) => type)).toEqual(['systems', 'canvas'])
       const secondary = repository.createWorkspace(2, { type: 'canvas', name: 'Network', iconKey: 'network', colorKey: 'green' })
       repository.setDefaultWorkspace(2, secondary.id)
-      expect(repository.get(2)?.revision).toBe(3)
+      expect(repository.get(2)).toMatchObject({ revision: 1, workbookRevision: 3 })
+      repository.update(2, { name: 'Smaller homelab' })
+      expect(repository.get(2)).toMatchObject({
+        name: 'Smaller homelab',
+        revision: 1,
+        workbookRevision: 4,
+      })
       expect(() => repository.updateWorkspace(2, created.systemsWorkspaceId, { name: 'Hosts' })).toThrow(/Systems/iu)
       repository.updateWorkspace(2, secondary.id, { name: 'Network plan', iconKey: 'route', colorKey: 'cyan' })
       repository.updateCanvasConfiguration(2, secondary.id, {
