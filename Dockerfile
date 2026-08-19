@@ -10,7 +10,7 @@ RUN bun install --frozen-lockfile --production
 
 FROM oven/bun:1.3.14-alpine@sha256:5acc90a93e91ff07bf72aa90a7c9f0fa189765aec90b47bdbf2152d2196383c0 AS bun-toolchain
 
-FROM golang:1.26.6-alpine@sha256:af8d6740070b8906d12eae1c3e3ea0957fb63f492051ea05e354c38ef9fe88df AS agent-build
+FROM golang:1.26.7-alpine@sha256:28d89ee9cc0ff9fec75c82ca201e6bf7fdf9a679d4b7b24dfa04f2bb766bb468 AS agent-build
 WORKDIR /agent
 ARG AGENT_VERSION=0.3.3
 ARG AGENT_SOURCE_REVISION=b98c2a7d93141f2ae0660a89a29805919d19dff5
