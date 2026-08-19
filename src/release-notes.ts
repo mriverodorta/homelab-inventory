@@ -454,6 +454,7 @@ const RELEASE_0_13_15_DETAILS: UnreleasedReleaseNotes = {
   highlights: [],
   fixes: [
     'Registry catalog refresh now reconciles upgraded M.2 A/E resource projections before strict contract-v12 evaluation, while startup removes retired WLAN-only constraints without changing assignments or linked inventory identity.',
+    'Assigned compatibility resources now follow their current canonical semantic key during Registry replacement while retaining historical aliases only for numeric identity continuity.',
   ],
   notes: [],
 }
