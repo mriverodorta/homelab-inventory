@@ -4,7 +4,7 @@ function normalized(value) {
     : ''
 }
 
-export const CPU_GENERATION_ALIAS_VERSION = 1
+export const CPU_GENERATION_ALIAS_VERSION = 2
 
 const DIRECT_ALIASES = new Map([
   ['10th gen', ['product:intel:10th-gen']],
@@ -23,10 +23,18 @@ const DIRECT_ALIASES = new Map([
   ['zen 3', ['architecture:amd:zen-3']],
 ])
 
+function intelOrdinalProductToken(key) {
+  const match = key.match(/^(\d{1,3})(st|nd|rd|th) (?:gen|generation)$/)
+  return match ? `product:intel:${match[1]}${match[2]}-gen` : undefined
+}
+
 export function canonicalCpuGenerationTokens(value) {
   const key = normalized(value)
   if (!key) return Object.freeze([])
-  return Object.freeze([...(DIRECT_ALIASES.get(key) ?? [`literal:${key}`])])
+  const ordinal = intelOrdinalProductToken(key)
+  return Object.freeze([
+    ...(ordinal ? [ordinal] : DIRECT_ALIASES.get(key) ?? [`literal:${key}`]),
+  ])
 }
 
 export function inferCpuProductGenerationTokens(item) {

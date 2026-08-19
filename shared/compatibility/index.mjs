@@ -881,7 +881,11 @@ function evaluateCpu(hostCapabilities, requirements, assignments, items, compone
     const acceptedTokens = new Set(acceptedGenerations.flatMap(canonicalCpuGenerationTokens))
     const acceptedProductTokens = [...acceptedTokens].filter((token) => token.startsWith('product:'))
     const componentProductTokens = componentGenerationTokens.filter((token) => token.startsWith('product:'))
-    const matches = componentProductTokens.some((token) => acceptedTokens.has(token))
+    const exactMatch = requirements.generation
+      ? includesNormalized(acceptedGenerations, requirements.generation)
+      : false
+    const matches = exactMatch
+      || componentProductTokens.some((token) => acceptedTokens.has(token))
       || (
         acceptedProductTokens.length === 0
         && componentGenerationTokens.some((token) => acceptedTokens.has(token))

@@ -143,6 +143,85 @@ describe('compatibility rule evaluation', () => {
     )
   })
 
+  it('accepts an i7-12700T when a Dell 7010 supports 12th and 13th Gen CPUs', () => {
+    const result = evaluate(
+      host({
+        host: {
+          cpu: {
+            sockets: ['LGA1700'],
+            generations: ['12th Gen', '13th Gen'],
+            maxTdpWatts: 35,
+          },
+        },
+      }),
+      {
+        ...component('cpu', {
+          requirements: {
+            cpu: {
+              socket: 'LGA1700',
+              generation: '12th Gen',
+              tdpWatts: 35,
+            },
+          },
+        }),
+        manufacturer: 'Intel',
+        family: 'Core i7',
+        model: 'i7-12700T',
+        name: 'Intel Core i7-12700T',
+      },
+    )
+
+    expect(result.status).toBe('compatible')
+    expect(result.findings).not.toEqual(
+      expect.arrayContaining([expect.objectContaining({ code: 'cpu.generation.unsupported' })]),
+    )
+  })
+
+  it('keeps exact unknown generation labels valid inside a mixed semantic host list', () => {
+    const result = evaluate(
+      host({
+        host: {
+          cpu: {
+            sockets: ['VendorSocket'],
+            generations: ['Vendor Future Series', '13th Gen'],
+            maxTdpWatts: 35,
+          },
+        },
+      }),
+      component('cpu', {
+        requirements: {
+          cpu: {
+            socket: 'VendorSocket',
+            generation: 'vendor future series',
+            tdpWatts: 35,
+          },
+        },
+      }),
+    )
+
+    expect(result.status).toBe('compatible')
+  })
+
+  it('matches generic Intel ordinal generations while preserving genuine mismatches', () => {
+    const compatible = evaluate(
+      host({ host: { cpu: { sockets: ['LGA1700'], generations: ['14th Gen'], maxTdpWatts: 65 } } }),
+      component('cpu', {
+        requirements: { cpu: { socket: 'LGA1700', generation: '14th Generation', tdpWatts: 35 } },
+      }),
+    )
+    const incompatible = evaluate(
+      host({ host: { cpu: { sockets: ['LGA1700'], generations: ['12th Gen'], maxTdpWatts: 65 } } }),
+      component('cpu', {
+        requirements: { cpu: { socket: 'LGA1700', generation: '14th Gen', tdpWatts: 35 } },
+      }),
+    )
+
+    expect(compatible.status).toBe('compatible')
+    expect(incompatible.findings).toEqual(
+      expect.arrayContaining([expect.objectContaining({ code: 'cpu.generation.unsupported' })]),
+    )
+  })
+
   it('reports missing CPU facts as unknown with the exact field', () => {
     const result = evaluate(
       host({ host: { cpu: { sockets: ['LGA1200'], generations: ['10'] } } }),
