@@ -6,6 +6,8 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 
 ## Unreleased
 
+## [0.13.19] - 2026-08-19
+
 ### Fixed
 
 - Switching between Systems and Canvas now starts a fresh workspace engine session without losing the selected item or Inspector, reusing stale topology, or showing false engine-not-ready warnings; automatic selection centering resumes after the new session is ready.

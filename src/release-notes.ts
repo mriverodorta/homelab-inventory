@@ -485,11 +485,17 @@ const RELEASE_0_13_18_DETAILS: UnreleasedReleaseNotes = {
   notes: [],
 }
 
-export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
+const RELEASE_0_13_19_DETAILS: UnreleasedReleaseNotes = {
   highlights: [],
   fixes: [
     'Switching between Systems and Canvas now starts a fresh workspace engine session without losing the selected item or Inspector, reusing stale topology, or showing false engine-not-ready warnings; automatic selection centering resumes after the new session is ready.',
   ],
+  notes: [],
+}
+
+export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
+  highlights: [],
+  fixes: [],
   notes: [],
 }
 
@@ -1020,9 +1026,16 @@ const RELEASE_0_2_1_DETAILS: UnreleasedReleaseNotes = {
 
 export const RELEASE_NOTES: ReleaseNoteEntry[] = [
   {
-    version: '0.13.18',
+    version: '0.13.19',
     date: '2026-08-19',
     channel: 'latest',
+    title: 'Reliable Canvas reactivation',
+    ...RELEASE_0_13_19_DETAILS,
+  },
+  {
+    version: '0.13.18',
+    date: '2026-08-19',
+    channel: 'release',
     title: 'Responsive Systems table',
     ...RELEASE_0_13_18_DETAILS,
   },
