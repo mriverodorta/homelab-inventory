@@ -467,13 +467,19 @@ const RELEASE_0_13_16_DETAILS: UnreleasedReleaseNotes = {
   notes: [],
 }
 
-export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
+const RELEASE_0_13_17_DETAILS: UnreleasedReleaseNotes = {
   highlights: [],
   fixes: [
     'CPU compatibility now recognizes exact and canonical ordinal generations across mixed host support lists, preventing valid Dell OptiPlex Micro 7010 and Intel Core i7-12700T combinations from being rejected.',
     'Existing compatibility findings rebuild automatically after upgrade under evaluator version 2 without changing inventory, assignments, resource slots, workspace topology, private fields, or Registry links.',
     'Storage compatibility findings now retain the assigned numeric resource ID when a specific bay or slot is incompatible.',
   ],
+  notes: [],
+}
+
+export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
+  highlights: [],
+  fixes: [],
   notes: [],
 }
 
@@ -1004,9 +1010,16 @@ const RELEASE_0_2_1_DETAILS: UnreleasedReleaseNotes = {
 
 export const RELEASE_NOTES: ReleaseNoteEntry[] = [
   {
+    version: '0.13.17',
+    date: '2026-08-19',
+    channel: 'latest',
+    title: 'Accurate compatibility audits',
+    ...RELEASE_0_13_17_DETAILS,
+  },
+  {
     version: '0.13.16',
     date: '2026-08-18',
-    channel: 'latest',
+    channel: 'release',
     title: 'Smooth Systems utilization',
     ...RELEASE_0_13_16_DETAILS,
   },

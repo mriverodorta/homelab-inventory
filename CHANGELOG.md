@@ -6,6 +6,8 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 
 ## Unreleased
 
+## [0.13.17] - 2026-08-19
+
 ### Fixed
 
 - CPU compatibility now recognizes exact and canonical ordinal generations across mixed host support lists, preventing valid combinations such as the Dell OptiPlex Micro 7010 and Intel Core i7-12700T from being rejected.
