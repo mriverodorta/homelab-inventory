@@ -153,6 +153,28 @@ describe('schema-29 core import', () => {
       `).get()).toEqual({ count: 0 })
       expect(handle.database.query('PRAGMA foreign_key_check').all()).toEqual([])
 
+      const serverItemId = (handle.database.query(`
+        SELECT item_id FROM inventory_identity_aliases
+        WHERE legacy_type_key = 'server' AND legacy_id = 7
+      `).get() as { item_id: number }).item_id
+      replaceLegacyInventoryItem({
+        database: handle.database,
+        projectId: 1,
+        type: 'server',
+        item: structuredClone(server),
+        itemId: serverItemId,
+      })
+
+      expect(handle.database.query(`
+        SELECT assignment.id, assignment.resource_slot_id, slot.resource_group_id
+        FROM component_assignments assignment
+        JOIN host_resource_slots slot ON slot.id = assignment.resource_slot_id
+        WHERE assignment.id = 5
+      `).get()).toEqual(before)
+      expect(buildLegacyInventoryProjection(handle.database).servers[0]
+        .compatibility?.host?.optionalModuleSlots).toHaveLength(1)
+      expect(handle.database.query('PRAGMA foreign_key_check').all()).toEqual([])
+
       await expect(applyCommittedMigrations(handle, await Promise.all(CORE_MIGRATIONS.map(async (migration) => ({
         ...migration,
         sql: await readFile(resolve(import.meta.dir, '../core/migrations/generated', migration.file), 'utf8'),

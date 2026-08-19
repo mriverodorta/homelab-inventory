@@ -956,20 +956,30 @@ function replacementIdentityPlan(
     (row) => [`${row.legacy_port_id}:${row.endpoint_number}`, row.id],
   ))
   const existingResources = new Map<string, number>((database.query(`
-    SELECT a.legacy_resource_key, r.id
+    SELECT a.legacy_resource_key AS resource_key, r.id
     FROM inventory_resources r
     JOIN resource_identity_aliases a ON a.resource_id = r.id
     WHERE r.item_id = ?
-  `).all(itemId) as Array<{ legacy_resource_key: string; id: number }>).map(
-    (row) => [row.legacy_resource_key, row.id],
+    UNION ALL
+    SELECT g.semantic_key AS resource_key, r.id
+    FROM inventory_resources r
+    JOIN host_resource_groups g ON g.resource_identity_id = r.id
+    WHERE r.item_id = ?
+  `).all(itemId, itemId) as Array<{ resource_key: string; id: number }>).map(
+    (row) => [row.resource_key, row.id],
   ))
   const existingSlots = new Map<string, number>((database.query(`
-    SELECT a.legacy_resource_key, s.position, s.id
+    SELECT a.legacy_resource_key AS resource_key, s.position, s.id
     FROM host_resource_slots s
     JOIN resource_identity_aliases a ON a.resource_id = s.resource_group_id
     WHERE s.host_item_id = ?
-  `).all(itemId) as Array<{ legacy_resource_key: string; position: number; id: number }>).map(
-    (row) => [`${row.legacy_resource_key}:${row.position}`, row.id],
+    UNION ALL
+    SELECT g.semantic_key AS resource_key, s.position, s.id
+    FROM host_resource_slots s
+    JOIN host_resource_groups g ON g.resource_identity_id = s.resource_group_id
+    WHERE s.host_item_id = ?
+  `).all(itemId, itemId) as Array<{ resource_key: string; position: number; id: number }>).map(
+    (row) => [`${row.resource_key}:${row.position}`, row.id],
   ))
   const remapByTargetKey = new Map(
     [...resourceKeyRemaps.values()].map((remap) => [remap.toKey, remap]),
@@ -1302,6 +1312,7 @@ export function replaceLegacyInventoryItem({
   `).all(itemId) as LegacyRecord[]
   const assignmentSlots = database.query(`
     SELECT a.id AS assignment_slot_id, a.project_id, a.assignment_id, a.position AS assignment_position,
+           g.semantic_key AS current_resource_key,
            r.legacy_resource_key, r.legacy_resource_group_id,
            g.resource_type, s.position AS resource_position,
            CASE WHEN c.resource_slot_id = s.id THEN 1 ELSE 0 END AS is_primary
@@ -1314,7 +1325,8 @@ export function replaceLegacyInventoryItem({
     ORDER BY a.assignment_id, a.position
   `).all(itemId) as LegacyRecord[]
   const primaryOnlySlots = database.query(`
-    SELECT c.id AS assignment_id, c.project_id, r.legacy_resource_key,
+    SELECT c.id AS assignment_id, c.project_id,
+           g.semantic_key AS current_resource_key, r.legacy_resource_key,
            r.legacy_resource_group_id, g.resource_type, s.position AS resource_position
     FROM component_assignments c
     JOIN host_resource_slots s ON s.id = c.resource_slot_id
@@ -1348,8 +1360,8 @@ export function replaceLegacyInventoryItem({
     `${type}:${legacyId}:resource:${resourceKey}:slot:${position}`,
   )
   const targetResourceKey = (slot: LegacyRecord) => {
-    const remap = resourceKeyRemaps.get(slot.legacy_resource_key)
-    if (!remap) return slot.legacy_resource_key
+    const remap = resourceKeyRemaps.get(slot.current_resource_key)
+    if (!remap) return slot.current_resource_key
     if (
       remap.fromResourceType !== slot.resource_type
       || remap.fromResourceId !== slot.legacy_resource_group_id
@@ -1359,7 +1371,7 @@ export function replaceLegacyInventoryItem({
   }
   const actualAssignmentsByRemap = new Map<string, Set<number>>()
   for (const slot of [...assignmentSlots, ...primaryOnlySlots]) {
-    const remap = resourceKeyRemaps.get(slot.legacy_resource_key)
+    const remap = resourceKeyRemaps.get(slot.current_resource_key)
     if (!remap) continue
     const ids = actualAssignmentsByRemap.get(remap.fromKey) ?? new Set<number>()
     ids.add(slot.assignment_id)
