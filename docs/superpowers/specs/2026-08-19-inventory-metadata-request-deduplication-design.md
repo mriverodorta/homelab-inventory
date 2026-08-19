@@ -13,12 +13,15 @@ the client briefly reconcile the same state three times.
 
 ## Required Behavior
 
-- A successful metadata autosave makes exactly one HTTP request: the `PUT`.
+- A successful metadata autosave makes exactly one item-specific HTTP request:
+  the `PUT`.
 - The mutation response immediately becomes the authoritative local item cache.
 - The SSE event carries the authoritative public item metadata so other connected
   clients update without issuing a follow-up `GET`.
 - Project metadata projections are invalidated once because filters, tags, and
   visible table values may have changed.
+- Each active browser query client may therefore issue one aggregate project
+  projection refresh, but it must not issue an item metadata `GET`.
 - SSE reconnect or stream resynchronization still invalidates item and projection
   queries so missed changes are recovered safely.
 - Stale or duplicate SSE revisions never replace newer cached metadata.
