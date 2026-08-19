@@ -120,4 +120,9 @@ export const CORE_MIGRATIONS: readonly CoreMigration[] = [
     file: '0022_m2_ae_contract_v12.sql',
     sha256: '72dabd37787c6ea711996993fbbfb076b4ff0ea4390f7d13f3074f1a5b21d446',
   },
+  {
+    id: '0024_m2_ae_projection_repair',
+    file: '0023_m2_ae_projection_repair.sql',
+    sha256: '666bcc9274f1e530f54900d8332d0465725042e460bbbc1d7261952d3f6c8af4',
+  },
 ]

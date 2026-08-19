@@ -73,6 +73,123 @@ describe('schema-29 core import', () => {
     }
   })
 
+  test('upgrades legacy M.2 A/E resources without duplicate projections or relationship loss', async () => {
+    const migrationIndex = CORE_MIGRATIONS.findIndex((migration) => (
+      migration.id === '0023_m2_ae_contract_v12'
+    ))
+    const handle = await migratedDatabase(migrationIndex)
+    const snapshot = schema29ProductionShapeFixture()
+    snapshot.inventory.servers[0].compatibility.host.expansionSlots = [{
+      id: 7,
+      key: 'm2-ae-slot',
+      count: 1,
+      label: 'M.2 2230 A/E WLAN slot',
+      interfaceFamily: 'm2-ae',
+      moduleSize: '2230',
+      acceptedModuleKinds: ['wireless-card'],
+    }]
+    snapshot.inventory.networkCards.push({
+      id: 9,
+      type: 'network',
+      name: 'WLAN module',
+      manufacturer: 'Intel',
+      model: 'AX200',
+      specs: {
+        networkTechnology: 'wifi',
+        formFactor: 'm2-2230',
+        hostInterface: { family: 'm2-ae', keying: 'A+E', moduleSize: '2230' },
+      },
+      ports: [],
+    })
+    snapshot.project.assignments.push({
+      id: 5,
+      hostType: 'server',
+      hostId: 7,
+      itemType: 'network',
+      itemId: 9,
+      type: 'network',
+      assignedAt: '2026-08-11T12:00:00.000Z',
+      allocation: { resourceType: 'expansion', groupId: 7, resourceKey: 'm2-ae-slot', positions: [0] },
+    })
+
+    try {
+      importLegacyCore({ database: handle.database, snapshot, identityPlan: buildCanonicalIdentityPlan(snapshot) })
+      const before = handle.database.query(`
+        SELECT assignment.id, assignment.resource_slot_id, slot.resource_group_id
+        FROM component_assignments assignment
+        JOIN host_resource_slots slot ON slot.id = assignment.resource_slot_id
+        WHERE assignment.id = 5
+      `).get()
+
+      await applyCommittedMigrations(handle, await Promise.all(CORE_MIGRATIONS.map(async (migration) => ({
+        ...migration,
+        sql: await readFile(resolve(import.meta.dir, '../core/migrations/generated', migration.file), 'utf8'),
+      }))))
+
+      const server = buildLegacyInventoryProjection(handle.database).servers[0]
+      expect(server.compatibility?.host?.expansionSlots).toBeUndefined()
+      expect(server.compatibility?.host?.optionalModuleSlots).toEqual([{
+        id: 7,
+        key: 'm2-ae-slot',
+        keyAliases: ['wlan-m2'],
+        count: 1,
+        label: 'M.2 Key E slot',
+        interfaceFamily: 'm2-ae',
+        socketKeys: ['E'],
+        moduleSizes: ['2230'],
+        intendedModuleKinds: ['wireless-card'],
+      }])
+      expect(handle.database.query(`
+        SELECT assignment.id, assignment.resource_slot_id, slot.resource_group_id
+        FROM component_assignments assignment
+        JOIN host_resource_slots slot ON slot.id = assignment.resource_slot_id
+        WHERE assignment.id = 5
+      `).get()).toEqual(before)
+      expect(handle.database.query(`
+        SELECT COUNT(*) AS count
+        FROM resource_accepted_kinds accepted
+        JOIN optional_module_resource_groups resource ON resource.id = accepted.resource_group_id
+        WHERE resource.interface_family = 'm2-ae'
+      `).get()).toEqual({ count: 0 })
+      expect(handle.database.query('PRAGMA foreign_key_check').all()).toEqual([])
+
+      await expect(applyCommittedMigrations(handle, await Promise.all(CORE_MIGRATIONS.map(async (migration) => ({
+        ...migration,
+        sql: await readFile(resolve(import.meta.dir, '../core/migrations/generated', migration.file), 'utf8'),
+      }))))).resolves.toEqual({ applied: 0, currentVersion: CORE_MIGRATIONS.length })
+    } finally {
+      closeManagedDatabase(handle)
+    }
+  })
+
+  test('treats legacy M.2 A/E accepted kinds as descriptive intent on new imports', async () => {
+    const handle = await migratedDatabase()
+    const snapshot = schema29ProductionShapeFixture()
+    snapshot.inventory.servers[0].compatibility.host.optionalModuleSlots = [{
+      id: 8,
+      key: 'm2-ae-slot',
+      keyAliases: ['wlan-m2'],
+      count: 1,
+      label: 'M.2 Key E slot',
+      interfaceFamily: 'm2-ae',
+      socketKeys: ['E'],
+      moduleSizes: ['2230'],
+      acceptedModuleKinds: ['wireless-card'],
+    }]
+    try {
+      importLegacyCore({ database: handle.database, snapshot, identityPlan: buildCanonicalIdentityPlan(snapshot) })
+      const resource = buildLegacyInventoryProjection(handle.database).servers[0]
+        .compatibility?.host?.optionalModuleSlots?.[0]
+      expect(resource).toMatchObject({
+        key: 'm2-ae-slot',
+        intendedModuleKinds: ['wireless-card'],
+      })
+      expect(resource).not.toHaveProperty('acceptedModuleKinds')
+    } finally {
+      closeManagedDatabase(handle)
+    }
+  })
+
   test('migrates an existing port table to non-negative slot numbers without losing constraints', async () => {
     const migrationIndex = CORE_MIGRATIONS.findIndex((migration) => migration.id === '0016_nonnegative_port_slots')
     const handle = await migratedDatabase(migrationIndex)

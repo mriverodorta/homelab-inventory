@@ -31,12 +31,10 @@ export function isLegacyWlanExpansionResource(resource) {
 
 export function isCanonicalWlanModuleResource(resource) {
   const key = normalizedKey(resource?.key)
-  const aliases = Array.isArray(resource?.keyAliases) ? resource.keyAliases.map(normalizedKey) : []
   const legacyWlan = key === 'wlan-m2'
     && Array.isArray(resource?.acceptedModuleKinds)
     && resource.acceptedModuleKinds.some((kind) => normalizedKey(kind) === 'wireless-card')
   const canonicalV12 = key === 'm2-ae-slot'
-    && aliases.includes('wlan-m2')
     && normalizedKey(resource?.interfaceFamily) === 'm2-ae'
   return legacyWlan || canonicalV12
 }
@@ -163,6 +161,34 @@ export function removeSupersededWlanResource(currentItem, incomingItem, mergedIt
     .filter((resource) => !isLegacyWlanExpansionResource(resource))
   if (result.compatibility.host.expansionSlots.length === 0) {
     delete result.compatibility.host.expansionSlots
+  }
+  return result
+}
+
+export function prepareCurrentWlanResourceForV12(currentItem, incomingItem) {
+  const transition = planWlanResourceMigration(currentItem, incomingItem)
+  if (transition.status !== 'ready') return currentItem
+
+  const currentHost = currentItem?.compatibility?.host
+  const currentDestinations = (currentHost?.optionalModuleSlots ?? [])
+    .filter(isCanonicalWlanModuleResource)
+  if (currentDestinations.length === 0) return currentItem
+  if (currentDestinations.length !== 1) return currentItem
+
+  const duplicate = currentDestinations[0]
+  if (
+    duplicate.id !== transition.source.id
+    || resourceCount(duplicate) !== transition.count
+  ) return currentItem
+
+  const result = structuredClone(currentItem)
+  result.compatibility.host.optionalModuleSlots = result.compatibility.host.optionalModuleSlots
+    .filter((resource) => !(
+      resource.id === duplicate.id
+      && normalizedKey(resource.key) === normalizedKey(duplicate.key)
+    ))
+  if (result.compatibility.host.optionalModuleSlots.length === 0) {
+    delete result.compatibility.host.optionalModuleSlots
   }
   return result
 }

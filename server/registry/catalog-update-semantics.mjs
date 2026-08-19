@@ -13,6 +13,7 @@ import {
 } from '../../packages/catalog-protocol/src/index.ts'
 import {
   planWlanResourceMigration,
+  prepareCurrentWlanResourceForV12,
   removeSupersededWlanResource,
   wlanResourceReclassification,
 } from './wlan-resource-migration.mjs'
@@ -310,7 +311,10 @@ function planPorts(currentPorts = [], incomingPorts = []) {
 
 export function planCatalogUpdate(currentValue, incomingValue, versionInput) {
   const { sourceFingerprintVersion, runtimeCanonicalVersion } = catalogUpdateVersions(versionInput)
-  const current = sanitizeCurrentForFingerprint(currentValue, runtimeCanonicalVersion)
+  const comparableCurrent = runtimeCanonicalVersion === M2_AE_FINGERPRINT_VERSION
+    ? prepareCurrentWlanResourceForV12(currentValue, incomingValue)
+    : currentValue
+  const current = sanitizeCurrentForFingerprint(comparableCurrent, runtimeCanonicalVersion)
   const nextItem = mergeCatalogItem(currentValue, incomingValue, runtimeCanonicalVersion)
   const next = sanitizeCurrentForFingerprint(nextItem, runtimeCanonicalVersion)
   const normalizedCurrent = normalizeSanitizedCatalogUpdateItem(current)
@@ -366,6 +370,7 @@ export function planCatalogUpdate(currentValue, incomingValue, versionInput) {
   }
 
   return {
+    currentItem: current,
     nextItem,
     changes,
     portPlan,

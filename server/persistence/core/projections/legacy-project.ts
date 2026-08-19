@@ -35,6 +35,31 @@ function mergeRecords(base: unknown, override: unknown): Row | undefined {
   return result
 }
 
+const AUTHORITATIVE_HOST_RESOURCE_COLLECTIONS = [
+  'storageSlots',
+  'expansionSlots',
+  'optionalModuleSlots',
+  'controllerSlots',
+  'bootDeviceSlots',
+  'coolingProfiles',
+]
+
+function mergeCompatibilityProjection(base: unknown, relational: unknown) {
+  const merged = mergeRecords(base, relational)
+  const relationalHost = relational && typeof relational === 'object' && !Array.isArray(relational)
+    ? (relational as Row).host
+    : undefined
+  if (!merged?.host || !relationalHost) return merged
+  for (const collection of AUTHORITATIVE_HOST_RESOURCE_COLLECTIONS) {
+    if (Object.hasOwn(relationalHost, collection)) {
+      merged.host[collection] = structuredClone(relationalHost[collection])
+    } else {
+      delete merged.host[collection]
+    }
+  }
+  return merged
+}
+
 function pointerSegments(path: string) {
   return path.split('/').slice(1).map((segment) => segment.replaceAll('~1', '/').replaceAll('~0', '~'))
 }
@@ -459,7 +484,7 @@ function inventoryItem(database: Database, row: Row): InventoryItem {
   const smart = smartRow ? defined({ enabled: true, displayName: smartRow.display_name, managementIp: smartRow.management_ip, macAddress: smartRow.mac_address, outlets: all(database, `SELECT pia.legacy_port_id AS portId, n.name FROM power_strip_outlet_names n JOIN port_identity_aliases pia ON pia.port_id = n.port_id WHERE n.smart_configuration_id = ? ORDER BY n.id`, smartRow.id) }) : undefined
   const legacyCompatibility = extension.catalogCompatibility
     ?? (extension.compatibilityRequirements ? { requirements: extension.compatibilityRequirements } : undefined)
-  const compatibility = mergeRecords(
+  const compatibility = mergeCompatibilityProjection(
     mergeRecords(mergeRecords(legacyCompatibility, subtype.compatibility), relationalExtension?.compatibility),
     hostCompatibility(database, row.id),
   )

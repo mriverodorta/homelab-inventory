@@ -6,6 +6,11 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 
 ## Unreleased
 
+### Fixed
+
+- Catalog revision 24 refreshes now reconcile deterministic legacy and canonical M.2 A/E projections before strict v12 evaluation instead of failing after activation.
+- Startup migration removes superseded WLAN-only acceptance constraints from canonical M.2 A/E resources while preserving their descriptive intended use, numeric resource and slot IDs, assignments, and linked inventory state.
+
 ## [0.13.14] - 2026-08-18
 
 ### Fixed

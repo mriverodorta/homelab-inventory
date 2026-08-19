@@ -697,7 +697,11 @@ function importCompatibility(database: Database, itemId: number, item: LegacyRec
           usbGeneration ?? null,
         )
       }
-      for (const kind of records(entry.intendedModuleKinds)) {
+      const legacyAcceptedKinds = records(entry.acceptedKinds ?? entry.acceptedModuleKinds)
+      const intendedKinds = interfaceFamily === 'm2-ae'
+        ? [...records(entry.intendedModuleKinds), ...legacyAcceptedKinds]
+        : records(entry.intendedModuleKinds)
+      for (const kind of new Set(intendedKinds.map(String))) {
         const value = optionalText(kind)
         if (value) database.query(`
           INSERT INTO optional_module_intended_kinds (resource_group_id, kind)
@@ -705,7 +709,10 @@ function importCompatibility(database: Database, itemId: number, item: LegacyRec
         `).run(resourceIdentityId, value)
       }
     }
-    for (const kind of records(entry.acceptedKinds ?? entry.acceptedModuleKinds ?? entry.acceptedControllerKinds ?? entry.acceptedDeviceKinds)) database.query('INSERT INTO resource_accepted_kinds (resource_group_id, kind) VALUES (?, ?)').run(resourceIdentityId, String(kind))
+    const acceptedKinds = resourceType === 'optionalModule' && entry.interfaceFamily === 'm2-ae'
+      ? []
+      : records(entry.acceptedKinds ?? entry.acceptedModuleKinds ?? entry.acceptedControllerKinds ?? entry.acceptedDeviceKinds)
+    for (const kind of acceptedKinds) database.query('INSERT INTO resource_accepted_kinds (resource_group_id, kind) VALUES (?, ?)').run(resourceIdentityId, String(kind))
     if (resourceType === 'controllerSlot') database.query('INSERT INTO controller_resource_groups (id, interface_family, dedicated) VALUES (?, ?, ?)').run(resourceIdentityId, optionalText(entry.interfaceFamily), booleanOrNull(entry.dedicated))
     if (resourceType === 'bootDeviceSlot') {
       database.query('INSERT INTO boot_device_resource_groups (id) VALUES (?)').run(resourceIdentityId)

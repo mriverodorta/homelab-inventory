@@ -452,7 +452,9 @@ const RELEASE_0_13_14_DETAILS: UnreleasedReleaseNotes = {
 
 export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
   highlights: [],
-  fixes: [],
+  fixes: [
+    'Registry catalog refresh now reconciles upgraded M.2 A/E resource projections before strict contract-v12 evaluation, while startup removes retired WLAN-only constraints without changing assignments or linked inventory identity.',
+  ],
   notes: [],
 }
 

@@ -74,7 +74,7 @@ export function catalogFieldDiff(currentValue, nextValue, versionInput) {
     ? versionInput.runtimeCanonicalVersion ?? versionInput.sourceFingerprintVersion
     : versionInput
   const semantic = plan.changes
-  const current = sanitizeCurrentForFingerprint(currentValue, runtimeCanonicalVersion)
+  const current = plan.currentItem
   const next = sanitizeCurrentForFingerprint(plan.nextItem, runtimeCanonicalVersion)
   const operations = semantic.filter((change) => change.kind === 'reclassify-resource')
   const fieldChanges = semantic.filter((change) => change.kind !== 'reclassify-resource')
@@ -106,8 +106,9 @@ export function mergeCatalogUpdate(currentValue, nextValue, versionInput) {
   const runtimeCanonicalVersion = typeof versionInput === 'object'
     ? versionInput.runtimeCanonicalVersion ?? versionInput.sourceFingerprintVersion
     : versionInput
-  const current = sanitizeCurrentForFingerprint(currentValue, runtimeCanonicalVersion)
+  const plan = planCatalogUpdate(currentValue, nextValue, versionInput)
+  const current = plan.currentItem
   const next = sanitizeForFingerprint(nextValue, runtimeCanonicalVersion)
   assertRamMemoryRequirements(current, next, runtimeCanonicalVersion)
-  return planCatalogUpdate(currentValue, nextValue, versionInput).nextItem
+  return plan.nextItem
 }

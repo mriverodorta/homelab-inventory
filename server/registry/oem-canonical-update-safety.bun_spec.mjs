@@ -71,6 +71,96 @@ describe('OEM canonical catalog update safety', () => {
     ])
   })
 
+  it('reconciles a deterministic legacy and canonical v12 read projection before strict validation', () => {
+    const legacy = {
+      id: 1,
+      key: 'm2-ae-slot',
+      count: 1,
+      label: 'M.2 2230 A/E network slot',
+      interfaceFamily: 'm2-ae',
+    }
+    const canonical = {
+      id: 1,
+      key: 'm2-ae-slot',
+      keyAliases: ['wlan-m2'],
+      count: 1,
+      label: 'M.2 Key E slot',
+      interfaceFamily: 'm2-ae',
+      socketKeys: ['E'],
+      moduleSizes: ['2230'],
+    }
+    const current = {
+      type: 'desktop',
+      name: 'Existing host',
+      compatibility: { host: {
+        expansionSlots: [legacy],
+        optionalModuleSlots: [canonical],
+      } },
+    }
+    const incoming = {
+      type: 'desktop',
+      name: 'Existing host',
+      compatibility: { host: { optionalModuleSlots: [{
+        ...canonical,
+        availableBuses: [{ family: 'pcie', lanes: 1, pcieGeneration: 3 }],
+        intendedModuleKinds: ['wireless-card'],
+      }] } },
+    }
+
+    const plan = planCatalogUpdate(current, incoming, {
+      sourceFingerprintVersion: 12,
+      runtimeCanonicalVersion: 12,
+    })
+
+    expect(plan.currentItem.compatibility.host.expansionSlots).toEqual([legacy])
+    expect(plan.currentItem.compatibility.host.optionalModuleSlots).toBeUndefined()
+    expect(plan.nextItem.compatibility.host.expansionSlots).toBeUndefined()
+    expect(plan.nextItem.compatibility.host.optionalModuleSlots).toEqual([
+      expect.objectContaining({ id: 1, key: 'm2-ae-slot', keyAliases: ['wlan-m2'] }),
+    ])
+    expect(plan.changes.filter((change) => change.kind === 'reclassify-resource')).toHaveLength(1)
+    expect(plan.changes.some((change) => change.kind === 'removed')).toBe(false)
+    expect(catalogFieldDiff(current, incoming, {
+      sourceFingerprintVersion: 12,
+      runtimeCanonicalVersion: 12,
+    }).filter((change) => change.kind === 'reclassify-resource')).toHaveLength(1)
+  })
+
+  it('rejects an ambiguous duplicate v12 read projection', () => {
+    const current = {
+      type: 'desktop',
+      name: 'Ambiguous host',
+      compatibility: { host: {
+        expansionSlots: [{ id: 1, key: 'm2-ae-slot', count: 1, label: 'M.2 A/E slot' }],
+        optionalModuleSlots: [{
+          id: 2,
+          key: 'm2-ae-slot',
+          keyAliases: ['wlan-m2'],
+          count: 1,
+          label: 'M.2 Key E slot',
+          interfaceFamily: 'm2-ae',
+        }],
+      } },
+    }
+    const incoming = {
+      type: 'desktop',
+      name: 'Ambiguous host',
+      compatibility: { host: { optionalModuleSlots: [{
+        id: 2,
+        key: 'm2-ae-slot',
+        keyAliases: ['wlan-m2'],
+        count: 1,
+        label: 'M.2 Key E slot',
+        interfaceFamily: 'm2-ae',
+      }] } },
+    }
+
+    expect(() => planCatalogUpdate(current, incoming, {
+      sourceFingerprintVersion: 12,
+      runtimeCanonicalVersion: 12,
+    })).toThrow('Resource key m2-ae-slot conflicts')
+  })
+
   for (const templateKey of AFFECTED_TEMPLATE_KEYS) {
     it(`compares ${templateKey} at runtime v9 without false removals or duplicate WLAN resources`, () => {
       const source = fixture.templates.find((template) => template.templateKey === templateKey)
