@@ -43,6 +43,7 @@ import { useCanvasEquipmentLifecycle } from '@/app/use-canvas-equipment-lifecycl
 import { useConnectionController } from '@/app/use-connection-controller'
 import { useProjectSaveQueue } from '@/app/use-project-save-queue'
 import { useCanvasSelectionController } from '@/app/use-canvas-selection-controller'
+import { useCanvasEngineReactivation } from '@/app/use-canvas-engine-reactivation'
 import { useProjectGeometrySync } from '@/app/use-project-geometry-sync'
 import { useProjectHydration } from '@/app/use-project-hydration'
 import { useProjectCommands } from '@/app/use-project-commands'
@@ -184,6 +185,15 @@ function App() {
     selectInventoryItem,
     focusExampleTarget,
   } = canvasSelectionController
+  useCanvasEngineReactivation({
+    canvasWorkspaceActive,
+    engineEnabled: domainEngine.enabled,
+    enginePhase: domainEngine.state.phase,
+    engineSession: domainEngine.session,
+    selectedItemId,
+    autoCenterOnSelect,
+    focusCanvasItem,
+  })
   const sourceProjectId = workbookController.activeWorkbook?.project.id ?? null
   const sourceWorkspaceId = workbookController.sourceCanvasWorkspace?.id ?? null
   const defaultWorkspaceActive = sourceProjectId === 1 && sourceWorkspaceId === 2
