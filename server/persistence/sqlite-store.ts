@@ -27,6 +27,7 @@ import { assertBackupManagementStoreShape, normalizeBackupManagementStore } from
 import { timingSafeEqualString } from '../db/agent-auth.mjs'
 import { inspectNasPowerConfigurationChange } from '../db/nas-power-configuration.mjs'
 import { createEngineSnapshot } from '../engine/snapshot.mjs'
+import { createInventoryMetadataRepository } from '../inventory-metadata/repository.mjs'
 import {
   assertRegistryStoreShape,
   createPrivateTemplatePack,
@@ -262,6 +263,7 @@ export class SqliteHomelabInventoryStore {
   context: ReturnType<typeof createRepositoryContext>
   projects: ReturnType<typeof createProjectRepository>
   inventoryScope: ReturnType<typeof createInventoryScopeService>
+  inventoryMetadata: ReturnType<typeof createInventoryMetadataRepository>
   private readonly projectCommitListeners = new Set<(event: ProjectCommitEvent) => void>()
   private registryMutationTail: Promise<void> = Promise.resolve()
 
@@ -286,12 +288,14 @@ export class SqliteHomelabInventoryStore {
     this.context = createRepositoryContext(core.database, now)
     this.projects = createProjectRepository(this.context)
     this.inventoryScope = createInventoryScopeService(this.context)
+    this.inventoryMetadata = createInventoryMetadataRepository(this.context)
   }
 
   private rebindRepositories() {
     this.context = createRepositoryContext(this.core.database, this.now)
     this.projects = createProjectRepository(this.context)
     this.inventoryScope = createInventoryScopeService(this.context)
+    this.inventoryMetadata = createInventoryMetadataRepository(this.context)
   }
 
   private applicationMeta() {
