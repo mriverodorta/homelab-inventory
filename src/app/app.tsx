@@ -60,6 +60,7 @@ import { createWorkspaceSurfaceProps } from '@/app/create-workspace-surface-prop
 import { pushHistory } from '@/lib/history'
 import type { ProjectState } from '@/types/inventory'
 import type { InventoryMetadataSavedChange } from '@/types/inventory-metadata'
+import { inventoryMetadataKeys } from '@/lib/inventory-metadata-query'
 import {
   createProjectHistorySnapshot,
   type InventoryMetadataHistoryState,
@@ -234,6 +235,11 @@ function App() {
           'Synchronizing inventory metadata history.',
         )
       : undefined,
+    refreshInventoryMetadata: async (projectIds) => {
+      await Promise.all(projectIds.map((projectId) => queryClient.invalidateQueries({
+        queryKey: inventoryMetadataKeys.project(projectId),
+      })))
+    },
   })
   const hasHydratedProjectRef = useRef(false)
   const hydratedWorkspaceKeyRef = useRef<string | null>(null)

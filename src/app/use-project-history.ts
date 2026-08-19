@@ -25,6 +25,7 @@ type ProjectHistoryOptions = {
   setValidationMessage: (message: string | null) => void
   scheduleProjectSave: (project: ProjectState) => void
   synchronizeCanonicalRevision?: (revision: number) => Promise<number>
+  refreshInventoryMetadata?: (projectIds: readonly number[]) => Promise<void>
 }
 
 export function useProjectHistory({
@@ -36,6 +37,7 @@ export function useProjectHistory({
   setValidationMessage,
   scheduleProjectSave: scheduleLegacyProjectSave,
   synchronizeCanonicalRevision,
+  refreshInventoryMetadata,
 }: ProjectHistoryOptions) {
   const [history, setHistoryState] = useState<HistoryState<ProjectHistorySnapshot>>(() => createEmptyHistory())
   const [historyBusy, setHistoryBusy] = useState(false)
@@ -81,6 +83,7 @@ export function useProjectHistory({
           canonicalRevision = await synchronizeCanonicalRevision(canonicalRevision)
         }
         inventoryMetadataHistoryRef.current = new Map(target.inventoryMetadata)
+        await refreshInventoryMetadata?.(restored.affectedProjectIds)
       }
 
       const projectChanged = !projectHistoryContentEqual(target.project, currentProject)

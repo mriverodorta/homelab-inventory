@@ -31,6 +31,7 @@ describe('useProjectHistory inventory metadata', () => {
     const scheduleProjectSave = vi.fn()
     const setProject = vi.fn((value) => { projectRef.current = value })
     const setValidationMessage = vi.fn()
+    const refreshInventoryMetadata = vi.fn(async () => undefined)
     restoreHistory.mockResolvedValue({
       affectedProjectIds: [1],
       affectedProjectRevisions: { 1: 3 },
@@ -46,6 +47,7 @@ describe('useProjectHistory inventory metadata', () => {
       setValidationMessage,
       scheduleProjectSave,
       synchronizeCanonicalRevision: vi.fn(async (revision) => revision),
+      refreshInventoryMetadata,
     }))
 
     act(() => {
@@ -65,6 +67,7 @@ describe('useProjectHistory inventory metadata', () => {
     expect(setProject).toHaveBeenCalled()
     await waitFor(() => expect(projectRef.current?.revision).toBe(3))
     expect(metadataRef.current).toEqual(before)
+    expect(refreshInventoryMetadata).toHaveBeenCalledWith([1])
     expect(scheduleProjectSave).not.toHaveBeenCalled()
     expect(setValidationMessage).toHaveBeenLastCalledWith(null)
   })

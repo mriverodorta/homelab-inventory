@@ -12,6 +12,7 @@ export const inventoryMetadataKeys = Object.freeze({
   root: ['inventory-metadata'] as const,
   catalogs: () => [...inventoryMetadataKeys.root, 'catalog'] as const,
   catalog: (includeArchived = false) => [...inventoryMetadataKeys.catalogs(), { includeArchived }] as const,
+  project: (projectId: number) => [...inventoryMetadataKeys.root, 'project', projectId] as const,
   projectItems: (projectId: number) => [...inventoryMetadataKeys.root, 'project', projectId, 'items'] as const,
   projectProjections: (projectId: number) => [...inventoryMetadataKeys.root, 'project', projectId, 'projections'] as const,
   projectProjection: (projectId: number, query: api.InventoryMetadataProjectQuery) => (
