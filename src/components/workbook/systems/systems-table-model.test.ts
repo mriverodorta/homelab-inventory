@@ -30,6 +30,9 @@ const base: SystemsHostRow = {
   attentionCount: 0,
   attentionState: 'current',
   attentionRevision: 1,
+  metadataTags: [],
+  metadataValues: {},
+  metadataSearchText: '',
 }
 
 describe('Systems table model', () => {
@@ -45,6 +48,15 @@ describe('Systems table model', () => {
       registrations: ['unregistered'],
       registryStates: ['unlinked'],
     }).map(({ name }) => name)).toEqual(['Vault'])
+  })
+
+  it('searches metadata and accepts a set-based metadata filter projection', () => {
+    const systems = [
+      { ...base, metadataSearchText: 'production critical' },
+      { ...base, itemId: 2, itemKey: 'server:2', name: 'Beta', metadataSearchText: 'lab' },
+    ]
+    expect(filterAndSortSystems(systems, { ...DEFAULT_SYSTEMS_TABLE_PREFERENCES, query: 'critical' }).map(({ name }) => name)).toEqual(['Alpha'])
+    expect(filterAndSortSystems(systems, DEFAULT_SYSTEMS_TABLE_PREFERENCES, new Set([2])).map(({ name }) => name)).toEqual(['Beta'])
   })
 
   it('sorts utilization with missing values last in both directions', () => {

@@ -71,6 +71,9 @@ describe('inventory metadata filter service', () => {
         values: { [owner.id]: { value: 'Infrastructure', display: 'Infrastructure' } },
       })
       expect(projection.rows[0].searchText).toContain('production infrastructure active')
+      const searchOnly = service.projectProjection(1, { scope: 'systems', includeSearch: true })
+      expect(searchOnly.rows[0].values).toEqual({})
+      expect(searchOnly.rows[0].searchText).toContain('production infrastructure active')
     } finally {
       closeManagedDatabase(handle)
     }

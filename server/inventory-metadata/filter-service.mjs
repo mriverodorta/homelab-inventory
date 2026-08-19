@@ -119,6 +119,7 @@ export class InventoryMetadataFilterService {
     const filterDefinitionIds = filters.flatMap((filter) => filter.definitionId ? [filter.definitionId] : [])
     const requestedDefinitionIds = [...new Set([...definitionIds, ...filterDefinitionIds])].sort((left, right) => left - right)
     const includeSearch = input.includeSearch === true
+    const projectedDefinitionIds = new Set(requestedDefinitionIds)
     const projectRow = this.database.query('SELECT includes_global_inventory FROM projects WHERE id = ? AND archived_at_ms IS NULL').get(project)
     if (!projectRow) throw new InventoryMetadataError(`Active project ${project} was not found.`, { status: 404, code: 'inventory-metadata-not-found' })
 
@@ -206,7 +207,9 @@ export class InventoryMetadataFilterService {
         itemType: row.itemType,
         legacyId: row.legacyId,
         tags: row.tags,
-        values: Object.fromEntries([...row.values].map(([definitionId, value]) => [definitionId, {
+        values: Object.fromEntries([...row.values]
+          .filter(([definitionId]) => projectedDefinitionIds.has(definitionId))
+          .map(([definitionId, value]) => [definitionId, {
           value: value.value,
           optionIds: value.optionIds,
           display: value.display,

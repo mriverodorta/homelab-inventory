@@ -40,6 +40,7 @@ function visibleText(system: SystemsHostRow) {
     system.type,
     system.hardwareClass,
     system.usageRole,
+    system.metadataSearchText,
   ].map(text).join(' ')
 }
 
@@ -57,6 +58,7 @@ export function systemsViewConfigurationsEqual(
     columns: [...configuration.columns]
       .sort((first, second) => first.order - second.order)
       .map(({ key, visible, order }) => ({ key, visible, order })),
+    metadataFilters: configuration.metadataFilters,
   })
   return comparable(left) === comparable(right)
 }
@@ -73,10 +75,12 @@ export function systemsColumnTrack(key: string, width: number, customized: boole
 export function filterAndSortSystems(
   systems: readonly SystemsHostRow[],
   preferences: SystemsTablePreferences,
+  metadataMatches: ReadonlySet<number> | null = null,
 ) {
   const query = text(preferences.query)
   const direction = preferences.sortDirection === 'ascending' ? 1 : -1
   return systems
+    .filter((system) => metadataMatches === null || metadataMatches.has(system.itemId))
     .filter((system) => !query || visibleText(system).includes(query))
     .filter((system) => !preferences.types.length || preferences.types.includes(system.type))
     .filter((system) => !preferences.registrations.length || preferences.registrations.includes(

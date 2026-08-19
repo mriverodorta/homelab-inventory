@@ -88,11 +88,11 @@ export function InventoryMetadataFilters({ catalog, filters, onChange, dark = fa
   onChange(filters: InventoryMetadataFilter[]): void
   dark?: boolean
 }) {
-  const tagFilter = filters.find((filter) => filter.operator === 'tags-any')
+  const tagFilter = filters.find((filter) => ['tags-any', 'has-tags', 'no-tags'].includes(filter.operator))
   const activeCount = filters.length
-  const replaceTags = (tagIds: readonly number[]) => onChange([
+  const replaceTagFilter = (next: InventoryMetadataFilter | null) => onChange([
     ...filters.filter((filter) => filter.operator !== 'tags-any' && filter.operator !== 'has-tags' && filter.operator !== 'no-tags'),
-    ...(tagIds.length ? [{ operator: 'tags-any' as const, tagIds }] : []),
+    ...(next ? [next] : []),
   ])
   return (
     <Popover>
@@ -111,17 +111,32 @@ export function InventoryMetadataFilters({ catalog, filters, onChange, dark = fa
             {catalog.tags.length ? (
               <section className="space-y-2">
                 <div className="text-xs font-semibold">Tags</div>
-                <div className="grid gap-1.5 sm:grid-cols-2">
-                  {catalog.tags.filter((tag) => !tag.archivedAt).map((tag) => (
-                    <label key={tag.id} className="flex items-center gap-2 text-xs">
-                      <Checkbox checked={tagFilter?.operator === 'tags-any' && tagFilter.tagIds.includes(tag.id)} onCheckedChange={(checked) => {
-                        const selected = tagFilter?.operator === 'tags-any' ? tagFilter.tagIds : []
-                        replaceTags(checked ? [...selected, tag.id] : selected.filter((id) => id !== tag.id))
-                      }} />
-                      <span>{tag.name}</span>
-                    </label>
-                  ))}
-                </div>
+                <Select value={tagFilter?.operator ?? 'any'} onValueChange={(operator) => {
+                  if (operator === 'any') replaceTagFilter(null)
+                  else if (operator === 'has-tags' || operator === 'no-tags') replaceTagFilter({ operator })
+                  else replaceTagFilter({ operator: 'tags-any', tagIds: [] })
+                }}>
+                  <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="any">Any tags</SelectItem>
+                    <SelectItem value="tags-any">Selected tags</SelectItem>
+                    <SelectItem value="has-tags">Has tags</SelectItem>
+                    <SelectItem value="no-tags">No tags</SelectItem>
+                  </SelectContent>
+                </Select>
+                {tagFilter?.operator === 'tags-any' ? (
+                  <div className="grid gap-1.5 sm:grid-cols-2">
+                    {catalog.tags.filter((tag) => !tag.archivedAt).map((tag) => (
+                      <label key={tag.id} className="flex items-center gap-2 text-xs">
+                        <Checkbox checked={tagFilter.tagIds.includes(tag.id)} onCheckedChange={(checked) => {
+                          const tagIds = checked ? [...tagFilter.tagIds, tag.id] : tagFilter.tagIds.filter((id) => id !== tag.id)
+                          replaceTagFilter({ operator: 'tags-any', tagIds })
+                        }} />
+                        <span>{tag.name}</span>
+                      </label>
+                    ))}
+                  </div>
+                ) : null}
               </section>
             ) : null}
             {catalog.definitions.filter((definition) => !definition.archivedAt).map((definition) => (

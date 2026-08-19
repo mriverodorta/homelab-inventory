@@ -4,17 +4,20 @@ import { getCoreRowModel, useLegacyTable, type LegacyColumnDef } from '@tanstack
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { ArrowDown, ArrowUp, ArrowUpDown, Link, Server, TriangleAlert, type LucideIcon } from 'lucide-react'
 import { ComputeHostIcon } from '@/components/compute-host-icon'
+import { InventoryTagPreview } from '@/components/inventory/inventory-tag-preview'
 import { Button } from '@/components/ui/button'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
-import { SYSTEMS_COLUMN_LABELS } from '@/components/workbook/systems/systems-columns'
+import { SYSTEMS_COLUMN_LABELS, systemsColumnLabel } from '@/components/workbook/systems/systems-columns'
 import { shouldVirtualizeSystems, systemsColumnTrack } from '@/components/workbook/systems/systems-table-model'
 import type { SystemsSortDirection, SystemsSortKey } from '@/lib/systems-preferences'
 import { cn } from '@/lib/utils'
-import type { SystemsColumnKey, SystemsDensity, SystemsHostRow, SystemsViewColumn } from '@/types/systems'
+import { customFieldIdFromSystemsColumn } from '@/lib/systems-preferences'
+import type { CustomFieldDefinition } from '@/types/inventory-metadata'
+import type { SystemsBaseColumnKey, SystemsColumnKey, SystemsDensity, SystemsHostRow, SystemsViewColumn } from '@/types/systems'
 import { SystemsAgentStatus, SystemsRegistryStatus } from './systems-status'
 import { SystemsUtilizationBar } from './systems-utilization-bar'
 
-const DEFAULT_WIDTHS: Record<SystemsColumnKey, number> = {
+const DEFAULT_WIDTHS: Record<SystemsBaseColumnKey, number> = {
   type: 44,
   name: 220,
   manufacturer: 190,
@@ -42,6 +45,7 @@ type SystemsTableProps = SortProps & Readonly<{
   columns: readonly SystemsViewColumn[]
   density: SystemsDensity
   widths: Partial<Record<SystemsColumnKey, number>>
+  definitions: readonly CustomFieldDefinition[]
   selectedItemId: string | null
   onSelect(itemId: string): void
   onAttention(itemId: string): void
@@ -132,10 +136,22 @@ function AttentionCell({ system, onOpen }: { system: SystemsHostRow; onOpen(): v
   )
 }
 
-function cellContent(key: SystemsColumnKey, system: SystemsHostRow, onAttention: () => void) {
+function MetadataValue({ value }: { value: SystemsHostRow['metadataValues'][string] | undefined }) {
+  if (!value?.display) return <span className="text-xs text-[#81786e]">Not set</span>
+  return <div className="truncate text-xs text-[#38342f]" title={value.display}>{value.display}</div>
+}
+
+function cellContent(
+  key: SystemsColumnKey,
+  system: SystemsHostRow,
+  onAttention: () => void,
+  showTagsInName: boolean,
+) {
+  const definitionId = customFieldIdFromSystemsColumn(key)
+  if (definitionId !== null) return <MetadataValue value={system.metadataValues[String(definitionId)]} />
   switch (key) {
     case 'type': return <TypeCell system={system} />
-    case 'name': return <div className="truncate font-semibold text-[#20242c]" title={system.name}>{system.name}</div>
+    case 'name': return <div className="min-w-0"><div className="truncate font-semibold text-[#20242c]" title={system.name}>{system.name}</div>{showTagsInName ? <InventoryTagPreview tags={system.metadataTags} compact /> : null}</div>
     case 'manufacturer': return <div className="min-w-0 text-xs text-[#4f4a44]"><div className="truncate" title={system.manufacturer ?? undefined}>{system.manufacturer ?? 'Unknown manufacturer'}</div>{system.model ? <div className="truncate text-[#81786e]" title={system.model}>{system.model}</div> : null}</div>
     case 'cpu': return <MetricCell label={system.cpuLabel} value={system.cpuPercent} kind="cpu" />
     case 'memory': return <MetricCell label={system.memoryLabel} value={system.memoryPercent} kind="memory" />
@@ -146,15 +162,21 @@ function cellContent(key: SystemsColumnKey, system: SystemsHostRow, onAttention:
     case 'operatingSystem': return <div className="truncate text-xs" title={system.operatingSystem ?? undefined}>{system.operatingSystem ?? 'Unknown'}</div>
     case 'uptime': return <div className="truncate text-xs tabular-nums">{formatUptime(system.uptimeSeconds)}</div>
     case 'lanIp': return <div className="truncate text-xs tabular-nums" title={system.lanIp ?? undefined}>{system.lanIp ?? 'Unknown'}</div>
+    case 'tags': return <InventoryTagPreview tags={system.metadataTags} />
   }
 }
 
-function tableColumns(orderedColumns: readonly SystemsViewColumn[], onAttention: (itemId: string) => void): LegacyColumnDef<SystemsHostRow>[] {
+function tableColumns(
+  orderedColumns: readonly SystemsViewColumn[],
+  onAttention: (itemId: string) => void,
+  definitions: ReadonlyMap<number, CustomFieldDefinition>,
+): LegacyColumnDef<SystemsHostRow>[] {
+  const showTagsInName = !orderedColumns.some((column) => column.key === 'tags')
   return orderedColumns.map((column) => ({
     id: column.key,
     accessorFn: (row) => row,
-    header: SYSTEMS_COLUMN_LABELS[column.key],
-    cell: ({ row }) => cellContent(column.key, row.original, () => onAttention(row.original.itemKey)),
+    header: systemsColumnLabel(column.key, definitions),
+    cell: ({ row }) => cellContent(column.key, row.original, () => onAttention(row.original.itemKey), showTagsInName),
   }))
 }
 
@@ -162,7 +184,7 @@ function isPinnedIdentityColumn(key: SystemsColumnKey) {
   return key === 'type' || key === 'name'
 }
 
-function stickyOffsetStyle(key: SystemsColumnKey, widths: Record<SystemsColumnKey, number>): CSSProperties | undefined {
+function stickyOffsetStyle(key: SystemsColumnKey, widths: Record<string, number>): CSSProperties | undefined {
   if (key === 'type') return { left: 0 }
   if (key === 'name') return { left: widths.type }
   return undefined
@@ -173,6 +195,7 @@ export function SystemsTable({
   columns,
   density,
   widths: customWidths,
+  definitions: fieldDefinitions,
   selectedItemId,
   onSelect,
   onAttention,
@@ -185,14 +208,18 @@ export function SystemsTable({
   const lastFocusedItem = useRef<string | null>(null)
   const previousSelectedItem = useRef(selectedItemId)
   const orderedColumns = useMemo(() => [...columns].filter((column) => column.visible).sort((left, right) => left.order - right.order), [columns])
-  const widths = useMemo(() => ({ ...DEFAULT_WIDTHS, ...customWidths }), [customWidths])
+  const widths = useMemo(() => Object.fromEntries(orderedColumns.map((column) => [
+    column.key,
+    customWidths[column.key] ?? (column.key === 'tags' || customFieldIdFromSystemsColumn(column.key) !== null ? 180 : DEFAULT_WIDTHS[column.key as SystemsBaseColumnKey]),
+  ])), [customWidths, orderedColumns])
+  const definitionMap = useMemo(() => new Map(fieldDefinitions.map((definition) => [definition.id, definition])), [fieldDefinitions])
   const gridTemplate = orderedColumns.map((column) => systemsColumnTrack(
     column.key,
     widths[column.key],
     customWidths[column.key] !== undefined,
   )).join(' ')
   const totalWidth = orderedColumns.reduce((total, column) => total + widths[column.key], 0)
-  const definitions = useMemo(() => tableColumns(orderedColumns, onAttention), [onAttention, orderedColumns])
+  const definitions = useMemo(() => tableColumns(orderedColumns, onAttention, definitionMap), [definitionMap, onAttention, orderedColumns])
   const table = useLegacyTable({ data: [...systems], columns: definitions, getCoreRowModel: getCoreRowModel() })
   const rows = table.getRowModel().rows
   const rowHeight = density === 'dense' ? 48 : 64
@@ -280,13 +307,16 @@ export function SystemsTable({
           {table.getHeaderGroups()[0]?.headers.map((header) => {
             const key = header.column.id as SystemsColumnKey
             const CompactIcon = key === 'type' ? Server : key === 'attention' ? TriangleAlert : key === 'registry' ? Link : undefined
+            const label = systemsColumnLabel(key, definitionMap)
             return (
               <div key={header.id} role="columnheader" className={cn('group relative flex min-w-0 items-center overflow-hidden px-3', COMPACT_COLUMNS.has(key) && 'justify-center px-1 text-center', isPinnedIdentityColumn(key) && 'bg-[#eeeae3] md:sticky md:z-[2]')} style={stickyOffsetStyle(key, widths)}>
-                <SortButton column={key} label={SYSTEMS_COLUMN_LABELS[key]} compactIcon={CompactIcon} {...sort} />
+                {key === 'tags' || customFieldIdFromSystemsColumn(key) !== null
+                  ? <span className="truncate text-[11px] font-semibold uppercase text-[#665f57]" title={label}>{label}</span>
+                  : <SortButton column={key as SystemsBaseColumnKey} label={SYSTEMS_COLUMN_LABELS[key as SystemsBaseColumnKey]} compactIcon={CompactIcon} {...sort} />}
                 {COMPACT_COLUMNS.has(key) ? null : (
                   <button
                     type="button"
-                    aria-label={`Resize ${SYSTEMS_COLUMN_LABELS[key]} column`}
+                    aria-label={`Resize ${label} column`}
                     className="absolute inset-y-1 right-0 w-1 cursor-col-resize rounded bg-transparent hover:bg-[#8071aa] focus-visible:bg-[#8071aa]"
                     onPointerDown={(event) => resizeColumn(key, event)}
                     onDoubleClick={() => { const next = { ...customWidths }; delete next[key]; onWidthsChange(next) }}

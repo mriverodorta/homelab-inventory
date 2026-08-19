@@ -1,8 +1,15 @@
+import type {
+  InventoryMetadataFilter,
+  InventoryMetadataProjectionTag,
+  InventoryMetadataProjectionValue,
+} from '@/types/inventory-metadata'
+
 export type SystemsAgentState = 'unregistered' | 'unknown' | 'online' | 'stale' | 'offline'
 
 export type SystemsHostType = 'server' | 'nas' | 'pcBuild'
 export type SystemsAttentionState = 'current' | 'refreshing' | 'failed'
-export type SystemsColumnKey = 'type' | 'name' | 'manufacturer' | 'cpu' | 'memory' | 'storage' | 'attention' | 'agent' | 'registry' | 'operatingSystem' | 'uptime' | 'lanIp'
+export type SystemsBaseColumnKey = 'type' | 'name' | 'manufacturer' | 'cpu' | 'memory' | 'storage' | 'attention' | 'agent' | 'registry' | 'operatingSystem' | 'uptime' | 'lanIp'
+export type SystemsColumnKey = SystemsBaseColumnKey | 'tags' | `custom-field:${number}`
 export type SystemsDensity = 'dense' | 'comfortable'
 
 export type SystemsHostLive = Readonly<{
@@ -37,6 +44,9 @@ export type SystemsHostRow = SystemsHostLive & Readonly<{
   operatingSystem: string | null
   lanIp: string | null
   registryLinked: boolean
+  metadataTags: readonly InventoryMetadataProjectionTag[]
+  metadataValues: Readonly<Record<string, InventoryMetadataProjectionValue>>
+  metadataSearchText: string
 }>
 
 export type SystemsViewColumn = Readonly<{ key: SystemsColumnKey; visible: boolean; order: number }>
@@ -44,10 +54,11 @@ export type SystemsViewConfiguration = Readonly<{
   types: readonly SystemsHostType[]
   registrations: readonly ('registered' | 'unregistered')[]
   registryStates: readonly ('linked' | 'unlinked')[]
-  sortKey: SystemsColumnKey
+  sortKey: SystemsBaseColumnKey
   sortDirection: 'ascending' | 'descending'
   density: SystemsDensity
   columns: readonly SystemsViewColumn[]
+  metadataFilters: readonly InventoryMetadataFilter[]
 }>
 export type SystemsSavedView = Readonly<{
   id: number

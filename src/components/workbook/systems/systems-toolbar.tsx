@@ -7,6 +7,8 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { SystemsFilterMenu } from './systems-filter-menu'
 import { SystemsColumnMenu } from './systems-column-menu'
+import { InventoryMetadataFilters } from '@/components/inventory/inventory-metadata-filters'
+import type { InventoryMetadataCatalog, InventoryMetadataFilter } from '@/types/inventory-metadata'
 import type { SystemsDensity, SystemsHostType, SystemsSavedView, SystemsViewColumn } from '@/types/systems'
 import type { SystemsRegistrationFilter, SystemsRegistryFilter } from '@/lib/systems-preferences'
 
@@ -14,6 +16,7 @@ export type SystemsViewSelection = 'all' | 'attention' | number
 
 export function SystemsToolbar({
   selection, views, modified, types, registrations, registryStates, typeOptions, columns, density, query,
+  metadataCatalog, metadataFilters, onMetadataFilters,
   onSelection, onTypes, onRegistrations, onRegistryStates, onColumns, onDensity, onQuery,
   onSaveNew, onUpdate, onReset, onRename, onDelete, onSetDefault,
 }: {
@@ -25,6 +28,8 @@ export function SystemsToolbar({
   registryStates: readonly SystemsRegistryFilter[]
   typeOptions: readonly { value: SystemsHostType; label: string }[]
   columns: readonly SystemsViewColumn[]
+  metadataCatalog: InventoryMetadataCatalog
+  metadataFilters: readonly InventoryMetadataFilter[]
   density: SystemsDensity
   query: string
   onSelection(selection: SystemsViewSelection): void
@@ -32,6 +37,7 @@ export function SystemsToolbar({
   onRegistrations(values: SystemsRegistrationFilter[]): void
   onRegistryStates(values: SystemsRegistryFilter[]): void
   onColumns(values: SystemsViewColumn[]): void
+  onMetadataFilters(values: InventoryMetadataFilter[]): void
   onDensity(value: SystemsDensity): void
   onQuery(value: string): void
   onSaveNew(): void
@@ -63,7 +69,8 @@ export function SystemsToolbar({
       <SystemsFilterMenu label="System type" options={typeOptions} selected={types} onChange={onTypes} />
       <SystemsFilterMenu label="Agent" options={[{ value: 'registered', label: 'Registered' }, { value: 'unregistered', label: 'Unregistered' }]} selected={registrations} onChange={onRegistrations} />
       <SystemsFilterMenu label="Registry" options={[{ value: 'linked', label: 'Linked' }, { value: 'unlinked', label: 'Unlinked' }]} selected={registryStates} onChange={onRegistryStates} />
-      <SystemsColumnMenu columns={columns} onChange={onColumns} />
+      <InventoryMetadataFilters catalog={metadataCatalog} filters={metadataFilters} onChange={onMetadataFilters} />
+      <SystemsColumnMenu columns={columns} definitions={metadataCatalog.definitions} onChange={onColumns} />
       <DropdownMenu>
         <DropdownMenuTrigger asChild><Button type="button" variant="outline" size="icon-sm" className="size-9 bg-white" aria-label="Row density"><Rows3 /></Button></DropdownMenuTrigger>
         <DropdownMenuContent align="start"><DropdownMenuLabel>Row density</DropdownMenuLabel><DropdownMenuRadioGroup value={density} onValueChange={(value) => onDensity(value as SystemsDensity)}><DropdownMenuRadioItem value="dense">Dense</DropdownMenuRadioItem><DropdownMenuRadioItem value="comfortable">Comfortable</DropdownMenuRadioItem></DropdownMenuRadioGroup></DropdownMenuContent>

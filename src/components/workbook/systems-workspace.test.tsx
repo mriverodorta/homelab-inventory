@@ -4,11 +4,14 @@ import type { ComponentProps } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { SystemsWorkspace } from '@/components/workbook/systems-workspace'
 import { TooltipProvider } from '@/components/ui/tooltip'
+import { DEFAULT_SYSTEMS_TABLE_PREFERENCES, writeSystemsTablePreferences } from '@/lib/systems-preferences'
 import type { ProjectState } from '@/types/inventory'
 import type { SystemsHostRow } from '@/types/systems'
 
 const useSystemsMock = vi.fn()
 const useSystemsViewsMock = vi.fn()
+const useInventoryMetadataCatalogMock = vi.fn()
+const useInventoryMetadataProjectProjectionMock = vi.fn()
 
 vi.mock('@/hooks/use-auth', () => ({
   useAuth: () => ({ status: { account: { id: 7 } } }),
@@ -16,6 +19,10 @@ vi.mock('@/hooks/use-auth', () => ({
 vi.mock('@/hooks/use-systems', () => ({
   useSystems: (...args: unknown[]) => useSystemsMock(...args),
   useSystemsViews: (...args: unknown[]) => useSystemsViewsMock(...args),
+}))
+vi.mock('@/lib/inventory-metadata-query', () => ({
+  useInventoryMetadataCatalog: (...args: unknown[]) => useInventoryMetadataCatalogMock(...args),
+  useInventoryMetadataProjectProjection: (...args: unknown[]) => useInventoryMetadataProjectProjectionMock(...args),
 }))
 
 const project: ProjectState = {
@@ -55,6 +62,9 @@ const systems: SystemsHostRow[] = [
     attentionCount: 2,
     attentionState: 'current',
     attentionRevision: 1,
+    metadataTags: [],
+    metadataValues: {},
+    metadataSearchText: '',
   },
   {
     itemId: 2,
@@ -83,6 +93,9 @@ const systems: SystemsHostRow[] = [
     attentionCount: 0,
     attentionState: 'current',
     attentionRevision: 1,
+    metadataTags: [],
+    metadataValues: {},
+    metadataSearchText: '',
   },
 ]
 
@@ -112,6 +125,14 @@ beforeEach(() => {
     replace: { mutateAsync: vi.fn(), isPending: false },
     remove: { mutateAsync: vi.fn(), isPending: false },
     setDefault: { mutateAsync: vi.fn(), isPending: false },
+  })
+  useInventoryMetadataCatalogMock.mockReturnValue({
+    data: { revision: 1, definitions: [], tags: [] },
+    isSuccess: true,
+  })
+  useInventoryMetadataProjectProjectionMock.mockReturnValue({
+    data: { projectId: 1, rows: [], matchingItemIds: [1, 2] },
+    isSuccess: true,
   })
 })
 
@@ -206,5 +227,76 @@ describe('SystemsWorkspace', () => {
     renderWorkspace()
     fireEvent.keyDown(window, { key: '/' })
     expect(screen.getByPlaceholderText('Search systems')).toHaveFocus()
+  })
+
+  it('shows tag previews below Name while the Tags column is hidden', () => {
+    useInventoryMetadataProjectProjectionMock.mockReturnValue({
+      data: {
+        projectId: 1,
+        matchingItemIds: [1, 2],
+        rows: [{
+          itemId: 1,
+          itemType: 'server',
+          legacyId: 1,
+          tags: [{ id: 1, name: 'Production', colorToken: 'green' }],
+          values: {},
+          searchText: 'production',
+        }],
+      },
+      isSuccess: true,
+    })
+    renderWorkspace()
+    const nameCell = screen.getByText('HP EliteDesk 800 G6').closest('[role="cell"]')
+    expect(nameCell).toContainElement(screen.getByText('Production'))
+    expect(screen.queryByRole('columnheader', { name: 'Tags' })).not.toBeInTheDocument()
+  })
+
+  it('moves tags into their column and renders a selected custom-field column', () => {
+    const definition = {
+      id: 1,
+      name: 'Support tier',
+      description: null,
+      fieldType: 'shortText' as const,
+      unit: null,
+      numberMinimum: null,
+      numberMaximum: null,
+      numberPrecision: null,
+      displayOrder: 0,
+      revision: 1,
+      archivedAt: null,
+      createdAt: '2026-08-19T00:00:00.000Z',
+      updatedAt: '2026-08-19T00:00:00.000Z',
+      applicableItemTypes: ['server'],
+      options: [],
+    }
+    useInventoryMetadataCatalogMock.mockReturnValue({ data: { revision: 1, definitions: [definition], tags: [] }, isSuccess: true })
+    useInventoryMetadataProjectProjectionMock.mockReturnValue({
+      data: {
+        projectId: 1,
+        matchingItemIds: [1, 2],
+        rows: [{
+          itemId: 1,
+          itemType: 'server',
+          legacyId: 1,
+          tags: [{ id: 1, name: 'Production', colorToken: 'green' }],
+          values: { 1: { value: 'Critical', optionIds: [], display: 'Critical' } },
+          searchText: 'production critical',
+        }],
+      },
+      isSuccess: true,
+    })
+    const columns = DEFAULT_SYSTEMS_TABLE_PREFERENCES.columns.map((column) => (
+      column.key === 'tags' ? { ...column, visible: true } : column
+    ))
+    writeSystemsTablePreferences('account:7:project:1', {
+      ...DEFAULT_SYSTEMS_TABLE_PREFERENCES,
+      columns: [...columns, { key: 'custom-field:1', visible: true, order: columns.length }],
+    })
+    renderWorkspace()
+    expect(screen.getByRole('columnheader', { name: 'Tags' })).toBeVisible()
+    expect(screen.getByRole('columnheader', { name: 'Support tier' })).toBeVisible()
+    expect(screen.getByText('Critical')).toBeVisible()
+    const nameCell = screen.getByText('HP EliteDesk 800 G6').closest('[role="cell"]')
+    expect(nameCell).not.toContainElement(screen.getByText('Production'))
   })
 })

@@ -15,20 +15,25 @@ import {
 } from '@/components/ui/alert-dialog'
 import { useAuth } from '@/hooks/use-auth'
 import { useSystems, useSystemsViews } from '@/hooks/use-systems'
+import { useInventoryMetadataCatalog, useInventoryMetadataProjectProjection } from '@/lib/inventory-metadata-query'
 import { browserPreferenceScope } from '@/lib/browser-preference-scope'
 import {
   DEFAULT_SYSTEMS_TABLE_PREFERENCES,
+  customFieldIdFromSystemsColumn,
   readSystemsColumnWidths,
   readSystemsTablePreferences,
+  reconcileSystemsMetadataColumns,
   type SystemsSortKey,
   type SystemsTablePreferences,
   writeSystemsColumnWidths,
   writeSystemsTablePreferences,
 } from '@/lib/systems-preferences'
 import type { ProjectState } from '@/types/inventory'
+import { readyInventoryMetadataFilters, type InventoryMetadataCatalog } from '@/types/inventory-metadata'
 import type { SystemsColumnKey, SystemsHostRow, SystemsHostType, SystemsSavedView, SystemsViewConfiguration } from '@/types/systems'
 
 const TYPE_LABELS: Record<SystemsHostType, string> = { server: 'Server', nas: 'NAS', pcBuild: 'PC' }
+const EMPTY_METADATA_CATALOG: InventoryMetadataCatalog = { revision: 0, definitions: [], tags: [] }
 
 type SystemsWorkspaceProps = {
   project: ProjectState
@@ -48,6 +53,7 @@ function viewConfiguration(preferences: SystemsTablePreferences): SystemsViewCon
     sortDirection: preferences.sortDirection,
     density: preferences.density,
     columns: preferences.columns,
+    metadataFilters: readyInventoryMetadataFilters(preferences.metadataFilters),
   }
 }
 
@@ -88,11 +94,51 @@ function ScopedSystemsWorkspace({
   const selectionInitialized = useRef(false)
   const systems = useSystems(projectId, true)
   const savedViews = useSystemsViews(projectId, true)
+  const metadataCatalogQuery = useInventoryMetadataCatalog({ includeArchived: true })
   const views = useMemo(() => savedViews.views.data ?? [], [savedViews.views.data])
   const activeView = typeof selection === 'number' ? views.find((view) => view.id === selection) ?? null : null
+  const metadataCatalog = useMemo<InventoryMetadataCatalog>(() => {
+    const catalog = metadataCatalogQuery.data ?? EMPTY_METADATA_CATALOG
+    return {
+      ...catalog,
+      definitions: catalog.definitions.filter((definition) => definition.applicableItemTypes.some((type) => ['server', 'nas', 'pcBuild'].includes(type))),
+    }
+  }, [metadataCatalogQuery.data])
+  const readyMetadataFilters = useMemo(() => readyInventoryMetadataFilters(preferences.metadataFilters), [preferences.metadataFilters])
+  const queryMetadataFilters = useMemo(() => {
+    const activeDefinitionIds = new Set(metadataCatalog.definitions.filter((definition) => !definition.archivedAt).map((definition) => definition.id))
+    const activeTagIds = new Set(metadataCatalog.tags.filter((tag) => !tag.archivedAt).map((tag) => tag.id))
+    return readyMetadataFilters.filter((filter) => {
+      if ('definitionId' in filter) return activeDefinitionIds.has(filter.definitionId)
+      if (filter.operator === 'tags-any') return filter.tagIds.some((tagId) => activeTagIds.has(tagId))
+      return true
+    })
+  }, [metadataCatalog.definitions, metadataCatalog.tags, readyMetadataFilters])
+  const requestedDefinitionIds = useMemo(() => [...new Set([
+    ...preferences.columns.filter((column) => column.visible).map((column) => customFieldIdFromSystemsColumn(column.key)).filter((id): id is number => id !== null),
+    ...queryMetadataFilters.flatMap((filter) => 'definitionId' in filter ? [filter.definitionId] : []),
+  ])].sort((left, right) => left - right), [preferences.columns, queryMetadataFilters])
+  const metadataProjectionQuery = useMemo(() => ({
+    scope: 'systems' as const,
+    definitionIds: requestedDefinitionIds,
+    filters: queryMetadataFilters,
+    includeSearch: true,
+  }), [queryMetadataFilters, requestedDefinitionIds])
+  const metadataProjection = useInventoryMetadataProjectProjection(
+    projectId,
+    metadataProjectionQuery,
+    systems.initial.isSuccess && metadataCatalogQuery.isSuccess,
+  )
 
   useEffect(() => { writeSystemsTablePreferences(preferenceScope, preferences) }, [preferenceScope, preferences])
   useEffect(() => { writeSystemsColumnWidths(preferenceScope, typeof selection === 'number' ? selection : null, widths) }, [preferenceScope, selection, widths])
+  useEffect(() => {
+    if (!metadataCatalogQuery.isSuccess) return
+    setPreferences((current) => {
+      const columns = reconcileSystemsMetadataColumns(current.columns, metadataCatalog.definitions)
+      return JSON.stringify(columns) === JSON.stringify(current.columns) ? current : { ...current, columns }
+    })
+  }, [metadataCatalog.definitions, metadataCatalogQuery.isSuccess])
   useEffect(() => {
     if (selectionInitialized.current || !savedViews.views.isSuccess) return
     selectionInitialized.current = true
@@ -131,9 +177,22 @@ function ScopedSystemsWorkspace({
 
   const rows = useMemo(() => {
     const live = new Map(systems.live.data?.systems.map((system) => [system.itemId, system]) ?? [])
-    const merged = mergeSystemsLive(systems.initial.data?.systems ?? [], live)
-    return filterAndSortSystems(selection === 'attention' ? merged.filter(needsAttention) : merged, preferences)
-  }, [preferences, selection, systems.initial.data?.systems, systems.live.data?.systems])
+    const metadata = new Map(metadataProjection.data?.rows.map((row) => [row.itemId, row]) ?? [])
+    const initial = (systems.initial.data?.systems ?? []).map((system) => {
+      const row = metadata.get(system.itemId)
+      return {
+        ...system,
+        metadataTags: row?.tags ?? [],
+        metadataValues: row?.values ?? {},
+        metadataSearchText: row?.searchText ?? '',
+      }
+    })
+    const merged = mergeSystemsLive(initial, live)
+    const matchingItems = queryMetadataFilters.length === 0
+      ? null
+      : new Set(metadataProjection.data?.matchingItemIds ?? [])
+    return filterAndSortSystems(selection === 'attention' ? merged.filter(needsAttention) : merged, preferences, matchingItems)
+  }, [metadataProjection.data?.matchingItemIds, metadataProjection.data?.rows, preferences, queryMetadataFilters.length, selection, systems.initial.data?.systems, systems.live.data?.systems])
   const typeOptions = useMemo(() => (
     [...new Set(systems.initial.data?.systems.map((system) => system.type) ?? [])]
       .sort((left, right) => TYPE_LABELS[left].localeCompare(TYPE_LABELS[right]))
@@ -213,6 +272,8 @@ function ScopedSystemsWorkspace({
             registryStates={preferences.registryStates}
             typeOptions={typeOptions}
             columns={preferences.columns}
+            metadataCatalog={metadataCatalog}
+            metadataFilters={preferences.metadataFilters}
             density={preferences.density}
             query={preferences.query}
             onSelection={selectView}
@@ -220,6 +281,7 @@ function ScopedSystemsWorkspace({
             onRegistrations={(registrations) => updatePreferences({ registrations })}
             onRegistryStates={(registryStates) => updatePreferences({ registryStates })}
             onColumns={(columns) => updatePreferences({ columns })}
+            onMetadataFilters={(metadataFilters) => updatePreferences({ metadataFilters })}
             onDensity={(density) => updatePreferences({ density })}
             onQuery={(query) => updatePreferences({ query })}
             onSaveNew={() => setDialog({ mode: 'create', open: true, error: null })}
@@ -239,6 +301,7 @@ function ScopedSystemsWorkspace({
               columns={preferences.columns}
               density={preferences.density}
               widths={widths}
+              definitions={metadataCatalog.definitions}
               selectedItemId={selectedItemId}
               sortKey={preferences.sortKey}
               sortDirection={preferences.sortDirection}
