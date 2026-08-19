@@ -6,6 +6,10 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 
 ## Unreleased
 
+### Fixed
+
+- Systems CPU, memory, and storage meters now animate SSE-driven utilization changes with synchronized whole-number percentages while respecting reduced-motion preferences.
+
 ## [0.13.15] - 2026-08-18
 
 ### Fixed
