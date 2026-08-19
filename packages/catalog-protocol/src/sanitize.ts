@@ -46,6 +46,7 @@ const SAFE_SPEC_FIELDS = new Set([
 ])
 const PRIVATE_FIELD_NAMES = new Set([
   'agent', 'agentData', 'assignments', 'credentials', 'customLabel', 'customName', 'displayName',
+  'customFields', 'customFieldValues', 'inventoryMetadata', 'tags',
   'hostname', 'ip', 'ipAddress', 'lanIp', 'location', 'mac', 'macAddress', 'notes', 'password',
   'placement', 'placements', 'room', 'serial', 'serialNumber', 'serviceData', 'services', 'tailscaleIp',
   'token', 'topologyPlacement',

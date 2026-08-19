@@ -451,6 +451,70 @@ function replaceInventory(database: Database, inventory: Row, projectId: number,
   }
 }
 
+const INVENTORY_METADATA_DELETE_ORDER = [
+  'inventory_custom_field_option_values',
+  'inventory_item_tags',
+  'inventory_custom_field_values',
+  'custom_field_options',
+  'custom_field_applicability',
+  'inventory_tags',
+  'custom_field_definitions',
+] as const
+
+function replaceInventoryMetadata(database: Database, metadata: Row) {
+  if (metadata?.contractVersion !== 1 || !metadata.tables || !metadata.identities) {
+    throw new Error('Inventory metadata backup contract is unsupported.')
+  }
+  const requiredTables = [...INVENTORY_METADATA_DELETE_ORDER].reverse()
+  for (const table of requiredTables) {
+    if (!Array.isArray(metadata.tables[table])) {
+      throw new Error(`Inventory metadata table ${table} is missing.`)
+    }
+  }
+  const archivedItemIdentities = new Map((metadata.identities.items ?? []).map((row: Row) => [
+    Number(row.canonical_id),
+    `${row.item_type}:${row.item_id}`,
+  ]))
+  const currentItems = itemAliases(database)
+  const mapItemId = (sourceId: unknown) => {
+    const key = archivedItemIdentities.get(Number(sourceId))
+    const itemId = key ? currentItems.get(key) : undefined
+    if (!itemId) throw new Error('Inventory metadata references an unavailable inventory item.')
+    return itemId
+  }
+  const tables = structuredClone(metadata.tables) as Record<string, Row[]>
+  for (const row of tables.inventory_custom_field_values) row.item_id = mapItemId(row.item_id)
+  for (const row of tables.inventory_item_tags) row.item_id = mapItemId(row.item_id)
+
+  const archivedDefinitions = new Map<number, number | null>()
+  const archivedOptions = new Map<number, number | null>()
+  const archivedTags = new Map<number, number | null>()
+  for (const row of tables.custom_field_definitions) {
+    archivedDefinitions.set(Number(row.id), row.archived_at_ms ?? null)
+    row.archived_at_ms = null
+  }
+  for (const row of tables.custom_field_options) {
+    archivedOptions.set(Number(row.id), row.archived_at_ms ?? null)
+    row.archived_at_ms = null
+  }
+  for (const row of tables.inventory_tags) {
+    archivedTags.set(Number(row.id), row.archived_at_ms ?? null)
+    row.archived_at_ms = null
+  }
+
+  for (const table of INVENTORY_METADATA_DELETE_ORDER) database.query(`DELETE FROM ${table}`).run()
+  for (const table of requiredTables) insertRows(database, table, tables[table])
+  const restoreArchived = (table: string, values: Map<number, number | null>) => {
+    const update = database.query(`UPDATE ${table} SET archived_at_ms = ? WHERE id = ?`)
+    for (const [id, archivedAt] of values) {
+      if (archivedAt != null) update.run(archivedAt, id)
+    }
+  }
+  restoreArchived('custom_field_options', archivedOptions)
+  restoreArchived('custom_field_definitions', archivedDefinitions)
+  restoreArchived('inventory_tags', archivedTags)
+}
+
 function resolveItem(database: Database, type: string, id: number) {
   const row = database.query(`
     SELECT item_id FROM inventory_identity_aliases
@@ -587,7 +651,12 @@ export async function stageAndActivateSqliteRestore({
     else if (replacements.project) clearProjectTopology(staged.database, projectId, workspaceId)
     if (replacements.registry) staged.database.query('DELETE FROM registry_links').run()
     if (replacements.agents) clearAgents(staged.database)
-    if (replacements.inventory) replaceInventory(staged.database, replacements.inventory, projectId, now())
+    if (replacements.inventory) {
+      replaceInventory(staged.database, replacements.inventory, projectId, now())
+      if (replacements.inventory.metadata) {
+        replaceInventoryMetadata(staged.database, replacements.inventory.metadata)
+      }
+    }
     if (workbookRestore) {
       replaceProjectWorkbooks(staged.database, workbookRestore, replacements.project, now())
     } else if (replacements.project) {

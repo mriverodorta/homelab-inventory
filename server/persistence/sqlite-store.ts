@@ -1047,6 +1047,7 @@ export class SqliteHomelabInventoryStore {
     const existingRecords = Object.values(target.items).filter((item) => item.type === type)
     const nextId = this.nextLegacyInventoryId(type)
     const duplicate = buildDuplicateRecord({ source, type, nextId, existingRecords })
+    const sourceItemId = this.inventoryScope.resolve(type, normalized.id)
     const at = this.now()
     this.core.database.transaction(() => {
       insertLegacyInventoryItem({
@@ -1058,6 +1059,11 @@ export class SqliteHomelabInventoryStore {
         ownerProjectId: targetProjectId,
         now: at,
       })
+      this.inventoryMetadata.copyItemMetadata(
+        sourceItemId,
+        this.inventoryScope.resolve(type, nextId),
+        { transaction: false },
+      )
       bumpProjectRevision(this.context, targetProjectId, at)
     }).immediate()
     this.invalidateProjectReadModels(targetProjectId)
@@ -1119,6 +1125,7 @@ export class SqliteHomelabInventoryStore {
     }
     const ref = normalizeInventoryRef(rawRef)
     const source = this.projectItem(ref.type, ref.id)
+    const sourceItemId = this.resolveItem(ref.type, ref.id)
     if (source.archivedAt) {
       throw lifecycleError('Restore the item before duplicating it.', 'inventory-item-archived', 409)
     }
@@ -1139,6 +1146,11 @@ export class SqliteHomelabInventoryStore {
           item,
           now: this.now(),
         })
+        this.inventoryMetadata.copyItemMetadata(
+          sourceItemId,
+          this.resolveItem(ref.type, item.id),
+          { transaction: false },
+        )
       }
     })
     return this.getProject()
@@ -1243,6 +1255,38 @@ export class SqliteHomelabInventoryStore {
       this.replaceInventoryRecord(ref, record)
     })
     return this.getProject()
+  }
+
+  getInventoryItemMetadata(rawRef: Row) {
+    const ref = normalizeInventoryRef(rawRef)
+    return this.inventoryMetadata.getItemMetadata(
+      this.inventoryScope.resolve(ref.type as InventoryType, ref.id),
+    )
+  }
+
+  updateInventoryItemMetadata(rawRef: Row, input: Row) {
+    const ref = normalizeInventoryRef(rawRef)
+    const itemId = this.inventoryScope.resolve(ref.type as InventoryType, ref.id)
+    const projectIds = this.inventoryMetadata.itemProjectIds(itemId)
+    const expectedRevisions = new Map<number, number>()
+    for (const projectId of projectIds) {
+      const project = this.core.database.query(
+        'SELECT revision FROM projects WHERE id = ? AND archived_at_ms IS NULL',
+      ).get(projectId) as { revision: number } | null
+      if (!project) throw lifecycleError(`Active project ${projectId} was not found.`, 'project-not-found', 404)
+      expectedRevisions.set(projectId, project.revision)
+    }
+    const affectedProjectRevisions = this.commitCanonicalMutationAcrossProjects(
+      () => this.inventoryMetadata.replaceItemMetadata(itemId, input, { transaction: false }),
+      projectIds,
+      expectedRevisions,
+    )
+    return {
+      itemId,
+      metadata: this.inventoryMetadata.getItemMetadata(itemId),
+      affectedProjectIds: projectIds,
+      affectedProjectRevisions,
+    }
   }
 
   private prepareInventoryUpdate(

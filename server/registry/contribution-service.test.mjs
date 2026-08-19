@@ -53,6 +53,26 @@ describe('contribution discovery', () => {
     expect(payload.specs).not.toHaveProperty('serialNumber')
   })
 
+  it('never contributes private custom fields or inventory tags', async () => {
+    const store = fixture({
+      id: 1,
+      type: 'cpu',
+      name: 'Example CPU',
+      manufacturer: 'Example',
+      model: 'C1',
+      customFields: [{ definitionId: 1, value: 'private rack owner' }],
+      tags: [{ id: 1, name: 'Production' }],
+      inventoryMetadata: { values: [{ definitionId: 1, value: 'private rack owner' }], tagIds: [1] },
+    })
+
+    expect(await discoverContributionCandidates(store)).toMatchObject({ queued: 1 })
+    const payload = store.getRegistryState().contributionOutbox[0].payload
+    expect(payload).not.toHaveProperty('customFields')
+    expect(payload).not.toHaveProperty('tags')
+    expect(payload).not.toHaveProperty('inventoryMetadata')
+    expect(JSON.stringify(payload)).not.toMatch(/private rack owner|Production/iu)
+  })
+
   it('uses fingerprint v11 and strips local network port state from contributions', async () => {
     const store = fixture({
       id: 1,

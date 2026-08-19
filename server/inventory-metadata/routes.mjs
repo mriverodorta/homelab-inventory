@@ -88,15 +88,10 @@ function publishItem(eventBus, store, result) {
   })
 }
 
-function itemIdentity(store, request) {
-  const legacyId = positiveId(request.params.id, 'Inventory item ID')
-  try {
-    return store.inventoryScope.resolve(request.params.type, legacyId)
-  } catch (error) {
-    throw new InventoryMetadataError(
-      error instanceof Error ? error.message : 'Inventory item was not found.',
-      { code: 'inventory-metadata-not-found', status: 404 },
-    )
+function itemRef(request) {
+  return {
+    type: request.params.type,
+    id: positiveId(request.params.id, 'Inventory item ID'),
   }
 }
 
@@ -229,18 +224,21 @@ export function registerInventoryMetadataRoutes(app, { withStore, eventBus = nul
   })
 
   app.get('/api/inventory/items/:type/:id/metadata', (request, response) => {
-    withMetadataStore(withStore, request, response, 'Unable to load inventory item metadata.', (store, repository) => {
-      const payload = publicItemMetadata(repository.getItemMetadata(itemIdentity(store, request)))
+    withMetadataStore(withStore, request, response, 'Unable to load inventory item metadata.', (store) => {
+      const payload = publicItemMetadata(store.getInventoryItemMetadata(itemRef(request)))
       return etagResponse(request, response, payload)
     })
   })
 
   app.put('/api/inventory/items/:type/:id/metadata', (request, response) => {
-    withMetadataStore(withStore, request, response, 'Unable to update inventory item metadata.', (store, repository) => {
-      const itemId = itemIdentity(store, request)
-      const result = repository.replaceItemMetadata(itemId, request.body)
+    withMetadataStore(withStore, request, response, 'Unable to update inventory item metadata.', (store) => {
+      const result = store.updateInventoryItemMetadata(itemRef(request), request.body)
       publishItem(eventBus, store, result)
-      response.json({ metadata: publicItemMetadata(repository.getItemMetadata(itemId)), affectedProjectIds: result.affectedProjectIds })
+      response.json({
+        metadata: publicItemMetadata(result.metadata),
+        affectedProjectIds: result.affectedProjectIds,
+        affectedProjectRevisions: result.affectedProjectRevisions,
+      })
     })
   })
 }

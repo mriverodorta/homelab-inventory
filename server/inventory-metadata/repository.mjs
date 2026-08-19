@@ -546,7 +546,7 @@ export function createInventoryMetadataRepository(context) {
     return { itemId, definitions, values, tags }
   }
 
-  function replaceItemMetadata(itemId, input) {
+  function replaceItemMetadata(itemId, input, options = {}) {
     assertPositiveId(itemId, 'Inventory item ID')
     const item = sqlite.query('SELECT id, type_id FROM inventory_items WHERE id = ? AND archived_at_ms IS NULL').get(itemId)
     if (!item) notFound('Active inventory item', itemId)
@@ -588,7 +588,7 @@ export function createInventoryMetadataRepository(context) {
       if (rows.length !== tagIds.length) conflict('One or more inventory tags are unavailable.')
     }
     const at = now()
-    sqlite.transaction(() => {
+    const replace = () => {
       sqlite.query(`
         DELETE FROM inventory_custom_field_values
         WHERE item_id = ? AND definition_id IN (
@@ -629,8 +629,33 @@ export function createInventoryMetadataRepository(context) {
         INSERT INTO inventory_item_tags (item_id, tag_id, created_at_ms) VALUES (?, ?, ?)
       `)
       for (const tagId of tagIds) insertTag.run(itemId, tagId, at)
-    }).immediate()
+    }
+    if (options.transaction === false) replace()
+    else sqlite.transaction(replace).immediate()
     return { itemId, affectedProjectIds: affectedProjectIds(sqlite, itemId) }
+  }
+
+  function copyItemMetadata(sourceItemId, targetItemId, options = {}) {
+    assertPositiveId(sourceItemId, 'Source inventory item ID')
+    assertPositiveId(targetItemId, 'Target inventory item ID')
+    const source = getItemMetadata(sourceItemId)
+    const definitions = new Map(source.definitions.map((definition) => [definition.id, definition]))
+    const values = source.values.map((entry) => {
+      const definition = definitions.get(entry.definitionId)
+      if (!definition) conflict(`Custom field definition ${entry.definitionId} is unavailable.`)
+      if (definition.fieldType === 'singleSelect') {
+        return { definitionId: entry.definitionId, value: entry.optionIds[0] }
+      }
+      if (definition.fieldType === 'multiSelect') {
+        return { definitionId: entry.definitionId, value: entry.optionIds }
+      }
+      return { definitionId: entry.definitionId, value: entry.value }
+    })
+    replaceItemMetadata(targetItemId, {
+      values,
+      tagIds: source.tags.map((tag) => tag.id),
+    }, options)
+    return { sourceItemId, targetItemId }
   }
 
   return Object.freeze({
@@ -653,5 +678,10 @@ export function createInventoryMetadataRepository(context) {
     reorderTags,
     getItemMetadata,
     replaceItemMetadata,
+    copyItemMetadata,
+    itemProjectIds: (itemId) => {
+      assertPositiveId(itemId, 'Inventory item ID')
+      return affectedProjectIds(sqlite, itemId)
+    },
   })
 }

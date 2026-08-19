@@ -23,6 +23,16 @@ const PROJECT_WORKBOOK_TABLES = [
   'compatibility_audit_ignores',
 ] as const
 
+const INVENTORY_METADATA_TABLES = [
+  'custom_field_definitions',
+  'custom_field_applicability',
+  'custom_field_options',
+  'inventory_custom_field_values',
+  'inventory_custom_field_option_values',
+  'inventory_tags',
+  'inventory_item_tags',
+] as const
+
 function tableRows(database: Database, table: string) {
   return database.query(`SELECT * FROM ${table} ORDER BY 1`).all() as Row[]
 }
@@ -75,6 +85,22 @@ export function logicalWorkspaceRouteCache(database: Database) {
   return {
     contractVersion: 1,
     rows: tableRows(database, 'workspace_route_cache'),
+  }
+}
+
+export function logicalInventoryMetadata(database: Database) {
+  return {
+    contractVersion: 1,
+    tables: Object.fromEntries(INVENTORY_METADATA_TABLES.map((table) => [table, tableRows(database, table)])),
+    identities: {
+      items: database.query(`
+        SELECT item.id AS canonical_id, alias.legacy_type_key AS item_type,
+               alias.legacy_id AS item_id
+        FROM inventory_items item
+        JOIN inventory_identity_aliases alias ON alias.item_id = item.id
+        ORDER BY item.id
+      `).all(),
+    },
   }
 }
 
@@ -183,7 +209,10 @@ export function buildLogicalStoreSnapshot(input: {
 }) {
   return {
     meta: structuredClone(input.meta),
-    inventory: structuredClone(input.inventory),
+    inventory: {
+      ...structuredClone(input.inventory),
+      metadata: logicalInventoryMetadata(input.database),
+    },
     project: {
       ...logicalProjectSection(input.project),
       workbooks: logicalProjectWorkbooks(input.database),

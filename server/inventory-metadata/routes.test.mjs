@@ -34,6 +34,13 @@ async function fixture() {
   const store = {
     inventoryMetadata: repository,
     inventoryScope: { resolve: vi.fn(() => 91) },
+    getInventoryItemMetadata: vi.fn(() => ({ itemId: 91, definitions: [definition], values: [], tags: [] })),
+    updateInventoryItemMetadata: vi.fn(() => ({
+      metadata: { itemId: 91, definitions: [definition], values: [], tags: [] },
+      itemId: 91,
+      affectedProjectIds: [1, 3],
+      affectedProjectRevisions: { 1: 4, 3: 8 },
+    })),
   }
   const eventBus = { publish: vi.fn() }
   const app = express()
@@ -98,7 +105,7 @@ describe('inventory metadata routes', () => {
   })
 
   it('reads and replaces item metadata through legacy inventory identity', async () => {
-    const { url, repository, store, eventBus } = await fixture()
+    const { url, store, eventBus } = await fixture()
     const read = await json(url, '/api/inventory/items/server/7/metadata')
     expect(read.status).toBe(200)
     expect(await read.json()).toMatchObject({ itemId: 91 })
@@ -107,8 +114,11 @@ describe('inventory metadata routes', () => {
       body: JSON.stringify({ values: [], tagIds: [] }),
     })
     expect(write.status).toBe(200)
-    expect(store.inventoryScope.resolve).toHaveBeenCalledWith('server', 7)
-    expect(repository.replaceItemMetadata).toHaveBeenCalledWith(91, { values: [], tagIds: [] })
+    expect(store.getInventoryItemMetadata).toHaveBeenCalledWith({ type: 'server', id: 7 })
+    expect(store.updateInventoryItemMetadata).toHaveBeenCalledWith(
+      { type: 'server', id: 7 },
+      { values: [], tagIds: [] },
+    )
     expect(eventBus.publish).toHaveBeenCalledWith(expect.objectContaining({
       topics: ['inventory-metadata:1', 'inventory-metadata:3'],
       payload: { itemId: 91, projectIds: [1, 3] },

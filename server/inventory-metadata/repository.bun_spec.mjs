@@ -126,6 +126,40 @@ describe('inventory metadata repository', () => {
     }
   })
 
+  test('copies active custom values, option selections, and tags to a duplicate item', async () => {
+    const { handle, repository } = await harness()
+    try {
+      const source = insertItem(handle.database, 'server', 'Source')
+      const target = insertItem(handle.database, 'server', 'Target')
+      const lifecycle = repository.createDefinition(lifecycleDefinition)
+      const owner = repository.createDefinition({
+        name: 'Owner', fieldType: 'shortText', applicableItemTypes: ['server'],
+      })
+      const production = repository.createTag({ name: 'Production', colorToken: 'red' })
+      repository.replaceItemMetadata(source.id, {
+        values: [
+          { definitionId: lifecycle.id, value: lifecycle.options[1].id },
+          { definitionId: owner.id, value: 'Infrastructure' },
+        ],
+        tagIds: [production.id],
+      })
+
+      expect(repository.copyItemMetadata(source.id, target.id)).toEqual({
+        sourceItemId: source.id,
+        targetItemId: target.id,
+      })
+      expect(repository.getItemMetadata(target.id)).toMatchObject({
+        values: [
+          { definitionId: lifecycle.id, optionIds: [lifecycle.options[1].id] },
+          { definitionId: owner.id, value: 'Infrastructure' },
+        ],
+        tags: [{ id: production.id, name: 'Production' }],
+      })
+    } finally {
+      closeManagedDatabase(handle)
+    }
+  })
+
   test('reorders active definitions and tags without changing their IDs', async () => {
     const { handle, repository } = await harness()
     try {

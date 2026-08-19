@@ -174,6 +174,78 @@ describe('SQLite Homelab Inventory store facade', () => {
     }
   })
 
+  test('copies private metadata when duplicating inventory and advances affected project revisions on edits', async () => {
+    const store = await fixtureStore()
+    try {
+      const definition = store.inventoryMetadata.createDefinition({
+        name: 'Lifecycle',
+        fieldType: 'singleSelect',
+        applicableItemTypes: ['server'],
+        options: [{ label: 'Production', colorToken: 'green' }],
+      })
+      const tag = store.inventoryMetadata.createTag({ name: 'Critical', colorToken: 'red' })
+      const beforeRevision = store.getEngineRevision()
+      const result = store.updateInventoryItemMetadata({ type: 'server', id: 7 }, {
+        values: [{ definitionId: definition.id, value: definition.options[0].id }],
+        tagIds: [tag.id],
+      })
+
+      expect(result.affectedProjectRevisions).toEqual({ 1: beforeRevision + 1 })
+      expect(store.getEngineRevision()).toBe(beforeRevision + 1)
+
+      store.duplicateInventoryItem({ type: 'server', id: 7 })
+      const duplicate = store.getProject().items['server:8'] as any
+      expect(duplicate).toBeDefined()
+      expect(store.getInventoryItemMetadata({ type: 'server', id: 8 })).toMatchObject({
+        values: [{ definitionId: definition.id, optionIds: [definition.options[0].id] }],
+        tags: [{ id: tag.id, name: 'Critical' }],
+      })
+
+      const target = store.createProject({ name: 'Downsize plan' })
+      const copied = store.duplicateInventoryToProject(1, target.project.id, { type: 'server', id: 7 })
+      expect(store.getInventoryItemMetadata(copied.item)).toMatchObject({
+        values: [{ definitionId: definition.id, optionIds: [definition.options[0].id] }],
+        tags: [{ id: tag.id, name: 'Critical' }],
+      })
+    } finally {
+      store.close()
+    }
+  })
+
+  test('preserves private metadata through archive and restore and cascades it on permanent item deletion', async () => {
+    const store = await emptyFixtureStore()
+    try {
+      store.createInventoryItems({ type: 'cpu', name: 'Metadata CPU' })
+      const definition = store.inventoryMetadata.createDefinition({
+        name: 'Asset owner', fieldType: 'shortText', applicableItemTypes: ['cpu'],
+      })
+      const tag = store.inventoryMetadata.createTag({ name: 'Lab', colorToken: 'blue' })
+      store.updateInventoryItemMetadata({ type: 'cpu', id: 1 }, {
+        values: [{ definitionId: definition.id, value: 'Infrastructure' }],
+        tagIds: [tag.id],
+      })
+
+      store.archiveInventoryItems([{ type: 'cpu', id: 1 }])
+      expect(store.getInventoryItemMetadata({ type: 'cpu', id: 1 })).toMatchObject({
+        values: [{ definitionId: definition.id, value: 'Infrastructure' }],
+        tags: [{ id: tag.id }],
+      })
+      store.restoreInventoryItems([{ type: 'cpu', id: 1 }])
+      expect(store.getInventoryItemMetadata({ type: 'cpu', id: 1 }).values).toHaveLength(1)
+
+      store.archiveInventoryItems([{ type: 'cpu', id: 1 }])
+      store.deleteInventoryItems([{ type: 'cpu', id: 1 }])
+      expect(store.core.database.query(
+        'SELECT count(*) AS count FROM inventory_custom_field_values',
+      ).get()).toEqual({ count: 0 })
+      expect(store.core.database.query(
+        'SELECT count(*) AS count FROM inventory_item_tags',
+      ).get()).toEqual({ count: 0 })
+    } finally {
+      store.close()
+    }
+  })
+
   test('creates project-bound inventory by default through the scoped facade', async () => {
     const store = await emptyFixtureStore()
     try {
@@ -1389,6 +1461,14 @@ describe('SQLite Homelab Inventory store facade', () => {
       const created = Object.values(project.items).find((item) => item.type === 'cpu' && item.model === 'CPU-200')!
       const link = (store.getRegistryState() as any).links.find((candidate: any) => candidate.itemId === created.id)
       expect(link).toMatchObject({ itemType: 'cpu', state: 'linked', importedRevision: 1 })
+      const definition = store.inventoryMetadata.createDefinition({
+        name: 'Local owner', fieldType: 'shortText', applicableItemTypes: ['cpu'],
+      })
+      const tag = store.inventoryMetadata.createTag({ name: 'Private', colorToken: 'purple' })
+      store.updateInventoryItemMetadata({ type: 'cpu', id: created.id }, {
+        values: [{ definitionId: definition.id, value: 'Local only' }],
+        tagIds: [tag.id],
+      })
 
       const revision2 = await catalogTemplate({
         ...revision1.item,
@@ -1407,6 +1487,10 @@ describe('SQLite Homelab Inventory store facade', () => {
       })
       const updated = store.applyCatalogUpdate(link.id, revision2)
       expect(updated.items[`cpu:${created.id}`].specs?.boostClockGhz).toBe(4.7)
+      expect(store.getInventoryItemMetadata({ type: 'cpu', id: created.id })).toMatchObject({
+        values: [{ definitionId: definition.id, value: 'Local only' }],
+        tags: [{ id: tag.id, name: 'Private' }],
+      })
       expect((store.getRegistryState() as any).links.find((candidate: any) => candidate.id === link.id)).toMatchObject({
         state: 'linked', importedRevision: 2,
       })
@@ -2264,10 +2348,19 @@ describe('SQLite Homelab Inventory store facade', () => {
   test('restores one inventory section through an isolated SQLite file swap', async () => {
     const store = await fixtureStore()
     try {
+      const definition = store.inventoryMetadata.createDefinition({
+        name: 'Environment', fieldType: 'shortText', applicableItemTypes: ['server'],
+      })
+      const tag = store.inventoryMetadata.createTag({ name: 'Production', colorToken: 'red' })
+      store.updateInventoryItemMetadata({ type: 'server', id: 7 }, {
+        values: [{ definitionId: definition.id, value: 'Primary' }],
+        tagIds: [tag.id],
+      })
       const before = await store.snapshotStores()
       const projectBefore = structuredClone(before.project)
       const server = store.getProject().items['server:7'] as any
       store.updateInventoryItem({ type: 'server', id: 7 }, { ...server, name: 'Temporary name' })
+      store.updateInventoryItemMetadata({ type: 'server', id: 7 }, { values: [], tagIds: [] })
       const projectImmediatelyBeforeRestore = (await store.snapshotStores()).project
 
       const restored = await store.replaceStoresAtomically({ inventory: before.inventory })
@@ -2276,6 +2369,10 @@ describe('SQLite Homelab Inventory store facade', () => {
       expect((await store.snapshotStores()).project).toEqual(projectImmediatelyBeforeRestore)
       expect(projectImmediatelyBeforeRestore).not.toEqual(projectBefore)
       expect(restored.inventory).toEqual(before.inventory)
+      expect(store.getInventoryItemMetadata({ type: 'server', id: 7 })).toMatchObject({
+        values: [{ definitionId: definition.id, value: 'Primary' }],
+        tags: [{ id: tag.id, name: 'Production' }],
+      })
       expect((await stat(store.core.filePath)).mode & 0o777).toBe(0o600)
       expect(store.getPersistenceHealth()).toMatchObject({ ok: true, engine: 'sqlite' })
     } finally {
