@@ -60,6 +60,7 @@ import { createWorkspaceSurfaceProps } from '@/app/create-workspace-surface-prop
 import { pushHistory } from '@/lib/history'
 import type { ProjectState } from '@/types/inventory'
 import type { InventoryMetadataSavedChange } from '@/types/inventory-metadata'
+import type { DomainMutationResult, MutationEffects } from '@/types/domain-mutation'
 import { inventoryMetadataKeys } from '@/lib/inventory-metadata-query'
 import {
   createProjectHistorySnapshot,
@@ -215,6 +216,9 @@ function App() {
     enabled: sourceProjectId !== null && sourceWorkspaceId !== null,
   })
   const inventoryMetadataHistoryRef = useRef<InventoryMetadataHistoryState>(new Map())
+  const applyHistoryDomainMutationRef = useRef<(
+    result: DomainMutationResult<ProjectState>,
+  ) => Promise<ProjectState>>(async (result) => result.data)
   const {
     history,
     historyBusy,
@@ -229,6 +233,7 @@ function App() {
     setSelectedConnectionId,
     setValidationMessage,
     scheduleProjectSave,
+    applyDomainMutationResult: (result) => applyHistoryDomainMutationRef.current(result),
     refreshInventoryMetadata: async (projectIds) => {
       await Promise.all(projectIds.map((projectId) => queryClient.invalidateQueries({
         queryKey: inventoryMetadataKeys.project(projectId),
@@ -273,6 +278,8 @@ function App() {
     options?: {
       historySnapshot?: ProjectState
       metadataChange?: Pick<InventoryMetadataSavedChange, 'ref' | 'before' | 'after'>
+      effects?: MutationEffects
+      preserveHistory?: boolean
     },
   ) => Promise<ProjectState>>(async (nextProject) => nextProject)
   const {
@@ -306,6 +313,10 @@ function App() {
     setValidationMessage,
   })
   applyInventoryCommandSnapshotRef.current = applyInventoryCommandSnapshot
+  applyHistoryDomainMutationRef.current = (result) => applyInventoryCommandSnapshot(
+    result.data,
+    { effects: result.effects, preserveHistory: true },
+  )
   async function handleInventoryMetadataSaved(change: InventoryMetadataSavedChange) {
     recordInventoryMetadataChange({
       ref: change.ref,

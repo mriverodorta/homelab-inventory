@@ -893,11 +893,16 @@ function insertInventoryItem(
   const manufacturerId = ensureManufacturer(database, item.manufacturer, now)
   database.query(`INSERT INTO inventory_items (id, type_id, scope, owner_project_id, name, manufacturer_id, manufacturer_text, model, family, product_number, subtype, serial_number, notes, extensions_json, row_version, archived_at_ms, created_at_ms, updated_at_ms) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?)`)
     .run(itemId, typeRow.id, scope, ownerProjectId, optionalText(item.name) ?? `${type} ${item.id}`, manufacturerId, manufacturerId ? null : optionalText(item.manufacturer), optionalText(item.model), optionalText(item.family), optionalText(item.number), optionalText(item.subtype), optionalText(item.serialNumber ?? item.specs?.serialNumber), optionalText(item.notes), json(extensionPayload(item, type)), timestamp(item.archivedAt, null as any), now, now)
-  database.query(`
-    INSERT INTO inventory_item_metadata_revisions (item_id, revision, updated_at_ms)
-    VALUES (?, 1, ?)
-    ON CONFLICT(item_id) DO NOTHING
-  `).run(itemId, now)
+  const metadataRevisionTable = database.query(
+    "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'inventory_item_metadata_revisions'",
+  ).get()
+  if (metadataRevisionTable) {
+    database.query(`
+      INSERT INTO inventory_item_metadata_revisions (item_id, revision, updated_at_ms)
+      VALUES (?, 1, ?)
+      ON CONFLICT(item_id) DO NOTHING
+    `).run(itemId, now)
+  }
   const activeLegacyId = legacyType === 'wireless'
     ? Number((database.query(`
         SELECT coalesce(max(legacy_id), 0) + 1 AS id

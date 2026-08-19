@@ -8,6 +8,16 @@ import { DomainEngineContext } from '@/engine/react-context'
 import { renderWithOpenAuth as render } from '@/test/open-auth-test-render'
 import type { InventoryItem, InventoryProperties, ProjectState } from '@/types/inventory'
 import type { OnboardingStatus } from '@/lib/onboarding-api'
+import type { MutationEffects } from '@/types/domain-mutation'
+
+function mutationResult(project: ProjectState, effects: MutationEffects = {
+  topology: false,
+  geometry: null,
+  compatibility: null,
+  presentation: null,
+}) {
+  return { data: project, revisions: { inventoryItem: 2 }, effects }
+}
 
 const {
   fitAllMock,
@@ -15,12 +25,19 @@ const {
   saveProjectMock,
   updateInventoryItemMock,
   updateInventoryItemPropertiesMock,
+  updateCompatibilityPolicyMock,
 } = vi.hoisted(() => ({
   fitAllMock: vi.fn(),
   loadOnboardingExampleMock: vi.fn(),
   saveProjectMock: vi.fn(),
   updateInventoryItemMock: vi.fn(),
   updateInventoryItemPropertiesMock: vi.fn(),
+  updateCompatibilityPolicyMock: vi.fn(),
+}))
+
+vi.mock('@/lib/compatibility-audit-api', async (importOriginal) => ({
+  ...await importOriginal<typeof import('@/lib/compatibility-audit-api')>(),
+  updateCompatibilityPolicy: updateCompatibilityPolicyMock,
 }))
 
 vi.mock('@/lib/onboarding-api', async (importOriginal) => ({
@@ -339,8 +356,10 @@ describe('App project persistence', () => {
         },
       },
     }
-    updateInventoryItemMock.mockResolvedValueOnce(updatedProject)
-    saveProjectMock.mockImplementation(async (project: ProjectState) => project)
+    updateInventoryItemMock
+      .mockResolvedValueOnce(mutationResult(updatedProject))
+      .mockResolvedValueOnce(mutationResult(persistedProject))
+      .mockResolvedValueOnce(mutationResult(updatedProject))
     renderApp()
 
     expect(await screen.findByTestId('item-name')).toHaveTextContent('Test server')
@@ -351,23 +370,14 @@ describe('App project persistence', () => {
     expect(await screen.findByTestId('item-name')).toHaveTextContent('Updated server')
     expect(screen.getByRole('button', { name: 'Undo' })).toBeEnabled()
 
-    vi.useFakeTimers()
     fireEvent.click(screen.getByRole('button', { name: 'Undo' }))
-    expect(screen.getByTestId('item-name')).toHaveTextContent('Test server')
+    expect(await screen.findByTestId('item-name')).toHaveTextContent('Test server')
     expect(screen.getByRole('button', { name: 'Redo' })).toBeEnabled()
 
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(500)
-    })
-    expect(saveProjectMock.mock.calls[0]?.[0].items['server:1']?.name).toBe('Test server')
-
     fireEvent.click(screen.getByRole('button', { name: 'Redo' }))
-    expect(screen.getByTestId('item-name')).toHaveTextContent('Updated server')
-
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(500)
-    })
-    expect(saveProjectMock.mock.calls[1]?.[0].items['server:1']?.name).toBe('Updated server')
+    expect(await screen.findByTestId('item-name')).toHaveTextContent('Updated server')
+    expect(updateInventoryItemMock).toHaveBeenCalledTimes(3)
+    expect(saveProjectMock).not.toHaveBeenCalled()
   })
 
   it('rebases Undo and Redo snapshots onto the current canonical revision', async () => {
@@ -383,45 +393,23 @@ describe('App project persistence', () => {
         },
       },
     }
-    updateInventoryItemMock.mockResolvedValueOnce(updatedProject)
-    saveProjectMock
-      .mockImplementationOnce(async (project: ProjectState) => ({
-        ...project,
-        revision: (project.revision ?? 0) + 1,
-      }))
-      .mockImplementationOnce(async (project: ProjectState) => ({
-        ...project,
-        revision: (project.revision ?? 0) + 1,
-      }))
+    updateInventoryItemMock
+      .mockResolvedValueOnce(mutationResult(updatedProject))
+      .mockResolvedValueOnce(mutationResult({ ...initialProject, revision: 8 }))
+      .mockResolvedValueOnce(mutationResult(updatedProject))
     renderApp(initialProject)
 
     fireEvent.click(await screen.findByRole('button', { name: 'Update inventory item' }))
     expect(await screen.findByTestId('item-name')).toHaveTextContent('Updated server')
 
-    vi.useFakeTimers()
     fireEvent.click(screen.getByRole('button', { name: 'Undo' }))
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(500)
-    })
-
-    expect(saveProjectMock.mock.calls[0]?.[0]).toEqual(expect.objectContaining({
-      revision: 8,
-      items: expect.objectContaining({
-        'server:1': expect.objectContaining({ name: 'Test server' }),
-      }),
-    }))
+    expect(await screen.findByTestId('item-name')).toHaveTextContent('Test server')
+    expect(updateInventoryItemMock).toHaveBeenCalledTimes(2)
 
     fireEvent.click(screen.getByRole('button', { name: 'Redo' }))
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(500)
-    })
-
-    expect(saveProjectMock.mock.calls[1]?.[0]).toEqual(expect.objectContaining({
-      revision: 9,
-      items: expect.objectContaining({
-        'server:1': expect.objectContaining({ name: 'Updated server' }),
-      }),
-    }))
+    expect(await screen.findByTestId('item-name')).toHaveTextContent('Updated server')
+    expect(updateInventoryItemMock).toHaveBeenCalledTimes(3)
+    expect(saveProjectMock).not.toHaveBeenCalled()
   })
 
   it('records property-only inventory updates in Undo history', async () => {
@@ -435,7 +423,20 @@ describe('App project persistence', () => {
         },
       },
     }
-    updateInventoryItemPropertiesMock.mockResolvedValueOnce(updatedProject)
+    const geometryEffects: MutationEffects = {
+      topology: false,
+      geometry: {
+        projectIds: [1],
+        workspaceIds: [2],
+        itemRefs: [{ type: 'server', id: 1 }],
+        connectionIds: [],
+      },
+      compatibility: null,
+      presentation: { projectIds: [1], itemRefs: [{ type: 'server', id: 1 }] },
+    }
+    updateInventoryItemPropertiesMock
+      .mockResolvedValueOnce(mutationResult(updatedProject, geometryEffects))
+      .mockResolvedValueOnce(mutationResult(persistedProject, geometryEffects))
     renderApp()
 
     expect(await screen.findByTestId('item-name')).toHaveTextContent('Test server')
@@ -453,108 +454,97 @@ describe('App project persistence', () => {
     )
     expect(updateInventoryItemMock).not.toHaveBeenCalled()
     expect(screen.getByRole('button', { name: 'Undo' })).toBeEnabled()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Undo' }))
+    await vi.waitFor(() => expect(updateInventoryItemPropertiesMock).toHaveBeenCalledTimes(2))
+    expect(saveProjectMock).not.toHaveBeenCalled()
   })
 
-  it('rolls a rejected debounced save back to the last confirmed project', async () => {
-    saveProjectMock.mockRejectedValueOnce(new Error('Project save rejected.'))
+  it('rolls a rejected compatibility save back to the last confirmed policy', async () => {
+    updateCompatibilityPolicyMock.mockRejectedValueOnce(new Error('Policy save rejected.'))
     renderApp()
 
     expect(await screen.findByTestId('disabled-hosts')).toHaveTextContent('enabled')
 
-    vi.useFakeTimers()
     fireEvent.click(screen.getByRole('button', { name: 'Disable compatibility' }))
     expect(screen.getByTestId('disabled-hosts')).toHaveTextContent('server')
 
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(500)
-    })
-
-    expect(saveProjectMock.mock.calls[0]?.[0]).toEqual(expect.objectContaining({
-      compatibilityPolicy: expect.objectContaining({ disabledHosts: [{ hostType: 'server', hostId: 1 }] }),
+    await vi.waitFor(() => expect(updateCompatibilityPolicyMock).toHaveBeenCalledOnce())
+    expect(updateCompatibilityPolicyMock.mock.calls[0]?.[1]).toEqual(expect.objectContaining({
+      disabledHosts: [{ hostType: 'server', hostId: 1 }],
     }))
-    expect(screen.getByTestId('disabled-hosts')).toHaveTextContent('enabled')
-    expect(screen.getByRole('alert')).toHaveTextContent('Project save rejected.')
+    await vi.waitFor(() => expect(screen.getByTestId('disabled-hosts')).toHaveTextContent('enabled'))
+    expect(screen.getByRole('alert')).toHaveTextContent('Policy save rejected.')
 
     fireEvent.click(screen.getByRole('button', { name: 'Undo' }))
     expect(screen.getByTestId('disabled-hosts')).toHaveTextContent('enabled')
     fireEvent.click(screen.getByRole('button', { name: 'Redo' }))
     expect(screen.getByTestId('disabled-hosts')).toHaveTextContent('enabled')
 
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(500)
-    })
-    expect(saveProjectMock).toHaveBeenCalledTimes(1)
+    expect(updateCompatibilityPolicyMock).toHaveBeenCalledTimes(1)
+    expect(saveProjectMock).not.toHaveBeenCalled()
   })
 
-  it('waits for save A before running a queued save B that fails', async () => {
-    const saveA = createDeferred<ProjectState>()
-    saveProjectMock
+  it('serializes compatibility save A before queued save B and rolls back B alone', async () => {
+    const saveA = createDeferred<{ policy: ProjectState['compatibilityPolicy']; revision: number }>()
+    updateCompatibilityPolicyMock
       .mockReturnValueOnce(saveA.promise)
       .mockRejectedValueOnce(new Error('Save B rejected.'))
     renderApp()
 
     expect(await screen.findByTestId('disabled-hosts')).toHaveTextContent('enabled')
 
-    vi.useFakeTimers()
     fireEvent.click(screen.getByRole('button', { name: 'Disable compatibility' }))
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(500)
-    })
-    const projectA = saveProjectMock.mock.calls[0]?.[0] as ProjectState
+    await vi.waitFor(() => expect(updateCompatibilityPolicyMock).toHaveBeenCalledTimes(1))
+    const policyA = updateCompatibilityPolicyMock.mock.calls[0]?.[1] as ProjectState['compatibilityPolicy']
 
     fireEvent.click(screen.getByRole('button', { name: 'Enable compatibility' }))
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(500)
-    })
 
-    expect(saveProjectMock).toHaveBeenCalledTimes(1)
+    expect(updateCompatibilityPolicyMock).toHaveBeenCalledTimes(1)
     expect(screen.getByTestId('disabled-hosts')).toHaveTextContent('enabled')
 
     await act(async () => {
-      saveA.resolve(projectA)
+      saveA.resolve({ policy: policyA, revision: 2 })
       await Promise.resolve()
       await Promise.resolve()
     })
 
-    expect(saveProjectMock).toHaveBeenCalledTimes(2)
-    expect(saveProjectMock.mock.calls[1]?.[0]).toEqual(expect.objectContaining({
-      compatibilityPolicy: expect.objectContaining({ disabledHosts: [] }),
+    await vi.waitFor(() => expect(updateCompatibilityPolicyMock).toHaveBeenCalledTimes(2))
+    expect(updateCompatibilityPolicyMock.mock.calls[1]?.[1]).toEqual(expect.objectContaining({
+      disabledHosts: [],
     }))
-    expect(screen.getByTestId('disabled-hosts')).toHaveTextContent('server')
+    await vi.waitFor(() => expect(screen.getByTestId('disabled-hosts')).toHaveTextContent('server'))
     expect(screen.getByRole('alert')).toHaveTextContent('Save B rejected.')
+    expect(saveProjectMock).not.toHaveBeenCalled()
   })
 
   it('does not suppress the next edit after consecutive save failures', async () => {
-    saveProjectMock
+    updateCompatibilityPolicyMock
       .mockRejectedValueOnce(new Error('First save rejected.'))
       .mockRejectedValueOnce(new Error('Second save rejected.'))
-      .mockImplementationOnce(async (project: ProjectState) => project)
+      .mockImplementationOnce(async (_projectId: number, policy: ProjectState['compatibilityPolicy']) => ({
+        policy,
+        revision: 2,
+      }))
     renderApp()
 
     expect(await screen.findByTestId('disabled-hosts')).toHaveTextContent('enabled')
 
-    vi.useFakeTimers()
     for (const expectedCallCount of [1, 2]) {
       fireEvent.click(screen.getByRole('button', { name: 'Disable compatibility' }))
       expect(screen.getByTestId('disabled-hosts')).toHaveTextContent('server')
 
-      await act(async () => {
-        await vi.advanceTimersByTimeAsync(500)
-      })
-
-      expect(saveProjectMock).toHaveBeenCalledTimes(expectedCallCount)
-      expect(screen.getByTestId('disabled-hosts')).toHaveTextContent('enabled')
+      await vi.waitFor(() => expect(updateCompatibilityPolicyMock).toHaveBeenCalledTimes(expectedCallCount))
+      await vi.waitFor(() => expect(screen.getByTestId('disabled-hosts')).toHaveTextContent('enabled'))
     }
 
     expect(screen.getByRole('alert')).toHaveTextContent('Second save rejected.')
 
     fireEvent.click(screen.getByRole('button', { name: 'Disable compatibility' }))
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(500)
-    })
 
-    expect(saveProjectMock).toHaveBeenCalledTimes(3)
-    expect(screen.getByTestId('disabled-hosts')).toHaveTextContent('server')
-    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    await vi.waitFor(() => expect(updateCompatibilityPolicyMock).toHaveBeenCalledTimes(3))
+    await vi.waitFor(() => expect(screen.getByTestId('disabled-hosts')).toHaveTextContent('server'))
+    await vi.waitFor(() => expect(screen.queryByRole('alert')).not.toBeInTheDocument())
+    expect(saveProjectMock).not.toHaveBeenCalled()
   })
 })

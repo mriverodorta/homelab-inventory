@@ -27,6 +27,7 @@ import { upsertPlacements } from '@/lib/project'
 import { cacheProjectState } from '@/lib/project-query-key'
 import type { ProjectState } from '@/types/inventory'
 import type { InventoryItemMetadataInput, InventoryMetadataItemRef } from '@/types/inventory-metadata'
+import type { MutationEffects } from '@/types/domain-mutation'
 
 const SAVE_DEBOUNCE_MS = 500
 
@@ -104,20 +105,36 @@ export function useProjectCommands({
 
     if (currentProject && compatibilityPolicyOnlyChanged(currentProject, nextProject)) {
       const projectId = currentProject.metadata.projectId ?? 1
-      void updateCompatibilityPolicy(projectId, nextProject.compatibilityPolicy)
+      const requestedPolicy = nextProject.compatibilityPolicy
+      setSaveStatus('saving')
+      setPersistenceWarning(null)
+      void persistenceCoordinator
+        .run(settleLegacyProjectPersistence, () => (
+          updateCompatibilityPolicy(projectId, requestedPolicy)
+        ))
         .then((result) => {
           const active = projectRef.current
           if (!active) return
-          const persisted = { ...active, compatibilityPolicy: result.policy }
-          projectRef.current = persisted
-          lastPersistedProjectRef.current = persisted
-          cacheProjectState(queryClient, persisted)
-          setProject(persisted)
-          setSaveStatus('saved')
+          const persistedBase = lastPersistedProjectRef.current ?? currentProject
+          lastPersistedProjectRef.current = {
+            ...persistedBase,
+            compatibilityPolicy: result.policy,
+          }
+          if (JSON.stringify(active.compatibilityPolicy) === JSON.stringify(requestedPolicy)) {
+            const persisted = { ...active, compatibilityPolicy: result.policy }
+            projectRef.current = persisted
+            cacheProjectState(queryClient, persisted)
+            setProject(persisted)
+            setSaveStatus('saved')
+          }
         })
         .catch((error) => {
-          projectRef.current = currentProject
-          setProject(currentProject)
+          const active = projectRef.current
+          if (active && JSON.stringify(active.compatibilityPolicy) === JSON.stringify(requestedPolicy)) {
+            const rollback = lastPersistedProjectRef.current ?? currentProject
+            projectRef.current = rollback
+            setProject(rollback)
+          }
           setSaveStatus('error')
           setPersistenceWarning(error instanceof Error ? error.message : 'Compatibility policy could not be saved.')
         })
@@ -213,13 +230,16 @@ export function useProjectCommands({
         before: InventoryItemMetadataInput
         after: InventoryItemMetadataInput
       }
+      effects?: MutationEffects
+      preserveHistory?: boolean
     } = {},
   ) {
     let synchronizedProject = nextProject
     const expectedRevision = nextProject.revision
 
     if (
-      domainEngine.enabled
+      options.effects?.topology !== false
+      && domainEngine.enabled
       && typeof expectedRevision === 'number'
       && Number.isSafeInteger(expectedRevision)
     ) {
@@ -275,12 +295,14 @@ export function useProjectCommands({
           metadataChange.after,
         )
       }
-    } else {
+    } else if (!options.preserveHistory) {
       inventoryMetadataHistoryRef.current = new Map()
       setHistory(createEmptyHistory())
     }
-    setSelectedConnectionId(null)
-    clearNetworkTrace()
+    if (options.effects?.topology !== false) {
+      setSelectedConnectionId(null)
+      clearNetworkTrace()
+    }
     setValidationMessage(null)
     setPersistenceWarning(null)
     setSaveStatus('saved')

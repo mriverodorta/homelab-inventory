@@ -18,6 +18,7 @@ type InventoryMutationContext = Readonly<{
   projectIds: readonly number[]
   workspaceIds?: readonly number[]
   connectionIds?: readonly number[]
+  hostRefs?: readonly Readonly<{ type: 'server' | 'nas' | 'pcBuild'; id: number }>[]
 }>
 
 function positiveIds(values: readonly number[] | undefined) {
@@ -85,9 +86,11 @@ function compatibilityEffect(
   context: InventoryMutationContext,
   before: InventoryItem,
 ): CompatibilityMutationEffect {
-  const hostRefs = ['server', 'nas', 'pcBuild'].includes(before.type)
-    ? [{ type: before.type as 'server' | 'nas' | 'pcBuild', id: before.id }]
-    : []
+  const hostRefs = context.hostRefs ?? (
+    ['server', 'nas', 'pcBuild'].includes(before.type)
+      ? [{ type: before.type as 'server' | 'nas' | 'pcBuild', id: before.id }]
+      : []
+  )
   return { projectIds: positiveIds(context.projectIds), hostRefs }
 }
 
@@ -109,8 +112,14 @@ export function classifyInventoryMutation(
   const topology = !projectEngineTopologyEqual(beforeProject, afterProject)
   const propertyGeometryChanged = changedPropertyKeys(before, after)
     .some((key) => GEOMETRY_PROPERTY_KEYS.has(key))
+  const unknownPropertyChanged = changedPropertyKeys(before, after)
+    .some((key) => key !== 'displayName' && !GEOMETRY_PROPERTY_KEYS.has(key))
   const renderedHardwareChanged = (['specs', 'ports', 'compatibility', 'fixedComponents'] as const)
     .some((field) => changedField(before, after, field))
+  const compatibilityChanged = unknownPropertyChanged
+    || renderedHardwareChanged
+    || (['manufacturer', 'model', 'family', 'number', 'subtype'] as const)
+      .some((field) => changedField(before, after, field))
   const inventoryChanged = JSON.stringify(before) !== JSON.stringify(after)
 
   return {
@@ -118,7 +127,7 @@ export function classifyInventoryMutation(
     geometry: propertyGeometryChanged || renderedHardwareChanged
       ? geometryEffect(context, ref)
       : null,
-    compatibility: inventoryChanged ? compatibilityEffect(context, before) : null,
+    compatibility: compatibilityChanged ? compatibilityEffect(context, before) : null,
     presentation: inventoryChanged ? presentationEffect(context, ref) : null,
   }
 }

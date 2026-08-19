@@ -39,8 +39,6 @@ export function useCableRoutingController({
   })
   const [routingCacheReady, setRoutingCacheReady] = useState(false)
   const routingCoordinatorRef = useRef<CableRoutingCoordinator | null>(null)
-  const routingEnginePhaseRef = useRef(domainEngine.state.phase)
-  const routingEngineSynchronizedRef = useRef(false)
   const routeSideResolutionSignatureRef = useRef<string | null>(null)
   const routeCanonicalizationSignatureRef = useRef<string | null>(null)
 
@@ -52,7 +50,6 @@ export function useCableRoutingController({
     const coordinator = new CableRoutingCoordinator(domainEngine.client, {
       persistCache: saveRoutingCache,
     })
-    routingEngineSynchronizedRef.current = false
     routingCoordinatorRef.current = coordinator
     const unsubscribe = coordinator.subscribe(setRoutingState)
     void loadRoutingCache()
@@ -85,26 +82,15 @@ export function useCableRoutingController({
   useEffect(() => {
     const coordinator = routingCoordinatorRef.current
     if (!coordinator || !routingCacheReady || domainEngine.state.phase !== 'ready') return
-    const synchronizeEngine = !routingEngineSynchronizedRef.current
-      || routingEnginePhaseRef.current !== 'ready'
-    routingEnginePhaseRef.current = domainEngine.state.phase
 
     if (!routeGeometryReady) return
 
     if (routeRequests.length === 0) {
       coordinator.clear()
     } else {
-      coordinator.request(routeRequests, synchronizeEngine && coordinator.getState().error === null)
+      coordinator.request(routeRequests)
     }
-    routingEngineSynchronizedRef.current = true
   }, [domainEngine.state.phase, routeGeometryReady, routeRequests, routingCacheReady])
-
-  useEffect(() => {
-    if (domainEngine.state.phase !== 'ready') {
-      routingEnginePhaseRef.current = domainEngine.state.phase
-      routingEngineSynchronizedRef.current = false
-    }
-  }, [domainEngine.state.phase])
 
   useEffect(() => {
     if (routingState.pending || routingState.error) return

@@ -36,6 +36,7 @@ import type {
   ProjectState,
 } from '@/types/inventory'
 import type { InventoryItemMetadataInput } from '@/types/inventory-metadata'
+import type { MutationEffects } from '@/types/domain-mutation'
 
 type InventoryLifecycleRequest = {
   action: InventoryLifecycleAction
@@ -57,7 +58,7 @@ type PendingInventoryScopeAction = {
 
 type ApplyInventorySnapshot = (
   nextProject: ProjectState,
-  options?: { historySnapshot?: ProjectState },
+  options?: { historySnapshot?: ProjectState; effects?: MutationEffects },
 ) => Promise<ProjectState>
 
 type UseInventoryLifecycleOptions = {
@@ -140,12 +141,15 @@ export function useInventoryLifecycle({
     const currentItem = currentProject?.items[itemId]
     if (!currentItem) throw new Error('Inventory item could not be found.')
 
-    const nextProject = await updateInventoryItem(
+    const result = await updateInventoryItem(
       { type: currentItem.type, id: currentItem.id },
       input,
       scope,
     )
-    await applyInventorySnapshot(nextProject, { historySnapshot: currentProject })
+    await applyInventorySnapshot(result.data, {
+      historySnapshot: currentProject,
+      effects: result.effects,
+    })
   }
 
   async function updateItemProperties(itemId: string, properties: InventoryProperties) {
@@ -172,12 +176,15 @@ export function useInventoryLifecycle({
       }
     }
 
-    const nextProject = await updateInventoryItemProperties(
+    const result = await updateInventoryItemProperties(
       { type: currentItem.type, id: currentItem.id },
       properties,
       scope,
     )
-    await applyInventorySnapshot(nextProject, { historySnapshot: currentProject })
+    await applyInventorySnapshot(result.data, {
+      historySnapshot: currentProject,
+      effects: result.effects,
+    })
   }
 
   async function requestNasPowerConfigurationChange(

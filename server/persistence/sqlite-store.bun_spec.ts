@@ -479,6 +479,96 @@ describe('SQLite Homelab Inventory store facade', () => {
     }
   })
 
+  test('persists presentation and geometry properties without canonical engine invalidation', async () => {
+    const store = await fixtureStore()
+    const commits: unknown[] = []
+    const unsubscribe = store.subscribeToProjectCommits((event) => commits.push(event))
+    try {
+      const beforeProject = store.getProject()
+      const beforeEngine = store.getEngineSnapshot()
+      const beforeCache = store.getRoutingCache()
+      const beforeRelations = {
+        assignments: structuredClone(beforeProject.assignments),
+        placements: structuredClone(beforeProject.placements),
+        connections: structuredClone(beforeProject.connections),
+      }
+
+      const presentation = store.updateInventoryItemProperties(
+        { type: 'server', id: 7 },
+        { displayName: 'Presentation only' },
+      )
+      expect(presentation.effects).toEqual({
+        topology: false,
+        geometry: null,
+        compatibility: null,
+        presentation: { projectIds: [1], itemRefs: [{ type: 'server', id: 7 }] },
+      })
+      expect(presentation.data.revision).toBe(beforeProject.revision)
+
+      const geometry = store.updateInventoryItemProperties(
+        { type: 'server', id: 7 },
+        { displayName: 'Presentation only', canvasOrientation: 'vertical' },
+      )
+      expect(geometry.effects).toMatchObject({
+        topology: false,
+        geometry: { projectIds: [1], workspaceIds: [2], itemRefs: [{ type: 'server', id: 7 }] },
+        compatibility: null,
+      })
+      expect(geometry.data.revision).toBe(beforeProject.revision)
+      expect(store.getEngineSnapshot()).toEqual(beforeEngine)
+      expect(store.getRoutingCache()).toEqual(beforeCache)
+      expect({
+        assignments: geometry.data.assignments,
+        placements: geometry.data.placements,
+        connections: geometry.data.connections,
+      }).toEqual(beforeRelations)
+      expect(commits).toEqual([])
+    } finally {
+      unsubscribe()
+      store.close()
+    }
+  })
+
+  test('advances topology only when an inventory definition changes engine inputs', async () => {
+    const store = await emptyFixtureStore()
+    try {
+      let project = store.createInventoryItems({
+        type: 'switch',
+        name: 'Edge switch',
+        manufacturer: 'Example',
+        model: 'E1',
+        ports: [],
+      })
+      const item = Object.values(project.items).find((candidate) => candidate.type === 'switch')!
+      const baseRevision = project.revision
+
+      const descriptive = store.updateInventoryItem({ type: 'switch', id: item.id }, {
+        ...item,
+        name: 'Renamed edge switch',
+        manufacturer: 'Example Networks',
+        model: 'E1 Plus',
+        serialNumber: 'private-instance-value',
+        notes: 'Local note',
+      })
+      expect(descriptive.effects).toMatchObject({
+        topology: false,
+        geometry: null,
+        presentation: { itemRefs: [{ type: 'switch', id: item.id }] },
+      })
+      expect(descriptive.data.revision).toBe(baseRevision)
+
+      const topology = store.updateInventoryItem({ type: 'switch', id: item.id }, {
+        ...descriptive.data.items[`switch:${item.id}`],
+        ports: [{ id: 1, kind: 'switch-port', type: 'rj45', slotNumber: 1, speed: '1G' }],
+      })
+      expect(topology.effects.topology).toBe(true)
+      expect(topology.data.revision).toBe(baseRevision + 1)
+      expect(topology.data.items[`switch:${item.id}`].ports).toHaveLength(1)
+    } finally {
+      store.close()
+    }
+  })
+
   test('invalidates authoritative read models only for canonical mutations', async () => {
     const store = await fixtureStore()
     try {
@@ -899,7 +989,10 @@ describe('SQLite Homelab Inventory store facade', () => {
     try {
       let project = store.createInventoryItems({ type: 'cpu', name: 'Lifecycle CPU' })
       const cpu = Object.values(project.items).find((item) => item.type === 'cpu' && item.name === 'Lifecycle CPU')!
-      project = store.updateInventoryItemProperties({ type: 'cpu', id: cpu.id }, { source: 'agent', nested: { value: 1 } })
+      project = store.updateInventoryItemProperties(
+        { type: 'cpu', id: cpu.id },
+        { source: 'agent', nested: { value: 1 } },
+      ).data
       expect(project.items[`cpu:${cpu.id}`].properties).toEqual({ source: 'agent', nested: '{"value":1}' })
 
       project = store.archiveInventoryItems([{ type: 'cpu', id: cpu.id }])
@@ -957,7 +1050,7 @@ describe('SQLite Homelab Inventory store facade', () => {
           label: 'LAN 1',
           origin: 'fixed',
         }],
-      })
+      }).data
 
       expect(project.items['switch:1']).toMatchObject({
         name: 'Renamed Example Switch',
@@ -1004,7 +1097,7 @@ describe('SQLite Homelab Inventory store facade', () => {
             memory: { ...server.compatibility?.host?.memory, maxSpeedMt: 3200 },
           },
         },
-      })
+      }).data
 
       expect(project.items['server:7'].name).toBe('Updated Example Micro Host')
       expect(project.items['server:7'].compatibility?.host?.memory?.maxSpeedMt).toBe(3200)
@@ -1968,7 +2061,7 @@ describe('SQLite Homelab Inventory store facade', () => {
     }
   })
 
-  test('applies safe catalog updates to multiple links in one atomic project mutation', async () => {
+  test('applies safe non-topology catalog updates without advancing the project revision', async () => {
     const store = await emptyFixtureStore()
     try {
       store.registryTransaction((draft: any) => {
@@ -2000,9 +2093,13 @@ describe('SQLite Homelab Inventory store facade', () => {
       const result = store.commitCatalogUpdateRun({ sourceId: 1, catalogRevision: 2, evaluations, templates: [revision2], automatic: true })
 
       expect(result.applied).toBe(2)
-      expect(store.getProject().revision).toBe(beforeRevision + 1)
+      expect(store.getProject().revision).toBe(beforeRevision)
       expect(result.affectedProjectIds).toEqual([1])
-      expect(result.affectedProjectRevisions).toEqual({ 1: beforeRevision + 1 })
+      expect(result.affectedProjectRevisions).toEqual({})
+      expect(result.effects).toMatchObject({
+        topology: false,
+        compatibility: { projectIds: [1] },
+      })
       expect((store.getRegistryState() as any).links).toEqual([
         expect.objectContaining({ importedRevision: 2, state: 'linked' }),
         expect.objectContaining({ importedRevision: 2, state: 'linked' }),
@@ -2121,7 +2218,7 @@ describe('SQLite Homelab Inventory store facade', () => {
     }
   })
 
-  test('evaluates and advances every project containing a shared registry item', async () => {
+  test('evaluates every project containing a shared registry item without topology churn', async () => {
     const store = await emptyFixtureStore()
     try {
       store.registryTransaction((draft: any) => {
@@ -2160,8 +2257,8 @@ describe('SQLite Homelab Inventory store facade', () => {
       })
 
       const after = new Map(store.listProjects().map((project) => [project.id, project.revision]))
-      expect(after.get(1)).toBe(before.get(1)! + 1)
-      expect(after.get(second.project.id)).toBe(before.get(second.project.id)! + 1)
+      expect(after.get(1)).toBe(before.get(1))
+      expect(after.get(second.project.id)).toBe(before.get(second.project.id))
       expect(store.getWorkspace(second.project.id, second.defaultWorkspaceId).items[`cpu:${link.itemId}`].specs?.threads).toBe(8)
     } finally {
       store.close()
@@ -2197,7 +2294,7 @@ describe('SQLite Homelab Inventory store facade', () => {
 
       expect(store.getProject().revision).toBe(rootRevision)
       expect(store.getWorkspace(second.project.id, second.defaultWorkspaceId)).toMatchObject({
-        revision: secondaryRevision + 1,
+        revision: secondaryRevision,
         items: { [`cpu:${link.itemId}`]: expect.objectContaining({ specs: expect.objectContaining({ threads: 8 }) }) },
       })
     } finally {
@@ -2482,7 +2579,7 @@ describe('SQLite Homelab Inventory store facade', () => {
 
       expect((store.getProject().items['server:7'] as any).name).toBe(server.name)
       expect((await store.snapshotStores()).project).toEqual(projectImmediatelyBeforeRestore)
-      expect(projectImmediatelyBeforeRestore).not.toEqual(projectBefore)
+      expect(projectImmediatelyBeforeRestore).toEqual(projectBefore)
       expect(restored.inventory).toEqual(before.inventory)
       expect(store.getInventoryItemMetadata({ type: 'server', id: 7 })).toMatchObject({
         values: [{ definitionId: definition.id, value: 'Primary' }],

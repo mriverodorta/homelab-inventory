@@ -10,6 +10,7 @@ import type {
   ProjectState,
 } from '@/types/inventory'
 import type { InventoryItemMetadataInput } from '@/types/inventory-metadata'
+import type { DomainMutationResult } from '@/types/domain-mutation'
 
 export type InventoryItemInput = Omit<InventoryItem, 'id' | 'key'>
 export type WorkspaceMutationScope = Readonly<{ projectId: number; workspaceId: number }>
@@ -82,8 +83,8 @@ export async function updateInventoryItem(
   ref: InventoryRef,
   item: InventoryItemInput,
   scope?: WorkspaceMutationScope | null,
-): Promise<ProjectState> {
-  return apiRequest<ProjectState>(withWorkspaceScope(`/api/inventory/items/${ref.type}/${ref.id}`, scope), {
+): Promise<DomainMutationResult<ProjectState>> {
+  return apiRequest<DomainMutationResult<ProjectState>>(withWorkspaceScope(`/api/inventory/items/${ref.type}/${ref.id}`, scope), {
     method: 'PUT',
     body: JSON.stringify(item),
   })
@@ -108,8 +109,8 @@ export async function updateInventoryItemProperties(
   ref: InventoryRef,
   properties: InventoryProperties,
   scope?: WorkspaceMutationScope | null,
-): Promise<ProjectState> {
-  return apiRequest<ProjectState>(withWorkspaceScope(`/api/inventory/items/${ref.type}/${ref.id}/properties`, scope), {
+): Promise<DomainMutationResult<ProjectState>> {
+  return apiRequest<DomainMutationResult<ProjectState>>(withWorkspaceScope(`/api/inventory/items/${ref.type}/${ref.id}/properties`, scope), {
     method: 'PATCH',
     body: JSON.stringify({ properties }),
   })

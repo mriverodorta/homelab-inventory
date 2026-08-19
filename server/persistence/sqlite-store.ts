@@ -12,6 +12,7 @@ import {
   planHostAllocations,
 } from '../../shared/compatibility/index.mjs'
 import type { ProjectState } from '../../src/types/inventory.ts'
+import type { MutationEffects } from '../../src/types/domain-mutation.ts'
 import { getReleaseNotesBetween } from '../../src/release-notes.ts'
 import {
   buildDuplicateRecord,
@@ -31,6 +32,7 @@ import { assertBackupManagementStoreShape, normalizeBackupManagementStore } from
 import { timingSafeEqualString } from '../db/agent-auth.mjs'
 import { inspectNasPowerConfigurationChange } from '../db/nas-power-configuration.mjs'
 import { createEngineSnapshot } from '../engine/snapshot.mjs'
+import { classifyInventoryMutation } from './mutation-effects.ts'
 import { createInventoryMetadataRepository } from '../inventory-metadata/repository.mjs'
 import {
   assertRegistryStoreShape,
@@ -1314,10 +1316,9 @@ export class SqliteHomelabInventoryStore {
 
   updateInventoryItem(rawRef: Row, input: Row) {
     const { ref, record } = this.prepareInventoryUpdate(rawRef, input)
-    this.commitCanonicalMutation(() => {
+    return this.commitInventoryMutation(ref, () => {
       this.replaceInventoryRecord(ref, record)
     })
-    return this.getProject()
   }
 
   getInventoryItemMetadata(rawRef: Row) {
@@ -1531,22 +1532,30 @@ export class SqliteHomelabInventoryStore {
     const item = this.projectItem(ref.type, ref.id)
     if (item.archivedAt) throw lifecycleError('Restore the item before editing it.', 'inventory-item-archived', 409)
     const itemId = this.resolveItem(ref.type, ref.id)
-    this.commitCanonicalMutation(() => {
+    const normalizedProperties = Object.fromEntries(Object.entries(rawProperties as Row).flatMap(([key, value]) => {
+      if (value === undefined || value === null || value === '') return []
+      return [[key, typeof value === 'string' ? value : JSON.stringify(value)]]
+    }))
+    if (JSON.stringify(item.properties ?? {}) === JSON.stringify(normalizedProperties)) {
+      return this.inventoryMutationResult(itemId, this.getProject(), {
+        topology: false,
+        geometry: null,
+        compatibility: null,
+        presentation: null,
+      })
+    }
+    return this.commitInventoryMutation(ref, () => {
       const insert = this.core.database.query(`
         INSERT INTO inventory_item_properties (item_id, key, value, created_at_ms, updated_at_ms)
         VALUES (?, ?, ?, ?, ?)
         ON CONFLICT(item_id, key) DO UPDATE SET value = excluded.value, updated_at_ms = excluded.updated_at_ms
       `)
-      for (const [key, value] of Object.entries(rawProperties as Row)) {
-        if (value === undefined || value === null || value === '') {
-          this.core.database.query('DELETE FROM inventory_item_properties WHERE item_id = ? AND key = ?').run(itemId, key)
-        } else {
-          insert.run(itemId, key, typeof value === 'string' ? value : JSON.stringify(value), this.now(), this.now())
-        }
+      this.core.database.query('DELETE FROM inventory_item_properties WHERE item_id = ?').run(itemId)
+      for (const [key, value] of Object.entries(normalizedProperties)) {
+        insert.run(itemId, key, value, this.now(), this.now())
       }
       this.core.database.query('UPDATE inventory_items SET row_version = row_version + 1, updated_at_ms = ? WHERE id = ?').run(this.now(), itemId)
     })
-    return this.getProject()
   }
 
   getDatabaseStatus() {
@@ -1790,7 +1799,7 @@ export class SqliteHomelabInventoryStore {
       delete link.availableContentHash
     }
     assertRegistryStoreShape(draft)
-    this.commitCanonicalMutation(() => {
+    return this.commitInventoryMutation(ref, () => {
       this.replaceInventoryRecord(ref, record)
       persistRegistryState(
         this.core.database,
@@ -1799,7 +1808,6 @@ export class SqliteHomelabInventoryStore {
         (type, id) => this.resolveItem(type, id),
       )
     })
-    return this.getProject()
   }
 
   getCatalogUpdates() {
@@ -2167,8 +2175,21 @@ export class SqliteHomelabInventoryStore {
       : { projectIdsByLinkId: new Map<number, number[]>() }
     const affectedProjectIds = [...new Set(preparedLinks.flatMap((link) => projectIdsByLinkId.get(link.id) ?? []))]
     let affectedProjectRevisions: Record<number, number> = {}
+    let effects: MutationEffects = {
+      topology: false,
+      geometry: null,
+      compatibility: null,
+      presentation: null,
+    }
     if (prepared.length > 0) {
-      affectedProjectRevisions = this.commitCanonicalMutationAcrossProjects(operation, affectedProjectIds, expectedRevisions)
+      const mutation = this.commitInventoryMutationsAcrossProjects(
+        operation,
+        prepared.map((record) => record.prepared.ref),
+        affectedProjectIds,
+        expectedRevisions,
+      )
+      affectedProjectRevisions = mutation.affectedProjectRevisions
+      effects = mutation.effects
     }
     else this.core.database.transaction(operation).immediate()
     return {
@@ -2182,6 +2203,7 @@ export class SqliteHomelabInventoryStore {
       affectedProjectIds,
       affectedProjectRevisions,
       affectedLinkIds: preparedLinks.map((link) => link.id),
+      effects,
     }
   }
 
@@ -2260,11 +2282,19 @@ export class SqliteHomelabInventoryStore {
       link.id,
       (itemProjects.get(link.canonicalItemId) ?? []).map((project: Row) => project.id),
     ]))
+    const itemRevisions = new Map((this.core.database.query(
+      'SELECT id, row_version AS rowVersion FROM inventory_items',
+    ).all() as Row[]).map((row) => [row.id, row.rowVersion]))
+    const itemRevisionsByLinkId = new Map(links.map((link) => [
+      link.id,
+      itemRevisions.get(link.canonicalItemId) ?? null,
+    ]))
     return projectRegistryUpdateGroups({
       evaluations,
       links,
       projectRevisions,
       projectIdsByLinkId,
+      itemRevisionsByLinkId,
       catalogRevision: snapshot?.revision ?? null,
     }).map((group) => {
       const items = group.members.map((member: Row) => {
@@ -3572,6 +3602,135 @@ export class SqliteHomelabInventoryStore {
     })
   }
 
+  private inventoryMutationContext(itemId: number) {
+    const projectIds = this.inventoryMetadata.itemProjectIds(itemId)
+    const workspaceIds = this.core.database.query(`
+      SELECT DISTINCT workspace_id AS id
+      FROM workspace_placements
+      WHERE item_id = ?
+      ORDER BY workspace_id
+    `).all(itemId).map((row: Row) => Number(row.id))
+    const connectionIds = this.core.database.query(`
+      SELECT DISTINCT connection.id
+      FROM project_connections connection
+      JOIN connection_endpoints endpoint ON endpoint.connection_id = connection.id
+      JOIN inventory_ports port ON port.id = endpoint.port_id
+      WHERE port.item_id = ?
+      ORDER BY connection.id
+    `).all(itemId).map((row: Row) => Number(row.id))
+    const hostRefs = this.core.database.query(`
+      SELECT DISTINCT type.key AS type, alias.legacy_id AS id
+      FROM inventory_items host
+      JOIN inventory_item_types type ON type.id = host.type_id
+      JOIN inventory_identity_aliases alias ON alias.item_id = host.id
+      WHERE host.id = ? AND type.key IN ('server', 'nas', 'pcBuild')
+      UNION
+      SELECT DISTINCT type.key AS type, alias.legacy_id AS id
+      FROM component_assignments assignment
+      JOIN inventory_items host ON host.id = assignment.host_item_id
+      JOIN inventory_item_types type ON type.id = host.type_id
+      JOIN inventory_identity_aliases alias ON alias.item_id = host.id
+      WHERE assignment.component_item_id = ?
+        AND type.key IN ('server', 'nas', 'pcBuild')
+      ORDER BY type, id
+    `).all(itemId, itemId).map((row: Row) => ({
+      type: row.type as 'server' | 'nas' | 'pcBuild',
+      id: Number(row.id),
+    }))
+    return { projectIds, workspaceIds, connectionIds, hostRefs }
+  }
+
+  private uncachedProject() {
+    return this.uncachedProjectFor(this.projectId, this.workspaceId)
+  }
+
+  private uncachedProjectFor(projectId: number, workspaceId?: number) {
+    const canvasWorkspaceId = workspaceId ?? Number((this.core.database.query(`
+      SELECT id FROM workspaces
+      WHERE project_id = ? AND type = 'canvas' AND archived_at_ms IS NULL
+      ORDER BY sort_order, id LIMIT 1
+    `).get(projectId) as { id: number } | null)?.id)
+    if (!Number.isSafeInteger(canvasWorkspaceId) || canvasWorkspaceId <= 0) {
+      throw lifecycleError(`Project ${projectId} has no active Canvas workspace.`, 'workspace-not-found', 404)
+    }
+    return buildWorkspaceReadModel({
+      database: this.core.database,
+      cache: new MemoryCacheStore(),
+      projectId,
+      workspaceId: canvasWorkspaceId,
+    })
+  }
+
+  private inventoryMutationResult(
+    itemId: number,
+    project: ProjectState,
+    effects: MutationEffects,
+  ) {
+    const item = this.core.database.query(
+      'SELECT row_version AS rowVersion FROM inventory_items WHERE id = ?',
+    ).get(itemId) as { rowVersion: number } | null
+    if (!item) throw lifecycleError(`Inventory item ${itemId} was not found.`, 'inventory-item-not-found', 404)
+    return {
+      data: project,
+      revisions: {
+        ...(effects.topology ? { topology: project.revision } : {}),
+        inventoryItem: item.rowVersion,
+      },
+      effects,
+    }
+  }
+
+  private commitInventoryMutation(
+    ref: { type: string; id: number },
+    operation: () => void,
+  ) {
+    const itemId = this.resolveItem(ref.type, ref.id)
+    const beforeProject = this.getProject()
+    const beforeItem = beforeProject.items[`${ref.type}:${ref.id}`]
+    if (!beforeItem) throw lifecycleError(`Inventory item ${ref.type}:${ref.id} was not found.`, 'inventory-item-not-found', 404)
+    const context = this.inventoryMutationContext(itemId)
+    const projectRevisions = new Map(context.projectIds.map((projectId) => {
+      const project = this.core.database.query(`
+        SELECT revision FROM projects WHERE id = ? AND archived_at_ms IS NULL
+      `).get(projectId) as { revision: number } | null
+      if (!project) throw lifecycleError(`Active project ${projectId} was not found.`, 'project-not-found', 404)
+      return [projectId, project.revision] as const
+    }))
+    let effects: MutationEffects | null = null
+    const now = this.now()
+    this.core.database.transaction(() => {
+      operation()
+      const afterProject = this.uncachedProject()
+      const afterItem = afterProject.items[`${ref.type}:${ref.id}`]
+      if (!afterItem) throw lifecycleError(`Inventory item ${ref.type}:${ref.id} was not found after update.`, 'inventory-item-not-found', 500)
+      effects = classifyInventoryMutation(beforeProject, afterProject, beforeItem, afterItem, context)
+      if (!effects.topology) return
+      for (const [projectId, revision] of projectRevisions) {
+        const result = this.core.database.query(`
+          UPDATE projects SET revision = ?, updated_at_ms = ?
+          WHERE id = ? AND revision = ? AND archived_at_ms IS NULL
+        `).run(revision + 1, now, projectId, revision)
+        if (result.changes !== 1) {
+          throw lifecycleError('Project changed while applying the inventory mutation.', 'revision-conflict', 409)
+        }
+      }
+    }).immediate()
+    if (!effects) throw lifecycleError('Inventory mutation effects were not produced.', 'inventory-mutation-effects-missing', 500)
+    for (const projectId of context.projectIds) this.invalidateProjectReadModels(projectId)
+    if (effects.topology) {
+      const baseRevision = projectRevisions.get(this.projectId)
+      if (baseRevision !== undefined) {
+        const event: ProjectCommitEvent = {
+          type: 'canonical-invalidated',
+          baseRevision,
+          revision: baseRevision + 1,
+        }
+        for (const listener of this.projectCommitListeners) listener(event)
+      }
+    }
+    return this.inventoryMutationResult(itemId, this.getProject(), effects)
+  }
+
   private commitCanonicalMutation(operation: () => void) {
     const baseRevision = this.getEngineRevision()
     const revision = baseRevision + 1
@@ -3643,6 +3802,125 @@ export class SqliteHomelabInventoryStore {
       }
     }).immediate()
     return Object.fromEntries([...revisions].map(([itemId, revision]) => [itemId, revision + 1]))
+  }
+
+  private commitInventoryMutationsAcrossProjects(
+    operation: () => void,
+    refs: Array<{ type: string; id: number }>,
+    projectIds: number[],
+    expectedRevisions: Map<number, number>,
+  ) {
+    const ids = [...new Set(projectIds)].sort((left, right) => left - right)
+    if (ids.length === 0) {
+      throw lifecycleError('Inventory mutation has no active project scope.', 'inventory-project-scope-missing', 409)
+    }
+    const revisions = new Map<number, number>()
+    const beforeProjects = new Map<number, ProjectState>()
+    for (const projectId of ids) {
+      const row = this.core.database.query(
+        'SELECT revision FROM projects WHERE id = ? AND archived_at_ms IS NULL',
+      ).get(projectId) as { revision: number } | null
+      if (!row) throw lifecycleError(`Active project ${projectId} was not found.`, 'project-not-found', 404)
+      const expected = expectedRevisions.get(projectId)
+      if (expected !== undefined && expected !== row.revision) {
+        throw lifecycleError('Project changed while evaluating registry updates.', 'revision-conflict', 409)
+      }
+      revisions.set(projectId, row.revision)
+      beforeProjects.set(projectId, this.uncachedProjectFor(projectId))
+    }
+    const uniqueRefs = [...new Map(refs.map((ref) => [`${ref.type}:${ref.id}`, ref])).values()]
+    const contexts = new Map(uniqueRefs.map((ref) => {
+      const itemId = this.resolveItem(ref.type, ref.id)
+      return [`${ref.type}:${ref.id}`, this.inventoryMutationContext(itemId)]
+    }))
+    const topologyProjects = new Set<number>()
+    const geometryProjectIds = new Set<number>()
+    const geometryWorkspaceIds = new Set<number>()
+    const geometryItemRefs = new Map<string, { type: InventoryType; id: number }>()
+    const geometryConnectionIds = new Set<number>()
+    const compatibilityProjectIds = new Set<number>()
+    const compatibilityHostRefs = new Map<string, { type: 'server' | 'nas' | 'pcBuild'; id: number }>()
+    const presentationProjectIds = new Set<number>()
+    const presentationItemRefs = new Map<string, { type: InventoryType; id: number }>()
+    const now = this.now()
+    this.core.database.transaction(() => {
+      operation()
+      for (const projectId of ids) {
+        const beforeProject = beforeProjects.get(projectId)!
+        const afterProject = this.uncachedProjectFor(projectId)
+        for (const ref of uniqueRefs) {
+          const key = `${ref.type}:${ref.id}`
+          const beforeItem = beforeProject.items[key]
+          const afterItem = afterProject.items[key]
+          if (!beforeItem || !afterItem) continue
+          const effects = classifyInventoryMutation(
+            beforeProject,
+            afterProject,
+            beforeItem,
+            afterItem,
+            contexts.get(key)!,
+          )
+          if (effects.topology) topologyProjects.add(projectId)
+          if (effects.geometry) {
+            effects.geometry.projectIds.forEach((id) => geometryProjectIds.add(id))
+            effects.geometry.workspaceIds.forEach((id) => geometryWorkspaceIds.add(id))
+            effects.geometry.itemRefs.forEach((itemRef) => geometryItemRefs.set(`${itemRef.type}:${itemRef.id}`, itemRef))
+            effects.geometry.connectionIds.forEach((id) => geometryConnectionIds.add(id))
+          }
+          if (effects.compatibility) {
+            effects.compatibility.projectIds.forEach((id) => compatibilityProjectIds.add(id))
+            effects.compatibility.hostRefs.forEach((hostRef) => compatibilityHostRefs.set(`${hostRef.type}:${hostRef.id}`, hostRef))
+          }
+          if (effects.presentation) {
+            effects.presentation.projectIds.forEach((id) => presentationProjectIds.add(id))
+            effects.presentation.itemRefs.forEach((itemRef) => presentationItemRefs.set(`${itemRef.type}:${itemRef.id}`, itemRef))
+          }
+        }
+      }
+      for (const projectId of topologyProjects) {
+        const revision = revisions.get(projectId)!
+        const result = this.core.database.query(`
+          UPDATE projects SET revision = ?, updated_at_ms = ?
+          WHERE id = ? AND revision = ? AND archived_at_ms IS NULL
+        `).run(revision + 1, now, projectId, revision)
+        if (result.changes !== 1) {
+          throw lifecycleError('Project changed while applying registry updates.', 'revision-conflict', 409)
+        }
+      }
+    }).immediate()
+    for (const projectId of ids) this.invalidateProjectReadModels(projectId)
+    if (topologyProjects.has(this.projectId)) {
+      const baseRevision = revisions.get(this.projectId)!
+      const event: ProjectCommitEvent = {
+        type: 'canonical-invalidated',
+        baseRevision,
+        revision: baseRevision + 1,
+      }
+      for (const listener of this.projectCommitListeners) listener(event)
+    }
+    return {
+      affectedProjectRevisions: Object.fromEntries([...topologyProjects].map((projectId) => [
+        projectId,
+        revisions.get(projectId)! + 1,
+      ])),
+      effects: {
+        topology: topologyProjects.size > 0,
+        geometry: geometryItemRefs.size > 0 ? {
+          projectIds: [...geometryProjectIds].sort((left, right) => left - right),
+          workspaceIds: [...geometryWorkspaceIds].sort((left, right) => left - right),
+          itemRefs: [...geometryItemRefs.values()],
+          connectionIds: [...geometryConnectionIds].sort((left, right) => left - right),
+        } : null,
+        compatibility: compatibilityProjectIds.size > 0 ? {
+          projectIds: [...compatibilityProjectIds].sort((left, right) => left - right),
+          hostRefs: [...compatibilityHostRefs.values()],
+        } : null,
+        presentation: presentationItemRefs.size > 0 ? {
+          projectIds: [...presentationProjectIds].sort((left, right) => left - right),
+          itemRefs: [...presentationItemRefs.values()],
+        } : null,
+      } satisfies MutationEffects,
+    }
   }
 
   private commitCanonicalMutationAcrossProjects(

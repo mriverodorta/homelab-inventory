@@ -49,7 +49,7 @@ describe('persistence mutation effects', () => {
     expect(classifyInventoryMutation(project(before), project(after), before, after, context)).toEqual({
       topology: false,
       geometry: null,
-      compatibility: { projectIds: [1], hostRefs: [{ type: 'server', id: 1 }] },
+      compatibility: null,
       presentation: { projectIds: [1], itemRefs: [{ type: 'server', id: 1 }] },
     })
   })

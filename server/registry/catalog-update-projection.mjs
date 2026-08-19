@@ -27,6 +27,9 @@ function tokenFor(group, context) {
     })).sort((left, right) => left.linkId - right.linkId),
     catalogRevision: context.catalogRevision,
     projectRevisions,
+    inventoryItemRevisions: Object.fromEntries(group.members
+      .map((member) => [member.linkId, context.itemRevisionsByLinkId?.get(member.linkId) ?? null])
+      .sort((left, right) => left[0] - right[0])),
   })).digest('hex')
 }
 
@@ -146,6 +149,7 @@ export function registryUpdateGroups({
   links,
   projectRevisions = {},
   projectIdsByLinkId = null,
+  itemRevisionsByLinkId = null,
   catalogRevision = null,
 }) {
   const current = currentRegistryUpdateEvaluations(evaluations, links)
@@ -164,7 +168,12 @@ export function registryUpdateGroups({
         && link.availableRevision === group.toRevision
         && link.availableContentHash === group.targetContentHash
     }),
-    concurrencyToken: tokenFor(group, { projectRevisions, projectIdsByLinkId, catalogRevision }),
+    concurrencyToken: tokenFor(group, {
+      projectRevisions,
+      projectIdsByLinkId,
+      itemRevisionsByLinkId,
+      catalogRevision,
+    }),
   })).sort((left, right) => right.evaluatedAtMs - left.evaluatedAtMs || left.id.localeCompare(right.id))
 }
 

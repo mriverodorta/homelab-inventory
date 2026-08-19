@@ -1,4 +1,5 @@
 import type { ProjectState } from '@/types/inventory'
+import type { InventoryProperties } from '@/types/inventory'
 import type { HistoryState } from '@/lib/history'
 import type {
   InventoryItemMetadataInput,
@@ -79,4 +80,54 @@ export function projectHistoryContentEqual(left: ProjectState, right: ProjectSta
   const leftComparable = { ...left, revision: 0 }
   const rightComparable = { ...right, revision: 0 }
   return JSON.stringify(leftComparable) === JSON.stringify(rightComparable)
+}
+
+function projectWithoutInventoryProperties(project: ProjectState) {
+  return {
+    ...project,
+    revision: 0,
+    items: Object.fromEntries(Object.entries(project.items).map(([key, item]) => [
+      key,
+      { ...item, properties: undefined },
+    ])),
+  }
+}
+
+function projectWithoutInventoryItems(project: ProjectState) {
+  return { ...project, revision: 0, items: {} }
+}
+
+export function inventoryPropertiesOnlyChanged(current: ProjectState, target: ProjectState) {
+  return !projectHistoryContentEqual(current, target)
+    && JSON.stringify(projectWithoutInventoryProperties(current))
+      === JSON.stringify(projectWithoutInventoryProperties(target))
+}
+
+export function inventoryPropertyHistoryChanges(current: ProjectState, target: ProjectState) {
+  return Object.entries(target.items).flatMap(([key, targetItem]) => {
+    const currentItem = current.items[key]
+    if (!currentItem || JSON.stringify(currentItem.properties ?? {}) === JSON.stringify(targetItem.properties ?? {})) {
+      return []
+    }
+    return [{
+      ref: { type: targetItem.type, id: targetItem.id },
+      properties: { ...(targetItem.properties ?? {}) } as InventoryProperties,
+    }]
+  })
+}
+
+export function inventoryItemsOnlyChanged(current: ProjectState, target: ProjectState) {
+  return !projectHistoryContentEqual(current, target)
+    && JSON.stringify(projectWithoutInventoryItems(current))
+      === JSON.stringify(projectWithoutInventoryItems(target))
+    && Object.keys(current.items).length === Object.keys(target.items).length
+    && Object.keys(current.items).every((key) => target.items[key] !== undefined)
+}
+
+export function inventoryItemHistoryChanges(current: ProjectState, target: ProjectState) {
+  return Object.entries(target.items).flatMap(([key, targetItem]) => (
+    JSON.stringify(current.items[key]) === JSON.stringify(targetItem)
+      ? []
+      : [targetItem]
+  ))
 }

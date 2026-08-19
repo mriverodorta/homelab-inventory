@@ -106,6 +106,21 @@ describe('current Registry update projection', () => {
     expect(linkChanged.concurrencyToken).not.toBe(first.concurrencyToken)
   })
 
+  it('changes the concurrency token when a linked inventory row changes outside topology', () => {
+    const first = registryUpdateGroups({
+      links: [link],
+      evaluations: [evaluation()],
+      itemRevisionsByLinkId: new Map([[1, 4]]),
+    })[0]
+    const changed = registryUpdateGroups({
+      links: [link],
+      evaluations: [evaluation()],
+      itemRevisionsByLinkId: new Map([[1, 5]]),
+    })[0]
+
+    expect(changed.concurrencyToken).not.toBe(first.concurrencyToken)
+  })
+
   it('ignores revisions from projects unrelated to the group membership', () => {
     const projectIdsByLinkId = new Map([[1, [1]]])
     const first = registryUpdateGroups({ links: [link], evaluations: [evaluation()], projectIdsByLinkId, projectRevisions: { 1: 60, 2: 20 } })[0]
