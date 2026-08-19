@@ -477,11 +477,17 @@ const RELEASE_0_13_17_DETAILS: UnreleasedReleaseNotes = {
   notes: [],
 }
 
-export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
+const RELEASE_0_13_18_DETAILS: UnreleasedReleaseNotes = {
   highlights: [],
   fixes: [
     'Systems Type and Name columns now scroll with the table on mobile while remaining pinned on desktop, keeping operational columns accessible on narrow screens.',
   ],
+  notes: [],
+}
+
+export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
+  highlights: [],
+  fixes: [],
   notes: [],
 }
 
@@ -1012,9 +1018,16 @@ const RELEASE_0_2_1_DETAILS: UnreleasedReleaseNotes = {
 
 export const RELEASE_NOTES: ReleaseNoteEntry[] = [
   {
-    version: '0.13.17',
+    version: '0.13.18',
     date: '2026-08-19',
     channel: 'latest',
+    title: 'Responsive Systems table',
+    ...RELEASE_0_13_18_DETAILS,
+  },
+  {
+    version: '0.13.17',
+    date: '2026-08-19',
+    channel: 'release',
     title: 'Accurate compatibility audits',
     ...RELEASE_0_13_17_DETAILS,
   },
