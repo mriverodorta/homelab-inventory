@@ -22,6 +22,7 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 - Archiving metadata definitions or tags preserves assigned values, while confirmed permanent deletion removes their values and saved-view references atomically without leaving invalid filters or column order.
 - Date-time filters persist canonical UTC boundaries while retaining local browser input presentation.
 - Non-topology Inspector and settings changes no longer rebuild the Rust/WASM workspace engine, clear unrelated selection state, or recalculate unchanged cable routes.
+- Canvas placement Undo or Redo restores exact engine coordinates and reconciles the durable route cache without persisting transient empty geometry during remeasurement.
 - Registry catalog definition enrichment advances linked inventory row versions without advancing project topology when assignments, ports, placements, and connections are unchanged.
 
 ## [0.13.19] - 2026-08-19

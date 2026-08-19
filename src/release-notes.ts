@@ -503,6 +503,7 @@ export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
     'Archived metadata remains attached but hidden from ordinary editing, while confirmed permanent deletion removes values and saved-view references atomically.',
     'Metadata saved views refresh through SSE and date-time filters retain canonical UTC boundaries without losing local input presentation.',
     'Project presentation, workspace presentation, compatibility policy, inventory metadata, and descriptive inventory edits use independent revisions without rebuilding the Rust/WASM workspace engine or recalculating unchanged cable routes.',
+    'Canvas placement Undo or Redo restores exact engine coordinates and reconciles the durable route cache without persisting transient empty geometry during remeasurement.',
     'Registry catalog definition enrichment updates linked inventory row versions without advancing project topology when assignments, ports, placements, and connections remain unchanged.',
   ],
   notes: [
