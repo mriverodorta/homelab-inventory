@@ -6,6 +6,7 @@ import { Popover, PopoverContent, PopoverHeader, PopoverTitle, PopoverTrigger } 
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import type { CustomFieldDefinition, InventoryMetadataCatalog, InventoryMetadataFilter } from '@/types/inventory-metadata'
+import { canonicalDateFilterValue, dateTimeInputValue } from './inventory-metadata-filter-model'
 
 function filterFor(filters: readonly InventoryMetadataFilter[], definitionId: number) {
   return filters.find((filter) => 'definitionId' in filter && filter.definitionId === definitionId)
@@ -64,8 +65,8 @@ function FieldFilter({ definition, filters, onChange }: {
       ) : null}
       {active?.operator === 'date-range' ? (
         <div className="grid grid-cols-2 gap-2">
-          <Input type={definition.fieldType === 'dateTime' ? 'datetime-local' : 'date'} aria-label={`${definition.name} after`} value={active.after ?? ''} onChange={(event) => set({ ...active, after: event.target.value || null })} />
-          <Input type={definition.fieldType === 'dateTime' ? 'datetime-local' : 'date'} aria-label={`${definition.name} before`} value={active.before ?? ''} onChange={(event) => set({ ...active, before: event.target.value || null })} />
+          <Input type={definition.fieldType === 'dateTime' ? 'datetime-local' : 'date'} aria-label={`${definition.name} after`} value={definition.fieldType === 'dateTime' ? dateTimeInputValue(active.after) : active.after ?? ''} onChange={(event) => set({ ...active, after: canonicalDateFilterValue(event.target.value, definition.fieldType === 'dateTime') })} />
+          <Input type={definition.fieldType === 'dateTime' ? 'datetime-local' : 'date'} aria-label={`${definition.name} before`} value={definition.fieldType === 'dateTime' ? dateTimeInputValue(active.before) : active.before ?? ''} onChange={(event) => set({ ...active, before: canonicalDateFilterValue(event.target.value, definition.fieldType === 'dateTime') })} />
         </div>
       ) : null}
       {active?.operator === 'options' ? (

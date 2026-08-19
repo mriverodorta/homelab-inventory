@@ -9,6 +9,7 @@ import type {
   NasPowerConfiguration,
   ProjectState,
 } from '@/types/inventory'
+import type { InventoryMetadataSavedChange } from '@/types/inventory-metadata'
 
 export type InspectorPanelProps = {
   layout?: 'overlay' | 'systems-split'
@@ -33,6 +34,7 @@ export type InspectorPanelProps = {
   onOpenRegistryUpdates?: () => void
   onUpdateProject: (project: ProjectState) => void
   onUpdateItem: (itemId: string, input: InventoryItemInput) => void
+  onInventoryMetadataSaved?: (change: InventoryMetadataSavedChange) => void | Promise<void>
   onUpdateItemProperties?: (
     itemId: string,
     properties: InventoryProperties,

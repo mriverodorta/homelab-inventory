@@ -24,6 +24,7 @@ GitHub is the source of truth for source and CI. Docker Hub images are built on 
 - **Visual inventory:** Arrange servers, NAS devices, PC builds, switches, patch panels, monitors, UPS systems, and power strips on an infinite canvas.
 - **Projects and workspaces:** Keep multiple lab plans in one installation with a fixed Systems view, reorderable Canvas tabs, per-project defaults, and browser-local last-active restoration.
 - **Reusable inventory:** Keep equipment project-bound, add selected global records to other projects, or make clean independent cross-project copies.
+- **Custom organization:** Add private typed custom fields and reusable colored tags, then search and filter Inventory or expose selected metadata in Systems saved views.
 - **Component assignments:** Build hosts from reusable CPUs, motherboards, RAM, storage, GPUs, wired or radio Network Adapters, cooling, cases, power supplies, and OEM adapters.
 - **Physical cabling:** Connect individual network, display, and power endpoints with inspectable color-coded cable routes.
 - **Compatibility and audit:** Block known-invalid CPU, memory, storage, and expansion assignments, including physical RAM form factor, electrical module type, ECC, slot limits, and Network Adapter interface topology.

@@ -13,10 +13,18 @@ import type { useDomainEngine } from '@/hooks/use-domain-engine'
 import { loadProject } from '@/lib/db'
 import { loadWorkspace } from '@/lib/workbook-api'
 import { createEmptyHistory, pushHistory, type HistoryState } from '@/lib/history'
+import {
+  backfillProjectHistoryMetadata,
+  createProjectHistorySnapshot,
+  setInventoryMetadataHistoryItem,
+  type InventoryMetadataHistoryState,
+  type ProjectHistorySnapshot,
+} from '@/app/project-history-snapshot'
 import type { ProjectPersistenceCoordinator } from '@/lib/project-persistence-coordinator'
 import { upsertPlacements } from '@/lib/project'
 import { cacheProjectState } from '@/lib/project-query-key'
 import type { ProjectState } from '@/types/inventory'
+import type { InventoryItemMetadataInput, InventoryMetadataItemRef } from '@/types/inventory-metadata'
 
 const SAVE_DEBOUNCE_MS = 500
 
@@ -28,13 +36,14 @@ type ProjectCommandsOptions = {
   domainEngine: DomainEngine
   queryClient: QueryClient
   projectRef: MutableRefObject<ProjectState | null>
+  inventoryMetadataHistoryRef: MutableRefObject<InventoryMetadataHistoryState>
   lastPersistedProjectRef: MutableRefObject<ProjectState | null>
   persistenceCoordinator: ProjectPersistenceCoordinator
   settleLegacyProjectPersistence(): Promise<void>
   resetPendingSaves(): void
   scheduleProjectSave(project: ProjectState): void
   setProject: Dispatch<SetStateAction<ProjectState | null>>
-  setHistory: Dispatch<SetStateAction<HistoryState<ProjectState>>>
+  setHistory: Dispatch<SetStateAction<HistoryState<ProjectHistorySnapshot>>>
   setSelectedConnectionId: Dispatch<SetStateAction<string | number | null>>
   clearNetworkTrace(): void
   setSaveStatus(status: SaveStatus): void
@@ -46,6 +55,7 @@ export function useProjectCommands({
   domainEngine,
   queryClient,
   projectRef,
+  inventoryMetadataHistoryRef,
   lastPersistedProjectRef,
   persistenceCoordinator,
   settleLegacyProjectPersistence,
@@ -81,7 +91,10 @@ export function useProjectCommands({
     const currentProject = projectRef.current
 
     if (shouldRecordHistory && currentProject) {
-      setHistory((currentHistory) => pushHistory(currentHistory, currentProject))
+      setHistory((currentHistory) => pushHistory(
+        currentHistory,
+        createProjectHistorySnapshot(currentProject, inventoryMetadataHistoryRef.current),
+      ))
     }
 
     projectRef.current = nextProject
@@ -169,7 +182,14 @@ export function useProjectCommands({
 
   async function applyInventoryCommandSnapshot(
     nextProject: ProjectState,
-    options: { historySnapshot?: ProjectState } = {},
+    options: {
+      historySnapshot?: ProjectState
+      metadataChange?: {
+        ref: InventoryMetadataItemRef
+        before: InventoryItemMetadataInput
+        after: InventoryItemMetadataInput
+      }
+    } = {},
   ) {
     let synchronizedProject = nextProject
     const expectedRevision = nextProject.revision
@@ -201,11 +221,40 @@ export function useProjectCommands({
     lastPersistedProjectRef.current = synchronizedProject
     cacheProjectState(queryClient, synchronizedProject)
     setProject(synchronizedProject)
-    setHistory((currentHistory) => (
-      options.historySnapshot
-        ? pushHistory(currentHistory, options.historySnapshot)
-        : createEmptyHistory()
-    ))
+    if (options.historySnapshot) {
+      const historySnapshot = options.historySnapshot
+      const metadataChange = options.metadataChange
+      setHistory((currentHistory) => {
+        const beforeState = metadataChange
+          ? setInventoryMetadataHistoryItem(
+              inventoryMetadataHistoryRef.current,
+              metadataChange.ref,
+              metadataChange.before,
+            )
+          : inventoryMetadataHistoryRef.current
+        const backfilledHistory = metadataChange
+          ? backfillProjectHistoryMetadata(
+              currentHistory,
+              metadataChange.ref,
+              metadataChange.before,
+            )
+          : currentHistory
+        return pushHistory(
+          backfilledHistory,
+          createProjectHistorySnapshot(historySnapshot, beforeState),
+        )
+      })
+      if (metadataChange) {
+        inventoryMetadataHistoryRef.current = setInventoryMetadataHistoryItem(
+          inventoryMetadataHistoryRef.current,
+          metadataChange.ref,
+          metadataChange.after,
+        )
+      }
+    } else {
+      inventoryMetadataHistoryRef.current = new Map()
+      setHistory(createEmptyHistory())
+    }
     setSelectedConnectionId(null)
     clearNetworkTrace()
     setValidationMessage(null)
@@ -274,7 +323,10 @@ export function useProjectCommands({
       cacheProjectState(queryClient, committedProject)
       setProject(committedProject)
       if (historySnapshot) {
-        setHistory((currentHistory) => pushHistory(currentHistory, historySnapshot))
+        setHistory((currentHistory) => pushHistory(
+          currentHistory,
+          createProjectHistorySnapshot(historySnapshot, inventoryMetadataHistoryRef.current),
+        ))
       }
       setSaveStatus('saved')
       setPersistenceWarning(null)

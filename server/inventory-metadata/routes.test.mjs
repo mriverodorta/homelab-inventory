@@ -43,6 +43,11 @@ async function fixture() {
       affectedProjectIds: [1, 3],
       affectedProjectRevisions: { 1: 4, 3: 8 },
     })),
+    restoreInventoryItemMetadataHistory: vi.fn(() => ({
+      items: [{ itemId: 91, metadata: { itemId: 91, definitions: [definition], values: [], tags: [] } }],
+      affectedProjectIds: [1, 3],
+      affectedProjectRevisions: { 1: 5, 3: 9 },
+    })),
   }
   const eventBus = { publish: vi.fn() }
   const app = express()
@@ -137,6 +142,28 @@ describe('inventory metadata routes', () => {
     expect(eventBus.publish).toHaveBeenCalledWith(expect.objectContaining({
       topics: ['inventory-metadata:1', 'inventory-metadata:3'],
       payload: { itemId: 91, projectIds: [1, 3] },
+    }))
+  })
+
+  it('restores metadata history as one project-scoped mutation', async () => {
+    const { url, store, eventBus } = await fixture()
+    const input = {
+      items: [{ ref: { type: 'server', id: 7 }, metadata: { values: [], tagIds: [] } }],
+    }
+    const response = await json(url, '/api/inventory-metadata/history', {
+      method: 'PUT',
+      body: JSON.stringify(input),
+    })
+
+    expect(response.status).toBe(200)
+    expect(store.restoreInventoryItemMetadataHistory).toHaveBeenCalledWith(input.items)
+    expect(await response.json()).toMatchObject({
+      affectedProjectIds: [1, 3],
+      affectedProjectRevisions: { 1: 5, 3: 9 },
+    })
+    expect(eventBus.publish).toHaveBeenCalledWith(expect.objectContaining({
+      topics: ['inventory-metadata:1', 'inventory-metadata:3'],
+      payload: { itemIds: [91], projectIds: [1, 3] },
     }))
   })
 

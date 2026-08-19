@@ -3,6 +3,10 @@ import type { QueryClient } from '@tanstack/react-query'
 import { applyEngineResponsePatch } from '@/engine/project-patches'
 import type { useDomainEngine } from '@/hooks/use-domain-engine'
 import { createEmptyHistory, type HistoryState } from '@/lib/history'
+import type {
+  InventoryMetadataHistoryState,
+  ProjectHistorySnapshot,
+} from '@/app/project-history-snapshot'
 import type { ProjectState } from '@/types/inventory'
 
 type DomainEngine = ReturnType<typeof useDomainEngine>
@@ -11,12 +15,13 @@ type ProjectHydrationOptions = {
   loadedProject: ProjectState | undefined
   project: ProjectState | null
   projectRef: MutableRefObject<ProjectState | null>
+  inventoryMetadataHistoryRef: MutableRefObject<InventoryMetadataHistoryState>
   lastPersistedProjectRef: MutableRefObject<ProjectState | null>
   hasHydratedProjectRef: MutableRefObject<boolean>
   domainEngine: DomainEngine
   queryClient: QueryClient
   setProject: Dispatch<SetStateAction<ProjectState | null>>
-  setHistory: Dispatch<SetStateAction<HistoryState<ProjectState>>>
+  setHistory: Dispatch<SetStateAction<HistoryState<ProjectHistorySnapshot>>>
   setSelectedItemId: Dispatch<SetStateAction<string | null>>
   setSelectedConnectionId: Dispatch<SetStateAction<string | number | null>>
   clearPendingConnection(): void
@@ -32,6 +37,7 @@ export function useProjectHydration({
   loadedProject,
   project,
   projectRef,
+  inventoryMetadataHistoryRef,
   lastPersistedProjectRef,
   hasHydratedProjectRef,
   domainEngine,
@@ -68,6 +74,7 @@ export function useProjectHydration({
     projectRef.current = loadedProject
     lastPersistedProjectRef.current = loadedProject
     setProject(loadedProject)
+    inventoryMetadataHistoryRef.current = new Map()
     setHistory(createEmptyHistory())
     setSelectedItemId((current) => (current && loadedProject.items[current] ? current : null))
     setSelectedConnectionId((current) => (
@@ -81,6 +88,7 @@ export function useProjectHydration({
     setSaveStatus('saved')
   }, [
     hasHydratedProjectRef,
+    inventoryMetadataHistoryRef,
     lastPersistedProjectRef,
     loadedProject,
     projectRef,
@@ -106,6 +114,7 @@ export function useProjectHydration({
       projectRef.current = nextProject
       lastPersistedProjectRef.current = nextProject
       setProject(nextProject)
+      inventoryMetadataHistoryRef.current = new Map()
       setHistory(createEmptyHistory())
       setPersistenceWarning(null)
       setSaveStatus('saved')
@@ -134,6 +143,7 @@ export function useProjectHydration({
     domainEngine.enabled,
     domainEngine.syncEvent,
     hasHydratedProjectRef,
+    inventoryMetadataHistoryRef,
     lastPersistedProjectRef,
     projectRef,
     queryClient,

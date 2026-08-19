@@ -36,6 +36,8 @@ The server checks the activation marker and each database schema on startup. Com
 
 This lets a deployment skip app versions without manually applying every intermediate migration.
 
+Core schema 26 adds normalized installation-wide custom-field definitions, applicability, options, typed inventory values, tags, and item-tag relationships. Core schema 27 adds relational Systems saved-view columns and metadata filters keyed only by positive numeric definition, option, and tag IDs. Metadata remains in the core database, participates in logical Inventory backups and dependency validation, and is excluded from Registry contributions and template hashes.
+
 See [SQLITE_MIGRATION.md](SQLITE_MIGRATION.md) and [MIGRATIONS.md](MIGRATIONS.md) for pre-upgrade, verification, Docker, interruption recovery, and rollback procedures.
 
 ### Schema 7 Compatibility Data

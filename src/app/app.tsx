@@ -59,6 +59,11 @@ import { createReleaseDialogProps } from '@/app/create-release-dialog-props'
 import { createWorkspaceSurfaceProps } from '@/app/create-workspace-surface-props'
 import { pushHistory } from '@/lib/history'
 import type { ProjectState } from '@/types/inventory'
+import type { InventoryMetadataSavedChange } from '@/types/inventory-metadata'
+import {
+  createProjectHistorySnapshot,
+  type InventoryMetadataHistoryState,
+} from '@/app/project-history-snapshot'
 import { browserPreferenceScope } from '@/lib/browser-preference-scope'
 
 type SaveStatus = 'saved' | 'saving' | 'error'
@@ -208,18 +213,27 @@ function App() {
     queryFn: loadActiveProject,
     enabled: sourceProjectId !== null && sourceWorkspaceId !== null,
   })
+  const inventoryMetadataHistoryRef = useRef<InventoryMetadataHistoryState>(new Map())
   const {
     history,
+    historyBusy,
     setHistory,
     undoProjectChange,
     redoProjectChange,
   } = useProjectHistory({
     projectRef,
+    inventoryMetadataHistoryRef,
     setProject,
     setSelectedItemId,
     setSelectedConnectionId,
     setValidationMessage,
     scheduleProjectSave,
+    synchronizeCanonicalRevision: domainEngine.enabled
+      ? (revision) => domainEngine.client.synchronizeCanonicalRevision(
+          revision,
+          'Synchronizing inventory metadata history.',
+        )
+      : undefined,
   })
   const hasHydratedProjectRef = useRef(false)
   const hydratedWorkspaceKeyRef = useRef<string | null>(null)
@@ -237,6 +251,7 @@ function App() {
     hasHydratedProjectRef.current = false
     resetPendingSaves()
     projectRef.current = null
+    inventoryMetadataHistoryRef.current = new Map()
     lastPersistedProjectRef.current = null
     setProject(null)
     setSelectedItemId(null)
@@ -255,7 +270,10 @@ function App() {
   ])
   const applyInventoryCommandSnapshotRef = useRef<(
     project: ProjectState,
-    options?: { historySnapshot?: ProjectState },
+    options?: {
+      historySnapshot?: ProjectState
+      metadataChange?: Pick<InventoryMetadataSavedChange, 'ref' | 'before' | 'after'>
+    },
   ) => Promise<ProjectState>>(async (nextProject) => nextProject)
   const {
     updateProject,
@@ -272,6 +290,7 @@ function App() {
     domainEngine,
     queryClient,
     projectRef,
+    inventoryMetadataHistoryRef,
     lastPersistedProjectRef,
     persistenceCoordinator,
     settleLegacyProjectPersistence,
@@ -286,6 +305,23 @@ function App() {
     setValidationMessage,
   })
   applyInventoryCommandSnapshotRef.current = applyInventoryCommandSnapshot
+  async function handleInventoryMetadataSaved(change: InventoryMetadataSavedChange) {
+    const currentProject = projectRef.current
+    if (!currentProject) return
+    const projectId = currentProject.metadata.projectId ?? 1
+    const revision = change.result.affectedProjectRevisions[String(projectId)]
+    const nextProject = revision
+      ? { ...currentProject, revision }
+      : currentProject
+    await applyInventoryCommandSnapshot(nextProject, {
+      historySnapshot: currentProject,
+      metadataChange: {
+        ref: change.ref,
+        before: change.before,
+        after: change.after,
+      },
+    })
+  }
   const {
     draggingItemId,
     dragPreviewOverCanvas,
@@ -329,7 +365,10 @@ function App() {
     commitAssignmentUpdate,
     recoverMutation: recoverConnectionMutation,
     recordHistorySnapshot: (snapshot) => {
-      setHistory((currentHistory) => pushHistory(currentHistory, snapshot))
+      setHistory((currentHistory) => pushHistory(
+        currentHistory,
+        createProjectHistorySnapshot(snapshot, inventoryMetadataHistoryRef.current),
+      ))
     },
     clearCanvasSelection: () => {
       setSelectedItemId(null)
@@ -438,6 +477,7 @@ function App() {
     loadedProject: projectQuery.data,
     project,
     projectRef,
+    inventoryMetadataHistoryRef,
     lastPersistedProjectRef,
     hasHydratedProjectRef,
     domainEngine,
@@ -635,8 +675,8 @@ function App() {
     validationMessage,
     validationSeverity,
     persistenceWarning,
-    canUndo: history.past.length > 0,
-    canRedo: history.future.length > 0,
+    canUndo: !historyBusy && history.past.length > 0,
+    canRedo: !historyBusy && history.future.length > 0,
     saveStatus,
     canonicalMutationBusy,
     canvasOperationLabel,
@@ -660,6 +700,7 @@ function App() {
     undo: undoProjectChange,
     redo: redoProjectChange,
     updateProject,
+    inventoryMetadataSaved: handleInventoryMetadataSaved,
     setValidationMessage,
       showCurrentExampleStep,
     }),

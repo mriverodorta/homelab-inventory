@@ -142,6 +142,14 @@ const itemMutationResponse = z.strictObject({
   affectedProjectIds: z.array(z.number().int().safe().positive()),
   affectedProjectRevisions: z.record(z.string(), z.number().int().safe().positive()),
 })
+const historyMutationResponse = z.strictObject({
+  items: z.array(z.strictObject({
+    itemId: z.number().int().safe().positive(),
+    metadata: inventoryItemMetadataSchema,
+  })),
+  affectedProjectIds: z.array(z.number().int().safe().positive()),
+  affectedProjectRevisions: z.record(z.string(), z.number().int().safe().positive()),
+})
 
 export async function createCustomField(input: CustomFieldDefinitionInput): Promise<CustomFieldDefinition> {
   return (await mutation('/api/inventory-metadata/definitions', definitionResponse, {
@@ -220,6 +228,17 @@ export async function updateInventoryItemMetadata(ref: InventoryMetadataItemRef,
     method: 'PUT', body: JSON.stringify(input),
   })
   itemCache.delete(itemPath(ref))
+  return response
+}
+
+export async function restoreInventoryItemMetadataHistory(items: readonly Readonly<{
+  ref: InventoryMetadataItemRef
+  metadata: InventoryItemMetadataInput
+}>[]) {
+  const response = await mutation('/api/inventory-metadata/history', historyMutationResponse, {
+    method: 'PUT', body: JSON.stringify({ items }),
+  })
+  for (const item of items) itemCache.delete(itemPath(item.ref))
   return response
 }
 

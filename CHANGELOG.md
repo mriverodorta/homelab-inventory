@@ -6,6 +6,21 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 
 ## Unreleased
 
+### Added
+
+- Installation-wide custom fields support short and long text, numbers with units and bounds, booleans, dates, date-times, URLs, and single- or multi-select options across applicable inventory types.
+- Reusable colored inventory tags and typed metadata can be edited from item forms and Inspector tabs, searched and filtered in Inventory, and exposed as optional Systems columns and saved-view filters.
+
+### Changed
+
+- Systems saved views persist metadata filters and dynamic columns by numeric IDs, refresh through SSE, and keep tags below Name unless the dedicated Tags column is visible.
+- Custom metadata is private local data: it participates in transactional project revisions and Undo or Redo but never enters Registry contributions, template identity, or catalog refresh merges.
+
+### Fixed
+
+- Archiving metadata definitions or tags preserves assigned values, while confirmed permanent deletion removes their values and saved-view references atomically without leaving invalid filters or column order.
+- Date-time filters persist canonical UTC boundaries while retaining local browser input presentation.
+
 ## [0.13.19] - 2026-08-19
 
 ### Fixed

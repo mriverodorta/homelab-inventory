@@ -3,6 +3,7 @@ import { InventoryMetadataError } from './contract.mjs'
 import { InventoryMetadataFilterService } from './filter-service.mjs'
 import {
   inventoryMetadataCatalogPayload,
+  inventoryMetadataHistoryPayload,
   inventoryMetadataItemPayload,
 } from '../live-events/inventory-metadata-payloads.mjs'
 
@@ -85,6 +86,20 @@ function publishItem(eventBus, store, result) {
     scope: store,
     topics: payload.projectIds.map((projectId) => `inventory-metadata:${projectId}`),
     kind: 'inventory-metadata.item-changed',
+    payload,
+  })
+}
+
+function publishHistory(eventBus, store, result) {
+  const payload = inventoryMetadataHistoryPayload({
+    itemIds: result.items.map((item) => item.itemId),
+    projectIds: result.affectedProjectIds,
+  })
+  if (payload.projectIds.length === 0) return
+  eventBus?.publish({
+    scope: store,
+    topics: payload.projectIds.map((projectId) => `inventory-metadata:${projectId}`),
+    kind: 'inventory-metadata.history-restored',
     payload,
   })
 }
@@ -247,6 +262,21 @@ export function registerInventoryMetadataRoutes(app, { withStore, eventBus = nul
       publishItem(eventBus, store, result)
       response.json({
         metadata: publicItemMetadata(result.metadata),
+        affectedProjectIds: result.affectedProjectIds,
+        affectedProjectRevisions: result.affectedProjectRevisions,
+      })
+    })
+  })
+
+  app.put('/api/inventory-metadata/history', (request, response) => {
+    withMetadataStore(withStore, request, response, 'Unable to restore inventory metadata history.', (store) => {
+      const result = store.restoreInventoryItemMetadataHistory(request.body?.items)
+      publishHistory(eventBus, store, result)
+      response.json({
+        items: result.items.map((item) => ({
+          itemId: item.itemId,
+          metadata: publicItemMetadata(item.metadata),
+        })),
         affectedProjectIds: result.affectedProjectIds,
         affectedProjectRevisions: result.affectedProjectRevisions,
       })

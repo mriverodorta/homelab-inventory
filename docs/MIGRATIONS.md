@@ -164,6 +164,8 @@ docker compose logs -f homelab-inventory
 
 Watchtower can replace the image automatically, but it does not replace your data backup policy. Keep scheduled external backups and review release notes before allowing a release with a schema migration to update automatically.
 
+Core schemas 26 and 27 add normalized custom inventory metadata and its Systems saved-view relationships. Startup applies both checksummed migrations in order; permanent definition or tag deletion later prunes dependent saved-view filters and columns transactionally. Existing inventory identity, assignments, placements, connections, route cache, Registry links, authentication, and telemetry are not rewritten by these migrations.
+
 ## Rollback
 
 Application images are not expected to read a newer schema than they support. To roll back:

@@ -212,6 +212,41 @@ describe('SQLite Homelab Inventory store facade', () => {
     }
   })
 
+  test('restores multiple metadata history snapshots with one project revision', async () => {
+    const store = await fixtureStore()
+    try {
+      const definition = store.inventoryMetadata.createDefinition({
+        name: 'Owner', fieldType: 'shortText', applicableItemTypes: ['server', 'cpu'],
+      })
+      const tag = store.inventoryMetadata.createTag({ name: 'Review', colorToken: 'amber' })
+      store.updateInventoryItemMetadata({ type: 'server', id: 7 }, {
+        values: [{ definitionId: definition.id, value: 'Current server owner' }],
+        tagIds: [tag.id],
+      })
+      const beforeRevision = store.getEngineRevision()
+
+      const restored = store.restoreInventoryItemMetadataHistory([
+        {
+          ref: { type: 'server', id: 7 },
+          metadata: { values: [{ definitionId: definition.id, value: 'Previous owner' }], tagIds: [] },
+        },
+      ])
+
+      expect(restored.affectedProjectRevisions).toEqual({ 1: beforeRevision + 1 })
+      expect(store.getEngineRevision()).toBe(beforeRevision + 1)
+      expect(store.getInventoryItemMetadata({ type: 'server', id: 7 })).toMatchObject({
+        values: [{ definitionId: definition.id, value: 'Previous owner' }],
+        tags: [],
+      })
+      expect(() => store.restoreInventoryItemMetadataHistory([
+        { ref: { type: 'server', id: 7 }, metadata: { values: [], tagIds: [] } },
+        { ref: { type: 'server', id: 7 }, metadata: { values: [], tagIds: [] } },
+      ])).toThrow(/duplicate/iu)
+    } finally {
+      store.close()
+    }
+  })
+
   test('creates multiple inventory records with private metadata atomically', async () => {
     const store = await emptyFixtureStore()
     try {
@@ -323,7 +358,7 @@ describe('SQLite Homelab Inventory store facade', () => {
         group_id: 1,
         positions: [0],
       })
-      expect(store.getDatabaseStatus()).toMatchObject({ schemaVersion: 26 })
+      expect(store.getDatabaseStatus()).toMatchObject({ schemaVersion: 27 })
       expect(store.getPersistenceHealth()).toMatchObject({ ok: true, engine: 'sqlite' })
     } finally {
       store.close()

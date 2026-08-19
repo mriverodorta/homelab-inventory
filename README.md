@@ -35,6 +35,7 @@ It gives you one practical view of what you own, what is installed in each machi
 - See deterministic resource allocations, known incompatibilities, and incomplete-data warnings before an assignment changes project data.
 - Review or ignore individual audit findings, or disable compatibility checks for a specific host when documenting an intentional exception.
 - Import complete OEM systems and retail motherboards with their physical topology preserved instead of flattening them into generic machines.
+- Define private typed custom fields and reusable colored tags for inventory, then search, filter, and build saved Systems views from that metadata without contributing it to the public Registry.
 
 ### Reuse trusted hardware definitions
 

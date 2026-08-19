@@ -58,6 +58,7 @@ export function InspectorPanel({
   onOpenRegistryUpdates,
   onUpdateProject,
   onUpdateItem,
+  onInventoryMetadataSaved,
   onUpdateItemProperties = () => undefined,
   onDuplicateItem = () => undefined,
   onDuplicateItemToProject,
@@ -271,6 +272,7 @@ export function InspectorPanel({
                 projectId: project.metadata.projectId ?? 1,
                 item: { type: selectedItem.type, id: selectedItem.id },
                 canEdit: canEditInventory,
+                onSaved: onInventoryMetadataSaved,
               } : null}>
               <section className="space-y-4">
           {selectedConnection ? (

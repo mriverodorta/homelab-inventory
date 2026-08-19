@@ -139,6 +139,19 @@ export type InventoryItemMetadataInput = Readonly<{
   tagIds: readonly number[]
 }>
 
+export type InventoryMetadataItemMutationResult = Readonly<{
+  metadata: InventoryItemMetadata
+  affectedProjectIds: readonly number[]
+  affectedProjectRevisions: Readonly<Record<string, number>>
+}>
+
+export type InventoryMetadataSavedChange = Readonly<{
+  ref: InventoryMetadataItemRef
+  before: InventoryItemMetadataInput
+  after: InventoryItemMetadataInput
+  result: InventoryMetadataItemMutationResult
+}>
+
 export type InventoryMetadataFilter =
   | Readonly<{ operator: 'tags-any'; tagIds: readonly number[] }>
   | Readonly<{ operator: 'has-tags' | 'no-tags' }>

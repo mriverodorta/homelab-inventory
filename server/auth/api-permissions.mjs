@@ -65,6 +65,7 @@ const PROTECTED_ROUTES = [
 
   ['GET', /^\/api\/inventory-metadata\/catalog\/?$/, 'inventory.view'],
   ['POST', /^\/api\/projects\/[1-9]\d*\/inventory-metadata\/query\/?$/, 'inventory.view'],
+  ['PUT', /^\/api\/inventory-metadata\/history\/?$/, 'inventory.edit'],
   ['GET', /^\/api\/inventory-metadata\/(?:definitions|tags)\/[1-9]\d*\/impact\/?$/, 'inventory.metadata.manage'],
   ['POST', /^\/api\/inventory-metadata\/(?:definitions|tags)(?:\/[1-9]\d*\/(?:archive|restore))?\/?$/, 'inventory.metadata.manage'],
   ['PUT', /^\/api\/inventory-metadata\/(?:definitions|tags)\/(?:order|[1-9]\d*)\/?$/, 'inventory.metadata.manage'],

@@ -494,9 +494,18 @@ const RELEASE_0_13_19_DETAILS: UnreleasedReleaseNotes = {
 }
 
 export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
-  highlights: [],
-  fixes: [],
-  notes: [],
+  highlights: [
+    'Installation-wide custom fields and reusable colored tags now organize inventory with typed private metadata across item forms, Inspector, Inventory search, and Systems.',
+    'Systems can show optional Tags and custom-field columns, combine metadata filters with existing host filters, and save those choices as account-synchronized views.',
+    'Metadata edits participate in project revisions and Undo or Redo while remaining excluded from Registry contributions, template identity, and catalog refresh merges.',
+  ],
+  fixes: [
+    'Archived metadata remains attached but hidden from ordinary editing, while confirmed permanent deletion removes values and saved-view references atomically.',
+    'Metadata saved views refresh through SSE and date-time filters retain canonical UTC boundaries without losing local input presentation.',
+  ],
+  notes: [
+    'Core schema 26 stores normalized custom-field definitions, options, typed values, tags, and item relationships; schema 27 stores Systems metadata columns and filters by numeric IDs.',
+  ],
 }
 
 const RELEASE_0_11_2_DETAILS: UnreleasedReleaseNotes = {

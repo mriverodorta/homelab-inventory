@@ -13,18 +13,23 @@ import {
   useInventoryMetadataCatalog,
   useInventoryMetadataMutations,
 } from '@/lib/inventory-metadata-query'
-import type { InventoryMetadataItemRef } from '@/types/inventory-metadata'
+import type {
+  InventoryMetadataItemRef,
+  InventoryMetadataSavedChange,
+} from '@/types/inventory-metadata'
 
 export function InventoryItemMetadataEditor({
   projectId,
   item,
   enabled,
   canEdit,
+  onSaved,
 }: {
   projectId: number
   item: InventoryMetadataItemRef
   enabled: boolean
   canEdit: boolean
+  onSaved?: (change: InventoryMetadataSavedChange) => void | Promise<void>
 }) {
   const catalog = useInventoryMetadataCatalog({ enabled })
   const metadata = useInventoryItemMetadata(projectId, item, enabled)
@@ -45,10 +50,13 @@ export function InventoryItemMetadataEditor({
   async function save() {
     setError(null)
     try {
-      const result = await mutations.updateItem.mutateAsync({ ref: item, input: inventoryMetadataInput(draft) })
+      const before = inventoryMetadataInput(baseline)
+      const after = inventoryMetadataInput(draft)
+      const result = await mutations.updateItem.mutateAsync({ ref: item, input: after })
       const next = inventoryMetadataDraft(result.metadata)
       setDraft(next)
       setBaseline(next)
+      await onSaved?.({ ref: item, before, after: inventoryMetadataInput(next), result })
     } catch (caughtError) {
       setError(caughtError instanceof Error ? caughtError.message : 'Inventory metadata could not be saved.')
     }

@@ -13,6 +13,7 @@ import { setAuditWarningIgnored } from '@/lib/compatibility-policy'
 import { runtimeItemKey } from '@/lib/item-keys'
 import { endpointKey } from '@/lib/project'
 import type { ProjectState } from '@/types/inventory'
+import type { InventoryMetadataSavedChange } from '@/types/inventory-metadata'
 
 type CanvasProps = AppWorkspaceSurfaceProps['canvas']
 type InspectorProps = AppWorkspaceSurfaceProps['inspector']
@@ -59,6 +60,7 @@ interface CreateWorkspaceSurfacePropsOptions {
   undo(): void
   redo(): void
   updateProject(nextProject: ProjectState): void
+  inventoryMetadataSaved?(change: InventoryMetadataSavedChange): void | Promise<void>
   setValidationMessage(message: string | null): void
   showCurrentExampleStep(): void
 }
@@ -104,6 +106,7 @@ export function createWorkspaceSurfaceProps({
   undo,
   redo,
   updateProject,
+  inventoryMetadataSaved,
   setValidationMessage,
   showCurrentExampleStep,
 }: CreateWorkspaceSurfacePropsOptions): AppWorkspaceSurfaceProps {
@@ -138,6 +141,7 @@ export function createWorkspaceSurfaceProps({
     onOpenRegistryUpdates: canViewRegistryUpdates ? openRegistryUpdates : undefined,
     onUpdateProject: updateProject,
     onUpdateItem: inventory.updateItem,
+    onInventoryMetadataSaved: inventoryMetadataSaved,
     onRequestNasPowerConfigurationChange: (item, powerConfiguration) => {
       void inventory.requestNasPowerConfigurationChange(item, powerConfiguration)
     },

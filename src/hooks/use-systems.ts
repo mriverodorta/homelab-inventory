@@ -69,6 +69,12 @@ export function useSystemsViews(projectId: number, enabled: boolean) {
   const key = ['projects', projectId, 'systems', 'views'] as const
   const views = useQuery({ queryKey: key, queryFn: () => loadSystemsViews(projectId), enabled })
   const invalidate = () => queryClient.invalidateQueries({ queryKey: key })
+  useLiveEventTopic({
+    topic: 'inventory-metadata:catalog',
+    enabled,
+    onEvent: () => { void invalidate() },
+    onResync: () => { void invalidate() },
+  })
   const replaceCachedView = (view: SystemsSavedView) => {
     queryClient.setQueryData<readonly SystemsSavedView[]>(key, (current = []) => (
       [...current.filter((entry) => entry.id !== view.id), view]

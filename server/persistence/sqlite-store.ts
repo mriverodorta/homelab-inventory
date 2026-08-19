@@ -1318,6 +1318,58 @@ export class SqliteHomelabInventoryStore {
     }
   }
 
+  restoreInventoryItemMetadataHistory(rawItems: Row[]) {
+    if (!Array.isArray(rawItems) || rawItems.length === 0 || rawItems.length > 50) {
+      throw lifecycleError(
+        'Metadata history restore requires between 1 and 50 inventory items.',
+        'invalid-inventory-metadata-history',
+        400,
+      )
+    }
+    const items = rawItems.map((rawItem, index) => {
+      const ref = normalizeInventoryRef(rawItem?.ref ?? {})
+      return {
+        ref,
+        itemId: this.inventoryScope.resolve(ref.type as InventoryType, ref.id),
+        metadata: rawItem?.metadata ?? {},
+        index,
+      }
+    })
+    if (new Set(items.map((item) => item.itemId)).size !== items.length) {
+      throw lifecycleError(
+        'Metadata history restore cannot contain duplicate inventory items.',
+        'invalid-inventory-metadata-history',
+        400,
+      )
+    }
+    const projectIds = [...new Set(items.flatMap((item) => this.inventoryMetadata.itemProjectIds(item.itemId)))]
+    const expectedRevisions = new Map<number, number>()
+    for (const projectId of projectIds) {
+      const project = this.core.database.query(
+        'SELECT revision FROM projects WHERE id = ? AND archived_at_ms IS NULL',
+      ).get(projectId) as { revision: number } | null
+      if (!project) throw lifecycleError(`Active project ${projectId} was not found.`, 'project-not-found', 404)
+      expectedRevisions.set(projectId, project.revision)
+    }
+    const affectedProjectRevisions = this.commitCanonicalMutationAcrossProjects(
+      () => {
+        for (const item of items) {
+          this.inventoryMetadata.replaceItemMetadata(item.itemId, item.metadata, { transaction: false })
+        }
+      },
+      projectIds,
+      expectedRevisions,
+    )
+    return {
+      items: items.map((item) => ({
+        itemId: item.itemId,
+        metadata: this.inventoryMetadata.getItemMetadata(item.itemId),
+      })),
+      affectedProjectIds: projectIds,
+      affectedProjectRevisions,
+    }
+  }
+
   private prepareInventoryUpdate(
     rawRef: Row,
     input: Row,
