@@ -415,6 +415,7 @@ describe('SQLite Homelab Inventory store facade', () => {
     const commits: unknown[] = []
     const unsubscribe = store.subscribeToProjectCommits((event) => commits.push(event))
     try {
+      const routingCache = store.getRoutingCache()
       const project = await store.applyEnginePatch({
         baseRevision: 8,
         patchSet: {
@@ -439,6 +440,7 @@ describe('SQLite Homelab Inventory store facade', () => {
 
       expect(project.revision).toBe(9)
       expect(project.placements).toContainEqual({ serverId: 'server:7', x: 144, y: 252 })
+      expect(store.getRoutingCache()).toEqual(routingCache)
       expect(commits).toEqual([{
         type: 'project-commit',
         baseRevision: 8,

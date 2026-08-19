@@ -18,6 +18,7 @@ import {
   inventoryPropertiesOnlyChanged,
   inventoryPropertyHistoryChanges,
   metadataHistoryChanges,
+  placementsOnlyChanged,
   projectHistoryContentEqual,
   type InventoryMetadataHistoryState,
   type ProjectHistorySnapshot,
@@ -42,6 +43,7 @@ type ProjectHistoryOptions = {
   ) => Promise<void>
   applyDomainMutationResult?: (result: DomainMutationResult<ProjectState>) => Promise<ProjectState>
   restoreWorkbookHistory?: (workbook: ProjectWorkbook) => Promise<ProjectWorkbook>
+  restorePlacementHistory?: (project: ProjectState) => Promise<ProjectState>
 }
 
 export function useProjectHistory({
@@ -56,6 +58,7 @@ export function useProjectHistory({
   refreshInventoryMetadata,
   applyDomainMutationResult,
   restoreWorkbookHistory,
+  restorePlacementHistory,
 }: ProjectHistoryOptions) {
   const [history, setHistoryState] = useState<HistoryState<ProjectHistorySnapshot>>(() => createEmptyHistory())
   const [historyBusy, setHistoryBusy] = useState(false)
@@ -114,6 +117,8 @@ export function useProjectHistory({
         && inventoryPropertiesOnlyChanged(currentProject, target.project)
       const inventoryOnlyChanged = projectChanged
         && inventoryItemsOnlyChanged(currentProject, target.project)
+      const placementOnlyChanged = projectChanged
+        && placementsOnlyChanged(currentProject, target.project)
       const policyResult = policyOnlyChanged
         ? await updateCompatibilityPolicy(
             currentProject.metadata.projectId ?? 1,
@@ -151,15 +156,21 @@ export function useProjectHistory({
             : result.data
         }
       }
-      const rebasedProject = policyResult
-        ? { ...currentProject, compatibilityPolicy: policyResult.policy }
-        : propertyProject
-          ? propertyProject
-          : inventoryProject
-            ? inventoryProject
-        : projectChanged
-          ? { ...target.project, revision: currentProject.revision }
-          : currentProject
+      const placementProject = placementOnlyChanged && restorePlacementHistory
+        ? await restorePlacementHistory(target.project)
+        : null
+      let rebasedProject = currentProject
+      if (policyResult) {
+        rebasedProject = { ...currentProject, compatibilityPolicy: policyResult.policy }
+      } else if (propertyProject) {
+        rebasedProject = propertyProject
+      } else if (inventoryProject) {
+        rebasedProject = inventoryProject
+      } else if (placementProject) {
+        rebasedProject = placementProject
+      } else if (projectChanged) {
+        rebasedProject = { ...target.project, revision: currentProject.revision }
+      }
       const restoredWorkbook = workbookChanged && target.workbook && restoreWorkbookHistory
         ? await restoreWorkbookHistory(target.workbook)
         : null
@@ -186,6 +197,7 @@ export function useProjectHistory({
         && !policyOnlyChanged
         && !propertiesOnlyChanged
         && !inventoryOnlyChanged
+        && !placementProject
       ) {
         scheduleLegacyProjectSave(rebasedProject)
       }

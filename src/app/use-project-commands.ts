@@ -7,7 +7,7 @@ import {
   updateProjectAssignments,
 } from '@/engine/assignments'
 import { checkProjectGroupMove, checkProjectPlacement } from '@/engine/geometry'
-import { updateProjectPlacements } from '@/engine/placements'
+import { replaceProjectPlacements, updateProjectPlacements } from '@/engine/placements'
 import { applyEngineResponsePatch } from '@/engine/project-patches'
 import type { useDomainEngine } from '@/hooks/use-domain-engine'
 import { loadProject } from '@/lib/db'
@@ -533,6 +533,35 @@ export function useProjectCommands({
     }
   }
 
+  async function restorePlacementHistory(targetProject: ProjectState): Promise<ProjectState> {
+    const currentProject = projectRef.current
+    if (!currentProject || !domainEngine.enabled) {
+      throw new Error('The WebAssembly workspace engine is not available.')
+    }
+
+    const response = await commitEngineMutation(
+      (canonicalProject) => replaceProjectPlacements(
+        domainEngine.client,
+        canonicalProject,
+        targetProject,
+      ).then((result) => {
+        if (!result) throw new Error('Canvas positions did not change.')
+        return result
+      }),
+      {
+        recordHistory: false,
+        optimisticProject: (canonicalProject) => ({
+          ...canonicalProject,
+          placements: targetProject.placements,
+        }),
+      },
+    )
+    if (response.result.kind !== 'patch' || !projectRef.current) {
+      throw new Error('Canvas history was not restored.')
+    }
+    return projectRef.current
+  }
+
   return {
     updateProject,
     validateCanvasPlacement,
@@ -545,5 +574,6 @@ export function useProjectCommands({
     commitAssignmentUpdate,
     recoverConnectionMutation,
     commitPlacementUpdates,
+    restorePlacementHistory,
   }
 }

@@ -105,6 +105,16 @@ function projectWithoutInventoryItems(project: ProjectState) {
   return { ...project, revision: 0, items: {} }
 }
 
+function projectWithoutPlacements(project: ProjectState) {
+  return { ...project, revision: 0, placements: [] }
+}
+
+export function placementsOnlyChanged(current: ProjectState, target: ProjectState) {
+  return !projectHistoryContentEqual(current, target)
+    && JSON.stringify(projectWithoutPlacements(current))
+      === JSON.stringify(projectWithoutPlacements(target))
+}
+
 export function inventoryPropertiesOnlyChanged(current: ProjectState, target: ProjectState) {
   return !projectHistoryContentEqual(current, target)
     && JSON.stringify(projectWithoutInventoryProperties(current))

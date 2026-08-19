@@ -203,7 +203,7 @@ describe('useProjectHistory inventory metadata', () => {
     expect(scheduleProjectSave).not.toHaveBeenCalled()
   })
 
-  it('rebases a topology snapshot onto the current canonical revision before saving', async () => {
+  it('restores placement history through the scoped engine mutation path', async () => {
     const previous = {
       ...createEmptyProject(),
       revision: 6,
@@ -217,6 +217,10 @@ describe('useProjectHistory inventory metadata', () => {
     const projectRef = { current }
     const metadataRef = { current: new Map() }
     const scheduleProjectSave = vi.fn()
+    const restorePlacementHistory = vi.fn(async (target) => ({
+      ...target,
+      revision: 8,
+    }))
 
     const { result } = renderHook(() => useProjectHistory({
       projectRef,
@@ -226,6 +230,7 @@ describe('useProjectHistory inventory metadata', () => {
       setSelectedConnectionId: vi.fn(),
       setValidationMessage: vi.fn(),
       scheduleProjectSave,
+      restorePlacementHistory,
     }))
     act(() => {
       result.current.setHistory((history) => pushHistory(
@@ -235,11 +240,10 @@ describe('useProjectHistory inventory metadata', () => {
     })
     act(() => result.current.undoProjectChange())
 
-    await waitFor(() => expect(scheduleProjectSave).toHaveBeenCalledOnce())
-    expect(scheduleProjectSave).toHaveBeenCalledWith(expect.objectContaining({
-      revision: 7,
-      placements: previous.placements,
-    }))
-    expect(projectRef.current.revision).toBe(7)
+    await waitFor(() => expect(restorePlacementHistory).toHaveBeenCalledWith(previous))
+    await waitFor(() => expect(result.current.historyBusy).toBe(false))
+    expect(scheduleProjectSave).not.toHaveBeenCalled()
+    expect(projectRef.current.revision).toBe(8)
+    expect(projectRef.current.placements).toEqual(previous.placements)
   })
 })

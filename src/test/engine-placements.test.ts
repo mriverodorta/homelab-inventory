@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { DomainEngineClient } from '@/engine/client'
-import { updateProjectPlacements } from '@/engine/placements'
+import { replaceProjectPlacements, updateProjectPlacements } from '@/engine/placements'
 import type { ProjectState } from '@/types/inventory'
 
 function project(): ProjectState {
@@ -51,6 +51,42 @@ describe('engine placement mutations', () => {
             {
               previous: { item: { item_type: 'server', id: 2 }, x: 480, y: 240 },
               next: { item: { item_type: 'server', id: 2 }, x: 468, y: 240 },
+            },
+          ],
+        },
+      },
+    })
+  })
+
+  it('restores moved, added, and removed placements in one engine mutation', async () => {
+    const mutate = vi.fn().mockResolvedValue({ result: { kind: 'patch' } })
+    const current = project()
+    const target = {
+      ...current,
+      placements: [
+        { serverId: 'server:1', x: 132, y: 240 },
+        { serverId: 'server:3', x: 840, y: 240 },
+      ],
+    }
+
+    await replaceProjectPlacements(
+      { mutate } as unknown as DomainEngineClient,
+      current,
+      target,
+    )
+
+    expect(mutate).toHaveBeenCalledWith({
+      operation: {
+        kind: 'update-placements',
+        payload: {
+          changes: [
+            {
+              previous: { item: { item_type: 'server', id: 1 }, x: 120, y: 240 },
+              next: { item: { item_type: 'server', id: 1 }, x: 132, y: 240 },
+            },
+            {
+              previous: { item: { item_type: 'server', id: 2 }, x: 480, y: 240 },
+              next: null,
             },
           ],
         },

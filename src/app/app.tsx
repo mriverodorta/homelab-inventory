@@ -225,6 +225,9 @@ function App() {
   const applyHistoryDomainMutationRef = useRef<(
     result: DomainMutationResult<ProjectState>,
   ) => Promise<ProjectState>>(async (result) => result.data)
+  const restorePlacementHistoryRef = useRef<(
+    project: ProjectState,
+  ) => Promise<ProjectState>>(async (nextProject) => nextProject)
   const {
     history,
     historyBusy,
@@ -242,6 +245,7 @@ function App() {
     setValidationMessage,
     scheduleProjectSave,
     applyDomainMutationResult: (result) => applyHistoryDomainMutationRef.current(result),
+    restorePlacementHistory: (nextProject) => restorePlacementHistoryRef.current(nextProject),
     restoreWorkbookHistory: workbookController.restoreWorkbookSnapshot,
     refreshInventoryMetadata: async (projectIds, items) => {
       for (const item of items) {
@@ -312,6 +316,7 @@ function App() {
     commitAssignmentUpdate,
     recoverConnectionMutation,
     commitPlacementUpdates,
+    restorePlacementHistory,
   } = useProjectCommands({
     domainEngine,
     queryClient,
@@ -332,6 +337,7 @@ function App() {
     setValidationMessage,
   })
   applyInventoryCommandSnapshotRef.current = applyInventoryCommandSnapshot
+  restorePlacementHistoryRef.current = restorePlacementHistory
   applyHistoryDomainMutationRef.current = (result) => applyInventoryCommandSnapshot(
     result.data,
     { effects: result.effects, preserveHistory: true },
