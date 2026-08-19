@@ -20,6 +20,7 @@ import {
   UsersRound,
   RotateCcw,
   Settings,
+  Tags,
 } from 'lucide-react'
 import {
   ConfirmSettingsAction,
@@ -73,8 +74,9 @@ import {
 
 const AccessSettings = lazy(() => import('@/components/settings/access-settings').then((module) => ({ default: module.AccessSettings })))
 const NotificationSettings = lazy(() => import('@/components/settings/notifications/notification-settings').then((module) => ({ default: module.NotificationSettings })))
+const InventoryMetadataSettings = lazy(() => import('@/components/settings/inventory-metadata/inventory-metadata-settings').then((module) => ({ default: module.InventoryMetadataSettings })))
 
-type SettingsCategory = 'general' | 'project' | 'authentication' | 'access' | 'registry' | 'notifications' | 'backup-restore' | 'updates' | 'feedback' | 'about'
+type SettingsCategory = 'general' | 'project' | 'authentication' | 'access' | 'inventory-metadata' | 'registry' | 'notifications' | 'backup-restore' | 'updates' | 'feedback' | 'about'
 type SaveStatus = 'saved' | 'saving' | 'error'
 
 export type SettingsDialogProps = {
@@ -164,6 +166,7 @@ const categories: Array<{
   { id: 'project', label: 'Project', description: 'Shared project configuration', icon: FolderCog },
   { id: 'authentication', label: 'Authentication', description: 'Login methods and identities', icon: ShieldCheck },
   { id: 'access', label: 'Access', description: 'Users, invitations, and roles', icon: UsersRound },
+  { id: 'inventory-metadata', label: 'Inventory metadata', description: 'Custom fields and tags', icon: Tags },
   { id: 'registry', label: 'Registry', description: 'Catalog and private templates', icon: Database },
   { id: 'notifications', label: 'Notifications', description: 'Destinations, rules, and incidents', icon: BellRing },
   { id: 'backup-restore', label: 'Backup & Restore', description: 'Portable data protection', icon: ArchiveRestore },
@@ -180,6 +183,7 @@ export function visibleSettingsCategories(status: AuthStatus | null): typeof cat
         && (hasPermission(status, 'users.view') || hasPermission(status, 'roles.view'))
     }
     if (category.id === 'project') return hasPermission(status, 'project.view')
+    if (category.id === 'inventory-metadata') return hasPermission(status, 'inventory.view')
     if (category.id === 'registry') return hasPermission(status, 'registry.view')
     if (category.id === 'notifications') return hasPermission(status, 'notifications.view')
     if (category.id === 'backup-restore') return hasPermission(status, 'backups.view')
@@ -952,6 +956,7 @@ export function SettingsDialog(props: SettingsDialogProps) {
               {activeCategory === 'project' ? <ProjectSettings {...props} /> : null}
               {activeCategory === 'authentication' ? <AuthenticationSettings /> : null}
               {activeCategory === 'access' ? <Suspense fallback={<div className="grid min-h-52 place-items-center text-sm font-bold text-[#756d62]">Loading access policy…</div>}><AccessSettings /></Suspense> : null}
+              {activeCategory === 'inventory-metadata' ? <Suspense fallback={<div className="grid min-h-52 place-items-center text-sm font-bold text-[#756d62]">Loading inventory metadata…</div>}><InventoryMetadataSettings /></Suspense> : null}
               {activeCategory === 'registry' ? <RegistrySettingsPanel {...props} /> : null}
               {activeCategory === 'notifications' ? <Suspense fallback={<div className="grid min-h-52 place-items-center text-sm font-bold text-[#756d62]">Loading notifications…</div>}><NotificationSettings /></Suspense> : null}
               {activeCategory === 'backup-restore' ? <BackupRestoreSettings /> : null}

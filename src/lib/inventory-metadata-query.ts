@@ -89,6 +89,7 @@ export function useInventoryMetadataMutations(projectId?: number) {
       ),
       onSuccess: refreshCatalog,
     }),
+    reorderFields: useMutation({ mutationFn: api.reorderCustomFields, onSuccess: refreshCatalog }),
     createTag: useMutation({ mutationFn: api.createInventoryTag, onSuccess: refreshCatalog }),
     updateTag: useMutation({
       mutationFn: ({ id, expectedRevision, input }: { id: number; expectedRevision: number; input: InventoryTagInput }) => (
@@ -108,6 +109,7 @@ export function useInventoryMetadataMutations(projectId?: number) {
       ),
       onSuccess: refreshCatalog,
     }),
+    reorderTags: useMutation({ mutationFn: api.reorderInventoryTags, onSuccess: refreshCatalog }),
     updateItem: useMutation({
       mutationFn: ({ ref, input }: { ref: InventoryMetadataItemRef; input: InventoryItemMetadataInput }) => (
         api.updateInventoryItemMetadata(ref, input)
