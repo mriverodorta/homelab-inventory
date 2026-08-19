@@ -83,9 +83,11 @@ export const projectPreferences = sqliteTable('project_preferences', {
 export const projectCompatibilityPolicies = sqliteTable('project_compatibility_policies', {
   projectId: integer('project_id').primaryKey().references(() => projects.id, { onDelete: 'cascade' }),
   policyJson: text('policy_json').notNull().default('{"disabledHosts":[],"ignoredWarningIds":[]}'),
+  revision: integer('revision').notNull().default(1),
   updatedAtMs: integer('updated_at_ms').notNull(),
 }, (table) => [
   check('project_compatibility_policies_json_check', sql`json_valid(${table.policyJson})`),
+  check('project_compatibility_policies_revision_check', sql`${table.revision} > 0`),
 ])
 
 export const projectInventoryMemberships = sqliteTable('project_inventory_memberships', {

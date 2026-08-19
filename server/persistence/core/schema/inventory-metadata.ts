@@ -137,3 +137,11 @@ export const inventoryItemTags = sqliteTable('inventory_item_tags', {
   uniqueIndex('inventory_item_tags_item_tag_unique').on(table.itemId, table.tagId),
   index('inventory_item_tags_tag_index').on(table.tagId, table.itemId),
 ])
+
+export const inventoryItemMetadataRevisions = sqliteTable('inventory_item_metadata_revisions', {
+  itemId: integer('item_id').primaryKey().references(() => inventoryItems.id, { onDelete: 'cascade' }),
+  revision: integer('revision').notNull().default(1),
+  updatedAtMs: integer('updated_at_ms').notNull(),
+}, (table) => [
+  check('inventory_item_metadata_revisions_revision_check', sql`${table.revision} > 0`),
+])

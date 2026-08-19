@@ -12,6 +12,7 @@ import {
   inventoryCustomFieldOptionValues,
   inventoryCustomFieldValues,
   inventoryItemTags,
+  inventoryItemMetadataRevisions,
   inventoryTags,
 } from './inventory-metadata.ts'
 
@@ -72,6 +73,7 @@ describe('inventory metadata relational schema', () => {
       inventoryCustomFieldOptionValues,
       inventoryTags,
       inventoryItemTags,
+      inventoryItemMetadataRevisions,
     ]).not.toContain(undefined)
     expect(CORE_MIGRATIONS.some((migration) => migration.id === '0026_inventory_metadata')).toBe(true)
   })

@@ -140,4 +140,9 @@ export const CORE_MIGRATIONS: readonly CoreMigration[] = [
     file: '0026_systems_metadata_views.sql',
     sha256: 'e961c70007c09ead31cb93ac4d206355b44b3310897ebf09b50984fc483dd4f4',
   },
+  {
+    id: '0028_domain_persistence_revisions',
+    file: '0027_domain_persistence_revisions.sql',
+    sha256: 'b96e760844afc1e99af1e1ca05d00ce5eae027e8ea9eb9f254eb72ad8e4fb5b7',
+  },
 ]

@@ -7,6 +7,7 @@ export const projects = sqliteTable('projects', {
   description: text('description'),
   iconKey: text('icon_key').notNull().default('folder'),
   revision: integer('revision').notNull().default(1),
+  workbookRevision: integer('workbook_revision').notNull().default(1),
   includesGlobalInventory: integer('includes_global_inventory', { mode: 'boolean' }).notNull().default(true),
   archivedAtMs: integer('archived_at_ms'),
   createdAtMs: integer('created_at_ms').notNull(),
@@ -17,4 +18,5 @@ export const projects = sqliteTable('projects', {
     .where(sql`${table.archivedAtMs} IS NULL`),
   check('projects_name_check', sql`length(trim(${table.name})) > 0`),
   check('projects_revision_check', sql`${table.revision} > 0`),
+  check('projects_workbook_revision_check', sql`${table.workbookRevision} > 0`),
 ])
