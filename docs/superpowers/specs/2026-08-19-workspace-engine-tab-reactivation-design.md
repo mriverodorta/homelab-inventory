@@ -37,12 +37,12 @@ The delayed disposal used to tolerate React effect cleanup remains scoped to the
 The engine gate tracks readiness per activation session instead of remembering that any prior client was ready.
 
 - Disabled mode renders non-Canvas workspaces normally.
-- A newly enabled session blocks engine-dependent Canvas rendering until that session reaches `ready`.
+- A newly enabled session keeps the application mounted to preserve selection and inspector state, but blocks engine-dependent Canvas behavior until that session reaches `ready`.
 - After the current session has reached `ready`, routine rebuilding or conflict recovery may continue using the existing nonblocking behavior.
 - A prior session's readiness cannot authorize a new session.
 - Failed and unsupported states continue to present the existing recovery interface.
 
-Canvas hooks may render once while the provider is still disabled during the workspace selection commit, but they must remain inert because both `enabled` and current-session readiness are false. They become active only after the provider starts the new session.
+Because the gate wraps the complete application, a reactivation must not unmount its children. After the application has rendered in disabled mode, activation keeps those children mounted behind the existing loading overlay. Canvas hooks may render while the provider is still disabled or loading during the workspace selection commit, but they must remain inert because both `enabled` and current-session readiness are false. They become active only after the provider starts and readies the new session.
 
 ## Query Isolation
 
@@ -72,7 +72,7 @@ If startup genuinely fails, the provider retains the failed state and the gate o
 
 Add regression coverage for:
 
-- Systems to Canvas activation starting a fresh idle client and withholding Canvas children until it is ready.
+- Systems to Canvas activation starting a fresh idle client, preserving mounted application state, and withholding engine behavior until it is ready.
 - Canvas to Systems to Canvas creating a distinct session and disposing only the old client.
 - A prior session's `ready` state never authorizing a new session.
 - Rapid tab switching never allowing an old disposal timer to terminate the current client.
