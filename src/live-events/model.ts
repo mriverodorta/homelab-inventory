@@ -10,6 +10,8 @@ export type ApplicationLiveTopic =
   | 'notifications:incidents'
   | 'updates:status'
   | 'demo:session'
+  | 'inventory-metadata:catalog'
+  | `inventory-metadata:${number}`
 
 export type ApplicationLiveEvent = Readonly<{
   version: 1
