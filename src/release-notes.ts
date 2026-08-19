@@ -450,11 +450,17 @@ const RELEASE_0_13_14_DETAILS: UnreleasedReleaseNotes = {
   notes: [],
 }
 
-export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
+const RELEASE_0_13_15_DETAILS: UnreleasedReleaseNotes = {
   highlights: [],
   fixes: [
     'Registry catalog refresh now reconciles upgraded M.2 A/E resource projections before strict contract-v12 evaluation, while startup removes retired WLAN-only constraints without changing assignments or linked inventory identity.',
   ],
+  notes: [],
+}
+
+export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
+  highlights: [],
+  fixes: [],
   notes: [],
 }
 
@@ -985,9 +991,16 @@ const RELEASE_0_2_1_DETAILS: UnreleasedReleaseNotes = {
 
 export const RELEASE_NOTES: ReleaseNoteEntry[] = [
   {
-    version: '0.13.14',
+    version: '0.13.15',
     date: '2026-08-18',
     channel: 'latest',
+    title: 'Registry v12 upgrade reconciliation',
+    ...RELEASE_0_13_15_DETAILS,
+  },
+  {
+    version: '0.13.14',
+    date: '2026-08-18',
+    channel: 'release',
     title: 'Registry v12 projection reconciliation',
     ...RELEASE_0_13_14_DETAILS,
   },
