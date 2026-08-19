@@ -140,7 +140,7 @@ const deleteResponse = z.strictObject({ deleted: z.literal(true), impact: invent
 const itemMutationResponse = z.strictObject({
   metadata: inventoryItemMetadataSchema,
   affectedProjectIds: z.array(z.number().int().safe().positive()),
-  affectedProjectRevisions: z.record(z.string(), z.number().int().safe().positive()),
+  affectedMetadataRevisions: z.record(z.string(), z.number().int().safe().positive()),
 })
 const historyMutationResponse = z.strictObject({
   items: z.array(z.strictObject({
@@ -148,7 +148,7 @@ const historyMutationResponse = z.strictObject({
     metadata: inventoryItemMetadataSchema,
   })),
   affectedProjectIds: z.array(z.number().int().safe().positive()),
-  affectedProjectRevisions: z.record(z.string(), z.number().int().safe().positive()),
+  affectedMetadataRevisions: z.record(z.string(), z.number().int().safe().positive()),
 })
 
 export async function createCustomField(input: CustomFieldDefinitionInput): Promise<CustomFieldDefinition> {
@@ -223,9 +223,13 @@ export function reorderInventoryTags(ids: readonly number[]) {
   })
 }
 
-export async function updateInventoryItemMetadata(ref: InventoryMetadataItemRef, input: InventoryItemMetadataInput) {
+export async function updateInventoryItemMetadata(
+  ref: InventoryMetadataItemRef,
+  input: InventoryItemMetadataInput,
+  expectedRevision: number,
+) {
   const response = await mutation(itemPath(ref), itemMutationResponse, {
-    method: 'PUT', body: JSON.stringify(input),
+    method: 'PUT', body: JSON.stringify({ ...input, expectedRevision }),
   })
   itemCache.delete(itemPath(ref))
   return response

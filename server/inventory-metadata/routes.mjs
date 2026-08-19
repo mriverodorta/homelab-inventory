@@ -263,7 +263,7 @@ export function registerInventoryMetadataRoutes(app, { withStore, eventBus = nul
       response.json({
         metadata: publicItemMetadata(result.metadata),
         affectedProjectIds: result.affectedProjectIds,
-        affectedProjectRevisions: result.affectedProjectRevisions,
+        affectedMetadataRevisions: result.affectedMetadataRevisions,
       })
     })
   })
@@ -278,7 +278,7 @@ export function registerInventoryMetadataRoutes(app, { withStore, eventBus = nul
           metadata: publicItemMetadata(item.metadata),
         })),
         affectedProjectIds: result.affectedProjectIds,
-        affectedProjectRevisions: result.affectedProjectRevisions,
+        affectedMetadataRevisions: result.affectedMetadataRevisions,
       })
     })
   })

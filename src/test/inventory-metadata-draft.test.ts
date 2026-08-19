@@ -10,6 +10,7 @@ const timestamp = '2026-08-19T12:00:00.000Z'
 function metadata(): InventoryItemMetadata {
   return {
     itemId: 1,
+    revision: 1,
     definitions: [
       {
         id: 1, name: 'Lifecycle', description: null, fieldType: 'singleSelect', unit: null,

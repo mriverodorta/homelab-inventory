@@ -137,8 +137,12 @@ export function useInventoryMetadataMutations(projectId?: number) {
     }),
     reorderTags: useMutation({ mutationFn: api.reorderInventoryTags, onSuccess: refreshCatalog }),
     updateItem: useMutation({
-      mutationFn: ({ ref, input }: { ref: InventoryMetadataItemRef; input: InventoryItemMetadataInput }) => (
-        api.updateInventoryItemMetadata(ref, input)
+      mutationFn: ({ ref, input, expectedRevision }: {
+        ref: InventoryMetadataItemRef
+        input: InventoryItemMetadataInput
+        expectedRevision: number
+      }) => (
+        api.updateInventoryItemMetadata(ref, input, expectedRevision)
       ),
       onSuccess: async (result, variables) => {
         await refreshProjects(result.affectedProjectIds)

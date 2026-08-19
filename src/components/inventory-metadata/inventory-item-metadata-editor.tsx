@@ -1,5 +1,4 @@
-import { useEffect, useState } from 'react'
-import { Button } from '@/components/ui/button'
+import { useEffect, useRef, useState } from 'react'
 import { InventoryMetadataForm } from './inventory-metadata-form'
 import {
   EMPTY_INVENTORY_METADATA_DRAFT,
@@ -13,6 +12,7 @@ import {
   useInventoryMetadataCatalog,
   useInventoryMetadataMutations,
 } from '@/lib/inventory-metadata-query'
+import { useInventoryMetadataAutosave } from './use-inventory-metadata-autosave'
 import type {
   InventoryMetadataItemRef,
   InventoryMetadataSavedChange,
@@ -36,31 +36,52 @@ export function InventoryItemMetadataEditor({
   const mutations = useInventoryMetadataMutations(projectId)
   const [draft, setDraft] = useState<InventoryMetadataDraft>(EMPTY_INVENTORY_METADATA_DRAFT)
   const [baseline, setBaseline] = useState<InventoryMetadataDraft>(EMPTY_INVENTORY_METADATA_DRAFT)
+  const [baselineRevision, setBaselineRevision] = useState(1)
   const [error, setError] = useState<string | null>(null)
+  const saveSequenceRef = useRef(0)
 
   useEffect(() => {
     if (!metadata.data) return
     const next = inventoryMetadataDraft(metadata.data)
     setDraft(next)
     setBaseline(next)
+    setBaselineRevision(metadata.data.revision)
   }, [metadata.data])
 
   const dirty = !inventoryMetadataDraftEqual(draft, baseline)
 
-  async function save() {
+  async function save(
+    submittedDraft: InventoryMetadataDraft,
+    submittedBaseline: InventoryMetadataDraft,
+    expectedRevision: number,
+  ) {
+    const sequence = ++saveSequenceRef.current
     setError(null)
     try {
-      const before = inventoryMetadataInput(baseline)
-      const after = inventoryMetadataInput(draft)
-      const result = await mutations.updateItem.mutateAsync({ ref: item, input: after })
+      const before = inventoryMetadataInput(submittedBaseline)
+      const after = inventoryMetadataInput(submittedDraft)
+      const result = await mutations.updateItem.mutateAsync({ ref: item, input: after, expectedRevision })
       const next = inventoryMetadataDraft(result.metadata)
-      setDraft(next)
+      if (sequence !== saveSequenceRef.current) return
       setBaseline(next)
+      setBaselineRevision(result.metadata.revision)
+      setDraft((current) => inventoryMetadataDraftEqual(current, submittedDraft) ? next : current)
       await onSaved?.({ ref: item, before, after: inventoryMetadataInput(next), result })
     } catch (caughtError) {
+      if (sequence !== saveSequenceRef.current) return
       setError(caughtError instanceof Error ? caughtError.message : 'Inventory metadata could not be saved.')
     }
   }
+
+  useInventoryMetadataAutosave({
+    enabled: canEdit,
+    dirty,
+    saving: mutations.updateItem.isPending,
+    draft,
+    baseline,
+    revision: baselineRevision,
+    onSave: save,
+  })
 
   if (!enabled) return null
   if (metadata.isPending || catalog.isPending) return <div className="min-h-40 animate-pulse rounded-md bg-muted/40" aria-label="Loading inventory metadata" />
@@ -77,10 +98,9 @@ export function InventoryItemMetadataEditor({
         onChange={setDraft}
       />
       {error ? <p role="alert" className="text-sm font-semibold text-destructive">{error}</p> : null}
-      <div className="sticky bottom-0 flex justify-end gap-2 border-t border-border bg-background/95 py-3 backdrop-blur">
-        <Button type="button" variant="outline" disabled={!dirty || mutations.updateItem.isPending} onClick={() => setDraft(baseline)}>Reset</Button>
-        <Button type="button" disabled={!canEdit || !dirty || mutations.updateItem.isPending} onClick={() => void save()}>{mutations.updateItem.isPending ? 'Saving…' : 'Save metadata'}</Button>
-      </div>
+      <p className="min-h-5 text-right text-xs text-muted-foreground" aria-live="polite">
+        {mutations.updateItem.isPending ? 'Saving…' : dirty ? 'Changes save automatically' : 'Saved'}
+      </p>
     </div>
   )
 }

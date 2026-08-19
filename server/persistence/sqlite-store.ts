@@ -1297,24 +1297,18 @@ export class SqliteHomelabInventoryStore {
     const ref = normalizeInventoryRef(rawRef)
     const itemId = this.inventoryScope.resolve(ref.type as InventoryType, ref.id)
     const projectIds = this.inventoryMetadata.itemProjectIds(itemId)
-    const expectedRevisions = new Map<number, number>()
-    for (const projectId of projectIds) {
-      const project = this.core.database.query(
-        'SELECT revision FROM projects WHERE id = ? AND archived_at_ms IS NULL',
-      ).get(projectId) as { revision: number } | null
-      if (!project) throw lifecycleError(`Active project ${projectId} was not found.`, 'project-not-found', 404)
-      expectedRevisions.set(projectId, project.revision)
-    }
-    const affectedProjectRevisions = this.commitCanonicalMutationAcrossProjects(
+    const current = this.inventoryMetadata.getItemMetadata(itemId)
+    const expectedRevision = input?.expectedRevision ?? current.revision
+    const affectedMetadataRevisions = this.commitMetadataMutation(
+      [itemId],
       () => this.inventoryMetadata.replaceItemMetadata(itemId, input, { transaction: false }),
-      projectIds,
-      expectedRevisions,
+      new Map([[itemId, expectedRevision]]),
     )
     return {
       itemId,
       metadata: this.inventoryMetadata.getItemMetadata(itemId),
       affectedProjectIds: projectIds,
-      affectedProjectRevisions,
+      affectedMetadataRevisions,
     }
   }
 
@@ -1343,21 +1337,17 @@ export class SqliteHomelabInventoryStore {
       )
     }
     const projectIds = [...new Set(items.flatMap((item) => this.inventoryMetadata.itemProjectIds(item.itemId)))]
-    const expectedRevisions = new Map<number, number>()
-    for (const projectId of projectIds) {
-      const project = this.core.database.query(
-        'SELECT revision FROM projects WHERE id = ? AND archived_at_ms IS NULL',
-      ).get(projectId) as { revision: number } | null
-      if (!project) throw lifecycleError(`Active project ${projectId} was not found.`, 'project-not-found', 404)
-      expectedRevisions.set(projectId, project.revision)
-    }
-    const affectedProjectRevisions = this.commitCanonicalMutationAcrossProjects(
+    const expectedRevisions = new Map(items.map((item) => [
+      item.itemId,
+      this.inventoryMetadata.getItemMetadata(item.itemId).revision,
+    ]))
+    const affectedMetadataRevisions = this.commitMetadataMutation(
+      items.map((item) => item.itemId),
       () => {
         for (const item of items) {
           this.inventoryMetadata.replaceItemMetadata(item.itemId, item.metadata, { transaction: false })
         }
       },
-      projectIds,
       expectedRevisions,
     )
     return {
@@ -1366,7 +1356,7 @@ export class SqliteHomelabInventoryStore {
         metadata: this.inventoryMetadata.getItemMetadata(item.itemId),
       })),
       affectedProjectIds: projectIds,
-      affectedProjectRevisions,
+      affectedMetadataRevisions,
     }
   }
 
@@ -3565,6 +3555,60 @@ export class SqliteHomelabInventoryStore {
     this.invalidateProjectReadModels()
     const event: ProjectCommitEvent = { type: 'canonical-invalidated', baseRevision, revision }
     for (const listener of this.projectCommitListeners) listener(event)
+  }
+
+  private commitMetadataMutation(
+    itemIds: number[],
+    operation: () => void,
+    expectedRevisions: Map<number, number>,
+  ) {
+    const ids = [...new Set(itemIds)].sort((left, right) => left - right)
+    if (ids.length === 0) {
+      throw lifecycleError('Metadata mutation has no inventory item scope.', 'metadata-item-scope-missing', 409)
+    }
+    const at = this.now()
+    const revisions = new Map<number, number>()
+    this.core.database.transaction(() => {
+      const ensureRevision = this.core.database.query(`
+        INSERT INTO inventory_item_metadata_revisions (item_id, revision, updated_at_ms)
+        VALUES (?, 1, ?)
+        ON CONFLICT(item_id) DO NOTHING
+      `)
+      const readRevision = this.core.database.query(`
+        SELECT revision FROM inventory_item_metadata_revisions WHERE item_id = ?
+      `)
+      for (const itemId of ids) {
+        ensureRevision.run(itemId, at)
+        const row = readRevision.get(itemId) as { revision: number } | null
+        if (!row) throw lifecycleError(`Inventory item ${itemId} metadata was not found.`, 'metadata-item-not-found', 404)
+        const expectedRevision = expectedRevisions.get(itemId)
+        if (expectedRevision !== undefined && row.revision !== expectedRevision) {
+          throw lifecycleError(
+            'Inventory metadata changed while applying the update.',
+            'metadata-revision-conflict',
+            409,
+          )
+        }
+        revisions.set(itemId, row.revision)
+      }
+      operation()
+      const updateRevision = this.core.database.query(`
+        UPDATE inventory_item_metadata_revisions
+        SET revision = ?, updated_at_ms = ?
+        WHERE item_id = ? AND revision = ?
+      `)
+      for (const [itemId, revision] of revisions) {
+        const result = updateRevision.run(revision + 1, at, itemId, revision)
+        if (result.changes !== 1) {
+          throw lifecycleError(
+            'Inventory metadata changed while applying the update.',
+            'metadata-revision-conflict',
+            409,
+          )
+        }
+      }
+    }).immediate()
+    return Object.fromEntries([...revisions].map(([itemId, revision]) => [itemId, revision + 1]))
   }
 
   private commitCanonicalMutationAcrossProjects(

@@ -263,6 +263,37 @@ export function useProjectCommands({
     return synchronizedProject
   }
 
+  function recordInventoryMetadataChange(metadataChange: {
+    ref: InventoryMetadataItemRef
+    before: InventoryItemMetadataInput
+    after: InventoryItemMetadataInput
+  }) {
+    const currentProject = projectRef.current
+    if (!currentProject) return
+    setHistory((currentHistory) => {
+      const beforeState = setInventoryMetadataHistoryItem(
+        inventoryMetadataHistoryRef.current,
+        metadataChange.ref,
+        metadataChange.before,
+      )
+      return pushHistory(
+        backfillProjectHistoryMetadata(
+          currentHistory,
+          metadataChange.ref,
+          metadataChange.before,
+        ),
+        createProjectHistorySnapshot(currentProject, beforeState),
+      )
+    })
+    inventoryMetadataHistoryRef.current = setInventoryMetadataHistoryItem(
+      inventoryMetadataHistoryRef.current,
+      metadataChange.ref,
+      metadataChange.after,
+    )
+    setSaveStatus('saved')
+    setPersistenceWarning(null)
+  }
+
   function showCompatibilityUnknownMessage(
     action: 'Assigned' | 'Moved',
     itemName: string,
@@ -446,6 +477,7 @@ export function useProjectCommands({
     validateCanvasGroupMove,
     updateProjectName,
     applyInventoryCommandSnapshot,
+    recordInventoryMetadataChange,
     showCompatibilityUnknownMessage,
     commitEngineMutation,
     commitAssignmentUpdate,

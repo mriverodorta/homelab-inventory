@@ -229,12 +229,6 @@ function App() {
     setSelectedConnectionId,
     setValidationMessage,
     scheduleProjectSave,
-    synchronizeCanonicalRevision: domainEngine.enabled
-      ? (revision) => domainEngine.client.synchronizeCanonicalRevision(
-          revision,
-          'Synchronizing inventory metadata history.',
-        )
-      : undefined,
     refreshInventoryMetadata: async (projectIds) => {
       await Promise.all(projectIds.map((projectId) => queryClient.invalidateQueries({
         queryKey: inventoryMetadataKeys.project(projectId),
@@ -287,6 +281,7 @@ function App() {
     validateCanvasGroupMove,
     updateProjectName,
     applyInventoryCommandSnapshot,
+    recordInventoryMetadataChange,
     showCompatibilityUnknownMessage,
     commitEngineMutation,
     commitAssignmentUpdate,
@@ -312,20 +307,10 @@ function App() {
   })
   applyInventoryCommandSnapshotRef.current = applyInventoryCommandSnapshot
   async function handleInventoryMetadataSaved(change: InventoryMetadataSavedChange) {
-    const currentProject = projectRef.current
-    if (!currentProject) return
-    const projectId = currentProject.metadata.projectId ?? 1
-    const revision = change.result.affectedProjectRevisions[String(projectId)]
-    const nextProject = revision
-      ? { ...currentProject, revision }
-      : currentProject
-    await applyInventoryCommandSnapshot(nextProject, {
-      historySnapshot: currentProject,
-      metadataChange: {
-        ref: change.ref,
-        before: change.before,
-        after: change.after,
-      },
+    recordInventoryMetadataChange({
+      ref: change.ref,
+      before: change.before,
+      after: change.after,
     })
   }
   const {

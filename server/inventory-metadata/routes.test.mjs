@@ -29,24 +29,24 @@ async function fixture() {
     tagImpact: vi.fn(() => ({ tagId: 2, itemCount: 4 })),
     deleteTagPermanently: vi.fn(() => ({ tagId: 2, itemCount: 4 })),
     reorderTags: vi.fn(() => ({ revision: 2, definitions: [definition], tags: [tag] })),
-    getItemMetadata: vi.fn(() => ({ itemId: 91, definitions: [definition], values: [], tags: [] })),
+    getItemMetadata: vi.fn(() => ({ itemId: 91, revision: 1, definitions: [definition], values: [], tags: [] })),
     replaceItemMetadata: vi.fn(() => ({ itemId: 91, affectedProjectIds: [1, 3] })),
   }
   const store = {
     core: { database: {} },
     inventoryMetadata: repository,
     inventoryScope: { resolve: vi.fn(() => 91) },
-    getInventoryItemMetadata: vi.fn(() => ({ itemId: 91, definitions: [definition], values: [], tags: [] })),
+    getInventoryItemMetadata: vi.fn(() => ({ itemId: 91, revision: 1, definitions: [definition], values: [], tags: [] })),
     updateInventoryItemMetadata: vi.fn(() => ({
-      metadata: { itemId: 91, definitions: [definition], values: [], tags: [] },
+      metadata: { itemId: 91, revision: 2, definitions: [definition], values: [], tags: [] },
       itemId: 91,
       affectedProjectIds: [1, 3],
-      affectedProjectRevisions: { 1: 4, 3: 8 },
+      affectedMetadataRevisions: { 91: 2 },
     })),
     restoreInventoryItemMetadataHistory: vi.fn(() => ({
-      items: [{ itemId: 91, metadata: { itemId: 91, definitions: [definition], values: [], tags: [] } }],
+      items: [{ itemId: 91, metadata: { itemId: 91, revision: 3, definitions: [definition], values: [], tags: [] } }],
       affectedProjectIds: [1, 3],
-      affectedProjectRevisions: { 1: 5, 3: 9 },
+      affectedMetadataRevisions: { 91: 3 },
     })),
   }
   const eventBus = { publish: vi.fn() }
@@ -159,7 +159,7 @@ describe('inventory metadata routes', () => {
     expect(store.restoreInventoryItemMetadataHistory).toHaveBeenCalledWith(input.items)
     expect(await response.json()).toMatchObject({
       affectedProjectIds: [1, 3],
-      affectedProjectRevisions: { 1: 5, 3: 9 },
+      affectedMetadataRevisions: { 91: 3 },
     })
     expect(eventBus.publish).toHaveBeenCalledWith(expect.objectContaining({
       topics: ['inventory-metadata:1', 'inventory-metadata:3'],

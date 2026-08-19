@@ -174,7 +174,7 @@ describe('SQLite Homelab Inventory store facade', () => {
     }
   })
 
-  test('copies private metadata when duplicating inventory and advances affected project revisions on edits', async () => {
+  test('copies private metadata while metadata edits preserve the engine revision', async () => {
     const store = await fixtureStore()
     try {
       const definition = store.inventoryMetadata.createDefinition({
@@ -185,13 +185,33 @@ describe('SQLite Homelab Inventory store facade', () => {
       })
       const tag = store.inventoryMetadata.createTag({ name: 'Critical', colorToken: 'red' })
       const beforeRevision = store.getEngineRevision()
+      const beforeEngine = store.getEngineSnapshot()
+      const beforeRoutes = store.core.database.query(`
+        SELECT * FROM workspace_route_cache ORDER BY project_id, workspace_id, connection_id
+      `).all()
+      const commits: unknown[] = []
+      const unsubscribe = store.subscribeToProjectCommits((event) => commits.push(event))
       const result = store.updateInventoryItemMetadata({ type: 'server', id: 7 }, {
         values: [{ definitionId: definition.id, value: definition.options[0].id }],
         tagIds: [tag.id],
       })
 
-      expect(result.affectedProjectRevisions).toEqual({ 1: beforeRevision + 1 })
-      expect(store.getEngineRevision()).toBe(beforeRevision + 1)
+      expect(result.affectedMetadataRevisions).toEqual({ [result.itemId]: 2 })
+      expect(result.metadata.revision).toBe(2)
+      expect(store.getEngineRevision()).toBe(beforeRevision)
+      expect(store.getEngineSnapshot()).toEqual(beforeEngine)
+      expect(store.core.database.query(`
+        SELECT * FROM workspace_route_cache ORDER BY project_id, workspace_id, connection_id
+      `).all()).toEqual(beforeRoutes)
+      expect(commits).toEqual([])
+      unsubscribe()
+
+      expect(() => store.updateInventoryItemMetadata({ type: 'server', id: 7 }, {
+        expectedRevision: 1,
+        values: [],
+        tagIds: [],
+      })).toThrow(/metadata changed/iu)
+      expect(store.getInventoryItemMetadata({ type: 'server', id: 7 }).revision).toBe(2)
 
       store.duplicateInventoryItem({ type: 'server', id: 7 })
       const duplicate = store.getProject().items['server:8'] as any
@@ -212,7 +232,7 @@ describe('SQLite Homelab Inventory store facade', () => {
     }
   })
 
-  test('restores multiple metadata history snapshots with one project revision', async () => {
+  test('restores multiple metadata history snapshots without changing project topology', async () => {
     const store = await fixtureStore()
     try {
       const definition = store.inventoryMetadata.createDefinition({
@@ -232,8 +252,8 @@ describe('SQLite Homelab Inventory store facade', () => {
         },
       ])
 
-      expect(restored.affectedProjectRevisions).toEqual({ 1: beforeRevision + 1 })
-      expect(store.getEngineRevision()).toBe(beforeRevision + 1)
+      expect(restored.affectedMetadataRevisions).toEqual({ [restored.items[0].itemId]: 3 })
+      expect(store.getEngineRevision()).toBe(beforeRevision)
       expect(store.getInventoryItemMetadata({ type: 'server', id: 7 })).toMatchObject({
         values: [{ definitionId: definition.id, value: 'Previous owner' }],
         tags: [],
@@ -358,7 +378,7 @@ describe('SQLite Homelab Inventory store facade', () => {
         group_id: 1,
         positions: [0],
       })
-      expect(store.getDatabaseStatus()).toMatchObject({ schemaVersion: 27 })
+      expect(store.getDatabaseStatus()).toMatchObject({ schemaVersion: 28 })
       expect(store.getPersistenceHealth()).toMatchObject({ ok: true, engine: 'sqlite' })
     } finally {
       store.close()

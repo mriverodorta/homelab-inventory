@@ -562,6 +562,15 @@ export function createInventoryMetadataRepository(context) {
     assertPositiveId(itemId, 'Inventory item ID')
     const item = sqlite.query('SELECT id, type_id FROM inventory_items WHERE id = ?').get(itemId)
     if (!item) notFound('Inventory item', itemId)
+    const at = now()
+    sqlite.query(`
+      INSERT INTO inventory_item_metadata_revisions (item_id, revision, updated_at_ms)
+      VALUES (?, 1, ?)
+      ON CONFLICT(item_id) DO NOTHING
+    `).run(itemId, at)
+    const metadataRevision = sqlite.query(`
+      SELECT revision FROM inventory_item_metadata_revisions WHERE item_id = ?
+    `).get(itemId).revision
     const definitions = sqlite.query(`
       SELECT definition.*
       FROM custom_field_definitions definition
@@ -599,7 +608,7 @@ export function createInventoryMetadataRepository(context) {
       WHERE relation.item_id = ? AND tag.archived_at_ms IS NULL
       ORDER BY tag.display_order, tag.id
     `).all(itemId).map(mapTag)
-    return { itemId, definitions, values, tags }
+    return { itemId, revision: metadataRevision, definitions, values, tags }
   }
 
   function replaceItemMetadata(itemId, input, options = {}) {

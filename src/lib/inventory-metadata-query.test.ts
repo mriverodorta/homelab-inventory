@@ -41,6 +41,7 @@ describe('inventory metadata client contracts', () => {
       .toMatchObject({ definitions: [{ id: 1, fieldType: 'singleSelect' }] })
     expect(inventoryItemMetadataSchema.parse({
       itemId: 91,
+      revision: 1,
       definitions: [definition],
       values: [{ definitionId: 1, optionIds: [1], revision: 1 }],
       tags: [],

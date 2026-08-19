@@ -24,7 +24,6 @@ type ProjectHistoryOptions = {
   setSelectedConnectionId: Dispatch<SetStateAction<string | number | null>>
   setValidationMessage: (message: string | null) => void
   scheduleProjectSave: (project: ProjectState) => void
-  synchronizeCanonicalRevision?: (revision: number) => Promise<number>
   refreshInventoryMetadata?: (projectIds: readonly number[]) => Promise<void>
 }
 
@@ -36,7 +35,6 @@ export function useProjectHistory({
   setSelectedConnectionId,
   setValidationMessage,
   scheduleProjectSave: scheduleLegacyProjectSave,
-  synchronizeCanonicalRevision,
   refreshInventoryMetadata,
 }: ProjectHistoryOptions) {
   const [history, setHistoryState] = useState<HistoryState<ProjectHistorySnapshot>>(() => createEmptyHistory())
@@ -74,22 +72,16 @@ export function useProjectHistory({
         inventoryMetadataHistoryRef.current,
         target.inventoryMetadata,
       )
-      let canonicalRevision = currentProject.revision
       if (metadataChanges.length > 0) {
         const restored = await restoreInventoryItemMetadataHistory(metadataChanges)
-        const projectId = currentProject.metadata.projectId ?? 1
-        canonicalRevision = restored.affectedProjectRevisions[String(projectId)] ?? canonicalRevision
-        if (synchronizeCanonicalRevision) {
-          canonicalRevision = await synchronizeCanonicalRevision(canonicalRevision)
-        }
         inventoryMetadataHistoryRef.current = new Map(target.inventoryMetadata)
         await refreshInventoryMetadata?.(restored.affectedProjectIds)
       }
 
       const projectChanged = !projectHistoryContentEqual(target.project, currentProject)
       const rebasedProject = projectChanged
-        ? { ...target.project, revision: canonicalRevision }
-        : { ...currentProject, revision: canonicalRevision }
+        ? target.project
+        : currentProject
       projectRef.current = rebasedProject
       setProject(rebasedProject)
       historyRef.current = result.history

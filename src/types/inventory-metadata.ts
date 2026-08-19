@@ -80,6 +80,7 @@ export const inventoryMetadataValueSchema = z.strictObject({
 
 export const inventoryItemMetadataSchema = z.strictObject({
   itemId: positiveId,
+  revision,
   definitions: z.array(customFieldDefinitionSchema),
   values: z.array(inventoryMetadataValueSchema),
   tags: z.array(inventoryTagSchema),
@@ -142,7 +143,7 @@ export type InventoryItemMetadataInput = Readonly<{
 export type InventoryMetadataItemMutationResult = Readonly<{
   metadata: InventoryItemMetadata
   affectedProjectIds: readonly number[]
-  affectedProjectRevisions: Readonly<Record<string, number>>
+  affectedMetadataRevisions: Readonly<Record<string, number>>
 }>
 
 export type InventoryMetadataSavedChange = Readonly<{
