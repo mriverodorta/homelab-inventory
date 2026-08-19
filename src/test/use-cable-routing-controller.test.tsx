@@ -135,7 +135,7 @@ describe('useCableRoutingController', () => {
       onResolveConnectionRouteSides: vi.fn(async () => undefined),
       onCanonicalizeConnectionRoutes: vi.fn(async () => undefined),
     }
-    const { rerender } = renderHook(
+    const { rerender, result } = renderHook(
       ({ routeRequests }: { routeRequests: CableLaneRouteRequest[] }) => (
         useCableRoutingController({ ...options, routeRequests })
       ),
@@ -145,7 +145,7 @@ describe('useCableRoutingController', () => {
     await act(async () => {
       await vi.runAllTimersAsync()
     })
-    mocks.transient.mockClear()
+    expect(result.current.routingState.routes.size).toBe(1)
     rerender({ routeRequests: [] })
     await act(async () => {
       vi.advanceTimersByTime(250)
@@ -153,11 +153,6 @@ describe('useCableRoutingController', () => {
     })
 
     expect(mocks.transient).toHaveBeenCalledOnce()
-    expect(mocks.transient.mock.calls[0]?.[0]).toMatchObject({
-      operation: {
-        kind: 'plan-cable-routes',
-        payload: { plan: { requests: [] } },
-      },
-    })
+    expect(result.current.routingState.routes.size).toBe(0)
   })
 })

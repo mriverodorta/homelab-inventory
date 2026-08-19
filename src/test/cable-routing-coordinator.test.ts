@@ -251,6 +251,26 @@ describe('CableRoutingCoordinator', () => {
     expect(coordinator.getState().routes.size).toBe(0)
   })
 
+  it('clears rendered routes without replacing the durable route cache', () => {
+    const client = new FakeClient()
+    const persistCache = vi.fn(async () => undefined)
+    const coordinator = new CableRoutingCoordinator(
+      client as unknown as DomainEngineClient,
+      { persistCache },
+    )
+    const stableRequest = request(1)
+    coordinator.hydrate(exactCache(stableRequest))
+    coordinator.request([stableRequest])
+
+    coordinator.clear()
+
+    expect(coordinator.getState().routes.size).toBe(0)
+    expect(persistCache).not.toHaveBeenCalled()
+    coordinator.request([stableRequest])
+    expect(client.calls).toHaveLength(0)
+    expect(coordinator.getState().routes.get(1)?.points).toEqual(cableRoute(1, 0).route.points)
+  })
+
   it('does not reroute when only obstacle object identities change', () => {
     const client = new FakeClient()
     const coordinator = new CableRoutingCoordinator(client as unknown as DomainEngineClient)

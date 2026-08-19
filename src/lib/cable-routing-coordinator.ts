@@ -232,7 +232,11 @@ export class CableRoutingCoordinator {
   }
 
   clear(): void {
-    this.request([])
+    if (this.desiredRequests.size > 0 || this.activeWork || this.queuedWork) {
+      this.revision += 1
+    }
+    this.desiredRequests.clear()
+    this.queuedWork = null
     this.updateState({
       routes: new Map(),
       pending: this.activeWork !== null,
