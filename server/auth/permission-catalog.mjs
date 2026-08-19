@@ -14,6 +14,7 @@ export const PERMISSIONS = Object.freeze([
   definePermission(203, 'inventory.edit', 'inventory', 'Modify inventory records.'),
   definePermission(204, 'inventory.archive', 'inventory', 'Archive and restore eligible inventory records.', 'elevated'),
   definePermission(205, 'inventory.delete', 'inventory', 'Permanently remove eligible inventory records.', 'destructive'),
+  definePermission(206, 'inventory.metadata.manage', 'inventory', 'Configure installation-wide custom fields and tags.', 'elevated'),
   definePermission(301, 'canvas.view', 'canvas', 'View the project canvas.'),
   definePermission(302, 'canvas.edit', 'canvas', 'Place, move, and remove canvas equipment.'),
   definePermission(303, 'connections.edit', 'canvas', 'Create, route, modify, and remove connections.'),

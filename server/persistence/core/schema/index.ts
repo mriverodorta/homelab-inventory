@@ -5,6 +5,7 @@ import * as backups from './backups.ts'
 import * as inventoryBase from './inventory-base.ts'
 import * as inventoryComponents from './inventory-components.ts'
 import * as inventoryHosts from './inventory-hosts.ts'
+import * as inventoryMetadata from './inventory-metadata.ts'
 import * as inventoryNetwork from './inventory-network.ts'
 import * as inventoryPower from './inventory-power.ts'
 import * as notifications from './notifications.ts'
@@ -26,6 +27,7 @@ export * from './backups.ts'
 export * from './inventory-base.ts'
 export * from './inventory-components.ts'
 export * from './inventory-hosts.ts'
+export * from './inventory-metadata.ts'
 export * from './inventory-network.ts'
 export * from './inventory-power.ts'
 export * from './notifications.ts'
@@ -58,6 +60,7 @@ export const coreSchema = {
   ...inventoryBase,
   ...inventoryComponents,
   ...inventoryHosts,
+  ...inventoryMetadata,
   ...inventoryNetwork,
   ...inventoryPower,
   ...vocabularies,

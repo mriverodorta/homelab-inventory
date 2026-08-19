@@ -130,4 +130,9 @@ export const CORE_MIGRATIONS: readonly CoreMigration[] = [
     file: '0024_compatibility_evaluator_v2.sql',
     sha256: 'f85a713d0db1046ea59584dd23197f5c8829d8a28ecbd63987b44a7b33f93601',
   },
+  {
+    id: '0026_inventory_metadata',
+    file: '0025_inventory_metadata.sql',
+    sha256: 'bf56e4220e56401df793d7ad0ae78056b7d89896924e947ef3becff7342398a5',
+  },
 ]
