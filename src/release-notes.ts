@@ -459,11 +459,17 @@ const RELEASE_0_13_15_DETAILS: UnreleasedReleaseNotes = {
   notes: [],
 }
 
-export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
+const RELEASE_0_13_16_DETAILS: UnreleasedReleaseNotes = {
   highlights: [],
   fixes: [
     'Systems CPU, memory, and storage meters now animate SSE-driven utilization changes with synchronized whole-number percentages while respecting reduced-motion preferences.',
   ],
+  notes: [],
+}
+
+export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
+  highlights: [],
+  fixes: [],
   notes: [],
 }
 
@@ -994,9 +1000,16 @@ const RELEASE_0_2_1_DETAILS: UnreleasedReleaseNotes = {
 
 export const RELEASE_NOTES: ReleaseNoteEntry[] = [
   {
-    version: '0.13.15',
+    version: '0.13.16',
     date: '2026-08-18',
     channel: 'latest',
+    title: 'Smooth Systems utilization',
+    ...RELEASE_0_13_16_DETAILS,
+  },
+  {
+    version: '0.13.15',
+    date: '2026-08-18',
+    channel: 'release',
     title: 'Registry v12 upgrade reconciliation',
     ...RELEASE_0_13_15_DETAILS,
   },
