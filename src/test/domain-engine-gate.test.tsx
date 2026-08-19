@@ -1,4 +1,5 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { useState } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 import { DomainEngineGate } from '@/components/domain-engine-gate'
 import { DomainEngineProvider } from '@/components/domain-engine-provider'
@@ -42,6 +43,53 @@ function stubClient({
 }
 
 describe('DomainEngineGate', () => {
+  it('preserves mounted application state while a new session loads', () => {
+    const client = stubClient({ initial: { phase: 'loading', revision: null } })
+    function StatefulWorkspace() {
+      const [count, setCount] = useState(0)
+      return <button onClick={() => setCount((value) => value + 1)}>Selection {count}</button>
+    }
+    const contextValue = (enabled: boolean, session: number, state: DomainEngineState) => ({
+      enabled,
+      session,
+      client,
+      state,
+      syncEvent: null,
+      setEnabled: () => {},
+      retry: async () => {},
+    })
+    const { rerender } = render(
+      <DomainEngineContext.Provider value={contextValue(false, 0, { phase: 'idle', revision: null })}>
+        <DomainEngineGate><StatefulWorkspace /></DomainEngineGate>
+      </DomainEngineContext.Provider>,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'Selection 0' }))
+    rerender(
+      <DomainEngineContext.Provider value={contextValue(true, 1, { phase: 'loading', revision: null })}>
+        <DomainEngineGate><StatefulWorkspace /></DomainEngineGate>
+      </DomainEngineContext.Provider>,
+    )
+
+    expect(screen.getByRole('button', { name: 'Selection 1' })).toBeInTheDocument()
+    expect(screen.getByRole('status')).toHaveTextContent('Loading workspace engine')
+
+    rerender(
+      <DomainEngineContext.Provider value={contextValue(true, 1, { phase: 'ready', revision: 3 })}>
+        <DomainEngineGate><StatefulWorkspace /></DomainEngineGate>
+      </DomainEngineContext.Provider>,
+    )
+    expect(screen.queryByRole('status')).not.toBeInTheDocument()
+
+    rerender(
+      <DomainEngineContext.Provider value={contextValue(true, 2, { phase: 'loading', revision: null })}>
+        <DomainEngineGate><StatefulWorkspace /></DomainEngineGate>
+      </DomainEngineContext.Provider>,
+    )
+    expect(screen.getByRole('button', { name: 'Selection 1' })).toBeInTheDocument()
+    expect(screen.getByRole('status')).toHaveTextContent('Loading workspace engine')
+  })
+
   it('creates a distinct idle-to-ready lifecycle for every Canvas activation', async () => {
     vi.useFakeTimers()
     try {

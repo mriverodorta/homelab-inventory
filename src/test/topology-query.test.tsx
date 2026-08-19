@@ -93,4 +93,67 @@ describe('topology query coordinator', () => {
     expect(result.current.data).toBe(firstData)
     expect(queryConsistent).toHaveBeenCalledTimes(4)
   })
+
+  it('reads topology again from a fresh engine activation session', async () => {
+    function createClientQuery() {
+      return vi.fn(async (request: { operation: { kind: string } }) => {
+        if (request.operation.kind === 'topology-endpoints') {
+          return { result: { kind: 'topology-endpoints', payload: { endpoints: [] } } }
+        }
+        if (request.operation.kind === 'network-traces') {
+          return { result: { kind: 'network-traces', payload: { traces: [] } } }
+        }
+        if (request.operation.kind === 'power-topology') {
+          return {
+            result: {
+              kind: 'power-topology',
+              payload: { topology: { endpoints: [], findings: [] } },
+            },
+          }
+        }
+        return {
+          result: {
+            kind: 'connection-derived-states',
+            payload: { states: [] },
+          },
+        }
+      })
+    }
+
+    const firstQuery = createClientQuery()
+    const secondQuery = createClientQuery()
+    let session = 1
+    let client = { queryConsistent: firstQuery } as unknown as DomainEngineClient
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    })
+    function Wrapper({ children }: { children: ReactNode }) {
+      return (
+        <QueryClientProvider client={queryClient}>
+          <DomainEngineContext.Provider value={{
+            enabled: true,
+            session,
+            client,
+            state: { phase: 'ready', revision: 7 },
+            syncEvent: null,
+            setEnabled: () => {},
+            retry: async () => {},
+          }}>
+            {children}
+          </DomainEngineContext.Provider>
+        </QueryClientProvider>
+      )
+    }
+
+    const { result, rerender } = renderHook(() => useTopologyQuery(project), { wrapper: Wrapper })
+    await waitFor(() => expect(result.current.data).not.toBeNull())
+    expect(firstQuery).toHaveBeenCalledTimes(4)
+
+    session = 2
+    client = { queryConsistent: secondQuery } as unknown as DomainEngineClient
+    rerender()
+
+    await waitFor(() => expect(secondQuery).toHaveBeenCalledTimes(4))
+    await waitFor(() => expect(result.current.data?.revision).toBe(7))
+  })
 })

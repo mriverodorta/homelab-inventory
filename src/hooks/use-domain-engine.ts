@@ -1,7 +1,7 @@
 import { useContext } from 'react'
-import { DomainEngineContext } from '@/engine/react-context'
+import { DomainEngineContext, type DomainEngineContextValue } from '@/engine/react-context'
 
-const disabledDomainEngine = {
+const disabledDomainEngine: DomainEngineContextValue = {
   enabled: false,
   session: 0,
   client: null as never,

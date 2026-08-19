@@ -127,10 +127,17 @@ export function useTopologyQuery(project: ProjectState | null) {
     ? domainEngine.state.revision
     : null
   const query = useQuery({
-    queryKey: ['domain-engine-topology', project?.id ?? null, topologyFingerprint],
+    queryKey: [
+      'domain-engine-topology',
+      domainEngine.session,
+      project?.id ?? null,
+      topologyFingerprint,
+    ],
     enabled: domainEngine.enabled && project !== null && revision !== null,
     staleTime: Number.POSITIVE_INFINITY,
-    placeholderData: (previousData) => previousData,
+    placeholderData: (previousData) => (
+      previousData?.session === domainEngine.session ? previousData : undefined
+    ),
     queryFn: async () => {
       if (!project || revision === null) {
         throw new Error('Topology query requires a ready project revision.')
@@ -141,7 +148,14 @@ export function useTopologyQuery(project: ProjectState | null) {
         getPowerTopology(domainEngine.client, project),
         getConnectionDerivedStates(domainEngine.client),
       ])
-      return { revision, endpoints, networkTraces, power, connectionDerivedStates }
+      return {
+        session: domainEngine.session,
+        revision,
+        endpoints,
+        networkTraces,
+        power,
+        connectionDerivedStates,
+      }
     },
   })
 
@@ -205,23 +219,31 @@ export function useCompatibleTopologyDestinations(
   const query = useQuery({
     queryKey: [
       'domain-engine-compatible-endpoints',
+      domainEngine.session,
       project?.id ?? null,
       topologyFingerprint,
       sourceKey,
     ],
     enabled: domainEngine.enabled && project !== null && revision !== null && source !== null,
     staleTime: Number.POSITIVE_INFINITY,
-    placeholderData: (previousData) => previousData,
+    placeholderData: (previousData) => (
+      previousData?.session === domainEngine.session ? previousData : undefined
+    ),
     queryFn: async () => {
-      if (!project || !source) return []
-      return getCompatibleTopologyDestinations(domainEngine.client, project, source)
+      if (!project || !source) {
+        return { session: domainEngine.session, descriptors: [] }
+      }
+      return {
+        session: domainEngine.session,
+        descriptors: await getCompatibleTopologyDestinations(domainEngine.client, project, source),
+      }
     },
   })
   const endpointKeys = useMemo(
     () => query.data === undefined
       ? null
-      : new Set(query.data.map((descriptor) => endpointKey(descriptor.endpoint))),
+      : new Set(query.data.descriptors.map((descriptor) => endpointKey(descriptor.endpoint))),
     [query.data],
   )
-  return { ...query, endpointKeys }
+  return { ...query, data: query.data?.descriptors, endpointKeys }
 }
