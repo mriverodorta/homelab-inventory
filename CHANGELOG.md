@@ -6,6 +6,10 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 
 ## Unreleased
 
+### Fixed
+
+- Systems Type and Name columns now scroll with the table on mobile while remaining pinned on desktop, keeping operational columns accessible on narrow screens.
+
 ## [0.13.17] - 2026-08-19
 
 ### Fixed

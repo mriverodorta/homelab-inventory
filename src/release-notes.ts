@@ -479,7 +479,9 @@ const RELEASE_0_13_17_DETAILS: UnreleasedReleaseNotes = {
 
 export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
   highlights: [],
-  fixes: [],
+  fixes: [
+    'Systems Type and Name columns now scroll with the table on mobile while remaining pinned on desktop, keeping operational columns accessible on narrow screens.',
+  ],
   notes: [],
 }
 
