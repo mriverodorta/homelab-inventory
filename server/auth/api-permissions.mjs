@@ -63,6 +63,14 @@ const PROTECTED_ROUTES = [
   ['DELETE', /^\/api\/inventory\/items\/[^/]+\/[1-9]\d*\/?$/, 'inventory.delete'],
   ['POST', /^\/api\/inventory\/batch\/delete\/?$/, 'inventory.delete'],
 
+  ['GET', /^\/api\/inventory-metadata\/catalog\/?$/, 'inventory.view'],
+  ['GET', /^\/api\/inventory-metadata\/(?:definitions|tags)\/[1-9]\d*\/impact\/?$/, 'inventory.metadata.manage'],
+  ['POST', /^\/api\/inventory-metadata\/(?:definitions|tags)(?:\/[1-9]\d*\/(?:archive|restore))?\/?$/, 'inventory.metadata.manage'],
+  ['PUT', /^\/api\/inventory-metadata\/(?:definitions|tags)\/(?:order|[1-9]\d*)\/?$/, 'inventory.metadata.manage'],
+  ['DELETE', /^\/api\/inventory-metadata\/(?:definitions|tags)\/[1-9]\d*\/?$/, 'inventory.metadata.manage'],
+  ['GET', /^\/api\/inventory\/items\/[^/]+\/[1-9]\d*\/metadata\/?$/, 'inventory.view'],
+  ['PUT', /^\/api\/inventory\/items\/[^/]+\/[1-9]\d*\/metadata\/?$/, 'inventory.edit'],
+
   ['GET', /^\/api\/project\/?$/, 'project.view'],
   ['GET', /^\/api\/projects\/archived\/?$/, 'project.view'],
   ['GET', /^\/api\/projects\/[1-9]\d*\/deletion-impact\/?$/, 'project.settings.manage'],

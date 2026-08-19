@@ -31,6 +31,7 @@ import { ServerEngineRuntime } from './engine/runtime.mjs'
 import { EngineSseHub } from './engine/sse-hub.mjs'
 import { registerEngineRoutes } from './engine-routes.mjs'
 import { registerInventoryRoutes } from './inventory-routes.mjs'
+import { registerInventoryMetadataRoutes } from './inventory-metadata/routes.mjs'
 import { registerOnboardingRoutes } from './onboarding-routes.mjs'
 import { registerProjectRoutes } from './project-routes.mjs'
 import { registerWorkspaceRoutes } from './workspace-routes.mjs'
@@ -621,6 +622,10 @@ registerInventoryRoutes(app, {
         for (const host of hosts) await notificationRuntime.incidentManager.cancelHost(host.type, host.id, 'host-deleted')
       }
     : null,
+})
+registerInventoryMetadataRoutes(app, {
+  withStore,
+  eventBus: applicationEventBus,
 })
 registerRegistryRoutes(app, {
   withStore,
