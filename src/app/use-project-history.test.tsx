@@ -187,7 +187,10 @@ describe('useProjectHistory inventory metadata', () => {
     act(() => {
       result.current.setHistory((history) => pushHistory(
         history,
-        createProjectHistorySnapshot(project, metadataRef.current, before),
+        createProjectHistorySnapshot({
+          ...project,
+          metadata: { ...project.metadata, name: 'Before' },
+        }, metadataRef.current, before),
       ))
     })
     act(() => result.current.undoProjectChange())

@@ -182,6 +182,7 @@ export function useProjectHistory({
 
       if (
         projectChanged
+        && !workbookChanged
         && !policyOnlyChanged
         && !propertiesOnlyChanged
         && !inventoryOnlyChanged

@@ -244,20 +244,17 @@ export function useWorkbookController({ beforeNavigate, onHistoryChange }: Workb
       throw new Error('Workspace creation and archival cannot be restored through presentation history.')
     }
 
-    const currentProjectPresentation = {
-      name: restored.project.name,
-      description: restored.project.description,
-      iconKey: restored.project.iconKey,
-      includesGlobalInventory: restored.project.includesGlobalInventory,
+    const projectChanges: Partial<ProjectInput> = {}
+    if (restored.project.name !== target.project.name) projectChanges.name = target.project.name
+    if (restored.project.description !== target.project.description) {
+      projectChanges.description = target.project.description
     }
-    const targetProjectPresentation = {
-      name: target.project.name,
-      description: target.project.description,
-      iconKey: target.project.iconKey,
-      includesGlobalInventory: target.project.includesGlobalInventory,
+    if (restored.project.iconKey !== target.project.iconKey) projectChanges.iconKey = target.project.iconKey
+    if (restored.project.includesGlobalInventory !== target.project.includesGlobalInventory) {
+      projectChanges.includesGlobalInventory = target.project.includesGlobalInventory
     }
-    if (JSON.stringify(currentProjectPresentation) !== JSON.stringify(targetProjectPresentation)) {
-      restored = await updateProject(restored.project.id, targetProjectPresentation)
+    if (Object.keys(projectChanges).length > 0) {
+      restored = await updateProject(restored.project.id, projectChanges)
     }
 
     for (const targetWorkspace of target.workspaces) {
