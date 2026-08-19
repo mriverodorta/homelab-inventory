@@ -2,6 +2,7 @@ import { useCallback, useRef, useState } from 'react'
 import type { Dispatch, MutableRefObject, SetStateAction } from 'react'
 import {
   createEmptyHistory,
+  pushHistory,
   redoHistory,
   undoHistory,
   type HistoryState,
@@ -24,10 +25,12 @@ import {
 import type { ProjectState } from '@/types/inventory'
 import type { DomainMutationResult } from '@/types/domain-mutation'
 import type { InventoryItemMetadata, InventoryMetadataItemRef } from '@/types/inventory-metadata'
+import type { ProjectWorkbook } from '@/lib/workbook-api'
 
 type ProjectHistoryOptions = {
   projectRef: MutableRefObject<ProjectState | null>
   inventoryMetadataHistoryRef: MutableRefObject<InventoryMetadataHistoryState>
+  workbookHistoryRef?: MutableRefObject<ProjectWorkbook | null>
   setProject: Dispatch<SetStateAction<ProjectState | null>>
   setSelectedItemId: Dispatch<SetStateAction<string | null>>
   setSelectedConnectionId: Dispatch<SetStateAction<string | number | null>>
@@ -38,11 +41,13 @@ type ProjectHistoryOptions = {
     items: readonly Readonly<{ ref: InventoryMetadataItemRef; metadata: InventoryItemMetadata }>[],
   ) => Promise<void>
   applyDomainMutationResult?: (result: DomainMutationResult<ProjectState>) => Promise<ProjectState>
+  restoreWorkbookHistory?: (workbook: ProjectWorkbook) => Promise<ProjectWorkbook>
 }
 
 export function useProjectHistory({
   projectRef,
   inventoryMetadataHistoryRef,
+  workbookHistoryRef,
   setProject,
   setSelectedItemId,
   setSelectedConnectionId,
@@ -50,6 +55,7 @@ export function useProjectHistory({
   scheduleProjectSave: scheduleLegacyProjectSave,
   refreshInventoryMetadata,
   applyDomainMutationResult,
+  restoreWorkbookHistory,
 }: ProjectHistoryOptions) {
   const [history, setHistoryState] = useState<HistoryState<ProjectHistorySnapshot>>(() => createEmptyHistory())
   const [historyBusy, setHistoryBusy] = useState(false)
@@ -72,6 +78,7 @@ export function useProjectHistory({
     const currentSnapshot = createProjectHistorySnapshot(
       currentProject,
       inventoryMetadataHistoryRef.current,
+      workbookHistoryRef?.current ?? null,
     )
     const result = direction === 'undo'
       ? undoHistory(historyRef.current, currentSnapshot)
@@ -99,6 +106,8 @@ export function useProjectHistory({
       }
 
       const projectChanged = !projectHistoryContentEqual(target.project, currentProject)
+      const workbookChanged = target.workbook !== null
+        && JSON.stringify(target.workbook) !== JSON.stringify(workbookHistoryRef?.current ?? null)
       const policyOnlyChanged = projectChanged
         && compatibilityPolicyOnlyChanged(currentProject, target.project)
       const propertiesOnlyChanged = projectChanged
@@ -151,8 +160,23 @@ export function useProjectHistory({
         : projectChanged
           ? target.project
           : currentProject
-      projectRef.current = rebasedProject
-      setProject(rebasedProject)
+      const restoredWorkbook = workbookChanged && target.workbook && restoreWorkbookHistory
+        ? await restoreWorkbookHistory(target.workbook)
+        : null
+      if (restoredWorkbook && workbookHistoryRef) {
+        workbookHistoryRef.current = restoredWorkbook
+      }
+      const finalProject = restoredWorkbook
+        ? {
+            ...rebasedProject,
+            metadata: {
+              ...rebasedProject.metadata,
+              name: restoredWorkbook.project.name,
+            },
+          }
+        : rebasedProject
+      projectRef.current = finalProject
+      setProject(finalProject)
       historyRef.current = result.history
       setHistoryState(result.history)
 
@@ -164,9 +188,9 @@ export function useProjectHistory({
       ) {
         scheduleLegacyProjectSave(rebasedProject)
       }
-      setSelectedItemId((current) => (current && rebasedProject.items[current] ? current : null))
+      setSelectedItemId((current) => (current && finalProject.items[current] ? current : null))
       setSelectedConnectionId((current) =>
-        current && rebasedProject.connections.some((connection) => connection.id === current)
+        current && finalProject.connections.some((connection) => connection.id === current)
           ? current
           : null,
       )
@@ -187,5 +211,26 @@ export function useProjectHistory({
     setHistory,
     undoProjectChange: () => { void applyHistory('undo') },
     redoProjectChange: () => { void applyHistory('redo') },
+    recordWorkbookChange: (before: ProjectWorkbook, after: ProjectWorkbook) => {
+      const currentProject = projectRef.current
+      if (!currentProject || JSON.stringify(before) === JSON.stringify(after)) return
+      setHistory((currentHistory) => pushHistory(
+        currentHistory,
+        createProjectHistorySnapshot(
+          currentProject,
+          inventoryMetadataHistoryRef.current,
+          before,
+        ),
+      ))
+      if (workbookHistoryRef) workbookHistoryRef.current = after
+      if (before.project.name !== after.project.name) {
+        const updatedProject = {
+          ...currentProject,
+          metadata: { ...currentProject.metadata, name: after.project.name },
+        }
+        projectRef.current = updatedProject
+        setProject(updatedProject)
+      }
+    },
   }
 }

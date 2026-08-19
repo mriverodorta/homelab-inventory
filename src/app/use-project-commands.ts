@@ -13,7 +13,11 @@ import type { useDomainEngine } from '@/hooks/use-domain-engine'
 import { loadProject } from '@/lib/db'
 import { updateCompatibilityPolicy } from '@/lib/compatibility-audit-api'
 import { compatibilityPolicyOnlyChanged } from '@/lib/compatibility-policy'
-import { loadWorkspace } from '@/lib/workbook-api'
+import {
+  loadWorkspace,
+  updateProject as updateWorkbookProject,
+  type ProjectWorkbook,
+} from '@/lib/workbook-api'
 import { createEmptyHistory, pushHistory, type HistoryState } from '@/lib/history'
 import {
   backfillProjectHistoryMetadata,
@@ -40,6 +44,7 @@ type ProjectCommandsOptions = {
   queryClient: QueryClient
   projectRef: MutableRefObject<ProjectState | null>
   inventoryMetadataHistoryRef: MutableRefObject<InventoryMetadataHistoryState>
+  workbookHistoryRef: MutableRefObject<ProjectWorkbook | null>
   lastPersistedProjectRef: MutableRefObject<ProjectState | null>
   persistenceCoordinator: ProjectPersistenceCoordinator
   settleLegacyProjectPersistence(): Promise<void>
@@ -59,6 +64,7 @@ export function useProjectCommands({
   queryClient,
   projectRef,
   inventoryMetadataHistoryRef,
+  workbookHistoryRef,
   lastPersistedProjectRef,
   persistenceCoordinator,
   settleLegacyProjectPersistence,
@@ -96,7 +102,11 @@ export function useProjectCommands({
     if (shouldRecordHistory && currentProject) {
       setHistory((currentHistory) => pushHistory(
         currentHistory,
-        createProjectHistorySnapshot(currentProject, inventoryMetadataHistoryRef.current),
+        createProjectHistorySnapshot(
+          currentProject,
+          inventoryMetadataHistoryRef.current,
+          workbookHistoryRef.current,
+        ),
       ))
     }
 
@@ -175,13 +185,6 @@ export function useProjectCommands({
   function updateProjectName(name: string) {
     const currentProject = projectRef.current
     if (!currentProject) return
-    if (!domainEngine.enabled) {
-      updateProject({
-        ...currentProject,
-        metadata: { ...currentProject.metadata, name },
-      }, { recordHistory: false })
-      return
-    }
 
     const optimisticProject = {
       ...currentProject,
@@ -197,27 +200,36 @@ export function useProjectCommands({
     }
     projectNameTimerRef.current = window.setTimeout(() => {
       projectNameTimerRef.current = null
-      void commitEngineMutation(
-        () => domainEngine.client.mutate({
-          operation: { kind: 'update-project-metadata', payload: { name } },
-        }),
-        {
-          optimisticProject: (canonicalProject) => ({
-            ...canonicalProject,
-            metadata: { ...canonicalProject.metadata, name },
-          }),
-        },
-      ).catch((error) => {
-        const persistedProject = lastPersistedProjectRef.current
-        if (persistedProject) {
-          projectRef.current = persistedProject
-          setProject(persistedProject)
-        }
-        setSaveStatus('error')
-        setPersistenceWarning(
-          error instanceof Error ? error.message : 'Project name could not be saved.',
-        )
-      })
+      const projectId = currentProject.metadata.projectId ?? 1
+      void persistenceCoordinator
+        .run(settleLegacyProjectPersistence, () => updateWorkbookProject(projectId, { name }))
+        .then((workbook) => {
+          queryClient.setQueryData<ProjectWorkbook[]>(['project-workbooks'], (existing = []) => (
+            existing.map((candidate) => candidate.project.id === workbook.project.id ? workbook : candidate)
+          ))
+          workbookHistoryRef.current = workbook
+          const active = projectRef.current
+          if (!active || active.metadata.name !== name) return
+          const persisted = {
+            ...active,
+            metadata: { ...active.metadata, name: workbook.project.name },
+          }
+          projectRef.current = persisted
+          lastPersistedProjectRef.current = persisted
+          setProject(persisted)
+          setSaveStatus('saved')
+        })
+        .catch((error) => {
+          const persistedProject = lastPersistedProjectRef.current
+          if (persistedProject) {
+            projectRef.current = persistedProject
+            setProject(persistedProject)
+          }
+          setSaveStatus('error')
+          setPersistenceWarning(
+            error instanceof Error ? error.message : 'Project name could not be saved.',
+          )
+        })
     }, SAVE_DEBOUNCE_MS)
   }
 
@@ -285,7 +297,7 @@ export function useProjectCommands({
           : currentHistory
         return pushHistory(
           backfilledHistory,
-          createProjectHistorySnapshot(historySnapshot, beforeState),
+          createProjectHistorySnapshot(historySnapshot, beforeState, workbookHistoryRef.current),
         )
       })
       if (metadataChange) {
@@ -328,7 +340,7 @@ export function useProjectCommands({
           metadataChange.ref,
           metadataChange.before,
         ),
-        createProjectHistorySnapshot(currentProject, beforeState),
+        createProjectHistorySnapshot(currentProject, beforeState, workbookHistoryRef.current),
       )
     })
     inventoryMetadataHistoryRef.current = setInventoryMetadataHistoryItem(
@@ -402,7 +414,11 @@ export function useProjectCommands({
       if (historySnapshot) {
         setHistory((currentHistory) => pushHistory(
           currentHistory,
-          createProjectHistorySnapshot(historySnapshot, inventoryMetadataHistoryRef.current),
+          createProjectHistorySnapshot(
+            historySnapshot,
+            inventoryMetadataHistoryRef.current,
+            workbookHistoryRef.current,
+          ),
         ))
       }
       setSaveStatus('saved')

@@ -19,7 +19,7 @@ import {
 } from '@/hooks/use-topology-query'
 import { setAuditWarningIgnored } from '@/lib/compatibility-policy'
 import { addGlobalInventoryToProject, loadProject } from '@/lib/db'
-import { loadWorkspace } from '@/lib/workbook-api'
+import { loadWorkspace, type ProjectWorkbook } from '@/lib/workbook-api'
 import { buildVisibleRegistryLinkKeys } from '@/lib/registry-links'
 import { loadCatalogUpdateSummary } from '@/lib/registry-api'
 import { ErrorScreen, LoadingScreen } from '@/app/app-status-screens'
@@ -124,9 +124,15 @@ function App() {
     setPersistenceWarning,
     setCanonicalMutationBusy,
   })
+  const workbookHistoryRef = useRef<ProjectWorkbook | null>(null)
+  const recordWorkbookHistoryRef = useRef<(before: ProjectWorkbook, after: ProjectWorkbook) => void>(
+    () => undefined,
+  )
   const workbookController = useWorkbookController({
     beforeNavigate: settleLegacyProjectPersistence,
+    onHistoryChange: (before, after) => recordWorkbookHistoryRef.current(before, after),
   })
+  workbookHistoryRef.current = workbookController.activeWorkbook
   const canvasWorkspaceActive = workbookController.activeWorkspace?.type === 'canvas'
   useEffect(() => {
     setDomainEngineEnabled(canvasWorkspaceActive)
@@ -225,15 +231,18 @@ function App() {
     setHistory,
     undoProjectChange,
     redoProjectChange,
+    recordWorkbookChange,
   } = useProjectHistory({
     projectRef,
     inventoryMetadataHistoryRef,
+    workbookHistoryRef,
     setProject,
     setSelectedItemId,
     setSelectedConnectionId,
     setValidationMessage,
     scheduleProjectSave,
     applyDomainMutationResult: (result) => applyHistoryDomainMutationRef.current(result),
+    restoreWorkbookHistory: workbookController.restoreWorkbookSnapshot,
     refreshInventoryMetadata: async (projectIds, items) => {
       for (const item of items) {
         for (const projectId of projectIds) {
@@ -248,6 +257,7 @@ function App() {
       })))
     },
   })
+  recordWorkbookHistoryRef.current = recordWorkbookChange
   const hasHydratedProjectRef = useRef(false)
   const hydratedWorkspaceKeyRef = useRef<string | null>(null)
   const activeWorkspaceKey = sourceProjectId && sourceWorkspaceId
@@ -307,6 +317,7 @@ function App() {
     queryClient,
     projectRef,
     inventoryMetadataHistoryRef,
+    workbookHistoryRef,
     lastPersistedProjectRef,
     persistenceCoordinator,
     settleLegacyProjectPersistence,
@@ -377,7 +388,11 @@ function App() {
     recordHistorySnapshot: (snapshot) => {
       setHistory((currentHistory) => pushHistory(
         currentHistory,
-        createProjectHistorySnapshot(snapshot, inventoryMetadataHistoryRef.current),
+        createProjectHistorySnapshot(
+          snapshot,
+          inventoryMetadataHistoryRef.current,
+          workbookHistoryRef.current,
+        ),
       ))
     },
     clearCanvasSelection: () => {

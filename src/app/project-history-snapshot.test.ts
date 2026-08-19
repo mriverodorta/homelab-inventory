@@ -32,4 +32,34 @@ describe('project history snapshots', () => {
       metadata: { ...project.metadata, name: 'Changed' },
     })).toBe(false)
   })
+
+  it('copies workbook presentation into the history snapshot', () => {
+    const workbook = {
+      project: {
+        id: 1,
+        name: 'Homelab',
+        description: null,
+        iconKey: 'house' as const,
+        revision: 7,
+        workbookRevision: 3,
+        includesGlobalInventory: true,
+      },
+      defaultWorkspaceId: 2,
+      workspaces: [{
+        id: 2,
+        projectId: 1,
+        type: 'canvas' as const,
+        name: 'Canvas',
+        iconKey: 'network',
+        colorKey: 'violet',
+        sortOrder: 1,
+        revision: 2,
+        systemKey: null,
+      }],
+    }
+    const snapshot = createProjectHistorySnapshot(createEmptyProject(), new Map(), workbook)
+    workbook.project.name = 'Changed later'
+
+    expect(snapshot.workbook?.project.name).toBe('Homelab')
+  })
 })

@@ -7,6 +7,7 @@ import {
   setInventoryMetadataHistoryItem,
 } from './project-history-snapshot'
 import { useProjectHistory } from './use-project-history'
+import type { ProjectWorkbook } from '@/lib/workbook-api'
 
 const restoreHistory = vi.fn()
 const updatePolicy = vi.fn()
@@ -131,6 +132,71 @@ describe('useProjectHistory inventory metadata', () => {
     await waitFor(() => expect(result.current.historyBusy).toBe(false))
     expect(projectRef.current.compatibilityPolicy).toEqual(previous.compatibilityPolicy)
     expect(projectRef.current.revision).toBe(2)
+    expect(scheduleProjectSave).not.toHaveBeenCalled()
+  })
+
+  it('restores workbook presentation without scheduling a project or engine save', async () => {
+    const project = {
+      ...createEmptyProject(),
+      revision: 12,
+      metadata: { ...createEmptyProject().metadata, projectId: 1, workspaceId: 2, name: 'After' },
+    }
+    const workbook = (name: string, revision: number): ProjectWorkbook => ({
+      project: {
+        id: 1,
+        name,
+        description: null,
+        iconKey: 'house',
+        revision: 12,
+        workbookRevision: revision,
+        includesGlobalInventory: true,
+      },
+      defaultWorkspaceId: 2,
+      workspaces: [{
+        id: 2,
+        projectId: 1,
+        type: 'canvas',
+        name: 'Canvas',
+        iconKey: 'network',
+        colorKey: 'violet',
+        sortOrder: 1,
+        revision: 4,
+        systemKey: null,
+      }],
+    })
+    const before = workbook('Before', 3)
+    const after = workbook('After', 4)
+    const projectRef = { current: project }
+    const metadataRef = { current: new Map() }
+    const workbookRef = { current: after as ProjectWorkbook | null }
+    const scheduleProjectSave = vi.fn()
+    const setProject = vi.fn((value) => { projectRef.current = value })
+    const restoreWorkbookHistory = vi.fn(async () => workbook('Before', 5))
+
+    const { result } = renderHook(() => useProjectHistory({
+      projectRef,
+      inventoryMetadataHistoryRef: metadataRef,
+      workbookHistoryRef: workbookRef,
+      setProject,
+      setSelectedItemId: vi.fn(),
+      setSelectedConnectionId: vi.fn(),
+      setValidationMessage: vi.fn(),
+      scheduleProjectSave,
+      restoreWorkbookHistory,
+    }))
+    act(() => {
+      result.current.setHistory((history) => pushHistory(
+        history,
+        createProjectHistorySnapshot(project, metadataRef.current, before),
+      ))
+    })
+    act(() => result.current.undoProjectChange())
+
+    await waitFor(() => expect(restoreWorkbookHistory).toHaveBeenCalledWith(before))
+    await waitFor(() => expect(result.current.historyBusy).toBe(false))
+    expect(workbookRef.current?.project.name).toBe('Before')
+    expect(projectRef.current.metadata.name).toBe('Before')
+    expect(projectRef.current.revision).toBe(12)
     expect(scheduleProjectSave).not.toHaveBeenCalled()
   })
 })

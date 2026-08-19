@@ -1,4 +1,5 @@
 import type { ProjectState } from '@/types/inventory'
+import type { ProjectWorkbook } from '@/lib/workbook-api'
 import type { InventoryProperties } from '@/types/inventory'
 import type { HistoryState } from '@/lib/history'
 import type {
@@ -16,6 +17,7 @@ export type InventoryMetadataHistoryState = ReadonlyMap<string, InventoryMetadat
 export type ProjectHistorySnapshot = Readonly<{
   project: ProjectState
   inventoryMetadata: InventoryMetadataHistoryState
+  workbook: ProjectWorkbook | null
 }>
 
 export function inventoryMetadataHistoryKey(ref: InventoryMetadataItemRef) {
@@ -45,8 +47,13 @@ export function setInventoryMetadataHistoryItem(
 export function createProjectHistorySnapshot(
   project: ProjectState,
   inventoryMetadata: InventoryMetadataHistoryState,
+  workbook: ProjectWorkbook | null = null,
 ): ProjectHistorySnapshot {
-  return { project, inventoryMetadata: new Map(inventoryMetadata) }
+  return {
+    project,
+    inventoryMetadata: new Map(inventoryMetadata),
+    workbook: workbook === null ? null : structuredClone(workbook),
+  }
 }
 
 export function backfillProjectHistoryMetadata(
@@ -56,11 +63,12 @@ export function backfillProjectHistoryMetadata(
 ): HistoryState<ProjectHistorySnapshot> {
   const key = inventoryMetadataHistoryKey(ref)
   const backfill = (snapshot: ProjectHistorySnapshot) => snapshot.inventoryMetadata.has(key)
-    ? snapshot
-    : createProjectHistorySnapshot(
-        snapshot.project,
-        setInventoryMetadataHistoryItem(snapshot.inventoryMetadata, ref, metadata),
-      )
+      ? snapshot
+      : createProjectHistorySnapshot(
+          snapshot.project,
+          setInventoryMetadataHistoryItem(snapshot.inventoryMetadata, ref, metadata),
+          snapshot.workbook,
+        )
   return {
     past: history.past.map(backfill),
     future: history.future.map(backfill),

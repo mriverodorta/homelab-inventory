@@ -30,6 +30,7 @@ import {
 
 type WorkbookControllerOptions = {
   beforeNavigate(): Promise<void>
+  onHistoryChange?(before: ProjectWorkbook, after: ProjectWorkbook): void
 }
 
 const EMPTY_WORKBOOKS: ProjectWorkbook[] = []
@@ -46,11 +47,13 @@ function replaceWorkbook(workbooks: ProjectWorkbook[], workbook: ProjectWorkbook
   return next
 }
 
-export function useWorkbookController({ beforeNavigate }: WorkbookControllerOptions) {
+export function useWorkbookController({ beforeNavigate, onHistoryChange }: WorkbookControllerOptions) {
   const queryClient = useQueryClient()
   const hasLegacyProjectSeed = queryClient.getQueryData(['project']) !== undefined
   const beforeNavigateRef = useRef(beforeNavigate)
   beforeNavigateRef.current = beforeNavigate
+  const historyChangeRef = useRef<WorkbookControllerOptions['onHistoryChange']>(undefined)
+  historyChangeRef.current = onHistoryChange
   const [route, setRoute] = useState<WorkspaceRoute | null>(() => parseWorkspaceRoute(window.location.pathname))
   const routeRef = useRef(route)
   routeRef.current = route
@@ -230,6 +233,108 @@ export function useWorkbookController({ beforeNavigate }: WorkbookControllerOpti
     }
   }
 
+  async function restoreWorkbookSnapshot(target: ProjectWorkbook) {
+    let restored = (queryClient.getQueryData<ProjectWorkbook[]>(['project-workbooks']) ?? workbooks)
+      .find((candidate) => candidate.project.id === target.project.id)
+    if (!restored) throw new Error('The project workbook is no longer available.')
+
+    const currentWorkspaceIds = restored.workspaces.map((workspace) => workspace.id).sort((a, b) => a - b)
+    const targetWorkspaceIds = target.workspaces.map((workspace) => workspace.id).sort((a, b) => a - b)
+    if (JSON.stringify(currentWorkspaceIds) !== JSON.stringify(targetWorkspaceIds)) {
+      throw new Error('Workspace creation and archival cannot be restored through presentation history.')
+    }
+
+    const currentProjectPresentation = {
+      name: restored.project.name,
+      description: restored.project.description,
+      iconKey: restored.project.iconKey,
+      includesGlobalInventory: restored.project.includesGlobalInventory,
+    }
+    const targetProjectPresentation = {
+      name: target.project.name,
+      description: target.project.description,
+      iconKey: target.project.iconKey,
+      includesGlobalInventory: target.project.includesGlobalInventory,
+    }
+    if (JSON.stringify(currentProjectPresentation) !== JSON.stringify(targetProjectPresentation)) {
+      restored = await updateProject(restored.project.id, targetProjectPresentation)
+    }
+
+    for (const targetWorkspace of target.workspaces) {
+      const currentWorkspace = restored.workspaces.find((workspace) => workspace.id === targetWorkspace.id)
+      if (!currentWorkspace) throw new Error(`Workspace ${targetWorkspace.id} is no longer available.`)
+      const currentPresentation = {
+        name: currentWorkspace.name,
+        iconKey: currentWorkspace.iconKey,
+        colorKey: currentWorkspace.colorKey,
+      }
+      const targetPresentation = {
+        name: targetWorkspace.name,
+        iconKey: targetWorkspace.iconKey,
+        colorKey: targetWorkspace.colorKey,
+      }
+      if (JSON.stringify(currentPresentation) !== JSON.stringify(targetPresentation)) {
+        restored = await updateWorkspace(
+          restored.project.id,
+          targetWorkspace.id,
+          targetPresentation as Omit<WorkspaceInput, 'type'>,
+        )
+      }
+
+      const refreshedWorkspace = restored.workspaces.find((workspace) => workspace.id === targetWorkspace.id)
+      if (targetWorkspace.type === 'canvas' && refreshedWorkspace) {
+        const currentConfiguration = {
+          settings: refreshedWorkspace.settings ?? {},
+          viewportX: refreshedWorkspace.viewportX ?? null,
+          viewportY: refreshedWorkspace.viewportY ?? null,
+          viewportZoomBasisPoints: refreshedWorkspace.viewportZoomBasisPoints ?? null,
+        }
+        const targetConfiguration = {
+          settings: targetWorkspace.settings ?? {},
+          viewportX: targetWorkspace.viewportX ?? null,
+          viewportY: targetWorkspace.viewportY ?? null,
+          viewportZoomBasisPoints: targetWorkspace.viewportZoomBasisPoints ?? null,
+        }
+        if (JSON.stringify(currentConfiguration) !== JSON.stringify(targetConfiguration)) {
+          restored = await updateCanvasWorkspaceConfiguration(
+            restored.project.id,
+            targetWorkspace.id,
+            {
+              settings: targetWorkspace.settings,
+              ...(targetWorkspace.viewportX === undefined
+                || targetWorkspace.viewportX === null
+                || targetWorkspace.viewportY === undefined
+                || targetWorkspace.viewportY === null
+                || targetWorkspace.viewportZoomBasisPoints === undefined
+                || targetWorkspace.viewportZoomBasisPoints === null
+                ? {}
+                : {
+                    viewport: {
+                      x: targetWorkspace.viewportX,
+                      y: targetWorkspace.viewportY,
+                      zoom: targetWorkspace.viewportZoomBasisPoints / 10_000,
+                    },
+                  }),
+            },
+          )
+        }
+      }
+    }
+
+    const currentOrder = restored.workspaces.map((workspace) => workspace.id)
+    const targetOrder = [...target.workspaces]
+      .sort((left, right) => left.sortOrder - right.sortOrder)
+      .map((workspace) => workspace.id)
+    if (JSON.stringify(currentOrder) !== JSON.stringify(targetOrder)) {
+      restored = await reorderWorkspaces(restored.project.id, targetOrder)
+    }
+    if (restored.defaultWorkspaceId !== target.defaultWorkspaceId) {
+      restored = await setDefaultWorkspace(restored.project.id, target.defaultWorkspaceId)
+    }
+    writeWorkbook(restored)
+    return restored
+  }
+
   return {
     route,
     workbooks,
@@ -268,8 +373,10 @@ export function useWorkbookController({ beforeNavigate }: WorkbookControllerOpti
       commitRoute({ projectId: workbook.project.id, workspaceId: workbook.defaultWorkspaceId })
     }),
     updateProject: (projectId: number, input: ProjectInput) => execute(async () => {
+      const before = workbooks.find((candidate) => candidate.project.id === projectId)
       const workbook = await updateProjectMutation.mutateAsync({ projectId, input })
       writeWorkbook(workbook)
+      if (before) historyChangeRef.current?.(before, workbook)
     }),
     archiveProject: (projectId: number) => execute(async () => {
       if (projectId === 1) throw new Error('The default project cannot be archived.')
@@ -301,17 +408,21 @@ export function useWorkbookController({ beforeNavigate }: WorkbookControllerOpti
     }),
     updateWorkspace: (workspaceId: number, input: Omit<WorkspaceInput, 'type'>) => execute(async () => {
       if (!activeWorkbook) return
+      const before = activeWorkbook
       const workbook = await updateWorkspaceMutation.mutateAsync({ projectId: activeWorkbook.project.id, workspaceId, input })
       writeWorkbook(workbook)
+      historyChangeRef.current?.(before, workbook)
     }),
     updateCanvasConfiguration: (input: CanvasWorkspaceConfigurationInput) => execute(async () => {
       if (!activeWorkbook || !sourceCanvasWorkspace) return
+      const before = activeWorkbook
       const workbook = await updateCanvasConfigurationMutation.mutateAsync({
         projectId: activeWorkbook.project.id,
         workspaceId: sourceCanvasWorkspace.id,
         input,
       })
       writeWorkbook(workbook)
+      if (input.settings !== undefined) historyChangeRef.current?.(before, workbook)
     }),
     archiveWorkspace: (workspaceId: number) => execute(async () => {
       if (!activeWorkbook) return
@@ -327,13 +438,18 @@ export function useWorkbookController({ beforeNavigate }: WorkbookControllerOpti
     }),
     reorderWorkspaces: (workspaceIds: number[]) => execute(async () => {
       if (!activeWorkbook) return
+      const before = activeWorkbook
       const workbook = await reorderMutation.mutateAsync({ projectId: activeWorkbook.project.id, workspaceIds })
       writeWorkbook(workbook)
+      historyChangeRef.current?.(before, workbook)
     }),
     setDefaultWorkspace: (workspaceId: number) => execute(async () => {
       if (!activeWorkbook) return
+      const before = activeWorkbook
       const workbook = await defaultWorkspaceMutation.mutateAsync({ projectId: activeWorkbook.project.id, workspaceId })
       writeWorkbook(workbook)
+      historyChangeRef.current?.(before, workbook)
     }),
+    restoreWorkbookSnapshot,
   }
 }
