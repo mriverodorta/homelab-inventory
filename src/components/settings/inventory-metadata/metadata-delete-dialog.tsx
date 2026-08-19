@@ -49,7 +49,8 @@ export function MetadataDeleteDialog({
         <AlertDialogHeader>
           <AlertDialogTitle>Delete {target?.name} permanently?</AlertDialogTitle>
           <AlertDialogDescription>
-            This removes the definition and unlinks it from {impact.data?.itemCount ?? '…'} inventory item{impact.data?.itemCount === 1 ? '' : 's'}. This cannot be undone.
+            This removes the {target?.kind === 'tag' ? 'tag' : 'field'} and unlinks it from {impact.data?.itemCount ?? '…'} inventory item{impact.data?.itemCount === 1 ? '' : 's'}
+            {impact.data?.savedViewCount ? ` and ${impact.data.savedViewCount} saved ${impact.data.savedViewCount === 1 ? 'view' : 'views'}` : ''}. This cannot be undone.
           </AlertDialogDescription>
         </AlertDialogHeader>
         <label className="grid gap-1.5 text-sm font-bold">

@@ -89,6 +89,7 @@ export const inventoryMetadataImpactSchema = z.strictObject({
   definitionId: positiveId.optional(),
   tagId: positiveId.optional(),
   itemCount: z.number().int().nonnegative(),
+  savedViewCount: z.number().int().nonnegative().optional(),
   optionSelectionCount: z.number().int().nonnegative().optional(),
   affectedItemTypes: z.array(z.strictObject({
     type: z.string().trim().min(1),

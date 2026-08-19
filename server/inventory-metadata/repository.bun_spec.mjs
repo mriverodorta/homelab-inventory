@@ -225,6 +225,7 @@ describe('inventory metadata repository', () => {
         definitionId: lifecycle.id,
         itemCount: 1,
         optionSelectionCount: 1,
+        savedViewCount: 0,
         affectedItemTypes: [{ type: 'server', itemCount: 1 }],
       })
     } finally {
@@ -252,9 +253,72 @@ describe('inventory metadata repository', () => {
       expect(repository.deleteDefinitionPermanently(definition.id, archivedDefinition.name)).toMatchObject({ itemCount: 1 })
 
       const archivedTag = repository.archiveTag(tag.id, tag.revision)
-      expect(repository.tagImpact(tag.id)).toEqual({ tagId: tag.id, itemCount: 1 })
-      expect(repository.deleteTagPermanently(tag.id, archivedTag.name)).toEqual({ tagId: tag.id, itemCount: 1 })
+      expect(repository.tagImpact(tag.id)).toEqual({ tagId: tag.id, itemCount: 1, savedViewCount: 0 })
+      expect(repository.deleteTagPermanently(tag.id, archivedTag.name)).toEqual({ tagId: tag.id, itemCount: 1, savedViewCount: 0 })
       expect(repository.getItemMetadata(server.id)).toMatchObject({ values: [], tags: [] })
+    } finally {
+      closeManagedDatabase(handle)
+    }
+  })
+
+  test('prunes permanent deletions from saved views and advances their revisions', async () => {
+    const { handle, repository } = await harness()
+    try {
+      const definition = repository.createDefinition({
+        name: 'Owner note', fieldType: 'shortText', applicableItemTypes: ['server'],
+      })
+      const tag = repository.createTag({ name: 'Production', colorToken: 'red' })
+      const view = handle.database.query(`
+        INSERT INTO systems_saved_views (
+          project_id, owner_scope, account_id, name, sort_key, sort_direction,
+          density, is_default, revision, created_at_ms, updated_at_ms
+        ) VALUES (1, 'open-installation', NULL, 'Metadata', 'name', 'ascending',
+          'dense', 0, 1, 1, 1) RETURNING id
+      `).get()
+      const insertColumn = handle.database.query(`
+        INSERT INTO systems_saved_view_columns (
+          saved_view_id, column_key, definition_id, visible, display_order
+        ) VALUES (?, ?, ?, ?, ?)
+      `)
+      insertColumn.run(view.id, 'type', null, 1, 0)
+      insertColumn.run(view.id, 'name', null, 1, 1)
+      insertColumn.run(view.id, `custom-field:${definition.id}`, definition.id, 1, 2)
+      const definitionFilter = handle.database.query(`
+        INSERT INTO systems_saved_view_metadata_filters (saved_view_id, definition_id, operator)
+        VALUES (?, ?, 'set') RETURNING id
+      `).get(view.id, definition.id)
+      expect(definitionFilter.id).toBeGreaterThan(0)
+      const tagFilter = handle.database.query(`
+        INSERT INTO systems_saved_view_metadata_filters (saved_view_id, definition_id, operator)
+        VALUES (?, NULL, 'tags-any') RETURNING id
+      `).get(view.id)
+      handle.database.query(`
+        INSERT INTO systems_saved_view_metadata_filter_tags (filter_id, tag_id) VALUES (?, ?)
+      `).run(tagFilter.id, tag.id)
+
+      expect(repository.definitionImpact(definition.id).savedViewCount).toBe(1)
+      expect(repository.tagImpact(tag.id).savedViewCount).toBe(1)
+      const archivedDefinition = repository.archiveDefinition(definition.id, definition.revision)
+      repository.deleteDefinitionPermanently(definition.id, archivedDefinition.name)
+      expect(handle.database.query(`
+        SELECT column_key, display_order FROM systems_saved_view_columns
+        WHERE saved_view_id = ? ORDER BY display_order
+      `).all(view.id)).toEqual([
+        { column_key: 'type', display_order: 0 },
+        { column_key: 'name', display_order: 1 },
+      ])
+      expect(handle.database.query(`
+        SELECT revision FROM systems_saved_views WHERE id = ?
+      `).get(view.id)).toEqual({ revision: 2 })
+
+      const archivedTag = repository.archiveTag(tag.id, tag.revision)
+      repository.deleteTagPermanently(tag.id, archivedTag.name)
+      expect(handle.database.query(`
+        SELECT COUNT(*) AS count FROM systems_saved_view_metadata_filters WHERE saved_view_id = ?
+      `).get(view.id)).toEqual({ count: 0 })
+      expect(handle.database.query(`
+        SELECT revision FROM systems_saved_views WHERE id = ?
+      `).get(view.id)).toEqual({ revision: 3 })
     } finally {
       closeManagedDatabase(handle)
     }

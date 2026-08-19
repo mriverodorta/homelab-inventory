@@ -361,6 +361,42 @@ export function createInventoryMetadataRepository(context) {
     return getDefinition(definitionId, { includeArchived: true })
   }
 
+  function definitionSavedViewIds(definitionId) {
+    return sqlite.query(`
+      SELECT saved_view_id FROM systems_saved_view_columns WHERE definition_id = ?
+      UNION
+      SELECT saved_view_id FROM systems_saved_view_metadata_filters WHERE definition_id = ?
+      ORDER BY saved_view_id
+    `).all(definitionId, definitionId).map((row) => row.saved_view_id)
+  }
+
+  function tagSavedViewIds(tagId) {
+    return sqlite.query(`
+      SELECT DISTINCT filter.saved_view_id
+      FROM systems_saved_view_metadata_filter_tags relation
+      JOIN systems_saved_view_metadata_filters filter ON filter.id = relation.filter_id
+      WHERE relation.tag_id = ?
+      ORDER BY filter.saved_view_id
+    `).all(tagId).map((row) => row.saved_view_id)
+  }
+
+  function repairSavedViews(viewIds, at) {
+    for (const viewId of viewIds) {
+      const columns = sqlite.query(`
+        SELECT id FROM systems_saved_view_columns
+        WHERE saved_view_id = ? ORDER BY display_order, id
+      `).all(viewId)
+      columns.forEach((column, displayOrder) => {
+        sqlite.query('UPDATE systems_saved_view_columns SET display_order = ? WHERE id = ?').run(displayOrder, column.id)
+      })
+      sqlite.query(`
+        UPDATE systems_saved_views
+        SET revision = revision + 1, updated_at_ms = ?
+        WHERE id = ?
+      `).run(at, viewId)
+    }
+  }
+
   function definitionImpact(definitionId) {
     if (!getDefinition(definitionId, { includeArchived: true })) notFound('Custom field definition', definitionId)
     const itemCount = sqlite.query('SELECT COUNT(*) AS count FROM inventory_custom_field_values WHERE definition_id = ?').get(definitionId).count
@@ -379,7 +415,13 @@ export function createInventoryMetadataRepository(context) {
       GROUP BY item_type.id, item_type.key
       ORDER BY item_type.sort_order, item_type.id
     `).all(definitionId).map((row) => ({ type: row.type, itemCount: row.item_count }))
-    return { definitionId, itemCount, optionSelectionCount, affectedItemTypes }
+    return {
+      definitionId,
+      itemCount,
+      optionSelectionCount,
+      savedViewCount: definitionSavedViewIds(definitionId).length,
+      affectedItemTypes,
+    }
   }
 
   function deleteDefinitionPermanently(definitionId, confirmationName) {
@@ -388,7 +430,11 @@ export function createInventoryMetadataRepository(context) {
     if (!current.archivedAt) conflict('Custom field definition must be archived before permanent deletion.')
     if (confirmationName !== current.name) confirmationFailure('Custom field definition')
     const impact = definitionImpact(definitionId)
-    sqlite.query('DELETE FROM custom_field_definitions WHERE id = ?').run(definitionId)
+    const viewIds = definitionSavedViewIds(definitionId)
+    sqlite.transaction(() => {
+      sqlite.query('DELETE FROM custom_field_definitions WHERE id = ?').run(definitionId)
+      repairSavedViews(viewIds, now())
+    }).immediate()
     return impact
   }
 
@@ -467,6 +513,7 @@ export function createInventoryMetadataRepository(context) {
     return {
       tagId,
       itemCount: sqlite.query('SELECT COUNT(*) AS count FROM inventory_item_tags WHERE tag_id = ?').get(tagId).count,
+      savedViewCount: tagSavedViewIds(tagId).length,
     }
   }
 
@@ -476,7 +523,16 @@ export function createInventoryMetadataRepository(context) {
     if (!current.archivedAt) conflict('Inventory tag must be archived before permanent deletion.')
     if (confirmationName !== current.name) confirmationFailure('Inventory tag')
     const impact = tagImpact(tagId)
-    sqlite.query('DELETE FROM inventory_tags WHERE id = ?').run(tagId)
+    const viewIds = tagSavedViewIds(tagId)
+    sqlite.transaction(() => {
+      sqlite.query('DELETE FROM inventory_tags WHERE id = ?').run(tagId)
+      sqlite.query(`
+        DELETE FROM systems_saved_view_metadata_filters
+        WHERE operator = 'tags-any'
+          AND id NOT IN (SELECT DISTINCT filter_id FROM systems_saved_view_metadata_filter_tags)
+      `).run()
+      repairSavedViews(viewIds, now())
+    }).immediate()
     return impact
   }
 
