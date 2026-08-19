@@ -29,11 +29,8 @@ function topologyRoute(route) {
   }
 }
 
-export function createEngineSnapshot(project) {
+export function createEngineTopology(project) {
   return {
-    revision: project.revision,
-    project_name: project.metadata.name,
-    topology: {
       items: Object.values(project.items).map((item) => {
         const power = item.type === 'nas' ? nasPowerTopology(item) : null
         return {
@@ -85,6 +82,13 @@ export function createEngineSnapshot(project) {
       placements: project.placements.map((placement, index) => (
         itemRef(project, placement.serverId, `placements[${String(index)}].serverId`)
       )),
-    },
+  }
+}
+
+export function createEngineSnapshot(project) {
+  return {
+    revision: project.revision,
+    project_name: project.metadata.name,
+    topology: createEngineTopology(project),
   }
 }
