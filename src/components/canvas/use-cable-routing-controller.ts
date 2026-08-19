@@ -20,6 +20,8 @@ type UseCableRoutingControllerOptions = {
   onCanonicalizeConnectionRoutes(changes: CableRouteCanonicalRepair[]): Promise<void>
 }
 
+const EMPTY_ROUTE_CLEAR_DELAY_MS = 250
+
 export function useCableRoutingController({
   routeRequests,
   routeGeometryReady,
@@ -39,6 +41,7 @@ export function useCableRoutingController({
   })
   const [routingCacheReady, setRoutingCacheReady] = useState(false)
   const routingCoordinatorRef = useRef<CableRoutingCoordinator | null>(null)
+  const emptyRouteClearTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const routeSideResolutionSignatureRef = useRef<string | null>(null)
   const routeCanonicalizationSignatureRef = useRef<string | null>(null)
 
@@ -63,6 +66,10 @@ export function useCableRoutingController({
 
     return () => {
       cancelled = true
+      if (emptyRouteClearTimerRef.current) {
+        clearTimeout(emptyRouteClearTimerRef.current)
+        emptyRouteClearTimerRef.current = null
+      }
       unsubscribe()
       coordinator.dispose()
       routingCoordinatorRef.current = null
@@ -86,7 +93,18 @@ export function useCableRoutingController({
     if (!routeGeometryReady) return
 
     if (routeRequests.length === 0) {
-      coordinator.clear()
+      const timer = setTimeout(() => {
+        if (routingCoordinatorRef.current !== coordinator) return
+        emptyRouteClearTimerRef.current = null
+        coordinator.clear()
+      }, EMPTY_ROUTE_CLEAR_DELAY_MS)
+      emptyRouteClearTimerRef.current = timer
+      return () => {
+        clearTimeout(timer)
+        if (emptyRouteClearTimerRef.current === timer) {
+          emptyRouteClearTimerRef.current = null
+        }
+      }
     } else {
       coordinator.request(routeRequests)
     }
