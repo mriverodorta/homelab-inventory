@@ -22,7 +22,7 @@ function boundedIds(value, label) {
   return [...new Set(value.map((entry) => positiveId(entry, label)))].sort((left, right) => left - right)
 }
 
-function normalizeFilters(value) {
+export function normalizeInventoryMetadataFilters(value) {
   if (value == null) return []
   if (!Array.isArray(value) || value.length > 25) {
     throw new InventoryMetadataError('Metadata filters must be an array with at most 25 entries.')
@@ -115,7 +115,7 @@ export class InventoryMetadataFilterService {
     const project = positiveId(projectId, 'Project ID')
     const scope = input.scope === 'systems' ? 'systems' : 'inventory'
     const definitionIds = boundedIds(input.definitionIds, 'Custom field definition ID')
-    const filters = normalizeFilters(input.filters)
+    const filters = normalizeInventoryMetadataFilters(input.filters)
     const filterDefinitionIds = filters.flatMap((filter) => filter.definitionId ? [filter.definitionId] : [])
     const requestedDefinitionIds = [...new Set([...definitionIds, ...filterDefinitionIds])].sort((left, right) => left - right)
     const includeSearch = input.includeSearch === true

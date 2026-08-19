@@ -54,6 +54,37 @@ function input(name = 'My servers') {
   }
 }
 
+function seedMetadata(store: SqliteHomelabInventoryStore) {
+  const database = store.core.database
+  const now = 1_800_000_000_000
+  const definition = database.query(`
+    INSERT INTO custom_field_definitions (
+      name, normalized_name, description, field_type, unit,
+      number_minimum, number_maximum, number_precision,
+      display_order, revision, created_at_ms, updated_at_ms
+    ) VALUES ('Support tier', 'support tier', NULL, 'singleSelect', NULL,
+      NULL, NULL, NULL, 0, 1, ?, ?) RETURNING id
+  `).get(now, now) as { id: number }
+  const serverType = database.query("SELECT id FROM inventory_item_types WHERE key = 'server'").get() as { id: number }
+  database.query(`
+    INSERT INTO custom_field_applicability (definition_id, item_type_id, created_at_ms)
+    VALUES (?, ?, ?)
+  `).run(definition.id, serverType.id, now)
+  const option = database.query(`
+    INSERT INTO custom_field_options (
+      definition_id, label, normalized_label, color_token, display_order,
+      revision, created_at_ms, updated_at_ms
+    ) VALUES (?, 'Critical', 'critical', 'red', 0, 1, ?, ?) RETURNING id
+  `).get(definition.id, now, now) as { id: number }
+  const tag = database.query(`
+    INSERT INTO inventory_tags (
+      name, normalized_name, color_token, display_order,
+      revision, created_at_ms, updated_at_ms
+    ) VALUES ('Production', 'production', 'green', 0, 1, ?, ?) RETURNING id
+  `).get(now, now) as { id: number }
+  return { definitionId: definition.id, optionId: option.id, tagId: tag.id }
+}
+
 describe('Systems saved view service', () => {
   test('normalizes synchronized configuration without search or widths', () => {
     expect(normalizeSystemsViewInput(input())).toEqual({
@@ -65,6 +96,7 @@ describe('Systems saved view service', () => {
       sortDirection: 'ascending',
       density: 'dense',
       columns: input().columns,
+      metadataFilters: [],
     })
     expect(() => normalizeSystemsViewInput({
       ...input(),
@@ -101,5 +133,43 @@ describe('Systems saved view service', () => {
       expectedRevision: 1,
       input: input('Changed'),
     })).toThrow('changed in another session')
+  })
+
+  test('persists metadata filters and dynamic columns by numeric IDs', async () => {
+    const store = await fixtureStore()
+    const metadata = seedMetadata(store)
+    const service = new SystemsSavedViewService({ now: () => 1_800_000_000_000 })
+    const configuration = input('Production systems')
+    const customInput = {
+      ...configuration,
+      columns: [
+        ...configuration.columns,
+        { key: 'tags', visible: false, order: configuration.columns.length },
+        { key: `custom-field:${metadata.definitionId}`, visible: true, order: configuration.columns.length + 1 },
+      ],
+      metadataFilters: [
+        { operator: 'options', definitionId: metadata.definitionId, optionIds: [metadata.optionId] },
+        { operator: 'tags-any', tagIds: [metadata.tagId] },
+      ],
+    }
+
+    const created = service.create(store, { projectId: 1, input: customInput })
+    expect(created.configuration).toMatchObject({
+      columns: customInput.columns,
+      metadataFilters: customInput.metadataFilters,
+    })
+    expect(store.core.database.query(`
+      SELECT definition_id FROM systems_saved_view_columns
+      WHERE saved_view_id = ? AND column_key = ?
+    `).get(created.id, `custom-field:${metadata.definitionId}`)).toEqual({ definition_id: metadata.definitionId })
+
+    const replaced = service.replace(store, {
+      projectId: 1,
+      viewId: created.id,
+      expectedRevision: created.revision,
+      input: { ...customInput, name: 'Critical systems', metadataFilters: [{ operator: 'has-tags' }] },
+    })
+    expect(replaced.revision).toBe(2)
+    expect(replaced.configuration.metadataFilters).toEqual([{ operator: 'has-tags' }])
   })
 })

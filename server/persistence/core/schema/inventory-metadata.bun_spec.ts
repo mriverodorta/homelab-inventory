@@ -73,7 +73,7 @@ describe('inventory metadata relational schema', () => {
       inventoryTags,
       inventoryItemTags,
     ]).not.toContain(undefined)
-    expect(CORE_MIGRATIONS.at(-1)?.id).toBe('0026_inventory_metadata')
+    expect(CORE_MIGRATIONS.some((migration) => migration.id === '0026_inventory_metadata')).toBe(true)
   })
 
   test('accepts all supported field types and rejects duplicate normalized names', async () => {

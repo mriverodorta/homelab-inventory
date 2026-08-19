@@ -1,3 +1,5 @@
+import { normalizeInventoryMetadataFilters } from '../inventory-metadata/filter-service.mjs'
+
 const HOST_TYPES = ['server', 'nas', 'pcBuild']
 const REGISTRATIONS = ['registered', 'unregistered']
 const REGISTRY_STATES = ['linked', 'unlinked']
@@ -5,6 +7,7 @@ export const SYSTEMS_COLUMN_KEYS = [
   'type', 'name', 'manufacturer', 'cpu', 'memory', 'storage', 'attention',
   'agent', 'registry', 'operatingSystem', 'uptime', 'lanIp',
 ]
+const SYSTEMS_OPTIONAL_COLUMN_KEYS = ['tags']
 const SORT_DIRECTIONS = ['ascending', 'descending']
 const DENSITIES = ['dense', 'comfortable']
 
@@ -35,18 +38,54 @@ function cleanName(value) {
   return name
 }
 
-export function normalizeSystemsViewInput(input, { requireName = true } = {}) {
+function customFieldId(key) {
+  const match = /^custom-field:([1-9]\d*)$/u.exec(key)
+  if (!match) return null
+  const id = Number(match[1])
+  return Number.isSafeInteger(id) ? id : null
+}
+
+function validateMetadataReferences(database, columns, filters) {
+  if (!database) return
+  const definitionIds = [...new Set([
+    ...columns.map((column) => column.definitionId).filter(Boolean),
+    ...filters.map((filter) => filter.definitionId).filter(Boolean),
+  ])]
+  for (const id of definitionIds) {
+    if (!database.query('SELECT 1 FROM custom_field_definitions WHERE id = ?').get(id)) {
+      throw new SystemsViewError(`Custom field definition ${id} is unavailable.`, 'invalid-systems-view')
+    }
+  }
+  for (const filter of filters) {
+    for (const optionId of filter.optionIds ?? []) {
+      if (!database.query('SELECT 1 FROM custom_field_options WHERE id = ? AND definition_id = ?').get(optionId, filter.definitionId)) {
+        throw new SystemsViewError(`Custom field option ${optionId} is unavailable.`, 'invalid-systems-view')
+      }
+    }
+    for (const tagId of filter.tagIds ?? []) {
+      if (!database.query('SELECT 1 FROM inventory_tags WHERE id = ?').get(tagId)) {
+        throw new SystemsViewError(`Inventory tag ${tagId} is unavailable.`, 'invalid-systems-view')
+      }
+    }
+  }
+}
+
+export function normalizeSystemsViewInput(input, { requireName = true, database = null } = {}) {
   if (!input || typeof input !== 'object' || Array.isArray(input)) throw new SystemsViewError('Saved view configuration is required.', 'invalid-systems-view')
   const columnInput = Array.isArray(input.columns) ? input.columns : []
-  if (columnInput.length !== SYSTEMS_COLUMN_KEYS.length) throw new SystemsViewError('Saved view columns are incomplete.', 'invalid-systems-view')
   const columns = columnInput.map((column, index) => ({
     key: String(column?.key ?? ''),
     visible: column?.visible === true,
     order: Number(column?.order ?? index),
+    definitionId: customFieldId(String(column?.key ?? '')),
   })).sort((left, right) => left.order - right.order)
-  if (new Set(columns.map((column) => column.key)).size !== SYSTEMS_COLUMN_KEYS.length
-    || columns.some((column) => !SYSTEMS_COLUMN_KEYS.includes(column.key))) {
-    throw new SystemsViewError('Saved view columns must contain every supported column once.', 'invalid-systems-view')
+  const allowedColumn = (column) => SYSTEMS_COLUMN_KEYS.includes(column.key)
+    || SYSTEMS_OPTIONAL_COLUMN_KEYS.includes(column.key)
+    || column.definitionId !== null
+  if (new Set(columns.map((column) => column.key)).size !== columns.length
+    || columns.some((column) => !allowedColumn(column))
+    || SYSTEMS_COLUMN_KEYS.some((key) => !columns.some((column) => column.key === key))) {
+    throw new SystemsViewError('Saved view columns must contain every base column once and only supported metadata columns.', 'invalid-systems-view')
   }
   if (columns.some((column, index) => !Number.isSafeInteger(column.order) || column.order !== index)) {
     throw new SystemsViewError('Saved view column order must be contiguous.', 'invalid-systems-view')
@@ -60,6 +99,8 @@ export function normalizeSystemsViewInput(input, { requireName = true } = {}) {
   if (!SYSTEMS_COLUMN_KEYS.includes(sortKey)) throw new SystemsViewError('Saved view sort column is invalid.', 'invalid-systems-view')
   if (!SORT_DIRECTIONS.includes(sortDirection)) throw new SystemsViewError('Saved view sort direction is invalid.', 'invalid-systems-view')
   if (!DENSITIES.includes(density)) throw new SystemsViewError('Saved view density is invalid.', 'invalid-systems-view')
+  const metadataFilters = normalizeInventoryMetadataFilters(input.metadataFilters ?? [])
+  validateMetadataReferences(database, columns, metadataFilters)
   return {
     ...(requireName ? { name: cleanName(input.name) } : {}),
     types: enumArray(input.types ?? [], HOST_TYPES, 'System types'),
@@ -68,7 +109,8 @@ export function normalizeSystemsViewInput(input, { requireName = true } = {}) {
     sortKey,
     sortDirection,
     density,
-    columns,
+    columns: columns.map(({ key, visible, order }) => ({ key, visible, order })),
+    metadataFilters,
   }
 }
 
@@ -84,6 +126,37 @@ function ownedView(database, projectId, accountId, viewId) {
     WHERE id = ? AND project_id = ? AND owner_scope = ?
       AND ((? IS NULL AND account_id IS NULL) OR account_id = ?)
   `).get(viewId, projectId, identity.scope, identity.accountId, identity.accountId)
+}
+
+function readMetadataFilters(database, savedViewId) {
+  const filters = database.query(`
+    SELECT * FROM systems_saved_view_metadata_filters
+    WHERE saved_view_id = ? ORDER BY id
+  `).all(savedViewId)
+  if (!filters.length) return []
+  const ids = filters.map((filter) => filter.id)
+  const placeholders = ids.map(() => '?').join(',')
+  const optionRows = database.query(`
+    SELECT filter_id, option_id FROM systems_saved_view_metadata_filter_options
+    WHERE filter_id IN (${placeholders}) ORDER BY filter_id, option_id
+  `).all(...ids)
+  const tagRows = database.query(`
+    SELECT filter_id, tag_id FROM systems_saved_view_metadata_filter_tags
+    WHERE filter_id IN (${placeholders}) ORDER BY filter_id, tag_id
+  `).all(...ids)
+  const options = Map.groupBy(optionRows, (entry) => entry.filter_id)
+  const tags = Map.groupBy(tagRows, (entry) => entry.filter_id)
+  return filters.map((filter) => ({
+    operator: filter.operator,
+    ...(filter.definition_id == null ? {} : { definitionId: filter.definition_id }),
+    ...(filter.text_value == null ? {} : { text: filter.text_value }),
+    ...(filter.number_minimum == null ? {} : { minimum: filter.number_minimum }),
+    ...(filter.number_maximum == null ? {} : { maximum: filter.number_maximum }),
+    ...(filter.date_after == null ? {} : { after: filter.date_after }),
+    ...(filter.date_before == null ? {} : { before: filter.date_before }),
+    ...((options.get(filter.id) ?? []).length ? { optionIds: options.get(filter.id).map((entry) => entry.option_id) } : {}),
+    ...((tags.get(filter.id) ?? []).length ? { tagIds: tags.get(filter.id).map((entry) => entry.tag_id) } : {}),
+  }))
 }
 
 function readView(database, row) {
@@ -109,6 +182,7 @@ function readView(database, row) {
       sortDirection: row.sort_direction,
       density: row.density,
       columns: columns.map((column) => ({ key: column.column_key, visible: column.visible === 1, order: column.display_order })),
+      metadataFilters: readMetadataFilters(database, row.id),
     },
     createdAt: new Date(row.created_at_ms).toISOString(),
     updatedAt: new Date(row.updated_at_ms).toISOString(),
@@ -120,8 +194,24 @@ function insertChildren(database, viewId, configuration) {
   for (const value of configuration.types) filter.run(viewId, 'type', value)
   for (const value of configuration.registrations) filter.run(viewId, 'registration', value)
   for (const value of configuration.registryStates) filter.run(viewId, 'registry', value)
-  const column = database.query(`INSERT INTO systems_saved_view_columns (saved_view_id, column_key, visible, display_order) VALUES (?, ?, ?, ?)`)
-  for (const entry of configuration.columns) column.run(viewId, entry.key, entry.visible ? 1 : 0, entry.order)
+  const column = database.query(`INSERT INTO systems_saved_view_columns (saved_view_id, column_key, definition_id, visible, display_order) VALUES (?, ?, ?, ?, ?)`)
+  for (const entry of configuration.columns) column.run(viewId, entry.key, customFieldId(entry.key), entry.visible ? 1 : 0, entry.order)
+  const metadataFilter = database.query(`
+    INSERT INTO systems_saved_view_metadata_filters (
+      saved_view_id, definition_id, operator, text_value, number_minimum,
+      number_maximum, date_after, date_before
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?) RETURNING id
+  `)
+  const option = database.query('INSERT INTO systems_saved_view_metadata_filter_options (filter_id, option_id) VALUES (?, ?)')
+  const tag = database.query('INSERT INTO systems_saved_view_metadata_filter_tags (filter_id, tag_id) VALUES (?, ?)')
+  for (const entry of configuration.metadataFilters) {
+    const created = metadataFilter.get(
+      viewId, entry.definitionId ?? null, entry.operator, entry.text ?? null,
+      entry.minimum ?? null, entry.maximum ?? null, entry.after ?? null, entry.before ?? null,
+    )
+    for (const optionId of entry.optionIds ?? []) option.run(created.id, optionId)
+    for (const tagId of entry.tagIds ?? []) tag.run(created.id, tagId)
+  }
 }
 
 function mapConstraintError(error) {
@@ -152,8 +242,8 @@ export class SystemsSavedViewService {
   create(store, { projectId, accountId = null, input }) {
     const id = positiveId(projectId, 'Project ID')
     const identity = owner(accountId)
-    const configuration = normalizeSystemsViewInput(input)
     const database = store.core.database
+    const configuration = normalizeSystemsViewInput(input, { database })
     try {
       return database.transaction(() => {
         const at = this.now()
@@ -175,8 +265,8 @@ export class SystemsSavedViewService {
     const project = positiveId(projectId, 'Project ID')
     const view = positiveId(viewId, 'Saved view ID')
     const revision = positiveId(expectedRevision, 'Expected revision')
-    const configuration = normalizeSystemsViewInput(input)
     const database = store.core.database
+    const configuration = normalizeSystemsViewInput(input, { database })
     try {
       return database.transaction(() => {
         const current = ownedView(database, project, accountId, view)
@@ -190,6 +280,7 @@ export class SystemsSavedViewService {
         if (result.changes !== 1) throw new SystemsViewError('This saved view changed in another session.', 'systems-view-conflict', 409)
         database.query('DELETE FROM systems_saved_view_filters WHERE saved_view_id = ?').run(view)
         database.query('DELETE FROM systems_saved_view_columns WHERE saved_view_id = ?').run(view)
+        database.query('DELETE FROM systems_saved_view_metadata_filters WHERE saved_view_id = ?').run(view)
         insertChildren(database, view, configuration)
         return readView(database, ownedView(database, project, accountId, view))
       })()

@@ -1,8 +1,9 @@
 import { sql } from 'drizzle-orm'
-import { check, index, integer, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core'
+import { check, index, integer, real, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core'
 import { users } from './authentication.ts'
 import { inventoryItems } from './inventory-base.ts'
 import { projects } from './project-base.ts'
+import { customFieldDefinitions, customFieldOptions, inventoryTags } from './inventory-metadata.ts'
 
 export const systemsSavedViews = sqliteTable('systems_saved_views', {
   id: integer('id').primaryKey({ autoIncrement: true }),
@@ -46,13 +47,50 @@ export const systemsSavedViewColumns = sqliteTable('systems_saved_view_columns',
   id: integer('id').primaryKey({ autoIncrement: true }),
   savedViewId: integer('saved_view_id').notNull().references(() => systemsSavedViews.id, { onDelete: 'cascade' }),
   columnKey: text('column_key').notNull(),
+  definitionId: integer('definition_id').references(() => customFieldDefinitions.id, { onDelete: 'cascade' }),
   visible: integer('visible', { mode: 'boolean' }).notNull(),
   displayOrder: integer('display_order').notNull(),
 }, (table) => [
   uniqueIndex('systems_saved_view_columns_key_unique').on(table.savedViewId, table.columnKey),
   uniqueIndex('systems_saved_view_columns_order_unique').on(table.savedViewId, table.displayOrder),
-  check('systems_saved_view_columns_key_check', sql`${table.columnKey} IN ('type','name','manufacturer','cpu','memory','storage','attention','agent','registry','operatingSystem','uptime','lanIp')`),
+  index('systems_saved_view_columns_definition_index').on(table.definitionId, table.savedViewId),
+  check('systems_saved_view_columns_key_check', sql`(${table.definitionId} IS NULL AND ${table.columnKey} IN ('type','name','manufacturer','cpu','memory','storage','attention','agent','registry','operatingSystem','uptime','lanIp','tags')) OR (${table.definitionId} IS NOT NULL AND ${table.columnKey} = 'custom-field:' || ${table.definitionId})`),
   check('systems_saved_view_columns_order_check', sql`${table.displayOrder} >= 0`),
+])
+
+export const systemsSavedViewMetadataFilters = sqliteTable('systems_saved_view_metadata_filters', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  savedViewId: integer('saved_view_id').notNull().references(() => systemsSavedViews.id, { onDelete: 'cascade' }),
+  definitionId: integer('definition_id').references(() => customFieldDefinitions.id, { onDelete: 'cascade' }),
+  operator: text('operator').notNull(),
+  textValue: text('text_value'),
+  numberMinimum: real('number_minimum'),
+  numberMaximum: real('number_maximum'),
+  dateAfter: text('date_after'),
+  dateBefore: text('date_before'),
+}, (table) => [
+  uniqueIndex('systems_saved_view_metadata_filters_definition_unique').on(table.savedViewId, table.definitionId).where(sql`${table.definitionId} IS NOT NULL`),
+  uniqueIndex('systems_saved_view_metadata_filters_tag_mode_unique').on(table.savedViewId).where(sql`${table.definitionId} IS NULL`),
+  index('systems_saved_view_metadata_filters_view_index').on(table.savedViewId, table.id),
+  index('systems_saved_view_metadata_filters_definition_index').on(table.definitionId, table.savedViewId),
+])
+
+export const systemsSavedViewMetadataFilterOptions = sqliteTable('systems_saved_view_metadata_filter_options', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  filterId: integer('filter_id').notNull().references(() => systemsSavedViewMetadataFilters.id, { onDelete: 'cascade' }),
+  optionId: integer('option_id').notNull().references(() => customFieldOptions.id, { onDelete: 'cascade' }),
+}, (table) => [
+  uniqueIndex('systems_saved_view_metadata_filter_options_unique').on(table.filterId, table.optionId),
+  index('systems_saved_view_metadata_filter_options_option_index').on(table.optionId, table.filterId),
+])
+
+export const systemsSavedViewMetadataFilterTags = sqliteTable('systems_saved_view_metadata_filter_tags', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  filterId: integer('filter_id').notNull().references(() => systemsSavedViewMetadataFilters.id, { onDelete: 'cascade' }),
+  tagId: integer('tag_id').notNull().references(() => inventoryTags.id, { onDelete: 'cascade' }),
+}, (table) => [
+  uniqueIndex('systems_saved_view_metadata_filter_tags_unique').on(table.filterId, table.tagId),
+  index('systems_saved_view_metadata_filter_tags_tag_index').on(table.tagId, table.filterId),
 ])
 
 export const systemAttentionSummaries = sqliteTable('system_attention_summaries', {
