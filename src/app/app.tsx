@@ -234,9 +234,17 @@ function App() {
     setValidationMessage,
     scheduleProjectSave,
     applyDomainMutationResult: (result) => applyHistoryDomainMutationRef.current(result),
-    refreshInventoryMetadata: async (projectIds) => {
+    refreshInventoryMetadata: async (projectIds, items) => {
+      for (const item of items) {
+        for (const projectId of projectIds) {
+          queryClient.setQueryData(
+            inventoryMetadataKeys.item(projectId, item.ref),
+            item.metadata,
+          )
+        }
+      }
       await Promise.all(projectIds.map((projectId) => queryClient.invalidateQueries({
-        queryKey: inventoryMetadataKeys.project(projectId),
+        queryKey: inventoryMetadataKeys.projectProjections(projectId),
       })))
     },
   })

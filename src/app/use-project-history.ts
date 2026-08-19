@@ -23,6 +23,7 @@ import {
 } from '@/app/project-history-snapshot'
 import type { ProjectState } from '@/types/inventory'
 import type { DomainMutationResult } from '@/types/domain-mutation'
+import type { InventoryItemMetadata, InventoryMetadataItemRef } from '@/types/inventory-metadata'
 
 type ProjectHistoryOptions = {
   projectRef: MutableRefObject<ProjectState | null>
@@ -32,7 +33,10 @@ type ProjectHistoryOptions = {
   setSelectedConnectionId: Dispatch<SetStateAction<string | number | null>>
   setValidationMessage: (message: string | null) => void
   scheduleProjectSave: (project: ProjectState) => void
-  refreshInventoryMetadata?: (projectIds: readonly number[]) => Promise<void>
+  refreshInventoryMetadata?: (
+    projectIds: readonly number[],
+    items: readonly Readonly<{ ref: InventoryMetadataItemRef; metadata: InventoryItemMetadata }>[],
+  ) => Promise<void>
   applyDomainMutationResult?: (result: DomainMutationResult<ProjectState>) => Promise<ProjectState>
 }
 
@@ -85,7 +89,13 @@ export function useProjectHistory({
       if (metadataChanges.length > 0) {
         const restored = await restoreInventoryItemMetadataHistory(metadataChanges)
         inventoryMetadataHistoryRef.current = new Map(target.inventoryMetadata)
-        await refreshInventoryMetadata?.(restored.affectedProjectIds)
+        await refreshInventoryMetadata?.(
+          restored.affectedProjectIds,
+          metadataChanges.map((change, index) => ({
+            ref: change.ref,
+            metadata: restored.items[index].metadata,
+          })),
+        )
       }
 
       const projectChanged = !projectHistoryContentEqual(target.project, currentProject)

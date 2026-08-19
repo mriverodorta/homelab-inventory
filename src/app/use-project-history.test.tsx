@@ -42,7 +42,16 @@ describe('useProjectHistory inventory metadata', () => {
     restoreHistory.mockResolvedValue({
       affectedProjectIds: [1],
       affectedMetadataRevisions: { 7: 3 },
-      items: [],
+      items: [{
+        itemId: 7,
+        metadata: {
+          itemId: 7,
+          revision: 3,
+          definitions: [],
+          values: [{ definitionId: 1, value: 'Before' }],
+          tags: [],
+        },
+      }],
     })
 
     const { result } = renderHook(() => useProjectHistory({
@@ -73,7 +82,10 @@ describe('useProjectHistory inventory metadata', () => {
     expect(setProject).toHaveBeenCalled()
     await waitFor(() => expect(projectRef.current?.revision).toBe(2))
     expect(metadataRef.current).toEqual(before)
-    expect(refreshInventoryMetadata).toHaveBeenCalledWith([1])
+    expect(refreshInventoryMetadata).toHaveBeenCalledWith([1], [{
+      ref: { type: 'server', id: 7 },
+      metadata: expect.objectContaining({ itemId: 7, revision: 3 }),
+    }])
     expect(scheduleProjectSave).not.toHaveBeenCalled()
     expect(setValidationMessage).toHaveBeenLastCalledWith(null)
   })
