@@ -487,7 +487,9 @@ const RELEASE_0_13_18_DETAILS: UnreleasedReleaseNotes = {
 
 export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
   highlights: [],
-  fixes: [],
+  fixes: [
+    'Switching between Systems and Canvas now starts a fresh workspace engine session without losing the selected item or Inspector, reusing stale topology, or showing false engine-not-ready warnings; automatic selection centering resumes after the new session is ready.',
+  ],
   notes: [],
 }
 
