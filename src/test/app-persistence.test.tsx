@@ -3,6 +3,8 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import App from '@/App'
+import type { DomainEngineClient } from '@/engine/client'
+import { DomainEngineContext } from '@/engine/react-context'
 import { renderWithOpenAuth as render } from '@/test/open-auth-test-render'
 import type { InventoryItem, InventoryProperties, ProjectState } from '@/types/inventory'
 import type { OnboardingStatus } from '@/lib/onboarding-api'
@@ -236,7 +238,17 @@ function renderApp(
 
   return render(
     <QueryClientProvider client={queryClient}>
-      <App />
+      <DomainEngineContext.Provider value={{
+        enabled: false,
+        session: 0,
+        client: {} as DomainEngineClient,
+        state: { phase: 'ready', revision: null },
+        syncEvent: null,
+        setEnabled: () => {},
+        retry: async () => {},
+      }}>
+        <App />
+      </DomainEngineContext.Provider>
     </QueryClientProvider>,
   )
 }
