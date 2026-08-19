@@ -4,6 +4,7 @@ import {
   inventoryItemMetadataSchema,
   inventoryMetadataCatalogSchema,
   inventoryMetadataImpactSchema,
+  inventoryMetadataProjectProjectionSchema,
   inventoryTagSchema,
   type CustomFieldDefinition,
   type CustomFieldDefinitionInput,
@@ -12,6 +13,8 @@ import {
   type InventoryMetadataCatalog,
   type InventoryMetadataImpact,
   type InventoryMetadataItemRef,
+  type InventoryMetadataFilter,
+  type InventoryMetadataProjectProjection,
   type InventoryTag,
   type InventoryTagInput,
 } from '@/types/inventory-metadata'
@@ -19,6 +22,7 @@ import { z } from 'zod'
 
 const catalogCache = new Map<string, { etag: string; payload: InventoryMetadataCatalog }>()
 const itemCache = new Map<string, { etag: string; payload: InventoryItemMetadata }>()
+const projectionCache = new Map<string, { etag: string; payload: InventoryMetadataProjectProjection }>()
 
 export class InventoryMetadataRequestError extends Error {
   readonly code: string | null
@@ -72,6 +76,29 @@ async function etagRequest<T>(
   return payload
 }
 
+async function etagPost<T>(
+  url: string,
+  body: unknown,
+  cache: Map<string, { etag: string; payload: T }>,
+  schema: z.ZodType<T>,
+) {
+  const key = `${url}:${JSON.stringify(body)}`
+  const cached = cache.get(key)
+  const response = await fetchWithTimeout(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...(cached ? { 'If-None-Match': cached.etag } : {}) },
+    body: JSON.stringify(body),
+  })
+  if (response.status === 304) {
+    if (!cached) throw new Error('Inventory metadata projection cache was unavailable after a not-modified response.')
+    return cached.payload
+  }
+  const payload = schema.parse(await responsePayload(response))
+  const responseEtag = response.headers.get('etag')
+  if (responseEtag) cache.set(key, { etag: responseEtag, payload })
+  return payload
+}
+
 async function mutation<T>(url: string, schema: z.ZodType<T>, init: RequestInit) {
   const payload = await responsePayload(await fetchWithTimeout(url, {
     ...init,
@@ -88,6 +115,22 @@ export function loadInventoryMetadataCatalog(includeArchived = false) {
 export function loadInventoryItemMetadata(ref: InventoryMetadataItemRef) {
   const url = itemPath(ref)
   return etagRequest(url, itemCache, inventoryItemMetadataSchema)
+}
+
+export type InventoryMetadataProjectQuery = Readonly<{
+  scope?: 'inventory' | 'systems'
+  definitionIds?: readonly number[]
+  filters?: readonly InventoryMetadataFilter[]
+  includeSearch?: boolean
+}>
+
+export function loadInventoryMetadataProjectProjection(projectId: number, query: InventoryMetadataProjectQuery) {
+  return etagPost(
+    `/api/projects/${projectId}/inventory-metadata/query`,
+    query,
+    projectionCache,
+    inventoryMetadataProjectProjectionSchema,
+  )
 }
 
 const definitionResponse = z.strictObject({ definition: customFieldDefinitionSchema })

@@ -137,3 +137,53 @@ export type InventoryItemMetadataInput = Readonly<{
   }>[]
   tagIds: readonly number[]
 }>
+
+export type InventoryMetadataFilter =
+  | Readonly<{ operator: 'tags-any'; tagIds: readonly number[] }>
+  | Readonly<{ operator: 'has-tags' | 'no-tags' }>
+  | Readonly<{ operator: 'contains'; definitionId: number; text: string }>
+  | Readonly<{ operator: 'set' | 'unset' | 'yes' | 'no'; definitionId: number }>
+  | Readonly<{ operator: 'range'; definitionId: number; minimum?: number | null; maximum?: number | null }>
+  | Readonly<{ operator: 'date-range'; definitionId: number; after?: string | null; before?: string | null }>
+  | Readonly<{ operator: 'options'; definitionId: number; optionIds: readonly number[] }>
+
+const inventoryMetadataProjectionTagSchema = z.strictObject({
+  id: positiveId,
+  name: z.string().trim().min(1).max(80),
+  colorToken: z.enum(inventoryMetadataColorTokens),
+})
+
+const inventoryMetadataProjectionValueSchema = z.strictObject({
+  value: z.union([z.string(), z.number().finite(), z.boolean()]).nullable(),
+  optionIds: z.array(positiveId),
+  display: z.string().nullable(),
+})
+
+export const inventoryMetadataProjectProjectionSchema = z.strictObject({
+  projectId: positiveId,
+  rows: z.array(z.strictObject({
+    itemId: positiveId,
+    itemType: z.string().trim().min(1),
+    legacyId: positiveId,
+    tags: z.array(inventoryMetadataProjectionTagSchema),
+    values: z.record(z.string(), inventoryMetadataProjectionValueSchema),
+    searchText: z.string().optional(),
+  })),
+  matchingItemIds: z.array(positiveId),
+})
+
+export type InventoryMetadataProjectProjection = z.infer<typeof inventoryMetadataProjectProjectionSchema>
+export type InventoryMetadataProjectionRow = InventoryMetadataProjectProjection['rows'][number]
+export type InventoryMetadataProjectionTag = z.infer<typeof inventoryMetadataProjectionTagSchema>
+export type InventoryMetadataProjectionValue = z.infer<typeof inventoryMetadataProjectionValueSchema>
+
+export function readyInventoryMetadataFilters(filters: readonly InventoryMetadataFilter[]) {
+  return filters.filter((filter) => {
+    if (filter.operator === 'contains') return filter.text.trim().length > 0
+    if (filter.operator === 'range') return filter.minimum != null || filter.maximum != null
+    if (filter.operator === 'date-range') return Boolean(filter.after || filter.before)
+    if (filter.operator === 'options') return filter.optionIds.length > 0
+    if (filter.operator === 'tags-any') return filter.tagIds.length > 0
+    return true
+  })
+}

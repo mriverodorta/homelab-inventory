@@ -6,7 +6,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { cn } from '@/lib/utils'
 import type { CustomFieldDefinition, InventoryTag } from '@/types/inventory-metadata'
 import type { InventoryMetadataDraft, InventoryMetadataDraftValue } from './inventory-metadata-draft'
-import { COLOR_STYLES } from '@/components/settings/inventory-metadata/metadata-presentation'
+import { COLOR_STYLES } from './metadata-presentation'
 
 function inputValue(value: InventoryMetadataDraftValue | undefined) {
   return typeof value === 'string' || typeof value === 'number' ? String(value) : ''

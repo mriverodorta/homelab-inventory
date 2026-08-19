@@ -27,6 +27,8 @@ import {
 } from 'lucide-react'
 import { useEffect, useMemo, useState, type CSSProperties } from 'react'
 import { InventoryActionsMenu } from '@/components/inventory-actions-menu'
+import { InventoryMetadataFilters } from '@/components/inventory/inventory-metadata-filters'
+import { InventoryTagPreview } from '@/components/inventory/inventory-tag-preview'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -52,9 +54,15 @@ import { filterAndSortInventory, isItemAssigned } from '@/lib/sort'
 import type { AvailableGlobalInventoryItem, InventoryItemInput } from '@/lib/db'
 import type { InventoryFilters, InventoryStatusFilter } from '@/lib/sort'
 import type { InventoryItem, InventoryType, ProjectState } from '@/types/inventory'
-import type { InventoryItemMetadataInput } from '@/types/inventory-metadata'
+import {
+  readyInventoryMetadataFilters,
+  type InventoryItemMetadataInput,
+  type InventoryMetadataFilter,
+  type InventoryMetadataProjectionRow,
+} from '@/types/inventory-metadata'
 import { DEFAULT_REGISTRY_STATE, type RegistryState } from '@/types/registry'
 import { usePermission } from '@/hooks/use-permission'
+import { useInventoryMetadataCatalog, useInventoryMetadataProjectProjection } from '@/lib/inventory-metadata-query'
 import { prefetchCatalogFacets } from '@/hooks/use-registry'
 import { ComputeHostIcon } from '@/components/compute-host-icon'
 
@@ -125,6 +133,7 @@ function DraggableInventoryItem({
   canDelete,
   canDrag,
   busy,
+  metadata,
 }: {
   item: InventoryItem
   assigned: boolean
@@ -146,6 +155,7 @@ function DraggableInventoryItem({
   canArchive: boolean
   canDelete: boolean
   canDrag: boolean
+  metadata?: InventoryMetadataProjectionRow
 }) {
   const itemRuntimeKey = runtimeItemKey(item)
   const archived = isArchivedItem(item)
@@ -188,6 +198,7 @@ function DraggableInventoryItem({
         <div className="flex items-center justify-between gap-2">
           <div className="min-w-0">
             <div className="truncate text-sm font-semibold">{item.name}</div>
+            {metadata?.tags.length ? <InventoryTagPreview tags={metadata.tags} compact /> : null}
             {itemSpec ? <div className="mt-0.5 truncate text-xs text-[#cfc6b8]">{itemSpec}</div> : null}
           </div>
           <TypeIcon type={item.type} item={item} />
@@ -299,10 +310,30 @@ export function InventorySidebar({
     status: 'available',
     sort: 'type',
   })
+  const [metadataFilters, setMetadataFilters] = useState<InventoryMetadataFilter[]>([])
   const [selectionMode, setSelectionMode] = useState(false)
   const [selectedItemIds, setSelectedItemIds] = useState<Set<string>>(() => new Set())
   const [collapsedTypes, setCollapsedTypes] = useState<Set<InventoryType>>(() => new Set())
-  const items = filterAndSortInventory(project, filters)
+  const projectId = project.metadata.projectId ?? 1
+  const metadataCatalog = useInventoryMetadataCatalog()
+  const readyMetadataFilters = useMemo(() => readyInventoryMetadataFilters(metadataFilters), [metadataFilters])
+  const metadataProjection = useInventoryMetadataProjectProjection(projectId, {
+    scope: 'inventory',
+    includeSearch: true,
+    filters: readyMetadataFilters,
+  })
+  const metadataByKey = useMemo(() => new Map(
+    (metadataProjection.data?.rows ?? []).map((row) => [`${row.itemType}:${row.legacyId}`, row]),
+  ), [metadataProjection.data?.rows])
+  const metadataItemKeys = useMemo(() => readyMetadataFilters.length === 0
+    ? null
+    : new Set((metadataProjection.data?.rows ?? [])
+      .filter((row) => metadataProjection.data?.matchingItemIds.includes(row.itemId))
+      .map((row) => `${row.itemType}:${row.legacyId}`)), [metadataProjection.data, readyMetadataFilters.length])
+  const metadataSearchText = useMemo(() => new Map(
+    [...metadataByKey].map(([key, row]) => [key, row.searchText ?? '']),
+  ), [metadataByKey])
+  const items = filterAndSortInventory(project, { ...filters, metadataItemKeys, metadataSearchText })
   const selectedItems = useMemo(
     () => items.filter((item) => selectedItemIds.has(runtimeItemKey(item))),
     [items, selectedItemIds],
@@ -472,6 +503,17 @@ export function InventorySidebar({
             </SelectContent>
           </Select>
         </div>
+        {metadataCatalog.data && (metadataCatalog.data.definitions.length > 0 || metadataCatalog.data.tags.length > 0) ? (
+          <div className="mt-2 flex items-center gap-2">
+            <InventoryMetadataFilters
+              catalog={metadataCatalog.data}
+              filters={metadataFilters}
+              onChange={setMetadataFilters}
+              dark
+            />
+            {metadataProjection.isFetching ? <span className="text-xs text-[#b9b0a4]">Updating...</span> : null}
+          </div>
+        ) : null}
         {selectionMode ? (
           <div className="mt-3 rounded-md border border-white/10 bg-[#11151b] p-2.5">
             <div className="flex items-center justify-between gap-2">
@@ -581,6 +623,7 @@ export function InventorySidebar({
                       canArchive={canArchive}
                       canDelete={canDelete}
                       canDrag={isCanvasEquipmentType(item.type) ? canEditCanvas : canEdit}
+                      metadata={metadataByKey.get(runtimeItemKey(item))}
                     />
                   ))}
                 </div>
@@ -598,7 +641,7 @@ export function InventorySidebar({
         open={addDialogOpen}
         onOpenChange={setAddDialogOpen}
         onCreate={onCreateItem}
-        projectId={project.metadata.projectId ?? 1}
+        projectId={projectId}
         globalInventoryEnabled={globalInventoryEnabled}
         onAddGlobalInventory={onAddGlobalInventory}
         registry={registry}

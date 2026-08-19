@@ -1,6 +1,7 @@
 import express from 'express'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { InventoryMetadataError } from './contract.mjs'
+import { InventoryMetadataFilterService } from './filter-service.mjs'
 import { registerInventoryMetadataRoutes } from './routes.mjs'
 
 const servers = []
@@ -32,6 +33,7 @@ async function fixture() {
     replaceItemMetadata: vi.fn(() => ({ itemId: 91, affectedProjectIds: [1, 3] })),
   }
   const store = {
+    core: { database: {} },
     inventoryMetadata: repository,
     inventoryScope: { resolve: vi.fn(() => 91) },
     getInventoryItemMetadata: vi.fn(() => ({ itemId: 91, definitions: [definition], values: [], tags: [] })),
@@ -76,6 +78,19 @@ describe('inventory metadata routes', () => {
     })
     expect(second.status).toBe(304)
     expect(repository.listCatalog).toHaveBeenCalledTimes(2)
+  })
+
+  it('returns an ETag-aware project metadata projection', async () => {
+    const projectProjection = vi.spyOn(InventoryMetadataFilterService.prototype, 'projectProjection')
+      .mockReturnValue({ projectId: 1, rows: [], matchingItemIds: [] })
+    const { url } = await fixture()
+    const first = await json(url, '/api/projects/1/inventory-metadata/query', {
+      method: 'POST', body: JSON.stringify({ scope: 'systems', definitionIds: [4] }),
+    })
+    expect(first.status).toBe(200)
+    expect(await first.json()).toEqual({ projectId: 1, rows: [], matchingItemIds: [] })
+    expect(projectProjection).toHaveBeenCalledWith(1, { scope: 'systems', definitionIds: [4] })
+    projectProjection.mockRestore()
   })
 
   it('exposes definition and tag lifecycle operations', async () => {

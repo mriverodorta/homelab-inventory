@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto'
 import { InventoryMetadataError } from './contract.mjs'
+import { InventoryMetadataFilterService } from './filter-service.mjs'
 import {
   inventoryMetadataCatalogPayload,
   inventoryMetadataItemPayload,
@@ -106,6 +107,16 @@ export function registerInventoryMetadataRoutes(app, { withStore, eventBus = nul
   app.get('/api/inventory-metadata/catalog', (request, response) => {
     withMetadataStore(withStore, request, response, 'Unable to load inventory metadata.', (_store, repository) => {
       const payload = publicCatalog(repository.listCatalog({ includeArchived: request.query.includeArchived === 'true' }))
+      return etagResponse(request, response, payload)
+    })
+  })
+
+  app.post('/api/projects/:projectId/inventory-metadata/query', (request, response) => {
+    withMetadataStore(withStore, request, response, 'Unable to query inventory metadata.', (store) => {
+      const payload = new InventoryMetadataFilterService(store.core.database).projectProjection(
+        positiveId(request.params.projectId, 'Project ID'),
+        request.body,
+      )
       return etagResponse(request, response, payload)
     })
   })

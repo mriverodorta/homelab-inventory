@@ -16,6 +16,8 @@ export type InventoryFilters = {
   type: InventoryType | 'all'
   status: InventoryStatusFilter
   sort: SortKey
+  metadataItemKeys?: ReadonlySet<string> | null
+  metadataSearchText?: ReadonlyMap<string, string>
 }
 
 function numericSpec(item: InventoryItem, keys: string[]): number {
@@ -48,6 +50,9 @@ export function filterAndSortInventory(
     .filter((item) => {
       const assigned = isItemAssigned(project, item)
       const archived = isArchivedItem(item)
+      const itemKey = runtimeItemKey(item)
+
+      if (filters.metadataItemKeys && !filters.metadataItemKeys.has(itemKey)) return false
 
       if (filters.type !== 'all' && item.type !== filters.type) {
         return false
@@ -69,7 +74,7 @@ export function filterAndSortInventory(
         return true
       }
 
-      return [item.name, item.manufacturer, item.model, item.subtype]
+      return [item.name, item.manufacturer, item.model, item.subtype, filters.metadataSearchText?.get(itemKey)]
         .filter(Boolean)
         .join(' ')
         .toLowerCase()

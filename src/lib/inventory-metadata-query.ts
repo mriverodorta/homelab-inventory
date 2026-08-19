@@ -13,10 +13,35 @@ export const inventoryMetadataKeys = Object.freeze({
   catalogs: () => [...inventoryMetadataKeys.root, 'catalog'] as const,
   catalog: (includeArchived = false) => [...inventoryMetadataKeys.catalogs(), { includeArchived }] as const,
   projectItems: (projectId: number) => [...inventoryMetadataKeys.root, 'project', projectId, 'items'] as const,
+  projectProjections: (projectId: number) => [...inventoryMetadataKeys.root, 'project', projectId, 'projections'] as const,
+  projectProjection: (projectId: number, query: api.InventoryMetadataProjectQuery) => (
+    [...inventoryMetadataKeys.projectProjections(projectId), query] as const
+  ),
   item: (projectId: number, ref: InventoryMetadataItemRef) => (
     [...inventoryMetadataKeys.projectItems(projectId), ref.type, ref.id] as const
   ),
 })
+
+export function useInventoryMetadataProjectProjection(
+  projectId: number,
+  query: api.InventoryMetadataProjectQuery,
+  enabled = true,
+) {
+  const queryClient = useQueryClient()
+  const projection = useQuery({
+    queryKey: inventoryMetadataKeys.projectProjection(projectId, query),
+    queryFn: () => api.loadInventoryMetadataProjectProjection(projectId, query),
+    enabled,
+    staleTime: Number.POSITIVE_INFINITY,
+  })
+  useLiveEventTopic({
+    topic: `inventory-metadata:${projectId}`,
+    enabled,
+    onEvent: () => void queryClient.invalidateQueries({ queryKey: inventoryMetadataKeys.projectProjections(projectId) }),
+    onResync: () => void queryClient.invalidateQueries({ queryKey: inventoryMetadataKeys.projectProjections(projectId) }),
+  })
+  return projection
+}
 
 export function useInventoryMetadataCatalog({ enabled = true, includeArchived = false } = {}) {
   const queryClient = useQueryClient()
