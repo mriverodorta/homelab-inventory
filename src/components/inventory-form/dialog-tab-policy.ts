@@ -12,6 +12,7 @@ export const INVENTORY_DIALOG_TAB_IDS = [
   'ports',
   'power',
   'smart',
+  'metadata',
 ] as const
 
 export type InventoryDialogTabId = (typeof INVENTORY_DIALOG_TAB_IDS)[number]
@@ -108,6 +109,7 @@ export const INVENTORY_DIALOG_ERROR_FIELDS: Readonly<
   ports: ['portGroups'],
   power: ['motherboardPowerConnectors'],
   smart: ['smartDisplayName', 'smartManagementIp', 'smartMacAddress', 'smartOutletNames'],
+  metadata: [],
 }
 
 function includesInventoryType(

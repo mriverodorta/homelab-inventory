@@ -105,7 +105,8 @@ export function registerInventoryRoutes(app, { withStore, onHostsDeleted = null 
       const wrapped = request.body?.item && typeof request.body.item === 'object'
       const item = wrapped ? request.body.item : request.body
       const quantity = wrapped ? (request.body.quantity ?? 1) : 1
-      response.status(201).json(store.createInventoryItemsForProject(projectId(request), item, quantity))
+      const metadata = wrapped ? (request.body.metadata ?? null) : null
+      response.status(201).json(store.createInventoryItemsForProject(projectId(request), item, quantity, metadata))
     })
   })
 
@@ -142,9 +143,10 @@ export function registerInventoryRoutes(app, { withStore, onHostsDeleted = null 
       const wrapped = request.body?.item && typeof request.body.item === 'object'
       const item = wrapped ? request.body.item : request.body
       const quantity = wrapped ? (request.body.quantity ?? 1) : 1
+      const metadata = wrapped ? (request.body.metadata ?? null) : null
       response.status(201).json(scoped
-        ? store.createScopedInventoryItems(item, quantity)
-        : store.createInventoryItems(item, quantity))
+        ? store.createScopedInventoryItems(item, quantity, metadata)
+        : store.createInventoryItems(item, quantity, metadata))
     })
   })
 

@@ -1,3 +1,4 @@
+import { useContext, useState } from 'react'
 import {
   inventoryTypeHasPorts,
   type InventoryFormValues,
@@ -18,6 +19,8 @@ import {
 import type { InventoryItem, ProjectState } from '@/types/inventory'
 import type { AgentStorageItemTelemetry } from '@/types/agent'
 import { StorageUsageTab } from '@/components/inspector/equipment/storage-usage-tab'
+import { InventoryItemMetadataEditor } from '@/components/inventory-metadata/inventory-item-metadata-editor'
+import { InspectorInventoryMetadataContext } from '@/components/inspector/inspector-inventory-metadata-context'
 
 export type ComponentInspectorTabsProps = InventorySpecsTabContentProps & {
   project: ProjectState
@@ -45,12 +48,14 @@ export function ComponentInspectorTabs({
   agentSuggestions,
   storageTelemetry,
 }: ComponentInspectorTabsProps) {
+  const metadata = useContext(InspectorInventoryMetadataContext)
+  const [activeTab, setActiveTab] = useState('specs')
   if (!componentTypes.has(values.type)) return null
 
   const hasPortsTab = inventoryTypeHasPorts(values.type, values.networkTechnology)
 
   return (
-    <Tabs defaultValue="specs" className="min-w-0 gap-3">
+    <Tabs value={activeTab} onValueChange={setActiveTab} className="min-w-0 gap-3">
       <TabsList
         variant="line"
         aria-label="Component inspector sections"
@@ -84,6 +89,14 @@ export function ComponentInspectorTabs({
         >
           Compatibility
         </TabsTrigger>
+        {metadata ? (
+          <TabsTrigger
+            value="metadata"
+            className="!h-9 flex-none rounded-none px-2 text-[11px] font-black uppercase tracking-[0.09em] text-[#75695d] data-active:text-[#20242c]"
+          >
+            Metadata
+          </TabsTrigger>
+        ) : null}
       </TabsList>
 
       <InventoryFormStatus
@@ -128,6 +141,16 @@ export function ComponentInspectorTabs({
           onSelectOpenChange={onSelectOpenChange}
         />
       </TabsContent>
+      {metadata ? (
+        <TabsContent value="metadata" className="m-0 min-w-0">
+          <InventoryItemMetadataEditor
+            projectId={metadata.projectId}
+            item={metadata.item}
+            canEdit={metadata.canEdit}
+            enabled={activeTab === 'metadata'}
+          />
+        </TabsContent>
+      ) : null}
     </Tabs>
   )
 }

@@ -52,6 +52,7 @@ import { filterAndSortInventory, isItemAssigned } from '@/lib/sort'
 import type { AvailableGlobalInventoryItem, InventoryItemInput } from '@/lib/db'
 import type { InventoryFilters, InventoryStatusFilter } from '@/lib/sort'
 import type { InventoryItem, InventoryType, ProjectState } from '@/types/inventory'
+import type { InventoryItemMetadataInput } from '@/types/inventory-metadata'
 import { DEFAULT_REGISTRY_STATE, type RegistryState } from '@/types/registry'
 import { usePermission } from '@/hooks/use-permission'
 import { prefetchCatalogFacets } from '@/hooks/use-registry'
@@ -236,7 +237,7 @@ function DraggableInventoryItem({
 export type InventorySidebarProps = {
   project: ProjectState
   onSelect: (itemId: string) => void
-  onCreateItem: (item: InventoryItemInput, quantity: number) => Promise<void>
+  onCreateItem: (item: InventoryItemInput, quantity: number, metadata?: InventoryItemMetadataInput) => Promise<void>
   onDuplicateItem?: (item: InventoryItem) => void
   onDuplicateItemToProject?: (item: InventoryItem) => void
   onChangeItemScope?: (item: InventoryItem, scope: 'global' | 'project') => void

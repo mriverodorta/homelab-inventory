@@ -11,6 +11,7 @@ import type { InspectorPanelProps } from '@/components/inspector/inspector-contr
 import { StatusBadge } from '@/components/inspector/inspector-status'
 import { itemTypeLabel } from '@/components/inspector/shared/item-formatters'
 import { InspectorTopologyContext } from '@/components/inspector/inspector-topology-context'
+import { InspectorInventoryMetadataContext } from '@/components/inspector/inspector-inventory-metadata-context'
 import { ConnectionDetails } from '@/components/inspector/connections/connection-editor'
 import { InspectorConnectionSelectionContext } from '@/components/inspector/connections/connection-selection-context'
 import {
@@ -266,6 +267,11 @@ export function InspectorPanel({
             statusIsError: topologyStatusIsError,
           }}>
             <AuditIgnoreContext.Provider value={canManageAudit ? onSetWarningIgnored : null}>
+              <InspectorInventoryMetadataContext.Provider value={selectedItem ? {
+                projectId: project.metadata.projectId ?? 1,
+                item: { type: selectedItem.type, id: selectedItem.id },
+                canEdit: canEditInventory,
+              } : null}>
               <section className="space-y-4">
           {selectedConnection ? (
             <ConnectionDetails
@@ -399,6 +405,7 @@ export function InspectorPanel({
             </div>
           )}
               </section>
+              </InspectorInventoryMetadataContext.Provider>
             </AuditIgnoreContext.Provider>
           </InspectorTopologyContext.Provider>
         </InspectorConnectionSelectionContext.Provider>

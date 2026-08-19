@@ -35,6 +35,7 @@ import type {
   NasPowerConfigurationImpact,
   ProjectState,
 } from '@/types/inventory'
+import type { InventoryItemMetadataInput } from '@/types/inventory-metadata'
 
 type InventoryLifecycleRequest = {
   action: InventoryLifecycleAction
@@ -101,9 +102,9 @@ export function useInventoryLifecycle({
   const [scopeActionBusy, setScopeActionBusy] = useState(false)
   const [scopeActionError, setScopeActionError] = useState<string | null>(null)
 
-  async function createItem(item: InventoryItemInput, quantity: number) {
+  async function createItem(item: InventoryItemInput, quantity: number, metadata?: InventoryItemMetadataInput) {
     const currentProject = projectRef.current
-    const nextProject = await createInventoryItems(item, quantity, scope)
+    const nextProject = await createInventoryItems(item, quantity, scope, metadata)
     const previousItemIds = new Set(Object.keys(currentProject?.items ?? {}))
     const createdItemId = Object.keys(nextProject.items).find((itemId) => !previousItemIds.has(itemId))
 

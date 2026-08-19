@@ -911,13 +911,24 @@ export class SqliteHomelabInventoryStore {
     return this.getProject()
   }
 
-  createInventoryItems(input: Row, quantity = 1) {
+  createInventoryItems(input: Row, quantity = 1, metadata: Row | null = null) {
     const { type, records } = this.prepareInventoryCreation(input, quantity, this.projectId)
-    this.commitCanonicalMutation(() => this.insertInventoryRecords(type, records, this.projectId, 'global'))
+    this.commitCanonicalMutation(() => {
+      this.insertInventoryRecords(type, records, this.projectId, 'global')
+      if (metadata) {
+        for (const item of records) {
+          this.inventoryMetadata.replaceItemMetadata(
+            this.inventoryScope.resolve(type, item.id),
+            metadata,
+            { transaction: false },
+          )
+        }
+      }
+    })
     return this.getProject()
   }
 
-  createInventoryItemsForProject(projectId: number, input: Row, quantity = 1) {
+  createInventoryItemsForProject(projectId: number, input: Row, quantity = 1, metadata: Row | null = null) {
     const workbook = this.projects.getWorkbook(projectId)
     const scope = input?.scope === 'global' ? 'global' : 'project'
     if (scope === 'global' && !workbook.project.includesGlobalInventory) {
@@ -931,13 +942,22 @@ export class SqliteHomelabInventoryStore {
     const at = this.now()
     this.core.database.transaction(() => {
       this.insertInventoryRecords(type, records, projectId, scope)
+      if (metadata) {
+        for (const item of records) {
+          this.inventoryMetadata.replaceItemMetadata(
+            this.inventoryScope.resolve(type, item.id),
+            metadata,
+            { transaction: false },
+          )
+        }
+      }
       bumpProjectRevision(this.context, projectId, at)
     }).immediate()
     this.invalidateProjectReadModels(projectId)
     return this.getWorkspace(projectId, workbook.defaultWorkspaceId)
   }
 
-  createScopedInventoryItems(input: Row, quantity = 1) {
+  createScopedInventoryItems(input: Row, quantity = 1, metadata: Row | null = null) {
     const scope = input?.scope === 'global' ? 'global' : 'project'
     const workbook = this.projects.getWorkbook(this.projectId)
     if (scope === 'global' && !workbook.project.includesGlobalInventory) {
@@ -950,6 +970,15 @@ export class SqliteHomelabInventoryStore {
     const { type, records } = this.prepareInventoryCreation(input, quantity, this.projectId)
     this.commitCanonicalMutation(() => {
       this.insertInventoryRecords(type, records, this.projectId, scope)
+      if (metadata) {
+        for (const item of records) {
+          this.inventoryMetadata.replaceItemMetadata(
+            this.inventoryScope.resolve(type, item.id),
+            metadata,
+            { transaction: false },
+          )
+        }
+      }
     })
     return this.getProject()
   }

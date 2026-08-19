@@ -9,6 +9,7 @@ import type {
   NasPowerConfigurationChangeResult,
   ProjectState,
 } from '@/types/inventory'
+import type { InventoryItemMetadataInput } from '@/types/inventory-metadata'
 
 export type InventoryItemInput = Omit<InventoryItem, 'id' | 'key'>
 export type WorkspaceMutationScope = Readonly<{ projectId: number; workspaceId: number }>
@@ -69,10 +70,11 @@ export async function createInventoryItems(
   item: InventoryItemInput,
   quantity = 1,
   scope?: WorkspaceMutationScope | null,
+  metadata?: InventoryItemMetadataInput,
 ): Promise<ProjectState> {
   return apiRequest<ProjectState>(withWorkspaceScope('/api/inventory/items', scope), {
     method: 'POST',
-    body: JSON.stringify({ item, quantity }),
+    body: JSON.stringify({ item, quantity, ...(metadata ? { metadata } : {}) }),
   })
 }
 

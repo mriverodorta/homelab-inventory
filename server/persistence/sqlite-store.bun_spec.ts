@@ -212,6 +212,41 @@ describe('SQLite Homelab Inventory store facade', () => {
     }
   })
 
+  test('creates multiple inventory records with private metadata atomically', async () => {
+    const store = await emptyFixtureStore()
+    try {
+      const definition = store.inventoryMetadata.createDefinition({
+        name: 'Asset owner', fieldType: 'shortText', applicableItemTypes: ['server'],
+      })
+      const incompatible = store.inventoryMetadata.createDefinition({
+        name: 'CPU batch', fieldType: 'shortText', applicableItemTypes: ['cpu'],
+      })
+      const tag = store.inventoryMetadata.createTag({ name: 'Production', colorToken: 'green' })
+      const beforeRevision = store.getProject().revision
+
+      store.createInventoryItems({ type: 'server', name: 'Metadata host' }, 2, {
+        values: [{ definitionId: definition.id, value: 'Infrastructure' }],
+        tagIds: [tag.id],
+      })
+
+      expect(store.getProject().revision).toBe(beforeRevision + 1)
+      for (const id of [1, 2]) {
+        expect(store.getInventoryItemMetadata({ type: 'server', id })).toMatchObject({
+          values: [{ definitionId: definition.id, value: 'Infrastructure' }],
+          tags: [{ id: tag.id, name: 'Production' }],
+        })
+      }
+
+      expect(() => store.createInventoryItems({ type: 'server', name: 'Rejected host' }, 1, {
+        values: [{ definitionId: incompatible.id, value: 'Batch A' }],
+        tagIds: [],
+      })).toThrow(/not applicable/iu)
+      expect(Object.values(store.getProject().items).filter((item: any) => item.type === 'server')).toHaveLength(2)
+    } finally {
+      store.close()
+    }
+  })
+
   test('preserves private metadata through archive and restore and cascades it on permanent item deletion', async () => {
     const store = await emptyFixtureStore()
     try {

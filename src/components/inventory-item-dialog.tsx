@@ -39,6 +39,12 @@ import { PortGroupsEditor } from '@/components/inventory-form/port-groups-editor
 import { InventoryCommonFields, InventoryTypeFields } from '@/components/inventory-form/type-fields'
 import { SmartPowerStripFields } from '@/components/inventory-form/smart-power-strip-fields'
 import { SmartPowerStripDisableDialog } from '@/components/smart-power-strip-disable-dialog'
+import { InventoryMetadataDraftPanel } from '@/components/inventory-metadata/inventory-metadata-draft-panel'
+import {
+  EMPTY_INVENTORY_METADATA_DRAFT,
+  inventoryMetadataInput,
+  type InventoryMetadataDraft,
+} from '@/components/inventory-metadata/inventory-metadata-draft'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import {
@@ -61,6 +67,7 @@ import type { InventoryItemInput } from '@/lib/db'
 import type { AvailableGlobalInventoryItem } from '@/lib/db'
 import { cn } from '@/lib/utils'
 import type { InventoryType } from '@/types/inventory'
+import type { InventoryItemMetadataInput } from '@/types/inventory-metadata'
 import {
   DEFAULT_REGISTRY_STATE,
   type InventorySourceTab,
@@ -78,6 +85,7 @@ const DIALOG_TAB_LABELS: Record<InventoryDialogTabId, string> = {
   ports: 'Ports',
   power: 'Power',
   smart: 'Smart',
+  metadata: 'Metadata',
 }
 
 function availableDefaultSource(registry: RegistryState): InventorySourceTab {
@@ -101,7 +109,7 @@ export function InventoryItemDialog({
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
-  onCreate: (item: InventoryItemInput, quantity: number) => Promise<void>
+  onCreate: (item: InventoryItemInput, quantity: number, metadata?: InventoryItemMetadataInput) => Promise<void>
   registry?: RegistryState
   onDuplicatePrivateTemplate?: (id: number) => Promise<void>
   onDeletePrivateTemplate?: (id: number) => Promise<void>
@@ -121,6 +129,7 @@ export function InventoryItemDialog({
   const [dirty, setDirty] = useState(false)
   const [discardOpen, setDiscardOpen] = useState(false)
   const [smartDisableOpen, setSmartDisableOpen] = useState(false)
+  const [metadataDraft, setMetadataDraft] = useState<InventoryMetadataDraft>(EMPTY_INVENTORY_METADATA_DRAFT)
   const [formKey, setFormKey] = useState(0)
   const formRef = useRef<HTMLFormElement>(null)
   const quantityErrorId = useId()
@@ -145,6 +154,7 @@ export function InventoryItemDialog({
     setDirty(false)
     setDiscardOpen(false)
     setSmartDisableOpen(false)
+    setMetadataDraft(EMPTY_INVENTORY_METADATA_DRAFT)
     setActiveSource(availableDefaultSource(registry))
     setFormKey((current) => current + 1)
   }
@@ -238,7 +248,10 @@ export function InventoryItemDialog({
     setPending(true)
     setError(null)
     try {
-      await onCreate(inventoryFormValuesToInput(values), parsedQuantity)
+      const metadata = inventoryMetadataInput(metadataDraft)
+      const item = inventoryFormValuesToInput(values)
+      if (metadata.values.length > 0 || metadata.tagIds.length > 0) await onCreate(item, parsedQuantity, metadata)
+      else await onCreate(item, parsedQuantity)
       resetDraft()
       onOpenChange(false)
     } catch (createError) {
@@ -277,7 +290,19 @@ export function InventoryItemDialog({
   }
 
   let activeTabContent: ReactNode
-  if (activeTab === 'cpu') {
+  if (activeTab === 'metadata') {
+    activeTabContent = (
+      <InventoryMetadataDraftPanel
+        itemType={values.type}
+        draft={metadataDraft}
+        disabled={pending}
+        onChange={(next) => {
+          setMetadataDraft(next)
+          markDirty()
+        }}
+      />
+    )
+  } else if (activeTab === 'cpu') {
     activeTabContent = <HostCpuFields {...sharedFieldProps} />
   } else if (activeTab === 'memory') {
     activeTabContent = <HostMemoryFields {...sharedFieldProps} />

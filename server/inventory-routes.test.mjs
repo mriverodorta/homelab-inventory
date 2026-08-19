@@ -86,7 +86,11 @@ describe('inventory lifecycle routes', () => {
 
     try {
       const create = await jsonRequest(url, '/api/inventory/items?projectId=2&workspaceId=7', {
-        method: 'POST', body: JSON.stringify({ item: { type: 'cpu', name: 'CPU' }, quantity: 1 }),
+        method: 'POST', body: JSON.stringify({
+          item: { type: 'cpu', name: 'CPU' },
+          quantity: 1,
+          metadata: { values: [], tagIds: [2] },
+        }),
       })
       const update = await jsonRequest(url, '/api/inventory/items/server/3/properties?projectId=2&workspaceId=7', {
         method: 'PATCH', body: JSON.stringify({ properties: { orientation: 'vertical' } }),
@@ -95,7 +99,11 @@ describe('inventory lifecycle routes', () => {
       expect(create.response.status).toBe(201)
       expect(update.response.status).toBe(200)
       expect(store.forWorkspace).toHaveBeenCalledWith(2, 7)
-      expect(scoped.createScopedInventoryItems).toHaveBeenCalledWith({ type: 'cpu', name: 'CPU' }, 1)
+      expect(scoped.createScopedInventoryItems).toHaveBeenCalledWith(
+        { type: 'cpu', name: 'CPU' },
+        1,
+        { values: [], tagIds: [2] },
+      )
       expect(scoped.updateInventoryItemProperties).toHaveBeenCalledWith(
         { type: 'server', id: 3 },
         { orientation: 'vertical' },
@@ -146,7 +154,7 @@ describe('inventory lifecycle routes', () => {
 
       expect(store.addGlobalInventoryMembership).toHaveBeenCalledWith(2, { type: 'cpu', id: 3 })
       expect(store.listAvailableGlobalInventory).toHaveBeenCalledWith(2)
-      expect(store.createInventoryItemsForProject).toHaveBeenCalledWith(2, { type: 'cpu', name: 'CPU' }, 2)
+      expect(store.createInventoryItemsForProject).toHaveBeenCalledWith(2, { type: 'cpu', name: 'CPU' }, 2, null)
       expect(store.duplicateInventoryToProject).toHaveBeenCalledWith(1, 2, { type: 'cpu', id: 3 })
     } finally {
       await close(server)

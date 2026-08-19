@@ -1,4 +1,6 @@
-import { useEffect, useState, type ReactNode } from 'react'
+import { useContext, useEffect, useState, type ReactNode } from 'react'
+import { InventoryItemMetadataEditor } from '@/components/inventory-metadata/inventory-item-metadata-editor'
+import { InspectorInventoryMetadataContext } from '@/components/inspector/inspector-inventory-metadata-context'
 import {
   Tabs,
   TabsContent,
@@ -23,6 +25,7 @@ export function InspectorTabs({
   requestedValue?: string | null
   status?: ReactNode
 }) {
+  const metadata = useContext(InspectorInventoryMetadataContext)
   const [value, setValue] = useState(defaultValue ?? tabs[0]?.value ?? '')
   useEffect(() => {
     if (requestedValue && tabs.some((tab) => tab.value === requestedValue)) setValue(requestedValue)
@@ -47,6 +50,14 @@ export function InspectorTabs({
             {tab.label}
           </TabsTrigger>
         ))}
+        {metadata ? (
+          <TabsTrigger
+            value="metadata"
+            className="!h-9 flex-none rounded-none px-2 text-[11px] font-black uppercase tracking-[0.09em] text-[#75695d] data-active:text-[#20242c]"
+          >
+            Metadata
+          </TabsTrigger>
+        ) : null}
       </TabsList>
       {status}
       {tabs.map((tab) => (
@@ -54,6 +65,16 @@ export function InspectorTabs({
           {tab.content}
         </TabsContent>
       ))}
+      {metadata ? (
+        <TabsContent value="metadata" className="m-0 min-w-0 space-y-4">
+          <InventoryItemMetadataEditor
+            projectId={metadata.projectId}
+            item={metadata.item}
+            canEdit={metadata.canEdit}
+            enabled={value === 'metadata'}
+          />
+        </TabsContent>
+      ) : null}
     </Tabs>
   )
 }
