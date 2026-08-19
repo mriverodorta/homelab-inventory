@@ -6,6 +6,12 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 
 ## Unreleased
 
+### Fixed
+
+- CPU compatibility now recognizes exact and canonical ordinal generations across mixed host support lists, preventing valid combinations such as the Dell OptiPlex Micro 7010 and Intel Core i7-12700T from being rejected.
+- Existing compatibility findings are rebuilt automatically after upgrade under evaluator version 2 without changing inventory, assignments, resource slots, workspace topology, private fields, or Registry links.
+- Storage compatibility findings now retain the assigned numeric resource ID when a specific bay or slot is incompatible.
+
 ## [0.13.16] - 2026-08-18
 
 ### Fixed

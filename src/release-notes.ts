@@ -469,7 +469,11 @@ const RELEASE_0_13_16_DETAILS: UnreleasedReleaseNotes = {
 
 export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
   highlights: [],
-  fixes: [],
+  fixes: [
+    'CPU compatibility now recognizes exact and canonical ordinal generations across mixed host support lists, preventing valid Dell OptiPlex Micro 7010 and Intel Core i7-12700T combinations from being rejected.',
+    'Existing compatibility findings rebuild automatically after upgrade under evaluator version 2 without changing inventory, assignments, resource slots, workspace topology, private fields, or Registry links.',
+    'Storage compatibility findings now retain the assigned numeric resource ID when a specific bay or slot is incompatible.',
+  ],
   notes: [],
 }
 

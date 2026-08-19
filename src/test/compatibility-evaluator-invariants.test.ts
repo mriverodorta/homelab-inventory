@@ -85,7 +85,10 @@ const storagePair = (actual?: string, accepted: string[] = ['NVMe']): Evaluation
   }),
 })
 
-const expansionPair = (actual?: string, accepted = 'pcie'): EvaluationInput => ({
+const expansionPair = (
+  actual?: 'pcie' | 'ocp',
+  accepted: 'pcie' | 'ocp' = 'pcie',
+): EvaluationInput => ({
   host: host({
     expansionSlots: [{
       id: 1,
@@ -190,11 +193,12 @@ describe('compatibility evaluator invariants', () => {
       cpu: { sockets: ['LGA1700'], generations: ['12th Gen'], maxTdpWatts: 'unknown' },
       memory: { slots: 'two', maxCapacityGb: false },
     })
-    const item = component('cpu', { requirements: { cpu: {
+    const malformedCompatibility = { requirements: { cpu: {
       socket: 'LGA1700',
       generation: '12th Gen',
       tdpWatts: '35 watts',
-    } } } as InventoryItem['compatibility'])
+    } } } as unknown as InventoryItem['compatibility']
+    const item = component('cpu', malformedCompatibility)
     const hostSnapshot = structuredClone(hostItem)
     const componentSnapshot = structuredClone(item)
 
