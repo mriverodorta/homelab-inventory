@@ -1,3 +1,4 @@
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { cleanup, fireEvent, screen } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import { SettingsDialog, type SettingsDialogProps } from '@/components/settings-dialog'
@@ -96,11 +97,27 @@ function createProps(overrides: Partial<SettingsDialogProps> = {}): SettingsDial
 
 function renderSettings(overrides: Partial<SettingsDialogProps> = {}) {
   const props = createProps(overrides)
-  render(<TooltipProvider><SettingsDialog {...props} /></TooltipProvider>)
+  render(
+    <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+      <TooltipProvider><SettingsDialog {...props} /></TooltipProvider>
+    </QueryClientProvider>,
+  )
   return props
 }
 
 describe('SettingsDialog', () => {
+  it('opens directly at a requested settings destination', async () => {
+    renderSettings({
+      destination: {
+        requestId: 1,
+        category: 'inventory-metadata',
+        inventoryMetadataTab: 'tags',
+      },
+    })
+
+    expect(await screen.findByRole('heading', { name: 'Inventory metadata' })).toBeInTheDocument()
+  })
+
   it('renders the responsive shell and general browser preferences', () => {
     const props = renderSettings()
 

@@ -1,3 +1,5 @@
+import { Plus } from 'lucide-react'
+import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
@@ -124,18 +126,44 @@ function FieldControl({
   )
 }
 
+function MetadataEmptyState({
+  message,
+  actionLabel,
+  onAction,
+}: {
+  message: string
+  actionLabel: string
+  onAction?: () => void
+}) {
+  return (
+    <div className="flex min-w-0 flex-col items-start gap-3 rounded-md border border-dashed border-border px-3 py-4 sm:flex-row sm:items-center sm:justify-between">
+      <p className="min-w-0 text-sm text-muted-foreground">{message}</p>
+      {onAction ? (
+        <Button type="button" size="sm" variant="outline" className="shrink-0" onClick={onAction}>
+          <Plus data-icon="inline-start" />
+          {actionLabel}
+        </Button>
+      ) : null}
+    </div>
+  )
+}
+
 export function InventoryMetadataForm({
   definitions,
   tags,
   draft,
   disabled = false,
   onChange,
+  onCreateTag,
+  onCreateField,
 }: {
   definitions: readonly CustomFieldDefinition[]
   tags: readonly InventoryTag[]
   draft: InventoryMetadataDraft
   disabled?: boolean
   onChange: (draft: InventoryMetadataDraft) => void
+  onCreateTag?: () => void
+  onCreateField?: () => void
 }) {
   const activeDefinitions = definitions.filter((definition) => !definition.archivedAt)
   const activeTags = tags.filter((tag) => !tag.archivedAt)
@@ -169,13 +197,18 @@ export function InventoryMetadataForm({
               )
             })}
           </div>
-        ) : <p className="rounded-md border border-dashed border-border px-3 py-4 text-sm text-muted-foreground">No active tags are available.</p>}
+        ) : (
+          <MetadataEmptyState
+            message="No active tags are available."
+            actionLabel="New tag"
+            onAction={onCreateTag}
+          />
+        )}
       </section>
 
       <section className="space-y-4 border-t border-border pt-5">
         <div>
           <h3 className="text-sm font-bold text-foreground">Custom fields</h3>
-          <p className="text-xs text-muted-foreground">Installation-defined data that stays outside Registry catalog content.</p>
         </div>
         {activeDefinitions.length > 0 ? activeDefinitions.map((definition) => {
           const controlId = `inventory-metadata-field-${definition.id}`
@@ -192,7 +225,13 @@ export function InventoryMetadataForm({
             />
           </div>
           )
-        }) : <p className="rounded-md border border-dashed border-border px-3 py-4 text-sm text-muted-foreground">No custom fields apply to this inventory type.</p>}
+        }) : (
+          <MetadataEmptyState
+            message="No custom fields apply to this inventory type."
+            actionLabel="New custom field"
+            onAction={onCreateField}
+          />
+        )}
       </section>
     </div>
   )

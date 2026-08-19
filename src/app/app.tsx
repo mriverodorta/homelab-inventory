@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   type CanvasController,
 } from '@/components/workbench-canvas-contract'
@@ -60,6 +60,7 @@ import { createWorkspaceSurfaceProps } from '@/app/create-workspace-surface-prop
 import { pushHistory } from '@/lib/history'
 import type { ProjectState } from '@/types/inventory'
 import type { InventoryMetadataSavedChange } from '@/types/inventory-metadata'
+import type { InventoryMetadataSettingsTab, SettingsDestination } from '@/types/settings-navigation'
 import type { DomainMutationResult, MutationEffects } from '@/types/domain-mutation'
 import { inventoryMetadataKeys } from '@/lib/inventory-metadata-query'
 import {
@@ -94,8 +95,27 @@ function App() {
   const [canvasOperationLabel, setCanvasOperationLabel] = useState<string | null>(null)
   const [mobileInventoryOpen, setMobileInventoryOpen] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const [settingsDestination, setSettingsDestination] = useState<SettingsDestination | null>(null)
+  const settingsRequestIdRef = useRef(0)
   const [notificationsOpen, setNotificationsOpen] = useState(false)
   const [registryUpdatesOpen, setRegistryUpdatesOpen] = useState(false)
+  const setSettingsDialogOpen = useCallback((open: boolean) => {
+    setSettingsOpen(open)
+    if (!open) setSettingsDestination(null)
+  }, [])
+  const openSettings = useCallback(() => {
+    setSettingsDestination(null)
+    setSettingsOpen(true)
+  }, [])
+  const openInventoryMetadataSettings = useCallback((tab: InventoryMetadataSettingsTab) => {
+    settingsRequestIdRef.current += 1
+    setSettingsDestination({
+      requestId: settingsRequestIdRef.current,
+      category: 'inventory-metadata',
+      inventoryMetadataTab: tab,
+    })
+    setSettingsOpen(true)
+  }, [])
   const {
     query: demoSessionQuery,
     remainingSeconds: demoRemainingSeconds,
@@ -484,7 +504,7 @@ function App() {
     whatsNewVisible: shouldShowWhatsNewDialog,
     canvasControllerRef,
     applyInventorySnapshot: applyInventoryCommandSnapshot,
-    setSettingsOpen,
+    setSettingsOpen: setSettingsDialogOpen,
   })
   const {
     busy: inventoryLifecycleBusy,
@@ -548,7 +568,7 @@ function App() {
     clearNetworkTrace: () => setActiveNetworkTraceEndpoint(null),
     focusCanvasItem,
     setAuditOpen,
-    setSettingsOpen,
+    setSettingsOpen: setSettingsDialogOpen,
     setDesktopInventoryVisible,
     setMobileInventoryOpen,
     updateStatusAvailable: Boolean(updateStatusQuery.data),
@@ -604,6 +624,7 @@ function App() {
 
   const settingsDialogProps = createSettingsDialogProps({
     open: settingsOpen,
+    destination: settingsDestination,
     project,
     saveStatus,
     preferences: workspacePreferences,
@@ -615,7 +636,7 @@ function App() {
     registryActions: registrySettingsActions,
     updateProject,
     updateProjectName,
-    setOpen: setSettingsOpen,
+    setOpen: setSettingsDialogOpen,
     workbook: workbookController,
   })
   const inventoryPanelProps = createInventoryPanelProps({
@@ -662,10 +683,10 @@ function App() {
       },
     },
     width: inventoryWidth,
-    openSettings: () => setSettingsOpen(true),
+    openSettings,
     openMobileSettings: () => {
       setMobileInventoryOpen(false)
-      setSettingsOpen(true)
+      openSettings()
     },
   })
   const lifecycleDialogProps = createLifecycleDialogProps({
@@ -736,6 +757,7 @@ function App() {
     redo: redoProjectChange,
     updateProject,
     inventoryMetadataSaved: handleInventoryMetadataSaved,
+    openInventoryMetadataSettings,
     setValidationMessage,
       showCurrentExampleStep,
     }),
@@ -793,7 +815,7 @@ function App() {
           onUpdate={workbookController.updateWorkspace}
           onArchive={workbookController.archiveWorkspace}
           onReorder={workbookController.reorderWorkspaces}
-          onOpenProjectSettings={() => setSettingsOpen(true)}
+          onOpenProjectSettings={openSettings}
         />
       )}
     >

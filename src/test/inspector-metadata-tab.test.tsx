@@ -5,7 +5,7 @@ import { InspectorInventoryMetadataContext } from '@/components/inspector/inspec
 import { InspectorTabs } from '@/components/inspector/inspector-tabs'
 import { renderWithOpenAuth } from '@/test/open-auth-test-render'
 
-const editor = vi.hoisted(() => vi.fn(({ enabled }: { enabled: boolean }) => (
+const editor = vi.hoisted(() => vi.fn(({ enabled }: { enabled: boolean; onOpenSettings?: (tab: 'fields' | 'tags') => void }) => (
   <div data-testid="metadata-editor">{enabled ? 'Metadata active' : 'Metadata idle'}</div>
 )))
 
@@ -16,8 +16,9 @@ vi.mock('@/components/inventory-metadata/inventory-item-metadata-editor', () => 
 describe('Inspector metadata tab', () => {
   it('keeps metadata disabled until the user selects its shared inspector tab', async () => {
     const user = userEvent.setup()
+    const onOpenSettings = vi.fn()
     renderWithOpenAuth(
-      <InspectorInventoryMetadataContext.Provider value={{ projectId: 1, item: { type: 'server', id: 7 }, canEdit: true }}>
+      <InspectorInventoryMetadataContext.Provider value={{ projectId: 1, item: { type: 'server', id: 7 }, canEdit: true, onOpenSettings }}>
         <InspectorTabs tabs={[{ value: 'specs', label: 'Specs', content: <div>Server specs</div> }]} />
       </InspectorInventoryMetadataContext.Provider>,
     )
@@ -29,5 +30,6 @@ describe('Inspector metadata tab', () => {
     await user.click(screen.getByRole('tab', { name: 'Metadata' }))
 
     expect(screen.getByTestId('metadata-editor')).toHaveTextContent('Metadata active')
+    expect(editor).toHaveBeenLastCalledWith(expect.objectContaining({ onOpenSettings }), undefined)
   })
 })

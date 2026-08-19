@@ -149,6 +149,7 @@ export function ComponentInspectorTabs({
             canEdit={metadata.canEdit}
             enabled={activeTab === 'metadata'}
             onSaved={metadata.onSaved}
+            onOpenSettings={metadata.onOpenSettings}
           />
         </TabsContent>
       ) : null}

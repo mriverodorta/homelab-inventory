@@ -498,6 +498,7 @@ export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
     'Installation-wide custom fields and reusable colored tags now organize inventory with typed private metadata across item forms, Inspector, Inventory search, and Systems.',
     'Systems can show optional Tags and custom-field columns, combine metadata filters with existing host filters, and save those choices as account-synchronized views.',
     'Custom metadata and tags autosave after a short debounce and participate in application-wide Undo or Redo while remaining excluded from Registry contributions, template identity, and catalog refresh merges.',
+    'Empty Inspector metadata sections now open Settings directly on the matching Tags or Custom fields tab for users allowed to manage metadata.',
   ],
   fixes: [
     'Archived metadata remains attached but hidden from ordinary editing, while confirmed permanent deletion removes values and saved-view references atomically.',
@@ -507,6 +508,7 @@ export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
     'Registry catalog definition enrichment updates linked inventory row versions without advancing project topology when assignments, ports, placements, and connections remain unchanged.',
     'Embedded Agent binaries now build with the pinned Go 1.26.7 security patch before the zero-vulnerability container gate runs.',
     'Inventory metadata autosave now reuses its authoritative response and data-bearing SSE event instead of issuing duplicate item reads after every tag or custom-field change.',
+    'Inspector metadata empty states no longer repeat internal Registry-boundary guidance or leave users without a direct creation path.',
   ],
   notes: [
     'Core schema 26 stores normalized custom-field definitions, options, typed values, tags, and item relationships; schema 27 stores Systems metadata columns and filters by numeric IDs.',

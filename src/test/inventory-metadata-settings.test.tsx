@@ -74,10 +74,10 @@ beforeEach(() => {
   mocks.catalog = { revision: 1, definitions: [field()], tags: [tag()] }
 })
 
-function renderSettings() {
+function renderSettings(props: Parameters<typeof InventoryMetadataSettings>[0] = {}) {
   return renderWithOpenAuth(
     <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
-      <InventoryMetadataSettings />
+      <InventoryMetadataSettings {...props} />
     </QueryClientProvider>,
   )
 }
@@ -120,5 +120,19 @@ describe('InventoryMetadataSettings', () => {
 
     expect(screen.getByRole('menuitem', { name: 'Restore' })).toBeInTheDocument()
     expect(screen.getByRole('menuitem', { name: 'Delete permanently' })).toBeInTheDocument()
+  })
+
+  it('selects and updates the requested metadata settings tab', () => {
+    const view = renderSettings({ requestedTab: 'tags', requestId: 1 })
+
+    expect(screen.getByRole('tab', { name: 'Tags' })).toHaveAttribute('aria-selected', 'true')
+
+    view.rerender(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <InventoryMetadataSettings requestedTab="fields" requestId={2} />
+      </QueryClientProvider>,
+    )
+
+    expect(screen.getByRole('tab', { name: 'Custom fields' })).toHaveAttribute('aria-selected', 'true')
   })
 })

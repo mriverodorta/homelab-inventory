@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Plus } from 'lucide-react'
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog'
 import { Button } from '@/components/ui/button'
@@ -8,6 +8,7 @@ import { usePermission } from '@/hooks/use-permission'
 import { InventoryMetadataRequestError } from '@/lib/inventory-metadata-api'
 import { useInventoryMetadataCatalog, useInventoryMetadataMutations } from '@/lib/inventory-metadata-query'
 import type { CustomFieldDefinition, CustomFieldDefinitionInput, InventoryTag, InventoryTagInput } from '@/types/inventory-metadata'
+import type { InventoryMetadataSettingsTab } from '@/types/settings-navigation'
 import { SettingsSection } from '@/components/settings/settings-primitives'
 import { CustomFieldDialog } from './custom-field-dialog'
 import { CustomFieldsTable } from './custom-fields-table'
@@ -21,7 +22,13 @@ function errorMessage(error: unknown) {
   return error instanceof Error ? error.message : 'The metadata change could not be saved.'
 }
 
-export function InventoryMetadataSettings() {
+export function InventoryMetadataSettings({
+  requestedTab,
+  requestId,
+}: {
+  requestedTab?: InventoryMetadataSettingsTab
+  requestId?: number
+} = {}) {
   const canManage = usePermission('inventory.metadata.manage')
   const [includeArchived, setIncludeArchived] = useState(false)
   const catalog = useInventoryMetadataCatalog({ includeArchived })
@@ -40,9 +47,14 @@ export function InventoryMetadataSettings() {
   const [deleteTarget, setDeleteTarget] = useState<DeleteTarget>(null)
   const [deleteError, setDeleteError] = useState<string | null>(null)
   const [pageError, setPageError] = useState<string | null>(null)
+  const [activeTab, setActiveTab] = useState<InventoryMetadataSettingsTab>(requestedTab ?? 'fields')
   const pending = Object.values(mutations).some((mutation) => mutation.isPending)
   const activeDefinitions = useMemo(() => catalog.data?.definitions.filter((definition) => !definition.archivedAt) ?? [], [catalog.data])
   const activeTags = useMemo(() => catalog.data?.tags.filter((tag) => !tag.archivedAt) ?? [], [catalog.data])
+
+  useEffect(() => {
+    if (requestedTab) setActiveTab(requestedTab)
+  }, [requestId, requestedTab])
 
   function openField(definition: CustomFieldDefinition | null) {
     setEditingField(definition)
@@ -158,7 +170,7 @@ export function InventoryMetadataSettings() {
       {catalog.isPending ? <div className="min-h-52 animate-pulse bg-muted/30" aria-label="Loading inventory metadata" /> : null}
       {catalog.error ? <div className="px-4 py-10 text-center text-sm font-semibold text-destructive">{catalog.error.message}</div> : null}
       {catalog.data ? (
-        <Tabs defaultValue="fields">
+        <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as InventoryMetadataSettingsTab)}>
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-4 py-3">
             <TabsList><TabsTrigger value="fields">Custom fields</TabsTrigger><TabsTrigger value="tags">Tags</TabsTrigger></TabsList>
           </div>

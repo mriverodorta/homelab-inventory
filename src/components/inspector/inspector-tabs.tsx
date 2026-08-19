@@ -73,6 +73,7 @@ export function InspectorTabs({
             canEdit={metadata.canEdit}
             enabled={value === 'metadata'}
             onSaved={metadata.onSaved}
+            onOpenSettings={metadata.onOpenSettings}
           />
         </TabsContent>
       ) : null}

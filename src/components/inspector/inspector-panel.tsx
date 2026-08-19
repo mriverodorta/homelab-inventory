@@ -59,6 +59,7 @@ export function InspectorPanel({
   onUpdateProject,
   onUpdateItem,
   onInventoryMetadataSaved,
+  onOpenInventoryMetadataSettings,
   onUpdateItemProperties = () => undefined,
   onDuplicateItem = () => undefined,
   onDuplicateItemToProject,
@@ -99,6 +100,7 @@ export function InspectorPanel({
   const canManageProject = usePermission('project.settings.manage')
   const canManageAudit = usePermission('audit.manage')
   const canViewAgents = usePermission('agents.view')
+  const canManageMetadata = usePermission('inventory.metadata.manage')
   const updateProject = canManageProject ? onUpdateProject : () => undefined
   const updateItem = canEditInventory ? onUpdateItem : () => undefined
   const updateItemProperties = canEditInventory ? onUpdateItemProperties : () => undefined
@@ -273,6 +275,7 @@ export function InspectorPanel({
                 item: { type: selectedItem.type, id: selectedItem.id },
                 canEdit: canEditInventory,
                 onSaved: onInventoryMetadataSaved,
+                onOpenSettings: canManageMetadata ? onOpenInventoryMetadataSettings : undefined,
               } : null}>
               <section className="space-y-4">
           {selectedConnection ? (

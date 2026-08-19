@@ -16,6 +16,7 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 - Systems saved views persist metadata filters and dynamic columns by numeric IDs, refresh through SSE, and keep tags below Name unless the dedicated Tags column is visible.
 - Custom metadata and tags autosave after a short debounce, participate in application-wide Undo or Redo, and remain excluded from Registry contributions, template identity, and catalog refresh merges.
 - Project presentation, workspace presentation, compatibility policy, inventory metadata, and descriptive inventory edits now use independent persistence revisions instead of advancing the workspace-engine topology revision.
+- Empty Inspector metadata sections now open Settings directly on the matching Tags or Custom fields tab for users allowed to manage metadata.
 
 ### Fixed
 
@@ -26,6 +27,7 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 - Registry catalog definition enrichment advances linked inventory row versions without advancing project topology when assignments, ports, placements, and connections are unchanged.
 - Embedded Agent binaries now build with the pinned Go 1.26.7 security patch before the zero-vulnerability container gate runs.
 - Inventory metadata autosave now reuses its authoritative response and data-bearing SSE event instead of issuing duplicate item reads after every tag or custom-field change.
+- Inspector metadata empty states no longer repeat internal Registry-boundary guidance or leave users without a direct creation path.
 
 ## [0.13.19] - 2026-08-19
 

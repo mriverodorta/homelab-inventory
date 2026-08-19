@@ -11,12 +11,14 @@ import {
 } from '@/lib/compatibility-policy'
 import { clampInventoryWidth } from '@/lib/ui-preferences'
 import type { ProjectState } from '@/types/inventory'
+import type { SettingsDestination } from '@/types/settings-navigation'
 import type { useWorkbookController } from '@/app/use-workbook-controller'
 
 type SaveStatus = 'saved' | 'saving' | 'error'
 
 interface CreateSettingsDialogPropsOptions {
   open: boolean
+  destination?: SettingsDestination | null
   project: ProjectState
   saveStatus: SaveStatus
   preferences: ReturnType<typeof useWorkspacePreferences>
@@ -34,6 +36,7 @@ interface CreateSettingsDialogPropsOptions {
 
 export function createSettingsDialogProps({
   open,
+  destination,
   project,
   saveStatus,
   preferences,
@@ -51,6 +54,7 @@ export function createSettingsDialogProps({
   const activeWorkbook = workbook?.activeWorkbook
   return {
     open,
+    destination,
     projectName: activeWorkbook?.project.name ?? project.metadata.name,
     projectWorkspaces: activeWorkbook ? [...activeWorkbook.workspaces] : undefined,
     defaultWorkspaceId: activeWorkbook?.defaultWorkspaceId,

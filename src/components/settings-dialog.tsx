@@ -1,4 +1,4 @@
-import { lazy, Suspense, useRef, useState } from 'react'
+import { lazy, Suspense, useEffect, useRef, useState } from 'react'
 import {
   Cable,
   ArchiveRestore,
@@ -64,6 +64,7 @@ import type { UpdateStatus } from '@/lib/update-api'
 import type { OnboardingStatus } from '@/lib/onboarding-api'
 import type { AuthStatus } from '@/types/auth'
 import type { WorkspaceSummary } from '@/lib/workbook-api'
+import type { SettingsCategory, SettingsDestination } from '@/types/settings-navigation'
 import { cn } from '@/lib/utils'
 import {
   DEFAULT_REGISTRY_STATE,
@@ -76,11 +77,11 @@ const AccessSettings = lazy(() => import('@/components/settings/access-settings'
 const NotificationSettings = lazy(() => import('@/components/settings/notifications/notification-settings').then((module) => ({ default: module.NotificationSettings })))
 const InventoryMetadataSettings = lazy(() => import('@/components/settings/inventory-metadata/inventory-metadata-settings').then((module) => ({ default: module.InventoryMetadataSettings })))
 
-type SettingsCategory = 'general' | 'project' | 'authentication' | 'access' | 'inventory-metadata' | 'registry' | 'notifications' | 'backup-restore' | 'updates' | 'feedback' | 'about'
 type SaveStatus = 'saved' | 'saving' | 'error'
 
 export type SettingsDialogProps = {
   open: boolean
+  destination?: SettingsDestination | null
   projectName: string
   projectWorkspaces?: WorkspaceSummary[]
   defaultWorkspaceId?: number
@@ -935,6 +936,11 @@ export function SettingsDialog(props: SettingsDialogProps) {
   const availableCategories = visibleSettingsCategories(auth.status)
   const activeCategory = availableCategories.some((entry) => entry.id === category) ? category : 'general'
 
+  useEffect(() => {
+    if (!props.open || !props.destination) return
+    setCategory(props.destination.category)
+  }, [props.destination, props.open])
+
   return (
     <Dialog open={props.open} onOpenChange={props.onOpenChange}>
       <DialogContent className="h-[100dvh] max-h-[100dvh] max-w-none grid-rows-[auto_minmax(0,1fr)] gap-0 rounded-none bg-[#fbf9f5] p-0 sm:h-[min(760px,calc(100dvh-2rem))] sm:max-w-5xl sm:rounded-xl">
@@ -956,7 +962,14 @@ export function SettingsDialog(props: SettingsDialogProps) {
               {activeCategory === 'project' ? <ProjectSettings {...props} /> : null}
               {activeCategory === 'authentication' ? <AuthenticationSettings /> : null}
               {activeCategory === 'access' ? <Suspense fallback={<div className="grid min-h-52 place-items-center text-sm font-bold text-[#756d62]">Loading access policy…</div>}><AccessSettings /></Suspense> : null}
-              {activeCategory === 'inventory-metadata' ? <Suspense fallback={<div className="grid min-h-52 place-items-center text-sm font-bold text-[#756d62]">Loading inventory metadata…</div>}><InventoryMetadataSettings /></Suspense> : null}
+              {activeCategory === 'inventory-metadata' ? (
+                <Suspense fallback={<div className="grid min-h-52 place-items-center text-sm font-bold text-[#756d62]">Loading inventory metadata…</div>}>
+                  <InventoryMetadataSettings
+                    requestedTab={props.destination?.inventoryMetadataTab}
+                    requestId={props.destination?.requestId}
+                  />
+                </Suspense>
+              ) : null}
               {activeCategory === 'registry' ? <RegistrySettingsPanel {...props} /> : null}
               {activeCategory === 'notifications' ? <Suspense fallback={<div className="grid min-h-52 place-items-center text-sm font-bold text-[#756d62]">Loading notifications…</div>}><NotificationSettings /></Suspense> : null}
               {activeCategory === 'backup-restore' ? <BackupRestoreSettings /> : null}

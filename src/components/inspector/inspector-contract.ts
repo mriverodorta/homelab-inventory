@@ -10,6 +10,7 @@ import type {
   ProjectState,
 } from '@/types/inventory'
 import type { InventoryMetadataSavedChange } from '@/types/inventory-metadata'
+import type { InventoryMetadataSettingsTab } from '@/types/settings-navigation'
 
 export type InspectorPanelProps = {
   layout?: 'overlay' | 'systems-split'
@@ -35,6 +36,7 @@ export type InspectorPanelProps = {
   onUpdateProject: (project: ProjectState) => void
   onUpdateItem: (itemId: string, input: InventoryItemInput) => void
   onInventoryMetadataSaved?: (change: InventoryMetadataSavedChange) => void | Promise<void>
+  onOpenInventoryMetadataSettings?: (tab: InventoryMetadataSettingsTab) => void
   onUpdateItemProperties?: (
     itemId: string,
     properties: InventoryProperties,

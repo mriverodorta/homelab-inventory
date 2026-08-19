@@ -17,6 +17,7 @@ import type {
   InventoryMetadataItemRef,
   InventoryMetadataSavedChange,
 } from '@/types/inventory-metadata'
+import type { InventoryMetadataSettingsTab } from '@/types/settings-navigation'
 
 export function InventoryItemMetadataEditor({
   projectId,
@@ -24,12 +25,14 @@ export function InventoryItemMetadataEditor({
   enabled,
   canEdit,
   onSaved,
+  onOpenSettings,
 }: {
   projectId: number
   item: InventoryMetadataItemRef
   enabled: boolean
   canEdit: boolean
   onSaved?: (change: InventoryMetadataSavedChange) => void | Promise<void>
+  onOpenSettings?: (tab: InventoryMetadataSettingsTab) => void
 }) {
   const catalog = useInventoryMetadataCatalog({ enabled })
   const metadata = useInventoryItemMetadata(projectId, item, enabled)
@@ -96,6 +99,8 @@ export function InventoryItemMetadataEditor({
         draft={draft}
         disabled={!canEdit || mutations.updateItem.isPending}
         onChange={setDraft}
+        onCreateTag={onOpenSettings ? () => onOpenSettings('tags') : undefined}
+        onCreateField={onOpenSettings ? () => onOpenSettings('fields') : undefined}
       />
       {error ? <p role="alert" className="text-sm font-semibold text-destructive">{error}</p> : null}
       <p className="min-h-5 text-right text-xs text-muted-foreground" aria-live="polite">

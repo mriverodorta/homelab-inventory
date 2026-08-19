@@ -14,6 +14,7 @@ import { runtimeItemKey } from '@/lib/item-keys'
 import { endpointKey } from '@/lib/project'
 import type { ProjectState } from '@/types/inventory'
 import type { InventoryMetadataSavedChange } from '@/types/inventory-metadata'
+import type { InventoryMetadataSettingsTab } from '@/types/settings-navigation'
 
 type CanvasProps = AppWorkspaceSurfaceProps['canvas']
 type InspectorProps = AppWorkspaceSurfaceProps['inspector']
@@ -61,6 +62,7 @@ interface CreateWorkspaceSurfacePropsOptions {
   redo(): void
   updateProject(nextProject: ProjectState): void
   inventoryMetadataSaved?(change: InventoryMetadataSavedChange): void | Promise<void>
+  openInventoryMetadataSettings(tab: InventoryMetadataSettingsTab): void
   setValidationMessage(message: string | null): void
   showCurrentExampleStep(): void
 }
@@ -107,6 +109,7 @@ export function createWorkspaceSurfaceProps({
   redo,
   updateProject,
   inventoryMetadataSaved,
+  openInventoryMetadataSettings,
   setValidationMessage,
   showCurrentExampleStep,
 }: CreateWorkspaceSurfacePropsOptions): AppWorkspaceSurfaceProps {
@@ -142,6 +145,7 @@ export function createWorkspaceSurfaceProps({
     onUpdateProject: updateProject,
     onUpdateItem: inventory.updateItem,
     onInventoryMetadataSaved: inventoryMetadataSaved,
+    onOpenInventoryMetadataSettings: openInventoryMetadataSettings,
     onRequestNasPowerConfigurationChange: (item, powerConfiguration) => {
       void inventory.requestNasPowerConfigurationChange(item, powerConfiguration)
     },
