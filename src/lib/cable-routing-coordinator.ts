@@ -35,6 +35,7 @@ type Listener = (state: CableRoutingState) => void
 type RoutingWork = {
   revision: number
   requests: CableLaneRouteRequest[]
+  force: boolean
 }
 
 function pointsEqual(
@@ -225,7 +226,7 @@ export class CableRoutingCoordinator {
       })
     }
     const revision = ++this.revision
-    this.queuedWork = { revision, requests }
+    this.queuedWork = { revision, requests, force }
     this.updateState({ ...this.state, pending: true, error: null })
     this.dispatchNext()
     return revision
@@ -299,7 +300,8 @@ export class CableRoutingCoordinator {
         hasCacheableOutcome
         && result.repairs.length === 0
         && this.persistCache
-        && (previousFingerprint !== result.cache.geometryFingerprint
+        && (work.force
+          || previousFingerprint !== result.cache.geometryFingerprint
           || result.recalculatedConnectionIds.length > 0)
       ) {
         void this.persistCache(result.cache).catch((error) => {

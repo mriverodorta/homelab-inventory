@@ -90,6 +90,7 @@ describe('useCableRoutingController', () => {
     vi.useFakeTimers()
     const options = {
       routeGeometryReady: true,
+      topologyRevision: 1,
       onResolveConnectionRouteSides: vi.fn(async () => undefined),
       onCanonicalizeConnectionRoutes: vi.fn(async () => undefined),
     }
@@ -132,6 +133,7 @@ describe('useCableRoutingController', () => {
     vi.useFakeTimers()
     const options = {
       routeGeometryReady: true,
+      topologyRevision: 1,
       onResolveConnectionRouteSides: vi.fn(async () => undefined),
       onCanonicalizeConnectionRoutes: vi.fn(async () => undefined),
     }

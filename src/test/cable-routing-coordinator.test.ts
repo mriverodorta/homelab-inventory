@@ -236,6 +236,23 @@ describe('CableRoutingCoordinator', () => {
     expect(coordinator.getState().routes.get(1)).toBe(retained)
   })
 
+  it('persists a forced reconciliation even when the route geometry is unchanged', async () => {
+    const client = new FakeClient()
+    const persistCache = vi.fn(async () => undefined)
+    const coordinator = new CableRoutingCoordinator(
+      client as unknown as DomainEngineClient,
+      { persistCache },
+    )
+    const stableRequest = request(1)
+    coordinator.hydrate(exactCache(stableRequest))
+
+    coordinator.request([stableRequest], true)
+    client.calls[0].resolve(response([cableRoute(1, 0)], []))
+    await vi.waitFor(() => expect(coordinator.getState().pending).toBe(false))
+
+    expect(persistCache).toHaveBeenCalledOnce()
+  })
+
   it('clears rendered routes and ignores an in-flight result after disposal', async () => {
     const client = new FakeClient()
     const coordinator = new CableRoutingCoordinator(client as unknown as DomainEngineClient)

@@ -12,6 +12,7 @@ import { loadRoutingCache, saveRoutingCache } from '@/lib/routing-cache-api'
 type UseCableRoutingControllerOptions = {
   routeRequests: CableLaneRouteRequest[]
   routeGeometryReady: boolean
+  topologyRevision: number
   onResolveConnectionRouteSides(changes: Array<{
     connectionId: number
     sourceSide: ConnectionRouteSide
@@ -25,6 +26,7 @@ const EMPTY_ROUTE_CLEAR_DELAY_MS = 250
 export function useCableRoutingController({
   routeRequests,
   routeGeometryReady,
+  topologyRevision,
   onResolveConnectionRouteSides,
   onCanonicalizeConnectionRoutes,
 }: UseCableRoutingControllerOptions) {
@@ -42,6 +44,7 @@ export function useCableRoutingController({
   const [routingCacheReady, setRoutingCacheReady] = useState(false)
   const routingCoordinatorRef = useRef<CableRoutingCoordinator | null>(null)
   const emptyRouteClearTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const routedTopologyRevisionRef = useRef<number | null>(null)
   const routeSideResolutionSignatureRef = useRef<string | null>(null)
   const routeCanonicalizationSignatureRef = useRef<string | null>(null)
 
@@ -106,9 +109,18 @@ export function useCableRoutingController({
         }
       }
     } else {
-      coordinator.request(routeRequests)
+      const topologyChanged = routedTopologyRevisionRef.current !== null
+        && routedTopologyRevisionRef.current !== topologyRevision
+      routedTopologyRevisionRef.current = topologyRevision
+      coordinator.request(routeRequests, topologyChanged)
     }
-  }, [domainEngine.state.phase, routeGeometryReady, routeRequests, routingCacheReady])
+  }, [
+    domainEngine.state.phase,
+    routeGeometryReady,
+    routeRequests,
+    routingCacheReady,
+    topologyRevision,
+  ])
 
   useEffect(() => {
     if (routingState.pending || routingState.error) return

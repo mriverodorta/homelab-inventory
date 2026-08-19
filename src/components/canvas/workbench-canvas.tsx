@@ -226,6 +226,7 @@ function CanvasViewport({
   const { routingState, enginePhase } = useCableRoutingController({
     routeRequests,
     routeGeometryReady,
+    topologyRevision: project.revision ?? 0,
     onResolveConnectionRouteSides: stableOnResolveConnectionRouteSides,
     onCanonicalizeConnectionRoutes: stableOnCanonicalizeConnectionRoutes,
   })
