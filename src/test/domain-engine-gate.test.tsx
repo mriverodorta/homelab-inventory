@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import { DomainEngineGate } from '@/components/domain-engine-gate'
 import { DomainEngineProvider } from '@/components/domain-engine-provider'
@@ -42,6 +42,70 @@ function stubClient({
 }
 
 describe('DomainEngineGate', () => {
+  it('creates a distinct idle-to-ready lifecycle for every Canvas activation', async () => {
+    vi.useFakeTimers()
+    try {
+      const firstClient = stubClient({ initial: { phase: 'loading', revision: null } })
+      const secondClient = stubClient({ initial: { phase: 'loading', revision: null } })
+      const clients = [firstClient, secondClient]
+      const clientFactory = vi.fn(() => clients.shift()!)
+
+      function Harness() {
+        const engine = useDomainEngine()
+        return (
+          <>
+            <button onClick={() => engine.setEnabled(true)}>Open Canvas</button>
+            <button onClick={() => engine.setEnabled(false)}>Open Systems</button>
+            <output data-testid="engine-state">
+              {JSON.stringify({
+                enabled: engine.enabled,
+                session: engine.session,
+                phase: engine.state.phase,
+              })}
+            </output>
+          </>
+        )
+      }
+
+      render(
+        <DomainEngineProvider
+          enabled={false}
+          clientFactory={clientFactory}
+          eventSourceFactory={eventSourceFactory}
+        >
+          <Harness />
+        </DomainEngineProvider>,
+      )
+
+      expect(screen.getByTestId('engine-state')).toHaveTextContent(
+        JSON.stringify({ enabled: false, session: 0, phase: 'idle' }),
+      )
+
+      fireEvent.click(screen.getByRole('button', { name: 'Open Canvas' }))
+      expect(screen.getByTestId('engine-state')).toHaveTextContent(
+        JSON.stringify({ enabled: true, session: 1, phase: 'loading' }),
+      )
+      expect(firstClient.start).toHaveBeenCalledOnce()
+
+      fireEvent.click(screen.getByRole('button', { name: 'Open Systems' }))
+      expect(screen.getByTestId('engine-state')).toHaveTextContent(
+        JSON.stringify({ enabled: false, session: 1, phase: 'idle' }),
+      )
+
+      fireEvent.click(screen.getByRole('button', { name: 'Open Canvas' }))
+      expect(screen.getByTestId('engine-state')).toHaveTextContent(
+        JSON.stringify({ enabled: true, session: 2, phase: 'loading' }),
+      )
+      expect(secondClient.start).toHaveBeenCalledOnce()
+
+      await act(async () => vi.runAllTimersAsync())
+      expect(firstClient.dispose).toHaveBeenCalledOnce()
+      expect(secondClient.dispose).not.toHaveBeenCalled()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it('starts on demand for Canvas and remains inactive for Systems', async () => {
     const client = stubClient({
       initial: { phase: 'loading', revision: null },
@@ -115,6 +179,7 @@ describe('DomainEngineGate', () => {
     const { rerender } = render(
       <DomainEngineContext.Provider value={{
         enabled: true,
+        session: 1,
         client,
         state: { phase: 'ready', revision: 3 },
         syncEvent: null,
@@ -128,6 +193,7 @@ describe('DomainEngineGate', () => {
     rerender(
       <DomainEngineContext.Provider value={{
         enabled: true,
+        session: 1,
         client,
         state: { phase: 'rebuilding', revision: 3, reason: 'External update' },
         syncEvent: null,

@@ -9,6 +9,7 @@ export type DomainEngineSyncEvent =
 
 export type DomainEngineContextValue = {
   enabled: boolean
+  session: number
   client: DomainEngineClient
   state: DomainEngineState
   syncEvent: DomainEngineSyncEvent | null

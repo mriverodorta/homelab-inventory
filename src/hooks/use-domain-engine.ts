@@ -3,8 +3,9 @@ import { DomainEngineContext } from '@/engine/react-context'
 
 const disabledDomainEngine = {
   enabled: false,
+  session: 0,
   client: null as never,
-  state: { phase: 'ready' as const, revision: null },
+  state: { phase: 'idle' as const, revision: null },
   syncEvent: null,
   setEnabled: () => {},
   retry: async () => {},

@@ -17,6 +17,7 @@ import {
 import type { DomainEngineState } from '@/engine/types'
 
 const defaultEventSourceFactory = (url: string) => new EventSource(url)
+const defaultClientFactory = () => new DomainEngineClient()
 
 function decodeBase64(value: string) {
   const binary = atob(value)
@@ -29,18 +30,23 @@ export function DomainEngineProvider({
   children,
   enabled,
   client: providedClient,
+  clientFactory = defaultClientFactory,
   eventSourceFactory = defaultEventSourceFactory,
 }: {
   children: ReactNode
   enabled: boolean
   client?: DomainEngineClient
+  clientFactory?: () => DomainEngineClient
   eventSourceFactory?: (url: string) => EventSource
 }) {
   const [active, setActive] = useState(enabled)
   const activeRef = useRef(active)
-  const [client, setClient] = useState(() => providedClient ?? new DomainEngineClient())
+  const [client, setClient] = useState(() => providedClient ?? clientFactory())
+  const clientRef = useRef(client)
+  const [session, setSession] = useState(enabled ? 1 : 0)
+  const sessionRef = useRef(session)
   const [state, setState] = useState<DomainEngineState>(() => (
-    active ? client.status() : { phase: 'ready', revision: null }
+    active ? client.status() : { phase: 'idle', revision: null }
   ))
   const [syncEvent, setSyncEvent] = useState<DomainEngineSyncEvent | null>(null)
   const sequenceRef = useRef(0)
@@ -48,18 +54,38 @@ export function DomainEngineProvider({
   const setEnabled = useCallback((nextEnabled: boolean) => {
     if (activeRef.current === nextEnabled) return
     activeRef.current = nextEnabled
-    if (nextEnabled && !providedClient) setClient(new DomainEngineClient())
+    if (nextEnabled) {
+      const nextClient = sessionRef.current === 0
+        ? clientRef.current
+        : providedClient ?? clientFactory()
+      clientRef.current = nextClient
+      setClient(nextClient)
+      setState(nextClient.status())
+      setSyncEvent(null)
+      sessionRef.current += 1
+      setSession(sessionRef.current)
+    } else {
+      setState({ phase: 'idle', revision: null })
+      setSyncEvent(null)
+    }
     setActive(nextEnabled)
-  }, [providedClient])
+  }, [clientFactory, providedClient])
 
   useEffect(() => setEnabled(enabled), [enabled, setEnabled])
   useEffect(() => {
-    if (providedClient) setClient(providedClient)
+    if (!providedClient || clientRef.current === providedClient) return
+    clientRef.current = providedClient
+    setClient(providedClient)
+    if (!activeRef.current) return
+    setState(providedClient.status())
+    setSyncEvent(null)
+    sessionRef.current += 1
+    setSession(sessionRef.current)
   }, [providedClient])
 
   useEffect(() => {
     if (!active) {
-      setState({ phase: 'ready', revision: null })
+      setState({ phase: 'idle', revision: null })
       setSyncEvent(null)
       return
     }
@@ -138,12 +164,13 @@ export function DomainEngineProvider({
 
   const value = useMemo<DomainEngineContextValue>(() => ({
     enabled: active,
+    session,
     client,
     state,
     syncEvent,
     setEnabled,
     retry: () => client.start(),
-  }), [active, client, setEnabled, state, syncEvent])
+  }), [active, client, session, setEnabled, state, syncEvent])
 
   return <DomainEngineContext.Provider value={value}>{children}</DomainEngineContext.Provider>
 }

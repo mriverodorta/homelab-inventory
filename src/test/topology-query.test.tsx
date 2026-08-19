@@ -70,6 +70,7 @@ describe('topology query coordinator', () => {
         <QueryClientProvider client={queryClient}>
           <DomainEngineContext.Provider value={{
             enabled: true,
+            session: 1,
             client,
             state: { phase: 'ready', revision: 7 },
             syncEvent: null,
