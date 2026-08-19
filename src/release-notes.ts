@@ -444,7 +444,9 @@ const RELEASE_0_13_13_DETAILS: UnreleasedReleaseNotes = {
 
 export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
   highlights: [],
-  fixes: [],
+  fixes: [
+    'Catalog revision 24 now activates with byte-exact Registry fingerprint-v12 projections while preserving OEM names, bus-evidence states, and signed historical aliases.',
+  ],
   notes: [],
 }
 

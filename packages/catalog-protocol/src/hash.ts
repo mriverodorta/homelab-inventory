@@ -1,6 +1,6 @@
 import { canonicalJson } from './canonicalize'
 import { canonicalizeCatalogItemV10, canonicalizeCatalogItemV11, canonicalizeCatalogItemV9 } from './canonical-units'
-import { canonicalizeCatalogItemV12 } from './m2-ae-v12'
+import { canonicalizeCatalogItemV12, projectM2PhysicalHashValue } from './m2-ae-v12'
 import { sanitizeCatalogItem } from './sanitize'
 import {
   CATALOG_SCHEMA_VERSION,
@@ -74,7 +74,7 @@ export async function computeCatalogDigestsWithIdentity(
   const contentItem = fingerprintVersion === NETWORK_FINGERPRINT_VERSION
     ? { ...item, aliases: undefined }
     : fingerprintVersion === M2_AE_FINGERPRINT_VERSION
-      ? { ...item, aliases: undefined }
+      ? projectM2PhysicalHashValue(item as unknown as import('./types').JsonValue)
     : item
   const versionedIdentity = {
     schemaVersion: CATALOG_SCHEMA_VERSION,

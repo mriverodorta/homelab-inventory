@@ -459,8 +459,8 @@ const FINGERPRINT_V12_M2_AE_VECTOR = {
       intendedModuleKinds: ['wireless-card'],
     }] } },
   },
-  identityHash: 'cf6d5dcbf3c8775b7f0b29d73c7ed5ec19fd59245204a3c75b58a31628641033',
-  contentHash: 'eb896d46b543afc2340ba145eca1d8e4d5588df2b653b97e7bb08a751bd69920',
+  identityHash: '81704ef7729b1bec1804da3b7d3285bfe29469c25c1b2fec6f9ca9397fa7c8ec',
+  contentHash: '06bd998dcb0830682311c6dfa62e87898d304f8c9537fa15e440e51114888ad3',
 } as const
 
 export async function assertCatalogProtocolContract(): Promise<void> {

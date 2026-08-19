@@ -21,6 +21,19 @@ export {
 
 type JsonObject = Record<string, JsonValue>
 
+const EMPTY_BUS_EVIDENCE_HASH_VALUE: JsonObject = { evidenceState: 'none' }
+
+export function projectM2PhysicalHashValue(value: JsonValue): JsonValue {
+  if (Array.isArray(value)) return value.map(projectM2PhysicalHashValue)
+  if (!value || typeof value !== 'object') return value
+  return Object.fromEntries(Object.entries(value).map(([key, entry]) => [
+    key,
+    key === 'availableBuses' && Array.isArray(entry) && entry.length === 0
+      ? EMPTY_BUS_EVIDENCE_HASH_VALUE
+      : projectM2PhysicalHashValue(entry),
+  ]))
+}
+
 function error(path: string, message: string): never {
   throw new CanonicalMeasurementError(CANONICAL_MEASUREMENT_INVALID, path, message)
 }

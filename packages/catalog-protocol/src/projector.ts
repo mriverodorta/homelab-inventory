@@ -1,6 +1,6 @@
 import { canonicalJson } from './canonicalize'
 import { canonicalizeCatalogItemV10, canonicalizeCatalogItemV11, canonicalizeCatalogItemV9 } from './canonical-units'
-import { canonicalizeCatalogItemV12, withoutV12IdentityNeutralFields } from './m2-ae-v12'
+import { canonicalizeCatalogItemV12, projectM2PhysicalHashValue } from './m2-ae-v12'
 import { computeCatalogDigestsWithIdentity, sha256Hex } from './hash'
 import { normalizeBoardIdentifier, normalizeText, normalizeVariantKey } from './normalization'
 import { sanitizeCatalogItem } from './sanitize'
@@ -96,7 +96,8 @@ function canonicalNameForFingerprint(item: CatalogTemplateItem, fingerprintVersi
     || fingerprintVersion === WORKSTATION_FINGERPRINT_VERSION
     || fingerprintVersion === SERVER_FINGERPRINT_VERSION
     || fingerprintVersion === CANONICAL_UNITS_FINGERPRINT_VERSION
-    || fingerprintVersion === NAS_FINGERPRINT_VERSION)
+    || fingerprintVersion === NAS_FINGERPRINT_VERSION
+    || fingerprintVersion === M2_AE_FINGERPRINT_VERSION)
     && (item.type === 'desktop' || item.type === 'workstation' || item.type === 'server' || item.type === 'nas')) {
     return text(item.name) ?? canonicalName(item)
   }
@@ -806,6 +807,70 @@ async function nasVariantIdentity(item: CatalogTemplateItem): Promise<{
   }
 }
 
+function stripV12IdentityNeutral(value: JsonValue): JsonValue {
+  if (Array.isArray(value)) return value.map(stripV12IdentityNeutral)
+  if (!value || typeof value !== 'object') return value
+  return Object.fromEntries(Object.entries(value)
+    .filter(([key]) => key !== 'keyAliases' && key !== 'intendedModuleKinds' && key !== 'label')
+    .map(([key, entry]) => [key, stripV12IdentityNeutral(entry)]))
+}
+
+async function m2PhysicalVariantIdentity(item: CatalogTemplateItem): Promise<{
+  identityPayload: Record<string, JsonValue>
+  productFamily?: CatalogProductFamily
+  variantEvidence?: CatalogVariantEvidence
+} | CatalogEligibilityReason> {
+  if (item.type === 'network') {
+    const identityPayload = networkProductIdentity(item)
+    return typeof identityPayload === 'string' ? identityPayload : { identityPayload }
+  }
+  if (!['desktop', 'workstation', 'server', 'nas'].includes(item.type)) return 'unsupported-type'
+  const manufacturer = text(item.manufacturer)
+  const model = text(item.model)
+  if (!manufacturer || !model) return 'insufficient-identity'
+
+  const productFamily: CatalogProductFamily = { manufacturer, model, physicalClass: item.type }
+  const topology = item.type === 'workstation'
+    ? extractWorkstationMaterialTopology(item)
+    : item.type === 'server'
+      ? extractServerMaterialTopology(item)
+      : item.type === 'nas'
+        ? extractNasMaterialTopology(item)
+        : extractOemMaterialTopology(item)
+  if (!topology) return 'insufficient-identity'
+  const materialTopology = projectM2PhysicalHashValue(
+    stripV12IdentityNeutral(topology),
+  ) as Record<string, JsonValue>
+  const topologySignature = await sha256Hex(
+    `hli:topology:v${M2_AE_FINGERPRINT_VERSION}:${canonicalJson(materialTopology)}`,
+  )
+  const board = splitBoardIdentity(item)
+  const explicitVariant = text(item.specs?.boardVariant) ?? text(item.specs?.variantKey)
+  const completeness = topologyCompleteness(item)
+  const structuralSummary = topologySummary(materialTopology)
+  const variantEvidence: CatalogVariantEvidence = {
+    source: board.partNumber ? 'motherboard' : 'topology',
+    completeness,
+    label: explicitVariant
+      ?? (board.partNumber ? `Board ${board.partNumber}${board.revision ? ` ${board.revision}` : ''}` : 'Topology-defined variant'),
+    ...(board.partNumber ? { motherboardPartNumber: board.partNumber } : {}),
+    ...(board.revision ? { motherboardRevision: board.revision } : {}),
+    ...(explicitVariant ? { variantKey: normalizeVariantKey(explicitVariant) } : {}),
+    topologySignature,
+    ...(structuralSummary ? { structuralSummary } : {}),
+  }
+  return {
+    productFamily,
+    variantEvidence,
+    identityPayload: identityObject([
+      ['productFamily', productFamily],
+      ['motherboardPartNumber', board.partNumber],
+      ['motherboardRevision', board.revision],
+      ['topologySignature', topologySignature],
+    ]),
+  }
+}
+
 async function motherboardVariantIdentity(item: CatalogTemplateItem): Promise<{
   identityPayload: Record<string, JsonValue>
   productFamily: CatalogProductFamily
@@ -888,47 +953,24 @@ export async function projectCatalogItem(
   let productFamily: CatalogProductFamily | undefined
   let variantEvidence: CatalogVariantEvidence | undefined
   if (fingerprintVersion === M2_AE_FINGERPRINT_VERSION) {
-    const identityItem = withoutV12IdentityNeutralFields(item)
-    if (identityItem.type === 'network') {
-      const identity = networkProductIdentity(identityItem)
+    if (['network', 'desktop', 'workstation', 'server', 'nas'].includes(item.type)) {
+      const variant = await m2PhysicalVariantIdentity(item)
+      if (typeof variant === 'string') return { status: 'ineligible', source: sourceRef, reason: variant }
+      identityPayload = variant.identityPayload
+      productFamily = variant.productFamily
+      variantEvidence = variant.variantEvidence
+    } else if (item.type === 'ram') {
+      const identity = ramProductIdentity(item)
       if (typeof identity === 'string') return { status: 'ineligible', source: sourceRef, reason: identity }
       identityPayload = identity
-    } else if (identityItem.type === 'ram') {
-      const identity = ramProductIdentity(identityItem)
-      if (typeof identity === 'string') return { status: 'ineligible', source: sourceRef, reason: identity }
-      identityPayload = identity
-    } else if (identityItem.type === 'motherboard') {
-      const variant = await motherboardVariantIdentity(identityItem)
-      if (typeof variant === 'string') return { status: 'ineligible', source: sourceRef, reason: variant }
-      identityPayload = variant.identityPayload
-      productFamily = variant.productFamily
-      variantEvidence = variant.variantEvidence
-    } else if (identityItem.type === 'workstation') {
-      const variant = await workstationVariantIdentity(identityItem)
-      if (typeof variant === 'string') return { status: 'ineligible', source: sourceRef, reason: variant }
-      identityPayload = variant.identityPayload
-      productFamily = variant.productFamily
-      variantEvidence = variant.variantEvidence
-    } else if (identityItem.type === 'desktop') {
-      const variant = await oemVariantIdentity(identityItem)
-      if (typeof variant === 'string') return { status: 'ineligible', source: sourceRef, reason: variant }
-      identityPayload = variant.identityPayload
-      productFamily = variant.productFamily
-      variantEvidence = variant.variantEvidence
-    } else if (identityItem.type === 'server') {
-      const variant = await serverVariantIdentity(identityItem)
-      if (typeof variant === 'string') return { status: 'ineligible', source: sourceRef, reason: variant }
-      identityPayload = variant.identityPayload
-      productFamily = variant.productFamily
-      variantEvidence = variant.variantEvidence
-    } else if (identityItem.type === 'nas') {
-      const variant = await nasVariantIdentity(identityItem)
+    } else if (item.type === 'motherboard') {
+      const variant = await motherboardVariantIdentity(item)
       if (typeof variant === 'string') return { status: 'ineligible', source: sourceRef, reason: variant }
       identityPayload = variant.identityPayload
       productFamily = variant.productFamily
       variantEvidence = variant.variantEvidence
     } else {
-      const identity = canonicalV9StandardIdentity(identityItem)
+      const identity = canonicalV9StandardIdentity(item)
       if (typeof identity === 'string') return { status: 'ineligible', source: sourceRef, reason: identity }
       identityPayload = identity
     }
