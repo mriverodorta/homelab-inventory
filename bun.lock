@@ -75,6 +75,19 @@
         "@homelab-inventory/share-contract": "0.1.0",
       },
     },
+    "packages/viewer-react": {
+      "name": "@homelab-inventory/viewer-react",
+      "version": "0.1.0",
+      "dependencies": {
+        "@homelab-inventory/viewer-model": "0.1.0",
+        "@xyflow/react": "^12.11.2",
+        "lucide-react": "^1.28.0",
+      },
+      "peerDependencies": {
+        "react": ">=19 <20",
+        "react-dom": ">=19 <20",
+      },
+    },
   },
   "overrides": {
     "ip-address": "10.4.0",
@@ -257,6 +270,8 @@
     "@homelab-inventory/share-contract": ["@homelab-inventory/share-contract@workspace:packages/share-contract"],
 
     "@homelab-inventory/viewer-model": ["@homelab-inventory/viewer-model@workspace:packages/viewer-model"],
+
+    "@homelab-inventory/viewer-react": ["@homelab-inventory/viewer-react@workspace:packages/viewer-react"],
 
     "@hono/node-server": ["@hono/node-server@2.0.12", "", { "peerDependencies": { "hono": "^4" } }, "sha512-eWpQYr67tqJLeaSUl0Q+TquuYfUdTibpOJlUMV2FfUP7+KqCC5TufnwnlXL6mobZBJbGAYRd7ZvEBDCbLInjhg=="],
 
