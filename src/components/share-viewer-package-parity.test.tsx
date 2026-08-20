@@ -12,7 +12,7 @@ import {
 import { SharedWorkbookViewer } from '@homelab-inventory/viewer-react'
 import { createCanvasStringIdSet } from '@/components/canvas/use-canvas-project-model'
 import { compareSystemsTextValues } from '@/components/workbook/systems/systems-table-model'
-import { orderWorkbookTabs } from '@/components/workbook/workbook-tab-strip'
+import { orderWorkbookTabs } from '@/components/workbook/workbook-tab-model'
 
 const fixtureDirectory = resolve('docs/handoffs/lab-gd-contract-v1/fixtures')
 const fixture = (name: string) => JSON.parse(readFileSync(resolve(fixtureDirectory, name), 'utf8')) as unknown

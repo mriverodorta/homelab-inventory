@@ -517,9 +517,13 @@ const RELEASE_0_14_0_DETAILS: UnreleasedReleaseNotes = {
 }
 
 export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
-  highlights: [],
+  highlights: [
+    'Versioned share contracts and reusable read-only Systems, Canvas, workbook, and Inspector viewers now provide the deterministic rendering foundation for lab.gd.',
+  ],
   fixes: [],
-  notes: [],
+  notes: [
+    'Frozen public fixtures and package audits keep generated IDs, Registry revision references, privacy boundaries, deep links, responsive behavior, and package contents reproducible across Homelab Inventory and lab.gd.',
+  ],
 }
 
 const RELEASE_0_11_2_DETAILS: UnreleasedReleaseNotes = {

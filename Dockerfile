@@ -1,11 +1,19 @@
 FROM oven/bun:1.3.14-alpine@sha256:5acc90a93e91ff07bf72aa90a7c9f0fa189765aec90b47bdbf2152d2196383c0 AS deps
 WORKDIR /app
 COPY package.json bun.lock ./
+COPY packages/catalog-protocol/package.json ./packages/catalog-protocol/
+COPY packages/share-contract/package.json ./packages/share-contract/
+COPY packages/viewer-model/package.json ./packages/viewer-model/
+COPY packages/viewer-react/package.json ./packages/viewer-react/
 RUN bun install --frozen-lockfile
 
 FROM oven/bun:1.3.14-slim@sha256:d56a2534ffd262e92c12fd3249d3924d296d97086da773f821d7d0477435ea04 AS prod-deps
 WORKDIR /app
 COPY package.json bun.lock ./
+COPY packages/catalog-protocol/package.json ./packages/catalog-protocol/
+COPY packages/share-contract/package.json ./packages/share-contract/
+COPY packages/viewer-model/package.json ./packages/viewer-model/
+COPY packages/viewer-react/package.json ./packages/viewer-react/
 RUN bun install --frozen-lockfile --production
 
 FROM oven/bun:1.3.14-alpine@sha256:5acc90a93e91ff07bf72aa90a7c9f0fa189765aec90b47bdbf2152d2196383c0 AS bun-toolchain
@@ -95,6 +103,12 @@ COPY --from=agent-build --chown=10001:10001 /agent-release ./server/agent-releas
 RUN ["bun", "-e", "const fs = await import('node:fs/promises'); const { AgentReleaseService } = await import('./server/agents/release-service.mjs'); const pin = JSON.parse(await fs.readFile('./server/agent-release-pin.json', 'utf8')); await new AgentReleaseService({ expectedVersion: pin.version, expectedSourceRevision: pin.sourceRevision }).initialize();"]
 COPY --chown=10001:10001 packages/catalog-protocol/package.json ./packages/catalog-protocol/
 COPY --chown=10001:10001 packages/catalog-protocol/src ./packages/catalog-protocol/src
+COPY --chown=10001:10001 packages/share-contract/package.json ./packages/share-contract/
+COPY --chown=10001:10001 packages/share-contract/src ./packages/share-contract/src
+COPY --chown=10001:10001 packages/viewer-model/package.json ./packages/viewer-model/
+COPY --chown=10001:10001 packages/viewer-model/src ./packages/viewer-model/src
+COPY --chown=10001:10001 packages/viewer-react/package.json ./packages/viewer-react/
+COPY --chown=10001:10001 packages/viewer-react/src ./packages/viewer-react/src
 COPY --chown=10001:10001 server/demo/session-manager.mjs server/demo/sanitizer.mjs ./server/demo/
 COPY --chown=10001:10001 server/onboarding/example-workspace.mjs server/onboarding/lifecycle.mjs server/onboarding/model.mjs ./server/onboarding/
 COPY --chown=10001:10001 scripts/verify-wasm-runtime.mjs ./scripts/

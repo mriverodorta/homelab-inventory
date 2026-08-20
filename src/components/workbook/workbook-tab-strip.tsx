@@ -1,5 +1,4 @@
 import { useMemo, useState } from 'react'
-import { sortViewerEntries } from '@homelab-inventory/viewer-model'
 import {
   DndContext,
   MouseSensor,
@@ -33,6 +32,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { WorkspaceDialog } from '@/components/workbook/workspace-dialog'
 import { WorkspaceIcon } from '@/components/workbook/workspace-icon'
 import { workspaceColor } from '@/components/workbook/workspace-style'
+import { orderWorkbookTabs } from '@/components/workbook/workbook-tab-model'
 import type { WorkspaceInput, WorkspaceSummary } from '@/lib/workbook-api'
 import { cn } from '@/lib/utils'
 
@@ -48,8 +48,6 @@ type WorkbookTabStripProps = {
   onReorder(workspaceIds: number[]): Promise<void>
   onOpenProjectSettings?(): void
 }
-
-export const orderWorkbookTabs = sortViewerEntries
 
 function WorkbookTab({
   workspace,

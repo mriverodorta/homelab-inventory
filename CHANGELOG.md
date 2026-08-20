@@ -6,6 +6,14 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 
 ## Unreleased
 
+### Added
+
+- Deterministic versioned share contracts, immutable read models, and reusable read-only React viewers now provide the public Systems, Canvas, workbook, Inspector, deep-link, and responsive rendering foundation for lab.gd.
+
+### Changed
+
+- Homelab Inventory now consumes the same shared ordering, identifier, and presentation helpers intended for the public viewer, with frozen cross-project fixtures guarding labels, ports, placements, connection endpoints, and private-data boundaries.
+
 ## [0.14.0] - 2026-08-19
 
 ### Added
