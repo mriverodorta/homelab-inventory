@@ -294,10 +294,23 @@ shares independently.
 
 Protected cross-origin embeds do not rely on the Lax cookie. After password
 verification they receive a separate short-lived bearer capability bound to the
-numeric share, active revision, and exact allowlisted embedding origin. The
-iframe keeps it only in memory and sends it only in the Authorization header. It
-never enters a URL, cookie, browser storage, log, referrer, or parent-window
-message, and reloading requires verification again.
+numeric share, active revision, and exact allowlisted embedding origin. Exact
+origin means normalized HTTPS scheme, hostname, and any non-default port.
+
+The protected embed snippet includes a versioned parent bridge. A generic iframe
+shell creates a one-time nonce, performs a nonce-bound `postMessage` handshake,
+and reads the browser-provided `MessageEvent.origin`. The parent bridge attests
+the nonce to Hono, whose browser-controlled `Origin` header must match the exact
+share allowlist. Password verification consumes that server attestation and
+requires the iframe-observed origin to match before issuing the capability. CSP
+`frame-ancestors` remains the primary browser enforcement. Missing, opaque,
+HTTP, mismatched, or unallowlisted origins fail closed. `Referer` is never an
+authorization proof.
+
+The iframe keeps the capability only in memory and sends it only in the
+Authorization header. It never enters a URL, cookie, browser storage, log,
+referrer, analytics record, or parent-window message, and reloading requires
+verification again.
 
 ## Viewer And Embed
 
@@ -387,9 +400,11 @@ geographic profiles, or browser fingerprints. Approximate visitor identifiers
 use a daily derived HMAC key so they cannot be correlated across days.
 
 Hono captures an external referring hostname only from the initial full-page or
-embed HTML request. It parses and bounds the hostname server-side, discards all
-other URL parts, associates it through a short-lived one-time bootstrap token,
-and never accepts attribution later from browser JavaScript.
+embed HTML request. It parses and bounds the hostname server-side, discards the
+scheme, port, and all other URL parts, associates it through a short-lived
+one-time analytics bootstrap token, and never accepts attribution later from
+browser JavaScript. This hostname-only value and token are separate from the
+exact-origin embed authorization context and never cross between those stores.
 
 Only client-confirmed initial content loads count as qualified views. This is an
 abuse-resistant product metric rather than proof that a human viewed the

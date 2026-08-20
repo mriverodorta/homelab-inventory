@@ -135,7 +135,8 @@ git commit -m "chore: initialize private lab.gd workspace"
 Cover positive numeric IDs, random public IDs, installation keys/tokens/nonces,
 shares, immutable revisions, active pointers, view blobs, Registry definitions,
 password hashes, claims, operations/events, qualified loads, analytics buckets,
-bootstrap attributions, reports, and tombstones.
+bootstrap attributions, protected-embed origin attestations, reports, and
+tombstones.
 
 - [ ] **Step 2: Implement normalized schema and constraints**
 
@@ -445,11 +446,15 @@ git commit -m "feat: expose privacy-safe public share reads"
 **Files:**
 - Create: `packages/domain/src/passwords/password-service.ts`
 - Create: `apps/api/src/routes/passwords.ts`
+- Create: `apps/api/src/routes/embed-origin-attestation.ts`
 - Create: `apps/api/src/middleware/protected-session.ts`
 - Create: `apps/api/src/middleware/protected-embed-capability.ts`
+- Create: `packages/domain/src/passwords/embed-origin-attestation.ts`
+- Create: `packages/database/src/passwords/postgres-embed-origin-attestation.ts`
 - Create: `apps/api/test/passwords.test.ts`
 - Create: `apps/api/test/protected-no-leak.test.ts`
 - Create: `apps/api/test/protected-embed-capability.test.ts`
+- Create: `packages/database/test/protected-embed-attestation.test.ts`
 
 **Interfaces:**
 - Produces: password set/replace/verify, host-wide viewer session, per-share revision grants, `requireProtectedShareSession`, and memory-only protected-embed capability.
@@ -479,17 +484,29 @@ password data, or grants in the cookie. Password replacement, active-revision
 replacement, unpublish, expiration, and deletion revoke the affected grant.
 
 For a protected cross-origin iframe, `SameSite=Lax` intentionally does not
-authorize the embedded request. Its generic password flow exchanges a
-successful password verification plus Task 10's one-time HTML bootstrap context
-for a separate short-lived bearer capability bound to numeric share ID, active
-revision ID, and one exact allowlisted embed origin. Keep it only in iframe
-memory and send it in the `Authorization` header for that share's read API. It
-must never enter a URL, cookie, local/session storage, log, referrer, or parent
-window message. Reload requires a new verification. Test origin/share/revision
-mismatch, expiration, revocation, replayed bootstrap context, and storage/URL
-absence. If the exact embedding origin cannot be established and matched to the
-share allowlist, fail closed and direct the viewer to open the protected share
-as a top-level lab.gd page.
+authorize the embedded request. Task 10 performs a nonce-bound parent handshake
+and creates an origin attestation through this task's
+`POST /v1/public/shares/:id/embed-origin/attest` route. That route reads the
+browser-controlled `Origin` header, requires HTTPS, normalizes the exact origin
+as scheme + hostname + explicit non-default port, checks the share allowlist,
+and stores a short-lived single-use attestation bound to numeric share ID,
+active revision ID, and bootstrap nonce. It never uses `Referer` for
+authorization. Its `OPTIONS` and `POST` responses use exact-origin CORS with
+`Vary: Origin`, allow only `POST` and the required content type, send no
+credentials, and never emit wildcard origin. Opaque `null`, absent, HTTP,
+malformed, or unallowlisted origins receive the same generic denial.
+
+The generic embed password flow exchanges a successful password verification,
+the attested bootstrap nonce, and the iframe-observed `MessageEvent.origin` for
+a separate short-lived bearer capability. All three origin values must match
+the same exact allowlisted origin. Keep the capability only in iframe memory and
+send it in the `Authorization` header for that share's read API. It must never
+enter a URL, cookie, local/session storage, log, referrer, analytics record, or
+parent-window message. Reload requires a new verification. Test HTTP, opaque
+`null`, missing, origin/share/revision mismatch, expiration, revocation,
+replayed nonce, absent bridge, forged request fields, and storage/URL absence.
+Any failure directs the viewer to open the protected share as a top-level lab.gd
+page.
 
 - [ ] **Step 4: Integrate middleware into Task 8 and run no-leak proof**
 
@@ -500,10 +517,10 @@ exist.
 
 - [ ] **Step 5: Run and commit**
 
-Run: `bun test apps/api/test/passwords.test.ts apps/api/test/protected-no-leak.test.ts apps/api/test/protected-embed-capability.test.ts`
+Run: `bun test apps/api/test/passwords.test.ts apps/api/test/protected-no-leak.test.ts apps/api/test/protected-embed-capability.test.ts packages/database/test/protected-embed-attestation.test.ts`
 
 ```bash
-git add packages/domain apps/api
+git add packages/domain packages/database apps/api
 git commit -m "feat: protect shares with Argon2id passwords"
 ```
 
@@ -513,6 +530,8 @@ git commit -m "feat: protect shares with Argon2id passwords"
 - Create: `apps/web/src/routes/share-page.tsx`
 - Create: `apps/web/src/routes/embed-page.tsx`
 - Create: `apps/web/src/routes/password-page.tsx`
+- Create: `apps/web/src/embed/parent-origin-bridge.ts`
+- Create: `apps/web/vite.embed.config.ts`
 - Create: `apps/api/src/routes/share-pages.ts`
 - Create: `apps/api/src/html/share-document.ts`
 - Create: `apps/api/src/public-loads/html-bootstrap.ts`
@@ -522,6 +541,7 @@ git commit -m "feat: protect shares with Argon2id passwords"
 - Create: `apps/web/src/lib/deep-links.ts`
 - Create: `apps/web/test/viewer.test.tsx`
 - Create: `apps/web/test/embed.test.tsx`
+- Create: `apps/web/test/embed-origin-handshake.test.ts`
 - Create: `apps/api/test/share-pages-html.test.ts`
 - Create: `apps/api/test/bootstrap-attribution.test.ts`
 - Create: `apps/api/test/embed-csp.test.ts`
@@ -540,7 +560,9 @@ selection. Item or connection links center and open the read-only inspector.
 Use shared viewer components. Full page has compact utility header and title or
 description region. Embed prioritizes content with expandable description and
 Open on lab.gd. Disabled comments/reactions are absent; enabled initial states
-say Coming soon.
+say Coming soon. The protected-embed configurator emits the iframe plus the
+versioned `/embed/v1/parent-origin-bridge.js` companion script. Public and
+unlisted embeds remain valid as iframe-only snippets.
 
 - [ ] **Step 3: Serve dynamic share HTML from Hono**
 
@@ -551,7 +573,7 @@ request without a valid Task 9 session receives only generic password-gate HTML
 and headers; no title, description, counters, manifest hash, preview, or
 state-specific detail enters source or headers.
 
-- [ ] **Step 4: Capture external attribution at HTML delivery**
+- [ ] **Step 4: Capture analytics attribution at HTML delivery**
 
 When serving `/s/:shareId` or `/e/:shareId`, parse the incoming `Referer` with
 the platform URL parser. Discard malformed values, non-HTTP(S) schemes, the
@@ -561,14 +583,28 @@ single-use token hash through Task 8's `BootstrapAttributionStore`, bound to
 numeric share ID and `full` or `embed` mode, then place only the opaque token in
 the HTML bootstrap data. Task 8 consumes the token while creating the load
 event. The subsequent browser load and completion requests cannot supply or
-override attribution. For protected embeds, the HTML bootstrap context also
-records the exact validated embedding origin used by Task 9's capability
-exchange, but analytics and authorization remain separate records and tokens.
-Add integration tests for direct loads, external navigation, same-origin
-navigation, malformed headers, mode/share mismatch, expiry, replay, and forged
-JavaScript fields.
+override attribution. This analytics record contains no scheme, port, full URL,
+or embed authorization data. Add integration tests for direct loads, external
+navigation, same-origin navigation, malformed headers, mode/share mismatch,
+expiry, replay, and forged JavaScript fields.
 
-- [ ] **Step 5: Enforce embed CSP with integration tests**
+- [ ] **Step 5: Prove the parent origin independently for protected embeds**
+
+Hono places a separate random embed-auth bootstrap nonce in the generic
+protected iframe shell, bound to share and active revision but initially to no
+origin. The iframe posts a nonce challenge to its parent. The versioned parent
+bridge receives it and calls Task 9's attestation endpoint; Hono validates the
+browser-supplied `Origin` header and exact share allowlist before recording the
+normalized HTTPS origin. The bridge acknowledges the same nonce to the iframe,
+which reads the browser-provided `MessageEvent.origin`. Password verification
+must present the nonce and observed origin, then atomically consume the matching
+server attestation before issuing the memory-only capability. CSP
+`frame-ancestors` remains the primary browser enforcement. Analytics attribution
+and authorization attestations use separate types, storage rows, tokens, expiry,
+and tests. A missing bridge or failed handshake reveals no share metadata and
+offers Open on lab.gd.
+
+- [ ] **Step 6: Enforce embed CSP with integration tests**
 
 Exact HTTPS origins become `frame-ancestors`. Explicit wildcard is allowed only
 for public/unlisted shares. Protected shares reject wildcard. Verify actual
@@ -576,9 +612,9 @@ HTML, Open Graph, canonical, robots, cache, content-type, and CSP headers throug
 the real Hono server for public, unlisted, protected, expired, and missing
 fixtures, not component snapshots.
 
-- [ ] **Step 6: Run and commit**
+- [ ] **Step 7: Run and commit**
 
-Run: `bun test apps/web apps/api/test/share-pages-html.test.ts apps/api/test/bootstrap-attribution.test.ts apps/api/test/embed-csp.test.ts && bun run --cwd apps/web build`
+Run: `bun test apps/web apps/api/test/share-pages-html.test.ts apps/api/test/bootstrap-attribution.test.ts apps/web/test/embed-origin-handshake.test.ts apps/api/test/embed-csp.test.ts && bun run --cwd apps/web build && bun run --cwd apps/web build:embed`
 
 ```bash
 git add apps

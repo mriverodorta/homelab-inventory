@@ -111,6 +111,10 @@ recorded in the coordinated rollout ledger.
 - Protected cross-origin embeds use a separate short-lived memory-only bearer
   capability bound to the share, revision, and exact allowed embedding origin;
   it is never placed in a URL, cookie, browser storage, or parent-window message.
+- Exact embed origin is proven independently with CSP plus a nonce-bound parent
+  bridge: Hono validates the browser `Origin` header and the iframe validates
+  `MessageEvent.origin`. Missing, opaque, HTTP, mismatched, or unallowlisted
+  origins fail closed; `Referer` is never authorization evidence.
 - Better Auth tables are installed only through ordered checksummed migrations;
   runtime auto-migration is disabled.
 - Protected routes leak no title, description, counts, manifest, preview, or
@@ -126,7 +130,9 @@ recorded in the coordinated rollout ledger.
   content-type, and CSP headers; the Vite bundle only hydrates that document.
 - External referring hostnames are parsed and sanitized only from the initial
   Hono HTML request, associated through a short-lived one-time bootstrap token,
-  and never accepted from browser JavaScript.
+  and never accepted from browser JavaScript. Analytics keeps hostname only;
+  embed authorization separately keeps exact HTTPS origin including any
+  non-default port.
 - Container security must pass build, boot, Docker Scout, and Trivy for both
   `linux/amd64` and `linux/arm64` with zero known vulnerabilities.
 - Never connect directly to SkyArk.
