@@ -89,8 +89,12 @@ describe('release cache boundary', () => {
     const manifestDigest = new Bun.CryptoHasher('sha256').update(manifest).digest('hex')
     const orphan = Buffer.from('orphan')
     const orphanDigest = new Bun.CryptoHasher('sha256').update(orphan).digest('hex')
+    const externalDigest = 'f'.repeat(64)
     await Promise.all([
-      fs.writeFile(path.join(root, 'index.json'), JSON.stringify({ manifests: [{ digest: `sha256:${manifestDigest}` }] })),
+      fs.writeFile(path.join(root, 'index.json'), JSON.stringify({ manifests: [
+        { digest: `sha256:${manifestDigest}` },
+        { digest: `sha256:${externalDigest}` },
+      ] })),
       fs.writeFile(path.join(blobs, layerDigest), layer),
       fs.writeFile(path.join(blobs, manifestDigest), manifest),
       fs.writeFile(path.join(blobs, orphanDigest), orphan),

@@ -78,11 +78,16 @@ export async function compactOciCache(cacheDirectory) {
     const match = typeof value.digest === 'string' ? value.digest.match(SHA256_DIGEST) : null
     if (match && !reachable.has(match[1])) {
       reachable.add(match[1])
-      const blob = await fs.readFile(path.join(blobsDirectory, match[1]))
-      try {
-        await visit(JSON.parse(blob.toString('utf8')))
-      } catch (error) {
-        if (!(error instanceof SyntaxError)) throw error
+      const blob = await fs.readFile(path.join(blobsDirectory, match[1])).catch((error) => {
+        if (error?.code === 'ENOENT') return null
+        throw error
+      })
+      if (blob) {
+        try {
+          await visit(JSON.parse(blob.toString('utf8')))
+        } catch (error) {
+          if (!(error instanceof SyntaxError)) throw error
+        }
       }
     }
     for (const child of Object.values(value)) await visit(child)
