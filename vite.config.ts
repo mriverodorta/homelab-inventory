@@ -12,6 +12,9 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': path.resolve(import.meta.dirname, './src'),
+      '@homelab-inventory/share-contract': path.resolve(import.meta.dirname, './packages/share-contract/src/index.ts'),
+      '@homelab-inventory/viewer-model': path.resolve(import.meta.dirname, './packages/viewer-model/src/index.ts'),
+      '@homelab-inventory/viewer-react': path.resolve(import.meta.dirname, './packages/viewer-react/src/index.ts'),
     },
   },
   test: {

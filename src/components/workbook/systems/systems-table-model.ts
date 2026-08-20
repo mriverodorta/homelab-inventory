@@ -1,3 +1,4 @@
+import { compareViewerText } from '@homelab-inventory/viewer-model'
 import type { SystemsTablePreferences } from '@/lib/systems-preferences'
 import type { SystemsHostRow, SystemsViewConfiguration } from '@/types/systems'
 
@@ -15,8 +16,10 @@ function text(value: unknown) {
   return String(value ?? '').trim().toLocaleLowerCase()
 }
 
+export const compareSystemsTextValues = compareViewerText
+
 function compareText(left: unknown, right: unknown) {
-  return text(left).localeCompare(text(right), undefined, { numeric: true, sensitivity: 'base' })
+  return compareSystemsTextValues(left, right)
 }
 
 function compareOptionalNumber(left: number | null, right: number | null, direction: 1 | -1) {

@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { sortViewerEntries } from '@homelab-inventory/viewer-model'
 import {
   DndContext,
   MouseSensor,
@@ -47,6 +48,8 @@ type WorkbookTabStripProps = {
   onReorder(workspaceIds: number[]): Promise<void>
   onOpenProjectSettings?(): void
 }
+
+export const orderWorkbookTabs = sortViewerEntries
 
 function WorkbookTab({
   workspace,
@@ -141,7 +144,7 @@ export function WorkbookTabStrip({
   const [archiveTarget, setArchiveTarget] = useState<WorkspaceSummary | null>(null)
   const sensors = useSensors(useSensor(MouseSensor, { activationConstraint: { distance: 6 } }))
   const ordered = useMemo(
-    () => [...workspaces].sort((left, right) => left.sortOrder - right.sortOrder),
+    () => orderWorkbookTabs(workspaces),
     [workspaces],
   )
 

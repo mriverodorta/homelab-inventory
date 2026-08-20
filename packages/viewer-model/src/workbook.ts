@@ -1,6 +1,7 @@
 import { parseShareManifest, type ShareManifest } from '@homelab-inventory/share-contract'
 
 import { deepFreeze, type DeepReadonly } from './immutable'
+import { sortViewerEntries } from './presentation'
 
 export interface SharedWorkbookModel {
   projectPublicId: string
@@ -19,6 +20,6 @@ export function createSharedWorkbookModel(value: unknown): DeepReadonly<SharedWo
     title: manifest.title,
     description: manifest.description ?? null,
     initialViewPublicId: manifest.initialViewPublicId,
-    views: [...manifest.views].sort((a, b) => a.sortOrder - b.sortOrder),
+    views: sortViewerEntries(manifest.views),
   })
 }

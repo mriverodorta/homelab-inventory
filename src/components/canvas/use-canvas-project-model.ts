@@ -1,4 +1,5 @@
 import { useMemo, useRef } from 'react'
+import { createViewerIdSet } from '@homelab-inventory/viewer-model'
 import type { TopologyQueryData } from '@/hooks/use-topology-query'
 import { useCompatibilitySummary } from '@/hooks/use-compatibility-audit'
 import { getFocusedCableItemIds } from '@/lib/cable-focus'
@@ -13,6 +14,8 @@ import type { ProjectState } from '@/types/inventory'
 import type { CompatibilityAuditHostSummary } from '@/types/compatibility-audit'
 
 const EMPTY_COMPATIBILITY_HOSTS: readonly CompatibilityAuditHostSummary[] = []
+
+export const createCanvasStringIdSet = createViewerIdSet
 
 interface CanvasProjectModelOptions {
   project: ProjectState
@@ -33,7 +36,7 @@ function useStableStringSet(values: readonly (string | number)[]): ReadonlySet<s
     currentSet.size !== nextValues.length
     || nextValues.some((value) => !currentSet.has(value))
   ) {
-    setRef.current = new Set(nextValues)
+    setRef.current = createCanvasStringIdSet(nextValues)
   }
 
   return setRef.current

@@ -5,7 +5,10 @@
     "lib": ["ES2023", "DOM"],
     "module": "esnext",
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": ["./src/*"],
+      "@homelab-inventory/share-contract": ["./packages/share-contract/src/index.ts"],
+      "@homelab-inventory/viewer-model": ["./packages/viewer-model/src/index.ts"],
+      "@homelab-inventory/viewer-react": ["./packages/viewer-react/src/index.ts"]
     },
     "types": ["vite/client", "node"],
     "skipLibCheck": true,
