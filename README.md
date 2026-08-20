@@ -46,7 +46,10 @@ It gives you one practical view of what you own, what is installed in each machi
 
 ### Monitor compute hosts
 
+- Use the dense Systems workspace to compare host type, identity, assigned CPU, memory, primary storage, Registry linkage, Agent status, and attention findings without opening every machine.
+- Build account-synchronized saved views from dynamic host, Agent, Registry, tag, and custom-field filters, with useful local defaults when authentication is disabled.
 - Enroll an outbound-only Agent on Linux, FreeBSD, or OPNsense hosts and view one-minute health, heartbeat history, CPU, memory, uptime, and operating-system details.
+- Receive live Systems utilization and Inspector telemetry through one authenticated server-sent event stream after the initial compact snapshot, without recurring browser polling.
 - Inspect local storage usage by physical device and mount point, including partition tables and LVM or RAID topology, without mixing in remote shares or container mounts.
 - Discover locally installed services and opt into bounded Docker or Podman container telemetry through a loopback proxy or reviewed direct socket access.
 - Run a separate reviewed hardware scan and apply detected motherboard, CPU, DIMM, storage, PCI, network, GPU, or power values one field at a time with normal Undo support.
@@ -247,6 +250,8 @@ Registry mode defaults to **Disabled**, which makes no catalog requests. Private
 
 **Offline file** mode imports the same signed immutable snapshot used by connected installations without making outbound requests. **Connected** mode checks only the fixed official registry endpoint and atomically retains the previous catalog if a checksum, signature, schema, expiry, or size check fails. Catalog imports create independent local inventory records linked by numeric IDs to the verified template revision; newer definitions are reviewed before application, and local-only properties remain unchanged.
 
+Linked-catalog updates are classified by their final non-destructive merge. Installations can keep manual review, automatically accept safe enrichments, or trust compatible Registry updates while retaining local names, private metadata, assignments, numeric resource identities, canvas placements, cables, and route cache. The review center lazy-loads field-level changes and keeps applied, declined, review-required, and blocked decisions visible.
+
 Automatic catalog contributions are a separate explicit opt-in available only in Connected mode. The Bun backend allowlists reusable hardware fields, removes instance-owned data, checks the signed published/pending/suppressed digest index locally, and delivers bounded signed batches asynchronously. Inventory saves never wait for registry delivery. The settings view shows queued, retrying, delivered, accepted, rejected, and suppressed totals and provides pause, enrollment revocation, and installation-key rotation controls.
 
 Before delivery, eligible inventory is projected by hardware category and grouped by normalized product identity. Case, whitespace, manufacturer aliases, and private display names do not create duplicate candidates. Identical physical copies remain separate inventory records but produce one contribution candidate, while different board variants and RAM speeds remain distinct. Unidentified generic storage and ambiguous records are withheld locally. Exact matches to a published catalog definition link every matching local copy without asking the user to merge physical inventory.
@@ -258,6 +263,8 @@ An enrolled Connected installation also reports catalog adoption at startup, aft
 ## Projects And Workspaces
 
 The project switcher in the header selects the active project. Every project starts with a fixed **Systems** workspace and a **Canvas** workspace. Systems remains first and provides a structured compute-host view; Canvas workspaces retain the visual equipment, assignment, and cabling workbench. Additional Canvas workspaces can be renamed, assigned a curated icon and color, and reordered from the bottom workbook bar.
+
+Systems uses a dense, resizable table with sortable columns, compact Agent and Registry state, animated CPU, segmented memory, and storage utilization, and a shared compatibility-attention count. Optional tag and typed custom-field columns can be shown per saved view. Metadata edits autosave, participate in application-wide Undo and Redo, and use an independent persistence revision so they do not rebuild the workspace engine or reroute unchanged cables.
 
 Each project can choose its default workspace. An optional browser preference instead reopens the last workspace used in that project. Navigation uses project/workspace URLs, so refresh and browser history preserve the selected workbook context.
 

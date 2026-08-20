@@ -25,10 +25,12 @@ GitHub is the source of truth for source and CI. Docker Hub images are built on 
 - **Projects and workspaces:** Keep multiple lab plans in one installation with a fixed Systems view, reorderable Canvas tabs, per-project defaults, and browser-local last-active restoration.
 - **Reusable inventory:** Keep equipment project-bound, add selected global records to other projects, or make clean independent cross-project copies.
 - **Custom organization:** Add private typed custom fields and reusable colored tags, then search and filter Inventory or expose selected metadata in Systems saved views.
+- **Systems workspace:** Compare compute hosts in a dense live table with saved filters, Agent and Registry state, attention findings, and compact CPU, memory, and storage utilization.
 - **Component assignments:** Build hosts from reusable CPUs, motherboards, RAM, storage, GPUs, wired or radio Network Adapters, cooling, cases, power supplies, and OEM adapters.
 - **Physical cabling:** Connect individual network, display, and power endpoints with inspectable color-coded cable routes.
 - **Compatibility and audit:** Block known-invalid CPU, memory, storage, and expansion assignments, including physical RAM form factor, electrical module type, ECC, slot limits, and Network Adapter interface topology.
 - **Hardware catalog:** Search a signed verified catalog locally, import exact physical RAM by manufacturer part number, review linked updates, use an offline snapshot, or keep reusable private templates.
+- **Safe catalog updates:** Review field-level changes or automatically accept trusted compatible enrichments without replacing local names, private metadata, assignments, placements, cables, or route cache.
 - **Host Agent:** Monitor Linux, FreeBSD, and OPNsense health, uptime, CPU, memory, local storage, services, and opt-in Docker or Podman containers.
 - **Notifications:** Send opt-in host and selected resource alerts through reusable Ntfy or webhook destinations, with persisted incidents, quiet hours, reminders, and bounded retries.
 - **Hardware discovery:** Run a reviewed one-time scan and apply detected component values field by field without automatic inventory changes.
@@ -76,9 +78,13 @@ The app has four main parts:
 
 Inventory items can be created from the web interface. Once hardware exists in the inventory, you can place hosts and standalone equipment on the canvas, assemble custom PC builds from reusable components, and connect compatible network, display, and power endpoints directly.
 
+The fixed Systems workspace provides a sortable, resizable compute-host table with optional tag and typed custom-field columns, account-synchronized saved views, shared compatibility attention, and live Agent-backed CPU, segmented memory, and storage meters. After its initial compact snapshot, Systems and open Agent views receive changes through one authenticated server-sent event stream instead of recurring browser polling.
+
 The container serves the web app and writes changes asynchronously to the mounted data directory.
 
 Add Hardware also supports reusable private templates and an optional verified hardware catalog. Connected catalog use and automatic sanitized contributions are explicit opt-ins; Disabled mode makes no catalog requests, and Offline file mode verifies a downloaded signed snapshot without outbound access.
+
+Installation-wide tags and typed custom fields remain private application metadata. They autosave with Undo and Redo, can drive Inventory search and Systems saved views, and are excluded from Registry contributions, catalog identity, and catalog refresh merges.
 
 ## Hardware Compatibility
 

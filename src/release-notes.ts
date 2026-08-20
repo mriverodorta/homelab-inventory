@@ -493,7 +493,7 @@ const RELEASE_0_13_19_DETAILS: UnreleasedReleaseNotes = {
   notes: [],
 }
 
-export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
+const RELEASE_0_14_0_DETAILS: UnreleasedReleaseNotes = {
   highlights: [
     'Installation-wide custom fields and reusable colored tags now organize inventory with typed private metadata across item forms, Inspector, Inventory search, and Systems.',
     'Systems can show optional Tags and custom-field columns, combine metadata filters with existing host filters, and save those choices as account-synchronized views.',
@@ -514,6 +514,12 @@ export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
     'Core schema 26 stores normalized custom-field definitions, options, typed values, tags, and item relationships; schema 27 stores Systems metadata columns and filters by numeric IDs.',
     'Core schema 28 adds independent workbook, compatibility-policy, and item-metadata revisions while retaining the existing project revision as the engine topology revision.',
   ],
+}
+
+export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
+  highlights: [],
+  fixes: [],
+  notes: [],
 }
 
 const RELEASE_0_11_2_DETAILS: UnreleasedReleaseNotes = {
@@ -1043,9 +1049,16 @@ const RELEASE_0_2_1_DETAILS: UnreleasedReleaseNotes = {
 
 export const RELEASE_NOTES: ReleaseNoteEntry[] = [
   {
-    version: '0.13.19',
+    version: '0.14.0',
     date: '2026-08-19',
     channel: 'latest',
+    title: 'Custom fields, tags, and saved views',
+    ...RELEASE_0_14_0_DETAILS,
+  },
+  {
+    version: '0.13.19',
+    date: '2026-08-19',
+    channel: 'release',
     title: 'Reliable Canvas reactivation',
     ...RELEASE_0_13_19_DETAILS,
   },

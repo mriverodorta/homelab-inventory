@@ -6,6 +6,8 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 
 ## Unreleased
 
+## [0.14.0] - 2026-08-19
+
 ### Added
 
 - Installation-wide custom fields support short and long text, numbers with units and bounds, booleans, dates, date-times, URLs, and single- or multi-select options across applicable inventory types.
