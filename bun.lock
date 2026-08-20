@@ -68,6 +68,13 @@
         "zod": "^4.4.3",
       },
     },
+    "packages/viewer-model": {
+      "name": "@homelab-inventory/viewer-model",
+      "version": "0.1.0",
+      "dependencies": {
+        "@homelab-inventory/share-contract": "0.1.0",
+      },
+    },
   },
   "overrides": {
     "ip-address": "10.4.0",
@@ -248,6 +255,8 @@
     "@homelab-inventory/catalog-protocol": ["@homelab-inventory/catalog-protocol@workspace:packages/catalog-protocol"],
 
     "@homelab-inventory/share-contract": ["@homelab-inventory/share-contract@workspace:packages/share-contract"],
+
+    "@homelab-inventory/viewer-model": ["@homelab-inventory/viewer-model@workspace:packages/viewer-model"],
 
     "@hono/node-server": ["@hono/node-server@2.0.12", "", { "peerDependencies": { "hono": "^4" } }, "sha512-eWpQYr67tqJLeaSUl0Q+TquuYfUdTibpOJlUMV2FfUP7+KqCC5TufnwnlXL6mobZBJbGAYRd7ZvEBDCbLInjhg=="],
 

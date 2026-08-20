@@ -1,0 +1,22 @@
+{
+  "name": "@homelab-inventory/viewer-model",
+  "version": "0.1.0",
+  "description": "Framework-neutral read-only models for Homelab Inventory shares.",
+  "license": "MIT",
+  "type": "module",
+  "sideEffects": false,
+  "files": [
+    "src",
+    "README.md",
+    "LICENSE"
+  ],
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@homelab-inventory/share-contract": "0.1.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}
