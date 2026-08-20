@@ -4,7 +4,7 @@
 
 **Goal:** Build the private `HomelabInventoryShare` service that securely ingests signed Homelab Inventory shares and serves public, unlisted, protected, and embedded read-only viewers.
 
-**Architecture:** Use a private Bun workspace with a Hono API, React/Vite web shell, PostgreSQL metadata, content-addressed filesystem blobs, isolated workers, and exact versions of the public Homelab Inventory packages. Publication stages immutable data and atomically changes an active-revision pointer. Public rendering never calls a private installation.
+**Architecture:** Use a private Bun workspace with a Hono API, React/Vite web assets, PostgreSQL metadata, content-addressed filesystem blobs, isolated workers, and exact versions of the public Homelab Inventory packages. Hono serves share-specific HTML for `/s/:shareId` and `/e/:shareId`, injects dynamic security and metadata headers, and references immutable Vite assets for hydration. Publication stages immutable data and atomically changes an active-revision pointer; public rendering never calls a private installation.
 
 **Tech Stack:** Bun, Hono, Zod, Drizzle ORM, PostgreSQL 17, React 19, Vite, shadcn/ui, Lucide, Better Auth GitHub OAuth, Playwright/Chromium, Cloudflare Tunnel, Infisical.
 
@@ -28,16 +28,18 @@
 
 **Files:**
 - Create: `package.json`
-- Create: `bun.lock`
+- Generate: `bun.lock`
 - Create: `tsconfig.json`
 - Create: `.gitignore`
 - Create: `.dockerignore`
 - Create: `.env.example`
 - Create: `config/contract-mode.ts`
-- Create: `fixtures/contract-v1/manifest-v1.json`
-- Create: `fixtures/contract-v1/systems-v1.json`
-- Create: `fixtures/contract-v1/canvas-v1.json`
-- Create: `fixtures/contract-v1/SHA256SUMS`
+- Copy conditionally: `fixtures/contract-v1/manifest-v1.json`
+- Copy conditionally: `fixtures/contract-v1/systems-v1.json`
+- Copy conditionally: `fixtures/contract-v1/canvas-v1.json`
+- Copy conditionally: `fixtures/contract-v1/SHA256SUMS`
+- Create: `test/fixtures/contract-checksum/example.json`
+- Create: `test/fixtures/contract-checksum/SHA256SUMS`
 - Create: `apps/api/package.json`
 - Create: `apps/web/package.json`
 - Create: `packages/database/package.json`
@@ -75,16 +77,20 @@ test "$(git remote get-url origin)" = "git@github.com:mriverodorta/HomelabInvent
 expect(readContractMode(fixtureConfig)).toEqual({
   mode: 'fixtures-disabled', publicationEnabled: false,
 })
-expect(() => verifyFixtureChecksums(tamperedFixtureDir)).toThrow('checksum')
+expect(() => verifyFixtureChecksums(tamperedTestFixtureDir)).toThrow('checksum')
 expect(importsOf('apps/web')).not.toContain('packages/database')
+expect(importsOf('packages/domain')).not.toContain('packages/database')
 ```
 
 - [ ] **Step 3: Copy and verify bootstrap fixtures**
 
-If the approved fixture bundle is absent, record the dependency and continue
-only with Tasks 1-6. When present, copy it byte-for-byte, verify every sorted
-SHA-256 entry before parsing, and commit both bytes and checksum file. Never
-invent replacement fixtures.
+The four `fixtures/contract-v1` files are conditional outputs and must not be
+created when the approved bundle is absent. Do not synthesize `SHA256SUMS`.
+Checksum unit tests use only `test/fixtures/contract-checksum`, which is clearly
+non-production data. Tasks 1-6 must pass in the absent-fixture state. When the
+approved bundle is present, copy it byte-for-byte, verify every sorted SHA-256
+entry before parsing, and commit the exact bytes. Never invent replacement
+contract fixtures.
 
 - [ ] **Step 4: Scaffold package boundaries and hard publication gate**
 
@@ -92,7 +98,14 @@ Fixture mode may validate local adapters but `publicationEnabled` is always
 false. Package mode requires exact versions and npm integrity values from the
 rollout ledger; any missing or mismatched package fails startup.
 
-- [ ] **Step 5: Run and commit**
+- [ ] **Step 5: Generate and inspect the initial lockfile**
+
+Run `bun install` once after all workspace manifests have been written. Inspect
+`bun pm ls --all` and `bun.lock` for exact resolved versions, unexpected Git or
+file dependencies, duplicate security-sensitive packages, and unpinned shared
+packages. Commit no package cache or install output.
+
+- [ ] **Step 6: Prove reproducibility and commit**
 
 Run: `bun install --frozen-lockfile && bun test test/workspace.test.ts test/contract-mode.test.ts`
 
@@ -157,13 +170,18 @@ git commit -m "feat: add lab.gd relational foundation"
 - Create: `packages/domain/src/config/environment.ts`
 - Create: `packages/domain/src/config/secrets.ts`
 - Create: `packages/domain/src/http/client-address.ts`
-- Create: `packages/domain/src/rate-limits/postgres-rate-limiter.ts`
+- Create: `packages/domain/src/rate-limits/rate-limiter.ts`
+- Create: `packages/domain/src/rate-limits/policies.ts`
+- Create: `packages/database/src/schema/rate-limits.ts`
+- Create: `packages/database/src/rate-limits/postgres-rate-limiter.ts`
+- Create: `packages/database/migrations/0002_rate_limits.sql`
 - Create: `packages/domain/test/config.test.ts`
 - Create: `packages/domain/test/client-address.test.ts`
-- Create: `packages/domain/test/rate-limits.test.ts`
+- Create: `packages/domain/test/rate-limit-policies.test.ts`
+- Create: `packages/database/test/postgres-rate-limiter.test.ts`
 
 **Interfaces:**
-- Produces: `loadConfig`, `environmentValue`, `resolveClientAddress`, `consumeRateLimit`.
+- Produces: domain `RateLimiter` port and policies plus database `PostgresRateLimiter`; API composition injects the implementation into routes.
 - Consumes: Infisical-rendered files, configured trusted peer CIDRs, PostgreSQL.
 
 - [ ] **Step 1: Write failing configuration tests**
@@ -178,20 +196,28 @@ Ignore forwarded headers from untrusted peers. For configured Cloudflare Tunnel
 peers, accept one valid `CF-Connecting-IP`, normalize IPv4-mapped IPv6, reject
 oversized or malformed chains, and never trust arbitrary `X-Forwarded-For`.
 
-- [ ] **Step 3: Implement one atomic PostgreSQL rate-limit service**
+- [ ] **Step 3: Define the domain port and policies**
+
+`packages/domain` defines request/result types and named policies without
+importing PostgreSQL, Drizzle, or `packages/database`. Policy tests cover
+installation, password, reports, account claims, public reads, and global load.
+
+- [ ] **Step 4: Implement one atomic PostgreSQL adapter**
 
 Use bounded windows and one `INSERT ... ON CONFLICT ... DO UPDATE`. Keys are HMAC
-digests, not raw addresses. Separate policies cover installation, password,
-reports, account claims, public reads, and global load. Authentication and
-mutation endpoints fail closed when limiting is unavailable; public reads return
-503 when required database state is unavailable.
+digests, not raw addresses. Authentication and mutation endpoints fail closed
+when limiting is unavailable; public reads return 503 when required database
+state is unavailable. Construct the adapter in the API composition root and
+inject only the `RateLimiter` interface into route services. Add the rate-limit
+table through checksummed migration `0002_rate_limits.sql`; test fresh install,
+upgrade from `0001`, changed-checksum refusal, and concurrent consumption.
 
-- [ ] **Step 4: Run and commit**
+- [ ] **Step 5: Run and commit**
 
-Run: `bun test packages/domain/test/config.test.ts packages/domain/test/client-address.test.ts packages/domain/test/rate-limits.test.ts`
+Run: `bun test packages/domain/test/config.test.ts packages/domain/test/client-address.test.ts packages/domain/test/rate-limit-policies.test.ts packages/database/test/postgres-rate-limiter.test.ts`
 
 ```bash
-git add packages/domain
+git add packages/domain packages/database
 git commit -m "feat: centralize lab.gd security configuration"
 ```
 
@@ -366,7 +392,7 @@ git commit -m "feat: ingest and activate signed shares"
 
 **Interfaces:**
 - Produces: metadata, manifest, initial-load, view-blob, social-preview, expired, tombstone, and unavailable endpoints.
-- Consumes: active share projection, blob store, optional protected-session interface, transactional outbox.
+- Consumes: active share projection, blob store, transactional outbox, and a generic protected gate that Task 9 later replaces with injected session authorization.
 
 - [ ] **Step 1: Write the public-state response matrix**
 
@@ -380,23 +406,25 @@ Immutable blobs use strong hash ETags and immutable caching. Active manifests us
 revision ETags and short revalidation. Protected and owner state use
 `private, no-store`. Unlisted/protected metadata uses `noindex`.
 
-- [ ] **Step 3: Implement one-time qualified-load completion receipts**
+- [ ] **Step 3: Implement one-time client-confirmed load receipts**
 
 `GET /v1/public/shares/:id/load?mode=full|embed` returns metadata, manifest, and
 initial view with a generated `loadEventId` and short-lived opaque completion
-token. Persist only the token hash. After the viewer parses and renders the
-initial view, it sends the token once to
+token. Persist only the token hash. After the viewer parses the initial payload
+and mounts its initial view, it sends the token once to
 `POST /v1/public/shares/:id/load/:loadEventId/complete`. In one transaction,
 verify the share, mode, expiry, and token hash; mark the pending load delivered;
 and insert one outbox row under unique `loadEventId`. Missing, expired,
-replayed, disconnected, or render-failed loads do not qualify. Apply the shared
-source/share/global rate limits to both endpoints.
+replayed, or unconfirmed loads do not qualify. This metric is explicitly a
+client-confirmed initial load, not cryptographic proof that a human rendered or
+viewed the content. One-time tokens, expiry, deduplication, and shared
+source/share/global limits make it abuse-resistant rather than authoritative.
 
 - [ ] **Step 4: Prove API and header behavior through a real Hono server**
 
 Run: `bun test apps/api/test/public-shares.test.ts apps/api/test/public-cache-policy.test.ts apps/api/test/qualified-load-outbox.test.ts`
 
-Expected: PASS, including actual headers and duplicate-finish defense.
+Expected: PASS, including actual headers and duplicate-completion defense.
 
 - [ ] **Step 5: Commit public read API**
 
@@ -436,8 +464,10 @@ ID, share/revision binding, and no cross-share authorization.
 
 - [ ] **Step 4: Integrate middleware into Task 8 and run no-leak proof**
 
-Test HTML, JSON, Open Graph, ETags, cache headers, errors, and social previews
-against public and protected fixtures through the real server.
+Test JSON, ETags, cache headers, errors, load envelopes, blobs, and social
+preview responses against public and protected fixtures through the real Hono
+server. Task 10 owns HTML and Open Graph no-leak integration after those routes
+exist.
 
 - [ ] **Step 5: Run and commit**
 
@@ -454,16 +484,19 @@ git commit -m "feat: protect shares with Argon2id passwords"
 - Create: `apps/web/src/routes/share-page.tsx`
 - Create: `apps/web/src/routes/embed-page.tsx`
 - Create: `apps/web/src/routes/password-page.tsx`
+- Create: `apps/api/src/routes/share-pages.ts`
+- Create: `apps/api/src/html/share-document.ts`
 - Create: `apps/web/src/components/share-header.tsx`
 - Create: `apps/web/src/components/share-community-state.tsx`
 - Create: `apps/web/src/components/share-actions.tsx`
 - Create: `apps/web/src/lib/deep-links.ts`
 - Create: `apps/web/test/viewer.test.tsx`
 - Create: `apps/web/test/embed.test.tsx`
+- Create: `apps/api/test/share-pages-html.test.ts`
 - Create: `apps/api/test/embed-csp.test.ts`
 
 **Interfaces:**
-- Produces: `/s/:shareId` and `/e/:shareId`.
+- Produces: Hono-served `/s/:shareId` and `/e/:shareId` HTML plus immutable Vite hydration assets.
 - Consumes: Task 8/9 APIs and exact pinned `viewer-react`.
 
 - [ ] **Step 1: Write lazy loading and deep-link tests**
@@ -478,15 +511,26 @@ description region. Embed prioritizes content with expandable description and
 Open on lab.gd. Disabled comments/reactions are absent; enabled initial states
 say Coming soon.
 
-- [ ] **Step 3: Enforce embed CSP with integration tests**
+- [ ] **Step 3: Serve dynamic share HTML from Hono**
+
+Hono resolves the generic or authorized share projection and emits the complete
+HTML document referencing hashed Vite assets. It owns Open Graph metadata,
+canonical URL, robots policy, cache policy, content type, and CSP. A protected
+request without a valid Task 9 session receives only generic password-gate HTML
+and headers; no title, description, counters, manifest hash, preview, or
+state-specific detail enters source or headers.
+
+- [ ] **Step 4: Enforce embed CSP with integration tests**
 
 Exact HTTPS origins become `frame-ancestors`. Explicit wildcard is allowed only
 for public/unlisted shares. Protected shares reject wildcard. Verify actual
-headers through API/web integration, not component snapshots.
+HTML, Open Graph, canonical, robots, cache, content-type, and CSP headers through
+the real Hono server for public, unlisted, protected, expired, and missing
+fixtures, not component snapshots.
 
-- [ ] **Step 4: Run and commit**
+- [ ] **Step 5: Run and commit**
 
-Run: `bun test apps/web apps/api/test/embed-csp.test.ts && bun run --cwd apps/web build`
+Run: `bun test apps/web apps/api/test/share-pages-html.test.ts apps/api/test/embed-csp.test.ts && bun run --cwd apps/web build`
 
 ```bash
 git add apps
@@ -498,6 +542,9 @@ git commit -m "feat: render public and embedded lab shares"
 **Files:**
 - Create: `apps/api/src/auth/better-auth.ts`
 - Create: `apps/api/src/routes/account-claims.ts`
+- Create: `packages/database/src/schema/auth.ts`
+- Create: `packages/database/migrations/0003_better_auth.sql`
+- Create: `packages/database/test/better-auth-migration.test.ts`
 - Create: `apps/web/src/routes/account-dashboard.tsx`
 - Create: `apps/api/test/account-claims.test.ts`
 - Create: `apps/web/test/account-dashboard.test.tsx`
@@ -511,23 +558,32 @@ git commit -m "feat: render public and embedded lab shares"
 One GitHub subject may claim multiple installations; another cannot claim them.
 Claims are short-lived and single-use. Dashboard cannot query installation data.
 
-- [ ] **Step 2: Implement outbound claim completion**
+- [ ] **Step 2: Add the pinned Better Auth schema migration**
+
+Pin the Better Auth version first, generate its required account, session,
+verification, and OAuth schema, then review and commit it as ordered migration
+`0003_better_auth.sql`. The existing checksummed migration runner owns applying
+it. Test a fresh install, sequential upgrade from `0001` through `0002` to
+`0003`, changed-checksum refusal, transactional rollback on injected failure,
+and restart idempotency. Disable runtime auto-migration in every environment.
+
+- [ ] **Step 3: Implement outbound claim completion**
 
 Local app creates claim; browser signs into GitHub and approves; Task 4 SSE emits
 completion. Store immutable GitHub subject, not mutable username.
 
-- [ ] **Step 3: Implement revision-safe settings**
+- [ ] **Step 4: Implement revision-safe settings**
 
 Allow metadata, visibility, expiration, embed policy, comments/reactions,
 unpublish, and delete with optimistic revisions. Content replacement remains
 installation-only.
 
-- [ ] **Step 4: Run and commit**
+- [ ] **Step 5: Run and commit**
 
-Run: `bun test apps/api/test/account-claims.test.ts apps/web/test/account-dashboard.test.tsx`
+Run: `bun test packages/database/test/better-auth-migration.test.ts apps/api/test/account-claims.test.ts apps/web/test/account-dashboard.test.tsx`
 
 ```bash
-git add apps
+git add packages/database apps
 git commit -m "feat: claim and manage shares with GitHub"
 ```
 
@@ -552,7 +608,7 @@ git commit -m "feat: claim and manage shares with GitHub"
 
 One successfully completed `loadEventId` produces one outbox event and one
 total/full/embed increment despite duplicate completion requests or worker
-retry. Pending, expired, disconnected, or render-failed loads produce none.
+retry. Pending, expired, disconnected, or client-unconfirmed loads produce none.
 
 - [ ] **Step 2: Implement daily unlinkable uniqueness**
 
@@ -706,8 +762,11 @@ until readiness and smoke tests pass; automatically roll back on failure.
 
 Run: `bun run verify && bun run security:container && bun test test/compose-security.test.ts test/secret-mounts.test.ts test/backup-restore.test.ts`
 
-Expected: zero vulnerabilities, no mount/role violations, successful staged
-restore, and injected cutover rollback.
+`security:container` must build and boot the final distroless image for both
+`linux/amd64` and `linux/arm64`, then run Docker Scout and Trivy against each
+exact image. Expected: zero known vulnerabilities at every severity on both
+architectures, no mount/role violations, successful staged restore, and
+injected cutover rollback.
 
 - [ ] **Step 6: Commit deployment support**
 
@@ -753,7 +812,8 @@ lifecycle transition.
 
 Run: `bun run lint && bun run test && bun run build && bun run security:container`
 
-Expected: PASS with zero vulnerabilities.
+Expected: PASS, including build/boot plus Docker Scout and Trivy zero-known-
+vulnerability results for both `linux/amd64` and `linux/arm64` final images.
 
 - [ ] **Step 5: Document and commit**
 

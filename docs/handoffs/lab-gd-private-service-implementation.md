@@ -101,7 +101,11 @@ recorded in the coordinated rollout ledger.
   `no-new-privileges` plus bounded `noexec,nosuid,nodev` tmpfs.
 - API, renderer, lifecycle, analytics, and Registry mirror use separate database
   roles, secrets, and mounts.
+- Domain packages expose infrastructure ports only; PostgreSQL implementations
+  remain in the database/infrastructure boundary and are injected by the API.
 - Passwords use Bun Argon2id with unique salt and versioned Infisical pepper.
+- Better Auth tables are installed only through ordered checksummed migrations;
+  runtime auto-migration is disabled.
 - Protected routes leak no title, description, counts, manifest, preview, or
   object metadata before successful verification.
 - Publication verifies timestamp, nonce, signature, token scope, compressed and
@@ -111,6 +115,10 @@ recorded in the coordinated rollout ledger.
   revision online.
 - Raw IPs, full referrers, user-agent history, geography, and persistent
   fingerprints are not stored.
+- Hono serves share-specific HTML and owns Open Graph, canonical, robots, cache,
+  content-type, and CSP headers; the Vite bundle only hydrates that document.
+- Container security must pass build, boot, Docker Scout, and Trivy for both
+  `linux/amd64` and `linux/arm64` with zero known vulnerabilities.
 - Never connect directly to SkyArk.
 
 ## Registry Use
