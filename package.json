@@ -5,6 +5,9 @@
   "version": "0.14.0",
   "license": "MIT",
   "type": "module",
+  "workspaces": [
+    "packages/*"
+  ],
   "repository": {
     "type": "git",
     "url": "https://github.com/mriverodorta/homelab-inventory.git"
@@ -51,6 +54,7 @@
     "test:auth": "bun test server/auth/*.bun_spec.mjs",
     "test:sqlite": "bun test scripts/verify-sqlite-runtime.bun_spec.mjs scripts/check-database-migrations.bun_spec.mjs scripts/benchmark-sqlite-persistence.bun_spec.mjs scripts/ci/*.bun_spec.mjs scripts/local-release/*.bun_spec.mjs server/persistence server/registry/*.bun_spec.mjs server/telemetry/*.bun_spec.mjs",
     "test:bundle": "bun test scripts/check-frontend-bundle.bun_spec.mjs",
+    "test:share-packages": "vitest run packages/share-contract packages/viewer-model packages/viewer-react",
     "benchmark:catalog-startup": "bun scripts/benchmark-catalog-startup.mjs",
     "test:watch": "vitest"
   },

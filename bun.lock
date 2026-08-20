@@ -57,6 +57,17 @@
         "vitest": "^4.1.10",
       },
     },
+    "packages/catalog-protocol": {
+      "name": "@homelab-inventory/catalog-protocol",
+      "version": "1.0.0",
+    },
+    "packages/share-contract": {
+      "name": "@homelab-inventory/share-contract",
+      "version": "0.1.0",
+      "dependencies": {
+        "zod": "^4.4.3",
+      },
+    },
   },
   "overrides": {
     "ip-address": "10.4.0",
@@ -233,6 +244,10 @@
     "@floating-ui/utils": ["@floating-ui/utils@0.2.11", "", {}, "sha512-RiB/yIh78pcIxl6lLMG0CgBXAZ2Y0eVHqMPYugu+9U0AeT6YBeiJpf7lbdJNIugFP5SIjwNRgo4DhR1Qxi26Gg=="],
 
     "@fontsource-variable/geist": ["@fontsource-variable/geist@5.3.0", "", {}, "sha512-j0m+vLQuG5XAYoHtGCVu0spvlGreR3EzpECUVzkFmI1mTVnAO38l/NEPDCFgZ177JxzYJCLSmTQibIiYPilGrA=="],
+
+    "@homelab-inventory/catalog-protocol": ["@homelab-inventory/catalog-protocol@workspace:packages/catalog-protocol"],
+
+    "@homelab-inventory/share-contract": ["@homelab-inventory/share-contract@workspace:packages/share-contract"],
 
     "@hono/node-server": ["@hono/node-server@2.0.12", "", { "peerDependencies": { "hono": "^4" } }, "sha512-eWpQYr67tqJLeaSUl0Q+TquuYfUdTibpOJlUMV2FfUP7+KqCC5TufnwnlXL6mobZBJbGAYRd7ZvEBDCbLInjhg=="],
 

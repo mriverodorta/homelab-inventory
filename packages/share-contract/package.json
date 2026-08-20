@@ -1,0 +1,22 @@
+{
+  "name": "@homelab-inventory/share-contract",
+  "version": "0.1.0",
+  "description": "Deterministic public sharing contract for Homelab Inventory viewers.",
+  "license": "MIT",
+  "type": "module",
+  "sideEffects": false,
+  "files": [
+    "src",
+    "README.md",
+    "LICENSE"
+  ],
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "zod": "^4.4.3"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}
