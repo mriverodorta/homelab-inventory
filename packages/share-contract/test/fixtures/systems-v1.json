@@ -1,0 +1,72 @@
+{
+  "shareContractVersion": 1,
+  "viewType": "systems",
+  "schemaVersion": 1,
+  "publicViewId": "view_systems_001",
+  "items": [
+    {
+      "publicItemId": "item_server_0001",
+      "type": "server",
+      "name": "Dell OptiPlex Micro 7090",
+      "manufacturer": "Dell",
+      "model": "OptiPlex Micro 7090",
+      "source": {
+        "type": "registry",
+        "registryReference": {
+          "templateKey": "desktop-dell-optiplex-micro-7090-standard",
+          "templateRevision": 4,
+          "contentHash": "1111111111111111111111111111111111111111111111111111111111111111"
+        },
+        "localOverrides": {
+          "usageRole": "server"
+        }
+      },
+      "ports": [
+        {
+          "publicPortId": "port_server_eth01",
+          "name": "Ethernet 1",
+          "kind": "network",
+          "connector": "rj45",
+          "side": "back",
+          "speedBps": 1000000000
+        }
+      ],
+      "tags": [
+        {
+          "publicTagId": "tag_kubernetes_01",
+          "name": "kubernetes",
+          "colorToken": "purple"
+        }
+      ],
+      "customFields": [
+        {
+          "publicFieldId": "field_environment",
+          "name": "Environment",
+          "value": "production"
+        }
+      ],
+      "resourceSnapshot": {
+        "capturedAt": "2026-08-20T18:00:00.000Z",
+        "cpu": {
+          "usagePercent": 18
+        },
+        "memory": {
+          "totalBytes": 34359738368,
+          "usedBytes": 9663676416,
+          "availableBytes": 24696061952,
+          "buffersBytes": 134217728,
+          "cacheBytes": 4294967296,
+          "sharedBytes": 67108864
+        },
+        "storage": [
+          {
+            "publicStorageId": "storage_root_0001",
+            "name": "1TB NVMe",
+            "totalBytes": 1000204886016,
+            "usedBytes": 420085514240
+          }
+        ]
+      }
+    }
+  ]
+}

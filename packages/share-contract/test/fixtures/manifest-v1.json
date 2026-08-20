@@ -1,0 +1,63 @@
+{
+  "shareContractVersion": 1,
+  "projectPublicId": "project_public_01",
+  "projectLabel": "Primary Homelab",
+  "title": "Primary Homelab",
+  "description": "A sanitized Systems and Canvas sharing fixture.",
+  "visibility": {
+    "type": "public"
+  },
+  "publication": {
+    "type": "replaceable",
+    "updateMode": "manual"
+  },
+  "expiration": {
+    "type": "indefinite"
+  },
+  "comments": {
+    "enabled": true
+  },
+  "reactions": {
+    "enabled": true
+  },
+  "embed": {
+    "enabled": true,
+    "origins": {
+      "type": "allowlist",
+      "origins": [
+        "https://docs.example.com"
+      ]
+    }
+  },
+  "resourceSnapshots": {
+    "included": true,
+    "capturedAt": "2026-08-20T18:00:00.000Z"
+  },
+  "rendererFeatures": [
+    "workbook-tabs",
+    "deep-links",
+    "inspector",
+    "resource-snapshot",
+    "comments-coming-soon",
+    "reactions-coming-soon"
+  ],
+  "initialViewPublicId": "view_systems_001",
+  "views": [
+    {
+      "publicViewId": "view_systems_001",
+      "type": "systems",
+      "schemaVersion": 1,
+      "contentHash": "947b17e29d9e28921480af7e65e99b2009d61ef35afbeaf62d97d39ddb59fd75",
+      "sortOrder": 0,
+      "name": "Systems"
+    },
+    {
+      "publicViewId": "view_canvas_0001",
+      "type": "canvas",
+      "schemaVersion": 1,
+      "contentHash": "3672df31353769d809c3a7991ef02ef063d8d1cc5498cf199d37527ff03b28cd",
+      "sortOrder": 1,
+      "name": "Canvas"
+    }
+  ]
+}

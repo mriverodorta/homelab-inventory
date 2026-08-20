@@ -1,0 +1,117 @@
+{
+  "shareContractVersion": 1,
+  "viewType": "canvas",
+  "schemaVersion": 1,
+  "publicViewId": "view_canvas_0001",
+  "items": [
+    {
+      "publicItemId": "item_server_0001",
+      "type": "server",
+      "name": "Dell OptiPlex Micro 7090",
+      "manufacturer": "Dell",
+      "model": "OptiPlex Micro 7090",
+      "source": {
+        "type": "registry",
+        "registryReference": {
+          "templateKey": "desktop-dell-optiplex-micro-7090-standard",
+          "templateRevision": 4,
+          "contentHash": "1111111111111111111111111111111111111111111111111111111111111111"
+        },
+        "localOverrides": {
+          "usageRole": "server"
+        }
+      },
+      "ports": [
+        {
+          "publicPortId": "port_server_eth01",
+          "name": "Ethernet 1",
+          "kind": "network",
+          "connector": "rj45",
+          "side": "back",
+          "speedBps": 1000000000
+        }
+      ]
+    },
+    {
+      "publicItemId": "item_switch_0001",
+      "type": "switch",
+      "name": "Eight-port Network Switch",
+      "source": {
+        "type": "custom",
+        "definition": {
+          "managed": true,
+          "portCount": 8
+        }
+      },
+      "ports": [
+        {
+          "publicPortId": "port_switch_eth01",
+          "name": "Port 1",
+          "kind": "network",
+          "connector": "rj45",
+          "side": "front",
+          "speedBps": 1000000000
+        }
+      ]
+    }
+  ],
+  "nodes": [
+    {
+      "publicNodeId": "node_server_0001",
+      "publicItemId": "item_server_0001",
+      "position": {
+        "x": 96,
+        "y": 120
+      },
+      "size": {
+        "width": 240,
+        "height": 144
+      },
+      "zIndex": 1
+    },
+    {
+      "publicNodeId": "node_switch_0001",
+      "publicItemId": "item_switch_0001",
+      "position": {
+        "x": 480,
+        "y": 120
+      },
+      "size": {
+        "width": 288,
+        "height": 120
+      },
+      "zIndex": 1
+    }
+  ],
+  "connections": [
+    {
+      "publicConnectionId": "connection_uplink_001",
+      "kind": "network",
+      "source": {
+        "publicItemId": "item_server_0001",
+        "publicPortId": "port_server_eth01"
+      },
+      "target": {
+        "publicItemId": "item_switch_0001",
+        "publicPortId": "port_switch_eth01"
+      },
+      "label": "1 Gbps",
+      "color": "green",
+      "route": [
+        {
+          "x": 336,
+          "y": 192
+        },
+        {
+          "x": 480,
+          "y": 192
+        }
+      ]
+    }
+  ],
+  "viewport": {
+    "x": 0,
+    "y": 0,
+    "zoom": 1
+  }
+}

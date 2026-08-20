@@ -6,6 +6,11 @@ export {
 export { canonicalShareJson } from './canonicalize'
 export { shareContentHash } from './hash'
 export {
+  negotiateShareCapabilities,
+  type ShareCapabilities,
+  type ShareNegotiationResult,
+} from './negotiation'
+export {
   classifyShareField,
   findForbiddenShareField,
   type ShareFieldClassification,
