@@ -26,9 +26,9 @@ describe('local release CLI', () => {
     })
   })
 
-  test('recognizes local release retention cleanup', () => {
-    expect(parseLocalReleaseCommand(['prune-local'])).toEqual({
-      command: 'prune-local',
+  test('recognizes complete local release cleanup', () => {
+    expect(parseLocalReleaseCommand(['cleanup-local'])).toEqual({
+      command: 'cleanup-local',
       options: [],
     })
   })

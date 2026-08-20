@@ -29,7 +29,6 @@ export function releasePaths(environment = process.env) {
     incomingDataDir: path.join(supportRoot, 'data', 'incoming'),
     currentDataDir: path.join(supportRoot, 'data', 'current'),
     previousDataDir: path.join(supportRoot, 'data', 'previous'),
-    buildkitCacheDir: path.join(cacheRoot, 'buildkit'),
   }
 }
 

@@ -71,7 +71,7 @@ Pushes to `main` or `stable` require a current local release receipt. When no re
 Docker release construction and publication run on the maintainer's Mac. GitHub Actions still validates source and monitors published images, but it does not build or write Docker tags.
 
 ```bash
-bun run release:local warm-cache
+bun run release:local cleanup-local
 bun run release:local prepare
 ```
 
@@ -97,7 +97,7 @@ bun run release:local reset
 bun run release:local cleanup-candidates
 ```
 
-Release state, staging data, OCI archives, receipts, and tools live under `~/Library/Application Support/Homelab Inventory Release`. Reusable BuildKit cache lives under `~/Library/Caches/homelab-inventory-release`. Both survive `~/bin/dclaim`; Docker images and the dedicated builder can be restored with `warm-cache`. None of these paths may be committed.
+Release state, staging data, OCI archives, receipts, and tools live under `~/Library/Application Support/Homelab Inventory Release`. Every architecture uses a fresh dedicated Buildx builder with no reusable cache. Release-owned builder state, scanner caches, temporary registries, and loaded candidate images are removed automatically after their lifecycle permits it and can also be removed with `cleanup-local`. None of these paths may be committed.
 
 ## Project Shape
 

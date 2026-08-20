@@ -3,7 +3,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { releasePaths, releaseRemoteConfig } from './local-release/config.mjs'
 import { parseLocalReleaseCommand } from './local-release/cli.mjs'
-import { compactOciCache, pruneCandidateArchives, warmReleaseCache } from './local-release/cache.mjs'
+import { cleanupReleaseDockerState } from './local-release/cleanup.mjs'
 import { cleanupDockerHubCandidateTags } from './local-release/docker-hub.mjs'
 import { buildOciCandidate, loadOciCandidate, validateCandidateArtifact } from './local-release/oci.mjs'
 import { publishCandidate } from './local-release/publish.mjs'
@@ -35,8 +35,7 @@ Commands:
   logs                     Show staging container logs
   stop                     Stop the staging container
   reset                    Remove incomplete local release state
-  warm-cache               Restore release build and scanner caches
-  prune-local              Prune obsolete local candidates and cache blobs
+  cleanup-local            Remove release-owned Docker cache and volumes
   verify-push              Verify the current two-platform security receipt
   cleanup-candidates       Remove all temporary candidate tags from Docker Hub`)
 }
@@ -60,27 +59,38 @@ async function status() {
 async function prepare() {
   await withReleaseLock(paths, async () => {
     const identity = await currentReleaseIdentity(root)
-    if (!identity.trackedClean) throw new Error(`Tracked worktree changes prevent release:\n${identity.trackedStatus}`)
-    await runCiVerification({ root, receiptFile: paths.ciReceiptFile })
-    let state = { ...emptyReleaseState(), phase: 'snapshotting', identity }
-    state = await writeReleaseState(paths, state)
-    const snapshot = await createRemoteSnapshot(releaseRemoteConfig(), paths, { root })
-    state = await writeReleaseState(paths, { ...state, phase: 'sanitizing', snapshot })
-    const sanitizedData = await sanitizeStagingData(paths.incomingDataDir)
-    await activateIncomingData(paths)
-    state = await writeReleaseState(paths, { ...state, phase: 'building-arm64', sanitizedData })
-    const built = await buildOciCandidate({ root, paths, identity, architecture: 'arm64' })
-    await loadOciCandidate(built, paths)
-    const arm64 = await validateLoadedCandidate(built)
-    state = await writeReleaseState(paths, {
-      ...state,
-      phase: 'staging',
-      candidates: { ...state.candidates, arm64 },
-    })
-    await deployStaging(arm64, paths)
-    const staging = await checkStaging(arm64, paths)
-    await writeReleaseState(paths, { ...state, phase: 'awaiting-approval', staging })
-    console.log(`\nARM64 staging is ready at http://127.0.0.1:8799 for revision ${identity.revision}.`)
+    let completed = false
+    try {
+      if (!identity.trackedClean) throw new Error(`Tracked worktree changes prevent release:\n${identity.trackedStatus}`)
+      await runCiVerification({ root, receiptFile: paths.ciReceiptFile })
+      let state = { ...emptyReleaseState(), phase: 'snapshotting', identity }
+      state = await writeReleaseState(paths, state)
+      const snapshot = await createRemoteSnapshot(releaseRemoteConfig(), paths, { root })
+      state = await writeReleaseState(paths, { ...state, phase: 'sanitizing', snapshot })
+      const sanitizedData = await sanitizeStagingData(paths.incomingDataDir)
+      await activateIncomingData(paths)
+      state = await writeReleaseState(paths, { ...state, phase: 'building-arm64', sanitizedData })
+      const built = await buildOciCandidate({ root, paths, identity, architecture: 'arm64' })
+      await loadOciCandidate(built, paths)
+      const arm64 = await validateLoadedCandidate(built)
+      state = await writeReleaseState(paths, {
+        ...state,
+        phase: 'staging',
+        candidates: { ...state.candidates, arm64 },
+      })
+      await deployStaging(arm64, paths)
+      const staging = await checkStaging(arm64, paths)
+      await writeReleaseState(paths, { ...state, phase: 'awaiting-approval', staging })
+      completed = true
+      console.log(`\nARM64 staging is ready at http://127.0.0.1:8799 for revision ${identity.revision}.`)
+    } finally {
+      if (!completed) await stopStaging()
+      await cleanupReleaseDockerState({
+        paths,
+        revision: identity.revision,
+        candidateArchitectures: completed ? [] : ['arm64', 'amd64'],
+      })
+    }
   })
 }
 
@@ -122,7 +132,18 @@ async function publish() {
   if (!channel) throw new Error('publish requires --channel latest or --channel stable.')
   await withReleaseLock(paths, async () => {
     const [state, identity] = await Promise.all([readReleaseState(paths), currentReleaseIdentity(root)])
-    await publishCandidate({ root, paths, state, identity, channel, dryRun })
+    let completed = false
+    try {
+      await publishCandidate({ root, paths, state, identity, channel, dryRun })
+      completed = true
+    } finally {
+      if (completed) await stopStaging()
+      await cleanupReleaseDockerState({
+        paths,
+        revision: identity.revision,
+        candidateArchitectures: completed ? ['arm64', 'amd64'] : ['amd64'],
+      })
+    }
   })
 }
 
@@ -147,15 +168,15 @@ async function cleanupCandidates() {
   })
 }
 
-async function pruneLocal() {
+async function cleanupLocal() {
   await withReleaseLock(paths, async () => {
     const state = await readReleaseState(paths)
-    const candidates = await pruneCandidateArchives(paths, state)
-    const caches = {}
-    for (const architecture of ['arm64', 'amd64']) {
-      caches[architecture] = await compactOciCache(path.join(paths.buildkitCacheDir, architecture))
-    }
-    console.log(JSON.stringify({ candidates, caches }, null, 2))
+    await cleanupReleaseDockerState({
+      paths,
+      revision: state.identity?.revision,
+      reclaimDockerRaw: !process.argv.includes('--skip-raw-reclaim'),
+    })
+    console.log('Removed release-owned Docker cache and volumes.')
   })
 }
 
@@ -176,10 +197,8 @@ if (command === 'help') {
   await reset()
 } else if (command === 'publish') {
   await publish()
-} else if (command === 'warm-cache') {
-  await withReleaseLock(paths, async () => warmReleaseCache(paths))
-} else if (command === 'prune-local') {
-  await pruneLocal()
+} else if (command === 'cleanup-local') {
+  await cleanupLocal()
 } else if (command === 'verify-push') {
   await verifyPush()
 } else if (command === 'cleanup-candidates') {

@@ -14,49 +14,18 @@ export function candidateBuildCommand({ root, paths, identity, architecture }) {
   const archive = path.join(directory, 'candidate.oci.tar')
   const metadata = path.join(directory, 'build-metadata.json')
   const image = `homelab-inventory-candidate:${identity.revision.slice(0, 12)}-${architecture}`
-  const cache = path.join(paths.buildkitCacheDir, architecture)
-  const cacheOutput = `${cache}.next`
   const command = [
-    'docker', 'buildx', 'build', '--builder', RELEASE_BUILDER, '--pull',
+    'docker', 'buildx', 'build', '--builder', RELEASE_BUILDER, '--pull', '--no-cache',
     '--platform', platform, '--tag', image,
     '--build-arg', `APP_VERSION=${identity.version}`,
     '--build-arg', `APP_REVISION=${identity.revision}`,
     '--build-arg', 'APP_CHANNEL=release',
     '--provenance=mode=max', '--sbom=true',
-    '--cache-to', `type=local,dest=${cacheOutput},mode=max`,
     '--output', `type=oci,dest=${archive}`,
     '--metadata-file', metadata,
     root,
   ]
-  return { command, directory, archive, metadata, image, platform, cache, cacheOutput }
-}
-
-async function exists(target) {
-  return fs.stat(target).then(() => true, (error) => {
-    if (error?.code === 'ENOENT') return false
-    throw error
-  })
-}
-
-export async function activateBuildCache({ cache, cacheOutput }) {
-  const previous = `${cache}.previous`
-  await fs.rm(previous, { recursive: true, force: true })
-  const hadCache = await exists(cache)
-  if (hadCache) await fs.rename(cache, previous)
-  try {
-    await fs.rename(cacheOutput, cache)
-  } catch (error) {
-    if (hadCache && await exists(previous)) await fs.rename(previous, cache)
-    throw error
-  }
-  await fs.rm(previous, { recursive: true, force: true })
-}
-
-async function recoverBuildCache(cache) {
-  const previous = `${cache}.previous`
-  if (!await exists(previous)) return
-  if (!await exists(cache)) await fs.rename(previous, cache)
-  else await fs.rm(previous, { recursive: true, force: true })
+  return { command, directory, archive, metadata, image, platform }
 }
 
 export async function ensureReleaseBuilder() {
@@ -67,26 +36,23 @@ export async function ensureReleaseBuilder() {
   await run(['docker', 'buildx', 'inspect', RELEASE_BUILDER, '--bootstrap'])
 }
 
+export async function recreateReleaseBuilder(paths) {
+  await run(['docker', 'buildx', 'rm', '--force', RELEASE_BUILDER], {
+    allowFailure: true,
+    log: false,
+  })
+  await fs.rm(paths.cacheRoot, { recursive: true, force: true })
+  await ensureReleaseBuilder()
+}
+
 export async function buildOciCandidate({ root, paths, identity, architecture }) {
   if (!['arm64', 'amd64'].includes(architecture)) throw new Error(`Unsupported release architecture ${architecture}.`)
   await verifyCurrentGoToolchain()
-  await ensureReleaseBuilder()
+  await recreateReleaseBuilder(paths)
   const build = candidateBuildCommand({ root, paths, identity, architecture })
   await fs.rm(build.directory, { recursive: true, force: true })
   await fs.mkdir(build.directory, { recursive: true, mode: 0o700 })
-  await fs.mkdir(path.dirname(build.cache), { recursive: true, mode: 0o700 })
-  await recoverBuildCache(build.cache)
-  await fs.rm(build.cacheOutput, { recursive: true, force: true })
-  if ((await fs.readdir(build.cache).catch(() => [])).length > 0) {
-    build.command.splice(build.command.indexOf('--cache-to'), 0, '--cache-from', `type=local,src=${build.cache}`)
-  }
-  try {
-    await run(build.command)
-    await activateBuildCache(build)
-  } catch (error) {
-    await fs.rm(build.cacheOutput, { recursive: true, force: true })
-    throw error
-  }
+  await run(build.command)
   const metadata = JSON.parse(await fs.readFile(build.metadata, 'utf8'))
   const digest = metadata['containerimage.digest']
   if (typeof digest !== 'string' || !/^sha256:[0-9a-f]{64}$/.test(digest)) {
@@ -133,6 +99,7 @@ export async function loadOciCandidate(candidate, paths) {
     }
     await run(['docker', 'pull', '--platform', candidate.platform, destination])
     await run(['docker', 'tag', destination, candidate.image])
+    await run(['docker', 'image', 'rm', destination], { allowFailure: true, capture: true, log: false })
   } finally {
     await stopLocalRegistry(registry)
   }

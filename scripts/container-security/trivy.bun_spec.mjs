@@ -2,7 +2,7 @@ import { describe, expect, test } from 'bun:test'
 import { TRIVY_IMAGE, trivyCommand } from './trivy.mjs'
 
 describe('Trivy release scanner', () => {
-  test('pins the scanner image and mounts the retained database cache', () => {
+  test('pins the scanner image and mounts an ephemeral database cache volume', () => {
     const command = trivyCommand(['image', '--download-db-only'])
     expect(command).toContain(TRIVY_IMAGE)
     expect(command).toContain('homelab-inventory-trivy-cache:/root/.cache/')
