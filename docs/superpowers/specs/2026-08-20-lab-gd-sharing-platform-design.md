@@ -284,8 +284,20 @@ PHC hash and pepper version. Verification uses `Bun.password.verify` and
 constant-time library behavior. A password cannot be recovered; it can only be
 replaced.
 
-Successful verification creates a short-lived `HttpOnly`, `Secure`,
-`SameSite=Lax` cookie scoped to the protected share or active revision.
+Successful full-page verification creates one short-lived opaque
+`__Host-labgd_viewer` cookie with `Path=/`, `HttpOnly`, `Secure`,
+`SameSite=Lax`, and no `Domain`. It identifies a server-side viewer session;
+separate grants bind that session to numeric share and active-revision IDs.
+Every protected request rechecks the applicable grant, so the host-wide path
+does not grant cross-share access and one browser session can unlock multiple
+shares independently.
+
+Protected cross-origin embeds do not rely on the Lax cookie. After password
+verification they receive a separate short-lived bearer capability bound to the
+numeric share, active revision, and exact allowlisted embedding origin. The
+iframe keeps it only in memory and sends it only in the Authorization header. It
+never enters a URL, cookie, browser storage, log, referrer, or parent-window
+message, and reloading requires verification again.
 
 ## Viewer And Embed
 
@@ -374,8 +386,14 @@ The system does not retain raw IP addresses, full referrers, user-agent history,
 geographic profiles, or browser fingerprints. Approximate visitor identifiers
 use a daily derived HMAC key so they cannot be correlated across days.
 
-Only successful content loads count as qualified views. Automated social-preview
-and health requests do not count.
+Hono captures an external referring hostname only from the initial full-page or
+embed HTML request. It parses and bounds the hostname server-side, discards all
+other URL parts, associates it through a short-lived one-time bootstrap token,
+and never accepts attribution later from browser JavaScript.
+
+Only client-confirmed initial content loads count as qualified views. This is an
+abuse-resistant product metric rather than proof that a human viewed the
+content. Automated social-preview and health requests do not count.
 
 Abuse reporting is available at launch. Reports enter a private moderation
 queue. Reporters do not need access to share-owner data. The moderation system

@@ -20,13 +20,15 @@ Read these files before creating the new repository:
 2. `ServerSpecsInventory/docs/superpowers/plans/2026-08-20-lab-gd-03-private-service.md`
 3. `ServerSpecsInventory/docs/superpowers/plans/2026-08-20-lab-gd-04-coordinated-rollout.md`
 
-Design commit:
+Base design commit:
 
 ```text
 05a5244
 ```
 
-Do not substitute assumptions for any frozen requirement in the design.
+The current design file and private-service plan contain reviewed integration
+clarifications made after that base commit. Treat the files at the exact handoff
+commit as authoritative. Do not substitute assumptions for their requirements.
 
 ## Ownership
 
@@ -104,6 +106,11 @@ recorded in the coordinated rollout ledger.
 - Domain packages expose infrastructure ports only; PostgreSQL implementations
   remain in the database/infrastructure boundary and are injected by the API.
 - Passwords use Bun Argon2id with unique salt and versioned Infisical pepper.
+- Protected viewer authorization uses one opaque `__Host-labgd_viewer` cookie
+  with `Path=/` and server-side grants bound to numeric share and revision IDs.
+- Protected cross-origin embeds use a separate short-lived memory-only bearer
+  capability bound to the share, revision, and exact allowed embedding origin;
+  it is never placed in a URL, cookie, browser storage, or parent-window message.
 - Better Auth tables are installed only through ordered checksummed migrations;
   runtime auto-migration is disabled.
 - Protected routes leak no title, description, counts, manifest, preview, or
@@ -117,6 +124,9 @@ recorded in the coordinated rollout ledger.
   fingerprints are not stored.
 - Hono serves share-specific HTML and owns Open Graph, canonical, robots, cache,
   content-type, and CSP headers; the Vite bundle only hydrates that document.
+- External referring hostnames are parsed and sanitized only from the initial
+  Hono HTML request, associated through a short-lived one-time bootstrap token,
+  and never accepted from browser JavaScript.
 - Container security must pass build, boot, Docker Scout, and Trivy for both
   `linux/amd64` and `linux/arm64` with zero known vulnerabilities.
 - Never connect directly to SkyArk.

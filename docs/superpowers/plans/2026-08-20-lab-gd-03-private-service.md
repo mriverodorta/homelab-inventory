@@ -135,7 +135,7 @@ git commit -m "chore: initialize private lab.gd workspace"
 Cover positive numeric IDs, random public IDs, installation keys/tokens/nonces,
 shares, immutable revisions, active pointers, view blobs, Registry definitions,
 password hashes, claims, operations/events, qualified loads, analytics buckets,
-reports, and tombstones.
+bootstrap attributions, reports, and tombstones.
 
 - [ ] **Step 2: Implement normalized schema and constraints**
 
@@ -386,13 +386,16 @@ git commit -m "feat: ingest and activate signed shares"
 - Create: `apps/api/src/routes/public-shares.ts`
 - Create: `apps/api/src/middleware/share-visibility.ts`
 - Create: `apps/api/src/http/cache-policy.ts`
+- Create: `packages/domain/src/public-loads/bootstrap-attribution.ts`
+- Create: `packages/database/src/public-loads/postgres-bootstrap-attribution.ts`
 - Create: `apps/api/test/public-shares.test.ts`
 - Create: `apps/api/test/public-cache-policy.test.ts`
 - Create: `apps/api/test/qualified-load-outbox.test.ts`
+- Create: `packages/database/test/bootstrap-attribution.test.ts`
 
 **Interfaces:**
-- Produces: metadata, manifest, initial-load, view-blob, social-preview, expired, tombstone, and unavailable endpoints.
-- Consumes: active share projection, blob store, transactional outbox, and a generic protected gate that Task 9 later replaces with injected session authorization.
+- Produces: metadata, manifest, initial-load, view-blob, social-preview, expired, tombstone, unavailable endpoints, and `BootstrapAttributionStore.issue/consume`.
+- Consumes: active share projection, blob store, transactional outbox, optional short-lived HTML bootstrap-attribution token, and a generic protected gate that Task 9 later replaces with injected session authorization.
 
 - [ ] **Step 1: Write the public-state response matrix**
 
@@ -410,8 +413,12 @@ revision ETags and short revalidation. Protected and owner state use
 
 `GET /v1/public/shares/:id/load?mode=full|embed` returns metadata, manifest, and
 initial view with a generated `loadEventId` and short-lived opaque completion
-token. Persist only the token hash. After the viewer parses the initial payload
-and mounts its initial view, it sends the token once to
+token. It may also consume the one-time bootstrap-attribution token issued by
+Task 10, verify that token's share, mode, and expiry, and copy only its
+server-recorded external hostname onto the pending load. It never accepts a
+referring hostname from browser JavaScript. Persist only opaque-token hashes.
+After the viewer parses the initial payload and mounts its initial view, it
+sends the completion token once to
 `POST /v1/public/shares/:id/load/:loadEventId/complete`. In one transaction,
 verify the share, mode, expiry, and token hash; mark the pending load delivered;
 and insert one outbox row under unique `loadEventId`. Missing, expired,
@@ -422,14 +429,14 @@ source/share/global limits make it abuse-resistant rather than authoritative.
 
 - [ ] **Step 4: Prove API and header behavior through a real Hono server**
 
-Run: `bun test apps/api/test/public-shares.test.ts apps/api/test/public-cache-policy.test.ts apps/api/test/qualified-load-outbox.test.ts`
+Run: `bun test apps/api/test/public-shares.test.ts apps/api/test/public-cache-policy.test.ts apps/api/test/qualified-load-outbox.test.ts packages/database/test/bootstrap-attribution.test.ts`
 
 Expected: PASS, including actual headers and duplicate-completion defense.
 
 - [ ] **Step 5: Commit public read API**
 
 ```bash
-git add apps/api
+git add packages/domain packages/database apps/api
 git commit -m "feat: expose privacy-safe public share reads"
 ```
 
@@ -439,11 +446,13 @@ git commit -m "feat: expose privacy-safe public share reads"
 - Create: `packages/domain/src/passwords/password-service.ts`
 - Create: `apps/api/src/routes/passwords.ts`
 - Create: `apps/api/src/middleware/protected-session.ts`
+- Create: `apps/api/src/middleware/protected-embed-capability.ts`
 - Create: `apps/api/test/passwords.test.ts`
 - Create: `apps/api/test/protected-no-leak.test.ts`
+- Create: `apps/api/test/protected-embed-capability.test.ts`
 
 **Interfaces:**
-- Produces: password set/replace/verify and `requireProtectedShareSession`.
+- Produces: password set/replace/verify, host-wide viewer session, per-share revision grants, `requireProtectedShareSession`, and memory-only protected-embed capability.
 - Consumes: Bun Argon2id, versioned Infisical pepper, shared rate limiter.
 
 - [ ] **Step 1: Write hashing and bounded-attempt tests**
@@ -457,10 +466,30 @@ Use pinned Argon2id parameters with `Bun.password.hash` and
 `Bun.password.verify`. Password replacement revokes existing protected sessions.
 Never log or persist plaintext.
 
-- [ ] **Step 3: Implement narrow revision-bound cookies**
+- [ ] **Step 3: Implement one host-wide revision-bound viewer session**
 
-Use short-lived `HttpOnly`, `Secure`, `SameSite=Lax`, narrow path, signed session
-ID, share/revision binding, and no cross-share authorization.
+Set one opaque `__Host-labgd_viewer` cookie with `Path=/`, `HttpOnly`, `Secure`,
+and `SameSite=Lax`; do not set `Domain`. The cookie identifies a short-lived
+server-side viewer session and therefore reaches `/s`, `/e`, and `/v1/public`
+routes. Store separate session grants keyed by numeric share ID and active
+revision ID. Every protected request resolves its route share, verifies a
+matching unexpired grant, and rejects cross-share or stale-revision use. One
+browser session may hold multiple independent grants without encoding share IDs,
+password data, or grants in the cookie. Password replacement, active-revision
+replacement, unpublish, expiration, and deletion revoke the affected grant.
+
+For a protected cross-origin iframe, `SameSite=Lax` intentionally does not
+authorize the embedded request. Its generic password flow exchanges a
+successful password verification plus Task 10's one-time HTML bootstrap context
+for a separate short-lived bearer capability bound to numeric share ID, active
+revision ID, and one exact allowlisted embed origin. Keep it only in iframe
+memory and send it in the `Authorization` header for that share's read API. It
+must never enter a URL, cookie, local/session storage, log, referrer, or parent
+window message. Reload requires a new verification. Test origin/share/revision
+mismatch, expiration, revocation, replayed bootstrap context, and storage/URL
+absence. If the exact embedding origin cannot be established and matched to the
+share allowlist, fail closed and direct the viewer to open the protected share
+as a top-level lab.gd page.
 
 - [ ] **Step 4: Integrate middleware into Task 8 and run no-leak proof**
 
@@ -471,7 +500,7 @@ exist.
 
 - [ ] **Step 5: Run and commit**
 
-Run: `bun test apps/api/test/passwords.test.ts apps/api/test/protected-no-leak.test.ts`
+Run: `bun test apps/api/test/passwords.test.ts apps/api/test/protected-no-leak.test.ts apps/api/test/protected-embed-capability.test.ts`
 
 ```bash
 git add packages/domain apps/api
@@ -486,6 +515,7 @@ git commit -m "feat: protect shares with Argon2id passwords"
 - Create: `apps/web/src/routes/password-page.tsx`
 - Create: `apps/api/src/routes/share-pages.ts`
 - Create: `apps/api/src/html/share-document.ts`
+- Create: `apps/api/src/public-loads/html-bootstrap.ts`
 - Create: `apps/web/src/components/share-header.tsx`
 - Create: `apps/web/src/components/share-community-state.tsx`
 - Create: `apps/web/src/components/share-actions.tsx`
@@ -493,6 +523,7 @@ git commit -m "feat: protect shares with Argon2id passwords"
 - Create: `apps/web/test/viewer.test.tsx`
 - Create: `apps/web/test/embed.test.tsx`
 - Create: `apps/api/test/share-pages-html.test.ts`
+- Create: `apps/api/test/bootstrap-attribution.test.ts`
 - Create: `apps/api/test/embed-csp.test.ts`
 
 **Interfaces:**
@@ -520,7 +551,24 @@ request without a valid Task 9 session receives only generic password-gate HTML
 and headers; no title, description, counters, manifest hash, preview, or
 state-specific detail enters source or headers.
 
-- [ ] **Step 4: Enforce embed CSP with integration tests**
+- [ ] **Step 4: Capture external attribution at HTML delivery**
+
+When serving `/s/:shareId` or `/e/:shareId`, parse the incoming `Referer` with
+the platform URL parser. Discard malformed values, non-HTTP(S) schemes, the
+`lab.gd` hostname, credentials, path, query, fragment, and port. Normalize and
+bound only the external hostname. Store it beside a random short-lived
+single-use token hash through Task 8's `BootstrapAttributionStore`, bound to
+numeric share ID and `full` or `embed` mode, then place only the opaque token in
+the HTML bootstrap data. Task 8 consumes the token while creating the load
+event. The subsequent browser load and completion requests cannot supply or
+override attribution. For protected embeds, the HTML bootstrap context also
+records the exact validated embedding origin used by Task 9's capability
+exchange, but analytics and authorization remain separate records and tokens.
+Add integration tests for direct loads, external navigation, same-origin
+navigation, malformed headers, mode/share mismatch, expiry, replay, and forged
+JavaScript fields.
+
+- [ ] **Step 5: Enforce embed CSP with integration tests**
 
 Exact HTTPS origins become `frame-ancestors`. Explicit wildcard is allowed only
 for public/unlisted shares. Protected shares reject wildcard. Verify actual
@@ -528,9 +576,9 @@ HTML, Open Graph, canonical, robots, cache, content-type, and CSP headers throug
 the real Hono server for public, unlisted, protected, expired, and missing
 fixtures, not component snapshots.
 
-- [ ] **Step 5: Run and commit**
+- [ ] **Step 6: Run and commit**
 
-Run: `bun test apps/web apps/api/test/share-pages-html.test.ts apps/api/test/embed-csp.test.ts && bun run --cwd apps/web build`
+Run: `bun test apps/web apps/api/test/share-pages-html.test.ts apps/api/test/bootstrap-attribution.test.ts apps/api/test/embed-csp.test.ts && bun run --cwd apps/web build`
 
 ```bash
 git add apps
@@ -717,7 +765,7 @@ git commit -m "feat: render versioned social previews"
 - Create: `compose.yaml`
 - Create: `deploy/cloudflared-config.yml`
 - Create: `deploy/secret-files.md`
-- Create: `deploy/storage-init.sh`
+- Modify: `deploy/storage-init.sh`
 - Create: `ops/backup.sh`
 - Create: `ops/verify-backup.sh`
 - Create: `ops/restore.sh`
