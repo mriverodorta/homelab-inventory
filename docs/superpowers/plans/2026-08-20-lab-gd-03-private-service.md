@@ -12,18 +12,19 @@
 
 - Create GitHub repository `mriverodorta/HomelabInventoryShare` as **private**.
 - Product and public origin are `lab.gd`; repository/service name is `HomelabInventoryShare`.
-- Design authority: Homelab Inventory commit `05a5244` and its `2026-08-20-lab-gd-sharing-platform-design.md`.
-- Consume exact pinned versions of `@homelab-inventory/share-contract`, `viewer-model`, and `viewer-react`.
+- Design authority: Homelab Inventory commit `05a5244` and `docs/superpowers/specs/2026-08-20-lab-gd-sharing-platform-design.md`.
+- Initial protocol is `shareContractVersion=1`, `systems@1`, and `canvas@1`.
+- Consume exact pinned versions of `@homelab-inventory/share-contract`, `viewer-model`, and `viewer-react` when published.
+- Fixture-only mode is allowed before package publication, but publication remains hard-disabled.
 - Never copy Homelab Inventory source or import its API, persistence, editor, agent, authorization, or Registry credential modules.
 - PostgreSQL has no host port and Watchtower is disabled.
 - Runtime containers are non-root, read-only, capability-free, and use bounded hardened tmpfs.
 - No direct SkyArk access; backups use only the established SkyBolt workflow.
-- Public/unlisted/protected content behavior must fail closed.
 - Do not deploy until the coordinated rollout plan authorizes deployment.
 
 ---
 
-### Task 1: Create The Private Repository And Hardened Workspace
+### Task 1: Create The Private Repository, Fixture Gate, And Workspace
 
 **Files:**
 - Create: `package.json`
@@ -32,6 +33,11 @@
 - Create: `.gitignore`
 - Create: `.dockerignore`
 - Create: `.env.example`
+- Create: `config/contract-mode.ts`
+- Create: `fixtures/contract-v1/manifest-v1.json`
+- Create: `fixtures/contract-v1/systems-v1.json`
+- Create: `fixtures/contract-v1/canvas-v1.json`
+- Create: `fixtures/contract-v1/SHA256SUMS`
 - Create: `apps/api/package.json`
 - Create: `apps/web/package.json`
 - Create: `packages/database/package.json`
@@ -41,53 +47,61 @@
 - Create: `workers/renderer/package.json`
 - Create: `workers/lifecycle/package.json`
 - Create: `workers/analytics/package.json`
+- Create: `workers/registry-mirror/package.json`
 - Create: `test/workspace.test.ts`
+- Create: `test/contract-mode.test.ts`
 
 **Interfaces:**
-- Produces: private Bun workspace and dependency direction.
-- Consumes: exact public package versions supplied by the rollout owner.
+- Produces: a real private Git repository, Bun workspace, and `readContractMode(): { mode: 'fixtures-disabled' | 'packages-enabled'; publicationEnabled: boolean }`.
+- Consumes: fixture bundle and checksums from `ServerSpecsInventory/docs/handoffs/lab-gd-contract-v1` when available.
 
-- [ ] **Step 1: Create and verify the private repository**
+- [ ] **Step 1: Refuse unsafe local bootstrap states**
 
-Run: `gh repo create mriverodorta/HomelabInventoryShare --private --clone=false`
+From `/Users/maikeldorta/Code/home-datacenter`, fail if
+`HomelabInventoryShare` exists and is non-empty. Then run:
 
-Expected: `gh repo view mriverodorta/HomelabInventoryShare --json visibility -q .visibility` returns `PRIVATE`.
+```bash
+gh repo create mriverodorta/HomelabInventoryShare --private
+gh repo clone mriverodorta/HomelabInventoryShare HomelabInventoryShare
+cd HomelabInventoryShare
+test "$(gh repo view mriverodorta/HomelabInventoryShare --json visibility -q .visibility)" = PRIVATE
+test "$(git remote get-url origin)" = "git@github.com:mriverodorta/HomelabInventoryShare.git" \
+  || test "$(git remote get-url origin)" = "https://github.com/mriverodorta/HomelabInventoryShare.git"
+```
 
-- [ ] **Step 2: Write the failing workspace-boundary test**
+- [ ] **Step 2: Write failing workspace and fixture-mode tests**
 
 ```ts
-expect(importsOf('packages/domain')).not.toContain('apps/api')
+expect(readContractMode(fixtureConfig)).toEqual({
+  mode: 'fixtures-disabled', publicationEnabled: false,
+})
+expect(() => verifyFixtureChecksums(tamperedFixtureDir)).toThrow('checksum')
 expect(importsOf('apps/web')).not.toContain('packages/database')
-expect(importsOf('workers/renderer')).not.toContain('packages/database/secrets')
 ```
 
-- [ ] **Step 3: Scaffold workspace manifests**
+- [ ] **Step 3: Copy and verify bootstrap fixtures**
 
-Enforce dependency direction:
+If the approved fixture bundle is absent, record the dependency and continue
+only with Tasks 1-6. When present, copy it byte-for-byte, verify every sorted
+SHA-256 entry before parsing, and commit both bytes and checksum file. Never
+invent replacement fixtures.
 
-```text
-share-contract -> domain -> database/api/workers
-viewer-model -> viewer-react -> web/renderer
-```
+- [ ] **Step 4: Scaffold package boundaries and hard publication gate**
 
-Use exact dependency versions for shared packages and security-sensitive runtime
-libraries. Add `lint`, `test`, `build`, `db:generate`, `db:migrate`,
-`security:container`, and `verify` scripts.
+Fixture mode may validate local adapters but `publicationEnabled` is always
+false. Package mode requires exact versions and npm integrity values from the
+rollout ledger; any missing or mismatched package fails startup.
 
-- [ ] **Step 4: Run frozen installation and boundary tests**
+- [ ] **Step 5: Run and commit**
 
-Run: `bun install --frozen-lockfile && bun test test/workspace.test.ts`
-
-Expected: PASS.
-
-- [ ] **Step 5: Commit the private workspace**
+Run: `bun install --frozen-lockfile && bun test test/workspace.test.ts test/contract-mode.test.ts`
 
 ```bash
 git add .
 git commit -m "chore: initialize private lab.gd workspace"
 ```
 
-### Task 2: Add PostgreSQL Schema, Roles, And Ordered Migrations
+### Task 2: Add PostgreSQL Schema, Migrations, And Role Isolation
 
 **Files:**
 - Create: `packages/database/src/schema/*.ts`
@@ -96,36 +110,37 @@ git commit -m "chore: initialize private lab.gd workspace"
 - Create: `packages/database/drizzle.config.ts`
 - Create: `packages/database/migrations/0001_foundation.sql`
 - Create: `packages/database/test/schema.test.ts`
+- Create: `packages/database/test/roles.test.ts`
 - Create: `deploy/init-database-roles.sql`
 
 **Interfaces:**
-- Produces: typed repositories and separate `api`, `renderer`, `lifecycle`, `analytics`, and `registry_mirror` database roles.
+- Produces: typed repositories and separate `api`, `renderer`, `lifecycle`, `analytics`, and `registry_mirror` PostgreSQL roles.
 - Consumes: PostgreSQL 17 and Drizzle.
 
 - [ ] **Step 1: Write failing relational-integrity tests**
 
-Cover positive numeric IDs, public random IDs, installation/key/token state,
+Cover positive numeric IDs, random public IDs, installation keys/tokens/nonces,
 shares, immutable revisions, active pointers, view blobs, Registry definitions,
-password hashes, claims, operations, events, analytics buckets, reports, and
-tombstones.
+password hashes, claims, operations/events, qualified loads, analytics buckets,
+reports, and tombstones.
 
 - [ ] **Step 2: Implement normalized schema and constraints**
 
-Use integer PK/FK relationships internally. Store public IDs separately. Add
-unique constraints for idempotency keys, nonce use, blob hashes, exact Registry
-references, GitHub subject, and active share ownership.
+Use integer PK/FK relationships internally and separate generated public IDs.
+Add unique constraints for idempotency keys, used nonces, blob hashes, exact
+Registry references, GitHub subject, load event IDs, and one active pointer per
+share.
 
-- [ ] **Step 3: Implement ordered transactional migrations**
+- [ ] **Step 3: Implement checksummed transactional migrations**
 
-Record migration filename and checksum. Refuse a changed historical migration.
-Acquire a PostgreSQL advisory lock, apply each migration transactionally, and
-release the lock before readiness succeeds.
+Acquire a PostgreSQL advisory lock, refuse changed historical checksums, apply
+each migration in one transaction, and expose the active schema in readiness.
 
-- [ ] **Step 4: Prove role isolation**
+- [ ] **Step 4: Prove table and column privileges**
 
-Assert renderer cannot read password hashes or installation keys; analytics
-cannot mutate shares; lifecycle cannot read OAuth credentials; API cannot access
-renderer filesystem paths.
+Renderer cannot read password, OAuth, or installation tables; analytics cannot
+mutate shares; lifecycle cannot read OAuth credentials; Registry mirror cannot
+read account or password tables. Filesystem isolation is tested in Task 15.
 
 - [ ] **Step 5: Run and commit**
 
@@ -136,55 +151,93 @@ git add packages/database deploy/init-database-roles.sql
 git commit -m "feat: add lab.gd relational foundation"
 ```
 
-### Task 3: Implement Installation Enrollment And Signed Request Authentication
+### Task 3: Centralize Configuration, Secrets, Proxy Trust, And Rate Limits
+
+**Files:**
+- Create: `packages/domain/src/config/environment.ts`
+- Create: `packages/domain/src/config/secrets.ts`
+- Create: `packages/domain/src/http/client-address.ts`
+- Create: `packages/domain/src/rate-limits/postgres-rate-limiter.ts`
+- Create: `packages/domain/test/config.test.ts`
+- Create: `packages/domain/test/client-address.test.ts`
+- Create: `packages/domain/test/rate-limits.test.ts`
+
+**Interfaces:**
+- Produces: `loadConfig`, `environmentValue`, `resolveClientAddress`, `consumeRateLimit`.
+- Consumes: Infisical-rendered files, configured trusted peer CIDRs, PostgreSQL.
+
+- [ ] **Step 1: Write failing configuration tests**
+
+Reject simultaneous `NAME` and `NAME_FILE`, unreadable/empty secret files,
+non-HTTPS production origins, malformed CIDRs, missing publication gate, weak
+password pepper, and unknown contract mode.
+
+- [ ] **Step 2: Write failing trusted-address tests**
+
+Ignore forwarded headers from untrusted peers. For configured Cloudflare Tunnel
+peers, accept one valid `CF-Connecting-IP`, normalize IPv4-mapped IPv6, reject
+oversized or malformed chains, and never trust arbitrary `X-Forwarded-For`.
+
+- [ ] **Step 3: Implement one atomic PostgreSQL rate-limit service**
+
+Use bounded windows and one `INSERT ... ON CONFLICT ... DO UPDATE`. Keys are HMAC
+digests, not raw addresses. Separate policies cover installation, password,
+reports, account claims, public reads, and global load. Authentication and
+mutation endpoints fail closed when limiting is unavailable; public reads return
+503 when required database state is unavailable.
+
+- [ ] **Step 4: Run and commit**
+
+Run: `bun test packages/domain/test/config.test.ts packages/domain/test/client-address.test.ts packages/domain/test/rate-limits.test.ts`
+
+```bash
+git add packages/domain
+git commit -m "feat: centralize lab.gd security configuration"
+```
+
+### Task 4: Implement Installation Authentication And Resumable SSE
 
 **Files:**
 - Create: `packages/domain/src/installations/*.ts`
 - Create: `apps/api/src/routes/installations.ts`
+- Create: `apps/api/src/routes/installation-events.ts`
 - Create: `apps/api/test/installations.test.ts`
 - Create: `apps/api/test/replay.test.ts`
 - Create: `apps/api/test/installation-events.test.ts`
 
 **Interfaces:**
-- Produces: challenge, activation, token renewal, rotation, recovery-pending, and claim-device endpoints.
-- Consumes: Ed25519 public keys, nonce repository, scoped token repository.
+- Produces: challenge, activation, token renewal, rotation, recovery, device claim, and authenticated installation SSE.
+- Consumes: config/rate limiter and installation repository.
 
-- [ ] **Step 1: Write failing challenge and activation tests**
+- [ ] **Step 1: Write failing activation and replay tests**
 
-Assert UUID v4 validation, Ed25519 SPKI validation, five-minute challenge expiry,
-single-use challenge, signature verification, and one logical installation per
-client instance.
+Assert UUID v4 and Ed25519 SPKI validation, five-minute single-use challenge,
+bounded request timestamp, body hash, token scope/expiry, nonce uniqueness,
+revocation, and generic failures.
 
-- [ ] **Step 2: Write failing signed-request and replay tests**
+- [ ] **Step 2: Write failing rotation and recovery tests**
 
-Assert bounded timestamp age, body-hash verification, short-lived scope, revoked
-key rejection, nonce uniqueness, and generic authentication errors.
+Failed rotation preserves current credentials. Identity mismatch returns
+`409 installation-recovery-pending`, persists exactly one replacement, and does
+not create retry loops or duplicate logical installations.
 
-- [ ] **Step 3: Implement authenticated rotation and recovery**
+- [ ] **Step 3: Implement monotonic resumable SSE**
 
-Rotation creates a replacement only after current-key authentication. Identity
-mismatch returns `409 installation-recovery-pending`, stores one replacement,
-and never creates another installation or replacement on retry.
+Persist installation event IDs, support `Last-Event-ID` bounded replay, emit
+15-second comment heartbeats, and stream only publication, claim, expiration,
+grace, and recovery state. Use PostgreSQL `LISTEN/NOTIFY` plus reconciliation on
+reconnect; do not poll.
 
-Expose one authenticated installation SSE stream for publication state, account
-claim completion, expiration, grace, and recovery events. Use monotonic numeric
-event IDs, bounded replay, Last-Event-ID resume, 15-second comments as transport
-heartbeats, and no polling inside the stream implementation.
-
-- [ ] **Step 4: Run authentication tests**
+- [ ] **Step 4: Run integration tests and commit**
 
 Run: `bun test apps/api/test/installations.test.ts apps/api/test/replay.test.ts apps/api/test/installation-events.test.ts`
-
-Expected: PASS.
-
-- [ ] **Step 5: Commit installation authentication**
 
 ```bash
 git add packages/domain apps/api
 git commit -m "feat: authenticate publishing installations"
 ```
 
-### Task 4: Implement Content-Addressed Blob Storage
+### Task 5: Implement Verified Content-Addressed Blob Storage
 
 **Files:**
 - Create: `packages/domain/src/content/blob-store.ts`
@@ -194,79 +247,32 @@ git commit -m "feat: authenticate publishing installations"
 - Create: `deploy/storage-init.sh`
 
 **Interfaces:**
-- Produces: `putVerified`, `openVerified`, `quarantineUnreferenced`, and `purgeQuarantined`.
+- Produces: `putVerified`, `openVerified`, `quarantineUnreferenced`, `purgeQuarantined`.
 - Consumes: private filesystem roots and SHA-256 metadata.
 
 - [ ] **Step 1: Write failing filesystem safety tests**
 
-Reject path traversal, symlinks, hash mismatch, size mismatch, oversized writes,
-partial files, and non-regular files. Assert duplicate hashes reuse one blob.
+Reject traversal, symlinks, non-regular files, hash/size mismatch, oversized
+writes, partial files, and duplicate storage. Prove interruption leaves no
+addressable partial blob.
 
 - [ ] **Step 2: Implement atomic verified storage**
 
-Write to task-scoped temp files, hash while streaming, fsync, rename atomically,
-and create immutable content paths from lowercase hex hashes. Never derive paths
-from user filenames.
+Stream to task-scoped temp, enforce limits while hashing, fsync, rename, and
+derive immutable paths only from lowercase SHA-256.
 
-- [ ] **Step 3: Implement quarantine-based garbage collection**
+- [ ] **Step 3: Implement quarantine GC primitives**
 
-Require zero database references in a fresh transaction, move to quarantine,
-wait the configured period, then recheck references before deletion.
+Require zero references in a fresh transaction, quarantine first, wait the
+configured period, and recheck before deletion.
 
-- [ ] **Step 4: Run tests and ownership checks**
+- [ ] **Step 4: Run and commit**
 
 Run: `bun test packages/domain/test/blob-store.test.ts`
-
-Expected: PASS under the runtime UID with no writable application root.
-
-- [ ] **Step 5: Commit blob storage**
 
 ```bash
 git add packages/domain deploy/storage-init.sh
 git commit -m "feat: add verified content-addressed storage"
-```
-
-### Task 5: Implement Manifest-First Ingestion And Atomic Activation
-
-**Files:**
-- Create: `packages/domain/src/publication/*.ts`
-- Create: `apps/api/src/routes/publications.ts`
-- Create: `apps/api/test/publications.test.ts`
-- Create: `apps/api/test/decompression-limits.test.ts`
-
-**Interfaces:**
-- Produces: create/update manifest, missing-hash response, blob upload, activate, unpublish, and delete endpoints.
-- Consumes: `share-contract`, installation auth, blob store, Registry mirror.
-
-- [ ] **Step 1: Write failing protocol-order tests**
-
-Assert request order is transport limit, authentication, replay prevention,
-bounded decompression, strict schema, semantic references, Registry references,
-hash validation, and atomic activation.
-
-- [ ] **Step 2: Write decompression-bomb and malformed-reference tests**
-
-Reject content beyond 2 MB compressed or 10 MB expanded, pathological ratios,
-extra fields, missing objects, duplicate public IDs, dangling connections, and
-unsupported contract/view versions.
-
-- [ ] **Step 3: Implement staged publication operations**
-
-Use idempotency key, operation lease, immutable revision, and one transaction to
-activate. Failed replacement retains the previous active revision and records a
-sanitized failure code.
-
-- [ ] **Step 4: Run ingestion tests**
-
-Run: `bun test apps/api/test/publications.test.ts apps/api/test/decompression-limits.test.ts`
-
-Expected: PASS.
-
-- [ ] **Step 5: Commit ingestion**
-
-```bash
-git add packages/domain apps/api
-git commit -m "feat: ingest and activate signed shares"
 ```
 
 ### Task 6: Mirror Exact Historical Registry Definitions
@@ -276,7 +282,6 @@ git commit -m "feat: ingest and activate signed shares"
 - Create: `packages/registry-mirror/src/importer.ts`
 - Create: `packages/registry-mirror/src/verifier.ts`
 - Create: `packages/registry-mirror/test/historical-revisions.test.ts`
-- Create: `workers/registry-mirror/package.json`
 - Create: `workers/registry-mirror/src/index.ts`
 
 **Interfaces:**
@@ -285,21 +290,22 @@ git commit -m "feat: ingest and activate signed shares"
 
 - [ ] **Step 1: Write failing historical resolution tests**
 
-Use multiple Registry revisions containing different versions of one template.
-Assert exact revision/hash resolution, deduplication, signature verification,
+Use multiple signed Registry snapshots containing different template revisions.
+Assert exact key/revision/hash resolution, deduplication, signature verification,
 and no `latest` fallback.
 
-- [ ] **Step 2: Implement signed release import**
+- [ ] **Step 2: Implement signed import and deduplication**
 
-Fetch public immutable artifacts, verify manifest/signatures/hashes/sizes, parse
-strictly, and store unique definitions by exact key/revision/hash.
+Verify release manifest, Ed25519 signatures, hashes, and sizes before parsing.
+Store each unique exact definition once with provenance and signing key ID.
 
-- [ ] **Step 3: Gate publication on exact definitions**
+- [ ] **Step 3: Add unavailable and corrupt behavior**
 
-Missing or invalid historical definitions block activation without affecting the
-current share. Mirror failure does not make the public viewer contact Registry.
+Missing or invalid historical definitions return a stable blocking result. The
+public viewer never contacts Registry, and mirror failure never alters active
+shares.
 
-- [ ] **Step 4: Run mirror tests and commit**
+- [ ] **Step 4: Run and commit**
 
 Run: `bun test packages/registry-mirror`
 
@@ -308,7 +314,141 @@ git add packages/registry-mirror workers/registry-mirror
 git commit -m "feat: mirror signed historical registry definitions"
 ```
 
-### Task 7: Build Public, Unlisted, Protected, And Embed Viewers
+### Task 7: Implement Manifest-First Ingestion And Atomic Activation
+
+**Files:**
+- Create: `packages/domain/src/publication/*.ts`
+- Create: `apps/api/src/routes/publications.ts`
+- Create: `apps/api/test/publications.test.ts`
+- Create: `apps/api/test/decompression-limits.test.ts`
+
+**Interfaces:**
+- Produces: manifest, missing-hash, blob upload, activation, unpublish, and delete endpoints.
+- Consumes: package-enabled contract mode, installation auth, rate limits, blob store, Registry mirror.
+
+- [ ] **Step 1: Enforce the package and fixture gate**
+
+In fixture mode every publication route returns
+`503 publication-contract-not-enabled`. In package mode startup verifies exact
+npm versions and integrities plus fixture checksums before routes become ready.
+
+- [ ] **Step 2: Write protocol-order and decompression tests**
+
+Assert transport limit, auth, replay, bounded decompression, strict schema,
+semantic references, Registry references, hashes, and activation order. Reject
+over 2 MB compressed, over 10 MB expanded, pathological ratios, extras,
+dangling or duplicate public IDs, and unsupported versions.
+
+- [ ] **Step 3: Implement durable staged operations**
+
+Use idempotency keys, bounded attempts, leases, heartbeats, optimistic revisions,
+sanitized events, and one transaction to create an immutable revision and move
+the active pointer. Failure leaves the previous active revision.
+
+- [ ] **Step 4: Run integration tests and commit**
+
+Run: `bun test apps/api/test/publications.test.ts apps/api/test/decompression-limits.test.ts`
+
+```bash
+git add packages/domain apps/api
+git commit -m "feat: ingest and activate signed shares"
+```
+
+### Task 8: Implement Public Read API And Visibility Enforcement
+
+**Files:**
+- Create: `apps/api/src/routes/public-shares.ts`
+- Create: `apps/api/src/middleware/share-visibility.ts`
+- Create: `apps/api/src/http/cache-policy.ts`
+- Create: `apps/api/test/public-shares.test.ts`
+- Create: `apps/api/test/public-cache-policy.test.ts`
+- Create: `apps/api/test/qualified-load-outbox.test.ts`
+
+**Interfaces:**
+- Produces: metadata, manifest, initial-load, view-blob, social-preview, expired, tombstone, and unavailable endpoints.
+- Consumes: active share projection, blob store, optional protected-session interface, transactional outbox.
+
+- [ ] **Step 1: Write the public-state response matrix**
+
+Test public, unlisted, protected, pending, unpublished, expired, tombstone,
+missing, and temporarily unavailable states. Protected responses are generic and
+contain no title, count, hash, cache validator, or state-specific detail.
+
+- [ ] **Step 2: Define cache, ETag, and content-type policy**
+
+Immutable blobs use strong hash ETags and immutable caching. Active manifests use
+revision ETags and short revalidation. Protected and owner state use
+`private, no-store`. Unlisted/protected metadata uses `noindex`.
+
+- [ ] **Step 3: Implement one-time qualified-load completion receipts**
+
+`GET /v1/public/shares/:id/load?mode=full|embed` returns metadata, manifest, and
+initial view with a generated `loadEventId` and short-lived opaque completion
+token. Persist only the token hash. After the viewer parses and renders the
+initial view, it sends the token once to
+`POST /v1/public/shares/:id/load/:loadEventId/complete`. In one transaction,
+verify the share, mode, expiry, and token hash; mark the pending load delivered;
+and insert one outbox row under unique `loadEventId`. Missing, expired,
+replayed, disconnected, or render-failed loads do not qualify. Apply the shared
+source/share/global rate limits to both endpoints.
+
+- [ ] **Step 4: Prove API and header behavior through a real Hono server**
+
+Run: `bun test apps/api/test/public-shares.test.ts apps/api/test/public-cache-policy.test.ts apps/api/test/qualified-load-outbox.test.ts`
+
+Expected: PASS, including actual headers and duplicate-finish defense.
+
+- [ ] **Step 5: Commit public read API**
+
+```bash
+git add apps/api
+git commit -m "feat: expose privacy-safe public share reads"
+```
+
+### Task 9: Add Password Hashing And Protected Sessions
+
+**Files:**
+- Create: `packages/domain/src/passwords/password-service.ts`
+- Create: `apps/api/src/routes/passwords.ts`
+- Create: `apps/api/src/middleware/protected-session.ts`
+- Create: `apps/api/test/passwords.test.ts`
+- Create: `apps/api/test/protected-no-leak.test.ts`
+
+**Interfaces:**
+- Produces: password set/replace/verify and `requireProtectedShareSession`.
+- Consumes: Bun Argon2id, versioned Infisical pepper, shared rate limiter.
+
+- [ ] **Step 1: Write hashing and bounded-attempt tests**
+
+Assert unique salts, PHC-only persistence, pepper version, no recovery, generic
+failure, and atomic limits by share, source, and global keys.
+
+- [ ] **Step 2: Implement password replacement and verification**
+
+Use pinned Argon2id parameters with `Bun.password.hash` and
+`Bun.password.verify`. Password replacement revokes existing protected sessions.
+Never log or persist plaintext.
+
+- [ ] **Step 3: Implement narrow revision-bound cookies**
+
+Use short-lived `HttpOnly`, `Secure`, `SameSite=Lax`, narrow path, signed session
+ID, share/revision binding, and no cross-share authorization.
+
+- [ ] **Step 4: Integrate middleware into Task 8 and run no-leak proof**
+
+Test HTML, JSON, Open Graph, ETags, cache headers, errors, and social previews
+against public and protected fixtures through the real server.
+
+- [ ] **Step 5: Run and commit**
+
+Run: `bun test apps/api/test/passwords.test.ts apps/api/test/protected-no-leak.test.ts`
+
+```bash
+git add packages/domain apps/api
+git commit -m "feat: protect shares with Argon2id passwords"
+```
+
+### Task 10: Build Full-Page And Embed Viewer Shells
 
 **Files:**
 - Create: `apps/web/src/routes/share-page.tsx`
@@ -320,82 +460,40 @@ git commit -m "feat: mirror signed historical registry definitions"
 - Create: `apps/web/src/lib/deep-links.ts`
 - Create: `apps/web/test/viewer.test.tsx`
 - Create: `apps/web/test/embed.test.tsx`
+- Create: `apps/api/test/embed-csp.test.ts`
 
 **Interfaces:**
-- Produces: `/s/:shareId` and `/e/:shareId` viewer shells.
-- Consumes: exact pinned `viewer-react`, public manifest APIs, protected session cookie.
+- Produces: `/s/:shareId` and `/e/:shareId`.
+- Consumes: Task 8/9 APIs and exact pinned `viewer-react`.
 
-- [ ] **Step 1: Write failing lazy-loading and deep-link tests**
+- [ ] **Step 1: Write lazy loading and deep-link tests**
 
-Assert initial response loads only shell, public metadata, manifest, and selected
-view; selecting another tab fetches only that blob; item/connection links center
-and open the inspector.
+Initial load consumes only shell and Task 8 load envelope. Other views load on
+selection. Item or connection links center and open the read-only inspector.
 
-- [ ] **Step 2: Write failing protected no-leak tests**
+- [ ] **Step 2: Implement restrained Impeccable layouts**
 
-Before password verification, assert HTML, JSON, metadata, Open Graph, cache
-headers, error bodies, and timing-safe fixture responses contain no title,
-description, counts, object names, or content hashes.
+Use shared viewer components. Full page has compact utility header and title or
+description region. Embed prioritizes content with expandable description and
+Open on lab.gd. Disabled comments/reactions are absent; enabled initial states
+say Coming soon.
 
-- [ ] **Step 3: Implement Impeccable public and embed layouts**
+- [ ] **Step 3: Enforce embed CSP with integration tests**
 
-Use the shared viewer package. Keep title/description and actions functional and
-restrained. Omit disabled community features; show Coming soon only when enabled.
-Embed uses a compact functional header and Open on lab.gd.
-
-- [ ] **Step 4: Enforce visibility and embed policy**
-
-Serve `noindex` for unlisted and protected content. Generate exact
-`frame-ancestors` per share. Wildcard is allowed only after explicit opt-in on
-public/unlisted shares and is forbidden for protected shares.
-
-- [ ] **Step 5: Run UI tests and commit**
-
-Run: `bun test apps/web && bun run --cwd apps/web build`
-
-```bash
-git add apps/web
-git commit -m "feat: render public and embedded lab shares"
-```
-
-### Task 8: Add Password Hashing And Protected Sessions
-
-**Files:**
-- Create: `packages/domain/src/passwords/password-service.ts`
-- Create: `apps/api/src/routes/passwords.ts`
-- Create: `apps/api/test/passwords.test.ts`
-
-**Interfaces:**
-- Produces: password set/replace and verify endpoints, scoped viewer session.
-- Consumes: Bun Argon2id, Infisical-mounted versioned pepper.
-
-- [ ] **Step 1: Write failing hashing and rate-limit tests**
-
-Assert different salts, PHC-only persistence, pepper version, no recovery,
-bounded attempts by share and source, generic error responses, and successful
-cookie scoping.
-
-- [ ] **Step 2: Implement password replacement and verification**
-
-Hash with `Bun.password.hash` Argon2id parameters pinned in code. Append the
-versioned pepper before hashing. Verify with `Bun.password.verify`. Never log or
-persist plaintext.
-
-- [ ] **Step 3: Harden the session cookie**
-
-Use short-lived `HttpOnly`, `Secure`, `SameSite=Lax`, narrow path, signed session
-identifier, active-revision binding, and revocation when the password changes.
+Exact HTTPS origins become `frame-ancestors`. Explicit wildcard is allowed only
+for public/unlisted shares. Protected shares reject wildcard. Verify actual
+headers through API/web integration, not component snapshots.
 
 - [ ] **Step 4: Run and commit**
 
-Run: `bun test apps/api/test/passwords.test.ts`
+Run: `bun test apps/web apps/api/test/embed-csp.test.ts && bun run --cwd apps/web build`
 
 ```bash
-git add packages/domain apps/api
-git commit -m "feat: protect shares with Argon2id passwords"
+git add apps
+git commit -m "feat: render public and embedded lab shares"
 ```
 
-### Task 9: Add GitHub Account Claiming And Management
+### Task 11: Add GitHub Account Claiming And Management
 
 **Files:**
 - Create: `apps/api/src/auth/better-auth.ts`
@@ -405,26 +503,24 @@ git commit -m "feat: protect shares with Argon2id passwords"
 - Create: `apps/web/test/account-dashboard.test.tsx`
 
 **Interfaces:**
-- Produces: GitHub-only login, short-lived device claim, installation/account ownership, dashboard mutations.
-- Consumes: Better Auth, GitHub OAuth credentials, installation-signed claim request.
+- Produces: GitHub-only login, device claim, account ownership, revision-safe dashboard.
+- Consumes: Better Auth, GitHub OAuth files, installation SSE, rate limiter.
 
-- [ ] **Step 1: Write failing account isolation tests**
+- [ ] **Step 1: Write ownership and isolation tests**
 
-Assert one GitHub account can claim multiple installations, another account
-cannot claim them, account dashboard cannot query installation inventory, and
-claim codes are short-lived and single-use.
+One GitHub subject may claim multiple installations; another cannot claim them.
+Claims are short-lived and single-use. Dashboard cannot query installation data.
 
-- [ ] **Step 2: Implement outbound device claim flow**
+- [ ] **Step 2: Implement outbound claim completion**
 
-Local app starts a claim and holds temporary outbound SSE. Browser authenticates
-with GitHub, approves the claim, and `lab.gd` publishes a completion event. Store
-GitHub subject, not mutable username, as the account identity.
+Local app creates claim; browser signs into GitHub and approves; Task 4 SSE emits
+completion. Store immutable GitHub subject, not mutable username.
 
-- [ ] **Step 3: Implement revision-safe dashboard management**
+- [ ] **Step 3: Implement revision-safe settings**
 
-Allow title, description, visibility, expiration, embed policy, comments,
-reactions, unpublish, and delete with optimistic share revision checks. Do not
-allow content replacement from the account dashboard.
+Allow metadata, visibility, expiration, embed policy, comments/reactions,
+unpublish, and delete with optimistic revisions. Content replacement remains
+installation-only.
 
 - [ ] **Step 4: Run and commit**
 
@@ -435,40 +531,46 @@ git add apps
 git commit -m "feat: claim and manage shares with GitHub"
 ```
 
-### Task 10: Add Analytics And Abuse Reporting
+### Task 12: Add Atomic Analytics And Abuse Reporting
 
 **Files:**
 - Create: `packages/observability/src/qualified-loads.ts`
+- Create: `packages/observability/src/daily-visitors.ts`
 - Create: `workers/analytics/src/index.ts`
 - Create: `apps/api/src/routes/analytics.ts`
 - Create: `apps/api/src/routes/reports.ts`
 - Create: `apps/web/src/components/report-dialog.tsx`
 - Create: `packages/observability/test/privacy.test.ts`
+- Create: `packages/observability/test/idempotency.test.ts`
 - Create: `apps/api/test/reports.test.ts`
 
 **Interfaces:**
-- Produces: aggregate share analytics and private abuse-report queue.
-- Consumes: transactional outbox, daily HMAC derivation, trusted proxy configuration.
+- Produces: idempotent aggregate analytics and private abuse-report queue.
+- Consumes: Task 8 qualified-load outbox and shared rate limiter.
 
-- [ ] **Step 1: Write failing privacy tests**
+- [ ] **Step 1: Write delivery and idempotency tests**
 
-Assert only successful full/embed content loads count; daily visitor digest
-changes across UTC dates; raw IP, full referrer, user-agent, country, and
-fingerprint are never persisted.
+One successfully completed `loadEventId` produces one outbox event and one
+total/full/embed increment despite duplicate completion requests or worker
+retry. Pending, expired, disconnected, or render-failed loads produce none.
 
-- [ ] **Step 2: Implement bounded aggregate analytics**
+- [ ] **Step 2: Implement daily unlinkable uniqueness**
 
-Persist total, daily approximate unique count, full/embed count, referring
-hostname, and last viewed. Derive a daily HMAC key from a versioned Infisical
-secret and discard request identifiers after aggregation.
+Derive daily HMAC key from versioned Infisical secret. Store unique
+`(shareId, utcDate, dailyDigest)`, aggregate counts, and purge digests after 48
+hours. Never persist raw IP, full referrer, UA, country, or stable fingerprint.
 
-- [ ] **Step 3: Implement abuse reporting**
+- [ ] **Step 3: Bound referring-hostname cardinality**
 
-Use stable reason codes, bounded optional text, source/share rate limits,
-immutable events, sanitized moderation notes, and explicit dispositions. Never
-disclose owner identity to reporters.
+Normalize hostname only, cap length at 253, retain top 100 hostnames per
+share/day, and aggregate the remainder as `other`.
 
-- [ ] **Step 4: Run and commit**
+- [ ] **Step 4: Implement abuse reports**
+
+Use stable reason codes, bounded optional text, immutable events, sanitized
+moderation notes, explicit dispositions, and source/share/global limits.
+
+- [ ] **Step 5: Run and commit**
 
 Run: `bun test packages/observability apps/api/test/reports.test.ts`
 
@@ -477,7 +579,7 @@ git add packages/observability workers/analytics apps
 git commit -m "feat: add privacy-safe analytics and abuse reports"
 ```
 
-### Task 11: Add Expiration, Grace, Inactivity, And Blob Lifecycle
+### Task 13: Add Expiration, Grace, Inactivity, And Blob Lifecycle
 
 **Files:**
 - Create: `workers/lifecycle/src/index.ts`
@@ -486,25 +588,23 @@ git commit -m "feat: add privacy-safe analytics and abuse reports"
 
 **Interfaces:**
 - Produces: idempotent lifecycle transitions and permanent ID tombstones.
-- Consumes: share revisions, qualified-view timestamps, blob references.
+- Consumes: revisions, qualified-view timestamps, blob references.
 
-- [ ] **Step 1: Write failing lifecycle matrix tests**
+- [ ] **Step 1: Write the complete lifecycle matrix**
 
-Cover indefinite, duration, fixed UTC date, publication reset, owner update that
-does not reset fixed/inactivity timers, one-year inactivity, 30-day unclaimed
-grace, claimed keep-online, immediate unpublish/delete, and reactivation by the
-same owner.
+Cover indefinite, duration, fixed UTC, publication reset, settings changes that
+do not reset timers, one-year inactivity, 30-day unclaimed grace, claimed keep
+online, immediate delete, and same-owner reactivation.
 
 - [ ] **Step 2: Implement revision-checked transitions**
 
-Each cleanup operation reads expected revision, locks the share, rechecks time
-and ownership, purges content references, writes tombstone state, and emits a
-sanitized event. Repeated execution is a no-op.
+Lock share, recheck expected revision, time, and ownership, purge references,
+retain minimal tombstone, emit sanitized event, and make repeat execution no-op.
 
-- [ ] **Step 3: Integrate blob quarantine**
+- [ ] **Step 3: Integrate quarantine GC and SSE**
 
-Content deletion decrements references in the same transaction. Actual files
-enter quarantine only after the database commit and are rechecked before purge.
+Decrement references transactionally, quarantine only after commit, recheck
+before file purge, and notify installation through Task 4 events.
 
 - [ ] **Step 4: Run and commit**
 
@@ -515,34 +615,35 @@ git add packages/domain workers/lifecycle
 git commit -m "feat: enforce share lifecycle and retention"
 ```
 
-### Task 12: Add Social Preview Renderer, QR, And Share Actions
+### Task 14: Add Social Preview Renderer, QR, And Share Actions
 
 **Files:**
-- Create: `workers/renderer/src/index.ts`
+- Create: `workers/renderer/src/render-input.ts`
 - Create: `workers/renderer/src/render-share.ts`
+- Create: `workers/renderer/src/index.ts`
 - Create: `workers/renderer/test/render-share.test.ts`
 - Modify: `apps/web/src/components/share-actions.tsx`
 
 **Interfaces:**
-- Produces: one cached social image per active content hash and QR/share actions.
+- Produces: cached social images keyed by canonical render input.
 - Consumes: immutable viewer data and isolated Chromium.
 
-- [ ] **Step 1: Write failing renderer isolation tests**
+- [ ] **Step 1: Define and test canonical render identity**
 
-Assert protected shares always return the generic image, renderer input contains
-no password or installation credentials, output is keyed by content hash, and
-retry never duplicates an artifact.
+Hash canonical title, description, active manifest hash, initial view or focus,
+theme, presentation config, protected/public mode, viewer package versions, and
+renderer version. Different visible inputs never reuse one image.
 
-- [ ] **Step 2: Implement bounded Chromium rendering**
+- [ ] **Step 2: Implement isolated bounded rendering**
 
-Disable external network access, scripts outside the bundled viewer, downloads,
-file URLs, and persistent browser profiles. Set CPU, memory, time, and output-size
-limits. Use a generic preview while pending or failed.
+Disable external network, downloads, file URLs, persistent profiles, and
+unbundled scripts. Enforce CPU, memory, time, and output limits. Protected shares
+always use generic preview; pending or failed rendering uses generic fallback.
 
-- [ ] **Step 3: Add compact share actions**
+- [ ] **Step 3: Add compact actions**
 
-Provide Copy link, Copy embed, Open, Download social image, and QR. QR encodes the
-canonical share URL only.
+Provide Copy link, Copy embed, Open, Download social image, and QR. QR contains
+only canonical share URL.
 
 - [ ] **Step 4: Run and commit**
 
@@ -550,14 +651,16 @@ Run: `bun test workers/renderer apps/web`
 
 ```bash
 git add workers/renderer apps/web
-git commit -m "feat: render social previews and share actions"
+git commit -m "feat: render versioned social previews"
 ```
 
-### Task 13: Build Hardened Compose, Backup, Restore, And Verification
+### Task 15: Build Hardened Deployment, Secret Rendering, Backup, And Restore
 
 **Files:**
 - Create: `Dockerfile`
 - Create: `compose.yaml`
+- Create: `deploy/cloudflared-config.yml`
+- Create: `deploy/secret-files.md`
 - Create: `deploy/storage-init.sh`
 - Create: `ops/backup.sh`
 - Create: `ops/verify-backup.sh`
@@ -565,81 +668,97 @@ git commit -m "feat: render social previews and share actions"
 - Create: `ops/security-audit.sh`
 - Create: `test/compose-security.test.ts`
 - Create: `test/backup-restore.test.ts`
+- Create: `test/secret-mounts.test.ts`
 
 **Interfaces:**
-- Produces: SkyBolt-ready private deployment with matched backup/restore.
-- Consumes: Infisical-rendered secrets and Cloudflare Tunnel network.
+- Produces: SkyBolt-ready deployment and matched recovery workflow.
+- Consumes: Infisical-rendered `0600` files and Cloudflare Tunnel network.
 
-- [ ] **Step 1: Write failing compose-security tests**
+- [ ] **Step 1: Write compose and mount security tests**
 
-Assert pinned image digests, read-only roots, all caps dropped, no-new-privileges,
-non-root users, hardened tmpfs, no PostgreSQL host port, narrow secrets/mounts,
-separate roles, and Watchtower-disabled labels.
+Assert pinned digests, read-only roots, caps dropped, no-new-privileges, non-root
+UIDs, hardened tmpfs, no PostgreSQL port, Watchtower disabled, separate DB
+credentials, exact secrets, and exact mounts. Prove API has no renderer object
+path and renderer has no password, OAuth, or installation secrets.
 
-- [ ] **Step 2: Implement service dependency order**
+- [ ] **Step 2: Implement Cloudflare and secret contract**
 
-Start PostgreSQL health, storage init, migration, API/web, Registry mirror,
-renderer, analytics, and lifecycle in that order. Health and readiness remain
-separate.
+Cloudflared is the only public path to web/API. Configure trusted tunnel peers,
+no direct public API binding, required secret file paths, startup validation,
+publication gate, and rotation by service recreation. Reject direct and file
+secret values together.
 
-- [ ] **Step 3: Implement matched backup and staged restore**
+- [ ] **Step 3: Implement consistent matched backup protocol**
 
-Backup PostgreSQL, blob store, previews, deployment metadata, and checksums under
-an operation lock. Verify checksums and traversal, restore into an isolated
-temporary database/object tree, run referential checks, then cut over.
+Acquire operation lock and write fence, stop mutating workers, drain API writes,
+capture PostgreSQL custom dump plus immutable blob and preview tree, record source
+commit/schema/container metadata, checksum, encrypt through established SkyBolt
+workflow, then resume writers. Define retention explicitly.
 
-- [ ] **Step 4: Run security and restore proof**
+- [ ] **Step 4: Implement isolated restore and rollback**
 
-Run: `bun run verify && bun run security:container && bun test test/backup-restore.test.ts`
+Require confirmation; verify checksums and traversal; restore into temporary
+database and object tree; validate schema, ownership, modes, pointers,
+references, and hashes; fence writes; atomically switch; retain previous state
+until readiness and smoke tests pass; automatically roll back on failure.
 
-Expected: zero vulnerabilities at every severity and byte-valid restore.
+- [ ] **Step 5: Run real container and recovery tests**
 
-- [ ] **Step 5: Commit deployment support**
+Run: `bun run verify && bun run security:container && bun test test/compose-security.test.ts test/secret-mounts.test.ts test/backup-restore.test.ts`
+
+Expected: zero vulnerabilities, no mount/role violations, successful staged
+restore, and injected cutover rollback.
+
+- [ ] **Step 6: Commit deployment support**
 
 ```bash
 git add Dockerfile compose.yaml deploy ops test
 git commit -m "chore: harden lab.gd deployment and recovery"
 ```
 
-### Task 14: Complete Private-Service End-To-End Verification
+### Task 16: Complete End-To-End And Restart Verification
 
 **Files:**
 - Create: `test/e2e/publication.spec.ts`
 - Create: `test/e2e/privacy.spec.ts`
 - Create: `test/e2e/lifecycle.spec.ts`
+- Create: `test/e2e/restart.spec.ts`
 - Create: `README.md`
 - Create: `SECURITY.md`
 - Create: `docs/operations.md`
 
 **Interfaces:**
 - Produces: verified service ready for coordinated rollout.
-- Consumes: frozen application fixtures and all service modules.
+- Consumes: all preceding tasks and frozen application fixtures.
 
-- [ ] **Step 1: Run protocol and viewer end-to-end tests**
+- [ ] **Step 1: Run complete protocol and viewer scenarios**
 
 Cover public, unlisted, protected, immutable, replaceable sync/manual, exact
-Registry revision, custom item, deep link, embed origin, social preview, account
-claim, analytics, report, expiration, and reactivation.
+Registry revision, custom item, deep link, embed, account claim, analytics,
+report, expiration, and reactivation.
 
-- [ ] **Step 2: Run adversarial tests**
+- [ ] **Step 2: Run adversarial integration scenarios**
 
-Cover replay, decompression bomb, dangling references, brute force, account
-takeover, cross-installation share access, CSP bypass, stored HTML/script input,
-path traversal, worker crash, database restart, and stale operation lease.
+Cover replay, decompression bomb, dangling refs, brute force, account takeover,
+cross-installation access, CSP bypass, stored script input, path traversal,
+worker crash, database restart, stale lease, and SSE reconnect.
 
-- [ ] **Step 3: Run the complete local release gate**
+- [ ] **Step 3: Prove restart and retry idempotency**
+
+Restart API and each worker during active operations. Assert no duplicate
+installation, share, revision, blob, load count, claim, report, preview, or
+lifecycle transition.
+
+- [ ] **Step 4: Run the complete local release gate**
 
 Run: `bun run lint && bun run test && bun run build && bun run security:container`
 
-Expected: PASS and zero image vulnerabilities.
+Expected: PASS with zero vulnerabilities.
 
-- [ ] **Step 4: Document owner and operator behavior**
+- [ ] **Step 5: Document and commit**
 
-Document privacy guarantees, password limitations, retention, Registry mirror,
-backup/restore, Infisical secrets, GitHub OAuth, Cloudflare Tunnel, and incident
-response without exposing deployment credentials.
-
-- [ ] **Step 5: Commit the verified private service**
+Document privacy guarantees, limits, retention, Registry mirror, Infisical,
+Cloudflare, backup/restore, and incident response.
 
 ```bash
 git add README.md SECURITY.md docs test

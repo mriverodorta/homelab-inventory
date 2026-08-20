@@ -64,12 +64,22 @@ The service must consume exact pinned releases of:
 @homelab-inventory/viewer-react
 ```
 
-Until those packages are published, use only the frozen contract fixtures copied
-byte-for-byte into the service with recorded SHA-256 sidecars. Do not copy
-application source or create a second viewer implementation.
+Until those packages are published, use only the frozen contract fixtures from:
 
-The service may scaffold adapters around package interfaces, but contract and
-viewer behavior must remain blocked behind fixtures until the packages exist.
+```text
+ServerSpecsInventory/docs/handoffs/lab-gd-contract-v1/fixtures
+ServerSpecsInventory/docs/handoffs/lab-gd-contract-v1/SHA256SUMS
+```
+
+Copy them byte-for-byte and verify every checksum before use. If this bundle is
+not present yet, the private task may complete repository, database,
+configuration, authentication, storage, and Registry-mirror foundations, but it
+must stop before publication ingestion. Do not invent substitute fixtures, copy
+application source, or create a second viewer implementation.
+
+The service may scaffold and test adapters against the verified fixtures, but
+publication and production viewer routes must remain disabled until the exact
+packages exist and pass the coordinated rollout gate.
 
 ## Initial Contract
 
@@ -132,8 +142,12 @@ Stop and report rather than working around any of these:
 
 ## Implementation Order
 
-Execute only the private-service plan, task by task. Commit after every task.
-Keep publication gated. Do not deploy during implementation.
+Execute only the private-service plan in its numbered order. The dependency
+sequence is intentional: configuration and shared limits precede authentication;
+the Registry mirror precedes publication; public reads and protected sessions
+precede viewer shells; deployment security and recovery precede final E2E.
+Commit after every task. Keep publication gated. Do not deploy during
+implementation.
 
 At completion, return:
 

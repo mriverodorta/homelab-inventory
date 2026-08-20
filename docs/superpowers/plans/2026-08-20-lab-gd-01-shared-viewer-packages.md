@@ -166,6 +166,10 @@ git commit -m "feat: define deterministic share contract"
 - Create: `packages/share-contract/test/fixtures/canvas-v1.json`
 - Create: `packages/share-contract/test/fixtures/manifest-v1.json`
 - Create: `packages/share-contract/test/negotiation.test.ts`
+- Create: `docs/handoffs/lab-gd-contract-v1/fixtures/manifest-v1.json`
+- Create: `docs/handoffs/lab-gd-contract-v1/fixtures/systems-v1.json`
+- Create: `docs/handoffs/lab-gd-contract-v1/fixtures/canvas-v1.json`
+- Create: `docs/handoffs/lab-gd-contract-v1/SHA256SUMS`
 - Modify: `packages/share-contract/src/index.ts`
 
 **Interfaces:**
@@ -193,6 +197,11 @@ Expected: FAIL with missing negotiation export.
 
 Return stable error codes: `unsupported-contract`, `unsupported-view`, `unsupported-view-version`, and `unsupported-feature`. Never silently drop a selected view or feature.
 
+Copy the three canonical fixtures byte-for-byte into
+`docs/handoffs/lab-gd-contract-v1/fixtures` and generate sorted SHA-256 entries
+relative to that directory. Package tests and the handoff checksum file must
+reference the same bytes; a mismatch fails the package check.
+
 - [ ] **Step 4: Verify every fixture parses and hashes deterministically**
 
 Run: `bunx vitest run packages/share-contract`
@@ -202,7 +211,7 @@ Expected: PASS and snapshot hashes remain stable on a second run.
 - [ ] **Step 5: Commit fixtures and negotiation**
 
 ```bash
-git add packages/share-contract
+git add packages/share-contract docs/handoffs/lab-gd-contract-v1
 git commit -m "test: freeze sharing contract fixtures"
 ```
 
