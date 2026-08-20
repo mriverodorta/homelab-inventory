@@ -3,7 +3,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { releasePaths, releaseRemoteConfig } from './local-release/config.mjs'
 import { parseLocalReleaseCommand } from './local-release/cli.mjs'
-import { warmReleaseCache } from './local-release/cache.mjs'
+import { compactOciCache, pruneCandidateArchives, warmReleaseCache } from './local-release/cache.mjs'
 import { cleanupDockerHubCandidateTags } from './local-release/docker-hub.mjs'
 import { buildOciCandidate, loadOciCandidate, validateCandidateArtifact } from './local-release/oci.mjs'
 import { publishCandidate } from './local-release/publish.mjs'
@@ -36,6 +36,7 @@ Commands:
   stop                     Stop the staging container
   reset                    Remove incomplete local release state
   warm-cache               Restore release build and scanner caches
+  prune-local              Prune obsolete local candidates and cache blobs
   verify-push              Verify the current two-platform security receipt
   cleanup-candidates       Remove all temporary candidate tags from Docker Hub`)
 }
@@ -146,6 +147,18 @@ async function cleanupCandidates() {
   })
 }
 
+async function pruneLocal() {
+  await withReleaseLock(paths, async () => {
+    const state = await readReleaseState(paths)
+    const candidates = await pruneCandidateArchives(paths, state)
+    const caches = {}
+    for (const architecture of ['arm64', 'amd64']) {
+      caches[architecture] = await compactOciCache(path.join(paths.buildkitCacheDir, architecture))
+    }
+    console.log(JSON.stringify({ candidates, caches }, null, 2))
+  })
+}
+
 const { command } = parseLocalReleaseCommand(process.argv.slice(2))
 if (command === 'help') {
   usage()
@@ -165,6 +178,8 @@ if (command === 'help') {
   await publish()
 } else if (command === 'warm-cache') {
   await withReleaseLock(paths, async () => warmReleaseCache(paths))
+} else if (command === 'prune-local') {
+  await pruneLocal()
 } else if (command === 'verify-push') {
   await verifyPush()
 } else if (command === 'cleanup-candidates') {

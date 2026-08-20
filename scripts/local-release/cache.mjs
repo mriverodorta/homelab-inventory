@@ -22,6 +22,89 @@ export function releaseStateSurvivesDockerCleanup(paths) {
   ))
 }
 
+export async function pruneCandidateArchives(paths, state, { keepRevisions = 2 } = {}) {
+  if (!Number.isSafeInteger(keepRevisions) || keepRevisions < 1) {
+    throw new Error('Candidate retention must keep at least one revision.')
+  }
+  const entries = await fs.readdir(paths.candidatesDir, { withFileTypes: true }).catch((error) => {
+    if (error?.code === 'ENOENT') return []
+    throw error
+  })
+  const candidates = await Promise.all(entries
+    .filter((entry) => entry.isDirectory())
+    .map(async (entry) => ({
+      name: entry.name,
+      mtimeMs: (await fs.stat(path.join(paths.candidatesDir, entry.name))).mtimeMs,
+    })))
+  candidates.sort((left, right) => right.mtimeMs - left.mtimeMs || left.name.localeCompare(right.name))
+
+  const retained = new Set()
+  const activeRevision = state?.identity?.revision
+  if (typeof activeRevision === 'string' && candidates.some(({ name }) => name === activeRevision)) {
+    retained.add(activeRevision)
+  }
+  for (const { name } of candidates) {
+    if (retained.size >= keepRevisions) break
+    retained.add(name)
+  }
+
+  const removed = []
+  for (const { name } of candidates) {
+    if (retained.has(name)) continue
+    await fs.rm(path.join(paths.candidatesDir, name), { recursive: true, force: true })
+    removed.push(name)
+  }
+  return { retained: [...retained], removed }
+}
+
+const SHA256_DIGEST = /^sha256:([0-9a-f]{64})$/
+
+export async function compactOciCache(cacheDirectory) {
+  const indexFile = path.join(cacheDirectory, 'index.json')
+  const index = await fs.readFile(indexFile, 'utf8').then(JSON.parse, (error) => {
+    if (error?.code === 'ENOENT') return null
+    throw error
+  })
+  if (!index) return { removedBlobs: 0, reclaimedBytes: 0 }
+
+  const blobsDirectory = path.join(cacheDirectory, 'blobs', 'sha256')
+  const reachable = new Set()
+  const visit = async (value) => {
+    if (Array.isArray(value)) {
+      for (const item of value) await visit(item)
+      return
+    }
+    if (!value || typeof value !== 'object') return
+    const match = typeof value.digest === 'string' ? value.digest.match(SHA256_DIGEST) : null
+    if (match && !reachable.has(match[1])) {
+      reachable.add(match[1])
+      const blob = await fs.readFile(path.join(blobsDirectory, match[1]))
+      try {
+        await visit(JSON.parse(blob.toString('utf8')))
+      } catch (error) {
+        if (!(error instanceof SyntaxError)) throw error
+      }
+    }
+    for (const child of Object.values(value)) await visit(child)
+  }
+  await visit(index)
+
+  let removedBlobs = 0
+  let reclaimedBytes = 0
+  const entries = await fs.readdir(blobsDirectory, { withFileTypes: true }).catch((error) => {
+    if (error?.code === 'ENOENT') return []
+    throw error
+  })
+  for (const entry of entries) {
+    if (!entry.isFile() || reachable.has(entry.name)) continue
+    const target = path.join(blobsDirectory, entry.name)
+    reclaimedBytes += (await fs.stat(target)).size
+    await fs.rm(target)
+    removedBlobs += 1
+  }
+  return { removedBlobs, reclaimedBytes }
+}
+
 export async function warmReleaseCache(paths) {
   if (!releaseStateSurvivesDockerCleanup(paths)) throw new Error('Release storage overlaps Docker-managed cleanup paths.')
   await Promise.all([
