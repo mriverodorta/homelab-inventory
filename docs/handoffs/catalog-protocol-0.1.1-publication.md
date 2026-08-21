@@ -88,9 +88,20 @@ scan in this receipt.
 
 ## npm Evidence
 
-Publication timestamp, archive sizes, SHA-1, SHA-256, SHA-512 integrity,
-downloaded-tarball comparison, and clean external-consumer verification are
-recorded here only after npm serves the immutable `0.1.1` artifact.
+- Published: `2026-08-21T19:15:10.130Z`
+- npm dist tag: `latest -> 0.1.1`
+- Tarball URL: `https://registry.npmjs.org/@homelab-inventory/catalog-protocol/-/catalog-protocol-0.1.1.tgz`
+- npm SHA-1: `30589482158772e93e9bc73189c79c980b7f9b01`
+- npm integrity: `sha512-SYouQYvjbl20mwbBDHWLTWaXWJYowMvWfTiIGyhOz0w5lXOLWYkyadDFh7Liu/lBRP7r0VfElU8uL+s+5EBgxQ==`
+- npm file count: 19
+- npm unpacked size: 199,152 bytes
+- Downloaded npm tarball: byte-for-byte identical to the audited candidate
+- Downloaded SHA-256: `27247489f7ee0a03f11d6b42f873d9fa3c439ffd080f5d447bc970619821ff81`
+- Clean external Bun consumer: exact install passed
+- External deterministic digest: passed
+- External Ed25519 signed-artifact verification: passed
+- Registry exact-consumer commit: `3e0e091`
+- Registry frozen install without a local package fallback: passed
 
 No npm credentials, application data, Registry credentials, or private signing
 material are recorded in this receipt.
