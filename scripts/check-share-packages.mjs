@@ -5,15 +5,20 @@ import { resolve, relative } from 'node:path'
 
 const repositoryRoot = resolve(process.cwd())
 const packageDirectories = [
+  'packages/catalog-protocol',
   'packages/share-contract',
   'packages/viewer-model',
   'packages/viewer-react',
 ]
 const packageOrder = new Map([
+  ['@homelab-inventory/catalog-protocol', 0],
   ['@homelab-inventory/share-contract', 0],
   ['@homelab-inventory/viewer-model', 1],
   ['@homelab-inventory/viewer-react', 2],
 ])
+const expectedPackageVersions = new Map(
+  [...packageOrder.keys()].map((packageName) => [packageName, '0.1.0']),
+)
 const forbiddenFragments = [
   '.env',
   'credential',
@@ -51,13 +56,32 @@ export function assertAllowedTarballFiles(packageName, files) {
 export function assertDependencyDirection(dependenciesByPackage) {
   for (const [packageName, dependencies] of dependenciesByPackage) {
     const packagePosition = packageOrder.get(packageName)
-    if (packagePosition === undefined) throw new Error(`Unknown share package ${packageName}.`)
+    if (packagePosition === undefined) throw new Error(`Unknown public package ${packageName}.`)
     for (const dependencyName of Object.keys(dependencies)) {
       const dependencyPosition = packageOrder.get(dependencyName)
       if (dependencyPosition !== undefined && dependencyPosition >= packagePosition) {
-        throw new Error(`${packageName} violates share package dependency direction with ${dependencyName}.`)
+        throw new Error(`${packageName} violates public package dependency direction with ${dependencyName}.`)
       }
     }
+  }
+}
+
+export function assertPublicPackageManifest(manifest) {
+  if (!manifest || typeof manifest !== 'object' || Array.isArray(manifest)) {
+    throw new Error('Public package manifest must be an object.')
+  }
+  if (!Array.isArray(manifest.files)
+    || JSON.stringify(manifest.files) !== JSON.stringify(['src', 'README.md', 'LICENSE'])) {
+    throw new Error(`${String(manifest.name)} must declare the explicit public file allowlist.`)
+  }
+  if (manifest.private === true) throw new Error(`${String(manifest.name)} must be public.`)
+  if (manifest.publishConfig?.access !== 'public') {
+    throw new Error(`${String(manifest.name)} must publish with public access.`)
+  }
+  const expectedVersion = expectedPackageVersions.get(manifest.name)
+  if (expectedVersion === undefined) throw new Error(`Unexpected package name ${String(manifest.name)}.`)
+  if (manifest.version !== expectedVersion) {
+    throw new Error(`${manifest.name} must publish as version ${expectedVersion}.`)
   }
 }
 
@@ -98,20 +122,18 @@ function dryRunPack(packageDirectory) {
 function assertCleanPackages() {
   const status = shell('git', ['status', '--porcelain', '--', 'packages'])
   if (status) {
-    throw new Error(`Share packages have uncommitted changes:\n${status}`)
+    throw new Error(`Public packages have uncommitted changes:\n${status}`)
   }
 }
 
-export function runSharePackageAudit() {
+export function runPublicPackageAudit() {
   assertCleanPackages()
   const dependenciesByPackage = new Map()
 
   for (const packageDirectory of packageDirectories) {
     const manifest = packageManifest(packageDirectory)
     const pack = dryRunPack(packageDirectory)
-    if (!packageOrder.has(manifest.name)) throw new Error(`Unexpected package name ${manifest.name}.`)
-    if (manifest.private === true) throw new Error(`${manifest.name} must be public.`)
-    if (manifest.publishConfig?.access !== 'public') throw new Error(`${manifest.name} must publish with public access.`)
+    assertPublicPackageManifest(manifest)
     if (pack.name !== manifest.name || pack.version !== manifest.version) {
       throw new Error(`${manifest.name} npm pack identity does not match package.json.`)
     }
@@ -121,12 +143,14 @@ export function runSharePackageAudit() {
   }
 
   assertDependencyDirection(dependenciesByPackage)
-  console.log('Share package publication contract verified.')
+  console.log('Public package publication contract verified.')
 }
+
+export const runSharePackageAudit = runPublicPackageAudit
 
 if (import.meta.main) {
   try {
-    runSharePackageAudit()
+    runPublicPackageAudit()
   } catch (error) {
     console.error(error instanceof Error ? error.message : String(error))
     process.exit(1)

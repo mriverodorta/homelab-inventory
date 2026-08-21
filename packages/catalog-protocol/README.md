@@ -1,7 +1,48 @@
-# Catalog protocol compatibility
+# `@homelab-inventory/catalog-protocol`
+
+Canonical catalog contracts, normalization, hashing, signed-artifact
+verification, snapshots, and compatibility projections shared by Homelab
+Inventory and the official Registry.
+
+```bash
+bun add --exact @homelab-inventory/catalog-protocol@0.1.0
+```
+
+The npm package is intended for applications that must consume an exact public
+Registry revision. Consumers should pin an exact version because fingerprint
+implementations are historical wire contracts rather than ordinary display
+helpers.
+
+## Public verification
+
+```ts
+import {
+  validateCatalogManifest,
+  validateCatalogSnapshot,
+  verifySignedCatalogArtifact,
+} from '@homelab-inventory/catalog-protocol'
+```
+
+Use the package to select a configured public key by key ID, verify Ed25519
+signatures, validate artifact hashes and size limits, reject unsupported
+contract versions, and preserve exact historical template revisions.
+
+## Trust boundary
+
+Configure only Registry public verification keys in consuming applications.
+Registry private signing keys must remain mounted only in the Registry
+publication worker. Installing this package confers no signing authority and
+must not be used as a reason to copy signing keys into Homelab Inventory,
+LabGD, or another viewer.
+
+The module exports the protocol's signing-compatible canonicalization
+primitives because publishers and verifiers must produce the same bytes. Key
+custody, authorization, and publication remain separate operational concerns.
+
+## Compatibility
 
 The catalog protocol is a wire contract shared by Homelab Inventory and the
-official registry. A fingerprint version defines the complete normalization,
+official Registry. A fingerprint version defines the complete normalization,
 sanitization, identity, and content-hash behavior for that version.
 
 ## Compatibility rules

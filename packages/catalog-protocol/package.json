@@ -1,7 +1,25 @@
 {
   "name": "@homelab-inventory/catalog-protocol",
-  "version": "1.0.0",
+  "version": "0.1.0",
+  "description": "Canonical catalog contracts, hashing, and signed artifact verification for Homelab Inventory.",
+  "license": "MIT",
   "private": false,
   "type": "module",
-  "exports": "./src/index.ts"
+  "sideEffects": false,
+  "files": [
+    "src",
+    "README.md",
+    "LICENSE"
+  ],
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/mriverodorta/homelab-inventory.git",
+    "directory": "packages/catalog-protocol"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
 }

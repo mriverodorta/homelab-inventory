@@ -59,7 +59,7 @@
     },
     "packages/catalog-protocol": {
       "name": "@homelab-inventory/catalog-protocol",
-      "version": "1.0.0",
+      "version": "0.1.0",
     },
     "packages/share-contract": {
       "name": "@homelab-inventory/share-contract",

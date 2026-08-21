@@ -9,10 +9,12 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 ### Added
 
 - Deterministic versioned share contracts, immutable read models, and reusable read-only React viewers now provide the public Systems, Canvas, workbook, Inspector, deep-link, and responsive rendering foundation for lab.gd.
+- The canonical catalog protocol is available as a public, independently versioned package so external viewers can verify exact signed Registry revisions with Homelab Inventory's normalization, hashing, and contract rules.
 
 ### Changed
 
 - Homelab Inventory now consumes the same shared ordering, identifier, and presentation helpers intended for the public viewer, with frozen cross-project fixtures guarding labels, ports, placements, connection endpoints, and private-data boundaries.
+- Public catalog consumers receive verification code only; Registry private signing keys remain isolated to the Registry publication worker and are never packaged or shared with viewers.
 
 ## [0.14.0] - 2026-08-19
 
