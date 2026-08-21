@@ -16,6 +16,10 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 - Homelab Inventory now consumes the same shared ordering, identifier, and presentation helpers intended for the public viewer, with frozen cross-project fixtures guarding labels, ports, placements, connection endpoints, and private-data boundaries.
 - Public catalog consumers receive verification code only; Registry private signing keys remain isolated to the Registry publication worker and are never packaged or shared with viewers.
 
+### Fixed
+
+- Catalog protocol `0.1.1` reconciles Homelab Inventory runtime fixtures with the Registry's frozen publication vectors, preserves the `0.1.0` public API, and establishes one deterministic package for signed catalog hashing and verification.
+
 ## [0.14.0] - 2026-08-19
 
 ### Added

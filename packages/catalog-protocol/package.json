@@ -1,6 +1,6 @@
 {
   "name": "@homelab-inventory/catalog-protocol",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Canonical catalog contracts, hashing, and signed artifact verification for Homelab Inventory.",
   "license": "MIT",
   "private": false,

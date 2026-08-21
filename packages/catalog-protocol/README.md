@@ -5,13 +5,18 @@ verification, snapshots, and compatibility projections shared by Homelab
 Inventory and the official Registry.
 
 ```bash
-bun add --exact @homelab-inventory/catalog-protocol@0.1.0
+bun add --exact @homelab-inventory/catalog-protocol@0.1.1
 ```
 
 The npm package is intended for applications that must consume an exact public
 Registry revision. Consumers should pin an exact version because fingerprint
 implementations are historical wire contracts rather than ordinary display
 helpers.
+
+Version `0.1.1` is the first release reconciled against both Homelab
+Inventory's runtime fixtures and the Registry's frozen publication vectors.
+The Registry and external consumers must use this exact version rather than a
+range or distribution tag.
 
 ## Public verification
 

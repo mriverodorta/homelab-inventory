@@ -521,7 +521,9 @@ export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
     'Versioned share contracts and reusable read-only Systems, Canvas, workbook, and Inspector viewers now provide the deterministic rendering foundation for lab.gd.',
     'The canonical catalog protocol can now be consumed as a public versioned package so external viewers verify exact signed Registry revisions with the same normalization and hashing rules as Homelab Inventory.',
   ],
-  fixes: [],
+  fixes: [
+    'Catalog protocol 0.1.1 reconciles Homelab Inventory runtime fixtures with the Registry\'s frozen publication vectors while preserving the 0.1.0 public API and deterministic signed-catalog hashes.',
+  ],
   notes: [
     'Frozen public fixtures and package audits keep generated IDs, Registry revision references, privacy boundaries, deep links, responsive behavior, and package contents reproducible across Homelab Inventory and lab.gd.',
     'The public catalog package contains verification code but no Registry signing authority; private signing keys remain isolated to the Registry publication worker.',

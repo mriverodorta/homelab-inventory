@@ -10,7 +10,7 @@ describe('public package publication audit', () => {
   test('requires the catalog protocol public package manifest', () => {
     expect(() => assertPublicPackageManifest({
       name: '@homelab-inventory/catalog-protocol',
-      version: '0.1.0',
+      version: '0.1.1',
       private: false,
       type: 'module',
       exports: './src/index.ts',
@@ -34,7 +34,7 @@ describe('public package publication audit', () => {
       exports: './src/index.ts',
       files: ['src', 'README.md', 'LICENSE'],
       publishConfig: { access: 'public' },
-    })).toThrow('version 0.1.0')
+    })).toThrow('version 0.1.1')
   })
 
   test('accepts only the explicit public package surface', () => {
