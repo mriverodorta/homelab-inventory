@@ -118,6 +118,25 @@ describe('catalog fingerprint v12', () => {
     expect(() => canonicalizeCatalogItemV12(collision)).toThrow(/alias wlan-m2 conflicts/i)
   })
 
+  it('does not perform application relationship migrations during canonicalization', () => {
+    const legacy = structuredClone(host) as any
+    legacy.compatibility.host.optionalModuleSlots = []
+    legacy.compatibility.host.expansionSlots = [{
+      id: 7,
+      key: 'm2-ae-slot',
+      count: 1,
+      label: 'M.2 2230 A/E WLAN slot',
+      interfaceFamily: 'm2-ae',
+      keying: 'A+E',
+      moduleSize: '2230',
+    }]
+
+    const canonical = canonicalizeCatalogItemV12(legacy) as any
+
+    expect(canonical.compatibility.host.expansionSlots).toEqual(legacy.compatibility.host.expansionSlots)
+    expect(canonical.compatibility.host.optionalModuleSlots).toEqual([])
+  })
+
   it('canonicalizes plural component requirements with AND semantics represented as a list', () => {
     const canonical = canonicalizeCatalogItemV12(adapter) as any
     expect(canonical.specs.hostInterface.requiredBuses).toEqual([

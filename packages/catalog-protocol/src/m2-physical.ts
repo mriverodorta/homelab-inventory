@@ -59,6 +59,7 @@ const RESOURCE_COLLECTIONS = [
   'optionalModuleSlots',
   'controllerSlots',
   'bootDeviceSlots',
+  'psuBays',
   'coolingProfiles',
 ] as const
 
@@ -276,35 +277,34 @@ function canonicalM2Resource(resource: JsonObject, path: string): JsonObject {
   }
 }
 
-function updateConstraintReferences(host: JsonObject, movedIds: Set<number>): void {
-  if (!Array.isArray(host.constraintGroups)) return
-  for (const group of host.constraintGroups) {
-    const record = object(group)
-    if (!record || !Array.isArray(record.members)) continue
-    record.members = record.members.map((member) => {
-      const reference = object(member)
-      if (!reference || reference.resourceType !== 'expansion-slot' || !movedIds.has(Number(reference.resourceId))) return member
-      return { ...reference, resourceType: 'optional-module-slot' }
-    })
-  }
-}
-
 function assertHostAliasUniqueness(host: JsonObject): void {
-  const owners = new Map<string, string>()
+  const keys = new Map<string, string>()
+  const aliases: Array<{ key: string, owner: string }> = []
   for (const collection of RESOURCE_COLLECTIONS) {
     if (!Array.isArray(host[collection])) continue
     for (const [index, raw] of host[collection].entries()) {
       const resource = object(raw)
       if (!resource || typeof resource.key !== 'string') continue
       const owner = `${collection}[${index}]`
-      const names = [...(Array.isArray(resource.keyAliases) ? resource.keyAliases : []), resource.key]
-      for (const value of names) {
-        const key = text(value, `${owner}.key`).toLowerCase()
-        const existing = owners.get(key)
-        if (existing && existing !== owner) throw new Error(`Host resource alias ${key} conflicts between ${existing} and ${owner}.`)
-        owners.set(key, owner)
+      const key = text(resource.key, `${owner}.key`).toLowerCase()
+      const existing = keys.get(key)
+      if (existing && existing !== owner) throw new Error(`Resource key ${key} conflicts between ${existing} and ${owner}.`)
+      keys.set(key, owner)
+      for (const value of Array.isArray(resource.keyAliases) ? resource.keyAliases : []) {
+        aliases.push({ key: text(value, `${owner}.keyAliases`).toLowerCase(), owner })
       }
     }
+  }
+
+  const aliasOwners = new Map<string, string>()
+  for (const alias of aliases) {
+    const keyOwner = keys.get(alias.key)
+    if (keyOwner) throw new Error(`Resource alias ${alias.key} conflicts between ${keyOwner} and ${alias.owner}.`)
+    const aliasOwner = aliasOwners.get(alias.key)
+    if (aliasOwner && aliasOwner !== alias.owner) {
+      throw new Error(`Resource alias ${alias.key} conflicts between ${aliasOwner} and ${alias.owner}.`)
+    }
+    aliasOwners.set(alias.key, alias.owner)
   }
 }
 
@@ -344,10 +344,7 @@ function canonicalizeHostV12(value: unknown): CatalogTemplateItem {
   const host = object(compatibility?.host)
   if (!compatibility || !host) throw new Error('Fingerprint-v12 host templates require compatibility.host.')
   const optional = Array.isArray(host.optionalModuleSlots) ? host.optionalModuleSlots : []
-  const expansion = Array.isArray(host.expansionSlots) ? host.expansionSlots : []
-  const movedIds = new Set<number>()
   const canonicalOptional: JsonValue[] = []
-  let affected = 0
 
   for (const [index, raw] of optional.entries()) {
     const resource = object(raw)
@@ -356,29 +353,9 @@ function canonicalizeHostV12(value: unknown): CatalogTemplateItem {
       continue
     }
     canonicalOptional.push(canonicalM2Resource(resource, `compatibility.host.optionalModuleSlots[${index}]`))
-    affected += 1
   }
-  const remainingExpansion: JsonValue[] = []
-  for (const [index, raw] of expansion.entries()) {
-    const resource = object(raw)
-    if (!resource || !isM2AeResource(resource)) {
-      remainingExpansion.push(raw)
-      continue
-    }
-    const canonical = canonicalM2Resource(resource, `compatibility.host.expansionSlots[${index}]`)
-    const id = Number(canonical.id)
-    if (canonicalOptional.some((entry) => Number(object(entry)?.id) === id)) {
-      throw new Error(`M.2 A/E resource id ${id} collides across host resource collections.`)
-    }
-    canonicalOptional.push(canonical)
-    movedIds.add(id)
-    affected += 1
-  }
-  if (affected === 0) throw new Error('Fingerprint-v12 host template has no physical M.2 A/E resource.')
 
-  if (Array.isArray(host.optionalModuleSlots) || canonicalOptional.length > 0) host.optionalModuleSlots = canonicalOptional
-  if (Array.isArray(host.expansionSlots)) host.expansionSlots = remainingExpansion
-  updateConstraintReferences(host, movedIds)
+  if (Array.isArray(host.optionalModuleSlots)) host.optionalModuleSlots = canonicalOptional
   assertCollectionIdUniqueness(host)
   assertHostAliasUniqueness(host)
   sortResourceCollections(host)
