@@ -53,10 +53,17 @@ publication authority. Consumers configure only trusted Registry public keys.
 
 ## Registry Evidence
 
-- Published at: pending publication
-- Registry SHA-512 integrity: pending publication
-- Registry SHA-1 shasum: pending publication
-- External clean-install verification: pending publication
+- Published at: `2026-08-21T18:17:44.639Z`
+- Registry SHA-512 integrity: `sha512-KDrXbZCZsNYvu87znceaz5z14mfMZOZhoFvr/yr1My4c2OiJSJuZNh6XMpHaqhPmNb3fY++cU53jMSeNLDje9w==`
+- Registry SHA-1 shasum: `5220bae2e95da96e00aa1e1520b9e7071298893c`
+- Registry tarball SHA-256: `b59f9658012fca5d0c5f5576cdca5a77479bcc71aa014c5df9aaa2c672d8f59e`
+- Registry tarball verification: byte-for-byte identical to the audited local
+  tarball, with the same 19-file allowlist and compressed/unpacked sizes
+- External clean-install verification: passed using an exact npm dependency
+  from a clean temporary project with no workspace or file dependency
+- External runtime verification: canonical template identity/content hashing
+  and Ed25519 artifact signature verification passed
+- External Bun lock integrity: matched the Registry SHA-512 integrity exactly
 
 No npm credentials, application data, Registry credentials, or private signing
 material are recorded in this receipt.
