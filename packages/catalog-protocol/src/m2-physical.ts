@@ -234,10 +234,17 @@ function legacyBusEvidence(resource: JsonObject): CatalogHostBusEvidence[] | und
   return buses.length > 0 ? buses.sort((left, right) => left.family.localeCompare(right.family)) : undefined
 }
 
-function canonicalM2Resource(resource: JsonObject, path: string): JsonObject {
+function canonicalM2Resource(
+  resource: JsonObject,
+  path: string,
+  options: { preserveLabel?: boolean } = {},
+): JsonObject {
   const id = positiveInteger(resource.id, `${path}.id`)
   const count = positiveInteger(resource.count, `${path}.count`)
   const originalKey = text(resource.key, `${path}.key`)
+  const hasCanonicalShape = originalKey === 'm2-ae-slot'
+    && ['keyAliases', 'socketKeys', 'moduleSizes', 'availableBuses', 'intendedModuleKinds']
+      .some((field) => Object.hasOwn(resource, field))
   if (originalKey === 'm2-ae-slot' && resource.aliases !== undefined) {
     throw new Error(`${path} must use keyAliases and socketKeys for canonical fingerprint-v12 resources.`)
   }
@@ -266,14 +273,27 @@ function canonicalM2Resource(resource: JsonObject, path: string): JsonObject {
     key: 'm2-ae-slot',
     ...(aliases.length > 0 ? { keyAliases: [...new Set(aliases)].sort() } : {}),
     count,
-    label: resource.label === undefined
-      ? socketKeys?.length === 1 ? `M.2 Key ${socketKeys[0]} slot` : 'M.2 A/E slot'
-      : text(resource.label, `${path}.label`),
+    label: (options.preserveLabel || hasCanonicalShape) && resource.label !== undefined
+      ? text(resource.label, `${path}.label`)
+      : socketKeys?.length === 1 ? `M.2 Key ${socketKeys[0]} slot` : 'M.2 A/E slot',
     interfaceFamily: 'm2-ae',
     ...(socketKeys ? { socketKeys } : {}),
     ...(moduleSizes ? { moduleSizes } : {}),
     ...(availableBuses !== undefined ? { availableBuses } : {}),
     ...(intendedModuleKinds ? { intendedModuleKinds } : {}),
+  }
+}
+
+function updateConstraintReferences(host: JsonObject, movedIds: Set<number>): void {
+  if (!Array.isArray(host.constraintGroups)) return
+  for (const group of host.constraintGroups) {
+    const record = object(group)
+    if (!record || !Array.isArray(record.members)) continue
+    record.members = record.members.map((member) => {
+      const reference = object(member)
+      if (!reference || reference.resourceType !== 'expansion-slot' || !movedIds.has(Number(reference.resourceId))) return member
+      return { ...reference, resourceType: 'optional-module-slot' }
+    })
   }
 }
 
@@ -288,7 +308,9 @@ function assertHostAliasUniqueness(host: JsonObject): void {
       const owner = `${collection}[${index}]`
       const key = text(resource.key, `${owner}.key`).toLowerCase()
       const existing = keys.get(key)
-      if (existing && existing !== owner) throw new Error(`Resource key ${key} conflicts between ${existing} and ${owner}.`)
+      if (existing && existing !== owner) {
+        throw new Error(`Resource key ${key} conflicts between ${existing} and ${owner}; the mapping is ambiguous.`)
+      }
       keys.set(key, owner)
       for (const value of Array.isArray(resource.keyAliases) ? resource.keyAliases : []) {
         aliases.push({ key: text(value, `${owner}.keyAliases`).toLowerCase(), owner })
@@ -299,10 +321,12 @@ function assertHostAliasUniqueness(host: JsonObject): void {
   const aliasOwners = new Map<string, string>()
   for (const alias of aliases) {
     const keyOwner = keys.get(alias.key)
-    if (keyOwner) throw new Error(`Resource alias ${alias.key} conflicts between ${keyOwner} and ${alias.owner}.`)
+    if (keyOwner) {
+      throw new Error(`Resource alias ${alias.key} conflicts between ${keyOwner} and ${alias.owner}; the mapping is ambiguous.`)
+    }
     const aliasOwner = aliasOwners.get(alias.key)
     if (aliasOwner && aliasOwner !== alias.owner) {
-      throw new Error(`Resource alias ${alias.key} conflicts between ${aliasOwner} and ${alias.owner}.`)
+      throw new Error(`Resource alias ${alias.key} conflicts between ${aliasOwner} and ${alias.owner}; the mapping is ambiguous.`)
     }
     aliasOwners.set(alias.key, alias.owner)
   }
@@ -338,13 +362,16 @@ function sortResourceCollections(host: JsonObject): void {
   }
 }
 
-function canonicalizeHostV12(value: unknown): CatalogTemplateItem {
+function canonicalizeHostV12(value: unknown, options: { migrateLegacyResources: boolean }): CatalogTemplateItem {
   const item = canonicalizeCatalogItemV9(value)
   const compatibility = object(item.compatibility)
   const host = object(compatibility?.host)
   if (!compatibility || !host) throw new Error('Fingerprint-v12 host templates require compatibility.host.')
   const optional = Array.isArray(host.optionalModuleSlots) ? host.optionalModuleSlots : []
+  const expansion = Array.isArray(host.expansionSlots) ? host.expansionSlots : []
+  const movedIds = new Set<number>()
   const canonicalOptional: JsonValue[] = []
+  let affected = 0
 
   for (const [index, raw] of optional.entries()) {
     const resource = object(raw)
@@ -352,10 +379,37 @@ function canonicalizeHostV12(value: unknown): CatalogTemplateItem {
       canonicalOptional.push(raw)
       continue
     }
-    canonicalOptional.push(canonicalM2Resource(resource, `compatibility.host.optionalModuleSlots[${index}]`))
+    canonicalOptional.push(canonicalM2Resource(
+      resource,
+      `compatibility.host.optionalModuleSlots[${index}]`,
+      { preserveLabel: !options.migrateLegacyResources },
+    ))
+    affected += 1
   }
 
-  if (Array.isArray(host.optionalModuleSlots)) host.optionalModuleSlots = canonicalOptional
+  const remainingExpansion: JsonValue[] = []
+  for (const [index, raw] of expansion.entries()) {
+    const resource = object(raw)
+    if (!options.migrateLegacyResources || !resource || !isM2AeResource(resource)) {
+      remainingExpansion.push(raw)
+      continue
+    }
+    const canonical = canonicalM2Resource(resource, `compatibility.host.expansionSlots[${index}]`)
+    const id = Number(canonical.id)
+    if (canonicalOptional.some((entry) => Number(object(entry)?.id) === id)) {
+      throw new Error(`M.2 A/E resource id ${id} collides across host resource collections.`)
+    }
+    canonicalOptional.push(canonical)
+    movedIds.add(id)
+    affected += 1
+  }
+  if (options.migrateLegacyResources && affected === 0) {
+    throw new Error('Fingerprint-v12 host template has no physical M.2 A/E resource.')
+  }
+
+  if (Array.isArray(host.optionalModuleSlots) || canonicalOptional.length > 0) host.optionalModuleSlots = canonicalOptional
+  if (Array.isArray(host.expansionSlots)) host.expansionSlots = remainingExpansion
+  updateConstraintReferences(host, movedIds)
   assertCollectionIdUniqueness(host)
   assertHostAliasUniqueness(host)
   sortResourceCollections(host)
@@ -416,7 +470,16 @@ function canonicalizeNetworkV12(value: unknown): CatalogTemplateItem {
 
 export function canonicalizeCatalogItemV12(value: unknown): CatalogTemplateItem {
   const source = sanitizeCatalogItemV9(value)
-  return source.type === 'network' ? canonicalizeNetworkV12(source) : canonicalizeHostV12(source)
+  return source.type === 'network'
+    ? canonicalizeNetworkV12(source)
+    : canonicalizeHostV12(source, { migrateLegacyResources: true })
+}
+
+export function canonicalizeCatalogItemV12UpdateCurrent(value: unknown): CatalogTemplateItem {
+  const source = sanitizeCatalogItemV9(value)
+  return source.type === 'network'
+    ? canonicalizeNetworkV12(source)
+    : canonicalizeHostV12(source, { migrateLegacyResources: false })
 }
 
 export function assertCanonicalCatalogItemV12(value: unknown): void {

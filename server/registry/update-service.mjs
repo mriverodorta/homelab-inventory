@@ -6,6 +6,7 @@ import {
   canonicalizeCatalogItemV10,
   canonicalizeCatalogItemV11,
   canonicalizeCatalogItemV12,
+  canonicalizeCatalogItemV12UpdateCurrent,
   canonicalizeCatalogItemV9,
   sanitizeCatalogItem,
   sanitizeCatalogItemV9,
@@ -36,7 +37,7 @@ function sanitizeForFingerprint(value, fingerprintVersion) {
 }
 
 function sanitizeCurrentForFingerprint(value, fingerprintVersion) {
-  if (fingerprintVersion === M2_AE_FINGERPRINT_VERSION) return canonicalizeCatalogItemV12(value)
+  if (fingerprintVersion === M2_AE_FINGERPRINT_VERSION) return canonicalizeCatalogItemV12UpdateCurrent(value)
   if (fingerprintVersion === NETWORK_FINGERPRINT_VERSION) return canonicalizeCatalogItemV9(value)
   if (fingerprintVersion !== NAS_FINGERPRINT_VERSION) return sanitizeForFingerprint(value, fingerprintVersion)
   return canonicalizeCatalogItemV10(canonicalizeCatalogItemV9(value))

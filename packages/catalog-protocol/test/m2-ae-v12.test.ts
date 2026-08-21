@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   M2_AE_FINGERPRINT_VERSION,
   canonicalizeCatalogItemV12,
+  canonicalizeCatalogItemV12UpdateCurrent,
   digestCatalogTemplate,
   moduleKeyFitsSocket,
   normalizeUsbGenerationV12,
@@ -115,7 +116,7 @@ describe('catalog fingerprint v12', () => {
       label: 'Conflicting resource',
       interfaceFamily: 'pcie',
     }]
-    expect(() => canonicalizeCatalogItemV12(collision)).toThrow(/alias wlan-m2 conflicts/i)
+    expect(() => canonicalizeCatalogItemV12(collision)).toThrow(/(?:alias wlan-m2|key m2-ae-slot) conflicts/i)
   })
 
   it('does not perform application relationship migrations during canonicalization', () => {
@@ -131,7 +132,7 @@ describe('catalog fingerprint v12', () => {
       moduleSize: '2230',
     }]
 
-    const canonical = canonicalizeCatalogItemV12(legacy) as any
+    const canonical = canonicalizeCatalogItemV12UpdateCurrent(legacy) as any
 
     expect(canonical.compatibility.host.expansionSlots).toEqual(legacy.compatibility.host.expansionSlots)
     expect(canonical.compatibility.host.optionalModuleSlots).toEqual([])
