@@ -9,7 +9,8 @@ export const RAM_FINGERPRINT_VERSION = 8
 export const CANONICAL_UNITS_FINGERPRINT_VERSION = 9
 export const NAS_FINGERPRINT_VERSION = 10
 export const NETWORK_FINGERPRINT_VERSION = 11
-export const M2_AE_FINGERPRINT_VERSION = 12
+export const M2_PHYSICAL_FINGERPRINT_VERSION = 12
+export const M2_AE_FINGERPRINT_VERSION = M2_PHYSICAL_FINGERPRINT_VERSION
 export const SUPPORTED_FINGERPRINT_VERSIONS = [
   LEGACY_FINGERPRINT_VERSION,
   FINGERPRINT_VERSION,
@@ -21,7 +22,7 @@ export const SUPPORTED_FINGERPRINT_VERSIONS = [
   CANONICAL_UNITS_FINGERPRINT_VERSION,
   NAS_FINGERPRINT_VERSION,
   NETWORK_FINGERPRINT_VERSION,
-  M2_AE_FINGERPRINT_VERSION,
+  M2_PHYSICAL_FINGERPRINT_VERSION,
 ] as const
 export const MANUFACTURER_ALIAS_VERSION = 1
 
@@ -125,10 +126,10 @@ export type CatalogNetworkHostInterface = {
   connector?: string
   ocpVersion?: string
   interfaceKey?: string
-  requiredBuses?: CatalogRequiredBus[]
+  requiredBuses?: CatalogComponentBusRequirement[]
 }
 
-export type CatalogUsbGeneration =
+export type CatalogUsbGenerationV12 =
   | 'USB 1.1'
   | 'USB 2.0'
   | 'USB 3.2 Gen 1'
@@ -138,19 +139,29 @@ export type CatalogUsbGeneration =
   | 'USB4 40Gbps'
   | 'USB4 80Gbps'
 
-export type CatalogAvailableBus = {
-  family: 'pcie' | 'usb'
+export type CatalogUsbGeneration = CatalogUsbGenerationV12
+
+export type CatalogHostBusEvidence = {
+  family: 'pcie'
   lanes?: number
   pcieGeneration?: number
-  usbGeneration?: CatalogUsbGeneration
+} | {
+  family: 'usb'
+  usbGeneration?: CatalogUsbGenerationV12
 }
 
-export type CatalogRequiredBus = {
-  family: 'pcie' | 'usb'
+export type CatalogAvailableBus = CatalogHostBusEvidence
+
+export type CatalogComponentBusRequirement = {
+  family: 'pcie'
   minimumLanes?: number
   minimumPcieGeneration?: number
-  minimumUsbGeneration?: CatalogUsbGeneration
+} | {
+  family: 'usb'
+  minimumUsbGeneration?: CatalogUsbGenerationV12
 }
+
+export type CatalogRequiredBus = CatalogComponentBusRequirement
 
 export type CatalogNetworkCapabilities = {
   sriov?: boolean
@@ -184,6 +195,15 @@ export type CatalogPort = {
 export type CatalogFixedComponentDisposition = 'fixed' | 'soldered'
 
 export type CatalogExternalAdapterDisposition = 'fixed' | 'replaceable'
+
+export type CatalogPowerCompatibility = {
+  configuration: 'external-adapter' | 'internal-psu'
+  adapterDisposition?: CatalogExternalAdapterDisposition
+  connector?: string
+  supportedPowerMw?: number[]
+  adapterRequired?: boolean
+  [key: string]: JsonValue | undefined
+}
 
 export type CatalogFixedComponent = {
   id: number
@@ -321,14 +341,14 @@ export type CatalogRangeFacet = {
   unit?: string | null
 }
 
-export type CatalogFacetDefinition = CatalogTermFacet | CatalogRangeFacet
-export type CatalogFacet = CatalogFacetDefinition
+export type CatalogFacet = CatalogTermFacet | CatalogRangeFacet
+export type CatalogFacetDefinition = CatalogFacet
 
 export type CatalogFacetCategory = {
   type: string
   label: string
   count: number
-  facets: CatalogFacetDefinition[]
+  facets: CatalogFacet[]
 }
 
 export type CatalogFacetIndex = {

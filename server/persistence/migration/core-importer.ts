@@ -10,7 +10,7 @@ import {
   type LegacyInventoryType,
 } from '../legacy/identity-plan.ts'
 import { persistAuthenticationState } from '../core/projections/legacy-domains.ts'
-import { normalizeUsbGenerationV12 } from '../../../packages/catalog-protocol/src/m2-ae-v12.ts'
+import { normalizeUsbGenerationV12 } from '../../../packages/catalog-protocol/src/m2-physical.ts'
 
 type LegacySnapshot = Record<string, any>
 type LegacyRecord = Record<string, any>

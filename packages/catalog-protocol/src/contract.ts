@@ -4,7 +4,7 @@ import {
   FINGERPRINT_VERSION,
   LEGACY_FINGERPRINT_VERSION,
   MOTHERBOARD_FINGERPRINT_VERSION,
-  M2_AE_FINGERPRINT_VERSION,
+  M2_PHYSICAL_FINGERPRINT_VERSION,
   NAS_FINGERPRINT_VERSION,
   NETWORK_FINGERPRINT_VERSION,
   OEM_FINGERPRINT_VERSION,
@@ -348,7 +348,6 @@ const FINGERPRINT_V7_MOTHERBOARD_VECTOR = {
         storageSlots: [{
           id: 1,
           key: 'm2-1',
-          label: 'Primary M.2 slot',
           count: 1,
           interfaces: ['NVMe'],
           formFactors: ['2280'],
@@ -357,7 +356,6 @@ const FINGERPRINT_V7_MOTHERBOARD_VECTOR = {
         expansionSlots: [{
           id: 1,
           key: 'pcie-x16-1',
-          label: 'Primary PCIe x16 slot',
           count: 1,
           interfaceFamily: 'pcie',
           mechanicalLanes: 16,
@@ -365,14 +363,14 @@ const FINGERPRINT_V7_MOTHERBOARD_VECTOR = {
           pcieGeneration: 5,
         }],
         powerConnectors: [
-          { id: 1, key: 'atx-main', label: 'Main ATX power', kind: 'main-power', connector: '24-pin ATX', count: 1, required: true },
-          { id: 2, key: 'cpu-eps', label: 'CPU EPS power', kind: 'cpu-power', connector: '8-pin EPS', count: 2, required: true },
+          { id: 1, kind: 'atx-main', connector: '24-pin ATX', count: 1, required: true },
+          { id: 2, kind: 'cpu-eps', connector: '8-pin EPS', count: 2, required: true },
         ],
       },
     },
   },
-  identityHash: '03375b57b31472a44c01304e9f65850ab6157c006e9876734afcedeab563ae6e',
-  contentHash: '24299013e029df7b32b268f8d7233c1b6bc15bb69a9e4af44ccd5ae6aaf2a3d2',
+  identityHash: '02c273147a8631c708a48b914f890ee3d744f9721eb36d55a9b4a760122648d5',
+  contentHash: '7e36b05d2c840884e62478954664ba31687b17605398fe8ef57e2a02c3321066',
 } as const
 
 const FINGERPRINT_V8_RAM_VECTOR = {
@@ -436,15 +434,132 @@ const FINGERPRINT_V9_CANONICAL_CPU_VECTOR = {
   contentHash: '3e7e2b9873d1b9df474d51c14a4d376047fdf8cb8558c7645569d34768796b25',
 } as const
 
-const FINGERPRINT_V12_M2_AE_VECTOR = {
+const FINGERPRINT_V10_NAS_VECTOR = {
+  item: {
+    type: 'nas',
+    name: 'Synology DS620slim',
+    manufacturer: 'Synology',
+    family: 'DiskStation',
+    model: 'DS620slim',
+    specs: {
+      formFactor: 'Desktop',
+      platformFamily: 'DSM',
+      topologyCompleteness: 'complete',
+      powerConfiguration: 'external-adapter',
+    },
+    fixedComponents: [{
+      id: 1,
+      componentType: 'cpu',
+      disposition: 'soldered',
+      label: 'Soldered processor',
+      item: {
+        type: 'cpu', name: 'Intel Celeron J3355', manufacturer: 'Intel', model: 'Celeron J3355', number: 'J3355',
+        specs: { cores: 2, threads: 2, tdpMw: 10_000 },
+      },
+    }],
+    ports: [{
+      id: 1, key: 'lan-1', kind: 'network', type: 'rj45', slotNumber: 1,
+      speedBps: 1_000_000_000, origin: 'fixed',
+    }],
+    compatibility: { host: {
+      memory: {
+        slots: 2, generations: ['DDR3L'], formFactors: ['SO-DIMM'], moduleTypes: ['UDIMM'], maxSpeedMt: 1866,
+        oemMaxCapacityMib: 6144, verifiedMaxCapacityMib: 16_384,
+        oemMaxModuleCapacityMib: 4096, verifiedMaxModuleCapacityMib: 8192,
+      },
+      storageSlots: [{
+        id: 1, key: 'drive-bays', label: 'SATA drive bays', count: 6,
+        interfaces: ['SATA'], formFactors: ['2.5-inch'], hotSwap: true,
+      }],
+      expansionSlots: [],
+      optionalModuleSlots: [],
+      power: {
+        configuration: 'external-adapter', connector: '4-pin DIN',
+        adapterDisposition: 'fixed', supportedPowerMw: [65_000], adapterRequired: true,
+      },
+      topologyCompleteness: 'complete',
+    } },
+  },
+  identityHash: '73547318d3813c7e62ac4c80c5c48a928d75cec83e214e45f25142b2c70e1520',
+  contentHash: '9c6b9f8f6c2d075387e413faeecd7ad35f9c29ec08ba3993b6735a6fa96d37c1',
+} as const
+
+const FINGERPRINT_V11_NETWORK_VECTORS = [{
+  item: {
+    type: 'network',
+    name: 'Intel Ethernet Converged Network Adapter X710-DA2',
+    manufacturer: 'Intel',
+    family: 'Ethernet 700 Series',
+    model: 'X710-DA2',
+    specs: {
+      networkTechnology: 'ethernet',
+      controller: 'Intel X710',
+      formFactor: 'low-profile',
+      hostInterface: { family: 'pcie', pcieGeneration: 3, connectorLanes: 8, minimumElectricalLanes: 8 },
+      maxSpeedBps: 10_000_000_000,
+      operatingModes: ['ethernet'],
+      capabilities: {
+        sriov: true, ptp: true, pxe: true, uefiBoot: true, wakeOnLan: false,
+        rdmaModes: [], offloads: ['checksum', 'rss'],
+      },
+      discontinued: false,
+    },
+    ports: [{
+      id: 1, key: 'port-1', kind: 'network', type: 'sfp-plus', slotNumber: 1,
+      speedBps: 10_000_000_000, supportedSpeedsBps: [1_000_000_000, 10_000_000_000],
+      networkTechnology: 'ethernet', operatingModes: ['ethernet'],
+      media: ['dac', 'optical-transceiver'], origin: 'module',
+    }, {
+      id: 2, key: 'port-2', kind: 'network', type: 'sfp-plus', slotNumber: 2,
+      speedBps: 10_000_000_000, supportedSpeedsBps: [1_000_000_000, 10_000_000_000],
+      networkTechnology: 'ethernet', operatingModes: ['ethernet'],
+      media: ['dac', 'optical-transceiver'], origin: 'module',
+    }],
+    compatibility: { requirements: { expansion: {
+      interfaceFamily: 'pcie', pcieGeneration: 3, connectorLanes: 8,
+      minimumElectricalLanes: 8, height: 'low-profile', slotWidth: 1, powerMw: 7_000,
+    } } },
+  },
+  identityHash: '4d31d779f7ac3e92193b85a4532c5eaea20c58273a86ed89aa649581c3488df4',
+  contentHash: 'beae60950b946298b6125bec0c5d9a73d6b940b3b59979eb82f0a969d6c404c6',
+}, {
+  item: {
+    type: 'network',
+    name: 'Intel Wi-Fi 6E AX210',
+    manufacturer: 'Intel',
+    family: 'Intel Wi-Fi 6E',
+    model: 'AX210.NGWG',
+    specs: {
+      networkTechnology: 'wifi',
+      controller: 'Intel AX210',
+      formFactor: 'm2-2230',
+      hostInterface: { family: 'm2-ae', key: 'A+E', moduleSize: '2230' },
+      operatingModes: ['wifi'],
+      wifiGenerations: ['Wi-Fi 6', 'Wi-Fi 6E'],
+      frequencyBandsGhz: [2.4, 5, 6],
+      spatialStreams: 2,
+      maxPhyRateBps: 2_400_000_000,
+      bluetoothVersion: '5.3',
+      antennaTopology: '2x2',
+      discontinued: false,
+    },
+    compatibility: { requirements: { expansion: {
+      interfaceFamily: 'm2-ae', key: 'A+E', moduleSize: '2230',
+    } } },
+  },
+  identityHash: '57298d0705e4c642b57bb40085bef193330778396eb54b50934418e93c8762e9',
+  contentHash: 'db577935d26e7625763b10dea3b701d0a8e258d82da9c66c2f486f8ca4dcf280',
+}] as const
+
+const FINGERPRINT_V12_M2_PHYSICAL_VECTORS = [{
   item: {
     type: 'desktop',
     name: 'Example Micro',
     manufacturer: 'Example',
-    model: 'Micro 1',
-    specs: { topologyCompleteness: 'complete', motherboardPartNumber: 'BOARD-1' },
+    model: 'Micro',
+    specs: { formFactor: 'Micro', topologyCompleteness: 'complete' },
     compatibility: { host: { optionalModuleSlots: [{
-      id: 1,
+      id: 7,
       key: 'm2-ae-slot',
       keyAliases: ['wlan-m2'],
       count: 1,
@@ -459,9 +574,38 @@ const FINGERPRINT_V12_M2_AE_VECTOR = {
       intendedModuleKinds: ['wireless-card'],
     }] } },
   },
-  identityHash: '81704ef7729b1bec1804da3b7d3285bfe29469c25c1b2fec6f9ca9397fa7c8ec',
-  contentHash: '06bd998dcb0830682311c6dfa62e87898d304f8c9537fa15e440e51114888ad3',
-} as const
+  identityHash: '5072c6dbf960f23622cd63f22da2be0febc91652d415086d2b4f5731d7cb8503',
+  contentHash: 'dfb2dacd5422e8cb272a758e7bfd9d291a03fa3f4fdda9a819cfb33bc8993ce0',
+}, {
+  item: {
+    type: 'network',
+    name: 'Example A+E Ethernet',
+    manufacturer: 'Example',
+    model: 'AE1000',
+    specs: {
+      networkTechnology: 'ethernet',
+      formFactor: 'm2-2230',
+      operatingModes: ['ethernet'],
+      hostInterface: {
+        family: 'm2-ae',
+        key: 'A+E',
+        moduleSize: '2230',
+        requiredBuses: [{ family: 'pcie', minimumLanes: 1, minimumPcieGeneration: 2 }],
+      },
+    },
+    ports: [{
+      id: 1, key: 'port-1', kind: 'network', type: 'rj45', slotNumber: 1,
+      speedBps: 1_000_000_000, supportedSpeedsBps: [1_000_000_000],
+      networkTechnology: 'ethernet', operatingModes: ['ethernet'], origin: 'module',
+    }],
+    compatibility: { requirements: { expansion: {
+      interfaceFamily: 'm2-ae', key: 'A+E', moduleSize: '2230',
+      requiredBuses: [{ family: 'pcie', minimumLanes: 1, minimumPcieGeneration: 2 }],
+    } } },
+  },
+  identityHash: '99a59a537a2044f494aa9423966f95034a272b1070a14f74b5da8c92c562b936',
+  contentHash: '5b7ea6761cea4f1124b7aa0eff656168b61252b5ddf86e90d2c84d26e40b0d2f',
+}] as const
 
 export async function assertCatalogProtocolContract(): Promise<void> {
   if (FINGERPRINT_VERSION !== 3 || LEGACY_FINGERPRINT_VERSION !== 2
@@ -469,7 +613,7 @@ export async function assertCatalogProtocolContract(): Promise<void> {
     || SERVER_FINGERPRINT_VERSION !== 6 || MOTHERBOARD_FINGERPRINT_VERSION !== 7
     || RAM_FINGERPRINT_VERSION !== 8 || CANONICAL_UNITS_FINGERPRINT_VERSION !== 9
     || NAS_FINGERPRINT_VERSION !== 10 || NETWORK_FINGERPRINT_VERSION !== 11
-    || M2_AE_FINGERPRINT_VERSION !== 12) {
+    || M2_PHYSICAL_FINGERPRINT_VERSION !== 12) {
     throw new Error(`Catalog fingerprint version ${FINGERPRINT_VERSION} has no publication contract.`)
   }
 
@@ -553,13 +697,37 @@ export async function assertCatalogProtocolContract(): Promise<void> {
     throw new Error('Catalog fingerprint-v9 canonical-unit contract changed unexpectedly.')
   }
 
-  const m2AeProjection = await digestCatalogTemplate(FINGERPRINT_V12_M2_AE_VECTOR.item, {
-    fingerprintVersion: M2_AE_FINGERPRINT_VERSION,
+  const nasProjection = await digestCatalogTemplate(FINGERPRINT_V10_NAS_VECTOR.item, {
+    fingerprintVersion: NAS_FINGERPRINT_VERSION,
   })
   if (
-    m2AeProjection.identityHash !== FINGERPRINT_V12_M2_AE_VECTOR.identityHash
-    || m2AeProjection.contentHash !== FINGERPRINT_V12_M2_AE_VECTOR.contentHash
+    nasProjection.identityHash !== FINGERPRINT_V10_NAS_VECTOR.identityHash
+    || nasProjection.contentHash !== FINGERPRINT_V10_NAS_VECTOR.contentHash
   ) {
-    throw new Error('Catalog fingerprint-v12 M.2 A/E contract changed unexpectedly.')
+    throw new Error('Catalog fingerprint-v10 NAS contract changed unexpectedly.')
+  }
+
+  for (const vector of FINGERPRINT_V11_NETWORK_VECTORS) {
+    const networkProjection = await digestCatalogTemplate(vector.item, {
+      fingerprintVersion: NETWORK_FINGERPRINT_VERSION,
+    })
+    if (
+      networkProjection.identityHash !== vector.identityHash
+      || networkProjection.contentHash !== vector.contentHash
+    ) {
+      throw new Error('Catalog fingerprint-v11 network contract changed unexpectedly.')
+    }
+  }
+
+  for (const vector of FINGERPRINT_V12_M2_PHYSICAL_VECTORS) {
+    const projection = await digestCatalogTemplate(vector.item, {
+      fingerprintVersion: M2_PHYSICAL_FINGERPRINT_VERSION,
+    })
+    if (
+      projection.identityHash !== vector.identityHash
+      || projection.contentHash !== vector.contentHash
+    ) {
+      throw new Error('Catalog fingerprint-v12 physical M.2 contract changed unexpectedly.')
+    }
   }
 }

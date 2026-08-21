@@ -63,7 +63,7 @@ const SAFE_COMPATIBILITY_FIELDS = new Set([
   'maxGpuSlotWidth', 'radiatorSizesMm', 'psuFormFactors', 'motherboardFormFactors', 'ratedWatts',
   'topologyCompleteness', 'topologyComplete', 'proprietaryRiser', 'riserCapability', 'variantKey',
   'optionalModuleSlots', 'acceptedModuleKinds', 'configuration', 'supportedWattagesWatts',
-  'connector', 'eccSupport', 'adapterRequired', 'adapterType', 'fixedPorts', 'origin',
+  'adapterDisposition', 'connector', 'eccSupport', 'adapterRequired', 'adapterType', 'fixedPorts', 'origin',
   'socketCount', 'moduleTypes', 'location', 'hotSwap', 'backplane', 'redundancy',
   'maxGraphicsPowerWatts', 'constraintGroups', 'kind', 'members', 'resourceType', 'resourceId',
   'populationModes', 'slotsPerCpu', 'controllerSlotIds', 'directConnect', 'requiredCpuSockets',

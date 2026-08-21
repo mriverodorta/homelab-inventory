@@ -1,6 +1,6 @@
 import { canonicalJson } from './canonicalize'
 import { canonicalizeCatalogItemV10, canonicalizeCatalogItemV11, canonicalizeCatalogItemV9 } from './canonical-units'
-import { canonicalizeCatalogItemV12, projectM2PhysicalHashValue } from './m2-ae-v12'
+import { canonicalizeCatalogItemV12, projectM2PhysicalHashValue } from './m2-physical'
 import { computeCatalogDigestsWithIdentity, sha256Hex } from './hash'
 import { normalizeBoardIdentifier, normalizeText, normalizeVariantKey } from './normalization'
 import { sanitizeCatalogItem } from './sanitize'
@@ -18,7 +18,7 @@ import {
   FINGERPRINT_VERSION,
   LEGACY_FINGERPRINT_VERSION,
   MOTHERBOARD_FINGERPRINT_VERSION,
-  M2_AE_FINGERPRINT_VERSION,
+  M2_PHYSICAL_FINGERPRINT_VERSION,
   NAS_FINGERPRINT_VERSION,
   NETWORK_FINGERPRINT_VERSION,
   OEM_FINGERPRINT_VERSION,
@@ -97,7 +97,7 @@ function canonicalNameForFingerprint(item: CatalogTemplateItem, fingerprintVersi
     || fingerprintVersion === SERVER_FINGERPRINT_VERSION
     || fingerprintVersion === CANONICAL_UNITS_FINGERPRINT_VERSION
     || fingerprintVersion === NAS_FINGERPRINT_VERSION
-    || fingerprintVersion === M2_AE_FINGERPRINT_VERSION)
+    || fingerprintVersion === M2_PHYSICAL_FINGERPRINT_VERSION)
     && (item.type === 'desktop' || item.type === 'workstation' || item.type === 'server' || item.type === 'nas')) {
     return text(item.name) ?? canonicalName(item)
   }
@@ -141,11 +141,7 @@ function ramProductIdentity(item: CatalogTemplateItem): Record<string, JsonValue
   if (!manufacturer || !partNumber) return 'insufficient-identity'
   const generation = text(item.specs?.generation)?.toUpperCase()
   const formFactor = text(item.specs?.formFactor)?.toUpperCase()
-  if (
-    generation?.startsWith('LPDDR')
-    || formFactor === 'LP-DIMM'
-    || formFactor === 'ONBOARD'
-  ) {
+  if (generation?.startsWith('LPDDR') || formFactor === 'LP-DIMM' || formFactor === 'ONBOARD') {
     return 'insufficient-identity'
   }
   const normalizedPartNumber = normalizeBoardIdentifier(partNumber)
@@ -161,11 +157,9 @@ function networkProductIdentity(item: CatalogTemplateItem): Record<string, JsonV
   if (item.type !== 'network') return 'unsupported-type'
   const manufacturer = text(item.manufacturer)
   const model = text(item.model)
-  const specs = item.specs
+  const specs = asObject(item.specs)
   const technology = text(specs?.networkTechnology)
-  const hostInterface = specs?.hostInterface && typeof specs.hostInterface === 'object' && !Array.isArray(specs.hostInterface)
-    ? specs.hostInterface
-    : undefined
+  const hostInterface = asObject(specs?.hostInterface)
   const formFactor = text(specs?.formFactor)
   if (!manufacturer || !model || !technology || !hostInterface || !formFactor) return 'insufficient-identity'
 
@@ -187,7 +181,8 @@ function networkProductIdentity(item: CatalogTemplateItem): Record<string, JsonV
   const identityHostInterface = { ...hostInterface }
   if (identityHostInterface.family === 'pcie') {
     // Fingerprint v11 originally received only inferred minimums equal to connector width.
-    // Preserve that identity representation while functional minima evolve as content.
+    // Keep that legacy identity representation while allowing the evidenced functional
+    // minimum to evolve independently as compatibility content.
     identityHostInterface.minimumElectricalLanes = identityHostInterface.connectorLanes
   }
 
@@ -369,11 +364,7 @@ function extractNasMaterialTopology(item: CatalogTemplateItem): Record<string, J
   if (!host) return undefined
   const memory = asObject(host.memory)
   const fixedPorts = item.ports?.filter((port) => port.origin === 'fixed').map((port) => identityObject([
-    ['kind', port.kind],
-    ['type', port.type],
-    ['slotNumber', port.slotNumber],
-    ['speedBps', port.speedBps],
-    ['origin', port.origin],
+    ['kind', port.kind], ['type', port.type], ['slotNumber', port.slotNumber], ['speedBps', port.speedBps], ['origin', port.origin],
   ]))
   const fixedComponents = item.fixedComponents?.map((component) => identityObject([
     ['componentType', component.componentType],
@@ -387,28 +378,18 @@ function extractNasMaterialTopology(item: CatalogTemplateItem): Record<string, J
   const storageSlots = Array.isArray(host.storageSlots) ? host.storageSlots.map((entry) => {
     const slot = asObject(entry)
     return identityObject([
-      ['key', slot?.key],
-      ['count', slot?.count],
-      ['interfaces', slot?.interfaces],
-      ['formFactors', slot?.formFactors],
-      ['pcieGeneration', slot?.pcieGeneration],
-      ['location', slot?.location],
-      ['hotSwap', slot?.hotSwap],
+      ['key', slot?.key], ['count', slot?.count], ['interfaces', slot?.interfaces], ['formFactors', slot?.formFactors],
+      ['pcieGeneration', slot?.pcieGeneration], ['location', slot?.location], ['hotSwap', slot?.hotSwap],
       ['controllerSlotIds', slot?.controllerSlotIds],
     ])
   }) : undefined
   const expansionSlots = Array.isArray(host.expansionSlots) ? host.expansionSlots.map((entry) => {
     const slot = asObject(entry)
     return identityObject([
-      ['key', slot?.key],
-      ['count', slot?.count],
-      ['interfaceFamily', slot?.interfaceFamily],
-      ['pcieGeneration', slot?.pcieGeneration],
-      ['mechanicalLanes', slot?.mechanicalLanes],
-      ['electricalLanes', slot?.electricalLanes],
-      ['acceptedHeights', slot?.acceptedHeights],
-      ['maxSlotWidth', slot?.maxSlotWidth],
-      ['acceptedModuleKinds', slot?.acceptedModuleKinds],
+      ['key', slot?.key], ['count', slot?.count], ['interfaceFamily', slot?.interfaceFamily],
+      ['pcieGeneration', slot?.pcieGeneration], ['mechanicalLanes', slot?.mechanicalLanes],
+      ['electricalLanes', slot?.electricalLanes], ['acceptedHeights', slot?.acceptedHeights],
+      ['maxSlotWidth', slot?.maxSlotWidth], ['acceptedModuleKinds', slot?.acceptedModuleKinds],
     ])
   }) : undefined
   const power = asObject(host.power)
@@ -419,21 +400,15 @@ function extractNasMaterialTopology(item: CatalogTemplateItem): Record<string, J
     ['boardRevision', item.specs?.boardRevision],
     ['fixedComponents', fixedComponents as unknown as JsonValue],
     ['memory', memory ? identityObject([
-      ['slots', memory.slots],
-      ['generations', memory.generations],
-      ['moduleTypes', memory.moduleTypes],
-      ['eccSupport', memory.eccSupport],
+      ['slots', memory.slots], ['generations', memory.generations], ['moduleTypes', memory.moduleTypes], ['eccSupport', memory.eccSupport],
     ]) : undefined],
     ['storageSlots', storageSlots as JsonValue | undefined],
     ['expansionSlots', expansionSlots as JsonValue | undefined],
     ['optionalModuleSlots', host.optionalModuleSlots],
     ['controllerSlots', host.controllerSlots],
     ['power', power ? identityObject([
-      ['configuration', power.configuration],
-      ['adapterDisposition', power.adapterDisposition],
-      ['connector', power.connector],
-      ['psuBayCount', power.psuBayCount],
-      ['psuType', power.psuType],
+      ['configuration', power.configuration], ['adapterDisposition', power.adapterDisposition], ['connector', power.connector],
+      ['psuBayCount', power.psuBayCount], ['psuType', power.psuType],
     ]) : undefined],
     ['fixedPorts', fixedPorts as unknown as JsonValue],
   ])
@@ -842,7 +817,7 @@ async function m2PhysicalVariantIdentity(item: CatalogTemplateItem): Promise<{
     stripV12IdentityNeutral(topology),
   ) as Record<string, JsonValue>
   const topologySignature = await sha256Hex(
-    `hli:topology:v${M2_AE_FINGERPRINT_VERSION}:${canonicalJson(materialTopology)}`,
+    `hli:topology:v${M2_PHYSICAL_FINGERPRINT_VERSION}:${canonicalJson(materialTopology)}`,
   )
   const board = splitBoardIdentity(item)
   const explicitVariant = text(item.specs?.boardVariant) ?? text(item.specs?.variantKey)
@@ -940,7 +915,7 @@ export async function projectCatalogItem(
   if (!SUPPORTED_FINGERPRINT_VERSIONS.includes(fingerprintVersion)) {
     throw new Error(`Unsupported catalog fingerprint version ${fingerprintVersion}.`)
   }
-  const item = fingerprintVersion === M2_AE_FINGERPRINT_VERSION
+  const item = fingerprintVersion === M2_PHYSICAL_FINGERPRINT_VERSION
     ? canonicalizeCatalogItemV12({ ...source, type })
     : fingerprintVersion === NETWORK_FINGERPRINT_VERSION
     ? canonicalizeCatalogItemV11({ ...source, type })
@@ -952,28 +927,12 @@ export async function projectCatalogItem(
   let identityPayload: Record<string, JsonValue>
   let productFamily: CatalogProductFamily | undefined
   let variantEvidence: CatalogVariantEvidence | undefined
-  if (fingerprintVersion === M2_AE_FINGERPRINT_VERSION) {
-    if (['network', 'desktop', 'workstation', 'server', 'nas'].includes(item.type)) {
-      const variant = await m2PhysicalVariantIdentity(item)
-      if (typeof variant === 'string') return { status: 'ineligible', source: sourceRef, reason: variant }
-      identityPayload = variant.identityPayload
-      productFamily = variant.productFamily
-      variantEvidence = variant.variantEvidence
-    } else if (item.type === 'ram') {
-      const identity = ramProductIdentity(item)
-      if (typeof identity === 'string') return { status: 'ineligible', source: sourceRef, reason: identity }
-      identityPayload = identity
-    } else if (item.type === 'motherboard') {
-      const variant = await motherboardVariantIdentity(item)
-      if (typeof variant === 'string') return { status: 'ineligible', source: sourceRef, reason: variant }
-      identityPayload = variant.identityPayload
-      productFamily = variant.productFamily
-      variantEvidence = variant.variantEvidence
-    } else {
-      const identity = canonicalV9StandardIdentity(item)
-      if (typeof identity === 'string') return { status: 'ineligible', source: sourceRef, reason: identity }
-      identityPayload = identity
-    }
+  if (fingerprintVersion === M2_PHYSICAL_FINGERPRINT_VERSION) {
+    const variant = await m2PhysicalVariantIdentity(item)
+    if (typeof variant === 'string') return { status: 'ineligible', source: sourceRef, reason: variant }
+    identityPayload = variant.identityPayload
+    productFamily = variant.productFamily
+    variantEvidence = variant.variantEvidence
   } else if (fingerprintVersion === NETWORK_FINGERPRINT_VERSION) {
     const identity = networkProductIdentity(item)
     if (typeof identity === 'string') return { status: 'ineligible', source: sourceRef, reason: identity }
@@ -1007,8 +966,14 @@ export async function projectCatalogItem(
       identityPayload = variant.identityPayload
       productFamily = variant.productFamily
       variantEvidence = variant.variantEvidence
-    } else if (item.type === 'server' || item.type === 'nas') {
+    } else if (item.type === 'server') {
       const variant = await serverVariantIdentity(item)
+      if (typeof variant === 'string') return { status: 'ineligible', source: sourceRef, reason: variant }
+      identityPayload = variant.identityPayload
+      productFamily = variant.productFamily
+      variantEvidence = variant.variantEvidence
+    } else if (item.type === 'nas') {
+      const variant = await variantIdentity(item)
       if (typeof variant === 'string') return { status: 'ineligible', source: sourceRef, reason: variant }
       identityPayload = variant.identityPayload
       productFamily = variant.productFamily

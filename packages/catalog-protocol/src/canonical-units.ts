@@ -1,5 +1,13 @@
 import { sanitizeCatalogItemV9 } from './sanitize'
-import type { CatalogNetworkTechnology, CatalogPort, CatalogTemplateItem, JsonValue } from './types'
+import type {
+  CatalogExternalAdapterDisposition,
+  CatalogNetworkTechnology,
+  CatalogPort,
+  CatalogPowerCompatibility,
+  CatalogTemplateItem,
+  FingerprintVersion,
+  JsonValue,
+} from './types'
 
 export const CANONICAL_MEASUREMENT_CONFLICT = 'canonical-measurement-conflict'
 export const CANONICAL_MEASUREMENT_INVALID = 'canonical-measurement-invalid'
@@ -240,13 +248,8 @@ export function assertCanonicalCatalogItemV9(value: unknown): void {
 function assertFixedComponentsV10(item: CatalogTemplateItem): void {
   if (item.fixedComponents === undefined) return
   if (!Array.isArray(item.fixedComponents)) {
-    throw new CanonicalMeasurementError(
-      CANONICAL_MEASUREMENT_INVALID,
-      'fixedComponents',
-      'fixedComponents must be an array.',
-    )
+    throw new CanonicalMeasurementError(CANONICAL_MEASUREMENT_INVALID, 'fixedComponents', 'fixedComponents must be an array.')
   }
-
   const ids = new Set<number>()
   item.fixedComponents.forEach((component, index) => {
     const path = `fixedComponents[${index}]`
@@ -254,89 +257,71 @@ function assertFixedComponentsV10(item: CatalogTemplateItem): void {
       throw new CanonicalMeasurementError(CANONICAL_MEASUREMENT_INVALID, path, `${path} must be an object.`)
     }
     if (!Number.isSafeInteger(component.id) || component.id < 1 || ids.has(component.id)) {
-      throw new CanonicalMeasurementError(
-        CANONICAL_MEASUREMENT_INVALID,
-        `${path}.id`,
-        `${path}.id must be a unique positive safe integer.`,
-      )
+      throw new CanonicalMeasurementError(CANONICAL_MEASUREMENT_INVALID, `${path}.id`, `${path}.id must be a unique positive safe integer.`)
     }
     ids.add(component.id)
     if (typeof component.componentType !== 'string' || component.componentType.trim() === '') {
-      throw new CanonicalMeasurementError(
-        CANONICAL_MEASUREMENT_INVALID,
-        `${path}.componentType`,
-        `${path}.componentType is required.`,
-      )
+      throw new CanonicalMeasurementError(CANONICAL_MEASUREMENT_INVALID, `${path}.componentType`, `${path}.componentType is required.`)
     }
     if (component.disposition !== 'fixed' && component.disposition !== 'soldered') {
-      throw new CanonicalMeasurementError(
-        CANONICAL_MEASUREMENT_INVALID,
-        `${path}.disposition`,
-        `${path}.disposition must be fixed or soldered.`,
-      )
+      throw new CanonicalMeasurementError(CANONICAL_MEASUREMENT_INVALID, `${path}.disposition`, `${path}.disposition must be fixed or soldered.`)
     }
     if (typeof component.label !== 'string' || component.label.trim() === '') {
       throw new CanonicalMeasurementError(CANONICAL_MEASUREMENT_INVALID, `${path}.label`, `${path}.label is required.`)
     }
     if (!component.item || component.item.type !== component.componentType) {
-      throw new CanonicalMeasurementError(
-        CANONICAL_MEASUREMENT_INVALID,
-        `${path}.item.type`,
-        `${path}.item.type must match componentType.`,
-      )
+      throw new CanonicalMeasurementError(CANONICAL_MEASUREMENT_INVALID, `${path}.item.type`, `${path}.item.type must match componentType.`)
     }
     if (typeof component.item.name !== 'string' || component.item.name.trim() === '') {
       throw new CanonicalMeasurementError(CANONICAL_MEASUREMENT_INVALID, `${path}.item.name`, `${path}.item.name is required.`)
     }
     if (component.templateKey !== undefined && (typeof component.templateKey !== 'string' || component.templateKey.trim() === '')) {
-      throw new CanonicalMeasurementError(
-        CANONICAL_MEASUREMENT_INVALID,
-        `${path}.templateKey`,
-        `${path}.templateKey must be non-empty.`,
-      )
+      throw new CanonicalMeasurementError(CANONICAL_MEASUREMENT_INVALID, `${path}.templateKey`, `${path}.templateKey must be non-empty.`)
     }
     if (component.templateRevision !== undefined && (!Number.isSafeInteger(component.templateRevision) || component.templateRevision < 1)) {
-      throw new CanonicalMeasurementError(
-        CANONICAL_MEASUREMENT_INVALID,
-        `${path}.templateRevision`,
-        `${path}.templateRevision must be a positive safe integer.`,
-      )
+      throw new CanonicalMeasurementError(CANONICAL_MEASUREMENT_INVALID, `${path}.templateRevision`, `${path}.templateRevision must be a positive safe integer.`)
     }
     if (component.templateRevision !== undefined && component.templateKey === undefined) {
-      throw new CanonicalMeasurementError(
-        CANONICAL_MEASUREMENT_INVALID,
-        `${path}.templateRevision`,
-        `${path}.templateRevision requires templateKey.`,
-      )
+      throw new CanonicalMeasurementError(CANONICAL_MEASUREMENT_INVALID, `${path}.templateRevision`, `${path}.templateRevision requires templateKey.`)
     }
   })
 }
 
-function assertPowerOwnershipV10(item: CatalogTemplateItem): void {
-  const compatibility = object(item.compatibility)
-  const host = object(compatibility?.host)
+export function resolveCatalogAdapterDisposition(
+  power: CatalogPowerCompatibility | Record<string, JsonValue> | undefined,
+  fingerprintVersion: FingerprintVersion,
+): CatalogExternalAdapterDisposition | undefined {
+  if (power?.configuration !== 'external-adapter') return undefined
+  if (power.adapterDisposition === 'fixed' || power.adapterDisposition === 'replaceable') {
+    return power.adapterDisposition
+  }
+  return fingerprintVersion < 10 ? 'replaceable' : undefined
+}
+
+function assertNasPowerV10(item: CatalogTemplateItem): void {
+  if (item.type !== 'nas') return
+  const host = object(object(item.compatibility)?.host)
   const power = object(host?.power)
   if (!power) return
-
   const path = 'compatibility.host.power'
-  const configuration = power.configuration
-  const adapterDisposition = power.adapterDisposition
-  if (configuration !== 'external-adapter' && configuration !== 'internal-psu') {
+  if (power.configuration !== 'external-adapter' && power.configuration !== 'internal-psu') {
     throw new CanonicalMeasurementError(
       CANONICAL_MEASUREMENT_INVALID,
       `${path}.configuration`,
       `${path}.configuration must be external-adapter or internal-psu.`,
     )
   }
-  if (configuration === 'external-adapter') {
-    if (adapterDisposition !== 'fixed' && adapterDisposition !== 'replaceable') {
+  if (power.configuration === 'external-adapter') {
+    if (power.adapterDisposition !== 'fixed' && power.adapterDisposition !== 'replaceable') {
       throw new CanonicalMeasurementError(
         CANONICAL_MEASUREMENT_INVALID,
         `${path}.adapterDisposition`,
-        `${path}.adapterDisposition must be fixed or replaceable for an external adapter.`,
+        `${path}.adapterDisposition must be explicitly fixed or replaceable for a contract-v10 external adapter.`,
       )
     }
-  } else if (adapterDisposition !== undefined) {
+    return
+  }
+  if (power.adapterDisposition !== undefined) {
     throw new CanonicalMeasurementError(
       CANONICAL_MEASUREMENT_INVALID,
       `${path}.adapterDisposition`,
@@ -540,6 +525,7 @@ export function canonicalizeCatalogItemV9(value: unknown): CatalogTemplateItem {
 
 export function canonicalizeCatalogItemV10(value: unknown): CatalogTemplateItem {
   const item = sanitizeCatalogItemV9(value)
+  if (Array.isArray((value as Record<string, unknown>)?.ports) && !item.ports) item.ports = []
   const remainingLegacy = legacyMeasurementPathsV9(item)
   if (remainingLegacy.length > 0) {
     throw new CanonicalMeasurementError(
@@ -549,7 +535,7 @@ export function canonicalizeCatalogItemV10(value: unknown): CatalogTemplateItem 
     )
   }
   assertFixedComponentsV10(item)
-  assertPowerOwnershipV10(item)
+  assertNasPowerV10(item)
   validateCanonicalMeasurements(item)
   return item
 }
@@ -557,6 +543,7 @@ export function canonicalizeCatalogItemV10(value: unknown): CatalogTemplateItem 
 export function assertCanonicalCatalogItemV10(value: unknown): void {
   canonicalizeCatalogItemV10(value)
 }
+
 const NETWORK_TECHNOLOGIES = new Set<CatalogNetworkTechnology>([
   'ethernet', 'wifi', 'fibre-channel', 'infiniband', 'converged', 'cellular', 'other',
 ])
@@ -766,9 +753,7 @@ function canonicalNetworkCapabilities(specs: JsonObject) {
 
 export function canonicalizeCatalogItemV11(value: unknown): CatalogTemplateItem {
   const rawMinimum = object(object(object(value)?.specs)?.hostInterface)?.minimumElectricalLanes
-  if (rawMinimum !== undefined) {
-    positiveInteger(rawMinimum, 'specs.hostInterface.minimumElectricalLanes')
-  }
+  if (rawMinimum !== undefined) positiveInteger(rawMinimum, 'specs.hostInterface.minimumElectricalLanes')
   const item = sanitizeCatalogItemV9(value)
   if (item.type !== 'network') networkError('type', 'Fingerprint-v11 is supported only for network templates.')
   const remainingLegacy = legacyMeasurementPathsV9(item)
