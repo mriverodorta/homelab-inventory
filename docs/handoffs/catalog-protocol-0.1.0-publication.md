@@ -16,13 +16,40 @@ publication authority. Consumers configure only trusted Registry public keys.
 
 ## Prepublication Evidence
 
-- Publication-ready source commit: pending source commit
+- Publication-ready source commit: `5baa356801c9092896cc81f0c74fe4bb528ea126`
 - Tarball: `homelab-inventory-catalog-protocol-0.1.0.tgz`
-- Included files: pending audited pack manifest
-- Local SHA-512 integrity: pending audited tarball
+- Tarball size: 36,853 bytes compressed; 181,945 bytes unpacked
+- Included files: 19
+  - `LICENSE`
+  - `README.md`
+  - `package.json`
+  - `src/canonical-units.ts`
+  - `src/canonicalize.ts`
+  - `src/contract.ts`
+  - `src/contribution-auth.ts`
+  - `src/facets.ts`
+  - `src/hash.ts`
+  - `src/index.ts`
+  - `src/m2-ae-compatibility.ts`
+  - `src/m2-ae-v12.ts`
+  - `src/normalization.ts`
+  - `src/projector.ts`
+  - `src/reconcile.ts`
+  - `src/sanitize.ts`
+  - `src/signatures.ts`
+  - `src/snapshot.ts`
+  - `src/types.ts`
+- Local SHA-512 integrity: `sha512-KDrXbZCZsNYvu87znceaz5z14mfMZOZhoFvr/yr1My4c2OiJSJuZNh6XMpHaqhPmNb3fY++cU53jMSeNLDje9w==`
+- Local SHA-1 shasum: `5220bae2e95da96e00aa1e1520b9e7071298893c`
 - Catalog protocol tests: 91 passed across 15 files
 - Standalone source typecheck: passed
-- Full lint, tests, build, and container security: pending release gate
+- Public package tests: 132 passed across 27 files
+- Application Vitest: 2,220 passed across 317 files
+- Bun suites: 320 passed and one intentional local-data test skipped
+- Lint: passed with four established Fast Refresh warnings
+- Production build: passed
+- Container security: Linux AMD64 and ARM64 runtime checks passed; Docker
+  Scout and Trivy reported zero vulnerabilities at every severity
 
 ## Registry Evidence
 
