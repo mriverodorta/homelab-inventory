@@ -24,6 +24,7 @@ key or publication authority.
 - Implementation-plan commit: `7c738a0`
 - Registry-reference tests commit: `8b57873`
 - Reconciled source commit: `a7519c1`
+- Update-review topology projector commit: `5e1583a`
 - Revision-24 conformance fixture records: 44
 - Revision-24 fixture checksum:
   `bb8e589ab79d9205466961a82792a15107b179f878be0f42dfba763cdb337a80`
@@ -52,9 +53,38 @@ key or publication authority.
 
 ## Verification Evidence
 
-Package, application, Registry candidate, build, migration, signed-artifact,
-and container-security results are recorded here after their corresponding
-gates complete.
+- Package TypeScript build: passed
+- Package tests: 131 passed across 19 files
+- Application lint: passed with four pre-existing Fast Refresh warnings
+- Application Vitest: 2,260 passed across 321 files
+- Application Bun auth tests: 2 passed
+- Application SQLite/server tests: 318 passed, 1 intentional skip
+- Application production build: passed
+- Application container preflight: AMD64 and ARM64 booted successfully
+- Application Docker Scout: 0 findings on AMD64 and ARM64
+- Application Trivy: 0 findings on AMD64 and ARM64
+- Registry frozen revision-24 fixture checksum: matched byte-for-byte
+- Registry candidate lint: passed
+- Registry candidate tests: 830 passed across 181 files
+- Registry candidate server and admin builds: passed
+- Registry candidate image build: passed
+
+The Registry candidate scan also exposed vulnerabilities already present in
+the Registry's Alpine runtime packages. The protocol package has no runtime
+dependencies and introduced no container package. Registry runtime hardening
+is tracked independently and is not represented as a successful zero-finding
+scan in this receipt.
+
+## Candidate Archive
+
+- Filename: `homelab-inventory-catalog-protocol-0.1.1.tgz`
+- Files: 19
+- Compressed size: 40,740 bytes
+- Unpacked size: 199,152 bytes
+- SHA-1: `30589482158772e93e9bc73189c79c980b7f9b01`
+- SHA-256: `27247489f7ee0a03f11d6b42f873d9fa3c439ffd080f5d447bc970619821ff81`
+- SHA-512: `498a2e418be36e5db49b06c10c758b4d6697589628c0cbd67d38881b284ecf4c3995738b59893269d0c587b2e2bbf94144feebd157c4954f2e2feb3ee44060c5`
+- npm integrity: `sha512-SYouQYvjbl20mwbBDHWLTWaXWJYowMvWfTiIGyhOz0w5lXOLWYkyadDFh7Liu/lBRP7r0VfElU8uL+s+5EBgxQ==`
 
 ## npm Evidence
 
