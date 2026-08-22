@@ -262,8 +262,12 @@ export function sharingConfigurationFromArchive(files) {
 }
 
 export function replaceSharingConfiguration(database, backup, { preserveRemoteState = false } = {}) {
-  if (!database) throw new Error('Sharing configuration storage is unavailable for restore.')
   const value = typeof backup?.version === 'number' ? backup : sharingConfigurationFromArchive(backup)
+  if (!database) {
+    const containsSharingState = SHARING_CONFIGURATION_TABLES.some((table) => value.tables[table].length > 0)
+    if (!containsSharingState) return
+    throw new Error('Sharing configuration storage is unavailable for restore.')
+  }
   database.transaction(() => {
     for (const table of [...SHARING_CONFIGURATION_TABLES].reverse()) database.query(`DELETE FROM ${table}`).run()
     for (const table of SHARING_CONFIGURATION_TABLES) {

@@ -4,7 +4,7 @@ import path from 'node:path'
 import { generateKeyPairSync } from 'node:crypto'
 import { describe, expect, it } from 'vitest'
 import { createBackupManagementStore } from './backup-model.mjs'
-import { collectBackupSections, materializeBackupSections, telemetryBackupFromArchive, validateSharingIdentityFiles } from './backup-sections.mjs'
+import { collectBackupSections, materializeBackupSections, replaceSharingConfiguration, telemetryBackupFromArchive, validateSharingIdentityFiles } from './backup-sections.mjs'
 import { createRegistryStore } from '../registry/model.mjs'
 import { createAuthenticationStore } from '../auth/model.mjs'
 import { createNotificationConfig, createNotificationSecrets, createNotificationState } from '../notifications/model.mjs'
@@ -201,6 +201,23 @@ describe('backup section ownership', () => {
       expect(validateSharingIdentityFiles(files).instance.clientInstanceId).toBe(clientInstanceId)
       const configurationOnly = await collectBackupSections({ store, sections: ['sharingConfiguration'] })
       expect(configurationOnly.files.some((file) => file.name.startsWith('sharing/'))).toBe(false)
+    } finally {
+      await fs.rm(dataDir, { recursive: true, force: true })
+    }
+  })
+
+  it('treats an empty sharing section as a safe no-op for stores without SQLite sharing support', async () => {
+    const dataDir = await fs.mkdtemp(path.join(os.tmpdir(), 'hli-empty-sharing-section-'))
+    try {
+      const result = await collectBackupSections({
+        store: { dataDir, snapshotStores: async () => stores() },
+        sections: ['sharingConfiguration'],
+      })
+      const section = result.files.find(({ name }) => name === 'sections/sharing-configuration.json')
+      const value = JSON.parse(section.body.toString())
+      expect(() => replaceSharingConfiguration(null, value)).not.toThrow()
+      value.tables.shares.push({ id: 1 })
+      expect(() => replaceSharingConfiguration(null, value)).toThrow('Sharing configuration storage is unavailable')
     } finally {
       await fs.rm(dataDir, { recursive: true, force: true })
     }
