@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Add secure, opt-in `lab.gd` identity, privacy preview, publication, lifecycle, account claiming, backup, and local management to Homelab Inventory.
+**Goal:** Add secure automatic production `lab.gd` enrollment, privacy preview, explicit publication, lifecycle, account claiming, backup, and local management to Homelab Inventory.
 
 **Architecture:** Persist non-secret share configuration and operation state in core SQLite while storing the Ed25519 identity under `/data/sharing`. A server-side projector creates strict share-contract blobs, and a signed outbound client performs content-addressed publication. The frontend manages shares through ordinary APIs and receives state changes through the existing application SSE hub.
 
@@ -10,8 +10,11 @@
 
 ## Global Constraints
 
-- Requires the shared package track and approved design at commit `05a5244`.
-- Sharing is disabled by default and always disabled in demo mode.
+- Requires the shared package track, approved design at commit `05a5244`, and automatic-enrollment amendment at commit `d27e953`.
+- Production enrollment is enabled by default and starts asynchronously after local readiness; publication always remains explicit.
+- `LABGD_ENABLED=false` prevents identity creation and every outbound `lab.gd` operation before first contact.
+- Demo and staging modes hard-disable identity creation, enrollment, recovery, rotation, publication, and remote SSE regardless of persisted or environment settings.
+- `lab.gd` availability must never block application health or readiness.
 - Identity files live only under `/data/sharing`, mode `0600`, owned by the app UID.
 - `sync.sh` must never copy sharing identity between installations.
 - Serial numbers, network identifiers, agent identity, telemetry history, credentials, audit data, and private metadata cannot cross the default boundary.
@@ -57,7 +60,11 @@ Expected: FAIL because the schema and repository do not exist.
 Create `sharing_settings`, `sharing_installation_projection`, `shares`,
 `share_views`, `share_field_selections`, `share_tag_selections`,
 `share_publication_operations`, and `share_resource_snapshots`. Use integer PK/FK
-columns and a `revision` column on mutable records. Store no password.
+columns and a `revision` column on mutable records. Store no password. Seed
+`labGdConnectionEnabled = true` for fresh and upgraded production stores and
+persist the enrollment state, attempt count, next-attempt time, sanitized error
+code, remote event cursor, and recovery state needed to resume exactly one
+coordinator after restart.
 
 - [ ] **Step 4: Register the migration checksum and verify rollback safety**
 
@@ -79,34 +86,46 @@ git commit -m "feat: add sharing persistence foundation"
 - Create: `server/sharing/installation-instance.mjs`
 - Create: `server/sharing/installation-identity.mjs`
 - Create: `server/sharing/installation-auth.mjs`
+- Create: `server/sharing/enrollment-coordinator.mjs`
 - Create: `server/sharing/installation-identity.test.mjs`
 - Create: `server/sharing/installation-auth.test.mjs`
+- Create: `server/sharing/enrollment-coordinator.test.mjs`
 
 **Interfaces:**
-- Produces: `SharingInstallationIdentityService.ensure()`, `signRequest()`, `rotateKey()`, `resumeRecovery()`.
+- Produces: `SharingInstallationIdentityService.ensure()`, `signRequest()`, `rotateKey()`, `resumeRecovery()`, and `SharingEnrollmentCoordinator.start()` / `stop()`.
 - Consumes: `/data/sharing`, SQLite projection repository, lab.gd challenge/activation endpoints.
 
 - [ ] **Step 1: Write failing first-run and restart tests**
 
 Assert UUID v4 creation, Ed25519 key creation, `0600` mode, stable hashes across
-restart, and reconstruction of the SQLite projection after its deletion.
+restart, and reconstruction of the SQLite projection after its deletion. Assert
+automatic enrollment starts only after a supplied local-readiness promise
+resolves and that application readiness does not await the remote operation.
 
 - [ ] **Step 2: Write failing rotation and recovery tests**
 
 Assert that failed rotation preserves the old key and credentials, HTTP 409
 persists one recovery-pending replacement key, publication stops, and retry does
-not generate another key.
+not generate another key. Assert retryable failures persist exponential backoff
+with jitter and a bounded maximum interval, and restart resumes one scheduled
+attempt rather than creating parallel timers.
 
 - [ ] **Step 3: Implement identity and signed request envelopes**
 
 Use timestamp, random nonce, canonical body hash, scoped short-lived bearer
 token, key ID, and Ed25519 signature. Never reuse Registry identity files.
+Enrollment payloads contain only the random installation UUID, Ed25519 public
+key and key identifier, supported contract versions, timestamp, nonce, body
+hash, and signature. They must not contain hostnames, addresses, hardware
+fingerprints, inventory, projects, telemetry, Registry or Agent identities,
+accounts, tags, custom fields, or share content.
 
 - [ ] **Step 4: Run the identity suite**
 
-Run: `bun test server/sharing/installation-*.test.mjs`
+Run: `bun test server/sharing/installation-*.test.mjs server/sharing/enrollment-coordinator.test.mjs`
 
-Expected: PASS for first run, migration, restart, recovery, rotation, and
+Expected: PASS for first run, post-readiness startup, offline startup, bounded
+retry, migration, restart, recovery, rotation, environment opt-out, and
 credentials-file deletion scenarios.
 
 - [ ] **Step 5: Commit identity support**
@@ -191,8 +210,9 @@ refresh metrics, and failed replacement leaves the previous remote revision.
 Set explicit connect/request timeouts, maximum response sizes, stable error
 codes, bounded attempts, Retry-After handling, and operation revision checks.
 Maintain one authenticated outbound SSE connection to `lab.gd` while sharing is
-enabled. Resume from the last persisted event ID and reconcile only after a gap;
-do not poll remote publication or claim status.
+effectively connected. Resume from the last persisted event ID and reconcile
+only after a gap; do not poll remote publication or claim status. Automatic
+enrollment must never create or activate a share.
 
 - [ ] **Step 4: Run publication tests**
 
@@ -216,6 +236,8 @@ git commit -m "feat: add content-addressed share publication"
 - Create: `server/sharing/routes.test.mjs`
 - Modify: `server/live-events/topics.mjs`
 - Modify: `server/live-events/topics.test.mjs`
+- Modify: `server/staging-policy.mjs`
+- Modify: `server/staging-policy.test.mjs`
 - Modify: `server/index.mjs`
 
 **Interfaces:**
@@ -239,6 +261,10 @@ new route has a policy.
 Cover settings, capabilities, preview, publish, update, snapshot refresh,
 unpublish, delete, account claim, recovery, and event subscription. Demo mode
 must return a stable `sharing-disabled-in-demo` error and make no outbound call.
+Staging must return `sharing-disabled-in-staging`. Assert
+`LABGD_ENABLED=false` prevents `/data/sharing` creation before the coordinator is
+constructed. Assert a production store starts one background coordinator after
+local readiness without delaying health or readiness.
 
 - [ ] **Step 3: Implement routes and topic payloads**
 
@@ -247,6 +273,13 @@ timestamp, retryable flag, and sanitized error code. Do not stream payload blobs
 passwords, or identity credentials. The closed state set is `synced`,
 `changes-pending`, `publishing`, `manual-update-available`, `failed`, `expired`,
 `grace-period`, and `unpublished`.
+
+The settings API reports `pending`, `connected`, `retrying`,
+`recovery-pending`, `disabled`, or `unsupported` separately from share state.
+Turning **Connect to lab.gd** off first completes the selected keep-online or
+unpublish lifecycle, then stops activation, recovery, rotation, publication,
+and remote SSE traffic while retaining the local UUID and key. Re-enabling must
+resume the same remote installation.
 
 - [ ] **Step 4: Run authorization and route suites**
 
@@ -281,6 +314,9 @@ git commit -m "feat: expose authorized sharing APIs and events"
 Assert complete backup includes identity, selective configuration excludes
 identity, identity restore validates UUID/key/credentials consistency, incorrect
 ownership or mode fails, and replacement restore is staged before activation.
+Assert deleting only the SQLite projection rebuilds it from `/data/sharing`
+without creating a remote installation, and deleting credentials resumes
+activation with the existing key.
 
 - [ ] **Step 2: Write failing environment-sync boundary tests**
 
@@ -329,9 +365,11 @@ git commit -m "feat: protect sharing identity in backup and sync"
 
 - [ ] **Step 1: Write failing settings and permission tests**
 
-Assert sharing starts disabled, unauthorized users cannot see publish controls,
-demo never offers setup, and enabled installations display enrollment/recovery
-state.
+Assert production starts connected or pending without a setup action,
+unauthorized users cannot see publish controls, demo and staging never offer sharing, and
+production installations display enrollment, retry, unsupported, disabled, and
+recovery states. Assert the connection toggle defaults on and opt-out retains
+the stable local identity.
 
 - [ ] **Step 2: Write failing publication-dialog tests**
 
@@ -359,6 +397,8 @@ Manual replaceable shares expose an icon command with tooltip. Systems shares
 with metrics expose Update resource snapshot. Both reflect state through SSE,
 not browser polling. Disabling sharing must show the unclaimed 30-day grace
 warning; claimed shares must offer Keep online or Disconnect and unpublish.
+After either choice completes, the UI must show the disconnected state and no
+remote status stream may remain open.
 
 - [ ] **Step 5: Run frontend tests and commit**
 
@@ -381,19 +421,24 @@ git commit -m "feat: add lab.gd sharing management UI"
 - Create: `test/sharing-e2e.test.mjs`
 
 **Interfaces:**
-- Produces: deployable but default-disabled application-side sharing support.
+- Produces: deployable application-side sharing support with automatic production enrollment and explicit publication.
 - Consumes: local fake `lab.gd` contract server and all preceding tasks.
 
 - [ ] **Step 1: Add the local protocol end-to-end test**
 
 Exercise enrollment, preview, missing-hash upload, activation, synchronized
 replacement, manual replacement, resource snapshot, unpublish, expiration,
-recovery pending, restart, and identity deletion recovery.
+recovery pending, restart, identity deletion recovery, pre-contact environment
+opt-out, UI opt-out, reconnect with the same identity, offline startup, and
+demo/staging prohibition. Assert enrollment sends no private application data
+and never creates a share.
 
 - [ ] **Step 2: Document configuration and privacy behavior**
 
-Document `LABGD_ORIGIN`, default-disabled behavior, identity paths, backup/sync
-rules, permissions, payload exclusions, and demo prohibition.
+Document `LABGD_ORIGIN`, default-enabled production enrollment,
+`LABGD_ENABLED=false`, the distinction between enrollment and publication,
+identity paths, backup/sync rules, permissions, payload exclusions, retry and
+recovery behavior, and demo/staging prohibition.
 
 - [ ] **Step 3: Run complete verification**
 
@@ -403,9 +448,12 @@ Expected: all checks pass and both architectures report zero vulnerabilities.
 
 - [ ] **Step 4: Verify local production image**
 
-Boot a sanitized local image, enable sharing against the fake service, publish a
-Systems and Canvas fixture, confirm SSE state transitions, restart, and verify
-identity and pending operations persist.
+Boot a sanitized local production image against the fake service and verify it
+becomes healthy before enrolling automatically. Publish Systems and Canvas
+fixtures, confirm SSE state transitions, restart, and verify identity and
+pending operations persist. Boot demo and staging images with enabled persisted
+settings and assert neither creates `/data/sharing` nor contacts the fake
+service.
 
 - [ ] **Step 5: Commit the application track**
 
