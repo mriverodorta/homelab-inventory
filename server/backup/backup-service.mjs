@@ -17,6 +17,9 @@ import {
   catalogFilesFromArchive,
   collectBackupSections,
   enrollmentFilesFromArchive,
+  replaceSharingConfiguration,
+  sharingConfigurationFromArchive,
+  sharingIdentityFilesFromArchive,
   telemetryBackupFromArchive,
   notificationBackupFromArchive,
 } from './backup-sections.mjs'
@@ -387,6 +390,23 @@ export class BackupService {
       await fs.chmod(directory, 0o700)
       for (const name of ['installation-instance.json', 'installation-ed25519.pem', 'installation-credentials.json']) await fs.rm(path.join(directory, name), { force: true })
       for (const file of enrollmentFilesFromArchive(parsed.files)) await writePrivate(path.join(directory, file.relativePath), file.body)
+    }
+    if (sections.includes('sharingConfiguration')) {
+      replaceSharingConfiguration(
+        this.store.core?.database,
+        sharingConfigurationFromArchive(parsed.files),
+        { preserveRemoteState: sections.includes('sharingIdentity') },
+      )
+    }
+    if (sections.includes('sharingIdentity')) {
+      const directory = path.join(this.store.dataDir, 'sharing')
+      await fs.mkdir(directory, { recursive: true, mode: 0o700 })
+      await fs.chmod(directory, 0o700)
+      for (const name of ['installation-instance.json', 'installation-ed25519.pem', 'installation-credentials.json', 'installation-recovery-ed25519.pem']) {
+        await fs.rm(path.join(directory, name), { force: true })
+      }
+      for (const file of sharingIdentityFilesFromArchive(parsed.files)) await writePrivate(path.join(directory, file.relativePath), file.body)
+      this.store.core?.database.query('DELETE FROM sharing_installation_projection WHERE id = 1').run()
     }
     if (sections.includes('catalogState')) {
       const directory = path.join(this.store.dataDir, 'catalog')

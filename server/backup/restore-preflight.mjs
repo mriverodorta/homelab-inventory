@@ -8,7 +8,7 @@ import {
 import { assertRegistryStoreShape } from '../registry/model.mjs'
 import { assertAuthenticationStoreShape } from '../auth/model.mjs'
 import { assertBackupManagementStoreShape } from './backup-model.mjs'
-import { materializeBackupSections, notificationBackupFromArchive, telemetryBackupFromArchive, validateEnrollmentFiles } from './backup-sections.mjs'
+import { materializeBackupSections, notificationBackupFromArchive, sharingConfigurationFromArchive, telemetryBackupFromArchive, validateEnrollmentFiles, validateSharingIdentityFiles } from './backup-sections.mjs'
 import { validateTelemetryBackup } from '../telemetry/backup.mjs'
 import { migrateSchema24To25 } from '../db/migrate-schema-25.mjs'
 import { migrateSchema25To26 } from '../db/migrate-schema-26.mjs'
@@ -58,6 +58,8 @@ export function preflightRestore({ manifest, files, currentStores }) {
   const blockers = []
   try {
     if (manifest.sections.includes('registryEnrollment')) validateEnrollmentFiles(files)
+    if (manifest.sections.includes('sharingConfiguration')) sharingConfigurationFromArchive(files)
+    if (manifest.sections.includes('sharingIdentity')) validateSharingIdentityFiles(files)
     assertInventoryStoreShape(composed.inventory)
     assertProjectStoreShape(composed.project, {
       requireRevision: true,

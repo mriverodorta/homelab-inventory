@@ -29,6 +29,16 @@ export const BACKUP_SECTIONS = Object.freeze({
     description: 'Stable installation UUID, signing key, and registry credentials.',
     sensitive: true,
   },
+  sharingConfiguration: {
+    label: 'Sharing configuration',
+    description: 'lab.gd share definitions, selections, snapshots, and publication state.',
+    sensitive: false,
+  },
+  sharingIdentity: {
+    label: 'Sharing identity',
+    description: 'Stable lab.gd installation UUID, signing key, credentials, and recovery state.',
+    sensitive: true,
+  },
   authentication: {
     label: 'Authentication and access',
     description: 'User accounts, credentials, roles, invitations, sessions, and security history.',
@@ -76,6 +86,8 @@ export const BACKUP_SECTION_DEPENDENCIES = Object.freeze({
   routingCache: ['project'],
   registryConfiguration: ['inventory'],
   registryEnrollment: [],
+  sharingConfiguration: ['inventory', 'project'],
+  sharingIdentity: [],
   authentication: [],
   catalogState: [],
   agents: ['inventory'],

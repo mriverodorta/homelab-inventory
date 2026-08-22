@@ -687,6 +687,12 @@ if (backupService) {
     if (sections.includes('notifications') || sections.includes('notificationHistory')) {
       await notificationRuntime?.incidentManager.reconcilePolicies({ reason: 'notification-backup-restored' })
     }
+    if (sections.includes('sharingConfiguration') || sections.includes('sharingIdentity')) {
+      if (sharingEffectiveEnabled) await sharingIdentity?.ensure()
+      sharingEnrollmentCoordinator?.wake()
+      sharingPublicationCoordinator?.wake()
+      publishSharingState(sharingRepository?.getSettings())
+    }
   }
 }
 const backupScheduler = backupService

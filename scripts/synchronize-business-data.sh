@@ -46,3 +46,14 @@ for name in inventory.json project.json registry.json; do
     jq -e 'type == "object"' "${file}" >/dev/null || fail "synchronized stores/${name} is invalid."
   fi
 done
+
+for name in installation-instance.json installation-ed25519.pem installation-credentials.json installation-recovery-ed25519.pem; do
+  destination_identity="${destination_data_dir}/sharing/${name}"
+  synchronized_identity="${output_data_dir}/sharing/${name}"
+  if [[ -f "${destination_identity}" ]]; then
+    [[ -f "${synchronized_identity}" ]] || fail "destination sharing identity ${name} was not preserved."
+    cmp -s -- "${destination_identity}" "${synchronized_identity}" || fail "destination sharing identity ${name} changed."
+  else
+    [[ ! -e "${synchronized_identity}" ]] || fail "source sharing identity ${name} crossed environments."
+  fi
+done

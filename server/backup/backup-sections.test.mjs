@@ -1,9 +1,10 @@
 import fs from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
+import { generateKeyPairSync } from 'node:crypto'
 import { describe, expect, it } from 'vitest'
 import { createBackupManagementStore } from './backup-model.mjs'
-import { collectBackupSections, materializeBackupSections, telemetryBackupFromArchive } from './backup-sections.mjs'
+import { collectBackupSections, materializeBackupSections, telemetryBackupFromArchive, validateSharingIdentityFiles } from './backup-sections.mjs'
 import { createRegistryStore } from '../registry/model.mjs'
 import { createAuthenticationStore } from '../auth/model.mjs'
 import { createNotificationConfig, createNotificationSecrets, createNotificationState } from '../notifications/model.mjs'
@@ -164,6 +165,45 @@ describe('backup section ownership', () => {
       notificationStore,
     })
     expect(complete.files.map((file) => file.name)).toContain('registry/installation-instance.json')
+  })
+
+  it('includes and validates the stable sharing identity only when selected', async () => {
+    const dataDir = await fs.mkdtemp(path.join(os.tmpdir(), 'hli-sharing-identity-sections-'))
+    try {
+      const directory = path.join(dataDir, 'sharing')
+      const clientInstanceId = '11111111-2222-4333-8444-555555555555'
+      const { privateKey } = generateKeyPairSync('ed25519')
+      await fs.mkdir(directory, { recursive: true })
+      await fs.writeFile(path.join(directory, 'installation-instance.json'), JSON.stringify({ version: 1, clientInstanceId }))
+      await fs.writeFile(path.join(directory, 'installation-ed25519.pem'), privateKey.export({ format: 'pem', type: 'pkcs8' }))
+      await fs.writeFile(path.join(directory, 'installation-credentials.json'), JSON.stringify({
+        version: 1,
+        clientInstanceId,
+        installationId: 7,
+        token: 'sharing-token-value-long-enough',
+        scopes: ['publication:write'],
+        tokenExpiresAt: '2026-08-23T12:00:00.000Z',
+      }))
+      await Promise.all([
+        fs.chmod(path.join(directory, 'installation-instance.json'), 0o600),
+        fs.chmod(path.join(directory, 'installation-ed25519.pem'), 0o600),
+        fs.chmod(path.join(directory, 'installation-credentials.json'), 0o600),
+      ])
+      const store = { dataDir, snapshotStores: async () => stores() }
+      const selected = await collectBackupSections({ store, sections: ['sharingIdentity'] })
+      const files = new Map(selected.files.map((file) => [file.name, file.body]))
+      expect(selected.files.map((file) => file.name)).toEqual([
+        'sections/sharing-identity.json',
+        'sharing/installation-instance.json',
+        'sharing/installation-ed25519.pem',
+        'sharing/installation-credentials.json',
+      ])
+      expect(validateSharingIdentityFiles(files).instance.clientInstanceId).toBe(clientInstanceId)
+      const configurationOnly = await collectBackupSections({ store, sections: ['sharingConfiguration'] })
+      expect(configurationOnly.files.some((file) => file.name.startsWith('sharing/'))).toBe(false)
+    } finally {
+      await fs.rm(dataDir, { recursive: true, force: true })
+    }
   })
 
   it('collects and materializes owner authentication independently', async () => {
