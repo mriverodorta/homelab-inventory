@@ -32,9 +32,10 @@ describe('domain persistence revisions', () => {
       schemaName: 'core',
     })
     const committed = await migrations()
+    const domainRevisionIndex = CORE_MIGRATIONS.findIndex((migration) => migration.id === '0028_domain_persistence_revisions')
 
     try {
-      await applyCommittedMigrations(handle, committed.slice(0, -1))
+      await applyCommittedMigrations(handle, committed.slice(0, domainRevisionIndex))
       handle.database.query('UPDATE projects SET revision = 17 WHERE id = 1').run()
       const item = handle.database.query(`
         INSERT INTO inventory_items (
@@ -46,8 +47,8 @@ describe('domain persistence revisions', () => {
       `).get() as { id: number }
 
       await expect(applyCommittedMigrations(handle, committed)).resolves.toEqual({
-        applied: 1,
-        currentVersion: 28,
+        applied: 2,
+        currentVersion: 29,
       })
       expect(handle.database.query(
         'SELECT revision, workbook_revision FROM projects WHERE id = 1',
@@ -60,7 +61,7 @@ describe('domain persistence revisions', () => {
       ).get(item.id)).toEqual({ revision: 1, updated_at_ms: 10 })
       await expect(applyCommittedMigrations(handle, committed)).resolves.toEqual({
         applied: 0,
-        currentVersion: 28,
+        currentVersion: 29,
       })
     } finally {
       closeManagedDatabase(handle)

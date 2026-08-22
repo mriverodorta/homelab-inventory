@@ -145,4 +145,9 @@ export const CORE_MIGRATIONS: readonly CoreMigration[] = [
     file: '0027_domain_persistence_revisions.sql',
     sha256: 'b96e760844afc1e99af1e1ca05d00ce5eae027e8ea9eb9f254eb72ad8e4fb5b7',
   },
+  {
+    id: '0029_sharing_foundation',
+    file: '0028_sharing_foundation.sql',
+    sha256: 'eda54ad29c1f96e9183469cfe9898ed271908f0813ae3e6cca0021eb7ca3b6b6',
+  },
 ]

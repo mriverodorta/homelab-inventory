@@ -15,6 +15,7 @@ import * as ports from './ports.ts'
 import * as resources from './resources.ts'
 import * as registry from './registry.ts'
 import * as routing from './routing.ts'
+import * as sharing from './sharing.ts'
 import * as system from './system.ts'
 import * as systems from './systems.ts'
 import * as topology from './topology.ts'
@@ -37,6 +38,7 @@ export * from './ports.ts'
 export * from './resources.ts'
 export * from './registry.ts'
 export * from './routing.ts'
+export * from './sharing.ts'
 export * from './system.ts'
 export * from './systems.ts'
 export * from './topology.ts'
@@ -56,6 +58,7 @@ export const coreSchema = {
   ...ports,
   ...resources,
   ...routing,
+  ...sharing,
   ...topology,
   ...inventoryBase,
   ...inventoryComponents,
