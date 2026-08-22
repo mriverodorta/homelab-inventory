@@ -7,11 +7,13 @@ const labGdCapabilities = {
   shareContractVersions: [1],
   viewContractVersions: { systems: [1], canvas: [1] },
   capabilities: {
-    installationEvents: { supported: true },
+    installationEvents: { supported: true, resumable: true },
     protectedPasswordHandoff: { supported: true },
-    lifecycleOperations: { supported: true },
+    lifecycleOperations: { supported: true, operations: ['update', 'unpublish', 'delete', 'republish', 'replace-password'] },
     accountClaiming: { supported: true },
-    ownerAnalytics: { supported: true },
+    ownerAnalytics: { supported: true, buckets: ['day'], retentionDays: 90 },
+    comments: { configurationSupported: true, interactionSupported: false },
+    reactions: { configurationSupported: true, interactionSupported: false },
   },
 }
 

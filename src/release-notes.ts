@@ -536,15 +536,18 @@ export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
     'Production installations can enroll a separate stable identity with lab.gd and publish explicitly selected Systems and Canvas views after an exact local privacy review.',
     'Shares support immutable or replaceable revisions, manual or one-minute synchronized updates, expiration, exact iframe origins, and optional one-time resource snapshots.',
     'Optional lab.gd features now appear only after explicit contract negotiation, including protected shares, lifecycle controls, GitHub account claiming, owner analytics, and installation events.',
+    'Claimed installations can resume remote state changes without polling and manage share settings, protected passwords, publication lifecycle, and 90-day daily owner analytics from Homelab Inventory.',
   ],
   fixes: [
     'Sharing identity backups and environment synchronization now preserve and isolate the deterministic public-ID key together with the installation UUID, signing credentials, and recovery key.',
     'Installation credentials refresh before newly scoped operations and fail closed when lab.gd does not grant the required capability.',
+    'Remote event cursors advance atomically with local sharing state, while lifecycle commands retain stable idempotency keys across reconnects and restarts.',
   ],
   notes: [
     'Tags and custom fields remain excluded unless selected; serials, addresses, credentials, Agent identity, telemetry history, audit data, and Registry enrollment never enter share payloads.',
     'Sharing is disabled entirely in demo and staging modes, and LABGD_ENABLED=false provides an environment-level zero-contact opt-out.',
     'A read-only rollout verifier checks both services, automatic enrollment, and exact capability agreement without creating or changing a share.',
+    'Claim codes stay out of URLs and protected-share plaintext passwords are request-only: neither is persisted in local SQLite, logs, browser storage, or backups.',
   ],
 }
 

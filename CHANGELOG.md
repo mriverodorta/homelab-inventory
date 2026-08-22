@@ -12,18 +12,22 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 - Sharing supports exact local previews, immutable or replaceable revisions, manual or one-minute debounced synchronization, expiration, exact iframe origins, and optional one-time resource snapshots.
 - Sharing configuration and identity are independent selectable backup sections, while environment synchronization preserves each destination installation identity.
 - Sharing now negotiates lab.gd capabilities and operation scopes explicitly, including protected-share handoff, remote lifecycle controls, GitHub account claiming, owner analytics, and resumable installation events.
+- Claimed installations can manage revision-safe remote settings, protected passwords, unpublish/delete/republish lifecycle actions, and 90-day daily owner analytics directly from Homelab Inventory.
+- Remote share state resumes from a transactionally committed SSE cursor without polling or duplicate event application.
 - A read-only coordinated rollout verifier checks app health, lab.gd readiness, connected automatic enrollment, package-backed publication, and exact capability agreement without publishing data.
 
 ### Changed
 
 - Optional sharing controls fail closed until lab.gd explicitly advertises the matching contract capability, and older installation credentials refresh before a newly scoped operation.
 - Account claiming now uses lab.gd's single-use code, verification URL, and expiration contract instead of reconstructing an account URL locally.
+- Lifecycle operations reuse stable idempotency keys across reconnects and restarts, and stale remote revisions reload instead of overwriting authoritative state.
 
 ### Security
 
 - Tags and custom fields remain excluded unless selected, and the sharing projector allowlists public fields while excluding serials, addresses, credentials, Agent identity, telemetry history, audit data, and Registry enrollment.
 - Demo, staging, and `LABGD_ENABLED=false` modes prevent sharing identity creation, enrollment, recovery, publication, and remote traffic.
 - Complete and Sharing identity backups now preserve the deterministic public-ID key, and data synchronization proves that UUIDs, signing keys, credentials, recovery keys, and public-ID keys never cross environments.
+- Installation tokens, events, claims, share controls, and analytics remain isolated by installation identity; claim codes stay out of URLs and protected-share plaintext passwords are never persisted locally.
 
 ## [0.14.1] - 2026-08-22
 

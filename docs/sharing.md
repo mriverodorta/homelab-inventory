@@ -127,6 +127,35 @@ the exact clean verification destination `https://app.lab.gd/claim`. The app
 shows the code separately and never places it in the URL, browser storage, or
 logs.
 
+## Remote State And Owner Controls
+
+Homelab Inventory opens one authenticated installation SSE stream and resumes it
+with the last committed event ID. Each supported event is applied to the local
+sharing projection and its cursor is advanced in the same SQLite transaction,
+so reconnect replay cannot duplicate state. There is no polling fallback.
+Unknown event versions stop event application and trigger capability
+renegotiation before the stream can resume.
+
+Remote settings changes, unpublish, delete, and republish use the current remote
+revision and a stable idempotency key. A remote success commits before the local
+projection changes; a conflict reloads authoritative state instead of
+overwriting it. Password entry is sent only through the signed installation
+handoff. Plaintext passwords are never stored in local SQLite, browser storage,
+logs, backups, queued operations, or response bodies.
+
+After a GitHub account consumes the separate short-lived claim code at the exact
+clean claim URL, Homelab Inventory reflects the claimed installation state from
+the event stream. The owner can inspect at most 90 UTC daily analytics buckets
+for an owned share. Analytics are remote aggregate results only; Homelab
+Inventory does not create request-level telemetry or a local time-series store.
+
+Installation identity is the authorization boundary for every token, event,
+share command, claim, and analytics request. A public ID or cursor from another
+installation never grants access. Rotate a suspected installation credential
+through signed renewal or key rotation while preserving the installation UUID,
+then resume from the last transactionally committed cursor and reuse original
+idempotency keys for incomplete commands.
+
 ## Permissions
 
 - `sharing.configure` controls connection and share definitions.
@@ -136,6 +165,10 @@ logs.
 Every API route is protected by the server's default-deny authorization policy.
 State changes reach the browser through the existing authenticated application
 SSE stream; the browser does not poll sharing status.
+
+The contract verification workflow is local and non-deploying. It must not
+render production secrets, modify SkyBolt services, enable publication, publish
+container images, or change public routing.
 
 ## Rollout Verification
 

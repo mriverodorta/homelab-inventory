@@ -10,6 +10,7 @@ import { createAuthenticationStore } from '../auth/model.mjs'
 import { createNotificationConfig, createNotificationSecrets, createNotificationState } from '../notifications/model.mjs'
 import { COMPLETE_BACKUP_SECTIONS } from '../../shared/backup/contract.mjs'
 import { TELEMETRY_SCHEMA_VERSION } from '../telemetry/schema.mjs'
+import { SHARING_TOKEN_SCOPES } from '../sharing/installation-auth.mjs'
 
 const telemetryRepository = {
   exportBackup: () => ({
@@ -181,7 +182,7 @@ describe('backup section ownership', () => {
         clientInstanceId,
         installationId: 7,
         token: 'sharing-token-value-long-enough',
-        scopes: ['publication:write'],
+        scopes: SHARING_TOKEN_SCOPES,
         tokenExpiresAt: '2026-08-23T12:00:00.000Z',
       }))
       await fs.writeFile(path.join(directory, 'public-id-key'), Buffer.alloc(32, 7))
