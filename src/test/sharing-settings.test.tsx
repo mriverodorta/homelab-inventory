@@ -2,6 +2,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { render, screen } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { SharingSettings } from '@/components/settings/sharing/sharing-settings'
+import { AccountClaimDialog } from '@/components/settings/sharing/account-claim-dialog'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { usePermission } from '@/hooks/use-permission'
 import { useSharing } from '@/hooks/use-sharing'
@@ -121,5 +122,14 @@ describe('SharingSettings', () => {
     disabled.settings.data.demo = true
     const { container } = renderSettings(disabled)
     expect(container).toBeEmptyDOMElement()
+  })
+})
+
+describe('AccountClaimDialog', () => {
+  it('shows the single-use code and opens only the code-free verification URL', () => {
+    render(<AccountClaimDialog open pending={false} error={null} onOpenChange={vi.fn()} onBegin={vi.fn()} result={{ claimId: 'claim_123', userCode: 'ABCD-2345', verificationUrl: 'https://app.lab.gd/claim', expiresAt: '2026-08-22T18:30:00.000Z', state: 'pending' }} />)
+    expect(screen.getByText('ABCD-2345')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /continue with github/iu })).toHaveAttribute('href', 'https://app.lab.gd/claim')
+    expect(screen.getByRole('link', { name: /continue with github/iu }).getAttribute('href')).not.toContain('ABCD-2345')
   })
 })

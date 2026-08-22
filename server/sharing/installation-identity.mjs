@@ -19,7 +19,6 @@ import { normalizeLabGdCapabilities } from './remote-capabilities.mjs'
 
 const DEFAULT_LABGD_ORIGIN = 'https://lab.gd'
 const REQUEST_TIMEOUT_MS = 15_000
-const TOKEN_LIFETIME_MS = 10 * 60_000
 const TOKEN_REFRESH_MARGIN_MS = 90_000
 
 export class SharingRecoveryPendingError extends Error {
@@ -39,13 +38,14 @@ export class SharingUnsupportedError extends Error {
 }
 
 export function normalizeSharingCredentials(value, clientInstanceId) {
+  const scopes = normalizeCredentialScopeSet(value?.scopes)
   if (
     !value || typeof value !== 'object' || Array.isArray(value)
     || value.version !== 1
     || value.clientInstanceId !== clientInstanceId
     || !Number.isSafeInteger(value.installationId) || value.installationId <= 0
     || typeof value.token !== 'string' || value.token.length < 16 || value.token.length > 4096
-    || !Array.isArray(value.scopes) || value.scopes.some((scope) => !SHARING_TOKEN_SCOPES.includes(scope))
+    || !scopes
     || typeof value.tokenExpiresAt !== 'string' || !Number.isFinite(Date.parse(value.tokenExpiresAt))
   ) return null
   return {
@@ -53,8 +53,9 @@ export function normalizeSharingCredentials(value, clientInstanceId) {
     clientInstanceId,
     installationId: value.installationId,
     token: value.token,
-    scopes: [...value.scopes],
+    scopes: [...scopes],
     tokenExpiresAt: value.tokenExpiresAt,
+    renewalRequired: sameScopeSet(scopes, LEGACY_SHARING_TOKEN_SCOPES),
   }
 }
 
@@ -193,7 +194,10 @@ export class SharingInstallationIdentityService {
     const { instance } = current
     const keys = keyPath === this.privateKeyPath ? current.keys : await this.ensureKeyPair(keyPath)
     const existing = await this.readCredentials(instance)
-    if (!promoteRecovery && !forceRefresh && existing && Date.parse(existing.tokenExpiresAt) > this.now().getTime() + TOKEN_REFRESH_MARGIN_MS) {
+    if (!promoteRecovery && existing && (forceRefresh || existing.renewalRequired || Date.parse(existing.tokenExpiresAt) <= this.now().getTime() + TOKEN_REFRESH_MARGIN_MS)) {
+      return this.renewCredentials(current, existing)
+    }
+    if (!promoteRecovery && existing) {
       this.repository.saveInstallationProjection({
         clientInstanceId: instance.clientInstanceId,
         keyId: keys.keyId,
@@ -240,11 +244,14 @@ export class SharingInstallationIdentityService {
     if (!activationResponse.ok || activation.status !== 'active' || !Number.isSafeInteger(activation.installationId) || typeof activation.token !== 'string') {
       throw httpError(activationResponse, activation, 'labgd-activation-failed')
     }
-    const issuedAt = this.now()
-    const scopes = activation.scopes == null ? [...LEGACY_SHARING_TOKEN_SCOPES] : normalizeGrantedScopes(activation.scopes)
-    const tokenExpiresAt = typeof activation.tokenExpiresAt === 'string' && Number.isFinite(Date.parse(activation.tokenExpiresAt))
-      ? activation.tokenExpiresAt
-      : new Date(issuedAt.getTime() + TOKEN_LIFETIME_MS).toISOString()
+    let scopes
+    let tokenExpiresAt
+    try {
+      scopes = normalizeGrantedScopes(activation.scopes)
+      tokenExpiresAt = normalizeTokenExpiry(activation.tokenExpiresAt, this.now())
+    } catch (error) {
+      throw error instanceof SharingUnsupportedError ? error : new SharingUnsupportedError()
+    }
     const credentials = {
       version: 1,
       clientInstanceId: instance.clientInstanceId,
@@ -271,6 +278,49 @@ export class SharingInstallationIdentityService {
     return credentials
   }
 
+  async renewCredentials(current, existing) {
+    if (!existing.scopes.includes('token:renew')) throw new SharingUnsupportedError('Legacy lab.gd credentials cannot be renewed.')
+    const body = new TextEncoder().encode(JSON.stringify({ scopes: [...SHARING_TOKEN_SCOPES] }))
+    const response = await this.request('/v1/installations/renew', {
+      method: 'POST',
+      body,
+      headers: {
+        'content-type': 'application/json',
+        ...signedRequestHeaders({ token: existing.token, body, scope: 'token:renew', privateKey: current.keys.privateKey, now: this.now() }),
+      },
+    })
+    const result = await boundedJson(response)
+    if (!response.ok || typeof result.token !== 'string' || result.token.length < 16 || result.token.length > 4096) throw httpError(response, result, 'labgd-renewal-failed')
+    let scopes
+    let tokenExpiresAt
+    try {
+      scopes = normalizeGrantedScopes(result.scopes)
+      tokenExpiresAt = normalizeTokenExpiry(result.tokenExpiresAt, this.now())
+    } catch (error) {
+      throw error instanceof SharingUnsupportedError ? error : new SharingUnsupportedError()
+    }
+    const credentials = {
+      version: 1,
+      clientInstanceId: current.instance.clientInstanceId,
+      installationId: existing.installationId,
+      token: result.token,
+      scopes,
+      tokenExpiresAt,
+    }
+    await this.writeCredentials(credentials)
+    this.repository.saveInstallationProjection({
+      clientInstanceId: current.instance.clientInstanceId,
+      keyId: current.keys.keyId,
+      publicKeySpki: current.keys.publicKeySpki,
+      identityHash: sharingIdentityHash(current.instance.clientInstanceId, current.keys.publicKeySpki),
+      remoteInstallationId: existing.installationId,
+      credentialExpiresAtMs: Date.parse(tokenExpiresAt),
+      state: 'active',
+      recoveryPublicKeySpki: null,
+    })
+    return credentials
+  }
+
   activate() {
     if (!this.inFlight) {
       const operation = this.activateInternal()
@@ -285,8 +335,8 @@ export class SharingInstallationIdentityService {
   async signedFetch(pathname, { method = 'POST', body = new Uint8Array(), scope = 'publication:write', headers = {}, timeoutMs = REQUEST_TIMEOUT_MS } = {}) {
     const { instance, keys } = await this.ensure()
     let credentials = await this.readCredentials(instance)
-    if (!credentials || Date.parse(credentials.tokenExpiresAt) <= this.now().getTime() + TOKEN_REFRESH_MARGIN_MS) credentials = await this.activate()
-    if (!credentials.scopes.includes(scope)) credentials = await this.activateInternal({ forceRefresh: true })
+    if (!credentials) credentials = await this.activate()
+    if (credentials.renewalRequired || Date.parse(credentials.tokenExpiresAt) <= this.now().getTime() + TOKEN_REFRESH_MARGIN_MS || !credentials.scopes.includes(scope)) credentials = await this.activateInternal({ forceRefresh: true })
     if (!credentials.scopes.includes(scope)) {
       const error = new Error(`lab.gd did not grant the required ${scope} scope.`)
       error.code = 'sharing-scope-unavailable'
@@ -380,34 +430,55 @@ export class SharingInstallationIdentityService {
     const result = await boundedJson(response)
     if (
       !response.ok || result.state !== 'pending'
+      || !hasExactKeys(result, ['claimId', 'userCode', 'verificationUrl', 'expiresAt', 'state'])
       || typeof result.claimId !== 'string' || !/^[A-Za-z0-9_-]{1,128}$/u.test(result.claimId)
       || typeof result.userCode !== 'string' || !/^[A-Z2-9]{4}-[A-Z2-9]{4}$/u.test(result.userCode)
-      || !validClaimUrl(result.verificationUrl, this.labGdOrigin)
-      || typeof result.expiresAt !== 'string' || !Number.isFinite(Date.parse(result.expiresAt))
+      || !validClaimUrl(result.verificationUrl)
+      || typeof result.expiresAt !== 'string' || !Number.isFinite(Date.parse(result.expiresAt)) || Date.parse(result.expiresAt) <= this.now().getTime()
     ) {
-      throw httpError(response, result, 'labgd-claim-device-failed')
+      const error = new Error('lab.gd returned an invalid account claim response.')
+      error.code = 'labgd-claim-device-failed'
+      throw error
     }
-    return result
+    return { claimId: result.claimId, userCode: result.userCode, verificationUrl: result.verificationUrl, expiresAt: result.expiresAt, state: result.state }
   }
 }
 
-function validClaimUrl(value, labGdOrigin) {
+function validClaimUrl(value) {
   if (typeof value !== 'string') return false
   try {
     const url = new URL(value)
-    if (url.username || url.password || url.search || url.hash) return false
-    if (url.protocol === 'https:') return true
-    return url.protocol === 'http:' && new URL(labGdOrigin).hostname === 'localhost' && url.hostname === 'localhost'
+    return url.href === 'https://app.lab.gd/claim'
   } catch {
     return false
   }
 }
 
 function normalizeGrantedScopes(value) {
-  if (!Array.isArray(value) || value.length === 0 || value.some((scope) => typeof scope !== 'string' || !SHARING_TOKEN_SCOPES.includes(scope))) {
+  const scopes = normalizeCredentialScopeSet(value)
+  if (!scopes || !sameScopeSet(scopes, SHARING_TOKEN_SCOPES)) {
     throw new SharingUnsupportedError('lab.gd returned unsupported installation token scopes.')
   }
-  return [...new Set(value)]
+  return [...scopes]
+}
+
+function normalizeCredentialScopeSet(value) {
+  if (!Array.isArray(value) || value.length === 0 || value.length > SHARING_TOKEN_SCOPES.length || value.some((scope) => typeof scope !== 'string' || !SHARING_TOKEN_SCOPES.includes(scope)) || new Set(value).size !== value.length) return null
+  if (!sameScopeSet(value, SHARING_TOKEN_SCOPES) && !sameScopeSet(value, LEGACY_SHARING_TOKEN_SCOPES)) return null
+  return value
+}
+
+function sameScopeSet(actual, expected) {
+  return actual.length === expected.length && expected.every((scope) => actual.includes(scope))
+}
+
+function normalizeTokenExpiry(value, now) {
+  if (typeof value !== 'string' || !Number.isFinite(Date.parse(value)) || Date.parse(value) <= now.getTime()) throw new SharingUnsupportedError('lab.gd returned an invalid token expiry.')
+  return value
+}
+
+function hasExactKeys(value, expected) {
+  return value && typeof value === 'object' && !Array.isArray(value) && Object.keys(value).length === expected.length && expected.every((key) => Object.hasOwn(value, key))
 }
 
 async function boundedJson(response, maximumBytes = 64 * 1024) {

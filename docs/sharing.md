@@ -107,6 +107,26 @@ Installation tokens carry explicit short-lived scopes. Older credentials can
 continue publishing, but a newly required operation first refreshes the token
 and fails closed if lab.gd does not grant its required scope.
 
+The complete installation scope set is `publication:write`, `events:read`,
+`shares:manage`, `analytics:read`, `token:renew`, `key:rotate`, and
+`claim:create`. The original four-scope credential shape is accepted only as a
+renewal source: Homelab Inventory signs `/v1/installations/renew` with the
+existing key and token, preserves the installation UUID and remote installation
+ID, and persists only the scopes and expiration returned by lab.gd. Unknown or
+partial scope sets fail closed.
+
+Capability negotiation requires protocol 1, share contract 1, systems and
+canvas view contract 1, resumable installation events, protected-password
+handoff, the complete lifecycle operation set, account claiming, 90-day daily
+owner analytics, and configuration-only comments and reactions. A missing or
+explicitly unsupported declaration disables enrollment and publication instead
+of being guessed from server readiness.
+
+Account claiming returns an opaque claim ID, a single-use code, expiration, and
+the exact clean verification destination `https://app.lab.gd/claim`. The app
+shows the code separately and never places it in the URL, browser storage, or
+logs.
+
 ## Permissions
 
 - `sharing.configure` controls connection and share definitions.

@@ -9,9 +9,11 @@ function document(overrides = {}) {
     capabilities: {
       installationEvents: { supported: true, resumable: true },
       protectedPasswordHandoff: { supported: true },
-      lifecycleOperations: { supported: true, operations: ['update', 'unpublish'] },
+      lifecycleOperations: { supported: true, operations: ['update', 'unpublish', 'delete', 'republish', 'replace-password'] },
       accountClaiming: { supported: true },
-      ownerAnalytics: { supported: true, buckets: ['day'] },
+      ownerAnalytics: { supported: true, buckets: ['day'], retentionDays: 90 },
+      comments: { configurationSupported: true, interactionSupported: false },
+      reactions: { configurationSupported: true, interactionSupported: false },
     },
     ...overrides,
   }
@@ -38,5 +40,23 @@ describe('lab.gd remote capability contract', () => {
     const value = document()
     delete value.capabilities.ownerAnalytics.supported
     expect(() => normalizeLabGdCapabilities(value)).toThrow(/support flag/iu)
+  })
+
+  it('rejects unsupported and incomplete required features', () => {
+    const unsupported = document()
+    unsupported.capabilities.installationEvents.supported = false
+    expect(() => normalizeLabGdCapabilities(unsupported)).toThrow(/installation events/iu)
+
+    const notResumable = document()
+    notResumable.capabilities.installationEvents.resumable = false
+    expect(() => normalizeLabGdCapabilities(notResumable)).toThrow(/resumable/iu)
+
+    const missingLifecycle = document()
+    missingLifecycle.capabilities.lifecycleOperations.operations = ['update', 'unpublish']
+    expect(() => normalizeLabGdCapabilities(missingLifecycle)).toThrow(/lifecycle/iu)
+
+    const wrongAnalytics = document()
+    wrongAnalytics.capabilities.ownerAnalytics.retentionDays = 30
+    expect(() => normalizeLabGdCapabilities(wrongAnalytics)).toThrow(/analytics/iu)
   })
 })

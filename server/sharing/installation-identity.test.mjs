@@ -2,7 +2,8 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { mkdtemp, readFile, rm, stat } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { SharingInstallationIdentityService, SharingRecoveryPendingError } from './installation-identity.mjs'
+import { normalizeSharingCredentials, SharingInstallationIdentityService, SharingRecoveryPendingError, SharingUnsupportedError } from './installation-identity.mjs'
+import { LEGACY_SHARING_TOKEN_SCOPES, SHARING_TOKEN_SCOPES } from './installation-auth.mjs'
 
 const roots = []
 
@@ -12,12 +13,25 @@ function capabilities() {
     shareContractVersions: [1],
     viewContractVersions: { systems: [1], canvas: [1] },
     capabilities: {
-      installationEvents: { supported: true },
+      installationEvents: { supported: true, resumable: true },
       protectedPasswordHandoff: { supported: true },
-      lifecycleOperations: { supported: true },
+      lifecycleOperations: { supported: true, operations: ['update', 'unpublish', 'delete', 'republish', 'replace-password'] },
       accountClaiming: { supported: true },
-      ownerAnalytics: { supported: true },
+      ownerAnalytics: { supported: true, buckets: ['day'], retentionDays: 90 },
+      comments: { configurationSupported: true, interactionSupported: false },
+      reactions: { configurationSupported: true, interactionSupported: false },
     },
+  }
+}
+
+function activeToken(overrides = {}) {
+  return {
+    status: 'active',
+    installationId: 7,
+    token: 't'.repeat(32),
+    scopes: [...SHARING_TOKEN_SCOPES],
+    tokenExpiresAt: '2026-08-22T13:00:00.000Z',
+    ...overrides,
   }
 }
 
@@ -58,7 +72,7 @@ async function setup(handler = null) {
     if (handler) return handler(request, requests)
     if (request.url.pathname === '/readyz') return Response.json({ status: 'ready', contractMode: 'packages-enabled', publicationReady: true })
     if (request.url.pathname.endsWith('/challenge')) return Response.json({ value: 'challenge-value' }, { status: 201 })
-    if (request.url.pathname.endsWith('/activate')) return Response.json({ status: 'active', installationId: 7, token: 't'.repeat(32) }, { status: 201 })
+    if (request.url.pathname.endsWith('/activate')) return Response.json(activeToken(), { status: 201 })
     throw new Error(`Unexpected request ${request.url.pathname}`)
   }
   const service = new SharingInstallationIdentityService({
@@ -72,6 +86,14 @@ async function setup(handler = null) {
 }
 
 describe('sharing installation identity', () => {
+  it('accepts only the complete or exact legacy credential scope set and marks legacy renewal', () => {
+    const base = { version: 1, clientInstanceId: '11111111-2222-4333-8444-555555555555', installationId: 7, token: 't'.repeat(32), tokenExpiresAt: '2026-08-22T13:00:00.000Z' }
+    expect(normalizeSharingCredentials({ ...base, scopes: SHARING_TOKEN_SCOPES }, base.clientInstanceId)).toMatchObject({ renewalRequired: false })
+    expect(normalizeSharingCredentials({ ...base, scopes: LEGACY_SHARING_TOKEN_SCOPES }, base.clientInstanceId)).toMatchObject({ renewalRequired: true })
+    expect(normalizeSharingCredentials({ ...base, scopes: ['publication:write'] }, base.clientInstanceId)).toBeNull()
+    expect(normalizeSharingCredentials({ ...base, scopes: [...LEGACY_SHARING_TOKEN_SCOPES, 'unknown:scope'] }, base.clientInstanceId)).toBeNull()
+  })
+
   it('creates one stable protected identity and rebuilds its SQLite projection', async () => {
     const { dataDir, repo, service } = await setup()
     const first = await service.ensure()
@@ -102,37 +124,44 @@ describe('sharing installation identity', () => {
     expect(requests.filter(({ url }) => url.pathname.endsWith('/challenge'))).toHaveLength(1)
   })
 
-  it('persists server-granted scopes and refreshes legacy credentials before a new operation', async () => {
-    let activations = 0
-    const { dataDir, service } = await setup((request) => {
+  it('renews legacy credentials with the old token without changing installation identity', async () => {
+    let renewals = 0
+    const { dataDir, service, repo } = await setup((request) => {
       if (request.url.pathname === '/readyz') return Response.json({ status: 'ready', contractMode: 'packages-enabled', publicationReady: true })
-      if (request.url.pathname.endsWith('/challenge')) return Response.json({ value: `challenge-${activations}` }, { status: 201 })
-      if (request.url.pathname.endsWith('/activate')) {
-        activations += 1
-        return Response.json({
-          status: 'active',
-          installationId: 7,
-          token: String(activations).repeat(32),
-          scopes: activations === 1
-            ? ['publication:write', 'token:renew', 'key:rotate', 'claim:create']
-            : ['publication:write', 'events:read', 'shares:manage', 'analytics:read', 'token:renew', 'key:rotate', 'claim:create'],
-          tokenExpiresAt: '2026-08-22T13:00:00.000Z',
-        }, { status: 201 })
+      if (request.url.pathname.endsWith('/renew')) {
+        renewals += 1
+        expect(request.body).toEqual({ scopes: [...SHARING_TOKEN_SCOPES] })
+        return Response.json({ token: 'r'.repeat(32), scopes: [...SHARING_TOKEN_SCOPES], tokenExpiresAt: '2026-08-22T14:00:00.000Z' })
       }
       if (request.url.pathname === '/v1/installations/events') return new Response(null, { status: 204 })
       throw new Error(`Unexpected request ${request.url.pathname}`)
     })
-    await service.activate()
+    const before = await service.ensure()
+    await service.writeCredentials({ version: 1, clientInstanceId: before.instance.clientInstanceId, installationId: 7, token: 'l'.repeat(32), scopes: [...LEGACY_SHARING_TOKEN_SCOPES], tokenExpiresAt: '2026-08-22T13:00:00.000Z' })
     await service.signedFetch('/v1/installations/events', { method: 'GET', scope: 'events:read' })
-    expect(activations).toBe(2)
+    const after = await service.ensure()
+    expect(renewals).toBe(1)
+    expect(after.instance.clientInstanceId).toBe(before.instance.clientInstanceId)
+    expect(after.keys.keyId).toBe(before.keys.keyId)
+    expect(repo.getInstallationProjection().remoteInstallationId).toBe(7)
     expect(JSON.parse(await readFile(join(dataDir, 'sharing', 'installation-credentials.json'), 'utf8')).scopes).toContain('events:read')
+  })
+
+  it('rejects activation responses that omit authoritative scopes or expiry', async () => {
+    const { service } = await setup((request) => {
+      if (request.url.pathname === '/readyz') return Response.json({ status: 'ready', contractMode: 'packages-enabled', publicationReady: true })
+      if (request.url.pathname.endsWith('/challenge')) return Response.json({ value: 'challenge-value' }, { status: 201 })
+      if (request.url.pathname.endsWith('/activate')) return Response.json({ status: 'active', installationId: 7, token: 't'.repeat(32) }, { status: 201 })
+      throw new Error(`Unexpected request ${request.url.pathname}`)
+    })
+    await expect(service.activate()).rejects.toBeInstanceOf(SharingUnsupportedError)
   })
 
   it('accepts only the complete non-secret account claim contract', async () => {
     const { service } = await setup((request) => {
       if (request.url.pathname === '/readyz') return Response.json({ status: 'ready', contractMode: 'packages-enabled', publicationReady: true })
       if (request.url.pathname.endsWith('/challenge')) return Response.json({ value: 'challenge-value' }, { status: 201 })
-      if (request.url.pathname.endsWith('/activate')) return Response.json({ status: 'active', installationId: 7, token: 't'.repeat(32) }, { status: 201 })
+      if (request.url.pathname.endsWith('/activate')) return Response.json(activeToken(), { status: 201 })
       if (request.url.pathname.endsWith('/claim-device')) return Response.json({
         claimId: 'claim_123',
         userCode: 'ABCD-2345',
@@ -149,6 +178,17 @@ describe('sharing installation identity', () => {
       expiresAt: '2026-08-22T12:10:00.000Z',
       state: 'pending',
     })
+  })
+
+  it('rejects claim verification destinations other than the exact clean app.lab.gd path', async () => {
+    const { service } = await setup((request) => {
+      if (request.url.pathname === '/readyz') return Response.json({ status: 'ready', contractMode: 'packages-enabled', publicationReady: true })
+      if (request.url.pathname.endsWith('/challenge')) return Response.json({ value: 'challenge-value' }, { status: 201 })
+      if (request.url.pathname.endsWith('/activate')) return Response.json(activeToken(), { status: 201 })
+      if (request.url.pathname.endsWith('/claim-device')) return Response.json({ claimId: 'claim_123', userCode: 'ABCD-2345', verificationUrl: 'https://app.lab.gd/claim?code=ABCD-2345', expiresAt: '2026-08-22T12:10:00.000Z', state: 'pending' }, { status: 201 })
+      throw new Error(`Unexpected request ${request.url.pathname}`)
+    })
+    await expect(service.createClaimDevice()).rejects.toThrow(/claim/iu)
   })
 
   it('persists recovery pending without generating repeated replacement keys', async () => {
@@ -170,7 +210,7 @@ describe('sharing installation identity', () => {
     const { dataDir, service } = await setup((request) => {
       if (request.url.pathname === '/readyz') return Response.json({ status: 'ready', contractMode: 'packages-enabled', publicationReady: true })
       if (request.url.pathname.endsWith('/challenge')) return Response.json({ value: 'challenge-value' }, { status: 201 })
-      if (request.url.pathname.endsWith('/activate')) return Response.json({ status: 'active', installationId: 7, token: 't'.repeat(32) }, { status: 201 })
+      if (request.url.pathname.endsWith('/activate')) return Response.json(activeToken(), { status: 201 })
       if (request.url.pathname.endsWith('/rotate')) return Response.json({ error: 'rotation-unavailable' }, { status: 503 })
       throw new Error('Unexpected request')
     })
@@ -186,7 +226,7 @@ describe('sharing installation identity', () => {
     const { dataDir, repo, service } = await setup((request) => {
       if (request.url.pathname === '/readyz') return Response.json({ status: 'ready', contractMode: 'packages-enabled', publicationReady: true })
       if (request.url.pathname.endsWith('/challenge')) return Response.json({ value: 'challenge-value' }, { status: 201 })
-      if (request.url.pathname.endsWith('/activate')) return Response.json({ status: 'active', installationId: 7, token: 't'.repeat(32) }, { status: 201 })
+      if (request.url.pathname.endsWith('/activate')) return Response.json(activeToken(), { status: 201 })
       if (request.url.pathname.endsWith('/rotate')) return Response.json({ status: 'recovery-pending', installationId: 7 }, { status: 409 })
       throw new Error('Unexpected request')
     })
