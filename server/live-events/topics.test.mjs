@@ -15,5 +15,10 @@ describe('inventory metadata live topics', () => {
       projectId: 7,
     })
     expect(() => parseApplicationLiveTopic('inventory-metadata:0')).toThrow(/positive/iu)
+    expect(parseApplicationLiveTopic('sharing:status')).toEqual({
+      value: 'sharing:status',
+      permission: 'sharing.configure',
+      kind: 'sharing-status',
+    })
   })
 })

@@ -345,6 +345,19 @@ export class SharingInstallationIdentityService {
       return this.activate()
     }
   }
+
+  async createClaimDevice() {
+    const body = new Uint8Array()
+    const response = await this.signedFetch('/v1/installations/claim-device', {
+      body,
+      scope: 'claim:create',
+    })
+    const result = await boundedJson(response)
+    if (!response.ok || result.status !== 'pending' || !Number.isSafeInteger(result.installationId)) {
+      throw httpError(response, result, 'labgd-claim-device-failed')
+    }
+    return result
+  }
 }
 
 async function boundedJson(response, maximumBytes = 64 * 1024) {

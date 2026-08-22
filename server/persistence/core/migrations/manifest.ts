@@ -148,6 +148,6 @@ export const CORE_MIGRATIONS: readonly CoreMigration[] = [
   {
     id: '0029_sharing_foundation',
     file: '0028_sharing_foundation.sql',
-    sha256: 'eda54ad29c1f96e9183469cfe9898ed271908f0813ae3e6cca0021eb7ca3b6b6',
+    sha256: 'd8d77dfc80e2abcf3c8c7866d8ddc4b6e1b19701e9034c66b4bee7bf4f474220',
   },
 ]

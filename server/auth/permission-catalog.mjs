@@ -44,6 +44,8 @@ export const PERMISSIONS = Object.freeze([
   definePermission(1102, 'updates.manage', 'updates', 'Change update channel and update preferences.', 'elevated'),
   definePermission(1201, 'notifications.view', 'notifications', 'View notification configuration, incidents, and delivery history.'),
   definePermission(1202, 'notifications.manage', 'notifications', 'Configure notification policies, destinations, acknowledgements, and retries.', 'elevated'),
+  definePermission(1301, 'sharing.configure', 'sharing', 'Configure the lab.gd connection and share definitions.', 'elevated'),
+  definePermission(1302, 'sharing.publish', 'sharing', 'Preview, publish, update, unpublish, and delete lab.gd shares.', 'elevated'),
 ])
 
 export const PERMISSION_BY_ID = new Map(PERMISSIONS.map((permission) => [permission.id, permission]))

@@ -137,6 +137,13 @@ const PROTECTED_ROUTES = [
   ['PUT', /^\/api\/notifications\/hosts\/(?:server|nas|pcBuild)\/[1-9]\d*\/?$/, 'notifications.manage'],
   ['POST', /^\/api\/notifications\/(?:contact-points\/[1-9]\d*\/test|incidents\/[1-9]\d*\/acknowledge|deliveries\/[1-9]\d*\/retry)\/?$/, 'notifications.manage'],
 
+  ['GET', /^\/api\/sharing\/(?:settings|capabilities|shares(?:\/[1-9]\d*)?)\/?$/, 'sharing.configure'],
+  ['PATCH', /^\/api\/sharing\/settings\/?$/, 'sharing.configure'],
+  ['POST', /^\/api\/sharing\/shares\/?$/, 'sharing.configure'],
+  ['PATCH', /^\/api\/sharing\/shares\/[1-9]\d*\/?$/, 'sharing.configure'],
+  ['POST', /^\/api\/sharing\/(?:shares\/[1-9]\d*\/(?:preview|preview\/approve|publish|update|resource-snapshot|unpublish)|account\/claim|recovery\/resume)\/?$/, 'sharing.publish'],
+  ['DELETE', /^\/api\/sharing\/shares\/[1-9]\d*\/?$/, 'sharing.publish'],
+
   ['GET', /^\/api\/onboarding(?:\/.*)?$/, 'workspace.view'],
   ['POST', /^\/api\/onboarding(?:\/.*)?$/, 'workspace.edit'],
   ['GET', /^\/api\/release-notes\/status\/?$/, 'workspace.view'],

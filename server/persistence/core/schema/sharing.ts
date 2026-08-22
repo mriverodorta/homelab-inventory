@@ -56,6 +56,9 @@ export const shares = sqliteTable('shares', {
   state: text('state').notNull().default('unpublished'),
   commentsEnabled: integer('comments_enabled', { mode: 'boolean' }).notNull().default(false),
   reactionsEnabled: integer('reactions_enabled', { mode: 'boolean' }).notNull().default(false),
+  embedEnabled: integer('embed_enabled', { mode: 'boolean' }).notNull().default(false),
+  embedOriginsJson: text('embed_origins_json').notNull().default('[]'),
+  resourceSnapshotIncluded: integer('resource_snapshot_included', { mode: 'boolean' }).notNull().default(false),
   expirationType: text('expiration_type').notNull().default('indefinite'),
   expirationDurationSeconds: integer('expiration_duration_seconds'),
   expiresAtMs: integer('expires_at_ms'),
@@ -81,6 +84,7 @@ export const shares = sqliteTable('shares', {
     OR (${table.expirationType} = 'at' AND ${table.expirationDurationSeconds} IS NULL AND ${table.expiresAtMs} IS NOT NULL)
   `),
   check('shares_revision_check', sql`${table.localRevision} > 0 AND (${table.remoteRevision} IS NULL OR ${table.remoteRevision} > 0)`),
+  check('shares_embed_origins_check', sql`json_valid(${table.embedOriginsJson}) AND json_type(${table.embedOriginsJson}) = 'array'`),
 ])
 
 export const shareViews = sqliteTable('share_views', {

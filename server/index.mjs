@@ -78,6 +78,17 @@ import { ApplicationLiveEventBus } from './live-events/event-bus.mjs'
 import { ApplicationSseHub } from './live-events/sse-hub.mjs'
 import { registerApplicationEventRoutes } from './live-events/routes.mjs'
 import { boundedTelemetryPayloads, compactAgentStatus } from './live-events/agent-payloads.mjs'
+import { createRepositoryContext } from './persistence/core/repositories/repository-context.ts'
+import { createSharingRepository } from './persistence/core/repositories/sharing-repository.ts'
+import { SharingInstallationIdentityService } from './sharing/installation-identity.mjs'
+import { SharingEnrollmentCoordinator, sharingEnvironmentEnabled } from './sharing/enrollment-coordinator.mjs'
+import { ShareProjector } from './sharing/share-projector.mjs'
+import { SharingPublicIdService } from './sharing/public-id-service.mjs'
+import { LabGdPublicationClient } from './sharing/labgd-client.mjs'
+import { SharingPublicationService } from './sharing/publication-service.mjs'
+import { SharingPublicationCoordinator } from './sharing/publication-coordinator.mjs'
+import { createSharingResourceSnapshotProvider, createSharingSourceProvider } from './sharing/source-provider.mjs'
+import { registerSharingRoutes } from './sharing/routes.mjs'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const root = path.resolve(__dirname, '..')
@@ -156,6 +167,8 @@ const updateChecker = new DockerHubUpdateChecker({
 })
 
 const app = express()
+let resolveHttpReady
+const httpReady = new Promise((resolve) => { resolveHttpReady = resolve })
 const applicationEventBus = new ApplicationLiveEventBus()
 const applicationSseHub = new ApplicationSseHub({ bus: applicationEventBus })
 const rateLimitConfig = readRateLimitConfig()
@@ -531,6 +544,79 @@ async function withStore(request, response, handler, options = {}) {
   }
 }
 
+const sharingRepository = store
+  ? createSharingRepository(createRepositoryContext(store.core.database))
+  : null
+const sharingEffectiveEnabled = Boolean(
+  store
+  && !isDemoMode
+  && !stagingPolicy.sharingDisabled
+  && sharingEnvironmentEnabled(),
+)
+const labGdOrigin = process.env.LABGD_ORIGIN?.trim() || 'https://lab.gd'
+const sharingIdentity = sharingEffectiveEnabled
+  ? new SharingInstallationIdentityService({ dataDir, repository: sharingRepository, labGdOrigin })
+  : null
+const sharingPublicIds = sharingEffectiveEnabled ? new SharingPublicIdService({ dataDir }) : null
+const sharingProjector = sharingPublicIds ? new ShareProjector({ publicIds: sharingPublicIds }) : null
+const sharingPublicationClient = sharingIdentity ? new LabGdPublicationClient({ identityService: sharingIdentity }) : null
+let sharingPublicationCoordinator = null
+const publishSharingState = (value, kind = 'sharing.status-changed') => {
+  if (!store) return
+  const share = value && Number.isSafeInteger(value.id) ? value : null
+  applicationEventBus.publish({
+    scope: store,
+    topics: ['sharing:status'],
+    kind,
+    payload: share
+      ? { shareId: share.id, state: share.state, localRevision: share.localRevision, remoteRevision: share.remoteRevision }
+      : { enrollmentState: value?.enrollmentState ?? sharingRepository?.getSettings().enrollmentState ?? 'disabled' },
+  })
+}
+const sharingPublicationService = sharingEffectiveEnabled
+  ? new SharingPublicationService({
+      repository: sharingRepository,
+      projector: sharingProjector,
+      sourceProvider: createSharingSourceProvider(store),
+      client: sharingPublicationClient,
+      publicIds: sharingPublicIds,
+      onStateChanged: (share) => publishSharingState(share, 'sharing.share-changed'),
+    })
+  : null
+if (sharingPublicationService) {
+  sharingPublicationCoordinator = new SharingPublicationCoordinator({
+    repository: sharingRepository,
+    publicationService: sharingPublicationService,
+  })
+}
+const sharingEnrollmentCoordinator = sharingEffectiveEnabled
+  ? new SharingEnrollmentCoordinator({
+      repository: sharingRepository,
+      identityService: sharingIdentity,
+      localReady: httpReady,
+      onStateChanged: (settings) => {
+        publishSharingState(settings)
+        if (settings.enrollmentState === 'connected') sharingPublicationCoordinator?.wake()
+      },
+    })
+  : null
+const sharingResourceSnapshotProvider = sharingEffectiveEnabled
+  ? createSharingResourceSnapshotProvider({ store, telemetryRepository, publicIds: sharingPublicIds })
+  : null
+
+registerSharingRoutes(app, {
+  repository: sharingRepository,
+  publicationService: sharingPublicationService,
+  publicationCoordinator: sharingPublicationCoordinator,
+  enrollmentCoordinator: sharingEnrollmentCoordinator,
+  identityService: sharingIdentity,
+  resourceSnapshotProvider: sharingResourceSnapshotProvider,
+  demo: isDemoMode,
+  staging: stagingPolicy.staging,
+  effectiveEnabled: sharingEffectiveEnabled,
+  origin: labGdOrigin,
+})
+
 registerApplicationEventRoutes(app, {
   withStore,
   hub: applicationSseHub,
@@ -833,6 +919,9 @@ const server = app.listen(port, () => {
   console.log(`SQLite data directory: ${dataDir}`)
   startupProfiler.mark('http-listener')
   startupProfiler.complete()
+  resolveHttpReady()
+  sharingEnrollmentCoordinator?.start()
+  sharingPublicationCoordinator?.start()
   if (store) {
     void runCatalogUpdatesAfterStartup({
       runtime: catalogRuntime,
@@ -871,6 +960,8 @@ async function shutdown(signal) {
         () => notificationRuntime?.stop(),
         () => systemsAttention?.stop(),
         () => agentLifecycleScheduler?.stop(),
+        () => sharingEnrollmentCoordinator?.stop(),
+        () => sharingPublicationCoordinator?.stop(),
       ],
       flush: () => demoManager ? demoManager.flushAll() : store.flush(),
       closers: demoManager

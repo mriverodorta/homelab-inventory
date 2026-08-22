@@ -53,6 +53,9 @@ CREATE TABLE `shares` (
   `state` text NOT NULL DEFAULT 'unpublished',
   `comments_enabled` integer NOT NULL DEFAULT 0,
   `reactions_enabled` integer NOT NULL DEFAULT 0,
+  `embed_enabled` integer NOT NULL DEFAULT 0,
+  `embed_origins_json` text NOT NULL DEFAULT '[]',
+  `resource_snapshot_included` integer NOT NULL DEFAULT 0,
   `expiration_type` text NOT NULL DEFAULT 'indefinite',
   `expiration_duration_seconds` integer,
   `expires_at_ms` integer,
@@ -75,7 +78,8 @@ CREATE TABLE `shares` (
     OR (`expiration_type` = 'at' AND `expiration_duration_seconds` IS NULL AND `expires_at_ms` IS NOT NULL)
   ),
   CONSTRAINT `shares_revision_check` CHECK (`local_revision` > 0 AND (`remote_revision` IS NULL OR `remote_revision` > 0)),
-  CONSTRAINT `shares_boolean_check` CHECK (`comments_enabled` IN (0,1) AND `reactions_enabled` IN (0,1) AND `account_claimed` IN (0,1))
+  CONSTRAINT `shares_embed_origins_check` CHECK (json_valid(`embed_origins_json`) AND json_type(`embed_origins_json`) = 'array'),
+  CONSTRAINT `shares_boolean_check` CHECK (`comments_enabled` IN (0,1) AND `reactions_enabled` IN (0,1) AND `embed_enabled` IN (0,1) AND `resource_snapshot_included` IN (0,1) AND `account_claimed` IN (0,1))
 ) STRICT;
 CREATE UNIQUE INDEX `shares_remote_public_id_unique` ON `shares` (`remote_public_id`);
 CREATE INDEX `shares_project_state_index` ON `shares` (`project_id`, `state`, `id`);

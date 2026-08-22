@@ -5,6 +5,7 @@ export function createStagingPolicy(appMode) {
     authenticationDisabled: staging,
     agentsDisabled: staging,
     notificationsDisabled: staging,
+    sharingDisabled: staging,
     registryIdentityDisabled: staging,
     registryContributionsDisabled: staging,
     registryNetworkRefreshDisabled: staging,

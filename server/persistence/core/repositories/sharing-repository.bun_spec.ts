@@ -100,9 +100,18 @@ describe('sharing repository', () => {
         mutability: 'replaceable',
         syncMode: 'synchronized',
         visibility: 'unlisted',
+        embed: { enabled: true, origins: ['https://wiki.example.com:8443'] },
+        resourceSnapshotIncluded: true,
         views: [{ workspaceId: 2, viewType: 'canvas' }],
       })
-      expect(share).toMatchObject({ id: 1, localRevision: 1, state: 'unpublished' })
+      expect(share).toMatchObject({
+        id: 1,
+        localRevision: 1,
+        state: 'unpublished',
+        embedEnabled: true,
+        embedOrigins: ['https://wiki.example.com:8443'],
+        resourceSnapshotIncluded: true,
+      })
       expect(repository.getShareConfiguration(share.id)).toMatchObject({
         views: [{ workspaceId: 2, viewType: 'canvas', displayOrder: 0 }],
       })
@@ -144,6 +153,26 @@ describe('sharing repository', () => {
         state: 'preview-ready',
       })
       expect(() => repository.updateShare(share.id, 1, { state: 'publishing' })).toThrow('revision conflict')
+
+      const updated = repository.updateShareConfiguration(share.id, 2, {
+        projectId: 1,
+        title: 'Updated public canvas',
+        mutability: 'replaceable',
+        syncMode: 'manual',
+        visibility: 'public',
+        embed: { enabled: false },
+        resourceSnapshotIncluded: false,
+        views: [{ workspaceId: 2, viewType: 'canvas' }],
+      })
+      expect(updated.share).toMatchObject({
+        localRevision: 3,
+        title: 'Updated public canvas',
+        state: 'unpublished',
+        approvedPreviewHash: null,
+        embedEnabled: false,
+        embedOrigins: [],
+        resourceSnapshotIncluded: false,
+      })
     } finally {
       closeManagedDatabase(handle)
     }

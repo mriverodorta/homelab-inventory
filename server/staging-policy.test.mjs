@@ -8,6 +8,7 @@ describe('staging runtime policy', () => {
       authenticationDisabled: true,
       agentsDisabled: true,
       notificationsDisabled: true,
+      sharingDisabled: true,
       registryIdentityDisabled: true,
       registryContributionsDisabled: true,
       registryNetworkRefreshDisabled: true,

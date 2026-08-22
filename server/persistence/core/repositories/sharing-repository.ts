@@ -44,6 +44,9 @@ export type ShareRecord = Readonly<{
   state: ShareState
   commentsEnabled: boolean
   reactionsEnabled: boolean
+  embedEnabled: boolean
+  embedOrigins: readonly string[]
+  resourceSnapshotIncluded: boolean
   expirationType: 'indefinite' | 'duration' | 'at'
   expirationDurationSeconds: number | null
   expiresAtMs: number | null
@@ -65,6 +68,8 @@ type ShareInput = Readonly<{
   visibility: 'public' | 'unlisted' | 'protected'
   commentsEnabled?: boolean
   reactionsEnabled?: boolean
+  embed?: Readonly<{ enabled: false } | { enabled: true; origins: readonly string[] }>
+  resourceSnapshotIncluded?: boolean
   expiration?: Readonly<
     | { type: 'indefinite' }
     | { type: 'duration'; durationSeconds: number }
@@ -107,6 +112,8 @@ const shareColumns = `
   id, project_id AS projectId, remote_public_id AS remotePublicId, title,
   description, mutability, sync_mode AS syncMode, visibility, state,
   comments_enabled AS commentsEnabled, reactions_enabled AS reactionsEnabled,
+  embed_enabled AS embedEnabled, embed_origins_json AS embedOriginsJson,
+  resource_snapshot_included AS resourceSnapshotIncluded,
   expiration_type AS expirationType,
   expiration_duration_seconds AS expirationDurationSeconds,
   expires_at_ms AS expiresAtMs, local_revision AS localRevision,
@@ -210,14 +217,17 @@ export function createSharingRepository(context: RepositoryContext) {
       const row = sqlite.query(`
         INSERT INTO shares (
           project_id, title, description, mutability, sync_mode, visibility,
-          comments_enabled, reactions_enabled, expiration_type,
+          comments_enabled, reactions_enabled, embed_enabled, embed_origins_json,
+          resource_snapshot_included, expiration_type,
           expiration_duration_seconds, expires_at_ms, created_at_ms, updated_at_ms
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         RETURNING id
       `).get(
         input.projectId, input.title.trim(), input.description ?? '', input.mutability,
         input.syncMode, input.visibility, input.commentsEnabled ? 1 : 0,
-        input.reactionsEnabled ? 1 : 0, expiration.type,
+        input.reactionsEnabled ? 1 : 0, input.embed?.enabled ? 1 : 0,
+        JSON.stringify(input.embed?.enabled ? normalizedOrigins(input.embed.origins) : []),
+        input.resourceSnapshotIncluded ? 1 : 0, expiration.type,
         expiration.type === 'duration' ? expiration.durationSeconds : null,
         expiration.type === 'at' ? expiration.expiresAtMs : null, at, at,
       ) as { id: number }
@@ -239,7 +249,7 @@ export function createSharingRepository(context: RepositoryContext) {
   function getShare(id: number): ShareRecord | null {
     assertPositiveId(id, 'Share ID')
     const row = sqlite.query(`SELECT ${shareColumns} FROM shares WHERE id = ?`).get(id) as Record<string, unknown> | null
-    return row ? booleans(row, ['commentsEnabled', 'reactionsEnabled', 'accountClaimed']) as ShareRecord : null
+    return row ? mapShare(row) : null
   }
 
   function listShares(projectId?: number) {
@@ -247,7 +257,7 @@ export function createSharingRepository(context: RepositoryContext) {
     const rows = projectId == null
       ? sqlite.query(`SELECT ${shareColumns} FROM shares WHERE state <> 'deleted' ORDER BY updated_at_ms DESC, id DESC`).all()
       : sqlite.query(`SELECT ${shareColumns} FROM shares WHERE project_id = ? AND state <> 'deleted' ORDER BY updated_at_ms DESC, id DESC`).all(projectId)
-    return rows.map((row) => booleans(row as Record<string, unknown>, ['commentsEnabled', 'reactionsEnabled', 'accountClaimed']) as ShareRecord)
+    return rows.map((row) => mapShare(row as Record<string, unknown>))
   }
 
   function getShareConfiguration(id: number) {
@@ -259,6 +269,59 @@ export function createSharingRepository(context: RepositoryContext) {
       fieldDefinitionIds: (sqlite.query('SELECT definition_id AS id FROM share_field_selections WHERE share_id = ? ORDER BY definition_id').all(id) as { id: number }[]).map(({ id }) => id),
       tagIds: (sqlite.query('SELECT tag_id AS id FROM share_tag_selections WHERE share_id = ? ORDER BY tag_id').all(id) as { id: number }[]).map(({ id }) => id),
     }
+  }
+
+  function updateShareConfiguration(id: number, expectedRevision: number, input: ShareInput) {
+    assertPositiveId(id, 'Share ID')
+    assertPositiveId(expectedRevision, 'Share revision')
+    assertPositiveId(input.projectId, 'Project ID')
+    if (!input.views.length) throw new Error('A share must include at least one view.')
+    const current = getShare(id)
+    if (!current) throw new Error(`Share ${id} does not exist.`)
+    if (current.projectId !== input.projectId) throw new Error('A share cannot be moved to another project.')
+    const at = now()
+    const expiration = input.expiration ?? { type: 'indefinite' as const }
+    const nextState = current.remoteRevision == null
+      ? 'unpublished'
+      : input.mutability === 'replaceable' && input.syncMode === 'synchronized'
+        ? 'changes-pending'
+        : 'manual-update-available'
+    return sqlite.transaction(() => {
+      const result = sqlite.query(`
+        UPDATE shares SET title = ?, description = ?, mutability = ?, sync_mode = ?,
+          visibility = ?, comments_enabled = ?, reactions_enabled = ?, embed_enabled = ?,
+          embed_origins_json = ?, resource_snapshot_included = ?, expiration_type = ?,
+          expiration_duration_seconds = ?, expires_at_ms = ?, state = ?,
+          approved_preview_hash = NULL, local_revision = local_revision + 1,
+          updated_at_ms = ?
+        WHERE id = ? AND local_revision = ?
+      `).run(
+        input.title.trim(), input.description ?? '', input.mutability, input.syncMode,
+        input.visibility, input.commentsEnabled ? 1 : 0, input.reactionsEnabled ? 1 : 0,
+        input.embed?.enabled ? 1 : 0,
+        JSON.stringify(input.embed?.enabled ? normalizedOrigins(input.embed.origins) : []),
+        input.resourceSnapshotIncluded ? 1 : 0, expiration.type,
+        expiration.type === 'duration' ? expiration.durationSeconds : null,
+        expiration.type === 'at' ? expiration.expiresAtMs : null,
+        nextState, at, id, expectedRevision,
+      )
+      if (result.changes !== 1) throw new Error('Share revision conflict.')
+      sqlite.query('DELETE FROM share_views WHERE share_id = ?').run(id)
+      sqlite.query('DELETE FROM share_field_selections WHERE share_id = ?').run(id)
+      sqlite.query('DELETE FROM share_tag_selections WHERE share_id = ?').run(id)
+      input.views.forEach((view, displayOrder) => {
+        assertPositiveId(view.workspaceId, 'Workspace ID')
+        sqlite.query('INSERT INTO share_views (share_id, workspace_id, view_type, display_order, created_at_ms) VALUES (?, ?, ?, ?, ?)')
+          .run(id, view.workspaceId, view.viewType, displayOrder, at)
+      })
+      for (const definitionId of uniqueIds(input.fieldDefinitionIds ?? [], 'Custom field definition ID')) {
+        sqlite.query('INSERT INTO share_field_selections (share_id, definition_id, created_at_ms) VALUES (?, ?, ?)').run(id, definitionId, at)
+      }
+      for (const tagId of uniqueIds(input.tagIds ?? [], 'Tag ID')) {
+        sqlite.query('INSERT INTO share_tag_selections (share_id, tag_id, created_at_ms) VALUES (?, ?, ?)').run(id, tagId, at)
+      }
+      return getShareConfiguration(id)!
+    })()
   }
 
   function updateShare(id: number, expectedRevision: number, patch: Partial<Pick<ShareRecord,
@@ -427,6 +490,7 @@ export function createSharingRepository(context: RepositoryContext) {
     getShare,
     listShares,
     getShareConfiguration,
+    updateShareConfiguration,
     updateShare,
     persistRevision,
     getLocalRevision,
@@ -441,6 +505,25 @@ function booleans(row: Record<string, unknown>, names: readonly string[]) {
   const result = { ...row }
   for (const name of names) result[name] = Boolean(result[name])
   return result
+}
+
+function mapShare(row: Record<string, unknown>): ShareRecord {
+  const result = booleans(row, ['commentsEnabled', 'reactionsEnabled', 'embedEnabled', 'resourceSnapshotIncluded', 'accountClaimed'])
+  const origins = JSON.parse(String(result.embedOriginsJson ?? '[]'))
+  if (!Array.isArray(origins) || origins.some((origin) => typeof origin !== 'string')) throw new Error('Stored share embed origins are invalid.')
+  result.embedOrigins = origins
+  delete result.embedOriginsJson
+  return result as ShareRecord
+}
+
+function normalizedOrigins(origins: readonly string[]) {
+  return [...new Set(origins.map((origin) => {
+    const parsed = new URL(origin)
+    if (parsed.protocol !== 'https:' || parsed.username || parsed.password || parsed.pathname !== '/' || parsed.search || parsed.hash) {
+      throw new Error('Embed origins must be exact HTTPS origins.')
+    }
+    return parsed.origin
+  }))].sort()
 }
 
 function uniqueIds(values: readonly number[], label: string) {

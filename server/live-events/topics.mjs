@@ -14,6 +14,7 @@ export function parseApplicationLiveTopic(value) {
   if (value === 'updates:status') return Object.freeze({ value, permission: 'updates.view', kind: 'updates-status' })
   if (value === 'demo:session') return Object.freeze({ value, permission: 'workspace.view', kind: 'demo-session' })
   if (value === 'inventory-metadata:catalog') return Object.freeze({ value, permission: 'inventory.view', kind: 'inventory-metadata-catalog' })
+  if (value === 'sharing:status') return Object.freeze({ value, permission: 'sharing.configure', kind: 'sharing-status' })
 
   const inventoryMetadata = /^inventory-metadata:([^:]+)$/.exec(value)
   if (inventoryMetadata) return Object.freeze({
