@@ -51,6 +51,7 @@ describe('sharing routes', () => {
         summary: { views: 1, items: 2 },
         byteLength: 123,
         approved: false,
+        blobs: [{ value: { viewType: 'systems', publicViewId: 'view-1' } }],
       })),
       approvePreview: vi.fn(async () => ({ ...share, state: 'preview-ready' })),
       enqueuePublish: vi.fn(async () => ({ id: 7, state: 'queued' })),
@@ -65,7 +66,11 @@ describe('sharing routes', () => {
     })
     const preview = await fetch(`${baseUrl}/api/sharing/shares/3/preview`, { method: 'POST' })
     expect(preview.status).toBe(200)
-    expect(await preview.json()).toMatchObject({ manifestHash: 'a'.repeat(64), summary: { items: 2 } })
+    expect(await preview.json()).toMatchObject({
+      manifestHash: 'a'.repeat(64),
+      summary: { items: 2 },
+      views: [{ viewType: 'systems', publicViewId: 'view-1' }],
+    })
     const publish = await fetch(`${baseUrl}/api/sharing/shares/3/publish`, { method: 'POST' })
     expect(publish.status).toBe(202)
     expect(publicationService.enqueuePublish).toHaveBeenCalledWith(3)

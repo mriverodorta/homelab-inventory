@@ -36,6 +36,7 @@ GitHub is the source of truth for source and CI. Docker Hub images are built on 
 - **Hardware discovery:** Run a reviewed one-time scan and apply detected component values field by field without automatic inventory changes.
 - **Multi-user access:** Enable local passwords, OpenID Connect, or both with invitations, sessions, built-in roles, and custom permissions.
 - **Backup and restore:** Export complete or selected sections, schedule encrypted backups, and restore with dependency checks and automatic rollback.
+- **Privacy-reviewed sharing:** Publish selected Systems and Canvas views to lab.gd with exact local previews, replaceable or immutable revisions, optional expiration and embeds, and metadata excluded by default.
 - **Safe upgrades:** Keep data in `/data`, use ordered startup migrations, follow `stable` or `latest`, or pin an immutable version tag.
 
 ## Security Notice
@@ -152,6 +153,8 @@ APP_MODE=production
 UPDATE_CHANNEL=stable
 UPDATE_CHECK_ENABLED=true
 REGISTRY_REFRESH_INTERVAL_MS=21600000
+LABGD_ENABLED=true
+LABGD_ORIGIN=https://lab.gd
 TZ=UTC
 BACKUP_ENCRYPTION_PASSPHRASE=
 AUTH_BOOTSTRAP_CODE=
@@ -192,6 +195,11 @@ The data layout is:
     installation-instance.json
     installation-ed25519.pem
     installation-credentials.json
+  sharing/
+    installation-instance.json
+    installation-ed25519.pem
+    installation-credentials.json
+    public-id-key.json
   stores/                       # retained legacy migration sources
 ```
 
@@ -210,6 +218,12 @@ SQLite deployments export format 2 logical archives with independent core, telem
 Daily or weekly complete backups support a configurable time, weekday, timezone, and retention count. Docker `TZ` takes precedence over the UI timezone. Set `BACKUP_ENCRYPTION_PASSPHRASE` to at least 12 characters to encrypt scheduled stored backups. It is required for scheduled backups once owner-authentication material exists. Authentication is omitted from custom archives by default and can be exported only with archive encryption. Keep encryption passphrases outside the app.
 
 Backup history is never archived recursively. Migration and pre-restore recovery backups are listed separately. Public demo sessions are export-only and cannot access credentials, server-side backup storage, schedules, uploads, or restore.
+
+## lab.gd Sharing
+
+Production installations enroll a separate random Ed25519 sharing identity with lab.gd after local readiness. Enrollment is automatic but publication is not: each share requires explicit view selection, a local exact-data privacy preview, and approval. Public and unlisted shares can be immutable or replaceable, updated manually or after a one-minute debounce, expired, and limited to exact iframe origins.
+
+Tags, custom fields, and current Systems resource usage are excluded unless selected. Serial numbers, addresses, credentials, Agent identity, telemetry history, audit history, and Registry enrollment are never shared. Set `LABGD_ENABLED=false` before first startup for a zero-contact installation. Demo and staging modes always disable sharing. Sharing configuration and identity are separate selectable backup sections, and `sync.sh` never copies identity between installations.
 
 ## Updates And Schema Migrations
 

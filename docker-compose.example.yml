@@ -14,3 +14,5 @@ services:
     #   PORT: 8798
     #   DATA_DIR: /data
     #   SAVE_DEBOUNCE_MS: 500
+    #   LABGD_ENABLED: true
+    #   LABGD_ORIGIN: https://lab.gd

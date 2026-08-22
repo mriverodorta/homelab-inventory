@@ -12,6 +12,7 @@ export type ApplicationLiveTopic =
   | 'demo:session'
   | 'inventory-metadata:catalog'
   | `inventory-metadata:${number}`
+  | 'sharing:status'
 
 export type ApplicationLiveEvent = Readonly<{
   version: 1

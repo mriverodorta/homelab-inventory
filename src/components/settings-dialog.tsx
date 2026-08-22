@@ -20,6 +20,7 @@ import {
   UsersRound,
   RotateCcw,
   Settings,
+  Share2,
   Tags,
 } from 'lucide-react'
 import {
@@ -34,6 +35,7 @@ import { BackupRestoreSettings } from '@/components/settings/backup-restore-sett
 import { AuthenticationSettings } from '@/components/settings/authentication-settings'
 import { useAuth } from '@/hooks/use-auth'
 import { hasPermission, usePermission } from '@/hooks/use-permission'
+import { useSharingAvailability } from '@/hooks/use-sharing'
 import {
   Dialog,
   DialogContent,
@@ -76,6 +78,7 @@ import {
 const AccessSettings = lazy(() => import('@/components/settings/access-settings').then((module) => ({ default: module.AccessSettings })))
 const NotificationSettings = lazy(() => import('@/components/settings/notifications/notification-settings').then((module) => ({ default: module.NotificationSettings })))
 const InventoryMetadataSettings = lazy(() => import('@/components/settings/inventory-metadata/inventory-metadata-settings').then((module) => ({ default: module.InventoryMetadataSettings })))
+const SharingSettings = lazy(() => import('@/components/settings/sharing/sharing-settings').then((module) => ({ default: module.SharingSettings })))
 
 type SaveStatus = 'saved' | 'saving' | 'error'
 
@@ -169,6 +172,7 @@ const categories: Array<{
   { id: 'access', label: 'Access', description: 'Users, invitations, and roles', icon: UsersRound },
   { id: 'inventory-metadata', label: 'Inventory metadata', description: 'Custom fields and tags', icon: Tags },
   { id: 'registry', label: 'Registry', description: 'Catalog and private templates', icon: Database },
+  { id: 'sharing', label: 'Sharing', description: 'Publish selected views to lab.gd', icon: Share2 },
   { id: 'notifications', label: 'Notifications', description: 'Destinations, rules, and incidents', icon: BellRing },
   { id: 'backup-restore', label: 'Backup & Restore', description: 'Portable data protection', icon: ArchiveRestore },
   { id: 'updates', label: 'Updates', description: 'Image channel and status', icon: RefreshCw },
@@ -176,7 +180,7 @@ const categories: Array<{
   { id: 'about', label: 'About', description: 'Purpose, version, and links', icon: Info },
 ]
 
-export function visibleSettingsCategories(status: AuthStatus | null): typeof categories {
+export function visibleSettingsCategories(status: AuthStatus | null, sharingAvailable = false): typeof categories {
   return categories.filter((category) => {
     if (['general', 'authentication', 'feedback', 'about'].includes(category.id)) return true
     if (category.id === 'access') {
@@ -186,6 +190,7 @@ export function visibleSettingsCategories(status: AuthStatus | null): typeof cat
     if (category.id === 'project') return hasPermission(status, 'project.view')
     if (category.id === 'inventory-metadata') return hasPermission(status, 'inventory.view')
     if (category.id === 'registry') return hasPermission(status, 'registry.view')
+    if (category.id === 'sharing') return sharingAvailable && hasPermission(status, 'sharing.configure')
     if (category.id === 'notifications') return hasPermission(status, 'notifications.view')
     if (category.id === 'backup-restore') return hasPermission(status, 'backups.view')
     if (category.id === 'updates') return hasPermission(status, 'updates.view')
@@ -933,7 +938,9 @@ function FeedbackSettings(props: SettingsDialogProps) {
 export function SettingsDialog(props: SettingsDialogProps) {
   const auth = useAuth()
   const [category, setCategory] = useState<SettingsCategory>('general')
-  const availableCategories = visibleSettingsCategories(auth.status)
+  const canConfigureSharing = hasPermission(auth.status, 'sharing.configure')
+  const sharingAvailability = useSharingAvailability(props.open && canConfigureSharing)
+  const availableCategories = visibleSettingsCategories(auth.status, sharingAvailability.data?.available === true)
   const activeCategory = availableCategories.some((entry) => entry.id === category) ? category : 'general'
 
   useEffect(() => {
@@ -971,6 +978,7 @@ export function SettingsDialog(props: SettingsDialogProps) {
                 </Suspense>
               ) : null}
               {activeCategory === 'registry' ? <RegistrySettingsPanel {...props} /> : null}
+              {activeCategory === 'sharing' ? <Suspense fallback={<div className="grid min-h-52 place-items-center text-sm font-bold text-[#756d62]">Loading sharing…</div>}><SharingSettings /></Suspense> : null}
               {activeCategory === 'notifications' ? <Suspense fallback={<div className="grid min-h-52 place-items-center text-sm font-bold text-[#756d62]">Loading notifications…</div>}><NotificationSettings /></Suspense> : null}
               {activeCategory === 'backup-restore' ? <BackupRestoreSettings /> : null}
               {activeCategory === 'updates' ? <UpdateSettings {...props} /> : null}

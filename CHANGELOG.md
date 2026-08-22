@@ -6,6 +6,17 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 
 ## Unreleased
 
+### Added
+
+- Production installations can automatically enroll a separate stable Ed25519 identity with lab.gd, then configure privacy-reviewed public or unlisted Systems and Canvas shares without exposing the Homelab Inventory server.
+- Sharing supports exact local previews, immutable or replaceable revisions, manual or one-minute debounced synchronization, expiration, exact iframe origins, and optional one-time resource snapshots.
+- Sharing configuration and identity are independent selectable backup sections, while environment synchronization preserves each destination installation identity.
+
+### Security
+
+- Tags and custom fields remain excluded unless selected, and the sharing projector allowlists public fields while excluding serials, addresses, credentials, Agent identity, telemetry history, audit data, and Registry enrollment.
+- Demo, staging, and `LABGD_ENABLED=false` modes prevent sharing identity creation, enrollment, recovery, publication, and remote traffic.
+
 ## [0.14.1] - 2026-08-22
 
 ### Added

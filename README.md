@@ -59,6 +59,7 @@ It gives you one practical view of what you own, what is installed in each machi
 ### Operate and share it safely
 
 - Enable local-password, OpenID Connect, or hybrid authentication with invitations, sessions, built-in roles, and custom permission groups.
+- Publish explicitly selected Systems and Canvas views to lab.gd through a local privacy preview, with public or unlisted access, immutable or replaceable revisions, manual or debounced synchronization, expiration, embeds, and opt-in metadata.
 - Create complete or section-based portable backups, restore selected sections with dependency checks and rollback, and schedule encrypted backups with configurable retention.
 - Keep all application state outside the image in a persistent `/data` volume with ordered migrations and verified pre-migration backups.
 - Follow `stable`, test `latest`, or pin an immutable version tag; in-app update checks remain optional and anonymous.
@@ -108,6 +109,8 @@ APP_MODE=production
 UPDATE_CHANNEL=stable
 UPDATE_CHECK_ENABLED=true
 REGISTRY_REFRESH_INTERVAL_MS=21600000
+LABGD_ENABLED=true
+LABGD_ORIGIN=https://lab.gd
 TZ=UTC
 BACKUP_ENCRYPTION_PASSPHRASE=
 AUTH_BOOTSTRAP_CODE=
@@ -169,6 +172,11 @@ The app keeps user data out of the application image. Runtime data lives in `/da
     installation-instance.json
     installation-ed25519.pem
     installation-credentials.json
+  sharing/
+    installation-instance.json
+    installation-ed25519.pem
+    installation-credentials.json
+    public-id-key.json
   stores/                       # retained legacy migration sources
 ```
 
@@ -212,9 +220,17 @@ docker compose start homelab-inventory
 
 The command prints a recovery URL valid for 15 minutes. Authentication data is excluded from custom backups by default and can be exported only in an encrypted archive. Complete backups include it. Once authentication data exists, scheduled backups require `BACKUP_ENCRYPTION_PASSPHRASE`.
 
+## lab.gd Sharing
+
+Production installations create a separate random sharing identity and enroll with [lab.gd](https://lab.gd) automatically after the local app is ready. Enrollment sends no inventory or project content and never publishes a share. Every share must be configured, rendered locally, reviewed through its exact privacy summary, and approved before publication.
+
+Sharing is available in **Settings > Sharing**. Choose specific Systems or Canvas views, public or unlisted visibility, immutable or replaceable publication, manual or one-minute debounced synchronization, expiration, and exact HTTPS embed origins. Tags, custom fields, and a one-time Systems resource snapshot remain excluded unless selected explicitly. Serials, network identifiers, credentials, Agent identity, telemetry history, audit history, Registry enrollment, and private application identity never enter the share payload.
+
+Set `LABGD_ENABLED=false` before first startup to prevent sharing identity creation, enrollment, and all lab.gd traffic. Turning the Settings connection off later retains the stable local identity so reconnecting does not create another installation. Demo and staging modes always disable enrollment and publication regardless of persisted settings. See [docs/sharing.md](docs/sharing.md) for identity, backup, permission, retry, and synchronization details.
+
 ## Backup And Restore
 
-Open **Settings > Backup & Restore** to create a complete portable backup or choose individual sections such as inventory, project topology, registry state, agents, telemetry, catalog data, and the disposable cable-routing cache. A complete archive can later be restored in full or used to replace only selected sections.
+Open **Settings > Backup & Restore** to create a complete portable backup or choose individual sections such as inventory, project topology, registry state, sharing configuration and identity, agents, telemetry, catalog data, and the disposable cable-routing cache. A complete archive can later be restored in full or used to replace only selected sections.
 
 Restore is replacement-only. Before changing live data, the app validates archive paths, sizes, checksums, schema compatibility, and section dependencies; creates a complete pre-restore recovery backup; enters maintenance mode; and records a durable restore journal. A failed or interrupted restore rolls back automatically. Connected browsers reload after a successful restore.
 

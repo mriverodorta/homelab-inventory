@@ -139,6 +139,7 @@ export function registerSharingRoutes(app, {
       summary: preview.summary,
       byteLength: preview.byteLength,
       approved: preview.approved,
+      views: preview.blobs.map(({ value }) => value),
     })
   }))
 

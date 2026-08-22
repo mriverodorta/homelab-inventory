@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { cleanup, fireEvent, screen } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
-import { SettingsDialog, type SettingsDialogProps } from '@/components/settings-dialog'
+import { SettingsDialog, visibleSettingsCategories, type SettingsDialogProps } from '@/components/settings-dialog'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { renderWithOpenAuth as render } from '@/test/open-auth-test-render'
 import type { UpdateStatus } from '@/lib/update-api'
@@ -106,6 +106,27 @@ function renderSettings(overrides: Partial<SettingsDialogProps> = {}) {
 }
 
 describe('SettingsDialog', () => {
+  it('offers Sharing only when the production sharing runtime is available', () => {
+    const openStatus = {
+      mode: 'disabled',
+      setupRequired: false,
+      authenticated: true,
+      canManage: true,
+      bootstrapSource: null,
+      oidcSecretReadOnly: false,
+      localCredentialConfigured: false,
+      account: null,
+      permissions: [],
+      roles: [],
+      identityMethods: { local: false, oidc: false },
+      methods: { local: false, oidc: false },
+      oidc: {},
+    } as const
+
+    expect(visibleSettingsCategories(openStatus, false).map(({ id }) => id)).not.toContain('sharing')
+    expect(visibleSettingsCategories(openStatus, true).map(({ id }) => id)).toContain('sharing')
+  })
+
   it('opens directly at a requested settings destination', async () => {
     renderSettings({
       destination: {
@@ -182,21 +203,25 @@ describe('SettingsDialog', () => {
 
   it('disables equipment alignment when the canvas is empty or an alignment is running', () => {
     const { rerender } = render(
-      <TooltipProvider>
-        <SettingsDialog {...createProps({ snapItemsToGrid: true, placementCount: 0 })} />
-      </TooltipProvider>,
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <TooltipProvider>
+          <SettingsDialog {...createProps({ snapItemsToGrid: true, placementCount: 0 })} />
+        </TooltipProvider>
+      </QueryClientProvider>,
     )
     expect(screen.getByText('No equipment is currently placed on the canvas.')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Align equipment' })).toBeDisabled()
 
     rerender(
-      <TooltipProvider>
-        <SettingsDialog {...createProps({
-          snapItemsToGrid: true,
-          placementCount: 3,
-          aligningItemsToGrid: true,
-        })} />
-      </TooltipProvider>,
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <TooltipProvider>
+          <SettingsDialog {...createProps({
+            snapItemsToGrid: true,
+            placementCount: 3,
+            aligningItemsToGrid: true,
+          })} />
+        </TooltipProvider>
+      </QueryClientProvider>,
     )
     expect(screen.getByRole('button', { name: 'Aligning equipment' })).toBeDisabled()
   })

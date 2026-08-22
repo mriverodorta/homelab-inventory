@@ -532,9 +532,15 @@ const RELEASE_0_14_1_DETAILS: UnreleasedReleaseNotes = {
 }
 
 export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
-  highlights: [],
+  highlights: [
+    'Production installations can enroll a separate stable identity with lab.gd and publish explicitly selected Systems and Canvas views after an exact local privacy review.',
+    'Shares support immutable or replaceable revisions, manual or one-minute synchronized updates, expiration, exact iframe origins, and optional one-time resource snapshots.',
+  ],
   fixes: [],
-  notes: [],
+  notes: [
+    'Tags and custom fields remain excluded unless selected; serials, addresses, credentials, Agent identity, telemetry history, audit data, and Registry enrollment never enter share payloads.',
+    'Sharing is disabled entirely in demo and staging modes, and LABGD_ENABLED=false provides an environment-level zero-contact opt-out.',
+  ],
 }
 
 const RELEASE_0_11_2_DETAILS: UnreleasedReleaseNotes = {

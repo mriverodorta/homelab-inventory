@@ -6,6 +6,8 @@ export type BackupSectionName =
   | 'routingCache'
   | 'registryConfiguration'
   | 'registryEnrollment'
+  | 'sharingConfiguration'
+  | 'sharingIdentity'
   | 'authentication'
   | 'catalogState'
   | 'agents'

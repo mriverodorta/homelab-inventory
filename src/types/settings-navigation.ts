@@ -7,6 +7,7 @@ export type SettingsCategory =
   | 'access'
   | 'inventory-metadata'
   | 'registry'
+  | 'sharing'
   | 'notifications'
   | 'backup-restore'
   | 'updates'
