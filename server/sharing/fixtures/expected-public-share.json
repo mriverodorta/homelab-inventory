@@ -1,0 +1,21 @@
+{
+  "summary": {
+    "views": 2,
+    "items": 2,
+    "connections": 1,
+    "registryReferences": 1,
+    "tags": 1,
+    "customFields": 1
+  },
+  "registryReference": {
+    "templateKey": "desktop-dell-optiplex-micro-7090",
+    "templateRevision": 4,
+    "contentHash": "1111111111111111111111111111111111111111111111111111111111111111"
+  },
+  "customDefinition": {
+    "type": "switch",
+    "specs": {
+      "managed": true
+    }
+  }
+}

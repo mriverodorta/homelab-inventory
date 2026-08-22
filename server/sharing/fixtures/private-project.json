@@ -1,0 +1,39 @@
+{
+  "project": { "id": 1, "name": "Primary Homelab" },
+  "items": [
+    {
+      "id": 7,
+      "type": "server",
+      "name": "Dell Micro",
+      "manufacturer": "Dell",
+      "model": "OptiPlex 7090",
+      "serialNumber": "PRIVATE-SERIAL",
+      "agentCredentials": "PRIVATE-AGENT",
+      "localOverrides": { "usageRole": "server", "password": "PRIVATE-PASSWORD" },
+      "ports": [{ "id": 71, "name": "Ethernet 1", "kind": "network", "connector": "rj45", "side": "back", "speedBps": 1000000000 }]
+    },
+    {
+      "id": 8,
+      "type": "switch",
+      "name": "Custom Switch",
+      "definition": { "type": "switch", "specs": { "managed": true, "serialNumber": "PRIVATE-NESTED" }, "notes": "PRIVATE-NOTE" },
+      "ports": [{ "id": 81, "name": "Port 1", "kind": "network", "connector": "rj45", "side": "front" }]
+    }
+  ],
+  "registryLinks": [{ "itemId": 7, "templateKey": "desktop-dell-optiplex-micro-7090", "importedRevision": 4, "importedContentHash": "1111111111111111111111111111111111111111111111111111111111111111" }],
+  "metadata": [{ "itemId": 7, "tags": [{ "id": 2, "name": "k3s", "colorToken": "purple" }], "customFields": [{ "definitionId": 3, "name": "Environment", "value": "production" }] }],
+  "views": [
+    { "workspaceId": 1, "type": "systems", "name": "Systems", "itemIds": [7] },
+    {
+      "workspaceId": 2,
+      "type": "canvas",
+      "name": "Canvas",
+      "placements": [
+        { "id": 101, "itemId": 7, "x": 96, "y": 120, "width": 240, "height": 144, "zIndex": 1 },
+        { "id": 102, "itemId": 8, "x": 480, "y": 120, "width": 288, "height": 120, "zIndex": 1 }
+      ],
+      "connections": [{ "id": 201, "kind": "network", "source": { "itemId": 7, "portId": 71 }, "target": { "itemId": 8, "portId": 81 }, "route": [{ "x": 336, "y": 192 }, { "x": 480, "y": 192 }] }],
+      "viewport": { "x": 0, "y": 0, "zoom": 1 }
+    }
+  ]
+}
