@@ -5,6 +5,7 @@ import { SharingSettings } from '@/components/settings/sharing/sharing-settings'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { usePermission } from '@/hooks/use-permission'
 import { useSharing } from '@/hooks/use-sharing'
+import type { SharingEnrollmentState } from '@/lib/sharing-api'
 
 vi.mock('@/hooks/use-permission', () => ({ usePermission: vi.fn() }))
 vi.mock('@/hooks/use-sharing', () => ({ useSharing: vi.fn() }))
@@ -24,9 +25,9 @@ function sharing(overrides: Record<string, unknown> = {}) {
         settings: {
           revision: 1,
           connectionEnabled: true,
-          enrollmentState: 'connected',
+          enrollmentState: 'connected' as SharingEnrollmentState,
           attemptCount: 0,
-          nextAttemptAtMs: null,
+          nextAttemptAtMs: null as number | null,
           lastErrorCode: null,
           recoveryState: null,
         },
@@ -48,7 +49,7 @@ function sharing(overrides: Record<string, unknown> = {}) {
 }
 
 function renderSettings(value = sharing()) {
-  vi.mocked(useSharing).mockReturnValue(value as ReturnType<typeof useSharing>)
+  vi.mocked(useSharing).mockReturnValue(value as unknown as ReturnType<typeof useSharing>)
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   client.setQueryData(['sharing', 'workbooks'], [])
   client.setQueryData(['inventory-metadata', 'catalog'], { revision: 0, definitions: [], tags: [] })

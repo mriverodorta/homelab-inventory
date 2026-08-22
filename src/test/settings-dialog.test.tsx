@@ -6,6 +6,7 @@ import { TooltipProvider } from '@/components/ui/tooltip'
 import { renderWithOpenAuth as render } from '@/test/open-auth-test-render'
 import type { UpdateStatus } from '@/lib/update-api'
 import type { OnboardingStatus } from '@/lib/onboarding-api'
+import type { AuthStatus } from '@/types/auth'
 import { DEFAULT_REGISTRY_STATE } from '@/types/registry'
 
 const updateStatus: UpdateStatus = {
@@ -107,7 +108,7 @@ function renderSettings(overrides: Partial<SettingsDialogProps> = {}) {
 
 describe('SettingsDialog', () => {
   it('offers Sharing only when the production sharing runtime is available', () => {
-    const openStatus = {
+    const openStatus: AuthStatus = {
       mode: 'disabled',
       setupRequired: false,
       authenticated: true,
@@ -121,7 +122,7 @@ describe('SettingsDialog', () => {
       identityMethods: { local: false, oidc: false },
       methods: { local: false, oidc: false },
       oidc: {},
-    } as const
+    }
 
     expect(visibleSettingsCategories(openStatus, false).map(({ id }) => id)).not.toContain('sharing')
     expect(visibleSettingsCategories(openStatus, true).map(({ id }) => id)).toContain('sharing')

@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import { ShareDialog } from '@/components/settings/sharing/share-dialog'
+import type { ShareInput } from '@/lib/sharing-api'
 import type { ProjectWorkbook } from '@/lib/workbook-api'
 import type { InventoryMetadataCatalog } from '@/types/inventory-metadata'
 
@@ -45,7 +46,7 @@ const metadata: InventoryMetadataCatalog = {
 
 describe('ShareDialog', () => {
   it('excludes metadata and resource usage by default', async () => {
-    const onSave = vi.fn(async () => {})
+    const onSave = vi.fn<(input: ShareInput) => Promise<void>>(async () => {})
     render(<ShareDialog open workbooks={workbooks} metadata={metadata} busy={false} onOpenChange={vi.fn()} onSave={onSave} />)
 
     fireEvent.change(screen.getByLabelText('Title'), { target: { value: 'My lab' } })
@@ -63,7 +64,7 @@ describe('ShareDialog', () => {
   })
 
   it('selects project views and optional fields explicitly', async () => {
-    const onSave = vi.fn(async () => {})
+    const onSave = vi.fn<(input: ShareInput) => Promise<void>>(async () => {})
     render(<ShareDialog open workbooks={workbooks} metadata={metadata} busy={false} onOpenChange={vi.fn()} onSave={onSave} />)
 
     fireEvent.change(screen.getByLabelText('Title'), { target: { value: 'Rack plan' } })

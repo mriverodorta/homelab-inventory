@@ -611,7 +611,16 @@ describe('schema-29 core import', () => {
     snapshot.authentication = authentication
     try {
       importLegacyCore({ database: handle.database, snapshot, identityPlan: buildCanonicalIdentityPlan(snapshot) })
-      expect(handle.database.query('SELECT count(*) AS count FROM permissions').get()).toEqual({ count: 37 })
+      expect(handle.database.query('SELECT count(*) AS count FROM permissions').get()).toEqual({ count: 39 })
+      expect(handle.database.query(`
+        SELECT permission_key
+        FROM permissions
+        WHERE permission_key IN ('sharing.configure', 'sharing.publish')
+        ORDER BY permission_key
+      `).all()).toEqual([
+        { permission_key: 'sharing.configure' },
+        { permission_key: 'sharing.publish' },
+      ])
       expect(handle.database.query('SELECT user_id, role_id FROM user_roles').get()).toEqual({ user_id: 1, role_id: 1 })
       expect(handle.database.query('SELECT invitation_id, role_id FROM invitation_roles').get()).toEqual({ invitation_id: 1, role_id: 4 })
       const projected = projectAuthenticationState(handle.database)
