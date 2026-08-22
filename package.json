@@ -2,7 +2,7 @@
   "name": "homelab-inventory",
   "private": true,
   "description": "Self-hosted visual inventory and cabling workbench for homelab hardware.",
-  "version": "0.14.0",
+  "version": "0.14.1",
   "license": "MIT",
   "type": "module",
   "workspaces": [
@@ -52,14 +52,14 @@
     "packages:share:check": "bun scripts/check-share-packages.mjs",
     "start": "NODE_ENV=production bun server/index.mjs",
     "auth:reset-owner": "bun server/auth/reset-owner-cli.mjs",
-    "test": "vitest run && bun run test:auth && bun run test:sqlite",
+    "test": "NODE_OPTIONS=--no-experimental-webstorage vitest run && bun run test:auth && bun run test:sqlite",
     "test:auth": "bun test server/auth/*.bun_spec.mjs",
     "test:sqlite": "bun test scripts/verify-sqlite-runtime.bun_spec.mjs scripts/check-database-migrations.bun_spec.mjs scripts/benchmark-sqlite-persistence.bun_spec.mjs scripts/ci/*.bun_spec.mjs scripts/local-release/*.bun_spec.mjs server/persistence server/registry/*.bun_spec.mjs server/telemetry/*.bun_spec.mjs",
     "test:bundle": "bun test scripts/check-frontend-bundle.bun_spec.mjs",
-    "test:public-packages": "vitest run packages/catalog-protocol packages/share-contract packages/viewer-model packages/viewer-react scripts/check-share-packages.test.mjs",
-    "test:share-packages": "vitest run packages/share-contract packages/viewer-model packages/viewer-react scripts/check-share-packages.test.mjs",
+    "test:public-packages": "NODE_OPTIONS=--no-experimental-webstorage vitest run packages/catalog-protocol packages/share-contract packages/viewer-model packages/viewer-react scripts/check-share-packages.test.mjs",
+    "test:share-packages": "NODE_OPTIONS=--no-experimental-webstorage vitest run packages/share-contract packages/viewer-model packages/viewer-react scripts/check-share-packages.test.mjs",
     "benchmark:catalog-startup": "bun scripts/benchmark-catalog-startup.mjs",
-    "test:watch": "vitest"
+    "test:watch": "NODE_OPTIONS=--no-experimental-webstorage vitest"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

@@ -516,7 +516,7 @@ const RELEASE_0_14_0_DETAILS: UnreleasedReleaseNotes = {
   ],
 }
 
-export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
+const RELEASE_0_14_1_DETAILS: UnreleasedReleaseNotes = {
   highlights: [
     'Versioned share contracts and reusable read-only Systems, Canvas, workbook, and Inspector viewers now provide the deterministic rendering foundation for lab.gd.',
     'The canonical catalog protocol can now be consumed as a public versioned package so external viewers verify exact signed Registry revisions with the same normalization and hashing rules as Homelab Inventory.',
@@ -529,6 +529,12 @@ export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
     'Frozen public fixtures and package audits keep generated IDs, Registry revision references, privacy boundaries, deep links, responsive behavior, and package contents reproducible across Homelab Inventory and lab.gd.',
     'The public catalog package contains verification code but no Registry signing authority; private signing keys remain isolated to the Registry publication worker.',
   ],
+}
+
+export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
+  highlights: [],
+  fixes: [],
+  notes: [],
 }
 
 const RELEASE_0_11_2_DETAILS: UnreleasedReleaseNotes = {
@@ -1058,9 +1064,16 @@ const RELEASE_0_2_1_DETAILS: UnreleasedReleaseNotes = {
 
 export const RELEASE_NOTES: ReleaseNoteEntry[] = [
   {
+    version: '0.14.1',
+    date: '2026-08-22',
+    channel: 'latest',
+    title: 'Reliable owner setup and shared protocols',
+    ...RELEASE_0_14_1_DETAILS,
+  },
+  {
     version: '0.14.0',
     date: '2026-08-19',
-    channel: 'latest',
+    channel: 'release',
     title: 'Custom fields, tags, and saved views',
     ...RELEASE_0_14_0_DETAILS,
   },

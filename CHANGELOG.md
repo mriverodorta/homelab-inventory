@@ -6,6 +6,8 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 
 ## Unreleased
 
+## [0.14.1] - 2026-08-22
+
 ### Added
 
 - Deterministic versioned share contracts, immutable read models, and reusable read-only React viewers now provide the public Systems, Canvas, workbook, Inspector, deep-link, and responsive rendering foundation for lab.gd.
