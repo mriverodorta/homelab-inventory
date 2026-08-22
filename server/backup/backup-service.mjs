@@ -402,7 +402,7 @@ export class BackupService {
       const directory = path.join(this.store.dataDir, 'sharing')
       await fs.mkdir(directory, { recursive: true, mode: 0o700 })
       await fs.chmod(directory, 0o700)
-      for (const name of ['installation-instance.json', 'installation-ed25519.pem', 'installation-credentials.json', 'installation-recovery-ed25519.pem']) {
+      for (const name of ['installation-instance.json', 'installation-ed25519.pem', 'installation-credentials.json', 'installation-recovery-ed25519.pem', 'public-id-key']) {
         await fs.rm(path.join(directory, name), { force: true })
       }
       for (const file of sharingIdentityFilesFromArchive(parsed.files)) await writePrivate(path.join(directory, file.relativePath), file.body)

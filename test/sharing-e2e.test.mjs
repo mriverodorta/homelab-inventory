@@ -1,11 +1,26 @@
 import { afterEach, describe, expect, it } from 'vitest'
-import { mkdtemp, rm } from 'node:fs/promises'
+import { mkdtemp, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { SharingInstallationIdentityService } from '../server/sharing/installation-identity.mjs'
 import { LabGdPublicationClient } from '../server/sharing/labgd-client.mjs'
+import { signedRequestHeaders } from '../server/sharing/installation-auth.mjs'
+import { FakeLabGd } from './support/fake-labgd.mjs'
 
 const roots = []
+
+const capabilities = {
+  protocolVersion: 1,
+  shareContractVersions: [1],
+  viewContractVersions: { systems: [1], canvas: [1] },
+  capabilities: {
+    installationEvents: { supported: true },
+    protectedPasswordHandoff: { supported: true },
+    lifecycleOperations: { supported: true },
+    accountClaiming: { supported: true },
+    ownerAnalytics: { supported: true },
+  },
+}
 
 afterEach(async () => {
   await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })))
@@ -31,6 +46,7 @@ describe('lab.gd sharing protocol', () => {
       const pathname = new URL(url).pathname
       paths.push(pathname)
       if (pathname === '/readyz') return Response.json({ status: 'ready', contractMode: 'packages-enabled', publicationReady: true })
+      if (pathname === '/v1/capabilities') return Response.json(capabilities)
       if (pathname === '/v1/installations/challenge') return Response.json({ value: 'challenge-value' }, { status: 201 })
       if (pathname === '/v1/installations/activate') return Response.json({ status: 'active', installationId: 7, token: 't'.repeat(32) }, { status: 201 })
       expect(init.headers.authorization).toBe(`Bearer ${'t'.repeat(32)}`)
@@ -50,7 +66,7 @@ describe('lab.gd sharing protocol', () => {
     })
 
     await identity.activate()
-    expect(paths).toEqual(['/readyz', '/v1/installations/challenge', '/v1/installations/activate'])
+    expect(paths).toEqual(['/readyz', '/v1/capabilities', '/v1/installations/challenge', '/v1/installations/activate'])
     expect(paths.some((path) => path.startsWith('/v1/publications/'))).toBe(false)
 
     const client = new LabGdPublicationClient({ identityService: identity })
@@ -78,5 +94,65 @@ describe('lab.gd sharing protocol', () => {
     })
     await restarted.activate()
     expect(paths.filter((path) => path === '/v1/installations/challenge')).toHaveLength(1)
+  })
+
+  it('keeps signed publication ownership isolated across two installations', async () => {
+    const fake = new FakeLabGd()
+    const services = []
+    for (let index = 0; index < 2; index += 1) {
+      const dataDir = await mkdtemp(join(tmpdir(), `homelab-sharing-owner-${index}-`))
+      roots.push(dataDir)
+      const identity = new SharingInstallationIdentityService({
+        dataDir,
+        repository: projectionRepository(),
+        labGdOrigin: 'https://lab.example.test',
+        fetchImpl: fake.fetch,
+        now: () => new Date('2026-08-22T12:00:00.000Z'),
+      })
+      await identity.activate()
+      services.push({ identity, client: new LabGdPublicationClient({ identityService: identity }) })
+    }
+
+    const manifest = { shareContractVersion: 1 }
+    await expect(services[0].client.stage({ idempotencyKey: 'owner-a', sharePublicId: 'share_public_0001', manifest, availableHashes: [] }))
+      .resolves.toMatchObject({ operationId: 1 })
+    await expect(services[1].client.stage({ idempotencyKey: 'owner-b', sharePublicId: 'share_public_0001', manifest, availableHashes: [] }))
+      .rejects.toMatchObject({ code: 'not-found' })
+    await expect(services[1].client.stage({ idempotencyKey: 'owner-b-own', sharePublicId: 'share_public_0002', manifest, availableHashes: [] }))
+      .resolves.toMatchObject({ operationId: 2 })
+    expect(fake.installations).toHaveLength(2)
+    expect(fake.shareOwners.get('share_public_0001')).not.toBe(fake.shareOwners.get('share_public_0002'))
+  })
+
+  it('rejects a replayed signed installation nonce', async () => {
+    const fake = new FakeLabGd()
+    const dataDir = await mkdtemp(join(tmpdir(), 'homelab-sharing-replay-'))
+    roots.push(dataDir)
+    const identity = new SharingInstallationIdentityService({
+      dataDir,
+      repository: projectionRepository(),
+      labGdOrigin: 'https://lab.example.test',
+      fetchImpl: fake.fetch,
+      now: () => new Date('2026-08-22T12:00:00.000Z'),
+    })
+    await identity.activate()
+    const { keys } = await identity.ensure()
+    const credentials = JSON.parse(await readFile(join(dataDir, 'sharing', 'installation-credentials.json'), 'utf8'))
+    const body = Buffer.from(JSON.stringify({ sharePublicId: 'share_public_replay' }))
+    const headers = {
+      'content-type': 'application/json',
+      ...signedRequestHeaders({
+        token: credentials.token,
+        body,
+        scope: 'publication:write',
+        privateKey: keys.privateKey,
+        now: new Date('2026-08-22T12:00:00.000Z'),
+        nonce: 'replayed-installation-nonce',
+      }),
+    }
+    const first = await fake.fetch('https://lab.example.test/v1/publications/manifest', { method: 'POST', headers, body })
+    const replay = await fake.fetch('https://lab.example.test/v1/publications/manifest', { method: 'POST', headers, body })
+    expect(first.status).toBe(202)
+    expect(replay.status).toBe(401)
   })
 })

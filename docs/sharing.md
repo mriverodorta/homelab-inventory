@@ -64,7 +64,7 @@ Sharing identity is independent from Registry enrollment:
 /data/sharing/installation-instance.json
 /data/sharing/installation-ed25519.pem
 /data/sharing/installation-credentials.json
-/data/sharing/public-id-key.json
+/data/sharing/public-id-key
 ```
 
 Private files use mode `0600`. Short-lived credentials can be renewed, while
@@ -75,8 +75,9 @@ retry loop.
 
 `sync.sh` excludes every sharing identity file in both directions and rebuilds
 the destination's public SQLite projection when needed. Complete backups and
-the Sharing identity section preserve the identity as one validated set;
-Sharing configuration can be backed up separately.
+the Sharing identity section preserve the UUID, signing credentials, recovery
+key, and deterministic 32-byte public-ID key as one validated set; Sharing
+configuration can be backed up separately.
 
 ## Configuration
 
@@ -95,10 +96,16 @@ Demo and staging modes always disable identity creation, enrollment, recovery,
 rotation, publication, and remote events regardless of environment or persisted
 settings. lab.gd failures never block Homelab Inventory health or readiness.
 
-Password-protected share configuration is represented locally, but publication
-remains disabled until lab.gd exposes the signed installation password handoff.
-Homelab Inventory never stores the share password locally or substitutes an
-insecure transport while that endpoint is unavailable.
+Optional behavior is exposed only after Homelab Inventory validates lab.gd's
+public capability contract. Password-protected shares, remote lifecycle
+actions, account claiming, owner analytics, and installation events remain
+hidden or disabled when the service does not explicitly advertise support.
+Homelab Inventory sends a protected-share password only through the negotiated
+signed installation handoff and never stores it locally.
+
+Installation tokens carry explicit short-lived scopes. Older credentials can
+continue publishing, but a newly required operation first refreshes the token
+and fails closed if lab.gd does not grant its required scope.
 
 ## Permissions
 
@@ -109,3 +116,20 @@ insecure transport while that endpoint is unavailable.
 Every API route is protected by the server's default-deny authorization policy.
 State changes reach the browser through the existing authenticated application
 SSE stream; the browser does not poll sharing status.
+
+## Rollout Verification
+
+The read-only integration verifier checks both services without creating,
+updating, or publishing a share:
+
+```bash
+HLI_ORIGIN=https://inventory.example.com \
+LABGD_ORIGIN=https://lab.gd \
+HLI_SESSION_COOKIE='session-cookie-name=session-value' \
+bun run sharing:integration:check
+```
+
+It requires a healthy production app, a package-backed and publication-ready
+lab.gd service, connected automatic enrollment, and an exact match between the
+remote capability document and both application capability projections. See
+`docs/sharing-rollout.md` for the coordinated deployment and rollback order.

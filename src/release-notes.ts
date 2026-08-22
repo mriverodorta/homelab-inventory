@@ -535,11 +535,16 @@ export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
   highlights: [
     'Production installations can enroll a separate stable identity with lab.gd and publish explicitly selected Systems and Canvas views after an exact local privacy review.',
     'Shares support immutable or replaceable revisions, manual or one-minute synchronized updates, expiration, exact iframe origins, and optional one-time resource snapshots.',
+    'Optional lab.gd features now appear only after explicit contract negotiation, including protected shares, lifecycle controls, GitHub account claiming, owner analytics, and installation events.',
   ],
-  fixes: [],
+  fixes: [
+    'Sharing identity backups and environment synchronization now preserve and isolate the deterministic public-ID key together with the installation UUID, signing credentials, and recovery key.',
+    'Installation credentials refresh before newly scoped operations and fail closed when lab.gd does not grant the required capability.',
+  ],
   notes: [
     'Tags and custom fields remain excluded unless selected; serials, addresses, credentials, Agent identity, telemetry history, audit data, and Registry enrollment never enter share payloads.',
     'Sharing is disabled entirely in demo and staging modes, and LABGD_ENABLED=false provides an environment-level zero-contact opt-out.',
+    'A read-only rollout verifier checks both services, automatic enrollment, and exact capability agreement without creating or changing a share.',
   ],
 }
 

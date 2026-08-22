@@ -22,6 +22,23 @@ function sharing(overrides: Record<string, unknown> = {}) {
         demo: false,
         staging: false,
         origin: 'https://lab.gd',
+        capabilities: {
+          version: 1,
+          publication: true,
+          accountClaiming: false,
+          installationEvents: false,
+          ownerAnalytics: false,
+          protectedShares: false,
+          remoteLifecycle: false,
+          views: ['systems', 'canvas'],
+          visibility: ['public', 'unlisted'],
+          mutability: ['immutable', 'replaceable'],
+          synchronization: ['manual', 'synchronized'],
+          embeds: true,
+          resourceSnapshots: true,
+          comments: 'coming-soon',
+          reactions: 'coming-soon',
+        },
         settings: {
           revision: 1,
           connectionEnabled: true,
@@ -90,6 +107,12 @@ describe('SharingSettings', () => {
     renderSettings()
     expect(screen.queryByRole('button', { name: 'New share' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Connect account' })).not.toBeInTheDocument()
+  })
+
+  it('keeps account and analytics controls hidden until lab.gd confirms support', () => {
+    renderSettings()
+    expect(screen.queryByRole('button', { name: 'Connect account' })).not.toBeInTheDocument()
+    expect(screen.queryByText('Audience')).not.toBeInTheDocument()
   })
 
   it('renders nothing when sharing is prohibited by demo or staging policy', () => {

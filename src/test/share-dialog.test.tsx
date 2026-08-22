@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import { ShareDialog } from '@/components/settings/sharing/share-dialog'
-import type { ShareInput } from '@/lib/sharing-api'
+import type { ShareInput, SharingCapabilities } from '@/lib/sharing-api'
 import type { ProjectWorkbook } from '@/lib/workbook-api'
 import type { InventoryMetadataCatalog } from '@/types/inventory-metadata'
 
@@ -44,10 +44,28 @@ const metadata: InventoryMetadataCatalog = {
   }],
 }
 
+const capabilities: SharingCapabilities = {
+  version: 1,
+  publication: true,
+  accountClaiming: false,
+  installationEvents: false,
+  ownerAnalytics: false,
+  protectedShares: false,
+  remoteLifecycle: false,
+  views: ['systems', 'canvas'],
+  visibility: ['public', 'unlisted'],
+  mutability: ['immutable', 'replaceable'],
+  synchronization: ['manual', 'synchronized'],
+  embeds: true,
+  resourceSnapshots: true,
+  comments: 'coming-soon',
+  reactions: 'coming-soon',
+}
+
 describe('ShareDialog', () => {
   it('excludes metadata and resource usage by default', async () => {
     const onSave = vi.fn<(input: ShareInput) => Promise<void>>(async () => {})
-    render(<ShareDialog open workbooks={workbooks} metadata={metadata} busy={false} onOpenChange={vi.fn()} onSave={onSave} />)
+    render(<ShareDialog open workbooks={workbooks} metadata={metadata} capabilities={capabilities} busy={false} onOpenChange={vi.fn()} onSave={onSave} />)
 
     fireEvent.change(screen.getByLabelText('Title'), { target: { value: 'My lab' } })
     fireEvent.click(screen.getByRole('button', { name: 'Create share' }))
@@ -65,7 +83,7 @@ describe('ShareDialog', () => {
 
   it('selects project views and optional fields explicitly', async () => {
     const onSave = vi.fn<(input: ShareInput) => Promise<void>>(async () => {})
-    render(<ShareDialog open workbooks={workbooks} metadata={metadata} busy={false} onOpenChange={vi.fn()} onSave={onSave} />)
+    render(<ShareDialog open workbooks={workbooks} metadata={metadata} capabilities={capabilities} busy={false} onOpenChange={vi.fn()} onSave={onSave} />)
 
     fireEvent.change(screen.getByLabelText('Title'), { target: { value: 'Rack plan' } })
     fireEvent.click(screen.getByRole('button', { name: 'Select whole project' }))
@@ -86,9 +104,8 @@ describe('ShareDialog', () => {
     })
   })
 
-  it('warns that password publication stays blocked until the remote handoff exists', () => {
-    render(<ShareDialog open workbooks={workbooks} metadata={null} busy={false} onOpenChange={vi.fn()} onSave={vi.fn()} />)
-    fireEvent.click(screen.getByRole('button', { name: /Password/ }))
-    expect(screen.getByRole('status')).toHaveTextContent('The password will never be stored by this app.')
+  it('does not offer password protection before capability negotiation succeeds', () => {
+    render(<ShareDialog open workbooks={workbooks} metadata={null} capabilities={capabilities} busy={false} onOpenChange={vi.fn()} onSave={vi.fn()} />)
+    expect(screen.queryByRole('button', { name: /Password/ })).not.toBeInTheDocument()
   })
 })

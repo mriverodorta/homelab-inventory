@@ -184,10 +184,12 @@ describe('backup section ownership', () => {
         scopes: ['publication:write'],
         tokenExpiresAt: '2026-08-23T12:00:00.000Z',
       }))
+      await fs.writeFile(path.join(directory, 'public-id-key'), Buffer.alloc(32, 7))
       await Promise.all([
         fs.chmod(path.join(directory, 'installation-instance.json'), 0o600),
         fs.chmod(path.join(directory, 'installation-ed25519.pem'), 0o600),
         fs.chmod(path.join(directory, 'installation-credentials.json'), 0o600),
+        fs.chmod(path.join(directory, 'public-id-key'), 0o600),
       ])
       const store = { dataDir, snapshotStores: async () => stores() }
       const selected = await collectBackupSections({ store, sections: ['sharingIdentity'] })
@@ -197,6 +199,7 @@ describe('backup section ownership', () => {
         'sharing/installation-instance.json',
         'sharing/installation-ed25519.pem',
         'sharing/installation-credentials.json',
+        'sharing/public-id-key',
       ])
       expect(validateSharingIdentityFiles(files).instance.clientInstanceId).toBe(clientInstanceId)
       const configurationOnly = await collectBackupSections({ store, sections: ['sharingConfiguration'] })

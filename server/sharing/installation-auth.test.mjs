@@ -1,8 +1,20 @@
 import { createHash, generateKeyPairSync, verify } from 'node:crypto'
 import { describe, expect, it } from 'vitest'
-import { activationSignature, sharingIdentityHash, sharingPublicKeyId, signedRequestHeaders } from './installation-auth.mjs'
+import { activationSignature, sharingIdentityHash, sharingPublicKeyId, SHARING_TOKEN_SCOPES, signedRequestHeaders } from './installation-auth.mjs'
 
 describe('sharing installation request authentication', () => {
+  it('recognizes every scope used by installation-owned sharing operations', () => {
+    expect(SHARING_TOKEN_SCOPES).toEqual([
+      'publication:write',
+      'events:read',
+      'shares:manage',
+      'analytics:read',
+      'token:renew',
+      'key:rotate',
+      'claim:create',
+    ])
+  })
+
   it('creates deterministic identity hashes and verifiable signatures', () => {
     const { privateKey, publicKey } = generateKeyPairSync('ed25519')
     const publicKeySpki = publicKey.export({ format: 'der', type: 'spki' }).toString('base64')

@@ -8,6 +8,7 @@ import { normalizeInstallationCredentials } from '../registry/installation-ident
 import { parseSharingInstance } from '../sharing/installation-instance.mjs'
 import { normalizeSharingCredentials } from '../sharing/installation-identity.mjs'
 import { sharingIdentityHash } from '../sharing/installation-auth.mjs'
+import { SHARING_PUBLIC_ID_KEY_FILE } from '../sharing/public-id-service.mjs'
 import { AGENT_TELEMETRY_BACKUP_FILE, emptyTelemetryBackup } from '../telemetry/backup.mjs'
 import {
   assertNotificationConfig,
@@ -46,6 +47,7 @@ const SHARING_IDENTITY_FILE_NAMES = new Set([
   'installation-ed25519.pem',
   'installation-credentials.json',
   'installation-recovery-ed25519.pem',
+  SHARING_PUBLIC_ID_KEY_FILE,
 ])
 const SHARING_CONFIGURATION_TABLES = Object.freeze([
   'shares',
@@ -382,8 +384,10 @@ export function validateSharingIdentityFiles(files) {
   const instanceBody = archived.get('installation-instance.json')
   const keyBody = archived.get('installation-ed25519.pem')
   const credentialsBody = archived.get('installation-credentials.json')
+  const publicIdKey = archived.get(SHARING_PUBLIC_ID_KEY_FILE)
   if (!instanceBody && (keyBody || credentialsBody)) throw new Error('Sharing identity key and credentials require an installation instance.')
   if (credentialsBody && !keyBody) throw new Error('Sharing identity credentials require an installation signing key.')
+  if (publicIdKey && publicIdKey.byteLength !== 32) throw new Error('Sharing public ID key is invalid.')
   const instance = instanceBody ? parseSharingInstance(instanceBody) : null
   let identityHash = null
   if (keyBody) {

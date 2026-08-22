@@ -2,13 +2,13 @@ import { createHmac, randomBytes } from 'node:crypto'
 import fs from 'node:fs/promises'
 import path from 'node:path'
 
-const KEY_FILE = 'public-id-key'
+export const SHARING_PUBLIC_ID_KEY_FILE = 'public-id-key'
 
 export class SharingPublicIdService {
   constructor({ dataDir, key = null }) {
     if (!dataDir && !key) throw new Error('Sharing public IDs require a data directory or key.')
     this.directory = dataDir ? path.join(dataDir, 'sharing') : null
-    this.keyPath = this.directory ? path.join(this.directory, KEY_FILE) : null
+    this.keyPath = this.directory ? path.join(this.directory, SHARING_PUBLIC_ID_KEY_FILE) : null
     this.key = key ? Buffer.from(key) : null
   }
 

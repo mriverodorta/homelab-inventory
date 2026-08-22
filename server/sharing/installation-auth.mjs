@@ -2,6 +2,16 @@ import { createHash, randomBytes, sign } from 'node:crypto'
 
 export const SHARING_TOKEN_SCOPES = Object.freeze([
   'publication:write',
+  'events:read',
+  'shares:manage',
+  'analytics:read',
+  'token:renew',
+  'key:rotate',
+  'claim:create',
+])
+
+export const LEGACY_SHARING_TOKEN_SCOPES = Object.freeze([
+  'publication:write',
   'token:renew',
   'key:rotate',
   'claim:create',
@@ -18,7 +28,7 @@ export function activationSignature(challenge, clientInstanceId, privateKey) {
 }
 
 export function signedRequestHeaders({ token, body, scope, privateKey, now = new Date(), nonce = randomBytes(24).toString('base64url') }) {
-  if (!SHARING_TOKEN_SCOPES.includes(scope) && scope !== 'events:read') throw new Error('Sharing request scope is invalid.')
+  if (!SHARING_TOKEN_SCOPES.includes(scope)) throw new Error('Sharing request scope is invalid.')
   const timestamp = now.toISOString()
   const bodyHash = createHash('sha256').update(body).digest('hex')
   const payload = Buffer.from(`${timestamp}\n${nonce}\n${bodyHash}\n${scope}`)

@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
-import type { ShareConfiguration, ShareInput } from '@/lib/sharing-api'
+import type { ShareConfiguration, ShareInput, SharingCapabilities } from '@/lib/sharing-api'
 import type { ProjectWorkbook } from '@/lib/workbook-api'
 import type { InventoryMetadataCatalog } from '@/types/inventory-metadata'
 
@@ -96,11 +96,12 @@ function ChoiceButton({ selected, icon: Icon, title, description, onClick }: { s
   )
 }
 
-export function ShareDialog({ open, configuration, workbooks, metadata, busy, onOpenChange, onSave }: {
+export function ShareDialog({ open, configuration, workbooks, metadata, capabilities, busy, onOpenChange, onSave }: {
   open: boolean
   configuration?: ShareConfiguration | null
   workbooks: readonly ProjectWorkbook[]
   metadata: InventoryMetadataCatalog | null
+  capabilities: SharingCapabilities
   busy: boolean
   onOpenChange(open: boolean): void
   onSave(input: ShareInput): Promise<void>
@@ -120,6 +121,7 @@ export function ShareDialog({ open, configuration, workbooks, metadata, busy, on
     && (draft.expirationType !== 'duration' || draft.expirationDays > 0)
     && (draft.expirationType !== 'at' || Number.isFinite(new Date(draft.expiresAt).getTime()))
     && (!draft.embedEnabled || draft.visibility !== 'protected' || draft.embedOrigins.trim().length > 0)
+    && (draft.visibility !== 'protected' || capabilities.protectedShares)
 
   async function save() {
     setError(null)
@@ -162,8 +164,8 @@ export function ShareDialog({ open, configuration, workbooks, metadata, busy, on
 
           <section className="grid gap-3 border-t border-[#e8e1d6] pt-5">
             <h3 className="text-sm font-black text-[#20242c]">Access</h3>
-            <div className="grid gap-2 sm:grid-cols-3"><ChoiceButton selected={draft.visibility === 'public'} icon={Radio} title="Public" description="Discoverable and accessible without a password." onClick={() => setDraft((current) => ({ ...current, visibility: 'public' }))} /><ChoiceButton selected={draft.visibility === 'unlisted'} icon={Eye} title="Unlisted" description="Accessible only to people with the generated link." onClick={() => setDraft((current) => ({ ...current, visibility: 'unlisted' }))} /><ChoiceButton selected={draft.visibility === 'protected'} icon={LockKeyhole} title="Password" description="Requires a share password before any content is revealed." onClick={() => setDraft((current) => ({ ...current, visibility: 'protected' }))} /></div>
-            {draft.visibility === 'protected' ? <p role="status" className="rounded-md border border-[#e0bd86] bg-[#fff8e8] p-3 text-xs leading-5 text-[#6f4d16]">Protected publication remains blocked until lab.gd exposes the installation-authenticated password handoff. The password will never be stored by this app.</p> : null}
+            <div className={`grid gap-2 ${capabilities.protectedShares ? 'sm:grid-cols-3' : 'sm:grid-cols-2'}`}><ChoiceButton selected={draft.visibility === 'public'} icon={Radio} title="Public" description="Discoverable and accessible without a password." onClick={() => setDraft((current) => ({ ...current, visibility: 'public' }))} /><ChoiceButton selected={draft.visibility === 'unlisted'} icon={Eye} title="Unlisted" description="Accessible only to people with the generated link." onClick={() => setDraft((current) => ({ ...current, visibility: 'unlisted' }))} />{capabilities.protectedShares ? <ChoiceButton selected={draft.visibility === 'protected'} icon={LockKeyhole} title="Password" description="Requires a share password before any content is revealed." onClick={() => setDraft((current) => ({ ...current, visibility: 'protected' }))} /> : null}</div>
+            {draft.visibility === 'protected' && !capabilities.protectedShares ? <p role="alert" className="rounded-md border border-[#dfb3a5] bg-[#fff4ee] p-3 text-xs leading-5 text-[#7a2c1d]">This existing protected share cannot be changed or republished until lab.gd confirms password handoff support.</p> : null}
             <div className="grid gap-3 sm:grid-cols-2"><label className="grid gap-1.5 text-xs font-bold text-[#554b40]">Expiration<Select value={draft.expirationType} onValueChange={(value) => setDraft((current) => ({ ...current, expirationType: value as Draft['expirationType'] }))}><SelectTrigger className="bg-white"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="indefinite">No expiration</SelectItem><SelectItem value="duration">Duration</SelectItem><SelectItem value="at">Specific date</SelectItem></SelectContent></Select></label>{draft.expirationType === 'duration' ? <label className="grid gap-1.5 text-xs font-bold text-[#554b40]">Days<Input type="number" min={1} max={3650} value={draft.expirationDays} onChange={(event) => setDraft((current) => ({ ...current, expirationDays: Number(event.target.value) }))} /></label> : null}{draft.expirationType === 'at' ? <label className="grid gap-1.5 text-xs font-bold text-[#554b40]">Delete after<Input type="datetime-local" value={draft.expiresAt} onChange={(event) => setDraft((current) => ({ ...current, expiresAt: event.target.value }))} /></label> : null}</div>
           </section>
 

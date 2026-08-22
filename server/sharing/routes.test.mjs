@@ -26,7 +26,11 @@ describe('sharing routes', () => {
   ])('fails closed without creating a sharing runtime', async (flags, code) => {
     const baseUrl = await server({ ...flags, effectiveEnabled: false })
     const status = await fetch(`${baseUrl}/api/sharing/settings`).then((response) => response.json())
-    expect(status).toMatchObject({ available: false, settings: { connectionEnabled: false, enrollmentState: 'disabled' } })
+    expect(status).toMatchObject({
+      available: false,
+      capabilities: { publication: false, protectedShares: false, views: [] },
+      settings: { connectionEnabled: false, enrollmentState: 'disabled' },
+    })
     const mutation = await fetch(`${baseUrl}/api/sharing/shares`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
@@ -75,5 +79,22 @@ describe('sharing routes', () => {
     expect(publish.status).toBe(202)
     expect(publicationService.enqueuePublish).toHaveBeenCalledWith(3)
     expect(wake).toHaveBeenCalledOnce()
+  })
+
+  it('exposes optional remote behavior only after explicit capability negotiation', async () => {
+    const baseUrl = await server({
+      repository: { getSettings: () => ({ revision: 1, connectionEnabled: true, enrollmentState: 'connected' }) },
+      publicationService: {},
+      identityService: {},
+      effectiveEnabled: true,
+      remoteCapabilities: { accountClaiming: true, protectedShares: true },
+    })
+    expect(await fetch(`${baseUrl}/api/sharing/capabilities`).then((response) => response.json())).toMatchObject({
+      publication: true,
+      accountClaiming: true,
+      protectedShares: true,
+      ownerAnalytics: false,
+      visibility: ['public', 'unlisted', 'protected'],
+    })
   })
 })

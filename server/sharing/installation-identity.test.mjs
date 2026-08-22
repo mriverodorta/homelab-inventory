@@ -6,6 +6,21 @@ import { SharingInstallationIdentityService, SharingRecoveryPendingError } from 
 
 const roots = []
 
+function capabilities() {
+  return {
+    protocolVersion: 1,
+    shareContractVersions: [1],
+    viewContractVersions: { systems: [1], canvas: [1] },
+    capabilities: {
+      installationEvents: { supported: true },
+      protectedPasswordHandoff: { supported: true },
+      lifecycleOperations: { supported: true },
+      accountClaiming: { supported: true },
+      ownerAnalytics: { supported: true },
+    },
+  }
+}
+
 afterEach(async () => {
   await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })))
 })
@@ -39,6 +54,7 @@ async function setup(handler = null) {
     }
     const request = { url: new URL(url), init, body }
     requests.push(request)
+    if (request.url.pathname === '/v1/capabilities') return Response.json(capabilities())
     if (handler) return handler(request, requests)
     if (request.url.pathname === '/readyz') return Response.json({ status: 'ready', contractMode: 'packages-enabled', publicationReady: true })
     if (request.url.pathname.endsWith('/challenge')) return Response.json({ value: 'challenge-value' }, { status: 201 })
@@ -84,6 +100,55 @@ describe('sharing installation identity', () => {
     expect((await stat(join(dataDir, 'sharing', 'installation-credentials.json'))).mode & 0o777).toBe(0o600)
     await service.activate()
     expect(requests.filter(({ url }) => url.pathname.endsWith('/challenge'))).toHaveLength(1)
+  })
+
+  it('persists server-granted scopes and refreshes legacy credentials before a new operation', async () => {
+    let activations = 0
+    const { dataDir, service } = await setup((request) => {
+      if (request.url.pathname === '/readyz') return Response.json({ status: 'ready', contractMode: 'packages-enabled', publicationReady: true })
+      if (request.url.pathname.endsWith('/challenge')) return Response.json({ value: `challenge-${activations}` }, { status: 201 })
+      if (request.url.pathname.endsWith('/activate')) {
+        activations += 1
+        return Response.json({
+          status: 'active',
+          installationId: 7,
+          token: String(activations).repeat(32),
+          scopes: activations === 1
+            ? ['publication:write', 'token:renew', 'key:rotate', 'claim:create']
+            : ['publication:write', 'events:read', 'shares:manage', 'analytics:read', 'token:renew', 'key:rotate', 'claim:create'],
+          tokenExpiresAt: '2026-08-22T13:00:00.000Z',
+        }, { status: 201 })
+      }
+      if (request.url.pathname === '/v1/installations/events') return new Response(null, { status: 204 })
+      throw new Error(`Unexpected request ${request.url.pathname}`)
+    })
+    await service.activate()
+    await service.signedFetch('/v1/installations/events', { method: 'GET', scope: 'events:read' })
+    expect(activations).toBe(2)
+    expect(JSON.parse(await readFile(join(dataDir, 'sharing', 'installation-credentials.json'), 'utf8')).scopes).toContain('events:read')
+  })
+
+  it('accepts only the complete non-secret account claim contract', async () => {
+    const { service } = await setup((request) => {
+      if (request.url.pathname === '/readyz') return Response.json({ status: 'ready', contractMode: 'packages-enabled', publicationReady: true })
+      if (request.url.pathname.endsWith('/challenge')) return Response.json({ value: 'challenge-value' }, { status: 201 })
+      if (request.url.pathname.endsWith('/activate')) return Response.json({ status: 'active', installationId: 7, token: 't'.repeat(32) }, { status: 201 })
+      if (request.url.pathname.endsWith('/claim-device')) return Response.json({
+        claimId: 'claim_123',
+        userCode: 'ABCD-2345',
+        verificationUrl: 'https://app.lab.gd/claim',
+        expiresAt: '2026-08-22T12:10:00.000Z',
+        state: 'pending',
+      }, { status: 201 })
+      throw new Error(`Unexpected request ${request.url.pathname}`)
+    })
+    expect(await service.createClaimDevice()).toEqual({
+      claimId: 'claim_123',
+      userCode: 'ABCD-2345',
+      verificationUrl: 'https://app.lab.gd/claim',
+      expiresAt: '2026-08-22T12:10:00.000Z',
+      state: 'pending',
+    })
   })
 
   it('persists recovery pending without generating repeated replacement keys', async () => {

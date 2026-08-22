@@ -8,12 +8,14 @@ import path from 'node:path'
 import { SHARE_CONTRACT_VERSION } from '../../packages/share-contract/src/index.ts'
 import {
   activationSignature,
+  LEGACY_SHARING_TOKEN_SCOPES,
   sharingIdentityHash,
   sharingPublicKeyId,
   SHARING_TOKEN_SCOPES,
   signedRequestHeaders,
 } from './installation-auth.mjs'
 import { ensureSharingInstance } from './installation-instance.mjs'
+import { normalizeLabGdCapabilities } from './remote-capabilities.mjs'
 
 const DEFAULT_LABGD_ORIGIN = 'https://lab.gd'
 const REQUEST_TIMEOUT_MS = 15_000
@@ -75,6 +77,7 @@ export class SharingInstallationIdentityService {
     this.fetchImpl = fetchImpl
     this.now = now
     this.inFlight = null
+    this.remoteCapabilities = null
   }
 
   async ensureKeyPair(filePath = this.privateKeyPath) {
@@ -169,16 +172,28 @@ export class SharingInstallationIdentityService {
       error.retryAfterMs = retryAfterMs(response)
       throw error
     }
-    return { shareContractVersion: SHARE_CONTRACT_VERSION }
+    const capabilityResponse = await this.request('/v1/capabilities')
+    const capabilityDocument = await boundedJson(capabilityResponse)
+    if (!capabilityResponse.ok) throw httpError(capabilityResponse, capabilityDocument, 'labgd-capabilities-failed')
+    try {
+      this.remoteCapabilities = normalizeLabGdCapabilities(capabilityDocument)
+    } catch (error) {
+      throw new SharingUnsupportedError(error instanceof Error ? error.message : undefined)
+    }
+    return { shareContractVersion: SHARE_CONTRACT_VERSION, capabilities: this.remoteCapabilities }
   }
 
-  async activateInternal({ keyPath = this.privateKeyPath, promoteRecovery = false } = {}) {
+  getCapabilities() {
+    return this.remoteCapabilities ?? {}
+  }
+
+  async activateInternal({ keyPath = this.privateKeyPath, promoteRecovery = false, forceRefresh = false } = {}) {
     await this.readiness()
     const current = await this.ensure()
     const { instance } = current
     const keys = keyPath === this.privateKeyPath ? current.keys : await this.ensureKeyPair(keyPath)
     const existing = await this.readCredentials(instance)
-    if (!promoteRecovery && existing && Date.parse(existing.tokenExpiresAt) > this.now().getTime() + TOKEN_REFRESH_MARGIN_MS) {
+    if (!promoteRecovery && !forceRefresh && existing && Date.parse(existing.tokenExpiresAt) > this.now().getTime() + TOKEN_REFRESH_MARGIN_MS) {
       this.repository.saveInstallationProjection({
         clientInstanceId: instance.clientInstanceId,
         keyId: keys.keyId,
@@ -226,13 +241,17 @@ export class SharingInstallationIdentityService {
       throw httpError(activationResponse, activation, 'labgd-activation-failed')
     }
     const issuedAt = this.now()
+    const scopes = activation.scopes == null ? [...LEGACY_SHARING_TOKEN_SCOPES] : normalizeGrantedScopes(activation.scopes)
+    const tokenExpiresAt = typeof activation.tokenExpiresAt === 'string' && Number.isFinite(Date.parse(activation.tokenExpiresAt))
+      ? activation.tokenExpiresAt
+      : new Date(issuedAt.getTime() + TOKEN_LIFETIME_MS).toISOString()
     const credentials = {
       version: 1,
       clientInstanceId: instance.clientInstanceId,
       installationId: activation.installationId,
       token: activation.token,
-      scopes: [...SHARING_TOKEN_SCOPES],
-      tokenExpiresAt: new Date(issuedAt.getTime() + TOKEN_LIFETIME_MS).toISOString(),
+      scopes,
+      tokenExpiresAt,
     }
     await this.writeCredentials(credentials)
     if (promoteRecovery) {
@@ -267,6 +286,12 @@ export class SharingInstallationIdentityService {
     const { instance, keys } = await this.ensure()
     let credentials = await this.readCredentials(instance)
     if (!credentials || Date.parse(credentials.tokenExpiresAt) <= this.now().getTime() + TOKEN_REFRESH_MARGIN_MS) credentials = await this.activate()
+    if (!credentials.scopes.includes(scope)) credentials = await this.activateInternal({ forceRefresh: true })
+    if (!credentials.scopes.includes(scope)) {
+      const error = new Error(`lab.gd did not grant the required ${scope} scope.`)
+      error.code = 'sharing-scope-unavailable'
+      throw error
+    }
     const bytes = ArrayBuffer.isView(body)
       ? new Uint8Array(body.buffer, body.byteOffset, body.byteLength)
       : body instanceof ArrayBuffer
@@ -353,11 +378,36 @@ export class SharingInstallationIdentityService {
       scope: 'claim:create',
     })
     const result = await boundedJson(response)
-    if (!response.ok || result.status !== 'pending' || !Number.isSafeInteger(result.installationId)) {
+    if (
+      !response.ok || result.state !== 'pending'
+      || typeof result.claimId !== 'string' || !/^[A-Za-z0-9_-]{1,128}$/u.test(result.claimId)
+      || typeof result.userCode !== 'string' || !/^[A-Z2-9]{4}-[A-Z2-9]{4}$/u.test(result.userCode)
+      || !validClaimUrl(result.verificationUrl, this.labGdOrigin)
+      || typeof result.expiresAt !== 'string' || !Number.isFinite(Date.parse(result.expiresAt))
+    ) {
       throw httpError(response, result, 'labgd-claim-device-failed')
     }
     return result
   }
+}
+
+function validClaimUrl(value, labGdOrigin) {
+  if (typeof value !== 'string') return false
+  try {
+    const url = new URL(value)
+    if (url.username || url.password || url.search || url.hash) return false
+    if (url.protocol === 'https:') return true
+    return url.protocol === 'http:' && new URL(labGdOrigin).hostname === 'localhost' && url.hostname === 'localhost'
+  } catch {
+    return false
+  }
+}
+
+function normalizeGrantedScopes(value) {
+  if (!Array.isArray(value) || value.length === 0 || value.some((scope) => typeof scope !== 'string' || !SHARING_TOKEN_SCOPES.includes(scope))) {
+    throw new SharingUnsupportedError('lab.gd returned unsupported installation token scopes.')
+  }
+  return [...new Set(value)]
 }
 
 async function boundedJson(response, maximumBytes = 64 * 1024) {

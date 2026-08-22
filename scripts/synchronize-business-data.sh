@@ -47,7 +47,7 @@ for name in inventory.json project.json registry.json; do
   fi
 done
 
-for name in installation-instance.json installation-ed25519.pem installation-credentials.json installation-recovery-ed25519.pem; do
+for name in installation-instance.json installation-ed25519.pem installation-credentials.json installation-recovery-ed25519.pem public-id-key; do
   destination_identity="${destination_data_dir}/sharing/${name}"
   synchronized_identity="${output_data_dir}/sharing/${name}"
   if [[ -f "${destination_identity}" ]]; then

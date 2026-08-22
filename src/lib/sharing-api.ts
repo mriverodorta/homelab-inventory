@@ -3,12 +3,31 @@ import { apiRequest } from '@/lib/db'
 export type SharingEnrollmentState = 'pending' | 'connected' | 'retrying' | 'recovery-pending' | 'disabled' | 'unsupported'
 export type ShareState = 'unpublished' | 'preview-ready' | 'publishing' | 'synced' | 'changes-pending' | 'manual-update-available' | 'failed' | 'expired' | 'grace-period' | 'deleted'
 
+export type SharingCapabilities = Readonly<{
+  version: number
+  publication: boolean
+  accountClaiming: boolean
+  installationEvents: boolean
+  ownerAnalytics: boolean
+  protectedShares: boolean
+  remoteLifecycle: boolean
+  views: readonly ('systems' | 'canvas')[]
+  visibility: readonly ('public' | 'unlisted' | 'protected')[]
+  mutability: readonly ('immutable' | 'replaceable')[]
+  synchronization: readonly ('manual' | 'synchronized')[]
+  embeds: boolean
+  resourceSnapshots: boolean
+  comments: 'coming-soon'
+  reactions: 'coming-soon'
+}>
+
 export type SharingSettingsResponse = Readonly<{
   available: boolean
   automaticEnrollment: boolean
   demo: boolean
   staging: boolean
   origin: string
+  capabilities: SharingCapabilities
   settings: {
     revision: number
     connectionEnabled: boolean
@@ -158,6 +177,12 @@ export function resumeSharingRecovery(): Promise<{ status: 'resuming' }> {
   return apiRequest('/api/sharing/recovery/resume', { method: 'POST' })
 }
 
-export function beginSharingAccountClaim(): Promise<{ installationId: number; status: 'pending'; code?: string; claimUrl?: string }> {
+export function beginSharingAccountClaim(): Promise<{
+  claimId: string
+  userCode: string
+  verificationUrl: string
+  expiresAt: string
+  state: 'pending'
+}> {
   return apiRequest('/api/sharing/account/claim', { method: 'POST' })
 }

@@ -1,3 +1,5 @@
+import { sharingClientCapabilities } from './capabilities.mjs'
+
 function positiveId(value, label) {
   const parsed = Number(value)
   if (!Number.isSafeInteger(parsed) || parsed <= 0) {
@@ -28,7 +30,7 @@ function disabledError({ demo, staging, effectiveEnabled }) {
   return null
 }
 
-function publicSettings(repository, flags) {
+function publicSettings(repository, flags, capabilities) {
   const persisted = repository?.getSettings() ?? {
     revision: 0,
     connectionEnabled: false,
@@ -47,6 +49,7 @@ function publicSettings(repository, flags) {
     demo: flags.demo,
     staging: flags.staging,
     origin: flags.origin,
+    capabilities,
     settings,
   }
 }
@@ -62,8 +65,14 @@ export function registerSharingRoutes(app, {
   staging = false,
   effectiveEnabled = false,
   origin = 'https://lab.gd',
+  remoteCapabilities = {},
 }) {
   const flags = { demo, staging, effectiveEnabled, origin }
+  const currentCapabilities = () => sharingClientCapabilities({
+    enabled: effectiveEnabled,
+    publication: Boolean(publicationService),
+    remote: identityService?.getCapabilities?.() ?? remoteCapabilities,
+  })
   const requireRuntime = () => {
     const disabled = disabledError(flags)
     if (disabled) throw disabled
@@ -73,21 +82,11 @@ export function registerSharingRoutes(app, {
   }
 
   app.get('/api/sharing/settings', (_request, response) => {
-    response.set('Cache-Control', 'no-store').json(publicSettings(repository, flags))
+    response.set('Cache-Control', 'no-store').json(publicSettings(repository, flags, currentCapabilities()))
   })
 
   app.get('/api/sharing/capabilities', (_request, response) => {
-    response.set('Cache-Control', 'no-store').json({
-      available: effectiveEnabled,
-      views: ['systems', 'canvas'],
-      visibility: ['public', 'unlisted', 'protected'],
-      mutability: ['immutable', 'replaceable'],
-      synchronization: ['manual', 'synchronized'],
-      embeds: true,
-      resourceSnapshots: true,
-      comments: 'coming-soon',
-      reactions: 'coming-soon',
-    })
+    response.set('Cache-Control', 'no-store').json(currentCapabilities())
   })
 
   app.patch('/api/sharing/settings', (request, response) => handle(response, async () => {
@@ -95,7 +94,7 @@ export function registerSharingRoutes(app, {
     if (typeof request.body?.connectionEnabled !== 'boolean') throw new Error('connectionEnabled must be boolean.')
     const updated = repository.setConnectionEnabled(positiveId(request.body.expectedRevision, 'Expected revision'), request.body.connectionEnabled)
     enrollmentCoordinator?.wake()
-    response.json(publicSettings(repository, flags))
+    response.json(publicSettings(repository, flags, currentCapabilities()))
     return updated
   }))
 
