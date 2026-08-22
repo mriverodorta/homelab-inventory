@@ -263,7 +263,7 @@ export class SharingInstallationIdentityService {
     return this.inFlight
   }
 
-  async signedFetch(pathname, { method = 'POST', body = new Uint8Array(), scope = 'publication:write', headers = {} } = {}) {
+  async signedFetch(pathname, { method = 'POST', body = new Uint8Array(), scope = 'publication:write', headers = {}, timeoutMs = REQUEST_TIMEOUT_MS } = {}) {
     const { instance, keys } = await this.ensure()
     let credentials = await this.readCredentials(instance)
     if (!credentials || Date.parse(credentials.tokenExpiresAt) <= this.now().getTime() + TOKEN_REFRESH_MARGIN_MS) credentials = await this.activate()
@@ -276,6 +276,7 @@ export class SharingInstallationIdentityService {
       method,
       body: bytes,
       headers: { ...headers, ...signedRequestHeaders({ token: credentials.token, body: bytes, scope, privateKey: keys.privateKey, now: this.now() }) },
+      timeoutMs,
     })
   }
 
