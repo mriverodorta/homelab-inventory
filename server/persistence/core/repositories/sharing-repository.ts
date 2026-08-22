@@ -420,7 +420,13 @@ export function createSharingRepository(context: RepositoryContext) {
         share_id, local_revision_id, idempotency_key, kind, state,
         available_at_ms, created_at_ms, updated_at_ms
       ) VALUES (?, ?, ?, ?, 'queued', ?, ?, ?)
-      ON CONFLICT(idempotency_key) DO NOTHING
+      ON CONFLICT(idempotency_key) DO UPDATE SET
+        local_revision_id = excluded.local_revision_id,
+        state = 'queued', attempt_count = 0,
+        available_at_ms = excluded.available_at_ms,
+        remote_operation_id = NULL, last_error_code = NULL,
+        updated_at_ms = excluded.updated_at_ms
+      WHERE share_publication_operations.state = 'cancelled'
     `).run(input.shareId, input.localRevisionId ?? null, input.idempotencyKey, input.kind, input.availableAtMs ?? at, at, at)
     return sqlite.query(`
       SELECT id, share_id AS shareId, local_revision_id AS localRevisionId,
@@ -430,6 +436,15 @@ export function createSharingRepository(context: RepositoryContext) {
         updated_at_ms AS updatedAtMs
       FROM share_publication_operations WHERE idempotency_key = ?
     `).get(input.idempotencyKey)
+  }
+
+  function cancelPendingOperations(shareId: number, kind: 'publish' | 'unpublish' | 'delete' | 'resource-snapshot' = 'publish') {
+    assertPositiveId(shareId, 'Share ID')
+    return sqlite.query(`
+      UPDATE share_publication_operations
+      SET state = 'cancelled', updated_at_ms = ?
+      WHERE share_id = ? AND kind = ? AND state IN ('queued', 'retrying')
+    `).run(now(), shareId, kind).changes
   }
 
   function nextOperation(at = now()) {
@@ -495,6 +510,7 @@ export function createSharingRepository(context: RepositoryContext) {
     persistRevision,
     getLocalRevision,
     enqueueOperation,
+    cancelPendingOperations,
     nextOperation,
     updateOperation,
     saveResourceSnapshot,

@@ -125,6 +125,8 @@ export function registerSharingRoutes(app, {
       positiveId(request.body?.expectedRevision, 'Expected revision'),
       request.body,
     )
+    await publicationService.scheduleCurrentState(updated.share.id)
+    publicationCoordinator?.wake()
     response.json(updated)
   }))
 

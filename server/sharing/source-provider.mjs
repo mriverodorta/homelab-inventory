@@ -48,20 +48,23 @@ export function createSharingSourceProvider(store) {
         item.extensions_json
       FROM inventory_identity_aliases alias
       JOIN inventory_items item ON item.id = alias.item_id
-      JOIN project_inventory_memberships membership
+      LEFT JOIN project_inventory_memberships membership
         ON membership.item_id = item.id AND membership.project_id = ?
       WHERE item.archived_at_ms IS NULL
+        AND (membership.id IS NOT NULL OR item.owner_project_id = ?)
       ORDER BY alias.item_id
-    `).all(projectId)
+    `).all(projectId, projectId)
     const canonicalByRuntime = new Map(canonicalRows.map((row) => [`${row.legacy_type_key}:${row.legacy_id}`, row]))
     const ports = database.query(`
       SELECT port.id, port.item_id, alias.legacy_port_id
       FROM inventory_ports port
       JOIN port_identity_aliases alias ON alias.port_id = port.id
-      JOIN project_inventory_memberships membership
+      JOIN inventory_items item ON item.id = port.item_id
+      LEFT JOIN project_inventory_memberships membership
         ON membership.item_id = port.item_id AND membership.project_id = ?
+      WHERE membership.id IS NOT NULL OR item.owner_project_id = ?
       ORDER BY port.id
-    `).all(projectId)
+    `).all(projectId, projectId)
     const portsByItem = Map.groupBy(ports, (port) => port.item_id)
     const items = canonicalRows.map((row) => {
       const runtime = base.items[`${row.legacy_type_key}:${row.legacy_id}`]
@@ -83,9 +86,14 @@ export function createSharingSourceProvider(store) {
         imported_revision AS importedRevision,
         imported_content_hash AS importedContentHash
       FROM registry_links
-      WHERE item_id IN (SELECT item_id FROM project_inventory_memberships WHERE project_id = ?)
+      WHERE item_id IN (
+        SELECT item.id FROM inventory_items item
+        LEFT JOIN project_inventory_memberships membership
+          ON membership.item_id = item.id AND membership.project_id = ?
+        WHERE membership.id IS NOT NULL OR item.owner_project_id = ?
+      )
       ORDER BY item_id
-    `).all(projectId).map((link) => [link.itemId, link]))
+    `).all(projectId, projectId).map((link) => [link.itemId, link]))
 
     const metadataByItem = new Map()
     for (const [runtimeKey, canonical] of canonicalByRuntime) {

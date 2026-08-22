@@ -95,21 +95,36 @@ export class SharingPublicationService {
   async markRelevantChange(shareId, { debounceMs = 60_000, now = Date.now() } = {}) {
     const share = this.repository.getShare(shareId)
     if (!share || share.state === 'deleted') return null
+    if (share.remoteRevision == null) return null
     const nextState = share.mutability === 'replaceable' && share.syncMode === 'synchronized'
       ? 'changes-pending'
       : 'manual-update-available'
     const updated = this.repository.updateShare(shareId, share.localRevision, { state: nextState })
     this.onStateChanged(updated)
-    if (nextState === 'changes-pending') {
-      const preview = await this.preview(shareId)
-      return this.repository.enqueueOperation({
-        shareId,
-        localRevisionId: preview.localRevisionId,
-        idempotencyKey: idempotencyKey(shareId, preview.manifestHash),
-        kind: 'publish',
-        availableAtMs: now + debounceMs,
-      })
+    return this.scheduleCurrentState(shareId, { debounceMs, now })
+  }
+
+  async scheduleCurrentState(shareId, { debounceMs = 60_000, now = Date.now() } = {}) {
+    const share = this.repository.getShare(shareId)
+    if (!share || share.state === 'deleted' || share.remoteRevision == null) return null
+    if (share.mutability !== 'replaceable' || share.syncMode !== 'synchronized') return null
+    const preview = await this.preview(shareId)
+    if (share.activeManifestHash === preview.manifestHash) {
+      this.repository.cancelPendingOperations(shareId, 'publish')
+      const current = this.repository.getShare(shareId)
+      if (current.state !== 'synced') {
+        const synced = this.repository.updateShare(shareId, current.localRevision, { state: 'synced' })
+        this.onStateChanged(synced)
+      }
+      return null
     }
-    return null
+    this.repository.cancelPendingOperations(shareId, 'publish')
+    return this.repository.enqueueOperation({
+      shareId,
+      localRevisionId: preview.localRevisionId,
+      idempotencyKey: idempotencyKey(shareId, preview.manifestHash),
+      kind: 'publish',
+      availableAtMs: now + debounceMs,
+    })
   }
 }

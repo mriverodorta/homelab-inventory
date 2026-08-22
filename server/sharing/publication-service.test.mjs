@@ -29,12 +29,25 @@ function repository(syncMode = 'manual') {
     getLocalRevision: (id) => revisions.get(id) ?? null,
     enqueueOperation: (input) => {
       const existing = [...operations.values()].find(({ idempotencyKey }) => idempotencyKey === input.idempotencyKey)
-      if (existing) return existing
+      if (existing) {
+        if (existing.state === 'cancelled') Object.assign(existing, input, { state: 'queued', attemptCount: 0 })
+        return existing
+      }
       const operation = { id: nextOperationId++, attemptCount: 0, state: 'queued', availableAtMs: 0, ...input }
       operations.set(operation.id, operation)
       return operation
     },
     updateOperation: (id, patch) => operations.set(id, { ...operations.get(id), ...patch }),
+    cancelPendingOperations: (_shareId, kind = 'publish') => {
+      let count = 0
+      for (const operation of operations.values()) {
+        if (operation.kind === kind && ['queued', 'retrying'].includes(operation.state)) {
+          operation.state = 'cancelled'
+          count += 1
+        }
+      }
+      return count
+    },
     operations,
   }
 }
@@ -89,13 +102,31 @@ describe('sharing publication service', () => {
 
   it('debounces synchronized shares while manual shares only become update available', async () => {
     const synchronized = service('synchronized')
+    synchronized.repo.updateShare(1, 1, { remoteRevision: 1, state: 'synced' })
     const scheduled = await synchronized.publication.markRelevantChange(1, { now: 1_000, debounceMs: 60_000 })
     expect(scheduled).toMatchObject({ kind: 'publish', availableAtMs: 61_000, localRevisionId: 1 })
     expect(synchronized.repo.getShare()).toMatchObject({ state: 'changes-pending' })
 
     const manual = service('manual')
+    manual.repo.updateShare(1, 1, { remoteRevision: 1, state: 'synced' })
     expect(await manual.publication.markRelevantChange(1)).toBeNull()
     expect(manual.repo.getShare()).toMatchObject({ state: 'manual-update-available' })
     expect(manual.repo.operations.size).toBe(0)
+  })
+
+  it('collapses repeated synchronized changes into one pending publication', async () => {
+    const synchronized = service('synchronized')
+    synchronized.repo.updateShare(1, 1, { remoteRevision: 1, state: 'synced' })
+    await synchronized.publication.markRelevantChange(1, { now: 1_000 })
+    await synchronized.publication.markRelevantChange(1, { now: 2_000 })
+    expect([...synchronized.repo.operations.values()].filter(({ state }) => state === 'queued')).toHaveLength(1)
+    expect([...synchronized.repo.operations.values()].filter(({ state }) => state === 'cancelled')).toHaveLength(0)
+  })
+
+  it('does not schedule unpublished shares when local project data changes', async () => {
+    const unpublished = service('synchronized')
+    expect(await unpublished.publication.markRelevantChange(1)).toBeNull()
+    expect(unpublished.repo.getShare()).toMatchObject({ state: 'unpublished', localRevision: 1 })
+    expect(unpublished.repo.operations.size).toBe(0)
   })
 })

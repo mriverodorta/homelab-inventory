@@ -148,6 +148,14 @@ describe('sharing repository', () => {
         kind: 'publish',
       })).toMatchObject({ id: 1 })
       expect(repository.nextOperation()).toMatchObject({ id: 1, shareId: 1 })
+      expect(repository.cancelPendingOperations(share.id)).toBe(1)
+      expect(repository.nextOperation()).toBeNull()
+      expect(repository.enqueueOperation({
+        shareId: share.id,
+        localRevisionId: revisionId,
+        idempotencyKey: 'publish:1:1',
+        kind: 'publish',
+      })).toMatchObject({ id: 1, state: 'queued' })
       expect(repository.updateShare(share.id, 1, { state: 'preview-ready', approvedPreviewHash: 'b'.repeat(64) })).toMatchObject({
         localRevision: 2,
         state: 'preview-ready',

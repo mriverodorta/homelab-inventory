@@ -561,6 +561,8 @@ const sharingPublicIds = sharingEffectiveEnabled ? new SharingPublicIdService({ 
 const sharingProjector = sharingPublicIds ? new ShareProjector({ publicIds: sharingPublicIds }) : null
 const sharingPublicationClient = sharingIdentity ? new LabGdPublicationClient({ identityService: sharingIdentity }) : null
 let sharingPublicationCoordinator = null
+let sharingProjectUnsubscribe = null
+let sharingMetadataUnsubscribe = null
 const publishSharingState = (value, kind = 'sharing.status-changed') => {
   if (!store) return
   const share = value && Number.isSafeInteger(value.id) ? value : null
@@ -587,6 +589,24 @@ if (sharingPublicationService) {
   sharingPublicationCoordinator = new SharingPublicationCoordinator({
     repository: sharingRepository,
     publicationService: sharingPublicationService,
+  })
+  const scheduleProjectShares = (projectIds = null) => {
+    const accepted = projectIds ? new Set(projectIds) : null
+    for (const share of sharingRepository.listShares()) {
+      if (accepted && !accepted.has(share.projectId)) continue
+      void sharingPublicationService.markRelevantChange(share.id)
+        .then(() => sharingPublicationCoordinator?.wake())
+        .catch((error) => console.error('[sharing] Unable to schedule synchronized share.', error instanceof Error ? error.message : error))
+    }
+  }
+  sharingProjectUnsubscribe = store.subscribeToProjectCommits(() => scheduleProjectShares())
+  sharingMetadataUnsubscribe = applicationEventBus.subscribe(({ scope, event }) => {
+    if (scope !== store || !event.kind.startsWith('inventory-metadata.')) return
+    const projectIds = event.topics.flatMap((topic) => {
+      const match = /^inventory-metadata:([1-9]\d*)$/u.exec(topic)
+      return match ? [Number(match[1])] : []
+    })
+    if (projectIds.length) scheduleProjectShares(projectIds)
   })
 }
 const sharingEnrollmentCoordinator = sharingEffectiveEnabled
@@ -968,6 +988,8 @@ async function shutdown(signal) {
         () => agentLifecycleScheduler?.stop(),
         () => sharingEnrollmentCoordinator?.stop(),
         () => sharingPublicationCoordinator?.stop(),
+        () => sharingProjectUnsubscribe?.(),
+        () => sharingMetadataUnsubscribe?.(),
       ],
       flush: () => demoManager ? demoManager.flushAll() : store.flush(),
       closers: demoManager
