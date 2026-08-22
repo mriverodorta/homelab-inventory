@@ -3,6 +3,20 @@ import { createAuthenticationStore } from '../../../auth/model.mjs'
 import { PERMISSIONS } from '../../../auth/permission-catalog.mjs'
 
 type Row = Record<string, any>
+type AuthenticationEntityTable =
+  | 'credentials'
+  | 'identity_link_requests'
+  | 'invitations'
+  | 'oidc_transactions'
+  | 'permissions'
+  | 'recovery_tokens'
+  | 'role_permissions'
+  | 'roles'
+  | 'security_events'
+  | 'sessions'
+  | 'user_identities'
+  | 'user_roles'
+  | 'users'
 
 function parse<T>(value: unknown, fallback: T): T {
   if (typeof value !== 'string' || !value) return structuredClone(fallback)
@@ -40,6 +54,14 @@ function defined(record: Row) {
 function metadata(database: Database, key: string, fallback: Row) {
   const row = database.query('SELECT value_json FROM application_metadata WHERE key = ?').get(key) as { value_json: string } | null
   return parse(row?.value_json, fallback)
+}
+
+function deleteRowsAbsentById(database: Database, table: AuthenticationEntityTable, records: Row[]) {
+  const retainedIds = new Set(records.map((record) => record.id))
+  const deleteRow = database.query(`DELETE FROM ${table} WHERE id = ?`)
+  for (const { id } of database.query(`SELECT id FROM ${table}`).all() as Row[]) {
+    if (!retainedIds.has(id)) deleteRow.run(id)
+  }
 }
 
 export function projectRegistryState(database: Database) {
@@ -485,13 +507,20 @@ export function persistAuthenticationState(database: Database, state: Row, now: 
     milliseconds(bootstrap.completedAt ?? settings.setupCompletedAt),
     milliseconds(settings.updatedAt, now),
   )
-  for (const table of [
-    'invitation_roles', 'user_roles', 'role_permissions', 'identity_link_requests',
-    'oidc_transactions', 'security_events', 'recovery_tokens', 'sessions',
-    'user_identities', 'credentials', 'invitations', 'roles', 'permissions',
-  ]) database.query(`DELETE FROM ${table}`).run()
+  const accounts = state.accounts ?? []
+  const roles = state.roles ?? []
+  const rolePermissions = state.rolePermissions ?? []
+  const accountRoles = state.accountRoles ?? []
+  const credentials = state.localCredentials ?? []
+  const identities = state.oidcIdentities ?? []
+  const sessions = state.sessions ?? []
+  const recoveryTokens = state.recoveryTokens ?? []
+  const securityEvents = state.securityEvents ?? []
+  const oidcTransactions = state.oidcTransactions ?? []
+  const invitations = state.invitations ?? []
+  const identityLinkRequests = state.identityLinkRequests ?? []
 
-  const insertAccount = database.query(`INSERT INTO users (
+  const upsertAccount = database.query(`INSERT INTO users (
     id, username, email, display_name, protected_owner, active, created_at_ms, updated_at_ms
   ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
   ON CONFLICT(id) DO UPDATE SET
@@ -501,8 +530,8 @@ export function persistAuthenticationState(database: Database, state: Row, now: 
     protected_owner = excluded.protected_owner,
     active = excluded.active,
     updated_at_ms = excluded.updated_at_ms`)
-  for (const account of state.accounts ?? []) {
-    insertAccount.run(
+  for (const account of accounts) {
+    upsertAccount.run(
       account.id,
       account.username,
       account.email ?? null,
@@ -513,14 +542,17 @@ export function persistAuthenticationState(database: Database, state: Row, now: 
       milliseconds(account.updatedAt, now),
     )
   }
-  const retainedAccountIds = new Set((state.accounts ?? []).map((account: Row) => account.id))
-  for (const account of database.query('SELECT id, protected_owner FROM users').all() as Row[]) {
-    if (retainedAccountIds.has(account.id)) continue
-    if (account.protected_owner) throw new Error('The protected owner cannot be deleted.')
-    database.query('DELETE FROM users WHERE id = ?').run(account.id)
-  }
-  const insertPermission = database.query('INSERT INTO permissions (id, permission_key, category, description, risk) VALUES (?, ?, ?, ?, ?)')
-  for (const permission of PERMISSIONS) insertPermission.run(
+
+  const upsertPermission = database.query(`
+    INSERT INTO permissions (id, permission_key, category, description, risk)
+    VALUES (?, ?, ?, ?, ?)
+    ON CONFLICT(id) DO UPDATE SET
+      permission_key = excluded.permission_key,
+      category = excluded.category,
+      description = excluded.description,
+      risk = excluded.risk
+  `)
+  for (const permission of PERMISSIONS) upsertPermission.run(
     permission.id,
     permission.key,
     permission.group,
@@ -528,42 +560,171 @@ export function persistAuthenticationState(database: Database, state: Row, now: 
     permission.risk === 'destructive' ? 'elevated' : permission.risk,
   )
 
-  const insertRole = database.query('INSERT INTO roles (id, key, name, description, built_in, active, created_at_ms, updated_at_ms) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
-  for (const role of state.roles ?? []) insertRole.run(role.id, role.key, role.name, role.description ?? '', Number(role.builtIn === true), Number(role.active !== false), milliseconds(role.createdAt, now), milliseconds(role.updatedAt, now))
+  const upsertRole = database.query(`
+    INSERT INTO roles (id, key, name, description, built_in, active, created_at_ms, updated_at_ms)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(id) DO UPDATE SET
+      key = excluded.key,
+      name = excluded.name,
+      description = excluded.description,
+      built_in = excluded.built_in,
+      active = excluded.active,
+      updated_at_ms = excluded.updated_at_ms
+  `)
+  for (const role of roles) upsertRole.run(role.id, role.key, role.name, role.description ?? '', Number(role.builtIn === true), Number(role.active !== false), milliseconds(role.createdAt, now), milliseconds(role.updatedAt, now))
 
-  const insertCredential = database.query("INSERT INTO credentials (id, user_id, type, secret_hash, algorithm, created_at_ms, updated_at_ms) VALUES (?, ?, 'password', ?, ?, ?, ?)")
-  for (const credential of state.localCredentials ?? []) insertCredential.run(credential.id, credential.accountId, credential.passwordHash, String(credential.passwordHash ?? '').startsWith('$argon2') ? 'argon2id' : 'legacy', milliseconds(credential.createdAt, now), milliseconds(credential.updatedAt, now))
+  // Remove obsolete dependent rows before parent cleanup while every protected
+  // role and owner assignment remains present in the validated next state.
+  database.query('DELETE FROM invitation_roles').run()
+  deleteRowsAbsentById(database, 'user_roles', accountRoles)
+  deleteRowsAbsentById(database, 'role_permissions', rolePermissions)
+  deleteRowsAbsentById(database, 'identity_link_requests', identityLinkRequests)
+  deleteRowsAbsentById(database, 'oidc_transactions', oidcTransactions)
+  deleteRowsAbsentById(database, 'security_events', securityEvents)
+  deleteRowsAbsentById(database, 'recovery_tokens', recoveryTokens)
+  deleteRowsAbsentById(database, 'sessions', sessions)
+  deleteRowsAbsentById(database, 'user_identities', identities)
+  deleteRowsAbsentById(database, 'credentials', credentials)
+  deleteRowsAbsentById(database, 'invitations', invitations)
 
-  const insertIdentity = database.query("INSERT INTO user_identities (id, user_id, provider, issuer, subject, email, created_at_ms, last_login_at_ms) VALUES (?, ?, 'oidc', ?, ?, ?, ?, ?)")
-  for (const identity of state.oidcIdentities ?? []) insertIdentity.run(identity.id, identity.accountId, identity.issuer, identity.subject, identity.email ?? null, milliseconds(identity.createdAt, now), milliseconds(identity.lastLoginAt))
+  const upsertCredential = database.query(`
+    INSERT INTO credentials (id, user_id, type, secret_hash, algorithm, created_at_ms, updated_at_ms)
+    VALUES (?, ?, 'password', ?, ?, ?, ?)
+    ON CONFLICT(id) DO UPDATE SET
+      user_id = excluded.user_id,
+      type = excluded.type,
+      secret_hash = excluded.secret_hash,
+      algorithm = excluded.algorithm,
+      updated_at_ms = excluded.updated_at_ms
+  `)
+  for (const credential of credentials) upsertCredential.run(credential.id, credential.accountId, credential.passwordHash, String(credential.passwordHash ?? '').startsWith('$argon2') ? 'argon2id' : 'legacy', milliseconds(credential.createdAt, now), milliseconds(credential.updatedAt, now))
 
-  const insertSession = database.query('INSERT INTO sessions (id, user_id, token_hash, remember, created_at_ms, last_seen_at_ms, idle_expires_at_ms, absolute_expires_at_ms, revoked_at_ms, user_agent_hash, ip_hash) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
-  for (const session of state.sessions ?? []) insertSession.run(session.id, session.accountId, session.tokenHash, Number(session.remember === true), milliseconds(session.createdAt, now), milliseconds(session.lastSeenAt, now), milliseconds(session.idleExpiresAt, now), milliseconds(session.absoluteExpiresAt, now), milliseconds(session.revokedAt), session.userAgent ?? null, session.ip ?? null)
+  const upsertIdentity = database.query(`
+    INSERT INTO user_identities (id, user_id, provider, issuer, subject, email, created_at_ms, last_login_at_ms)
+    VALUES (?, ?, 'oidc', ?, ?, ?, ?, ?)
+    ON CONFLICT(id) DO UPDATE SET
+      user_id = excluded.user_id,
+      provider = excluded.provider,
+      issuer = excluded.issuer,
+      subject = excluded.subject,
+      email = excluded.email,
+      last_login_at_ms = excluded.last_login_at_ms
+  `)
+  for (const identity of identities) upsertIdentity.run(identity.id, identity.accountId, identity.issuer, identity.subject, identity.email ?? null, milliseconds(identity.createdAt, now), milliseconds(identity.lastLoginAt))
 
-  const insertRecovery = database.query('INSERT INTO recovery_tokens (id, user_id, token_hash, created_at_ms, expires_at_ms, used_at_ms) VALUES (?, ?, ?, ?, ?, ?)')
-  for (const token of state.recoveryTokens ?? []) insertRecovery.run(token.id, token.accountId ?? null, token.tokenHash, milliseconds(token.createdAt, now), milliseconds(token.expiresAt, now), milliseconds(token.usedAt))
+  const upsertSession = database.query(`
+    INSERT INTO sessions (id, user_id, token_hash, remember, created_at_ms, last_seen_at_ms, idle_expires_at_ms, absolute_expires_at_ms, revoked_at_ms, user_agent_hash, ip_hash)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(id) DO UPDATE SET
+      user_id = excluded.user_id,
+      token_hash = excluded.token_hash,
+      remember = excluded.remember,
+      last_seen_at_ms = excluded.last_seen_at_ms,
+      idle_expires_at_ms = excluded.idle_expires_at_ms,
+      absolute_expires_at_ms = excluded.absolute_expires_at_ms,
+      revoked_at_ms = excluded.revoked_at_ms,
+      user_agent_hash = excluded.user_agent_hash,
+      ip_hash = excluded.ip_hash
+  `)
+  for (const session of sessions) upsertSession.run(session.id, session.accountId, session.tokenHash, Number(session.remember === true), milliseconds(session.createdAt, now), milliseconds(session.lastSeenAt, now), milliseconds(session.idleExpiresAt, now), milliseconds(session.absoluteExpiresAt, now), milliseconds(session.revokedAt), session.userAgent ?? null, session.ip ?? null)
 
-  const insertEvent = database.query('INSERT INTO security_events (id, user_id, actor_user_id, type, target, details_json, created_at_ms) VALUES (?, ?, ?, ?, ?, ?, ?)')
-  for (const event of state.securityEvents ?? []) insertEvent.run(event.id, event.subjectAccountId ?? null, event.accountId ?? null, event.type, event.detail ?? null, json(defined({ detail: event.detail, ip: event.ip, userAgent: event.userAgent })), milliseconds(event.createdAt, now))
+  const upsertRecovery = database.query(`
+    INSERT INTO recovery_tokens (id, user_id, token_hash, created_at_ms, expires_at_ms, used_at_ms)
+    VALUES (?, ?, ?, ?, ?, ?)
+    ON CONFLICT(id) DO UPDATE SET
+      user_id = excluded.user_id,
+      token_hash = excluded.token_hash,
+      expires_at_ms = excluded.expires_at_ms,
+      used_at_ms = excluded.used_at_ms
+  `)
+  for (const token of recoveryTokens) upsertRecovery.run(token.id, token.accountId ?? null, token.tokenHash, milliseconds(token.createdAt, now), milliseconds(token.expiresAt, now), milliseconds(token.usedAt))
 
-  const insertTransaction = database.query('INSERT INTO oidc_transactions (id, user_id, token_hash, state, nonce, code_verifier, return_to, invitation_id, created_at_ms, expires_at_ms, used_at_ms) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
-  for (const transaction of state.oidcTransactions ?? []) insertTransaction.run(transaction.id, transaction.accountId ?? null, transaction.tokenHash, transaction.state, transaction.nonce, transaction.codeVerifier, transaction.returnTo, transaction.invitationId ?? null, milliseconds(transaction.createdAt, now), milliseconds(transaction.expiresAt, now), milliseconds(transaction.usedAt))
+  const upsertEvent = database.query(`
+    INSERT INTO security_events (id, user_id, actor_user_id, type, target, details_json, created_at_ms)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(id) DO UPDATE SET
+      user_id = excluded.user_id,
+      actor_user_id = excluded.actor_user_id,
+      type = excluded.type,
+      target = excluded.target,
+      details_json = excluded.details_json
+  `)
+  for (const event of securityEvents) upsertEvent.run(event.id, event.subjectAccountId ?? null, event.accountId ?? null, event.type, event.detail ?? null, json(defined({ detail: event.detail, ip: event.ip, userAgent: event.userAgent })), milliseconds(event.createdAt, now))
 
-  const insertRolePermission = database.query('INSERT INTO role_permissions (id, role_id, permission_id) VALUES (?, ?, ?)')
-  for (const relation of state.rolePermissions ?? []) insertRolePermission.run(relation.id, relation.roleId, relation.permissionId)
-  const insertAccountRole = database.query('INSERT INTO user_roles (id, user_id, role_id, scope_kind, scope_id) VALUES (?, ?, ?, ?, ?)')
-  for (const assignment of state.accountRoles ?? []) insertAccountRole.run(assignment.id, assignment.accountId, assignment.roleId, assignment.scopeKind, assignment.scopeId)
-
-  const insertInvitation = database.query('INSERT INTO invitations (id, email, identity_type, status, token_hash, created_by_user_id, accepted_user_id, created_at_ms, expires_at_ms, accepted_at_ms, revoked_at_ms) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+  const upsertInvitation = database.query(`
+    INSERT INTO invitations (id, email, identity_type, status, token_hash, created_by_user_id, accepted_user_id, created_at_ms, expires_at_ms, accepted_at_ms, revoked_at_ms)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(id) DO UPDATE SET
+      email = excluded.email,
+      identity_type = excluded.identity_type,
+      status = excluded.status,
+      token_hash = excluded.token_hash,
+      created_by_user_id = excluded.created_by_user_id,
+      accepted_user_id = excluded.accepted_user_id,
+      expires_at_ms = excluded.expires_at_ms,
+      accepted_at_ms = excluded.accepted_at_ms,
+      revoked_at_ms = excluded.revoked_at_ms
+  `)
   const insertInvitationRole = database.query('INSERT INTO invitation_roles (id, invitation_id, role_id) VALUES (?, ?, ?)')
   let invitationRoleId = 1
-  for (const invitation of state.invitations ?? []) {
-    insertInvitation.run(invitation.id, invitation.email, invitation.identityType, invitation.status, invitation.tokenHash, invitation.createdByAccountId, invitation.accountId ?? null, milliseconds(invitation.createdAt, now), milliseconds(invitation.expiresAt, now), milliseconds(invitation.acceptedAt), milliseconds(invitation.revokedAt))
+  for (const invitation of invitations) {
+    upsertInvitation.run(invitation.id, invitation.email, invitation.identityType, invitation.status, invitation.tokenHash, invitation.createdByAccountId, invitation.accountId ?? null, milliseconds(invitation.createdAt, now), milliseconds(invitation.expiresAt, now), milliseconds(invitation.acceptedAt), milliseconds(invitation.revokedAt))
     for (const roleId of invitation.roleIds ?? []) insertInvitationRole.run(invitationRoleId++, invitation.id, roleId)
   }
 
-  const insertLinkRequest = database.query('INSERT INTO identity_link_requests (id, user_id, identity_type, status, token_hash, details_json, created_at_ms, expires_at_ms, confirmed_at_ms) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)')
-  for (const request of state.identityLinkRequests ?? []) insertLinkRequest.run(request.id, request.accountId, request.identityType, request.status, request.tokenHash, json(defined({ email: request.email, issuer: request.issuer, subject: request.subject })), milliseconds(request.createdAt, now), milliseconds(request.expiresAt, now), milliseconds(request.confirmedAt))
+  const upsertTransaction = database.query(`
+    INSERT INTO oidc_transactions (id, user_id, token_hash, state, nonce, code_verifier, return_to, invitation_id, created_at_ms, expires_at_ms, used_at_ms)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(id) DO UPDATE SET
+      user_id = excluded.user_id,
+      token_hash = excluded.token_hash,
+      state = excluded.state,
+      nonce = excluded.nonce,
+      code_verifier = excluded.code_verifier,
+      return_to = excluded.return_to,
+      invitation_id = excluded.invitation_id,
+      expires_at_ms = excluded.expires_at_ms,
+      used_at_ms = excluded.used_at_ms
+  `)
+  for (const transaction of oidcTransactions) upsertTransaction.run(transaction.id, transaction.accountId ?? null, transaction.tokenHash, transaction.state, transaction.nonce, transaction.codeVerifier, transaction.returnTo, transaction.invitationId ?? null, milliseconds(transaction.createdAt, now), milliseconds(transaction.expiresAt, now), milliseconds(transaction.usedAt))
+
+  const upsertLinkRequest = database.query(`
+    INSERT INTO identity_link_requests (id, user_id, identity_type, status, token_hash, details_json, created_at_ms, expires_at_ms, confirmed_at_ms)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(id) DO UPDATE SET
+      user_id = excluded.user_id,
+      identity_type = excluded.identity_type,
+      status = excluded.status,
+      token_hash = excluded.token_hash,
+      details_json = excluded.details_json,
+      expires_at_ms = excluded.expires_at_ms,
+      confirmed_at_ms = excluded.confirmed_at_ms
+  `)
+  for (const request of identityLinkRequests) upsertLinkRequest.run(request.id, request.accountId, request.identityType, request.status, request.tokenHash, json(defined({ email: request.email, issuer: request.issuer, subject: request.subject })), milliseconds(request.createdAt, now), milliseconds(request.expiresAt, now), milliseconds(request.confirmedAt))
+
+  const upsertRolePermission = database.query(`
+    INSERT INTO role_permissions (id, role_id, permission_id)
+    VALUES (?, ?, ?)
+    ON CONFLICT(id) DO UPDATE SET
+      role_id = excluded.role_id,
+      permission_id = excluded.permission_id
+  `)
+  for (const relation of rolePermissions) upsertRolePermission.run(relation.id, relation.roleId, relation.permissionId)
+
+  const upsertAccountRole = database.query(`
+    INSERT INTO user_roles (id, user_id, role_id, scope_kind, scope_id)
+    VALUES (?, ?, ?, ?, ?)
+    ON CONFLICT(id) DO UPDATE SET
+      user_id = excluded.user_id,
+      role_id = excluded.role_id,
+      scope_kind = excluded.scope_kind,
+      scope_id = excluded.scope_id
+  `)
+  for (const assignment of accountRoles) upsertAccountRole.run(assignment.id, assignment.accountId, assignment.roleId, assignment.scopeKind, assignment.scopeId)
+
+  deleteRowsAbsentById(database, 'users', accounts)
+  deleteRowsAbsentById(database, 'roles', roles)
+  deleteRowsAbsentById(database, 'permissions', PERMISSIONS)
 
   const entityKeys = new Set([
     'settings', 'configuration', 'bootstrapState', 'accounts', 'localCredentials', 'oidcIdentities',

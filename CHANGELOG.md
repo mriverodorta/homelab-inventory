@@ -19,6 +19,7 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 ### Fixed
 
 - Catalog protocol `0.1.1` reconciles Homelab Inventory runtime fixtures with the Registry's frozen publication vectors, preserves the `0.1.0` public API, and establishes one deterministic package for signed catalog hashing and verification.
+- First-run owner setup and subsequent authentication mutations now reconcile SQLite records by stable numeric ID without deleting protected built-in roles or the owner's required role assignment.
 
 ## [0.14.0] - 2026-08-19
 

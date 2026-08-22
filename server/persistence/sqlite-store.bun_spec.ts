@@ -20,6 +20,9 @@ import { SqliteHomelabInventoryStore } from './sqlite-store.ts'
 import nasV10Fixture from '../../packages/catalog-protocol/test/fixtures/server-specs-inventory-nas-v10.json'
 import networkV11Fixture from '../../packages/catalog-protocol/test/fixtures/network/server-specs-inventory-network-v11.json'
 import { projectLocalItemForCatalog } from '../registry/local-catalog-mapping.mjs'
+import { AuthService } from '../auth/auth-service.mjs'
+import { createAuthenticationStore } from '../auth/model.mjs'
+import { SessionService } from '../auth/session-service.mjs'
 
 const roots: string[] = []
 
@@ -2479,6 +2482,119 @@ describe('SQLite Homelab Inventory store facade', () => {
       expect(backups.schedule).toMatchObject({ time: '04:15', retention: 21 })
       expect(backups.backups).toHaveLength(1)
       expect(backups.restores).toEqual([])
+    } finally {
+      store.close()
+    }
+  })
+
+  test('persists owner bootstrap after built-in authorization records already exist', async () => {
+    const store = await fixtureStore((snapshot) => {
+      snapshot.authentication = createAuthenticationStore({ setupRequired: true }) as never
+    })
+    try {
+      const initialRoles = (store.getAuthenticationState() as any).roles.map(({ id, key }: any) => ({ id, key }))
+      const now = () => new Date('2026-08-12T01:00:00.000Z')
+      const sessions = new SessionService({ store, now })
+      const authentication = new AuthService({
+        store,
+        sessionService: sessions,
+        now,
+        runtime: {
+          bootstrapCode: 'bootstrap-code',
+          bootstrapSource: 'generated',
+          externalUrl: null,
+          oidcClientSecret: null,
+          oidcClientSecretFile: null,
+          oidcSecretLocked: false,
+          backupEncryptionConfigured: false,
+        },
+      })
+      const session = await authentication.bootstrap({
+        bootstrapCode: 'bootstrap-code',
+        username: 'owner',
+        displayName: 'Homelab Owner',
+        password: 'A-strong-owner-password-123!',
+      })
+      const bootstrapped = store.getAuthenticationState() as any
+
+      expect(session.token).toBeString()
+      expect(bootstrapped.accounts).toHaveLength(1)
+      expect(bootstrapped.localCredentials).toHaveLength(1)
+      expect(bootstrapped.securityEvents).toHaveLength(1)
+      expect(bootstrapped.sessions).toHaveLength(1)
+      expect(bootstrapped.accountRoles).toEqual([{
+        id: 1,
+        accountId: 1,
+        roleId: 1,
+        scopeKind: 'global',
+        scopeId: 0,
+      }])
+      expect(bootstrapped.roles.map(({ id, key }: any) => ({ id, key }))).toEqual(initialRoles)
+    } finally {
+      store.close()
+    }
+  })
+
+  test('removes an unassigned custom role without replacing built-in roles', async () => {
+    const store = await fixtureStore((snapshot) => {
+      snapshot.authentication = createAuthenticationStore() as never
+    })
+    try {
+      const builtInRoles = (store.getAuthenticationState() as any).roles.map(({ id, key }: any) => ({ id, key }))
+      const timestamp = '2026-08-12T01:00:00.000Z'
+      const created = store.updateAuthentication((draft: any) => {
+        draft.roles.push({
+          id: draft.nextRoleId++,
+          key: 'auditor',
+          name: 'Auditor',
+          description: 'Reviews inventory without editing it.',
+          builtIn: false,
+          active: true,
+          createdAt: timestamp,
+          updatedAt: timestamp,
+        })
+      }) as any
+      expect(created.roles.some((role: any) => role.key === 'auditor')).toBe(true)
+
+      const removed = store.updateAuthentication((draft: any) => {
+        draft.roles = draft.roles.filter((role: any) => role.key !== 'auditor')
+      }) as any
+      expect(removed.roles.map(({ id, key }: any) => ({ id, key }))).toEqual(builtInRoles)
+    } finally {
+      store.close()
+    }
+  })
+
+  test('rolls back authentication reconciliation when a dependent write fails', async () => {
+    const store = await fixtureStore((snapshot) => {
+      snapshot.authentication = createAuthenticationStore() as never
+    })
+    try {
+      const before = store.getAuthenticationState()
+      store.core.database.exec(`
+        CREATE TEMP TRIGGER reject_authentication_session
+        BEFORE INSERT ON sessions
+        BEGIN
+          SELECT RAISE(ABORT, 'injected authentication failure');
+        END;
+      `)
+
+      expect(() => store.updateAuthentication((draft: any) => {
+        draft.sessions.push({
+          id: draft.nextSessionId++,
+          accountId: null,
+          tokenHash: 'c'.repeat(64),
+          remember: false,
+          createdAt: '2026-08-12T01:00:00.000Z',
+          lastSeenAt: '2026-08-12T01:00:00.000Z',
+          idleExpiresAt: '2026-08-12T02:00:00.000Z',
+          absoluteExpiresAt: '2026-08-12T03:00:00.000Z',
+          revokedAt: null,
+          userAgent: null,
+          ip: null,
+        })
+      })).toThrow(/injected authentication failure/iu)
+      expect(store.getAuthenticationState()).toEqual(before)
     } finally {
       store.close()
     }

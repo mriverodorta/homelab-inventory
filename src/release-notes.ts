@@ -523,6 +523,7 @@ export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
   ],
   fixes: [
     'Catalog protocol 0.1.1 reconciles Homelab Inventory runtime fixtures with the Registry\'s frozen publication vectors while preserving the 0.1.0 public API and deterministic signed-catalog hashes.',
+    'First-run owner setup and later authentication changes now reconcile SQLite records by stable ID instead of attempting to delete protected built-in roles or the owner assignment.',
   ],
   notes: [
     'Frozen public fixtures and package audits keep generated IDs, Registry revision references, privacy boundaries, deep links, responsive behavior, and package contents reproducible across Homelab Inventory and lab.gd.',
