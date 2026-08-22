@@ -87,6 +87,7 @@ import { SharingPublicIdService } from './sharing/public-id-service.mjs'
 import { LabGdPublicationClient } from './sharing/labgd-client.mjs'
 import { SharingPublicationService } from './sharing/publication-service.mjs'
 import { SharingPublicationCoordinator } from './sharing/publication-coordinator.mjs'
+import { SharingInstallationEventCoordinator } from './sharing/installation-event-coordinator.mjs'
 import { createSharingResourceSnapshotProvider, createSharingSourceProvider } from './sharing/source-provider.mjs'
 import { registerSharingRoutes } from './sharing/routes.mjs'
 
@@ -561,6 +562,7 @@ const sharingPublicIds = sharingEffectiveEnabled ? new SharingPublicIdService({ 
 const sharingProjector = sharingPublicIds ? new ShareProjector({ publicIds: sharingPublicIds }) : null
 const sharingPublicationClient = sharingIdentity ? new LabGdPublicationClient({ identityService: sharingIdentity }) : null
 let sharingPublicationCoordinator = null
+let sharingEventCoordinator = null
 let sharingProjectUnsubscribe = null
 let sharingMetadataUnsubscribe = null
 const publishSharingState = (value, kind = 'sharing.status-changed') => {
@@ -609,6 +611,14 @@ if (sharingPublicationService) {
     if (projectIds.length) scheduleProjectShares(projectIds)
   })
 }
+if (sharingPublicationService) {
+  sharingEventCoordinator = new SharingInstallationEventCoordinator({
+    repository: sharingRepository,
+    client: sharingPublicationClient,
+    identityService: sharingIdentity,
+    onStateChanged: (value, kind) => publishSharingState(value, kind),
+  })
+}
 const sharingEnrollmentCoordinator = sharingEffectiveEnabled
   ? new SharingEnrollmentCoordinator({
       repository: sharingRepository,
@@ -616,7 +626,10 @@ const sharingEnrollmentCoordinator = sharingEffectiveEnabled
       localReady: httpReady,
       onStateChanged: (settings) => {
         publishSharingState(settings)
-        if (settings.enrollmentState === 'connected') sharingPublicationCoordinator?.wake()
+        sharingEventCoordinator?.wake()
+        if (settings.enrollmentState === 'connected') {
+          sharingPublicationCoordinator?.wake()
+        }
       },
     })
   : null
@@ -629,6 +642,7 @@ registerSharingRoutes(app, {
   publicationService: sharingPublicationService,
   publicationCoordinator: sharingPublicationCoordinator,
   enrollmentCoordinator: sharingEnrollmentCoordinator,
+  eventCoordinator: sharingEventCoordinator,
   identityService: sharingIdentity,
   resourceSnapshotProvider: sharingResourceSnapshotProvider,
   demo: isDemoMode,
@@ -948,6 +962,7 @@ const server = app.listen(port, () => {
   resolveHttpReady()
   sharingEnrollmentCoordinator?.start()
   sharingPublicationCoordinator?.start()
+  sharingEventCoordinator?.start()
   if (store) {
     void runCatalogUpdatesAfterStartup({
       runtime: catalogRuntime,
@@ -988,6 +1003,7 @@ async function shutdown(signal) {
         () => agentLifecycleScheduler?.stop(),
         () => sharingEnrollmentCoordinator?.stop(),
         () => sharingPublicationCoordinator?.stop(),
+        () => sharingEventCoordinator?.stop(),
         () => sharingProjectUnsubscribe?.(),
         () => sharingMetadataUnsubscribe?.(),
       ],

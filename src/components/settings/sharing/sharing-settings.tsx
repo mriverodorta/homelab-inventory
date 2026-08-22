@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Switch } from '@/components/ui/switch'
+import { Input } from '@/components/ui/input'
 import { SettingsSection, SettingRow } from '@/components/settings/settings-primitives'
 import { usePermission } from '@/hooks/use-permission'
 import { useSharing } from '@/hooks/use-sharing'
@@ -46,6 +47,8 @@ export function SharingSettings() {
   const [claimOpen, setClaimOpen] = useState(false)
   const [claimResult, setClaimResult] = useState<Awaited<ReturnType<typeof sharing.claim.mutateAsync>> | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
+  const [passwordShare, setPasswordShare] = useState<ShareRecord | null>(null)
+  const [passwordValue, setPasswordValue] = useState('')
   const status = sharing.settings.data
   const settings = status?.settings
 
@@ -102,6 +105,31 @@ export function SharingSettings() {
     try { await sharing.snapshot.mutateAsync(share.id) } finally { setPendingShareId(null) }
   }
 
+  async function lifecycle(share: ShareRecord, action: 'unpublish' | 'delete' | 'republish') {
+    if (action === 'delete' && !window.confirm(`Delete “${share.title}” from lab.gd? This leaves a tombstone and cannot be undone from this screen.`)) return
+    setPendingShareId(share.id)
+    setActionError(null)
+    try {
+      if (action === 'unpublish') await sharing.unpublish.mutateAsync(share.id)
+      else if (action === 'delete') await sharing.remove.mutateAsync(share.id)
+      else await sharing.republish.mutateAsync(share.id)
+    } catch (caught) {
+      setActionError(caught instanceof Error ? caught.message : 'The remote lifecycle action failed.')
+    } finally { setPendingShareId(null) }
+  }
+
+  async function savePassword() {
+    if (!passwordShare) return
+    setPendingShareId(passwordShare.id)
+    try {
+      await sharing.password.mutateAsync({ id: passwordShare.id, password: passwordValue })
+      setPasswordValue('')
+      setPasswordShare(null)
+    } catch (caught) {
+      setActionError(caught instanceof Error ? caught.message : 'The password could not be handed to lab.gd.')
+    } finally { setPendingShareId(null) }
+  }
+
   return (
     <div className="grid gap-6">
       <SettingsSection title="Sharing" description="Publish selected read-only project views to lab.gd without exposing the rest of this installation.">
@@ -110,21 +138,22 @@ export function SharingSettings() {
         </SettingRow>
         {settings.enrollmentState === 'retrying' ? <div className="flex items-start gap-3 border-b border-[#e8e1d6] bg-[#fff8e8] p-4 text-sm text-[#6f4d16]"><AlertTriangle className="mt-0.5 size-4 shrink-0" /><p>lab.gd is unavailable. This app remains healthy and will retry with bounded backoff{settings.nextAttemptAtMs ? ` after ${new Date(settings.nextAttemptAtMs).toLocaleString()}` : ''}.</p></div> : null}
         {settings.enrollmentState === 'recovery-pending' ? <div className="flex items-center justify-between gap-4 border-b border-[#e8e1d6] bg-[#fff4ee] p-4"><p className="text-sm leading-5 text-[#7a2c1d]">A replacement key is waiting for owner approval. Publication is stopped and no additional replacement key will be created.</p>{canPublish ? <Button variant="outline" onClick={() => sharing.resumeRecovery.mutate()} disabled={sharing.resumeRecovery.isPending}><RotateCw />Resume recovery</Button> : null}</div> : null}
-        {!settings.connectionEnabled ? <div className="flex items-start gap-3 bg-[#fff8e8] p-4 text-sm leading-5 text-[#6f4d16]"><AlertTriangle className="mt-0.5 size-4 shrink-0" /><p>The stable local identity is retained. Unclaimed remote shares enter a 30-day grace period; lifecycle completion remains unavailable until lab.gd exposes its signed installation endpoint.</p></div> : null}
+        {!settings.connectionEnabled ? <div className="flex items-start gap-3 bg-[#fff8e8] p-4 text-sm leading-5 text-[#6f4d16]"><AlertTriangle className="mt-0.5 size-4 shrink-0" /><p>The stable local identity is retained. Existing public content follows lab.gd lifecycle policy until this installation reconnects and receives resumable events.</p></div> : null}
       </SettingsSection>
 
       {settings.connectionEnabled ? <SettingsSection title="Shares" description="Each share has its own views, privacy selections, visibility, expiration, and update policy.">
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#e8e1d6] p-4"><div className="flex items-center gap-2 text-sm text-[#554b40]"><Cloud className="size-4" />{sharing.shares.data?.length ?? 0} configured</div>{canPublish ? <div className="flex gap-2">{status.capabilities.accountClaiming ? <Button variant="outline" onClick={() => setClaimOpen(true)}><UserRoundPlus />Connect account</Button> : null}<Button onClick={() => void openEditor()} disabled={!workbooks.data?.length}><Plus />New share</Button></div> : null}</div>
         {actionError ? <p role="alert" className="border-b border-[#dfb3a5] bg-[#fff4ee] p-3 text-sm font-semibold text-[#7a2c1d]">{actionError}</p> : null}
-        <ShareList shares={sharing.shares.data ?? []} origin={status.origin} pendingShareId={pendingShareId} onEdit={(share) => void openEditor(share)} onReview={(share) => void reviewShare(share)} onPublish={(share) => void publish(share)} onSnapshot={(share) => void updateSnapshot(share)} />
+        <ShareList shares={sharing.shares.data ?? []} origin={status.origin} pendingShareId={pendingShareId} remoteControls={status.capabilities.remoteLifecycle} protectedPassword={status.capabilities.protectedShares} onEdit={(share) => void openEditor(share)} onReview={(share) => void reviewShare(share)} onPublish={(share) => void publish(share)} onSnapshot={(share) => void updateSnapshot(share)} onUnpublish={(share) => void lifecycle(share, 'unpublish')} onDelete={(share) => void lifecycle(share, 'delete')} onRepublish={(share) => void lifecycle(share, 'republish')} onPassword={(share) => { setPasswordValue(''); setPasswordShare(share) }} />
       </SettingsSection> : null}
 
-      {settings.connectionEnabled && status.capabilities.ownerAnalytics && (sharing.shares.data?.length ?? 0) > 0 ? <SettingsSection title="Audience" description="Owner analytics are aggregated and never expose raw request records."><ShareAnalytics /></SettingsSection> : null}
+      {settings.connectionEnabled && status.capabilities.ownerAnalytics && (sharing.shares.data?.length ?? 0) > 0 ? <SettingsSection title="Audience" description="Owner analytics are aggregated and never expose raw request records."><ShareAnalytics shares={sharing.shares.data ?? []} /></SettingsSection> : null}
 
       <ShareDialog open={editorOpen} configuration={editing} workbooks={workbooks.data ?? []} metadata={metadata.data ?? null} capabilities={status.capabilities} busy={sharing.create.isPending || sharing.update.isPending} onOpenChange={setEditorOpen} onSave={saveShare} />
       <Dialog open={Boolean(preview && previewConfiguration)} onOpenChange={(open) => { if (!open) { setPreview(null); setPreviewConfiguration(null) } }}>
-        <DialogContent className="max-w-3xl"><DialogHeader><DialogTitle>Review share</DialogTitle><DialogDescription>Approve only after checking the exact data summary and opening the read-only preview.</DialogDescription></DialogHeader>{preview && previewConfiguration ? <SharePrivacySummary preview={preview} configuration={previewConfiguration} /> : null}<DialogFooter className="flex-wrap"><Button variant="outline" onClick={() => previewConfiguration && window.open(`/sharing/preview/${previewConfiguration.share.id}`, '_blank', 'noopener,noreferrer')}>Open preview</Button>{preview?.approved ? <Button onClick={() => { if (previewConfiguration) void publish(previewConfiguration.share) }} disabled={previewConfiguration?.share.visibility === 'protected' || pendingShareId !== null}>{previewConfiguration?.share.remoteRevision ? 'Update share' : 'Publish share'}</Button> : <Button onClick={() => void approvePreview()} disabled={sharing.approve.isPending}>Approve exact preview</Button>}</DialogFooter></DialogContent>
+        <DialogContent className="max-w-3xl"><DialogHeader><DialogTitle>Review share</DialogTitle><DialogDescription>Approve only after checking the exact data summary and opening the read-only preview.</DialogDescription></DialogHeader>{preview && previewConfiguration ? <SharePrivacySummary preview={preview} configuration={previewConfiguration} /> : null}<DialogFooter className="flex-wrap"><Button variant="outline" onClick={() => previewConfiguration && window.open(`/sharing/preview/${previewConfiguration.share.id}`, '_blank', 'noopener,noreferrer')}>Open preview</Button>{preview?.approved ? <Button onClick={() => { if (previewConfiguration) void publish(previewConfiguration.share) }} disabled={pendingShareId !== null}>{previewConfiguration?.share.remoteRevision ? 'Update share' : 'Publish share'}</Button> : <Button onClick={() => void approvePreview()} disabled={sharing.approve.isPending}>Approve exact preview</Button>}</DialogFooter></DialogContent>
       </Dialog>
+      <Dialog open={Boolean(passwordShare)} onOpenChange={(open) => { if (!open) { setPasswordValue(''); setPasswordShare(null) } }}><DialogContent><DialogHeader><DialogTitle>Set share password</DialogTitle><DialogDescription>The plaintext exists only in this dialog and the active signed request. It is never saved by Homelab Inventory.</DialogDescription></DialogHeader><Input type="password" autoComplete="new-password" minLength={12} maxLength={1024} value={passwordValue} onChange={(event) => setPasswordValue(event.target.value)} aria-label="Share password" /><DialogFooter><Button variant="outline" onClick={() => { setPasswordValue(''); setPasswordShare(null) }}>Cancel</Button><Button disabled={passwordValue.length < 12 || sharing.password.isPending} onClick={() => void savePassword()}>{sharing.password.isPending ? 'Sending…' : 'Set password'}</Button></DialogFooter></DialogContent></Dialog>
       {status.capabilities.accountClaiming ? <AccountClaimDialog open={claimOpen} pending={sharing.claim.isPending} result={claimResult} error={sharing.claim.error instanceof Error ? sharing.claim.error.message : null} onOpenChange={(open) => { setClaimOpen(open); if (!open) setClaimResult(null) }} onBegin={() => { void sharing.claim.mutateAsync().then(setClaimResult).catch(() => undefined) }} /> : null}
     </div>
   )

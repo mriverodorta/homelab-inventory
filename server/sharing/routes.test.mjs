@@ -97,4 +97,21 @@ describe('sharing routes', () => {
       visibility: ['public', 'unlisted', 'protected'],
     })
   })
+
+  it('mounts lifecycle, protected password, and analytics routes behind negotiated capabilities', async () => {
+    const publicationService = {
+      enqueueLifecycle: vi.fn((_id, kind) => ({ id: kind === 'delete' ? 3 : 2, kind, idempotencyKey: `stable-${kind}` })),
+      republish: vi.fn(async () => ({ id: 1, state: 'synced' })),
+      replacePassword: vi.fn(async (_id, password) => { expect(password).toBe('request-only-password'); return { share: { id: 1 }, passwordConfigured: true, viewerGrantsRevoked: true } }),
+      analytics: vi.fn(async () => ({ publicId: 'share_1', totals: { fullLoads: 2, embedLoads: 1 }, daily: [] })),
+    }
+    const wake = vi.fn()
+    const baseUrl = await server({ repository: { getSettings: () => ({ revision: 1, connectionEnabled: true, enrollmentState: 'connected' }) }, publicationService, publicationCoordinator: { wake }, identityService: { getCapabilities: () => ({ remoteLifecycle: true, protectedShares: true, ownerAnalytics: true }) }, effectiveEnabled: true })
+    expect((await fetch(`${baseUrl}/api/sharing/shares/1/unpublish`, { method: 'POST' })).status).toBe(202)
+    expect((await fetch(`${baseUrl}/api/sharing/shares/1`, { method: 'DELETE' })).status).toBe(202)
+    expect((await fetch(`${baseUrl}/api/sharing/shares/1/republish`, { method: 'POST' })).status).toBe(200)
+    expect((await fetch(`${baseUrl}/api/sharing/shares/1/password`, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ password: 'request-only-password' }) })).status).toBe(200)
+    expect((await fetch(`${baseUrl}/api/sharing/shares/1/analytics`)).status).toBe(200)
+    expect(wake).toHaveBeenCalledTimes(2)
+  })
 })

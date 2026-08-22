@@ -124,6 +124,14 @@ export type SharePreview = Readonly<{
   approved: boolean
 }>
 
+export type ShareAnalyticsResult = Readonly<{
+  publicId: string
+  totals: { fullLoads: number; embedLoads: number }
+  daily: readonly { date: string; fullLoads: number; embedLoads: number }[]
+  lastSuccessfulLoadAt: string | null
+  lifecycle: { state: string; expiresAt: string | null; inactivityAt: string | null; graceEndsAt: string | null }
+}>
+
 export function loadSharingSettings(): Promise<SharingSettingsResponse> {
   return apiRequest('/api/sharing/settings')
 }
@@ -185,4 +193,24 @@ export function beginSharingAccountClaim(): Promise<{
   state: 'pending'
 }> {
   return apiRequest('/api/sharing/account/claim', { method: 'POST' })
+}
+
+export function unpublishShare(id: number): Promise<{ operation: { id: number } }> {
+  return apiRequest(`/api/sharing/shares/${id}/unpublish`, { method: 'POST' })
+}
+
+export function deleteShare(id: number): Promise<{ operation: { id: number } }> {
+  return apiRequest(`/api/sharing/shares/${id}`, { method: 'DELETE' })
+}
+
+export function republishShare(id: number): Promise<{ share: ShareRecord }> {
+  return apiRequest(`/api/sharing/shares/${id}/republish`, { method: 'POST' })
+}
+
+export function replaceSharePassword(id: number, password: string): Promise<{ share: ShareRecord; passwordConfigured: true; viewerGrantsRevoked: true }> {
+  return apiRequest(`/api/sharing/shares/${id}/password`, { method: 'PUT', body: JSON.stringify({ password }) })
+}
+
+export function loadShareAnalytics(id: number): Promise<ShareAnalyticsResult> {
+  return apiRequest(`/api/sharing/shares/${id}/analytics`)
 }

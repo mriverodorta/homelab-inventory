@@ -185,4 +185,21 @@ describe('sharing repository', () => {
       closeManagedDatabase(handle)
     }
   })
+
+  test('applies remote events and advances the cursor in one transaction', async () => {
+    const { handle, repository } = await fixture()
+    try {
+      const share = repository.createShare({ projectId: 1, title: 'Remote share', mutability: 'replaceable', syncMode: 'manual', visibility: 'unlisted', views: [{ workspaceId: 1, viewType: 'systems' }] })
+      repository.updateShare(share.id, share.localRevision, { remotePublicId: 'share_remote_1', remoteRevision: 2, state: 'synced' })
+      expect(repository.applyRemoteEvent({ id: 40, kind: 'unpublish', payload: { eventVersion: 1, sharePublicId: 'share_remote_1', revision: 3, state: 'unpublished', occurredAt: '2026-08-22T12:00:00.000Z' } })).toMatchObject({ applied: true, shares: [{ state: 'unpublished', remoteRevision: 3 }] })
+      expect(repository.getSettings().remoteEventCursor).toBe(40)
+      expect(repository.applyRemoteEvent({ id: 40, kind: 'unpublish', payload: { eventVersion: 1, sharePublicId: 'share_remote_1', revision: 3, state: 'unpublished', occurredAt: '2026-08-22T12:00:00.000Z' } })).toEqual({ applied: false, shares: [] })
+      expect(repository.applyRemoteEvent({ id: 41, kind: 'account-claim', payload: { eventVersion: 1, claimId: 'claim_1', state: 'completed', occurredAt: '2026-08-22T12:01:00.000Z' } }).shares[0]).toMatchObject({ accountClaimed: true })
+      expect(repository.getSettings().remoteEventCursor).toBe(41)
+      expect(() => repository.applyRemoteEvent({ id: 42, kind: 'replacement', payload: { eventVersion: 1, sharePublicId: 'share_remote_1', revision: 4, state: 'hostile', occurredAt: '2026-08-22T12:02:00.000Z' } })).toThrow('state is invalid')
+      expect(repository.getSettings().remoteEventCursor).toBe(41)
+    } finally {
+      closeManagedDatabase(handle)
+    }
+  })
 })

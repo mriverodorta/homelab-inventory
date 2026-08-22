@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { SharingSettings } from '@/components/settings/sharing/sharing-settings'
 import { AccountClaimDialog } from '@/components/settings/sharing/account-claim-dialog'
@@ -62,6 +62,10 @@ function sharing(overrides: Record<string, unknown> = {}) {
     snapshot: { ...mutation },
     resumeRecovery: { ...mutation },
     claim: { ...mutation },
+    unpublish: { ...mutation },
+    remove: { ...mutation },
+    republish: { ...mutation },
+    password: { ...mutation },
     ...overrides,
   }
 }
@@ -114,6 +118,22 @@ describe('SharingSettings', () => {
     renderSettings()
     expect(screen.queryByRole('button', { name: 'Connect account' })).not.toBeInTheDocument()
     expect(screen.queryByText('Audience')).not.toBeInTheDocument()
+  })
+
+  it('shows negotiated remote controls and keeps password entry in request state', async () => {
+    const remoteShare = { id: 1, projectId: 1, remotePublicId: 'share_1', title: 'Protected rack', description: '', mutability: 'replaceable', syncMode: 'manual', visibility: 'protected', state: 'synced', commentsEnabled: false, reactionsEnabled: false, embedEnabled: false, embedOrigins: [], resourceSnapshotIncluded: false, expirationType: 'indefinite', expirationDurationSeconds: null, expiresAtMs: null, localRevision: 2, remoteRevision: 3, activeManifestHash: null, approvedPreviewHash: null, accountClaimed: false, createdAtMs: 1, updatedAtMs: 1 } as const
+    const value = sharing({ shares: { data: [remoteShare], isLoading: false } })
+    value.settings.data.capabilities.protectedShares = true
+    value.settings.data.capabilities.remoteLifecycle = true
+    renderSettings(value)
+    expect(screen.getByRole('button', { name: 'Unpublish share' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Delete share' })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Set share password' }))
+    const input = screen.getByLabelText('Share password')
+    expect(input).toHaveAttribute('autocomplete', 'new-password')
+    fireEvent.change(input, { target: { value: 'request-only-password' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Set password' }))
+    expect(value.password.mutateAsync).toHaveBeenCalledWith({ id: 1, password: 'request-only-password' })
   })
 
   it('renders nothing when sharing is prohibited by demo or staging policy', () => {

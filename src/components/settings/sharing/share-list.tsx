@@ -1,4 +1,4 @@
-import { Camera, Copy, ExternalLink, Pencil, RefreshCw, ShieldCheck } from 'lucide-react'
+import { Camera, Copy, ExternalLink, KeyRound, Pencil, Power, RefreshCw, RotateCw, ShieldCheck, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import type { ShareRecord } from '@/lib/sharing-api'
@@ -33,6 +33,12 @@ export function ShareList({
   onReview,
   onPublish,
   onSnapshot,
+  onUnpublish,
+  onDelete,
+  onRepublish,
+  onPassword,
+  remoteControls,
+  protectedPassword,
 }: {
   shares: readonly ShareRecord[]
   origin: string
@@ -41,6 +47,12 @@ export function ShareList({
   onReview(share: ShareRecord): void
   onPublish(share: ShareRecord): void
   onSnapshot(share: ShareRecord): void
+  onUnpublish(share: ShareRecord): void
+  onDelete(share: ShareRecord): void
+  onRepublish(share: ShareRecord): void
+  onPassword(share: ShareRecord): void
+  remoteControls: boolean
+  protectedPassword: boolean
 }) {
   if (!shares.length) {
     return <div className="px-4 py-8 text-center text-sm text-[#756d62]">No shares are configured. Create one to choose exactly what can leave this installation.</div>
@@ -63,7 +75,11 @@ export function ShareList({
               <IconAction label="Edit share" onClick={() => onEdit(share)}><Pencil /></IconAction>
               <IconAction label="Review privacy preview" onClick={() => onReview(share)}><ShieldCheck /></IconAction>
               {share.resourceSnapshotIncluded ? <IconAction label="Update resource snapshot" disabled={pending} onClick={() => onSnapshot(share)}><Camera /></IconAction> : null}
-              {(share.state === 'preview-ready' || share.state === 'manual-update-available') ? <IconAction label={share.remoteRevision ? 'Update share' : 'Publish share'} disabled={pending || share.visibility === 'protected'} onClick={() => onPublish(share)}><RefreshCw className={pending ? 'animate-spin' : ''} /></IconAction> : null}
+              {(share.state === 'preview-ready' || share.state === 'manual-update-available') ? <IconAction label={share.remoteRevision ? 'Update share' : 'Publish share'} disabled={pending} onClick={() => onPublish(share)}><RefreshCw className={pending ? 'animate-spin' : ''} /></IconAction> : null}
+              {protectedPassword && share.remotePublicId && share.visibility === 'protected' ? <IconAction label="Set share password" disabled={pending} onClick={() => onPassword(share)}><KeyRound /></IconAction> : null}
+              {remoteControls && share.remotePublicId && share.state === 'synced' ? <IconAction label="Unpublish share" disabled={pending} onClick={() => onUnpublish(share)}><Power /></IconAction> : null}
+              {remoteControls && share.remotePublicId && (share.state === 'unpublished' || share.state === 'expired' || share.state === 'grace-period') ? <IconAction label="Republish share" disabled={pending} onClick={() => onRepublish(share)}><RotateCw /></IconAction> : null}
+              {remoteControls && share.remotePublicId ? <IconAction label="Delete share" disabled={pending} onClick={() => onDelete(share)}><Trash2 /></IconAction> : null}
               {publicUrl ? <><IconAction label="Copy share link" onClick={() => void navigator.clipboard.writeText(publicUrl)}><Copy /></IconAction><Tooltip><TooltipTrigger asChild><Button asChild variant="ghost" size="icon" aria-label="Open published share"><a href={publicUrl} target="_blank" rel="noreferrer"><ExternalLink /></a></Button></TooltipTrigger><TooltipContent>Open published share</TooltipContent></Tooltip></> : null}
             </div>
           </div>

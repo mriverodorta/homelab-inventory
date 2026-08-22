@@ -24,4 +24,13 @@ describe('sharing publication coordinator', () => {
     await coordinator.runNext()
     expect(publicationService.executePublish).toHaveBeenCalledTimes(1)
   })
+
+  it('reuses the queued idempotency operation for lifecycle execution', async () => {
+    const operation = { id: 2, shareId: 4, kind: 'unpublish', idempotencyKey: 'stable-unpublish', attemptCount: 0 }
+    const repository = { getSettings: () => ({ connectionEnabled: true, enrollmentState: 'connected' }), nextOperation: vi.fn(() => operation) }
+    const publicationService = { executeLifecycle: vi.fn(async (received) => expect(received.idempotencyKey).toBe('stable-unpublish')), onStateChanged: vi.fn() }
+    const coordinator = new SharingPublicationCoordinator({ repository, publicationService, setTimer: () => 1, clearTimer: () => {} })
+    await coordinator.runNext()
+    expect(publicationService.executeLifecycle).toHaveBeenCalledOnce()
+  })
 })

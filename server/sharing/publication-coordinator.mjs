@@ -56,8 +56,9 @@ export class SharingPublicationCoordinator {
     const operation = this.repository.nextOperation(this.now())
     if (!operation) return
     try {
-      if (operation.kind !== 'publish') throw Object.assign(new Error('Unsupported sharing operation.'), { code: 'sharing-operation-unsupported' })
-      await this.publicationService.executePublish(operation)
+      if (operation.kind === 'publish') await this.publicationService.executePublish(operation)
+      else if (operation.kind === 'unpublish' || operation.kind === 'delete') await this.publicationService.executeLifecycle(operation)
+      else throw Object.assign(new Error('Unsupported sharing operation.'), { code: 'sharing-operation-unsupported' })
     } catch (error) {
       const attemptCount = operation.attemptCount + 1
       const retryable = attemptCount < MAX_ATTEMPTS && !String(error?.code ?? '').includes('unsupported')

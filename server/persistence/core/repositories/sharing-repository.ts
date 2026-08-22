@@ -59,6 +59,12 @@ export type ShareRecord = Readonly<{
   updatedAtMs: number
 }>
 
+export type SharingRemoteEvent = Readonly<{
+  id: number
+  kind: 'publication' | 'replacement' | 'unpublish' | 'deletion' | 'expiration' | 'grace-period' | 'account-claim' | 'recovery'
+  payload: Readonly<Record<string, unknown>>
+}>
+
 type ShareInput = Readonly<{
   projectId: number
   title: string
@@ -250,6 +256,41 @@ export function createSharingRepository(context: RepositoryContext) {
     assertPositiveId(id, 'Share ID')
     const row = sqlite.query(`SELECT ${shareColumns} FROM shares WHERE id = ?`).get(id) as Record<string, unknown> | null
     return row ? mapShare(row) : null
+  }
+
+  function getShareByRemotePublicId(publicId: string): ShareRecord | null {
+    if (!/^[A-Za-z0-9_-]{1,128}$/u.test(publicId)) throw new Error('Remote share ID is invalid.')
+    const row = sqlite.query(`SELECT ${shareColumns} FROM shares WHERE remote_public_id = ?`).get(publicId) as Record<string, unknown> | null
+    return row ? mapShare(row) : null
+  }
+
+  function applyRemoteEvent(event: SharingRemoteEvent) {
+    assertPositiveId(event.id, 'Remote event cursor')
+    return sqlite.transaction(() => {
+      const settings = getSettings()
+      if (event.id <= settings.remoteEventCursor) return { applied: false, shares: [] as ShareRecord[] }
+      const changedIds: number[] = []
+      if (event.kind === 'account-claim') {
+        changedIds.push(...(sqlite.query("SELECT id FROM shares WHERE state <> 'deleted' AND account_claimed = 0 ORDER BY id").all() as { id: number }[]).map(({ id }) => id))
+        sqlite.query("UPDATE shares SET account_claimed = 1, local_revision = local_revision + 1, updated_at_ms = ? WHERE state <> 'deleted' AND account_claimed = 0").run(now())
+      } else if (event.kind === 'recovery') {
+        const state = event.payload.state === 'active' ? 'active' : event.payload.state === 'recovery-pending' ? 'recovery-pending' : event.payload.state === 'revoked' ? 'disabled' : null
+        if (!state) throw new Error('Remote recovery event state is invalid.')
+        sqlite.query('UPDATE sharing_installation_projection SET state = ?, updated_at_ms = ? WHERE id = 1').run(state, now())
+      } else {
+        const publicId = String(event.payload.sharePublicId ?? '')
+        const revision = Number(event.payload.revision)
+        const state = remoteShareState(event.payload.state)
+        if (!Number.isSafeInteger(revision) || revision <= 0) throw new Error('Remote share event revision is invalid.')
+        const share = getShareByRemotePublicId(publicId)
+        if (share && (share.remoteRevision == null || revision > share.remoteRevision)) {
+          sqlite.query(`UPDATE shares SET state = ?, remote_revision = ?, local_revision = local_revision + 1, updated_at_ms = ? WHERE id = ?`).run(state, revision, now(), share.id)
+          changedIds.push(share.id)
+        }
+      }
+      sqlite.query(`UPDATE sharing_settings SET remote_event_cursor = ?, revision = revision + 1, updated_at_ms = ? WHERE id = 1`).run(event.id, now())
+      return { applied: true, shares: changedIds.map((id) => getShare(id)!).filter(Boolean) }
+    })()
   }
 
   function listShares(projectId?: number) {
@@ -503,6 +544,8 @@ export function createSharingRepository(context: RepositoryContext) {
     deleteInstallationProjection,
     createShare,
     getShare,
+    getShareByRemotePublicId,
+    applyRemoteEvent,
     listShares,
     getShareConfiguration,
     updateShareConfiguration,
@@ -515,6 +558,12 @@ export function createSharingRepository(context: RepositoryContext) {
     updateOperation,
     saveResourceSnapshot,
   }
+}
+
+function remoteShareState(value: unknown): ShareState {
+  if (value === 'active') return 'synced'
+  if (value === 'unpublished' || value === 'deleted' || value === 'expired' || value === 'grace-period') return value
+  throw new Error('Remote share event state is invalid.')
 }
 
 function booleans(row: Record<string, unknown>, names: readonly string[]) {

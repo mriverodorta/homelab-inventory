@@ -150,7 +150,7 @@ export class SharingInstallationIdentityService {
     const url = new URL(pathname, this.labGdOrigin)
     if (url.origin !== this.labGdOrigin) throw new Error('lab.gd request origin is invalid.')
     const controller = new AbortController()
-    const timeout = setTimeout(() => controller.abort(), timeoutMs)
+    const timeout = timeoutMs > 0 ? setTimeout(() => controller.abort(), timeoutMs) : null
     try {
       return await this.fetchImpl(url, {
         method,
@@ -159,7 +159,7 @@ export class SharingInstallationIdentityService {
         signal: controller.signal,
       })
     } finally {
-      clearTimeout(timeout)
+      if (timeout) clearTimeout(timeout)
     }
   }
 

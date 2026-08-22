@@ -59,6 +59,7 @@ export function registerSharingRoutes(app, {
   publicationService = null,
   publicationCoordinator = null,
   enrollmentCoordinator = null,
+  eventCoordinator = null,
   identityService = null,
   resourceSnapshotProvider = null,
   demo = false,
@@ -94,6 +95,7 @@ export function registerSharingRoutes(app, {
     if (typeof request.body?.connectionEnabled !== 'boolean') throw new Error('connectionEnabled must be boolean.')
     const updated = repository.setConnectionEnabled(positiveId(request.body.expectedRevision, 'Expected revision'), request.body.connectionEnabled)
     enrollmentCoordinator?.wake()
+    eventCoordinator?.wake()
     response.json(publicSettings(repository, flags, currentCapabilities()))
     return updated
   }))
@@ -119,14 +121,23 @@ export function registerSharingRoutes(app, {
 
   app.patch('/api/sharing/shares/:shareId', (request, response) => handle(response, async () => {
     requireRuntime()
+    const shareId = positiveId(request.params.shareId, 'Share ID')
+    const expectedRevision = positiveId(request.body?.expectedRevision, 'Expected revision')
+    const current = repository.getShare(shareId)
+    if (!current) throw Object.assign(new Error('Share was not found.'), { status: 404, code: 'sharing-share-not-found' })
+    if (current.localRevision !== expectedRevision) throw new Error('Share revision conflict.')
+    const remote = current.remoteRevision == null ? null : await publicationService.updateRemoteSettings(shareId, request.body)
     const updated = repository.updateShareConfiguration(
-      positiveId(request.params.shareId, 'Share ID'),
-      positiveId(request.body?.expectedRevision, 'Expected revision'),
+      shareId,
+      expectedRevision,
       request.body,
     )
-    await publicationService.scheduleCurrentState(updated.share.id)
+    const committed = remote
+      ? { ...updated, share: repository.updateShare(shareId, updated.share.localRevision, { remoteRevision: remote.revision, state: remote.state === 'active' ? 'synced' : remote.state }) }
+      : updated
+    await publicationService.scheduleCurrentState(committed.share.id)
     publicationCoordinator?.wake()
-    response.json(updated)
+    response.json(committed)
   }))
 
   app.post('/api/sharing/shares/:shareId/preview', (request, response) => handle(response, async () => {
@@ -186,11 +197,32 @@ export function registerSharingRoutes(app, {
     response.status(202).json({ status: 'resuming' })
   }))
 
-  const unavailableLifecycle = (request, response) => handle(response, async () => {
+  const enqueueLifecycle = (kind) => (request, response) => handle(response, async () => {
     requireRuntime()
-    positiveId(request.params.shareId, 'Share ID')
-    throw Object.assign(new Error('Remote share lifecycle support is not available yet.'), { status: 503, code: 'sharing-remote-lifecycle-unavailable' })
+    if (identityService.getCapabilities?.().remoteLifecycle !== true) throw Object.assign(new Error('Remote share lifecycle is unsupported.'), { status: 503, code: 'sharing-remote-lifecycle-unavailable' })
+    const operation = publicationService.enqueueLifecycle(positiveId(request.params.shareId, 'Share ID'), kind)
+    publicationCoordinator?.wake()
+    response.status(202).json({ operation })
   })
-  app.post('/api/sharing/shares/:shareId/unpublish', unavailableLifecycle)
-  app.delete('/api/sharing/shares/:shareId', unavailableLifecycle)
+  app.post('/api/sharing/shares/:shareId/unpublish', enqueueLifecycle('unpublish'))
+  app.delete('/api/sharing/shares/:shareId', enqueueLifecycle('delete'))
+
+  app.post('/api/sharing/shares/:shareId/republish', (request, response) => handle(response, async () => {
+    requireRuntime()
+    if (identityService.getCapabilities?.().remoteLifecycle !== true) throw Object.assign(new Error('Remote share lifecycle is unsupported.'), { status: 503, code: 'sharing-remote-lifecycle-unavailable' })
+    response.json({ share: await publicationService.republish(positiveId(request.params.shareId, 'Share ID')) })
+  }))
+
+  app.put('/api/sharing/shares/:shareId/password', (request, response) => handle(response, async () => {
+    requireRuntime()
+    if (identityService.getCapabilities?.().protectedShares !== true) throw Object.assign(new Error('Protected share handoff is unsupported.'), { status: 503, code: 'sharing-password-unavailable' })
+    if (typeof request.body?.password !== 'string') throw new Error('A password is required.')
+    response.json(await publicationService.replacePassword(positiveId(request.params.shareId, 'Share ID'), request.body.password))
+  }))
+
+  app.get('/api/sharing/shares/:shareId/analytics', (request, response) => handle(response, async () => {
+    requireRuntime()
+    if (identityService.getCapabilities?.().ownerAnalytics !== true) throw Object.assign(new Error('Owner analytics are unsupported.'), { status: 503, code: 'sharing-analytics-unavailable' })
+    response.set('Cache-Control', 'no-store').json(await publicationService.analytics(positiveId(request.params.shareId, 'Share ID')))
+  }))
 }

@@ -14,11 +14,13 @@ const capabilities = {
   shareContractVersions: [1],
   viewContractVersions: { systems: [1], canvas: [1] },
   capabilities: {
-    installationEvents: { supported: true },
+    installationEvents: { supported: true, resumable: true },
     protectedPasswordHandoff: { supported: true },
-    lifecycleOperations: { supported: true },
+    lifecycleOperations: { supported: true, operations: ['update', 'unpublish', 'delete', 'republish', 'replace-password'] },
     accountClaiming: { supported: true },
-    ownerAnalytics: { supported: true },
+    ownerAnalytics: { supported: true, buckets: ['day'], retentionDays: 90 },
+    comments: { configurationSupported: true, interactionSupported: false },
+    reactions: { configurationSupported: true, interactionSupported: false },
   },
 }
 
@@ -48,7 +50,7 @@ describe('lab.gd sharing protocol', () => {
       if (pathname === '/readyz') return Response.json({ status: 'ready', contractMode: 'packages-enabled', publicationReady: true })
       if (pathname === '/v1/capabilities') return Response.json(capabilities)
       if (pathname === '/v1/installations/challenge') return Response.json({ value: 'challenge-value' }, { status: 201 })
-      if (pathname === '/v1/installations/activate') return Response.json({ status: 'active', installationId: 7, token: 't'.repeat(32) }, { status: 201 })
+      if (pathname === '/v1/installations/activate') return Response.json({ status: 'active', installationId: 7, token: 't'.repeat(32), scopes: ['publication:write', 'events:read', 'shares:manage', 'analytics:read', 'token:renew', 'key:rotate', 'claim:create'], tokenExpiresAt: '2026-08-22T13:00:00.000Z' }, { status: 201 })
       expect(init.headers.authorization).toBe(`Bearer ${'t'.repeat(32)}`)
       expect(init.headers['x-labgd-signature']).toMatch(/^[A-Za-z0-9+/]+=*$/u)
       if (pathname === '/v1/publications/manifest') return Response.json({ operation: { id: 11 }, missingHashes: ['a'.repeat(64)] }, { status: 202 })
