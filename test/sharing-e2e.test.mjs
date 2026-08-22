@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { mkdtemp, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -6,6 +6,7 @@ import { SharingInstallationIdentityService } from '../server/sharing/installati
 import { LabGdPublicationClient } from '../server/sharing/labgd-client.mjs'
 import { signedRequestHeaders } from '../server/sharing/installation-auth.mjs'
 import { FakeLabGd } from './support/fake-labgd.mjs'
+import { SharingInstallationEventCoordinator } from '../server/sharing/installation-event-coordinator.mjs'
 
 const roots = []
 
@@ -156,5 +157,31 @@ describe('lab.gd sharing protocol', () => {
     const replay = await fake.fetch('https://lab.example.test/v1/publications/manifest', { method: 'POST', headers, body })
     expect(first.status).toBe(202)
     expect(replay.status).toBe(401)
+  })
+
+  it('reconstructs resumable event delivery without duplicate cursor application', async () => {
+    const state = { cursor: 0, applied: [] }
+    const repository = {
+      getSettings: () => ({ connectionEnabled: true, enrollmentState: 'connected', remoteEventCursor: state.cursor }),
+      applyRemoteEvent: (event) => { if (event.id <= state.cursor) return { applied: false, shares: [] }; state.cursor = event.id; state.applied.push(event.id); return { applied: true, shares: [] } },
+    }
+    const identityService = { getCapabilities: () => ({ installationEvents: true }), readiness: vi.fn() }
+    const client = { events: vi.fn(async (cursor) => new Response(`id: ${cursor + 1}\nevent: recovery\ndata: {"eventVersion":1,"state":"active","occurredAt":"2026-08-22T12:00:00.000Z"}\n\n`, { headers: { 'content-type': 'text/event-stream' } })) }
+    for (let restart = 0; restart < 2; restart += 1) {
+      const coordinator = new SharingInstallationEventCoordinator({ repository, client, identityService, setTimer: () => 1, clearTimer: () => {} })
+      coordinator.stopped = false
+      await coordinator.connect()
+      coordinator.stop()
+    }
+    expect(client.events.mock.calls.map(([cursor]) => cursor)).toEqual([0, 1])
+    expect(state.applied).toEqual([1, 2])
+    expect(state.cursor).toBe(2)
+  })
+
+  it('does not create an event connection when sharing is environment-disabled', () => {
+    const events = vi.fn()
+    const coordinator = new SharingInstallationEventCoordinator({ repository: {}, client: { events }, identityService: {}, effectiveEnabled: false, setTimer: vi.fn() })
+    coordinator.start()
+    expect(events).not.toHaveBeenCalled()
   })
 })
