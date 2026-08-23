@@ -31,7 +31,7 @@ GitHub is the source of truth for source and CI. Docker Hub images are built on 
 - **Compatibility and audit:** Block known-invalid CPU, memory, storage, and expansion assignments, including physical RAM form factor, electrical module type, ECC, slot limits, and Network Adapter interface topology.
 - **Hardware catalog:** Search a signed verified catalog locally, import exact physical RAM by manufacturer part number, review linked updates, use an offline snapshot, or keep reusable private templates.
 - **Safe catalog updates:** Review field-level changes or automatically accept trusted compatible enrichments without replacing local names, private metadata, assignments, placements, cables, or route cache.
-- **Host Agent:** Monitor Linux, FreeBSD, and OPNsense health, uptime, CPU, memory, local storage, services, and opt-in Docker or Podman containers.
+- **Host Agent:** Monitor systemd Linux, Alpine/OpenRC, FreeBSD, and OPNsense health, uptime, CPU, memory, local storage, services, and opt-in Docker or Podman containers.
 - **Notifications:** Send opt-in host and selected resource alerts through reusable Ntfy or webhook destinations, with persisted incidents, quiet hours, reminders, and bounded retries.
 - **Hardware discovery:** Run a reviewed one-time scan and apply detected component values field by field without automatic inventory changes.
 - **Multi-user access:** Enable local passwords, OpenID Connect, or both with invitations, sessions, built-in roles, and custom permissions.
@@ -252,7 +252,7 @@ When an update exists, the app provides **Check now**, **Skip this version**, an
 
 ## Agent
 
-The Agent tab on a server, NAS device, or custom PC build creates a one-time enrollment and generates the appropriate Linux or FreeBSD/OPNsense install command. Every application image embeds pinned, checksummed binaries for Linux AMD64, Linux ARM64, and FreeBSD AMD64. Downloads are served by your own Homelab Inventory instance, and each Ed25519 device identity is permanently scoped to one host record.
+The Agent tab on a server, NAS device, or custom PC build creates a one-time enrollment and generates the appropriate Linux or FreeBSD/OPNsense install command. Linux setup detects systemd or OpenRC, supports Alpine Linux 3.22, and does not install optional host packages. Every application image embeds pinned, checksummed binaries for Linux AMD64, Linux ARM64, and FreeBSD AMD64. Downloads are served by your own Homelab Inventory instance, and each Ed25519 device identity is permanently scoped to one host record.
 
 Signed one-minute telemetry is outbound-only and stored independently in `/data/databases/telemetry.sqlite`, so it does not modify inventory, canvas history, assignments, or cables. CPU and memory retain exactly 30 one-minute slots; services, containers, local storage, GPUs, sensors, system facts, load, uptime, and storage health use compact current-state records with meaningful transitions. Network and disk-I/O history are not retained. Agent views show health and heartbeat history, OS version, uptime, CPU, memory, local storage and mounts, filtered services, and opt-in Docker or Podman container details. Container telemetry supports a credential-free loopback proxy or reviewed direct-socket access and excludes secrets, commands, environment variables, mounts, addresses, and raw inspect payloads.
 

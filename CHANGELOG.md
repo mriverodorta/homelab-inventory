@@ -6,6 +6,15 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 
 ## Unreleased
 
+### Added
+
+- Embedded Agent 0.3.4 adds Alpine Linux 3.22 and capability-based OpenRC support for AMD64 and ARM64 hosts, including unprivileged service management, rollback-safe updates, and OpenRC service telemetry.
+
+### Changed
+
+- Linux hardware inventory now remains useful when optional `dmidecode`, `lspci`, or `smartctl` tools are absent and recognizes trusted Alpine paths for `lsblk` and `ip` without installing host packages.
+- Explicit direct Docker or Podman socket setup grants only verified supplementary-group access to the unprivileged Agent account and never changes socket ownership or permissions.
+
 ## [0.15.1] - 2026-08-23
 
 ### Fixed

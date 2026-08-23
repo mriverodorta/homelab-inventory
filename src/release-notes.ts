@@ -562,9 +562,16 @@ const RELEASE_0_15_1_DETAILS: UnreleasedReleaseNotes = {
 }
 
 export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
-  highlights: [],
-  fixes: [],
-  notes: [],
+  highlights: [
+    'Embedded Agent 0.3.4 adds Alpine Linux 3.22 and capability-based OpenRC support for AMD64 and ARM64 hosts.',
+  ],
+  fixes: [
+    'OpenRC installation, removal, and native updates now preserve the unprivileged Agent identity and roll back service or direct-socket group changes when validation fails.',
+    'Linux hardware inventory now keeps available storage and network evidence when optional DMI, PCI, or SMART tools are not installed.',
+  ],
+  notes: [
+    'The installer never runs apk add; optional host tools only enrich their matching hardware sections.',
+  ],
 }
 
 const RELEASE_0_11_2_DETAILS: UnreleasedReleaseNotes = {

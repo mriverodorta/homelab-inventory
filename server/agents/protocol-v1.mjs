@@ -162,7 +162,7 @@ function normalizeServices(value = []) {
     if (service.classification !== undefined && !SERVICE_CLASSIFICATIONS.has(service.classification)) {
       throw protocolError(`services[${index}].classification is invalid.`)
     }
-    if (service.manager !== undefined && !['systemd', 'rcd'].includes(service.manager)) {
+    if (service.manager !== undefined && !['systemd', 'openrc', 'rcd'].includes(service.manager)) {
       throw protocolError(`services[${index}].manager is invalid.`)
     }
     return {

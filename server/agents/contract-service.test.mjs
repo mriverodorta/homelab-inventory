@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import {
   AgentContractService,
   AGENT_LEGACY_SCHEMA_BUNDLE_DIGEST,
+  AGENT_PRE_OPENRC_SCHEMA_BUNDLE_DIGEST,
   AGENT_SCHEMA_BUNDLE_DIGEST,
 } from './contract-service.mjs'
 
@@ -48,6 +49,14 @@ describe('agent contract service', () => {
         schemaBundleDigest: AGENT_LEGACY_SCHEMA_BUNDLE_DIGEST,
       })
       expect(legacy.headers.get('etag')).not.toBe(first.headers.get('etag'))
+
+      const preOpenRC = await fetch(`${url}/contract`, {
+        headers: { 'X-Homelab-Agent-Schema-Digest': AGENT_PRE_OPENRC_SCHEMA_BUNDLE_DIGEST },
+      })
+      expect(await preOpenRC.json()).toMatchObject({
+        protocolMajor: 1,
+        schemaBundleDigest: AGENT_PRE_OPENRC_SCHEMA_BUNDLE_DIGEST,
+      })
 
       const unsupported = await fetch(`${url}/contract`, {
         headers: { 'X-Homelab-Agent-Schema-Digest': '0'.repeat(64) },

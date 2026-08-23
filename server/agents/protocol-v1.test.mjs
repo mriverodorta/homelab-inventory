@@ -72,10 +72,29 @@ describe('agent protocol v1 normalization', () => {
     })
   })
 
+  it('accepts OpenRC services without fabricating systemd resource counters', () => {
+    const normalized = normalizeV1Heartbeat(heartbeat({
+      services: [{
+        manager: 'openrc', name: 'docker', description: 'Docker daemon', activeState: 'active',
+        subState: 'started', enabled: true, classification: 'user-installed',
+      }],
+    }))
+    expect(normalized.services).toEqual([{
+      manager: 'openrc', name: 'docker', description: 'Docker daemon', activeState: 'active',
+      subState: 'started', enabled: true, classification: 'user-installed',
+    }])
+    expect(normalized.services[0]).not.toHaveProperty('cpuPercent')
+    expect(normalized.services[0]).not.toHaveProperty('memoryCurrentBytes')
+    expect(normalized.services[0]).not.toHaveProperty('restartCount')
+  })
+
   it('rejects malformed enriched service and container summaries', () => {
     expect(() => normalizeV1Heartbeat(heartbeat({
       services: [{ name: 'docker', activeState: 'active', classification: 'third-party' }],
     }))).toThrow('classification is invalid')
+    expect(() => normalizeV1Heartbeat(heartbeat({
+      services: [{ manager: 'runit', name: 'docker', activeState: 'active' }],
+    }))).toThrow('manager is invalid')
     expect(() => normalizeV1Heartbeat(heartbeat({
       containers: [{
         runtime: 'docker', runtimeId: 'abc', name: 'web', image: 'example/web:1', state: 'running',

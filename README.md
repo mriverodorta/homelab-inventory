@@ -48,7 +48,7 @@ It gives you one practical view of what you own, what is installed in each machi
 
 - Use the dense Systems workspace to compare host type, identity, assigned CPU, memory, primary storage, Registry linkage, Agent status, and attention findings without opening every machine.
 - Build account-synchronized saved views from dynamic host, Agent, Registry, tag, and custom-field filters, with useful local defaults when authentication is disabled.
-- Enroll an outbound-only Agent on Linux, FreeBSD, or OPNsense hosts and view one-minute health, heartbeat history, CPU, memory, uptime, and operating-system details.
+- Enroll an outbound-only Agent on systemd Linux, Alpine/OpenRC, FreeBSD, or OPNsense hosts and view one-minute health, heartbeat history, CPU, memory, uptime, and operating-system details.
 - Receive live Systems utilization and Inspector telemetry through one authenticated server-sent event stream after the initial compact snapshot, without recurring browser polling.
 - Inspect local storage usage by physical device and mount point, including partition tables and LVM or RAID topology, without mixing in remote shares or container mounts.
 - Discover locally installed services and opt into bounded Docker or Podman container telemetry through a loopback proxy or reviewed direct socket access.
@@ -326,7 +326,7 @@ When an update is available, the canvas toolbar shows an update notice with rele
 
 The optional Homelab Inventory Agent uses outbound-only HTTPS and scopes one Ed25519 device identity to one server, NAS device, or custom PC build. Signed protocol-v1 heartbeats are stored independently in `/data/databases/telemetry.sqlite`; they do not create workspace history or advance the project revision. CPU and memory retain exactly 30 one-minute slots. Services, containers, filesystems, GPUs, sensors, system facts, load, uptime, and storage health are kept as current state, while meaningful lifecycle and health transitions remain available to notifications. Network and disk-I/O history are not retained.
 
-Open a compute host's **Agent** tab to create a one-time enrollment and copy the generated Linux or FreeBSD/OPNsense installation command. Each application image embeds a pinned, reproducibly built release for Linux AMD64, Linux ARM64, and FreeBSD AMD64. The server verifies every embedded artifact before startup and serves immutable versioned downloads from your own installation.
+Open a compute host's **Agent** tab to create a one-time enrollment and copy the generated Linux or FreeBSD/OPNsense installation command. The Linux installer detects systemd or OpenRC and supports Alpine Linux 3.22 without installing packages. Each application image embeds a pinned, reproducibly built release for Linux AMD64, Linux ARM64, and FreeBSD AMD64. The server verifies every embedded artifact before startup and serves immutable versioned downloads from your own installation.
 
 An enrolled host can expose these capability-driven views:
 
