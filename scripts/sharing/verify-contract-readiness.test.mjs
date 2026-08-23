@@ -35,14 +35,14 @@ const negotiatedCapabilities = {
   reactions: 'coming-soon',
 }
 
-function fetcher({ enrollmentState = 'connected', capabilities = negotiatedCapabilities } = {}) {
+function fetcher({ enrollmentState = 'connected', capabilities = negotiatedCapabilities, publicationReady = true } = {}) {
   return vi.fn(async (url, _init) => {
     const parsed = new URL(url)
     if (parsed.hostname === 'inventory.test' && parsed.pathname === '/api/health') {
       return Response.json({ ok: true, mode: 'production', schemaVersion: 33 })
     }
     if (parsed.hostname === 'lab.test' && parsed.pathname === '/readyz') {
-      return Response.json({ status: 'ready', contractMode: 'packages-enabled', publicationReady: true })
+      return Response.json({ status: 'ready', contractMode: 'packages-enabled', publicationReady })
     }
     if (parsed.hostname === 'lab.test' && parsed.pathname === '/v1/capabilities') return Response.json(labGdCapabilities)
     if (parsed.hostname === 'inventory.test' && parsed.pathname === '/api/sharing/settings') {
@@ -84,6 +84,24 @@ describe('sharing rollout verifier', () => {
       labGdOrigin: 'https://lab.test',
       fetchImpl: fetcher({ enrollmentState: 'pending' }),
     })).rejects.toThrow('enrollment is pending')
+  })
+
+  it('separates gated enrollment verification from publication-ready verification', async () => {
+    const fetchImpl = fetcher({ publicationReady: false })
+    await expect(verifySharingReadiness({
+      appOrigin: 'https://inventory.test',
+      labGdOrigin: 'https://lab.test',
+      fetchImpl,
+    })).resolves.toMatchObject({
+      ok: true,
+      labGd: { publicationReady: false },
+    })
+    await expect(verifySharingReadiness({
+      appOrigin: 'https://inventory.test',
+      labGdOrigin: 'https://lab.test',
+      fetchImpl,
+      requirePublicationReady: true,
+    })).rejects.toThrow('publication is not ready')
   })
 
   it('fails when the app exposes a capability that lab.gd did not negotiate', async () => {

@@ -124,6 +124,40 @@ describe('sharing installation identity', () => {
     expect(requests.filter(({ url }) => url.pathname.endsWith('/challenge'))).toHaveLength(1)
   })
 
+  it('enrolls while publication is gated and enforces the gate only for publication writes', async () => {
+    let publicationReady = false
+    let publicationRequests = 0
+    const { dataDir, repo, service, requests } = await setup((request) => {
+      if (request.url.pathname === '/readyz') {
+        return Response.json({ status: 'ready', contractMode: 'packages-enabled', publicationReady })
+      }
+      if (request.url.pathname.endsWith('/challenge')) return Response.json({ value: 'challenge-value' }, { status: 201 })
+      if (request.url.pathname.endsWith('/activate')) return Response.json(activeToken(), { status: 201 })
+      if (request.url.pathname === '/v1/installations/events') return new Response(null, { status: 204 })
+      if (request.url.pathname === '/v1/publications/test') {
+        publicationRequests += 1
+        return Response.json({ ok: true })
+      }
+      throw new Error(`Unexpected request ${request.url.pathname}`)
+    })
+
+    await expect(service.activate()).resolves.toMatchObject({ installationId: 7 })
+    expect(repo.getInstallationProjection()).toMatchObject({ state: 'active', remoteInstallationId: 7 })
+    expect((await stat(join(dataDir, 'sharing', 'installation-instance.json'))).mode & 0o777).toBe(0o600)
+    expect((await stat(join(dataDir, 'sharing', 'installation-ed25519.pem'))).mode & 0o777).toBe(0o600)
+    expect((await stat(join(dataDir, 'sharing', 'installation-credentials.json'))).mode & 0o777).toBe(0o600)
+
+    await expect(service.signedFetch('/v1/installations/events', { method: 'GET', scope: 'events:read' })).resolves.toMatchObject({ status: 204 })
+    await expect(service.signedFetch('/v1/publications/test')).rejects.toMatchObject({ code: 'labgd-unavailable' })
+    expect(publicationRequests).toBe(0)
+
+    publicationReady = true
+    await expect(service.signedFetch('/v1/publications/test')).resolves.toMatchObject({ status: 200 })
+    expect(publicationRequests).toBe(1)
+    expect(requests.filter(({ url }) => url.pathname.endsWith('/challenge'))).toHaveLength(1)
+    expect(requests.filter(({ url }) => url.pathname.endsWith('/activate'))).toHaveLength(1)
+  })
+
   it('renews legacy credentials with the old token without changing installation identity', async () => {
     let renewals = 0
     const { dataDir, service, repo } = await setup((request) => {

@@ -120,7 +120,7 @@ describe('release notes helpers', () => {
     )
     expect(sharingRelease).toEqual(
       expect.objectContaining({
-        channel: 'latest',
+        channel: 'release',
         title: 'Private sharing through lab.gd',
       }),
     )

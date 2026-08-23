@@ -82,7 +82,7 @@ describe('lab.gd sharing protocol', () => {
     expect(staged).toEqual({ operationId: 11, missingHashes: ['a'.repeat(64)] })
     await client.upload(11, { contentHash: 'a'.repeat(64), contentJson: '{"viewType":"systems"}', mediaType: 'application/json' })
     expect(await client.activate(11, 0)).toEqual({ revisionId: 21 })
-    expect(paths.slice(-3)).toEqual([
+    expect(paths.filter((path) => path.startsWith('/v1/publications/'))).toEqual([
       '/v1/publications/manifest',
       `/v1/publications/operations/11/blobs/${'a'.repeat(64)}`,
       '/v1/publications/operations/11/activate',

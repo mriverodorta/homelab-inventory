@@ -12,6 +12,7 @@ export async function verifySharingReadiness({
   labGdOrigin,
   sessionCookie = '',
   fetchImpl = fetch,
+  requirePublicationReady = false,
 } = {}) {
   const normalizedAppOrigin = parseOrigin(appOrigin, 'Homelab Inventory')
   const normalizedLabGdOrigin = parseOrigin(labGdOrigin, 'lab.gd')
@@ -29,7 +30,8 @@ export async function verifySharingReadiness({
   assert(appHealth.mode === 'production', `Homelab Inventory mode is ${String(appHealth.mode)}, not production.`)
   assert(labGdReadiness.status === 'ready', 'lab.gd is not ready.')
   assert(labGdReadiness.contractMode === 'packages-enabled', 'lab.gd is not using published contract packages.')
-  assert(labGdReadiness.publicationReady === true, 'lab.gd publication is not ready.')
+  assert(typeof labGdReadiness.publicationReady === 'boolean', 'lab.gd publication readiness is invalid.')
+  if (requirePublicationReady) assert(labGdReadiness.publicationReady === true, 'lab.gd publication is not ready.')
 
   const remote = normalizeLabGdCapabilities(labGdDocument)
   const expectedCapabilities = sharingClientCapabilities({ enabled: true, publication: true, remote })
@@ -104,6 +106,7 @@ function parseArguments(args) {
     appOrigin: process.env.HLI_ORIGIN ?? 'http://127.0.0.1:8798',
     labGdOrigin: process.env.LABGD_ORIGIN ?? 'https://lab.gd',
     sessionCookie: process.env.HLI_SESSION_COOKIE ?? '',
+    requirePublicationReady: parseBoolean(process.env.LABGD_REQUIRE_PUBLICATION_READY, false),
   }
   for (let index = 0; index < args.length; index += 1) {
     const name = args[index]
@@ -115,6 +118,13 @@ function parseArguments(args) {
     index += 1
   }
   return options
+}
+
+function parseBoolean(value, fallback) {
+  if (value == null || value === '') return fallback
+  if (value === 'true') return true
+  if (value === 'false') return false
+  throw new Error('LABGD_REQUIRE_PUBLICATION_READY must be true or false when set.')
 }
 
 async function main() {

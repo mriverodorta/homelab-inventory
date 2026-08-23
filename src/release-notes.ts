@@ -552,6 +552,15 @@ const RELEASE_0_15_0_DETAILS: UnreleasedReleaseNotes = {
   ],
 }
 
+const RELEASE_0_15_1_DETAILS: UnreleasedReleaseNotes = {
+  highlights: [],
+  fixes: [
+    'Automatic lab.gd enrollment now succeeds while remote publication remains safely gated, while publication writes continue to fail closed until LabGD explicitly enables publication.',
+    'The coordinated rollout verifier now distinguishes connected enrollment readiness from the later publication-enabled certification phase.',
+  ],
+  notes: [],
+}
+
 export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
   highlights: [],
   fixes: [],
@@ -1085,9 +1094,16 @@ const RELEASE_0_2_1_DETAILS: UnreleasedReleaseNotes = {
 
 export const RELEASE_NOTES: ReleaseNoteEntry[] = [
   {
+    version: '0.15.1',
+    date: '2026-08-23',
+    channel: 'latest',
+    title: 'Gated lab.gd enrollment',
+    ...RELEASE_0_15_1_DETAILS,
+  },
+  {
     version: '0.15.0',
     date: '2026-08-22',
-    channel: 'latest',
+    channel: 'release',
     title: 'Private sharing through lab.gd',
     ...RELEASE_0_15_0_DETAILS,
   },

@@ -6,6 +6,13 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 
 ## Unreleased
 
+## [0.15.1] - 2026-08-23
+
+### Fixed
+
+- Automatic lab.gd enrollment now succeeds while remote publication remains safely gated, while publication writes continue to fail closed until LabGD explicitly enables publication.
+- The coordinated rollout verifier now distinguishes connected enrollment readiness from the later publication-enabled certification phase.
+
 ## [0.15.0] - 2026-08-22
 
 ### Added

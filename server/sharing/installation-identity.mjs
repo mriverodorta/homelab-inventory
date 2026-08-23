@@ -167,12 +167,13 @@ export class SharingInstallationIdentityService {
     const response = await this.request('/readyz')
     const body = await boundedJson(response)
     if (body.contractMode !== 'packages-enabled') throw new SharingUnsupportedError()
-    if (body.status !== 'ready' || body.publicationReady !== true) {
+    if (body.status !== 'ready') {
       const error = new Error('lab.gd is not ready for publication.')
       error.code = 'labgd-unavailable'
       error.retryAfterMs = retryAfterMs(response)
       throw error
     }
+    if (typeof body.publicationReady !== 'boolean') throw new SharingUnsupportedError('lab.gd publication readiness is invalid.')
     const capabilityResponse = await this.request('/v1/capabilities')
     const capabilityDocument = await boundedJson(capabilityResponse)
     if (!capabilityResponse.ok) throw httpError(capabilityResponse, capabilityDocument, 'labgd-capabilities-failed')
@@ -182,6 +183,18 @@ export class SharingInstallationIdentityService {
       throw new SharingUnsupportedError(error instanceof Error ? error.message : undefined)
     }
     return { shareContractVersion: SHARE_CONTRACT_VERSION, capabilities: this.remoteCapabilities }
+  }
+
+  async publicationReadiness() {
+    const response = await this.request('/readyz')
+    const body = await boundedJson(response)
+    if (body.contractMode !== 'packages-enabled') throw new SharingUnsupportedError()
+    if (body.status !== 'ready' || body.publicationReady !== true) {
+      const error = new Error('lab.gd is not ready for publication.')
+      error.code = 'labgd-unavailable'
+      error.retryAfterMs = retryAfterMs(response)
+      throw error
+    }
   }
 
   getCapabilities() {
@@ -333,6 +346,7 @@ export class SharingInstallationIdentityService {
   }
 
   async signedFetch(pathname, { method = 'POST', body = new Uint8Array(), scope = 'publication:write', headers = {}, timeoutMs = REQUEST_TIMEOUT_MS } = {}) {
+    if (scope === 'publication:write') await this.publicationReadiness()
     const { instance, keys } = await this.ensure()
     let credentials = await this.readCredentials(instance)
     if (!credentials) credentials = await this.activate()
