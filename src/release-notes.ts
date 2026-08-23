@@ -531,12 +531,12 @@ const RELEASE_0_14_1_DETAILS: UnreleasedReleaseNotes = {
   ],
 }
 
-export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
+const RELEASE_0_15_0_DETAILS: UnreleasedReleaseNotes = {
   highlights: [
-    'Production installations can enroll a separate stable identity with lab.gd and publish explicitly selected Systems and Canvas views after an exact local privacy review.',
+    'Production installations automatically enroll a separate stable identity with lab.gd and can publish explicitly selected Systems and Canvas views after an exact local privacy review.',
     'Shares support immutable or replaceable revisions, manual or one-minute synchronized updates, expiration, exact iframe origins, and optional one-time resource snapshots.',
     'Optional lab.gd features now appear only after explicit contract negotiation, including protected shares, lifecycle controls, GitHub account claiming, owner analytics, and installation events.',
-    'Claimed installations can resume remote state changes without polling and manage share settings, protected passwords, publication lifecycle, and 90-day daily owner analytics from Homelab Inventory.',
+    'Claimed installations receive remote state through resumable SSE without polling and can manage share settings, protected passwords, publication lifecycle, and 90-day daily owner analytics from Homelab Inventory.',
   ],
   fixes: [
     'Sharing identity backups and environment synchronization now preserve and isolate the deterministic public-ID key together with the installation UUID, signing credentials, and recovery key.',
@@ -549,6 +549,12 @@ export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
     'A read-only rollout verifier checks both services, automatic enrollment, and exact capability agreement without creating or changing a share.',
     'Claim codes stay out of URLs and protected-share plaintext passwords are request-only: neither is persisted in local SQLite, logs, browser storage, or backups.',
   ],
+}
+
+export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
+  highlights: [],
+  fixes: [],
+  notes: [],
 }
 
 const RELEASE_0_11_2_DETAILS: UnreleasedReleaseNotes = {
@@ -1078,9 +1084,16 @@ const RELEASE_0_2_1_DETAILS: UnreleasedReleaseNotes = {
 
 export const RELEASE_NOTES: ReleaseNoteEntry[] = [
   {
-    version: '0.14.1',
+    version: '0.15.0',
     date: '2026-08-22',
     channel: 'latest',
+    title: 'Private sharing through lab.gd',
+    ...RELEASE_0_15_0_DETAILS,
+  },
+  {
+    version: '0.14.1',
+    date: '2026-08-22',
+    channel: 'release',
     title: 'Reliable owner setup and shared protocols',
     ...RELEASE_0_14_1_DETAILS,
   },

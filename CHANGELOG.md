@@ -6,6 +6,8 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 
 ## Unreleased
 
+## [0.15.0] - 2026-08-22
+
 ### Added
 
 - Production installations can automatically enroll a separate stable Ed25519 identity with lab.gd, then configure privacy-reviewed public or unlisted Systems and Canvas shares without exposing the Homelab Inventory server.

@@ -92,6 +92,7 @@ describe('release notes helpers', () => {
   })
 
   it('keeps one current latest entry and the structured release history', () => {
+    const sharingRelease = RELEASE_NOTES.find((entry) => entry.version === '0.15.0')!
     const identityRelease = RELEASE_NOTES.find((entry) => entry.version === '0.8.6')!
     const hardenedRelease = RELEASE_NOTES.find((entry) => entry.version === '0.8.5')!
     const layoutRelease = RELEASE_NOTES.find((entry) => entry.version === '0.8.4')!
@@ -116,6 +117,21 @@ describe('release notes helpers', () => {
       [...RELEASE_NOTES]
         .sort((left, right) => compareVersions(right.version, left.version))
         .map((entry) => entry.version),
+    )
+    expect(sharingRelease).toEqual(
+      expect.objectContaining({
+        channel: 'latest',
+        title: 'Private sharing through lab.gd',
+      }),
+    )
+    expect(sharingRelease.highlights).toContain(
+      'Production installations automatically enroll a separate stable identity with lab.gd and can publish explicitly selected Systems and Canvas views after an exact local privacy review.',
+    )
+    expect(sharingRelease.highlights).toContain(
+      'Claimed installations receive remote state through resumable SSE without polling and can manage share settings, protected passwords, publication lifecycle, and 90-day daily owner analytics from Homelab Inventory.',
+    )
+    expect(sharingRelease.notes).toContain(
+      'Tags and custom fields remain excluded unless selected; serials, addresses, credentials, Agent identity, telemetry history, audit data, and Registry enrollment never enter share payloads.',
     )
     expect(RELEASE_NOTES.find((entry) => entry.version === '0.12.6')).toEqual(
       expect.objectContaining({
