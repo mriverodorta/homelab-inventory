@@ -24,6 +24,10 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 - Account claiming now uses lab.gd's single-use code, verification URL, and expiration contract instead of reconstructing an account URL locally.
 - Lifecycle operations reuse stable idempotency keys across reconnects and restarts, and stale remote revisions reload instead of overwriting authoritative state.
 
+### Fixed
+
+- The final distroless image includes the resumable lab.gd installation-event coordinator required by the production sharing runtime.
+
 ### Security
 
 - Tags and custom fields remain excluded unless selected, and the sharing projector allowlists public fields while excluding serials, addresses, credentials, Agent identity, telemetry history, audit data, and Registry enrollment.

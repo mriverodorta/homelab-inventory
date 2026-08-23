@@ -47,6 +47,30 @@ describe('WASM runtime verifier', () => {
     expect(dockerfile).toContain('server/compatibility/routes.mjs')
   })
 
+  it('packages every production sharing backend module', async () => {
+    const dockerfile = await fs.readFile(path.resolve('Dockerfile'), 'utf8')
+
+    for (const module of [
+      'server/sharing/capabilities.mjs',
+      'server/sharing/enrollment-coordinator.mjs',
+      'server/sharing/installation-auth.mjs',
+      'server/sharing/installation-event-coordinator.mjs',
+      'server/sharing/installation-identity.mjs',
+      'server/sharing/installation-instance.mjs',
+      'server/sharing/labgd-client.mjs',
+      'server/sharing/privacy-policy.mjs',
+      'server/sharing/public-id-service.mjs',
+      'server/sharing/publication-coordinator.mjs',
+      'server/sharing/publication-service.mjs',
+      'server/sharing/remote-capabilities.mjs',
+      'server/sharing/routes.mjs',
+      'server/sharing/share-projector.mjs',
+      'server/sharing/source-provider.mjs',
+    ]) {
+      expect(dockerfile).toContain(module)
+    }
+  })
+
   it('accepts the minimal generated runtime', async () => {
     const root = await runtimeFixture()
     await expect(verifyWasmRuntime(root)).resolves.toMatchObject({ ok: true })

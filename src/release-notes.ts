@@ -539,6 +539,7 @@ const RELEASE_0_15_0_DETAILS: UnreleasedReleaseNotes = {
     'Claimed installations receive remote state through resumable SSE without polling and can manage share settings, protected passwords, publication lifecycle, and 90-day daily owner analytics from Homelab Inventory.',
   ],
   fixes: [
+    'The final distroless image now includes the resumable lab.gd installation-event coordinator required by the production sharing runtime.',
     'Sharing identity backups and environment synchronization now preserve and isolate the deterministic public-ID key together with the installation UUID, signing credentials, and recovery key.',
     'Installation credentials refresh before newly scoped operations and fail closed when lab.gd does not grant the required capability.',
     'Remote event cursors advance atomically with local sharing state, while lifecycle commands retain stable idempotency keys across reconnects and restarts.',
