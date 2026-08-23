@@ -561,7 +561,7 @@ const RELEASE_0_15_1_DETAILS: UnreleasedReleaseNotes = {
   notes: [],
 }
 
-export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
+const RELEASE_0_15_2_DETAILS: UnreleasedReleaseNotes = {
   highlights: [
     'Embedded Agent 0.3.4 adds Alpine Linux 3.22 and capability-based OpenRC support for AMD64 and ARM64 hosts.',
   ],
@@ -572,6 +572,12 @@ export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
   notes: [
     'The installer never runs apk add; optional host tools only enrich their matching hardware sections.',
   ],
+}
+
+export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
+  highlights: [],
+  fixes: [],
+  notes: [],
 }
 
 const RELEASE_0_11_2_DETAILS: UnreleasedReleaseNotes = {
@@ -1101,9 +1107,16 @@ const RELEASE_0_2_1_DETAILS: UnreleasedReleaseNotes = {
 
 export const RELEASE_NOTES: ReleaseNoteEntry[] = [
   {
-    version: '0.15.1',
+    version: '0.15.2',
     date: '2026-08-23',
     channel: 'latest',
+    title: 'Alpine and OpenRC Agent support',
+    ...RELEASE_0_15_2_DETAILS,
+  },
+  {
+    version: '0.15.1',
+    date: '2026-08-23',
+    channel: 'release',
     title: 'Gated lab.gd enrollment',
     ...RELEASE_0_15_1_DETAILS,
   },

@@ -6,6 +6,8 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 
 ## Unreleased
 
+## [0.15.2] - 2026-08-23
+
 ### Added
 
 - Embedded Agent 0.3.4 adds Alpine Linux 3.22 and capability-based OpenRC support for AMD64 and ARM64 hosts, including unprivileged service management, rollback-safe updates, and OpenRC service telemetry.

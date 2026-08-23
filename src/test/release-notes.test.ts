@@ -92,6 +92,7 @@ describe('release notes helpers', () => {
   })
 
   it('keeps one current latest entry and the structured release history', () => {
+    const alpineAgentRelease = RELEASE_NOTES.find((entry) => entry.version === '0.15.2')!
     const sharingRelease = RELEASE_NOTES.find((entry) => entry.version === '0.15.0')!
     const identityRelease = RELEASE_NOTES.find((entry) => entry.version === '0.8.6')!
     const hardenedRelease = RELEASE_NOTES.find((entry) => entry.version === '0.8.5')!
@@ -117,6 +118,15 @@ describe('release notes helpers', () => {
       [...RELEASE_NOTES]
         .sort((left, right) => compareVersions(right.version, left.version))
         .map((entry) => entry.version),
+    )
+    expect(alpineAgentRelease).toEqual(
+      expect.objectContaining({
+        channel: 'latest',
+        title: 'Alpine and OpenRC Agent support',
+      }),
+    )
+    expect(alpineAgentRelease.highlights).toContain(
+      'Embedded Agent 0.3.4 adds Alpine Linux 3.22 and capability-based OpenRC support for AMD64 and ARM64 hosts.',
     )
     expect(sharingRelease).toEqual(
       expect.objectContaining({
