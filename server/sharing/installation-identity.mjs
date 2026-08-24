@@ -207,10 +207,22 @@ export class SharingInstallationIdentityService {
     const { instance } = current
     const keys = keyPath === this.privateKeyPath ? current.keys : await this.ensureKeyPair(keyPath)
     const existing = await this.readCredentials(instance)
-    if (!promoteRecovery && existing && (forceRefresh || existing.renewalRequired || Date.parse(existing.tokenExpiresAt) <= this.now().getTime() + TOKEN_REFRESH_MARGIN_MS)) {
-      return this.renewCredentials(current, existing)
+    if (existing && current.projection.remoteInstallationId != null && current.projection.remoteInstallationId !== existing.installationId) {
+      throw installationIdentityMismatch()
     }
     if (!promoteRecovery && existing) {
+      const expiresAtMs = Date.parse(existing.tokenExpiresAt)
+      if (expiresAtMs <= this.now().getTime()) {
+        return this.challengeActivate(current, keys, { keyPath, promoteRecovery, expectedInstallationId: existing.installationId })
+      }
+      if (forceRefresh || existing.renewalRequired || expiresAtMs <= this.now().getTime() + TOKEN_REFRESH_MARGIN_MS) {
+        try {
+          return await this.renewCredentials(current, existing)
+        } catch (error) {
+          if (error?.code !== 'authentication-failed') throw error
+          return this.challengeActivate(current, keys, { keyPath, promoteRecovery, expectedInstallationId: existing.installationId })
+        }
+      }
       this.repository.saveInstallationProjection({
         clientInstanceId: instance.clientInstanceId,
         keyId: keys.keyId,
@@ -223,6 +235,15 @@ export class SharingInstallationIdentityService {
       })
       return existing
     }
+    return this.challengeActivate(current, keys, {
+      keyPath,
+      promoteRecovery,
+      expectedInstallationId: existing?.installationId ?? current.projection.remoteInstallationId,
+    })
+  }
+
+  async challengeActivate(current, keys, { keyPath, promoteRecovery, expectedInstallationId = null }) {
+    const { instance } = current
     const challengeResponse = await this.request('/v1/installations/challenge', {
       method: 'POST',
       body: JSON.stringify({ clientInstanceId: instance.clientInstanceId }),
@@ -242,6 +263,7 @@ export class SharingInstallationIdentityService {
     })
     const activation = await boundedJson(activationResponse)
     if (activationResponse.status === 409 && activation.status === 'recovery-pending') {
+      assertExpectedInstallation(expectedInstallationId, activation.installationId)
       this.repository.saveInstallationProjection({
         clientInstanceId: instance.clientInstanceId,
         keyId: keys.keyId,
@@ -257,6 +279,7 @@ export class SharingInstallationIdentityService {
     if (!activationResponse.ok || activation.status !== 'active' || !Number.isSafeInteger(activation.installationId) || typeof activation.token !== 'string') {
       throw httpError(activationResponse, activation, 'labgd-activation-failed')
     }
+    assertExpectedInstallation(expectedInstallationId, activation.installationId)
     let scopes
     let tokenExpiresAt
     try {
@@ -489,6 +512,17 @@ function sameScopeSet(actual, expected) {
 function normalizeTokenExpiry(value, now) {
   if (typeof value !== 'string' || !Number.isFinite(Date.parse(value)) || Date.parse(value) <= now.getTime()) throw new SharingUnsupportedError('lab.gd returned an invalid token expiry.')
   return value
+}
+
+function assertExpectedInstallation(expectedInstallationId, actualInstallationId) {
+  if (expectedInstallationId == null || expectedInstallationId === actualInstallationId) return
+  throw installationIdentityMismatch()
+}
+
+function installationIdentityMismatch() {
+  const error = new Error('lab.gd returned a different logical installation during credential recovery.')
+  error.code = 'sharing-installation-identity-mismatch'
+  return error
 }
 
 function hasExactKeys(value, expected) {

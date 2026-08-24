@@ -181,6 +181,111 @@ describe('sharing installation identity', () => {
     expect(JSON.parse(await readFile(join(dataDir, 'sharing', 'installation-credentials.json'), 'utf8')).scopes).toContain('events:read')
   })
 
+  it('challenge-activates an expired credential with the existing identity without attempting renewal', async () => {
+    const { dataDir, service, repo, requests } = await setup((request) => {
+      if (request.url.pathname === '/readyz') return Response.json({ status: 'ready', contractMode: 'packages-enabled', publicationReady: true })
+      if (request.url.pathname.endsWith('/renew')) return Response.json({ error: 'authentication-failed' }, { status: 401 })
+      if (request.url.pathname.endsWith('/challenge')) return Response.json({ value: 'challenge-value' }, { status: 201 })
+      if (request.url.pathname.endsWith('/activate')) return Response.json(activeToken(), { status: 201 })
+      if (request.url.pathname === '/v1/installations/events') return new Response(null, { status: 204 })
+      throw new Error(`Unexpected request ${request.url.pathname}`)
+    })
+    const before = await service.ensure()
+    repo.saveInstallationProjection({ ...before.projection, remoteInstallationId: 7, credentialExpiresAtMs: Date.parse('2026-08-22T11:59:00.000Z'), state: 'active' })
+    await service.writeCredentials({
+      version: 1,
+      clientInstanceId: before.instance.clientInstanceId,
+      installationId: 7,
+      token: 'e'.repeat(32),
+      scopes: [...SHARING_TOKEN_SCOPES],
+      tokenExpiresAt: '2026-08-22T11:59:00.000Z',
+    })
+
+    await expect(service.signedFetch('/v1/installations/events', { method: 'GET', scope: 'events:read' })).resolves.toMatchObject({ status: 204 })
+
+    expect(requests.filter(({ url }) => url.pathname.endsWith('/renew'))).toHaveLength(0)
+    expect(requests.filter(({ url }) => url.pathname.endsWith('/challenge'))).toHaveLength(1)
+    const activation = requests.find(({ url }) => url.pathname.endsWith('/activate'))
+    expect(activation.body).toMatchObject({
+      clientInstanceId: before.instance.clientInstanceId,
+      publicKeySpki: before.keys.publicKeySpki,
+    })
+    expect(repo.getInstallationProjection()).toMatchObject({ remoteInstallationId: 7, state: 'active' })
+    expect(JSON.parse(await readFile(join(dataDir, 'sharing', 'installation-credentials.json'), 'utf8')).token).toBe('t'.repeat(32))
+  })
+
+  it('challenge-activates once when proactive renewal loses an authentication race', async () => {
+    const { service, repo, requests } = await setup((request) => {
+      if (request.url.pathname === '/readyz') return Response.json({ status: 'ready', contractMode: 'packages-enabled', publicationReady: true })
+      if (request.url.pathname.endsWith('/renew')) return Response.json({ error: 'authentication-failed' }, { status: 401 })
+      if (request.url.pathname.endsWith('/challenge')) return Response.json({ value: 'challenge-value' }, { status: 201 })
+      if (request.url.pathname.endsWith('/activate')) return Response.json(activeToken(), { status: 201 })
+      if (request.url.pathname === '/v1/installations/events') return new Response(null, { status: 204 })
+      throw new Error(`Unexpected request ${request.url.pathname}`)
+    })
+    const before = await service.ensure()
+    repo.saveInstallationProjection({ ...before.projection, remoteInstallationId: 7, credentialExpiresAtMs: Date.parse('2026-08-22T12:00:30.000Z'), state: 'active' })
+    await service.writeCredentials({
+      version: 1,
+      clientInstanceId: before.instance.clientInstanceId,
+      installationId: 7,
+      token: 'n'.repeat(32),
+      scopes: [...SHARING_TOKEN_SCOPES],
+      tokenExpiresAt: '2026-08-22T12:00:30.000Z',
+    })
+
+    await service.signedFetch('/v1/installations/events', { method: 'GET', scope: 'events:read' })
+
+    expect(requests.filter(({ url }) => url.pathname.endsWith('/renew'))).toHaveLength(1)
+    expect(requests.filter(({ url }) => url.pathname.endsWith('/challenge'))).toHaveLength(1)
+    expect(requests.filter(({ url }) => url.pathname.endsWith('/activate'))).toHaveLength(1)
+  })
+
+  it('does not challenge-activate after a non-authentication renewal failure', async () => {
+    const { service, repo, requests } = await setup((request) => {
+      if (request.url.pathname === '/readyz') return Response.json({ status: 'ready', contractMode: 'packages-enabled', publicationReady: true })
+      if (request.url.pathname.endsWith('/renew')) return Response.json({ error: 'renewal-unavailable' }, { status: 503 })
+      throw new Error(`Unexpected request ${request.url.pathname}`)
+    })
+    const before = await service.ensure()
+    repo.saveInstallationProjection({ ...before.projection, remoteInstallationId: 7, credentialExpiresAtMs: Date.parse('2026-08-22T12:00:30.000Z'), state: 'active' })
+    await service.writeCredentials({
+      version: 1,
+      clientInstanceId: before.instance.clientInstanceId,
+      installationId: 7,
+      token: 'n'.repeat(32),
+      scopes: [...SHARING_TOKEN_SCOPES],
+      tokenExpiresAt: '2026-08-22T12:00:30.000Z',
+    })
+
+    await expect(service.signedFetch('/v1/installations/events', { method: 'GET', scope: 'events:read' })).rejects.toMatchObject({ code: 'renewal-unavailable' })
+    expect(requests.filter(({ url }) => url.pathname.endsWith('/challenge'))).toHaveLength(0)
+  })
+
+  it('fails closed when reactivation returns a different logical installation', async () => {
+    const { dataDir, service, repo } = await setup((request) => {
+      if (request.url.pathname === '/readyz') return Response.json({ status: 'ready', contractMode: 'packages-enabled', publicationReady: true })
+      if (request.url.pathname.endsWith('/challenge')) return Response.json({ value: 'challenge-value' }, { status: 201 })
+      if (request.url.pathname.endsWith('/activate')) return Response.json(activeToken({ installationId: 8 }), { status: 201 })
+      throw new Error(`Unexpected request ${request.url.pathname}`)
+    })
+    const before = await service.ensure()
+    repo.saveInstallationProjection({ ...before.projection, remoteInstallationId: 7, credentialExpiresAtMs: Date.parse('2026-08-22T11:59:00.000Z'), state: 'active' })
+    await service.writeCredentials({
+      version: 1,
+      clientInstanceId: before.instance.clientInstanceId,
+      installationId: 7,
+      token: 'e'.repeat(32),
+      scopes: [...SHARING_TOKEN_SCOPES],
+      tokenExpiresAt: '2026-08-22T11:59:00.000Z',
+    })
+    const credentialsBefore = await readFile(join(dataDir, 'sharing', 'installation-credentials.json'), 'utf8')
+
+    await expect(service.signedFetch('/v1/installations/events', { method: 'GET', scope: 'events:read' })).rejects.toMatchObject({ code: 'sharing-installation-identity-mismatch' })
+    expect(await readFile(join(dataDir, 'sharing', 'installation-credentials.json'), 'utf8')).toBe(credentialsBefore)
+    expect(repo.getInstallationProjection()).toMatchObject({ remoteInstallationId: 7, state: 'active' })
+  })
+
   it('rejects activation responses that omit authoritative scopes or expiry', async () => {
     const { service } = await setup((request) => {
       if (request.url.pathname === '/readyz') return Response.json({ status: 'ready', contractMode: 'packages-enabled', publicationReady: true })

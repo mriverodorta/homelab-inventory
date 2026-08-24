@@ -94,6 +94,28 @@ describe('sharing publication service', () => {
     expect(repo.getShare()).toMatchObject({ state: 'synced', remotePublicId: 'share_public_0001', remoteRevision: 1, activeManifestHash: projected.manifestHash })
   })
 
+  it('replays one remote operation and public ID after credential recovery', async () => {
+    const { repo, client, publication } = service()
+    client.stage.mockResolvedValue({ operationId: 132, missingHashes: [] })
+    client.activate
+      .mockRejectedValueOnce(Object.assign(new Error('Authentication failed.'), { code: 'authentication-failed' }))
+      .mockResolvedValueOnce({ revisionId: 133 })
+    const preview = await publication.preview(1)
+    await publication.approvePreview(1, preview.manifestHash)
+    const operation = await publication.enqueuePublish(1)
+
+    await expect(publication.executePublish(operation)).rejects.toMatchObject({ code: 'authentication-failed' })
+    await publication.executePublish(operation)
+
+    expect(repo.operations.size).toBe(1)
+    expect(client.stage).toHaveBeenCalledTimes(2)
+    expect(client.stage.mock.calls[0][0]).toEqual(client.stage.mock.calls[1][0])
+    expect(client.activate).toHaveBeenNthCalledWith(1, 132, 0)
+    expect(client.activate).toHaveBeenNthCalledWith(2, 132, 0)
+    expect(repo.operations.get(operation.id)).toMatchObject({ state: 'succeeded', remoteOperationId: 132 })
+    expect(repo.getShare()).toMatchObject({ state: 'synced', remotePublicId: 'share_public_0001', remoteRevision: 1 })
+  })
+
   it('rejects publication when selections changed after preview', async () => {
     const { publication } = service()
     await expect(publication.enqueuePublish(1)).rejects.toThrow('privacy preview')
