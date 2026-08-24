@@ -583,11 +583,17 @@ const RELEASE_0_15_3_DETAILS: UnreleasedReleaseNotes = {
   notes: [],
 }
 
-export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
+const RELEASE_0_15_4_DETAILS: UnreleasedReleaseNotes = {
   highlights: [],
   fixes: [
     'Settings navigation and content now remain inside the dialog with independent scrolling, while the share editor uses its intended responsive width instead of collapsing into a narrow form.',
   ],
+  notes: [],
+}
+
+export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
+  highlights: [],
+  fixes: [],
   notes: [],
 }
 
@@ -1118,9 +1124,16 @@ const RELEASE_0_2_1_DETAILS: UnreleasedReleaseNotes = {
 
 export const RELEASE_NOTES: ReleaseNoteEntry[] = [
   {
-    version: '0.15.3',
+    version: '0.15.4',
     date: '2026-08-23',
     channel: 'latest',
+    title: 'Contained responsive dialogs',
+    ...RELEASE_0_15_4_DETAILS,
+  },
+  {
+    version: '0.15.3',
+    date: '2026-08-23',
+    channel: 'release',
     title: 'Reliable LabGD recovery and Alpine setup',
     ...RELEASE_0_15_3_DETAILS,
   },

@@ -92,7 +92,8 @@ describe('release notes helpers', () => {
   })
 
   it('keeps one current latest entry and the structured release history', () => {
-    const currentPatchRelease = RELEASE_NOTES.find((entry) => entry.version === '0.15.3')!
+    const currentPatchRelease = RELEASE_NOTES.find((entry) => entry.version === '0.15.4')!
+    const recoveryRelease = RELEASE_NOTES.find((entry) => entry.version === '0.15.3')!
     const alpineAgentRelease = RELEASE_NOTES.find((entry) => entry.version === '0.15.2')!
     const sharingRelease = RELEASE_NOTES.find((entry) => entry.version === '0.15.0')!
     const identityRelease = RELEASE_NOTES.find((entry) => entry.version === '0.8.6')!
@@ -123,13 +124,16 @@ describe('release notes helpers', () => {
     expect(currentPatchRelease).toEqual(
       expect.objectContaining({
         channel: 'latest',
-        title: 'Reliable LabGD recovery and Alpine setup',
+        title: 'Contained responsive dialogs',
       }),
     )
     expect(currentPatchRelease.fixes).toContain(
+      'Settings navigation and content now remain inside the dialog with independent scrolling, while the share editor uses its intended responsive width instead of collapsing into a narrow form.',
+    )
+    expect(recoveryRelease.fixes).toContain(
       'Agent setup now offers Alpine Linux as a first-class platform and generates root-shell install, update, and hardware-inventory commands without sudo.',
     )
-    expect(currentPatchRelease.fixes).toContain(
+    expect(recoveryRelease.fixes).toContain(
       'Expired lab.gd credentials now reactivate the existing installation UUID and Ed25519 key before resuming the same pending publication operation, preventing replacement identities or public share IDs.',
     )
     expect(alpineAgentRelease).toEqual(
