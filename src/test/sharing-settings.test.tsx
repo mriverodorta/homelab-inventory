@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { fireEvent, render, screen } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { SharingSettings } from '@/components/settings/sharing/sharing-settings'
 import { AccountClaimDialog } from '@/components/settings/sharing/account-claim-dialog'
@@ -27,6 +27,7 @@ function sharing(overrides: Record<string, unknown> = {}) {
           version: 1,
           publication: true,
           accountClaiming: false,
+          installationAccountStatus: false,
           installationEvents: false,
           ownerAnalytics: false,
           protectedShares: false,
@@ -48,6 +49,11 @@ function sharing(overrides: Record<string, unknown> = {}) {
           nextAttemptAtMs: null as number | null,
           lastErrorCode: null,
           recoveryState: null,
+          account: {
+            claimed: false as boolean,
+            githubUsername: null as string | null,
+            claimedAtMs: null as number | null,
+          },
         },
       },
     },
@@ -62,6 +68,7 @@ function sharing(overrides: Record<string, unknown> = {}) {
     snapshot: { ...mutation },
     resumeRecovery: { ...mutation },
     claim: { ...mutation },
+    reconcileAccount: { ...mutation },
     unpublish: { ...mutation },
     remove: { ...mutation },
     republish: { ...mutation },
@@ -75,7 +82,9 @@ function renderSettings(value = sharing()) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   client.setQueryData(['sharing', 'workbooks'], [])
   client.setQueryData(['inventory-metadata', 'catalog'], { revision: 0, definitions: [], tags: [] })
-  return render(<QueryClientProvider client={client}><TooltipProvider><SharingSettings /></TooltipProvider></QueryClientProvider>)
+  const element = () => <QueryClientProvider client={client}><TooltipProvider><SharingSettings /></TooltipProvider></QueryClientProvider>
+  const view = render(element())
+  return { ...view, rerenderSettings: () => view.rerender(element()) }
 }
 
 describe('SharingSettings', () => {
@@ -118,6 +127,35 @@ describe('SharingSettings', () => {
     renderSettings()
     expect(screen.queryByRole('button', { name: 'Connect account' })).not.toBeInTheDocument()
     expect(screen.queryByText('Audience')).not.toBeInTheDocument()
+  })
+
+  it('closes a completed claim and shows the authoritative GitHub username', async () => {
+    const value = sharing()
+    value.settings.data.capabilities.accountClaiming = true
+    value.settings.data.capabilities.installationAccountStatus = true
+    value.claim.mutateAsync.mockResolvedValueOnce({
+      claimId: 'claim_123',
+      userCode: 'ABCD-2345',
+      verificationUrl: 'https://app.lab.gd/claim',
+      expiresAt: '2026-08-22T18:30:00.000Z',
+      state: 'pending',
+    })
+    const view = renderSettings(value)
+    fireEvent.click(screen.getByRole('button', { name: 'Connect account' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Start account claim' }))
+    expect(await screen.findByText('ABCD-2345')).toBeInTheDocument()
+
+    value.settings.data.settings.account = {
+      claimed: true,
+      githubUsername: 'maikeldorta',
+      claimedAtMs: Date.parse('2026-08-22T18:31:00.000Z'),
+    }
+    view.rerenderSettings()
+
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+    expect(screen.getByText('Connected to @maikeldorta')).toBeInTheDocument()
+    expect(screen.getByRole('status')).toHaveTextContent('Connected to @maikeldorta.')
+    expect(screen.queryByRole('button', { name: 'Connect account' })).not.toBeInTheDocument()
   })
 
   it('shows negotiated remote controls and keeps password entry in request state', async () => {

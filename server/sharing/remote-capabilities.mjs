@@ -17,6 +17,7 @@ export function normalizeLabGdCapabilities(value) {
   requireSupported(capabilities.lifecycleOperations, 'lifecycle operations')
   requireExactStrings(capabilities.lifecycleOperations.operations, ['update', 'unpublish', 'delete', 'republish', 'replace-password'], 'lifecycle operations')
   requireSupported(capabilities.accountClaiming, 'account claiming')
+  if (typeof capabilities.accountClaiming.statusSupported !== 'boolean') throw new Error('lab.gd account status support flag is invalid.')
   requireSupported(capabilities.ownerAnalytics, 'owner analytics')
   requireExactStrings(capabilities.ownerAnalytics.buckets, ['day'], 'owner analytics buckets')
   if (capabilities.ownerAnalytics.retentionDays !== 90) throw new Error('lab.gd owner analytics retention is unsupported.')
@@ -24,6 +25,7 @@ export function normalizeLabGdCapabilities(value) {
   requireConfigurationOnly(capabilities.reactions, 'reactions')
   return Object.freeze({
     accountClaiming: true,
+    installationAccountStatus: capabilities.accountClaiming.statusSupported,
     installationEvents: true,
     ownerAnalytics: true,
     protectedShares: true,

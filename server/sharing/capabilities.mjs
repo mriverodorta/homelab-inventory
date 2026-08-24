@@ -3,6 +3,7 @@ export const SHARING_CAPABILITY_VERSION = 1
 const OPTIONAL_CAPABILITIES = Object.freeze([
   'accountClaiming',
   'installationEvents',
+  'installationAccountStatus',
   'ownerAnalytics',
   'protectedShares',
   'remoteLifecycle',
@@ -14,6 +15,7 @@ export function sharingClientCapabilities({ enabled = false, publication = false
     version: SHARING_CAPABILITY_VERSION,
     publication: active && publication === true,
     accountClaiming: false,
+    installationAccountStatus: false,
     installationEvents: false,
     ownerAnalytics: false,
     protectedShares: false,

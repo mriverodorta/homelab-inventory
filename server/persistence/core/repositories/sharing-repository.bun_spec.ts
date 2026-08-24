@@ -189,12 +189,17 @@ describe('sharing repository', () => {
   test('applies remote events and advances the cursor in one transaction', async () => {
     const { handle, repository } = await fixture()
     try {
+      repository.saveInstallationProjection({clientInstanceId:'7a179ed6-7583-4dd2-8df2-fbb5e9fda786',keyId:'key-1',publicKeySpki:'spki',identityHash:'a'.repeat(64),remoteInstallationId:7,credentialExpiresAtMs:null,state:'active',recoveryPublicKeySpki:null})
       const share = repository.createShare({ projectId: 1, title: 'Remote share', mutability: 'replaceable', syncMode: 'manual', visibility: 'unlisted', views: [{ workspaceId: 1, viewType: 'systems' }] })
       repository.updateShare(share.id, share.localRevision, { remotePublicId: 'share_remote_1', remoteRevision: 2, state: 'synced' })
       expect(repository.applyRemoteEvent({ id: 40, kind: 'unpublish', payload: { eventVersion: 1, sharePublicId: 'share_remote_1', revision: 3, state: 'unpublished', occurredAt: '2026-08-22T12:00:00.000Z' } })).toMatchObject({ applied: true, shares: [{ state: 'unpublished', remoteRevision: 3 }] })
       expect(repository.getSettings().remoteEventCursor).toBe(40)
       expect(repository.applyRemoteEvent({ id: 40, kind: 'unpublish', payload: { eventVersion: 1, sharePublicId: 'share_remote_1', revision: 3, state: 'unpublished', occurredAt: '2026-08-22T12:00:00.000Z' } })).toEqual({ applied: false, shares: [] })
-      expect(repository.applyRemoteEvent({ id: 41, kind: 'account-claim', payload: { eventVersion: 1, claimId: 'claim_1', state: 'completed', occurredAt: '2026-08-22T12:01:00.000Z' } }).shares[0]).toMatchObject({ accountClaimed: true })
+      const beforeClaim=repository.getShare(share.id)
+      expect(()=>repository.applyRemoteEvent({ id: 41, kind: 'account-claim', payload: { eventVersion: 1, claimId: 'claim_1', state: 'completed', occurredAt: '2026-08-22T12:01:00.000Z' } })).toThrow('signed account status')
+      repository.reconcileInstallationAccount({claimed:true,githubUsername:'mriverodorta',accountClaimedAtMs:Date.parse('2026-08-22T12:01:00.000Z')},41)
+      expect(repository.getShare(share.id)).toMatchObject({accountClaimed:true,localRevision:beforeClaim?.localRevision})
+      expect(repository.getInstallationProjection()).toMatchObject({accountClaimed:true,githubUsername:'mriverodorta'})
       expect(repository.getSettings().remoteEventCursor).toBe(41)
       expect(() => repository.applyRemoteEvent({ id: 42, kind: 'replacement', payload: { eventVersion: 1, sharePublicId: 'share_remote_1', revision: 4, state: 'hostile', occurredAt: '2026-08-22T12:02:00.000Z' } })).toThrow('state is invalid')
       expect(repository.getSettings().remoteEventCursor).toBe(41)

@@ -28,6 +28,9 @@ export type SharingInstallationProjection = Readonly<{
   credentialExpiresAtMs: number | null
   state: 'local' | 'active' | 'recovery-pending' | 'disabled'
   recoveryPublicKeySpki: string | null
+  accountClaimed: boolean
+  githubUsername: string | null
+  accountClaimedAtMs: number | null
   createdAtMs: number
   updatedAtMs: number
 }>
@@ -111,6 +114,8 @@ const projectionColumns = `
   remote_installation_id AS remoteInstallationId,
   credential_expires_at_ms AS credentialExpiresAtMs, state,
   recovery_public_key_spki AS recoveryPublicKeySpki,
+  account_claimed AS accountClaimed, github_username AS githubUsername,
+  account_claimed_at_ms AS accountClaimedAtMs,
   created_at_ms AS createdAtMs, updated_at_ms AS updatedAtMs
 `
 
@@ -177,7 +182,32 @@ export function createSharingRepository(context: RepositoryContext) {
   }
 
   function getInstallationProjection(): SharingInstallationProjection | null {
-    return sqlite.query(`SELECT ${projectionColumns} FROM sharing_installation_projection WHERE id = 1`).get() as SharingInstallationProjection | null
+    const row = sqlite.query(`SELECT ${projectionColumns} FROM sharing_installation_projection WHERE id = 1`).get() as Record<string, unknown> | null
+    return row ? booleans(row, ['accountClaimed']) as SharingInstallationProjection : null
+  }
+
+  function reconcileInstallationAccount(
+    status: Readonly<{ claimed: boolean; githubUsername: string | null; accountClaimedAtMs: number | null }>,
+    eventCursor?: number,
+  ) {
+    const validUsername = status.githubUsername === null || /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?$/u.test(status.githubUsername)
+    const validClaimedAt = status.accountClaimedAtMs === null || (Number.isSafeInteger(status.accountClaimedAtMs) && status.accountClaimedAtMs > 0)
+    if (typeof status.claimed !== 'boolean' || !validUsername || !validClaimedAt) throw new Error('Sharing installation account status is invalid.')
+    if (eventCursor !== undefined && (!Number.isSafeInteger(eventCursor) || eventCursor <= 0)) throw new Error('Sharing event cursor is invalid.')
+    return sqlite.transaction(() => {
+      const current = getInstallationProjection()
+      if (!current) throw new Error('Sharing installation projection is missing.')
+      sqlite.query('UPDATE sharing_installation_projection SET account_claimed = ?, github_username = ?, account_claimed_at_ms = ?, updated_at_ms = ? WHERE id = 1').run(
+        status.claimed ? 1 : 0,
+        status.claimed ? status.githubUsername : null,
+        status.claimed ? status.accountClaimedAtMs : null,
+        now(),
+      )
+      if (eventCursor !== undefined && eventCursor > getSettings().remoteEventCursor) {
+        sqlite.query('UPDATE sharing_settings SET remote_event_cursor = ?, revision = revision + 1, updated_at_ms = ? WHERE id = 1').run(eventCursor, now())
+      }
+      return getInstallationProjection()!
+    })()
   }
 
   function saveInstallationProjection(input: ProjectionInput) {
@@ -255,13 +285,13 @@ export function createSharingRepository(context: RepositoryContext) {
   function getShare(id: number): ShareRecord | null {
     assertPositiveId(id, 'Share ID')
     const row = sqlite.query(`SELECT ${shareColumns} FROM shares WHERE id = ?`).get(id) as Record<string, unknown> | null
-    return row ? mapShare(row) : null
+    return row ? mapShare(row, getInstallationProjection()?.accountClaimed ?? false) : null
   }
 
   function getShareByRemotePublicId(publicId: string): ShareRecord | null {
     if (!/^[A-Za-z0-9_-]{1,128}$/u.test(publicId)) throw new Error('Remote share ID is invalid.')
     const row = sqlite.query(`SELECT ${shareColumns} FROM shares WHERE remote_public_id = ?`).get(publicId) as Record<string, unknown> | null
-    return row ? mapShare(row) : null
+    return row ? mapShare(row, getInstallationProjection()?.accountClaimed ?? false) : null
   }
 
   function applyRemoteEvent(event: SharingRemoteEvent) {
@@ -270,10 +300,8 @@ export function createSharingRepository(context: RepositoryContext) {
       const settings = getSettings()
       if (event.id <= settings.remoteEventCursor) return { applied: false, shares: [] as ShareRecord[] }
       const changedIds: number[] = []
-      if (event.kind === 'account-claim') {
-        changedIds.push(...(sqlite.query("SELECT id FROM shares WHERE state <> 'deleted' AND account_claimed = 0 ORDER BY id").all() as { id: number }[]).map(({ id }) => id))
-        sqlite.query("UPDATE shares SET account_claimed = 1, local_revision = local_revision + 1, updated_at_ms = ? WHERE state <> 'deleted' AND account_claimed = 0").run(now())
-      } else if (event.kind === 'recovery') {
+      if (event.kind === 'account-claim') throw new Error('Account claim events require signed account status reconciliation.')
+      else if (event.kind === 'recovery') {
         const state = event.payload.state === 'active' ? 'active' : event.payload.state === 'recovery-pending' ? 'recovery-pending' : event.payload.state === 'revoked' ? 'disabled' : null
         if (!state) throw new Error('Remote recovery event state is invalid.')
         sqlite.query('UPDATE sharing_installation_projection SET state = ?, updated_at_ms = ? WHERE id = 1').run(state, now())
@@ -298,7 +326,8 @@ export function createSharingRepository(context: RepositoryContext) {
     const rows = projectId == null
       ? sqlite.query(`SELECT ${shareColumns} FROM shares WHERE state <> 'deleted' ORDER BY updated_at_ms DESC, id DESC`).all()
       : sqlite.query(`SELECT ${shareColumns} FROM shares WHERE project_id = ? AND state <> 'deleted' ORDER BY updated_at_ms DESC, id DESC`).all(projectId)
-    return rows.map((row) => mapShare(row as Record<string, unknown>))
+    const accountClaimed = getInstallationProjection()?.accountClaimed ?? false
+    return rows.map((row) => mapShare(row as Record<string, unknown>,accountClaimed))
   }
 
   function getShareConfiguration(id: number) {
@@ -540,6 +569,7 @@ export function createSharingRepository(context: RepositoryContext) {
     setConnectionEnabled,
     updateEnrollment,
     getInstallationProjection,
+    reconcileInstallationAccount,
     saveInstallationProjection,
     deleteInstallationProjection,
     createShare,
@@ -572,8 +602,9 @@ function booleans(row: Record<string, unknown>, names: readonly string[]) {
   return result
 }
 
-function mapShare(row: Record<string, unknown>): ShareRecord {
+function mapShare(row: Record<string, unknown>, accountClaimed: boolean): ShareRecord {
   const result = booleans(row, ['commentsEnabled', 'reactionsEnabled', 'embedEnabled', 'resourceSnapshotIncluded', 'accountClaimed'])
+  result.accountClaimed = accountClaimed
   const origins = JSON.parse(String(result.embedOriginsJson ?? '[]'))
   if (!Array.isArray(origins) || origins.some((origin) => typeof origin !== 'string')) throw new Error('Stored share embed origins are invalid.')
   result.embedOrigins = origins

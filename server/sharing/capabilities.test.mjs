@@ -20,6 +20,7 @@ describe('sharing client capabilities', () => {
       version: 1,
       publication: true,
       accountClaiming: true,
+      installationAccountStatus: false,
       installationEvents: true,
       ownerAnalytics: false,
       protectedShares: true,

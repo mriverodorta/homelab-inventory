@@ -10,7 +10,7 @@ function document(overrides = {}) {
       installationEvents: { supported: true, resumable: true },
       protectedPasswordHandoff: { supported: true },
       lifecycleOperations: { supported: true, operations: ['update', 'unpublish', 'delete', 'republish', 'replace-password'] },
-      accountClaiming: { supported: true },
+      accountClaiming: { supported: true, statusSupported: true },
       ownerAnalytics: { supported: true, buckets: ['day'], retentionDays: 90 },
       comments: { configurationSupported: true, interactionSupported: false },
       reactions: { configurationSupported: true, interactionSupported: false },
@@ -23,6 +23,7 @@ describe('lab.gd remote capability contract', () => {
   it('maps the exact service document into client feature gates', () => {
     expect(normalizeLabGdCapabilities(document())).toEqual({
       accountClaiming: true,
+      installationAccountStatus: true,
       installationEvents: true,
       ownerAnalytics: true,
       protectedShares: true,

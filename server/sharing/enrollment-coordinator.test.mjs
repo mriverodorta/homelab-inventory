@@ -24,9 +24,10 @@ describe('sharing enrollment coordinator', () => {
     const activate = vi.fn().mockResolvedValue({ installationId: 1 })
     const timers = []
     const repo = repository()
+    const reconcileAccountStatus = vi.fn().mockResolvedValue({ accountClaimed: true })
     const coordinator = new SharingEnrollmentCoordinator({
       repository: repo,
-      identityService: { activate },
+      identityService: { activate, reconcileAccountStatus },
       localReady: ready,
       setTimer: (callback) => { timers.push(callback); return callback },
       clearTimer: () => {},
@@ -39,6 +40,7 @@ describe('sharing enrollment coordinator', () => {
     await timers.shift()()
     await vi.waitFor(() => expect(repo.getSettings().enrollmentState).toBe('connected'))
     expect(activate).toHaveBeenCalledTimes(1)
+    expect(reconcileAccountStatus).toHaveBeenCalledTimes(1)
   })
 
   it('persists bounded retry state and resumes one timer', async () => {

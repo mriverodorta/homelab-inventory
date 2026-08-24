@@ -60,8 +60,8 @@ describe('core SQLite foundation schema', () => {
       'shareLocalRevisionBlobs',
       'sharePublicationOperations',
     ]))
-    expect(CORE_MIGRATIONS).toHaveLength(29)
-    expect(CORE_MIGRATIONS.at(-1)?.id).toBe('0029_sharing_foundation')
+    expect(CORE_MIGRATIONS).toHaveLength(30)
+    expect(CORE_MIGRATIONS.at(-1)?.id).toBe('0030_sharing_account_projection')
   })
 
   test('maps every active inventory category to a shared-primary-key subtype table', () => {
@@ -136,7 +136,7 @@ describe('core SQLite foundation schema', () => {
         sha256: migration.sha256,
         sql: await readFile(join(migrationsDir, migration.file), 'utf8'),
       })))
-      await expect(applyCommittedMigrations(handle, migrations)).resolves.toEqual({ applied: 12, currentVersion: 29 })
+      await expect(applyCommittedMigrations(handle, migrations)).resolves.toEqual({ applied: 13, currentVersion: 30 })
 
       expect(handle.database.query(`
         SELECT id, network_technology, form_factor, max_speed_bps
@@ -168,7 +168,7 @@ describe('core SQLite foundation schema', () => {
       expect(handle.database.query(`
         SELECT name FROM sqlite_schema WHERE type = 'table' AND name IN ('network_cards', 'wireless_cards')
       `).all()).toEqual([])
-      await expect(applyCommittedMigrations(handle, migrations)).resolves.toEqual({ applied: 0, currentVersion: 29 })
+      await expect(applyCommittedMigrations(handle, migrations)).resolves.toEqual({ applied: 0, currentVersion: 30 })
     } finally {
       closeManagedDatabase(handle)
     }
@@ -238,7 +238,7 @@ describe('core SQLite foundation schema', () => {
         sha256: migration.sha256,
         sql: await readFile(join(migrationsDir, migration.file), 'utf8'),
       })))
-      await expect(applyCommittedMigrations(handle, migrations)).resolves.toEqual({ applied: 11, currentVersion: 29 })
+      await expect(applyCommittedMigrations(handle, migrations)).resolves.toEqual({ applied: 12, currentVersion: 30 })
 
       expect(handle.database.query(`
         SELECT family, key, module_size FROM network_adapter_host_interfaces WHERE adapter_id = ?
@@ -262,7 +262,7 @@ describe('core SQLite foundation schema', () => {
         semantic_key: 'm2-ae-slot',
         interface_family: 'm2-ae',
       })
-      await expect(applyCommittedMigrations(handle, migrations)).resolves.toEqual({ applied: 0, currentVersion: 29 })
+      await expect(applyCommittedMigrations(handle, migrations)).resolves.toEqual({ applied: 0, currentVersion: 30 })
     } finally {
       closeManagedDatabase(handle)
     }
@@ -314,7 +314,7 @@ describe('core SQLite foundation schema', () => {
         sha256: migration.sha256,
         sql: await readFile(join(migrationsDir, migration.file), 'utf8'),
       })))
-      await expect(applyCommittedMigrations(handle, migrations)).resolves.toEqual({ applied: 7, currentVersion: 29 })
+      await expect(applyCommittedMigrations(handle, migrations)).resolves.toEqual({ applied: 8, currentVersion: 30 })
 
       expect(handle.database.query(`
         SELECT id, resource_type, semantic_key FROM host_resource_groups WHERE id = ?
@@ -327,7 +327,7 @@ describe('core SQLite foundation schema', () => {
       expect(handle.database.query(`
         SELECT alias FROM optional_module_resource_aliases WHERE resource_group_id = ?
       `).get(group.id)).toEqual({ alias: 'wlan-m2' })
-      await expect(applyCommittedMigrations(handle, migrations)).resolves.toEqual({ applied: 0, currentVersion: 29 })
+      await expect(applyCommittedMigrations(handle, migrations)).resolves.toEqual({ applied: 0, currentVersion: 30 })
     } finally {
       closeManagedDatabase(handle)
     }
@@ -364,7 +364,7 @@ describe('core SQLite foundation schema', () => {
         sha256: migration.sha256,
         sql: await readFile(join(migrationsDir, migration.file), 'utf8'),
       })))
-      await expect(applyCommittedMigrations(handle, migrations)).resolves.toEqual({ applied: 15, currentVersion: 29 })
+      await expect(applyCommittedMigrations(handle, migrations)).resolves.toEqual({ applied: 16, currentVersion: 30 })
       expect(handle.database.query(`
         SELECT adapter_disposition FROM host_power_profiles WHERE host_profile_id = ?
       `).get(profile.id)).toEqual({ adapter_disposition: 'replaceable' })
@@ -372,7 +372,7 @@ describe('core SQLite foundation schema', () => {
         id: item.id,
         power_configuration: 'external-adapter',
       })
-      await expect(applyCommittedMigrations(handle, migrations)).resolves.toEqual({ applied: 0, currentVersion: 29 })
+      await expect(applyCommittedMigrations(handle, migrations)).resolves.toEqual({ applied: 0, currentVersion: 30 })
     } finally {
       closeManagedDatabase(handle)
     }

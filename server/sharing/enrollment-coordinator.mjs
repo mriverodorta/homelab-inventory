@@ -87,6 +87,7 @@ export class SharingEnrollmentCoordinator {
     this.publish(this.repository.updateEnrollment({ enrollmentState: 'pending', nextAttemptAtMs: null, lastErrorCode: null }))
     try {
       await this.identityService.activate()
+      await this.identityService.reconcileAccountStatus?.()
       this.publish(this.repository.updateEnrollment({
         enrollmentState: 'connected',
         attemptCount: 0,

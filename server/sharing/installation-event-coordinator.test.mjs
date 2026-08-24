@@ -37,6 +37,38 @@ describe('sharing installation event coordinator', () => {
     expect(readiness).toHaveBeenCalledOnce()
   })
 
+  it('reconciles installation account state without mutating a share', async () => {
+    const applyRemoteEvent = vi.fn()
+    const reconcileAccountStatus = vi.fn(async () => ({ accountClaimed: true, githubUsername: 'maikeldorta' }))
+    const onStateChanged = vi.fn()
+    const repository = {
+      getSettings: () => ({ connectionEnabled: true, enrollmentState: 'connected', remoteEventCursor: 11 }),
+      applyRemoteEvent,
+    }
+    const client = { events: vi.fn(async () => stream([
+      'id: 12\nevent: account-claim\ndata: {"eventVersion":1,"claimId":"claim_12","state":"completed","occurredAt":"2026-08-22T12:00:00.000Z"}\n\n',
+    ])) }
+    const coordinator = new SharingInstallationEventCoordinator({
+      repository,
+      client,
+      identityService: {
+        getCapabilities: () => ({ installationEvents: true }),
+        reconcileAccountStatus,
+      },
+      onStateChanged,
+      setTimer: () => 1,
+      clearTimer: vi.fn(),
+    })
+    coordinator.stopped = false
+
+    await coordinator.connect()
+
+    expect(reconcileAccountStatus).toHaveBeenCalledWith()
+    expect(reconcileAccountStatus).toHaveBeenCalledWith(12)
+    expect(applyRemoteEvent).not.toHaveBeenCalled()
+    expect(onStateChanged).toHaveBeenCalledWith(repository.getSettings(), 'sharing.status-changed')
+  })
+
   it('never starts in fixture-disabled, demo, or staging runtime', () => {
     const setTimer = vi.fn()
     const coordinator = new SharingInstallationEventCoordinator({ repository: {}, client: {}, identityService: {}, effectiveEnabled: false, setTimer })

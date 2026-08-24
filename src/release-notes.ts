@@ -593,7 +593,10 @@ const RELEASE_0_15_4_DETAILS: UnreleasedReleaseNotes = {
 
 export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
   highlights: [],
-  fixes: [],
+  fixes: [
+    'lab.gd account claims now close automatically, remain connected after refresh or restart, and show the verified GitHub username without depending on an existing share.',
+    'Already claimed installations now reconcile the existing lab.gd owner instead of offering or creating another account claim.',
+  ],
   notes: [],
 }
 

@@ -46,9 +46,10 @@ const metadata: InventoryMetadataCatalog = {
 
 const capabilities: SharingCapabilities = {
   version: 1,
-  publication: true,
-  accountClaiming: false,
-  installationEvents: false,
+      publication: true,
+      accountClaiming: false,
+      installationAccountStatus: false,
+      installationEvents: false,
   ownerAnalytics: false,
   protectedShares: false,
   remoteLifecycle: false,

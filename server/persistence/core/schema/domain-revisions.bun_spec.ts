@@ -47,8 +47,8 @@ describe('domain persistence revisions', () => {
       `).get() as { id: number }
 
       await expect(applyCommittedMigrations(handle, committed)).resolves.toEqual({
-        applied: 2,
-        currentVersion: 29,
+        applied: 3,
+        currentVersion: 30,
       })
       expect(handle.database.query(
         'SELECT revision, workbook_revision FROM projects WHERE id = 1',
@@ -61,7 +61,7 @@ describe('domain persistence revisions', () => {
       ).get(item.id)).toEqual({ revision: 1, updated_at_ms: 10 })
       await expect(applyCommittedMigrations(handle, committed)).resolves.toEqual({
         applied: 0,
-        currentVersion: 29,
+        currentVersion: 30,
       })
     } finally {
       closeManagedDatabase(handle)

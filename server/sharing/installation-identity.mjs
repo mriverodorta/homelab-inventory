@@ -465,6 +465,10 @@ export class SharingInstallationIdentityService {
       scope: 'claim:create',
     })
     const result = await boundedJson(response)
+    if (response.status === 409 && result.code === 'installation-already-claimed') {
+      const account = await this.reconcileAccountStatus()
+      return { state: 'claimed', account }
+    }
     if (
       !response.ok || result.state !== 'pending'
       || !hasExactKeys(result, ['claimId', 'userCode', 'verificationUrl', 'expiresAt', 'state'])
@@ -478,6 +482,37 @@ export class SharingInstallationIdentityService {
       throw error
     }
     return { claimId: result.claimId, userCode: result.userCode, verificationUrl: result.verificationUrl, expiresAt: result.expiresAt, state: result.state }
+  }
+
+  async accountStatus() {
+    if (this.getCapabilities().installationAccountStatus !== true) return null
+    const response = await this.signedFetch('/v1/installations/account-status', {
+      method: 'GET',
+      body: new Uint8Array(),
+      scope: 'claim:create',
+    })
+    const result = await boundedJson(response)
+    const usernameIsValid = result.githubUsername === null
+      || (typeof result.githubUsername === 'string' && /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?$/u.test(result.githubUsername))
+    const claimedAtIsValid = result.claimedAt === null
+      || (typeof result.claimedAt === 'string' && Number.isFinite(Date.parse(result.claimedAt)) && new Date(result.claimedAt).toISOString() === result.claimedAt)
+    const unclaimedIsEmpty = result.claimed !== false || (result.githubUsername === null && result.claimedAt === null)
+    if (!response.ok || !hasExactKeys(result, ['claimed', 'githubUsername', 'claimedAt']) || typeof result.claimed !== 'boolean' || !usernameIsValid || !claimedAtIsValid || !unclaimedIsEmpty) {
+      const error = new Error('lab.gd returned an invalid installation account status.')
+      error.code = 'labgd-account-status-failed'
+      throw error
+    }
+    return {
+      claimed: result.claimed,
+      githubUsername: result.githubUsername,
+      accountClaimedAtMs: result.claimedAt === null ? null : Date.parse(result.claimedAt),
+    }
+  }
+
+  async reconcileAccountStatus(eventCursor) {
+    const status = await this.accountStatus()
+    if (status) this.repository.reconcileInstallationAccount(status, eventCursor)
+    return status
   }
 }
 

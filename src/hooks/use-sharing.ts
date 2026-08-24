@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   approveSharePreview,
   beginSharingAccountClaim,
+  reconcileSharingAccount,
   createShare,
   deleteShare,
   loadShare,
@@ -78,7 +79,11 @@ export function useSharing(enabled: boolean) {
     }),
     snapshot: useMutation({ mutationFn: refreshShareResourceSnapshot, ...refreshAfter }),
     resumeRecovery: useMutation({ mutationFn: resumeSharingRecovery, ...refreshAfter }),
-    claim: useMutation({ mutationFn: beginSharingAccountClaim }),
+    claim: useMutation({ mutationFn: beginSharingAccountClaim, ...refreshAfter }),
+    reconcileAccount: useMutation({
+      mutationFn: reconcileSharingAccount,
+      onSuccess: (value) => { queryClient.setQueryData(SHARING_SETTINGS_QUERY_KEY, value) },
+    }),
     unpublish: useMutation({ mutationFn: unpublishShare, ...refreshAfter }),
     remove: useMutation({ mutationFn: deleteShare, ...refreshAfter }),
     republish: useMutation({ mutationFn: republishShare, ...refreshAfter }),

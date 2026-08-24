@@ -6,6 +6,11 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 
 ## Unreleased
 
+### Fixed
+
+- lab.gd account claims now reconcile as installation-level state, close the claim dialog after completion, remain connected after refresh or restart, and display the verified GitHub username without requiring a share to exist.
+- Reopening account connection for an already claimed installation now converges on the existing owner instead of creating another claim.
+
 ## [0.15.4] - 2026-08-23
 
 ### Fixed

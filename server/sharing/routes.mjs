@@ -43,6 +43,7 @@ function publicSettings(repository, flags, capabilities) {
   const settings = flags.effectiveEnabled
     ? persisted
     : { ...persisted, enrollmentState: 'disabled', nextAttemptAtMs: null }
+  const projection = repository?.getInstallationProjection?.() ?? null
   return {
     available: flags.effectiveEnabled,
     automaticEnrollment: flags.effectiveEnabled,
@@ -50,7 +51,14 @@ function publicSettings(repository, flags, capabilities) {
     staging: flags.staging,
     origin: flags.origin,
     capabilities,
-    settings,
+    settings: {
+      ...settings,
+      account: {
+        claimed: projection?.accountClaimed ?? false,
+        githubUsername: projection?.githubUsername ?? null,
+        claimedAtMs: projection?.accountClaimedAtMs ?? null,
+      },
+    },
   }
 }
 
@@ -188,6 +196,12 @@ export function registerSharingRoutes(app, {
   app.post('/api/sharing/account/claim', (_request, response) => handle(response, async () => {
     requireRuntime()
     response.status(201).json(await identityService.createClaimDevice())
+  }))
+
+  app.post('/api/sharing/account/reconcile', (_request, response) => handle(response, async () => {
+    requireRuntime()
+    await identityService.reconcileAccountStatus()
+    response.json(publicSettings(repository,flags,currentCapabilities()))
   }))
 
   app.post('/api/sharing/recovery/resume', (_request, response) => handle(response, async () => {

@@ -7,6 +7,7 @@ export type SharingCapabilities = Readonly<{
   version: number
   publication: boolean
   accountClaiming: boolean
+  installationAccountStatus: boolean
   installationEvents: boolean
   ownerAnalytics: boolean
   protectedShares: boolean
@@ -36,6 +37,7 @@ export type SharingSettingsResponse = Readonly<{
     nextAttemptAtMs: number | null
     lastErrorCode: string | null
     recoveryState: 'pending-owner-approval' | 'approved' | null
+    account: { claimed: boolean; githubUsername: string | null; claimedAtMs: number | null }
   }
 }>
 
@@ -191,8 +193,15 @@ export function beginSharingAccountClaim(): Promise<{
   verificationUrl: string
   expiresAt: string
   state: 'pending'
+} | {
+  state: 'claimed'
+  account: { claimed: boolean; githubUsername: string | null; accountClaimedAtMs: number | null }
 }> {
   return apiRequest('/api/sharing/account/claim', { method: 'POST' })
+}
+
+export function reconcileSharingAccount(): Promise<SharingSettingsResponse> {
+  return apiRequest('/api/sharing/account/reconcile', { method: 'POST' })
 }
 
 export function unpublishShare(id: number): Promise<{ operation: { id: number } }> {

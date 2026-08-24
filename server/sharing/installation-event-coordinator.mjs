@@ -65,11 +65,17 @@ export class SharingInstallationEventCoordinator {
     const settings = this.repository.getSettings()
     if (!settings.connectionEnabled || settings.enrollmentState !== 'connected' || this.identityService.getCapabilities().installationEvents !== true) return
     try {
+      await this.identityService.reconcileAccountStatus?.()
       const response = await this.client.events(settings.remoteEventCursor)
       if (!response.body) throw Object.assign(new Error('lab.gd event stream has no body.'), { code: 'sharing-events-invalid' })
       this.attempt = 0
       this.reader = response.body.getReader()
       await consumeSse(this.reader, async (event) => {
+        if (event.kind === 'account-claim') {
+          await this.identityService.reconcileAccountStatus(event.id)
+          this.onStateChanged(this.repository.getSettings(),'sharing.status-changed')
+          return
+        }
         const result = this.repository.applyRemoteEvent(event)
         if (!result.applied) return
         if (result.shares.length) result.shares.forEach((share) => this.onStateChanged(share, 'sharing.share-changed'))

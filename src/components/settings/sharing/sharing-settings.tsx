@@ -46,15 +46,31 @@ export function SharingSettings() {
   const [pendingShareId, setPendingShareId] = useState<number | null>(null)
   const [claimOpen, setClaimOpen] = useState(false)
   const [claimResult, setClaimResult] = useState<Awaited<ReturnType<typeof sharing.claim.mutateAsync>> | null>(null)
+  const [claimMessage,setClaimMessage]=useState<string|null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
   const [passwordShare, setPasswordShare] = useState<ShareRecord | null>(null)
   const [passwordValue, setPasswordValue] = useState('')
   const status = sharing.settings.data
   const settings = status?.settings
+  const account=settings?.account??{claimed:false,githubUsername:null,claimedAtMs:null}
 
   useEffect(() => {
     if (!editorOpen) setEditing(null)
   }, [editorOpen])
+
+  useEffect(()=>{
+    if(claimResult?.state!=='pending'||!account.claimed)return
+    setClaimOpen(false)
+    setClaimResult(null)
+    setClaimMessage(account.githubUsername?`Connected to @${account.githubUsername}.`:'GitHub account connected.')
+  },[claimResult,account.claimed,account.githubUsername])
+
+  useEffect(()=>{
+    if(!claimOpen||claimResult?.state!=='pending')return
+    const reconcile=()=>{if(document.visibilityState==='visible')void sharing.reconcileAccount.mutateAsync().catch(()=>undefined)}
+    document.addEventListener('visibilitychange',reconcile)
+    return()=>document.removeEventListener('visibilitychange',reconcile)
+  },[claimOpen,claimResult,sharing.reconcileAccount])
 
   if (!canConfigure || sharing.settings.isLoading) return <div className="grid min-h-52 place-items-center text-sm font-bold text-[#756d62]">Loading sharing…</div>
   if (!status?.available || !settings) return null
@@ -142,7 +158,8 @@ export function SharingSettings() {
       </SettingsSection>
 
       {settings.connectionEnabled ? <SettingsSection title="Shares" description="Each share has its own views, privacy selections, visibility, expiration, and update policy.">
-        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#e8e1d6] p-4"><div className="flex items-center gap-2 text-sm text-[#554b40]"><Cloud className="size-4" />{sharing.shares.data?.length ?? 0} configured</div>{canPublish ? <div className="flex gap-2">{status.capabilities.accountClaiming ? <Button variant="outline" onClick={() => setClaimOpen(true)}><UserRoundPlus />Connect account</Button> : null}<Button onClick={() => void openEditor()} disabled={!workbooks.data?.length}><Plus />New share</Button></div> : null}</div>
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#e8e1d6] p-4"><div className="flex items-center gap-2 text-sm text-[#554b40]"><Cloud className="size-4" />{sharing.shares.data?.length ?? 0} configured</div>{canPublish ? <div className="flex items-center gap-2">{status.capabilities.accountClaiming&&account.claimed?<span className="text-sm font-bold text-[#2f7658]">{account.githubUsername?`Connected to @${account.githubUsername}`:'GitHub account connected'}</span>:status.capabilities.accountClaiming?<Button variant="outline" onClick={() => {setClaimMessage(null);setClaimOpen(true)}}><UserRoundPlus />Connect account</Button>:null}<Button onClick={() => void openEditor()} disabled={!workbooks.data?.length}><Plus />New share</Button></div> : null}</div>
+        {claimMessage?<p role="status" className="border-b border-[#b9d5c6] bg-[#f0f8f3] p-3 text-sm font-semibold text-[#2f7658]">{claimMessage}</p>:null}
         {actionError ? <p role="alert" className="border-b border-[#dfb3a5] bg-[#fff4ee] p-3 text-sm font-semibold text-[#7a2c1d]">{actionError}</p> : null}
         <ShareList shares={sharing.shares.data ?? []} origin={status.origin} pendingShareId={pendingShareId} remoteControls={status.capabilities.remoteLifecycle} protectedPassword={status.capabilities.protectedShares} onEdit={(share) => void openEditor(share)} onReview={(share) => void reviewShare(share)} onPublish={(share) => void publish(share)} onSnapshot={(share) => void updateSnapshot(share)} onUnpublish={(share) => void lifecycle(share, 'unpublish')} onDelete={(share) => void lifecycle(share, 'delete')} onRepublish={(share) => void lifecycle(share, 'republish')} onPassword={(share) => { setPasswordValue(''); setPasswordShare(share) }} />
       </SettingsSection> : null}
@@ -154,7 +171,7 @@ export function SharingSettings() {
         <DialogContent className="max-w-3xl"><DialogHeader><DialogTitle>Review share</DialogTitle><DialogDescription>Approve only after checking the exact data summary and opening the read-only preview.</DialogDescription></DialogHeader>{preview && previewConfiguration ? <SharePrivacySummary preview={preview} configuration={previewConfiguration} /> : null}<DialogFooter className="flex-wrap"><Button variant="outline" onClick={() => previewConfiguration && window.open(`/sharing/preview/${previewConfiguration.share.id}`, '_blank', 'noopener,noreferrer')}>Open preview</Button>{preview?.approved ? <Button onClick={() => { if (previewConfiguration) void publish(previewConfiguration.share) }} disabled={pendingShareId !== null}>{previewConfiguration?.share.remoteRevision ? 'Update share' : 'Publish share'}</Button> : <Button onClick={() => void approvePreview()} disabled={sharing.approve.isPending}>Approve exact preview</Button>}</DialogFooter></DialogContent>
       </Dialog>
       <Dialog open={Boolean(passwordShare)} onOpenChange={(open) => { if (!open) { setPasswordValue(''); setPasswordShare(null) } }}><DialogContent><DialogHeader><DialogTitle>Set share password</DialogTitle><DialogDescription>The plaintext exists only in this dialog and the active signed request. It is never saved by Homelab Inventory.</DialogDescription></DialogHeader><Input type="password" autoComplete="new-password" minLength={12} maxLength={1024} value={passwordValue} onChange={(event) => setPasswordValue(event.target.value)} aria-label="Share password" /><DialogFooter><Button variant="outline" onClick={() => { setPasswordValue(''); setPasswordShare(null) }}>Cancel</Button><Button disabled={passwordValue.length < 12 || sharing.password.isPending} onClick={() => void savePassword()}>{sharing.password.isPending ? 'Sending…' : 'Set password'}</Button></DialogFooter></DialogContent></Dialog>
-      {status.capabilities.accountClaiming ? <AccountClaimDialog open={claimOpen} pending={sharing.claim.isPending} result={claimResult} error={sharing.claim.error instanceof Error ? sharing.claim.error.message : null} onOpenChange={(open) => { setClaimOpen(open); if (!open) setClaimResult(null) }} onBegin={() => { void sharing.claim.mutateAsync().then(setClaimResult).catch(() => undefined) }} /> : null}
+      {status.capabilities.accountClaiming ? <AccountClaimDialog open={claimOpen} pending={sharing.claim.isPending} result={claimResult?.state==='pending'?claimResult:null} error={sharing.claim.error instanceof Error ? sharing.claim.error.message : null} onOpenChange={(open) => { setClaimOpen(open); if (!open) setClaimResult(null) }} onBegin={() => { void sharing.claim.mutateAsync().then(setClaimResult).catch(() => undefined) }} /> : null}
     </div>
   )
 }

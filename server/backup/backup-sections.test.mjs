@@ -192,7 +192,17 @@ describe('backup section ownership', () => {
         fs.chmod(path.join(directory, 'installation-credentials.json'), 0o600),
         fs.chmod(path.join(directory, 'public-id-key'), 0o600),
       ])
-      const store = { dataDir, snapshotStores: async () => stores() }
+      const projection = {
+        id: 1,
+        account_claimed: 1,
+        github_username: 'maikeldorta',
+        account_claimed_at_ms: Date.parse('2026-08-22T12:05:00.000Z'),
+      }
+      const store = {
+        dataDir,
+        snapshotStores: async () => stores(),
+        core: { database: { query: () => ({ get: () => projection }) } },
+      }
       const selected = await collectBackupSections({ store, sections: ['sharingIdentity'] })
       const files = new Map(selected.files.map((file) => [file.name, file.body]))
       expect(selected.files.map((file) => file.name)).toEqual([
@@ -203,7 +213,11 @@ describe('backup section ownership', () => {
         'sharing/public-id-key',
       ])
       expect(validateSharingIdentityFiles(files).instance.clientInstanceId).toBe(clientInstanceId)
-      const configurationOnly = await collectBackupSections({ store, sections: ['sharingConfiguration'] })
+      expect(JSON.parse(files.get('sections/sharing-identity.json').toString()).projection).toEqual(projection)
+      const configurationOnly = await collectBackupSections({
+        store: { dataDir, snapshotStores: async () => stores() },
+        sections: ['sharingConfiguration'],
+      })
       expect(configurationOnly.files.some((file) => file.name.startsWith('sharing/'))).toBe(false)
     } finally {
       await fs.rm(dataDir, { recursive: true, force: true })

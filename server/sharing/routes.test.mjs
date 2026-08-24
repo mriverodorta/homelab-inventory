@@ -98,6 +98,44 @@ describe('sharing routes', () => {
     })
   })
 
+  it('returns and refreshes authoritative installation account state', async () => {
+    let projection = { accountClaimed: false, githubUsername: null, accountClaimedAtMs: null }
+    const reconcileAccountStatus = vi.fn(async () => {
+      projection = {
+        accountClaimed: true,
+        githubUsername: 'maikeldorta',
+        accountClaimedAtMs: Date.parse('2026-08-22T12:05:00.000Z'),
+      }
+    })
+    const repository = {
+      getSettings: () => ({ revision: 1, connectionEnabled: true, enrollmentState: 'connected' }),
+      getInstallationProjection: () => projection,
+    }
+    const baseUrl = await server({
+      repository,
+      publicationService: {},
+      identityService: { reconcileAccountStatus },
+      effectiveEnabled: true,
+      remoteCapabilities: { accountClaiming: true, installationAccountStatus: true },
+    })
+
+    expect(await fetch(`${baseUrl}/api/sharing/settings`).then((response) => response.json())).toMatchObject({
+      settings: { account: { claimed: false, githubUsername: null, claimedAtMs: null } },
+    })
+    const response = await fetch(`${baseUrl}/api/sharing/account/reconcile`, { method: 'POST' })
+    expect(response.status).toBe(200)
+    expect(await response.json()).toMatchObject({
+      settings: {
+        account: {
+          claimed: true,
+          githubUsername: 'maikeldorta',
+          claimedAtMs: Date.parse('2026-08-22T12:05:00.000Z'),
+        },
+      },
+    })
+    expect(reconcileAccountStatus).toHaveBeenCalledOnce()
+  })
+
   it('mounts lifecycle, protected password, and analytics routes behind negotiated capabilities', async () => {
     const publicationService = {
       enqueueLifecycle: vi.fn((_id, kind) => ({ id: kind === 'delete' ? 3 : 2, kind, idempotencyKey: `stable-${kind}` })),

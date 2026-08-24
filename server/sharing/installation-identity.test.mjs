@@ -16,7 +16,7 @@ function capabilities() {
       installationEvents: { supported: true, resumable: true },
       protectedPasswordHandoff: { supported: true },
       lifecycleOperations: { supported: true, operations: ['update', 'unpublish', 'delete', 'republish', 'replace-password'] },
-      accountClaiming: { supported: true },
+      accountClaiming: { supported: true, statusSupported: true },
       ownerAnalytics: { supported: true, buckets: ['day'], retentionDays: 90 },
       comments: { configurationSupported: true, interactionSupported: false },
       reactions: { configurationSupported: true, interactionSupported: false },
@@ -48,6 +48,10 @@ function repository() {
       return projection
     },
     deleteInstallationProjection: () => { projection = null },
+    reconcileInstallationAccount: (status) => {
+      projection = { ...projection, accountClaimed: status.claimed, githubUsername: status.githubUsername, accountClaimedAtMs: status.accountClaimedAtMs }
+      return projection
+    },
   }
 }
 
@@ -317,6 +321,70 @@ describe('sharing installation identity', () => {
       expiresAt: '2026-08-22T12:10:00.000Z',
       state: 'pending',
     })
+  })
+
+  it('reconciles authoritative installation account state with the GitHub username', async () => {
+    const { repo, service } = await setup((request) => {
+      if (request.url.pathname === '/readyz') return Response.json({ status: 'ready', contractMode: 'packages-enabled', publicationReady: true })
+      if (request.url.pathname.endsWith('/challenge')) return Response.json({ value: 'challenge-value' }, { status: 201 })
+      if (request.url.pathname.endsWith('/activate')) return Response.json(activeToken(), { status: 201 })
+      if (request.url.pathname.endsWith('/account-status')) return Response.json({
+        claimed: true,
+        githubUsername: 'maikeldorta',
+        claimedAt: '2026-08-22T12:05:00.000Z',
+      })
+      throw new Error(`Unexpected request ${request.url.pathname}`)
+    })
+    await service.activate()
+
+    await expect(service.reconcileAccountStatus()).resolves.toEqual({
+      claimed: true,
+      githubUsername: 'maikeldorta',
+      accountClaimedAtMs: Date.parse('2026-08-22T12:05:00.000Z'),
+    })
+    expect(repo.getInstallationProjection()).toMatchObject({
+      accountClaimed: true,
+      githubUsername: 'maikeldorta',
+    })
+  })
+
+  it('converges an already-claimed response instead of creating another claim', async () => {
+    const { service } = await setup((request) => {
+      if (request.url.pathname === '/readyz') return Response.json({ status: 'ready', contractMode: 'packages-enabled', publicationReady: true })
+      if (request.url.pathname.endsWith('/challenge')) return Response.json({ value: 'challenge-value' }, { status: 201 })
+      if (request.url.pathname.endsWith('/activate')) return Response.json(activeToken(), { status: 201 })
+      if (request.url.pathname.endsWith('/claim-device')) return Response.json({ code: 'installation-already-claimed' }, { status: 409 })
+      if (request.url.pathname.endsWith('/account-status')) return Response.json({
+        claimed: true,
+        githubUsername: 'maikeldorta',
+        claimedAt: '2026-08-22T12:05:00.000Z',
+      })
+      throw new Error(`Unexpected request ${request.url.pathname}`)
+    })
+
+    await expect(service.createClaimDevice()).resolves.toEqual({
+      state: 'claimed',
+      account: {
+        claimed: true,
+        githubUsername: 'maikeldorta',
+        accountClaimedAtMs: Date.parse('2026-08-22T12:05:00.000Z'),
+      },
+    })
+  })
+
+  it('rejects malformed installation account status without changing local state', async () => {
+    const { repo, service } = await setup((request) => {
+      if (request.url.pathname === '/readyz') return Response.json({ status: 'ready', contractMode: 'packages-enabled', publicationReady: true })
+      if (request.url.pathname.endsWith('/challenge')) return Response.json({ value: 'challenge-value' }, { status: 201 })
+      if (request.url.pathname.endsWith('/activate')) return Response.json(activeToken(), { status: 201 })
+      if (request.url.pathname.endsWith('/account-status')) return Response.json({ claimed: false, githubUsername: 'leaked-name', claimedAt: null })
+      throw new Error(`Unexpected request ${request.url.pathname}`)
+    })
+    await service.activate()
+    const before = repo.getInstallationProjection()
+
+    await expect(service.reconcileAccountStatus()).rejects.toMatchObject({ code: 'labgd-account-status-failed' })
+    expect(repo.getInstallationProjection()).toEqual(before)
   })
 
   it('rejects claim verification destinations other than the exact clean app.lab.gd path', async () => {

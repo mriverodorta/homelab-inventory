@@ -34,6 +34,9 @@ export const sharingInstallationProjection = sqliteTable('sharing_installation_p
   credentialExpiresAtMs: integer('credential_expires_at_ms'),
   state: text('state').notNull(),
   recoveryPublicKeySpki: text('recovery_public_key_spki'),
+  accountClaimed: integer('account_claimed', { mode: 'boolean' }).notNull().default(false),
+  githubUsername: text('github_username'),
+  accountClaimedAtMs: integer('account_claimed_at_ms'),
   createdAtMs: integer('created_at_ms').notNull(),
   updatedAtMs: integer('updated_at_ms').notNull(),
 }, (table) => [
@@ -42,6 +45,8 @@ export const sharingInstallationProjection = sqliteTable('sharing_installation_p
   check('sharing_installation_projection_singleton_check', sql`${table.id} = 1`),
   check('sharing_installation_projection_remote_id_check', sql`${table.remoteInstallationId} IS NULL OR ${table.remoteInstallationId} > 0`),
   check('sharing_installation_projection_state_check', sql`${table.state} IN ('local','active','recovery-pending','disabled')`),
+  check('sharing_installation_projection_account_claimed_check', sql`${table.accountClaimed} IN (0,1)`),
+  check('sharing_installation_projection_claimed_at_check', sql`${table.accountClaimedAtMs} IS NULL OR ${table.accountClaimedAtMs} > 0`),
 ])
 
 export const shares = sqliteTable('shares', {
