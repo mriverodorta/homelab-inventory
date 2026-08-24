@@ -33,7 +33,7 @@ import {
   createAgentEnrollment,
   revokeAgentRegistration,
 } from '@/lib/agent-api'
-import type { AgentHostStatus, AgentState, AgentStatusSummary } from '@/types/agent'
+import type { AgentCommandPlatform, AgentHostStatus, AgentState, AgentStatusSummary } from '@/types/agent'
 import type { InventoryItem } from '@/types/inventory'
 
 const formLabelClass = 'grid gap-1.5 text-sm font-semibold text-[#20242c]'
@@ -74,7 +74,7 @@ export function AgentSetupPanel({
   const queryClient = useQueryClient()
   const [endpoint, setEndpoint] = useState(() => window.location.origin)
   const [copied, setCopied] = useState(false)
-  const [platform, setPlatform] = useState<'linux' | 'freebsd'>('linux')
+  const [platform, setPlatform] = useState<AgentCommandPlatform>('linux')
   const [containersEnabled, setContainersEnabled] = useState(false)
   const [containerMode, setContainerMode] = useState<'proxy' | 'socket'>('proxy')
   const [containerRuntime, setContainerRuntime] = useState<'docker' | 'podman'>('docker')
@@ -128,8 +128,13 @@ export function AgentSetupPanel({
   const architecture = typeof system?.architecture === 'string' ? system.architecture : null
   const operatingSystemVersion = formatOperatingSystem(system)
   const uptime = formatDuration(metrics.uptimeSeconds)
-  const updatePlatform = operatingSystem?.toLowerCase().includes('freebsd') ? 'freebsd' : 'linux'
-  const upgradeCommand = liveStatus.upgradeCommands?.[updatePlatform] ?? ''
+  const commandPlatform = liveStatus.commandPlatform
+    ?? (operatingSystem?.toLowerCase().includes('alpine')
+      ? 'alpine'
+      : operatingSystem?.toLowerCase().includes('freebsd') || operatingSystem?.toLowerCase().includes('opnsense')
+        ? 'freebsd'
+        : 'linux')
+  const upgradeCommand = liveStatus.upgradeCommands?.[commandPlatform] ?? ''
   const updateAvailable = Boolean(registered && release?.version && upgradeCommand)
 
   async function copyCommand() {
@@ -179,7 +184,7 @@ export function AgentSetupPanel({
             </div>
           ) : <AgentMetricsPanel metricBuckets={telemetry.data?.metricBuckets ?? []} />}
           <AgentStorageSummary storage={telemetry.data?.storage} />
-          <AgentHardwareEvidence host={host} />
+          <AgentHardwareEvidence host={host} commandPlatform={commandPlatform} />
           <HostNotificationSettings hostType={host.type as 'server' | 'nas' | 'pcBuild'} hostId={host.id} status={liveStatus} />
         </>
       ) : null}
@@ -193,10 +198,11 @@ export function AgentSetupPanel({
           <div className="grid gap-3">
             <label className={formLabelClass}>
               Host operating system
-              <Select value={platform} onValueChange={(value) => setPlatform(value as 'linux' | 'freebsd')}>
+              <Select value={platform} onValueChange={(value) => setPlatform(value as AgentCommandPlatform)}>
                 <SelectTrigger aria-label="Host operating system"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="linux">Linux</SelectItem>
+                  <SelectItem value="alpine">Alpine Linux</SelectItem>
                   <SelectItem value="freebsd">FreeBSD / OPNsense</SelectItem>
                 </SelectContent>
               </Select>

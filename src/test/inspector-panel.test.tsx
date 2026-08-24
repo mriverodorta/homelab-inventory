@@ -1174,6 +1174,63 @@ describe('InspectorPanel', () => {
     expect(createAgentEnrollment).not.toHaveBeenCalled()
   })
 
+  it('offers Alpine setup and displays the exact root-shell command returned by the backend', async () => {
+    const user = userEvent.setup()
+    vi.mocked(createAgentEnrollment).mockResolvedValueOnce({
+      enrollmentId: 9,
+      expiresAt: '2026-08-24T12:00:00.000Z',
+      endpoint: 'https://inventory.example.test',
+      installCommand: 'linux-command',
+      installCommands: {
+        linux: 'curl linux | sudo sh',
+        alpine: 'curl alpine | sh',
+        freebsd: 'fetch freebsd | sudo sh',
+      },
+      agentVersion: '0.3.4',
+    })
+    renderInspector({ selectedItemId: 'server:1' })
+
+    await user.click(screen.getByRole('tab', { name: 'Agent' }))
+    await user.click(screen.getByRole('combobox', { name: 'Host operating system' }))
+    expect(screen.getByRole('option', { name: 'Linux' })).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: 'Alpine Linux' })).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: 'FreeBSD / OPNsense' })).toBeInTheDocument()
+    await user.click(screen.getByRole('option', { name: 'Alpine Linux' }))
+    await user.click(screen.getByRole('button', { name: 'Setup agent' }))
+
+    expect(await screen.findByLabelText('Agent install command')).toHaveValue('curl alpine | sh')
+    expect(screen.getByLabelText('Agent install command')).not.toHaveValue(expect.stringMatching(/\bsudo\b/u))
+  })
+
+  it('uses root-shell update and inventory commands for an enrolled Alpine host', async () => {
+    const user = userEvent.setup()
+    const writeText = vi.fn().mockResolvedValue(undefined)
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } })
+    renderInspector({
+      selectedItemId: 'server:1',
+      agentStatus: {
+        hosts: {
+          'server:1': {
+            hostType: 'server', hostId: 1, state: 'online', connected: true, ageMs: 0,
+            agentVersion: '0.3.3', commandPlatform: 'alpine',
+            upgradeCommands: {
+              linux: 'sudo homelab-inventory-agent update',
+              alpine: 'homelab-inventory-agent update',
+              freebsd: 'sudo homelab-inventory-agent update',
+            },
+          },
+        },
+        registeredHosts: [{ hostType: 'server', hostId: 1 }],
+        release: { version: '0.3.4', sourceRevision: 'a'.repeat(40) },
+      },
+    })
+
+    await user.click(screen.getByRole('tab', { name: 'Agent' }))
+    expect(await screen.findByLabelText('Agent upgrade command')).toHaveValue('homelab-inventory-agent update')
+    await user.click(screen.getByRole('button', { name: 'Copy scan command' }))
+    expect(writeText).toHaveBeenCalledWith('homelab-inventory-agent inventory')
+  })
+
   it('routes NAS power mode changes through the dedicated transition callback', async () => {
     const user = userEvent.setup()
     const { onRequestNasPowerConfigurationChange, onUpdateItem } = renderInspector({

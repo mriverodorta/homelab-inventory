@@ -16,12 +16,11 @@ import {
 } from '@/components/ui/dialog'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { loadAgentHardwareSnapshot } from '@/lib/agent-api'
+import type { AgentCommandPlatform } from '@/types/agent'
 import type { InventoryItem } from '@/types/inventory'
 import { useLiveEventTopic } from '@/live-events/use-live-event-topic'
 
-const INVENTORY_COMMAND = 'sudo homelab-inventory-agent inventory'
-
-export function AgentHardwareEvidence({ host }: { host: InventoryItem }) {
+export function AgentHardwareEvidence({ host, commandPlatform }: { host: InventoryItem; commandPlatform: AgentCommandPlatform }) {
   const query = useQuery({
     queryKey: ['agent-hardware-snapshot', host.type, host.id],
     queryFn: () => loadAgentHardwareSnapshot(host.type as 'server' | 'nas' | 'pcBuild', host.id),
@@ -45,6 +44,9 @@ export function AgentHardwareEvidence({ host }: { host: InventoryItem }) {
     result[component.kind] = (result[component.kind] ?? 0) + 1
     return result
   }, {})).sort(([first], [second]) => first.localeCompare(second))
+  const inventoryCommand = commandPlatform === 'alpine'
+    ? 'homelab-inventory-agent inventory'
+    : 'sudo homelab-inventory-agent inventory'
 
   async function copyText(value: string, setCopied: (copied: boolean) => void) {
     await navigator.clipboard.writeText(value)
@@ -79,7 +81,7 @@ export function AgentHardwareEvidence({ host }: { host: InventoryItem }) {
           )}
 
           <div className="flex flex-wrap gap-2">
-            <Button type="button" variant="outline" className="gap-2" onClick={() => void copyText(INVENTORY_COMMAND, setCopiedCommand)}>
+            <Button type="button" variant="outline" className="gap-2" onClick={() => void copyText(inventoryCommand, setCopiedCommand)}>
               {copiedCommand ? <Check data-icon="inline-start" /> : <Copy data-icon="inline-start" />}
               {copiedCommand ? 'Copied' : snapshot ? 'Copy again' : 'Copy scan command'}
             </Button>
