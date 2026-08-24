@@ -1,4 +1,5 @@
 export type AgentState = 'unregistered' | 'unknown' | 'online' | 'stale' | 'offline'
+export type AgentCommandPlatform = 'linux' | 'alpine' | 'freebsd'
 
 export type AgentHostType = 'server' | 'nas' | 'pcBuild'
 
@@ -61,6 +62,7 @@ export type AgentHostStatus = {
   ageMs: number | null
   lastSeenAt?: string
   agentVersion?: string
+  commandPlatform?: AgentCommandPlatform
   collectedAt?: string | null
   hostname?: string | null
   os?: Record<string, unknown> | null
@@ -95,6 +97,7 @@ export type AgentHostStatus = {
   }
   upgradeCommands?: {
     linux: string
+    alpine: string
     freebsd: string
   }
 }
@@ -119,6 +122,7 @@ export type AgentEnrollmentResponse = {
   installCommand: string
   installCommands: {
     linux: string
+    alpine: string
     freebsd: string
   }
   agentVersion: string

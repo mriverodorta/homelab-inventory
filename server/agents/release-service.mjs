@@ -158,6 +158,7 @@ export class AgentReleaseService {
     const base = `${endpoint}/api/agent/releases/${this.current().version}`
     return {
       linux: `curl -fsSL ${shellArgument(`${base}/install.sh`)} | sudo sh -s -- ${common}`,
+      alpine: `curl -fsSL ${shellArgument(`${base}/install.sh`)} | sh -s -- ${common}`,
       freebsd: `fetch -q -o - ${shellArgument(`${base}/install-freebsd.sh`)} | sudo sh -s -- ${common}`,
     }
   }
@@ -166,6 +167,7 @@ export class AgentReleaseService {
     if (native) {
       return {
         linux: 'sudo homelab-inventory-agent update',
+        alpine: 'homelab-inventory-agent update',
         freebsd: 'sudo homelab-inventory-agent update',
       }
     }
@@ -174,6 +176,7 @@ export class AgentReleaseService {
     const common = `--endpoint ${shellArgument(endpoint)} --version ${shellArgument(version)} --upgrade`
     return {
       linux: `curl -fsSL ${shellArgument(`${base}/install.sh`)} | sudo sh -s -- ${common}`,
+      alpine: `curl -fsSL ${shellArgument(`${base}/install.sh`)} | sh -s -- ${common}`,
       freebsd: `fetch -q -o - ${shellArgument(`${base}/install-freebsd.sh`)} | sudo sh -s -- ${common}`,
     }
   }

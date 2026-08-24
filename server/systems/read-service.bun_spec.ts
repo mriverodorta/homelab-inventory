@@ -58,7 +58,11 @@ describe('Systems read service', () => {
     const releaseService = {
       current: () => ({ version: '0.2.0' }),
       updateAvailable: () => true,
-      upgradeCommands: () => ({ linux: 'sudo homelab-inventory-agent update' }),
+      upgradeCommands: () => ({
+        linux: 'sudo homelab-inventory-agent update',
+        alpine: 'homelab-inventory-agent update',
+        freebsd: 'sudo homelab-inventory-agent update',
+      }),
     }
     const service = new SystemsReadService({
       telemetryRepository: { getSystemsSnapshot: () => telemetry },
@@ -88,6 +92,12 @@ describe('Systems read service', () => {
       attentionCount: 0,
       attentionState: 'refreshing',
       attentionRevision: 0,
+    })
+
+    telemetry.get(1)!.system = { operatingSystem: 'Alpine Linux', osVersion: '3.22' }
+    expect(service.initial(store, 1, 'https://inventory.example').systems[0]).toMatchObject({
+      operatingSystem: 'Alpine Linux 3.22',
+      agentUpdateCommand: 'homelab-inventory-agent update',
     })
 
     expect(service.live(store, 1, 'https://inventory.example').systems).toEqual([{

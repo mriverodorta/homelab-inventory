@@ -1,5 +1,6 @@
 import { createToken, hashToken } from './db/agent-auth.mjs'
 import { isRelationalId } from './db/relational-ids.mjs'
+import { agentCommandPlatform } from './agents/command-platform.mjs'
 
 const ENROLLMENT_TTL_MS = 24 * 60 * 60 * 1000
 const AGENT_VERSION = '0.2.0'
@@ -623,6 +624,7 @@ function compactAgentHostStatus(status) {
     lastSeenAt: status.lastSeenAt,
     collectedAt: status.collectedAt ?? null,
     agentVersion: status.agentVersion,
+    commandPlatform: agentCommandPlatform(metrics.system?.operatingSystem ?? metrics.system?.os),
     hostname: status.hostname ?? null,
     droppedSamples: status.droppedSamples,
     monitoringRevision: status.monitoringRevision,

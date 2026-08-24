@@ -1,4 +1,5 @@
 import { agentStatusTiming, resolveAgentStatusState } from '../agents/status-model.mjs'
+import { agentCommandPlatform } from '../agents/command-platform.mjs'
 import { memoryPressurePercent } from './memory-pressure.mjs'
 
 const HOST_TYPES = new Set(['server', 'nas', 'pcBuild'])
@@ -267,10 +268,11 @@ export class SystemsReadService {
           && agentVersion
           && this.releaseService?.updateAvailable(agentVersion),
         )
+        const commandPlatform = agentCommandPlatform(telemetry?.system?.operatingSystem ?? telemetry?.system?.os)
         const updateCommand = updateAvailable && endpoint
           ? this.releaseService.upgradeCommands(endpoint, {
               native: nativeUpdateAvailable(host.capabilities_json),
-            }).linux
+            })[commandPlatform]
           : undefined
         const assigned = componentsByHost.get(host.item_id) ?? []
         const liveTelemetry = state === 'online' ? telemetry : null

@@ -116,7 +116,7 @@ describe('agent routes', () => {
     const status = {
       hostType: 'server', hostId: 7, state: 'online', connected: true, ageMs: 1000,
       lastSeenAt: '2026-08-14T20:00:00.000Z', agentVersion: '0.2.0', hostname: 'lab-node',
-      metrics: { cpu: { percent: 10 }, filesystems: [{ path: '/' }], network: [{ name: 'eth0' }] },
+      metrics: { system: { operatingSystem: 'Alpine Linux' }, cpu: { percent: 10 }, filesystems: [{ path: '/' }], network: [{ name: 'eth0' }] },
       containers: [{ name: 'app', image: 'example:latest' }],
       services: [{ unit: 'docker.service' }], disks: [{ name: 'nvme0n1' }],
       network: [{ name: 'eth0' }], storageHealth: [{ name: 'nvme0n1' }], motherboard: { model: 'Board' },
@@ -132,6 +132,7 @@ describe('agent routes', () => {
     expect(payload.registeredServerIds).toBeUndefined()
     expect(payload.hosts['server:7']).toMatchObject({
       hostType: 'server', hostId: 7, state: 'online', hostname: 'lab-node',
+      commandPlatform: 'alpine',
       details: { metrics: true, services: true, containers: true, storage: true, network: true, hardware: true },
     })
     for (const field of ['metrics', 'containers', 'services', 'disks', 'network', 'storageHealth', 'motherboard']) {
@@ -222,13 +223,14 @@ describe('agent routes', () => {
       lastSeenAt: timestamp,
       agentVersion: '0.0.9',
       capabilities: { 'agent.native-update': { state: 'available' } },
+      metrics: { system: { operatingSystem: 'Alpine Linux' } },
     }
     const releaseService = {
       current: () => ({ version: '0.1.0', sourceRevision: 'a'.repeat(40) }),
       updateAvailable: () => true,
       upgradeCommands: (endpoint, { native }) => native
-        ? { linux: 'sudo homelab-inventory-agent update', freebsd: 'sudo homelab-inventory-agent update' }
-        : { linux: `linux:${endpoint}`, freebsd: `freebsd:${endpoint}` },
+        ? { linux: 'sudo homelab-inventory-agent update', alpine: 'homelab-inventory-agent update', freebsd: 'sudo homelab-inventory-agent update' }
+        : { linux: `linux:${endpoint}`, alpine: `alpine:${endpoint}`, freebsd: `freebsd:${endpoint}` },
     }
     const { server, url } = await listen(createApp(store, { releaseService }))
     try {
@@ -236,8 +238,10 @@ describe('agent routes', () => {
       expect(response.status).toBe(200)
       expect((await response.json()).hosts['server:1'].upgradeCommands).toEqual({
         linux: 'sudo homelab-inventory-agent update',
+        alpine: 'homelab-inventory-agent update',
         freebsd: 'sudo homelab-inventory-agent update',
       })
+      expect((await (await fetch(`${url}/api/agent/status`)).json()).hosts['server:1'].commandPlatform).toBe('alpine')
     } finally {
       await closeServer(server)
     }

@@ -168,12 +168,13 @@ afterEach(async () => {
 })
 
 describe('agent protocol v1 routes', () => {
-  it('returns verified Linux and FreeBSD install commands with explicit container options', async () => {
+  it('returns verified Linux, Alpine, and FreeBSD install commands with explicit container options', async () => {
     const store = await createStore()
     const releaseService = {
       current: () => ({ version: '0.1.0' }),
       installCommands: ({ endpoint, hostType, hostId, activationToken, containers }) => ({
         linux: `linux:${endpoint}:${hostType}:${hostId}:${activationToken}:${containers.mode}`,
+        alpine: `alpine:${endpoint}:${hostType}:${hostId}:${activationToken}:${containers.mode}`,
         freebsd: `freebsd:${endpoint}:${hostType}:${hostId}:${activationToken}:${containers.mode}`,
       }),
     }
@@ -191,6 +192,7 @@ describe('agent protocol v1 routes', () => {
       expect(response.status).toBe(200)
       expect(body.agentVersion).toBe('0.1.0')
       expect(body.installCommand).toContain(`linux:${url}:nas:1:`)
+      expect(body.installCommands.alpine).toContain(`alpine:${url}:nas:1:`)
       expect(body.installCommands.freebsd).toContain(`freebsd:${url}:nas:1:`)
       expect(body.installCommands.linux).toContain(':proxy')
     } finally {

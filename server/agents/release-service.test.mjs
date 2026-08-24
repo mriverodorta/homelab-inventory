@@ -42,13 +42,21 @@ describe('embedded agent release', () => {
     })
     expect(commands.linux).toContain("--host-type' 'nas")
     expect(commands.linux).toContain("--containers-mode' 'proxy")
+    expect(commands.alpine).toContain('install.sh')
+    expect(commands.alpine).toContain("--host-type' 'nas")
+    expect(commands.alpine).toContain("--containers-mode' 'proxy")
+    expect(commands.alpine).not.toMatch(/\bsudo\b/u)
     expect(commands.freebsd).toContain('install-freebsd.sh')
     expect(service.upgradeCommands('https://inventory.example.com', { native: true })).toEqual({
       linux: 'sudo homelab-inventory-agent update',
+      alpine: 'homelab-inventory-agent update',
       freebsd: 'sudo homelab-inventory-agent update',
     })
     expect(service.upgradeCommands('https://inventory.example.com').linux).toContain('install.sh')
     expect(service.upgradeCommands('https://inventory.example.com').linux).toContain('--upgrade')
+    expect(service.upgradeCommands('https://inventory.example.com').alpine).toContain('install.sh')
+    expect(service.upgradeCommands('https://inventory.example.com').alpine).toContain('--upgrade')
+    expect(service.upgradeCommands('https://inventory.example.com').alpine).not.toMatch(/\bsudo\b/u)
     expect(service.updateAvailable('0.0.9')).toBe(true)
     expect(service.updateAvailable('0.1.0')).toBe(false)
   })
