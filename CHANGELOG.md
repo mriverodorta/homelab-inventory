@@ -6,6 +6,10 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 
 ## Unreleased
 
+### Fixed
+
+- Settings navigation and content now remain clipped inside the dialog with independent scrolling, and the share editor uses its intended responsive desktop width instead of collapsing to a narrow form.
+
 ## [0.15.3] - 2026-08-23
 
 ### Fixed

@@ -142,11 +142,17 @@ describe('SettingsDialog', () => {
 
   it('renders the responsive shell and general browser preferences', () => {
     const props = renderSettings()
+    const dialog = screen.getByRole('dialog')
+    const navigation = screen.getByRole('navigation', { name: 'Settings categories' })
+    const content = screen.getByRole('main')
 
     expect(screen.getByRole('heading', { name: 'Settings' })).toBeInTheDocument()
     expect(screen.getByText('My Homelab')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Close' })).toBeInTheDocument()
-    expect(screen.getByRole('navigation', { name: 'Settings categories' })).toHaveClass('hidden', 'lg:block')
+    expect(dialog).toHaveClass('overflow-hidden')
+    expect(navigation).toHaveClass('hidden', 'min-h-0', 'overflow-y-auto', 'lg:block')
+    expect(navigation.parentElement).toHaveClass('min-w-0', 'overflow-hidden')
+    expect(content).toHaveClass('min-w-0', 'overflow-x-hidden', 'overflow-y-auto')
     expect(screen.getByRole('combobox', { name: 'Settings category' }).closest('.lg\\:hidden')).toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('switch', { name: 'Show inventory at startup' }))

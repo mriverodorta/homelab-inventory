@@ -134,7 +134,7 @@ export function ShareDialog({ open, configuration, workbooks, metadata, capabili
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="grid max-h-[min(860px,calc(100dvh-2rem))] max-w-3xl grid-rows-[auto_minmax(0,1fr)_auto] gap-0 overflow-hidden p-0">
+      <DialogContent className="grid max-h-[min(860px,calc(100dvh-2rem))] w-[calc(100%-2rem)] grid-rows-[auto_minmax(0,1fr)_auto] gap-0 overflow-hidden p-0 sm:max-w-3xl">
         <DialogHeader className="border-b border-[#e8e1d6] px-5 py-4 text-left">
           <DialogTitle>{configuration ? 'Edit share' : 'Create share'}</DialogTitle>
           <DialogDescription>Select the exact project views and optional metadata that may be published to lab.gd.</DialogDescription>

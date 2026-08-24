@@ -224,7 +224,7 @@ function CategoryNavigation({
   availableCategories: typeof categories
 }) {
   return (
-    <nav className="hidden border-r border-[#e2dbcf] bg-[#f5f1ea] p-3 lg:block" aria-label="Settings categories">
+    <nav className="hidden min-h-0 overflow-y-auto overscroll-contain border-r border-[#e2dbcf] bg-[#f5f1ea] p-3 lg:block" aria-label="Settings categories">
       <div className="grid gap-1">
         {availableCategories.map((category) => {
           const Icon = category.icon
@@ -950,7 +950,7 @@ export function SettingsDialog(props: SettingsDialogProps) {
 
   return (
     <Dialog open={props.open} onOpenChange={props.onOpenChange}>
-      <DialogContent className="h-[100dvh] max-h-[100dvh] max-w-none grid-rows-[auto_minmax(0,1fr)] gap-0 rounded-none bg-[#fbf9f5] p-0 sm:h-[min(760px,calc(100dvh-2rem))] sm:max-w-5xl sm:rounded-xl">
+      <DialogContent className="h-[100dvh] max-h-[100dvh] max-w-none grid-rows-[auto_minmax(0,1fr)] gap-0 overflow-hidden rounded-none bg-[#fbf9f5] p-0 sm:h-[min(760px,calc(100dvh-2rem))] sm:max-w-5xl sm:rounded-xl">
         <DialogHeader className="border-b border-[#e2dbcf] px-5 py-4 pr-14 text-left">
           <div className="flex min-w-0 items-center gap-3">
             <span className="flex size-10 shrink-0 items-center justify-center rounded-md bg-[#20242c] text-white"><Settings className="size-5" /></span>
@@ -960,11 +960,11 @@ export function SettingsDialog(props: SettingsDialogProps) {
             </div>
           </div>
         </DialogHeader>
-        <div className="grid min-h-0 lg:grid-cols-[220px_minmax(0,1fr)]">
+        <div className="grid min-h-0 min-w-0 overflow-hidden lg:grid-cols-[220px_minmax(0,1fr)]">
           <CategoryNavigation active={activeCategory} onChange={setCategory} availableCategories={availableCategories} />
-          <div className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)] lg:grid-rows-[minmax(0,1fr)]">
+          <div className="grid min-h-0 min-w-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden lg:grid-rows-[minmax(0,1fr)]">
             <MobileCategorySelector active={activeCategory} onChange={setCategory} availableCategories={availableCategories} />
-            <main className="min-h-0 overflow-y-auto overscroll-contain p-4 sm:p-6" aria-live="polite">
+            <main className="min-h-0 min-w-0 overflow-x-hidden overflow-y-auto overscroll-contain p-4 sm:p-6" aria-live="polite">
               {activeCategory === 'general' ? <GeneralSettings {...props} /> : null}
               {activeCategory === 'project' ? <ProjectSettings {...props} /> : null}
               {activeCategory === 'authentication' ? <AuthenticationSettings /> : null}

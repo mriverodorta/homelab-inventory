@@ -585,7 +585,9 @@ const RELEASE_0_15_3_DETAILS: UnreleasedReleaseNotes = {
 
 export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
   highlights: [],
-  fixes: [],
+  fixes: [
+    'Settings navigation and content now remain inside the dialog with independent scrolling, while the share editor uses its intended responsive width instead of collapsing into a narrow form.',
+  ],
   notes: [],
 }
 

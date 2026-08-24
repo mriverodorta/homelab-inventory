@@ -63,6 +63,16 @@ const capabilities: SharingCapabilities = {
 }
 
 describe('ShareDialog', () => {
+  it('uses a viewport-contained wide editor with a fixed header and footer', () => {
+    render(<ShareDialog open workbooks={workbooks} metadata={metadata} capabilities={capabilities} busy={false} onOpenChange={vi.fn()} onSave={vi.fn()} />)
+
+    expect(screen.getByRole('dialog')).toHaveClass(
+      'sm:max-w-3xl',
+      'grid-rows-[auto_minmax(0,1fr)_auto]',
+      'overflow-hidden',
+    )
+  })
+
   it('excludes metadata and resource usage by default', async () => {
     const onSave = vi.fn<(input: ShareInput) => Promise<void>>(async () => {})
     render(<ShareDialog open workbooks={workbooks} metadata={metadata} capabilities={capabilities} busy={false} onOpenChange={vi.fn()} onSave={onSave} />)
