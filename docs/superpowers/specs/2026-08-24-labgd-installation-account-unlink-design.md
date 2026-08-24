@@ -56,6 +56,7 @@ LabGD advertises unlink support explicitly:
   "accountClaiming": {
     "supported": true,
     "statusSupported": true,
+    "statusVersions": [1, 2],
     "unlinkSupported": true,
     "unlinkDispositions": ["keep", "unpublish", "delete"]
   }
@@ -63,12 +64,34 @@ LabGD advertises unlink support explicitly:
 ```
 
 Homelab Inventory must not infer unlink support from account claiming or remote
-lifecycle support. It hides the unlink action unless `unlinkSupported` is true
-and the advertised disposition set contains all dispositions the UI offers.
+lifecycle support. It hides the unlink action unless `unlinkSupported` is true,
+`statusVersions` includes 2, and the advertised disposition set contains all
+dispositions the UI offers.
 
 Older LabGD deployments continue supporting claim and publication without an
 unlink action. Older Homelab Inventory clients ignore the additional
 capability fields.
+
+The existing exact v1 response at `GET /v1/installations/account-status`
+remains unchanged. LabGD adds:
+
+```http
+GET /v1/installations/account-status-v2
+```
+
+```json
+{
+  "claimed": true,
+  "githubUsername": "mriverodorta",
+  "claimedAt": "2026-08-24T15:30:00.000Z",
+  "bindingRevision": 3
+}
+```
+
+The v2 endpoint uses the same signed installation authorization boundary as
+v1. Homelab Inventory calls v2 only after negotiating status version 2. This
+preserves compatibility with deployed clients whose v1 parser rejects extra
+response fields.
 
 ## Atomic LabGD Operation
 
