@@ -20,6 +20,7 @@ import {
   replaceSharingConfiguration,
   sharingConfigurationFromArchive,
   sharingIdentityFilesFromArchive,
+  validateSharingIdentityFiles,
   telemetryBackupFromArchive,
   notificationBackupFromArchive,
 } from './backup-sections.mjs'
@@ -399,6 +400,7 @@ export class BackupService {
       )
     }
     if (sections.includes('sharingIdentity')) {
+      const identity = validateSharingIdentityFiles(parsed.files)
       const directory = path.join(this.store.dataDir, 'sharing')
       await fs.mkdir(directory, { recursive: true, mode: 0o700 })
       await fs.chmod(directory, 0o700)
@@ -406,7 +408,7 @@ export class BackupService {
         await fs.rm(path.join(directory, name), { force: true })
       }
       for (const file of sharingIdentityFilesFromArchive(parsed.files)) await writePrivate(path.join(directory, file.relativePath), file.body)
-      this.store.core?.database.query('DELETE FROM sharing_installation_projection WHERE id = 1').run()
+      replaceSharingIdentityState(this.store.core?.database, identity)
     }
     if (sections.includes('catalogState')) {
       const directory = path.join(this.store.dataDir, 'catalog')
@@ -544,4 +546,26 @@ export class BackupService {
       .sort((a, b) => b.id - a.id)
     for (const record of scheduled.slice(retention)) await this.remove(record.id)
   }
+}
+
+export function replaceSharingIdentityState(database, identity) {
+  if (!database) return
+  database.transaction(() => {
+    database.query('DELETE FROM sharing_account_operations').run()
+    database.query('DELETE FROM sharing_installation_projection WHERE id = 1').run()
+    if (identity.projection) insertArchivedRow(database, 'sharing_installation_projection', identity.projection)
+    for (const operation of identity.accountOperations) {
+      const row = { ...operation }
+      if (row.actor_user_id != null && !database.query('SELECT 1 FROM users WHERE id = ?').get(row.actor_user_id)) row.actor_user_id = null
+      insertArchivedRow(database, 'sharing_account_operations', row)
+    }
+  })()
+}
+
+function insertArchivedRow(database, table, source) {
+  const allowed = new Set(database.query(`PRAGMA table_info(${table})`).all().map(({ name }) => name))
+  const entries = Object.entries(source).filter(([column]) => allowed.has(column))
+  if (!entries.length) return
+  const columns = entries.map(([column]) => column)
+  database.query(`INSERT INTO ${table} (${columns.join(', ')}) VALUES (${columns.map(() => '?').join(', ')})`).run(...entries.map(([, value]) => value))
 }

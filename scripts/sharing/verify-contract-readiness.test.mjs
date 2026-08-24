@@ -21,6 +21,7 @@ const negotiatedCapabilities = {
   version: 1,
   publication: true,
   accountClaiming: true,
+  accountUnlink: false,
   installationAccountStatus: true,
   installationEvents: true,
   ownerAnalytics: true,

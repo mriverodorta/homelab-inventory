@@ -69,6 +69,32 @@ describe('sharing installation event coordinator', () => {
     expect(onStateChanged).toHaveBeenCalledWith(repository.getSettings(), 'sharing.status-changed')
   })
 
+  it('reconciles account unlink summaries after preceding share lifecycle events', async () => {
+    let cursor = 20
+    const calls = []
+    const repository = {
+      getSettings: () => ({ connectionEnabled: true, enrollmentState: 'connected', remoteEventCursor: cursor }),
+      applyRemoteEvent: vi.fn((event) => { calls.push(`share:${event.id}`); cursor = event.id; return { applied: true, shares: [{ id: 2, state: event.payload.state }] } }),
+    }
+    const reconcileAccountStatus = vi.fn(async (eventId) => { if (eventId) { calls.push(`account:${eventId}`); cursor = eventId } })
+    const client = { events: vi.fn(async () => stream([
+      'id: 21\nevent: unpublish\ndata: {"eventVersion":1,"sharePublicId":"share_2","revision":4,"state":"unpublished","occurredAt":"2026-08-24T12:00:00.000Z"}\n\n',
+      'id: 22\nevent: account-unlink\ndata: {"eventVersion":1,"bindingRevision":4,"disposition":"unpublish","operationId":17,"affected":{"shares":1,"keptOnline":0,"unpublished":1,"deleted":0},"occurredAt":"2026-08-24T12:00:01.000Z"}\n\n',
+    ])) }
+    const coordinator = new SharingInstallationEventCoordinator({
+      repository,
+      client,
+      identityService: { getCapabilities: () => ({ installationEvents: true }), reconcileAccountStatus },
+      onStateChanged: vi.fn(),
+      setTimer: () => 1,
+      clearTimer: vi.fn(),
+    })
+    coordinator.stopped = false
+    await coordinator.connect()
+    expect(calls).toEqual(['share:21', 'account:22'])
+    expect(repository.applyRemoteEvent).toHaveBeenCalledOnce()
+  })
+
   it('never starts in fixture-disabled, demo, or staging runtime', () => {
     const setTimer = vi.fn()
     const coordinator = new SharingInstallationEventCoordinator({ repository: {}, client: {}, identityService: {}, effectiveEnabled: false, setTimer })

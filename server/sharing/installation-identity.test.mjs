@@ -44,18 +44,18 @@ function repository() {
   return {
     getInstallationProjection: () => projection,
     saveInstallationProjection: (value) => {
-      projection = { id: 1, createdAtMs: 1, updatedAtMs: 1, ...value }
+      projection = { id: 1, accountClaimed: false, githubUsername: null, accountClaimedAtMs: null, accountBindingRevision: 0, createdAtMs: 1, updatedAtMs: 1, ...value }
       return projection
     },
     deleteInstallationProjection: () => { projection = null },
     reconcileInstallationAccount: (status) => {
-      projection = { ...projection, accountClaimed: status.claimed, githubUsername: status.githubUsername, accountClaimedAtMs: status.accountClaimedAtMs }
+      projection = { ...projection, accountClaimed: status.claimed, githubUsername: status.githubUsername, accountClaimedAtMs: status.accountClaimedAtMs, accountBindingRevision: status.accountBindingRevision ?? projection.accountBindingRevision }
       return projection
     },
   }
 }
 
-async function setup(handler = null) {
+async function setup(handler = null, { capabilityDocument = capabilities() } = {}) {
   const dataDir = await mkdtemp(join(tmpdir(), 'homelab-sharing-identity-'))
   roots.push(dataDir)
   const requests = []
@@ -72,7 +72,7 @@ async function setup(handler = null) {
     }
     const request = { url: new URL(url), init, body }
     requests.push(request)
-    if (request.url.pathname === '/v1/capabilities') return Response.json(capabilities())
+    if (request.url.pathname === '/v1/capabilities') return Response.json(capabilityDocument)
     if (handler) return handler(request, requests)
     if (request.url.pathname === '/readyz') return Response.json({ status: 'ready', contractMode: 'packages-enabled', publicationReady: true })
     if (request.url.pathname.endsWith('/challenge')) return Response.json({ value: 'challenge-value' }, { status: 201 })
@@ -346,6 +346,67 @@ describe('sharing installation identity', () => {
       accountClaimed: true,
       githubUsername: 'maikeldorta',
     })
+  })
+
+  it('uses negotiated status v2 and accepts only the bounded unlink contract', async () => {
+    const capabilityDocument = capabilities()
+    capabilityDocument.capabilities.accountClaiming = {
+      supported: true,
+      statusSupported: true,
+      statusVersions: [1, 2],
+      unlinkSupported: true,
+      unlinkDispositions: ['keep', 'unpublish', 'delete'],
+    }
+    const { repo, service, requests } = await setup((request) => {
+      if (request.url.pathname === '/readyz') return Response.json({ status: 'ready', contractMode: 'packages-enabled', publicationReady: true })
+      if (request.url.pathname.endsWith('/challenge')) return Response.json({ value: 'challenge-value' }, { status: 201 })
+      if (request.url.pathname.endsWith('/activate')) return Response.json(activeToken(), { status: 201 })
+      if (request.url.pathname.endsWith('/account-status-v2')) return Response.json({ claimed: true, githubUsername: 'maikeldorta', claimedAt: '2026-08-22T12:05:00.000Z', bindingRevision: 3 })
+      if (request.url.pathname.endsWith('/account/unlink')) return Response.json({
+        account: { connected: false, githubUsername: null, bindingRevision: 4 },
+        disposition: 'unpublish',
+        affected: { shares: 2, keptOnline: 0, unpublished: 2, deleted: 0 },
+      })
+      throw new Error(`Unexpected request ${request.url.pathname}`)
+    }, { capabilityDocument })
+    await service.activate()
+    await expect(service.reconcileAccountStatus()).resolves.toMatchObject({ accountBindingRevision: 3 })
+    expect(repo.getInstallationProjection()).toMatchObject({ accountClaimed: true, accountBindingRevision: 3 })
+
+    await expect(service.unlinkAccount({
+      idempotencyKey: '53af605e-c601-4cab-b5f1-24e4f9e2b38d',
+      expectedAccountBindingRevision: 3,
+      shareDisposition: 'unpublish',
+    })).resolves.toEqual({
+      account: { connected: false, githubUsername: null, bindingRevision: 4 },
+      disposition: 'unpublish',
+      affected: { shares: 2, keptOnline: 0, unpublished: 2, deleted: 0 },
+    })
+    expect(requests.some(({ url }) => url.pathname.endsWith('/account-status'))).toBe(false)
+    expect(requests.find(({ url }) => url.pathname.endsWith('/account/unlink'))?.body).toEqual({
+      requestVersion: 1,
+      idempotencyKey: '53af605e-c601-4cab-b5f1-24e4f9e2b38d',
+      expectedAccountBindingRevision: 3,
+      shareDisposition: 'unpublish',
+    })
+  })
+
+  it('rejects malformed unlink counts and preserves the current account projection', async () => {
+    const capabilityDocument = capabilities()
+    capabilityDocument.capabilities.accountClaiming = { supported: true, statusSupported: true, statusVersions: [1, 2], unlinkSupported: true, unlinkDispositions: ['keep', 'unpublish', 'delete'] }
+    const { repo, service } = await setup((request) => {
+      if (request.url.pathname === '/readyz') return Response.json({ status: 'ready', contractMode: 'packages-enabled', publicationReady: true })
+      if (request.url.pathname.endsWith('/challenge')) return Response.json({ value: 'challenge-value' }, { status: 201 })
+      if (request.url.pathname.endsWith('/activate')) return Response.json(activeToken(), { status: 201 })
+      if (request.url.pathname.endsWith('/account-status-v2')) return Response.json({ claimed: true, githubUsername: 'maikeldorta', claimedAt: '2026-08-22T12:05:00.000Z', bindingRevision: 3 })
+      if (request.url.pathname.endsWith('/account/unlink')) return Response.json({ account: { connected: false, githubUsername: null, bindingRevision: 4 }, disposition: 'delete', affected: { shares: 2, keptOnline: 0, unpublished: 0, deleted: 1 } })
+      throw new Error(`Unexpected request ${request.url.pathname}`)
+    }, { capabilityDocument })
+    await service.activate()
+    await service.reconcileAccountStatus()
+    const before = repo.getInstallationProjection()
+    await expect(service.unlinkAccount({ idempotencyKey: 'a7a7e28e-932f-4edb-a72b-6bf5fcda61c6', expectedAccountBindingRevision: 3, shareDisposition: 'delete' })).rejects.toMatchObject({ code: 'labgd-account-unlink-failed' })
+    expect(repo.getInstallationProjection()).toEqual(before)
   })
 
   it('converges an already-claimed response instead of creating another claim', async () => {

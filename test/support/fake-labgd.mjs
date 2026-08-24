@@ -25,8 +25,12 @@ export class FakeLabGd {
       return Response.json({ value }, { status: 201 })
     }
     if (pathname === '/v1/installations/activate') return this.activate(json(body))
-    const installation = this.authenticate(init.headers, body, 'publication:write')
+    const claimRoute = pathname === '/v1/installations/account-status' || pathname === '/v1/installations/account-status-v2' || pathname === '/v1/installations/account/unlink'
+    const installation = this.authenticate(init.headers, body, claimRoute ? 'claim:create' : 'publication:write')
     if (!installation) return Response.json({ error: 'authentication-failed' }, { status: 401 })
+    if (pathname === '/v1/installations/account-status') return Response.json({ claimed: installation.claimed, githubUsername: installation.githubUsername, claimedAt: installation.claimedAt })
+    if (pathname === '/v1/installations/account-status-v2') return Response.json({ claimed: installation.claimed, githubUsername: installation.githubUsername, claimedAt: installation.claimedAt, bindingRevision: installation.bindingRevision })
+    if (pathname === '/v1/installations/account/unlink') return this.unlinkAccount(installation, json(body))
     if (pathname === '/v1/publications/manifest') {
       const value = json(body)
       const existingOwner = this.shareOwners.get(value.sharePublicId)
@@ -45,7 +49,7 @@ export class FakeLabGd {
     if (!valid) return Response.json({ error: 'authentication-failed' }, { status: 401 })
     let installation = this.installations.get(value.clientInstanceId)
     if (!installation) {
-      installation = { id: this.nextInstallationId++, clientInstanceId: value.clientInstanceId, publicKey }
+      installation = { id: this.nextInstallationId++, clientInstanceId: value.clientInstanceId, publicKey, claimed: false, githubUsername: null, claimedAt: null, bindingRevision: 0, unlinkOperations: new Map() }
       this.installations.set(value.clientInstanceId, installation)
     }
     const token = `token-${installation.id}-${'x'.repeat(32)}`
@@ -57,6 +61,30 @@ export class FakeLabGd {
       scopes,
       tokenExpiresAt: '2026-08-22T13:00:00.000Z',
     }, { status: 201 })
+  }
+
+  unlinkAccount(installation, request) {
+    const existing = installation.unlinkOperations.get(request.idempotencyKey)
+    if (existing) return Response.json(existing)
+    if (!installation.claimed) return Response.json({ message: 'Installation account is not linked.', code: 'installation-account-not-linked' }, { status: 409 })
+    if (request.expectedAccountBindingRevision !== installation.bindingRevision) return Response.json({ message: 'Account binding changed.', code: 'account-binding-changed' }, { status: 409 })
+    const shares = [...this.shareOwners.values()].filter((owner) => owner === installation.id).length
+    installation.claimed = false
+    installation.githubUsername = null
+    installation.claimedAt = null
+    installation.bindingRevision += 1
+    const result = {
+      account: { connected: false, githubUsername: null, bindingRevision: installation.bindingRevision },
+      disposition: request.shareDisposition,
+      affected: {
+        shares,
+        keptOnline: request.shareDisposition === 'keep' ? shares : 0,
+        unpublished: request.shareDisposition === 'unpublish' ? shares : 0,
+        deleted: request.shareDisposition === 'delete' ? shares : 0,
+      },
+    }
+    installation.unlinkOperations.set(request.idempotencyKey, result)
+    return Response.json(result)
   }
 
   authenticate(headersValue, body, requiredScope) {
@@ -84,7 +112,7 @@ function capabilityDocument() {
       installationEvents: { supported: true, resumable: true },
       protectedPasswordHandoff: { supported: true },
       lifecycleOperations: { supported: true, operations: ['update', 'unpublish', 'delete', 'republish', 'replace-password'] },
-      accountClaiming: { supported: true, statusSupported: true },
+      accountClaiming: { supported: true, statusSupported: true, statusVersions: [1, 2], unlinkSupported: true, unlinkDispositions: ['keep', 'unpublish', 'delete'] },
       ownerAnalytics: { supported: true, buckets: ['day'], retentionDays: 90 },
       comments: { configurationSupported: true, interactionSupported: false },
       reactions: { configurationSupported: true, interactionSupported: false },

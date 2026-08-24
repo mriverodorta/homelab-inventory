@@ -2,8 +2,11 @@ import { createHash } from 'node:crypto'
 import type { RepositoryContext } from './repository-context.ts'
 import { assertPositiveId } from './repository-context.ts'
 
+const UUID_V4_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u
+
 export type SharingEnrollmentState = 'pending' | 'connected' | 'retrying' | 'recovery-pending' | 'disabled' | 'unsupported'
 export type ShareState = 'unpublished' | 'preview-ready' | 'publishing' | 'synced' | 'changes-pending' | 'manual-update-available' | 'failed' | 'expired' | 'grace-period' | 'deleted'
+export type ShareDisposition = 'keep' | 'unpublish' | 'delete'
 export type SharingSettings = Readonly<{
   id: 1
   revision: number
@@ -31,6 +34,27 @@ export type SharingInstallationProjection = Readonly<{
   accountClaimed: boolean
   githubUsername: string | null
   accountClaimedAtMs: number | null
+  accountBindingRevision: number
+  createdAtMs: number
+  updatedAtMs: number
+}>
+
+export type AccountUnlinkResult = Readonly<{
+  account: Readonly<{ connected: false; githubUsername: null; bindingRevision: number }>
+  disposition: ShareDisposition
+  affected: Readonly<{ shares: number; keptOnline: number; unpublished: number; deleted: number }>
+}>
+
+export type SharingAccountOperation = Readonly<{
+  id: number
+  clientAttemptId: string
+  remoteIdempotencyKey: string
+  shareDisposition: ShareDisposition
+  expectedAccountBindingRevision: number
+  state: 'pending' | 'retrying' | 'succeeded' | 'failed'
+  result: Readonly<{ result: AccountUnlinkResult; sharesReconciled: boolean; affectedLocalShares: number }> | null
+  lastErrorCode: string | null
+  actorUserId: number | null
   createdAtMs: number
   updatedAtMs: number
 }>
@@ -98,7 +122,9 @@ type EnrollmentPatch = Readonly<{
   recoveryState?: 'pending-owner-approval' | 'approved' | null
 }>
 
-type ProjectionInput = Omit<SharingInstallationProjection, 'id' | 'createdAtMs' | 'updatedAtMs'>
+type ProjectionInput = Omit<SharingInstallationProjection,
+  'id' | 'accountClaimed' | 'githubUsername' | 'accountClaimedAtMs' | 'accountBindingRevision' | 'createdAtMs' | 'updatedAtMs'
+>
 
 const settingColumns = `
   id, revision, connection_enabled AS connectionEnabled,
@@ -116,7 +142,18 @@ const projectionColumns = `
   recovery_public_key_spki AS recoveryPublicKeySpki,
   account_claimed AS accountClaimed, github_username AS githubUsername,
   account_claimed_at_ms AS accountClaimedAtMs,
+  account_binding_revision AS accountBindingRevision,
   created_at_ms AS createdAtMs, updated_at_ms AS updatedAtMs
+`
+
+const accountOperationColumns = `
+  id, client_attempt_id AS clientAttemptId,
+  remote_idempotency_key AS remoteIdempotencyKey,
+  share_disposition AS shareDisposition,
+  expected_account_binding_revision AS expectedAccountBindingRevision,
+  state, result_json AS resultJson, last_error_code AS lastErrorCode,
+  actor_user_id AS actorUserId, created_at_ms AS createdAtMs,
+  updated_at_ms AS updatedAtMs
 `
 
 const shareColumns = `
@@ -187,20 +224,24 @@ export function createSharingRepository(context: RepositoryContext) {
   }
 
   function reconcileInstallationAccount(
-    status: Readonly<{ claimed: boolean; githubUsername: string | null; accountClaimedAtMs: number | null }>,
+    status: Readonly<{ claimed: boolean; githubUsername: string | null; accountClaimedAtMs: number | null; accountBindingRevision?: number }>,
     eventCursor?: number,
   ) {
     const validUsername = status.githubUsername === null || /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?$/u.test(status.githubUsername)
     const validClaimedAt = status.accountClaimedAtMs === null || (Number.isSafeInteger(status.accountClaimedAtMs) && status.accountClaimedAtMs > 0)
-    if (typeof status.claimed !== 'boolean' || !validUsername || !validClaimedAt) throw new Error('Sharing installation account status is invalid.')
+    const validBindingRevision = status.accountBindingRevision === undefined || (Number.isSafeInteger(status.accountBindingRevision) && status.accountBindingRevision >= 0)
+    if (typeof status.claimed !== 'boolean' || !validUsername || !validClaimedAt || !validBindingRevision) throw new Error('Sharing installation account status is invalid.')
     if (eventCursor !== undefined && (!Number.isSafeInteger(eventCursor) || eventCursor <= 0)) throw new Error('Sharing event cursor is invalid.')
     return sqlite.transaction(() => {
       const current = getInstallationProjection()
       if (!current) throw new Error('Sharing installation projection is missing.')
-      sqlite.query('UPDATE sharing_installation_projection SET account_claimed = ?, github_username = ?, account_claimed_at_ms = ?, updated_at_ms = ? WHERE id = 1').run(
+      const bindingRevision = status.accountBindingRevision ?? current.accountBindingRevision
+      if (bindingRevision < current.accountBindingRevision) throw new Error('Sharing account binding revision cannot move backward.')
+      sqlite.query('UPDATE sharing_installation_projection SET account_claimed = ?, github_username = ?, account_claimed_at_ms = ?, account_binding_revision = ?, updated_at_ms = ? WHERE id = 1').run(
         status.claimed ? 1 : 0,
         status.claimed ? status.githubUsername : null,
         status.claimed ? status.accountClaimedAtMs : null,
+        bindingRevision,
         now(),
       )
       if (eventCursor !== undefined && eventCursor > getSettings().remoteEventCursor) {
@@ -242,6 +283,111 @@ export function createSharingRepository(context: RepositoryContext) {
 
   function deleteInstallationProjection() {
     sqlite.query('DELETE FROM sharing_installation_projection WHERE id = 1').run()
+  }
+
+  function accountOperation(row: Record<string, unknown> | null): SharingAccountOperation | null {
+    if (!row) return null
+    const result = row.resultJson == null ? null : JSON.parse(String(row.resultJson))
+    const { resultJson: _resultJson, ...operation } = row
+    return { ...operation, result } as unknown as SharingAccountOperation
+  }
+
+  function getAccountOperation(id: number) {
+    assertPositiveId(id, 'Sharing account operation ID')
+    return accountOperation(sqlite.query(`SELECT ${accountOperationColumns} FROM sharing_account_operations WHERE id = ?`).get(id) as Record<string, unknown> | null)
+  }
+
+  function prepareAccountUnlink(input: Readonly<{
+    clientAttemptId: string
+    remoteIdempotencyKey: string
+    expectedAccountBindingRevision: number
+    shareDisposition: ShareDisposition
+    actorUserId: number | null
+  }>) {
+    if (!UUID_V4_PATTERN.test(input.clientAttemptId)) throw new Error('Sharing account unlink attempt ID is invalid.')
+    const existing = accountOperation(sqlite.query(`SELECT ${accountOperationColumns} FROM sharing_account_operations WHERE client_attempt_id = ?`).get(input.clientAttemptId) as Record<string, unknown> | null)
+    if (existing) {
+      if (existing.expectedAccountBindingRevision !== input.expectedAccountBindingRevision || existing.shareDisposition !== input.shareDisposition) {
+        throw new Error('Sharing account unlink attempt conflict.')
+      }
+      return existing
+    }
+    if (!UUID_V4_PATTERN.test(input.remoteIdempotencyKey)) throw new Error('Sharing account unlink idempotency key is invalid.')
+    if (!Number.isSafeInteger(input.expectedAccountBindingRevision) || input.expectedAccountBindingRevision < 0) throw new Error('Sharing account binding revision is invalid.')
+    if (!['keep', 'unpublish', 'delete'].includes(input.shareDisposition)) throw new Error('Sharing account unlink disposition is invalid.')
+    if (input.actorUserId != null) assertPositiveId(input.actorUserId, 'Sharing account unlink actor ID')
+    const projection = getInstallationProjection()
+    if (!projection?.accountClaimed) throw new Error('Sharing installation has no linked account.')
+    if (projection.accountBindingRevision !== input.expectedAccountBindingRevision) throw new Error('Sharing account binding revision conflict.')
+    const at = now()
+    const row = sqlite.query(`
+      INSERT INTO sharing_account_operations (
+        client_attempt_id, remote_idempotency_key, share_disposition,
+        expected_account_binding_revision, actor_user_id, created_at_ms, updated_at_ms
+      ) VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING id
+    `).get(input.clientAttemptId, input.remoteIdempotencyKey, input.shareDisposition, input.expectedAccountBindingRevision, input.actorUserId, at, at) as { id: number }
+    return getAccountOperation(row.id)!
+  }
+
+  function markAccountUnlinkRetryable(id: number, errorCode: string) {
+    assertPositiveId(id, 'Sharing account operation ID')
+    if (!/^[a-z0-9][a-z0-9-]{0,127}$/u.test(errorCode)) throw new Error('Sharing account unlink error code is invalid.')
+    const changed = sqlite.query("UPDATE sharing_account_operations SET state = 'retrying', last_error_code = ?, updated_at_ms = ? WHERE id = ? AND state IN ('pending','retrying')").run(errorCode, now(), id).changes
+    if (changed !== 1) throw new Error('Sharing account unlink operation cannot be retried.')
+    return getAccountOperation(id)!
+  }
+
+  function failAccountUnlink(id: number, errorCode: string) {
+    assertPositiveId(id, 'Sharing account operation ID')
+    if (!/^[a-z0-9][a-z0-9-]{0,127}$/u.test(errorCode)) throw new Error('Sharing account unlink error code is invalid.')
+    const changed = sqlite.query("UPDATE sharing_account_operations SET state = 'failed', last_error_code = ?, updated_at_ms = ? WHERE id = ? AND state IN ('pending','retrying')").run(errorCode, now(), id).changes
+    if (changed !== 1) throw new Error('Sharing account unlink operation cannot fail from its current state.')
+    return getAccountOperation(id)!
+  }
+
+  function completeAccountUnlink(input: Readonly<{ operationId: number; actorUserId: number | null; result: AccountUnlinkResult }>) {
+    assertPositiveId(input.operationId, 'Sharing account operation ID')
+    if (input.actorUserId != null) assertPositiveId(input.actorUserId, 'Sharing account unlink actor ID')
+    return sqlite.transaction(() => {
+      const operation = getAccountOperation(input.operationId)
+      if (!operation) throw new Error('Sharing account unlink operation does not exist.')
+      const result = normalizeAccountUnlinkResult(input.result, operation)
+      if (operation.state === 'succeeded') {
+        if (JSON.stringify(operation.result?.result) !== JSON.stringify(result)) throw new Error('Sharing account unlink replay result conflict.')
+        return operation.result!
+      }
+      if (!['pending', 'retrying'].includes(operation.state)) throw new Error('Sharing account unlink operation cannot be completed from its current state.')
+      const projection = getInstallationProjection()
+      if (!projection) throw new Error('Sharing installation projection is missing.')
+      if (projection.accountBindingRevision !== operation.expectedAccountBindingRevision || result.account.bindingRevision !== operation.expectedAccountBindingRevision + 1) {
+        throw new Error('Sharing account unlink binding revision conflict.')
+      }
+      const affectedLocalShares = Number((sqlite.query("SELECT count(*) AS count FROM shares WHERE remote_public_id IS NOT NULL AND state <> 'deleted'").get() as { count: number }).count)
+      const sharesReconciled = affectedLocalShares === result.affected.shares
+      if (sharesReconciled && operation.shareDisposition === 'unpublish') {
+        sqlite.query("UPDATE shares SET state = 'unpublished', updated_at_ms = ? WHERE remote_public_id IS NOT NULL AND state <> 'deleted'").run(now())
+      } else if (sharesReconciled && operation.shareDisposition === 'delete') {
+        sqlite.query("UPDATE shares SET state = 'deleted', active_manifest_hash = NULL, approved_preview_hash = NULL, updated_at_ms = ? WHERE remote_public_id IS NOT NULL AND state <> 'deleted'").run(now())
+      }
+      sqlite.query(`
+        UPDATE sharing_installation_projection
+        SET account_claimed = 0, github_username = NULL, account_claimed_at_ms = NULL,
+            account_binding_revision = ?, updated_at_ms = ? WHERE id = 1
+      `).run(result.account.bindingRevision, now())
+      const stored = { result, sharesReconciled, affectedLocalShares }
+      sqlite.query("UPDATE sharing_account_operations SET state = 'succeeded', result_json = ?, last_error_code = NULL, actor_user_id = ?, updated_at_ms = ? WHERE id = ?")
+        .run(JSON.stringify(stored), input.actorUserId, now(), operation.id)
+      sqlite.query(`
+        INSERT INTO security_events (user_id, actor_user_id, type, target, details_json, created_at_ms)
+        VALUES (NULL, ?, 'sharing-account-unlinked', ?, ?, ?)
+      `).run(input.actorUserId, String(projection.remoteInstallationId ?? projection.clientInstanceId), JSON.stringify({
+        disposition: result.disposition,
+        affected: result.affected,
+        sharesReconciled,
+        bindingRevision: result.account.bindingRevision,
+      }), now())
+      return stored
+    })()
   }
 
   function createShare(input: ShareInput) {
@@ -572,6 +718,11 @@ export function createSharingRepository(context: RepositoryContext) {
     reconcileInstallationAccount,
     saveInstallationProjection,
     deleteInstallationProjection,
+    getAccountOperation,
+    prepareAccountUnlink,
+    markAccountUnlinkRetryable,
+    failAccountUnlink,
+    completeAccountUnlink,
     createShare,
     getShare,
     getShareByRemotePublicId,
@@ -594,6 +745,39 @@ function remoteShareState(value: unknown): ShareState {
   if (value === 'active') return 'synced'
   if (value === 'unpublished' || value === 'deleted' || value === 'expired' || value === 'grace-period') return value
   throw new Error('Remote share event state is invalid.')
+}
+
+function normalizeAccountUnlinkResult(value: AccountUnlinkResult, operation: SharingAccountOperation): AccountUnlinkResult {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('Sharing account unlink result is invalid.')
+  const account = value.account
+  const affected = value.affected
+  if (
+    !account || typeof account !== 'object' || Array.isArray(account)
+    || account.connected !== false || account.githubUsername !== null
+    || !Number.isSafeInteger(account.bindingRevision) || account.bindingRevision < 1
+    || value.disposition !== operation.shareDisposition
+    || !affected || typeof affected !== 'object' || Array.isArray(affected)
+  ) throw new Error('Sharing account unlink result is invalid.')
+  const counts = [affected.shares, affected.keptOnline, affected.unpublished, affected.deleted]
+  if (counts.some((count) => !Number.isSafeInteger(count) || count < 0)) throw new Error('Sharing account unlink counts are invalid.')
+  const expected = value.disposition === 'keep'
+    ? [affected.shares, 0, 0]
+    : value.disposition === 'unpublish'
+      ? [0, affected.shares, 0]
+      : [0, 0, affected.shares]
+  if ([affected.keptOnline, affected.unpublished, affected.deleted].some((count, index) => count !== expected[index])) {
+    throw new Error('Sharing account unlink counts do not match the disposition.')
+  }
+  return {
+    account: { connected: false, githubUsername: null, bindingRevision: account.bindingRevision },
+    disposition: value.disposition,
+    affected: {
+      shares: affected.shares,
+      keptOnline: affected.keptOnline,
+      unpublished: affected.unpublished,
+      deleted: affected.deleted,
+    },
+  }
 }
 
 function booleans(row: Record<string, unknown>, names: readonly string[]) {

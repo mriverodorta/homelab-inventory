@@ -486,7 +486,8 @@ export class SharingInstallationIdentityService {
 
   async accountStatus() {
     if (this.getCapabilities().installationAccountStatus !== true) return null
-    const response = await this.signedFetch('/v1/installations/account-status', {
+    const version2 = this.getCapabilities().accountUnlink === true
+    const response = await this.signedFetch(version2 ? '/v1/installations/account-status-v2' : '/v1/installations/account-status', {
       method: 'GET',
       body: new Uint8Array(),
       scope: 'claim:create',
@@ -497,7 +498,9 @@ export class SharingInstallationIdentityService {
     const claimedAtIsValid = result.claimedAt === null
       || (typeof result.claimedAt === 'string' && Number.isFinite(Date.parse(result.claimedAt)) && new Date(result.claimedAt).toISOString() === result.claimedAt)
     const unclaimedIsEmpty = result.claimed !== false || (result.githubUsername === null && result.claimedAt === null)
-    if (!response.ok || !hasExactKeys(result, ['claimed', 'githubUsername', 'claimedAt']) || typeof result.claimed !== 'boolean' || !usernameIsValid || !claimedAtIsValid || !unclaimedIsEmpty) {
+    const bindingRevisionIsValid = !version2 || (Number.isSafeInteger(result.bindingRevision) && result.bindingRevision >= 0)
+    const expectedKeys = version2 ? ['claimed', 'githubUsername', 'claimedAt', 'bindingRevision'] : ['claimed', 'githubUsername', 'claimedAt']
+    if (!response.ok || !hasExactKeys(result, expectedKeys) || typeof result.claimed !== 'boolean' || !usernameIsValid || !claimedAtIsValid || !unclaimedIsEmpty || !bindingRevisionIsValid) {
       const error = new Error('lab.gd returned an invalid installation account status.')
       error.code = 'labgd-account-status-failed'
       throw error
@@ -506,7 +509,35 @@ export class SharingInstallationIdentityService {
       claimed: result.claimed,
       githubUsername: result.githubUsername,
       accountClaimedAtMs: result.claimedAt === null ? null : Date.parse(result.claimedAt),
+      ...(version2 ? { accountBindingRevision: result.bindingRevision } : {}),
     }
+  }
+
+  async unlinkAccount({ idempotencyKey, expectedAccountBindingRevision, shareDisposition }) {
+    if (this.getCapabilities().accountUnlink !== true) {
+      const error = new Error('lab.gd account unlink is unavailable.')
+      error.code = 'account-unlink-not-supported'
+      throw error
+    }
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u.test(idempotencyKey)) throw invalidAccountUnlinkResponse()
+    if (!Number.isSafeInteger(expectedAccountBindingRevision) || expectedAccountBindingRevision < 0) throw invalidAccountUnlinkResponse()
+    if (!['keep', 'unpublish', 'delete'].includes(shareDisposition)) throw invalidAccountUnlinkResponse()
+    const body = new TextEncoder().encode(JSON.stringify({
+      requestVersion: 1,
+      idempotencyKey,
+      expectedAccountBindingRevision,
+      shareDisposition,
+    }))
+    const response = await this.signedFetch('/v1/installations/account/unlink', {
+      method: 'POST',
+      body,
+      scope: 'claim:create',
+      headers: { 'content-type': 'application/json' },
+    })
+    const result = await boundedJson(response)
+    if (!response.ok) throw httpError(response, result, 'labgd-account-unlink-failed')
+    if (!validAccountUnlinkResult(result, shareDisposition, expectedAccountBindingRevision)) throw invalidAccountUnlinkResponse()
+    return result
   }
 
   async reconcileAccountStatus(eventCursor) {
@@ -524,6 +555,24 @@ function validClaimUrl(value) {
   } catch {
     return false
   }
+}
+
+function validAccountUnlinkResult(value, disposition, expectedRevision) {
+  if (!hasExactKeys(value, ['account', 'disposition', 'affected']) || value.disposition !== disposition) return false
+  if (!hasExactKeys(value.account, ['connected', 'githubUsername', 'bindingRevision'])) return false
+  if (value.account.connected !== false || value.account.githubUsername !== null || value.account.bindingRevision !== expectedRevision + 1) return false
+  if (!hasExactKeys(value.affected, ['shares', 'keptOnline', 'unpublished', 'deleted'])) return false
+  const { shares, keptOnline, unpublished, deleted } = value.affected
+  if ([shares, keptOnline, unpublished, deleted].some((count) => !Number.isSafeInteger(count) || count < 0)) return false
+  if (disposition === 'keep') return keptOnline === shares && unpublished === 0 && deleted === 0
+  if (disposition === 'unpublish') return keptOnline === 0 && unpublished === shares && deleted === 0
+  return keptOnline === 0 && unpublished === 0 && deleted === shares
+}
+
+function invalidAccountUnlinkResponse() {
+  const error = new Error('lab.gd returned an invalid account unlink response.')
+  error.code = 'labgd-account-unlink-failed'
+  return error
 }
 
 function normalizeGrantedScopes(value) {

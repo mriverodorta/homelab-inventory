@@ -136,6 +136,48 @@ describe('sharing routes', () => {
     expect(reconcileAccountStatus).toHaveBeenCalledOnce()
   })
 
+  it('unlinks the account through the durable orchestration service', async () => {
+    const execute = vi.fn(async () => ({
+      result: {
+        account: { connected: false, githubUsername: null, bindingRevision: 4 },
+        disposition: 'keep',
+        affected: { shares: 2, keptOnline: 2, unpublished: 0, deleted: 0 },
+      },
+      sharesReconciled: true,
+      affectedLocalShares: 2,
+    }))
+    const repository = {
+      getSettings: () => ({ revision: 1, connectionEnabled: true, enrollmentState: 'connected' }),
+      getInstallationProjection: () => ({ accountClaimed: false, githubUsername: null, accountClaimedAtMs: null, accountBindingRevision: 4 }),
+    }
+    const baseUrl = await server({
+      repository,
+      publicationService: {},
+      accountUnlinkService: { execute },
+      identityService: { getCapabilities: () => ({ accountUnlink: true }) },
+      effectiveEnabled: true,
+    })
+    const response = await fetch(`${baseUrl}/api/sharing/account/unlink`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        clientAttemptId: '3c58e2df-f909-4131-b62c-7763682fc1d4',
+        shareDisposition: 'keep',
+      }),
+    })
+    expect(response.status).toBe(200)
+    expect(await response.json()).toMatchObject({
+      unlink: { result: { disposition: 'keep', account: { connected: false, bindingRevision: 4 } } },
+      settings: { account: { claimed: false, bindingRevision: 4 } },
+    })
+    expect(execute).toHaveBeenCalledWith({
+      clientAttemptId: '3c58e2df-f909-4131-b62c-7763682fc1d4',
+      shareDisposition: 'keep',
+      confirmation: null,
+      actorUserId: null,
+    })
+  })
+
   it('mounts lifecycle, protected password, and analytics routes behind negotiated capabilities', async () => {
     const publicationService = {
       enqueueLifecycle: vi.fn((_id, kind) => ({ id: kind === 'delete' ? 3 : 2, kind, idempotencyKey: `stable-${kind}` })),

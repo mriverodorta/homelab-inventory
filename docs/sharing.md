@@ -149,6 +149,16 @@ the event stream. The owner can inspect at most 90 UTC daily analytics buckets
 for an owned share. Analytics are remote aggregate results only; Homelab
 Inventory does not create request-level telemetry or a local time-series store.
 
+When LabGD advertises account-unlink contract v1, an administrator with
+`sharing.publish` can remove the GitHub owner while keeping the installation
+connection, UUID, signing key, credentials, and public-ID ownership intact. The
+operator chooses to keep remote shares online, unpublish all remote shares, or
+permanently delete their content while reserving their generated IDs. Permanent
+deletion requires the exact confirmation `DELETE`. Local unpublished drafts are
+never changed. The app persists the binding revision and durable unlink attempt
+with the Sharing identity backup section, then reconciles other browsers through
+the existing resumable SSE stream without polling.
+
 Installation identity is the authorization boundary for every token, event,
 share command, claim, and analytics request. A public ID or cursor from another
 installation never grants access. Rotate a suspected installation credential
@@ -160,7 +170,7 @@ idempotency keys for incomplete commands.
 
 - `sharing.configure` controls connection and share definitions.
 - `sharing.publish` controls preview approval, publication, replacement,
-  snapshot refresh, recovery, and lifecycle commands.
+  snapshot refresh, recovery, remote lifecycle commands, and account unlinking.
 
 Every API route is protected by the server's default-deny authorization policy.
 State changes reach the browser through the existing authenticated application

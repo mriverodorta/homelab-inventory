@@ -18,6 +18,7 @@ export function normalizeLabGdCapabilities(value) {
   requireExactStrings(capabilities.lifecycleOperations.operations, ['update', 'unpublish', 'delete', 'republish', 'replace-password'], 'lifecycle operations')
   requireSupported(capabilities.accountClaiming, 'account claiming')
   if (typeof capabilities.accountClaiming.statusSupported !== 'boolean') throw new Error('lab.gd account status support flag is invalid.')
+  const accountUnlink = normalizeAccountUnlink(capabilities.accountClaiming)
   requireSupported(capabilities.ownerAnalytics, 'owner analytics')
   requireExactStrings(capabilities.ownerAnalytics.buckets, ['day'], 'owner analytics buckets')
   if (capabilities.ownerAnalytics.retentionDays !== 90) throw new Error('lab.gd owner analytics retention is unsupported.')
@@ -25,12 +26,30 @@ export function normalizeLabGdCapabilities(value) {
   requireConfigurationOnly(capabilities.reactions, 'reactions')
   return Object.freeze({
     accountClaiming: true,
+    accountUnlink,
     installationAccountStatus: capabilities.accountClaiming.statusSupported,
     installationEvents: true,
     ownerAnalytics: true,
     protectedShares: true,
     remoteLifecycle: true,
   })
+}
+
+function normalizeAccountUnlink(accountClaiming) {
+  if (!Object.hasOwn(accountClaiming, 'unlinkSupported')) {
+    if (Object.hasOwn(accountClaiming, 'unlinkDispositions')) throw new Error('lab.gd account unlink declaration is invalid.')
+    return false
+  }
+  if (typeof accountClaiming.unlinkSupported !== 'boolean') throw new Error('lab.gd account unlink support flag is invalid.')
+  if (accountClaiming.unlinkSupported !== true) {
+    if (Object.hasOwn(accountClaiming, 'unlinkDispositions')) throw new Error('lab.gd disabled account unlink declaration is invalid.')
+    return false
+  }
+  if (!Object.hasOwn(accountClaiming, 'statusVersions') || !integerList(accountClaiming.statusVersions).includes(2)) {
+    throw new Error('lab.gd account unlink requires account status version 2.')
+  }
+  requireExactStrings(accountClaiming.unlinkDispositions, ['keep', 'unpublish', 'delete'], 'account unlink dispositions')
+  return true
 }
 
 function requireSupported(value, name) {

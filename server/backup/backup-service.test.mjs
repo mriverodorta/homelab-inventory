@@ -255,6 +255,7 @@ describe('portable backup service', () => {
     }
   })
 
+
   it('rolls back selected stores when a restore fails after replacement', async () => {
     const notifications = []
     const { service, store } = await createContext({

@@ -2,6 +2,7 @@ import { sql } from 'drizzle-orm'
 import { check, index, integer, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core'
 import { customFieldDefinitions, inventoryTags } from './inventory-metadata.ts'
 import { projects, workspaces } from './projects.ts'
+import { users } from './authentication.ts'
 
 export const sharingSettings = sqliteTable('sharing_settings', {
   id: integer('id').primaryKey(),
@@ -37,6 +38,7 @@ export const sharingInstallationProjection = sqliteTable('sharing_installation_p
   accountClaimed: integer('account_claimed', { mode: 'boolean' }).notNull().default(false),
   githubUsername: text('github_username'),
   accountClaimedAtMs: integer('account_claimed_at_ms'),
+  accountBindingRevision: integer('account_binding_revision').notNull().default(0),
   createdAtMs: integer('created_at_ms').notNull(),
   updatedAtMs: integer('updated_at_ms').notNull(),
 }, (table) => [
@@ -47,6 +49,29 @@ export const sharingInstallationProjection = sqliteTable('sharing_installation_p
   check('sharing_installation_projection_state_check', sql`${table.state} IN ('local','active','recovery-pending','disabled')`),
   check('sharing_installation_projection_account_claimed_check', sql`${table.accountClaimed} IN (0,1)`),
   check('sharing_installation_projection_claimed_at_check', sql`${table.accountClaimedAtMs} IS NULL OR ${table.accountClaimedAtMs} > 0`),
+  check('sharing_installation_projection_binding_revision_check', sql`${table.accountBindingRevision} >= 0`),
+])
+
+export const sharingAccountOperations = sqliteTable('sharing_account_operations', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  clientAttemptId: text('client_attempt_id').notNull(),
+  remoteIdempotencyKey: text('remote_idempotency_key').notNull(),
+  shareDisposition: text('share_disposition').notNull(),
+  expectedAccountBindingRevision: integer('expected_account_binding_revision').notNull(),
+  state: text('state').notNull().default('pending'),
+  resultJson: text('result_json'),
+  lastErrorCode: text('last_error_code'),
+  actorUserId: integer('actor_user_id').references(() => users.id, { onDelete: 'set null' }),
+  createdAtMs: integer('created_at_ms').notNull(),
+  updatedAtMs: integer('updated_at_ms').notNull(),
+}, (table) => [
+  uniqueIndex('sharing_account_operations_client_attempt_unique').on(table.clientAttemptId),
+  uniqueIndex('sharing_account_operations_remote_key_unique').on(table.remoteIdempotencyKey),
+  index('sharing_account_operations_state_index').on(table.state, table.updatedAtMs, table.id),
+  check('sharing_account_operations_disposition_check', sql`${table.shareDisposition} IN ('keep','unpublish','delete')`),
+  check('sharing_account_operations_revision_check', sql`${table.expectedAccountBindingRevision} >= 0`),
+  check('sharing_account_operations_state_check', sql`${table.state} IN ('pending','retrying','succeeded','failed')`),
+  check('sharing_account_operations_result_check', sql`${table.resultJson} IS NULL OR json_valid(${table.resultJson})`),
 ])
 
 export const shares = sqliteTable('shares', {

@@ -207,4 +207,76 @@ describe('sharing repository', () => {
       closeManagedDatabase(handle)
     }
   })
+
+  test('persists durable account unlink attempts and applies authoritative dispositions atomically', async () => {
+    const { handle, repository } = await fixture()
+    try {
+      repository.saveInstallationProjection({clientInstanceId:'5dc597d2-6064-4ab7-8387-af2282150758',keyId:'key-unlink',publicKeySpki:'spki',identityHash:'c'.repeat(64),remoteInstallationId:8,credentialExpiresAtMs:Date.parse('2026-08-23T12:00:00.000Z'),state:'active',recoveryPublicKeySpki:null})
+      repository.reconcileInstallationAccount({claimed:true,githubUsername:'maikeldorta',accountClaimedAtMs:Date.parse('2026-08-22T12:01:00.000Z'),accountBindingRevision:3})
+      const remote = repository.createShare({ projectId: 1, title: 'Remote share', mutability: 'replaceable', syncMode: 'manual', visibility: 'unlisted', views: [{ workspaceId: 1, viewType: 'systems' }] })
+      repository.updateShare(remote.id, remote.localRevision, { remotePublicId: 'unlink_remote_1', remoteRevision: 2, state: 'synced' })
+      const local = repository.createShare({ projectId: 1, title: 'Local draft', mutability: 'replaceable', syncMode: 'manual', visibility: 'unlisted', views: [{ workspaceId: 1, viewType: 'systems' }] })
+
+      const prepared = repository.prepareAccountUnlink({
+        clientAttemptId: '3c58e2df-f909-4131-b62c-7763682fc1d4',
+        remoteIdempotencyKey: 'c3373662-7995-4179-824c-bfb08e80996d',
+        expectedAccountBindingRevision: 3,
+        shareDisposition: 'unpublish',
+        actorUserId: 1,
+      })
+      expect(prepared).toMatchObject({ id: 1, state: 'pending', expectedAccountBindingRevision: 3, shareDisposition: 'unpublish' })
+      expect(repository.prepareAccountUnlink({
+        clientAttemptId: '3c58e2df-f909-4131-b62c-7763682fc1d4',
+        remoteIdempotencyKey: 'different-key-is-ignored-for-an-existing-attempt',
+        expectedAccountBindingRevision: 3,
+        shareDisposition: 'unpublish',
+        actorUserId: 1,
+      })).toMatchObject({ id: 1, remoteIdempotencyKey: 'c3373662-7995-4179-824c-bfb08e80996d' })
+      expect(() => repository.prepareAccountUnlink({
+        clientAttemptId: '3c58e2df-f909-4131-b62c-7763682fc1d4',
+        remoteIdempotencyKey: 'another-key',
+        expectedAccountBindingRevision: 3,
+        shareDisposition: 'delete',
+        actorUserId: 1,
+      })).toThrow('attempt conflict')
+
+      const completed = repository.completeAccountUnlink({
+        operationId: prepared.id,
+        actorUserId: 1,
+        result: {
+          account: { connected: false, githubUsername: null, bindingRevision: 4 },
+          disposition: 'unpublish',
+          affected: { shares: 1, keptOnline: 0, unpublished: 1, deleted: 0 },
+        },
+      })
+      expect(completed).toMatchObject({ sharesReconciled: true, affectedLocalShares: 1 })
+      expect(repository.getInstallationProjection()).toMatchObject({ accountClaimed: false, githubUsername: null, accountBindingRevision: 4, state: 'active' })
+      expect(repository.getShare(remote.id)).toMatchObject({ state: 'unpublished', remotePublicId: 'unlink_remote_1' })
+      expect(repository.getShare(local.id)).toMatchObject({ state: 'unpublished', remotePublicId: null })
+      expect(handle.database.query("SELECT type, actor_user_id AS actorUserId, details_json AS detailsJson FROM security_events WHERE type = 'sharing-account-unlinked'").get()).toMatchObject({ actorUserId: 1 })
+      expect(repository.completeAccountUnlink({ operationId: prepared.id, actorUserId: 1, result: completed.result })).toMatchObject({ sharesReconciled: true })
+    } finally {
+      closeManagedDatabase(handle)
+    }
+  })
+
+  test('contains account unlink count drift until bounded lifecycle events reconcile shares', async () => {
+    const { handle, repository } = await fixture()
+    try {
+      repository.saveInstallationProjection({clientInstanceId:'05416e89-1ad4-47a4-b768-3a7c7201a7a4',keyId:'key-drift',publicKeySpki:'spki',identityHash:'d'.repeat(64),remoteInstallationId:9,credentialExpiresAtMs:null,state:'active',recoveryPublicKeySpki:null})
+      repository.reconcileInstallationAccount({claimed:true,githubUsername:'maikeldorta',accountClaimedAtMs:Date.parse('2026-08-22T12:01:00.000Z'),accountBindingRevision:1})
+      const remote = repository.createShare({ projectId: 1, title: 'Remote share', mutability: 'replaceable', syncMode: 'manual', visibility: 'unlisted', views: [{ workspaceId: 1, viewType: 'systems' }] })
+      repository.updateShare(remote.id, remote.localRevision, { remotePublicId: 'unlink_drift_1', remoteRevision: 2, state: 'synced' })
+      const operation = repository.prepareAccountUnlink({clientAttemptId:'6a2226ec-bc96-41f0-92ea-707576787348',remoteIdempotencyKey:'daf069fc-03a8-44be-be24-010713574ebf',expectedAccountBindingRevision:1,shareDisposition:'delete',actorUserId:null})
+      expect(repository.completeAccountUnlink({
+        operationId: operation.id,
+        actorUserId: null,
+        result: { account: { connected: false, githubUsername: null, bindingRevision: 2 }, disposition: 'delete', affected: { shares: 2, keptOnline: 0, unpublished: 0, deleted: 2 } },
+      })).toMatchObject({ sharesReconciled: false, affectedLocalShares: 1 })
+      expect(repository.getInstallationProjection()).toMatchObject({ accountClaimed: false, accountBindingRevision: 2 })
+      expect(repository.getShare(remote.id)).toMatchObject({ state: 'synced' })
+    } finally {
+      closeManagedDatabase(handle)
+    }
+  })
 })

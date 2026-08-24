@@ -48,6 +48,7 @@ const capabilities: SharingCapabilities = {
   version: 1,
       publication: true,
       accountClaiming: false,
+      accountUnlink: false,
       installationAccountStatus: false,
       installationEvents: false,
   ownerAnalytics: false,

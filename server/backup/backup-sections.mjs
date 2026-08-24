@@ -178,6 +178,7 @@ export async function collectBackupSections({
       }
       files.push(jsonEntry(JSON_SECTION_FILES.sharingIdentity, {
         projection: store.core?.database?.query('SELECT * FROM sharing_installation_projection WHERE id = 1').get() ?? null,
+        accountOperations: store.core?.database?.query('SELECT * FROM sharing_account_operations ORDER BY id').all() ?? [],
         files: identityFiles.map((entry) => entry.name),
       }), ...identityFiles)
     }
@@ -381,6 +382,12 @@ export function validateSharingIdentityFiles(files) {
   const expected = Array.isArray(marker.files) ? [...new Set(marker.files)].sort() : null
   const actual = [...archived.keys()].map((name) => `sharing/${name}`).sort()
   if (!expected || JSON.stringify(expected) !== JSON.stringify(actual)) throw new Error('Sharing identity backup files do not match the manifest.')
+  if (!Array.isArray(marker.accountOperations ?? [])) throw new Error('Sharing account operation backup is invalid.')
+  for (const operation of marker.accountOperations ?? []) {
+    if (!operation || typeof operation !== 'object' || !Number.isSafeInteger(operation.id) || operation.id <= 0 || !['keep', 'unpublish', 'delete'].includes(operation.share_disposition) || !['pending', 'retrying', 'succeeded', 'failed'].includes(operation.state)) {
+      throw new Error('Sharing account operation backup is invalid.')
+    }
+  }
   const instanceBody = archived.get('installation-instance.json')
   const keyBody = archived.get('installation-ed25519.pem')
   const credentialsBody = archived.get('installation-credentials.json')
@@ -404,7 +411,7 @@ export function validateSharingIdentityFiles(files) {
     if (!normalizeSharingCredentials(parsed, instance.clientInstanceId)) throw new Error('Sharing installation credentials are invalid.')
   }
   if (marker.projection?.identity_hash && identityHash !== marker.projection.identity_hash) throw new Error('Sharing identity projection does not match the signing key.')
-  return { instance, identityHash }
+  return { instance, identityHash, projection: marker.projection ?? null, accountOperations: marker.accountOperations ?? [] }
 }
 
 function sharingConfigurationBackup(database) {

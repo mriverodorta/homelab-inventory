@@ -1,4 +1,4 @@
-const EVENT_KINDS = new Set(['publication', 'replacement', 'unpublish', 'deletion', 'expiration', 'grace-period', 'account-claim', 'recovery'])
+const EVENT_KINDS = new Set(['publication', 'replacement', 'unpublish', 'deletion', 'expiration', 'grace-period', 'account-claim', 'account-unlink', 'recovery'])
 const SHARE_EVENT_KINDS = new Set(['publication', 'replacement', 'unpublish', 'deletion', 'expiration', 'grace-period'])
 const MAX_FRAME_BYTES = 64 * 1024
 const MAX_BACKOFF_MS = 60_000
@@ -71,7 +71,7 @@ export class SharingInstallationEventCoordinator {
       this.attempt = 0
       this.reader = response.body.getReader()
       await consumeSse(this.reader, async (event) => {
-        if (event.kind === 'account-claim') {
+        if (event.kind === 'account-claim' || event.kind === 'account-unlink') {
           await this.identityService.reconcileAccountStatus(event.id)
           this.onStateChanged(this.repository.getSettings(),'sharing.status-changed')
           return
@@ -144,6 +144,12 @@ function validatePayload(kind, payload) {
   } else if (kind === 'account-claim') {
     exactKeys(payload, ['eventVersion', 'claimId', 'state', 'occurredAt'])
     if (typeof payload.claimId !== 'string' || !/^[A-Za-z0-9_-]{1,128}$/u.test(payload.claimId) || payload.state !== 'completed') throw Object.assign(new Error('lab.gd claim event payload is invalid.'), { code: 'sharing-events-invalid' })
+  } else if (kind === 'account-unlink') {
+    exactKeys(payload, ['eventVersion', 'bindingRevision', 'disposition', 'operationId', 'affected', 'occurredAt'])
+    if (!Number.isSafeInteger(payload.bindingRevision) || payload.bindingRevision <= 0 || !Number.isSafeInteger(payload.operationId) || payload.operationId <= 0 || !['keep', 'unpublish', 'delete'].includes(payload.disposition)) throw Object.assign(new Error('lab.gd account unlink event payload is invalid.'), { code: 'sharing-events-invalid' })
+    exactKeys(payload.affected, ['shares', 'keptOnline', 'unpublished', 'deleted'])
+    const { shares, keptOnline, unpublished, deleted } = payload.affected
+    if ([shares, keptOnline, unpublished, deleted].some((count) => !Number.isSafeInteger(count) || count < 0) || keptOnline + unpublished + deleted !== shares) throw Object.assign(new Error('lab.gd account unlink event payload is invalid.'), { code: 'sharing-events-invalid' })
   } else {
     exactKeys(payload, ['eventVersion', 'state', 'occurredAt'])
     if (!['active', 'recovery-pending', 'revoked'].includes(payload.state)) throw Object.assign(new Error('lab.gd recovery event payload is invalid.'), { code: 'sharing-events-invalid' })

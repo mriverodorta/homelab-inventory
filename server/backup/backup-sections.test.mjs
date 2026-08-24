@@ -197,11 +197,13 @@ describe('backup section ownership', () => {
         account_claimed: 1,
         github_username: 'maikeldorta',
         account_claimed_at_ms: Date.parse('2026-08-22T12:05:00.000Z'),
+        account_binding_revision: 3,
       }
+      const accountOperations = [{ id: 1, share_disposition: 'keep', state: 'succeeded' }]
       const store = {
         dataDir,
         snapshotStores: async () => stores(),
-        core: { database: { query: () => ({ get: () => projection }) } },
+        core: { database: { query: (sql) => sql.includes('sharing_account_operations') ? ({ all: () => accountOperations }) : ({ get: () => projection }) } },
       }
       const selected = await collectBackupSections({ store, sections: ['sharingIdentity'] })
       const files = new Map(selected.files.map((file) => [file.name, file.body]))
@@ -214,6 +216,7 @@ describe('backup section ownership', () => {
       ])
       expect(validateSharingIdentityFiles(files).instance.clientInstanceId).toBe(clientInstanceId)
       expect(JSON.parse(files.get('sections/sharing-identity.json').toString()).projection).toEqual(projection)
+      expect(JSON.parse(files.get('sections/sharing-identity.json').toString()).accountOperations).toEqual(accountOperations)
       const configurationOnly = await collectBackupSections({
         store: { dataDir, snapshotStores: async () => stores() },
         sections: ['sharingConfiguration'],

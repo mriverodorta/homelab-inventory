@@ -159,6 +159,37 @@ describe('lab.gd sharing protocol', () => {
     expect(replay.status).toBe(401)
   })
 
+  it('unlinks a claimed account through the negotiated signed contract with exact replay', async () => {
+    const fake = new FakeLabGd()
+    const dataDir = await mkdtemp(join(tmpdir(), 'homelab-sharing-unlink-'))
+    roots.push(dataDir)
+    const identity = new SharingInstallationIdentityService({
+      dataDir,
+      repository: projectionRepository(),
+      labGdOrigin: 'https://lab.example.test',
+      fetchImpl: fake.fetch,
+      now: () => new Date('2026-08-22T12:00:00.000Z'),
+    })
+    await identity.activate()
+    const installation = [...fake.installations.values()][0]
+    installation.claimed = true
+    installation.githubUsername = 'maikeldorta'
+    installation.claimedAt = '2026-08-22T12:00:00.000Z'
+    installation.bindingRevision = 1
+    const request = {
+      idempotencyKey: 'c3373662-7995-4179-824c-bfb08e80996d',
+      expectedAccountBindingRevision: 1,
+      shareDisposition: 'keep',
+    }
+    await expect(identity.unlinkAccount(request)).resolves.toMatchObject({
+      account: { connected: false, bindingRevision: 2 },
+      disposition: 'keep',
+    })
+    await expect(identity.unlinkAccount(request)).resolves.toMatchObject({
+      account: { connected: false, bindingRevision: 2 },
+    })
+  })
+
   it('reconstructs resumable event delivery without duplicate cursor application', async () => {
     const state = { cursor: 0, applied: [] }
     const repository = {

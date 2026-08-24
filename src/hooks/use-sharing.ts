@@ -17,6 +17,8 @@ import {
   unpublishShare,
   updateShare,
   updateSharingSettings,
+  unlinkSharingAccount,
+  type ShareDisposition,
   type ShareInput,
 } from '@/lib/sharing-api'
 import { useLiveEventTopic } from '@/live-events/use-live-event-topic'
@@ -83,6 +85,13 @@ export function useSharing(enabled: boolean) {
     reconcileAccount: useMutation({
       mutationFn: reconcileSharingAccount,
       onSuccess: (value) => { queryClient.setQueryData(SHARING_SETTINGS_QUERY_KEY, value) },
+    }),
+    unlinkAccount: useMutation({
+      mutationFn: (input: { clientAttemptId: string; shareDisposition: ShareDisposition; confirmation: string | null }) => unlinkSharingAccount(input),
+      onSuccess: (value) => {
+        queryClient.setQueryData(SHARING_SETTINGS_QUERY_KEY, value)
+        queryClient.invalidateQueries({ queryKey: SHARING_SHARES_QUERY_KEY })
+      },
     }),
     unpublish: useMutation({ mutationFn: unpublishShare, ...refreshAfter }),
     remove: useMutation({ mutationFn: deleteShare, ...refreshAfter }),

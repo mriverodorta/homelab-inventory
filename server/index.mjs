@@ -90,6 +90,7 @@ import { SharingPublicationCoordinator } from './sharing/publication-coordinator
 import { SharingInstallationEventCoordinator } from './sharing/installation-event-coordinator.mjs'
 import { createSharingResourceSnapshotProvider, createSharingSourceProvider } from './sharing/source-provider.mjs'
 import { registerSharingRoutes } from './sharing/routes.mjs'
+import { AccountUnlinkService } from './sharing/account-unlink-service.mjs'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const root = path.resolve(__dirname, '..')
@@ -587,6 +588,13 @@ const sharingPublicationService = sharingEffectiveEnabled
       onStateChanged: (share) => publishSharingState(share, 'sharing.share-changed'),
     })
   : null
+const sharingAccountUnlinkService = sharingIdentity
+  ? new AccountUnlinkService({
+      repository: sharingRepository,
+      identityService: sharingIdentity,
+      onStateChanged: (value, kind) => publishSharingState(value, kind),
+    })
+  : null
 if (sharingPublicationService) {
   sharingPublicationCoordinator = new SharingPublicationCoordinator({
     repository: sharingRepository,
@@ -644,6 +652,7 @@ registerSharingRoutes(app, {
   enrollmentCoordinator: sharingEnrollmentCoordinator,
   eventCoordinator: sharingEventCoordinator,
   identityService: sharingIdentity,
+  accountUnlinkService: sharingAccountUnlinkService,
   resourceSnapshotProvider: sharingResourceSnapshotProvider,
   demo: isDemoMode,
   staging: stagingPolicy.staging,

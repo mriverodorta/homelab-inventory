@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { AlertTriangle, CheckCircle2, Cloud, CloudOff, LoaderCircle, Plus, RotateCw, ShieldAlert, UserRoundPlus } from 'lucide-react'
+import { AlertTriangle, CheckCircle2, Cloud, CloudOff, Link2Off, LoaderCircle, Plus, RotateCw, ShieldAlert, UserRoundPlus } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
@@ -9,9 +9,10 @@ import { SettingsSection, SettingRow } from '@/components/settings/settings-prim
 import { usePermission } from '@/hooks/use-permission'
 import { useSharing } from '@/hooks/use-sharing'
 import { loadInventoryMetadataCatalog } from '@/lib/inventory-metadata-api'
-import type { ShareConfiguration, ShareInput, SharePreview, ShareRecord } from '@/lib/sharing-api'
+import type { ShareConfiguration, ShareDisposition, ShareInput, SharePreview, ShareRecord } from '@/lib/sharing-api'
 import { loadProjectWorkbooks } from '@/lib/workbook-api'
 import { AccountClaimDialog } from './account-claim-dialog'
+import { AccountUnlinkDialog } from './account-unlink-dialog'
 import { ShareAnalytics } from './share-analytics'
 import { ShareDialog } from './share-dialog'
 import { ShareList } from './share-list'
@@ -46,13 +47,15 @@ export function SharingSettings() {
   const [pendingShareId, setPendingShareId] = useState<number | null>(null)
   const [claimOpen, setClaimOpen] = useState(false)
   const [claimResult, setClaimResult] = useState<Awaited<ReturnType<typeof sharing.claim.mutateAsync>> | null>(null)
+  const [unlinkOpen, setUnlinkOpen] = useState(false)
+  const [unlinkAttemptId, setUnlinkAttemptId] = useState<string | null>(null)
   const [claimMessage,setClaimMessage]=useState<string|null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
   const [passwordShare, setPasswordShare] = useState<ShareRecord | null>(null)
   const [passwordValue, setPasswordValue] = useState('')
   const status = sharing.settings.data
   const settings = status?.settings
-  const account=settings?.account??{claimed:false,githubUsername:null,claimedAtMs:null}
+  const account=settings?.account??{claimed:false,githubUsername:null,claimedAtMs:null,bindingRevision:0}
 
   useEffect(() => {
     if (!editorOpen) setEditing(null)
@@ -146,6 +149,24 @@ export function SharingSettings() {
     } finally { setPendingShareId(null) }
   }
 
+  function openUnlink() {
+    setActionError(null)
+    setUnlinkAttemptId(crypto.randomUUID())
+    setUnlinkOpen(true)
+  }
+
+  async function unlinkAccount(shareDisposition: ShareDisposition, confirmation: string | null) {
+    if (!unlinkAttemptId) return
+    try {
+      const response = await sharing.unlinkAccount.mutateAsync({ clientAttemptId: unlinkAttemptId, shareDisposition, confirmation })
+      setUnlinkOpen(false)
+      setUnlinkAttemptId(null)
+      setClaimMessage(`Account unlinked. ${response.unlink.result.affected.shares} remote share${response.unlink.result.affected.shares === 1 ? '' : 's'} handled with “${shareDisposition}”.`)
+    } catch {
+      // The mutation error remains in the dialog so a retry keeps the same attempt ID.
+    }
+  }
+
   return (
     <div className="grid gap-6">
       <SettingsSection title="Sharing" description="Publish selected read-only project views to lab.gd without exposing the rest of this installation.">
@@ -158,7 +179,7 @@ export function SharingSettings() {
       </SettingsSection>
 
       {settings.connectionEnabled ? <SettingsSection title="Shares" description="Each share has its own views, privacy selections, visibility, expiration, and update policy.">
-        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#e8e1d6] p-4"><div className="flex items-center gap-2 text-sm text-[#554b40]"><Cloud className="size-4" />{sharing.shares.data?.length ?? 0} configured</div>{canPublish ? <div className="flex items-center gap-2">{status.capabilities.accountClaiming&&account.claimed?<span className="text-sm font-bold text-[#2f7658]">{account.githubUsername?`Connected to @${account.githubUsername}`:'GitHub account connected'}</span>:status.capabilities.accountClaiming?<Button variant="outline" onClick={() => {setClaimMessage(null);setClaimOpen(true)}}><UserRoundPlus />Connect account</Button>:null}<Button onClick={() => void openEditor()} disabled={!workbooks.data?.length}><Plus />New share</Button></div> : null}</div>
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#e8e1d6] p-4"><div className="flex items-center gap-2 text-sm text-[#554b40]"><Cloud className="size-4" />{sharing.shares.data?.length ?? 0} configured</div>{canPublish ? <div className="flex flex-wrap items-center gap-2">{status.capabilities.accountClaiming&&account.claimed?<><span className="text-sm font-bold text-[#2f7658]">{account.githubUsername?`Connected to @${account.githubUsername}`:'GitHub account connected'}</span>{status.capabilities.accountUnlink?<Button variant="outline" onClick={openUnlink}><Link2Off />Unlink account</Button>:null}</>:status.capabilities.accountClaiming?<Button variant="outline" onClick={() => {setClaimMessage(null);setClaimOpen(true)}}><UserRoundPlus />Connect account</Button>:null}<Button onClick={() => void openEditor()} disabled={!workbooks.data?.length}><Plus />New share</Button></div> : null}</div>
         {claimMessage?<p role="status" className="border-b border-[#b9d5c6] bg-[#f0f8f3] p-3 text-sm font-semibold text-[#2f7658]">{claimMessage}</p>:null}
         {actionError ? <p role="alert" className="border-b border-[#dfb3a5] bg-[#fff4ee] p-3 text-sm font-semibold text-[#7a2c1d]">{actionError}</p> : null}
         <ShareList shares={sharing.shares.data ?? []} origin={status.origin} pendingShareId={pendingShareId} remoteControls={status.capabilities.remoteLifecycle} protectedPassword={status.capabilities.protectedShares} onEdit={(share) => void openEditor(share)} onReview={(share) => void reviewShare(share)} onPublish={(share) => void publish(share)} onSnapshot={(share) => void updateSnapshot(share)} onUnpublish={(share) => void lifecycle(share, 'unpublish')} onDelete={(share) => void lifecycle(share, 'delete')} onRepublish={(share) => void lifecycle(share, 'republish')} onPassword={(share) => { setPasswordValue(''); setPasswordShare(share) }} />
@@ -172,6 +193,7 @@ export function SharingSettings() {
       </Dialog>
       <Dialog open={Boolean(passwordShare)} onOpenChange={(open) => { if (!open) { setPasswordValue(''); setPasswordShare(null) } }}><DialogContent><DialogHeader><DialogTitle>Set share password</DialogTitle><DialogDescription>The plaintext exists only in this dialog and the active signed request. It is never saved by Homelab Inventory.</DialogDescription></DialogHeader><Input type="password" autoComplete="new-password" minLength={12} maxLength={1024} value={passwordValue} onChange={(event) => setPasswordValue(event.target.value)} aria-label="Share password" /><DialogFooter><Button variant="outline" onClick={() => { setPasswordValue(''); setPasswordShare(null) }}>Cancel</Button><Button disabled={passwordValue.length < 12 || sharing.password.isPending} onClick={() => void savePassword()}>{sharing.password.isPending ? 'Sending…' : 'Set password'}</Button></DialogFooter></DialogContent></Dialog>
       {status.capabilities.accountClaiming ? <AccountClaimDialog open={claimOpen} pending={sharing.claim.isPending} result={claimResult?.state==='pending'?claimResult:null} error={sharing.claim.error instanceof Error ? sharing.claim.error.message : null} onOpenChange={(open) => { setClaimOpen(open); if (!open) setClaimResult(null) }} onBegin={() => { void sharing.claim.mutateAsync().then(setClaimResult).catch(() => undefined) }} /> : null}
+      {status.capabilities.accountUnlink ? <AccountUnlinkDialog open={unlinkOpen} username={account.githubUsername} pending={sharing.unlinkAccount.isPending} error={sharing.unlinkAccount.error instanceof Error ? sharing.unlinkAccount.error.message : null} onOpenChange={(open) => { setUnlinkOpen(open); if (!open) setUnlinkAttemptId(null) }} onConfirm={(disposition, confirmation) => void unlinkAccount(disposition, confirmation)} /> : null}
     </div>
   )
 }

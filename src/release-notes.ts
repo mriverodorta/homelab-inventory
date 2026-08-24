@@ -592,12 +592,16 @@ const RELEASE_0_15_4_DETAILS: UnreleasedReleaseNotes = {
 }
 
 export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
-  highlights: [],
+  highlights: [
+    'Claimed lab.gd installations can unlink their GitHub account without disconnecting sharing, with explicit choices to keep, unpublish, or permanently delete remote shares.',
+  ],
   fixes: [
     'lab.gd account claims now close automatically, remain connected after refresh or restart, and show the verified GitHub username without depending on an existing share.',
     'Already claimed installations now reconcile the existing lab.gd owner instead of offering or creating another account claim.',
   ],
-  notes: [],
+  notes: [
+    'Account unlink preserves the installation UUID, signing identity, credentials, and public share-ID ownership; permanent remote deletion requires typing DELETE.',
+  ],
 }
 
 const RELEASE_0_11_2_DETAILS: UnreleasedReleaseNotes = {

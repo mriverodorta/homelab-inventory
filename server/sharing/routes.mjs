@@ -57,6 +57,7 @@ function publicSettings(repository, flags, capabilities) {
         claimed: projection?.accountClaimed ?? false,
         githubUsername: projection?.githubUsername ?? null,
         claimedAtMs: projection?.accountClaimedAtMs ?? null,
+        bindingRevision: projection?.accountBindingRevision ?? 0,
       },
     },
   }
@@ -69,6 +70,7 @@ export function registerSharingRoutes(app, {
   enrollmentCoordinator = null,
   eventCoordinator = null,
   identityService = null,
+  accountUnlinkService = null,
   resourceSnapshotProvider = null,
   demo = false,
   staging = false,
@@ -202,6 +204,20 @@ export function registerSharingRoutes(app, {
     requireRuntime()
     await identityService.reconcileAccountStatus()
     response.json(publicSettings(repository,flags,currentCapabilities()))
+  }))
+
+  app.post('/api/sharing/account/unlink', (request, response) => handle(response, async () => {
+    requireRuntime()
+    if (!accountUnlinkService || identityService.getCapabilities?.().accountUnlink !== true) {
+      throw Object.assign(new Error('lab.gd account unlink is unavailable.'), { status: 503, code: 'sharing-account-unlink-unavailable' })
+    }
+    const completed = await accountUnlinkService.execute({
+      clientAttemptId: request.body?.clientAttemptId,
+      shareDisposition: request.body?.shareDisposition,
+      confirmation: request.body?.confirmation ?? null,
+      actorUserId: request.authentication?.account?.id ?? null,
+    })
+    response.json({ ...publicSettings(repository, flags, currentCapabilities()), unlink: completed })
   }))
 
   app.post('/api/sharing/recovery/resume', (_request, response) => handle(response, async () => {

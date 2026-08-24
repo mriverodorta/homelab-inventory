@@ -7,6 +7,7 @@ export type SharingCapabilities = Readonly<{
   version: number
   publication: boolean
   accountClaiming: boolean
+  accountUnlink: boolean
   installationAccountStatus: boolean
   installationEvents: boolean
   ownerAnalytics: boolean
@@ -37,7 +38,7 @@ export type SharingSettingsResponse = Readonly<{
     nextAttemptAtMs: number | null
     lastErrorCode: string | null
     recoveryState: 'pending-owner-approval' | 'approved' | null
-    account: { claimed: boolean; githubUsername: string | null; claimedAtMs: number | null }
+    account: { claimed: boolean; githubUsername: string | null; claimedAtMs: number | null; bindingRevision: number }
   }
 }>
 
@@ -202,6 +203,26 @@ export function beginSharingAccountClaim(): Promise<{
 
 export function reconcileSharingAccount(): Promise<SharingSettingsResponse> {
   return apiRequest('/api/sharing/account/reconcile', { method: 'POST' })
+}
+
+export type ShareDisposition = 'keep' | 'unpublish' | 'delete'
+
+export function unlinkSharingAccount(input: {
+  clientAttemptId: string
+  shareDisposition: ShareDisposition
+  confirmation: string | null
+}): Promise<SharingSettingsResponse & {
+  unlink: {
+    result: {
+      account: { connected: false; githubUsername: null; bindingRevision: number }
+      disposition: ShareDisposition
+      affected: { shares: number; keptOnline: number; unpublished: number; deleted: number }
+    }
+    sharesReconciled: boolean
+    affectedLocalShares: number
+  }
+}> {
+  return apiRequest('/api/sharing/account/unlink', { method: 'POST', body: JSON.stringify(input) })
 }
 
 export function unpublishShare(id: number): Promise<{ operation: { id: number } }> {

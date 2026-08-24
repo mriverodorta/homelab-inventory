@@ -10,7 +10,13 @@ function document(overrides = {}) {
       installationEvents: { supported: true, resumable: true },
       protectedPasswordHandoff: { supported: true },
       lifecycleOperations: { supported: true, operations: ['update', 'unpublish', 'delete', 'republish', 'replace-password'] },
-      accountClaiming: { supported: true, statusSupported: true },
+      accountClaiming: {
+        supported: true,
+        statusSupported: true,
+        statusVersions: [1, 2],
+        unlinkSupported: true,
+        unlinkDispositions: ['keep', 'unpublish', 'delete'],
+      },
       ownerAnalytics: { supported: true, buckets: ['day'], retentionDays: 90 },
       comments: { configurationSupported: true, interactionSupported: false },
       reactions: { configurationSupported: true, interactionSupported: false },
@@ -23,12 +29,44 @@ describe('lab.gd remote capability contract', () => {
   it('maps the exact service document into client feature gates', () => {
     expect(normalizeLabGdCapabilities(document())).toEqual({
       accountClaiming: true,
+      accountUnlink: true,
       installationAccountStatus: true,
       installationEvents: true,
       ownerAnalytics: true,
       protectedShares: true,
       remoteLifecycle: true,
     })
+  })
+
+  it('keeps account claiming usable while older services leave unlink disabled', () => {
+    const value = document()
+    value.capabilities.accountClaiming = { supported: true, statusSupported: true }
+    expect(normalizeLabGdCapabilities(value)).toMatchObject({
+      accountClaiming: true,
+      accountUnlink: false,
+      installationAccountStatus: true,
+    })
+
+    value.capabilities.accountClaiming = {
+      supported: true,
+      statusSupported: true,
+      statusVersions: [1, 2],
+      unlinkSupported: false,
+    }
+    expect(normalizeLabGdCapabilities(value).accountUnlink).toBe(false)
+  })
+
+  it('rejects malformed present unlink declarations', () => {
+    for (const accountClaiming of [
+      { supported: true, statusSupported: true, unlinkSupported: true, statusVersions: [1], unlinkDispositions: ['keep', 'unpublish', 'delete'] },
+      { supported: true, statusSupported: true, unlinkSupported: true, statusVersions: [1, 2], unlinkDispositions: ['keep', 'keep', 'delete'] },
+      { supported: true, statusSupported: true, unlinkSupported: true, statusVersions: [1, 2], unlinkDispositions: ['keep', 'unpublish'] },
+      { supported: true, statusSupported: true, unlinkSupported: true, statusVersions: [1, 2], unlinkDispositions: ['keep', 'unpublish', 'archive'] },
+    ]) {
+      const value = document()
+      value.capabilities.accountClaiming = accountClaiming
+      expect(() => normalizeLabGdCapabilities(value)).toThrow(/unlink/iu)
+    }
   })
 
   it('rejects unsupported protocol, share, and view versions', () => {

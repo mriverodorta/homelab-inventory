@@ -6,6 +6,14 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 
 ## Unreleased
 
+### Added
+
+- Claimed lab.gd installations can unlink their GitHub account while retaining the stable sharing connection and choosing to keep, unpublish, or permanently delete all remote shares.
+
+### Security
+
+- Account unlink uses signed installation authentication, binding-revision concurrency control, durable idempotency, exact destructive confirmation, resumable SSE reconciliation, and identity-bound backup state.
+
 ### Fixed
 
 - lab.gd account claims now reconcile as installation-level state, close the claim dialog after completion, remain connected after refresh or restart, and display the verified GitHub username without requiring a share to exist.

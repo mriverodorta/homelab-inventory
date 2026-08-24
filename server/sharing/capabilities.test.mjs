@@ -15,11 +15,12 @@ describe('sharing client capabilities', () => {
     expect(sharingClientCapabilities({
       enabled: true,
       publication: true,
-      remote: { accountClaiming: true, installationEvents: true, protectedShares: true },
+      remote: { accountClaiming: true, accountUnlink: true, installationEvents: true, protectedShares: true },
     })).toEqual({
       version: 1,
       publication: true,
       accountClaiming: true,
+      accountUnlink: true,
       installationAccountStatus: false,
       installationEvents: true,
       ownerAnalytics: false,
