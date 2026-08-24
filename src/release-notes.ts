@@ -576,7 +576,10 @@ const RELEASE_0_15_2_DETAILS: UnreleasedReleaseNotes = {
 
 export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
   highlights: [],
-  fixes: [],
+  fixes: [
+    'Agent setup now offers Alpine Linux as a first-class platform and generates root-shell install, update, and hardware-inventory commands without sudo.',
+    'Expired lab.gd credentials now reactivate the existing installation UUID and Ed25519 key before resuming the same pending publication operation, preventing replacement identities or public share IDs.',
+  ],
   notes: [],
 }
 

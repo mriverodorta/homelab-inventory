@@ -6,6 +6,11 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 
 ## Unreleased
 
+### Fixed
+
+- Agent setup now offers Alpine Linux as a first-class platform and generates root-shell install, update, and hardware-inventory commands without `sudo`.
+- Expired lab.gd credentials now reactivate the existing installation UUID and Ed25519 key before resuming the same pending publication operation, preventing replacement identities or public share IDs.
+
 ## [0.15.2] - 2026-08-23
 
 ### Added
