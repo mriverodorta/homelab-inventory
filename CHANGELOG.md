@@ -6,6 +6,8 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 
 ## Unreleased
 
+## [0.15.3] - 2026-08-23
+
 ### Fixed
 
 - Agent setup now offers Alpine Linux as a first-class platform and generates root-shell install, update, and hardware-inventory commands without `sudo`.

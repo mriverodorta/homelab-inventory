@@ -574,12 +574,18 @@ const RELEASE_0_15_2_DETAILS: UnreleasedReleaseNotes = {
   ],
 }
 
-export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
+const RELEASE_0_15_3_DETAILS: UnreleasedReleaseNotes = {
   highlights: [],
   fixes: [
     'Agent setup now offers Alpine Linux as a first-class platform and generates root-shell install, update, and hardware-inventory commands without sudo.',
     'Expired lab.gd credentials now reactivate the existing installation UUID and Ed25519 key before resuming the same pending publication operation, preventing replacement identities or public share IDs.',
   ],
+  notes: [],
+}
+
+export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
+  highlights: [],
+  fixes: [],
   notes: [],
 }
 
@@ -1110,9 +1116,16 @@ const RELEASE_0_2_1_DETAILS: UnreleasedReleaseNotes = {
 
 export const RELEASE_NOTES: ReleaseNoteEntry[] = [
   {
-    version: '0.15.2',
+    version: '0.15.3',
     date: '2026-08-23',
     channel: 'latest',
+    title: 'Reliable LabGD recovery and Alpine setup',
+    ...RELEASE_0_15_3_DETAILS,
+  },
+  {
+    version: '0.15.2',
+    date: '2026-08-23',
+    channel: 'release',
     title: 'Alpine and OpenRC Agent support',
     ...RELEASE_0_15_2_DETAILS,
   },
