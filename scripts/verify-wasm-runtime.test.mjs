@@ -51,6 +51,7 @@ describe('WASM runtime verifier', () => {
     const dockerfile = await fs.readFile(path.resolve('Dockerfile'), 'utf8')
 
     for (const module of [
+      'server/sharing/account-unlink-service.mjs',
       'server/sharing/capabilities.mjs',
       'server/sharing/enrollment-coordinator.mjs',
       'server/sharing/installation-auth.mjs',

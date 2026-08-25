@@ -598,6 +598,7 @@ const RELEASE_0_15_5_DETAILS: UnreleasedReleaseNotes = {
   fixes: [
     'lab.gd account claims now close automatically, remain connected after refresh or restart, and show the verified GitHub username without depending on an existing share.',
     'Already claimed installations now reconcile the existing lab.gd owner instead of offering or creating another account claim.',
+    'Distroless production images now verify that the complete lab.gd account-unlink service is present before publication.',
   ],
   notes: [
     'Account unlink preserves the installation UUID, signing identity, credentials, and public share-ID ownership; permanent remote deletion requires typing DELETE.',

@@ -20,6 +20,7 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 
 - lab.gd account claims now reconcile as installation-level state, close the claim dialog after completion, remain connected after refresh or restart, and display the verified GitHub username without requiring a share to exist.
 - Reopening account connection for an already claimed installation now converges on the existing owner instead of creating another claim.
+- Distroless production images now verify that the complete lab.gd account-unlink service is present before an image can be published.
 
 ## [0.15.4] - 2026-08-23
 
