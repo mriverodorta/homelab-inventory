@@ -791,16 +791,12 @@ export class SqliteHomelabInventoryStore {
     if (workspace.type !== 'canvas') {
       throw new Error(`Workspace ${workspaceId} does not provide Canvas project state.`)
     }
-    const project = buildWorkspaceReadModel({
+    return buildWorkspaceReadModel({
       database: this.core.database,
       cache: this.cache,
       projectId,
       workspaceId,
     })
-    return {
-      ...project,
-      metadata: { ...project.metadata, projectId, workspaceId },
-    }
   }
 
   setWorkspace(projectId: number, workspaceId: number, submitted: ProjectState): ProjectState {

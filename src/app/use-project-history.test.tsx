@@ -246,4 +246,57 @@ describe('useProjectHistory inventory metadata', () => {
     expect(projectRef.current.revision).toBe(8)
     expect(projectRef.current.placements).toEqual(previous.placements)
   })
+
+  it('undoes and redoes another canvas without replacing or saving the current canvas', async () => {
+    const current = {
+      ...createEmptyProject(),
+      revision: 7,
+      metadata: { ...createEmptyProject().metadata, projectId: 1, workspaceId: 2 },
+    }
+    const before = {
+      ...createEmptyProject(),
+      revision: 6,
+      metadata: { ...createEmptyProject().metadata, projectId: 1, workspaceId: 3 },
+      placements: [],
+    }
+    const after = {
+      ...before,
+      revision: 7,
+      placements: [{ serverId: 'server:7', x: 24, y: 36 }],
+    }
+    const projectRef = { current }
+    const metadataRef = { current: new Map() }
+    const scheduleProjectSave = vi.fn()
+    const restoreWorkspaceHistory = vi.fn(async (target) => ({
+      ...target,
+      revision: target.revision! + 2,
+    }))
+
+    const { result } = renderHook(() => useProjectHistory({
+      projectRef,
+      inventoryMetadataHistoryRef: metadataRef,
+      setProject: vi.fn((value) => { projectRef.current = value }),
+      setSelectedItemId: vi.fn(),
+      setSelectedConnectionId: vi.fn(),
+      setValidationMessage: vi.fn(),
+      scheduleProjectSave,
+      restoreWorkspaceHistory,
+    }))
+
+    act(() => result.current.recordWorkspaceChange(before, after))
+    expect(result.current.history.past).toHaveLength(1)
+
+    act(() => result.current.undoProjectChange())
+    await waitFor(() => expect(restoreWorkspaceHistory).toHaveBeenCalledWith(before))
+    await waitFor(() => expect(result.current.historyBusy).toBe(false))
+    expect(projectRef.current.metadata.workspaceId).toBe(2)
+    expect(scheduleProjectSave).not.toHaveBeenCalled()
+
+    act(() => result.current.redoProjectChange())
+    await waitFor(() => expect(restoreWorkspaceHistory).toHaveBeenCalledTimes(2))
+    expect(restoreWorkspaceHistory).toHaveBeenLastCalledWith(after)
+    await waitFor(() => expect(result.current.historyBusy).toBe(false))
+    expect(projectRef.current.metadata.workspaceId).toBe(2)
+    expect(scheduleProjectSave).not.toHaveBeenCalled()
+  })
 })

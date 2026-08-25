@@ -37,6 +37,7 @@ export type InspectorPanelProps = {
   onOpenNotifications?: () => void
   onOpenRegistryUpdates?: () => void
   onUpdateProject: (project: ProjectState) => void
+  onCopyHostConfiguration?: (previous: ProjectState, project: ProjectState) => Promise<void>
   onUpdateItem: (itemId: string, input: InventoryItemInput) => void
   onInventoryMetadataSaved?: (change: InventoryMetadataSavedChange) => void | Promise<void>
   onOpenInventoryMetadataSettings?: (tab: InventoryMetadataSettingsTab) => void

@@ -19,7 +19,7 @@ import {
 } from '@/hooks/use-topology-query'
 import { setAuditWarningIgnored } from '@/lib/compatibility-policy'
 import { addGlobalInventoryToProject, loadProject } from '@/lib/db'
-import { loadWorkspace, type ProjectWorkbook } from '@/lib/workbook-api'
+import { loadWorkspace, saveWorkspace, type ProjectWorkbook } from '@/lib/workbook-api'
 import { buildVisibleRegistryLinkKeys } from '@/lib/registry-links'
 import { loadCatalogUpdateSummary } from '@/lib/registry-api'
 import { ErrorScreen, LoadingScreen } from '@/app/app-status-screens'
@@ -62,12 +62,14 @@ import type { ProjectState } from '@/types/inventory'
 import type { InventoryMetadataSavedChange } from '@/types/inventory-metadata'
 import type { InventoryMetadataSettingsTab, SettingsDestination } from '@/types/settings-navigation'
 import type { DomainMutationResult, MutationEffects } from '@/types/domain-mutation'
+import { NO_MUTATION_EFFECTS } from '@/types/domain-mutation'
 import { inventoryMetadataKeys } from '@/lib/inventory-metadata-query'
 import {
   createProjectHistorySnapshot,
   type InventoryMetadataHistoryState,
 } from '@/app/project-history-snapshot'
 import { browserPreferenceScope } from '@/lib/browser-preference-scope'
+import { cacheProjectState } from '@/lib/project-query-key'
 
 type SaveStatus = 'saved' | 'saving' | 'error'
 type ValidationSeverity = 'error' | 'unknown'
@@ -248,6 +250,9 @@ function App() {
   const restorePlacementHistoryRef = useRef<(
     project: ProjectState,
   ) => Promise<ProjectState>>(async (nextProject) => nextProject)
+  const restoreWorkspaceHistoryRef = useRef<(
+    project: ProjectState,
+  ) => Promise<ProjectState>>(async (nextProject) => nextProject)
   const {
     history,
     historyBusy,
@@ -255,6 +260,7 @@ function App() {
     undoProjectChange,
     redoProjectChange,
     recordWorkbookChange,
+    recordWorkspaceChange,
   } = useProjectHistory({
     projectRef,
     inventoryMetadataHistoryRef,
@@ -266,6 +272,7 @@ function App() {
     scheduleProjectSave,
     applyDomainMutationResult: (result) => applyHistoryDomainMutationRef.current(result),
     restorePlacementHistory: (nextProject) => restorePlacementHistoryRef.current(nextProject),
+    restoreWorkspaceHistory: (nextProject) => restoreWorkspaceHistoryRef.current(nextProject),
     restoreWorkbookHistory: workbookController.restoreWorkbookSnapshot,
     refreshInventoryMetadata: async (projectIds, items) => {
       for (const item of items) {
@@ -362,6 +369,56 @@ function App() {
     result.data,
     { effects: result.effects, preserveHistory: true },
   )
+
+  async function persistInactiveWorkspace(nextProject: ProjectState) {
+    const currentProject = projectRef.current
+    const projectId = nextProject.metadata.projectId
+    const workspaceId = nextProject.metadata.workspaceId
+    if (
+      !currentProject
+      || !projectId
+      || !workspaceId
+      || currentProject.metadata.projectId !== projectId
+      || currentProject.metadata.workspaceId === workspaceId
+    ) {
+      throw new Error('Choose a different destination canvas in the current project.')
+    }
+
+    return persistenceCoordinator.run(settleLegacyProjectPersistence, async () => {
+      const latestDestination = await loadWorkspace(projectId, workspaceId)
+      const saved = await saveWorkspace(projectId, workspaceId, {
+        ...latestDestination,
+        placements: nextProject.placements,
+        assignments: nextProject.assignments,
+        connections: nextProject.connections,
+      })
+      cacheProjectState(queryClient, saved)
+
+      const activeWorkspaceId = currentProject.metadata.workspaceId
+      if (!activeWorkspaceId) throw new Error('The source canvas identity is not recorded.')
+      const refreshedSource = await loadWorkspace(projectId, activeWorkspaceId)
+      if (domainEngine.enabled && typeof refreshedSource.revision === 'number') {
+        await domainEngine.client.synchronizeCanonicalRevision(
+          refreshedSource.revision,
+          'Synchronizing the copied canvas configuration.',
+        )
+      }
+      await applyInventoryCommandSnapshot(refreshedSource, {
+        effects: NO_MUTATION_EFFECTS,
+        preserveHistory: true,
+      })
+      await queryClient.invalidateQueries({ queryKey: ['projects', projectId, 'systems'] })
+      return saved
+    })
+  }
+
+  restoreWorkspaceHistoryRef.current = persistInactiveWorkspace
+
+  async function copyHostConfiguration(previous: ProjectState, nextProject: ProjectState) {
+    const saved = await persistInactiveWorkspace(nextProject)
+    recordWorkspaceChange(previous, saved)
+  }
+
   async function handleInventoryMetadataSaved(change: InventoryMetadataSavedChange) {
     recordInventoryMetadataChange({
       ref: change.ref,
@@ -757,6 +814,7 @@ function App() {
     undo: undoProjectChange,
     redo: redoProjectChange,
     updateProject,
+    copyHostConfiguration,
     inventoryMetadataSaved: handleInventoryMetadataSaved,
     openInventoryMetadataSettings,
     setValidationMessage,

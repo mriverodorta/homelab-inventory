@@ -114,6 +114,8 @@ describe('SQLite Homelab Inventory store facade', () => {
 
       expect(store.projectId).toBe(1)
       expect(store.workspaceId).toBe(2)
+      expect(store.getProject().metadata).toMatchObject({ projectId: 1, workspaceId: 2 })
+      expect(store.getWorkspace(1, 2).metadata).toMatchObject({ projectId: 1, workspaceId: 2 })
       expect(store.listProjects().map(({ id }) => id)).toEqual([1, projectId])
       expect(store.getWorkspace(projectId, canvasId)).toMatchObject({
         id: String(projectId),

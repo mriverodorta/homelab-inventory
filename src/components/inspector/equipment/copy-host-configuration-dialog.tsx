@@ -26,7 +26,7 @@ type CopyHostConfigurationDialogProps = Readonly<{
   hostId: string
   workspaces: readonly WorkspaceSummary[]
   onOpenChange(open: boolean): void
-  onApply(project: ProjectState): void
+  onApply(previous: ProjectState, project: ProjectState): Promise<void> | void
 }>
 
 export function CopyHostConfigurationDialog({
@@ -37,50 +37,55 @@ export function CopyHostConfigurationDialog({
   onOpenChange,
   onApply,
 }: CopyHostConfigurationDialogProps) {
-  const sources = useMemo(() => workspaces.filter((workspace) => (
-    workspace.type === 'canvas' && workspace.id !== project.metadata.workspaceId
-  )), [project.metadata.workspaceId, workspaces])
-  const [sourceId, setSourceId] = useState<number | null>(null)
-  const [source, setSource] = useState<ProjectState | null>(null)
+  const destinations = useMemo(() => workspaces.filter((workspace) => (
+    workspace.type === 'canvas'
+    && workspace.projectId === project.metadata.projectId
+    && workspace.id !== project.metadata.workspaceId
+  )), [project.metadata.projectId, project.metadata.workspaceId, workspaces])
+  const [destinationId, setDestinationId] = useState<number | null>(null)
+  const [destination, setDestination] = useState<ProjectState | null>(null)
   const [loading, setLoading] = useState(false)
+  const [saving, setSaving] = useState(false)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [includeComponents, setIncludeComponents] = useState(true)
   const [includeConnections, setIncludeConnections] = useState(false)
 
   useEffect(() => {
     if (!open) {
-      setSourceId(null)
-      setSource(null)
+      setDestinationId(null)
+      setDestination(null)
       setLoadError(null)
+      setSaving(false)
       setIncludeComponents(true)
       setIncludeConnections(false)
       return
     }
-    if (sourceId === null && sources.length > 0) setSourceId(sources[0].id)
-  }, [open, sourceId, sources])
+    if (destinationId === null && destinations.length > 0) setDestinationId(destinations[0].id)
+  }, [destinationId, destinations, open])
 
   useEffect(() => {
-    if (!open || sourceId === null) return
+    const projectId = project.metadata.projectId
+    if (!open || destinationId === null || !projectId) return
     let active = true
     setLoading(true)
     setLoadError(null)
-    setSource(null)
-    void loadWorkspace(project.metadata.projectId ?? 1, sourceId)
-      .then((value) => { if (active) setSource(value) })
+    setDestination(null)
+    void loadWorkspace(projectId, destinationId)
+      .then((value) => { if (active) setDestination(value) })
       .catch((error) => {
-        if (active) setLoadError(error instanceof Error ? error.message : 'The source canvas could not be loaded.')
+        if (active) setLoadError(error instanceof Error ? error.message : 'The destination canvas could not be loaded.')
       })
       .finally(() => { if (active) setLoading(false) })
     return () => { active = false }
-  }, [open, project.metadata.projectId, sourceId])
+  }, [destinationId, open, project.metadata.projectId])
 
   const preview = useMemo(() => {
-    if (!source || (!includeComponents && !includeConnections)) return null
+    if (!destination || (!includeComponents && !includeConnections)) return null
     try {
       return {
         result: copyCanvasHostConfiguration({
-          source,
-          destination: project,
+          source: project,
+          destination,
           hostId,
           includeComponents,
           includeConnections,
@@ -93,19 +98,36 @@ export function CopyHostConfigurationDialog({
         error: error instanceof Error ? error.message : 'The configuration cannot be copied.',
       }
     }
-  }, [hostId, includeComponents, includeConnections, project, source])
+  }, [destination, hostId, includeComponents, includeConnections, project])
 
-  const changes = (preview?.result?.copiedAssignmentCount ?? 0) + (preview?.result?.copiedConnectionCount ?? 0)
+  const changes = (preview?.result?.placedHost ? 1 : 0)
+    + (preview?.result?.copiedAssignmentCount ?? 0)
+    + (preview?.result?.copiedConnectionCount ?? 0)
+
+  async function applyConfiguration() {
+    if (!destination || !preview?.result || saving) return
+    setSaving(true)
+    setLoadError(null)
+    try {
+      await onApply(destination, preview.result.project)
+      onOpenChange(false)
+    } catch (error) {
+      setLoadError(error instanceof Error ? error.message : 'The destination canvas could not be saved.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader><DialogTitle>Copy host configuration</DialogTitle></DialogHeader>
         <div className="grid gap-4 py-2">
           <label className="grid gap-2 text-sm font-medium">
-            Source canvas
-            <Select value={sourceId === null ? '' : String(sourceId)} onValueChange={(value) => setSourceId(Number(value))}>
+            Destination canvas
+            <Select value={destinationId === null ? '' : String(destinationId)} onValueChange={(value) => setDestinationId(Number(value))}>
               <SelectTrigger className="w-full"><SelectValue placeholder="Choose a canvas" /></SelectTrigger>
-              <SelectContent>{sources.map((workspace) => <SelectItem key={workspace.id} value={String(workspace.id)}>{workspace.name}</SelectItem>)}</SelectContent>
+              <SelectContent>{destinations.map((workspace) => <SelectItem key={workspace.id} value={String(workspace.id)}>{workspace.name}</SelectItem>)}</SelectContent>
             </Select>
           </label>
           <label className="flex items-center gap-2 text-sm">
@@ -126,14 +148,10 @@ export function CopyHostConfigurationDialog({
           <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
           <Button
             type="button"
-            disabled={loading || !preview?.result || changes === 0}
-            onClick={() => {
-              if (!preview?.result) return
-              onApply(preview.result.project)
-              onOpenChange(false)
-            }}
+            disabled={loading || saving || !preview?.result || changes === 0}
+            onClick={() => { void applyConfiguration() }}
           >
-            <Copy />Copy configuration
+            {saving ? <LoaderCircle className="animate-spin" /> : <Copy />}Copy configuration
           </Button>
         </DialogFooter>
       </DialogContent>

@@ -13,11 +13,13 @@ export type InventoryMetadataHistoryItem = Readonly<{
 }>
 
 export type InventoryMetadataHistoryState = ReadonlyMap<string, InventoryMetadataHistoryItem>
+export type WorkspaceHistoryState = ReadonlyMap<string, ProjectState>
 
 export type ProjectHistorySnapshot = Readonly<{
   project: ProjectState
   inventoryMetadata: InventoryMetadataHistoryState
   workbook: ProjectWorkbook | null
+  workspaces: WorkspaceHistoryState
 }>
 
 export function inventoryMetadataHistoryKey(ref: InventoryMetadataItemRef) {
@@ -48,11 +50,13 @@ export function createProjectHistorySnapshot(
   project: ProjectState,
   inventoryMetadata: InventoryMetadataHistoryState,
   workbook: ProjectWorkbook | null = null,
+  workspaces: WorkspaceHistoryState = new Map(),
 ): ProjectHistorySnapshot {
   return {
     project,
     inventoryMetadata: new Map(inventoryMetadata),
     workbook: workbook === null ? null : structuredClone(workbook),
+    workspaces: new Map(workspaces),
   }
 }
 
@@ -68,6 +72,7 @@ export function backfillProjectHistoryMetadata(
           snapshot.project,
           setInventoryMetadataHistoryItem(snapshot.inventoryMetadata, ref, metadata),
           snapshot.workbook,
+          snapshot.workspaces,
         )
   return {
     past: history.past.map(backfill),

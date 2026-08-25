@@ -629,6 +629,15 @@ const RELEASE_0_16_0_DETAILS: UnreleasedReleaseNotes = {
   ],
 }
 
+const RELEASE_0_16_1_DETAILS: UnreleasedReleaseNotes = {
+  highlights: [],
+  fixes: [
+    'Host configurations can be copied from the current Canvas to another Canvas, automatically placing the same physical equipment without false cross-project errors or changes to the source configuration.',
+    'Inventory search now finds numeric model names such as 7090 while preserving exact #ID lookups.',
+  ],
+  notes: [],
+}
+
 export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
   highlights: [],
   fixes: [],
@@ -1162,9 +1171,16 @@ const RELEASE_0_2_1_DETAILS: UnreleasedReleaseNotes = {
 
 export const RELEASE_NOTES: ReleaseNoteEntry[] = [
   {
-    version: '0.16.0',
+    version: '0.16.1',
     date: '2026-08-25',
     channel: 'latest',
+    title: 'Reliable cross-Canvas host configuration copying',
+    ...RELEASE_0_16_1_DETAILS,
+  },
+  {
+    version: '0.16.0',
+    date: '2026-08-25',
+    channel: 'release',
     title: 'Independent Canvas configurations',
     ...RELEASE_0_16_0_DETAILS,
   },

@@ -85,7 +85,7 @@ describe('inventory lifecycle status filtering', () => {
     expect(isItemAssigned(project, archivedServer)).toBe(true)
   })
 
-  it('finds only exact canonical inventory IDs with or without the hash prefix', () => {
+  it('finds only the exact canonical inventory ID when the query has a hash prefix', () => {
     const indexed: ProjectState = {
       ...project,
       items: {
@@ -95,14 +95,57 @@ describe('inventory lifecycle status filtering', () => {
       assignments: [],
       placements: [],
     }
-    for (const query of ['#48', '48']) {
-      expect(filterAndSortInventory(indexed, {
-        query,
-        type: 'all',
-        status: 'all',
-        sort: 'name',
-      })).toEqual([{ ...availableCpu, inventoryId: 48 }])
+    expect(filterAndSortInventory(indexed, {
+      query: '#48',
+      type: 'all',
+      status: 'all',
+      sort: 'name',
+    })).toEqual([{ ...availableCpu, inventoryId: 48 }])
+  })
+
+  it('matches both exact inventory IDs and visible item text for numeric queries', () => {
+    const indexed: ProjectState = {
+      ...project,
+      items: {
+        'cpu:1': { ...availableCpu, inventoryId: 48 },
+        'cpu:2': { ...assignedCpu, inventoryId: 148, name: 'CPU 48 model' },
+      },
+      assignments: [],
+      placements: [],
     }
+
+    expect(filterAndSortInventory(indexed, {
+      query: '48',
+      type: 'all',
+      status: 'all',
+      sort: 'name',
+    })).toEqual([
+      { ...availableCpu, inventoryId: 48 },
+      { ...assignedCpu, inventoryId: 148, name: 'CPU 48 model' },
+    ])
+  })
+
+  it('finds numeric model names without requiring a matching inventory ID', () => {
+    const dell = {
+      ...activeServer,
+      inventoryId: 18,
+      name: 'Dell OptiPlex Micro 7090',
+      manufacturer: 'Dell',
+      model: 'OptiPlex Micro 7090',
+    }
+    const indexed: ProjectState = {
+      ...project,
+      items: { 'server:1': dell },
+      assignments: [],
+      placements: [],
+    }
+
+    expect(filterAndSortInventory(indexed, {
+      query: '7090',
+      type: 'all',
+      status: 'all',
+      sort: 'name',
+    })).toEqual([dell])
   })
 })
 

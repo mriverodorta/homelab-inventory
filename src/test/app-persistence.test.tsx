@@ -26,6 +26,8 @@ const {
   updateInventoryItemMock,
   updateInventoryItemPropertiesMock,
   updateCompatibilityPolicyMock,
+  loadWorkspaceMock,
+  saveWorkspaceMock,
 } = vi.hoisted(() => ({
   fitAllMock: vi.fn(),
   loadOnboardingExampleMock: vi.fn(),
@@ -33,6 +35,8 @@ const {
   updateInventoryItemMock: vi.fn(),
   updateInventoryItemPropertiesMock: vi.fn(),
   updateCompatibilityPolicyMock: vi.fn(),
+  loadWorkspaceMock: vi.fn(),
+  saveWorkspaceMock: vi.fn(),
 }))
 
 vi.mock('@/lib/compatibility-audit-api', async (importOriginal) => ({
@@ -43,6 +47,12 @@ vi.mock('@/lib/compatibility-audit-api', async (importOriginal) => ({
 vi.mock('@/lib/onboarding-api', async (importOriginal) => ({
   ...await importOriginal<typeof import('@/lib/onboarding-api')>(),
   loadOnboardingExample: loadOnboardingExampleMock,
+}))
+
+vi.mock('@/lib/workbook-api', async (importOriginal) => ({
+  ...await importOriginal<typeof import('@/lib/workbook-api')>(),
+  loadWorkspace: loadWorkspaceMock,
+  saveWorkspace: saveWorkspaceMock,
 }))
 
 vi.mock('@/lib/db', () => ({
@@ -116,12 +126,14 @@ vi.mock('@/components/lazy-app-surfaces', async (importOriginal) => ({
     project,
     persistenceWarning,
     onUpdateProject,
+    onCopyHostConfiguration,
     onUpdateItem,
     onUpdateItemProperties,
   }: {
     project: ProjectState
     persistenceWarning: string | null
     onUpdateProject: (project: ProjectState) => void
+    onCopyHostConfiguration: (previous: ProjectState, project: ProjectState) => Promise<void>
     onUpdateItem: (itemId: string, input: Omit<InventoryItem, 'id' | 'key'>) => Promise<void>
     onUpdateItemProperties: (itemId: string, properties: InventoryProperties) => Promise<void>
   }) => (
@@ -130,6 +142,22 @@ vi.mock('@/components/lazy-app-surfaces', async (importOriginal) => ({
       <div data-testid="disabled-hosts">
         {project.compatibilityPolicy?.disabledHosts.map((host) => `${host.hostType}:${host.hostId}`).join(',') || 'enabled'}
       </div>
+      <button
+        type="button"
+        onClick={() => {
+          const destination = {
+            ...project,
+            metadata: { ...project.metadata, projectId: 1, workspaceId: 3 },
+            placements: [],
+          }
+          void onCopyHostConfiguration(destination, {
+            ...destination,
+            placements: [{ serverId: 'server:1', x: 24, y: 36 }],
+          })
+        }}
+      >
+        Copy to another canvas
+      </button>
       <button
         type="button"
         onClick={() => onUpdateProject({
@@ -277,6 +305,58 @@ afterEach(() => {
 })
 
 describe('App project persistence', () => {
+  it('copies into another canvas and restores only that canvas during Undo and Redo', async () => {
+    const source: ProjectState = {
+      ...persistedProject,
+      revision: 6,
+      metadata: { ...persistedProject.metadata, projectId: 1, workspaceId: 2 },
+      placements: [{ serverId: 'server:1', x: 24, y: 36 }],
+    }
+    const emptyDestination: ProjectState = {
+      ...source,
+      metadata: { ...source.metadata, workspaceId: 3 },
+      placements: [],
+    }
+    const copiedDestination: ProjectState = {
+      ...emptyDestination,
+      revision: 7,
+      placements: [{ serverId: 'server:1', x: 24, y: 36 }],
+    }
+    loadWorkspaceMock
+      .mockResolvedValueOnce(emptyDestination)
+      .mockResolvedValueOnce({ ...source, revision: 7 })
+      .mockResolvedValueOnce(copiedDestination)
+      .mockResolvedValueOnce({ ...source, revision: 8 })
+      .mockResolvedValueOnce({ ...emptyDestination, revision: 8 })
+      .mockResolvedValueOnce({ ...source, revision: 9 })
+    saveWorkspaceMock
+      .mockResolvedValueOnce(copiedDestination)
+      .mockResolvedValueOnce({ ...emptyDestination, revision: 8 })
+      .mockResolvedValueOnce({ ...copiedDestination, revision: 9 })
+    renderApp(source)
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Copy to another canvas' }))
+
+    await vi.waitFor(() => expect(saveWorkspaceMock).toHaveBeenCalledWith(1, 3, expect.objectContaining({
+      metadata: expect.objectContaining({ projectId: 1, workspaceId: 3 }),
+      placements: [{ serverId: 'server:1', x: 24, y: 36 }],
+    })))
+    await vi.waitFor(() => expect(screen.getByRole('button', { name: 'Undo' })).toBeEnabled())
+    expect(saveProjectMock).not.toHaveBeenCalled()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Undo' }))
+    await vi.waitFor(() => expect(saveWorkspaceMock).toHaveBeenCalledTimes(2))
+    expect(saveWorkspaceMock).toHaveBeenLastCalledWith(1, 3, expect.objectContaining({ placements: [] }))
+    await vi.waitFor(() => expect(screen.getByRole('button', { name: 'Redo' })).toBeEnabled())
+
+    fireEvent.click(screen.getByRole('button', { name: 'Redo' }))
+    await vi.waitFor(() => expect(saveWorkspaceMock).toHaveBeenCalledTimes(3))
+    expect(saveWorkspaceMock).toHaveBeenLastCalledWith(1, 3, expect.objectContaining({
+      placements: [{ serverId: 'server:1', x: 24, y: 36 }],
+    }))
+    expect(saveProjectMock).not.toHaveBeenCalled()
+  })
+
   it('offers onboarding only for a fresh empty workspace', async () => {
     const emptyProject: ProjectState = {
       ...persistedProject,

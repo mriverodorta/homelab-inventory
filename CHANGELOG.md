@@ -6,6 +6,14 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 
 ## Unreleased
 
+## [0.16.1] - 2026-08-25
+
+### Fixed
+
+- Default and project-scoped Canvas reads now expose the same canonical project and workspace IDs, preventing false cross-project errors when copying host configurations.
+- Copying a host configuration now starts from the current Canvas, targets a selected different Canvas, and places the same physical host automatically while preserving independent components, optional cables, and undo/redo.
+- Numeric inventory searches now match visible product names and models, while `#ID` continues to perform an exact inventory lookup.
+
 ## [0.16.0] - 2026-08-25
 
 ### Added

@@ -22,6 +22,7 @@ import {
   projectHistoryContentEqual,
   type InventoryMetadataHistoryState,
   type ProjectHistorySnapshot,
+  type WorkspaceHistoryState,
 } from '@/app/project-history-snapshot'
 import type { ProjectState } from '@/types/inventory'
 import type { DomainMutationResult } from '@/types/domain-mutation'
@@ -44,6 +45,7 @@ type ProjectHistoryOptions = {
   applyDomainMutationResult?: (result: DomainMutationResult<ProjectState>) => Promise<ProjectState>
   restoreWorkbookHistory?: (workbook: ProjectWorkbook) => Promise<ProjectWorkbook>
   restorePlacementHistory?: (project: ProjectState) => Promise<ProjectState>
+  restoreWorkspaceHistory?: (project: ProjectState) => Promise<ProjectState>
 }
 
 export function useProjectHistory({
@@ -59,16 +61,31 @@ export function useProjectHistory({
   applyDomainMutationResult,
   restoreWorkbookHistory,
   restorePlacementHistory,
+  restoreWorkspaceHistory,
 }: ProjectHistoryOptions) {
   const [history, setHistoryState] = useState<HistoryState<ProjectHistorySnapshot>>(() => createEmptyHistory())
   const [historyBusy, setHistoryBusy] = useState(false)
   const historyRef = useRef(history)
+  const workspaceHistoryRef = useRef<WorkspaceHistoryState>(new Map())
   const busyRef = useRef(false)
   historyRef.current = history
 
   const setHistory: Dispatch<SetStateAction<HistoryState<ProjectHistorySnapshot>>> = useCallback((value) => {
     setHistoryState((current) => {
-      const next = typeof value === 'function' ? value(current) : value
+      const updated = typeof value === 'function' ? value(current) : value
+      if (updated.past.length === 0 && updated.future.length === 0) {
+        workspaceHistoryRef.current = new Map()
+      }
+      const existing = new Set([...current.past, ...current.future])
+      const includeWorkspaceHistory = (snapshot: ProjectHistorySnapshot) => (
+        existing.has(snapshot) || snapshot.workspaces.size > 0 || workspaceHistoryRef.current.size === 0
+          ? snapshot
+          : { ...snapshot, workspaces: new Map(workspaceHistoryRef.current) }
+      )
+      const next = {
+        past: updated.past.map(includeWorkspaceHistory),
+        future: updated.future.map(includeWorkspaceHistory),
+      }
       historyRef.current = next
       return next
     })
@@ -82,6 +99,7 @@ export function useProjectHistory({
       currentProject,
       inventoryMetadataHistoryRef.current,
       workbookHistoryRef?.current ?? null,
+      workspaceHistoryRef.current,
     )
     const result = direction === 'undo'
       ? undoHistory(historyRef.current, currentSnapshot)
@@ -92,6 +110,17 @@ export function useProjectHistory({
     setHistoryBusy(true)
     try {
       const target = result.project
+      const changedWorkspaces = [...target.workspaces].filter(([key, workspace]) => {
+        const current = currentSnapshot.workspaces.get(key)
+        return !current || !projectHistoryContentEqual(current, workspace)
+      })
+      if (changedWorkspaces.length > 0 && !restoreWorkspaceHistory) {
+        throw new Error('The destination canvas history cannot be restored.')
+      }
+      for (const [key, workspace] of changedWorkspaces) {
+        const restored = await restoreWorkspaceHistory!(workspace)
+        workspaceHistoryRef.current = new Map(workspaceHistoryRef.current).set(key, restored)
+      }
       const metadataChanges = metadataHistoryChanges(
         inventoryMetadataHistoryRef.current,
         target.inventoryMetadata,
@@ -108,7 +137,13 @@ export function useProjectHistory({
         )
       }
 
-      const projectChanged = !projectHistoryContentEqual(target.project, currentProject)
+      const comparableTarget = changedWorkspaces.length > 0
+        ? {
+            ...target.project,
+            metadata: { ...target.project.metadata, updatedAt: currentProject.metadata.updatedAt },
+          }
+        : target.project
+      const projectChanged = !projectHistoryContentEqual(comparableTarget, currentProject)
       const workbookChanged = target.workbook !== null
         && JSON.stringify(target.workbook) !== JSON.stringify(workbookHistoryRef?.current ?? null)
       const policyOnlyChanged = projectChanged
@@ -159,7 +194,9 @@ export function useProjectHistory({
       const placementProject = placementOnlyChanged && restorePlacementHistory
         ? await restorePlacementHistory(target.project)
         : null
-      let rebasedProject = currentProject
+      let rebasedProject = changedWorkspaces.length > 0
+        ? projectRef.current ?? currentProject
+        : currentProject
       if (policyResult) {
         rebasedProject = { ...currentProject, compatibilityPolicy: policyResult.policy }
       } else if (propertyProject) {
@@ -224,6 +261,31 @@ export function useProjectHistory({
     setHistory,
     undoProjectChange: () => { void applyHistory('undo') },
     redoProjectChange: () => { void applyHistory('redo') },
+    recordWorkspaceChange: (before: ProjectState, after: ProjectState) => {
+      const currentProject = projectRef.current
+      const projectId = before.metadata.projectId
+      const workspaceId = before.metadata.workspaceId
+      if (
+        !currentProject
+        || !projectId
+        || !workspaceId
+        || after.metadata.projectId !== projectId
+        || after.metadata.workspaceId !== workspaceId
+      ) return
+
+      const key = `${projectId}:${workspaceId}`
+      const previous = new Map(workspaceHistoryRef.current).set(key, before)
+      setHistory((currentHistory) => pushHistory(
+        currentHistory,
+        createProjectHistorySnapshot(
+          currentProject,
+          inventoryMetadataHistoryRef.current,
+          workbookHistoryRef?.current ?? null,
+          previous,
+        ),
+      ))
+      workspaceHistoryRef.current = new Map(workspaceHistoryRef.current).set(key, after)
+    },
     recordWorkbookChange: (before: ProjectWorkbook, after: ProjectWorkbook) => {
       const currentProject = projectRef.current
       if (!currentProject || JSON.stringify(before) === JSON.stringify(after)) return

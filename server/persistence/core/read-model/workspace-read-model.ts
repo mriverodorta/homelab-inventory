@@ -57,7 +57,11 @@ export function buildWorkspaceReadModel({
   const key = workspaceReadModelKey(projectId, workspaceId, revision)
   const cached = cache.get<ProjectState>(key)
   if (cached) return cached
-  const project = buildLegacyProjectProjection({ database, projectId, workspaceId })
+  const projection = buildLegacyProjectProjection({ database, projectId, workspaceId })
+  const project = {
+    ...projection,
+    metadata: { ...projection.metadata, projectId, workspaceId },
+  }
   cache.set(key, project, { tags: [`project:${projectId}`, `workspace:${workspaceId}`] })
   return project
 }

@@ -63,6 +63,7 @@ interface CreateWorkspaceSurfacePropsOptions {
   undo(): void
   redo(): void
   updateProject(nextProject: ProjectState): void
+  copyHostConfiguration(previous: ProjectState, project: ProjectState): Promise<void>
   inventoryMetadataSaved?(change: InventoryMetadataSavedChange): void | Promise<void>
   openInventoryMetadataSettings(tab: InventoryMetadataSettingsTab): void
   setValidationMessage(message: string | null): void
@@ -111,6 +112,7 @@ export function createWorkspaceSurfaceProps({
   undo,
   redo,
   updateProject,
+  copyHostConfiguration,
   inventoryMetadataSaved,
   openInventoryMetadataSettings,
   setValidationMessage,
@@ -147,6 +149,7 @@ export function createWorkspaceSurfaceProps({
     onOpenNotifications: canViewNotifications ? openNotifications : undefined,
     onOpenRegistryUpdates: canViewRegistryUpdates ? openRegistryUpdates : undefined,
     onUpdateProject: updateProject,
+    onCopyHostConfiguration: copyHostConfiguration,
     onUpdateItem: inventory.updateItem,
     onInventoryMetadataSaved: inventoryMetadataSaved,
     onOpenInventoryMetadataSettings: openInventoryMetadataSettings,

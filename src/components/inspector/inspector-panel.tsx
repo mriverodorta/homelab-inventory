@@ -60,6 +60,7 @@ export function InspectorPanel({
   onOpenNotifications,
   onOpenRegistryUpdates,
   onUpdateProject,
+  onCopyHostConfiguration,
   onUpdateItem,
   onInventoryMetadataSaved,
   onOpenInventoryMetadataSettings,
@@ -204,6 +205,7 @@ export function InspectorPanel({
               onDuplicate={canCreateInventory ? () => onDuplicateItem(selectedItem) : undefined}
               onDuplicateToProject={canCreateInventory && onDuplicateItemToProject ? () => onDuplicateItemToProject(selectedItem) : undefined}
               onCopyConfiguration={canEditCanvas
+                && onCopyHostConfiguration
                 && selectedItemIsPlaced
                 && ['server', 'nas', 'pcBuild'].includes(selectedItem.type)
                 && workspaces.some((workspace) => workspace.type === 'canvas' && workspace.id !== project.metadata.workspaceId)
@@ -237,14 +239,14 @@ export function InspectorPanel({
         </div>
       </div>
 
-      {selectedItemRuntimeKey && copyConfigurationOpen ? (
+      {selectedItemRuntimeKey && copyConfigurationOpen && onCopyHostConfiguration ? (
         <CopyHostConfigurationDialog
           open={copyConfigurationOpen}
           project={project}
           hostId={selectedItemRuntimeKey}
           workspaces={workspaces}
           onOpenChange={setCopyConfigurationOpen}
-          onApply={onUpdateProject}
+          onApply={onCopyHostConfiguration}
         />
       ) : null}
 

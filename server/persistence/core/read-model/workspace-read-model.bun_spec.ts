@@ -34,6 +34,8 @@ describe('workspace read model', () => {
 
       const first = buildWorkspaceReadModel({ database: handle.database, cache, projectId: 1, workspaceId: 2 })
       const second = buildWorkspaceReadModel({ database: handle.database, cache, projectId: 1, workspaceId: 2 })
+      expect(first.metadata).toMatchObject({ projectId: 1, workspaceId: 2 })
+      expect(second.metadata).toMatchObject({ projectId: 1, workspaceId: 2 })
       expect(second).toEqual(first)
       expect(cache.diagnostics()).toMatchObject({ hits: 1, misses: 1, entries: 1 })
 

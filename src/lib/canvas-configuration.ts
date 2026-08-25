@@ -1,4 +1,9 @@
 import { planHostAllocations } from '@/lib/compatibility'
+import {
+  getCanvasItemHeight,
+  getCanvasItemWidth,
+  SERVER_CARD_COLLISION_GAP,
+} from '@/lib/project'
 import type { ComponentAssignment, ConnectionEndpoint, InventoryConnection, ProjectState } from '@/types/inventory'
 
 type CopyCanvasHostConfigurationOptions = Readonly<{
@@ -11,6 +16,7 @@ type CopyCanvasHostConfigurationOptions = Readonly<{
 
 export type CopiedCanvasHostConfiguration = Readonly<{
   project: ProjectState
+  placedHost: boolean
   copiedAssignmentCount: number
   copiedConnectionCount: number
   unavailableConnections: readonly Readonly<{ id: number; reason: string }>[]
@@ -22,6 +28,33 @@ function endpointIdentity(endpoint: ConnectionEndpoint) {
 
 function hostPlacement(project: ProjectState, itemId: string) {
   return project.placements.find((placement) => placement.serverId === itemId)
+}
+
+function destinationHostPlacement(source: ProjectState, destination: ProjectState, hostId: string) {
+  const preferred = hostPlacement(source, hostId)
+  if (!preferred) throw new Error('The host must be placed on the source canvas.')
+
+  const width = getCanvasItemWidth(source, hostId) + SERVER_CARD_COLLISION_GAP
+  const height = getCanvasItemHeight(source, hostId) + SERVER_CARD_COLLISION_GAP
+  const occupied = destination.placements.map((placement) => ({
+    x: placement.x,
+    y: placement.y,
+    width: getCanvasItemWidth(destination, placement.serverId) + SERVER_CARD_COLLISION_GAP,
+    height: getCanvasItemHeight(destination, placement.serverId) + SERVER_CARD_COLLISION_GAP,
+  }))
+
+  for (let offset = 0; offset <= 4096; offset += 1) {
+    const candidate = { ...preferred, x: preferred.x + offset * SERVER_CARD_COLLISION_GAP }
+    const overlaps = occupied.some((existing) => (
+      candidate.x < existing.x + existing.width
+      && candidate.x + width > existing.x
+      && candidate.y < existing.y + existing.height
+      && candidate.y + height > existing.y
+    ))
+    if (!overlaps) return candidate
+  }
+
+  throw new Error('A collision-free position could not be found on the destination canvas.')
 }
 
 function allocationIdentity(assignment: ComponentAssignment) {
@@ -70,17 +103,25 @@ export function copyCanvasHostConfiguration({
     throw new Error('Host configurations can only be copied within the same project.')
   }
   if (source.metadata.workspaceId === destination.metadata.workspaceId) {
-    throw new Error('Choose a different source canvas.')
+    throw new Error('Choose a different destination canvas.')
   }
-  if (!hostPlacement(source, hostId) || !hostPlacement(destination, hostId)) {
-    throw new Error('The host must be placed on both canvases.')
+  if (!hostPlacement(source, hostId)) {
+    throw new Error('The host must be placed on the source canvas.')
   }
-  if (source.items[hostId]?.inventoryId !== destination.items[hostId]?.inventoryId) {
+  if (
+    !source.items[hostId]
+    || !destination.items[hostId]
+    || source.items[hostId].inventoryId !== destination.items[hostId].inventoryId
+  ) {
     throw new Error('The selected canvases do not contain the same physical host.')
   }
 
+  const placedHost = !hostPlacement(destination, hostId)
   let project: ProjectState = {
     ...destination,
+    placements: placedHost
+      ? [...destination.placements, destinationHostPlacement(source, destination, hostId)]
+      : [...destination.placements],
     assignments: [...destination.assignments],
     connections: [...destination.connections],
   }
@@ -169,5 +210,5 @@ export function copyCanvasHostConfiguration({
     }
   }
 
-  return { project, copiedAssignmentCount, copiedConnectionCount, unavailableConnections }
+  return { project, placedHost, copiedAssignmentCount, copiedConnectionCount, unavailableConnections }
 }

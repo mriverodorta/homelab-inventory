@@ -99,6 +99,45 @@ describe('cross-canvas host configuration copying', () => {
     expect(destination.assignments).toEqual([])
   })
 
+  it('places the same physical host on an empty destination canvas before copying its configuration', () => {
+    const source = project(2, { assignments: [assignment] })
+    const destination = project(3, { placements: [] })
+
+    const result = copyCanvasHostConfiguration({ source, destination, hostId: 'server:7' })
+
+    expect(result.placedHost).toBe(true)
+    expect(result.project.placements).toEqual([{ serverId: 'server:7', x: 24, y: 36 }])
+    expect(result.project.assignments).toEqual([expect.objectContaining({
+      id: 70,
+      serverId: 'server:7',
+      itemId: 'ram:2',
+    })])
+    expect(destination.placements).toEqual([])
+    expect(source.placements).toHaveLength(2)
+    expect(result.project.items['server:7'].inventoryId).toBe(host.inventoryId)
+  })
+
+  it('retains an existing destination placement and avoids occupied positions for new placements', () => {
+    const source = project(2, { assignments: [assignment] })
+    const existing = copyCanvasHostConfiguration({
+      source,
+      destination: project(3, { placements: [{ serverId: 'server:7', x: 960, y: 72 }] }),
+      hostId: 'server:7',
+    })
+    expect(existing.placedHost).toBe(false)
+    expect(existing.project.placements).toEqual([{ serverId: 'server:7', x: 960, y: 72 }])
+
+    const occupied = copyCanvasHostConfiguration({
+      source,
+      destination: project(3, { placements: [{ serverId: 'server:8', x: 24, y: 36 }] }),
+      hostId: 'server:7',
+    })
+    const placed = occupied.project.placements.find(({ serverId }) => serverId === 'server:7')
+    expect(occupied.placedHost).toBe(true)
+    expect(placed).toBeDefined()
+    expect(placed).not.toMatchObject({ x: 24, y: 36 })
+  })
+
   it('rejects occupied destination slots without changing either canvas', () => {
     const existing: ComponentAssignment = { ...assignment, id: 45, itemId: 'ram:3' }
     const source = project(2, { assignments: [assignment] })
@@ -183,7 +222,7 @@ describe('cross-canvas host configuration copying', () => {
     expect(occupied.project.connections).toHaveLength(1)
   })
 
-  it('rejects different projects, mismatched host identities, or absent placements', () => {
+  it('rejects different projects, mismatched host identities, or an absent source placement', () => {
     const source = project(2)
     const wrongProject = project(3)
     wrongProject.metadata.projectId = 2
@@ -195,7 +234,13 @@ describe('cross-canvas host configuration copying', () => {
     expect(() => copyCanvasHostConfiguration({ source, destination: mismatched, hostId: 'server:7' }))
       .toThrow(/same physical host/iu)
 
-    expect(() => copyCanvasHostConfiguration({ source, destination: project(3, { placements: [] }), hostId: 'server:7' }))
-      .toThrow(/placed on both canvases/iu)
+    expect(() => copyCanvasHostConfiguration({
+      source: project(2, { placements: [] }),
+      destination: project(3),
+      hostId: 'server:7',
+    })).toThrow(/source canvas/iu)
+
+    expect(() => copyCanvasHostConfiguration({ source, destination: project(2), hostId: 'server:7' }))
+      .toThrow(/different destination canvas/iu)
   })
 })
