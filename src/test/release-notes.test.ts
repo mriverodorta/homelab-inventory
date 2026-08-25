@@ -92,7 +92,9 @@ describe('release notes helpers', () => {
   })
 
   it('keeps one current latest entry and the structured release history', () => {
-    const currentPatchRelease = RELEASE_NOTES.find((entry) => entry.version === '0.15.4')!
+    const currentPatchRelease = RELEASE_NOTES.find((entry) => entry.version === packageJson.version)!
+    const accountRelease = RELEASE_NOTES.find((entry) => entry.version === '0.15.5')!
+    const dialogRelease = RELEASE_NOTES.find((entry) => entry.version === '0.15.4')!
     const recoveryRelease = RELEASE_NOTES.find((entry) => entry.version === '0.15.3')!
     const alpineAgentRelease = RELEASE_NOTES.find((entry) => entry.version === '0.15.2')!
     const sharingRelease = RELEASE_NOTES.find((entry) => entry.version === '0.15.0')!
@@ -123,11 +125,21 @@ describe('release notes helpers', () => {
     )
     expect(currentPatchRelease).toEqual(
       expect.objectContaining({
+        version: packageJson.version,
         channel: 'latest',
+        title: expect.any(String),
+      }),
+    )
+    expect(accountRelease.highlights).toContain(
+      'Claimed lab.gd installations can unlink their GitHub account without disconnecting sharing, with explicit choices to keep, unpublish, or permanently delete remote shares.',
+    )
+    expect(dialogRelease).toEqual(
+      expect.objectContaining({
+        channel: 'release',
         title: 'Contained responsive dialogs',
       }),
     )
-    expect(currentPatchRelease.fixes).toContain(
+    expect(dialogRelease.fixes).toContain(
       'Settings navigation and content now remain inside the dialog with independent scrolling, while the share editor uses its intended responsive width instead of collapsing into a narrow form.',
     )
     expect(recoveryRelease.fixes).toContain(
