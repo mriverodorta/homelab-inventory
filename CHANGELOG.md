@@ -6,6 +6,12 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 
 ## Unreleased
 
+## [0.15.6] - 2026-08-24
+
+### Fixed
+
+- lab.gd account status reconciliation now has an explicit protected authorization policy, allowing connected GitHub account details to refresh without failing with a missing-policy error.
+
 ## [0.15.5] - 2026-08-24
 
 ### Added

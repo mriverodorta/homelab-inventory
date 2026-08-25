@@ -605,6 +605,14 @@ const RELEASE_0_15_5_DETAILS: UnreleasedReleaseNotes = {
   ],
 }
 
+const RELEASE_0_15_6_DETAILS: UnreleasedReleaseNotes = {
+  highlights: [],
+  fixes: [
+    'Connected lab.gd accounts now reconcile their verified status and GitHub identity through an explicitly authorized endpoint instead of failing with a missing-policy error.',
+  ],
+  notes: [],
+}
+
 export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
   highlights: [],
   fixes: [],
@@ -1138,9 +1146,16 @@ const RELEASE_0_2_1_DETAILS: UnreleasedReleaseNotes = {
 
 export const RELEASE_NOTES: ReleaseNoteEntry[] = [
   {
-    version: '0.15.5',
+    version: '0.15.6',
     date: '2026-08-24',
     channel: 'latest',
+    title: 'Reliable lab.gd account reconciliation',
+    ...RELEASE_0_15_6_DETAILS,
+  },
+  {
+    version: '0.15.5',
+    date: '2026-08-24',
+    channel: 'release',
     title: 'Reliable lab.gd account connection and unlinking',
     ...RELEASE_0_15_5_DETAILS,
   },

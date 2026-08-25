@@ -18,6 +18,7 @@ describe('API permission classification', () => {
     expect(classifyApiRequest('POST', '/api/notifications/contact-points/1/test')).toEqual({ access: 'protected', permission: 'notifications.manage' })
     expect(classifyApiRequest('GET', '/api/sharing/settings')).toEqual({ access: 'protected', permission: 'sharing.configure' })
     expect(classifyApiRequest('POST', '/api/sharing/shares/1/publish')).toEqual({ access: 'protected', permission: 'sharing.publish' })
+    expect(classifyApiRequest('POST', '/api/sharing/account/reconcile')).toEqual({ access: 'protected', permission: 'sharing.publish' })
     expect(classifyApiRequest('POST', '/api/sharing/account/unlink')).toEqual({ access: 'protected', permission: 'sharing.publish' })
     expect(classifyApiRequest('DELETE', '/api/inventory/items/cpu/1')).toEqual({ access: 'protected', permission: 'inventory.delete' })
     expect(classifyApiRequest('POST', '/api/inventory/items/cpu/1/scope')).toEqual({ access: 'protected', permission: 'inventory.edit' })

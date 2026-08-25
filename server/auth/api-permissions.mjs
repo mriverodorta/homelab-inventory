@@ -141,7 +141,7 @@ const PROTECTED_ROUTES = [
   ['PATCH', /^\/api\/sharing\/settings\/?$/, 'sharing.configure'],
   ['POST', /^\/api\/sharing\/shares\/?$/, 'sharing.configure'],
   ['PATCH', /^\/api\/sharing\/shares\/[1-9]\d*\/?$/, 'sharing.configure'],
-  ['POST', /^\/api\/sharing\/(?:shares\/[1-9]\d*\/(?:preview|preview\/approve|publish|update|resource-snapshot|unpublish)|account\/(?:claim|unlink)|recovery\/resume)\/?$/, 'sharing.publish'],
+  ['POST', /^\/api\/sharing\/(?:shares\/[1-9]\d*\/(?:preview|preview\/approve|publish|update|resource-snapshot|unpublish)|account\/(?:claim|reconcile|unlink)|recovery\/resume)\/?$/, 'sharing.publish'],
   ['DELETE', /^\/api\/sharing\/shares\/[1-9]\d*\/?$/, 'sharing.publish'],
 
   ['GET', /^\/api\/onboarding(?:\/.*)?$/, 'workspace.view'],
