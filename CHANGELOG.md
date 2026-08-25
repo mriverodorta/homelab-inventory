@@ -6,6 +6,8 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 
 ## Unreleased
 
+## [0.15.5] - 2026-08-24
+
 ### Added
 
 - Claimed lab.gd installations can unlink their GitHub account while retaining the stable sharing connection and choosing to keep, unpublish, or permanently delete all remote shares.

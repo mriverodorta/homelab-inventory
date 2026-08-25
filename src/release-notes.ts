@@ -591,7 +591,7 @@ const RELEASE_0_15_4_DETAILS: UnreleasedReleaseNotes = {
   notes: [],
 }
 
-export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
+const RELEASE_0_15_5_DETAILS: UnreleasedReleaseNotes = {
   highlights: [
     'Claimed lab.gd installations can unlink their GitHub account without disconnecting sharing, with explicit choices to keep, unpublish, or permanently delete remote shares.',
   ],
@@ -602,6 +602,12 @@ export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
   notes: [
     'Account unlink preserves the installation UUID, signing identity, credentials, and public share-ID ownership; permanent remote deletion requires typing DELETE.',
   ],
+}
+
+export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
+  highlights: [],
+  fixes: [],
+  notes: [],
 }
 
 const RELEASE_0_11_2_DETAILS: UnreleasedReleaseNotes = {
@@ -1131,9 +1137,16 @@ const RELEASE_0_2_1_DETAILS: UnreleasedReleaseNotes = {
 
 export const RELEASE_NOTES: ReleaseNoteEntry[] = [
   {
+    version: '0.15.5',
+    date: '2026-08-24',
+    channel: 'latest',
+    title: 'Reliable lab.gd account connection and unlinking',
+    ...RELEASE_0_15_5_DETAILS,
+  },
+  {
     version: '0.15.4',
     date: '2026-08-23',
-    channel: 'latest',
+    channel: 'release',
     title: 'Contained responsive dialogs',
     ...RELEASE_0_15_4_DETAILS,
   },
