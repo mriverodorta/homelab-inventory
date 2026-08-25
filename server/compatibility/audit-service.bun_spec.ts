@@ -110,11 +110,14 @@ async function migrationFixtureStore() {
   `).run(host.id, cpu.id)
 
   const allMigrations = await migrationDefinitions()
-  const finalMigration = allMigrations.at(-1)!
   await applyCommittedMigrations(handle, allMigrations)
   const store = new SqliteHomelabInventoryStore({ core: handle })
   stores.push(store)
-  return { store, hostItemId: host.id, migrationSql: finalMigration.sql }
+  return {
+    store,
+    hostItemId: host.id,
+    reapplyMigrations: () => applyCommittedMigrations(handle, allMigrations),
+  }
 }
 
 describe('canonical compatibility audit service', () => {
@@ -229,7 +232,7 @@ describe('canonical compatibility audit service', () => {
   })
 
   test('rebuilds evaluator-v1 findings without changing application state', async () => {
-    const { store, hostItemId, migrationSql } = await migrationFixtureStore()
+    const { store, hostItemId, reapplyMigrations } = await migrationFixtureStore()
     const database = store.core.database
     const preservedState = () => JSON.stringify({
       projects: database.query('SELECT * FROM projects ORDER BY id').all(),
@@ -250,7 +253,7 @@ describe('canonical compatibility audit service', () => {
     `).all()).toEqual([{
       project_id: 1,
       host_item_id: hostItemId,
-      reason: 'compatibility-evaluator-v2',
+      reason: 'workspace-topology-migration',
     }])
 
     const service = new CompatibilityAuditService({ now: () => 4_000 })
@@ -267,7 +270,12 @@ describe('canonical compatibility audit service', () => {
     `).get()).toEqual({ engine_version: 'canonical-v2.cpu-alias-2' })
     expect(preservedState()).toBe(before)
 
-    database.exec(migrationSql)
+    expect(await reapplyMigrations()).toEqual({ applied: 0, currentVersion: 32 })
+    service.markHostDirty(store, {
+      projectId: 1,
+      hostItemId,
+      reason: 'compatibility-evaluator-v2',
+    })
     expect(database.query('SELECT count(*) AS count FROM compatibility_audit_dirty_hosts').get())
       .toEqual({ count: 1 })
     expect(service.reconcile(store)).toEqual({ claimed: 1, evaluated: 1, failed: 0 })

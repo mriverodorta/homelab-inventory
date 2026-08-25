@@ -23,6 +23,7 @@ import { projectLocalItemForCatalog } from '../registry/local-catalog-mapping.mj
 import { AuthService } from '../auth/auth-service.mjs'
 import { createAuthenticationStore } from '../auth/model.mjs'
 import { SessionService } from '../auth/session-service.mjs'
+import { createSharingSourceProvider } from '../sharing/source-provider.mjs'
 
 const roots: string[] = []
 
@@ -132,6 +133,129 @@ describe('SQLite Homelab Inventory store facade', () => {
       })
       expect(store.getProject().metadata.name).not.toBe('Compact topology')
       expect(() => store.getWorkspace(1, canvasId)).toThrow(/not found/iu)
+    } finally {
+      store.close()
+    }
+  })
+
+  test('keeps host assignments, connections, and cached routes isolated when another canvas returns the host to inventory', async () => {
+    const store = await fixtureStore()
+    try {
+      const primary = store.getWorkspace(1, 2)
+      const originalRoutes = store.core.database.query(`
+        SELECT * FROM workspace_route_cache WHERE workspace_id = 2 ORDER BY id
+      `).all()
+      const secondary = store.createWorkspace(1, {
+        type: 'canvas',
+        name: 'Independent plan',
+        iconKey: 'network',
+        colorKey: 'green',
+      }).workspaces.find((workspace) => workspace.name === 'Independent plan')!
+      const empty = store.getWorkspace(1, secondary.id)
+
+      expect(empty.assignments).toEqual([])
+      expect(empty.connections).toEqual([])
+      expect(empty.nextAssignmentId).toBeGreaterThan(Math.max(...primary.assignments.map((assignment) => assignment.id)))
+      expect(empty.nextConnectionId).toBeGreaterThan(Math.max(...primary.connections.map((connection) => connection.id)))
+
+      const hostAssignments = primary.assignments.filter((assignment) => assignment.serverId === 'server:7')
+      const copied = store.setWorkspace(1, secondary.id, {
+        ...empty,
+        placements: [{ serverId: 'server:7', x: 144, y: 96 }],
+        assignments: hostAssignments.map((assignment, index) => ({
+          ...assignment,
+          id: empty.nextAssignmentId! + index,
+        })),
+      })
+      expect(copied.assignments).toHaveLength(hostAssignments.length)
+
+      store.setWorkspace(1, secondary.id, {
+        ...copied,
+        placements: [],
+        assignments: [],
+        connections: [],
+      })
+
+      const preserved = store.getWorkspace(1, 2)
+      expect(preserved.assignments).toEqual(primary.assignments)
+      expect(preserved.connections).toEqual(primary.connections)
+      expect(preserved.placements).toEqual(primary.placements)
+      expect(store.core.database.query(`
+        SELECT * FROM workspace_route_cache WHERE workspace_id = 2 ORDER BY id
+      `).all()).toEqual(originalRoutes)
+      expect(store.getWorkspace(1, secondary.id)).toMatchObject({
+        placements: [],
+        assignments: [],
+        connections: [],
+      })
+    } finally {
+      store.close()
+    }
+  })
+
+  test('rejects assignment IDs already owned by another canvas without changing their owner', async () => {
+    const store = await fixtureStore()
+    try {
+      const primary = store.getWorkspace(1, 2)
+      const assignment = primary.assignments.find((candidate) => candidate.serverId === 'server:7')!
+      const secondary = store.createWorkspace(1, {
+        type: 'canvas',
+        name: 'Collision test',
+        iconKey: 'network',
+        colorKey: 'green',
+      }).workspaces.find((workspace) => workspace.name === 'Collision test')!
+      const empty = store.getWorkspace(1, secondary.id)
+
+      expect(() => store.setWorkspace(1, secondary.id, {
+        ...empty,
+        placements: [{ serverId: 'server:7', x: 144, y: 96 }],
+        assignments: [assignment],
+      })).toThrow(/different workspace/iu)
+      expect(store.getWorkspace(1, 2).assignments).toEqual(primary.assignments)
+      expect(store.getWorkspace(1, secondary.id).assignments).toEqual([])
+    } finally {
+      store.close()
+    }
+  })
+
+  test('shares only connections belonging to each selected canvas', async () => {
+    const store = await fixtureStore()
+    try {
+      const primary = store.getWorkspace(1, 2)
+      const secondary = store.createWorkspace(1, {
+        type: 'canvas',
+        name: 'Share isolation',
+        iconKey: 'network',
+        colorKey: 'green',
+      }).workspaces.find((workspace) => workspace.name === 'Share isolation')!
+      const empty = store.getWorkspace(1, secondary.id)
+      const network = primary.connections.find((connection) => connection.type === 'network')!
+      store.setWorkspace(1, secondary.id, {
+        ...empty,
+        placements: primary.placements.filter((placement) => (
+          ['switch:1', 'patchPanel:1'].includes(placement.serverId)
+        )),
+        connections: [{ ...structuredClone(network), id: empty.nextConnectionId! }],
+      })
+      const source = createSharingSourceProvider(store)
+      const configuration = {
+        share: { id: 1, projectId: 1, embedEnabled: false, resourceSnapshotIncluded: false },
+        fieldDefinitionIds: [],
+        tagIds: [],
+      }
+
+      const first = await source({
+        ...configuration,
+        views: [{ workspaceId: 2, viewType: 'canvas' }],
+      })
+      const second = await source({
+        ...configuration,
+        views: [{ workspaceId: secondary.id, viewType: 'canvas' }],
+      })
+
+      expect(first.views[0].connections.map((connection: any) => connection.id)).toEqual([1, 2])
+      expect(second.views[0].connections.map((connection: any) => connection.id)).toEqual([empty.nextConnectionId])
+      expect(store.getWorkspace(1, 2).connections).toEqual(primary.connections)
     } finally {
       store.close()
     }
@@ -406,7 +530,7 @@ describe('SQLite Homelab Inventory store facade', () => {
         group_id: 1,
         positions: [0],
       })
-      expect(store.getDatabaseStatus()).toMatchObject({ schemaVersion: 31 })
+      expect(store.getDatabaseStatus()).toMatchObject({ schemaVersion: 32 })
       expect(store.getPersistenceHealth()).toMatchObject({ ok: true, engine: 'sqlite' })
     } finally {
       store.close()
@@ -848,8 +972,8 @@ describe('SQLite Homelab Inventory store facade', () => {
       database.query('INSERT INTO storage_slots (id) VALUES (?)').run(secondSlotId)
       database.query(`
         INSERT INTO component_assignment_slots (
-          project_id, assignment_id, host_item_id, resource_slot_id, position
-        ) VALUES (1, ?, 1, ?, 1)
+          project_id, workspace_id, assignment_id, host_item_id, resource_slot_id, position
+        ) VALUES (1, 2, ?, 1, ?, 1)
       `).run(assignmentId, secondSlotId)
       expect(database.query(`
         SELECT count(*) AS count FROM component_assignment_slots WHERE assignment_id = ?
@@ -1233,6 +1357,28 @@ describe('SQLite Homelab Inventory store facade', () => {
           to: { itemId: `nas:${nas.id}`, hostedItemId: `powerAdapter:${adapter.id}`, portId: 1 },
         }],
       })
+      const secondary = store.createWorkspace(1, {
+        type: 'canvas',
+        name: 'Secondary NAS topology',
+        iconKey: 'network',
+        colorKey: 'green',
+      }).workspaces.find((workspace) => workspace.name === 'Secondary NAS topology')!
+      const secondaryProject = store.getWorkspace(1, secondary.id)
+      const secondaryAssignmentIds = project.assignments.map((assignment, index) => (
+        secondaryProject.nextAssignmentId! + index
+      ))
+      const secondaryConnectionId = secondaryProject.nextConnectionId!
+      store.setWorkspace(1, secondary.id, {
+        ...secondaryProject,
+        assignments: project.assignments.map((assignment, index) => ({
+          ...structuredClone(assignment),
+          id: secondaryAssignmentIds[index],
+        })),
+        connections: project.connections.map((connection) => ({
+          ...structuredClone(connection),
+          id: secondaryConnectionId,
+        })),
+      })
       const link = (store.getRegistryState() as any).links[0]
       const revision2 = await catalogTemplate({
         ...revision1.item,
@@ -1266,7 +1412,10 @@ describe('SQLite Homelab Inventory store facade', () => {
       }) as any
 
       const resolved = store.getProject()
-      expect(result.affectedRelationships).toEqual({ connectionIds: [1], assignmentIds: [1, 2] })
+      expect(result.affectedRelationships).toEqual({
+        connectionIds: [1, secondaryConnectionId],
+        assignmentIds: [1, 2, ...secondaryAssignmentIds],
+      })
       expect(resolved.assignments).toEqual([expect.objectContaining({
         id: 2,
         itemId: `storage:${storage.id}`,
@@ -1283,6 +1432,16 @@ describe('SQLite Homelab Inventory store facade', () => {
         to: { itemId: `nas:${nas.id}`, portId: 1 },
       })])
       expect(resolved.items[`powerAdapter:${adapter.id}`]).toBeDefined()
+      const resolvedSecondary = store.getWorkspace(1, secondary.id)
+      expect(resolvedSecondary.assignments).toEqual([expect.objectContaining({
+        id: secondaryAssignmentIds[1],
+        itemId: `storage:${storage.id}`,
+        allocation: expect.objectContaining({ resourceKey: 'sata-bays', groupId: 1 }),
+      })])
+      expect(resolvedSecondary.connections).toEqual([expect.objectContaining({
+        id: secondaryConnectionId,
+        to: { itemId: `nas:${nas.id}`, portId: 1 },
+      })])
       expect((store.getRegistryState() as any).links[0]).toMatchObject({ state: 'linked', importedRevision: 2 })
       expect(() => store.resolveAndApplyRegistryUpdateGroup({
         linkId: link.id,
@@ -1672,6 +1831,7 @@ describe('SQLite Homelab Inventory store facade', () => {
       })
       const project = store.createCatalogInventoryItems(revision1)
       const created = Object.values(project.items).find((item) => item.type === 'cpu' && item.model === 'CPU-200')!
+      expect(created).toMatchObject({ scope: 'project', ownerProjectId: 1 })
       const link = (store.getRegistryState() as any).links.find((candidate: any) => candidate.itemId === created.id)
       expect(link).toMatchObject({ itemType: 'cpu', state: 'linked', importedRevision: 1 })
       const definition = store.inventoryMetadata.createDefinition({
@@ -2236,7 +2396,7 @@ describe('SQLite Homelab Inventory store facade', () => {
       const revision2 = await catalogTemplate({
         ...revision1.item, specs: { ...revision1.item.specs, threads: 8 },
       }, 2)
-      store.createCatalogInventoryItems(revision1)
+      store.createCatalogInventoryItems(revision1, 1, { scope: 'global' })
       const link = (store.getRegistryState() as any).links[0]
       const second = store.createProject({ name: 'Secondary lab' })
       store.addGlobalInventoryMembership(second.project.id, { type: link.itemType, id: link.itemId })
@@ -2265,6 +2425,79 @@ describe('SQLite Homelab Inventory store facade', () => {
       expect(after.get(1)).toBe(before.get(1))
       expect(after.get(second.project.id)).toBe(before.get(second.project.id))
       expect(store.getWorkspace(second.project.id, second.defaultWorkspaceId).items[`cpu:${link.itemId}`].specs?.threads).toBe(8)
+    } finally {
+      store.close()
+    }
+  })
+
+  test('detects Registry incompatibilities affecting only a component installed on a secondary canvas', async () => {
+    const store = await fixtureStore()
+    try {
+      const primary = store.getWorkspace(1, 2)
+      const original = primary.assignments.find((assignment) => assignment.type === 'cpu')!
+      const secondary = store.createWorkspace(1, {
+        type: 'canvas',
+        name: 'Alternative build',
+        iconKey: 'network',
+        colorKey: 'green',
+      }).workspaces.find((workspace) => workspace.name === 'Alternative build')!
+      store.setWorkspace(1, 2, {
+        ...store.getWorkspace(1, 2),
+        assignments: primary.assignments.filter((assignment) => assignment.id !== original.id),
+      })
+      const empty = store.getWorkspace(1, secondary.id)
+      store.setWorkspace(1, secondary.id, {
+        ...empty,
+        placements: [{ serverId: 'server:7', x: 48, y: 48 }],
+        assignments: [{ ...original, id: empty.nextAssignmentId! }],
+      })
+      const link = (store.getRegistryState() as any).links[0]
+      const current = store.getWorkspace(1, secondary.id).items[`cpu:${link.itemId}`]
+      const incompatible = await catalogTemplate({
+        type: 'cpu',
+        name: current.name,
+        manufacturer: current.manufacturer,
+        family: current.family,
+        number: current.number,
+        specs: current.specs,
+        compatibility: { requirements: { cpu: { socket: 'AM5', generation: '10th Gen', tdpWatts: 35 } } },
+      }, 2, link.templateKey)
+      store.registryTransaction((draft: any) => {
+        draft.snapshot = {
+          sourceId: 1,
+          revision: 2,
+          generatedAt: '2026-08-25T00:00:00.000Z',
+          expiresAt: null,
+          activatedAt: '2026-08-25T00:00:00.000Z',
+          digest: 'a'.repeat(64),
+          templateCount: 1,
+          keyId: 'test-key',
+        }
+        Object.assign(draft.links[0], {
+          state: 'update-available',
+          availableRevision: 2,
+          availableContentHash: incompatible.contentHash,
+        })
+      })
+
+      const batch = store.evaluateCatalogUpdates(
+        [{ linkId: link.id, templateKey: link.templateKey }],
+        [incompatible],
+      )
+
+      expect(batch.evaluations[0]).toMatchObject({
+        classification: 'review-required',
+        reasons: ['new-compatibility-findings'],
+      })
+      expect(batch.evaluations[0].introducedFindings).toEqual([
+        expect.stringContaining('cpu.socket.mismatch'),
+      ])
+      expect(batch.evaluations[0].resolution.projects.map((entry: any) => entry.workspaceId))
+        .toEqual([2, secondary.id])
+      expect(store.getWorkspace(1, 2).assignments.some((assignment) => assignment.type === 'cpu')).toBe(false)
+      expect(store.getWorkspace(1, secondary.id).assignments).toEqual([
+        expect.objectContaining({ itemId: original.itemId }),
+      ])
     } finally {
       store.close()
     }

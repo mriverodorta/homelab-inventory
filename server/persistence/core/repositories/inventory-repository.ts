@@ -131,9 +131,9 @@ export function createInventoryRepository(context: RepositoryContext) {
   function create(input: CreateInventoryItemInput) {
     const name = input.name.trim()
     if (!name) throw new Error('Inventory item name is required.')
-    const scope = input.scope ?? 'global'
+    const scope = input.scope ?? 'project'
     const ownerProjectId = scope === 'project'
-      ? assertPositiveId(input.ownerProjectId ?? 0, 'Owner project ID')
+      ? assertPositiveId(input.ownerProjectId ?? input.projectIds?.[0] ?? 1, 'Owner project ID')
       : null
     const projectIds = [...new Set(input.projectIds ?? (ownerProjectId ? [ownerProjectId] : []))]
     projectIds.forEach((id) => assertPositiveId(id, 'Project membership ID'))

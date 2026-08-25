@@ -89,6 +89,9 @@ export function createEngineSnapshot(project) {
   return {
     revision: project.revision,
     project_name: project.metadata.name,
+    ...(Number.isSafeInteger(project.nextConnectionId)
+      ? { next_connection_id: project.nextConnectionId }
+      : {}),
     topology: createEngineTopology(project),
   }
 }

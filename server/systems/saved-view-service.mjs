@@ -70,7 +70,7 @@ function validateMetadataReferences(database, columns, filters) {
   }
 }
 
-export function normalizeSystemsViewInput(input, { requireName = true, database = null } = {}) {
+export function normalizeSystemsViewInput(input, { requireName = true, database = null, projectId = null } = {}) {
   if (!input || typeof input !== 'object' || Array.isArray(input)) throw new SystemsViewError('Saved view configuration is required.', 'invalid-systems-view')
   const columnInput = Array.isArray(input.columns) ? input.columns : []
   const columns = columnInput.map((column, index) => ({
@@ -101,11 +101,24 @@ export function normalizeSystemsViewInput(input, { requireName = true, database 
   if (!DENSITIES.includes(density)) throw new SystemsViewError('Saved view density is invalid.', 'invalid-systems-view')
   const metadataFilters = normalizeInventoryMetadataFilters(input.metadataFilters ?? [])
   validateMetadataReferences(database, columns, metadataFilters)
+  const canvasWorkspaceId = input.canvasWorkspaceId == null
+    ? null
+    : positiveId(input.canvasWorkspaceId, 'Saved view canvas ID')
+  if (canvasWorkspaceId !== null && database && projectId !== null) {
+    const canvas = database.query(`
+      SELECT id FROM workspaces
+      WHERE id = ? AND project_id = ? AND type = 'canvas' AND archived_at_ms IS NULL
+    `).get(canvasWorkspaceId, projectId)
+    if (!canvas) {
+      throw new SystemsViewError('The selected saved-view canvas is unavailable.', 'invalid-systems-view')
+    }
+  }
   return {
     ...(requireName ? { name: cleanName(input.name) } : {}),
     types: enumArray(input.types ?? [], HOST_TYPES, 'System types'),
     registrations: enumArray(input.registrations ?? [], REGISTRATIONS, 'Agent registrations'),
     registryStates: enumArray(input.registryStates ?? [], REGISTRY_STATES, 'Registry states'),
+    canvasWorkspaceId,
     sortKey,
     sortDirection,
     density,
@@ -178,6 +191,10 @@ function readView(database, row) {
       types: filters.filter((entry) => entry.filter_category === 'type').map((entry) => entry.filter_value),
       registrations: filters.filter((entry) => entry.filter_category === 'registration').map((entry) => entry.filter_value),
       registryStates: filters.filter((entry) => entry.filter_category === 'registry').map((entry) => entry.filter_value),
+      canvasWorkspaceId: row.canvas_workspace_id != null && database.query(`
+        SELECT 1 FROM workspaces
+        WHERE id = ? AND project_id = ? AND type = 'canvas' AND archived_at_ms IS NULL
+      `).get(row.canvas_workspace_id, row.project_id) ? row.canvas_workspace_id : null,
       sortKey: row.sort_key,
       sortDirection: row.sort_direction,
       density: row.density,
@@ -243,16 +260,16 @@ export class SystemsSavedViewService {
     const id = positiveId(projectId, 'Project ID')
     const identity = owner(accountId)
     const database = store.core.database
-    const configuration = normalizeSystemsViewInput(input, { database })
+    const configuration = normalizeSystemsViewInput(input, { database, projectId: id })
     try {
       return database.transaction(() => {
         const at = this.now()
         const row = database.query(`
           INSERT INTO systems_saved_views (
-            project_id, owner_scope, account_id, name, sort_key, sort_direction,
+            project_id, owner_scope, account_id, name, canvas_workspace_id, sort_key, sort_direction,
             density, is_default, revision, created_at_ms, updated_at_ms
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, 0, 1, ?, ?) RETURNING *
-        `).get(id, identity.scope, identity.accountId, configuration.name, configuration.sortKey, configuration.sortDirection, configuration.density, at, at)
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, 1, ?, ?) RETURNING *
+        `).get(id, identity.scope, identity.accountId, configuration.name, configuration.canvasWorkspaceId, configuration.sortKey, configuration.sortDirection, configuration.density, at, at)
         insertChildren(database, row.id, configuration)
         return readView(database, row)
       })()
@@ -266,17 +283,17 @@ export class SystemsSavedViewService {
     const view = positiveId(viewId, 'Saved view ID')
     const revision = positiveId(expectedRevision, 'Expected revision')
     const database = store.core.database
-    const configuration = normalizeSystemsViewInput(input, { database })
+    const configuration = normalizeSystemsViewInput(input, { database, projectId: project })
     try {
       return database.transaction(() => {
         const current = ownedView(database, project, accountId, view)
         if (!current) throw new SystemsViewError('Saved view was not found.', 'systems-view-not-found', 404)
         if (current.revision !== revision) throw new SystemsViewError('This saved view changed in another session.', 'systems-view-conflict', 409)
         const result = database.query(`
-          UPDATE systems_saved_views SET name = ?, sort_key = ?, sort_direction = ?, density = ?,
+          UPDATE systems_saved_views SET name = ?, canvas_workspace_id = ?, sort_key = ?, sort_direction = ?, density = ?,
             revision = revision + 1, updated_at_ms = ?
           WHERE id = ? AND revision = ?
-        `).run(configuration.name, configuration.sortKey, configuration.sortDirection, configuration.density, this.now(), view, revision)
+        `).run(configuration.name, configuration.canvasWorkspaceId, configuration.sortKey, configuration.sortDirection, configuration.density, this.now(), view, revision)
         if (result.changes !== 1) throw new SystemsViewError('This saved view changed in another session.', 'systems-view-conflict', 409)
         database.query('DELETE FROM systems_saved_view_filters WHERE saved_view_id = ?').run(view)
         database.query('DELETE FROM systems_saved_view_columns WHERE saved_view_id = ?').run(view)

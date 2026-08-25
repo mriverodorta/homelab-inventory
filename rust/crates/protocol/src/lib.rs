@@ -23,6 +23,8 @@ pub const PROTOCOL_VERSION: u16 = 1;
 pub struct EngineSnapshot {
     pub revision: u32,
     pub project_name: String,
+    #[serde(default)]
+    pub next_connection_id: Option<u32>,
     pub topology: TopologySnapshot,
 }
 
@@ -430,6 +432,7 @@ mod tests {
         let snapshot = EngineSnapshot {
             revision: 3,
             project_name: "Homelab Inventory".into(),
+            next_connection_id: None,
             topology: TopologySnapshot {
                 items: vec![],
                 assignments: vec![],
@@ -448,6 +451,7 @@ mod tests {
         let snapshot = EngineSnapshot {
             revision: 3,
             project_name: "Laboratorio São José 日本".into(),
+            next_connection_id: None,
             topology: TopologySnapshot {
                 items: vec![],
                 assignments: vec![],

@@ -59,6 +59,7 @@ describe('multi-project logical recovery', () => {
       const downsized = store.createProject({ name: 'Downsize plan' })
       const projectId = downsized.project.id
       const canvasId = downsized.defaultWorkspaceId
+      store.setInventoryScope({ type: 'server', id: 7 }, { scope: 'global' })
       store.addGlobalInventoryMembership(projectId, { type: 'server', id: 7 })
       const sourceCpu = Object.values(store.getWorkspace(1, 2).items)
         .find((item: any) => item.type === 'cpu') as any

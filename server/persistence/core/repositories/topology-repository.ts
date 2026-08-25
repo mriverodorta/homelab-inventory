@@ -16,6 +16,7 @@ export type ConnectionType = 'network' | 'display' | 'power' | 'other'
 
 export type CreateConnectionInput = Readonly<{
   projectId: number
+  workspaceId: number
   type: ConnectionType
   sourcePortId: number
   sourceEndpointFaceId?: number | null
@@ -31,15 +32,19 @@ export type CreateConnectionInput = Readonly<{
 export function createTopologyRepository(context: RepositoryContext) {
   const { db, sqlite, now } = context
 
-  function listAssignments(projectId: number) {
+  function listAssignments(projectId: number, workspaceId: number) {
     assertPositiveId(projectId, 'Project ID')
     return db.select().from(componentAssignments)
-      .where(eq(componentAssignments.projectId, projectId))
+      .where(and(
+        eq(componentAssignments.projectId, projectId),
+        eq(componentAssignments.workspaceId, assertPositiveId(workspaceId, 'Workspace ID')),
+      ))
       .orderBy(asc(componentAssignments.id)).all()
   }
 
   function assignComponent(input: {
     projectId: number
+    workspaceId: number
     hostItemId: number
     componentItemId: number
     resourceSlotId?: number | null
@@ -48,6 +53,7 @@ export function createTopologyRepository(context: RepositoryContext) {
     return sqlite.transaction(() => {
       const assignment = db.insert(componentAssignments).values({
         projectId: assertPositiveId(input.projectId, 'Project ID'),
+        workspaceId: assertPositiveId(input.workspaceId, 'Workspace ID'),
         hostItemId: assertPositiveId(input.hostItemId, 'Host item ID'),
         componentItemId: assertPositiveId(input.componentItemId, 'Component item ID'),
         resourceSlotId: input.resourceSlotId == null ? null : assertPositiveId(input.resourceSlotId, 'Resource slot ID'),
@@ -58,12 +64,13 @@ export function createTopologyRepository(context: RepositoryContext) {
     }).immediate()
   }
 
-  function unassignComponent(projectId: number, assignmentId: number) {
+  function unassignComponent(projectId: number, workspaceId: number, assignmentId: number) {
     const at = now()
     return sqlite.transaction(() => {
       const deleted = db.delete(componentAssignments)
         .where(and(
           eq(componentAssignments.projectId, assertPositiveId(projectId, 'Project ID')),
+          eq(componentAssignments.workspaceId, assertPositiveId(workspaceId, 'Workspace ID')),
           eq(componentAssignments.id, assertPositiveId(assignmentId, 'Assignment ID')),
         ))
         .returning({ id: componentAssignments.id })
@@ -73,7 +80,8 @@ export function createTopologyRepository(context: RepositoryContext) {
     }).immediate()
   }
 
-  function portAvailability(portId: number, endpointFaceId: number | null = null) {
+  function portAvailability(workspaceId: number, portId: number, endpointFaceId: number | null = null) {
+    assertPositiveId(workspaceId, 'Workspace ID')
     assertPositiveId(portId, 'Port ID')
     if (endpointFaceId != null) assertPositiveId(endpointFaceId, 'Endpoint face ID')
     const port = db.select({ id: inventoryPorts.id, itemId: inventoryPorts.itemId })
@@ -82,8 +90,8 @@ export function createTopologyRepository(context: RepositoryContext) {
     const endpoint = sqlite.query(`
       SELECT connection_id, role
       FROM connection_endpoints
-      WHERE port_id = ? AND coalesce(endpoint_face_id, 0) = coalesce(?, 0)
-    `).get(portId, endpointFaceId) as { connection_id: number; role: string } | null
+      WHERE workspace_id = ? AND port_id = ? AND coalesce(endpoint_face_id, 0) = coalesce(?, 0)
+    `).get(workspaceId, portId, endpointFaceId) as { connection_id: number; role: string } | null
     return { ...port, endpointFaceId, available: endpoint == null, connectionId: endpoint?.connection_id ?? null }
   }
 
@@ -91,14 +99,15 @@ export function createTopologyRepository(context: RepositoryContext) {
     if (input.sourcePortId === input.targetPortId && (input.sourceEndpointFaceId ?? null) === (input.targetEndpointFaceId ?? null)) {
       throw new Error('A connection requires two distinct endpoints.')
     }
-    const source = portAvailability(input.sourcePortId, input.sourceEndpointFaceId ?? null)
-    const target = portAvailability(input.targetPortId, input.targetEndpointFaceId ?? null)
+    const source = portAvailability(input.workspaceId, input.sourcePortId, input.sourceEndpointFaceId ?? null)
+    const target = portAvailability(input.workspaceId, input.targetPortId, input.targetEndpointFaceId ?? null)
     if (!source?.available) throw new Error('The source port endpoint is unavailable.')
     if (!target?.available) throw new Error('The target port endpoint is unavailable.')
     const at = now()
     return sqlite.transaction(() => {
       const connection = db.insert(projectConnections).values({
         projectId: assertPositiveId(input.projectId, 'Project ID'),
+        workspaceId: assertPositiveId(input.workspaceId, 'Workspace ID'),
         connectionType: input.type,
         negotiatedSpeedBps: input.negotiatedSpeedBps ?? null,
         label: input.label?.trim() || null,
@@ -109,12 +118,14 @@ export function createTopologyRepository(context: RepositoryContext) {
       }).returning().get()
       db.insert(connectionEndpoints).values([
         {
+          workspaceId: input.workspaceId,
           connectionId: connection.id,
           role: 'source',
           portId: input.sourcePortId,
           endpointFaceId: input.sourceEndpointFaceId ?? null,
         },
         {
+          workspaceId: input.workspaceId,
           connectionId: connection.id,
           role: 'target',
           portId: input.targetPortId,
@@ -126,12 +137,13 @@ export function createTopologyRepository(context: RepositoryContext) {
     }).immediate()
   }
 
-  function removeConnection(projectId: number, connectionId: number) {
+  function removeConnection(projectId: number, workspaceId: number, connectionId: number) {
     const at = now()
     return sqlite.transaction(() => {
       const deleted = db.delete(projectConnections)
         .where(and(
           eq(projectConnections.projectId, assertPositiveId(projectId, 'Project ID')),
+          eq(projectConnections.workspaceId, assertPositiveId(workspaceId, 'Workspace ID')),
           eq(projectConnections.id, assertPositiveId(connectionId, 'Connection ID')),
         ))
         .returning({ id: projectConnections.id })

@@ -337,7 +337,12 @@ function newAssignment(
   allocation?: ComponentAssignment['allocation'],
 ): ComponentAssignment {
   return {
-    id: nextNumericId(project.assignments.map((assignment) => assignment.id)),
+    id: project.nextAssignmentId == null
+      ? nextNumericId(project.assignments.map((assignment) => assignment.id))
+      : Math.max(
+          project.nextAssignmentId,
+          ...project.assignments.map((assignment) => assignment.id + 1),
+        ),
     serverId,
     itemId,
     type: item.type,

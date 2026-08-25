@@ -884,8 +884,8 @@ function insertInventoryItem(
   itemId: number,
   plan: CanonicalIdentityPlan,
   now: number,
-  scope: 'global' | 'project' = 'global',
-  ownerProjectId: number | null = null,
+  scope: 'global' | 'project' = 'project',
+  ownerProjectId: number | null = projectId,
   legacyType: LegacyInventoryType = type,
 ) {
   const typeRow = database.query('SELECT id FROM inventory_item_types WHERE key = ?').get(type) as { id: number } | null
@@ -1255,8 +1255,8 @@ export function insertLegacyInventoryItem({
   projectId,
   type,
   item,
-  scope = 'global',
-  ownerProjectId = null,
+  scope = 'project',
+  ownerProjectId = projectId,
   now = Date.now(),
 }: InsertLegacyInventoryItemOptions) {
   const legacyId = positiveIntegerOrNull(item.id)
@@ -1298,7 +1298,7 @@ export function replaceLegacyInventoryItem({
   )
   const plan = replacementIdentityPlan(database, type, item, itemId, resourceKeyRemaps)
   const endpoints = database.query(`
-    SELECT e.id AS endpoint_id, e.connection_id, e.role, a.legacy_port_id,
+    SELECT e.id AS endpoint_id, e.workspace_id, e.connection_id, e.role, a.legacy_port_id,
            f.endpoint_number
     FROM connection_endpoints e
     JOIN inventory_ports p ON p.id = e.port_id
@@ -1321,7 +1321,8 @@ export function replaceLegacyInventoryItem({
     WHERE l.item_id = ?
   `).all(itemId) as LegacyRecord[]
   const assignmentSlots = database.query(`
-    SELECT a.id AS assignment_slot_id, a.project_id, a.assignment_id, a.position AS assignment_position,
+    SELECT a.id AS assignment_slot_id, a.project_id, a.workspace_id,
+           a.assignment_id, a.position AS assignment_position,
            g.semantic_key AS current_resource_key,
            r.legacy_resource_key, r.legacy_resource_group_id,
            g.resource_type, s.position AS resource_position,
@@ -1449,8 +1450,9 @@ export function replaceLegacyInventoryItem({
   insertInventoryItemDetails(database, type, item, itemId, plan, now)
 
   for (const endpoint of endpoints) {
-    database.query('INSERT INTO connection_endpoints (id, connection_id, role, port_id, endpoint_face_id) VALUES (?, ?, ?, ?, ?)').run(
+    database.query('INSERT INTO connection_endpoints (id, workspace_id, connection_id, role, port_id, endpoint_face_id) VALUES (?, ?, ?, ?, ?, ?)').run(
       endpoint.endpoint_id,
+      endpoint.workspace_id,
       endpoint.connection_id,
       endpoint.role,
       plan.ports.get(portKey(endpoint.legacy_port_id)),
@@ -1470,9 +1472,10 @@ export function replaceLegacyInventoryItem({
   }
   for (const slot of assignmentSlots) {
     const slotId = resourceSlot(targetResourceKey(slot), slot.resource_position)!
-    database.query('INSERT INTO component_assignment_slots (id, project_id, assignment_id, host_item_id, resource_slot_id, position) VALUES (?, ?, ?, ?, ?, ?)').run(
+    database.query('INSERT INTO component_assignment_slots (id, project_id, workspace_id, assignment_id, host_item_id, resource_slot_id, position) VALUES (?, ?, ?, ?, ?, ?, ?)').run(
       slot.assignment_slot_id,
       slot.project_id,
+      slot.workspace_id,
       slot.assignment_id,
       itemId,
       slotId,
@@ -1509,8 +1512,8 @@ function importInventory(database: Database, snapshot: LegacySnapshot, plan: Can
       itemId,
       plan,
       now,
-      'global',
-      null,
+      'project',
+      1,
       'wireless',
     )
   }
@@ -1544,6 +1547,9 @@ function assignmentSlot(snapshot: LegacySnapshot, plan: CanonicalIdentityPlan, a
 
 function importProject(database: Database, snapshot: LegacySnapshot, plan: CanonicalIdentityPlan, now: number) {
   const project = snapshot.project ?? {}
+  const workspaceOwnedTopology = (database.query("PRAGMA table_info('component_assignments')").all() as Array<{
+    name: string
+  }>).some((column) => column.name === 'workspace_id')
   database.query('UPDATE projects SET name = ?, revision = ?, updated_at_ms = ? WHERE id = 1').run(optionalText(project.metadata?.name) ?? 'Default Project', positiveIntegerOrNull(project.revision) ?? 1, timestamp(project.metadata?.updatedAt, now))
   const viewport = project.viewport ?? project.metadata?.viewport ?? {}
   database.query('UPDATE canvas_workspaces SET viewport_x = ?, viewport_y = ?, viewport_zoom_basis_points = ?, settings_json = ? WHERE id = 2').run(Math.round(viewport.x ?? 0), Math.round(viewport.y ?? 0), Math.max(1, Math.round((viewport.zoom ?? 1) * 10000)), json(project.canvasSettings ?? {}))
@@ -1555,7 +1561,10 @@ function importProject(database: Database, snapshot: LegacySnapshot, plan: Canon
     const hostItemId = canonicalItemId(plan, assignment.hostType, assignment.hostId)
     const componentItemId = canonicalItemId(plan, assignment.itemType, assignment.itemId)
     const primarySlotId = assignmentSlot(snapshot, plan, assignment)
-    database.query('INSERT INTO component_assignments (id, project_id, host_item_id, component_item_id, resource_slot_id, assigned_at_ms) VALUES (?, 1, ?, ?, ?, ?)').run(id, hostItemId, componentItemId, primarySlotId, timestamp(assignment.assignedAt, now))
+    database.query(workspaceOwnedTopology
+      ? 'INSERT INTO component_assignments (id, project_id, workspace_id, host_item_id, component_item_id, resource_slot_id, assigned_at_ms) VALUES (?, 1, 2, ?, ?, ?, ?)'
+      : 'INSERT INTO component_assignments (id, project_id, host_item_id, component_item_id, resource_slot_id, assigned_at_ms) VALUES (?, 1, ?, ?, ?, ?)'
+    ).run(id, hostItemId, componentItemId, primarySlotId, timestamp(assignment.assignedAt, now))
     const allocationPositions = records(assignment.allocation?.positions)
     for (const [position, legacyPosition] of allocationPositions.entries()) {
       const slotId = assignmentSlot(snapshot, plan, {
@@ -1563,13 +1572,19 @@ function importProject(database: Database, snapshot: LegacySnapshot, plan: Canon
         allocation: { ...assignment.allocation, positions: [legacyPosition] },
       })
       if (slotId == null) continue
-      database.query('INSERT INTO component_assignment_slots (project_id, assignment_id, host_item_id, resource_slot_id, position) VALUES (1, ?, ?, ?, ?)').run(id, hostItemId, slotId, position)
+      database.query(workspaceOwnedTopology
+        ? 'INSERT INTO component_assignment_slots (project_id, workspace_id, assignment_id, host_item_id, resource_slot_id, position) VALUES (1, 2, ?, ?, ?, ?)'
+        : 'INSERT INTO component_assignment_slots (project_id, assignment_id, host_item_id, resource_slot_id, position) VALUES (1, ?, ?, ?, ?)'
+      ).run(id, hostItemId, slotId, position)
     }
   }
   for (const connection of records(project.connections)) {
     const id = plan.connections.get(String(connection.id))
     const route = connection.route ?? {}
-    database.query('INSERT INTO project_connections (id, project_id, connection_type, negotiated_speed_bps, label, source_side, target_side, avoid_cable_overlap, created_at_ms, updated_at_ms) VALUES (?, 1, ?, ?, ?, ?, ?, ?, ?, ?)').run(id, connectionType(connection.type), connection.negotiatedSpeedMbps == null ? null : toBitsPerSecond({ value: connection.negotiatedSpeedMbps, unit: 'Mbps' }), optionalText(connection.label), ['left', 'right', 'top', 'bottom'].includes(route.sourceSide) ? route.sourceSide : 'right', ['left', 'right', 'top', 'bottom'].includes(route.targetSide) ? route.targetSide : 'left', Number(route.avoidCableOverlap === true), timestamp(connection.createdAt, now), timestamp(connection.updatedAt, now))
+    database.query(workspaceOwnedTopology
+      ? 'INSERT INTO project_connections (id, project_id, workspace_id, connection_type, negotiated_speed_bps, label, source_side, target_side, avoid_cable_overlap, created_at_ms, updated_at_ms) VALUES (?, 1, 2, ?, ?, ?, ?, ?, ?, ?, ?)'
+      : 'INSERT INTO project_connections (id, project_id, connection_type, negotiated_speed_bps, label, source_side, target_side, avoid_cable_overlap, created_at_ms, updated_at_ms) VALUES (?, 1, ?, ?, ?, ?, ?, ?, ?, ?)'
+    ).run(id, connectionType(connection.type), connection.negotiatedSpeedMbps == null ? null : toBitsPerSecond({ value: connection.negotiatedSpeedMbps, unit: 'Mbps' }), optionalText(connection.label), ['left', 'right', 'top', 'bottom'].includes(route.sourceSide) ? route.sourceSide : 'right', ['left', 'right', 'top', 'bottom'].includes(route.targetSide) ? route.targetSide : 'left', Number(route.avoidCableOverlap === true), timestamp(connection.createdAt, now), timestamp(connection.updatedAt, now))
     for (const [role, endpoint] of [['source', connection.from], ['target', connection.to]] as const) {
       const endpointItemType = endpoint.hostedItemType ?? endpoint.itemType
       const endpointItemId = endpoint.hostedItemId ?? endpoint.itemId
@@ -1577,7 +1592,10 @@ function importProject(database: Database, snapshot: LegacySnapshot, plan: Canon
       const portId = plan.ports.get(portKey)
       if (!portId) throw new Error(`Connection ${connection.id} references missing port ${portKey}.`)
       const endpointFaceId = endpoint.endpointId == null ? null : plan.endpointFaces.get(`${portKey}:face:${endpoint.endpointId}`) ?? null
-      database.query('INSERT INTO connection_endpoints (connection_id, role, port_id, endpoint_face_id) VALUES (?, ?, ?, ?)').run(id, role, portId, endpointFaceId)
+      database.query(workspaceOwnedTopology
+        ? 'INSERT INTO connection_endpoints (workspace_id, connection_id, role, port_id, endpoint_face_id) VALUES (2, ?, ?, ?, ?)'
+        : 'INSERT INTO connection_endpoints (connection_id, role, port_id, endpoint_face_id) VALUES (?, ?, ?, ?)'
+      ).run(id, role, portId, endpointFaceId)
     }
     for (const [position, point] of records(route.bendPoints).entries()) database.query('INSERT INTO workspace_manual_bend_points (project_id, workspace_id, connection_id, position, x, y) VALUES (1, 2, ?, ?, ?, ?)').run(id, position, point.x, point.y)
   }

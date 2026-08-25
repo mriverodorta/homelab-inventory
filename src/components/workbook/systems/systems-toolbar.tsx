@@ -11,13 +11,14 @@ import { InventoryMetadataFilters } from '@/components/inventory/inventory-metad
 import type { InventoryMetadataCatalog, InventoryMetadataFilter } from '@/types/inventory-metadata'
 import type { SystemsDensity, SystemsHostType, SystemsSavedView, SystemsViewColumn } from '@/types/systems'
 import type { SystemsRegistrationFilter, SystemsRegistryFilter } from '@/lib/systems-preferences'
+import type { WorkspaceSummary } from '@/lib/workbook-api'
 
 export type SystemsViewSelection = 'all' | 'attention' | number
 
 export function SystemsToolbar({
-  selection, views, modified, types, registrations, registryStates, typeOptions, columns, density, query,
+  selection, views, modified, types, registrations, registryStates, canvasWorkspaceId, canvasOptions, typeOptions, columns, density, query,
   metadataCatalog, metadataFilters, onMetadataFilters,
-  onSelection, onTypes, onRegistrations, onRegistryStates, onColumns, onDensity, onQuery,
+  onSelection, onTypes, onRegistrations, onRegistryStates, onCanvasWorkspace, onColumns, onDensity, onQuery,
   onSaveNew, onUpdate, onReset, onRename, onDelete, onSetDefault,
 }: {
   selection: SystemsViewSelection
@@ -26,6 +27,8 @@ export function SystemsToolbar({
   types: readonly SystemsHostType[]
   registrations: readonly SystemsRegistrationFilter[]
   registryStates: readonly SystemsRegistryFilter[]
+  canvasWorkspaceId: number | null
+  canvasOptions: readonly WorkspaceSummary[]
   typeOptions: readonly { value: SystemsHostType; label: string }[]
   columns: readonly SystemsViewColumn[]
   metadataCatalog: InventoryMetadataCatalog
@@ -36,6 +39,7 @@ export function SystemsToolbar({
   onTypes(values: SystemsHostType[]): void
   onRegistrations(values: SystemsRegistrationFilter[]): void
   onRegistryStates(values: SystemsRegistryFilter[]): void
+  onCanvasWorkspace(workspaceId: number | null): void
   onColumns(values: SystemsViewColumn[]): void
   onMetadataFilters(values: InventoryMetadataFilter[]): void
   onDensity(value: SystemsDensity): void
@@ -66,6 +70,28 @@ export function SystemsToolbar({
           {active ? <><DropdownMenuSeparator /><DropdownMenuItem onSelect={onRename}>Rename</DropdownMenuItem><DropdownMenuItem onSelect={onSetDefault}>Set as default</DropdownMenuItem><DropdownMenuItem variant="destructive" onSelect={onDelete}>Delete view</DropdownMenuItem></> : null}
         </DropdownMenuContent>
       </DropdownMenu>
+      {canvasOptions.length > 0 ? (
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button type="button" variant="outline" size="sm" className="h-9 min-w-32 justify-between bg-white font-normal">
+              <span className="truncate">{canvasOptions.find((workspace) => workspace.id === canvasWorkspaceId)?.name ?? 'All canvases'}</span>
+              <ChevronDown className="size-3.5" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start">
+            <DropdownMenuLabel>Canvas configuration</DropdownMenuLabel>
+            <DropdownMenuRadioGroup
+              value={canvasWorkspaceId === null ? 'all' : String(canvasWorkspaceId)}
+              onValueChange={(value) => onCanvasWorkspace(value === 'all' ? null : Number(value))}
+            >
+              <DropdownMenuRadioItem value="all">All systems</DropdownMenuRadioItem>
+              {canvasOptions.map((workspace) => (
+                <DropdownMenuRadioItem key={workspace.id} value={String(workspace.id)}>{workspace.name}</DropdownMenuRadioItem>
+              ))}
+            </DropdownMenuRadioGroup>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      ) : null}
       <SystemsFilterMenu label="System type" options={typeOptions} selected={types} onChange={onTypes} />
       <SystemsFilterMenu label="Agent" options={[{ value: 'registered', label: 'Registered' }, { value: 'unregistered', label: 'Unregistered' }]} selected={registrations} onChange={onRegistrations} />
       <SystemsFilterMenu label="Registry" options={[{ value: 'linked', label: 'Linked' }, { value: 'unlinked', label: 'Unlinked' }]} selected={registryStates} onChange={onRegistryStates} />

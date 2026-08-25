@@ -284,6 +284,7 @@ export function PcBuildInspectorTabs({
   onUpdateConnectionLabel,
   onRemoveConnection,
   attentionActions,
+  attentionWorkspaceId = null,
   requestedTab,
 }: {
   project: ProjectState
@@ -301,11 +302,14 @@ export function PcBuildInspectorTabs({
   onUpdateConnectionLabel: (connectionId: string | number, label: string) => void
   onRemoveConnection: (connectionId: string | number) => void
   attentionActions: AttentionActions
+  attentionWorkspaceId?: number | null
   requestedTab?: string | null
 }) {
   const canViewAgents = usePermission('agents.view')
   const projectId = project.metadata.projectId ?? 1
-  const showAttention = useAttentionTabVisibility({ projectId, hostType: 'pcBuild', hostId: item.id, requestedTab })
+  const showAttention = useAttentionTabVisibility({
+    projectId, workspaceId: attentionWorkspaceId, hostType: 'pcBuild', hostId: item.id, requestedTab,
+  })
   const editor = useInventoryItemEditor({
     item,
     onSave: (input) => onUpdateItem(runtimeItemKey(item), input),
@@ -418,7 +422,7 @@ export function PcBuildInspectorTabs({
         ...(showAttention ? [{
           value: 'attention',
           label: 'Attention',
-          content: <AttentionTab projectId={projectId} hostType="pcBuild" hostId={item.id} actions={attentionActions} />,
+          content: <AttentionTab projectId={projectId} workspaceId={attentionWorkspaceId} hostType="pcBuild" hostId={item.id} actions={attentionActions} />,
         }] : []),
       ]}
     />

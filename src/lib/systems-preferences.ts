@@ -11,6 +11,7 @@ export type SystemsTablePreferences = Readonly<{
   types: readonly SystemsHostType[]
   registrations: readonly SystemsRegistrationFilter[]
   registryStates: readonly SystemsRegistryFilter[]
+  canvasWorkspaceId: number | null
   sortKey: SystemsSortKey
   sortDirection: SystemsSortDirection
   density: SystemsDensity
@@ -38,6 +39,7 @@ export const DEFAULT_SYSTEMS_TABLE_PREFERENCES: SystemsTablePreferences = Object
   types: [],
   registrations: [],
   registryStates: [],
+  canvasWorkspaceId: null,
   sortKey: 'name',
   sortDirection: 'ascending',
   density: 'dense',
@@ -128,6 +130,9 @@ export function readSystemsTablePreferences(
       types: allowedValues(parsed.types, ['server', 'nas', 'pcBuild']),
       registrations: allowedValues(parsed.registrations, ['registered', 'unregistered']),
       registryStates: allowedValues(parsed.registryStates, ['linked', 'unlinked']),
+      canvasWorkspaceId: Number.isSafeInteger(parsed.canvasWorkspaceId) && Number(parsed.canvasWorkspaceId) > 0
+        ? Number(parsed.canvasWorkspaceId)
+        : null,
       sortKey: sortKeys.includes(parsed.sortKey as SystemsSortKey) ? parsed.sortKey as SystemsSortKey : 'name',
       sortDirection: parsed.sortDirection === 'descending' ? 'descending' : 'ascending',
       density: parsed.density === 'comfortable' ? 'comfortable' : 'dense',

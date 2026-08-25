@@ -92,6 +92,7 @@ describe('Systems saved view service', () => {
       types: ['server'],
       registrations: ['registered'],
       registryStates: ['linked'],
+      canvasWorkspaceId: null,
       sortKey: 'name',
       sortDirection: 'ascending',
       density: 'dense',
@@ -102,6 +103,31 @@ describe('Systems saved view service', () => {
       ...input(),
       columns: input().columns.map((column) => column.key === 'type' ? { ...column, visible: false } : column),
     })).toThrow('Type and Name must remain visible and first.')
+  })
+
+  test('persists a selected project canvas and rejects a foreign or unavailable canvas', async () => {
+    const store = await fixtureStore()
+    const service = new SystemsSavedViewService({ now: () => 1_800_000_000_000 })
+    const secondary = store.createWorkspace(1, {
+      type: 'canvas',
+      name: 'Alternate canvas',
+      iconKey: 'network',
+      colorKey: 'green',
+    }).workspaces.find((workspace) => workspace.name === 'Alternate canvas')!
+    const created = service.create(store, {
+      projectId: 1,
+      input: { ...input('Alternate systems'), canvasWorkspaceId: secondary.id },
+    })
+
+    expect(created.configuration.canvasWorkspaceId).toBe(secondary.id)
+    expect(service.list(store, { projectId: 1 })[0]?.configuration.canvasWorkspaceId).toBe(secondary.id)
+    expect(() => service.create(store, {
+      projectId: 1,
+      input: { ...input('Invalid canvas'), canvasWorkspaceId: 999 },
+    })).toThrow(/selected saved-view canvas is unavailable/iu)
+
+    store.archiveWorkspace(1, secondary.id)
+    expect(service.list(store, { projectId: 1 })[0]?.configuration.canvasWorkspaceId).toBeNull()
   })
 
   test('isolates account and open-mode views and transfers open views to an administrator', async () => {

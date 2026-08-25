@@ -145,6 +145,46 @@ describe('Systems read service', () => {
     expect(service.live(store, 1, 'https://inventory.example').systems).toEqual([])
   })
 
+  test('uses the default canvas for all systems and only selected-canvas assignments for a filtered view', async () => {
+    const store = await fixtureStore()
+    const secondary = store.createWorkspace(1, {
+      type: 'canvas',
+      name: 'Empty configuration',
+      iconKey: 'network',
+      colorKey: 'green',
+    }).workspaces.find((workspace) => workspace.name === 'Empty configuration')!
+    const service = new SystemsReadService({
+      telemetryRepository: { getSystemsSnapshot: () => new Map() },
+      now: () => Date.parse('2026-08-17T16:40:30.000Z'),
+    })
+
+    expect(service.initial(store, 1, 'https://inventory.example').systems[0]).toMatchObject({
+      itemKey: 'server:7',
+      cpuLabel: 'Example CPU',
+      memoryLabel: '16GB DDR4 3200MHz',
+    })
+    expect(service.initial(store, 1, 'https://inventory.example', {
+      workspaceId: secondary.id,
+    }).systems).toEqual([])
+
+    const empty = store.getWorkspace(1, secondary.id)
+    store.setWorkspace(1, secondary.id, {
+      ...empty,
+      placements: [{ serverId: 'server:7', x: 12, y: 24 }],
+    })
+    expect(service.initial(store, 1, 'https://inventory.example', {
+      workspaceId: secondary.id,
+    }).systems[0]).toMatchObject({
+      itemKey: 'server:7',
+      cpuLabel: null,
+      memoryLabel: null,
+      storageLabel: null,
+    })
+    expect(() => service.initial(store, 1, 'https://inventory.example', {
+      workspaceId: 999,
+    })).toThrow(/Active canvas 999/iu)
+  })
+
   test('omits stale metrics and falls back to the first assigned storage device', async () => {
     const store = await fixtureStore()
     const service = new SystemsReadService({

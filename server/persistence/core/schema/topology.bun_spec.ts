@@ -71,25 +71,25 @@ describe('normalized hardware topology', () => {
 
       expect(() => handle.database.query(`
         INSERT INTO component_assignments (
-          project_id, host_item_id, component_item_id, resource_slot_id, assigned_at_ms
-        ) VALUES (1, ?, ?, ?, 1)
+          project_id, workspace_id, host_item_id, component_item_id, resource_slot_id, assigned_at_ms
+        ) VALUES (1, 2, ?, ?, ?, 1)
       `).run(firstHost.id, firstCpu.id, slot.id)).toThrow()
 
       handle.database.query(`
         INSERT INTO component_assignments (
-          project_id, host_item_id, component_item_id, resource_slot_id, assigned_at_ms
-        ) VALUES (1, ?, ?, ?, 1)
+          project_id, workspace_id, host_item_id, component_item_id, resource_slot_id, assigned_at_ms
+        ) VALUES (1, 2, ?, ?, ?, 1)
       `).run(secondHost.id, firstCpu.id, slot.id)
 
       expect(() => handle.database.query(`
         INSERT INTO component_assignments (
-          project_id, host_item_id, component_item_id, resource_slot_id, assigned_at_ms
-        ) VALUES (1, ?, ?, NULL, 1)
+          project_id, workspace_id, host_item_id, component_item_id, resource_slot_id, assigned_at_ms
+        ) VALUES (1, 2, ?, ?, NULL, 1)
       `).run(secondHost.id, firstCpu.id)).toThrow()
       expect(() => handle.database.query(`
         INSERT INTO component_assignments (
-          project_id, host_item_id, component_item_id, resource_slot_id, assigned_at_ms
-        ) VALUES (1, ?, ?, ?, 1)
+          project_id, workspace_id, host_item_id, component_item_id, resource_slot_id, assigned_at_ms
+        ) VALUES (1, 2, ?, ?, ?, 1)
       `).run(secondHost.id, secondCpu.id, slot.id)).toThrow()
     } finally {
       closeManagedDatabase(handle)
@@ -128,30 +128,30 @@ describe('normalized hardware topology', () => {
 
       const connection = handle.database.query(`
         INSERT INTO project_connections (
-          project_id, connection_type, source_side, target_side, created_at_ms
-        ) VALUES (1, 'network', 'bottom', 'top', 1)
+          project_id, workspace_id, connection_type, source_side, target_side, created_at_ms
+        ) VALUES (1, 2, 'network', 'bottom', 'top', 1)
         RETURNING id
       `).get() as { id: number }
       handle.database.query(`
-        INSERT INTO connection_endpoints (connection_id, role, port_id)
-        VALUES (?, 'source', ?), (?, 'target', ?)
+        INSERT INTO connection_endpoints (workspace_id, connection_id, role, port_id)
+        VALUES (2, ?, 'source', ?), (2, ?, 'target', ?)
       `).run(connection.id, switchPort.id, connection.id, patchPort.id)
 
       expect(() => handle.database.query('DELETE FROM inventory_ports WHERE id = ?').run(switchPort.id)).toThrow()
 
       const incompatibleConnection = handle.database.query(`
         INSERT INTO project_connections (
-          project_id, connection_type, source_side, target_side, created_at_ms
-        ) VALUES (1, 'network', 'bottom', 'top', 1)
+          project_id, workspace_id, connection_type, source_side, target_side, created_at_ms
+        ) VALUES (1, 2, 'network', 'bottom', 'top', 1)
         RETURNING id
       `).get() as { id: number }
       handle.database.query(`
-        INSERT INTO connection_endpoints (connection_id, role, port_id)
-        VALUES (?, 'source', ?)
+        INSERT INTO connection_endpoints (workspace_id, connection_id, role, port_id)
+        VALUES (2, ?, 'source', ?)
       `).run(incompatibleConnection.id, spareSwitchPort.id)
       expect(() => handle.database.query(`
-        INSERT INTO connection_endpoints (connection_id, role, port_id)
-        VALUES (?, 'target', ?)
+        INSERT INTO connection_endpoints (workspace_id, connection_id, role, port_id)
+        VALUES (2, ?, 'target', ?)
       `).run(incompatibleConnection.id, upsPort.id)).toThrow(/incompatible/iu)
     } finally {
       closeManagedDatabase(handle)
@@ -228,8 +228,8 @@ describe('normalized hardware topology', () => {
     try {
       const connection = handle.database.query(`
         INSERT INTO project_connections (
-          project_id, connection_type, source_side, target_side, created_at_ms
-        ) VALUES (1, 'other', 'right', 'left', 1)
+          project_id, workspace_id, connection_type, source_side, target_side, created_at_ms
+        ) VALUES (1, 2, 'other', 'right', 'left', 1)
         RETURNING id
       `).get() as { id: number }
       const secondProject = handle.database.query(`

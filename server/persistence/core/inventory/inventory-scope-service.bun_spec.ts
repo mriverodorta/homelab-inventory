@@ -41,6 +41,10 @@ describe('inventory scope service', () => {
       const project = createProjectRepository(context).create({ name: 'Downsize plan' })
       const inventory = createInventoryRepository(context)
       const cpuId = service.resolve('cpu', 3)
+      expect(service.setScope(cpuId, { scope: 'global' })).toMatchObject({
+        scope: 'global',
+        ownerProjectId: null,
+      })
       expect(inventory.listForProject(project.project.id).some((item) => item.legacyType === 'cpu' && item.legacyId === 3)).toBeFalse()
       expect(service.listAvailableGlobal(project.project.id).some((item) => item.type === 'cpu' && item.id === 3)).toBeTrue()
       expect(service.memberships(cpuId)).toEqual([1])
@@ -71,6 +75,7 @@ describe('inventory scope service', () => {
         includesGlobalInventory: false,
       })
       const serverId = service.resolve('server', 7)
+      service.setScope(serverId, { scope: 'global' })
       expect(() => service.addGlobalMembership(serverId, project.project.id)).toThrow(/does not allow/iu)
       expect(() => service.removeGlobalMembership(serverId, 1)).toThrow(/topology dependencies/iu)
     } finally {

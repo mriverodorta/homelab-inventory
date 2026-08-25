@@ -72,7 +72,7 @@ describe('SQLite portable backup service', () => {
 
       expect((store.getProject().items['server:7'] as any).name).toBe(server.name)
       expect((await store.snapshotStores()).project).toEqual(projectImmediatelyBeforeRestore)
-      expect(projectImmediatelyBeforeRestore.revision).toBe(projectBefore.revision + 1)
+      expect(projectImmediatelyBeforeRestore.revision).toBe(projectBefore.revision)
     } finally {
       store.close()
     }
@@ -84,10 +84,10 @@ describe('SQLite portable backup service', () => {
       const database = store.core.database
       database.query(`
         INSERT INTO compatibility_audit_findings (
-          id, project_id, host_item_id, component_item_id, assignment_id,
+          id, project_id, workspace_id, host_item_id, component_item_id, assignment_id,
           resource_slot_id, finding_key, rule_key, severity, classification,
           message, details_json, first_seen_at_ms, last_seen_at_ms, resolved_at_ms
-        ) VALUES (1, 1, 1, 4, 3, 4, 'finding:storage-slot', 'storage.form-factor',
+        ) VALUES (1, 1, 2, 1, 4, 3, 4, 'finding:storage-slot', 'storage.form-factor',
           'warning', 'actionable', 'Storage slot mismatch.', '{}', 1, 1, NULL)
       `).run()
 

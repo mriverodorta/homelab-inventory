@@ -895,7 +895,9 @@ export class SqliteHomelabInventoryStore {
         )
       }
 
-      this.core.database.query('DELETE FROM component_assignments WHERE project_id = ?').run(this.projectId)
+      this.core.database.query(
+        'DELETE FROM component_assignments WHERE project_id = ? AND workspace_id = ?',
+      ).run(this.projectId, this.workspaceId)
       for (const assignment of submitted.assignments ?? []) {
         const host = parseRuntimeItemKey(assignment.serverId, 'Assignment host')
         const item = parseRuntimeItemKey(assignment.itemId, 'Assignment item')
@@ -913,7 +915,9 @@ export class SqliteHomelabInventoryStore {
         })
       }
 
-      this.core.database.query('DELETE FROM project_connections WHERE project_id = ?').run(this.projectId)
+      this.core.database.query(
+        'DELETE FROM project_connections WHERE project_id = ? AND workspace_id = ?',
+      ).run(this.projectId, this.workspaceId)
       for (const connection of submitted.connections ?? []) {
         this.insertConnection({
           id: connection.id,
@@ -1165,7 +1169,7 @@ export class SqliteHomelabInventoryStore {
     type: InventoryType,
     records: Row[],
     projectId = this.projectId,
-    scope: 'global' | 'project' = 'global',
+    scope: 'global' | 'project' = 'project',
   ) {
     for (const item of records) {
       insertLegacyInventoryItem({
@@ -1504,13 +1508,13 @@ export class SqliteHomelabInventoryStore {
     this.commitCanonicalMutation(() => {
       for (const connectionId of impact.connectionIds) {
         this.core.database.query(
-          'DELETE FROM project_connections WHERE project_id = ? AND id = ?',
-        ).run(this.projectId, connectionId)
+          'DELETE FROM project_connections WHERE project_id = ? AND workspace_id = ? AND id = ?',
+        ).run(this.projectId, this.workspaceId, connectionId)
       }
       if (impact.assignmentId !== null) {
         this.core.database.query(
-          'DELETE FROM component_assignments WHERE project_id = ? AND id = ?',
-        ).run(this.projectId, impact.assignmentId)
+          'DELETE FROM component_assignments WHERE project_id = ? AND workspace_id = ? AND id = ?',
+        ).run(this.projectId, this.workspaceId, impact.assignmentId)
       }
       replaceLegacyInventoryItem({
         database: this.core.database,
@@ -1753,7 +1757,7 @@ export class SqliteHomelabInventoryStore {
       linkId += 1
     }
     assertRegistryStoreShape(draft)
-    const scope = options.scope === 'project' ? 'project' : 'global'
+    const scope = options.scope === 'global' ? 'global' : 'project'
     if (scope === 'global' && !this.projects.getWorkbook(this.projectId).project.includesGlobalInventory) {
       throw lifecycleError(
         `Project ${this.projectId} does not allow global inventory.`,
@@ -1923,15 +1927,18 @@ export class SqliteHomelabInventoryStore {
       for (const projectId of ids) projectIds.add(projectId)
     }
     const projects = new Map<number, ProjectState>()
+    const workspacesByProject = new Map<number, ProjectState[]>()
     for (const projectId of projectIds) {
       const workbook = this.projects.getWorkbook(projectId)
+      const canvases = workbook.workspaces.filter((workspace) => workspace.type === 'canvas')
       const canvas = workbook.workspaces.find((workspace) => (
         workspace.id === workbook.defaultWorkspaceId && workspace.type === 'canvas'
-      )) ?? workbook.workspaces.find((workspace) => workspace.type === 'canvas')
+      )) ?? canvases[0]
       if (!canvas) throw lifecycleError(`Project ${projectId} has no active Canvas workspace.`, 'project-canvas-not-found', 409)
       projects.set(projectId, this.getWorkspace(projectId, canvas.id))
+      workspacesByProject.set(projectId, canvases.map((workspace) => this.getWorkspace(projectId, workspace.id)))
     }
-    return { projectIdsByLinkId, projects }
+    return { projectIdsByLinkId, projects, workspacesByProject }
   }
 
   evaluateCatalogUpdates(updates: Row[], templates: Row[]) {
@@ -1939,7 +1946,7 @@ export class SqliteHomelabInventoryStore {
     const templateByKey = new Map(templates.map((template: Row) => [template.templateKey, template]))
     const updateLinkIds = new Set(updates.map((update: Row) => update.linkId))
     const links = registry.links.filter((link: Row) => updateLinkIds.has(link.id))
-    const { projectIdsByLinkId, projects } = this.catalogUpdateProjectContexts(links)
+    const { projectIdsByLinkId, projects, workspacesByProject } = this.catalogUpdateProjectContexts(links)
     const proposals = links.flatMap((link: Row) => {
       if (!updateLinkIds.has(link.id)) return []
       const template = templateByKey.get(link.templateKey)
@@ -1954,14 +1961,15 @@ export class SqliteHomelabInventoryStore {
       let validationError = null
       const dependencyConflicts = []
       for (const projectId of projectIds) {
-        const project = projects.get(projectId)!
-        try {
-          this.prepareInventoryUpdate({ type: link.itemType, id: link.itemId }, nextItem, project)
-        } catch (error) {
-          validationError ??= { code: error instanceof InventoryLifecycleError ? error.code : 'validation-failed' }
-        }
-        if (link.itemType === 'motherboard') {
-          dependencyConflicts.push(...motherboardCatalogUpdateConflicts(project, link.itemId, nextItem))
+        for (const project of workspacesByProject.get(projectId) ?? []) {
+          try {
+            this.prepareInventoryUpdate({ type: link.itemType, id: link.itemId }, nextItem, project)
+          } catch (error) {
+            validationError ??= { code: error instanceof InventoryLifecycleError ? error.code : 'validation-failed' }
+          }
+          if (link.itemType === 'motherboard') {
+            dependencyConflicts.push(...motherboardCatalogUpdateConflicts(project, link.itemId, nextItem))
+          }
         }
       }
       return [{
@@ -1973,39 +1981,45 @@ export class SqliteHomelabInventoryStore {
         validationError,
         dependencyConflicts,
         changes: catalogFieldDiff(projectLocalItemForCatalog(current, link.itemType), template.item, catalogUpdateVersionContext(template)),
-        resolutionPlans: projectIds.map((projectId) => ({
-          projectId,
-          ...buildCatalogResolutionPlan({ current, next: nextItem, project: projects.get(projectId), link }),
-        })),
+        resolutionPlans: projectIds.flatMap((projectId) => (
+          (workspacesByProject.get(projectId) ?? []).map((project) => ({
+            projectId,
+            workspaceId: project.metadata.workspaceId,
+            ...buildCatalogResolutionPlan({ current, next: nextItem, project, link }),
+          }))
+        )),
       }]
     })
-    const findingsByProject = new Map<number, { before: Row[]; after: Row[] }>()
-    for (const [projectId, project] of projects) {
-      const nextProject = structuredClone(project)
-      for (const proposal of proposals) {
-        if (proposal.projectIds.includes(projectId)) {
-          nextProject.items[`${proposal.link.itemType}:${proposal.link.itemId}`] = proposal.nextItem
+    const findingsByWorkspace = new Map<string, { before: Row[]; after: Row[] }>()
+    for (const [projectId, workspaces] of workspacesByProject) {
+      for (const project of workspaces) {
+        const nextProject = structuredClone(project)
+        for (const proposal of proposals) {
+          if (proposal.projectIds.includes(projectId)) {
+            nextProject.items[`${proposal.link.itemType}:${proposal.link.itemId}`] = proposal.nextItem
+          }
         }
+        findingsByWorkspace.set(`${projectId}:${project.metadata.workspaceId}`, {
+          before: evaluateProjectCompatibility(project),
+          after: evaluateProjectCompatibility(nextProject),
+        })
       }
-      findingsByProject.set(projectId, {
-        before: evaluateProjectCompatibility(project),
-        after: evaluateProjectCompatibility(nextProject),
-      })
     }
     const evaluations = proposals.map((proposal) => {
       const itemKey = `${proposal.link.itemType}:${proposal.link.itemId}`
       const beforeFindings = []
       const afterFindings = []
       for (const projectId of proposal.projectIds) {
-        const project = projects.get(projectId)!
-        const affectedHostIds = new Set((project.assignments ?? []).flatMap((assignment: Row) => {
-          if (assignment.serverId === itemKey) return [assignment.serverId]
-          return assignment.itemId === itemKey ? [assignment.serverId] : []
-        }))
-        const relevant = (result: Row) => result.itemId === itemKey || result.hostId === itemKey || affectedHostIds.has(result.hostId)
-        const findings = findingsByProject.get(projectId)!
-        beforeFindings.push(...findings.before.filter(relevant))
-        afterFindings.push(...findings.after.filter(relevant))
+        for (const project of workspacesByProject.get(projectId) ?? []) {
+          const affectedHostIds = new Set((project.assignments ?? []).flatMap((assignment: Row) => {
+            if (assignment.serverId === itemKey) return [assignment.serverId]
+            return assignment.itemId === itemKey ? [assignment.serverId] : []
+          }))
+          const relevant = (result: Row) => result.itemId === itemKey || result.hostId === itemKey || affectedHostIds.has(result.hostId)
+          const findings = findingsByWorkspace.get(`${projectId}:${project.metadata.workspaceId}`)!
+          beforeFindings.push(...findings.before.filter(relevant))
+          afterFindings.push(...findings.after.filter(relevant))
+        }
       }
       return {
         linkId: proposal.link.id,
@@ -2362,7 +2376,7 @@ export class SqliteHomelabInventoryStore {
     const links = group.members.map((member: Row) => (
       registry.links.find((candidate: Row) => candidate.id === member.linkId)
     )).filter(Boolean)
-    const { projectIdsByLinkId, projects } = this.catalogUpdateProjectContexts(links)
+    const { projectIdsByLinkId, projects, workspacesByProject } = this.catalogUpdateProjectContexts(links)
     const members = group.members.map((member: Row) => {
       const link = links.find((candidate: Row) => candidate.id === member.linkId)
       const projectIds = projectIdsByLinkId.get(member.linkId) ?? []
@@ -2376,12 +2390,14 @@ export class SqliteHomelabInventoryStore {
         catalogUpdateVersionContext(template),
       )
       const next = materializeCatalogItem(plan.nextItem, { usageRole: current.usageRole })
-      const resolutionPlans = projectIds.map((projectId) => buildCatalogResolutionPlan({
-        current,
-        next,
-        project: projects.get(projectId),
-        link,
-      }))
+      const resolutionPlans = projectIds.flatMap((projectId) => (
+        (workspacesByProject.get(projectId) ?? []).map((project) => buildCatalogResolutionPlan({
+          current,
+          next,
+          project,
+          link,
+        }))
+      ))
       const availablePlans = resolutionPlans.filter((resolution: Row) => resolution.available)
       return {
         ...member,
@@ -2630,7 +2646,7 @@ export class SqliteHomelabInventoryStore {
       throw lifecycleError('Catalog update changed; refresh before resolving it.', 'catalog-update-stale', 409)
     }
 
-    const { projectIdsByLinkId, projects } = this.catalogUpdateProjectContexts([link])
+    const { projectIdsByLinkId, projects, workspacesByProject } = this.catalogUpdateProjectContexts([link])
     const projectIds = projectIdsByLinkId.get(link.id) ?? []
     const current = projectIds.map((projectId) => projects.get(projectId)?.items[`${link.itemType}:${link.itemId}`] as Row | undefined).find(Boolean)
     if (!current) throw lifecycleError('Linked inventory item was not found.', 'linked-inventory-not-found', 409)
@@ -2638,21 +2654,22 @@ export class SqliteHomelabInventoryStore {
       mergeCatalogUpdate(projectLocalItemForCatalog(current, link.itemType), template.item, catalogUpdateVersionContext(template)),
       { usageRole: current.usageRole },
     )
-    const plans = projectIds.map((projectId) => {
-      const project = projects.get(projectId)!
-      const plan = buildCatalogResolutionPlan({ current, next: nextItem, project, link })
-      if (!plan.available && plan.reason !== 'No relationship migration is required.') {
-        throw lifecycleError(plan.reason, 'catalog-update-resolution-ambiguous', 409)
-      }
-      const resolvedProject = plan.available ? applyCatalogResolutionPlan(project, plan) : project
-      this.prepareInventoryUpdate(
-        { type: link.itemType, id: link.itemId },
-        nextItem,
-        resolvedProject,
-        { allowNasPowerTopologyChange: true, allowConnectedPortTopologyChange: true },
-      )
-      return { projectId, plan }
-    })
+    const plans = projectIds.flatMap((projectId) => (
+      (workspacesByProject.get(projectId) ?? []).map((project) => {
+        const plan = buildCatalogResolutionPlan({ current, next: nextItem, project, link })
+        if (!plan.available && plan.reason !== 'No relationship migration is required.') {
+          throw lifecycleError(plan.reason, 'catalog-update-resolution-ambiguous', 409)
+        }
+        const resolvedProject = plan.available ? applyCatalogResolutionPlan(project, plan) : project
+        this.prepareInventoryUpdate(
+          { type: link.itemType, id: link.itemId },
+          nextItem,
+          resolvedProject,
+          { allowNasPowerTopologyChange: true, allowConnectedPortTopologyChange: true },
+        )
+        return { projectId, workspaceId: project.metadata.workspaceId!, plan }
+      })
+    ))
     if (!plans.some(({ plan }) => plan.available)) {
       throw lifecycleError('This update has no deterministic topology resolution to apply.', 'catalog-update-resolution-unavailable', 409)
     }
@@ -2660,16 +2677,17 @@ export class SqliteHomelabInventoryStore {
       ? new Map(Object.entries(expectedProjectRevisions).map(([projectId, revision]) => [Number(projectId), Number(revision)]))
       : new Map(projectIds.map((projectId) => [projectId, projects.get(projectId)!.revision]))
     const movedEndpoints = [] as Row[]
-    for (const { projectId, plan } of plans) {
+    for (const { projectId, workspaceId, plan } of plans) {
       for (const operation of plan.operations) {
         if (operation.kind !== 'move-connection-endpoint') continue
         const role = operation.endpointRole === 'from' ? 'source' : 'target'
         const row = this.core.database.query(`
-          SELECT endpoint.id, endpoint.connection_id, endpoint.role
+          SELECT endpoint.id, endpoint.workspace_id, endpoint.connection_id, endpoint.role
           FROM connection_endpoints endpoint
           JOIN project_connections connection ON connection.id = endpoint.connection_id
-          WHERE connection.project_id = ? AND connection.id = ? AND endpoint.role = ?
-        `).get(projectId, operation.connectionId, role) as Row | null
+          WHERE connection.project_id = ? AND connection.workspace_id = ?
+            AND connection.id = ? AND endpoint.role = ?
+        `).get(projectId, workspaceId, operation.connectionId, role) as Row | null
         if (!row) throw lifecycleError('A cable endpoint changed after the resolution was planned.', 'catalog-update-resolution-stale', 409)
         movedEndpoints.push({ ...row, projectId, operation })
       }
@@ -2717,17 +2735,21 @@ export class SqliteHomelabInventoryStore {
     const operation = () => {
       for (const endpoint of movedEndpoints) {
         this.core.database.query('DELETE FROM connection_endpoints WHERE id = ?').run(endpoint.id)
-        this.core.database.query('DELETE FROM workspace_route_cache WHERE project_id = ? AND connection_id = ?')
-          .run(endpoint.projectId, endpoint.connection_id)
-        this.core.database.query('DELETE FROM workspace_manual_bend_points WHERE project_id = ? AND connection_id = ?')
-          .run(endpoint.projectId, endpoint.connection_id)
+        this.core.database.query(`
+          DELETE FROM workspace_route_cache
+          WHERE project_id = ? AND workspace_id = ? AND connection_id = ?
+        `).run(endpoint.projectId, endpoint.workspace_id, endpoint.connection_id)
+        this.core.database.query(`
+          DELETE FROM workspace_manual_bend_points
+          WHERE project_id = ? AND workspace_id = ? AND connection_id = ?
+        `).run(endpoint.projectId, endpoint.workspace_id, endpoint.connection_id)
       }
-      for (const { projectId, plan } of plans) {
+      for (const { projectId, workspaceId, plan } of plans) {
         for (const planned of plan.operations) {
           if (planned.kind !== 'unassign-item') continue
           const deleted = this.core.database.query(
-            'DELETE FROM component_assignments WHERE project_id = ? AND id = ? RETURNING id',
-          ).all(projectId, planned.assignmentId)
+            'DELETE FROM component_assignments WHERE project_id = ? AND workspace_id = ? AND id = ? RETURNING id',
+          ).all(projectId, workspaceId, planned.assignmentId)
           if (deleted.length !== 1) {
             throw lifecycleError(`Assignment ${planned.assignmentId} changed after the resolution was planned.`, 'catalog-update-resolution-stale', 409)
           }
@@ -2753,9 +2775,9 @@ export class SqliteHomelabInventoryStore {
         `).get(itemId, target.itemType, target.itemId, target.portId) as Row | null
         if (!port) throw lifecycleError('The resolved cable target no longer exists.', 'catalog-update-resolution-stale', 409)
         this.core.database.query(`
-          INSERT INTO connection_endpoints (id, connection_id, role, port_id, endpoint_face_id)
-          VALUES (?, ?, ?, ?, NULL)
-        `).run(endpoint.id, endpoint.connection_id, endpoint.role, port.id)
+          INSERT INTO connection_endpoints (id, workspace_id, connection_id, role, port_id, endpoint_face_id)
+          VALUES (?, ?, ?, ?, ?, NULL)
+        `).run(endpoint.id, endpoint.workspace_id, endpoint.connection_id, endpoint.role, port.id)
       }
       persistRegistryState(this.core.database, draft, this.now(), (type, id) => this.resolveItem(type, id))
       const updated = this.core.database.query(`
@@ -3484,8 +3506,8 @@ export class SqliteHomelabInventoryStore {
     if (patch.kind === 'remove-connection') {
       const connectionId = positiveId(patch.payload.connection.id, 'Connection ID')
       const deleted = this.core.database.query(
-        'DELETE FROM project_connections WHERE project_id = ? AND id = ? RETURNING id',
-      ).all(this.projectId, connectionId)
+        'DELETE FROM project_connections WHERE project_id = ? AND workspace_id = ? AND id = ? RETURNING id',
+      ).all(this.projectId, this.workspaceId, connectionId)
       if (deleted.length !== 1) {
         throw lifecycleError(`Connection ${connectionId} does not exist.`, 'invalid-engine-patch', 500)
       }
@@ -3552,8 +3574,8 @@ export class SqliteHomelabInventoryStore {
     if (patch.kind === 'patch-assignments') {
       for (const assignmentId of patch.payload.remove_assignment_ids) {
         const deleted = this.core.database.query(
-          'DELETE FROM component_assignments WHERE project_id = ? AND id = ? RETURNING id',
-        ).all(this.projectId, positiveId(assignmentId, 'Assignment ID'))
+          'DELETE FROM component_assignments WHERE project_id = ? AND workspace_id = ? AND id = ? RETURNING id',
+        ).all(this.projectId, this.workspaceId, positiveId(assignmentId, 'Assignment ID'))
         if (deleted.length !== 1) {
           throw lifecycleError(`Assignment ${assignmentId} does not exist.`, 'invalid-engine-patch', 500)
         }
@@ -3977,14 +3999,15 @@ export class SqliteHomelabInventoryStore {
     this.commitCanonicalMutation(() => {
       const insertSlot = this.core.database.query(`
         INSERT INTO component_assignment_slots (
-          project_id, assignment_id, host_item_id, resource_slot_id, position
-        ) VALUES (?, ?, ?, ?, ?)
+          project_id, workspace_id, assignment_id, host_item_id, resource_slot_id, position
+        ) VALUES (?, ?, ?, ?, ?, ?)
       `)
       for (const allocation of allocations) {
         const assignment = this.core.database.query(`
           SELECT id FROM component_assignments
-          WHERE id = ? AND project_id = ? AND host_item_id = ? AND resource_slot_id IS NULL
-        `).get(allocation.assignmentId, this.projectId, allocation.hostItemId)
+          WHERE id = ? AND project_id = ? AND workspace_id = ?
+            AND host_item_id = ? AND resource_slot_id IS NULL
+        `).get(allocation.assignmentId, this.projectId, this.workspaceId, allocation.hostItemId)
         if (!assignment) continue
         const slotIds = allocation.positions.map((position) => this.resolveResourceSlot(
           allocation.hostItemId,
@@ -3995,7 +4018,7 @@ export class SqliteHomelabInventoryStore {
         this.core.database.query('DELETE FROM component_assignment_slots WHERE assignment_id = ?')
           .run(allocation.assignmentId)
         slotIds.forEach((slotId, position) => {
-          insertSlot.run(this.projectId, allocation.assignmentId, allocation.hostItemId, slotId, position)
+          insertSlot.run(this.projectId, this.workspaceId, allocation.assignmentId, allocation.hostItemId, slotId, position)
         })
         this.core.database.query('UPDATE component_assignments SET resource_slot_id = ? WHERE id = ?')
           .run(slotIds[0] ?? null, allocation.assignmentId)
@@ -4068,12 +4091,13 @@ export class SqliteHomelabInventoryStore {
     const route = connection.route
     this.core.database.query(`
       INSERT INTO project_connections (
-        id, project_id, connection_type, negotiated_speed_bps, label,
+        id, project_id, workspace_id, connection_type, negotiated_speed_bps, label,
         source_side, target_side, avoid_cable_overlap, created_at_ms, updated_at_ms
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       connectionId,
       this.projectId,
+      this.workspaceId,
       connection.connection_type,
       canonicalBitsPerSecond(connection.negotiated_speed_bps),
       connection.label,
@@ -4086,18 +4110,18 @@ export class SqliteHomelabInventoryStore {
     const source = this.resolvePort(connection.from)
     const target = this.resolvePort(connection.to)
     const insertEndpoint = this.core.database.query(`
-      INSERT INTO connection_endpoints (connection_id, role, port_id, endpoint_face_id)
-      VALUES (?, ?, ?, ?)
+      INSERT INTO connection_endpoints (workspace_id, connection_id, role, port_id, endpoint_face_id)
+      VALUES (?, ?, ?, ?, ?)
     `)
-    insertEndpoint.run(connectionId, 'source', source.portId, source.endpointFaceId)
-    insertEndpoint.run(connectionId, 'target', target.portId, target.endpointFaceId)
+    insertEndpoint.run(this.workspaceId, connectionId, 'source', source.portId, source.endpointFaceId)
+    insertEndpoint.run(this.workspaceId, connectionId, 'target', target.portId, target.endpointFaceId)
     this.replaceBends(connectionId, route?.bend_points ?? [])
   }
 
   private connection(connectionId: number) {
     const row = this.core.database.query(`
-      SELECT * FROM project_connections WHERE project_id = ? AND id = ?
-    `).get(this.projectId, positiveId(connectionId, 'Connection ID')) as Row | null
+      SELECT * FROM project_connections WHERE project_id = ? AND workspace_id = ? AND id = ?
+    `).get(this.projectId, this.workspaceId, positiveId(connectionId, 'Connection ID')) as Row | null
     if (!row) throw lifecycleError(`Connection ${connectionId} does not exist.`, 'invalid-engine-patch', 500)
     return row
   }
@@ -4105,8 +4129,8 @@ export class SqliteHomelabInventoryStore {
   private updateConnection(connectionId: number, clause: string, values: unknown[]) {
     const id = positiveId(connectionId, 'Connection ID')
     const result = this.core.database.query(
-      `UPDATE project_connections SET ${clause} WHERE project_id = ? AND id = ?`,
-    ).run(...values, this.projectId, id)
+      `UPDATE project_connections SET ${clause} WHERE project_id = ? AND workspace_id = ? AND id = ?`,
+    ).run(...values, this.projectId, this.workspaceId, id)
     if (result.changes !== 1) {
       throw lifecycleError(`Connection ${id} does not exist.`, 'invalid-engine-patch', 500)
     }
@@ -4146,32 +4170,43 @@ export class SqliteHomelabInventoryStore {
           position,
         ))
       : []
-    this.core.database.query(`
+    const result = this.core.database.query(`
       INSERT INTO component_assignments (
-        id, project_id, host_item_id, component_item_id, resource_slot_id, assigned_at_ms
-      ) VALUES (?, ?, ?, ?, ?, ?)
+        id, project_id, workspace_id, host_item_id, component_item_id, resource_slot_id, assigned_at_ms
+      ) VALUES (?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(id) DO UPDATE SET
         project_id = excluded.project_id,
+        workspace_id = excluded.workspace_id,
         host_item_id = excluded.host_item_id,
         component_item_id = excluded.component_item_id,
         resource_slot_id = excluded.resource_slot_id,
         assigned_at_ms = excluded.assigned_at_ms
+      WHERE component_assignments.project_id = excluded.project_id
+        AND component_assignments.workspace_id = excluded.workspace_id
     `).run(
       assignmentId,
       this.projectId,
+      this.workspaceId,
       hostItemId,
       componentItemId,
       slotIds[0] ?? null,
       toMilliseconds(assignment.assigned_at, this.now()),
     )
+    if (result.changes !== 1) {
+      throw lifecycleError(
+        `Assignment ${assignmentId} belongs to a different workspace.`,
+        'invalid-engine-patch',
+        409,
+      )
+    }
     this.core.database.query('DELETE FROM component_assignment_slots WHERE assignment_id = ?').run(assignmentId)
     const insertSlot = this.core.database.query(`
       INSERT INTO component_assignment_slots (
-        project_id, assignment_id, host_item_id, resource_slot_id, position
-      ) VALUES (?, ?, ?, ?, ?)
+        project_id, workspace_id, assignment_id, host_item_id, resource_slot_id, position
+      ) VALUES (?, ?, ?, ?, ?, ?)
     `)
     slotIds.forEach((slotId: number, position: number) => {
-      insertSlot.run(this.projectId, assignmentId, hostItemId, slotId, position)
+      insertSlot.run(this.projectId, this.workspaceId, assignmentId, hostItemId, slotId, position)
     })
   }
 

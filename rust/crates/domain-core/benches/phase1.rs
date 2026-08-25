@@ -10,6 +10,7 @@ fn main() {
     let mut engine = Engine::from_snapshot(EngineSnapshot {
         revision: 1,
         project_name: "Benchmark".into(),
+        next_connection_id: None,
         topology: homelab_engine_protocol::TopologySnapshot {
             items: vec![],
             assignments: vec![],

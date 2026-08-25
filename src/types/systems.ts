@@ -54,6 +54,7 @@ export type SystemsViewConfiguration = Readonly<{
   types: readonly SystemsHostType[]
   registrations: readonly ('registered' | 'unregistered')[]
   registryStates: readonly ('linked' | 'unlinked')[]
+  canvasWorkspaceId: number | null
   sortKey: SystemsBaseColumnKey
   sortDirection: 'ascending' | 'descending'
   density: SystemsDensity
@@ -103,6 +104,7 @@ export type SystemsAttentionResponse = Readonly<{
 
 export type SystemsInitialResponse = Readonly<{
   projectId: number
+  canvasWorkspaceId?: number | null
   generatedAt: string
   currentAgentVersion: string | null
   systems: readonly SystemsHostRow[]
@@ -110,6 +112,7 @@ export type SystemsInitialResponse = Readonly<{
 
 export type SystemsLiveResponse = Readonly<{
   projectId: number
+  canvasWorkspaceId?: number | null
   generatedAt: string
   systems: readonly SystemsHostLive[]
 }>

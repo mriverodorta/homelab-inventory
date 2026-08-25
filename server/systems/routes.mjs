@@ -40,6 +40,16 @@ function accountId(request) {
   return request.authentication?.account?.id ?? null
 }
 
+function requestedCanvas(request) {
+  const value = request.query?.workspaceId
+  if (value === undefined || value === null || value === '') return null
+  const parsed = Number(value)
+  if (!Number.isSafeInteger(parsed) || parsed <= 0) {
+    throw new TypeError('Systems canvas ID must be a positive safe integer.')
+  }
+  return parsed
+}
+
 function handleSystemsViewError(response, error) {
   const status = Number(error?.status)
   if (Number.isSafeInteger(status) && status >= 400 && status < 600) {
@@ -66,7 +76,10 @@ export function registerSystemsRoutes(app, {
       const categories = await attentionCategories(request, authorization)
       response
         .set('Cache-Control', 'no-store')
-        .json(service.initial(store, request.params.projectId, requestOrigin(request), { attentionCategories: categories }))
+        .json(service.initial(store, request.params.projectId, requestOrigin(request), {
+          attentionCategories: categories,
+          workspaceId: requestedCanvas(request),
+        }))
     }, { message: 'Unable to load systems.' })
   })
 
@@ -74,7 +87,10 @@ export function registerSystemsRoutes(app, {
     void withStore(request, response, async (store) => {
       if (!await requireAgentView(request, response, authorization)) return
       const categories = await attentionCategories(request, authorization)
-      const payload = service.live(store, request.params.projectId, requestOrigin(request), { attentionCategories: categories })
+      const payload = service.live(store, request.params.projectId, requestOrigin(request), {
+        attentionCategories: categories,
+        workspaceId: requestedCanvas(request),
+      })
       const responseEtag = etag({ projectId: payload.projectId, systems: payload.systems })
       response.set('Cache-Control', 'no-store').set('ETag', responseEtag)
       if (request.get('if-none-match') === responseEtag) return response.status(304).end()
@@ -86,7 +102,14 @@ export function registerSystemsRoutes(app, {
     void withStore(request, response, async (store) => {
       if (!await requireAgentView(request, response, authorization)) return
       const categories = await attentionCategories(request, authorization)
-      const payload = attention.details(store, request.params.projectId, request.params.hostType, request.params.hostId, categories)
+      const payload = attention.details(
+        store,
+        request.params.projectId,
+        request.params.hostType,
+        request.params.hostId,
+        categories,
+        requestedCanvas(request) ?? store.workspaceId,
+      )
       const responseEtag = etag(payload)
       response.set('Cache-Control', 'private, no-cache').set('ETag', responseEtag)
       if (request.get('if-none-match') === responseEtag) return response.status(304).end()

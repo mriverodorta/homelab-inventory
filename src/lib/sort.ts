@@ -45,6 +45,7 @@ export function filterAndSortInventory(
   filters: InventoryFilters,
 ): InventoryItem[] {
   const query = filters.query.trim().toLowerCase()
+  const requestedInventoryId = /^#?([1-9]\d*)$/u.exec(query)?.[1]
 
   return Object.values(project.items)
     .filter((item) => {
@@ -72,6 +73,11 @@ export function filterAndSortInventory(
 
       if (!query) {
         return true
+      }
+
+      if (requestedInventoryId) {
+        return Number.isSafeInteger(item.inventoryId)
+          && String(item.inventoryId) === requestedInventoryId
       }
 
       return [item.name, item.manufacturer, item.model, item.subtype, filters.metadataSearchText?.get(itemKey)]

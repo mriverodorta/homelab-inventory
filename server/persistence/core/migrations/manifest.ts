@@ -160,4 +160,9 @@ export const CORE_MIGRATIONS: readonly CoreMigration[] = [
     file: '0030_sharing_account_unlink.sql',
     sha256: 'ca690e1560dbe0b7de96b704de7665278c1a2fe71c90416823a168b8f615292c',
   },
+  {
+    id: '0032_workspace_owned_topology',
+    file: '0031_workspace_owned_topology.sql',
+    sha256: '115e4a87c5992b1d8cc4f1c8f2ad657d1868a62e4ffa015053d18b9f28dd5f80',
+  },
 ]

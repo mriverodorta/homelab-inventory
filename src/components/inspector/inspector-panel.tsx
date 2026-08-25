@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { AlertTriangle, Info, X } from 'lucide-react'
+import { AlertTriangle, Copy, Info, X } from 'lucide-react'
 import { InventoryActionsMenu } from '@/components/inventory-actions-menu'
 import { Button } from '@/components/ui/button'
 import { RIGHT_DRAWER_LAYOUT_CLASS_NAME } from '@/components/right-drawer-layout'
@@ -28,6 +28,7 @@ import {
 } from '@/components/inspector/equipment/component-item-editor'
 import { isEditableComponent } from '@/components/inspector/equipment/component-item-editor-model'
 import { PcBuildInspectorTabs } from '@/components/inspector/equipment/pc-build-inspector-tabs'
+import { CopyHostConfigurationDialog } from '@/components/inspector/equipment/copy-host-configuration-dialog'
 import { StandalonePowerEquipmentTabs } from '@/components/inspector/equipment/standalone-power-equipment-tabs'
 import { usePermission } from '@/hooks/use-permission'
 import { useAgentHardwareSuggestions } from '@/hooks/use-agent-hardware-suggestions'
@@ -38,6 +39,8 @@ const labelClass = 'text-[11px] font-black uppercase tracking-[0.12em] text-[#75
 export function InspectorPanel({
   layout = 'overlay',
   project,
+  attentionWorkspaceId = project.metadata.workspaceId ?? null,
+  workspaces = [],
   topologyData = null,
   compatibleEndpointKeys = null,
   topologyStatusMessage = null,
@@ -80,6 +83,7 @@ export function InspectorPanel({
   onSetWarningIgnored = () => undefined,
 }: InspectorPanelProps) {
   const [requestedItemTab, setRequestedItemTab] = useState<{ itemId: string; tab: string } | null>(null)
+  const [copyConfigurationOpen, setCopyConfigurationOpen] = useState(false)
   useEffect(() => {
     const requestTab = (event: Event) => {
       const detail = (event as CustomEvent<{ itemId?: unknown; tab?: unknown }>).detail
@@ -177,6 +181,20 @@ export function InspectorPanel({
               {drawerType}
             </StatusBadge>
           ) : null}
+          {selectedItem?.inventoryId ? (
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="h-7 gap-1 px-1.5 text-xs font-medium text-[#75695d]"
+              aria-label={`Copy inventory ID ${selectedItem.inventoryId}`}
+              title="Copy inventory ID"
+              onClick={() => void navigator.clipboard.writeText(String(selectedItem.inventoryId))}
+            >
+              #{selectedItem.inventoryId}
+              <Copy className="size-3" />
+            </Button>
+          ) : null}
         </div>
         <div className="flex shrink-0 items-center gap-1">
           {selectedItem ? (
@@ -185,6 +203,12 @@ export function InspectorPanel({
               busy={lifecycleBusy}
               onDuplicate={canCreateInventory ? () => onDuplicateItem(selectedItem) : undefined}
               onDuplicateToProject={canCreateInventory && onDuplicateItemToProject ? () => onDuplicateItemToProject(selectedItem) : undefined}
+              onCopyConfiguration={canEditCanvas
+                && selectedItemIsPlaced
+                && ['server', 'nas', 'pcBuild'].includes(selectedItem.type)
+                && workspaces.some((workspace) => workspace.type === 'canvas' && workspace.id !== project.metadata.workspaceId)
+                ? () => setCopyConfigurationOpen(true)
+                : undefined}
               onMakeGlobal={canEditInventory && selectedItem.scope === 'project' && onChangeItemScope
                 ? () => onChangeItemScope(selectedItem, 'global')
                 : undefined}
@@ -212,6 +236,17 @@ export function InspectorPanel({
           </Button>
         </div>
       </div>
+
+      {selectedItemRuntimeKey && copyConfigurationOpen ? (
+        <CopyHostConfigurationDialog
+          open={copyConfigurationOpen}
+          project={project}
+          hostId={selectedItemRuntimeKey}
+          workspaces={workspaces}
+          onOpenChange={setCopyConfigurationOpen}
+          onApply={onUpdateProject}
+        />
+      ) : null}
 
       <div className="min-h-0 flex-1 space-y-4 overflow-x-hidden overflow-y-auto p-4 sm:p-5">
         {pendingConnectionEndpoint ? (
@@ -303,6 +338,7 @@ export function InspectorPanel({
                   onSelectNetworkTrace={onSelectNetworkTrace}
                   onEndpointConnectionClick={onEndpointConnectionClick}
                   attentionActions={{ onOpenAudit, onOpenNotifications, onOpenRegistryUpdates }}
+                  attentionWorkspaceId={attentionWorkspaceId}
                   requestedTab={requestedTab}
                 />
               ) : selectedItem.type === 'switch' ? (
@@ -336,6 +372,7 @@ export function InspectorPanel({
                   onRemoveConnection={removeConnection}
                   onRequestPowerConfigurationChange={requestNasPowerConfigurationChange}
                   attentionActions={{ onOpenAudit, onOpenNotifications, onOpenRegistryUpdates }}
+                  attentionWorkspaceId={attentionWorkspaceId}
                   requestedTab={requestedTab}
                 />
               ) : selectedItem.type === 'patchPanel' ? (
@@ -369,6 +406,7 @@ export function InspectorPanel({
                   onUpdateConnectionLabel={updateConnectionLabel}
                   onRemoveConnection={removeConnection}
                   attentionActions={{ onOpenAudit, onOpenNotifications, onOpenRegistryUpdates }}
+                  attentionWorkspaceId={attentionWorkspaceId}
                   requestedTab={requestedTab}
                 />
               ) : selectedItem.type === 'monitor'

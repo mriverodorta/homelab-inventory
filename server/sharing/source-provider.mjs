@@ -150,9 +150,10 @@ export function createSharingSourceProvider(store) {
           ON visibility.workspace_id = ? AND visibility.connection_id = connection.id
         LEFT JOIN workspace_route_cache cache
           ON cache.workspace_id = ? AND cache.connection_id = connection.id
-        WHERE connection.project_id = ? AND coalesce(visibility.visible, 1) = 1
+        WHERE connection.project_id = ? AND connection.workspace_id = ?
+          AND coalesce(visibility.visible, 1) = 1
         ORDER BY connection.id
-      `).all(descriptor.id, descriptor.id, projectId).map((connection) => ({
+      `).all(descriptor.id, descriptor.id, projectId, descriptor.id).map((connection) => ({
         id: connection.id,
         kind: connection.kind,
         label: connection.label,
@@ -225,6 +226,7 @@ export function createSharingResourceSnapshotProvider({ store, telemetryReposito
   return async function captureResourceSnapshot(configuration) {
     if (!configuration) throw new Error('Share configuration is unavailable.')
     const projectId = positiveId(configuration.share.projectId, 'Share project ID')
+    const defaultWorkspaceId = store.getProjectWorkbook(projectId).defaultWorkspaceId
     const hosts = database.query(`
       SELECT item.id
       FROM inventory_items item
@@ -253,10 +255,11 @@ export function createSharingResourceSnapshotProvider({ store, telemetryReposito
           FROM component_assignments assignment
           JOIN inventory_items component ON component.id = assignment.component_item_id
           JOIN inventory_item_types type ON type.id = component.type_id AND type.key = 'storage'
-          WHERE assignment.project_id = ? AND assignment.host_item_id = ?
+          WHERE assignment.project_id = ? AND assignment.workspace_id = ?
+            AND assignment.host_item_id = ?
             AND component.archived_at_ms IS NULL
           ORDER BY assignment.id LIMIT 1
-        `).get(projectId, itemId)
+        `).get(projectId, defaultWorkspaceId, itemId)
         if (storage) snapshot.storage = [{
           publicStorageId: await publicIds.id('item', storage.id),
           name: storage.name,

@@ -346,15 +346,21 @@ const compatibilityAudit = new CompatibilityAuditService({
       projectId: event.projectId,
       hostType: event.hostType,
       hostId: event.hostId,
+      workspaceId: event.workspaceId,
       reason: 'compatibility-changed',
     })
     systemsAttention?.reconcile(currentStore)
     applicationEventBus.publish({
       scope: currentStore,
-      topics: [`compatibility:${event.projectId}`, `systems:${event.projectId}`],
+      topics: [
+        `compatibility:${event.projectId}`,
+        `systems:${event.projectId}`,
+        ...(event.workspaceId ? [`systems:${event.projectId}:workspace:${event.workspaceId}`] : []),
+      ],
       kind: 'compatibility.changed',
       payload: {
         projectId: event.projectId,
+        workspaceId: event.workspaceId ?? null,
         host: { hostType: event.hostType, hostId: event.hostId },
         counts: event.counts,
       },
@@ -445,6 +451,30 @@ function publishAgentChanged({ store: currentStore, host, kind, liveTelemetry = 
       kind: `agent.${kind}`,
       payload: { projectId, host, system },
     })
+    const canvases = currentStore.core.database.query(`
+      SELECT workspace.id
+      FROM workspaces workspace
+      JOIN workspace_placements placement
+        ON placement.project_id = workspace.project_id AND placement.workspace_id = workspace.id
+      JOIN inventory_identity_aliases identity ON identity.item_id = placement.item_id
+      WHERE workspace.project_id = ? AND workspace.type = 'canvas'
+        AND workspace.archived_at_ms IS NULL
+        AND identity.legacy_type_key = ? AND identity.legacy_id = ?
+    `).all(projectId, host.hostType, host.hostId)
+    for (const canvas of canvases) {
+      let scopedSystem = null
+      try {
+        scopedSystem = systemsReadService?.liveHost(currentStore, projectId, host, null, {
+          workspaceId: canvas.id,
+        }) ?? null
+      } catch {}
+      applicationEventBus.publish({
+        scope: currentStore,
+        topics: `systems:${projectId}:workspace:${canvas.id}`,
+        kind: `agent.${kind}`,
+        payload: { projectId, workspaceId: canvas.id, host, system: scopedSystem },
+      })
+    }
   }
   if (schedule) agentLifecycleScheduler?.changed(host)
 }

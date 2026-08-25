@@ -707,6 +707,7 @@ function App() {
   const workspaceSurfaceProps = {
     ...createWorkspaceSurfaceProps({
     project,
+    workspaces: workbookController.activeWorkbook?.workspaces ?? [],
     topologyData: topologyQuery.data,
     topologyStatus,
     compatibleEndpointKeys: compatibleTopologyDestinations.endpointKeys,
@@ -763,6 +764,7 @@ function App() {
     }),
     workbook: {
       workspace: workbookController.activeWorkspace,
+      workspaces: workbookController.activeWorkbook?.workspaces ?? [],
       project,
       selectedItemId,
       onSelectItem: canvasSelectionController.selectInventoryItem,

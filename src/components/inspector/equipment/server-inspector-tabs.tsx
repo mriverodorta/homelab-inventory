@@ -49,6 +49,7 @@ export function ServerInspectorTabs({
   onSelectNetworkTrace,
   onEndpointConnectionClick,
   attentionActions,
+  attentionWorkspaceId = null,
   requestedTab,
 }: {
   project: ProjectState
@@ -64,11 +65,14 @@ export function ServerInspectorTabs({
   onSelectNetworkTrace: (endpoint: ConnectionEndpoint) => void
   onEndpointConnectionClick: (endpoint: ConnectionEndpoint) => void
   attentionActions: AttentionActions
+  attentionWorkspaceId?: number | null
   requestedTab?: string | null
 }) {
   const canViewAgents = usePermission('agents.view')
   const projectId = project.metadata.projectId ?? 1
-  const showAttention = useAttentionTabVisibility({ projectId, hostType: 'server', hostId: server.id, requestedTab })
+  const showAttention = useAttentionTabVisibility({
+    projectId, workspaceId: attentionWorkspaceId, hostType: 'server', hostId: server.id, requestedTab,
+  })
   const editor = useInventoryItemEditor({
     item: server,
     onSave: (input) => onUpdateItem(runtimeItemKey(server), input),
@@ -201,7 +205,7 @@ export function ServerInspectorTabs({
         ...(showAttention ? [{
           value: 'attention',
           label: 'Attention',
-          content: <AttentionTab projectId={projectId} hostType="server" hostId={server.id} actions={attentionActions} />,
+          content: <AttentionTab projectId={projectId} workspaceId={attentionWorkspaceId} hostType="server" hostId={server.id} actions={attentionActions} />,
         }] : []),
       ]}
     />

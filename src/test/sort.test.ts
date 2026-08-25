@@ -84,6 +84,26 @@ describe('inventory lifecycle status filtering', () => {
     expect(isItemAssigned(project, archivedCpu)).toBe(true)
     expect(isItemAssigned(project, archivedServer)).toBe(true)
   })
+
+  it('finds only exact canonical inventory IDs with or without the hash prefix', () => {
+    const indexed: ProjectState = {
+      ...project,
+      items: {
+        'cpu:1': { ...availableCpu, inventoryId: 48 },
+        'cpu:2': { ...assignedCpu, inventoryId: 148, name: 'CPU 48 model' },
+      },
+      assignments: [],
+      placements: [],
+    }
+    for (const query of ['#48', '48']) {
+      expect(filterAndSortInventory(indexed, {
+        query,
+        type: 'all',
+        status: 'all',
+        sort: 'name',
+      })).toEqual([{ ...availableCpu, inventoryId: 48 }])
+    }
+  })
 })
 
 describe('expanded inventory sorting and assignment semantics', () => {

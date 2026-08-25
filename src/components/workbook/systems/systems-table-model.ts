@@ -55,6 +55,7 @@ export function systemsViewConfigurationsEqual(
     types: [...configuration.types].sort(),
     registrations: [...configuration.registrations].sort(),
     registryStates: [...configuration.registryStates].sort(),
+    canvasWorkspaceId: configuration.canvasWorkspaceId ?? null,
     sortKey: configuration.sortKey,
     sortDirection: configuration.sortDirection,
     density: configuration.density,

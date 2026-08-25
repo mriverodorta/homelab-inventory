@@ -12,6 +12,7 @@ import type { CanvasController } from '@/components/workbench-canvas-contract'
 import { setAuditWarningIgnored } from '@/lib/compatibility-policy'
 import { runtimeItemKey } from '@/lib/item-keys'
 import { endpointKey } from '@/lib/project'
+import type { WorkspaceSummary } from '@/lib/workbook-api'
 import type { ProjectState } from '@/types/inventory'
 import type { InventoryMetadataSavedChange } from '@/types/inventory-metadata'
 import type { InventoryMetadataSettingsTab } from '@/types/settings-navigation'
@@ -22,6 +23,7 @@ type ValidationSeverity = 'error' | 'unknown'
 
 interface CreateWorkspaceSurfacePropsOptions {
   project: ProjectState
+  workspaces?: readonly WorkspaceSummary[]
   topologyData: CanvasProps['topologyData']
   topologyStatus: { message: string; severity: ValidationSeverity } | null
   compatibleEndpointKeys: CanvasProps['compatibleEndpointKeys']
@@ -69,6 +71,7 @@ interface CreateWorkspaceSurfacePropsOptions {
 
 export function createWorkspaceSurfaceProps({
   project,
+  workspaces,
   topologyData,
   topologyStatus,
   compatibleEndpointKeys,
@@ -122,6 +125,7 @@ export function createWorkspaceSurfaceProps({
 
   const inspector: InspectorProps = {
     project,
+    workspaces,
     topologyData,
     topologyStatusMessage: topologyStatus?.message ?? null,
     topologyStatusIsError: topologyStatus?.severity === 'error',

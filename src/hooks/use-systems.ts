@@ -13,12 +13,12 @@ import {
 import type { SystemsHostLive, SystemsHostType, SystemsLiveResponse, SystemsSavedView, SystemsViewConfiguration } from '@/types/systems'
 import { useLiveEventTopic } from '@/live-events/use-live-event-topic'
 
-export function useSystems(projectId: number, enabled: boolean) {
+export function useSystems(projectId: number, enabled: boolean, workspaceId: number | null = null) {
   const queryClient = useQueryClient()
-  const liveKey = useMemo(() => ['projects', projectId, 'systems', 'live'] as const, [projectId])
+  const liveKey = useMemo(() => ['projects', projectId, 'systems', workspaceId ?? 'all', 'live'] as const, [projectId, workspaceId])
   const initial = useQuery({
-    queryKey: ['projects', projectId, 'systems'],
-    queryFn: () => loadSystems(projectId),
+    queryKey: ['projects', projectId, 'systems', workspaceId ?? 'all'],
+    queryFn: () => loadSystems(projectId, workspaceId),
     enabled,
     staleTime: Number.POSITIVE_INFINITY,
     refetchOnMount: false,
@@ -26,7 +26,7 @@ export function useSystems(projectId: number, enabled: boolean) {
   })
   const live = useQuery({
     queryKey: liveKey,
-    queryFn: () => loadSystemsLive(projectId),
+    queryFn: () => loadSystemsLive(projectId, workspaceId),
     enabled: false,
     staleTime: Number.POSITIVE_INFINITY,
     refetchOnMount: false,
@@ -36,12 +36,13 @@ export function useSystems(projectId: number, enabled: boolean) {
     if (!enabled || !initial.data) return
     queryClient.setQueryData<SystemsLiveResponse>(liveKey, {
       projectId,
+      canvasWorkspaceId: workspaceId,
       generatedAt: initial.data.generatedAt,
       systems: initial.data.systems,
     })
-  }, [enabled, initial.data, liveKey, projectId, queryClient])
+  }, [enabled, initial.data, liveKey, projectId, queryClient, workspaceId])
   useLiveEventTopic({
-    topic: `systems:${projectId}`,
+    topic: workspaceId === null ? `systems:${projectId}` : `systems:${projectId}:workspace:${workspaceId}`,
     enabled: enabled && initial.isSuccess,
     onEvent: (event) => {
       const system = event.payload.system as SystemsHostLive | null | undefined
@@ -50,6 +51,7 @@ export function useSystems(projectId: number, enabled: boolean) {
           const systems = current?.systems ?? initial.data?.systems ?? []
           return {
             projectId,
+            canvasWorkspaceId: workspaceId,
             generatedAt: event.occurredAt,
             systems: [...systems.filter((candidate) => candidate.itemId !== system.itemId), system],
           }
@@ -113,10 +115,10 @@ export function useSystemsViews(projectId: number, enabled: boolean) {
   return { views, create, replace, remove, setDefault }
 }
 
-export function useSystemAttention(projectId: number, hostType: SystemsHostType | null, hostId: number | null, enabled: boolean) {
+export function useSystemAttention(projectId: number, hostType: SystemsHostType | null, hostId: number | null, enabled: boolean, workspaceId: number | null = null) {
   return useQuery({
-    queryKey: ['projects', projectId, 'systems', hostType, hostId, 'attention'],
-    queryFn: () => loadSystemAttention(projectId, hostType!, hostId!),
+    queryKey: ['projects', projectId, 'systems', workspaceId ?? 'all', hostType, hostId, 'attention'],
+    queryFn: () => loadSystemAttention(projectId, hostType!, hostId!, workspaceId),
     enabled: enabled && hostType !== null && hostId !== null,
   })
 }

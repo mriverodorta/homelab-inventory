@@ -9,6 +9,17 @@ export function registerApplicationEventRoutes(app, { withStore, hub, authorizat
     void withStore(request, response, async (store) => {
       let topics
       try { topics = parseApplicationLiveTopics(request.query.topics) } catch (error) { routeError(response, error); return }
+      for (const topic of topics) {
+        if (topic.workspaceId == null) continue
+        const workspace = store.core.database.query(`
+          SELECT id FROM workspaces
+          WHERE id = ? AND project_id = ? AND type = 'canvas' AND archived_at_ms IS NULL
+        `).get(topic.workspaceId, topic.projectId)
+        if (!workspace) {
+          response.status(404).json({ message: 'The requested canvas is unavailable.', code: 'workspace-not-found' })
+          return
+        }
+      }
       if (!demo && authorization && request.authentication?.account?.id) {
         const accountId = request.authentication.account.id
         for (const topic of topics) {

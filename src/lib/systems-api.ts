@@ -7,8 +7,8 @@ import type {
   SystemsViewConfiguration,
 } from '@/types/systems'
 
-const liveEtags = new Map<number, string>()
-const liveResponses = new Map<number, SystemsLiveResponse>()
+const liveEtags = new Map<string, string>()
+const liveResponses = new Map<string, SystemsLiveResponse>()
 const viewEtags = new Map<number, string>()
 const viewResponses = new Map<number, readonly SystemsSavedView[]>()
 const attentionEtags = new Map<string, string>()
@@ -22,24 +22,33 @@ async function responseJson<T>(response: Response): Promise<T> {
   return await response.json() as T
 }
 
-export async function loadSystems(projectId: number): Promise<SystemsInitialResponse> {
-  return responseJson(await fetchWithTimeout(`/api/projects/${projectId}/systems`))
+function canvasQuery(workspaceId: number | null = null) {
+  return workspaceId === null ? '' : `?workspaceId=${workspaceId}`
 }
 
-export async function loadSystemsLive(projectId: number): Promise<SystemsLiveResponse> {
-  const etag = liveEtags.get(projectId)
-  const response = await fetchWithTimeout(`/api/projects/${projectId}/systems/live`, {
+function liveCacheKey(projectId: number, workspaceId: number | null = null) {
+  return `${projectId}:${workspaceId ?? 'all'}`
+}
+
+export async function loadSystems(projectId: number, workspaceId: number | null = null): Promise<SystemsInitialResponse> {
+  return responseJson(await fetchWithTimeout(`/api/projects/${projectId}/systems${canvasQuery(workspaceId)}`))
+}
+
+export async function loadSystemsLive(projectId: number, workspaceId: number | null = null): Promise<SystemsLiveResponse> {
+  const key = liveCacheKey(projectId, workspaceId)
+  const etag = liveEtags.get(key)
+  const response = await fetchWithTimeout(`/api/projects/${projectId}/systems/live${canvasQuery(workspaceId)}`, {
     headers: etag ? { 'If-None-Match': etag } : undefined,
   })
   if (response.status === 304) {
-    const cached = liveResponses.get(projectId)
+    const cached = liveResponses.get(key)
     if (cached) return cached
     throw new Error('Systems live cache was unavailable after a not-modified response.')
   }
   const payload = await responseJson<SystemsLiveResponse>(response)
   const responseEtag = response.headers.get('etag')
-  if (responseEtag) liveEtags.set(projectId, responseEtag)
-  liveResponses.set(projectId, payload)
+  if (responseEtag) liveEtags.set(key, responseEtag)
+  liveResponses.set(key, payload)
   return payload
 }
 
@@ -90,10 +99,10 @@ export async function setDefaultSystemsView(projectId: number, viewId: number, e
   return payload.view
 }
 
-export async function loadSystemAttention(projectId: number, hostType: string, hostId: number) {
-  const key = `${projectId}:${hostType}:${hostId}`
+export async function loadSystemAttention(projectId: number, hostType: string, hostId: number, workspaceId: number | null = null) {
+  const key = `${projectId}:${workspaceId ?? 'all'}:${hostType}:${hostId}`
   const etag = attentionEtags.get(key)
-  const response = await fetchWithTimeout(`/api/projects/${projectId}/systems/${hostType}/${hostId}/attention`, {
+  const response = await fetchWithTimeout(`/api/projects/${projectId}/systems/${hostType}/${hostId}/attention${canvasQuery(workspaceId)}`, {
     headers: etag ? { 'If-None-Match': etag } : undefined,
   })
   if (response.status === 304) return attentionResponses.get(key) ?? { summary: null, findings: [] }
@@ -110,8 +119,8 @@ export function resetSystemsLiveCache(projectId?: number) {
     liveResponses.clear()
     return
   }
-  liveEtags.delete(projectId)
-  liveResponses.delete(projectId)
+  for (const key of liveEtags.keys()) if (key.startsWith(`${projectId}:`)) liveEtags.delete(key)
+  for (const key of liveResponses.keys()) if (key.startsWith(`${projectId}:`)) liveResponses.delete(key)
 }
 
 export function resetSystemsViewsCache(projectId?: number) {

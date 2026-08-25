@@ -613,6 +613,22 @@ const RELEASE_0_15_6_DETAILS: UnreleasedReleaseNotes = {
   notes: [],
 }
 
+const RELEASE_0_16_0_DETAILS: UnreleasedReleaseNotes = {
+  highlights: [
+    'Each Canvas now keeps its own installed components, physical slot occupancy, cable connections, routing, and compatibility findings while reusing the same project inventory.',
+    'Host configurations can be copied from another Canvas with optional cable copying, while fixed and soldered components remain permanently attached.',
+    'Systems supports per-Canvas filtering and saved views, and Inspector inventory IDs can be copied or searched exactly in the inventory sidebar.',
+  ],
+  fixes: [
+    'Returning a host to inventory now affects only the current Canvas instead of removing hardware assignments and cables from other workspaces.',
+    'Registry updates, LabGD sharing, backups, selective restoration, and scoped SSE updates preserve independent Canvas topology and evaluate compatibility across every affected Canvas.',
+    'Manual and Registry-imported inventory now defaults to the current project, and existing single-project global records are repaired automatically during startup migration.',
+  ],
+  notes: [
+    'Startup migration 32 preserves numeric assignments, slot identities, placements, cable routes, fixed components, private metadata, and Registry links while making existing Canvas configurations independent.',
+  ],
+}
+
 export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
   highlights: [],
   fixes: [],
@@ -1146,9 +1162,16 @@ const RELEASE_0_2_1_DETAILS: UnreleasedReleaseNotes = {
 
 export const RELEASE_NOTES: ReleaseNoteEntry[] = [
   {
+    version: '0.16.0',
+    date: '2026-08-25',
+    channel: 'latest',
+    title: 'Independent Canvas configurations',
+    ...RELEASE_0_16_0_DETAILS,
+  },
+  {
     version: '0.15.6',
     date: '2026-08-24',
-    channel: 'latest',
+    channel: 'release',
     title: 'Reliable lab.gd account reconciliation',
     ...RELEASE_0_15_6_DETAILS,
   },

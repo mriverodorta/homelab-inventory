@@ -1,7 +1,7 @@
 import type { Database } from 'bun:sqlite'
 import { createHash } from 'node:crypto'
 import type { ManagedDatabase } from './database.ts'
-import { assertDatabaseIntegrity } from './integrity.ts'
+import { assertDatabaseIntegrity, foreignKeyViolations } from './integrity.ts'
 
 export type CommittedMigration = Readonly<{
   id: string
@@ -21,6 +21,12 @@ type AppliedMigration = {
 }
 
 const SHA256_PATTERN = /^[a-f0-9]{64}$/u
+const TABLE_REBUILD_DIRECTIVE = '-- homelab:transactional-table-rebuild'
+
+function pragmaFlag(database: Database, name: 'foreign_keys' | 'legacy_alter_table') {
+  const result = database.query(`PRAGMA ${name}`).get() as Record<string, number>
+  return Number(result[name])
+}
 
 function schemaVersion(database: Database) {
   const row = database.query('PRAGMA user_version').get() as { user_version: number }
@@ -127,10 +133,23 @@ export async function applyCommittedMigrations(
       throw new Error(`Schema version ${currentVersion} is missing migration ledger entry ${migration.id}.`)
     }
 
+    const requiresTableRebuild = migration.sql.startsWith(TABLE_REBUILD_DIRECTIVE)
+    const previousForeignKeys = requiresTableRebuild ? pragmaFlag(database, 'foreign_keys') : null
+    const previousLegacyAlterTable = requiresTableRebuild ? pragmaFlag(database, 'legacy_alter_table') : null
+
+    if (requiresTableRebuild) {
+      database.exec('PRAGMA foreign_keys = OFF;')
+      database.exec('PRAGMA legacy_alter_table = ON;')
+    }
+
     const migrate = database.transaction(() => {
       const startedAtMs = Date.now()
       database.exec(migration.sql)
       migration.verify?.(database)
+      const violations = foreignKeyViolations(database)
+      if (violations.length > 0) {
+        throw new Error(`Migration ${migration.id} produced ${violations.length} foreign-key violation(s).`)
+      }
       assertDatabaseIntegrity(database)
       const completedAtMs = Date.now()
       database.query(`
@@ -152,7 +171,17 @@ export async function applyCommittedMigrations(
       database.exec(`PRAGMA user_version = ${index + 1};`)
     })
 
-    migrate.immediate()
+    try {
+      migrate.immediate()
+    } finally {
+      if (requiresTableRebuild) {
+        database.exec(`PRAGMA legacy_alter_table = ${previousLegacyAlterTable};`)
+        database.exec(`PRAGMA foreign_keys = ${previousForeignKeys};`)
+      }
+    }
+    if (requiresTableRebuild && pragmaFlag(database, 'foreign_keys') !== previousForeignKeys) {
+      throw new Error(`Migration ${migration.id} could not restore SQLite foreign-key enforcement.`)
+    }
     applied += 1
   }
 

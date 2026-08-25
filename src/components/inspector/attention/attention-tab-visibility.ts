@@ -13,13 +13,15 @@ export function useAttentionTabVisibility({
   projectId,
   hostType,
   hostId,
+  workspaceId = null,
   requestedTab,
 }: {
   projectId: number
   hostType: SystemsHostType
   hostId: number
+  workspaceId?: number | null
   requestedTab?: string | null
 }) {
-  const attention = useSystemAttention(projectId, hostType, hostId, true)
+  const attention = useSystemAttention(projectId, hostType, hostId, true, workspaceId)
   return shouldShowAttentionTab(attention.data?.summary, requestedTab)
 }

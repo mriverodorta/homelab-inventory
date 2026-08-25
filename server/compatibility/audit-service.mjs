@@ -32,9 +32,10 @@ function aliasKey(type, id) {
   return `${type}:${id}`
 }
 
-function stableFindingKey({ projectId, hostItemId, assignmentId, finding }) {
+function stableFindingKey({ projectId, workspaceId, hostItemId, assignmentId, finding }) {
   return createHash('sha256').update(JSON.stringify([
     projectId,
+    workspaceId,
     hostItemId,
     assignmentId ?? null,
     finding.code,
@@ -193,16 +194,17 @@ export class CompatibilityAuditService {
     this.engineVersion = COMPATIBILITY_AUDIT_ENGINE_VERSION
   }
 
-  markHostDirty(store, { projectId, hostItemId, reason = 'changed' }) {
+  markHostDirty(store, { projectId, workspaceId = store.workspaceId, hostItemId, reason = 'changed' }) {
     store.core.database.query(`
       INSERT INTO compatibility_audit_dirty_hosts (
-        project_id, host_item_id, reason, enqueued_at_ms
-      ) VALUES (?, ?, ?, ?)
-      ON CONFLICT(project_id, host_item_id) DO UPDATE SET
+        project_id, workspace_id, host_item_id, reason, enqueued_at_ms
+      ) VALUES (?, ?, ?, ?, ?)
+      ON CONFLICT(project_id, workspace_id, host_item_id) DO UPDATE SET
         reason = excluded.reason,
         enqueued_at_ms = excluded.enqueued_at_ms
     `).run(
       positiveId(projectId, 'Project ID'),
+      positiveId(workspaceId, 'Workspace ID'),
       positiveId(hostItemId, 'Host item ID'),
       String(reason || 'changed'),
       this.now(),
@@ -212,12 +214,16 @@ export class CompatibilityAuditService {
   markProjectDirty(store, projectId, reason = 'project-changed') {
     const project = positiveId(projectId, 'Project ID')
     const rows = store.core.database.query(`
-      SELECT DISTINCT item.id
+      SELECT DISTINCT item.id, workspace.id AS workspace_id
       FROM inventory_items item
       JOIN inventory_item_types type ON type.id = item.type_id
       LEFT JOIN project_inventory_memberships membership
         ON membership.item_id = item.id AND membership.project_id = ?
       JOIN projects project ON project.id = ? AND project.archived_at_ms IS NULL
+      JOIN workspaces workspace
+        ON workspace.project_id = project.id
+       AND workspace.type = 'canvas'
+       AND workspace.archived_at_ms IS NULL
       WHERE item.archived_at_ms IS NULL
         AND type.key IN ('server', 'nas', 'pcBuild')
         AND (
@@ -227,7 +233,12 @@ export class CompatibilityAuditService {
         )
     `).all(project, project)
     for (const row of rows) {
-      this.markHostDirty(store, { projectId: project, hostItemId: row.id, reason })
+      this.markHostDirty(store, {
+        projectId: project,
+        workspaceId: row.workspace_id,
+        hostItemId: row.id,
+        reason,
+      })
     }
   }
 
@@ -241,14 +252,29 @@ export class CompatibilityAuditService {
       WHERE inventory.id = ?
     `).get(item)
     if (HOST_TYPES.has(direct?.key)) {
-      this.markHostDirty(store, { projectId: project, hostItemId: item, reason })
+      for (const workspace of store.core.database.query(`
+        SELECT id FROM workspaces
+        WHERE project_id = ? AND type = 'canvas' AND archived_at_ms IS NULL
+      `).all(project)) {
+        this.markHostDirty(store, {
+          projectId: project,
+          workspaceId: workspace.id,
+          hostItemId: item,
+          reason,
+        })
+      }
     }
     for (const row of store.core.database.query(`
-      SELECT DISTINCT host_item_id
+      SELECT DISTINCT host_item_id, workspace_id
       FROM component_assignments
       WHERE project_id = ? AND component_item_id = ?
     `).all(project, item)) {
-      this.markHostDirty(store, { projectId: project, hostItemId: row.host_item_id, reason })
+      this.markHostDirty(store, {
+        projectId: project,
+        workspaceId: row.workspace_id,
+        hostItemId: row.host_item_id,
+        reason,
+      })
     }
   }
 
@@ -276,19 +302,27 @@ export class CompatibilityAuditService {
     `).all(Math.min(Math.max(Number(limit) || 100, 1), 500))
     if (dirty.length === 0) return { claimed: 0, evaluated: 0, failed: 0 }
 
-    const projectIds = [...new Set(dirty.map((entry) => entry.project_id))]
+    const scopes = [...new Map(dirty.map((entry) => [
+      `${entry.project_id}:${entry.workspace_id}`,
+      { projectId: entry.project_id, workspaceId: entry.workspace_id },
+    ])).values()]
     const aliases = inventoryAliases(database)
     let evaluated = 0
     let failed = 0
 
-    for (const projectId of projectIds) {
-      const projectDirty = dirty.filter((entry) => entry.project_id === projectId)
+    for (const { projectId, workspaceId } of scopes) {
+      const projectDirty = dirty.filter((entry) => (
+        entry.project_id === projectId && entry.workspace_id === workspaceId
+      ))
       try {
-        let project = buildLegacyProjectProjection({ database, projectId })
+        let project = buildLegacyProjectProjection({ database, projectId, workspaceId })
         const allocationPlan = deterministicLegacyAllocations(project, projectDirty, aliases)
         if (allocationPlan.allocations.length > 0 && typeof store.persistDeterministicCompatibilityAllocations === 'function') {
-          store.persistDeterministicCompatibilityAllocations(allocationPlan.allocations)
-          project = buildLegacyProjectProjection({ database, projectId })
+          const scopedStore = store.projectId === projectId && store.workspaceId === workspaceId
+            ? store
+            : store.forWorkspace(projectId, workspaceId)
+          scopedStore.persistDeterministicCompatibilityAllocations(allocationPlan.allocations)
+          project = buildLegacyProjectProjection({ database, projectId, workspaceId })
         }
         const results = [
           ...evaluateProjectCompatibility(project),
@@ -322,24 +356,24 @@ export class CompatibilityAuditService {
             const revision = Number(project.revision ?? 1)
             const audit = database.query(`
               INSERT INTO compatibility_audits (
-                project_id, state, input_revision, engine_version, started_at_ms, completed_at_ms
-              ) VALUES (?, 'completed', ?, ?, ?, ?)
+                project_id, workspace_id, state, input_revision, engine_version, started_at_ms, completed_at_ms
+              ) VALUES (?, ?, 'completed', ?, ?, ?, ?)
               RETURNING id
-            `).get(projectId, Math.max(revision, 1), COMPATIBILITY_AUDIT_ENGINE_VERSION, now, now)
+            `).get(projectId, workspaceId, Math.max(revision, 1), COMPATIBILITY_AUDIT_ENGINE_VERSION, now, now)
 
             database.query(`
               UPDATE compatibility_audit_findings
               SET resolved_at_ms = ?
-              WHERE project_id = ? AND host_item_id = ? AND resolved_at_ms IS NULL
-            `).run(now, projectId, entry.host_item_id)
+              WHERE project_id = ? AND workspace_id = ? AND host_item_id = ? AND resolved_at_ms IS NULL
+            `).run(now, projectId, workspaceId, entry.host_item_id)
 
             const insert = database.query(`
               INSERT INTO compatibility_audit_findings (
-                project_id, host_item_id, component_item_id, assignment_id, resource_slot_id,
+                project_id, workspace_id, host_item_id, component_item_id, assignment_id, resource_slot_id,
                 finding_key, rule_key, severity, classification, message, details_json,
                 first_seen_at_ms, last_seen_at_ms, resolved_at_ms
-              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)
-              ON CONFLICT(project_id, finding_key) DO UPDATE SET
+              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)
+              ON CONFLICT(project_id, workspace_id, finding_key) DO UPDATE SET
                 host_item_id = excluded.host_item_id,
                 component_item_id = excluded.component_item_id,
                 assignment_id = excluded.assignment_id,
@@ -359,11 +393,12 @@ export class CompatibilityAuditService {
               for (const finding of result.findings) {
                 insert.run(
                   projectId,
+                  workspaceId,
                   entry.host_item_id,
                   componentItemId,
                   assignmentId,
                   resourceSlotId,
-                  stableFindingKey({ projectId, hostItemId: entry.host_item_id, assignmentId, finding }),
+                  stableFindingKey({ projectId, workspaceId, hostItemId: entry.host_item_id, assignmentId, finding }),
                   finding.code,
                   severity(finding),
                   classification(finding),
@@ -383,10 +418,11 @@ export class CompatibilityAuditService {
           evaluated += 1
           this.onChanged?.(store, {
             projectId,
+            workspaceId,
             hostType: hostAlias.host_type,
             hostId: hostAlias.legacy_id,
             hostItemId: entry.host_item_id,
-            counts: this.hostCounts(store, projectId, entry.host_item_id),
+            counts: this.hostCounts(store, projectId, entry.host_item_id, workspaceId),
           })
         }
       } catch (error) {
@@ -397,23 +433,27 @@ export class CompatibilityAuditService {
     return { claimed: dirty.length, evaluated, failed }
   }
 
-  hostCounts(store, projectId, hostItemId) {
+  hostCounts(store, projectId, hostItemId, workspaceId = store.workspaceId) {
     const row = store.core.database.query(`
       SELECT
         count(*) FILTER (WHERE classification = 'actionable') AS actionable_count,
         count(*) FILTER (WHERE classification = 'informational') AS informational_count
       FROM compatibility_audit_findings finding
       LEFT JOIN compatibility_audit_ignores ignored ON ignored.finding_id = finding.id
-      WHERE project_id = ? AND host_item_id = ? AND resolved_at_ms IS NULL
+      WHERE project_id = ? AND workspace_id = ? AND host_item_id = ? AND resolved_at_ms IS NULL
         AND ignored.id IS NULL
-    `).get(positiveId(projectId, 'Project ID'), positiveId(hostItemId, 'Host item ID'))
+    `).get(
+      positiveId(projectId, 'Project ID'),
+      positiveId(workspaceId, 'Workspace ID'),
+      positiveId(hostItemId, 'Host item ID'),
+    )
     return {
       actionable: Number(row?.actionable_count ?? 0),
       informational: Number(row?.informational_count ?? 0),
     }
   }
 
-  summaries(store, projectId) {
+  summaries(store, projectId, workspaceId = store.workspaceId) {
     return store.core.database.query(`
       SELECT finding.host_item_id,
         type.key AS host_type,
@@ -425,11 +465,11 @@ export class CompatibilityAuditService {
       JOIN inventory_item_types type ON type.id = host.type_id
       JOIN inventory_identity_aliases alias ON alias.item_id = host.id
       LEFT JOIN compatibility_audit_ignores ignored ON ignored.finding_id = finding.id
-      WHERE finding.project_id = ? AND finding.resolved_at_ms IS NULL
+      WHERE finding.project_id = ? AND finding.workspace_id = ? AND finding.resolved_at_ms IS NULL
         AND ignored.id IS NULL
       GROUP BY finding.host_item_id, type.key, alias.legacy_id
       ORDER BY finding.host_item_id
-    `).all(positiveId(projectId, 'Project ID')).map((row) => ({
+    `).all(positiveId(projectId, 'Project ID'), positiveId(workspaceId, 'Workspace ID')).map((row) => ({
       hostItemId: row.host_item_id,
       hostType: row.host_type,
       hostId: row.host_id,
@@ -440,13 +480,14 @@ export class CompatibilityAuditService {
 
   findings(store, {
     projectId,
+    workspaceId = store.workspaceId,
     classification: requestedClassification = null,
     hostType: requestedHostType = null,
     hostId = null,
     visibility = 'open',
   }) {
-    const conditions = ['finding.project_id = ?', 'finding.resolved_at_ms IS NULL']
-    const values = [positiveId(projectId, 'Project ID')]
+    const conditions = ['finding.project_id = ?', 'finding.workspace_id = ?', 'finding.resolved_at_ms IS NULL']
+    const values = [positiveId(projectId, 'Project ID'), positiveId(workspaceId, 'Workspace ID')]
     if (!['open', 'ignored', 'all'].includes(visibility)) {
       throw new TypeError('Compatibility finding visibility is invalid.')
     }
@@ -485,7 +526,8 @@ export class CompatibilityAuditService {
     const project = positiveId(projectId, 'Project ID')
     const finding = positiveId(findingId, 'Compatibility finding ID')
     const row = store.core.database.query(`
-      SELECT finding.host_item_id, type.key AS host_type, alias.legacy_id AS host_id
+      SELECT finding.host_item_id, finding.workspace_id,
+        type.key AS host_type, alias.legacy_id AS host_id
       FROM compatibility_audit_findings finding
       JOIN inventory_items host ON host.id = finding.host_item_id
       JOIN inventory_item_types type ON type.id = host.type_id
@@ -513,9 +555,10 @@ export class CompatibilityAuditService {
     } else {
       store.core.database.query('DELETE FROM compatibility_audit_ignores WHERE finding_id = ?').run(finding)
     }
-    const counts = this.hostCounts(store, project, row.host_item_id)
+    const counts = this.hostCounts(store, project, row.host_item_id, row.workspace_id)
     this.onChanged?.(store, {
       projectId: project,
+      workspaceId: row.workspace_id,
       hostType: row.host_type,
       hostId: row.host_id,
       hostItemId: row.host_item_id,

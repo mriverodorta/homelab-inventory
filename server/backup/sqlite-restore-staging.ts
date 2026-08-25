@@ -150,8 +150,10 @@ function itemAliases(database: Database) {
 }
 
 function clearProjectTopology(database: Database, projectId: number, workspaceId: number) {
-  database.query('DELETE FROM project_connections WHERE project_id = ?').run(projectId)
-  database.query('DELETE FROM component_assignments WHERE project_id = ?').run(projectId)
+  database.query('DELETE FROM project_connections WHERE project_id = ? AND workspace_id = ?')
+    .run(projectId, workspaceId)
+  database.query('DELETE FROM component_assignments WHERE project_id = ? AND workspace_id = ?')
+    .run(projectId, workspaceId)
   database.query('DELETE FROM workspace_placements WHERE project_id = ? AND workspace_id = ?').run(projectId, workspaceId)
 }
 

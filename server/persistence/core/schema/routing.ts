@@ -54,8 +54,8 @@ export const workspaceConnectionVisibility = sqliteTable('workspace_connection_v
   }).onDelete('cascade'),
   foreignKey({
     name: 'workspace_connection_visibility_connection_fk',
-    columns: [table.projectId, table.connectionId],
-    foreignColumns: [projectConnections.projectId, projectConnections.id],
+    columns: [table.projectId, table.workspaceId, table.connectionId],
+    foreignColumns: [projectConnections.projectId, projectConnections.workspaceId, projectConnections.id],
   }).onDelete('cascade'),
   check('workspace_connection_visibility_visible_check', sql`${table.visible} IN (0, 1)`),
 ])
@@ -81,8 +81,8 @@ export const workspaceManualBendPoints = sqliteTable('workspace_manual_bend_poin
   }).onDelete('cascade'),
   foreignKey({
     name: 'workspace_manual_bend_points_connection_fk',
-    columns: [table.projectId, table.connectionId],
-    foreignColumns: [projectConnections.projectId, projectConnections.id],
+    columns: [table.projectId, table.workspaceId, table.connectionId],
+    foreignColumns: [projectConnections.projectId, projectConnections.workspaceId, projectConnections.id],
   }).onDelete('cascade'),
   check('workspace_manual_bend_points_position_check', sql`${table.position} >= 0`),
 ])
@@ -107,8 +107,8 @@ export const workspaceRouteCache = sqliteTable('workspace_route_cache', {
   }).onDelete('cascade'),
   foreignKey({
     name: 'workspace_route_cache_connection_fk',
-    columns: [table.projectId, table.connectionId],
-    foreignColumns: [projectConnections.projectId, projectConnections.id],
+    columns: [table.projectId, table.workspaceId, table.connectionId],
+    foreignColumns: [projectConnections.projectId, projectConnections.workspaceId, projectConnections.id],
   }).onDelete('cascade'),
   check('workspace_route_cache_payload_check', sql`json_valid(${table.routePayloadJson})`),
 ])

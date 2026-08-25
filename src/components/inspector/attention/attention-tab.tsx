@@ -48,8 +48,14 @@ function Finding({ finding, actions }: { finding: SystemsAttentionFinding; actio
   )
 }
 
-export function AttentionTab({ projectId, hostType, hostId, actions }: { projectId: number; hostType: SystemsHostType; hostId: number; actions: AttentionActions }) {
-  const attention = useSystemAttention(projectId, hostType, hostId, true)
+export function AttentionTab({ projectId, workspaceId = null, hostType, hostId, actions }: {
+  projectId: number
+  workspaceId?: number | null
+  hostType: SystemsHostType
+  hostId: number
+  actions: AttentionActions
+}) {
+  const attention = useSystemAttention(projectId, hostType, hostId, true, workspaceId)
   if (attention.isPending) return <div className="space-y-3" aria-label="Loading attention items">{[0, 1, 2].map((index) => <div key={index} className="h-16 animate-pulse rounded-md bg-[#eee9e1]" />)}</div>
   if (attention.isError) return <div role="alert" className="flex gap-2 rounded-md border border-[#dfb3a5] bg-[#fff4ee] p-3 text-sm text-[#613126]"><CircleAlert className="mt-0.5 size-4 shrink-0" /><span>{attention.error instanceof Error ? attention.error.message : 'Attention items could not be loaded.'}</span></div>
   const findings = attention.data?.findings ?? []

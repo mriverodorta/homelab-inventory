@@ -11,10 +11,13 @@ import type {
 } from '@/types/inventory'
 import type { InventoryMetadataSavedChange } from '@/types/inventory-metadata'
 import type { InventoryMetadataSettingsTab } from '@/types/settings-navigation'
+import type { WorkspaceSummary } from '@/lib/workbook-api'
 
 export type InspectorPanelProps = {
   layout?: 'overlay' | 'systems-split'
   project: ProjectState
+  attentionWorkspaceId?: number | null
+  workspaces?: readonly WorkspaceSummary[]
   topologyData?: TopologyQueryData | null
   compatibleEndpointKeys?: ReadonlySet<string> | null
   topologyStatusMessage?: string | null

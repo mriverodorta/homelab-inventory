@@ -126,7 +126,30 @@ export class SystemsReadService {
     this.now = now
   }
 
-  #hostRows(database, projectId) {
+  #workspaceId(database, projectId, workspaceId = null) {
+    if (workspaceId !== null && workspaceId !== undefined) {
+      const selected = positiveId(workspaceId, 'Systems canvas ID')
+      const workspace = database.query(`
+        SELECT id FROM workspaces
+        WHERE id = ? AND project_id = ? AND type = 'canvas' AND archived_at_ms IS NULL
+      `).get(selected, projectId)
+      if (!workspace) throw new Error(`Active canvas ${selected} was not found in project ${projectId}.`)
+      return selected
+    }
+    const workspace = database.query(`
+      SELECT workspace.id
+      FROM workspaces workspace
+      LEFT JOIN project_preferences preferences ON preferences.project_id = workspace.project_id
+      WHERE workspace.project_id = ? AND workspace.type = 'canvas' AND workspace.archived_at_ms IS NULL
+      ORDER BY CASE WHEN preferences.default_workspace_id = workspace.id THEN 0 ELSE 1 END,
+        workspace.sort_order, workspace.id
+      LIMIT 1
+    `).get(projectId)
+    if (!workspace) throw new Error(`Project ${projectId} has no active Canvas workspace.`)
+    return workspace.id
+  }
+
+  #hostRows(database, projectId, workspaceId = null) {
     const project = database.query(`
       SELECT id FROM projects WHERE id = ? AND archived_at_ms IS NULL
     `).get(projectId)
@@ -165,11 +188,15 @@ export class SystemsReadService {
       WHERE item.archived_at_ms IS NULL
         AND type.key IN ('server', 'nas', 'pcBuild')
         AND (membership.id IS NOT NULL OR item.owner_project_id = ?)
+        AND (? IS NULL OR EXISTS (
+          SELECT 1 FROM workspace_placements placement
+          WHERE placement.project_id = ? AND placement.workspace_id = ? AND placement.item_id = item.id
+        ))
       ORDER BY lower(coalesce(override.display_name, item.name)), item.id
-    `).all(projectId, projectId, projectId)
+    `).all(projectId, projectId, projectId, workspaceId, projectId, workspaceId)
   }
 
-  #componentRows(database, projectId, hostItemIds) {
+  #componentRows(database, projectId, workspaceId, hostItemIds) {
     if (!hostItemIds.length) return []
     const placeholders = hostItemIds.map(() => '?').join(', ')
     return database.query(`
@@ -194,13 +221,14 @@ export class SystemsReadService {
       LEFT JOIN storage_devices storage ON storage.id = component.id
       LEFT JOIN storage_interfaces storage_interface ON storage_interface.id = storage.interface_id
       WHERE assignment.project_id = ?
+        AND assignment.workspace_id = ?
         AND assignment.host_item_id IN (${placeholders})
         AND component.archived_at_ms IS NULL
       ORDER BY assignment.host_item_id, assignment.id
-    `).all(projectId, ...hostItemIds)
+    `).all(projectId, workspaceId, ...hostItemIds)
   }
 
-  #liveHostRows(database, projectId) {
+  #liveHostRows(database, projectId, workspaceId = null) {
     const project = database.query(`
       SELECT id FROM projects WHERE id = ? AND archived_at_ms IS NULL
     `).get(projectId)
@@ -225,16 +253,21 @@ export class SystemsReadService {
       WHERE item.archived_at_ms IS NULL
         AND type.key IN ('server', 'nas', 'pcBuild')
         AND (membership.id IS NOT NULL OR item.owner_project_id = ?)
+        AND (? IS NULL OR EXISTS (
+          SELECT 1 FROM workspace_placements placement
+          WHERE placement.project_id = ? AND placement.workspace_id = ? AND placement.item_id = item.id
+        ))
       ORDER BY item.id
-    `).all(projectId, projectId)
+    `).all(projectId, projectId, workspaceId, projectId, workspaceId)
   }
 
-  #snapshot(store, projectId, endpoint, attentionCategories) {
+  #snapshot(store, projectId, endpoint, attentionCategories, selectedWorkspaceId = null) {
     const id = positiveId(projectId, 'Project ID')
-    const hosts = this.#hostRows(store.core.database, id)
+    const workspaceId = this.#workspaceId(store.core.database, id, selectedWorkspaceId)
+    const hosts = this.#hostRows(store.core.database, id, selectedWorkspaceId)
     const hostItemIds = hosts.map((host) => host.item_id)
     const boundHostItemIds = hosts.filter((host) => host.agent_id != null).map((host) => host.item_id)
-    const components = this.#componentRows(store.core.database, id, hostItemIds)
+    const components = this.#componentRows(store.core.database, id, workspaceId, hostItemIds)
     const telemetryByHost = this.telemetryRepository?.getSystemsSnapshot(boundHostItemIds) ?? new Map()
     const componentsByHost = new Map()
     for (const component of components) {
@@ -244,10 +277,11 @@ export class SystemsReadService {
     }
     const timing = agentStatusTiming()
     const currentAgentVersion = this.releaseService?.current().version ?? null
-    const attentionByHost = this.attentionProjector?.summaries(store, id, attentionCategories) ?? new Map()
+    const attentionByHost = this.attentionProjector?.summaries(store, id, attentionCategories, workspaceId) ?? new Map()
 
     return {
       projectId: id,
+      canvasWorkspaceId: selectedWorkspaceId,
       generatedAt: new Date(this.now()).toISOString(),
       currentAgentVersion,
       systems: hosts.map((host) => {
@@ -311,19 +345,21 @@ export class SystemsReadService {
     }
   }
 
-  initial(store, projectId, endpoint, { attentionCategories = null } = {}) {
-    return this.#snapshot(store, projectId, endpoint, attentionCategories)
+  initial(store, projectId, endpoint, { attentionCategories = null, workspaceId = null } = {}) {
+    return this.#snapshot(store, projectId, endpoint, attentionCategories, workspaceId)
   }
 
-  live(store, projectId, endpoint, { attentionCategories = null } = {}) {
+  live(store, projectId, endpoint, { attentionCategories = null, workspaceId: selectedWorkspaceId = null } = {}) {
     const id = positiveId(projectId, 'Project ID')
-    const hosts = this.#liveHostRows(store.core.database, id)
+    const workspaceId = this.#workspaceId(store.core.database, id, selectedWorkspaceId)
+    const hosts = this.#liveHostRows(store.core.database, id, selectedWorkspaceId)
     const boundHostItemIds = hosts.filter((host) => host.agent_id != null).map((host) => host.item_id)
     const telemetryByHost = this.telemetryRepository?.getSystemsSnapshot(boundHostItemIds) ?? new Map()
     const timing = agentStatusTiming()
-    const attentionByHost = this.attentionProjector?.summaries(store, id, attentionCategories) ?? new Map()
+    const attentionByHost = this.attentionProjector?.summaries(store, id, attentionCategories, workspaceId) ?? new Map()
     return {
       projectId: id,
+      canvasWorkspaceId: selectedWorkspaceId,
       generatedAt: new Date(this.now()).toISOString(),
       systems: hosts.map((host) => {
         const registered = host.agent_id != null

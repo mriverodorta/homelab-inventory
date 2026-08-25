@@ -1,21 +1,28 @@
 import { sql } from 'drizzle-orm'
-import { check, index, integer, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core'
+import { check, foreignKey, index, integer, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core'
 import { inventoryItems } from './inventory-base.ts'
 import { projects } from './project-base.ts'
 import { hostResourceSlots } from './resources.ts'
 import { componentAssignments } from './topology.ts'
 import { users } from './authentication.ts'
+import { workspaces } from './projects.ts'
 
 export const compatibilityAudits = sqliteTable('compatibility_audits', {
   id: integer('id').primaryKey({ autoIncrement: true }),
   projectId: integer('project_id').notNull().references(() => projects.id, { onDelete: 'cascade' }),
+  workspaceId: integer('workspace_id').notNull(),
   state: text('state').notNull(),
   inputRevision: integer('input_revision').notNull(),
   engineVersion: text('engine_version').notNull(),
   startedAtMs: integer('started_at_ms').notNull(),
   completedAtMs: integer('completed_at_ms'),
 }, (table) => [
-  index('compatibility_audits_project_index').on(table.projectId, table.startedAtMs),
+  index('compatibility_audits_project_index').on(table.projectId, table.workspaceId, table.startedAtMs),
+  foreignKey({
+    name: 'compatibility_audits_workspace_fk',
+    columns: [table.projectId, table.workspaceId],
+    foreignColumns: [workspaces.projectId, workspaces.id],
+  }).onDelete('cascade'),
   check('compatibility_audits_state_check', sql`${table.state} IN ('running', 'completed', 'failed')`),
   check('compatibility_audits_revision_check', sql`${table.inputRevision} > 0`),
 ])
@@ -23,6 +30,7 @@ export const compatibilityAudits = sqliteTable('compatibility_audits', {
 export const compatibilityAuditFindings = sqliteTable('compatibility_audit_findings', {
   id: integer('id').primaryKey({ autoIncrement: true }),
   projectId: integer('project_id').notNull().references(() => projects.id, { onDelete: 'cascade' }),
+  workspaceId: integer('workspace_id').notNull(),
   hostItemId: integer('host_item_id').notNull().references(() => inventoryItems.id, { onDelete: 'cascade' }),
   componentItemId: integer('component_item_id').references(() => inventoryItems.id, { onDelete: 'cascade' }),
   assignmentId: integer('assignment_id').references(() => componentAssignments.id, { onDelete: 'cascade' }),
@@ -37,9 +45,14 @@ export const compatibilityAuditFindings = sqliteTable('compatibility_audit_findi
   lastSeenAtMs: integer('last_seen_at_ms').notNull(),
   resolvedAtMs: integer('resolved_at_ms'),
 }, (table) => [
-  uniqueIndex('compatibility_audit_findings_project_key_unique').on(table.projectId, table.findingKey),
-  index('compatibility_audit_findings_host_index').on(table.projectId, table.hostItemId, table.resolvedAtMs),
+  uniqueIndex('compatibility_audit_findings_project_key_unique').on(table.projectId, table.workspaceId, table.findingKey),
+  index('compatibility_audit_findings_host_index').on(table.projectId, table.workspaceId, table.hostItemId, table.resolvedAtMs),
   index('compatibility_audit_findings_assignment_index').on(table.assignmentId, table.resolvedAtMs),
+  foreignKey({
+    name: 'compatibility_audit_findings_workspace_fk',
+    columns: [table.projectId, table.workspaceId],
+    foreignColumns: [workspaces.projectId, workspaces.id],
+  }).onDelete('cascade'),
   check('compatibility_audit_findings_severity_check', sql`${table.severity} IN ('info', 'warning', 'error')`),
   check('compatibility_audit_findings_classification_check', sql`
     ${table.classification} IN ('actionable', 'informational')
@@ -50,12 +63,18 @@ export const compatibilityAuditFindings = sqliteTable('compatibility_audit_findi
 export const compatibilityAuditDirtyHosts = sqliteTable('compatibility_audit_dirty_hosts', {
   id: integer('id').primaryKey({ autoIncrement: true }),
   projectId: integer('project_id').notNull().references(() => projects.id, { onDelete: 'cascade' }),
+  workspaceId: integer('workspace_id').notNull(),
   hostItemId: integer('host_item_id').notNull().references(() => inventoryItems.id, { onDelete: 'cascade' }),
   reason: text('reason').notNull(),
   enqueuedAtMs: integer('enqueued_at_ms').notNull(),
 }, (table) => [
-  uniqueIndex('compatibility_audit_dirty_hosts_unique').on(table.projectId, table.hostItemId),
+  uniqueIndex('compatibility_audit_dirty_hosts_unique').on(table.projectId, table.workspaceId, table.hostItemId),
   index('compatibility_audit_dirty_hosts_queue_index').on(table.enqueuedAtMs, table.id),
+  foreignKey({
+    name: 'compatibility_audit_dirty_hosts_workspace_fk',
+    columns: [table.projectId, table.workspaceId],
+    foreignColumns: [workspaces.projectId, workspaces.id],
+  }).onDelete('cascade'),
   check('compatibility_audit_dirty_hosts_reason_check', sql`length(trim(${table.reason})) > 0`),
 ])
 

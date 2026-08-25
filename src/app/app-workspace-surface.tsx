@@ -1,4 +1,4 @@
-import type { ComponentProps } from 'react'
+import { useState, type ComponentProps } from 'react'
 import {
   ExampleWorkspaceGuide,
   GettingStartedChecklist,
@@ -28,6 +28,7 @@ export interface AppWorkspaceSurfaceProps {
 
 export interface WorkbookSurfaceProps {
   workspace: WorkspaceSummary
+  workspaces?: readonly WorkspaceSummary[]
   project: ProjectState
   selectedItemId: string | null
   onSelectItem(itemId: string): void
@@ -42,14 +43,17 @@ export function AppWorkspaceSurface({
   portPreview,
   workbook,
 }: AppWorkspaceSurfaceProps) {
+  const [systemsCanvasWorkspaceId, setSystemsCanvasWorkspaceId] = useState<number | null>(null)
   if (workbook?.workspace.type === 'systems') {
     return (
       <div className="flex min-w-0 flex-1 overflow-hidden">
         <SystemsWorkspace
           project={workbook.project}
+          workspaces={workbook.workspaces}
           selectedItemId={workbook.selectedItemId}
           onSelectItem={workbook.onSelectItem}
           onCloseInspector={workbook.onCloseInspector}
+          onCanvasScopeChange={setSystemsCanvasWorkspaceId}
         />
         <div
           data-testid="systems-inspector-region"
@@ -58,7 +62,11 @@ export function AppWorkspaceSurface({
             inspector.open ? 'lg:w-[min(42vw,680px)]' : 'lg:w-0'
           }`}
         >
-          <SystemsInspectorPanel {...inspector} layout="systems-split" />
+          <SystemsInspectorPanel
+            {...inspector}
+            attentionWorkspaceId={systemsCanvasWorkspaceId}
+            layout="systems-split"
+          />
         </div>
       </div>
     )

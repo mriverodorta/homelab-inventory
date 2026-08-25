@@ -32,13 +32,13 @@ function itemType(database, itemId) {
   `).get(itemId)?.key ?? null
 }
 
-function sourceRows(database, projectId, hostId) {
+function sourceRows(database, projectId, workspaceId, hostId) {
   const assembly = database.query(`
     SELECT ? AS item_id
     UNION
     SELECT component_item_id FROM component_assignments
-    WHERE project_id = ? AND host_item_id = ?
-  `).all(hostId, projectId, hostId).map((row) => row.item_id)
+    WHERE project_id = ? AND workspace_id = ? AND host_item_id = ?
+  `).all(hostId, projectId, workspaceId, hostId).map((row) => row.item_id)
   const placeholders = assembly.map(() => '?').join(',')
   const registry = placeholders ? database.query(`
     SELECT evaluation.id, evaluation.link_id, evaluation.to_revision,
@@ -70,12 +70,12 @@ function sourceRows(database, projectId, hostId) {
     LEFT JOIN inventory_items component ON component.id = finding.component_item_id
     LEFT JOIN inventory_item_types component_type ON component_type.id = component.type_id
     LEFT JOIN compatibility_audit_ignores ignored ON ignored.finding_id = finding.id
-    WHERE finding.project_id = ? AND finding.host_item_id = ?
+    WHERE finding.project_id = ? AND finding.workspace_id = ? AND finding.host_item_id = ?
       AND finding.resolved_at_ms IS NULL
       AND finding.classification = 'actionable'
       AND ignored.id IS NULL
     ORDER BY finding.id
-  `).all(projectId, hostId)
+  `).all(projectId, workspaceId, hostId)
   const notifications = database.query(`
     SELECT id, event_key, event_type, severity, title, summary, monitored_resource_id
     FROM incidents WHERE host_item_id = ? AND state = 'open' ORDER BY id
@@ -129,6 +129,7 @@ function publicSummary(row, categories = null) {
   return {
     id: row.id,
     projectId: row.project_id,
+    workspaceId: row.workspace_id,
     hostType: row.host_type,
     hostId: row.host_id,
     registryCount,
@@ -149,14 +150,22 @@ export class SystemAttentionProjector {
     this.timer = null
   }
 
-  markHostDirty(store, { projectId, hostType: type, hostId, reason }) {
+  markHostDirty(store, { projectId, workspaceId = store.workspaceId, hostType: type, hostId, reason }) {
     const database = store.core.database
     database.query(`
-      INSERT INTO system_attention_dirty_hosts (project_id, host_type, host_id, reason, created_at_ms)
-      VALUES (?, ?, ?, ?, ?)
-      ON CONFLICT(project_id, host_type, host_id) DO UPDATE SET
+      INSERT INTO system_attention_dirty_hosts (
+        project_id, workspace_id, host_type, host_id, reason, created_at_ms
+      ) VALUES (?, ?, ?, ?, ?, ?)
+      ON CONFLICT(project_id, workspace_id, host_type, host_id) DO UPDATE SET
         reason = excluded.reason, created_at_ms = excluded.created_at_ms
-    `).run(positiveId(projectId, 'Project ID'), hostType(type), positiveId(hostId, 'Host ID'), String(reason || 'changed'), this.now())
+    `).run(
+      positiveId(projectId, 'Project ID'),
+      positiveId(workspaceId, 'Workspace ID'),
+      hostType(type),
+      positiveId(hostId, 'Host ID'),
+      String(reason || 'changed'),
+      this.now(),
+    )
   }
 
   markHostsForItemDirty(store, { projectId, itemId, reason }) {
@@ -164,47 +173,83 @@ export class SystemAttentionProjector {
     const project = positiveId(projectId, 'Project ID')
     const item = positiveId(itemId, 'Item ID')
     const directType = itemType(database, item)
-    if (HOST_TYPES.has(directType)) this.markHostDirty(store, { projectId: project, hostType: directType, hostId: item, reason })
+    if (HOST_TYPES.has(directType)) {
+      for (const workspace of database.query(`
+        SELECT id FROM workspaces
+        WHERE project_id = ? AND type = 'canvas' AND archived_at_ms IS NULL
+      `).all(project)) {
+        this.markHostDirty(store, {
+          projectId: project,
+          workspaceId: workspace.id,
+          hostType: directType,
+          hostId: item,
+          reason,
+        })
+      }
+    }
     for (const row of database.query(`
-      SELECT assignment.host_item_id, type.key AS host_type
+      SELECT assignment.host_item_id, assignment.workspace_id, type.key AS host_type
       FROM component_assignments assignment
       JOIN inventory_items host ON host.id = assignment.host_item_id
       JOIN inventory_item_types type ON type.id = host.type_id
       WHERE assignment.project_id = ? AND assignment.component_item_id = ?
     `).all(project, item)) {
-      this.markHostDirty(store, { projectId: project, hostType: row.host_type, hostId: row.host_item_id, reason })
+      this.markHostDirty(store, {
+        projectId: project,
+        workspaceId: row.workspace_id,
+        hostType: row.host_type,
+        hostId: row.host_item_id,
+        reason,
+      })
     }
   }
 
   markProjectDirty(store, projectId, reason = 'project-changed') {
     const project = positiveId(projectId, 'Project ID')
     for (const row of store.core.database.query(`
-      SELECT DISTINCT item.id AS host_id, type.key AS host_type
+      SELECT DISTINCT item.id AS host_id, type.key AS host_type, workspace.id AS workspace_id
       FROM inventory_items item
       JOIN inventory_item_types type ON type.id = item.type_id
       LEFT JOIN project_inventory_memberships membership
         ON membership.item_id = item.id AND membership.project_id = ?
       JOIN projects project ON project.id = ? AND project.archived_at_ms IS NULL
+      JOIN workspaces workspace ON workspace.project_id = project.id
+        AND workspace.type = 'canvas' AND workspace.archived_at_ms IS NULL
       WHERE item.archived_at_ms IS NULL AND type.key IN ('server', 'nas', 'pcBuild')
         AND (item.owner_project_id = project.id OR membership.id IS NOT NULL
           OR (item.scope = 'global' AND project.includes_global_inventory = 1))
     `).all(project, project)) {
-      this.markHostDirty(store, { projectId: project, hostType: row.host_type, hostId: row.host_id, reason })
+      this.markHostDirty(store, {
+        projectId: project,
+        workspaceId: row.workspace_id,
+        hostType: row.host_type,
+        hostId: row.host_id,
+        reason,
+      })
     }
   }
 
-  summaries(store, projectId, categories = null) {
+  summaries(store, projectId, categories = null, workspaceId = store.workspaceId) {
     return new Map(store.core.database.query(`
-      SELECT * FROM system_attention_summaries WHERE project_id = ? ORDER BY host_id
-    `).all(positiveId(projectId, 'Project ID')).map((row) => [row.host_id, publicSummary(row, categories)]))
+      SELECT * FROM system_attention_summaries
+      WHERE project_id = ? AND workspace_id = ? ORDER BY host_id
+    `).all(
+      positiveId(projectId, 'Project ID'),
+      positiveId(workspaceId, 'Workspace ID'),
+    ).map((row) => [row.host_id, publicSummary(row, categories)]))
   }
 
-  details(store, projectId, type, hostId, categories = null) {
+  details(store, projectId, type, hostId, categories = null, workspaceId = store.workspaceId) {
     const database = store.core.database
     const summary = database.query(`
       SELECT * FROM system_attention_summaries
-      WHERE project_id = ? AND host_type = ? AND host_id = ?
-    `).get(positiveId(projectId, 'Project ID'), hostType(type), positiveId(hostId, 'Host ID'))
+      WHERE project_id = ? AND workspace_id = ? AND host_type = ? AND host_id = ?
+    `).get(
+      positiveId(projectId, 'Project ID'),
+      positiveId(workspaceId, 'Workspace ID'),
+      hostType(type),
+      positiveId(hostId, 'Host ID'),
+    )
     if (!summary) return { summary: null, findings: [] }
     const findings = database.query(`
       SELECT * FROM system_attention_findings WHERE summary_id = ? ORDER BY category, severity DESC, id
@@ -233,12 +278,12 @@ export class SystemAttentionProjector {
     let failed = 0
     for (const entry of dirty) {
       try {
-        const rows = sourceRows(database, entry.project_id, entry.host_id)
+        const rows = sourceRows(database, entry.project_id, entry.workspace_id, entry.host_id)
         const nextFingerprint = fingerprint(rows)
         const current = database.query(`
           SELECT * FROM system_attention_summaries
-          WHERE project_id = ? AND host_type = ? AND host_id = ?
-        `).get(entry.project_id, entry.host_type, entry.host_id)
+          WHERE project_id = ? AND workspace_id = ? AND host_type = ? AND host_id = ?
+        `).get(entry.project_id, entry.workspace_id, entry.host_type, entry.host_id)
         if (current?.input_fingerprint === nextFingerprint && current.state === 'current') {
           database.query('DELETE FROM system_attention_dirty_hosts WHERE id = ?').run(entry.id)
           reused += 1
@@ -254,10 +299,10 @@ export class SystemAttentionProjector {
           const at = this.now()
           database.query(`
             INSERT INTO system_attention_summaries (
-              project_id, host_type, host_id, registry_count, audit_count, notification_count,
+              project_id, workspace_id, host_type, host_id, registry_count, audit_count, notification_count,
               total_count, input_fingerprint, state, revision, evaluated_at_ms, updated_at_ms
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'current', 1, ?, ?)
-            ON CONFLICT(project_id, host_type, host_id) DO UPDATE SET
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'current', 1, ?, ?)
+            ON CONFLICT(project_id, workspace_id, host_type, host_id) DO UPDATE SET
               registry_count = excluded.registry_count,
               audit_count = excluded.audit_count,
               notification_count = excluded.notification_count,
@@ -265,9 +310,13 @@ export class SystemAttentionProjector {
               input_fingerprint = excluded.input_fingerprint,
               state = 'current', revision = revision + 1,
               evaluated_at_ms = excluded.evaluated_at_ms, updated_at_ms = excluded.updated_at_ms
-          `).run(entry.project_id, entry.host_type, entry.host_id, counts.registry, counts.audit, counts.notification,
+          `).run(entry.project_id, entry.workspace_id, entry.host_type, entry.host_id,
+            counts.registry, counts.audit, counts.notification,
             findings.length, nextFingerprint, at, at)
-          const summary = database.query(`SELECT id FROM system_attention_summaries WHERE project_id = ? AND host_type = ? AND host_id = ?`).get(entry.project_id, entry.host_type, entry.host_id)
+          const summary = database.query(`
+            SELECT id FROM system_attention_summaries
+            WHERE project_id = ? AND workspace_id = ? AND host_type = ? AND host_id = ?
+          `).get(entry.project_id, entry.workspace_id, entry.host_type, entry.host_id)
           database.query('DELETE FROM system_attention_findings WHERE summary_id = ?').run(summary.id)
           const insert = database.query(`
             INSERT INTO system_attention_findings (
@@ -281,7 +330,10 @@ export class SystemAttentionProjector {
         })()
         evaluated += 1
       } catch (error) {
-        const current = database.query(`SELECT id FROM system_attention_summaries WHERE project_id = ? AND host_type = ? AND host_id = ?`).get(entry.project_id, entry.host_type, entry.host_id)
+        const current = database.query(`
+          SELECT id FROM system_attention_summaries
+          WHERE project_id = ? AND workspace_id = ? AND host_type = ? AND host_id = ?
+        `).get(entry.project_id, entry.workspace_id, entry.host_type, entry.host_id)
         if (current) database.query(`UPDATE system_attention_summaries SET state = 'failed', updated_at_ms = ? WHERE id = ?`).run(this.now(), current.id)
         failed += 1
         this.log?.error?.('[systems-attention] Projection failed.', error)

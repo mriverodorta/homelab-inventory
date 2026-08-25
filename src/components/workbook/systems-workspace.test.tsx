@@ -147,6 +147,23 @@ describe('SystemsWorkspace', () => {
     expect(screen.queryByText('Physical class')).not.toBeInTheDocument()
   })
 
+  it('filters and persists the selected canvas without changing the built-in Systems view', () => {
+    const workspaces = [
+      { id: 2, projectId: 1, type: 'canvas' as const, name: 'Primary canvas', iconKey: 'network', colorKey: 'blue', sortOrder: 1, revision: 1, systemKey: null },
+      { id: 3, projectId: 1, type: 'canvas' as const, name: 'Current plan', iconKey: 'network', colorKey: 'green', sortOrder: 2, revision: 1, systemKey: null },
+    ]
+    renderWorkspace({ workspaces })
+    expect(useSystemsMock).toHaveBeenCalledWith(1, true, null)
+
+    fireEvent.pointerDown(screen.getByRole('button', { name: 'All canvases' }), { button: 0, ctrlKey: false })
+    fireEvent.click(screen.getByRole('menuitemradio', { name: 'Current plan' }))
+
+    expect(useSystemsMock).toHaveBeenLastCalledWith(1, true, 3)
+    expect(screen.getByRole('button', { name: 'Current plan' })).toBeVisible()
+    expect(JSON.parse(localStorage.getItem('homelab-inventory:systems-table:account:7:project:1:v2')!))
+      .toMatchObject({ canvasWorkspaceId: 3 })
+  })
+
   it('keeps controls together and rows in a separate scroll region below the header', () => {
     renderWorkspace()
     const search = screen.getByPlaceholderText('Search systems')

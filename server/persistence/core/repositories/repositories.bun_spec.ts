@@ -45,6 +45,9 @@ describe('relational persistence repositories', () => {
     const { handle, context } = await fixtureContext()
     try {
       const repository = createProjectRepository(context)
+      handle.database.query(`
+        UPDATE inventory_items SET scope = 'global', owner_project_id = NULL WHERE id = 1
+      `).run()
       expect(() => repository.update(1, { includesGlobalInventory: false })).toThrow(/global membership/iu)
       expect(repository.getWorkbook(1)).toMatchObject({
         project: { id: 1, name: 'Default Project' },
@@ -194,14 +197,15 @@ describe('relational persistence repositories', () => {
     const { handle, context } = await fixtureContext()
     try {
       const topology = createTopologyRepository(context)
-      expect(topology.listAssignments(1)).toHaveLength(4)
+      expect(topology.listAssignments(1, 2)).toHaveLength(4)
       const cpuId = createInventoryRepository(context).resolveAlias('cpu', 3)!
-      const occupiedSlot = topology.listAssignments(1)[0].resourceSlotId!
-      expect(() => topology.assignComponent({ projectId: 1, hostItemId: 1, componentItemId: cpuId, resourceSlotId: occupiedSlot })).toThrow()
+      const occupiedSlot = topology.listAssignments(1, 2)[0].resourceSlotId!
+      expect(() => topology.assignComponent({ projectId: 1, workspaceId: 2, hostItemId: 1, componentItemId: cpuId, resourceSlotId: occupiedSlot })).toThrow()
       const usedPort = handle.database.query(`SELECT port_id, endpoint_face_id FROM connection_endpoints WHERE connection_id = 1 AND role = 'source'`).get() as { port_id: number; endpoint_face_id: number | null }
-      expect(topology.portAvailability(usedPort.port_id, usedPort.endpoint_face_id)?.available).toBeFalse()
+      expect(topology.portAvailability(2, usedPort.port_id, usedPort.endpoint_face_id)?.available).toBeFalse()
       expect(() => topology.createConnection({
         projectId: 1,
+        workspaceId: 2,
         type: 'network',
         sourcePortId: usedPort.port_id,
         targetPortId: usedPort.port_id,
@@ -226,13 +230,13 @@ describe('relational persistence repositories', () => {
       expect(handle.database.query(`
         SELECT count(*) AS count FROM component_assignment_slots WHERE assignment_id = ?
       `).get(assignmentId)).toEqual({ count: 1 })
-      topology.unassignComponent(1, assignmentId)
-      expect(topology.listAssignments(1).some((assignment) => assignment.id === assignmentId)).toBe(false)
+      topology.unassignComponent(1, 2, assignmentId)
+      expect(topology.listAssignments(1, 2).some((assignment) => assignment.id === assignmentId)).toBe(false)
       expect(handle.database.query(`
         SELECT count(*) AS count FROM component_assignment_slots WHERE assignment_id = ?
       `).get(assignmentId)).toEqual({ count: 0 })
       expect(projectRevision()).toBe(assignmentRevision + 1)
-      expect(() => topology.unassignComponent(1, assignmentId)).toThrow(/was not found/iu)
+      expect(() => topology.unassignComponent(1, 2, assignmentId)).toThrow(/was not found/iu)
       expect(projectRevision()).toBe(assignmentRevision + 1)
 
       const connectionId = 1
@@ -240,12 +244,12 @@ describe('relational persistence repositories', () => {
       expect(handle.database.query(`
         SELECT count(*) AS count FROM connection_endpoints WHERE connection_id = ?
       `).get(connectionId)).toEqual({ count: 2 })
-      topology.removeConnection(1, connectionId)
+      topology.removeConnection(1, 2, connectionId)
       expect(handle.database.query(`
         SELECT count(*) AS count FROM connection_endpoints WHERE connection_id = ?
       `).get(connectionId)).toEqual({ count: 0 })
       expect(projectRevision()).toBe(connectionRevision + 1)
-      expect(() => topology.removeConnection(1, connectionId)).toThrow(/was not found/iu)
+      expect(() => topology.removeConnection(1, 2, connectionId)).toThrow(/was not found/iu)
       expect(projectRevision()).toBe(connectionRevision + 1)
     } finally {
       closeManagedDatabase(handle)

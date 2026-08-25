@@ -29,6 +29,7 @@ import {
   writeSystemsTablePreferences,
 } from '@/lib/systems-preferences'
 import type { ProjectState } from '@/types/inventory'
+import type { WorkspaceSummary } from '@/lib/workbook-api'
 import { readyInventoryMetadataFilters, type InventoryMetadataCatalog } from '@/types/inventory-metadata'
 import type { SystemsColumnKey, SystemsHostRow, SystemsHostType, SystemsSavedView, SystemsViewConfiguration } from '@/types/systems'
 
@@ -37,9 +38,11 @@ const EMPTY_METADATA_CATALOG: InventoryMetadataCatalog = { revision: 0, definiti
 
 type SystemsWorkspaceProps = {
   project: ProjectState
+  workspaces?: readonly WorkspaceSummary[]
   selectedItemId: string | null
   onSelectItem(itemId: string): void
   onCloseInspector(): void
+  onCanvasScopeChange?(workspaceId: number | null): void
 }
 
 type ViewDialogState = { mode: 'create' | 'rename'; open: boolean; error: string | null }
@@ -49,6 +52,7 @@ function viewConfiguration(preferences: SystemsTablePreferences): SystemsViewCon
     types: preferences.types,
     registrations: preferences.registrations,
     registryStates: preferences.registryStates,
+    canvasWorkspaceId: preferences.canvasWorkspaceId,
     sortKey: preferences.sortKey,
     sortDirection: preferences.sortDirection,
     density: preferences.density,
@@ -82,9 +86,11 @@ export function SystemsWorkspace(props: SystemsWorkspaceProps) {
 function ScopedSystemsWorkspace({
   projectId,
   preferenceScope,
+  workspaces = [],
   selectedItemId,
   onSelectItem,
   onCloseInspector,
+  onCanvasScopeChange,
 }: SystemsWorkspaceProps & { projectId: number; preferenceScope: string }) {
   const [preferences, setPreferences] = useState<SystemsTablePreferences>(() => readSystemsTablePreferences(preferenceScope))
   const [selection, setSelection] = useState<SystemsViewSelection>(() => preferences.activeViewId ?? 'all')
@@ -92,7 +98,11 @@ function ScopedSystemsWorkspace({
   const [dialog, setDialog] = useState<ViewDialogState>({ mode: 'create', open: false, error: null })
   const [deleteOpen, setDeleteOpen] = useState(false)
   const selectionInitialized = useRef(false)
-  const systems = useSystems(projectId, true)
+  const canvasWorkspaces = useMemo(() => workspaces.filter((workspace) => workspace.type === 'canvas'), [workspaces])
+  const selectedCanvasId = canvasWorkspaces.some((workspace) => workspace.id === preferences.canvasWorkspaceId)
+    ? preferences.canvasWorkspaceId
+    : null
+  const systems = useSystems(projectId, true, selectedCanvasId)
   const savedViews = useSystemsViews(projectId, true)
   const metadataCatalogQuery = useInventoryMetadataCatalog({ includeArchived: true })
   const views = useMemo(() => savedViews.views.data ?? [], [savedViews.views.data])
@@ -131,7 +141,13 @@ function ScopedSystemsWorkspace({
   )
 
   useEffect(() => { writeSystemsTablePreferences(preferenceScope, preferences) }, [preferenceScope, preferences])
+  useEffect(() => { onCanvasScopeChange?.(selectedCanvasId) }, [onCanvasScopeChange, selectedCanvasId])
   useEffect(() => { writeSystemsColumnWidths(preferenceScope, typeof selection === 'number' ? selection : null, widths) }, [preferenceScope, selection, widths])
+  useEffect(() => {
+    if (preferences.canvasWorkspaceId !== null && selectedCanvasId === null) {
+      setPreferences((current) => ({ ...current, canvasWorkspaceId: null }))
+    }
+  }, [preferences.canvasWorkspaceId, selectedCanvasId])
   useEffect(() => {
     if (!metadataCatalogQuery.isSuccess) return
     setPreferences((current) => {
@@ -270,6 +286,8 @@ function ScopedSystemsWorkspace({
             types={preferences.types}
             registrations={preferences.registrations}
             registryStates={preferences.registryStates}
+            canvasWorkspaceId={selectedCanvasId}
+            canvasOptions={canvasWorkspaces}
             typeOptions={typeOptions}
             columns={preferences.columns}
             metadataCatalog={metadataCatalog}
@@ -280,6 +298,7 @@ function ScopedSystemsWorkspace({
             onTypes={(types) => updatePreferences({ types })}
             onRegistrations={(registrations) => updatePreferences({ registrations })}
             onRegistryStates={(registryStates) => updatePreferences({ registryStates })}
+            onCanvasWorkspace={(canvasWorkspaceId) => updatePreferences({ canvasWorkspaceId })}
             onColumns={(columns) => updatePreferences({ columns })}
             onMetadataFilters={(metadataFilters) => updatePreferences({ metadataFilters })}
             onDensity={(density) => updatePreferences({ density })}

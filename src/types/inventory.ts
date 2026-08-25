@@ -191,6 +191,7 @@ export type InventoryConnection = {
 
 export type InventoryItem = {
   id: number
+  inventoryId?: number
   key?: string
   name: string
   type: InventoryType
@@ -252,6 +253,8 @@ export type CompatibilityPolicy = {
 export type ProjectState = {
   id: string
   revision?: number
+  nextAssignmentId?: number
+  nextConnectionId?: number
   metadata: ProjectMetadata
   items: Record<string, InventoryItem>
   placements: ServerPlacement[]

@@ -18,6 +18,7 @@ export type InventoryActionsMenuProps = {
   onEdit?: () => void
   onDuplicate?: () => void
   onDuplicateToProject?: () => void
+  onCopyConfiguration?: () => void
   onMakeGlobal?: () => void
   onMakeProjectBound?: () => void
   onRemoveFromProject?: () => void
@@ -54,6 +55,7 @@ export function InventoryActionsMenu(props: InventoryActionsMenuProps) {
         props.onEdit
         || props.onDuplicate
         || props.onDuplicateToProject
+        || props.onCopyConfiguration
         || props.onMakeGlobal
         || props.onMakeProjectBound
         || props.onRemoveFromProject
@@ -108,6 +110,9 @@ export function InventoryActionsMenu(props: InventoryActionsMenuProps) {
               </DropdownMenuItem> : null}
               {props.onDuplicateToProject ? <DropdownMenuItem onSelect={(event) => invokeAction(event, props.onDuplicateToProject)}>
                 <Copy aria-hidden="true" />Duplicate to project
+              </DropdownMenuItem> : null}
+              {props.onCopyConfiguration ? <DropdownMenuItem onSelect={(event) => invokeAction(event, props.onCopyConfiguration)}>
+                <Copy aria-hidden="true" />Copy configuration
               </DropdownMenuItem> : null}
               {props.onMakeGlobal ? <DropdownMenuItem onSelect={(event) => invokeAction(event, props.onMakeGlobal)}>
                 <Globe2 aria-hidden="true" />Make global

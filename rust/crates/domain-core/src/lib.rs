@@ -22,6 +22,7 @@ use homelab_topology::TopologyIndex;
 pub struct Engine {
     revision: u32,
     project_name: String,
+    next_connection_id: Option<u32>,
     geometry_revision: u32,
     geometry: SpatialIndex,
     handles: BTreeMap<String, GeometryHandle>,
@@ -42,6 +43,7 @@ impl Engine {
         Ok(Self {
             revision: snapshot.revision,
             project_name: snapshot.project_name,
+            next_connection_id: snapshot.next_connection_id,
             geometry_revision: 0,
             geometry: SpatialIndex::default(),
             handles: BTreeMap::new(),
@@ -719,7 +721,7 @@ impl Engine {
         } else {
             "other"
         };
-        let Some(connection_id) = self
+        let Some(local_connection_id) = self
             .topology
             .snapshot()
             .connections
@@ -734,6 +736,10 @@ impl Engine {
                 "A new connection ID cannot be allocated safely.",
             );
         };
+        let connection_id = self
+            .next_connection_id
+            .unwrap_or(local_connection_id)
+            .max(local_connection_id);
         if created_at.trim().is_empty() {
             return engine_error(
                 "invalid-created-at",
@@ -779,7 +785,11 @@ impl Engine {
             });
         }
         inverse.push(ProjectPatch::RemoveConnection { connection });
-        self.commit_topology(snapshot, batch_patch(forward), batch_patch(inverse))
+        let response = self.commit_topology(snapshot, batch_patch(forward), batch_patch(inverse));
+        if matches!(response, ResponseBody::Patch(_)) {
+            self.next_connection_id = connection_id.checked_add(1);
+        }
+        response
     }
 
     fn remove_connection(&mut self, connection_id: u32) -> ResponseBody {
@@ -1492,6 +1502,7 @@ mod tests {
         Engine::from_snapshot(EngineSnapshot {
             revision: 12,
             project_name: "Homelab Inventory".into(),
+            next_connection_id: None,
             topology: TopologySnapshot {
                 items: vec![],
                 assignments: vec![],
@@ -1537,6 +1548,7 @@ mod tests {
         let engine = Engine::from_snapshot(EngineSnapshot {
             revision: 12,
             project_name: "Topology Lab".into(),
+            next_connection_id: None,
             topology: TopologySnapshot {
                 items: vec![
                     homelab_engine_protocol::TopologyItem {
@@ -1616,6 +1628,7 @@ mod tests {
         let engine = Engine::from_snapshot(EngineSnapshot {
             revision: 12,
             project_name: "Assignment Lab".into(),
+            next_connection_id: None,
             topology: TopologySnapshot {
                 items: vec![
                     item(server_one.clone()),
@@ -1678,6 +1691,7 @@ mod tests {
         let engine = Engine::from_snapshot(EngineSnapshot {
             revision: 12,
             project_name: "Passive Path".into(),
+            next_connection_id: None,
             topology: TopologySnapshot {
                 items: vec![
                     item(server.clone(), Some("1G".into()), vec![]),
@@ -2100,6 +2114,26 @@ mod tests {
     }
 
     #[test]
+    fn connection_creation_preserves_global_identity_across_canvas_snapshots() {
+        let (mut engine, from, to) = connection_engine();
+        engine.next_connection_id = Some(91);
+
+        let response = engine.dispatch(request(Operation::CreateConnection {
+            from,
+            to,
+            created_at: "2026-08-25T00:00:00.000Z".into(),
+        }));
+
+        assert!(matches!(
+            response.result,
+            ResponseBody::Patch(ref patch)
+                if matches!(&patch.forward, ProjectPatch::AddConnection { connection } if connection.id == 91)
+        ));
+        assert_eq!(engine.topology().connections[0].id, 91);
+        assert_eq!(engine.next_connection_id, Some(92));
+    }
+
+    #[test]
     fn canonical_route_repairs_are_atomic_undoable_and_stale_safe() {
         let (mut engine, from, to) = connection_engine();
         engine.dispatch(request(Operation::CreateConnection {
@@ -2125,6 +2159,7 @@ mod tests {
         let mut engine = Engine::from_snapshot(EngineSnapshot {
             revision: 20,
             project_name: "Topology Lab".into(),
+            next_connection_id: None,
             topology: snapshot,
         });
         let expected = engine
@@ -2244,6 +2279,7 @@ mod tests {
         let mut engine = Engine::from_snapshot(EngineSnapshot {
             revision: 13,
             project_name: "Topology Lab".into(),
+            next_connection_id: None,
             topology: snapshot,
         });
 
@@ -2292,6 +2328,7 @@ mod tests {
         let mut engine = Engine::from_snapshot(EngineSnapshot {
             revision: 13,
             project_name: "Topology Lab".into(),
+            next_connection_id: None,
             topology: snapshot,
         });
 
@@ -2365,6 +2402,7 @@ mod tests {
         let mut engine = Engine::from_snapshot(EngineSnapshot {
             revision: 13,
             project_name: "Topology Lab".into(),
+            next_connection_id: None,
             topology: snapshot,
         });
 

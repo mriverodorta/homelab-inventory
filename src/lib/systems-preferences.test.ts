@@ -39,6 +39,7 @@ describe('Systems table preferences', () => {
       types: ['server'] as const,
       registrations: ['registered'] as const,
       registryStates: ['unlinked'] as const,
+      canvasWorkspaceId: 4,
       sortKey: 'cpu' as const,
       sortDirection: 'descending' as const,
       density: 'comfortable' as const,

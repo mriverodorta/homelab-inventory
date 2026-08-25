@@ -512,6 +512,7 @@ function inventoryItem(database: Database, row: Row): InventoryItem {
     ...(extension.legacyFields ?? {}),
     ...Object.fromEntries(Object.entries(relationalExtension ?? {}).filter(([key]) => !['specs', 'compatibility', 'ports'].includes(key))),
     id: row.legacy_id,
+    inventoryId: row.id,
     key: aliasKey(row),
     name: row.name,
     type: row.type_key,
@@ -561,14 +562,14 @@ export function buildLegacyInventoryProjection(database: Database) {
   return inventory
 }
 
-function endpoint(database: Database, projectId: number, row: Row) {
+function endpoint(database: Database, projectId: number, workspaceId: number, row: Row) {
   const ownerKey = `${row.owner_type}:${row.owner_legacy_id}`
   const host = one(database, `
     SELECT ha.legacy_type_key, ha.legacy_id
     FROM component_assignments a
     JOIN inventory_identity_aliases ha ON ha.item_id = a.host_item_id
-    WHERE a.project_id = ? AND a.component_item_id = ?
-  `, projectId, row.owner_item_id)
+    WHERE a.project_id = ? AND a.workspace_id = ? AND a.component_item_id = ?
+  `, projectId, workspaceId, row.owner_item_id)
   return defined({
     itemId: host ? `${host.legacy_type_key}:${host.legacy_id}` : ownerKey,
     portId: row.legacy_port_id,
@@ -625,8 +626,8 @@ export function buildLegacyProjectProjection({
     LEFT JOIN host_resource_slots s ON s.id = a.resource_slot_id
     LEFT JOIN host_resource_groups g ON g.id = s.resource_group_id
     LEFT JOIN resource_identity_aliases ra ON ra.resource_id = g.resource_identity_id
-    WHERE a.project_id = ? ORDER BY a.id
-  `, projectId).map((row) => {
+    WHERE a.project_id = ? AND a.workspace_id = ? ORDER BY a.id
+  `, projectId, canvas.id).map((row) => {
     const positions = all(database, `
       SELECT s.position
       FROM component_assignment_slots assigned
@@ -648,7 +649,12 @@ export function buildLegacyProjectProjection({
       }) : undefined,
     })
   })
-  const connections = all(database, 'SELECT * FROM project_connections WHERE project_id = ? ORDER BY id', projectId).map((connection) => {
+  const connections = all(
+    database,
+    'SELECT * FROM project_connections WHERE project_id = ? AND workspace_id = ? ORDER BY id',
+    projectId,
+    canvas.id,
+  ).map((connection) => {
     const endpoints = all(database, `
       SELECT e.role, ip.item_id AS owner_item_id, ia.legacy_type_key AS owner_type,
              ia.legacy_id AS owner_legacy_id, pa.legacy_port_id, f.endpoint_number
@@ -662,8 +668,8 @@ export function buildLegacyProjectProjection({
     const bends = all(database, 'SELECT x, y FROM workspace_manual_bend_points WHERE workspace_id = ? AND connection_id = ? ORDER BY position', canvas.id, connection.id)
     return defined({
       id: connection.id,
-      from: endpoint(database, projectId, endpoints[0]),
-      to: endpoint(database, projectId, endpoints[1]),
+      from: endpoint(database, projectId, canvas.id, endpoints[0]),
+      to: endpoint(database, projectId, canvas.id, endpoints[1]),
       type: connection.connection_type,
       negotiatedSpeedBps: connection.negotiated_speed_bps ?? undefined,
       label: connection.label,
@@ -682,6 +688,18 @@ export function buildLegacyProjectProjection({
   return {
     id: projectId === 1 ? 'default' : String(projectId),
     revision: project.revision,
+    nextAssignmentId: one(database, `
+      SELECT max(
+        coalesce((SELECT seq FROM sqlite_sequence WHERE name = 'component_assignments'), 0),
+        coalesce((SELECT max(id) FROM component_assignments), 0)
+      ) + 1 AS id
+    `)!.id,
+    nextConnectionId: one(database, `
+      SELECT max(
+        coalesce((SELECT seq FROM sqlite_sequence WHERE name = 'project_connections'), 0),
+        coalesce((SELECT max(id) FROM project_connections), 0)
+      ) + 1 AS id
+    `)!.id,
     metadata: {
       name: project.name,
       version: Number.isSafeInteger(legacyMetadata.version) ? legacyMetadata.version : 1,

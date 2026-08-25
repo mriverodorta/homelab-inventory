@@ -1,13 +1,15 @@
 import { sql } from 'drizzle-orm'
-import { check, index, integer, real, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core'
+import { check, foreignKey, index, integer, real, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core'
 import { users } from './authentication.ts'
 import { inventoryItems } from './inventory-base.ts'
 import { projects } from './project-base.ts'
 import { customFieldDefinitions, customFieldOptions, inventoryTags } from './inventory-metadata.ts'
+import { workspaces } from './projects.ts'
 
 export const systemsSavedViews = sqliteTable('systems_saved_views', {
   id: integer('id').primaryKey({ autoIncrement: true }),
   projectId: integer('project_id').notNull().references(() => projects.id, { onDelete: 'cascade' }),
+  canvasWorkspaceId: integer('canvas_workspace_id').references(() => workspaces.id, { onDelete: 'set null' }),
   ownerScope: text('owner_scope').notNull(),
   accountId: integer('account_id').references(() => users.id, { onDelete: 'cascade' }),
   name: text('name').notNull(),
@@ -24,6 +26,7 @@ export const systemsSavedViews = sqliteTable('systems_saved_views', {
   uniqueIndex('systems_saved_views_account_default_unique').on(table.projectId, table.accountId).where(sql`${table.ownerScope} = 'account' AND ${table.isDefault} = 1`),
   uniqueIndex('systems_saved_views_open_default_unique').on(table.projectId).where(sql`${table.ownerScope} = 'open-installation' AND ${table.isDefault} = 1`),
   index('systems_saved_views_project_owner_index').on(table.projectId, table.ownerScope, table.accountId, table.updatedAtMs),
+  index('systems_saved_views_canvas_workspace_index').on(table.projectId, table.canvasWorkspaceId),
   check('systems_saved_views_owner_check', sql`(${table.ownerScope} = 'account' AND ${table.accountId} IS NOT NULL) OR (${table.ownerScope} = 'open-installation' AND ${table.accountId} IS NULL)`),
   check('systems_saved_views_name_check', sql`length(trim(${table.name})) BETWEEN 1 AND 80`),
   check('systems_saved_views_sort_key_check', sql`${table.sortKey} IN ('type','name','manufacturer','cpu','memory','storage','attention','agent','registry','operatingSystem','uptime','lanIp')`),
@@ -96,6 +99,7 @@ export const systemsSavedViewMetadataFilterTags = sqliteTable('systems_saved_vie
 export const systemAttentionSummaries = sqliteTable('system_attention_summaries', {
   id: integer('id').primaryKey({ autoIncrement: true }),
   projectId: integer('project_id').notNull().references(() => projects.id, { onDelete: 'cascade' }),
+  workspaceId: integer('workspace_id').notNull(),
   hostType: text('host_type').notNull(),
   hostId: integer('host_id').notNull().references(() => inventoryItems.id, { onDelete: 'cascade' }),
   registryCount: integer('registry_count').notNull().default(0),
@@ -108,8 +112,13 @@ export const systemAttentionSummaries = sqliteTable('system_attention_summaries'
   evaluatedAtMs: integer('evaluated_at_ms'),
   updatedAtMs: integer('updated_at_ms').notNull(),
 }, (table) => [
-  uniqueIndex('system_attention_summaries_host_unique').on(table.projectId, table.hostType, table.hostId),
-  index('system_attention_summaries_project_index').on(table.projectId, table.totalCount, table.state),
+  uniqueIndex('system_attention_summaries_host_unique').on(table.projectId, table.workspaceId, table.hostType, table.hostId),
+  index('system_attention_summaries_project_index').on(table.projectId, table.workspaceId, table.totalCount, table.state),
+  foreignKey({
+    name: 'system_attention_summaries_workspace_fk',
+    columns: [table.projectId, table.workspaceId],
+    foreignColumns: [workspaces.projectId, workspaces.id],
+  }).onDelete('cascade'),
   check('system_attention_summaries_host_type_check', sql`${table.hostType} IN ('server','nas','pcBuild')`),
   check('system_attention_summaries_counts_check', sql`${table.registryCount} >= 0 AND ${table.auditCount} >= 0 AND ${table.notificationCount} >= 0 AND ${table.totalCount} = ${table.registryCount} + ${table.auditCount} + ${table.notificationCount}`),
   check('system_attention_summaries_fingerprint_check', sql`length(${table.inputFingerprint}) = 64`),
@@ -140,12 +149,18 @@ export const systemAttentionFindings = sqliteTable('system_attention_findings', 
 export const systemAttentionDirtyHosts = sqliteTable('system_attention_dirty_hosts', {
   id: integer('id').primaryKey({ autoIncrement: true }),
   projectId: integer('project_id').notNull().references(() => projects.id, { onDelete: 'cascade' }),
+  workspaceId: integer('workspace_id').notNull(),
   hostType: text('host_type').notNull(),
   hostId: integer('host_id').notNull().references(() => inventoryItems.id, { onDelete: 'cascade' }),
   reason: text('reason').notNull(),
   createdAtMs: integer('created_at_ms').notNull(),
 }, (table) => [
-  uniqueIndex('system_attention_dirty_hosts_host_unique').on(table.projectId, table.hostType, table.hostId),
+  uniqueIndex('system_attention_dirty_hosts_host_unique').on(table.projectId, table.workspaceId, table.hostType, table.hostId),
   index('system_attention_dirty_hosts_created_index').on(table.createdAtMs, table.id),
+  foreignKey({
+    name: 'system_attention_dirty_hosts_workspace_fk',
+    columns: [table.projectId, table.workspaceId],
+    foreignColumns: [workspaces.projectId, workspaces.id],
+  }).onDelete('cascade'),
   check('system_attention_dirty_hosts_host_type_check', sql`${table.hostType} IN ('server','nas','pcBuild')`),
 ])

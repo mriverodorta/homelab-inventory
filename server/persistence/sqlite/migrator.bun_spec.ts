@@ -81,6 +81,63 @@ describe('committed SQLite migrations', () => {
     }
   })
 
+  test('rebuilds referenced tables atomically and restores foreign-key enforcement', async () => {
+    const handle = await createHandle()
+    const migrations = [
+      migration('0001_parent', `
+        CREATE TABLE parent (id INTEGER PRIMARY KEY) STRICT;
+        CREATE TABLE child (id INTEGER PRIMARY KEY, parent_id INTEGER NOT NULL REFERENCES parent(id)) STRICT;
+        INSERT INTO parent (id) VALUES (1);
+        INSERT INTO child (id, parent_id) VALUES (1, 1);
+      `),
+      migration('0002_rebuild', `-- homelab:transactional-table-rebuild
+        ALTER TABLE parent RENAME TO previous_parent;
+        CREATE TABLE parent (id INTEGER PRIMARY KEY, label TEXT NOT NULL DEFAULT 'preserved') STRICT;
+        INSERT INTO parent (id) SELECT id FROM previous_parent;
+        DROP TABLE previous_parent;
+      `),
+    ]
+
+    try {
+      await expect(applyCommittedMigrations(handle, migrations)).resolves.toEqual({
+        applied: 2,
+        currentVersion: 2,
+      })
+      expect(handle.database.query('SELECT parent_id FROM child').get()).toEqual({ parent_id: 1 })
+      expect(handle.database.query('PRAGMA foreign_keys').get()).toEqual({ foreign_keys: 1 })
+      expect(handle.database.query('PRAGMA foreign_key_check').all()).toEqual([])
+    } finally {
+      closeManagedDatabase(handle)
+    }
+  })
+
+  test('rolls back rebuilt tables with invalid relationships and restores foreign keys', async () => {
+    const handle = await createHandle()
+    const migrations = [
+      migration('0001_parent', `
+        CREATE TABLE parent (id INTEGER PRIMARY KEY) STRICT;
+        CREATE TABLE child (id INTEGER PRIMARY KEY, parent_id INTEGER NOT NULL REFERENCES parent(id)) STRICT;
+        INSERT INTO parent (id) VALUES (1);
+        INSERT INTO child (id, parent_id) VALUES (1, 1);
+      `),
+      migration('0002_invalid_rebuild', `-- homelab:transactional-table-rebuild
+        ALTER TABLE parent RENAME TO previous_parent;
+        CREATE TABLE parent (id INTEGER PRIMARY KEY) STRICT;
+        DROP TABLE previous_parent;
+      `),
+    ]
+
+    try {
+      await expect(applyCommittedMigrations(handle, migrations)).rejects.toThrow(/foreign-key violation/iu)
+      expect(handle.database.query('SELECT id FROM parent').get()).toEqual({ id: 1 })
+      expect(handle.database.query('SELECT parent_id FROM child').get()).toEqual({ parent_id: 1 })
+      expect(handle.database.query('PRAGMA foreign_keys').get()).toEqual({ foreign_keys: 1 })
+      expect(handle.database.query('PRAGMA user_version').get()).toEqual({ user_version: 1 })
+    } finally {
+      closeManagedDatabase(handle)
+    }
+  })
+
   test('rejects SQL whose checksum differs from the committed checksum', async () => {
     const handle = await createHandle()
     const invalidMigration = {

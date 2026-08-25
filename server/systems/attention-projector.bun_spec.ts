@@ -69,9 +69,9 @@ describe('System Attention projector', () => {
     `).run(run.id, link.id, 'f'.repeat(64))
     database.query(`
       INSERT INTO compatibility_audit_findings (
-        project_id, host_item_id, component_item_id, finding_key, rule_key,
+        project_id, workspace_id, host_item_id, component_item_id, finding_key, rule_key,
         severity, message, details_json, first_seen_at_ms, last_seen_at_ms
-      ) VALUES (1, ?, ?, 'fixture-audit', 'fixture-rule', 'warning',
+      ) VALUES (1, 2, ?, ?, 'fixture-audit', 'fixture-rule', 'warning',
         'The assigned component needs attention.', '{}', 1, 1)
     `).run(host.id, component.id)
     database.query(`

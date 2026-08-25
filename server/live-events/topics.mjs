@@ -33,6 +33,16 @@ export function parseApplicationLiveTopic(value) {
     projectId: positiveId(systems[1], 'Systems project ID'),
   })
 
+  const scopedSystems = /^systems:([^:]+):workspace:([^:]+)$/.exec(value)
+  if (scopedSystems) return Object.freeze({
+    value,
+    permission: 'project.view',
+    permissions: Object.freeze(['project.view', 'agents.view']),
+    kind: 'systems',
+    projectId: positiveId(scopedSystems[1], 'Systems project ID'),
+    workspaceId: positiveId(scopedSystems[2], 'Systems canvas ID'),
+  })
+
   const compatibility = /^compatibility:([^:]+)$/.exec(value)
   if (compatibility) return Object.freeze({
     value,

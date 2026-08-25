@@ -6,6 +6,24 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 
 ## Unreleased
 
+## [0.16.0] - 2026-08-25
+
+### Added
+
+- Each Canvas now maintains independent installed components, occupied slots, cable connections, manual routes, compatibility findings, and Systems attention state while continuing to reference the same physical inventory.
+- Host Inspectors expose their canonical inventory ID, support copying an existing host configuration from another Canvas, and optionally copy compatible cable connections as one undoable change.
+- Systems can filter hosts and installed-hardware summaries by Canvas, with canvas selection retained in saved views and browser preferences.
+
+### Changed
+
+- New manual and Registry-imported inventory defaults to the current project, while existing single-project global items migrate automatically to project ownership.
+- Inventory search accepts exact canonical item identifiers such as `#48`, and canvas-specific Systems changes use scoped server-sent events.
+
+### Fixed
+
+- Returning equipment to inventory on one Canvas no longer removes installed components, connections, placements, or route cache from another Canvas.
+- Registry updates and relationship migrations validate every affected Canvas; shared views, selective restoration, and compatibility projections retain their original canvas ownership.
+
 ## [0.15.6] - 2026-08-24
 
 ### Fixed
