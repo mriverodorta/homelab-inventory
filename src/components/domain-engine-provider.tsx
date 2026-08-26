@@ -6,24 +6,29 @@ import {
   useRef,
   useState,
 } from 'react'
-import { decodeEngineResponse } from '../../shared/engine/protocol.mjs'
+import type { QueryClient } from '@tanstack/react-query'
+import { createDomainEngineApi } from '@/engine/api'
+import { CanvasRuntimeManager } from '@/engine/canvas-runtime-manager'
 import { DomainEngineClient } from '@/engine/client'
-import { scopedEngineUrl } from '@/engine/api'
 import {
   DomainEngineContext,
   type DomainEngineContextValue,
-  type DomainEngineSyncEvent,
 } from '@/engine/react-context'
-import type { DomainEngineState } from '@/engine/types'
+import type { CanvasRuntimeScope } from '@/engine/runtime-scope'
+import { applyEngineResponsePatch } from '@/engine/project-patches'
+import { projectQueryKeyForScope } from '@/lib/project-query-key'
+import type { ProjectState } from '@/types/inventory'
+import { queryClient } from '@/lib/query-client'
 
 const defaultEventSourceFactory = (url: string) => new EventSource(url)
-const defaultClientFactory = () => new DomainEngineClient()
-
-function decodeBase64(value: string) {
-  const binary = atob(value)
-  const bytes = new Uint8Array(binary.length)
-  for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index)
-  return bytes
+const defaultClientFactory = (scope: CanvasRuntimeScope) => new DomainEngineClient({
+  api: createDomainEngineApi({ scope }),
+})
+const legacyScope: CanvasRuntimeScope = {
+  accountScope: 'test-legacy',
+  projectId: 1,
+  workspaceId: 1,
+  workspaceType: 'canvas',
 }
 
 export function DomainEngineProvider({
@@ -32,145 +37,118 @@ export function DomainEngineProvider({
   client: providedClient,
   clientFactory = defaultClientFactory,
   eventSourceFactory = defaultEventSourceFactory,
+  onRuntimeDisposed,
+  runtimeQueryClient = queryClient,
 }: {
   children: ReactNode
-  enabled: boolean
+  enabled?: boolean
   client?: DomainEngineClient
-  clientFactory?: () => DomainEngineClient
+  clientFactory?: (scope: CanvasRuntimeScope) => DomainEngineClient
   eventSourceFactory?: (url: string) => EventSource
+  onRuntimeDisposed?: (runtimeKey: string) => void
+  runtimeQueryClient?: QueryClient
 }) {
-  const [active, setActive] = useState(enabled)
-  const activeRef = useRef(active)
-  const [client, setClient] = useState(() => providedClient ?? clientFactory())
-  const clientRef = useRef(client)
-  const [session, setSession] = useState(enabled ? 1 : 0)
-  const sessionRef = useRef(session)
-  const [state, setState] = useState<DomainEngineState>(() => (
-    active ? client.status() : { phase: 'idle', revision: null }
-  ))
-  const [syncEvent, setSyncEvent] = useState<DomainEngineSyncEvent | null>(null)
-  const sequenceRef = useRef(0)
-  const disposeTimerRef = useRef<{ client: DomainEngineClient; timer: number } | null>(null)
-  const setEnabled = useCallback((nextEnabled: boolean) => {
-    if (activeRef.current === nextEnabled) return
-    activeRef.current = nextEnabled
-    if (nextEnabled) {
-      const nextClient = sessionRef.current === 0
-        ? clientRef.current
-        : providedClient ?? clientFactory()
-      clientRef.current = nextClient
-      setClient(nextClient)
-      setState(nextClient.status())
-      setSyncEvent(null)
-      sessionRef.current += 1
-      setSession(sessionRef.current)
-    } else {
-      setState({ phase: 'idle', revision: null })
-      setSyncEvent(null)
-    }
-    setActive(nextEnabled)
-  }, [clientFactory, providedClient])
-
-  useEffect(() => setEnabled(enabled), [enabled, setEnabled])
-  useEffect(() => {
-    if (!providedClient || clientRef.current === providedClient) return
-    clientRef.current = providedClient
-    setClient(providedClient)
-    if (!activeRef.current) return
-    setState(providedClient.status())
-    setSyncEvent(null)
-    sessionRef.current += 1
-    setSession(sessionRef.current)
-  }, [providedClient])
+  const providedClientUsedRef = useRef(false)
+  const managerRef = useRef<CanvasRuntimeManager | null>(null)
+  if (!managerRef.current) {
+    managerRef.current = new CanvasRuntimeManager({
+      capacity: 3,
+      clientFactory: (scope) => {
+        if (providedClient && !providedClientUsedRef.current) {
+          providedClientUsedRef.current = true
+          return providedClient
+        }
+        return clientFactory(scope)
+      },
+      eventSourceFactory,
+      onRuntimeDisposed: (runtimeKey) => {
+        runtimeQueryClient.removeQueries({ queryKey: ['domain-engine-topology', runtimeKey] })
+        runtimeQueryClient.removeQueries({ queryKey: ['domain-engine-compatible-endpoints', runtimeKey] })
+        onRuntimeDisposed?.(runtimeKey)
+      },
+      onSyncEvent: (scope, event) => {
+        const queryKey = projectQueryKeyForScope(scope.projectId, scope.workspaceId)
+        if (event.kind === 'patch' && event.external) {
+          runtimeQueryClient.setQueryData<ProjectState>(queryKey, (current) => (
+            current ? applyEngineResponsePatch(current, event.response) : current
+          ))
+          return
+        }
+        if (event.kind === 'invalidation') {
+          void runtimeQueryClient.invalidateQueries({ queryKey, exact: true, refetchType: 'none' })
+        }
+      },
+    })
+    if (enabled === true) managerRef.current.activate(legacyScope)
+  }
+  const manager = managerRef.current
+  const [snapshot, setSnapshot] = useState(() => manager.snapshot())
+  const disposeTimerRef = useRef<number | null>(null)
 
   useEffect(() => {
-    if (!active) {
-      setState({ phase: 'idle', revision: null })
-      setSyncEvent(null)
-      return
-    }
-    if (disposeTimerRef.current?.client === client) {
-      window.clearTimeout(disposeTimerRef.current.timer)
+    if (disposeTimerRef.current !== null) {
+      window.clearTimeout(disposeTimerRef.current)
       disposeTimerRef.current = null
     }
-    const unsubscribe = client.subscribe(setState)
-    void client.start().catch(() => {})
+    const unsubscribe = manager.subscribe(() => setSnapshot(manager.snapshot()))
     return () => {
       unsubscribe()
-      const timer = window.setTimeout(() => {
-        client.dispose()
-        if (disposeTimerRef.current?.timer === timer) disposeTimerRef.current = null
+      disposeTimerRef.current = window.setTimeout(() => {
+        manager.dispose()
+        disposeTimerRef.current = null
       }, 0)
-      disposeTimerRef.current = { client, timer }
     }
-  }, [active, client])
+  }, [manager])
 
+  const activateCanvas = useCallback((scope: CanvasRuntimeScope | null) => {
+    manager.activate(scope)
+    setSnapshot(manager.snapshot())
+  }, [manager])
+  const setRuntimeBusy = useCallback((runtimeKey: string, busy: boolean) => {
+    manager.setBusy(runtimeKey, busy)
+  }, [manager])
+  const removeCanvasRuntime = useCallback((scope: CanvasRuntimeScope) => {
+    manager.remove(scope)
+    setSnapshot(manager.snapshot())
+  }, [manager])
+  const clearCanvasRuntimes = useCallback(() => {
+    manager.clear()
+    setSnapshot(manager.snapshot())
+  }, [manager])
+  const getCanvasRuntimeKeys = useCallback(() => manager.runtimeKeys(), [manager])
+  const setEnabled = useCallback((nextEnabled: boolean) => {
+    manager.activate(nextEnabled ? legacyScope : null)
+    setSnapshot(manager.snapshot())
+  }, [manager])
   useEffect(() => {
-    if (!active || state.phase !== 'ready') return
-    const source = eventSourceFactory(scopedEngineUrl('/api/engine/events'))
-    const onPatch = (event: Event) => {
-      const message = event as MessageEvent<string>
-      void (async () => {
-        try {
-          const data = JSON.parse(message.data) as { payload: string }
-          const bytes = decodeBase64(data.payload)
-          const response = decodeEngineResponse(bytes)
-          const beforeRevision = client.status().revision
-          const result = await client.applyCommittedResponse(bytes)
-          sequenceRef.current += 1
-          setSyncEvent({
-            sequence: sequenceRef.current,
-            kind: 'patch',
-            external: result.kind === 'applied' && response.base_revision === beforeRevision,
-            response,
-          })
-        } catch {
-          await client.rebuild('A committed project event could not be decoded.').catch(() => {})
-          sequenceRef.current += 1
-          setSyncEvent({ sequence: sequenceRef.current, kind: 'invalidation' })
-        }
-      })()
-    }
-    const onInvalidation = (event: Event) => {
-      const message = event as MessageEvent<string>
-      const invalidatedRevision = (() => {
-        try {
-          const data = JSON.parse(message.data) as { revision?: unknown }
-          return typeof data.revision === 'number' ? data.revision : null
-        } catch {
-          return null
-        }
-      })()
-
-      if (
-        invalidatedRevision !== null
-        && client.status().phase === 'ready'
-        && client.status().revision === invalidatedRevision
-      ) {
-        return
-      }
-
-      void client.rebuild('Project data changed outside the domain command stream.')
-        .then(() => {
-          sequenceRef.current += 1
-          setSyncEvent({ sequence: sequenceRef.current, kind: 'invalidation' })
-        })
-        .catch(() => {})
-    }
-    source.addEventListener('project-patch', onPatch)
-    source.addEventListener('project-invalidated', onInvalidation)
-    return () => source.close()
-  }, [active, client, eventSourceFactory, state.phase])
+    if (enabled !== undefined) setEnabled(enabled)
+  }, [enabled, setEnabled])
 
   const value = useMemo<DomainEngineContextValue>(() => ({
-    enabled: active,
-    session,
-    client,
-    state,
-    syncEvent,
+    enabled: snapshot.enabled,
+    runtimeKey: snapshot.runtimeKey,
+    generation: snapshot.generation,
+    session: snapshot.session,
+    client: snapshot.client ?? null as never,
+    state: snapshot.state,
+    syncEvent: snapshot.syncEvent,
+    activateCanvas,
+    setRuntimeBusy,
+    removeCanvasRuntime,
+    clearCanvasRuntimes,
+    getCanvasRuntimeKeys,
     setEnabled,
-    retry: () => client.start(),
-  }), [active, client, session, setEnabled, state, syncEvent])
+    retry: () => manager.retryActive(),
+  }), [
+    activateCanvas,
+    clearCanvasRuntimes,
+    getCanvasRuntimeKeys,
+    manager,
+    removeCanvasRuntime,
+    setRuntimeBusy,
+    setEnabled,
+    snapshot,
+  ])
 
   return <DomainEngineContext.Provider value={value}>{children}</DomainEngineContext.Provider>
 }

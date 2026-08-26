@@ -3,10 +3,17 @@ import { DomainEngineContext, type DomainEngineContextValue } from '@/engine/rea
 
 const disabledDomainEngine: DomainEngineContextValue = {
   enabled: false,
+  runtimeKey: null,
+  generation: 0,
   session: 0,
   client: null as never,
   state: { phase: 'idle' as const, revision: null },
   syncEvent: null,
+  activateCanvas: () => {},
+  setRuntimeBusy: () => {},
+  removeCanvasRuntime: () => {},
+  clearCanvasRuntimes: () => {},
+  getCanvasRuntimeKeys: () => [],
   setEnabled: () => {},
   retry: async () => {},
 }

@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import {
   type CanvasController,
 } from '@/components/workbench-canvas-contract'
@@ -57,7 +57,7 @@ import { createLifecycleDialogProps } from '@/app/create-lifecycle-dialog-props'
 import { createOnboardingDialogProps } from '@/app/create-onboarding-dialog-props'
 import { createReleaseDialogProps } from '@/app/create-release-dialog-props'
 import { createWorkspaceSurfaceProps } from '@/app/create-workspace-surface-props'
-import { pushHistory } from '@/lib/history'
+import { createEmptyHistory, pushHistory } from '@/lib/history'
 import type { ProjectState } from '@/types/inventory'
 import type { InventoryMetadataSavedChange } from '@/types/inventory-metadata'
 import type { InventoryMetadataSettingsTab, SettingsDestination } from '@/types/settings-navigation'
@@ -70,6 +70,12 @@ import {
 } from '@/app/project-history-snapshot'
 import { browserPreferenceScope } from '@/lib/browser-preference-scope'
 import { cacheProjectState } from '@/lib/project-query-key'
+import { projectQueryKeyForScope } from '@/lib/project-query-key'
+import { canvasRuntimeKey } from '@/engine/runtime-scope'
+import {
+  type CanvasRuntimeViewState,
+  validCanvasRuntimeViewState,
+} from '@/app/canvas-runtime-view-state'
 
 type SaveStatus = 'saved' | 'saving' | 'error'
 type ValidationSeverity = 'error' | 'unknown'
@@ -78,7 +84,16 @@ function App() {
   const queryClient = useQueryClient()
   const auth = useAuth()
   const domainEngine = useDomainEngine()
-  const setDomainEngineEnabled = domainEngine.setEnabled
+  const activateCanvasEngine = domainEngine.activateCanvas
+  const clearCanvasRuntimes = domainEngine.clearCanvasRuntimes
+  const getCanvasRuntimeKeys = domainEngine.getCanvasRuntimeKeys
+  const removeCanvasRuntime = domainEngine.removeCanvasRuntime
+  const setCanvasRuntimeBusy = domainEngine.setRuntimeBusy
+  const engineAccountScope = auth.status?.account?.id
+    ? `account:${auth.status.account.id}`
+    : auth.status?.mode === 'disabled'
+      ? 'installation-local'
+      : null
   const canViewAgents = usePermission('agents.view')
   const canViewRegistry = usePermission('registry.view')
   const canViewUpdates = usePermission('updates.view')
@@ -87,6 +102,7 @@ function App() {
   const canViewNotifications = usePermission('notifications.view')
   const [project, setProject] = useState<ProjectState | null>(null)
   const projectRef = useRef<ProjectState | null>(null)
+  const runtimeViewStatesRef = useRef(new Map<string, CanvasRuntimeViewState>())
   const [validationMessage, setValidationMessageValue] = useState<string | null>(null)
   const [validationSeverity, setValidationSeverity] = useState<ValidationSeverity>('error')
   const [persistenceWarning, setPersistenceWarning] = useState<string | null>(null)
@@ -156,9 +172,6 @@ function App() {
   })
   workbookHistoryRef.current = workbookController.activeWorkbook
   const canvasWorkspaceActive = workbookController.activeWorkspace?.type === 'canvas'
-  useEffect(() => {
-    setDomainEngineEnabled(canvasWorkspaceActive)
-  }, [canvasWorkspaceActive, setDomainEngineEnabled])
   const sidebarPreferenceScope = workbookController.activeWorkbook && workbookController.sourceCanvasWorkspace
     ? browserPreferenceScope(
         auth.status?.account?.id ?? null,
@@ -224,13 +237,42 @@ function App() {
     canvasWorkspaceActive,
     engineEnabled: domainEngine.enabled,
     enginePhase: domainEngine.state.phase,
-    engineSession: domainEngine.session,
+    engineRuntimeKey: domainEngine.runtimeKey,
+    engineGeneration: domainEngine.generation,
     selectedItemId,
     autoCenterOnSelect,
     focusCanvasItem,
   })
   const sourceProjectId = workbookController.activeWorkbook?.project.id ?? null
   const sourceWorkspaceId = workbookController.sourceCanvasWorkspace?.id ?? null
+  const canvasEngineScope = useMemo(() => (
+    canvasWorkspaceActive
+    && engineAccountScope
+    && sourceProjectId
+    && sourceWorkspaceId
+      ? {
+          accountScope: engineAccountScope,
+          projectId: sourceProjectId,
+          workspaceId: sourceWorkspaceId,
+          workspaceType: 'canvas' as const,
+        }
+      : null
+  ), [canvasWorkspaceActive, engineAccountScope, sourceProjectId, sourceWorkspaceId])
+  const engineAccountScopeRef = useRef<string | null>(null)
+  useLayoutEffect(() => {
+    if (!engineAccountScope) return
+    if (engineAccountScopeRef.current && engineAccountScopeRef.current !== engineAccountScope) {
+      clearCanvasRuntimes()
+      runtimeViewStatesRef.current.clear()
+    }
+    engineAccountScopeRef.current = engineAccountScope
+  }, [clearCanvasRuntimes, engineAccountScope])
+  useLayoutEffect(() => {
+    activateCanvasEngine(canvasEngineScope)
+  }, [
+    activateCanvasEngine,
+    canvasEngineScope,
+  ])
   const defaultWorkspaceActive = sourceProjectId === 1 && sourceWorkspaceId === 2
   const activeProjectQueryKey = defaultWorkspaceActive
     ? ['project'] as const
@@ -242,6 +284,8 @@ function App() {
     queryKey: activeProjectQueryKey,
     queryFn: loadActiveProject,
     enabled: sourceProjectId !== null && sourceWorkspaceId !== null,
+    staleTime: Infinity,
+    gcTime: Infinity,
   })
   const inventoryMetadataHistoryRef = useRef<InventoryMetadataHistoryState>(new Map())
   const applyHistoryDomainMutationRef = useRef<(
@@ -289,38 +333,133 @@ function App() {
     },
   })
   recordWorkbookHistoryRef.current = recordWorkbookChange
+  useLayoutEffect(() => {
+    if (!domainEngine.runtimeKey) return
+    setCanvasRuntimeBusy(
+      domainEngine.runtimeKey,
+      canonicalMutationBusy || historyBusy || saveStatus === 'saving',
+    )
+  }, [
+    canonicalMutationBusy,
+    domainEngine.runtimeKey,
+    historyBusy,
+    saveStatus,
+    setCanvasRuntimeBusy,
+  ])
   const hasHydratedProjectRef = useRef(false)
   const hydratedWorkspaceKeyRef = useRef<string | null>(null)
-  const activeWorkspaceKey = sourceProjectId && sourceWorkspaceId
-    ? `${sourceProjectId}:${sourceWorkspaceId}`
+  const activeWorkspaceKey = engineAccountScope && sourceProjectId && sourceWorkspaceId
+    ? canvasRuntimeKey({
+        accountScope: engineAccountScope,
+        projectId: sourceProjectId,
+        workspaceId: sourceWorkspaceId,
+        workspaceType: 'canvas',
+      })
     : null
-  useEffect(() => {
+  const discardCanvasRuntime = useCallback((projectId: number, workspaceId: number) => {
+    if (!engineAccountScope) return
+    const scope = {
+      accountScope: engineAccountScope,
+      projectId,
+      workspaceId,
+      workspaceType: 'canvas' as const,
+    }
+    runtimeViewStatesRef.current.delete(canvasRuntimeKey(scope))
+    removeCanvasRuntime(scope)
+    queryClient.removeQueries({ queryKey: projectQueryKeyForScope(projectId, workspaceId), exact: true })
+  }, [engineAccountScope, queryClient, removeCanvasRuntime])
+  useLayoutEffect(() => {
     if (!activeWorkspaceKey) return
     if (hydratedWorkspaceKeyRef.current === null) {
       hydratedWorkspaceKeyRef.current = activeWorkspaceKey
       return
     }
     if (hydratedWorkspaceKeyRef.current === activeWorkspaceKey) return
+    const previousWorkspaceKey = hydratedWorkspaceKeyRef.current
+    const previousProject = projectRef.current
+    if (previousWorkspaceKey && previousProject) {
+      runtimeViewStatesRef.current.set(previousWorkspaceKey, {
+        project: previousProject,
+        history,
+        metadataHistory: new Map(inventoryMetadataHistoryRef.current),
+        selectedItemId,
+        selectedConnectionId,
+        activeNetworkTraceEndpoint,
+      })
+    }
     hydratedWorkspaceKeyRef.current = activeWorkspaceKey
-    hasHydratedProjectRef.current = false
     resetPendingSaves()
-    projectRef.current = null
-    inventoryMetadataHistoryRef.current = new Map()
-    lastPersistedProjectRef.current = null
-    setProject(null)
-    setSelectedItemId(null)
-    setSelectedConnectionId(null)
-    setActiveNetworkTraceEndpoint(null)
     canvasControllerRef.current = null
+    const retainedRuntimeKeys = new Set(getCanvasRuntimeKeys())
+    for (const key of runtimeViewStatesRef.current.keys()) {
+      if (!retainedRuntimeKeys.has(key) && key !== activeWorkspaceKey) {
+        runtimeViewStatesRef.current.delete(key)
+      }
+    }
+
+    const cachedState = runtimeViewStatesRef.current.get(activeWorkspaceKey)
+    const queryProject = sourceProjectId && sourceWorkspaceId
+      ? queryClient.getQueryData<ProjectState>(projectQueryKeyForScope(sourceProjectId, sourceWorkspaceId))
+      : undefined
+    const restoredState = cachedState
+      ? validCanvasRuntimeViewState({
+          ...cachedState,
+          project: queryProject
+            && (queryProject.revision ?? 0) > (cachedState.project.revision ?? 0)
+            ? queryProject
+            : cachedState.project,
+        })
+      : queryProject
+        ? validCanvasRuntimeViewState({
+            project: queryProject,
+            history: createEmptyHistory(),
+            metadataHistory: new Map(),
+            selectedItemId: null,
+            selectedConnectionId: null,
+            activeNetworkTraceEndpoint: null,
+          })
+        : null
+
+    if (!restoredState) {
+      hasHydratedProjectRef.current = false
+      projectRef.current = null
+      inventoryMetadataHistoryRef.current = new Map()
+      lastPersistedProjectRef.current = null
+      setProject(null)
+      setHistory(createEmptyHistory())
+      setSelectedItemId(null)
+      setSelectedConnectionId(null)
+      setActiveNetworkTraceEndpoint(null)
+      return
+    }
+
+    hasHydratedProjectRef.current = true
+    projectRef.current = restoredState.project
+    lastPersistedProjectRef.current = restoredState.project
+    inventoryMetadataHistoryRef.current = new Map(restoredState.metadataHistory)
+    setProject(restoredState.project)
+    setHistory(restoredState.history)
+    setSelectedItemId(restoredState.selectedItemId)
+    setSelectedConnectionId(restoredState.selectedConnectionId)
+    setActiveNetworkTraceEndpoint(restoredState.activeNetworkTraceEndpoint)
   }, [
     activeWorkspaceKey,
+    activeNetworkTraceEndpoint,
+    getCanvasRuntimeKeys,
     hasHydratedProjectRef,
+    history,
     lastPersistedProjectRef,
     projectRef,
+    queryClient,
     resetPendingSaves,
+    selectedConnectionId,
+    selectedItemId,
     setActiveNetworkTraceEndpoint,
+    setHistory,
     setSelectedConnectionId,
     setSelectedItemId,
+    sourceProjectId,
+    sourceWorkspaceId,
   ])
   const applyInventoryCommandSnapshotRef = useRef<(
     project: ProjectState,
@@ -672,7 +811,13 @@ function App() {
     ),
   )
 
-  if (projectQuery.isLoading || workbookController.loading || !project || !projectMatchesActiveWorkspace || !workbookController.activeWorkspace || !workbookController.activeWorkbook) {
+  if (
+    workbookController.loading
+    || !project
+    || !projectMatchesActiveWorkspace
+    || !workbookController.activeWorkspace
+    || !workbookController.activeWorkbook
+  ) {
     return <LoadingScreen />
   }
 
@@ -856,7 +1001,15 @@ function App() {
           onSelect={(projectId) => void workbookController.selectProject(projectId)}
           onCreate={workbookController.createProject}
           onUpdate={workbookController.updateProject}
-          onArchive={workbookController.archiveProject}
+          onArchive={async (projectId) => {
+            const archivedWorkbook = workbookController.workbooks.find(
+              (workbook) => workbook.project.id === projectId,
+            )
+            await workbookController.archiveProject(projectId)
+            for (const workspace of archivedWorkbook?.workspaces ?? []) {
+              if (workspace.type === 'canvas') discardCanvasRuntime(projectId, workspace.id)
+            }
+          }}
           onRestored={workbookController.registerRestoredProject}
           onDeleted={workbookController.forgetDeletedProject}
         />
@@ -873,7 +1026,14 @@ function App() {
           })}
           onCreate={workbookController.createWorkspace}
           onUpdate={workbookController.updateWorkspace}
-          onArchive={workbookController.archiveWorkspace}
+          onArchive={async (workspaceId) => {
+            const projectId = workbookController.activeWorkbook!.project.id
+            const archivedWorkspace = workbookController.activeWorkbook!.workspaces.find(
+              (workspace) => workspace.id === workspaceId,
+            )
+            await workbookController.archiveWorkspace(workspaceId)
+            if (archivedWorkspace?.type === 'canvas') discardCanvasRuntime(projectId, workspaceId)
+          }}
           onReorder={workbookController.reorderWorkspaces}
           onOpenProjectSettings={openSettings}
         />

@@ -18,7 +18,7 @@ export function ApplicationRoot() {
   }
 
   return (
-    <DomainEngineProvider enabled={false}>
+    <DomainEngineProvider>
       <DomainEngineGate>
         <LazyWorkspaceApp />
       </DomainEngineGate>

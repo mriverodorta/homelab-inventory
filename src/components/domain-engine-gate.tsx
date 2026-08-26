@@ -3,14 +3,15 @@ import { Button } from '@/components/ui/button'
 import { useDomainEngine } from '@/hooks/use-domain-engine'
 
 export function DomainEngineGate({ children }: { children: ReactNode }) {
-  const { enabled, session, state, retry } = useDomainEngine()
-  const readySessionRef = useRef<number | null>(null)
+  const { enabled, runtimeKey, generation, state, retry } = useDomainEngine()
+  const readyRuntimeRef = useRef<string | null>(null)
   const applicationMountedRef = useRef(!enabled)
   if (!enabled) applicationMountedRef.current = true
-  if (enabled && state.phase === 'ready') readySessionRef.current = session
+  const runtimeGenerationKey = runtimeKey ? `${runtimeKey}:${generation}` : null
+  if (enabled && state.phase === 'ready') readyRuntimeRef.current = runtimeGenerationKey
   if (!enabled || state.phase === 'ready') return children
 
-  const currentSessionWasReady = readySessionRef.current === session
+  const currentSessionWasReady = readyRuntimeRef.current === runtimeGenerationKey
 
   const failed = state.phase === 'failed'
   const unsupported = state.phase === 'unsupported'

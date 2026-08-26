@@ -7,7 +7,8 @@ type HookProps = {
   canvasWorkspaceActive: boolean
   engineEnabled: boolean
   enginePhase: DomainEnginePhase
-  engineSession: number
+  engineRuntimeKey: string | null
+  engineGeneration: number
   selectedItemId: string | null
   autoCenterOnSelect: boolean
 }
@@ -16,13 +17,14 @@ const readyCanvas: HookProps = {
   canvasWorkspaceActive: true,
   engineEnabled: true,
   enginePhase: 'ready',
-  engineSession: 1,
+  engineRuntimeKey: 'account:1:canvas:2',
+  engineGeneration: 1,
   selectedItemId: 'server:7',
   autoCenterOnSelect: true,
 }
 
 describe('Canvas engine reactivation', () => {
-  it('focuses a preserved item once after each engine session becomes ready', () => {
+  it('focuses a preserved item once after each engine runtime generation becomes ready', () => {
     const focusCanvasItem = vi.fn()
     const { rerender } = renderHook(
       (props: HookProps) => useCanvasEngineReactivation({ ...props, focusCanvasItem }),
@@ -42,7 +44,7 @@ describe('Canvas engine reactivation', () => {
     rerender({ ...readyCanvas })
     expect(focusCanvasItem).toHaveBeenCalledOnce()
 
-    rerender({ ...readyCanvas, engineSession: 2 })
+    rerender({ ...readyCanvas, engineGeneration: 2 })
     expect(focusCanvasItem).toHaveBeenCalledTimes(2)
   })
 
@@ -59,11 +61,11 @@ describe('Canvas engine reactivation', () => {
     )
 
     expect(focusCanvasItem).not.toHaveBeenCalled()
-    rerender({ ...readyCanvas, engineSession: 2, selectedItemId: null })
+    rerender({ ...readyCanvas, engineGeneration: 2, selectedItemId: null })
     expect(focusCanvasItem).not.toHaveBeenCalled()
   })
 
-  it('waits for an active Canvas and a positive ready engine session', () => {
+  it('waits for an active Canvas and a positive ready engine generation', () => {
     const focusCanvasItem = vi.fn()
     const { rerender } = renderHook(
       (props: HookProps) => useCanvasEngineReactivation({ ...props, focusCanvasItem }),
@@ -76,7 +78,7 @@ describe('Canvas engine reactivation', () => {
     )
 
     rerender({ ...readyCanvas, engineEnabled: false })
-    rerender({ ...readyCanvas, engineSession: 0 })
+    rerender({ ...readyCanvas, engineGeneration: 0 })
     expect(focusCanvasItem).not.toHaveBeenCalled()
 
     rerender(readyCanvas)

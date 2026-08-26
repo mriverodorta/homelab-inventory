@@ -2,6 +2,7 @@ import { act, renderHook } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { CableLaneRouteRequest } from '@/engine/routing'
 import { useCableRoutingController } from '@/components/canvas/use-cable-routing-controller'
+import { disposeCanvasRoutingRuntime } from '@/engine/canvas-routing-runtime'
 
 const mocks = vi.hoisted(() => {
   const transient = vi.fn(async (input: {
@@ -82,6 +83,7 @@ const routeRequest: CableLaneRouteRequest = {
 
 describe('useCableRoutingController', () => {
   afterEach(() => {
+    disposeCanvasRoutingRuntime(mocks.domainEngine.client as never)
     vi.useRealTimers()
     vi.clearAllMocks()
   })

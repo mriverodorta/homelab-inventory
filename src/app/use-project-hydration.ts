@@ -108,6 +108,7 @@ export function useProjectHydration({
   useEffect(() => {
     const event = domainEngine.syncEvent
     if (!domainEngine.enabled || !event || !hasHydratedProjectRef.current) return
+    if (event.runtimeKey !== domainEngine.runtimeKey) return
     if (event.sequence <= handledSyncSequenceRef.current) return
     handledSyncSequenceRef.current = event.sequence
 
@@ -144,6 +145,7 @@ export function useProjectHydration({
       })
   }, [
     domainEngine.enabled,
+    domainEngine.runtimeKey,
     domainEngine.syncEvent,
     hasHydratedProjectRef,
     inventoryMetadataHistoryRef,

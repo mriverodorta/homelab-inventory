@@ -7,7 +7,7 @@ import {
   type EngineRequest,
   type EngineResponse,
 } from '../../shared/engine/protocol.mjs'
-import { DomainEngineApiError } from '../engine/api'
+import { createDomainEngineApi, DomainEngineApiError } from '../engine/api'
 import {
   DomainEngineClient,
   DomainEngineInterruptedError,
@@ -234,6 +234,43 @@ function api(overrides: Partial<DomainEngineApi> = {}): DomainEngineApi {
 }
 
 describe('DomainEngineClient', () => {
+  it('keeps engine requests bound to their immutable workspace scope', async () => {
+    const snapshot = {
+      revision: 1,
+      project_name: 'Lab',
+      topology: EMPTY_ENGINE_TOPOLOGY,
+    }
+    const fetchImpl = vi.fn(async (_input: RequestInfo | URL) => new Response(
+      Uint8Array.from(encodeEngineSnapshot(snapshot)).buffer,
+    ))
+    const first = createDomainEngineApi({
+      scope: { projectId: 1, workspaceId: 2 },
+      fetchImpl: fetchImpl as typeof fetch,
+    })
+    const second = createDomainEngineApi({
+      scope: { projectId: 1, workspaceId: 9 },
+      fetchImpl: fetchImpl as typeof fetch,
+    })
+
+    window.history.replaceState({}, '', '/projects/1/workspaces/99')
+    await first.fetchSnapshot()
+    await second.fetchSnapshot()
+
+    expect(fetchImpl.mock.calls.map(([url]) => url)).toEqual([
+      '/api/engine/snapshot?projectId=1&workspaceId=2',
+      '/api/engine/snapshot?projectId=1&workspaceId=9',
+    ])
+  })
+
+  it.each([
+    { projectId: 0, workspaceId: 2 },
+    { projectId: -1, workspaceId: 2 },
+    { projectId: 1.5, workspaceId: 2 },
+    { projectId: 1, workspaceId: Number.MAX_SAFE_INTEGER + 1 },
+  ])('rejects invalid immutable workspace scope %#', (scope) => {
+    expect(() => createDomainEngineApi({ scope })).toThrow('positive safe integer')
+  })
+
   it('moves from idle through loading to ready', async () => {
     const states: string[] = []
     const client = new DomainEngineClient({ api: api(), workerFactory: () => new FakeWorker() })

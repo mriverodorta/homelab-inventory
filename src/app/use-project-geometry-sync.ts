@@ -2,8 +2,10 @@ import { useEffect, useMemo, useRef } from 'react'
 import { createProjectGeometrySnapshot, syncProjectGeometry } from '@/engine/geometry'
 import type { useDomainEngine } from '@/hooks/use-domain-engine'
 import type { ProjectState } from '@/types/inventory'
+import type { DomainEngineClient } from '@/engine/client'
 
 type DomainEngine = ReturnType<typeof useDomainEngine>
+const synchronizedGeometry = new WeakMap<DomainEngineClient, string>()
 
 type ProjectGeometrySyncOptions = {
   project: ProjectState | null
@@ -35,10 +37,13 @@ export function useProjectGeometrySync({
   useEffect(() => {
     const snapshot = projectGeometrySnapshotRef.current
     if (!domainEngine.enabled || !snapshot || domainEngine.state.phase !== 'ready') return
-    void syncProjectGeometry(domainEngine.client, snapshot).catch((error) => {
-      setPersistenceWarning(
-        error instanceof Error ? error.message : 'Canvas geometry synchronization failed.',
-      )
-    })
+    if (synchronizedGeometry.get(domainEngine.client) === snapshot.fingerprint) return
+    void syncProjectGeometry(domainEngine.client, snapshot)
+      .then(() => synchronizedGeometry.set(domainEngine.client, snapshot.fingerprint))
+      .catch((error) => {
+        setPersistenceWarning(
+          error instanceof Error ? error.message : 'Canvas geometry synchronization failed.',
+        )
+      })
   }, [domainEngine.client, domainEngine.enabled, domainEngine.state.phase, projectGeometrySnapshot?.fingerprint, setPersistenceWarning])
 }

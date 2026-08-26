@@ -285,10 +285,17 @@ function renderApp(
     <QueryClientProvider client={queryClient}>
       <DomainEngineContext.Provider value={{
         enabled: false,
+        runtimeKey: null,
+        generation: 0,
         session: 0,
         client: {} as DomainEngineClient,
         state: { phase: 'ready', revision: null },
         syncEvent: null,
+        activateCanvas: () => {},
+        setRuntimeBusy: () => {},
+        removeCanvasRuntime: () => {},
+        clearCanvasRuntimes: () => {},
+        getCanvasRuntimeKeys: () => [],
         setEnabled: () => {},
         retry: async () => {},
       }}>

@@ -129,14 +129,19 @@ export function useTopologyQuery(project: ProjectState | null) {
   const query = useQuery({
     queryKey: [
       'domain-engine-topology',
-      domainEngine.session,
+      domainEngine.runtimeKey,
+      domainEngine.generation,
+      revision,
       project?.id ?? null,
       topologyFingerprint,
     ],
     enabled: domainEngine.enabled && project !== null && revision !== null,
     staleTime: Number.POSITIVE_INFINITY,
     placeholderData: (previousData) => (
-      previousData?.session === domainEngine.session ? previousData : undefined
+      previousData?.runtimeKey === domainEngine.runtimeKey
+        && previousData.generation === domainEngine.generation
+        ? previousData
+        : undefined
     ),
     queryFn: async () => {
       if (!project || revision === null) {
@@ -149,7 +154,8 @@ export function useTopologyQuery(project: ProjectState | null) {
         getConnectionDerivedStates(domainEngine.client),
       ])
       return {
-        session: domainEngine.session,
+        runtimeKey: domainEngine.runtimeKey,
+        generation: domainEngine.generation,
         revision,
         endpoints,
         networkTraces,
@@ -219,7 +225,9 @@ export function useCompatibleTopologyDestinations(
   const query = useQuery({
     queryKey: [
       'domain-engine-compatible-endpoints',
-      domainEngine.session,
+      domainEngine.runtimeKey,
+      domainEngine.generation,
+      revision,
       project?.id ?? null,
       topologyFingerprint,
       sourceKey,
@@ -227,14 +235,22 @@ export function useCompatibleTopologyDestinations(
     enabled: domainEngine.enabled && project !== null && revision !== null && source !== null,
     staleTime: Number.POSITIVE_INFINITY,
     placeholderData: (previousData) => (
-      previousData?.session === domainEngine.session ? previousData : undefined
+      previousData?.runtimeKey === domainEngine.runtimeKey
+        && previousData.generation === domainEngine.generation
+        ? previousData
+        : undefined
     ),
     queryFn: async () => {
       if (!project || !source) {
-        return { session: domainEngine.session, descriptors: [] }
+        return {
+          runtimeKey: domainEngine.runtimeKey,
+          generation: domainEngine.generation,
+          descriptors: [],
+        }
       }
       return {
-        session: domainEngine.session,
+        runtimeKey: domainEngine.runtimeKey,
+        generation: domainEngine.generation,
         descriptors: await getCompatibleTopologyDestinations(domainEngine.client, project, source),
       }
     },

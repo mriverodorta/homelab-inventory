@@ -3,11 +3,10 @@ import { useDomainEngine } from '@/hooks/use-domain-engine'
 import type { CableLaneRouteRequest } from '@/engine/routing'
 import type { ConnectionRouteSide } from '@/types/inventory'
 import {
-  CableRoutingCoordinator,
   type CableRouteCanonicalRepair,
   type CableRoutingState,
 } from '@/lib/cable-routing-coordinator'
-import { loadRoutingCache, saveRoutingCache } from '@/lib/routing-cache-api'
+import { getCanvasRoutingRuntime } from '@/engine/canvas-routing-runtime'
 
 type UseCableRoutingControllerOptions = {
   routeRequests: CableLaneRouteRequest[]
@@ -42,7 +41,7 @@ export function useCableRoutingController({
     repairs: new Map(),
   })
   const [routingCacheReady, setRoutingCacheReady] = useState(false)
-  const routingCoordinatorRef = useRef<CableRoutingCoordinator | null>(null)
+  const routingRuntimeRef = useRef<ReturnType<typeof getCanvasRoutingRuntime> | null>(null)
   const emptyRouteClearTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const routedTopologyRevisionRef = useRef<number | null>(null)
   const routeSideResolutionSignatureRef = useRef<string | null>(null)
@@ -50,32 +49,19 @@ export function useCableRoutingController({
 
   useEffect(() => {
     if (!domainEngine.enabled) return
-
-    let cancelled = false
-    setRoutingCacheReady(false)
-    const coordinator = new CableRoutingCoordinator(domainEngine.client, {
-      persistCache: saveRoutingCache,
+    const runtime = getCanvasRoutingRuntime(domainEngine.client)
+    routingRuntimeRef.current = runtime
+    const unsubscribe = runtime.subscribe((snapshot) => {
+      setRoutingState(snapshot.state)
+      setRoutingCacheReady(snapshot.cacheReady)
     })
-    routingCoordinatorRef.current = coordinator
-    const unsubscribe = coordinator.subscribe(setRoutingState)
-    void loadRoutingCache()
-      .then((cache) => coordinator.hydrate(cache))
-      .catch((error) => {
-        console.warn('[Cable routing] Unable to load derived route cache.', error)
-      })
-      .finally(() => {
-        if (!cancelled) setRoutingCacheReady(true)
-      })
-
     return () => {
-      cancelled = true
       if (emptyRouteClearTimerRef.current) {
         clearTimeout(emptyRouteClearTimerRef.current)
         emptyRouteClearTimerRef.current = null
       }
       unsubscribe()
-      coordinator.dispose()
-      routingCoordinatorRef.current = null
+      if (routingRuntimeRef.current === runtime) routingRuntimeRef.current = null
     }
   }, [domainEngine.client, domainEngine.enabled])
 
@@ -90,14 +76,14 @@ export function useCableRoutingController({
   }, [domainEngine.enabled, domainEngine.state.phase, routingEngineError])
 
   useEffect(() => {
-    const coordinator = routingCoordinatorRef.current
+    const coordinator = routingRuntimeRef.current?.coordinator
     if (!coordinator || !routingCacheReady || domainEngine.state.phase !== 'ready') return
 
     if (!routeGeometryReady) return
 
     if (routeRequests.length === 0) {
       const timer = setTimeout(() => {
-        if (routingCoordinatorRef.current !== coordinator) return
+        if (routingRuntimeRef.current?.coordinator !== coordinator) return
         emptyRouteClearTimerRef.current = null
         coordinator.clear()
       }, EMPTY_ROUTE_CLEAR_DELAY_MS)

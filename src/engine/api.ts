@@ -7,6 +7,10 @@ import {
 import type { DomainEngineApi } from './types'
 import { fetchWithTimeout } from '@/lib/fetch-with-timeout'
 import { parseWorkspaceRoute } from '@/lib/workspace-route'
+import {
+  assertEngineWorkspaceScope,
+  type EngineWorkspaceScope,
+} from '@/engine/runtime-scope'
 
 export const ENGINE_MEDIA_TYPE = 'application/vnd.homelab-engine+msgpack'
 
@@ -35,22 +39,35 @@ async function responseError(response: Response) {
   )
 }
 
-export function scopedEngineUrl(path: string) {
-  if (typeof window === 'undefined') return path
-  const route = parseWorkspaceRoute(window.location.pathname)
-  if (!route) return path
+export function scopedEngineUrl(path: string, providedScope?: EngineWorkspaceScope) {
+  const scope = providedScope ?? (() => {
+    if (typeof window === 'undefined') return null
+    const route = parseWorkspaceRoute(window.location.pathname)
+    return route ? { projectId: route.projectId, workspaceId: route.workspaceId } : null
+  })()
+  if (!scope) return path
+  assertEngineWorkspaceScope(scope)
   const query = new URLSearchParams({
-    projectId: String(route.projectId),
-    workspaceId: String(route.workspaceId),
+    projectId: String(scope.projectId),
+    workspaceId: String(scope.workspaceId),
   })
   return `${path}?${query.toString()}`
 }
 
-export function createDomainEngineApi(fetchImpl: typeof fetch = fetch): DomainEngineApi {
+export type DomainEngineApiOptions = {
+  scope?: EngineWorkspaceScope
+  fetchImpl?: typeof fetch
+}
+
+export function createDomainEngineApi({
+  scope,
+  fetchImpl = fetch,
+}: DomainEngineApiOptions = {}): DomainEngineApi {
+  if (scope) assertEngineWorkspaceScope(scope)
   return {
     async fetchSnapshot(): Promise<{ snapshot: EngineSnapshot; bytes: Uint8Array }> {
       const response = await fetchWithTimeout(
-        scopedEngineUrl('/api/engine/snapshot'),
+        scopedEngineUrl('/api/engine/snapshot', scope),
         { cache: 'no-store' },
         { fetchImpl },
       )
@@ -62,7 +79,7 @@ export function createDomainEngineApi(fetchImpl: typeof fetch = fetch): DomainEn
     async postCommand(commandBytes): Promise<{ response: EngineResponse; bytes: Uint8Array }> {
       const body = Uint8Array.from(commandBytes).buffer
       const response = await fetchWithTimeout(
-        scopedEngineUrl('/api/engine/commands'),
+        scopedEngineUrl('/api/engine/commands', scope),
         {
           method: 'POST',
           headers: { 'Content-Type': ENGINE_MEDIA_TYPE },

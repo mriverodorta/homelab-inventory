@@ -5,7 +5,8 @@ type CanvasEngineReactivationOptions = {
   canvasWorkspaceActive: boolean
   engineEnabled: boolean
   enginePhase: DomainEnginePhase
-  engineSession: number
+  engineRuntimeKey: string | null
+  engineGeneration: number
   selectedItemId: string | null
   autoCenterOnSelect: boolean
   focusCanvasItem(itemId: string): void
@@ -15,32 +16,35 @@ export function useCanvasEngineReactivation({
   canvasWorkspaceActive,
   engineEnabled,
   enginePhase,
-  engineSession,
+  engineRuntimeKey,
+  engineGeneration,
   selectedItemId,
   autoCenterOnSelect,
   focusCanvasItem,
 }: CanvasEngineReactivationOptions) {
-  const handledSessionRef = useRef(0)
+  const handledRuntimeRef = useRef<string | null>(null)
 
   useEffect(() => {
     if (
       !canvasWorkspaceActive
       || !engineEnabled
       || enginePhase !== 'ready'
-      || engineSession <= 0
-      || handledSessionRef.current === engineSession
+      || !engineRuntimeKey
+      || engineGeneration <= 0
+      || handledRuntimeRef.current === `${engineRuntimeKey}:${engineGeneration}`
     ) {
       return
     }
 
-    handledSessionRef.current = engineSession
+    handledRuntimeRef.current = `${engineRuntimeKey}:${engineGeneration}`
     if (selectedItemId && autoCenterOnSelect) focusCanvasItem(selectedItemId)
   }, [
     autoCenterOnSelect,
     canvasWorkspaceActive,
     engineEnabled,
     enginePhase,
-    engineSession,
+    engineGeneration,
+    engineRuntimeKey,
     focusCanvasItem,
     selectedItemId,
   ])

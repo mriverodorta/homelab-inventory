@@ -12,7 +12,12 @@ describe('useProjectHydration', () => {
     const projectRef = { current: project }
     const engine = {
       enabled: true,
-      syncEvent: { sequence: 4, kind: 'invalidation' as const },
+      runtimeKey: 'installation-local:1:2:canvas',
+      syncEvent: {
+        runtimeKey: 'installation-local:1:2:canvas',
+        sequence: 4,
+        kind: 'invalidation' as const,
+      },
     } as DomainEngine
     const reloadProject = vi.fn(async () => project)
     const applyInventorySnapshot = vi.fn(async () => project)

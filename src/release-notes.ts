@@ -638,6 +638,18 @@ const RELEASE_0_16_1_DETAILS: UnreleasedReleaseNotes = {
   notes: [],
 }
 
+const RELEASE_0_16_2_DETAILS: UnreleasedReleaseNotes = {
+  highlights: [
+    'Up to three Canvas workspaces now remain warm in the browser, making recent Canvas and Systems tab switches immediate after their first load.',
+  ],
+  fixes: [
+    'Switching workspaces preserves each Canvas selection, undo history, topology, cable routing state, and scoped live-update connection without briefly showing another Canvas or restarting its engine.',
+  ],
+  notes: [
+    'The fourth Canvas evicts the least recently used inactive runtime; active saves and mutations are protected until they finish.',
+  ],
+}
+
 export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
   highlights: [],
   fixes: [],
@@ -1171,9 +1183,16 @@ const RELEASE_0_2_1_DETAILS: UnreleasedReleaseNotes = {
 
 export const RELEASE_NOTES: ReleaseNoteEntry[] = [
   {
+    version: '0.16.2',
+    date: '2026-08-26',
+    channel: 'latest',
+    title: 'Instant recent Canvas switching',
+    ...RELEASE_0_16_2_DETAILS,
+  },
+  {
     version: '0.16.1',
     date: '2026-08-25',
-    channel: 'latest',
+    channel: 'release',
     title: 'Reliable cross-Canvas host configuration copying',
     ...RELEASE_0_16_1_DETAILS,
   },

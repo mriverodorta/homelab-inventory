@@ -1,5 +1,6 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
-import { useState } from 'react'
+import { QueryClient } from '@tanstack/react-query'
+import { useLayoutEffect, useState } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 import { DomainEngineGate } from '@/components/domain-engine-gate'
 import { DomainEngineProvider } from '@/components/domain-engine-provider'
@@ -43,6 +44,70 @@ function stubClient({
 }
 
 describe('DomainEngineGate', () => {
+  it('keeps an App-activated scoped runtime enabled when the legacy prop is omitted', async () => {
+    const client = stubClient({
+      initial: { phase: 'idle', revision: null },
+      afterStart: { phase: 'ready', revision: 7 },
+    })
+    function Harness() {
+      const engine = useDomainEngine()
+      const activateCanvas = engine.activateCanvas
+      useLayoutEffect(() => {
+        activateCanvas({
+          accountScope: 'account:7',
+          projectId: 3,
+          workspaceId: 9,
+          workspaceType: 'canvas',
+        })
+      }, [activateCanvas])
+      return <output>{`${engine.enabled}:${engine.runtimeKey ?? 'none'}`}</output>
+    }
+
+    render(
+      <DomainEngineProvider client={client} eventSourceFactory={eventSourceFactory}>
+        <Harness />
+      </DomainEngineProvider>,
+    )
+
+    await waitFor(() => expect(screen.getByText('true:account%3A7:3:9:canvas')).toBeInTheDocument())
+    expect(client.start).toHaveBeenCalledOnce()
+  })
+
+  it('removes runtime-scoped topology queries when a Canvas runtime is disposed', async () => {
+    const runtimeQueryClient = new QueryClient()
+    const client = stubClient({ initial: { phase: 'idle', revision: null } })
+    const runtimeKey = 'test-legacy:1:1:canvas'
+    runtimeQueryClient.setQueryData(['domain-engine-topology', runtimeKey, 1], { nodes: [] })
+    runtimeQueryClient.setQueryData(['domain-engine-compatible-endpoints', runtimeKey, 1], [])
+
+    function Harness() {
+      const engine = useDomainEngine()
+      return (
+        <button onClick={() => engine.removeCanvasRuntime({
+          accountScope: 'test-legacy',
+          projectId: 1,
+          workspaceId: 1,
+          workspaceType: 'canvas',
+        })}>Remove runtime</button>
+      )
+    }
+
+    render(
+      <DomainEngineProvider
+        enabled
+        client={client}
+        eventSourceFactory={eventSourceFactory}
+        runtimeQueryClient={runtimeQueryClient}
+      >
+        <Harness />
+      </DomainEngineProvider>,
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'Remove runtime' }))
+
+    expect(runtimeQueryClient.getQueryData(['domain-engine-topology', runtimeKey, 1])).toBeUndefined()
+    expect(runtimeQueryClient.getQueryData(['domain-engine-compatible-endpoints', runtimeKey, 1])).toBeUndefined()
+  })
+
   it('preserves mounted application state while a new session loads', () => {
     const client = stubClient({ initial: { phase: 'loading', revision: null } })
     function StatefulWorkspace() {
@@ -51,10 +116,17 @@ describe('DomainEngineGate', () => {
     }
     const contextValue = (enabled: boolean, session: number, state: DomainEngineState) => ({
       enabled,
+      runtimeKey: enabled ? `runtime:${session}` : null,
+      generation: session,
       session,
       client,
       state,
       syncEvent: null,
+      activateCanvas: () => {},
+      setRuntimeBusy: () => {},
+      removeCanvasRuntime: () => {},
+      clearCanvasRuntimes: () => {},
+      getCanvasRuntimeKeys: () => [],
       setEnabled: () => {},
       retry: async () => {},
     })
@@ -90,12 +162,11 @@ describe('DomainEngineGate', () => {
     expect(screen.getByRole('status')).toHaveTextContent('Loading workspace engine')
   })
 
-  it('creates a distinct idle-to-ready lifecycle for every Canvas activation', async () => {
+  it('keeps the Canvas client warm while Systems is active', async () => {
     vi.useFakeTimers()
     try {
       const firstClient = stubClient({ initial: { phase: 'loading', revision: null } })
-      const secondClient = stubClient({ initial: { phase: 'loading', revision: null } })
-      const clients = [firstClient, secondClient]
+      const clients = [firstClient]
       const clientFactory = vi.fn(() => clients.shift()!)
 
       function Harness() {
@@ -137,18 +208,18 @@ describe('DomainEngineGate', () => {
 
       fireEvent.click(screen.getByRole('button', { name: 'Open Systems' }))
       expect(screen.getByTestId('engine-state')).toHaveTextContent(
-        JSON.stringify({ enabled: false, session: 1, phase: 'idle' }),
+        JSON.stringify({ enabled: false, session: 2, phase: 'idle' }),
       )
 
       fireEvent.click(screen.getByRole('button', { name: 'Open Canvas' }))
       expect(screen.getByTestId('engine-state')).toHaveTextContent(
-        JSON.stringify({ enabled: true, session: 2, phase: 'loading' }),
+        JSON.stringify({ enabled: true, session: 3, phase: 'loading' }),
       )
-      expect(secondClient.start).toHaveBeenCalledOnce()
+      expect(clientFactory).toHaveBeenCalledOnce()
+      expect(firstClient.start).toHaveBeenCalledOnce()
 
       await act(async () => vi.runAllTimersAsync())
-      expect(firstClient.dispose).toHaveBeenCalledOnce()
-      expect(secondClient.dispose).not.toHaveBeenCalled()
+      expect(firstClient.dispose).not.toHaveBeenCalled()
     } finally {
       vi.useRealTimers()
     }
@@ -227,10 +298,17 @@ describe('DomainEngineGate', () => {
     const { rerender } = render(
       <DomainEngineContext.Provider value={{
         enabled: true,
+        runtimeKey: 'runtime:1',
+        generation: 1,
         session: 1,
         client,
         state: { phase: 'ready', revision: 3 },
         syncEvent: null,
+        activateCanvas: () => {},
+        setRuntimeBusy: () => {},
+        removeCanvasRuntime: () => {},
+        clearCanvasRuntimes: () => {},
+        getCanvasRuntimeKeys: () => [],
         setEnabled: () => {},
         retry: async () => {},
       }}>
@@ -241,10 +319,17 @@ describe('DomainEngineGate', () => {
     rerender(
       <DomainEngineContext.Provider value={{
         enabled: true,
+        runtimeKey: 'runtime:1',
+        generation: 1,
         session: 1,
         client,
         state: { phase: 'rebuilding', revision: 3, reason: 'External update' },
         syncEvent: null,
+        activateCanvas: () => {},
+        setRuntimeBusy: () => {},
+        removeCanvasRuntime: () => {},
+        clearCanvasRuntimes: () => {},
+        getCanvasRuntimeKeys: () => [],
         setEnabled: () => {},
         retry: async () => {},
       }}>

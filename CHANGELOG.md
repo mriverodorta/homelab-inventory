@@ -6,6 +6,17 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 
 ## Unreleased
 
+## [0.16.2] - 2026-08-26
+
+### Added
+
+- The browser keeps the three most recently used Canvas runtimes warm, including their scoped engine, topology, cable routing state, and server-sent event stream.
+
+### Changed
+
+- Returning to Systems or a recently used Canvas restores its view state immediately after the initial load instead of rebuilding the workspace engine and rerouting unchanged cables.
+- Opening a fourth Canvas evicts the least recently used inactive runtime, while active saves and mutations remain protected until completion.
+
 ## [0.16.1] - 2026-08-25
 
 ### Fixed

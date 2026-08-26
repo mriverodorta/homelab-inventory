@@ -9,6 +9,12 @@ export function projectQueryKey(project: ProjectState): QueryKey {
     : ['project']
 }
 
+export function projectQueryKeyForScope(projectId: number, workspaceId: number): QueryKey {
+  return projectId === 1 && workspaceId === 2
+    ? ['project']
+    : ['project', projectId, workspaceId]
+}
+
 export function cacheProjectState(queryClient: QueryClient, project: ProjectState) {
   queryClient.setQueryData(projectQueryKey(project), project)
 }

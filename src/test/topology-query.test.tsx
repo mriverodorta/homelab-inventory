@@ -70,10 +70,17 @@ describe('topology query coordinator', () => {
         <QueryClientProvider client={queryClient}>
           <DomainEngineContext.Provider value={{
             enabled: true,
+            runtimeKey: 'runtime:1',
+            generation: 1,
             session: 1,
             client,
             state: { phase: 'ready', revision: 7 },
             syncEvent: null,
+            activateCanvas: () => {},
+            setRuntimeBusy: () => {},
+            removeCanvasRuntime: () => {},
+            clearCanvasRuntimes: () => {},
+            getCanvasRuntimeKeys: () => [],
             setEnabled: () => {},
             retry: async () => {},
           }}>
@@ -132,10 +139,17 @@ describe('topology query coordinator', () => {
         <QueryClientProvider client={queryClient}>
           <DomainEngineContext.Provider value={{
             enabled: true,
+            runtimeKey: `runtime:${session}`,
+            generation: session,
             session,
             client,
             state: { phase: 'ready', revision: 7 },
             syncEvent: null,
+            activateCanvas: () => {},
+            setRuntimeBusy: () => {},
+            removeCanvasRuntime: () => {},
+            clearCanvasRuntimes: () => {},
+            getCanvasRuntimeKeys: () => [],
             setEnabled: () => {},
             retry: async () => {},
           }}>
