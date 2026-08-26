@@ -75,6 +75,8 @@ export type CanvasController = {
 }
 
 export type WorkbenchCanvasProps = {
+  runtimeKey?: string
+  interactionEnabled?: boolean
   project: ProjectState
   registryLinkedItemKeys: ReadonlySet<string>
   topologyData?: TopologyQueryData | null

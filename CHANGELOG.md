@@ -6,6 +6,11 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 
 ## Unreleased
 
+### Fixed
+
+- Recently used Canvas tabs now retain their rendered React Flow surfaces behind the persistent workbook shell, eliminating repeated blank, preparing, and loading states during warm Canvas and Systems navigation.
+- Lazy workspace modules now reuse one resolved component identity across retained surfaces instead of recreating a suspense boundary for every mount.
+
 ## [0.16.2] - 2026-08-26
 
 ### Added

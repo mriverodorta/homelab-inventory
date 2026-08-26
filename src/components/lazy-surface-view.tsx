@@ -2,9 +2,10 @@ import {
   Component,
   Suspense,
   lazy,
-  useMemo,
   useState,
+  type ComponentType,
   type ErrorInfo,
+  type LazyExoticComponent,
   type ReactNode,
 } from 'react'
 import { AlertTriangle, LoaderCircle } from 'lucide-react'
@@ -91,19 +92,21 @@ function LazySurfaceLoading({ label, className }: { label: string; className?: s
 }
 
 export function LazySurfaceView<Props extends object>({
+  initialComponent,
   loader,
   options,
   surfaceProps,
 }: {
+  initialComponent: LazyExoticComponent<ComponentType<Props>>
   loader: () => LazyModule<Props>
   options: LazySurfaceOptions<Props>
   surfaceProps: Props
 }) {
-  const [attempt, setAttempt] = useState(0)
-  const LazyComponent = useMemo(() => {
-    void attempt
-    return lazy(loader)
-  }, [attempt, loader])
+  const [attempt, setAttempt] = useState(() => ({
+    key: 0,
+    component: initialComponent,
+  }))
+  const LazyComponent = attempt.component
   const close = options.getClose?.(surfaceProps)
   const shouldRender = options.shouldRender?.(surfaceProps) ?? true
 
@@ -111,10 +114,13 @@ export function LazySurfaceView<Props extends object>({
 
   return (
     <LazySurfaceErrorBoundary
-      key={attempt}
+      key={attempt.key}
       displayName={options.displayName}
       errorTitle={options.errorTitle ?? `${options.displayName} could not be loaded`}
-      onRetry={() => setAttempt((current) => current + 1)}
+      onRetry={() => setAttempt((current) => ({
+        key: current.key + 1,
+        component: lazy(loader),
+      }))}
       onClose={close}
     >
       <Suspense

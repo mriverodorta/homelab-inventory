@@ -652,7 +652,9 @@ const RELEASE_0_16_2_DETAILS: UnreleasedReleaseNotes = {
 
 export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
   highlights: [],
-  fixes: [],
+  fixes: [
+    'Recently used Canvas tabs now retain their rendered workspace surfaces, eliminating repeated blank, preparing, and loading states during warm Canvas and Systems navigation.',
+  ],
   notes: [],
 }
 

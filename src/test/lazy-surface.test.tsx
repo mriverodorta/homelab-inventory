@@ -143,4 +143,20 @@ describe('createLazySurface', () => {
     expect(await screen.findByText('Loaded')).toBeInTheDocument()
     expect(loader).toHaveBeenCalledOnce()
   })
+
+  it('reuses the resolved lazy component across surface remounts', async () => {
+    const loader = vi.fn(async () => ({ default: ({ label }: { label: string }) => <div>{label}</div> }))
+    const LazyExample = createLazySurface(loader, {
+      displayName: 'Example',
+      loadingLabel: 'Loading example',
+    })
+    const first = render(<LazyExample label="First" />)
+
+    expect(await screen.findByText('First')).toBeInTheDocument()
+    first.unmount()
+    render(<LazyExample label="Second" />)
+
+    expect(await screen.findByText('Second')).toBeInTheDocument()
+    expect(loader).toHaveBeenCalledOnce()
+  })
 })

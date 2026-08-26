@@ -36,6 +36,8 @@ import { useStableCanvasCallbacks } from '@/components/canvas/use-stable-canvas-
 import { usePermission } from '@/hooks/use-permission'
 
 function CanvasViewport({
+  runtimeKey,
+  interactionEnabled = true,
   project,
   registryLinkedItemKeys,
   topologyData = null,
@@ -109,8 +111,8 @@ function CanvasViewport({
   const canViewAudit = usePermission('audit.view')
   const canViewUpdates = usePermission('updates.view')
   const { setNodeRef, isOver } = useDroppable({
-    id: 'canvas',
-    disabled: !canEditCanvas && !canEditInventory,
+    id: interactionEnabled ? 'canvas' : `inactive-canvas:${runtimeKey ?? project.metadata.workspaceId ?? 'unknown'}`,
+    disabled: !interactionEnabled || (!canEditCanvas && !canEditInventory),
     data: {
       kind: 'canvas',
     },
@@ -318,7 +320,7 @@ function CanvasViewport({
       initialViewport={initialViewport}
       onViewportChange={onViewportChange}
       forceRenderAllNodes={forceRenderAllNodes}
-      nodesDraggable={canEditCanvas}
+      nodesDraggable={interactionEnabled && canEditCanvas}
       activity={canvasActivity}
       validationMessage={validationMessage}
       validationSeverity={validationSeverity}

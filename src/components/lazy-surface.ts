@@ -1,4 +1,4 @@
-import { createElement } from 'react'
+import { createElement, lazy } from 'react'
 import type {
   LazyModule,
   LazySurfaceComponent,
@@ -16,8 +16,10 @@ export function createLazySurface<Props extends object>(
   options: LazySurfaceOptions<Props>,
 ): LazySurfaceComponent<Props> {
   let prefetchPromise: Promise<void> | null = null
+  const InitialLazyComponent = lazy(loader)
 
   const RetryableLazySurface = ((props: Props) => createElement(LazySurfaceView<Props>, {
+    initialComponent: InitialLazyComponent,
     loader,
     options,
     surfaceProps: props,

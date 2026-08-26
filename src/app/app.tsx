@@ -422,10 +422,7 @@ function App() {
 
     if (!restoredState) {
       hasHydratedProjectRef.current = false
-      projectRef.current = null
       inventoryMetadataHistoryRef.current = new Map()
-      lastPersistedProjectRef.current = null
-      setProject(null)
       setHistory(createEmptyHistory())
       setSelectedItemId(null)
       setSelectedConnectionId(null)
@@ -814,7 +811,6 @@ function App() {
   if (
     workbookController.loading
     || !project
-    || !projectMatchesActiveWorkspace
     || !workbookController.activeWorkspace
     || !workbookController.activeWorkbook
   ) {
@@ -972,6 +968,11 @@ function App() {
       selectedItemId,
       onSelectItem: canvasSelectionController.selectInventoryItem,
       onCloseInspector: navigationActions.clearCanvasSelection,
+    },
+    canvasRuntime: {
+      activeRuntimeKey: canvasWorkspaceActive ? activeWorkspaceKey : null,
+      activeReady: canvasWorkspaceActive && projectMatchesActiveWorkspace,
+      retainedRuntimeKeys: getCanvasRuntimeKeys(),
     },
   }
 
