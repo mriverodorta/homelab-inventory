@@ -27,7 +27,9 @@ export async function runTimedPhase({
   const startedTick = monotonicNow()
   let outcome = 'passed'
   try {
-    return await operation()
+    const result = await operation()
+    if (result?.timingOutcome === 'passed-reused') outcome = 'passed-reused'
+    return result
   } catch (error) {
     outcome = 'failed'
     throw error

@@ -45,6 +45,23 @@ describe('local release phase timing', () => {
     expect(receipts[0].outcome).toBe('failed')
   })
 
+  test('records an operation-provided successful reuse outcome', async () => {
+    const ticks = [100, 110]
+    const walls = [new Date('2026-08-28T12:00:00.000Z'), new Date('2026-08-28T12:00:00.010Z')]
+    const receipts = []
+
+    await runTimedPhase({
+      id: 'local-ci',
+      sourceFingerprint: 'a'.repeat(64),
+      operation: async () => ({ timingOutcome: 'passed-reused' }),
+      monotonicNow: () => ticks.shift(),
+      wallNow: () => walls.shift(),
+      onReceipt: async (receipt) => receipts.push(receipt),
+    })
+
+    expect(receipts[0].outcome).toBe('passed-reused')
+  })
+
   test('replaces a retried phase and formats the critical-path summary', () => {
     const first = { id: 'arm64-build', durationMs: 2_000, outcome: 'failed' }
     const retry = { id: 'arm64-build', durationMs: 1_500, outcome: 'passed' }

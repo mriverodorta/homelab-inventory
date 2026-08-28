@@ -1,6 +1,24 @@
-export const CI_CONTRACT_VERSION = 3
+export const CI_CONTRACT_VERSION = 4
+export const CI_RECEIPT_VERSION = 2
 export const PINNED_BUN_VERSION = '1.3.14'
 export const PINNED_RUST_VERSION = '1.94.1'
+
+export const CI_ENVIRONMENT_KEYS = Object.freeze([
+  'BUN_OPTIONS',
+  'CARGO_BUILD_TARGET',
+  'CARGO_TARGET_DIR',
+  'CI',
+  'DOCKER_CONTEXT',
+  'DOCKER_HOST',
+  'HOMELAB_WASM_PREBUILT',
+  'LANG',
+  'LC_ALL',
+  'NODE_ENV',
+  'NODE_OPTIONS',
+  'RUSTFLAGS',
+  'TZ',
+  'VITE_DOMAIN_ENGINE',
+])
 
 const RUST_VERIFICATION_INPUTS = Object.freeze(['rust', 'rust-toolchain.toml'])
 
@@ -19,6 +37,8 @@ export const CI_PHASES = Object.freeze([
 ])
 
 export const CI_CONTRACT_FILES = Object.freeze([
+  '.dockerignore',
+  '.gitignore',
   '.github/workflows/ci.yml',
   '.github/workflows/codeql-scheduled.yml',
   '.github/workflows/docker-security-monitor.yml',
@@ -34,6 +54,7 @@ export const CI_CONTRACT_FILES = Object.freeze([
   'scripts/ci/run.mjs',
   'scripts/ci/test-supervisor.mjs',
   'scripts/ci/verify-receipt.mjs',
+  'scripts/container-security/smoke-runtime.mjs',
   'scripts/release-artifacts/fingerprint.mjs',
   'scripts/release-artifacts/agent-store.mjs',
   'scripts/release-artifacts/store.mjs',
@@ -43,4 +64,5 @@ export const CI_CONTRACT_FILES = Object.freeze([
   'Dockerfile',
   'scripts/local-release.mjs',
   'scripts/local-release/config.mjs',
+  'scripts/local-release/timing.mjs',
 ])

@@ -68,6 +68,7 @@ Thumbs.db
 *.sw?
 
 # Local design/spec scratch space
+.superpowers/
 docs/superpowers/
 
 # Local Rust/WASM development

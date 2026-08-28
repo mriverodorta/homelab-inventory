@@ -66,6 +66,8 @@ bun run hooks:install
 
 Pushes to `main` or `stable` require a current local CI receipt plus current ARM64 and AMD64 release-candidate receipts for the exact revision. The pre-push hook fails closed when either proof is missing or stale. Both architectures boot the distroless production image and require Docker Scout and Trivy to report zero known vulnerabilities at every severity. Docker Desktop must be running and Docker Scout must be available.
 
+The CI receipt is reusable only for the exact successful validation contract recorded in it. It binds the commit, recursive submodule state, pinned Bun and Rust versions, host platform, relevant environment, CI phase contract, and contract-file hashes. Unexpected untracked files invalidate release preparation. Reuse restores canonical release artifacts and validates the receipt again; any uncertainty runs complete CI. Container smoke tests and vulnerability scans are never skipped by CI receipt reuse.
+
 ## Local Staged Releases
 
 Docker release construction, deployment validation, and publication run on the maintainer's Mac. GitHub Actions validates pull requests and performs scheduled CodeQL and published-image monitoring, but deployment pushes do not start hosted validation and GitHub never builds or writes Docker tags.

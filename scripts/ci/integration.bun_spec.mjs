@@ -7,7 +7,7 @@ describe('protected push integration', () => {
   test('release preparation verifies CI before contacting the live server', async () => {
     const source = await fs.readFile(new URL('scripts/local-release.mjs', root), 'utf8')
     const prepare = source.slice(source.indexOf('async function prepare()'))
-    const ciVerification = prepare.indexOf('runCiVerification')
+    const ciVerification = prepare.indexOf('ensureCiVerification')
     const remoteSnapshot = prepare.indexOf('createRemoteSnapshot')
 
     expect(ciVerification).toBeGreaterThan(-1)
