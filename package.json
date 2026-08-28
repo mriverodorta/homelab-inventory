@@ -55,7 +55,7 @@
     "start": "NODE_ENV=production bun server/index.mjs",
     "auth:reset-owner": "bun server/auth/reset-owner-cli.mjs",
     "test": "bun scripts/ci/test-supervisor.mjs",
-    "test:vitest": "NODE_OPTIONS=--no-experimental-webstorage vitest run",
+    "test:vitest": "NODE_OPTIONS=--no-experimental-webstorage vitest run --maxWorkers=8",
     "test:bun": "bun run test:auth && bun run test:sqlite",
     "test:auth": "bun test server/auth/*.bun_spec.mjs",
     "test:sqlite": "bun test scripts/verify-sqlite-runtime.bun_spec.mjs scripts/check-database-migrations.bun_spec.mjs scripts/benchmark-sqlite-persistence.bun_spec.mjs scripts/ci/*.bun_spec.mjs scripts/local-release/*.bun_spec.mjs server/backup/sharing-identity-restore.bun_spec.ts server/persistence server/registry/*.bun_spec.mjs server/telemetry/*.bun_spec.mjs",
