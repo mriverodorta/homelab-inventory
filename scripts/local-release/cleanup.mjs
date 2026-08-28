@@ -14,11 +14,9 @@ function candidateImages(revision, architectures) {
   return architectures.map((architecture) => `homelab-inventory-candidate:${prefix}-${architecture}`)
 }
 
-export function releaseCleanupCommands({ revision, candidateArchitectures = [], preserveScanner = false } = {}) {
-  const commands = [
-    ['docker', 'buildx', 'rm', '--force', RELEASE_BUILDER],
-    ['docker', 'scout', 'cache', 'prune', '--force', '--sboms'],
-  ]
+export function releaseCleanupCommands({ revision, candidateArchitectures = [], preserveBuilder = false, preserveScanner = false } = {}) {
+  const commands = [['docker', 'scout', 'cache', 'prune', '--force', '--sboms']]
+  if (!preserveBuilder) commands.unshift(['docker', 'buildx', 'rm', '--force', RELEASE_BUILDER])
   if (!preserveScanner) commands.push(['docker', 'volume', 'rm', '--force', RELEASE_TRIVY_CACHE_VOLUME])
   if (candidateArchitectures.length > 0) {
     const images = candidateImages(revision, candidateArchitectures)
@@ -52,13 +50,15 @@ export async function cleanupReleaseDockerState({
   revision,
   candidateArchitectures = [],
   reclaimDockerRaw = true,
+  preserveBuilder = false,
   preserveScanner = false,
 }) {
-  for (const command of releaseCleanupCommands({ revision, candidateArchitectures, preserveScanner })) {
+  for (const command of releaseCleanupCommands({ revision, candidateArchitectures, preserveBuilder, preserveScanner })) {
     await run(command, { allowFailure: true, capture: true, log: false })
   }
   await removeOrphanedReleaseRegistries()
   const disposableImages = [LOCAL_REGISTRY_IMAGE, RELEASE_BUILDKIT_IMAGE]
+  if (preserveBuilder) disposableImages.splice(disposableImages.indexOf(RELEASE_BUILDKIT_IMAGE), 1)
   if (!preserveScanner) disposableImages.unshift(TRIVY_IMAGE)
   await run(['docker', 'image', 'rm', '--force', ...disposableImages], {
     allowFailure: true,

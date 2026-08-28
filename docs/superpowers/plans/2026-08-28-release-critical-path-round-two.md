@@ -148,7 +148,7 @@ confirm no Registry container or anonymous volume was created.
 bun test scripts/local-release/oci-runtime-identity.bun_spec.mjs scripts/local-release/oci.bun_spec.mjs scripts/local-release/cleanup.bun_spec.mjs
 ```
 
-- [ ] **Step 7: Commit Task 2**
+- [x] **Step 7: Commit Task 2**
 
 ```bash
 git add scripts/local-release/oci-runtime-identity.mjs scripts/local-release/oci-runtime-identity.bun_spec.mjs scripts/local-release/oci.mjs scripts/local-release/oci.bun_spec.mjs scripts/local-release/local-registry.mjs scripts/local-release/cleanup.mjs
@@ -171,19 +171,19 @@ git commit -m "build: verify directly loaded OCI candidates"
 - Updates: `buildOciCandidate({ reuseBuilder })`.
 - Updates: `cleanupReleaseDockerState({ preserveBuilder })`.
 
-- [ ] **Step 1: Write failing lifecycle tests**
+- [x] **Step 1: Write failing lifecycle tests**
 
 Assert ARM64 recreates the builder, waiting-state cleanup strictly prunes but
 does not remove it, AMD64 ensures/reuses it, and publish/reset/failure cleanup
 removes it and its image.
 
-- [ ] **Step 2: Run focused tests and confirm failure**
+- [x] **Step 2: Run focused tests and confirm failure**
 
 ```bash
 bun test scripts/local-release/cleanup.bun_spec.mjs scripts/ci/integration.bun_spec.mjs scripts/local-release/oci.bun_spec.mjs
 ```
 
-- [ ] **Step 3: Implement explicit lifecycle**
+- [x] **Step 3: Implement explicit lifecycle**
 
 Recreate once before ARM64. Strictly prune records before writing
 `awaiting-approval`. Preserve only builder runtime and scanner database while

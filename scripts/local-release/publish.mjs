@@ -145,7 +145,7 @@ export async function publishCandidate({ root, paths, state, identity, channel, 
   let amd64 = state.candidates.amd64
   if (!amd64) {
     const built = await timed('amd64-build', () => (
-      buildOciCandidate({ root, paths, identity, architecture: 'amd64' })
+      buildOciCandidate({ root, paths, identity, architecture: 'amd64', reuseBuilder: true })
     ))
     amd64 = await timed('amd64-validation', async () => {
       await loadOciCandidate(built, paths)

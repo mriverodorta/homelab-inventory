@@ -1,11 +1,12 @@
 #!/usr/bin/env bun
+import fs from 'node:fs/promises'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { releasePaths, releaseRemoteConfig } from './local-release/config.mjs'
 import { parseLocalReleaseCommand } from './local-release/cli.mjs'
 import { cleanupReleaseDockerState } from './local-release/cleanup.mjs'
 import { cleanupDockerHubCandidateTags } from './local-release/docker-hub.mjs'
-import { buildOciCandidate, loadOciCandidate, validateCandidateArtifact } from './local-release/oci.mjs'
+import { buildOciCandidate, loadOciCandidate, pruneReleaseBuilderCache, validateCandidateArtifact } from './local-release/oci.mjs'
 import { publishCandidate } from './local-release/publish.mjs'
 import { sanitizeStagingData } from './local-release/sanitize.mjs'
 import { activateIncomingData, createRemoteSnapshot } from './local-release/snapshot.mjs'
@@ -108,6 +109,7 @@ async function prepare() {
         await deployStaging(arm64, paths)
         return checkStaging(arm64, paths)
       })
+      await timed('approval-builder-prune', () => pruneReleaseBuilderCache())
       state = await writeReleaseState(paths, { ...state, phase: 'awaiting-approval', staging })
       completed = true
       console.log(`\nARM64 staging is ready at http://127.0.0.1:8799 for revision ${identity.revision}.`)
@@ -117,6 +119,7 @@ async function prepare() {
         paths,
         revision: identity.revision,
         candidateArchitectures: completed ? [] : ['arm64', 'amd64'],
+        preserveBuilder: completed,
         preserveScanner: completed,
       }))
     }
@@ -145,7 +148,16 @@ async function approve() {
 
 async function reset() {
   await withReleaseLock(paths, async () => {
+    const state = await readReleaseState(paths)
     await stopStaging()
+    await cleanupReleaseDockerState({
+      paths,
+      revision: state.identity?.revision,
+      candidateArchitectures: ['arm64', 'amd64'],
+    })
+    if (state.identity?.revision) {
+      await fs.rm(path.join(paths.candidatesDir, state.identity.revision), { recursive: true, force: true })
+    }
     await writeReleaseState(paths, emptyReleaseState())
   })
 }

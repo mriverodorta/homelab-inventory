@@ -22,6 +22,19 @@ describe('protected push integration', () => {
     expect(prepare).toContain("state = await writeReleaseState(paths, { ...state, phase: 'awaiting-approval', staging })")
     expect(prepare.indexOf("phase: 'awaiting-approval'"))
       .toBeLessThan(prepare.indexOf("timed('prepare-cleanup'"))
+    expect(prepare.indexOf("timed('approval-builder-prune'"))
+      .toBeLessThan(prepare.indexOf("phase: 'awaiting-approval'"))
+    expect(prepare).toContain('preserveBuilder: completed')
+  })
+
+  test('reuses the pruned builder only for AMD64 and removes it on reset', async () => {
+    const releaseSource = await fs.readFile(new URL('scripts/local-release.mjs', root), 'utf8')
+    const publishSource = await fs.readFile(new URL('scripts/local-release/publish.mjs', root), 'utf8')
+    const reset = releaseSource.slice(releaseSource.indexOf('async function reset()'), releaseSource.indexOf('function option('))
+
+    expect(publishSource).toContain("architecture: 'amd64', reuseBuilder: true")
+    expect(reset.indexOf('cleanupReleaseDockerState'))
+      .toBeLessThan(reset.indexOf('emptyReleaseState()'))
   })
 
   test('main and stable require CI and release security receipts without fallback scanning', async () => {

@@ -44,11 +44,16 @@ export async function recreateReleaseBuilder(paths) {
   await ensureReleaseBuilder()
 }
 
-export async function buildOciCandidate({ root, paths, identity, architecture }) {
+export async function pruneReleaseBuilderCache() {
+  await run(['docker', 'buildx', 'prune', '--builder', RELEASE_BUILDER, '--all', '--force'])
+}
+
+export async function buildOciCandidate({ root, paths, identity, architecture, reuseBuilder = false }) {
   if (!['arm64', 'amd64'].includes(architecture)) throw new Error(`Unsupported release architecture ${architecture}.`)
   await fs.access(path.join(root, '.release-artifacts', 'wasm', 'homelab_engine.wasm'))
   await fs.access(path.join(root, '.release-artifacts', 'agent', 'manifest.json'))
-  await recreateReleaseBuilder(paths)
+  if (reuseBuilder) await ensureReleaseBuilder()
+  else await recreateReleaseBuilder(paths)
   const build = candidateBuildCommand({ root, paths, identity, architecture })
   await fs.rm(build.directory, { recursive: true, force: true })
   await fs.mkdir(build.directory, { recursive: true, mode: 0o700 })

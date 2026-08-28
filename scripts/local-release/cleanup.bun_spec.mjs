@@ -31,8 +31,9 @@ describe('release Docker cleanup', () => {
   })
 
   test('retains only the release scanner database while ARM64 awaits approval', () => {
-    const commands = releaseCleanupCommands({ revision: 'c'.repeat(40), preserveScanner: true })
+    const commands = releaseCleanupCommands({ revision: 'c'.repeat(40), preserveBuilder: true, preserveScanner: true })
     expect(commands).not.toContainEqual(['docker', 'volume', 'rm', '--force', RELEASE_TRIVY_CACHE_VOLUME])
+    expect(commands).not.toContainEqual(['docker', 'buildx', 'rm', '--force', RELEASE_BUILDER])
   })
 
   test('reclaims Docker.raw only on macOS and removes the helper afterward', () => {
