@@ -12,6 +12,10 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 - Release preparation records phase timings and probes the exact staged image's HTML shell, immutable assets, bootstrap response, health metadata, and server-sent event stream before approval.
 - Deployment-triggered validation now runs locally; GitHub Actions remains available for pull requests, scheduled CodeQL analysis, and scheduled monitoring of published Docker images.
 - Two-platform dry runs validate immutable OCI archives directly, and the Trivy database is retained only between an approved ARM64 candidate and its AMD64 publication step before final cleanup.
+- Independent Vitest and Bun test families now run concurrently under one fail-fast supervisor with private disposable logs.
+- Release validation now loads runtime images from the attested OCI archive through a digest-checked local conversion, then proves the exact config digest, ordered rootfs diff IDs, platform, and release labels without a temporary Registry.
+- The ARM64 approval boundary now strictly prunes every BuildKit record while retaining the empty builder runtime for the later cold AMD64 build; reset, failure, and publication cleanup still remove all release-owned builder state.
+- Candidate receipts now break validation time into OCI runtime proof, smoke test, vulnerability database, Docker Scout, and Trivy phases without persisting scanner output.
 
 ## [0.16.6] - 2026-08-28
 

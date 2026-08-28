@@ -17,7 +17,7 @@ The public source repository is available on GitHub:
 
 https://github.com/mriverodorta/homelab-inventory
 
-GitHub is the source of truth for source history and pull-request review. Docker Hub images are built on the maintainer's Apple Silicon staging system, tested against sanitized production-shaped data, scanned for both supported architectures, and uploaded from the exact validated OCI artifacts without rebuilding. Unchanged Rust/WASM and Agent inputs reuse checksum-verified local artifacts rather than recompiling Rust or Go per architecture. GitHub retains scheduled CodeQL and published-image monitoring, while deployment pushes do not start duplicate hosted validation. Numbered releases are created during stable promotion.
+GitHub is the source of truth for source history and pull-request review. Docker Hub images are built on the maintainer's Apple Silicon staging system, tested against sanitized production-shaped data, scanned for both supported architectures, and uploaded from the exact validated OCI artifacts without rebuilding. Local runtime tests prove the loaded image config and rootfs against each attested OCI archive without a temporary Registry. Unchanged Rust/WASM and Agent inputs reuse checksum-verified local artifacts rather than recompiling Rust or Go per architecture. GitHub retains scheduled CodeQL and published-image monitoring, while deployment pushes do not start duplicate hosted validation. Numbered releases are created during stable promotion.
 
 ## Features
 

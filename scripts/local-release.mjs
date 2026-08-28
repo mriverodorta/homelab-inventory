@@ -97,8 +97,8 @@ async function prepare() {
       state = await writeReleaseState(paths, { ...state, phase: 'building-arm64', sanitizedData })
       const built = await timed('arm64-build', () => buildOciCandidate({ root, paths, identity, architecture: 'arm64' }))
       const arm64 = await timed('arm64-validation', async () => {
-        await loadOciCandidate(built, paths)
-        return validateLoadedCandidate(built)
+        const loaded = await loadOciCandidate(built, paths)
+        return validateLoadedCandidate(loaded)
       })
       state = await writeReleaseState(paths, {
         ...state,

@@ -1,5 +1,6 @@
 import { run } from './process.mjs'
 import { ensureTrivyDatabase, trivyCommand, TRIVY_IMAGE } from '../container-security/trivy.mjs'
+import { performance } from 'node:perf_hooks'
 
 export { TRIVY_IMAGE }
 export const SECURITY_SEVERITIES = 'critical,high,medium,low,unspecified'
@@ -30,20 +31,49 @@ export async function smokeTestImage(image, platform) {
   }
 }
 
-export async function scanImage(image) {
-  await ensureTrivyDatabase(run)
-  await Promise.all([
-    run(['docker', 'scout', 'cves', '--exit-code', '--only-severity', SECURITY_SEVERITIES, `local://${image}`]),
-    run(trivyCommand([
+async function timed(operation, monotonicNow) {
+  const started = monotonicNow()
+  const value = await operation()
+  return { value, durationMs: Math.max(0, Math.round(monotonicNow() - started)) }
+}
+
+export async function scanImage(image, {
+  execute = run,
+  ensureDatabase = () => ensureTrivyDatabase(execute),
+  monotonicNow = () => performance.now(),
+} = {}) {
+  const database = await timed(ensureDatabase, monotonicNow)
+  const [scout, trivy] = await Promise.all([
+    timed(() => execute(['docker', 'scout', 'cves', '--exit-code', '--only-severity', SECURITY_SEVERITIES, `local://${image}`]), monotonicNow),
+    timed(() => execute(trivyCommand([
       'image', '--image-src', 'docker', '--scanners', 'vuln', '--pkg-types', 'os,library',
       '--severity', 'UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL', '--ignore-unfixed=false',
       '--exit-code', '1', '--timeout', '15m', image,
-    ], { dockerSocket: true })),
+    ], { dockerSocket: true })), monotonicNow),
   ])
+  return {
+    trivyDatabaseMs: database.durationMs,
+    scoutMs: scout.durationMs,
+    trivyMs: trivy.durationMs,
+  }
 }
 
-export async function validateLoadedCandidate(candidate) {
-  await smokeTestImage(candidate.image, candidate.platform)
-  await scanImage(candidate.image)
-  return { ...candidate, validatedAt: new Date().toISOString(), security: 'passed', smoke: 'passed' }
+export async function validateLoadedCandidate(candidate, {
+  smoke = smokeTestImage,
+  scanner = scanImage,
+  monotonicNow = () => performance.now(),
+} = {}) {
+  const smokeResult = await timed(() => smoke(candidate.image, candidate.platform), monotonicNow)
+  const scannerTimings = await scanner(candidate.image)
+  return {
+    ...candidate,
+    validatedAt: new Date().toISOString(),
+    security: 'passed',
+    smoke: 'passed',
+    validationTimings: {
+      ...(candidate.validationTimings ?? {}),
+      smokeMs: smokeResult.durationMs,
+      ...scannerTimings,
+    },
+  }
 }

@@ -148,8 +148,8 @@ export async function publishCandidate({ root, paths, state, identity, channel, 
       buildOciCandidate({ root, paths, identity, architecture: 'amd64', reuseBuilder: true })
     ))
     amd64 = await timed('amd64-validation', async () => {
-      await loadOciCandidate(built, paths)
-      return validateLoadedCandidate(built)
+      const loaded = await loadOciCandidate(built, paths)
+      return validateLoadedCandidate(loaded)
     })
     next = await writeReleaseState(paths, {
       ...next,

@@ -1,6 +1,7 @@
 import fs from 'node:fs/promises'
 import path from 'node:path'
 import { createHash } from 'node:crypto'
+import { performance } from 'node:perf_hooks'
 import { startLocalRegistry, stopLocalRegistry } from './local-registry.mjs'
 import { createDockerLoadArchive, readOciRuntimeIdentity, verifyLoadedRuntimeIdentity } from './oci-runtime-identity.mjs'
 import { run } from './process.mjs'
@@ -93,7 +94,8 @@ export function localCandidateImportCommand({ oras, candidate, destination }) {
   ]
 }
 
-export async function loadOciCandidate(candidate, paths) {
+export async function loadOciCandidate(candidate, paths, { monotonicNow = () => performance.now() } = {}) {
+  const started = monotonicNow()
   let identity
   let localLoadUnsupported = candidate.loadMode === 'registry-fallback'
   const loadRoot = path.join(path.dirname(candidate.archive), '.docker-load')
@@ -149,6 +151,10 @@ export async function loadOciCandidate(candidate, paths) {
       candidateDigest: identity.candidateDigest,
       configDigest: identity.configDigest,
       layerCount: identity.diffIds.length,
+    },
+    validationTimings: {
+      ...(candidate.validationTimings ?? {}),
+      runtimeIdentityMs: Math.max(0, Math.round(monotonicNow() - started)),
     },
   }
 }

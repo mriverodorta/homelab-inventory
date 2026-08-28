@@ -221,17 +221,17 @@ git commit -m "build: retain cache-free builder through approval"
 - Adds: architecture candidate `validationTimings` with import/proof, smoke,
   vulnerability database, Scout, and Trivy durations.
 
-- [ ] **Step 1: Add failing timing receipt tests**
+- [x] **Step 1: Add failing timing receipt tests**
 
 Assert scanner operations remain concurrent, timing fields are finite
 non-negative integers, and no command output or error text is persisted.
 
-- [ ] **Step 2: Implement validation subphase timing**
+- [x] **Step 2: Implement validation subphase timing**
 
 Measure runtime identity proof, smoke, database update, and both scanners while
 retaining the existing top-level phase receipts.
 
-- [ ] **Step 3: Update release documentation and unreleased notes**
+- [x] **Step 3: Update release documentation and unreleased notes**
 
 Document parallel test families, exact direct OCI proof, temporary builder
 retention, fallback behavior, and terminal cleanup.
