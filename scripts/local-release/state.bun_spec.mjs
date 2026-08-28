@@ -26,6 +26,16 @@ describe('local release state', () => {
     expect((await fs.stat(paths.stateFile)).mode & 0o777).toBe(0o600)
   })
 
+  test('migrates version one state with empty phase timings', async () => {
+    const { paths } = await context()
+    await fs.mkdir(paths.supportRoot, { recursive: true })
+    await fs.writeFile(paths.stateFile, `${JSON.stringify({ version: 1, phase: 'approved' })}\n`)
+    const state = await readReleaseState(paths)
+    expect(state.version).toBe(2)
+    expect(state.phase).toBe('approved')
+    expect(state.timings).toEqual([])
+  })
+
   test('prevents concurrent release operations and removes the lock afterward', async () => {
     const { paths } = await context()
     await withReleaseLock(paths, async () => {

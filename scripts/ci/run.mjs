@@ -4,6 +4,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { CI_PHASES } from './contract.mjs'
 import { assertPinnedToolchains, collectCiState, writeCiReceipt } from './receipt.mjs'
+import { runCachedCiPhase } from './phase-cache.mjs'
 import { releasePaths } from '../local-release/config.mjs'
 import { commandText, run } from '../local-release/process.mjs'
 
@@ -25,7 +26,18 @@ export async function runCiVerification({
 
   for (const [index, phase] of phases.entries()) {
     console.log(`\n[CI ${index + 1}/${phases.length}] ${phase.id}: ${commandText(phase.command)}`)
-    await runCommand(phase.command, { cwd: repositoryRoot })
+    if (phase.cacheInputs) {
+      const result = await runCachedCiPhase({
+        root: repositoryRoot,
+        cacheDir: releasePaths().ciPhaseCacheDir,
+        phase,
+        contractVersion: before.contractVersion,
+        runCommand,
+      })
+      if (result.reused) console.log(`[CI cache] ${phase.id} reused verified unchanged inputs.`)
+    } else {
+      await runCommand(phase.command, { cwd: repositoryRoot, env: phase.env })
+    }
   }
 
   const after = await collectState(repositoryRoot)

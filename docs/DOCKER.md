@@ -116,13 +116,13 @@ image: mriverodorta/homelab-inventory:0.1.9
 
 ## Release Channels
 
-GitHub remains the source of truth for source validation. Release images are built, staged against sanitized production-shaped data, scanned, and published from the maintainer's local release pipeline:
+GitHub remains the source of truth for source history and pull-request validation. Release images are built, staged against sanitized production-shaped data, scanned, and published from the maintainer's local release pipeline:
 
 - Pull requests run lint, tests, and a production build.
 - Approved releases from `main` move `mriverodorta/homelab-inventory:latest`.
 - Approved promotions from `stable` move `stable` and publish immutable `X.Y.Z` plus the moving `X.Y` alias.
 - The exact ARM64 and AMD64 OCI candidates that pass smoke tests and zero-vulnerability scans are uploaded without rebuilding.
-- GitHub Actions continues source CI and scheduled scans of already-published `latest` and `stable` images.
+- GitHub Actions continues pull-request CI, scheduled CodeQL analysis, and scheduled scans of already-published `latest` and `stable` images; deployment pushes do not start duplicate hosted validation.
 
 See [RELEASES.md](RELEASES.md) for the full release process.
 

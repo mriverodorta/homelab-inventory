@@ -47,7 +47,7 @@ export function assertCurrentGoToolchain({ dockerfile, releases }) {
   return { pinned, latest }
 }
 
-export async function verifyCurrentGoToolchain({ dockerfileUrl = new URL('../../Dockerfile', import.meta.url), fetchImpl = fetch } = {}) {
+export async function verifyCurrentGoToolchain({ dockerfileUrl = new URL('../../docker/agent-artifact.Dockerfile', import.meta.url), fetchImpl = fetch } = {}) {
   const [dockerfile, response] = await Promise.all([
     fs.readFile(dockerfileUrl, 'utf8'),
     fetchImpl(GO_RELEASE_FEED, { headers: { accept: 'application/json' } }),

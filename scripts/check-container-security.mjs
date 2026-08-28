@@ -1,7 +1,10 @@
 #!/usr/bin/env bun
 
-import { verifyCurrentGoToolchain } from './container-security/go-toolchain-policy.mjs'
 import { refreshTrivyDatabase, trivyCommand } from './container-security/trivy.mjs'
+import { releasePaths } from './local-release/config.mjs'
+import { ensureAgentArtifact, materializeAgentArtifact } from './release-artifacts/agent-store.mjs'
+import { ensureWasmArtifact, materializeWasmArtifact } from './release-artifacts/store.mjs'
+import { verifyCurrentGoToolchain } from './container-security/go-toolchain-policy.mjs'
 
 const ROOT = new URL('../', import.meta.url).pathname
 const PLATFORMS = ['linux/amd64', 'linux/arm64']
@@ -116,6 +119,13 @@ async function main() {
   }
 
   await verifyCurrentGoToolchain()
+  const paths = releasePaths()
+  const wasm = await ensureWasmArtifact({ root: ROOT, paths })
+  const agent = await ensureAgentArtifact({ root: ROOT, paths })
+  await Promise.all([
+    materializeWasmArtifact({ root: ROOT, receipt: wasm }),
+    materializeAgentArtifact({ root: ROOT, receipt: agent }),
+  ])
   await refreshTrivyDatabase(run)
 
   const version = JSON.parse(await Bun.file(new URL('../package.json', import.meta.url)).text()).version
@@ -143,8 +153,7 @@ async function main() {
         '.',
       ])
       await smokeTest(image, platform)
-      await scanWithScout(image)
-      await scanWithTrivy(image)
+      await Promise.all([scanWithScout(image), scanWithTrivy(image)])
     }
   } finally {
     if (Bun.env.SECURITY_KEEP_IMAGES !== '1') {

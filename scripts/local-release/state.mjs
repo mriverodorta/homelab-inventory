@@ -23,6 +23,7 @@ export function emptyReleaseState() {
     staging: null,
     approval: null,
     publication: null,
+    timings: [],
     updatedAt: null,
   }
 }
@@ -34,6 +35,9 @@ async function exists(file) {
 export async function readReleaseState(paths) {
   if (!await exists(paths.stateFile)) return emptyReleaseState()
   const parsed = JSON.parse(await fs.readFile(paths.stateFile, 'utf8'))
+  if (parsed?.version === 1) {
+    return { ...emptyReleaseState(), ...parsed, version: RELEASE_STATE_VERSION, timings: [] }
+  }
   if (parsed?.version !== RELEASE_STATE_VERSION) {
     throw new Error(`Unsupported local release state version ${String(parsed?.version)}.`)
   }

@@ -8,7 +8,7 @@ const current = {
   submodules: 'vendor/homelab-inventory-agent=abc123',
   bunVersion: '1.3.14',
   rustVersion: '1.94.1',
-  contractVersion: 1,
+  contractVersion: 3,
   contractHashes: { 'package.json': 'hash-a' },
 }
 const receipt = { ...current, completedAt: '2026-08-15T00:00:00.000Z' }

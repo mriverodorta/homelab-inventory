@@ -50,6 +50,62 @@ export async function deployStaging(candidate, paths) {
   return await waitForStagingHealth()
 }
 
+async function responseText(response, label) {
+  if (!response.ok) throw new Error(`${label} returned HTTP ${response.status}.`)
+  return response.text()
+}
+
+export async function probeStagingRuntime({
+  baseUrl = `http://127.0.0.1:${STAGING_PORT}`,
+  fetchImpl = fetch,
+  streamTimeoutMs = 5_000,
+} = {}) {
+  const healthResponse = await fetchImpl(`${baseUrl}/api/health`)
+  const health = JSON.parse(await responseText(healthResponse, 'Staging health'))
+  if (health.ok !== true || health.mode !== 'staging') throw new Error('Staging health metadata is invalid.')
+
+  const shellResponse = await fetchImpl(`${baseUrl}/`)
+  const shell = await responseText(shellResponse, 'Staging application shell')
+  if (!shell.includes('id="root"')) throw new Error('Staging application shell is missing the React root.')
+  const contentSecurityPolicy = shellResponse.headers.get('content-security-policy') ?? ''
+  if (!contentSecurityPolicy.includes("default-src 'self'")) throw new Error('Staging application shell is missing its production CSP.')
+  const assetPath = shell.match(/(?:src|href)="(\/assets\/[^"?]+)"/)?.[1]
+  if (!assetPath) throw new Error('Staging application shell does not reference a frontend asset.')
+  const assetResponse = await fetchImpl(`${baseUrl}${assetPath}`)
+  await responseText(assetResponse, 'Staging frontend asset')
+  if (!String(assetResponse.headers.get('cache-control') ?? '').includes('immutable')) {
+    throw new Error('Staging frontend asset is not immutable-cacheable.')
+  }
+
+  const bootstrapResponse = await fetchImpl(`${baseUrl}/api/bootstrap`)
+  const bootstrap = JSON.parse(await responseText(bootstrapResponse, 'Staging bootstrap'))
+  if (!Array.isArray(bootstrap.projects) || bootstrap.projects.length === 0) {
+    throw new Error('Staging bootstrap has no project workbooks.')
+  }
+
+  const abort = new AbortController()
+  const timeout = setTimeout(() => abort.abort(), streamTimeoutMs)
+  try {
+    const streamResponse = await fetchImpl(`${baseUrl}/api/events?topics=updates%3Astatus`, { signal: abort.signal })
+    if (!streamResponse.ok || !String(streamResponse.headers.get('content-type') ?? '').startsWith('text/event-stream')) {
+      throw new Error('Staging application event stream is unavailable.')
+    }
+    const frame = await streamResponse.body?.getReader().read()
+    const text = frame?.value ? new TextDecoder().decode(frame.value) : ''
+    if (!text.includes('event: stream-ready')) throw new Error('Staging application event stream did not send its ready frame.')
+  } finally {
+    clearTimeout(timeout)
+    abort.abort()
+  }
+
+  return {
+    checkedAt: new Date().toISOString(),
+    assetPath,
+    projectCount: bootstrap.projects.length,
+    sse: 'ready',
+  }
+}
+
 function inspectMount(inspect, paths) {
   const mount = inspect.Mounts?.find((entry) => entry.Destination === '/data')
   return mount?.Type === 'bind' && mount.Source === paths.currentDataDir && mount.RW === true
@@ -78,6 +134,7 @@ export async function checkStaging(candidate, paths) {
   if (labels['org.opencontainers.image.revision'] !== candidate.revision) {
     throw new Error('Staging image revision does not match the candidate receipt.')
   }
+  const runtime = await probeStagingRuntime()
   return {
     checkedAt: new Date().toISOString(),
     containerId: inspect.Id,
@@ -85,6 +142,7 @@ export async function checkStaging(candidate, paths) {
     candidateDigest: candidate.digest,
     dataFingerprint: data.fingerprint,
     health,
+    runtime,
   }
 }
 

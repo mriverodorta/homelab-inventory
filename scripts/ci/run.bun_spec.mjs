@@ -10,7 +10,7 @@ const cleanState = {
   submodules: '',
   bunVersion: '1.3.14',
   rustVersion: '1.94.1',
-  contractVersion: 1,
+  contractVersion: 3,
   contractHashes: {},
 }
 

@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import { TRIVY_IMAGE, trivyCommand } from './trivy.mjs'
+import { ensureTrivyDatabase, TRIVY_IMAGE, trivyCommand } from './trivy.mjs'
 
 describe('Trivy release scanner', () => {
   test('pins the scanner image and mounts an ephemeral database cache volume', () => {
@@ -13,5 +13,12 @@ describe('Trivy release scanner', () => {
     const command = trivyCommand(['image', 'candidate'], { dockerSocket: true })
     expect(command).toContain('/var/run/docker.sock:/var/run/docker.sock')
     expect(command.indexOf('/var/run/docker.sock:/var/run/docker.sock')).toBeLessThan(command.indexOf(TRIVY_IMAGE))
+  })
+
+  test('updates an existing release database without deleting it first', async () => {
+    const commands = []
+    await ensureTrivyDatabase(async (command) => commands.push(command))
+    expect(commands).toEqual([trivyCommand(['image', '--download-db-only'])])
+    expect(commands.flat()).not.toContain('clean')
   })
 })

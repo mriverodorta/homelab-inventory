@@ -1,5 +1,5 @@
 import { run } from './process.mjs'
-import { refreshTrivyDatabase, trivyCommand, TRIVY_IMAGE } from '../container-security/trivy.mjs'
+import { ensureTrivyDatabase, trivyCommand, TRIVY_IMAGE } from '../container-security/trivy.mjs'
 
 export { TRIVY_IMAGE }
 export const SECURITY_SEVERITIES = 'critical,high,medium,low,unspecified'
@@ -31,13 +31,15 @@ export async function smokeTestImage(image, platform) {
 }
 
 export async function scanImage(image) {
-  await refreshTrivyDatabase(run)
-  await run(['docker', 'scout', 'cves', '--exit-code', '--only-severity', SECURITY_SEVERITIES, `local://${image}`])
-  await run(trivyCommand([
-    'image', '--image-src', 'docker', '--scanners', 'vuln', '--pkg-types', 'os,library',
-    '--severity', 'UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL', '--ignore-unfixed=false',
-    '--exit-code', '1', '--timeout', '15m', image,
-  ], { dockerSocket: true }))
+  await ensureTrivyDatabase(run)
+  await Promise.all([
+    run(['docker', 'scout', 'cves', '--exit-code', '--only-severity', SECURITY_SEVERITIES, `local://${image}`]),
+    run(trivyCommand([
+      'image', '--image-src', 'docker', '--scanners', 'vuln', '--pkg-types', 'os,library',
+      '--severity', 'UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL', '--ignore-unfixed=false',
+      '--exit-code', '1', '--timeout', '15m', image,
+    ], { dockerSocket: true })),
+  ])
 }
 
 export async function validateLoadedCandidate(candidate) {

@@ -6,6 +6,13 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 
 ## Unreleased
 
+### Changed
+
+- Local releases now reuse checksum-verified portable WASM and Agent bundles when their complete inputs are unchanged, while verified Rust format, Clippy, and test receipts avoid recompilation without retaining Cargo or Docker compiler caches.
+- Release preparation records phase timings and probes the exact staged image's HTML shell, immutable assets, bootstrap response, health metadata, and server-sent event stream before approval.
+- Deployment-triggered validation now runs locally; GitHub Actions remains available for pull requests, scheduled CodeQL analysis, and scheduled monitoring of published Docker images.
+- Two-platform dry runs validate immutable OCI archives directly, and the Trivy database is retained only between an approved ARM64 candidate and its AMD64 publication step before final cleanup.
+
 ## [0.16.6] - 2026-08-28
 
 ### Fixed

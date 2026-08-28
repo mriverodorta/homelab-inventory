@@ -29,6 +29,9 @@ artifacts
 rust/target
 data-wasm
 server/seed
+server/agent-release
+server/engine/generated
+src/engine/generated
 server/**/*.test.mjs
 server/**/*.bun_spec.mjs
 src/test

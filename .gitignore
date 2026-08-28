@@ -71,6 +71,7 @@ Thumbs.db
 docs/superpowers/
 
 # Local Rust/WASM development
+.release-artifacts/
 data-wasm/
 rust/target/
 shared/generated/engine-protocol/

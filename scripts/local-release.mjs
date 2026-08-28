@@ -20,6 +20,7 @@ import {
 import { checkStaging, createApproval, deployStaging, stagingLogs, stopStaging } from './local-release/staging.mjs'
 import { validateLoadedCandidate } from './local-release/validate-image.mjs'
 import { runCiVerification } from './ci/run.mjs'
+import { formatTimingSummary, runTimedPhase, upsertPhaseReceipt } from './local-release/timing.mjs'
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const paths = releasePaths()
@@ -53,43 +54,71 @@ async function status() {
     approval: state.approval,
     amd64: state.candidates.amd64,
     publication: state.publication,
+    timings: state.timings,
   }, null, 2))
+  console.log(`\n${formatTimingSummary(state.timings)}`)
+}
+
+function statePhase({ id, identity, paths, stateRef, operation }) {
+  return runTimedPhase({
+    id,
+    sourceFingerprint: identity.sourceFingerprint,
+    operation,
+    onReceipt: async (receipt) => {
+      const current = stateRef.get()
+      stateRef.set(await writeReleaseState(paths, {
+        ...current,
+        timings: upsertPhaseReceipt(current.timings, receipt),
+      }))
+    },
+  })
 }
 
 async function prepare() {
   await withReleaseLock(paths, async () => {
     const identity = await currentReleaseIdentity(root)
     let completed = false
+    let state = { ...emptyReleaseState(), phase: 'verifying', identity }
+    const stateRef = { get: () => state, set: (next) => { state = next } }
+    const timed = (id, operation) => statePhase({ id, identity, paths, stateRef, operation })
     try {
       if (!identity.trackedClean) throw new Error(`Tracked worktree changes prevent release:\n${identity.trackedStatus}`)
-      await runCiVerification({ root, receiptFile: paths.ciReceiptFile })
-      let state = { ...emptyReleaseState(), phase: 'snapshotting', identity }
       state = await writeReleaseState(paths, state)
-      const snapshot = await createRemoteSnapshot(releaseRemoteConfig(), paths, { root })
+      await timed('local-ci', () => runCiVerification({ root, receiptFile: paths.ciReceiptFile }))
+      state = await writeReleaseState(paths, { ...state, phase: 'snapshotting' })
+      const snapshot = await timed('production-snapshot', () => createRemoteSnapshot(releaseRemoteConfig(), paths, { root }))
       state = await writeReleaseState(paths, { ...state, phase: 'sanitizing', snapshot })
-      const sanitizedData = await sanitizeStagingData(paths.incomingDataDir)
-      await activateIncomingData(paths)
+      const sanitizedData = await timed('sanitize-snapshot', async () => {
+        const result = await sanitizeStagingData(paths.incomingDataDir)
+        await activateIncomingData(paths)
+        return result
+      })
       state = await writeReleaseState(paths, { ...state, phase: 'building-arm64', sanitizedData })
-      const built = await buildOciCandidate({ root, paths, identity, architecture: 'arm64' })
-      await loadOciCandidate(built, paths)
-      const arm64 = await validateLoadedCandidate(built)
+      const built = await timed('arm64-build', () => buildOciCandidate({ root, paths, identity, architecture: 'arm64' }))
+      const arm64 = await timed('arm64-validation', async () => {
+        await loadOciCandidate(built, paths)
+        return validateLoadedCandidate(built)
+      })
       state = await writeReleaseState(paths, {
         ...state,
         phase: 'staging',
         candidates: { ...state.candidates, arm64 },
       })
-      await deployStaging(arm64, paths)
-      const staging = await checkStaging(arm64, paths)
-      await writeReleaseState(paths, { ...state, phase: 'awaiting-approval', staging })
+      const staging = await timed('staging-deploy', async () => {
+        await deployStaging(arm64, paths)
+        return checkStaging(arm64, paths)
+      })
+      state = await writeReleaseState(paths, { ...state, phase: 'awaiting-approval', staging })
       completed = true
       console.log(`\nARM64 staging is ready at http://127.0.0.1:8799 for revision ${identity.revision}.`)
     } finally {
       if (!completed) await stopStaging()
-      await cleanupReleaseDockerState({
+      await timed('prepare-cleanup', () => cleanupReleaseDockerState({
         paths,
         revision: identity.revision,
         candidateArchitectures: completed ? [] : ['arm64', 'amd64'],
-      })
+        preserveScanner: completed,
+      }))
     }
   })
 }

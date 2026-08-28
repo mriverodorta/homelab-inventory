@@ -698,7 +698,11 @@ const RELEASE_0_16_6_DETAILS: UnreleasedReleaseNotes = {
 export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
   highlights: [],
   fixes: [],
-  notes: [],
+  notes: [
+    'Local releases now reuse checksum-verified portable WASM and Agent artifacts plus verified Rust-check receipts when their complete inputs are unchanged, avoiding redundant Rust and Go compilation without retaining compiler caches.',
+    'Release receipts now record critical-path timings and validate the staged HTML shell, immutable frontend assets, bootstrap data, and server-sent event stream before approval.',
+    'Deployment verification and exact OCI publication now run entirely on the maintainer workstation, while GitHub retains pull-request CI plus scheduled CodeQL and published-image monitoring.',
+  ],
 }
 
 const RELEASE_0_11_2_DETAILS: UnreleasedReleaseNotes = {

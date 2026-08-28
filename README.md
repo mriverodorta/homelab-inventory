@@ -299,12 +299,14 @@ Recommended Compose image:
 image: mriverodorta/homelab-inventory:stable
 ```
 
-GitHub is the source of truth for source and CI; release construction is local and exact-artifact based:
+GitHub is the source of truth for source history and pull-request review; deployment validation and release construction are local and exact-artifact based:
 
 - Pull requests validate lint, tests, and production build.
 - Approved releases from `main` move the `latest` Docker image after ARM64 staging and two-platform vulnerability verification.
 - Approved promotions from `stable` publish `stable`, immutable `X.Y.Z`, and the moving `X.Y` series alias.
 - Docker Hub receives the exact ARM64 and AMD64 OCI manifests that passed local smoke and zero-vulnerability checks; publication does not rebuild them.
+- Unchanged Rust/WASM and Agent inputs reuse checksum-verified receipts and portable artifacts instead of recompiling Rust or Go inside each architecture image, while generated compiler and Docker caches are still removed after release.
+- GitHub retains pull-request CI plus scheduled CodeQL and published-image monitoring; pushes made by the guarded deployment pipeline do not start duplicate hosted verification.
 - Stable promotion creates the matching `vX.Y.Z` Git tag and GitHub Release only after both Docker architectures are verified.
 - Existing numbered Docker images are never overwritten; historical restoration must use the same guarded local pipeline.
 

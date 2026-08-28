@@ -15,3 +15,7 @@ export async function refreshTrivyDatabase(run) {
   await run(trivyCommand(['clean', '--vuln-db']))
   await run(trivyCommand(['image', '--download-db-only']))
 }
+
+export async function ensureTrivyDatabase(run) {
+  await run(trivyCommand(['image', '--download-db-only']))
+}

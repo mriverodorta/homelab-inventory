@@ -64,18 +64,18 @@ Install the versioned Git hooks once per checkout:
 bun run hooks:install
 ```
 
-Pushes to `main` or `stable` require a current local release receipt. When no receipt matches the exact revision, the pre-push hook falls back to `bun run security:container`. Both paths boot the distroless production image for `linux/amd64` and `linux/arm64` and require Docker Scout and Trivy to report zero known vulnerabilities at every severity. Docker Desktop must be running and Docker Scout must be available.
+Pushes to `main` or `stable` require a current local CI receipt plus current ARM64 and AMD64 release-candidate receipts for the exact revision. The pre-push hook fails closed when either proof is missing or stale. Both architectures boot the distroless production image and require Docker Scout and Trivy to report zero known vulnerabilities at every severity. Docker Desktop must be running and Docker Scout must be available.
 
 ## Local Staged Releases
 
-Docker release construction and publication run on the maintainer's Mac. GitHub Actions still validates source and monitors published images, but it does not build or write Docker tags.
+Docker release construction, deployment validation, and publication run on the maintainer's Mac. GitHub Actions validates pull requests and performs scheduled CodeQL and published-image monitoring, but deployment pushes do not start hosted validation and GitHub never builds or writes Docker tags.
 
 ```bash
 bun run release:local cleanup-local
 bun run release:local prepare
 ```
 
-`prepare` obtains a consistent read-only snapshot from `bolt`, incrementally transfers it with rsync into private state outside the repository, removes authentication, identities, credentials, Agent bindings, notification delivery, Registry contribution state, backup archives, and every outbound side effect, then builds and scans only the native ARM64 candidate. The exact candidate runs at `http://127.0.0.1:8799` as `homelab-inventory-staging` with `APP_MODE=staging` and a loopback-only port.
+`prepare` first verifies the exact clean commit locally. Unchanged Rust checks reuse source-bound receipts, and unchanged WASM and multi-OS Agent bundles reuse pinned, checksum-verified portable artifacts rather than compiling inside each architecture image. It then obtains a consistent read-only snapshot from `bolt`, incrementally transfers it with rsync into private state outside the repository, removes authentication, identities, credentials, Agent bindings, notification delivery, Registry contribution state, backup archives, and every outbound side effect, then builds and scans only the native ARM64 candidate. The exact candidate runs at `http://127.0.0.1:8799` as `homelab-inventory-staging` with `APP_MODE=staging` and a loopback-only port. Automated staging probes verify the shell, immutable assets, bootstrap, health response, and SSE startup before manual approval.
 
 After testing the staging app:
 
@@ -97,7 +97,7 @@ bun run release:local reset
 bun run release:local cleanup-candidates
 ```
 
-Release state, staging data, OCI archives, receipts, and tools live under `~/Library/Application Support/Homelab Inventory Release`. Every architecture uses a fresh dedicated Buildx builder with no reusable cache. Release-owned builder state, scanner caches, temporary registries, and loaded candidate images are removed automatically after their lifecycle permits it and can also be removed with `cleanup-local`. None of these paths may be committed.
+Release state, staging data, OCI archives, receipts, the current portable WASM artifact, and tools live under `~/Library/Application Support/Homelab Inventory Release`. Every architecture uses a fresh dedicated Buildx builder with no reusable layer cache. Only tiny source-bound verification receipts and the current portable artifact survive releases; Cargo targets, release builders, temporary registries, loaded candidates, and scanner state are removed after their lifecycle permits it. `bun run release:local status` reports phase timings, and `cleanup-local` removes disposable release-owned state. None of these paths may be committed.
 
 ## Project Shape
 

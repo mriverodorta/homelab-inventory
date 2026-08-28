@@ -18,33 +18,12 @@ RUN bun install --frozen-lockfile --production
 
 FROM oven/bun:1.3.14-alpine@sha256:5acc90a93e91ff07bf72aa90a7c9f0fa189765aec90b47bdbf2152d2196383c0 AS bun-toolchain
 
-FROM golang:1.26.7-alpine@sha256:28d89ee9cc0ff9fec75c82ca201e6bf7fdf9a679d4b7b24dfa04f2bb766bb468 AS agent-build
-WORKDIR /agent
-ARG AGENT_VERSION=0.3.4
-ARG AGENT_SOURCE_REVISION=c216bad09aaaea9bb0588cb0a7ebde29b5fd9cb6
-COPY server/agent-release-pin.json /agent-release-pin.json
-COPY vendor/homelab-inventory-agent ./
-RUN grep -Fq "\"version\": \"${AGENT_VERSION}\"" /agent-release-pin.json \
-  && grep -Fq "\"sourceRevision\": \"${AGENT_SOURCE_REVISION}\"" /agent-release-pin.json \
-  && sh scripts/build-release.sh "${AGENT_VERSION}" /agent-release "${AGENT_SOURCE_REVISION}"
-
-FROM rust:1.94.1-alpine AS wasm-build
-WORKDIR /app
-RUN apk add --no-cache binaryen libstdc++ musl-dev \
-  && rustup target add wasm32-unknown-unknown
-COPY --from=bun-toolchain /usr/local/bin/bun /usr/local/bin/bun
-COPY rust ./rust
-COPY rust-toolchain.toml ./
-COPY scripts/build-wasm.mjs ./scripts/
-ENV WASM_OPTIMIZE=1
-RUN bun scripts/build-wasm.mjs
-
 FROM oven/bun:1.3.14-alpine@sha256:5acc90a93e91ff07bf72aa90a7c9f0fa189765aec90b47bdbf2152d2196383c0 AS build
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
-COPY --from=wasm-build /app/src/engine/generated/homelab_engine.wasm ./src/engine/generated/homelab_engine.wasm
-COPY --from=wasm-build /app/server/engine/generated/homelab_engine.wasm ./server/engine/generated/homelab_engine.wasm
+COPY .release-artifacts/wasm/homelab_engine.wasm ./src/engine/generated/homelab_engine.wasm
+COPY .release-artifacts/wasm/homelab_engine.wasm ./server/engine/generated/homelab_engine.wasm
 ENV HOMELAB_WASM_PREBUILT=1
 ENV VITE_DOMAIN_ENGINE=required
 RUN mkdir -p /tmp/runtime-data && bun run build
@@ -86,7 +65,7 @@ COPY --chown=10001:10001 server/backup/archive-envelope.mjs server/backup/archiv
 COPY --chown=10001:10001 server/auth/access-routes.mjs server/auth/access-service.mjs server/auth/api-permissions.mjs server/auth/auth-service.mjs server/auth/authorization-model.mjs server/auth/authorization-service.mjs server/auth/common-passwords.mjs server/auth/config.mjs server/auth/engine-permissions.mjs server/auth/invitation-service.mjs server/auth/middleware.mjs server/auth/model.mjs server/auth/oidc-service.mjs server/auth/passwords.mjs server/auth/permission-catalog.mjs server/auth/reset-owner-cli.mjs server/auth/routes.mjs server/auth/session-service.mjs server/auth/tokens.mjs ./server/auth/
 COPY --chown=10001:10001 server/engine/command-service.mjs server/engine/runtime.mjs server/engine/snapshot.mjs server/engine/sse-hub.mjs ./server/engine/
 COPY --chown=10001:10001 server/live-events ./server/live-events
-COPY --from=wasm-build --chown=10001:10001 /app/server/engine/generated/homelab_engine.wasm ./server/engine/generated/homelab_engine.wasm
+COPY --from=build --chown=10001:10001 /app/server/engine/generated/homelab_engine.wasm ./server/engine/generated/homelab_engine.wasm
 COPY --chown=10001:10001 server/db/agent-auth.mjs server/db/inventory-capabilities.mjs server/db/inventory-input.mjs server/db/inventory-lifecycle.mjs server/db/legacy-network-normalization.ts server/db/nas-power-configuration.mjs server/db/relational-ids.mjs server/db/store.mjs server/db/validation.mjs ./server/db/
 COPY --chown=10001:10001 server/db/migrate-schema-*.mjs ./server/db/
 COPY --chown=10001:10001 server/persistence ./server/persistence
@@ -100,7 +79,7 @@ COPY --chown=10001:10001 server/inventory-metadata ./server/inventory-metadata
 COPY --chown=10001:10001 server/systems/attention-projector.mjs server/systems/memory-pressure.mjs server/systems/read-service.mjs server/systems/routes.mjs server/systems/saved-view-service.mjs ./server/systems/
 COPY --chown=10001:10001 server/startup ./server/startup
 COPY --chown=10001:10001 server/agent-release-pin.json ./server/
-COPY --from=agent-build --chown=10001:10001 /agent-release ./server/agent-release
+COPY --chown=10001:10001 .release-artifacts/agent ./server/agent-release
 RUN ["bun", "-e", "const fs = await import('node:fs/promises'); const { AgentReleaseService } = await import('./server/agents/release-service.mjs'); const pin = JSON.parse(await fs.readFile('./server/agent-release-pin.json', 'utf8')); await new AgentReleaseService({ expectedVersion: pin.version, expectedSourceRevision: pin.sourceRevision }).initialize();"]
 COPY --chown=10001:10001 packages/catalog-protocol/package.json ./packages/catalog-protocol/
 COPY --chown=10001:10001 packages/catalog-protocol/src ./packages/catalog-protocol/src

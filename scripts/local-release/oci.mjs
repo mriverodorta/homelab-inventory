@@ -4,7 +4,6 @@ import { createHash } from 'node:crypto'
 import { startLocalRegistry, stopLocalRegistry } from './local-registry.mjs'
 import { run } from './process.mjs'
 import { ensurePinnedOras } from './tools.mjs'
-import { verifyCurrentGoToolchain } from '../container-security/go-toolchain-policy.mjs'
 
 export const RELEASE_BUILDER = 'homelab-release'
 
@@ -47,7 +46,8 @@ export async function recreateReleaseBuilder(paths) {
 
 export async function buildOciCandidate({ root, paths, identity, architecture }) {
   if (!['arm64', 'amd64'].includes(architecture)) throw new Error(`Unsupported release architecture ${architecture}.`)
-  await verifyCurrentGoToolchain()
+  await fs.access(path.join(root, '.release-artifacts', 'wasm', 'homelab_engine.wasm'))
+  await fs.access(path.join(root, '.release-artifacts', 'agent', 'manifest.json'))
   await recreateReleaseBuilder(paths)
   const build = candidateBuildCommand({ root, paths, identity, architecture })
   await fs.rm(build.directory, { recursive: true, force: true })

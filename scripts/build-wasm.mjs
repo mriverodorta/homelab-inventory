@@ -82,7 +82,7 @@ async function needsBuild() {
     }
     return false
   }
-  if (!(await exists(sourceArtifact)) || !(await Promise.all(outputs.map(exists))).every(Boolean)) {
+  if (!(await Promise.all(outputs.map(exists))).every(Boolean)) {
     return true
   }
   const oldestOutput = Math.min(...await Promise.all(outputs.map(async (file) => (await fs.stat(file)).mtimeMs)))

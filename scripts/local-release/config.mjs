@@ -1,7 +1,7 @@
 import os from 'node:os'
 import path from 'node:path'
 
-export const RELEASE_STATE_VERSION = 1
+export const RELEASE_STATE_VERSION = 2
 export const DEFAULT_REMOTE_HOST = 'bolt'
 export const DEFAULT_REMOTE_STACK_DIR = '/data/stack/homelab-inventory'
 export const DEFAULT_REMOTE_DATA_DIR = `${DEFAULT_REMOTE_STACK_DIR}/data`
@@ -22,9 +22,13 @@ export function releasePaths(environment = process.env) {
     lockFile: path.join(supportRoot, 'lock'),
     receiptsDir: path.join(supportRoot, 'receipts'),
     ciReceiptFile: path.join(supportRoot, 'receipts', 'ci.json'),
+    ciPhaseCacheDir: path.join(supportRoot, 'receipts', 'ci-phases'),
     candidatesDir: path.join(supportRoot, 'candidates'),
     logsDir: path.join(supportRoot, 'logs'),
     toolsDir: path.join(supportRoot, 'tools'),
+    artifactsRoot: path.join(supportRoot, 'artifacts'),
+    portableArtifactsDir: path.join(supportRoot, 'artifacts', 'wasm', 'current'),
+    agentArtifactsDir: path.join(supportRoot, 'artifacts', 'agent', 'current'),
     dataDir: path.join(supportRoot, 'data'),
     incomingDataDir: path.join(supportRoot, 'data', 'incoming'),
     currentDataDir: path.join(supportRoot, 'data', 'current'),

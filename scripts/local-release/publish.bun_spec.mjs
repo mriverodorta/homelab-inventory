@@ -6,7 +6,11 @@ import {
   indexCreateCommand,
   publicationPlan,
   publicationWritePlan,
+  validateDryRunIndex,
 } from './publish.mjs'
+import fs from 'node:fs/promises'
+import os from 'node:os'
+import path from 'node:path'
 
 const identity = { branch: 'main', revision: 'a'.repeat(40), version: '0.12.4', sourceFingerprint: 'b'.repeat(64), trackedClean: true }
 const candidate = { archive: '/candidate.oci.tar', digest: `sha256:${'c'.repeat(64)}` }
@@ -88,5 +92,27 @@ describe('exact artifact publication', () => {
     expect(() => assertPublicationReady({
       state: { ...state, publication: { channel: 'stable', dryRun: false } }, identity, channel: 'stable',
     })).toThrow('has not been approved')
+  })
+
+  test('validates a multi-platform dry run directly from immutable OCI archives', async () => {
+    const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'hli-dry-index-'))
+    try {
+      const candidates = await Promise.all(['arm64', 'amd64'].map(async (architecture) => {
+        const archive = path.join(directory, `${architecture}.oci.tar`)
+        await fs.writeFile(archive, architecture)
+        return {
+          architecture,
+          platform: `linux/${architecture}`,
+          archive,
+          archiveSha256: new Bun.CryptoHasher('sha256').update(architecture).digest('hex'),
+          digest: `sha256:${architecture === 'arm64' ? 'a' : 'b'}`.padEnd(71, architecture === 'arm64' ? 'a' : 'b'),
+        }
+      }))
+      const index = await validateDryRunIndex({ arm64: candidates[0], amd64: candidates[1] })
+      expect(index.platforms).toEqual(['linux/amd64', 'linux/arm64'])
+      expect(index.tag).toBe('local-oci-layout-validation')
+    } finally {
+      await fs.rm(directory, { recursive: true, force: true })
+    }
   })
 })

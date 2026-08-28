@@ -2,11 +2,11 @@ import fs from 'node:fs/promises'
 import path from 'node:path'
 import { createBranchReleasePlan } from '../release-plan.mjs'
 import { cleanupDockerHubCandidateTags } from './docker-hub.mjs'
-import { startLocalRegistry, stopLocalRegistry } from './local-registry.mjs'
 import { buildOciCandidate, loadOciCandidate, validateCandidateArtifact } from './oci.mjs'
 import { run } from './process.mjs'
 import { assertIdentityMatches, writeReleaseState } from './state.mjs'
 import { ensurePinnedOras } from './tools.mjs'
+import { runTimedPhase, upsertPhaseReceipt } from './timing.mjs'
 import { validateLoadedCandidate } from './validate-image.mjs'
 
 export const IMAGE_REPOSITORY = 'docker.io/mriverodorta/homelab-inventory'
@@ -70,6 +70,19 @@ export function indexCreateCommand(plan, { dryRun = false } = {}) {
   ]
 }
 
+export async function validateDryRunIndex({ arm64, amd64 }) {
+  await Promise.all([validateCandidateArtifact(arm64), validateCandidateArtifact(amd64)])
+  const platforms = [arm64.platform, amd64.platform].sort()
+  if (platforms.join(',') !== 'linux/amd64,linux/arm64') {
+    throw new Error('Dry-run OCI index requires exact linux/amd64 and linux/arm64 candidates.')
+  }
+  return {
+    tag: 'local-oci-layout-validation',
+    platforms,
+    candidateDigests: [arm64.digest, amd64.digest].sort(),
+  }
+}
+
 async function ensureImmutableTagAvailable(tag, identity) {
   const inspect = await run(['docker', 'buildx', 'imagetools', 'inspect', tag], { capture: true, allowFailure: true, log: false })
   if (inspect.exitCode !== 0) return false
@@ -118,11 +131,26 @@ export async function publishCandidate({ root, paths, state, identity, channel, 
   assertPublicationReady({ state, identity, channel })
   await validateCandidateArtifact(state.candidates.arm64)
   let next = await writeReleaseState(paths, { ...state, phase: 'building-amd64' })
+  const timed = (id, operation) => runTimedPhase({
+    id,
+    sourceFingerprint: identity.sourceFingerprint,
+    operation,
+    onReceipt: async (receipt) => {
+      next = await writeReleaseState(paths, {
+        ...next,
+        timings: upsertPhaseReceipt(next.timings, receipt),
+      })
+    },
+  })
   let amd64 = state.candidates.amd64
   if (!amd64) {
-    const built = await buildOciCandidate({ root, paths, identity, architecture: 'amd64' })
-    await loadOciCandidate(built, paths)
-    amd64 = await validateLoadedCandidate(built)
+    const built = await timed('amd64-build', () => (
+      buildOciCandidate({ root, paths, identity, architecture: 'amd64' })
+    ))
+    amd64 = await timed('amd64-validation', async () => {
+      await loadOciCandidate(built, paths)
+      return validateLoadedCandidate(built)
+    })
     next = await writeReleaseState(paths, {
       ...next,
       phase: 'publishing',
@@ -135,55 +163,61 @@ export async function publishCandidate({ root, paths, state, identity, channel, 
     await validateCandidateArtifact(amd64)
   }
 
-  const oras = await ensurePinnedOras(paths)
-  let local = null
-  try {
-    if (dryRun) local = await startLocalRegistry()
-    const plan = publicationPlan({ channel, identity, localRegistry: local?.repository })
-    assertPublicationBranch(plan, identity)
+  const oras = dryRun ? null : await ensurePinnedOras(paths)
+  const plan = publicationPlan({
+    channel,
+    identity,
+    localRegistry: dryRun ? 'dry-run.local/homelab-inventory' : null,
+  })
+  assertPublicationBranch(plan, identity)
+  if (!dryRun) {
     await Promise.all(publicationPlan({ channel, identity }).finalTags.map((tag) => (
       run(['docker', 'buildx', 'imagetools', 'inspect', tag], { capture: true, allowFailure: true, log: false })
     )))
-    const immutableTagExists = !dryRun && channel === 'stable'
-      ? await ensureImmutableTagAvailable(`${plan.destination}:${plan.release.exactTag}`, identity)
-      : false
-    const writePlan = publicationWritePlan(plan, { immutableTagExists })
-    await run(candidateUploadCommand({ oras, candidate: state.candidates.arm64, destination: plan.arm64, plainHttp: dryRun }))
-    await run(candidateUploadCommand({ oras, candidate: amd64, destination: plan.amd64, plainHttp: dryRun }))
-    await run(indexCreateCommand(writePlan))
-    const index = await verifyIndex(writePlan)
-    const cleanupTags = candidateCleanupTags(plan, { dryRun })
-    const candidateCleanup = cleanupTags.length === 0
-      ? { skipped: true, deleted: [], remaining: [] }
-      : { skipped: false, ...await cleanupDockerHubCandidateTags({ tags: cleanupTags }) }
-    if (!dryRun) await verifyIndex(writePlan)
+  }
+  const immutableTagExists = !dryRun && channel === 'stable'
+    ? await ensureImmutableTagAvailable(`${plan.destination}:${plan.release.exactTag}`, identity)
+    : false
+  const writePlan = publicationWritePlan(plan, { immutableTagExists })
+  const index = await timed('oci-publication', async () => {
+    if (dryRun) return validateDryRunIndex({ arm64: state.candidates.arm64, amd64 })
+
+      await run(candidateUploadCommand({ oras, candidate: state.candidates.arm64, destination: plan.arm64 }))
+      await run(candidateUploadCommand({ oras, candidate: amd64, destination: plan.amd64 }))
+      await run(indexCreateCommand(writePlan))
+      return verifyIndex(writePlan)
+  })
+  const cleanupTags = candidateCleanupTags(plan, { dryRun })
+  const candidateCleanup = cleanupTags.length === 0
+    ? { skipped: true, deleted: [], remaining: [] }
+    : { skipped: false, ...await cleanupDockerHubCandidateTags({ tags: cleanupTags }) }
+  if (!dryRun) await verifyIndex(writePlan)
+  const github = await timed('git-and-github-finalization', async () => {
     if (!dryRun) {
       await run(['git', 'push', 'origin', `${identity.revision}:refs/heads/${plan.branch}`])
     }
-    const github = await finalizeGitHubRelease(plan, identity, { dryRun })
-    const publication = {
-      channel,
-      dryRun,
-      tags: plan.finalTags,
-      immutableTagReused: immutableTagExists,
-      index,
-      github,
-      candidateCleanup,
-      publishedAt: new Date().toISOString(),
-    }
-    await fs.mkdir(paths.receiptsDir, { recursive: true, mode: 0o700 })
-    await fs.writeFile(
-      path.join(paths.receiptsDir, `${identity.revision}-${channel}${dryRun ? '-dry-run' : ''}.json`),
-      `${JSON.stringify({ identity, approval: state.approval, candidates: { arm64: state.candidates.arm64, amd64 }, publication }, null, 2)}\n`,
-      { mode: 0o600 },
-    )
-    return await writeReleaseState(paths, {
-      ...next,
-      phase: dryRun ? 'approved' : 'published',
-      candidates: { ...next.candidates, amd64, index },
-      publication,
-    })
-  } finally {
-    await stopLocalRegistry(local)
+    return finalizeGitHubRelease(plan, identity, { dryRun })
+  })
+  const publication = {
+    channel,
+    dryRun,
+    tags: plan.finalTags,
+    immutableTagReused: immutableTagExists,
+    index,
+    github,
+    candidateCleanup,
+    publishedAt: new Date().toISOString(),
   }
+  await fs.mkdir(paths.receiptsDir, { recursive: true, mode: 0o700 })
+  await fs.writeFile(
+    path.join(paths.receiptsDir, `${identity.revision}-${channel}${dryRun ? '-dry-run' : ''}.json`),
+    `${JSON.stringify({ identity, approval: state.approval, candidates: { arm64: state.candidates.arm64, amd64 }, publication }, null, 2)}\n`,
+    { mode: 0o600 },
+  )
+  return await writeReleaseState(paths, {
+    ...next,
+    phase: dryRun ? 'approved' : 'published',
+    candidates: { ...next.candidates, amd64, index },
+    publication,
+  })
 }

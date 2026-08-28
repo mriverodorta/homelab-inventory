@@ -24,6 +24,7 @@
   },
   "scripts": {
     "build:wasm": "bun scripts/build-wasm.mjs",
+    "prepare:release-artifacts": "bun scripts/release-artifacts/prepare.mjs",
     "prepare:agent": "bun scripts/prepare-agent-release.mjs",
     "check:agent-release": "bun scripts/check-agent-release-pin.mjs",
     "check:wasm": "cargo test --manifest-path rust/Cargo.toml --workspace",
