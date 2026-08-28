@@ -6,6 +6,10 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 
 ## Unreleased
 
+### Changed
+
+- Editable and shared Canvas views now use the same 10%–200% zoom range, making large layouts easier to review without changing saved viewport or fit-to-view behavior.
+
 ## [0.16.4] - 2026-08-27
 
 ### Fixed

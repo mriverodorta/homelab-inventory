@@ -125,8 +125,8 @@ export function CanvasViewportSurface({
           nodeTypes={canvasNodeTypes}
           edgeTypes={canvasEdgeTypes}
           {...(active ? flowEvents : {})}
-          minZoom={0.25}
-          maxZoom={1.8}
+          minZoom={0.1}
+          maxZoom={2}
           nodeDragThreshold={nodeDragThreshold}
           nodesDraggable={active && nodesDraggable}
           nodesConnectable={false}

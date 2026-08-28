@@ -69,6 +69,10 @@ describe('CanvasViewportSurface', () => {
     expect(screen.getByTestId('command-bar')).toBeInTheDocument()
     expect(screen.getByTestId('controls')).toBeInTheDocument()
     expect(screen.getByTestId('minimap')).toBeInTheDocument()
+    expect(flowProps.current).toMatchObject({
+      minZoom: 0.1,
+      maxZoom: 2,
+    })
     expect(flowProps.current.onPaneClick).toBeTypeOf('function')
   })
 })

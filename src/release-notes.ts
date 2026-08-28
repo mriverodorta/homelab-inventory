@@ -680,7 +680,9 @@ const RELEASE_0_16_4_DETAILS: UnreleasedReleaseNotes = {
 }
 
 export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
-  highlights: [],
+  highlights: [
+    'Editable and shared Canvas views now use the same 10%–200% zoom range, making large layouts easier to review without changing saved viewport or fit-to-view behavior.',
+  ],
   fixes: [],
   notes: [],
 }
