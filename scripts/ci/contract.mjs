@@ -32,6 +32,7 @@ export const CI_CONTRACT_FILES = Object.freeze([
   'scripts/ci/phase-cache.mjs',
   'scripts/ci/receipt.mjs',
   'scripts/ci/run.mjs',
+  'scripts/ci/test-supervisor.mjs',
   'scripts/ci/verify-receipt.mjs',
   'scripts/release-artifacts/fingerprint.mjs',
   'scripts/release-artifacts/agent-store.mjs',

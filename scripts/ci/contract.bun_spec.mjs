@@ -31,6 +31,7 @@ describe('local CI contract', () => {
       'scripts/ci/contract.mjs',
       'scripts/ci/receipt.mjs',
       'scripts/ci/run.mjs',
+      'scripts/ci/test-supervisor.mjs',
       'scripts/ci/verify-receipt.mjs',
       'scripts/local-release.mjs',
       'scripts/local-release/config.mjs',

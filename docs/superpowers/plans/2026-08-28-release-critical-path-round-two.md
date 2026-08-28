@@ -31,13 +31,13 @@
 - Produces: `runConcurrentTestFamilies({ root, jobs, spawnProcess, logRoot }) -> Promise<{ jobs, durationMs }>`.
 - Consumes: package scripts `test:vitest` and `test:bun`.
 
-- [ ] **Step 1: Write failing supervisor lifecycle tests**
+- [x] **Step 1: Write failing supervisor lifecycle tests**
 
 Cover two concurrent successful commands, first-failure sibling termination,
 environment forwarding, duration reporting, and removal of the private log
 directory.
 
-- [ ] **Step 2: Run the focused test and confirm failure**
+- [x] **Step 2: Run the focused test and confirm failure**
 
 Run:
 
@@ -47,13 +47,13 @@ bun test scripts/ci/test-supervisor.bun_spec.mjs
 
 Expected: failure because `test-supervisor.mjs` does not exist.
 
-- [ ] **Step 3: Implement the supervised runner**
+- [x] **Step 3: Implement the supervised runner**
 
 Use task-scoped files under `os.tmpdir()`, `node:child_process.spawn`, and a
 bounded `SIGTERM`/`SIGKILL` shutdown. Return per-job monotonic durations and
 always remove logs in `finally`.
 
-- [ ] **Step 4: Split package scripts and preserve focused commands**
+- [x] **Step 4: Split package scripts and preserve focused commands**
 
 Set:
 
@@ -65,7 +65,7 @@ Set:
 }
 ```
 
-- [ ] **Step 5: Run focused and complete tests**
+- [x] **Step 5: Run focused and complete tests**
 
 ```bash
 bun test scripts/ci/test-supervisor.bun_spec.mjs scripts/ci/contract.bun_spec.mjs
