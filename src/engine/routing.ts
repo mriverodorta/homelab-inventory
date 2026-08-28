@@ -19,10 +19,16 @@ import type {
 
 export { ROUTING_CACHE_FORMAT_VERSION, ROUTING_PLANNER_VERSION }
 
-export type CableRoutingCacheSnapshot = CableRouteCacheSeed & {
+export type PersistedCableRouteEntry = Readonly<{
+  connectionId: number
+  result: ObstacleRouteResult
+}>
+
+export type CableRoutingCacheSnapshot = {
   version: number
   plannerVersion: number
   geometryFingerprint: string | null
+  entries: PersistedCableRouteEntry[]
   failures: CableRouteFailure[]
   updatedAt: string | null
 }
@@ -142,54 +148,100 @@ export function cableRoutingGeometryFingerprint(requests: CableLaneRouteRequest[
   }))
 }
 
+function endpointMatchesCandidates(
+  point: { x: number; y: number } | undefined,
+  side: ObstacleRouteResult['source_side'],
+  candidates: LaneRouteRequest['request']['source_candidates'],
+  fallback: { point: { x: number; y: number }; side: ObstacleRouteResult['source_side'] },
+): boolean {
+  if (!point) return false
+  const available = candidates && candidates.length > 0 ? candidates : [fallback]
+  return available.some((candidate) => (
+    candidate.side === side
+    && candidate.point.x === point.x
+    && candidate.point.y === point.y
+  ))
+}
+
+function resultMatchesInput(result: ObstacleRouteResult, input: LaneRouteRequest): boolean {
+  const points = result.route.points
+  const definition = input.request.definition
+  return result.route.connection_id === definition.connection_id
+    && endpointMatchesCandidates(
+      points[0],
+      result.source_side,
+      input.request.source_candidates,
+      { point: definition.source, side: definition.source_side },
+    )
+    && endpointMatchesCandidates(
+      points[points.length - 1],
+      result.target_side,
+      input.request.target_candidates,
+      { point: definition.target, side: definition.target_side },
+    )
+}
+
+export function reconstructRoutingSeed(
+  cache: CableRoutingCacheSnapshot | null,
+  requests: CableLaneRouteRequest[],
+): CableRouteCacheSeed | null {
+  if (
+    cache?.version !== ROUTING_CACHE_FORMAT_VERSION
+    || cache.plannerVersion !== ROUTING_PLANNER_VERSION
+    || cache.geometryFingerprint !== cableRoutingGeometryFingerprint(requests)
+  ) return null
+
+  const normalizedRequests = engineRequests(requests)
+  const inputs = new Map(normalizedRequests.map((input) => [
+    input.request.definition.connection_id,
+    input,
+  ]))
+  if (inputs.size !== requests.length) return null
+
+  const seen = new Set<number>()
+  const entries: CableRouteCacheSeed['entries'] = []
+  for (const entry of cache.entries) {
+    const input = inputs.get(entry.connectionId)
+    if (
+      !input
+      || seen.has(entry.connectionId)
+      || !resultMatchesInput(entry.result, input)
+    ) return null
+    seen.add(entry.connectionId)
+    entries.push({ input, result: entry.result })
+  }
+  for (const failure of cache.failures) {
+    if (!inputs.has(failure.connection_id) || seen.has(failure.connection_id)) return null
+    seen.add(failure.connection_id)
+  }
+
+  return {
+    obstacles: engineObstacles(requests),
+    entries,
+  }
+}
+
 export function routingCacheMatchesRequests(
   cache: CableRoutingCacheSnapshot | null,
   requests: CableLaneRouteRequest[],
 ): boolean {
-  if (
-    !routingCacheGeometryMatchesRequests(cache, requests)
-    || cache.entries.length + cache.failures.length !== requests.length
-  ) return false
-
-  const expectedConnectionIds = new Set(requests.map((request) => request.connectionId))
-  if (expectedConnectionIds.size !== requests.length) return false
-
-  const cachedConnectionIds = new Set<number>()
-  for (const entry of cache.entries) {
-    const inputConnectionId = entry.input.request.definition.connection_id
-    const resultConnectionId = entry.result.route.connection_id
-    if (
-      inputConnectionId !== resultConnectionId
-      || !expectedConnectionIds.has(resultConnectionId)
-      || cachedConnectionIds.has(resultConnectionId)
-    ) return false
-    cachedConnectionIds.add(resultConnectionId)
-  }
-  for (const failure of cache.failures) {
-    if (
-      !expectedConnectionIds.has(failure.connection_id)
-      || cachedConnectionIds.has(failure.connection_id)
-    ) return false
-    cachedConnectionIds.add(failure.connection_id)
-  }
-
-  return cachedConnectionIds.size === expectedConnectionIds.size
+  return reconstructRoutingSeed(cache, requests) !== null
+    && cache !== null
+    && cache.entries.length + cache.failures.length === requests.length
 }
 
 export function routingCacheGeometryMatchesRequests(
   cache: CableRoutingCacheSnapshot | null,
   requests: CableLaneRouteRequest[],
 ): cache is CableRoutingCacheSnapshot {
-  return cache?.version === ROUTING_CACHE_FORMAT_VERSION
-    && cache.plannerVersion === ROUTING_PLANNER_VERSION
-    && cache.geometryFingerprint === cableRoutingGeometryFingerprint(requests)
+  return reconstructRoutingSeed(cache, requests) !== null
 }
 
 export function routesFromRoutingCache(
   cache: CableRoutingCacheSnapshot,
 ): ReadonlyMap<number, CableRouteResult> {
   return new Map(cache.entries.map((entry) => [
-    entry.result.route.connection_id,
+    entry.connectionId,
     fromEngineResult(entry.result),
   ]))
 }
@@ -217,10 +269,7 @@ export async function planCableRoutes(
 ): Promise<CableRoutePlanResult> {
   const obstacles = engineObstacles(requests)
   const normalizedRequests = engineRequests(requests)
-  const seed = cache?.version === ROUTING_CACHE_FORMAT_VERSION
-    && cache.plannerVersion === ROUTING_PLANNER_VERSION
-    ? { obstacles: cache.obstacles, entries: cache.entries }
-    : null
+  const seed = reconstructRoutingSeed(cache, requests)
   const failures = new Map<number, string>()
   const repairs = new Map<number, CableRouteRepair>()
   const recalculatedConnectionIds = new Set<number>()
@@ -270,8 +319,9 @@ export async function planCableRoutes(
   }
 
   const entries = normalizedRequests.flatMap((input) => {
-    const result = engineRoutes.get(input.request.definition.connection_id)
-    return result ? [{ input, result }] : []
+    const connectionId = input.request.definition.connection_id
+    const result = engineRoutes.get(connectionId)
+    return result ? [{ connectionId, result }] : []
   })
   for (const connectionId of engineRoutes.keys()) failures.delete(connectionId)
   const cacheFailures = [...failures].map(([connection_id, message]) => ({ connection_id, message }))
@@ -287,7 +337,6 @@ export async function planCableRoutes(
       version: ROUTING_CACHE_FORMAT_VERSION,
       plannerVersion: ROUTING_PLANNER_VERSION,
       geometryFingerprint: cableRoutingGeometryFingerprint(requests),
-      obstacles,
       entries,
       failures: cacheFailures,
       updatedAt: null,

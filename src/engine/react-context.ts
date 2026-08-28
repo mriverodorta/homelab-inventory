@@ -8,6 +8,16 @@ export type DomainEngineSyncEvent =
   | { runtimeKey: string; sequence: number; kind: 'patch'; external: boolean; response: EngineResponse }
   | { runtimeKey: string; sequence: number; kind: 'invalidation' }
 
+export type CanvasSurfaceRuntimeHandle = {
+  runtimeKey: string
+  scope: CanvasRuntimeScope
+  generation: number
+  activationSession: number
+  state: DomainEngineState
+  dirty: boolean
+  active: boolean
+}
+
 export type DomainEngineContextValue = {
   enabled: boolean
   runtimeKey: string | null
@@ -21,6 +31,7 @@ export type DomainEngineContextValue = {
   removeCanvasRuntime(scope: CanvasRuntimeScope): void
   clearCanvasRuntimes(): void
   getCanvasRuntimeKeys(): string[]
+  getCanvasRuntime?(runtimeKey: string): CanvasSurfaceRuntimeHandle | null
   setEnabled(enabled: boolean): void
   retry(): Promise<void>
 }

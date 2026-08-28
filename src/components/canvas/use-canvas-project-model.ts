@@ -18,6 +18,7 @@ const EMPTY_COMPATIBILITY_HOSTS: readonly CompatibilityAuditHostSummary[] = []
 export const createCanvasStringIdSet = createViewerIdSet
 
 interface CanvasProjectModelOptions {
+  enabled?: boolean
   project: ProjectState
   topologyData: TopologyQueryData | null
   compatibleEndpointKeys: ReadonlySet<string> | null
@@ -43,6 +44,7 @@ function useStableStringSet(values: readonly (string | number)[]): ReadonlySet<s
 }
 
 export function useCanvasProjectModel({
+  enabled = true,
   project,
   topologyData,
   compatibleEndpointKeys,
@@ -51,7 +53,7 @@ export function useCanvasProjectModel({
   activeNetworkTraceConnectionIds,
   activeNetworkTraceItemIds,
 }: CanvasProjectModelOptions) {
-  const compatibilitySummary = useCompatibilitySummary(project.metadata.projectId ?? 1, true)
+  const compatibilitySummary = useCompatibilitySummary(project.metadata.projectId ?? 1, enabled)
   const compatibilityHosts = compatibilitySummary.data?.hosts ?? EMPTY_COMPATIBILITY_HOSTS
   const nodeProjectTransitionRef = useRef<{
     project: ProjectState

@@ -2,7 +2,7 @@
   "name": "homelab-inventory",
   "private": true,
   "description": "Self-hosted visual inventory and cabling workbench for homelab hardware.",
-  "version": "0.16.2",
+  "version": "0.16.3",
   "license": "MIT",
   "type": "module",
   "workspaces": [
@@ -76,6 +76,7 @@
     "casbin": "5.51.1",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "compression": "1.8.1",
     "drizzle-orm": "0.45.2",
     "express": "^5.2.1",
     "express-rate-limit": "^8.6.1",

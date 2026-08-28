@@ -39,6 +39,7 @@ type CanvasFlowProps = Pick<ReactFlowProps<WorkbenchFlowNode, CableFlowEdge>,
 >
 
 interface CanvasViewportSurfaceProps {
+  active: boolean
   canvasRootRef: RefObject<HTMLElement | null>
   droppableRef: (element: HTMLElement | null) => void
   isDropTarget: boolean
@@ -60,6 +61,7 @@ interface CanvasViewportSurfaceProps {
 }
 
 export function CanvasViewportSurface({
+  active,
   canvasRootRef,
   droppableRef,
   isDropTarget,
@@ -88,7 +90,7 @@ export function CanvasViewportSurface({
           isDropTarget && 'ring-2 ring-inset ring-[#ddb668]',
         )}
       >
-        <div className="pointer-events-none absolute left-4 top-4 z-30 flex max-w-[min(24rem,calc(100%-2rem))] flex-col items-start gap-2">
+        {active ? <div className="pointer-events-none absolute left-4 top-4 z-30 flex max-w-[min(24rem,calc(100%-2rem))] flex-col items-start gap-2">
           <CanvasActivityIndicator activity={activity} />
           {validationMessage ? (
             <div
@@ -110,37 +112,42 @@ export function CanvasViewportSurface({
               Demo session {formatRemainingSeconds(demoRemainingSeconds)}
             </div>
           ) : null}
-        </div>
-        {!hasPlacements ? (
+        </div> : null}
+        {active && !hasPlacements ? (
           <div className="pointer-events-none absolute left-1/2 top-1/2 z-10 w-[280px] -translate-x-1/2 -translate-y-1/2 rounded-lg border border-dashed border-[#b9aa98] bg-white/80 p-5 text-center text-sm text-[#75695d]">
             Drag equipment from the inventory to start a layout.
           </div>
         ) : null}
-        <CanvasCommandBar {...commandBar} />
+        {active ? <CanvasCommandBar {...commandBar} /> : null}
         <ReactFlow
           nodes={nodes}
           edges={edges}
           nodeTypes={canvasNodeTypes}
           edgeTypes={canvasEdgeTypes}
-          {...flowEvents}
+          {...(active ? flowEvents : {})}
           minZoom={0.25}
           maxZoom={1.8}
           nodeDragThreshold={nodeDragThreshold}
-          nodesDraggable={nodesDraggable}
+          nodesDraggable={active && nodesDraggable}
+          nodesConnectable={false}
+          connectOnClick={false}
+          nodesFocusable={active}
+          edgesFocusable={active}
+          elementsSelectable={active}
           snapToGrid={snapItemsToGrid}
           snapGrid={[GRID_SIZE, GRID_SIZE]}
           defaultViewport={initialViewport ?? { x: 0, y: 0, zoom: 1 }}
-          onMoveEnd={(_event, viewport) => onViewportChange(viewport)}
-          panOnDrag
-          zoomOnScroll
-          zoomOnPinch
+          onMoveEnd={active ? (_event, viewport) => onViewportChange(viewport) : undefined}
+          panOnDrag={active}
+          zoomOnScroll={active}
+          zoomOnPinch={active}
           zoomOnDoubleClick={false}
           selectionOnDrag={false}
           elevateNodesOnSelect={false}
           elevateEdgesOnSelect={false}
           onlyRenderVisibleElements={!forceRenderAllNodes}
           proOptions={{ hideAttribution: true }}
-          fitView={hasPlacements && initialViewport === null}
+          fitView={active && hasPlacements && initialViewport === null}
           className="homelab-inventory-flow bg-[#fbf8f1]"
         >
           <Background
@@ -149,15 +156,15 @@ export function CanvasViewportSurface({
             size={2.25}
             color="#c7bbab"
           />
-          <Controls showInteractive={false} />
-          <MiniMap
+          {active ? <Controls showInteractive={false} /> : null}
+          {active ? <MiniMap
             pannable
             zoomable
             className="homelab-inventory-minimap !bottom-4 !right-4 !hidden !h-28 !w-40 !rounded-none !border-0 !bg-[#fffdf8] !shadow-none md:!block"
             bgColor="#fffdf8"
             nodeColor="#20242c"
             maskColor="transparent"
-          />
+          /> : null}
         </ReactFlow>
       </div>
     </main>

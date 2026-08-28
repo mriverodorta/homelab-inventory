@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { registerBootstrapRoute } from './bootstrap-routes.mjs'
 
 function responseRecorder() {
@@ -61,7 +61,7 @@ describe('application bootstrap route', () => {
     })
     const response = responseRecorder()
 
-    handler({ authentication: { account: { id: 1 } } }, response)
+    handler({ authentication: { account: { id: 1 } }, query: {} }, response)
     await pending
 
     expect(checkedPermissions).toEqual([
@@ -87,6 +87,45 @@ describe('application bootstrap route', () => {
       updateStatus: null,
       demoSession: { mode: 'production' },
     })
+  })
+
+  it('omits Canvas-only domains for a direct Systems bootstrap', async () => {
+    let handler = null
+    const app = { get: (_path, candidate) => { handler = candidate } }
+    const project = { id: 1, revision: 41 }
+    const store = {
+      getProject: vi.fn(() => project),
+      listProjects: () => [{ id: 1, name: 'Default Project' }],
+      getProjectWorkbook: () => ({
+        project: { id: 1, name: 'Default Project' },
+        defaultWorkspaceId: 2,
+        workspaces: [{ id: 1, type: 'systems' }, { id: 2, type: 'canvas' }],
+      }),
+      getOnboardingStatus: () => ({ enabled: false }),
+      getReleaseNotesStatus: () => ({ currentVersion: '0.16.2', entries: [] }),
+    }
+    let pending = Promise.resolve()
+    registerBootstrapRoute(app, {
+      withStore: (_request, _response, callback) => { pending = callback(store, null); return pending },
+      authService: { state: () => ({ configuration: { enabled: false } }) },
+      authorization: { authorize: vi.fn() },
+      agentReleaseService: null,
+      notificationStore: null,
+      updateChecker: { current: () => null },
+      releaseNotes: [],
+    })
+    const response = responseRecorder()
+
+    handler({ authentication: {}, query: { projectId: '1', workspaceId: '1' } }, response)
+    await pending
+
+    expect(response.body).toMatchObject({
+      project: null,
+      agentStatus: null,
+      registry: null,
+      notifications: null,
+    })
+    expect(store.getProject).not.toHaveBeenCalled()
   })
 
   it('embeds only the compact agent projection when agent access is allowed', async () => {

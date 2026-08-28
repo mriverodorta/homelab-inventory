@@ -34,6 +34,18 @@ export type CanvasEngineRuntime = WorkspaceRuntimeRecord & {
   starting: boolean
   lifecycleBusy: boolean
   externalBusy: boolean
+  activationSession: number
+}
+
+export type CanvasRuntimeHandleSnapshot = {
+  runtimeKey: string
+  scope: CanvasRuntimeScope
+  client: DomainEngineClient
+  generation: number
+  activationSession: number
+  state: DomainEngineState
+  dirty: boolean
+  active: boolean
 }
 
 export type CanvasRuntimeManagerSnapshot = {
@@ -46,11 +58,16 @@ export type CanvasRuntimeManagerSnapshot = {
   syncEvent: DomainEngineSyncEvent | null
 }
 
+export type CanvasRuntimeDisposal = Readonly<{
+  runtimeKey: string
+  scope: CanvasRuntimeScope
+}>
+
 export type CanvasRuntimeManagerOptions = {
   capacity?: number
   clientFactory(scope: CanvasRuntimeScope): DomainEngineClient
   eventSourceFactory(url: string): EventSource
-  onRuntimeDisposed?(runtimeKey: string): void
+  onRuntimeDisposed?(disposal: CanvasRuntimeDisposal): void
   onSyncEvent?(scope: CanvasRuntimeScope, event: DomainEngineSyncEvent): void
 }
 
@@ -111,6 +128,21 @@ export class CanvasRuntimeManager {
         }
   }
 
+  runtime(runtimeKey: string): CanvasRuntimeHandleSnapshot | null {
+    const runtime = this.cache.get(runtimeKey)
+    if (!runtime) return null
+    return Object.freeze({
+      runtimeKey: runtime.key,
+      scope: runtime.scope,
+      client: runtime.client,
+      generation: runtime.generation,
+      activationSession: runtime.activationSession,
+      state: runtime.state,
+      dirty: runtime.dirty,
+      active: this.activeKey === runtime.key,
+    })
+  }
+
   activate(scope: CanvasRuntimeScope | null) {
     if (this.disposed) return
     if (!scope) {
@@ -134,7 +166,10 @@ export class CanvasRuntimeManager {
     const changed = this.activeKey !== key
     this.activeKey = key
     this.cache.activate(key)
-    if (changed) this.session += 1
+    if (changed) {
+      this.session += 1
+      entry.activationSession = this.session
+    }
     this.notify()
 
     if (entry.dirty) {
@@ -209,6 +244,7 @@ export class CanvasRuntimeManager {
       starting: false,
       lifecycleBusy: true,
       externalBusy: false,
+      activationSession: 0,
     }
     entry.unsubscribe = client.subscribe((state) => {
       entry.state = state
@@ -326,7 +362,10 @@ export class CanvasRuntimeManager {
     entry.unsubscribe?.()
     entry.unsubscribe = null
     entry.client.dispose()
-    this.onRuntimeDisposed?.(entry.key)
+    this.onRuntimeDisposed?.(Object.freeze({
+      runtimeKey: entry.key,
+      scope: entry.scope,
+    }))
   }
 
   private notify() {

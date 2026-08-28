@@ -35,7 +35,11 @@ function stubClient(revision: number) {
   } as unknown as DomainEngineClient
 }
 
-function fixture() {
+function fixture({
+  onRuntimeDisposed,
+}: {
+  onRuntimeDisposed?: ConstructorParameters<typeof CanvasRuntimeManager>[0]['onRuntimeDisposed']
+} = {}) {
   const clients = new Map<number, ReturnType<typeof stubClient>>()
   const sources = new Map<string, { addEventListener: ReturnType<typeof vi.fn>; close: ReturnType<typeof vi.fn> }>()
   const manager = new CanvasRuntimeManager({
@@ -50,6 +54,7 @@ function fixture() {
       sources.set(url, source)
       return source as unknown as EventSource
     },
+    onRuntimeDisposed,
   })
   return { clients, manager, sources }
 }
@@ -88,6 +93,23 @@ describe('CanvasRuntimeManager', () => {
     manager.dispose()
   })
 
+  it('reports the immutable runtime key and numeric scope when an entry is disposed', async () => {
+    const onRuntimeDisposed = vi.fn()
+    const { manager } = fixture({ onRuntimeDisposed })
+    for (const workspaceId of [2, 3, 4]) manager.activate(scope(workspaceId))
+    await vi.waitFor(() => expect(manager.runtimeCount()).toBe(3))
+
+    manager.activate(scope(2))
+    manager.activate(scope(5))
+
+    expect(onRuntimeDisposed).toHaveBeenCalledWith({
+      runtimeKey: 'account%3A1:1:3:canvas',
+      scope: scope(3),
+    })
+    expect(Object.isFrozen(onRuntimeDisposed.mock.calls[0]?.[0])).toBe(true)
+    manager.dispose()
+  })
+
   it('opens one immutable scoped event stream per retained Canvas', async () => {
     const { manager, sources } = fixture()
     manager.activate(scope(2))
@@ -100,6 +122,46 @@ describe('CanvasRuntimeManager', () => {
     ])
     manager.dispose()
     for (const source of sources.values()) expect(source.close).toHaveBeenCalledOnce()
+  })
+
+  it('returns immutable runtime snapshots for retained Canvas keys', async () => {
+    const { clients, manager } = fixture()
+    manager.activate(scope(2))
+    manager.activate(scope(9))
+    await vi.waitFor(() => expect(manager.snapshot().state.phase).toBe('ready'))
+
+    const first = manager.runtime('account%3A1:1:2:canvas')
+    const second = manager.runtime('account%3A1:1:9:canvas')
+
+    expect(first).toMatchObject({
+      runtimeKey: 'account%3A1:1:2:canvas',
+      scope: scope(2),
+      client: clients.get(2),
+      active: false,
+      state: { phase: 'ready', revision: 2 },
+    })
+    expect(second).toMatchObject({
+      runtimeKey: 'account%3A1:1:9:canvas',
+      scope: scope(9),
+      client: clients.get(9),
+      active: true,
+      state: { phase: 'ready', revision: 9 },
+    })
+    expect(manager.runtime('account%3A1:1:77:canvas')).toBeNull()
+    manager.dispose()
+  })
+
+  it('changes the activation session whenever a retained Canvas becomes active again', async () => {
+    const { manager } = fixture()
+    manager.activate(scope(2))
+    await vi.waitFor(() => expect(manager.snapshot().state.phase).toBe('ready'))
+    const firstActivation = manager.runtime('account%3A1:1:2:canvas')?.activationSession
+
+    manager.activate(scope(3))
+    manager.activate(scope(2))
+
+    expect(manager.runtime('account%3A1:1:2:canvas')?.activationSession).toBeGreaterThan(firstActivation ?? 0)
+    manager.dispose()
   })
 
   it('clears every runtime when the account boundary changes', async () => {

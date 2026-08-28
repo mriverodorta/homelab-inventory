@@ -206,6 +206,25 @@ function parseFacetSearch(query) {
   return { terms, ranges }
 }
 
+function catalogSnapshotIdentity(query) {
+  const revision = Number(query.revision)
+  const digest = typeof query.digest === 'string' ? query.digest : ''
+  if (!Number.isSafeInteger(revision) || revision <= 0 || !/^[0-9a-f]{64}$/u.test(digest)) {
+    throw new InventoryLifecycleError('Catalog facet snapshot identity is invalid.', {
+      code: 'invalid-catalog-snapshot-identity', status: 400,
+    })
+  }
+  return { revision, digest }
+}
+
+function catalogFacetEtag(snapshot) {
+  return `"catalog-facets-${snapshot.revision}-${snapshot.digest}"`
+}
+
+function snapshotMatches(first, second) {
+  return first?.revision === second?.revision && first?.digest === second?.digest
+}
+
 function respondError(response, error, fallback) {
   if (error instanceof CatalogAvailabilityError) {
     response.status(error.status).json({ message: error.message, code: error.code })
@@ -419,7 +438,31 @@ export function registerRegistryRoutes(app, {
 
   app.get('/api/registry/catalog/facets', (request, response) => {
     run(withStore, request, response, async (store) => {
-      response.json(await snapshotService(store).facets())
+      const requested = catalogSnapshotIdentity(request.query)
+      const active = structuredClone(store.getRegistryState().snapshot)
+      if (!snapshotMatches(active, requested)) {
+        throw new InventoryLifecycleError('The requested catalog snapshot is no longer active.', {
+          code: 'catalog-snapshot-mismatch', status: 409,
+        })
+      }
+      const etag = catalogFacetEtag(active)
+      response.set('Cache-Control', 'private, max-age=31536000, immutable')
+      response.set('ETag', etag)
+      if (String(request.headers['if-none-match'] ?? '').split(',').map((value) => value.trim()).includes(etag)) {
+        response.status(304).end()
+        return
+      }
+      const facets = await snapshotService(store).facets(active)
+      const stillActive = store.getRegistryState().snapshot
+      if (
+        !snapshotMatches(stillActive, active)
+        || (facets.catalogRevision !== undefined && facets.catalogRevision !== active.revision)
+      ) {
+        throw new InventoryLifecycleError('The requested catalog snapshot changed while facets were loading.', {
+          code: 'catalog-snapshot-mismatch', status: 409,
+        })
+      }
+      response.json(facets)
     })
   })
 

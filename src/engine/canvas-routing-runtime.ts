@@ -1,4 +1,5 @@
 import type { DomainEngineClient } from '@/engine/client'
+import type { WorkspaceMutationScope } from '@/lib/db'
 import {
   CableRoutingCoordinator,
   type CableRoutingState,
@@ -14,19 +15,23 @@ export type CanvasRoutingRuntimeSnapshot = {
 
 export class CanvasRoutingRuntime {
   readonly coordinator: CableRoutingCoordinator
+  readonly scope: WorkspaceMutationScope
   private readonly listeners = new Set<Listener>()
   private unsubscribeCoordinator: (() => void) | null
   private snapshot: CanvasRoutingRuntimeSnapshot
   private disposed = false
 
-  constructor(client: DomainEngineClient) {
-    this.coordinator = new CableRoutingCoordinator(client, { persistCache: saveRoutingCache })
+  constructor(client: DomainEngineClient, scope: WorkspaceMutationScope) {
+    this.scope = Object.freeze({ ...scope })
+    this.coordinator = new CableRoutingCoordinator(client, {
+      persistCache: (cache) => saveRoutingCache(this.scope, cache),
+    })
     this.snapshot = { state: this.coordinator.getState(), cacheReady: false }
     this.unsubscribeCoordinator = this.coordinator.subscribe((state) => {
       this.snapshot = { ...this.snapshot, state }
       this.notify()
     })
-    void loadRoutingCache()
+    void loadRoutingCache(this.scope)
       .then((cache) => this.coordinator.hydrate(cache))
       .catch((error) => {
         console.warn('[Cable routing] Unable to load derived route cache.', error)
@@ -64,10 +69,15 @@ export class CanvasRoutingRuntime {
 
 const runtimes = new WeakMap<DomainEngineClient, CanvasRoutingRuntime>()
 
-export function getCanvasRoutingRuntime(client: DomainEngineClient) {
+export function getCanvasRoutingRuntime(client: DomainEngineClient, scope: WorkspaceMutationScope) {
   const existing = runtimes.get(client)
-  if (existing) return existing
-  const runtime = new CanvasRoutingRuntime(client)
+  if (existing) {
+    if (existing.scope.projectId !== scope.projectId || existing.scope.workspaceId !== scope.workspaceId) {
+      throw new Error('Canvas routing runtime scope does not match its domain engine client.')
+    }
+    return existing
+  }
+  const runtime = new CanvasRoutingRuntime(client, scope)
   runtimes.set(client, runtime)
   return runtime
 }

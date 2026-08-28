@@ -46,6 +46,7 @@ import { registerRoutingCacheRoutes } from './routing-cache-routes.mjs'
 import { browserMutationGuard } from './request-security.mjs'
 import { readRuntimeConfig } from './runtime-config.mjs'
 import { gracefullyStopServer } from './server-lifecycle.mjs'
+import { createResponseCompression, registerProductionAssets } from './http-delivery.mjs'
 import {
   CatalogRefreshCoordinator,
   readCatalogRefreshInterval,
@@ -310,6 +311,7 @@ app.use(helmet({
   },
   crossOriginEmbedderPolicy: false,
 }))
+app.use(createResponseCompression())
 
 if (shouldEnableRateLimit()) {
   app.use('/api', rateLimit(createRateLimitOptions(rateLimitConfig)))
@@ -972,10 +974,7 @@ app.use('/api', (_request, response) => {
 })
 
 if (isProduction) {
-  app.use(express.static(path.join(root, 'dist')))
-  app.use((_request, response) => {
-    response.sendFile(path.join(root, 'dist', 'index.html'))
-  })
+  registerProductionAssets(app, express, path.join(root, 'dist'))
 } else {
   const vitePackage = 'vite'
   const { createServer } = await import(vitePackage)

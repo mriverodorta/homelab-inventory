@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   createSystemsView,
@@ -13,9 +13,26 @@ import {
 import type { SystemsHostLive, SystemsHostType, SystemsLiveResponse, SystemsSavedView, SystemsViewConfiguration } from '@/types/systems'
 import { useLiveEventTopic } from '@/live-events/use-live-event-topic'
 
+export function replaceSystemsLive(
+  systems: readonly SystemsHostLive[],
+  system: SystemsHostLive,
+  indexes: Map<number, number>,
+) {
+  const existingIndex = indexes.get(system.itemId)
+  if (existingIndex === undefined) {
+    indexes.set(system.itemId, systems.length)
+    return [...systems, system]
+  }
+  if (systems[existingIndex] === system) return systems
+  const next = [...systems]
+  next[existingIndex] = system
+  return next
+}
+
 export function useSystems(projectId: number, enabled: boolean, workspaceId: number | null = null) {
   const queryClient = useQueryClient()
   const liveKey = useMemo(() => ['projects', projectId, 'systems', workspaceId ?? 'all', 'live'] as const, [projectId, workspaceId])
+  const liveIndexes = useRef(new Map<number, number>()).current
   const initial = useQuery({
     queryKey: ['projects', projectId, 'systems', workspaceId ?? 'all'],
     queryFn: () => loadSystems(projectId, workspaceId),
@@ -26,7 +43,12 @@ export function useSystems(projectId: number, enabled: boolean, workspaceId: num
   })
   const live = useQuery({
     queryKey: liveKey,
-    queryFn: () => loadSystemsLive(projectId, workspaceId),
+    queryFn: async () => {
+      const response = await loadSystemsLive(projectId, workspaceId)
+      liveIndexes.clear()
+      response.systems.forEach((system, index) => liveIndexes.set(system.itemId, index))
+      return response
+    },
     enabled: false,
     staleTime: Number.POSITIVE_INFINITY,
     refetchOnMount: false,
@@ -34,13 +56,15 @@ export function useSystems(projectId: number, enabled: boolean, workspaceId: num
   })
   useEffect(() => {
     if (!enabled || !initial.data) return
+    liveIndexes.clear()
+    initial.data.systems.forEach((system, index) => liveIndexes.set(system.itemId, index))
     queryClient.setQueryData<SystemsLiveResponse>(liveKey, {
       projectId,
       canvasWorkspaceId: workspaceId,
       generatedAt: initial.data.generatedAt,
       systems: initial.data.systems,
     })
-  }, [enabled, initial.data, liveKey, projectId, queryClient, workspaceId])
+  }, [enabled, initial.data, liveIndexes, liveKey, projectId, queryClient, workspaceId])
   useLiveEventTopic({
     topic: workspaceId === null ? `systems:${projectId}` : `systems:${projectId}:workspace:${workspaceId}`,
     enabled: enabled && initial.isSuccess,
@@ -53,7 +77,7 @@ export function useSystems(projectId: number, enabled: boolean, workspaceId: num
             projectId,
             canvasWorkspaceId: workspaceId,
             generatedAt: event.occurredAt,
-            systems: [...systems.filter((candidate) => candidate.itemId !== system.itemId), system],
+            systems: replaceSystemsLive(systems, system, liveIndexes),
           }
         })
       } else if (!event.kind.startsWith('agent.')) {

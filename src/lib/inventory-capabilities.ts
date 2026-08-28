@@ -58,6 +58,12 @@ export function isAssignableComponentType(type: unknown): type is ComponentType 
   return typeof type === 'string' && ASSIGNABLE_COMPONENT_TYPE_SET.has(type)
 }
 
+export function getInventoryDragRole(type: unknown): 'equipment' | 'component' | null {
+  if (isCanvasEquipmentType(type)) return 'equipment'
+  if (isAssignableComponentType(type)) return 'component'
+  return null
+}
+
 export function isInventoryType(type: unknown): type is InventoryType {
   return typeof type === 'string' && INVENTORY_TYPE_SET.has(type)
 }

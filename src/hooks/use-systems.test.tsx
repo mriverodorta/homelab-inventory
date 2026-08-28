@@ -49,6 +49,30 @@ describe('useSystems', () => {
     rendered.unmount()
   })
 
+  it('keeps stable row order when a keyed live host is replaced', async () => {
+    vi.mocked(loadSystems).mockResolvedValue({
+      projectId: 1,
+      generatedAt: 'now',
+      currentAgentVersion: '0.1.0',
+      systems: [
+        { itemId: 1, agentRegistered: true } as never,
+        { itemId: 2, agentRegistered: true } as never,
+      ],
+    })
+    vi.mocked(loadSystemsLive).mockResolvedValue({ projectId: 1, generatedAt: 'now', systems: [] })
+    const rendered = renderHook(() => useSystems(1, true), { wrapper: wrapper() })
+    await waitFor(() => expect(live.enabled).toBe(true))
+
+    await act(async () => live.onEvent({
+      kind: 'agent.heartbeat',
+      occurredAt: 'later',
+      payload: { system: { itemId: 1, agentRegistered: true, cpuPercent: 73 } },
+    }))
+
+    await waitFor(() => expect(rendered.result.current.live.data?.systems.map(({ itemId }) => itemId)).toEqual([1, 2]))
+    rendered.unmount()
+  })
+
   it('subscribes agent-free projects so new enrollment appears without polling', async () => {
     vi.mocked(loadSystems).mockResolvedValue({ projectId: 1, generatedAt: 'now', currentAgentVersion: null, systems: [] })
     vi.mocked(loadSystemsLive).mockResolvedValue({ projectId: 1, generatedAt: 'now', systems: [] })

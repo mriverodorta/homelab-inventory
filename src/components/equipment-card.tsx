@@ -73,6 +73,8 @@ function CableHandles({ requiredHandleIds }: { requiredHandleIds: ReadonlySet<st
           position={handle.position}
           className="!h-3 !w-3 !border-0 !bg-transparent"
           isConnectable={false}
+          isConnectableStart={false}
+          isConnectableEnd={false}
         />
       ))}
       {CABLE_HANDLES.filter((handle) => requiredHandleIds.has(`source-${handle.id}`)).map((handle) => (
@@ -83,6 +85,8 @@ function CableHandles({ requiredHandleIds }: { requiredHandleIds: ReadonlySet<st
           position={handle.position}
           className="!h-3 !w-3 !border-0 !bg-transparent"
           isConnectable={false}
+          isConnectableStart={false}
+          isConnectableEnd={false}
         />
       ))}
     </>
@@ -192,6 +196,8 @@ function PortChipHandles({ endpoint, requiredHandleIds }: {
               position={handle.position}
               className="!h-2 !w-2 !border-0 !bg-transparent"
               isConnectable={false}
+              isConnectableStart={false}
+              isConnectableEnd={false}
             />
           ) : null,
           requiredHandleIds.has(sourceId) ? (
@@ -202,6 +208,8 @@ function PortChipHandles({ endpoint, requiredHandleIds }: {
               position={handle.position}
               className="!h-2 !w-2 !border-0 !bg-transparent"
               isConnectable={false}
+              isConnectableStart={false}
+              isConnectableEnd={false}
             />
           ) : null,
         ]

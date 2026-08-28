@@ -18,6 +18,7 @@ type CanvasViewportApi = Pick<
 >
 
 type UseCanvasViewportControllerOptions = {
+  enabled?: boolean
   project: ProjectState
   canvasRootRef: RefObject<HTMLElement | null>
   viewportApi: CanvasViewportApi
@@ -29,6 +30,7 @@ function clamp(value: number, minimum: number, maximum: number) {
 }
 
 export function useCanvasViewportController({
+  enabled = true,
   project,
   canvasRootRef,
   viewportApi,
@@ -146,6 +148,8 @@ export function useCanvasViewportController({
   )
 
   useEffect(() => {
+    if (!enabled) return
+
     onViewportReady({
       screenToFlowPosition,
       getViewportZoom: () => getViewport().zoom,
@@ -157,5 +161,5 @@ export function useCanvasViewportController({
         })
       },
     })
-  }, [fitView, focusItem, getViewport, onViewportReady, screenToFlowPosition])
+  }, [enabled, fitView, focusItem, getViewport, onViewportReady, screenToFlowPosition])
 }

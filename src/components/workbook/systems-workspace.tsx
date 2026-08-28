@@ -1,7 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { SystemsSaveViewDialog } from '@/components/workbook/systems/systems-save-view-dialog'
 import { SystemsTable } from '@/components/workbook/systems/systems-table'
-import { filterAndSortSystems, mergeSystemsLive, systemsViewConfigurationsEqual } from '@/components/workbook/systems/systems-table-model'
+import {
+  filterAndSortSystems,
+  mergeSystemsLive,
+  systemsProjectionAffectedByLive,
+  systemsViewConfigurationsEqual,
+} from '@/components/workbook/systems/systems-table-model'
 import { SystemsToolbar, type SystemsViewSelection } from '@/components/workbook/systems/systems-toolbar'
 import {
   AlertDialog,
@@ -191,10 +196,9 @@ function ScopedSystemsWorkspace({
     return () => window.removeEventListener('keydown', focusSearch)
   }, [])
 
-  const rows = useMemo(() => {
-    const live = new Map(systems.live.data?.systems.map((system) => [system.itemId, system]) ?? [])
+  const baseRows = useMemo(() => {
     const metadata = new Map(metadataProjection.data?.rows.map((row) => [row.itemId, row]) ?? [])
-    const initial = (systems.initial.data?.systems ?? []).map((system) => {
+    return (systems.initial.data?.systems ?? []).map((system) => {
       const row = metadata.get(system.itemId)
       return {
         ...system,
@@ -203,12 +207,25 @@ function ScopedSystemsWorkspace({
         metadataSearchText: row?.searchText ?? '',
       }
     })
-    const merged = mergeSystemsLive(initial, live)
-    const matchingItems = queryMetadataFilters.length === 0
+  }, [metadataProjection.data?.rows, systems.initial.data?.systems])
+  const liveRows = useMemo(
+    () => new Map(systems.live.data?.systems.map((system) => [system.itemId, system]) ?? []),
+    [systems.live.data?.systems],
+  )
+  const matchingItems = useMemo(() => (
+    queryMetadataFilters.length === 0
       ? null
       : new Set(metadataProjection.data?.matchingItemIds ?? [])
-    return filterAndSortSystems(selection === 'attention' ? merged.filter(needsAttention) : merged, preferences, matchingItems)
-  }, [metadataProjection.data?.matchingItemIds, metadataProjection.data?.rows, preferences, queryMetadataFilters.length, selection, systems.initial.data?.systems, systems.live.data?.systems])
+  ), [metadataProjection.data?.matchingItemIds, queryMetadataFilters.length])
+  const rows = useMemo(() => {
+    const attentionOnly = selection === 'attention'
+    if (systemsProjectionAffectedByLive(preferences, attentionOnly)) {
+      const merged = mergeSystemsLive(baseRows, liveRows)
+      return filterAndSortSystems(attentionOnly ? merged.filter(needsAttention) : merged, preferences, matchingItems)
+    }
+    const projected = filterAndSortSystems(baseRows, preferences, matchingItems)
+    return mergeSystemsLive(projected, liveRows)
+  }, [baseRows, liveRows, matchingItems, preferences, selection])
   const typeOptions = useMemo(() => (
     [...new Set(systems.initial.data?.systems.map((system) => system.type) ?? [])]
       .sort((left, right) => TYPE_LABELS[left].localeCompare(TYPE_LABELS[right]))

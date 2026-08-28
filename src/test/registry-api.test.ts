@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   createPrivateTemplate,
+  loadCatalogFacets,
   loadRegistryState,
   updateRegistrySettings,
 } from '@/lib/registry-api'
@@ -36,5 +37,31 @@ describe('registry API', () => {
       { status: 409 },
     )))
     await expect(updateRegistrySettings({ mode: 'offline' }, null)).rejects.toThrow(/another session/)
+  })
+
+  it('addresses catalog facets by exact signed snapshot identity', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      available: true,
+      categories: [],
+    }), { status: 200 }))
+    vi.stubGlobal('fetch', fetchMock)
+    const digest = 'a'.repeat(64)
+
+    await loadCatalogFacets({ revision: 24, digest })
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      `/api/registry/catalog/facets?revision=24&digest=${digest}`,
+      expect.any(Object),
+    )
+  })
+
+  it.each([
+    [{ revision: 0, digest: 'a'.repeat(64) }, 'revision'],
+    [{ revision: 24, digest: 'invalid' }, 'digest'],
+  ])('rejects invalid catalog facet snapshot identity %o', async (snapshot, message) => {
+    vi.stubGlobal('fetch', vi.fn())
+
+    await expect(loadCatalogFacets(snapshot)).rejects.toThrow(message)
+    expect(fetch).not.toHaveBeenCalled()
   })
 })

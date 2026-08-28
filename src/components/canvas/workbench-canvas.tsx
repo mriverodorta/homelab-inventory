@@ -38,6 +38,7 @@ import { usePermission } from '@/hooks/use-permission'
 function CanvasViewport({
   runtimeKey,
   interactionEnabled = true,
+  surfaceState,
   project,
   registryLinkedItemKeys,
   topologyData = null,
@@ -88,7 +89,7 @@ function CanvasViewport({
   registryUpdateCount,
   registryUpdateSummary,
   canViewRegistryUpdates,
-  desktopInventoryVisible,
+  inventoryOpen,
   inspectorOpen,
   onUndo,
   onRedo,
@@ -104,6 +105,7 @@ function CanvasViewport({
   onOpenNotifications,
   onOpenRegistryUpdates,
 }: WorkbenchCanvasProps) {
+  const active = surfaceState ? surfaceState === 'active' : interactionEnabled
   const canEditWorkspace = usePermission('workspace.edit')
   const canEditCanvas = usePermission('canvas.edit')
   const canEditConnections = usePermission('connections.edit')
@@ -111,8 +113,8 @@ function CanvasViewport({
   const canViewAudit = usePermission('audit.view')
   const canViewUpdates = usePermission('updates.view')
   const { setNodeRef, isOver } = useDroppable({
-    id: interactionEnabled ? 'canvas' : `inactive-canvas:${runtimeKey ?? project.metadata.workspaceId ?? 'unknown'}`,
-    disabled: !interactionEnabled || (!canEditCanvas && !canEditInventory),
+    id: active ? 'canvas' : `inactive-canvas:${runtimeKey ?? project.metadata.workspaceId ?? 'unknown'}`,
+    disabled: !active || (!canEditCanvas && !canEditInventory),
     data: {
       kind: 'canvas',
     },
@@ -121,6 +123,7 @@ function CanvasViewport({
   const { getViewport, setViewport } = viewportApi
   const canvasRootRef = useRef<HTMLElement | null>(null)
   useCanvasViewportController({
+    enabled: active,
     project,
     canvasRootRef,
     viewportApi,
@@ -149,6 +152,7 @@ function CanvasViewport({
     focusActive,
     activeNetworkTraceConnectionIdSet,
   } = useCanvasProjectModel({
+    enabled: active,
     project,
     topologyData,
     compatibleEndpointKeys,
@@ -207,6 +211,7 @@ function CanvasViewport({
     forceRenderAllNodes,
     geometryMeasurementPending,
   } = useCanvasHandleMeasurement({
+    enabled: active,
     project,
     flowNodes,
     canvasHandleIndex,
@@ -217,6 +222,7 @@ function CanvasViewport({
     measuredHandlesByNodeId,
     routeGeometryReady,
   } = useCanvasRouteRequests({
+    enabled: active,
     geometryProject: canvasGeometryProject,
     routingProject: canvasRoutingProject,
     nodes,
@@ -225,7 +231,17 @@ function CanvasViewport({
     avoidCableCollisionsGlobally,
     snapCablesToGrid,
   })
+  const routingScope = useMemo(() => {
+    const projectId = project.metadata.projectId
+    const workspaceId = project.metadata.workspaceId
+    return Number.isSafeInteger(projectId) && Number(projectId) > 0
+      && Number.isSafeInteger(workspaceId) && Number(workspaceId) > 0
+      ? { projectId: Number(projectId), workspaceId: Number(workspaceId) }
+      : null
+  }, [project.metadata.projectId, project.metadata.workspaceId])
   const { routingState, enginePhase } = useCableRoutingController({
+    enabled: active,
+    runtimeScope: routingScope,
     routeRequests,
     routeGeometryReady,
     topologyRevision: project.revision ?? 0,
@@ -294,6 +310,7 @@ function CanvasViewport({
   return (
     <CanvasViewportSurface
       canvasRootRef={canvasRootRef}
+      active={active}
       droppableRef={setNodeRef}
       isDropTarget={isOver}
       hasPlacements={project.placements.length > 0}
@@ -320,14 +337,14 @@ function CanvasViewport({
       initialViewport={initialViewport}
       onViewportChange={onViewportChange}
       forceRenderAllNodes={forceRenderAllNodes}
-      nodesDraggable={interactionEnabled && canEditCanvas}
+      nodesDraggable={active && canEditCanvas}
       activity={canvasActivity}
       validationMessage={validationMessage}
       validationSeverity={validationSeverity}
       demoRemainingSeconds={demoRemainingSeconds}
       commandBar={{
         className: inspectorOpen ? 'lg:right-[680px]' : undefined,
-        desktopInventoryVisible,
+        inventoryOpen,
         saveStatus,
         canUndo,
         canRedo,

@@ -8,7 +8,10 @@ import {
 } from 'react'
 import type { QueryClient } from '@tanstack/react-query'
 import { createDomainEngineApi } from '@/engine/api'
-import { CanvasRuntimeManager } from '@/engine/canvas-runtime-manager'
+import {
+  CanvasRuntimeManager,
+  type CanvasRuntimeDisposal,
+} from '@/engine/canvas-runtime-manager'
 import { DomainEngineClient } from '@/engine/client'
 import {
   DomainEngineContext,
@@ -45,7 +48,7 @@ export function DomainEngineProvider({
   client?: DomainEngineClient
   clientFactory?: (scope: CanvasRuntimeScope) => DomainEngineClient
   eventSourceFactory?: (url: string) => EventSource
-  onRuntimeDisposed?: (runtimeKey: string) => void
+  onRuntimeDisposed?: (disposal: CanvasRuntimeDisposal) => void
   runtimeQueryClient?: QueryClient
 }) {
   const providedClientUsedRef = useRef(false)
@@ -61,10 +64,15 @@ export function DomainEngineProvider({
         return clientFactory(scope)
       },
       eventSourceFactory,
-      onRuntimeDisposed: (runtimeKey) => {
+      onRuntimeDisposed: (disposal) => {
+        const { runtimeKey, scope } = disposal
         runtimeQueryClient.removeQueries({ queryKey: ['domain-engine-topology', runtimeKey] })
         runtimeQueryClient.removeQueries({ queryKey: ['domain-engine-compatible-endpoints', runtimeKey] })
-        onRuntimeDisposed?.(runtimeKey)
+        runtimeQueryClient.removeQueries({
+          queryKey: projectQueryKeyForScope(scope.projectId, scope.workspaceId),
+          exact: true,
+        })
+        onRuntimeDisposed?.(disposal)
       },
       onSyncEvent: (scope, event) => {
         const queryKey = projectQueryKeyForScope(scope.projectId, scope.workspaceId)
@@ -116,6 +124,12 @@ export function DomainEngineProvider({
     setSnapshot(manager.snapshot())
   }, [manager])
   const getCanvasRuntimeKeys = useCallback(() => manager.runtimeKeys(), [manager])
+  const getCanvasRuntime = useCallback((runtimeKey: string) => {
+    const runtime = manager.runtime(runtimeKey)
+    if (!runtime) return null
+    const { client: _client, ...surfaceRuntime } = runtime
+    return surfaceRuntime
+  }, [manager])
   const setEnabled = useCallback((nextEnabled: boolean) => {
     manager.activate(nextEnabled ? legacyScope : null)
     setSnapshot(manager.snapshot())
@@ -137,12 +151,14 @@ export function DomainEngineProvider({
     removeCanvasRuntime,
     clearCanvasRuntimes,
     getCanvasRuntimeKeys,
+    getCanvasRuntime,
     setEnabled,
     retry: () => manager.retryActive(),
   }), [
     activateCanvas,
     clearCanvasRuntimes,
     getCanvasRuntimeKeys,
+    getCanvasRuntime,
     manager,
     removeCanvasRuntime,
     setRuntimeBusy,

@@ -650,11 +650,30 @@ const RELEASE_0_16_2_DETAILS: UnreleasedReleaseNotes = {
   ],
 }
 
-export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
-  highlights: [],
+const RELEASE_0_16_3_DETAILS: UnreleasedReleaseNotes = {
+  highlights: [
+    'Large inventories now render only visible rows and mount a single responsive sidebar, substantially reducing browser memory, DOM nodes, drag hooks, menus, and listeners without changing inventory workflows.',
+  ],
   fixes: [
     'Recently used Canvas tabs now retain their rendered workspace surfaces, eliminating repeated blank, preparing, and loading states during warm Canvas and Systems navigation.',
+    'Parked Canvas surfaces now stop compatibility, measurement, routing, viewport, and interaction work until selected again, while route caches remain isolated to their exact project and Canvas.',
+    'Canvas inventory filters now persist independently per workspace, the toolbar follows the visible desktop or mobile inventory state, and empty searches explain when availability filters hide matching items.',
+    'Direct Systems startup no longer transfers the full Canvas project, Registry link map, Agent detail, notifications, or catalog facets before they are needed.',
+    'Production responses now use Brotli or gzip compression and immutable caching for content-addressed assets while keeping HTML and live event streams correctly revalidated.',
+    'Systems heartbeats now retain keyed row identity, skip unnecessary default-view sorting, and animate utilization through one shared scheduler and reduced-motion observer.',
   ],
+  notes: [
+    'Inventory filters and collapsed categories survive Canvas and Systems navigation; multi-selection survives responsive layout changes but resets safely when changing canvases.',
+    'Canvas route caches now transfer compact route results instead of duplicated obstacles and planner requests; older cache formats rebuild automatically from current measured geometry.',
+    'Signed catalog facets now remain browser-cached by exact revision and digest, and frontend request budgets protect the lightweight Systems and Canvas loading paths.',
+    'Parked warm canvases remain mounted for instant return but no longer commit when only the active workspace receives live or Inspector updates.',
+    'Systems opens without initializing Canvas drag-and-drop interactions.',
+  ],
+}
+
+export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
+  highlights: [],
+  fixes: [],
   notes: [],
 }
 
@@ -1185,9 +1204,16 @@ const RELEASE_0_2_1_DETAILS: UnreleasedReleaseNotes = {
 
 export const RELEASE_NOTES: ReleaseNoteEntry[] = [
   {
+    version: '0.16.3',
+    date: '2026-08-27',
+    channel: 'latest',
+    title: 'Lighter workspaces and faster delivery',
+    ...RELEASE_0_16_3_DETAILS,
+  },
+  {
     version: '0.16.2',
     date: '2026-08-26',
-    channel: 'latest',
+    channel: 'release',
     title: 'Instant recent Canvas switching',
     ...RELEASE_0_16_2_DETAILS,
   },

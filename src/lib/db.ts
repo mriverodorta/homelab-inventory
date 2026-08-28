@@ -19,6 +19,20 @@ export type AvailableGlobalInventoryItem = Pick<
   'id' | 'type' | 'name' | 'manufacturer' | 'model' | 'family' | 'number' | 'subtype' | 'scope'
 >
 
+export class ApiRequestError extends Error {
+  readonly status: number
+  readonly code: string | null
+  readonly details: unknown
+
+  constructor(message: string, options: { status: number; code?: string | null; details?: unknown }) {
+    super(message)
+    this.name = 'ApiRequestError'
+    this.status = options.status
+    this.code = options.code ?? null
+    this.details = options.details
+  }
+}
+
 export function withWorkspaceScope(url: string, scope?: WorkspaceMutationScope | null) {
   if (!scope) return url
   const separator = url.includes('?') ? '&' : '?'
@@ -38,8 +52,15 @@ export async function apiRequest<T>(url: string, init?: RequestInit): Promise<T>
   })
 
   if (!response.ok) {
-    const payload = (await response.json().catch(() => null)) as { message?: string } | null
-    throw new Error(payload?.message ?? `Request failed with status ${response.status}.`)
+    const payload = (await response.json().catch(() => null)) as {
+      message?: string
+      code?: string
+      details?: unknown
+    } | null
+    throw new ApiRequestError(
+      payload?.message ?? `Request failed with status ${response.status}.`,
+      { status: response.status, code: payload?.code, details: payload?.details },
+    )
   }
 
   return (await response.json()) as T

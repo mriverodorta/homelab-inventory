@@ -18,6 +18,16 @@ function unavailableNotifications() {
   }
 }
 
+function requestedWorkspace(request, projects) {
+  const projectId = Number(request.query?.projectId)
+  const workspaceId = Number(request.query?.workspaceId)
+  if (!Number.isSafeInteger(projectId) || projectId <= 0) return null
+  if (!Number.isSafeInteger(workspaceId) || workspaceId <= 0) return null
+  const workbook = projects.find((candidate) => candidate.project.id === projectId)
+  const workspace = workbook?.workspaces.find((candidate) => candidate.id === workspaceId)
+  return workspace ? { projectId, workspaceId, workspace } : null
+}
+
 export function registerBootstrapRoute(app, {
   withStore,
   authService,
@@ -43,16 +53,22 @@ export function registerBootstrapRoute(app, {
       ])
       const projects = store.listProjects().map((project) => store.getProjectWorkbook(project.id))
       const initialProject = projects[0]
+      const requested = requestedWorkspace(request, projects)
+      const systemsBootstrap = requested?.workspace.type === 'systems'
+      const includeLegacyProject = requested === null
+        || (requested.projectId === 1 && requested.workspaceId === 2)
 
       response.set('Cache-Control', 'no-store').json({
-        project: store.getProject(),
+        project: includeLegacyProject ? store.getProject() : null,
         projects,
         activeProjectPreference: initialProject
           ? { projectId: initialProject.project.id, workspaceId: initialProject.defaultWorkspaceId }
           : null,
-        agentStatus: agents ? publicAgentStatus(store, demo ? null : agentReleaseService) : null,
-        registry: registry ? publicRegistryState(store, demo ? DEMO_REGISTRY_POLICY : undefined) : null,
-        notifications: notifications
+        agentStatus: agents && !systemsBootstrap ? publicAgentStatus(store, demo ? null : agentReleaseService) : null,
+        registry: registry && !systemsBootstrap
+          ? publicRegistryState(store, demo ? DEMO_REGISTRY_POLICY : undefined)
+          : null,
+        notifications: notifications && !systemsBootstrap
           ? (demo || !notificationStore ? unavailableNotifications() : publicNotificationSnapshot(notificationStore))
           : null,
         onboarding: demo ? { enabled: false, mode: 'demo' } : store.getOnboardingStatus(),

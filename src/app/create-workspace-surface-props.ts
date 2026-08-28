@@ -58,6 +58,7 @@ interface CreateWorkspaceSurfacePropsOptions {
   registryUpdateSummary?: string
   canViewRegistryUpdates: boolean
   settingsOpen: boolean
+  inventoryOpen: boolean
   openNotifications(): void
   openRegistryUpdates(): void
   undo(): void
@@ -107,6 +108,7 @@ export function createWorkspaceSurfaceProps({
   registryUpdateSummary,
   canViewRegistryUpdates,
   settingsOpen,
+  inventoryOpen,
   openNotifications,
   openRegistryUpdates,
   undo,
@@ -215,7 +217,7 @@ export function createWorkspaceSurfaceProps({
       saveStatus,
       canonicalMutationBusy,
       canvasOperationLabel,
-      desktopInventoryVisible: preferences.desktopInventoryVisible,
+      inventoryOpen,
       inspectorOpen,
       autoCenterOnSelect: preferences.autoCenterOnSelect,
       networkCablesVisible: preferences.networkCablesVisible,

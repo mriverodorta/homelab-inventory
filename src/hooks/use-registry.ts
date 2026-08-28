@@ -1,5 +1,6 @@
 import {
   type QueryClient,
+  skipToken,
   useInfiniteQuery,
   useMutation,
   useQuery,
@@ -22,8 +23,9 @@ import {
   resetRegistryContributionRecovery,
   searchOfficialCatalog,
   updateRegistrySettings,
+  type CatalogSnapshotIdentity,
 } from '@/lib/registry-api'
-import type { RegistrySnapshot } from '@/types/registry'
+import { ApiRequestError } from '@/lib/db'
 
 export const REGISTRY_QUERY_KEY = ['registry'] as const
 
@@ -91,17 +93,21 @@ export function useCatalogSearch(parameters: Parameters<typeof searchOfficialCat
   })
 }
 
-export type CatalogSnapshotIdentity = Pick<RegistrySnapshot, 'revision' | 'digest'>
+export type { CatalogSnapshotIdentity } from '@/lib/registry-api'
 
 export function catalogFacetQueryKey(snapshot: CatalogSnapshotIdentity | null | undefined) {
   return ['registry', 'catalog-facets', snapshot?.revision ?? null, snapshot?.digest ?? null] as const
 }
 
-function catalogFacetQueryOptions(snapshot: CatalogSnapshotIdentity | null | undefined) {
+function catalogFacetQueryOptions(snapshot: CatalogSnapshotIdentity) {
   return {
     queryKey: catalogFacetQueryKey(snapshot),
-    queryFn: loadCatalogFacets,
+    queryFn: () => loadCatalogFacets(snapshot),
     staleTime: Number.POSITIVE_INFINITY,
+    retry: (failureCount: number, error: Error) => (
+      !(error instanceof ApiRequestError && error.code === 'catalog-snapshot-mismatch')
+      && failureCount < 2
+    ),
   }
 }
 
@@ -111,6 +117,18 @@ export function prefetchCatalogFacets(
 ) {
   if (!snapshot) return Promise.resolve()
   return queryClient.prefetchQuery(catalogFacetQueryOptions(snapshot))
+}
+
+export function catalogFacetPrefetchEnabled({
+  canViewRegistry,
+  canvasWorkspaceActive,
+  projectLoaded,
+}: {
+  canViewRegistry: boolean
+  canvasWorkspaceActive: boolean
+  projectLoaded: boolean
+}) {
+  return canViewRegistry && canvasWorkspaceActive && projectLoaded
 }
 
 export function useCatalogFacetPrefetch(
@@ -135,10 +153,15 @@ export function useCatalogFacets(
   snapshot: CatalogSnapshotIdentity | null | undefined,
   enabled = true,
 ) {
-  return useQuery({
-    ...catalogFacetQueryOptions(snapshot),
-    enabled: enabled && Boolean(snapshot),
-  })
+  const queryClient = useQueryClient()
+  const query = useQuery(snapshot
+    ? { ...catalogFacetQueryOptions(snapshot), enabled }
+    : { queryKey: catalogFacetQueryKey(snapshot), queryFn: skipToken })
+  useEffect(() => {
+    if (!(query.error instanceof ApiRequestError) || query.error.code !== 'catalog-snapshot-mismatch') return
+    void queryClient.invalidateQueries({ queryKey: REGISTRY_QUERY_KEY, refetchType: 'none' })
+  }, [query.error, queryClient])
+  return query
 }
 
 export function useInfiniteCatalogSearch(

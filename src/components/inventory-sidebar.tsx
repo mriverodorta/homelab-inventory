@@ -1,6 +1,7 @@
 import { useDraggable } from '@dnd-kit/core'
 import { CSS } from '@dnd-kit/utilities'
 import { useQueryClient } from '@tanstack/react-query'
+import { useVirtualizer } from '@tanstack/react-virtual'
 import {
   Archive,
   AudioLines,
@@ -25,10 +26,14 @@ import {
   Trash2,
   X,
 } from 'lucide-react'
-import { useEffect, useMemo, useState, type CSSProperties } from 'react'
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { InventoryActionsMenu } from '@/components/inventory-actions-menu'
 import { InventoryMetadataFilters } from '@/components/inventory/inventory-metadata-filters'
 import { InventoryTagPreview } from '@/components/inventory/inventory-tag-preview'
+import {
+  useInventorySidebarController,
+  type InventorySidebarController,
+} from '@/components/inventory/use-inventory-sidebar-controller'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -43,21 +48,21 @@ import {
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { formatInventoryCompactSpec } from '@/lib/format'
 import {
-  isAssignableComponentType,
+  getInventoryDragRole,
   isCanvasEquipmentType,
 } from '@/lib/inventory-capabilities'
 import { INVENTORY_CATEGORY_ORDER, INVENTORY_TYPE_LABELS } from '@/lib/inventory'
 import { runtimeItemKey } from '@/lib/item-keys'
+import { createInventoryVirtualRows } from '@/lib/inventory-virtual-rows'
 import { isArchivedItem } from '@/lib/project'
 import { cn } from '@/lib/utils'
 import { filterAndSortInventory, isItemAssigned } from '@/lib/sort'
 import type { AvailableGlobalInventoryItem, InventoryItemInput } from '@/lib/db'
-import type { InventoryFilters, InventoryStatusFilter } from '@/lib/sort'
+import type { InventoryStatusFilter } from '@/lib/sort'
 import type { InventoryItem, InventoryType, ProjectState } from '@/types/inventory'
 import {
   readyInventoryMetadataFilters,
   type InventoryItemMetadataInput,
-  type InventoryMetadataFilter,
   type InventoryMetadataProjectionRow,
 } from '@/types/inventory-metadata'
 import { DEFAULT_REGISTRY_STATE, type RegistryState } from '@/types/registry'
@@ -159,11 +164,7 @@ function DraggableInventoryItem({
 }) {
   const itemRuntimeKey = runtimeItemKey(item)
   const archived = isArchivedItem(item)
-  const dragRole = isCanvasEquipmentType(item.type)
-    ? 'equipment'
-    : isAssignableComponentType(item.type)
-      ? 'component'
-      : null
+  const dragRole = getInventoryDragRole(item.type)
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
     id: `inventory:${itemRuntimeKey}`,
     data: {
@@ -246,6 +247,7 @@ function DraggableInventoryItem({
 }
 
 export type InventorySidebarProps = {
+  controller?: InventorySidebarController
   project: ProjectState
   onSelect: (itemId: string) => void
   onCreateItem: (item: InventoryItemInput, quantity: number, metadata?: InventoryItemMetadataInput) => Promise<void>
@@ -271,7 +273,19 @@ export type InventorySidebarProps = {
   className?: string
 }
 
-export function InventorySidebar({
+function UncontrolledInventorySidebar(props: InventorySidebarProps) {
+  const controller = useInventorySidebarController('device:anonymous:project:1:workspace:2')
+  return <InventorySidebarContent {...props} controller={controller} />
+}
+
+export function InventorySidebar(props: InventorySidebarProps) {
+  return props.controller
+    ? <InventorySidebarContent {...props} controller={props.controller} />
+    : <UncontrolledInventorySidebar {...props} />
+}
+
+function InventorySidebarContent({
+  controller,
   project,
   onSelect,
   onCreateItem,
@@ -295,7 +309,7 @@ export function InventorySidebar({
   onClose,
   width,
   className,
-}: InventorySidebarProps) {
+}: InventorySidebarProps & { controller: InventorySidebarController }) {
   const queryClient = useQueryClient()
   const canCreate = usePermission('inventory.create')
   const canEdit = usePermission('inventory.edit')
@@ -304,16 +318,18 @@ export function InventorySidebar({
   const canEditCanvas = usePermission('canvas.edit')
   const canManageRegistry = usePermission('registry.manage')
   const [addDialogOpen, setAddDialogOpen] = useState(false)
-  const [filters, setFilters] = useState<InventoryFilters>({
-    query: '',
-    type: 'all',
-    status: 'available',
-    sort: 'type',
-  })
-  const [metadataFilters, setMetadataFilters] = useState<InventoryMetadataFilter[]>([])
-  const [selectionMode, setSelectionMode] = useState(false)
-  const [selectedItemIds, setSelectedItemIds] = useState<Set<string>>(() => new Set())
-  const [collapsedTypes, setCollapsedTypes] = useState<Set<InventoryType>>(() => new Set())
+  const {
+    filters,
+    setFilters,
+    metadataFilters,
+    setMetadataFilters,
+    selectionMode,
+    setSelectionMode,
+    selectedItemIds,
+    setSelectedItemIds,
+    collapsedTypes,
+    setCollapsedTypes,
+  } = controller
   const projectId = project.metadata.projectId ?? 1
   const metadataCatalog = useInventoryMetadataCatalog()
   const readyMetadataFilters = useMemo(() => readyInventoryMetadataFilters(metadataFilters), [metadataFilters])
@@ -334,6 +350,14 @@ export function InventorySidebar({
     [...metadataByKey].map(([key, row]) => [key, row.searchText ?? '']),
   ), [metadataByKey])
   const items = filterAndSortInventory(project, { ...filters, metadataItemKeys, metadataSearchText })
+  const hiddenStatusMatchCount = items.length === 0 && filters.status !== 'all'
+    ? filterAndSortInventory(project, {
+        ...filters,
+        status: 'all',
+        metadataItemKeys,
+        metadataSearchText,
+      }).length
+    : 0
   const selectedItems = useMemo(
     () => items.filter((item) => selectedItemIds.has(runtimeItemKey(item))),
     [items, selectedItemIds],
@@ -342,14 +366,20 @@ export function InventorySidebar({
     && items.every((item) => selectedItemIds.has(runtimeItemKey(item)))
   const allSelectedArchived = selectedItems.length > 0 && selectedItems.every(isArchivedItem)
   const allSelectedActive = selectedItems.length > 0 && selectedItems.every((item) => !isArchivedItem(item))
-  const grouped = useMemo(
-    () =>
-      INVENTORY_CATEGORY_ORDER.map((type) => ({
-        type,
-        items: items.filter((item) => item.type === type),
-      })).filter((group) => group.items.length > 0),
-    [items],
+  const rows = useMemo(
+    () => createInventoryVirtualRows(items, collapsedTypes),
+    [collapsedTypes, items],
   )
+  const scrollViewportRef = useRef<HTMLDivElement | null>(null)
+  const rowVirtualizer = useVirtualizer({
+    count: rows.length,
+    getScrollElement: () => scrollViewportRef.current,
+    estimateSize: (index) => rows[index]?.kind === 'category' ? 45 : 88,
+    getItemKey: (index) => rows[index]?.key ?? index,
+    measureElement: (element) => element.getBoundingClientRect().height,
+    initialRect: { width: 420, height: 640 },
+    overscan: 6,
+  })
 
   function prefetchAddInventory() {
     void InventoryItemDialog.prefetch()
@@ -358,7 +388,7 @@ export function InventorySidebar({
 
   useEffect(() => {
     setSelectedItemIds(new Set())
-  }, [lifecycleRevision])
+  }, [lifecycleRevision, setSelectedItemIds])
 
   function toggleSelectionMode() {
     setSelectionMode((current) => !current)
@@ -574,39 +604,50 @@ export function InventorySidebar({
         ) : null}
       </div>
 
-      <ScrollArea className="min-h-0 flex-1">
-        <div className="box-border w-[calc(100%-24px)] space-y-5 py-4 pl-4 pr-2">
-          {grouped.map((group) => (
-            <section key={group.type} className="rounded-md">
+      <ScrollArea className="min-h-0 flex-1" viewportRef={scrollViewportRef}>
+        <div
+          className="relative box-border w-[calc(100%-24px)] pl-4 pr-2"
+          style={{ height: rowVirtualizer.getTotalSize() }}
+        >
+          {rowVirtualizer.getVirtualItems().map((virtualRow) => {
+            const row = rows[virtualRow.index]
+            if (!row) return null
+
+            return (
+              <div
+                key={row.key}
+                ref={rowVirtualizer.measureElement}
+                data-index={virtualRow.index}
+                className="absolute left-0 top-0 w-full pl-4 pr-2"
+                style={{ transform: `translateY(${virtualRow.start}px)` }}
+              >
+                {row.kind === 'category' ? (
               <button
                 type="button"
-                className="mb-2 flex w-full items-center justify-between rounded-md px-1 py-1 text-left text-[11px] font-bold uppercase tracking-[0.14em] text-[#b9b0a4] transition hover:bg-white/5 hover:text-[#f7f1e8] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#adc19b]"
-                aria-expanded={!collapsedTypes.has(group.type)}
-                aria-controls={`inventory-group-${group.type}`}
-                onClick={() => toggleType(group.type)}
+                className="mb-2 mt-4 flex w-full items-center justify-between rounded-md px-1 py-1 text-left text-[11px] font-bold uppercase tracking-[0.14em] text-[#b9b0a4] transition hover:bg-white/5 hover:text-[#f7f1e8] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#adc19b]"
+                aria-expanded={!collapsedTypes.has(row.type)}
+                onClick={() => toggleType(row.type)}
               >
                 <span className="flex min-w-0 items-center gap-2">
-                  <TypeIcon type={group.type} />
-                  <span data-testid="inventory-category-label">{INVENTORY_TYPE_LABELS[group.type]}</span>
+                  <TypeIcon type={row.type} />
+                  <span data-testid="inventory-category-label">{INVENTORY_TYPE_LABELS[row.type]}</span>
                   <span className="rounded-full bg-white/10 px-2 py-0.5 text-[10px] tracking-normal text-[#d8d0c5]">
-                    {group.items.length}
+                    {row.count}
                   </span>
                 </span>
                 <ChevronDown
                   className={`size-4 shrink-0 transition-transform ${
-                    collapsedTypes.has(group.type) ? '-rotate-90' : 'rotate-0'
+                    collapsedTypes.has(row.type) ? '-rotate-90' : 'rotate-0'
                   }`}
                 />
               </button>
-              {!collapsedTypes.has(group.type) ? (
-                <div id={`inventory-group-${group.type}`} className="space-y-2">
-                  {group.items.map((item) => (
+                ) : (
+                  <div className="pb-2">
                     <DraggableInventoryItem
-                      key={runtimeItemKey(item)}
-                      item={item}
-                      assigned={isItemAssigned(project, item)}
+                      item={row.item}
+                      assigned={isItemAssigned(project, row.item)}
                       selectionMode={selectionMode}
-                      selected={selectedItemIds.has(runtimeItemKey(item))}
+                      selected={selectedItemIds.has(runtimeItemKey(row.item))}
                       onSelect={onSelect}
                       onToggleSelected={toggleSelected}
                       onDuplicate={onDuplicateItem}
@@ -622,17 +663,31 @@ export function InventorySidebar({
                       canDuplicate={canCreate}
                       canArchive={canArchive}
                       canDelete={canDelete}
-                      canDrag={isCanvasEquipmentType(item.type) ? canEditCanvas : canEdit}
-                      metadata={metadataByKey.get(runtimeItemKey(item))}
+                      canDrag={isCanvasEquipmentType(row.item.type) ? canEditCanvas : canEdit}
+                      metadata={metadataByKey.get(runtimeItemKey(row.item))}
                     />
-                  ))}
+                  </div>
+                )}
+              </div>
+            )
+          })}
+          {rows.length === 0 ? (
+            <div className="absolute left-4 right-2 top-4 rounded-md border border-white/10 bg-[#11151b] p-4 text-sm text-[#cfc6b8]">
+              {hiddenStatusMatchCount > 0 ? (
+                <div className="grid gap-3">
+                  <p>
+                    {hiddenStatusMatchCount} matching {hiddenStatusMatchCount === 1 ? 'item is' : 'items are'} hidden by the availability filter.
+                  </p>
+                  <Button
+                    type="button"
+                    size="sm"
+                    className="w-fit rounded-md bg-[#f7f1e8] text-[#20242c] hover:bg-[#e9dcc8]"
+                    onClick={() => setFilters((current) => ({ ...current, status: 'all' }))}
+                  >
+                    Show all
+                  </Button>
                 </div>
-              ) : null}
-            </section>
-          ))}
-          {grouped.length === 0 ? (
-            <div className="rounded-md border border-white/10 bg-[#11151b] p-4 text-sm text-[#cfc6b8]">
-              No inventory items match the current filters.
+              ) : 'No inventory items match the current filters.'}
             </div>
           ) : null}
         </div>

@@ -3,6 +3,8 @@ import type { AppInventoryPanelsProps } from '@/app/app-inventory-panels'
 type SidebarProps = AppInventoryPanelsProps['sidebar']
 
 interface CreateInventoryPanelPropsOptions {
+  preferenceScope: string
+  desktopLayout: boolean
   desktop: AppInventoryPanelsProps['desktop']
   mobile: Pick<AppInventoryPanelsProps['mobile'], 'open' | 'onOpenChange'>
   shared: Pick<
@@ -32,6 +34,8 @@ interface CreateInventoryPanelPropsOptions {
 }
 
 export function createInventoryPanelProps({
+  preferenceScope,
+  desktopLayout,
   desktop,
   mobile,
   shared,
@@ -40,6 +44,8 @@ export function createInventoryPanelProps({
   openMobileSettings,
 }: CreateInventoryPanelPropsOptions): AppInventoryPanelsProps {
   return {
+    preferenceScope,
+    desktopLayout,
     desktop,
     sidebar: {
       ...shared,

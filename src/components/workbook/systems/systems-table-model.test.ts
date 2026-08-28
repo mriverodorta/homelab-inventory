@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest'
-import { filterAndSortSystems, mergeSystemsLive, shouldVirtualizeSystems, systemsColumnTrack, systemsViewConfigurationsEqual } from '@/components/workbook/systems/systems-table-model'
+import {
+  filterAndSortSystems,
+  mergeSystemsLive,
+  shouldVirtualizeSystems,
+  systemsColumnTrack,
+  systemsProjectionAffectedByLive,
+  systemsViewConfigurationsEqual,
+} from '@/components/workbook/systems/systems-table-model'
 import { DEFAULT_SYSTEMS_TABLE_PREFERENCES } from '@/lib/systems-preferences'
 import type { SystemsHostRow } from '@/types/systems'
 
@@ -76,6 +83,23 @@ describe('Systems table model', () => {
       cpuPercent: 75,
       agentState: 'stale',
     })
+  })
+
+  it('preserves unchanged row identities and skips reprojection for the default view', () => {
+    const second = { ...base, itemId: 2, itemKey: 'server:2', name: 'Beta' }
+    const merged = mergeSystemsLive([base, second], new Map([
+      [1, { cpuPercent: 75 }],
+      [2, { cpuPercent: second.cpuPercent }],
+    ]))
+
+    expect(merged[0]).not.toBe(base)
+    expect(merged[1]).toBe(second)
+    expect(systemsProjectionAffectedByLive(DEFAULT_SYSTEMS_TABLE_PREFERENCES, false)).toBe(false)
+    expect(systemsProjectionAffectedByLive({
+      ...DEFAULT_SYSTEMS_TABLE_PREFERENCES,
+      sortKey: 'cpu',
+    }, false)).toBe(true)
+    expect(systemsProjectionAffectedByLive(DEFAULT_SYSTEMS_TABLE_PREFERENCES, true)).toBe(true)
   })
 
   it('compares synchronized columns independently of object property insertion order', () => {

@@ -6,10 +6,29 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 
 ## Unreleased
 
+## [0.16.3] - 2026-08-27
+
+### Changed
+
+- Inventory rendering now mounts only the active desktop or mobile presentation and virtualizes category and item rows, keeping filters, collapsed groups, and multi-selection state while sharply reducing off-screen DOM, drag hooks, menus, and listeners.
+- Inventory search, filters, sorting, metadata filters, and collapsed categories now persist independently for each Canvas and return after visiting Systems, while bulk selections reset safely between canvases.
+- Parked Canvas surfaces retain their warm React Flow view but suspend compatibility queries, geometry measurement, cable routing, viewport registration, and interactive controls until reactivated.
+- Cable obstacle measurements now use stable typed geometry tuples instead of serializing and parsing every measured node update.
+- Canvas route caches now persist only compact route results and reconstruct planner inputs from current measured geometry, reducing transferred cache data while safely rebuilding older caches.
+- Signed catalog facets now use immutable revision-and-digest URLs, while narrowly consolidating Lucide modules reduces Systems and Canvas script-request fan-out without making Canvas code eager.
+- Parked warm Canvas layers now ignore active-workspace-only updates, preserving instant tab returns without repeatedly committing hidden React trees.
+- Systems no longer initializes the Canvas drag-and-drop provider when opened directly.
+- Direct Systems startup now skips the full Canvas project, Registry link map, Agent detail, notifications, and catalog facets until a Canvas or explicit settings flow needs them.
+- Production responses now negotiate Brotli or gzip compression, while content-addressed frontend assets use immutable one-year browser caching and the HTML shell always revalidates.
+- Systems live updates preserve keyed row order and stable row objects, avoid repeated default-view sorting, and share one animation scheduler and reduced-motion observer across utilization meters.
+
 ### Fixed
 
 - Recently used Canvas tabs now retain their rendered React Flow surfaces behind the persistent workbook shell, eliminating repeated blank, preparing, and loading states during warm Canvas and Systems navigation.
 - Lazy workspace modules now reuse one resolved component identity across retained surfaces instead of recreating a suspense boundary for every mount.
+- Route-cache reads and writes now require exact project and Canvas workspace scope, preventing one retained Canvas from reading or replacing another Canvas route cache.
+- Warm Canvas eviction now removes the matching full project query snapshot, keeping browser memory bounded to the retained runtime pool.
+- The Canvas inventory command now reports the visible desktop sidebar or mobile sheet state correctly, and empty inventory searches explain when availability filters are hiding matches.
 
 ## [0.16.2] - 2026-08-26
 

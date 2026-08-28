@@ -2,6 +2,7 @@ import { Database } from 'bun:sqlite'
 import { chmod, readFile, rename, rm, stat, writeFile } from 'node:fs/promises'
 import { basename, dirname, join } from 'node:path'
 import { cleanItemForStore } from '../db/inventory-input.mjs'
+import { createRoutingCache, normalizeRoutingCache } from '../routing-cache-model.mjs'
 import { LEGACY_TABLE_BY_TYPE } from '../persistence/legacy/identity-plan.ts'
 import { insertLegacyInventoryItem, replaceLegacyInventoryItem } from '../persistence/migration/core-importer.ts'
 import {
@@ -381,9 +382,21 @@ function replaceWorkspaceRouteCache(database: Database, routeCache: Row, now: nu
   if (workspaces.contractVersion !== 1 || !Array.isArray(workspaces.rows)) {
     throw new Error('Workspace route-cache backup contract is unsupported.')
   }
+  let normalized = createRoutingCache()
+  try {
+    const entries = workspaces.rows.map((row: Row) => JSON.parse(row.route_payload_json))
+    normalized = normalizeRoutingCache({ ...routeCache, workspaces: undefined, entries })
+    if (
+      routeCache.version !== normalized.version
+      || entries.length !== normalized.entries.length
+      || routeCache.geometryFingerprint !== normalized.geometryFingerprint
+    ) normalized = createRoutingCache()
+  } catch {
+    normalized = createRoutingCache()
+  }
   database.query('DELETE FROM workspace_route_cache').run()
-  insertRows(database, 'workspace_route_cache', workspaces.rows)
-  const { entries: _entries, workspaces: _workspaces, ...envelope } = routeCache
+  if (normalized.entries.length > 0) insertRows(database, 'workspace_route_cache', workspaces.rows)
+  const { entries: _entries, ...envelope } = normalized
   database.query(`
     INSERT INTO application_metadata (key, value_json, updated_at_ms)
     VALUES ('legacy.routing-cache-envelope', ?, ?)

@@ -5,7 +5,6 @@ import {
 
 export { ROUTING_CACHE_FORMAT_VERSION, ROUTING_PLANNER_VERSION }
 
-const MAX_OBSTACLES = 2_000
 const MAX_ENTRIES = 5_000
 const MAX_ROUTE_POINTS = 512
 const MAX_FAILURE_MESSAGE_LENGTH = 500
@@ -16,7 +15,6 @@ export function createRoutingCache() {
     version: ROUTING_CACHE_FORMAT_VERSION,
     plannerVersion: ROUTING_PLANNER_VERSION,
     geometryFingerprint: null,
-    obstacles: [],
     entries: [],
     failures: [],
     updatedAt: null,
@@ -25,23 +23,6 @@ export function createRoutingCache() {
 
 function finitePoint(point) {
   return point && Number.isFinite(point.x) && Number.isFinite(point.y)
-}
-
-function resultEndpointMatchesCandidates(entry, endpoint, side, candidateKey, fallbackPointKey, fallbackSideKey) {
-  const request = entry?.input?.request
-  const candidates = request?.[candidateKey]
-  const available = Array.isArray(candidates) && candidates.length > 0
-    ? candidates
-    : [{
-        point: request?.definition?.[fallbackPointKey],
-        side: request?.definition?.[fallbackSideKey],
-      }]
-  return available.some((candidate) => (
-    candidate?.side === side
-    && finitePoint(candidate.point)
-    && candidate.point.x === endpoint.x
-    && candidate.point.y === endpoint.y
-  ))
 }
 
 function isOrthogonalRoute(points) {
@@ -71,11 +52,15 @@ function assertRoutingCacheShape(cache) {
   if (cache.plannerVersion !== ROUTING_PLANNER_VERSION) {
     throw new Error('Routing cache planner version is unsupported.')
   }
-  if (cache.geometryFingerprint !== null && typeof cache.geometryFingerprint !== 'string') {
-    throw new Error('Routing cache geometry fingerprint must be a string or null.')
+  if (
+    cache.geometryFingerprint !== null
+    && (typeof cache.geometryFingerprint !== 'string'
+      || !/^[0-9a-f]{16}$/u.test(cache.geometryFingerprint))
+  ) {
+    throw new Error('Routing cache geometry fingerprint must be a canonical digest or null.')
   }
-  if (!Array.isArray(cache.obstacles) || cache.obstacles.length > MAX_OBSTACLES) {
-    throw new Error('Routing cache obstacles are invalid.')
+  if (Object.hasOwn(cache, 'obstacles')) {
+    throw new Error('Routing cache must not persist planner obstacles.')
   }
   if (!Array.isArray(cache.entries) || cache.entries.length > MAX_ENTRIES) {
     throw new Error('Routing cache entries are invalid.')
@@ -83,25 +68,14 @@ function assertRoutingCacheShape(cache) {
   if (!Array.isArray(cache.failures) || cache.failures.length > MAX_ENTRIES) {
     throw new Error('Routing cache failures are invalid.')
   }
-  const obstacleIds = new Set()
-  for (const obstacle of cache.obstacles) {
-    const bounds = obstacle?.bounds
-    if (
-      typeof obstacle?.item_id !== 'string' || obstacle.item_id.length === 0
-      || obstacleIds.has(obstacle.item_id)
-      || !bounds || !Number.isFinite(bounds.x) || !Number.isFinite(bounds.y)
-      || !Number.isFinite(bounds.width) || !Number.isFinite(bounds.height)
-      || bounds.width < 0 || bounds.height < 0
-    ) throw new Error('Routing cache contains an invalid obstacle.')
-    obstacleIds.add(obstacle.item_id)
-  }
   const connectionIds = new Set()
   for (const entry of cache.entries) {
-    const id = entry?.input?.request?.definition?.connection_id
+    const id = entry?.connectionId
     const result = entry?.result
     const points = result?.route?.points
     if (
       !Number.isSafeInteger(id) || id <= 0 || connectionIds.has(id)
+      || Object.hasOwn(entry ?? {}, 'input')
       || result?.route?.connection_id !== id
       || !Array.isArray(points)
       || points.length < 2
@@ -115,22 +89,6 @@ function assertRoutingCacheShape(cache) {
       || !hasValidManualAnchors(
         result.route.manual_anchor_point_indexes,
         points.length,
-      )
-      || !resultEndpointMatchesCandidates(
-        entry,
-        points[0],
-        result.source_side,
-        'source_candidates',
-        'source',
-        'source_side',
-      )
-      || !resultEndpointMatchesCandidates(
-        entry,
-        points[points.length - 1],
-        result.target_side,
-        'target_candidates',
-        'target',
-        'target_side',
       )
       || (result.repaired_bend_points !== undefined
         && (!Array.isArray(result.repaired_bend_points)
@@ -156,7 +114,7 @@ function assertRoutingCacheShape(cache) {
 export function normalizeRoutingCache(value) {
   try {
     assertRoutingCacheShape(value)
-    return structuredClone(value)
+    return normalizedRoutingCache(value)
   } catch {
     return createRoutingCache()
   }
@@ -164,5 +122,20 @@ export function normalizeRoutingCache(value) {
 
 export function validateRoutingCache(value) {
   assertRoutingCacheShape(value)
-  return structuredClone(value)
+  return normalizedRoutingCache(value)
+}
+
+function normalizedRoutingCache(value) {
+  return {
+    version: ROUTING_CACHE_FORMAT_VERSION,
+    plannerVersion: ROUTING_PLANNER_VERSION,
+    geometryFingerprint: value.geometryFingerprint,
+    entries: structuredClone(value.entries).sort((first, second) => (
+      first.connectionId - second.connectionId
+    )),
+    failures: structuredClone(value.failures).sort((first, second) => (
+      first.connection_id - second.connection_id
+    )),
+    updatedAt: value.updatedAt,
+  }
 }

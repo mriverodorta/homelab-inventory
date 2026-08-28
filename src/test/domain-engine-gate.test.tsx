@@ -8,6 +8,7 @@ import { DomainEngineContext } from '@/engine/react-context'
 import type { DomainEngineClient } from '@/engine/client'
 import type { DomainEngineState } from '@/engine/types'
 import { useDomainEngine } from '@/hooks/use-domain-engine'
+import { projectQueryKeyForScope } from '@/lib/project-query-key'
 
 const eventSourceFactory = () => ({
   addEventListener: vi.fn(),
@@ -73,12 +74,14 @@ describe('DomainEngineGate', () => {
     expect(client.start).toHaveBeenCalledOnce()
   })
 
-  it('removes runtime-scoped topology queries when a Canvas runtime is disposed', async () => {
+  it('removes runtime and project queries when a Canvas runtime is disposed', async () => {
     const runtimeQueryClient = new QueryClient()
     const client = stubClient({ initial: { phase: 'idle', revision: null } })
     const runtimeKey = 'test-legacy:1:1:canvas'
     runtimeQueryClient.setQueryData(['domain-engine-topology', runtimeKey, 1], { nodes: [] })
     runtimeQueryClient.setQueryData(['domain-engine-compatible-endpoints', runtimeKey, 1], [])
+    runtimeQueryClient.setQueryData(projectQueryKeyForScope(1, 1), { metadata: { revision: 1 } })
+    runtimeQueryClient.setQueryData(projectQueryKeyForScope(1, 2), { metadata: { revision: 2 } })
 
     function Harness() {
       const engine = useDomainEngine()
@@ -106,6 +109,10 @@ describe('DomainEngineGate', () => {
 
     expect(runtimeQueryClient.getQueryData(['domain-engine-topology', runtimeKey, 1])).toBeUndefined()
     expect(runtimeQueryClient.getQueryData(['domain-engine-compatible-endpoints', runtimeKey, 1])).toBeUndefined()
+    expect(runtimeQueryClient.getQueryData(projectQueryKeyForScope(1, 1))).toBeUndefined()
+    expect(runtimeQueryClient.getQueryData(projectQueryKeyForScope(1, 2))).toEqual({
+      metadata: { revision: 2 },
+    })
   })
 
   it('preserves mounted application state while a new session loads', () => {

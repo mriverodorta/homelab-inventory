@@ -10,6 +10,7 @@ interface AppNavigationActionsOptions {
   setSettingsOpen(open: boolean): void
   setDesktopInventoryVisible(update: (current: boolean) => boolean): void
   setMobileInventoryOpen(open: boolean): void
+  desktopLayout: boolean
   updateStatusAvailable: boolean
   refreshUpdateStatus(): Promise<boolean>
   setUpdateDialogOpen(open: boolean): void
@@ -25,6 +26,7 @@ export function useAppNavigationActions({
   setSettingsOpen,
   setDesktopInventoryVisible,
   setMobileInventoryOpen,
+  desktopLayout,
   updateStatusAvailable,
   refreshUpdateStatus,
   setUpdateDialogOpen,
@@ -49,12 +51,12 @@ export function useAppNavigationActions({
   }, [clearPendingConnection, setSelectedConnectionId, setSelectedItemId])
 
   const openInventory = useCallback(() => {
-    if (window.matchMedia('(min-width: 1024px)').matches) {
+    if (desktopLayout) {
       setDesktopInventoryVisible((current) => !current)
       return
     }
     setMobileInventoryOpen(true)
-  }, [setDesktopInventoryVisible, setMobileInventoryOpen])
+  }, [desktopLayout, setDesktopInventoryVisible, setMobileInventoryOpen])
 
   const openUpdate = useCallback(() => {
     if (updateStatusAvailable) {

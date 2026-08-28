@@ -7,6 +7,24 @@ export const DEFAULT_BUNDLE_LIMITS = Object.freeze({
   maxInitialBytes: 500 * 1024,
   preferredInitialGzipBytes: 220 * 1024,
   maxAsyncBytes: 500 * 1024,
+  maxJavaScriptChunks: 105,
+  routeGraphs: {
+    systems: {
+      roots: ['src/App.tsx'],
+      maxRequests: 48,
+      maxGzipBytes: 350 * 1024,
+    },
+    canvas: {
+      roots: [
+        'src/App.tsx',
+        'workbench-canvas',
+        'dnd-workspace',
+        'inventory-sidebar',
+      ],
+      maxRequests: 58,
+      maxGzipBytes: 450 * 1024,
+    },
+  },
   requiredLazyLabels: [
     'workbench-canvas',
     'dnd-workspace',
@@ -59,6 +77,33 @@ function fileMeasurement(assetsRoot, file) {
   }
 }
 
+function manifestKeyForLabel(manifest, label) {
+  const normalized = label.toLowerCase()
+  const matches = javascriptEntries(manifest).filter(([key, entry]) => (
+    `${key} ${entry.file}`.toLowerCase().includes(normalized)
+  ))
+  if (matches.length !== 1) {
+    throw new Error(`Route graph root ${label} matched ${matches.length} manifest entries.`)
+  }
+  return matches[0][0]
+}
+
+function routeGraph(manifest, assetsRoot, entryKey, definition) {
+  const keys = collectStaticImports(manifest, entryKey)
+  for (const label of definition.roots) {
+    collectStaticImports(manifest, manifestKeyForLabel(manifest, label), keys)
+  }
+  const chunks = javascriptEntries(manifest)
+    .filter(([key]) => keys.has(key))
+    .map(([, entry]) => fileMeasurement(assetsRoot, entry.file))
+  return {
+    requests: chunks.length,
+    bytes: chunks.reduce((sum, chunk) => sum + chunk.bytes, 0),
+    gzipBytes: chunks.reduce((sum, chunk) => sum + chunk.gzipBytes, 0),
+    chunks,
+  }
+}
+
 export function analyzeFrontendBundle({ manifest, assetsRoot, limits = DEFAULT_BUNDLE_LIMITS }) {
   const entryKey = findEntryKey(manifest)
   const initialKeys = collectStaticImports(manifest, entryKey)
@@ -76,6 +121,11 @@ export function analyzeFrontendBundle({ manifest, assetsRoot, limits = DEFAULT_B
   const initialGzipBytes = initial.reduce((sum, entry) => sum + entry.gzipBytes, 0)
   const errors = []
   const warnings = []
+  const routeGraphs = {}
+
+  if (jsEntries.length > limits.maxJavaScriptChunks) {
+    errors.push(`JavaScript chunk count is ${jsEntries.length}; limit is ${limits.maxJavaScriptChunks}.`)
+  }
 
   if (initialBytes > limits.maxInitialBytes) {
     errors.push(`Initial JavaScript is ${initialBytes} bytes; limit is ${limits.maxInitialBytes} bytes.`)
@@ -98,6 +148,21 @@ export function analyzeFrontendBundle({ manifest, assetsRoot, limits = DEFAULT_B
     errors.push(`Missing required lazy chunks: ${missingLazyLabels.join(', ')}.`)
   }
 
+  for (const [name, definition] of Object.entries(limits.routeGraphs ?? {})) {
+    try {
+      const graph = routeGraph(manifest, assetsRoot, entryKey, definition)
+      routeGraphs[name] = graph
+      if (graph.requests > definition.maxRequests) {
+        errors.push(`${name} route graph requires ${graph.requests} JavaScript requests; limit is ${definition.maxRequests}.`)
+      }
+      if (graph.gzipBytes > definition.maxGzipBytes) {
+        errors.push(`${name} route graph is ${graph.gzipBytes} gzip bytes; limit is ${definition.maxGzipBytes} bytes.`)
+      }
+    } catch (error) {
+      errors.push(error instanceof Error ? error.message : String(error))
+    }
+  }
+
   return {
     entryKey,
     initial,
@@ -105,6 +170,8 @@ export function analyzeFrontendBundle({ manifest, assetsRoot, limits = DEFAULT_B
     initialBytes,
     initialGzipBytes,
     missingLazyLabels,
+    javascriptChunks: jsEntries.length,
+    routeGraphs,
     errors,
     warnings,
   }
@@ -119,7 +186,12 @@ export function formatFrontendBundleReport(report) {
     `Initial JavaScript: ${formatKilobytes(report.initialBytes)} raw / ${formatKilobytes(report.initialGzipBytes)} gzip`,
     `Initial chunks: ${report.initial.map((entry) => entry.file).join(', ')}`,
     `Async chunks: ${report.asyncChunks.length}`,
+    `Total JavaScript chunks: ${report.javascriptChunks}`,
   ]
+
+  for (const [name, graph] of Object.entries(report.routeGraphs)) {
+    lines.push(`${name} route: ${graph.requests} requests / ${formatKilobytes(graph.bytes)} raw / ${formatKilobytes(graph.gzipBytes)} gzip`)
+  }
 
   for (const warning of report.warnings) lines.push(`WARNING: ${warning}`)
   for (const error of report.errors) lines.push(`ERROR: ${error}`)

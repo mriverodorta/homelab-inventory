@@ -3,6 +3,7 @@ import { lazy, Suspense, type ReactNode } from 'react'
 import { Button } from '@/components/ui/button'
 import { useAuth } from '@/hooks/use-auth'
 import { activateInitialBootstrap } from '@/lib/bootstrap-api'
+import { parseWorkspaceRoute } from '@/lib/workspace-route'
 
 const FirstRunSetup = lazy(() =>
   import('@/components/auth/first-run-setup').then((module) => ({ default: module.FirstRunSetup })),
@@ -65,6 +66,6 @@ export function AuthGate({ children }: { children: ReactNode }) {
       </main>
     )
   }
-  activateInitialBootstrap()
+  activateInitialBootstrap(parseWorkspaceRoute(window.location.pathname))
   return children
 }

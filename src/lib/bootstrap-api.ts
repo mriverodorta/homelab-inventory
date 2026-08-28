@@ -10,7 +10,7 @@ import type { RegistryState } from '@/types/registry'
 import type { ProjectWorkbook } from '@/lib/workbook-api'
 
 export type ApplicationBootstrap = {
-  project: ProjectState
+  project: ProjectState | null
   projects: ProjectWorkbook[]
   activeProjectPreference: { projectId: number; workspaceId: number } | null
   agentStatus: AgentStatusSummary | null
@@ -26,10 +26,15 @@ type BootstrapKey = keyof ApplicationBootstrap
 
 let active = false
 let request: Promise<ApplicationBootstrap> | null = null
+let scope: { projectId: number; workspaceId: number } | null = null
 const consumed = new Set<BootstrapKey>()
 
 async function requestApplicationBootstrap(): Promise<ApplicationBootstrap> {
-  const response = await fetchWithTimeout('/api/bootstrap')
+  const query = scope ? `?${new URLSearchParams({
+    projectId: String(scope.projectId),
+    workspaceId: String(scope.workspaceId),
+  }).toString()}` : ''
+  const response = await fetchWithTimeout(`/api/bootstrap${query}`)
   const payload = await response.json().catch(() => null) as { message?: string } | null
   if (!response.ok) {
     throw new Error(payload?.message ?? `Bootstrap request failed with status ${response.status}.`)
@@ -37,13 +42,15 @@ async function requestApplicationBootstrap(): Promise<ApplicationBootstrap> {
   return payload as ApplicationBootstrap
 }
 
-export function activateInitialBootstrap(): void {
+export function activateInitialBootstrap(nextScope: typeof scope = null): void {
   active = true
+  if (!request) scope = nextScope
 }
 
 export function resetInitialBootstrap(): void {
   active = false
   request = null
+  scope = null
   consumed.clear()
 }
 

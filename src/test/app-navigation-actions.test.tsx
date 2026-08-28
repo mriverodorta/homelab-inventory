@@ -13,6 +13,7 @@ function options() {
     setSettingsOpen: vi.fn(),
     setDesktopInventoryVisible: vi.fn(),
     setMobileInventoryOpen: vi.fn(),
+    desktopLayout: true,
     updateStatusAvailable: false,
     refreshUpdateStatus: vi.fn(async () => false),
     setUpdateDialogOpen: vi.fn(),
@@ -41,5 +42,25 @@ describe('useAppNavigationActions', () => {
 
     expect(input.setSelectedItemId).toHaveBeenCalledWith('server:1')
     expect(input.setAuditOpen).toHaveBeenCalledWith(false)
+  })
+
+  it('toggles the desktop inventory when desktop layout is active', () => {
+    const input = options()
+    const { result } = renderHook(() => useAppNavigationActions(input))
+
+    act(() => result.current.openInventory())
+
+    expect(input.setDesktopInventoryVisible).toHaveBeenCalledWith(expect.any(Function))
+    expect(input.setMobileInventoryOpen).not.toHaveBeenCalled()
+  })
+
+  it('opens the mobile inventory when desktop layout is inactive', () => {
+    const input = { ...options(), desktopLayout: false }
+    const { result } = renderHook(() => useAppNavigationActions(input))
+
+    act(() => result.current.openInventory())
+
+    expect(input.setMobileInventoryOpen).toHaveBeenCalledWith(true)
+    expect(input.setDesktopInventoryVisible).not.toHaveBeenCalled()
   })
 })

@@ -7,12 +7,14 @@ import { useDomainEngine } from '@/hooks/use-domain-engine'
 import { usePermission } from '@/hooks/use-permission'
 import { useAuth } from '@/hooks/use-auth'
 import {
+  catalogFacetPrefetchEnabled,
   useCatalogFacetPrefetch,
   useRegistryMutations,
   useRegistryQuery,
 } from '@/hooks/use-registry'
 import { useNotificationSummary } from '@/hooks/use-notifications'
 import { useAgentStatus } from '@/hooks/use-agent-status'
+import { useDesktopBreakpoint } from '@/hooks/use-desktop-breakpoint'
 import {
   useCompatibleTopologyDestinations,
   useTopologyQuery,
@@ -76,6 +78,7 @@ import {
   type CanvasRuntimeViewState,
   validCanvasRuntimeViewState,
 } from '@/app/canvas-runtime-view-state'
+import { createSystemsProjectScope, shouldLoadCanvasProject } from '@/app/workspace-project-loading'
 
 type SaveStatus = 'saved' | 'saving' | 'error'
 type ValidationSeverity = 'error' | 'unknown'
@@ -112,6 +115,7 @@ function App() {
   const [canonicalMutationBusy, setCanonicalMutationBusy] = useState(false)
   const [canvasOperationLabel, setCanvasOperationLabel] = useState<string | null>(null)
   const [mobileInventoryOpen, setMobileInventoryOpen] = useState(false)
+  const desktopLayout = useDesktopBreakpoint()
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [settingsDestination, setSettingsDestination] = useState<SettingsDestination | null>(null)
   const settingsRequestIdRef = useRef(0)
@@ -172,6 +176,11 @@ function App() {
   })
   workbookHistoryRef.current = workbookController.activeWorkbook
   const canvasWorkspaceActive = workbookController.activeWorkspace?.type === 'canvas'
+  const systemsWorkspaceActive = workbookController.activeWorkspace?.type === 'systems'
+  const systemsProjectScope = useMemo(
+    () => createSystemsProjectScope(workbookController.activeWorkbook, workbookController.activeWorkspace),
+    [workbookController.activeWorkbook, workbookController.activeWorkspace],
+  )
   const sidebarPreferenceScope = workbookController.activeWorkbook && workbookController.sourceCanvasWorkspace
     ? browserPreferenceScope(
         auth.status?.account?.id ?? null,
@@ -283,7 +292,9 @@ function App() {
   const projectQuery = useQuery({
     queryKey: activeProjectQueryKey,
     queryFn: loadActiveProject,
-    enabled: sourceProjectId !== null && sourceWorkspaceId !== null,
+    enabled: sourceProjectId !== null
+      && sourceWorkspaceId !== null
+      && shouldLoadCanvasProject(canvasWorkspaceActive, settingsOpen),
     staleTime: Infinity,
     gcTime: Infinity,
   })
@@ -653,7 +664,6 @@ function App() {
     width: inventoryWidth,
     onWidthChange: setInventoryWidth,
   })
-  const systemsWorkspaceActive = workbookController.activeWorkspace?.type === 'systems'
   const agentStatusQuery = useAgentStatus(canViewAgents && (!systemsWorkspaceActive || Boolean(selectedItemId)))
   const {
     updateStatusQuery,
@@ -661,10 +671,14 @@ function App() {
     whatsNewVisible: shouldShowWhatsNewDialog,
     updateHighlighted,
   } = releaseUpdateController
-  const registryQuery = useRegistryQuery(canViewRegistry)
+  const registryQuery = useRegistryQuery(canViewRegistry && (canvasWorkspaceActive || settingsOpen))
   useCatalogFacetPrefetch(
     registryQuery.data?.snapshot,
-    canViewRegistry && Boolean(project),
+    catalogFacetPrefetchEnabled({
+      canViewRegistry,
+      canvasWorkspaceActive,
+      projectLoaded: Boolean(project),
+    }),
   )
   const notificationQuery = useNotificationSummary(canViewNotifications && canvasWorkspaceActive)
   const registryMutations = useRegistryMutations()
@@ -764,6 +778,7 @@ function App() {
     setSettingsOpen: setSettingsDialogOpen,
     setDesktopInventoryVisible,
     setMobileInventoryOpen,
+    desktopLayout,
     updateStatusAvailable: Boolean(updateStatusQuery.data),
     refreshUpdateStatus: async () => Boolean((await updateStatusQuery.refetch()).data),
     setUpdateDialogOpen,
@@ -807,10 +822,13 @@ function App() {
       || (defaultWorkspaceActive && !project.metadata.projectId && !project.metadata.workspaceId)
     ),
   )
+  const surfaceProject = project ?? systemsProjectScope
+  const fullProjectRequired = shouldLoadCanvasProject(canvasWorkspaceActive, settingsOpen)
 
   if (
     workbookController.loading
-    || !project
+    || !surfaceProject
+    || (fullProjectRequired && !project)
     || !workbookController.activeWorkspace
     || !workbookController.activeWorkbook
   ) {
@@ -819,11 +837,14 @@ function App() {
 
   const inventorySidebarAvailable = workbookController.activeWorkspace.type === 'canvas'
   const effectiveDesktopInventoryVisible = inventorySidebarAvailable && desktopInventoryVisible
+  const inventoryOpen = inventorySidebarAvailable && (
+    desktopLayout ? desktopInventoryVisible : mobileInventoryOpen
+  )
 
   const settingsDialogProps = createSettingsDialogProps({
     open: settingsOpen,
     destination: settingsDestination,
-    project,
+    project: surfaceProject,
     saveStatus,
     preferences: workspacePreferences,
     maintenance: canvasMaintenance,
@@ -838,6 +859,11 @@ function App() {
     workbook: workbookController,
   })
   const inventoryPanelProps = createInventoryPanelProps({
+    preferenceScope: sidebarPreferenceScope ?? browserPreferenceScope(
+      auth.status?.account?.id ?? null,
+      workbookController.activeWorkbook.project.id,
+    ),
+    desktopLayout,
     desktop: {
       expanded: desktopInventoryVisible,
       width: inventoryWidth,
@@ -848,7 +874,7 @@ function App() {
       onOpenChange: setMobileInventoryOpen,
     },
     shared: {
-      project,
+      project: surfaceProject,
       onSelect: selectInventoryItem,
       onCreateItem: handleCreateInventoryItem,
       onCreateCatalogItem: handleCreateCatalogInventoryItem,
@@ -888,7 +914,7 @@ function App() {
     },
   })
   const lifecycleDialogProps = createLifecycleDialogProps({
-    project,
+    project: surfaceProject,
     inventory: inventoryLifecycle,
     equipment: canvasEquipmentLifecycle,
   })
@@ -904,7 +930,7 @@ function App() {
   })
   const workspaceSurfaceProps = {
     ...createWorkspaceSurfaceProps({
-    project,
+    project: surfaceProject,
     workspaces: workbookController.activeWorkbook?.workspaces ?? [],
     topologyData: topologyQuery.data,
     topologyStatus,
@@ -950,6 +976,7 @@ function App() {
       : 'No registry update run has completed yet',
     canViewRegistryUpdates: canViewRegistry,
     settingsOpen,
+    inventoryOpen,
     openNotifications: () => setNotificationsOpen(true),
     openRegistryUpdates: () => setRegistryUpdatesOpen(true),
     undo: undoProjectChange,
@@ -961,10 +988,10 @@ function App() {
     setValidationMessage,
       showCurrentExampleStep,
     }),
-    workbook: {
+      workbook: {
       workspace: workbookController.activeWorkspace,
       workspaces: workbookController.activeWorkbook?.workspaces ?? [],
-      project,
+      project: surfaceProject,
       selectedItemId,
       onSelectItem: canvasSelectionController.selectInventoryItem,
       onCloseInspector: navigationActions.clearCanvasSelection,
@@ -978,20 +1005,20 @@ function App() {
 
   return (
     <AppShell
-      drag={{
+      drag={canvasWorkspaceActive ? {
         onDragStart: handleDragStart,
         onDragOver: handleDragOver,
         onDragCancel: cancelDrag,
         onDragEnd: handleDragEnd,
         overlay: (
           <InventoryDragPreview
-            item={draggingItemId ? project.items[draggingItemId] ?? null : null}
-            project={project}
+            item={draggingItemId ? surfaceProject.items[draggingItemId] ?? null : null}
+            project={surfaceProject}
             overCanvas={dragPreviewOverCanvas}
             viewportZoom={dragPreviewZoom}
           />
         ),
-      }}
+      } : null}
       projectControlOffset={effectiveDesktopInventoryVisible ? inventoryWidth + 12 : 12}
       projectControl={(
         <ProjectSwitcher
@@ -1047,19 +1074,19 @@ function App() {
             {...releaseDialogProps}
             {...onboardingDialogProps}
             audit={{
-              project,
+              project: surfaceProject,
               topologyData: topologyQuery.data,
               open: auditOpen,
               onClose: () => setAuditOpen(false),
               onSelectItem: navigationActions.selectAuditItem,
               onSetWarningIgnored: canManageAudit
                 ? (warningId, ignored) => {
-                    updateProject(setAuditWarningIgnored(project, warningId, ignored))
+                    updateProject(setAuditWarningIgnored(surfaceProject, warningId, ignored))
                   }
                 : undefined,
             }}
             search={{
-              project,
+              project: surfaceProject,
               open: searchOpen,
               onOpenChange: setSearchOpen,
               onSelectItem: navigationActions.selectSearchItem,

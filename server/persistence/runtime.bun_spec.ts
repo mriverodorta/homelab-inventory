@@ -7,6 +7,10 @@ import { schema29ProductionShapeFixture } from './fixtures/schema-29-production-
 import { NotificationStore } from '../notifications/store.mjs'
 import { SqliteNotificationPersistence } from '../notifications/sqlite-persistence.ts'
 import { activateSqliteRuntime } from './runtime.ts'
+import {
+  ROUTING_CACHE_FORMAT_VERSION,
+  ROUTING_PLANNER_VERSION,
+} from '../../shared/engine/routing-cache-contract.mjs'
 
 const roots: string[] = []
 
@@ -57,6 +61,72 @@ function options(dataDir: string) {
 }
 
 describe('SQLite production runtime', () => {
+  test('discards legacy route inputs and persists compact entries by connection ID', async () => {
+    const dataDir = await createLegacyData()
+    await writeFile(join(dataDir, 'stores', 'routing-cache.json'), `${JSON.stringify({
+      version: 3,
+      plannerVersion: ROUTING_PLANNER_VERSION,
+      geometryFingerprint: '1111111111111111',
+      obstacles: [],
+      entries: [{ input: { request: { definition: { connection_id: 41 } } }, result: {} }],
+      failures: [],
+      updatedAt: null,
+    })}\n`)
+
+    const runtime = await activateSqliteRuntime(options(dataDir))
+    expect(runtime.store.getRoutingCache()).toEqual({
+      version: ROUTING_CACHE_FORMAT_VERSION,
+      plannerVersion: ROUTING_PLANNER_VERSION,
+      geometryFingerprint: null,
+      entries: [],
+      failures: [],
+      updatedAt: null,
+    })
+    const connection = runtime.store.core.database.query(`
+      SELECT id
+      FROM project_connections
+      WHERE project_id = 1 AND workspace_id = 2
+      ORDER BY id
+      LIMIT 1
+    `).get() as { id: number }
+
+    runtime.store.setRoutingCache({
+      version: ROUTING_CACHE_FORMAT_VERSION,
+      plannerVersion: ROUTING_PLANNER_VERSION,
+      geometryFingerprint: '2222222222222222',
+      entries: [{
+        connectionId: connection.id,
+        result: {
+          route: {
+            connection_id: connection.id,
+            points: [{ x: 0, y: 0 }, { x: 120, y: 0 }],
+            manual_anchor_point_indexes: [],
+          },
+          source_side: 'right',
+          target_side: 'left',
+          used_fallback: false,
+          warning: null,
+        },
+      }],
+      failures: [],
+      updatedAt: null,
+    })
+
+    expect(runtime.store.core.database.query(`
+      SELECT connection_id
+      FROM workspace_route_cache
+      WHERE project_id = 1 AND workspace_id = 2
+    `).get()).toEqual({ connection_id: connection.id })
+    await runtime.close()
+
+    const restarted = await activateSqliteRuntime(options(dataDir))
+    expect(restarted.store.getRoutingCache()).toMatchObject({
+      version: ROUTING_CACHE_FORMAT_VERSION,
+      entries: [{ connectionId: connection.id }],
+    })
+    await restarted.close()
+  })
+
   test('activates once, leaves legacy JSON untouched, and survives restart', async () => {
     const dataDir = await createLegacyData()
     const legacyProjectPath = join(dataDir, 'stores', 'project.json')

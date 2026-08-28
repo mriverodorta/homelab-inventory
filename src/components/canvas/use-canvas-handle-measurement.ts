@@ -18,6 +18,7 @@ import {
 } from '@/components/canvas/flow-reconciliation'
 
 type UseCanvasHandleMeasurementOptions = {
+  enabled?: boolean
   project: ProjectState
   flowNodes: WorkbenchFlowNode[]
   canvasHandleIndex: CanvasHandleIndex
@@ -25,6 +26,7 @@ type UseCanvasHandleMeasurementOptions = {
 }
 
 export function useCanvasHandleMeasurement({
+  enabled = true,
   project,
   flowNodes,
   canvasHandleIndex,
@@ -71,6 +73,7 @@ export function useCanvasHandleMeasurement({
   }, [flowStore])
 
   useEffect(() => {
+    if (!enabled) return
     let frame: number | null = null
     const scheduleGeometrySync = () => {
       if (frame !== null) return
@@ -92,9 +95,13 @@ export function useCanvasHandleMeasurement({
       unsubscribe()
       if (frame !== null) window.cancelAnimationFrame(frame)
     }
-  }, [flowStore, syncMeasuredHandleGeometry])
+  }, [enabled, flowStore, syncMeasuredHandleGeometry])
 
   useEffect(() => {
+    if (!enabled) {
+      setForceRenderAllNodes(false)
+      return
+    }
     const placedItemIds = new Set(project.placements.map((placement) => placement.serverId))
     const initialMeasurement = measuredProjectRef.current === null
     const changedHandleItemIds = getChangedCanvasHandleItemIds(
@@ -146,6 +153,7 @@ export function useCanvasHandleMeasurement({
   }, [
     affectedItemIds,
     canvasHandleIndex,
+    enabled,
     project,
     project.items,
     project.placements,

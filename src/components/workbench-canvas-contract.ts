@@ -77,6 +77,7 @@ export type CanvasController = {
 export type WorkbenchCanvasProps = {
   runtimeKey?: string
   interactionEnabled?: boolean
+  surfaceState?: 'active' | 'parked'
   project: ProjectState
   registryLinkedItemKeys: ReadonlySet<string>
   topologyData?: TopologyQueryData | null
@@ -113,7 +114,7 @@ export type WorkbenchCanvasProps = {
   registryUpdateCount: number
   registryUpdateSummary?: string
   canViewRegistryUpdates: boolean
-  desktopInventoryVisible: boolean
+  inventoryOpen: boolean
   inspectorOpen: boolean
   onSelect: (itemId: string) => void
   onSelectConnection: (connectionId: string | number) => void

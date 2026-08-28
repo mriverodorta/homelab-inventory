@@ -3,6 +3,7 @@ import type { SystemsTablePreferences } from '@/lib/systems-preferences'
 import type { SystemsHostRow, SystemsViewConfiguration } from '@/types/systems'
 
 const COMPACT_SYSTEMS_COLUMNS = new Set(['type', 'attention', 'agent', 'registry'])
+const LIVE_SORT_KEYS = new Set(['cpu', 'memory', 'storage', 'attention', 'agent', 'uptime'])
 
 const AGENT_ORDER = Object.freeze({
   online: 0,
@@ -116,9 +117,26 @@ export function filterAndSortSystems(
     })
 }
 
+export function systemsProjectionAffectedByLive(
+  preferences: SystemsTablePreferences,
+  attentionOnly: boolean,
+) {
+  return attentionOnly
+    || preferences.query.trim().length > 0
+    || preferences.registrations.length > 0
+    || LIVE_SORT_KEYS.has(preferences.sortKey)
+}
+
 export function mergeSystemsLive(
   systems: readonly SystemsHostRow[],
   live: ReadonlyMap<number, Partial<SystemsHostRow>>,
 ) {
-  return systems.map((system) => ({ ...system, ...live.get(system.itemId) }))
+  return systems.map((system) => {
+    const patch = live.get(system.itemId)
+    if (!patch) return system
+    const unchanged = Object.entries(patch).every(([key, value]) => (
+      system[key as keyof SystemsHostRow] === value
+    ))
+    return unchanged ? system : { ...system, ...patch }
+  })
 }

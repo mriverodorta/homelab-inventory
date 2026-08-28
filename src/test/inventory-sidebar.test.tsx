@@ -1,10 +1,31 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { fireEvent, screen } from '@testing-library/react'
 import type { ReactElement } from 'react'
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { InventorySidebar } from '@/components/inventory-sidebar'
+import { getInventoryDragRole } from '@/lib/inventory-capabilities'
+import { createInventoryVirtualRows } from '@/lib/inventory-virtual-rows'
 import { renderWithOpenAuth } from '@/test/open-auth-test-render'
 import type { InventoryItem, InventoryType, ProjectState } from '@/types/inventory'
+
+vi.mock('@tanstack/react-virtual', () => ({
+  useVirtualizer: ({ count, estimateSize }: {
+    count: number
+    estimateSize(index: number): number
+  }) => {
+    const sizes = Array.from({ length: count }, (_, index) => estimateSize(index))
+    return {
+      getTotalSize: () => sizes.reduce((total, size) => total + size, 0),
+      getVirtualItems: () => sizes.map((size, index) => ({
+        index,
+        key: index,
+        size,
+        start: sizes.slice(0, index).reduce((total, value) => total + value, 0),
+      })),
+      measureElement: vi.fn(),
+    }
+  },
+}))
 
 function render(element: ReactElement) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
@@ -75,6 +96,8 @@ const completeInventoryProject: ProjectState = {
 }
 
 describe('InventorySidebar', () => {
+  beforeEach(() => window.localStorage.clear())
+
   it('renders separate Add and mobile close actions', () => {
     const onClose = vi.fn()
 
@@ -150,36 +173,52 @@ describe('InventorySidebar', () => {
   })
 
   it('shows all inventory categories in the approved order', () => {
-    render(
-      <InventorySidebar
-        project={completeInventoryProject}
-        onSelect={vi.fn()}
-        onCreateItem={vi.fn()}
-      />,
-    )
+    const rows = createInventoryVirtualRows(Object.values(completeInventoryProject.items), new Set())
+    const categoryLabels = rows.flatMap((row) => row.kind === 'category'
+      ? [orderedLabels[orderedTypes.indexOf(row.type)]]
+      : [])
 
-    expect(screen.getAllByTestId('inventory-category-label').map((label) => label.textContent))
-      .toEqual(orderedLabels)
+    expect(categoryLabels).toEqual(orderedLabels)
   })
 
   it('classifies standalone canvas equipment and assignable components for dragging', () => {
+    for (const type of ['server', 'pcBuild', 'nas', 'switch', 'patchPanel', 'monitor', 'ups', 'powerStrip']) {
+      expect(getInventoryDragRole(type as InventoryType)).toBe('equipment')
+    }
+
+    for (const type of ['cpu', 'cpuCooler', 'motherboard', 'network', 'powerSupply', 'powerAdapter']) {
+      expect(getInventoryDragRole(type as InventoryType)).toBe('component')
+    }
+  })
+
+  it('explains matches hidden by availability and preserves the other filters', () => {
     render(
       <InventorySidebar
-        project={completeInventoryProject}
+        project={{
+          ...projectWithInventory,
+          placements: [{ serverId: 'switch:1', x: 0, y: 0 }],
+        }}
         onSelect={vi.fn()}
         onCreateItem={vi.fn()}
       />,
     )
 
-    const dragRole = (type: InventoryType) =>
-      document.querySelector(`[data-inventory-item-id^="${type}:"]`)
+    expect(screen.getByText('1 matching item is hidden by the availability filter.')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Show all' }))
 
-    for (const type of ['server', 'pcBuild', 'nas', 'switch', 'patchPanel', 'monitor', 'ups', 'powerStrip']) {
-      expect(dragRole(type as InventoryType)).toHaveAttribute('data-inventory-drag-role', 'equipment')
-    }
+    expect(screen.getByTestId('inventory-item')).toHaveTextContent('NETGEAR GS108T #1')
+  })
 
-    for (const type of ['cpu', 'cpuCooler', 'motherboard', 'network', 'powerSupply', 'powerAdapter']) {
-      expect(dragRole(type as InventoryType)).toHaveAttribute('data-inventory-drag-role', 'component')
-    }
+  it('keeps the generic empty state when no status-hidden match exists', () => {
+    render(
+      <InventorySidebar
+        project={project}
+        onSelect={vi.fn()}
+        onCreateItem={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByText('No inventory items match the current filters.')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Show all' })).not.toBeInTheDocument()
   })
 })

@@ -26,7 +26,7 @@ import { cn } from '@/lib/utils'
 export type CanvasSaveStatus = 'saved' | 'saving' | 'error'
 
 export interface CanvasCommandBarProps {
-  desktopInventoryVisible: boolean
+  inventoryOpen: boolean
   saveStatus: CanvasSaveStatus
   canUndo: boolean
   canRedo: boolean
@@ -151,7 +151,7 @@ function SaveStatusIndicator({ status }: { status: CanvasSaveStatus }) {
 }
 
 export function CanvasCommandBar({
-  desktopInventoryVisible,
+  inventoryOpen,
   saveStatus,
   canUndo,
   canRedo,
@@ -186,7 +186,7 @@ export function CanvasCommandBar({
   onOpenRegistryUpdates,
   className,
 }: CanvasCommandBarProps) {
-  const inventoryLabel = desktopInventoryVisible ? 'Hide inventory' : 'Show inventory'
+  const inventoryLabel = inventoryOpen ? 'Hide inventory' : 'Show inventory'
   const updateLabel = updateStatusLoading
     ? 'Checking update status'
     : updateAvailable
@@ -211,7 +211,7 @@ export function CanvasCommandBar({
     >
       <div className="pointer-events-auto max-w-full overflow-x-auto overscroll-x-contain rounded-lg border border-[#d6ccbd] bg-[#fffdf8]/96 p-1 shadow-[0_12px_30px_rgba(32,36,44,0.2)] backdrop-blur">
         <div className="flex w-max items-center gap-1">
-          <ToolbarButton label={inventoryLabel} onClick={onInventory} pressed={desktopInventoryVisible}>
+          <ToolbarButton label={inventoryLabel} onClick={onInventory} pressed={inventoryOpen}>
             <PanelLeft className="size-4" />
           </ToolbarButton>
 

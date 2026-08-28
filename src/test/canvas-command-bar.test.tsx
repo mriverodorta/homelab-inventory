@@ -13,7 +13,7 @@ function createProps(overrides: Partial<CanvasCommandBarProps> = {}): CanvasComm
     notificationCount: 2,
     registryUpdateCount: 0,
     canViewRegistryUpdates: true,
-    desktopInventoryVisible: true,
+    inventoryOpen: true,
     saveStatus: 'saved',
     canUndo: true,
     canRedo: false,
@@ -149,7 +149,7 @@ describe('CanvasCommandBar', () => {
 
   it('supports empty audit, hidden inventory, and inactive toggle states', () => {
     renderToolbar({
-      desktopInventoryVisible: false,
+      inventoryOpen: false,
       auditWarningCount: 0,
       autoCenterOnSelect: false,
       networkCablesVisible: false,

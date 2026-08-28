@@ -14,6 +14,7 @@ const disabledDomainEngine: DomainEngineContextValue = {
   removeCanvasRuntime: () => {},
   clearCanvasRuntimes: () => {},
   getCanvasRuntimeKeys: () => [],
+  getCanvasRuntime: () => null,
   setEnabled: () => {},
   retry: async () => {},
 }

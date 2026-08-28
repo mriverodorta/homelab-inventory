@@ -310,44 +310,7 @@ describe('CableRoutingCoordinator', () => {
     const client = new FakeClient()
     const coordinator = new CableRoutingCoordinator(client as unknown as DomainEngineClient)
     const stableRequest = request(1)
-    coordinator.hydrate({
-      version: ROUTING_CACHE_FORMAT_VERSION,
-      plannerVersion: ROUTING_PLANNER_VERSION,
-      geometryFingerprint: cableRoutingGeometryFingerprint([stableRequest]),
-      obstacles: [],
-      entries: [{
-        input: {
-          avoid_cable_overlap: false,
-          request: {
-            definition: {
-              connection_id: 1,
-              source: { x: 0, y: 0 },
-              target: { x: 240, y: 0 },
-              source_side: 'right',
-              target_side: 'left',
-              lane_offset: 24,
-              manual_bends: [],
-            },
-            source_candidates: [{ point: { x: 0, y: 0 }, side: 'right' }],
-            target_candidates: [{ point: { x: 240, y: 0 }, side: 'left' }],
-            source_side_constraint: 'right',
-            target_side_constraint: 'left',
-            previous_source_side: null,
-            previous_target_side: null,
-            source_item_id: 'server:1',
-            target_item_id: 'switch:1',
-            obstacles: [],
-            reserved_segments: [],
-            snap_to_grid: false,
-            grid_size: 12,
-            previous_valid_route: null,
-          },
-        },
-        result: cableRoute(1, 0),
-      }],
-      failures: [],
-      updatedAt: '2026-07-30T00:00:00.000Z',
-    })
+    coordinator.hydrate(exactCache(stableRequest))
 
     expect(coordinator.request([stableRequest])).toBe(0)
     expect(client.calls).toHaveLength(0)
@@ -371,9 +334,53 @@ describe('CableRoutingCoordinator', () => {
     expect(client.calls).toHaveLength(1)
     expect(coordinator.getState().routes.get(1)?.points).toEqual(cableRoute(1, 0).route.points)
     expect(coordinator.getState().pending).toBe(true)
+    expect(client.calls[0].input).toMatchObject({
+      operation: {
+        kind: 'plan-cable-routes',
+        payload: {
+          plan: {
+            obstacles: [],
+            seed: {
+              obstacles: [],
+              entries: [{
+                input: {
+                  request: {
+                    definition: { connection_id: 1 },
+                    source_candidates: stableRequest.request.sourceCandidates,
+                    target_candidates: stableRequest.request.targetCandidates,
+                  },
+                },
+                result: cableRoute(1, 0),
+              }],
+            },
+          },
+        },
+      },
+    })
     client.calls[0].resolve(response([cableRoute(1, 0)], []))
     await vi.waitFor(() => expect(coordinator.getState().pending).toBe(false))
     expect(coordinator.getState().routes.get(1)?.points).toEqual(cableRoute(1, 0).route.points)
+  })
+
+  it.each([
+    ['endpoint coordinates', (cache: CableRoutingCacheSnapshot) => {
+      cache.entries[0].result.route.points[0] = { x: 12, y: 0 }
+    }],
+    ['selected endpoint side', (cache: CableRoutingCacheSnapshot) => {
+      cache.entries[0].result.source_side = 'top'
+    }],
+  ])('rejects cached routes with stale %s', (_name, mutate) => {
+    const client = new FakeClient()
+    const coordinator = new CableRoutingCoordinator(client as unknown as DomainEngineClient)
+    const stableRequest = request(1)
+    const cache = exactCache(stableRequest)
+    mutate(cache)
+    coordinator.hydrate(cache)
+
+    coordinator.request([stableRequest])
+
+    expect(client.calls).toHaveLength(1)
+    expect(coordinator.getState().routes.size).toBe(0)
   })
 
   it('publishes route repairs without persisting a cache built from stale bend inputs', async () => {
@@ -417,7 +424,6 @@ describe('CableRoutingCoordinator', () => {
       version: ROUTING_CACHE_FORMAT_VERSION,
       plannerVersion: ROUTING_PLANNER_VERSION,
       geometryFingerprint: cableRoutingGeometryFingerprint([stableRequest]),
-      obstacles: [],
       entries: [],
       failures: [{
         connection_id: 1,
@@ -466,39 +472,12 @@ describe('CableRoutingCoordinator', () => {
       { persistCache },
     )
     const requests = [request(1), request(2, 24)]
-    const cache = {
+    const cache: CableRoutingCacheSnapshot = {
       version: ROUTING_CACHE_FORMAT_VERSION,
       plannerVersion: ROUTING_PLANNER_VERSION,
       geometryFingerprint: cableRoutingGeometryFingerprint(requests),
-      obstacles: [],
       entries: [{
-        input: {
-          avoid_cable_overlap: false,
-          request: {
-            definition: {
-              connection_id: 1,
-              source: { x: 0, y: 0 },
-              target: { x: 240, y: 0 },
-              source_side: 'right' as const,
-              target_side: 'left' as const,
-              lane_offset: 24,
-              manual_bends: [],
-            },
-            source_candidates: [{ point: { x: 0, y: 0 }, side: 'right' as const }],
-            target_candidates: [{ point: { x: 240, y: 0 }, side: 'left' as const }],
-            source_side_constraint: 'right' as const,
-            target_side_constraint: 'left' as const,
-            previous_source_side: null,
-            previous_target_side: null,
-            source_item_id: 'server:1',
-            target_item_id: 'switch:1',
-            obstacles: [],
-            reserved_segments: [],
-            snap_to_grid: false,
-            grid_size: 12,
-            previous_valid_route: null,
-          },
-        },
+        connectionId: 1,
         result: cableRoute(1, 0),
       }],
       failures: [],
@@ -524,42 +503,14 @@ describe('CableRoutingCoordinator', () => {
     const coordinator = new CableRoutingCoordinator(client as unknown as DomainEngineClient)
     const requests = [request(1)]
     const extraRequest = request(2, 24)
-    const fullRequests = [...requests, extraRequest]
-    const cache = {
+    const cache: CableRoutingCacheSnapshot = {
       version: ROUTING_CACHE_FORMAT_VERSION,
       plannerVersion: ROUTING_PLANNER_VERSION,
       geometryFingerprint: cableRoutingGeometryFingerprint(requests),
-      obstacles: [],
-      entries: fullRequests.map((entry, index) => ({
-        input: {
-          avoid_cable_overlap: entry.avoidCableOverlap,
-          request: {
-            definition: {
-              connection_id: entry.connectionId,
-              source: entry.request.source,
-              target: entry.request.target,
-              source_side: 'right' as const,
-              target_side: 'left' as const,
-              lane_offset: 24,
-              manual_bends: [],
-            },
-            source_candidates: [{ point: entry.request.source, side: 'right' as const }],
-            target_candidates: [{ point: entry.request.target, side: 'left' as const }],
-            source_side_constraint: 'right' as const,
-            target_side_constraint: 'left' as const,
-            previous_source_side: null,
-            previous_target_side: null,
-            source_item_id: 'server:1',
-            target_item_id: 'switch:1',
-            obstacles: [],
-            reserved_segments: [],
-            snap_to_grid: false,
-            grid_size: 12,
-            previous_valid_route: null,
-          },
-        },
-        result: [cableRoute(1, 0), cableRoute(2, 24)][index],
-      })),
+      entries: [{ connectionId: 1, result: cableRoute(1, 0) }, {
+        connectionId: extraRequest.connectionId,
+        result: cableRoute(2, 24),
+      }],
       failures: [],
       updatedAt: '2026-07-30T00:00:00.000Z',
     }
@@ -568,7 +519,7 @@ describe('CableRoutingCoordinator', () => {
     coordinator.request(requests)
 
     expect(client.calls).toHaveLength(1)
-    expect(coordinator.getState().routes.size).toBe(1)
+    expect(coordinator.getState().routes.size).toBe(0)
     expect(coordinator.getState().routes.has(2)).toBe(false)
     client.calls[0].resolve(response([cableRoute(1, 0)], []))
     await vi.waitFor(() => expect(coordinator.getState().pending).toBe(false))
@@ -605,44 +556,7 @@ describe('CableRoutingCoordinator', () => {
       { persistCache },
     )
     const initialRequest = request(1)
-    const initialCache = {
-      version: ROUTING_CACHE_FORMAT_VERSION,
-      plannerVersion: ROUTING_PLANNER_VERSION,
-      geometryFingerprint: cableRoutingGeometryFingerprint([initialRequest]),
-      obstacles: [],
-      entries: [{
-        input: {
-          avoid_cable_overlap: false,
-          request: {
-            definition: {
-              connection_id: 1,
-              source: { x: 0, y: 0 },
-              target: { x: 240, y: 0 },
-              source_side: 'right' as const,
-              target_side: 'left' as const,
-              lane_offset: 24,
-              manual_bends: [],
-            },
-            source_candidates: [{ point: { x: 0, y: 0 }, side: 'right' as const }],
-            target_candidates: [{ point: { x: 240, y: 0 }, side: 'left' as const }],
-            source_side_constraint: 'right' as const,
-            target_side_constraint: 'left' as const,
-            previous_source_side: null,
-            previous_target_side: null,
-            source_item_id: 'server:1',
-            target_item_id: 'switch:1',
-            obstacles: [],
-            reserved_segments: [],
-            snap_to_grid: false,
-            grid_size: 12,
-            previous_valid_route: null,
-          },
-        },
-        result: cableRoute(1, 0),
-      }],
-      failures: [],
-      updatedAt: '2026-07-30T00:00:00.000Z',
-    }
+    const initialCache = exactCache(initialRequest)
     coordinator.hydrate(initialCache)
     coordinator.request([initialRequest])
     const movedRequest = request(1, 24)
@@ -716,35 +630,8 @@ function exactCache(stableRequest: CableLaneRouteRequest): CableRoutingCacheSnap
     version: ROUTING_CACHE_FORMAT_VERSION,
     plannerVersion: ROUTING_PLANNER_VERSION,
     geometryFingerprint: cableRoutingGeometryFingerprint([stableRequest]),
-    obstacles: [],
     entries: [{
-      input: {
-        avoid_cable_overlap: false,
-        request: {
-          definition: {
-            connection_id: stableRequest.connectionId,
-            source: stableRequest.request.source,
-            target: stableRequest.request.target,
-            source_side: 'right',
-            target_side: 'left',
-            lane_offset: 24,
-            manual_bends: [],
-          },
-          source_candidates: [{ point: stableRequest.request.source, side: 'right' }],
-          target_candidates: [{ point: stableRequest.request.target, side: 'left' }],
-          source_side_constraint: 'right',
-          target_side_constraint: 'left',
-          previous_source_side: null,
-          previous_target_side: null,
-          source_item_id: 'server:1',
-          target_item_id: 'switch:1',
-          obstacles: [],
-          reserved_segments: [],
-          snap_to_grid: false,
-          grid_size: 12,
-          previous_valid_route: null,
-        },
-      },
+      connectionId: stableRequest.connectionId,
       result: cableRoute(stableRequest.connectionId, stableRequest.request.source.y),
     }],
     failures: [],

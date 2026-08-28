@@ -13,15 +13,17 @@ import {
 import type { ReactNode } from 'react'
 
 export type DndWorkspaceProps = {
+  active: boolean
   children: ReactNode
-  overlay: ReactNode
-  onDragStart: (event: DragStartEvent) => void
-  onDragOver: (event: DragOverEvent) => void
-  onDragCancel: (event: DragCancelEvent) => void
-  onDragEnd: (event: DragEndEvent) => void
+  overlay?: ReactNode
+  onDragStart?: (event: DragStartEvent) => void
+  onDragOver?: (event: DragOverEvent) => void
+  onDragCancel?: (event: DragCancelEvent) => void
+  onDragEnd?: (event: DragEndEvent) => void
 }
 
 export function DndWorkspace({
+  active,
   children,
   overlay,
   onDragStart,
@@ -45,15 +47,15 @@ export function DndWorkspace({
 
   return (
     <DndContext
-      sensors={sensors}
-      onDragStart={onDragStart}
-      onDragOver={onDragOver}
-      onDragCancel={onDragCancel}
-      onDragEnd={onDragEnd}
+      sensors={active ? sensors : []}
+      onDragStart={active ? onDragStart : undefined}
+      onDragOver={active ? onDragOver : undefined}
+      onDragCancel={active ? onDragCancel : undefined}
+      onDragEnd={active ? onDragEnd : undefined}
     >
       {children}
       <DragOverlay dropAnimation={null} zIndex={80}>
-        {overlay}
+        {active ? overlay : null}
       </DragOverlay>
     </DndContext>
   )

@@ -91,6 +91,7 @@ describe('useCableRoutingController', () => {
   it('does not clear the route cache for a transient empty geometry projection', async () => {
     vi.useFakeTimers()
     const options = {
+      runtimeScope: { projectId: 1, workspaceId: 2 },
       routeGeometryReady: true,
       topologyRevision: 1,
       onResolveConnectionRouteSides: vi.fn(async () => undefined),
@@ -134,6 +135,7 @@ describe('useCableRoutingController', () => {
   it('clears routes after an empty projection remains stable', async () => {
     vi.useFakeTimers()
     const options = {
+      runtimeScope: { projectId: 1, workspaceId: 2 },
       routeGeometryReady: true,
       topologyRevision: 1,
       onResolveConnectionRouteSides: vi.fn(async () => undefined),

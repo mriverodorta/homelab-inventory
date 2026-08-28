@@ -24,6 +24,10 @@ import { AuthService } from '../auth/auth-service.mjs'
 import { createAuthenticationStore } from '../auth/model.mjs'
 import { SessionService } from '../auth/session-service.mjs'
 import { createSharingSourceProvider } from '../sharing/source-provider.mjs'
+import {
+  ROUTING_CACHE_FORMAT_VERSION,
+  ROUTING_PLANNER_VERSION,
+} from '../../shared/engine/routing-cache-contract.mjs'
 
 const roots: string[] = []
 
@@ -72,6 +76,34 @@ async function emptyFixtureStore() {
       sampleAssignmentIds: [],
       sampleConnectionIds: [],
     }
+  })
+}
+
+function seedCurrentRoutingCache(store: SqliteHomelabInventoryStore) {
+  store.setRoutingCache({
+    version: ROUTING_CACHE_FORMAT_VERSION,
+    plannerVersion: ROUTING_PLANNER_VERSION,
+    geometryFingerprint: '2222222222222222',
+    failures: [],
+    entries: [{
+      connectionId: 1,
+      result: {
+        route: {
+          connection_id: 1,
+          points: [
+            { x: 600, y: 200 },
+            { x: 600, y: 300 },
+            { x: 660, y: 300 },
+          ],
+          manual_anchor_point_indexes: [1],
+        },
+        source_side: 'bottom',
+        target_side: 'top',
+        used_fallback: false,
+        warning: null,
+      },
+    }],
+    updatedAt: '2026-08-11T12:00:00.000Z',
   })
 }
 
@@ -593,17 +625,18 @@ describe('SQLite Homelab Inventory store facade', () => {
       const before = store.getEngineRevision()
       expect(store.getRoutingCache()).toMatchObject({ plannerVersion: 'fixture-planner', entries: [expect.any(Object)] })
       const next = store.setRoutingCache({
-        version: 1,
-        plannerVersion: 'planner-2',
-        geometryFingerprint: 'geometry-2',
-        obstacles: [],
+        version: ROUTING_CACHE_FORMAT_VERSION,
+        plannerVersion: ROUTING_PLANNER_VERSION,
+        geometryFingerprint: '2222222222222222',
         failures: [],
         entries: [{
-          input: { request: { definition: { connection_id: 1 } } },
+          connectionId: 1,
           result: { route: { connection_id: 1, points: [], manual_anchor_point_indexes: [] } },
         }],
+        updatedAt: null,
       })
-      expect(next.plannerVersion).toBe('planner-2')
+      expect(next.plannerVersion).toBe(ROUTING_PLANNER_VERSION)
+      expect(next.entries[0].connectionId).toBe(1)
       expect(store.getEngineRevision()).toBe(before)
     } finally {
       store.close()
@@ -2948,6 +2981,7 @@ describe('SQLite Homelab Inventory store facade', () => {
   test('restores routing cache without changing authoritative project state', async () => {
     const store = await fixtureStore()
     try {
+      seedCurrentRoutingCache(store)
       const before = await store.snapshotStores()
       store.setRoutingCache({ plannerVersion: 'temporary', geometryFingerprint: 'temporary', entries: [] })
 
@@ -2980,6 +3014,7 @@ describe('SQLite Homelab Inventory store facade', () => {
   test('round-trips a complete logical core snapshot with relational integrity', async () => {
     const store = await fixtureStore()
     try {
+      seedCurrentRoutingCache(store)
       const before = await store.snapshotStores()
 
       await store.replaceStoresAtomically(before)

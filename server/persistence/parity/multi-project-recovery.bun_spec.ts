@@ -9,6 +9,10 @@ import { importLegacyCore } from '../migration/core-importer.ts'
 import { openManagedDatabase } from '../sqlite/database.ts'
 import { applyCommittedMigrations } from '../sqlite/migrator.ts'
 import { SqliteHomelabInventoryStore } from '../sqlite-store.ts'
+import {
+  ROUTING_CACHE_FORMAT_VERSION,
+  ROUTING_PLANNER_VERSION,
+} from '../../../shared/engine/routing-cache-contract.mjs'
 
 const roots: string[] = []
 
@@ -110,6 +114,32 @@ describe('multi-project logical recovery', () => {
         ignoredWarningIds: ['downsize:known-warning'],
       }
       store.setWorkspace(projectId, canvasId, downsizedState)
+
+      store.setRoutingCache({
+        version: ROUTING_CACHE_FORMAT_VERSION,
+        plannerVersion: ROUTING_PLANNER_VERSION,
+        geometryFingerprint: '2222222222222222',
+        failures: [],
+        entries: [{
+          connectionId: 1,
+          result: {
+            route: {
+              connection_id: 1,
+              points: [
+                { x: 600, y: 200 },
+                { x: 600, y: 300 },
+                { x: 660, y: 300 },
+              ],
+              manual_anchor_point_indexes: [1],
+            },
+            source_side: 'bottom',
+            target_side: 'top',
+            used_fallback: false,
+            warning: null,
+          },
+        }],
+        updatedAt: '2026-08-11T12:00:00.000Z',
+      })
 
       const before = await store.snapshotStores()
       expect(before.project.workbooks.tables.projects).toHaveLength(2)

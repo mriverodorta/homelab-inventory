@@ -3333,7 +3333,7 @@ export class SqliteHomelabInventoryStore {
       `)
       for (const entry of entries) {
         const connectionId = positiveId(
-          entry?.input?.request?.definition?.connection_id,
+          entry?.connectionId,
           'Routing cache connection ID',
         )
         insert.run(

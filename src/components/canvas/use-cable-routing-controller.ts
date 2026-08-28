@@ -7,8 +7,11 @@ import {
   type CableRoutingState,
 } from '@/lib/cable-routing-coordinator'
 import { getCanvasRoutingRuntime } from '@/engine/canvas-routing-runtime'
+import type { WorkspaceMutationScope } from '@/lib/db'
 
 type UseCableRoutingControllerOptions = {
+  enabled?: boolean
+  runtimeScope: WorkspaceMutationScope | null
   routeRequests: CableLaneRouteRequest[]
   routeGeometryReady: boolean
   topologyRevision: number
@@ -23,6 +26,8 @@ type UseCableRoutingControllerOptions = {
 const EMPTY_ROUTE_CLEAR_DELAY_MS = 250
 
 export function useCableRoutingController({
+  enabled = true,
+  runtimeScope,
   routeRequests,
   routeGeometryReady,
   topologyRevision,
@@ -48,8 +53,8 @@ export function useCableRoutingController({
   const routeCanonicalizationSignatureRef = useRef<string | null>(null)
 
   useEffect(() => {
-    if (!domainEngine.enabled) return
-    const runtime = getCanvasRoutingRuntime(domainEngine.client)
+    if (!enabled || !domainEngine.enabled || !runtimeScope) return
+    const runtime = getCanvasRoutingRuntime(domainEngine.client, runtimeScope)
     routingRuntimeRef.current = runtime
     const unsubscribe = runtime.subscribe((snapshot) => {
       setRoutingState(snapshot.state)
@@ -63,21 +68,21 @@ export function useCableRoutingController({
       unsubscribe()
       if (routingRuntimeRef.current === runtime) routingRuntimeRef.current = null
     }
-  }, [domainEngine.client, domainEngine.enabled])
+  }, [domainEngine.client, domainEngine.enabled, enabled, runtimeScope])
 
   useEffect(() => {
-    if (domainEngine.state.phase === 'ready') return
+    if (!enabled || domainEngine.state.phase === 'ready') return
 
     setRoutingState((current) => ({
       ...current,
       pending: current.error ? false : domainEngine.enabled,
       error: current.error ?? routingEngineError,
     }))
-  }, [domainEngine.enabled, domainEngine.state.phase, routingEngineError])
+  }, [domainEngine.enabled, domainEngine.state.phase, enabled, routingEngineError])
 
   useEffect(() => {
     const coordinator = routingRuntimeRef.current?.coordinator
-    if (!coordinator || !routingCacheReady || domainEngine.state.phase !== 'ready') return
+    if (!enabled || !coordinator || !routingCacheReady || domainEngine.state.phase !== 'ready') return
 
     if (!routeGeometryReady) return
 
@@ -102,6 +107,7 @@ export function useCableRoutingController({
     }
   }, [
     domainEngine.state.phase,
+    enabled,
     routeGeometryReady,
     routeRequests,
     routingCacheReady,
@@ -109,7 +115,7 @@ export function useCableRoutingController({
   ])
 
   useEffect(() => {
-    if (routingState.pending || routingState.error) return
+    if (!enabled || routingState.pending || routingState.error) return
 
     const changes = routeRequests.flatMap((entry) => {
       if (entry.request.sourceSide && entry.request.targetSide) return []
@@ -135,10 +141,10 @@ export function useCableRoutingController({
         routeSideResolutionSignatureRef.current = null
       }
     })
-  }, [onResolveConnectionRouteSides, routeRequests, routingState])
+  }, [enabled, onResolveConnectionRouteSides, routeRequests, routingState])
 
   useEffect(() => {
-    if (routingState.pending || routingState.error || routingState.repairs.size === 0) return
+    if (!enabled || routingState.pending || routingState.error || routingState.repairs.size === 0) return
 
     const changes = [...routingState.repairs.values()]
       .filter((repair) => {
@@ -163,7 +169,7 @@ export function useCableRoutingController({
         routeCanonicalizationSignatureRef.current = null
       }
     })
-  }, [onCanonicalizeConnectionRoutes, routeRequests, routingState])
+  }, [enabled, onCanonicalizeConnectionRoutes, routeRequests, routingState])
 
   return {
     routingState,

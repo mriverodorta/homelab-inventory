@@ -31,6 +31,7 @@ function fixture({ entrySize = 100, sharedSize = 50, lazySize = 25 } = {}) {
     'assets/dnd-workspace.js': 'h'.repeat(lazySize),
     'assets/inventory-sidebar.js': 'i'.repeat(lazySize),
     'assets/mobile-inventory.js': 'j'.repeat(lazySize),
+    'assets/App.js': 'k'.repeat(lazySize),
   }
   for (const [file, contents] of Object.entries(files)) {
     writeFileSync(path.join(root, file), contents)
@@ -50,6 +51,7 @@ function fixture({ entrySize = 100, sharedSize = 50, lazySize = 25 } = {}) {
         'src/components/dnd-workspace.tsx',
         'src/components/inventory-sidebar.tsx',
         'src/components/mobile-inventory-sheet.tsx',
+        'src/App.tsx',
       ],
     },
     '_shared.js': { file: 'assets/shared.js' },
@@ -61,6 +63,7 @@ function fixture({ entrySize = 100, sharedSize = 50, lazySize = 25 } = {}) {
     'src/components/dnd-workspace.tsx': { file: 'assets/dnd-workspace.js', isDynamicEntry: true },
     'src/components/inventory-sidebar.tsx': { file: 'assets/inventory-sidebar.js', isDynamicEntry: true },
     'src/components/mobile-inventory-sheet.tsx': { file: 'assets/mobile-inventory.js', isDynamicEntry: true },
+    'src/App.tsx': { file: 'assets/App.js', isDynamicEntry: true, imports: ['_shared.js'] },
   }
 
   return { root, manifest }
@@ -76,8 +79,10 @@ describe('frontend bundle analysis', () => {
       'assets/index.js',
       'assets/shared.js',
     ])
-    expect(report.asyncChunks).toHaveLength(8)
+    expect(report.asyncChunks).toHaveLength(9)
     expect(report.errors).toEqual([])
+    expect(report.routeGraphs.systems.requests).toBe(3)
+    expect(report.routeGraphs.canvas.requests).toBe(6)
   })
 
   test('reports gzip size independently from raw size', () => {
@@ -114,5 +119,24 @@ describe('frontend bundle analysis', () => {
 
     expect(report.errors.some((error) => error.includes('Initial JavaScript'))).toBe(true)
     expect(report.errors.some((error) => error.includes('Async chunk'))).toBe(true)
+  })
+
+  test('fails JavaScript request and route gzip budgets independently', () => {
+    const { root, manifest } = fixture({ entrySize: 2_000, sharedSize: 2_000, lazySize: 2_000 })
+    const report = analyzeFrontendBundle({
+      manifest,
+      assetsRoot: root,
+      limits: {
+        ...DEFAULT_BUNDLE_LIMITS,
+        maxJavaScriptChunks: 5,
+        routeGraphs: {
+          systems: { roots: ['src/App.tsx'], maxRequests: 2, maxGzipBytes: 1 },
+        },
+      },
+    })
+
+    expect(report.errors.some((error) => error.includes('chunk count'))).toBe(true)
+    expect(report.errors.some((error) => error.includes('systems route graph requires'))).toBe(true)
+    expect(report.errors.some((error) => error.includes('systems route graph is'))).toBe(true)
   })
 })

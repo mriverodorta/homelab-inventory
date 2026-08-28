@@ -17,6 +17,7 @@ import type {
   CatalogUpdateSummaryResponse,
   RegistrySettings,
   RegistryState,
+  RegistrySnapshot,
 } from '@/types/registry'
 import type { ProjectState } from '@/types/inventory'
 
@@ -102,8 +103,20 @@ export function searchOfficialCatalog(parameters: {
   return apiRequest(`/api/registry/catalog/search?${query.toString()}`)
 }
 
-export function loadCatalogFacets(): Promise<CatalogFacetResponse> {
-  return apiRequest('/api/registry/catalog/facets')
+export type CatalogSnapshotIdentity = Pick<RegistrySnapshot, 'revision' | 'digest'>
+
+export async function loadCatalogFacets(snapshot: CatalogSnapshotIdentity): Promise<CatalogFacetResponse> {
+  if (!Number.isSafeInteger(snapshot.revision) || snapshot.revision <= 0) {
+    throw new TypeError('Catalog snapshot revision must be a positive safe integer.')
+  }
+  if (!/^[0-9a-f]{64}$/u.test(snapshot.digest)) {
+    throw new TypeError('Catalog snapshot digest must be a lowercase SHA-256 digest.')
+  }
+  const query = new URLSearchParams({
+    revision: String(snapshot.revision),
+    digest: snapshot.digest,
+  })
+  return apiRequest(`/api/registry/catalog/facets?${query}`)
 }
 
 export function importOfficialCatalog(artifact: unknown): Promise<{ registry: RegistryState }> {

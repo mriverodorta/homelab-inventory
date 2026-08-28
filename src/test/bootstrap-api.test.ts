@@ -37,6 +37,19 @@ describe('initial application bootstrap', () => {
     expect(INITIAL_APPLICATION_REQUEST_COUNT).toBeLessThanOrEqual(INITIAL_APPLICATION_REQUEST_BUDGET)
   })
 
+  it('scopes the aggregate request to a direct workspace route', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ projects: [] }), { status: 200 }))
+    vi.stubGlobal('fetch', fetchMock)
+    activateInitialBootstrap({ projectId: 3, workspaceId: 8 })
+
+    await consumeInitialBootstrap('projects', vi.fn())
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/bootstrap?projectId=3&workspaceId=8',
+      expect.any(Object),
+    )
+  })
+
   it('uses dedicated endpoints after a bootstrap section has been consumed', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({
       project: { id: 1, revision: 7 },

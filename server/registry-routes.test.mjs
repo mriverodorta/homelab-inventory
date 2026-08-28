@@ -48,6 +48,23 @@ afterEach(async () => {
   }))
 })
 
+function activateCatalogSnapshot(store, revision = 8, digest = '8'.repeat(64)) {
+  store.registryTransaction((draft) => {
+    draft.sources = [{ id: 1, kind: 'official-connected', displayName: 'Official catalog' }]
+    draft.snapshot = {
+      sourceId: 1,
+      revision,
+      generatedAt: '2026-08-27T00:00:00.000Z',
+      expiresAt: null,
+      activatedAt: '2026-08-27T00:00:00.000Z',
+      digest,
+      templateCount: 1,
+      keyId: 'registry-test',
+    }
+  })
+  return { revision, digest }
+}
+
 describe('registry routes', () => {
   it('enforces connected read-only registry policy for public demos', async () => {
     const refreshConnected = vi.fn(async () => undefined)
@@ -582,13 +599,26 @@ describe('registry routes', () => {
       catalogRevision: 8,
       categories: [{ type: 'cpu', label: 'Processors', count: 1, facets: [] }],
     }))
-    const { baseUrl } = await createServer({
+    const { baseUrl, store } = await createServer({
       snapshotServiceFactory: () => ({ search, facets }),
     })
+    const snapshot = activateCatalogSnapshot(store)
 
-    const facetResponse = await fetch(`${baseUrl}/api/registry/catalog/facets`)
+    const facetUrl = `${baseUrl}/api/registry/catalog/facets?${new URLSearchParams({
+      revision: String(snapshot.revision),
+      digest: snapshot.digest,
+    })}`
+    const facetResponse = await fetch(facetUrl)
     expect(facetResponse.status).toBe(200)
     expect(await facetResponse.json()).toMatchObject({ available: true, catalogRevision: 8 })
+    expect(facetResponse.headers.get('cache-control')).toBe('private, max-age=31536000, immutable')
+    expect(facetResponse.headers.get('etag')).toBe(`"catalog-facets-8-${snapshot.digest}"`)
+
+    const notModified = await fetch(facetUrl, {
+      headers: { 'If-None-Match': facetResponse.headers.get('etag') ?? '' },
+    })
+    expect(notModified.status).toBe(304)
+    expect(facets).toHaveBeenCalledOnce()
 
     const parameters = new URLSearchParams({ q: '10500T', type: 'cpu', limit: '40', offset: '80' })
     parameters.append('term', 'manufacturer:Intel')
@@ -617,10 +647,11 @@ describe('registry routes', () => {
     const search = vi.fn(async () => ({ total: 0, limit: 40, offset: 0, hasMore: false, nextOffset: null, items: [] }))
     const facets = vi.fn(async () => ({ available: true, categories: [] }))
     const snapshotServiceFactory = vi.fn(() => ({ search, facets }))
-    const { baseUrl } = await createServer({ snapshotServiceFactory })
+    const { baseUrl, store } = await createServer({ snapshotServiceFactory })
+    const snapshot = activateCatalogSnapshot(store)
 
     await Promise.all([
-      fetch(`${baseUrl}/api/registry/catalog/facets`),
+      fetch(`${baseUrl}/api/registry/catalog/facets?revision=${snapshot.revision}&digest=${snapshot.digest}`),
       fetch(`${baseUrl}/api/registry/catalog/search?type=cpu&limit=40&offset=0`),
       fetch(`${baseUrl}/api/registry/catalog/search?type=desktop&limit=40&offset=0`),
     ])
@@ -628,6 +659,23 @@ describe('registry routes', () => {
     expect(snapshotServiceFactory).toHaveBeenCalledOnce()
     expect(facets).toHaveBeenCalledOnce()
     expect(search).toHaveBeenCalledTimes(2)
+  })
+
+  it.each([
+    ['', 400, 'invalid-catalog-snapshot-identity'],
+    ['?revision=8', 400, 'invalid-catalog-snapshot-identity'],
+    ['?revision=no&digest=invalid', 400, 'invalid-catalog-snapshot-identity'],
+    [`?revision=9&digest=${'9'.repeat(64)}`, 409, 'catalog-snapshot-mismatch'],
+  ])('rejects unavailable facet identity %s', async (query, status, code) => {
+    const facets = vi.fn(async () => ({ available: true, categories: [] }))
+    const { baseUrl, store } = await createServer({ snapshotServiceFactory: () => ({ facets }) })
+    activateCatalogSnapshot(store)
+
+    const response = await fetch(`${baseUrl}/api/registry/catalog/facets${query}`)
+
+    expect(response.status).toBe(status)
+    expect(await response.json()).toMatchObject({ code })
+    expect(facets).not.toHaveBeenCalled()
   })
 
   it('rejects malformed catalog facet constraints before searching', async () => {
