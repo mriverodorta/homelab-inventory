@@ -10,6 +10,7 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 
 - Demo, test, staging, candidate-image, and container-security runtimes now disable LabGD, Registry identity and contributions, Registry refresh, and update checks through one fail-closed policy; isolated smoke containers have no network or host port and fail if external identity files are created.
 - LabGD credentials now renew proactively before expiration, the installation event stream reconnects with bounded persisted backoff across network failures and restarts, and stale expired connections no longer appear connected while retaining the same installation UUID and Ed25519 key.
+- LabGD event streaming is now demand-driven: installations with no active shares or account/recovery work remain enrolled but dormant, with no SSE reconnect or credential-renewal loop until remote events are needed again.
 
 ### Changed
 

@@ -6,6 +6,13 @@ const BASE_BACKOFF_MS = 1_000
 const BACKOFF_JITTER_RATIO = 0.2
 const TOKEN_REFRESH_MARGIN_MS = 90_000
 const CONNECTION_LIVENESS_MS = 2 * 60_000
+const DEFAULT_INTEREST = Object.freeze({
+  required: true,
+  activeShares: 0,
+  pendingPublicationOperations: 0,
+  pendingAccountOperations: 0,
+  recoveryPending: false,
+})
 
 export class SharingInstallationEventCoordinator {
   constructor({
@@ -33,12 +40,14 @@ export class SharingInstallationEventCoordinator {
     this.clearTimer = clearTimer
     this.reconnectTimer = null
     this.renewalTimer = null
+    this.interestTimer = null
     this.running = null
     this.reader = null
     this.stopped = true
     this.attempt = 0
     this.streamConnected = false
     this.renewalRequested = false
+    this.claimInterestUntilMs = null
     this.logger = logger
     this.tokenRefreshMarginMs = tokenRefreshMarginMs
     this.connectionLivenessMs = connectionLivenessMs
@@ -54,6 +63,7 @@ export class SharingInstallationEventCoordinator {
     this.stopped = true
     this.clearReconnectTimer()
     this.clearRenewalTimer()
+    this.clearInterestTimer()
     void this.reader?.cancel().catch(() => {})
     this.reader = null
     this.streamConnected = false
@@ -62,13 +72,69 @@ export class SharingInstallationEventCoordinator {
   wake() {
     if (this.stopped || !this.effectiveEnabled) return
     const settings = this.repository.getSettings()
-    if (!settings.connectionEnabled || settings.enrollmentState !== 'connected') {
-      void this.reader?.cancel().catch(() => {})
+    if (!settings.connectionEnabled || settings.enrollmentState !== 'connected' || !this.hasInterest()) {
+      this.enterDormant()
       return
     }
     if (this.running || this.reconnectTimer) return
     this.attempt = settings.reconnectAttempt ?? 0
     this.scheduleReconnect(Math.max(0, (settings.nextReconnectAtMs ?? this.now()) - this.now()))
+  }
+
+  holdClaimUntil(expiresAt) {
+    const expiresAtMs = typeof expiresAt === 'string' ? Date.parse(expiresAt) : Number(expiresAt)
+    if (!Number.isFinite(expiresAtMs) || expiresAtMs <= this.now()) return false
+    this.claimInterestUntilMs = Math.max(this.claimInterestUntilMs ?? 0, expiresAtMs)
+    this.scheduleInterestExpiry()
+    this.wake()
+    return true
+  }
+
+  releaseClaimInterest() {
+    this.claimInterestUntilMs = null
+    this.clearInterestTimer()
+    this.wake()
+  }
+
+  durableInterest() {
+    return this.repository.getRemoteEventInterest?.() ?? DEFAULT_INTEREST
+  }
+
+  hasInterest() {
+    return this.durableInterest().required || (this.claimInterestUntilMs ?? 0) > this.now()
+  }
+
+  scheduleInterestExpiry() {
+    this.clearInterestTimer()
+    if (this.claimInterestUntilMs == null) return
+    this.interestTimer = this.setTimer(() => {
+      this.interestTimer = null
+      if ((this.claimInterestUntilMs ?? 0) <= this.now()) this.claimInterestUntilMs = null
+      this.wake()
+    }, Math.max(0, this.claimInterestUntilMs - this.now()))
+    this.interestTimer?.unref?.()
+  }
+
+  clearInterestTimer() {
+    if (this.interestTimer) this.clearTimer(this.interestTimer)
+    this.interestTimer = null
+  }
+
+  enterDormant() {
+    this.clearReconnectTimer()
+    this.clearRenewalTimer()
+    this.renewalRequested = false
+    if (this.reader) void this.reader.cancel().catch(() => {})
+    this.reader = null
+    this.streamConnected = false
+    const settings = this.repository.getSettings?.()
+    if (settings && ((settings.reconnectAttempt ?? 0) !== 0 || settings.nextReconnectAtMs != null || settings.eventLastErrorCode != null)) {
+      this.repository.updateEventConnection?.({
+        lastErrorCode: null,
+        reconnectAttempt: 0,
+        nextReconnectAtMs: null,
+      })
+    }
   }
 
   scheduleReconnect(delay) {
@@ -82,10 +148,14 @@ export class SharingInstallationEventCoordinator {
 
   scheduleRenewal(expiresAtMs) {
     this.clearRenewalTimer()
-    if (!Number.isFinite(expiresAtMs)) return
+    if (!Number.isFinite(expiresAtMs) || !this.hasInterest()) return
     const delay = Math.max(0, expiresAtMs - this.tokenRefreshMarginMs - this.now())
     this.renewalTimer = this.setTimer(() => {
       this.renewalTimer = null
+      if (!this.hasInterest()) {
+        this.enterDormant()
+        return
+      }
       this.renewalRequested = true
       if (this.reader) void this.reader.cancel().catch(() => {})
       else if (!this.running) this.scheduleReconnect(0)
@@ -115,13 +185,15 @@ export class SharingInstallationEventCoordinator {
   async connectInternal() {
     if (this.stopped || !this.effectiveEnabled) return
     const settings = this.repository.getSettings()
-    if (!settings.connectionEnabled || settings.enrollmentState !== 'connected' || this.identityService.getCapabilities().installationEvents !== true) return
+    if (!settings.connectionEnabled || settings.enrollmentState !== 'connected' || !this.hasInterest() || this.identityService.getCapabilities().installationEvents !== true) return
     let opened = false
     try {
       const credentials = await this.identityService.activate?.()
+      if (!this.hasInterest()) return
       this.renewalRequested = false
       if (credentials?.tokenExpiresAt) this.scheduleRenewal(Date.parse(credentials.tokenExpiresAt))
       await this.identityService.reconcileAccountStatus?.()
+      if (!this.hasInterest()) return
       const response = await this.client.events(settings.remoteEventCursor)
       if (!response.body) throw Object.assign(new Error('lab.gd event stream has no body.'), { code: 'sharing-events-invalid' })
       this.attempt = 0
@@ -138,13 +210,16 @@ export class SharingInstallationEventCoordinator {
       await consumeSse(this.reader, async (event) => {
         if (event.kind === 'account-claim' || event.kind === 'account-unlink') {
           await this.identityService.reconcileAccountStatus(event.id)
+          if (event.kind === 'account-claim') this.releaseClaimInterest()
           this.onStateChanged(this.repository.getSettings(),'sharing.status-changed')
+          this.wake()
           return
         }
         const result = this.repository.applyRemoteEvent(event)
         if (!result.applied) return
         if (result.shares.length) result.shares.forEach((share) => this.onStateChanged(share, 'sharing.share-changed'))
         else this.onStateChanged(this.repository.getSettings(), 'sharing.status-changed')
+        this.wake()
       })
     } catch (error) {
       if (this.stopped) return
@@ -181,7 +256,7 @@ export class SharingInstallationEventCoordinator {
       }
       this.clearRenewalTimer()
     }
-    if (!this.stopped && this.repository.getSettings().connectionEnabled && this.repository.getSettings().enrollmentState === 'connected') {
+    if (!this.stopped && this.repository.getSettings().connectionEnabled && this.repository.getSettings().enrollmentState === 'connected' && this.hasInterest()) {
       if (this.renewalRequested) this.scheduleReconnect(0)
       else {
         const persisted = this.repository.getSettings()
@@ -202,10 +277,15 @@ export class SharingInstallationEventCoordinator {
     const credentialValid = projection?.credentialExpiresAtMs != null
       && projection.credentialExpiresAtMs > now
     const live = this.streamConnected
-    const staleConnected = settings.enrollmentState === 'connected'
+    const interest = this.durableInterest()
+    const transientInterest = (this.claimInterestUntilMs ?? 0) > now
+    const dormant = !interest.required && !transientInterest
+    const staleConnected = !dormant && settings.enrollmentState === 'connected'
       && !live && !recentlyAuthenticated && !credentialValid
     return {
       live,
+      dormant,
+      interest: { ...interest, transientClaim: transientInterest },
       recentlyAuthenticated,
       credentialValid,
       effectiveEnrollmentState: staleConnected ? 'retrying' : settings.enrollmentState,

@@ -57,6 +57,7 @@ export class AccountUnlinkService {
       shareDisposition: command.shareDisposition,
       actorUserId: command.actorUserId ?? null,
     })
+    this.onStateChanged(this.repository.getSettings?.() ?? { enrollmentState: 'connected' }, 'sharing.status-changed')
     if (operation.state === 'succeeded' && operation.result) return operation.result
     if (operation.state === 'failed') {
       throw failure('The account unlink request cannot be retried.', operation.lastErrorCode ?? 'sharing-account-unlink-failed', 409)

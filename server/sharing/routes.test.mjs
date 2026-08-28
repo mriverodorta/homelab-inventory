@@ -136,6 +136,30 @@ describe('sharing routes', () => {
     expect(reconcileAccountStatus).toHaveBeenCalledOnce()
   })
 
+  it('keeps the event stream interested only until an account claim expires', async () => {
+    const claim = {
+      claimId: 'claim_123',
+      userCode: 'ABCD-EFGH',
+      verificationUrl: 'https://app.lab.gd/claim',
+      expiresAt: '2026-08-28T20:00:00.000Z',
+      state: 'pending',
+    }
+    const holdClaimUntil = vi.fn()
+    const baseUrl = await server({
+      repository: { getSettings: () => ({ revision: 1, connectionEnabled: true, enrollmentState: 'connected' }) },
+      publicationService: {},
+      identityService: { createClaimDevice: vi.fn(async () => claim) },
+      eventCoordinator: { holdClaimUntil, status: () => ({ dormant: true, effectiveEnrollmentState: 'connected' }) },
+      effectiveEnabled: true,
+    })
+
+    const response = await fetch(`${baseUrl}/api/sharing/account/claim`, { method: 'POST' })
+
+    expect(response.status).toBe(201)
+    expect(await response.json()).toEqual(claim)
+    expect(holdClaimUntil).toHaveBeenCalledWith(claim.expiresAt)
+  })
+
   it('projects expired disconnected credentials as retrying instead of indefinitely connected', async () => {
     const status = {
       live: false,
@@ -214,12 +238,14 @@ describe('sharing routes', () => {
       analytics: vi.fn(async () => ({ publicId: 'share_1', totals: { fullLoads: 2, embedLoads: 1 }, daily: [] })),
     }
     const wake = vi.fn()
-    const baseUrl = await server({ repository: { getSettings: () => ({ revision: 1, connectionEnabled: true, enrollmentState: 'connected' }) }, publicationService, publicationCoordinator: { wake }, identityService: { getCapabilities: () => ({ remoteLifecycle: true, protectedShares: true, ownerAnalytics: true }) }, effectiveEnabled: true })
+    const eventWake = vi.fn()
+    const baseUrl = await server({ repository: { getSettings: () => ({ revision: 1, connectionEnabled: true, enrollmentState: 'connected' }) }, publicationService, publicationCoordinator: { wake }, eventCoordinator: { wake: eventWake }, identityService: { getCapabilities: () => ({ remoteLifecycle: true, protectedShares: true, ownerAnalytics: true }) }, effectiveEnabled: true })
     expect((await fetch(`${baseUrl}/api/sharing/shares/1/unpublish`, { method: 'POST' })).status).toBe(202)
     expect((await fetch(`${baseUrl}/api/sharing/shares/1`, { method: 'DELETE' })).status).toBe(202)
     expect((await fetch(`${baseUrl}/api/sharing/shares/1/republish`, { method: 'POST' })).status).toBe(200)
     expect((await fetch(`${baseUrl}/api/sharing/shares/1/password`, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ password: 'request-only-password' }) })).status).toBe(200)
     expect((await fetch(`${baseUrl}/api/sharing/shares/1/analytics`)).status).toBe(200)
     expect(wake).toHaveBeenCalledTimes(2)
+    expect(eventWake).toHaveBeenCalledTimes(2)
   })
 })

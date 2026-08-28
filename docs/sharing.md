@@ -67,11 +67,11 @@ Sharing identity is independent from Registry enrollment:
 /data/sharing/public-id-key
 ```
 
-Private files use mode `0600`. Short-lived credentials renew proactively before
-expiration, independently of browser requests and event callbacks. The event
-stream reconnects after network failures, LabGD restarts, credential renewal,
-and Homelab Inventory restarts while the UUID, remote installation, and private
-key remain stable. Failed key rotation keeps
+Private files use mode `0600`. While remote event interest exists, short-lived
+credentials renew proactively before expiration, independently of browser
+requests and event callbacks. The event stream reconnects after network
+failures, LabGD restarts, credential renewal, and Homelab Inventory restarts
+while the UUID, remote installation, and private key remain stable. Failed key rotation keeps
 the old key and credentials. Recovery-pending state retains exactly one
 replacement key, stops publication, and waits for owner approval without a
 retry loop.
@@ -134,17 +134,25 @@ logs.
 
 ## Remote State And Owner Controls
 
-Homelab Inventory opens one authenticated installation SSE stream and resumes it
-with the last committed event ID. Each supported event is applied to the local
-sharing projection and its cursor is advanced in the same SQLite transaction,
-so reconnect replay cannot duplicate state. There is no polling fallback.
+Homelab Inventory opens one authenticated installation SSE stream only while a
+remote share, pending publication/lifecycle operation, account unlink, recovery,
+or bounded account-claim session can produce asynchronous state. With no such
+interest, the installation remains enrolled but intentionally dormant: the
+stream, reconnect timer, and credential-renewal timer are stopped. The first
+new publication or account operation renews credentials lazily and resumes the
+stream without replacing the installation UUID or key.
+
+The stream resumes with the last committed event ID. Each supported event is
+applied to the local sharing projection and its cursor is advanced in the same
+SQLite transaction, so reconnect replay cannot duplicate state. There is no polling fallback.
 Unknown event versions stop event application and trigger capability
 renegotiation before the stream can resume.
 
 Connection timestamps, bounded error codes, reconnect attempts, and the next
 retry time are persisted without tokens, signatures, nonces, private keys, or
-request payloads. The UI reports a retrying state after credentials expire when
-there is no live or recently authenticated stream. Reconnect uses bounded
+request payloads. Intentional dormancy remains a healthy connected installation;
+when remote-event interest exists, the UI reports a retrying state after
+credentials expire with no live or recently authenticated stream. Reconnect uses bounded
 exponential backoff with jitter and never generates a replacement identity.
 
 Remote settings changes, unpublish, delete, and republish use the current remote

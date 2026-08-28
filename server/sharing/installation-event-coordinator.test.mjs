@@ -6,6 +6,13 @@ function stream(frames) {
 }
 
 function lifecycleRepository(initial = {}) {
+  let interest = initial.interest ?? {
+    required: true,
+    activeShares: 1,
+    pendingPublicationOperations: 0,
+    pendingAccountOperations: 0,
+    recoveryPending: false,
+  }
   let settings = {
     connectionEnabled: true,
     enrollmentState: 'connected',
@@ -21,6 +28,7 @@ function lifecycleRepository(initial = {}) {
   let projection = { credentialExpiresAtMs: initial.credentialExpiresAtMs ?? null }
   return {
     getSettings: () => ({ ...settings }),
+    getRemoteEventInterest: () => ({ ...interest }),
     getInstallationProjection: () => ({ ...projection }),
     updateEventConnection: vi.fn((patch) => {
       const { lastErrorCode, ...rest } = patch
@@ -28,6 +36,7 @@ function lifecycleRepository(initial = {}) {
       return { ...settings }
     }),
     setCredentialExpiresAtMs: (value) => { projection = { ...projection, credentialExpiresAtMs: value } },
+    setInterest: (value) => { interest = { ...interest, ...value } },
     applyRemoteEvent: vi.fn(() => ({ applied: false, shares: [] })),
   }
 }
@@ -46,7 +55,11 @@ function timerHarness() {
   return {
     entries,
     setTimer(callback, delay) {
-      const entry = { callback, delay, active: true }
+      const entry = { callback: null, delay, active: true }
+      entry.callback = (...args) => {
+        entry.active = false
+        return callback(...args)
+      }
       entries.push(entry)
       return entry
     },
@@ -166,6 +179,113 @@ describe('sharing installation event coordinator', () => {
     const coordinator = new SharingInstallationEventCoordinator({ repository: {}, client: {}, identityService: {}, effectiveEnabled: false, setTimer })
     coordinator.start()
     expect(setTimer).not.toHaveBeenCalled()
+  })
+
+  it('stays dormant without shares or operations and does not activate credentials', () => {
+    const timers = timerHarness()
+    const repository = lifecycleRepository({
+      credentialExpiresAtMs: 1,
+      interest: {
+        required: false,
+        activeShares: 0,
+        pendingPublicationOperations: 0,
+        pendingAccountOperations: 0,
+        recoveryPending: false,
+      },
+    })
+    const identityService = {
+      activate: vi.fn(),
+      getCapabilities: () => ({ installationEvents: true }),
+    }
+    const client = { events: vi.fn() }
+    const coordinator = new SharingInstallationEventCoordinator({
+      repository,
+      client,
+      identityService,
+      setTimer: timers.setTimer,
+      clearTimer: timers.clearTimer,
+    })
+
+    coordinator.start()
+
+    expect(timers.entries.filter(({ active }) => active)).toHaveLength(0)
+    expect(identityService.activate).not.toHaveBeenCalled()
+    expect(client.events).not.toHaveBeenCalled()
+    expect(coordinator.status()).toMatchObject({
+      dormant: true,
+      effectiveEnrollmentState: 'connected',
+      interest: { required: false, transientClaim: false },
+    })
+  })
+
+  it('opens a bounded claim stream and returns to dormant when the claim expires', async () => {
+    let currentTime = 10_000
+    const timers = timerHarness()
+    const pending = controlledStream()
+    const repository = lifecycleRepository({
+      interest: {
+        required: false,
+        activeShares: 0,
+        pendingPublicationOperations: 0,
+        pendingAccountOperations: 0,
+        recoveryPending: false,
+      },
+    })
+    const identityService = {
+      activate: vi.fn(async () => ({ tokenExpiresAt: new Date(currentTime + 600_000).toISOString() })),
+      reconcileAccountStatus: vi.fn(),
+      getCapabilities: () => ({ installationEvents: true }),
+    }
+    const client = { events: vi.fn(async () => pending.response) }
+    const coordinator = new SharingInstallationEventCoordinator({
+      repository,
+      client,
+      identityService,
+      now: () => currentTime,
+      setTimer: timers.setTimer,
+      clearTimer: timers.clearTimer,
+    })
+    coordinator.start()
+    expect(coordinator.holdClaimUntil(currentTime + 30_000)).toBe(true)
+    timers.next(0).callback()
+    await eventually(() => expect(client.events).toHaveBeenCalledOnce())
+    expect(coordinator.status()).toMatchObject({ dormant: false, interest: { transientClaim: true } })
+
+    currentTime += 30_000
+    timers.next(30_000).callback()
+    await eventually(() => expect(pending.cancelled()).toBe(true))
+    expect(coordinator.status()).toMatchObject({ dormant: true, interest: { transientClaim: false } })
+    expect(timers.entries.filter(({ active }) => active)).toHaveLength(0)
+  })
+
+  it('closes the active stream and clears timers after the last live share disappears', async () => {
+    const timers = timerHarness()
+    const pending = controlledStream()
+    const repository = lifecycleRepository({ credentialExpiresAtMs: 600_000 })
+    const identityService = {
+      activate: vi.fn(async () => ({ tokenExpiresAt: new Date(600_000).toISOString() })),
+      reconcileAccountStatus: vi.fn(),
+      getCapabilities: () => ({ installationEvents: true }),
+    }
+    const client = { events: vi.fn(async () => pending.response) }
+    const coordinator = new SharingInstallationEventCoordinator({
+      repository,
+      client,
+      identityService,
+      now: () => 0,
+      setTimer: timers.setTimer,
+      clearTimer: timers.clearTimer,
+    })
+    coordinator.start()
+    timers.next(0).callback()
+    await eventually(() => expect(client.events).toHaveBeenCalledOnce())
+
+    repository.setInterest({ required: false, activeShares: 0 })
+    coordinator.wake()
+
+    await eventually(() => expect(pending.cancelled()).toBe(true))
+    expect(coordinator.status()).toMatchObject({ dormant: true, live: false })
+    expect(timers.entries.filter(({ active }) => active)).toHaveLength(0)
   })
 
   it('executes proactive renewal and reconnects the SSE stream with one stable identity', async () => {

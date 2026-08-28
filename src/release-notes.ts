@@ -701,6 +701,7 @@ export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
     'Demo, test, staging, release-validation, and security-smoke runtimes can no longer enroll with lab.gd or create Registry identities, even when they have writable temporary data.',
     'lab.gd credentials now renew before expiration and the signed event stream recovers across outages and application restarts without changing the installation UUID or signing key.',
     'Expired sharing credentials with no live or recently authenticated event stream now show a retrying connection instead of remaining connected indefinitely.',
+    'lab.gd event streaming now sleeps when there are no active shares or account operations, then resumes automatically for publication, claiming, recovery, or unlinking without changing the installation identity.',
   ],
   notes: [
     'Local releases now reuse checksum-verified portable WASM and Agent artifacts plus verified Rust-check receipts when their complete inputs are unchanged, avoiding redundant Rust and Go compilation without retaining compiler caches.',

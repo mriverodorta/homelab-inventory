@@ -248,6 +248,7 @@ describe('sharing repository', () => {
         actorUserId: 1,
       })
       expect(prepared).toMatchObject({ id: 1, state: 'pending', expectedAccountBindingRevision: 3, shareDisposition: 'unpublish' })
+      expect(repository.getRemoteEventInterest()).toMatchObject({ required: true, pendingAccountOperations: 1 })
       expect(repository.prepareAccountUnlink({
         clientAttemptId: '3c58e2df-f909-4131-b62c-7763682fc1d4',
         remoteIdempotencyKey: 'different-key-is-ignored-for-an-existing-attempt',
@@ -276,6 +277,7 @@ describe('sharing repository', () => {
       expect(repository.getInstallationProjection()).toMatchObject({ accountClaimed: false, githubUsername: null, accountBindingRevision: 4, state: 'active' })
       expect(repository.getShare(remote.id)).toMatchObject({ state: 'unpublished', remotePublicId: 'unlink_remote_1' })
       expect(repository.getShare(local.id)).toMatchObject({ state: 'unpublished', remotePublicId: null })
+      expect(repository.getRemoteEventInterest()).toMatchObject({ required: false, activeShares: 0, pendingAccountOperations: 0 })
       expect(handle.database.query("SELECT type, actor_user_id AS actorUserId, details_json AS detailsJson FROM security_events WHERE type = 'sharing-account-unlinked'").get()).toMatchObject({ actorUserId: 1 })
       expect(repository.completeAccountUnlink({ operationId: prepared.id, actorUserId: 1, result: completed.result })).toMatchObject({ sharesReconciled: true })
     } finally {
@@ -298,6 +300,59 @@ describe('sharing repository', () => {
       })).toMatchObject({ sharesReconciled: false, affectedLocalShares: 1 })
       expect(repository.getInstallationProjection()).toMatchObject({ accountClaimed: false, accountBindingRevision: 2 })
       expect(repository.getShare(remote.id)).toMatchObject({ state: 'synced' })
+    } finally {
+      closeManagedDatabase(handle)
+    }
+  })
+
+  test('derives remote event interest from live shares and pending operations', async () => {
+    const { handle, repository } = await fixture()
+    try {
+      expect(repository.getRemoteEventInterest()).toEqual({
+        required: false,
+        activeShares: 0,
+        pendingPublicationOperations: 0,
+        pendingAccountOperations: 0,
+        recoveryPending: false,
+      })
+
+      const share = repository.createShare({
+        projectId: 1,
+        title: 'Demand-driven events',
+        mutability: 'replaceable',
+        syncMode: 'manual',
+        visibility: 'unlisted',
+        views: [{ workspaceId: 1, viewType: 'systems' }],
+      })
+      expect(repository.getRemoteEventInterest().required).toBe(false)
+
+      repository.enqueueOperation({
+        shareId: share.id,
+        idempotencyKey: 'demand-driven-publish-1',
+        kind: 'publish',
+      })
+      expect(repository.getRemoteEventInterest()).toMatchObject({ required: true, pendingPublicationOperations: 1 })
+
+      const operation = repository.nextOperation()
+      expect(operation).not.toBeNull()
+      repository.updateOperation(operation!.id, { state: 'succeeded' })
+      expect(repository.getRemoteEventInterest().required).toBe(false)
+
+      let current = repository.getShare(share.id)!
+      current = repository.updateShare(current.id, current.localRevision, {
+        remotePublicId: 'demand_events_1',
+        remoteRevision: 1,
+        state: 'synced',
+      })
+      expect(repository.getRemoteEventInterest()).toMatchObject({ required: true, activeShares: 1 })
+
+      repository.updateShare(current.id, current.localRevision, { state: 'unpublished' })
+      expect(repository.getRemoteEventInterest()).toMatchObject({ required: false, activeShares: 0 })
+
+      repository.updateEnrollment({ enrollmentState: repository.getSettings().enrollmentState, recoveryState: 'pending-owner-approval' })
+      expect(repository.getRemoteEventInterest()).toMatchObject({ required: true, recoveryPending: true })
+      repository.updateEnrollment({ enrollmentState: repository.getSettings().enrollmentState, recoveryState: null })
+      expect(repository.getRemoteEventInterest().required).toBe(false)
     } finally {
       closeManagedDatabase(handle)
     }

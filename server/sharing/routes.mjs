@@ -199,7 +199,9 @@ export function registerSharingRoutes(app, {
 
   app.post('/api/sharing/account/claim', (_request, response) => handle(response, async () => {
     requireRuntime()
-    response.status(201).json(await identityService.createClaimDevice())
+    const claim = await identityService.createClaimDevice()
+    eventCoordinator?.holdClaimUntil?.(claim.expiresAt)
+    response.status(201).json(claim)
   }))
 
   app.post('/api/sharing/account/reconcile', (_request, response) => handle(response, async () => {
@@ -219,13 +221,16 @@ export function registerSharingRoutes(app, {
       confirmation: request.body?.confirmation ?? null,
       actorUserId: request.authentication?.account?.id ?? null,
     })
+    eventCoordinator?.wake()
     response.json({ ...publicSettings(repository, flags, currentCapabilities(), eventCoordinator), unlink: completed })
   }))
 
   app.post('/api/sharing/recovery/resume', (_request, response) => handle(response, async () => {
     requireRuntime()
+    eventCoordinator?.wake()
     await identityService.resumeRecovery()
     enrollmentCoordinator?.wake()
+    eventCoordinator?.wake()
     response.status(202).json({ status: 'resuming' })
   }))
 
@@ -233,6 +238,7 @@ export function registerSharingRoutes(app, {
     requireRuntime()
     if (identityService.getCapabilities?.().remoteLifecycle !== true) throw Object.assign(new Error('Remote share lifecycle is unsupported.'), { status: 503, code: 'sharing-remote-lifecycle-unavailable' })
     const operation = publicationService.enqueueLifecycle(positiveId(request.params.shareId, 'Share ID'), kind)
+    eventCoordinator?.wake()
     publicationCoordinator?.wake()
     response.status(202).json({ operation })
   })

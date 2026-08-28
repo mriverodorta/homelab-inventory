@@ -615,14 +615,20 @@ const sharingPublicationService = sharingEffectiveEnabled
       sourceProvider: createSharingSourceProvider(store),
       client: sharingPublicationClient,
       publicIds: sharingPublicIds,
-      onStateChanged: (share) => publishSharingState(share, 'sharing.share-changed'),
+      onStateChanged: (share) => {
+        publishSharingState(share, 'sharing.share-changed')
+        sharingEventCoordinator?.wake()
+      },
     })
   : null
 const sharingAccountUnlinkService = sharingIdentity
   ? new AccountUnlinkService({
       repository: sharingRepository,
       identityService: sharingIdentity,
-      onStateChanged: (value, kind) => publishSharingState(value, kind),
+      onStateChanged: (value, kind) => {
+        publishSharingState(value, kind)
+        sharingEventCoordinator?.wake()
+      },
     })
   : null
 if (sharingPublicationService) {

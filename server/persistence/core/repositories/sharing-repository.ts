@@ -65,6 +65,14 @@ export type SharingAccountOperation = Readonly<{
   updatedAtMs: number
 }>
 
+export type SharingRemoteEventInterest = Readonly<{
+  required: boolean
+  activeShares: number
+  pendingPublicationOperations: number
+  pendingAccountOperations: number
+  recoveryPending: boolean
+}>
+
 export type ShareRecord = Readonly<{
   id: number
   projectId: number
@@ -529,6 +537,40 @@ export function createSharingRepository(context: RepositoryContext) {
     return rows.map((row) => mapShare(row as Record<string, unknown>,accountClaimed))
   }
 
+  function getRemoteEventInterest(): SharingRemoteEventInterest {
+    const row = sqlite.query(`
+      SELECT
+        (SELECT count(*) FROM shares
+          WHERE remote_public_id IS NOT NULL
+            AND remote_revision IS NOT NULL
+            AND state NOT IN ('unpublished','expired','deleted')) AS activeShares,
+        (SELECT count(*) FROM share_publication_operations
+          WHERE state IN ('queued','running','retrying')) AS pendingPublicationOperations,
+        (SELECT count(*) FROM sharing_account_operations
+          WHERE state IN ('pending','retrying')) AS pendingAccountOperations,
+        (SELECT CASE WHEN recovery_state IS NULL THEN 0 ELSE 1 END
+          FROM sharing_settings WHERE id = 1) AS recoveryPending
+    `).get() as {
+      activeShares: number
+      pendingPublicationOperations: number
+      pendingAccountOperations: number
+      recoveryPending: number
+    }
+    const result = {
+      activeShares: Number(row.activeShares),
+      pendingPublicationOperations: Number(row.pendingPublicationOperations),
+      pendingAccountOperations: Number(row.pendingAccountOperations),
+      recoveryPending: row.recoveryPending === 1,
+    }
+    return {
+      ...result,
+      required: result.activeShares > 0
+        || result.pendingPublicationOperations > 0
+        || result.pendingAccountOperations > 0
+        || result.recoveryPending,
+    }
+  }
+
   function getShareConfiguration(id: number) {
     const share = getShare(id)
     if (!share) return null
@@ -783,6 +825,7 @@ export function createSharingRepository(context: RepositoryContext) {
     getShareByRemotePublicId,
     applyRemoteEvent,
     listShares,
+    getRemoteEventInterest,
     getShareConfiguration,
     updateShareConfiguration,
     updateShare,
