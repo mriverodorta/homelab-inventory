@@ -2,6 +2,7 @@ import fs from 'node:fs/promises'
 import path from 'node:path'
 import { createHash } from 'node:crypto'
 import { startLocalRegistry, stopLocalRegistry } from './local-registry.mjs'
+import { createDockerLoadArchive, readOciRuntimeIdentity, verifyLoadedRuntimeIdentity } from './oci-runtime-identity.mjs'
 import { run } from './process.mjs'
 import { ensurePinnedOras } from './tools.mjs'
 
@@ -21,9 +22,8 @@ export function candidateBuildCommand({ root, paths, identity, architecture }) {
     '--build-arg', 'APP_CHANNEL=release',
     '--provenance=mode=max', '--sbom=true',
     '--output', `type=oci,dest=${archive}`,
-    '--metadata-file', metadata,
-    root,
   ]
+  command.push('--metadata-file', metadata, root)
   return { command, directory, archive, metadata, image, platform }
 }
 
@@ -67,6 +67,7 @@ export async function buildOciCandidate({ root, paths, identity, architecture })
     sourceFingerprint: identity.sourceFingerprint,
     revision: identity.revision,
     version: identity.version,
+    loadMode: 'local-archive',
     builtAt: new Date().toISOString(),
   }
   candidate.archiveSha256 = createHash('sha256').update(await fs.readFile(build.archive)).digest('hex')
@@ -88,27 +89,61 @@ export function localCandidateImportCommand({ oras, candidate, destination }) {
 }
 
 export async function loadOciCandidate(candidate, paths) {
-  const oras = await ensurePinnedOras(paths)
-  const registry = await startLocalRegistry('homelab-inventory-candidate-registry')
-  const destination = `${registry.repository}:candidate-${candidate.revision.slice(0, 12)}-${candidate.architecture}`
-  try {
-    await run(localCandidateImportCommand({ oras, candidate, destination }))
-    const remote = await run(['docker', 'buildx', 'imagetools', 'inspect', destination], { capture: true, log: false })
-    if (!remote.stdout.includes(candidate.digest)) {
-      throw new Error('The local candidate registry did not retain the immutable OCI digest.')
+  let identity
+  let localLoadUnsupported = candidate.loadMode === 'registry-fallback'
+  const loadRoot = path.join(path.dirname(candidate.archive), '.docker-load')
+  if (!localLoadUnsupported) {
+    try {
+      await fs.rm(loadRoot, { recursive: true, force: true })
+      await fs.mkdir(loadRoot, { recursive: true, mode: 0o700 })
+      const dockerArchive = path.join(loadRoot, 'candidate.docker.tar')
+      identity = await createDockerLoadArchive({
+        archive: candidate.archive,
+        candidateDigest: candidate.digest,
+        platform: candidate.platform,
+        image: candidate.image,
+        output: dockerArchive,
+        workDirectory: loadRoot,
+      })
+      await run(['docker', 'image', 'load', '--input', dockerArchive])
+    } catch (error) {
+      if (error?.code !== 'OCI_LAYER_COMPRESSION_UNSUPPORTED') throw error
+      localLoadUnsupported = true
+    } finally {
+      await fs.rm(loadRoot, { recursive: true, force: true })
     }
-    await run(['docker', 'pull', '--platform', candidate.platform, destination])
-    await run(['docker', 'tag', destination, candidate.image])
-    await run(['docker', 'image', 'rm', destination], { allowFailure: true, capture: true, log: false })
-  } finally {
-    await stopLocalRegistry(registry)
   }
-  const { stdout } = await run(['docker', 'image', 'inspect', '--format', '{{json .Config.Labels}}', candidate.image], { capture: true })
-  const labels = JSON.parse(stdout)
-  if (
-    labels['org.opencontainers.image.version'] !== candidate.version
-    || labels['org.opencontainers.image.revision'] !== candidate.revision
-    || labels['io.homelab-inventory.channel'] !== 'release'
-  ) throw new Error('Loaded candidate metadata does not match its immutable receipt.')
-  return candidate
+  if (localLoadUnsupported) {
+    identity = await readOciRuntimeIdentity({
+      archive: candidate.archive,
+      candidateDigest: candidate.digest,
+      platform: candidate.platform,
+    })
+    const oras = await ensurePinnedOras(paths)
+    const registry = await startLocalRegistry('homelab-inventory-candidate-registry')
+    const destination = `${registry.repository}:candidate-${candidate.revision.slice(0, 12)}-${candidate.architecture}`
+    try {
+      await run(localCandidateImportCommand({ oras, candidate, destination }))
+      const remote = await run(['docker', 'buildx', 'imagetools', 'inspect', destination], { capture: true, log: false })
+      if (!remote.stdout.includes(candidate.digest)) {
+        throw new Error('The local candidate registry did not retain the immutable OCI digest.')
+      }
+      await run(['docker', 'pull', '--platform', candidate.platform, destination])
+      await run(['docker', 'tag', destination, candidate.image])
+      await run(['docker', 'image', 'rm', destination], { allowFailure: true, capture: true, log: false })
+    } finally {
+      await stopLocalRegistry(registry)
+    }
+  }
+  const { stdout } = await run(['docker', 'image', 'inspect', candidate.image], { capture: true, log: false })
+  verifyLoadedRuntimeIdentity({ candidate, identity, inspect: stdout })
+  return {
+    ...candidate,
+    loadMode: localLoadUnsupported ? 'registry-fallback' : 'local-archive',
+    runtimeProof: {
+      candidateDigest: identity.candidateDigest,
+      configDigest: identity.configDigest,
+      layerCount: identity.diffIds.length,
+    },
+  }
 }

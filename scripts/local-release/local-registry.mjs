@@ -6,7 +6,11 @@ export async function startLocalRegistry(prefix = 'homelab-inventory-release-reg
   const name = `${prefix}-${Date.now()}`
   try {
     // Docker Desktop's daemon runs in a VM, so it cannot pull from a macOS-only loopback binding.
-    await run(['docker', 'run', '--detach', '--name', name, '--publish', '0:5000', LOCAL_REGISTRY_IMAGE])
+    await run([
+      'docker', 'run', '--detach', '--name', name, '--publish', '0:5000',
+      '--tmpfs', '/var/lib/registry:rw,noexec,nosuid,nodev',
+      LOCAL_REGISTRY_IMAGE,
+    ])
     const { stdout } = await run(['docker', 'port', name, '5000/tcp'], { capture: true, log: false })
     const port = stdout.match(/:(\d+)$/)?.[1]
     if (!port) throw new Error('Could not determine local release registry port.')
@@ -19,11 +23,11 @@ export async function startLocalRegistry(prefix = 'homelab-inventory-release-reg
     }
     throw new Error('Local release registry did not become ready.')
   } catch (error) {
-    await run(['docker', 'rm', '--force', name], { allowFailure: true, log: false })
+    await run(['docker', 'rm', '--force', '--volumes', name], { allowFailure: true, log: false })
     throw error
   }
 }
 
 export async function stopLocalRegistry(registry) {
-  if (registry) await run(['docker', 'rm', '--force', registry.name], { allowFailure: true, log: false })
+  if (registry) await run(['docker', 'rm', '--force', '--volumes', registry.name], { allowFailure: true, log: false })
 }

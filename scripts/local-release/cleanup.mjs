@@ -43,7 +43,7 @@ async function removeOrphanedReleaseRegistries() {
   ], { capture: true, allowFailure: true, log: false })
   const containers = result.stdout.split(/\s+/).filter(Boolean)
   if (containers.length > 0) {
-    await run(['docker', 'rm', '--force', ...containers], { allowFailure: true, log: false })
+    await run(['docker', 'rm', '--force', '--volumes', ...containers], { allowFailure: true, log: false })
   }
 }
 

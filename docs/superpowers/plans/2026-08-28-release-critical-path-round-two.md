@@ -75,7 +75,7 @@ bun test scripts/ci/test-supervisor.bun_spec.mjs scripts/ci/contract.bun_spec.mj
 Expected: all tests pass, logs are absent, and elapsed time improves over the
 approximately 47-second sequential test phase.
 
-- [ ] **Step 6: Commit Task 1**
+- [x] **Step 6: Commit Task 1**
 
 ```bash
 git add package.json scripts/ci/test-supervisor.mjs scripts/ci/test-supervisor.bun_spec.mjs scripts/ci/contract.bun_spec.mjs
@@ -100,13 +100,13 @@ git commit -m "build: run independent test suites concurrently"
 - Updates: `candidateBuildCommand()` to emit OCI and Docker outputs when supported.
 - Updates: `loadOciCandidate()` to verify a directly loaded image before fallback.
 
-- [ ] **Step 1: Write synthetic OCI identity tests**
+- [x] **Step 1: Write synthetic OCI identity tests**
 
 Generate small OCI tar fixtures in the test and cover exact config/rootfs
 matching, changed config, changed diff IDs, wrong platform, attestation
 exclusion, blob hash mismatch, and duplicate platform descriptors.
 
-- [ ] **Step 2: Run identity tests and confirm failure**
+- [x] **Step 2: Run identity tests and confirm failure**
 
 ```bash
 bun test scripts/local-release/oci-runtime-identity.bun_spec.mjs
@@ -114,31 +114,35 @@ bun test scripts/local-release/oci-runtime-identity.bun_spec.mjs
 
 Expected: failure because the identity module does not exist.
 
-- [ ] **Step 3: Implement bounded OCI projection and runtime proof**
+- [x] **Step 3: Implement bounded OCI projection and runtime proof**
 
 Stream the tar archive, retain only `index.json` and bounded JSON blobs, verify
 all selected blob SHA-256 values, resolve one platform image manifest, and
 compare its config digest and `rootfs.diff_ids` with Docker inspect output.
 
-- [ ] **Step 4: Add dual BuildKit exporters**
+- [x] **Step 4: Add deterministic local Docker loading**
 
-For supported Buildx versions emit:
+Buildx cannot combine attestations with its Docker exporter because provenance
+and SBOM produce a manifest list. Keep one attested OCI output, convert only the
+selected runtime manifest to Docker load format, and prove config/rootfs
+identity after loading.
+
+The Registry fallback remains available only for unsupported layer compression.
+It must mount `/var/lib/registry` as tmpfs and be removed with `--volumes`.
+
+The rejected dual-export command was:
 
 ```text
 --output type=oci,dest=<candidate.oci.tar>
 --output type=docker,name=<candidate-tag>
 ```
 
-Keep OCI-only plus local-Registry fallback for unsupported clients. The
-fallback Registry must mount `/var/lib/registry` as tmpfs and be removed with
-`--volumes`.
-
-- [ ] **Step 5: Verify with a real no-cache ARM64 proof candidate**
+- [x] **Step 5: Verify with a real no-cache ARM64 proof candidate**
 
 Build one task-scoped candidate, prove OCI/runtime identity, smoke test it, and
 confirm no Registry container or anonymous volume was created.
 
-- [ ] **Step 6: Run focused release tests**
+- [x] **Step 6: Run focused release tests**
 
 ```bash
 bun test scripts/local-release/oci-runtime-identity.bun_spec.mjs scripts/local-release/oci.bun_spec.mjs scripts/local-release/cleanup.bun_spec.mjs

@@ -24,6 +24,17 @@ describe('OCI candidate build', () => {
     expect(build.command).not.toContain('--push')
   })
 
+  test('keeps one attested OCI output for deterministic local loading', () => {
+    const root = '/repo'
+    const paths = { candidatesDir: '/support/candidates' }
+    const identity = { revision: 'a'.repeat(40), version: '0.12.4', sourceFingerprint: 'b'.repeat(64) }
+    const build = candidateBuildCommand({ root, paths, identity, architecture: 'arm64' })
+    expect(build.command).toContain(`type=oci,dest=${build.archive}`)
+    expect(build.command.filter((argument) => argument === '--output')).toHaveLength(1)
+    expect(build.command).toContain('--tag')
+    expect(build.command).toContain(build.image)
+  })
+
   test('imports the exact OCI digest through an isolated local registry', () => {
     const candidate = {
       archive: '/candidate.oci.tar',
