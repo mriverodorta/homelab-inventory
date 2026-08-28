@@ -38,7 +38,7 @@ async function createTestContext(options = {}) {
   registerInventoryRoutes(app, { withStore, ...options })
 
   const server = await new Promise((resolve) => {
-    const listener = app.listen(0, () => resolve(listener))
+    const listener = app.listen(0, '127.0.0.1', () => resolve(listener))
   })
   const address = server.address()
 
@@ -80,7 +80,7 @@ describe('inventory lifecycle routes', () => {
       },
     })
     const server = await new Promise((resolve) => {
-      const listener = app.listen(0, () => resolve(listener))
+      const listener = app.listen(0, '127.0.0.1', () => resolve(listener))
     })
     const url = `http://127.0.0.1:${server.address().port}`
 
@@ -130,7 +130,7 @@ describe('inventory lifecycle routes', () => {
       },
     })
     const server = await new Promise((resolve) => {
-      const listener = app.listen(0, () => resolve(listener))
+      const listener = app.listen(0, '127.0.0.1', () => resolve(listener))
     })
     const url = `http://127.0.0.1:${server.address().port}`
 

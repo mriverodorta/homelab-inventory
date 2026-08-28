@@ -18,7 +18,7 @@ async function listen() {
   app.post('/api/test', (_request, response) => response.json({ ok: true }))
   app.get('/api/fail', () => { throw new Error('EACCES: /data/private/store.json') })
   app.use(apiErrorHandler)
-  const server = app.listen(0)
+  const server = app.listen(0, '127.0.0.1')
   servers.push(server)
   await new Promise((resolve) => server.once('listening', resolve))
   return `http://127.0.0.1:${server.address().port}`

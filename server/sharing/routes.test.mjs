@@ -8,7 +8,7 @@ async function server(options) {
   const app = express()
   app.use(express.json())
   registerSharingRoutes(app, options)
-  const listener = app.listen(0)
+  const listener = app.listen(0, '127.0.0.1')
   await new Promise((resolve) => listener.once('listening', resolve))
   servers.push(listener)
   return `http://127.0.0.1:${listener.address().port}`

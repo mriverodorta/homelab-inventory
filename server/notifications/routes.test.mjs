@@ -27,7 +27,7 @@ async function setup({ demo = false } = {}) {
   app.use(express.json())
   registerNotificationRoutes(app, { store, vault, incidentManager, deliveryCoordinator, demo })
   const server = await new Promise((resolve) => {
-    const listener = app.listen(0, () => resolve(listener))
+    const listener = app.listen(0, '127.0.0.1', () => resolve(listener))
   })
   servers.push(server)
   return { store, vault, deliveryCoordinator, url: `http://127.0.0.1:${server.address().port}` }

@@ -37,7 +37,7 @@ function createApp(store) {
 
 function listen(app) {
   return new Promise((resolve) => {
-    const server = app.listen(0, () => {
+    const server = app.listen(0, '127.0.0.1', () => {
       const address = server.address()
 
       resolve({

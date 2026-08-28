@@ -29,7 +29,7 @@ async function startApp({ store, commandService }) {
     commandService,
     sseHub: { connect: vi.fn() },
   })
-  const server = app.listen(0)
+  const server = app.listen(0, '127.0.0.1')
   servers.push(server)
   await new Promise((resolve) => server.once('listening', resolve))
   return `http://127.0.0.1:${server.address().port}`

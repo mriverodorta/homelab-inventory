@@ -38,7 +38,7 @@ async function fixture() {
     },
   })
   const server = await new Promise((resolve) => {
-    const listener = app.listen(0, () => resolve(listener))
+    const listener = app.listen(0, '127.0.0.1', () => resolve(listener))
   })
   servers.push(server)
   return { store, url: `http://127.0.0.1:${server.address().port}` }

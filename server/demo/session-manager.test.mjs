@@ -392,7 +392,7 @@ describe('demo API routing contract', () => {
     app.get('/api/project', (request, response) => response.json(request.demoStore.getProject()))
     app.put('/api/project', (request, response) => response.json(request.demoStore.setProject(request.body)))
 
-    const server = app.listen(0)
+    const server = app.listen(0, '127.0.0.1')
     const url = await new Promise((resolve) => {
       server.once('listening', () => resolve(`http://127.0.0.1:${server.address().port}`))
     })

@@ -16,7 +16,7 @@ async function listen() {
   app.use(browserMutationGuard)
   app.post('/api/project', (_request, response) => response.json({ ok: true }))
   app.post('/api/agent/servers/1/register', (_request, response) => response.json({ ok: true }))
-  const server = app.listen(0)
+  const server = app.listen(0, '127.0.0.1')
   servers.push(server)
   await new Promise((resolve) => server.once('listening', resolve))
   return `http://127.0.0.1:${server.address().port}`

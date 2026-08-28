@@ -55,7 +55,7 @@ function createApp(store, options) {
 
 function listen(app) {
   return new Promise((resolve) => {
-    const server = app.listen(0, () => resolve({ server, url: `http://127.0.0.1:${server.address().port}` }))
+    const server = app.listen(0, '127.0.0.1', () => resolve({ server, url: `http://127.0.0.1:${server.address().port}` }))
   })
 }
 

@@ -33,7 +33,7 @@ async function createServer(registryRouteOptions = {}) {
   app.use(express.json())
   const withStore = async (_request, _response, handler) => handler(store)
   registerRegistryRoutes(app, { withStore, ...registryRouteOptions })
-  const server = app.listen(0)
+  const server = app.listen(0, '127.0.0.1')
   await new Promise((resolve) => server.once('listening', resolve))
   resources.push({ dataDir, store, server })
   const address = server.address()
