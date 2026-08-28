@@ -6,6 +6,10 @@ This project follows semver-style Docker tags. The `stable` image points at the 
 
 ## Unreleased
 
+### Fixed
+
+- Canvas viewport persistence now accepts the full 10%–200% zoom range, so views saved at either endpoint restore correctly after a reload.
+
 ## [0.16.5] - 2026-08-28
 
 ### Changed

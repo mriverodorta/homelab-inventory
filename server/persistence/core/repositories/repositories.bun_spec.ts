@@ -85,11 +85,30 @@ describe('relational persistence repositories', () => {
         viewportY: -26,
         viewportZoomBasisPoints: 7500,
       })
+      repository.updateCanvasConfiguration(2, secondary.id, {
+        viewport: { x: -10, y: 20, zoom: 0.1 },
+      })
+      expect(repository.getWorkbook(2).workspaces.at(-1)).toMatchObject({
+        viewportX: -10,
+        viewportY: 20,
+        viewportZoomBasisPoints: 1000,
+      })
+      repository.updateCanvasConfiguration(2, secondary.id, {
+        viewport: { x: 30, y: -40, zoom: 2 },
+      })
+      expect(repository.getWorkbook(2).workspaces.at(-1)).toMatchObject({
+        viewportX: 30,
+        viewportY: -40,
+        viewportZoomBasisPoints: 20000,
+      })
       expect(() => repository.updateCanvasConfiguration(2, created.systemsWorkspaceId, {
         settings: { snapItemsToGrid: true },
       })).toThrow(/Only Canvas/iu)
       expect(() => repository.updateCanvasConfiguration(2, secondary.id, {
         viewport: { x: 0, y: 0, zoom: 3 },
+      })).toThrow(/viewport/iu)
+      expect(() => repository.updateCanvasConfiguration(2, secondary.id, {
+        viewport: { x: 0, y: 0, zoom: 0.09 },
       })).toThrow(/viewport/iu)
       repository.reorderWorkspaces(2, [secondary.id, created.canvasWorkspaceId])
       expect(repository.listWorkspaces(2).map(({ id, sortOrder }) => ({ id, sortOrder }))).toEqual([

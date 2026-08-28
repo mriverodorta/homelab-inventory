@@ -689,7 +689,9 @@ const RELEASE_0_16_5_DETAILS: UnreleasedReleaseNotes = {
 
 export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
   highlights: [],
-  fixes: [],
+  fixes: [
+    'Canvas viewport persistence now accepts the full 10%–200% zoom range, so views saved at either endpoint restore correctly after a reload.',
+  ],
   notes: [],
 }
 

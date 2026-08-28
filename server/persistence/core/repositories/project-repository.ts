@@ -419,8 +419,8 @@ export function createProjectRepository(context: RepositoryContext) {
       !Number.isFinite(viewport.x)
       || !Number.isFinite(viewport.y)
       || !Number.isFinite(viewport.zoom)
-      || viewport.zoom < 0.25
-      || viewport.zoom > 1.8
+      || viewport.zoom < 0.1
+      || viewport.zoom > 2
     )) {
       throw new Error('Canvas viewport is invalid.')
     }
