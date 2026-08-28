@@ -687,11 +687,17 @@ const RELEASE_0_16_5_DETAILS: UnreleasedReleaseNotes = {
   notes: [],
 }
 
-export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
+const RELEASE_0_16_6_DETAILS: UnreleasedReleaseNotes = {
   highlights: [],
   fixes: [
     'Canvas viewport persistence now accepts the full 10%–200% zoom range, so views saved at either endpoint restore correctly after a reload.',
   ],
+  notes: [],
+}
+
+export const UNRELEASED_RELEASE_NOTES: UnreleasedReleaseNotes = {
+  highlights: [],
+  fixes: [],
   notes: [],
 }
 
@@ -1222,9 +1228,16 @@ const RELEASE_0_2_1_DETAILS: UnreleasedReleaseNotes = {
 
 export const RELEASE_NOTES: ReleaseNoteEntry[] = [
   {
-    version: '0.16.5',
+    version: '0.16.6',
     date: '2026-08-28',
     channel: 'latest',
+    title: 'Persistent Canvas zoom limits',
+    ...RELEASE_0_16_6_DETAILS,
+  },
+  {
+    version: '0.16.5',
+    date: '2026-08-28',
+    channel: 'release',
     title: 'More flexible Canvas zoom',
     ...RELEASE_0_16_5_DETAILS,
   },
